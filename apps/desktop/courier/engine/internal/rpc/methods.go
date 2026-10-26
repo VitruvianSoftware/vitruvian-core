@@ -55,6 +55,7 @@ const (
 	CodeAlreadySent      = -32025
 	CodeNotYours         = -32026
 	CodeNetworkRefused   = -32027
+	CodeNeedsFFmpeg      = -32028
 )
 
 // errorMessages is each code's fixed message, as protocol.json has it. A message never carries a value that was
@@ -85,6 +86,7 @@ var errorMessages = map[int]string{
 	CodeAlreadySent:      "it has already gone",
 	CodeNotYours:         "you can only change your own messages",
 	CodeNetworkRefused:   "network refused",
+	CodeNeedsFFmpeg:      "sending voice notes on this network needs ffmpeg",
 }
 
 // Error is a JSON-RPC error as it goes on the wire.
@@ -124,6 +126,7 @@ var sentinels = []struct {
 	{engine.ErrStarting, CodeNotConnected},
 	{actions.ErrNotFailed, CodeNotFailed},
 	{actions.ErrNotSupported, CodeNotSupported},
+	{actions.ErrVoiceTranscodeUnavailable, CodeNeedsFFmpeg},
 	// The network turned the change down: nothing changed on this Mac.
 	{actions.ErrNetworkRefused, CodeNetworkRefused},
 	{actions.ErrNotEntitled, CodeNotEntitled},
@@ -181,16 +184,19 @@ type handler func(ctx context.Context, d *Deps, params json.RawMessage) (any, er
 
 // methods is every method but hello, which the connection answers itself.
 var methods = map[string]handler{
-	"accounts.list":    accountsList,
-	"inbox.list":       inboxList,
-	"room.events":      roomEvents,
-	"room.markRead":    roomMarkRead,
-	"room.setMuted":    roomSetMuted,
-	"message.send":     messageSend,
-	"message.sendFile": messageSendFile,
-	"message.react":    messageReact,
-	"message.retry":    messageRetry,
-	"message.discard":  messageDiscard,
+	"accounts.list":        accountsList,
+	"inbox.list":           inboxList,
+	"room.events":          roomEvents,
+	"room.markRead":        roomMarkRead,
+	"room.setMuted":        roomSetMuted,
+	"message.send":         messageSend,
+	"message.sendFile":     messageSendFile,
+	"message.sendVoice":    messageSendVoice,
+	"message.sendLocation": messageSendLocation,
+	"message.markPlayed":   messageMarkPlayed,
+	"message.react":        messageReact,
+	"message.retry":        messageRetry,
+	"message.discard":      messageDiscard,
 
 	// Presence & chat info / group actions (presence.go).
 	"room.setTyping":        roomSetTyping,
@@ -628,26 +634,48 @@ type cursor struct {
 	Seq *int64 `json:"seq"`
 }
 
+type linkPreviewItemJSON struct {
+	MatchedURL  string `json:"matched_url"`
+	URL         string `json:"url,omitempty"`
+	Title       string `json:"title,omitempty"`
+	SiteName    string `json:"site_name,omitempty"`
+	Description string `json:"description,omitempty"`
+	ImagePath   string `json:"image_path,omitempty"`
+	ImageWidth  int    `json:"image_width,omitempty"`
+	ImageHeight int    `json:"image_height,omitempty"`
+	Blurhash    string `json:"blurhash,omitempty"`
+}
+
 type eventJSON struct {
-	EventID          string          `json:"event_id"`
-	RoomID           string          `json:"room_id"`
-	Sender           string          `json:"sender"`
-	SenderName       string          `json:"sender_name"`
-	SenderAvatarPath string          `json:"sender_avatar_path"`
-	Mine             bool            `json:"mine"`
-	Type             string          `json:"type"`
-	Content          json.RawMessage `json:"content"`
-	TS               int64           `json:"ts"`
-	Seq              int64           `json:"seq"`
-	Status           string          `json:"status"`
-	StatusReason     string          `json:"status_reason"`
-	MediaPath        string          `json:"media_path"`
-	Bookmarked       bool            `json:"bookmarked"`
-	Poll             *pollTallyJSON  `json:"poll"`
-	Thread           *threadJSON     `json:"thread"`
-	ExpiresAt        int64           `json:"expires_at"`
-	Delivered        bool            `json:"delivered"`
-	ReadBy           []readerJSON    `json:"read_by"`
+	EventID          string                `json:"event_id"`
+	RoomID           string                `json:"room_id"`
+	Sender           string                `json:"sender"`
+	SenderName       string                `json:"sender_name"`
+	SenderAvatarPath string                `json:"sender_avatar_path"`
+	Mine             bool                  `json:"mine"`
+	Type             string                `json:"type"`
+	Content          json.RawMessage       `json:"content"`
+	TS               int64                 `json:"ts"`
+	Seq              int64                 `json:"seq"`
+	Status           string                `json:"status"`
+	StatusReason     string                `json:"status_reason"`
+	MediaPath        string                `json:"media_path"`
+	ThumbnailPath    string                `json:"thumbnail_path,omitempty"`
+	Blurhash         string                `json:"blurhash,omitempty"`
+	DurationMS       int64                 `json:"duration_ms,omitempty"`
+	Waveform         []int                 `json:"waveform,omitempty"`
+	IsGIF            bool                  `json:"is_gif,omitempty"`
+	IsAnimated       bool                  `json:"is_animated,omitempty"`
+	ViewOnce         bool                  `json:"view_once,omitempty"`
+	GeoURI           string                `json:"geo_uri,omitempty"`
+	LinkPreviews     []linkPreviewItemJSON `json:"link_previews,omitempty"`
+	Played           bool                  `json:"played,omitempty"`
+	Bookmarked       bool                  `json:"bookmarked"`
+	Poll             *pollTallyJSON        `json:"poll"`
+	Thread           *threadJSON           `json:"thread"`
+	ExpiresAt        int64                 `json:"expires_at"`
+	Delivered        bool                  `json:"delivered"`
+	ReadBy           []readerJSON          `json:"read_by"`
 }
 
 // readerJSON is a Reader: someone who has read a message of mine, or anything after it.
@@ -730,12 +758,14 @@ func (d *Deps) toEvent(ctx context.Context, e store.Event, senders map[string]se
 	if status == "" {
 		status = "sent" // stored without one (the column's default): the network has it
 	}
-	return eventJSON{
+	ev := eventJSON{
 		EventID: e.EventID, RoomID: e.RoomID, Sender: e.Sender, SenderName: who.name, SenderAvatarPath: who.avatarPath,
 		Mine: e.Sender == string(ids.Me), Type: e.Type, Content: content, TS: ms(e.TS), Seq: e.Seq,
 		Status: status, StatusReason: e.StatusReason, MediaPath: d.path(url), ExpiresAt: ms(e.ExpiresAt),
-		ReadBy: []readerJSON{},
-	}, nil
+		ReadBy: []readerJSON{}, Played: e.Played,
+	}
+	populateEventMedia(ctx, d, e, &ev)
+	return ev, nil
 }
 
 // withoutRedacted is mine without the messages deleted here (unsent, or past a disappearing timer): one query.
@@ -810,6 +840,10 @@ func (d *Deps) toEvents(ctx context.Context, roomID string, evs []store.Event, s
 	if err != nil {
 		return nil, err
 	}
+	played, err := d.Store.MediaPlayedSet(ctx, roomID, ids)
+	if err != nil {
+		return nil, err
+	}
 	tallies, err := d.Store.PollTallies(ctx, roomID, polls)
 	if err != nil {
 		return nil, err
@@ -823,11 +857,13 @@ func (d *Deps) toEvents(ctx context.Context, roomID string, evs []store.Event, s
 		if e.DeletedForMe {
 			continue
 		}
+		e.Played = played[e.EventID]
 		ev, err := d.toEvent(ctx, e, senders)
 		if err != nil {
 			return nil, err
 		}
 		ev.Bookmarked = bookmarked[e.EventID]
+		ev.Played = played[e.EventID]
 		if r, ok := receipts[e.EventID]; ok {
 			ev.Delivered = len(r.DeliveredTo) > 0
 			ev.ReadBy = readers.of(r.ReadBy)
@@ -1336,12 +1372,13 @@ type sent struct {
 
 func messageSend(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
 	var p struct {
-		RoomID     *string           `json:"room_id"`
-		Text       *string           `json:"text"`
-		Entities   []richtext.Entity `json:"entities"`
-		ReplyTo    string            `json:"reply_to"`
-		ThreadRoot string            `json:"thread_root"`
-		HoldMS     *int64            `json:"hold_ms"`
+		RoomID             *string           `json:"room_id"`
+		Text               *string           `json:"text"`
+		Entities           []richtext.Entity `json:"entities"`
+		ReplyTo            string            `json:"reply_to"`
+		ThreadRoot         string            `json:"thread_root"`
+		HoldMS             *int64            `json:"hold_ms"`
+		DisableLinkPreview *bool             `json:"disable_link_preview"`
 	}
 	if err := decode(raw, &p); err != nil {
 		return nil, err
@@ -1362,7 +1399,13 @@ func messageSend(ctx context.Context, d *Deps, raw json.RawMessage) (any, error)
 	if err := d.replyAndThread(ctx, *p.RoomID, p.ReplyTo, p.ThreadRoot); err != nil {
 		return nil, err
 	}
-	o := actions.SendOptions{Entities: p.Entities, ReplyTo: p.ReplyTo, ThreadRoot: p.ThreadRoot, Hold: hold}
+	o := actions.SendOptions{
+		Entities:           p.Entities,
+		ReplyTo:            p.ReplyTo,
+		ThreadRoot:         p.ThreadRoot,
+		Hold:               hold,
+		DisableLinkPreview: p.DisableLinkPreview,
+	}
 	eventID, err := d.Actions.Send(ctx, *p.RoomID, *p.Text, o)
 	if err != nil {
 		return nil, err
@@ -1371,6 +1414,106 @@ func messageSend(ctx context.Context, d *Deps, raw json.RawMessage) (any, error)
 		d.poke() // Ruling 22: the window ends on time, not at the loop's next wake
 	}
 	return sent{EventID: eventID}, nil
+}
+
+func messageMarkPlayed(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
+	var p struct {
+		RoomID  *string `json:"room_id"`
+		EventID *string `json:"event_id"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	if err := required("room_id", p.RoomID); err != nil {
+		return nil, err
+	}
+	if err := required("event_id", p.EventID); err != nil {
+		return nil, err
+	}
+	if err := d.Store.MarkMediaPlayed(ctx, *p.RoomID, *p.EventID, time.Now().UnixMilli()); err != nil {
+		return nil, err
+	}
+	d.Store.CleanupPlayedViewOnceMedia(ctx, *p.RoomID, *p.EventID, d.Media)
+	return nil, nil
+}
+
+func messageSendVoice(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
+	var p struct {
+		RoomID     *string `json:"room_id"`
+		Path       *string `json:"path"`
+		DurationMS *int64  `json:"duration_ms"`
+		Waveform   []int   `json:"waveform"`
+		ReplyTo    string  `json:"reply_to"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	if err := required("room_id", p.RoomID); err != nil {
+		return nil, err
+	}
+	if err := required("path", p.Path); err != nil {
+		return nil, err
+	}
+	if p.DurationMS == nil || *p.DurationMS < 0 {
+		return nil, invalidParams("duration_ms is required")
+	}
+	if !filepath.IsAbs(*p.Path) {
+		return nil, invalidParams("path must be absolute")
+	}
+	if fi, err := os.Stat(*p.Path); err != nil || !fi.Mode().IsRegular() {
+		return nil, invalidParams("path is not a file that can be read")
+	}
+	if _, err := d.queueableRoom(ctx, *p.RoomID); err != nil {
+		return nil, err
+	}
+	if err := d.replyAndThread(ctx, *p.RoomID, p.ReplyTo, ""); err != nil {
+		return nil, err
+	}
+	res, err := d.Actions.SendVoice(ctx, *p.RoomID, *p.Path, actions.SendVoiceOpts{
+		DurationMS: int(*p.DurationMS),
+		Waveform:   p.Waveform,
+		ReplyTo:    p.ReplyTo,
+	})
+	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, fs.ErrPermission) {
+		return nil, invalidParams("path is not a file that can be read")
+	}
+	if err != nil {
+		return nil, err
+	}
+	return sent{EventID: res.EventID}, nil
+}
+
+func messageSendLocation(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
+	var p struct {
+		RoomID    *string  `json:"room_id"`
+		Latitude  *float64 `json:"latitude"`
+		Longitude *float64 `json:"longitude"`
+		Label     string   `json:"label"`
+		ReplyTo   string   `json:"reply_to"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	if err := required("room_id", p.RoomID); err != nil {
+		return nil, err
+	}
+	if p.Latitude == nil || *p.Latitude < -90 || *p.Latitude > 90 {
+		return nil, invalidParams("latitude must be between -90 and 90")
+	}
+	if p.Longitude == nil || *p.Longitude < -180 || *p.Longitude > 180 {
+		return nil, invalidParams("longitude must be between -180 and 180")
+	}
+	if _, err := d.queueableRoom(ctx, *p.RoomID); err != nil {
+		return nil, err
+	}
+	if err := d.replyAndThread(ctx, *p.RoomID, p.ReplyTo, ""); err != nil {
+		return nil, err
+	}
+	res, err := d.Actions.SendLocation(ctx, *p.RoomID, *p.Latitude, *p.Longitude, p.Label, p.ReplyTo)
+	if err != nil {
+		return nil, err
+	}
+	return sent{EventID: res.EventID}, nil
 }
 
 // messageSendFile sends a file. A file has no text, so entities are taken and ignored.

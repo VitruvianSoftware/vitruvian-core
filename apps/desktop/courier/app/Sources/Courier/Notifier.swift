@@ -3,6 +3,7 @@
 
 import AppKit
 import CourierCore
+import UniformTypeIdentifiers
 @preconcurrency import UserNotifications
 
 /// The system's notification centre for the coordinator: shows a notification for a message or a reminder, with
@@ -101,8 +102,112 @@ final class Notifier: NSObject, NotificationDelivering, UNUserNotificationCenter
         message.threadIdentifier = content.threadIdentifier
         message.categoryIdentifier = Self.categoryID(of: content.category)
         message.userInfo = content.userInfo
+        var preparedAttachment: PreparedNotificationAttachment?
+        if let attachmentPath = content.attachmentPath,
+           let prepared = Self.prepareAttachment(from: attachmentPath, identifier: content.eventID) {
+            message.attachments = [prepared.attachment]
+            preparedAttachment = prepared
+        }
         // The event's id is the request's, so the same event shown twice replaces itself.
-        center.add(UNNotificationRequest(identifier: content.eventID, content: message, trigger: nil))
+        center.add(UNNotificationRequest(identifier: content.eventID, content: message, trigger: nil)) { _ in
+            preparedAttachment?.cleanup()
+        }
+    }
+
+    /// Clones `path` to a temporary file URL so `UNNotificationAttachment` can move it without touching `media.Store`.
+    static func makeAttachment(from path: String, identifier: String, mimeType: String? = nil) -> UNNotificationAttachment? {
+        prepareAttachment(from: path, identifier: identifier, mimeType: mimeType)?.attachment
+    }
+
+    struct PreparedNotificationAttachment {
+        let attachment: UNNotificationAttachment
+        let tempDirectory: URL
+        let options: [AnyHashable: Any]
+        let cleanup: () -> Void
+    }
+
+    static func prepareAttachment(
+        from path: String,
+        identifier: String,
+        mimeType: String? = nil
+    ) -> PreparedNotificationAttachment? {
+        let fm = FileManager.default
+        guard !path.isEmpty, fm.fileExists(atPath: path) else { return nil }
+        let srcURL = URL(fileURLWithPath: path)
+        let resolvedType = resolveUTType(for: srcURL, mimeType: mimeType)
+        let ext: String
+        if !srcURL.pathExtension.isEmpty {
+            ext = srcURL.pathExtension
+        } else if let preferredExt = resolvedType?.preferredFilenameExtension {
+            ext = preferredExt
+        } else {
+            ext = "jpg"
+        }
+        var options: [AnyHashable: Any] = [:]
+        if let resolvedType {
+            options[UNNotificationAttachmentOptionsTypeHintKey] = resolvedType.identifier
+        }
+        let tempDir = fm.temporaryDirectory.appendingPathComponent("courier-notif-\(UUID().uuidString)", isDirectory: true)
+        do {
+            try fm.createDirectory(at: tempDir, withIntermediateDirectories: true)
+            let tempURL = tempDir.appendingPathComponent("attachment.\(ext)")
+            try fm.copyItem(at: srcURL, to: tempURL)
+            let attachment = try UNNotificationAttachment(
+                identifier: identifier,
+                url: tempURL,
+                options: options.isEmpty ? nil : options
+            )
+            return PreparedNotificationAttachment(
+                attachment: attachment,
+                tempDirectory: tempDir,
+                options: options,
+                cleanup: {
+                    try? FileManager.default.removeItem(at: tempDir)
+                }
+            )
+        } catch {
+            try? fm.removeItem(at: tempDir)
+            return nil
+        }
+    }
+
+    private static func resolveUTType(for url: URL, mimeType: String?) -> UTType? {
+        if let mime = mimeType?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !mime.isEmpty,
+           let utType = UTType(mimeType: mime) {
+            return utType
+        }
+        if !url.pathExtension.isEmpty,
+           let utType = UTType(filenameExtension: url.pathExtension) {
+            return utType
+        }
+        if let handle = try? FileHandle(forReadingFrom: url) {
+            defer { try? handle.close() }
+            if let header = try? handle.read(upToCount: 16), header.count >= 4 {
+                let bytes = [UInt8](header)
+                if bytes.count >= 8, bytes[0...7] == [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] {
+                    return .png
+                }
+                if bytes[0...2] == [0xFF, 0xD8, 0xFF] {
+                    return .jpeg
+                }
+                if bytes[0...3] == [0x47, 0x49, 0x46, 0x38] {
+                    return .gif
+                }
+                if bytes.count >= 12,
+                   bytes[0...3] == [0x52, 0x49, 0x46, 0x46],
+                   bytes[8...11] == [0x57, 0x45, 0x42, 0x50] {
+                    return .webP
+                }
+                if bytes[0...3] == [0x25, 0x50, 0x44, 0x46] {
+                    return .pdf
+                }
+                if bytes.count >= 8, bytes[4...7] == [0x66, 0x74, 0x79, 0x70] {
+                    return .mpeg4Movie
+                }
+            }
+        }
+        return nil
     }
 
     func clear(roomID: String) {

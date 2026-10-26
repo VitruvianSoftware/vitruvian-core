@@ -25,6 +25,7 @@ import (
 	_ "image/png"  // (see above)
 	"io"
 	"mime"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -114,16 +115,20 @@ type SendOptions struct {
 	ReplyTo, ThreadRoot string
 	// Hold is the undo-send window: one of HoldWindows, 0 = at once. Above 0 needs entitlement.UndoSend.
 	Hold time.Duration
+	// DisableLinkPreview suppresses outgoing link previews when nil or true (the default).
+	// Only when explicitly false does the engine fetch OpenGraph metadata for the first https:// URL on send.
+	DisableLinkPreview *bool
 }
 
 // Source is what the composer typed, which a held or scheduled message carries under store.SourceKey so Undo and
 // Edit Scheduled give back exactly that: the text, its ranges, and what it replied to or went in. No claim sends
 // it to a network.
 type Source struct {
-	Text       string            `json:"text"`
-	Entities   []richtext.Entity `json:"entities"`
-	ReplyTo    string            `json:"reply_to,omitempty"`
-	ThreadRoot string            `json:"thread_root,omitempty"`
+	Text               string            `json:"text"`
+	Entities           []richtext.Entity `json:"entities"`
+	ReplyTo            string            `json:"reply_to,omitempty"`
+	ThreadRoot         string            `json:"thread_root,omitempty"`
+	DisableLinkPreview *bool             `json:"disable_link_preview,omitempty"`
 }
 
 // SourceOf reads the composer's source from a held or scheduled message's content; ok is false when it has none.
@@ -150,11 +155,13 @@ type Actions struct {
 	// only when a message is held or scheduled, never when one already held or scheduled goes out.
 	Entitlement entitlement.Provider
 
-	eng     *engine.Engine
-	s       *store.Store
-	m       *media.Store
-	maxFile int64
-	mu      sync.Mutex // makes "is it failed? then change it" one step for Retry and Discard
+	eng          *engine.Engine
+	s            *store.Store
+	m            *media.Store
+	maxFile      int64
+	linkClient   *http.Client
+	linkResolver func(ctx context.Context, host string) ([]net.IPAddr, error)
+	mu           sync.Mutex // makes "is it failed? then change it" one step for Retry and Discard
 	// after is the login wait's timer (waitLogin): nil is time.After. Tests drive it instead (Ruling P5).
 	after func(time.Duration) <-chan time.Time
 
@@ -562,6 +569,7 @@ func (a *Actions) composeText(ctx context.Context, roomID, network, text string,
 	if c.BeeperDisappearingTimer, err = a.chatTimer(ctx, roomID); err != nil {
 		return nil, err
 	}
+	a.applyLinkPreviews(ctx, c, o.DisableLinkPreview)
 	return c, nil
 }
 
@@ -726,7 +734,7 @@ func (a *Actions) SendFileWith(ctx context.Context, roomID, path string, o SendO
 	if !fi.Mode().IsRegular() {
 		return "", fmt.Errorf("%s is not a regular file", path)
 	}
-	if fi.Size() > a.maxFile {
+	if fi.Size() > networkFileCeiling(room.Network) {
 		return "", ErrTooLarge
 	}
 	name := filepath.Base(path)
@@ -748,12 +756,30 @@ func (a *Actions) SendFileWith(ctx context.Context, roomID, path string, o SendO
 		return "", err
 	}
 	mimeType, msgType := detect(head[:n], filepath.Ext(name))
+	limit := a.maxSizeForKind(feats, msgType, mimeType)
+	if fi.Size() > limit {
+		return "", ErrTooLarge
+	}
 	info := &event.FileInfo{MimeType: mimeType}
 	if msgType == event.MsgImage {
 		if _, err = f.Seek(0, io.SeekStart); err != nil {
 			return "", err
 		}
-		if cfg, _, derr := image.DecodeConfig(f); derr == nil { // a picture we cannot measure is still sent
+		canInspect := fi.Size() <= media.MaxInspectBytes && (a.m.MaxMemoryBytes <= 0 || fi.Size() <= a.m.MaxMemoryBytes)
+		if canInspect {
+			if meta, ierr := media.InspectImage(f); ierr == nil {
+				info.Width, info.Height = meta.Width, meta.Height
+				info.Blurhash, info.AnoaBlurhash = meta.BlurHash, meta.BlurHash
+				info.IsAnimated = meta.IsAnimated
+				if mimeType == "image/gif" {
+					info.MauGIF = true
+				}
+			} else if _, err = f.Seek(0, io.SeekStart); err == nil {
+				if cfg, _, derr := image.DecodeConfig(f); derr == nil { // a picture we cannot measure is still sent
+					info.Width, info.Height = cfg.Width, cfg.Height
+				}
+			}
+		} else if cfg, _, derr := image.DecodeConfig(f); derr == nil {
 			info.Width, info.Height = cfg.Width, cfg.Height
 		}
 	}
@@ -764,8 +790,8 @@ func (a *Actions) SendFileWith(ctx context.Context, roomID, path string, o SendO
 	hash, err := a.m.PutStream(func(w io.Writer) error {
 		// One byte past the cap tells a file that grew after we looked from one that fits.
 		var cerr error
-		size, cerr = io.Copy(w, io.LimitReader(f, a.maxFile+1))
-		if cerr == nil && size > a.maxFile {
+		size, cerr = io.Copy(w, io.LimitReader(f, limit+1))
+		if cerr == nil && size > limit {
 			return ErrTooLarge
 		}
 		return cerr

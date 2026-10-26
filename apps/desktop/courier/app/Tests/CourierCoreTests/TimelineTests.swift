@@ -949,4 +949,185 @@ final class TimelineTests: XCTestCase {
         )
         XCTAssertEqual(itemsHidden.count, 2) // date separator + 1 message
     }
+
+    // MARK: - Part 4.5b Task 5: Gallery Grouping & View-Once Played State
+
+    func testGroupsConsecutiveSameSenderMediaIntoGallery() {
+        let baseTS = at(14, 15, 0)
+        func media(
+            _ id: String,
+            sender: String = "@alice:courier.local",
+            senderName: String = "Alice Example",
+            msgtype: String = "m.image",
+            body: String = "photo.jpg",
+            filename: String? = "photo.jpg",
+            offsetMS: Int64,
+            seq: Int64,
+            width: Int = 1200,
+            height: Int = 800,
+            blurhash: String = "LEHV6nWB2yk8pyo0adR*.7kCMdnj",
+            durationMS: Int64? = nil,
+            viewOnce: Bool = false
+        ) -> Event {
+            var contentObj: [String: JSONValue] = [
+                "msgtype": .string(msgtype),
+                "body": .string(body),
+                "info": .object([
+                    "mimetype": .string(msgtype == "m.video" ? "video/mp4" : "image/jpeg"),
+                    "w": .int(Int64(width)),
+                    "h": .int(Int64(height)),
+                    "size": .int(102_400),
+                    "xyz.amorgan.blurhash": .string(blurhash),
+                ]),
+            ]
+            if let filename {
+                contentObj["filename"] = .string(filename)
+            }
+            return Event(
+                eventID: id,
+                roomID: "!room:courier.local",
+                sender: sender,
+                senderName: senderName,
+                mine: false,
+                type: "m.room.message",
+                content: .object(contentObj),
+                ts: baseTS + offsetMS,
+                seq: seq,
+                status: .sent,
+                mediaPath: "/tmp/courier-test-\(id).dat",
+                thumbnailPath: "/tmp/courier-test-\(id)-thumb.jpg",
+                blurhash: blurhash,
+                durationMS: durationMS,
+                viewOnce: viewOnce
+            )
+        }
+
+        // 1. 4 consecutive image/video events from @alice:courier.local within 15 seconds collapse into a single Message
+        //    with galleryItems.count == 4 (with an optional caption on the last item).
+        let fourRun = [
+            media("$g1", offsetMS: 0, seq: 1),
+            media("$g2", offsetMS: 5_000, seq: 2),
+            media("$g3", msgtype: "m.video", body: "clip.mp4", filename: "clip.mp4", offsetMS: 10_000, seq: 3, durationMS: 42_000),
+            media("$g4", body: "Weekend hike photos", filename: "photo4.jpg", offsetMS: 15_000, seq: 4),
+        ]
+        let groupedShown = messages(build(fourRun))
+        XCTAssertEqual(groupedShown.count, 1, "4 consecutive media events within 15s should collapse into 1 Message")
+        XCTAssertEqual(groupedShown[0].galleryItems.count, 4)
+        XCTAssertEqual(groupedShown[0].galleryItems.map(\.id), ["$g1", "$g2", "$g3", "$g4"])
+        XCTAssertEqual(groupedShown[0].galleryItems[2].kind, .video)
+        XCTAssertEqual(groupedShown[0].galleryItems[2].durationMS, 42_000)
+        XCTAssertEqual(groupedShown[0].body, "Weekend hike photos", "Caption on the last gallery item is preserved on the message")
+
+        // 2. A message from @bob:courier.local in the middle breaks the run.
+        let brokenBySender = [
+            media("$s1", offsetMS: 0, seq: 1),
+            media("$s2", offsetMS: 4_000, seq: 2),
+            media("$bob", sender: "@bob:courier.local", senderName: "Bob Example", offsetMS: 8_000, seq: 3),
+            media("$s3", offsetMS: 12_000, seq: 4),
+            media("$s4", offsetMS: 15_000, seq: 5),
+        ]
+        let senderShown = messages(build(brokenBySender))
+        XCTAssertEqual(senderShown.count, 3, "Expected Alice's first 2, Bob's 1, and Alice's last 2 as 3 messages")
+        XCTAssertEqual(senderShown[0].galleryItems.count, 2)
+        XCTAssertEqual(senderShown[1].galleryItems.count, 0)
+        XCTAssertEqual(senderShown[2].galleryItems.count, 2)
+
+        // 3. A message with a caption in the middle breaks the run.
+        let brokenByCaption = [
+            media("$c1", offsetMS: 0, seq: 1),
+            media("$c2", body: "Look at this summit", filename: "photo2.jpg", offsetMS: 5_000, seq: 2),
+            media("$c3", offsetMS: 10_000, seq: 3),
+            media("$c4", offsetMS: 15_000, seq: 4),
+        ]
+        let captionShown = messages(build(brokenByCaption))
+        XCTAssertTrue(captionShown.count >= 2, "Caption in the middle must break the 4-item gallery run")
+        XCTAssertFalse(captionShown.contains { $0.galleryItems.count == 4 })
+
+        // 4. Any other event between them (e.g. a text message) or a gap > 60 seconds breaks the group.
+        let textInMiddle = [
+            media("$t1", offsetMS: 0, seq: 1),
+            Event(
+                eventID: "$txt",
+                roomID: "!room:courier.local",
+                sender: "@alice:courier.local",
+                senderName: "Alice Example",
+                mine: false,
+                type: "m.room.message",
+                content: json(#"{"msgtype":"m.text","body":"Wait, one more"}"#),
+                ts: baseTS + 5_000,
+                seq: 2,
+                status: .sent
+            ),
+            media("$t2", offsetMS: 10_000, seq: 3),
+        ]
+        let textShown = messages(build(textInMiddle))
+        XCTAssertEqual(textShown.count, 3)
+        XCTAssertTrue(textShown.allSatisfy { $0.galleryItems.isEmpty })
+
+        let overSixtySeconds = [
+            media("$w1", offsetMS: 0, seq: 1),
+            media("$w2", offsetMS: 61_000, seq: 2),
+        ]
+        let gapShown = messages(build(overSixtySeconds))
+        XCTAssertEqual(gapShown.count, 2, "Media events separated by >60s must not group")
+        XCTAssertTrue(gapShown.allSatisfy { $0.galleryItems.isEmpty })
+
+        // 5. Caps gallery at 10 items (12 consecutive items -> 10 + 2).
+        let twelveRun = (1 ... 12).map { idx in
+            media("$m\(idx)", offsetMS: Int64(idx) * 1_000, seq: Int64(idx))
+        }
+        let twelveShown = messages(build(twelveRun))
+        XCTAssertEqual(twelveShown.count, 2)
+        XCTAssertEqual(twelveShown[0].galleryItems.count, 10)
+        XCTAssertEqual(twelveShown[1].galleryItems.count, 2)
+    }
+
+    func testViewOnceMessageTracksPlayedState() {
+        let baseTS = at(14, 20, 0)
+        let unopenedEvent = Event(
+            eventID: "$vo1",
+            roomID: "!room:courier.local",
+            sender: "@alice:courier.local",
+            senderName: "Alice Example",
+            mine: false,
+            type: "m.room.message",
+            content: json(#"{"msgtype":"m.image","body":"secret.jpg","com.beeper.disappearing_timer":{"type":"after_read","timer":300000},"info":{"mimetype":"image/jpeg","w":800,"h":600}}"#),
+            ts: baseTS,
+            seq: 1,
+            status: .sent,
+            mediaPath: "/tmp/secret-unopened.jpg",
+            thumbnailPath: "/tmp/secret-thumb.jpg",
+            blurhash: "LEHV6nWB2yk8pyo0adR*.7kCMdnj",
+            viewOnce: true,
+            played: false
+        )
+        let openedEvent = Event(
+            eventID: "$vo2",
+            roomID: "!room:courier.local",
+            sender: "@alice:courier.local",
+            senderName: "Alice Example",
+            mine: false,
+            type: "m.room.message",
+            content: json(#"{"msgtype":"m.image","body":"secret2.jpg","com.beeper.disappearing_timer":{"type":"after_read","timer":10000},"info":{"mimetype":"image/jpeg","w":800,"h":600}}"#),
+            ts: baseTS + 2_000,
+            seq: 2,
+            status: .sent,
+            mediaPath: "/tmp/secret-opened.jpg",
+            thumbnailPath: "/tmp/secret-opened-thumb.jpg",
+            blurhash: "LEHV6nWB2yk8pyo0adR*.7kCMdnj",
+            viewOnce: true,
+            played: true
+        )
+
+        let shown = messages(build([unopenedEvent, openedEvent]))
+        XCTAssertEqual(shown.count, 2, "View-once messages must never collapse into a gallery")
+        XCTAssertTrue(shown[0].viewOnce)
+        XCTAssertFalse(shown[0].played)
+        XCTAssertEqual(shown[0].mediaPath, "/tmp/secret-unopened.jpg")
+
+        XCTAssertTrue(shown[1].viewOnce)
+        XCTAssertTrue(shown[1].played)
+        XCTAssertEqual(shown[1].mediaPath, "", "Opened view-once media path must be cleared on this Mac")
+        XCTAssertNil(shown[1].thumbnailPath, "Opened view-once thumbnail path must be nil on this Mac")
+    }
 }

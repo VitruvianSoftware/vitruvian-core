@@ -39,6 +39,12 @@ public struct ComposerAttachment: Equatable, Identifiable, Sendable {
     public let url: URL
     public let size: Int64
     public var fileName: String { url.lastPathComponent }
+
+    public init(id: UUID = UUID(), url: URL, size: Int64) {
+        self.id = id
+        self.url = url
+        self.size = size
+    }
 }
 
 /// Something the person should be told about the composer, under it.
@@ -93,14 +99,25 @@ public protocol MessageSending: AnyObject, Sendable {
     /// Returns the stored event's ID.
     func send(roomID: String, rich: RichText, replyTo: String?, threadRoot: String?, holdMillis: Int) async throws
         -> String
+    /// message.send with `disable_link_preview`.
+    func send(roomID: String, rich: RichText, replyTo: String?, threadRoot: String?, holdMillis: Int,
+              disableLinkPreview: Bool?) async throws -> String
+    /// message.sendLocation: sends an `m.location` event.
+    func sendLocation(roomID: String, latitude: Double, longitude: Double, label: String?, replyTo: String?)
+        async throws -> String
     /// message.sendFile, as `send`.
     func sendFile(roomID: String, url: URL, size: Int64, replyTo: String?, threadRoot: String?, holdMillis: Int)
         async throws -> String
+    /// message.sendVoice: records and sends a voice note (.m4a/OGG Opus) with duration and waveform bars.
+    func sendVoice(roomID: String, url: URL, durationMS: Int64, waveform: [Int], replyTo: String?) async throws -> String
     /// message.edit.
     func edit(eventID: String, rich: RichText) async throws
     /// message.schedule.
     func schedule(roomID: String, rich: RichText, replyTo: String?, threadRoot: String?, due: Date,
                   condition: SendLaterCondition) async throws
+    /// message.schedule with `disable_link_preview`.
+    func schedule(roomID: String, rich: RichText, replyTo: String?, threadRoot: String?, due: Date,
+                  condition: SendLaterCondition, disableLinkPreview: Bool?) async throws
     /// message.undo: the held message's text, ranges and reply, given back.
     func undo(eventID: String) async throws -> Draft
     /// message.sendHeld: a chat's held messages now, or with nil every chat's.
@@ -124,6 +141,27 @@ public protocol MessageSending: AnyObject, Sendable {
 extension MessageSending {
     /// A sender with nowhere to keep drafts keeps none.
     public func saveDraft(roomID: String, text: String) async throws {}
+
+    public func send(roomID: String, rich: RichText, replyTo: String?, threadRoot: String?, holdMillis: Int,
+                     disableLinkPreview _: Bool?) async throws -> String {
+        try await send(roomID: roomID, rich: rich, replyTo: replyTo, threadRoot: threadRoot, holdMillis: holdMillis)
+    }
+
+    public func sendLocation(roomID _: String, latitude _: Double, longitude _: Double, label _: String?,
+                             replyTo _: String?) async throws -> String {
+        ""
+    }
+
+    public func sendVoice(roomID: String, url: URL, durationMS: Int64, waveform: [Int], replyTo: String?) async throws
+        -> String {
+        ""
+    }
+
+    public func schedule(roomID: String, rich: RichText, replyTo: String?, threadRoot: String?, due: Date,
+                         condition: SendLaterCondition, disableLinkPreview _: Bool?) async throws {
+        try await schedule(roomID: roomID, rich: rich, replyTo: replyTo, threadRoot: threadRoot, due: due,
+                           condition: condition)
+    }
 }
 
 /// The composer's state: the text and its formatting, attachments and reply chip of the open chat, a draft for every
@@ -204,6 +242,8 @@ public final class ComposerModel: ObservableObject {
     /// The composer's settings; nil is every default (undo send off).
     public var preferences: ComposerPreferences?
     public var quickReplies: QuickReplies?
+    /// The composer's voice-note recorder.
+    public let voiceRecorder: VoiceRecorderModel
     /// Called when a send is done, whether it worked or not, so the chat can read what the engine has.
     public var onSettled: @MainActor () -> Void = {}
     /// Called when something is submitted, before it is sent.
@@ -331,7 +371,8 @@ public final class ComposerModel: ObservableObject {
                 sleep: @escaping @Sendable (TimeInterval) async -> Void = { await waitForInboxWindow($0) },
                 preferences: ComposerPreferences? = nil, entitlement: any EntitlementProvider = NoPlan(),
                 quickReplies: QuickReplies? = nil, now: @escaping @MainActor () -> Date = Date.init,
-                typingSleep: @escaping @Sendable (TimeInterval) async -> Void = { await waitForInboxWindow($0) }) {
+                typingSleep: @escaping @Sendable (TimeInterval) async -> Void = { await waitForInboxWindow($0) },
+                voiceRecorder: VoiceRecorderModel? = nil) {
         self.typingSleep = typingSleep
         self.sender = sender
         self.fileInfo = fileInfo
@@ -341,6 +382,7 @@ public final class ComposerModel: ObservableObject {
         self.entitlement = entitlement
         self.quickReplies = quickReplies
         self.now = now
+        self.voiceRecorder = voiceRecorder ?? VoiceRecorderModel()
         held.sender = { [weak self] in self?.sender }
         held.now = now
         held.quote = { [weak self] id in self?.quote(id) }
@@ -380,6 +422,13 @@ public final class ComposerModel: ObservableObject {
     public func handleReturn(modifiers: KeyModifiers) -> ReturnKeyAction {
         let action = Self.action(forReturn: modifiers)
         guard action == .send else { return action }
+        if voiceRecorder.isRecordingOrReviewing {
+            Task { [weak self] in
+                guard let self else { return }
+                await self.voiceRecorder.stopAndSend(using: self)
+            }
+            return action
+        }
         if mode == .new, trimmedText.isEmpty, attachments.isEmpty, let selected = selectedMessage() {
             act(on: selected)
         } else {
@@ -391,6 +440,10 @@ public final class ComposerModel: ObservableObject {
     /// Escape ends an edit (what was in the composer comes back), or else clears the reply chip. False when there
     /// was neither, so the key can do something else.
     public func escape() -> Bool {
+        if voiceRecorder.state != .idle {
+            voiceRecorder.cancelImmediately()
+            return true
+        }
         if isEditing {
             leaveEditing()
             return true
@@ -418,6 +471,9 @@ public final class ComposerModel: ObservableObject {
     /// thread is left.
     public func open(_ room: String?) {
         guard room != roomID else { return }
+        if voiceRecorder.state != .idle {
+            voiceRecorder.cancelImmediately()
+        }
         stopTyping() // leaving the chat
         if isEditing { leaveEditing() }
         mode = .new
@@ -979,7 +1035,7 @@ public final class ComposerModel: ObservableObject {
     public func attach(_ urls: [URL]) {
         notices = []
         var list = isEditing ? stash.attachments : attachments
-        for url in urls {
+        for url in urls where url.isFileURL {
             let name = url.lastPathComponent
             if list.contains(where: { $0.url == url }) { continue }
             guard let info = fileInfo(url) else {
@@ -1077,6 +1133,35 @@ public final class ComposerModel: ObservableObject {
     public func submit(archive: Bool = false) -> Task<Void, Never>? {
         guard !isScheduling else { return nil }
         if case let .editing(eventID, original) = mode { return submitEdit(of: eventID, original: original) }
+        if attachments.isEmpty, trimmedText == "/voice", roomID != nil {
+            stopTyping()
+            setContents("", [])
+            notices = []
+            return Task { [weak self] in
+                await self?.startVoiceRecording()
+            }
+        }
+        if attachments.isEmpty, features.locationSupported,
+           let coordinate = GeoCoordinate.parseLocationCommand(trimmedText),
+           let room = roomID, let sender {
+            let reply = replyTarget
+            let rawText = trimmedText
+            stopTyping()
+            setContents("", [])
+            replyTarget = nil
+            notices = []
+            onSubmit()
+            return enqueue(in: room) { [weak self] in
+                await self?.deliverLocation(
+                    coordinate,
+                    rawText: rawText,
+                    reply: reply,
+                    in: room,
+                    archive: archive,
+                    with: sender
+                )
+            }
+        }
         guard canSend, let room = roomID, let sender else { return nil }
         let rich = outgoingText
         guard fitsChat(rich.text) else {
@@ -1086,6 +1171,7 @@ public final class ComposerModel: ObservableObject {
         let draft = Contents(text: rich.text, entities: rich.entities, attachments: attachments, reply: replyTarget)
         let thread = threadRoot
         let hold = holdMillis
+        let disableLinkPreview = preferences?.disableOutgoingLinkPreviews
         stopTyping() // the engine stops typing for a send too (C8); this ends the composer's own pulses
         setContents("", [])
         attachments = []
@@ -1093,8 +1179,64 @@ public final class ComposerModel: ObservableObject {
         notices = []
         onSubmit()
         return enqueue(in: room) { [weak self] in
-            await self?.deliver(draft, in: room, thread: thread, hold: hold, archive: archive, with: sender)
+            await self?.deliver(
+                draft,
+                in: room,
+                thread: thread,
+                hold: hold,
+                disableLinkPreview: disableLinkPreview,
+                archive: archive,
+                with: sender
+            )
         }
+    }
+
+    /// Starts recording a voice note in the open chat (`⌘⇧A`, the microphone button, or `/voice`).
+    public func startVoiceRecording() async {
+        guard roomID != nil else { return }
+        let preferredUID = preferences?.preferredMicrophoneUID ?? ""
+        await voiceRecorder.start(preferredDeviceUID: preferredUID)
+    }
+
+    /// Sends a recorded voice note to the open chat via `message.sendVoice`.
+    public func sendVoiceNote(url: URL, durationMS: Int, waveform: [Int]) async {
+        guard let room = roomID, let sender else { return }
+        let reply = replyTarget
+        replyTarget = nil
+        notices = []
+        stopTyping()
+        onSubmit()
+        let task = enqueue(in: room) { [weak self] in
+            do {
+                let eventID = try await sender.sendVoice(
+                    roomID: room,
+                    url: url,
+                    durationMS: Int64(durationMS),
+                    waveform: waveform,
+                    replyTo: reply?.eventID
+                )
+                self?.onSent(room, eventID)
+            } catch {
+                guard let self else { return }
+                if self.roomID == room, self.replyTarget == nil {
+                    self.replyTarget = reply
+                }
+                switch Self.classify(
+                    error,
+                    network: self.network,
+                    maxSizeBytes: self.features.voiceFeatures?.maxSize
+                        ?? self.features.audioFeatures?.maxSize
+                        ?? self.features.fileFeatures?.maxSize
+                ) {
+                case let .refused(reason):
+                    self.show([.sendFailed(reason: reason)], in: room)
+                case .unanswered:
+                    self.show([.noAnswer], in: room)
+                }
+            }
+            self?.onSettled()
+        }
+        await task.value
     }
 
     /// Runs `work` after the chat's sends before it, so a chat's messages and edits go in the order given.
@@ -1132,7 +1274,7 @@ public final class ComposerModel: ObservableObject {
                 try await sender.edit(eventID: eventID, rich: rich)
             } catch {
                 guard let self else { return }
-                switch Self.classify(error) {
+                switch Self.classify(error, network: self.network) {
                 case let .refused(reason):
                     self.refusedEdit(eventID, original: original, rich: rich, in: room, reason: reason)
                 case .unanswered:
@@ -1168,7 +1310,38 @@ public final class ComposerModel: ObservableObject {
         }
     }
 
-    private func deliver(_ draft: Contents, in room: String, thread: String?, hold: Int, archive: Bool,
+    private func deliverLocation(
+        _ coordinate: GeoCoordinate,
+        rawText: String,
+        reply: QuotedMessage?,
+        in room: String,
+        archive: Bool,
+        with sender: MessageSending
+    ) async {
+        do {
+            let eventID = try await sender.sendLocation(
+                roomID: room,
+                latitude: coordinate.latitude,
+                longitude: coordinate.longitude,
+                label: coordinate.label,
+                replyTo: reply?.eventID
+            )
+            onSent(room, eventID)
+            if archive { await onArchive(room) }
+        } catch {
+            switch Self.classify(error, network: self.network) {
+            case let .refused(reason):
+                let leftOut = putBack([.text(RichText(text: rawText))][...], reply: reply, in: room)
+                show([.sendFailed(reason: reason)] + Self.leftOutNotice(leftOut), in: room)
+            case .unanswered:
+                show([.noAnswer], in: room)
+            }
+        }
+        onSettled()
+    }
+
+    private func deliver(_ draft: Contents, in room: String, thread: String?, hold: Int,
+                         disableLinkPreview: Bool? = nil, archive: Bool,
                          with sender: MessageSending) async {
         var items: [Outgoing] = []
         if !draft.text.isEmpty { items.append(.text(RichText(text: draft.text, entities: draft.entities))) }
@@ -1183,7 +1356,8 @@ public final class ComposerModel: ObservableObject {
                 switch item {
                 case let .text(rich):
                     eventID = try await sender.send(roomID: room, rich: rich, replyTo: reply?.eventID,
-                                                    threadRoot: thread, holdMillis: hold)
+                                                    threadRoot: thread, holdMillis: hold,
+                                                    disableLinkPreview: disableLinkPreview)
                     copy = HeldCopy(text: rich.text, entities: rich.entities, reply: reply, threadRoot: thread)
                 case let .file(file):
                     eventID = try await sender.sendFile(roomID: room, url: file.url, size: file.size,
@@ -1194,7 +1368,13 @@ public final class ComposerModel: ObservableObject {
                 onSent(room, eventID)
                 reply = nil
             } catch {
-                switch Self.classify(error) {
+                let itemMaxSize: Int64?
+                if case let .file(file) = item {
+                    itemMaxSize = self.maxFileSize(for: file.url)
+                } else {
+                    itemMaxSize = nil
+                }
+                switch Self.classify(error, network: self.network, maxSizeBytes: itemMaxSize) {
                 case .refused(let reason):
                     // Nothing of this was sent: it, and what came after, goes back.
                     let leftOut = putBack(items[index...], reply: reply, in: room)
@@ -1274,9 +1454,34 @@ public final class ComposerModel: ObservableObject {
     }
 
     /// Whether the engine said no, or may have said yes without being heard.
-    private static func classify(_ error: Error) -> Failure {
+    private static func classify(_ error: Error, network: String = "", maxSizeBytes: Int64? = nil) -> Failure {
         if (error as? EngineError)?.mayHaveBeenHandled == true { return .unanswered }
-        return .refused(EngineErrorText.text(for: error, fallback: String(localized: "The message could not be sent.")))
+        return .refused(
+            EngineErrorText.text(
+                for: error,
+                network: network.isEmpty ? nil : network,
+                maxSizeBytes: maxSizeBytes,
+                fallback: String(localized: "The message could not be sent.")
+            )
+        )
+    }
+
+    private func maxFileSize(for url: URL) -> Int64? {
+        let ext = url.pathExtension.lowercased()
+        let msgType: String
+        switch ext {
+        case "gif":
+            msgType = "fi.mau.gif"
+        case "jpg", "jpeg", "png", "webp", "heic", "heif", "bmp", "tiff", "tif":
+            msgType = "m.image"
+        case "mp4", "mov", "m4v", "webm", "mkv", "avi":
+            msgType = "m.video"
+        case "mp3", "m4a", "aac", "ogg", "oga", "opus", "wav", "flac":
+            msgType = "m.audio"
+        default:
+            msgType = "m.file"
+        }
+        return features.maxSizeBytes(for: msgType) ?? features.fileFeatures?.maxSize
     }
 
     // MARK: - Send later
@@ -1299,10 +1504,11 @@ public final class ComposerModel: ObservableObject {
         }
         let typed = text
         let reply = replyTarget
+        let disableLinkPreview = preferences?.disableOutgoingLinkPreviews
         isScheduling = true
         defer { isScheduling = false }
         try await sender.schedule(roomID: room, rich: rich, replyTo: reply?.eventID, threadRoot: threadRoot,
-                                  due: due, condition: condition)
+                                  due: due, condition: condition, disableLinkPreview: disableLinkPreview)
         // What was scheduled leaves the composer; anything typed meanwhile stays.
         if room == roomID, !isEditing, text == typed {
             setContents("", [])

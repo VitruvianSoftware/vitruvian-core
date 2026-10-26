@@ -301,7 +301,7 @@ final class ComposerModelTests: XCTestCase {
 
         sender.failures = [.rpc(.tooLarge, message: "the file is too large to send (the limit is 90 MB)", reason: nil)]
         await composer.submit()?.value
-        XCTAssertEqual(composer.notice, .sendFailed(reason: "A file is over 90 MB."))
+        XCTAssertEqual(composer.notice, .sendFailed(reason: "This file is larger than the network allows."))
     }
 
     func testFilesPutBackAfterARefusalNeverTakeTheTotalPast90MB() async {
@@ -1355,6 +1355,15 @@ final class FakeSender: MessageSending, @unchecked Sendable {
         var replyTo: String?
         var threadRoot: String?
         var holdMillis: Int
+        var disableLinkPreview: Bool = true
+    }
+
+    struct LocationSend: Equatable {
+        var room: String
+        var latitude: Double
+        var longitude: Double
+        var label: String?
+        var replyTo: String?
     }
 
     struct FileSend: Equatable {
@@ -1386,11 +1395,13 @@ final class FakeSender: MessageSending, @unchecked Sendable {
         var threadRoot: String?
         var due: Date
         var condition: SendLaterCondition
+        var disableLinkPreview: Bool? = true
     }
 
     private let lock = NSLock()
     private var _calls: [Call] = []
     private var _sends: [Send] = []
+    private var _locationSends: [LocationSend] = []
     private var _fileSends: [FileSend] = []
     private var _edits: [Edit] = []
     private var _schedules: [Schedule] = []
@@ -1429,6 +1440,7 @@ final class FakeSender: MessageSending, @unchecked Sendable {
     }
 
     var sends: [Send] { locked { _sends } }
+    var locationSends: [LocationSend] { locked { _locationSends } }
     var fileSends: [FileSend] { locked { _fileSends } }
     var edits: [Edit] { locked { _edits } }
     var schedules: [Schedule] { locked { _schedules } }
@@ -1540,12 +1552,32 @@ final class FakeSender: MessageSending, @unchecked Sendable {
 
     func send(roomID: String, rich: RichText, replyTo: String?, threadRoot: String?, holdMillis: Int) async throws
         -> String {
+        try await send(
+            roomID: roomID, rich: rich, replyTo: replyTo, threadRoot: threadRoot,
+            holdMillis: holdMillis, disableLinkPreview: true
+        )
+    }
+
+    func send(roomID: String, rich: RichText, replyTo: String?, threadRoot: String?, holdMillis: Int,
+              disableLinkPreview: Bool?) async throws -> String {
         locked {
             _calls.append(.text(room: roomID, text: rich.text, replyTo: replyTo))
-            _sends.append(Send(room: roomID, rich: rich, replyTo: replyTo, threadRoot: threadRoot, holdMillis: holdMillis))
+            _sends.append(Send(room: roomID, rich: rich, replyTo: replyTo, threadRoot: threadRoot,
+                               holdMillis: holdMillis, disableLinkPreview: disableLinkPreview ?? true))
             _log.append("send")
         }
         await waitAtTextGate(roomID)
+        if let failure = nextFailure() { throw failure }
+        return newID()
+    }
+
+    func sendLocation(roomID: String, latitude: Double, longitude: Double, label: String?, replyTo: String?)
+        async throws -> String {
+        locked {
+            _locationSends.append(LocationSend(room: roomID, latitude: latitude, longitude: longitude,
+                                               label: label, replyTo: replyTo))
+            _log.append("sendLocation")
+        }
         if let failure = nextFailure() { throw failure }
         return newID()
     }
@@ -1562,6 +1594,15 @@ final class FakeSender: MessageSending, @unchecked Sendable {
         return newID()
     }
 
+    func sendVoice(roomID: String, url: URL, durationMS: Int64, waveform: [Int], replyTo: String?)
+        async throws -> String {
+        locked {
+            _log.append("sendVoice")
+        }
+        if let failure = nextFailure() { throw failure }
+        return newID()
+    }
+
     func edit(eventID: String, rich: RichText) async throws {
         locked {
             _edits.append(Edit(eventID: eventID, rich: rich))
@@ -1572,11 +1613,19 @@ final class FakeSender: MessageSending, @unchecked Sendable {
 
     func schedule(roomID: String, rich: RichText, replyTo: String?, threadRoot: String?, due: Date,
                   condition: SendLaterCondition) async throws {
+        try await schedule(
+            roomID: roomID, rich: rich, replyTo: replyTo, threadRoot: threadRoot,
+            due: due, condition: condition, disableLinkPreview: nil
+        )
+    }
+
+    func schedule(roomID: String, rich: RichText, replyTo: String?, threadRoot: String?, due: Date,
+                  condition: SendLaterCondition, disableLinkPreview: Bool?) async throws {
         await scheduleGate.pass()
         if let failure = nextFailure() { throw failure }
         locked {
             _schedules.append(Schedule(room: roomID, rich: rich, replyTo: replyTo, threadRoot: threadRoot, due: due,
-                                       condition: condition))
+                                       condition: condition, disableLinkPreview: disableLinkPreview))
             _log.append("schedule")
         }
     }
@@ -1982,5 +2031,122 @@ extension ComposerModelTests {
         closed.open(nil)
         closed.startPrivateReply(quoting: shown, in: quotes)
         XCTAssertEqual(closed.text, "")
+    }
+
+    func testOutgoingSendPassesDisableLinkPreviewFromPreferences() async {
+        let suiteName = "courier.test.linkPreviews.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preferences = ComposerPreferences(defaults: defaults)
+        XCTAssertTrue(preferences.disableOutgoingLinkPreviews, "default is true")
+        XCTAssertFalse(preferences.loadExternalEmbedsAutomatically, "default is false")
+
+        var featuresWithLocation = whatsApp
+        featuresWithLocation.locationSupported = true
+        featuresWithLocation.linkPreviewsSupported = true
+
+        let made = makeComposer(features: featuresWithLocation, network: "whatsapp")
+        let composer = made.composer
+        composer.preferences = preferences
+
+        // 1. Default preference (disableOutgoingLinkPreviews == true) sends disable_link_preview: true.
+        type("Check https://example.com/article", into: composer)
+        await composer.submit()?.value
+        XCTAssertEqual(made.sender.sends.count, 1)
+        XCTAssertEqual(made.sender.sends.last?.disableLinkPreview, true)
+
+        // Verify EngineMessageSender.sendParams forwards disableLinkPreview onto SendParams.
+        let paramsDisabled = EngineMessageSender.sendParams(
+            roomID: "!a",
+            rich: RichText(text: "https://example.com"),
+            replyTo: nil,
+            threadRoot: nil,
+            holdMillis: 0,
+            disableLinkPreview: true
+        )
+        XCTAssertEqual(paramsDisabled.disableLinkPreview, true)
+
+        // 2. Unchecking "Disable link previews in outgoing messages" sends disable_link_preview: false.
+        preferences.disableOutgoingLinkPreviews = false
+        XCTAssertEqual(defaults.object(forKey: "courier.preferences.disableOutgoingLinkPreviews") as? Bool, false)
+
+        type("Check https://example.com/with-preview", into: composer)
+        await composer.submit()?.value
+        XCTAssertEqual(made.sender.sends.count, 2)
+        XCTAssertEqual(made.sender.sends.last?.disableLinkPreview, false)
+
+        let paramsEnabled = EngineMessageSender.sendParams(
+            roomID: "!a",
+            rich: RichText(text: "https://example.com"),
+            replyTo: nil,
+            threadRoot: nil,
+            holdMillis: 0,
+            disableLinkPreview: false
+        )
+        XCTAssertEqual(paramsEnabled.disableLinkPreview, false)
+
+        // 3. Toggling loadExternalEmbedsAutomatically persists under its key.
+        preferences.loadExternalEmbedsAutomatically = true
+        XCTAssertEqual(defaults.object(forKey: "courier.preferences.loadExternalEmbedsAutomatically") as? Bool, true)
+
+        // 4. /location <lat>,<lon> [label] sends message.sendLocation when features.locationSupported is true.
+        type("/location 37.7749,-122.4194 Ferry Building", into: composer)
+        await composer.submit()?.value
+        XCTAssertEqual(
+            made.sender.locationSends,
+            [
+                FakeSender.LocationSend(
+                    room: "!a",
+                    latitude: 37.7749,
+                    longitude: -122.4194,
+                    label: "Ferry Building",
+                    replyTo: nil
+                ),
+            ]
+        )
+
+        // 5. Scheduling a message forwards disable_link_preview from preferences.
+        preferences.disableOutgoingLinkPreviews = false
+        type("Scheduled link https://example.com/with-preview", into: composer)
+        try? await composer.schedule(at: made.clock.now.addingTimeInterval(1800), condition: .always)
+        XCTAssertEqual(made.sender.schedules.last?.disableLinkPreview, false)
+
+        preferences.disableOutgoingLinkPreviews = true
+        type("Scheduled link https://example.com/later", into: composer)
+        try? await composer.schedule(at: made.clock.now.addingTimeInterval(3600), condition: .always)
+        XCTAssertEqual(made.sender.schedules.last?.disableLinkPreview, true)
+    }
+
+    func testVoiceNoteNeedsFFmpegAndFileTooLargeErrorsUseNetworkAndFeatureLimits() async {
+        var features = whatsApp
+        features.voiceFeatures = FileKindFeatures(supported: true, caption: false, maxSize: 16 * Self.megabyte)
+        features.fileFeatures = FileKindFeatures(supported: true, caption: true, maxSize: 100 * Self.megabyte)
+
+        let (composer, sender) = make(sizes: ["clip.bin": 10 * Self.megabyte])
+        composer.open("!a")
+        composer.network = "whatsapp"
+        composer.features = features
+
+        // 1. Voice note refusal with -32028 needs_ffmpeg names the network and Homebrew install command.
+        sender.failures = [.rpc(.needsFFmpeg, message: "sending voice notes on this network needs ffmpeg", reason: nil)]
+        await composer.sendVoiceNote(
+            url: URL(fileURLWithPath: "/tmp/voice.m4a"),
+            durationMS: 2_500,
+            waveform: [20, 60, 40]
+        )
+        XCTAssertEqual(
+            composer.notice,
+            .sendFailed(reason: "Sending voice notes on WhatsApp needs ffmpeg. Install it with Homebrew (brew install ffmpeg), then try again.")
+        )
+
+        // 2. File send refusal with -32012 too_large names the network and per-kind maxSize instead of hardcoded 90 MB.
+        composer.attach([file("clip.bin")])
+        sender.failures = [.rpc(.tooLarge, message: "file exceeds limit", reason: nil)]
+        await composer.submit()?.value
+        XCTAssertEqual(
+            composer.notice,
+            .sendFailed(reason: "This file is larger than WhatsApp allows (100 MB).")
+        )
     }
 }

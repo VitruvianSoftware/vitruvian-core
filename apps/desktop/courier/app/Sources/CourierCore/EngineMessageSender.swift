@@ -19,9 +19,10 @@ public final class EngineMessageSender: MessageSending {
 
     /// message.send's params: the ranges and `hold_ms` only when there are some (a message not held has none).
     public static func sendParams(roomID: String, rich: RichText, replyTo: String?, threadRoot: String?,
-                                  holdMillis: Int) -> SendParams {
+                                  holdMillis: Int, disableLinkPreview: Bool? = nil) -> SendParams {
         SendParams(roomID: roomID, text: rich.text, entities: rich.entities.isEmpty ? nil : rich.entities,
-                   replyTo: replyTo, threadRoot: threadRoot, holdMS: holdMillis > 0 ? holdMillis : nil)
+                   replyTo: replyTo, threadRoot: threadRoot, holdMS: holdMillis > 0 ? holdMillis : nil,
+                   disableLinkPreview: disableLinkPreview)
     }
 
     private func client() async throws -> EngineClient {
@@ -49,11 +50,47 @@ public final class EngineMessageSender: MessageSending {
         return sent.eventID
     }
 
+    public func send(roomID: String, rich: RichText, replyTo: String?, threadRoot: String?, holdMillis: Int,
+                     disableLinkPreview: Bool?)
+        async throws -> String {
+        let params = Self.sendParams(roomID: roomID, rich: rich, replyTo: replyTo, threadRoot: threadRoot,
+                                     holdMillis: holdMillis, disableLinkPreview: disableLinkPreview)
+        let sent: Sent = try await client().call("message.send", params)
+        return sent.eventID
+    }
+
+    public func sendLocation(roomID: String, latitude: Double, longitude: Double, label: String?, replyTo: String?)
+        async throws -> String {
+        let params = SendLocationParams(
+            roomID: roomID,
+            latitude: latitude,
+            longitude: longitude,
+            label: (label?.isEmpty == false) ? label : nil,
+            replyTo: replyTo
+        )
+        let sent: Sent = try await client().call("message.sendLocation", params)
+        return sent.eventID
+    }
+
     public func sendFile(roomID: String, url: URL, size: Int64, replyTo: String?, threadRoot: String?,
                          holdMillis: Int) async throws -> String {
         let params = SendFileParams(roomID: roomID, path: url.path, replyTo: replyTo, threadRoot: threadRoot,
                                     holdMS: holdMillis > 0 ? holdMillis : nil)
         let sent: Sent = try await client().call("message.sendFile", params, timeout: Self.fileTimeout(forBytes: size))
+        return sent.eventID
+    }
+
+    public func sendVoice(roomID: String, url: URL, durationMS: Int64, waveform: [Int], replyTo: String?) async throws
+        -> String {
+        let size = ComposerModel.readFileInfo(url)?.size ?? 0
+        let params = SendVoiceParams(
+            roomID: roomID,
+            path: url.path,
+            durationMS: durationMS,
+            waveform: waveform.isEmpty ? nil : waveform,
+            replyTo: replyTo
+        )
+        let sent: Sent = try await client().call("message.sendVoice", params, timeout: Self.fileTimeout(forBytes: size))
         return sent.eventID
     }
 
@@ -64,9 +101,17 @@ public final class EngineMessageSender: MessageSending {
 
     public func schedule(roomID: String, rich: RichText, replyTo: String?, threadRoot: String?, due: Date,
                          condition: SendLaterCondition) async throws {
+        try await schedule(roomID: roomID, rich: rich, replyTo: replyTo, threadRoot: threadRoot, due: due,
+                           condition: condition, disableLinkPreview: nil)
+    }
+
+    public func schedule(roomID: String, rich: RichText, replyTo: String?, threadRoot: String?, due: Date,
+                         condition: SendLaterCondition, disableLinkPreview: Bool?) async throws {
         let params = ScheduleParams(roomID: roomID, text: rich.text, entities: rich.entities.isEmpty ? nil : rich.entities,
                                     replyTo: replyTo, threadRoot: threadRoot,
-                                    dueAt: Int64((due.timeIntervalSince1970 * 1000).rounded()), condition: condition.wire)
+                                    dueAt: Int64((due.timeIntervalSince1970 * 1000).rounded()),
+                                    condition: condition.wire,
+                                    disableLinkPreview: disableLinkPreview)
         let _: ScheduledMessage = try await client().call("message.schedule", params)
     }
 

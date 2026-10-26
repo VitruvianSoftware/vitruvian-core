@@ -62,10 +62,12 @@ func TestFeaturesOfMapsEveryField(t *testing.T) {
 		Reply: true, Thread: true,
 		Edit: true, EditMaxAge: 15 * time.Minute, EditMaxCount: 10,
 		Unsend: true, UnsendMaxAge: 48 * time.Hour, HideDeletedPlaceholder: true,
-		Poll:         &PollFeatures{MaxOptions: 12, OptionMaxLength: 100},
-		Disappearing: &DisappearingFeatures{Type: "after_send", Timers: []time.Duration{24 * time.Hour, 7 * 24 * time.Hour}},
-		Formatting:   richtext.Kinds,
-		MentionRoom:  true, MaxTextLength: 4000,
+		Poll:                  &PollFeatures{MaxOptions: 12, OptionMaxLength: 100},
+		Disappearing:          &DisappearingFeatures{Type: "after_send", Timers: []time.Duration{24 * time.Hour, 7 * 24 * time.Hour}},
+		Formatting:            richtext.Kinds,
+		MentionRoom:           true,
+		MaxTextLength:         4000,
+		LinkPreviewsSupported: true,
 	}, FeaturesOf(full))
 
 	// Unsupported, dropped and rejected are all "no"; nothing set at all is a chat that can do nothing.
@@ -472,4 +474,68 @@ func TestDeleteLeavesGroupByNetworkAndRoomType(t *testing.T) {
 			require.False(t, fDM.DeleteLeavesGroup, "%s DM DeleteLeavesGroup", tc.network)
 		})
 	}
+}
+
+func TestFileKindFeaturesMappedFromRoomCapabilities(t *testing.T) {
+	rf := &event.RoomFeatures{
+		Formatting: event.FormattingFeatureMap{
+			event.FmtInlineLink: event.CapLevelPartialSupport,
+		},
+		LocationMessage: event.CapLevelFullySupported,
+		File: event.FileFeatureMap{
+			event.MsgImage: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"image/webp": event.CapLevelFullySupported,
+					"image/jpeg": event.CapLevelPartialSupport,
+					"image/bmp":  event.CapLevelRejected,
+					"image/tiff": event.CapLevelUnsupported,
+				},
+				Caption:          event.CapLevelFullySupported,
+				MaxCaptionLength: 1024,
+				MaxSize:          10 * 1024 * 1024,
+			},
+			event.CapMsgVoice: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"audio/ogg; codecs=opus": event.CapLevelFullySupported,
+				},
+				Caption:     event.CapLevelUnsupported,
+				MaxSize:     100 * 1024 * 1024,
+				MaxDuration: seconds(60 * time.Minute),
+			},
+			event.CapMsgSticker: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"image/webp": event.CapLevelRejected,
+				},
+				MaxSize: 300 * 1000,
+			},
+		},
+	}
+
+	f := FeaturesOf(rf)
+	require.Equal(t, &FileKindFeatures{
+		Supported:        true,
+		MimeTypes:        []string{"image/jpeg", "image/webp"},
+		Caption:          true,
+		MaxCaptionLength: 1024,
+		MaxSize:          10 * 1024 * 1024,
+	}, f.ImageFeatures)
+	require.Equal(t, &FileKindFeatures{
+		Supported:      true,
+		MimeTypes:      []string{"audio/ogg; codecs=opus"},
+		Caption:        false,
+		MaxSize:        100 * 1024 * 1024,
+		MaxDurationSec: 3600,
+	}, f.VoiceFeatures)
+	require.Nil(t, f.StickerFeatures, "file kind with only rejected MIME types must convert to nil")
+	require.Nil(t, f.VideoFeatures)
+	require.Nil(t, f.AudioFeatures)
+	require.Nil(t, f.FileFeatures)
+	require.Nil(t, f.GIFFeatures)
+	require.True(t, f.LocationSupported)
+	require.True(t, f.LinkPreviewsSupported)
+
+	empty := FeaturesOf(&event.RoomFeatures{})
+	require.False(t, empty.LocationSupported)
+	require.False(t, empty.LinkPreviewsSupported)
+	require.Nil(t, empty.ImageFeatures)
 }

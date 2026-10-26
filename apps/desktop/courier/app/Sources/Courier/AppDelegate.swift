@@ -129,6 +129,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             reason: "Courier receives messages and shows notifications while its window is closed")
         // Copies made to open received files last until the next launch.
         OpenFileCache.shared.clear()
+        PictureInPictureController.shared.onReturnToChat = { [windowOpener, model] roomID, messageID in
+            windowOpener.show()
+            model.open(.message(roomID: roomID, eventID: messageID))
+        }
         signInWindows = SignInWindowPresenter(login: login)
         hideTypingQuestion = HideTypingQuestion(conversation: conversation, present: Self.askToHideTyping)
         dockBadge = DockBadge(spaces: spaces)
@@ -189,6 +193,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// (SIGTERM, then SIGKILL after ten seconds), so it never outlives the app holding its data directory's lock.
     /// `AppModel.quit` does all three.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        PictureInPictureController.shared.stopForApplicationTermination()
+        conversation.audioPlayer.stopForApplicationTermination()
         Task {
             await model.quit(conversation)
             sender.reply(toApplicationShouldTerminate: true)

@@ -193,6 +193,18 @@ struct ConversationView: View {
                 }
             )
         }
+        .sheet(item: $conversation.activeViewOnceMessage) { msg in
+            ViewOnceSheet(
+                message: msg,
+                onMarkPlayed: {
+                    Task { await conversation.markPlayed(msg.id, roomID: msg.roomID) }
+                },
+                onDismiss: {
+                    conversation.activeViewOnceMessage = nil
+                }
+            )
+            .frame(width: 440)
+        }
         .alert(confirmPrompt, isPresented: confirming) {
             Button(confirmTitle, role: .destructive) { Task { await messageActions.confirm() } }
             Button(String(localized: "Cancel"), role: .cancel) { messageActions.dismissRequest() }
@@ -236,7 +248,11 @@ struct ConversationView: View {
                          escapeFirst: { inbox.escape() }, escapeLast: closeThread, upArrow: upArrow)
                 .simultaneousGesture(TapGesture().onEnded { focus.inPane = false })
         }
-        .overlay { if isDropTargeted { DropOverlay() } }
+        .overlay {
+            if isDropTargeted {
+                FileDropOverlayView(isShiftHeld: NSEvent.modifierFlags.contains(.shift))
+            }
+        }
         .onDrop(of: [.fileURL], isTargeted: $isDropTargeted, perform: drop)
         .onChange(of: controlActiveState, initial: true) { _, state in
             conversation.setWindowKey(state == .key)
@@ -641,15 +657,34 @@ struct ConversationView: View {
     // MARK: Dropping files
 
     private func drop(_ providers: [NSItemProvider]) -> Bool {
-        var handled = false
-        for provider in providers where provider.canLoadObject(ofClass: URL.self) {
-            handled = true
+        let matching = providers.filter {
+            $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
+                && $0.canLoadObject(ofClass: URL.self)
+        }
+        guard !matching.isEmpty else { return false }
+        let shiftHeld = NSEvent.modifierFlags.contains(.shift)
+        let lock = NSLock()
+        var loadedURLs: [URL] = []
+        let group = DispatchGroup()
+        for provider in matching {
+            group.enter()
             _ = provider.loadObject(ofClass: URL.self) { url, _ in
-                guard let url else { return }
-                Task { @MainActor in composer.attach([url]) }
+                if let url, url.isFileURL {
+                    lock.withLock { loadedURLs.append(url) }
+                }
+                group.leave()
             }
         }
-        return handled
+        group.notify(queue: .main) {
+            MainActor.assumeIsolated {
+                guard !loadedURLs.isEmpty else { return }
+                composer.attach(loadedURLs)
+                if shiftHeld, composer.notices.isEmpty, composer.canSend {
+                    _ = composer.submit()
+                }
+            }
+        }
+        return true
     }
 }
 
@@ -722,22 +757,5 @@ private struct ProblemBar: View {
         case let .actionFailed(reason): reason
         case .messageGone: String(localized: "That message isn’t in this chat any more.")
         }
-    }
-}
-
-/// What a drag of files over the chat says.
-private struct DropOverlay: View {
-    var body: some View {
-        ZStack {
-            Color.accentColor.opacity(0.10)
-            RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 2, dash: [8, 6]))
-                .padding(8)
-            Label(String(localized: "Drop files here to attach"), systemImage: "paperclip")
-                .font(.title3.weight(.medium))
-                .foregroundStyle(Color.accentColor)
-        }
-        .allowsHitTesting(false)
-        .accessibilityElement(children: .combine)
     }
 }

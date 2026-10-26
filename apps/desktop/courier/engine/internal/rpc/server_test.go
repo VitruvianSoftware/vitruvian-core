@@ -674,6 +674,7 @@ func newWorldWaiting(t *testing.T, loginWait time.Duration) *world {
 	require.NoError(t, err)
 	t.Cleanup(func() { s.Close() })
 	m := &media.Store{Dir: filepath.Join(dir, "media")}
+	s.SetMediaStore(m)
 	w := &world{s: s, m: m, wa: fakenet.New(), sig: fakenet.New()}
 	eng, errs := engine.Start(ctx, dir, s, m, []engine.Spec{
 		{Name: "whatsapp", Connector: func() (bridgev2.NetworkConnector, error) { return w.wa, nil }},

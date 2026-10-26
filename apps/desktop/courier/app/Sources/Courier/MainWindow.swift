@@ -46,6 +46,56 @@ struct MainWindow: View {
                     SearchOverlay(search: search, inbox: inbox)
                 }
             }
+            .overlay {
+                if conversation.carousel.isPresented {
+                    AttachmentCarouselOverlay(
+                        model: conversation.carousel,
+                        onGoToMessage: { item in
+                            conversation.closeLightbox()
+                            model.open(.message(roomID: item.roomID, eventID: item.eventID))
+                        },
+                        onReact: { item, emoji in
+                            Task { await conversation.react(to: item.eventID, key: emoji) }
+                        },
+                        onReply: { item in
+                            conversation.closeLightbox()
+                            if let msg = conversation.message(item.eventID, from: .chat),
+                               let action = conversation.replyAction(for: msg) {
+                                Task { await messageActions.perform(action, on: item.eventID, from: .chat) }
+                            }
+                        },
+                        onCopyImage: { item in
+                            guard !item.viewOnce,
+                                  isLocalMediaStorePath(item.mediaPath),
+                                  let nsImage = NSImage(contentsOfFile: item.mediaPath)
+                            else { return }
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.writeObjects([nsImage])
+                            conversation.onToast(String(localized: "Copied image"))
+                        },
+                        onQuickLook: { item in
+                            guard !item.viewOnce, isLocalMediaStorePath(item.mediaPath) else { return }
+                            QuickLookPreviewCoordinator.shared.preview(
+                                fileAtPath: item.mediaPath,
+                                suggestedName: item.fileName
+                            )
+                        },
+                        onDownload: { item in
+                            guard !item.viewOnce, isLocalMediaStorePath(item.mediaPath) else { return }
+                            let downloader = AttachmentDownloader(preferences: composerPreferences)
+                            if let saved = try? downloader.download(
+                                sourcePath: item.mediaPath,
+                                suggestedName: item.fileName
+                            ) {
+                                conversation.onToast(String(localized: "Saved \(saved.lastPathComponent)"))
+                            }
+                        },
+                        onClose: {
+                            conversation.closeLightbox()
+                        }
+                    )
+                }
+            }
             // A chat's right-click menu opens search in that chat.
             .environment(\.searchInChat, { search.show(in: $0) })
             .onChange(of: controlActiveState, initial: true) { _, state in ui.isMainWindowKey = state == .key }
@@ -53,6 +103,8 @@ struct MainWindow: View {
             .onDisappear {
                 ui.isMainWindowKey = false
                 search.close()
+                conversation.composer.voiceRecorder.cancelImmediately()
+                conversation.thread.composer.voiceRecorder.cancelImmediately()
             }
             .sheet(isPresented: addingNetwork) {
                 AddNetworkView(login: login)
@@ -159,34 +211,41 @@ struct MainWindow: View {
     }
 
     private var panes: some View {
-        NavigationSplitView {
-            HStack(spacing: 0) {
-                if preferences.showSpaceBar {
-                    SpaceBar(spaces: spaces, inbox: inbox, labels: labels)
-                    Divider()
+        VStack(spacing: 0) {
+            if conversation.audioPlayer.shouldShowGlobalBar {
+                GlobalAudioPlayerBar(audioPlayer: conversation.audioPlayer) { roomID, eventID in
+                    model.open(.message(roomID: roomID, eventID: eventID))
                 }
-                InboxList(inbox: inbox, spaces: spaces, preferences: preferences, ui: ui)
             }
-            .navigationSplitViewColumnWidth(min: preferences.showSpaceBar ? 260 + SpaceBar.width : 260,
-                                            ideal: preferences.showSpaceBar ? 340 + SpaceBar.width : 340,
-                                            max: 480 + SpaceBar.width)
-        } detail: {
-            HStack(spacing: 0) {
-                Group {
-                    if inbox.showsAddNetwork {
-                        AddNetworkPrompt(add: inbox.addNetwork)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else if model.selectedRoomID != nil {
-                        ConversationView(conversation: conversation, composer: conversation.composer, inbox: inbox,
-                                         messageActions: messageActions, scheduled: scheduled, preferences: composerPreferences,
-                                         thread: conversation.thread, focus: focus, appModel: model)
-                    } else {
-                        NoChatSelected()
+            NavigationSplitView {
+                HStack(spacing: 0) {
+                    if preferences.showSpaceBar {
+                        SpaceBar(spaces: spaces, inbox: inbox, labels: labels)
+                        Divider()
                     }
+                    InboxList(inbox: inbox, spaces: spaces, preferences: preferences, ui: ui)
                 }
-                if conversation.isShowingCalendar {
-                    Divider()
-                    CalendarPane(bridge: conversation.calendarBridge, onClose: conversation.toggleCalendar)
+                .navigationSplitViewColumnWidth(min: preferences.showSpaceBar ? 260 + SpaceBar.width : 260,
+                                                ideal: preferences.showSpaceBar ? 340 + SpaceBar.width : 340,
+                                                max: 480 + SpaceBar.width)
+            } detail: {
+                HStack(spacing: 0) {
+                    Group {
+                        if inbox.showsAddNetwork {
+                            AddNetworkPrompt(add: inbox.addNetwork)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        } else if model.selectedRoomID != nil {
+                            ConversationView(conversation: conversation, composer: conversation.composer, inbox: inbox,
+                                             messageActions: messageActions, scheduled: scheduled, preferences: composerPreferences,
+                                             thread: conversation.thread, focus: focus, appModel: model)
+                        } else {
+                            NoChatSelected()
+                        }
+                    }
+                    if conversation.isShowingCalendar {
+                        Divider()
+                        CalendarPane(bridge: conversation.calendarBridge, onClose: conversation.toggleCalendar)
+                    }
                 }
             }
         }

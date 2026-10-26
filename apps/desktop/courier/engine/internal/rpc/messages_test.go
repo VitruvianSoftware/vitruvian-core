@@ -46,7 +46,25 @@ func everything() *event.RoomFeatures {
 			Types:  []event.DisappearingType{event.DisappearingTypeAfterSend},
 			Timers: []jsontime.Milliseconds{jsontime.MS(24 * time.Hour), jsontime.MS(7 * 24 * time.Hour)},
 		},
-		File: event.FileFeatureMap{event.MsgFile: {MimeTypes: map[string]event.CapabilitySupportLevel{"*/*": full}}},
+		LocationMessage: full,
+		File: event.FileFeatureMap{
+			event.MsgImage: {
+				MimeTypes:        map[string]event.CapabilitySupportLevel{"image/jpeg": full, "image/png": full},
+				Caption:          full,
+				MaxCaptionLength: 1024,
+				MaxSize:          16 << 20,
+			},
+			event.CapMsgVoice: {
+				MimeTypes:   map[string]event.CapabilitySupportLevel{"audio/ogg; codecs=opus": full},
+				MaxSize:     16 << 20,
+				MaxDuration: &jsontime.Seconds{Duration: 900 * time.Second},
+			},
+			event.MsgFile: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{"*/*": full},
+				Caption:   full,
+				MaxSize:   2 << 30,
+			},
+		},
 	}
 }
 
@@ -1017,4 +1035,162 @@ func TestThreadPagesCutBetweenRepliesReadEachOnce(t *testing.T) {
 		require.Equal(t, 1, got[id], "%s is read exactly once", id)
 	}
 	require.Len(t, got, len(want), "nothing else")
+}
+
+func TestRoomEventsPopulatesMediaMetadataAndRedactsPlayedViewOnce(t *testing.T) {
+	w := newWorld(t)
+	mediaHash, err := w.m.Put([]byte("fake-media-bytes"))
+	require.NoError(t, err)
+	mxcURI := "mxc://courier.local/" + mediaHash
+	localMediaPath, err := w.m.Path(mediaHash)
+	require.NoError(t, err)
+
+	base := time.Now().Add(-time.Minute)
+	w.put(t, "$voice1", contact, "m.room.message",
+		`{"msgtype":"m.audio","body":"Voice message.ogg","url":"`+mxcURI+`","org.matrix.msc3245.voice":{},"org.matrix.msc1767.audio":{"duration":4200,"waveform":[10,200,500,900]}}`,
+		base)
+	w.put(t, "$img1", contact, "m.room.message",
+		`{"msgtype":"m.image","body":"secret.jpg","url":"`+mxcURI+`","info":{"mimetype":"image/gif","w":320,"h":240,"xyz.amorgan.blurhash":"LEHV6nWB2yk8pyo0adR*.7kCMdnj","thumbnail_url":"`+mxcURI+`","fi.mau.gif":true,"is_animated":true},"com.beeper.disappearing_timer":{"type":"after_read","timer":300000}}`,
+		base.Add(time.Second))
+	w.put(t, "$loc1", contact, "m.room.message",
+		`{"msgtype":"m.location","body":"Golden Gate Bridge","geo_uri":"geo:37.8199,-122.4783"}`,
+		base.Add(2*time.Second))
+	w.put(t, "$link1", contact, "m.room.message",
+		`{"msgtype":"m.text","body":"check https://example.com","com.beeper.linkpreviews":[{"matched_url":"https://example.com","og:url":"https://example.com/page","og:title":"Example Domain","og:site_name":"Example","og:description":"Illustrative examples","og:image":"https://remote.example.com/track.png","og:image:width":600,"og:image:height":315,"matrix:image:blurhash":"LEHV6nWB2yk8pyo0adR*.7kCMdnj"},{"matched_url":"https://local.example.com","og:url":"https://local.example.com/page","og:title":"Local Image","og:image":"`+mxcURI+`","og:image:width":320,"og:image:height":240}]}`,
+		base.Add(3*time.Second))
+
+	c := dial(t, w.path)
+	c.hello()
+
+	var page struct {
+		Events []eventJSON `json:"events"`
+	}
+	c.ok("room.events", map[string]any{"room_id": w.room}, &page)
+
+	findEvt := func(id string) eventJSON {
+		for _, e := range page.Events {
+			if e.EventID == id {
+				return e
+			}
+		}
+		t.Fatalf("event %s not found", id)
+		return eventJSON{}
+	}
+
+	voiceEvt := findEvt("$voice1")
+	require.EqualValues(t, 4200, voiceEvt.DurationMS)
+	require.Equal(t, []int{10, 200, 500, 900}, voiceEvt.Waveform)
+	require.Equal(t, localMediaPath, voiceEvt.MediaPath)
+
+	imgEvt := findEvt("$img1")
+	require.Equal(t, "LEHV6nWB2yk8pyo0adR*.7kCMdnj", imgEvt.Blurhash)
+	require.Equal(t, localMediaPath, imgEvt.MediaPath)
+	require.Equal(t, localMediaPath, imgEvt.ThumbnailPath)
+	require.True(t, imgEvt.IsGIF)
+	require.True(t, imgEvt.IsAnimated)
+	require.True(t, imgEvt.ViewOnce)
+	require.False(t, imgEvt.Played)
+
+	locEvt := findEvt("$loc1")
+	require.Equal(t, "geo:37.8199,-122.4783", locEvt.GeoURI)
+
+	linkEvt := findEvt("$link1")
+	require.Len(t, linkEvt.LinkPreviews, 2)
+	require.Equal(t, "Example Domain", linkEvt.LinkPreviews[0].Title)
+	require.Empty(t, linkEvt.LinkPreviews[0].ImagePath, "remote HTTP og:image URLs must never be resolved or fetched")
+	require.Equal(t, localMediaPath, linkEvt.LinkPreviews[1].ImagePath, "local MXC og:image URI resolves to local media path")
+
+	c.ok("message.markPlayed", map[string]any{"room_id": w.room, "event_id": "$img1"}, nil)
+
+	page.Events = nil
+	c.ok("room.events", map[string]any{"room_id": w.room}, &page)
+	playedEvt := findEvt("$img1")
+	require.True(t, playedEvt.Played)
+	require.Empty(t, playedEvt.MediaPath, "view-once media path must be redacted once played")
+	require.Empty(t, playedEvt.ThumbnailPath, "view-once thumbnail path must be redacted once played")
+}
+
+func TestMessageMarkPlayedRejectsMergedRoomIDAndDeletesViewOnceBlob(t *testing.T) {
+	w := newWorld(t)
+	ctx := context.Background()
+	c := dial(t, w.path)
+	c.hello()
+
+	// Virtual merge:... room IDs are rejected with -32602 (CodeInvalidParams).
+	e := c.fails(CodeInvalidParams, "message.markPlayed", map[string]any{"room_id": "merge:123", "event_id": "$img1"})
+	require.Equal(t, "room_id must not be a merge_id", reason(t, e))
+
+	// View-once media in a Signal room: excluded from room.info shared_media, and blob deleted after markPlayed.
+	sigRoom := "!sig-vo-rpc:courier.local"
+	require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: sigRoom, Network: "signal", Name: "Signal VO", IsDirect: true}))
+	voHash, err := w.m.Put([]byte("rpc-view-once-blob"))
+	require.NoError(t, err)
+	voPath, err := w.m.Path(voHash)
+	require.NoError(t, err)
+	voURI := "mxc://courier.local/" + voHash
+
+	normHash, err := w.m.Put([]byte("rpc-normal-blob"))
+	require.NoError(t, err)
+	normURI := "mxc://courier.local/" + normHash
+
+	_, err = w.s.InsertEvent(ctx, store.Event{
+		RoomID: sigRoom, EventID: "$norm-img", Sender: contact, Type: "m.room.message",
+		Content: json.RawMessage(`{"msgtype":"m.image","body":"normal.jpg","url":"` + normURI + `"}`),
+		TS:      time.Now().Add(-2 * time.Second), Status: "sent",
+	})
+	require.NoError(t, err)
+	_, err = w.s.InsertEvent(ctx, store.Event{
+		RoomID: sigRoom, EventID: "$vo-img", Sender: contact, Type: "m.room.message",
+		Content: json.RawMessage(`{"msgtype":"m.image","body":"secret.jpg","url":"` + voURI + `","com.beeper.disappearing_timer":{"type":"after_read","timer":300000}}`),
+		TS:      time.Now().Add(-time.Second), Status: "sent",
+	})
+	require.NoError(t, err)
+
+	var info struct {
+		SharedMedia []eventJSON `json:"shared_media"`
+	}
+	c.ok("room.info", map[string]any{"room_id": sigRoom}, &info)
+	require.Len(t, info.SharedMedia, 1, "room.info shared_media must exclude view-once media")
+	require.Equal(t, "$norm-img", info.SharedMedia[0].EventID)
+
+	c.ok("message.markPlayed", map[string]any{"room_id": sigRoom, "event_id": "$vo-img"}, nil)
+	_, err = os.Stat(voPath)
+	require.ErrorIs(t, err, os.ErrNotExist, "view-once blob on disk must be deleted after message.markPlayed")
+}
+
+func TestMessageSendVoiceReturnsNeedsFFmpegCodeWhenTranscodeUnavailable(t *testing.T) {
+	w := newWorld(t)
+	ctx := context.Background()
+	c := dial(t, w.path)
+	c.hello()
+
+	// Configure room features so voice notes require audio/ogg; codecs=opus.
+	oggOnlyCaps := &event.RoomFeatures{
+		File: event.FileFeatureMap{
+			event.CapMsgVoice: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"audio/ogg; codecs=opus": event.CapLevelFullySupported,
+				},
+				MaxSize: 16 * 1024 * 1024,
+			},
+		},
+	}
+	w.can(t, oggOnlyCaps)
+	_ = ctx
+
+	// Create an .m4a file and clear PATH and FFmpegSearchPaths so ffmpeg cannot be found.
+	m4aPath := filepath.Join(t.TempDir(), "recording.m4a")
+	require.NoError(t, os.WriteFile(m4aPath, []byte("\x00\x00\x00\x18ftypM4A \x00\x00\x00\x00"), 0o600))
+	t.Setenv("PATH", "/nonexistent")
+	savedPaths := actions.FFmpegSearchPaths
+	actions.FFmpegSearchPaths = nil
+	t.Cleanup(func() { actions.FFmpegSearchPaths = savedPaths })
+
+	e := c.fails(-32028, "message.sendVoice", map[string]any{
+		"room_id":     w.room,
+		"path":        m4aPath,
+		"duration_ms": 3000,
+		"waveform":    []int{10, 40, 80},
+	})
+	require.Equal(t, "sending voice notes on this network needs ffmpeg", e.Message)
 }

@@ -70,11 +70,24 @@ struct ComposerView: View {
     var upArrow: () -> Bool = { false }
     @StateObject private var ui = ComposerUI()
 
+    static let voiceUserVisibleStrings: [String] = [
+        String(localized: "Record Voice Note (⌘⇧A)"),
+        String(localized: "Record voice note"),
+        String(localized: "Stop recording"),
+        String(localized: "Cancel recording"),
+        String(localized: "Send voice note"),
+        String(localized: "Voice note ready"),
+        String(localized: "Discard recording"),
+        String(localized: "Microphone access is turned off for Courier. Allow microphone access in System Settings to record voice notes."),
+        String(localized: "Open System Settings"),
+    ]
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(Array(composer.notices.enumerated()), id: \.offset) { _, notice in
                 NoticeBar(text: noticeText(notice)) { composer.dismissNotice() }
             }
+            ComposerVoiceStatusBanner(voiceRecorder: composer.voiceRecorder)
             if let mergedChat, let activeNetwork = activeReplyNetwork, !activeNetwork.isEmpty {
                 mergedReplyNetworkPill(mergedChat: mergedChat, activeNetwork: activeNetwork)
             }
@@ -85,14 +98,12 @@ struct ComposerView: View {
                 ReplyChip(quote: reply) { composer.cancelReply() }
             }
             if !composer.attachments.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(composer.attachments) { attachment in
-                            PendingAttachmentChip(attachment: attachment) {
-                                composer.removeAttachment(attachment.id)
-                            }
-                        }
-                    }
+                PendingAttachmentsStrip(
+                    attachments: composer.attachments,
+                    features: composer.features,
+                    network: activeReplyNetwork ?? composer.network
+                ) { id in
+                    composer.removeAttachment(id)
                 }
             }
             picker
@@ -101,39 +112,62 @@ struct ComposerView: View {
                     format($0)
                 }
             }
-            HStack(alignment: .bottom, spacing: 8) {
-                plusMenu
-                ComposerTextView(
-                    composer: composer,
-                    ui: ui,
-                    height: $textHeight,
-                    placeholder: placeholder,
-                    focusToken: "\(composer.roomID ?? "")|\(composer.replyTarget?.eventID ?? "")|\(modeToken)",
-                    onEscape: { escapeFirst() || composer.escape() || escapeLast() },
-                    onUpArrow: upArrow,
-                    onPasteFiles: { urls in
-                        composer.attach(urls)
-                        return true
-                    })
-                    .frame(height: textHeight)
-                    .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.06)))
-                    .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.quaternary))
+            ComposerInputOrVoiceRow(
+                composer: composer,
+                preferences: preferences,
+                voiceRecorder: composer.voiceRecorder
+            ) {
+                HStack(alignment: .bottom, spacing: 8) {
+                    plusMenu
+                    ComposerTextView(
+                        composer: composer,
+                        ui: ui,
+                        height: $textHeight,
+                        placeholder: placeholder,
+                        focusToken: "\(composer.roomID ?? "")|\(composer.replyTarget?.eventID ?? "")|\(modeToken)",
+                        onEscape: { escapeFirst() || composer.escape() || escapeLast() },
+                        onUpArrow: upArrow,
+                        onPasteFiles: { urls in
+                            composer.attach(urls)
+                            return true
+                        })
+                        .frame(height: textHeight)
+                        .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.06)))
+                        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.quaternary))
 
-                if showsIncognitoMark { IncognitoMark() }
+                    if showsIncognitoMark { IncognitoMark() }
 
-                Button {
-                    // The system's own picker, as ⌃⌘Space opens it.
-                    NSApp.orderFrontCharacterPalette(nil)
-                } label: {
-                    Image(systemName: "face.smiling")
-                        .font(.title3)
-                        .frame(width: 28, height: 28)
+                    if case .editing = composer.mode {
+                        EmptyView()
+                    } else {
+                        Button {
+                            composer.preferences = preferences
+                            Task { await composer.startVoiceRecording() }
+                        } label: {
+                            Image(systemName: "mic")
+                                .font(.title3)
+                                .frame(width: 28, height: 28)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(composer.roomID == nil)
+                        .help(String(localized: "Record Voice Note (⌘⇧A)"))
+                        .accessibilityLabel(String(localized: "Record voice note"))
+                    }
+
+                    Button {
+                        // The system's own picker, as ⌃⌘Space opens it.
+                        NSApp.orderFrontCharacterPalette(nil)
+                    } label: {
+                        Image(systemName: "face.smiling")
+                            .font(.title3)
+                            .frame(width: 28, height: 28)
+                    }
+                    .buttonStyle(.plain)
+                    .help(String(localized: "Emoji & Symbols (⌃⌘Space)"))
+                    .accessibilityLabel(String(localized: "Emoji and symbols"))
+
+                    sendButton
                 }
-                .buttonStyle(.plain)
-                .help(String(localized: "Emoji & Symbols (⌃⌘Space)"))
-                .accessibilityLabel(String(localized: "Emoji and symbols"))
-
-                sendButton
             }
         }
         .padding(10)
@@ -910,5 +944,257 @@ final class PlainTextView: NSTextView {
         if !files.isEmpty, onPasteFiles(files) { return }
         // Plain text only: formatting from the other app is left behind.
         pasteAsPlainText(sender)
+    }
+}
+
+// MARK: - Voice Recording UI
+
+struct BrandStopButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Circle()
+                    .fill(Color.red.opacity(0.16))
+                    .frame(width: 30, height: 30)
+                Circle()
+                    .strokeBorder(Color.red.opacity(0.55), lineWidth: 1.5)
+                    .frame(width: 30, height: 30)
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(Color.red)
+                    .frame(width: 11, height: 11)
+            }
+        }
+        .buttonStyle(.plain)
+        .help(String(localized: "Stop recording to review"))
+        .accessibilityLabel(String(localized: "Stop recording"))
+    }
+}
+
+private struct ComposerVoiceStatusBanner: View {
+    @ObservedObject var voiceRecorder: VoiceRecorderModel
+
+    var body: some View {
+        switch voiceRecorder.state {
+        case .permissionDenied:
+            HStack(spacing: 10) {
+                Image(systemName: "mic.slash.fill")
+                    .foregroundStyle(.orange)
+                Text(String(localized: "Microphone access is turned off for Courier. Allow microphone access in System Settings to record voice notes."))
+                    .font(.callout)
+                    .foregroundStyle(.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 4)
+                Button(String(localized: "Open System Settings")) {
+                    if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }
+                .controlSize(.small)
+                Button {
+                    voiceRecorder.dismissBanner()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(String(localized: "Dismiss"))
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.12)))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.orange.opacity(0.35), lineWidth: 1))
+        case let .failed(reason):
+            NoticeBar(text: reason) {
+                voiceRecorder.dismissBanner()
+            }
+        case .idle, .recording, .reviewing:
+            EmptyView()
+        }
+    }
+}
+
+private struct ComposerInputOrVoiceRow<IdleContent: View>: View {
+    @ObservedObject var composer: ComposerModel
+    @ObservedObject var preferences: ComposerPreferences
+    @ObservedObject var voiceRecorder: VoiceRecorderModel
+    @ViewBuilder let idleContent: () -> IdleContent
+
+    var body: some View {
+        switch voiceRecorder.state {
+        case let .recording(_, elapsedMS, levels):
+            ComposerVoiceRecordingBar(
+                elapsedMS: elapsedMS,
+                levels: levels,
+                onCancel: {
+                    Task { await voiceRecorder.cancel() }
+                },
+                onStopForReview: {
+                    Task { await voiceRecorder.stopForReview() }
+                },
+                onSend: {
+                    Task { await voiceRecorder.stopAndSend(using: composer) }
+                }
+            )
+        case let .reviewing(_, durationMS, waveform):
+            ComposerVoiceReviewBar(
+                durationMS: durationMS,
+                waveform: waveform,
+                onCancel: {
+                    Task { await voiceRecorder.cancel() }
+                },
+                onSend: {
+                    Task { await voiceRecorder.stopAndSend(using: composer) }
+                }
+            )
+        case .idle, .permissionDenied, .failed:
+            idleContent()
+        }
+    }
+}
+
+private struct ComposerVoiceRecordingBar: View {
+    let elapsedMS: Int
+    let levels: [Int]
+    let onCancel: () -> Void
+    let onStopForReview: () -> Void
+    let onSend: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button(action: onCancel) {
+                Image(systemName: "trash")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 28, height: 28)
+                    .background(Circle().fill(Color.primary.opacity(0.08)))
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut(.escape, modifiers: [])
+            .help(String(localized: "Cancel recording (Esc)"))
+            .accessibilityLabel(String(localized: "Cancel recording"))
+
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(Color.red)
+                    .frame(width: 8, height: 8)
+                Text(Self.formatElapsed(elapsedMS))
+                    .font(.system(.callout, design: .monospaced).weight(.semibold))
+                    .monospacedDigit()
+                    .foregroundStyle(.primary)
+            }
+
+            ComposerLiveWaveformStrip(levels: levels, tint: .red)
+                .frame(maxWidth: .infinity, minHeight: 26, maxHeight: 26)
+
+            BrandStopButton(action: onStopForReview)
+
+            Button(action: onSend) {
+                Image(systemName: "arrow.up.circle.fill")
+                    .font(.system(size: 26))
+                    .foregroundStyle(Color.accentColor)
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut(.return, modifiers: [])
+            .help(String(localized: "Send voice note (Return)"))
+            .accessibilityLabel(String(localized: "Send voice note"))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.06)))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.red.opacity(0.35), lineWidth: 1))
+    }
+
+    static func formatElapsed(_ milliseconds: Int) -> String {
+        let totalSeconds = max(0, milliseconds / 1000)
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+}
+
+private struct ComposerVoiceReviewBar: View {
+    let durationMS: Int
+    let waveform: [Int]
+    let onCancel: () -> Void
+    let onSend: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button(action: onCancel) {
+                Image(systemName: "trash")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 28, height: 28)
+                    .background(Circle().fill(Color.primary.opacity(0.08)))
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut(.escape, modifiers: [])
+            .help(String(localized: "Discard recording (Esc)"))
+            .accessibilityLabel(String(localized: "Discard recording"))
+
+            HStack(spacing: 6) {
+                Image(systemName: "waveform")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
+                Text(String(localized: "Voice note ready"))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.primary)
+                Text(ComposerVoiceRecordingBar.formatElapsed(durationMS))
+                    .font(.system(.caption, design: .monospaced))
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+
+            ComposerLiveWaveformStrip(levels: waveform, tint: .accentColor)
+                .frame(maxWidth: .infinity, minHeight: 26, maxHeight: 26)
+
+            Button(action: onSend) {
+                HStack(spacing: 4) {
+                    Text(String(localized: "Send"))
+                        .font(.callout.weight(.semibold))
+                    Image(systemName: "arrow.up.circle.fill")
+                        .font(.system(size: 20))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Capsule().fill(Color.accentColor))
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut(.return, modifiers: [])
+            .help(String(localized: "Send voice note (Return)"))
+            .accessibilityLabel(String(localized: "Send voice note"))
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.06)))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.accentColor.opacity(0.35), lineWidth: 1))
+    }
+}
+
+private struct ComposerLiveWaveformStrip: View {
+    let levels: [Int]
+    let tint: Color
+
+    private static let displayBars = 36
+
+    var body: some View {
+        let visible = Array(levels.suffix(Self.displayBars))
+        HStack(alignment: .center, spacing: 3) {
+            ForEach(0 ..< Self.displayBars, id: \.self) { index in
+                let sampleIndex = index - (Self.displayBars - visible.count)
+                let hasSample = sampleIndex >= 0 && sampleIndex < visible.count
+                let level = hasSample ? max(0, min(100, visible[sampleIndex])) : 10
+                let normalized = CGFloat(level) / 100.0
+                let height = max(4, 4 + normalized * 18)
+                Capsule(style: .continuous)
+                    .fill(hasSample ? tint.opacity(0.85) : Color.secondary.opacity(0.22))
+                    .frame(width: 3, height: height)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

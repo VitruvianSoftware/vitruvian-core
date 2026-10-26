@@ -289,10 +289,17 @@ CREATE TABLE IF NOT EXISTS merged_chat_rooms (
     PRIMARY KEY (merge_id, room_id)
 ) STRICT;
 CREATE INDEX IF NOT EXISTS idx_merged_chat_rooms_room ON merged_chat_rooms(room_id);`,
+	// 9: played state for voice notes and view-once media (milestone 4.5b).
+	`CREATE TABLE IF NOT EXISTS media_played (
+    room_id    TEXT NOT NULL,
+    event_id   TEXT NOT NULL,
+    played_ts  INTEGER NOT NULL,
+    PRIMARY KEY (room_id, event_id)
+) STRICT;`,
 }
 
 // SchemaVersion is the latest courier.db schema version (PRAGMA user_version).
-const SchemaVersion = 8
+const SchemaVersion = 9
 
 // migrate brings db up to the latest version.
 func migrate(ctx context.Context, db *dbutil.Database) error { return migrateWith(ctx, db, migrations) }

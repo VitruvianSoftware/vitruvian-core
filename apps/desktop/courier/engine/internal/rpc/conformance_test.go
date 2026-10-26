@@ -219,6 +219,10 @@ func (p *protocolSpec) check(v any, typ string, values []string, path string) er
 		if !ok || n != float64(int64(n)) {
 			return fmt.Errorf("%s: want an int, got %v", path, v)
 		}
+	case "float":
+		if _, ok := v.(float64); !ok {
+			return fmt.Errorf("%s: want a float, got %T", path, v)
+		}
 	case "bool":
 		if _, ok := v.(bool); !ok {
 			return fmt.Errorf("%s: want a bool, got %T", path, v)
@@ -341,7 +345,7 @@ func (p *protocolSpec) checkExample(ex example) error {
 
 func TestEveryExampleFitsTheProtocol(t *testing.T) {
 	p, exs := loadProtocol(t)
-	require.Equal(t, 6, Protocol, "engine speaks protocol 6")
+	require.Equal(t, 7, Protocol, "engine speaks protocol 7")
 	require.Equal(t, Protocol, p.Protocol, "protocol.json and the engine speak the same protocol")
 	require.Equal(t, MaxFrameBytes, p.Transport.MaxFrameBytes)
 	for _, ex := range exs {
@@ -351,7 +355,7 @@ func TestEveryExampleFitsTheProtocol(t *testing.T) {
 	for _, ex := range exs {
 		byName[ex.name] = true
 	}
-	for _, want := range []string{"room.info", "people.resolve", "merge.create"} {
+	for _, want := range []string{"room.info", "people.resolve", "merge.create", "message.markPlayed", "message.sendVoice", "message.sendLocation"} {
 		require.True(t, byName[want], "example %s.json must exist", want)
 	}
 
@@ -386,11 +390,17 @@ func TestEveryExampleFitsTheProtocol(t *testing.T) {
 
 func TestGoStructJSONKeysMatchProtocol(t *testing.T) {
 	p, _ := loadProtocol(t)
+	fk := &actions.FileKindFeatures{MimeTypes: []string{"image/png"}, MaxCaptionLength: 1, MaxSize: 1, MaxDurationSec: 1}
 	cases := []struct {
 		typeName string
 		val      any
 	}{
-		{"ChatFeatures", actions.Features{Poll: &actions.PollFeatures{}, Disappearing: &actions.DisappearingFeatures{}}},
+		{"ChatFeatures", actions.Features{
+			Poll: &actions.PollFeatures{}, Disappearing: &actions.DisappearingFeatures{},
+			ImageFeatures: fk, VideoFeatures: fk, AudioFeatures: fk, VoiceFeatures: fk,
+			FileFeatures: fk, GIFFeatures: fk, StickerFeatures: fk,
+		}},
+		{"FileKindFeatures", *fk},
 		{"Member", store.MemberHit{}},
 		{"RoomInfoResult", actions.RoomInfo{}},
 		{"ContactCandidate", actions.ContactCandidate{RoomID: "!r:courier.local"}},
@@ -1130,6 +1140,15 @@ func prepare(t *testing.T, w *world, name string, params map[string]any) {
 		require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: room2, Network: "signal", Name: "Alice Example", IsDirect: true}))
 		require.NoError(t, w.s.SetMember(ctx, room2, sigAlice, json.RawMessage(`{"membership":"join","displayname":"Alice Example"}`)))
 		require.NoError(t, w.s.SetProfileExtraMeta(ctx, sigAlice, []string{"tel:+15550100101"}, "", false))
+	case "message.markPlayed":
+		params["room_id"], params["event_id"] = w.room, w.events[0]
+	case "message.sendVoice":
+		path := filepath.Join(t.TempDir(), "voice.ogg")
+		require.NoError(t, os.WriteFile(path, []byte("OggS\x00\x02not really opus"), 0o600))
+		params["room_id"], params["path"] = w.room, path
+	case "message.sendLocation":
+		w.can(t, everything())
+		params["room_id"] = w.room
 	default:
 		t.Fatalf("example %s has no setup in prepare: add one", name)
 	}

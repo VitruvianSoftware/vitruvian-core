@@ -82,3 +82,19 @@ func TestPutStreamRenameFailureReturnsEmptyHash(t *testing.T) {
 	require.Error(t, err)
 	require.Empty(t, hash, "a failed write must not report a hash")
 }
+
+func TestReadEnforcesDefaultMaxMemoryBytes(t *testing.T) {
+	dir := t.TempDir()
+	m := &Store{Dir: dir}
+	h := hex.EncodeToString(make([]byte, 32))
+	p, err := m.Path(h)
+	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(filepath.Dir(p), 0o700))
+	f, err := os.Create(p)
+	require.NoError(t, err)
+	require.NoError(t, f.Truncate(100*1024*1024+1))
+	require.NoError(t, f.Close())
+
+	_, err = m.Read(h)
+	require.ErrorContains(t, err, "exceeds in-memory limit")
+}

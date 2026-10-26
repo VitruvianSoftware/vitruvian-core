@@ -411,6 +411,11 @@ final class ThreadMessageSender: MessageSending {
                                 holdMillis: holdMillis)
     }
 
+    func sendVoice(roomID: String, url: URL, durationMS: Int64, waveform: [Int], replyTo: String?) async throws
+        -> String {
+        try await base.sendVoice(roomID: roomID, url: url, durationMS: durationMS, waveform: waveform, replyTo: replyTo)
+    }
+
     func edit(eventID: String, rich: RichText) async throws {
         try await base.edit(eventID: eventID, rich: rich)
     }
@@ -419,6 +424,12 @@ final class ThreadMessageSender: MessageSending {
                   condition: SendLaterCondition) async throws {
         try await base.schedule(roomID: roomID, rich: rich, replyTo: replyTo, threadRoot: threadRoot, due: due,
                                 condition: condition)
+    }
+
+    func schedule(roomID: String, rich: RichText, replyTo: String?, threadRoot: String?, due: Date,
+                  condition: SendLaterCondition, disableLinkPreview: Bool?) async throws {
+        try await base.schedule(roomID: roomID, rich: rich, replyTo: replyTo, threadRoot: threadRoot, due: due,
+                                condition: condition, disableLinkPreview: disableLinkPreview)
     }
 
     func undo(eventID: String) async throws -> Draft {

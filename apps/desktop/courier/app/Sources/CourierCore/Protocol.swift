@@ -16,7 +16,7 @@ import Foundation
 
 /// The protocol this app speaks, and the framing limit both sides keep.
 public enum CourierProtocol {
-    public static let version = 6
+    public static let version = 7
     /// The longest line either side may send, not counting the newline.
     public static let maxFrameBytes = 4_194_304
     /// protocol.json's `conventions.typing_repeat_ms`: while the text keeps changing, room.setTyping true goes again
@@ -1271,6 +1271,47 @@ public struct EventStatus: OpenValues {
     public static let known: [Self] = [.queued, .waiting, .pending, .sent, .failed]
 }
 
+public struct LinkPreviewItem: ProtocolType, Equatable, Hashable, Sendable {
+    public static let protocolName = "LinkPreviewItem"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var matchedURL: String
+    public var url: String?
+    public var title: String?
+    public var siteName: String?
+    public var description: String?
+    public var imagePath: String?
+    public var imageWidth: Int?
+    public var imageHeight: Int?
+    public var blurhash: String?
+
+    public init(matchedURL: String, url: String? = nil, title: String? = nil,
+                siteName: String? = nil, description: String? = nil,
+                imagePath: String? = nil, imageWidth: Int? = nil,
+                imageHeight: Int? = nil, blurhash: String? = nil) {
+        self.matchedURL = matchedURL
+        self.url = url
+        self.title = title
+        self.siteName = siteName
+        self.description = description
+        self.imagePath = imagePath
+        self.imageWidth = imageWidth
+        self.imageHeight = imageHeight
+        self.blurhash = blurhash
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case matchedURL = "matched_url"
+        case url
+        case title
+        case siteName = "site_name"
+        case description
+        case imagePath = "image_path"
+        case imageWidth = "image_width"
+        case imageHeight = "image_height"
+        case blurhash
+    }
+}
+
 /// One event in a chat: a message, a poll, a reaction, an edit or a redaction. A message deleted for me is left out
 /// of every page.
 public struct Event: ProtocolType, Equatable {
@@ -1291,6 +1332,16 @@ public struct Event: ProtocolType, Equatable {
     /// "not connected") the app words itself.
     public var statusReason: String
     public var mediaPath: String
+    public var thumbnailPath: String?
+    public var blurhash: String?
+    public var durationMS: Int64?
+    public var waveform: [Int]?
+    public var isGIF: Bool?
+    public var isAnimated: Bool?
+    public var viewOnce: Bool?
+    public var geoURI: String?
+    public var linkPreviews: [LinkPreviewItem]?
+    public var played: Bool?
     /// I bookmarked it, on this Mac.
     public var bookmarked: Bool
     /// PollTally|null: for a poll, how it stands; nil for anything else.
@@ -1308,8 +1359,12 @@ public struct Event: ProtocolType, Equatable {
 
     public init(eventID: String, roomID: String, sender: String, senderName: String, senderAvatarPath: String = "",
                 mine: Bool, type: String, content: JSONValue, ts: Int64, seq: Int64, status: EventStatus,
-                statusReason: String = "", mediaPath: String = "", bookmarked: Bool = false, poll: PollTally? = nil,
-                thread: ThreadSummary? = nil, expiresAt: Int64 = 0, delivered: Bool = false, readBy: [Reader] = []) {
+                statusReason: String = "", mediaPath: String = "", thumbnailPath: String? = nil,
+                blurhash: String? = nil, durationMS: Int64? = nil, waveform: [Int]? = nil,
+                isGIF: Bool? = nil, isAnimated: Bool? = nil, viewOnce: Bool? = nil, geoURI: String? = nil,
+                linkPreviews: [LinkPreviewItem]? = nil, played: Bool? = nil, bookmarked: Bool = false,
+                poll: PollTally? = nil, thread: ThreadSummary? = nil, expiresAt: Int64 = 0,
+                delivered: Bool = false, readBy: [Reader] = []) {
         self.eventID = eventID
         self.roomID = roomID
         self.sender = sender
@@ -1323,6 +1378,16 @@ public struct Event: ProtocolType, Equatable {
         self.status = status
         self.statusReason = statusReason
         self.mediaPath = mediaPath
+        self.thumbnailPath = thumbnailPath
+        self.blurhash = blurhash
+        self.durationMS = durationMS
+        self.waveform = waveform
+        self.isGIF = isGIF
+        self.isAnimated = isAnimated
+        self.viewOnce = viewOnce
+        self.geoURI = geoURI
+        self.linkPreviews = linkPreviews
+        self.played = played
         self.bookmarked = bookmarked
         self.poll = poll
         self.thread = thread
@@ -1345,6 +1410,16 @@ public struct Event: ProtocolType, Equatable {
         case status
         case statusReason = "status_reason"
         case mediaPath = "media_path"
+        case thumbnailPath = "thumbnail_path"
+        case blurhash
+        case durationMS = "duration_ms"
+        case waveform
+        case isGIF = "is_gif"
+        case isAnimated = "is_animated"
+        case viewOnce = "view_once"
+        case geoURI = "geo_uri"
+        case linkPreviews = "link_previews"
+        case played
         case bookmarked
         case poll
         case thread
@@ -1368,6 +1443,16 @@ public struct Event: ProtocolType, Equatable {
         status = try container.decode(EventStatus.self, forKey: .status)
         statusReason = try container.decode(String.self, forKey: .statusReason)
         mediaPath = try container.decode(String.self, forKey: .mediaPath)
+        thumbnailPath = try container.decodeIfPresent(String.self, forKey: .thumbnailPath)
+        blurhash = try container.decodeIfPresent(String.self, forKey: .blurhash)
+        durationMS = try container.decodeIfPresent(Int64.self, forKey: .durationMS)
+        waveform = try container.decodeIfPresent([Int].self, forKey: .waveform)
+        isGIF = try container.decodeIfPresent(Bool.self, forKey: .isGIF)
+        isAnimated = try container.decodeIfPresent(Bool.self, forKey: .isAnimated)
+        viewOnce = try container.decodeIfPresent(Bool.self, forKey: .viewOnce)
+        geoURI = try container.decodeIfPresent(String.self, forKey: .geoURI)
+        linkPreviews = try container.decodeIfPresent([LinkPreviewItem].self, forKey: .linkPreviews)
+        played = try container.decodeIfPresent(Bool.self, forKey: .played)
         bookmarked = try container.decode(Bool.self, forKey: .bookmarked)
         poll = try container.decode(PollTally?.self, forKey: .poll) // the key must be there
         thread = try container.decode(ThreadSummary?.self, forKey: .thread) // the key must be there
@@ -1391,6 +1476,16 @@ public struct Event: ProtocolType, Equatable {
         try container.encode(status, forKey: .status)
         try container.encode(statusReason, forKey: .statusReason)
         try container.encode(mediaPath, forKey: .mediaPath)
+        try container.encodeIfPresent(thumbnailPath, forKey: .thumbnailPath)
+        try container.encodeIfPresent(blurhash, forKey: .blurhash)
+        try container.encodeIfPresent(durationMS, forKey: .durationMS)
+        try container.encodeIfPresent(waveform, forKey: .waveform)
+        try container.encodeIfPresent(isGIF, forKey: .isGIF)
+        try container.encodeIfPresent(isAnimated, forKey: .isAnimated)
+        try container.encodeIfPresent(viewOnce, forKey: .viewOnce)
+        try container.encodeIfPresent(geoURI, forKey: .geoURI)
+        try container.encodeIfPresent(linkPreviews, forKey: .linkPreviews)
+        try container.encodeIfPresent(played, forKey: .played)
         try container.encode(bookmarked, forKey: .bookmarked)
         try container.encode(poll, forKey: .poll) // null, not left out
         try container.encode(thread, forKey: .thread) // null, not left out
@@ -1856,11 +1951,13 @@ public struct MessageHit: ProtocolType, Equatable, Hashable {
     public var mediaPath: String
     /// It matches some of the words, not all.
     public var partial: Bool
+    /// True when the message is a view-once attachment.
+    public var viewOnce: Bool?
 
     public init(eventID: String, roomID: String, roomName: String, network: String, isDirect: Bool,
                 place: ChatPlace = .inbox, sender: String, senderName: String, mine: Bool, ts: Int64, seq: Int64,
                 kind: MessageHitKind = .text, snippet: String, ranges: [TextRange] = [], mediaPath: String = "",
-                partial: Bool = false) {
+                partial: Bool = false, viewOnce: Bool? = nil) {
         self.eventID = eventID
         self.roomID = roomID
         self.roomName = roomName
@@ -1877,6 +1974,7 @@ public struct MessageHit: ProtocolType, Equatable, Hashable {
         self.ranges = ranges
         self.mediaPath = mediaPath
         self.partial = partial
+        self.viewOnce = viewOnce
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
@@ -1896,6 +1994,7 @@ public struct MessageHit: ProtocolType, Equatable, Hashable {
         case ranges
         case mediaPath = "media_path"
         case partial
+        case viewOnce = "view_once"
     }
 
     /// The matched words as ranges of `snippet`, taken as the engine counts them: UTF-16 code units, never
@@ -1968,6 +2067,8 @@ public struct SendParams: ProtocolType, Equatable {
     public var threadRoot: String?
     /// Undo send: hold the message this long, queued, before it goes. One of `SendParams.holdValues`.
     public var holdMS: Int?
+    /// Suppress link preview generation on this send when true.
+    public var disableLinkPreview: Bool?
 
     /// The longest text the engine takes, in bytes of UTF-8.
     public static let maxTextBytes = 65_536
@@ -1975,13 +2076,20 @@ public struct SendParams: ProtocolType, Equatable {
     public static let holdValues = [0, 750, 1000, 2000, 3000, 5000, 10000]
 
     public init(roomID: String, text: String, entities: [TextEntity]? = nil, replyTo: String? = nil,
-                threadRoot: String? = nil, holdMS: Int? = nil) {
+                threadRoot: String? = nil, holdMS: Int? = nil, disableLinkPreview: Bool? = nil) {
         self.roomID = roomID
         self.text = text
         self.entities = entities
         self.replyTo = replyTo
         self.threadRoot = threadRoot
         self.holdMS = holdMS
+        self.disableLinkPreview = disableLinkPreview
+    }
+
+    public init(roomID: String, body: String, entities: [TextEntity]? = nil, replyTo: String? = nil,
+                threadRoot: String? = nil, holdMS: Int? = nil, disableLinkPreview: Bool? = nil) {
+        self.init(roomID: roomID, text: body, entities: entities, replyTo: replyTo,
+                  threadRoot: threadRoot, holdMS: holdMS, disableLinkPreview: disableLinkPreview)
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
@@ -1991,6 +2099,7 @@ public struct SendParams: ProtocolType, Equatable {
         case replyTo = "reply_to"
         case threadRoot = "thread_root"
         case holdMS = "hold_ms"
+        case disableLinkPreview = "disable_link_preview"
     }
 }
 
@@ -2063,8 +2172,85 @@ public struct Sent: ProtocolType, Equatable {
     public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
     public var eventID: String
 
+    public init(eventID: String) {
+        self.eventID = eventID
+    }
+
     enum CodingKeys: String, CodingKey, CaseIterable {
         case eventID = "event_id"
+    }
+}
+
+public typealias SendResult = Sent
+
+public struct MarkPlayedParams: ProtocolType, Equatable, Hashable, Sendable {
+    public static let protocolName = "MarkPlayedParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomID: String
+    public var eventID: String
+
+    public init(roomID: String, eventID: String) {
+        self.roomID = roomID
+        self.eventID = eventID
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomID = "room_id"
+        case eventID = "event_id"
+    }
+}
+
+public struct SendVoiceParams: ProtocolType, Equatable, Hashable, Sendable {
+    public static let protocolName = "SendVoiceParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomID: String
+    public var path: String
+    public var durationMS: Int64
+    public var waveform: [Int]?
+    public var replyTo: String?
+
+    public init(roomID: String, path: String, durationMS: Int64, waveform: [Int]? = nil,
+                replyTo: String? = nil) {
+        self.roomID = roomID
+        self.path = path
+        self.durationMS = durationMS
+        self.waveform = waveform
+        self.replyTo = replyTo
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomID = "room_id"
+        case path
+        case durationMS = "duration_ms"
+        case waveform
+        case replyTo = "reply_to"
+    }
+}
+
+public struct SendLocationParams: ProtocolType, Equatable, Hashable, Sendable {
+    public static let protocolName = "SendLocationParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomID: String
+    public var latitude: Double
+    public var longitude: Double
+    public var label: String?
+    public var replyTo: String?
+
+    public init(roomID: String, latitude: Double, longitude: Double, label: String? = nil,
+                replyTo: String? = nil) {
+        self.roomID = roomID
+        self.latitude = latitude
+        self.longitude = longitude
+        self.label = label
+        self.replyTo = replyTo
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomID = "room_id"
+        case latitude
+        case longitude
+        case label
+        case replyTo = "reply_to"
     }
 }
 
@@ -2224,6 +2410,36 @@ public struct FeatureSource: OpenValues {
     public static let known: [Self] = [.network, .stored, .none]
 }
 
+public struct FileKindFeatures: ProtocolType, Equatable, Hashable, Sendable {
+    public static let protocolName = "FileKindFeatures"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var supported: Bool
+    public var mimeTypes: [String]?
+    public var caption: Bool
+    public var maxCaptionLength: Int?
+    public var maxSize: Int64?
+    public var maxDurationSec: Int?
+
+    public init(supported: Bool, mimeTypes: [String]? = nil, caption: Bool = false,
+                maxCaptionLength: Int? = nil, maxSize: Int64? = nil, maxDurationSec: Int? = nil) {
+        self.supported = supported
+        self.mimeTypes = mimeTypes
+        self.caption = caption
+        self.maxCaptionLength = maxCaptionLength
+        self.maxSize = maxSize
+        self.maxDurationSec = maxDurationSec
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case supported
+        case mimeTypes = "mime_types"
+        case caption
+        case maxCaptionLength = "max_caption_length"
+        case maxSize = "max_size"
+        case maxDurationSec = "max_duration_sec"
+    }
+}
+
 /// What a person can do in one chat, as its network's bridge says (room.features). A greyed action says why from
 /// these, in Courier's words (MessageActions).
 public struct ChatFeatures: ProtocolType, Equatable {
@@ -2274,6 +2490,15 @@ public struct ChatFeatures: ProtocolType, Equatable {
     public var canDelete: Bool
     /// Deleting this group chat on its network also leaves the group (WhatsApp).
     public var deleteLeavesGroup: Bool
+    public var imageFeatures: FileKindFeatures?
+    public var videoFeatures: FileKindFeatures?
+    public var audioFeatures: FileKindFeatures?
+    public var voiceFeatures: FileKindFeatures?
+    public var fileFeatures: FileKindFeatures?
+    public var gifFeatures: FileKindFeatures?
+    public var stickerFeatures: FileKindFeatures?
+    public var locationSupported: Bool
+    public var linkPreviewsSupported: Bool
 
     /// A chat with nothing stored and no network to ask: only send, reply and Delete for Me.
     public static let noFeatures = ChatFeatures(reply: true, source: .none)
@@ -2286,7 +2511,11 @@ public struct ChatFeatures: ProtocolType, Equatable {
                 source: FeatureSource, canSetName: Bool = false, canSetTopic: Bool = false,
                 canSetAvatar: Bool = false, canInvite: Bool = false, canKick: Bool = false,
                 canSetAdmin: Bool = false, canLeave: Bool = false, canDelete: Bool = false,
-                deleteLeavesGroup: Bool = false) {
+                deleteLeavesGroup: Bool = false, imageFeatures: FileKindFeatures? = nil,
+                videoFeatures: FileKindFeatures? = nil, audioFeatures: FileKindFeatures? = nil,
+                voiceFeatures: FileKindFeatures? = nil, fileFeatures: FileKindFeatures? = nil,
+                gifFeatures: FileKindFeatures? = nil, stickerFeatures: FileKindFeatures? = nil,
+                locationSupported: Bool = false, linkPreviewsSupported: Bool = false) {
         self.reply = reply
         self.thread = thread
         self.replyIsThread = replyIsThread
@@ -2313,6 +2542,15 @@ public struct ChatFeatures: ProtocolType, Equatable {
         self.canLeave = canLeave
         self.canDelete = canDelete
         self.deleteLeavesGroup = deleteLeavesGroup
+        self.imageFeatures = imageFeatures
+        self.videoFeatures = videoFeatures
+        self.audioFeatures = audioFeatures
+        self.voiceFeatures = voiceFeatures
+        self.fileFeatures = fileFeatures
+        self.gifFeatures = gifFeatures
+        self.stickerFeatures = stickerFeatures
+        self.locationSupported = locationSupported
+        self.linkPreviewsSupported = linkPreviewsSupported
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
@@ -2342,6 +2580,15 @@ public struct ChatFeatures: ProtocolType, Equatable {
         case canLeave = "can_leave"
         case canDelete = "can_delete"
         case deleteLeavesGroup = "delete_leaves_group"
+        case imageFeatures = "image_features"
+        case videoFeatures = "video_features"
+        case audioFeatures = "audio_features"
+        case voiceFeatures = "voice_features"
+        case fileFeatures = "file_features"
+        case gifFeatures = "gif_features"
+        case stickerFeatures = "sticker_features"
+        case locationSupported = "location_supported"
+        case linkPreviewsSupported = "link_previews_supported"
     }
 
     public init(from decoder: Decoder) throws {
@@ -2374,6 +2621,15 @@ public struct ChatFeatures: ProtocolType, Equatable {
         canLeave = try container.decodeIfPresent(Bool.self, forKey: .canLeave) ?? false
         canDelete = try container.decodeIfPresent(Bool.self, forKey: .canDelete) ?? false
         deleteLeavesGroup = try container.decodeIfPresent(Bool.self, forKey: .deleteLeavesGroup) ?? false
+        imageFeatures = try container.decodeIfPresent(FileKindFeatures.self, forKey: .imageFeatures)
+        videoFeatures = try container.decodeIfPresent(FileKindFeatures.self, forKey: .videoFeatures)
+        audioFeatures = try container.decodeIfPresent(FileKindFeatures.self, forKey: .audioFeatures)
+        voiceFeatures = try container.decodeIfPresent(FileKindFeatures.self, forKey: .voiceFeatures)
+        fileFeatures = try container.decodeIfPresent(FileKindFeatures.self, forKey: .fileFeatures)
+        gifFeatures = try container.decodeIfPresent(FileKindFeatures.self, forKey: .gifFeatures)
+        stickerFeatures = try container.decodeIfPresent(FileKindFeatures.self, forKey: .stickerFeatures)
+        locationSupported = try container.decodeIfPresent(Bool.self, forKey: .locationSupported) ?? false
+        linkPreviewsSupported = try container.decodeIfPresent(Bool.self, forKey: .linkPreviewsSupported) ?? false
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -2405,6 +2661,15 @@ public struct ChatFeatures: ProtocolType, Equatable {
         try container.encode(canLeave, forKey: .canLeave)
         try container.encode(canDelete, forKey: .canDelete)
         try container.encode(deleteLeavesGroup, forKey: .deleteLeavesGroup)
+        try container.encodeIfPresent(imageFeatures, forKey: .imageFeatures)
+        try container.encodeIfPresent(videoFeatures, forKey: .videoFeatures)
+        try container.encodeIfPresent(audioFeatures, forKey: .audioFeatures)
+        try container.encodeIfPresent(voiceFeatures, forKey: .voiceFeatures)
+        try container.encodeIfPresent(fileFeatures, forKey: .fileFeatures)
+        try container.encodeIfPresent(gifFeatures, forKey: .gifFeatures)
+        try container.encodeIfPresent(stickerFeatures, forKey: .stickerFeatures)
+        try container.encode(locationSupported, forKey: .locationSupported)
+        try container.encode(linkPreviewsSupported, forKey: .linkPreviewsSupported)
     }
 }
 
@@ -2841,9 +3106,11 @@ public struct ScheduleParams: ProtocolType, Equatable {
     /// Unix milliseconds: after now and at most 5 years ahead.
     public var dueAt: Int64
     public var condition: ScheduleCondition
+    public var disableLinkPreview: Bool?
 
     public init(roomID: String, text: String, entities: [TextEntity]? = nil, replyTo: String? = nil,
-                threadRoot: String? = nil, dueAt: Int64, condition: ScheduleCondition) {
+                threadRoot: String? = nil, dueAt: Int64, condition: ScheduleCondition,
+                disableLinkPreview: Bool? = nil) {
         self.roomID = roomID
         self.text = text
         self.entities = entities
@@ -2851,6 +3118,7 @@ public struct ScheduleParams: ProtocolType, Equatable {
         self.threadRoot = threadRoot
         self.dueAt = dueAt
         self.condition = condition
+        self.disableLinkPreview = disableLinkPreview
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
@@ -2861,6 +3129,7 @@ public struct ScheduleParams: ProtocolType, Equatable {
         case threadRoot = "thread_root"
         case dueAt = "due_at"
         case condition
+        case disableLinkPreview = "disable_link_preview"
     }
 }
 
@@ -4021,6 +4290,9 @@ public enum ProtocolMethods {
         "room.directChat": (DirectChatParams.self, RoomResult.self),
         "message.send": (SendParams.self, Sent.self),
         "message.sendFile": (SendFileParams.self, Sent.self),
+        "message.sendVoice": (SendVoiceParams.self, Sent.self),
+        "message.sendLocation": (SendLocationParams.self, Sent.self),
+        "message.markPlayed": (MarkPlayedParams.self, Empty.self),
         "message.react": (ReactParams.self, Sent.self),
         "message.retry": (EventParams.self, Empty.self),
         "message.discard": (EventParams.self, Empty.self),
@@ -4097,6 +4369,7 @@ public enum ProtocolMethods {
         BlastMessage.self, BlastSendParams.self, BlastSendResult.self, MergedChat.self, MergeSuggestion.self,
         MergeCreateParams.self, MergeUpdateParams.self, MergeDeleteParams.self, MergeListResult.self,
         MergeSuggestResult.self,
+        FileKindFeatures.self, LinkPreviewItem.self, MarkPlayedParams.self, SendVoiceParams.self, SendLocationParams.self,
     ]
 
     /// The open-valued fields, by "Type.field", with the values this app knows.
@@ -4176,6 +4449,8 @@ public enum RPCErrorCode: Equatable, Hashable, Sendable {
     case notYours
     /// The network turned the change down.
     case networkRefused
+    /// Sending a voice note on this network needs ffmpeg to transcode to OGG Opus.
+    case needsFFmpeg
     /// A code this app does not know.
     case other(Int)
 
@@ -4206,6 +4481,7 @@ public enum RPCErrorCode: Equatable, Hashable, Sendable {
         (.alreadySent, -32025, "already_sent"),
         (.notYours, -32026, "not_yours"),
         (.networkRefused, -32027, "network_refused"),
+        (.needsFFmpeg, -32028, "needs_ffmpeg"),
     ]
 
     public init(number: Int) {

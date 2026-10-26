@@ -1,6 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import AppKit
 import CourierCore
 import SwiftUI
 
@@ -16,8 +17,13 @@ struct MessagesSettingsPane: View {
     /// every way Incognito is turned on: `HideTypingQuestion`); never the preference itself, which would skip the
     /// question.
     let conversation: ConversationModel
+    var voiceRecorder: VoiceRecorderModel? = nil
     @State private var selectedReply: QuickReply.ID?
     @State private var editing: QuickReplyEdit?
+
+    private var activeVoiceRecorder: VoiceRecorderModel {
+        voiceRecorder ?? conversation.composer.voiceRecorder
+    }
 
     var body: some View {
         Form {
@@ -45,12 +51,66 @@ struct MessagesSettingsPane: View {
                 Toggle(String(localized: "Hide deleted messages"), isOn: $preferences.hideDeletedMessages)
                     .help(String(localized: "Off, a deleted message leaves a line saying it was deleted."))
                 Toggle(String(localized: "Show chat updates in timeline"), isOn: $preferences.showChatUpdatesInTimeline)
+                Toggle(
+                    String(localized: "Disable link previews in outgoing messages"),
+                    isOn: $preferences.disableOutgoingLinkPreviews
+                )
+                Toggle(
+                    String(localized: "Load external embeds automatically"),
+                    isOn: $preferences.loadExternalEmbedsAutomatically
+                )
+                Toggle(
+                    String(localized: "Automatically play the next voice note"),
+                    isOn: $preferences.autoPlayNextVoiceNote
+                )
+                MicrophoneDevicePicker(
+                    preferences: preferences,
+                    voiceRecorder: activeVoiceRecorder
+                )
             }
+            downloads
             replies
         }
         .formStyle(.grouped)
         .frame(minHeight: 560)
         .sheet(item: $editing) { edit in QuickReplyEditor(edit: edit, quickReplies: quickReplies) }
+    }
+
+    // MARK: Downloads
+
+    private var downloads: some View {
+        Section(String(localized: "Downloads")) {
+            LabeledContent(String(localized: "Downloads location")) {
+                HStack(spacing: 8) {
+                    Text((preferences.downloadsDirectoryPath as NSString).abbreviatingWithTildeInPath)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Button(String(localized: "Choose…")) {
+                        chooseDownloadsDirectory()
+                    }
+                }
+            }
+            Toggle(
+                String(localized: "Always ask where to save files before downloading"),
+                isOn: $preferences.alwaysAskWhereToSaveFiles
+            )
+        }
+    }
+
+    private func chooseDownloadsDirectory() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = true
+        let current = (preferences.downloadsDirectoryPath as NSString).expandingTildeInPath
+        panel.directoryURL = URL(fileURLWithPath: current, isDirectory: true)
+        panel.prompt = String(localized: "Choose")
+        panel.message = String(localized: "Choose a folder for downloaded attachments")
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        preferences.downloadsDirectoryPath = url.path
     }
 
     // MARK: Privacy
@@ -228,5 +288,24 @@ private struct QuickReplyEditor: View {
         } catch {
             problem = String(localized: "That didn’t work. Try again.")
         }
+    }
+}
+
+private struct MicrophoneDevicePicker: View {
+    @ObservedObject var preferences: ComposerPreferences
+    @ObservedObject var voiceRecorder: VoiceRecorderModel
+
+    var body: some View {
+        Picker(String(localized: "Microphone"), selection: $preferences.preferredMicrophoneUID) {
+            Text(String(localized: "System Default")).tag("")
+            ForEach(voiceRecorder.availableDevices) { device in
+                Text(device.name).tag(device.uid)
+            }
+            if !preferences.preferredMicrophoneUID.isEmpty,
+               !voiceRecorder.availableDevices.contains(where: { $0.uid == preferences.preferredMicrophoneUID }) {
+                Text(preferences.preferredMicrophoneUID).tag(preferences.preferredMicrophoneUID)
+            }
+        }
+        .help(String(localized: "The microphone used when recording voice notes (⌘⇧A)."))
     }
 }

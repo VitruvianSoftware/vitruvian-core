@@ -4,6 +4,7 @@
 import AppKit
 import CourierCore
 import SwiftUI
+import UserNotifications
 import XCTest
 
 @testable import Courier
@@ -162,8 +163,17 @@ final class ViewSnapshotTests: XCTestCase {
 
     // MARK: The composer
 
-    private func composer(text: String, entities: [TextEntity] = []) -> ComposerModel {
-        let composer = ComposerModel(draftDelay: 0, sleep: { _ in }, now: { Fixture.now })
+    private func composer(
+        text: String,
+        entities: [TextEntity] = [],
+        voiceRecorder: VoiceRecorderModel? = nil
+    ) -> ComposerModel {
+        let composer = ComposerModel(
+            draftDelay: 0,
+            sleep: { _ in },
+            now: { Fixture.now },
+            voiceRecorder: voiceRecorder
+        )
         composer.open(Fixture.room)
         composer.features = Fixture.features
         composer.network = "whatsapp"
@@ -919,6 +929,1216 @@ final class ViewSnapshotTests: XCTestCase {
             .padding(14)
         })
     }
+
+    // MARK: - Part 4.5b Task 5: Inline Images, BlurHash, Galleries, Broken-Image Card & View-Once Viewer
+
+    func testEnhancedImageBlurHashErrorGalleryAndViewOnceLightAndDark() throws {
+        let blurhash = "LEHV6nWB2yk8pyo0adR*.7kCMdnj"
+        let validImagePath = try makeTestPNG(width: 320, height: 200)
+
+        // 1. Single image with a BlurHash placeholder (before decode finishes) and loaded state (with transcoded badge).
+        var placeholderEvent = Fixture.event(
+            "$img-blur",
+            mine: false,
+            ts: 10,
+            content: [
+                "msgtype": .string("m.image"),
+                "body": .string("Alpine ridge.jpg"),
+                "filename": .string("Alpine ridge.jpg"),
+                "info": .object([
+                    "mimetype": .string("image/jpeg"),
+                    "w": .int(640),
+                    "h": .int(400),
+                    "size": .int(184_320),
+                    "xyz.amorgan.blurhash": .string(blurhash),
+                ]),
+            ],
+            name: "Alice Example"
+        )
+        placeholderEvent.blurhash = blurhash
+        placeholderEvent.mediaPath = validImagePath
+        let placeholderMsg = try XCTUnwrap(Fixture.messages([placeholderEvent]).first)
+
+        check(try Snapshot.render("image-blurhash-placeholder", width: 420) {
+            EnhancedImageView(
+                message: placeholderMsg,
+                forceBlurHashPlaceholder: true,
+                onOpenLightbox: { _ in }
+            )
+            .padding(14)
+        })
+
+        var loadedEvent = placeholderEvent
+        loadedEvent.eventID = "$img-loaded"
+        loadedEvent.content = .object([
+            "msgtype": .string("m.image"),
+            "body": .string("Look at this view from the pass"),
+            "filename": .string("Alpine ridge.heic"),
+            "info": .object([
+                "mimetype": .string("image/jpeg"),
+                "w": .int(640),
+                "h": .int(400),
+                "size": .int(184_320),
+                "xyz.amorgan.blurhash": .string(blurhash),
+                "fi.courier.transcoded": .bool(true),
+            ]),
+        ])
+        let loadedMsg = try XCTUnwrap(Fixture.messages([loadedEvent]).first)
+        let preloadedImage = try XCTUnwrap(NSImage(contentsOfFile: validImagePath))
+
+        check(try Snapshot.render("image-enhanced-loaded", width: 420) {
+            EnhancedImageView(
+                message: loadedMsg,
+                preloadedImage: preloadedImage,
+                onOpenLightbox: { _ in }
+            )
+            .padding(14)
+        })
+
+        // 2. Gallery of 4 consecutive media items (including a video tile with GalleryVideoPoster play badge & duration pill).
+        let galleryEvents: [Event] = [
+            makeGalleryEvent("$gal-1", body: "photo1.jpg", filename: "photo1.jpg", msgtype: "m.image", offsetMS: 0, seq: 1, path: validImagePath, blurhash: blurhash),
+            makeGalleryEvent("$gal-2", body: "photo2.jpg", filename: "photo2.jpg", msgtype: "m.image", offsetMS: 3_000, seq: 2, path: validImagePath, blurhash: blurhash),
+            makeGalleryEvent("$gal-3", body: "clip.mp4", filename: "clip.mp4", msgtype: "m.video", offsetMS: 6_000, seq: 3, path: validImagePath, blurhash: blurhash, durationMS: 83_000),
+            makeGalleryEvent("$gal-4", body: "Trailhead at dawn", filename: "photo4.jpg", msgtype: "m.image", offsetMS: 9_000, seq: 4, path: validImagePath, blurhash: blurhash),
+        ]
+        let galleryMessages = Fixture.messages(galleryEvents)
+        XCTAssertEqual(galleryMessages.count, 1)
+        let galleryMessage = try XCTUnwrap(galleryMessages.first)
+        XCTAssertEqual(galleryMessage.galleryItems.count, 4)
+
+        check(try Snapshot.render("gallery-grid-4", width: 460) {
+            GalleryGridView(
+                message: galleryMessage,
+                preloadedImages: [
+                    "$gal-1": preloadedImage,
+                    "$gal-2": preloadedImage,
+                    "$gal-3": preloadedImage,
+                    "$gal-4": preloadedImage,
+                ],
+                onOpenLightbox: { _ in }
+            )
+            .padding(14)
+        })
+
+        // 3. Broken-image card (missing or corrupt image shows ImageErrorCard, not a crash).
+        var brokenEvent = placeholderEvent
+        brokenEvent.eventID = "$img-broken"
+        brokenEvent.mediaPath = "/nonexistent/courier-missing-image.jpg"
+        brokenEvent.thumbnailPath = nil
+        let brokenMsg = try XCTUnwrap(Fixture.messages([brokenEvent]).first)
+
+        check(try Snapshot.render("image-error-card", width: 420) {
+            EnhancedImageView(
+                message: brokenMsg,
+                forceErrorState: true,
+                onOpenLightbox: { _ in }
+            )
+            .padding(14)
+        })
+
+        // 4. View-once pill & ViewOnceSheet viewer (before and after opening), plus NSWindow.sharingType == .none check.
+        var viewOnceUnopenedEvent = placeholderEvent
+        viewOnceUnopenedEvent.eventID = "$vo-before"
+        viewOnceUnopenedEvent.viewOnce = true
+        viewOnceUnopenedEvent.played = false
+        let viewOnceUnopenedMsg = try XCTUnwrap(Fixture.messages([viewOnceUnopenedEvent]).first)
+
+        var viewOnceOpenedEvent = placeholderEvent
+        viewOnceOpenedEvent.eventID = "$vo-after"
+        viewOnceOpenedEvent.viewOnce = true
+        viewOnceOpenedEvent.played = true
+        let viewOnceOpenedMsg = try XCTUnwrap(Fixture.messages([viewOnceOpenedEvent]).first)
+
+        check(try Snapshot.render("view-once-before", width: 420) {
+            VStack(alignment: .leading, spacing: 10) {
+                ViewOnceChip(message: viewOnceUnopenedMsg, onOpen: {})
+                ViewOnceSheet(
+                    message: viewOnceUnopenedMsg,
+                    preloadedImage: preloadedImage,
+                    onMarkPlayed: {},
+                    onDismiss: {}
+                )
+            }
+            .padding(14)
+        })
+
+        check(try Snapshot.render("view-once-after", width: 420) {
+            VStack(alignment: .leading, spacing: 10) {
+                ViewOnceChip(message: viewOnceOpenedMsg, onOpen: {})
+                ViewOnceSheet(
+                    message: viewOnceOpenedMsg,
+                    preloadedImage: nil,
+                    onMarkPlayed: {},
+                    onDismiss: {}
+                )
+            }
+            .padding(14)
+        })
+
+        // Verify screenshot protection sets NSWindow.sharingType = .none and honest notice is non-empty.
+        let testWindow = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 240),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: true
+        )
+        XCTAssertTrue(ViewOnceSheet.applyScreenshotProtection(to: testWindow))
+        XCTAssertEqual(testWindow.sharingType, .none)
+        XCTAssertTrue(ViewOnceSheet.screenshotNoticeText.contains("blocked where macOS allows it"))
+        XCTAssertFalse(ViewOnceSheet.screenshotNoticeText.contains("sharingType"), "no API names in text people read")
+    }
+
+    // MARK: - Part 4.5b Task 6: Inline Video Player & Floating Picture-in-Picture Window
+
+    func testInlineVideoPlayerAndPiPViewLightAndDark() throws {
+        let blurhash = "LEHV6nWB2yk8pyo0adR*.7kCMdnj"
+        let posterPath = try makeTestPNG(width: 640, height: 360)
+        let preloadedPoster = try XCTUnwrap(NSImage(contentsOfFile: posterPath))
+
+        // 1. Local-only media rule: only local media store paths resolve to a file URL; remote URLs are refused.
+        XCTAssertNotNil(InlineVideoPlayer.localMediaURL(for: posterPath))
+        XCTAssertNil(InlineVideoPlayer.localMediaURL(for: "https://example.com/clip.mp4"))
+        XCTAssertNil(InlineVideoPlayer.localMediaURL(for: "http://example.com/clip.mp4"))
+        XCTAssertNil(InlineVideoPlayer.localMediaURL(for: "mxc://courier.local/sha256"))
+        XCTAssertNil(InlineVideoPlayer.localMediaURL(for: ""))
+
+        // 2. Autoplay rule: muted autoplay only for GIF-style videos (fi.mau.gif); real videos never autoplay.
+        XCTAssertTrue(InlineVideoPlayer.shouldAutoplayMuted(isGIF: true))
+        XCTAssertFalse(InlineVideoPlayer.shouldAutoplayMuted(isGIF: false))
+        XCTAssertEqual(
+            InlineVideoPlayer.Speed.allCases.map(\.label),
+            ["0.25×", "0.5×", "1×", "1.25×", "1.5×", "2×"]
+        )
+
+        // 3. Snapshot: InlineVideoPlayer paused with poster and duration pill.
+        check(try Snapshot.render("inline-video-poster", width: 420) {
+            InlineVideoPlayer(
+                messageID: "$vid-1",
+                roomID: Fixture.room,
+                mediaPath: posterPath,
+                thumbnailPath: posterPath,
+                blurhash: blurhash,
+                width: 640,
+                height: 360,
+                durationMS: 83_000,
+                isGIF: false,
+                onPopOutPiP: {},
+                onOpenLightbox: {},
+                preloadedPoster: preloadedPoster
+            )
+            .padding(14)
+        })
+
+        // 4. Snapshot: InlineVideoPlayer in playing state with custom transport bar controls.
+        check(try Snapshot.render("inline-video-playing-controls", width: 420) {
+            InlineVideoPlayer(
+                messageID: "$vid-1",
+                roomID: Fixture.room,
+                mediaPath: posterPath,
+                thumbnailPath: posterPath,
+                blurhash: blurhash,
+                width: 640,
+                height: 360,
+                durationMS: 83_000,
+                isGIF: false,
+                onPopOutPiP: {},
+                onOpenLightbox: {},
+                preloadedPoster: preloadedPoster,
+                initialIsPlaying: true,
+                initialElapsedMS: 28_000,
+                initialSpeed: .onePointTwoFive,
+                initialShowsControls: true
+            )
+            .padding(14)
+        })
+
+        // 5. Snapshot: PictureInPictureView floating window content in light and dark mode.
+        let pipItem = PiPVideoItem(
+            messageID: "$vid-1",
+            roomID: Fixture.room,
+            mediaPath: posterPath,
+            thumbnailPath: posterPath,
+            blurhash: blurhash,
+            title: "Alpine descent.mp4",
+            width: 640,
+            height: 360,
+            durationMS: 83_000,
+            elapsedMS: 28_000,
+            isPlaying: true
+        )
+        check(try Snapshot.render("pip-video-window", width: 360) {
+            PictureInPictureView(
+                item: pipItem,
+                preloadedPoster: preloadedPoster,
+                onTogglePlayPause: {},
+                onSeek: { _ in },
+                onReturnToChat: {},
+                onClose: {}
+            )
+            .padding(10)
+        })
+
+        // 6. Verify PictureInPictureController.shared.show(...) / close() state transitions,
+        //    chat-close survival, and quit termination.
+        let controller = PictureInPictureController.shared
+        controller.close()
+        XCTAssertNil(controller.activeItem)
+
+        // Remote URLs are rejected by PictureInPictureController.show(_:).
+        controller.show(
+            PiPVideoItem(
+                messageID: "$remote",
+                roomID: Fixture.room,
+                mediaPath: "https://example.com/remote.mp4"
+            )
+        )
+        XCTAssertNil(controller.activeItem, "PiP must never play a remote URL")
+
+        controller.show(pipItem)
+        XCTAssertEqual(controller.activeItem?.messageID, "$vid-1")
+        XCTAssertEqual(controller.activeItem?.roomID, Fixture.room)
+        let panel = try XCTUnwrap(controller.panel)
+        XCTAssertEqual(panel.level, .floating)
+        XCTAssertTrue(panel.collectionBehavior.contains(.canJoinAllSpaces))
+        XCTAssertTrue(panel.collectionBehavior.contains(.fullScreenAuxiliary))
+
+        // Closing or switching away from the chat must NOT kill a PiP video the person is watching.
+        controller.handleChatClosed(roomID: Fixture.room)
+        XCTAssertEqual(controller.activeItem?.messageID, "$vid-1", "closing the chat must not stop PiP")
+
+        // Return to Chat routes back to the video's room and message.
+        var returnedTarget: (String, String)?
+        controller.onReturnToChat = { roomID, messageID in
+            returnedTarget = (roomID, messageID)
+        }
+        controller.returnToChat()
+        XCTAssertEqual(returnedTarget?.0, Fixture.room)
+        XCTAssertEqual(returnedTarget?.1, "$vid-1")
+
+        // Quitting stops and closes PiP.
+        controller.stopForApplicationTermination()
+        XCTAssertNil(controller.activeItem)
+
+        // Re-show and verify explicit close().
+        controller.show(pipItem)
+        XCTAssertNotNil(controller.activeItem)
+        controller.close()
+        XCTAssertNil(controller.activeItem)
+
+        // 7. Plain-words check: user-facing strings never expose API names.
+        for text in InlineVideoPlayer.userVisibleStrings + PictureInPictureView.userVisibleStrings {
+            XCTAssertFalse(text.contains("AVPlayer"), "no API names in text people read: \(text)")
+            XCTAssertFalse(text.contains("NSPanel"), "no API names in text people read: \(text)")
+            XCTAssertFalse(text.contains("fi.mau.gif"), "no API names in text people read: \(text)")
+        }
+    }
+
+    // MARK: - Part 4.5b Task 7: Inline Voice-Note & Audio Player and GlobalAudioPlayerBar
+
+    func testVoiceNoteViewAndGlobalAudioPlayerBarLightAndDark() throws {
+        let waveform = [14, 28, 52, 85, 64, 40, 72, 96, 80, 48, 30, 62, 88, 70, 44, 22, 56, 78, 50, 26, 38, 66, 42, 18]
+        let audioPath = FileManager.default.temporaryDirectory
+            .appendingPathComponent("courier-snapshot-voice.ogg").path
+        try Data("OggS-snapshot".utf8).write(to: URL(fileURLWithPath: audioPath), options: .atomic)
+
+        var unplayedEvent = Fixture.event(
+            "$vn-unplayed",
+            mine: false,
+            ts: 12,
+            content: [
+                "msgtype": .string("m.audio"),
+                "body": .string("Voice message.ogg"),
+                "filename": .string("Voice message.ogg"),
+                "org.matrix.msc3245.voice": .object([:]),
+                "org.matrix.msc1767.audio": .object([
+                    "duration": .int(24_000),
+                    "waveform": .array(waveform.map { .int(Int64($0)) }),
+                ]),
+                "info": .object([
+                    "mimetype": .string("audio/ogg"),
+                    "duration": .int(24_000),
+                    "size": .int(32_768),
+                ]),
+            ],
+            name: "Alice Example"
+        )
+        unplayedEvent.mediaPath = audioPath
+        unplayedEvent.durationMS = 24_000
+        unplayedEvent.waveform = waveform
+        unplayedEvent.played = false
+        let unplayedMsg = try XCTUnwrap(Fixture.messages([unplayedEvent]).first)
+        XCTAssertEqual(unplayedMsg.kind, .voiceNote)
+        XCTAssertFalse(unplayedMsg.played)
+
+        var playedEvent = unplayedEvent
+        playedEvent.eventID = "$vn-played"
+        playedEvent.played = true
+        let playedMsg = try XCTUnwrap(Fixture.messages([playedEvent]).first)
+        XCTAssertTrue(playedMsg.played)
+
+        // 1. VoiceNoteView unplayed with waveform bars and unplayed dot.
+        let idlePlayer = AudioPlayerModel(defaults: defaults())
+        check(try Snapshot.render("voice-note-unplayed", width: 380) {
+            VoiceNoteView(
+                message: unplayedMsg,
+                chatTitle: "Saturday Hike",
+                audioPlayer: idlePlayer,
+                queueInRoom: []
+            )
+            .padding(14)
+        })
+
+        // 2. VoiceNoteView playing at 1.5× at 45% progress (mid-waveform).
+        let playingPlayer = AudioPlayerModel(defaults: defaults())
+        let activeTrack = AudioPlayerModel.Track(
+            eventID: unplayedMsg.id,
+            roomID: unplayedMsg.roomID,
+            mediaPath: audioPath,
+            senderName: "Alice Example",
+            chatTitle: "Saturday Hike",
+            durationMS: 24_000,
+            waveform: waveform
+        )
+        playingPlayer.setPreviewState(
+            track: activeTrack,
+            isPlaying: true,
+            progress: 0.45,
+            elapsedMS: 10_800,
+            speed: .onePointFive
+        )
+        check(try Snapshot.render("voice-note-playing", width: 380) {
+            VoiceNoteView(
+                message: unplayedMsg,
+                chatTitle: "Saturday Hike",
+                audioPlayer: playingPlayer,
+                queueInRoom: [activeTrack]
+            )
+            .padding(14)
+        })
+
+        // 3. VoiceNoteView played.
+        check(try Snapshot.render("voice-note-played", width: 380) {
+            VoiceNoteView(
+                message: playedMsg,
+                chatTitle: "Saturday Hike",
+                audioPlayer: idlePlayer,
+                queueInRoom: []
+            )
+            .padding(14)
+        })
+
+        // 4. GlobalAudioPlayerBar persistent floating audio bar.
+        check(try Snapshot.render("global-audio-player-bar", width: 620) {
+            GlobalAudioPlayerBar(
+                audioPlayer: playingPlayer,
+                onJumpToMessage: { _, _ in }
+            )
+            .padding(10)
+        })
+
+        // 5. Plain-words check: user-facing strings never expose API names.
+        for text in VoiceNoteView.userVisibleStrings + GlobalAudioPlayerBar.userVisibleStrings {
+            XCTAssertFalse(text.contains("AVAudioPlayer"), "no API names in text people read: \(text)")
+            XCTAssertFalse(text.contains("AVPlayer"), "no API names in text people read: \(text)")
+            XCTAssertFalse(text.contains("MSC1767"), "no API names in text people read: \(text)")
+            XCTAssertFalse(text.contains("MSC3245"), "no API names in text people read: \(text)")
+            XCTAssertFalse(text.contains("markPlayed"), "no API names in text people read: \(text)")
+        }
+    }
+
+    func testComposerVoiceRecordingBarAndMicrophonePickerLightAndDark() async throws {
+        let store = defaults()
+        let preferences = ComposerPreferences(defaults: store)
+        let devices = [
+            AudioInputDevice(uid: "built-in-mic", name: "MacBook Pro Microphone"),
+            AudioInputDevice(uid: "studio-mic", name: "Studio USB Microphone"),
+        ]
+
+        // 1. Idle composer with microphone record button.
+        let idleComposer = composer(text: "")
+        check(try Snapshot.render("composer-voice-idle", width: 620) {
+            ComposerView(
+                composer: idleComposer,
+                preferences: preferences,
+                textHeight: .constant(ComposerTextView.minimumHeight),
+                menus: ComposerMenus(sendLater: {}, createPoll: {}, pollsUnavailable: nil)
+            )
+        })
+
+        // 2. Active voice recording bar with timer, live waveform levels, BrandStopButton, cancel, and send.
+        let startTime = Date(timeIntervalSince1970: 1_700_000_000)
+        var currentTime = startTime
+        let recordingBackend = SnapshotVoiceBackend(
+            devices: devices,
+            authStatus: .authorized,
+            meterLevels: [0.18, 0.42, 0.76, 0.92, 0.64, 0.35, 0.55, 0.88, 0.72, 0.48, 0.25, 0.62],
+            durationMS: 14_000
+        )
+        let recordingRecorder = VoiceRecorderModel(backend: recordingBackend, now: { currentTime })
+        let recordingComposer = composer(text: "", voiceRecorder: recordingRecorder)
+        await recordingRecorder.start()
+        for step in 1 ... 12 {
+            currentTime = startTime.addingTimeInterval(Double(step) * 1.16)
+            recordingRecorder.sampleMeter()
+        }
+        check(try Snapshot.render("composer-voice-recording", width: 620) {
+            ComposerView(
+                composer: recordingComposer,
+                preferences: preferences,
+                textHeight: .constant(ComposerTextView.minimumHeight),
+                menus: ComposerMenus(sendLater: {}, createPoll: {}, pollsUnavailable: nil)
+            )
+        })
+
+        // 3. Review-before-send state after pressing BrandStopButton.
+        await recordingRecorder.stopForReview()
+        check(try Snapshot.render("composer-voice-review", width: 620) {
+            ComposerView(
+                composer: recordingComposer,
+                preferences: preferences,
+                textHeight: .constant(ComposerTextView.minimumHeight),
+                menus: ComposerMenus(sendLater: {}, createPoll: {}, pollsUnavailable: nil)
+            )
+        })
+
+        // 4. Permission-denied state with plain words and Open System Settings.
+        let deniedBackend = SnapshotVoiceBackend(devices: devices, authStatus: .denied)
+        let deniedRecorder = VoiceRecorderModel(backend: deniedBackend)
+        let deniedComposer = composer(text: "", voiceRecorder: deniedRecorder)
+        await deniedRecorder.start()
+        check(try Snapshot.render("composer-voice-permission-denied", width: 620) {
+            ComposerView(
+                composer: deniedComposer,
+                preferences: preferences,
+                textHeight: .constant(ComposerTextView.minimumHeight),
+                menus: ComposerMenus(sendLater: {}, createPoll: {}, pollsUnavailable: nil)
+            )
+        })
+
+        // 5. MessagesSettingsPane showing the Microphone picker.
+        preferences.preferredMicrophoneUID = "studio-mic"
+        let replies = QuickReplies(defaults: store)
+        check(try Snapshot.render("settings-messages-microphone", width: 560, height: 1040) {
+            MessagesSettingsPane(
+                preferences: preferences,
+                quickReplies: replies,
+                isEntitled: { _ in true },
+                conversation: conversation(preferences, entitled: true),
+                voiceRecorder: recordingRecorder
+            )
+        })
+
+        // Plain-words check: user-visible strings never expose API or protocol names.
+        for text in ComposerView.voiceUserVisibleStrings {
+            XCTAssertFalse(text.contains("AVAudioRecorder"), "no API names in text people read: \(text)")
+            XCTAssertFalse(text.contains("AVCaptureDevice"), "no API names in text people read: \(text)")
+            XCTAssertFalse(text.contains("NSMicrophoneUsageDescription"), "no API names in text people read: \(text)")
+            XCTAssertFalse(text.contains("sendVoice"), "no API names in text people read: \(text)")
+            XCTAssertFalse(text.contains("MSC3245"), "no API names in text people read: \(text)")
+        }
+    }
+
+    // MARK: - Part 4.5b Task 9: Inline PDFs, Rich File Cards, PendingAttachmentsStrip & FileDropOverlayView
+
+    func testInlinePDFViewFilePlaceholderAndDropOverlayLightAndDark() throws {
+        let pdfPath = try makeTwoPagePDF()
+        let imagePath = try makeTestPNG(width: 240, height: 160)
+
+        // 1. Local-only PDF rule: InlinePDFView only loads local media store files, never remote URLs.
+        XCTAssertNotNil(InlinePDFView.localPDFURL(for: pdfPath))
+        XCTAssertNil(InlinePDFView.localPDFURL(for: "https://example.com/spec.pdf"))
+        XCTAssertNil(InlinePDFView.localPDFURL(for: "mxc://courier.local/spec"))
+        XCTAssertNil(InlinePDFView.localPDFURL(for: ""))
+
+        var pdfEvent = Fixture.event(
+            "$pdf-1",
+            mine: false,
+            ts: 20,
+            content: [
+                "msgtype": .string("m.file"),
+                "body": .string("Trail-Permit-2026.pdf"),
+                "filename": .string("Trail-Permit-2026.pdf"),
+                "info": .object([
+                    "mimetype": .string("application/pdf"),
+                    "size": .int(248_576),
+                ]),
+            ],
+            name: "Alice Example"
+        )
+        pdfEvent.mediaPath = pdfPath
+        let pdfMessage = try XCTUnwrap(Fixture.messages([pdfEvent]).first)
+
+        // 2. Snapshot: InlinePDFView on Page 1 of 2 and Page 2 of 2.
+        check(try Snapshot.render("pdf-card-page-1", width: 420) {
+            InlinePDFView(message: pdfMessage, initialPageIndex: 0)
+                .padding(14)
+        })
+        check(try Snapshot.render("pdf-card-page-2", width: 420) {
+            InlinePDFView(message: pdfMessage, initialPageIndex: 1)
+                .padding(14)
+        })
+
+        // 3. Snapshot: FileAttachmentChip rich file cards (Audio, Archive, Text placeholders + local Document card).
+        let audioEvent = makeFileEvent(
+            "$file-audio",
+            filename: "Campfire-Session.flac",
+            mimeType: "audio/flac",
+            size: 14_680_064,
+            mediaPath: ""
+        )
+        let archiveEvent = makeFileEvent(
+            "$file-archive",
+            filename: "Topographic-Maps.zip",
+            mimeType: "application/zip",
+            size: 8_388_608,
+            mediaPath: ""
+        )
+        let textEvent = makeFileEvent(
+            "$file-text",
+            filename: "Packing-Checklist.txt",
+            mimeType: "text/plain",
+            size: 4_096,
+            mediaPath: pdfPath
+        )
+        let fileMessages = Fixture.messages([audioEvent, archiveEvent, textEvent])
+        XCTAssertEqual(fileMessages.count, 3)
+        XCTAssertEqual(FileAttachmentChip.Category.classify(fileName: "Campfire-Session.flac", mimeType: "audio/flac"), .audio)
+        XCTAssertEqual(FileAttachmentChip.Category.classify(fileName: "Topographic-Maps.zip", mimeType: "application/zip"), .archive)
+        XCTAssertEqual(FileAttachmentChip.Category.classify(fileName: "Packing-Checklist.txt", mimeType: "text/plain"), .text)
+        XCTAssertEqual(FileAttachmentChip.Category.classify(fileName: "Trail-Permit-2026.pdf", mimeType: "application/pdf"), .pdf)
+
+        check(try Snapshot.render("file-card", width: 420) {
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(fileMessages) { msg in
+                    FileAttachmentChip(message: msg)
+                }
+            }
+            .padding(14)
+        })
+
+        // 4. Snapshot: FileAttachmentChip showing a download in progress.
+        check(try Snapshot.render("file-card-downloading", width: 420) {
+            FileAttachmentChip(
+                message: fileMessages[2],
+                isDownloading: true
+            )
+            .padding(14)
+        })
+
+        // 5. Snapshot: PendingAttachmentsStrip including thumbnail preview and an over-limit size warning.
+        let smallAttachment = ComposerAttachment(
+            id: UUID(),
+            url: URL(fileURLWithPath: imagePath),
+            size: 184_320
+        )
+        let overLimitAttachment = ComposerAttachment(
+            id: UUID(),
+            url: URL(fileURLWithPath: pdfPath),
+            size: 30 * 1024 * 1024
+        )
+        let gmessagesFeatures = ChatFeatures(
+            reply: true,
+            source: .stored,
+            imageFeatures: FileKindFeatures(supported: true, caption: true, maxSize: 100 * 1024 * 1024),
+            fileFeatures: FileKindFeatures(supported: true, caption: true, maxSize: 25 * 1024 * 1024)
+        )
+        check(try Snapshot.render("pending-attachments-strip", width: 540) {
+            PendingAttachmentsStrip(
+                attachments: [smallAttachment, overLimitAttachment],
+                features: gmessagesFeatures,
+                network: "gmessages",
+                onRemove: { _ in }
+            )
+            .padding(14)
+        })
+
+        // 6. Snapshot: FileDropOverlayView (normal + Shift-held).
+        check(try Snapshot.render("file-drop-overlay", width: 480) {
+            VStack(spacing: 14) {
+                FileDropOverlayView(isShiftHeld: false)
+                    .frame(height: 150)
+                FileDropOverlayView(isShiftHeld: true)
+                    .frame(height: 150)
+            }
+            .padding(14)
+        })
+
+        // 7. Plain-words check: user-facing strings never expose API names.
+        let allStrings = InlinePDFView.userVisibleStrings
+            + FileAttachmentChip.userVisibleStrings
+            + FileDropOverlayView.userVisibleStrings
+        for text in allStrings {
+            XCTAssertFalse(text.contains("PDFKit"), "no API names in text people read: \(text)")
+            XCTAssertFalse(text.contains("PDFDocument"), "no API names in text people read: \(text)")
+            XCTAssertFalse(text.contains("NSWorkspace"), "no API names in text people read: \(text)")
+            XCTAssertFalse(text.contains("kLSQuarantine"), "no API names in text people read: \(text)")
+            XCTAssertFalse(text.contains("FileFeatures"), "no API names in text people read: \(text)")
+        }
+    }
+
+    func testLocationCardLinkPreviewAndEmbedConsentLightAndDark() throws {
+        let localThumbPath = try makeTestPNG(width: 240, height: 140)
+
+        // 1. Snapshot: LocationCardView with coordinate and place name.
+        let coordinate = try XCTUnwrap(
+            GeoCoordinate.parse("geo:37.7749,-122.4194;u=15", fallbackLabel: "Ferry Building, San Francisco")
+        )
+        check(try Snapshot.render("location-card", width: 360) {
+            LocationCardView(coordinate: coordinate)
+                .padding(14)
+        })
+
+        // 2. Snapshot: LinkPreviewCardView with local thumbnail.
+        let previewWithThumb = LinkPreviewItem(
+            matchedURL: "https://example.org/architecture",
+            url: "https://example.org/architecture",
+            title: "On-Device Messaging Architecture",
+            siteName: "Example Engineering",
+            description: "How local bridges deliver rich media and link previews without external requests.",
+            imagePath: localThumbPath,
+            imageWidth: 240,
+            imageHeight: 140,
+            blurhash: "LEHV6nWB2yk8pyo0adR*.7kCMdnj"
+        )
+        check(try Snapshot.render("link-preview-with-thumbnail", width: 360) {
+            LinkPreviewCardView(preview: previewWithThumb)
+                .padding(14)
+        })
+
+        // 3. Snapshot: LinkPreviewCardView without thumbnail (and rejecting any remote imagePath).
+        let previewWithoutThumb = LinkPreviewItem(
+            matchedURL: "https://example.org/notes",
+            url: "https://example.org/notes",
+            title: "Release Notes — Autumn Update",
+            siteName: "example.org",
+            description: "Summary of offline-first privacy controls, location cards, and link preview rendering.",
+            imagePath: nil
+        )
+        check(try Snapshot.render("link-preview-without-thumbnail", width: 360) {
+            LinkPreviewCardView(preview: previewWithoutThumb)
+                .padding(14)
+        })
+
+        // 4. Snapshot: EmbedConsentCard placeholder before click.
+        let descriptor = try XCTUnwrap(
+            ExternalEmbedDescriptor.match(urlString: "https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+        )
+        XCTAssertEqual(descriptor.host, "youtube.com")
+        check(try Snapshot.render("embed-consent-card", width: 360) {
+            EmbedConsentCard(
+                messageID: "$embed-1",
+                descriptor: descriptor,
+                isLoaded: false,
+                onLoadEmbed: {}
+            )
+            .padding(14)
+        })
+
+        // 5. Verify no WKWebView is created at all while isLoaded == false, and verify non-persistent store config.
+        let consentHosting = NSHostingView(
+            rootView: EmbedConsentCard(
+                messageID: "$embed-1",
+                descriptor: descriptor,
+                isLoaded: false,
+                onLoadEmbed: {}
+            )
+        )
+        consentHosting.frame = NSRect(x: 0, y: 0, width: 360, height: 180)
+        consentHosting.layoutSubtreeIfNeeded()
+        XCTAssertFalse(
+            EmbedConsentCard.containsWebView(in: consentHosting),
+            "No WKWebView may exist in the view hierarchy before the user clicks Load Embed"
+        )
+        let webConfig = SandboxedEmbedWebView.makeConfiguration()
+        XCTAssertFalse(webConfig.websiteDataStore.isPersistent, "Embed WKWebView must use a non-persistent data store")
+        XCTAssertFalse(
+            SandboxedEmbedWebView.shouldAllowNavigation(
+                targetURL: URL(string: "https://evil.example.com/phish"),
+                embedURL: descriptor.embedURL
+            ),
+            "Embed WKWebView must block navigation away from the embed URL"
+        )
+        XCTAssertTrue(
+            SandboxedEmbedWebView.shouldAllowNavigation(
+                targetURL: descriptor.embedURL,
+                embedURL: descriptor.embedURL
+            )
+        )
+
+        // 6. Plain-words check: user-facing strings never expose API names.
+        let strings = LocationCardView.userVisibleStrings
+            + LinkPreviewCardView.userVisibleStrings
+            + EmbedConsentCard.userVisibleStrings
+        for text in strings {
+            XCTAssertFalse(text.contains("MKMapSnapshotter"), "no API names in text people read: \(text)")
+            XCTAssertFalse(text.contains("WKWebView"), "no API names in text people read: \(text)")
+            XCTAssertFalse(text.contains("BeeperLinkPreview"), "no API names in text people read: \(text)")
+            XCTAssertFalse(text.contains("MessageIFrame"), "no API names in text people read: \(text)")
+            XCTAssertFalse(text.contains("m.location"), "no API names in text people read: \(text)")
+        }
+    }
+
+    private func makeFileEvent(
+        _ id: String,
+        filename: String,
+        mimeType: String,
+        size: Int64,
+        mediaPath: String
+    ) -> Event {
+        var event = Fixture.event(
+            id,
+            mine: false,
+            ts: 25,
+            content: [
+                "msgtype": .string("m.file"),
+                "body": .string(filename),
+                "filename": .string(filename),
+                "info": .object([
+                    "mimetype": .string(mimeType),
+                    "size": .int(size),
+                ]),
+            ],
+            name: "Alice Example"
+        )
+        event.mediaPath = mediaPath
+        return event
+    }
+
+    private func makeTwoPagePDF() throws -> String {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("courier-snapshot-2page-\(UUID().uuidString).pdf")
+        var mediaBox = CGRect(x: 0, y: 0, width: 360, height: 240)
+        guard let consumer = CGDataConsumer(url: url as CFURL),
+              let context = CGContext(consumer: consumer, mediaBox: &mediaBox, nil)
+        else {
+            throw SnapshotError.noBitmap("two-page-pdf")
+        }
+
+        for pageNumber in 1 ... 2 {
+            context.beginPDFPage(nil)
+            context.setFillColor(
+                pageNumber == 1
+                    ? CGColor(red: 0.94, green: 0.97, blue: 1.0, alpha: 1.0)
+                    : CGColor(red: 0.95, green: 0.99, blue: 0.95, alpha: 1.0)
+            )
+            context.fill(mediaBox)
+
+            context.setStrokeColor(CGColor(red: 0.20, green: 0.45, blue: 0.78, alpha: 1.0))
+            context.setLineWidth(4)
+            context.stroke(mediaBox.insetBy(dx: 16, dy: 16))
+
+            context.setFillColor(
+                pageNumber == 1
+                    ? CGColor(red: 0.18, green: 0.42, blue: 0.76, alpha: 1.0)
+                    : CGColor(red: 0.18, green: 0.62, blue: 0.36, alpha: 1.0)
+            )
+            if pageNumber == 1 {
+                context.fill(CGRect(x: 40, y: 120, width: 280, height: 64))
+                context.fill(CGRect(x: 40, y: 56, width: 180, height: 32))
+            } else {
+                context.fillEllipse(in: CGRect(x: 120, y: 60, width: 120, height: 120))
+            }
+            context.endPDFPage()
+        }
+        context.closePDF()
+        return url.path
+    }
+
+    private func makeGalleryEvent(
+        _ id: String,
+        body: String,
+        filename: String,
+        msgtype: String,
+        offsetMS: Int64,
+        seq: Int64,
+        path: String,
+        blurhash: String,
+        durationMS: Int64? = nil
+    ) -> Event {
+        let baseTS = Fixture.millis(15)
+        var info: [String: JSONValue] = [
+            "mimetype": .string(msgtype == "m.video" ? "video/mp4" : "image/jpeg"),
+            "w": .int(640),
+            "h": .int(480),
+            "size": .int(120_000),
+            "xyz.amorgan.blurhash": .string(blurhash),
+        ]
+        if let durationMS {
+            info["duration"] = .int(durationMS)
+        }
+        return Event(
+            eventID: id,
+            roomID: Fixture.room,
+            sender: "@alice:courier.local",
+            senderName: "Alice Example",
+            mine: false,
+            type: "m.room.message",
+            content: .object([
+                "msgtype": .string(msgtype),
+                "body": .string(body),
+                "filename": .string(filename),
+                "info": .object(info),
+            ]),
+            ts: baseTS + offsetMS,
+            seq: seq,
+            status: .sent,
+            mediaPath: path,
+            thumbnailPath: path,
+            blurhash: blurhash,
+            durationMS: durationMS
+        )
+    }
+
+    private func makeTestPNG(width: Int, height: Int) throws -> String {
+        let image = NSImage(size: NSSize(width: width, height: height), flipped: false) { rect in
+            NSColor.systemTeal.setFill()
+            rect.fill()
+            NSColor.white.withAlphaComponent(0.25).setFill()
+            NSBezierPath(ovalIn: rect.insetBy(dx: 24, dy: 24)).fill()
+            return true
+        }
+        let tiff = try XCTUnwrap(image.tiffRepresentation)
+        let rep = try XCTUnwrap(NSBitmapImageRep(data: tiff))
+        let png = try XCTUnwrap(rep.representation(using: .png, properties: [:]))
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("courier-snapshot-\(width)x\(height).png")
+        try png.write(to: url, options: .atomic)
+        return url.path
+    }
+
+    func testAttachmentCarouselAndMediaViewerWindowLightAndDark() throws {
+        let photoPath = try makeTestPNG(width: 640, height: 420)
+        let pdfPath = try makeTwoPagePDF()
+
+        let carouselItems = [
+            CarouselItem(
+                eventID: "$c1",
+                roomID: Fixture.room,
+                kind: .image,
+                mediaPath: photoPath,
+                thumbnailPath: photoPath,
+                fileName: "Trail map.jpg",
+                mimeType: "image/jpeg",
+                width: 640,
+                height: 420,
+                sender: "@alice:courier.local",
+                senderName: "Alice Example",
+                mine: false,
+                ts: Fixture.millis(20),
+                caption: "Morning view from the ridge"
+            ),
+            CarouselItem(
+                eventID: "$c2",
+                roomID: Fixture.room,
+                kind: .video,
+                mediaPath: photoPath,
+                thumbnailPath: photoPath,
+                fileName: "Campfire.mp4",
+                mimeType: "video/mp4",
+                width: 640,
+                height: 420,
+                durationMS: 14_000,
+                sender: Timeline.meUserID,
+                senderName: "You",
+                mine: true,
+                ts: Fixture.millis(10),
+                caption: "Campfire clip"
+            ),
+        ]
+
+        let carouselModel = AttachmentCarouselModel()
+        carouselModel.open(items: carouselItems, selectedEventID: "$c1")
+        carouselModel.zoomIn()
+        carouselModel.zoomIn()
+        XCTAssertEqual(carouselModel.zoomScale, 1.5, accuracy: 0.001)
+
+        try Snapshot.render("attachment-carousel-lightbox", width: 820, height: 560) {
+            AttachmentCarouselOverlay(
+                model: carouselModel,
+                now: { Fixture.now },
+                onGoToMessage: { _ in },
+                onReact: { _, _ in },
+                onReply: { _ in },
+                onCopyImage: { _ in },
+                onQuickLook: { _ in },
+                onDownload: { _ in },
+                onClose: {}
+            )
+        }
+
+        let mediaHits = [
+            MediaHit(
+                eventID: "$mv-1",
+                roomID: Fixture.room,
+                roomName: "Weekend Trail Crew",
+                network: "whatsapp",
+                isDirect: false,
+                place: .inbox,
+                sender: "@alice:courier.local",
+                senderName: "Alice Example",
+                mine: false,
+                ts: Fixture.millis(12),
+                seq: 12,
+                kind: .image,
+                snippet: "Trail map.jpg",
+                mediaPath: photoPath
+            ),
+            MediaHit(
+                eventID: "$mv-2",
+                roomID: Fixture.room,
+                roomName: "Weekend Trail Crew",
+                network: "whatsapp",
+                isDirect: false,
+                place: .inbox,
+                sender: Timeline.meUserID,
+                senderName: "You",
+                mine: true,
+                ts: Fixture.millis(8),
+                seq: 13,
+                kind: .video,
+                snippet: "Campfire.mp4",
+                mediaPath: photoPath
+            ),
+        ]
+
+        let linkHits = [
+            MediaHit(
+                eventID: "$mv-link-1",
+                roomID: Fixture.room,
+                roomName: "Weekend Trail Crew",
+                network: "whatsapp",
+                isDirect: false,
+                place: .inbox,
+                sender: "@alice:courier.local",
+                senderName: "Alice Example",
+                mine: false,
+                ts: Fixture.millis(15),
+                seq: 10,
+                kind: .text,
+                snippet: "Trail Conditions & Permit Guide https://example.com/trail-guide",
+                mediaPath: ""
+            ),
+        ]
+
+        let docHits = [
+            MediaHit(
+                eventID: "$mv-doc-1",
+                roomID: Fixture.room,
+                roomName: "Weekend Trail Crew",
+                network: "whatsapp",
+                isDirect: false,
+                place: .inbox,
+                sender: "@alice:courier.local",
+                senderName: "Alice Example",
+                mine: false,
+                ts: Fixture.millis(18),
+                seq: 9,
+                kind: .file,
+                snippet: "Itinerary.pdf",
+                mediaPath: pdfPath
+            ),
+            MediaHit(
+                eventID: "$mv-doc-2",
+                roomID: Fixture.room,
+                roomName: "Weekend Trail Crew",
+                network: "whatsapp",
+                isDirect: false,
+                place: .inbox,
+                sender: Timeline.meUserID,
+                senderName: "You",
+                mine: true,
+                ts: Fixture.millis(5),
+                seq: 14,
+                kind: .audio,
+                snippet: "Trailhead directions.m4a",
+                mediaPath: pdfPath
+            ),
+        ]
+
+        let appModel = offlineApp()
+
+        let mediaTabViewer = MediaViewerModel(appModel: appModel, roomID: Fixture.room, initialItems: mediaHits)
+        try Snapshot.render("media-viewer-media-tab", width: 760, height: 520) {
+            MediaViewerView(
+                model: mediaTabViewer,
+                chatTitle: "Weekend Trail Crew",
+                now: { Fixture.now },
+                onOpenLightbox: { _ in },
+                onGoToMessage: { _ in },
+                onDownloadSelected: {},
+                onDeleteSelected: { _ in }
+            )
+        }
+
+        let linksTabViewer = MediaViewerModel(appModel: appModel, roomID: Fixture.room, initialItems: linkHits)
+        linksTabViewer.tab = .links
+        try Snapshot.render("media-viewer-links-tab", width: 760, height: 520) {
+            MediaViewerView(
+                model: linksTabViewer,
+                chatTitle: "Weekend Trail Crew",
+                now: { Fixture.now },
+                onOpenLightbox: { _ in },
+                onGoToMessage: { _ in },
+                onDownloadSelected: {},
+                onDeleteSelected: { _ in }
+            )
+        }
+
+        let docsTabViewer = MediaViewerModel(appModel: appModel, roomID: Fixture.room, initialItems: docHits)
+        docsTabViewer.tab = .docs
+        docsTabViewer.toggleSelected("$mv-doc-1")
+        try Snapshot.render("media-viewer-docs-tab", width: 760, height: 520) {
+            MediaViewerView(
+                model: docsTabViewer,
+                chatTitle: "Weekend Trail Crew",
+                now: { Fixture.now },
+                onOpenLightbox: { _ in },
+                onGoToMessage: { _ in },
+                onDownloadSelected: {},
+                onDeleteSelected: { _ in }
+            )
+        }
+
+        // Plain-words check: user-facing labels must never contain protocol/API identifiers.
+        let visibleStrings = (
+            MediaViewerModel.Tab.allCases.map(\.rawValue)
+                + MediaViewerModel.SentByFilter.allCases.map(\.rawValue)
+                + MediaViewerModel.SortOrder.allCases.map(\.rawValue)
+                + AttachmentCarouselOverlay.actionTitles
+                + MediaViewerView.actionTitles
+        ).joined(separator: " ")
+        for forbidden in ["m.room", "m.image", "m.video", "m.file", "search.query", "message.deleteForMe", "com.beeper"] {
+            XCTAssertFalse(visibleStrings.contains(forbidden), "User-facing text must not expose API name \(forbidden)")
+        }
+    }
+
+    func testViewOnceSheetPlaysVideoAndVoiceAndNeverMarksPlayedOnLoadFailure() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("courier-vo-test-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let videoFile = tempDir.appendingPathComponent("clip.mp4")
+        try Data([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x6D, 0x70, 0x34, 0x32]).write(to: videoFile)
+        let voiceFile = tempDir.appendingPathComponent("note.m4a")
+        try Data([0x00, 0x00, 0x00, 0x1C, 0x66, 0x74, 0x79, 0x70, 0x4D, 0x34, 0x41, 0x20]).write(to: voiceFile)
+
+        var videoEvent = Fixture.event(
+            "$vo-video",
+            mine: false,
+            ts: 10,
+            content: [
+                "msgtype": .string("m.video"),
+                "body": .string("clip.mp4"),
+                "info": .object(["mimetype": .string("video/mp4")]),
+            ],
+            name: "Alice Example"
+        )
+        videoEvent.mediaPath = videoFile.path
+        videoEvent.durationMS = 4_000
+        videoEvent.viewOnce = true
+        let videoMsg = try XCTUnwrap(Fixture.messages([videoEvent]).first)
+
+        var voiceEvent = Fixture.event(
+            "$vo-voice",
+            mine: false,
+            ts: 20,
+            content: [
+                "msgtype": .string("m.audio"),
+                "body": .string("note.m4a"),
+                "org.matrix.msc3245.voice": .object([:]),
+                "info": .object(["mimetype": .string("audio/mp4")]),
+            ],
+            name: "Alice Example"
+        )
+        voiceEvent.mediaPath = voiceFile.path
+        voiceEvent.durationMS = 3_000
+        voiceEvent.waveform = [20, 50, 80, 40]
+        voiceEvent.viewOnce = true
+        let voiceMsg = try XCTUnwrap(Fixture.messages([voiceEvent]).first)
+
+        var missingEvent = Fixture.event(
+            "$vo-missing",
+            mine: false,
+            ts: 30,
+            content: [
+                "msgtype": .string("m.image"),
+                "body": .string("gone.jpg"),
+                "info": .object(["mimetype": .string("image/jpeg")]),
+            ],
+            name: "Alice Example"
+        )
+        missingEvent.mediaPath = tempDir.appendingPathComponent("does-not-exist.jpg").path
+        missingEvent.viewOnce = true
+        let missingMsg = try XCTUnwrap(Fixture.messages([missingEvent]).first)
+
+        XCTAssertTrue(ViewOnceSheet.canLoadMedia(for: videoMsg), "ViewOnceSheet must support view-once video")
+        XCTAssertTrue(ViewOnceSheet.canLoadMedia(for: voiceMsg), "ViewOnceSheet must support view-once voice note")
+        XCTAssertFalse(ViewOnceSheet.canLoadMedia(for: missingMsg), "missing file must fail to load")
+        XCTAssertFalse(
+            ViewOnceSheet.shouldMarkPlayed(message: missingMsg, didLoadMedia: false),
+            "ViewOnceSheet must NEVER mark played when media failed to load"
+        )
+        XCTAssertTrue(
+            ViewOnceSheet.shouldMarkPlayed(message: videoMsg, didLoadMedia: true),
+            "ViewOnceSheet marks played after media loaded"
+        )
+    }
+
+    func testInlinePDFViewCachesParsedDocumentPerPath() throws {
+        let pdfPath = try makeTwoPagePDF()
+        defer { try? FileManager.default.removeItem(atPath: pdfPath) }
+
+        InlinePDFDocumentCache.shared.resetForTests()
+        let first = InlinePDFDocumentCache.shared.document(atPath: pdfPath)
+        let second = InlinePDFDocumentCache.shared.document(atPath: pdfPath)
+        XCTAssertNotNil(first)
+        XCTAssertTrue(first === second, "repeated lookups for the same path must return the cached PDFDocument instance")
+        XCTAssertEqual(InlinePDFDocumentCache.shared.parseCount, 1, "PDF must be parsed only once per path")
+    }
+
+    func testNotifierAttachmentSetsTypeHintFromMIMEAndCleansUpTempDirectory() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("courier-notif-src-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        // Content-addressed blob path with NO file extension, matching media.Store on disk.
+        let extensionlessBlob = tempDir.appendingPathComponent("ab12cd34ef56")
+        let pngRep = try XCTUnwrap(
+            NSBitmapImageRep(
+                bitmapDataPlanes: nil,
+                pixelsWide: 8,
+                pixelsHigh: 8,
+                bitsPerSample: 8,
+                samplesPerPixel: 4,
+                hasAlpha: true,
+                isPlanar: false,
+                colorSpaceName: .deviceRGB,
+                bytesPerRow: 0,
+                bitsPerPixel: 0
+            )
+        )
+        let pngData = try XCTUnwrap(pngRep.representation(using: .png, properties: [:]))
+        try pngData.write(to: extensionlessBlob)
+
+        let prepared = try XCTUnwrap(
+            Notifier.prepareAttachment(
+                from: extensionlessBlob.path,
+                identifier: "$evt-png",
+                mimeType: "image/png"
+            )
+        )
+        let typeHint = prepared.options[UNNotificationAttachmentOptionsTypeHintKey] as? String
+        XCTAssertEqual(typeHint, "public.png", "type hint must be derived from PNG MIME / magic rather than assuming JPEG")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: prepared.tempDirectory.path))
+
+        prepared.cleanup()
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: prepared.tempDirectory.path),
+            "cleanup must remove the courier-notif-* temporary directory"
+        )
+    }
 }
 
 /// A sign-in caller whose every sign-in finishes at once with `finish`.
@@ -940,4 +2160,43 @@ private struct SnapshotCredentials: CredentialStore {
     func read(account: String) throws -> String? { nil }
     func write(_ value: String, account: String) throws {}
     func delete(account: String) throws {}
+}
+
+private final class SnapshotVoiceBackend: VoiceRecordingBackend, @unchecked Sendable {
+    private let devices: [AudioInputDevice]
+    private let authStatus: MicrophoneAuthStatus
+    private let meterLevels: [Float]
+    private let durationMS: Int
+    private var index = 0
+    private let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("snapshot-voice.m4a")
+
+    init(
+        devices: [AudioInputDevice] = [],
+        authStatus: MicrophoneAuthStatus = .authorized,
+        meterLevels: [Float] = [0.4],
+        durationMS: Int = 5000
+    ) {
+        self.devices = devices
+        self.authStatus = authStatus
+        self.meterLevels = meterLevels
+        self.durationMS = durationMS
+    }
+
+    func availableDevices() -> [AudioInputDevice] { devices }
+    func authorizationStatus() -> MicrophoneAuthStatus { authStatus }
+    func requestAccess() async -> Bool { authStatus == .authorized }
+    func startRecording(deviceUID: String?) async throws -> URL {
+        index = 0
+        return tempURL
+    }
+    func currentMeterLevel() -> Float {
+        guard !meterLevels.isEmpty else { return 0 }
+        let level = meterLevels[min(index, meterLevels.count - 1)]
+        index += 1
+        return level
+    }
+    func stopRecording() async throws -> RecordedVoiceNote {
+        RecordedVoiceNote(url: tempURL, durationMS: durationMS, waveform: [])
+    }
+    func cancelRecording() async {}
 }

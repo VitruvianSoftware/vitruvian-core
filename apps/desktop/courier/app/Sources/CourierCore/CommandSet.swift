@@ -217,7 +217,8 @@ public enum CommandSet {
         searchChatInfo: @escaping @MainActor () -> Void = {},
         toggleCalendar: @escaping @MainActor () -> Void = {},
         showSenderCard: @escaping @MainActor () -> Void = {},
-        newGroupOrBlast: @escaping @MainActor () -> Void = {}
+        newGroupOrBlast: @escaping @MainActor () -> Void = {},
+        openMediaViewer: @escaping @MainActor () -> Void = {}
     ) -> [CourierCommand] {
         [
             CourierCommand(
@@ -260,7 +261,47 @@ public enum CommandSet {
                 isEnabled: { true },
                 run: newGroupOrBlast
             ),
+            mediaViewer(openMediaViewer: openMediaViewer),
         ]
+    }
+
+    /// `command Media viewer` (`id: "media.viewer"`, `title: "Media viewer"`): opens the Media Viewer window.
+    @MainActor
+    public static func mediaViewer(
+        openMediaViewer: @escaping @MainActor () -> Void = {}
+    ) -> CourierCommand {
+        CourierCommand(
+            id: "media.viewer",
+            title: String(localized: "Media viewer"),
+            keys: nil,
+            confirmation: nil,
+            isEnabled: { true },
+            run: openMediaViewer
+        )
+    }
+
+    /// `hotkey Message: Record Audio` (`⌘⇧A`): starts or stops recording a voice note in the active composer.
+    @MainActor
+    public static func recordAudio(_ composer: ComposerModel) -> CourierCommand {
+        CourierCommand(
+            id: "hotkey Message: Record Audio",
+            title: String(localized: "Record Voice Note"),
+            keys: "⌘⇧A",
+            confirmation: nil,
+            isEnabled: {
+                composer.roomID != nil && (
+                    composer.voiceRecorder.isRecordingOrReviewing || composer.features.supportsVoiceSend
+                )
+            }
+        ) {
+            Task {
+                if composer.voiceRecorder.isRecordingOrReviewing {
+                    await composer.voiceRecorder.stopAndSend(using: composer)
+                } else {
+                    await composer.startVoiceRecording()
+                }
+            }
+        }
     }
 
     /// Something in the space shown is unread. The bar's count says so for the whole space; the chats loaded say so

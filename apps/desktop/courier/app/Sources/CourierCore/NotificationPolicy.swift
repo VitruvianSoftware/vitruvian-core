@@ -47,15 +47,18 @@ public struct NotificationContent: Equatable, Sendable {
     public let body: String
     /// Which buttons it carries.
     public let category: NotificationCategory
+    /// Local path of a thumbnail or image/video/sticker attachment to show on the notification; nil for view-once media.
+    public let attachmentPath: String?
 
     public init(eventID: String, roomID: String, title: String, subtitle: String?, body: String,
-                category: NotificationCategory = .message) {
+                category: NotificationCategory = .message, attachmentPath: String? = nil) {
         self.eventID = eventID
         self.roomID = roomID
         self.title = title
         self.subtitle = subtitle
         self.body = body
         self.category = category
+        self.attachmentPath = attachmentPath
     }
 
     /// Notifications of one chat are stacked together.
@@ -205,7 +208,8 @@ public enum NotificationPolicy {
         let sender = event.senderName.trimmingCharacters(in: .whitespaces)
         return NotificationContent(
             eventID: event.eventID, roomID: event.roomID, title: name,
-            subtitle: room.isDirect || sender.isEmpty ? nil : sender, body: body(of: event))
+            subtitle: room.isDirect || sender.isEmpty ? nil : sender, body: body(of: event),
+            attachmentPath: attachmentPath(of: event))
     }
 
     /// What a chat says when a reply typed in a notification could not be sent: the text is waiting in the chat.
@@ -240,6 +244,15 @@ public enum NotificationPolicy {
         let text = shown.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let label = label(of: shown.kind) else { return truncated(text) }
         return text.isEmpty ? label.title : label.title + " " + truncated(text)
+    }
+
+    private static func attachmentPath(of event: Event) -> String? {
+        guard event.viewOnce != true else { return nil }
+        let shown = Timeline.summary(of: event)
+        guard shown.kind == .image || shown.kind == .video || shown.kind == .sticker else { return nil }
+        if let thumb = event.thumbnailPath, !thumb.isEmpty { return thumb }
+        if !event.mediaPath.isEmpty { return event.mediaPath }
+        return nil
     }
 
     private static func label(of kind: MessageKind) -> PreviewLabel? {

@@ -33,10 +33,12 @@ go_library(
     visibility = ["//apps/desktop/courier/engine:__subpackages__"],
     deps = [
         "//apps/desktop/courier/engine/internal/ids",
+        "//apps/desktop/courier/engine/internal/media",
         "//apps/desktop/courier/engine/internal/searchtext",
         "//apps/desktop/courier/engine/internal/sqlite",
         "@com_github_rs_zerolog//:zerolog",
         "@fi_mau_go_util//dbutil",
+        "@net_maunium_go_mautrix//id",
     ],
 )
 
@@ -73,6 +75,7 @@ go_test(
     ],
     embed = [":store"],
     deps = [
+        "//apps/desktop/courier/engine/internal/media",
         "//apps/desktop/courier/engine/internal/searchtext",
         "//apps/desktop/courier/engine/internal/sqlite",
         "//apps/desktop/courier/engine/internal/store/storetest",

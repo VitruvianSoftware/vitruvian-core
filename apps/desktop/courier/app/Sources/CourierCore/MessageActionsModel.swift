@@ -197,6 +197,8 @@ public final class MessageActionsModel: ObservableObject {
             request = .history(messageID: messageID, source: inPane ? .thread : .chat)
         case .markUnread:
             await conversation.markUnread(from: messageID)
+        case .markAsPlayed:
+            await conversation.markMediaPlayed(eventID: messageID, roomID: message.roomID)
         case .replyPrivately:
             await conversation.replyPrivately(to: messageID)
         }

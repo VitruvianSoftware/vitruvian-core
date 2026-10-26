@@ -220,7 +220,13 @@ func (a *Actions) scheduledContent(ctx context.Context, roomID, network, text st
 	if err != nil {
 		return nil, err
 	}
-	return withSource(c, Source{Text: text, Entities: o.Entities, ReplyTo: o.ReplyTo, ThreadRoot: o.ThreadRoot})
+	return withSource(c, Source{
+		Text:               text,
+		Entities:           o.Entities,
+		ReplyTo:            o.ReplyTo,
+		ThreadRoot:         o.ThreadRoot,
+		DisableLinkPreview: o.DisableLinkPreview,
+	})
 }
 
 // Schedule schedules a text message to be sent at due (after now, at most 5 years ahead) with condition
@@ -279,7 +285,7 @@ func (a *Actions) UpdateScheduled(ctx context.Context, id int64, due *time.Time,
 		if !ok {
 			return store.Scheduled{}, store.ErrNotFound
 		}
-		o := SendOptions{Entities: src.Entities, ReplyTo: src.ReplyTo, ThreadRoot: src.ThreadRoot}
+		o := SendOptions{Entities: src.Entities, ReplyTo: src.ReplyTo, ThreadRoot: src.ThreadRoot, DisableLinkPreview: src.DisableLinkPreview}
 		if content, err = a.scheduledContent(ctx, sc.RoomID, room.Network, src.Text, o); err != nil {
 			return store.Scheduled{}, err
 		}

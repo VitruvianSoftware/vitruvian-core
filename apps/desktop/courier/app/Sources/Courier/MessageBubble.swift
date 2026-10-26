@@ -48,6 +48,34 @@ struct MessageActions {
     var now: () -> Date = Date.init
     /// Local calendar bridge used when clicking a detected date in a message bubble.
     var calendarBridge: CalendarBridge? = nil
+    /// Opens an image or gallery tile in the in-app lightbox instead of an external app.
+    var openLightbox: (String) -> Void = { _ in }
+    /// Opens an unopened view-once message in `ViewOnceSheet`.
+    var openViewOnce: (TimelineMessage) -> Void = { _ in }
+    /// Shared voice-note & audio player model.
+    var audioPlayer: AudioPlayerModel? = nil
+    /// Title of the chat a message belongs to, for `VoiceNoteView` and `GlobalAudioPlayerBar`.
+    var chatTitle: (TimelineMessage) -> String = { _ in "" }
+    /// Consecutive voice-note queue starting at the given message ID in the same chat.
+    var voiceNoteQueue: (String) -> [AudioPlayerModel.Track] = { _ in [] }
+    /// Whether external media embeds load automatically without click-to-load consent.
+    var loadExternalEmbedsAutomatically = false
+    /// Pops a video message out into the floating Picture-in-Picture window.
+    var popOutPiP: @MainActor (TimelineMessage) -> Void = { message in
+        PictureInPictureController.shared.show(
+            PiPVideoItem(
+                messageID: message.id,
+                roomID: message.roomID,
+                mediaPath: message.mediaPath,
+                thumbnailPath: message.thumbnailPath,
+                blurhash: message.blurhash,
+                title: message.fileName.isEmpty ? message.senderName : message.fileName,
+                width: message.width,
+                height: message.height,
+                durationMS: message.durationMS
+            )
+        )
+    }
 }
 
 /// What the message rows show that is no model's: which messages have their edits open below them, the versions
@@ -57,6 +85,7 @@ final class MessageUI: ObservableObject {
     @Published var historyOpen: Set<String> = []
     @Published var versions: [String: [Version]] = [:]
     @Published var revealed: Set<String> = []
+    @Published var loadedEmbeds: Set<String> = []
     /// Reads a message's versions (message.history).
     var history: (String) async -> [Version] = { _ in [] }
     private var reading: Set<String> = []
@@ -478,6 +507,20 @@ struct MessageRowView: View {
             VStack(alignment: .leading, spacing: 5) {
                 if let reply = message.reply { QuoteView(reply: reply, onBubble: message.mine) }
                 content
+                if message.kind != .deleted && message.kind != .undecryptable {
+                    ForEach(Array(message.linkPreviews.enumerated()), id: \.offset) { _, preview in
+                        LinkPreviewCardView(preview: preview, onBubble: message.mine)
+                    }
+                    if let embed = ExternalEmbedDescriptor.first(in: message) {
+                        EmbedConsentCard(
+                            messageID: message.id,
+                            descriptor: embed,
+                            isLoaded: actions.loadExternalEmbedsAutomatically || ui.loadedEmbeds.contains(message.id),
+                            onBubble: message.mine,
+                            onLoadEmbed: { ui.loadedEmbeds.insert(message.id) }
+                        )
+                    }
+                }
             }
             .accessibilityElement(children: message.kind == .poll ? .contain : .combine)
             // A poll is a group of its option buttons, summed up as "who: question".
@@ -485,8 +528,8 @@ struct MessageRowView: View {
             if message.isEdited { editedButton }
         }
         .foregroundStyle(foreground)
-        .padding(.horizontal, message.kind == .image || message.kind == .sticker ? 4 : 11)
-        .padding(.vertical, message.kind == .image || message.kind == .sticker ? 4 : 7)
+        .padding(.horizontal, message.kind == .image || message.kind == .sticker || message.kind == .video ? 4 : 11)
+        .padding(.vertical, message.kind == .image || message.kind == .sticker || message.kind == .video ? 4 : 7)
         .background(RoundedRectangle(cornerRadius: 14).fill(fill))
         .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(isFailed ? Color.red : .clear, lineWidth: 1))
         // Held for undo send: dimmed until it goes.
@@ -518,34 +561,82 @@ struct MessageRowView: View {
 
     @ViewBuilder
     private var content: some View {
-        switch message.kind {
-        case .deleted:
-            Label(String(localized: "This message was deleted"), systemImage: "trash")
-                .font(.callout.italic())
-                .foregroundStyle(foreground.opacity(0.75))
-        case .undecryptable:
-            Label(String(localized: "Waiting for this message to be decrypted"), systemImage: "lock")
-                .font(.callout.italic())
-                .foregroundStyle(foreground.opacity(0.75))
-        case .image, .sticker:
-            InlineImage(message: message)
+        if message.viewOnce {
+            ViewOnceChip(message: message) {
+                actions.openViewOnce(message)
+            }
             caption
-        case .video, .voiceNote, .file:
-            FileAttachmentChip(message: message)
+        } else if !message.galleryItems.isEmpty {
+            GalleryGridView(message: message, onOpenLightbox: actions.openLightbox)
             caption
-        case .emote:
-            Text(LinkedText.attributed("* \(message.senderName) \(message.body)", now: actions.now()))
-                .italic()
-                .fixedSize(horizontal: false, vertical: true)
-        case .text, .notice:
-            RichTextView(rich: message.rich, onBubble: message.mine, revealed: ui.revealedBinding(message.id),
-                         italic: message.kind == .notice, now: actions.now())
-        case .poll:
-            if let poll = message.poll {
-                PollView(poll: poll, onBubble: message.mine) { actions.vote(message.id, $0) }
-            } else {
-                Label(message.body, systemImage: "chart.bar")
+        } else {
+            switch message.kind {
+            case .deleted:
+                Label(String(localized: "This message was deleted"), systemImage: "trash")
+                    .font(.callout.italic())
+                    .foregroundStyle(foreground.opacity(0.75))
+            case .undecryptable:
+                Label(String(localized: "Waiting for this message to be decrypted"), systemImage: "lock")
+                    .font(.callout.italic())
+                    .foregroundStyle(foreground.opacity(0.75))
+            case .image, .sticker:
+                EnhancedImageView(message: message, onOpenLightbox: actions.openLightbox)
+                caption
+            case .video:
+                InlineVideoPlayer(
+                    messageID: message.id,
+                    roomID: message.roomID,
+                    mediaPath: message.mediaPath,
+                    thumbnailPath: message.thumbnailPath,
+                    blurhash: message.blurhash,
+                    width: message.width,
+                    height: message.height,
+                    durationMS: message.durationMS,
+                    isGIF: message.isGIF,
+                    onPopOutPiP: { actions.popOutPiP(message) },
+                    onOpenLightbox: { actions.openLightbox(message.id) }
+                )
+                caption
+            case .voiceNote:
+                VoiceNoteView(
+                    message: message,
+                    chatTitle: actions.chatTitle(message),
+                    audioPlayer: actions.audioPlayer ?? AudioPlayerModel(),
+                    queueInRoom: actions.voiceNoteQueue(message.id)
+                )
+                caption
+            case .file:
+                if InlinePDFView.canDisplay(message) {
+                    InlinePDFView(message: message)
+                } else {
+                    FileAttachmentChip(message: message)
+                }
+                caption
+            case .location:
+                if let geoURI = message.geoURI,
+                   let coordinate = GeoCoordinate.parse(geoURI, fallbackLabel: message.body) {
+                    LocationCardView(coordinate: coordinate, onBubble: message.mine)
+                } else {
+                    Label(
+                        message.body.isEmpty ? (message.geoURI ?? String(localized: "Location")) : message.body,
+                        systemImage: "mappin.and.ellipse"
+                    )
                     .fixedSize(horizontal: false, vertical: true)
+                }
+            case .emote:
+                Text(LinkedText.attributed("* \(message.senderName) \(message.body)", now: actions.now()))
+                    .italic()
+                    .fixedSize(horizontal: false, vertical: true)
+            case .text, .notice:
+                RichTextView(rich: message.rich, onBubble: message.mine, revealed: ui.revealedBinding(message.id),
+                             italic: message.kind == .notice, now: actions.now())
+            case .poll:
+                if let poll = message.poll {
+                    PollView(poll: poll, onBubble: message.mine) { actions.vote(message.id, $0) }
+                } else {
+                    Label(message.body, systemImage: "chart.bar")
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
     }
@@ -555,8 +646,8 @@ struct MessageRowView: View {
         if !message.rich.text.isEmpty {
             RichTextView(rich: message.rich, onBubble: message.mine, revealed: ui.revealedBinding(message.id),
                          now: actions.now())
-                .padding(.horizontal, message.kind == .image || message.kind == .sticker ? 7 : 0)
-                .padding(.bottom, message.kind == .image || message.kind == .sticker ? 3 : 0)
+                .padding(.horizontal, message.kind == .image || message.kind == .sticker || message.kind == .video ? 7 : 0)
+                .padding(.bottom, message.kind == .image || message.kind == .sticker || message.kind == .video ? 3 : 0)
         }
     }
 

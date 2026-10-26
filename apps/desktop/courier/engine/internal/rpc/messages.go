@@ -151,6 +151,15 @@ type chatFeatures struct {
 	CanLeave               bool                      `json:"can_leave"`
 	CanDelete              bool                      `json:"can_delete"`
 	DeleteLeavesGroup      bool                      `json:"delete_leaves_group"`
+	ImageFeatures          *actions.FileKindFeatures `json:"image_features,omitempty"`
+	VideoFeatures          *actions.FileKindFeatures `json:"video_features,omitempty"`
+	AudioFeatures          *actions.FileKindFeatures `json:"audio_features,omitempty"`
+	VoiceFeatures          *actions.FileKindFeatures `json:"voice_features,omitempty"`
+	FileFeatures           *actions.FileKindFeatures `json:"file_features,omitempty"`
+	GIFFeatures            *actions.FileKindFeatures `json:"gif_features,omitempty"`
+	StickerFeatures        *actions.FileKindFeatures `json:"sticker_features,omitempty"`
+	LocationSupported      bool                      `json:"location_supported"`
+	LinkPreviewsSupported  bool                      `json:"link_previews_supported"`
 }
 
 func (d *Deps) toChatFeatures(ctx context.Context, roomID string, f actions.Features) (chatFeatures, error) {
@@ -165,6 +174,10 @@ func (d *Deps) toChatFeatures(ctx context.Context, roomID string, f actions.Feat
 		CanSetName: f.CanSetName, CanSetTopic: f.CanSetTopic, CanSetAvatar: f.CanSetAvatar,
 		CanInvite: f.CanInvite, CanKick: f.CanKick, CanSetAdmin: f.CanSetAdmin,
 		CanLeave: f.CanLeave, CanDelete: f.CanDelete, DeleteLeavesGroup: f.DeleteLeavesGroup,
+		ImageFeatures: f.ImageFeatures, VideoFeatures: f.VideoFeatures, AudioFeatures: f.AudioFeatures,
+		VoiceFeatures: f.VoiceFeatures, FileFeatures: f.FileFeatures, GIFFeatures: f.GIFFeatures,
+		StickerFeatures: f.StickerFeatures, LocationSupported: f.LocationSupported,
+		LinkPreviewsSupported: f.LinkPreviewsSupported,
 	}
 	if f.Poll != nil {
 		out.Poll = &pollFeaturesJSON{MaxOptions: f.Poll.MaxOptions, OptionMaxLength: f.Poll.OptionMaxLength}
@@ -633,13 +646,14 @@ func toScheduled(sc store.Scheduled) scheduledJSON {
 
 func messageSchedule(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
 	var p struct {
-		RoomID     *string           `json:"room_id"`
-		Text       *string           `json:"text"`
-		Entities   []richtext.Entity `json:"entities"`
-		ReplyTo    string            `json:"reply_to"`
-		ThreadRoot string            `json:"thread_root"`
-		DueAt      *int64            `json:"due_at"`
-		Condition  *string           `json:"condition"`
+		RoomID             *string           `json:"room_id"`
+		Text               *string           `json:"text"`
+		Entities           []richtext.Entity `json:"entities"`
+		ReplyTo            string            `json:"reply_to"`
+		ThreadRoot         string            `json:"thread_root"`
+		DueAt              *int64            `json:"due_at"`
+		Condition          *string           `json:"condition"`
+		DisableLinkPreview *bool             `json:"disable_link_preview"`
 	}
 	if err := decode(raw, &p); err != nil {
 		return nil, err
@@ -668,7 +682,7 @@ func messageSchedule(ctx context.Context, d *Deps, raw json.RawMessage) (any, er
 	if d.Actions == nil {
 		return nil, errMissing
 	}
-	o := actions.SendOptions{Entities: p.Entities, ReplyTo: p.ReplyTo, ThreadRoot: p.ThreadRoot}
+	o := actions.SendOptions{Entities: p.Entities, ReplyTo: p.ReplyTo, ThreadRoot: p.ThreadRoot, DisableLinkPreview: p.DisableLinkPreview}
 	sc, err := d.Actions.Schedule(ctx, *p.RoomID, *p.Text, o, time.UnixMilli(*p.DueAt), *p.Condition)
 	if err != nil {
 		return nil, err
@@ -849,4 +863,45 @@ func pollVote(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
 		return nil, err
 	}
 	return sent{EventID: eventID}, nil
+}
+
+func toLinkPreviews(in []store.LinkPreview) []linkPreviewItemJSON {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]linkPreviewItemJSON, 0, len(in))
+	for _, lp := range in {
+		out = append(out, linkPreviewItemJSON{
+			MatchedURL:  lp.MatchedURL,
+			URL:         lp.URL,
+			Title:       lp.Title,
+			SiteName:    lp.SiteName,
+			Description: lp.Description,
+			ImagePath:   lp.ImagePath,
+			ImageWidth:  lp.ImageWidth,
+			ImageHeight: lp.ImageHeight,
+			Blurhash:    lp.BlurHash,
+		})
+	}
+	return out
+}
+
+func populateEventMedia(ctx context.Context, d *Deps, e store.Event, ev *eventJSON) {
+	var network string
+	var roomTimerMS int64
+	if d.Store != nil && strings.Contains(string(e.Content), "after_read") {
+		network, roomTimerMS = d.Store.RoomViewOnceContext(ctx, e.RoomID)
+	}
+	store.ExtractEventMediaWithRoom(&e, d.Media, ev.Played, network, roomTimerMS)
+	ev.MediaPath = e.MediaPath
+	ev.ThumbnailPath = e.ThumbnailPath
+	ev.Blurhash = e.BlurHash
+	ev.DurationMS = int64(e.DurationMS)
+	ev.Waveform = e.Waveform
+	ev.IsGIF = e.IsGIF
+	ev.IsAnimated = e.IsAnimated
+	ev.ViewOnce = e.ViewOnce
+	ev.GeoURI = e.GeoURI
+	ev.LinkPreviews = toLinkPreviews(e.LinkPreviews)
+	ev.Played = e.Played
 }

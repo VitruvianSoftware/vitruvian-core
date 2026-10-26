@@ -5,12 +5,17 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/VitruvianSoftware/courier/engine/internal/media"
 )
 
 // seedHistory gives roomID n messages $000…, oldest first, perTS of them sharing each timestamp (so that, within a
@@ -230,4 +235,195 @@ func TestAroundAndAfterAreIndexed(t *testing.T) {
 			}
 		})
 	}
+}
+
+func newTestStoreWithMedia(t *testing.T) (*Store, *media.Store) {
+	t.Helper()
+	dir := t.TempDir()
+	s, err := Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { s.Close() })
+	return s, &media.Store{Dir: filepath.Join(dir, "media")}
+}
+
+func TestExtractEventPopulatesWaveformBlurHashLocationLinkPreviewsAndViewOnce(t *testing.T) {
+	ctx := context.Background()
+	s, ms := newTestStoreWithMedia(t)
+
+	mediaHash, err := ms.Put([]byte("fake-media-bytes"))
+	require.NoError(t, err)
+	mxcURI := "mxc://courier.local/" + mediaHash
+	localMediaPath, err := ms.Path(mediaHash)
+	require.NoError(t, err)
+
+	voiceEvt := extractEvent(ctx, s, ms, "!r:courier.local", rawRow{
+		eventID: "$v1",
+		sender:  "@alice:courier.local",
+		evtType: "m.room.message",
+		content: `{"msgtype":"m.audio","body":"Voice message.ogg","url":"` + mxcURI + `","org.matrix.msc3245.voice":{},"org.matrix.msc1767.audio":{"duration":4200,"waveform":[10,200,500,900]}}`,
+	})
+	require.Equal(t, "voice", voiceEvt.Kind)
+	require.Equal(t, 4200, voiceEvt.DurationMS)
+	require.Equal(t, []int{10, 200, 500, 900}, voiceEvt.Waveform)
+	require.Equal(t, localMediaPath, voiceEvt.MediaPath)
+
+	imgEvt := extractEvent(ctx, s, ms, "!r:courier.local", rawRow{
+		eventID: "$img1",
+		sender:  "@alice:courier.local",
+		evtType: "m.room.message",
+		content: `{"msgtype":"m.image","body":"secret.jpg","url":"` + mxcURI + `","info":{"mimetype":"image/gif","w":320,"h":240,"xyz.amorgan.blurhash":"LEHV6nWB2yk8pyo0adR*.7kCMdnj","thumbnail_url":"` + mxcURI + `","fi.mau.gif":true,"is_animated":true},"com.beeper.disappearing_timer":{"type":"after_read","timer":300000}}`,
+	})
+	require.Equal(t, "image", imgEvt.Kind)
+	require.Equal(t, "LEHV6nWB2yk8pyo0adR*.7kCMdnj", imgEvt.BlurHash)
+	require.Equal(t, localMediaPath, imgEvt.ThumbnailPath)
+	require.True(t, imgEvt.IsGIF)
+	require.True(t, imgEvt.IsAnimated)
+	require.True(t, imgEvt.ViewOnce)
+
+	require.NoError(t, s.MarkMediaPlayed(ctx, "!r:courier.local", "$img1", 1700000000000))
+	playedEvt := extractEvent(ctx, s, ms, "!r:courier.local", rawRow{
+		eventID: "$img1",
+		sender:  "@alice:courier.local",
+		evtType: "m.room.message",
+		content: `{"msgtype":"m.image","body":"secret.jpg","url":"` + mxcURI + `","info":{"thumbnail_url":"` + mxcURI + `"},"com.beeper.disappearing_timer":{"type":"after_read","timer":300000}}`,
+	})
+	require.True(t, playedEvt.Played)
+	require.Empty(t, playedEvt.MediaPath, "view-once media path must be redacted once played")
+	require.Empty(t, playedEvt.ThumbnailPath, "view-once thumbnail path must be redacted once played")
+
+	locEvt := extractEvent(ctx, s, ms, "!r:courier.local", rawRow{
+		eventID: "$loc1",
+		sender:  "@alice:courier.local",
+		evtType: "m.room.message",
+		content: `{"msgtype":"m.location","body":"Golden Gate Bridge","geo_uri":"geo:37.8199,-122.4783"}`,
+	})
+	require.Equal(t, "location", locEvt.Kind)
+	require.Equal(t, "geo:37.8199,-122.4783", locEvt.GeoURI)
+
+	linkEvt := extractEvent(ctx, s, ms, "!r:courier.local", rawRow{
+		eventID: "$link1",
+		sender:  "@alice:courier.local",
+		evtType: "m.room.message",
+		content: `{"msgtype":"m.text","body":"check https://example.com","com.beeper.linkpreviews":[{"matched_url":"https://example.com","og:url":"https://example.com/page","og:title":"Example Domain","og:site_name":"Example","og:description":"Illustrative examples","og:image":"https://remote.example.com/track.png","og:image:width":600,"og:image:height":315,"matrix:image:blurhash":"LEHV6nWB2yk8pyo0adR*.7kCMdnj"}]}`,
+	})
+	require.Len(t, linkEvt.LinkPreviews, 1)
+	require.Equal(t, "Example Domain", linkEvt.LinkPreviews[0].Title)
+	require.Empty(t, linkEvt.LinkPreviews[0].ImagePath, "remote HTTP og:image URLs must never be resolved or fetched")
+}
+
+func TestViewOnceComparesRoomDisappearingTimerAndBridgeSentinel(t *testing.T) {
+	ctx := context.Background()
+	s, ms := newTestStoreWithMedia(t)
+	s.SetMediaStore(ms)
+
+	mediaHash, err := ms.Put([]byte("photo-bytes"))
+	require.NoError(t, err)
+	mxcURI := "mxc://courier.local/" + mediaHash
+
+	// 1. Signal chat with a 5-minute after_read room timer: a photo carrying the room's 5-min timer is a normal disappearing photo, NOT view-once.
+	sigTimerRoom := "!sig-timer:courier.local"
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: sigTimerRoom, Network: "signal", Name: "Signal Timer Chat", CreatedAt: time.Unix(1, 0)}))
+	_, err = s.SetState(ctx, sigTimerRoom, "com.beeper.disappearing_timer", "", json.RawMessage(`{"type":"after_read","timer":300000}`))
+	require.NoError(t, err)
+	normalInTimerRoom := extractEvent(ctx, s, ms, sigTimerRoom, rawRow{
+		eventID: "$sig-normal",
+		sender:  "@alice:courier.local",
+		evtType: "m.room.message",
+		content: `{"msgtype":"m.image","body":"normal.jpg","url":"` + mxcURI + `","com.beeper.disappearing_timer":{"type":"after_read","timer":300000}}`,
+	})
+	require.False(t, normalInTimerRoom.ViewOnce, "Signal photo matching the room's 5-min after_read timer must not be marked view-once")
+
+	// 2. Signal chat with no room timer receives a 5-min after_read photo -> flagged ViewOnce = true.
+	sigNoTimerRoom := "!sig-notimer:courier.local"
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: sigNoTimerRoom, Network: "signal", Name: "Signal Chat", CreatedAt: time.Unix(1, 0)}))
+	sigViewOnce := extractEvent(ctx, s, ms, sigNoTimerRoom, rawRow{
+		eventID: "$sig-vo",
+		sender:  "@alice:courier.local",
+		evtType: "m.room.message",
+		content: `{"msgtype":"m.image","body":"once.jpg","url":"` + mxcURI + `","com.beeper.disappearing_timer":{"type":"after_read","timer":300000}}`,
+	})
+	require.True(t, sigViewOnce.ViewOnce, "Signal 5-min after_read photo in room with no timer must be marked view-once")
+
+	// A 30-second after_read photo in a Signal room is not the 5-min view-once sentinel.
+	sig30s := extractEvent(ctx, s, ms, sigNoTimerRoom, rawRow{
+		eventID: "$sig-30s",
+		sender:  "@alice:courier.local",
+		evtType: "m.room.message",
+		content: `{"msgtype":"m.image","body":"short.jpg","url":"` + mxcURI + `","com.beeper.disappearing_timer":{"type":"after_read","timer":30000}}`,
+	})
+	require.False(t, sig30s.ViewOnce, "Signal 30s after_read photo does not match 5-min view-once sentinel")
+
+	// 3. Telegram chat with 15-s after_read photo -> flagged ViewOnce = true.
+	tgRoom := "!tg-chat:courier.local"
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: tgRoom, Network: "telegram", Name: "Telegram Chat", CreatedAt: time.Unix(1, 0)}))
+	tgViewOnce := extractEvent(ctx, s, ms, tgRoom, rawRow{
+		eventID: "$tg-vo",
+		sender:  "@bob:courier.local",
+		evtType: "m.room.message",
+		content: `{"msgtype":"m.image","body":"tg-once.jpg","url":"` + mxcURI + `","com.beeper.disappearing_timer":{"type":"after_read","timer":15000}}`,
+	})
+	require.True(t, tgViewOnce.ViewOnce, "Telegram 15-s after_read photo must be marked view-once")
+}
+
+func TestMarkMediaPlayedDeletesUnreferencedViewOnceBlob(t *testing.T) {
+	ctx := context.Background()
+	s, ms := newTestStoreWithMedia(t)
+	s.SetMediaStore(ms)
+
+	roomID := "!sig-cleanup:courier.local"
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: roomID, Network: "signal", Name: "Cleanup Chat", CreatedAt: time.Unix(1, 0)}))
+
+	voHash, err := ms.Put([]byte("secret-view-once-blob"))
+	require.NoError(t, err)
+	voPath, err := ms.Path(voHash)
+	require.NoError(t, err)
+	voURI := "mxc://courier.local/" + voHash
+
+	sharedHash, err := ms.Put([]byte("shared-blob"))
+	require.NoError(t, err)
+	sharedPath, err := ms.Path(sharedHash)
+	require.NoError(t, err)
+	sharedURI := "mxc://courier.local/" + sharedHash
+
+	_, err = s.InsertEvent(ctx, Event{
+		RoomID:  roomID,
+		EventID: "$vo-unique",
+		Sender:  "@alice:courier.local",
+		Type:    "m.room.message",
+		Content: json.RawMessage(`{"msgtype":"m.image","body":"secret.jpg","url":"` + voURI + `","com.beeper.disappearing_timer":{"type":"after_read","timer":300000}}`),
+		TS:      time.Unix(100, 0),
+		Status:  "sent",
+	})
+	require.NoError(t, err)
+
+	_, err = s.InsertEvent(ctx, Event{
+		RoomID:  roomID,
+		EventID: "$vo-shared",
+		Sender:  "@alice:courier.local",
+		Type:    "m.room.message",
+		Content: json.RawMessage(`{"msgtype":"m.image","body":"shared-once.jpg","url":"` + sharedURI + `","com.beeper.disappearing_timer":{"type":"after_read","timer":300000}}`),
+		TS:      time.Unix(101, 0),
+		Status:  "sent",
+	})
+	require.NoError(t, err)
+	_, err = s.InsertEvent(ctx, Event{
+		RoomID:  roomID,
+		EventID: "$normal-shared",
+		Sender:  "@alice:courier.local",
+		Type:    "m.room.message",
+		Content: json.RawMessage(`{"msgtype":"m.image","body":"normal.jpg","url":"` + sharedURI + `"}`),
+		TS:      time.Unix(102, 0),
+		Status:  "sent",
+	})
+	require.NoError(t, err)
+
+	// Playing $vo-unique deletes its unreferenced blob from disk.
+	require.NoError(t, s.MarkMediaPlayed(ctx, roomID, "$vo-unique", 1700000000000))
+	_, err = os.Stat(voPath)
+	require.ErrorIs(t, err, os.ErrNotExist, "unreferenced view-once blob must be deleted from disk after markPlayed")
+
+	// Playing $vo-shared keeps sharedPath on disk because $normal-shared still references sharedURI.
+	require.NoError(t, s.MarkMediaPlayed(ctx, roomID, "$vo-shared", 1700000000000))
+	_, err = os.Stat(sharedPath)
+	require.NoError(t, err, "view-once blob referenced by another event must not be deleted")
 }

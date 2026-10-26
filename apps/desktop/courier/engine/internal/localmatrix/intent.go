@@ -249,10 +249,28 @@ func (in *Intent) DownloadMedia(_ context.Context, uri id.ContentURIString, _ *e
 	return in.c.media.Read(hash)
 }
 
-func (in *Intent) DownloadMediaToFile(ctx context.Context, uri id.ContentURIString, file *event.EncryptedFileInfo, _ bool, cb func(*os.File) error) error {
-	data, err := in.DownloadMedia(ctx, uri, file)
+func (in *Intent) DownloadMediaToFile(_ context.Context, uri id.ContentURIString, file *event.EncryptedFileInfo, writable bool, cb func(*os.File) error) error {
+	if file != nil && file.URL != "" {
+		uri = file.URL
+	}
+	hash, ok := ids.ParseContentURI(uri)
+	if !ok {
+		return fmt.Errorf("not a courier media URI: %s", uri)
+	}
+	p, err := in.c.media.Path(hash)
 	if err != nil {
 		return err
+	}
+	src, err := os.Open(p)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+	if !writable {
+		if err = cb(src); err != nil {
+			return bridgev2.CallbackError{Type: "read", Wrapped: err}
+		}
+		return nil
 	}
 	tmp, err := os.CreateTemp("", "courier-dl-*")
 	if err != nil {
@@ -260,7 +278,7 @@ func (in *Intent) DownloadMediaToFile(ctx context.Context, uri id.ContentURIStri
 	}
 	defer os.Remove(tmp.Name())
 	defer tmp.Close()
-	if _, err = tmp.Write(data); err != nil {
+	if _, err = io.Copy(tmp, src); err != nil {
 		return err
 	}
 	if _, err = tmp.Seek(0, io.SeekStart); err != nil {

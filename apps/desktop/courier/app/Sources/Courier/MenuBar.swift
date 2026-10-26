@@ -80,3 +80,18 @@ final class DockBadge {
         }
     }
 }
+
+/// `File ▸ Open…` (`menu:File Open…`) command item opening the file picker to attach files to the active composer.
+/// Note: `⌘O` is already bound on `Message ▸ Attach Files…` in `ConversationCommands.swift`, so the duplicate
+/// `.keyboardShortcut("o", modifiers: .command)` is omitted here to avoid a menu shortcut clash.
+struct FileOpenCommandItem: View {
+    let composer: ComposerModel
+    let isDisabled: Bool
+
+    var body: some View {
+        Button(String(localized: "Open…")) {
+            AttachmentPicker.run(into: composer)
+        }
+        .disabled(isDisabled)
+    }
+}

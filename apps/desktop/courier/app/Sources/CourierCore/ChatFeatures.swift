@@ -33,6 +33,8 @@ public enum MessageAction: Hashable, Sendable {
     case bookmark, removeBookmark, react, unsend, deleteForMe, openFirstLink, showHistory
     /// The chat's unread count runs from this message on, on this Mac only.
     case markUnread
+    /// Marks an unplayed voice note as played, on this Mac only.
+    case markAsPlayed
     /// A one-to-one chat with the message's sender, the message quoted in its composer.
     case replyPrivately
 }
@@ -50,10 +52,10 @@ public struct Unavailable: Equatable, Sendable {
 
 public enum MessageActions {
     /// The menu's order (inventory 02 §3.4.2, the 4.4 subset): Edit, Reply (or Reply in Thread), Reply Privately,
-    /// React, Bookmark, Mark as Unread, Unsend, Delete for Me, Copy, Copy with Timestamp, Insert as Draft, Open Link,
+    /// React, Bookmark, Mark as Unread, Mark as played, Unsend, Delete for Me, Copy, Copy with Timestamp, Insert as Draft, Open Link,
     /// Forward, Edit History.
     static let order: [MessageAction] = [
-        .edit, .reply, .replyInThread, .replyPrivately, .react, .bookmark, .removeBookmark, .markUnread, .unsend,
+        .edit, .reply, .replyInThread, .replyPrivately, .react, .bookmark, .removeBookmark, .markUnread, .markAsPlayed, .unsend,
         .deleteForMe, .copy, .copyWithTimestamp, .insertAsDraft, .openFirstLink, .forward, .showHistory,
     ]
 
@@ -103,6 +105,9 @@ public enum MessageActions {
             break
         }
         offered.insert(.markUnread)
+        if message.kind == .voiceNote, !message.played, !message.viewOnce {
+            offered.insert(.markAsPlayed)
+        }
         switch message.kind {
         case .deleted, .undecryptable:
             offered.insert(.deleteForMe)
@@ -153,7 +158,7 @@ public enum MessageActions {
             if !message.mine { offered.insert(.insertAsDraft) }
             if firstLink(in: message.rich) != nil { offered.insert(.openFirstLink) }
         }
-        if isForwardable(message.kind) { offered.insert(.forward) }
+        if isForwardable(message.kind), !message.viewOnce { offered.insert(.forward) }
         if message.isEdited { offered.insert(.showHistory) }
 
         let unavailable = order.compactMap { action in greyed[action].map { Unavailable(action: action, reason: $0) } }
@@ -198,7 +203,7 @@ public enum MessageActions {
     /// What the engine forwards: text and media, a sticker as an image; not a poll.
     private static func isForwardable(_ kind: MessageKind) -> Bool {
         switch kind {
-        case .text, .notice, .emote, .image, .video, .file, .sticker, .voiceNote: true
+        case .text, .notice, .emote, .image, .video, .file, .sticker, .voiceNote, .location: true
         case .poll, .deleted, .undecryptable: false
         }
     }
@@ -284,5 +289,43 @@ extension ChatFeatures {
         guard poll == nil else { return nil }
         let name = MessageActions.Reason.Name(network)
         return source == .none ? MessageActions.Reason.unknown(name) : MessageActions.Reason.noPolls(name)
+    }
+
+    public var supportsVoiceSend: Bool {
+        voiceFeatures?.supported == true
+    }
+
+    public var supportsLocationSend: Bool {
+        locationSupported
+    }
+
+    public var supportsStickers: Bool {
+        stickerFeatures?.supported == true
+    }
+
+    public func maxSizeBytes(for msgType: String) -> Int64? {
+        switch msgType {
+        case "m.image": return imageFeatures?.maxSize
+        case "m.video": return videoFeatures?.maxSize
+        case "m.audio": return audioFeatures?.maxSize
+        case "m.voice", "org.matrix.msc3245.voice": return voiceFeatures?.maxSize
+        case "m.file": return fileFeatures?.maxSize
+        case "fi.mau.gif": return gifFeatures?.maxSize
+        case "m.sticker": return stickerFeatures?.maxSize
+        default: return nil
+        }
+    }
+
+    public func supportsCaption(for msgType: String) -> Bool {
+        switch msgType {
+        case "m.image": return imageFeatures?.caption == true
+        case "m.video": return videoFeatures?.caption == true
+        case "m.audio": return audioFeatures?.caption == true
+        case "m.voice", "org.matrix.msc3245.voice": return voiceFeatures?.caption == true
+        case "m.file": return fileFeatures?.caption == true
+        case "fi.mau.gif": return gifFeatures?.caption == true
+        case "m.sticker": return stickerFeatures?.caption == true
+        default: return false
+        }
     }
 }

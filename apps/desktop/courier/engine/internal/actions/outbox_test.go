@@ -355,6 +355,22 @@ func TestScheduleRendersAndUpdateReRenders(t *testing.T) {
 	require.JSONEq(t, string(sc.Content), string(moved.Content))
 	_, err = w.a.UpdateScheduled(ctx, 9999, nil, &text, nil, nil)
 	require.ErrorIs(t, err, store.ErrNotFound)
+
+	// Scheduled sends carry the DisableLinkPreview setting and preserve it across UpdateScheduled.
+	fa := false
+	scLP, err := w.a.Schedule(ctx, room, "Read https://example.com/doc", SendOptions{DisableLinkPreview: &fa}, clock.Now().Add(time.Hour), "")
+	require.NoError(t, err)
+	srcLP, ok := SourceOf(scLP.Content)
+	require.True(t, ok)
+	require.NotNil(t, srcLP.DisableLinkPreview, "scheduled message source must preserve DisableLinkPreview")
+	require.False(t, *srcLP.DisableLinkPreview)
+	updatedText := "Read https://example.com/updated"
+	scLP2, err := w.a.UpdateScheduled(ctx, scLP.ID, nil, &updatedText, nil, nil)
+	require.NoError(t, err)
+	srcLP2, ok := SourceOf(scLP2.Content)
+	require.True(t, ok)
+	require.NotNil(t, srcLP2.DisableLinkPreview, "UpdateScheduled must preserve DisableLinkPreview")
+	require.False(t, *srcLP2.DisableLinkPreview)
 }
 
 func TestSendFileWithAHold(t *testing.T) {

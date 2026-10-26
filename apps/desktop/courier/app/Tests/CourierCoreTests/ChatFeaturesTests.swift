@@ -365,4 +365,100 @@ final class ChatFeaturesTests: XCTestCase {
         XCTAssertEqual(EngineErrorText.text(for: err, fallback: "fallback"),
                        "The network didn’t accept that change.")
     }
+
+    func testMediaCapabilityAndProtocolV7TypesRoundTrip() throws {
+        XCTAssertEqual(CourierProtocol.version, 7)
+
+        let voiceCap = FileKindFeatures(
+            supported: true,
+            mimeTypes: ["audio/ogg; codecs=opus"],
+            caption: false,
+            maxCaptionLength: 0,
+            maxSize: 100 * 1024 * 1024,
+            maxDurationSec: 3600
+        )
+        let imageCap = FileKindFeatures(
+            supported: true,
+            mimeTypes: ["image/jpeg", "image/png"],
+            caption: true,
+            maxCaptionLength: 1024,
+            maxSize: 10 * 1024 * 1024,
+            maxDurationSec: 0
+        )
+        let features = ChatFeatures(
+            source: .stored,
+            imageFeatures: imageCap,
+            voiceFeatures: voiceCap,
+            locationSupported: true,
+            linkPreviewsSupported: true
+        )
+        let encodedFeatures = try JSONEncoder().encode(features)
+        let decodedFeatures = try JSONDecoder().decode(ChatFeatures.self, from: encodedFeatures)
+        XCTAssertEqual(decodedFeatures, features)
+        XCTAssertTrue(decodedFeatures.supportsVoiceSend)
+        XCTAssertTrue(decodedFeatures.supportsLocationSend)
+        XCTAssertFalse(decodedFeatures.supportsStickers)
+        XCTAssertEqual(decodedFeatures.maxSizeBytes(for: "m.image"), 10 * 1024 * 1024)
+        XCTAssertEqual(decodedFeatures.maxSizeBytes(for: "m.voice"), 100 * 1024 * 1024)
+        XCTAssertNil(decodedFeatures.maxSizeBytes(for: "m.video"))
+        XCTAssertTrue(decodedFeatures.supportsCaption(for: "m.image"))
+        XCTAssertFalse(decodedFeatures.supportsCaption(for: "m.voice"))
+
+        let preview = LinkPreviewItem(
+            matchedURL: "https://example.test/article",
+            url: "https://example.test/article",
+            title: "Example Article",
+            siteName: "Example",
+            description: "Synthetic summary",
+            imagePath: "/tmp/preview.jpg",
+            imageWidth: 600,
+            imageHeight: 315,
+            blurhash: "LEHV6nWB2yk8pyo0adR*.7kCMdnj"
+        )
+        let ev = Event(
+            eventID: "$media1",
+            roomID: "!r1:courier.local",
+            sender: "@alice:courier.local",
+            senderName: "Alice Example",
+            mine: false,
+            type: "m.room.message",
+            content: json(#"{"msgtype":"m.audio","body":"voice.ogg"}"#),
+            ts: sentAt,
+            seq: 1,
+            status: .sent,
+            thumbnailPath: "/tmp/thumb.jpg",
+            blurhash: "LEHV6nWB2yk8pyo0adR*.7kCMdnj",
+            durationMS: 4200,
+            waveform: [10, 40, 80, 20],
+            isGIF: false,
+            isAnimated: false,
+            viewOnce: true,
+            geoURI: "geo:37.7749,-122.4194",
+            linkPreviews: [preview],
+            played: true
+        )
+        let encodedEvent = try JSONEncoder().encode(ev)
+        let decodedEvent = try JSONDecoder().decode(Event.self, from: encodedEvent)
+        XCTAssertEqual(decodedEvent, ev)
+        XCTAssertEqual(decodedEvent.thumbnailPath, "/tmp/thumb.jpg")
+        XCTAssertEqual(decodedEvent.blurhash, "LEHV6nWB2yk8pyo0adR*.7kCMdnj")
+        XCTAssertEqual(decodedEvent.durationMS, 4200)
+        XCTAssertEqual(decodedEvent.waveform, [10, 40, 80, 20])
+        XCTAssertEqual(decodedEvent.viewOnce, true)
+        XCTAssertEqual(decodedEvent.geoURI, "geo:37.7749,-122.4194")
+        XCTAssertEqual(decodedEvent.linkPreviews, [preview])
+        XCTAssertEqual(decodedEvent.played, true)
+
+        let markPlayed = MarkPlayedParams(roomID: "!r1:courier.local", eventID: "$media1")
+        XCTAssertEqual(try JSONDecoder().decode(MarkPlayedParams.self, from: JSONEncoder().encode(markPlayed)), markPlayed)
+
+        let sendVoice = SendVoiceParams(roomID: "!r1:courier.local", path: "/tmp/voice.ogg", durationMS: 4200, waveform: [10, 40, 80], replyTo: "$1")
+        XCTAssertEqual(try JSONDecoder().decode(SendVoiceParams.self, from: JSONEncoder().encode(sendVoice)), sendVoice)
+
+        let sendLoc = SendLocationParams(roomID: "!r1:courier.local", latitude: 37.7749, longitude: -122.4194, label: "Civic Center", replyTo: nil)
+        XCTAssertEqual(try JSONDecoder().decode(SendLocationParams.self, from: JSONEncoder().encode(sendLoc)), sendLoc)
+
+        let sendParams = SendParams(roomID: "!r1:courier.local", body: "https://example.test", disableLinkPreview: true)
+        XCTAssertEqual(try JSONDecoder().decode(SendParams.self, from: JSONEncoder().encode(sendParams)).disableLinkPreview, true)
+    }
 }

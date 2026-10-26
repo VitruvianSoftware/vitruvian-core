@@ -10,12 +10,14 @@ import (
 	_ "embed"
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync"
 	"time"
 
 	"go.mau.fi/util/dbutil"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
+	"github.com/VitruvianSoftware/courier/engine/internal/media"
 	"github.com/VitruvianSoftware/courier/engine/internal/sqlite"
 )
 
@@ -46,6 +48,18 @@ type Profile struct {
 	IsBot       bool
 }
 
+type LinkPreview struct {
+	MatchedURL  string `json:"matched_url,omitempty"`
+	URL         string `json:"url,omitempty"`
+	Title       string `json:"title,omitempty"`
+	SiteName    string `json:"site_name,omitempty"`
+	Description string `json:"description,omitempty"`
+	ImagePath   string `json:"image_path,omitempty"`
+	ImageWidth  int    `json:"image_width,omitempty"`
+	ImageHeight int    `json:"image_height,omitempty"`
+	BlurHash    string `json:"blurhash,omitempty"`
+}
+
 type Event struct {
 	RoomID, EventID, Sender, Type string
 	StateKey                      *string
@@ -55,6 +69,19 @@ type Event struct {
 	Seq                           int64     // arrival order in this store; breaks ties between equal timestamps
 	DeletedForMe                  bool      // Delete for Me: gone on this Mac, with no placeholder (also redacted)
 	ExpiresAt                     time.Time // when an after_send disappearing timer takes it; zero = never
+
+	Kind          string
+	MediaPath     string
+	ThumbnailPath string
+	BlurHash      string
+	DurationMS    int
+	Waveform      []int
+	IsGIF         bool
+	IsAnimated    bool
+	ViewOnce      bool
+	GeoURI        string
+	LinkPreviews  []LinkPreview
+	Played        bool
 }
 
 // Change is one entry of the change feed. Seq is set on "event" and "status" changes: it is the event's seq.
@@ -76,6 +103,7 @@ type Store struct {
 	cfgMu        sync.RWMutex      // guards clock and networkNames
 	clock        func() time.Time  // SetClock; time.Now by default
 	networkNames map[string]string // SetNetworkNames: network name → display name
+	mediaStore   *media.Store      // SetMediaStore: optional blob store for view-once cleanup
 
 	typingMu sync.Mutex
 	typing   map[string]map[string]*typingEntry // room ID → user ID → who is typing there, until when
@@ -117,6 +145,19 @@ func Open(path string) (*Store, error) {
 }
 
 func (s *Store) Close() error { return s.db.Close() }
+
+// SetMediaStore attaches a local media blob store so MarkMediaPlayed can delete unreferenced view-once blobs.
+func (s *Store) SetMediaStore(ms *media.Store) {
+	s.cfgMu.Lock()
+	s.mediaStore = ms
+	s.cfgMu.Unlock()
+}
+
+func (s *Store) getMediaStore() *media.Store {
+	s.cfgMu.RLock()
+	defer s.cfgMu.RUnlock()
+	return s.mediaStore
+}
 
 // publish hands c to every subscriber without ever waiting for one. A subscriber whose buffer is full loses c and
 // is marked; the next change that reaches it is preceded by one ChangeResync, however many it lost, so it never
@@ -1064,4 +1105,69 @@ func (s *Store) NetworkChanged(network string) {
 // bridge coming up, which gives its account a space): it publishes a "spaces" change, and the app reads them again.
 func (s *Store) SpacesChanged() {
 	s.publish(Change{Kind: "spaces"})
+}
+
+// MarkMediaPlayed records that a voice note or view-once media item was played/opened.
+// When the event is view-once media, its blob is deleted from the media store unless another event references the same hash.
+func (s *Store) MarkMediaPlayed(ctx context.Context, roomID, eventID string, playedTS int64) error {
+	_, err := s.db.Exec(ctx, `
+		INSERT INTO media_played (room_id, event_id, played_ts) VALUES (?, ?, ?)
+		ON CONFLICT(room_id, event_id) DO UPDATE SET played_ts = excluded.played_ts
+	`, roomID, eventID, playedTS)
+	if err != nil {
+		return err
+	}
+	s.CleanupPlayedViewOnceMedia(ctx, roomID, eventID, s.getMediaStore())
+	if roomID != "" {
+		s.publish(Change{Kind: "status", RoomID: roomID, EventID: eventID})
+	}
+	return nil
+}
+
+// IsMediaPlayed returns whether (roomID, eventID) has been marked played.
+func (s *Store) IsMediaPlayed(ctx context.Context, roomID, eventID string) (bool, error) {
+	var exists int
+	err := s.db.QueryRow(ctx, `SELECT 1 FROM media_played WHERE room_id = ? AND event_id = ?`, roomID, eventID).Scan(&exists)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return exists == 1, err
+}
+
+// MediaPlayedSet returns the subset of eventIDs in roomID (or any room when roomID is "") that have been marked played.
+func (s *Store) MediaPlayedSet(ctx context.Context, roomID string, eventIDs []string) (map[string]bool, error) {
+	out := make(map[string]bool, len(eventIDs))
+	if len(eventIDs) == 0 {
+		return out, nil
+	}
+	placeholders := strings.Repeat("?,", len(eventIDs))
+	placeholders = placeholders[:len(placeholders)-1]
+	var (
+		query string
+		args  []any
+	)
+	if roomID != "" {
+		query = `SELECT event_id FROM media_played WHERE room_id = ? AND event_id IN (` + placeholders + `)`
+		args = make([]any, 0, len(eventIDs)+1)
+		args = append(args, roomID)
+	} else {
+		query = `SELECT event_id FROM media_played WHERE event_id IN (` + placeholders + `)`
+		args = make([]any, 0, len(eventIDs))
+	}
+	for _, id := range eventIDs {
+		args = append(args, id)
+	}
+	rows, err := s.db.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
 }

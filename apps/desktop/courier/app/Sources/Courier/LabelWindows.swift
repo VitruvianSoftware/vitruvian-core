@@ -18,6 +18,7 @@ enum WindowID {
     static let editLabels = "edit-labels"
     static let autoArchive = "auto-archive"
     static let chatInfo = "chat-info"
+    static let mediaViewer = "media-viewer"
 }
 
 /// Making or changing a label: its title, a colour and an icon, and for a label that exists, its auto-archive

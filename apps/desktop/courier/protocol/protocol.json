@@ -1,6 +1,6 @@
 {
   "name": "Courier engine protocol",
-  "protocol": 6,
+  "protocol": 7,
   "doc": "How Courier.app talks to its courier-engine helper. This file is the single definition: the engine's Go tests and the app's Swift tests both check the examples in examples/ against it, and the Swift Codable types are named exactly as the entries in types. Copyright 2026 VitruvianSoftware, SPDX-License-Identifier: AGPL-3.0-or-later.",
 
   "transport": {
@@ -25,6 +25,7 @@
   "type_grammar": {
     "string": "a JSON string",
     "int": "a JSON number with no fraction",
+    "float": "a JSON number (integer or floating-point)",
     "bool": "true or false",
     "object": "any JSON object; its keys are not part of this protocol (an event's Matrix content)",
     "map<T>": "a JSON object whose values are all T",
@@ -746,7 +747,61 @@
         "read_by": {
           "type": "Reader[]",
           "doc": "Who has read it or anything after it, newest receipt first, at most 50 (the newest): the app shows one name and a count. Only my messages that have gone (not a note); my own reads on other devices never count. [] on others' messages and on mine not sent yet."
+        },
+        "thumbnail_path": {
+          "type": "string?",
+          "doc": "Local file path of the media thumbnail when available."
+        },
+        "blurhash": {
+          "type": "string?",
+          "doc": "BlurHash placeholder string from content.info.\"xyz.amorgan.blurhash\"."
+        },
+        "duration_ms": {
+          "type": "int?",
+          "doc": "Duration in milliseconds for audio, voice notes, and video."
+        },
+        "waveform": {
+          "type": "int[]?",
+          "doc": "MSC1767/MSC3245 waveform samples (org.matrix.msc1767.audio)."
+        },
+        "is_gif": {
+          "type": "bool?",
+          "doc": "Whether the media item is a GIF (content[\"fi.mau.gif\"] or image/gif)."
+        },
+        "is_animated": {
+          "type": "bool?",
+          "doc": "Whether the sticker or image is animated (GIF, APNG, or video/webm sticker)."
+        },
+        "view_once": {
+          "type": "bool?",
+          "doc": "Whether the media item is view-once (an after_read disappearing timer that differs from the chat's timer and matches the bridge's view-once duration: 5 min on Signal, 15 s on Telegram)."
+        },
+        "geo_uri": {
+          "type": "string?",
+          "doc": "Geo URI (geo:lat,lon) for m.location messages."
+        },
+        "link_previews": {
+          "type": "LinkPreviewItem[]?",
+          "doc": "Beeper link previews attached to the message."
+        },
+        "played": {
+          "type": "bool?",
+          "doc": "Whether this voice note or view-once item has been marked played on this Mac."
         }
+      }
+    },
+    "LinkPreviewItem": {
+      "doc": "One URL preview attached to a message (com.beeper.linkpreviews).",
+      "fields": {
+        "matched_url": { "type": "string" },
+        "url": { "type": "string?" },
+        "title": { "type": "string?" },
+        "site_name": { "type": "string?" },
+        "description": { "type": "string?" },
+        "image_path": { "type": "string?" },
+        "image_width": { "type": "int?" },
+        "image_height": { "type": "int?" },
+        "blurhash": { "type": "string?" }
       }
     },
     "Reader": {
@@ -991,6 +1046,10 @@
           "type": "string",
           "doc": "For an image or a video: its thumbnail (or the file itself), when the engine has it. \"\" otherwise."
         },
+        "view_once": {
+          "type": "bool?",
+          "doc": "True when the matched message is view-once media (its media_path is blanked)."
+        },
         "partial": {
           "type": "bool",
           "doc": "It matches some of the words, not all (filters.partial)."
@@ -1031,6 +1090,10 @@
         "hold_ms": {
           "type": "int?",
           "doc": "Undo send: hold the message this long (ComposerPreferences.undoSendMillis), as queued, before it goes. One of 0, 750, 1000, 2000, 3000, 5000 and 10000 (any other is -32602); left out is 0, at once. Above 0 is part of a plan (-32022 when it isn't), and answers at once."
+        },
+        "disable_link_preview": {
+          "type": "bool?",
+          "doc": "Suppress outgoing link preview generation for this message."
         }
       }
     },
@@ -1048,6 +1111,30 @@
         "reply_to": { "type": "string?" },
         "thread_root": { "type": "string?", "doc": "As SendParams." },
         "hold_ms": { "type": "int?", "doc": "As SendParams." }
+      }
+    },
+    "MarkPlayedParams": {
+      "fields": {
+        "room_id": { "type": "string" },
+        "event_id": { "type": "string" }
+      }
+    },
+    "SendVoiceParams": {
+      "fields": {
+        "room_id": { "type": "string" },
+        "path": { "type": "string" },
+        "duration_ms": { "type": "int" },
+        "waveform": { "type": "int[]?" },
+        "reply_to": { "type": "string?" }
+      }
+    },
+    "SendLocationParams": {
+      "fields": {
+        "room_id": { "type": "string" },
+        "latitude": { "type": "float" },
+        "longitude": { "type": "float" },
+        "label": { "type": "string?" },
+        "reply_to": { "type": "string?" }
       }
     },
     "TextEntity": {
@@ -1195,7 +1282,33 @@
         "delete_leaves_group": {
           "type": "bool",
           "doc": "Deleting this group chat on its network also leaves the group (WhatsApp)."
+        },
+        "image_features": { "type": "FileKindFeatures?" },
+        "video_features": { "type": "FileKindFeatures?" },
+        "audio_features": { "type": "FileKindFeatures?" },
+        "voice_features": { "type": "FileKindFeatures?" },
+        "file_features": { "type": "FileKindFeatures?" },
+        "gif_features": { "type": "FileKindFeatures?" },
+        "sticker_features": { "type": "FileKindFeatures?" },
+        "location_supported": {
+          "type": "bool?",
+          "doc": "Whether the chat supports sending location pins (m.location)."
+        },
+        "link_previews_supported": {
+          "type": "bool?",
+          "doc": "Whether the chat supports outgoing link previews."
         }
+      }
+    },
+    "FileKindFeatures": {
+      "doc": "Per-kind file and media capabilities from a bridge's event.FileFeatures.",
+      "fields": {
+        "supported": { "type": "bool" },
+        "mime_types": { "type": "string[]?" },
+        "caption": { "type": "bool" },
+        "max_caption_length": { "type": "int?" },
+        "max_size": { "type": "int?" },
+        "max_duration_sec": { "type": "int?" }
       }
     },
     "PollFeatures": {
@@ -1368,6 +1481,10 @@
           "type": "string",
           "values": ["if_no_reply", "always"],
           "doc": "if_no_reply: a message from someone else in the chat after it was set (or last changed) cancels it."
+        },
+        "disable_link_preview": {
+          "type": "bool?",
+          "doc": "Suppress outgoing link preview generation for this message."
         }
       }
     },
@@ -2526,6 +2643,24 @@
       "params": "Empty",
       "result": "MergeSuggestResult",
       "errors": []
+    },
+    "message.markPlayed": {
+      "doc": "Record that a voice note or view-once media item was played or opened on this Mac.",
+      "params": "MarkPlayedParams",
+      "result": "Empty",
+      "errors": []
+    },
+    "message.sendVoice": {
+      "doc": "Send a recorded voice note in a chat that supports voice messages.",
+      "params": "SendVoiceParams",
+      "result": "Sent",
+      "errors": [-32010, -32012, -32014, -32016, -32018, -32020, -32023, -32028]
+    },
+    "message.sendLocation": {
+      "doc": "Send a geographic location pin (m.location) in a chat that supports location messages.",
+      "params": "SendLocationParams",
+      "result": "Sent",
+      "errors": [-32010, -32014, -32016, -32018, -32020, -32023]
     }
   },
 
@@ -2690,6 +2825,12 @@
         "name": "network_refused",
         "message": "network refused",
         "when": "The network turned the change down (a rename, photo, description, add, remove, admin change, leave, delete or new group). Nothing changed on this Mac."
+      },
+      {
+        "code": -32028,
+        "name": "needs_ffmpeg",
+        "message": "sending voice notes on this network needs ffmpeg",
+        "when": "message.sendVoice when the chat's bridge requires transcoding the recording into another container (such as Ogg/Opus) and ffmpeg is not installed on this Mac."
       }
     ]
   }

@@ -50,7 +50,10 @@ import (
 // (room.setName, room.setTopic, room.setAvatar, room.invite, room.kick, room.setAdmin, room.leave, room.delete),
 // people & starting chats (people.contacts, people.resolve, room.createGroup, blast.send), and Merged Chats
 // (merge.create, merge.update, merge.delete, merge.list, merge.suggest, plus merge_id on room.events and InboxRow).
-const Protocol = 6
+// Protocol 7 adds rich media metadata (thumbnail_path, blurhash, duration_ms, waveform, is_gif, is_animated,
+// view_once, geo_uri, link_previews, played on Event; disable_link_preview on SendParams), per-kind file
+// capabilities on ChatFeatures, and message.markPlayed, message.sendVoice, and message.sendLocation.
+const Protocol = 7
 
 // MaxFrameBytes is the longest line the engine reads, not counting its newline. A longer one closes the connection.
 const MaxFrameBytes = 4 << 20
