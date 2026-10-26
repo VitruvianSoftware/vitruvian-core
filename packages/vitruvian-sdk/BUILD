@@ -769,6 +769,17 @@ py_test(
     target_compatible_with = ["@platforms//os:macos"],
 )
 
+# The end of the test above: its folder goes even while something is still
+# writing into it, and what cannot go is named. Needs no Swift and no Mac.
+py_test(
+    name = "swift_template_cleanup_test",
+    srcs = [
+        "samples/swift_template_cleanup_test.py",
+        "samples/swift_template_test.py",
+    ],
+    main = "samples/swift_template_cleanup_test.py",
+)
+
 # The Go kit as its own module, outside the workspace, through `go vet` with
 # Bazel's Go: vet holds it to the Go its go.mod names, 1.22, which the
 # build above does not. No network. Not `manual` and not tied to macOS.
@@ -899,6 +910,7 @@ pipeline_unit(
         ":rust_sample_test",
         ":samples_test",
         ":swift_samples_test",
+        ":swift_template_cleanup_test",
         ":swift_template_test",
         ":templates_in_sync_test",
     ],
