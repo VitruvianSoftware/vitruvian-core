@@ -24,6 +24,7 @@ load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
 load("@npm//:defs.bzl", "npm_link_all_packages")
 load("@rules_itest//:itest.bzl", "itest_service", "itest_task", "port", "service_test")
 load("@rules_oci//oci:defs.bzl", "oci_push")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("//tools/delivery:defs.bzl", "delivery")
 load("//tools/oci:node_image.bzl", "node_image")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
@@ -38,6 +39,7 @@ load("//tools/pipeline:defs.bzl", "pipeline_unit")
 # gazelle:exclude tests
 # gazelle:exclude prisma
 # gazelle:exclude scripts
+# gazelle:exclude rs
 
 # Inter-app boundary (#82): default targets to tabula-internal visibility so
 # other top-level apps can't depend on tabula internals. Explicit per-target
@@ -489,12 +491,58 @@ oci_push(
     repository = "us-central1-docker.pkg.dev/REPLACED-AT-RUNTIME/tabula/api",
 )
 
+rust_library(
+    name = "tabula_api_tools_rs_lib",
+    srcs = ["rs/src/lib.rs"],
+    crate_name = "tabula_api_tools_rs_lib",
+    crate_root = "rs/src/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
+    name = "prisma-client-gen-rs",
+    srcs = ["rs/src/bin/generate_client.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":tabula_api_tools_rs_lib"],
+)
+
+rust_binary(
+    name = "migrate-deploy-rs",
+    srcs = ["rs/src/bin/migrate_deploy.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/suites/tabula:__subpackages__"],
+    deps = [":tabula_api_tools_rs_lib"],
+)
+
+rust_binary(
+    name = "seed-test-user-rs",
+    srcs = ["rs/src/bin/seed_test_user.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/suites/tabula:__subpackages__"],
+    deps = [":tabula_api_tools_rs_lib"],
+)
+
+rust_test(
+    name = "tabula_api_tools_rs_test",
+    size = "small",
+    crate = ":tabula_api_tools_rs_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
 pipeline_unit(
     name = "tabula-api",
     depends_on = ["tabula-shared"],
     persona = "backend",
     runner = "ubuntu-26.04",
-    test_targets = [":integration_tests"],
+    test_targets = [
+        ":integration_tests",
+        ":tabula_api_tools_rs_test",
+    ],
     tier = "L1",
     timeout_minutes = 20,
 )
