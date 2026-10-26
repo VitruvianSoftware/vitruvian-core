@@ -2149,4 +2149,108 @@ extension ComposerModelTests {
             .sendFailed(reason: "This file is larger than WhatsApp allows (100 MB).")
         )
     }
+
+    // MARK: - Emoji autocomplete, emoticon replacement, and /gif
+
+    func testEmojiShortcodeAutocompleteRespectsPreferenceAndPickReplacesToken() {
+        let made = makeComposer()
+        let composer = made.composer
+
+        type("hello :smi", into: composer)
+        XCTAssertEqual(composer.emojiQuery, "smi")
+        XCTAssertFalse(composer.emojiCandidates.isEmpty)
+        XCTAssertTrue(composer.emojiCandidates.contains(where: { $0.shortcode == "smile" }))
+
+        // Navigating selection wraps around.
+        composer.selectedEmojiIndex = 0
+        composer.moveEmojiSelection(1)
+        XCTAssertEqual(composer.selectedEmojiIndex, 1)
+        composer.moveEmojiSelection(-2)
+        XCTAssertEqual(composer.selectedEmojiIndex, composer.emojiCandidates.count - 1)
+
+        // Picking a Unicode emoji candidate replaces `:smi` with `"😄 "` and clears emojiQuery.
+        let smile = composer.emojiCandidates.first(where: { $0.shortcode == "smile" })
+            ?? EmojiCandidate(shortcode: "smile", glyph: "😄")
+        composer.pickEmoji(smile)
+        XCTAssertEqual(composer.text, "hello 😄 ")
+        XCTAssertNil(composer.emojiQuery)
+        XCTAssertTrue(composer.emojiCandidates.isEmpty)
+
+        // Picking a custom emoji candidate (`glyph == nil`) inserts `:custom_code: `.
+        type(":cus", into: composer)
+        let customCandidate = EmojiCandidate(
+            id: "mxc://local.courier/custom_code",
+            shortcode: "custom_code",
+            glyph: nil,
+            mediaURL: "mxc://local.courier/custom_code",
+            isCustom: true
+        )
+        composer.pickEmoji(customCandidate)
+        XCTAssertEqual(composer.text, "hello 😄 :custom_code: ")
+        XCTAssertNil(composer.emojiQuery)
+
+        // When enableEmojiAutocomplete is false, emojiQuery stays nil.
+        made.preferences.enableEmojiAutocomplete = false
+        composer.text = ""
+        type("hello :smi", into: composer)
+        XCTAssertNil(composer.emojiQuery)
+        XCTAssertTrue(composer.emojiCandidates.isEmpty)
+    }
+
+    func testEmoticonReplacementRespectsPreferenceURLsAndCodeSpans() {
+        let made = makeComposer()
+        let composer = made.composer
+
+        // Typing ":) " replaces with "🙂 ".
+        type(":) ", into: composer)
+        XCTAssertEqual(composer.text, "🙂 ")
+
+        // Typing ":-D\n" replaces with "😃\n".
+        composer.text = ""
+        type(":-D\n", into: composer)
+        XCTAssertEqual(composer.text, "😃\n")
+
+        // URLs are untouched.
+        composer.text = ""
+        type("https://example.com/:) ", into: composer)
+        XCTAssertEqual(composer.text, "https://example.com/:) ")
+
+        // Inline backtick code spans are untouched.
+        composer.text = ""
+        type("`:) ", into: composer)
+        XCTAssertEqual(composer.text, "`:) ")
+
+        // Inline .code entity is untouched.
+        composer.text = ""
+        type("code ", into: composer)
+        composer.toggle(.code, in: NSRange(location: 5, length: 0))
+        type(":) ", into: composer)
+        XCTAssertEqual(composer.text, "code :) ")
+
+        // Setting disableEmoticonReplacement = true leaves emoticons untouched.
+        made.preferences.disableEmoticonReplacement = true
+        composer.text = ""
+        type(":) ", into: composer)
+        XCTAssertEqual(composer.text, ":) ")
+    }
+
+    func testSlashGifCommandOpensGIFPickerAndSetsQuery() {
+        let made = makeComposer()
+        let composer = made.composer
+
+        type("/gif", into: composer)
+        XCTAssertNil(composer.submit())
+        XCTAssertTrue(composer.isGIFPickerPresented)
+        XCTAssertEqual(composer.gifSearchQuery, "")
+        XCTAssertEqual(composer.text, "")
+        XCTAssertTrue(made.sender.sends.isEmpty)
+
+        composer.isGIFPickerPresented = false
+        type("/gif cats", into: composer)
+        XCTAssertNil(composer.submit())
+        XCTAssertTrue(composer.isGIFPickerPresented)
+        XCTAssertEqual(composer.gifSearchQuery, "cats")
+        XCTAssertEqual(composer.text, "")
+        XCTAssertTrue(made.sender.sends.isEmpty)
+    }
 }

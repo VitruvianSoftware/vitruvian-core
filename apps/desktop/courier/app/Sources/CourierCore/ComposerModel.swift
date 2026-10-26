@@ -204,6 +204,20 @@ public final class ComposerModel: ObservableObject {
     @Published public private(set) var mentionQuery: (range: NSRange, text: String)?
     /// ";" plus letters at the caret: which quick reply. `range` covers the ";" and the letters.
     @Published public private(set) var quickReplyQuery: (range: NSRange, text: String)?
+    /// ":" plus 2+ shortcode characters at the caret when emoji autocomplete is enabled.
+    @Published public private(set) var emojiQuery: String?
+    /// The UTF-16 range of the active `:shortcode` token (including the leading `:`).
+    public private(set) var emojiQueryRange: NSRange?
+    /// Matching emoji candidates for `emojiQuery`.
+    @Published public private(set) var emojiCandidates: [EmojiCandidate] = []
+    /// Highlighted row in the emoji autocomplete popover.
+    @Published public var selectedEmojiIndex: Int = 0
+    /// Custom emoji candidates from installed packs, merged into `EmojiCatalog.shared.search`.
+    public var customEmojis: [EmojiCandidate] = []
+    @Published public var isEmojiPickerPresented: Bool = false
+    @Published public var isStickerPickerPresented: Bool = false
+    @Published public var isGIFPickerPresented: Bool = false
+    @Published public var gifSearchQuery: String = ""
     /// My held (queued) messages in the open chat, newest last.
     @Published public private(set) var heldIDs: [String] = []
     @Published public private(set) var attachments: [ComposerAttachment] = []
@@ -542,6 +556,10 @@ public final class ComposerModel: ObservableObject {
         pendingKinds = []
         mentionQuery = nil
         quickReplyQuery = nil
+        emojiQuery = nil
+        emojiQueryRange = nil
+        emojiCandidates = []
+        selectedEmojiIndex = 0
     }
 
     /// The engine's draft of a chat, looked up. Nil (the lookup failed) leaves it unknown: it is looked up again
@@ -620,6 +638,10 @@ public final class ComposerModel: ObservableObject {
         if range.length > 0 {
             mentionQuery = nil
             quickReplyQuery = nil
+            emojiQuery = nil
+            emojiQueryRange = nil
+            emojiCandidates = []
+            selectedEmojiIndex = 0
         } else {
             updateQueries(caret: range.location)
         }
@@ -781,6 +803,58 @@ public final class ComposerModel: ObservableObject {
         caretRequest = CaretRequest(location: range.location + length, serial: caretSerial)
     }
 
+    // MARK: - Emoji Autocomplete
+
+    /// Moves the highlighted emoji candidate by `delta`, wrapping around `emojiCandidates`.
+    public func moveEmojiSelection(_ delta: Int) {
+        guard !emojiCandidates.isEmpty else {
+            selectedEmojiIndex = 0
+            return
+        }
+        let count = emojiCandidates.count
+        selectedEmojiIndex = ((selectedEmojiIndex + delta) % count + count) % count
+    }
+
+    /// Replaces the active `:shortcode` token (or inserts at `selection`) with `candidate` and clears autocomplete.
+    public func pickEmoji(_ candidate: EmojiCandidate) {
+        let replacement = candidate.glyph.map { "\($0) " } ?? ":\(candidate.shortcode): "
+        let string = text as NSString
+        let targetRange: NSRange
+        if let active = emojiQueryRange,
+           active.location >= 0,
+           active.location + active.length <= string.length {
+            targetRange = active
+        } else if selection.location >= 0,
+                  selection.location + selection.length <= string.length {
+            targetRange = selection
+        } else {
+            targetRange = NSRange(location: string.length, length: 0)
+        }
+        replaceText(in: targetRange, with: replacement)
+        dismissEmojiAutocomplete()
+    }
+
+    /// Dismisses the `:shortcode:` autocomplete popover without altering composer text.
+    public func dismissEmojiAutocomplete() {
+        emojiQuery = nil
+        emojiQueryRange = nil
+        emojiCandidates = []
+        selectedEmojiIndex = 0
+    }
+
+    /// Explicitly opens `:shortcode:` autocomplete at the current selection or presents the emoji picker.
+    public func openEmojiAutocomplete() {
+        let caret = min(max(selection.location, 0), (text as NSString).length)
+        if let found = shortcodeQuery(caret: caret, minLength: 1) {
+            emojiQueryRange = found.range
+            emojiQuery = found.text
+            emojiCandidates = EmojiCatalog.shared.search(found.text, custom: customEmojis, limit: 8)
+            selectedEmojiIndex = 0
+        } else {
+            isEmojiPickerPresented = true
+        }
+    }
+
     /// Text set as a whole (the view's binding, a paste it reports as a whole): what changed is worked out from the
     /// two texts, the shortest change that turns one into the other, and the ranges follow it.
     private func textDidChange(from old: String) {
@@ -816,17 +890,46 @@ public final class ComposerModel: ObservableObject {
             }
         }
         // As the engine will check them: a block joined to the line before gives that line up, and so on.
-        entities = EntityEditing.fitted(updated, to: text as NSString)
+        var currentEntities = EntityEditing.fitted(updated, to: text as NSString)
+        var effectiveCaret = caret
+
+        if !openingChat,
+           length > 0,
+           !(preferences?.disableEmoticonReplacement ?? false),
+           effectiveCaret <= (text as NSString).length {
+            let prefix = (text as NSString).substring(to: effectiveCaret)
+            if let match = EmojiCatalog.trailingEmoticonReplacement(in: prefix),
+               !currentEntities.contains(where: { [.code, .pre, .link].contains($0.kind) && Self.touches($0, match.range) }) {
+                let replaced = (text as NSString).replacingCharacters(in: match.range, with: match.replacement)
+                let glyphLength = (match.replacement as NSString).length
+                settingContents = true
+                text = replaced
+                settingContents = false
+                currentEntities = EntityEditing.fitted(
+                    EntityEditing.replacing(currentEntities, range: match.range, with: glyphLength),
+                    to: replaced as NSString
+                )
+                let delta = glyphLength - match.range.length
+                effectiveCaret += delta
+                if !pendingKinds.isEmpty {
+                    pendingAt = effectiveCaret
+                }
+                caretSerial += 1
+                caretRequest = CaretRequest(location: effectiveCaret, serial: caretSerial)
+            }
+        }
+
+        entities = currentEntities
         if let continuing = continuingBlock {
             continuingBlock = nil
             let string = text as NSString
-            if range.location == continuing.at, length > 0, caret <= string.length,
+            if range.location == continuing.at, length > 0, effectiveCaret <= string.length,
                string.substring(with: NSRange(location: range.location, length: length)).hasSuffix("\n") {
                 pendingKinds = [continuing.kind]
-                pendingAt = caret
+                pendingAt = effectiveCaret
             }
         }
-        updateQueries(caret: caret)
+        updateQueries(caret: effectiveCaret)
     }
 
     private func updateQueries(caret: Int) {
@@ -835,6 +938,57 @@ public final class ComposerModel: ObservableObject {
             entities.contains { $0.kind == .mention && $0.offset == found.range.location } ? nil : found
         }
         quickReplyQuery = quickReplies == nil ? nil : query(marker: ";", caret: caret)
+        if preferences?.enableEmojiAutocomplete ?? true,
+           let found = shortcodeQuery(caret: caret, minLength: 2) {
+            let previousQuery = emojiQuery
+            emojiQueryRange = found.range
+            emojiQuery = found.text
+            emojiCandidates = EmojiCatalog.shared.search(found.text, custom: customEmojis, limit: 8)
+            if previousQuery != found.text || selectedEmojiIndex >= emojiCandidates.count {
+                selectedEmojiIndex = 0
+            }
+        } else {
+            emojiQuery = nil
+            emojiQueryRange = nil
+            emojiCandidates = []
+            selectedEmojiIndex = 0
+        }
+    }
+
+    /// Scans backwards from `caret` for a `:shortcode` token preceded by start-of-text or whitespace/newline,
+    /// outside `.code`, `.pre`, `.link` entities and inline backtick code spans.
+    private func shortcodeQuery(caret: Int, minLength: Int) -> (range: NSRange, text: String)? {
+        let string = text as NSString
+        guard caret > 0, caret <= string.length else { return nil }
+        let caretRange = NSRange(location: caret, length: 0)
+        if entities.contains(where: { [.code, .pre, .link].contains($0.kind) && Self.touches($0, caretRange) }) {
+            return nil
+        }
+        var index = caret
+        while index > 0, caret - index <= 64 {
+            let piece = string.rangeOfComposedCharacterSequence(at: index - 1)
+            let character = string.substring(with: piece)
+            if character == ":" {
+                if piece.location > 0 {
+                    let before = string.substring(with: string.rangeOfComposedCharacterSequence(at: piece.location - 1))
+                    if !before.allSatisfy({ $0.isWhitespace || $0.isNewline }) { return nil }
+                }
+                let prefixBeforeColon = string.substring(to: piece.location)
+                let backtickCount = prefixBeforeColon.reduce(into: 0) { count, ch in
+                    if ch == "`" { count += 1 }
+                }
+                if backtickCount % 2 != 0 { return nil }
+                let start = piece.location + piece.length
+                let shortcode = string.substring(with: NSRange(location: start, length: caret - start))
+                guard shortcode.count >= minLength else { return nil }
+                return (NSRange(location: piece.location, length: caret - piece.location), shortcode)
+            }
+            guard character.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" || $0 == "-" || $0 == "+" }) else {
+                return nil
+            }
+            index = piece.location
+        }
+        return nil
     }
 
     /// `marker` and the letters after it up to `caret`, when the marker starts the text or follows something that
@@ -1133,6 +1287,17 @@ public final class ComposerModel: ObservableObject {
     public func submit(archive: Bool = false) -> Task<Void, Never>? {
         guard !isScheduling else { return nil }
         if case let .editing(eventID, original) = mode { return submitEdit(of: eventID, original: original) }
+        if attachments.isEmpty, trimmedText == "/gif" || trimmedText.hasPrefix("/gif ") {
+            let query = trimmedText == "/gif"
+                ? ""
+                : String(trimmedText.dropFirst("/gif ".count)).trimmingCharacters(in: .whitespacesAndNewlines)
+            stopTyping()
+            setContents("", [])
+            notices = []
+            gifSearchQuery = query
+            isGIFPickerPresented = true
+            return nil
+        }
         if attachments.isEmpty, trimmedText == "/voice", roomID != nil {
             stopTyping()
             setContents("", [])
