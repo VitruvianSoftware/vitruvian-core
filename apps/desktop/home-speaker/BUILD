@@ -251,7 +251,6 @@ rust_binary(
     srcs = ["scripts/src/zip_tool/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-    visibility = ["//visibility:public"],
     deps = [":zip_tool_lib"],
 )
 
@@ -276,7 +275,6 @@ rust_binary(
     srcs = ["scripts/src/sync_secrets/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-    visibility = ["//visibility:public"],
     deps = [":sync_secrets_lib"],
 )
 
@@ -301,7 +299,6 @@ rust_binary(
     srcs = ["scripts/src/publish/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-    visibility = ["//visibility:public"],
     deps = [":publish_lib"],
 )
 

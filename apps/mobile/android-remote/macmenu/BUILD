@@ -277,7 +277,6 @@ rust_binary(
     srcs = ["scripts/src/zip_tool/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-    visibility = ["//visibility:public"],
     deps = [":zip_tool_lib"],
 )
 
