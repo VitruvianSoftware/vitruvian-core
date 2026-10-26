@@ -710,6 +710,7 @@ package enum DefaultsKey {
     package static let screenshotWatermarkPresets = "screenshotWatermarkPresets"
     package static let screenshotOpenEditorDirectly = "screenshotOpenEditorDirectly"
     package static let screenshotCopyToClipboard = "screenshotCopyToClipboard"
+    package static let screenshotCopyImageOnly = "screenshotCopyImageOnly"
     package static let screenshotAddToShelf = "screenshotAddToShelf"
     package static let screenshotPreviewPosition = "screenshotPreviewPosition"
     package static let screenshotPreviewTakesFocus = "screenshotPreviewTakesFocus"

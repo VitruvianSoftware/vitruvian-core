@@ -963,6 +963,7 @@ package enum Defaults {
         DefaultsKey.screenshotWatermarkPresets: Preferences.screenshotWatermarkPresets.defaultValue,
         DefaultsKey.screenshotOpenEditorDirectly: Preferences.screenshotOpenEditorDirectly.defaultValue,
         DefaultsKey.screenshotCopyToClipboard: Preferences.screenshotCopyToClipboard.defaultValue,
+        DefaultsKey.screenshotCopyImageOnly: Preferences.screenshotCopyImageOnly.defaultValue,
         DefaultsKey.screenshotAddToShelf: Preferences.screenshotAddToShelf.defaultValue,
         DefaultsKey.screenshotPreviewPosition: Preferences.screenshotPreviewPosition.defaultValue,
         DefaultsKey.screenshotPreviewTakesFocus: Preferences.screenshotPreviewTakesFocus.defaultValue,
