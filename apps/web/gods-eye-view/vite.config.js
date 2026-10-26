@@ -63,6 +63,16 @@ function bazelSafeCesiumPlugin(base) {
     ...base,
     configResolved(config) {
       resolvedConfig = config;
+      if (config.command === 'build' && process.env.BAZEL_BINDIR) {
+        const htmlPath = path.resolve(config.root, 'index.html');
+        try {
+          const content = fs.readFileSync(htmlPath);
+          fs.unlinkSync(htmlPath);
+          fs.writeFileSync(htmlPath, content);
+        } catch {
+          /* ignore if read-only */
+        }
+      }
       return base.configResolved?.(config);
     },
     async closeBundle() {
