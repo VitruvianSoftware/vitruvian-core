@@ -71,9 +71,9 @@ runs:
           'https://launchpad.net/ubuntu/+archive/primary/+files/libicu74_74.2-1ubuntu3.1_amd64.deb' \
           c9a70989678660eed9a1e904c74fa043da8bec8e2036856fc16e31ced79b04f8
         fetch libxml2.deb \
-          'http://archive.ubuntu.com/ubuntu/pool/main/libx/libxml2/libxml2_2.9.14+dfsg-1.3ubuntu3.9_amd64.deb' \
-          'https://launchpad.net/ubuntu/+archive/primary/+files/libxml2_2.9.14+dfsg-1.3ubuntu3.9_amd64.deb' \
-          6e578bc383096718c9eea8a76a3edfacfea06e525e1aa7a187ee41906436d94e
+          'http://archive.ubuntu.com/ubuntu/pool/main/libx/libxml2/libxml2_2.9.14+dfsg-1.3ubuntu3.10_amd64.deb' \
+          'https://launchpad.net/ubuntu/+archive/primary/+files/libxml2_2.9.14+dfsg-1.3ubuntu3.10_amd64.deb' \
+          c5a065f85c1e6f605741e365e40cad71c3ceb0e85e2791400bd35b8896e12ad1
         sudo dpkg -i "${dir}/libicu74.deb" "${dir}/libxml2.deb"
         has_libxml2_so2 \
           || { echo "::error::libxml2.so.2 still missing after install"; exit 1; }
