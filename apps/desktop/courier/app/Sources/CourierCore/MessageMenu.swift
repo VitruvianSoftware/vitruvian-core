@@ -85,7 +85,7 @@ public enum MessageMenu {
             first,
             [item(.react)].compactMap { $0 },
             [item(.bookmark), item(.removeBookmark)].compactMap { $0 },
-            [item(.markUnread)].compactMap { $0 },
+            [item(.markUnread), item(.markAsPlayed)].compactMap { $0 },
             [item(.unsend), item(.deleteForMe)].compactMap { $0 },
             [item(.copy), item(.copyWithTimestamp), item(.insertAsDraft), item(.openFirstLink)].compactMap { $0 },
             [item(.forward)].compactMap { $0 },
@@ -124,6 +124,7 @@ public enum MessageMenu {
         case .showHistory: String(localized: "Edit History")
         case .replyPrivately: String(localized: "Reply Privately…")
         case .markUnread: String(localized: "Mark as Unread")
+        case .markAsPlayed: String(localized: "Mark as played")
         }
     }
 

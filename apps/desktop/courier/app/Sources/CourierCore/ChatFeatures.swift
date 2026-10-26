@@ -33,6 +33,8 @@ public enum MessageAction: Hashable, Sendable {
     case bookmark, removeBookmark, react, unsend, deleteForMe, openFirstLink, showHistory
     /// The chat's unread count runs from this message on, on this Mac only.
     case markUnread
+    /// Marks an unplayed voice note as played, on this Mac only.
+    case markAsPlayed
     /// A one-to-one chat with the message's sender, the message quoted in its composer.
     case replyPrivately
 }
@@ -50,10 +52,10 @@ public struct Unavailable: Equatable, Sendable {
 
 public enum MessageActions {
     /// The menu's order (inventory 02 §3.4.2, the 4.4 subset): Edit, Reply (or Reply in Thread), Reply Privately,
-    /// React, Bookmark, Mark as Unread, Unsend, Delete for Me, Copy, Copy with Timestamp, Insert as Draft, Open Link,
+    /// React, Bookmark, Mark as Unread, Mark as played, Unsend, Delete for Me, Copy, Copy with Timestamp, Insert as Draft, Open Link,
     /// Forward, Edit History.
     static let order: [MessageAction] = [
-        .edit, .reply, .replyInThread, .replyPrivately, .react, .bookmark, .removeBookmark, .markUnread, .unsend,
+        .edit, .reply, .replyInThread, .replyPrivately, .react, .bookmark, .removeBookmark, .markUnread, .markAsPlayed, .unsend,
         .deleteForMe, .copy, .copyWithTimestamp, .insertAsDraft, .openFirstLink, .forward, .showHistory,
     ]
 
@@ -103,6 +105,9 @@ public enum MessageActions {
             break
         }
         offered.insert(.markUnread)
+        if message.kind == .voiceNote, !message.played, !message.viewOnce {
+            offered.insert(.markAsPlayed)
+        }
         switch message.kind {
         case .deleted, .undecryptable:
             offered.insert(.deleteForMe)

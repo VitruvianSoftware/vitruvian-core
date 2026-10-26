@@ -373,6 +373,8 @@ public final class ConversationModel: ObservableObject {
     public let composer: ComposerModel
     /// The thread pane, in the open chat.
     public let thread: ThreadModel
+    /// App-wide voice-note & audio player (`Audio` and `GlobalAudioPlayerBar`).
+    public let audioPlayer: AudioPlayerModel
     /// Whether the person is looking at the open chat (see `Attention`): it is marked read only then.
     public let attention: Attention
     /// Where toasts go: the inbox's (`InboxModel.announce`). Today: a refused disappearing timer.
@@ -408,6 +410,7 @@ public final class ConversationModel: ObservableObject {
 
     // What is loaded.
     private var events: [String: Event] = [:]
+    private var locallyMarkedPlayed = Set<String>()
     private var seenIDs = Set<String>()
     private var olderCursor: Cursor?
     private var olderPagesLoaded = false
@@ -507,6 +510,11 @@ public final class ConversationModel: ObservableObject {
         self.calendarBridge = CalendarBridge(now: now, calendar: calendar)
         composer = ComposerModel(sender: EngineMessageSender(appModel: appModel), now: now)
         thread = ThreadModel(appModel: appModel, now: now, calendar: calendar, sleep: sleep)
+        audioPlayer = AudioPlayerModel(appModel: appModel, preferences: preferences)
+        audioPlayer.conversation = self
+        subscriptions.append(audioPlayer.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        })
         composer.savedDraft = savedDraft
         composer.lookUpDraft = lookUpDraft
         composer.onSettled = { [weak self] in self?.requestRefetch() }
@@ -718,6 +726,7 @@ public final class ConversationModel: ObservableObject {
     private func preferencesChanged() {
         composer.preferences = preferences
         thread.composer.preferences = preferences
+        audioPlayer.preferences = preferences
         // C21: my typing goes out from either composer while "Show recipients I'm typing" is on, read at each
         // change, so Settings counts at once. Incognito's Hide Typing turns the setting off; Incognito itself
         // never hides typing.
@@ -1020,7 +1029,12 @@ public final class ConversationModel: ObservableObject {
             // Nothing older: the page is the whole chat (an empty one has no events).
             events = events.filter { pageIDs.contains($0.key) }
         }
-        for event in page.events { events[event.eventID] = event }
+        for var event in page.events {
+            if locallyMarkedPlayed.contains(event.eventID) {
+                event.played = true
+            }
+            events[event.eventID] = event
+        }
         seenIDs.formUnion(pageIDs)
         if !olderPagesLoaded { olderCursor = page.before }
         hasOlder = olderCursor != nil
@@ -1261,7 +1275,12 @@ public final class ConversationModel: ObservableObject {
         }
         pageEpoch += 1 // an older or newer page asked for before this one joins nothing
         events = [:]
-        for event in page.events { events[event.eventID] = event }
+        for var event in page.events {
+            if locallyMarkedPlayed.contains(event.eventID) {
+                event.played = true
+            }
+            events[event.eventID] = event
+        }
         seenIDs = Set(events.keys)
         olderCursor = page.before
         olderPagesLoaded = true // the window's own cursor is the one to go on from, whatever a newest page says
@@ -2453,13 +2472,23 @@ public final class ConversationModel: ObservableObject {
         activeLightboxMessageID = messageID
     }
 
-    /// Marks a view-once or voice-note message as played (`message.markPlayed`) on this Mac and on the network where supported.
+    /// Marks a view-once or voice-note message as played (`message.markPlayed`) on this Mac only (for voice notes)
+    /// or on the network where supported (for view-once media).
     public func markPlayed(_ eventID: String, roomID explicitRoomID: String? = nil) async {
+        locallyMarkedPlayed.insert(eventID)
         let messageRoom = explicitRoomID ?? message(eventID, from: .chat)?.roomID
         if var existing = events[eventID] {
             existing.played = true
             events[eventID] = existing
             rebuild()
+        }
+        if let explicitRoom = messageRoom, !explicitRoom.isEmpty, !explicitRoom.hasPrefix("merge:"),
+           explicitRoom != roomID, let client = appModel.client {
+            let _: Empty? = try? await client.call(
+                "message.markPlayed",
+                MarkPlayedParams(roomID: explicitRoom, eventID: eventID)
+            )
+            return
         }
         await act { client, room in
             let targetRoom = (messageRoom?.isEmpty == false ? messageRoom : nil) ?? self.activeReplyRoomID ?? room
@@ -2469,6 +2498,50 @@ public final class ConversationModel: ObservableObject {
                 MarkPlayedParams(roomID: targetRoom, eventID: eventID)
             )
         }
+    }
+
+    /// Marks a voice note or media message as played locally via `message.markPlayed`.
+    public func markMediaPlayed(eventID: String, roomID: String? = nil) async {
+        await markPlayed(eventID, roomID: roomID)
+    }
+
+    /// Builds the consecutive voice-note playback queue starting at `messageID` in the same chat, stopping at the
+    /// first non-voice message or after the newest voice note.
+    public func voiceNoteQueue(
+        startingAt messageID: String,
+        in sourceItems: [TimelineItem]? = nil
+    ) -> [AudioPlayerModel.Track] {
+        let messages = (sourceItems ?? items).compactMap { item -> TimelineMessage? in
+            if case let .message(msg) = item { return msg }
+            return nil
+        }
+        guard let startIndex = messages.firstIndex(where: { $0.id == messageID }) else { return [] }
+        let startMsg = messages[startIndex]
+        guard startMsg.kind == .voiceNote, !startMsg.viewOnce else { return [] }
+
+        var tracks: [AudioPlayerModel.Track] = []
+        for msg in messages[startIndex...] {
+            guard msg.kind == .voiceNote, !msg.viewOnce, msg.roomID == startMsg.roomID else {
+                break
+            }
+            let chatTitle = chat(msg.roomID)?.name ?? otherPerson ?? chatInfo?.name ?? ""
+            let senderName = msg.mine
+                ? String(localized: "You")
+                : (msg.senderName.isEmpty ? chatTitle : msg.senderName)
+            tracks.append(
+                AudioPlayerModel.Track(
+                    eventID: msg.id,
+                    roomID: msg.roomID,
+                    mediaPath: msg.mediaPath,
+                    senderName: senderName,
+                    chatTitle: chatTitle,
+                    durationMS: msg.durationMS ?? 0,
+                    waveform: msg.waveform,
+                    isVoiceNote: true
+                )
+            )
+        }
+        return tracks
     }
 
     // MARK: - Mark as Unread, Reply Privately

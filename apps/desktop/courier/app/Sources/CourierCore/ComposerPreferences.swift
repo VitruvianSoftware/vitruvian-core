@@ -68,6 +68,12 @@ public final class ComposerPreferences: ObservableObject {
     @Published public var showChatUpdatesInTimeline: Bool {
         didSet { defaults.set(showChatUpdatesInTimeline, forKey: Self.showChatUpdatesKey) }
     }
+    public static let autoPlayNextVoiceNoteKey = "courier.preferences.autoPlayNextVoiceNote"
+    /// "Automatically play the next voice note" (02 §1.2, on): finishing a voice note starts the next consecutive
+    /// voice note in the same chat.
+    @Published public var autoPlayNextVoiceNote: Bool {
+        didSet { defaults.set(autoPlayNextVoiceNote, forKey: Self.autoPlayNextVoiceNoteKey) }
+    }
 
     /// The key a setting is kept under.
     public static func key(_ name: String) -> String { "courier.composer." + name }
@@ -98,6 +104,7 @@ public final class ComposerPreferences: ObservableObject {
         showTyping = bool("showTyping", true)
         showIncognitoMark = bool("showIncognitoMark", true)
         showChatUpdatesInTimeline = defaults.object(forKey: Self.showChatUpdatesKey) as? Bool ?? true
+        autoPlayNextVoiceNote = defaults.object(forKey: Self.autoPlayNextVoiceNoteKey) as? Bool ?? true
     }
 
     private func set(_ value: Any, _ name: String) {

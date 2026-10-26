@@ -1224,6 +1224,119 @@ final class ViewSnapshotTests: XCTestCase {
         }
     }
 
+    // MARK: - Part 4.5b Task 7: Inline Voice-Note & Audio Player and GlobalAudioPlayerBar
+
+    func testVoiceNoteViewAndGlobalAudioPlayerBarLightAndDark() throws {
+        let waveform = [14, 28, 52, 85, 64, 40, 72, 96, 80, 48, 30, 62, 88, 70, 44, 22, 56, 78, 50, 26, 38, 66, 42, 18]
+        let audioPath = FileManager.default.temporaryDirectory
+            .appendingPathComponent("courier-snapshot-voice.ogg").path
+        try Data("OggS-snapshot".utf8).write(to: URL(fileURLWithPath: audioPath), options: .atomic)
+
+        var unplayedEvent = Fixture.event(
+            "$vn-unplayed",
+            mine: false,
+            ts: 12,
+            content: [
+                "msgtype": .string("m.audio"),
+                "body": .string("Voice message.ogg"),
+                "filename": .string("Voice message.ogg"),
+                "org.matrix.msc3245.voice": .object([:]),
+                "org.matrix.msc1767.audio": .object([
+                    "duration": .int(24_000),
+                    "waveform": .array(waveform.map { .int(Int64($0)) }),
+                ]),
+                "info": .object([
+                    "mimetype": .string("audio/ogg"),
+                    "duration": .int(24_000),
+                    "size": .int(32_768),
+                ]),
+            ],
+            name: "Alice Example"
+        )
+        unplayedEvent.mediaPath = audioPath
+        unplayedEvent.durationMS = 24_000
+        unplayedEvent.waveform = waveform
+        unplayedEvent.played = false
+        let unplayedMsg = try XCTUnwrap(Fixture.messages([unplayedEvent]).first)
+        XCTAssertEqual(unplayedMsg.kind, .voiceNote)
+        XCTAssertFalse(unplayedMsg.played)
+
+        var playedEvent = unplayedEvent
+        playedEvent.eventID = "$vn-played"
+        playedEvent.played = true
+        let playedMsg = try XCTUnwrap(Fixture.messages([playedEvent]).first)
+        XCTAssertTrue(playedMsg.played)
+
+        // 1. VoiceNoteView unplayed with waveform bars and unplayed dot.
+        let idlePlayer = AudioPlayerModel(defaults: defaults())
+        check(try Snapshot.render("voice-note-unplayed", width: 380) {
+            VoiceNoteView(
+                message: unplayedMsg,
+                chatTitle: "Saturday Hike",
+                audioPlayer: idlePlayer,
+                queueInRoom: []
+            )
+            .padding(14)
+        })
+
+        // 2. VoiceNoteView playing at 1.5× at 45% progress (mid-waveform).
+        let playingPlayer = AudioPlayerModel(defaults: defaults())
+        let activeTrack = AudioPlayerModel.Track(
+            eventID: unplayedMsg.id,
+            roomID: unplayedMsg.roomID,
+            mediaPath: audioPath,
+            senderName: "Alice Example",
+            chatTitle: "Saturday Hike",
+            durationMS: 24_000,
+            waveform: waveform
+        )
+        playingPlayer.setPreviewState(
+            track: activeTrack,
+            isPlaying: true,
+            progress: 0.45,
+            elapsedMS: 10_800,
+            speed: .onePointFive
+        )
+        check(try Snapshot.render("voice-note-playing", width: 380) {
+            VoiceNoteView(
+                message: unplayedMsg,
+                chatTitle: "Saturday Hike",
+                audioPlayer: playingPlayer,
+                queueInRoom: [activeTrack]
+            )
+            .padding(14)
+        })
+
+        // 3. VoiceNoteView played.
+        check(try Snapshot.render("voice-note-played", width: 380) {
+            VoiceNoteView(
+                message: playedMsg,
+                chatTitle: "Saturday Hike",
+                audioPlayer: idlePlayer,
+                queueInRoom: []
+            )
+            .padding(14)
+        })
+
+        // 4. GlobalAudioPlayerBar persistent floating audio bar.
+        check(try Snapshot.render("global-audio-player-bar", width: 620) {
+            GlobalAudioPlayerBar(
+                audioPlayer: playingPlayer,
+                onJumpToMessage: { _, _ in }
+            )
+            .padding(10)
+        })
+
+        // 5. Plain-words check: user-facing strings never expose API names.
+        for text in VoiceNoteView.userVisibleStrings + GlobalAudioPlayerBar.userVisibleStrings {
+            XCTAssertFalse(text.contains("AVAudioPlayer"), "no API names in text people read: \(text)")
+            XCTAssertFalse(text.contains("AVPlayer"), "no API names in text people read: \(text)")
+            XCTAssertFalse(text.contains("MSC1767"), "no API names in text people read: \(text)")
+            XCTAssertFalse(text.contains("MSC3245"), "no API names in text people read: \(text)")
+            XCTAssertFalse(text.contains("markPlayed"), "no API names in text people read: \(text)")
+        }
+    }
+
     private func makeGalleryEvent(
         _ id: String,
         body: String,

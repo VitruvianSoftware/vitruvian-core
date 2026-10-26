@@ -2574,6 +2574,19 @@ final class ConversationScript: @unchecked Sendable {
                 }
             }
             return .result([String: Any]())
+        case "message.markPlayed":
+            let id = params?["event_id"] as? String ?? ""
+            lock.withLock {
+                for (room, list) in events {
+                    events[room] = list.map { event in
+                        guard event["event_id"] as? String == id else { return event }
+                        var marked = event
+                        marked["played"] = true
+                        return marked
+                    }
+                }
+            }
+            return .result([String: Any]())
         case "message.edit": return .result(["event_id": "$edit"])
         case "poll.vote": return .result(["event_id": "$vote"])
         case "poll.create": return .result(["event_id": "$poll"])

@@ -159,34 +159,41 @@ struct MainWindow: View {
     }
 
     private var panes: some View {
-        NavigationSplitView {
-            HStack(spacing: 0) {
-                if preferences.showSpaceBar {
-                    SpaceBar(spaces: spaces, inbox: inbox, labels: labels)
-                    Divider()
+        VStack(spacing: 0) {
+            if conversation.audioPlayer.shouldShowGlobalBar {
+                GlobalAudioPlayerBar(audioPlayer: conversation.audioPlayer) { roomID, eventID in
+                    model.open(.message(roomID: roomID, eventID: eventID))
                 }
-                InboxList(inbox: inbox, spaces: spaces, preferences: preferences, ui: ui)
             }
-            .navigationSplitViewColumnWidth(min: preferences.showSpaceBar ? 260 + SpaceBar.width : 260,
-                                            ideal: preferences.showSpaceBar ? 340 + SpaceBar.width : 340,
-                                            max: 480 + SpaceBar.width)
-        } detail: {
-            HStack(spacing: 0) {
-                Group {
-                    if inbox.showsAddNetwork {
-                        AddNetworkPrompt(add: inbox.addNetwork)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else if model.selectedRoomID != nil {
-                        ConversationView(conversation: conversation, composer: conversation.composer, inbox: inbox,
-                                         messageActions: messageActions, scheduled: scheduled, preferences: composerPreferences,
-                                         thread: conversation.thread, focus: focus, appModel: model)
-                    } else {
-                        NoChatSelected()
+            NavigationSplitView {
+                HStack(spacing: 0) {
+                    if preferences.showSpaceBar {
+                        SpaceBar(spaces: spaces, inbox: inbox, labels: labels)
+                        Divider()
                     }
+                    InboxList(inbox: inbox, spaces: spaces, preferences: preferences, ui: ui)
                 }
-                if conversation.isShowingCalendar {
-                    Divider()
-                    CalendarPane(bridge: conversation.calendarBridge, onClose: conversation.toggleCalendar)
+                .navigationSplitViewColumnWidth(min: preferences.showSpaceBar ? 260 + SpaceBar.width : 260,
+                                                ideal: preferences.showSpaceBar ? 340 + SpaceBar.width : 340,
+                                                max: 480 + SpaceBar.width)
+            } detail: {
+                HStack(spacing: 0) {
+                    Group {
+                        if inbox.showsAddNetwork {
+                            AddNetworkPrompt(add: inbox.addNetwork)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        } else if model.selectedRoomID != nil {
+                            ConversationView(conversation: conversation, composer: conversation.composer, inbox: inbox,
+                                             messageActions: messageActions, scheduled: scheduled, preferences: composerPreferences,
+                                             thread: conversation.thread, focus: focus, appModel: model)
+                        } else {
+                            NoChatSelected()
+                        }
+                    }
+                    if conversation.isShowingCalendar {
+                        Divider()
+                        CalendarPane(bridge: conversation.calendarBridge, onClose: conversation.toggleCalendar)
+                    }
                 }
             }
         }

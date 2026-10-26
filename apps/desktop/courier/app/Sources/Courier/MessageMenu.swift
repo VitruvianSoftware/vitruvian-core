@@ -147,6 +147,14 @@ enum MessageRowActions {
             now: { conversation.currentTime },
             calendarBridge: conversation.calendarBridge,
             openLightbox: { conversation.openLightbox($0) },
-            openViewOnce: { conversation.openViewOnce($0) })
+            openViewOnce: { conversation.openViewOnce($0) },
+            audioPlayer: conversation.audioPlayer,
+            chatTitle: { msg in conversation.otherPerson ?? conversation.chatInfo?.name ?? msg.senderName },
+            voiceNoteQueue: { id in
+                conversation.voiceNoteQueue(
+                    startingAt: id,
+                    in: source == .thread ? conversation.thread.items : conversation.items
+                )
+            })
     }
 }

@@ -52,6 +52,12 @@ struct MessageActions {
     var openLightbox: (String) -> Void = { _ in }
     /// Opens an unopened view-once message in `ViewOnceSheet`.
     var openViewOnce: (TimelineMessage) -> Void = { _ in }
+    /// Shared voice-note & audio player model.
+    var audioPlayer: AudioPlayerModel? = nil
+    /// Title of the chat a message belongs to, for `VoiceNoteView` and `GlobalAudioPlayerBar`.
+    var chatTitle: (TimelineMessage) -> String = { _ in "" }
+    /// Consecutive voice-note queue starting at the given message ID in the same chat.
+    var voiceNoteQueue: (String) -> [AudioPlayerModel.Track] = { _ in [] }
     /// Pops a video message out into the floating Picture-in-Picture window.
     var popOutPiP: @MainActor (TimelineMessage) -> Void = { message in
         PictureInPictureController.shared.show(
@@ -574,7 +580,15 @@ struct MessageRowView: View {
                     onOpenLightbox: { actions.openLightbox(message.id) }
                 )
                 caption
-            case .voiceNote, .file:
+            case .voiceNote:
+                VoiceNoteView(
+                    message: message,
+                    chatTitle: actions.chatTitle(message),
+                    audioPlayer: actions.audioPlayer ?? AudioPlayerModel(),
+                    queueInRoom: actions.voiceNoteQueue(message.id)
+                )
+                caption
+            case .file:
                 FileAttachmentChip(message: message)
                 caption
             case .location:

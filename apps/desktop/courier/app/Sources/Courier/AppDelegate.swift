@@ -194,6 +194,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// `AppModel.quit` does all three.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         PictureInPictureController.shared.stopForApplicationTermination()
+        conversation.audioPlayer.stopForApplicationTermination()
         Task {
             await model.quit(conversation)
             sender.reply(toApplicationShouldTerminate: true)

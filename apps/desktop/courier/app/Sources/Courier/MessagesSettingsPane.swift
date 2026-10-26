@@ -45,6 +45,10 @@ struct MessagesSettingsPane: View {
                 Toggle(String(localized: "Hide deleted messages"), isOn: $preferences.hideDeletedMessages)
                     .help(String(localized: "Off, a deleted message leaves a line saying it was deleted."))
                 Toggle(String(localized: "Show chat updates in timeline"), isOn: $preferences.showChatUpdatesInTimeline)
+                Toggle(
+                    String(localized: "Automatically play the next voice note"),
+                    isOn: $preferences.autoPlayNextVoiceNote
+                )
             }
             replies
         }
