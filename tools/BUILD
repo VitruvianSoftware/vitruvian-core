@@ -18,6 +18,7 @@ load("@multitool//:tools.bzl", MULTITOOL_TOOLS = "TOOLS")
 load("@npm//:defs.bzl", "npm_link_all_packages")
 load("@npm//tools:yo/package_json.bzl", yo_bin = "bin")
 load("@rules_python//python/entry_points:py_console_script_binary.bzl", "py_console_script_binary")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
 # Platform tooling: visible across the monorepo workspace subpackages.
 package(default_visibility = ["//:__subpackages__"])
@@ -94,4 +95,35 @@ exports_files(
 exports_files(
     ["test-mcp-slack-e2e.sh"],
     visibility = ["//tools/design-sync:__pkg__"],
+)
+
+exports_files(["workspace-status.sh"])
+
+rust_library(
+    name = "workspace_status_lib",
+    srcs = ["src/workspace_status/lib.rs"],
+    crate_name = "workspace_status_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
+    name = "workspace-status-rs",
+    srcs = ["src/workspace_status/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":workspace_status_lib"],
+)
+
+alias(
+    name = "workspace_status_rs",
+    actual = ":workspace-status-rs",
+)
+
+rust_test(
+    name = "workspace_status_rs_test",
+    size = "small",
+    crate = ":workspace_status_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
 )

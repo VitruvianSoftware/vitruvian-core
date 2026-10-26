@@ -13,7 +13,7 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@rules_cc//cc:defs.bzl", "cc_library")
-load("@rules_rust//rust:defs.bzl", "rust_static_library")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_static_library", "rust_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load(":defs.bzl", "boringssl_prefix", "protoc_dist", "with_rust_1_98_1")
 
@@ -122,6 +122,38 @@ sh_binary(
     name = "cc_in_execroot",
     srcs = ["cc_in_execroot.sh"],
     visibility = ["//visibility:public"],
+)
+
+rust_library(
+    name = "cc_in_execroot_lib",
+    srcs = ["scripts/src/cc_in_execroot/lib.rs"],
+    crate_name = "cc_in_execroot_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/desktop/courier:__subpackages__"],
+)
+
+rust_binary(
+    name = "cc-in-execroot-rs",
+    srcs = ["scripts/src/cc_in_execroot/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/desktop/courier:__subpackages__"],
+    deps = [":cc_in_execroot_lib"],
+)
+
+alias(
+    name = "cc_in_execroot_rs",
+    actual = ":cc-in-execroot-rs",
+    visibility = ["//apps/desktop/courier:__subpackages__"],
+)
+
+rust_test(
+    name = "cc_in_execroot_rs_test",
+    size = "small",
+    crate = ":cc_in_execroot_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
 )
 
 bzl_library(

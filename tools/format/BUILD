@@ -7,9 +7,12 @@ we don't want to trigger eager fetches of these for builds that don't want to ru
 load("@aspect_rules_lint//format:defs.bzl", "format_multirun")
 load("@npm//:prettier/package_json.bzl", prettier = "bin")
 load("@rules_java//java:java_binary.bzl", "java_binary")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
 # gazelle:exclude
 package(default_visibility = ["//:__subpackages__"])
+
+exports_files(["prettier_wrapper.sh"])
 
 prettier.prettier_binary(
     name = "prettier",
@@ -48,4 +51,33 @@ format_multirun(
     rust = "@rules_rust//tools/rustfmt:upstream_rustfmt",
     shell = "@aspect_rules_lint//format:shfmt",
     starlark = "@buildifier_prebuilt//:buildifier",
+)
+
+rust_library(
+    name = "prettier_wrapper_lib",
+    srcs = ["src/lib.rs"],
+    crate_name = "prettier_wrapper_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
+    name = "prettier-wrapper-rs",
+    srcs = ["src/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":prettier_wrapper_lib"],
+)
+
+alias(
+    name = "prettier_wrapper_rs",
+    actual = ":prettier-wrapper-rs",
+)
+
+rust_test(
+    name = "prettier_wrapper_rs_test",
+    size = "small",
+    crate = ":prettier_wrapper_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
 )
