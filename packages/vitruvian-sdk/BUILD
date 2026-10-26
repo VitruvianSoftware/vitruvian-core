@@ -682,8 +682,37 @@ py_test(
 # the copies are compiled into the command as text. This writes that text:
 #
 #   bazel run //packages/vitruvian-sdk:sync-templates
-py_binary(
+rust_library(
+    name = "sync_templates_rs_lib",
+    srcs = ["samples/src/lib.rs"],
+    crate_name = "sync_templates_rs_lib",
+    crate_root = "samples/src/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
     name = "sync-templates",
+    srcs = ["samples/src/main.rs"],
+    crate_root = "samples/src/main.rs",
+    data = glob(["samples/hello-*/**"]),
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":sync_templates_rs_lib"],
+)
+
+alias(
+    name = "sync-templates-rs",
+    actual = ":sync-templates",
+)
+
+alias(
+    name = "sync_templates_rs",
+    actual = ":sync-templates",
+)
+
+py_binary(
+    name = "sync-templates-py",
     srcs = ["samples/sync_templates.py"],
     data = glob(["samples/hello-*/**"]),
     main = "samples/sync_templates.py",
@@ -691,8 +720,25 @@ py_binary(
 
 # The committed text is what the samples are now. Not `manual` and not tied
 # to macOS, so the Linux lane runs it too.
-py_test(
+rust_test(
     name = "templates_in_sync_test",
+    size = "small",
+    crate = ":sync_templates_rs_lib",
+    data = glob(["samples/hello-*/**"]) + [
+        "Sources/VitruvianToolCLI/Templates.swift",
+        "samples/sync_templates.py",
+    ],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+alias(
+    name = "sync_templates_rs_lib_test",
+    actual = ":templates_in_sync_test",
+)
+
+py_test(
+    name = "templates_in_sync_py_test",
     size = "small",
     srcs = ["samples/sync_templates.py"],
     args = ["--check"],
