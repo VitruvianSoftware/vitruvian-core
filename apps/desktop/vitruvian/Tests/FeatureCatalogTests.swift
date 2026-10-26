@@ -874,13 +874,13 @@ enum FeatureCatalogTests {
                 && keptTally.total == AppFeature.allCases.count && !keptTally.canInstallAll,
                "an install that predates the hardware check is never refused and still counts")
         fanlessDefaults.removePersistentDomain(forName: "vitru.tests.feature-hub-fanless")
-        // Issue #2270: nested in the page's plain stack, the lazy stack resized
-        // it as group cards came into view and could keep redoing its layout
-        // until Settings froze. The page's view type is that structure, read
-        // without drawing it: the scroll view holds the lazy stack itself.
+        // The lazy stack remained after #2270 and still appears in the hang
+        // reports for #2311 and #2642. The page's view type is its structure,
+        // read without drawing it; the layout suite checks scroll geometry and
+        // the offscreen notice changes.
         suite.expect(FeatureHubScrollPage<Color>.Body.self
-                == ScrollView<ModifiedContent<LazyVStack<Color>, FeatureHubColumn>>.self,
-               "the hub's one lazy stack is its scroll view's own content, never nested in another stack")
+                == ScrollView<ModifiedContent<VStack<Color>, FeatureHubColumn>>.self,
+               "the Features page measures its cards eagerly instead of estimating their height during scrolling")
         suite.expect(AppFeature.diskImageInstaller.group == .clipboardFiles
                 && AppFeature.diskImageInstaller.enabledKeys.isEmpty
                 && AppFeature.diskImageInstaller.permissions == [.appManagement]
