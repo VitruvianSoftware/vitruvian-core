@@ -24,6 +24,8 @@ package final class AutoQuitService: ObservableObject {
 
     /// Bundle ids never auto-quit; mirrors the persisted list for the UI.
     @Published package private(set) var exceptions: [String] = []
+    /// Menu bar apps explicitly allowed to quit while they are in the Dock.
+    @Published package private(set) var dockApps: [String] = []
 
     private static let appNotifications = [
         kAXWindowCreatedNotification,
@@ -73,6 +75,7 @@ package final class AutoQuitService: ObservableObject {
 
     private init() {
         reloadExceptions()
+        reloadDockApps()
     }
 
     package var isRunning: Bool { running }
@@ -340,10 +343,11 @@ package final class AutoQuitService: ObservableObject {
     private func checkWindows(pid: pid_t, confirm: Bool = true) {
         guard running, hadWindows[pid] == true,
               let app = NSRunningApplication(processIdentifier: pid), !app.isTerminated else { return }
-        let appIsExcepted = AutoQuitSupport.isExcepted(bundleIdentifier: app.bundleIdentifier,
-                                                       bundleURL: app.bundleURL,
-                                                       exceptions: exceptions)
-            || AutoQuitSupport.isBackgroundApp(bundleURL: app.bundleURL)
+        let appIsExcepted = AutoQuitSupport.isQuitExempt(bundleIdentifier: app.bundleIdentifier,
+                                                        bundleURL: app.bundleURL,
+                                                        isInDock: app.activationPolicy == .regular,
+                                                        exceptions: exceptions,
+                                                        dockApps: dockApps)
         let hiddenByCloseRequest = app.isHidden && hasRecentCloseButtonRequest(pid: pid)
 
         // Cheap early-outs before any synchronous AX IPC: excepted apps and
@@ -944,6 +948,30 @@ package final class AutoQuitService: ObservableObject {
 
     package func isMandatoryException(_ bundleID: String) -> Bool {
         Defaults.mandatoryAutoQuitExceptionBundleIDs.contains(bundleID)
+    }
+
+    // MARK: - Explicit menu bar app choices
+
+    private func reloadDockApps() {
+        let raw = UserDefaults.standard[Preferences.autoQuitDockApps]
+        let sanitized = Defaults.sanitizedAutoQuitDockApps(raw)
+        if raw != sanitized {
+            UserDefaults.standard[Preferences.autoQuitDockApps] = sanitized
+        }
+        dockApps = sanitized
+    }
+
+    package func addDockApp(_ bundleID: String) {
+        let list = Defaults.sanitizedAutoQuitDockApps(dockApps + [bundleID])
+        guard list != dockApps else { return }
+        UserDefaults.standard[Preferences.autoQuitDockApps] = list
+        reloadDockApps()
+    }
+
+    package func removeDockApp(_ bundleID: String) {
+        let list = Defaults.sanitizedAutoQuitDockApps(dockApps.filter { $0 != bundleID })
+        UserDefaults.standard[Preferences.autoQuitDockApps] = list
+        reloadDockApps()
     }
 }
 

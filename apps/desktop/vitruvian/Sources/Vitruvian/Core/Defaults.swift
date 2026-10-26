@@ -357,6 +357,7 @@ package enum Defaults {
         // Finder never benefits from being "quit" (it just relaunches), so
         // it's excepted out of the box.
         DefaultsKey.autoQuitExceptions: Preferences.autoQuitExceptions.defaultValue,
+        DefaultsKey.autoQuitDockApps: Preferences.autoQuitDockApps.defaultValue,
         DefaultsKey.quitProtectionQuitEnabled: Preferences.quitProtectionQuitEnabled.defaultValue,
         DefaultsKey.quitProtectionQuitMode: Preferences.quitProtectionQuitMode.defaultValue,
         DefaultsKey.quitProtectionQuitHoldDurationMs: Preferences.quitProtectionQuitHoldDurationMs.defaultValue,
@@ -1700,6 +1701,12 @@ package enum Defaults {
 
     package static func sanitizedAutoQuitExceptions(_ bundleIDs: [String]) -> [String] {
         sanitizedBundleIdentifierList(mandatoryAutoQuitExceptionBundleIDs + bundleIDs)
+    }
+
+    package static func sanitizedAutoQuitDockApps(_ bundleIDs: [String]) -> [String] {
+        sanitizedBundleIdentifierList(bundleIDs).filter {
+            !mandatoryAutoQuitExceptionBundleIDs.contains($0)
+        }
     }
 
     package static func sanitizedDiskExclusionList(_ list: [String]) -> [String] {

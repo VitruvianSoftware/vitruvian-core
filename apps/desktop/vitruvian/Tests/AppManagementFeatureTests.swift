@@ -1335,6 +1335,8 @@ enum AppManagementFeatureTests {
                "Media image profiles start empty")
         suite.expect((registeredDefaults[DefaultsKey.autoQuitExceptions] as? [String]) == Defaults.mandatoryAutoQuitExceptionBundleIDs,
                "Finder and Phone stay in the default auto-quit exception list")
+        suite.expect(registeredDefaults[DefaultsKey.autoQuitDockApps] as? [String] == [],
+               "no menu bar app opts into Quit on close by default")
         suite.expect(Defaults.mandatoryAutoQuitExceptionBundleIDs.contains(Defaults.finderBundleIdentifier)
                 && Defaults.mandatoryAutoQuitExceptionBundleIDs.contains(Defaults.phoneBundleIdentifier),
                "Quit on close never terminates Finder or Phone (Continuity calls)")
@@ -1413,6 +1415,11 @@ enum AppManagementFeatureTests {
         suite.expect(Defaults.sanitizedAutoQuitExceptions(["com.example.One", Defaults.finderBundleIdentifier])
                == [Defaults.finderBundleIdentifier, Defaults.phoneBundleIdentifier, "com.example.One"],
                "Finder and Phone are mandatory in the auto-quit exception list")
+        suite.expect(Defaults.sanitizedAutoQuitDockApps([
+            " com.example.One ", "", "\n", "com.example.One", "com.example.Two",
+            Defaults.finderBundleIdentifier, " \(Defaults.phoneBundleIdentifier) ",
+        ]) == ["com.example.One", "com.example.Two"],
+               "menu bar opt-ins are trimmed and deduplicated without permitting mandatory exceptions")
         suite.expect(AutoQuitSupport.isExcepted(bundleIdentifier: "com.example.direct",
                                           bundleURL: nil,
                                           exceptions: ["com.example.direct"]),
@@ -1435,7 +1442,7 @@ enum AppManagementFeatureTests {
                                                  withIntermediateDirectories: true)
         NSDictionary(dictionary: ["CFBundleIdentifier": "com.example.container"])
             .write(to: outerApp.appendingPathComponent("Contents/Info.plist"), atomically: true)
-        NSDictionary(dictionary: ["CFBundleIdentifier": "com.example.window-host"])
+        NSDictionary(dictionary: ["CFBundleIdentifier": "com.example.window-host", "LSUIElement": true])
             .write(to: nestedApp.appendingPathComponent("Contents/Info.plist"), atomically: true)
         suite.expect(AutoQuitSupport.isExcepted(bundleIdentifier: "com.example.window-host",
                                           bundleURL: nestedApp,
@@ -1464,16 +1471,139 @@ enum AppManagementFeatureTests {
             NSDictionary(dictionary: info).write(to: url.appendingPathComponent("Contents/Info.plist"), atomically: true)
             return url
         }
-        suite.expect(AutoQuitSupport.isBackgroundApp(bundleURL: agentBundle("MenuBar", ["LSUIElement": true])),
+        let menuBarApp = agentBundle("MenuBar", ["LSUIElement": true])
+        suite.expect(AutoQuitSupport.isBackgroundApp(bundleURL: menuBarApp, isInDock: false),
                "AutoQuit leaves a menu bar app running when its settings window closes")
-        suite.expect(AutoQuitSupport.isBackgroundApp(bundleURL: agentBundle("MenuBarString", ["LSUIElement": "1"])),
+        suite.expect(AutoQuitSupport.isBackgroundApp(bundleURL: menuBarApp, isInDock: true),
+               "AutoQuit protects an unselected menu bar app while it is still in the Dock")
+        suite.expect(!AutoQuitSupport.isBackgroundApp(bundleURL: menuBarApp, isInDock: true,
+                                                      allowsMenuBarQuit: true),
+               "an explicit opt-in removes the menu bar exemption only while the app is in the Dock")
+        suite.expect(AutoQuitSupport.isBackgroundApp(bundleURL: menuBarApp, isInDock: false,
+                                                     allowsMenuBarQuit: true),
+               "an opted-in menu bar app is protected again after it leaves the Dock")
+        suite.expect(AutoQuitSupport.isBackgroundApp(bundleURL: agentBundle("MenuBarString", ["LSUIElement": "1"]),
+                                                     isInDock: false),
                "AutoQuit reads a string LSUIElement the way Launch Services does")
-        suite.expect(AutoQuitSupport.isBackgroundApp(bundleURL: agentBundle("Daemon", ["LSBackgroundOnly": true])),
+        suite.expect(!AutoQuitSupport.isBackgroundApp(bundleURL: agentBundle("DockMenuBarString", ["LSUIElement": "1"]),
+                                                      isInDock: true, allowsMenuBarQuit: true),
+               "a string-valued menu bar declaration accepts an explicit Dock opt-in")
+        suite.expect(AutoQuitSupport.isBackgroundApp(bundleURL: agentBundle("Daemon", ["LSBackgroundOnly": true]),
+                                                     isInDock: false),
                "AutoQuit leaves a background-only app running")
-        suite.expect(!AutoQuitSupport.isBackgroundApp(bundleURL: agentBundle("Regular", ["LSUIElement": false])),
+        suite.expect(AutoQuitSupport.isBackgroundApp(bundleURL: agentBundle("DockDaemon", ["LSBackgroundOnly": true]),
+                                                     isInDock: true, allowsMenuBarQuit: true),
+               "AutoQuit preserves the background-only exemption even with a Dock opt-in")
+        suite.expect(AutoQuitSupport.isBackgroundApp(bundleURL: agentBundle("DockDaemonString", ["LSBackgroundOnly": "1"]),
+                                                     isInDock: true, allowsMenuBarQuit: true),
+               "AutoQuit preserves string-valued background-only declarations in the Dock")
+        suite.expect(AutoQuitSupport.isBackgroundApp(bundleURL: agentBundle("BothFlags", ["LSUIElement": true,
+                                                                                       "LSBackgroundOnly": true]),
+                                                     isInDock: true, allowsMenuBarQuit: true),
+               "background-only protection takes precedence over the optional Dock icon")
+        suite.expect(!AutoQuitSupport.isBackgroundApp(bundleURL: agentBundle("Regular", ["LSUIElement": false]),
+                                                      isInDock: false),
                "AutoQuit still quits a regular app when its last window closes")
-        suite.expect(!AutoQuitSupport.isBackgroundApp(bundleURL: nil),
+        suite.expect(!AutoQuitSupport.isBackgroundApp(bundleURL: nil, isInDock: false),
                "AutoQuit treats a process without a bundle as a regular app")
+        suite.expect(AutoQuitSupport.canAllowMenuBarQuit(bundleURL: menuBarApp)
+                && AutoQuitSupport.canAllowMenuBarQuit(bundleURL: agentBundle("PickerMenuBarString", ["LSUIElement": "1"])),
+               "the menu bar opt-in picker accepts boolean and string agent declarations")
+        suite.expect(!AutoQuitSupport.canAllowMenuBarQuit(bundleURL: nil)
+                && !AutoQuitSupport.canAllowMenuBarQuit(bundleURL: agentBundle("PickerRegular", [:]))
+                && !AutoQuitSupport.canAllowMenuBarQuit(bundleURL: agentBundle("PickerFalseAgent", ["LSUIElement": false]))
+                && !AutoQuitSupport.canAllowMenuBarQuit(bundleURL: agentBundle("PickerDaemon", ["LSBackgroundOnly": true]))
+                && !AutoQuitSupport.canAllowMenuBarQuit(bundleURL: agentBundle("PickerBothFlags", ["LSUIElement": true,
+                                                                                                          "LSBackgroundOnly": "1"])),
+               "the menu bar opt-in picker excludes unidentified, regular and background-only apps")
+
+        let menuBarID = "com.example.menu-bar"
+        func menuBarIsExempt(isInDock: Bool = true,
+                             exceptions: [String] = [],
+                             dockApps: [String] = []) -> Bool {
+            AutoQuitSupport.isQuitExempt(bundleIdentifier: menuBarID,
+                                         bundleURL: menuBarApp,
+                                         isInDock: isInDock,
+                                         exceptions: exceptions,
+                                         dockApps: dockApps)
+        }
+        // The production decision must protect an unselected app throughout
+        // a delayed return to the menu bar, including when watching begins
+        // with its settings window already open and its Dock icon present.
+        suite.expect([true, true, true, false].allSatisfy { menuBarIsExempt(isInDock: $0) },
+               "an unselected menu bar app stays protected regardless of when it drops its Dock icon")
+        suite.expect(!menuBarIsExempt(dockApps: [menuBarID]),
+               "the production decision permits a selected menu bar app that remains in the Dock")
+        suite.expect(menuBarIsExempt(isInDock: false, dockApps: [menuBarID]),
+               "the production decision rechecks a selected app's current Dock policy")
+        suite.expect(menuBarIsExempt(dockApps: ["com.example.other", menuBarID + ".helper"]),
+               "a menu bar opt-in matches the exact app identifier, not another app or a prefix")
+        var selectedDockApps = [menuBarID]
+        let exemptBeforeRemoval = menuBarIsExempt(dockApps: selectedDockApps)
+        selectedDockApps.removeAll()
+        suite.expect(!exemptBeforeRemoval && menuBarIsExempt(dockApps: selectedDockApps),
+               "removing a Dock opt-in restores protection on the next decision")
+        suite.expect(menuBarIsExempt(exceptions: [menuBarID], dockApps: [menuBarID]),
+               "an explicit keep-running exception takes precedence over a Dock opt-in")
+        suite.expect(AutoQuitSupport.isQuitExempt(bundleIdentifier: nil,
+                                                 bundleURL: menuBarApp,
+                                                 isInDock: true,
+                                                 exceptions: [],
+                                                 dockApps: [menuBarID]),
+               "a menu bar app without a known identifier cannot inherit another app's opt-in")
+        for bundleID in Defaults.mandatoryAutoQuitExceptionBundleIDs {
+            suite.expect(AutoQuitSupport.isQuitExempt(bundleIdentifier: bundleID,
+                                                     bundleURL: nil,
+                                                     isInDock: true,
+                                                     exceptions: [],
+                                                     dockApps: [bundleID]),
+                   "a raw Dock opt-in never bypasses mandatory protection for \(bundleID)")
+        }
+        suite.expect(AutoQuitSupport.isQuitExempt(bundleIdentifier: "com.example.window-host",
+                                                 bundleURL: nestedApp,
+                                                 isInDock: true,
+                                                 exceptions: [],
+                                                 dockApps: ["com.example.container"]),
+               "opting in an outer app does not opt in its menu bar helper")
+        suite.expect(!AutoQuitSupport.isQuitExempt(bundleIdentifier: "com.example.window-host",
+                                                  bundleURL: nestedApp,
+                                                  isInDock: true,
+                                                  exceptions: [],
+                                                  dockApps: ["com.example.window-host"]),
+               "a menu bar helper can be opted in by its own exact identifier")
+        suite.expect(AutoQuitSupport.isQuitExempt(bundleIdentifier: "com.example.window-host",
+                                                 bundleURL: nestedApp,
+                                                 isInDock: true,
+                                                 exceptions: ["com.example.container"],
+                                                 dockApps: ["com.example.window-host"]),
+               "an outer app's keep-running exception still protects an opted-in helper")
+        let guestAppID = "com.parallels.winapp.0123456789abcdef.guest"
+        suite.expect(AutoQuitSupport.isQuitExempt(bundleIdentifier: guestAppID,
+                                                 bundleURL: menuBarApp,
+                                                 isInDock: true,
+                                                 exceptions: ["com.parallels.desktop.console"],
+                                                 dockApps: [guestAppID]),
+               "a guest-window host exception still protects an opted-in guest app")
+        suite.expect(AutoQuitSupport.isQuitExempt(bundleIdentifier: guestAppID,
+                                                 bundleURL: menuBarApp,
+                                                 isInDock: true,
+                                                 exceptions: [],
+                                                 dockApps: ["com.parallels.desktop.console"]),
+               "opting in a guest-window host does not opt in its generated menu bar apps")
+        let regularApp = agentBundle("RegularDecision", [:])
+        suite.expect([false, true].allSatisfy {
+            !AutoQuitSupport.isQuitExempt(bundleIdentifier: "com.example.regular",
+                                          bundleURL: regularApp,
+                                          isInDock: $0,
+                                          exceptions: [],
+                                          dockApps: [])
+        }, "apps without a background declaration remain eligible with or without a Dock icon")
+        suite.expect(AutoQuitSupport.isQuitExempt(bundleIdentifier: "com.example.daemon",
+                                                 bundleURL: agentBundle("DaemonDecision", ["LSBackgroundOnly": true]),
+                                                 isInDock: true,
+                                                 exceptions: [],
+                                                 dockApps: ["com.example.daemon"]),
+               "the production decision preserves background-only protection for an opted-in app")
         try? FileManager.default.removeItem(at: outerApp.deletingLastPathComponent())
         suite.expect(!AutoQuitSupport.shouldScheduleWindowCheck(for: .appDeactivated,
                                                           hasRecentCloseRequest: false),

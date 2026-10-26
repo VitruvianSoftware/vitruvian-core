@@ -174,6 +174,7 @@ package enum DefaultsKey {
     package static let diskImageInstallerUseUserApplications = "diskImageInstallerUseUserApplications"
     package static let autoQuitEnabled = "autoQuitEnabled"
     package static let autoQuitExceptions = "autoQuitExceptions"  // [bundle id] kept running
+    package static let autoQuitDockApps = "autoQuitDockApps"  // [bundle id] menu bar apps explicitly allowed to quit in the Dock
     // Quit/close protection: each shortcut owns its full configuration and app list.
     package static let quitProtectionQuitEnabled = "quitProtectionQuitEnabled"
     package static let quitProtectionQuitMode = "quitProtectionQuitMode"

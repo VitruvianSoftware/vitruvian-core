@@ -184,16 +184,46 @@ package enum AutoQuitSupport {
         }
     }
 
-    /// Menu bar and background apps (LSUIElement, LSBackgroundOnly) take a
-    /// Dock icon only while a window such as Settings is open. Closing that
-    /// window is not quitting the app (issue #1824).
-    package static func isBackgroundApp(bundleURL: URL?) -> Bool {
-        guard let bundleURL, let bundle = Bundle(url: bundleURL) else { return false }
-        return ["LSUIElement", "LSBackgroundOnly"].contains { key in
-            (bundle.object(forInfoDictionaryKey: key) as? NSNumber)?.boolValue
-                ?? (bundle.object(forInfoDictionaryKey: key) as? NSString)?.boolValue
-                ?? false
+    /// Exemptions always win over an explicit menu bar app choice. Permission
+    /// to quit belongs only to the selected bundle, never to its nested helpers.
+    package static func isQuitExempt(bundleIdentifier: String?,
+                                     bundleURL: URL?,
+                                     isInDock: Bool,
+                                     exceptions: [String],
+                                     dockApps: [String]) -> Bool {
+        if isExcepted(bundleIdentifier: bundleIdentifier,
+                      bundleURL: bundleURL,
+                      exceptions: Defaults.mandatoryAutoQuitExceptionBundleIDs + exceptions) {
+            return true
         }
+        let allowsMenuBarQuit = bundleIdentifier.map { dockApps.contains($0) } ?? false
+        return isBackgroundApp(bundleURL: bundleURL,
+                               isInDock: isInDock,
+                               allowsMenuBarQuit: allowsMenuBarQuit)
+    }
+
+    /// A current Dock icon cannot distinguish a permanent choice (#2516) from
+    /// a menu bar app that drops it after Settings closes (#1824). Keep the
+    /// exemption unless the user explicitly selected this app. Background-only
+    /// apps remain exempt regardless of that choice or their current policy.
+    package static func isBackgroundApp(bundleURL: URL?,
+                                        isInDock: Bool,
+                                        allowsMenuBarQuit: Bool = false) -> Bool {
+        guard let bundleURL, let bundle = Bundle(url: bundleURL) else { return false }
+        return bundleFlag("LSBackgroundOnly", in: bundle)
+            || (bundleFlag("LSUIElement", in: bundle) && (!allowsMenuBarQuit || !isInDock))
+    }
+
+    /// The picker offers only apps whose default exemption this choice can lift.
+    package static func canAllowMenuBarQuit(bundleURL: URL?) -> Bool {
+        guard let bundleURL, let bundle = Bundle(url: bundleURL) else { return false }
+        return bundleFlag("LSUIElement", in: bundle) && !bundleFlag("LSBackgroundOnly", in: bundle)
+    }
+
+    private static func bundleFlag(_ key: String, in bundle: Bundle) -> Bool {
+        (bundle.object(forInfoDictionaryKey: key) as? NSNumber)?.boolValue
+            ?? (bundle.object(forInfoDictionaryKey: key) as? NSString)?.boolValue
+            ?? false
     }
 
     package static func isCommandW(keyCode: Int64, command: Bool, control: Bool) -> Bool {

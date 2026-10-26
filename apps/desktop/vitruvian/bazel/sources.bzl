@@ -197,6 +197,7 @@ TEST_PRODUCTION_SOURCES = [
     "Sources/Vitruvian/Core/ColorValue.swift",
     "Sources/Vitruvian/Services/Clipboard/ClipboardAutoClearSupport.swift",
     "Sources/Vitruvian/Services/AutoQuit/AutoQuitSupport.swift",
+    "Sources/Vitruvian/Core/AutoQuitDockAppsStrings.swift",
     "Sources/Vitruvian/Core/Shelf/ShelfSupport.swift",
     "Sources/Vitruvian/Services/Shelf/ShelfFilePromiseTransfer.swift",
     "Sources/Vitruvian/Core/ShelfPromiseDeliveryStrings.swift",

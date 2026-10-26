@@ -739,6 +739,7 @@ package enum Preferences {
         DefaultsKey.soundOutputSwitcherShortcut, default: GlobalShortcut.soundOutputSwitcherDefault.storageValue)
     package static let autoQuitExceptions = Preference(
         DefaultsKey.autoQuitExceptions, default: Defaults.mandatoryAutoQuitExceptionBundleIDs)
+    package static let autoQuitDockApps = Preference(DefaultsKey.autoQuitDockApps, default: [String]())
     package static let shelfDockPlacement = Preference(
         DefaultsKey.shelfDockPlacement, default: ShelfDockPlacement.menuBar.rawValue)
     package static let whatsAppOrganizerRecords = Preference(DefaultsKey.whatsAppOrganizerRecords, default: Data())
