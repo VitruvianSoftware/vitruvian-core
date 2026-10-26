@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.86.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.85.0...vitruvian-v3.86.0) (2026-10-26)
+
+
+### Features
+
+* **vitruvian:** port upstream batch 32, mixer coarse-USB keys, island display moves, Features hub layout and 18 more ([#3947](https://github.com/VitruvianSoftware/vitruvian-core/issues/3947)) ([6fd02ff](https://github.com/VitruvianSoftware/vitruvian-core/commit/6fd02fff848362774eeebf5e8462bd2233af961c))
+
 ## [3.85.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.84.0...vitruvian-v3.85.0) (2026-10-24)
 
 
