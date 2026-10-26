@@ -25,6 +25,11 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -n "${JQ_BIN:-}" ]; then
+  case "$JQ_BIN" in external/*) JQ_BIN="../${JQ_BIN#external/}" ;; esac
+  PATH="$(cd "$(dirname "$JQ_BIN")" && pwd):$PATH"
+  export PATH
+fi
 SCRIPT="${1:-${HERE}/rdeps-map-ref.sh}"
 SCRIPT="$(cd "$(dirname "$SCRIPT")" && pwd)/$(basename "$SCRIPT")"
 

@@ -32,6 +32,11 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -n "${JQ_BIN:-}" ]; then
+  case "$JQ_BIN" in external/*) JQ_BIN="../${JQ_BIN#external/}" ;; esac
+  PATH="$(cd "$(dirname "$JQ_BIN")" && pwd):$PATH"
+  export PATH
+fi
 SCRIPT="${1:-${HERE}/affected-targets.sh}"
 SCRIPT="$(cd "$(dirname "$SCRIPT")" && pwd)/$(basename "$SCRIPT")"
 [ -f "$SCRIPT" ] || { echo "FATAL: script not found at $SCRIPT"; exit 1; }
