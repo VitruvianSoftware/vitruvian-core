@@ -463,45 +463,66 @@ package enum SpaceWindowBridge {
                                           replacing focusedWindowID: CGWindowID?,
                                           while isCurrent: @escaping @MainActor @Sendable () -> Bool,
                                           completion: @escaping @MainActor @Sendable (Bool) -> Void) {
-        guard isCurrent() else {
+        guard isCurrent(), setFrontProcess != nil, processForPID != nil, postEventRecord != nil else {
             completion(false)
             return
         }
         guard let focusedWindowID else {
-            completion(frontWindow(windowID, ownerPID: ownerPID))
+            completion(makeKeyWithoutRaise(windowID, ownerPID: ownerPID))
             return
         }
-        postFocusRecord(focusedWindowID, ownerPID: ownerPID, gained: false)
+        guard postFocusRecord(focusedWindowID, ownerPID: ownerPID, gained: false) else {
+            completion(false)
+            return
+        }
+        let restoreFocus: @MainActor @Sendable () -> Void = {
+            if FocusFollowsMouseSupport.shouldRestoreFocus(
+                to: focusedWindowID,
+                reportedFocusedWindowID: WindowActivator.focusedWindowID(for: ownerPID),
+                appIsFrontmost: NSWorkspace.shared.frontmostApplication?.processIdentifier == ownerPID) {
+                postFocusRecord(focusedWindowID, ownerPID: ownerPID, gained: true)
+            }
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.04) {
             // Scheduled on the main queue, where the hover state lives.
             MainActor.assumeIsolated {
                 guard isCurrent() else {
-                    if FocusFollowsMouseSupport.shouldRestoreFocus(
-                        to: focusedWindowID,
-                        reportedFocusedWindowID: WindowActivator.focusedWindowID(for: ownerPID),
-                        appIsFrontmost: NSWorkspace.shared.frontmostApplication?.processIdentifier == ownerPID) {
-                        postFocusRecord(focusedWindowID, ownerPID: ownerPID, gained: true)
-                    }
+                    restoreFocus()
                     completion(false)
                     return
                 }
-                postFocusRecord(windowID, ownerPID: ownerPID, gained: true)
-                completion(frontWindow(windowID, ownerPID: ownerPID))
+                let succeeded = makeKeyWithoutRaise(windowID, ownerPID: ownerPID)
+                if !succeeded { restoreFocus() }
+                completion(succeeded)
             }
         }
     }
 
-    private static func postFocusRecord(_ windowID: CGWindowID, ownerPID: pid_t, gained: Bool) {
-        guard let processForPID, let postEventRecord else { return }
+    /// Activate the process without ordering any of its windows, then give
+    /// this window keyboard focus. frontWindow's user-generated activation
+    /// and mouse press can raise the window even without an AXRaise action.
+    /// Failure must not fall back to that path when the user disabled raising.
+    private static func makeKeyWithoutRaise(_ windowID: CGWindowID, ownerPID: pid_t) -> Bool {
+        guard let setFrontProcess, let processForPID, postEventRecord != nil else { return false }
         var psn = ProcessSerialNumber()
-        guard processForPID(ownerPID, &psn) == noErr else { return }
+        guard processForPID(ownerPID, &psn) == noErr else { return false }
+        let noWindows: UInt32 = 0x400 // kCPSNoWindows
+        guard setFrontProcess(&psn, windowID, noWindows) == .success else { return false }
+        return postFocusRecord(windowID, ownerPID: ownerPID, gained: true)
+    }
+
+    @discardableResult
+    private static func postFocusRecord(_ windowID: CGWindowID, ownerPID: pid_t, gained: Bool) -> Bool {
+        guard let processForPID, let postEventRecord else { return false }
+        var psn = ProcessSerialNumber()
+        guard processForPID(ownerPID, &psn) == noErr else { return false }
         var targetID = windowID
         var record = [UInt8](repeating: 0, count: 0x100)
         record[0x04] = 0xf8 // declared record length
         record[0x08] = 0x0d
         record[0x8a] = gained ? 0x01 : 0x02
         withUnsafeBytes(of: &targetID) { record.replaceSubrange(0x3c..<0x3c + $0.count, with: $0) }
-        _ = postEventRecord(&psn, &record)
+        return postEventRecord(&psn, &record) == .success
     }
 
     // MARK: - The user's "move a space" shortcut
