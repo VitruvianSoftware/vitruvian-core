@@ -145,6 +145,8 @@ enum MessageRowActions {
                 conversation.setTriggerHovered(hovering, for: message)
             },
             now: { conversation.currentTime },
-            calendarBridge: conversation.calendarBridge)
+            calendarBridge: conversation.calendarBridge,
+            openLightbox: { conversation.openLightbox($0) },
+            openViewOnce: { conversation.openViewOnce($0) })
     }
 }

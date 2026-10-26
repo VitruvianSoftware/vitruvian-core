@@ -48,6 +48,10 @@ struct MessageActions {
     var now: () -> Date = Date.init
     /// Local calendar bridge used when clicking a detected date in a message bubble.
     var calendarBridge: CalendarBridge? = nil
+    /// Opens an image or gallery tile in the in-app lightbox instead of an external app.
+    var openLightbox: (String) -> Void = { _ in }
+    /// Opens an unopened view-once message in `ViewOnceSheet`.
+    var openViewOnce: (TimelineMessage) -> Void = { _ in }
 }
 
 /// What the message rows show that is no model's: which messages have their edits open below them, the versions
@@ -518,34 +522,50 @@ struct MessageRowView: View {
 
     @ViewBuilder
     private var content: some View {
-        switch message.kind {
-        case .deleted:
-            Label(String(localized: "This message was deleted"), systemImage: "trash")
-                .font(.callout.italic())
-                .foregroundStyle(foreground.opacity(0.75))
-        case .undecryptable:
-            Label(String(localized: "Waiting for this message to be decrypted"), systemImage: "lock")
-                .font(.callout.italic())
-                .foregroundStyle(foreground.opacity(0.75))
-        case .image, .sticker:
-            InlineImage(message: message)
+        if message.viewOnce {
+            ViewOnceChip(message: message) {
+                actions.openViewOnce(message)
+            }
             caption
-        case .video, .voiceNote, .file:
-            FileAttachmentChip(message: message)
+        } else if !message.galleryItems.isEmpty {
+            GalleryGridView(message: message, onOpenLightbox: actions.openLightbox)
             caption
-        case .emote:
-            Text(LinkedText.attributed("* \(message.senderName) \(message.body)", now: actions.now()))
-                .italic()
+        } else {
+            switch message.kind {
+            case .deleted:
+                Label(String(localized: "This message was deleted"), systemImage: "trash")
+                    .font(.callout.italic())
+                    .foregroundStyle(foreground.opacity(0.75))
+            case .undecryptable:
+                Label(String(localized: "Waiting for this message to be decrypted"), systemImage: "lock")
+                    .font(.callout.italic())
+                    .foregroundStyle(foreground.opacity(0.75))
+            case .image, .sticker:
+                EnhancedImageView(message: message, onOpenLightbox: actions.openLightbox)
+                caption
+            case .video, .voiceNote, .file:
+                FileAttachmentChip(message: message)
+                caption
+            case .location:
+                Label(
+                    message.body.isEmpty ? (message.geoURI ?? String(localized: "Location")) : message.body,
+                    systemImage: "mappin.and.ellipse"
+                )
                 .fixedSize(horizontal: false, vertical: true)
-        case .text, .notice:
-            RichTextView(rich: message.rich, onBubble: message.mine, revealed: ui.revealedBinding(message.id),
-                         italic: message.kind == .notice, now: actions.now())
-        case .poll:
-            if let poll = message.poll {
-                PollView(poll: poll, onBubble: message.mine) { actions.vote(message.id, $0) }
-            } else {
-                Label(message.body, systemImage: "chart.bar")
+            case .emote:
+                Text(LinkedText.attributed("* \(message.senderName) \(message.body)", now: actions.now()))
+                    .italic()
                     .fixedSize(horizontal: false, vertical: true)
+            case .text, .notice:
+                RichTextView(rich: message.rich, onBubble: message.mine, revealed: ui.revealedBinding(message.id),
+                             italic: message.kind == .notice, now: actions.now())
+            case .poll:
+                if let poll = message.poll {
+                    PollView(poll: poll, onBubble: message.mine) { actions.vote(message.id, $0) }
+                } else {
+                    Label(message.body, systemImage: "chart.bar")
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
     }

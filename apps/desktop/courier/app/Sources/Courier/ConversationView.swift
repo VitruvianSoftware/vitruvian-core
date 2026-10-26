@@ -193,6 +193,18 @@ struct ConversationView: View {
                 }
             )
         }
+        .sheet(item: $conversation.activeViewOnceMessage) { msg in
+            ViewOnceSheet(
+                message: msg,
+                onMarkPlayed: {
+                    Task { await conversation.markPlayed(msg.id, roomID: msg.roomID) }
+                },
+                onDismiss: {
+                    conversation.activeViewOnceMessage = nil
+                }
+            )
+            .frame(width: 440)
+        }
         .alert(confirmPrompt, isPresented: confirming) {
             Button(confirmTitle, role: .destructive) { Task { await messageActions.confirm() } }
             Button(String(localized: "Cancel"), role: .cancel) { messageActions.dismissRequest() }

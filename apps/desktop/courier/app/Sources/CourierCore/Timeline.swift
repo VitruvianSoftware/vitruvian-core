@@ -30,6 +30,8 @@ public enum MessageKind: Equatable, Sendable {
     case image, video, file, sticker
     /// Audio sent as a voice note. Other audio is `.file`.
     case voiceNote
+    /// A geographic location pin (`m.location`).
+    case location
     /// A message that was deleted: a placeholder, with no text.
     case deleted
     /// A message the engine could not decrypt.
@@ -43,6 +45,59 @@ public enum MessageKind: Equatable, Sendable {
         case .image, .video, .file, .sticker, .voiceNote: true
         default: false
         }
+    }
+}
+
+/// One tile in a consecutive same-sender media gallery (`GalleryGrouper.tsx`).
+public struct GalleryItem: Equatable, Identifiable, Sendable {
+    public let id: String
+    public let kind: MessageKind
+    public let mediaPath: String
+    public let thumbnailPath: String?
+    public let fileName: String
+    public let mimeType: String
+    public let byteSize: Int64?
+    public let width: Int?
+    public let height: Int?
+    public let blurhash: String?
+    public let durationMS: Int?
+    public let isGIF: Bool
+    public let isAnimated: Bool
+    public let isTranscoded: Bool
+    public let caption: String
+
+    public init(
+        id: String,
+        kind: MessageKind,
+        mediaPath: String,
+        thumbnailPath: String? = nil,
+        fileName: String = "",
+        mimeType: String = "",
+        byteSize: Int64? = nil,
+        width: Int? = nil,
+        height: Int? = nil,
+        blurhash: String? = nil,
+        durationMS: Int? = nil,
+        isGIF: Bool = false,
+        isAnimated: Bool = false,
+        isTranscoded: Bool = false,
+        caption: String = ""
+    ) {
+        self.id = id
+        self.kind = kind
+        self.mediaPath = mediaPath
+        self.thumbnailPath = thumbnailPath
+        self.fileName = fileName
+        self.mimeType = mimeType
+        self.byteSize = byteSize
+        self.width = width
+        self.height = height
+        self.blurhash = blurhash
+        self.durationMS = durationMS
+        self.isGIF = isGIF
+        self.isAnimated = isAnimated
+        self.isTranscoded = isTranscoded
+        self.caption = caption
     }
 }
 
@@ -215,6 +270,8 @@ public enum StatusLine: Equatable, Sendable {
     }
 }
 
+public typealias Message = TimelineMessage
+
 public struct TimelineMessage: Equatable, Identifiable, Sendable {
     public let id: String
     public let roomID: String
@@ -226,9 +283,9 @@ public struct TimelineMessage: Equatable, Identifiable, Sendable {
     public let kind: MessageKind
     /// The text as plain text; for a file, its caption (empty if it has none); for a poll, its question. Empty for a
     /// deleted message.
-    public let body: String
+    public internal(set) var body: String
     /// The text and its formatting, as drawn: the newest live edit's when it was edited. Empty for a deleted message.
-    public let rich: RichText
+    public internal(set) var rich: RichText
     public let isEdited: Bool
     /// The live edits loaded: not refused, not deleted.
     public let editCount: Int
@@ -243,9 +300,33 @@ public struct TimelineMessage: Equatable, Identifiable, Sendable {
     public let byteSize: Int64?
     public let width: Int?
     public let height: Int?
-    /// The file on disk, when the engine has it; empty when not.
+    /// The file on disk, when the engine has it; empty when not (or when a view-once item has already been opened).
     public let mediaPath: String
-    public let statusLine: StatusLine?
+    /// Optional thumbnail or video poster image path on disk.
+    public let thumbnailPath: String?
+    /// BlurHash placeholder string from `info["xyz.amorgan.blurhash"]` or `info["blurhash"]`.
+    public let blurhash: String?
+    /// Media duration in milliseconds (for video or audio/voice notes).
+    public let durationMS: Int?
+    /// MSC3245 / MSC1767 audio waveform samples (0-1024).
+    public let waveform: [Int]
+    /// Whether this media item is a looping GIF (`image/gif` or `fi.mau.gif`).
+    public let isGIF: Bool
+    /// Whether this image or sticker is animated (`is_animated` or GIF).
+    public let isAnimated: Bool
+    /// Whether this media item is view-once (`com.beeper.view_once`, `view_once`, or short `after_read` timer).
+    public let viewOnce: Bool
+    /// Geographic URI (`geo:lat,lon`) for `.location` messages.
+    public let geoURI: String?
+    /// Link previews attached to the message (`com.beeper.linkpreviews`).
+    public let linkPreviews: [LinkPreviewItem]
+    /// Whether a view-once or voice-note message has been opened/played on this Mac.
+    public let played: Bool
+    /// Consecutive same-sender image/video items collapsed into a gallery grid (empty when not a gallery).
+    public internal(set) var galleryItems: [GalleryItem]
+    /// Whether the media was transcoded before sending (`fi.courier.transcoded`).
+    public let isTranscoded: Bool
+    public internal(set) var statusLine: StatusLine?
     /// The engine counts this kind of event as unread when it is from someone else: a message, a sticker or a poll
     /// (Ruling 17), not a message that could not be decrypted (or one that has since been deleted and was something
     /// else), and not a note that the disappearing timer changed (Ruling 40) or the record that a call ended, was
@@ -256,7 +337,7 @@ public struct TimelineMessage: Equatable, Identifiable, Sendable {
     /// For a thread's root, its replies.
     public let thread: ThreadSummary?
     /// I bookmarked it, on this Mac.
-    public let bookmarked: Bool
+    public internal(set) var bookmarked: Bool
     /// When its disappearing timer takes it, in Unix milliseconds; nil is never.
     public let expiresAt: Int64?
     /// For the bridge's note that the chat's disappearing timer changed: what changed. The view draws a note from it
@@ -269,6 +350,96 @@ public struct TimelineMessage: Equatable, Identifiable, Sendable {
     public internal(set) var reactions: [ReactionChip]
     /// The first message of a run from one sender: it shows the name and the picture, and the others do not.
     public internal(set) var startsGroup: Bool
+
+    public init(
+        id: String,
+        roomID: String,
+        sender: String,
+        senderName: String,
+        senderAvatarPath: String,
+        mine: Bool,
+        ts: Int64,
+        kind: MessageKind,
+        body: String,
+        rich: RichText,
+        isEdited: Bool,
+        editCount: Int,
+        editFailed: StatusLine?,
+        failedEditID: String?,
+        fileName: String,
+        mimeType: String,
+        byteSize: Int64?,
+        width: Int?,
+        height: Int?,
+        mediaPath: String,
+        thumbnailPath: String? = nil,
+        blurhash: String? = nil,
+        durationMS: Int? = nil,
+        waveform: [Int] = [],
+        isGIF: Bool = false,
+        isAnimated: Bool = false,
+        viewOnce: Bool = false,
+        geoURI: String? = nil,
+        linkPreviews: [LinkPreviewItem] = [],
+        played: Bool = false,
+        galleryItems: [GalleryItem] = [],
+        isTranscoded: Bool = false,
+        statusLine: StatusLine?,
+        countsAsUnread: Bool,
+        poll: PollTally?,
+        thread: ThreadSummary?,
+        bookmarked: Bool,
+        expiresAt: Int64?,
+        timerChange: TimerChange?,
+        call: CallNote?,
+        reply: ReplyPreview?,
+        reactions: [ReactionChip],
+        startsGroup: Bool
+    ) {
+        self.id = id
+        self.roomID = roomID
+        self.sender = sender
+        self.senderName = senderName
+        self.senderAvatarPath = senderAvatarPath
+        self.mine = mine
+        self.ts = ts
+        self.kind = kind
+        self.body = body
+        self.rich = rich
+        self.isEdited = isEdited
+        self.editCount = editCount
+        self.editFailed = editFailed
+        self.failedEditID = failedEditID
+        self.fileName = fileName
+        self.mimeType = mimeType
+        self.byteSize = byteSize
+        self.width = width
+        self.height = height
+        self.mediaPath = mediaPath
+        self.thumbnailPath = thumbnailPath
+        self.blurhash = blurhash
+        self.durationMS = durationMS
+        self.waveform = waveform
+        self.isGIF = isGIF
+        self.isAnimated = isAnimated
+        self.viewOnce = viewOnce
+        self.geoURI = geoURI
+        self.linkPreviews = linkPreviews
+        self.played = played
+        self.galleryItems = galleryItems
+        self.isTranscoded = isTranscoded
+        self.statusLine = statusLine
+        self.countsAsUnread = countsAsUnread
+        self.poll = poll
+        self.thread = thread
+        self.bookmarked = bookmarked
+        self.expiresAt = expiresAt
+        self.timerChange = timerChange
+        self.call = call
+        self.reply = reply
+        self.reactions = reactions
+        self.startsGroup = startsGroup
+    }
 
     /// A note of something that happened (a timer change, a call), not anyone's words: drawn as a line across the
     /// chat, never with a Sent mark, and it can only leave this Mac.
@@ -319,6 +490,10 @@ public enum Timeline {
     public static let meUserID = "@me:courier.local"
     /// Messages from one sender this close together share one name and picture.
     public static let groupingGapMillis: Int64 = 5 * 60 * 1000
+    /// Consecutive same-sender image/video messages within 60 seconds collapse into a gallery grid.
+    public static let galleryGapMillis: Int64 = 60 * 1000
+    /// Maximum number of consecutive media items collapsed into a single gallery bubble.
+    public static let maxGalleryItems = 10
     /// A poll's event type (MSC3381). Its votes and its end are other types, which are not rows.
     public static let pollStartType = "org.matrix.msc3381.poll.start"
 
@@ -356,9 +531,38 @@ public enum Timeline {
         var previous: TimelineMessage?
         var previousDay: Date?
         var pendingMembers: [Event] = []
+        var pendingGallery: [TimelineMessage] = []
+
+        func flushGallery() {
+            guard !pendingGallery.isEmpty else { return }
+            if pendingGallery.count == 1 {
+                let single = pendingGallery[0]
+                items.append(.message(single))
+                previous = single
+            } else {
+                var collapsed = pendingGallery[0]
+                collapsed.galleryItems = pendingGallery.map(Self.galleryItem(of:))
+                if let last = pendingGallery.last {
+                    if !last.body.isEmpty {
+                        collapsed.body = last.body
+                        collapsed.rich = last.rich
+                    }
+                    if let lastStatus = pendingGallery.compactMap(\.statusLine).last {
+                        collapsed.statusLine = lastStatus
+                    }
+                    if pendingGallery.contains(where: \.bookmarked) {
+                        collapsed.bookmarked = true
+                    }
+                }
+                items.append(.message(collapsed))
+                previous = pendingGallery.last
+            }
+            pendingGallery.removeAll()
+        }
 
         func flushMembers() {
             guard !pendingMembers.isEmpty else { return }
+            flushGallery()
             let first = pendingMembers[0]
             let day = calendar.startOfDay(for: Date(timeIntervalSince1970: Double(first.ts) / 1000))
             if day != previousDay {
@@ -374,8 +578,9 @@ public enum Timeline {
             previous = nil
         }
 
-        for event in ordered {
+        for (index, event) in ordered.enumerated() {
             if event.type == "m.room.member", event.status != .failed, !redacted.contains(event.eventID) {
+                flushGallery()
                 if showChatUpdates {
                     pendingMembers.append(event)
                 }
@@ -386,21 +591,130 @@ public enum Timeline {
             var breaksGroup = false
             let day = calendar.startOfDay(for: Date(timeIntervalSince1970: Double(message.ts) / 1000))
             if day != previousDay {
+                flushGallery()
                 items.append(.dateSeparator(day))
                 previousDay = day
                 breaksGroup = true
             }
             if message.id == firstUnreadID {
+                flushGallery()
                 items.append(.newDivider)
                 breaksGroup = true
             }
-            message.startsGroup = breaksGroup || previous == nil || previous?.sender != message.sender
-                || message.ts.saturatingMinus(previous?.ts ?? 0) > groupingGapMillis
-            items.append(.message(message))
-            previous = message
+
+            if isGalleryCandidate(message) {
+                if let prev = pendingGallery.last,
+                   let first = pendingGallery.first,
+                   !breaksGroup,
+                   pendingGallery.count < maxGalleryItems,
+                   prev.sender == message.sender,
+                   prev.roomID == message.roomID,
+                   prev.body.isEmpty,
+                   message.ts.saturatingMinus(prev.ts) < galleryGapMillis,
+                   message.ts.saturatingMinus(first.ts) < galleryGapMillis
+                {
+                    if message.body.isEmpty {
+                        pendingGallery.append(message)
+                        if pendingGallery.count == maxGalleryItems {
+                            flushGallery()
+                        }
+                        continue
+                    }
+                    // A captioned media item may only close the end of a gallery run (with at least 2 preceding
+                    // uncaptioned items) when no further consecutive media item from the same sender immediately
+                    // follows within the window.
+                    let hasFollowingSameSenderMedia = hasImmediateFollowingGalleryCandidate(
+                        after: index,
+                        in: ordered,
+                        messageByID: messageByID,
+                        redacted: redacted,
+                        reference: message,
+                        firstUnreadID: firstUnreadID,
+                        calendar: calendar
+                    )
+                    if pendingGallery.count >= 2, !hasFollowingSameSenderMedia {
+                        pendingGallery.append(message)
+                        flushGallery()
+                        continue
+                    }
+                }
+                flushGallery()
+                let refPrev = previous
+                message.startsGroup = breaksGroup || refPrev == nil || refPrev?.sender != message.sender
+                    || message.ts.saturatingMinus(refPrev?.ts ?? 0) > groupingGapMillis
+                if message.body.isEmpty {
+                    pendingGallery = [message]
+                } else {
+                    items.append(.message(message))
+                    previous = message
+                }
+            } else {
+                flushGallery()
+                message.startsGroup = breaksGroup || previous == nil || previous?.sender != message.sender
+                    || message.ts.saturatingMinus(previous?.ts ?? 0) > groupingGapMillis
+                items.append(.message(message))
+                previous = message
+            }
         }
+        flushGallery()
         flushMembers()
         return items
+    }
+
+    private static func isGalleryCandidate(_ message: TimelineMessage) -> Bool {
+        (message.kind == .image || message.kind == .video)
+            && !message.viewOnce
+            && message.reply == nil
+            && message.thread == nil
+            && !message.isEdited
+            && message.editFailed == nil
+    }
+
+    private static func hasImmediateFollowingGalleryCandidate(
+        after index: Int,
+        in ordered: [Event],
+        messageByID: [String: TimelineMessage],
+        redacted: Set<String>,
+        reference: TimelineMessage,
+        firstUnreadID: String?,
+        calendar: Calendar
+    ) -> Bool {
+        let refDay = calendar.startOfDay(for: Date(timeIntervalSince1970: Double(reference.ts) / 1000))
+        for nextIndex in (index + 1) ..< ordered.count {
+            let nextEvent = ordered[nextIndex]
+            if nextEvent.type == "m.room.member", nextEvent.status != .failed, !redacted.contains(nextEvent.eventID) {
+                return false
+            }
+            guard let nextMessage = messageByID[nextEvent.eventID] else { continue }
+            guard nextMessage.id != firstUnreadID else { return false }
+            let nextDay = calendar.startOfDay(for: Date(timeIntervalSince1970: Double(nextMessage.ts) / 1000))
+            guard nextDay == refDay else { return false }
+            return isGalleryCandidate(nextMessage)
+                && nextMessage.sender == reference.sender
+                && nextMessage.roomID == reference.roomID
+                && nextMessage.ts.saturatingMinus(reference.ts) <= galleryGapMillis
+        }
+        return false
+    }
+
+    private static func galleryItem(of message: TimelineMessage) -> GalleryItem {
+        GalleryItem(
+            id: message.id,
+            kind: message.kind,
+            mediaPath: message.mediaPath,
+            thumbnailPath: message.thumbnailPath,
+            fileName: message.fileName,
+            mimeType: message.mimeType,
+            byteSize: message.byteSize,
+            width: message.width,
+            height: message.height,
+            blurhash: message.blurhash,
+            durationMS: message.durationMS,
+            isGIF: message.isGIF,
+            isAnimated: message.isAnimated,
+            isTranscoded: message.isTranscoded,
+            caption: message.body
+        )
     }
 
     private enum MembershipKind: Equatable {
@@ -576,6 +890,9 @@ public enum Timeline {
                 return ReactionChip(key: key, count: tally.people.count, mine: tally.mine)
             }
             let refused = isDeleted ? nil : newestOwnEdit[base.eventID].flatMap { $0.status == .failed ? $0 : nil }
+            let played = base.played ?? false
+            let viewOnce = !isDeleted && shown.viewOnce
+            let hideViewOnceMedia = isDeleted || (viewOnce && played)
             built.append(TimelineMessage(
                 id: base.eventID, roomID: base.roomID, sender: base.sender, senderName: base.senderName,
                 senderAvatarPath: base.senderAvatarPath, mine: isMine(base), ts: base.ts,
@@ -587,7 +904,20 @@ public enum Timeline {
                 failedEditID: refused?.eventID,
                 fileName: isDeleted ? "" : shown.fileName, mimeType: isDeleted ? "" : shown.mimeType,
                 byteSize: isDeleted ? nil : shown.byteSize, width: isDeleted ? nil : shown.width,
-                height: isDeleted ? nil : shown.height, mediaPath: isDeleted ? "" : base.mediaPath,
+                height: isDeleted ? nil : shown.height,
+                mediaPath: hideViewOnceMedia ? "" : base.mediaPath,
+                thumbnailPath: hideViewOnceMedia ? nil : shown.thumbnailPath,
+                blurhash: isDeleted ? nil : shown.blurhash,
+                durationMS: isDeleted ? nil : shown.durationMS,
+                waveform: isDeleted ? [] : shown.waveform,
+                isGIF: !isDeleted && shown.isGIF,
+                isAnimated: !isDeleted && shown.isAnimated,
+                viewOnce: viewOnce,
+                geoURI: isDeleted ? nil : shown.geoURI,
+                linkPreviews: isDeleted ? [] : (base.linkPreviews ?? []),
+                played: played,
+                galleryItems: [],
+                isTranscoded: !isDeleted && shown.isTranscoded,
                 statusLine: statusLine(of: base, me: me, newest: base.eventID == newestMine, isDirect: isDirect),
                 countsAsUnread: (base.type == "m.room.message" || base.type == "m.sticker" || base.type == pollStartType)
                     && TimerChange.of(base.content) == nil && CallNote.isNews(base),
@@ -652,6 +982,15 @@ public enum Timeline {
         var byteSize: Int64?
         var width: Int?
         var height: Int?
+        var thumbnailPath: String?
+        var blurhash: String?
+        var durationMS: Int?
+        var waveform: [Int] = []
+        var isGIF = false
+        var isAnimated = false
+        var viewOnce = false
+        var geoURI: String?
+        var isTranscoded = false
     }
 
     /// The HTML of a message's content, when it has some.
@@ -675,14 +1014,28 @@ public enum Timeline {
         }
         let info = content["info"]
         func number(_ key: String) -> Int64? { info?[key]?.integerValue }
+        let mime = info?["mimetype"]?.stringValue ?? ""
+        let blurhash = event.blurhash
+            ?? info?["xyz.amorgan.blurhash"]?.stringValue
+            ?? info?["blurhash"]?.stringValue
+        let isGIF = event.isGIF
+            ?? (mime.caseInsensitiveCompare("image/gif") == .orderedSame
+                || info?["fi.mau.gif"] == .bool(true)
+                || content["fi.mau.gif"] == .bool(true))
+        let isAnimated = event.isAnimated
+            ?? (info?["is_animated"] == .bool(true) || isGIF)
+        let isTranscoded = info?["fi.courier.transcoded"] == .bool(true)
+            || content["fi.courier.transcoded"] == .bool(true)
 
         switch event.type {
         case "m.room.encrypted":
             return Shown(kind: .undecryptable, body: "", rich: RichText(text: ""))
         case "m.sticker":
             return Shown(kind: .sticker, body: "", rich: RichText(text: ""), fileName: content["body"]?.stringValue ?? "",
-                         mimeType: info?["mimetype"]?.stringValue ?? "", byteSize: number("size"),
-                         width: number("w").map(Int.init), height: number("h").map(Int.init))
+                         mimeType: mime, byteSize: number("size"),
+                         width: number("w").map(Int.init), height: number("h").map(Int.init),
+                         thumbnailPath: event.thumbnailPath, blurhash: blurhash,
+                         isGIF: isGIF, isAnimated: isAnimated, isTranscoded: isTranscoded)
         case pollStartType:
             let start = content["org.matrix.msc3381.poll.start"]
             let question = event.poll?.question
@@ -703,9 +1056,20 @@ public enum Timeline {
         case "m.video": kind = .video
         case "m.audio": kind = content["org.matrix.msc3245.voice"] != nil ? .voiceNote : .file
         case "m.file": kind = .file
+        case "m.location": kind = .location
         case "m.notice": kind = .notice
         case "m.emote": kind = .emote
         default: kind = .text
+        }
+
+        if kind == .location {
+            let geoURI = event.geoURI ?? content["geo_uri"]?.stringValue
+            return Shown(
+                kind: .location,
+                body: original,
+                rich: rich(original, html: html(of: content)),
+                geoURI: geoURI
+            )
         }
 
         if kind.isMedia {
@@ -713,9 +1077,32 @@ public enum Timeline {
             let filename = content["filename"]?.stringValue
             let name = filename ?? original
             let caption = filename != nil && filename != original ? original : ""
+            let durationMS = event.durationMS.map(Int.init)
+                ?? number("duration").map(Int.init)
+                ?? content["org.matrix.msc1767.audio"]?["duration"]?.integerValue.map(Int.init)
+            let waveform: [Int] = event.waveform
+                ?? (content["org.matrix.msc1767.audio"]?["waveform"]?.arrayValue?.compactMap { $0.integerValue.map(Int.init) } ?? [])
+            let hasShortAfterRead: Bool = {
+                guard kind == .image || kind == .video || kind == .voiceNote || msgtype == "m.audio",
+                      let dt = content["com.beeper.disappearing_timer"],
+                      dt["type"]?.stringValue == "after_read",
+                      let timer = dt["timer"]?.integerValue, timer > 0, timer <= 300_000
+                else { return false }
+                return true
+            }()
+            let viewOnce = (event.viewOnce ?? false)
+                || content["com.beeper.view_once"] == .bool(true)
+                || content["view_once"] == .bool(true)
+                || content["com.beeper.ephemeral"] == .bool(true)
+                || content["fi.mau.view_once"] == .bool(true)
+                || hasShortAfterRead
             return Shown(kind: kind, body: caption, rich: rich(caption, html: html(of: content)), fileName: name,
-                         mimeType: info?["mimetype"]?.stringValue ?? "", byteSize: number("size"),
-                         width: number("w").map(Int.init), height: number("h").map(Int.init))
+                         mimeType: mime, byteSize: number("size"),
+                         width: number("w").map(Int.init), height: number("h").map(Int.init),
+                         thumbnailPath: event.thumbnailPath, blurhash: blurhash,
+                         durationMS: durationMS, waveform: waveform,
+                         isGIF: isGIF, isAnimated: isAnimated, viewOnce: viewOnce,
+                         isTranscoded: isTranscoded)
         }
 
         var body = original
@@ -759,5 +1146,10 @@ extension JSONValue {
         case let .double(value) where value.rounded() == value && abs(value) < 9e15: Int64(value)
         default: nil
         }
+    }
+
+    public var arrayValue: [JSONValue]? {
+        if case let .array(values) = self { return values }
+        return nil
     }
 }

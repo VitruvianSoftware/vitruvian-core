@@ -919,6 +919,225 @@ final class ViewSnapshotTests: XCTestCase {
             .padding(14)
         })
     }
+
+    // MARK: - Part 4.5b Task 5: Inline Images, BlurHash, Galleries, Broken-Image Card & View-Once Viewer
+
+    func testEnhancedImageBlurHashErrorGalleryAndViewOnceLightAndDark() throws {
+        let blurhash = "LEHV6nWB2yk8pyo0adR*.7kCMdnj"
+        let validImagePath = try makeTestPNG(width: 320, height: 200)
+
+        // 1. Single image with a BlurHash placeholder (before decode finishes) and loaded state (with transcoded badge).
+        var placeholderEvent = Fixture.event(
+            "$img-blur",
+            mine: false,
+            ts: 10,
+            content: [
+                "msgtype": .string("m.image"),
+                "body": .string("Alpine ridge.jpg"),
+                "filename": .string("Alpine ridge.jpg"),
+                "info": .object([
+                    "mimetype": .string("image/jpeg"),
+                    "w": .int(640),
+                    "h": .int(400),
+                    "size": .int(184_320),
+                    "xyz.amorgan.blurhash": .string(blurhash),
+                ]),
+            ],
+            name: "Alice Example"
+        )
+        placeholderEvent.blurhash = blurhash
+        placeholderEvent.mediaPath = validImagePath
+        let placeholderMsg = try XCTUnwrap(Fixture.messages([placeholderEvent]).first)
+
+        check(try Snapshot.render("image-blurhash-placeholder", width: 420) {
+            EnhancedImageView(
+                message: placeholderMsg,
+                forceBlurHashPlaceholder: true,
+                onOpenLightbox: { _ in }
+            )
+            .padding(14)
+        })
+
+        var loadedEvent = placeholderEvent
+        loadedEvent.eventID = "$img-loaded"
+        loadedEvent.content = .object([
+            "msgtype": .string("m.image"),
+            "body": .string("Look at this view from the pass"),
+            "filename": .string("Alpine ridge.heic"),
+            "info": .object([
+                "mimetype": .string("image/jpeg"),
+                "w": .int(640),
+                "h": .int(400),
+                "size": .int(184_320),
+                "xyz.amorgan.blurhash": .string(blurhash),
+                "fi.courier.transcoded": .bool(true),
+            ]),
+        ])
+        let loadedMsg = try XCTUnwrap(Fixture.messages([loadedEvent]).first)
+        let preloadedImage = try XCTUnwrap(NSImage(contentsOfFile: validImagePath))
+
+        check(try Snapshot.render("image-enhanced-loaded", width: 420) {
+            EnhancedImageView(
+                message: loadedMsg,
+                preloadedImage: preloadedImage,
+                onOpenLightbox: { _ in }
+            )
+            .padding(14)
+        })
+
+        // 2. Gallery of 4 consecutive media items (including a video tile with GalleryVideoPoster play badge & duration pill).
+        let galleryEvents: [Event] = [
+            makeGalleryEvent("$gal-1", body: "photo1.jpg", filename: "photo1.jpg", msgtype: "m.image", offsetMS: 0, seq: 1, path: validImagePath, blurhash: blurhash),
+            makeGalleryEvent("$gal-2", body: "photo2.jpg", filename: "photo2.jpg", msgtype: "m.image", offsetMS: 3_000, seq: 2, path: validImagePath, blurhash: blurhash),
+            makeGalleryEvent("$gal-3", body: "clip.mp4", filename: "clip.mp4", msgtype: "m.video", offsetMS: 6_000, seq: 3, path: validImagePath, blurhash: blurhash, durationMS: 83_000),
+            makeGalleryEvent("$gal-4", body: "Trailhead at dawn", filename: "photo4.jpg", msgtype: "m.image", offsetMS: 9_000, seq: 4, path: validImagePath, blurhash: blurhash),
+        ]
+        let galleryMessages = Fixture.messages(galleryEvents)
+        XCTAssertEqual(galleryMessages.count, 1)
+        let galleryMessage = try XCTUnwrap(galleryMessages.first)
+        XCTAssertEqual(galleryMessage.galleryItems.count, 4)
+
+        check(try Snapshot.render("gallery-grid-4", width: 460) {
+            GalleryGridView(
+                message: galleryMessage,
+                preloadedImages: [
+                    "$gal-1": preloadedImage,
+                    "$gal-2": preloadedImage,
+                    "$gal-3": preloadedImage,
+                    "$gal-4": preloadedImage,
+                ],
+                onOpenLightbox: { _ in }
+            )
+            .padding(14)
+        })
+
+        // 3. Broken-image card (missing or corrupt image shows ImageErrorCard, not a crash).
+        var brokenEvent = placeholderEvent
+        brokenEvent.eventID = "$img-broken"
+        brokenEvent.mediaPath = "/nonexistent/courier-missing-image.jpg"
+        brokenEvent.thumbnailPath = nil
+        let brokenMsg = try XCTUnwrap(Fixture.messages([brokenEvent]).first)
+
+        check(try Snapshot.render("image-error-card", width: 420) {
+            EnhancedImageView(
+                message: brokenMsg,
+                forceErrorState: true,
+                onOpenLightbox: { _ in }
+            )
+            .padding(14)
+        })
+
+        // 4. View-once pill & ViewOnceSheet viewer (before and after opening), plus NSWindow.sharingType == .none check.
+        var viewOnceUnopenedEvent = placeholderEvent
+        viewOnceUnopenedEvent.eventID = "$vo-before"
+        viewOnceUnopenedEvent.viewOnce = true
+        viewOnceUnopenedEvent.played = false
+        let viewOnceUnopenedMsg = try XCTUnwrap(Fixture.messages([viewOnceUnopenedEvent]).first)
+
+        var viewOnceOpenedEvent = placeholderEvent
+        viewOnceOpenedEvent.eventID = "$vo-after"
+        viewOnceOpenedEvent.viewOnce = true
+        viewOnceOpenedEvent.played = true
+        let viewOnceOpenedMsg = try XCTUnwrap(Fixture.messages([viewOnceOpenedEvent]).first)
+
+        check(try Snapshot.render("view-once-before", width: 420) {
+            VStack(alignment: .leading, spacing: 10) {
+                ViewOnceChip(message: viewOnceUnopenedMsg, onOpen: {})
+                ViewOnceSheet(
+                    message: viewOnceUnopenedMsg,
+                    preloadedImage: preloadedImage,
+                    onMarkPlayed: {},
+                    onDismiss: {}
+                )
+            }
+            .padding(14)
+        })
+
+        check(try Snapshot.render("view-once-after", width: 420) {
+            VStack(alignment: .leading, spacing: 10) {
+                ViewOnceChip(message: viewOnceOpenedMsg, onOpen: {})
+                ViewOnceSheet(
+                    message: viewOnceOpenedMsg,
+                    preloadedImage: nil,
+                    onMarkPlayed: {},
+                    onDismiss: {}
+                )
+            }
+            .padding(14)
+        })
+
+        // Verify screenshot protection sets NSWindow.sharingType = .none and honest notice is non-empty.
+        let testWindow = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 240),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: true
+        )
+        XCTAssertTrue(ViewOnceSheet.applyScreenshotProtection(to: testWindow))
+        XCTAssertEqual(testWindow.sharingType, .none)
+        XCTAssertTrue(ViewOnceSheet.screenshotNoticeText.contains("NSWindow.sharingType = .none"))
+    }
+
+    private func makeGalleryEvent(
+        _ id: String,
+        body: String,
+        filename: String,
+        msgtype: String,
+        offsetMS: Int64,
+        seq: Int64,
+        path: String,
+        blurhash: String,
+        durationMS: Int64? = nil
+    ) -> Event {
+        let baseTS = Fixture.millis(15)
+        var info: [String: JSONValue] = [
+            "mimetype": .string(msgtype == "m.video" ? "video/mp4" : "image/jpeg"),
+            "w": .int(640),
+            "h": .int(480),
+            "size": .int(120_000),
+            "xyz.amorgan.blurhash": .string(blurhash),
+        ]
+        if let durationMS {
+            info["duration"] = .int(durationMS)
+        }
+        return Event(
+            eventID: id,
+            roomID: Fixture.room,
+            sender: "@alice:courier.local",
+            senderName: "Alice Example",
+            mine: false,
+            type: "m.room.message",
+            content: .object([
+                "msgtype": .string(msgtype),
+                "body": .string(body),
+                "filename": .string(filename),
+                "info": .object(info),
+            ]),
+            ts: baseTS + offsetMS,
+            seq: seq,
+            status: .sent,
+            mediaPath: path,
+            thumbnailPath: path,
+            blurhash: blurhash,
+            durationMS: durationMS
+        )
+    }
+
+    private func makeTestPNG(width: Int, height: Int) throws -> String {
+        let image = NSImage(size: NSSize(width: width, height: height), flipped: false) { rect in
+            NSColor.systemTeal.setFill()
+            rect.fill()
+            NSColor.white.withAlphaComponent(0.25).setFill()
+            NSBezierPath(ovalIn: rect.insetBy(dx: 24, dy: 24)).fill()
+            return true
+        }
+        let tiff = try XCTUnwrap(image.tiffRepresentation)
+        let rep = try XCTUnwrap(NSBitmapImageRep(data: tiff))
+        let png = try XCTUnwrap(rep.representation(using: .png, properties: [:]))
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("courier-snapshot-\(width)x\(height).png")
+        try png.write(to: url, options: .atomic)
+        return url.path
+    }
 }
 
 /// A sign-in caller whose every sign-in finishes at once with `finish`.

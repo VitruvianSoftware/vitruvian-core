@@ -352,6 +352,10 @@ public final class ConversationModel: ObservableObject {
     @Published public var isShowingCalendar = false
     /// On-demand macOS EventKit bridge for the Calendar right pane and detected message dates.
     public var calendarBridge = CalendarBridge()
+    /// Active view-once message being viewed in `ViewOnceSheet`.
+    @Published public var activeViewOnceMessage: TimelineMessage?
+    /// Active message or gallery tile ID opened in the in-app lightbox.
+    @Published public var activeLightboxMessageID: String?
     /// The injected current time (`now()`), used for stable local-time formatting in `ChatInfoPane`.
     public var currentTime: Date { now() }
     /// Tests: how many times the open chat has been told read (room.markRead asked for).
@@ -2435,6 +2439,35 @@ public final class ConversationModel: ObservableObject {
     public func discard(_ eventID: String) async {
         await act { client, _ in
             let _: Empty = try await client.call("message.discard", EventParams(eventID: eventID))
+        }
+    }
+
+    /// Opens an unopened view-once message in `ViewOnceSheet`.
+    public func openViewOnce(_ message: TimelineMessage) {
+        guard message.viewOnce, !message.played else { return }
+        activeViewOnceMessage = message
+    }
+
+    /// Opens an image or gallery item in the in-app lightbox.
+    public func openLightbox(_ messageID: String) {
+        activeLightboxMessageID = messageID
+    }
+
+    /// Marks a view-once or voice-note message as played (`message.markPlayed`) on this Mac and on the network where supported.
+    public func markPlayed(_ eventID: String, roomID explicitRoomID: String? = nil) async {
+        let messageRoom = explicitRoomID ?? message(eventID, from: .chat)?.roomID
+        if var existing = events[eventID] {
+            existing.played = true
+            events[eventID] = existing
+            rebuild()
+        }
+        await act { client, room in
+            let targetRoom = (messageRoom?.isEmpty == false ? messageRoom : nil) ?? self.activeReplyRoomID ?? room
+            guard !targetRoom.hasPrefix("merge:") else { return }
+            let _: Empty = try await client.call(
+                "message.markPlayed",
+                MarkPlayedParams(roomID: targetRoom, eventID: eventID)
+            )
         }
     }
 

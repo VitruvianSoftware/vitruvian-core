@@ -153,7 +153,7 @@ public enum MessageActions {
             if !message.mine { offered.insert(.insertAsDraft) }
             if firstLink(in: message.rich) != nil { offered.insert(.openFirstLink) }
         }
-        if isForwardable(message.kind) { offered.insert(.forward) }
+        if isForwardable(message.kind), !message.viewOnce { offered.insert(.forward) }
         if message.isEdited { offered.insert(.showHistory) }
 
         let unavailable = order.compactMap { action in greyed[action].map { Unavailable(action: action, reason: $0) } }
@@ -198,7 +198,7 @@ public enum MessageActions {
     /// What the engine forwards: text and media, a sticker as an image; not a poll.
     private static func isForwardable(_ kind: MessageKind) -> Bool {
         switch kind {
-        case .text, .notice, .emote, .image, .video, .file, .sticker, .voiceNote: true
+        case .text, .notice, .emote, .image, .video, .file, .sticker, .voiceNote, .location: true
         case .poll, .deleted, .undecryptable: false
         }
     }
