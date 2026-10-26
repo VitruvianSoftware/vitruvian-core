@@ -35,6 +35,14 @@ import Testing
         #expect(output.contains("Problem:"))
         #expect(output.contains("Fix:"))
     }
+
+    @Test func agentEmbedTagsAreStripped() {
+        let input = "<agent-embed src=\"file:///Users/james/.gemini/antigravity/brain/abc/status.html\"></agent-embed>\nAll checks passed."
+        let output = GoogleHomeClient.cleanForSpeech(input)
+        #expect(!output.contains("agent-embed"))
+        #expect(!output.contains("file://"))
+        #expect(output == "All checks passed.")
+    }
 }
 
 @Suite struct SpeakerConfigCodableTests {

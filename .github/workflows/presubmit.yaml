@@ -872,7 +872,7 @@ jobs:
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //packages/design-system-android:lib //packages/design-system-android:option_list_test //packages/design-system-android:parity_test //packages/design-system-android:safe_area_test //packages/design-system-android:tokens_are_current || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //packages/design-system-android:lib //packages/design-system-android:option_list_test //packages/design-system-android:parity_test //packages/design-system-android:safe_area_test //packages/design-system-android:tokens_are_current; else exit $rc; fi; }
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //packages/design-system-android:lib //packages/design-system-android:option_list_test //packages/design-system-android:parity_test //packages/design-system-android:safe_area_test //packages/design-system-android:tokens_are_current //packages/design-system-android/tools:gen_tokens_lib_test //packages/design-system-android/tools:gen_tokens_rs_parity_test || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //packages/design-system-android:lib //packages/design-system-android:option_list_test //packages/design-system-android:parity_test //packages/design-system-android:safe_area_test //packages/design-system-android:tokens_are_current //packages/design-system-android/tools:gen_tokens_lib_test //packages/design-system-android/tools:gen_tokens_rs_parity_test; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()

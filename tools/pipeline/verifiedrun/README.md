@@ -107,3 +107,12 @@ file in the PR, not a status set with their own token.
 so an agent that went wrong could write a record without running anything. The
 merge queue still runs every test on the merged code, so the worst case is a
 wasted queue slot, not bad code on main.
+
+## Rust and Go
+
+`:verifiedrun` is the Rust port (`src/`); the Go original stays as
+`:verifiedrun-go`. It runs `//tools/pipeline/plan`, which is the Rust planner
+too (the Go one is `//tools/pipeline/plan:plan-go`). Both pairs are held to
+the same behaviour by `verifiedrun_rs_parity_test` and `plan_rs_parity_test`,
+which run Go and Rust side by side and require the same output, exit codes and
+bazel command lines.

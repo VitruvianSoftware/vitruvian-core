@@ -122,6 +122,9 @@ func blastSend(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
 		if strings.TrimSpace(m.RoomID) == "" {
 			return nil, invalidParams("room_id is required")
 		}
+		if strings.HasPrefix(m.RoomID, "merge:") {
+			return nil, invalidParams("room_id must not be a merge_id")
+		}
 		txt := m.Text
 		if err := textParam(&txt, nil); err != nil {
 			return nil, err

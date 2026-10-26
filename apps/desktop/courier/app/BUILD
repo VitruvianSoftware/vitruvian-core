@@ -66,7 +66,7 @@ swift_test(
     data = [
         "//apps/desktop/courier/protocol",
         "//apps/desktop/courier/protocol:richtext_cases",
-    ],
+    ] + glob(["Sources/**/*.swift"]),
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
     deps = [":CourierCore"],

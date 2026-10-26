@@ -613,6 +613,8 @@ jobs:
     if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' }}
     runs-on: ubuntu-26.04
     timeout-minutes: 45
+    env:
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -635,7 +637,7 @@ jobs:
       # ignore-regex is deliberately NARROWER than the script default, which
       # also treats gitops/ as inert. addlicense does not ignore gitops/ (those
       # manifests carry MIT headers today) and //tools/license:{check,verify}
-      # are `bazel run` sh_binaries with no sh_test, so `bazel test //...` and
+      # are `bazel run` binaries, so `bazel test //...` and
       # the nightly periodic-full-sweep never cover them (the self-test step
       # above is what covers :verify). Treating gitops/ as
       # skippable here would let an unlicensed gitops file dodge a required
@@ -652,13 +654,23 @@ jobs:
         uses: ./.github/actions/setup-bazel
       - name: Check license headers present (whole repo)
         if: steps.gate.outputs.relevant != 'false'
-        run: bazel run //tools/license:check
+        run: |
+          cache=()
+          if [ -n "${BUILDBUDDY_API_KEY}" ]; then
+            cache=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
+          fi
+          bazel run "${cache[@]}" //tools/license:check
       # addlicense -check above is PRESENCE-only (an Apache header with a wrong
       # holder passes it). This CONTENT gate enforces MIT + VitruvianSoftware in
       # every first-party LICENSE and any source header present (issue #457).
       - name: Verify license content is MIT + VitruvianSoftware
         if: steps.gate.outputs.relevant != 'false'
-        run: bazel run //tools/license:verify
+        run: |
+          cache=()
+          if [ -n "${BUILDBUDDY_API_KEY}" ]; then
+            cache=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
+          fi
+          bazel run "${cache[@]}" //tools/license:verify
 
   lint-naming:
     # Zero-tolerance naming convention enforcement across all monorepo assets
@@ -668,6 +680,8 @@ jobs:
     if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' }}
     runs-on: ubuntu-26.04
     timeout-minutes: 15
+    env:
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -681,7 +695,12 @@ jobs:
         uses: ./.github/actions/setup-bazel
 
       - name: Bazel test naming linter harness
-        run: bazel test //tools/lint-naming:lint-naming_test
+        run: |
+          cache=()
+          if [ -n "${BUILDBUDDY_API_KEY}" ]; then
+            cache=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
+          fi
+          bazel test "${cache[@]}" //tools/lint-naming:lint-naming_test
 
   changes:
     # Decides ONCE, on one runner, whether each small path-gated job below has

@@ -21,13 +21,56 @@ a cloud session -- which is why //tools/pulumi can call it unconditionally.
 See tools/gcp-token/README.md and docs/admin/claude-code-cloud-sessions.md.
 """
 
+# gazelle:ignore
+
+load("@aspect_rules_py//py:defs.bzl", "py_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 exports_files(["gcp-token.sh"])
 
-sh_binary(
+# The tool, in Rust (src/): gcp-token.sh's sources, order, argv, stdout,
+# stderr and exit codes, held to the script by the parity test below.
+# Optimised in every build mode.
+rust_library(
+    name = "gcp_token_lib",
+    srcs = ["src/lib.rs"],
+    crate_name = "gcp_token",
+    crate_root = "src/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = ["//tools/shell-compat:shell_compat"],
+)
+
+rust_binary(
     name = "gcp-token",
+    srcs = ["src/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":gcp_token_lib",
+        "//tools/shell-compat:shell_compat",
+    ],
+)
+
+alias(
+    name = "gcp-token-rs",
+    actual = ":gcp-token",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "gcp_token_rs",
+    actual = ":gcp-token",
+    visibility = ["//visibility:public"],
+)
+
+# The shell original, kept runnable and held to the port by the parity test.
+# //tools/pulumi's wrapper still runs gcp-token.sh directly.
+sh_binary(
+    name = "gcp-token-sh",
     srcs = ["gcp-token.sh"],
     visibility = ["//visibility:public"],
 )
@@ -44,6 +87,46 @@ sh_test(
     size = "small",
     srcs = ["gcp-token_test.sh"],
     data = ["gcp-token.sh"],
+)
+
+# The same suite, run against the Rust binary (GCP_TOKEN_BIN).
+sh_test(
+    name = "gcp-token-rs_test",
+    size = "small",
+    srcs = ["gcp-token_test.sh"],
+    data = [
+        "gcp-token.sh",
+        ":gcp-token",
+    ],
+    env = {"GCP_TOKEN_BIN": "$(rootpath :gcp-token)"},
+)
+
+# The #[cfg(test)] unit tests in src/.
+rust_test(
+    name = "gcp_token_lib_test",
+    size = "small",
+    crate = ":gcp_token_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+# Script and binary side by side on every case in gcp_token_rs_parity_test.py:
+# exit code, stdout, stderr, the calls made to gcloud/pulumi/ssh and the
+# broker cache left behind, compared byte for byte.
+py_test(
+    name = "gcp_token_rs_parity_test",
+    size = "medium",
+    srcs = ["gcp_token_rs_parity_test.py"],
+    data = [
+        "gcp-token.sh",
+        ":gcp-token",
+    ],
+    env = {
+        "GCP_TOKEN_RS": "$(rootpath :gcp-token)",
+        "GCP_TOKEN_SH": "$(rootpath gcp-token.sh)",
+    },
+    main = "gcp_token_rs_parity_test.py",
+    deps = ["//tools/shell-compat:parity_harness"],
 )
 
 alias(

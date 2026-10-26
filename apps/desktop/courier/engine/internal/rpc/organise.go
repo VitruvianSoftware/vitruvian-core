@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -114,6 +115,11 @@ func roomIDList(v *[]string, most int) ([]string, error) {
 	}
 	if n := len(*v); n < 1 || n > most {
 		return nil, invalidParams(fmt.Sprintf("room_ids must name 1 to %d chats", most))
+	}
+	for _, id := range *v {
+		if strings.HasPrefix(id, "merge:") {
+			return nil, invalidParams("room_ids must not contain a merge_id")
+		}
 	}
 	return *v, nil
 }
@@ -1016,6 +1022,11 @@ func mergeCreate(ctx context.Context, d *Deps, raw json.RawMessage) (any, error)
 	if p.RoomIDs == nil {
 		return nil, invalidParams("room_ids is required")
 	}
+	for _, id := range *p.RoomIDs {
+		if strings.HasPrefix(id, "merge:") {
+			return nil, invalidParams("room_ids must not contain a merge_id")
+		}
+	}
 	mc, err := d.Store.CreateMergedChat(ctx, *p.Name, *p.RoomIDs)
 	if err != nil {
 		return nil, err
@@ -1042,8 +1053,16 @@ func mergeUpdate(ctx context.Context, d *Deps, raw json.RawMessage) (any, error)
 	if p.RoomIDs == nil {
 		return nil, invalidParams("room_ids is required")
 	}
+	for _, id := range *p.RoomIDs {
+		if strings.HasPrefix(id, "merge:") {
+			return nil, invalidParams("room_ids must not contain a merge_id")
+		}
+	}
 	lastRoomID := ""
 	if p.LastRoomID != nil {
+		if strings.HasPrefix(*p.LastRoomID, "merge:") {
+			return nil, invalidParams("last_room_id must not be a merge_id")
+		}
 		lastRoomID = *p.LastRoomID
 	}
 	mc, err := d.Store.UpdateMergedChat(ctx, *p.MergeID, *p.Name, *p.RoomIDs, lastRoomID)

@@ -15,7 +15,7 @@ load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 # gazelle:ignore
 
 py_binary(
-    name = "merge-queue-stats",
+    name = "merge-queue-stats-py",
     srcs = ["merge_queue_stats.py"],
     imports = ["."],
     main = "merge_queue_stats.py",
@@ -48,18 +48,26 @@ rust_library(
     crate_name = "merge_queue_stats",
     crate_root = "src/lib.rs",
     edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
 )
 
 rust_binary(
-    name = "merge-queue-stats-rs",
+    name = "merge-queue-stats",
     srcs = ["src/main.rs"],
     edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
     deps = [":merge_queue_stats_lib"],
 )
 
 alias(
+    name = "merge-queue-stats-rs",
+    actual = ":merge-queue-stats",
+)
+
+alias(
     name = "merge_queue_stats_rs",
-    actual = ":merge-queue-stats-rs",
+    actual = ":merge-queue-stats",
 )
 
 rust_test(
@@ -67,6 +75,7 @@ rust_test(
     size = "small",
     crate = ":merge_queue_stats_lib",
     edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
 )
 
 # Holds the Rust binary to the Python script: both run as programs against
@@ -81,8 +90,8 @@ py_test(
         "merge_queue_stats_rs_parity_test.py",
         "merge_queue_stats_test.py",
     ],
-    data = [":merge-queue-stats-rs"],
-    env = {"MERGE_QUEUE_STATS_RS": "$(rootpath :merge-queue-stats-rs)"},
+    data = [":merge-queue-stats"],
+    env = {"MERGE_QUEUE_STATS_RS": "$(rootpath :merge-queue-stats)"},
     imports = ["."],
     main = "merge_queue_stats_rs_parity_test.py",
 )

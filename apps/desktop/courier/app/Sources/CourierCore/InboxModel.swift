@@ -151,9 +151,10 @@ public final class InboxModel: ObservableObject {
     @Published public var startNewChatDraft: StartNewChatDraft?
     /// Active Merge / Edit Merged Chat modal draft.
     @Published public var mergedChatEditorDraft: MergedChatEditorDraft?
-    /// Known merged chats keyed by `mergeID` (`merge:xyz`), kept in sync when the inbox has merged rows.
-    @Published public private(set) var mergedChats: [String: MergedChat] = [:] {
-        didSet { appModel.mergedChats = mergedChats }
+    /// Known merged chats keyed by `mergeID` (`merge:xyz`), owned by `AppModel.mergedChats`.
+    public var mergedChats: [String: MergedChat] {
+        get { appModel.mergedChats }
+        set { appModel.mergedChats = newValue }
     }
 
     /// The open chat's row was looked up because the list doesn't have it: its unread count is known only now,
@@ -260,6 +261,11 @@ public final class InboxModel: ObservableObject {
 
     /// The open chat's id. It is the app model's; a refresh never changes it.
     public var selectedRoomID: String? { appModel.selectedRoomID }
+
+    /// Whether `roomID` is currently open in the conversation pane (directly or as a member of the open merged chat).
+    public func isOpen(_ roomID: String) -> Bool {
+        appModel.isOpen(roomID: roomID)
+    }
 
     /// The open chat's row: the list's, or for a chat the list doesn't have, the one looked up when it opened. Nil
     /// when nothing is open, or the open chat is neither in the list nor looked up (yet).
@@ -641,7 +647,7 @@ public final class InboxModel: ObservableObject {
     /// keyboard is on (`pointedAt`); else nothing (with a chat open, E is a letter, not a key).
     public func plainKeyTargets(pointedAt pointed: String?) -> [String] {
         if isSelecting { return targets }
-        guard selectedRoomID == nil, let pointed else { return [] }
+        guard appModel.openRoomIDs.isEmpty, let pointed else { return [] }
         return [pointed]
     }
 

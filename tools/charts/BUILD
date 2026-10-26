@@ -30,19 +30,88 @@ also where its delivery() unit is declared.
                                        # changed chart to GHCR
 """
 
+load("@aspect_rules_py//py:defs.bzl", "py_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("//tools/delivery:defs.bzl", "delivery")
+
+# gazelle:ignore
 
 exports_files(["publish.sh"])
 
 # The break-glass entry point. CI runs the SAME script directly
 # (`bash tools/charts/publish.sh`, no Bazel on the runner's critical path);
 # this target is what makes the delivery() declaration below nameable and what
-# the runbook points at when Actions is unavailable.
-sh_binary(
+# the runbook points at when Actions is unavailable. It is the Rust port in
+# src/ (publish.sh's scoping, walk, helm calls and exit codes, held to the
+# script by the parity test below); the script itself stays runnable as
+# :publish-sh.
+rust_library(
+    name = "charts_lib",
+    srcs = ["src/lib.rs"],
+    crate_name = "charts",
+    crate_root = "src/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = ["//tools/shell-compat:shell_compat"],
+)
+
+rust_binary(
     name = "publish",
+    srcs = ["src/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":charts_lib",
+        "//tools/shell-compat:shell_compat",
+    ],
+)
+
+[
+    alias(
+        name = name,
+        actual = ":publish",
+        visibility = ["//visibility:public"],
+    )
+    for name in [
+        "publish-rs",
+        "publish_rs",
+    ]
+]
+
+sh_binary(
+    name = "publish-sh",
     srcs = ["publish.sh"],
     visibility = ["//visibility:public"],
+)
+
+# The #[cfg(test)] unit tests in src/.
+rust_test(
+    name = "charts_lib_test",
+    size = "small",
+    crate = ":charts_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+# Script and binary side by side on every case in publish_rs_parity_test.py
+# (fake git and helm): exit code, stdout, stderr and every helm call, byte
+# for byte, under every bash on the machine.
+py_test(
+    name = "publish_rs_parity_test",
+    size = "medium",
+    srcs = ["publish_rs_parity_test.py"],
+    data = [
+        "publish.sh",
+        ":publish",
+    ],
+    env = {
+        "PUBLISH_RS": "$(rootpath :publish)",
+        "PUBLISH_SH": "$(rootpath publish.sh)",
+    },
+    main = "publish_rs_parity_test.py",
+    deps = ["//tools/shell-compat:parity_harness"],
 )
 
 # Delivery unit (delivery-orchestrator PHASE 2, Wave B2). The generated
