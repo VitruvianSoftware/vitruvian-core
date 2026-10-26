@@ -45,7 +45,11 @@ public enum AntigravityHook {
                   let type = obj["type"] as? String else { continue }
             switch type {
             case "USER_INPUT":
-                entries.append(.init(role: "user", text: obj["content"] as? String ?? "", isPlainUserPrompt: true))
+                let content = obj["content"] as? String ?? ""
+                entries.append(.init(
+                    role: "user", text: content,
+                    isPlainUserPrompt: ClaudeStopHook.isHumanUserText(content),
+                    mentionsBroadcast: ClaudeStopHook.isSilentUnlessExplicitPrompt(content)))
             case "PLANNER_RESPONSE":
                 let calls = (obj["tool_calls"] as? [[String: Any]]) ?? []
                 entries.append(.init(
@@ -200,7 +204,8 @@ public enum OpenCodeHook {
                     let text = (message["text"] as? String) ?? ""
                     return ClaudeStopHook.Entry(
                         role: "user", text: text,
-                        isPlainUserPrompt: !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        isPlainUserPrompt: ClaudeStopHook.isHumanUserText(text),
+                        mentionsBroadcast: ClaudeStopHook.isSilentUnlessExplicitPrompt(text))
                 case "assistant":
                     let content = (message["content"] as? [[String: Any]]) ?? []
                     var entry = ClaudeStopHook.Entry(role: "assistant")
@@ -250,7 +255,10 @@ public enum OpenCodeHook {
                     break
                 }
             }
-            entry.isPlainUserPrompt = role == "user" && hasText
+            entry.isPlainUserPrompt = role == "user" && hasText && ClaudeStopHook.isHumanUserText(entry.text)
+            if role == "user" && hasText && ClaudeStopHook.isSilentUnlessExplicitPrompt(entry.text) {
+                entry.mentionsBroadcast = true
+            }
             return entry
         }
     }

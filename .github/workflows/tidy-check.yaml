@@ -55,6 +55,8 @@ jobs:
   tidy-check:
     runs-on: ubuntu-26.04
     timeout-minutes: 45
+    env:
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -138,7 +140,11 @@ jobs:
       - name: Run //:tidy and verify the tree is clean
         if: steps.gate.outputs.relevant != 'false'
         run: |
-          bazel run //:tidy
+          cache=()
+          if [ -n "${BUILDBUDDY_API_KEY}" ]; then
+            cache=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
+          fi
+          bazel run "${cache[@]}" //:tidy
           changed="$(git status --porcelain -- ':!MODULE.bazel.lock')"
           if [ -n "$changed" ]; then
             echo "::error::BUILD files are stale or unformatted. Run 'bazel run //:tidy' and commit the result."
@@ -188,7 +194,11 @@ jobs:
       - name: Assert generated delivery workflows are current
         if: steps.gate.outputs.relevant != 'false'
         run: |
-          bazel run //tools/ci:gen
+          cache=()
+          if [ -n "${BUILDBUDDY_API_KEY}" ]; then
+            cache=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
+          fi
+          bazel run "${cache[@]}" //tools/ci:gen
           stale="$(git status --porcelain --untracked-files=all -- .github/workflows/)"
           if [ -n "$stale" ]; then
             echo "$stale"
@@ -203,7 +213,11 @@ jobs:
       - name: Assert generated presubmit workflow is current
         if: steps.gate.outputs.relevant != 'false'
         run: |
-          bazel run //tools/pipeline:gen -- --format=workflow --output-file=.github/workflows/presubmit.yaml
+          cache=()
+          if [ -n "${BUILDBUDDY_API_KEY}" ]; then
+            cache=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
+          fi
+          bazel run "${cache[@]}" //tools/pipeline:gen -- --format=workflow --output-file=.github/workflows/presubmit.yaml
           if ! git diff --exit-code -- .github/workflows/presubmit.yaml; then
             echo "::error::.github/workflows/presubmit.yaml is stale. It is GENERATED from pipeline_unit() declarations -- run 'bazel run //tools/pipeline:gen -- --format=workflow --output-file=.github/workflows/presubmit.yaml' and commit the result."
             exit 1

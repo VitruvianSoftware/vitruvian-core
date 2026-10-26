@@ -74,6 +74,9 @@ public actor GoogleHomeClient {
         var s = text
         // Remove code blocks and inline code
         s = s.replacingOccurrences(of: "```[\\s\\S]*?```", with: "", options: .regularExpression)
+        // Remove embedded OpenUI / artifact tags
+        s = s.replacingOccurrences(of: "<agent-embed\\b[^>]*>[\\s\\S]*?</agent-embed>", with: "", options: .regularExpression)
+        s = s.replacingOccurrences(of: "<agent-embed\\b[^>]*/?>", with: "", options: .regularExpression)
         s = s.replacingOccurrences(of: "`([^`]+)`", with: "$1", options: .regularExpression)
         // Remove URLs
         s = s.replacingOccurrences(of: "https?://\\S+", with: "", options: .regularExpression)

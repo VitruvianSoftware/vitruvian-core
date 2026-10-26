@@ -32,7 +32,9 @@
 # once beforehand. Requires kubectl, bw, jq, python3.
 set -euo pipefail
 
-SUBCMD="${1:?usage: argocd-secret-{backup|restore|verify}}"
+# NB: keep this :? message free of { } -- a literal brace closes the ${...:?}
+# early and the rest is appended to SUBCMD ("backup}" matched no case below).
+SUBCMD="${1:?usage: argocd-secret-backup | argocd-secret-restore | argocd-secret-verify}"
 shift || true
 
 : "${KUBECONFIG:=$HOME/.kube/cluster.yaml}"

@@ -27,6 +27,14 @@ set -uo pipefail
 
 UNDER_TEST="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/set-key.sh"
 [ -f "${UNDER_TEST}" ] || { echo "cannot find set-key.sh" >&2; exit 1; }
+# GITHUB_APP_KEY_BIN runs the same suite against another build of the tool
+# (the Rust port, :set-key-rs_test).
+if [ -n "${GITHUB_APP_KEY_BIN:-}" ]; then
+  case "$GITHUB_APP_KEY_BIN" in /*) ;; *) GITHUB_APP_KEY_BIN="$PWD/$GITHUB_APP_KEY_BIN" ;; esac
+  RUN=("$GITHUB_APP_KEY_BIN")
+else
+  RUN=(bash "${UNDER_TEST}")
+fi
 
 PASS=0; FAIL=0
 check() { # check <name> <0 = pass>
@@ -78,7 +86,7 @@ run() {
   export FAKE_LOG="${WORK}/log"
   local args=("$@" --yes)
   if [ -n "$pem" ]; then cp "${WORK}/key.pem" "$pem"; args+=(--pem "$pem"); fi
-  OUT="$(PATH="${WORK}/bin:${PATH}" GITHUB_APP_KEY_DOWNLOADS="${WORK}/dl" bash "${UNDER_TEST}" "${args[@]}" 2>&1)"; RC=$?
+  OUT="$(PATH="${WORK}/bin:${PATH}" GITHUB_APP_KEY_DOWNLOADS="${WORK}/dl" "${RUN[@]}" "${args[@]}" 2>&1)"; RC=$?
 }
 t() { if "$@"; then echo 0; else echo 1; fi; }
 stored() { [ -f "${WORK}/log" ] && wc -l <"${WORK}/log" | tr -d ' ' || echo 0; }
@@ -100,7 +108,7 @@ check "renovate: .pem deleted after storing (--yes)" "$(t [ ! -e "${WORK}/dl/vit
 rm -f "${WORK}"/dl/*
 cp "${WORK}/key.pem" "${WORK}/dl/vitruvian-renovate.2026-09-28.private-key.pem"
 export FAKE_LOG="${WORK}/log"; rm -f "${WORK}"/log*
-OUT="$(PATH="${WORK}/bin:${PATH}" GITHUB_APP_KEY_DOWNLOADS="${WORK}/dl" bash "${UNDER_TEST}" renovate --yes 2>&1)"; RC=$?
+OUT="$(PATH="${WORK}/bin:${PATH}" GITHUB_APP_KEY_DOWNLOADS="${WORK}/dl" "${RUN[@]}" renovate --yes 2>&1)"; RC=$?
 check "auto-finds ~/Downloads/<slug>.*.private-key.pem" "$RC"
 
 # 3-7. every failed check stores nothing
@@ -113,7 +121,7 @@ FAKE_REJECT=1 run "${WORK}/k.pem" renovate;                          fails_and_s
 FAKE_INSTALLED=0 run "${WORK}/k.pem" renovate;                       fails_and_stores_nothing "App not installed"
 FAKE_BYPASS="3863936 5112449" run "${WORK}/k.pem" renovate;          fails_and_stores_nothing "renovate on a bypass list"
 echo "not a key" > "${WORK}/bad.pem"
-rm -f "${WORK}"/log*; OUT="$(PATH="${WORK}/bin:${PATH}" bash "${UNDER_TEST}" renovate --pem "${WORK}/bad.pem" --yes 2>&1)"; RC=$?
+rm -f "${WORK}"/log*; OUT="$(PATH="${WORK}/bin:${PATH}" "${RUN[@]}" renovate --pem "${WORK}/bad.pem" --yes 2>&1)"; RC=$?
 fails_and_stores_nothing "file is not a private key"
 
 # 8. copybara-sync: IS a bypass actor by design, and goes to both stores
@@ -127,7 +135,7 @@ check "copybara-sync: Dependabot secret" "$(grep -q 'secret set SYNC_APP_PRIVATE
 create() { # -> OUT, RC
   rm -f "${WORK}"/log* "${WORK}/form.html"; rm -rf "${WORK}/tmp"; mkdir -p "${WORK}/tmp"
   export FAKE_LOG="${WORK}/log"
-  OUT="$(printf 'the-code\n\n' | PATH="${WORK}/bin:${PATH}" TMPDIR="${WORK}/tmp" bash "${UNDER_TEST}" renovate --create 2>&1)"; RC=$?
+  OUT="$(printf 'the-code\n\n' | PATH="${WORK}/bin:${PATH}" TMPDIR="${WORK}/tmp" "${RUN[@]}" renovate --create 2>&1)"; RC=$?
 }
 export FAKE_SLUG=vitruvian-renovate FAKE_BYPASS=3863936
 create
@@ -143,7 +151,7 @@ fails_and_stores_nothing "create: GitHub made a differently-named App"
 check "create: says the App name was changed on the form" "$(grep -q 'was the name changed on the form' <<<"$OUT"; echo $?)"
 FAKE_CONVERT_FAIL=1 create
 fails_and_stores_nothing "create: code rejected"
-rm -f "${WORK}"/log*; OUT="$(PATH="${WORK}/bin:${PATH}" bash "${UNDER_TEST}" renovate --create --pem "${WORK}/key.pem" </dev/null 2>&1)"; RC=$?
+rm -f "${WORK}"/log*; OUT="$(PATH="${WORK}/bin:${PATH}" "${RUN[@]}" renovate --create --pem "${WORK}/key.pem" </dev/null 2>&1)"; RC=$?
 fails_and_stores_nothing "create: refuses --pem too"
 
 # 10. unknown app

@@ -80,8 +80,8 @@ def send_kasa_command(ip: str, cmd_dict: dict, port: int = HS300_DEFAULT_PORT) -
         s.close()
 
 
-def find_child_id(ip: str) -> str:
-    sysinfo = send_kasa_command(ip, {"system": {"get_sysinfo": {}}})
+def find_child_id(ip: str, port: int = HS300_DEFAULT_PORT) -> str:
+    sysinfo = send_kasa_command(ip, {"system": {"get_sysinfo": {}}}, port)
     children = sysinfo.get("system", {}).get("get_sysinfo", {}).get("children", [])
     for child in children:
         if OUTLET_ALIAS_MATCH.lower() in child.get("alias", "").lower():
@@ -89,8 +89,8 @@ def find_child_id(ip: str) -> str:
     return OUTLET_DEFAULT_CHILD_ID
 
 
-def get_relay_state(ip: str, child_id: str) -> int:
-    sysinfo = send_kasa_command(ip, {"system": {"get_sysinfo": {}}})
+def get_relay_state(ip: str, child_id: str, port: int = HS300_DEFAULT_PORT) -> int:
+    sysinfo = send_kasa_command(ip, {"system": {"get_sysinfo": {}}}, port)
     children = sysinfo.get("system", {}).get("get_sysinfo", {}).get("children", [])
     for child in children:
         if (
@@ -101,12 +101,14 @@ def get_relay_state(ip: str, child_id: str) -> int:
     return 0
 
 
-def set_relay_state(ip: str, child_id: str, state: int) -> dict:
+def set_relay_state(
+    ip: str, child_id: str, state: int, port: int = HS300_DEFAULT_PORT
+) -> dict:
     cmd = {
         "context": {"child_ids": [child_id]},
         "system": {"set_relay_state": {"state": state}},
     }
-    return send_kasa_command(ip, cmd)
+    return send_kasa_command(ip, cmd, port)
 
 
 def main():
@@ -114,7 +116,13 @@ def main():
         description="Power-cycle host fedora via Kasa HS300 power strip."
     )
     parser.add_argument(
-        "--ip", default=HS300_DEFAULT_IP, help="IP of Kasa HS300 power strip"
+        "--ip", "--host", default=HS300_DEFAULT_IP, help="IP of Kasa HS300 power strip"
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=HS300_DEFAULT_PORT,
+        help=f"TCP port of the strip (default: {HS300_DEFAULT_PORT})",
     )
     parser.add_argument(
         "--status", action="store_true", help="Print current outlet power state"
@@ -132,23 +140,23 @@ def main():
     )
     args = parser.parse_args()
 
-    child_id = find_child_id(args.ip)
+    child_id = find_child_id(args.ip, args.port)
 
     if args.status:
-        state = get_relay_state(args.ip, child_id)
+        state = get_relay_state(args.ip, child_id, args.port)
         status_str = "ON" if state == 1 else "OFF"
         print(f"Outlet '{OUTLET_ALIAS_MATCH}' ({child_id}): {status_str}")
         sys.exit(0)
 
     if args.off:
         print(f"Turning OFF outlet '{OUTLET_ALIAS_MATCH}' ({child_id})...")
-        set_relay_state(args.ip, child_id, 0)
+        set_relay_state(args.ip, child_id, 0, args.port)
         print("Done.")
         sys.exit(0)
 
     if args.on:
         print(f"Turning ON outlet '{OUTLET_ALIAS_MATCH}' ({child_id})...")
-        set_relay_state(args.ip, child_id, 1)
+        set_relay_state(args.ip, child_id, 1, args.port)
         print("Done.")
         sys.exit(0)
 
@@ -157,11 +165,11 @@ def main():
         f"Power-cycling host 'fedora' via outlet '{OUTLET_ALIAS_MATCH}' ({args.ip})..."
     )
     print("Cutting power (relay state -> 0)...")
-    set_relay_state(args.ip, child_id, 0)
+    set_relay_state(args.ip, child_id, 0, args.port)
     print(f"Waiting {args.wait} seconds...")
     time.sleep(args.wait)
     print("Restoring power (relay state -> 1)...")
-    set_relay_state(args.ip, child_id, 1)
+    set_relay_state(args.ip, child_id, 1, args.port)
     print(
         "Power-cycle complete. Host 'fedora' will reboot and rejoin the cluster automatically."
     )

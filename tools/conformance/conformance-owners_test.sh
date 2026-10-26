@@ -36,7 +36,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 CHECK_SH="$HERE/check.sh"
 [ -f "$CHECK_SH" ] || { echo "FATAL: check.sh not found next to $0" >&2; exit 1; }
 
-OWNERS_BIN="${TEST_SRCDIR:-}/${TEST_WORKSPACE:-_main}/tools/owners/owners_/owners"
+OWNERS_BIN="${TEST_SRCDIR:-}/${TEST_WORKSPACE:-_main}/tools/owners/owners"
 [ -x "$OWNERS_BIN" ] || { echo "FATAL: owners generator not in runfiles at $OWNERS_BIN" >&2; exit 1; }
 
 FAILURES=0

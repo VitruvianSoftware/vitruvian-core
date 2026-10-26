@@ -28,6 +28,14 @@ set -uo pipefail
 
 UNDER_TEST="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/rotate_github_otel_webhook_secret.sh"
 [ -f "${UNDER_TEST}" ] || { echo "cannot find rotate_github_otel_webhook_secret.sh" >&2; exit 1; }
+# With ROTATE_GITHUB_OTEL_WEBHOOK_SECRET_BIN (the Rust port,
+# //tools/gitops:gitops-cli) the same checks run against the port.
+if [ -n "${ROTATE_GITHUB_OTEL_WEBHOOK_SECRET_BIN:-}" ]; then
+  BIN="$(cd "$(dirname "${ROTATE_GITHUB_OTEL_WEBHOOK_SECRET_BIN}")" && pwd)/$(basename "${ROTATE_GITHUB_OTEL_WEBHOOK_SECRET_BIN}")"
+  RUN=("${BIN}" rotate-github-otel-webhook-secret)
+else
+  RUN=(bash "${UNDER_TEST}")
+fi
 
 PASS=0; FAIL=0
 check() { if [ "$2" = "0" ]; then printf '  PASS  %s\n' "$1"; PASS=$((PASS+1)); else printf '  FAIL  %s\n' "$1"; FAIL=$((FAIL+1)); fi; }
@@ -69,7 +77,7 @@ chmod +x "${WORK}"/bin/*
 
 run() { # -> OUT, RC
   rm -f "${WORK}"/gh-* "${WORK}/kubectl-got" "${WORK}/kubeseal-args" "${WORK}/ws/${OUT_REL}"
-  OUT="$(cd "${WORK}/ws" && PATH="${WORK}/bin:${PATH}" BUILD_WORKSPACE_DIRECTORY="${WORK}/ws" bash "${UNDER_TEST}" 2>&1)"; RC=$?
+  OUT="$(cd "${WORK}/ws" && PATH="${WORK}/bin:${PATH}" BUILD_WORKSPACE_DIRECTORY="${WORK}/ws" "${RUN[@]}" 2>&1)"; RC=$?
 }
 
 echo "rotate_github_otel_webhook_secret.sh"

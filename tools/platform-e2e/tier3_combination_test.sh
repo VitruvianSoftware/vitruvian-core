@@ -46,7 +46,7 @@ find_binary() {
 }
 
 run_owners() {
-	local bin="$(find_binary tools/owners/owners_/owners)"
+	local bin="$(find_binary tools/owners/owners)"
 	if [ -n "$bin" ]; then
 		"$bin" "$@"
 	elif command -v go >/dev/null 2>&1; then
@@ -58,7 +58,7 @@ run_owners() {
 }
 
 run_pipeline_gen() {
-	local bin="$(find_binary tools/pipeline/gen/gen_/gen)"
+	local bin="$(find_binary tools/pipeline/gen/gen)"
 	if [ -n "$bin" ]; then
 		"$bin" "$@"
 	elif command -v go >/dev/null 2>&1; then
@@ -70,7 +70,7 @@ run_pipeline_gen() {
 }
 
 run_pipeline_plan() {
-	local bin="$(find_binary tools/pipeline/plan/plan_/plan)"
+	local bin="$(find_binary tools/pipeline/plan/plan)"
 	if [ -n "$bin" ]; then
 		"$bin" "$@"
 	elif command -v go >/dev/null 2>&1; then

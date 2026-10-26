@@ -29,8 +29,18 @@
 
 set -uo pipefail
 
-UNDER_TEST="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/landed.sh"
-[ -f "${UNDER_TEST}" ] || { echo "cannot find landed.sh" >&2; exit 1; }
+# LANDED_UNDER_TEST names another implementation to hold to these cases (the
+# Rust port, //tools/landed:landed); by default it is landed.sh beside this file.
+UNDER_TEST="${LANDED_UNDER_TEST:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/landed.sh}"
+case "${UNDER_TEST}" in /*) ;; *) UNDER_TEST="${PWD}/${UNDER_TEST}" ;; esac
+[ -f "${UNDER_TEST}" ] || { echo "cannot find ${UNDER_TEST}" >&2; exit 1; }
+# A script runs under bash; a compiled port runs as itself.
+invoke() {
+  case "${UNDER_TEST}" in
+    *.sh) bash "${UNDER_TEST}" "$@" ;;
+    *) "${UNDER_TEST}" "$@" ;;
+  esac
+}
 
 PASS=0; FAIL=0
 check() {
@@ -81,13 +91,16 @@ EOF
 
 run() { # <repo> <bin> <ref> -> sets out/rc
   out="$(cd "$1" && BUILD_WORKSPACE_DIRECTORY="$1" PATH="$2:${PATH}" \
-        bash "${UNDER_TEST}" "$3" 2>&1)"; rc=$?
+        invoke "$3" 2>&1)"; rc=$?
 }
 
 echo "landed_test:"
 
 # --- 1. syntax. --------------------------------------------------------------
-bash -n "${UNDER_TEST}" 2>/dev/null; check "script parses" "$?"
+case "${UNDER_TEST}" in
+  *.sh) bash -n "${UNDER_TEST}" 2>/dev/null; check "script parses" "$?" ;;
+  *) [ -x "${UNDER_TEST}" ]; check "binary is executable" "$?" ;;
+esac
 
 # --- 2. THE REGRESSION: a squash-merged PR reads as landed. ------------------
 # The naive `--is-ancestor <topic-sha>` says NO here. This must say YES.
@@ -132,7 +145,7 @@ rm -rf "${repo}" "${bin}"
 
 # --- 6. no argument is a usage error, not a false green. ---------------------
 repo="$(new_repo)"; bin="$(mktemp -d)"; fake_gh "${bin}" MERGED "$(git -C "${repo}" rev-parse main)"
-out="$(cd "${repo}" && BUILD_WORKSPACE_DIRECTORY="${repo}" PATH="${bin}:${PATH}" bash "${UNDER_TEST}" 2>&1)"; rc=$?
+out="$(cd "${repo}" && BUILD_WORKSPACE_DIRECTORY="${repo}" PATH="${bin}:${PATH}" invoke 2>&1)"; rc=$?
 check "no argument -> usage error" "$([ "${rc}" != "0" ] && echo 0 || echo 1)"
 rm -rf "${repo}" "${bin}"
 
@@ -164,7 +177,7 @@ gh_pr() {
   printf '#!/usr/bin/env bash\necho "42 %s %s %s"\n' "$2" "$3" "$4" > "$1/gh"; chmod +x "$1/gh"
 }
 gate() { out="$(cd "$1" && BUILD_WORKSPACE_DIRECTORY="$1" LANDED_NO_FETCH=1 PATH="$2:${PATH}" \
-        bash "${UNDER_TEST}" --branch "$3" 2>&1)"; rc=$?; }
+        invoke --branch "$3" 2>&1)"; rc=$?; }
 
 # 8. squash-merged branch passes on CONTENT alone, with no GitHub at all.
 repo="$(new_repo)"; bin="$(mktemp -d)"; gh_fails "${bin}"
@@ -220,7 +233,7 @@ rm -rf "${repo}" "${bin}"
 
 # ── --remote-branch, and commits a branch grows after its PR merged. ─────────
 remote_gate() { out="$(cd "$1" && BUILD_WORKSPACE_DIRECTORY="$1" LANDED_NO_FETCH=1 PATH="$2:${PATH}" \
-        bash "${UNDER_TEST}" --remote-branch "$3" 2>&1)"; rc=$?; }
+        invoke --remote-branch "$3" 2>&1)"; rc=$?; }
 # grown_repo <g-content>: PR #42's head is `topic`; after it merged, the branch
 # grew an empty commit, a clean merge of main, and a commit adding g.txt. main
 # has its own commit adding g.txt (content "g"), then changes g.txt again, so

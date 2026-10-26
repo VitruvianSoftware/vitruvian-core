@@ -81,7 +81,7 @@ flowchart LR
 | `.github/workflows/copybara-import-pr.yaml` | vitruvian-core | The **only** import path. Hourly poll across all mirrors for PRs labelled `import-to-monorepo`; imports each as a monorepo PR (`CHANGE_REQUEST`). |
 | `.github/workflows/copybara-import-pr-close.yaml` | vitruvian-core | On merge of an import PR, closes the originating mirror PR by API (read from the `Mirror-Of:` footer). Cross-repo closure can't be done by a commit trailer. |
 | `.github/workflows/copybara-config-smoketest.yaml` | vitruvian-core | Validates `copy.bara.sky` parses and generates the expected workflows. |
-| `tools/copybara/conflict-precheck/` (Go) | vitruvian-core | Component-aware pre-push guard; Bazel-built, invoked by the export reusable. Refuses to export when the mirror holds an un-synced genuine change. |
+| `tools/copybara/conflict-precheck/` (Rust; the Go original stays as `:conflict-precheck-go`) | vitruvian-core | Component-aware pre-push guard; Bazel-built, invoked by the export reusable. Refuses to export when the mirror holds an un-synced genuine change. A parity test holds the two builds to the same output. |
 | `infrastructure/pulumi/platform/repo-config/internal/copybara_sync/sync.go` | vitruvian-core | IaC: loops `syncedProjects`, provisioning each component's deploy key + Actions secrets. |
 
 ### Versions / identifiers (pinned)

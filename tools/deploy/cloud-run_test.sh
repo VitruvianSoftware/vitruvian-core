@@ -11,6 +11,16 @@
 set -uo pipefail
 
 SCRIPT="${1:?usage: cloud-run_test.sh <path-to-cloud-run.sh>}"
+# CLOUD_RUN_BIN runs the same suite against another build of the tool (the
+# Rust port, :cloud-run-rs_test), called as the script is. The pure-function
+# checks below need the script's functions, so they run against the script
+# only; the port's are the same cases in :deploy_lib_test.
+if [ -n "${CLOUD_RUN_BIN:-}" ]; then
+  case "$CLOUD_RUN_BIN" in /*) ;; *) CLOUD_RUN_BIN="$PWD/$CLOUD_RUN_BIN" ;; esac
+  UNDER_TEST=("$CLOUD_RUN_BIN")
+else
+  UNDER_TEST=(bash "$SCRIPT")
+fi
 fails=0
 ok() { echo "ok - $1"; }
 bad() { echo "NOT OK - $1"; fails=$((fails + 1)); }
@@ -22,86 +32,90 @@ source "$SCRIPT"   # source-safe: main() runs only when executed, not sourced
 # the arg-guard cases below (which intentionally exit 2) don't abort this test.
 set +e -u -o pipefail
 
-got="$(resolve_smoke_url "https://cand.example" "false" "https://live.example")"
-[ "$got" = "https://cand.example" ] && ok "candidate URL wins when present" \
-  || bad "candidate URL should win (got '$got')"
+if [ -z "${CLOUD_RUN_BIN:-}" ]; then
+  got="$(resolve_smoke_url "https://cand.example" "false" "https://live.example")"
+  [ "$got" = "https://cand.example" ] && ok "candidate URL wins when present" \
+    || bad "candidate URL should win (got '$got')"
 
-got="$(resolve_smoke_url "" "true" "https://live.example")"
-[ "$got" = "https://live.example" ] && ok "first deploy falls back to live service URL" \
-  || bad "first deploy should use service URL (got '$got')"
+  got="$(resolve_smoke_url "" "true" "https://live.example")"
+  [ "$got" = "https://live.example" ] && ok "first deploy falls back to live service URL" \
+    || bad "first deploy should use service URL (got '$got')"
 
-if resolve_smoke_url "" "false" "https://live.example" >/dev/null 2>&1; then
-  bad "non-first deploy with no candidate MUST fail (#808 false-green guard)"
+  if resolve_smoke_url "" "false" "https://live.example" >/dev/null 2>&1; then
+    bad "non-first deploy with no candidate MUST fail (#808 false-green guard)"
+  else
+    ok "non-first deploy with unresolvable candidate fails closed (#808)"
+  fi
+
+  got="$(resolve_smoke_url "null" "true" "https://live.example")"
+  [ "$got" = "https://live.example" ] && ok "literal 'null' candidate treated as unresolved" \
+    || bad "'null' candidate should be unresolved (got '$got')"
+
+  got="$(resolve_smoke_url "" "true" "")"
+  [ "$got" = "" ] && ok "first deploy with empty service URL returns empty string (disabled workload)" \
+    || bad "first deploy empty service URL should be empty string (got '$got')"
+
+  got="$(resolve_smoke_url "" "true" "null")"
+  [ "$got" = "" ] && ok "first deploy with null service URL returns empty string (disabled workload)" \
+    || bad "first deploy null service URL should be empty string (got '$got')"
+
+  got="$(resolve_smoke_url "" "false" "")"
+  [ "$got" = "" ] && ok "non-first deploy with empty service URL returns empty string (disabled workload)" \
+    || bad "non-first deploy empty service URL should be empty string (got '$got')"
+
+  got="$(resolve_smoke_url "" "false" "null")"
+  [ "$got" = "" ] && ok "non-first deploy with null service URL returns empty string (disabled workload)" \
+    || bad "non-first deploy null service URL should be empty string (got '$got')"
+
+  # --- pure resolve_stable_revision -------------------------------------------
+  # A transient/real gcloud failure must NEVER be silently treated as "first
+  # deploy" (that skips the whole blue-green rollout and routes 100% traffic
+  # to an unsmoked revision). Only a confirmed NOT_FOUND -- the service
+  # resource genuinely doesn't exist yet -- may resolve to "no stable revision".
+
+  got="$(resolve_stable_revision 0 "" "tabula-api-development-abc123" "tabula-api-development")"
+  [ "$got" = "tabula-api-development-abc123" ] && ok "rc=0 returns the described revision" \
+    || bad "clean describe should return the revision (got '$got')"
+
+  got="$(resolve_stable_revision 0 "" "" "tabula-api-development")"
+  [ "$got" = "" ] && ok "rc=0 with an empty value is treated as first deploy" \
+    || bad "rc=0 empty should resolve to empty (got '$got')"
+
+  got="$(resolve_stable_revision 1 "ERROR: (gcloud.run.services.describe) NOT_FOUND: Requested entity was not found." "" "tabula-api-development")"
+  [ "$got" = "" ] && ok "NOT_FOUND on a nonzero rc is a genuine first deploy" \
+    || bad "NOT_FOUND should resolve to empty (got '$got')"
+
+  got="$(resolve_stable_revision 1 "ERROR: (gcloud.run.services.describe) Cannot find service [oauth-user-inspector-development]" "" "oauth-user-inspector-development")"
+  [ "$got" = "" ] && ok "Cannot find service on a nonzero rc is a genuine first deploy" \
+    || bad "Cannot find service should resolve to empty (got '$got')"
+
+  got="$(resolve_stable_revision 1 "ERROR: (gcloud.run.services.describe) Resource 'namespaces/p/services/s' was not found" "" "s")"
+  [ "$got" = "" ] && ok "was not found on a nonzero rc is a genuine first deploy" \
+    || bad "was not found should resolve to empty (got '$got')"
+
+  got="$(resolve_stable_revision 1 "ERROR: (gcloud.run.services.describe) PERMISSION_DENIED: Permission 'run.services.get' denied on resource 'namespaces/prj/services/svc' (or resource may not exist)." "" "svc")"
+  [ "$got" = "" ] && ok "PERMISSION_DENIED with (or resource may not exist) is treated as first deploy" \
+    || bad "may not exist should resolve to empty (got '$got')"
+
+  if resolve_stable_revision 1 "ERROR: (gcloud.run.services.describe) PERMISSION_DENIED: caller lacks permission" "" "tabula-api-development" >/dev/null 2>&1; then
+    bad "a non-NOT_FOUND gcloud error MUST fail closed, not be treated as first deploy"
+  else
+    ok "PERMISSION_DENIED (or any other real error) fails closed rather than guessing first-deploy"
+  fi
+
+  if resolve_stable_revision 1 "ERROR: (gcloud.run.services.describe) There was a problem refreshing your current auth tokens" "" "tabula-api-development" >/dev/null 2>&1; then
+    bad "an auth/reauth failure MUST fail closed, not be treated as first deploy"
+  else
+    ok "auth reauthentication failure fails closed rather than guessing first-deploy"
+  fi
+
+  if resolve_stable_revision 0 "ERROR: some warning printed to stderr despite rc=0" "" "tabula-api-development" >/dev/null 2>&1; then
+    ok "rc=0 always wins regardless of stderr content (matches gcloud's own success signal)"
+  else
+    bad "rc=0 should not fail even if stderr has content"
+  fi
 else
-  ok "non-first deploy with unresolvable candidate fails closed (#808)"
-fi
-
-got="$(resolve_smoke_url "null" "true" "https://live.example")"
-[ "$got" = "https://live.example" ] && ok "literal 'null' candidate treated as unresolved" \
-  || bad "'null' candidate should be unresolved (got '$got')"
-
-got="$(resolve_smoke_url "" "true" "")"
-[ "$got" = "" ] && ok "first deploy with empty service URL returns empty string (disabled workload)" \
-  || bad "first deploy empty service URL should be empty string (got '$got')"
-
-got="$(resolve_smoke_url "" "true" "null")"
-[ "$got" = "" ] && ok "first deploy with null service URL returns empty string (disabled workload)" \
-  || bad "first deploy null service URL should be empty string (got '$got')"
-
-got="$(resolve_smoke_url "" "false" "")"
-[ "$got" = "" ] && ok "non-first deploy with empty service URL returns empty string (disabled workload)" \
-  || bad "non-first deploy empty service URL should be empty string (got '$got')"
-
-got="$(resolve_smoke_url "" "false" "null")"
-[ "$got" = "" ] && ok "non-first deploy with null service URL returns empty string (disabled workload)" \
-  || bad "non-first deploy null service URL should be empty string (got '$got')"
-
-# --- pure resolve_stable_revision -------------------------------------------
-# A transient/real gcloud failure must NEVER be silently treated as "first
-# deploy" (that skips the whole blue-green rollout and routes 100% traffic
-# to an unsmoked revision). Only a confirmed NOT_FOUND -- the service
-# resource genuinely doesn't exist yet -- may resolve to "no stable revision".
-
-got="$(resolve_stable_revision 0 "" "tabula-api-development-abc123" "tabula-api-development")"
-[ "$got" = "tabula-api-development-abc123" ] && ok "rc=0 returns the described revision" \
-  || bad "clean describe should return the revision (got '$got')"
-
-got="$(resolve_stable_revision 0 "" "" "tabula-api-development")"
-[ "$got" = "" ] && ok "rc=0 with an empty value is treated as first deploy" \
-  || bad "rc=0 empty should resolve to empty (got '$got')"
-
-got="$(resolve_stable_revision 1 "ERROR: (gcloud.run.services.describe) NOT_FOUND: Requested entity was not found." "" "tabula-api-development")"
-[ "$got" = "" ] && ok "NOT_FOUND on a nonzero rc is a genuine first deploy" \
-  || bad "NOT_FOUND should resolve to empty (got '$got')"
-
-got="$(resolve_stable_revision 1 "ERROR: (gcloud.run.services.describe) Cannot find service [oauth-user-inspector-development]" "" "oauth-user-inspector-development")"
-[ "$got" = "" ] && ok "Cannot find service on a nonzero rc is a genuine first deploy" \
-  || bad "Cannot find service should resolve to empty (got '$got')"
-
-got="$(resolve_stable_revision 1 "ERROR: (gcloud.run.services.describe) Resource 'namespaces/p/services/s' was not found" "" "s")"
-[ "$got" = "" ] && ok "was not found on a nonzero rc is a genuine first deploy" \
-  || bad "was not found should resolve to empty (got '$got')"
-
-got="$(resolve_stable_revision 1 "ERROR: (gcloud.run.services.describe) PERMISSION_DENIED: Permission 'run.services.get' denied on resource 'namespaces/prj/services/svc' (or resource may not exist)." "" "svc")"
-[ "$got" = "" ] && ok "PERMISSION_DENIED with (or resource may not exist) is treated as first deploy" \
-  || bad "may not exist should resolve to empty (got '$got')"
-
-if resolve_stable_revision 1 "ERROR: (gcloud.run.services.describe) PERMISSION_DENIED: caller lacks permission" "" "tabula-api-development" >/dev/null 2>&1; then
-  bad "a non-NOT_FOUND gcloud error MUST fail closed, not be treated as first deploy"
-else
-  ok "PERMISSION_DENIED (or any other real error) fails closed rather than guessing first-deploy"
-fi
-
-if resolve_stable_revision 1 "ERROR: (gcloud.run.services.describe) There was a problem refreshing your current auth tokens" "" "tabula-api-development" >/dev/null 2>&1; then
-  bad "an auth/reauth failure MUST fail closed, not be treated as first deploy"
-else
-  ok "auth reauthentication failure fails closed rather than guessing first-deploy"
-fi
-
-if resolve_stable_revision 0 "ERROR: some warning printed to stderr despite rc=0" "" "tabula-api-development" >/dev/null 2>&1; then
-  ok "rc=0 always wins regardless of stderr content (matches gcloud's own success signal)"
-else
-  bad "rc=0 should not fail even if stderr has content"
+  echo "skip - pure-function checks (the port's are :deploy_lib_test)"
 fi
 
 # --- phase planning via --dry-run ------------------------------------------
@@ -111,7 +125,7 @@ common=(--pulumi-dir tabula/infra/app --service tabula-api --env development \
 
 # steady-state (--stable-revision seeds an existing revision): --phase all must
 # run candidate (PROMOTE=false) then promote (PROMOTE=true), reusing that revision.
-out="$(bash "$SCRIPT" "${common[@]}" --stable-revision rev-old --phase all 2>&1)"
+out="$("${UNDER_TEST[@]}" "${common[@]}" --stable-revision rev-old --phase all 2>&1)"
 echo "$out" | grep -q '\[candidate\] TABULA_PROMOTE=false TABULA_STABLE_REVISION=rev-old' \
   && ok "candidate sets PROMOTE=false with the captured stable" || bad "candidate plan wrong:\n$out"
 echo "$out" | grep -q '\[promote\] TABULA_PROMOTE=true TABULA_STABLE_REVISION=rev-old' \
@@ -122,31 +136,31 @@ echo "$out" | grep -q 'first_deploy=false' && ok "seeded stable => not a first d
 
 # --refresh scopes to the candidate up ONLY (matches _deploy-cloud-run.yaml:
 # candidate `up --refresh`, promote plain `up` -- state is already reconciled).
-out="$(bash "$SCRIPT" "${common[@]}" --stable-revision rev-old --phase all --refresh 2>&1)"
+out="$("${UNDER_TEST[@]}" "${common[@]}" --stable-revision rev-old --phase all --refresh 2>&1)"
 echo "$out" | grep -q 'DRYRUN pulumi: .* pulumi up --stack development --yes --refresh' \
   && ok "candidate up refreshes when --refresh is given" || bad "candidate should refresh:\n$out"
 [ "$(echo "$out" | grep -c 'pulumi up --stack development --yes --refresh')" -eq 1 ] \
   && ok "ONLY the candidate refreshes; promote never does" || bad "refresh must scope to candidate only:\n$out"
 
 # first-ever deploy: no --stable-revision, dry-run => STABLE empty => first_deploy=true
-out="$(bash "$SCRIPT" "${common[@]}" --phase candidate 2>&1)"
+out="$("${UNDER_TEST[@]}" "${common[@]}" --phase candidate 2>&1)"
 echo "$out" | grep -q 'first_deploy=true' && ok "no stable => first deploy" || bad "should be first deploy:\n$out"
 echo "$out" | grep -q 'DRYRUN pulumi: .* pulumi up --stack development --yes --refresh' \
   && ok "first deploy candidate automatically passes --refresh" || bad "first deploy candidate should refresh:\n$out"
 
 # image tag path (no digest)
-out="$(bash "$SCRIPT" --pulumi-dir d --service s --env development --env-prefix OUI \
+out="$("${UNDER_TEST[@]}" --pulumi-dir d --service s --env development --env-prefix OUI \
   --project p --region r --image-tag v1 --dry-run --phase candidate 2>&1)"
 echo "$out" | grep -q 'OUI_IMAGE_TAG = v1' && ok "--image-tag maps to <PREFIX>_IMAGE_TAG" || bad "image-tag wrong:\n$out"
 
 # --- arg guards ------------------------------------------------------------
-bash "$SCRIPT" --service s --env e --env-prefix P --project p --region r --image-tag v --dry-run >/dev/null 2>&1
+"${UNDER_TEST[@]}" --service s --env e --env-prefix P --project p --region r --image-tag v --dry-run >/dev/null 2>&1
 [ "$?" -eq 2 ] && ok "missing --pulumi-dir exits 2" || bad "missing required arg should exit 2"
 
-bash "$SCRIPT" "${common[@]}" --phase bogus >/dev/null 2>&1
+"${UNDER_TEST[@]}" "${common[@]}" --phase bogus >/dev/null 2>&1
 [ "$?" -eq 2 ] && ok "bad --phase exits 2" || bad "bad --phase should exit 2"
 
-bash "$SCRIPT" --pulumi-dir d --service s --env e --env-prefix P --project p --region r --dry-run >/dev/null 2>&1
+"${UNDER_TEST[@]}" --pulumi-dir d --service s --env e --env-prefix P --project p --region r --dry-run >/dev/null 2>&1
 [ "$?" -eq 2 ] && ok "missing image ref exits 2" || bad "missing --image-* should exit 2"
 
 # --- ensure_stack: self-heals a brand-new environment's missing stack -------
@@ -157,7 +171,7 @@ bash "$SCRIPT" --pulumi-dir d --service s --env e --env-prefix P --project p --r
 
 # --dry-run: pulumi_wrap's own dry-run branch always reports success, so the
 # probe is shown and `stack init` is never reached.
-out="$(bash "$SCRIPT" "${common[@]}" --phase candidate --env nonproduction 2>&1)"
+out="$("${UNDER_TEST[@]}" "${common[@]}" --phase candidate --env nonproduction 2>&1)"
 echo "$out" | grep -q "DRYRUN pulumi: (dir=tabula/infra/app) ensure stack 'nonproduction' exists" \
   && ok "dry-run shows the ensure_stack probe" || bad "dry-run should probe the stack:\n$out"
 echo "$out" | grep -q "pulumi stack init" \
@@ -190,6 +204,8 @@ case "\$1 \$2" in
     echo "error: no stack named '\$3' found" >&2
     exit 6
     ;;
+  # Only the binary under CLOUD_RUN_BIN gets here: it is driven end to end.
+  "up --stack") exit 0 ;;
   *) echo "unexpected fake pulumi invocation: \$*" >&2; exit 99 ;;
 esac
 FAKEPULUMI
@@ -217,6 +233,16 @@ FAKEWRAP
   BUILD_WORKSPACE_DIRECTORY="$stack_test_root/ws"
   PULUMI_DIR=tabula/infra/app DRY_RUN= ENV=nonproduction
   export PATH BUILD_WORKSPACE_DIRECTORY PULUMI_DIR DRY_RUN ENV
+
+  # The script's ensure_stack is called directly; the binary is run end to
+  # end (--phase candidate: ensure_stack, then one faked `pulumi up`).
+  if [ -n "${CLOUD_RUN_BIN:-}" ]; then
+    ensure_stack() {
+      "${UNDER_TEST[@]}" --pulumi-dir "$PULUMI_DIR" --service s --env "$ENV" \
+        --env-prefix P --project p --region r --image-tag v \
+        --stable-revision rev --phase candidate >/dev/null 2>&1
+    }
+  fi
 
   ensure_stack
   [ "$(cat "$created_stacks")" = "nonproduction" ] \

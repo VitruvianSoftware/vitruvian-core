@@ -19,11 +19,73 @@ currently has none -- trading a precise, path-gated failure in example-build for
 a flaky one in tidy-check. The gate lives next to the build it protects instead.
 """
 
+# gazelle:ignore
+
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
-sh_binary(
+rust_library(
+    name = "gomod_lib",
+    srcs = glob(
+        ["src/**/*.rs"],
+        exclude = ["src/main.rs"],
+    ),
+    compile_data = ["tidy.sh"],
+    crate_root = "src/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
     name = "tidy",
+    srcs = ["src/main.rs"],
+    data = ["//tools/ci:transient-lib.sh"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [":gomod_lib"],
+)
+
+# Same engine, --check baked in: read-only by construction (`go mod tidy -diff`
+# never writes), so it is safe as a required presubmit gate.
+rust_binary(
+    name = "check",
+    srcs = ["src/main.rs"],
+    args = ["--check"],
+    data = ["//tools/ci:transient-lib.sh"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [":gomod_lib"],
+)
+
+alias(
+    name = "tidy-rs",
+    actual = ":tidy",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "tidy_rs",
+    actual = ":tidy",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "check-rs",
+    actual = ":check",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "check_rs",
+    actual = ":check",
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "tidy-sh",
     srcs = ["tidy.sh"],
     # tidy.sh sources the shared transport-failure classifier so it can tell
     # "your modules drifted" from "the module proxy fell over".
@@ -31,10 +93,8 @@ sh_binary(
     visibility = ["//visibility:public"],
 )
 
-# Same engine, --check baked in: read-only by construction (`go mod tidy -diff`
-# never writes), so it is safe as a required presubmit gate.
 sh_binary(
-    name = "check",
+    name = "check-sh",
     srcs = ["tidy.sh"],
     args = ["--check"],
     data = ["//tools/ci:transient-lib.sh"],
@@ -49,4 +109,44 @@ sh_test(
         "tidy.sh",
         "//tools/ci:transient-lib.sh",
     ],
+)
+
+sh_test(
+    name = "tidy-rs_test",
+    size = "small",
+    srcs = ["tidy_test.sh"],
+    args = ["$(rootpath :tidy)"],
+    data = [
+        "tidy.sh",
+        ":tidy",
+        "//tools/ci:transient-lib.sh",
+    ],
+    env = {
+        "UNDER_TEST": "$(rootpath :tidy)",
+    },
+)
+
+rust_test(
+    name = "gomod_lib_test",
+    size = "small",
+    crate = ":gomod_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+sh_test(
+    name = "tidy-rs-parity_test",
+    size = "medium",
+    srcs = ["tidy-rs-parity_test.sh"],
+    data = [
+        "tidy.sh",
+        ":check",
+        ":tidy",
+        "//tools/ci:transient-lib.sh",
+    ],
+    env = {
+        "CHECK_RS": "$(rootpath :check)",
+        "TIDY_RS": "$(rootpath :tidy)",
+        "TIDY_SH": "$(rootpath tidy.sh)",
+    },
 )
