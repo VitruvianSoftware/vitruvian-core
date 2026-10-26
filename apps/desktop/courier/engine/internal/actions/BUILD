@@ -38,6 +38,7 @@ go_library(
         "@net_maunium_go_mautrix//bridgev2/networkid",
         "@net_maunium_go_mautrix//event",
         "@net_maunium_go_mautrix//id",
+        "@org_golang_x_image//webp",
     ],
 )
 

@@ -666,7 +666,7 @@ func (c *client) GetCapabilities(context.Context, *bridgev2.Portal) *event.RoomF
 	return &event.RoomFeatures{
 		File: event.FileFeatureMap{
 			event.MsgImage: anyFile(), event.MsgVideo: anyFile(), event.MsgAudio: anyFile(), event.MsgFile: anyFile(),
-			event.CapMsgVoice: anyFile(),
+			event.CapMsgVoice: anyFile(), event.CapMsgSticker: anyFile(), event.CapMsgGIF: anyFile(),
 		},
 		Reply: event.CapLevelFullySupported, Reaction: event.CapLevelFullySupported, ReadReceipts: true,
 	}

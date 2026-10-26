@@ -2254,6 +2254,104 @@ public struct SendLocationParams: ProtocolType, Equatable, Hashable, Sendable {
     }
 }
 
+public struct BridgedStickerRef: ProtocolType, Equatable, Hashable, Sendable {
+    public static let protocolName = "BridgedStickerRef"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var network: String?
+    public var packURL: String?
+    public var id: String?
+
+    public init(network: String? = nil, packURL: String? = nil, id: String? = nil) {
+        self.network = network
+        self.packURL = packURL
+        self.id = id
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case network
+        case packURL = "pack_url"
+        case id
+    }
+}
+
+public typealias BridgedStickerWire = BridgedStickerRef
+
+public struct SendStickerParams: ProtocolType, Equatable, Hashable, Sendable {
+    public static let protocolName = "SendStickerParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomID: String
+    public var path: String?
+    public var mediaURL: String?
+    public var name: String?
+    public var emoji: String?
+    public var mimeType: String?
+    public var bridgedSticker: BridgedStickerRef?
+    public var replyTo: String?
+    public var threadRoot: String?
+    public var holdMS: Int?
+
+    public init(roomID: String, path: String? = nil, mediaURL: String? = nil, name: String? = nil,
+                emoji: String? = nil, mimeType: String? = nil, bridgedSticker: BridgedStickerRef? = nil,
+                replyTo: String? = nil, threadRoot: String? = nil, holdMS: Int? = nil) {
+        self.roomID = roomID
+        self.path = path
+        self.mediaURL = mediaURL
+        self.name = name
+        self.emoji = emoji
+        self.mimeType = mimeType
+        self.bridgedSticker = bridgedSticker
+        self.replyTo = replyTo
+        self.threadRoot = threadRoot
+        self.holdMS = holdMS
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomID = "room_id"
+        case path
+        case mediaURL = "media_url"
+        case name
+        case emoji
+        case mimeType = "mime_type"
+        case bridgedSticker = "bridged_sticker"
+        case replyTo = "reply_to"
+        case threadRoot = "thread_root"
+        case holdMS = "hold_ms"
+    }
+}
+
+public struct SendGIFParams: ProtocolType, Equatable, Hashable, Sendable {
+    public static let protocolName = "SendGIFParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomID: String
+    public var path: String?
+    public var mediaURL: String?
+    public var caption: String?
+    public var replyTo: String?
+    public var threadRoot: String?
+    public var holdMS: Int?
+
+    public init(roomID: String, path: String? = nil, mediaURL: String? = nil, caption: String? = nil,
+                replyTo: String? = nil, threadRoot: String? = nil, holdMS: Int? = nil) {
+        self.roomID = roomID
+        self.path = path
+        self.mediaURL = mediaURL
+        self.caption = caption
+        self.replyTo = replyTo
+        self.threadRoot = threadRoot
+        self.holdMS = holdMS
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomID = "room_id"
+        case path
+        case mediaURL = "media_url"
+        case caption
+        case replyTo = "reply_to"
+        case threadRoot = "thread_root"
+        case holdMS = "hold_ms"
+    }
+}
+
 // MARK: - Typing, Reply Privately (protocol 5)
 
 /// room.setTyping: I am typing (true: at the first change and every `conventions.typing_repeat_ms` while the text
@@ -4354,6 +4452,8 @@ public enum ProtocolMethods {
         "message.sendFile": (SendFileParams.self, Sent.self),
         "message.sendVoice": (SendVoiceParams.self, Sent.self),
         "message.sendLocation": (SendLocationParams.self, Sent.self),
+        "message.sendSticker": (SendStickerParams.self, Sent.self),
+        "message.sendGIF": (SendGIFParams.self, Sent.self),
         "message.markPlayed": (MarkPlayedParams.self, Empty.self),
         "message.react": (ReactParams.self, Sent.self),
         "message.retry": (EventParams.self, Empty.self),
@@ -4432,6 +4532,7 @@ public enum ProtocolMethods {
         MergeCreateParams.self, MergeUpdateParams.self, MergeDeleteParams.self, MergeListResult.self,
         MergeSuggestResult.self,
         FileKindFeatures.self, MediaCapFeature.self, LinkPreviewItem.self, MarkPlayedParams.self, SendVoiceParams.self, SendLocationParams.self,
+        BridgedStickerRef.self, SendStickerParams.self, SendGIFParams.self,
     ]
 
     /// The open-valued fields, by "Type.field", with the values this app knows.

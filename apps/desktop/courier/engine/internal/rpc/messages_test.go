@@ -73,7 +73,7 @@ func everything() *event.RoomFeatures {
 				MaxSize: 16 << 20,
 			},
 			event.CapMsgGIF: {
-				MimeTypes:        map[string]event.CapabilitySupportLevel{"video/mp4": full},
+				MimeTypes:        map[string]event.CapabilitySupportLevel{"image/gif": full, "video/mp4": full},
 				Caption:          full,
 				MaxCaptionLength: 1024,
 				MaxSize:          16 << 20,
@@ -1207,4 +1207,67 @@ func TestMessageSendVoiceReturnsNeedsFFmpegCodeWhenTranscodeUnavailable(t *testi
 		"waveform":    []int{10, 40, 80},
 	})
 	require.Equal(t, "sending voice notes on this network needs ffmpeg", e.Message)
+}
+
+func TestMessageSendStickerAndGIFOverRPC(t *testing.T) {
+	w := newWorld(t)
+	c := dial(t, w.path)
+	c.hello()
+	w.can(t, everything())
+
+	tmpDir := t.TempDir()
+	pngPath := filepath.Join(tmpDir, "wave.png")
+	// Minimal valid 1x1 PNG
+	pngData := []byte{
+		0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+		0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+		0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+		0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
+		0x89, 0x00, 0x00, 0x00, 0x0a, 0x49, 0x44, 0x41,
+		0x54, 0x78, 0x9c, 0x63, 0x00, 0x01, 0x00, 0x00,
+		0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00,
+		0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae,
+		0x42, 0x60, 0x82,
+	}
+	require.NoError(t, os.WriteFile(pngPath, pngData, 0o600))
+
+	gifPath := filepath.Join(tmpDir, "loop.gif")
+	gifData := []byte("GIF89a\x02\x00\x02\x00\x80\x00\x00\xff\xff\xff\x00\x00\x00!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x02\x00\x02\x00\x00\x02\x02D\x01\x00;")
+	require.NoError(t, os.WriteFile(gifPath, gifData, 0o600))
+
+	var sentSticker sent
+	c.ok("message.sendSticker", map[string]any{
+		"room_id": w.room,
+		"path":    pngPath,
+		"name":    "Wave",
+		"emoji":   "👋",
+		"bridged_sticker": map[string]any{
+			"network":  "whatsapp",
+			"pack_url": "https://stickers.example/pack1",
+			"id":       "sticker-1",
+		},
+	}, &sentSticker)
+	require.NotEmpty(t, sentSticker.EventID)
+
+	var sentGIF sent
+	c.ok("message.sendGIF", map[string]any{
+		"room_id": w.room,
+		"path":    gifPath,
+		"caption": "Looping!",
+		"hold_ms": 5000,
+	}, &sentGIF)
+	require.NotEmpty(t, sentGIF.EventID)
+
+	var draft draftJSON
+	c.ok("message.undo", map[string]any{"event_id": sentGIF.EventID}, &draft)
+	require.Equal(t, "Looping!", draft.Text)
+
+	// Without sticker support, message.sendSticker fails with -32023 (CodeNotSupported).
+	noStickerCaps := everything()
+	delete(noStickerCaps.File, event.CapMsgSticker)
+	w.can(t, noStickerCaps)
+	c.fails(CodeNotSupported, "message.sendSticker", map[string]any{
+		"room_id": w.room,
+		"path":    pngPath,
+	})
 }

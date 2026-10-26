@@ -1,0 +1,25 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 210,
+    "method": "message.sendSticker",
+    "params": {
+      "room_id": "!chat1:courier.local",
+      "path": "/tmp/party-parrot.png",
+      "name": "Party Parrot",
+      "emoji": "🦜",
+      "bridged_sticker": {
+        "network": "signal",
+        "pack_url": "https://signal.art/addstickers/#pack_id=aa&pack_key=bb",
+        "id": "7"
+      }
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 210,
+    "result": {
+      "event_id": "$sticker1"
+    }
+  }
+}

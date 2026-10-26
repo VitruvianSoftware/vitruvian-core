@@ -34,6 +34,7 @@ import (
 	"sync"
 	"time"
 
+	_ "golang.org/x/image/webp" // register WebP decoder for sticker dimension inspection
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
@@ -86,6 +87,8 @@ var (
 	// ErrNetworkRefused means the network answered no to a change Courier waits on (a disappearing timer), so
 	// nothing changed here. It wraps the bridge's own reason when there is one.
 	ErrNetworkRefused = errors.New("the network refused the change")
+	// ErrUnsupportedFeature aliases ErrNotSupported for callers checking room capability support.
+	ErrUnsupportedFeature = ErrNotSupported
 )
 
 // MaxTextBytes is the most UTF-8 bytes a message's text may have: 64 KiB. Formatting ranges (richtext) set no
@@ -639,6 +642,10 @@ func (a *Actions) behindWaiting(ctx context.Context, room store.Room) (bool, err
 // Whichever it is, my typing in the chat stops first (stopTyping): I have sent what I was typing. Every new message
 // comes through here, Send's and SendFileWith's alike, so the stop is in this one place (Ruling C8).
 func (a *Actions) dispatch(ctx context.Context, h *host.Host, room store.Room, c *event.MessageEventContent, hold time.Duration, src Source) (string, error) {
+	return a.dispatchEvent(ctx, h, room, event.EventMessage, c, hold, src)
+}
+
+func (a *Actions) dispatchEvent(ctx context.Context, h *host.Host, room store.Room, evtType event.Type, c *event.MessageEventContent, hold time.Duration, src Source) (string, error) {
 	a.stopTyping(ctx, h, room)
 	now := false
 	if hold <= 0 {
@@ -648,7 +655,7 @@ func (a *Actions) dispatch(ctx context.Context, h *host.Host, room store.Room, c
 		}
 	}
 	if now {
-		return a.submit(ctx, h, room.ID, event.EventMessage, c)
+		return a.submit(ctx, h, room.ID, evtType, c)
 	}
 	raw, err := withSource(c, src)
 	if err != nil {
@@ -657,7 +664,7 @@ func (a *Actions) dispatch(ctx context.Context, h *host.Host, room store.Room, c
 	at := a.now()
 	e := store.Event{
 		RoomID: room.ID, EventID: string(ids.RandomEventID()), Sender: string(ids.Me),
-		Type: event.EventMessage.Type, Content: raw, TS: at,
+		Type: evtType.Type, Content: raw, TS: at,
 	}
 	if hold > 0 {
 		err = a.s.Hold(ctx, e, at.Add(hold))
@@ -950,7 +957,7 @@ func (a *Actions) Retry(ctx context.Context, eventID string) error {
 	}
 	var h *host.Host
 	now, in := true, false
-	if e.Type == event.EventMessage.Type {
+	if e.Type == event.EventMessage.Type || e.Type == event.EventSticker.Type {
 		var room store.Room
 		if room, h, err = a.sendTarget(ctx, e.RoomID); err != nil {
 			return err
@@ -1074,4 +1081,318 @@ func baseType(v string) string {
 		return ""
 	}
 	return base
+}
+
+// BridgedStickerRef identifies a native network sticker so the bridge can send it by remote ID rather than re-uploading.
+type BridgedStickerRef struct {
+	Network string `json:"network,omitempty"`
+	PackURL string `json:"pack_url,omitempty"`
+	ID      string `json:"id,omitempty"`
+}
+
+// SendStickerReq configures an outgoing sticker (m.sticker).
+type SendStickerReq struct {
+	RoomID         string             `json:"room_id"`
+	Path           string             `json:"path,omitempty"`
+	MediaURL       string             `json:"media_url,omitempty"`
+	Name           string             `json:"name,omitempty"`
+	Emoji          string             `json:"emoji,omitempty"`
+	MimeType       string             `json:"mime_type,omitempty"`
+	BridgedSticker *BridgedStickerRef `json:"bridged_sticker,omitempty"`
+	ReplyTo        string             `json:"reply_to,omitempty"`
+	ThreadRoot     string             `json:"thread_root,omitempty"`
+	HoldMillis     int                `json:"hold_ms,omitempty"`
+}
+
+// SendGIFReq configures an outgoing GIF or looping MP4 (m.room.message with fi.mau.gif: true).
+type SendGIFReq struct {
+	RoomID     string `json:"room_id"`
+	Path       string `json:"path,omitempty"`
+	MediaURL   string `json:"media_url,omitempty"`
+	Caption    string `json:"caption,omitempty"`
+	ReplyTo    string `json:"reply_to,omitempty"`
+	ThreadRoot string `json:"thread_root,omitempty"`
+	HoldMillis int    `json:"hold_ms,omitempty"`
+}
+
+func (a *Actions) parseMediaHash(raw string) (string, bool) {
+	if hash, ok := ids.ParseContentURI(id.ContentURIString(raw)); ok {
+		return hash, true
+	}
+	if rest, ok := strings.CutPrefix(raw, "courier://media/"); ok && a.m != nil {
+		if _, err := a.m.Path(rest); err == nil {
+			return rest, true
+		}
+	}
+	return "", false
+}
+
+func (a *Actions) resolveMediaSource(path, mediaURL, network, hintMime string, limit int64) (hash string, info *event.FileInfo, msgType event.MessageType, err error) {
+	if a.m == nil {
+		return "", nil, "", errors.New("no media store: cannot send media")
+	}
+	ceiling := min(limit, networkFileCeiling(network))
+
+	var srcPath string
+	var needPut bool
+	if mediaURL != "" {
+		var ok bool
+		hash, ok = a.parseMediaHash(mediaURL)
+		if !ok {
+			return "", nil, "", ErrBadValue
+		}
+		srcPath, err = a.m.Path(hash)
+		if err != nil {
+			return "", nil, "", ErrBadValue
+		}
+	} else if path != "" {
+		srcPath = path
+		needPut = true
+	} else {
+		return "", nil, "", ErrEmpty
+	}
+
+	f, err := os.Open(srcPath)
+	if err != nil {
+		return "", nil, "", err
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		return "", nil, "", err
+	}
+	if !fi.Mode().IsRegular() {
+		return "", nil, "", fmt.Errorf("%s is not a regular file", srcPath)
+	}
+	if fi.Size() > ceiling {
+		return "", nil, "", ErrTooLarge
+	}
+
+	head := make([]byte, 512)
+	n, err := io.ReadFull(f, head)
+	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
+		return "", nil, "", err
+	}
+	mimeType, detectedMsgType := detect(head[:n], filepath.Ext(path))
+	if hint := baseType(hintMime); hint != "" {
+		mimeType = hint
+		switch {
+		case strings.HasPrefix(mimeType, "image/"):
+			detectedMsgType = event.MsgImage
+		case strings.HasPrefix(mimeType, "video/"):
+			detectedMsgType = event.MsgVideo
+		}
+	}
+
+	info = &event.FileInfo{MimeType: mimeType, Size: int(fi.Size())}
+	if detectedMsgType == event.MsgImage {
+		if _, err = f.Seek(0, io.SeekStart); err == nil {
+			canInspect := fi.Size() <= media.MaxInspectBytes && (a.m.MaxMemoryBytes <= 0 || fi.Size() <= a.m.MaxMemoryBytes)
+			if canInspect {
+				if meta, ierr := media.InspectImage(f); ierr == nil {
+					info.Width, info.Height = meta.Width, meta.Height
+					info.Blurhash, info.AnoaBlurhash = meta.BlurHash, meta.BlurHash
+					info.IsAnimated = meta.IsAnimated
+				} else if _, serr := f.Seek(0, io.SeekStart); serr == nil {
+					if cfg, _, derr := image.DecodeConfig(f); derr == nil {
+						info.Width, info.Height = cfg.Width, cfg.Height
+					}
+				}
+			} else if cfg, _, derr := image.DecodeConfig(f); derr == nil {
+				info.Width, info.Height = cfg.Width, cfg.Height
+			}
+		}
+	}
+
+	if needPut {
+		if _, err = f.Seek(0, io.SeekStart); err != nil {
+			return "", nil, "", err
+		}
+		var copied int64
+		hash, err = a.m.PutStream(func(w io.Writer) error {
+			var cerr error
+			copied, cerr = io.Copy(w, io.LimitReader(f, ceiling+1))
+			if cerr == nil && copied > ceiling {
+				return ErrTooLarge
+			}
+			return cerr
+		})
+		if err != nil {
+			return "", nil, "", err
+		}
+		info.Size = int(copied)
+	}
+	return hash, info, detectedMsgType, nil
+}
+
+func mimeAllowedByCap(cap MediaCapFeature, mimeType string) bool {
+	if !cap.Supported {
+		return false
+	}
+	if len(cap.MimeTypes) == 0 || slices.Contains(cap.MimeTypes, "*/*") || slices.Contains(cap.MimeTypes, mimeType) {
+		return true
+	}
+	return false
+}
+
+// SendSticker stores and dispatches an m.sticker event in req.RoomID, checking the room's CapMsgSticker support.
+func (a *Actions) SendSticker(ctx context.Context, req SendStickerReq) (SendResult, error) {
+	hold := time.Duration(req.HoldMillis) * time.Millisecond
+	if err := a.checkHold(hold); err != nil {
+		return SendResult{}, err
+	}
+	room, h, err := a.sendTarget(ctx, req.RoomID)
+	if err != nil {
+		return SendResult{}, err
+	}
+	feats, err := a.Features(ctx, req.RoomID)
+	if err != nil {
+		return SendResult{}, err
+	}
+	if feats.Source != SourceNone && !feats.Sticker.Supported {
+		return SendResult{}, ErrUnsupportedFeature
+	}
+	rel, err := a.relation(ctx, req.RoomID, feats, SendOptions{ReplyTo: req.ReplyTo, ThreadRoot: req.ThreadRoot})
+	if err != nil {
+		return SendResult{}, err
+	}
+	limit := a.maxSizeForKind(feats, event.MsgImage, req.MimeType)
+	if feats.Sticker.MaxSize > 0 {
+		limit = min(feats.Sticker.MaxSize, MaxFileCeiling)
+	}
+	hash, info, _, err := a.resolveMediaSource(req.Path, req.MediaURL, room.Network, req.MimeType, limit)
+	if err != nil {
+		return SendResult{}, err
+	}
+	if feats.Source != SourceNone && !mimeAllowedByCap(feats.Sticker, info.MimeType) {
+		return SendResult{}, ErrUnsupportedFeature
+	}
+
+	body := strings.TrimSpace(req.Name)
+	if body == "" {
+		body = strings.TrimSpace(req.Emoji)
+	}
+	if body == "" && req.Path != "" {
+		body = filepath.Base(req.Path)
+	}
+	if body == "" {
+		body = "Sticker"
+	}
+	if err := refuseBridgeCommand(room.Network, body, "a sticker"); err != nil {
+		return SendResult{}, err
+	}
+	if req.BridgedSticker != nil {
+		info.BridgedSticker = &event.BridgedSticker{
+			Network: req.BridgedSticker.Network,
+			PackURL: req.BridgedSticker.PackURL,
+			ID:      req.BridgedSticker.ID,
+			Emoji:   req.Emoji,
+		}
+	}
+	timer, err := a.chatTimer(ctx, req.RoomID)
+	if err != nil {
+		return SendResult{}, err
+	}
+	content := &event.MessageEventContent{
+		MsgType:                 event.MsgImage,
+		Body:                    body,
+		URL:                     ids.ContentURI(hash),
+		Info:                    info,
+		RelatesTo:               rel,
+		BeeperDisappearingTimer: timer,
+	}
+	eventID, err := a.dispatchEvent(ctx, h, room, event.EventSticker, content, hold, Source{
+		Text:       body,
+		Entities:   []richtext.Entity{},
+		ReplyTo:    req.ReplyTo,
+		ThreadRoot: req.ThreadRoot,
+	})
+	if err != nil {
+		return SendResult{}, err
+	}
+	return SendResult{EventID: eventID}, nil
+}
+
+// SendGIF stores and dispatches an m.room.message event with Info.MauGIF = true ("fi.mau.gif": true).
+func (a *Actions) SendGIF(ctx context.Context, req SendGIFReq) (SendResult, error) {
+	if req.Caption != "" {
+		if err := checkText(req.Caption, nil); err != nil {
+			return SendResult{}, err
+		}
+	}
+	hold := time.Duration(req.HoldMillis) * time.Millisecond
+	if err := a.checkHold(hold); err != nil {
+		return SendResult{}, err
+	}
+	room, h, err := a.sendTarget(ctx, req.RoomID)
+	if err != nil {
+		return SendResult{}, err
+	}
+	feats, err := a.Features(ctx, req.RoomID)
+	if err != nil {
+		return SendResult{}, err
+	}
+	if feats.Source != SourceNone && !feats.GIF.Supported {
+		return SendResult{}, ErrUnsupportedFeature
+	}
+	rel, err := a.relation(ctx, req.RoomID, feats, SendOptions{ReplyTo: req.ReplyTo, ThreadRoot: req.ThreadRoot})
+	if err != nil {
+		return SendResult{}, err
+	}
+	limit := a.maxSizeForKind(feats, event.MsgImage, "image/gif")
+	if feats.GIF.MaxSize > 0 {
+		limit = min(feats.GIF.MaxSize, MaxFileCeiling)
+	}
+	hash, info, msgType, err := a.resolveMediaSource(req.Path, req.MediaURL, room.Network, "", limit)
+	if err != nil {
+		return SendResult{}, err
+	}
+	if strings.HasPrefix(info.MimeType, "video/") {
+		msgType = event.MsgVideo
+	} else {
+		msgType = event.MsgImage
+	}
+	if info.MimeType != "image/gif" && info.MimeType != "video/mp4" && feats.Source != SourceNone && !mimeAllowedByCap(feats.GIF, info.MimeType) {
+		return SendResult{}, ErrUnsupportedFeature
+	}
+	info.MauGIF = true
+	info.IsAnimated = true
+
+	fileName := "animation.gif"
+	if msgType == event.MsgVideo {
+		fileName = "animation.mp4"
+	}
+	if req.Path != "" {
+		fileName = filepath.Base(req.Path)
+	}
+	body := fileName
+	if req.Caption != "" {
+		body = req.Caption
+	}
+	if err := refuseBridgeCommand(room.Network, body, "a GIF"); err != nil {
+		return SendResult{}, err
+	}
+	timer, err := a.chatTimer(ctx, req.RoomID)
+	if err != nil {
+		return SendResult{}, err
+	}
+	content := &event.MessageEventContent{
+		MsgType:                 msgType,
+		Body:                    body,
+		FileName:                fileName,
+		URL:                     ids.ContentURI(hash),
+		Info:                    info,
+		RelatesTo:               rel,
+		BeeperDisappearingTimer: timer,
+	}
+	eventID, err := a.dispatchEvent(ctx, h, room, event.EventMessage, content, hold, Source{
+		Text:       req.Caption,
+		Entities:   []richtext.Entity{},
+		ReplyTo:    req.ReplyTo,
+		ThreadRoot: req.ThreadRoot,
+	})
+	if err != nil {
+		return SendResult{}, err
+	}
+	return SendResult{EventID: eventID}, nil
 }

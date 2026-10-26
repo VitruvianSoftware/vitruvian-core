@@ -193,6 +193,8 @@ var methods = map[string]handler{
 	"message.sendFile":     messageSendFile,
 	"message.sendVoice":    messageSendVoice,
 	"message.sendLocation": messageSendLocation,
+	"message.sendSticker":  messageSendSticker,
+	"message.sendGIF":      messageSendGIF,
 	"message.markPlayed":   messageMarkPlayed,
 	"message.react":        messageReact,
 	"message.retry":        messageRetry,

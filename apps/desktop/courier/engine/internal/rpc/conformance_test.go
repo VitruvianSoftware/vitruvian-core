@@ -1152,6 +1152,16 @@ func prepare(t *testing.T, w *world, name string, params map[string]any) {
 	case "message.sendLocation":
 		w.can(t, everything())
 		params["room_id"] = w.room
+	case "message.sendSticker":
+		w.can(t, everything())
+		path := filepath.Join(t.TempDir(), "party-parrot.png")
+		require.NoError(t, os.WriteFile(path, []byte("\x89PNG\r\n\x1a\nnot really a picture"), 0o600))
+		params["room_id"], params["path"] = w.room, path
+	case "message.sendGIF":
+		w.can(t, everything())
+		path := filepath.Join(t.TempDir(), "thumbs-up.gif")
+		require.NoError(t, os.WriteFile(path, []byte("GIF89a\x02\x00\x02\x00\x80\x00\x00\xff\xff\xff\x00\x00\x00!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x02\x00\x02\x00\x00\x02\x02D\x01\x00;"), 0o600))
+		params["room_id"], params["path"] = w.room, path
 	default:
 		t.Fatalf("example %s has no setup in prepare: add one", name)
 	}

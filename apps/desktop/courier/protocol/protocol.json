@@ -1137,6 +1137,41 @@
         "reply_to": { "type": "string?" }
       }
     },
+    "BridgedStickerRef": {
+      "doc": "Native network sticker identifier (fi.mau.bridged_sticker).",
+      "fields": {
+        "network": { "type": "string?" },
+        "pack_url": { "type": "string?" },
+        "id": { "type": "string?" }
+      }
+    },
+    "SendStickerParams": {
+      "doc": "Send a sticker (m.sticker) from a local file path or existing media URL.",
+      "fields": {
+        "room_id": { "type": "string" },
+        "path": { "type": "string?" },
+        "media_url": { "type": "string?" },
+        "name": { "type": "string?" },
+        "emoji": { "type": "string?" },
+        "mime_type": { "type": "string?" },
+        "bridged_sticker": { "type": "BridgedStickerRef?" },
+        "reply_to": { "type": "string?" },
+        "thread_root": { "type": "string?" },
+        "hold_ms": { "type": "int?" }
+      }
+    },
+    "SendGIFParams": {
+      "doc": "Send an animated GIF or looping MP4 (m.room.message with fi.mau.gif: true).",
+      "fields": {
+        "room_id": { "type": "string" },
+        "path": { "type": "string?" },
+        "media_url": { "type": "string?" },
+        "caption": { "type": "string?" },
+        "reply_to": { "type": "string?" },
+        "thread_root": { "type": "string?" },
+        "hold_ms": { "type": "int?" }
+      }
+    },
     "TextEntity": {
       "doc": "One formatting range of a message's text.",
       "fields": {
@@ -2673,6 +2708,18 @@
       "params": "SendLocationParams",
       "result": "Sent",
       "errors": [-32010, -32014, -32016, -32018, -32020, -32023]
+    },
+    "message.sendSticker": {
+      "doc": "Send a sticker (m.sticker) in a chat that supports stickers.",
+      "params": "SendStickerParams",
+      "result": "Sent",
+      "errors": [-32010, -32011, -32012, -32014, -32016, -32020, -32022, -32023]
+    },
+    "message.sendGIF": {
+      "doc": "Send an animated GIF or looping MP4 (fi.mau.gif) in a chat that supports GIFs.",
+      "params": "SendGIFParams",
+      "result": "Sent",
+      "errors": [-32010, -32011, -32012, -32014, -32016, -32020, -32022, -32023]
     }
   },
 
