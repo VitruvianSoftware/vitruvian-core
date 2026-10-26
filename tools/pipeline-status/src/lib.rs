@@ -28,4 +28,5 @@
 pub mod cli;
 pub mod evaluate;
 pub mod jq;
+pub mod mouse_daemon;
 pub mod sh;
