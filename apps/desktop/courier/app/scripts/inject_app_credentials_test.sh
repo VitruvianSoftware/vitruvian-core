@@ -458,13 +458,26 @@ set +e
 [ "$?" -eq 2 ] && ok "a missing entitlements file is a usage error" || fail "a missing entitlements file was not a usage error"
 set -e
 
-# 11h. The real entitlements file (when given) is well formed, hardened runtime only: no entitlement keys, and the
-# injector finds it by itself.
+# 11h. The real entitlements file (when given) is well formed, grants exactly the three resources README.md lists
+# (nothing more), and the injector finds it by itself.
 if [ -n "$real_entitlements" ]; then
 	plutil -lint "$real_entitlements" >/dev/null 2>&1 && ok "Courier.entitlements is a well-formed property list" || fail "Courier.entitlements is malformed"
-	[ "$(plutil -convert json -o - "$real_entitlements" 2>/dev/null)" = "{}" ] && ok "Courier.entitlements grants nothing" || fail "Courier.entitlements grants something: update README.md's list"
+	nkeys=$(plutil -convert json -o - "$real_entitlements" 2>/dev/null | grep -o '"com\.apple\.[^"]*"' | wc -l | tr -d ' ')
+	[ "$nkeys" = 3 ] && ok "Courier.entitlements grants exactly what README.md lists" || fail "Courier.entitlements differs from README.md's list (microphone, Contacts, Calendars): update both together"
 	fake_run default devid
 	case "$(app_line "$fake_log")" in *"/Resources/Courier.entitlements|"*) ok "the injector finds Resources/Courier.entitlements beside its scripts folder" ;; *) fail "the default entitlements file was not used" ;; esac
+fi
+
+# The hardened runtime refuses the microphone, Contacts and Calendars to an app that does not
+# declare them, without asking the person: the real entitlements must name all three.
+if [ -n "$real_entitlements" ]; then
+	for key in com.apple.security.device.audio-input com.apple.security.personal-information.addressbook com.apple.security.personal-information.calendars; do
+		if [ "$(/usr/libexec/PlistBuddy -c "Print :$key" "$real_entitlements" 2>/dev/null)" = "true" ]; then
+			ok "Courier.entitlements grants $key"
+		else
+			fail "Courier.entitlements lacks $key: the hardened runtime would refuse it without a prompt"
+		fi
+	done
 fi
 
 exit "$failed"
