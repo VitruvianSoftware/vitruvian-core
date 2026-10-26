@@ -304,6 +304,7 @@ pub fn format_adopted_files(root_in: &Path, mode: &str) -> Result<FormatResult, 
         &[
             "build",
             "config",
+            "docs",
             "pinokio",
             "public",
             "scripts",

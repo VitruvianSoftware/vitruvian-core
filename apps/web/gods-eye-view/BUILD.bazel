@@ -281,14 +281,17 @@ rust_binary(
 )
 
 boundary_check_data = [
+    ".gitignore",
     ".prettierignore",
     ".prettierrc.json",
     "package.json",
     "style.css",
+    "vite.config.js",
 ] + glob(
     [
         "build/**",
         "config/**",
+        "docs/**",
         "pinokio/**",
         "public/**",
         "scripts/**",
