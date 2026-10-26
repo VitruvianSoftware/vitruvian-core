@@ -951,10 +951,55 @@ The inventory has no row for these, but they are what this part was built to do.
 
 ### Carried to later parts
 
-Not in 4.5a, and not expected to work in 4.5a:
+Not in 4.5a, and not expected to work yet:
 
 - A reply-network shortcut (⌘L is Remind Me).
-- Carried from 4.5a to part 4.5b below (rich media playback, capture, previews and media viewer — 35 ledger rows) and part 4.5c (emoji, emoticons, stickers and GIFs — 10 ledger rows).
+- Carried to part 4.5b (rich media playback and capture — 45 ledger rows):
+  - `component` AttachmentCarousel.tsx: full-window media lightbox with zoom, pan, rotate, flip, download, copy and Quick Look.
+  - `component` Audio.tsx: inline voice-note waveform player, 0.5×–2× speed and played state.
+  - `component` Autocomplete.tsx: composer `:` emoji autocomplete popover.
+  - `component` BrandStopButton.tsx: stop voice-note recording button in the composer.
+  - `component` BrandVideo.tsx: inline video element.
+  - `component` Emoji.tsx: composer plus-menu media and emoji items.
+  - `component` EmojiItem.tsx: emoji picker cell.
+  - `component` EnhancedImg.tsx: inline image view with BlurHash placeholder.
+  - `component` FileAttachment.tsx: attachment chip and downloadable file card.
+  - `component` FileDropOverlay.tsx: drag-and-drop file attachment overlay.
+  - `component` FilePlaceholder.tsx: Audio, PDF, Text and Document placeholder card.
+  - `component` FileRowSpinner.tsx: attachment loading indicator.
+  - `component` GalleryGrouper.tsx: consecutive image and video gallery grid in the timeline.
+  - `component` GalleryVideoPoster.tsx: video poster frame in the gallery grid.
+  - `component` GifPicker.tsx: composer GIF picker UI (search provider stubbed in 4.7).
+  - `component` GlobalAudioPlayer.tsx: persistent floating audio player across chats.
+  - `component` ImageError.tsx: broken-image fallback card.
+  - `component` LoadingAttachment.tsx: in-flight attachment placeholder.
+  - `component` Location.tsx: inline map card with Apple Maps, Google Maps and Copy Location actions.
+  - `component` MediaViewerBrowserWindow.tsx: Media Viewer window with Media, Links and Docs tabs, Sent By filter, sort and caption search.
+  - `component` MediaWithSender.tsx: media tile with sender attribution in Media Viewer.
+  - `component` MessageIFrame.tsx: sandboxed iframe for external embeds.
+  - `component` PDF.tsx: inline paged PDF viewer.
+  - `component` PDFAttachment.tsx: PDF attachment card with page controls.
+  - `component` PendingAttachments.tsx: pending attachment strip in the composer.
+  - `component` PictureInPictureBrowserWindow.tsx: floating Picture-in-Picture video window.
+  - `component` StickerPicker.tsx: composer sticker picker.
+  - `component` TranscodedAttachment.tsx: transcoded audio and image attachment view.
+  - `component` ViewLimitedMediaViewer.tsx: view-once photo, video and voice-note viewer.
+  - `command` Media viewer: command bar entry opening the Media Viewer window.
+  - `hotkey` Chat: Send File: ⌘O attach file in the composer.
+  - `hotkey` Download Attachments: ⌘D download attachments on the selected message.
+  - `hotkey` Message: Record Audio: ⌘⇧A record voice note in the composer.
+  - `hotkey` Message: Send GIF: ⌘⇧G open GIF picker.
+  - `hotkey` Message: Send Sticker: ⌘⌥⇧S open sticker picker.
+  - `setting:appearance` Disable link previews in outgoing messages: suppress outgoing link preview cards.
+  - `setting:appearance` Load external embeds automatically: auto-load external embeds vs click-to-load.
+  - `setting:general` Always ask where to save files before downloading: prompt for destination on attachment download.
+  - `setting:general` Automatically play the next voice note: continuous playback across consecutive voice notes.
+  - `setting:general` Automatically send GIFs after selection: send picked GIF immediately vs attach to draft.
+  - `setting:general` Disable automatic replacement of emoticons with emojis: toggle `:)` → `🙂` replacement in the composer.
+  - `setting:general` Downloads location <path>: default attachment download folder.
+  - `setting:general` Enable emoji autocomplete: toggle `:` emoji autocomplete in the composer.
+  - `setting:general` Microphone: recording input device selector for voice notes.
+  - `menu:File` Open…: File ▸ Open… (⌘O) attach file menu item.
 - Deferred to later milestones or not planned in iteration 1 (14 ledger rows):
   - `command` Join a Matrix room: not planned in iteration 1 (Courier runs five non-Matrix bridges with no generic Matrix room join).
   - `command` Open space in new window: part 4.6 window management.
@@ -1179,4 +1224,3 @@ Not in 4.5b, and not expected to work yet:
   - `setting:ai` Use OpenAI's Whisper model for Talk to Type and transcribing: part 4.7 (`AIProvider` voice-note transcription stub).
   - `setting:general` Show Telegram Topics as separate spaces: not planned in iteration 1 (`mautrix-telegram` does not expose forum topics as separate portal spaces).
   - `setting:general` Show WhatsApp Communities as separate spaces: not planned in iteration 1 (`mautrix-whatsapp` bridges community rooms directly without a separate space hierarchy).
-
