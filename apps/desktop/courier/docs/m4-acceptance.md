@@ -951,55 +951,219 @@ The inventory has no row for these, but they are what this part was built to do.
 
 ### Carried to later parts
 
-Not in 4.5a, and not expected to work yet:
+Not in 4.5a, and not expected to work in 4.5a:
 
 - A reply-network shortcut (⌘L is Remind Me).
-- Carried to part 4.5b (rich media playback and capture — 45 ledger rows):
-  - `component` AttachmentCarousel.tsx: full-window media lightbox with zoom, pan, rotate, flip, download, copy and Quick Look.
-  - `component` Audio.tsx: inline voice-note waveform player, 0.5×–2× speed and played state.
+- Carried from 4.5a to part 4.5b below (rich media playback, capture, previews and media viewer — 35 ledger rows) and part 4.5c (emoji, emoticons, stickers and GIFs — 10 ledger rows).
+- Deferred to later milestones or not planned in iteration 1 (14 ledger rows):
+  - `command` Join a Matrix room: not planned in iteration 1 (Courier runs five non-Matrix bridges with no generic Matrix room join).
+  - `command` Open space in new window: part 4.6 window management.
+  - `command` Profile: not planned in iteration 1 (no Beeper cloud account profile pane).
+  - `component` ChangeEmailBrowserWindow.tsx: not planned in iteration 1 (no Beeper cloud account email management).
+  - `component` ChatThemeBrowserWindow.tsx: part 4.7 (Appearance, wallpapers and per-chat themes).
+  - `component` ChatThemeWindow.tsx: part 4.7 (Appearance, wallpapers and per-chat themes).
+  - `component` DeleteAccountModal.tsx: not planned in iteration 1 (no Beeper cloud account deletion).
+  - `component` DeleteAccountPrompt.tsx: not planned in iteration 1 (no Beeper cloud account deletion).
+  - `component` ThreadedRepliesBrowserWindow.tsx: thread replies open in the right-hand Thread Replies pane (4.3); detached thread windows are part 4.6 window management.
+  - `hotkey` Message: Talk to Type: part 4.7 (`AIProvider` dictation stub).
+  - `menu:File` Open Chat in New Window: part 4.6 window management (along with double-click chat "Open in New Window").
+  - `setting:ai` Use OpenAI's Whisper model for Talk to Type and transcribing: part 4.7 (`AIProvider` voice-note transcription stub).
+  - `setting:general` Show Telegram Topics as separate spaces: not planned in iteration 1 (`mautrix-telegram` does not expose forum topics as separate portal spaces).
+  - `setting:general` Show WhatsApp Communities as separate spaces: not planned in iteration 1 (`mautrix-whatsapp` bridges community rooms directly without a separate space hierarchy).
+
+## Part 4.5b: rich media playback, capture, previews and media viewer
+
+Inline photos, BlurHash placeholders, photo and video galleries, view-once photos, videos and voice notes, inline video with Picture in Picture, voice-note waveform playback with continuous play and a floating audio bar across chats, voice-note recording in the message box, inline PDFs, downloadable file cards, drag-and-drop and pending attachments with per-network size checks, location cards, link previews, click-to-load external embeds, the full-window attachment lightbox, and the Media Viewer window. What leaves this Mac for a network is:
+
+- photos, videos, audio files, voice notes, documents and locations when you press Send;
+- fetching the first `https` web address in a message you send ONLY when you turn "Disable link previews in outgoing messages" off (it is on out of the box, so nothing is fetched unless you change it);
+- loading an external embed from YouTube, Vimeo, Spotify or Loom ONLY after you click "Load Embed" on that message (or turn "Load external embeds automatically" on);
+- opening a map pin in Apple Maps or Google Maps, or opening a web link in your browser, when you click it.
+
+Stays on this Mac: viewing photos, galleries, videos, Picture in Picture, voice notes, audio files and PDFs; voice-note and view-once played marks (none of the five networks’ bridges send or receive voice-note played receipts); view-once opening and expiry on this Mac; microphone recordings while recording or reviewing until you press Send; incoming link previews and thumbnails (drawn only from text and local files already delivered by the bridge); location cards (drawn with an offline coordinate grid and no map tile downloads); downloaded attachments; the attachment lightbox; and the Media Viewer window.
+
+### Before you start
+
+- Install the build with `bazel run --config=macos-app //apps/desktop/courier/app:install`. Your chats and networks stay as they are.
+- Out of the box in Settings ▸ Messages (⌘,): under **Messages**, "Disable link previews in outgoing messages" is on, "Load external embeds automatically" is off, "Automatically play the next voice note" is on, and "Microphone" is "System Default"; under **Downloads**, "Downloads location" is `~/Downloads` and "Always ask where to save files before downloading" is off.
+- Microphone, Contacts, Calendar and the Downloads folder never ask for permission when Courier opens. Each asks once, only when you use that feature.
+- Do not open the same chat in the other chat app while testing. It would send a read receipt.
+- Never test on a real person’s chat. Use a chat with yourself or a test account. Never open a real chat in Beeper while testing.
+
+### Check these first
+
+All app checks are by hand on real accounts: there is no fake-network app mode, and views were checked only as PNG snapshots. Look at these before anything else.
+
+- [ ] In the signed installed app: pressing record (⌘⇧A or the microphone button) asks for the microphone once ("Courier records voice notes only while you hold record. Recordings stay on this Mac until you send them."); opening a hover card’s Contacts and the Calendar pane each ask once (the entitlements fix, #3915); after "Don’t Allow" nothing asks again.
+- [ ] Downloading an attachment the first time asks for the Downloads folder, with Courier’s reason ("Courier saves the attachments you download to this folder. Nothing else in it is read or changed.").
+- [ ] Sending a link with the setting off ("Disable link previews in outgoing messages" left on, its default, so outgoing link previews are off): no preview appears on the other side, and the Mac makes no request to the link (the outgoing preview is suppressed).
+- [ ] An embed shows "Load embed from <host>" and nothing loads until clicked.
+- [ ] A view-once photo opens once, then shows "Opened"; it never appears in the Media Viewer.
+- [ ] A 1 GB+ video sends on WhatsApp without the app’s memory jumping (streamed from disk).
+- [ ] Voice notes on WhatsApp and Signal arrive as voice notes (not files) on the phone.
+- [ ] ⌘O stays Attach Files (Message ▸ Attach Files…); ⌘D downloads (Message ▸ Download Attachments).
+- Do the by-hand run on the installed build, once, start to end. Tick each step as you go:
+  - [ ] Send and receive 1, 2, 3, 4 and 5+ photos in a test chat: check the BlurHash placeholder while loading, the 1–4+ gallery grid with "+N" overflow badge, and clicking a tile to open the lightbox (`Space`, `+`/`-`, `0`, `R`, `⌘C`, `⌘D`, `Esc`).
+  - [ ] Receive a view-once photo or voice note from a test phone on Signal or Telegram: check the "View-once Photo" / "View-once Voice Note" pill ("Tap to view once on this Mac"), open it once in the sheet, close it, and check the pill now says "Opened" ("View-once media expired on this Mac") and cannot be reopened, downloaded or seen in the Media Viewer.
+  - [ ] Play an `.mp4` video inline (`0.5×`–`2×` speed and scrub bar), click the Picture in Picture button ("Picture in Picture"), switch to another chat, and check the floating "Picture in Picture" window stays playing on top.
+  - [ ] Play two consecutive voice notes at `1.5×` with "Automatically play the next voice note" on: check the waveform scrubs, finishing the first marks it played and starts the second, and switching chats docks the floating audio bar at the top of the window with Play/Pause, scrubber, speed pill, "Jump to Message" and Close.
+  - [ ] Choose your microphone in Settings ▸ Messages, press ⌘⇧A, record a short voice note, check the live waveform and the red stop button ("Stop recording"), and send it to a WhatsApp chat and a Signal chat; check on the phone that both arrive as native voice notes.
+  - [ ] Drag a multi-page PDF into a chat (and Shift-drop another file to send immediately): check the inline PDF page controls ("Previous Page", "Page X of Y", "Next Page"), press ⌘O to attach a file, and press ⌘D on an attachment to check both saving straight to your Downloads location and asking where to save when "Always ask where to save files before downloading" is on.
+  - [ ] View a shared location card and click "Open in Apple Maps", "Open in Google Maps" and "Copy Location"; send a link with "Disable link previews in outgoing messages" on (no preview sent or fetched), then turn it off and send an `https` link (preview card attached); click "Load Embed" on a video link.
+  - [ ] Open the Media Viewer window from "See All" in Chat Info’s Shared Media, Files or Links section, and check the "Media", "Links" and "Docs" tabs, "Sent By" ("All", "You", "Others"), "Sort" ("Newest", "Oldest"), the "Search captions, links, or filenames…" field, "Go to Message", and multi-select "Download Selected" and "Clear Selection".
+
+### The five things to check
+
+These are the five things this part was most worried about. Look at them before the rest.
+
+- [ ] Links, embeds and locations make zero unconsented network requests. Incoming link previews only show the text and local `mxc://courier.local/...` thumbnail already stored by the bridge, ignoring any remote image URL. With "Disable link previews in outgoing messages" on (the default), sending a link makes zero HTTP requests from this Mac and tells WhatsApp, Signal, Telegram and Slack to suppress link unfurling. External embeds show "Load embed from <host>" ("External embed from <host> is blocked to protect your IP address") and create no web view until you click "Load Embed". Location cards draw an offline coordinate grid with zero map tile requests.
+- [ ] View-once media opens once on this Mac and never leaks into other surfaces. A view-once photo, video or voice note shows as a locked pill ("View-once Photo", "View-once Video" or "View-once Voice Note") with no thumbnail, Quick Look, Copy or Download. Opening it presents the "View-once from <Sender>" sheet (which blocks window screenshots where macOS allows it and shows "Screenshots and screen recordings of this window are blocked where macOS allows it. A camera pointed at the screen can’t be stopped."). Closing the sheet marks it played in the database, redacts its file path from subsequent reads, changes the pill to "Opened" ("View-once media expired on this Mac"), and keeps it out of the lightbox and the Media Viewer window.
+- [ ] Voice notes arrive as native voice notes on the phone and play continuously on this Mac. Recording a voice note (⌘⇧A) sends `audio/ogg; codecs=opus` on WhatsApp (converting from M4A via `ffmpeg` when installed) and `audio/mp4` / `audio/aac` on networks that accept MP4/AAC natively, with duration and waveform metadata so the phone shows a voice note instead of a generic audio file. Playing a voice note with "Automatically play the next voice note" on marks it played when it finishes and automatically starts the next consecutive voice note in the chat; switching chats docks the player at the top of the window without interrupting audio.
+- [ ] Large files stream from disk without spiking memory and respect each network’s file size ceiling. Attaching a file larger than the chat network’s limit shows an orange warning on the chip ("Exceeds <Network> <limit> limit"). Sending a 1 GB+ video on WhatsApp or Telegram streams the file from disk through the media store and bridge upload without buffering the whole file in memory.
+- [ ] Downloaded and opened attachments keep macOS quarantine metadata and never overwrite existing files. Pressing ⌘D or clicking Download saves to your configured Downloads location (or opens a Save panel when "Always ask where to save files before downloading" is on), suffixes duplicates as `file (2).ext`, and stamps `com.apple.quarantine` on every saved or Quick Look temp file so macOS Gatekeeper checks executables.
+
+### What to expect on each network
+
+Courier reads these limits and formats from each network’s pinned bridge capabilities (`mautrix-whatsapp`, `mautrix-signal`, `mautrix-telegram`, `mautrix-gmessages`, `mautrix-slack`).
+
+| | WhatsApp | Signal | Telegram | Google Messages | Slack |
+|---|---|---|---|---|---|
+| Max file size | 2000 MiB | 100 MiB | 2 GiB (4 GiB Premium; 10 MiB photo) | 100 MiB RCS (1 MiB MMS) | 1 GB |
+| Images and captions | JPEG full, PNG/WebP partial, GIF partial if `ffmpeg`; caption up to 65536 | GIF, PNG, JPEG, WebP, BMP, AVIF full (4096×4096); caption up to 2000 | JPEG full, WebP/PNG/GIF partial (10 MiB photo, larger sent as document); caption 1024 (2048 Premium) | PNG, JPEG, GIF, BMP, WBMP, WebP full; RCS sends caption as a separate text message | JPEG, PNG, GIF, WebP full; caption up to 40000 |
+| Videos | MP4, 3GPP full; WebM, QuickTime partial if `ffmpeg`; caption full | MP4, OGG, WebM full; caption full | MP4 full (2 GiB / 4 GiB Premium); caption full | MP4, 3GPP, WebM full (100 MiB RCS) | MP4, WebM full (1 GB); caption full |
+| Audio files | MPEG, MP4, OGG, AAC, AMR full; caption dropped | AAC, MPEG, MP3, FLAC full; caption unsupported | MPEG, MP4 full; caption full | AAC, AMR, MPEG, MP4, MP4-LATM, 3GPP, OGG full | MPEG, WebM, WAV full; caption full |
+| Voice notes and waveform | `audio/ogg; codecs=opus` full (`audio/ogg` rewritten); waveform 0–100 and duration both ways | Outgoing `audio/aac` full (`audio/ogg` converted via `ffmpeg`), max 3600s; incoming converted to `.ogg` opus if `ffmpeg`, waveform not bridged | `audio/ogg`, `audio/mpeg`, `audio/mp4` full; 5-bit packed waveform and duration both ways | Outgoing `audio/mp4` full (`audio/ogg` converted via `ffmpeg` to `.m4a`); incoming tagged voice and converted to `.ogg` if `ffmpeg` | `audio/webm; codecs=opus` and `audio/mp4` (`.m4a`) full (`audio/ogg` partial via `ffmpeg`), max 300s; incoming `slack_audio` has waveform and duration |
+| Voice-note played receipts | Not bridged (tracked on this Mac only) | Not bridged (tracked on this Mac only) | Not bridged (tracked on this Mac only) | Not bridged (tracked on this Mac only) | Not bridged (tracked on this Mac only) |
+| Generic files and PDFs | `*/*` full (2000 MiB), caption full | `*/*` full (100 MiB), caption full | `*/*` full (2 GiB / 4 GiB Premium), caption full | `application/*`, `text/*` full (100 MiB RCS) | `*/*` full (1 GB), caption full |
+| GIFs | MP4 (`GifPlayback`) full, `image/gif` transcoded via `ffmpeg` | `image/gif` and MP4 full | MP4 full, `image/gif` partial | `image/gif` full | `image/gif` full |
+| Stickers | WebP full, PNG/JPEG/Lottie partial; no caption | PNG, APNG full, WebP partial, GIF partial if `ffmpeg`; no caption | WebP, Lottie, WebM full, JPEG/PNG partial | Not supported | Not in bridge capabilities (outgoing `m.sticker` converted to `m.image`) |
+| View-once media | Outgoing not supported; incoming bridged as normal media when `DisableViewOnce` is false | Outgoing not supported; incoming sets a 5-minute after-read disappearing timer when `DisappearViewOnce` is true | Outgoing not supported; incoming sets a 15-second after-read disappearing timer | Not supported | Not supported |
+| Location messages | Full both ways (`geo:<lat>,<long>`) | Partial (incoming location; outgoing `geo:` formatted as a text URL) | Full both ways (`geo:<lat>,<long>`) | Not supported | Rejected |
+| Link previews | Full incoming and outgoing; empty preview list suppresses preview | Full incoming and outgoing (with uploaded image) | Incoming webpage to preview; outgoing empty preview list sets `NoWebpage: true` | Not supported | Incoming attachments to preview; outgoing empty preview list disables link unfurling |
+| BlurHash on attachments | Field in shared `FileInfo`; not computed by bridge | Preserved incoming and outgoing (`Blurhash` / `AnoaBlurhash`) | Field in shared `FileInfo`; not computed by bridge | Field in shared `FileInfo`; not computed by bridge | Field in shared `FileInfo`; not computed by bridge |
+
+- [ ] Each cell above holds on the real network. Check at least sending a photo, video, voice note, PDF and link on every network you have.
+- [ ] On WhatsApp, sending a voice note requires `audio/ogg; codecs=opus` (Courier converts recorded `.m4a` voice notes via `ffmpeg` when installed on this Mac; if `ffmpeg` is missing, Courier shows an error explaining that `ffmpeg` is needed for WhatsApp voice notes).
+- [ ] On Google Messages, RCS sends an image caption as a separate text message, and link previews, stickers, view-once media and location messages are not supported by the bridge.
+- [ ] On Signal, outgoing location messages are formatted by the bridge as a text URL, and BlurHash placeholders are preserved both ways.
+- [ ] None of the five bridges send or receive voice-note played receipts, so the blue unplayed dot and "Played" mark on voice notes are tracked on this Mac only.
+
+### Keys
+
+- [ ] `hotkey` Chat: Send File: ⌘O opens the file picker ("Choose files to send", "Attach") to attach files in the message box (Message ▸ Attach Files…).
+- [ ] `hotkey` Download Attachments: ⌘D downloads the attachments on the selected message (or the item open in the lightbox) to your Downloads location, or asks where to save when "Always ask where to save files before downloading" is on (Message ▸ Download Attachments).
+- [ ] `hotkey` Message: Record Audio: ⌘⇧A starts recording a voice note in the message box, and sends it when pressed again while recording or reviewing (Message ▸ Record Voice Note).
+
+### Settings
+
+- [ ] `setting:appearance` Disable link previews in outgoing messages: Settings ▸ Messages ▸ Messages, "Disable link previews in outgoing messages", on out of the box. When on, Courier never fetches a web address you send and tells the network not to add a preview. When off, Courier fetches the first `https` link on send to attach a preview.
+- [ ] `setting:appearance` Load external embeds automatically: Settings ▸ Messages ▸ Messages, "Load external embeds automatically", off out of the box. When off, YouTube, Vimeo, Spotify and Loom links show "Load embed from <host>" until you click "Load Embed".
+- [ ] `setting:general` Automatically play the next voice note: Settings ▸ Messages ▸ Messages, "Automatically play the next voice note", on out of the box. When on, finishing one voice note marks it played and starts the next consecutive voice note in the chat.
+- [ ] `setting:general` Microphone: Settings ▸ Messages ▸ Messages, "Microphone", choosing "System Default" or any connected audio input device for recording voice notes.
+- [ ] `setting:general` Downloads location <path>: Settings ▸ Messages ▸ Downloads, "Downloads location", showing the folder path (`~/Downloads` by default) with a "Choose…" button ("Choose a folder for downloaded attachments").
+- [ ] `setting:general` Always ask where to save files before downloading: Settings ▸ Messages ▸ Downloads, "Always ask where to save files before downloading", off out of the box. When on, ⌘D and Download open a Save panel every time.
+
+### Menus
+
+- [ ] `menu:File` Open…: File ▸ Open… opens the file picker to attach files to the open chat’s message box. Message ▸ Attach Files… keeps ⌘O, alongside Message ▸ Download Attachments (⌘D) and Message ▸ Record Voice Note (⌘⇧A).
+
+### Components
+
+**Photos, galleries, BlurHash and view-once media**
+
+- [ ] `component` EnhancedImg.tsx: Inline photos and stickers render at their aspect ratio (clamped between 120×80 and 360×320) with a decoded BlurHash placeholder while loading, animated GIF and WebP playback, an automatic "GIF" badge on looping GIF videos, and single-click opening in the lightbox.
+- [ ] `component` LoadingAttachment.tsx: While an attachment is loading, its frame shows a decoded BlurHash image (when present) and a translucent placeholder card with a spinner.
+- [ ] `component` FileRowSpinner.tsx: File and media attachment rows show a small progress spinner while the attachment is loading or being prepared.
+- [ ] `component` ImageError.tsx: When an image file is missing or cannot be decoded, the bubble shows a muted broken-image card with the filename and "Image unavailable".
+- [ ] `component` TranscodedAttachment.tsx: Attachments that the bridge transcoded (`fi.mau.gif` MP4 GIFs or voice notes transcoded to `.ogg` / `.m4a`) show a subtle "Transcoded" badge when applicable and play inline.
+- [ ] `component` GalleryGrouper.tsx: Two or more consecutive image or video attachments from the same sender (or multiple image/video attachments on one message, excluding view-once items) group into a 1, 2, 3 or 4+ tile grid with a "+N" badge on the fourth tile when there are more than four.
+- [ ] `component` GalleryVideoPoster.tsx: Video tiles in a gallery grid show their poster frame (or first frame), a centered play badge, and a bottom-right duration pill (`m:ss`).
+- [ ] `component` ViewLimitedMediaViewer.tsx: View-once photos, videos and voice notes render in the timeline as a locked pill ("View-once Photo", "View-once Video" or "View-once Voice Note", "Tap to view once on this Mac"). Clicking an unopened pill opens the "View-once from <Sender>" sheet ("Close"), which blocks window screenshots where macOS allows it ("Screenshots and screen recordings of this window are blocked where macOS allows it. A camera pointed at the screen can’t be stopped."). Once closed, the pill shows "Opened" ("View-once media expired on this Mac") and the sheet says "This view-once media was already opened and is gone on this Mac."
+
+**Inline video and Picture in Picture**
+
+- [ ] `component` BrandVideo.tsx: Video attachments play inline with Play/Pause, a draggable timeline scrubber, elapsed/duration time (`m:ss`), a Mute/Unmute button, a playback speed menu (`0.5×`, `1×`, `1.5×`, `2×`), a Picture in Picture button, and a Fullscreen (lightbox) button. Looping GIF videos (`is_gif`) auto-play muted without transport chrome and show a "GIF" badge.
+- [ ] `component` PictureInPictureBrowserWindow.tsx: Clicking the Picture in Picture button on an inline video opens a floating "Picture in Picture" panel that stays on top when you switch chats, with Play/Pause, "Return to Chat" and Close controls.
+
+**Voice notes, floating audio player and recording**
+
+- [ ] `component` Audio.tsx: Voice notes and audio attachments show a Play/Pause button, a 28-bar interactive waveform scrubber, elapsed/duration time (`m:ss`), a speed pill that cycles `0.5×` → `1×` → `1.5×` → `2×`, and an unplayed blue dot that clears when playback finishes (or when you click "Mark Played" / "Mark Unplayed").
+- [ ] `component` GlobalAudioPlayer.tsx: When you switch to another chat while a voice note or audio file is playing, a floating audio bar docks at the top of the window showing the sender and chat title, Play/Pause, a mini scrubber, elapsed time, the speed pill, "Jump to Message", and Close.
+- [ ] `component` BrandStopButton.tsx: Pressing the microphone button ("Record Voice Note (⌘⇧A)") or ⌘⇧A in the message box starts recording a voice note with a live elapsed timer (`0:00`), live 36-bar waveform, a "Cancel recording" button, a red stop button ("Stop recording" / "Stop recording to review"), and a "Send voice note" button; stopping shows "Voice note ready" ("Discard recording", "Send") so you can review before sending, and pressing ⌘⇧A again sends it.
+
+**PDFs, files, drag-and-drop and pending attachments**
+
+- [ ] `component` PDF.tsx: PDF attachments render an inline page preview using macOS PDFKit without spawning a helper process.
+- [ ] `component` PDFAttachment.tsx: Each inline PDF card has a header bar with the filename, file size, "Previous Page" and "Next Page" buttons around "Page X of Y" on multi-page PDFs, an "Open" button, and a "Download" ("Download (⌘D)") button.
+- [ ] `component` FileAttachment.tsx: Non-inline files show a file card with a category icon, filename, human-readable byte size (`1.4 MB`), "Quick Look (Space)", "Open", and "Download (⌘D)" buttons (plus "Download Attachment" in the right-click menu and ⌘D).
+- [ ] `component` FilePlaceholder.tsx: File cards show distinct icons and labels for Audio, PDF, Text, Archive and Document attachments.
+- [ ] `component` PendingAttachments.tsx: Attached, pasted or dropped files sit in a horizontal strip above the message box with a thumbnail or icon, filename, size, an orange warning ("Exceeds <Network> <limit> limit") when a file is over the chat network’s size limit, and a "Remove attachment" ("Remove <filename>") button.
+- [ ] `component` FileDropOverlay.tsx: Dragging files over the chat shows a drop target reading "Drop files to attach to your message" with "Hold ⇧ Shift to send immediately" (or, when Shift is held, "Release to send immediately").
+
+**Locations, link previews and external embeds**
+
+- [ ] `component` Location.tsx: Location messages (`geo:<lat>,<lon>`) show an offline coordinate grid with a pin badge, label, formatted latitude and longitude, and three action buttons: "Open in Apple Maps", "Open in Google Maps" and "Copy Location" ("Copied").
+- [ ] `component` MessageIFrame.tsx: Incoming link previews show the site domain, title, description and local thumbnail (when the bridge supplied one). When a link matches YouTube, Vimeo, Spotify or Loom and "Load external embeds automatically" is off, the card shows "Load embed from <host>" ("External embed from <host> is blocked to protect your IP address") with "Load Embed" and "Open in Browser", loading a sandboxed web view only after you click "Load Embed".
+
+**Attachment lightbox and Media Viewer window**
+
+- [ ] `component` AttachmentCarousel.tsx: Clicking an inline photo or gallery tile opens the full-window lightbox with Previous/Next navigation (`←`/`→`), "Go to Message", "React", "Reply", "Copy Image" (`⌘C`), "Quick Look" (`Space`), "Download" (`⌘D`), "Close" (`Esc`), "Zoom Out" (`-`), "Reset Zoom" (`0`), "Zoom In" (`+`), "Rotate 90°" (`R`), "Flip Horizontally", "Flip Vertically", and a bottom thumbnail strip.
+- [ ] `component` MediaViewerBrowserWindow.tsx: Clicking "See All" in Chat Info’s Shared Media, Files or Links section (or running "Media viewer") opens the "Media Viewer" window with "Media", "Links" and "Docs" tabs, a "Sent By" filter ("All", "You", "Others"), a "Sort" picker ("Newest", "Oldest"), a "Search captions, links, or filenames…" field, and multi-select "Download Selected", "Delete Selected" ("Delete for Me", "Unsend for Everyone"), "Go to Message" and "Clear Selection".
+- [ ] `component` MediaWithSender.tsx: Each tile or row in the Media Viewer shows the sender’s name, date, caption or filename, and a "Go to Message" button that jumps the main window to that message in the chat.
+
+### Commands
+
+These are registered in Courier for the command bar (⌘J), which part 4.7 builds. They have no tick box here: they are "registered; shown in ⌘J by 4.7". The ones with a menu item or key above are checked there.
+
+- `command` Media viewer: registered as "Media viewer" in `CommandSet.chatInfo` and opened from "See All" in Chat Info’s Shared Media, Files and Links sections.
+- Courier also registers "Attach file" (⌘O), "Download attachments" (⌘D) and "Record voice note" (⌘⇧A) in `CommandSet.messaging`.
+
+### How it behaves
+
+Not failures. Do not report these as bugs.
+
+- ⌘O is Message ▸ Attach Files… (and File ▸ Open… also attaches files to the open chat). ⌘D is Message ▸ Download Attachments. ⌘⇧A starts recording a voice note, and pressing ⌘⇧A again while recording or reviewing sends it.
+- "Disable link previews in outgoing messages" is on out of the box so typing or sending a link never contacts the destination website unless you turn that setting off. When you turn it off, Courier fetches only the first `https` link on send (up to 3 seconds) to attach a preview card.
+- "Load external embeds automatically" is off out of the box so YouTube, Vimeo, Spotify and Loom links never contact the embed host or reveal your IP address until you click "Load Embed".
+- Location cards draw an offline coordinate grid on this Mac and never download map tiles; clicking "Open in Apple Maps" or "Open in Google Maps" opens the coordinates in that app or browser.
+- None of the five networks’ bridges send or receive voice-note played receipts. Marking a voice note played (automatically at the end of playback, or via "Mark Played" in the right-click menu) updates the blue dot on this Mac only.
+- View-once enforcement is on this Mac: once you close the "View-once from <Sender>" sheet, Courier marks the item opened in its local database and refuses to return its file path again on this Mac. It also sets the window’s screen-capture sharing type to `.none` so macOS window screenshots and screen recordings omit the sheet, though a camera pointed at the screen cannot be stopped.
+- Sending a voice note on WhatsApp requires `ffmpeg` on this Mac (`/opt/homebrew/bin/ffmpeg` or `/usr/local/bin/ffmpeg`) so Courier can convert the recorded `.m4a` into `audio/ogg; codecs=opus`. On Signal, Telegram, Google Messages and Slack, `.m4a` (`audio/mp4` / `audio/aac`) is sent directly without `ffmpeg`.
+
+### Not ledger rows
+
+The inventory has no row for these, but they are what this part was built to do.
+
+**macOS privacy prompts and sandbox entitlements (#3915)**
+
+- [ ] The signed `Courier.app` bundle carries `com.apple.security.device.audio-input`, `com.apple.security.personal-information.addressbook` and `com.apple.security.personal-information.calendars` in its entitlements, and `NSMicrophoneUsageDescription`, `NSContactsUsageDescription`, `NSCalendarsFullAccessUsageDescription` and `NSDownloadsFolderUsageDescription` in `Info.plist`.
+- [ ] None of those four permissions are requested on app launch. Each prompts once on first use with Courier’s plain-English reason, and after "Don’t Allow" never prompts again.
+
+**4.5a merged-chat selection and RPC guardrails**
+
+- [ ] Selecting a merged chat highlights its row in the inbox and pinned strip (`AppModel.isOpen`), and no room-scoped engine RPC ever receives a `"merge:…"` identifier.
+
+**Streaming large uploads and quarantined downloads**
+
+- [ ] Sending a multi-hundred-megabyte or 1 GB+ video reads the file from disk by path without loading the whole file into JSON-RPC or app memory.
+- [ ] Every file saved via ⌘D / Download or materialized for Quick Look (`OpenFileCache`) has `com.apple.quarantine` set and deduplicates filenames as `file (2).ext` so existing files are never overwritten.
+
+### Carried to later parts
+
+Not in 4.5b, and not expected to work yet:
+
+- A reply-network shortcut (⌘L is Remind Me).
+- Carried to part 4.5c (composer emoji, emoticons, stickers and GIFs — 10 ledger rows):
   - `component` Autocomplete.tsx: composer `:` emoji autocomplete popover.
-  - `component` BrandStopButton.tsx: stop voice-note recording button in the composer.
-  - `component` BrandVideo.tsx: inline video element.
   - `component` Emoji.tsx: composer plus-menu media and emoji items.
   - `component` EmojiItem.tsx: emoji picker cell.
-  - `component` EnhancedImg.tsx: inline image view with BlurHash placeholder.
-  - `component` FileAttachment.tsx: attachment chip and downloadable file card.
-  - `component` FileDropOverlay.tsx: drag-and-drop file attachment overlay.
-  - `component` FilePlaceholder.tsx: Audio, PDF, Text and Document placeholder card.
-  - `component` FileRowSpinner.tsx: attachment loading indicator.
-  - `component` GalleryGrouper.tsx: consecutive image and video gallery grid in the timeline.
-  - `component` GalleryVideoPoster.tsx: video poster frame in the gallery grid.
   - `component` GifPicker.tsx: composer GIF picker UI (search provider stubbed in 4.7).
-  - `component` GlobalAudioPlayer.tsx: persistent floating audio player across chats.
-  - `component` ImageError.tsx: broken-image fallback card.
-  - `component` LoadingAttachment.tsx: in-flight attachment placeholder.
-  - `component` Location.tsx: inline map card with Apple Maps, Google Maps and Copy Location actions.
-  - `component` MediaViewerBrowserWindow.tsx: Media Viewer window with Media, Links and Docs tabs, Sent By filter, sort and caption search.
-  - `component` MediaWithSender.tsx: media tile with sender attribution in Media Viewer.
-  - `component` MessageIFrame.tsx: sandboxed iframe for external embeds.
-  - `component` PDF.tsx: inline paged PDF viewer.
-  - `component` PDFAttachment.tsx: PDF attachment card with page controls.
-  - `component` PendingAttachments.tsx: pending attachment strip in the composer.
-  - `component` PictureInPictureBrowserWindow.tsx: floating Picture-in-Picture video window.
   - `component` StickerPicker.tsx: composer sticker picker.
-  - `component` TranscodedAttachment.tsx: transcoded audio and image attachment view.
-  - `component` ViewLimitedMediaViewer.tsx: view-once photo, video and voice-note viewer.
-  - `command` Media viewer: command bar entry opening the Media Viewer window.
-  - `hotkey` Chat: Send File: ⌘O attach file in the composer.
-  - `hotkey` Download Attachments: ⌘D download attachments on the selected message.
-  - `hotkey` Message: Record Audio: ⌘⇧A record voice note in the composer.
   - `hotkey` Message: Send GIF: ⌘⇧G open GIF picker.
   - `hotkey` Message: Send Sticker: ⌘⌥⇧S open sticker picker.
-  - `setting:appearance` Disable link previews in outgoing messages: suppress outgoing link preview cards.
-  - `setting:appearance` Load external embeds automatically: auto-load external embeds vs click-to-load.
-  - `setting:general` Always ask where to save files before downloading: prompt for destination on attachment download.
-  - `setting:general` Automatically play the next voice note: continuous playback across consecutive voice notes.
   - `setting:general` Automatically send GIFs after selection: send picked GIF immediately vs attach to draft.
   - `setting:general` Disable automatic replacement of emoticons with emojis: toggle `:)` → `🙂` replacement in the composer.
-  - `setting:general` Downloads location <path>: default attachment download folder.
   - `setting:general` Enable emoji autocomplete: toggle `:` emoji autocomplete in the composer.
-  - `setting:general` Microphone: recording input device selector for voice notes.
-  - `menu:File` Open…: File ▸ Open… (⌘O) attach file menu item.
 - Deferred to later milestones or not planned in iteration 1 (14 ledger rows):
   - `command` Join a Matrix room: not planned in iteration 1 (Courier runs five non-Matrix bridges with no generic Matrix room join).
   - `command` Open space in new window: part 4.6 window management.
