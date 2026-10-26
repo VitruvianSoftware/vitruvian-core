@@ -19,6 +19,7 @@
 # SOFTWARE.
 
 load("@rules_go//go:def.bzl", "go_library", "go_test")
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
 
 go_library(
     name = "metrics",
@@ -44,4 +45,20 @@ go_test(
     ],
     data = glob(["testdata/**"]),
     embed = [":metrics"],
+)
+
+rust_library(
+    name = "metrics_rs",
+    srcs = glob(["src/**/*.rs"]),
+    crate_name = "vitruvian_remote_macagent_metrics",
+    crate_root = "src/lib.rs",
+    edition = "2021",
+    visibility = ["//apps/mobile/android-remote/macagent:__subpackages__"],
+)
+
+rust_test(
+    name = "metrics_rs_test",
+    crate = ":metrics_rs",
+    data = glob(["testdata/**"]),
+    edition = "2021",
 )
