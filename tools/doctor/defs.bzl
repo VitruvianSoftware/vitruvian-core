@@ -48,7 +48,7 @@ A Go app additionally pins Go via its own go.mod:
     )
 """
 
-load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@bazel_skylib//rules:native_binary.bzl", "native_binary")
 
 def doctor(
         name = "doctor",
@@ -65,7 +65,7 @@ def doctor(
         visibility = ["//visibility:private"]):
     """Declare a `bazel run //<pkg>:doctor` env-checker for a package.
 
-    Generates an `sh_binary` that runs the shared `//tools/doctor:doctor.sh`
+    Generates a `native_binary` that runs the shared `//tools/doctor:doctor`
     engine with this package's tool requirements baked into `args`. The engine
     reads EXPECTED versions from the repo's source-of-truth files (never
     hardcoded) and exits non-zero when a required tool fails its check.
@@ -95,9 +95,10 @@ def doctor(
     if gomod:
         args += ["--gomod", gomod]
 
-    sh_binary(
+    native_binary(
         name = name,
-        srcs = ["//tools/doctor:doctor.sh"],
+        src = "//tools/doctor:doctor",
+        out = name,
         args = args,
         visibility = visibility,
     )

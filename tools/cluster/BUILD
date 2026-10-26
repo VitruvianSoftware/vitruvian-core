@@ -38,20 +38,13 @@ and replica-spread reviews):
 `:kubectl` is a general passthrough for anything the named ops don't cover
 (wait, exec, delete pod/pvc, patch, ...).
 
-`:<op>` is the Rust port (src/), with the op baked in as its first argument
-exactly as cluster_cmd.sh had it; the script stays as `:<op>-sh`. Nothing
-here reads or writes JSON, so the crate takes std only.
+`:<op>` is the Rust implementation (src/), with the op baked in as its first
+argument. Nothing here reads or writes JSON, so the crate takes std only.
 """
 
-# Hand-written: gazelle would generate targets for the parity test.
 # gazelle:ignore
 
-load("@aspect_rules_py//py:defs.bzl", "py_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
-
-exports_files(["cluster_cmd.sh"])
 
 _OPS = [
     "kubectl",
@@ -88,16 +81,6 @@ rust_library(
 ]
 
 [
-    sh_binary(
-        name = op + "-sh",
-        srcs = ["cluster_cmd.sh"],
-        args = [op],
-        visibility = ["//visibility:public"],
-    )
-    for op in _OPS
-]
-
-[
     alias(
         name = op + "-rs",
         actual = ":" + op,
@@ -123,37 +106,12 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
-# One contract, both implementations, with a stand-in kubectl. The binary is
-# any op's: the test passes the op itself, as the baked-in args would.
-sh_test(
+test_suite(
+    name = "check_test",
+    tests = [":cluster_lib_test"],
+)
+
+test_suite(
     name = "cluster_test",
-    size = "small",
-    srcs = ["cluster_test.sh"],
-    args = ["$(location cluster_cmd.sh)"],
-    data = ["cluster_cmd.sh"],
-)
-
-sh_test(
-    name = "cluster-rs_test",
-    size = "small",
-    srcs = ["cluster_test.sh"],
-    args = ["$(location :kubectl)"],
-    data = [":kubectl"],
-)
-
-# cluster_cmd.sh and the binary side by side: exit status, stdout, stderr and
-# every kubectl call (arguments, KUBECONFIG, working directory) must match.
-py_test(
-    name = "cluster_rs_parity_test",
-    size = "medium",
-    srcs = ["cluster_rs_parity_test.py"],
-    data = [
-        "cluster_cmd.sh",
-        ":kubectl",
-    ],
-    env = {
-        "CLUSTER_RS": "$(rootpath :kubectl)",
-        "CLUSTER_SH": "$(rootpath cluster_cmd.sh)",
-    },
-    main = "cluster_rs_parity_test.py",
+    tests = [":cluster_lib_test"],
 )
