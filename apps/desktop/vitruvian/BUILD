@@ -598,6 +598,130 @@ py_test(
     main = "Tests/mutation_checks.py",
 )
 
+rust_library(
+    name = "mutation_checks_rs_lib",
+    srcs = [
+        "bazel/src/mutation_checks/lib.rs",
+        "bazel/src/mutation_checks/mutations.rs",
+    ],
+    crate_name = "mutation_checks",
+    edition = "2021",
+)
+
+rust_binary(
+    name = "mutation_checks_rs",
+    srcs = ["bazel/src/mutation_checks/main.rs"],
+    edition = "2021",
+    deps = [":mutation_checks_rs_lib"],
+)
+
+rust_test(
+    name = "mutation_checks_rs_test",
+    size = "small",
+    crate = ":mutation_checks_rs_lib",
+)
+
+rust_test(
+    name = "mutation_fixtures_rs_test",
+    size = "small",
+    srcs = ["bazel/src/mutation_checks/fixtures_test.rs"],
+    data = [
+        "Resources/Info.plist",
+        "//packages/vitruvian-sdk:protocol_sources",
+    ] + glob([
+        "Sources/**/*.swift",
+        "Tests/**/*.swift",
+    ]),
+    edition = "2021",
+    deps = [":mutation_checks_rs_lib"],
+)
+
+rust_library(
+    name = "generate_sources_rs_lib",
+    srcs = ["bazel/src/generate_sources/lib.rs"],
+    crate_name = "generate_sources",
+    edition = "2021",
+)
+
+rust_binary(
+    name = "generate_sources_rs",
+    srcs = ["bazel/src/generate_sources/main.rs"],
+    edition = "2021",
+    deps = [":generate_sources_rs_lib"],
+)
+
+rust_test(
+    name = "generate_sources_rs_test",
+    size = "small",
+    crate = ":generate_sources_rs_lib",
+    data = [
+        "Tests/generate_sources.py",
+    ] + glob([
+        "Sources/**/*.swift",
+    ]),
+)
+
+rust_library(
+    name = "make_placeholder_brand_rs_lib",
+    srcs = ["bazel/src/make_placeholder_brand/lib.rs"],
+    crate_name = "make_placeholder_brand",
+    edition = "2021",
+)
+
+rust_binary(
+    name = "make_placeholder_brand_rs",
+    srcs = ["bazel/src/make_placeholder_brand/main.rs"],
+    edition = "2021",
+    deps = [":make_placeholder_brand_rs_lib"],
+)
+
+rust_test(
+    name = "make_placeholder_brand_rs_test",
+    size = "small",
+    crate = ":make_placeholder_brand_rs_lib",
+    data = glob(["Resources/Brand/**"]),
+)
+
+rust_library(
+    name = "preference_cleanup_tests_rs_lib",
+    srcs = ["bazel/src/preference_cleanup_tests/lib.rs"],
+    crate_name = "preference_cleanup_tests",
+    edition = "2021",
+)
+
+rust_binary(
+    name = "preference_cleanup_tests_rs",
+    srcs = ["bazel/src/preference_cleanup_tests/main.rs"],
+    edition = "2021",
+    deps = [":preference_cleanup_tests_rs_lib"],
+)
+
+rust_test(
+    name = "preference_cleanup_tests_rs_test",
+    size = "small",
+    crate = ":preference_cleanup_tests_rs_lib",
+)
+
+rust_library(
+    name = "uninstall_spaces_tests_rs_lib",
+    srcs = ["bazel/src/uninstall_spaces_tests/lib.rs"],
+    crate_name = "uninstall_spaces_tests",
+    edition = "2021",
+)
+
+rust_binary(
+    name = "uninstall_spaces_tests_rs",
+    srcs = ["bazel/src/uninstall_spaces_tests/main.rs"],
+    edition = "2021",
+    deps = [":uninstall_spaces_tests_rs_lib"],
+)
+
+rust_test(
+    name = "uninstall_spaces_tests_rs_test",
+    size = "small",
+    crate = ":uninstall_spaces_tests_rs_lib",
+)
+
 # Runs the unmodified upstream Tests/generate_sources.py (see sync_sources.py).
 genrule(
     name = "generated_test_sources",
