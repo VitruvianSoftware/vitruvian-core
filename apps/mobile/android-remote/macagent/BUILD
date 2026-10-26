@@ -168,3 +168,58 @@ rust_test(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
 )
+
+rust_library(
+    name = "macagent_rs_lib",
+    srcs = [
+        "rs/src/antigravity.rs",
+        "rs/src/exec.rs",
+        "rs/src/homespeaker.rs",
+        "rs/src/hook.rs",
+        "rs/src/http_util.rs",
+        "rs/src/lib.rs",
+        "rs/src/mcp.rs",
+        "rs/src/notify.rs",
+        "rs/src/pair.rs",
+        "rs/src/pairpage.rs",
+        "rs/src/permission.rs",
+        "rs/src/phone.rs",
+        "rs/src/sampler.rs",
+        "rs/src/server.rs",
+        "rs/src/stream.rs",
+        "rs/src/tailnet.rs",
+        "rs/src/tv.rs",
+    ],
+    crate_name = "vitruvian_remote_macagent",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/mobile/android-remote:__subpackages__"],
+    deps = ["//apps/mobile/android-remote/macagent/metrics:metrics_rs"],
+)
+
+rust_binary(
+    name = "macagent-rs",
+    srcs = ["rs/src/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/mobile/android-remote:__subpackages__"],
+    deps = [
+        ":macagent_rs_lib",
+        "//apps/mobile/android-remote/macagent/metrics:metrics_rs",
+    ],
+)
+
+alias(
+    name = "macagent_rs",
+    actual = ":macagent-rs",
+    visibility = ["//apps/mobile/android-remote:__subpackages__"],
+)
+
+rust_test(
+    name = "macagent_rs_test",
+    size = "small",
+    crate = ":macagent_rs_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = ["//apps/mobile/android-remote/macagent/metrics:metrics_rs"],
+)
