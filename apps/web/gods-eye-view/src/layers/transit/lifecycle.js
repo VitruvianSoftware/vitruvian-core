@@ -119,6 +119,7 @@ export function createLifecycle({ state, services, parts }) {
     else if (hidden) {
       hidden = false;
       parts.rendering.resumePlayback();
+      parts.viewport.runProximityCheck();
     }
   }
   function bindVisibility() {
