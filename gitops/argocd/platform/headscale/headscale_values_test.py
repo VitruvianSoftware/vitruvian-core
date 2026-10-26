@@ -147,6 +147,14 @@ class HeadscaleValuesTest(unittest.TestCase):
         (agent,) = [d for d in agent_docs if d["kind"] == "DaemonSet"]
         self.assertEqual(agent["metadata"]["name"], "headscale-node-agent")
 
+    def test_headscale_image_matches_headplane_schema_version(self):
+        hs_vals = load_headscale_values()
+        self.assertEqual(
+            (hs_vals.get("image") or {}).get("tag"),
+            "v0.26.1",
+            "Headplane 0.6.x requires Headscale v0.26.1 so /api/v1/node includes route arrays.",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
