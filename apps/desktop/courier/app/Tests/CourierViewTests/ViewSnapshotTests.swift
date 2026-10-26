@@ -162,8 +162,17 @@ final class ViewSnapshotTests: XCTestCase {
 
     // MARK: The composer
 
-    private func composer(text: String, entities: [TextEntity] = []) -> ComposerModel {
-        let composer = ComposerModel(draftDelay: 0, sleep: { _ in }, now: { Fixture.now })
+    private func composer(
+        text: String,
+        entities: [TextEntity] = [],
+        voiceRecorder: VoiceRecorderModel? = nil
+    ) -> ComposerModel {
+        let composer = ComposerModel(
+            draftDelay: 0,
+            sleep: { _ in },
+            now: { Fixture.now },
+            voiceRecorder: voiceRecorder
+        )
         composer.open(Fixture.room)
         composer.features = Fixture.features
         composer.network = "whatsapp"
@@ -1337,6 +1346,98 @@ final class ViewSnapshotTests: XCTestCase {
         }
     }
 
+    func testComposerVoiceRecordingBarAndMicrophonePickerLightAndDark() async throws {
+        let store = defaults()
+        let preferences = ComposerPreferences(defaults: store)
+        let devices = [
+            AudioInputDevice(uid: "built-in-mic", name: "MacBook Pro Microphone"),
+            AudioInputDevice(uid: "studio-mic", name: "Studio USB Microphone"),
+        ]
+
+        // 1. Idle composer with microphone record button.
+        let idleComposer = composer(text: "")
+        check(try Snapshot.render("composer-voice-idle", width: 620) {
+            ComposerView(
+                composer: idleComposer,
+                preferences: preferences,
+                textHeight: .constant(ComposerTextView.minimumHeight),
+                menus: ComposerMenus(sendLater: {}, createPoll: {}, pollsUnavailable: nil)
+            )
+        })
+
+        // 2. Active voice recording bar with timer, live waveform levels, BrandStopButton, cancel, and send.
+        let startTime = Date(timeIntervalSince1970: 1_700_000_000)
+        var currentTime = startTime
+        let recordingBackend = SnapshotVoiceBackend(
+            devices: devices,
+            authStatus: .authorized,
+            meterLevels: [0.18, 0.42, 0.76, 0.92, 0.64, 0.35, 0.55, 0.88, 0.72, 0.48, 0.25, 0.62],
+            durationMS: 14_000
+        )
+        let recordingRecorder = VoiceRecorderModel(backend: recordingBackend, now: { currentTime })
+        let recordingComposer = composer(text: "", voiceRecorder: recordingRecorder)
+        await recordingRecorder.start()
+        for step in 1 ... 12 {
+            currentTime = startTime.addingTimeInterval(Double(step) * 1.16)
+            recordingRecorder.sampleMeter()
+        }
+        check(try Snapshot.render("composer-voice-recording", width: 620) {
+            ComposerView(
+                composer: recordingComposer,
+                preferences: preferences,
+                textHeight: .constant(ComposerTextView.minimumHeight),
+                menus: ComposerMenus(sendLater: {}, createPoll: {}, pollsUnavailable: nil)
+            )
+        })
+
+        // 3. Review-before-send state after pressing BrandStopButton.
+        await recordingRecorder.stopForReview()
+        check(try Snapshot.render("composer-voice-review", width: 620) {
+            ComposerView(
+                composer: recordingComposer,
+                preferences: preferences,
+                textHeight: .constant(ComposerTextView.minimumHeight),
+                menus: ComposerMenus(sendLater: {}, createPoll: {}, pollsUnavailable: nil)
+            )
+        })
+
+        // 4. Permission-denied state with plain words and Open System Settings.
+        let deniedBackend = SnapshotVoiceBackend(devices: devices, authStatus: .denied)
+        let deniedRecorder = VoiceRecorderModel(backend: deniedBackend)
+        let deniedComposer = composer(text: "", voiceRecorder: deniedRecorder)
+        await deniedRecorder.start()
+        check(try Snapshot.render("composer-voice-permission-denied", width: 620) {
+            ComposerView(
+                composer: deniedComposer,
+                preferences: preferences,
+                textHeight: .constant(ComposerTextView.minimumHeight),
+                menus: ComposerMenus(sendLater: {}, createPoll: {}, pollsUnavailable: nil)
+            )
+        })
+
+        // 5. MessagesSettingsPane showing the Microphone picker.
+        preferences.preferredMicrophoneUID = "studio-mic"
+        let replies = QuickReplies(defaults: store)
+        check(try Snapshot.render("settings-messages-microphone", width: 560, height: 1040) {
+            MessagesSettingsPane(
+                preferences: preferences,
+                quickReplies: replies,
+                isEntitled: { _ in true },
+                conversation: conversation(preferences, entitled: true),
+                voiceRecorder: recordingRecorder
+            )
+        })
+
+        // Plain-words check: user-visible strings never expose API or protocol names.
+        for text in ComposerView.voiceUserVisibleStrings {
+            XCTAssertFalse(text.contains("AVAudioRecorder"), "no API names in text people read: \(text)")
+            XCTAssertFalse(text.contains("AVCaptureDevice"), "no API names in text people read: \(text)")
+            XCTAssertFalse(text.contains("NSMicrophoneUsageDescription"), "no API names in text people read: \(text)")
+            XCTAssertFalse(text.contains("sendVoice"), "no API names in text people read: \(text)")
+            XCTAssertFalse(text.contains("MSC3245"), "no API names in text people read: \(text)")
+        }
+    }
+
     private func makeGalleryEvent(
         _ id: String,
         body: String,
@@ -1418,4 +1519,43 @@ private struct SnapshotCredentials: CredentialStore {
     func read(account: String) throws -> String? { nil }
     func write(_ value: String, account: String) throws {}
     func delete(account: String) throws {}
+}
+
+private final class SnapshotVoiceBackend: VoiceRecordingBackend, @unchecked Sendable {
+    private let devices: [AudioInputDevice]
+    private let authStatus: MicrophoneAuthStatus
+    private let meterLevels: [Float]
+    private let durationMS: Int
+    private var index = 0
+    private let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("snapshot-voice.m4a")
+
+    init(
+        devices: [AudioInputDevice] = [],
+        authStatus: MicrophoneAuthStatus = .authorized,
+        meterLevels: [Float] = [0.4],
+        durationMS: Int = 5000
+    ) {
+        self.devices = devices
+        self.authStatus = authStatus
+        self.meterLevels = meterLevels
+        self.durationMS = durationMS
+    }
+
+    func availableDevices() -> [AudioInputDevice] { devices }
+    func authorizationStatus() -> MicrophoneAuthStatus { authStatus }
+    func requestAccess() async -> Bool { authStatus == .authorized }
+    func startRecording(deviceUID: String?) async throws -> URL {
+        index = 0
+        return tempURL
+    }
+    func currentMeterLevel() -> Float {
+        guard !meterLevels.isEmpty else { return 0 }
+        let level = meterLevels[min(index, meterLevels.count - 1)]
+        index += 1
+        return level
+    }
+    func stopRecording() async throws -> RecordedVoiceNote {
+        RecordedVoiceNote(url: tempURL, durationMS: durationMS, waveform: [])
+    }
+    func cancelRecording() async {}
 }

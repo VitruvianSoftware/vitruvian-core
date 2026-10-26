@@ -16,8 +16,13 @@ struct MessagesSettingsPane: View {
     /// every way Incognito is turned on: `HideTypingQuestion`); never the preference itself, which would skip the
     /// question.
     let conversation: ConversationModel
+    var voiceRecorder: VoiceRecorderModel? = nil
     @State private var selectedReply: QuickReply.ID?
     @State private var editing: QuickReplyEdit?
+
+    private var activeVoiceRecorder: VoiceRecorderModel {
+        voiceRecorder ?? conversation.composer.voiceRecorder
+    }
 
     var body: some View {
         Form {
@@ -48,6 +53,10 @@ struct MessagesSettingsPane: View {
                 Toggle(
                     String(localized: "Automatically play the next voice note"),
                     isOn: $preferences.autoPlayNextVoiceNote
+                )
+                MicrophoneDevicePicker(
+                    preferences: preferences,
+                    voiceRecorder: activeVoiceRecorder
                 )
             }
             replies
@@ -232,5 +241,24 @@ private struct QuickReplyEditor: View {
         } catch {
             problem = String(localized: "That didn’t work. Try again.")
         }
+    }
+}
+
+private struct MicrophoneDevicePicker: View {
+    @ObservedObject var preferences: ComposerPreferences
+    @ObservedObject var voiceRecorder: VoiceRecorderModel
+
+    var body: some View {
+        Picker(String(localized: "Microphone"), selection: $preferences.preferredMicrophoneUID) {
+            Text(String(localized: "System Default")).tag("")
+            ForEach(voiceRecorder.availableDevices) { device in
+                Text(device.name).tag(device.uid)
+            }
+            if !preferences.preferredMicrophoneUID.isEmpty,
+               !voiceRecorder.availableDevices.contains(where: { $0.uid == preferences.preferredMicrophoneUID }) {
+                Text(preferences.preferredMicrophoneUID).tag(preferences.preferredMicrophoneUID)
+            }
+        }
+        .help(String(localized: "The microphone used when recording voice notes (⌘⇧A)."))
     }
 }

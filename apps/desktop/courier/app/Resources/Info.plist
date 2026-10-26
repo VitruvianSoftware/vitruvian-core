@@ -31,6 +31,8 @@
 	<string>Courier matches people in your chats with your contacts on this Mac. Your contacts never leave this Mac.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>Courier shows your schedule in the calendar pane and adds events from dates in your messages. Your calendar never leaves this Mac.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Courier records voice notes only while you hold record. Recordings stay on this Mac until you send them.</string>
 	<key>NSSupportsAutomaticTermination</key>
 	<false/>
 </dict>

@@ -96,6 +96,8 @@ public protocol MessageSending: AnyObject, Sendable {
     /// message.sendFile, as `send`.
     func sendFile(roomID: String, url: URL, size: Int64, replyTo: String?, threadRoot: String?, holdMillis: Int)
         async throws -> String
+    /// message.sendVoice: records and sends a voice note (.m4a/OGG Opus) with duration and waveform bars.
+    func sendVoice(roomID: String, url: URL, durationMS: Int64, waveform: [Int], replyTo: String?) async throws -> String
     /// message.edit.
     func edit(eventID: String, rich: RichText) async throws
     /// message.schedule.
@@ -124,6 +126,11 @@ public protocol MessageSending: AnyObject, Sendable {
 extension MessageSending {
     /// A sender with nowhere to keep drafts keeps none.
     public func saveDraft(roomID: String, text: String) async throws {}
+
+    public func sendVoice(roomID: String, url: URL, durationMS: Int64, waveform: [Int], replyTo: String?) async throws
+        -> String {
+        ""
+    }
 }
 
 /// The composer's state: the text and its formatting, attachments and reply chip of the open chat, a draft for every
@@ -204,6 +211,8 @@ public final class ComposerModel: ObservableObject {
     /// The composer's settings; nil is every default (undo send off).
     public var preferences: ComposerPreferences?
     public var quickReplies: QuickReplies?
+    /// The composer's voice-note recorder.
+    public let voiceRecorder: VoiceRecorderModel
     /// Called when a send is done, whether it worked or not, so the chat can read what the engine has.
     public var onSettled: @MainActor () -> Void = {}
     /// Called when something is submitted, before it is sent.
@@ -331,7 +340,8 @@ public final class ComposerModel: ObservableObject {
                 sleep: @escaping @Sendable (TimeInterval) async -> Void = { await waitForInboxWindow($0) },
                 preferences: ComposerPreferences? = nil, entitlement: any EntitlementProvider = NoPlan(),
                 quickReplies: QuickReplies? = nil, now: @escaping @MainActor () -> Date = Date.init,
-                typingSleep: @escaping @Sendable (TimeInterval) async -> Void = { await waitForInboxWindow($0) }) {
+                typingSleep: @escaping @Sendable (TimeInterval) async -> Void = { await waitForInboxWindow($0) },
+                voiceRecorder: VoiceRecorderModel? = nil) {
         self.typingSleep = typingSleep
         self.sender = sender
         self.fileInfo = fileInfo
@@ -341,6 +351,7 @@ public final class ComposerModel: ObservableObject {
         self.entitlement = entitlement
         self.quickReplies = quickReplies
         self.now = now
+        self.voiceRecorder = voiceRecorder ?? VoiceRecorderModel()
         held.sender = { [weak self] in self?.sender }
         held.now = now
         held.quote = { [weak self] id in self?.quote(id) }
@@ -380,6 +391,13 @@ public final class ComposerModel: ObservableObject {
     public func handleReturn(modifiers: KeyModifiers) -> ReturnKeyAction {
         let action = Self.action(forReturn: modifiers)
         guard action == .send else { return action }
+        if voiceRecorder.isRecordingOrReviewing {
+            Task { [weak self] in
+                guard let self else { return }
+                await self.voiceRecorder.stopAndSend(using: self)
+            }
+            return action
+        }
         if mode == .new, trimmedText.isEmpty, attachments.isEmpty, let selected = selectedMessage() {
             act(on: selected)
         } else {
@@ -391,6 +409,10 @@ public final class ComposerModel: ObservableObject {
     /// Escape ends an edit (what was in the composer comes back), or else clears the reply chip. False when there
     /// was neither, so the key can do something else.
     public func escape() -> Bool {
+        if voiceRecorder.state != .idle {
+            voiceRecorder.cancelImmediately()
+            return true
+        }
         if isEditing {
             leaveEditing()
             return true
@@ -418,6 +440,9 @@ public final class ComposerModel: ObservableObject {
     /// thread is left.
     public func open(_ room: String?) {
         guard room != roomID else { return }
+        if voiceRecorder.state != .idle {
+            voiceRecorder.cancelImmediately()
+        }
         stopTyping() // leaving the chat
         if isEditing { leaveEditing() }
         mode = .new
@@ -1077,6 +1102,14 @@ public final class ComposerModel: ObservableObject {
     public func submit(archive: Bool = false) -> Task<Void, Never>? {
         guard !isScheduling else { return nil }
         if case let .editing(eventID, original) = mode { return submitEdit(of: eventID, original: original) }
+        if attachments.isEmpty, trimmedText == "/voice", roomID != nil {
+            stopTyping()
+            setContents("", [])
+            notices = []
+            return Task { [weak self] in
+                await self?.startVoiceRecording()
+            }
+        }
         guard canSend, let room = roomID, let sender else { return nil }
         let rich = outgoingText
         guard fitsChat(rich.text) else {
@@ -1095,6 +1128,48 @@ public final class ComposerModel: ObservableObject {
         return enqueue(in: room) { [weak self] in
             await self?.deliver(draft, in: room, thread: thread, hold: hold, archive: archive, with: sender)
         }
+    }
+
+    /// Starts recording a voice note in the open chat (`⌘⇧A`, the microphone button, or `/voice`).
+    public func startVoiceRecording() async {
+        guard roomID != nil else { return }
+        let preferredUID = preferences?.preferredMicrophoneUID ?? ""
+        await voiceRecorder.start(preferredDeviceUID: preferredUID)
+    }
+
+    /// Sends a recorded voice note to the open chat via `message.sendVoice`.
+    public func sendVoiceNote(url: URL, durationMS: Int, waveform: [Int]) async {
+        guard let room = roomID, let sender else { return }
+        let reply = replyTarget
+        replyTarget = nil
+        notices = []
+        stopTyping()
+        onSubmit()
+        let task = enqueue(in: room) { [weak self] in
+            do {
+                let eventID = try await sender.sendVoice(
+                    roomID: room,
+                    url: url,
+                    durationMS: Int64(durationMS),
+                    waveform: waveform,
+                    replyTo: reply?.eventID
+                )
+                self?.onSent(room, eventID)
+            } catch {
+                guard let self else { return }
+                if self.roomID == room, self.replyTarget == nil {
+                    self.replyTarget = reply
+                }
+                switch Self.classify(error) {
+                case let .refused(reason):
+                    self.show([.sendFailed(reason: reason)], in: room)
+                case .unanswered:
+                    self.show([.noAnswer], in: room)
+                }
+            }
+            self?.onSettled()
+        }
+        await task.value
     }
 
     /// Runs `work` after the chat's sends before it, so a chat's messages and edits go in the order given.

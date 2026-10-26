@@ -411,6 +411,11 @@ final class ThreadMessageSender: MessageSending {
                                 holdMillis: holdMillis)
     }
 
+    func sendVoice(roomID: String, url: URL, durationMS: Int64, waveform: [Int], replyTo: String?) async throws
+        -> String {
+        try await base.sendVoice(roomID: roomID, url: url, durationMS: durationMS, waveform: waveform, replyTo: replyTo)
+    }
+
     func edit(eventID: String, rich: RichText) async throws {
         try await base.edit(eventID: eventID, rich: rich)
     }

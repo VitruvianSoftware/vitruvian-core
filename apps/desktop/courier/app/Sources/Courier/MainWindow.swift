@@ -53,6 +53,8 @@ struct MainWindow: View {
             .onDisappear {
                 ui.isMainWindowKey = false
                 search.close()
+                conversation.composer.voiceRecorder.cancelImmediately()
+                conversation.thread.composer.voiceRecorder.cancelImmediately()
             }
             .sheet(isPresented: addingNetwork) {
                 AddNetworkView(login: login)

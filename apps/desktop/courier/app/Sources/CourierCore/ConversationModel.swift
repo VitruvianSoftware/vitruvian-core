@@ -1516,7 +1516,10 @@ public final class ConversationModel: ObservableObject {
     /// Quitting: the chat's composer and the thread pane's each stop my typing, and this returns once those
     /// room.setTyping calls have been answered (each is bounded: `EngineMessageSender.typingTimeout`).
     public func stopTyping() async {
-        for target in [composer, thread.composer] { target.endTyping() }
+        for target in [composer, thread.composer] {
+            target.endTyping()
+            await target.voiceRecorder.cancel()
+        }
         for target in [composer, thread.composer] { await target.waitForTyping() }
     }
 

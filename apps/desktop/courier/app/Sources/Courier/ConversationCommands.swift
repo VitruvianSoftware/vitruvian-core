@@ -57,6 +57,11 @@ struct ConversationCommands: Commands {
             Button(String(localized: "Attach Files…")) { AttachmentPicker.run(into: conversation.composer) }
                 .keyboardShortcut("o", modifiers: .command)
                 .disabled(conversation.roomID == nil)
+            Button(String(localized: "Record Voice Note")) {
+                Task { await composer.startVoiceRecording() }
+            }
+            .keyboardShortcut("a", modifiers: [.command, .shift])
+            .disabled(conversation.roomID == nil)
             Divider()
             Button(conversation.isShowingChatInfo ? String(localized: "Hide Chat Info") : String(localized: "Show Chat Info"),
                    action: conversation.toggleChatInfo)

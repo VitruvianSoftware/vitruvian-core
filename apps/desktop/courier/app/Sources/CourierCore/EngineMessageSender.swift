@@ -57,6 +57,20 @@ public final class EngineMessageSender: MessageSending {
         return sent.eventID
     }
 
+    public func sendVoice(roomID: String, url: URL, durationMS: Int64, waveform: [Int], replyTo: String?) async throws
+        -> String {
+        let size = ComposerModel.readFileInfo(url)?.size ?? 0
+        let params = SendVoiceParams(
+            roomID: roomID,
+            path: url.path,
+            durationMS: durationMS,
+            waveform: waveform.isEmpty ? nil : waveform,
+            replyTo: replyTo
+        )
+        let sent: Sent = try await client().call("message.sendVoice", params, timeout: Self.fileTimeout(forBytes: size))
+        return sent.eventID
+    }
+
     public func edit(eventID: String, rich: RichText) async throws {
         let params = EditParams(eventID: eventID, text: rich.text, entities: rich.entities.isEmpty ? nil : rich.entities)
         let _: Sent = try await client().call("message.edit", params)

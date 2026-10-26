@@ -74,6 +74,11 @@ public final class ComposerPreferences: ObservableObject {
     @Published public var autoPlayNextVoiceNote: Bool {
         didSet { defaults.set(autoPlayNextVoiceNote, forKey: Self.autoPlayNextVoiceNoteKey) }
     }
+    public static let preferredMicrophoneUIDKey = "courier.preferences.preferredMicrophoneUID"
+    /// The selected audio input device UID for recording voice notes (`""` is System Default).
+    @Published public var preferredMicrophoneUID: String {
+        didSet { defaults.set(preferredMicrophoneUID, forKey: Self.preferredMicrophoneUIDKey) }
+    }
 
     /// The key a setting is kept under.
     public static func key(_ name: String) -> String { "courier.composer." + name }
@@ -105,6 +110,7 @@ public final class ComposerPreferences: ObservableObject {
         showIncognitoMark = bool("showIncognitoMark", true)
         showChatUpdatesInTimeline = defaults.object(forKey: Self.showChatUpdatesKey) as? Bool ?? true
         autoPlayNextVoiceNote = defaults.object(forKey: Self.autoPlayNextVoiceNoteKey) as? Bool ?? true
+        preferredMicrophoneUID = defaults.string(forKey: Self.preferredMicrophoneUIDKey) ?? ""
     }
 
     private func set(_ value: Any, _ name: String) {

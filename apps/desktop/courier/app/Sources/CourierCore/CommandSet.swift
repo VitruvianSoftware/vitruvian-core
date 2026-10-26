@@ -263,6 +263,26 @@ public enum CommandSet {
         ]
     }
 
+    /// `hotkey Message: Record Audio` (`⌘⇧A`): starts or stops recording a voice note in the active composer.
+    @MainActor
+    public static func recordAudio(_ composer: ComposerModel) -> CourierCommand {
+        CourierCommand(
+            id: "hotkey Message: Record Audio",
+            title: String(localized: "Record Voice Note"),
+            keys: "⌘⇧A",
+            confirmation: nil,
+            isEnabled: { composer.roomID != nil }
+        ) {
+            Task {
+                if composer.voiceRecorder.isRecordingOrReviewing {
+                    await composer.voiceRecorder.stopAndSend(using: composer)
+                } else {
+                    await composer.startVoiceRecording()
+                }
+            }
+        }
+    }
+
     /// Something in the space shown is unread. The bar's count says so for the whole space; the chats loaded say so
     /// only when the bar doesn't know the space yet.
     @MainActor
