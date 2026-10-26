@@ -36,6 +36,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 CHECK_SH="$HERE/check.sh"
 [ -f "$CHECK_SH" ] || { echo "FATAL: check.sh not found next to $0" >&2; exit 1; }
 
+CHECK_BIN="${1:-${CONFORMANCE_CHECK_BIN:-}}"
+
 OWNERS_BIN="${TEST_SRCDIR:-}/${TEST_WORKSPACE:-_main}/tools/owners/owners"
 [ -x "$OWNERS_BIN" ] || { echo "FATAL: owners generator not in runfiles at $OWNERS_BIN" >&2; exit 1; }
 
@@ -117,7 +119,11 @@ expect_fails() {
 
 # Sets OUT. $2 is the generator path check.sh is told to use.
 run_check() {
-  OUT="$(BUILD_WORKSPACE_DIRECTORY="$1" CONFORMANCE_OWNERS_BIN="$2" NO_COLOR=1 bash "$CHECK_SH" 2>&1)"
+  if [ -n "$CHECK_BIN" ]; then
+    OUT="$(BUILD_WORKSPACE_DIRECTORY="$1" CONFORMANCE_OWNERS_BIN="$2" NO_COLOR=1 "$CHECK_BIN" 2>&1)"
+  else
+    OUT="$(BUILD_WORKSPACE_DIRECTORY="$1" CONFORMANCE_OWNERS_BIN="$2" NO_COLOR=1 bash "$CHECK_SH" 2>&1)"
+  fi
 }
 
 # --- case 1: in sync -----------------------------------------------------------

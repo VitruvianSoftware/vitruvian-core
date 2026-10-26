@@ -50,11 +50,19 @@ set -uo pipefail
 CHECK_SH="$(cd "$(dirname "$0")" && pwd)/check.sh"
 [ -f "$CHECK_SH" ] || { echo "FATAL: check.sh not found next to $0" >&2; exit 1; }
 
+CHECK_BIN="${1:-${CONFORMANCE_CHECK_BIN:-}}"
+
 FAILURES=0
 CASES=0
 TAB="$(printf '\t')"
 
-run_check() { BUILD_WORKSPACE_DIRECTORY="$1" bash "$CHECK_SH" 2>&1; }
+run_check() {
+  if [ -n "$CHECK_BIN" ]; then
+    BUILD_WORKSPACE_DIRECTORY="$1" "$CHECK_BIN" 2>&1
+  else
+    BUILD_WORKSPACE_DIRECTORY="$1" bash "$CHECK_SH" 2>&1
+  fi
+}
 
 # The "Delivery orchestrator ..." group only. Other sections of the report must
 # not be able to influence a verdict here.

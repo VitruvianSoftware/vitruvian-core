@@ -51,6 +51,8 @@ set -uo pipefail
 CHECK_SH="$(cd "$(dirname "$0")" && pwd)/check.sh"
 [ -f "$CHECK_SH" ] || { echo "FATAL: check.sh not found next to $0" >&2; exit 1; }
 
+CHECK_BIN="${1:-${CONFORMANCE_CHECK_BIN:-}}"
+
 FAILURES=0
 CASES=0
 
@@ -119,7 +121,13 @@ expect() {
   esac
 }
 
-run_check() { BUILD_WORKSPACE_DIRECTORY="$1" bash "$CHECK_SH" 2>&1; }
+run_check() {
+  if [ -n "$CHECK_BIN" ]; then
+    BUILD_WORKSPACE_DIRECTORY="$1" "$CHECK_BIN" 2>&1
+  else
+    BUILD_WORKSPACE_DIRECTORY="$1" bash "$CHECK_SH" 2>&1
+  fi
+}
 
 # --- case 1: pull_request `branches:` on a required check is the wedge --------
 # The whole point of the fix. Without it this line reads "producible".
@@ -379,6 +387,11 @@ case_pnpm_unpinned_fails() {
 # it is checked structurally against the source, where it holds for all 69
 # fail-emit sites today.
 case_every_fail_emit_sets_overall_fail() {
+  if [ -n "$CHECK_BIN" ]; then
+    CASES=$((CASES + 1))
+    printf 'SKIP  source-level OVERALL_FAIL check (Rust binary, not applicable)\n'
+    return 0
+  fi
   offenders="$(awk '
     /emit .*GLYPH_FAIL/ { site = NR; found = 0 }
     site && NR > site && NR <= site + 10 && /OVERALL_FAIL=1/ { found = 1 }
