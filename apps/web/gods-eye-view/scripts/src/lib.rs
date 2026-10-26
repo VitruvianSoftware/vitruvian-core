@@ -19,8 +19,17 @@
 // SOFTWARE.
 
 pub mod build_military_names;
+pub mod cesium_render;
+pub mod check_format_scope;
+pub mod check_import_directions;
+pub mod check_package_boundaries;
 pub mod dev_helpers;
 pub mod opensky_import_client;
+pub mod pano_pinhole;
+pub mod sat_ortho;
+pub mod streetview_headings;
+pub mod streetview_panorama;
+pub mod tle_mirror;
 pub mod verify_cesium_assets;
 
 #[cfg(test)]
@@ -821,5 +830,398 @@ mod tests {
         assert!(build_military_names::parse_osm_record_id("n1").is_none());
         assert!(build_military_names::parse_osm_record_id("").is_none());
         assert!(build_military_names::parse_osm_record_id("n1@1extra").is_none());
+    }
+
+    // ---- 1. cesium_render ----
+
+    #[test]
+    fn cesium_render_direct_and_lookat_args() {
+        let direct = cesium_render::parse_args(&[
+            "--lat".into(),
+            "30.266476".into(),
+            "--lon".into(),
+            "-97.73719".into(),
+            "--heading".into(),
+            "270".into(),
+            "--pitch".into(),
+            "-15".into(),
+            "--height".into(),
+            "8".into(),
+        ])
+        .unwrap();
+        assert_eq!(direct.mode, cesium_render::RenderMode::Direct);
+        assert_eq!(
+            cesium_render::build_output_filename(&direct),
+            "cesium_30.266476_-97.73719_h270_p-15_8m_1280x720.jpg"
+        );
+
+        let lookat = cesium_render::parse_args(&[
+            "--lookat-lat".into(),
+            "30.266476".into(),
+            "--lookat-lon".into(),
+            "-97.73719".into(),
+            "--heading".into(),
+            "270".into(),
+            "--pitch".into(),
+            "-30".into(),
+            "--height".into(),
+            "20".into(),
+        ])
+        .unwrap();
+        assert_eq!(lookat.mode, cesium_render::RenderMode::LookAt);
+        assert_eq!(
+            cesium_render::build_output_filename(&lookat),
+            "cesium_lookat_30.266476_-97.73719_h270_p-30_20m_1280x720.jpg"
+        );
+        let url = cesium_render::build_render_url(8080, &lookat, "testkey");
+        assert!(url.contains("mode=lookat"));
+        assert!(url.contains("targetLat=30.266476"));
+        assert!(url.contains("targetLon=-97.73719"));
+
+        let (cam_lat, cam_lon, dist) =
+            cesium_render::compute_lookat_camera_offset(30.266476, -97.73719, 270.0, -30.0, 20.0);
+        assert!((dist - 40.0).abs() < 0.01);
+        assert!((cam_lat - 30.266476).abs() < 1e-6);
+        assert!(cam_lon > -97.73719);
+    }
+
+    #[test]
+    fn cesium_render_validation_errors() {
+        assert!(cesium_render::parse_args(&["--lat".into(), "30.0".into()])
+            .unwrap_err()
+            .contains("must both be provided"));
+        assert!(cesium_render::parse_args(&["--lookat-lat".into(), "30.0".into()])
+            .unwrap_err()
+            .contains("must both be provided"));
+        assert!(cesium_render::parse_args(&[
+            "--lat".into(),
+            "30.0".into(),
+            "--lon".into(),
+            "-97.0".into(),
+            "--lookat-lat".into(),
+            "30.0".into(),
+            "--lookat-lon".into(),
+            "-97.0".into()
+        ])
+        .unwrap_err()
+        .contains("not both"));
+        assert!(cesium_render::parse_args(&[
+            "--lookat-lat".into(),
+            "30.0".into(),
+            "--lookat-lon".into(),
+            "-97.0".into(),
+            "--pitch".into(),
+            "5".into()
+        ])
+        .unwrap_err()
+        .contains("must be negative in lookat mode"));
+    }
+
+    // ---- 2. pano_pinhole ----
+
+    #[test]
+    fn pano_pinhole_reprojection_and_fov_math() {
+        let metrics = pano_pinhole::compute_camera_fovs(1920, 1080, 90.0, None);
+        assert!((metrics.focal_px - 960.0).abs() < 1e-6);
+        assert!((metrics.hfov_deg - 90.0).abs() < 1e-6);
+        assert_eq!(metrics.fov_label, "fov90");
+
+        let p_w = 8usize;
+        let p_h = 4usize;
+        let mut pano = vec![0u8; p_w * p_h * 3];
+        for i in 0..(p_w * p_h) {
+            pano[i * 3] = 100;
+            pano[i * 3 + 1] = 150;
+            pano[i * 3 + 2] = 200;
+        }
+        let out = pano_pinhole::render_view(&pano, p_w, p_h, 0.0, 0.0, 0.0, 4.0, 4, 4);
+        assert_eq!(out.len(), 4 * 4 * 3);
+        for px in out.chunks_exact(3) {
+            assert_eq!(px, &[100, 150, 200]);
+        }
+
+        let rot = pano_pinhole::build_rotation_matrix(0.0, 0.0, 0.0);
+        let v = pano_pinhole::rotate_vec(&rot, 0.0, 0.0, 1.0);
+        assert!((v[0]).abs() < 1e-9 && (v[1]).abs() < 1e-9 && (v[2] - 1.0).abs() < 1e-9);
+    }
+
+    // ---- 3. sat_ortho ----
+
+    #[test]
+    fn sat_ortho_slippy_tile_and_grid_math() {
+        let (tx, ty) = sat_ortho::lat_lon_to_tile(30.266476, -97.73719, 21);
+        let tile_x = tx.floor() as i64;
+        let tile_y = ty.floor() as i64;
+        let px_x = (tx - tile_x as f64) * 256.0;
+        let px_y = (ty - tile_y as f64) * 256.0;
+        let (lat_back, lon_back) = sat_ortho::tile_px_to_lat_lon(tile_x, tile_y, px_x, px_y, 21);
+        assert!((lat_back - 30.266476).abs() < 1e-6);
+        assert!((lon_back - -97.73719).abs() < 1e-6);
+
+        let grid = sat_ortho::compute_ortho_grid(30.266476, -97.73719, 21, 512);
+        assert!(grid.grid_w >= 3 && grid.grid_h >= 3);
+        assert_eq!(grid.total_tiles, (grid.grid_w * grid.grid_h) as usize);
+        assert!(grid.nw_corner.0 > grid.se_corner.0);
+        assert!(grid.nw_corner.1 < grid.se_corner.1);
+    }
+
+    // ---- 4. streetview_headings ----
+
+    #[test]
+    fn streetview_headings_haversine_and_jsonp() {
+        let d = streetview_headings::haversine_distance_m(30.268066, -97.742813, 30.268156, -97.742813);
+        assert!(d > 9.5 && d < 10.5);
+
+        let jsonp = r#"_ && _([null,[null,null,null,null,null,[[null,null,null,[[[null,null,[[null,null,30.268066,-97.742813]]],[null,null,[[null,null,30.268140,-97.742813]],[null,null,[["Congress Ave"]]]],[null,null,[[null,null,30.270000,-97.742813]],[null,null,[["Far St"]]]]]]]]]])"#;
+        let neighbors = streetview_headings::parse_neighbor_locations_jsonp(jsonp, 15.0);
+        assert_eq!(neighbors.len(), 1);
+        assert_eq!(neighbors[0].street.as_deref(), Some("Congress Ave"));
+    }
+
+    // ---- 5. streetview_panorama ----
+
+    #[test]
+    fn streetview_panorama_grid_and_selection() {
+        let z0 = streetview_panorama::panorama_grid_dimensions(0, 512, 512);
+        assert_eq!((z0.tiles_x, z0.tiles_y, z0.total_tiles), (1, 1, 1));
+        let z3 = streetview_panorama::panorama_grid_dimensions(3, 512, 512);
+        assert_eq!((z3.tiles_x, z3.tiles_y, z3.total_tiles), (8, 4, 32));
+        let z5 = streetview_panorama::panorama_grid_dimensions(5, 512, 512);
+        assert_eq!((z5.tiles_x, z5.tiles_y, z5.total_tiles), (32, 16, 512));
+
+        let probes = streetview_panorama::probe_points(30.0, -97.0);
+        assert_eq!(probes.len(), 9);
+    }
+
+    // ---- 6. tle_mirror ----
+
+    #[test]
+    fn tle_mirror_retry_and_preservation() {
+        let tmp = std::env::temp_dir().join("gev_test_tle_mirror_unit");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::fs::write(tmp.join("visual.txt"), "previous visual\n").unwrap();
+
+        let tle = "ISS (ZARYA)\n1 25544U 98067A   26280.50000000  .00010000  00000-0  18000-3 0  9990\n2 25544  51.6400 100.0000 0005000 100.0000 260.0000 15.50000000400000\n";
+        let mut calls = Vec::new();
+        let groups = ["stations", "visual", "geo", "galileo"];
+
+        let failed = tle_mirror::mirror_with_fetcher(
+            &tmp,
+            &groups,
+            std::time::Duration::ZERO,
+            |url| {
+                let group = url
+                    .split("GROUP=")
+                    .nth(1)
+                    .and_then(|s| s.split('&').next())
+                    .unwrap_or("")
+                    .to_string();
+                calls.push(group.clone());
+                match group.as_str() {
+                    "stations" => Ok(tle_mirror::HttpResponse {
+                        status: 200,
+                        body: tle.to_string(),
+                    }),
+                    "visual" => Ok(tle_mirror::HttpResponse {
+                        status: 200,
+                        body: "<html>error</html>".to_string(),
+                    }),
+                    "geo" => Ok(tle_mirror::HttpResponse {
+                        status: 403,
+                        body: "nope".to_string(),
+                    }),
+                    "galileo" => {
+                        let count = calls.iter().filter(|g| *g == "galileo").count();
+                        if count == 1 {
+                            Err("fetch failed".to_string())
+                        } else {
+                            Ok(tle_mirror::HttpResponse {
+                                status: 200,
+                                body: tle.to_string(),
+                            })
+                        }
+                    }
+                    _ => Err("unknown".to_string()),
+                }
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            failed,
+            vec![
+                "visual: no TLE lines in the response".to_string(),
+                "geo: HTTP 403".to_string()
+            ]
+        );
+        assert_eq!(std::fs::read_to_string(tmp.join("stations.txt")).unwrap(), tle);
+        assert_eq!(std::fs::read_to_string(tmp.join("galileo.txt")).unwrap(), tle);
+        assert_eq!(
+            calls,
+            vec!["stations", "visual", "visual", "geo", "geo", "galileo", "galileo"]
+        );
+        assert_eq!(
+            std::fs::read_to_string(tmp.join("visual.txt")).unwrap(),
+            "previous visual\n"
+        );
+        assert!(!tmp.join("geo.txt").exists());
+        assert!(tle_mirror::has_tle(tle) && !tle_mirror::has_tle("<html>error</html>"));
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    // ---- 7. check_import_directions & analyze_module ----
+
+    #[test]
+    fn module_analysis_parses_imports_and_browser_globals() {
+        let res = check_import_directions::analyze_module(
+            "// import('node:fs'); document\nimport x from 'one'; export { x } from 'two'; export * from 'three'; import('four'); const data = { document: 1 }; data.window;",
+        )
+        .unwrap();
+        assert_eq!(res.imports, vec!["one", "two", "three", "four"]);
+        assert!(res.browser.is_empty());
+
+        let res2 = check_import_directions::analyze_module(
+            "const data = { element: document }; globalThis['navigator'];",
+        )
+        .unwrap();
+        assert_eq!(res2.browser, vec!["document", "navigator"]);
+
+        assert!(check_import_directions::analyze_module("import(name)")
+            .unwrap_err()
+            .contains("Computed"));
+        assert!(check_import_directions::analyze_module("require('node:fs')")
+            .unwrap_err()
+            .contains("ES imports"));
+    }
+
+    #[test]
+    fn check_import_directions_fixture_rules() {
+        let tmp = std::env::temp_dir().join("gev_test_import_directions_fixture");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(tmp.join("src/layers/demo")).unwrap();
+        std::fs::create_dir_all(tmp.join("src/standalone")).unwrap();
+        std::fs::create_dir_all(tmp.join("src/data")).unwrap();
+
+        std::fs::write(
+            tmp.join("package.json"),
+            r#"{"name":"@gods-eye-view/core","exports":{"./layers/demo/source":"./src/layers/demo/source.js"}}"#,
+        )
+        .unwrap();
+        std::fs::write(tmp.join("src/data/feedState.js"), "").unwrap();
+        std::fs::write(
+            tmp.join("src/layers/demo/source.js"),
+            "export { read } from './records.js';",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("src/layers/demo/records.js"),
+            "export const read = (value) => value;",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("src/standalone/catalog.js"),
+            "import '../layers/demo/index.js';",
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("src/layers/demo/index.js"),
+            "import * as Cesium from 'cesium';",
+        )
+        .unwrap();
+
+        let summary = check_import_directions::check_import_directions(&tmp).unwrap();
+        assert_eq!(summary.modules, 5);
+
+        // Violation: source imports rendering
+        std::fs::write(tmp.join("src/layers/demo/rendering.js"), "").unwrap();
+        std::fs::write(
+            tmp.join("src/layers/demo/source.js"),
+            "import './rendering.js';",
+        )
+        .unwrap();
+        let err = check_import_directions::check_import_directions(&tmp).unwrap_err();
+        assert!(err.contains("Source imports rendering"));
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    // ---- 8. check_package_boundaries ----
+
+    #[test]
+    fn check_package_boundaries_fixture_rules() {
+        let tmp = std::env::temp_dir().join("gev_test_pkg_boundaries_fixture");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(tmp.join("scripts")).unwrap();
+
+        std::fs::write(
+            tmp.join("package.json"),
+            r#"{"name":"boundary-fixture","type":"module","exports":{"./feature":"./entry.js"}}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("scripts/package-boundaries.json"),
+            r#"{"feature":{"exports":["./feature"],"modules":["entry.js"],"external":[]}}"#,
+        )
+        .unwrap();
+        std::fs::write(tmp.join("entry.js"), "export const value = 1;").unwrap();
+
+        let reports = check_package_boundaries::check_package_boundaries(&tmp).unwrap();
+        assert_eq!(
+            reports,
+            vec![check_package_boundaries::BoundaryReport {
+                name: "feature".into(),
+                exports: 1,
+                modules: 1
+            }]
+        );
+
+        // Unowned import violation
+        std::fs::write(tmp.join("startup.js"), "export const app = 2;").unwrap();
+        std::fs::write(
+            tmp.join("entry.js"),
+            "import { app } from './startup.js'; export const value = 1;",
+        )
+        .unwrap();
+        let err = check_package_boundaries::check_package_boundaries(&tmp).unwrap_err();
+        assert!(err.contains("unowned module") && err.contains("startup"));
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    // ---- 9. check_format_scope ----
+
+    #[test]
+    fn check_format_scope_fixture_rules() {
+        let tmp = std::env::temp_dir().join("gev_test_format_scope_fixture");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(tmp.join("scripts")).unwrap();
+
+        std::fs::write(tmp.join("scripts/format-scope.json"), r#"["adopted.js"]"#).unwrap();
+        std::fs::write(tmp.join(".prettierignore"), "ignored.js\n").unwrap();
+        std::fs::write(tmp.join("adopted.js"), "const value=\"yes\"\r\n").unwrap();
+        std::fs::write(tmp.join("legacy.js"), "const untouched=\"yes\"").unwrap();
+
+        let check1 = check_format_scope::format_adopted_files(&tmp, "--check").unwrap();
+        assert_eq!(check1.changed, vec!["adopted.js".to_string()]);
+        assert_eq!(
+            std::fs::read_to_string(tmp.join("adopted.js")).unwrap(),
+            "const value=\"yes\"\r\n"
+        );
+
+        check_format_scope::format_adopted_files(&tmp, "--write").unwrap();
+        assert_eq!(
+            std::fs::read_to_string(tmp.join("adopted.js")).unwrap(),
+            "const value = 'yes';\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(tmp.join("legacy.js")).unwrap(),
+            "const untouched=\"yes\""
+        );
+        let check2 = check_format_scope::format_adopted_files(&tmp, "--check").unwrap();
+        assert!(check2.changed.is_empty());
+
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }

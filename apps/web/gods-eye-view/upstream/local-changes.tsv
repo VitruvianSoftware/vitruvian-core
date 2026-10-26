@@ -16,7 +16,7 @@ Dockerfile	modified	The production image, published to GHCR and deployed by gito
 OWNERS	added	Monorepo code ownership.
 server.mjs	added	The production server the image runs. Upstream serves its /api routes from its Vite dev server; this serves dist/ and mounts upstream's own provider plugins through their configurePreviewServer hooks, as `vite preview` does, so upstream's routes reach production with each sync.
 scripts/bazel-unit-tests.mjs	added	Bazel entry point for upstream's test runner: puts a real node ahead of the rules_js shim, which upstream's spawned scripts cannot use.
-scripts/src/	added	Native Rust ports of the helper scripts (`build-military-names`, `verify-cesium-assets`, `opensky-import-client`, `dev-cctv`, `dev-fresh`, `dev-secure`) and their unit tests.
+scripts/src/	added	Native Rust ports of the helper scripts (`build-military-names`, `verify-cesium-assets`, `opensky-import-client`, `dev-cctv`, `dev-fresh`, `dev-secure`), standalone CLI tools (`cesium-render`, `pano-pinhole`, `sat-ortho`, `streetview-headings`, `streetview-panorama`), CelesTrak TLE mirror (`tle-mirror`), and architecture/format boundary checks (`check-import-directions`, `check-package-boundaries`, `check-format-scope`), plus their unit tests.
 scripts/verify-cesium-assets.sh	added	:cesium_assets_test, which checks the bundle carries Cesium's static assets.
 src/camera.test.mjs	added	Pins HOME_VIEW, the landing view src/camera.js adds.
 tests/e2e/	added	The monorepo's end-to-end suite against the production server.
@@ -35,7 +35,7 @@ src/camera.js	modified	HOME_VIEW, one constant for the landing view, and flyToHo
 src/data/bundledJson.test.mjs	modified	git grep exits 128 in the Bazel sandbox, which has no .git, as well as 1 for no match.
 src/services/requests.test.mjs	modified	The stalled request holds a timer, so node does not exit before the abort under Bazel, and an already-aborted signal rejects at once.
 src/tools/places.test.mjs	modified	The stalled lookups hold a timer, so node does not exit before the abort under Bazel, and an already-aborted signal rejects at once.
-vite.config.js	modified	Replaces vite-plugin-cesium's asset copy with a dereferencing one, because the rules_js fs patches reject its walk over pnpm's symlinks and the bundle shipped without dist/cesium.
+vite.config.js	modified	Replaces vite-plugin-cesium's asset copy with a dereferencing one, because the rules_js fs patches reject its walk over pnpm's symlinks and the bundle shipped without dist/cesium; materializes index.html in place during Bazel builds so Rolldown's native canonicalize stays inside darwin-sandbox.
 src/cyberSonarGpu.js	modified	CYBER_SONAR_CESIUM_VERSION names the cesium release the repository resolves (package.json pins it at the monorepo version), so it follows that version, not upstream's.
 src/data/infrastructure.test.mjs	modified	Asserts the consumer build stays in src/data and src/sources rather than an exact module list: Vite 8, at the monorepo's one version, chunks the build differently from upstream's Vite 6 (#3601).
 scripts/i18n.mjs	modified	The Bazel test sandbox has no .git, so `git ls-files` fails and the i18n catalog tests could not list the sources; it falls back to walking the tree for the same pathspecs.

@@ -199,6 +199,110 @@ rust_binary(
     deps = [":scripts_rs_lib"],
 )
 
+rust_binary(
+    name = "cesium_render_rs",
+    srcs = ["scripts/src/bin/cesium_render.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/web/gods-eye-view:__subpackages__"],
+    deps = [":scripts_rs_lib"],
+)
+
+rust_binary(
+    name = "pano_pinhole_rs",
+    srcs = ["scripts/src/bin/pano_pinhole.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/web/gods-eye-view:__subpackages__"],
+    deps = [":scripts_rs_lib"],
+)
+
+rust_binary(
+    name = "sat_ortho_rs",
+    srcs = ["scripts/src/bin/sat_ortho.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/web/gods-eye-view:__subpackages__"],
+    deps = [":scripts_rs_lib"],
+)
+
+rust_binary(
+    name = "streetview_headings_rs",
+    srcs = ["scripts/src/bin/streetview_headings.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/web/gods-eye-view:__subpackages__"],
+    deps = [":scripts_rs_lib"],
+)
+
+rust_binary(
+    name = "streetview_panorama_rs",
+    srcs = ["scripts/src/bin/streetview_panorama.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/web/gods-eye-view:__subpackages__"],
+    deps = [":scripts_rs_lib"],
+)
+
+rust_binary(
+    name = "tle_mirror_rs",
+    srcs = ["scripts/src/bin/tle_mirror.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/web/gods-eye-view:__subpackages__"],
+    deps = [":scripts_rs_lib"],
+)
+
+rust_binary(
+    name = "check_import_directions_rs",
+    srcs = ["scripts/src/bin/check_import_directions.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/web/gods-eye-view:__subpackages__"],
+    deps = [":scripts_rs_lib"],
+)
+
+rust_binary(
+    name = "check_package_boundaries_rs",
+    srcs = ["scripts/src/bin/check_package_boundaries.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/web/gods-eye-view:__subpackages__"],
+    deps = [":scripts_rs_lib"],
+)
+
+rust_binary(
+    name = "check_format_scope_rs",
+    srcs = ["scripts/src/bin/check_format_scope.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/web/gods-eye-view:__subpackages__"],
+    deps = [":scripts_rs_lib"],
+)
+
+boundary_check_data = [
+    ".gitignore",
+    ".prettierignore",
+    ".prettierrc.json",
+    "package.json",
+    "style.css",
+    "vite.config.js",
+] + glob(
+    [
+        "build/**",
+        "config/**",
+        "docs/**",
+        "pinokio/**",
+        "public/**",
+        "scripts/**",
+        "server/**",
+        "src/**",
+        "tle-mirror/**",
+        "tools/**",
+    ],
+    exclude = ["scripts/src/**"],
+)
+
 rust_test(
     name = "scripts_rs_test",
     size = "small",
@@ -218,6 +322,50 @@ rust_test(
     data = [":build"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
+    deps = [":scripts_rs_lib"],
+)
+
+rust_test(
+    name = "tle_mirror_rs_test",
+    size = "small",
+    srcs = ["scripts/src/bin/tle_mirror.rs"],
+    data = boundary_check_data,
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/web/gods-eye-view:__subpackages__"],
+    deps = [":scripts_rs_lib"],
+)
+
+rust_test(
+    name = "check_import_directions_rs_test",
+    size = "small",
+    srcs = ["scripts/src/bin/check_import_directions.rs"],
+    data = boundary_check_data,
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/web/gods-eye-view:__subpackages__"],
+    deps = [":scripts_rs_lib"],
+)
+
+rust_test(
+    name = "check_package_boundaries_rs_test",
+    size = "small",
+    srcs = ["scripts/src/bin/check_package_boundaries.rs"],
+    data = boundary_check_data,
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/web/gods-eye-view:__subpackages__"],
+    deps = [":scripts_rs_lib"],
+)
+
+rust_test(
+    name = "check_format_scope_rs_test",
+    size = "small",
+    srcs = ["scripts/src/bin/check_format_scope.rs"],
+    data = boundary_check_data,
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/web/gods-eye-view:__subpackages__"],
     deps = [":scripts_rs_lib"],
 )
 
@@ -292,6 +440,7 @@ rust_test(
     name = "e2e_rs_test",
     size = "small",
     crate = ":e2e_rs_lib",
+    data = ["BUILD.bazel"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     tags = ["local"],

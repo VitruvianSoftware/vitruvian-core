@@ -185,6 +185,16 @@ pub fn find_repo_root() -> PathBuf {
             {
                 return cur.to_path_buf();
             }
+            if let Ok(canon) = std::fs::canonicalize(cur.join("apps/web/gods-eye-view/BUILD.bazel"))
+            {
+                let mut ancestor = canon.as_path();
+                while let Some(p) = ancestor.parent() {
+                    if p.join("MODULE.bazel").is_file() || p.join("pnpm-workspace.yaml").is_file() {
+                        return p.to_path_buf();
+                    }
+                    ancestor = p;
+                }
+            }
             match cur.parent() {
                 Some(parent) if parent != cur => cur = parent,
                 _ => break,
