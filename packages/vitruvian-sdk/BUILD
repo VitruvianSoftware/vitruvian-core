@@ -358,19 +358,6 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
-py_test(
-    name = "conformance_rs_parity_test",
-    size = "small",
-    srcs = [
-        "conformance/conformance.py",
-        "conformance/conformance_rs_parity_test.py",
-        "conformance/conformance_test.py",
-    ],
-    args = ["$(rootpath :conformance_rs)"],
-    data = REFERENCE_TOOL + REFERENCE_TOOL_2 + [":conformance_rs"],
-    main = "conformance/conformance_rs_parity_test.py",
-)
-
 # Native Rust verification suites and reference tools (std + conformance_rs_lib only,
 # zero external crates).
 rust_library(

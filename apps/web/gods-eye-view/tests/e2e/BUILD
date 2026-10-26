@@ -2,90 +2,50 @@
 # SPDX-License-Identifier: MIT
 
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 package(default_visibility = ["//visibility:public"])
 
 exports_files(glob(["src/**/*.rs"]))
 
-sh_binary(
+alias(
     name = "runner",
-    srcs = ["run-e2e-tests.sh"],
-    data = [
-        ":tier1_feature_test.sh",
-        ":tier2_boundary_test.sh",
-        ":tier3_combination_test.sh",
-        ":tier4_scenario_test.sh",
-        ":tier5_adversarial_test.sh",
-    ],
+    actual = ":run_e2e_tests_rs",
 )
 
-sh_test(
+test_suite(
     name = "tier1_feature_test",
-    size = "medium",
-    srcs = ["tier1_feature_test.sh"],
-    tags = [
-        "local",
-        "manual",
-    ],
+    tags = ["local"],
+    tests = [":tier1_feature_rs_test"],
 )
 
-sh_test(
+test_suite(
     name = "tier2_boundary_test",
-    size = "medium",
-    srcs = ["tier2_boundary_test.sh"],
-    tags = [
-        "local",
-        "manual",
-    ],
+    tags = ["local"],
+    tests = [":tier2_boundary_rs_test"],
 )
 
-sh_test(
+test_suite(
     name = "tier3_combination_test",
-    size = "medium",
-    srcs = ["tier3_combination_test.sh"],
-    tags = [
-        "local",
-        "manual",
-    ],
+    tags = ["local"],
+    tests = [":tier3_combination_rs_test"],
 )
 
-sh_test(
+test_suite(
     name = "tier4_scenario_test",
-    size = "medium",
-    srcs = ["tier4_scenario_test.sh"],
-    tags = [
-        "local",
-        "manual",
-    ],
+    tags = ["local"],
+    tests = [":tier4_scenario_rs_test"],
 )
 
-sh_test(
+test_suite(
     name = "tier5_adversarial_test",
-    size = "medium",
-    srcs = ["tier5_adversarial_test.sh"],
-    tags = [
-        "local",
-        "manual",
-    ],
+    tags = ["local"],
+    tests = [":tier5_adversarial_rs_test"],
 )
 
-sh_test(
+test_suite(
     name = "run_e2e_tests",
-    size = "large",
-    srcs = ["run-e2e-tests.sh"],
-    data = [
-        ":tier1_feature_test.sh",
-        ":tier2_boundary_test.sh",
-        ":tier3_combination_test.sh",
-        ":tier4_scenario_test.sh",
-        ":tier5_adversarial_test.sh",
-    ],
-    tags = [
-        "local",
-        "manual",
-    ],
+    tags = ["local"],
+    tests = [":e2e_rs_test"],
 )
 
 rust_library(
