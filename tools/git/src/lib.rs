@@ -30,7 +30,50 @@ use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 
-const GIT_SH: &str = include_str!("../git.sh");
+const GIT_SH_HEADER: &str = r#"# git.sh — the git writes agents make, with the safety checks built in.
+#
+# Run from inside your worktree (made with //tools/worktree), never the main checkout.
+#
+# Save work:
+#   bazel run //tools/git:commit -- -m "fix(scope): what changed" <paths>...
+#   bazel run //tools/git:commit -- -m "feat(x): y" -m "Co-Authored-By: ..." --all
+#   bazel run //tools/git:commit -- -F msg.txt <paths>...
+#   bazel run //tools/git:commit -- --fixup <sha> <paths>...  # fold into <sha> later with sync --autosquash
+#   bazel run //tools/git:commit -- --agent <name> -m "..." <paths>  # commit as that agent's bot
+#   bazel run //tools/git:commit                              # during a merge: finish it
+#
+#   It stages the paths you name (or everything with --all), scans what is staged
+#   for secrets, and commits. It refuses on main, in the main checkout, when
+#   nothing is staged, when the scan finds something, and when a merge still has
+#   conflict markers. With --agent <name> the author and committer are that
+#   agent's GitHub App bot, from //tools/agent-app; without it, whoever
+#   GIT_AUTHOR_*/GIT_COMMITTER_* or git config say.
+#
+# Publish work:
+#   bazel run //tools/git:push                         # push this branch, set its upstream
+#   bazel run //tools/git:push -- --agent <name>       # push as that agent's GitHub App
+#   bazel run //tools/git:push -- --force-with-lease   # after a rebase (sync); never plain --force
+#   bazel run //tools/git:push -- --dry-run            # say what would be pushed
+#
+#   It never pushes main, and scans the commits it is about to publish first.
+#
+# Catch up with main:
+#   bazel run //tools/git:sync                    # fetch, then rebase this branch onto origin/main
+#   bazel run //tools/git:sync -- --autosquash    # ...and fold in --fixup commits
+#   bazel run //tools/git:sync -- --autosquash --keep-base  # fold them in where the branch is; main stays out
+#   bazel run //tools/git:sync -- --merge         # merge origin/main in instead (no force-push needed)
+#   bazel run //tools/git:sync -- --abort         # give up an unfinished merge or rebase
+#
+#   It refuses when you have uncommitted changes (it never stashes: the stash is
+#   shared by every worktree). A rebase that hits a conflict is undone and the
+#   files listed. A merge that hits one is left for you to finish. A branch
+#   that already has merge commits is never rebased (that would drop them):
+#   keep using --merge.
+#
+# Exit codes: 0 done, 1 refused or failed (the reason and what to run instead
+# are printed), 2 bad arguments.
+
+set -euo pipefail"#;
 
 const CONVENTIONAL_TYPES: &[&str] = &[
     "feat", "fix", "docs", "chore", "ci", "build", "refactor", "perf", "test", "style", "revert",
@@ -215,7 +258,7 @@ fn io_err_msg(err: &io::Error) -> Vec<u8> {
 pub fn usage_text() -> String {
     let mut lines = Vec::new();
     let mut in_block = false;
-    for line in GIT_SH.split('\n') {
+    for line in GIT_SH_HEADER.split('\n') {
         if !in_block {
             if line.starts_with("# git.sh") {
                 in_block = true;

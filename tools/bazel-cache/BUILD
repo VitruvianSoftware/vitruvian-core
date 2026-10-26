@@ -1,9 +1,5 @@
 # gazelle:ignore
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
-
-exports_files(["bazel-cache.sh"])
 
 rust_library(
     name = "bazel_cache_lib",
@@ -38,28 +34,6 @@ alias(
     visibility = ["//visibility:public"],
 )
 
-sh_binary(
-    name = "gc-sh",
-    srcs = ["bazel-cache.sh"],
-    args = ["gc"],
-    visibility = ["//visibility:public"],
-)
-
-sh_test(
-    name = "bazel-cache_test",
-    size = "small",
-    srcs = ["bazel-cache_test.sh"],
-    data = ["bazel-cache.sh"],
-)
-
-sh_test(
-    name = "gc-rs_test",
-    size = "small",
-    srcs = ["bazel-cache_test.sh"],
-    args = ["$(rootpath :gc)"],
-    data = [":gc"],
-)
-
 rust_test(
     name = "bazel_cache_lib_test",
     size = "small",
@@ -68,16 +42,12 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
-sh_test(
-    name = "gc-rs-parity_test",
-    size = "medium",
-    srcs = ["bazel-cache-rs-parity_test.sh"],
-    args = [
-        "$(rootpath :bazel-cache.sh)",
-        "$(rootpath :gc)",
-    ],
-    data = [
-        "bazel-cache.sh",
-        ":gc",
-    ],
+test_suite(
+    name = "gc_test",
+    tests = [":bazel_cache_lib_test"],
+)
+
+test_suite(
+    name = "bazel-cache_test",
+    tests = [":bazel_cache_lib_test"],
 )
