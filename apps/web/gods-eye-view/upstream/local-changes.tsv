@@ -8,7 +8,7 @@
 # files upstream does not have. See upstream/README.md.
 #
 # change: added (only here), modified (both, but different), deleted (only upstream)
-# base	1c234ce0271d72d1e2fe93b214da8ce373b41203	tree	a32acb01d4e90c1dee3da2298ab8f75f2a3f3951
+# base	a3a19883b4f9ebb879040e2a6969c689355c3008	tree	8dcaeba09923b5c1eb53398f7c95b253780db251
 # path	change	why
 .dockerignore	modified	Build context for the monorepo's Dockerfile. Upstream now ships its own, for its dev container; this copy keeps the monorepo's.
 BUILD.bazel	added	Bazel targets. Named BUILD.bazel because a file named BUILD collides with upstream's build/ directory on case-insensitive file systems.

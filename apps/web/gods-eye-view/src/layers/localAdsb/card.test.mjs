@@ -20,32 +20,22 @@
  * SOFTWARE.
  */
 
-import { localGeoJsonServices } from '../app/localGeojsonServices.js';
-import {
-  createLocalGeoJsonLayer as createLayer,
-  createLocalInfrastructureOverlayPublisher as createPublisher,
-} from './localGeojsonCore.js';
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { setLocale } from '../../i18n/index.js';
+import { localAdsbCardModel } from './card.js';
 
-export * from './localGeojsonCore.js';
-
-/** Create a layer using the standalone app's operations; retain overlay overrides. */
-export function createLocalGeoJsonLayer(options) {
-  return createLayer(options, {
-    ...localGeoJsonServices,
-    overlayHost:
-      options.overlayHost === undefined
-        ? localGeoJsonServices.overlayHost
-        : options.overlayHost,
-  });
-}
-
-/** Create an overlay publisher using the standalone app's host by default. */
-export function createLocalInfrastructureOverlayPublisher(options) {
-  return createPublisher({
-    ...options,
-    host:
-      options.host === undefined
-        ? localGeoJsonServices.overlayHost
-        : options.host,
-  });
-}
+test('a track of 359.7° reads TRK 0°, not TRK 360°', () => {
+  setLocale('en');
+  const { details } = localAdsbCardModel(
+    {
+      icao: 'abc123',
+      altitudeFt: 12500,
+      groundSpeedKt: 240,
+      trackDeg: 359.7,
+      lastPositionAt: 1000,
+    },
+    5000,
+  );
+  assert.equal(details[1], 'ALT 12,500 FT · GS 240 KT · TRK 0°');
+});
