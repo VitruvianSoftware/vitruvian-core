@@ -11,6 +11,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"regexp"
 	"strings"
@@ -43,23 +44,60 @@ func (a *Actions) SetLinkPreviewHTTPClient(c *http.Client) {
 	a.mu.Unlock()
 }
 
+// SetLinkPreviewResolver overrides the DNS lookup function used by the production link-preview HTTP transport.
+func (a *Actions) SetLinkPreviewResolver(fn func(ctx context.Context, host string) ([]net.IPAddr, error)) {
+	a.mu.Lock()
+	a.linkResolver = fn
+	a.mu.Unlock()
+}
+
+const maxLinkPreviewRedirects = 3
+
+var nonPublicPrefixes = []netip.Prefix{
+	netip.MustParsePrefix("0.0.0.0/8"),
+	netip.MustParsePrefix("100.64.0.0/10"),   // RFC 6598 CGNAT / Tailscale tailnet
+	netip.MustParsePrefix("169.254.0.0/16"),  // IPv4 link-local
+	netip.MustParsePrefix("192.0.0.0/24"),    // IETF Protocol Assignments
+	netip.MustParsePrefix("192.0.2.0/24"),    // TEST-NET-1
+	netip.MustParsePrefix("198.18.0.0/15"),   // RFC 2544 benchmarking
+	netip.MustParsePrefix("198.51.100.0/24"), // TEST-NET-2
+	netip.MustParsePrefix("203.0.113.0/24"),  // TEST-NET-3
+	netip.MustParsePrefix("240.0.0.0/4"),     // Reserved / class E
+	netip.MustParsePrefix("fc00::/7"),        // IPv6 Unique Local Address (ULA)
+	netip.MustParsePrefix("fe80::/10"),       // IPv6 link-local
+	netip.MustParsePrefix("2001:db8::/32"),   // IPv6 documentation
+}
+
 func (a *Actions) getLinkPreviewClient() *http.Client {
 	a.mu.Lock()
 	c := a.linkClient
+	resolver := a.linkResolver
 	a.mu.Unlock()
 	if c != nil {
 		return c
 	}
+	if resolver == nil {
+		resolver = net.DefaultResolver.LookupIPAddr
+	}
 	dialer := &net.Dialer{Timeout: linkPreviewTimeout}
 	return &http.Client{
 		Timeout: linkPreviewTimeout,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= maxLinkPreviewRedirects {
+				return errors.New("too many redirects")
+			}
+			if req.URL == nil || !strings.EqualFold(req.URL.Scheme, "https") {
+				return errors.New("refusing non-https link preview redirect")
+			}
+			return nil
+		},
 		Transport: &http.Transport{
 			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 				host, port, err := net.SplitHostPort(addr)
 				if err != nil {
 					return nil, err
 				}
-				ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+				ips, err := resolver(ctx, host)
 				if err != nil {
 					return nil, err
 				}
@@ -78,7 +116,23 @@ func (a *Actions) getLinkPreviewClient() *http.Client {
 }
 
 func isPrivateOrLoopbackIP(ip net.IP) bool {
-	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified()
+	if len(ip) == 0 {
+		return true
+	}
+	addr, ok := netip.AddrFromSlice(ip)
+	if !ok {
+		return true
+	}
+	addr = addr.Unmap()
+	if !addr.IsGlobalUnicast() || addr.IsLoopback() || addr.IsPrivate() || addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast() || addr.IsMulticast() || addr.IsUnspecified() {
+		return true
+	}
+	for _, p := range nonPublicPrefixes {
+		if p.Contains(addr) {
+			return true
+		}
+	}
+	return false
 }
 
 func firstURLInText(body string) string {

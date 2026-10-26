@@ -26,6 +26,7 @@ import (
 	"io/fs"
 	"net"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"syscall"
@@ -225,6 +226,8 @@ func run(cfg config, stdout, stderr io.Writer) error {
 	var ent entitlement.Provider = entitlement.Always{}
 	tm := timers.New(s, ent, timers.RealClock{}, log)
 	m := &media.Store{Dir: filepath.Join(cfg.data, "media")}
+	s.SetMediaStore(m)
+	actions.ConfigureFFmpeg(os.Stat, exec.LookPath)
 
 	// The networks start behind the engine, after it is serving (below), so the app connects at once and each
 	// network's chats show as its bridge becomes ready (spec §7). Every one of them is STARTING until then: their

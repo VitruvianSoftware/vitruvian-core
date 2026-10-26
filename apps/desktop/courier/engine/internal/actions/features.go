@@ -263,12 +263,38 @@ func convertFileFeatures(ff *event.FileFeatures) *FileKindFeatures {
 		MimeTypes:        mimes,
 		Caption:          ff.Caption >= event.CapLevelPartialSupport,
 		MaxCaptionLength: ff.MaxCaptionLength,
-		MaxSize:          ff.MaxSize,
+		MaxSize:          min(ff.MaxSize, MaxFileCeiling),
 	}
 	if ff.MaxDuration != nil {
 		out.MaxDurationSec = int(ff.MaxDuration.Seconds())
 	}
 	return out
+}
+
+// networkFileCeiling returns the per-network file size ceiling: 2 GiB for bridges that stream uploads from disk via
+// Bot.DownloadMediaToFile (Telegram), and 100 MiB (MaxInMemoryFileCeiling) for bridges that call Bot.DownloadMedia
+// into an in-memory []byte (WhatsApp, Signal, Google Messages, Slack).
+func networkFileCeiling(network string) int64 {
+	if network == "telegram" {
+		return MaxFileCeiling
+	}
+	return MaxInMemoryFileCeiling
+}
+
+func (f *Features) capMaxSizes(ceiling int64) {
+	for _, fk := range []*FileKindFeatures{
+		f.ImageFeatures,
+		f.VideoFeatures,
+		f.AudioFeatures,
+		f.VoiceFeatures,
+		f.FileFeatures,
+		f.GIFFeatures,
+		f.StickerFeatures,
+	} {
+		if fk != nil && fk.MaxSize > ceiling {
+			fk.MaxSize = ceiling
+		}
+	}
 }
 
 // Keeps reports whether the chat keeps formatting of kind k. It is the keep function richtext.Render takes.
@@ -300,6 +326,7 @@ func (a *Actions) Features(ctx context.Context, roomID string) (Features, error)
 			f.Source = SourceNetwork
 		}
 	}
+	f.capMaxSizes(networkFileCeiling(room.Network))
 	if portal, login := a.portalAndLogin(ctx, roomID); portal != nil && login != nil {
 		pl, err := portal.Bridge.Matrix.GetPowerLevels(ctx, id.RoomID(roomID))
 		if err != nil || pl == nil {

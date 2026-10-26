@@ -12,6 +12,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -850,6 +851,14 @@ func TestSendLocationQueuesGeoURIAndRespectsCapability(t *testing.T) {
 	store.ExtractEventMedia(&stored, w.m, false)
 	require.Equal(t, "geo:37.7749,-122.4194", stored.GeoURI)
 
+	// Tiny coordinates near 0 must format in fixed decimal notation (never scientific notation like 1e-07).
+	resTiny, err := w.a.SendLocation(ctx, room, 1e-7, -2e-7, "Equator Origin", "")
+	require.NoError(t, err)
+	recv(t, w.n.Files, "the tiny-coord location message")
+	storedTiny := w.get(t, resTiny.EventID)
+	store.ExtractEventMedia(&storedTiny, w.m, false)
+	require.Equal(t, "geo:0.0000001,-0.0000002", storedTiny.GeoURI)
+
 	// Unsupported room rejects location sending with ErrNotSupported.
 	locRejected := &event.RoomFeatures{
 		LocationMessage: event.CapLevelRejected,
@@ -980,7 +989,117 @@ func TestSendFileStreamsFromDiskAndUsesPerKindMaxSize(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, len(streamPayload), streamedSize)
 
-	// 3. Per-kind MaxSize larger than 2 GiB (e.g. Telegram Premium 4 GiB) is clamped to the 2 GiB ceiling.
+	// 3. Per-kind MaxSize larger than 2 GiB (e.g. Telegram Premium 4 GiB) is clamped to the 2 GiB ceiling on Telegram,
+	// while non-streaming bridges (WhatsApp, Signal, Google Messages, Slack) are clamped to the 100 MiB in-memory ceiling.
 	feats4GiB := Features{FileFeatures: &FileKindFeatures{Supported: true, MaxSize: 4 * 1024 * 1024 * 1024}}
 	require.EqualValues(t, MaxFileCeiling, w.a.maxSizeForKind(feats4GiB, event.MsgFile, "application/octet-stream"))
+
+	// 4. A 150 MiB file to a WhatsApp fake (whose bridge advertises 2000 MiB on MsgFile but uses DownloadMedia []byte)
+	// is refused with ErrTooLarge before reading its contents, and Features caps FileFeatures.MaxSize at 100 MiB.
+	waLargeCaps := &event.RoomFeatures{
+		File: event.FileFeatureMap{
+			event.MsgFile: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{"*/*": event.CapLevelFullySupported},
+				MaxSize:   2000 * 1024 * 1024,
+			},
+		},
+	}
+	wWA, roomWA := startFeatureWorld(t, waLargeCaps)
+	waFeats, err := wWA.a.Features(ctx, roomWA)
+	require.NoError(t, err)
+	require.NotNil(t, waFeats.FileFeatures)
+	require.EqualValues(t, MaxInMemoryFileCeiling, waFeats.FileFeatures.MaxSize, "non-streaming bridge MaxSize must be capped at 100 MiB")
+
+	bigWAPath := filepath.Join(tmpDir, "huge-150mb.bin")
+	bigWAFile, err := os.Create(bigWAPath)
+	require.NoError(t, err)
+	require.NoError(t, bigWAFile.Truncate(150*1024*1024))
+	require.NoError(t, bigWAFile.Close())
+	_, err = wWA.a.SendFileWith(ctx, roomWA, bigWAPath, SendOptions{})
+	require.ErrorIs(t, err, ErrTooLarge, "150 MiB file to WhatsApp must be refused before reading")
+}
+
+type fakeExecFileInfo struct {
+	os.FileInfo
+	name string
+}
+
+func (f fakeExecFileInfo) Name() string       { return f.name }
+func (f fakeExecFileInfo) Size() int64        { return 1024 }
+func (f fakeExecFileInfo) Mode() os.FileMode  { return 0o755 }
+func (f fakeExecFileInfo) ModTime() time.Time { return time.Time{} }
+func (f fakeExecFileInfo) IsDir() bool        { return false }
+func (f fakeExecFileInfo) Sys() any           { return nil }
+
+func TestConfigureFFmpegProbesHomebrewUsrLocalAndMacPortsPaths(t *testing.T) {
+	noLookPath := func(string) (string, error) { return "", errors.New("not in PATH") }
+
+	// When /opt/homebrew/bin is absent and /usr/local/bin/ffmpeg exists, ConfigureFFmpeg selects /usr/local/bin/ffmpeg.
+	statUsrLocal := func(p string) (os.FileInfo, error) {
+		if p == "/usr/local/bin/ffmpeg" || p == "/usr/local/bin/ffprobe" {
+			return fakeExecFileInfo{name: filepath.Base(p)}, nil
+		}
+		return nil, os.ErrNotExist
+	}
+	ffBin, fpBin := ConfigureFFmpeg(statUsrLocal, noLookPath)
+	require.Equal(t, "/usr/local/bin/ffmpeg", ffBin)
+	require.Equal(t, "/usr/local/bin/ffprobe", fpBin)
+
+	// When /opt/homebrew/bin/ffmpeg exists, it takes precedence.
+	statHomebrew := func(p string) (os.FileInfo, error) {
+		if p == "/opt/homebrew/bin/ffmpeg" || p == "/opt/homebrew/bin/ffprobe" {
+			return fakeExecFileInfo{name: filepath.Base(p)}, nil
+		}
+		return nil, os.ErrNotExist
+	}
+	ffBin, fpBin = ConfigureFFmpeg(statHomebrew, noLookPath)
+	require.Equal(t, "/opt/homebrew/bin/ffmpeg", ffBin)
+	require.Equal(t, "/opt/homebrew/bin/ffprobe", fpBin)
+}
+
+func TestLinkPreviewGuardRefusesTailnetLinkLocalULAAndHTTPDowngradeRedirect(t *testing.T) {
+	ctx := context.Background()
+	var targetHits atomic.Int32
+	targetSrv := httptest.NewTLSServer(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+		targetHits.Add(1)
+		rw.Header().Set("Content-Type", "text/html")
+		_, _ = rw.Write([]byte(`<meta property="og:title" content="Secret Internal">`))
+	}))
+	defer targetSrv.Close()
+
+	w, room := startFeatureWorld(t, whatsappFeatures())
+	fa := false
+
+	for _, blockedIP := range []string{
+		"100.64.0.1",  // CGNAT / Tailscale tailnet (100.64.0.0/10)
+		"169.254.1.1", // IPv4 link-local
+		"fe80::1",     // IPv6 link-local
+		"fc00::1",     // IPv6 ULA
+	} {
+		w.a.SetLinkPreviewResolver(func(_ context.Context, _ string) ([]net.IPAddr, error) {
+			return []net.IPAddr{{IP: net.ParseIP(blockedIP)}}, nil
+		})
+		id, err := w.a.Send(ctx, room, "Check https://internal.example.com/page", SendOptions{DisableLinkPreview: &fa})
+		require.NoError(t, err)
+		recv(t, w.n.Sent, "message with blocked IP "+blockedIP)
+		stored := w.get(t, id)
+		store.ExtractEventMedia(&stored, w.m, false)
+		require.Empty(t, stored.LinkPreviews, "link preview must be refused for non-public IP %s", blockedIP)
+	}
+	require.Equal(t, int32(0), targetHits.Load())
+
+	// Also verify isNonPublicIP directly rejects all private/special ranges and allows public IPs.
+	for _, bad := range []string{"127.0.0.1", "10.0.0.1", "100.64.0.1", "100.127.255.254", "169.254.1.1", "192.168.1.1", "fe80::1", "fc00::1", "fd12:3456::1", "::1"} {
+		require.True(t, isPrivateOrLoopbackIP(net.ParseIP(bad)), "must reject %s", bad)
+	}
+	require.False(t, isPrivateOrLoopbackIP(net.ParseIP("93.184.216.34")))
+
+	// Verify an https -> http downgrade redirect is refused by the production client's CheckRedirect.
+	prodClient := w.a.getLinkPreviewClient()
+	require.NotNil(t, prodClient.CheckRedirect, "production link preview client must set CheckRedirect")
+	httpReq, err := http.NewRequest(http.MethodGet, "http://example.com/downgraded", nil)
+	require.NoError(t, err)
+	httpsReq, err := http.NewRequest(http.MethodGet, "https://example.com/start", nil)
+	require.NoError(t, err)
+	require.Error(t, prodClient.CheckRedirect(httpReq, []*http.Request{httpsReq}), "https -> http redirect must be refused")
 }

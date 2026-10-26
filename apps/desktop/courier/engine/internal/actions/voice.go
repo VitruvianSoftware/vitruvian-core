@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,8 +24,55 @@ import (
 	"github.com/VitruvianSoftware/courier/engine/internal/richtext"
 )
 
-// MaxFileCeiling is the 2 GiB upper bound applied when a bridge advertises a per-kind FileFeatures.MaxSize.
+// MaxFileCeiling is the 2 GiB upper bound applied when a streaming bridge (Telegram) advertises a per-kind FileFeatures.MaxSize.
 const MaxFileCeiling int64 = 2 * 1024 * 1024 * 1024
+
+// MaxInMemoryFileCeiling is the 100 MiB upper bound applied to non-streaming bridges (WhatsApp, Signal, Google Messages, Slack)
+// that call Bot.DownloadMedia into a []byte in memory rather than DownloadMediaToFile.
+const MaxInMemoryFileCeiling int64 = 100 * 1024 * 1024
+
+// FFmpegSearchPaths are the standard macOS package-manager paths probed when ffmpeg is not in a GUI app's minimal PATH.
+var FFmpegSearchPaths = []string{
+	"/opt/homebrew/bin/ffmpeg",
+	"/usr/local/bin/ffmpeg",
+	"/opt/local/bin/ffmpeg",
+}
+
+// FFprobeSearchPaths are the standard macOS package-manager paths probed when ffprobe is not in PATH.
+var FFprobeSearchPaths = []string{
+	"/opt/homebrew/bin/ffprobe",
+	"/usr/local/bin/ffprobe",
+	"/opt/local/bin/ffprobe",
+}
+
+// ConfigureFFmpeg locates ffmpeg and ffprobe via lookPath or FFmpegSearchPaths/FFprobeSearchPaths and registers
+// them with go.mau.fi/util/ffmpeg.
+func ConfigureFFmpeg(stat func(string) (os.FileInfo, error), lookPath func(string) (string, error)) (ffmpegPath, ffprobePath string) {
+	if stat == nil {
+		stat = os.Stat
+	}
+	if lookPath == nil {
+		lookPath = exec.LookPath
+	}
+	findBin := func(name string, searchPaths []string) string {
+		if p, err := lookPath(name); err == nil && p != "" {
+			if fi, serr := stat(p); serr == nil && !fi.IsDir() && fi.Mode()&0o111 != 0 {
+				return p
+			}
+		}
+		for _, candidate := range searchPaths {
+			if fi, serr := stat(candidate); serr == nil && !fi.IsDir() && fi.Mode()&0o111 != 0 {
+				return candidate
+			}
+		}
+		return ""
+	}
+	ffmpegPath = findBin("ffmpeg", FFmpegSearchPaths)
+	ffprobePath = findBin("ffprobe", FFprobeSearchPaths)
+	ffmpeg.SetPath(ffmpegPath)
+	ffmpeg.SetProbePath(ffprobePath)
+	return ffmpegPath, ffprobePath
+}
 
 // ErrVoiceTranscodeUnavailable means the room's bridge requires a voice container that differs from the
 // input recording and ffmpeg is not available to transcode it.
@@ -105,6 +153,9 @@ func (a *Actions) SendVoice(ctx context.Context, roomID, path string, opts SendV
 	}
 	if !fi.Mode().IsRegular() {
 		return SendResult{}, fmt.Errorf("%s is not a regular file", path)
+	}
+	if fi.Size() > networkFileCeiling(room.Network) {
+		return SendResult{}, ErrTooLarge
 	}
 	feats, err := a.Features(ctx, roomID)
 	if err != nil {
@@ -270,14 +321,11 @@ func resolveFFmpeg(override string) (string, error) {
 		}
 		return override, nil
 	}
-	if !ffmpeg.Supported() {
+	ffPath, _ := ConfigureFFmpeg(os.Stat, exec.LookPath)
+	if ffPath == "" || !ffmpeg.Supported() {
 		return "", ErrVoiceTranscodeUnavailable
 	}
-	p, err := exec.LookPath("ffmpeg")
-	if err != nil {
-		return "", ErrVoiceTranscodeUnavailable
-	}
-	return p, nil
+	return ffPath, nil
 }
 
 func transcodeVoice(ctx context.Context, ffmpegBin, inPath, targetExt string) (string, error) {
@@ -322,7 +370,7 @@ func (a *Actions) SendLocation(ctx context.Context, roomID string, lat, lon floa
 	if !feats.LocationSupported {
 		return SendResult{}, ErrNotSupported
 	}
-	geoURI := fmt.Sprintf("geo:%g,%g", lat, lon)
+	geoURI := "geo:" + strconv.FormatFloat(lat, 'f', -1, 64) + "," + strconv.FormatFloat(lon, 'f', -1, 64)
 	body := strings.TrimSpace(label)
 	if body == "" {
 		body = geoURI

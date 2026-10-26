@@ -25,6 +25,7 @@ import (
 	_ "image/png"  // (see above)
 	"io"
 	"mime"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -123,10 +124,11 @@ type SendOptions struct {
 // Edit Scheduled give back exactly that: the text, its ranges, and what it replied to or went in. No claim sends
 // it to a network.
 type Source struct {
-	Text       string            `json:"text"`
-	Entities   []richtext.Entity `json:"entities"`
-	ReplyTo    string            `json:"reply_to,omitempty"`
-	ThreadRoot string            `json:"thread_root,omitempty"`
+	Text               string            `json:"text"`
+	Entities           []richtext.Entity `json:"entities"`
+	ReplyTo            string            `json:"reply_to,omitempty"`
+	ThreadRoot         string            `json:"thread_root,omitempty"`
+	DisableLinkPreview *bool             `json:"disable_link_preview,omitempty"`
 }
 
 // SourceOf reads the composer's source from a held or scheduled message's content; ok is false when it has none.
@@ -153,12 +155,13 @@ type Actions struct {
 	// only when a message is held or scheduled, never when one already held or scheduled goes out.
 	Entitlement entitlement.Provider
 
-	eng        *engine.Engine
-	s          *store.Store
-	m          *media.Store
-	maxFile    int64
-	linkClient *http.Client
-	mu         sync.Mutex // makes "is it failed? then change it" one step for Retry and Discard
+	eng          *engine.Engine
+	s            *store.Store
+	m            *media.Store
+	maxFile      int64
+	linkClient   *http.Client
+	linkResolver func(ctx context.Context, host string) ([]net.IPAddr, error)
+	mu           sync.Mutex // makes "is it failed? then change it" one step for Retry and Discard
 	// after is the login wait's timer (waitLogin): nil is time.After. Tests drive it instead (Ruling P5).
 	after func(time.Duration) <-chan time.Time
 
@@ -730,6 +733,9 @@ func (a *Actions) SendFileWith(ctx context.Context, roomID, path string, o SendO
 	}
 	if !fi.Mode().IsRegular() {
 		return "", fmt.Errorf("%s is not a regular file", path)
+	}
+	if fi.Size() > networkFileCeiling(room.Network) {
+		return "", ErrTooLarge
 	}
 	name := filepath.Base(path)
 	// The name is the message body, and a body starting with the prefix is run as a command.

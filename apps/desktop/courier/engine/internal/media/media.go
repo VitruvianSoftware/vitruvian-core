@@ -23,9 +23,12 @@ var ErrInvalidHash = errors.New("invalid media hash")
 
 var hashRE = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
+// DefaultMaxMemoryBytes is the default 100 MiB cap on whole-file in-memory reads via Read when Store.MaxMemoryBytes is 0.
+const DefaultMaxMemoryBytes int64 = 100 * 1024 * 1024
+
 type Store struct {
 	Dir string
-	// MaxMemoryBytes bounds whole-file in-memory reads via Read when positive.
+	// MaxMemoryBytes bounds whole-file in-memory reads via Read (defaults to DefaultMaxMemoryBytes when 0).
 	// Streaming writes (PutStream) and file-backed downloads (DownloadMediaToFile) are unaffected.
 	MaxMemoryBytes int64
 }
@@ -86,21 +89,38 @@ func (m *Store) Read(hash string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if m.MaxMemoryBytes > 0 {
-		fi, err := os.Stat(p)
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil, fmt.Errorf("%w: %s", ErrMissing, hash)
-		}
-		if err != nil {
-			return nil, err
-		}
-		if fi.Size() > m.MaxMemoryBytes {
-			return nil, fmt.Errorf("media read exceeds in-memory limit (%d > %d)", fi.Size(), m.MaxMemoryBytes)
-		}
+	limit := m.MaxMemoryBytes
+	if limit <= 0 {
+		limit = DefaultMaxMemoryBytes
+	}
+	fi, err := os.Stat(p)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, fmt.Errorf("%w: %s", ErrMissing, hash)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if fi.Size() > limit {
+		return nil, fmt.Errorf("media read exceeds in-memory limit (%d > %d)", fi.Size(), limit)
 	}
 	b, err := os.ReadFile(p)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, fmt.Errorf("%w: %s", ErrMissing, hash)
 	}
 	return b, err
+}
+
+// Delete removes the blob for hash from disk, ignoring fs.ErrNotExist if it is already gone.
+func (m *Store) Delete(hash string) error {
+	if m == nil {
+		return nil
+	}
+	p, err := m.Path(hash)
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(p); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	return nil
 }
