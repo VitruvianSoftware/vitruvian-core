@@ -2808,7 +2808,7 @@ MUTATIONS = [
      "without Accessibility, a click on the minimize or zoom button is never taken for the close button (#3249)"),
     ("Quit on close reads a minimized window as closed", "app-management",
      "Sources/Vitruvian/Services/AutoQuit/AutoQuitSupport.swift",
-     "            if windowIsMinimized(CGWindowID(windowID)) { return true }\n", "",
+     "            if windowIsMinimized(CGWindowID(windowID)) != false { return true }\n", "",
      "a window minimized into the Dock keeps its app running when Accessibility cannot see it (#3249)"),
     ("Extra Brightness covers the screen with one full screen window", "app-management",
      "Sources/Vitruvian/Services/Display/ExtraBrightnessSupport.swift",

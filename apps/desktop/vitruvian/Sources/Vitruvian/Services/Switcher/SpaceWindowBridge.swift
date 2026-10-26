@@ -76,12 +76,19 @@ package enum SpaceWindowBridge {
     /// Every Space (user desktops and fullscreen Spaces alike) containing the
     /// window. Empty for leftover surfaces, and when the query is unavailable.
     package static func spaces(of windowID: CGWindowID) -> [UInt64] {
-        guard connection != 0, let copySpacesForWindows else { return [] }
+        resolvedSpaces(of: windowID) ?? []
+    }
+
+    /// An empty answer confirms a surface belongs to no Space. Nil means the
+    /// query is unavailable or failed for this window; callers deciding whether
+    /// to quit an app must not mistake that uncertainty for a closed window.
+    package static func resolvedSpaces(of windowID: CGWindowID) -> [UInt64]? {
+        guard connection != 0, let copySpacesForWindows else { return nil }
         let mask: Int32 = 0x7
         guard let array = copySpacesForWindows(connection, mask,
                                                [NSNumber(value: windowID)] as CFArray)?
             .takeRetainedValue() as? [NSNumber]
-        else { return [] }
+        else { return nil }
         return array.map(\.uint64Value)
     }
 
@@ -320,10 +327,13 @@ package enum SpaceWindowBridge {
     }
 
     /// Whether the window server holds the window minimized in the Dock, even
-    /// for an app Accessibility cannot read. False when the window query is
-    /// missing, and before macOS 26, where the tag has not been observed.
-    package static func isMinimized(_ windowID: CGWindowID) -> Bool {
-        guard #available(macOS 26.0, *), let tags = windowTags(of: [windowID])?[windowID] else { return false }
+    /// for an app Accessibility cannot read. Nil when the query is unavailable
+    /// or withholds tags, and before macOS 26, where the tag has not been
+    /// observed. A window absent from a successful query no longer exists.
+    package static func isMinimized(_ windowID: CGWindowID) -> Bool? {
+        guard #available(macOS 26.0, *), let windows = windowTags(of: [windowID]) else { return nil }
+        guard let tags = windows[windowID] else { return false }
+        guard tags != 0 else { return nil }
         return SpaceHopSupport.isMinimized(windowTags: tags)
     }
 

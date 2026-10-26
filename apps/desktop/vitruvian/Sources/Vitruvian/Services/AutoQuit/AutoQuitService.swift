@@ -591,7 +591,7 @@ package final class AutoQuitService: ObservableObject {
             processDrawsForApp: { Self.process($0, drawsFor: pid) },
             windowIsMinimized: { SpaceWindowBridge.isMinimized($0) },
             visibleSpaces: { SpaceWindowBridge.topology()?.visibleSpaces },
-            windowSpaces: { SpaceWindowBridge.spaces(of: $0) })
+            windowSpaces: { SpaceWindowBridge.resolvedSpaces(of: $0) })
     }
 
     /// Whether another process's window is this app's own interface drawn

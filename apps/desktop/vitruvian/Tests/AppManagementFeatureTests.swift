@@ -1773,25 +1773,26 @@ enum AppManagementFeatureTests {
                                                            hasUserFacingWindow: true),
                "AutoQuit keeps apps with user-facing windows running")
         suite.expect(AutoQuitSupport.offscreenWindowKeepsAppAlive(windowSpaces: [4],
-                                                            visibleSpaces: [3],
-                                                            hasTitle: true),
+                                                            visibleSpaces: [3]),
                "a window parked on another Space keeps its app running")
         suite.expect(!AutoQuitSupport.offscreenWindowKeepsAppAlive(windowSpaces: [3],
-                                                             visibleSpaces: [3],
-                                                             hasTitle: true),
+                                                             visibleSpaces: [3]),
                "a window the app hid on the Space in front does not keep it running")
-        suite.expect(AutoQuitSupport.offscreenWindowKeepsAppAlive(windowSpaces: [],
-                                                            visibleSpaces: [3],
-                                                            hasTitle: true),
-               "a window with no Space answer falls back to the title rule")
         suite.expect(!AutoQuitSupport.offscreenWindowKeepsAppAlive(windowSpaces: [],
-                                                             visibleSpaces: nil,
-                                                             hasTitle: false),
-               "an untitled off-screen window never keeps an app running")
+                                                             visibleSpaces: [3])
+                && !AutoQuitSupport.offscreenWindowKeepsAppAlive(windowSpaces: [],
+                                                                 visibleSpaces: nil),
+               "a confirmed surface without a Space lets its app quit even when topology is unavailable (#2696)")
+        suite.expect(AutoQuitSupport.offscreenWindowKeepsAppAlive(windowSpaces: nil,
+                                                                visibleSpaces: [3])
+                && AutoQuitSupport.offscreenWindowKeepsAppAlive(windowSpaces: nil,
+                                                                visibleSpaces: nil),
+               "a failed window Space query never proves that an off-screen window was closed")
         suite.expect(AutoQuitSupport.offscreenWindowKeepsAppAlive(windowSpaces: [3],
-                                                            visibleSpaces: nil,
-                                                            hasTitle: true),
-               "without Spaces to compare, the old cautious rule stands")
+                                                            visibleSpaces: nil)
+                && AutoQuitSupport.offscreenWindowKeepsAppAlive(windowSpaces: [3],
+                                                                visibleSpaces: []),
+               "an assigned window keeps its app running when visible Spaces are unknown")
 
         func windowRole(layer: Int = 0,
                         alpha: Double = 1,
@@ -1871,6 +1872,7 @@ enum AppManagementFeatureTests {
                              beforeQuit: Bool = true,
                              drawingForApp: Set<pid_t> = [],
                              minimizedWindows: Set<CGWindowID> = [],
+                             unknownMinimizedWindows: Set<CGWindowID> = [],
                              windowSpaces: [CGWindowID: [UInt64]] = [:],
                              visibleSpaces: Set<UInt64>? = [3])
             -> (keepsApp: Bool, drawLookups: [pid_t], spaceLookups: Int) {
@@ -1881,9 +1883,9 @@ enum AppManagementFeatureTests {
                 pid: appPID,
                 countsEverythingShown: beforeQuit,
                 processDrawsForApp: { drawLookups.append($0); return drawingForApp.contains($0) },
-                windowIsMinimized: { minimizedWindows.contains($0) },
+                windowIsMinimized: { unknownMinimizedWindows.contains($0) ? nil : minimizedWindows.contains($0) },
                 visibleSpaces: { spaceLookups += 1; return visibleSpaces },
-                windowSpaces: { windowSpaces[$0] ?? [] })
+                windowSpaces: { windowSpaces[$0] })
             return (keepsApp, drawLookups, spaceLookups)
         }
         let ownWindowCheck = windowListCheck([listedWindow()])
@@ -1914,6 +1916,37 @@ enum AppManagementFeatureTests {
                "another app's normal window on another Space never keeps this app running")
         suite.expect(windowListCheck([listedWindow(id: 7, isOnScreen: false)], windowSpaces: [7: [4]]).keepsApp,
                "the app's own window on another Space keeps it running")
+        // Mail and Xcode can retain normal-sized off-screen surfaces after
+        // their last window closes (#2696). A successful empty Space answer
+        // must not be confused with an unanswered query or depend on a title.
+        for title in ["Document", ""] {
+            let residuals = [(420.0, 632.0), (1018.0, 600.0), (800.0, 800.0), (500.0, 500.0)]
+                .enumerated().map { index, size in
+                    listedWindow(id: CGWindowID(index + 10), width: size.0, height: size.1,
+                                 isOnScreen: false, title: title)
+                }
+            let noSpaces: [CGWindowID: [UInt64]] = [10: [], 11: [], 12: [], 13: []]
+            suite.expect(!windowListCheck(residuals, windowSpaces: noSpaces).keepsApp
+                    && !windowListCheck(residuals, windowSpaces: noSpaces, visibleSpaces: nil).keepsApp,
+                   "closed surfaces with no Space do not keep their app running, title: '\(title)' (#2696)")
+            suite.expect(windowListCheck(residuals, windowSpaces: [10: [], 11: [], 12: []]).keepsApp,
+                   "one failed Space query among confirmed leftovers keeps the app running, title: '\(title)'")
+            suite.expect(windowListCheck(residuals, windowSpaces: [10: [], 11: [], 12: [], 13: [4]]).keepsApp,
+                   "one real window on another Space among leftovers keeps the app running, title: '\(title)'")
+            suite.expect(windowListCheck(residuals, minimizedWindows: [13], windowSpaces: noSpaces).keepsApp,
+                   "a minimized window keeps the app running even with an empty Space answer, title: '\(title)'")
+            suite.expect(windowListCheck(residuals, unknownMinimizedWindows: [13], windowSpaces: noSpaces).keepsApp,
+                   "an unknown minimized state prevents discarding a surface with no Space, title: '\(title)'")
+        }
+        var windowWithoutTitle = listedWindow(id: 7, isOnScreen: false)
+        windowWithoutTitle.removeValue(forKey: kCGWindowName as String)
+        suite.expect(windowListCheck([windowWithoutTitle]).keepsApp
+                && windowListCheck([windowWithoutTitle], windowSpaces: [7: [4]]).keepsApp
+                && windowListCheck([windowWithoutTitle], windowSpaces: [7: [4]], visibleSpaces: nil).keepsApp,
+               "unavailable window titles never turn an unknown or parked window into a closed one")
+        suite.expect(windowListCheck([windowWithoutTitle], unknownMinimizedWindows: [7],
+                                     windowSpaces: [7: [3]]).keepsApp,
+               "unavailable minimized tags protect a window on the current Space when AX cannot see it")
         let hiddenWindowsCheck = windowListCheck([
             listedWindow(id: 7, isOnScreen: false),
             listedWindow(id: 8, isOnScreen: false),

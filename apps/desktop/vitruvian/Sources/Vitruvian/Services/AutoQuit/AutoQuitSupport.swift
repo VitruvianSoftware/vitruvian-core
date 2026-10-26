@@ -305,12 +305,16 @@ package enum AutoQuitSupport {
     /// is showing right now, and an app that hides its window instead of
     /// destroying it should still quit on close. Accessibility cannot tell the
     /// two apart (both leave the app with no windows at all), the window server
-    /// can. Without a Space answer the old rule stands: anything with a title
-    /// keeps the app alive.
-    package static func offscreenWindowKeepsAppAlive(windowSpaces: [UInt64],
-                                             visibleSpaces: Set<UInt64>?,
-                                             hasTitle: Bool) -> Bool {
-        guard let visibleSpaces, !visibleSpaces.isEmpty, !windowSpaces.isEmpty else { return hasTitle }
+    /// can. A successful empty Space answer identifies a leftover surface,
+    /// even if it retains a title (#2696). A failed query proves nothing, and
+    /// titles may be missing without Screen Recording permission, so keep the
+    /// app alive whenever Space membership or visibility is unknown. Callers
+    /// must check for minimized windows before discarding leftover surfaces.
+    package static func offscreenWindowKeepsAppAlive(windowSpaces: [UInt64]?,
+                                                     visibleSpaces: Set<UInt64>?) -> Bool {
+        guard let windowSpaces else { return true }
+        guard !windowSpaces.isEmpty else { return false }
+        guard let visibleSpaces, !visibleSpaces.isEmpty else { return true }
         return SpaceHopSupport.isParkedOnHiddenSpace(windowSpaces: windowSpaces,
                                                      visibleSpaces: visibleSpaces)
     }
@@ -324,13 +328,15 @@ package enum AutoQuitSupport {
     /// sits off screen on the Space in front, exactly like a window the app
     /// hid on close, so only the window server's minimized tag keeps it from
     /// reading as closed when Accessibility cannot see it (issue #3249).
+    /// An unavailable minimized state also keeps the app running: no Space
+    /// membership alone must never discard a potentially minimized window.
     package static func windowListHasUserWindow(_ windows: [[String: Any]],
                                                 pid: pid_t,
                                                 countsEverythingShown: Bool,
                                                 processDrawsForApp: (pid_t) -> Bool,
-                                                windowIsMinimized: (CGWindowID) -> Bool,
+                                                windowIsMinimized: (CGWindowID) -> Bool?,
                                                 visibleSpaces: () -> Set<UInt64>?,
-                                                windowSpaces: (CGWindowID) -> [UInt64]) -> Bool {
+                                                windowSpaces: (CGWindowID) -> [UInt64]?) -> Bool {
         var shownSpaces: Set<UInt64>?
         var askedForVisibleSpaces = false
         // One answer per process: every window of a process shares it.
@@ -364,18 +370,16 @@ package enum AutoQuitSupport {
             }
             guard role == .normalWindowOffScreen,
                   let windowID = (window[kCGWindowNumber as String] as? NSNumber)?.uint32Value else { continue }
-            if windowIsMinimized(CGWindowID(windowID)) { return true }
+            if windowIsMinimized(CGWindowID(windowID)) != false { return true }
             // Asked once per check, and only when there is an off-screen window
             // to judge: the common case never pays for it.
             if !askedForVisibleSpaces {
                 shownSpaces = visibleSpaces()
                 askedForVisibleSpaces = true
             }
-            let title = window[kCGWindowName as String] as? String ?? ""
             if offscreenWindowKeepsAppAlive(
                 windowSpaces: windowSpaces(CGWindowID(windowID)),
-                visibleSpaces: shownSpaces,
-                hasTitle: !title.isEmpty) {
+                visibleSpaces: shownSpaces) {
                 return true
             }
         }
