@@ -23,6 +23,7 @@
 # gazelle:exclude packages
 # gazelle:exclude dist
 
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("//tools/doctor:defs.bzl", "doctor")
 
 # Inter-app boundary (#82): default targets to backstage-internal visibility
@@ -42,4 +43,38 @@ doctor(
         "pnpm",
         "git",
     ],
+)
+
+rust_library(
+    name = "bump_release_lib",
+    srcs = ["src/lib.rs"],
+    crate_name = "backstage_bump_release",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/web/backstage:__subpackages__"],
+    deps = ["@crates//:serde_json"],
+)
+
+rust_binary(
+    name = "bump-release-rs",
+    srcs = ["src/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/web/backstage:__subpackages__"],
+    deps = [":bump_release_lib"],
+)
+
+alias(
+    name = "bump_release_rs",
+    actual = ":bump-release-rs",
+    visibility = ["//apps/web/backstage:__subpackages__"],
+)
+
+rust_test(
+    name = "bump_release_lib_test",
+    size = "small",
+    crate = ":bump_release_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/web/backstage:__subpackages__"],
 )

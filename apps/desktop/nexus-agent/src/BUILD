@@ -128,3 +128,11 @@ pipeline_unit(
     tier = "L1",
     timeout_minutes = 15,
 )
+
+exports_files(
+    [
+        "bot_lib.rs",
+        "bot_main.rs",
+    ],
+    visibility = ["//apps/desktop/nexus-agent:__pkg__"],
+)
