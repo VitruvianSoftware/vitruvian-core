@@ -484,10 +484,24 @@ final class ChatFeaturesTests: XCTestCase {
             maxCaptionLength: 1024,
             maxSize: 16 * 1024 * 1024
         )
+        let stickerKind = FileKindFeatures(
+            supported: true,
+            mimeTypes: ["image/png", "image/webp"],
+            caption: false,
+            maxCaptionLength: nil,
+            maxSize: 16 * 1024 * 1024
+        )
+        let gifKind = FileKindFeatures(
+            supported: true,
+            mimeTypes: ["video/mp4"],
+            caption: true,
+            maxCaptionLength: 1024,
+            maxSize: 16 * 1024 * 1024
+        )
         let features = ChatFeatures(
             source: .stored,
-            sticker: stickerCap,
-            gif: gifCap
+            gifFeatures: gifKind,
+            stickerFeatures: stickerKind
         )
         let encoded = try JSONEncoder().encode(features)
         let decoded = try JSONDecoder().decode(ChatFeatures.self, from: encoded)
@@ -508,5 +522,11 @@ final class ChatFeaturesTests: XCTestCase {
         let reencoded = try JSONSerialization.jsonObject(with: JSONEncoder().encode(decodedOmitted)) as? [String: Any]
         XCTAssertNil(reencoded?["max_caption_length"])
         XCTAssertNil(reencoded?["max_size"])
+
+        // Disagreement between sticker and sticker_features on the wire must fail decoding.
+        var badObj = try JSONSerialization.jsonObject(with: encoded) as? [String: Any] ?? [:]
+        badObj["sticker"] = ["supported": false, "mime_types": [] as [String], "captions": false] as [String: Any]
+        let badData = try JSONSerialization.data(withJSONObject: badObj)
+        XCTAssertThrowsError(try JSONDecoder().decode(ChatFeatures.self, from: badData))
     }
 }

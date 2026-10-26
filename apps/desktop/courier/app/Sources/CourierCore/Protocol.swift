@@ -2670,6 +2670,17 @@ public struct FileKindFeatures: ProtocolType, Equatable, Hashable, Sendable {
         self.maxDurationSec = maxDurationSec
     }
 
+    public init?(from mediaCap: MediaCapFeature) {
+        guard mediaCap.supported else { return nil }
+        self.init(
+            supported: true,
+            mimeTypes: mediaCap.mimeTypes.isEmpty ? nil : mediaCap.mimeTypes,
+            caption: mediaCap.captions,
+            maxCaptionLength: mediaCap.maxCaptionLength,
+            maxSize: mediaCap.maxSize
+        )
+    }
+
     enum CodingKeys: String, CodingKey, CaseIterable {
         case supported
         case mimeTypes = "mime_types"
@@ -2698,6 +2709,20 @@ public struct MediaCapFeature: ProtocolType, Equatable, Hashable, Sendable {
         self.captions = captions
         self.maxCaptionLength = maxCaptionLength
         self.maxSize = maxSize
+    }
+
+    public init(from fileKind: FileKindFeatures?) {
+        guard let fileKind, fileKind.supported else {
+            self = .unsupported
+            return
+        }
+        self.init(
+            supported: true,
+            mimeTypes: fileKind.mimeTypes ?? [],
+            captions: fileKind.caption,
+            maxCaptionLength: fileKind.maxCaptionLength,
+            maxSize: fileKind.maxSize
+        )
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
@@ -2787,8 +2812,8 @@ public struct ChatFeatures: ProtocolType, Equatable {
     public var fileFeatures: FileKindFeatures?
     public var gifFeatures: FileKindFeatures?
     public var stickerFeatures: FileKindFeatures?
-    public var sticker: MediaCapFeature
-    public var gif: MediaCapFeature
+    public var sticker: MediaCapFeature { MediaCapFeature(from: stickerFeatures) }
+    public var gif: MediaCapFeature { MediaCapFeature(from: gifFeatures) }
     public var locationSupported: Bool
     public var linkPreviewsSupported: Bool
 
@@ -2808,7 +2833,6 @@ public struct ChatFeatures: ProtocolType, Equatable {
                 videoFeatures: FileKindFeatures? = nil, audioFeatures: FileKindFeatures? = nil,
                 voiceFeatures: FileKindFeatures? = nil, fileFeatures: FileKindFeatures? = nil,
                 gifFeatures: FileKindFeatures? = nil, stickerFeatures: FileKindFeatures? = nil,
-                sticker: MediaCapFeature = .unsupported, gif: MediaCapFeature = .unsupported,
                 locationSupported: Bool = false, linkPreviewsSupported: Bool = false) {
         self.reply = reply
         self.thread = thread
@@ -2843,8 +2867,6 @@ public struct ChatFeatures: ProtocolType, Equatable {
         self.fileFeatures = fileFeatures
         self.gifFeatures = gifFeatures
         self.stickerFeatures = stickerFeatures
-        self.sticker = sticker
-        self.gif = gif
         self.locationSupported = locationSupported
         self.linkPreviewsSupported = linkPreviewsSupported
     }
@@ -2924,10 +2946,26 @@ public struct ChatFeatures: ProtocolType, Equatable {
         audioFeatures = try container.decodeIfPresent(FileKindFeatures.self, forKey: .audioFeatures)
         voiceFeatures = try container.decodeIfPresent(FileKindFeatures.self, forKey: .voiceFeatures)
         fileFeatures = try container.decodeIfPresent(FileKindFeatures.self, forKey: .fileFeatures)
-        gifFeatures = try container.decodeIfPresent(FileKindFeatures.self, forKey: .gifFeatures)
-        stickerFeatures = try container.decodeIfPresent(FileKindFeatures.self, forKey: .stickerFeatures)
-        sticker = try container.decodeIfPresent(MediaCapFeature.self, forKey: .sticker) ?? .unsupported
-        gif = try container.decodeIfPresent(MediaCapFeature.self, forKey: .gif) ?? .unsupported
+        let decodedGifFeatures = try container.decodeIfPresent(FileKindFeatures.self, forKey: .gifFeatures)
+        let decodedStickerFeatures = try container.decodeIfPresent(FileKindFeatures.self, forKey: .stickerFeatures)
+        let decodedSticker = try container.decodeIfPresent(MediaCapFeature.self, forKey: .sticker)
+        let decodedGIF = try container.decodeIfPresent(MediaCapFeature.self, forKey: .gif)
+        if let decodedStickerFeatures, let decodedSticker,
+           MediaCapFeature(from: decodedStickerFeatures) != decodedSticker {
+            throw DecodingError.dataCorruptedError(
+                forKey: .sticker, in: container,
+                debugDescription: "sticker disagrees with sticker_features"
+            )
+        }
+        if let decodedGifFeatures, let decodedGIF,
+           MediaCapFeature(from: decodedGifFeatures) != decodedGIF {
+            throw DecodingError.dataCorruptedError(
+                forKey: .gif, in: container,
+                debugDescription: "gif disagrees with gif_features"
+            )
+        }
+        gifFeatures = decodedGifFeatures ?? decodedGIF.flatMap(FileKindFeatures.init(from:))
+        stickerFeatures = decodedStickerFeatures ?? decodedSticker.flatMap(FileKindFeatures.init(from:))
         locationSupported = try container.decodeIfPresent(Bool.self, forKey: .locationSupported) ?? false
         linkPreviewsSupported = try container.decodeIfPresent(Bool.self, forKey: .linkPreviewsSupported) ?? false
     }

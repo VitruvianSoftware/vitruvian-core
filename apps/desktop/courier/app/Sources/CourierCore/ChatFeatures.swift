@@ -300,11 +300,11 @@ extension ChatFeatures {
     }
 
     public var supportsStickers: Bool {
-        sticker.supported || stickerFeatures?.supported == true
+        sticker.supported
     }
 
     public var supportsGIFs: Bool {
-        gif.supported || gifFeatures?.supported == true
+        gif.supported
     }
 
     public func maxSizeBytes(for msgType: String) -> Int64? {
@@ -314,8 +314,8 @@ extension ChatFeatures {
         case "m.audio": return audioFeatures?.maxSize
         case "m.voice", "org.matrix.msc3245.voice": return voiceFeatures?.maxSize
         case "m.file": return fileFeatures?.maxSize
-        case "fi.mau.gif": return gif.maxSize ?? gifFeatures?.maxSize
-        case "m.sticker": return sticker.maxSize ?? stickerFeatures?.maxSize
+        case "fi.mau.gif": return gif.maxSize
+        case "m.sticker": return sticker.maxSize
         default: return nil
         }
     }
@@ -327,8 +327,8 @@ extension ChatFeatures {
         case "m.audio": return audioFeatures?.caption == true
         case "m.voice", "org.matrix.msc3245.voice": return voiceFeatures?.caption == true
         case "m.file": return fileFeatures?.caption == true
-        case "fi.mau.gif": return gif.captions || gifFeatures?.caption == true
-        case "m.sticker": return sticker.captions || stickerFeatures?.caption == true
+        case "fi.mau.gif": return gif.captions
+        case "m.sticker": return sticker.captions
         default: return false
         }
     }

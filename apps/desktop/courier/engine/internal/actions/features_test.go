@@ -664,4 +664,9 @@ func TestStickerAndGIFRoomFeatures(t *testing.T) {
 	require.Equal(t, huge.StickerFeatures.MaxSize, huge.Sticker.MaxSize)
 	require.Equal(t, MaxFileCeiling, huge.GIF.MaxSize)
 	require.Equal(t, huge.GIFFeatures.MaxSize, huge.GIF.MaxSize)
+
+	// capMaxSizes must re-derive Sticker and GIF from the capped StickerFeatures and GIFFeatures.
+	huge.StickerFeatures.MaxSize = 128 << 10
+	huge.capMaxSizes(64 << 20)
+	require.Equal(t, int64(128<<10), huge.Sticker.MaxSize, "capMaxSizes must re-derive Sticker from StickerFeatures")
 }
