@@ -2419,3 +2419,7 @@
 "New Calendar Event" = "New Calendar Event";
 "Event title" = "Event title";
 "Add to Calendar" = "Add to Calendar";
+
+/* Milestone 4.5c: Emoji autocomplete, Stickers, and GIFs. */
+"Custom" = "Custom";
+"Add :%@: to Custom Emoji" = "Add :%@: to Custom Emoji";

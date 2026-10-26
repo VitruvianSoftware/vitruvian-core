@@ -209,6 +209,8 @@ public final class ComposerModel: ObservableObject {
     @Published public private(set) var emojiQuery: String?
     /// The UTF-16 range of the active `:shortcode` token (including the leading `:`).
     public private(set) var emojiQueryRange: NSRange?
+    /// Range of a `:shortcode` token dismissed with Escape so a repeated selection report at the same caret does not reopen it.
+    private var dismissedEmojiRange: NSRange?
     /// Matching emoji candidates for `emojiQuery`.
     @Published public private(set) var emojiCandidates: [EmojiCandidate] = []
     /// Highlighted row in the emoji autocomplete popover.
@@ -470,6 +472,10 @@ public final class ComposerModel: ObservableObject {
     /// Escape ends an edit (what was in the composer comes back), or else clears the reply chip. False when there
     /// was neither, so the key can do something else.
     public func escape() -> Bool {
+        if emojiQuery != nil {
+            dismissEmojiAutocomplete()
+            return true
+        }
         if voiceRecorder.state != .idle {
             voiceRecorder.cancelImmediately()
             return true
@@ -574,6 +580,7 @@ public final class ComposerModel: ObservableObject {
         quickReplyQuery = nil
         emojiQuery = nil
         emojiQueryRange = nil
+        dismissedEmojiRange = nil
         emojiCandidates = []
         selectedEmojiIndex = 0
         selection = NSRange(location: (newText as NSString).length, length: 0)
@@ -855,6 +862,9 @@ public final class ComposerModel: ObservableObject {
 
     /// Dismisses the `:shortcode:` autocomplete popover without altering composer text.
     public func dismissEmojiAutocomplete() {
+        if let active = emojiQueryRange {
+            dismissedEmojiRange = active
+        }
         emojiQuery = nil
         emojiQueryRange = nil
         emojiCandidates = []
@@ -863,6 +873,7 @@ public final class ComposerModel: ObservableObject {
 
     /// Explicitly opens `:shortcode:` autocomplete at the current selection or presents the emoji picker.
     public func openEmojiAutocomplete() {
+        dismissedEmojiRange = nil
         let caret = min(max(selection.location, 0), (text as NSString).length)
         if let found = shortcodeQuery(caret: caret, minLength: 1) {
             emojiQueryRange = found.range
@@ -894,6 +905,7 @@ public final class ComposerModel: ObservableObject {
     }
 
     private func applyEdit(range: NSRange, length: Int) {
+        dismissedEmojiRange = nil
         var updated = EntityEditing.replacing(entities, range: range, with: length)
         let caret = range.location + length
         if !pendingKinds.isEmpty {
@@ -993,7 +1005,8 @@ public final class ComposerModel: ObservableObject {
         }
         quickReplyQuery = quickReplies == nil ? nil : query(marker: ";", caret: caret)
         if preferences?.enableEmojiAutocomplete ?? true,
-           let found = shortcodeQuery(caret: caret, minLength: 2) {
+           let found = shortcodeQuery(caret: caret, minLength: 2),
+           found.range != dismissedEmojiRange {
             let previousQuery = emojiQuery
             emojiQueryRange = found.range
             emojiQuery = found.text
@@ -1002,6 +1015,9 @@ public final class ComposerModel: ObservableObject {
                 selectedEmojiIndex = 0
             }
         } else {
+            if shortcodeQuery(caret: caret, minLength: 2)?.range != dismissedEmojiRange {
+                dismissedEmojiRange = nil
+            }
             emojiQuery = nil
             emojiQueryRange = nil
             emojiCandidates = []

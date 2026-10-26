@@ -2330,4 +2330,29 @@ extension ComposerModelTests {
         XCTAssertNil(composer.emojiQuery)
         XCTAssertTrue(composer.emojiCandidates.isEmpty)
     }
+
+    func testEmojiAutocompleteEscapeDismissesEvenOnRepeatedSelectionReport() {
+        let made = makeComposer()
+        let composer = made.composer
+
+        type("hello :smi", into: composer)
+        XCTAssertEqual(composer.emojiQuery, "smi")
+        XCTAssertFalse(composer.emojiCandidates.isEmpty)
+
+        // Pressing Escape while emoji autocomplete is active dismisses the autocomplete first.
+        XCTAssertTrue(composer.escape())
+        XCTAssertNil(composer.emojiQuery)
+        XCTAssertTrue(composer.emojiCandidates.isEmpty)
+
+        // A repeated selectionChanged report at the same caret location (e.g. from AppKit sync)
+        // must not reopen the dismissed autocomplete token.
+        composer.selectionChanged(to: NSRange(location: 10, length: 0))
+        XCTAssertNil(composer.emojiQuery)
+        XCTAssertTrue(composer.emojiCandidates.isEmpty)
+
+        // Typing another character changes the token range and reopens autocomplete.
+        type("l", into: composer)
+        XCTAssertEqual(composer.emojiQuery, "smil")
+        XCTAssertFalse(composer.emojiCandidates.isEmpty)
+    }
 }

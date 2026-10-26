@@ -2139,6 +2139,79 @@ final class ViewSnapshotTests: XCTestCase {
             "cleanup must remove the courier-notif-* temporary directory"
         )
     }
+
+    // MARK: - Milestone 4.5c Task 6: EmojiAutocompletePicker snapshots and keyboard routing
+
+    func testEmojiAutocompletePickerSnapshotsAndKeyboardRouting() throws {
+        let preferences = ComposerPreferences(defaults: defaults())
+        let model = composer(text: "")
+        model.preferences = preferences
+        model.customEmojis = [
+            EmojiCandidate(
+                id: "imported:partyblob",
+                shortcode: "party_smile",
+                glyph: nil,
+                mediaURL: "courier://media/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                isCustom: true
+            ),
+        ]
+        model.textChanged(to: "hello :smi", replacing: NSRange(location: 0, length: 0), with: 10)
+        XCTAssertEqual(model.emojiQuery, "smi")
+        XCTAssertTrue(model.emojiCandidates.contains(where: { $0.isCustom && $0.shortcode == "party_smile" }))
+
+        var addedShortcode: String?
+        check(try Snapshot.render("emoji-autocomplete-picker", width: 280) {
+            EmojiAutocompletePicker(composer: model) { code in
+                addedShortcode = code
+            }
+            .padding(10)
+        })
+        XCTAssertNil(addedShortcode)
+
+        // Verify ComposerView mounts EmojiAutocompletePicker and routes ↑/↓/Return/Tab/Escape through Coordinator.
+        check(try Snapshot.render("composer-emoji-autocomplete", width: 620, prepare: { host in
+            guard let textView = host.first(PlainTextView.self),
+                  let delegate = textView.delegate else {
+                XCTFail("Expected PlainTextView and delegate in ComposerView")
+                return
+            }
+            XCTAssertEqual(model.selectedEmojiIndex, 0)
+            XCTAssertTrue(delegate.textView?(textView, doCommandBy: #selector(NSResponder.moveDown(_:))) ?? false)
+            XCTAssertEqual(model.selectedEmojiIndex, 1)
+            XCTAssertTrue(delegate.textView?(textView, doCommandBy: #selector(NSResponder.moveUp(_:))) ?? false)
+            XCTAssertEqual(model.selectedEmojiIndex, 0)
+        }) {
+            ComposerView(
+                composer: model,
+                preferences: preferences,
+                textHeight: .constant(ComposerTextView.minimumHeight),
+                menus: ComposerMenus(sendLater: {}, createPoll: {}, pollsUnavailable: nil)
+            )
+        })
+
+        // Verify Tab accepts the selected emoji candidate and Escape dismisses when open.
+        let hostView = NSHostingView(
+            rootView: ComposerView(
+                composer: model,
+                preferences: preferences,
+                textHeight: .constant(ComposerTextView.minimumHeight),
+                menus: ComposerMenus(sendLater: {}, createPoll: {}, pollsUnavailable: nil)
+            )
+        )
+        hostView.frame = NSRect(x: 0, y: 0, width: 620, height: 120)
+        hostView.layoutSubtreeIfNeeded()
+        let textView = try XCTUnwrap(hostView.first(PlainTextView.self))
+        let delegate = try XCTUnwrap(textView.delegate)
+        XCTAssertTrue(delegate.textView?(textView, doCommandBy: #selector(NSResponder.insertTab(_:))) ?? false)
+        XCTAssertNil(model.emojiQuery)
+        XCTAssertTrue(model.text.hasPrefix("hello "))
+        XCTAssertNotEqual(model.text, "hello :smi")
+
+        model.textChanged(to: "again :smi", replacing: NSRange(location: 0, length: (model.text as NSString).length), with: 10)
+        XCTAssertEqual(model.emojiQuery, "smi")
+        XCTAssertTrue(delegate.textView?(textView, doCommandBy: #selector(NSResponder.cancelOperation(_:))) ?? false)
+        XCTAssertNil(model.emojiQuery)
+    }
 }
 
 /// A sign-in caller whose every sign-in finishes at once with `finish`.

@@ -4,6 +4,7 @@
 import AppKit
 import CourierCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Picks files for the composer. ⌘O and the plus menu both come here.
 @MainActor
@@ -315,7 +316,23 @@ struct ComposerView: View {
             QuickReplyPicker(replies: composer.quickReplyMatches, index: ui.pickerIndex) { reply in
                 composer.insertQuickReply(reply, replacing: query.range)
             }
+        } else if composer.emojiQuery != nil {
+            EmojiAutocompletePicker(composer: composer) { shortcode in
+                composer.dismissEmojiAutocomplete()
+                presentCustomEmojiImportPanel(shortcode: shortcode)
+            }
         }
+    }
+
+    private func presentCustomEmojiImportPanel(shortcode: String) {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowedContentTypes = [.png, .webP, .gif, .jpeg]
+        panel.message = String(format: String(localized: "Add :%@: to Custom Emoji"), shortcode)
+        panel.prompt = String(localized: "Import Sticker…")
+        guard panel.runModal() == .OK, panel.url != nil else { return }
     }
 
     /// The people for what follows "@", once looked up; an answer for something typed since is dropped.
@@ -665,6 +682,28 @@ struct ComposerTextView: NSViewRepresentable {
         }
 
         func textView(_ textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+            if composer.emojiQuery != nil {
+                switch selector {
+                case #selector(NSResponder.moveUp(_:)):
+                    guard !composer.emojiCandidates.isEmpty else { break }
+                    composer.moveEmojiSelection(-1)
+                    return true
+                case #selector(NSResponder.moveDown(_:)):
+                    guard !composer.emojiCandidates.isEmpty else { break }
+                    composer.moveEmojiSelection(1)
+                    return true
+                case #selector(NSResponder.insertNewline(_:)), #selector(NSResponder.insertTab(_:)):
+                    guard !composer.emojiCandidates.isEmpty else { break }
+                    let idx = min(max(composer.selectedEmojiIndex, 0), composer.emojiCandidates.count - 1)
+                    composer.pickEmoji(composer.emojiCandidates[idx])
+                    return true
+                case #selector(NSResponder.cancelOperation(_:)):
+                    composer.dismissEmojiAutocomplete()
+                    return true
+                default:
+                    break
+                }
+            }
             if let picker = openPicker {
                 let ui = parent.ui
                 switch selector {

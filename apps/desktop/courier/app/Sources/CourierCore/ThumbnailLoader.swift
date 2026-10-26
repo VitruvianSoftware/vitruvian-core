@@ -83,6 +83,57 @@ public actor ThumbnailLoader {
 
     // MARK: - Reading the file
 
+    /// Resolves a local media path from a `courier://media/<sha256>`, `mxc://local.courier/<sha256>`, `file://` URL, or filesystem path.
+    public nonisolated static func resolveMediaPath(
+        _ mediaURL: String?,
+        dataDirectory: URL = EngineLocation.dataDirectory()
+    ) -> String? {
+        guard let raw = mediaURL?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
+            return nil
+        }
+        let hashCandidate: String?
+        if raw.hasPrefix("courier://media/") {
+            hashCandidate = String(raw.dropFirst("courier://media/".count))
+        } else if raw.hasPrefix("mxc://local.courier/") {
+            hashCandidate = String(raw.dropFirst("mxc://local.courier/".count))
+        } else {
+            hashCandidate = nil
+        }
+        if let hash = hashCandidate,
+           hash.count == 64,
+           hash.allSatisfy({ ("0"..."9").contains($0) || ("a"..."f").contains($0) }) {
+            let prefix = String(hash.prefix(2))
+            return dataDirectory
+                .appendingPathComponent("media", isDirectory: true)
+                .appendingPathComponent(prefix, isDirectory: true)
+                .appendingPathComponent(hash, isDirectory: false)
+                .path
+        }
+        if raw.hasPrefix("file://"), let url = URL(string: raw), url.isFileURL {
+            return url.path
+        }
+        if raw.hasPrefix("/") {
+            return raw
+        }
+        return nil
+    }
+
+    /// Synchronously decodes a bounded thumbnail for small local icons (such as custom emoji or sticker cells).
+    public nonisolated static func thumbnail(atPath path: String, maxPixelSize: Int = 640) -> CGImage? {
+        guard !path.isEmpty else { return nil }
+        return decode(path, maxPixelSize: maxPixelSize)?.image
+    }
+
+    /// Synchronously decodes a bounded thumbnail from a `mediaURL` (`courier://media/<sha256>`, `file://`, or path).
+    public nonisolated static func thumbnail(
+        forMediaURL mediaURL: String?,
+        maxPixelSize: Int = 640,
+        dataDirectory: URL = EngineLocation.dataDirectory()
+    ) -> CGImage? {
+        guard let path = resolveMediaPath(mediaURL, dataDirectory: dataDirectory) else { return nil }
+        return thumbnail(atPath: path, maxPixelSize: maxPixelSize)
+    }
+
     private nonisolated static func pixelSize(ofFileAt path: String) -> CGSize? {
         guard let source = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil),
               let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
