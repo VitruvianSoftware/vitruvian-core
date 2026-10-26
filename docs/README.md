@@ -98,7 +98,7 @@ Task-oriented recipes for day-to-day work.
 |---|---|
 | **Infrastructure (Pulumi + k8s estate)** | [`infrastructure/`](infrastructure/index.md) — architecture, user guide, reference, the dev-local cluster, [dev-local vs GKE](infrastructure/dev-local-vs-gke.md), [resilience catalog](infrastructure/resilience-catalog.md) |
 | **Operations** | [`operations/`](operations/) — runbooks ([break-glass deploy](operations/break-glass-deploy-runbook.md), [sealed-secrets](operations/sealed-secrets.md), [key rotation](operations/key-rotation.md)) and [incident postmortems](operations/incidents/) |
-| **Repo administration** | [`admin/`](admin/) — [Copybara mirror sync](admin/copybara-sync.md); plus [merge automation](../.github/workflows/README.md) |
+| **Repo administration** | [`admin/`](admin/) — [Copybara mirror sync](admin/copybara-sync.md), [Headscale & Tailscale coexistence](admin/headscale-tailscale-failover.md), [Claude Code cloud sessions](admin/claude-code-cloud-sessions.md); plus [merge automation](../.github/workflows/README.md) |
 | **Engineering standards** | [`engineering/`](engineering/) — principles, [alignment gaps](engineering/application-alignment-gaps.md) (the honest current-state delta), migrations in flight |
 | **Developer Portal (Backstage)** | [Backstage MCP Server](backstage-mcp.md), [Backstage ArgoCD](backstage-argocd.md), [Backstage Grafana](backstage-grafana.md) |
 | **Per-app docs** | Each app documents itself in its **own directory**, so the docs mirror out with the app: [`apps/suites/tabula/docs/`](../apps/suites/tabula/docs/index.md), [`apps/cli/devx/docs/`](../apps/cli/devx/docs/), [`apps/web/oauth-user-inspector/docs/`](../apps/web/oauth-user-inspector/docs/), … |

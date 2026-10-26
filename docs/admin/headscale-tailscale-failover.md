@@ -15,6 +15,58 @@ The homelab k3s cluster relies on Tailscale for internal cluster communication, 
 
 **Core Rule**: Commercial Tailscale (`tailscale0`) remains the immutable cluster underlay and break-glass network. Headscale is deployed strictly as an overlay mesh alongside it.
 
+```mermaid
+flowchart TB
+  subgraph Clients["Remote & Cloud Clients"]
+    CC["Claude Code Cloud VM (100.64.0.x)\nuserspace tailscaled + SOCKS5 :1055"]
+    OP["Operator Devices (Mac / Pixel)\ntailscale switch (Headscale or Tailscale.com)"]
+  end
+
+  subgraph Edge["Public Control Plane & DNS"]
+    CF["Cloudflare DNS\nk8s-api.lab.ipv1337.dev -> 100.64.0.6, .7, .8\nheadscale.ipv1337.dev -> 136.115.252.139"]
+    GCP["GCP Edge Relay (136.115.252.139)\nReverse SSH Tunnel Entrypoint"]
+    DERP["Tailscale DERP Relays (HTTPS :443)"]
+  end
+
+  subgraph Cluster["Homelab k3s Cluster (fedora · nuc9i5 · nuc9i9 + Lima Workers)"]
+    subgraph Underlay["Host Underlay (Immutable — Never Point at Headscale)"]
+      TS0["Host tailscaled (tailscale0)\nCommercial Tailscale (100.97.82.15, 100.96.128.107, 100.86.106.117)"]
+      K3S["k3s Apiserver (:6443) + etcd Quorum + Host sshd (:22)"]
+      TS0 --> K3S
+    end
+
+    subgraph Overlay["Headscale Overlay Pods (namespace: headscale)"]
+      ET["headscale-edge-tunnel\nOutbound SSH -R to GCP Edge"]
+      HS["headscale (v0.26.1) + headplane\nControl Plane behind Envoy Gateway"]
+      NA["headscale-node-agent DaemonSet (100.64.0.3–.8)\nTS_USERSPACE=true + hostNetwork=true"]
+      SR["headscale-subnet-router Deployment (100.64.0.2)\nPinned to Wired CP + hostNetwork=true\nAdvertises 192.168.86.0/24 & 10.44.86.0/24"]
+    end
+
+    subgraph DNSReconcile["Dynamic API DNS Sync (namespace: external-dns)"]
+      CJ["k8s-api-dns-reconciler CronJob (every 5m)\nMaps default/kubernetes Endpoints -> 100.64.0.6/.7/.8"]
+      EDNS["external-dns + DNSEndpoint (k8s-api)"]
+      CJ --> EDNS
+    end
+  end
+
+  CC -.->|"OS /etc/resolv.conf"| CF
+  CC <-->|"TS2021 Control"| GCP
+  OP <-->|"TS2021 Control"| GCP
+  GCP <-->|"Reverse Tunnel"| ET
+  ET --> HS
+
+  CC <-->|"WireGuard over DERP"| DERP
+  OP <-->|"Direct UDP or DERP"| NA
+  OP <-->|"Direct UDP or DERP"| SR
+  DERP <--> NA
+  DERP <--> SR
+
+  NA -->|"127.0.0.1:6443 & 127.0.0.1:22"| K3S
+  SR -->|"LAN 192.168.86.0/24 & 10.44.86.0/24"| K3S
+  K3S -->|"default/kubernetes Endpoints"| CJ
+  EDNS -->|"Syncs A Records"| CF
+```
+
 ---
 
 ## 2. Dynamic Node Discovery (`k8s-api.lab.ipv1337.dev`)

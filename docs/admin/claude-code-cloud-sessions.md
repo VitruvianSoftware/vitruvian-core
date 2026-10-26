@@ -180,6 +180,35 @@ a failure shows: a hook's stderr never reaches the agent. `tools/ci/kube-setup_t
 
 Verify with `kubectl get nodes` (context `lab`). If it works, you're done.
 
+```mermaid
+flowchart LR
+  subgraph CloudVM["Claude Code Cloud Sandbox (No /dev/net/tun, No Outbound UDP)"]
+    CLI["kubectl (--context lab) / curl / ssh"]
+    SOCKS["tailscaled (userspace networking)\nSOCKS5 Proxy on localhost:1055"]
+    CLI -->|"socks5://localhost:1055"| SOCKS
+  end
+
+  subgraph Public["Public DNS & Relay Layer"]
+    CF["Cloudflare DNS\nk8s-api.lab.ipv1337.dev\nA -> 100.64.0.6, 100.64.0.7, 100.64.0.8"]
+    DERP["Tailscale DERP Relay\n(HTTPS TCP/443 via $HTTPS_PROXY)"]
+  end
+
+  subgraph Homelab["Homelab Wired Control-Plane Nodes (fedora · nuc9i5 · nuc9i9)"]
+    NA["headscale-node-agent DaemonSet\n(100.64.0.6, 100.64.0.7, 100.64.0.8)\nTS_USERSPACE=true + hostNetwork=true"]
+    SR["headscale-subnet-router Deployment\n(100.64.0.2, pinned to wired CP)\nTS_USERSPACE=true + hostNetwork=true"]
+    API["k3s Apiserver\n(127.0.0.1:6443 / 192.168.86.64:6443)"]
+    SSH["Host sshd\n(127.0.0.1:22)"]
+  end
+
+  SOCKS -.->|"Guest OS /etc/resolv.conf"| CF
+  SOCKS <-->|"WireGuard over DERP"| DERP
+  DERP <--> NA
+  DERP <--> SR
+  NA -->|"netstack -> 127.0.0.1:6443"| API
+  NA -->|"netstack -> 127.0.0.1:22"| SSH
+  SR -->|"192.168.86.0/24 & 10.44.86.0/24"| API
+```
+
 **Prerequisites (set once, outside this repo):**
 - Env vars on the cloud environment (or, better, the `homelab` profile's Secret
   Manager entries — same values, rotated without touching the environment):
