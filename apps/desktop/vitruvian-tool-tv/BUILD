@@ -28,7 +28,7 @@ the crate universe @crates, so Cargo.lock and MODULE.bazel stay as they are.
 # gazelle:ignore
 
 load("@aspect_rules_py//py:defs.bzl", "py_test")
-load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
 package(default_visibility = ["//apps/desktop/vitruvian-tool-tv:__subpackages__"])
 
@@ -89,4 +89,41 @@ py_test(
         "//packages/vitruvian-sdk:conformance/conformance.py",
     ],
     main = "vitruvian_tv_test.py",
+)
+
+rust_library(
+    name = "publish_tool_lib",
+    srcs = ["scripts/src/publish_tool/lib.rs"],
+    crate_name = "publish_tool_lib",
+    edition = "2021",
+    deps = ["@crates//:serde_json"],
+)
+
+rust_binary(
+    name = "publish-tool-rs",
+    srcs = ["scripts/src/publish_tool/main.rs"],
+    edition = "2021",
+    deps = [":publish_tool_lib"],
+)
+
+rust_test(
+    name = "publish_tool_lib_test",
+    size = "small",
+    crate = ":publish_tool_lib",
+)
+
+rust_test(
+    name = "vitruvian_tv_rs_test",
+    size = "small",
+    srcs = ["scripts/src/vitruvian_tv_test.rs"],
+    data = [
+        "built/vitruvian-tv/vitruvian-tool.json",
+        ":tool-folder",
+        "//packages/vitruvian-sdk:conformance_rs",
+    ],
+    edition = "2021",
+    env = {
+        "MANIFEST_PATH": "$(rootpath built/vitruvian-tv/vitruvian-tool.json)",
+        "CONFORMANCE_BIN": "$(rootpath //packages/vitruvian-sdk:conformance_rs)",
+    },
 )

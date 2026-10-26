@@ -16,6 +16,7 @@ load("@aspect_rules_py//py:defs.bzl", "py_test")
 load("@build_bazel_rules_swift//swift:swift_binary.bzl", "swift_binary")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 package(default_visibility = ["//apps/desktop/vitruvian-tool-github:__subpackages__"])
@@ -149,6 +150,84 @@ py_test(
     main = "mirror_workflows_test.py",
     tags = ["no-remote-exec"],
     deps = ["@pip//pyyaml"],
+)
+
+rust_library(
+    name = "tests_rs_lib",
+    srcs = [
+        "tests_rs/src/conformance.rs",
+        "tests_rs/src/lib.rs",
+        "tests_rs/src/mirror_workflows.rs",
+        "tests_rs/src/version.rs",
+    ],
+    crate_name = "tests_rs_lib",
+    crate_root = "tests_rs/src/lib.rs",
+    edition = "2021",
+    deps = [
+        "//packages/vitruvian-sdk:conformance_rs_lib",
+        "@crates//:serde_json",
+    ],
+)
+
+rust_test(
+    name = "tests_rs_lib_test",
+    size = "small",
+    crate = ":tests_rs_lib",
+)
+
+rust_test(
+    name = "conformance_rs_test",
+    size = "small",
+    srcs = ["tests_rs/src/conformance_test.rs"],
+    data = [
+        "built/github/vitruvian-tool.json",
+        ":tool-folder",
+        "//packages/vitruvian-sdk:conformance_rs",
+        "//packages/vitruvian-sdk:vitruvian-tool",
+    ],
+    edition = "2021",
+    env = {
+        "MANIFEST_PATH": "$(rootpath built/github/vitruvian-tool.json)",
+        "CONFORMANCE_BIN": "$(rootpath //packages/vitruvian-sdk:conformance_rs)",
+        "VALIDATE_BIN": "$(rootpath //packages/vitruvian-sdk:vitruvian-tool)",
+    },
+    tags = [
+        "block-network",
+        "manual",
+    ],
+    target_compatible_with = MACOS_ONLY,
+    deps = [":tests_rs_lib"],
+)
+
+rust_test(
+    name = "version_rs_test",
+    size = "small",
+    srcs = ["tests_rs/src/version_test.rs"],
+    data = [
+        ".release-please-manifest.json",
+        "Package.swift",
+        "Sources/GitHubToolCore/Version.swift",
+        "release-please-config.json",
+        "vitruvian-tool.json",
+    ],
+    edition = "2021",
+    deps = [
+        ":tests_rs_lib",
+        "@crates//:serde_json",
+    ],
+)
+
+rust_test(
+    name = "mirror_workflows_rs_test",
+    size = "small",
+    srcs = ["tests_rs/src/mirror_workflows_test.rs"],
+    data = [
+        ".github/workflows/ci.yml",
+        ".github/workflows/release.yml",
+    ],
+    edition = "2021",
+    tags = ["no-remote-exec"],
+    deps = [":tests_rs_lib"],
 )
 
 pipeline_unit(
