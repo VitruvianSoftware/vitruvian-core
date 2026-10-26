@@ -73,6 +73,7 @@ All facts below are verified against the pinned Go modules in `~/go/pkg/mod` (ex
 
 ## Global Constraints
 
+- **Version numbers are assigned when the build starts, in landing order.** Use the next free protocol version and migration number on `main` at that moment (4.5b takes protocol 7 and migration 9; 4.5c and 4.6 take the next free ones in the order they are built). The numbers written in this plan are placeholders for that rule.
 1. **Bazel-only builds, tests, and git operations:** Never invoke `go test`, `swift test`, or raw `git commit`/`git push`. Use `bazel test //apps/desktop/courier/...` and `bazel run //tools/git:commit -- --agent <you> ...`.
 2. **macOS 14.0 deployment target (`apps/desktop/courier/app/BUILD:136`):** Only use APIs available in macOS 14.0 (`AppKit`: `NSTextView`, `NSImageView`, `NSOpenPanel`, `NSWorkspace`; `ImageIO`: `CGImageSourceCreateWithData`, `CGImageSourceCopyPropertiesAtIndex`; `UniformTypeIdentifiers`: `UTType.png`, `UTType.gif`, `UTType.webP`, `UTType.mpeg4Movie`).
 3. **Privacy & outbound connections:** Nothing leaves the Mac unless the user triggers it:
