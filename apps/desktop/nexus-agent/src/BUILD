@@ -1,5 +1,6 @@
 load("@aspect_rules_js//js:defs.bzl", "js_binary", "js_library", "js_test")
 load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # Plain ESM JavaScript — no TypeScript compilation needed for runtime, but
@@ -114,14 +115,98 @@ js_binary(
     visibility = ["//apps/desktop/nexus-agent:__subpackages__"],
 )
 
+# ─── Native Rust port of the Nexus Agent bridge & Telegram bot engine ────────
+
+rust_library(
+    name = "nexus_agent_src_lib",
+    srcs = [
+        "rs/agy.rs",
+        "rs/annotations.rs",
+        "rs/bot.rs",
+        "rs/formatter.rs",
+        "rs/lib.rs",
+        "rs/sessions.rs",
+    ],
+    crate_name = "nexus_agent_src_lib",
+    crate_root = "rs/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/desktop/nexus-agent:__subpackages__"],
+)
+
+rust_binary(
+    name = "bot-engine-rs",
+    srcs = ["rs/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/desktop/nexus-agent:__subpackages__"],
+    deps = [":nexus_agent_src_lib"],
+)
+
+alias(
+    name = "bot_engine_rs",
+    actual = ":bot-engine-rs",
+    visibility = ["//apps/desktop/nexus-agent:__subpackages__"],
+)
+
+rust_test(
+    name = "nexus_agent_src_lib_test",
+    size = "small",
+    crate = ":nexus_agent_src_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_test(
+    name = "annotations_rs_test",
+    size = "small",
+    srcs = ["rs/annotations_test.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":nexus_agent_src_lib"],
+)
+
+rust_test(
+    name = "formatter_rs_test",
+    size = "small",
+    srcs = ["rs/formatter_test.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":nexus_agent_src_lib"],
+)
+
+rust_test(
+    name = "sessions_rs_test",
+    size = "small",
+    srcs = ["rs/sessions_test.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":nexus_agent_src_lib"],
+)
+
+rust_test(
+    name = "shared_cases_rs_test",
+    size = "small",
+    srcs = ["rs/shared_cases_test.rs"],
+    data = ["//apps/desktop/nexus-agent:testdata_files"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":nexus_agent_src_lib"],
+)
+
 pipeline_unit(
     name = "nexus-agent-src",
     persona = "backend",
     runner = "ubuntu-26.04",
     test_targets = [
+        ":annotations_rs_test",
         ":annotations_test",
+        ":formatter_rs_test",
         ":formatter_test",
+        ":nexus_agent_src_lib_test",
+        ":sessions_rs_test",
         ":sessions_test",
+        ":shared_cases_rs_test",
         ":shared_cases_test",
         ":typecheck_typecheck_test",
     ],
