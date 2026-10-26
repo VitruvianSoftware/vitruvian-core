@@ -24,4 +24,44 @@
 #
 # gazelle:ignore
 
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+
+package(default_visibility = ["//apps/mobile/android-remote:__subpackages__"])
+
 exports_files(["boot_smoke.sh"])
+
+rust_library(
+    name = "android_remote_tools_lib",
+    srcs = [
+        "src/boot_smoke.rs",
+        "src/lib.rs",
+        "src/publish.rs",
+    ],
+    crate_name = "android_remote_tools_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
+    name = "publish-rs",
+    srcs = ["src/publish_main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":android_remote_tools_lib"],
+)
+
+rust_binary(
+    name = "boot-smoke-rs",
+    srcs = ["src/boot_smoke_main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":android_remote_tools_lib"],
+)
+
+rust_test(
+    name = "android_remote_tools_lib_test",
+    size = "small",
+    crate = ":android_remote_tools_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
