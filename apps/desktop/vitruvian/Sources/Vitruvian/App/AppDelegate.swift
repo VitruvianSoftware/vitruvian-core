@@ -565,6 +565,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         MenuPanelFocus.shared.setPopoverVisible(popover.isShown)
         popover.animates = true
+        if popover.isShown { presenter.popoverWasRepresented() }
         popover.contentViewController?.view.window?.makeKey()
         if let window = popover.contentViewController?.view.window {
             configurePopoverWindow(window)
@@ -666,6 +667,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
             }
             return false
         }
+        presenter.popoverWasRepresented()
         configurePopoverWindow(popoverWindow)
         popoverWindow.makeKey()
         presenter.beginPopoverDriftCorrection(window: popoverWindow,
