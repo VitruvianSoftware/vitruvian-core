@@ -391,6 +391,49 @@ enum MetricsFeatureTests {
                                              batteryWatts: -4,
                                              externalConnected: true) == nil,
                "battery flow alone does not claim total system power while plugged in")
+        suite.expect(MetricFormat.systemPowerWatts(measured: nil,
+                                             batteryWatts: nil,
+                                             externalConnected: true) == nil,
+               "a desktop without a system sensor does not claim adapter input as system power")
+        suite.expect(MetricFormat.systemPowerWatts(measured: 30,
+                                             batteryWatts: nil,
+                                             externalConnected: true) == 30,
+               "a desktop keeps its independent system total sensor")
+        suite.expect(MetricFormat.adapterPowerWatts(measured: nil,
+                                                   dcInRailWatts: 198,
+                                                   hasInternalBattery: false,
+                                                   externalConnected: true) == 198,
+               "a desktop reports its DC-In rail as adapter input when the adapter total is unavailable")
+        suite.expect(MetricFormat.adapterPowerWatts(measured: 210,
+                                                   dcInRailWatts: 198,
+                                                   hasInternalBattery: false,
+                                                   externalConnected: true) == 210,
+               "the measured adapter total takes priority over the desktop rail")
+        suite.expect(MetricFormat.adapterPowerWatts(measured: 210,
+                                                   dcInRailWatts: 198,
+                                                   hasInternalBattery: false,
+                                                   externalConnected: false) == 210,
+               "the measured adapter total does not depend on a power-connection flag")
+        suite.expect(MetricFormat.adapterPowerWatts(measured: nil,
+                                                   dcInRailWatts: 198,
+                                                   hasInternalBattery: false,
+                                                   externalConnected: false) == nil,
+               "a desktop without a confirmed power connection does not use the DC-In rail")
+        suite.expect(MetricFormat.adapterPowerWatts(measured: nil,
+                                                   dcInRailWatts: 13,
+                                                   hasInternalBattery: true,
+                                                   externalConnected: true) == nil,
+               "a Mac with a battery never uses the desktop DC-In rail fallback")
+        suite.expect(MetricFormat.adapterPowerWatts(measured: 13,
+                                                   dcInRailWatts: 198,
+                                                   hasInternalBattery: true,
+                                                   externalConnected: true) == 13,
+               "a Mac with a battery keeps its measured adapter input")
+        suite.expect(MetricFormat.adapterPowerWatts(measured: nil,
+                                                   dcInRailWatts: nil,
+                                                   hasInternalBattery: false,
+                                                   externalConnected: true) == nil,
+               "an unavailable desktop rail does not create an adapter reading")
 
         // MARK: Peripheral battery helpers
 
