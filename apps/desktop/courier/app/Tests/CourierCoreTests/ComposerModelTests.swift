@@ -301,7 +301,7 @@ final class ComposerModelTests: XCTestCase {
 
         sender.failures = [.rpc(.tooLarge, message: "the file is too large to send (the limit is 90 MB)", reason: nil)]
         await composer.submit()?.value
-        XCTAssertEqual(composer.notice, .sendFailed(reason: "A file is over 90 MB."))
+        XCTAssertEqual(composer.notice, .sendFailed(reason: "This file is larger than the network allows."))
     }
 
     func testFilesPutBackAfterARefusalNeverTakeTheTotalPast90MB() async {
@@ -1395,6 +1395,7 @@ final class FakeSender: MessageSending, @unchecked Sendable {
         var threadRoot: String?
         var due: Date
         var condition: SendLaterCondition
+        var disableLinkPreview: Bool? = true
     }
 
     private let lock = NSLock()
@@ -1593,6 +1594,15 @@ final class FakeSender: MessageSending, @unchecked Sendable {
         return newID()
     }
 
+    func sendVoice(roomID: String, url: URL, durationMS: Int64, waveform: [Int], replyTo: String?)
+        async throws -> String {
+        locked {
+            _log.append("sendVoice")
+        }
+        if let failure = nextFailure() { throw failure }
+        return newID()
+    }
+
     func edit(eventID: String, rich: RichText) async throws {
         locked {
             _edits.append(Edit(eventID: eventID, rich: rich))
@@ -1603,11 +1613,19 @@ final class FakeSender: MessageSending, @unchecked Sendable {
 
     func schedule(roomID: String, rich: RichText, replyTo: String?, threadRoot: String?, due: Date,
                   condition: SendLaterCondition) async throws {
+        try await schedule(
+            roomID: roomID, rich: rich, replyTo: replyTo, threadRoot: threadRoot,
+            due: due, condition: condition, disableLinkPreview: nil
+        )
+    }
+
+    func schedule(roomID: String, rich: RichText, replyTo: String?, threadRoot: String?, due: Date,
+                  condition: SendLaterCondition, disableLinkPreview: Bool?) async throws {
         await scheduleGate.pass()
         if let failure = nextFailure() { throw failure }
         locked {
             _schedules.append(Schedule(room: roomID, rich: rich, replyTo: replyTo, threadRoot: threadRoot, due: due,
-                                       condition: condition))
+                                       condition: condition, disableLinkPreview: disableLinkPreview))
             _log.append("schedule")
         }
     }
@@ -2086,6 +2104,49 @@ extension ComposerModelTests {
                     replyTo: nil
                 ),
             ]
+        )
+
+        // 5. Scheduling a message forwards disable_link_preview from preferences.
+        preferences.disableOutgoingLinkPreviews = false
+        type("Scheduled link https://example.com/with-preview", into: composer)
+        try? await composer.schedule(at: made.clock.now.addingTimeInterval(1800), condition: .always)
+        XCTAssertEqual(made.sender.schedules.last?.disableLinkPreview, false)
+
+        preferences.disableOutgoingLinkPreviews = true
+        type("Scheduled link https://example.com/later", into: composer)
+        try? await composer.schedule(at: made.clock.now.addingTimeInterval(3600), condition: .always)
+        XCTAssertEqual(made.sender.schedules.last?.disableLinkPreview, true)
+    }
+
+    func testVoiceNoteNeedsFFmpegAndFileTooLargeErrorsUseNetworkAndFeatureLimits() async {
+        var features = whatsApp
+        features.voiceFeatures = FileKindFeatures(supported: true, caption: false, maxSize: 16 * Self.megabyte)
+        features.fileFeatures = FileKindFeatures(supported: true, caption: true, maxSize: 100 * Self.megabyte)
+
+        let (composer, sender) = make(sizes: ["clip.bin": 10 * Self.megabyte])
+        composer.open("!a")
+        composer.network = "whatsapp"
+        composer.features = features
+
+        // 1. Voice note refusal with -32028 needs_ffmpeg names the network and Homebrew install command.
+        sender.failures = [.rpc(.needsFFmpeg, message: "sending voice notes on this network needs ffmpeg", reason: nil)]
+        await composer.sendVoiceNote(
+            url: URL(fileURLWithPath: "/tmp/voice.m4a"),
+            durationMS: 2_500,
+            waveform: [20, 60, 40]
+        )
+        XCTAssertEqual(
+            composer.notice,
+            .sendFailed(reason: "Sending voice notes on WhatsApp needs ffmpeg. Install it with Homebrew (brew install ffmpeg), then try again.")
+        )
+
+        // 2. File send refusal with -32012 too_large names the network and per-kind maxSize instead of hardcoded 90 MB.
+        composer.attach([file("clip.bin")])
+        sender.failures = [.rpc(.tooLarge, message: "file exceeds limit", reason: nil)]
+        await composer.submit()?.value
+        XCTAssertEqual(
+            composer.notice,
+            .sendFailed(reason: "This file is larger than WhatsApp allows (100 MB).")
         )
     }
 }

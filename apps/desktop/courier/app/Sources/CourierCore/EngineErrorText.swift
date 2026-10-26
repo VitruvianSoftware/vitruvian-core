@@ -7,10 +7,15 @@ import Foundation
 /// never shown: each code it defines has words here, and a code this app does not know gets the caller's
 /// general words.
 public enum EngineErrorText {
-    public static func text(for error: Error, network: String? = nil, fallback: String) -> String {
+    public static func text(
+        for error: Error,
+        network: String? = nil,
+        maxSizeBytes: Int64? = nil,
+        fallback: String
+    ) -> String {
         switch error as? EngineError {
         case let .rpc(code, _, _):
-            return text(for: code, network: network) ?? fallback
+            return text(for: code, network: network, maxSizeBytes: maxSizeBytes) ?? fallback
         case .timedOut:
             return String(localized: "Courier’s engine did not answer in time.")
         case .notConnected:
@@ -20,11 +25,18 @@ public enum EngineErrorText {
         }
     }
 
-    private static func text(for code: RPCErrorCode, network: String?) -> String? {
+    private static func text(for code: RPCErrorCode, network: String?, maxSizeBytes: Int64?) -> String? {
         switch code {
         case .notLinked: String(localized: "This chat’s network isn’t linked.")
         case .bridgeCommand: String(localized: "The network would take this as a command, so it was not sent.")
-        case .tooLarge: String(localized: "A file is over 90 MB.")
+        case .tooLarge:
+            tooLargeText(network: network, maxSizeBytes: maxSizeBytes)
+        case .needsFFmpeg:
+            if let network, let name = NetworkNames.displayName(of: network) {
+                String(localized: "Sending voice notes on \(name) needs ffmpeg. Install it with Homebrew (brew install ffmpeg), then try again.")
+            } else {
+                String(localized: "Sending voice notes on this network needs ffmpeg. Install it with Homebrew (brew install ffmpeg), then try again.")
+            }
         case .notRunning: String(localized: "This chat’s network isn’t running.")
         case .notConnected: String(localized: "The network isn’t connected yet.")
         case .notFailed: String(localized: "Only a message that was not sent can be sent again or deleted.")
@@ -48,5 +60,32 @@ public enum EngineErrorText {
             }
         default: nil
         }
+    }
+
+    private static func tooLargeText(network: String?, maxSizeBytes: Int64?) -> String {
+        let name = network.flatMap(NetworkNames.displayName(of:))
+        let formattedLimit = maxSizeBytes.flatMap { $0 > 0 ? formatMaxSize($0) : nil }
+        switch (name, formattedLimit) {
+        case let (name?, limit?):
+            return String(localized: "This file is larger than \(name) allows (\(limit)).")
+        case let (name?, nil):
+            return String(localized: "This file is larger than \(name) allows.")
+        case let (nil, limit?):
+            return String(localized: "This file is larger than the network allows (\(limit)).")
+        case (nil, nil):
+            return String(localized: "This file is larger than the network allows.")
+        }
+    }
+
+    private static func formatMaxSize(_ bytes: Int64) -> String {
+        let gib: Int64 = 1024 * 1024 * 1024
+        let mib: Int64 = 1024 * 1024
+        if bytes >= gib, bytes % gib == 0 {
+            return "\(bytes / gib) GB"
+        }
+        if bytes >= mib, bytes % mib == 0 {
+            return "\(bytes / mib) MB"
+        }
+        return ByteCountFormatter.string(fromByteCount: bytes, countStyle: .binary)
     }
 }

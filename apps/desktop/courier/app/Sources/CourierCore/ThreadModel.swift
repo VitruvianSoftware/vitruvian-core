@@ -426,6 +426,12 @@ final class ThreadMessageSender: MessageSending {
                                 condition: condition)
     }
 
+    func schedule(roomID: String, rich: RichText, replyTo: String?, threadRoot: String?, due: Date,
+                  condition: SendLaterCondition, disableLinkPreview: Bool?) async throws {
+        try await base.schedule(roomID: roomID, rich: rich, replyTo: replyTo, threadRoot: threadRoot, due: due,
+                                condition: condition, disableLinkPreview: disableLinkPreview)
+    }
+
     func undo(eventID: String) async throws -> Draft {
         try await base.undo(eventID: eventID)
     }

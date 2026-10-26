@@ -115,6 +115,9 @@ public protocol MessageSending: AnyObject, Sendable {
     /// message.schedule.
     func schedule(roomID: String, rich: RichText, replyTo: String?, threadRoot: String?, due: Date,
                   condition: SendLaterCondition) async throws
+    /// message.schedule with `disable_link_preview`.
+    func schedule(roomID: String, rich: RichText, replyTo: String?, threadRoot: String?, due: Date,
+                  condition: SendLaterCondition, disableLinkPreview: Bool?) async throws
     /// message.undo: the held message's text, ranges and reply, given back.
     func undo(eventID: String) async throws -> Draft
     /// message.sendHeld: a chat's held messages now, or with nil every chat's.
@@ -152,6 +155,12 @@ extension MessageSending {
     public func sendVoice(roomID: String, url: URL, durationMS: Int64, waveform: [Int], replyTo: String?) async throws
         -> String {
         ""
+    }
+
+    public func schedule(roomID: String, rich: RichText, replyTo: String?, threadRoot: String?, due: Date,
+                         condition: SendLaterCondition, disableLinkPreview _: Bool?) async throws {
+        try await schedule(roomID: roomID, rich: rich, replyTo: replyTo, threadRoot: threadRoot, due: due,
+                           condition: condition)
     }
 }
 
@@ -1212,7 +1221,13 @@ public final class ComposerModel: ObservableObject {
                 if self.roomID == room, self.replyTarget == nil {
                     self.replyTarget = reply
                 }
-                switch Self.classify(error) {
+                switch Self.classify(
+                    error,
+                    network: self.network,
+                    maxSizeBytes: self.features.voiceFeatures?.maxSize
+                        ?? self.features.audioFeatures?.maxSize
+                        ?? self.features.fileFeatures?.maxSize
+                ) {
                 case let .refused(reason):
                     self.show([.sendFailed(reason: reason)], in: room)
                 case .unanswered:
@@ -1259,7 +1274,7 @@ public final class ComposerModel: ObservableObject {
                 try await sender.edit(eventID: eventID, rich: rich)
             } catch {
                 guard let self else { return }
-                switch Self.classify(error) {
+                switch Self.classify(error, network: self.network) {
                 case let .refused(reason):
                     self.refusedEdit(eventID, original: original, rich: rich, in: room, reason: reason)
                 case .unanswered:
@@ -1314,7 +1329,7 @@ public final class ComposerModel: ObservableObject {
             onSent(room, eventID)
             if archive { await onArchive(room) }
         } catch {
-            switch Self.classify(error) {
+            switch Self.classify(error, network: self.network) {
             case let .refused(reason):
                 let leftOut = putBack([.text(RichText(text: rawText))][...], reply: reply, in: room)
                 show([.sendFailed(reason: reason)] + Self.leftOutNotice(leftOut), in: room)
@@ -1353,7 +1368,13 @@ public final class ComposerModel: ObservableObject {
                 onSent(room, eventID)
                 reply = nil
             } catch {
-                switch Self.classify(error) {
+                let itemMaxSize: Int64?
+                if case let .file(file) = item {
+                    itemMaxSize = self.maxFileSize(for: file.url)
+                } else {
+                    itemMaxSize = nil
+                }
+                switch Self.classify(error, network: self.network, maxSizeBytes: itemMaxSize) {
                 case .refused(let reason):
                     // Nothing of this was sent: it, and what came after, goes back.
                     let leftOut = putBack(items[index...], reply: reply, in: room)
@@ -1433,9 +1454,34 @@ public final class ComposerModel: ObservableObject {
     }
 
     /// Whether the engine said no, or may have said yes without being heard.
-    private static func classify(_ error: Error) -> Failure {
+    private static func classify(_ error: Error, network: String = "", maxSizeBytes: Int64? = nil) -> Failure {
         if (error as? EngineError)?.mayHaveBeenHandled == true { return .unanswered }
-        return .refused(EngineErrorText.text(for: error, fallback: String(localized: "The message could not be sent.")))
+        return .refused(
+            EngineErrorText.text(
+                for: error,
+                network: network.isEmpty ? nil : network,
+                maxSizeBytes: maxSizeBytes,
+                fallback: String(localized: "The message could not be sent.")
+            )
+        )
+    }
+
+    private func maxFileSize(for url: URL) -> Int64? {
+        let ext = url.pathExtension.lowercased()
+        let msgType: String
+        switch ext {
+        case "gif":
+            msgType = "fi.mau.gif"
+        case "jpg", "jpeg", "png", "webp", "heic", "heif", "bmp", "tiff", "tif":
+            msgType = "m.image"
+        case "mp4", "mov", "m4v", "webm", "mkv", "avi":
+            msgType = "m.video"
+        case "mp3", "m4a", "aac", "ogg", "oga", "opus", "wav", "flac":
+            msgType = "m.audio"
+        default:
+            msgType = "m.file"
+        }
+        return features.maxSizeBytes(for: msgType) ?? features.fileFeatures?.maxSize
     }
 
     // MARK: - Send later
@@ -1458,10 +1504,11 @@ public final class ComposerModel: ObservableObject {
         }
         let typed = text
         let reply = replyTarget
+        let disableLinkPreview = preferences?.disableOutgoingLinkPreviews
         isScheduling = true
         defer { isScheduling = false }
         try await sender.schedule(roomID: room, rich: rich, replyTo: reply?.eventID, threadRoot: threadRoot,
-                                  due: due, condition: condition)
+                                  due: due, condition: condition, disableLinkPreview: disableLinkPreview)
         // What was scheduled leaves the composer; anything typed meanwhile stays.
         if room == roomID, !isEditing, text == typed {
             setContents("", [])

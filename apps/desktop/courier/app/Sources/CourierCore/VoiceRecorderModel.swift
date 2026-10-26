@@ -1,7 +1,9 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import AudioToolbox
 import AVFoundation
+import CoreAudio
 import Foundation
 
 public struct AudioInputDevice: Equatable, Identifiable, Sendable {
@@ -13,6 +15,20 @@ public struct AudioInputDevice: Equatable, Identifiable, Sendable {
     public init(uid: String, name: String) {
         self.uid = uid
         self.name = name
+    }
+}
+
+public struct CoreAudioDeviceEntry: Equatable, Sendable {
+    public let deviceID: UInt32
+    public let uid: String
+    public let name: String
+    public let inputChannels: Int
+
+    public init(deviceID: UInt32, uid: String, name: String, inputChannels: Int = 1) {
+        self.deviceID = deviceID
+        self.uid = uid
+        self.name = name
+        self.inputChannels = inputChannels
     }
 }
 
@@ -48,11 +64,104 @@ public protocol VoiceRecordingBackend: Sendable {
 public final class AVAudioVoiceRecordingBackend: NSObject, VoiceRecordingBackend, @unchecked Sendable {
     private let lock = NSLock()
     private var recorder: AVAudioRecorder?
+    private var audioEngine: AVAudioEngine?
+    private var audioFile: AVAudioFile?
+    private var lastEngineMeterLevel: Float = 0
     private var activeURL: URL?
     private var startedAt: Date?
 
     public override init() {
         super.init()
+    }
+
+    public static func resolveAudioDeviceID(
+        forUID uid: String?,
+        in devices: [CoreAudioDeviceEntry]
+    ) -> (deviceID: UInt32?, didFallback: Bool) {
+        guard let uid, !uid.isEmpty else {
+            return (nil, false)
+        }
+        if let matched = devices.first(where: { $0.uid == uid && $0.inputChannels > 0 }) {
+            return (matched.deviceID, false)
+        }
+        return (nil, true)
+    }
+
+    public static func systemInputDevices() -> [CoreAudioDeviceEntry] {
+        var propertyAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDevices,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var dataSize: UInt32 = 0
+        let systemObjectID = AudioObjectID(kAudioObjectSystemObject)
+        guard AudioObjectGetPropertyDataSize(systemObjectID, &propertyAddress, 0, nil, &dataSize) == noErr,
+              dataSize > 0
+        else {
+            return []
+        }
+        let deviceCount = Int(dataSize) / MemoryLayout<AudioDeviceID>.size
+        var deviceIDs = [AudioDeviceID](repeating: 0, count: deviceCount)
+        guard AudioObjectGetPropertyData(systemObjectID, &propertyAddress, 0, nil, &dataSize, &deviceIDs) == noErr else {
+            return []
+        }
+
+        var entries: [CoreAudioDeviceEntry] = []
+        for devID in deviceIDs {
+            var uidAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyDeviceUID,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var uidRef: Unmanaged<CFString>?
+            var uidSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+            guard AudioObjectGetPropertyData(devID, &uidAddress, 0, nil, &uidSize, &uidRef) == noErr,
+                  let uid = uidRef?.takeUnretainedValue() as String?
+            else {
+                continue
+            }
+
+            var nameAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyDeviceNameCFString,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var nameRef: Unmanaged<CFString>?
+            var nameSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+            let name: String
+            if AudioObjectGetPropertyData(devID, &nameAddress, 0, nil, &nameSize, &nameRef) == noErr,
+               let resolvedName = nameRef?.takeUnretainedValue() as String? {
+                name = resolvedName
+            } else {
+                name = uid
+            }
+
+            let channels = inputChannelCount(for: devID)
+            entries.append(CoreAudioDeviceEntry(deviceID: devID, uid: uid, name: name, inputChannels: channels))
+        }
+        return entries
+    }
+
+    private static func inputChannelCount(for deviceID: AudioDeviceID) -> Int {
+        var streamAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyStreamConfiguration,
+            mScope: kAudioObjectPropertyScopeInput,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(deviceID, &streamAddress, 0, nil, &size) == noErr, size > 0 else {
+            return 0
+        }
+        let rawPtr = UnsafeMutableRawPointer.allocate(
+            byteCount: Int(size),
+            alignment: MemoryLayout<AudioBufferList>.alignment
+        )
+        defer { rawPtr.deallocate() }
+        guard AudioObjectGetPropertyData(deviceID, &streamAddress, 0, nil, &size, rawPtr) == noErr else {
+            return 0
+        }
+        let bufferList = UnsafeMutableAudioBufferListPointer(rawPtr.assumingMemoryBound(to: AudioBufferList.self))
+        return bufferList.reduce(0) { $0 + Int($1.mNumberChannels) }
     }
 
     public func availableDevices() -> [AudioInputDevice] {
@@ -93,6 +202,13 @@ public final class AVAudioVoiceRecordingBackend: NSObject, VoiceRecordingBackend
             AVNumberOfChannelsKey: 1,
             AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
         ]
+
+        let resolved = Self.resolveAudioDeviceID(forUID: deviceUID, in: Self.systemInputDevices())
+        if let targetDeviceID = resolved.deviceID,
+           startEngineRecording(to: url, deviceID: targetDeviceID, settings: settings) {
+            return url
+        }
+
         let audioRecorder = try AVAudioRecorder(url: url, settings: settings)
         audioRecorder.isMeteringEnabled = true
         guard audioRecorder.prepareToRecord(), audioRecorder.record() else {
@@ -101,14 +217,87 @@ public final class AVAudioVoiceRecordingBackend: NSObject, VoiceRecordingBackend
         }
         lock.withLock {
             recorder = audioRecorder
+            audioEngine = nil
+            audioFile = nil
+            lastEngineMeterLevel = 0
             activeURL = url
             startedAt = Date()
         }
         return url
     }
 
+    private func startEngineRecording(to url: URL, deviceID: UInt32, settings: [String: Any]) -> Bool {
+        let engine = AVAudioEngine()
+        let inputNode = engine.inputNode
+        guard let audioUnit = inputNode.audioUnit else {
+            return false
+        }
+        var mutableDeviceID = AudioDeviceID(deviceID)
+        let status = AudioUnitSetProperty(
+            audioUnit,
+            kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global,
+            0,
+            &mutableDeviceID,
+            UInt32(MemoryLayout<AudioDeviceID>.size)
+        )
+        guard status == noErr else {
+            return false
+        }
+        let format = inputNode.outputFormat(forBus: 0)
+        guard format.channelCount > 0, format.sampleRate > 0,
+              let file = try? AVAudioFile(forWriting: url, settings: settings)
+        else {
+            return false
+        }
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
+            guard let self else { return }
+            try? file.write(from: buffer)
+            let level = Self.computeBufferMeterLevel(buffer)
+            self.lock.withLock {
+                self.lastEngineMeterLevel = level
+            }
+        }
+        do {
+            try engine.start()
+            lock.withLock {
+                recorder = nil
+                audioEngine = engine
+                audioFile = file
+                lastEngineMeterLevel = 0
+                activeURL = url
+                startedAt = Date()
+            }
+            return true
+        } catch {
+            inputNode.removeTap(onBus: 0)
+            try? FileManager.default.removeItem(at: url)
+            return false
+        }
+    }
+
+    private static func computeBufferMeterLevel(_ buffer: AVAudioPCMBuffer) -> Float {
+        let frameLength = Int(buffer.frameLength)
+        guard frameLength > 0, let channelData = buffer.floatChannelData?[0] else {
+            return 0
+        }
+        var sumSquares: Float = 0
+        for index in 0 ..< frameLength {
+            let sample = channelData[index]
+            sumSquares += sample * sample
+        }
+        let rms = sqrt(sumSquares / Float(frameLength))
+        guard rms > 0 else { return 0 }
+        let decibels = 20.0 * log10(rms)
+        let clamped = max(-60.0, min(0.0, decibels))
+        return (clamped + 60.0) / 60.0
+    }
+
     public func currentMeterLevel() -> Float {
         lock.withLock {
+            if audioEngine != nil {
+                return lastEngineMeterLevel
+            }
             guard let recorder else { return 0 }
             recorder.updateMeters()
             let power = recorder.averagePower(forChannel: 0)
@@ -118,13 +307,23 @@ public final class AVAudioVoiceRecordingBackend: NSObject, VoiceRecordingBackend
     }
 
     public func stopRecording() async throws -> RecordedVoiceNote {
-        let (audioRecorder, url, start) = lock.withLock { () -> (AVAudioRecorder?, URL?, Date?) in
+        let (audioRecorder, engine, url, start) = lock.withLock { () -> (AVAudioRecorder?, AVAudioEngine?, URL?, Date?) in
             defer {
                 recorder = nil
+                audioEngine = nil
+                audioFile = nil
+                lastEngineMeterLevel = 0
                 activeURL = nil
                 startedAt = nil
             }
-            return (recorder, activeURL, startedAt)
+            return (recorder, audioEngine, activeURL, startedAt)
+        }
+        if let engine, let url {
+            engine.inputNode.removeTap(onBus: 0)
+            engine.stop()
+            let elapsedSeconds = start.map { Date().timeIntervalSince($0) } ?? 0
+            let durationMS = max(0, Int((elapsedSeconds * 1000.0).rounded()))
+            return RecordedVoiceNote(url: url, durationMS: durationMS, waveform: [])
         }
         guard let audioRecorder, let url else {
             throw VoiceRecorderError.notRecording
@@ -137,13 +336,20 @@ public final class AVAudioVoiceRecordingBackend: NSObject, VoiceRecordingBackend
     }
 
     public func cancelRecording() async {
-        let (audioRecorder, url) = lock.withLock { () -> (AVAudioRecorder?, URL?) in
+        let (audioRecorder, engine, url) = lock.withLock { () -> (AVAudioRecorder?, AVAudioEngine?, URL?) in
             defer {
                 recorder = nil
+                audioEngine = nil
+                audioFile = nil
+                lastEngineMeterLevel = 0
                 activeURL = nil
                 startedAt = nil
             }
-            return (recorder, activeURL)
+            return (recorder, audioEngine, activeURL)
+        }
+        if let engine {
+            engine.inputNode.removeTap(onBus: 0)
+            engine.stop()
         }
         audioRecorder?.stop()
         if let url {
@@ -172,6 +378,7 @@ public final class VoiceRecorderModel: ObservableObject {
 
     @Published public private(set) var state: State = .idle
     @Published public private(set) var availableDevices: [AudioInputDevice] = []
+    @Published public private(set) var deviceFallbackNotice: String?
 
     private let backend: VoiceRecordingBackend
     private let now: () -> Date
@@ -229,8 +436,22 @@ public final class VoiceRecorderModel: ObservableObject {
         }
 
         stopMeterTimer()
+        availableDevices = backend.availableDevices()
+        let trimmedUID = preferredDeviceUID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let uid: String?
+        if trimmedUID.isEmpty {
+            deviceFallbackNotice = nil
+            uid = nil
+        } else if availableDevices.contains(where: { $0.uid == trimmedUID }) {
+            deviceFallbackNotice = nil
+            uid = trimmedUID
+        } else {
+            deviceFallbackNotice = String(
+                localized: "Preferred microphone isn’t connected. Recording with the system default microphone."
+            )
+            uid = nil
+        }
         do {
-            let uid = preferredDeviceUID.isEmpty ? nil : preferredDeviceUID
             let url = try await backend.startRecording(deviceUID: uid)
             activeRecordingURL = url
             let startTime = now()

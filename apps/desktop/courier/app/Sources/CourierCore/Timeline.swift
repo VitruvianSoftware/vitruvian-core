@@ -1022,8 +1022,7 @@ public enum Timeline {
             ?? (mime.caseInsensitiveCompare("image/gif") == .orderedSame
                 || info?["fi.mau.gif"] == .bool(true)
                 || content["fi.mau.gif"] == .bool(true))
-        let isAnimated = event.isAnimated
-            ?? (info?["is_animated"] == .bool(true) || isGIF)
+        let isAnimated = event.isAnimated ?? isGIF
         let isTranscoded = info?["fi.courier.transcoded"] == .bool(true)
             || content["fi.courier.transcoded"] == .bool(true)
 
@@ -1082,20 +1081,7 @@ public enum Timeline {
                 ?? content["org.matrix.msc1767.audio"]?["duration"]?.integerValue.map(Int.init)
             let waveform: [Int] = event.waveform
                 ?? (content["org.matrix.msc1767.audio"]?["waveform"]?.arrayValue?.compactMap { $0.integerValue.map(Int.init) } ?? [])
-            let hasShortAfterRead: Bool = {
-                guard kind == .image || kind == .video || kind == .voiceNote || msgtype == "m.audio",
-                      let dt = content["com.beeper.disappearing_timer"],
-                      dt["type"]?.stringValue == "after_read",
-                      let timer = dt["timer"]?.integerValue, timer > 0, timer <= 300_000
-                else { return false }
-                return true
-            }()
-            let viewOnce = (event.viewOnce ?? false)
-                || content["com.beeper.view_once"] == .bool(true)
-                || content["view_once"] == .bool(true)
-                || content["com.beeper.ephemeral"] == .bool(true)
-                || content["fi.mau.view_once"] == .bool(true)
-                || hasShortAfterRead
+            let viewOnce = event.viewOnce ?? false
             return Shown(kind: kind, body: caption, rich: rich(caption, html: html(of: content)), fileName: name,
                          mimeType: mime, byteSize: number("size"),
                          width: number("w").map(Int.init), height: number("h").map(Int.init),

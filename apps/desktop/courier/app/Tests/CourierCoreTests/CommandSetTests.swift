@@ -441,6 +441,23 @@ final class CommandSetTests: XCTestCase {
         command?.run()
         XCTAssertTrue(didOpenMediaViewer)
     }
+
+    func testRecordAudioCommandEnabledOnlyWhenChatSupportsVoice() {
+        let composer = ComposerModel(sender: nil)
+        let cmd = CommandSet.recordAudio(composer)
+        XCTAssertEqual(cmd.id, "hotkey Message: Record Audio")
+        XCTAssertEqual(cmd.keys, "⌘⇧A")
+        XCTAssertFalse(cmd.isEnabled(), "disabled when no chat is open")
+
+        composer.open("!a")
+        composer.features = .noFeatures
+        XCTAssertFalse(cmd.isEnabled(), "disabled when open chat does not support voice notes")
+
+        var voiceFeatures = ChatFeatures.noFeatures
+        voiceFeatures.voiceFeatures = FileKindFeatures(supported: true, caption: false)
+        composer.features = voiceFeatures
+        XCTAssertTrue(cmd.isEnabled(), "enabled when open chat supports voice notes")
+    }
 }
 
 /// The open chat, as the commands read it when they run.

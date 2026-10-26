@@ -390,17 +390,139 @@ final class MediaViewerModelTests: XCTestCase {
         carousel.open(items: items, selectedEventID: "$normal-1")
         XCTAssertEqual(carousel.items.map(\.eventID), ["$normal-1"])
 
-        // 2. MediaViewerModel must exclude view-once media hits.
-        let (_, appModel) = try await startApp { method, _ in
+        // 1b. Timeline.build must trust the engine's Event.viewOnce (where a Signal room-matching 5-min after_read
+        // timer is NOT view-once), and MediaHit(messageHit:) must preserve MessageHit.viewOnce.
+        let roomTimerPhotoEvent = Event(
+            eventID: "$sig-room-timer",
+            roomID: "!dm:courier.local",
+            sender: "@alice:courier.local",
+            senderName: "Alice Example",
+            mine: false,
+            type: "m.room.message",
+            content: .object([
+                "msgtype": .string("m.image"),
+                "body": .string("normal-in-timed-room.jpg"),
+                "com.beeper.disappearing_timer": .object([
+                    "type": .string("after_read"),
+                    "timer": .int(300_000),
+                ]),
+                "info": .object(["mimetype": .string("image/jpeg"), "w": .int(800), "h": .int(600)]),
+            ]),
+            ts: 1_760_000_001_000,
+            seq: 1,
+            status: .sent,
+            mediaPath: normalPath,
+            thumbnailPath: normalPath,
+            viewOnce: nil,
+            played: false
+        )
+        let realViewOnceEvent = Event(
+            eventID: "$sig-vo",
+            roomID: "!dm:courier.local",
+            sender: "@alice:courier.local",
+            senderName: "Alice Example",
+            mine: false,
+            type: "m.room.message",
+            content: .object([
+                "msgtype": .string("m.image"),
+                "body": .string("secret-vo.jpg"),
+                "com.beeper.disappearing_timer": .object([
+                    "type": .string("after_read"),
+                    "timer": .int(300_000),
+                ]),
+                "info": .object(["mimetype": .string("image/jpeg"), "w": .int(800), "h": .int(600)]),
+            ]),
+            ts: 1_760_000_002_000,
+            seq: 2,
+            status: .sent,
+            mediaPath: viewOncePath,
+            thumbnailPath: viewOncePath,
+            viewOnce: true,
+            played: false
+        )
+        let timelineItems = Timeline.build(
+            events: [roomTimerPhotoEvent, realViewOnceEvent],
+            me: "@me:courier.local",
+            now: Date(timeIntervalSince1970: 1_760_000_003)
+        )
+        let timelineMessages = timelineItems.compactMap { item -> TimelineMessage? in
+            if case let .message(msg) = item { return msg }
+            return nil
+        }
+        XCTAssertEqual(timelineMessages.count, 2)
+        XCTAssertFalse(
+            timelineMessages[0].viewOnce,
+            "Signal photo matching the room's 5-min after_read timer (Event.viewOnce == nil) must not be marked view-once"
+        )
+        XCTAssertTrue(timelineMessages[1].viewOnce)
+        XCTAssertEqual(CarouselItem.items(from: timelineItems).map(\.eventID), ["$sig-room-timer"])
+
+        let wireMessageHit = MessageHit(
+            eventID: "$vo-msg-hit",
+            roomID: "!dm:courier.local",
+            roomName: "Alice Example",
+            network: "whatsapp",
+            isDirect: true,
+            place: .inbox,
+            sender: "@alice:courier.local",
+            senderName: "Alice Example",
+            mine: false,
+            ts: 1_760_000_002_000,
+            seq: 2,
+            kind: .image,
+            snippet: "View-once secret",
+            ranges: [],
+            mediaPath: "",
+            partial: false,
+            viewOnce: true
+        )
+        XCTAssertTrue(MediaHit(messageHit: wireMessageHit).viewOnce, "MediaHit(messageHit:) must preserve MessageHit.viewOnce")
+
+        // 2. MediaViewerModel must exclude view-once media hits using the real engine search.query wire shape
+        // (view-once excluded from media section; view_once: true and media_path: "" on messages section).
+        let (_, appModel) = try await startApp { method, params in
             switch method {
             case "hello":
                 return TestEngineServer.helloOK
             case "accounts.list":
                 return .result(["accounts": []])
             case "search.query":
-                let hits: [[String: Any]] = [
+                let sections = params?["sections"] as? [String] ?? []
+                if sections.contains("media") {
+                    let mediaHits: [[String: Any]] = [
+                        [
+                            "event_id": "$normal-1",
+                            "room_id": "!dm:courier.local",
+                            "room_name": "Alice Example",
+                            "network": "whatsapp",
+                            "is_direct": true,
+                            "place": "inbox",
+                            "sender": "@alice:courier.local",
+                            "sender_name": "Alice Example",
+                            "mine": false,
+                            "ts": 1_760_000_001_000,
+                            "seq": 1,
+                            "kind": "image",
+                            "snippet": "Normal photo",
+                            "ranges": [],
+                            "media_path": normalPath,
+                            "partial": false,
+                        ],
+                    ]
+                    return .result([
+                        "chats": NSNull(),
+                        "in_groups": NSNull(),
+                        "bookmarks": NSNull(),
+                        "media": ["hits": mediaHits, "next_cursor": NSNull()],
+                        "messages": NSNull(),
+                        "last_archived": NSNull(),
+                        "complete": true,
+                        "hint": "",
+                    ])
+                }
+                let messageHits: [[String: Any]] = [
                     [
-                        "event_id": "$normal-1",
+                        "event_id": "$normal-link",
                         "room_id": "!dm:courier.local",
                         "room_name": "Alice Example",
                         "network": "whatsapp",
@@ -411,10 +533,10 @@ final class MediaViewerModelTests: XCTestCase {
                         "mine": false,
                         "ts": 1_760_000_001_000,
                         "seq": 1,
-                        "kind": "image",
-                        "snippet": "Normal photo",
+                        "kind": "text",
+                        "snippet": "https://example.com/doc",
                         "ranges": [],
-                        "media_path": normalPath,
+                        "media_path": "",
                         "partial": false,
                     ],
                     [
@@ -430,37 +552,19 @@ final class MediaViewerModelTests: XCTestCase {
                         "ts": 1_760_000_002_000,
                         "seq": 2,
                         "kind": "image",
-                        "snippet": "View-once secret",
+                        "snippet": "https://example.com/secret",
                         "ranges": [],
-                        "media_path": viewOncePath,
+                        "media_path": "",
                         "partial": false,
                         "view_once": true,
-                    ],
-                    [
-                        "event_id": "$vo-2",
-                        "room_id": "!dm:courier.local",
-                        "room_name": "Alice Example",
-                        "network": "whatsapp",
-                        "is_direct": true,
-                        "place": "inbox",
-                        "sender": "@alice:courier.local",
-                        "sender_name": "Alice Example",
-                        "mine": false,
-                        "ts": 1_760_000_003_000,
-                        "seq": 3,
-                        "kind": "image",
-                        "snippet": "Timeline view-once",
-                        "ranges": [],
-                        "media_path": viewOncePath,
-                        "partial": false,
                     ],
                 ]
                 return .result([
                     "chats": NSNull(),
                     "in_groups": NSNull(),
                     "bookmarks": NSNull(),
-                    "media": ["hits": hits, "next_cursor": NSNull()],
-                    "messages": NSNull(),
+                    "media": NSNull(),
+                    "messages": ["hits": messageHits, "next_cursor": NSNull()],
                     "last_archived": NSNull(),
                     "complete": true,
                     "hint": "",
@@ -472,11 +576,13 @@ final class MediaViewerModelTests: XCTestCase {
 
         let viewer = MediaViewerModel(
             appModel: appModel,
-            roomID: "!dm:courier.local",
-            knownViewOnceEventIDs: ["$vo-2"]
+            roomID: "!dm:courier.local"
         )
         await viewer.refresh()
-        XCTAssertEqual(viewer.items.map(\.eventID), ["$normal-1"], "View-once items must never appear in MediaViewerModel")
+        XCTAssertEqual(viewer.items.map(\.eventID), ["$normal-1"], "Media section returns only non-view-once items")
+        viewer.tab = .links
+        await viewer.refresh()
+        XCTAssertEqual(viewer.items.map(\.eventID), ["$normal-link"], "View-once items must never appear in MediaViewerModel")
     }
 
     func testMediaViewerPages2000ItemsWithoutLoadingAllAtOnce() async throws {

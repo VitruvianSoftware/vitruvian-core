@@ -288,7 +288,11 @@ public enum CommandSet {
             title: String(localized: "Record Voice Note"),
             keys: "⌘⇧A",
             confirmation: nil,
-            isEnabled: { composer.roomID != nil }
+            isEnabled: {
+                composer.roomID != nil && (
+                    composer.voiceRecorder.isRecordingOrReviewing || composer.features.supportsVoiceSend
+                )
+            }
         ) {
             Task {
                 if composer.voiceRecorder.isRecordingOrReviewing {

@@ -81,7 +81,7 @@ public struct MediaHit: Identifiable, Equatable, Hashable, Codable, Sendable {
             ranges: messageHit.ranges,
             mediaPath: messageHit.mediaPath,
             partial: messageHit.partial,
-            viewOnce: viewOnce
+            viewOnce: messageHit.viewOnce ?? viewOnce
         )
     }
 

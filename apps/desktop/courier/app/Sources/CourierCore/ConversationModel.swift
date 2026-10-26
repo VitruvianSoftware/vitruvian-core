@@ -2520,8 +2520,8 @@ public final class ConversationModel: ObservableObject {
         activeLightboxMessageID = nil
     }
 
-    /// Marks a view-once or voice-note message as played (`message.markPlayed`) on this Mac only (for voice notes)
-    /// or on the network where supported (for view-once media).
+    /// Marks a view-once or voice-note message as played (`message.markPlayed`) on this Mac only (played state never
+    /// goes to the network).
     public func markPlayed(_ eventID: String, roomID explicitRoomID: String? = nil) async {
         locallyMarkedPlayed.insert(eventID)
         let messageRoom = explicitRoomID ?? message(eventID, from: .chat)?.roomID

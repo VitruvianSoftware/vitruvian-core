@@ -1951,11 +1951,13 @@ public struct MessageHit: ProtocolType, Equatable, Hashable {
     public var mediaPath: String
     /// It matches some of the words, not all.
     public var partial: Bool
+    /// True when the message is a view-once attachment.
+    public var viewOnce: Bool?
 
     public init(eventID: String, roomID: String, roomName: String, network: String, isDirect: Bool,
                 place: ChatPlace = .inbox, sender: String, senderName: String, mine: Bool, ts: Int64, seq: Int64,
                 kind: MessageHitKind = .text, snippet: String, ranges: [TextRange] = [], mediaPath: String = "",
-                partial: Bool = false) {
+                partial: Bool = false, viewOnce: Bool? = nil) {
         self.eventID = eventID
         self.roomID = roomID
         self.roomName = roomName
@@ -1972,6 +1974,7 @@ public struct MessageHit: ProtocolType, Equatable, Hashable {
         self.ranges = ranges
         self.mediaPath = mediaPath
         self.partial = partial
+        self.viewOnce = viewOnce
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
@@ -1991,6 +1994,7 @@ public struct MessageHit: ProtocolType, Equatable, Hashable {
         case ranges
         case mediaPath = "media_path"
         case partial
+        case viewOnce = "view_once"
     }
 
     /// The matched words as ranges of `snippet`, taken as the engine counts them: UTF-16 code units, never
@@ -3102,9 +3106,11 @@ public struct ScheduleParams: ProtocolType, Equatable {
     /// Unix milliseconds: after now and at most 5 years ahead.
     public var dueAt: Int64
     public var condition: ScheduleCondition
+    public var disableLinkPreview: Bool?
 
     public init(roomID: String, text: String, entities: [TextEntity]? = nil, replyTo: String? = nil,
-                threadRoot: String? = nil, dueAt: Int64, condition: ScheduleCondition) {
+                threadRoot: String? = nil, dueAt: Int64, condition: ScheduleCondition,
+                disableLinkPreview: Bool? = nil) {
         self.roomID = roomID
         self.text = text
         self.entities = entities
@@ -3112,6 +3118,7 @@ public struct ScheduleParams: ProtocolType, Equatable {
         self.threadRoot = threadRoot
         self.dueAt = dueAt
         self.condition = condition
+        self.disableLinkPreview = disableLinkPreview
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
@@ -3122,6 +3129,7 @@ public struct ScheduleParams: ProtocolType, Equatable {
         case threadRoot = "thread_root"
         case dueAt = "due_at"
         case condition
+        case disableLinkPreview = "disable_link_preview"
     }
 }
 
@@ -4441,6 +4449,8 @@ public enum RPCErrorCode: Equatable, Hashable, Sendable {
     case notYours
     /// The network turned the change down.
     case networkRefused
+    /// Sending a voice note on this network needs ffmpeg to transcode to OGG Opus.
+    case needsFFmpeg
     /// A code this app does not know.
     case other(Int)
 
@@ -4471,6 +4481,7 @@ public enum RPCErrorCode: Equatable, Hashable, Sendable {
         (.alreadySent, -32025, "already_sent"),
         (.notYours, -32026, "not_yours"),
         (.networkRefused, -32027, "network_refused"),
+        (.needsFFmpeg, -32028, "needs_ffmpeg"),
     ]
 
     public init(number: Int) {

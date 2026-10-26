@@ -6,6 +6,35 @@ import CourierCore
 import PDFKit
 import SwiftUI
 
+final class InlinePDFDocumentCache: @unchecked Sendable {
+    static let shared = InlinePDFDocumentCache()
+    private let lock = NSLock()
+    private var cache: [String: PDFDocument] = [:]
+    private(set) var parseCount = 0
+
+    func resetForTests() {
+        lock.withLock {
+            cache.removeAll()
+            parseCount = 0
+        }
+    }
+
+    func document(atPath path: String) -> PDFDocument? {
+        guard let url = InlinePDFView.localPDFURL(for: path) else { return nil }
+        return lock.withLock {
+            if let existing = cache[url.path] {
+                return existing
+            }
+            parseCount += 1
+            guard let doc = PDFDocument(url: url) else {
+                return nil
+            }
+            cache[url.path] = doc
+            return doc
+        }
+    }
+}
+
 /// Inline PDF card (`PDFAttachment.tsx`, `PDF.tsx`): renders local `PDFDocument` pages with `PDFKit`
 /// (`PDFPage.thumbnail(of:for:)`), a header showing filename, byte size, `Page X of N`,
 /// **Previous Page** / **Next Page** buttons, **Open**, and **Download** (`⌘D`).
@@ -66,21 +95,16 @@ public struct InlinePDFView: View {
     /// Whether `message` is a local, non-view-once PDF that can be rendered inline.
     public static func canDisplay(_ message: TimelineMessage) -> Bool {
         guard !message.viewOnce,
-              isPDF(fileName: message.fileName, mimeType: message.mimeType),
-              let url = localPDFURL(for: message.mediaPath)
+              isPDF(fileName: message.fileName, mimeType: message.mimeType)
         else {
             return false
         }
-        return PDFDocument(url: url) != nil
+        return InlinePDFDocumentCache.shared.document(atPath: message.mediaPath) != nil
     }
 
     private var document: PDFDocument? {
-        guard !message.viewOnce,
-              let url = Self.localPDFURL(for: message.mediaPath)
-        else {
-            return nil
-        }
-        return PDFDocument(url: url)
+        guard !message.viewOnce else { return nil }
+        return InlinePDFDocumentCache.shared.document(atPath: message.mediaPath)
     }
 
     private var displayName: String {

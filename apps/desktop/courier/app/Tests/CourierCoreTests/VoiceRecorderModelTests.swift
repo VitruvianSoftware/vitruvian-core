@@ -227,6 +227,49 @@ final class VoiceRecorderModelTests: XCTestCase {
         XCTAssertEqual(sender.voiceCalls.first?.waveform, [25, 75])
         XCTAssertFalse(FileManager.default.fileExists(atPath: tempURL.path))
     }
+
+    func testResolveAudioDeviceIDAndFallbackWhenPreferredDeviceUnplugged() async throws {
+        let injectedList = [
+            CoreAudioDeviceEntry(deviceID: 42, uid: "built-in-mic", name: "MacBook Pro Microphone", inputChannels: 1),
+            CoreAudioDeviceEntry(deviceID: 77, uid: "usb-mic", name: "Studio USB Mic", inputChannels: 2),
+            CoreAudioDeviceEntry(deviceID: 99, uid: "speakers-only", name: "External Speakers", inputChannels: 0),
+        ]
+
+        // 1. Matching input device UID resolves to its AudioDeviceID without fallback.
+        let matched = AVAudioVoiceRecordingBackend.resolveAudioDeviceID(forUID: "usb-mic", in: injectedList)
+        XCTAssertEqual(matched.deviceID, 77)
+        XCTAssertFalse(matched.didFallback)
+
+        // 2. Output-only device or missing UID falls back to nil (system default input) with didFallback == true.
+        let missing = AVAudioVoiceRecordingBackend.resolveAudioDeviceID(forUID: "unplugged-mic", in: injectedList)
+        XCTAssertNil(missing.deviceID)
+        XCTAssertTrue(missing.didFallback)
+
+        let outputOnly = AVAudioVoiceRecordingBackend.resolveAudioDeviceID(forUID: "speakers-only", in: injectedList)
+        XCTAssertNil(outputOnly.deviceID)
+        XCTAssertTrue(outputOnly.didFallback)
+
+        // 3. Empty/nil UID uses system default without fallback warning.
+        let defaultDev = AVAudioVoiceRecordingBackend.resolveAudioDeviceID(forUID: "", in: injectedList)
+        XCTAssertNil(defaultDev.deviceID)
+        XCTAssertFalse(defaultDev.didFallback)
+
+        // 4. VoiceRecorderModel falls back to default input device and surfaces a notice when preferred UID is unplugged.
+        let tempURL = try makeTempVoiceFile()
+        let backend = FakeVoiceRecordingBackend(
+            devices: [AudioInputDevice(uid: "built-in-mic", name: "MacBook Pro Microphone")],
+            authStatus: .authorized,
+            recordingURL: tempURL
+        )
+        let recorder = VoiceRecorderModel(backend: backend)
+        await recorder.start(preferredDeviceUID: "unplugged-usb-mic")
+        XCTAssertNil(
+            backend.lastStartedDeviceUID,
+            "when preferred deviceUID is not connected, recorder must fall back to default input device (nil)"
+        )
+        XCTAssertNotNil(recorder.deviceFallbackNotice, "must surface a notice when preferred microphone is unavailable")
+        await recorder.cancel()
+    }
 }
 
 private final class FakeVoiceRecordingBackend: VoiceRecordingBackend, @unchecked Sendable {

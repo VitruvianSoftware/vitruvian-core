@@ -71,7 +71,11 @@ struct ConversationCommands: Commands {
                 Task { await composer.startVoiceRecording() }
             }
             .keyboardShortcut("a", modifiers: [.command, .shift])
-            .disabled(conversation.roomID == nil)
+            .disabled(
+                conversation.roomID == nil || (
+                    !composer.voiceRecorder.isRecordingOrReviewing && !composer.features.supportsVoiceSend
+                )
+            )
             Divider()
             Button(conversation.isShowingChatInfo ? String(localized: "Hide Chat Info") : String(localized: "Show Chat Info"),
                    action: conversation.toggleChatInfo)

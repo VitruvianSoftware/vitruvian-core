@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
+import AVFoundation
 import CourierCore
 import SwiftUI
 
@@ -68,6 +69,10 @@ public struct ViewOnceSheet: View {
     public let onDismiss: () -> Void
 
     @State private var inMemoryImage: NSImage?
+    @State private var videoPlayer: AVPlayer?
+    @State private var audioPlayer: AVAudioPlayer?
+    @State private var isPlayingAudio = false
+    @State private var didLoadMedia: Bool
     @State private var loadError = false
     @State private var didMarkPlayed = false
 
@@ -81,6 +86,7 @@ public struct ViewOnceSheet: View {
         self.preloadedImage = preloadedImage
         self.onMarkPlayed = onMarkPlayed
         self.onDismiss = onDismiss
+        _didLoadMedia = State(initialValue: preloadedImage != nil)
     }
 
     /// Sets `window.sharingType = .none` to block macOS window capture where supported.
@@ -111,6 +117,53 @@ public struct ViewOnceSheet: View {
                         .resizable()
                         .scaledToFit()
                         .padding(8)
+                } else if message.kind == .video, didLoadMedia, let player = videoPlayer {
+                    VStack(spacing: 8) {
+                        AVPlayerSurfaceView(player: player)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        HStack(spacing: 12) {
+                            Button {
+                                if player.rate > 0 {
+                                    player.pause()
+                                } else {
+                                    player.play()
+                                }
+                            } label: {
+                                Label(String(localized: "Play / Pause"), systemImage: "playpause.fill")
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                        }
+                        .padding(.bottom, 8)
+                    }
+                } else if (message.kind == .voiceNote || message.kind == .file), didLoadMedia {
+                    VStack(spacing: 12) {
+                        Image(systemName: "waveform.circle.fill")
+                            .font(.system(size: 42))
+                            .foregroundStyle(.white)
+                        Text(message.fileName.isEmpty ? String(localized: "Voice note") : message.fileName)
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(.white)
+                        Button {
+                            if let audioPlayer {
+                                if audioPlayer.isPlaying {
+                                    audioPlayer.pause()
+                                    isPlayingAudio = false
+                                } else {
+                                    audioPlayer.play()
+                                    isPlayingAudio = true
+                                }
+                            }
+                        } label: {
+                            Label(
+                                isPlayingAudio ? String(localized: "Pause") : String(localized: "Play"),
+                                systemImage: isPlayingAudio ? "pause.fill" : "play.fill"
+                            )
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                    }
+                    .padding(20)
                 } else if loadError || message.mediaPath.isEmpty {
                     ImageErrorCard(
                         fileName: message.fileName,
@@ -211,23 +264,82 @@ public struct ViewOnceSheet: View {
     }
 
     private func loadInMemoryOnly() {
-        guard isLocalMediaStorePath(message.mediaPath) else {
+        guard Self.canLoadMedia(for: message) else {
+            didLoadMedia = false
             loadError = true
             return
         }
         let fileURL = URL(fileURLWithPath: message.mediaPath)
-        guard let data = try? Data(contentsOf: fileURL, options: [.uncached]),
-              let decoded = NSImage(data: data)
-        else {
-            loadError = true
-            return
+        switch message.kind {
+        case .video:
+            videoPlayer = AVPlayer(url: fileURL)
+            didLoadMedia = true
+        case .voiceNote:
+            if let data = try? Data(contentsOf: fileURL, options: [.uncached]) {
+                audioPlayer = try? AVAudioPlayer(data: data)
+                audioPlayer?.prepareToPlay()
+            }
+            didLoadMedia = true
+        default:
+            if let data = try? Data(contentsOf: fileURL, options: [.uncached]),
+               let decoded = NSImage(data: data) {
+                inMemoryImage = decoded
+                didLoadMedia = true
+            } else if message.kind == .file {
+                if let data = try? Data(contentsOf: fileURL, options: [.uncached]) {
+                    audioPlayer = try? AVAudioPlayer(data: data)
+                    audioPlayer?.prepareToPlay()
+                }
+                didLoadMedia = true
+            } else {
+                didLoadMedia = false
+                loadError = true
+            }
         }
-        inMemoryImage = decoded
     }
 
     private func markPlayedIfNeeded() {
-        guard !didMarkPlayed, !message.played else { return }
+        videoPlayer?.pause()
+        audioPlayer?.stop()
+        let loaded = didLoadMedia || preloadedImage != nil
+        guard !didMarkPlayed, Self.shouldMarkPlayed(message: message, didLoadMedia: loaded) else { return }
         didMarkPlayed = true
         onMarkPlayed()
+    }
+
+    static func canLoadMedia(for message: TimelineMessage) -> Bool {
+        guard !message.played, isLocalMediaStorePath(message.mediaPath) else { return false }
+        let fileURL = URL(fileURLWithPath: message.mediaPath)
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
+              let size = attrs[.size] as? NSNumber,
+              size.int64Value > 0
+        else {
+            return false
+        }
+        switch message.kind {
+        case .video, .voiceNote:
+            return true
+        case .image, .sticker:
+            guard let data = try? Data(contentsOf: fileURL, options: [.uncached]),
+                  NSImage(data: data) != nil
+            else {
+                return false
+            }
+            return true
+        case .file:
+            if message.mimeType.lowercased().hasPrefix("audio/") || message.mimeType.lowercased().hasPrefix("video/") {
+                return true
+            }
+            if let data = try? Data(contentsOf: fileURL, options: [.uncached]), NSImage(data: data) != nil {
+                return true
+            }
+            return false
+        default:
+            return false
+        }
+    }
+
+    static func shouldMarkPlayed(message: TimelineMessage, didLoadMedia: Bool) -> Bool {
+        !message.played && didLoadMedia
     }
 }

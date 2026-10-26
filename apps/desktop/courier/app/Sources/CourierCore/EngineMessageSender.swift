@@ -101,9 +101,17 @@ public final class EngineMessageSender: MessageSending {
 
     public func schedule(roomID: String, rich: RichText, replyTo: String?, threadRoot: String?, due: Date,
                          condition: SendLaterCondition) async throws {
+        try await schedule(roomID: roomID, rich: rich, replyTo: replyTo, threadRoot: threadRoot, due: due,
+                           condition: condition, disableLinkPreview: nil)
+    }
+
+    public func schedule(roomID: String, rich: RichText, replyTo: String?, threadRoot: String?, due: Date,
+                         condition: SendLaterCondition, disableLinkPreview: Bool?) async throws {
         let params = ScheduleParams(roomID: roomID, text: rich.text, entities: rich.entities.isEmpty ? nil : rich.entities,
                                     replyTo: replyTo, threadRoot: threadRoot,
-                                    dueAt: Int64((due.timeIntervalSince1970 * 1000).rounded()), condition: condition.wire)
+                                    dueAt: Int64((due.timeIntervalSince1970 * 1000).rounded()),
+                                    condition: condition.wire,
+                                    disableLinkPreview: disableLinkPreview)
         let _: ScheduledMessage = try await client().call("message.schedule", params)
     }
 

@@ -4,6 +4,7 @@
 import AppKit
 import CourierCore
 import SwiftUI
+import UserNotifications
 import XCTest
 
 @testable import Courier
@@ -2009,6 +2010,134 @@ final class ViewSnapshotTests: XCTestCase {
         for forbidden in ["m.room", "m.image", "m.video", "m.file", "search.query", "message.deleteForMe", "com.beeper"] {
             XCTAssertFalse(visibleStrings.contains(forbidden), "User-facing text must not expose API name \(forbidden)")
         }
+    }
+
+    func testViewOnceSheetPlaysVideoAndVoiceAndNeverMarksPlayedOnLoadFailure() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("courier-vo-test-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let videoFile = tempDir.appendingPathComponent("clip.mp4")
+        try Data([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x6D, 0x70, 0x34, 0x32]).write(to: videoFile)
+        let voiceFile = tempDir.appendingPathComponent("note.m4a")
+        try Data([0x00, 0x00, 0x00, 0x1C, 0x66, 0x74, 0x79, 0x70, 0x4D, 0x34, 0x41, 0x20]).write(to: voiceFile)
+
+        var videoEvent = Fixture.event(
+            "$vo-video",
+            mine: false,
+            ts: 10,
+            content: [
+                "msgtype": .string("m.video"),
+                "body": .string("clip.mp4"),
+                "info": .object(["mimetype": .string("video/mp4")]),
+            ],
+            name: "Alice Example"
+        )
+        videoEvent.mediaPath = videoFile.path
+        videoEvent.durationMS = 4_000
+        videoEvent.viewOnce = true
+        let videoMsg = try XCTUnwrap(Fixture.messages([videoEvent]).first)
+
+        var voiceEvent = Fixture.event(
+            "$vo-voice",
+            mine: false,
+            ts: 20,
+            content: [
+                "msgtype": .string("m.audio"),
+                "body": .string("note.m4a"),
+                "org.matrix.msc3245.voice": .object([:]),
+                "info": .object(["mimetype": .string("audio/mp4")]),
+            ],
+            name: "Alice Example"
+        )
+        voiceEvent.mediaPath = voiceFile.path
+        voiceEvent.durationMS = 3_000
+        voiceEvent.waveform = [20, 50, 80, 40]
+        voiceEvent.viewOnce = true
+        let voiceMsg = try XCTUnwrap(Fixture.messages([voiceEvent]).first)
+
+        var missingEvent = Fixture.event(
+            "$vo-missing",
+            mine: false,
+            ts: 30,
+            content: [
+                "msgtype": .string("m.image"),
+                "body": .string("gone.jpg"),
+                "info": .object(["mimetype": .string("image/jpeg")]),
+            ],
+            name: "Alice Example"
+        )
+        missingEvent.mediaPath = tempDir.appendingPathComponent("does-not-exist.jpg").path
+        missingEvent.viewOnce = true
+        let missingMsg = try XCTUnwrap(Fixture.messages([missingEvent]).first)
+
+        XCTAssertTrue(ViewOnceSheet.canLoadMedia(for: videoMsg), "ViewOnceSheet must support view-once video")
+        XCTAssertTrue(ViewOnceSheet.canLoadMedia(for: voiceMsg), "ViewOnceSheet must support view-once voice note")
+        XCTAssertFalse(ViewOnceSheet.canLoadMedia(for: missingMsg), "missing file must fail to load")
+        XCTAssertFalse(
+            ViewOnceSheet.shouldMarkPlayed(message: missingMsg, didLoadMedia: false),
+            "ViewOnceSheet must NEVER mark played when media failed to load"
+        )
+        XCTAssertTrue(
+            ViewOnceSheet.shouldMarkPlayed(message: videoMsg, didLoadMedia: true),
+            "ViewOnceSheet marks played after media loaded"
+        )
+    }
+
+    func testInlinePDFViewCachesParsedDocumentPerPath() throws {
+        let pdfPath = try makeTwoPagePDF()
+        defer { try? FileManager.default.removeItem(atPath: pdfPath) }
+
+        InlinePDFDocumentCache.shared.resetForTests()
+        let first = InlinePDFDocumentCache.shared.document(atPath: pdfPath)
+        let second = InlinePDFDocumentCache.shared.document(atPath: pdfPath)
+        XCTAssertNotNil(first)
+        XCTAssertTrue(first === second, "repeated lookups for the same path must return the cached PDFDocument instance")
+        XCTAssertEqual(InlinePDFDocumentCache.shared.parseCount, 1, "PDF must be parsed only once per path")
+    }
+
+    func testNotifierAttachmentSetsTypeHintFromMIMEAndCleansUpTempDirectory() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("courier-notif-src-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        // Content-addressed blob path with NO file extension, matching media.Store on disk.
+        let extensionlessBlob = tempDir.appendingPathComponent("ab12cd34ef56")
+        let pngRep = try XCTUnwrap(
+            NSBitmapImageRep(
+                bitmapDataPlanes: nil,
+                pixelsWide: 8,
+                pixelsHigh: 8,
+                bitsPerSample: 8,
+                samplesPerPixel: 4,
+                hasAlpha: true,
+                isPlanar: false,
+                colorSpaceName: .deviceRGB,
+                bytesPerRow: 0,
+                bitsPerPixel: 0
+            )
+        )
+        let pngData = try XCTUnwrap(pngRep.representation(using: .png, properties: [:]))
+        try pngData.write(to: extensionlessBlob)
+
+        let prepared = try XCTUnwrap(
+            Notifier.prepareAttachment(
+                from: extensionlessBlob.path,
+                identifier: "$evt-png",
+                mimeType: "image/png"
+            )
+        )
+        let typeHint = prepared.options[UNNotificationAttachmentOptionsTypeHintKey] as? String
+        XCTAssertEqual(typeHint, "public.png", "type hint must be derived from PNG MIME / magic rather than assuming JPEG")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: prepared.tempDirectory.path))
+
+        prepared.cleanup()
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: prepared.tempDirectory.path),
+            "cleanup must remove the courier-notif-* temporary directory"
+        )
     }
 }
 

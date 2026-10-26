@@ -1091,7 +1091,7 @@ final class TimelineTests: XCTestCase {
             senderName: "Alice Example",
             mine: false,
             type: "m.room.message",
-            content: json(#"{"msgtype":"m.image","body":"secret.jpg","com.beeper.view_once":true,"info":{"mimetype":"image/jpeg","w":800,"h":600}}"#),
+            content: json(#"{"msgtype":"m.image","body":"secret.jpg","com.beeper.disappearing_timer":{"type":"after_read","timer":300000},"info":{"mimetype":"image/jpeg","w":800,"h":600}}"#),
             ts: baseTS,
             seq: 1,
             status: .sent,

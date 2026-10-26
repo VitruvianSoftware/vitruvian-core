@@ -46,13 +46,7 @@ public struct MediaWithSender: View {
                         .frame(height: 128)
                         .overlay {
                             ZStack {
-                                if !hit.viewOnce,
-                                   isLocalMediaStorePath(hit.mediaPath),
-                                   let nsImage = NSImage(contentsOfFile: hit.mediaPath) {
-                                    Image(nsImage: nsImage)
-                                        .resizable()
-                                        .scaledToFill()
-                                } else if let asyncThumbnail {
+                                if let asyncThumbnail {
                                     Image(decorative: asyncThumbnail, scale: 1)
                                         .resizable()
                                         .scaledToFill()
@@ -131,7 +125,7 @@ public struct MediaWithSender: View {
                 .fill(isSelected ? Color.accentColor.opacity(0.10) : Color.primary.opacity(0.03))
         )
         .task(id: hit.mediaPath) {
-            guard !hit.viewOnce, isLocalMediaStorePath(hit.mediaPath), NSImage(contentsOfFile: hit.mediaPath) == nil else {
+            guard !hit.viewOnce, isLocalMediaStorePath(hit.mediaPath) else {
                 return
             }
             asyncThumbnail = await ThumbnailLoader.shared.thumbnail(atPath: hit.mediaPath)?.image
