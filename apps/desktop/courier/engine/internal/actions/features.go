@@ -339,6 +339,12 @@ func (f *Features) capMaxSizes(ceiling int64) {
 			fk.MaxSize = ceiling
 		}
 	}
+	if f.Sticker.MaxSize > ceiling {
+		f.Sticker.MaxSize = ceiling
+	}
+	if f.GIF.MaxSize > ceiling {
+		f.GIF.MaxSize = ceiling
+	}
 }
 
 // Keeps reports whether the chat keeps formatting of kind k. It is the keep function richtext.Render takes.

@@ -463,6 +463,8 @@ func TestMessageActionTableMatchesTheBridges(t *testing.T) {
 		gotFeatures.FileFeatures = nil
 		gotFeatures.GIFFeatures = nil
 		gotFeatures.StickerFeatures = nil
+		gotFeatures.Sticker = actions.MediaCapFeature{}
+		gotFeatures.GIF = actions.MediaCapFeature{}
 		gotFeatures.LocationSupported = false
 		gotFeatures.LinkPreviewsSupported = false
 		require.Equal(t, r.want, gotFeatures, "what Courier offers in a %s", name)
