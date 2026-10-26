@@ -1,7 +1,6 @@
 # Copyright (c) 2026 VitruvianSoftware
 # SPDX-License-Identifier: MIT
 
-load("@aspect_rules_py//py:defs.bzl", "py_test")
 load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
 load("//tools/gitops:defs.bzl", "gitops_manifest")
 
@@ -36,13 +35,4 @@ rust_test(
 alias(
     name = "tempo_values_rs_test",
     actual = ":tempo_values_test",
-)
-
-py_test(
-    name = "tempo_values_py_test",
-    size = "small",
-    srcs = ["tempo_values_test.py"],
-    data = ["applicationset.yaml"],
-    main = "tempo_values_test.py",
-    deps = ["@pip//pyyaml"],
 )
