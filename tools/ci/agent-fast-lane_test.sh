@@ -26,7 +26,12 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCRIPT="${HERE}/agent-fast-lane.sh"
+if [ -n "${JQ_BIN:-}" ]; then
+  case "$JQ_BIN" in external/*) JQ_BIN="../${JQ_BIN#external/}" ;; esac
+  PATH="$(cd "$(dirname "$JQ_BIN")" && pwd):$PATH"
+  export PATH
+fi
+SCRIPT="$(cd "$(dirname "${1:-${HERE}/agent-fast-lane.sh}")" && pwd)/$(basename "${1:-${HERE}/agent-fast-lane.sh}")"
 ROSTER="${HERE}/../agent-app/agents.tsv"
 CI="${HERE}/../../.github/workflows/ci.yaml"
 
@@ -50,9 +55,15 @@ agent_id="$(awk -F'\t' '!/^#/ && NF >= 4 { print $4; exit }' "$ROSTER")"
 # decide [VAR=value ...]: an agent PR from this repo with the label, unless a
 # VAR=value overrides one part of it.
 decide() {
-	env -u GITHUB_OUTPUT EVENT_NAME=pull_request GITHUB_REPOSITORY=o/r PR_HEAD_REPO=o/r \
-		PR_AUTHOR_TYPE=Bot PR_AUTHOR_ID="$agent_id" PR_LABELS='["ci","agent-fast-lane"]' \
-		AGENTS_TSV="$ROSTER" "$@" bash "$SCRIPT" >"$work/out" 2>"$work/err"
+	if [[ "$SCRIPT" == *.sh ]]; then
+		env -u GITHUB_OUTPUT EVENT_NAME=pull_request GITHUB_REPOSITORY=o/r PR_HEAD_REPO=o/r \
+			PR_AUTHOR_TYPE=Bot PR_AUTHOR_ID="$agent_id" PR_LABELS='["ci","agent-fast-lane"]' \
+			AGENTS_TSV="$ROSTER" "$@" bash "$SCRIPT" >"$work/out" 2>"$work/err"
+	else
+		env -u GITHUB_OUTPUT EVENT_NAME=pull_request GITHUB_REPOSITORY=o/r PR_HEAD_REPO=o/r \
+			PR_AUTHOR_TYPE=Bot PR_AUTHOR_ID="$agent_id" PR_LABELS='["ci","agent-fast-lane"]' \
+			AGENTS_TSV="$ROSTER" "$@" "$SCRIPT" >"$work/out" 2>"$work/err"
+	fi
 }
 said() { grep -qx "$1" "$work/out"; }
 full() { # description, VAR=value ...

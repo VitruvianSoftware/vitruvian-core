@@ -90,3 +90,8 @@ exports_files(
         "//tools/secret-scan:__pkg__",
     ],
 )
+
+exports_files(
+    ["test-mcp-slack-e2e.sh"],
+    visibility = ["//tools/design-sync:__pkg__"],
+)

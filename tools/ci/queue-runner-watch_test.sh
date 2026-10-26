@@ -49,7 +49,11 @@ chmod +x "$W/gh"
 # run <canary state> <variable value> -> out/rc; calls in $W/calls
 run() {
   rm -f "$W/calls"; : >"$W/calls"
-  out="$(FAKE_DIR="$W" FAKE_CANARY="$1" FAKE_VAR="$2" FAKE_NOJOB="${3:-}" GH_BIN="$W/gh" REPO=o/r RUN_ID=7 WAIT_SECONDS=0 bash "$SCRIPT" 2>&1)"; rc=$?
+  if [[ "$SCRIPT" == *.sh ]]; then
+    out="$(FAKE_DIR="$W" FAKE_CANARY="$1" FAKE_VAR="$2" FAKE_NOJOB="${3:-}" GH_BIN="$W/gh" REPO=o/r RUN_ID=7 WAIT_SECONDS=0 bash "$SCRIPT" 2>&1)"; rc=$?
+  else
+    out="$(FAKE_DIR="$W" FAKE_CANARY="$1" FAKE_VAR="$2" FAKE_NOJOB="${3:-}" GH_BIN="$W/gh" REPO=o/r RUN_ID=7 WAIT_SECONDS=0 "$SCRIPT" 2>&1)"; rc=$?
+  fi
 }
 wrote() { grep -q -- "$1" "$W/calls"; }
 no_write() { ! grep -q -E -- '-X (PATCH|POST) repos/o/r/actions/variables' "$W/calls"; }

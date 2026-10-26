@@ -109,6 +109,44 @@ class HeadscaleValuesTest(unittest.TestCase):
         to_names = [t.get("name") for t in rg["spec"]["to"]]
         self.assertIn("headscale-tls", to_names)
 
+    def test_edge_tunnel_and_subnet_router_deployments_exist(self):
+        tunnel_docs = load_docs("deployment-edge-tunnel.yaml")
+        (tunnel,) = [d for d in tunnel_docs if d["kind"] == "Deployment"]
+        self.assertEqual(tunnel["metadata"]["name"], "headscale-edge-tunnel")
+
+        router_docs = load_docs("deployment-subnet-router.yaml")
+        (router,) = [d for d in router_docs if d["kind"] == "Deployment"]
+        self.assertEqual(router["metadata"]["name"], "headscale-subnet-router")
+        env = {
+            e["name"]: e.get("value")
+            for e in router["spec"]["template"]["spec"]["containers"][0]["env"]
+        }
+        self.assertEqual(env.get("TS_USERSPACE"), "true")
+        self.assertEqual(
+            env.get("TS_KUBE_SECRET"),
+            "",
+            "TS_KUBE_SECRET must be empty so containerboot uses TS_STATE_DIR instead of Kubernetes Secret RBAC.",
+        )
+        self.assertEqual(
+            env.get("KUBERNETES_SERVICE_HOST"),
+            "",
+            "KUBERNETES_SERVICE_HOST must be empty so containerboot does not attempt in-cluster Kubernetes client setup.",
+        )
+        self.assertFalse(
+            router["spec"]["template"]["spec"].get(
+                "automountServiceAccountToken", True
+            ),
+            "automountServiceAccountToken must be false so containerboot does not switch to Kubernetes state storage.",
+        )
+        self.assertIn(
+            "--advertise-routes=192.168.86.0/24,10.44.86.0/24",
+            env.get("TS_EXTRA_ARGS", ""),
+        )
+
+        agent_docs = load_docs("daemonset-node-agent.yaml")
+        (agent,) = [d for d in agent_docs if d["kind"] == "DaemonSet"]
+        self.assertEqual(agent["metadata"]["name"], "headscale-node-agent")
+
 
 if __name__ == "__main__":
     unittest.main()

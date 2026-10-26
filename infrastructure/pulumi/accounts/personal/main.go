@@ -31,6 +31,7 @@ import (
 
 	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/accounts/personal/modules/cloud_build"
 	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/accounts/personal/modules/cloud_run"
+	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/accounts/personal/modules/edge_relay"
 	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/accounts/personal/modules/iam"
 	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/accounts/personal/modules/project_api_services"
 	"github.com/VitruvianSoftware/vitruvian-core/infrastructure/pulumi/accounts/personal/modules/secret_manager"
@@ -42,6 +43,9 @@ const (
 	projectID = "personal-llc"
 	userEmail = "james.nguyen@gmail.com" // Replace with your actual email
 	gcpRegion = "us-central1"            // Example region, adjust as needed
+	// Public half of the ed25519 SSH keypair whose private key is sealed in
+	// gitops/argocd/platform/sealed-secrets-manifests/headscale-edge-tunnel-ssh.sealedsecret.yaml.
+	defaultHeadscaleEdgeSSHPubKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILto+dYiHFxghgFhSciUfQRjEMF+/guyxQa0GuIlIGvy tunnel@headscale-edge-relay"
 )
 
 func main() {
@@ -286,6 +290,24 @@ func main() {
 					return err
 				}
 			}
+		}
+
+		// 8. Deploy the Always-Free e2-micro L4 TCP relay for Headscale
+		// (headscale.ipv1337.dev:443) so mobile/cellular clients can reach the
+		// homelab Headscale control plane across double NAT without Cloudflare
+		// stripping TS2021 POST Upgrade headers.
+		edgeSSHPubKey := pulCfg.Get("headscale:edgeRelaySSHPublicKey")
+		if edgeSSHPubKey == "" {
+			edgeSSHPubKey = defaultHeadscaleEdgeSSHPubKey
+		}
+		_, err = edge_relay.DeployEdgeRelay(ctx, "headscale-edge-relay", &edge_relay.DeployEdgeRelayArgs{
+			ProjectID:    projectID,
+			Region:       gcpRegion,
+			Zone:         "us-central1-a",
+			SSHPublicKey: edgeSSHPubKey,
+		}, pulumi.DependsOn([]pulumi.Resource{enabledAPIServices["compute.googleapis.com"]}))
+		if err != nil {
+			return err
 		}
 
 		return nil

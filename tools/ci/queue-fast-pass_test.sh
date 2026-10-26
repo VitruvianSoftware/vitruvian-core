@@ -25,7 +25,13 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCRIPT="${HERE}/queue-fast-pass.sh"
+if [ -n "${JQ_BIN:-}" ]; then
+  case "$JQ_BIN" in external/*) JQ_BIN="../${JQ_BIN#external/}" ;; esac
+  PATH="$(cd "$(dirname "$JQ_BIN")" && pwd):$PATH"
+  export PATH
+fi
+SCRIPT="${1:-${HERE}/queue-fast-pass.sh}"
+SCRIPT="$(cd "$(dirname "$SCRIPT")" && pwd)/$(basename "$SCRIPT")"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -71,10 +77,16 @@ fail() {
 	printf '  ✗ %s\n' "$1" >&2
 	fails=$((fails + 1))
 }
+invoke() {
+	if [[ "$SCRIPT" == *.sh ]]; then bash "$SCRIPT" "$@"
+	else "$SCRIPT" "$@"; fi
+}
+export -f invoke
+export SCRIPT
 run() {
 	(cd "${dir:-$repo}" && env -u GITHUB_OUTPUT PATH="$work/bin:$PATH" GH_STUB_DIR="$work/api" \
 		GITHUB_REPOSITORY=o/r WORKFLOW_PATH=.github/workflows/presubmit.yaml "$@" \
-		bash "$SCRIPT" "${args[@]}" >"$work/out" 2>"$work/err")
+		bash -c 'invoke "$@"' _ "${args[@]}" >"$work/out" 2>"$work/err")
 }
 said() { grep -qx "$1" "$work/out"; }
 

@@ -3,6 +3,7 @@ load("@build_bazel_rules_apple//apple:macos.bzl", "macos_application")
 load("@build_bazel_rules_swift//swift:swift_binary.bzl", "swift_binary")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
@@ -341,6 +342,97 @@ sh_test(
 exports_files(
     ["scripts/bazel_app_holds_mermaid_test.sh"],
     visibility = ["//apps/desktop/vitruvian:__pkg__"],
+)
+
+# --- Rust ports of nexus-agent scripts ----------------------------------------
+
+rust_library(
+    name = "nexus_agent_scripts_lib",
+    srcs = glob(
+        ["scripts/src/**/*.rs"],
+        exclude = ["scripts/src/bin/*.rs"],
+    ),
+    crate_name = "nexus_agent_scripts_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_test(
+    name = "nexus_agent_scripts_lib_test",
+    size = "small",
+    crate = ":nexus_agent_scripts_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
+    name = "bazel-app-holds-mermaid",
+    srcs = ["scripts/src/bin/bazel_app_holds_mermaid.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/desktop/nexus-agent:__subpackages__"],
+    deps = [":nexus_agent_scripts_lib"],
+)
+
+[alias(
+    name = n,
+    actual = ":bazel-app-holds-mermaid",
+    visibility = ["//apps/desktop/nexus-agent:__subpackages__"],
+) for n in [
+    "bazel_app_holds_mermaid",
+]]
+
+rust_binary(
+    name = "bundle-app",
+    srcs = ["scripts/src/bin/bundle.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/desktop/nexus-agent:__subpackages__"],
+    deps = [":nexus_agent_scripts_lib"],
+)
+
+[alias(
+    name = n,
+    actual = ":bundle-app",
+    visibility = ["//apps/desktop/nexus-agent:__subpackages__"],
+) for n in [
+    "bundle_app",
+]]
+
+rust_binary(
+    name = "check-packaged-app",
+    srcs = ["scripts/src/bin/check_packaged_app.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/desktop/nexus-agent:__subpackages__"],
+    deps = [":nexus_agent_scripts_lib"],
+)
+
+[alias(
+    name = n,
+    actual = ":check-packaged-app",
+    visibility = ["//apps/desktop/nexus-agent:__subpackages__"],
+) for n in [
+    "check_packaged_app",
+]]
+
+sh_test(
+    name = "app_holds_mermaid_rs_test",
+    size = "small",
+    srcs = ["scripts/app-holds-mermaid-rs_test.sh"],
+    args = [
+        "$(rootpath :bazel-app-holds-mermaid)",
+        "NexusAgent",
+        "$(rootpaths :NexusAgent)",
+        "$(rootpaths :shared_ui_resources)",
+    ],
+    data = [
+        ":NexusAgent",
+        ":bazel-app-holds-mermaid",
+        ":shared_ui_resources",
+    ],
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
 )
 
 pipeline_unit(

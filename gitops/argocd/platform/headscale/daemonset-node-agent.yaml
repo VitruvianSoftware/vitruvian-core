@@ -1,0 +1,82 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+# Unprivileged userspace Tailscale DaemonSet that registers every k3s node
+# (fedora, nuc9i5, nuc9i9, james-macbook-pro, james-mbp, james-mbp16, james-mbp32)
+# onto the self-hosted Headscale mesh (`https://headscale.ipv1337.dev`) while
+# leaving each host's primary `tailscale0` daemon on commercial Tailscale untouched
+# as the k3s etcd underlay and break-glass network.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: headscale-node-agent
+  namespace: headscale
+  labels:
+    app.kubernetes.io/name: headscale-node-agent
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: headscale-node-agent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: headscale-node-agent
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      tolerations:
+        - operator: Exists
+      containers:
+        - name: node-agent
+          image: tailscale/tailscale:v1.76.6
+          env:
+            - name: KUBERNETES_SERVICE_HOST
+              value: ""
+            - name: TS_KUBE_SECRET
+              value: ""
+            - name: TS_USERSPACE
+              value: "true"
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: TS_AUTHKEY
+              valueFrom:
+                secretKeyRef:
+                  name: headscale-subnet-router-auth
+                  key: TS_AUTHKEY
+            - name: TS_EXTRA_ARGS
+              value: "--login-server=https://headscale.ipv1337.dev --accept-routes=false --hostname=$(NODE_NAME)"
+            - name: TS_STATE_DIR
+              value: "/tmp/tailscale"
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL

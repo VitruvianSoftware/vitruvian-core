@@ -7,11 +7,62 @@ flows and live subagent fleet telemetry.
 """
 
 load("@aspect_rules_js//js:defs.bzl", "js_library", "js_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # gazelle:ignore
 
 package(default_visibility = ["//apps/desktop/antigravity/plugins/savvy-fleet:__subpackages__"])
+
+exports_files(["hooks/track-subagent.sh"])
+
+rust_library(
+    name = "track_subagent_lib",
+    srcs = ["hooks/src/lib.rs"],
+    crate_name = "track_subagent",
+    crate_root = "hooks/src/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
+    name = "track-subagent",
+    srcs = ["hooks/src/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":track_subagent_lib"],
+)
+
+rust_test(
+    name = "track_subagent_lib_test",
+    size = "small",
+    crate = ":track_subagent_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+sh_test(
+    name = "track-subagent_test",
+    size = "small",
+    srcs = ["hooks/track-subagent_test.sh"],
+    args = ["$(location hooks/track-subagent.sh)"],
+    data = ["hooks/track-subagent.sh"],
+)
+
+sh_test(
+    name = "track-subagent_rs_test",
+    size = "small",
+    srcs = ["hooks/track-subagent_test.sh"],
+    args = [
+        "$(location :track-subagent)",
+        "$(location hooks/track-subagent.sh)",
+    ],
+    data = [
+        "hooks/track-subagent.sh",
+        ":track-subagent",
+    ],
+)
 
 js_library(
     name = "lib",
@@ -60,6 +111,9 @@ pipeline_unit(
     test_targets = [
         ":core_test",
         ":openui_test",
+        ":track-subagent_rs_test",
+        ":track-subagent_test",
+        ":track_subagent_lib_test",
         ":version_test",
     ],
     tier = "L1",

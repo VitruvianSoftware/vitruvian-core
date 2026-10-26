@@ -35,14 +35,16 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCRIPT="${HERE}/gcp-secret-or-fail.sh"
+SCRIPT="${1:-${HERE}/gcp-secret-or-fail.sh}"
+SCRIPT="$(cd "$(dirname "$SCRIPT")" && pwd)/$(basename "$SCRIPT")"
 
 fails=0
 ok() { printf '  ok - %s\n' "$1"; }
 bad() { printf '  NOT OK - %s\n' "$1" >&2; fails=$((fails + 1)); }
 
+# Pure function tests: always source the .sh version
 # shellcheck source=/dev/null
-source "$SCRIPT"   # source-safe: main() runs only when executed, not sourced
+source "${HERE}/gcp-secret-or-fail.sh"
 # Sourcing imported the script's `set -euo pipefail`; clear the inherited -e
 # so the failure cases below (which intentionally return 1) don't abort here.
 set +e -u -o pipefail
@@ -95,13 +97,21 @@ echo "the-actual-secret-value"
 FAKE_GCLOUD
 chmod +x "$fake_bin/gcloud"
 
-out="$(PATH="$fake_bin:$PATH" bash "$SCRIPT" DATABASE_URL some-project "test context" 2>&1)"
+if [[ "$SCRIPT" == *.sh ]]; then
+  out="$(PATH="$fake_bin:$PATH" bash "$SCRIPT" DATABASE_URL some-project "test context" 2>&1)"
+else
+  out="$(PATH="$fake_bin:$PATH" "$SCRIPT" DATABASE_URL some-project "test context" 2>&1)"
+fi
 rc=$?
 [ "$rc" -eq 0 ] && [ "$out" = "the-actual-secret-value" ] \
   && ok "main(): success path returns the value with rc=0, no trap crash" \
   || bad "main() success path wrong (rc=$rc): $out"
 
-out="$(FAKE_GCLOUD_MODE=fail PATH="$fake_bin:$PATH" bash "$SCRIPT" DATABASE_URL some-project "test context" 2>&1)"
+if [[ "$SCRIPT" == *.sh ]]; then
+  out="$(FAKE_GCLOUD_MODE=fail PATH="$fake_bin:$PATH" bash "$SCRIPT" DATABASE_URL some-project "test context" 2>&1)"
+else
+  out="$(FAKE_GCLOUD_MODE=fail PATH="$fake_bin:$PATH" "$SCRIPT" DATABASE_URL some-project "test context" 2>&1)"
+fi
 rc=$?
 if [ "$rc" -eq 1 ] && echo "$out" | grep -q "::error::secret DATABASE_URL" && ! echo "$out" | grep -qi "unbound variable"; then
   ok "main(): failure path prints the real ::error:: with rc=1, no trap crash"

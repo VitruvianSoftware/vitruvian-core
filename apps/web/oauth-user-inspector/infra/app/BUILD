@@ -22,6 +22,11 @@ load("//tools/delivery:defs.bzl", "delivery")
 load("//tools/deploy:defs.bzl", "cloud_run_deploy")
 load("//tools/pulumi:defs.bzl", "pulumi_project")
 
+exports_files(
+    ["smoke.sh"],
+    visibility = ["//apps/web/oauth-user-inspector:__subpackages__"],
+)
+
 pulumi_project(
     name = "oauth-user-inspector",
     dir = "apps/web/oauth-user-inspector/infra/app",

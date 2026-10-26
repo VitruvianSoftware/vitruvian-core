@@ -30,11 +30,19 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCRIPT="${HERE}/pulumi-summary.sh"
+SCRIPT="${1:-${HERE}/pulumi-summary.sh}"
+SCRIPT="$(cd "$(dirname "$SCRIPT")" && pwd)/$(basename "$SCRIPT")"
+[ -f "$SCRIPT" ] || { echo "FATAL: script not found at $SCRIPT"; exit 1; }
 DATA="${HERE}/testdata/pulumi"
 
 fails=0
-run() { bash "$SCRIPT" "$1" "${DATA}/$2" "$3"; }
+run() {
+  if [[ "$SCRIPT" == *.sh ]]; then
+    bash "$SCRIPT" "$1" "${DATA}/$2" "$3"
+  else
+    "$SCRIPT" "$1" "${DATA}/$2" "$3"
+  fi
+}
 
 # Literal substring check via bash pattern matching — NOT `printf | grep -q`,
 # whose early pipe close SIGPIPEs printf and, under pipefail, flips a found match
@@ -152,7 +160,11 @@ big="$(mktemp)"
   echo "Resources:"
   echo "    + 401 created"
 } > "$big"
-out="$(bash "$SCRIPT" gcp-networks "$big" 0)"
+if [[ "$SCRIPT" == *.sh ]]; then
+  out="$(bash "$SCRIPT" gcp-networks "$big" 0)"
+else
+  out="$("$SCRIPT" gcp-networks "$big" 0)"
+fi
 bytes="$(printf '%s' "$out" | wc -c | tr -d ' ')"
 rm -f "$big"
 if [ "$bytes" -le 65536 ]; then
@@ -165,7 +177,12 @@ assert_has  "row cap note present"          "$out" '… and 300 more'
 # ── robustness: missing / empty output file ────────────────────────────────────
 echo "robustness (empty output):"
 empty="$(mktemp)"; : > "$empty"
-out="$(bash "$SCRIPT" some-app "$empty" 0)"; rm -f "$empty"
+if [[ "$SCRIPT" == *.sh ]]; then
+  out="$(bash "$SCRIPT" some-app "$empty" 0)"
+else
+  out="$("$SCRIPT" some-app "$empty" 0)"
+fi
+rm -f "$empty"
 assert_has  "renders with no pulumi output" "$out" '(no pulumi output captured)'
 assert_has  "still shows a title"           "$out" '## 🏗️ some-app'
 
@@ -185,7 +202,11 @@ Resources:
     46 unchanged
 PLAN
 gho="$(mktemp)"; : > "$gho"
-GITHUB_OUTPUT="$gho" bash "$SCRIPT" gate-test "$destructive_plan" 0 >/dev/null
+if [[ "$SCRIPT" == *.sh ]]; then
+  GITHUB_OUTPUT="$gho" bash "$SCRIPT" gate-test "$destructive_plan" 0 >/dev/null
+else
+  GITHUB_OUTPUT="$gho" "$SCRIPT" gate-test "$destructive_plan" 0 >/dev/null
+fi
 counts="$(cat "$gho")"
 assert_has "destructive plan emits deleted=1"     "$counts" 'deleted=1'
 assert_has "destructive plan emits destructive=1" "$counts" 'destructive=1'
@@ -198,14 +219,22 @@ Resources:
     47 unchanged
 PLAN
 gho="$(mktemp)"; : > "$gho"
-GITHUB_OUTPUT="$gho" bash "$SCRIPT" gate-test "$clean_plan" 0 >/dev/null
+if [[ "$SCRIPT" == *.sh ]]; then
+  GITHUB_OUTPUT="$gho" bash "$SCRIPT" gate-test "$clean_plan" 0 >/dev/null
+else
+  GITHUB_OUTPUT="$gho" "$SCRIPT" gate-test "$clean_plan" 0 >/dev/null
+fi
 counts="$(cat "$gho")"
 assert_has "clean plan emits deleted=0"     "$counts" 'deleted=0'
 assert_has "clean plan emits destructive=0" "$counts" 'destructive=0'
 rm -f "$clean_plan" "$gho"
 
 # Absent GITHUB_OUTPUT (local runs / the PR-comment sink) must not error.
-out="$(bash "$SCRIPT" gate-test /dev/null 0)"
+if [[ "$SCRIPT" == *.sh ]]; then
+  out="$(bash "$SCRIPT" gate-test /dev/null 0)"
+else
+  out="$("$SCRIPT" gate-test /dev/null 0)"
+fi
 assert_has "works with no GITHUB_OUTPUT set" "$out" '## 🏗️ gate-test'
 
 echo

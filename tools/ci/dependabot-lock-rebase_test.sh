@@ -28,7 +28,8 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCRIPT="${HERE}/dependabot-lock-rebase.sh"
+SCRIPT="${1:-${HERE}/dependabot-lock-rebase.sh}"
+SCRIPT="$(cd "$(dirname "$SCRIPT")" && pwd)/$(basename "$SCRIPT")"
 
 fails=0
 ok() { printf '  ok - %s\n' "$1"; }
@@ -167,10 +168,17 @@ git -C "$ws" config user.name placeholder
 prs_tsv="$(printf '1\tpr1-branch\n2\tpr2-branch\n3\tpr3-branch\n4\tpr4-branch\n5\tpr5-branch\n6\tpr6-branch\n')"
 
 run() {
-  ( cd "$ws" && env PATH="$work/bin:$PATH" \
-      FAKE_PR_LIST_OUT="$prs_tsv" FAKE_BAZEL_LOG="$work/bazel.log" \
-      REPO="owner/repo" GH_TOKEN=x WORK_DIR="$work/scratch-out" \
-      bash "$SCRIPT" )
+  if [[ "$SCRIPT" == *.sh ]]; then
+    ( cd "$ws" && env PATH="$work/bin:$PATH" \
+        FAKE_PR_LIST_OUT="$prs_tsv" FAKE_BAZEL_LOG="$work/bazel.log" \
+        REPO="owner/repo" GH_TOKEN=x WORK_DIR="$work/scratch-out" \
+        bash "$SCRIPT" )
+  else
+    ( cd "$ws" && env PATH="$work/bin:$PATH" \
+        FAKE_PR_LIST_OUT="$prs_tsv" FAKE_BAZEL_LOG="$work/bazel.log" \
+        REPO="owner/repo" GH_TOKEN=x WORK_DIR="$work/scratch-out" \
+        "$SCRIPT" )
+  fi
 }
 
 : > "$work/bazel.log"

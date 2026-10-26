@@ -10,11 +10,76 @@ Node.js, so there is nothing to build; these targets only run the unit tests.
 """
 
 load("@aspect_rules_js//js:defs.bzl", "js_library", "js_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # gazelle:ignore
 
 package(default_visibility = ["//apps/desktop/antigravity/plugins/hookify:__subpackages__"])
+
+exports_files(["hooks/evaluate-rules.sh"])
+
+rust_library(
+    name = "evaluate_rules_lib",
+    srcs = ["hooks/src/lib.rs"],
+    crate_name = "evaluate_rules",
+    crate_root = "hooks/src/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [
+        "@crates//:serde",
+        "@crates//:serde_json",
+    ],
+)
+
+rust_binary(
+    name = "evaluate-rules",
+    srcs = ["hooks/src/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":evaluate_rules_lib"],
+)
+
+rust_test(
+    name = "evaluate_rules_lib_test",
+    size = "small",
+    crate = ":evaluate_rules_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+sh_test(
+    name = "evaluate-rules_test",
+    size = "small",
+    srcs = ["hooks/evaluate-rules_test.sh"],
+    args = ["$(location hooks/evaluate-rules.sh)"],
+    data = [
+        "hooks/evaluate-rules.sh",
+        "sidecars/panel/lib/core.mjs",
+        "@nodejs_toolchains//:resolved_toolchain",
+    ],
+    env = {"VITRUVIAN_NODE": "$(NODE_PATH)"},
+    toolchains = ["@nodejs_toolchains//:resolved_toolchain"],
+)
+
+sh_test(
+    name = "evaluate-rules_rs_test",
+    size = "small",
+    srcs = ["hooks/evaluate-rules_test.sh"],
+    args = [
+        "$(location :evaluate-rules)",
+        "$(location hooks/evaluate-rules.sh)",
+    ],
+    data = [
+        "hooks/evaluate-rules.sh",
+        "sidecars/panel/lib/core.mjs",
+        ":evaluate-rules",
+        "@nodejs_toolchains//:resolved_toolchain",
+    ],
+    env = {"VITRUVIAN_NODE": "$(NODE_PATH)"},
+    toolchains = ["@nodejs_toolchains//:resolved_toolchain"],
+)
 
 js_library(
     name = "lib",
@@ -62,6 +127,9 @@ pipeline_unit(
     runner = "ubuntu-26.04",
     test_targets = [
         ":core_test",
+        ":evaluate-rules_rs_test",
+        ":evaluate-rules_test",
+        ":evaluate_rules_lib_test",
         ":openui_test",
         ":version_test",
     ],

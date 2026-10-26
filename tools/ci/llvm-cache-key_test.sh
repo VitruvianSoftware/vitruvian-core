@@ -39,8 +39,13 @@ fails=0
 ok() { printf '  ok - %s\n' "$1"; }
 bad() { printf '  NOT OK - %s\n' "$1" >&2; fails=$((fails + 1)); }
 
-# shellcheck source=/dev/null
-source "$SCRIPT"
+if [[ "$SCRIPT" == *.sh ]]; then
+  # shellcheck source=/dev/null
+  source "$SCRIPT"
+else
+  LLVM_CACHE_KEY_BIN="$SCRIPT"
+  llvm_cache_key() { "$LLVM_CACHE_KEY_BIN" "$@"; }
+fi
 set +e -u -o pipefail
 
 tmp="$(mktemp -d)"
@@ -110,7 +115,12 @@ esac
 # is the original bug wearing the fix's clothes, and nothing but this test
 # noticed it. A key that cannot include its inputs must not be emitted at all.
 mkdir -p "${tmp}/emptybin"
-if PATH="${tmp}/emptybin" "${BASH}" "$SCRIPT" Linux "$MOD" "${tmp}/os-release-24044" >/dev/null 2>&1; then
+if [[ "$SCRIPT" == *.sh ]]; then
+  __fc_cmd() { PATH="${tmp}/emptybin" "${BASH}" "$SCRIPT" Linux "$MOD" "${tmp}/os-release-24044"; }
+else
+  __fc_cmd() { PATH="${tmp}/emptybin" "$SCRIPT" Linux "$MOD" "${tmp}/os-release-24044"; }
+fi
+if __fc_cmd >/dev/null 2>&1; then
   bad "with no sha256 tool on PATH the script emitted a key instead of failing"
 else
   ok "no sha256 tool on PATH fails closed rather than emitting a partial key"
@@ -121,7 +131,11 @@ case "$k4" in
   *) ok "key has no empty segments" ;;
 esac
 
-out="$(bash "$SCRIPT" Linux "$MOD" "${tmp}/os-release-24044")"
+if [[ "$SCRIPT" == *.sh ]]; then
+  out="$(bash "$SCRIPT" Linux "$MOD" "${tmp}/os-release-24044")"
+else
+  out="$("$SCRIPT" Linux "$MOD" "${tmp}/os-release-24044")"
+fi
 [ "$out" = "$k4" ] \
   && ok "executing the script prints the same key the function returns" \
   || bad "main() and llvm_cache_key() disagree ('$out' vs '$k4')"

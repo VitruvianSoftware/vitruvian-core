@@ -26,36 +26,37 @@
 # Override the push target with PUSHGATEWAY_URL=... in the environment.
 set -euo pipefail
 
-if [ "$(id -u)" -ne 0 ]; then
+if [ "$("${ID_BIN:-id}" -u)" -ne 0 ]; then
 	echo "install.sh: must run as root (use sudo)" >&2
 	exit 1
 fi
 
 INSTANCE="${1:-$(hostname -s | tr '[:upper:]' '[:lower:]')}"
 PUSHGATEWAY_URL="${PUSHGATEWAY_URL:-https://pushgateway.lab.ipv1337.dev}"
-SRC_DIR="$(cd "$(dirname "$0")" && pwd)"
+SRC_DIR="${SRC_DIR:-$(cd "$(dirname "$0")" && pwd)}"
 LABEL="com.vitruvian.power-agent"
-PLIST="/Library/LaunchDaemons/${LABEL}.plist"
+DEST_ROOT="${DEST_ROOT:-}"
+PLIST="${DEST_ROOT}/Library/LaunchDaemons/${LABEL}.plist"
 
-install -d -m 0755 /usr/local/bin /usr/local/etc /var/log
-install -m 0755 "$SRC_DIR/power-agent.sh" /usr/local/bin/vitruvian-power-agent
+"${INSTALL_BIN:-install}" -d -m 0755 "${DEST_ROOT}/usr/local/bin" "${DEST_ROOT}/usr/local/etc" "${DEST_ROOT}/var/log"
+"${INSTALL_BIN:-install}" -m 0755 "${AGENT_SRC:-$SRC_DIR/power-agent.sh}" "${DEST_ROOT}/usr/local/bin/vitruvian-power-agent"
 
 umask 022
-cat >/usr/local/etc/vitruvian-power-agent.conf <<EOF
+cat >"${DEST_ROOT}/usr/local/etc/vitruvian-power-agent.conf" <<EOF
 # Written by macos-power-agent install.sh — edit and reload the daemon to change.
 INSTANCE="${INSTANCE}"
 PUSHGATEWAY_URL="${PUSHGATEWAY_URL}"
 JOB="mac_power"
 EOF
 
-install -m 0644 "$SRC_DIR/${LABEL}.plist" "$PLIST"
-chown root:wheel "$PLIST" /usr/local/bin/vitruvian-power-agent
+"${INSTALL_BIN:-install}" -m 0644 "$SRC_DIR/${LABEL}.plist" "$PLIST"
+"${CHOWN_BIN:-chown}" root:wheel "$PLIST" "${DEST_ROOT}/usr/local/bin/vitruvian-power-agent"
 
 # Reload: bootout any existing instance, then bootstrap the (possibly updated) one.
-launchctl bootout "system/${LABEL}" 2>/dev/null || true
-launchctl bootstrap system "$PLIST"
-launchctl enable "system/${LABEL}"
-launchctl kickstart "system/${LABEL}" 2>/dev/null || true
+"${LAUNCHCTL_BIN:-launchctl}" bootout "system/${LABEL}" 2>/dev/null || true
+"${LAUNCHCTL_BIN:-launchctl}" bootstrap system "$PLIST"
+"${LAUNCHCTL_BIN:-launchctl}" enable "system/${LABEL}"
+"${LAUNCHCTL_BIN:-launchctl}" kickstart "system/${LABEL}" 2>/dev/null || true
 
 echo "macos-power-agent installed: instance=${INSTANCE} target=${PUSHGATEWAY_URL}"
 echo "logs: /var/log/vitruvian-power-agent.log   (first push within ~30s)"

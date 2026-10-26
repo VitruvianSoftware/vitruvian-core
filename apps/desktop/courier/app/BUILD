@@ -12,6 +12,7 @@ load("@build_bazel_rules_apple//apple:macos.bzl", "macos_application")
 load("@build_bazel_rules_apple//apple:versioning.bzl", "apple_bundle_version")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
@@ -240,4 +241,139 @@ pipeline_unit(
     # A cold build of the engine it bundles is libsignal's 2,000+ actions
     # (../engine/BUILD); the remote cache makes later runs much shorter.
     timeout_minutes = 60,
+)
+
+# --- Rust ports of courier app scripts ----------------------------------------
+
+rust_library(
+    name = "courier_scripts_lib",
+    srcs = glob(
+        ["scripts/src/**/*.rs"],
+        exclude = ["scripts/src/bin/*.rs"],
+    ),
+    crate_name = "courier_scripts_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_test(
+    name = "courier_scripts_lib_test",
+    size = "small",
+    crate = ":courier_scripts_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
+    name = "inject-app-credentials",
+    srcs = ["scripts/src/bin/inject_app_credentials.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/desktop/courier:__subpackages__"],
+    deps = [":courier_scripts_lib"],
+)
+
+alias(
+    name = "inject_app_credentials",
+    actual = ":inject-app-credentials",
+    visibility = ["//apps/desktop/courier:__subpackages__"],
+)
+
+rust_binary(
+    name = "engine-contract",
+    srcs = ["scripts/src/bin/engine_contract.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/desktop/courier:__subpackages__"],
+    deps = [":courier_scripts_lib"],
+)
+
+alias(
+    name = "engine_contract",
+    actual = ":engine-contract",
+    visibility = ["//apps/desktop/courier:__subpackages__"],
+)
+
+rust_binary(
+    name = "app-holds-engine",
+    srcs = ["scripts/src/bin/app_holds_engine.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/desktop/courier:__subpackages__"],
+    deps = [":courier_scripts_lib"],
+)
+
+alias(
+    name = "app_holds_engine",
+    actual = ":app-holds-engine",
+    visibility = ["//apps/desktop/courier:__subpackages__"],
+)
+
+rust_binary(
+    name = "install-rs",
+    srcs = ["scripts/src/bin/install.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/desktop/courier:__subpackages__"],
+    deps = [":courier_scripts_lib"],
+)
+
+alias(
+    name = "install_rs",
+    actual = ":install-rs",
+    visibility = ["//apps/desktop/courier:__subpackages__"],
+)
+
+sh_test(
+    name = "engine_contract_rs_test",
+    size = "small",
+    srcs = ["scripts/engine-contract-rs_test.sh"],
+    args = [
+        "$(rootpath :engine-contract)",
+        "$(rootpath //apps/desktop/courier/engine/cmd/courier-engine)",
+        "$(rootpath Sources/CourierCore/EngineSupervisor.swift)",
+        "$(rootpath Sources/CourierCore/Protocol.swift)",
+        "$(rootpaths //apps/desktop/courier/protocol)",
+    ],
+    data = [
+        "Sources/CourierCore/EngineSupervisor.swift",
+        "Sources/CourierCore/Protocol.swift",
+        ":engine-contract",
+        "//apps/desktop/courier/engine/cmd/courier-engine",
+        "//apps/desktop/courier/protocol",
+    ],
+)
+
+sh_test(
+    name = "app_holds_engine_rs_test",
+    size = "small",
+    srcs = ["scripts/app-holds-engine-rs_test.sh"],
+    args = [
+        "$(rootpath :app-holds-engine)",
+        COURIER_VERSION,
+        "$(rootpaths :Courier)",
+    ],
+    data = [
+        ":Courier",
+        ":app-holds-engine",
+    ],
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+)
+
+sh_test(
+    name = "inject_app_credentials_rs_test",
+    size = "small",
+    srcs = ["scripts/inject-app-credentials-rs_test.sh"],
+    args = [
+        "$(rootpath :inject-app-credentials)",
+        "$(rootpath Resources/Courier.entitlements)",
+    ],
+    data = [
+        "Resources/Courier.entitlements",
+        "scripts/inject_app_credentials_test.sh",
+        ":inject-app-credentials",
+    ],
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
 )

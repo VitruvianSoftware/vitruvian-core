@@ -28,11 +28,63 @@
 # //tools/gitops, and //tools/doctor).
 # gazelle:ignore
 
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
-sh_binary(
+rust_library(
+    name = "conformance_check",
+    srcs = glob(
+        ["src/**/*.rs"],
+        exclude = ["src/main.rs"],
+    ),
+    crate_name = "conformance_check",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//tools:__subpackages__"],
+    deps = [
+        "//tools/shell-compat:shell_compat",
+    ],
+)
+
+rust_binary(
     name = "check",
+    srcs = ["src/main.rs"],
+    data = [
+        "delivery-legacy.tsv",
+        "version-pins.tsv",
+        "//tools/owners",
+    ],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":conformance_check",
+    ],
+)
+
+alias(
+    name = "check-rs",
+    actual = ":check",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "check_rs",
+    actual = ":check",
+    visibility = ["//visibility:public"],
+)
+
+rust_test(
+    name = "conformance_check_test",
+    size = "small",
+    crate = ":conformance_check",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+sh_binary(
+    name = "check-sh",
     srcs = ["check.sh"],
     data = [
         "delivery-legacy.tsv",
@@ -53,7 +105,7 @@ sh_binary(
 # cadence window), which is a failure a missing check cannot produce.
 sh_test(
     name = "check_test",
-    size = "small",
+    size = "medium",
     srcs = ["check_test.sh"],
     data = ["check.sh"],
 )
@@ -91,5 +143,50 @@ sh_test(
     data = [
         "check.sh",
         "//tools/owners",
+    ],
+)
+
+sh_test(
+    name = "check-rs_test",
+    size = "small",
+    srcs = ["check_test.sh"],
+    args = ["$(rootpath :check)"],
+    data = [
+        "check.sh",
+        ":check",
+    ],
+)
+
+sh_test(
+    name = "conformance-delivery-rs_test",
+    size = "small",
+    srcs = ["conformance-delivery_test.sh"],
+    args = ["$(rootpath :check)"],
+    data = [
+        "check.sh",
+        ":check",
+    ],
+)
+
+sh_test(
+    name = "conformance-owners-rs_test",
+    size = "small",
+    srcs = ["conformance-owners_test.sh"],
+    args = ["$(rootpath :check)"],
+    data = [
+        "check.sh",
+        ":check",
+        "//tools/owners",
+    ],
+)
+
+sh_test(
+    name = "conformance-rs-parity_test",
+    size = "small",
+    srcs = ["conformance-rs-parity_test.sh"],
+    args = ["$(rootpath :check)"],
+    data = [
+        "check.sh",
+        ":check",
     ],
 )

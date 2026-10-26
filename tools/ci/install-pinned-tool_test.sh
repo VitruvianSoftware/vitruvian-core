@@ -28,7 +28,8 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCRIPT="${HERE}/install-pinned-tool.sh"
+SCRIPT="${1:-${HERE}/install-pinned-tool.sh}"
+SCRIPT="$(cd "$(dirname "$SCRIPT")" && pwd)/$(basename "$SCRIPT")"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -74,11 +75,19 @@ run() {
   ghpath="$scratch/github_path"
   mkdir -p "$home"
   : > "$ghpath"
-  (
-    cd "$scratch" || exit 99
-    PATH="$work/bin:$PATH" HOME="$home" GITHUB_PATH="$ghpath" FIXTURES_DIR="$fixtures" \
-      bash "$SCRIPT" "$@"
-  ) > "$scratch/stdout" 2>"$scratch/stderr"
+  if [[ "$SCRIPT" == *.sh ]]; then
+    (
+      cd "$scratch" || exit 99
+      PATH="$work/bin:$PATH" HOME="$home" GITHUB_PATH="$ghpath" FIXTURES_DIR="$fixtures" \
+        bash "$SCRIPT" "$@"
+    ) > "$scratch/stdout" 2>"$scratch/stderr"
+  else
+    (
+      cd "$scratch" || exit 99
+      PATH="$work/bin:$PATH" HOME="$home" GITHUB_PATH="$ghpath" FIXTURES_DIR="$fixtures" \
+        "$SCRIPT" "$@"
+    ) > "$scratch/stdout" 2>"$scratch/stderr"
+  fi
   local rc=$?
   echo "$scratch"
   return "$rc"
@@ -142,12 +151,21 @@ echo "--- transport failure propagates (no silent success) ---"
 scratch2="$(mktemp -d)"
 mkdir -p "$scratch2/home"
 : > "$scratch2/github_path"
-(
-  cd "$scratch2" || exit 99
-  PATH="$work/bin:$PATH" HOME="$scratch2/home" GITHUB_PATH="$scratch2/github_path" \
-    FIXTURES_DIR="$fixtures" FAKE_CURL_RC=1 \
-    bash "$SCRIPT" "https://example.invalid/download" "$raw_asset" "${raw_asset}_SHA256SUMS" "$raw_asset" mytool --raw
-) > "$scratch2/stdout" 2>"$scratch2/stderr"
+if [[ "$SCRIPT" == *.sh ]]; then
+  (
+    cd "$scratch2" || exit 99
+    PATH="$work/bin:$PATH" HOME="$scratch2/home" GITHUB_PATH="$scratch2/github_path" \
+      FIXTURES_DIR="$fixtures" FAKE_CURL_RC=1 \
+      bash "$SCRIPT" "https://example.invalid/download" "$raw_asset" "${raw_asset}_SHA256SUMS" "$raw_asset" mytool --raw
+  ) > "$scratch2/stdout" 2>"$scratch2/stderr"
+else
+  (
+    cd "$scratch2" || exit 99
+    PATH="$work/bin:$PATH" HOME="$scratch2/home" GITHUB_PATH="$scratch2/github_path" \
+      FIXTURES_DIR="$fixtures" FAKE_CURL_RC=1 \
+      "$SCRIPT" "https://example.invalid/download" "$raw_asset" "${raw_asset}_SHA256SUMS" "$raw_asset" mytool --raw
+  ) > "$scratch2/stdout" 2>"$scratch2/stderr"
+fi
 rc=$?
 if [ "$rc" -ne 0 ]; then pass "curl transport failure exits non-zero"; else
   fail "curl transport failure should fail the script, got rc=0"
@@ -162,12 +180,21 @@ argslog="$work/curl-args.log"
 scratch2="$(mktemp -d)"
 mkdir -p "$scratch2/home"
 : > "$scratch2/github_path"
-(
-  cd "$scratch2" || exit 99
-  PATH="$work/bin:$PATH" HOME="$scratch2/home" GITHUB_PATH="$scratch2/github_path" \
-    FIXTURES_DIR="$fixtures" FAKE_CURL_ARGS_LOG="$argslog" \
-    bash "$SCRIPT" "https://example.invalid/download" "$raw_asset" "${raw_asset}_SHA256SUMS" "$raw_asset" mytool --raw
-) > "$scratch2/stdout" 2>"$scratch2/stderr"
+if [[ "$SCRIPT" == *.sh ]]; then
+  (
+    cd "$scratch2" || exit 99
+    PATH="$work/bin:$PATH" HOME="$scratch2/home" GITHUB_PATH="$scratch2/github_path" \
+      FIXTURES_DIR="$fixtures" FAKE_CURL_ARGS_LOG="$argslog" \
+      bash "$SCRIPT" "https://example.invalid/download" "$raw_asset" "${raw_asset}_SHA256SUMS" "$raw_asset" mytool --raw
+  ) > "$scratch2/stdout" 2>"$scratch2/stderr"
+else
+  (
+    cd "$scratch2" || exit 99
+    PATH="$work/bin:$PATH" HOME="$scratch2/home" GITHUB_PATH="$scratch2/github_path" \
+      FIXTURES_DIR="$fixtures" FAKE_CURL_ARGS_LOG="$argslog" \
+      "$SCRIPT" "https://example.invalid/download" "$raw_asset" "${raw_asset}_SHA256SUMS" "$raw_asset" mytool --raw
+  ) > "$scratch2/stdout" 2>"$scratch2/stderr"
+fi
 calls="$(wc -l < "$argslog" | tr -d ' ')"
 if [ "$calls" -eq 2 ]; then pass "two fetches (asset + checksums)"; else
   fail "expected 2 curl calls, got $calls"
@@ -193,11 +220,19 @@ rc=$?
 echo "--- GITHUB_PATH required ---"
 scratch2="$(mktemp -d)"
 mkdir -p "$scratch2/home"
-(
-  cd "$scratch2" || exit 99
-  env -u GITHUB_PATH PATH="$work/bin:$PATH" HOME="$scratch2/home" FIXTURES_DIR="$fixtures" \
-    bash "$SCRIPT" "https://example.invalid/download" "$raw_asset" "${raw_asset}_SHA256SUMS" "$raw_asset" mytool --raw
-) > "$scratch2/stdout" 2>"$scratch2/stderr"
+if [[ "$SCRIPT" == *.sh ]]; then
+  (
+    cd "$scratch2" || exit 99
+    env -u GITHUB_PATH PATH="$work/bin:$PATH" HOME="$scratch2/home" FIXTURES_DIR="$fixtures" \
+      bash "$SCRIPT" "https://example.invalid/download" "$raw_asset" "${raw_asset}_SHA256SUMS" "$raw_asset" mytool --raw
+  ) > "$scratch2/stdout" 2>"$scratch2/stderr"
+else
+  (
+    cd "$scratch2" || exit 99
+    env -u GITHUB_PATH PATH="$work/bin:$PATH" HOME="$scratch2/home" FIXTURES_DIR="$fixtures" \
+      "$SCRIPT" "https://example.invalid/download" "$raw_asset" "${raw_asset}_SHA256SUMS" "$raw_asset" mytool --raw
+  ) > "$scratch2/stdout" 2>"$scratch2/stderr"
+fi
 rc=$?
 if [ "$rc" -ne 0 ] && grep -q "GITHUB_PATH must be set" "$scratch2/stderr"; then
   pass "missing GITHUB_PATH fails with a clear message"

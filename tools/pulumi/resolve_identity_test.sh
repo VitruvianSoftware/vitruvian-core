@@ -25,25 +25,25 @@ MAP
 fail() { echo "FAIL: $1" >&2; exit 1; }
 
 # 1. Known dir → "account<TAB>project" (purpose column has spaces; must not leak)
-got="$(bash "$RESOLVER" "$map" "infrastructure/pulumi/accounts/personal")"
+got="$("$RESOLVER" "$map" "infrastructure/pulumi/accounts/personal")"
 want="$(printf 'james.nguyen@gmail.com\tpersonal-llc')"
 [ "$got" = "$want" ] || fail "known dir: got [$got] want [$want]"
 
 # 1b. Service Account dir → "sa<TAB>project"
-got="$(bash "$RESOLVER" "$map" "oauth-user-inspector/infra/app")"
+got="$("$RESOLVER" "$map" "oauth-user-inspector/infra/app")"
 want="$(printf 'sa-oauth-user-inspector-deploy-dev@prj-d-bu1-oss-floating-648a.iam.gserviceaccount.com\tprj-d-bu1-oss-floating-648a')"
 [ "$got" = "$want" ] || fail "sa dir: got [$got] want [$want]"
 
 # 2. Unknown dir → empty
-got="$(bash "$RESOLVER" "$map" "infrastructure/pulumi/platform/repo-config")"
+got="$("$RESOLVER" "$map" "infrastructure/pulumi/platform/repo-config")"
 [ -z "$got" ] || fail "unknown dir should be empty, got [$got]"
 
 # 3. The "-" reference placeholder is never matched
-got="$(bash "$RESOLVER" "$map" "-")"
+got="$("$RESOLVER" "$map" "-")"
 [ -z "$got" ] || fail "'-' placeholder should never match, got [$got]"
 
 # 4. Missing map file → empty, exit 0
-got="$(bash "$RESOLVER" "$tmp/nope.tsv" "infrastructure/pulumi/accounts/personal")"
+got="$("$RESOLVER" "$tmp/nope.tsv" "infrastructure/pulumi/accounts/personal")"
 [ -z "$got" ] || fail "missing map should be empty, got [$got]"
 
 echo "PASS: resolve_identity.sh"

@@ -37,6 +37,8 @@
 
 load("@aspect_rules_jest//jest:defs.bzl", "jest_test")
 load("@npm//:defs.bzl", "npm_link_all_packages")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/doctor:defs.bzl", "doctor")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
@@ -103,6 +105,85 @@ doctor(
         "node",
         "pnpm",
         "git",
+    ],
+)
+
+rust_library(
+    name = "oauth_scripts_lib",
+    srcs = [
+        "scripts/src/check_sensitive.rs",
+        "scripts/src/lib.rs",
+        "scripts/src/smoke.rs",
+    ],
+    crate_name = "oauth_scripts_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_test(
+    name = "oauth_scripts_lib_test",
+    size = "small",
+    crate = ":oauth_scripts_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
+    name = "check-sensitive-rs",
+    srcs = ["scripts/src/bin/check_sensitive.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":oauth_scripts_lib"],
+)
+
+alias(
+    name = "check_sensitive_rs",
+    actual = ":check-sensitive-rs",
+)
+
+rust_binary(
+    name = "smoke-rs",
+    srcs = ["scripts/src/bin/smoke.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":oauth_scripts_lib"],
+)
+
+alias(
+    name = "smoke_rs",
+    actual = ":smoke-rs",
+)
+
+sh_test(
+    name = "check-sensitive_test",
+    size = "small",
+    srcs = ["scripts/check-sensitive_test.sh"],
+    args = [
+        "$(rootpath scripts/check-sensitive.sh)",
+        "$(rootpath :check-sensitive-rs)",
+    ],
+    data = [
+        "scripts/check-sensitive.sh",
+        ":check-sensitive-rs",
+    ],
+)
+
+alias(
+    name = "check_sensitive_test",
+    actual = ":check-sensitive_test",
+)
+
+sh_test(
+    name = "smoke_test",
+    size = "small",
+    srcs = ["scripts/smoke_test.sh"],
+    args = [
+        "$(rootpath //apps/web/oauth-user-inspector/infra/app:smoke.sh)",
+        "$(rootpath :smoke-rs)",
+    ],
+    data = [
+        ":smoke-rs",
+        "//apps/web/oauth-user-inspector/infra/app:smoke.sh",
     ],
 )
 

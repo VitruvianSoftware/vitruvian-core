@@ -40,7 +40,11 @@ trap 'rm -rf "$W"' EXIT
 # case <name> <expect: pass|fail> <workflow text> -> checks the script's verdict
 case_() {
   rm -rf "$W/d"; mkdir "$W/d"; printf '%s\n' "$3" >"$W/d/x.yaml"
-  if bash "$SCRIPT" "$W/d" >"$W/out" 2>&1; then got=pass; else got=fail; fi
+  if [[ "$SCRIPT" == *.sh ]]; then
+    bash "$SCRIPT" "$W/d" >"$W/out" 2>&1 && got=pass || got=fail
+  else
+    "$SCRIPT" "$W/d" >"$W/out" 2>&1 && got=pass || got=fail
+  fi
   [ "$got" = "$2" ] && ok "$1" || bad "$1: expected $2, got $got: $(cat "$W/out")"
 }
 
@@ -85,13 +89,25 @@ case_ "the switch used in an if" fail "jobs:
 echo "== the exemption =="
 rm -rf "$W/d"; mkdir "$W/d"
 printf 'jobs:\n  canary:\n    runs-on: vitruvian-queue\n' >"$W/d/queue-runner-watch.yaml"
-bash "$SCRIPT" "$W/d" >/dev/null 2>&1 && ok "queue-runner-watch.yaml may name the runner" || bad "the watcher was refused"
+if [[ "$SCRIPT" == *.sh ]]; then
+  bash "$SCRIPT" "$W/d" >/dev/null 2>&1 && ok "queue-runner-watch.yaml may name the runner" || bad "the watcher was refused"
+else
+  "$SCRIPT" "$W/d" >/dev/null 2>&1 && ok "queue-runner-watch.yaml may name the runner" || bad "the watcher was refused"
+fi
 cp "$W/d/queue-runner-watch.yaml" "$W/d/other.yaml"
-bash "$SCRIPT" "$W/d" >/dev/null 2>&1 && bad "a copy under another name was allowed" || ok "the same text under another name is refused"
+if [[ "$SCRIPT" == *.sh ]]; then
+  bash "$SCRIPT" "$W/d" >/dev/null 2>&1 && bad "a copy under another name was allowed" || ok "the same text under another name is refused"
+else
+  "$SCRIPT" "$W/d" >/dev/null 2>&1 && bad "a copy under another name was allowed" || ok "the same text under another name is refused"
+fi
 
 if [ -n "$REAL" ]; then
   echo "== the real workflows =="
-  bash "$SCRIPT" "$REAL" >"$W/out" 2>&1 && ok "every workflow in the repo passes" || bad "the repo's workflows: $(cat "$W/out")"
+  if [[ "$SCRIPT" == *.sh ]]; then
+    bash "$SCRIPT" "$REAL" >"$W/out" 2>&1 && ok "every workflow in the repo passes" || bad "the repo's workflows: $(cat "$W/out")"
+  else
+    "$SCRIPT" "$REAL" >"$W/out" 2>&1 && ok "every workflow in the repo passes" || bad "the repo's workflows: $(cat "$W/out")"
+  fi
 fi
 
 [ "$failures" -eq 0 ] || { echo "queue-runner-routing_test: $failures failure(s)" >&2; exit 1; }

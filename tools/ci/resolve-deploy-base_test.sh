@@ -28,7 +28,8 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCRIPT="${HERE}/resolve-deploy-base.sh"
+SCRIPT="${1:-${HERE}/resolve-deploy-base.sh}"
+SCRIPT="$(cd "$(dirname "$SCRIPT")" && pwd)/$(basename "$SCRIPT")"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -72,9 +73,15 @@ chmod +x "$work/fake-gh"
 # still re-set it explicitly if a future test needs to.
 run() {
   local out="$work/out"; : > "$out"
-  env GITHUB_OUTPUT="$out" GH_BIN="$work/fake-gh" GITHUB_REPOSITORY="" \
-    REPO="owner/repo" WORKFLOW_FILE="some-deploy.yaml" "$@" \
-    bash "$SCRIPT" >"$work/stdout" 2>"$work/stderr"
+  if [[ "$SCRIPT" == *.sh ]]; then
+    env GITHUB_OUTPUT="$out" GH_BIN="$work/fake-gh" GITHUB_REPOSITORY="" \
+      REPO="owner/repo" WORKFLOW_FILE="some-deploy.yaml" "$@" \
+      bash "$SCRIPT" >"$work/stdout" 2>"$work/stderr"
+  else
+    env GITHUB_OUTPUT="$out" GH_BIN="$work/fake-gh" GITHUB_REPOSITORY="" \
+      REPO="owner/repo" WORKFLOW_FILE="some-deploy.yaml" "$@" \
+      "$SCRIPT" >"$work/stdout" 2>"$work/stderr"
+  fi
   sed -n 's/^base_sha=//p' "$out"
 }
 
@@ -135,8 +142,13 @@ out="$work/out3"; : > "$out"
 # it does not clear the rest of the inherited environment. Without this the
 # script's own fallback to GITHUB_REPOSITORY silently picks up the runner's
 # real value and this test passes locally but fails in CI.
-env GITHUB_OUTPUT="$out" GH_BIN="$work/fake-gh" WORKFLOW_FILE="some-deploy.yaml" REPO="" GITHUB_REPOSITORY="" \
-  bash "$SCRIPT" >"$work/stdout3" 2>"$work/stderr3"
+if [[ "$SCRIPT" == *.sh ]]; then
+  env GITHUB_OUTPUT="$out" GH_BIN="$work/fake-gh" WORKFLOW_FILE="some-deploy.yaml" REPO="" GITHUB_REPOSITORY="" \
+    bash "$SCRIPT" >"$work/stdout3" 2>"$work/stderr3"
+else
+  env GITHUB_OUTPUT="$out" GH_BIN="$work/fake-gh" WORKFLOW_FILE="some-deploy.yaml" REPO="" GITHUB_REPOSITORY="" \
+    "$SCRIPT" >"$work/stdout3" 2>"$work/stderr3"
+fi
 got="$(sed -n 's/^base_sha=//p' "$out")"
 if [ "$got" = "" ] && grep -q "REPO/GITHUB_REPOSITORY unset" "$work/stdout3"; then
   pass "REPO and GITHUB_REPOSITORY both unset fails open with the right reason"
@@ -145,8 +157,13 @@ else
 fi
 
 echo "--- required env is a caller bug, not a fail-open case ---"
-env GITHUB_OUTPUT="$work/out4" GH_BIN="$work/fake-gh" REPO="owner/repo" \
-  bash "$SCRIPT" >/dev/null 2>"$work/stderr4"
+if [[ "$SCRIPT" == *.sh ]]; then
+  env GITHUB_OUTPUT="$work/out4" GH_BIN="$work/fake-gh" REPO="owner/repo" \
+    bash "$SCRIPT" >/dev/null 2>"$work/stderr4"
+else
+  env GITHUB_OUTPUT="$work/out4" GH_BIN="$work/fake-gh" REPO="owner/repo" \
+    "$SCRIPT" >/dev/null 2>"$work/stderr4"
+fi
 rc=$?
 if [ "$rc" -ne 0 ] && grep -q "WORKFLOW_FILE must be set" "$work/stderr4"; then
   pass "missing WORKFLOW_FILE exits non-zero instead of silently emitting empty"

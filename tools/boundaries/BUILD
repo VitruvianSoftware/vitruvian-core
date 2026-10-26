@@ -1,4 +1,5 @@
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
 load("//tools/pytest:defs.bzl", "py_test")
 
 # Copyright (c) 2026 VitruvianSoftware
@@ -48,8 +49,29 @@ package_group(
 # gazelle:ignore
 
 py_test(
-    name = "boundaries_test",
+    name = "boundaries_py_test",
     srcs = ["test_boundaries.py"],
+)
+
+rust_library(
+    name = "boundaries_lib",
+    srcs = ["src/lib.rs"],
+    crate_name = "boundaries",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_test(
+    name = "boundaries_test",
+    size = "small",
+    crate = ":boundaries_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+alias(
+    name = "boundaries_test_rs",
+    actual = ":boundaries_test",
 )
 
 bzl_library(

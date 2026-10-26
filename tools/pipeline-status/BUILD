@@ -36,6 +36,7 @@ rust_library(
         exclude = [
             "src/main.rs",
             "src/probe.rs",
+            "src/bin/mouse_daemon.rs",
         ],
     ),
     crate_name = "pipeline_status",
@@ -75,18 +76,49 @@ sh_binary(
     visibility = ["//visibility:public"],
 )
 
-sh_binary(
+# --- The Rust port of pipeline-mouse-daemon --------------------------------
+# Same LED state matrix, signal handling and output as the shell script.
+# `manual` because data includes the macOS-only gravastar-mouse binary.
+rust_binary(
     name = "pipeline-mouse-daemon",
+    srcs = ["src/bin/mouse_daemon.rs"],
+    data = ["//packages/peripherals:gravastar-mouse"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    tags = ["manual"],
+    visibility = ["//visibility:public"],
+    deps = [":pipeline_status_lib"],
+)
+
+# Test-only binary without the macOS-only data dep (GRAVASTAR_BIN is
+# stubbed by the test, so the real binary is never needed at build time).
+rust_binary(
+    name = "pipeline-mouse-daemon-test-bin",
+    testonly = True,
+    srcs = ["src/bin/mouse_daemon.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":pipeline_status_lib"],
+)
+
+# The shell script, kept runnable beside the Rust port.
+sh_binary(
+    name = "pipeline-mouse-daemon-sh",
     srcs = ["pipeline-mouse-daemon.sh"],
     data = [
         "pipeline-status.sh",
         "//packages/peripherals:gravastar-mouse",
     ],
-    # `manual` because its data is: the mouse tool is a macOS command-line
-    # application, which a Linux `bazel build //...` cannot analyze.
-    # `bazel run` on a Mac is unaffected.
     tags = ["manual"],
     visibility = ["//visibility:public"],
+)
+
+sh_test(
+    name = "pipeline-mouse-daemon_test",
+    size = "small",
+    srcs = ["pipeline-mouse-daemon_test.sh"],
+    args = ["$(rootpath :pipeline-mouse-daemon-test-bin)"],
+    data = [":pipeline-mouse-daemon-test-bin"],
 )
 
 sh_test(
