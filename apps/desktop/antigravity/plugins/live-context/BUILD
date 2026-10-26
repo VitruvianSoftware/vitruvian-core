@@ -10,11 +10,119 @@ Node.js, so there is nothing to build; these targets only run the unit tests.
 """
 
 load("@aspect_rules_js//js:defs.bzl", "js_library", "js_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # gazelle:ignore
 
 package(default_visibility = ["//apps/desktop/antigravity/plugins/live-context:__subpackages__"])
+
+exports_files([
+    "hooks/inject-live-context.sh",
+    "hooks/verify-response-shape.sh",
+])
+
+rust_library(
+    name = "live_context_hooks_lib",
+    srcs = ["hooks/src/lib.rs"],
+    crate_name = "live_context_hooks",
+    crate_root = "hooks/src/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [
+        "@crates//:serde",
+        "@crates//:serde_json",
+    ],
+)
+
+rust_binary(
+    name = "inject-live-context",
+    srcs = ["hooks/src/bin/inject_live_context.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":live_context_hooks_lib"],
+)
+
+rust_binary(
+    name = "verify-response-shape",
+    srcs = ["hooks/src/bin/verify_response_shape.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":live_context_hooks_lib"],
+)
+
+rust_test(
+    name = "live_context_hooks_lib_test",
+    size = "small",
+    crate = ":live_context_hooks_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+sh_test(
+    name = "inject-live-context_test",
+    size = "small",
+    srcs = ["hooks/inject-live-context_test.sh"],
+    args = ["$(location hooks/inject-live-context.sh)"],
+    data = [
+        "hooks/inject-live-context.sh",
+        "sidecars/panel/lib/core.mjs",
+        "@nodejs_toolchains//:resolved_toolchain",
+    ],
+    env = {"VITRUVIAN_NODE": "$(NODE_PATH)"},
+    toolchains = ["@nodejs_toolchains//:resolved_toolchain"],
+)
+
+sh_test(
+    name = "inject-live-context_rs_test",
+    size = "small",
+    srcs = ["hooks/inject-live-context_test.sh"],
+    args = [
+        "$(location :inject-live-context)",
+        "$(location hooks/inject-live-context.sh)",
+    ],
+    data = [
+        "hooks/inject-live-context.sh",
+        "sidecars/panel/lib/core.mjs",
+        ":inject-live-context",
+        "@nodejs_toolchains//:resolved_toolchain",
+    ],
+    env = {"VITRUVIAN_NODE": "$(NODE_PATH)"},
+    toolchains = ["@nodejs_toolchains//:resolved_toolchain"],
+)
+
+sh_test(
+    name = "verify-response-shape_test",
+    size = "small",
+    srcs = ["hooks/verify-response-shape_test.sh"],
+    args = ["$(location hooks/verify-response-shape.sh)"],
+    data = [
+        "hooks/verify-response-shape.sh",
+        "sidecars/panel/lib/core.mjs",
+        "@nodejs_toolchains//:resolved_toolchain",
+    ],
+    env = {"VITRUVIAN_NODE": "$(NODE_PATH)"},
+    toolchains = ["@nodejs_toolchains//:resolved_toolchain"],
+)
+
+sh_test(
+    name = "verify-response-shape_rs_test",
+    size = "small",
+    srcs = ["hooks/verify-response-shape_test.sh"],
+    args = [
+        "$(location :verify-response-shape)",
+        "$(location hooks/verify-response-shape.sh)",
+    ],
+    data = [
+        "hooks/verify-response-shape.sh",
+        "sidecars/panel/lib/core.mjs",
+        ":verify-response-shape",
+        "@nodejs_toolchains//:resolved_toolchain",
+    ],
+    env = {"VITRUVIAN_NODE": "$(NODE_PATH)"},
+    toolchains = ["@nodejs_toolchains//:resolved_toolchain"],
+)
 
 js_library(
     name = "lib",
@@ -62,7 +170,12 @@ pipeline_unit(
     runner = "ubuntu-26.04",
     test_targets = [
         ":core_test",
+        ":inject-live-context_rs_test",
+        ":inject-live-context_test",
+        ":live_context_hooks_lib_test",
         ":openui_test",
+        ":verify-response-shape_rs_test",
+        ":verify-response-shape_test",
         ":version_test",
     ],
     tier = "L1",

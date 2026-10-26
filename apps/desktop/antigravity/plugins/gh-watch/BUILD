@@ -10,12 +10,15 @@ Node.js, so there is nothing to build; these targets only run the unit tests.
 """
 
 load("@aspect_rules_js//js:defs.bzl", "js_library", "js_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # gazelle:ignore
 
 package(default_visibility = ["//apps/desktop/antigravity/plugins/gh-watch:__subpackages__"])
+
+exports_files(["hooks/note-pr-create.sh"])
 
 # The watcher's logic. main.mjs is left out on purpose: it imports the
 # Antigravity sidecar SDK, which only exists inside the app.
@@ -136,12 +139,51 @@ js_test(
     entry_point = "sidecars/panel/lib/watcher.test.mjs",
 )
 
+rust_library(
+    name = "note_pr_create_lib",
+    srcs = ["hooks/src/lib.rs"],
+    crate_name = "note_pr_create",
+    crate_root = "hooks/src/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
+    name = "note-pr-create",
+    srcs = ["hooks/src/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":note_pr_create_lib"],
+)
+
+rust_test(
+    name = "note_pr_create_lib_test",
+    size = "small",
+    crate = ":note_pr_create_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
 # The hook Antigravity runs after each shell command (hooks.json).
 sh_test(
     name = "note-pr-create_test",
     size = "small",
     srcs = ["hooks/note-pr-create_test.sh"],
     data = ["hooks/note-pr-create.sh"],
+)
+
+sh_test(
+    name = "note-pr-create_rs_test",
+    size = "small",
+    srcs = ["hooks/note-pr-create_test.sh"],
+    args = [
+        "$(location :note-pr-create)",
+        "$(location hooks/note-pr-create.sh)",
+    ],
+    data = [
+        "hooks/note-pr-create.sh",
+        ":note-pr-create",
+    ],
 )
 
 pipeline_unit(
@@ -154,7 +196,9 @@ pipeline_unit(
         ":flakes_test",
         ":landing_test",
         ":logs_test",
+        ":note-pr-create_rs_test",
         ":note-pr-create_test",
+        ":note_pr_create_lib_test",
         ":notices_test",
         ":openui_test",
         ":pace_test",

@@ -7,11 +7,62 @@ status, and Bazel output-base disk usage with safe post-merge cleanup.
 """
 
 load("@aspect_rules_js//js:defs.bzl", "js_library", "js_test")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # gazelle:ignore
 
 package(default_visibility = ["//apps/desktop/antigravity/plugins/worktree-band:__subpackages__"])
+
+exports_files(["hooks/session-worktree.sh"])
+
+rust_library(
+    name = "session_worktree_lib",
+    srcs = ["hooks/src/lib.rs"],
+    crate_name = "session_worktree",
+    crate_root = "hooks/src/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
+    name = "session-worktree",
+    srcs = ["hooks/src/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":session_worktree_lib"],
+)
+
+rust_test(
+    name = "session_worktree_lib_test",
+    size = "small",
+    crate = ":session_worktree_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+sh_test(
+    name = "session-worktree_test",
+    size = "small",
+    srcs = ["hooks/session-worktree_test.sh"],
+    args = ["$(location hooks/session-worktree.sh)"],
+    data = ["hooks/session-worktree.sh"],
+)
+
+sh_test(
+    name = "session-worktree_rs_test",
+    size = "small",
+    srcs = ["hooks/session-worktree_test.sh"],
+    args = [
+        "$(location :session-worktree)",
+        "$(location hooks/session-worktree.sh)",
+    ],
+    data = [
+        "hooks/session-worktree.sh",
+        ":session-worktree",
+    ],
+)
 
 js_library(
     name = "lib",
@@ -60,6 +111,9 @@ pipeline_unit(
     test_targets = [
         ":core_test",
         ":openui_test",
+        ":session-worktree_rs_test",
+        ":session-worktree_test",
+        ":session_worktree_lib_test",
         ":version_test",
     ],
     tier = "L1",

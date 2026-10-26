@@ -8,12 +8,18 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-UNDER_TEST="${HERE}/note-pr-create.sh"
+UNDER_TEST="${1:-${HERE}/note-pr-create.sh}"
 [ -f "${UNDER_TEST}" ] || UNDER_TEST="apps/desktop/antigravity/plugins/gh-watch/hooks/note-pr-create.sh"
 [ -f "${UNDER_TEST}" ] || {
 	echo "cannot find note-pr-create.sh" >&2
 	exit 1
 }
+UNDER_TEST="$(cd "$(dirname "${UNDER_TEST}")" && pwd)/$(basename "${UNDER_TEST}")"
+
+REF_SCRIPT="${2:-}"
+if [ -n "${REF_SCRIPT}" ] && [ -f "${REF_SCRIPT}" ]; then
+	REF_SCRIPT="$(cd "$(dirname "${REF_SCRIPT}")" && pwd)/$(basename "${REF_SCRIPT}")"
+fi
 
 PASS=0
 FAIL=0
@@ -31,11 +37,21 @@ payload() { # command, transcript folder
 	printf '{"conversationId":"c1","error":"","toolCall":{"args":{"CommandLine":"%s","Cwd":"/work"},"name":"run_command"},"transcriptPath":"/Users/x/.gemini/%s/brain/c1/t.jsonl"}' "$1" "$2"
 }
 
+run_target() {
+	local target="$1"
+	local home_dir="$2"
+	if [[ "${target}" == *.sh ]]; then
+		HOME="${home_dir}" sh "${target}"
+	else
+		HOME="${home_dir}" "${target}"
+	fi
+}
+
 # Runs the hook with a throwaway HOME; prints what it answered.
 run_hook() {
-	HOME="${SANDBOX}" sh "${UNDER_TEST}"
+	run_target "${UNDER_TEST}" "${SANDBOX}"
 }
-notes() { find "${SANDBOX}" -name '*.json' | wc -l | tr -d ' '; }
+notes() { find "${1:-${SANDBOX}}" -name '*.json' 2>/dev/null | wc -l | tr -d ' '; }
 
 echo "note-pr-create_test:"
 
@@ -115,6 +131,33 @@ out=$(payload "gh pr create" "antigravity" | run_hook)
 rc=$?
 [ "${rc}" = "0" ] && [ "${out}" = "{}" ]
 check "still answers {} and exits 0 when it cannot write" "$?"
+
+if [ -n "${REF_SCRIPT}" ] && [ -f "${REF_SCRIPT}" ]; then
+	for pair in "ls -la|antigravity" "gh pr create --fill|antigravity" "gh pr create --fill|antigravity-cli" "bazel run //tools/agent-app -- pr-create|antigravity" "GH_WATCH=1 gh pr view 42|antigravity"; do
+		cmd="${pair%|*}"
+		folder="${pair#*|}"
+		s_bin="$(mktemp -d)"
+		s_sh="$(mktemp -d)"
+		out_bin=$(payload "${cmd}" "${folder}" | run_target "${UNDER_TEST}" "${s_bin}")
+		rc_bin=$?
+		out_sh=$(payload "${cmd}" "${folder}" | run_target "${REF_SCRIPT}" "${s_sh}")
+		rc_sh=$?
+		n_bin="$(notes "${s_bin}")"
+		n_sh="$(notes "${s_sh}")"
+		parity_ok=1
+		if [ "${rc_bin}" = "${rc_sh}" ] && [ "${out_bin}" = "${out_sh}" ] && [ "${n_bin}" = "${n_sh}" ]; then
+			if [ "${n_bin}" = "1" ]; then
+				c_bin="$(cat "$(find "${s_bin}" -name '*.json')")"
+				c_sh="$(cat "$(find "${s_sh}" -name '*.json')")"
+				[ "${c_bin}" = "${c_sh}" ] && parity_ok=0
+			else
+				parity_ok=0
+			fi
+		fi
+		check "parity with shell script for '${cmd}' (${folder})" "${parity_ok}"
+		rm -rf "${s_bin}" "${s_sh}"
+	done
+fi
 
 echo "${PASS} passed, ${FAIL} failed"
 [ "${FAIL}" = "0" ]
