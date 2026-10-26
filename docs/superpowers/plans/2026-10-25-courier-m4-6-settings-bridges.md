@@ -90,6 +90,7 @@ Every bridge fact below is verified from `~/go/pkg/mod` at the pinned module ver
 
 ## Global Constraints
 
+0. **Courier's name, never Beeper's, in anything a person sees.** Settings labels, menus and messages say Courier ("Open Courier at login", "Keep Courier minimized on launch", "Quit Courier when closing the main window", "Courier ▸ Lock App"). Beeper's wording appears only as inventory row names (`anchor item`), which identify the row and are never shown.
 1. **Privacy & Outbound Connections (Hard Rule 5):**
    - Nothing leaves the Mac unless the person asks for it.
    - **Outbound connections added by this plan:**
@@ -100,7 +101,7 @@ Every bridge fact below is verified from `~/go/pkg/mod` at the pinned module ver
         - Slack: `slack.Client.SendAuthSignoutContext` (`mautrix-slack@v0.2609.1/pkg/connector/client.go:644`, only if the user explicitly checks "Also sign out on Slack")
         - Google Messages: `libgm.Client.Unpair` (`mautrix-gmessages@v0.2609.0/pkg/connector/client.go:238`)
      2. **`bridges.restart` (triggered only when the user clicks "Restart Bridge" in the Bridges pane or Developer menu and confirms):** disconnects and reconnects the bridge's existing linked `UserLogin` sessions to their respective chat network servers (`WhatsApp`, `Signal`, `Telegram`, `Slack`, `Google Messages`). No new third-party endpoints are contacted.
-     3. **Help menu external links (triggered only when the user clicks `Open Beeper Help`, `Open Beeper.com`, or `Follow @Beeper on X` in the Help menu):** opens the URL in the user's default browser via `NSWorkspace.shared.open(_:)`.
+     3. **No Help-menu links to other companies' sites.** Courier's Help menu has no "Open Beeper Help", "Open Beeper.com" or "Follow @Beeper on X": those rows are "not planned" (Courier is not Beeper and must not send people to Beeper's pages).
    - **Zero telemetry or crash uploads:** `Report a Problem` (`⌘⇧P`) writes a local `.zip` bundle to the path chosen by the user in `NSSavePanel`. No Sentry, rageshake server, or analytics endpoint is ever contacted.
 2. **macOS 14.0 Deployment Target APIs (Hard Rule 4):**
    - `apps/desktop/courier/app/BUILD` sets `minimum_os_version = "14.0"` (`Package.swift` `.macOS(.v14)`). Every framework and symbol used in this plan exists in macOS 14.0:
@@ -622,7 +623,7 @@ public struct DockMenuModel: Equatable, Sendable {
   - **Application (`Beeper` / `Courier`):** `About Courier` (opens Settings → About), `Accounts…` (opens Settings → Accounts), `Preferences…` (`⌘,`), `Search…` (`⌘K`), `Lock App` (`command Lock app`), `Minimize to Menu Bar` (`⌘⌥Q`).
   - **File:** `Open…` (`⌘O`), `New Chat` (`⌘N`), `Open Chat in New Window`, `Close Window` (`⌘W`), `Close All` (`⌘⌥W`).
   - **View:** `Show/Hide Space Bar` (`⌘S`), `Show/Hide Sidebar` (`⌘⌥S`).
-  - **Help:** `Report a Problem…` (`⌘⇧P`), `Keyboard Shortcuts` (`⌘/`), `Privacy & Security`, `Changelog`, `Open Beeper Help`, `Open Beeper.com`, `Follow @Beeper on X`.
+  - **Help:** `Report a Problem…` (`⌘⇧P`), `Keyboard Shortcuts` (`⌘/`), `Privacy & Security`, `Changelog`, (no external links: Beeper's three Help links are not planned).
 
 **Tests:**
 - [ ] In `DockAndTrayModelTests.swift` and `SpacesModelTests.swift`, test:
