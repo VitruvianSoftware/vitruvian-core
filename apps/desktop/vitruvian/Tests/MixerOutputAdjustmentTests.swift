@@ -73,7 +73,7 @@ enum MixerOutputAdjustmentContract {
         func make() -> MixerOutputControl {
             let machine = Hardware()
             hardware = machine
-            @Sendable func writeVolume(_ value: Float32, _ device: AudioObjectID) -> Bool {
+            let writeVolume: @Sendable (Float32, AudioObjectID) -> Bool = { value, device in
                 machine.writes.append(.init(device: device, volume: value, muted: nil))
                 if machine.succeeds { machine.volume = machine.accepts?(value) ?? value }
                 let after = machine.afterVolumeWrite
