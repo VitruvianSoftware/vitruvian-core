@@ -22,6 +22,7 @@ load("@aspect_rules_jest//jest:defs.bzl", "jest_test")
 load("@aspect_rules_js//js:defs.bzl", "js_binary")
 load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
 load("@npm//:defs.bzl", "npm_link_all_packages")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # tabcli: Tabula operations CLI (auth, workos, db, config, init, version).
@@ -30,6 +31,7 @@ load("//tools/pipeline:defs.bzl", "pipeline_unit")
 # //tabula/infra/app project.
 # gazelle:ignore
 # gazelle:exclude src
+# gazelle:exclude rs
 
 # Inter-app boundary (#82): default targets to tabula-internal visibility so
 # other top-level apps can't depend on tabula internals. Explicit per-target
@@ -113,12 +115,53 @@ jest_test(
     node_options = ["--no-experimental-require-module"],
 )
 
+rust_library(
+    name = "tabcli_rs_lib",
+    srcs = glob(
+        ["rs/src/**/*.rs"],
+        exclude = ["rs/src/main.rs"],
+    ),
+    crate_name = "tabcli_rs_lib",
+    crate_root = "rs/src/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+rust_binary(
+    name = "tabcli-rs",
+    srcs = ["rs/src/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":tabcli_rs_lib"],
+)
+
+alias(
+    name = "tabcli_rs",
+    actual = ":tabcli-rs",
+)
+
+rust_test(
+    name = "tabcli_rs_test",
+    size = "small",
+    crate = ":tabcli_rs_lib",
+    data = [
+        ".release-please-manifest.json",
+        "package.json",
+        "release-please-config.json",
+    ],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
 pipeline_unit(
     name = "tabula-cli",
     depends_on = ["tabula-shared"],
     persona = "backend",
     runner = "ubuntu-26.04",
-    test_targets = [":unit_tests"],
+    test_targets = [
+        ":unit_tests",
+        ":tabcli_rs_test",
+    ],
     tier = "L1",
     timeout_minutes = 15,
 )
