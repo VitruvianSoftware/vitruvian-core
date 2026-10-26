@@ -1208,6 +1208,71 @@ enum FeatureCatalogTests {
         )
         suite.expect(unmappedFanTemperatures.isEmpty,
                "fan curves reject unknown Apple Silicon sensors instead of treating them as CPU")
+        // Apple M1 MacBook Pro 13-inch (MacBookPro17,1) under load. It carries
+        // none of the first M1 layout's keys; its Tg keys read zero.
+        let m1AlternateCPUReadings: [(key: String, value: Double)] = [
+            ("Te0a", 62.95), ("Te0z", 65.42), ("Te3a", 59.55), ("Te3z", 80.88),
+            ("Tp2a", 71.69), ("Tp2z", 90.19), ("Tp3a", 75.11), ("Tp3b", 82.51),
+            ("Tp4a", 71.72), ("Tp5a", 67.30), ("Tp7a", 71.16), ("Tp8a", 74.52),
+            ("Tp9a", 72.42), ("Tp9z", 93.88),
+        ]
+        let m1AlternateFanTemperatures = FanControlPolicy.aggregatedTemperatures(
+            cpuReadings: m1AlternateCPUReadings,
+            gpuReadings: [0, 0],
+            platform: TemperatureSensorSelector.platform(brandString: "Apple M1")
+        )
+        suite.expectClose(m1AlternateFanTemperatures.first { $0.source == .hottestCPU }?.celsius ?? -1,
+                    75.11,
+                    "M1 fan curves follow the hottest core of the second M1 layout")
+        suite.expectClose(m1AlternateFanTemperatures.first { $0.source == .averageCPU }?.celsius ?? -1,
+                    69.60,
+                    "M1 fan curves average only the a variants of the second layout", tol: 0.01)
+        suite.expectClose(m1AlternateFanTemperatures.first { $0.source == .hottestSoC }?.celsius ?? -1,
+                    75.11,
+                    "the default SoC curve has a reading on the second M1 layout")
+        suite.expect(m1AlternateFanTemperatures.first { $0.source == .hottestGPU } == nil,
+               "zero GPU keys do not become a fan curve reading")
+        let invalidM1Temperatures: [Double?] = [nil, 0, 9.99, 125, .nan, .infinity]
+        for invalidTemperature in invalidM1Temperatures {
+            let unavailableCores = m1AlternateCPUReadings.compactMap { reading -> (key: String, value: Double)? in
+                guard reading.key.hasSuffix("a") else { return reading }
+                return invalidTemperature.map { (reading.key, $0) }
+            }
+            let unavailableTemperatures = FanControlPolicy.aggregatedTemperatures(
+                cpuReadings: unavailableCores, gpuReadings: [0, 0], platform: .appleM1Family
+            )
+            suite.expect(unavailableTemperatures.isEmpty
+                    && FanControlPolicy.curveCoolingLevel(curves: [defaultCurve],
+                                                          temperatures: unavailableTemperatures,
+                                                          previousLevel: 70) == nil
+                    && FanControlPolicy.curveCoolingLevel(curves: [cpuCurve],
+                                                          temperatures: unavailableTemperatures,
+                                                          previousLevel: 70) == nil,
+                   "missing or invalid M1 cores cannot drive CPU or SoC curves through auxiliary variants")
+            suite.expectClose(TemperatureSensorSelector.displayedCPUTemperature(
+                readings: unavailableCores, platform: .appleM1Family
+            ) ?? -1, 93.88, "the monitor keeps its compatibility reading when M1 cores are unavailable")
+        }
+        let m1PartialReadings: [(key: String, value: Double)] = [
+            ("Te0a", 42), ("Te3a", .nan), ("Tp2a", 0), ("Tp3a", 125), ("Tp9z", 93.88),
+        ]
+        let m1PartialTemperatures = FanControlPolicy.aggregatedTemperatures(
+            cpuReadings: m1PartialReadings, gpuReadings: [0, 0], platform: .appleM1Family
+        )
+        suite.expect(m1PartialTemperatures.count == 4
+                && m1PartialTemperatures.allSatisfy { $0.celsius == 42 },
+               "one valid alternate M1 core keeps CPU and SoC curves available without auxiliary readings")
+        suite.expectClose(TemperatureSensorSelector.displayedCPUTemperature(
+            readings: m1PartialReadings, platform: .appleM1Family
+        ) ?? -1, 42, "the monitor follows a valid alternate M1 core while other cores are invalid")
+        let m1OriginalFanTemperatures = FanControlPolicy.aggregatedTemperatures(
+            cpuReadings: [("Tp09", 43), ("Tp01", 49), ("Tp2z", 70)],
+            gpuReadings: [], platform: .appleM1Family
+        )
+        suite.expectClose(m1OriginalFanTemperatures.first { $0.source == .hottestCPU }?.celsius ?? -1,
+                    49, "the original M1 fan curve keeps its hottest mapped core")
+        suite.expectClose(m1OriginalFanTemperatures.first { $0.source == .averageCPU }?.celsius ?? -1,
+                    46, "the original M1 fan curve keeps auxiliary variants out of its average")
         // Apple M4 Pro (Mac16,8) under load: the base M4 set tops out at Tp0Y,
         // 10 °C below the core that Tpx5 repeats.
         let m4ProPlatform = TemperatureSensorSelector.platform(brandString: "Apple M4 Pro")
