@@ -1347,6 +1347,8 @@ package final class NotchService: ObservableObject {
         return max(reading, marks) + NotchAgentSupport.stripCameraGap
     }
 
+    package var musicShowsVolume: Bool { NotchSupport.showsMusicVolume(in: defaults) }
+
     package var expandedSize: CGSize {
         if showingSections, !editingSections {
             return geometry.sectionPickerSize(count: filteredSectionItems.count)
@@ -1408,6 +1410,7 @@ package final class NotchService: ObservableObject {
         return geometry.expandedSize(module: module, detail: detail, panel: panel, detailHeight: detailHeight,
                                      shortcutCount: controls.shortcuts.count,
                                      sliderCount: controls.levels.count, controlsHaveMusic: controls.music, musicHasContent: services.playback != nil,
+                                     musicShowsVolume: musicShowsVolume,
                                      musicExtraHeight: musicExtraHeight, fileMediaHeight: fileMediaHeight,
                                      systemCards: NotchSupport.systemCardCount(hasBattery: hasBattery(),
                                                                                fans: services.systemSnapshot.fanSpeeds.count, in: defaults),

@@ -834,6 +834,7 @@ package enum DefaultsKey {
     // Optional top-of-screen workspace and activity presentations.
     package static let notchShowPlayingMusic = "notchShowPlayingMusic"
     package static let notchIncludeOtherPlayers = "notchIncludeOtherPlayers"
+    package static let notchMusicShowVolume = "notchMusicShowVolume"
     package static let notchPreferredPlayer = "notchPreferredPlayer"
     package static let notchDefaultProfileInitialized = "notchDefaultProfileInitialized" // local migration marker; never backed up
     package static let notchInitialExtensionsInstalled = "notchInitialExtensionsInstalled" // local first-install marker; never backed up

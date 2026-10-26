@@ -781,10 +781,11 @@ package enum NotchLayout {
         max(musicArtworkSize, band > 0 ? band + musicCameraClearance + musicTitleHeight : 0)
     }
     /// The whole player, the same in every preset; with nothing playing it
-    /// has no timeline.
-    package static func musicPlayerHeight(band: CGFloat, playing: Bool = true) -> CGFloat {
+    /// has no timeline. The optional volume row keeps its full control height.
+    package static func musicPlayerHeight(band: CGFloat, playing: Bool = true, showVolume: Bool = false) -> CGFloat {
         musicHeadHeight(band: band) + musicHeadSpacing
             + (playing ? musicTimelineHeight + rowSpacing : 0) + musicTransportHeight + musicBottomRoom
+            + (showVolume ? rowSpacing + levelRowHeight : 0)
     }
 
     /// How the music page divides its height between the player and an open
@@ -2219,6 +2220,10 @@ package enum NotchSupport {
         isPlaying && watchesMusicActivity(in: defaults)
     }
 
+    package static func showsMusicVolume(in defaults: UserDefaults = .standard) -> Bool {
+        defaults[Preferences.notchMusicShowVolume] && AppFeature.mixer.isAvailable(in: defaults)
+    }
+
     package static func showsInCaptures(in defaults: UserDefaults = .standard) -> Bool {
         defaults[Preferences.notchShowInCaptures]
     }
@@ -3108,6 +3113,7 @@ package struct NotchGeometry: Equatable {
     package func expandedSize(module: NotchModule, detail: Bool = false, panel: Bool = false,
                       detailHeight: CGFloat? = nil, shortcutCount: Int = 4,
                       sliderCount: Int = 2, controlsHaveMusic: Bool = true, musicHasContent: Bool = true,
+                      musicShowsVolume: Bool = false,
                       musicExtraHeight: CGFloat = 0,
                       fileMediaHeight: CGFloat? = nil, systemCards: Int = 6, toolCount: Int? = 8,
                       capturePreviewHeight: CGFloat? = nil,
@@ -3145,7 +3151,11 @@ package struct NotchGeometry: Equatable {
                 contentHeight = min(room, empty ? NotchLayout.emptyHeight : home.height)
             case .music:
                 let player = NotchLayout.musicPlayerHeight(band: musicBandHeight, playing: musicHasContent)
-                contentHeight = min(budget, player) + max(0, musicExtraHeight)
+                // Presets grow for the optional row; a custom height keeps
+                // its limit and the page can scroll to the controls.
+                let volume = musicShowsVolume ? NotchLayout.rowSpacing + NotchLayout.levelRowHeight : 0
+                let room = budget + (layout == .custom ? 0 : volume)
+                contentHeight = min(room, player + volume) + max(0, musicExtraHeight)
             case .system:
                 let cards = max(0, systemCards)
                 contentHeight = min(budget, cards == 0 ? NotchLayout.emptyHeight

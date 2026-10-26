@@ -83,6 +83,7 @@ enum NotchCompactTests {
         scratchpad(suite)
         readingLayout(suite)
         readingLevels(suite)
+        musicVolumeSizing(suite)
         focus(suite)
         sizing(suite)
         musicControls(suite)
@@ -559,6 +560,35 @@ enum NotchCompactTests {
                                                  width: short.width, height: short.height)
                 suite.expect(page.height == max(short.height, drawn.height),
                              "the home page's size holds the rows it draws for \(items), beside a camera: \(band.besideCamera)")
+            }
+        }
+    }
+
+    /// The music page holds the optional volume row beside the player it
+    /// draws, and adds no scrolling when everything fits.
+    private static func musicVolumeSizing(_ suite: TestSuite) {
+        let screen = CGRect(x: 0, y: 0, width: 1440, height: 900)
+        for notched in [false, true] {
+            for layout: NotchSize in [.compact, .spacious, .custom] {
+                var geometry = NotchGeometry(screen: screen, safeAreaTop: notched ? 32 : 0,
+                                             cameraWidth: notched ? 210 : 0, layout: layout,
+                                             customWidth: 480, customHeight: 260)
+                geometry.pageTop = NotchModule.music.pageTop
+                for playing in [false, true] {
+                    for showVolume in [false, true] {
+                        let minimum = NotchLayout.musicPlayerHeight(band: geometry.musicBandHeight,
+                                                                    playing: playing, showVolume: showVolume)
+                        for available: CGFloat in [100, minimum, 300] {
+                            let size = NotchLayout.pageSize(
+                                content: CGSize(width: 304, height: available), module: .music, detail: false,
+                                controls: [], band: NotchBand(), timerMode: .timer, timerHasSession: false,
+                                hasPlayback: playing, musicBand: geometry.musicBandHeight,
+                                musicShowsVolume: showVolume)
+                            suite.expect(size == CGSize(width: 304, height: max(available, minimum)),
+                                         "the music page keeps all controls reachable in short islands and adds no scrolling when they fit: \(layout), notched \(notched), playing \(playing), volume \(showVolume)")
+                        }
+                    }
+                }
             }
         }
     }
