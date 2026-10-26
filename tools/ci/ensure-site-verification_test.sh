@@ -46,7 +46,9 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCRIPT="${HERE}/ensure-site-verification.sh"
+SCRIPT="${1:-${HERE}/ensure-site-verification.sh}"
+SCRIPT="$(cd "$(dirname "$SCRIPT")" && pwd)/$(basename "$SCRIPT")"
+[ -f "$SCRIPT" ] || { echo "FATAL: script not found at $SCRIPT"; exit 1; }
 
 work="$(mktemp -d)"
 # Cleanup MUST NOT leak an exit status: `wait` on the SIGTERM'd mock server
@@ -248,6 +250,14 @@ done
 port="$(cat "$work/port")"
 base="http://127.0.0.1:$port"
 
+invoke() {
+  if [[ "$SCRIPT" == *.sh ]]; then
+    bash "$SCRIPT" "$@"
+  else
+    "$SCRIPT" "$@"
+  fi
+}
+
 run_script() { # run_script [deploy-env]; APP_DIR may be overridden by the caller
   APP_DIR="${APP_DIR:-$app}" \
     DEPLOY_ENV="${1:-}" \
@@ -257,7 +267,7 @@ run_script() { # run_script [deploy-env]; APP_DIR may be overridden by the calle
     SITEVERIFY_API_BASE="$base/siteVerification/v1" \
     CLOUDFLARE_API_BASE="$base/client/v4" \
     DOH_API_BASE="$base" \
-    bash "$SCRIPT"
+    invoke
 }
 
 state() { jq -r "$1" "$MOCK_STATE"; }
@@ -304,7 +314,7 @@ assert_eq "no new insert" "$(state '.counts.sv_insert')" "1"
 assert_eq "still no webResource.update PUT" "$(state '.counts.sv_update')" "0"
 
 echo "test 4: calling env has no customDomain -> clean no-op, no credentials needed"
-if out="$(APP_DIR="$app" DEPLOY_ENV=nonproduction bash "$SCRIPT" 2>&1)"; then pass "exit 0"; else fail "exit 0 — output: $out"; fi
+if out="$(APP_DIR="$app" DEPLOY_ENV=nonproduction invoke 2>&1)"; then pass "exit 0"; else fail "exit 0 — output: $out"; fi
 case "$out" in
   *"nothing to do"*) pass "per-env gate message" ;;
   *) fail "per-env gate message — output: $out" ;;
@@ -316,7 +326,7 @@ cat >"$empty/Pulumi.development.yaml" <<'EOF'
 config:
   oauth-user-inspector:project: prj-d-test-1234
 EOF
-if out="$(APP_DIR="$empty" bash "$SCRIPT" 2>&1)"; then pass "exit 0"; else fail "exit 0 — output: $out"; fi
+if out="$(APP_DIR="$empty" invoke 2>&1)"; then pass "exit 0"; else fail "exit 0 — output: $out"; fi
 case "$out" in
   *"nothing to do"*) pass "gate message" ;;
   *) fail "gate message — output: $out" ;;
@@ -367,7 +377,7 @@ config:
   some.app/v2:customDomain:
     value: tabula-api.dev.example.test
 EOF
-if out="$(APP_DIR="$weird" DEPLOY_ENV=development bash "$SCRIPT" 2>&1)"; then
+if out="$(APP_DIR="$weird" DEPLOY_ENV=development invoke 2>&1)"; then
   fail "unparseable customDomain must be an error — got exit 0: $out"
 else
   pass "unparseable customDomain exits non-zero"
@@ -386,7 +396,7 @@ cat >"$nozone/Pulumi.development.yaml" <<'EOF'
 config:
   tabula-app:customDomain: tabula-api.dev.example.test
 EOF
-if out="$(APP_DIR="$nozone" DEPLOY_ENV=development bash "$SCRIPT" 2>&1)"; then
+if out="$(APP_DIR="$nozone" DEPLOY_ENV=development invoke 2>&1)"; then
   fail "missing cloudflareZone must be an error — got exit 0: $out"
 else
   pass "missing cloudflareZone exits non-zero"

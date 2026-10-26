@@ -29,7 +29,8 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCRIPT="${HERE}/notify-ci-issues.sh"
+SCRIPT="${1:-${HERE}/notify-ci-issues.sh}"
+SCRIPT="$(cd "$(dirname "$SCRIPT")" && pwd)/$(basename "$SCRIPT")"
 
 fails=0
 ok() { printf '  ok - %s\n' "$1"; }
@@ -104,9 +105,15 @@ chmod +x "$work/bin/curl"
 
 run() { # <env...>
   : > "$work/curl.log"; : > "$work/curl.bodies"
-  env PATH="$work/bin:$PATH" REPO="owner/repo" GH_TOKEN=x NTFY_PASSWORD=secret \
-    FAKE_CURL_LOG="$work/curl.log" FAKE_CURL_BODIES="$work/curl.bodies" \
-    "$@" bash "$SCRIPT" >"$work/stdout" 2>"$work/stderr"
+  if [[ "$SCRIPT" == *.sh ]]; then
+    env PATH="$work/bin:$PATH" REPO="owner/repo" GH_TOKEN=x NTFY_PASSWORD=secret \
+      FAKE_CURL_LOG="$work/curl.log" FAKE_CURL_BODIES="$work/curl.bodies" \
+      "$@" bash "$SCRIPT" >"$work/stdout" 2>"$work/stderr"
+  else
+    env PATH="$work/bin:$PATH" REPO="owner/repo" GH_TOKEN=x NTFY_PASSWORD=secret \
+      FAKE_CURL_LOG="$work/curl.log" FAKE_CURL_BODIES="$work/curl.bodies" \
+      "$@" "$SCRIPT" >"$work/stdout" 2>"$work/stderr"
+  fi
   echo $?
 }
 

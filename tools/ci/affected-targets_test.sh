@@ -32,7 +32,9 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCRIPT="${HERE}/affected-targets.sh"
+SCRIPT="${1:-${HERE}/affected-targets.sh}"
+SCRIPT="$(cd "$(dirname "$SCRIPT")" && pwd)/$(basename "$SCRIPT")"
+[ -f "$SCRIPT" ] || { echo "FATAL: script not found at $SCRIPT"; exit 1; }
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -71,8 +73,13 @@ fail() { printf '  ✗ %s\n' "$1" >&2; fails=$((fails + 1)); }
 run_case() {
   local plan="$1"; shift
   export CALLS="$work/calls"; : > "$CALLS"
-  out="$(cd "$repo" && env PATH="$work/bin:$PATH" BUILDBUDDY_API_KEY=k BEFORE_REV="$base" \
-    FAKE_PLAN="$plan" "$@" bash "$SCRIPT" 2>&1)"
+  if [[ "$SCRIPT" == *.sh ]]; then
+    out="$(cd "$repo" && env PATH="$work/bin:$PATH" BUILDBUDDY_API_KEY=k BEFORE_REV="$base" \
+      FAKE_PLAN="$plan" "$@" bash "$SCRIPT" 2>&1)"
+  else
+    out="$(cd "$repo" && env PATH="$work/bin:$PATH" BUILDBUDDY_API_KEY=k BEFORE_REV="$base" \
+      FAKE_PLAN="$plan" "$@" "$SCRIPT" 2>&1)"
+  fi
   rc=$?
 }
 called() { grep -qF -- "$1" "$CALLS"; }

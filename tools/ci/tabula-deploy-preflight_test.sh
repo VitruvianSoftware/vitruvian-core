@@ -27,7 +27,8 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCRIPT="${HERE}/tabula-deploy-preflight.sh"
+SCRIPT="${1:-${HERE}/tabula-deploy-preflight.sh}"
+[[ "$SCRIPT" == /* ]] || SCRIPT="$PWD/$SCRIPT"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -62,15 +63,27 @@ chmod +x "$work/fake-revname"
 
 run() { # prints the unchanged= value written to GITHUB_OUTPUT
   local out="$work/out"; : > "$out"
-  GITHUB_OUTPUT="$out" \
-  DEPLOY_ENV=development GCP_PROJECT_ID=prj-d GCP_REGION=us-central1 \
-  SERVICE_NAME=tabula-api IMAGE_DIGEST="img@sha256:deadbeef12" \
-  PULUMI_DIR="$work/app" CONFIG_FILE=Pulumi.development.yaml \
-  GCLOUD_BIN="$work/fake-gcloud" REVNAME="$work/fake-revname" \
-  FAKE_DESIRED="${FAKE_DESIRED:-}" FAKE_LIVE="${FAKE_LIVE:-}" \
-  FAKE_GCLOUD_RC="${FAKE_GCLOUD_RC:-0}" FAKE_GCLOUD_AUTHFAIL="${FAKE_GCLOUD_AUTHFAIL:-0}" \
-  FAKE_REVNAME_RC="${FAKE_REVNAME_RC:-0}" \
-    bash "$SCRIPT" >/dev/null 2>&1
+  if [[ "$SCRIPT" == *.sh ]]; then
+    GITHUB_OUTPUT="$out" \
+    DEPLOY_ENV=development GCP_PROJECT_ID=prj-d GCP_REGION=us-central1 \
+    SERVICE_NAME=tabula-api IMAGE_DIGEST="img@sha256:deadbeef12" \
+    PULUMI_DIR="$work/app" CONFIG_FILE=Pulumi.development.yaml \
+    GCLOUD_BIN="$work/fake-gcloud" REVNAME="$work/fake-revname" \
+    FAKE_DESIRED="${FAKE_DESIRED:-}" FAKE_LIVE="${FAKE_LIVE:-}" \
+    FAKE_GCLOUD_RC="${FAKE_GCLOUD_RC:-0}" FAKE_GCLOUD_AUTHFAIL="${FAKE_GCLOUD_AUTHFAIL:-0}" \
+    FAKE_REVNAME_RC="${FAKE_REVNAME_RC:-0}" \
+      bash "$SCRIPT" >/dev/null 2>&1
+  else
+    GITHUB_OUTPUT="$out" \
+    DEPLOY_ENV=development GCP_PROJECT_ID=prj-d GCP_REGION=us-central1 \
+    SERVICE_NAME=tabula-api IMAGE_DIGEST="img@sha256:deadbeef12" \
+    PULUMI_DIR="$work/app" CONFIG_FILE=Pulumi.development.yaml \
+    GCLOUD_BIN="$work/fake-gcloud" REVNAME="$work/fake-revname" \
+    FAKE_DESIRED="${FAKE_DESIRED:-}" FAKE_LIVE="${FAKE_LIVE:-}" \
+    FAKE_GCLOUD_RC="${FAKE_GCLOUD_RC:-0}" FAKE_GCLOUD_AUTHFAIL="${FAKE_GCLOUD_AUTHFAIL:-0}" \
+    FAKE_REVNAME_RC="${FAKE_REVNAME_RC:-0}" \
+      "$SCRIPT" >/dev/null 2>&1
+  fi
   sed -n 's/^unchanged=//p' "$out"
 }
 

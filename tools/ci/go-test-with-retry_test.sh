@@ -29,14 +29,18 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCRIPT="${HERE}/go-test-with-retry.sh"
+SCRIPT="${1:-${HERE}/go-test-with-retry.sh}"
+[[ "$SCRIPT" = /* ]] || SCRIPT="${PWD}/${SCRIPT}"
 
 fails=0
 ok() { echo "ok - $1"; }
 bad() { echo "NOT OK - $1"; fails=$((fails + 1)); }
 
+# Source the shell libs to get the classifier functions for testing.
 # shellcheck source=/dev/null
-source "$SCRIPT"   # source-safe: main() runs only when executed, not sourced
+source "${HERE}/transient-lib.sh"
+# shellcheck source=/dev/null
+source "${HERE}/go-test-with-retry.sh"
 # Sourcing imported go-test-with-retry.sh's `set -euo pipefail`; clear the
 # inherited -e so a deliberately-failing classifier call below doesn't abort
 # this test (same fix-up cloud-run_test.sh applies after its own `source`).

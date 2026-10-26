@@ -31,7 +31,8 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCRIPT="${HERE}/release-hold.sh"
+SCRIPT="${1:-${HERE}/release-hold.sh}"
+SCRIPT="$(cd "$(dirname "$SCRIPT")" && pwd)/$(basename "$SCRIPT")"
 
 fails=0
 ok() { printf '  ok - %s\n' "$1"; }
@@ -82,9 +83,15 @@ ln -sf "$work/fake-gh" "$work/bin/gh"
 
 run() { # <env...>
   : > "$work/log"
-  env PATH="$work/bin:$PATH" GH_TOKEN=x FAKE_GH_LOG="$work/log" \
-    REPO="owner/repo" RUN_ID="999" DEV_JOB="deploy-dev / deploy" COMPONENT="tabula-api" \
-    "$@" bash "$SCRIPT" >"$work/stdout" 2>"$work/stderr"
+  if [[ "$SCRIPT" == *.sh ]]; then
+    env PATH="$work/bin:$PATH" GH_TOKEN=x FAKE_GH_LOG="$work/log" \
+      REPO="owner/repo" RUN_ID="999" DEV_JOB="deploy-dev / deploy" COMPONENT="tabula-api" \
+      "$@" bash "$SCRIPT" >"$work/stdout" 2>"$work/stderr"
+  else
+    env PATH="$work/bin:$PATH" GH_TOKEN=x FAKE_GH_LOG="$work/log" \
+      REPO="owner/repo" RUN_ID="999" DEV_JOB="deploy-dev / deploy" COMPONENT="tabula-api" \
+      "$@" "$SCRIPT" >"$work/stdout" 2>"$work/stderr"
+  fi
   echo $?
 }
 

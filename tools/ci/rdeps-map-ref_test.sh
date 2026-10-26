@@ -25,7 +25,8 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCRIPT="${HERE}/rdeps-map-ref.sh"
+SCRIPT="${1:-${HERE}/rdeps-map-ref.sh}"
+SCRIPT="$(cd "$(dirname "$SCRIPT")" && pwd)/$(basename "$SCRIPT")"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -47,7 +48,13 @@ git -C "$repo" push -q origin main
 fails=0
 pass() { printf '  ✓ %s\n' "$1"; }
 fail() { printf '  ✗ %s\n' "$1" >&2; fails=$((fails + 1)); }
-run() { (cd "$repo" && env -u GH_TOKEN -u GITHUB_OUTPUT "$@" bash "$SCRIPT" "${args[@]}" 2>"$work/err"); }
+run() {
+  if [[ "$SCRIPT" == *.sh ]]; then
+    (cd "$repo" && env -u GH_TOKEN -u GITHUB_OUTPUT "$@" bash "$SCRIPT" "${args[@]}" 2>"$work/err")
+  else
+    (cd "$repo" && env -u GH_TOKEN -u GITHUB_OUTPUT "$@" "$SCRIPT" "${args[@]}" 2>"$work/err")
+  fi
+}
 mkmap() { printf '{"schema":1,"commit":"%s","packages":["a"]}' "$1" > "$work/map.json"; }
 remote_has() { git -C "$work/remote.git" show-ref --verify --quiet "refs/rdeps-map/$1"; }
 
@@ -81,7 +88,12 @@ bad="$(printf '{"commit":"%s"}' "${shas[0]}" | git -C "$repo" hash-object -w --s
 git -C "$repo" push -q origin "+${bad}:refs/rdeps-map/${shas[4]}"
 args=(fetch "$work/out.json" "${shas[4]}"); out="$(run)"
 [ "$out" = "commit=${shas[2]}" ] && pass "a mislabelled map on the remote is skipped, the next ancestor used" || fail "got '$out'"
-: > "$work/gho"; args=(fetch "$work/out.json" "${shas[2]}"); (cd "$repo" && env -u GH_TOKEN GITHUB_OUTPUT="$work/gho" bash "$SCRIPT" "${args[@]}" >/dev/null 2>&1)
+: > "$work/gho"; args=(fetch "$work/out.json" "${shas[2]}")
+if [[ "$SCRIPT" == *.sh ]]; then
+  (cd "$repo" && env -u GH_TOKEN GITHUB_OUTPUT="$work/gho" bash "$SCRIPT" "${args[@]}" >/dev/null 2>&1)
+else
+  (cd "$repo" && env -u GH_TOKEN GITHUB_OUTPUT="$work/gho" "$SCRIPT" "${args[@]}" >/dev/null 2>&1)
+fi
 grep -qx "commit=${shas[2]}" "$work/gho" && pass "writes commit= to GITHUB_OUTPUT" || fail "GITHUB_OUTPUT: $(cat "$work/gho")"
 
 echo "prune"
