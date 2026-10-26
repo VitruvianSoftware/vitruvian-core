@@ -234,12 +234,40 @@ mod tests {
         );
         let extra_args = env.get("TS_EXTRA_ARGS").copied().flatten().unwrap_or("");
         assert!(extra_args.contains("--advertise-routes=192.168.86.0/24,10.44.86.0/24"));
+        assert_eq!(
+            router
+                .pointer("/spec/template/spec/hostNetwork")
+                .and_then(Value::as_bool),
+            Some(true),
+            "headscale-subnet-router must use hostNetwork=true on a wired control-plane node."
+        );
+        assert_eq!(
+            router
+                .pointer("/spec/template/spec/nodeSelector/node.ipv1337.dev~1link")
+                .and_then(Value::as_str),
+            Some("wired"),
+            "headscale-subnet-router must be pinned to wired control-plane nodes."
+        );
+        assert_eq!(
+            router
+                .pointer("/spec/template/spec/nodeSelector/node-role.kubernetes.io~1control-plane")
+                .and_then(Value::as_str),
+            Some("true"),
+            "headscale-subnet-router must be pinned to control-plane nodes."
+        );
 
         let agent_docs = load_docs("daemonset-node-agent.yaml");
         let agent = single_doc_of_kind(&agent_docs, "DaemonSet");
         assert_eq!(
             agent.pointer("/metadata/name").and_then(Value::as_str),
             Some("headscale-node-agent")
+        );
+        assert_eq!(
+            agent
+                .pointer("/spec/template/spec/hostNetwork")
+                .and_then(Value::as_bool),
+            Some(true),
+            "headscale-node-agent must use hostNetwork=true so userspace netstack 127.0.0.1 dials reach host sshd (:22) and k3s (:6443)."
         );
     }
 

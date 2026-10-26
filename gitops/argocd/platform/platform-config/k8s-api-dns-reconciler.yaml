@@ -126,9 +126,13 @@ spec:
                   DE_NS="external-dns"
                   EP_NS="default"
 
-                  # Live, registered apiserver IPs (== control-plane tailnet IPs).
+                  # Live, registered apiserver IPs mapped from control-plane underlay
+                  # (--node-ip on commercial Tailscale) to their Headscale tailnet IPs.
                   desired="$(kubectl get endpoints kubernetes -n "$EP_NS" \
                     -o jsonpath='{range .subsets[*].addresses[*]}{.ip}{"\n"}{end}' \
+                    | sed -e 's/^100\.96\.128\.107$/100.64.0.6/' \
+                          -e 's/^100\.97\.82\.15$/100.64.0.7/' \
+                          -e 's/^100\.86\.106\.117$/100.64.0.8/' \
                     | grep -E '^[0-9]' | sort -u || true)"
 
                   # Guard: never publish an empty record (transient API blip, etc.).
