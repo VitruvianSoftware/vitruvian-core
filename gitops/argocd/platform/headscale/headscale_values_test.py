@@ -143,6 +143,10 @@ class HeadscaleValuesTest(unittest.TestCase):
             env.get("TS_EXTRA_ARGS", ""),
         )
 
+        agent_docs = load_docs("daemonset-node-agent.yaml")
+        (agent,) = [d for d in agent_docs if d["kind"] == "DaemonSet"]
+        self.assertEqual(agent["metadata"]["name"], "headscale-node-agent")
+
 
 if __name__ == "__main__":
     unittest.main()
