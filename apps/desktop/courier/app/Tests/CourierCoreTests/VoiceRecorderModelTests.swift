@@ -1,6 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import AVFoundation
 import Foundation
 import XCTest
 
@@ -396,5 +397,24 @@ private final class VoiceSpySender: MessageSending, @unchecked Sendable {
             _voiceCalls.append(VoiceCall(roomID: roomID, url: url, durationMS: durationMS, waveform: waveform, replyTo: replyTo))
         }
         return "$voice-1"
+    }
+}
+
+/// The selected-microphone path writes the tap's buffers straight into the file, so the file must be
+/// created for the microphone's own format: a 44.1 kHz stereo USB mic must not produce a silent note.
+final class VoiceRecorderEngineFileTests: XCTestCase {
+    func testEngineFileAcceptsBuffersInTheMicrophonesOwnFormat() throws {
+        let micFormat = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 44_100, channels: 2))
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("courier-voice-test-\(UUID().uuidString).m4a")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let file = try AVAudioVoiceRecordingBackend.makeEngineFile(at: url, matching: micFormat)
+        XCTAssertEqual(file.processingFormat.sampleRate, 44_100)
+        XCTAssertEqual(file.processingFormat.channelCount, 2)
+        XCTAssertEqual(file.fileFormat.settings[AVFormatIDKey] as? UInt32, kAudioFormatMPEG4AAC)
+
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: micFormat, frameCapacity: 4_410))
+        buffer.frameLength = 4_410
+        XCTAssertNoThrow(try file.write(from: buffer), "a buffer in the mic's format must be writable")
     }
 }

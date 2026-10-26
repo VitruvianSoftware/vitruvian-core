@@ -67,6 +67,7 @@ public final class AVAudioVoiceRecordingBackend: NSObject, VoiceRecordingBackend
     private var audioEngine: AVAudioEngine?
     private var audioFile: AVAudioFile?
     private var lastEngineMeterLevel: Float = 0
+    private var engineWriteFailed = false
     private var activeURL: URL?
     private var startedAt: Date?
 
@@ -246,16 +247,17 @@ public final class AVAudioVoiceRecordingBackend: NSObject, VoiceRecordingBackend
         }
         let format = inputNode.outputFormat(forBus: 0)
         guard format.channelCount > 0, format.sampleRate > 0,
-              let file = try? AVAudioFile(forWriting: url, settings: settings)
+              let file = try? Self.makeEngineFile(at: url, matching: format)
         else {
             return false
         }
         inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
             guard let self else { return }
-            try? file.write(from: buffer)
+            let wrote = (try? file.write(from: buffer)) != nil
             let level = Self.computeBufferMeterLevel(buffer)
             self.lock.withLock {
                 self.lastEngineMeterLevel = level
+                if !wrote { self.engineWriteFailed = true }
             }
         }
         do {
@@ -265,6 +267,7 @@ public final class AVAudioVoiceRecordingBackend: NSObject, VoiceRecordingBackend
                 audioEngine = engine
                 audioFile = file
                 lastEngineMeterLevel = 0
+                engineWriteFailed = false
                 activeURL = url
                 startedAt = Date()
             }
@@ -274,6 +277,24 @@ public final class AVAudioVoiceRecordingBackend: NSObject, VoiceRecordingBackend
             try? FileManager.default.removeItem(at: url)
             return false
         }
+    }
+
+    /// The file the selected-microphone path writes into: AAC in an .m4a, created for the microphone's own
+    /// sample rate, channel count and sample layout, because the tap hands over buffers in that format and
+    /// `AVAudioFile.write(from:)` refuses any other (which would leave a silent note).
+    static func makeEngineFile(at url: URL, matching format: AVAudioFormat) throws -> AVAudioFile {
+        let settings: [String: Any] = [
+            AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+            AVSampleRateKey: format.sampleRate,
+            AVNumberOfChannelsKey: Int(format.channelCount),
+            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
+        ]
+        return try AVAudioFile(
+            forWriting: url,
+            settings: settings,
+            commonFormat: format.commonFormat,
+            interleaved: format.isInterleaved
+        )
     }
 
     private static func computeBufferMeterLevel(_ buffer: AVAudioPCMBuffer) -> Float {
@@ -307,20 +328,25 @@ public final class AVAudioVoiceRecordingBackend: NSObject, VoiceRecordingBackend
     }
 
     public func stopRecording() async throws -> RecordedVoiceNote {
-        let (audioRecorder, engine, url, start) = lock.withLock { () -> (AVAudioRecorder?, AVAudioEngine?, URL?, Date?) in
+        let (audioRecorder, engine, url, start, writeFailed) = lock.withLock { () -> (AVAudioRecorder?, AVAudioEngine?, URL?, Date?, Bool) in
             defer {
                 recorder = nil
                 audioEngine = nil
                 audioFile = nil
                 lastEngineMeterLevel = 0
+                engineWriteFailed = false
                 activeURL = nil
                 startedAt = nil
             }
-            return (recorder, audioEngine, activeURL, startedAt)
+            return (recorder, audioEngine, activeURL, startedAt, engineWriteFailed)
         }
         if let engine, let url {
             engine.inputNode.removeTap(onBus: 0)
             engine.stop()
+            if writeFailed {
+                try? FileManager.default.removeItem(at: url)
+                throw VoiceRecorderError.recordingFailed
+            }
             let elapsedSeconds = start.map { Date().timeIntervalSince($0) } ?? 0
             let durationMS = max(0, Int((elapsedSeconds * 1000.0).rounded()))
             return RecordedVoiceNote(url: url, durationMS: durationMS, waveform: [])
@@ -361,6 +387,8 @@ public final class AVAudioVoiceRecordingBackend: NSObject, VoiceRecordingBackend
 public enum VoiceRecorderError: Error, Equatable {
     case couldNotStart
     case notRecording
+    /// The microphone delivered audio that could not be written, so there is no usable recording.
+    case recordingFailed
 }
 
 @MainActor
