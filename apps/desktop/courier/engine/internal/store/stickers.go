@@ -35,8 +35,8 @@ func (s *Store) ListRecentStickers(ctx context.Context, limit int) ([]RecentMedi
 		SELECT event_id, room_id, content, ts
 		FROM events
 		WHERE type = 'm.sticker' AND redacted = 0 AND deleted_for_me = 0
-		ORDER BY ts DESC, seq DESC
-		LIMIT $1`, limit)
+		  AND status NOT IN ('failed', 'held', 'queued')
+		ORDER BY ts DESC, seq DESC`, limit)
 }
 
 // ListRecentGIFs returns up to limit (default/max 40) unique GIF events (m.room.message with fi.mau.gif) ordered newest first and deduplicated by URL.
@@ -45,16 +45,16 @@ func (s *Store) ListRecentGIFs(ctx context.Context, limit int) ([]RecentMedia, e
 		SELECT event_id, room_id, content, ts
 		FROM events
 		WHERE type = 'm.room.message' AND redacted = 0 AND deleted_for_me = 0
+		  AND status NOT IN ('failed', 'held', 'queued')
 		  AND (CASE WHEN json_valid(content) THEN (json_extract(content, '$.info."fi.mau.gif"') = 1 OR json_extract(content, '$."fi.mau.gif"') = 1) END)
-		ORDER BY ts DESC, seq DESC
-		LIMIT $1`, limit)
+		ORDER BY ts DESC, seq DESC`, limit)
 }
 
 func (s *Store) listRecentMedia(ctx context.Context, query string, limit int) ([]RecentMedia, error) {
 	if limit <= 0 || limit > MaxRecentMediaLimit {
 		limit = MaxRecentMediaLimit
 	}
-	rows, err := s.db.Query(ctx, query, limit*4)
+	rows, err := s.db.Query(ctx, query)
 	if err != nil {
 		return nil, err
 	}

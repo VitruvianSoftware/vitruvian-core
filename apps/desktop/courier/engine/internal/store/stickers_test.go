@@ -80,4 +80,42 @@ func TestListRecentStickersAndGIFs(t *testing.T) {
 	capped, err := s.ListRecentStickers(ctx, 0)
 	require.NoError(t, err)
 	require.Len(t, capped, 40)
+
+	// Failed and held (queued) sends must be excluded from recent stickers and GIFs.
+	_, err = s.InsertEvent(ctx, Event{
+		RoomID:  "!r1",
+		EventID: "$st-failed",
+		Sender:  me,
+		Type:    "m.sticker",
+		Content: []byte(`{"msgtype":"m.image","body":"Failed Sticker","url":"mxc://courier.local/failed111","info":{"mimetype":"image/png"}}`),
+		TS:      time.Unix(500, 0),
+		Status:  "failed",
+	})
+	require.NoError(t, err)
+	require.NoError(t, s.Hold(ctx, Event{
+		RoomID:  "!r1",
+		EventID: "$st-held",
+		Sender:  me,
+		Type:    "m.sticker",
+		Content: []byte(`{"msgtype":"m.image","body":"Held Sticker","url":"mxc://courier.local/held1111","info":{"mimetype":"image/png"}}`),
+		TS:      time.Unix(501, 0),
+	}, time.Unix(510, 0)))
+
+	afterUnsent, err := s.ListRecentStickers(ctx, 40)
+	require.NoError(t, err)
+	for _, st := range afterUnsent {
+		require.NotEqual(t, "mxc://courier.local/failed111", st.URL, "failed sticker must not be listed")
+		require.NotEqual(t, "mxc://courier.local/held1111", st.URL, "held sticker must not be listed")
+	}
+
+	// 200 repeats of one sticker at the newest timestamps plus 39 other distinct stickers must still return 40 distinct URLs.
+	for i := range 200 {
+		mkMsg(t, s, "!r1", fmt.Sprintf("$rep-%d", i), me, "m.sticker",
+			`{"msgtype":"m.image","body":"Repeat","url":"mxc://courier.local/repeat000","info":{"mimetype":"image/png"}}`,
+			time.Unix(int64(1000+i), 0))
+	}
+	distinct40, err := s.ListRecentStickers(ctx, 40)
+	require.NoError(t, err)
+	require.Len(t, distinct40, 40, "200 repeats of one sticker plus 39 others must return 40 distinct stickers")
+	require.Equal(t, "mxc://courier.local/repeat000", distinct40[0].URL)
 }
