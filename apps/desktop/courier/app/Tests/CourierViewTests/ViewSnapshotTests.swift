@@ -1079,6 +1079,151 @@ final class ViewSnapshotTests: XCTestCase {
         XCTAssertFalse(ViewOnceSheet.screenshotNoticeText.contains("sharingType"), "no API names in text people read")
     }
 
+    // MARK: - Part 4.5b Task 6: Inline Video Player & Floating Picture-in-Picture Window
+
+    func testInlineVideoPlayerAndPiPViewLightAndDark() throws {
+        let blurhash = "LEHV6nWB2yk8pyo0adR*.7kCMdnj"
+        let posterPath = try makeTestPNG(width: 640, height: 360)
+        let preloadedPoster = try XCTUnwrap(NSImage(contentsOfFile: posterPath))
+
+        // 1. Local-only media rule: only local media store paths resolve to a file URL; remote URLs are refused.
+        XCTAssertNotNil(InlineVideoPlayer.localMediaURL(for: posterPath))
+        XCTAssertNil(InlineVideoPlayer.localMediaURL(for: "https://example.com/clip.mp4"))
+        XCTAssertNil(InlineVideoPlayer.localMediaURL(for: "http://example.com/clip.mp4"))
+        XCTAssertNil(InlineVideoPlayer.localMediaURL(for: "mxc://courier.local/sha256"))
+        XCTAssertNil(InlineVideoPlayer.localMediaURL(for: ""))
+
+        // 2. Autoplay rule: muted autoplay only for GIF-style videos (fi.mau.gif); real videos never autoplay.
+        XCTAssertTrue(InlineVideoPlayer.shouldAutoplayMuted(isGIF: true))
+        XCTAssertFalse(InlineVideoPlayer.shouldAutoplayMuted(isGIF: false))
+        XCTAssertEqual(
+            InlineVideoPlayer.Speed.allCases.map(\.label),
+            ["0.25×", "0.5×", "1×", "1.25×", "1.5×", "2×"]
+        )
+
+        // 3. Snapshot: InlineVideoPlayer paused with poster and duration pill.
+        check(try Snapshot.render("inline-video-poster", width: 420) {
+            InlineVideoPlayer(
+                messageID: "$vid-1",
+                roomID: Fixture.room,
+                mediaPath: posterPath,
+                thumbnailPath: posterPath,
+                blurhash: blurhash,
+                width: 640,
+                height: 360,
+                durationMS: 83_000,
+                isGIF: false,
+                onPopOutPiP: {},
+                onOpenLightbox: {},
+                preloadedPoster: preloadedPoster
+            )
+            .padding(14)
+        })
+
+        // 4. Snapshot: InlineVideoPlayer in playing state with custom transport bar controls.
+        check(try Snapshot.render("inline-video-playing-controls", width: 420) {
+            InlineVideoPlayer(
+                messageID: "$vid-1",
+                roomID: Fixture.room,
+                mediaPath: posterPath,
+                thumbnailPath: posterPath,
+                blurhash: blurhash,
+                width: 640,
+                height: 360,
+                durationMS: 83_000,
+                isGIF: false,
+                onPopOutPiP: {},
+                onOpenLightbox: {},
+                preloadedPoster: preloadedPoster,
+                initialIsPlaying: true,
+                initialElapsedMS: 28_000,
+                initialSpeed: .onePointTwoFive,
+                initialShowsControls: true
+            )
+            .padding(14)
+        })
+
+        // 5. Snapshot: PictureInPictureView floating window content in light and dark mode.
+        let pipItem = PiPVideoItem(
+            messageID: "$vid-1",
+            roomID: Fixture.room,
+            mediaPath: posterPath,
+            thumbnailPath: posterPath,
+            blurhash: blurhash,
+            title: "Alpine descent.mp4",
+            width: 640,
+            height: 360,
+            durationMS: 83_000,
+            elapsedMS: 28_000,
+            isPlaying: true
+        )
+        check(try Snapshot.render("pip-video-window", width: 360) {
+            PictureInPictureView(
+                item: pipItem,
+                preloadedPoster: preloadedPoster,
+                onTogglePlayPause: {},
+                onSeek: { _ in },
+                onReturnToChat: {},
+                onClose: {}
+            )
+            .padding(10)
+        })
+
+        // 6. Verify PictureInPictureController.shared.show(...) / close() state transitions,
+        //    chat-close survival, and quit termination.
+        let controller = PictureInPictureController.shared
+        controller.close()
+        XCTAssertNil(controller.activeItem)
+
+        // Remote URLs are rejected by PictureInPictureController.show(_:).
+        controller.show(
+            PiPVideoItem(
+                messageID: "$remote",
+                roomID: Fixture.room,
+                mediaPath: "https://example.com/remote.mp4"
+            )
+        )
+        XCTAssertNil(controller.activeItem, "PiP must never play a remote URL")
+
+        controller.show(pipItem)
+        XCTAssertEqual(controller.activeItem?.messageID, "$vid-1")
+        XCTAssertEqual(controller.activeItem?.roomID, Fixture.room)
+        let panel = try XCTUnwrap(controller.panel)
+        XCTAssertEqual(panel.level, .floating)
+        XCTAssertTrue(panel.collectionBehavior.contains(.canJoinAllSpaces))
+        XCTAssertTrue(panel.collectionBehavior.contains(.fullScreenAuxiliary))
+
+        // Closing or switching away from the chat must NOT kill a PiP video the person is watching.
+        controller.handleChatClosed(roomID: Fixture.room)
+        XCTAssertEqual(controller.activeItem?.messageID, "$vid-1", "closing the chat must not stop PiP")
+
+        // Return to Chat routes back to the video's room and message.
+        var returnedTarget: (String, String)?
+        controller.onReturnToChat = { roomID, messageID in
+            returnedTarget = (roomID, messageID)
+        }
+        controller.returnToChat()
+        XCTAssertEqual(returnedTarget?.0, Fixture.room)
+        XCTAssertEqual(returnedTarget?.1, "$vid-1")
+
+        // Quitting stops and closes PiP.
+        controller.stopForApplicationTermination()
+        XCTAssertNil(controller.activeItem)
+
+        // Re-show and verify explicit close().
+        controller.show(pipItem)
+        XCTAssertNotNil(controller.activeItem)
+        controller.close()
+        XCTAssertNil(controller.activeItem)
+
+        // 7. Plain-words check: user-facing strings never expose API names.
+        for text in InlineVideoPlayer.userVisibleStrings + PictureInPictureView.userVisibleStrings {
+            XCTAssertFalse(text.contains("AVPlayer"), "no API names in text people read: \(text)")
+            XCTAssertFalse(text.contains("NSPanel"), "no API names in text people read: \(text)")
+            XCTAssertFalse(text.contains("fi.mau.gif"), "no API names in text people read: \(text)")
+        }
+    }
+
     private func makeGalleryEvent(
         _ id: String,
         body: String,

@@ -52,6 +52,22 @@ struct MessageActions {
     var openLightbox: (String) -> Void = { _ in }
     /// Opens an unopened view-once message in `ViewOnceSheet`.
     var openViewOnce: (TimelineMessage) -> Void = { _ in }
+    /// Pops a video message out into the floating Picture-in-Picture window.
+    var popOutPiP: @MainActor (TimelineMessage) -> Void = { message in
+        PictureInPictureController.shared.show(
+            PiPVideoItem(
+                messageID: message.id,
+                roomID: message.roomID,
+                mediaPath: message.mediaPath,
+                thumbnailPath: message.thumbnailPath,
+                blurhash: message.blurhash,
+                title: message.fileName.isEmpty ? message.senderName : message.fileName,
+                width: message.width,
+                height: message.height,
+                durationMS: message.durationMS
+            )
+        )
+    }
 }
 
 /// What the message rows show that is no model's: which messages have their edits open below them, the versions
@@ -489,8 +505,8 @@ struct MessageRowView: View {
             if message.isEdited { editedButton }
         }
         .foregroundStyle(foreground)
-        .padding(.horizontal, message.kind == .image || message.kind == .sticker ? 4 : 11)
-        .padding(.vertical, message.kind == .image || message.kind == .sticker ? 4 : 7)
+        .padding(.horizontal, message.kind == .image || message.kind == .sticker || message.kind == .video ? 4 : 11)
+        .padding(.vertical, message.kind == .image || message.kind == .sticker || message.kind == .video ? 4 : 7)
         .background(RoundedRectangle(cornerRadius: 14).fill(fill))
         .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(isFailed ? Color.red : .clear, lineWidth: 1))
         // Held for undo send: dimmed until it goes.
@@ -543,7 +559,22 @@ struct MessageRowView: View {
             case .image, .sticker:
                 EnhancedImageView(message: message, onOpenLightbox: actions.openLightbox)
                 caption
-            case .video, .voiceNote, .file:
+            case .video:
+                InlineVideoPlayer(
+                    messageID: message.id,
+                    roomID: message.roomID,
+                    mediaPath: message.mediaPath,
+                    thumbnailPath: message.thumbnailPath,
+                    blurhash: message.blurhash,
+                    width: message.width,
+                    height: message.height,
+                    durationMS: message.durationMS,
+                    isGIF: message.isGIF,
+                    onPopOutPiP: { actions.popOutPiP(message) },
+                    onOpenLightbox: { actions.openLightbox(message.id) }
+                )
+                caption
+            case .voiceNote, .file:
                 FileAttachmentChip(message: message)
                 caption
             case .location:
@@ -575,8 +606,8 @@ struct MessageRowView: View {
         if !message.rich.text.isEmpty {
             RichTextView(rich: message.rich, onBubble: message.mine, revealed: ui.revealedBinding(message.id),
                          now: actions.now())
-                .padding(.horizontal, message.kind == .image || message.kind == .sticker ? 7 : 0)
-                .padding(.bottom, message.kind == .image || message.kind == .sticker ? 3 : 0)
+                .padding(.horizontal, message.kind == .image || message.kind == .sticker || message.kind == .video ? 7 : 0)
+                .padding(.bottom, message.kind == .image || message.kind == .sticker || message.kind == .video ? 3 : 0)
         }
     }
 

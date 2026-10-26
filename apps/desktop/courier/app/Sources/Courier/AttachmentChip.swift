@@ -43,7 +43,7 @@ enum ReceivedFile {
 }
 
 /// Returns true only when `path` is a local filesystem path (never a remote `http://`, `https://`, or `mxc://` URL).
-func isLocalMediaStorePath(_ path: String) -> Bool {
+public func isLocalMediaStorePath(_ path: String) -> Bool {
     let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return false }
     let lower = trimmed.lowercased()
@@ -89,8 +89,8 @@ struct PendingAttachmentChip: View {
     }
 }
 
-/// A file in a message: a video, a voice note (inline players are milestone 4) or any other file. It opens in the
-/// default app. Without the file on disk yet, it says so.
+/// A file in a message: a voice note (inline player is Task 7) or any other file. Videos render inline via
+/// `InlineVideoPlayer`. Without the file on disk yet, it says so.
 struct FileAttachmentChip: View {
     let message: TimelineMessage
 
@@ -164,22 +164,31 @@ struct FileAttachmentChip: View {
     }
 }
 
-/// Broken-image fallback card (`ImageError.tsx`) shown when a local media file is missing or unreadable.
+/// Broken-media fallback card (`ImageError.tsx`) shown when a local media file is missing or unreadable.
 public struct ImageErrorCard: View {
     public let fileName: String
     public let size: CGSize
+    public let title: String
+    public let symbol: String
 
-    public init(fileName: String, size: CGSize = CGSize(width: 240, height: 150)) {
+    public init(
+        fileName: String,
+        size: CGSize = CGSize(width: 240, height: 150),
+        title: String = String(localized: "Image unavailable"),
+        symbol: String = "photo.badge.exclamationmark"
+    ) {
         self.fileName = fileName
         self.size = size
+        self.title = title
+        self.symbol = symbol
     }
 
     public var body: some View {
         VStack(spacing: 6) {
-            Image(systemName: "photo.badge.exclamationmark")
+            Image(systemName: symbol)
                 .font(.system(size: 22, weight: .medium))
                 .foregroundStyle(.secondary)
-            Text(String(localized: "Image unavailable"))
+            Text(title)
                 .font(.callout.weight(.medium))
                 .foregroundStyle(.primary)
             Text(fileName.isEmpty ? String(localized: "Missing or corrupted local media") : fileName)
@@ -196,7 +205,7 @@ public struct ImageErrorCard: View {
                 .strokeBorder(.quaternary, lineWidth: 1)
         )
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(String(localized: "Image unavailable: \(fileName)"))
+        .accessibilityLabel(String(localized: "\(title): \(fileName)"))
     }
 }
 
@@ -397,10 +406,20 @@ public struct EnhancedImageView: View {
 
     /// The picture's own proportions within the longest side, or a plain rectangle when they are not known.
     public var size: CGSize {
-        guard let width = message.width, let height = message.height, width > 0, height > 0 else {
-            return CGSize(width: 240, height: 180)
+        Self.proportionalSize(width: message.width, height: message.height)
+    }
+
+    /// Computes a proportional inline media frame within `longestSide`, falling back to `fallback` when dimensions are absent.
+    public static func proportionalSize(
+        width: Int?,
+        height: Int?,
+        longestSide: CGFloat = longestSide,
+        fallback: CGSize = CGSize(width: 240, height: 180)
+    ) -> CGSize {
+        guard let width, let height, width > 0, height > 0 else {
+            return fallback
         }
-        let scale = min(1, Self.longestSide / CGFloat(max(width, height)))
+        let scale = min(1, longestSide / CGFloat(max(width, height)))
         return CGSize(width: max(80, CGFloat(width) * scale), height: max(60, CGFloat(height) * scale))
     }
 }
