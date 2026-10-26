@@ -29,7 +29,15 @@ fail() {
 # --- a real git repo with a real history --------------------------------------
 repo="$work/repo"
 mkdir -p "$repo/tools/ci" "$repo/oauth-user-inspector/app" "$repo/bazel-bin/oauth-user-inspector/infra/app"
-cp "$ENGINE" "$repo/tools/ci/deploy-affected.sh"
+if [[ "$ENGINE" == *.sh ]]; then
+  cp "$ENGINE" "$repo/tools/ci/deploy-affected.sh"
+else
+  cat > "$repo/tools/ci/deploy-affected.sh" <<WRAPPER
+#!/usr/bin/env bash
+exec "$ENGINE" "\$@"
+WRAPPER
+  chmod +x "$repo/tools/ci/deploy-affected.sh"
+fi
 cd "$repo" || exit 1
 git init -q .
 git config user.email t@t
@@ -214,10 +222,17 @@ run_drift() { # <inflight> <delivered_sha> ; echoes "<rc> <stdout>"
     local out rc
     rm -f "$work/result" "$work/summary"
     : >"$work/polls"
-    out="$(cd "$repo" && env PATH="$stubs:/usr/bin:/bin" \
-        STUB_INFLIGHT="$1" STUB_DELIVERED_SHA="$2" STUB_POLL_LOG="$work/polls" STUB_SLEEP_LOG="$sleeps" \
-        DRIFT_RESULT_FILE="$work/result" DRIFT_SUMMARY_FILE="$work/summary" \
-        REPO="o/r" bash "$SCRIPT" 2>"$work/err")"
+    if [[ "$SCRIPT" == *.sh ]]; then
+      out="$(cd "$repo" && env PATH="$stubs:/usr/bin:/bin" \
+          STUB_INFLIGHT="$1" STUB_DELIVERED_SHA="$2" STUB_POLL_LOG="$work/polls" STUB_SLEEP_LOG="$sleeps" \
+          DRIFT_RESULT_FILE="$work/result" DRIFT_SUMMARY_FILE="$work/summary" \
+          REPO="o/r" bash "$SCRIPT" 2>"$work/err")"
+    else
+      out="$(cd "$repo" && env PATH="$stubs:/usr/bin:/bin" \
+          STUB_INFLIGHT="$1" STUB_DELIVERED_SHA="$2" STUB_POLL_LOG="$work/polls" STUB_SLEEP_LOG="$sleeps" \
+          DRIFT_RESULT_FILE="$work/result" DRIFT_SUMMARY_FILE="$work/summary" \
+          REPO="o/r" "$SCRIPT" 2>"$work/err")"
+    fi
     rc=$?
     echo "$rc ${out}"
 }

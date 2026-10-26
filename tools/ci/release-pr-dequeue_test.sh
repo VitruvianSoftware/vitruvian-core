@@ -28,7 +28,8 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCRIPT="${HERE}/release-pr-dequeue.sh"
+SCRIPT="${1:-${HERE}/release-pr-dequeue.sh}"
+[[ "$SCRIPT" == /* ]] || SCRIPT="$PWD/$SCRIPT"
 
 fails=0
 ok() { printf '  ok - %s\n' "$1"; }
@@ -83,9 +84,15 @@ fresh() { # a QUEUED release PR built on main8 (app code app5); main is now main
 
 run() {
   : > "$work/log"
-  env PATH="$work/bin:$PATH" GH_TOKEN=x FAKE_GH_LOG="$work/log" FX="$FX" \
-    REPO="owner/repo" COMPONENT="vitruvian" CODE_PATH="apps/desktop/vitruvian" \
-    MAIN_SHA="main9" bash "$SCRIPT" >"$work/stdout" 2>"$work/stderr"
+  if [[ "$SCRIPT" == *.sh ]]; then
+    env PATH="$work/bin:$PATH" GH_TOKEN=x FAKE_GH_LOG="$work/log" FX="$FX" \
+      REPO="owner/repo" COMPONENT="vitruvian" CODE_PATH="apps/desktop/vitruvian" \
+      MAIN_SHA="main9" bash "$SCRIPT" >"$work/stdout" 2>"$work/stderr"
+  else
+    env PATH="$work/bin:$PATH" GH_TOKEN=x FAKE_GH_LOG="$work/log" FX="$FX" \
+      REPO="owner/repo" COMPONENT="vitruvian" CODE_PATH="apps/desktop/vitruvian" \
+      MAIN_SHA="main9" "$SCRIPT" >"$work/stdout" 2>"$work/stderr"
+  fi
   echo $?
 }
 show() { sed 's/^/    /' "$work/stdout" "$work/stderr" "$work/log" >&2; }

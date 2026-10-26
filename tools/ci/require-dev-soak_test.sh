@@ -14,6 +14,7 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT="${1:-${HERE}/require-dev-soak.sh}"
+SCRIPT="$(cd "$(dirname "$SCRIPT")" && pwd)/$(basename "$SCRIPT")"
 fails=0
 ok() { echo "ok - $1"; }
 bad() { echo "NOT OK - $1"; fails=$((fails + 1)); }
@@ -67,13 +68,23 @@ chmod +x "$WORK/bin/gh"
 export GH_STUB_DIR="$WORK"
 
 run_gate() { # runs the script with a clean env; echoes output, returns its rc
-  GH_BIN="$WORK/bin/gh" \
-  REPO="acme/repo" \
-  WORKFLOW_FILE="${WORKFLOW_FILE-tabula-deploy.yaml}" \
-  DEV_JOB_NAME="deploy-dev / deploy" \
-  ALLOW_UNSOAKED="${ALLOW_UNSOAKED:-false}" \
-  SCAN_LIMIT=20 \
-    bash "$SCRIPT" 2>&1
+  if [[ "$SCRIPT" == *.sh ]]; then
+    GH_BIN="$WORK/bin/gh" \
+    REPO="acme/repo" \
+    WORKFLOW_FILE="${WORKFLOW_FILE-tabula-deploy.yaml}" \
+    DEV_JOB_NAME="deploy-dev / deploy" \
+    ALLOW_UNSOAKED="${ALLOW_UNSOAKED:-false}" \
+    SCAN_LIMIT=20 \
+      bash "$SCRIPT" 2>&1
+  else
+    GH_BIN="$WORK/bin/gh" \
+    REPO="acme/repo" \
+    WORKFLOW_FILE="${WORKFLOW_FILE-tabula-deploy.yaml}" \
+    DEV_JOB_NAME="deploy-dev / deploy" \
+    ALLOW_UNSOAKED="${ALLOW_UNSOAKED:-false}" \
+    SCAN_LIMIT=20 \
+      "$SCRIPT" 2>&1
+  fi
 }
 
 reset() { rm -f "$WORK"/runs.txt "$WORK"/runs.legacy.txt "$WORK"/jobs.* "$WORK"/list_rc "$WORK"/api_workflow; }

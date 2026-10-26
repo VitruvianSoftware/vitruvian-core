@@ -26,12 +26,21 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-SCRIPT="$HERE/changelog-summary.sh"
+SCRIPT="${1:-$HERE/changelog-summary.sh}"
+SCRIPT="$(cd "$(dirname "$SCRIPT")" && pwd)/$(basename "$SCRIPT")"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 # The script writes to $GITHUB_STEP_SUMMARY when set; unset so we capture stdout.
 unset GITHUB_STEP_SUMMARY
+
+run_script() {
+  if [[ "$SCRIPT" == *.sh ]]; then
+    bash "$SCRIPT" "$@"
+  else
+    "$SCRIPT" "$@"
+  fi
+}
 
 CL="$TMP/CHANGELOG.md"
 cat >"$CL" <<'EOF'
@@ -66,7 +75,7 @@ exit0() { # <desc> <rc>
 }
 
 # 1) top (most recent) block, nested one heading level, with the panel title
-out="$(bash "$SCRIPT" "$CL" "" "demo")"
+out="$(run_script "$CL" "" "demo")"
 want   "panel title"           "## 📓 demo — release notes" "$out"
 want   "top: latest as h3"     "### [1.3.0]"                "$out"
 want   "top: feature as h4"    "#### Features"              "$out"
@@ -74,27 +83,27 @@ want   "top: latest content"   "add the new thing"         "$out"
 absent "top: excludes older"   "fix the old thing"         "$out"
 
 # 2) a specific (older) version
-out="$(bash "$SCRIPT" "$CL" "1.2.0" "demo")"
+out="$(run_script "$CL" "1.2.0" "demo")"
 want   "pin: 1.2.0 block"      "### [1.2.0]"                "$out"
 want   "pin: 1.2.0 content"    "fix the old thing"         "$out"
 absent "pin: excludes latest"  "add the new thing"         "$out"
 
 # 3) a v-prefixed version normalizes
-out="$(bash "$SCRIPT" "$CL" "v1.3.0" "demo")"
+out="$(run_script "$CL" "v1.3.0" "demo")"
 want   "vprefix normalizes"    "### [1.3.0]"               "$out"
 
 # 4) an unknown version -> graceful note, exit 0
-out="$(bash "$SCRIPT" "$CL" "9.9.9" "demo")"; rc=$?
+out="$(run_script "$CL" "9.9.9" "demo")"; rc=$?
 want   "unknown-version note"  "not found"                 "$out"
 exit0  "unknown-version exit0" "$rc"
 
 # 5) a missing file -> graceful note, exit 0
-out="$(bash "$SCRIPT" "$TMP/nope.md" "" "ghost")"; rc=$?
+out="$(run_script "$TMP/nope.md" "" "ghost")"; rc=$?
 want   "missing-file note"     "No changelog found"        "$out"
 exit0  "missing-file exit0"    "$rc"
 
 # 6) default panel title derives from the changelog's dir name
-out="$(bash "$SCRIPT" "$CL")"
+out="$(run_script "$CL")"
 want   "default title"         "## 📓 $(basename "$TMP")"  "$out"
 
 
@@ -113,7 +122,7 @@ echo c >"$REPO/app/z.txt";   git -C "$REPO" add -A; git -C "$REPO" commit -qm "f
 head="$(git -C "$REPO" rev-parse HEAD)"
 
 # 5) range renders the shipping commits, path-filtered
-out="$(cd "$REPO" && bash "$SCRIPT" "$CL" "" "demo" --range "$base..$head" --path app)"
+out="$(cd "$REPO" && run_script "$CL" "" "demo" --range "$base..$head" --path app)"
 want   "range: shipping heading" "shipping in this deploy" "$out"
 want   "range: in-path commit"   "second thing"            "$out"
 absent "range: out-of-path"      "unrelated thing"         "$out"
@@ -121,12 +130,12 @@ absent "range: excludes base"    "first thing"             "$out"
 want   "range: keeps changelog"  "add the new thing"       "$out"
 
 # 6) an empty range degrades gracefully, still exit 0
-out="$(cd "$REPO" && bash "$SCRIPT" "$CL" "" "demo" --range "$head..$head" --path app)"; rc=$?
+out="$(cd "$REPO" && run_script "$CL" "" "demo" --range "$head..$head" --path app)"; rc=$?
 want   "empty-range note"  "No commits"  "$out"
 exit0  "empty-range exit0" "$rc"
 
 # 7) a bogus range must NEVER fail the caller (informational panel only)
-out="$(cd "$REPO" && bash "$SCRIPT" "$CL" "" "demo" --range "deadbeef..$head" --path app)"; rc=$?
+out="$(cd "$REPO" && run_script "$CL" "" "demo" --range "deadbeef..$head" --path app)"; rc=$?
 exit0  "bogus-range exit0" "$rc"
 want   "bogus-range note"  "could not be determined" "$out"
 

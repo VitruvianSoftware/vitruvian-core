@@ -44,13 +44,15 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-UNDER_TEST="${SCRIPT_DIR}/secret-scan.sh"
+UNDER_TEST="${1:-${SCRIPT_DIR}/secret-scan.sh}"
+UNDER_TEST="$(cd "$(dirname "$UNDER_TEST")" && pwd)/$(basename "$UNDER_TEST")"
 [ -f "${UNDER_TEST}" ] || { echo "FATAL: ${UNDER_TEST} not found" >&2; exit 1; }
 
-# Read the pin out of the script rather than duplicating it: a literal here
+# Read the pin out of the .sh script rather than duplicating it: a literal here
 # would keep passing after a version bump while asserting the old pin.
-PINNED="$(sed -n 's/^GITLEAKS_VERSION="\([^"]*\)".*/\1/p' "${UNDER_TEST}" | head -1)"
-[ -n "${PINNED}" ] || { echo "FATAL: could not read GITLEAKS_VERSION from ${UNDER_TEST}" >&2; exit 1; }
+SH_SOURCE="${SCRIPT_DIR}/secret-scan.sh"
+PINNED="$(sed -n 's/^GITLEAKS_VERSION="\([^"]*\)".*/\1/p' "${SH_SOURCE}" | head -1)"
+[ -n "${PINNED}" ] || { echo "FATAL: could not read GITLEAKS_VERSION from ${SH_SOURCE}" >&2; exit 1; }
 echo "secret-scan_test: pinned gitleaks version from the script = ${PINNED}"
 echo
 
@@ -93,10 +95,16 @@ run_case() {
   repo="$(new_repo)"
   bindir="$(mktemp -d)"
   stub_gitleaks "${bindir}" "${version}" "${scan_rc}"
-  cp "${UNDER_TEST}" "${repo}/secret-scan.sh"
-
-  out="$(cd "${repo}" && PATH="${bindir}:${PATH}" USE_SYSTEM_GITLEAKS=1 \
-        BASE_REV="" BASE_REF="" bash ./secret-scan.sh 2>&1)"
+  if [[ "${UNDER_TEST}" == *.sh ]]; then
+    cp "${UNDER_TEST}" "${repo}/secret-scan.sh"
+    out="$(cd "${repo}" && PATH="${bindir}:${PATH}" USE_SYSTEM_GITLEAKS=1 \
+          BASE_REV="" BASE_REF="" bash ./secret-scan.sh 2>&1)"
+  else
+    cp "${UNDER_TEST}" "${repo}/secret-scan"
+    chmod +x "${repo}/secret-scan"
+    out="$(cd "${repo}" && PATH="${bindir}:${PATH}" USE_SYSTEM_GITLEAKS=1 \
+          BASE_REV="" BASE_REF="" ./secret-scan 2>&1)"
+  fi
   rc=$?
 
   ok=1

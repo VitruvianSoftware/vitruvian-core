@@ -28,7 +28,9 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCRIPT="${HERE}/release-beta-gate.sh"
+SCRIPT="${1:-${HERE}/release-beta-gate.sh}"
+SCRIPT="$(cd "$(dirname "$SCRIPT")" && pwd)/$(basename "$SCRIPT")"
+[ -f "$SCRIPT" ] || { echo "FATAL: script not found at $SCRIPT"; exit 1; }
 
 fails=0
 ok() { printf '  ok - %s\n' "$1"; }
@@ -86,10 +88,17 @@ fresh() { # a release PR on main commit main9, whose app code is app5
 
 run() { # [env...]
   : > "$work/log"
-  env PATH="$work/bin:$PATH" GH_TOKEN=x FAKE_GH_LOG="$work/log" FX="$FX" "$@" \
-    REPO="owner/repo" COMPONENT="vitruvian" CODE_PATH="apps/desktop/vitruvian" \
-    BETA_JOB="vitruvian-beta" WORKFLOW="delivery.yaml" \
-    bash "$SCRIPT" >"$work/stdout" 2>"$work/stderr"
+  if [[ "$SCRIPT" == *.sh ]]; then
+    env PATH="$work/bin:$PATH" GH_TOKEN=x FAKE_GH_LOG="$work/log" FX="$FX" "$@" \
+      REPO="owner/repo" COMPONENT="vitruvian" CODE_PATH="apps/desktop/vitruvian" \
+      BETA_JOB="vitruvian-beta" WORKFLOW="delivery.yaml" \
+      bash "$SCRIPT" >"$work/stdout" 2>"$work/stderr"
+  else
+    env PATH="$work/bin:$PATH" GH_TOKEN=x FAKE_GH_LOG="$work/log" FX="$FX" "$@" \
+      REPO="owner/repo" COMPONENT="vitruvian" CODE_PATH="apps/desktop/vitruvian" \
+      BETA_JOB="vitruvian-beta" WORKFLOW="delivery.yaml" \
+      "$SCRIPT" >"$work/stdout" 2>"$work/stderr"
+  fi
   echo $?
 }
 show() { sed 's/^/    /' "$work/stdout" "$work/stderr" "$work/log" >&2; }

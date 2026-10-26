@@ -24,7 +24,8 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCRIPT="${HERE}/resolve-unit-bases.sh"
+SCRIPT="${1:-${HERE}/resolve-unit-bases.sh}"
+SCRIPT="$(cd "$(dirname "$SCRIPT")" && pwd)/$(basename "$SCRIPT")"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -89,10 +90,17 @@ GH
 
 run_it() { # <dir> [env...] -> prints the unit_bases JSON
   local dir="$1"; shift
-  ( cd "$dir" && env GH_BIN="$work/gh" REPO=o/r WORKFLOW_FILE=wf.yaml \
-      WORKFLOW_PATH=.github/workflows/wf.yaml LOOKBACK=10 \
-      GITHUB_OUTPUT=/dev/null "$@" bash "$SCRIPT" 2>&1 ) \
-    | sed -n 's/^resolve-unit-bases: unit_bases=\(.*\) (.*/\1/p'
+  if [[ "$SCRIPT" == *.sh ]]; then
+    ( cd "$dir" && env GH_BIN="$work/gh" REPO=o/r WORKFLOW_FILE=wf.yaml \
+        WORKFLOW_PATH=.github/workflows/wf.yaml LOOKBACK=10 \
+        GITHUB_OUTPUT=/dev/null "$@" bash "$SCRIPT" 2>&1 ) \
+      | sed -n 's/^resolve-unit-bases: unit_bases=\(.*\) (.*/\1/p'
+  else
+    ( cd "$dir" && env GH_BIN="$work/gh" REPO=o/r WORKFLOW_FILE=wf.yaml \
+        WORKFLOW_PATH=.github/workflows/wf.yaml LOOKBACK=10 \
+        GITHUB_OUTPUT=/dev/null "$@" "$SCRIPT" 2>&1 ) \
+      | sed -n 's/^resolve-unit-bases: unit_bases=\(.*\) (.*/\1/p'
+  fi
 }
 
 d="$work/r1"; mkwf "$d"; mkgh
@@ -211,9 +219,15 @@ got3="$(run_it "$d3")"
 
 # Unreadable workflow -> {} as well.
 d4="$work/r4"; mkdir -p "$d4"
-got4="$( ( cd "$d4" && GH_BIN="$work/gh" REPO=o/r WORKFLOW_FILE=wf.yaml \
-    WORKFLOW_PATH=nope.yaml GITHUB_OUTPUT=/dev/null bash "$SCRIPT" 2>&1 ) \
-  | sed -n 's/^resolve-unit-bases: unit_bases=\(.*\) (.*/\1/p')"
+if [[ "$SCRIPT" == *.sh ]]; then
+  got4="$( ( cd "$d4" && GH_BIN="$work/gh" REPO=o/r WORKFLOW_FILE=wf.yaml \
+      WORKFLOW_PATH=nope.yaml GITHUB_OUTPUT=/dev/null bash "$SCRIPT" 2>&1 ) \
+    | sed -n 's/^resolve-unit-bases: unit_bases=\(.*\) (.*/\1/p')"
+else
+  got4="$( ( cd "$d4" && GH_BIN="$work/gh" REPO=o/r WORKFLOW_FILE=wf.yaml \
+      WORKFLOW_PATH=nope.yaml GITHUB_OUTPUT=/dev/null "$SCRIPT" 2>&1 ) \
+    | sed -n 's/^resolve-unit-bases: unit_bases=\(.*\) (.*/\1/p')"
+fi
 [ "$got4" = "{}" ] && pass "missing workflow fails open to {}" || fail "expected {}, got: $got4"
 
 if [ "$fails" -ne 0 ]; then

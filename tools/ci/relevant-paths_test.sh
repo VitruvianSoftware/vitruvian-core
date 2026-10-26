@@ -34,13 +34,14 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-UNDER_TEST="${SCRIPT_DIR}/relevant-paths.sh"
+UNDER_TEST="${1:-${SCRIPT_DIR}/relevant-paths.sh}"
+UNDER_TEST="$(cd "$(dirname "$UNDER_TEST")" && pwd)/$(basename "$UNDER_TEST")"
 
 # The lane gate under test is read STRAIGHT OUT of ci.yaml rather than copied
 # here: a literal would let the workflow drift to an unsafe ignore set while
 # this test kept asserting the old safe one. Extracting it means the assertions
 # below always describe what CI actually does.
-REPO_ROOT="$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel)"
+REPO_ROOT="$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel 2>/dev/null || (cd "${SCRIPT_DIR}/../.." && pwd))"
 CI_YAML="${REPO_ROOT}/.github/workflows/ci.yaml"
 FOUND="$(grep -cE "^\s+ignore-regex:" "${CI_YAML}" || true)"
 if [ "${FOUND}" != "1" ]; then
@@ -102,10 +103,18 @@ run_case() {
     git add -A
     git commit -qm change
 
-    if [ -n "${ignore}" ]; then
-      BEFORE_REV="${base_rev}" IGNORE_REGEX="${ignore}" bash "${UNDER_TEST}"
+    if [[ "${UNDER_TEST}" == *.sh ]]; then
+      if [ -n "${ignore}" ]; then
+        BEFORE_REV="${base_rev}" IGNORE_REGEX="${ignore}" bash "${UNDER_TEST}"
+      else
+        BEFORE_REV="${base_rev}" bash "${UNDER_TEST}"
+      fi
     else
-      BEFORE_REV="${base_rev}" bash "${UNDER_TEST}"
+      if [ -n "${ignore}" ]; then
+        BEFORE_REV="${base_rev}" IGNORE_REGEX="${ignore}" "${UNDER_TEST}"
+      else
+        BEFORE_REV="${base_rev}" "${UNDER_TEST}"
+      fi
     fi
   ) > "${tmp}/out.txt" 2>&1 || true
 
@@ -181,7 +190,12 @@ run_case "source change runs"                   true  "${TIDY_IGNORE_REGEX}" tab
 echo
 echo "relevant-paths_test: fail-safe"
 # No BEFORE_REV and no BASE_REF at all -> must run the heavy work.
-if BEFORE_REV="" BASE_REF="" bash "${UNDER_TEST}" 2>&1 | grep -q 'relevant=true'; then
+if [[ "${UNDER_TEST}" == *.sh ]]; then
+  _failsafe_out="$(BEFORE_REV="" BASE_REF="" bash "${UNDER_TEST}" 2>&1)"
+else
+  _failsafe_out="$(BEFORE_REV="" BASE_REF="" "${UNDER_TEST}" 2>&1)"
+fi
+if printf '%s' "$_failsafe_out" | grep -q 'relevant=true'; then
   printf '  \033[32mPASS\033[0m  no diff base -> runs\n'; PASS=$((PASS + 1))
 else
   printf '  \033[31mFAIL\033[0m  no diff base -> should run\n'; FAIL=$((FAIL + 1))

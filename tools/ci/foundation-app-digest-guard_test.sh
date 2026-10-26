@@ -26,49 +26,91 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCRIPT="${HERE}/foundation-app-digest-guard.sh"
+SCRIPT="${1:-${HERE}/foundation-app-digest-guard.sh}"
+SCRIPT="$(cd "$(dirname "$SCRIPT")" && pwd)/$(basename "$SCRIPT")"
 
 fails=0
 ok() { printf '  ok - %s\n' "$1"; }
 bad() { printf '  NOT OK - %s\n' "$1" >&2; fails=$((fails + 1)); }
 
-# shellcheck source=/dev/null
-source "$SCRIPT"   # source-safe: main() runs only when executed, not sourced
-set +e -u -o pipefail
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
 
-pulumi_file='
+if [[ "$SCRIPT" == *.sh ]]; then
+  # shellcheck source=/dev/null
+  source "$SCRIPT"   # source-safe: main() runs only when executed, not sourced
+  set +e -u -o pipefail
+
+  pulumi_file='
 config:
   gcp-app-infra:oauth-user-inspector_workload_enabled: "true"
   gcp-app-infra:zitadel-apps_workload_enabled: "false"
   gcp-app-infra:mcp-slack_workload_enabled: "true"
 '
 
-got="$(missing_digest_apps "$pulumi_file" "oauth-user-inspector=sha256:aaa,mcp-slack=sha256:bbb")"
-[ "$got" = "" ] && ok "every enabled workload has a digest -> no missing apps" \
-  || bad "expected no missing apps (got '$got')"
+  got="$(missing_digest_apps "$pulumi_file" "oauth-user-inspector=sha256:aaa,mcp-slack=sha256:bbb")"
+  [ "$got" = "" ] && ok "every enabled workload has a digest -> no missing apps" \
+    || bad "expected no missing apps (got '$got')"
 
-got="$(missing_digest_apps "$pulumi_file" "oauth-user-inspector=sha256:aaa")"
-[ "$got" = "mcp-slack" ] && ok "one enabled workload missing its digest is reported" \
-  || bad "expected 'mcp-slack' missing (got '$got')"
+  got="$(missing_digest_apps "$pulumi_file" "oauth-user-inspector=sha256:aaa")"
+  [ "$got" = "mcp-slack" ] && ok "one enabled workload missing its digest is reported" \
+    || bad "expected 'mcp-slack' missing (got '$got')"
 
-got="$(missing_digest_apps "$pulumi_file" "")"
-[ "$got" = "oauth-user-inspector mcp-slack" ] && ok "no digests supplied at all reports every enabled workload" \
-  || bad "expected both enabled apps missing (got '$got')"
+  got="$(missing_digest_apps "$pulumi_file" "")"
+  [ "$got" = "oauth-user-inspector mcp-slack" ] && ok "no digests supplied at all reports every enabled workload" \
+    || bad "expected both enabled apps missing (got '$got')"
 
-got="$(missing_digest_apps "$pulumi_file" "mcp-slack=sha256:bbb,zitadel-apps=sha256:ccc")"
-[ "$got" = "oauth-user-inspector" ] && ok "a digest for a DISABLED workload doesn't excuse an enabled one" \
-  || bad "expected 'oauth-user-inspector' missing (got '$got')"
+  got="$(missing_digest_apps "$pulumi_file" "mcp-slack=sha256:bbb,zitadel-apps=sha256:ccc")"
+  [ "$got" = "oauth-user-inspector" ] && ok "a digest for a DISABLED workload doesn't excuse an enabled one" \
+    || bad "expected 'oauth-user-inspector' missing (got '$got')"
 
-got="$(missing_digest_apps '
+  got="$(missing_digest_apps '
 config:
   gcp-app-infra:zitadel-apps_workload_enabled: "false"
 ' "")"
-[ "$got" = "" ] && ok "no workloads enabled at all -> nothing missing" \
-  || bad "expected no missing apps (got '$got')"
+  [ "$got" = "" ] && ok "no workloads enabled at all -> nothing missing" \
+    || bad "expected no missing apps (got '$got')"
 
-got="$(missing_digest_apps "$pulumi_file" "oauth-user-inspector=sha256:aaa,mcp-slack=sha256:bbb,unrelated-app=sha256:zzz")"
-[ "$got" = "" ] && ok "an extra digest for an app not in the file is harmless" \
-  || bad "expected no missing apps (got '$got')"
+  got="$(missing_digest_apps "$pulumi_file" "oauth-user-inspector=sha256:aaa,mcp-slack=sha256:bbb,unrelated-app=sha256:zzz")"
+  [ "$got" = "" ] && ok "an extra digest for an app not in the file is harmless" \
+    || bad "expected no missing apps (got '$got')"
+else
+  # Binary mode: test via main() with temp files
+  pf="$work/Pulumi.production.yaml"
+  cat > "$pf" << 'YAML'
+config:
+  gcp-app-infra:oauth-user-inspector_workload_enabled: "true"
+  gcp-app-infra:zitadel-apps_workload_enabled: "false"
+  gcp-app-infra:mcp-slack_workload_enabled: "true"
+YAML
+  envf="$work/env"
+
+  check_binary() { # <label> <want_rc> <digests>
+    : > "$envf"
+    GITHUB_ENV="$envf" "$SCRIPT" "$3" "$pf" >/dev/null 2>&1
+    local rc=$?
+    [ "$rc" -eq "$2" ] && ok "$1" || bad "$1 (got rc=$rc, want $2)"
+  }
+
+  check_binary "every enabled workload has a digest -> no missing apps" 0 "oauth-user-inspector=sha256:aaa,mcp-slack=sha256:bbb"
+  check_binary "one enabled workload missing its digest is reported" 1 "oauth-user-inspector=sha256:aaa"
+  check_binary "no digests supplied at all reports every enabled workload" 1 ""
+  check_binary "a digest for a DISABLED workload doesn't excuse an enabled one" 1 "mcp-slack=sha256:bbb,zitadel-apps=sha256:ccc"
+
+  cat > "$pf" << 'YAML'
+config:
+  gcp-app-infra:zitadel-apps_workload_enabled: "false"
+YAML
+  check_binary "no workloads enabled at all -> nothing missing" 0 ""
+
+  cat > "$pf" << 'YAML'
+config:
+  gcp-app-infra:oauth-user-inspector_workload_enabled: "true"
+  gcp-app-infra:zitadel-apps_workload_enabled: "false"
+  gcp-app-infra:mcp-slack_workload_enabled: "true"
+YAML
+  check_binary "an extra digest for an app not in the file is harmless" 0 "oauth-user-inspector=sha256:aaa,mcp-slack=sha256:bbb,unrelated-app=sha256:zzz"
+fi
 
 if [ "$fails" -gt 0 ]; then echo "FAILED: $fails" >&2; exit 1; fi
 echo "ALL PASS"

@@ -29,7 +29,8 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCRIPT="${HERE}/deploy-affected.sh"
+SCRIPT="${1:-${HERE}/deploy-affected.sh}"
+SCRIPT="$(cd "$(dirname "$SCRIPT")" && pwd)/$(basename "$SCRIPT")"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -96,8 +97,13 @@ chmod +x "$work/fake-td"
 run() {
   local before="$1"; shift
   local out="$work/out"; : > "$out"
-  ( cd "$repo" && env GITHUB_OUTPUT="$out" BEFORE_REV="$before" TD_BIN="$work/fake-td" \
-      BUILDBUDDY_API_KEY=unused "$@" bash "$SCRIPT" ) >"$work/stdout" 2>"$work/stderr"
+  if [[ "$SCRIPT" == *.sh ]]; then
+    ( cd "$repo" && env GITHUB_OUTPUT="$out" BEFORE_REV="$before" TD_BIN="$work/fake-td" \
+        BUILDBUDDY_API_KEY=unused "$@" bash "$SCRIPT" ) >"$work/stdout" 2>"$work/stderr"
+  else
+    ( cd "$repo" && env GITHUB_OUTPUT="$out" BEFORE_REV="$before" TD_BIN="$work/fake-td" \
+        BUILDBUDDY_API_KEY=unused "$@" "$SCRIPT" ) >"$work/stdout" 2>"$work/stderr"
+  fi
   sed -n 's/^affected=//p' "$out"
 }
 
@@ -199,7 +205,11 @@ expect "an all-release-commit range still skips" "$base_allrp" false \
   EXTRA_PATH_REGEX='tabula/' FAKE_TD_RC=1
 
 echo "--- path-only mode with no signal at all: hard error, not a silent false ---"
-( cd "$repo" && env GITHUB_OUTPUT="$work/out2" BEFORE_REV="$sha11" bash "$SCRIPT" ) >/dev/null 2>"$work/stderr2"
+if [[ "$SCRIPT" == *.sh ]]; then
+  ( cd "$repo" && env GITHUB_OUTPUT="$work/out2" BEFORE_REV="$sha11" bash "$SCRIPT" ) >/dev/null 2>"$work/stderr2"
+else
+  ( cd "$repo" && env GITHUB_OUTPUT="$work/out2" BEFORE_REV="$sha11" "$SCRIPT" ) >/dev/null 2>"$work/stderr2"
+fi
 guard_rc=$?
 if [ "$guard_rc" -ne 0 ] && grep -q "no affected signal at all" "$work/stderr2"; then
   pass "DEPLOY_TARGETS and EXTRA_PATH_REGEX both unset exits non-zero (not a silent affected=false)"
