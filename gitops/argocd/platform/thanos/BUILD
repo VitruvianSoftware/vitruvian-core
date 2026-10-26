@@ -1,7 +1,6 @@
 # Copyright (c) 2026 VitruvianSoftware
 # SPDX-License-Identifier: MIT
 
-load("@aspect_rules_py//py:defs.bzl", "py_test")
 load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
 load("//tools/gitops:defs.bzl", "gitops_manifest")
 
@@ -36,13 +35,4 @@ rust_test(
 alias(
     name = "thanos_values_rs_test",
     actual = ":thanos_values_test",
-)
-
-py_test(
-    name = "thanos_values_py_test",
-    size = "small",
-    srcs = ["thanos_values_test.py"],
-    data = ["applicationset.yaml"],
-    main = "thanos_values_test.py",
-    deps = ["@pip//pyyaml"],
 )

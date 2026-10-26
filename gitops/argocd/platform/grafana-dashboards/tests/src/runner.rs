@@ -10,7 +10,6 @@ use std::env;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
@@ -20,11 +19,11 @@ use crate::{find_dashboards_dir, tier1, tier2, tier3, tier4};
 const RULE: &str =
     "================================================================================";
 
-pub const TIERS: [(&str, &str, &str); 4] = [
-    ("1", "Schema & Structure", "tier1_schema_test.py"),
-    ("2", "PromQL & Metric Integrity", "tier2_promql_test.py"),
-    ("3", "GitOps & Consistency", "tier3_integration_test.py"),
-    ("4", "Live Thanos Telemetry", "tier4_telemetry_test.py"),
+pub const TIERS: [(&str, &str); 4] = [
+    ("1", "Schema & Structure"),
+    ("2", "PromQL & Metric Integrity"),
+    ("3", "GitOps & Consistency"),
+    ("4", "Live Thanos Telemetry"),
 ];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -228,41 +227,9 @@ pub fn format_text_report(results: &[TierResult], total_duration_ms: i64) -> Str
 
 fn execute_tier(
     tier_num: &str,
-    script_path: &Path,
     allow_offline: bool,
     dashboards_dir: Option<&Path>,
 ) -> (i32, String) {
-    let force_subprocess = env::var("GRAFANA_RUNNER_SUBPROCESS").ok().as_deref() == Some("1");
-    let is_custom_script = if script_path.is_file() {
-        fs::read_to_string(script_path)
-            .map(|c| !c.contains("VitruvianSoftware"))
-            .unwrap_or(false)
-    } else {
-        false
-    };
-
-    if force_subprocess || is_custom_script {
-        if !script_path.is_file() {
-            return (1, format!("Script not found: {}", script_path.display()));
-        }
-        let mut cmd = Command::new("python3");
-        cmd.arg(script_path);
-        if tier_num == "4" && allow_offline {
-            cmd.arg("--allow-offline");
-        }
-        return match cmd.output() {
-            Ok(proc) => {
-                let mut combined = String::from_utf8_lossy(&proc.stdout).into_owned();
-                combined.push_str(&String::from_utf8_lossy(&proc.stderr));
-                while combined.ends_with('\n') {
-                    combined.pop();
-                }
-                (proc.status.code().unwrap_or(1), combined)
-            }
-            Err(e) => (1, e.to_string()),
-        };
-    }
-
     if let Some(dir) = dashboards_dir {
         let (code, mut out) = match tier_num {
             "1" => tier1::run_tier1_on_dir(dir),
@@ -277,7 +244,10 @@ fn execute_tier(
         return (code, out);
     }
 
-    (1, format!("Script not found: {}", script_path.display()))
+    (
+        1,
+        "Could not locate gitops/argocd/platform/grafana-dashboards directory".to_string(),
+    )
 }
 
 /// Run the master suite with the given CLI arguments.
@@ -287,10 +257,6 @@ pub fn run(args: &[String]) -> i32 {
         .next()
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("runner"));
-    let script_dir = exe_path
-        .parent()
-        .and_then(|p| fs::canonicalize(p).ok())
-        .unwrap_or_else(|| env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
 
     let root = match env::var("BUILD_WORKSPACE_DIRECTORY") {
         Ok(val) if !val.is_empty() => PathBuf::from(val),
@@ -356,18 +322,12 @@ pub fn run(args: &[String]) -> i32 {
     let dashboards_dir = find_dashboards_dir().ok();
     let mut results: Vec<TierResult> = Vec::new();
 
-    for (tier_num, tier_name, script_name) in TIERS {
+    for (tier_num, tier_name) in TIERS {
         if tier_filter != "all" && tier_filter != tier_num {
             continue;
         }
         let t_start = now_ms();
-        let script_path = script_dir.join(script_name);
-        let (status, out) = execute_tier(
-            tier_num,
-            &script_path,
-            allow_offline,
-            dashboards_dir.as_deref(),
-        );
+        let (status, out) = execute_tier(tier_num, allow_offline, dashboards_dir.as_deref());
         let t_dur = now_ms() - t_start;
 
         let passed_cnt = count_tap_prefix(&out, "ok");

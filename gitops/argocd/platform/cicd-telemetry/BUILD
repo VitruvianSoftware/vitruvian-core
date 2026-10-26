@@ -1,7 +1,6 @@
 # Copyright (c) 2026 VitruvianSoftware
 # SPDX-License-Identifier: MIT
 
-load("@aspect_rules_py//py:defs.bzl", "py_test")
 load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
 
 # gazelle:ignore
@@ -42,13 +41,4 @@ rust_test(
 alias(
     name = "collector_config_rs_test",
     actual = ":collector_config_test",
-)
-
-py_test(
-    name = "collector_config_py_test",
-    size = "small",
-    srcs = ["collector_config_test.py"],
-    data = DATA_FILES,
-    main = "collector_config_test.py",
-    deps = ["@pip//pyyaml"],
 )
