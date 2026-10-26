@@ -645,4 +645,23 @@ func TestStickerAndGIFRoomFeatures(t *testing.T) {
 		Supported: false,
 		MimeTypes: []string{},
 	}, filtered.GIF)
+
+	// FeaturesOf must cap Sticker.MaxSize and GIF.MaxSize to MaxFileCeiling so Sticker/StickerFeatures
+	// and GIF/GIFFeatures never disagree.
+	huge := FeaturesOf(&event.RoomFeatures{
+		File: event.FileFeatureMap{
+			event.CapMsgSticker: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{"image/webp": event.CapLevelFullySupported},
+				MaxSize:   10 * MaxFileCeiling,
+			},
+			event.CapMsgGIF: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{"video/mp4": event.CapLevelFullySupported},
+				MaxSize:   10 * MaxFileCeiling,
+			},
+		},
+	})
+	require.Equal(t, MaxFileCeiling, huge.Sticker.MaxSize)
+	require.Equal(t, huge.StickerFeatures.MaxSize, huge.Sticker.MaxSize)
+	require.Equal(t, MaxFileCeiling, huge.GIF.MaxSize)
+	require.Equal(t, huge.GIFFeatures.MaxSize, huge.GIF.MaxSize)
 }

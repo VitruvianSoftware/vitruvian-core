@@ -779,6 +779,30 @@ func TestMediaCapabilitiesTableMatchesTheBridges(t *testing.T) {
 		f := actions.FeaturesOf(rf)
 		network := strings.Fields(name)[0]
 
+		// Sticker and StickerFeatures, and GIF and GIFFeatures, must agree across every pinned bridge's real capabilities.
+		if f.StickerFeatures == nil {
+			require.Equal(t, actions.MediaCapFeature{MimeTypes: []string{}}, f.Sticker, "%s: Sticker vs StickerFeatures", name)
+		} else {
+			require.Equal(t, actions.MediaCapFeature{
+				Supported:        f.StickerFeatures.Supported,
+				MimeTypes:        f.StickerFeatures.MimeTypes,
+				Captions:         f.StickerFeatures.Caption,
+				MaxCaptionLength: f.StickerFeatures.MaxCaptionLength,
+				MaxSize:          f.StickerFeatures.MaxSize,
+			}, f.Sticker, "%s: Sticker vs StickerFeatures", name)
+		}
+		if f.GIFFeatures == nil {
+			require.Equal(t, actions.MediaCapFeature{MimeTypes: []string{}}, f.GIF, "%s: GIF vs GIFFeatures", name)
+		} else {
+			require.Equal(t, actions.MediaCapFeature{
+				Supported:        f.GIFFeatures.Supported,
+				MimeTypes:        f.GIFFeatures.MimeTypes,
+				Captions:         f.GIFFeatures.Caption,
+				MaxCaptionLength: f.GIFFeatures.MaxCaptionLength,
+				MaxSize:          f.GIFFeatures.MaxSize,
+			}, f.GIF, "%s: GIF vs GIFFeatures", name)
+		}
+
 		switch network {
 		case "whatsapp":
 			const waMax = int64(2000 * 1024 * 1024)

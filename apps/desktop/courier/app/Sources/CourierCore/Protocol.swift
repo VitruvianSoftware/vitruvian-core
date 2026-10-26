@@ -2686,13 +2686,13 @@ public struct MediaCapFeature: ProtocolType, Equatable, Hashable, Sendable {
     public var supported: Bool
     public var mimeTypes: [String]
     public var captions: Bool
-    public var maxCaptionLength: Int
-    public var maxSize: Int64
+    public var maxCaptionLength: Int?
+    public var maxSize: Int64?
 
-    public static let unsupported = MediaCapFeature(supported: false, mimeTypes: [], captions: false, maxCaptionLength: 0, maxSize: 0)
+    public static let unsupported = MediaCapFeature(supported: false, mimeTypes: [], captions: false, maxCaptionLength: nil, maxSize: nil)
 
     public init(supported: Bool = false, mimeTypes: [String] = [], captions: Bool = false,
-                maxCaptionLength: Int = 0, maxSize: Int64 = 0) {
+                maxCaptionLength: Int? = nil, maxSize: Int64? = nil) {
         self.supported = supported
         self.mimeTypes = mimeTypes
         self.captions = captions
@@ -2713,8 +2713,8 @@ public struct MediaCapFeature: ProtocolType, Equatable, Hashable, Sendable {
         supported = try container.decode(Bool.self, forKey: .supported)
         mimeTypes = try container.decodeIfPresent([String].self, forKey: .mimeTypes) ?? []
         captions = try container.decodeIfPresent(Bool.self, forKey: .captions) ?? false
-        maxCaptionLength = try container.decodeIfPresent(Int.self, forKey: .maxCaptionLength) ?? 0
-        maxSize = try container.decodeIfPresent(Int64.self, forKey: .maxSize) ?? 0
+        maxCaptionLength = try container.decodeIfPresent(Int.self, forKey: .maxCaptionLength)
+        maxSize = try container.decodeIfPresent(Int64.self, forKey: .maxSize)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -2722,8 +2722,8 @@ public struct MediaCapFeature: ProtocolType, Equatable, Hashable, Sendable {
         try container.encode(supported, forKey: .supported)
         try container.encode(mimeTypes, forKey: .mimeTypes)
         try container.encode(captions, forKey: .captions)
-        if maxCaptionLength > 0 { try container.encode(maxCaptionLength, forKey: .maxCaptionLength) }
-        if maxSize > 0 { try container.encode(maxSize, forKey: .maxSize) }
+        try container.encodeIfPresent(maxCaptionLength, forKey: .maxCaptionLength)
+        try container.encodeIfPresent(maxSize, forKey: .maxSize)
     }
 }
 

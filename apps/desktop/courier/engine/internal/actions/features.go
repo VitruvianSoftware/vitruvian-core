@@ -256,36 +256,24 @@ func FeaturesOf(rf *event.RoomFeatures) Features {
 		f.GIFFeatures = convertFileFeatures(rf.File[event.CapMsgGIF])
 		f.StickerFeatures = convertFileFeatures(rf.File[event.CapMsgSticker])
 	}
-	f.Sticker = extractMediaCap(rf, event.CapMsgSticker)
-	f.GIF = extractMediaCap(rf, event.CapMsgGIF)
+	f.Sticker = mediaCapFromFileKind(f.StickerFeatures)
+	f.GIF = mediaCapFromFileKind(f.GIFFeatures)
 	f.LocationSupported = rf.LocationMessage.Partial()
 	f.LinkPreviewsSupported = rf.Formatting[event.FmtInlineLink].Partial()
 	return f
 }
 
-func extractMediaCap(rf *event.RoomFeatures, key event.CapabilityMsgType) MediaCapFeature {
-	out := MediaCapFeature{MimeTypes: []string{}}
-	if rf == nil || rf.File == nil {
-		return out
+func mediaCapFromFileKind(fk *FileKindFeatures) MediaCapFeature {
+	if fk == nil || !fk.Supported || len(fk.MimeTypes) == 0 {
+		return MediaCapFeature{MimeTypes: []string{}}
 	}
-	ff, ok := rf.File[key]
-	if !ok || ff == nil {
-		return out
+	return MediaCapFeature{
+		Supported:        fk.Supported,
+		MimeTypes:        slices.Clone(fk.MimeTypes),
+		Captions:         fk.Caption,
+		MaxCaptionLength: fk.MaxCaptionLength,
+		MaxSize:          fk.MaxSize,
 	}
-	for mime, lvl := range ff.MimeTypes {
-		if lvl >= event.CapLevelPartialSupport || lvl == event.CapLevelDropped {
-			out.MimeTypes = append(out.MimeTypes, mime)
-		}
-	}
-	if len(out.MimeTypes) == 0 {
-		return out
-	}
-	slices.Sort(out.MimeTypes)
-	out.Supported = true
-	out.Captions = ff.Caption >= event.CapLevelPartialSupport
-	out.MaxCaptionLength = ff.MaxCaptionLength
-	out.MaxSize = ff.MaxSize
-	return out
 }
 
 func convertFileFeatures(ff *event.FileFeatures) *FileKindFeatures {
@@ -294,7 +282,7 @@ func convertFileFeatures(ff *event.FileFeatures) *FileKindFeatures {
 	}
 	var mimes []string
 	for mime, cap := range ff.MimeTypes {
-		if cap >= event.CapLevelPartialSupport {
+		if cap >= event.CapLevelPartialSupport || cap == event.CapLevelDropped {
 			mimes = append(mimes, mime)
 		}
 	}

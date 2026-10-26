@@ -474,7 +474,7 @@ final class ChatFeaturesTests: XCTestCase {
             supported: true,
             mimeTypes: ["image/png", "image/webp"],
             captions: false,
-            maxCaptionLength: 0,
+            maxCaptionLength: nil,
             maxSize: 16 * 1024 * 1024
         )
         let gifCap = MediaCapFeatureWire(
@@ -495,5 +495,18 @@ final class ChatFeaturesTests: XCTestCase {
         XCTAssertEqual(decoded.gif, gifCap)
         XCTAssertTrue(decoded.supportsStickers)
         XCTAssertTrue(decoded.supportsGIFs)
+        XCTAssertEqual(decoded.maxSizeBytes(for: "m.sticker"), 16 * 1024 * 1024)
+        XCTAssertEqual(decoded.maxSizeBytes(for: "fi.mau.gif"), 16 * 1024 * 1024)
+        XCTAssertFalse(decoded.supportsCaption(for: "m.sticker"))
+        XCTAssertTrue(decoded.supportsCaption(for: "fi.mau.gif"))
+
+        // Round-trip Go's actual JSON output where max_caption_length and max_size are omitted (omitempty).
+        let goOmittedJSON = Data(#"{"supported":true,"mime_types":["image/webp"],"captions":false}"#.utf8)
+        let decodedOmitted = try JSONDecoder().decode(MediaCapFeatureWire.self, from: goOmittedJSON)
+        XCTAssertNil(decodedOmitted.maxCaptionLength)
+        XCTAssertNil(decodedOmitted.maxSize)
+        let reencoded = try JSONSerialization.jsonObject(with: JSONEncoder().encode(decodedOmitted)) as? [String: Any]
+        XCTAssertNil(reencoded?["max_caption_length"])
+        XCTAssertNil(reencoded?["max_size"])
     }
 }
