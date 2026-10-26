@@ -92,7 +92,7 @@ public struct ViewOnceSheet: View {
 
     public static var screenshotNoticeText: String {
         String(
-            localized: "Screenshots are blocked for this window where macOS allows (NSWindow.sharingType = .none). External cameras or capture methods outside macOS window sharing restrictions cannot be prevented."
+            localized: "Screenshots and screen recordings of this window are blocked where macOS allows it. A camera pointed at the screen can\u{2019}t be stopped."
         )
     }
 
