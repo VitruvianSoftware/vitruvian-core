@@ -42,6 +42,22 @@ sh_binary(
     visibility = ["//visibility:public"],
 )
 
+# Puts the main checkout back on main when a session started with its branch
+# checked out there, so `worktree <branch>` can then give that branch a worktree.
+sh_binary(
+    name = "release-main",
+    srcs = ["release-main.sh"],
+    visibility = ["//visibility:public"],
+)
+
+sh_test(
+    name = "release-main_test",
+    size = "small",
+    srcs = ["release-main_test.sh"],
+    args = ["$(location release-main.sh)"],
+    data = ["release-main.sh"],
+)
+
 alias(
     name = "worktree-rs",
     actual = ":worktree",
