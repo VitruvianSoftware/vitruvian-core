@@ -62,7 +62,7 @@ spec:
             - name: TS_EXTRA_ARGS
               value: "--login-server=https://headscale.ipv1337.dev --advertise-routes=192.168.86.0/24,10.44.86.0/24 --accept-routes=false --hostname=homelab-subnet-router"
             - name: TS_STATE_DIR
-              value: "/var/lib/tailscale"
+              value: "/tmp/tailscale"
           resources:
             requests:
               cpu: 20m
@@ -77,9 +77,3 @@ spec:
             capabilities:
               drop:
                 - ALL
-          volumeMounts:
-            - name: tailscale-state
-              mountPath: /var/lib/tailscale
-      volumes:
-        - name: tailscale-state
-          emptyDir: {}
