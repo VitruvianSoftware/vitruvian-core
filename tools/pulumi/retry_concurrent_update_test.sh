@@ -52,7 +52,7 @@ run() {
   : >"$work/sleeps"
   env PATH="$stubs:/usr/bin:/bin" STUB_COUNT="$work/count" SLEEP_LOG="$work/sleeps" \
     STUB_FAIL_TIMES="$times" STUB_MSG="$msg" "$@" \
-    bash "$RETRY" fake-pulumi up --yes >"$work/out" 2>"$work/err"
+    "$RETRY" fake-pulumi up --yes >"$work/out" 2>"$work/err"
   local rc=$?
   echo "$rc $(cat "$work/count") $(tr '\n' ',' <"$work/sleeps")"
 }

@@ -55,7 +55,7 @@ run_cmd() {
         PULUMI_ACCESS_TOKEN="$pulumi_token" CI=1 \
         STUB_FAIL_TIMES="${STUB_FAIL_TIMES:-999}" \
         PULUMI_CONFLICT_MAX_ATTEMPTS="${MAX_ATTEMPTS:-5}" PULUMI_CONFLICT_RETRY_DELAY=0 \
-        bash "$WRAPPER" tabula/infra/web "$subcmd" --stack development --yes >/dev/null 2>&1
+        "$WRAPPER" tabula/infra/web "$subcmd" --stack development --yes >/dev/null 2>&1
     local rc=$?
     echo "$rc $(cat "$count") $(cat "$log")"
 }
