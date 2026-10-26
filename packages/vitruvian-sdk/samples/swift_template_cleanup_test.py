@@ -67,22 +67,25 @@ def main():
         problems.append(f"a folder being written into was not deleted: {left}")
 
     # A folder that cannot go: what is left is named, and nothing waits long.
-    stuck = os.path.join(base, "stuck")
-    locked = os.path.join(stuck, "locked")
-    os.makedirs(locked)
-    with open(os.path.join(locked, "kept"), "w") as out:
-        out.write("x")
-    os.chmod(locked, 0o500)
-    try:
-        began = time.monotonic()
-        left = removed(stuck, limit=1)
-        took = time.monotonic() - began
-    finally:
-        os.chmod(locked, 0o700)
-    if os.geteuid() != 0 and left != ["locked", "locked/kept"]:
-        problems.append(f"what could not be deleted was not named: {left}")
-    if took > 5:
-        problems.append(f"giving up took {took:.0f} seconds, not about one")
+    # Root deletes a locked folder all the same, so this is not tried as root
+    # (as on CI's remote machines).
+    if os.geteuid() != 0:
+        stuck = os.path.join(base, "stuck")
+        locked = os.path.join(stuck, "locked")
+        os.makedirs(locked)
+        with open(os.path.join(locked, "kept"), "w") as out:
+            out.write("x")
+        os.chmod(locked, 0o500)
+        try:
+            began = time.monotonic()
+            left = removed(stuck, limit=1)
+            took = time.monotonic() - began
+        finally:
+            os.chmod(locked, 0o700)
+        if left != ["locked", "locked/kept"]:
+            problems.append(f"what could not be deleted was not named: {left}")
+        if took > 5:
+            problems.append(f"giving up took {took:.0f} seconds, not about one")
     if removed(base, limit=5):
         problems.append("the test's own folder was not deleted")
 
