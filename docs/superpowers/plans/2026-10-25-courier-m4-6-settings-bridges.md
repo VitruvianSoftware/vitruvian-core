@@ -90,6 +90,7 @@ Every bridge fact below is verified from `~/go/pkg/mod` at the pinned module ver
 
 ## Global Constraints
 
+- **Version numbers are assigned when the build starts, in landing order.** Use the next free protocol version and migration number on `main` at that moment (4.5b takes protocol 7 and migration 9; 4.5c and 4.6 take the next free ones in the order they are built). The numbers written in this plan are placeholders for that rule.
 0. **Courier's name, never Beeper's, in anything a person sees.** Settings labels, menus and messages say Courier ("Open Courier at login", "Keep Courier minimized on launch", "Quit Courier when closing the main window", "Courier ▸ Lock App"). Beeper's wording appears only as inventory row names (`anchor item`), which identify the row and are never shown.
 1. **Privacy & Outbound Connections (Hard Rule 5):**
    - Nothing leaves the Mac unless the person asks for it.
