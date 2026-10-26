@@ -43,12 +43,16 @@ set -uo pipefail
 PUSHGATEWAY_URL="${PUSHGATEWAY_URL:-https://pushgateway.lab.ipv1337.dev}"
 INSTANCE="${INSTANCE:-$(hostname -s | tr '[:upper:]' '[:lower:]')}"
 JOB="${JOB:-mac_power}"
-CONF="/usr/local/etc/vitruvian-power-agent.conf"
+CONF="${CONF_FILE:-/usr/local/etc/vitruvian-power-agent.conf}"
+POWERMETRICS_BIN="${POWERMETRICS_BIN:-$(command -v powermetrics 2>/dev/null || echo /usr/bin/powermetrics)}"
+PMSET_BIN="${PMSET_BIN:-$(command -v pmset 2>/dev/null || echo /usr/bin/pmset)}"
+IOREG_BIN="${IOREG_BIN:-$(command -v ioreg 2>/dev/null || echo /usr/sbin/ioreg)}"
+CURL_BIN="${CURL_BIN:-$(command -v curl 2>/dev/null || echo /usr/bin/curl)}"
 # shellcheck disable=SC1090
 [ -r "$CONF" ] && . "$CONF"
 
 # --- SoC power via a single powermetrics sample -----------------------------
-pm="$(/usr/bin/powermetrics --samplers cpu_power -n 1 -i 700 2>/dev/null)"
+pm="$("$POWERMETRICS_BIN" --samplers cpu_power -n 1 -i 700 2>/dev/null)"
 
 # Apple Silicon: "Combined Power (CPU + GPU + ANE): N mW".
 # Intel:         "Intel energy model derived package power (CPUs+GT+SA): N.NNW".
@@ -70,7 +74,7 @@ gpu_mw="$(domain_mw GPU)"
 ane_mw="$(domain_mw ANE)"
 
 # --- battery via pmset + ioreg ----------------------------------------------
-batt="$(/usr/bin/pmset -g batt 2>/dev/null)"
+batt="$("$PMSET_BIN" -g batt 2>/dev/null)"
 pct="$(printf '%s\n' "$batt" | grep -oE '[0-9]+%' | head -1 | tr -d '%')"
 ac=0
 printf '%s\n' "$batt" | grep -qiE "AC Power|AC attached" && ac=1
@@ -80,7 +84,7 @@ printf '%s\n' "$batt" | grep -qiE "; charging" && charging=1
 # InstantAmperage is reported as an unsigned 64-bit int; when discharging it is
 # 2^64-N. bash arithmetic is signed 64-bit and wraps on overflow, recovering the
 # negative value. Voltage is in mV, amperage in mA: watts = |amp| * volt / 1e6.
-ioreg="$(/usr/sbin/ioreg -rn AppleSmartBattery 2>/dev/null)"
+ioreg="$("$IOREG_BIN" -rn AppleSmartBattery 2>/dev/null)"
 amp_raw="$(printf '%s\n' "$ioreg" | awk -F'= ' '/"InstantAmperage"/ {gsub(/[^0-9-]/, "", $2); print $2; exit}')"
 volt="$(printf '%s\n' "$ioreg" | awk -F'= ' '/"Voltage"/ {gsub(/[^0-9-]/, "", $2); print $2; exit}')"
 discharge_w=""
@@ -118,7 +122,7 @@ if [ "${DRY_RUN:-0}" = "1" ]; then
 	exit 0
 fi
 
-if ! printf '%s' "$metrics" | /usr/bin/curl -sS --max-time 15 --data-binary @- \
+if ! printf '%s' "$metrics" | "$CURL_BIN" -sS --max-time 15 --data-binary @- \
 	"${PUSHGATEWAY_URL%/}/metrics/job/${JOB}/instance/${INSTANCE}" >/dev/null 2>&1; then
 	echo "power-agent: push to ${PUSHGATEWAY_URL} failed (instance=${INSTANCE})" >&2
 	exit 0
