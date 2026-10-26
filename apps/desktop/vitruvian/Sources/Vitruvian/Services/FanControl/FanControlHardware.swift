@@ -124,6 +124,7 @@ package final class FanControlHardware {
             let forced = forceTest.map { setByte(1, for: $0, attempts: 20) } ?? false
             guard FanControlPolicy.forceTestSatisfied(keyExists: forceTest != nil,
                                                       writeSucceeded: forced) else {
+                _ = restoreAutomatic()
                 throw FanControlHardwareError.operationFailed
             }
             // A stopped Apple Silicon fan can reject manual mode until the
@@ -131,6 +132,7 @@ package final class FanControlHardware {
             // Apply the requested level only after manual mode sticks.
             for fan in fans {
                 guard setValue(fan.maximumRPM, for: fan.target, attempts: 10) else {
+                    _ = restoreAutomatic()
                     throw FanControlHardwareError.operationFailed
                 }
             }
@@ -138,6 +140,7 @@ package final class FanControlHardware {
             for fan in fans {
                 let deadline = ProcessInfo.processInfo.systemUptime + 10
                 guard setMode(1, for: fan, untilUptime: deadline) else {
+                    _ = restoreAutomatic()
                     throw FanControlHardwareError.operationFailed
                 }
             }
@@ -146,15 +149,21 @@ package final class FanControlHardware {
         if !directSucceeded {
             for (fan, target) in zip(fans, targets) {
                 guard setTargetRPM(target, for: fan, attempts: 10) else {
+                    _ = restoreAutomatic()
                     throw FanControlHardwareError.operationFailed
                 }
             }
         }
-        guard verifyCooling(fans, targets: targets, attempts: 10) else {
-            throw FanControlHardwareError.operationFailed
+        do {
+            guard verifyCooling(fans, targets: targets, attempts: 10) else {
+                throw FanControlHardwareError.operationFailed
+            }
+            activeTargets = targets
+            return try readings(for: fans)
+        } catch {
+            _ = restoreAutomatic()
+            throw error
         }
-        activeTargets = targets
-        return try readings(for: fans)
     }
 
     package func updateCooling(level: Int) throws -> [FanControlFanReading] {
@@ -172,14 +181,20 @@ package final class FanControlHardware {
         }
         for (fan, target) in zip(fans, targets) {
             guard setTargetRPM(target, for: fan, attempts: 10) else {
+                _ = restoreAutomatic()
                 throw FanControlHardwareError.operationFailed
             }
         }
-        guard verifyCooling(fans, targets: targets, attempts: 10) else {
-            throw FanControlHardwareError.operationFailed
+        do {
+            guard verifyCooling(fans, targets: targets, attempts: 10) else {
+                throw FanControlHardwareError.operationFailed
+            }
+            activeTargets = targets
+            return try readings(for: fans)
+        } catch {
+            _ = restoreAutomatic()
+            throw error
         }
-        activeTargets = targets
-        return try readings(for: fans)
     }
 
     package func validateAutomaticControl() throws {
@@ -199,11 +214,8 @@ package final class FanControlHardware {
     package func restoreAutomatic() -> Bool {
         guard let fans = try? discoverControlledFans() else { return false }
         for fan in fans {
+            // Preserve the last safe target if firmware rejects the mode change.
             _ = setMode(0, for: fan, attempts: 20)
-            // The target is ignored in automatic mode. Clear it when the
-            // controller accepts the write, but never mistake a rejected
-            // target reset for a failure to return control to the firmware.
-            _ = setValue(0, for: fan.target, attempts: 10)
         }
         if let forceTest = forceTestKey() {
             _ = setByte(0, for: forceTest, attempts: 20)
@@ -394,6 +406,7 @@ package final class FanControlHardware {
     }
 
     private func setTargetRPM(_ target: Double, for fan: Fan, attempts: Int) -> Bool {
+        guard target.isFinite else { return false }
         for attempt in 0..<attempts {
             _ = writeManualPair(for: fan, target: target)
             if let currentTarget = client.readValue(fan.target),
@@ -407,6 +420,7 @@ package final class FanControlHardware {
     }
 
     private func writeManualPair(for fan: Fan, target: Double) -> Bool {
+        guard target.isFinite else { return false }
         _ = try? client.writeBytes([1], to: fan.mode)
         do {
             try client.writeValue(target, to: fan.target)
@@ -438,6 +452,7 @@ package final class FanControlHardware {
     }
 
     private func setValue(_ value: Double, for key: SMCClient.Key, attempts: Int) -> Bool {
+        guard value.isFinite else { return false }
         for attempt in 0..<attempts {
             do {
                 try client.writeValue(value, to: key)
