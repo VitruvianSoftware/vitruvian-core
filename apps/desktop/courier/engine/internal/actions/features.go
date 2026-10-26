@@ -81,6 +81,15 @@ type FileKindFeatures struct {
 	MaxDurationSec   int      `json:"max_duration_sec,omitempty"`
 }
 
+// MediaCapFeature summarizes sticker or GIF capabilities from a bridge's event.RoomFeatures.File map.
+type MediaCapFeature struct {
+	Supported        bool     `json:"supported"`
+	MimeTypes        []string `json:"mime_types"`
+	Captions         bool     `json:"captions"`
+	MaxCaptionLength int      `json:"max_caption_length,omitempty"`
+	MaxSize          int64    `json:"max_size,omitempty"`
+}
+
 // Features is what a person can do in one chat, as its bridge says (com.beeper.room_features). A level of partial
 // or full support counts as supported; unsupported, dropped and rejected don't.
 type Features struct {
@@ -132,6 +141,8 @@ type Features struct {
 	FileFeatures          *FileKindFeatures `json:"file_features,omitempty"`
 	GIFFeatures           *FileKindFeatures `json:"gif_features,omitempty"`
 	StickerFeatures       *FileKindFeatures `json:"sticker_features,omitempty"`
+	Sticker               MediaCapFeature   `json:"sticker"`
+	GIF                   MediaCapFeature   `json:"gif"`
 	LocationSupported     bool              `json:"location_supported"`
 	LinkPreviewsSupported bool              `json:"link_previews_supported"`
 }
@@ -145,7 +156,13 @@ const (
 
 // NoFeatures is a chat with nothing stored and no logged-in client to ask: only send, reply and Delete for Me
 // (which never leaves this Mac) are offered. Formatting is empty, not nil, so the wire always carries a list.
-var NoFeatures = Features{Reply: true, Formatting: []richtext.Kind{}, Source: SourceNone}
+var NoFeatures = Features{
+	Reply:      true,
+	Formatting: []richtext.Kind{},
+	Source:     SourceNone,
+	Sticker:    MediaCapFeature{MimeTypes: []string{}},
+	GIF:        MediaCapFeature{MimeTypes: []string{}},
+}
 
 // deleteLeavesGroup lists the bridges whose HandleMatrixDeleteChat leaves a group chat before deleting it:
 //   - mautrix-whatsapp v0.2609.0 pkg/connector/handlematrix.go:670-693 calls wa.Client.LeaveGroup when
@@ -239,9 +256,36 @@ func FeaturesOf(rf *event.RoomFeatures) Features {
 		f.GIFFeatures = convertFileFeatures(rf.File[event.CapMsgGIF])
 		f.StickerFeatures = convertFileFeatures(rf.File[event.CapMsgSticker])
 	}
+	f.Sticker = extractMediaCap(rf, event.CapMsgSticker)
+	f.GIF = extractMediaCap(rf, event.CapMsgGIF)
 	f.LocationSupported = rf.LocationMessage.Partial()
 	f.LinkPreviewsSupported = rf.Formatting[event.FmtInlineLink].Partial()
 	return f
+}
+
+func extractMediaCap(rf *event.RoomFeatures, key event.CapabilityMsgType) MediaCapFeature {
+	out := MediaCapFeature{MimeTypes: []string{}}
+	if rf == nil || rf.File == nil {
+		return out
+	}
+	ff, ok := rf.File[key]
+	if !ok || ff == nil {
+		return out
+	}
+	for mime, lvl := range ff.MimeTypes {
+		if lvl >= event.CapLevelPartialSupport || lvl == event.CapLevelDropped {
+			out.MimeTypes = append(out.MimeTypes, mime)
+		}
+	}
+	if len(out.MimeTypes) == 0 {
+		return out
+	}
+	slices.Sort(out.MimeTypes)
+	out.Supported = true
+	out.Captions = ff.Caption >= event.CapLevelPartialSupport
+	out.MaxCaptionLength = ff.MaxCaptionLength
+	out.MaxSize = ff.MaxSize
+	return out
 }
 
 func convertFileFeatures(ff *event.FileFeatures) *FileKindFeatures {

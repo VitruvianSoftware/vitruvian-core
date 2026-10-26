@@ -67,6 +67,8 @@ func TestFeaturesOfMapsEveryField(t *testing.T) {
 		Formatting:            richtext.Kinds,
 		MentionRoom:           true,
 		MaxTextLength:         4000,
+		Sticker:               MediaCapFeature{MimeTypes: []string{}},
+		GIF:                   MediaCapFeature{MimeTypes: []string{}},
 		LinkPreviewsSupported: true,
 	}, FeaturesOf(full))
 
@@ -79,8 +81,9 @@ func TestFeaturesOfMapsEveryField(t *testing.T) {
 		Reply: event.CapLevelDropped, Thread: event.CapLevelUnsupported, Edit: event.CapLevelRejected,
 		Delete: event.CapLevelRejected, Poll: event.CapLevelRejected, PollMaxOptions: 10,
 	}
-	require.Equal(t, Features{Formatting: []richtext.Kind{}}, FeaturesOf(none))
-	require.Equal(t, Features{Formatting: []richtext.Kind{}}, FeaturesOf(&event.RoomFeatures{}))
+	emptyMedia := MediaCapFeature{MimeTypes: []string{}}
+	require.Equal(t, Features{Formatting: []richtext.Kind{}, Sticker: emptyMedia, GIF: emptyMedia}, FeaturesOf(none))
+	require.Equal(t, Features{Formatting: []richtext.Kind{}, Sticker: emptyMedia, GIF: emptyMedia}, FeaturesOf(&event.RoomFeatures{}))
 
 	// Threads and no replies: a reply goes to the thread (Slack, WhatsApp community announcement groups).
 	threads := FeaturesOf(&event.RoomFeatures{Thread: event.CapLevelFullySupported})
@@ -175,7 +178,8 @@ func TestStoredFeaturesWinOverTheClient(t *testing.T) {
 
 func TestNoFeaturesOffersOnlySendReplyAndDelete(t *testing.T) {
 	ctx := context.Background()
-	require.Equal(t, Features{Reply: true, Formatting: []richtext.Kind{}, Source: "none"}, NoFeatures)
+	emptyMedia := MediaCapFeature{MimeTypes: []string{}}
+	require.Equal(t, Features{Reply: true, Formatting: []richtext.Kind{}, Source: "none", Sticker: emptyMedia, GIF: emptyMedia}, NoFeatures)
 	require.NotNil(t, NoFeatures.Formatting, "the wire always carries a list")
 	for _, k := range richtext.Kinds {
 		require.False(t, NoFeatures.Keeps(k), k)
@@ -538,4 +542,107 @@ func TestFileKindFeaturesMappedFromRoomCapabilities(t *testing.T) {
 	require.False(t, empty.LocationSupported)
 	require.False(t, empty.LinkPreviewsSupported)
 	require.Nil(t, empty.ImageFeatures)
+}
+
+func TestStickerAndGIFRoomFeatures(t *testing.T) {
+	// WhatsApp-like capabilities: CapMsgSticker with image/webp full + Caption: CapLevelDropped;
+	// CapMsgGIF with video/mp4 full + Caption: CapLevelFullySupported.
+	wa := FeaturesOf(&event.RoomFeatures{
+		File: event.FileFeatureMap{
+			event.CapMsgSticker: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"image/webp":        event.CapLevelFullySupported,
+					"image/png":         event.CapLevelPartialSupport,
+					"image/jpeg":        event.CapLevelPartialSupport,
+					"video/lottie+json": event.CapLevelPartialSupport,
+				},
+				Caption: event.CapLevelDropped,
+				MaxSize: 16 << 20,
+			},
+			event.CapMsgGIF: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"video/mp4": event.CapLevelFullySupported,
+					"image/gif": event.CapLevelUnsupported,
+				},
+				Caption:          event.CapLevelFullySupported,
+				MaxCaptionLength: 1024,
+				MaxSize:          16 << 20,
+			},
+		},
+	})
+	require.Equal(t, MediaCapFeature{
+		Supported: true,
+		MimeTypes: []string{"image/jpeg", "image/png", "image/webp", "video/lottie+json"},
+		Captions:  false,
+		MaxSize:   16 << 20,
+	}, wa.Sticker)
+	require.Equal(t, MediaCapFeature{
+		Supported:        true,
+		MimeTypes:        []string{"video/mp4"},
+		Captions:         true,
+		MaxCaptionLength: 1024,
+		MaxSize:          16 << 20,
+	}, wa.GIF)
+
+	// Google Messages / Slack capabilities: CapMsgGIF with image/gif full, CapMsgSticker absent -> Sticker.Supported == false.
+	gm := FeaturesOf(&event.RoomFeatures{
+		File: event.FileFeatureMap{
+			event.CapMsgGIF: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"image/gif": event.CapLevelFullySupported,
+				},
+				Caption:          event.CapLevelFullySupported,
+				MaxCaptionLength: 4000,
+				MaxSize:          50 << 20,
+			},
+		},
+	})
+	require.Equal(t, MediaCapFeature{
+		Supported: false,
+		MimeTypes: []string{},
+	}, gm.Sticker)
+	require.Equal(t, MediaCapFeature{
+		Supported:        true,
+		MimeTypes:        []string{"image/gif"},
+		Captions:         true,
+		MaxCaptionLength: 4000,
+		MaxSize:          50 << 20,
+	}, gm.GIF)
+
+	// CapLevelRejected / CapLevelUnsupported MIME filtering (only CapLevelFullySupported, CapLevelPartialSupport,
+	// and CapLevelDropped count as sendable MIME types; MimeTypes sorted deterministically).
+	filtered := FeaturesOf(&event.RoomFeatures{
+		File: event.FileFeatureMap{
+			event.CapMsgSticker: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"image/webp": event.CapLevelDropped,
+					"image/png":  event.CapLevelFullySupported,
+					"image/apng": event.CapLevelPartialSupport,
+					"image/bmp":  event.CapLevelRejected,
+					"image/tiff": event.CapLevelUnsupported,
+				},
+				Caption:          event.CapLevelPartialSupport,
+				MaxCaptionLength: 200,
+				MaxSize:          512 << 10,
+			},
+			event.CapMsgGIF: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"image/gif": event.CapLevelRejected,
+					"video/mp4": event.CapLevelUnsupported,
+				},
+				MaxSize: 512 << 10,
+			},
+		},
+	})
+	require.Equal(t, MediaCapFeature{
+		Supported:        true,
+		MimeTypes:        []string{"image/apng", "image/png", "image/webp"},
+		Captions:         true,
+		MaxCaptionLength: 200,
+		MaxSize:          512 << 10,
+	}, filtered.Sticker)
+	require.Equal(t, MediaCapFeature{
+		Supported: false,
+		MimeTypes: []string{},
+	}, filtered.GIF)
 }

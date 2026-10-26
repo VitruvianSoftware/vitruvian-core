@@ -64,6 +64,20 @@ func everything() *event.RoomFeatures {
 				Caption:   full,
 				MaxSize:   2 << 30,
 			},
+			event.CapMsgSticker: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"image/webp": full,
+					"image/png":  event.CapLevelPartialSupport,
+				},
+				Caption: event.CapLevelDropped,
+				MaxSize: 16 << 20,
+			},
+			event.CapMsgGIF: {
+				MimeTypes:        map[string]event.CapabilitySupportLevel{"video/mp4": full},
+				Caption:          full,
+				MaxCaptionLength: 1024,
+				MaxSize:          16 << 20,
+			},
 		},
 	}
 }

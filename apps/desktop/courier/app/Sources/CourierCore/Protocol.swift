@@ -16,7 +16,7 @@ import Foundation
 
 /// The protocol this app speaks, and the framing limit both sides keep.
 public enum CourierProtocol {
-    public static let version = 7
+    public static let version = 8
     /// The longest line either side may send, not counting the newline.
     public static let maxFrameBytes = 4_194_304
     /// protocol.json's `conventions.typing_repeat_ms`: while the text keeps changing, room.setTyping true goes again
@@ -2440,6 +2440,56 @@ public struct FileKindFeatures: ProtocolType, Equatable, Hashable, Sendable {
     }
 }
 
+public struct MediaCapFeature: ProtocolType, Equatable, Hashable, Sendable {
+    public static let protocolName = "MediaCapFeature"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var supported: Bool
+    public var mimeTypes: [String]
+    public var captions: Bool
+    public var maxCaptionLength: Int
+    public var maxSize: Int64
+
+    public static let unsupported = MediaCapFeature(supported: false, mimeTypes: [], captions: false, maxCaptionLength: 0, maxSize: 0)
+
+    public init(supported: Bool = false, mimeTypes: [String] = [], captions: Bool = false,
+                maxCaptionLength: Int = 0, maxSize: Int64 = 0) {
+        self.supported = supported
+        self.mimeTypes = mimeTypes
+        self.captions = captions
+        self.maxCaptionLength = maxCaptionLength
+        self.maxSize = maxSize
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case supported
+        case mimeTypes = "mime_types"
+        case captions
+        case maxCaptionLength = "max_caption_length"
+        case maxSize = "max_size"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        supported = try container.decode(Bool.self, forKey: .supported)
+        mimeTypes = try container.decodeIfPresent([String].self, forKey: .mimeTypes) ?? []
+        captions = try container.decodeIfPresent(Bool.self, forKey: .captions) ?? false
+        maxCaptionLength = try container.decodeIfPresent(Int.self, forKey: .maxCaptionLength) ?? 0
+        maxSize = try container.decodeIfPresent(Int64.self, forKey: .maxSize) ?? 0
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(supported, forKey: .supported)
+        try container.encode(mimeTypes, forKey: .mimeTypes)
+        try container.encode(captions, forKey: .captions)
+        if maxCaptionLength > 0 { try container.encode(maxCaptionLength, forKey: .maxCaptionLength) }
+        if maxSize > 0 { try container.encode(maxSize, forKey: .maxSize) }
+    }
+}
+
+public typealias MediaCapFeatureWire = MediaCapFeature
+public typealias RoomFeaturesResult = ChatFeatures
+
 /// What a person can do in one chat, as its network's bridge says (room.features). A greyed action says why from
 /// these, in Courier's words (MessageActions).
 public struct ChatFeatures: ProtocolType, Equatable {
@@ -2497,11 +2547,14 @@ public struct ChatFeatures: ProtocolType, Equatable {
     public var fileFeatures: FileKindFeatures?
     public var gifFeatures: FileKindFeatures?
     public var stickerFeatures: FileKindFeatures?
+    public var sticker: MediaCapFeature
+    public var gif: MediaCapFeature
     public var locationSupported: Bool
     public var linkPreviewsSupported: Bool
 
     /// A chat with nothing stored and no network to ask: only send, reply and Delete for Me.
     public static let noFeatures = ChatFeatures(reply: true, source: .none)
+    public static let conservative = noFeatures
 
     public init(reply: Bool = false, thread: Bool = false, replyIsThread: Bool = false, edit: Bool = false,
                 editMaxAgeMS: Int64 = 0, editMaxCount: Int = 0, unsend: Bool = false, unsendMaxAgeMS: Int64 = 0,
@@ -2515,6 +2568,7 @@ public struct ChatFeatures: ProtocolType, Equatable {
                 videoFeatures: FileKindFeatures? = nil, audioFeatures: FileKindFeatures? = nil,
                 voiceFeatures: FileKindFeatures? = nil, fileFeatures: FileKindFeatures? = nil,
                 gifFeatures: FileKindFeatures? = nil, stickerFeatures: FileKindFeatures? = nil,
+                sticker: MediaCapFeature = .unsupported, gif: MediaCapFeature = .unsupported,
                 locationSupported: Bool = false, linkPreviewsSupported: Bool = false) {
         self.reply = reply
         self.thread = thread
@@ -2549,6 +2603,8 @@ public struct ChatFeatures: ProtocolType, Equatable {
         self.fileFeatures = fileFeatures
         self.gifFeatures = gifFeatures
         self.stickerFeatures = stickerFeatures
+        self.sticker = sticker
+        self.gif = gif
         self.locationSupported = locationSupported
         self.linkPreviewsSupported = linkPreviewsSupported
     }
@@ -2587,6 +2643,8 @@ public struct ChatFeatures: ProtocolType, Equatable {
         case fileFeatures = "file_features"
         case gifFeatures = "gif_features"
         case stickerFeatures = "sticker_features"
+        case sticker
+        case gif
         case locationSupported = "location_supported"
         case linkPreviewsSupported = "link_previews_supported"
     }
@@ -2628,6 +2686,8 @@ public struct ChatFeatures: ProtocolType, Equatable {
         fileFeatures = try container.decodeIfPresent(FileKindFeatures.self, forKey: .fileFeatures)
         gifFeatures = try container.decodeIfPresent(FileKindFeatures.self, forKey: .gifFeatures)
         stickerFeatures = try container.decodeIfPresent(FileKindFeatures.self, forKey: .stickerFeatures)
+        sticker = try container.decodeIfPresent(MediaCapFeature.self, forKey: .sticker) ?? .unsupported
+        gif = try container.decodeIfPresent(MediaCapFeature.self, forKey: .gif) ?? .unsupported
         locationSupported = try container.decodeIfPresent(Bool.self, forKey: .locationSupported) ?? false
         linkPreviewsSupported = try container.decodeIfPresent(Bool.self, forKey: .linkPreviewsSupported) ?? false
     }
@@ -2668,6 +2728,8 @@ public struct ChatFeatures: ProtocolType, Equatable {
         try container.encodeIfPresent(fileFeatures, forKey: .fileFeatures)
         try container.encodeIfPresent(gifFeatures, forKey: .gifFeatures)
         try container.encodeIfPresent(stickerFeatures, forKey: .stickerFeatures)
+        try container.encode(sticker, forKey: .sticker)
+        try container.encode(gif, forKey: .gif)
         try container.encode(locationSupported, forKey: .locationSupported)
         try container.encode(linkPreviewsSupported, forKey: .linkPreviewsSupported)
     }
@@ -4369,7 +4431,7 @@ public enum ProtocolMethods {
         BlastMessage.self, BlastSendParams.self, BlastSendResult.self, MergedChat.self, MergeSuggestion.self,
         MergeCreateParams.self, MergeUpdateParams.self, MergeDeleteParams.self, MergeListResult.self,
         MergeSuggestResult.self,
-        FileKindFeatures.self, LinkPreviewItem.self, MarkPlayedParams.self, SendVoiceParams.self, SendLocationParams.self,
+        FileKindFeatures.self, MediaCapFeature.self, LinkPreviewItem.self, MarkPlayedParams.self, SendVoiceParams.self, SendLocationParams.self,
     ]
 
     /// The open-valued fields, by "Type.field", with the values this app knows.

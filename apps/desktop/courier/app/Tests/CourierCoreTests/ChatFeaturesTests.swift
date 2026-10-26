@@ -367,7 +367,7 @@ final class ChatFeaturesTests: XCTestCase {
     }
 
     func testMediaCapabilityAndProtocolV7TypesRoundTrip() throws {
-        XCTAssertEqual(CourierProtocol.version, 7)
+        XCTAssertEqual(CourierProtocol.version, 8)
 
         let voiceCap = FileKindFeatures(
             supported: true,
@@ -460,5 +460,40 @@ final class ChatFeaturesTests: XCTestCase {
 
         let sendParams = SendParams(roomID: "!r1:courier.local", body: "https://example.test", disableLinkPreview: true)
         XCTAssertEqual(try JSONDecoder().decode(SendParams.self, from: JSONEncoder().encode(sendParams)).disableLinkPreview, true)
+    }
+
+    func testStickerAndGIFFeaturesDecodeAndConservativeDefaults() throws {
+        XCTAssertFalse(ChatFeatures.noFeatures.sticker.supported)
+        XCTAssertEqual(ChatFeatures.noFeatures.sticker.mimeTypes, [])
+        XCTAssertFalse(ChatFeatures.noFeatures.gif.supported)
+        XCTAssertEqual(ChatFeatures.noFeatures.gif.mimeTypes, [])
+        XCTAssertFalse(ChatFeatures.conservative.sticker.supported)
+        XCTAssertFalse(ChatFeatures.conservative.gif.supported)
+
+        let stickerCap = MediaCapFeatureWire(
+            supported: true,
+            mimeTypes: ["image/png", "image/webp"],
+            captions: false,
+            maxCaptionLength: 0,
+            maxSize: 16 * 1024 * 1024
+        )
+        let gifCap = MediaCapFeatureWire(
+            supported: true,
+            mimeTypes: ["video/mp4"],
+            captions: true,
+            maxCaptionLength: 1024,
+            maxSize: 16 * 1024 * 1024
+        )
+        let features = ChatFeatures(
+            source: .stored,
+            sticker: stickerCap,
+            gif: gifCap
+        )
+        let encoded = try JSONEncoder().encode(features)
+        let decoded = try JSONDecoder().decode(ChatFeatures.self, from: encoded)
+        XCTAssertEqual(decoded.sticker, stickerCap)
+        XCTAssertEqual(decoded.gif, gifCap)
+        XCTAssertTrue(decoded.supportsStickers)
+        XCTAssertTrue(decoded.supportsGIFs)
     }
 }

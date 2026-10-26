@@ -245,8 +245,8 @@ final class ProtocolConformanceTests: XCTestCase {
     }
 
     func testProtocol6TypesDecodeAndRoundTrip() throws {
-        XCTAssertEqual(protocolVersion, 7)
-        XCTAssertEqual(CourierProtocol.version, 7)
+        XCTAssertEqual(protocolVersion, 8)
+        XCTAssertEqual(CourierProtocol.version, 8)
         XCTAssertEqual(RPCErrorCode(number: -32027), .networkRefused)
 
         let infoJSON = """

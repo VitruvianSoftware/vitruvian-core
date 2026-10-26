@@ -345,7 +345,7 @@ func (p *protocolSpec) checkExample(ex example) error {
 
 func TestEveryExampleFitsTheProtocol(t *testing.T) {
 	p, exs := loadProtocol(t)
-	require.Equal(t, 7, Protocol, "engine speaks protocol 7")
+	require.Equal(t, 8, Protocol, "engine speaks protocol 8")
 	require.Equal(t, Protocol, p.Protocol, "protocol.json and the engine speak the same protocol")
 	require.Equal(t, MaxFrameBytes, p.Transport.MaxFrameBytes)
 	for _, ex := range exs {
@@ -391,6 +391,7 @@ func TestEveryExampleFitsTheProtocol(t *testing.T) {
 func TestGoStructJSONKeysMatchProtocol(t *testing.T) {
 	p, _ := loadProtocol(t)
 	fk := &actions.FileKindFeatures{MimeTypes: []string{"image/png"}, MaxCaptionLength: 1, MaxSize: 1, MaxDurationSec: 1}
+	mc := actions.MediaCapFeature{Supported: true, MimeTypes: []string{"image/webp"}, Captions: true, MaxCaptionLength: 1, MaxSize: 1}
 	cases := []struct {
 		typeName string
 		val      any
@@ -399,8 +400,10 @@ func TestGoStructJSONKeysMatchProtocol(t *testing.T) {
 			Poll: &actions.PollFeatures{}, Disappearing: &actions.DisappearingFeatures{},
 			ImageFeatures: fk, VideoFeatures: fk, AudioFeatures: fk, VoiceFeatures: fk,
 			FileFeatures: fk, GIFFeatures: fk, StickerFeatures: fk,
+			Sticker: mc, GIF: mc,
 		}},
 		{"FileKindFeatures", *fk},
+		{"MediaCapFeature", mc},
 		{"Member", store.MemberHit{}},
 		{"RoomInfoResult", actions.RoomInfo{}},
 		{"ContactCandidate", actions.ContactCandidate{RoomID: "!r:courier.local"}},

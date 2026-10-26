@@ -1,6 +1,6 @@
 {
   "name": "Courier engine protocol",
-  "protocol": 7,
+  "protocol": 8,
   "doc": "How Courier.app talks to its courier-engine helper. This file is the single definition: the engine's Go tests and the app's Swift tests both check the examples in examples/ against it, and the Swift Codable types are named exactly as the entries in types. Copyright 2026 VitruvianSoftware, SPDX-License-Identifier: AGPL-3.0-or-later.",
 
   "transport": {
@@ -1290,6 +1290,8 @@
         "file_features": { "type": "FileKindFeatures?" },
         "gif_features": { "type": "FileKindFeatures?" },
         "sticker_features": { "type": "FileKindFeatures?" },
+        "sticker": { "type": "MediaCapFeature" },
+        "gif": { "type": "MediaCapFeature" },
         "location_supported": {
           "type": "bool?",
           "doc": "Whether the chat supports sending location pins (m.location)."
@@ -1309,6 +1311,16 @@
         "max_caption_length": { "type": "int?" },
         "max_size": { "type": "int?" },
         "max_duration_sec": { "type": "int?" }
+      }
+    },
+    "MediaCapFeature": {
+      "doc": "Sticker or GIF sending capabilities from a bridge's event.RoomFeatures.File map.",
+      "fields": {
+        "supported": { "type": "bool" },
+        "mime_types": { "type": "string[]" },
+        "captions": { "type": "bool" },
+        "max_caption_length": { "type": "int?" },
+        "max_size": { "type": "int?" }
       }
     },
     "PollFeatures": {

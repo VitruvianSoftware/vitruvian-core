@@ -300,7 +300,11 @@ extension ChatFeatures {
     }
 
     public var supportsStickers: Bool {
-        stickerFeatures?.supported == true
+        sticker.supported || stickerFeatures?.supported == true
+    }
+
+    public var supportsGIFs: Bool {
+        gif.supported || gifFeatures?.supported == true
     }
 
     public func maxSizeBytes(for msgType: String) -> Int64? {

@@ -158,11 +158,21 @@ type chatFeatures struct {
 	FileFeatures           *actions.FileKindFeatures `json:"file_features,omitempty"`
 	GIFFeatures            *actions.FileKindFeatures `json:"gif_features,omitempty"`
 	StickerFeatures        *actions.FileKindFeatures `json:"sticker_features,omitempty"`
+	Sticker                actions.MediaCapFeature   `json:"sticker"`
+	GIF                    actions.MediaCapFeature   `json:"gif"`
 	LocationSupported      bool                      `json:"location_supported"`
 	LinkPreviewsSupported  bool                      `json:"link_previews_supported"`
 }
 
 func (d *Deps) toChatFeatures(ctx context.Context, roomID string, f actions.Features) (chatFeatures, error) {
+	sticker := f.Sticker
+	if sticker.MimeTypes == nil {
+		sticker.MimeTypes = []string{}
+	}
+	gif := f.GIF
+	if gif.MimeTypes == nil {
+		gif.MimeTypes = []string{}
+	}
 	out := chatFeatures{
 		Reply: f.Reply, Thread: f.Thread, ReplyIsThread: f.ReplyIsThread, Edit: f.Edit,
 		EditMaxAgeMS: f.EditMaxAge.Milliseconds(), EditMaxCount: f.EditMaxCount, Unsend: f.Unsend,
@@ -176,7 +186,7 @@ func (d *Deps) toChatFeatures(ctx context.Context, roomID string, f actions.Feat
 		CanLeave: f.CanLeave, CanDelete: f.CanDelete, DeleteLeavesGroup: f.DeleteLeavesGroup,
 		ImageFeatures: f.ImageFeatures, VideoFeatures: f.VideoFeatures, AudioFeatures: f.AudioFeatures,
 		VoiceFeatures: f.VoiceFeatures, FileFeatures: f.FileFeatures, GIFFeatures: f.GIFFeatures,
-		StickerFeatures: f.StickerFeatures, LocationSupported: f.LocationSupported,
+		StickerFeatures: f.StickerFeatures, Sticker: sticker, GIF: gif, LocationSupported: f.LocationSupported,
 		LinkPreviewsSupported: f.LinkPreviewsSupported,
 	}
 	if f.Poll != nil {
