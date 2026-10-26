@@ -118,4 +118,11 @@ func TestListRecentStickersAndGIFs(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, distinct40, 40, "200 repeats of one sticker plus 39 others must return 40 distinct stickers")
 	require.Equal(t, "mxc://courier.local/repeat000", distinct40[0].URL)
+	require.LessOrEqual(t, recentRowsDecoded.Load(), int64(40), "SQL must deduplicate and bound rows to limit before Go decodes")
+
+	// Requesting limit 5 over 250+ rows must decode at most 5 rows from SQL.
+	distinct5, err := s.ListRecentStickers(ctx, 5)
+	require.NoError(t, err)
+	require.Len(t, distinct5, 5)
+	require.LessOrEqual(t, recentRowsDecoded.Load(), int64(5), "SQL LIMIT must bound decoded rows to 5")
 }
