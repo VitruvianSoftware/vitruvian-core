@@ -49,7 +49,7 @@ load("@build_bazel_rules_swift//swift:swift_binary.bzl", "swift_binary")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
 load("@rules_go//go:def.bzl", "go_binary")
-load("@rules_rust//rust:defs.bzl", "rust_binary")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 load("//tools/pytest:defs.bzl", pytest_test = "py_test")
 
@@ -300,6 +300,59 @@ py_test(
     ],
     data = REFERENCE_TOOL + REFERENCE_TOOL_2,
     main = "conformance/conformance_test.py",
+)
+
+# Native Rust port of the SDK conformance validator (std only, zero external
+# crates). Kept alongside conformance.py so existing Python callers continue to
+# import conformance.py while CLI users and parity tests run the native binary.
+rust_library(
+    name = "conformance_rs_lib",
+    srcs = glob(
+        ["conformance/src/**/*.rs"],
+        exclude = ["conformance/src/main.rs"],
+    ),
+    crate_name = "conformance_rs_lib",
+    crate_root = "conformance/src/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//packages/vitruvian-sdk/consumers:tools"],
+)
+
+rust_binary(
+    name = "conformance-rs",
+    srcs = ["conformance/src/main.rs"],
+    crate_root = "conformance/src/main.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//packages/vitruvian-sdk/consumers:tools"],
+    deps = [":conformance_rs_lib"],
+)
+
+alias(
+    name = "conformance_rs",
+    actual = ":conformance-rs",
+    visibility = ["//packages/vitruvian-sdk/consumers:tools"],
+)
+
+rust_test(
+    name = "conformance_rs_lib_test",
+    size = "small",
+    crate = ":conformance_rs_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+py_test(
+    name = "conformance_rs_parity_test",
+    size = "small",
+    srcs = [
+        "conformance/conformance.py",
+        "conformance/conformance_rs_parity_test.py",
+        "conformance/conformance_test.py",
+    ],
+    args = ["$(rootpath :conformance_rs)"],
+    data = REFERENCE_TOOL + REFERENCE_TOOL_2 + [":conformance_rs"],
+    main = "conformance/conformance_rs_parity_test.py",
 )
 
 # --- The samples ---------------------------------------------------------------
