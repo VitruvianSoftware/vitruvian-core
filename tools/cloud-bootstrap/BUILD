@@ -75,6 +75,19 @@ sh_binary(
     visibility = ["//visibility:public"],
 )
 
+sh_binary(
+    name = "configure-tailscale",
+    srcs = ["configure-tailscale.sh"],
+    visibility = ["//visibility:public"],
+)
+
+sh_test(
+    name = "configure-tailscale_test",
+    size = "small",
+    srcs = ["configure-tailscale_test.sh"],
+    data = ["configure-tailscale.sh"],
+)
+
 # Hermetic guard for the properties whose failure would be a PRIVILEGE ESCALATION
 # or a SECRET LEAK -- not for the installers, which are network downloads whose
 # only interesting property is "did curl work". It drives the real script's auth
