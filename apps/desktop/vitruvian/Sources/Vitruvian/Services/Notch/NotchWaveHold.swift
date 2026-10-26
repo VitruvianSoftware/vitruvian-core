@@ -5,6 +5,7 @@ import AppKit
 
 /// A window offscreen only to change displays. The music wave reads this
 /// and keeps its pose instead of falling to dots.
+@MainActor
 package protocol NotchWaveHold: AnyObject {
     var holdsWave: Bool { get }
 }
@@ -18,6 +19,7 @@ package enum NotchWave {
 /// The bars of a music wave as the island's windows move them between
 /// displays: drawn in their present pose, read, taken over and let go. The
 /// view that draws them lives in UI, which this layer cannot name.
+@MainActor
 package protocol NotchWavePosing: AnyObject {
     func refreshMotion()
     func barHeights() -> [CGFloat]

@@ -86,6 +86,7 @@ extension NotchIslandHost {
     package func orderFrontForRelocation() {}
     package func cancelRelocation() {}
     package func matchWave(from other: NSView?) {}
+    package func hide(animated: Bool) { hide(animated: animated, transitionContent: .dismiss) }
 }
 
 extension NotchWindowHost: NotchIslandHost {
