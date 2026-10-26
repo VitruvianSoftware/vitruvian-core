@@ -63,6 +63,18 @@ public final class ComposerPreferences: ObservableObject {
     @Published public var showTyping: Bool { didSet { set(showTyping, "showTyping") } }
     /// "Show incognito mode indicator" (02 §1.3, on): a small mark in the message box while Incognito is on.
     @Published public var showIncognitoMark: Bool { didSet { set(showIncognitoMark, "showIncognitoMark") } }
+    /// "Enable emoji autocomplete" (`setting:general Enable emoji autocomplete`, default `true`).
+    @Published public var enableEmojiAutocomplete: Bool {
+        didSet { set(enableEmojiAutocomplete, "enableEmojiAutocomplete") }
+    }
+    /// "Disable automatic replacement of emoticons with emojis" (`setting:general Disable automatic replacement of emoticons with emojis`, default `false`).
+    @Published public var disableEmoticonReplacement: Bool {
+        didSet { set(disableEmoticonReplacement, "disableEmoticonReplacement") }
+    }
+    /// "Automatically send GIFs after selection" (`setting:general Automatically send GIFs after selection`, default `false`).
+    @Published public var autoSendGIFs: Bool {
+        didSet { set(autoSendGIFs, "autoSendGIFs") }
+    }
     public static let showChatUpdatesKey = "courier.chat.showChatUpdatesInTimeline"
     /// "Show chat updates in timeline" (02 §1.2, on): consecutive m.room.member events are shown as a collapsed run.
     @Published public var showChatUpdatesInTimeline: Bool {
@@ -132,6 +144,9 @@ public final class ComposerPreferences: ObservableObject {
         incognito = bool("incognito", false)
         showTyping = bool("showTyping", true)
         showIncognitoMark = bool("showIncognitoMark", true)
+        enableEmojiAutocomplete = bool("enableEmojiAutocomplete", true)
+        disableEmoticonReplacement = bool("disableEmoticonReplacement", false)
+        autoSendGIFs = bool("autoSendGIFs", false)
         showChatUpdatesInTimeline = defaults.object(forKey: Self.showChatUpdatesKey) as? Bool ?? true
         autoPlayNextVoiceNote = defaults.object(forKey: Self.autoPlayNextVoiceNoteKey) as? Bool ?? true
         preferredMicrophoneUID = defaults.string(forKey: Self.preferredMicrophoneUIDKey) ?? ""

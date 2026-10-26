@@ -2062,6 +2062,9 @@
 "Edit your last message" = "Edit your last message";
 "Show formatting menu" = "Show formatting menu";
 "A bar of formatting buttons over the text you select." = "A bar of formatting buttons over the text you select.";
+"Enable emoji autocomplete" = "Enable emoji autocomplete";
+"Disable automatic replacement of emoticons with emojis" = "Disable automatic replacement of emoticons with emojis";
+"Automatically send GIFs after selection" = "Automatically send GIFs after selection";
 "On double-clicking a message" = "On double-clicking a message";
 "Show the reaction picker" = "Show the reaction picker";
 "Show the menu" = "Show the menu";
