@@ -79,6 +79,20 @@ public final class ComposerPreferences: ObservableObject {
     @Published public var preferredMicrophoneUID: String {
         didSet { defaults.set(preferredMicrophoneUID, forKey: Self.preferredMicrophoneUIDKey) }
     }
+    public static let downloadsDirectoryPathKey = "courier.preferences.downloadsDirectoryPath"
+    /// Default folder where downloaded attachments are saved (`~/Downloads`).
+    public static var defaultDownloadsDirectoryPath: String {
+        ("~/Downloads" as NSString).expandingTildeInPath
+    }
+    /// Folder path where downloaded attachments are saved (`setting:general Downloads location <path>`).
+    @Published public var downloadsDirectoryPath: String {
+        didSet { defaults.set(downloadsDirectoryPath, forKey: Self.downloadsDirectoryPathKey) }
+    }
+    public static let alwaysAskWhereToSaveFilesKey = "courier.preferences.alwaysAskWhereToSaveFiles"
+    /// Whether downloading an attachment opens a save panel first (`setting:general Always ask where to save files before downloading`).
+    @Published public var alwaysAskWhereToSaveFiles: Bool {
+        didSet { defaults.set(alwaysAskWhereToSaveFiles, forKey: Self.alwaysAskWhereToSaveFilesKey) }
+    }
 
     /// The key a setting is kept under.
     public static func key(_ name: String) -> String { "courier.composer." + name }
@@ -111,6 +125,9 @@ public final class ComposerPreferences: ObservableObject {
         showChatUpdatesInTimeline = defaults.object(forKey: Self.showChatUpdatesKey) as? Bool ?? true
         autoPlayNextVoiceNote = defaults.object(forKey: Self.autoPlayNextVoiceNoteKey) as? Bool ?? true
         preferredMicrophoneUID = defaults.string(forKey: Self.preferredMicrophoneUIDKey) ?? ""
+        let storedDownloadsPath = defaults.string(forKey: Self.downloadsDirectoryPathKey) ?? ""
+        downloadsDirectoryPath = storedDownloadsPath.isEmpty ? Self.defaultDownloadsDirectoryPath : storedDownloadsPath
+        alwaysAskWhereToSaveFiles = defaults.object(forKey: Self.alwaysAskWhereToSaveFilesKey) as? Bool ?? false
     }
 
     private func set(_ value: Any, _ name: String) {

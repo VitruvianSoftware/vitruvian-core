@@ -98,14 +98,12 @@ struct ComposerView: View {
                 ReplyChip(quote: reply) { composer.cancelReply() }
             }
             if !composer.attachments.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(composer.attachments) { attachment in
-                            PendingAttachmentChip(attachment: attachment) {
-                                composer.removeAttachment(attachment.id)
-                            }
-                        }
-                    }
+                PendingAttachmentsStrip(
+                    attachments: composer.attachments,
+                    features: composer.features,
+                    network: activeReplyNetwork ?? composer.network
+                ) { id in
+                    composer.removeAttachment(id)
                 }
             }
             picker

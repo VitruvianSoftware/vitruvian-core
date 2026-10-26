@@ -19,6 +19,13 @@ struct ConversationCommands: Commands {
     @ObservedObject var focus: MessageFocus
 
     var body: some Commands {
+        CommandGroup(after: .newItem) {
+            Divider()
+            FileOpenCommandItem(
+                composer: composer,
+                isDisabled: conversation.roomID == nil
+            )
+        }
         CommandMenu(String(localized: "Message")) {
             Button(String(localized: "Edit…"), action: edit)
                 .keyboardShortcut("t", modifiers: .command)
@@ -54,9 +61,12 @@ struct ConversationCommands: Commands {
             Divider()
             formatting
             Divider()
-            Button(String(localized: "Attach Files…")) { AttachmentPicker.run(into: conversation.composer) }
+            Button(String(localized: "Attach Files…")) { AttachmentPicker.run(into: composer) }
                 .keyboardShortcut("o", modifiers: .command)
                 .disabled(conversation.roomID == nil)
+            Button(String(localized: "Download Attachments"), action: downloadAttachments)
+                .keyboardShortcut("d", modifiers: .command)
+                .disabled(!canDownloadAttachments)
             Button(String(localized: "Record Voice Note")) {
                 Task { await composer.startVoiceRecording() }
             }
@@ -157,6 +167,66 @@ struct ConversationCommands: Commands {
     private func openLink() {
         guard let selected else { return }
         Task { await messageActions.perform(.openFirstLink, on: selected.id, from: selected.source) }
+    }
+
+    private var canDownloadAttachments: Bool {
+        if let lightboxID = conversation.activeLightboxMessageID {
+            return hasDownloadableAttachment(forLightboxID: lightboxID)
+        }
+        guard let selected,
+              let message = conversation.message(selected.id, from: selected.source),
+              !message.viewOnce
+        else {
+            return false
+        }
+        if !message.galleryItems.isEmpty {
+            return message.galleryItems.contains { isLocalMediaStorePath($0.mediaPath) }
+        }
+        return isLocalMediaStorePath(message.mediaPath)
+    }
+
+    /// ⌘D: downloads all local attachments on the selected message (or the active lightbox item).
+    private func downloadAttachments() {
+        let prefs = conversation.preferences ?? ComposerPreferences()
+        if let lightboxID = conversation.activeLightboxMessageID {
+            for case let .message(msg) in conversation.items {
+                if msg.id == lightboxID {
+                    ReceivedFile.downloadAll(on: msg, preferences: prefs)
+                    return
+                }
+                if let item = msg.galleryItems.first(where: { $0.id == lightboxID }),
+                   isLocalMediaStorePath(item.mediaPath) {
+                    let downloader = AttachmentDownloader(preferences: prefs)
+                    _ = try? downloader.download(
+                        sourcePath: item.mediaPath,
+                        suggestedName: item.fileName.isEmpty ? "attachment" : item.fileName,
+                        mimeType: item.mimeType
+                    )
+                    return
+                }
+            }
+        }
+        guard let selected,
+              let message = conversation.message(selected.id, from: selected.source)
+        else {
+            return
+        }
+        ReceivedFile.downloadAll(on: message, preferences: prefs)
+    }
+
+    private func hasDownloadableAttachment(forLightboxID lightboxID: String) -> Bool {
+        for case let .message(msg) in conversation.items where !msg.viewOnce {
+            if msg.id == lightboxID {
+                if !msg.galleryItems.isEmpty {
+                    return msg.galleryItems.contains { isLocalMediaStorePath($0.mediaPath) }
+                }
+                return isLocalMediaStorePath(msg.mediaPath)
+            }
+            if let item = msg.galleryItems.first(where: { $0.id == lightboxID }) {
+                return isLocalMediaStorePath(item.mediaPath)
+            }
+        }
+        return false
     }
 }
 

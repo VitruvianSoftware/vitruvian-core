@@ -1,6 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import AppKit
 import CourierCore
 import SwiftUI
 
@@ -59,11 +60,49 @@ struct MessagesSettingsPane: View {
                     voiceRecorder: activeVoiceRecorder
                 )
             }
+            downloads
             replies
         }
         .formStyle(.grouped)
         .frame(minHeight: 560)
         .sheet(item: $editing) { edit in QuickReplyEditor(edit: edit, quickReplies: quickReplies) }
+    }
+
+    // MARK: Downloads
+
+    private var downloads: some View {
+        Section(String(localized: "Downloads")) {
+            LabeledContent(String(localized: "Downloads location")) {
+                HStack(spacing: 8) {
+                    Text((preferences.downloadsDirectoryPath as NSString).abbreviatingWithTildeInPath)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Button(String(localized: "Choose…")) {
+                        chooseDownloadsDirectory()
+                    }
+                }
+            }
+            Toggle(
+                String(localized: "Always ask where to save files before downloading"),
+                isOn: $preferences.alwaysAskWhereToSaveFiles
+            )
+        }
+    }
+
+    private func chooseDownloadsDirectory() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = true
+        let current = (preferences.downloadsDirectoryPath as NSString).expandingTildeInPath
+        panel.directoryURL = URL(fileURLWithPath: current, isDirectory: true)
+        panel.prompt = String(localized: "Choose")
+        panel.message = String(localized: "Choose a folder for downloaded attachments")
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        preferences.downloadsDirectoryPath = url.path
     }
 
     // MARK: Privacy

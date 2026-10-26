@@ -1438,6 +1438,210 @@ final class ViewSnapshotTests: XCTestCase {
         }
     }
 
+    // MARK: - Part 4.5b Task 9: Inline PDFs, Rich File Cards, PendingAttachmentsStrip & FileDropOverlayView
+
+    func testInlinePDFViewFilePlaceholderAndDropOverlayLightAndDark() throws {
+        let pdfPath = try makeTwoPagePDF()
+        let imagePath = try makeTestPNG(width: 240, height: 160)
+
+        // 1. Local-only PDF rule: InlinePDFView only loads local media store files, never remote URLs.
+        XCTAssertNotNil(InlinePDFView.localPDFURL(for: pdfPath))
+        XCTAssertNil(InlinePDFView.localPDFURL(for: "https://example.com/spec.pdf"))
+        XCTAssertNil(InlinePDFView.localPDFURL(for: "mxc://courier.local/spec"))
+        XCTAssertNil(InlinePDFView.localPDFURL(for: ""))
+
+        var pdfEvent = Fixture.event(
+            "$pdf-1",
+            mine: false,
+            ts: 20,
+            content: [
+                "msgtype": .string("m.file"),
+                "body": .string("Trail-Permit-2026.pdf"),
+                "filename": .string("Trail-Permit-2026.pdf"),
+                "info": .object([
+                    "mimetype": .string("application/pdf"),
+                    "size": .int(248_576),
+                ]),
+            ],
+            name: "Alice Example"
+        )
+        pdfEvent.mediaPath = pdfPath
+        let pdfMessage = try XCTUnwrap(Fixture.messages([pdfEvent]).first)
+
+        // 2. Snapshot: InlinePDFView on Page 1 of 2 and Page 2 of 2.
+        check(try Snapshot.render("pdf-card-page-1", width: 420) {
+            InlinePDFView(message: pdfMessage, initialPageIndex: 0)
+                .padding(14)
+        })
+        check(try Snapshot.render("pdf-card-page-2", width: 420) {
+            InlinePDFView(message: pdfMessage, initialPageIndex: 1)
+                .padding(14)
+        })
+
+        // 3. Snapshot: FileAttachmentChip rich file cards (Audio, Archive, Text placeholders + local Document card).
+        let audioEvent = makeFileEvent(
+            "$file-audio",
+            filename: "Campfire-Session.flac",
+            mimeType: "audio/flac",
+            size: 14_680_064,
+            mediaPath: ""
+        )
+        let archiveEvent = makeFileEvent(
+            "$file-archive",
+            filename: "Topographic-Maps.zip",
+            mimeType: "application/zip",
+            size: 8_388_608,
+            mediaPath: ""
+        )
+        let textEvent = makeFileEvent(
+            "$file-text",
+            filename: "Packing-Checklist.txt",
+            mimeType: "text/plain",
+            size: 4_096,
+            mediaPath: pdfPath
+        )
+        let fileMessages = Fixture.messages([audioEvent, archiveEvent, textEvent])
+        XCTAssertEqual(fileMessages.count, 3)
+        XCTAssertEqual(FileAttachmentChip.Category.classify(fileName: "Campfire-Session.flac", mimeType: "audio/flac"), .audio)
+        XCTAssertEqual(FileAttachmentChip.Category.classify(fileName: "Topographic-Maps.zip", mimeType: "application/zip"), .archive)
+        XCTAssertEqual(FileAttachmentChip.Category.classify(fileName: "Packing-Checklist.txt", mimeType: "text/plain"), .text)
+        XCTAssertEqual(FileAttachmentChip.Category.classify(fileName: "Trail-Permit-2026.pdf", mimeType: "application/pdf"), .pdf)
+
+        check(try Snapshot.render("file-card", width: 420) {
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(fileMessages) { msg in
+                    FileAttachmentChip(message: msg)
+                }
+            }
+            .padding(14)
+        })
+
+        // 4. Snapshot: FileAttachmentChip showing a download in progress.
+        check(try Snapshot.render("file-card-downloading", width: 420) {
+            FileAttachmentChip(
+                message: fileMessages[2],
+                isDownloading: true
+            )
+            .padding(14)
+        })
+
+        // 5. Snapshot: PendingAttachmentsStrip including thumbnail preview and an over-limit size warning.
+        let smallAttachment = ComposerAttachment(
+            id: UUID(),
+            url: URL(fileURLWithPath: imagePath),
+            size: 184_320
+        )
+        let overLimitAttachment = ComposerAttachment(
+            id: UUID(),
+            url: URL(fileURLWithPath: pdfPath),
+            size: 30 * 1024 * 1024
+        )
+        let gmessagesFeatures = ChatFeatures(
+            reply: true,
+            source: .stored,
+            imageFeatures: FileKindFeatures(supported: true, caption: true, maxSize: 100 * 1024 * 1024),
+            fileFeatures: FileKindFeatures(supported: true, caption: true, maxSize: 25 * 1024 * 1024)
+        )
+        check(try Snapshot.render("pending-attachments-strip", width: 540) {
+            PendingAttachmentsStrip(
+                attachments: [smallAttachment, overLimitAttachment],
+                features: gmessagesFeatures,
+                network: "gmessages",
+                onRemove: { _ in }
+            )
+            .padding(14)
+        })
+
+        // 6. Snapshot: FileDropOverlayView (normal + Shift-held).
+        check(try Snapshot.render("file-drop-overlay", width: 480) {
+            VStack(spacing: 14) {
+                FileDropOverlayView(isShiftHeld: false)
+                    .frame(height: 150)
+                FileDropOverlayView(isShiftHeld: true)
+                    .frame(height: 150)
+            }
+            .padding(14)
+        })
+
+        // 7. Plain-words check: user-facing strings never expose API names.
+        let allStrings = InlinePDFView.userVisibleStrings
+            + FileAttachmentChip.userVisibleStrings
+            + FileDropOverlayView.userVisibleStrings
+        for text in allStrings {
+            XCTAssertFalse(text.contains("PDFKit"), "no API names in text people read: \(text)")
+            XCTAssertFalse(text.contains("PDFDocument"), "no API names in text people read: \(text)")
+            XCTAssertFalse(text.contains("NSWorkspace"), "no API names in text people read: \(text)")
+            XCTAssertFalse(text.contains("kLSQuarantine"), "no API names in text people read: \(text)")
+            XCTAssertFalse(text.contains("FileFeatures"), "no API names in text people read: \(text)")
+        }
+    }
+
+    private func makeFileEvent(
+        _ id: String,
+        filename: String,
+        mimeType: String,
+        size: Int64,
+        mediaPath: String
+    ) -> Event {
+        var event = Fixture.event(
+            id,
+            mine: false,
+            ts: 25,
+            content: [
+                "msgtype": .string("m.file"),
+                "body": .string(filename),
+                "filename": .string(filename),
+                "info": .object([
+                    "mimetype": .string(mimeType),
+                    "size": .int(size),
+                ]),
+            ],
+            name: "Alice Example"
+        )
+        event.mediaPath = mediaPath
+        return event
+    }
+
+    private func makeTwoPagePDF() throws -> String {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("courier-snapshot-2page-\(UUID().uuidString).pdf")
+        var mediaBox = CGRect(x: 0, y: 0, width: 360, height: 240)
+        guard let consumer = CGDataConsumer(url: url as CFURL),
+              let context = CGContext(consumer: consumer, mediaBox: &mediaBox, nil)
+        else {
+            throw SnapshotError.noBitmap("two-page-pdf")
+        }
+
+        for pageNumber in 1 ... 2 {
+            context.beginPDFPage(nil)
+            context.setFillColor(
+                pageNumber == 1
+                    ? CGColor(red: 0.94, green: 0.97, blue: 1.0, alpha: 1.0)
+                    : CGColor(red: 0.95, green: 0.99, blue: 0.95, alpha: 1.0)
+            )
+            context.fill(mediaBox)
+
+            context.setStrokeColor(CGColor(red: 0.20, green: 0.45, blue: 0.78, alpha: 1.0))
+            context.setLineWidth(4)
+            context.stroke(mediaBox.insetBy(dx: 16, dy: 16))
+
+            context.setFillColor(
+                pageNumber == 1
+                    ? CGColor(red: 0.18, green: 0.42, blue: 0.76, alpha: 1.0)
+                    : CGColor(red: 0.18, green: 0.62, blue: 0.36, alpha: 1.0)
+            )
+            if pageNumber == 1 {
+                context.fill(CGRect(x: 40, y: 120, width: 280, height: 64))
+                context.fill(CGRect(x: 40, y: 56, width: 180, height: 32))
+            } else {
+                context.fillEllipse(in: CGRect(x: 120, y: 60, width: 120, height: 120))
+            }
+            context.endPDFPage()
+        }
+        context.closePDF()
+        return url.path
+    }
+
     private func makeGalleryEvent(
         _ id: String,
         body: String,

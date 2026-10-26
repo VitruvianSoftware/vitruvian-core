@@ -589,7 +589,11 @@ struct MessageRowView: View {
                 )
                 caption
             case .file:
-                FileAttachmentChip(message: message)
+                if InlinePDFView.canDisplay(message) {
+                    InlinePDFView(message: message)
+                } else {
+                    FileAttachmentChip(message: message)
+                }
                 caption
             case .location:
                 Label(

@@ -3,6 +3,7 @@
 
 import AppKit
 import CourierCore
+import Quartz
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -13,24 +14,134 @@ enum FileSize {
     }
 }
 
-/// Opens a received file in the app meant for it. The engine's copy has no name or extension, so a copy under its
-/// real name is made first (see OpenFileCache) and that is opened.
-/// View-once media is never passed through `OpenFileCache` or opened in an external app.
+/// Coordinates macOS Quick Look (`QLPreviewPanel`) for local, quarantined attachment copies.
+@MainActor
+final class QuickLookPreviewCoordinator: NSObject, QLPreviewPanelDataSource, QLPreviewPanelDelegate {
+    static let shared = QuickLookPreviewCoordinator()
+    private var previewURL: URL?
+
+    func preview(url: URL) {
+        guard url.isFileURL else { return }
+        previewURL = url
+        guard let panel = QLPreviewPanel.shared() else { return }
+        panel.dataSource = self
+        panel.delegate = self
+        panel.reloadData()
+        panel.makeKeyAndOrderFront(nil)
+    }
+
+    nonisolated func numberOfPreviewItems(in _: QLPreviewPanel!) -> Int {
+        MainActor.assumeIsolated {
+            previewURL == nil ? 0 : 1
+        }
+    }
+
+    nonisolated func previewPanel(_: QLPreviewPanel!, previewItemAt _: Int) -> (any QLPreviewItem)! {
+        MainActor.assumeIsolated {
+            previewURL as NSURL?
+        }
+    }
+}
+
+/// Opens or downloads a received file from the engine's local media store.
+/// The engine's copy has no name or extension, so a copy under its real name is made first (see `OpenFileCache`)
+/// when opening or previewing, and `AttachmentDownloader` copies to the configured Downloads folder.
+/// View-once media and remote URLs are never opened or downloaded here.
 enum ReceivedFile {
     @MainActor
     static func open(_ message: TimelineMessage) {
-        guard !message.viewOnce, !message.mediaPath.isEmpty else { return }
+        guard !message.viewOnce, isLocalMediaStorePath(message.mediaPath) else { return }
         let source = URL(fileURLWithPath: message.mediaPath)
         let name = message.fileName
         let mime = message.mimeType
         Task.detached(priority: .userInitiated) {
             do {
                 let copy = try OpenFileCache.shared.prepare(source: source, fileName: name, mimeType: mime)
-                await MainActor.run { _ = NSWorkspace.shared.open(copy) }
+                await MainActor.run {
+                    guard copy.isFileURL else { return }
+                    _ = NSWorkspace.shared.open(copy)
+                }
             } catch {
                 await MainActor.run { NSSound.beep() }
             }
         }
+    }
+
+    @MainActor
+    static func quickLook(_ message: TimelineMessage) {
+        guard !message.viewOnce, isLocalMediaStorePath(message.mediaPath) else { return }
+        let source = URL(fileURLWithPath: message.mediaPath)
+        let name = message.fileName
+        let mime = message.mimeType
+        Task.detached(priority: .userInitiated) {
+            do {
+                let copy = try OpenFileCache.shared.prepare(source: source, fileName: name, mimeType: mime)
+                await MainActor.run {
+                    QuickLookPreviewCoordinator.shared.preview(url: copy)
+                }
+            } catch {
+                await MainActor.run { NSSound.beep() }
+            }
+        }
+    }
+
+    @MainActor
+    @discardableResult
+    static func download(
+        _ message: TimelineMessage,
+        preferences: ComposerPreferences = ComposerPreferences()
+    ) -> URL? {
+        guard !message.viewOnce, isLocalMediaStorePath(message.mediaPath) else {
+            NSSound.beep()
+            return nil
+        }
+        let downloader = AttachmentDownloader(preferences: preferences)
+        let suggested = message.fileName.isEmpty ? message.body : message.fileName
+        do {
+            return try downloader.download(
+                sourcePath: message.mediaPath,
+                suggestedName: suggested,
+                mimeType: message.mimeType
+            )
+        } catch {
+            NSSound.beep()
+            return nil
+        }
+    }
+
+    /// Downloads all local attachments on `message` (either its gallery items or the single attachment).
+    @MainActor
+    @discardableResult
+    static func downloadAll(
+        on message: TimelineMessage,
+        preferences: ComposerPreferences = ComposerPreferences()
+    ) -> [URL] {
+        guard !message.viewOnce else { return [] }
+        let downloader = AttachmentDownloader(preferences: preferences)
+        if !message.galleryItems.isEmpty {
+            var urls: [URL] = []
+            for item in message.galleryItems where isLocalMediaStorePath(item.mediaPath) {
+                let name = item.fileName.isEmpty ? "attachment" : item.fileName
+                if let saved = try? downloader.download(
+                    sourcePath: item.mediaPath,
+                    suggestedName: name,
+                    mimeType: item.mimeType
+                ) {
+                    urls.append(saved)
+                }
+            }
+            return urls
+        }
+        guard isLocalMediaStorePath(message.mediaPath) else { return [] }
+        let suggested = message.fileName.isEmpty ? message.body : message.fileName
+        if let saved = try? downloader.download(
+            sourcePath: message.mediaPath,
+            suggestedName: suggested,
+            mimeType: message.mimeType
+        ) {
+            return [saved]
+        }
+        return []
     }
 
     /// The icon of the kind of file this is, from its mime type or the extension of its name.
@@ -53,26 +164,123 @@ public func isLocalMediaStorePath(_ path: String) -> Bool {
     return trimmed.hasPrefix("/")
 }
 
-/// A file waiting in the composer: its icon, name and size, and a button that takes it out.
+/// Strip of pending attachments in `ComposerView` (`PendingAttachments.tsx`), showing thumbnail previews,
+/// human byte sizes, per-network `FileKindFeatures.maxSize` warnings before send, and remove (`×`) buttons.
+public struct PendingAttachmentsStrip: View {
+    public let attachments: [ComposerAttachment]
+    public var features: ChatFeatures
+    public var network: String
+    public let onRemove: (UUID) -> Void
+
+    public init(
+        attachments: [ComposerAttachment],
+        features: ChatFeatures = .noFeatures,
+        network: String = "",
+        onRemove: @escaping (UUID) -> Void
+    ) {
+        self.attachments = attachments
+        self.features = features
+        self.network = network
+        self.onRemove = onRemove
+    }
+
+    public var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(attachments) { attachment in
+                    PendingAttachmentChip(
+                        attachment: attachment,
+                        maxSizeBytes: Self.maxSizeBytes(for: attachment.url, in: features),
+                        network: network
+                    ) {
+                        onRemove(attachment.id)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Resolves the per-network maximum size in bytes for `url` from `features`.
+    public static func maxSizeBytes(for url: URL, in features: ChatFeatures) -> Int64? {
+        let ext = url.pathExtension.lowercased()
+        let utType = UTType(filenameExtension: ext)
+        let msgType: String
+        if ext == "gif" || utType == .gif {
+            msgType = "fi.mau.gif"
+        } else if utType?.conforms(to: .image) == true {
+            msgType = "m.image"
+        } else if utType?.conforms(to: .movie) == true || utType?.conforms(to: .video) == true {
+            msgType = "m.video"
+        } else if utType?.conforms(to: .audio) == true {
+            msgType = "m.audio"
+        } else {
+            msgType = "m.file"
+        }
+        return features.maxSizeBytes(for: msgType) ?? features.fileFeatures?.maxSize
+    }
+}
+
+/// A file waiting in the composer: its thumbnail or icon, name, byte size, optional per-network size warning, and remove (`×`) button.
 struct PendingAttachmentChip: View {
     let attachment: ComposerAttachment
+    var maxSizeBytes: Int64? = nil
+    var network: String = ""
     let remove: () -> Void
+
+    private var exceedsNetworkLimit: Bool {
+        guard let maxSizeBytes, maxSizeBytes > 0 else { return false }
+        return attachment.size > maxSizeBytes
+    }
+
+    private var warningText: String? {
+        guard let maxSizeBytes, maxSizeBytes > 0, attachment.size > maxSizeBytes else { return nil }
+        let limitText = FileSize.text(maxSizeBytes)
+        if let networkName = NetworkNames.displayName(of: network) {
+            return String(localized: "Exceeds \(networkName) \(limitText) limit")
+        }
+        return String(localized: "Exceeds \(limitText) limit")
+    }
+
+    private var imagePreview: NSImage? {
+        guard attachment.url.isFileURL else { return nil }
+        let ext = attachment.url.pathExtension.lowercased()
+        guard let utType = UTType(filenameExtension: ext), utType.conforms(to: .image) else {
+            return nil
+        }
+        return NSImage(contentsOf: attachment.url)
+    }
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(nsImage: NSWorkspace.shared.icon(forFile: attachment.url.path))
-                .resizable()
-                .frame(width: 28, height: 28)
-            VStack(alignment: .leading, spacing: 0) {
+            if let preview = imagePreview {
+                Image(nsImage: preview)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 32, height: 32)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+            } else {
+                Image(nsImage: NSWorkspace.shared.icon(forFile: attachment.url.path))
+                    .resizable()
+                    .frame(width: 28, height: 28)
+            }
+            VStack(alignment: .leading, spacing: 1) {
                 Text(attachment.fileName)
-                    .font(.callout)
+                    .font(.callout.weight(.medium))
                     .lineLimit(1)
                     .truncationMode(.middle)
-                Text(FileSize.text(attachment.size))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 4) {
+                    Text(FileSize.text(attachment.size))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if let warningText {
+                        Label(warningText, systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.orange)
+                            .lineLimit(1)
+                    }
+                }
             }
-            .frame(maxWidth: 180, alignment: .leading)
+            .frame(maxWidth: 220, alignment: .leading)
             Button(action: remove) {
                 Image(systemName: "xmark.circle.fill")
                     .foregroundStyle(.secondary)
@@ -84,66 +292,237 @@ struct PendingAttachmentChip: View {
         .padding(.vertical, 5)
         .padding(.leading, 6)
         .padding(.trailing, 8)
-        .background(RoundedRectangle(cornerRadius: 8).fill(.quaternary))
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(exceedsNetworkLimit ? Color.orange.opacity(0.14) : Color.secondary.opacity(0.14))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(exceedsNetworkLimit ? Color.orange.opacity(0.6) : Color.clear, lineWidth: 1)
+        )
         .accessibilityElement(children: .contain)
     }
 }
 
-/// A file in a message: a voice note (inline player is Task 7) or any other file. Videos render inline via
-/// `InlineVideoPlayer`. Without the file on disk yet, it says so.
-struct FileAttachmentChip: View {
-    let message: TimelineMessage
+/// Rich file card (`FileAttachment.tsx`, `FilePlaceholder.tsx`) with category icon (`Audio`, `PDF`, `Text`,
+/// `Archive`, `Document`), filename, human byte size, **Quick Look** (`Space`), **Open**, and **Download** (`⌘D`).
+public struct FileAttachmentChip: View {
+    public enum Category: String, CaseIterable, Equatable, Sendable {
+        case audio
+        case pdf
+        case text
+        case archive
+        case document
 
-    private var url: URL? {
-        isLocalMediaStorePath(message.mediaPath) ? URL(fileURLWithPath: message.mediaPath) : nil
+        public var label: String {
+            switch self {
+            case .audio: String(localized: "Audio")
+            case .pdf: String(localized: "PDF")
+            case .text: String(localized: "Text")
+            case .archive: String(localized: "Archive")
+            case .document: String(localized: "Document")
+            }
+        }
+
+        public var symbol: String {
+            switch self {
+            case .audio: "waveform"
+            case .pdf: "doc.richtext.fill"
+            case .text: "doc.text.fill"
+            case .archive: "doc.zipper"
+            case .document: "doc.fill"
+            }
+        }
+
+        public var tint: Color {
+            switch self {
+            case .audio: .purple
+            case .pdf: .red
+            case .text: .blue
+            case .archive: .orange
+            case .document: .teal
+            }
+        }
+
+        public static func classify(fileName: String, mimeType: String) -> Category {
+            let mime = mimeType.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let ext = (fileName as NSString).pathExtension.lowercased()
+
+            if mime == "application/pdf" || ext == "pdf" {
+                return .pdf
+            }
+            if mime.hasPrefix("audio/") || ["mp3", "m4a", "wav", "flac", "ogg", "opus", "aac", "aiff"].contains(ext) {
+                return .audio
+            }
+            if [
+                "application/zip",
+                "application/x-tar",
+                "application/gzip",
+                "application/x-gzip",
+                "application/x-7z-compressed",
+                "application/x-rar-compressed",
+                "application/x-bzip2",
+                "application/vnd.rar",
+            ].contains(mime) || ["zip", "tar", "gz", "tgz", "7z", "rar", "bz2", "xz", "dmg"].contains(ext) {
+                return .archive
+            }
+            if mime.hasPrefix("text/")
+                || ["application/json", "application/xml", "application/yaml"].contains(mime)
+                || ["txt", "md", "csv", "json", "xml", "yaml", "yml", "log", "rtf"].contains(ext) {
+                return .text
+            }
+            return .document
+        }
     }
 
-    var body: some View {
-        Button {
-            ReceivedFile.open(message)
-        } label: {
-            HStack(spacing: 10) {
-                icon
-                    .frame(width: 32, height: 32)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(name)
-                        .font(.callout.weight(.medium))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    Text(detail)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: 220, alignment: .leading)
-            }
-            .padding(8)
-            .background(RoundedRectangle(cornerRadius: 8).fill(.background.opacity(0.6)))
-            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.quaternary))
+    public let message: TimelineMessage
+    public var isDownloading: Bool
+    public var preferences: ComposerPreferences
+    public var onDownload: ((TimelineMessage) -> Void)?
+
+    public static let userVisibleStrings: [String] = [
+        String(localized: "Audio"),
+        String(localized: "PDF"),
+        String(localized: "Text"),
+        String(localized: "Archive"),
+        String(localized: "Document"),
+        String(localized: "Quick Look (Space)"),
+        String(localized: "Open"),
+        String(localized: "Download (⌘D)"),
+        String(localized: "Downloading…"),
+        String(localized: "Not downloaded yet"),
+    ]
+
+    public init(
+        message: TimelineMessage,
+        isDownloading: Bool = false,
+        preferences: ComposerPreferences = ComposerPreferences(),
+        onDownload: ((TimelineMessage) -> Void)? = nil
+    ) {
+        self.message = message
+        self.isDownloading = isDownloading
+        self.preferences = preferences
+        self.onDownload = onDownload
+    }
+
+    private var url: URL? {
+        guard isLocalMediaStorePath(message.mediaPath) else { return nil }
+        let candidate = URL(fileURLWithPath: message.mediaPath)
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: candidate.path, isDirectory: &isDirectory),
+              !isDirectory.boolValue
+        else {
+            return nil
         }
-        .buttonStyle(.plain)
-        .disabled(url == nil)
+        return candidate
+    }
+
+    private var category: Category {
+        Category.classify(fileName: message.fileName, mimeType: message.mimeType)
+    }
+
+    public var body: some View {
+        HStack(spacing: 10) {
+            categoryBadge
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name)
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: 210, alignment: .leading)
+            Spacer(minLength: 4)
+            actionButtons
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: 340, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 10).fill(.background.opacity(0.75)))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.quaternary))
+        .contentShape(RoundedRectangle(cornerRadius: 10))
+        .onTapGesture {
+            guard url != nil, !isDownloading else { return }
+            ReceivedFile.open(message)
+        }
         .help(url == nil ? String(localized: "Not downloaded yet") : String(localized: "Open"))
+        .accessibilityElement(children: .contain)
         .accessibilityLabel(name)
         .accessibilityHint(url == nil ? String(localized: "Not downloaded yet") : String(localized: "Opens the file"))
     }
 
     @ViewBuilder
-    private var icon: some View {
-        if url != nil {
-            Image(nsImage: ReceivedFile.icon(for: message))
-                .resizable()
-        } else {
-            Image(systemName: symbol)
-                .font(.title2)
-                .foregroundStyle(.secondary)
+    private var categoryBadge: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(category.tint.opacity(0.15))
+                .frame(width: 36, height: 36)
+            Image(systemName: category.symbol)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(category.tint)
         }
     }
 
-    private var symbol: String {
-        switch message.kind {
-        case .video: "film"
-        case .voiceNote: "waveform"
-        default: "doc"
+    @ViewBuilder
+    private var actionButtons: some View {
+        if isDownloading {
+            HStack(spacing: 5) {
+                ProgressView()
+                    .controlSize(.small)
+                Text(String(localized: "Downloading…"))
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(Capsule().fill(.quaternary.opacity(0.6)))
+        } else {
+            HStack(spacing: 4) {
+                Button {
+                    ReceivedFile.quickLook(message)
+                } label: {
+                    Image(systemName: "eye")
+                        .font(.system(size: 12, weight: .medium))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(url == nil)
+                .keyboardShortcut(.space, modifiers: [])
+                .help(String(localized: "Quick Look (Space)"))
+                .accessibilityLabel(String(localized: "Quick Look \(name)"))
+
+                Button {
+                    ReceivedFile.open(message)
+                } label: {
+                    Text(String(localized: "Open"))
+                        .font(.caption.weight(.medium))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(url == nil)
+                .help(String(localized: "Open"))
+                .accessibilityLabel(String(localized: "Open \(name)"))
+
+                Button {
+                    if let onDownload {
+                        onDownload(message)
+                    } else {
+                        ReceivedFile.download(message, preferences: preferences)
+                    }
+                } label: {
+                    Image(systemName: "arrow.down.circle")
+                        .font(.system(size: 12, weight: .medium))
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(url == nil)
+                .help(String(localized: "Download (⌘D)"))
+                .accessibilityLabel(String(localized: "Download \(name)"))
+            }
         }
     }
 
@@ -157,9 +536,15 @@ struct FileAttachmentChip: View {
     }
 
     private var detail: String {
-        var parts: [String] = []
-        if let size = message.byteSize { parts.append(FileSize.text(size)) }
-        if url == nil { parts.append(String(localized: "Not downloaded yet")) }
+        var parts: [String] = [category.label]
+        if let size = message.byteSize {
+            parts.append(FileSize.text(size))
+        }
+        if isDownloading {
+            parts.append(String(localized: "Downloading…"))
+        } else if url == nil {
+            parts.append(String(localized: "Not downloaded yet"))
+        }
         return parts.joined(separator: " · ")
     }
 }

@@ -39,6 +39,12 @@ public struct ComposerAttachment: Equatable, Identifiable, Sendable {
     public let url: URL
     public let size: Int64
     public var fileName: String { url.lastPathComponent }
+
+    public init(id: UUID = UUID(), url: URL, size: Int64) {
+        self.id = id
+        self.url = url
+        self.size = size
+    }
 }
 
 /// Something the person should be told about the composer, under it.
@@ -1004,7 +1010,7 @@ public final class ComposerModel: ObservableObject {
     public func attach(_ urls: [URL]) {
         notices = []
         var list = isEditing ? stash.attachments : attachments
-        for url in urls {
+        for url in urls where url.isFileURL {
             let name = url.lastPathComponent
             if list.contains(where: { $0.url == url }) { continue }
             guard let info = fileInfo(url) else {
