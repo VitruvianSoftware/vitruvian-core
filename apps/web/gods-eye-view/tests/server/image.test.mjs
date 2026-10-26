@@ -322,6 +322,11 @@ test('an unknown API path answers 404 JSON, not the app', async () => {
   assert.ok(await isUnknownApiRoute(response));
 });
 
+test('the keyless Google tile-token probe answers 204, as upstream does', async () => {
+  const response = await fetch(`${keyless.base}/api/google/tiles-token`);
+  assert.equal(response.status, 204);
+});
+
 test('the paid routes refuse requests a proxy forwarded', async () => {
   for (const route of [
     '/api/mapillary/status',
