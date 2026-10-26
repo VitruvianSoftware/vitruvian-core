@@ -1,5 +1,6 @@
 load("@aspect_rules_js//js:defs.bzl", "js_library")
 load("@npm//:defs.bzl", "npm_link_all_packages")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("//tools/doctor:defs.bzl", "doctor")
 
@@ -42,6 +43,39 @@ filegroup(
 sh_binary(
     name = "bot",
     srcs = ["bot.sh"],
+)
+
+rust_library(
+    name = "bot_lib",
+    srcs = ["//apps/desktop/nexus-agent/src:bot_lib.rs"],
+    crate_name = "nexus_agent_bot",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/desktop/nexus-agent:__subpackages__"],
+)
+
+rust_binary(
+    name = "bot-rs",
+    srcs = ["//apps/desktop/nexus-agent/src:bot_main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/desktop/nexus-agent:__subpackages__"],
+    deps = [":bot_lib"],
+)
+
+alias(
+    name = "bot_rs",
+    actual = ":bot-rs",
+    visibility = ["//apps/desktop/nexus-agent:__subpackages__"],
+)
+
+rust_test(
+    name = "bot_lib_test",
+    size = "small",
+    crate = ":bot_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/desktop/nexus-agent:__subpackages__"],
 )
 
 # Developer-environment check: `bazel run //nexus-agent:doctor`. swift/python3
