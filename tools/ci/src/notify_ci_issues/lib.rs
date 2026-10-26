@@ -469,7 +469,10 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
         .and_then(|s| s.parse().ok())
         .unwrap_or(20);
     let mirrors = env_or_empty("MIRRORS");
-    let queue_bypass_allow = env_or("QUEUE_BYPASS_ALLOW", b"vitruvian-copybara-sync[bot]");
+    let queue_bypass_allow = match shell_compat::env("QUEUE_BYPASS_ALLOW") {
+        Some(v) => v,
+        None => b"vitruvian-copybara-sync[bot]".to_vec(),
+    };
 
     let cutoff = iso_cutoff(cutoff_minutes);
 

@@ -124,28 +124,6 @@ fn gh_api(path: &[u8]) -> Option<Vec<u8>> {
     }
 }
 
-fn jq_raw(json: &[u8], filter: &str) -> Option<Vec<u8>> {
-    let mut cmd = Command::new("jq");
-    cmd.arg("-r")
-        .arg(filter)
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null());
-    match cmd.spawn() {
-        Ok(mut child) => {
-            if let Some(mut stdin) = child.stdin.take() {
-                use std::io::Write;
-                let _ = stdin.write_all(json);
-            }
-            match child.wait_with_output() {
-                Ok(o) if o.status.success() => Some(subst(o.stdout)),
-                _ => None,
-            }
-        }
-        Err(_) => None,
-    }
-}
-
 fn jq_raw_with_args(json: &[u8], args: &[(&str, &[u8])], filter: &str) -> Option<Vec<u8>> {
     let mut cmd = Command::new("jq");
     cmd.arg("-r");

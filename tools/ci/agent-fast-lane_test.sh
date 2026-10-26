@@ -26,6 +26,11 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -n "${JQ_BIN:-}" ]; then
+  case "$JQ_BIN" in external/*) JQ_BIN="../${JQ_BIN#external/}" ;; esac
+  PATH="$(cd "$(dirname "$JQ_BIN")" && pwd):$PATH"
+  export PATH
+fi
 SCRIPT="$(cd "$(dirname "${1:-${HERE}/agent-fast-lane.sh}")" && pwd)/$(basename "${1:-${HERE}/agent-fast-lane.sh}")"
 ROSTER="${HERE}/../agent-app/agents.tsv"
 CI="${HERE}/../../.github/workflows/ci.yaml"
