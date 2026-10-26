@@ -193,9 +193,14 @@ Verify with `kubectl get nodes` (context `lab`). If it works, you're done.
   `--accept-routes=true` and automatically selects
   `--login-server=https://headscale.ipv1337.dev` whenever `TS_AUTHKEY` is a
   Headscale pre-auth key (does not start with `tskey-`) or `TS_LOGIN_SERVER` is
-  set. Because Headscale MagicDNS overrides `k8s-api.lab.ipv1337.dev` to the LAN
-  VIP `192.168.86.64`, `--accept-routes=true` lets the userspace SOCKS5 proxy on
-  `localhost:1055` reach the k3s apiserver through `homelab-subnet-router`.
+  set. Because userspace `tailscaled` (`--tun=userspace-networking`) uses
+  `dns.noopManager` and its SOCKS5 proxy resolves hostnames via the guest OS
+  `/etc/resolv.conf` (public Cloudflare DNS rather than `100.100.100.100`
+  MagicDNS), `k8s-api.lab.ipv1337.dev` publishes the three control-plane
+  Headscale tailnet A records (`100.64.0.6`, `100.64.0.7`, `100.64.0.8`) via
+  `gitops/argocd/platform/platform-config/k8s-api-dnsendpoint.yaml` and
+  `k8s-api-dns-reconciler.yaml`, while `--accept-routes=true` also routes LAN
+  subnets (`192.168.86.0/24`, `10.44.86.0/24`) through `homelab-subnet-router`.
 - Tailnet policy: **nothing to configure while the node joins untagged.**
   `tailscale-up.sh` passes no `--advertise-tags`, so the node registers as a
   personal device of the tailnet owner (`james`) and inherits that account's

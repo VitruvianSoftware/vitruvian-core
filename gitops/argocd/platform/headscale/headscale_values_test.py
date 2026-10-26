@@ -138,6 +138,23 @@ class HeadscaleValuesTest(unittest.TestCase):
             ),
             "automountServiceAccountToken must be false so containerboot does not switch to Kubernetes state storage.",
         )
+        router_spec = router["spec"]["template"]["spec"]
+        self.assertTrue(
+            router_spec.get("hostNetwork"),
+            "headscale-subnet-router must use hostNetwork=true on a wired control-plane node.",
+        )
+        self.assertEqual(
+            router_spec.get("dnsPolicy"),
+            "ClusterFirstWithHostNet",
+        )
+        self.assertEqual(
+            router_spec.get("nodeSelector"),
+            {
+                "node.ipv1337.dev/link": "wired",
+                "node-role.kubernetes.io/control-plane": "true",
+            },
+            "headscale-subnet-router must be pinned to wired control-plane nodes so 192.168.86.0/24 does not loop through macOS Lima NAT.",
+        )
         self.assertIn(
             "--advertise-routes=192.168.86.0/24,10.44.86.0/24",
             env.get("TS_EXTRA_ARGS", ""),
@@ -146,6 +163,15 @@ class HeadscaleValuesTest(unittest.TestCase):
         agent_docs = load_docs("daemonset-node-agent.yaml")
         (agent,) = [d for d in agent_docs if d["kind"] == "DaemonSet"]
         self.assertEqual(agent["metadata"]["name"], "headscale-node-agent")
+        agent_spec = agent["spec"]["template"]["spec"]
+        self.assertTrue(
+            agent_spec.get("hostNetwork"),
+            "headscale-node-agent must use hostNetwork=true so userspace netstack 127.0.0.1 dials reach host sshd (:22) and k3s (:6443).",
+        )
+        self.assertEqual(
+            agent_spec.get("dnsPolicy"),
+            "ClusterFirstWithHostNet",
+        )
 
     def test_headscale_image_matches_headplane_schema_version(self):
         hs_vals = load_headscale_values()
