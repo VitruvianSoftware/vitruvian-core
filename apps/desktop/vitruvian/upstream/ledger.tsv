@@ -456,3 +456,27 @@ a03623e532943eb99495da3e35a1f366fae2f7aa	91e1f8d2cb035486bf8278d72f31f6c22e45933
 e9cbfd133208cdc552cc0723d1133ad04ea7e90a	d3dddd6e8eed4a5940d4c8fe20bb20e6d5ef7418	2026-10-24	ported	#3834	feat(mouse-buttons): support middle-button Spaces drags (#3456)
 eb7ac5df22ceae32d9ddf78ed3e0f35db6d166a6	a0e24fb5aaba218b80d1e494f34a62a2edfd2b50	2026-10-24	ported	#3834	fix(screenshot): preserve short overlaps in long scrolling captures (#3457)
 4f510c075bea4dc1d1724411ea38cf9b6d458b90	d0a6344895763d68caa134bb477514da2885a9a4	2026-10-24	skipped	touches only upstream-only paths	docs: consolidate unreleased changes and contributor credits
+9796656198dde9412b807559451e160ff4967f68	592d289ed312da48f501b9d05e107be85984f44d	2026-10-26	pending	-	perf(memory): reduce retained clipboard thumbnail cache (#3096)
+be42ec48426eba4fe275bcceabb55ab1a4a23f13	7e5cda5da6f7520f5b0e906f731bb525b460244c	2026-10-26	pending	-	fix(monitor): read desktop DC-In rail as adapter input (#3504)
+4020a24ed802fa705d7639b3440d82c380e85529	dc4cb9853f618a7efe56fd77d105e34844553367	2026-10-25	pending	-	fix(monitor): map the alternate M1 CPU sensor layout (#3477)
+77fbb4e414811f34134290654052d9f4cc058d4f	eeb71fcf88da8dbb94ab16bd07c2d20155f813a8	2026-10-25	pending	-	fix(monitor): select measured CPU regions on 14-core M4 Max (#3320)
+917e5da599c2b541d2f020f76beb5a921e6a8d61	eda54f8f31e17d5464613e89e57bd2932b75b2e7	2026-10-25	pending	-	fix(capture): keep history confirmation attached to its palette (#3394)
+fe5fc962ecc94433a777d4714b080f9ec84563b4	3925d0192bf865b8abbf9692cc18663afdcf2469	2026-10-25	pending	-	fix(menu-panel): recover interrupted closes safely (#3494)
+eaa082354abc5ddaf234a86753996c826a1e6ee2	ac81c4dfb81f99658899c9cea7b427c27d75c992	2026-10-26	pending	-	fix(fan-control): recover safely from partial hardware failures (#2496)
+6810d1feda132de136d6590956990ae2323a72ca	16d9abbc9830cf8a6f4281663d6d89c43b988bec	2026-10-26	pending	-	fix(switcher): raise fullscreen and hidden-Space windows directly (#3281)
+4622d12c71c6282a95dcc526399e9f62c753f747	21a040b92ce690ee631287c0d8b0ff2fd3d56f1e	2026-10-25	pending	-	fix(auto-quit): opt in menu-bar apps that stay in the Dock (#2517)
+15bb752813624934d48f5dba3c4f69e1565fe245	f2bede966f7621e392fab857d98726b492717243	2026-10-25	pending	-	fix(disks): use fresh capacity readings for low-space alerts
+743f01a3e1a287e21d3e004960bebb4a622e2126	1a81fd92741640dd28aa0d47948aab7fe9170cb8	2026-10-25	pending	-	fix(screenshots): preserve edited image copies and support image-only paste
+e259fdb0e9dcee047705e2f7faaa60dde085435d	c01ce4d0beac63706378c584ce271cd512d1e3d0	2026-10-25	pending	-	feat(island): add an optional volume row to the music player
+a055a214c0b7bb568aa0dc365d33eb5e988d84bd	5517bfa60e58e2e34b7a10e9eb48e7d86c1633f3	2026-10-25	pending	-	perf(switcher): batch accessibility attributes while enumerating windows
+0bfcdcc4f298d3bc0fbd0e84a1a5becf6820416f	fd0d3e0c7f834abb3bb45426bb378af357e120a9	2026-10-25	pending	-	fix(mouse): preserve window order when focusing without raise
+2ddc006e5cffdc143e1275146e1bf93df8097786	8c93467ecb49351653e2404f3b69cc1c4faecbdb	2026-10-25	pending	-	fix(auto-quit): ignore confirmed stale off-screen window surfaces
+cfa2486696b03d2ffe1d1f765992cd44eca18bc2	b644940f5d2243e134d2651cb67be768b8576e00	2026-10-25	pending	-	fix(switcher): keep search readable on light and glass surfaces
+8015f88022e0de6396e8329f4b12e9b3206482fd	b4a048ac3a723af078f594eaccac25b8fea8dbfd	2026-10-25	pending	-	fix(audio): preserve multichannel gain and rebuild changed tap formats
+3af8cf3d9820fae1a3c2d8977ca6aa662a7bb08f	474c9d392275cf1b18e3fc2ff94df62b99721a3c	2026-10-25	pending	-	fix(settings): stabilize feature-list layout and scroll anchors
+5ecbd6afc486aa3a0f2cf5fe3f5fcc32fe82c9ed	c899bd2224971ad0fd2db8f314835660610e4e71	2026-10-25	pending	-	fix(switcher): resolve hidden-Space titles and close outcomes (#3286)
+93fcb7ab4bbbfc686a7efdb3c377f498f0c2df44	c88b4716e13543b3effdec317f44813cd8392ae4	2026-10-25	skipped	touches only upstream-only paths	docs(changelog): summarize stabilization fixes and contributor credits
+577944b73be9897078dfa6b321d975fd4fa2337b	427f5c356c8197092d797d3da8036f740d6d923b	2026-10-25	pending	-	test: simplify switcher fixtures for supported Swift toolchains
+bb4588da2d7199366233a4bffa4289fdb1196e7d	4358358f2ee40aade1b98b3b57f8d59c1c7c484a	2026-10-26	pending	-	fix(notch): keep the island steady when the pointer changes displays (#3401)
+ab793e36e49b7752620daa3aa0daf7f465ac37b0	f71f88847a279fb506a9aa4059f7a68138244ad9	2026-10-26	pending	-	fix(notch): apply each volume key on coarse USB outputs (#3408)
+746239b0220571d6694ffacae79f3eb9dcd09193	5ee8610f75ca62a20b70e14c01e65d21c4e90e96	2026-10-26	skipped	touches only upstream-only paths	docs(changelog): credit island and USB volume fixes (#3530)
