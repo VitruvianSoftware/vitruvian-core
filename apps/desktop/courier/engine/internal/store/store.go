@@ -17,6 +17,7 @@ import (
 	"go.mau.fi/util/dbutil"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
+	"github.com/VitruvianSoftware/courier/engine/internal/media"
 	"github.com/VitruvianSoftware/courier/engine/internal/sqlite"
 )
 
@@ -102,6 +103,7 @@ type Store struct {
 	cfgMu        sync.RWMutex      // guards clock and networkNames
 	clock        func() time.Time  // SetClock; time.Now by default
 	networkNames map[string]string // SetNetworkNames: network name → display name
+	mediaStore   *media.Store      // SetMediaStore: optional blob store for view-once cleanup
 
 	typingMu sync.Mutex
 	typing   map[string]map[string]*typingEntry // room ID → user ID → who is typing there, until when
@@ -143,6 +145,19 @@ func Open(path string) (*Store, error) {
 }
 
 func (s *Store) Close() error { return s.db.Close() }
+
+// SetMediaStore attaches a local media blob store so MarkMediaPlayed can delete unreferenced view-once blobs.
+func (s *Store) SetMediaStore(ms *media.Store) {
+	s.cfgMu.Lock()
+	s.mediaStore = ms
+	s.cfgMu.Unlock()
+}
+
+func (s *Store) getMediaStore() *media.Store {
+	s.cfgMu.RLock()
+	defer s.cfgMu.RUnlock()
+	return s.mediaStore
+}
 
 // publish hands c to every subscriber without ever waiting for one. A subscriber whose buffer is full loses c and
 // is marked; the next change that reaches it is preceded by one ChangeResync, however many it lost, so it never
@@ -1093,6 +1108,7 @@ func (s *Store) SpacesChanged() {
 }
 
 // MarkMediaPlayed records that a voice note or view-once media item was played/opened.
+// When the event is view-once media, its blob is deleted from the media store unless another event references the same hash.
 func (s *Store) MarkMediaPlayed(ctx context.Context, roomID, eventID string, playedTS int64) error {
 	_, err := s.db.Exec(ctx, `
 		INSERT INTO media_played (room_id, event_id, played_ts) VALUES (?, ?, ?)
@@ -1101,6 +1117,7 @@ func (s *Store) MarkMediaPlayed(ctx context.Context, roomID, eventID string, pla
 	if err != nil {
 		return err
 	}
+	s.CleanupPlayedViewOnceMedia(ctx, roomID, eventID, s.getMediaStore())
 	if roomID != "" {
 		s.publish(Change{Kind: "status", RoomID: roomID, EventID: eventID})
 	}

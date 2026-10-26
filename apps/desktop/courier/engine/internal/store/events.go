@@ -10,12 +10,62 @@ import (
 	"encoding/json"
 	"errors"
 	"slices"
+	"strings"
 
 	"maunium.net/go/mautrix/id"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
 	"github.com/VitruvianSoftware/courier/engine/internal/media"
 )
+
+const (
+	// signalViewOnceTimerMS is the 5-minute after_read disappearing timer mautrix-signal stamps on view-once media
+	// when the message's own ExpireTimer is 0 (mautrix-signal v0.2609.0 pkg/msgconv/from-signal.go:81,162-164).
+	signalViewOnceTimerMS int64 = 5 * 60 * 1000
+	// telegramViewOnceTimerMS is the 15-second after_read disappearing timer mautrix-telegram stamps on view-once
+	// media when ttl == 2147483647 (mautrix-telegram v0.2609.0 pkg/connector/tomatrix.go:565-567).
+	telegramViewOnceTimerMS int64 = 15 * 1000
+)
+
+// IsViewOnceTimer reports whether a media message's after_read disappearing timer (msgTimerMS) represents a
+// view-once attachment in a chat on network whose current after_read room timer is roomAfterReadTimerMS (0 when off
+// or not after_read). A message whose timer equals the room's timer is a normal disappearing message, never view-once.
+func IsViewOnceTimer(network string, msgTimerMS int64, roomAfterReadTimerMS int64) bool {
+	if msgTimerMS <= 0 {
+		return false
+	}
+	if roomAfterReadTimerMS > 0 && msgTimerMS == roomAfterReadTimerMS {
+		return false
+	}
+	switch network {
+	case "signal":
+		return msgTimerMS == signalViewOnceTimerMS
+	case "telegram":
+		return msgTimerMS == telegramViewOnceTimerMS
+	default:
+		return msgTimerMS == signalViewOnceTimerMS || msgTimerMS == telegramViewOnceTimerMS
+	}
+}
+
+// RoomViewOnceContext returns roomID's network name and its current after_read disappearing timer duration in
+// milliseconds (0 when no after_read timer is active on the room).
+func (s *Store) RoomViewOnceContext(ctx context.Context, roomID string) (network string, roomAfterReadTimerMS int64) {
+	if s == nil || roomID == "" {
+		return "", 0
+	}
+	_ = s.db.QueryRow(ctx, `SELECT network FROM rooms WHERE room_id = $1`, roomID).Scan(&network)
+	var raw string
+	if err := s.db.QueryRow(ctx, `SELECT content FROM state WHERE room_id = $1 AND type = 'com.beeper.disappearing_timer' AND state_key = ''`, roomID).Scan(&raw); err == nil && raw != "" {
+		var dt struct {
+			Type  string `json:"type"`
+			Timer int64  `json:"timer"`
+		}
+		if json.Unmarshal([]byte(raw), &dt) == nil && dt.Type == "after_read" && dt.Timer > 0 {
+			roomAfterReadTimerMS = dt.Timer
+		}
+	}
+	return network, roomAfterReadTimerMS
+}
 
 type rawRow struct {
 	eventID string
@@ -42,6 +92,12 @@ func resolveMediaPath(ms *media.Store, uri string) string {
 // ExtractEventMedia populates media inspection, location, link preview, and view-once fields on e from e.Content.
 // When ViewOnce && played is true, MediaPath and ThumbnailPath are cleared so view-once media cannot be re-opened.
 func ExtractEventMedia(e *Event, ms *media.Store, played bool) {
+	ExtractEventMediaWithRoom(e, ms, played, "", 0)
+}
+
+// ExtractEventMediaWithRoom populates media fields on e using the room's network and current after_read disappearing
+// timer (roomAfterReadTimerMS) so normal disappearing messages in an after_read room are not mistaken for view-once.
+func ExtractEventMediaWithRoom(e *Event, ms *media.Store, played bool, network string, roomAfterReadTimerMS int64) {
 	if e == nil {
 		return
 	}
@@ -66,13 +122,8 @@ func ExtractEventMedia(e *Event, ms *media.Store, played bool) {
 			AnoaBlurhash string `json:"xyz.amorgan.blurhash"`
 			Duration     int    `json:"duration"`
 			MauGIF       bool   `json:"fi.mau.gif"`
-			IsAnimated   bool   `json:"is_animated"`
 		} `json:"info"`
 		MauGIF            bool `json:"fi.mau.gif"`
-		BeeperViewOnce    bool `json:"com.beeper.view_once"`
-		ViewOnce          bool `json:"view_once"`
-		BeeperEphemeral   bool `json:"com.beeper.ephemeral"`
-		MauViewOnce       bool `json:"fi.mau.view_once"`
 		DisappearingTimer *struct {
 			Type  string `json:"type"`
 			Timer int64  `json:"timer"`
@@ -122,10 +173,12 @@ func ExtractEventMedia(e *Event, ms *media.Store, played bool) {
 		e.ThumbnailPath = resolveMediaPath(ms, c.Info.ThumbnailURL)
 		e.BlurHash = cmp.Or(c.Info.AnoaBlurhash, c.Info.Blurhash)
 		e.DurationMS = c.Info.Duration
-		e.IsGIF = c.Info.MauGIF || c.MauGIF
-		e.IsAnimated = c.Info.IsAnimated
+		mime := strings.ToLower(strings.TrimSpace(c.Info.MimeType))
+		e.IsGIF = c.Info.MauGIF || c.MauGIF || mime == "image/gif"
+		e.IsAnimated = e.IsGIF || mime == "image/apng" || (e.Kind == "sticker" && strings.HasPrefix(mime, "video/"))
 	} else if c.MauGIF {
 		e.IsGIF = true
+		e.IsAnimated = true
 	}
 	if c.Audio != nil {
 		if c.Audio.Duration > 0 {
@@ -156,12 +209,11 @@ func ExtractEventMedia(e *Event, ms *media.Store, played bool) {
 		e.LinkPreviews = previews
 	}
 
-	isMediaKind := e.Kind == "image" || e.Kind == "video" || e.Kind == "voice" || e.Kind == "audio"
-	hasAfterReadShortTimer := c.DisappearingTimer != nil &&
+	isMediaKind := e.Kind == "image" || e.Kind == "video" || e.Kind == "voice" || e.Kind == "audio" || e.Kind == "file"
+	e.ViewOnce = isMediaKind &&
+		c.DisappearingTimer != nil &&
 		c.DisappearingTimer.Type == "after_read" &&
-		c.DisappearingTimer.Timer > 0 &&
-		c.DisappearingTimer.Timer <= 300000
-	e.ViewOnce = c.BeeperViewOnce || c.ViewOnce || c.BeeperEphemeral || c.MauViewOnce || (isMediaKind && hasAfterReadShortTimer)
+		IsViewOnceTimer(network, c.DisappearingTimer.Timer, roomAfterReadTimerMS)
 
 	if e.ViewOnce && e.Played {
 		e.MediaPath = ""
@@ -169,20 +221,93 @@ func ExtractEventMedia(e *Event, ms *media.Store, played bool) {
 	}
 }
 
+func extractEvents(ctx context.Context, s *Store, ms *media.Store, roomID string, rows []rawRow) []Event {
+	if len(rows) == 0 {
+		return nil
+	}
+	var playedSet map[string]bool
+	var network string
+	var roomTimerMS int64
+	if s != nil && roomID != "" {
+		ids := make([]string, 0, len(rows))
+		for _, r := range rows {
+			if r.eventID != "" {
+				ids = append(ids, r.eventID)
+			}
+		}
+		playedSet, _ = s.MediaPlayedSet(ctx, roomID, ids)
+		network, roomTimerMS = s.RoomViewOnceContext(ctx, roomID)
+	}
+	out := make([]Event, len(rows))
+	for i, r := range rows {
+		e := Event{
+			RoomID:  roomID,
+			EventID: r.eventID,
+			Sender:  r.sender,
+			Type:    r.evtType,
+			Content: json.RawMessage(r.content),
+		}
+		ExtractEventMediaWithRoom(&e, ms, playedSet[r.eventID], network, roomTimerMS)
+		out[i] = e
+	}
+	return out
+}
+
 func extractEvent(ctx context.Context, s *Store, ms *media.Store, roomID string, r rawRow) Event {
-	e := Event{
-		RoomID:  roomID,
-		EventID: r.eventID,
-		Sender:  r.sender,
-		Type:    r.evtType,
-		Content: json.RawMessage(r.content),
+	return extractEvents(ctx, s, ms, roomID, []rawRow{r})[0]
+}
+
+// CleanupPlayedViewOnceMedia deletes the local media blob(s) of (roomID, eventID) when it is a view-once attachment
+// and no other non-redacted, non-deleted event references the same content hash.
+func (s *Store) CleanupPlayedViewOnceMedia(ctx context.Context, roomID, eventID string, ms *media.Store) {
+	if s == nil || ms == nil || eventID == "" {
+		return
 	}
-	var played bool
-	if s != nil && roomID != "" && r.eventID != "" {
-		played, _ = s.IsMediaPlayed(ctx, roomID, r.eventID)
+	var eType, rawContent string
+	err := s.db.QueryRow(ctx, `SELECT type, content FROM events WHERE room_id = $1 AND event_id = $2`, roomID, eventID).Scan(&eType, &rawContent)
+	if err != nil {
+		return
 	}
-	ExtractEventMedia(&e, ms, played)
-	return e
+	network, roomTimerMS := s.RoomViewOnceContext(ctx, roomID)
+	ev := Event{RoomID: roomID, EventID: eventID, Type: eType, Content: json.RawMessage(rawContent)}
+	ExtractEventMediaWithRoom(&ev, nil, false, network, roomTimerMS)
+	if !ev.ViewOnce {
+		return
+	}
+	var c struct {
+		URL  string `json:"url"`
+		Info *struct {
+			ThumbnailURL string `json:"thumbnail_url"`
+		} `json:"info"`
+	}
+	if json.Unmarshal([]byte(rawContent), &c) != nil {
+		return
+	}
+	uris := []string{c.URL}
+	if c.Info != nil && c.Info.ThumbnailURL != "" && c.Info.ThumbnailURL != c.URL {
+		uris = append(uris, c.Info.ThumbnailURL)
+	}
+	for _, uri := range uris {
+		if uri == "" {
+			continue
+		}
+		hash, ok := ids.ParseContentURI(id.ContentURIString(uri))
+		if !ok {
+			continue
+		}
+		var stillReferenced int
+		err := s.db.QueryRow(ctx, `
+			SELECT 1 FROM events
+			WHERE event_id <> $1 AND redacted = 0 AND deleted_for_me = 0
+			  AND (
+			    (CASE WHEN json_valid(content) THEN json_extract(content, '$.url') END) = $2
+			    OR (CASE WHEN json_valid(content) THEN json_extract(content, '$.info.thumbnail_url') END) = $2
+			  )
+			LIMIT 1`, eventID, uri).Scan(&stillReferenced)
+		if errors.Is(err, sql.ErrNoRows) {
+			_ = ms.Delete(hash)
+		}
+	}
 }
 
 // A chat's history read from a point inside it, so that a search result can open the chat at an old message.

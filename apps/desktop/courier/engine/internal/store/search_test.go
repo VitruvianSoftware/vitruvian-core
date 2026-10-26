@@ -792,3 +792,44 @@ func TestSearchChatsIndexesBothLocalNameAndNetworkName(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{roomID}, roomIDsOf(byRemote), "chat must still be found by its network name when local_name is set")
 }
+
+func TestViewOnceExcludedFromMediaSearchAndSharedMedia(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	roomID := "!sig-vo-search:courier.local"
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: roomID, Network: "signal", Name: "Signal Search Room", CreatedAt: time.Unix(1, 0)}))
+	t0 := time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)
+
+	mkMsg(t, s, roomID, "$img-normal", me, "m.room.message",
+		`{"msgtype":"m.image","body":"caption normal","url":"mxc://courier.test/normal"}`,
+		t0.Add(time.Minute))
+	mkMsg(t, s, roomID, "$img-vo", me, "m.room.message",
+		`{"msgtype":"m.image","body":"caption secret","url":"mxc://courier.test/secret","com.beeper.disappearing_timer":{"type":"after_read","timer":300000}}`,
+		t0.Add(2*time.Minute))
+	mkMsg(t, s, roomID, "$file-vo", me, "m.room.message",
+		`{"msgtype":"m.file","body":"doc-secret.pdf","url":"mxc://courier.test/doc-secret","com.beeper.disappearing_timer":{"type":"after_read","timer":300000}}`,
+		t0.Add(3*time.Minute))
+
+	// 1. Search for media/files kinds excludes view-once items.
+	mediaHits := searchAll(t, s, MessageQuery{RoomIDs: []string{roomID}, Kinds: []string{"image", "video"}, Limit: 10})
+	require.Equal(t, []string{"$img-normal"}, hitIDs(mediaHits), "media kind search must exclude view-once photos")
+	fileHits := searchAll(t, s, MessageQuery{RoomIDs: []string{roomID}, Kinds: []string{"file"}, Limit: 10})
+	require.Empty(t, fileHits, "file kind search must exclude view-once files")
+
+	// 2. Text search matching a view-once caption marks ViewOnce = true and blanks MediaURI.
+	textHits := searchAll(t, s, MessageQuery{RoomIDs: []string{roomID}, Terms: terms("secret"), Limit: 10})
+	require.NotEmpty(t, textHits)
+	for _, h := range textHits {
+		require.True(t, h.ViewOnce, "text hit on view-once item must set ViewOnce = true")
+		require.Empty(t, h.MediaURI, "text hit on view-once item must blank MediaURI")
+	}
+
+	// 3. RoomSharedMedia and RoomSharedFiles exclude view-once items.
+	sharedMedia, err := s.RoomSharedMedia(ctx, roomID, 10)
+	require.NoError(t, err)
+	require.Len(t, sharedMedia, 1, "RoomSharedMedia must exclude view-once media")
+	require.Equal(t, "$img-normal", sharedMedia[0].EventID)
+
+	sharedFiles, err := s.RoomSharedFiles(ctx, roomID, 10)
+	require.NoError(t, err)
+	require.Empty(t, sharedFiles, "RoomSharedFiles must exclude view-once files")
+}

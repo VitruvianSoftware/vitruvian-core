@@ -646,13 +646,14 @@ func toScheduled(sc store.Scheduled) scheduledJSON {
 
 func messageSchedule(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
 	var p struct {
-		RoomID     *string           `json:"room_id"`
-		Text       *string           `json:"text"`
-		Entities   []richtext.Entity `json:"entities"`
-		ReplyTo    string            `json:"reply_to"`
-		ThreadRoot string            `json:"thread_root"`
-		DueAt      *int64            `json:"due_at"`
-		Condition  *string           `json:"condition"`
+		RoomID             *string           `json:"room_id"`
+		Text               *string           `json:"text"`
+		Entities           []richtext.Entity `json:"entities"`
+		ReplyTo            string            `json:"reply_to"`
+		ThreadRoot         string            `json:"thread_root"`
+		DueAt              *int64            `json:"due_at"`
+		Condition          *string           `json:"condition"`
+		DisableLinkPreview *bool             `json:"disable_link_preview"`
 	}
 	if err := decode(raw, &p); err != nil {
 		return nil, err
@@ -681,7 +682,7 @@ func messageSchedule(ctx context.Context, d *Deps, raw json.RawMessage) (any, er
 	if d.Actions == nil {
 		return nil, errMissing
 	}
-	o := actions.SendOptions{Entities: p.Entities, ReplyTo: p.ReplyTo, ThreadRoot: p.ThreadRoot}
+	o := actions.SendOptions{Entities: p.Entities, ReplyTo: p.ReplyTo, ThreadRoot: p.ThreadRoot, DisableLinkPreview: p.DisableLinkPreview}
 	sc, err := d.Actions.Schedule(ctx, *p.RoomID, *p.Text, o, time.UnixMilli(*p.DueAt), *p.Condition)
 	if err != nil {
 		return nil, err
@@ -885,8 +886,13 @@ func toLinkPreviews(in []store.LinkPreview) []linkPreviewItemJSON {
 	return out
 }
 
-func populateEventMedia(d *Deps, e store.Event, ev *eventJSON) {
-	store.ExtractEventMedia(&e, d.Media, ev.Played)
+func populateEventMedia(ctx context.Context, d *Deps, e store.Event, ev *eventJSON) {
+	var network string
+	var roomTimerMS int64
+	if d.Store != nil && strings.Contains(string(e.Content), "after_read") {
+		network, roomTimerMS = d.Store.RoomViewOnceContext(ctx, e.RoomID)
+	}
+	store.ExtractEventMediaWithRoom(&e, d.Media, ev.Played, network, roomTimerMS)
 	ev.MediaPath = e.MediaPath
 	ev.ThumbnailPath = e.ThumbnailPath
 	ev.Blurhash = e.BlurHash

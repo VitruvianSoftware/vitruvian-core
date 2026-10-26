@@ -71,6 +71,7 @@ type MessageHit struct {
 	IsDirect          bool
 	Place             string // inbox | archive | low_priority | hidden | requests
 	MediaURI          string // the image's or video's thumbnail (or the file) for kimage / kvideo, else ""
+	ViewOnce          bool   // whether the matched event is view-once media
 	Partial           bool   // a partial match
 }
 
@@ -383,10 +384,45 @@ func (s *Store) hitOf(ctx context.Context, r searchRow, partial bool) (MessageHi
 		return MessageHit{}, err
 	}
 	_, kind, _ := MessageText(r.e.Type, r.e.Content)
+	viewOnce := s.isContentViewOnce(ctx, r.e.RoomID, r.network, kind, r.e.Content)
+	mediaURI := hitMediaURI(kind, r.e.Content)
+	if viewOnce {
+		mediaURI = ""
+	}
 	return MessageHit{
 		Event: r.e, Text: text, Kind: kind, RoomName: r.roomName, Network: r.network, IsDirect: r.direct,
-		Place: r.place, MediaURI: hitMediaURI(kind, r.e.Content), Partial: partial,
+		Place: r.place, MediaURI: mediaURI, ViewOnce: viewOnce, Partial: partial,
 	}, nil
+}
+
+// isContentViewOnce reports whether an event of kind in roomID (on network) carries a view-once after_read timer.
+func (s *Store) isContentViewOnce(ctx context.Context, roomID, network, kind string, content json.RawMessage) bool {
+	if kind != "image" && kind != "video" && kind != "audio" && kind != "voice" && kind != "file" {
+		return false
+	}
+	var c struct {
+		DisappearingTimer *struct {
+			Type  string `json:"type"`
+			Timer int64  `json:"timer"`
+		} `json:"com.beeper.disappearing_timer"`
+	}
+	if json.Unmarshal(content, &c) != nil || c.DisappearingTimer == nil || c.DisappearingTimer.Type != "after_read" || c.DisappearingTimer.Timer <= 0 {
+		return false
+	}
+	netName, roomTimerMS := s.RoomViewOnceContext(ctx, roomID)
+	if network == "" {
+		network = netName
+	}
+	return IsViewOnceTimer(network, c.DisappearingTimer.Timer, roomTimerMS)
+}
+
+func (m messageSearch) excludesViewOnce() bool {
+	for _, k := range m.kinds {
+		if k == "image" || k == "video" || k == "audio" || k == "file" {
+			return true
+		}
+	}
+	return false
 }
 
 // hitMediaURI is what a hit shows for an image or a video: its thumbnail, else the file itself.
@@ -444,29 +480,39 @@ func (s *Store) SearchMessages(ctx context.Context, q MessageQuery) ([]MessageHi
 	}
 	hits := []MessageHit{}
 	size := 2 // the list's brackets
+	skipViewOnce := m.excludesViewOnce()
 	for ; phase <= m.lastPhase(); phase, upper, start = phase+1, m.top(), nil {
-		want := m.limit - len(hits)
-		rows, err := s.searchRows(ctx, m, phase, upper, want+1) // one more says whether the phase goes on
-		if err != nil {
-			return nil, "", err
-		}
 		last := start
-		for i, r := range rows {
-			if i == want {
-				return hits, m.cursor(phase, last), nil
-			}
-			h, err := s.hitOf(ctx, r, phase == 1)
+		for {
+			want := m.limit - len(hits)
+			rows, err := s.searchRows(ctx, m, phase, upper, want+1) // one more says whether the phase goes on
 			if err != nil {
 				return nil, "", err
 			}
-			n := hitBytes(h)
-			if len(hits) > 0 && size+n > searchPageBytes {
-				return hits, m.cursor(phase, last), nil
+			for _, r := range rows {
+				h, err := s.hitOf(ctx, r, phase == 1)
+				if err != nil {
+					return nil, "", err
+				}
+				if skipViewOnce && h.ViewOnce {
+					continue
+				}
+				if len(hits) == m.limit {
+					return hits, m.cursor(phase, last), nil
+				}
+				n := hitBytes(h)
+				if len(hits) > 0 && size+n > searchPageBytes {
+					return hits, m.cursor(phase, last), nil
+				}
+				size += n
+				hits = append(hits, h)
+				docID := r.docID
+				last = &docID
 			}
-			size += n
-			hits = append(hits, h)
-			docID := r.docID
-			last = &docID
+			if len(rows) < want+1 {
+				break
+			}
+			upper = rows[len(rows)-1].docID - 1
 		}
 	}
 	return hits, "", nil
@@ -807,14 +853,11 @@ func (s *Store) RoomSharedMedia(ctx context.Context, roomID string, limit int) (
 		WHERE room_id = $1 AND type = 'm.room.message' AND deleted_for_me = 0 AND redacted = 0
 		  AND json_extract(content, '$.msgtype') IN ('m.image', 'm.video')
 		  AND COALESCE(json_extract(content, '$.url'), '') <> ''
-		ORDER BY ts DESC, seq DESC LIMIT $2`, roomID, limit)
+		ORDER BY ts DESC, seq DESC LIMIT $2`, roomID, limit*2)
 	if err != nil {
 		return nil, err
 	}
-	if evts == nil {
-		evts = []Event{}
-	}
-	return evts, nil
+	return s.filterOutViewOnceEvents(ctx, roomID, evts, limit), nil
 }
 
 func (s *Store) RoomSharedFiles(ctx context.Context, roomID string, limit int) ([]Event, error) {
@@ -825,14 +868,36 @@ func (s *Store) RoomSharedFiles(ctx context.Context, roomID string, limit int) (
 		WHERE room_id = $1 AND type = 'm.room.message' AND deleted_for_me = 0 AND redacted = 0
 		  AND json_extract(content, '$.msgtype') IN ('m.file', 'm.audio')
 		  AND COALESCE(json_extract(content, '$.url'), '') <> ''
-		ORDER BY ts DESC, seq DESC LIMIT $2`, roomID, limit)
+		ORDER BY ts DESC, seq DESC LIMIT $2`, roomID, limit*2)
 	if err != nil {
 		return nil, err
 	}
-	if evts == nil {
-		evts = []Event{}
+	return s.filterOutViewOnceEvents(ctx, roomID, evts, limit), nil
+}
+
+func (s *Store) filterOutViewOnceEvents(ctx context.Context, roomID string, evts []Event, limit int) []Event {
+	if len(evts) == 0 {
+		return []Event{}
 	}
-	return evts, nil
+	ids := make([]string, len(evts))
+	for i := range evts {
+		ids[i] = evts[i].EventID
+	}
+	playedSet, _ := s.MediaPlayedSet(ctx, roomID, ids)
+	network, roomTimerMS := s.RoomViewOnceContext(ctx, roomID)
+	ms := s.getMediaStore()
+	out := make([]Event, 0, min(len(evts), limit))
+	for _, ev := range evts {
+		ExtractEventMediaWithRoom(&ev, ms, playedSet[ev.EventID], network, roomTimerMS)
+		if ev.ViewOnce {
+			continue
+		}
+		out = append(out, ev)
+		if len(out) >= limit {
+			break
+		}
+	}
+	return out
 }
 
 const maxSharedLinkScanEvents = 500

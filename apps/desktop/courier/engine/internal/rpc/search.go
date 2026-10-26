@@ -72,6 +72,7 @@ type messageHit struct {
 	Snippet    string      `json:"snippet"`
 	Ranges     []textRange `json:"ranges"`
 	MediaPath  string      `json:"media_path"`
+	ViewOnce   bool        `json:"view_once,omitempty"`
 	Partial    bool        `json:"partial"`
 }
 
@@ -330,11 +331,15 @@ func (d *Deps) toHit(ctx context.Context, h search.Hit, senders map[string]sende
 	for _, rg := range h.Ranges {
 		ranges = append(ranges, textRange{Start: rg.Start, Length: rg.Length})
 	}
+	mediaPath := ""
+	if !h.ViewOnce {
+		mediaPath = d.path(h.MediaURI)
+	}
 	return messageHit{
 		EventID: h.Event.EventID, RoomID: h.Event.RoomID, RoomName: h.RoomName, Network: h.Network,
 		IsDirect: h.IsDirect, Place: h.Place, Sender: h.Event.Sender, SenderName: who.name,
 		Mine: h.Event.Sender == string(ids.Me), TS: ms(h.Event.TS), Seq: h.Event.Seq, Kind: h.Kind,
-		Snippet: h.Snippet, Ranges: ranges, MediaPath: d.path(h.MediaURI), Partial: h.Partial,
+		Snippet: h.Snippet, Ranges: ranges, MediaPath: mediaPath, ViewOnce: h.ViewOnce, Partial: h.Partial,
 	}, nil
 }
 

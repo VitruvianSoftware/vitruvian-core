@@ -314,3 +314,68 @@ func TestSearchNeverLogsWhatWasSearchedFor(t *testing.T) {
 	require.Eventually(t, func() bool { return strings.Contains(logs.String(), "search.query") }, 5*time.Second, 10*time.Millisecond)
 	require.NotContains(t, logs.String(), secret)
 }
+
+func TestSearchQueryExcludesViewOnceFromMediaSectionAndBlanksMediaPath(t *testing.T) {
+	w := newWorld(t)
+	ctx := context.Background()
+	sigRoom := "!sig-search-vo:courier.local"
+	require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: sigRoom, Network: "signal", Name: "Signal Search", IsDirect: true}))
+
+	normHash, err := w.m.Put([]byte("norm-photo"))
+	require.NoError(t, err)
+	voHash, err := w.m.Put([]byte("vo-photo"))
+	require.NoError(t, err)
+
+	t0 := time.Now().Add(-time.Minute)
+	_, err = w.s.InsertEvent(ctx, store.Event{
+		RoomID: sigRoom, EventID: "$norm", Sender: contact, Type: "m.room.message",
+		Content: json.RawMessage(`{"msgtype":"m.image","body":"vacation photo","url":"mxc://courier.local/` + normHash + `"}`),
+		TS:      t0, Status: "sent",
+	})
+	require.NoError(t, err)
+	_, err = w.s.InsertEvent(ctx, store.Event{
+		RoomID: sigRoom, EventID: "$vo", Sender: contact, Type: "m.room.message",
+		Content: json.RawMessage(`{"msgtype":"m.image","body":"vacation secret","url":"mxc://courier.local/` + voHash + `","com.beeper.disappearing_timer":{"type":"after_read","timer":300000}}`),
+		TS:      t0.Add(time.Second), Status: "sent",
+	})
+	require.NoError(t, err)
+	require.NoError(t, w.s.SetBookmarked(ctx, "$vo", true))
+
+	c := dial(t, w.path)
+	c.hello()
+
+	// 1. Media section excludes the view-once photo and returns only the normal photo.
+	var mediaRes struct {
+		Media struct {
+			Hits []struct {
+				EventID   string `json:"event_id"`
+				MediaPath string `json:"media_path"`
+				ViewOnce  bool   `json:"view_once"`
+			} `json:"hits"`
+		} `json:"media"`
+	}
+	c.ok("search.query", map[string]any{
+		"text": "vacation", "sections": []string{"media"}, "filters": map[string]any{"room_ids": []string{sigRoom}},
+	}, &mediaRes)
+	require.Len(t, mediaRes.Media.Hits, 1)
+	require.Equal(t, "$norm", mediaRes.Media.Hits[0].EventID)
+	require.NotEmpty(t, mediaRes.Media.Hits[0].MediaPath)
+
+	// 2. When a view-once item is matched as text (e.g. in bookmarks), view_once is true and media_path is blanked.
+	var bmRes struct {
+		Bookmarks struct {
+			Hits []struct {
+				EventID   string `json:"event_id"`
+				MediaPath string `json:"media_path"`
+				ViewOnce  bool   `json:"view_once"`
+			} `json:"hits"`
+		} `json:"bookmarks"`
+	}
+	c.ok("search.query", map[string]any{
+		"text": "secret", "sections": []string{"bookmarks"}, "filters": map[string]any{"room_ids": []string{sigRoom}},
+	}, &bmRes)
+	require.Len(t, bmRes.Bookmarks.Hits, 1)
+	require.Equal(t, "$vo", bmRes.Bookmarks.Hits[0].EventID)
+	require.True(t, bmRes.Bookmarks.Hits[0].ViewOnce)
+	require.Empty(t, bmRes.Bookmarks.Hits[0].MediaPath)
+}

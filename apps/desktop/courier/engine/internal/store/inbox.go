@@ -306,6 +306,9 @@ func (s *Store) scanInboxRow(row dbutil.Scannable) (InboxRow, error) {
 	r.LastTS = msTime(lastTS)
 	r.PreviewMine = sender == myID
 	r.Preview, r.PreviewKind, r.PreviewMediaURI = previewOf(typ, content)
+	if r.PreviewMediaURI != "" && strings.Contains(content, "after_read") && s.isContentViewOnce(context.Background(), r.ID, r.Network, r.PreviewKind, json.RawMessage(content)) {
+		r.PreviewMediaURI = ""
+	}
 	if r.PreviewKind == "call" {
 		note, _ := parseCallNote(typ, json.RawMessage(content))
 		r.PreviewCall = &note

@@ -762,7 +762,7 @@
         },
         "waveform": {
           "type": "int[]?",
-          "doc": "MSC3246 waveform samples normalized to 0..100."
+          "doc": "MSC1767/MSC3245 waveform samples (org.matrix.msc1767.audio)."
         },
         "is_gif": {
           "type": "bool?",
@@ -770,11 +770,11 @@
         },
         "is_animated": {
           "type": "bool?",
-          "doc": "Whether the sticker or image is animated (content.info.is_animated or video/webm sticker)."
+          "doc": "Whether the sticker or image is animated (GIF, APNG, or video/webm sticker)."
         },
         "view_once": {
           "type": "bool?",
-          "doc": "Whether the media item is view-once (content[\"com.beeper.ephemeral\"] or content[\"fi.mau.view_once\"])."
+          "doc": "Whether the media item is view-once (an after_read disappearing timer that differs from the chat's timer and matches the bridge's view-once duration: 5 min on Signal, 15 s on Telegram)."
         },
         "geo_uri": {
           "type": "string?",
@@ -1045,6 +1045,10 @@
         "media_path": {
           "type": "string",
           "doc": "For an image or a video: its thumbnail (or the file itself), when the engine has it. \"\" otherwise."
+        },
+        "view_once": {
+          "type": "bool?",
+          "doc": "True when the matched message is view-once media (its media_path is blanked)."
         },
         "partial": {
           "type": "bool",
@@ -1477,6 +1481,10 @@
           "type": "string",
           "values": ["if_no_reply", "always"],
           "doc": "if_no_reply: a message from someone else in the chat after it was set (or last changed) cancels it."
+        },
+        "disable_link_preview": {
+          "type": "bool?",
+          "doc": "Suppress outgoing link preview generation for this message."
         }
       }
     },
@@ -2646,7 +2654,7 @@
       "doc": "Send a recorded voice note in a chat that supports voice messages.",
       "params": "SendVoiceParams",
       "result": "Sent",
-      "errors": [-32010, -32012, -32014, -32016, -32018, -32020, -32023]
+      "errors": [-32010, -32012, -32014, -32016, -32018, -32020, -32023, -32028]
     },
     "message.sendLocation": {
       "doc": "Send a geographic location pin (m.location) in a chat that supports location messages.",
@@ -2817,6 +2825,12 @@
         "name": "network_refused",
         "message": "network refused",
         "when": "The network turned the change down (a rename, photo, description, add, remove, admin change, leave, delete or new group). Nothing changed on this Mac."
+      },
+      {
+        "code": -32028,
+        "name": "needs_ffmpeg",
+        "message": "sending voice notes on this network needs ffmpeg",
+        "when": "message.sendVoice when the chat's bridge requires transcoding the recording into another container (such as Ogg/Opus) and ffmpeg is not installed on this Mac."
       }
     ]
   }

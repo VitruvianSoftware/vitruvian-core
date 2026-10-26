@@ -1109,3 +1109,88 @@ func TestRoomEventsPopulatesMediaMetadataAndRedactsPlayedViewOnce(t *testing.T) 
 	require.Empty(t, playedEvt.MediaPath, "view-once media path must be redacted once played")
 	require.Empty(t, playedEvt.ThumbnailPath, "view-once thumbnail path must be redacted once played")
 }
+
+func TestMessageMarkPlayedRejectsMergedRoomIDAndDeletesViewOnceBlob(t *testing.T) {
+	w := newWorld(t)
+	ctx := context.Background()
+	c := dial(t, w.path)
+	c.hello()
+
+	// Virtual merge:... room IDs are rejected with -32602 (CodeInvalidParams).
+	e := c.fails(CodeInvalidParams, "message.markPlayed", map[string]any{"room_id": "merge:123", "event_id": "$img1"})
+	require.Equal(t, "room_id must not be a merge_id", reason(t, e))
+
+	// View-once media in a Signal room: excluded from room.info shared_media, and blob deleted after markPlayed.
+	sigRoom := "!sig-vo-rpc:courier.local"
+	require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: sigRoom, Network: "signal", Name: "Signal VO", IsDirect: true}))
+	voHash, err := w.m.Put([]byte("rpc-view-once-blob"))
+	require.NoError(t, err)
+	voPath, err := w.m.Path(voHash)
+	require.NoError(t, err)
+	voURI := "mxc://courier.local/" + voHash
+
+	normHash, err := w.m.Put([]byte("rpc-normal-blob"))
+	require.NoError(t, err)
+	normURI := "mxc://courier.local/" + normHash
+
+	_, err = w.s.InsertEvent(ctx, store.Event{
+		RoomID: sigRoom, EventID: "$norm-img", Sender: contact, Type: "m.room.message",
+		Content: json.RawMessage(`{"msgtype":"m.image","body":"normal.jpg","url":"` + normURI + `"}`),
+		TS:      time.Now().Add(-2 * time.Second), Status: "sent",
+	})
+	require.NoError(t, err)
+	_, err = w.s.InsertEvent(ctx, store.Event{
+		RoomID: sigRoom, EventID: "$vo-img", Sender: contact, Type: "m.room.message",
+		Content: json.RawMessage(`{"msgtype":"m.image","body":"secret.jpg","url":"` + voURI + `","com.beeper.disappearing_timer":{"type":"after_read","timer":300000}}`),
+		TS:      time.Now().Add(-time.Second), Status: "sent",
+	})
+	require.NoError(t, err)
+
+	var info struct {
+		SharedMedia []eventJSON `json:"shared_media"`
+	}
+	c.ok("room.info", map[string]any{"room_id": sigRoom}, &info)
+	require.Len(t, info.SharedMedia, 1, "room.info shared_media must exclude view-once media")
+	require.Equal(t, "$norm-img", info.SharedMedia[0].EventID)
+
+	c.ok("message.markPlayed", map[string]any{"room_id": sigRoom, "event_id": "$vo-img"}, nil)
+	_, err = os.Stat(voPath)
+	require.ErrorIs(t, err, os.ErrNotExist, "view-once blob on disk must be deleted after message.markPlayed")
+}
+
+func TestMessageSendVoiceReturnsNeedsFFmpegCodeWhenTranscodeUnavailable(t *testing.T) {
+	w := newWorld(t)
+	ctx := context.Background()
+	c := dial(t, w.path)
+	c.hello()
+
+	// Configure room features so voice notes require audio/ogg; codecs=opus.
+	oggOnlyCaps := &event.RoomFeatures{
+		File: event.FileFeatureMap{
+			event.CapMsgVoice: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"audio/ogg; codecs=opus": event.CapLevelFullySupported,
+				},
+				MaxSize: 16 * 1024 * 1024,
+			},
+		},
+	}
+	w.can(t, oggOnlyCaps)
+	_ = ctx
+
+	// Create an .m4a file and clear PATH and FFmpegSearchPaths so ffmpeg cannot be found.
+	m4aPath := filepath.Join(t.TempDir(), "recording.m4a")
+	require.NoError(t, os.WriteFile(m4aPath, []byte("\x00\x00\x00\x18ftypM4A \x00\x00\x00\x00"), 0o600))
+	t.Setenv("PATH", "/nonexistent")
+	savedPaths := actions.FFmpegSearchPaths
+	actions.FFmpegSearchPaths = nil
+	t.Cleanup(func() { actions.FFmpegSearchPaths = savedPaths })
+
+	e := c.fails(-32028, "message.sendVoice", map[string]any{
+		"room_id":     w.room,
+		"path":        m4aPath,
+		"duration_ms": 3000,
+		"waveform":    []int{10, 40, 80},
+	})
+	require.Equal(t, "sending voice notes on this network needs ffmpeg", e.Message)
+}

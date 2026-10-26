@@ -55,6 +55,7 @@ const (
 	CodeAlreadySent      = -32025
 	CodeNotYours         = -32026
 	CodeNetworkRefused   = -32027
+	CodeNeedsFFmpeg      = -32028
 )
 
 // errorMessages is each code's fixed message, as protocol.json has it. A message never carries a value that was
@@ -85,6 +86,7 @@ var errorMessages = map[int]string{
 	CodeAlreadySent:      "it has already gone",
 	CodeNotYours:         "you can only change your own messages",
 	CodeNetworkRefused:   "network refused",
+	CodeNeedsFFmpeg:      "sending voice notes on this network needs ffmpeg",
 }
 
 // Error is a JSON-RPC error as it goes on the wire.
@@ -124,7 +126,7 @@ var sentinels = []struct {
 	{engine.ErrStarting, CodeNotConnected},
 	{actions.ErrNotFailed, CodeNotFailed},
 	{actions.ErrNotSupported, CodeNotSupported},
-	{actions.ErrVoiceTranscodeUnavailable, CodeNotSupported},
+	{actions.ErrVoiceTranscodeUnavailable, CodeNeedsFFmpeg},
 	// The network turned the change down: nothing changed on this Mac.
 	{actions.ErrNetworkRefused, CodeNetworkRefused},
 	{actions.ErrNotEntitled, CodeNotEntitled},
@@ -762,7 +764,7 @@ func (d *Deps) toEvent(ctx context.Context, e store.Event, senders map[string]se
 		Status: status, StatusReason: e.StatusReason, MediaPath: d.path(url), ExpiresAt: ms(e.ExpiresAt),
 		ReadBy: []readerJSON{}, Played: e.Played,
 	}
-	populateEventMedia(d, e, &ev)
+	populateEventMedia(ctx, d, e, &ev)
 	return ev, nil
 }
 
@@ -1428,7 +1430,11 @@ func messageMarkPlayed(ctx context.Context, d *Deps, raw json.RawMessage) (any, 
 	if err := required("event_id", p.EventID); err != nil {
 		return nil, err
 	}
-	return nil, d.Store.MarkMediaPlayed(ctx, *p.RoomID, *p.EventID, time.Now().UnixMilli())
+	if err := d.Store.MarkMediaPlayed(ctx, *p.RoomID, *p.EventID, time.Now().UnixMilli()); err != nil {
+		return nil, err
+	}
+	d.Store.CleanupPlayedViewOnceMedia(ctx, *p.RoomID, *p.EventID, d.Media)
+	return nil, nil
 }
 
 func messageSendVoice(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
