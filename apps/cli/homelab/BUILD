@@ -17,11 +17,9 @@ load("//tools/pipeline:defs.bzl", "pipeline_unit")
 package(default_visibility = ["//apps/cli/homelab:__subpackages__"])
 
 # Developer-environment check: `bazel run //apps/cli/homelab:doctor` (CLI `run` ignores
-# visibility, so the package default is wide enough). Go is pinned to this
-# app's own go.mod (`--gomod apps/cli/homelab/go.mod`).
+# visibility, so the package default is wide enough).
 doctor(
     name = "doctor",
-    gomod = "apps/cli/homelab/go.mod",
     label = "homelab",
     optional = [
         "mise",
@@ -29,9 +27,14 @@ doctor(
     ],
     required = [
         "bazel",
-        "go",
         "git",
     ],
+)
+
+alias(
+    name = "homelab",
+    actual = ":homelab-rs",
+    visibility = ["//apps/cli/homelab:__subpackages__"],
 )
 
 pipeline_unit(
