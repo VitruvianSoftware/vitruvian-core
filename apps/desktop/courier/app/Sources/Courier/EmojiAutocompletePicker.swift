@@ -5,26 +5,39 @@ import AppKit
 import CourierCore
 import SwiftUI
 
-struct EmojiItemRow: View {
-    let candidate: EmojiCandidate
-    let isSelected: Bool
+public struct EmojiItemRow: View {
+    public let candidate: EmojiCandidate
+    public let isSelected: Bool
+    public let thumbnailLoader: ThumbnailLoader?
+    @State private var loadedImage: CGImage?
 
-    var body: some View {
+    public init(
+        candidate: EmojiCandidate,
+        isSelected: Bool,
+        thumbnailLoader: ThumbnailLoader? = .shared
+    ) {
+        self.candidate = candidate
+        self.isSelected = isSelected
+        self.thumbnailLoader = thumbnailLoader
+    }
+
+    public var body: some View {
         HStack(spacing: 8) {
             if let glyph = candidate.glyph {
                 Text(glyph)
                     .font(.system(size: 18))
-                    .frame(width: 22, height: 22)
-            } else if let cgImage = ThumbnailLoader.thumbnail(forMediaURL: candidate.mediaURL, maxPixelSize: 44) {
+                    .frame(width: 20, height: 20)
+            } else if let cgImage = loadedImage
+                ?? ThumbnailLoader.thumbnail(forMediaURL: candidate.mediaURL, maxPixelSize: 40) {
                 Image(decorative: cgImage, scale: 2.0, orientation: .up)
                     .resizable()
                     .scaledToFit()
-                    .frame(width: 22, height: 22)
+                    .frame(width: 20, height: 20)
             } else {
                 Image(systemName: "face.smiling")
                     .font(.system(size: 16))
                     .foregroundStyle(isSelected ? Color.white.opacity(0.85) : Color.secondary)
-                    .frame(width: 22, height: 22)
+                    .frame(width: 20, height: 20)
             }
 
             Text(":\(candidate.shortcode):")
@@ -47,22 +60,69 @@ struct EmojiItemRow: View {
                 .fill(isSelected ? Color.accentColor : Color.clear)
         )
         .contentShape(Rectangle())
+        .task(id: candidate.mediaURL) {
+            guard candidate.glyph == nil,
+                  let loader = thumbnailLoader,
+                  let path = ThumbnailLoader.resolveMediaPath(candidate.mediaURL)
+            else { return }
+            loadedImage = await loader.thumbnail(atPath: path)?.image
+        }
     }
 }
 
-struct EmojiAutocompletePicker: View {
-    @ObservedObject var composer: ComposerModel
-    var onAddCustomEmoji: ((String) -> Void)?
+public struct EmojiAutocompletePicker: View {
+    public let query: String
+    public let candidates: [EmojiCandidate]
+    public let selectedIndex: Int
+    public let thumbnailLoader: ThumbnailLoader?
+    public let onSelect: (EmojiCandidate) -> Void
+    public let onAddCustomEmoji: (String) -> Void
+    private var observedComposer: ComposerModel?
 
-    var body: some View {
+    public init(
+        query: String,
+        candidates: [EmojiCandidate],
+        selectedIndex: Int,
+        thumbnailLoader: ThumbnailLoader? = .shared,
+        onSelect: @escaping (EmojiCandidate) -> Void,
+        onAddCustomEmoji: @escaping (String) -> Void
+    ) {
+        self.query = query
+        self.candidates = candidates
+        self.selectedIndex = selectedIndex
+        self.thumbnailLoader = thumbnailLoader
+        self.onSelect = onSelect
+        self.onAddCustomEmoji = onAddCustomEmoji
+        self.observedComposer = nil
+    }
+
+    public init(
+        composer: ComposerModel,
+        thumbnailLoader: ThumbnailLoader? = nil,
+        onAddCustomEmoji: ((String) -> Void)? = nil
+    ) {
+        self.query = composer.emojiQuery ?? ""
+        self.candidates = composer.emojiCandidates
+        self.selectedIndex = composer.selectedEmojiIndex
+        self.thumbnailLoader = thumbnailLoader ?? composer.thumbnailLoader
+        self.onSelect = { composer.pickEmoji($0) }
+        self.onAddCustomEmoji = onAddCustomEmoji ?? { _ in }
+        self.observedComposer = composer
+    }
+
+    public var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            if !composer.emojiCandidates.isEmpty {
+            if !candidates.isEmpty {
                 VStack(alignment: .leading, spacing: 2) {
-                    ForEach(Array(composer.emojiCandidates.enumerated()), id: \.element.id) { idx, item in
+                    ForEach(Array(candidates.enumerated()), id: \.element.id) { idx, item in
                         Button {
-                            composer.pickEmoji(item)
+                            onSelect(item)
                         } label: {
-                            EmojiItemRow(candidate: item, isSelected: idx == composer.selectedEmojiIndex)
+                            EmojiItemRow(
+                                candidate: item,
+                                isSelected: idx == selectedIndex,
+                                thumbnailLoader: thumbnailLoader
+                            )
                         }
                         .buttonStyle(.plain)
                         .id(idx)
@@ -70,13 +130,13 @@ struct EmojiAutocompletePicker: View {
                 }
             }
 
-            if let query = composer.emojiQuery, !query.isEmpty {
-                if !composer.emojiCandidates.isEmpty {
+            if !query.isEmpty {
+                if !candidates.isEmpty {
                     Divider()
                         .padding(.vertical, 2)
                 }
                 Button {
-                    onAddCustomEmoji?(query)
+                    onAddCustomEmoji(query)
                 } label: {
                     HStack(spacing: 6) {
                         Image(systemName: "plus.circle")
@@ -100,5 +160,10 @@ struct EmojiAutocompletePicker: View {
                 .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
         )
         .shadow(color: .black.opacity(0.14), radius: 8, y: 3)
+        .task {
+            if let composer = observedComposer, composer.stickerPacks.isEmpty {
+                await composer.loadStickers(refresh: false)
+            }
+        }
     }
 }

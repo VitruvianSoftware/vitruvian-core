@@ -169,6 +169,7 @@ final class ViewSnapshotTests: XCTestCase {
         voiceRecorder: VoiceRecorderModel? = nil
     ) -> ComposerModel {
         let composer = ComposerModel(
+            sender: SnapshotMessageSender(),
             draftDelay: 0,
             sleep: { _ in },
             now: { Fixture.now },
@@ -2342,6 +2343,10 @@ final class ViewSnapshotTests: XCTestCase {
         let preferences = ComposerPreferences(defaults: defaults())
         let model = composer(text: "Weekend trail crew!")
         model.preferences = preferences
+        XCTAssertTrue(
+            model.canSend,
+            "composer in an open room with text must have canSend == true so the send arrow is active in the snapshot"
+        )
         XCTAssertTrue(ComposerView.plusMenuMediaTitles.contains("Add Emoji…"))
         XCTAssertEqual(model.addGIFMenuTitle, "Add GIF…")
         XCTAssertEqual(model.addStickerMenuTitle, "Add Sticker…")
@@ -2353,6 +2358,74 @@ final class ViewSnapshotTests: XCTestCase {
                 menus: ComposerMenus(sendLater: {}, createPoll: {}, pollsUnavailable: nil)
             )
         })
+    }
+
+    func testEmojiAutocompletePublicInterfaceThumbnailLoaderAndStickerEmoticonFilter() async throws {
+        let loader = ThumbnailLoader()
+        let customCandidate = EmojiCandidate(
+            id: "mxc://courier.local/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            shortcode: "party_smile",
+            glyph: nil,
+            mediaURL: "mxc://courier.local/0123456789abcdef0123456789abcdef0123456789abcdef",
+            isCustom: true
+        )
+        let row = EmojiItemRow(
+            candidate: customCandidate,
+            isSelected: true,
+            thumbnailLoader: loader
+        )
+        XCTAssertEqual(row.candidate, customCandidate)
+        XCTAssertTrue(row.isSelected)
+        XCTAssertNotNil(row.thumbnailLoader)
+
+        var selectedCandidate: EmojiCandidate?
+        var addedShortcode: String?
+        let picker = EmojiAutocompletePicker(
+            query: "smi",
+            candidates: [customCandidate],
+            selectedIndex: 0,
+            thumbnailLoader: loader,
+            onSelect: { selectedCandidate = $0 },
+            onAddCustomEmoji: { addedShortcode = $0 }
+        )
+        XCTAssertEqual(picker.query, "smi")
+        XCTAssertEqual(picker.candidates, [customCandidate])
+        XCTAssertEqual(picker.selectedIndex, 0)
+        XCTAssertNotNil(picker.thumbnailLoader)
+        picker.onSelect(customCandidate)
+        XCTAssertEqual(selectedCandidate, customCandidate)
+        picker.onAddCustomEmoji("smi")
+        XCTAssertEqual(addedShortcode, "smi")
+
+        // Emoticon-only items (usage == ["emoticon"]) must be filtered out of StickerPickerPopover.
+        let emoticonOnly = StickerItemWire(
+            id: "imported:emo_only",
+            packID: "imported",
+            shortcode: "emo_only",
+            name: "emo_only",
+            mediaURL: "mxc://courier.local/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            mimeType: "image/png",
+            usage: ["emoticon"]
+        )
+        let stickerAndEmoticon = StickerItemWire(
+            id: "imported:both",
+            packID: "imported",
+            shortcode: "both",
+            name: "both",
+            mediaURL: "mxc://courier.local/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            mimeType: "image/png",
+            usage: ["emoticon", "sticker"]
+        )
+        let pack = StickerPackWire(
+            id: "imported",
+            title: "Imported",
+            source: "imported",
+            items: [emoticonOnly, stickerAndEmoticon]
+        )
+        XCTAssertEqual(
+            StickerPickerPopover.stickerItems(in: pack).map(\.id),
+            ["imported:both"]
+        )
     }
 }
 
@@ -2375,6 +2448,22 @@ private struct SnapshotCredentials: CredentialStore {
     func read(account: String) throws -> String? { nil }
     func write(_ value: String, account: String) throws {}
     func delete(account: String) throws {}
+}
+
+private final class SnapshotMessageSender: MessageSending, @unchecked Sendable {
+    func sendText(roomID _: String, text _: String, replyTo _: String?) async throws {}
+    func sendFile(roomID _: String, url _: URL, size _: Int64, replyTo _: String?) async throws {}
+    func send(roomID _: String, rich _: RichText, replyTo _: String?, threadRoot _: String?, holdMillis _: Int) async throws -> String { "$snap" }
+    func sendFile(roomID _: String, url _: URL, size _: Int64, replyTo _: String?, threadRoot _: String?, holdMillis _: Int) async throws -> String { "$snap" }
+    func edit(eventID _: String, rich _: RichText) async throws {}
+    func schedule(roomID _: String, rich _: RichText, replyTo _: String?, threadRoot _: String?, due _: Date, condition _: SendLaterCondition) async throws {}
+    func undo(eventID _: String) async throws -> Draft { Draft(text: "", entities: [], replyTo: nil, threadRoot: nil) }
+    func sendHeld(roomID _: String?) async throws {}
+    func members(roomID _: String, query _: String) async throws -> [Member] { [] }
+    func status(of _: String, in _: String, thread _: String?) async throws -> StatusLine? { nil }
+    func setTyping(roomID _: String, typing _: Bool) async throws {}
+    func setUnreadFrom(eventID _: String) async throws {}
+    func directChat(roomID _: String, userID _: String) async throws -> String { "!dm" }
 }
 
 private final class SnapshotVoiceBackend: VoiceRecordingBackend, @unchecked Sendable {

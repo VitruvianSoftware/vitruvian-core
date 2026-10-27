@@ -1705,10 +1705,8 @@ final class FakeSender: MessageSending, @unchecked Sendable {
     func listStickers(refreshBridgePacks: Bool) async throws -> StickersListResult {
         locked {
             _stickerListRefreshes.append(refreshBridgePacks)
-            _log.append("listStickers")
+            return _stickersListResult
         }
-        if let failure = nextFailure() { throw failure }
-        return locked { _stickersListResult }
     }
 
     func importSticker(_ params: StickersImportParams) async throws -> StickerItemWire {
@@ -2251,10 +2249,10 @@ extension ComposerModelTests {
         // Picking a custom emoji candidate (`glyph == nil`) inserts `:custom_code: `.
         type(":cus", into: composer)
         let customCandidate = EmojiCandidate(
-            id: "mxc://local.courier/custom_code",
+            id: "mxc://courier.local/custom_code",
             shortcode: "custom_code",
             glyph: nil,
-            mediaURL: "mxc://local.courier/custom_code",
+            mediaURL: "mxc://courier.local/custom_code",
             isCustom: true
         )
         composer.pickEmoji(customCandidate)
@@ -2477,7 +2475,7 @@ extension ComposerModelTests {
         )
 
         await composer.loadStickers(refresh: true)
-        XCTAssertEqual(made.sender.stickerListRefreshes, [true])
+        XCTAssertEqual(made.sender.stickerListRefreshes.last, true)
         XCTAssertEqual(composer.stickerPacks.map(\.id), ["recent", "imported", "bridge:telegram:cats"])
         XCTAssertEqual(composer.recentGIFs, [recentGIF])
         XCTAssertEqual(
@@ -2520,7 +2518,7 @@ extension ComposerModelTests {
         await composer.importSticker(from: file("notes.txt"))
         XCTAssertEqual(
             composer.notice,
-            .sendFailed(reason: "Stickers must be PNG, WebP, GIF, or JPEG images.")
+            .importFailed(reason: "Stickers must be PNG, WebP, GIF, or JPEG images.")
         )
         XCTAssertTrue(made.sender.stickerImports.isEmpty)
 
@@ -2787,6 +2785,175 @@ extension ComposerModelTests {
         XCTAssertEqual(
             made.sender.gifSends.last,
             MessageSendGIFParams(roomID: "!a", path: file("loop.mp4").path, mediaURL: nil, caption: nil)
+        )
+    }
+
+    // MARK: - Fix Round 1 tests
+
+    func testOpeningRoomLoadsCustomEmojiCatalogForAutocompleteWithoutOpeningPicker() async {
+        let sender = FakeSender()
+        let customEmoji = StickerItemWire(
+            id: "imported:party_parrot",
+            packID: "imported",
+            shortcode: "party_parrot",
+            name: "party_parrot",
+            emoji: "🦜",
+            mediaURL: "mxc://courier.local/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            mimeType: "image/gif",
+            width: 128,
+            height: 128,
+            usage: ["emoticon", "sticker"]
+        )
+        sender.stickersListResult = StickersListResult(
+            packs: [
+                StickerPackWire(id: "imported", title: "Imported", source: "imported", items: [customEmoji]),
+            ],
+            recentGIFs: []
+        )
+        let preferences = ComposerPreferences(defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!)
+        let composer = ComposerModel(
+            sender: sender,
+            draftDelay: 0,
+            sleep: { _ in },
+            preferences: preferences,
+            now: { Date(timeIntervalSince1970: 1_000) }
+        )
+
+        // Open a room without calling loadStickers, openStickerPicker, or openGIFPicker.
+        composer.open("!a")
+        for _ in 0 ..< 10 {
+            if !composer.customEmojis.isEmpty { break }
+            await Task.yield()
+        }
+
+        XCTAssertEqual(composer.customEmojis.map(\.shortcode), ["party_parrot"])
+        type("hello :party_", into: composer)
+        XCTAssertEqual(composer.emojiQuery, "party_")
+        XCTAssertTrue(
+            composer.emojiCandidates.contains(where: { $0.shortcode == "party_parrot" && $0.isCustom }),
+            "':' autocomplete must find imported custom emoji immediately after opening a room without opening any picker first"
+        )
+    }
+
+    func testOpenEmojiAutocompleteWithNoShortcodeDoesNotSwallowNextEscape() {
+        let made = makeComposer()
+        let composer = made.composer
+
+        composer.startReply(to: quote("$q1", name: "Alice Example", text: "Hello there"))
+        XCTAssertEqual(composer.replyTarget?.eventID, "$q1")
+
+        type("hello ", into: composer)
+        composer.openEmojiAutocomplete()
+        XCTAssertNil(composer.emojiQuery)
+
+        // Pressing Escape next must clear the reply chip instead of being swallowed by a stale isEmojiPickerPresented flag.
+        XCTAssertTrue(composer.escape())
+        XCTAssertNil(composer.replyTarget, "Escape must clear the reply chip rather than being swallowed by a stale emoji picker flag")
+    }
+
+    func testSlashGifWhenUnsupportedKeepsTextAndShowsNoticeAndWhileGIFStagedDoesNotSendSlashGifAsCaption() async {
+        // 1. When GIFs are unsupported in the room, '/gif' and '/gif cats' must keep the text and show a notice.
+        var noGIF = whatsApp
+        noGIF.gif = .unsupported
+        let unsupportedMade = makeComposer(features: noGIF, network: "signal")
+        let unsupportedComposer = unsupportedMade.composer
+
+        type("/gif cats", into: unsupportedComposer)
+        XCTAssertNil(unsupportedComposer.submit())
+        XCTAssertFalse(unsupportedComposer.isGIFPickerPresented)
+        XCTAssertEqual(unsupportedComposer.text, "/gif cats", "'/gif' when GIFs are unsupported must keep the user's text")
+        XCTAssertEqual(
+            unsupportedComposer.notice,
+            .sendFailed(reason: "GIFs are not supported on Signal.")
+        )
+
+        // 2. While a GIF is already staged, typing '/gif dogs' and pressing Return must NOT send '/gif dogs' as its caption.
+        let supportedMade = makeComposer()
+        let supportedComposer = supportedMade.composer
+        let stagedGIF = StickerItemWire(
+            id: "gif:staged:1",
+            packID: "recent_gifs",
+            name: "Party Parrot",
+            mediaURL: "mxc://courier.local/1122334455667788112233445566778811223344556677881122334455667788",
+            mimeType: "image/gif",
+            width: 320,
+            height: 240,
+            usage: ["gif"]
+        )
+        supportedComposer.pendingGIF = stagedGIF
+        type("/gif dogs", into: supportedComposer)
+        await supportedComposer.send()
+
+        XCTAssertTrue(
+            supportedMade.sender.gifSends.isEmpty,
+            "'/gif dogs' while a GIF is staged must open the GIF picker for 'dogs', not send '/gif dogs' as the staged GIF's caption"
+        )
+        XCTAssertTrue(supportedComposer.isGIFPickerPresented)
+        XCTAssertEqual(supportedComposer.gifSearchQuery, "dogs")
+        XCTAssertEqual(supportedComposer.text, "")
+        XCTAssertEqual(supportedComposer.pendingGIF, stagedGIF)
+    }
+
+    func testThumbnailLoaderResolvesCourierMediaAndMxcCourierLocalURLs() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("courier-thumb-test-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let hash = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+        let mediaSubdir = tempDir
+            .appendingPathComponent("media", isDirectory: true)
+            .appendingPathComponent("ab", isDirectory: true)
+        try FileManager.default.createDirectory(at: mediaSubdir, withIntermediateDirectories: true)
+        let storedFile = mediaSubdir.appendingPathComponent(hash)
+        try Data("PNG".utf8).write(to: storedFile)
+
+        XCTAssertEqual(
+            ThumbnailLoader.resolveMediaPath("courier://media/\(hash)", dataDirectory: tempDir),
+            storedFile.path
+        )
+        XCTAssertEqual(
+            ThumbnailLoader.resolveMediaPath("mxc://courier.local/\(hash)", dataDirectory: tempDir),
+            storedFile.path,
+            "engine stores mxc://courier.local/<sha256> (ids.ServerName = courier.local)"
+        )
+        XCTAssertNil(
+            ThumbnailLoader.resolveMediaPath("mxc://local.courier/\(hash)", dataDirectory: tempDir),
+            "wrong reversed domain mxc://local.courier/ must not resolve"
+        )
+    }
+
+    func testStickerImportErrorsUseImportWordingNotMessageSendFailed() async throws {
+        let made = makeComposer(sizes: [
+            "notes.txt": 128,
+            "broken.png": 1024,
+        ])
+        let composer = made.composer
+
+        // 1. Invalid extension during sticker import uses import wording, never "The message could not be sent".
+        await composer.importSticker(from: file("notes.txt"))
+        let invalidExtNotice = try XCTUnwrap(composer.notice)
+        XCTAssertFalse(
+            invalidExtNotice.displayText.contains("The message could not be sent"),
+            "sticker import error must not say 'The message could not be sent': got '\(invalidExtNotice.displayText)'"
+        )
+        XCTAssertTrue(
+            invalidExtNotice.displayText.localizedCaseInsensitiveContains("import")
+                || invalidExtNotice.displayText.contains("Stickers must be PNG"),
+            "got '\(invalidExtNotice.displayText)'"
+        )
+
+        // 2. Engine error during sticker import uses import wording, never "The message could not be sent".
+        composer.dismissNotice()
+        made.sender.failures = [.rpc(.other(-32099), message: "corrupt image", reason: nil)]
+        await composer.importSticker(from: file("broken.png"))
+        let engineFailureNotice = try XCTUnwrap(composer.notice)
+        XCTAssertFalse(
+            engineFailureNotice.displayText.contains("The message could not be sent"),
+            "engine sticker import error must not say 'The message could not be sent': got '\(engineFailureNotice.displayText)'"
+        )
+        XCTAssertTrue(
+            engineFailureNotice.displayText.localizedCaseInsensitiveContains("import"),
+            "engine sticker import error must use import wording: got '\(engineFailureNotice.displayText)'"
         )
     }
 }

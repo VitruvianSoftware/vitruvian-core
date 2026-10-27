@@ -62,9 +62,37 @@ public enum ComposerNotice: Equatable, Sendable {
     case noAnswer
     /// The engine refused a send. Nothing was sent, and what was typed is back in the composer.
     case sendFailed(reason: String)
+    /// Importing a sticker or custom emoji failed.
+    case importFailed(reason: String)
     /// The text is longer than the chat's network takes (`ChatFeatures.maxTextLength`, counted in bytes of UTF-8,
     /// so an emoji counts four). Nothing was sent, and the text stays to be shortened.
     case textTooLong
+
+    /// User-facing text shown in the notice banner under the composer.
+    public var displayText: String {
+        switch self {
+        case let .attachmentTooLarge(name):
+            String(localized: "Could not attach \(name) — total size would exceed 90 MB.")
+        case let .attachmentsLeftOut(names):
+            names.count == 1
+                ? String(localized: "Could not put \(names[0]) back — total size would exceed 90 MB.")
+                : String(localized: "Could not put \(names.count) files back — total size would exceed 90 MB: \(names.joined(separator: ", "))")
+        case let .notAFile(name):
+            String(localized: "Could not attach \(name). Courier can send files, not folders.")
+        case let .cannotRead(name):
+            String(localized: "Could not read \(name). It may have moved, or Courier may not be allowed to open it.")
+        case .noAnswer:
+            StatusLine.mayHaveBeenSentText
+        case let .sendFailed(reason):
+            reason.isEmpty ? String(localized: "The message could not be sent.")
+                : String(localized: "The message could not be sent: \(reason)")
+        case let .importFailed(reason):
+            reason.isEmpty ? String(localized: "Could not import sticker.")
+                : String(localized: "Could not import sticker: \(reason)")
+        case .textTooLong:
+            String(localized: "This message is too long for this chat. Shorten it, or send it in parts.")
+        }
+    }
 }
 
 /// Where the composer asks the text view to put the caret, in UTF-16 units. A new request has a higher serial.
@@ -413,6 +441,8 @@ public final class ComposerModel: ObservableObject {
     private var continuingBlock: (kind: TextEntity.Kind, at: Int)?
     private var caretSerial = 0
     private var preferencesCancellable: AnyCancellable?
+    private var initialStickerLoadStarted = false
+    private var stickerLoadGeneration = 0
     /// My held messages, by chat, and what Undo does with them.
     private let held = HeldMessages()
 
@@ -536,10 +566,6 @@ public final class ComposerModel: ObservableObject {
             isGIFPickerPresented = false
             return true
         }
-        if isEmojiPickerPresented {
-            isEmojiPickerPresented = false
-            return true
-        }
         if voiceRecorder.state != .idle {
             voiceRecorder.cancelImmediately()
             return true
@@ -615,7 +641,16 @@ public final class ComposerModel: ObservableObject {
         replyTarget = draft.reply
         notices = draft.notices
         heldIDs = room.map { held.ids(in: $0) } ?? []
-        if let room { drafts[room]?.notices = [] } // shown now, once
+        if let room {
+            drafts[room]?.notices = [] // shown now, once
+            if stickerPacks.isEmpty, !initialStickerLoadStarted, sender != nil {
+                initialStickerLoadStarted = true
+                Task { [weak self] in
+                    guard let self, self.stickerLoadGeneration == 0, self.stickerPacks.isEmpty else { return }
+                    await self.loadStickers(refresh: false)
+                }
+            }
+        }
     }
 
     private var currentContents: Contents {
@@ -958,8 +993,9 @@ public final class ComposerModel: ObservableObject {
             emojiQuery = found.text
             emojiCandidates = EmojiCatalog.shared.search(found.text, custom: customEmojis, limit: 8)
             selectedEmojiIndex = 0
+            isEmojiPickerPresented = false
         } else {
-            isEmojiPickerPresented = true
+            isEmojiPickerPresented = false
         }
     }
 
@@ -1453,8 +1489,21 @@ public final class ComposerModel: ObservableObject {
     public func submit(archive: Bool = false) -> Task<Void, Never>? {
         guard !isScheduling else { return nil }
         if case let .editing(eventID, original) = mode { return submitEdit(of: eventID, original: original) }
-        if attachments.isEmpty, pendingGIF == nil, roomID != nil,
+        if attachments.isEmpty, roomID != nil,
            trimmedText == "/gif" || trimmedText.hasPrefix("/gif ") {
+            guard canSendGIF else {
+                let netName = NetworkNames.displayName(of: network)
+                    ?? (network.isEmpty ? String(localized: "this chat") : network)
+                notices = [
+                    .sendFailed(
+                        reason: String(
+                            format: String(localized: "GIFs are not supported on %@."),
+                            netName
+                        )
+                    ),
+                ]
+                return nil
+            }
             let query = trimmedText == "/gif"
                 ? ""
                 : String(trimmedText.dropFirst("/gif ".count)).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1827,7 +1876,10 @@ public final class ComposerModel: ObservableObject {
     /// Loads installed and bridge sticker packs plus recent GIFs from the engine (`stickers.list`).
     public func loadStickers(refresh: Bool = false) async {
         guard let sender else { return }
+        stickerLoadGeneration += 1
+        let generation = stickerLoadGeneration
         guard let result = try? await sender.listStickers(refreshBridgePacks: refresh) else { return }
+        guard stickerLoadGeneration == generation else { return }
         applyStickerCatalog(result)
     }
 
@@ -1886,7 +1938,7 @@ public final class ComposerModel: ObservableObject {
         }
         let ext = url.pathExtension.lowercased()
         guard Self.allowedStickerExtensions.contains(ext) else {
-            notices = [.sendFailed(reason: String(localized: "Stickers must be PNG, WebP, GIF, or JPEG images."))]
+            notices = [.importFailed(reason: String(localized: "Stickers must be PNG, WebP, GIF, or JPEG images."))]
             return
         }
 
@@ -1908,22 +1960,16 @@ public final class ComposerModel: ObservableObject {
             notices = []
             upsertImportedSticker(imported)
         } catch {
+            let reason = EngineErrorText.text(
+                for: error,
+                network: network.isEmpty ? nil : network,
+                maxSizeBytes: Self.maxAttachmentBytes,
+                fallback: ""
+            )
             if let room = roomID {
-                switch Self.classify(error, network: network, maxSizeBytes: Self.maxAttachmentBytes) {
-                case let .refused(reason):
-                    show([.sendFailed(reason: reason)], in: room)
-                case .unanswered:
-                    show([.noAnswer], in: room)
-                }
+                show([.importFailed(reason: reason)], in: room)
             } else {
-                notices = [
-                    .sendFailed(
-                        reason: EngineErrorText.text(
-                            for: error,
-                            fallback: String(localized: "The sticker could not be imported.")
-                        )
-                    ),
-                ]
+                notices = [.importFailed(reason: reason)]
             }
         }
     }

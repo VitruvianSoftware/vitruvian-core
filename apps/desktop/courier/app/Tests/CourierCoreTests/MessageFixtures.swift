@@ -120,6 +120,8 @@ func featuresJSON(reply: Bool = true, thread: Bool = true, replyIsThread: Bool =
         "delete_reaches_phone": deleteReachesPhone, "hide_deleted_placeholder": hideDeletedPlaceholder,
         "poll": poll as Any? ?? NSNull(), "disappearing": disappearing as Any? ?? NSNull(), "current_timer": currentTimer as Any? ?? NSNull(),
         "formatting": ["bold", "italic"], "mention_room": false, "max_text_length": 65536, "source": source,
+        "sticker": ["supported": false, "mime_types": [] as [String], "captions": false] as [String: Any],
+        "gif": ["supported": false, "mime_types": [] as [String], "captions": false] as [String: Any],
     ]
 }
 

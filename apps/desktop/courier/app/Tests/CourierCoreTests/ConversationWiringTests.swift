@@ -146,21 +146,32 @@ final class ConversationWiringTests: XCTestCase {
     }
 
     func testStickerAndGIFFeatureGatingUnavailableLabelsAndUnifiedPickerEntryPoints() async throws {
-        var noStickerOrGIF = featuresJSON()
-        noStickerOrGIF["sticker"] = NSNull()
-        noStickerOrGIF["gif"] = NSNull()
+        let noStickerOrGIF = featuresJSON()
 
         var supportedFeatures = featuresJSON()
-        supportedFeatures["sticker"] = [
+        supportedFeatures["sticker_features"] = [
             "supported": true,
             "mime_types": ["image/png", "image/webp"],
             "caption": false,
             "max_size": 524_288,
         ]
-        supportedFeatures["gif"] = [
+        supportedFeatures["sticker"] = [
+            "supported": true,
+            "mime_types": ["image/png", "image/webp"],
+            "captions": false,
+            "max_size": 524_288,
+        ]
+        supportedFeatures["gif_features"] = [
             "supported": true,
             "mime_types": ["image/gif", "video/mp4"],
             "caption": true,
+            "max_caption_length": 1024,
+            "max_size": 16_777_216,
+        ]
+        supportedFeatures["gif"] = [
+            "supported": true,
+            "mime_types": ["image/gif", "video/mp4"],
+            "captions": true,
             "max_caption_length": 1024,
             "max_size": 16_777_216,
         ]
@@ -193,6 +204,14 @@ final class ConversationWiringTests: XCTestCase {
         // Switch to a room where stickers and GIFs are supported.
         try await h.open("!wa")
         try await waitUntil { composer.canSendSticker && composer.canSendGIF }
+        XCTAssertTrue(
+            composer.features.gif.captions,
+            "room.features fixture must match the Go engine's real wire shape ('captions' on gif and 'caption' on gif_features)"
+        )
+        XCTAssertNotNil(
+            featuresJSON()["sticker"] as? [String: Any],
+            "featuresJSON() must emit non-null sticker object matching actions.Features in Go"
+        )
         XCTAssertEqual(composer.sendStickerMenuTitle, "Send Sticker…")
         XCTAssertEqual(composer.sendGIFMenuTitle, "Send GIF…")
         XCTAssertEqual(composer.addStickerMenuTitle, "Add Sticker…")

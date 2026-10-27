@@ -44,6 +44,10 @@ public struct StickerPickerPopover: View {
         self.onImportSticker = onImportSticker
     }
 
+    public static func stickerItems(in pack: StickerPackWire) -> [StickerItemWire] {
+        pack.items.filter { $0.usage.isEmpty || $0.usage.contains("sticker") }
+    }
+
     private var displayedPacks: [StickerPackWire] {
         if composer.stickerPacks.isEmpty {
             return [
@@ -61,12 +65,12 @@ public struct StickerPickerPopover: View {
     private var filteredItems: [StickerItemWire] {
         let query = composer.stickerSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else {
-            return activePack?.items ?? []
+            return activePack.map(Self.stickerItems(in:)) ?? []
         }
         var seen = Set<String>()
         var matches: [StickerItemWire] = []
         for pack in displayedPacks {
-            for item in pack.items {
+            for item in Self.stickerItems(in: pack) {
                 guard seen.insert(item.id).inserted else { continue }
                 if item.name.localizedCaseInsensitiveContains(query)
                     || item.shortcode?.localizedCaseInsensitiveContains(query) == true

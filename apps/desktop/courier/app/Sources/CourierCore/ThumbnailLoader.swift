@@ -83,7 +83,7 @@ public actor ThumbnailLoader {
 
     // MARK: - Reading the file
 
-    /// Resolves a local media path from a `courier://media/<sha256>`, `mxc://local.courier/<sha256>`, `file://` URL, or filesystem path.
+    /// Resolves a local media path from a `courier://media/<sha256>`, `mxc://courier.local/<sha256>`, `file://` URL, or filesystem path.
     public nonisolated static func resolveMediaPath(
         _ mediaURL: String?,
         dataDirectory: URL = EngineLocation.dataDirectory()
@@ -94,8 +94,8 @@ public actor ThumbnailLoader {
         let hashCandidate: String?
         if raw.hasPrefix("courier://media/") {
             hashCandidate = String(raw.dropFirst("courier://media/".count))
-        } else if raw.hasPrefix("mxc://local.courier/") {
-            hashCandidate = String(raw.dropFirst("mxc://local.courier/".count))
+        } else if raw.hasPrefix("mxc://courier.local/") {
+            hashCandidate = String(raw.dropFirst("mxc://courier.local/".count))
         } else {
             hashCandidate = nil
         }

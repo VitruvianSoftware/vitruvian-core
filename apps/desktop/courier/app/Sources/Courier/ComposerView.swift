@@ -415,25 +415,7 @@ struct ComposerView: View {
     }
 
     private func noticeText(_ notice: ComposerNotice) -> String {
-        switch notice {
-        case let .attachmentTooLarge(name):
-            String(localized: "Could not attach \(name) — total size would exceed 90 MB.")
-        case let .attachmentsLeftOut(names):
-            names.count == 1
-                ? String(localized: "Could not put \(names[0]) back — total size would exceed 90 MB.")
-                : String(localized: "Could not put \(names.count) files back — total size would exceed 90 MB: \(names.joined(separator: ", "))")
-        case let .notAFile(name):
-            String(localized: "Could not attach \(name). Courier can send files, not folders.")
-        case let .cannotRead(name):
-            String(localized: "Could not read \(name). It may have moved, or Courier may not be allowed to open it.")
-        case .noAnswer:
-            StatusLine.mayHaveBeenSentText
-        case let .sendFailed(reason):
-            reason.isEmpty ? String(localized: "The message could not be sent.")
-                : String(localized: "The message could not be sent: \(reason)")
-        case .textTooLong:
-            String(localized: "This message is too long for this chat. Shorten it, or send it in parts.")
-        }
+        notice.displayText
     }
 }
 
