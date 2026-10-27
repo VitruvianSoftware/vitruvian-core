@@ -93,7 +93,17 @@ if [[ -n "${TAG}" ]]; then
 	EXTRA_ARGS+=(--tag "${TAG}")
 fi
 
-bash "${PACKAGE_HELPER}" \
+if [[ -f "${PACKAGE_HELPER}" ]]; then
+	PACKAGE_CMD=(bash "${PACKAGE_HELPER}")
+else
+	PKG_TMP="$(mktemp -d)"
+	trap 'rm -rf "${PKG_TMP}"' EXIT
+	rustc --edition 2021 --crate-type lib --crate-name package_desktop "${ROOT}/tools/desktop-package/src/lib.rs" -o "${PKG_TMP}/libpackage_desktop.rlib"
+	rustc --edition 2021 "${ROOT}/tools/desktop-package/src/main.rs" -L "${PKG_TMP}" --extern package_desktop="${PKG_TMP}/libpackage_desktop.rlib" -o "${PKG_TMP}/package-desktop"
+	PACKAGE_CMD=("${PKG_TMP}/package-desktop")
+fi
+
+"${PACKAGE_CMD[@]}" \
 	--app-path "${APP_DIR}/dist/HomeSpeaker.app" \
 	--app-name "HomeSpeaker" \
 	--version "${VERSION}" \

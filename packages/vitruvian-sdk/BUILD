@@ -316,14 +316,6 @@ alias(
     visibility = ["//packages/vitruvian-sdk/consumers:tools"],
 )
 
-genrule(
-    name = "conformance_py_compat",
-    srcs = [":conformance"],
-    outs = ["conformance/conformance.py"],
-    cmd = "cp $(location :conformance) $@",
-    visibility = ["//packages/vitruvian-sdk/consumers:tools"],
-)
-
 rust_test(
     name = "conformance_rs_lib_test",
     size = "small",
