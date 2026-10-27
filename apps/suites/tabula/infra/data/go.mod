@@ -6,7 +6,7 @@ require (
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/neon v1.0.1
 	github.com/VitruvianSoftware/pulumi-library/go/pkg/upstash v1.0.2
 	github.com/pulumi/pulumi-gcp/sdk/v9 v9.37.1
-	github.com/pulumi/pulumi/sdk/v3 v3.270.0
+	github.com/pulumi/pulumi/sdk/v3 v3.272.0
 )
 
 require (
