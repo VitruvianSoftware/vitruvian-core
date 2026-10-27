@@ -13,10 +13,10 @@
     "typecheck:frontend": "tsc --noEmit -p frontend/tsconfig.json",
     "build:frontend": "npm run typecheck:frontend && cd frontend && vite build",
     "build": "npm run build:frontend && npm run build:server",
-    "deploy": "./scripts/deploy.sh",
+    "deploy": "bazel run //apps/web/oauth-user-inspector:deploy-cloudbuild",
     "preview": "cd frontend && vite preview",
     "test": "bazel test //apps/web/oauth-user-inspector:unit_tests",
-    "setup-dev": "sh scripts/setup-dev.sh",
+    "setup-dev": "bazel run //apps/web/oauth-user-inspector:setup-dev",
     "cleanup:untrack-builds": "git rm -r --cached dist dist-server && git add .gitignore && (git diff --cached --quiet || git commit -m \"chore: untrack build outputs\")"
   },
   "dependencies": {

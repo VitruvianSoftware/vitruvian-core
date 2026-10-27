@@ -27,7 +27,6 @@ load("@npm//apps/suites/tabula/extension:webpack-cli/package_json.bzl", webpack_
 load("@rules_itest//:itest.bzl", "service_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/delivery:defs.bzl", "delivery")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
@@ -411,14 +410,12 @@ delivery(
     run = "//apps/suites/tabula/extension:publish-dev-latest",
 )
 
-# Regression harness for the publisher: runs the real script against a fake
+# Regression harness for the publisher: runs the publisher against a fake
 # workspace with recording stubs and asserts gh runs from the workspace root
 # (the first orchestrated CI run failed on gh resolving no repo from $WORK).
-sh_test(
+test_suite(
     name = "publish-dev-latest_test",
-    size = "small",
-    srcs = ["publish-dev-latest-test.sh"],
-    data = ["publish-dev-latest.sh"],
+    tests = [":publish_dev_latest_lib_test"],
 )
 
 alias(
