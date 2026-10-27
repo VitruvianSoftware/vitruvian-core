@@ -58,7 +58,13 @@ pub fn resolve_install_paths(
         _ => PathBuf::from(format!("{argv0}.runfiles")),
     };
     let zip_path = runfiles.join(ZIP_RUNFILES_REL);
-    let agent_path = runfiles.join(AGENT_RUNFILES_REL);
+    let mut agent_path = runfiles.join(AGENT_RUNFILES_REL);
+    if !agent_path.is_file() {
+        let rust_agent = runfiles.join("_main/apps/mobile/android-remote/macagent/macagent");
+        if rust_agent.is_file() {
+            agent_path = rust_agent;
+        }
+    }
     InstallPaths {
         dest_dir,
         dest_app,

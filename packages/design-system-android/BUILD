@@ -33,9 +33,7 @@
 load("@rules_kotlin//kotlin:android.bzl", "kt_android_library")
 load("@rules_kotlin//kotlin:core.bzl", "kt_compiler_plugin")
 load("@rules_kotlin//kotlin:jvm.bzl", "kt_jvm_library", "kt_jvm_test")
-load("@rules_python//python:defs.bzl", "py_test")
 load("@rules_rust//rust:defs.bzl", "rust_test")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/doctor:defs.bzl", "doctor")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
@@ -157,29 +155,6 @@ rust_test(
     deps = ["//packages/design-system-android/tools:gen_tokens_lib"],
 )
 
-sh_test(
-    name = "tokens_are_current_sh",
-    # tools/ is its own package (it has a BUILD), so these cross a package
-    # boundary and need full labels -- a "tools/..." path label would resolve
-    # into this package and fail to load. Both are exported by tools/BUILD.
-    srcs = ["//packages/design-system-android/tools:tokens_are_current.sh"],
-    data = [
-        "src/main/kotlin/dev/vitruvian/design/VitruvianTokens.kt",
-        "//packages/design-system:src/tokens.json",
-        "//packages/design-system-android/tools:gen_tokens",
-        "//packages/design-system-android/tools:kt_license_header.txt",
-        "//tools/format:ktfmt",
-    ],
-    env = {
-        "GENERATOR": "$(rlocationpath //packages/design-system-android/tools:gen_tokens)",
-        "KTFMT": "$(rlocationpath //tools/format:ktfmt)",
-        "TOKENS": "$(rlocationpath //packages/design-system:src/tokens.json)",
-        "HEADER": "$(rlocationpath //packages/design-system-android/tools:kt_license_header.txt)",
-        "CHECKED_IN": "$(rlocationpath src/main/kotlin/dev/vitruvian/design/VitruvianTokens.kt)",
-    },
-    deps = ["@bazel_tools//tools/bash/runfiles"],
-)
-
 rust_test(
     name = "parity_test",
     size = "small",
@@ -190,17 +165,6 @@ rust_test(
     ],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-)
-
-py_test(
-    name = "parity_test_py",
-    size = "small",
-    srcs = ["//packages/design-system-android/tools:parity_test.py"],
-    data = glob(["src/main/kotlin/**/*.kt"]) + [
-        "//packages/design-system:src/Icons.tsx",
-        "//packages/design-system:src/Illustrations.tsx",
-    ],
-    main = "//packages/design-system-android/tools:parity_test.py",
 )
 
 # Developer-environment check: `bazel run //packages/design-system-android:doctor`.

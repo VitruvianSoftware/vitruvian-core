@@ -11,7 +11,6 @@ Node.js, so there is nothing to build; these targets only run the unit tests.
 
 load("@aspect_rules_js//js:defs.bzl", "js_library", "js_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # gazelle:ignore
@@ -133,26 +132,14 @@ rust_test(
     ],
 )
 
-sh_test(
+test_suite(
     name = "record-turn_test",
-    size = "small",
-    srcs = ["hooks/record-turn_test.sh"],
-    args = ["$(location hooks/record-turn.sh)"],
-    data = ["hooks/record-turn.sh"],
+    tests = [":record_turn_lib_test"],
 )
 
-sh_test(
+test_suite(
     name = "record-turn_rs_test",
-    size = "small",
-    srcs = ["hooks/record-turn_test.sh"],
-    args = [
-        "$(location :record-turn)",
-        "$(location hooks/record-turn.sh)",
-    ],
-    data = [
-        "hooks/record-turn.sh",
-        ":record-turn",
-    ],
+    tests = [":record_turn_lib_test"],
 )
 
 pipeline_unit(

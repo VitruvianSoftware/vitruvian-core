@@ -266,23 +266,14 @@ pub fn render_presubmit_workflow(
     b.push_str(PLAN_NEEDED);
     b.push('\n');
     b.push_str("        uses: ./.github/actions/setup-bazel\n\n");
-    // The dependency map for the diff base, saved by the rdeps-map job when
-    // that commit landed on main (#2465). A miss is normal (base not on main
-    // yet, or its map job still running): the planner then queries live.
-    // Go, to build the planner directly (#2465). `bazel run` spent ~5 min on
-    // a fresh runner loading toolchains before a 69s compile; the planner is
-    // stdlib-only, so `go build` takes seconds. cache: false -- there are no
-    // module downloads to cache, and the Actions cache budget is shared.
-    b.push_str("      - name: Set up Go\n");
+    b.push_str("      - name: Restore the extracted LLVM toolchain\n");
+    b.push_str("        id: llvm-contents\n");
     b.push_str("        if: ");
     b.push_str(PLAN_NEEDED);
     b.push('\n');
-    b.push_str("        uses: ");
-    b.push_str(&pin("actions/setup-go")?);
-    b.push('\n');
+    b.push_str("        uses: ./.github/actions/llvm-cache-restore\n");
     b.push_str("        with:\n");
-    b.push_str("          go-version-file: go.mod\n");
-    b.push_str("          cache: false\n\n");
+    b.push_str("          restore-only: \"true\"\n\n");
     // The map for a commit is saved 16-39 min after it lands, later than the
     // next merge-queue entry needs it (#2841), so the exact key missed in 8 of
     // 9 queue runs. Offer the base's recent ancestors as fallbacks, nearest
@@ -388,11 +379,12 @@ pub fn render_presubmit_workflow(
     b.push_str("          if [ -z \"$base\" ]; then\n");
     b.push_str("            echo \"::warning::No diff base for event '$EVENT_NAME'; running every unit.\"\n");
     b.push_str("          else\n");
-    // Built with plain `go build`, not `bazel run` (#2465): see "Set up Go".
-    // GOWORK=off because the repo's go.work spans every module, and this one
-    // needs only the root module. A build failure fails open like any other
-    // planner failure. stderr goes to a file rather than /dev/null so a
-    // failure here is diagnosable instead of three silent minutes.
+    // Built to a standalone binary with `bazel build` (--config=remotecache-ci)
+    // before invoking the planner so the Bazel server lock is released before
+    // the planner spawns `bazel query` on a dependency-map miss. A build
+    // failure fails open like any other planner failure. stderr goes to a file
+    // rather than /dev/null so a failure here is diagnosable instead of three
+    // silent minutes.
     //
     // --head=HEAD is load-bearing. Without it the planner diffs the base
     // against the WORKING TREE, and `bazel run` itself rewrites
@@ -402,7 +394,11 @@ pub fn render_presubmit_workflow(
     // runs on every diff, silently -- a genuine global change, not a degraded
     // plan, so no warning fires. Diff the commit, not the checkout.
     b.push_str("            planner=\"$RUNNER_TEMP/pipeline-plan\"\n");
-    b.push_str("            if ! GOWORK=off CGO_ENABLED=0 go build -o \"$planner\" ./tools/pipeline/plan 2>/tmp/plan-build.err; then\n");
+    b.push_str("            cache_flags=()\n");
+    b.push_str("            if [ -n \"${BUILDBUDDY_API_KEY:-}\" ]; then\n");
+    b.push_str("              cache_flags=(--config=remotecache-ci \"--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}\")\n");
+    b.push_str("            fi\n");
+    b.push_str("            if ! (bazel build \"${cache_flags[@]}\" //tools/pipeline/plan && cp -f bazel-bin/tools/pipeline/plan/plan \"$planner\" && chmod +x \"$planner\") 2>/tmp/plan-build.err; then\n");
     b.push_str(
         "              echo \"::warning::Could not build the planner; running every unit.\"\n",
     );
@@ -679,20 +675,22 @@ pub fn render_presubmit_workflow(
     b.push_str("        uses: ./.github/actions/free-disk-space\n\n");
     b.push_str("      - name: Set up Bazel\n");
     b.push_str("        uses: ./.github/actions/setup-bazel\n\n");
-    // Go, to build the planner directly (#2465). `bazel run` spent ~5 min on
-    // a fresh runner loading toolchains before a 69s compile; the planner is
-    // stdlib-only, so `go build` takes seconds. cache: false -- there are no
-    // module downloads to cache, and the Actions cache budget is shared.
-    b.push_str("      - name: Set up Go\n");
-    b.push_str("        uses: ");
-    b.push_str(&pin("actions/setup-go")?);
-    b.push('\n');
+    b.push_str("      - name: Restore the extracted LLVM toolchain\n");
+    b.push_str("        id: llvm-contents\n");
+    b.push_str("        uses: ./.github/actions/llvm-cache-restore\n");
     b.push_str("        with:\n");
-    b.push_str("          go-version-file: go.mod\n");
-    b.push_str("          cache: false\n\n");
+    b.push_str("          restore-only: \"true\"\n\n");
     b.push_str("      - name: Compute the dependency map for this commit\n");
     b.push_str("        run: |\n");
-    b.push_str("          GOWORK=off CGO_ENABLED=0 go build -o \"$RUNNER_TEMP/pipeline-plan\" ./tools/pipeline/plan\n");
+    b.push_str("          cache_flags=()\n");
+    b.push_str("          if [ -n \"${BUILDBUDDY_API_KEY:-}\" ]; then\n");
+    b.push_str("            cache_flags=(--config=remotecache-ci \"--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}\")\n");
+    b.push_str("          fi\n");
+    b.push_str("          bazel build \"${cache_flags[@]}\" //tools/pipeline/plan\n");
+    b.push_str(
+        "          cp -f bazel-bin/tools/pipeline/plan/plan \"$RUNNER_TEMP/pipeline-plan\"\n",
+    );
+    b.push_str("          chmod +x \"$RUNNER_TEMP/pipeline-plan\"\n");
     b.push_str("          \"$RUNNER_TEMP/pipeline-plan\" --emit-rdeps-map=\"$RUNNER_TEMP/pipeline-rdeps-map.json\" --repo-root=\"$PWD\" --timeout-sec=2100\n\n");
     // The copy that is never evicted (#2841). continue-on-error: the cache
     // save below still happens, so a failed push only costs the speed-up.

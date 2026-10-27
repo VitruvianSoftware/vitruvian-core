@@ -8,7 +8,6 @@ catalog and installed plugin manager sidecar.
 
 load("@aspect_rules_js//js:defs.bzl", "js_library", "js_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # gazelle:ignore
@@ -130,26 +129,14 @@ rust_test(
     ],
 )
 
-sh_test(
+test_suite(
     name = "note-plugin-cmd_test",
-    size = "small",
-    srcs = ["hooks/note-plugin-cmd_test.sh"],
-    args = ["$(location hooks/note-plugin-cmd.sh)"],
-    data = ["hooks/note-plugin-cmd.sh"],
+    tests = [":note_plugin_cmd_lib_test"],
 )
 
-sh_test(
+test_suite(
     name = "note-plugin-cmd_rs_test",
-    size = "small",
-    srcs = ["hooks/note-plugin-cmd_test.sh"],
-    args = [
-        "$(location :note-plugin-cmd)",
-        "$(location hooks/note-plugin-cmd.sh)",
-    ],
-    data = [
-        "hooks/note-plugin-cmd.sh",
-        ":note-plugin-cmd",
-    ],
+    tests = [":note_plugin_cmd_lib_test"],
 )
 
 pipeline_unit(

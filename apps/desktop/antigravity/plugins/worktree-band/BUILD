@@ -8,7 +8,6 @@ status, and Bazel output-base disk usage with safe post-merge cleanup.
 
 load("@aspect_rules_js//js:defs.bzl", "js_library", "js_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # gazelle:ignore
@@ -42,26 +41,14 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
-sh_test(
+test_suite(
     name = "session-worktree_test",
-    size = "small",
-    srcs = ["hooks/session-worktree_test.sh"],
-    args = ["$(location hooks/session-worktree.sh)"],
-    data = ["hooks/session-worktree.sh"],
+    tests = [":session_worktree_lib_test"],
 )
 
-sh_test(
+test_suite(
     name = "session-worktree_rs_test",
-    size = "small",
-    srcs = ["hooks/session-worktree_test.sh"],
-    args = [
-        "$(location :session-worktree)",
-        "$(location hooks/session-worktree.sh)",
-    ],
-    data = [
-        "hooks/session-worktree.sh",
-        ":session-worktree",
-    ],
+    tests = [":session_worktree_lib_test"],
 )
 
 js_library(
