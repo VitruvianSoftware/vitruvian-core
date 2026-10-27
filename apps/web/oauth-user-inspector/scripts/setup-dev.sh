@@ -24,7 +24,10 @@ set -e
 
 HOOKS_DIR=.git/hooks
 mkdir -p "$HOOKS_DIR"
-ln -sf ../../scripts/check-sensitive.sh "$HOOKS_DIR/pre-commit"
+cat >"$HOOKS_DIR/pre-commit" <<'EOF'
+#!/usr/bin/env bash
+exec bazel run //apps/web/oauth-user-inspector:check-sensitive-rs
+EOF
 chmod +x "$HOOKS_DIR/pre-commit"
 
 echo "Pre-commit hook installed -> $HOOKS_DIR/pre-commit"
