@@ -191,10 +191,10 @@ importers:
         version: 7.10.1
       '@prisma/client':
         specifier: 7.10.1
-        version: 7.10.1(prisma@7.10.1(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(better-sqlite3@11.10.0)(magicast@0.5.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3))(typescript@6.0.3)
+        version: 7.10.1(prisma@7.10.1(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(better-sqlite3@13.0.3)(magicast@0.5.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3))(typescript@6.0.3)
       '@workos-inc/node':
-        specifier: ^12.0.0
-        version: 12.0.0
+        specifier: ^10.9.0
+        version: 10.9.0
       bcryptjs:
         specifier: ^3.0.2
         version: 3.0.3
@@ -249,7 +249,7 @@ importers:
         version: 17.0.0
       prisma:
         specifier: 7.10.1
-        version: 7.10.1(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(better-sqlite3@11.10.0)(magicast@0.5.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
+        version: 7.10.1(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(better-sqlite3@13.0.3)(magicast@0.5.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
       supertest:
         specifier: ^7.3.1
         version: 7.3.1
@@ -321,8 +321,8 @@ importers:
         specifier: workspace:*
         version: link:../../../../packages/design-system
       framer-motion:
-        specifier: ^13.0.0
-        version: 13.0.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        specifier: ^14.6.0
+        version: 14.7.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       react:
         specifier: ^19.2.8
         version: 19.2.8
@@ -583,8 +583,8 @@ importers:
         specifier: ^4.11.5
         version: 4.11.5(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@mui/material':
-        specifier: ^5.16.7
-        version: 5.18.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        specifier: ^9.5.0
+        version: 9.5.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@roadiehq/backstage-plugin-argo-cd':
         specifier: ^2.13.1
         version: 2.13.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react-dom@18.3.7(@types/react@18.3.31))(@types/react@18.3.31)(encoding@0.1.13)(js-cookie@3.0.8)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-router@6.30.6(react@18.3.1))(react@18.3.1)
@@ -615,7 +615,7 @@ importers:
     devDependencies:
       '@backstage/cli':
         specifier: ^0.36.6
-        version: 0.36.6(06c178bb84c72561cad1a17f8f40e760)
+        version: 0.36.6(bd8ebd92e1ca660a756848f639a9392d)
       '@types/jest':
         specifier: ^30.0.0
         version: 30.0.0
@@ -651,10 +651,10 @@ importers:
     dependencies:
       '@backstage/backend-defaults':
         specifier: ^0.18.0
-        version: 0.18.0(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@22.20.1)(better-sqlite3@11.10.0)(encoding@0.1.13)
+        version: 0.18.0(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@22.20.1)(better-sqlite3@13.0.3)(encoding@0.1.13)
       '@backstage/backend-plugin-api':
         specifier: 1.10.1
-        version: 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/catalog-client':
         specifier: ^1.16.2
         version: 1.16.2(encoding@0.1.13)
@@ -663,73 +663,73 @@ importers:
         version: 1.10.1
       '@backstage/plugin-app-backend':
         specifier: ^0.5.18
-        version: 0.5.18(@types/express@4.17.25)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 0.5.18(@types/express@4.17.25)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-auth-backend':
         specifier: ^0.30.1
-        version: 0.30.1(@types/express@4.17.25)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 0.30.1(@types/express@4.17.25)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-auth-backend-module-github-provider':
         specifier: ^0.5.7
-        version: 0.5.7(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 0.5.7(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-auth-node':
         specifier: ^0.7.6
-        version: 0.7.6(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 0.7.6(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-catalog-backend':
         specifier: ^4.0.0
-        version: 4.0.0(@types/json-schema@7.0.15)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 4.0.0(@types/json-schema@7.0.15)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-catalog-backend-module-github':
         specifier: ^0.14.0
-        version: 0.14.0(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 0.14.0(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-catalog-backend-module-github-org':
         specifier: ^0.3.26
-        version: 0.3.26(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 0.3.26(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-catalog-backend-module-scaffolder-entity-model':
         specifier: ^0.2.24
-        version: 0.2.24(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 0.2.24(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-kubernetes-backend':
         specifier: ^0.21.11
-        version: 0.21.11(@types/express@4.17.25)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 0.21.11(@types/express@4.17.25)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-mcp-actions-backend':
         specifier: ^0.2.2
-        version: 0.2.2(@types/express@4.17.25)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 0.2.2(@types/express@4.17.25)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-permission-backend':
         specifier: ^0.7.16
-        version: 0.7.16(@types/express@4.17.25)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 0.7.16(@types/express@4.17.25)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-permission-common':
         specifier: ^0.9.11
         version: 0.9.11(encoding@0.1.13)
       '@backstage/plugin-permission-node':
         specifier: ^0.11.4
-        version: 0.11.4(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 0.11.4(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-proxy-backend':
         specifier: ^0.6.18
-        version: 0.6.18(@types/express@4.17.25)(better-sqlite3@11.10.0)(encoding@0.1.13)(express@5.3.0)(pg@8.23.1)
+        version: 0.6.18(@types/express@4.17.25)(better-sqlite3@13.0.3)(encoding@0.1.13)(express@5.3.0)(pg@8.23.1)
       '@backstage/plugin-scaffolder-backend':
         specifier: ^4.2.0
-        version: 4.2.0(@types/json-schema@7.0.15)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 4.2.0(@types/json-schema@7.0.15)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-scaffolder-backend-module-github':
         specifier: ^0.10.0
-        version: 0.10.0(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 0.10.0(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-scaffolder-node':
         specifier: ^0.13.7
-        version: 0.13.7(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 0.13.7(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-search-backend':
         specifier: ^2.1.7
-        version: 2.1.7(@types/json-schema@7.0.15)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 2.1.7(@types/json-schema@7.0.15)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-search-backend-module-catalog':
         specifier: ^0.3.19
-        version: 0.3.19(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 0.3.19(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-search-backend-module-techdocs':
         specifier: ^0.4.18
-        version: 0.4.18(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 0.4.18(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-techdocs-backend':
         specifier: ^2.3.0
-        version: 2.3.0(@types/express@4.17.25)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 2.3.0(@types/express@4.17.25)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@vitruviansoftware/backstage-app':
         specifier: workspace:*
         version: link:../app
       better-sqlite3:
-        specifier: ^11.8.1
-        version: 11.10.0
+        specifier: ^13.0.3
+        version: 13.0.3
       express-promise-router:
         specifier: ^4.1.1
         version: 4.1.1(@types/express@4.17.25)(express@5.3.0)
@@ -4478,6 +4478,9 @@ packages:
   '@mui/core-downloads-tracker@5.18.0':
     resolution: {integrity: sha512-jbhwoQ1AY200PSSOrNXmrFCaSDSJWP7qk6urkTmIirvRXDROkqe+QwcLlUiw/PrREwsIF/vm3/dAXvjlMHF0RA==}
 
+  '@mui/core-downloads-tracker@9.5.0':
+    resolution: {integrity: sha512-PErEpl3Lp+1ZqWYKI7GQU8XSiciAFmLbUAZ7IoaUL598HLy1UAFuEUMEJu8yAS1v8vkXYzWprMVZzky4UwXoOA==}
+
   '@mui/material@5.18.0':
     resolution: {integrity: sha512-bbH/HaJZpFtXGvWg3TsBWG4eyt3gah3E7nCNU8GLyRjVoWcA91Vm/T+sjHfUcwgJSw9iLtucfHBoq+qW/T30aA==}
     engines: {node: '>=12.0.0'}
@@ -4495,6 +4498,26 @@ packages:
       '@types/react':
         optional: true
 
+  '@mui/material@9.5.0':
+    resolution: {integrity: sha512-QgqvdVjZoKxP8E8SBxYY6LrdV+kw00moXweZQWBbMMdifPKZAGfUaaXhGKIca6fjKnCL6HJIe/AWWCpqNvyHVw==}
+    engines: {node: '>=14.0.0'}
+    peerDependencies:
+      '@emotion/react': ^11.5.0
+      '@emotion/styled': ^11.3.0
+      '@mui/material-pigment-css': ^9.5.0
+      '@types/react': ^17.0.0 || ^18.0.0 || ^19.0.0
+      react: ^17.0.0 || ^18.0.0 || ^19.0.0
+      react-dom: ^17.0.0 || ^18.0.0 || ^19.0.0
+    peerDependenciesMeta:
+      '@emotion/react':
+        optional: true
+      '@emotion/styled':
+        optional: true
+      '@mui/material-pigment-css':
+        optional: true
+      '@types/react':
+        optional: true
+
   '@mui/private-theming@5.17.1':
     resolution: {integrity: sha512-XMxU0NTYcKqdsG8LRmSoxERPXwMbp16sIXPcLVgLGII/bVNagX0xaheWAwFv8+zDK7tI3ajllkuD3GZZE++ICQ==}
     engines: {node: '>=12.0.0'}
@@ -4505,9 +4528,32 @@ packages:
       '@types/react':
         optional: true
 
+  '@mui/private-theming@9.5.0':
+    resolution: {integrity: sha512-UHZKySlr4ZJeA5HEhe/Tq1fhsR5573ViKYn7JV80dCVJtgqRQIplRSer1DHPg2Yi22llX7QRhgM0Vtrx4kZHSA==}
+    engines: {node: '>=14.0.0'}
+    peerDependencies:
+      '@types/react': ^17.0.0 || ^18.0.0 || ^19.0.0
+      react: ^17.0.0 || ^18.0.0 || ^19.0.0
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+
   '@mui/styled-engine@5.18.0':
     resolution: {integrity: sha512-BN/vKV/O6uaQh2z5rXV+MBlVrEkwoS/TK75rFQ2mjxA7+NBo8qtTAOA4UaM0XeJfn7kh2wZ+xQw2HAx0u+TiBg==}
     engines: {node: '>=12.0.0'}
+    peerDependencies:
+      '@emotion/react': ^11.4.1
+      '@emotion/styled': ^11.3.0
+      react: ^17.0.0 || ^18.0.0 || ^19.0.0
+    peerDependenciesMeta:
+      '@emotion/react':
+        optional: true
+      '@emotion/styled':
+        optional: true
+
+  '@mui/styled-engine@9.5.0':
+    resolution: {integrity: sha512-IX1ceHnZ0bJgzJRWO/Ayl4ME1rNmpWVYwV28yb089UAMR17rJkV1qfr7ApsWQXXPi1oi+2JapJrWQAiAnTlJHQ==}
+    engines: {node: '>=14.0.0'}
     peerDependencies:
       '@emotion/react': ^11.4.1
       '@emotion/styled': ^11.3.0
@@ -4534,8 +4580,32 @@ packages:
       '@types/react':
         optional: true
 
+  '@mui/system@9.5.0':
+    resolution: {integrity: sha512-OZuAwvoiaaHpvn0a540VH1DUwwmojJubGfNmO2g+nb2ybNDP4/gF7t7aA6AMduELSuJ5yxwlzyFvUO3CfLv1Yg==}
+    engines: {node: '>=14.0.0'}
+    peerDependencies:
+      '@emotion/react': ^11.5.0
+      '@emotion/styled': ^11.3.0
+      '@types/react': ^17.0.0 || ^18.0.0 || ^19.0.0
+      react: ^17.0.0 || ^18.0.0 || ^19.0.0
+    peerDependenciesMeta:
+      '@emotion/react':
+        optional: true
+      '@emotion/styled':
+        optional: true
+      '@types/react':
+        optional: true
+
   '@mui/types@7.2.24':
     resolution: {integrity: sha512-3c8tRt/CbWZ+pEg7QpSwbdxOk36EfmhbKf6AGZsD1EcLDLTSZoxxJ86FVtcjxvjuhdyBiWKSTGZFaXCnidO2kw==}
+    peerDependencies:
+      '@types/react': ^17.0.0 || ^18.0.0 || ^19.0.0
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+
+  '@mui/types@9.5.0':
+    resolution: {integrity: sha512-O0S6xS80qEQqW2CYNrd4GlBEQ1xpMOHZ5b4zO/DaLu6NZmtthM6smEg0Gz/u9gX5vL+8NB3EiBIxmxSCcG590Q==}
     peerDependencies:
       '@types/react': ^17.0.0 || ^18.0.0 || ^19.0.0
     peerDependenciesMeta:
@@ -4545,6 +4615,16 @@ packages:
   '@mui/utils@5.17.1':
     resolution: {integrity: sha512-jEZ8FTqInt2WzxDV8bhImWBqeQRD99c/id/fq83H0ER9tFl+sfZlaAoCdznGvbSQQ9ividMxqSV2c7cC1vBcQg==}
     engines: {node: '>=12.0.0'}
+    peerDependencies:
+      '@types/react': ^17.0.0 || ^18.0.0 || ^19.0.0
+      react: ^17.0.0 || ^18.0.0 || ^19.0.0
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+
+  '@mui/utils@9.5.0':
+    resolution: {integrity: sha512-8m0LfSgE2pj58znY3kZ+anwRKbnBkcu/7AJPA8L/77wEjN0QnpX4/zRAccyplp1VEUnMsUBADeTRin5Mkf7epA==}
+    engines: {node: '>=14.0.0'}
     peerDependencies:
       '@types/react': ^17.0.0 || ^18.0.0 || ^19.0.0
       react: ^17.0.0 || ^18.0.0 || ^19.0.0
@@ -8148,8 +8228,8 @@ packages:
     resolution: {integrity: sha512-BgYZfL2ADCXKOw2wJtkM3slhHotawWkgIRRxq4wEybnZQPjvAp71SPX35xepMykTw8gXlzWcWPTY31hlbnRsDA==}
     engines: {node: 18 >=18.20 || 20 || >=22}
 
-  '@workos-inc/node@12.0.0':
-    resolution: {integrity: sha512-ujB+xdaOHUrfHe5oMnNOrHV/g+AzZ+5VPCGayDLC4mHWTBHCZg6U5e9X8EDCmKSir8pSXAmJaJylTJNRZ+BSew==}
+  '@workos-inc/node@10.9.0':
+    resolution: {integrity: sha512-Voxhxocg7Q9lpi1gJ6qyPCjgcjh7fZmxU0gR7BQRnv+ozCJ9Xj4jZulVt38tGMukniDI1uwTiXm+G2vdogpD4Q==}
     engines: {node: '>=22.11.0'}
 
   '@xobotyi/scrollbar-width@1.9.5':
@@ -9023,8 +9103,9 @@ packages:
   better-result@2.10.0:
     resolution: {integrity: sha512-oQhh0y1qo2/ZKdAAEvHZAqKKiHOFU5k/bW96fE2ScgQOVkJRiHwB+nOS1SgFsYqRlxMDWvefXi9Q3px7QvgNDw==}
 
-  better-sqlite3@11.10.0:
-    resolution: {integrity: sha512-EwhOpyXiOEL/lKzHz9AW1msWFNzGc/z+LzeB3/jnFJpxu+th2yqvzsSWas1v9jgs9+xiXJcD5A8CJxAG2TaghQ==}
+  better-sqlite3@13.0.3:
+    resolution: {integrity: sha512-RbOBxmLBG8uvFUc15X9+9SFemKcQ0WBuISBVkpuiaUB2qblC8UWlHEjdWVoZ8AdhSwmoEgsiXKfopX0CQxaACQ==}
+    engines: {node: '>=22'}
 
   bfj@9.1.3:
     resolution: {integrity: sha512-1ythbcNNAd2UjTYW6M+MAHd9KM/m3g4mQ+3a4Vom16WgmUa4GsisdmXAYfpAjkObY5zdpgzaBh1ctZOEcJipuQ==}
@@ -9062,9 +9143,6 @@ packages:
   binaryextensions@6.11.0:
     resolution: {integrity: sha512-sXnYK/Ij80TO3lcqZVV2YgfKN5QjUWIRk/XSm2J/4bd/lPko3lvk0O4ZppH6m+6hB2/GTu+ptNwVFe1xh+QLQw==}
     engines: {node: '>=4'}
-
-  bindings@1.5.0:
-    resolution: {integrity: sha512-p2q/t/mhvuOj/UeLlV6566GD/guowlr0hHxClI0W9m7MWYkL1F0hLo+0Aexs9HSPCtR1SXQ0TD3MMKrXZajbiQ==}
 
   bintrees@1.0.2:
     resolution: {integrity: sha512-VOMgTMwjAaUG580SXn3LacVgjurrbMme7ZZNYGSSV7mmtY6QQRh0Eg3pwIcntQ77DErK1L0NxkbetjcoXzVwKw==}
@@ -11279,9 +11357,6 @@ packages:
     resolution: {integrity: sha512-/yFHK0aGjFEgDJjEKP0pWCplsPFPhwyfwevf/pVxiN0tmE4L9LmwWxWukdJSHdoCli4VgQLehjJtwQBnqmsKcw==}
     engines: {node: '>=10'}
 
-  file-uri-to-path@1.0.0:
-    resolution: {integrity: sha512-0Zt+s3L7Vf1biwWZ29aARiVYLx7iMGnEUl9x33fbB/j3jR81u/O2LbqK+Bm1CDSNDKVtJ/YjwY7TUd5SkeLQLw==}
-
   filesize@8.0.7:
     resolution: {integrity: sha512-pjmC+bkIF8XI7fWaH8KxHcZL3DPybs1roSKP4rKDvy20tAWwIObE4+JIseG2byfGKhud5ZnM4YSGKBz7Sh0ndQ==}
     engines: {node: '>= 0.4.0'}
@@ -11450,8 +11525,8 @@ packages:
   fraction.js@5.3.4:
     resolution: {integrity: sha512-1X1NTtiJphryn/uLQz3whtY6jK3fTqoE3ohKs0tT+Ujr1W59oopxmoEh7Lu5p6vBaPbgoM0bzveAW4Qi5RyWDQ==}
 
-  framer-motion@13.0.0:
-    resolution: {integrity: sha512-nQGZXlsiigN48nzvE7AL1GLekql+etcphp8v+PQ0X04oxO20yVmV9rU9XQ25c136RdeIYoaWlKT9oAwvJza3mg==}
+  framer-motion@14.7.1:
+    resolution: {integrity: sha512-mFDYZxyfeZnpvL/zEQEqLZNYVA/ya47c9TBfZb/PEoNBBVSVvCLkMrCv9U38cuw72W161XENZwZB0+4nIBLEJg==}
     peerDependencies:
       react: ^18.0.0 || ^19.0.0
       react-dom: ^18.0.0 || ^19.0.0
@@ -14309,11 +14384,11 @@ packages:
   moo@0.5.3:
     resolution: {integrity: sha512-m2fmM2dDm7GZQsY7KK2cme8agi+AAljILjQnof7p1ZMDe6dQ4bdnSMx0cPppudoeNv5hEFQirN6u+O4fDE0IWA==}
 
-  motion-dom@13.0.0:
-    resolution: {integrity: sha512-Xk+SJas70uMAUIApg+m3lZDShxI3LBFHq7mFGbBKoRXc2PVPDyAKmzN64Bbzt4CZdP/CItTiJxWtn4TA0v53Ng==}
+  motion-dom@14.7.1:
+    resolution: {integrity: sha512-p9q9F7+HoijbQjUG/cSGNmWS2t1OaAKxkd2RG5gQJRoDwoTap/Khb7K1P5rLW90crnSmx0rcRXzh3Jd5UNrpEw==}
 
-  motion-utils@13.0.0:
-    resolution: {integrity: sha512-7DnN7TmbLcYXcG4RVadXIihWlyuM9afoUww8Y5Agg431kGKiuL2/OMyP4mJ5wLz+pvN3t5ySClLOaVXJ+wekRQ==}
+  motion-utils@14.7.0:
+    resolution: {integrity: sha512-woO0/Nb7ys75f94fjvQi/6leiHGvZUYkeHUPEZ3vxsV+9OpEVhkxp01x8MlRwX0zt31EqgXsKDAoBoJLC148Tw==}
 
   mri@1.1.4:
     resolution: {integrity: sha512-6y7IjGPm8AzlvoUrwAaw1tLnUBudaS3752vcd8JtrpGGQn+rXIe63LFVHm/YMwtqAuh+LJPCFdlLYPWM1nYn6w==}
@@ -19946,9 +20021,9 @@ snapshots:
       - react-native
       - supports-color
 
-  '@backstage/backend-app-api@1.7.4(better-sqlite3@11.10.0)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)':
+  '@backstage/backend-app-api@1.7.4(better-sqlite3@13.0.3)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
       '@backstage/config': 1.3.9
       '@backstage/connections': 0.4.0
       '@backstage/errors': 1.3.1
@@ -19967,7 +20042,7 @@ snapshots:
       - supports-color
       - tedious
 
-  '@backstage/backend-defaults@0.18.0(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@22.20.1)(better-sqlite3@11.10.0)(encoding@0.1.13)':
+  '@backstage/backend-defaults@0.18.0(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@22.20.1)(better-sqlite3@13.0.3)(encoding@0.1.13)':
     dependencies:
       '@aws-sdk/abort-controller': 3.374.0
       '@aws-sdk/client-codecommit': 3.1147.0
@@ -19977,19 +20052,19 @@ snapshots:
       '@aws-sdk/types': 3.974.6
       '@azure/identity': 4.13.3
       '@azure/storage-blob': 12.34.0
-      '@backstage/backend-app-api': 1.7.4(better-sqlite3@11.10.0)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      '@backstage/backend-app-api': 1.7.4(better-sqlite3@13.0.3)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
       '@backstage/backend-dev-utils': 0.1.7
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
       '@backstage/cli-node': 0.3.4(@swc/core@1.16.20(@swc/helpers@0.5.23))
       '@backstage/config': 1.3.9
       '@backstage/config-loader': 1.11.3
       '@backstage/errors': 1.3.1
       '@backstage/integration': 2.1.2(encoding@0.1.13)
       '@backstage/integration-aws-node': 0.2.2
-      '@backstage/plugin-auth-node': 0.7.6(better-sqlite3@11.10.0)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
-      '@backstage/plugin-events-node': 0.4.26(better-sqlite3@11.10.0)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      '@backstage/plugin-auth-node': 0.7.6(better-sqlite3@13.0.3)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      '@backstage/plugin-events-node': 0.4.26(better-sqlite3@13.0.3)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
       '@backstage/plugin-permission-common': 0.9.11(encoding@0.1.13)
-      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@11.10.0)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@13.0.3)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
       '@backstage/types': 1.2.2
       '@google-cloud/storage': 7.22.0(encoding@0.1.13)
       '@keyv/memcache': 2.0.2(keyv@5.6.0)
@@ -20018,7 +20093,7 @@ snapshots:
       is-glob: 4.0.3
       jose: 5.10.0
       keyv: 5.6.0
-      knex: 3.3.0(better-sqlite3@11.10.0)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      knex: 3.3.0(better-sqlite3@13.0.3)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
       lodash: 4.18.1
       logform: 2.7.0
       luxon: 3.7.2
@@ -20043,7 +20118,7 @@ snapshots:
       zod: 4.6.7
       zod-to-json-schema: 3.25.2(zod@4.6.7)
     optionalDependencies:
-      better-sqlite3: 11.10.0
+      better-sqlite3: 13.0.3
     transitivePeerDependencies:
       - '@swc/core'
       - '@types/node'
@@ -20061,10 +20136,10 @@ snapshots:
 
   '@backstage/backend-dev-utils@0.1.7': {}
 
-  '@backstage/backend-openapi-utils@0.7.2(@types/json-schema@7.0.15)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/backend-openapi-utils@0.7.2(@types/json-schema@7.0.15)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
       '@apidevtools/swagger-parser': 10.1.1(openapi-types@12.1.3)
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/errors': 1.3.1
       '@backstage/types': 1.2.2
       '@types/express': 4.17.25
@@ -20096,19 +20171,19 @@ snapshots:
       - tedious
       - utf-8-validate
 
-  '@backstage/backend-plugin-api@1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)':
+  '@backstage/backend-plugin-api@1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)':
     dependencies:
       '@backstage/cli-common': 0.3.1
       '@backstage/config': 1.3.9
       '@backstage/errors': 1.3.1
-      '@backstage/plugin-auth-node': 0.7.6(better-sqlite3@11.10.0)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      '@backstage/plugin-auth-node': 0.7.6(better-sqlite3@13.0.3)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
       '@backstage/plugin-permission-common': 0.9.11(encoding@0.1.13)
-      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@11.10.0)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@13.0.3)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
       '@backstage/types': 1.2.2
       '@types/express': 4.17.25
       '@types/json-schema': 7.0.15
       '@types/luxon': 3.7.6
-      knex: 3.3.0(better-sqlite3@11.10.0)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      knex: 3.3.0(better-sqlite3@13.0.3)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
       luxon: 3.7.2
       zod: 4.6.7
     transitivePeerDependencies:
@@ -20124,19 +20199,19 @@ snapshots:
       - supports-color
       - tedious
 
-  '@backstage/backend-plugin-api@1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/backend-plugin-api@1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
       '@backstage/cli-common': 0.3.1
       '@backstage/config': 1.3.9
       '@backstage/errors': 1.3.1
-      '@backstage/plugin-auth-node': 0.7.6(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-auth-node': 0.7.6(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-permission-common': 0.9.11(encoding@0.1.13)
-      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/types': 1.2.2
       '@types/express': 4.17.25
       '@types/json-schema': 7.0.15
       '@types/luxon': 3.7.6
-      knex: 3.3.0(better-sqlite3@11.10.0)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      knex: 3.3.0(better-sqlite3@13.0.3)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
       luxon: 3.7.2
       zod: 4.6.7
     transitivePeerDependencies:
@@ -20178,20 +20253,20 @@ snapshots:
       '@backstage/errors': 1.3.1
       cross-spawn: 7.0.6
 
-  '@backstage/cli-defaults@0.1.6(@jest/environment-jsdom-abstract@30.4.1(jsdom@28.1.0(@noble/hashes@1.8.0)))(@swc/core@1.16.18(@swc/helpers@0.5.23))(@swc/helpers@0.5.23)(@types/node@22.20.1)(@typescript-eslint/parser@8.65.0(eslint@10.8.0(jiti@2.7.0))(typescript@6.0.3))(encoding@0.1.13)(esbuild@0.28.2)(eslint@8.57.1)(jest-environment-jsdom@30.4.1)(jest@30.5.2(@types/node@22.20.1)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3)))(jsdom@28.1.0(@noble/hashes@1.8.0))(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3))(typanion@3.14.0)(type-fest@5.10.0)(typescript@5.8.3)(webpack@5.112.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(esbuild@0.28.2))':
+  '@backstage/cli-defaults@0.1.6(4c2588f16bbefddd5ae48332aaa6200f)':
     dependencies:
       '@backstage/cli-module-actions': 0.1.3(@swc/core@1.16.18(@swc/helpers@0.5.23))
       '@backstage/cli-module-auth': 0.1.4(@swc/core@1.16.18(@swc/helpers@0.5.23))(@types/node@22.20.1)
-      '@backstage/cli-module-build': 0.1.8(@swc/helpers@0.5.23)(esbuild@0.28.2)(eslint@8.57.1)(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3))(type-fest@5.10.0)(typescript@5.8.3)
-      '@backstage/cli-module-config': 0.1.7(@swc/core@1.16.18(@swc/helpers@0.5.23))(eslint@8.57.1)(typescript@5.8.3)(webpack@5.112.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(esbuild@0.28.2))
-      '@backstage/cli-module-github': 0.1.4(@swc/core@1.16.18(@swc/helpers@0.5.23))(@types/node@22.20.1)(eslint@8.57.1)(typescript@5.8.3)(webpack@5.112.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(esbuild@0.28.2))
+      '@backstage/cli-module-build': 0.1.8(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@material-ui/styles@4.11.5(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@mui/material@9.5.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@swc/helpers@0.5.23)(@types/react@18.3.31)(esbuild@0.28.2)(eslint@8.57.1)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-router@6.30.6(react@18.3.1))(react@18.3.1)(ts-node@10.9.2(@swc/core@1.16.18(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3))(type-fest@5.10.0)(typescript@5.8.3)
+      '@backstage/cli-module-config': 0.1.7(@swc/core@1.16.18(@swc/helpers@0.5.23))(eslint@8.57.1)(typescript@5.8.3)(webpack@5.112.2(@swc/core@1.16.18(@swc/helpers@0.5.23))(esbuild@0.28.2)(postcss@8.5.29))
+      '@backstage/cli-module-github': 0.1.4(@swc/core@1.16.18(@swc/helpers@0.5.23))(@types/node@22.20.1)(eslint@8.57.1)(typescript@5.8.3)(webpack@5.112.2(@swc/core@1.16.18(@swc/helpers@0.5.23))(esbuild@0.28.2)(postcss@8.5.29))
       '@backstage/cli-module-info': 0.1.4(@swc/core@1.16.18(@swc/helpers@0.5.23))
       '@backstage/cli-module-lint': 0.1.5(@swc/core@1.16.18(@swc/helpers@0.5.23))
-      '@backstage/cli-module-maintenance': 0.1.5(@swc/core@1.16.18(@swc/helpers@0.5.23))(@typescript-eslint/parser@8.65.0(eslint@10.8.0(jiti@2.7.0))(typescript@6.0.3))(typescript@5.8.3)
+      '@backstage/cli-module-maintenance': 0.1.5(@swc/core@1.16.18(@swc/helpers@0.5.23))(@typescript-eslint/parser@8.65.0(eslint@8.57.1)(typescript@5.8.3))(typescript@5.8.3)
       '@backstage/cli-module-migrate': 0.2.1(@swc/core@1.16.18(@swc/helpers@0.5.23))
       '@backstage/cli-module-new': 0.1.7(@swc/core@1.16.18(@swc/helpers@0.5.23))(@types/node@22.20.1)
-      '@backstage/cli-module-package-manager-yarn': 0.1.2(@swc/core@1.16.18(@swc/helpers@0.5.23))(typanion@3.14.0)
-      '@backstage/cli-module-test-jest': 0.1.6(@jest/environment-jsdom-abstract@30.4.1(jsdom@28.1.0(@noble/hashes@1.8.0)))(@swc/helpers@0.5.23)(encoding@0.1.13)(jest-environment-jsdom@30.4.1)(jest@30.5.2(@types/node@22.20.1)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3)))(jsdom@28.1.0(@noble/hashes@1.8.0))
+      '@backstage/cli-module-package-manager-yarn': 0.1.2(@swc/core@1.16.18(@swc/helpers@0.5.23))(@types/react@18.3.31)(typanion@3.14.0)
+      '@backstage/cli-module-test-jest': 0.1.6(@jest/environment-jsdom-abstract@30.4.1(jsdom@28.1.0(@noble/hashes@1.8.0)))(@swc/helpers@0.5.23)(encoding@0.1.13)(jest-environment-jsdom@30.4.1)(jest@30.5.2(@types/node@22.20.1)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.18(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3)))(jsdom@28.1.0(@noble/hashes@1.8.0))
       '@backstage/cli-module-translations': 0.1.4(@swc/core@1.16.18(@swc/helpers@0.5.23))
     transitivePeerDependencies:
       - '@emotion/react'
@@ -20243,20 +20318,20 @@ snapshots:
       - webpack-hot-middleware
       - webpack-plugin-serve
 
-  '@backstage/cli-defaults@0.1.6(ff13f65e7d9fb3966cfdc9a1149c223b)':
+  '@backstage/cli-defaults@0.1.6(@jest/environment-jsdom-abstract@30.4.1(jsdom@28.1.0(@noble/hashes@1.8.0)))(@swc/core@1.16.18(@swc/helpers@0.5.23))(@swc/helpers@0.5.23)(@types/node@22.20.1)(@typescript-eslint/parser@8.65.0(eslint@10.8.0(jiti@2.7.0))(typescript@6.0.3))(encoding@0.1.13)(esbuild@0.28.2)(eslint@8.57.1)(jest-environment-jsdom@30.4.1)(jest@30.5.2(@types/node@22.20.1)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3)))(jsdom@28.1.0(@noble/hashes@1.8.0))(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3))(typanion@3.14.0)(type-fest@5.10.0)(typescript@5.8.3)(webpack@5.112.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(esbuild@0.28.2))':
     dependencies:
       '@backstage/cli-module-actions': 0.1.3(@swc/core@1.16.18(@swc/helpers@0.5.23))
       '@backstage/cli-module-auth': 0.1.4(@swc/core@1.16.18(@swc/helpers@0.5.23))(@types/node@22.20.1)
-      '@backstage/cli-module-build': 0.1.8(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@material-ui/styles@4.11.5(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@mui/material@5.18.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@swc/helpers@0.5.23)(@types/react@18.3.31)(esbuild@0.28.2)(eslint@8.57.1)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-router@6.30.6(react@18.3.1))(react@18.3.1)(ts-node@10.9.2(@swc/core@1.16.18(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3))(type-fest@5.10.0)(typescript@5.8.3)
-      '@backstage/cli-module-config': 0.1.7(@swc/core@1.16.18(@swc/helpers@0.5.23))(eslint@8.57.1)(typescript@5.8.3)(webpack@5.112.2(@swc/core@1.16.18(@swc/helpers@0.5.23))(esbuild@0.28.2)(postcss@8.5.29))
-      '@backstage/cli-module-github': 0.1.4(@swc/core@1.16.18(@swc/helpers@0.5.23))(@types/node@22.20.1)(eslint@8.57.1)(typescript@5.8.3)(webpack@5.112.2(@swc/core@1.16.18(@swc/helpers@0.5.23))(esbuild@0.28.2)(postcss@8.5.29))
+      '@backstage/cli-module-build': 0.1.8(@swc/helpers@0.5.23)(esbuild@0.28.2)(eslint@8.57.1)(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3))(type-fest@5.10.0)(typescript@5.8.3)
+      '@backstage/cli-module-config': 0.1.7(@swc/core@1.16.18(@swc/helpers@0.5.23))(eslint@8.57.1)(typescript@5.8.3)(webpack@5.112.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(esbuild@0.28.2))
+      '@backstage/cli-module-github': 0.1.4(@swc/core@1.16.18(@swc/helpers@0.5.23))(@types/node@22.20.1)(eslint@8.57.1)(typescript@5.8.3)(webpack@5.112.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(esbuild@0.28.2))
       '@backstage/cli-module-info': 0.1.4(@swc/core@1.16.18(@swc/helpers@0.5.23))
       '@backstage/cli-module-lint': 0.1.5(@swc/core@1.16.18(@swc/helpers@0.5.23))
-      '@backstage/cli-module-maintenance': 0.1.5(@swc/core@1.16.18(@swc/helpers@0.5.23))(@typescript-eslint/parser@8.65.0(eslint@8.57.1)(typescript@5.8.3))(typescript@5.8.3)
+      '@backstage/cli-module-maintenance': 0.1.5(@swc/core@1.16.18(@swc/helpers@0.5.23))(@typescript-eslint/parser@8.65.0(eslint@10.8.0(jiti@2.7.0))(typescript@6.0.3))(typescript@5.8.3)
       '@backstage/cli-module-migrate': 0.2.1(@swc/core@1.16.18(@swc/helpers@0.5.23))
       '@backstage/cli-module-new': 0.1.7(@swc/core@1.16.18(@swc/helpers@0.5.23))(@types/node@22.20.1)
-      '@backstage/cli-module-package-manager-yarn': 0.1.2(@swc/core@1.16.18(@swc/helpers@0.5.23))(@types/react@18.3.31)(typanion@3.14.0)
-      '@backstage/cli-module-test-jest': 0.1.6(@jest/environment-jsdom-abstract@30.4.1(jsdom@28.1.0(@noble/hashes@1.8.0)))(@swc/helpers@0.5.23)(encoding@0.1.13)(jest-environment-jsdom@30.4.1)(jest@30.5.2(@types/node@22.20.1)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.18(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3)))(jsdom@28.1.0(@noble/hashes@1.8.0))
+      '@backstage/cli-module-package-manager-yarn': 0.1.2(@swc/core@1.16.18(@swc/helpers@0.5.23))(typanion@3.14.0)
+      '@backstage/cli-module-test-jest': 0.1.6(@jest/environment-jsdom-abstract@30.4.1(jsdom@28.1.0(@noble/hashes@1.8.0)))(@swc/helpers@0.5.23)(encoding@0.1.13)(jest-environment-jsdom@30.4.1)(jest@30.5.2(@types/node@22.20.1)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3)))(jsdom@28.1.0(@noble/hashes@1.8.0))
       '@backstage/cli-module-translations': 0.1.4(@swc/core@1.16.18(@swc/helpers@0.5.23))
     transitivePeerDependencies:
       - '@emotion/react'
@@ -20338,14 +20413,14 @@ snapshots:
       - '@swc/core'
       - '@types/node'
 
-  '@backstage/cli-module-build@0.1.8(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@material-ui/styles@4.11.5(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@mui/material@5.18.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@swc/helpers@0.5.23)(@types/react@18.3.31)(esbuild@0.28.2)(eslint@8.57.1)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-router@6.30.6(react@18.3.1))(react@18.3.1)(ts-node@10.9.2(@swc/core@1.16.18(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3))(type-fest@5.10.0)(typescript@5.8.3)':
+  '@backstage/cli-module-build@0.1.8(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@material-ui/styles@4.11.5(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@mui/material@9.5.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@swc/helpers@0.5.23)(@types/react@18.3.31)(esbuild@0.28.2)(eslint@8.57.1)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-router@6.30.6(react@18.3.1))(react@18.3.1)(ts-node@10.9.2(@swc/core@1.16.18(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3))(type-fest@5.10.0)(typescript@5.8.3)':
     dependencies:
       '@backstage/cli-common': 0.3.1
       '@backstage/cli-node': 0.3.4(@swc/core@1.16.18(@swc/helpers@0.5.23))
       '@backstage/config': 1.3.9
       '@backstage/config-loader': 1.11.3
       '@backstage/errors': 1.3.1
-      '@backstage/module-federation-common': 0.1.5(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@material-ui/styles@4.11.5(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@mui/material@5.18.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-router@6.30.6(react@18.3.1))(react@18.3.1)
+      '@backstage/module-federation-common': 0.1.5(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@material-ui/styles@4.11.5(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@mui/material@9.5.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-router@6.30.6(react@18.3.1))(react@18.3.1)
       '@manypkg/get-packages': 1.1.3
       '@module-federation/enhanced': 2.8.2(@rspack/core@1.7.12(@swc/helpers@0.5.23))(typescript@5.8.3)(webpack@5.105.4(@swc/core@1.16.18(@swc/helpers@0.5.23))(esbuild@0.28.2)(postcss@8.5.29))
       '@pmmmwh/react-refresh-webpack-plugin': 0.6.2(react-refresh@0.18.0)(type-fest@5.10.0)(webpack-dev-server@5.2.6(webpack@5.112.2(@swc/core@1.16.18(@swc/helpers@0.5.23))(esbuild@0.28.2)(postcss@8.5.29)))(webpack@5.105.4(@swc/core@1.16.18(@swc/helpers@0.5.23))(esbuild@0.28.2)(postcss@8.5.29))
@@ -20447,7 +20522,7 @@ snapshots:
       '@backstage/config': 1.3.9
       '@backstage/config-loader': 1.11.3
       '@backstage/errors': 1.3.1
-      '@backstage/module-federation-common': 0.1.5(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@material-ui/styles@4.11.5(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@mui/material@5.18.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-router@6.30.6(react@18.3.1))(react@18.3.1)
+      '@backstage/module-federation-common': 0.1.5(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@material-ui/styles@4.11.5(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@mui/material@9.5.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-router@6.30.6(react@18.3.1))(react@18.3.1)
       '@manypkg/get-packages': 1.1.3
       '@module-federation/enhanced': 2.8.2(@rspack/core@1.7.12(@swc/helpers@0.5.23))(typescript@5.8.3)(webpack@5.105.4(@swc/core@1.16.18(@swc/helpers@0.5.23))(esbuild@0.28.2)(postcss@8.5.29))
       '@pmmmwh/react-refresh-webpack-plugin': 0.6.2(react-refresh@0.18.0)(type-fest@5.10.0)(webpack-dev-server@5.2.6(webpack@5.105.4(@swc/core@1.16.18(@swc/helpers@0.5.23))(esbuild@0.28.2)(postcss@8.5.29)))(webpack@5.105.4(@swc/core@1.16.18(@swc/helpers@0.5.23))(esbuild@0.28.2)(postcss@8.5.29))
@@ -20849,36 +20924,36 @@ snapshots:
       '@swc/core': 1.16.20(@swc/helpers@0.5.23)
       keytar: 7.9.0
 
-  '@backstage/cli@0.36.6(06c178bb84c72561cad1a17f8f40e760)':
+  '@backstage/cli@0.36.6(@jest/environment-jsdom-abstract@30.4.1(jsdom@28.1.0(@noble/hashes@1.8.0)))(@swc/helpers@0.5.23)(@types/node@22.20.1)(encoding@0.1.13)(esbuild@0.28.2)(jest-environment-jsdom@30.4.1)(jest@30.5.2(@types/node@22.20.1)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3)))(jsdom@28.1.0(@noble/hashes@1.8.0))(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3))(typanion@3.14.0)(type-fest@5.10.0)(typescript@5.8.3)(webpack@5.112.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(esbuild@0.28.2))':
     dependencies:
       '@backstage/cli-common': 0.3.1
-      '@backstage/cli-defaults': 0.1.6(ff13f65e7d9fb3966cfdc9a1149c223b)
-      '@backstage/cli-module-build': 0.1.8(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@material-ui/styles@4.11.5(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@mui/material@5.18.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@swc/helpers@0.5.23)(@types/react@18.3.31)(esbuild@0.28.2)(eslint@8.57.1)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-router@6.30.6(react@18.3.1))(react@18.3.1)(ts-node@10.9.2(@swc/core@1.16.18(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3))(type-fest@5.10.0)(typescript@5.8.3)
-      '@backstage/cli-module-test-jest': 0.1.6(@jest/environment-jsdom-abstract@30.4.1(jsdom@28.1.0(@noble/hashes@1.8.0)))(@swc/helpers@0.5.23)(encoding@0.1.13)(jest-environment-jsdom@30.4.1)(jest@30.5.2(@types/node@22.20.1)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.18(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3)))(jsdom@28.1.0(@noble/hashes@1.8.0))
+      '@backstage/cli-defaults': 0.1.6(@jest/environment-jsdom-abstract@30.4.1(jsdom@28.1.0(@noble/hashes@1.8.0)))(@swc/core@1.16.18(@swc/helpers@0.5.23))(@swc/helpers@0.5.23)(@types/node@22.20.1)(@typescript-eslint/parser@8.65.0(eslint@10.8.0(jiti@2.7.0))(typescript@6.0.3))(encoding@0.1.13)(esbuild@0.28.2)(eslint@8.57.1)(jest-environment-jsdom@30.4.1)(jest@30.5.2(@types/node@22.20.1)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3)))(jsdom@28.1.0(@noble/hashes@1.8.0))(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3))(typanion@3.14.0)(type-fest@5.10.0)(typescript@5.8.3)(webpack@5.112.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(esbuild@0.28.2))
+      '@backstage/cli-module-build': 0.1.8(@swc/helpers@0.5.23)(esbuild@0.28.2)(eslint@8.57.1)(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3))(type-fest@5.10.0)(typescript@5.8.3)
+      '@backstage/cli-module-test-jest': 0.1.6(@jest/environment-jsdom-abstract@30.4.1(jsdom@28.1.0(@noble/hashes@1.8.0)))(@swc/helpers@0.5.23)(encoding@0.1.13)(jest-environment-jsdom@30.4.1)(jest@30.5.2(@types/node@22.20.1)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3)))(jsdom@28.1.0(@noble/hashes@1.8.0))
       '@backstage/cli-node': 0.3.4(@swc/core@1.16.18(@swc/helpers@0.5.23))
       '@backstage/eslint-plugin': 0.3.2
       '@manypkg/get-packages': 1.1.3
       '@spotify/eslint-config-base': 15.0.0(eslint@8.57.1)
       '@spotify/eslint-config-react': 15.0.0(eslint-plugin-jsx-a11y@6.10.2(eslint@8.57.1))(eslint-plugin-react-hooks@5.2.0(eslint@8.57.1))(eslint-plugin-react@7.37.5(eslint@8.57.1))(eslint@8.57.1)
-      '@spotify/eslint-config-typescript': 15.0.0(@typescript-eslint/eslint-plugin@8.65.0(@typescript-eslint/parser@8.65.0(eslint@8.57.1)(typescript@5.8.3))(eslint@8.57.1)(typescript@5.8.3))(@typescript-eslint/parser@8.65.0(eslint@8.57.1)(typescript@5.8.3))(eslint@8.57.1)
+      '@spotify/eslint-config-typescript': 15.0.0(@typescript-eslint/eslint-plugin@8.65.0(@typescript-eslint/parser@8.65.0(eslint@10.8.0(jiti@2.7.0))(typescript@6.0.3))(eslint@8.57.1)(typescript@5.8.3))(@typescript-eslint/parser@8.65.0(eslint@10.8.0(jiti@2.7.0))(typescript@6.0.3))(eslint@8.57.1)
       '@swc/core': 1.16.18(@swc/helpers@0.5.23)
       '@swc/jest': 0.2.39(@swc/core@1.16.18(@swc/helpers@0.5.23))
       '@types/webpack-env': 1.18.8
-      '@typescript-eslint/eslint-plugin': 8.65.0(@typescript-eslint/parser@8.65.0(eslint@8.57.1)(typescript@5.8.3))(eslint@8.57.1)(typescript@5.8.3)
+      '@typescript-eslint/eslint-plugin': 8.65.0(@typescript-eslint/parser@8.65.0(eslint@10.8.0(jiti@2.7.0))(typescript@6.0.3))(eslint@8.57.1)(typescript@5.8.3)
       '@typescript-eslint/parser': 8.65.0(eslint@8.57.1)(typescript@5.8.3)
       chalk: 4.1.2
       cross-fetch: 4.1.0(encoding@0.1.13)
       eslint: 8.57.1
       eslint-config-prettier: 9.1.2(eslint@8.57.1)
-      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.65.0(eslint@8.57.1)(typescript@5.8.3))(eslint@8.57.1)
-      eslint-plugin-jest: 28.14.0(@typescript-eslint/eslint-plugin@8.65.0(@typescript-eslint/parser@8.65.0(eslint@8.57.1)(typescript@5.8.3))(eslint@8.57.1)(typescript@5.8.3))(eslint@8.57.1)(jest@30.5.2(@types/node@22.20.1)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.18(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3)))(typescript@5.8.3)
+      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.65.0(eslint@10.8.0(jiti@2.7.0))(typescript@6.0.3))(eslint@8.57.1)
+      eslint-plugin-jest: 28.14.0(@typescript-eslint/eslint-plugin@8.65.0(@typescript-eslint/parser@8.65.0(eslint@10.8.0(jiti@2.7.0))(typescript@6.0.3))(eslint@8.57.1)(typescript@5.8.3))(eslint@8.57.1)(jest@30.5.2(@types/node@22.20.1)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3)))(typescript@5.8.3)
       eslint-plugin-jsx-a11y: 6.10.2(eslint@8.57.1)
       eslint-plugin-react: 7.37.5(eslint@8.57.1)
       eslint-plugin-react-hooks: 5.2.0(eslint@8.57.1)
-      eslint-plugin-unused-imports: 4.4.1(@typescript-eslint/eslint-plugin@8.65.0(@typescript-eslint/parser@8.65.0(eslint@8.57.1)(typescript@5.8.3))(eslint@8.57.1)(typescript@5.8.3))(eslint@8.57.1)
+      eslint-plugin-unused-imports: 4.4.1(@typescript-eslint/eslint-plugin@8.65.0(@typescript-eslint/parser@8.65.0(eslint@10.8.0(jiti@2.7.0))(typescript@6.0.3))(eslint@8.57.1)(typescript@5.8.3))(eslint@8.57.1)
       fs-extra: 11.4.1
       glob: 13.0.6
-      jest: 30.5.2(@types/node@22.20.1)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.18(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3))
+      jest: 30.5.2(@types/node@22.20.1)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3))
       jest-css-modules: 2.1.0
       pirates: 4.0.7
       postcss: 8.5.29
@@ -20933,36 +21008,36 @@ snapshots:
       - webpack-hot-middleware
       - webpack-plugin-serve
 
-  '@backstage/cli@0.36.6(@jest/environment-jsdom-abstract@30.4.1(jsdom@28.1.0(@noble/hashes@1.8.0)))(@swc/helpers@0.5.23)(@types/node@22.20.1)(encoding@0.1.13)(esbuild@0.28.2)(jest-environment-jsdom@30.4.1)(jest@30.5.2(@types/node@22.20.1)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3)))(jsdom@28.1.0(@noble/hashes@1.8.0))(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3))(typanion@3.14.0)(type-fest@5.10.0)(typescript@5.8.3)(webpack@5.112.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(esbuild@0.28.2))':
+  '@backstage/cli@0.36.6(bd8ebd92e1ca660a756848f639a9392d)':
     dependencies:
       '@backstage/cli-common': 0.3.1
-      '@backstage/cli-defaults': 0.1.6(@jest/environment-jsdom-abstract@30.4.1(jsdom@28.1.0(@noble/hashes@1.8.0)))(@swc/core@1.16.18(@swc/helpers@0.5.23))(@swc/helpers@0.5.23)(@types/node@22.20.1)(@typescript-eslint/parser@8.65.0(eslint@10.8.0(jiti@2.7.0))(typescript@6.0.3))(encoding@0.1.13)(esbuild@0.28.2)(eslint@8.57.1)(jest-environment-jsdom@30.4.1)(jest@30.5.2(@types/node@22.20.1)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3)))(jsdom@28.1.0(@noble/hashes@1.8.0))(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3))(typanion@3.14.0)(type-fest@5.10.0)(typescript@5.8.3)(webpack@5.112.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(esbuild@0.28.2))
-      '@backstage/cli-module-build': 0.1.8(@swc/helpers@0.5.23)(esbuild@0.28.2)(eslint@8.57.1)(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3))(type-fest@5.10.0)(typescript@5.8.3)
-      '@backstage/cli-module-test-jest': 0.1.6(@jest/environment-jsdom-abstract@30.4.1(jsdom@28.1.0(@noble/hashes@1.8.0)))(@swc/helpers@0.5.23)(encoding@0.1.13)(jest-environment-jsdom@30.4.1)(jest@30.5.2(@types/node@22.20.1)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3)))(jsdom@28.1.0(@noble/hashes@1.8.0))
+      '@backstage/cli-defaults': 0.1.6(4c2588f16bbefddd5ae48332aaa6200f)
+      '@backstage/cli-module-build': 0.1.8(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@material-ui/styles@4.11.5(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@mui/material@9.5.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@swc/helpers@0.5.23)(@types/react@18.3.31)(esbuild@0.28.2)(eslint@8.57.1)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-router@6.30.6(react@18.3.1))(react@18.3.1)(ts-node@10.9.2(@swc/core@1.16.18(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3))(type-fest@5.10.0)(typescript@5.8.3)
+      '@backstage/cli-module-test-jest': 0.1.6(@jest/environment-jsdom-abstract@30.4.1(jsdom@28.1.0(@noble/hashes@1.8.0)))(@swc/helpers@0.5.23)(encoding@0.1.13)(jest-environment-jsdom@30.4.1)(jest@30.5.2(@types/node@22.20.1)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.18(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3)))(jsdom@28.1.0(@noble/hashes@1.8.0))
       '@backstage/cli-node': 0.3.4(@swc/core@1.16.18(@swc/helpers@0.5.23))
       '@backstage/eslint-plugin': 0.3.2
       '@manypkg/get-packages': 1.1.3
       '@spotify/eslint-config-base': 15.0.0(eslint@8.57.1)
       '@spotify/eslint-config-react': 15.0.0(eslint-plugin-jsx-a11y@6.10.2(eslint@8.57.1))(eslint-plugin-react-hooks@5.2.0(eslint@8.57.1))(eslint-plugin-react@7.37.5(eslint@8.57.1))(eslint@8.57.1)
-      '@spotify/eslint-config-typescript': 15.0.0(@typescript-eslint/eslint-plugin@8.65.0(@typescript-eslint/parser@8.65.0(eslint@10.8.0(jiti@2.7.0))(typescript@6.0.3))(eslint@8.57.1)(typescript@5.8.3))(@typescript-eslint/parser@8.65.0(eslint@10.8.0(jiti@2.7.0))(typescript@6.0.3))(eslint@8.57.1)
+      '@spotify/eslint-config-typescript': 15.0.0(@typescript-eslint/eslint-plugin@8.65.0(@typescript-eslint/parser@8.65.0(eslint@8.57.1)(typescript@5.8.3))(eslint@8.57.1)(typescript@5.8.3))(@typescript-eslint/parser@8.65.0(eslint@8.57.1)(typescript@5.8.3))(eslint@8.57.1)
       '@swc/core': 1.16.18(@swc/helpers@0.5.23)
       '@swc/jest': 0.2.39(@swc/core@1.16.18(@swc/helpers@0.5.23))
       '@types/webpack-env': 1.18.8
-      '@typescript-eslint/eslint-plugin': 8.65.0(@typescript-eslint/parser@8.65.0(eslint@10.8.0(jiti@2.7.0))(typescript@6.0.3))(eslint@8.57.1)(typescript@5.8.3)
+      '@typescript-eslint/eslint-plugin': 8.65.0(@typescript-eslint/parser@8.65.0(eslint@8.57.1)(typescript@5.8.3))(eslint@8.57.1)(typescript@5.8.3)
       '@typescript-eslint/parser': 8.65.0(eslint@8.57.1)(typescript@5.8.3)
       chalk: 4.1.2
       cross-fetch: 4.1.0(encoding@0.1.13)
       eslint: 8.57.1
       eslint-config-prettier: 9.1.2(eslint@8.57.1)
-      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.65.0(eslint@10.8.0(jiti@2.7.0))(typescript@6.0.3))(eslint@8.57.1)
-      eslint-plugin-jest: 28.14.0(@typescript-eslint/eslint-plugin@8.65.0(@typescript-eslint/parser@8.65.0(eslint@10.8.0(jiti@2.7.0))(typescript@6.0.3))(eslint@8.57.1)(typescript@5.8.3))(eslint@8.57.1)(jest@30.5.2(@types/node@22.20.1)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3)))(typescript@5.8.3)
+      eslint-plugin-import: 2.32.0(@typescript-eslint/parser@8.65.0(eslint@8.57.1)(typescript@5.8.3))(eslint@8.57.1)
+      eslint-plugin-jest: 28.14.0(@typescript-eslint/eslint-plugin@8.65.0(@typescript-eslint/parser@8.65.0(eslint@8.57.1)(typescript@5.8.3))(eslint@8.57.1)(typescript@5.8.3))(eslint@8.57.1)(jest@30.5.2(@types/node@22.20.1)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.18(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3)))(typescript@5.8.3)
       eslint-plugin-jsx-a11y: 6.10.2(eslint@8.57.1)
       eslint-plugin-react: 7.37.5(eslint@8.57.1)
       eslint-plugin-react-hooks: 5.2.0(eslint@8.57.1)
-      eslint-plugin-unused-imports: 4.4.1(@typescript-eslint/eslint-plugin@8.65.0(@typescript-eslint/parser@8.65.0(eslint@10.8.0(jiti@2.7.0))(typescript@6.0.3))(eslint@8.57.1)(typescript@5.8.3))(eslint@8.57.1)
+      eslint-plugin-unused-imports: 4.4.1(@typescript-eslint/eslint-plugin@8.65.0(@typescript-eslint/parser@8.65.0(eslint@8.57.1)(typescript@5.8.3))(eslint@8.57.1)(typescript@5.8.3))(eslint@8.57.1)
       fs-extra: 11.4.1
       glob: 13.0.6
-      jest: 30.5.2(@types/node@22.20.1)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3))
+      jest: 30.5.2(@types/node@22.20.1)(babel-plugin-macros@3.1.0)(esbuild-register@3.6.0(esbuild@0.28.2))(ts-node@10.9.2(@swc/core@1.16.18(@swc/helpers@0.5.23))(@types/node@22.20.1)(typescript@5.8.3))
       jest-css-modules: 2.1.0
       pirates: 4.0.7
       postcss: 8.5.29
@@ -21244,7 +21319,7 @@ snapshots:
       - encoding
       - supports-color
 
-  '@backstage/module-federation-common@0.1.5(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@material-ui/styles@4.11.5(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@mui/material@5.18.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-router@6.30.6(react@18.3.1))(react@18.3.1)':
+  '@backstage/module-federation-common@0.1.5(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@material-ui/core@4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@material-ui/styles@4.11.5(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@mui/material@9.5.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react-router-dom@6.30.6(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react-router@6.30.6(react@18.3.1))(react@18.3.1)':
     dependencies:
       '@backstage/config': 1.3.9
       '@backstage/errors': 1.3.1
@@ -21253,7 +21328,7 @@ snapshots:
       '@material-ui/core': 4.12.4(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@material-ui/styles': 4.11.5(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@module-federation/runtime': 2.8.2
-      '@mui/material': 5.18.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@mui/material': 9.5.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       react: 18.3.1
       react-dom: 18.3.1(react@18.3.1)
       react-router: 6.30.6(react@18.3.1)
@@ -21303,21 +21378,21 @@ snapshots:
       - react-native
       - supports-color
 
-  '@backstage/plugin-app-backend@0.5.18(@types/express@4.17.25)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-app-backend@0.5.18(@types/express@4.17.25)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/config': 1.3.9
       '@backstage/config-loader': 1.11.3
       '@backstage/errors': 1.3.1
-      '@backstage/plugin-app-node': 0.1.49(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
-      '@backstage/plugin-auth-node': 0.7.6(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-app-node': 0.1.49(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-auth-node': 0.7.6(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/types': 1.2.2
       express: 4.22.3
       express-promise-router: 4.1.1(@types/express@4.17.25)(express@4.22.3)
       fs-extra: 11.4.1
       globby: 11.1.0
       helmet: 6.2.0
-      knex: 3.3.0(better-sqlite3@11.10.0)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      knex: 3.3.0(better-sqlite3@13.0.3)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
       lodash: 4.18.1
       luxon: 3.7.2
     transitivePeerDependencies:
@@ -21334,9 +21409,9 @@ snapshots:
       - supports-color
       - tedious
 
-  '@backstage/plugin-app-node@0.1.49(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-app-node@0.1.49(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/config-loader': 1.11.3
       '@types/express': 4.17.25
       express: 4.22.3
@@ -21365,13 +21440,13 @@ snapshots:
     optionalDependencies:
       '@types/react': 18.3.31
 
-  '@backstage/plugin-auth-backend-module-github-provider@0.5.7(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-auth-backend-module-github-provider@0.5.7(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/catalog-model': 1.10.1
       '@backstage/errors': 1.3.1
-      '@backstage/plugin-auth-node': 0.7.6(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
-      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-auth-node': 0.7.6(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       passport-github2: 0.1.12
       zod: 4.6.7
     transitivePeerDependencies:
@@ -21388,24 +21463,24 @@ snapshots:
       - supports-color
       - tedious
 
-  '@backstage/plugin-auth-backend@0.30.1(@types/express@4.17.25)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-auth-backend@0.30.1(@types/express@4.17.25)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/catalog-model': 1.10.1
       '@backstage/config': 1.3.9
       '@backstage/errors': 1.3.1
-      '@backstage/plugin-auth-node': 0.7.6(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
-      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-auth-node': 0.7.6(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/types': 1.2.2
       '@google-cloud/firestore': 7.11.6(encoding@0.1.13)
-      connect-session-knex: 4.0.2(better-sqlite3@11.10.0)(pg@8.23.1)
+      connect-session-knex: 4.0.2(better-sqlite3@13.0.3)(pg@8.23.1)
       cookie-parser: 1.4.7
       express: 4.22.3
       express-promise-router: 4.1.1(@types/express@4.17.25)(express@4.22.3)
       express-session: 1.19.0
       ipaddr.js: 2.5.0
       jose: 5.10.0
-      knex: 3.3.0(better-sqlite3@11.10.0)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      knex: 3.3.0(better-sqlite3@13.0.3)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
       lodash: 4.18.1
       luxon: 3.7.2
       matcher: 4.0.0
@@ -21428,9 +21503,9 @@ snapshots:
       - supports-color
       - tedious
 
-  '@backstage/plugin-auth-node@0.7.6(better-sqlite3@11.10.0)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)':
+  '@backstage/plugin-auth-node@0.7.6(better-sqlite3@13.0.3)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
       '@backstage/catalog-client': 1.16.2(encoding@0.1.13)
       '@backstage/catalog-model': 1.10.1
       '@backstage/config': 1.3.9
@@ -21458,9 +21533,9 @@ snapshots:
       - supports-color
       - tedious
 
-  '@backstage/plugin-auth-node@0.7.6(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-auth-node@0.7.6(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/catalog-client': 1.16.2(encoding@0.1.13)
       '@backstage/catalog-model': 1.10.1
       '@backstage/config': 1.3.9
@@ -21506,13 +21581,13 @@ snapshots:
       - react-native
       - supports-color
 
-  '@backstage/plugin-catalog-backend-module-github-org@0.3.26(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-catalog-backend-module-github-org@0.3.26(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/config': 1.3.9
-      '@backstage/plugin-catalog-backend-module-github': 0.14.0(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
-      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
-      '@backstage/plugin-events-node': 0.4.26(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-catalog-backend-module-github': 0.14.0(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-events-node': 0.4.26(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
     transitivePeerDependencies:
       - '@backstage/backend-test-utils'
       - better-sqlite3
@@ -21527,16 +21602,16 @@ snapshots:
       - supports-color
       - tedious
 
-  '@backstage/plugin-catalog-backend-module-github@0.14.0(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-catalog-backend-module-github@0.14.0(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/catalog-model': 1.10.1
       '@backstage/config': 1.3.9
       '@backstage/errors': 1.3.1
       '@backstage/integration': 2.1.2(encoding@0.1.13)
       '@backstage/plugin-catalog-common': 1.2.0(encoding@0.1.13)
-      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
-      '@backstage/plugin-events-node': 0.4.26(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-events-node': 0.4.26(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/types': 1.2.2
       '@octokit/auth-callback': 5.0.1
       '@octokit/core': 5.2.2
@@ -21563,12 +21638,12 @@ snapshots:
       - supports-color
       - tedious
 
-  '@backstage/plugin-catalog-backend-module-scaffolder-entity-model@0.2.24(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-catalog-backend-module-scaffolder-entity-model@0.2.24(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/catalog-model': 1.10.1
       '@backstage/plugin-catalog-common': 1.2.0(encoding@0.1.13)
-      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-scaffolder-common': 2.3.0(encoding@0.1.13)
     transitivePeerDependencies:
       - '@backstage/backend-test-utils'
@@ -21584,10 +21659,10 @@ snapshots:
       - supports-color
       - tedious
 
-  '@backstage/plugin-catalog-backend@4.0.0(@types/json-schema@7.0.15)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-catalog-backend@4.0.0(@types/json-schema@7.0.15)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-openapi-utils': 0.7.2(@types/json-schema@7.0.15)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-openapi-utils': 0.7.2(@types/json-schema@7.0.15)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/catalog-client': 1.16.2(encoding@0.1.13)
       '@backstage/catalog-model': 1.10.1
       '@backstage/config': 1.3.9
@@ -21595,10 +21670,10 @@ snapshots:
       '@backstage/filter-predicates': 0.1.5
       '@backstage/integration': 2.1.2(encoding@0.1.13)
       '@backstage/plugin-catalog-common': 1.2.0(encoding@0.1.13)
-      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
-      '@backstage/plugin-events-node': 0.4.26(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-events-node': 0.4.26(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-permission-common': 0.9.11(encoding@0.1.13)
-      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/types': 1.2.2
       '@opentelemetry/api': 1.9.1
       ajv: 8.20.0
@@ -21609,7 +21684,7 @@ snapshots:
       fs-extra: 11.4.1
       git-url-parse: 15.0.0
       glob: 13.0.6
-      knex: 3.3.0(better-sqlite3@11.10.0)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      knex: 3.3.0(better-sqlite3@13.0.3)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
       lodash: 4.18.1
       luxon: 3.7.2
       minimatch: 10.2.6
@@ -21718,15 +21793,15 @@ snapshots:
       - react-native
       - supports-color
 
-  '@backstage/plugin-catalog-node@2.2.5(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-catalog-node@2.2.5(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/catalog-client': 1.16.2(encoding@0.1.13)
       '@backstage/catalog-model': 1.10.1
       '@backstage/errors': 1.3.1
       '@backstage/plugin-catalog-common': 1.2.0(encoding@0.1.13)
       '@backstage/plugin-permission-common': 0.9.11(encoding@0.1.13)
-      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/types': 1.2.2
       '@opentelemetry/api': 1.9.1
       lodash: 4.18.1
@@ -21839,9 +21914,9 @@ snapshots:
       - react-native
       - supports-color
 
-  '@backstage/plugin-events-node@0.4.26(better-sqlite3@11.10.0)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)':
+  '@backstage/plugin-events-node@0.4.26(better-sqlite3@13.0.3)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
       '@backstage/errors': 1.3.1
       '@backstage/types': 1.2.2
       '@types/content-type': 1.1.9
@@ -21863,9 +21938,9 @@ snapshots:
       - supports-color
       - tedious
 
-  '@backstage/plugin-events-node@0.4.26(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-events-node@0.4.26(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/errors': 1.3.1
       '@backstage/types': 1.2.2
       '@types/content-type': 1.1.9
@@ -21907,22 +21982,22 @@ snapshots:
       - react-native
       - supports-color
 
-  '@backstage/plugin-kubernetes-backend@0.21.11(@types/express@4.17.25)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-kubernetes-backend@0.21.11(@types/express@4.17.25)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
       '@aws-crypto/sha256-js': 5.2.0
       '@aws-sdk/credential-providers': 3.1147.0
       '@azure/identity': 4.13.3
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/catalog-client': 1.16.2(encoding@0.1.13)
       '@backstage/catalog-model': 1.10.1
       '@backstage/config': 1.3.9
       '@backstage/errors': 1.3.1
       '@backstage/integration-aws-node': 0.2.2
-      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-kubernetes-common': 0.9.13(encoding@0.1.13)
-      '@backstage/plugin-kubernetes-node': 0.4.8(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-kubernetes-node': 0.4.8(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-permission-common': 0.9.11(encoding@0.1.13)
-      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/types': 1.2.2
       '@google-cloud/container': 5.19.0(encoding@0.1.13)
       '@jest-mock/express': 2.1.0
@@ -21977,9 +22052,9 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@backstage/plugin-kubernetes-node@0.4.8(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-kubernetes-node@0.4.8(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/catalog-model': 1.10.1
       '@backstage/plugin-kubernetes-common': 0.9.13(encoding@0.1.13)
       '@backstage/types': 1.2.2
@@ -22075,13 +22150,13 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@backstage/plugin-mcp-actions-backend@0.2.2(@types/express@4.17.25)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-mcp-actions-backend@0.2.2(@types/express@4.17.25)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/catalog-client': 1.16.2(encoding@0.1.13)
       '@backstage/config': 1.3.9
       '@backstage/errors': 1.3.1
-      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/types': 1.2.2
       '@cfworker/json-schema': 4.1.1
       '@modelcontextprotocol/sdk': 1.32.2(@cfworker/json-schema@4.1.1)(zod@4.6.7)
@@ -22138,14 +22213,14 @@ snapshots:
       - react-native
       - supports-color
 
-  '@backstage/plugin-permission-backend@0.7.16(@types/express@4.17.25)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-permission-backend@0.7.16(@types/express@4.17.25)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/config': 1.3.9
       '@backstage/errors': 1.3.1
-      '@backstage/plugin-auth-node': 0.7.6(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-auth-node': 0.7.6(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-permission-common': 0.9.11(encoding@0.1.13)
-      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       dataloader: 2.2.3
       express: 4.22.3
       express-promise-router: 4.1.1(@types/express@4.17.25)(express@4.22.3)
@@ -22176,9 +22251,9 @@ snapshots:
     transitivePeerDependencies:
       - encoding
 
-  '@backstage/plugin-permission-node@0.11.4(better-sqlite3@11.10.0)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)':
+  '@backstage/plugin-permission-node@0.11.4(better-sqlite3@13.0.3)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
       '@backstage/config': 1.3.9
       '@backstage/errors': 1.3.1
       '@backstage/plugin-permission-common': 0.9.11(encoding@0.1.13)
@@ -22201,9 +22276,9 @@ snapshots:
       - supports-color
       - tedious
 
-  '@backstage/plugin-permission-node@0.11.4(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-permission-node@0.11.4(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/config': 1.3.9
       '@backstage/errors': 1.3.1
       '@backstage/plugin-permission-common': 0.9.11(encoding@0.1.13)
@@ -22241,10 +22316,10 @@ snapshots:
       - encoding
       - react-router-dom
 
-  '@backstage/plugin-proxy-backend@0.6.18(@types/express@4.17.25)(better-sqlite3@11.10.0)(encoding@0.1.13)(express@5.3.0)(pg@8.23.1)':
+  '@backstage/plugin-proxy-backend@0.6.18(@types/express@4.17.25)(better-sqlite3@13.0.3)(encoding@0.1.13)(express@5.3.0)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
-      '@backstage/plugin-proxy-node': 0.1.19(@types/express@4.17.25)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-proxy-node': 0.1.19(@types/express@4.17.25)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/types': 1.2.2
       express-promise-router: 4.1.1(@types/express@4.17.25)(express@5.3.0)
       http-proxy-middleware: 2.0.10(@types/express@4.17.25)
@@ -22264,9 +22339,9 @@ snapshots:
       - supports-color
       - tedious
 
-  '@backstage/plugin-proxy-node@0.1.19(@types/express@4.17.25)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-proxy-node@0.1.19(@types/express@4.17.25)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       http-proxy-middleware: 2.0.10(@types/express@4.17.25)
     transitivePeerDependencies:
       - '@types/express'
@@ -22283,15 +22358,15 @@ snapshots:
       - supports-color
       - tedious
 
-  '@backstage/plugin-scaffolder-backend-module-github@0.10.0(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-scaffolder-backend-module-github@0.10.0(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/catalog-model': 1.10.1
       '@backstage/config': 1.3.9
       '@backstage/errors': 1.3.1
       '@backstage/integration': 2.1.2(encoding@0.1.13)
-      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
-      '@backstage/plugin-scaffolder-node': 0.13.7(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-scaffolder-node': 0.13.7(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/types': 1.2.2
       '@octokit/core': 5.2.2
       '@octokit/plugin-retry': 6.1.0(@octokit/core@5.2.2)
@@ -22315,20 +22390,20 @@ snapshots:
       - supports-color
       - tedious
 
-  '@backstage/plugin-scaffolder-backend@4.2.0(@types/json-schema@7.0.15)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-scaffolder-backend@4.2.0(@types/json-schema@7.0.15)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-openapi-utils': 0.7.2(@types/json-schema@7.0.15)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-openapi-utils': 0.7.2(@types/json-schema@7.0.15)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/catalog-model': 1.10.1
       '@backstage/config': 1.3.9
       '@backstage/errors': 1.3.1
       '@backstage/integration': 2.1.2(encoding@0.1.13)
-      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
-      '@backstage/plugin-events-node': 0.4.26(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-events-node': 0.4.26(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-permission-common': 0.9.11(encoding@0.1.13)
-      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-scaffolder-common': 2.3.0(encoding@0.1.13)
-      '@backstage/plugin-scaffolder-node': 0.13.7(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-scaffolder-node': 0.13.7(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/types': 1.2.2
       '@types/luxon': 3.7.6
       express: 4.22.3
@@ -22336,7 +22411,7 @@ snapshots:
       globby: 11.1.0
       isbinaryfile: 5.0.7
       jsonschema: 1.5.0
-      knex: 3.3.0(better-sqlite3@11.10.0)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      knex: 3.3.0(better-sqlite3@13.0.3)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
       lodash: 4.18.1
       logform: 2.7.0
       luxon: 3.7.2
@@ -22383,14 +22458,14 @@ snapshots:
       - encoding
       - supports-color
 
-  '@backstage/plugin-scaffolder-node@0.13.7(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-scaffolder-node@0.13.7(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/catalog-model': 1.10.1
       '@backstage/errors': 1.3.1
       '@backstage/integration': 2.1.2(encoding@0.1.13)
       '@backstage/plugin-permission-common': 0.9.11(encoding@0.1.13)
-      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-scaffolder-common': 2.3.0(encoding@0.1.13)
       '@backstage/types': 1.2.2
       '@isomorphic-git/pgp-plugin': 0.0.7
@@ -22547,17 +22622,17 @@ snapshots:
       - react-router
       - supports-color
 
-  '@backstage/plugin-search-backend-module-catalog@0.3.19(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-search-backend-module-catalog@0.3.19(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/catalog-client': 1.16.2(encoding@0.1.13)
       '@backstage/catalog-model': 1.10.1
       '@backstage/config': 1.3.9
       '@backstage/errors': 1.3.1
       '@backstage/plugin-catalog-common': 1.2.0(encoding@0.1.13)
-      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-permission-common': 0.9.11(encoding@0.1.13)
-      '@backstage/plugin-search-backend-node': 1.4.8(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-search-backend-node': 1.4.8(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-search-common': 1.2.25(encoding@0.1.13)
     transitivePeerDependencies:
       - '@backstage/backend-test-utils'
@@ -22573,18 +22648,18 @@ snapshots:
       - supports-color
       - tedious
 
-  '@backstage/plugin-search-backend-module-techdocs@0.4.18(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-search-backend-module-techdocs@0.4.18(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/catalog-client': 1.16.2(encoding@0.1.13)
       '@backstage/catalog-model': 1.10.1
       '@backstage/config': 1.3.9
       '@backstage/plugin-catalog-common': 1.2.0(encoding@0.1.13)
-      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-permission-common': 0.9.11(encoding@0.1.13)
-      '@backstage/plugin-search-backend-node': 1.4.8(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-search-backend-node': 1.4.8(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-search-common': 1.2.25(encoding@0.1.13)
-      '@backstage/plugin-techdocs-node': 2.0.2(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-techdocs-node': 2.0.2(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       lodash: 4.18.1
       p-limit: 3.1.0
     transitivePeerDependencies:
@@ -22602,9 +22677,9 @@ snapshots:
       - supports-color
       - tedious
 
-  '@backstage/plugin-search-backend-node@1.4.8(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-search-backend-node@1.4.8(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/config': 1.3.9
       '@backstage/errors': 1.3.1
       '@backstage/plugin-permission-common': 0.9.11(encoding@0.1.13)
@@ -22626,15 +22701,15 @@ snapshots:
       - supports-color
       - tedious
 
-  '@backstage/plugin-search-backend@2.1.7(@types/json-schema@7.0.15)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-search-backend@2.1.7(@types/json-schema@7.0.15)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-openapi-utils': 0.7.2(@types/json-schema@7.0.15)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-openapi-utils': 0.7.2(@types/json-schema@7.0.15)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/config': 1.3.9
       '@backstage/errors': 1.3.1
       '@backstage/plugin-permission-common': 0.9.11(encoding@0.1.13)
-      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
-      '@backstage/plugin-search-backend-node': 1.4.8(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-search-backend-node': 1.4.8(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-search-common': 1.2.25(encoding@0.1.13)
       '@backstage/types': 1.2.2
       dataloader: 2.2.3
@@ -22737,21 +22812,21 @@ snapshots:
     optionalDependencies:
       '@types/react': 18.3.31
 
-  '@backstage/plugin-techdocs-backend@2.3.0(@types/express@4.17.25)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-techdocs-backend@2.3.0(@types/express@4.17.25)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/catalog-client': 1.16.2(encoding@0.1.13)
       '@backstage/catalog-model': 1.10.1
       '@backstage/config': 1.3.9
       '@backstage/errors': 1.3.1
       '@backstage/integration': 2.1.2(encoding@0.1.13)
-      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
-      '@backstage/plugin-techdocs-node': 2.0.2(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-techdocs-node': 2.0.2(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/types': 1.2.2
       express: 4.22.3
       express-promise-router: 4.1.1(@types/express@4.17.25)(express@4.22.3)
       fs-extra: 11.4.1
-      knex: 3.3.0(better-sqlite3@11.10.0)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      knex: 3.3.0(better-sqlite3@13.0.3)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
       p-limit: 3.1.0
       winston: 3.19.0
     transitivePeerDependencies:
@@ -22797,7 +22872,7 @@ snapshots:
       - react-native
       - supports-color
 
-  '@backstage/plugin-techdocs-node@2.0.2(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-techdocs-node@2.0.2(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
       '@aws-sdk/client-s3': 3.1147.0
       '@aws-sdk/credential-providers': 3.1147.0
@@ -22805,7 +22880,7 @@ snapshots:
       '@aws-sdk/types': 3.974.6
       '@azure/identity': 4.13.3
       '@azure/storage-blob': 12.34.0
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/catalog-model': 1.10.1
       '@backstage/config': 1.3.9
       '@backstage/errors': 1.3.1
@@ -25666,6 +25741,8 @@ snapshots:
 
   '@mui/core-downloads-tracker@5.18.0': {}
 
+  '@mui/core-downloads-tracker@9.5.0': {}
+
   '@mui/material@5.18.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
       '@babel/runtime': 7.29.7
@@ -25687,10 +25764,40 @@ snapshots:
       '@emotion/styled': 11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1)
       '@types/react': 18.3.31
 
+  '@mui/material@9.5.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@babel/runtime': 7.29.10
+      '@mui/core-downloads-tracker': 9.5.0
+      '@mui/system': 9.5.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1)
+      '@mui/types': 9.5.0(@types/react@18.3.31)
+      '@mui/utils': 9.5.0(@types/react@18.3.31)(react@18.3.1)
+      '@popperjs/core': 2.11.8
+      '@types/react-transition-group': 4.4.12(@types/react@18.3.31)
+      clsx: 2.1.1
+      csstype: 3.2.3
+      prop-types: 15.8.1
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+      react-is: 19.3.1
+      react-transition-group: 4.4.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+    optionalDependencies:
+      '@emotion/react': 11.14.0(@types/react@18.3.31)(react@18.3.1)
+      '@emotion/styled': 11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1)
+      '@types/react': 18.3.31
+
   '@mui/private-theming@5.17.1(@types/react@18.3.31)(react@18.3.1)':
     dependencies:
       '@babel/runtime': 7.29.10
       '@mui/utils': 5.17.1(@types/react@18.3.31)(react@18.3.1)
+      prop-types: 15.8.1
+      react: 18.3.1
+    optionalDependencies:
+      '@types/react': 18.3.31
+
+  '@mui/private-theming@9.5.0(@types/react@18.3.31)(react@18.3.1)':
+    dependencies:
+      '@babel/runtime': 7.29.10
+      '@mui/utils': 9.5.0(@types/react@18.3.31)(react@18.3.1)
       prop-types: 15.8.1
       react: 18.3.1
     optionalDependencies:
@@ -25701,6 +25808,19 @@ snapshots:
       '@babel/runtime': 7.29.10
       '@emotion/cache': 11.14.0
       '@emotion/serialize': 1.3.3
+      csstype: 3.2.3
+      prop-types: 15.8.1
+      react: 18.3.1
+    optionalDependencies:
+      '@emotion/react': 11.14.0(@types/react@18.3.31)(react@18.3.1)
+      '@emotion/styled': 11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1)
+
+  '@mui/styled-engine@9.5.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@babel/runtime': 7.29.10
+      '@emotion/cache': 11.14.0
+      '@emotion/serialize': 1.3.3
+      '@emotion/sheet': 1.4.0
       csstype: 3.2.3
       prop-types: 15.8.1
       react: 18.3.1
@@ -25724,7 +25844,29 @@ snapshots:
       '@emotion/styled': 11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1)
       '@types/react': 18.3.31
 
+  '@mui/system@9.5.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1)':
+    dependencies:
+      '@babel/runtime': 7.29.10
+      '@mui/private-theming': 9.5.0(@types/react@18.3.31)(react@18.3.1)
+      '@mui/styled-engine': 9.5.0(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1))(react@18.3.1)
+      '@mui/types': 9.5.0(@types/react@18.3.31)
+      '@mui/utils': 9.5.0(@types/react@18.3.31)(react@18.3.1)
+      clsx: 2.1.1
+      csstype: 3.2.3
+      prop-types: 15.8.1
+      react: 18.3.1
+    optionalDependencies:
+      '@emotion/react': 11.14.0(@types/react@18.3.31)(react@18.3.1)
+      '@emotion/styled': 11.14.1(@emotion/react@11.14.0(@types/react@18.3.31)(react@18.3.1))(@types/react@18.3.31)(react@18.3.1)
+      '@types/react': 18.3.31
+
   '@mui/types@7.2.24(@types/react@18.3.31)':
+    optionalDependencies:
+      '@types/react': 18.3.31
+
+  '@mui/types@9.5.0(@types/react@18.3.31)':
+    dependencies:
+      '@babel/runtime': 7.29.10
     optionalDependencies:
       '@types/react': 18.3.31
 
@@ -25737,6 +25879,18 @@ snapshots:
       prop-types: 15.8.1
       react: 18.3.1
       react-is: 19.3.0
+    optionalDependencies:
+      '@types/react': 18.3.31
+
+  '@mui/utils@9.5.0(@types/react@18.3.31)(react@18.3.1)':
+    dependencies:
+      '@babel/runtime': 7.29.10
+      '@mui/types': 9.5.0(@types/react@18.3.31)
+      '@types/prop-types': 15.7.15
+      clsx: 2.1.1
+      prop-types: 15.8.1
+      react: 18.3.1
+      react-is: 19.3.1
     optionalDependencies:
       '@types/react': 18.3.31
 
@@ -26735,11 +26889,11 @@ snapshots:
 
   '@prisma/client-runtime-utils@7.10.1': {}
 
-  '@prisma/client@7.10.1(prisma@7.10.1(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(better-sqlite3@11.10.0)(magicast@0.5.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3))(typescript@6.0.3)':
+  '@prisma/client@7.10.1(prisma@7.10.1(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(better-sqlite3@13.0.3)(magicast@0.5.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3))(typescript@6.0.3)':
     dependencies:
       '@prisma/client-runtime-utils': 7.10.1
     optionalDependencies:
-      prisma: 7.10.1(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(better-sqlite3@11.10.0)(magicast@0.5.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
+      prisma: 7.10.1(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(better-sqlite3@13.0.3)(magicast@0.5.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
       typescript: 6.0.3
 
   '@prisma/config@7.10.1(magicast@0.5.3)':
@@ -30290,7 +30444,7 @@ snapshots:
 
   '@wolfy1339/lru-cache@11.0.2-patch.1': {}
 
-  '@workos-inc/node@12.0.0': {}
+  '@workos-inc/node@10.9.0': {}
 
   '@xobotyi/scrollbar-width@1.9.5': {}
 
@@ -31698,10 +31852,9 @@ snapshots:
 
   better-result@2.10.0: {}
 
-  better-sqlite3@11.10.0:
+  better-sqlite3@13.0.3:
     dependencies:
-      bindings: 1.5.0
-      prebuild-install: 7.1.3
+      node-addon-api: 8.9.2
 
   bfj@9.1.3:
     dependencies:
@@ -31743,10 +31896,6 @@ snapshots:
   binaryextensions@6.11.0:
     dependencies:
       editions: 6.22.0
-
-  bindings@1.5.0:
-    dependencies:
-      file-uri-to-path: 1.0.0
 
   bintrees@1.0.2: {}
 
@@ -32444,10 +32593,10 @@ snapshots:
 
   connect-history-api-fallback@2.0.0: {}
 
-  connect-session-knex@4.0.2(better-sqlite3@11.10.0)(pg@8.23.1):
+  connect-session-knex@4.0.2(better-sqlite3@13.0.3)(pg@8.23.1):
     dependencies:
       bluebird: 3.7.2
-      knex: 3.3.0(better-sqlite3@11.10.0)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      knex: 3.3.0(better-sqlite3@13.0.3)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
     transitivePeerDependencies:
       - better-sqlite3
       - mariadb
@@ -34093,7 +34242,8 @@ snapshots:
 
   exit-x@0.2.2: {}
 
-  expand-template@2.0.3: {}
+  expand-template@2.0.3:
+    optional: true
 
   expect-type@1.4.0: {}
 
@@ -34432,8 +34582,6 @@ snapshots:
       strtok3: 6.3.0
       token-types: 4.2.1
 
-  file-uri-to-path@1.0.0: {}
-
   filesize@8.0.7: {}
 
   fill-range@7.1.1:
@@ -34684,10 +34832,10 @@ snapshots:
 
   fraction.js@5.3.4: {}
 
-  framer-motion@13.0.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
+  framer-motion@14.7.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8):
     dependencies:
-      motion-dom: 13.0.0
-      motion-utils: 13.0.0
+      motion-dom: 14.7.1
+      motion-utils: 14.7.0
       tslib: 2.8.1
     optionalDependencies:
       react: 19.2.8
@@ -34939,7 +35087,8 @@ snapshots:
     dependencies:
       git-up: 8.1.1
 
-  github-from-package@0.0.0: {}
+  github-from-package@0.0.0:
+    optional: true
 
   glob-parent@5.1.2:
     dependencies:
@@ -37870,7 +38019,7 @@ snapshots:
 
   kleur@4.1.5: {}
 
-  knex@3.3.0(better-sqlite3@11.10.0)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1):
+  knex@3.3.0(better-sqlite3@13.0.3)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1):
     dependencies:
       colorette: 2.0.19
       commander: 10.0.1
@@ -37887,7 +38036,7 @@ snapshots:
       tarn: 3.1.2
       tildify: 2.0.0
     optionalDependencies:
-      better-sqlite3: 11.10.0
+      better-sqlite3: 13.0.3
       mysql2: 3.24.5(@types/node@22.20.1)
       pg: 8.23.1
     transitivePeerDependencies:
@@ -39018,11 +39167,11 @@ snapshots:
 
   moo@0.5.3: {}
 
-  motion-dom@13.0.0:
+  motion-dom@14.7.1:
     dependencies:
-      motion-utils: 13.0.0
+      motion-utils: 14.7.0
 
-  motion-utils@13.0.0: {}
+  motion-utils@14.7.0: {}
 
   mri@1.1.4: {}
 
@@ -39105,7 +39254,8 @@ snapshots:
 
   nanoid@3.3.20: {}
 
-  napi-build-utils@2.0.0: {}
+  napi-build-utils@2.0.0:
+    optional: true
 
   napi-postinstall@0.3.4: {}
 
@@ -39189,6 +39339,7 @@ snapshots:
   node-abi@3.94.0:
     dependencies:
       semver: 7.8.5
+    optional: true
 
   node-abort-controller@3.1.1: {}
 
@@ -39197,8 +39348,7 @@ snapshots:
 
   node-addon-api@7.1.1: {}
 
-  node-addon-api@8.9.2:
-    optional: true
+  node-addon-api@8.9.2: {}
 
   node-domexception@1.0.0: {}
 
@@ -40504,6 +40654,7 @@ snapshots:
       simple-get: 4.0.1
       tar-fs: 2.1.5
       tunnel-agent: 0.6.0
+    optional: true
 
   prelude-ls@1.2.1: {}
 
@@ -40542,7 +40693,7 @@ snapshots:
     dependencies:
       parse-ms: 4.0.0
 
-  prisma@7.10.1(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(better-sqlite3@11.10.0)(magicast@0.5.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3):
+  prisma@7.10.1(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(better-sqlite3@13.0.3)(magicast@0.5.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3):
     dependencies:
       '@prisma/config': 7.10.1(magicast@0.5.3)
       '@prisma/dev': 0.24.17(typescript@6.0.3)
@@ -40551,7 +40702,7 @@ snapshots:
       mysql2: 3.24.5(@types/node@26.2.0)
       postgres: 3.4.7
     optionalDependencies:
-      better-sqlite3: 11.10.0
+      better-sqlite3: 13.0.3
       typescript: 6.0.3
     transitivePeerDependencies:
       - '@types/node'
@@ -43644,6 +43795,7 @@ snapshots:
   tunnel-agent@0.6.0:
     dependencies:
       safe-buffer: 5.2.1
+    optional: true
 
   tweetnacl@0.14.5: {}
 
