@@ -230,6 +230,7 @@ macos_application(
 alias(
     name = "install",
     actual = ":install-rs",
+    tags = ["manual"],
 )
 
 pipeline_unit(
