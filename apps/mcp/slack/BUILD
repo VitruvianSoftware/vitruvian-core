@@ -21,7 +21,21 @@ test_suite(
     tests = [":mcp_slack_rs_test"],
 )
 
-# Native Rust implementation of the Slack MCP Server and all 11 test suites.
+_CRATES = [
+    "@mcp_slack_crates//:bytes",
+    "@mcp_slack_crates//:http",
+    "@mcp_slack_crates//:http-body-util",
+    "@mcp_slack_crates//:hyper",
+    "@mcp_slack_crates//:hyper-util",
+    "@mcp_slack_crates//:ring",
+    "@mcp_slack_crates//:rustls",
+    "@mcp_slack_crates//:rustls-native-certs",
+    "@mcp_slack_crates//:serde_json",
+    "@mcp_slack_crates//:tokio",
+    "@mcp_slack_crates//:ureq",
+]
+
+# The Slack MCP server (rs/Cargo.toml, locked in rs/Cargo.lock).
 rust_library(
     name = "mcp_slack_rs_lib",
     srcs = [
@@ -37,6 +51,7 @@ rust_library(
     ],
     crate_root = "rs/src/lib.rs",
     edition = "2021",
+    deps = _CRATES,
 )
 
 rust_binary(

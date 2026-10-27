@@ -57,12 +57,13 @@
 #   3. osv-scanner missing or non-runnable   -> exit 1. An absent scanner emits
 #      empty JSON that parses cleanly to "no advisories".
 #
-# APP_TREE=absent: since #3985 mcp-slack is a std-only Rust binary compiled from
-# source inside the image. There is no package manager and no resolved
-# dependency tree, so the drift above cannot happen and the blocking arm has
-# nothing to scan. Declaring that inverts control 2 rather than dropping it: the
-# scan then REQUIRES zero packages under APP_PREFIX, and refuses if a tree comes
-# back (a re-added npm or crates install must be scanned, so drop the flag).
+# APP_TREE=absent: since #3985 mcp-slack is a Rust binary built inside the
+# image with `cargo build --locked` from its committed Cargo.lock, which
+# `osv-scan` already scans. Nothing is installed or re-resolved at build time,
+# so the drift above cannot happen and the blocking arm has nothing to scan.
+# Declaring that inverts control 2 rather than dropping it: the scan then
+# REQUIRES zero packages under APP_PREFIX, and refuses if a tree comes back (a
+# re-added npm install must be scanned, so drop the flag).
 # The reporting arm runs either way.
 #
 # Anonymous registry access throughout: no credential, same path the cluster
