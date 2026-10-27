@@ -56,6 +56,7 @@ rust_binary(
         "--agent-app=$(rlocationpath //tools/agent-app:agent-app.sh)",
     ],
     data = [
+        "//tools/agent-app",
         "//tools/agent-app:agent-app.sh",
         "//tools/pipeline/plan",
     ],

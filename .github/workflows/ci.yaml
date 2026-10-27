@@ -873,21 +873,15 @@ jobs:
     if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' && needs.fast-lane.outputs.skip != 'true' && (needs.changes.result != 'success' || needs.changes.outputs.go-lint-homelab == 'true') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 20
-    env:
-      GOWORK: "off"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: apps/cli/homelab/go.mod
-          cache-dependency-path: apps/cli/homelab/go.sum
-      - name: golangci-lint (homelab)
-        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
-        with:
-          version: v2.12.1
-          working-directory: apps/cli/homelab
+      - name: rustc test (homelab)
+        run: |
+          set -euo pipefail
+          rustc --edition 2021 --test apps/cli/homelab/rs/src/lib.rs -o "$RUNNER_TEMP/homelab_test"
+          (cd apps/cli/homelab && "$RUNNER_TEMP/homelab_test")
 
   go-test-infra:
     # Go tests for the IaC programs (infrastructure/pulumi/** and <app>/infra/**).

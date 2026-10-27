@@ -3,7 +3,6 @@ go 1.26.6
 use (
 	.
 	./apps/cli/devx
-	./apps/cli/homelab
 	./apps/desktop/courier/engine
 
 	// The Vitruvian SDK's Go kit. The public mirror holds it at go/, so its

@@ -48,6 +48,6 @@ def gitops_manifest(name, manifests, visibility = ["//visibility:public"]):
             name = sub,
             srcs = ["//tools/gitops:gitops-cmd.sh"],
             args = [sub] + file_args,
-            data = manifests,
+            data = manifests + ["//tools/gitops:gitops-cli"],
             visibility = visibility,
         )

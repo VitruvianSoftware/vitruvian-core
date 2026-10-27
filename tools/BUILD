@@ -92,11 +92,6 @@ exports_files(
     ],
 )
 
-exports_files(
-    ["test-mcp-slack-e2e.sh"],
-    visibility = ["//tools/design-sync:__pkg__"],
-)
-
 exports_files(["workspace-status.sh"])
 
 rust_library(

@@ -22,6 +22,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -79,7 +80,9 @@ test('doctor inspects the selected project dependencies and dotenv without discl
   }
 });
 
-const bashTest = process.platform === 'win32' ? test.skip : test;
+const hasDevFreshSh = existsSync(path.join(sourceRoot, 'scripts/dev-fresh.sh'));
+const bashTest =
+  process.platform === 'win32' || !hasDevFreshSh ? test.skip : test;
 bashTest(
   'launcher reads the selected project keys and starts its command while source checks use the installation',
   async () => {

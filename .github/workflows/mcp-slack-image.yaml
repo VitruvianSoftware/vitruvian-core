@@ -159,15 +159,9 @@ jobs:
           docker run --rm \
             --user 10001:10001 \
             --read-only --tmpfs /tmp \
-            --entrypoint node \
+            --entrypoint /app/mcp-slack \
             mcp-slack:verify \
-            --input-type=module \
-            -e "import { accessSync, constants } from 'node:fs';
-                accessSync('/app/dist/index.js', constants.R_OK);
-                console.log('uid ' + process.getuid() + ' can read /app/dist/index.js');
-                await import('jose');
-                await import('@modelcontextprotocol/sdk/server/streamableHttp.js');
-                console.log('uid ' + process.getuid() + ' loaded jose and the MCP SDK');"
+            --version
 
       # ASSERTION 2 — the provenance label. Nothing injects this automatically:
       # the repo's other Dockerfile carries no LABEL at all and its buildx call
