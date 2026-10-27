@@ -133,12 +133,12 @@ jobs:
         if: steps.release.outputs.skip != 'true' && steps.queued.outputs.verdict != 'hit' && steps.fastlane.outputs.verdict != 'fast'
         uses: ./.github/actions/setup-bazel
 
-      - name: Set up Go
+      - name: Restore the extracted LLVM toolchain
+        id: llvm-contents
         if: steps.release.outputs.skip != 'true' && steps.queued.outputs.verdict != 'hit' && steps.fastlane.outputs.verdict != 'fast'
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: ./.github/actions/llvm-cache-restore
         with:
-          go-version-file: go.mod
-          cache: false
+          restore-only: "true"
 
       - name: Fetch the dependency map kept under a git ref
         id: mapref
@@ -221,7 +221,11 @@ jobs:
             echo "::warning::No diff base for event '$EVENT_NAME'; running every unit."
           else
             planner="$RUNNER_TEMP/pipeline-plan"
-            if ! GOWORK=off CGO_ENABLED=0 go build -o "$planner" ./tools/pipeline/plan 2>/tmp/plan-build.err; then
+            cache_flags=()
+            if [ -n "${BUILDBUDDY_API_KEY:-}" ]; then
+              cache_flags=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
+            fi
+            if ! (bazel build "${cache_flags[@]}" //tools/pipeline/plan && cp -f bazel-bin/tools/pipeline/plan/plan "$planner" && chmod +x "$planner") 2>/tmp/plan-build.err; then
               echo "::warning::Could not build the planner; running every unit."
               tail -n 30 /tmp/plan-build.err || true
             fi
@@ -1751,15 +1755,21 @@ jobs:
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel
 
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      - name: Restore the extracted LLVM toolchain
+        id: llvm-contents
+        uses: ./.github/actions/llvm-cache-restore
         with:
-          go-version-file: go.mod
-          cache: false
+          restore-only: "true"
 
       - name: Compute the dependency map for this commit
         run: |
-          GOWORK=off CGO_ENABLED=0 go build -o "$RUNNER_TEMP/pipeline-plan" ./tools/pipeline/plan
+          cache_flags=()
+          if [ -n "${BUILDBUDDY_API_KEY:-}" ]; then
+            cache_flags=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
+          fi
+          bazel build "${cache_flags[@]}" //tools/pipeline/plan
+          cp -f bazel-bin/tools/pipeline/plan/plan "$RUNNER_TEMP/pipeline-plan"
+          chmod +x "$RUNNER_TEMP/pipeline-plan"
           "$RUNNER_TEMP/pipeline-plan" --emit-rdeps-map="$RUNNER_TEMP/pipeline-rdeps-map.json" --repo-root="$PWD" --timeout-sec=2100
 
       - name: Keep it under a git ref
