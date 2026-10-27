@@ -70,6 +70,18 @@ alias(
     visibility = ["//apps/web/backstage:__subpackages__"],
 )
 
+alias(
+    name = "bump-release",
+    actual = ":bump-release-rs",
+    visibility = ["//apps/web/backstage:__subpackages__"],
+)
+
+alias(
+    name = "bump_release",
+    actual = ":bump-release-rs",
+    visibility = ["//apps/web/backstage:__subpackages__"],
+)
+
 rust_test(
     name = "bump_release_lib_test",
     size = "small",

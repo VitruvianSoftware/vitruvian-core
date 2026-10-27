@@ -67,4 +67,87 @@ mod tests {
             "//apps/suites/tabula/extension:chrome_zip"
         );
     }
+
+    #[test]
+    fn end_to_end_publish_flow_with_stubs() {
+        use std::env;
+        use std::fs;
+        #[cfg(unix)]
+        use std::os::unix::fs::PermissionsExt;
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let tmp = env::temp_dir().join(format!("tabula-publish-test-{nanos}"));
+        let fake_root = tmp.join("workspace");
+        let stubs = tmp.join("stubs");
+        let work = tmp.join("runner-temp");
+        let gh_log = tmp.join("gh.log");
+
+        fs::create_dir_all(fake_root.join("apps/suites/tabula/extension")).unwrap();
+        fs::create_dir_all(fake_root.join("bazel-bin/apps/suites/tabula/extension")).unwrap();
+        fs::create_dir_all(&stubs).unwrap();
+        fs::create_dir_all(&work).unwrap();
+
+        fs::write(
+            fake_root.join("apps/suites/tabula/extension/package.json"),
+            "{\"version\":\"9.9.9-test\"}\n",
+        )
+        .unwrap();
+        fs::write(
+            fake_root.join("bazel-bin/apps/suites/tabula/extension/tabula-extension-chrome.zip"),
+            b"placeholder-zip",
+        )
+        .unwrap();
+
+        let write_stub = |name: &str, body: &str| {
+            let p = stubs.join(name);
+            fs::write(&p, body).unwrap();
+            #[cfg(unix)]
+            fs::set_permissions(&p, fs::Permissions::from_mode(0o755)).unwrap();
+        };
+
+        write_stub("bazel", "#!/usr/bin/env bash\nexit 0\n");
+        write_stub("node", "#!/usr/bin/env bash\necho \"9.9.9-test\"\n");
+        write_stub(
+            "zip",
+            "#!/usr/bin/env bash\ncp build-info.json tabula-extension-chrome.zip\nexit 0\n",
+        );
+        write_stub(
+            "gh",
+            &format!(
+                "#!/usr/bin/env bash\necho \"$PWD|$*\" >> \"{}\"\nexit 0\n",
+                gh_log.display()
+            ),
+        );
+
+        let old_path = env::var("PATH").unwrap_or_default();
+        env::set_var("PATH", format!("{}:/usr/bin:/bin", stubs.display()));
+        env::set_var("BUILD_WORKSPACE_DIRECTORY", &fake_root);
+        env::set_var("RUNNER_TEMP", &work);
+        env::set_var("GITHUB_SHA", "deadbeefcafe");
+        env::remove_var("BUILDBUDDY_API_KEY");
+        env::remove_var("TAG");
+
+        let rc = run(&[]);
+        env::set_var("PATH", old_path);
+        assert_eq!(rc, 0);
+
+        let logged = fs::read_to_string(&gh_log).unwrap();
+        let canonical_root = fs::canonicalize(&fake_root).unwrap();
+        for line in logged.lines() {
+            let (cwd, _args) = line.split_once('|').unwrap();
+            assert_eq!(fs::canonicalize(cwd).unwrap(), canonical_root);
+        }
+        assert!(logged.contains("release upload tabula-extension-dev-latest"));
+        assert!(logged.contains("--clobber"));
+
+        let stamped = fs::read_to_string(work.join("build-info.json")).unwrap();
+        assert!(stamped.contains("deadbeefcafe"));
+        assert!(stamped.contains("9.9.9-test"));
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
 }
