@@ -191,7 +191,7 @@ importers:
         version: 7.10.1
       '@prisma/client':
         specifier: 7.10.1
-        version: 7.10.1(prisma@7.10.1(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(better-sqlite3@11.10.0)(magicast@0.5.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3))(typescript@6.0.3)
+        version: 7.10.1(prisma@7.10.1(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(better-sqlite3@13.0.3)(magicast@0.5.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3))(typescript@6.0.3)
       '@workos-inc/node':
         specifier: ^10.9.0
         version: 10.9.0
@@ -249,7 +249,7 @@ importers:
         version: 17.0.0
       prisma:
         specifier: 7.10.1
-        version: 7.10.1(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(better-sqlite3@11.10.0)(magicast@0.5.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
+        version: 7.10.1(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(better-sqlite3@13.0.3)(magicast@0.5.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
       supertest:
         specifier: ^7.3.1
         version: 7.3.1
@@ -651,10 +651,10 @@ importers:
     dependencies:
       '@backstage/backend-defaults':
         specifier: ^0.18.0
-        version: 0.18.0(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@22.20.1)(better-sqlite3@11.10.0)(encoding@0.1.13)
+        version: 0.18.0(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@22.20.1)(better-sqlite3@13.0.3)(encoding@0.1.13)
       '@backstage/backend-plugin-api':
         specifier: 1.10.1
-        version: 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/catalog-client':
         specifier: ^1.16.2
         version: 1.16.2(encoding@0.1.13)
@@ -663,73 +663,73 @@ importers:
         version: 1.10.1
       '@backstage/plugin-app-backend':
         specifier: ^0.5.18
-        version: 0.5.18(@types/express@4.17.25)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 0.5.18(@types/express@4.17.25)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-auth-backend':
         specifier: ^0.30.1
-        version: 0.30.1(@types/express@4.17.25)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 0.30.1(@types/express@4.17.25)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-auth-backend-module-github-provider':
         specifier: ^0.5.7
-        version: 0.5.7(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 0.5.7(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-auth-node':
         specifier: ^0.7.6
-        version: 0.7.6(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 0.7.6(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-catalog-backend':
         specifier: ^4.0.0
-        version: 4.0.0(@types/json-schema@7.0.15)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 4.0.0(@types/json-schema@7.0.15)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-catalog-backend-module-github':
         specifier: ^0.14.0
-        version: 0.14.0(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 0.14.0(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-catalog-backend-module-github-org':
         specifier: ^0.3.26
-        version: 0.3.26(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 0.3.26(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-catalog-backend-module-scaffolder-entity-model':
         specifier: ^0.2.24
-        version: 0.2.24(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 0.2.24(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-kubernetes-backend':
         specifier: ^0.21.11
-        version: 0.21.11(@types/express@4.17.25)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 0.21.11(@types/express@4.17.25)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-mcp-actions-backend':
         specifier: ^0.2.2
-        version: 0.2.2(@types/express@4.17.25)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 0.2.2(@types/express@4.17.25)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-permission-backend':
         specifier: ^0.7.16
-        version: 0.7.16(@types/express@4.17.25)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 0.7.16(@types/express@4.17.25)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-permission-common':
         specifier: ^0.9.11
         version: 0.9.11(encoding@0.1.13)
       '@backstage/plugin-permission-node':
         specifier: ^0.11.4
-        version: 0.11.4(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 0.11.4(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-proxy-backend':
         specifier: ^0.6.18
-        version: 0.6.18(@types/express@4.17.25)(better-sqlite3@11.10.0)(encoding@0.1.13)(express@5.3.0)(pg@8.23.1)
+        version: 0.6.18(@types/express@4.17.25)(better-sqlite3@13.0.3)(encoding@0.1.13)(express@5.3.0)(pg@8.23.1)
       '@backstage/plugin-scaffolder-backend':
         specifier: ^4.2.0
-        version: 4.2.0(@types/json-schema@7.0.15)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 4.2.0(@types/json-schema@7.0.15)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-scaffolder-backend-module-github':
         specifier: ^0.10.0
-        version: 0.10.0(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 0.10.0(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-scaffolder-node':
         specifier: ^0.13.7
-        version: 0.13.7(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 0.13.7(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-search-backend':
         specifier: ^2.1.7
-        version: 2.1.7(@types/json-schema@7.0.15)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 2.1.7(@types/json-schema@7.0.15)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-search-backend-module-catalog':
         specifier: ^0.3.19
-        version: 0.3.19(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 0.3.19(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-search-backend-module-techdocs':
         specifier: ^0.4.18
-        version: 0.4.18(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 0.4.18(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-techdocs-backend':
         specifier: ^2.3.0
-        version: 2.3.0(@types/express@4.17.25)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+        version: 2.3.0(@types/express@4.17.25)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@vitruviansoftware/backstage-app':
         specifier: workspace:*
         version: link:../app
       better-sqlite3:
-        specifier: ^11.8.1
-        version: 11.10.0
+        specifier: ^13.0.3
+        version: 13.0.3
       express-promise-router:
         specifier: ^4.1.1
         version: 4.1.1(@types/express@4.17.25)(express@5.3.0)
@@ -9103,8 +9103,9 @@ packages:
   better-result@2.10.0:
     resolution: {integrity: sha512-oQhh0y1qo2/ZKdAAEvHZAqKKiHOFU5k/bW96fE2ScgQOVkJRiHwB+nOS1SgFsYqRlxMDWvefXi9Q3px7QvgNDw==}
 
-  better-sqlite3@11.10.0:
-    resolution: {integrity: sha512-EwhOpyXiOEL/lKzHz9AW1msWFNzGc/z+LzeB3/jnFJpxu+th2yqvzsSWas1v9jgs9+xiXJcD5A8CJxAG2TaghQ==}
+  better-sqlite3@13.0.3:
+    resolution: {integrity: sha512-RbOBxmLBG8uvFUc15X9+9SFemKcQ0WBuISBVkpuiaUB2qblC8UWlHEjdWVoZ8AdhSwmoEgsiXKfopX0CQxaACQ==}
+    engines: {node: '>=22'}
 
   bfj@9.1.3:
     resolution: {integrity: sha512-1ythbcNNAd2UjTYW6M+MAHd9KM/m3g4mQ+3a4Vom16WgmUa4GsisdmXAYfpAjkObY5zdpgzaBh1ctZOEcJipuQ==}
@@ -9142,9 +9143,6 @@ packages:
   binaryextensions@6.11.0:
     resolution: {integrity: sha512-sXnYK/Ij80TO3lcqZVV2YgfKN5QjUWIRk/XSm2J/4bd/lPko3lvk0O4ZppH6m+6hB2/GTu+ptNwVFe1xh+QLQw==}
     engines: {node: '>=4'}
-
-  bindings@1.5.0:
-    resolution: {integrity: sha512-p2q/t/mhvuOj/UeLlV6566GD/guowlr0hHxClI0W9m7MWYkL1F0hLo+0Aexs9HSPCtR1SXQ0TD3MMKrXZajbiQ==}
 
   bintrees@1.0.2:
     resolution: {integrity: sha512-VOMgTMwjAaUG580SXn3LacVgjurrbMme7ZZNYGSSV7mmtY6QQRh0Eg3pwIcntQ77DErK1L0NxkbetjcoXzVwKw==}
@@ -11358,9 +11356,6 @@ packages:
   file-type@16.5.4:
     resolution: {integrity: sha512-/yFHK0aGjFEgDJjEKP0pWCplsPFPhwyfwevf/pVxiN0tmE4L9LmwWxWukdJSHdoCli4VgQLehjJtwQBnqmsKcw==}
     engines: {node: '>=10'}
-
-  file-uri-to-path@1.0.0:
-    resolution: {integrity: sha512-0Zt+s3L7Vf1biwWZ29aARiVYLx7iMGnEUl9x33fbB/j3jR81u/O2LbqK+Bm1CDSNDKVtJ/YjwY7TUd5SkeLQLw==}
 
   filesize@8.0.7:
     resolution: {integrity: sha512-pjmC+bkIF8XI7fWaH8KxHcZL3DPybs1roSKP4rKDvy20tAWwIObE4+JIseG2byfGKhud5ZnM4YSGKBz7Sh0ndQ==}
@@ -20026,9 +20021,9 @@ snapshots:
       - react-native
       - supports-color
 
-  '@backstage/backend-app-api@1.7.4(better-sqlite3@11.10.0)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)':
+  '@backstage/backend-app-api@1.7.4(better-sqlite3@13.0.3)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
       '@backstage/config': 1.3.9
       '@backstage/connections': 0.4.0
       '@backstage/errors': 1.3.1
@@ -20047,7 +20042,7 @@ snapshots:
       - supports-color
       - tedious
 
-  '@backstage/backend-defaults@0.18.0(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@22.20.1)(better-sqlite3@11.10.0)(encoding@0.1.13)':
+  '@backstage/backend-defaults@0.18.0(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@22.20.1)(better-sqlite3@13.0.3)(encoding@0.1.13)':
     dependencies:
       '@aws-sdk/abort-controller': 3.374.0
       '@aws-sdk/client-codecommit': 3.1147.0
@@ -20057,19 +20052,19 @@ snapshots:
       '@aws-sdk/types': 3.974.6
       '@azure/identity': 4.13.3
       '@azure/storage-blob': 12.34.0
-      '@backstage/backend-app-api': 1.7.4(better-sqlite3@11.10.0)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      '@backstage/backend-app-api': 1.7.4(better-sqlite3@13.0.3)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
       '@backstage/backend-dev-utils': 0.1.7
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
       '@backstage/cli-node': 0.3.4(@swc/core@1.16.20(@swc/helpers@0.5.23))
       '@backstage/config': 1.3.9
       '@backstage/config-loader': 1.11.3
       '@backstage/errors': 1.3.1
       '@backstage/integration': 2.1.2(encoding@0.1.13)
       '@backstage/integration-aws-node': 0.2.2
-      '@backstage/plugin-auth-node': 0.7.6(better-sqlite3@11.10.0)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
-      '@backstage/plugin-events-node': 0.4.26(better-sqlite3@11.10.0)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      '@backstage/plugin-auth-node': 0.7.6(better-sqlite3@13.0.3)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      '@backstage/plugin-events-node': 0.4.26(better-sqlite3@13.0.3)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
       '@backstage/plugin-permission-common': 0.9.11(encoding@0.1.13)
-      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@11.10.0)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@13.0.3)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
       '@backstage/types': 1.2.2
       '@google-cloud/storage': 7.22.0(encoding@0.1.13)
       '@keyv/memcache': 2.0.2(keyv@5.6.0)
@@ -20098,7 +20093,7 @@ snapshots:
       is-glob: 4.0.3
       jose: 5.10.0
       keyv: 5.6.0
-      knex: 3.3.0(better-sqlite3@11.10.0)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      knex: 3.3.0(better-sqlite3@13.0.3)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
       lodash: 4.18.1
       logform: 2.7.0
       luxon: 3.7.2
@@ -20123,7 +20118,7 @@ snapshots:
       zod: 4.6.7
       zod-to-json-schema: 3.25.2(zod@4.6.7)
     optionalDependencies:
-      better-sqlite3: 11.10.0
+      better-sqlite3: 13.0.3
     transitivePeerDependencies:
       - '@swc/core'
       - '@types/node'
@@ -20141,10 +20136,10 @@ snapshots:
 
   '@backstage/backend-dev-utils@0.1.7': {}
 
-  '@backstage/backend-openapi-utils@0.7.2(@types/json-schema@7.0.15)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/backend-openapi-utils@0.7.2(@types/json-schema@7.0.15)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
       '@apidevtools/swagger-parser': 10.1.1(openapi-types@12.1.3)
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/errors': 1.3.1
       '@backstage/types': 1.2.2
       '@types/express': 4.17.25
@@ -20176,19 +20171,19 @@ snapshots:
       - tedious
       - utf-8-validate
 
-  '@backstage/backend-plugin-api@1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)':
+  '@backstage/backend-plugin-api@1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)':
     dependencies:
       '@backstage/cli-common': 0.3.1
       '@backstage/config': 1.3.9
       '@backstage/errors': 1.3.1
-      '@backstage/plugin-auth-node': 0.7.6(better-sqlite3@11.10.0)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      '@backstage/plugin-auth-node': 0.7.6(better-sqlite3@13.0.3)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
       '@backstage/plugin-permission-common': 0.9.11(encoding@0.1.13)
-      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@11.10.0)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@13.0.3)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
       '@backstage/types': 1.2.2
       '@types/express': 4.17.25
       '@types/json-schema': 7.0.15
       '@types/luxon': 3.7.6
-      knex: 3.3.0(better-sqlite3@11.10.0)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      knex: 3.3.0(better-sqlite3@13.0.3)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
       luxon: 3.7.2
       zod: 4.6.7
     transitivePeerDependencies:
@@ -20204,19 +20199,19 @@ snapshots:
       - supports-color
       - tedious
 
-  '@backstage/backend-plugin-api@1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/backend-plugin-api@1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
       '@backstage/cli-common': 0.3.1
       '@backstage/config': 1.3.9
       '@backstage/errors': 1.3.1
-      '@backstage/plugin-auth-node': 0.7.6(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-auth-node': 0.7.6(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-permission-common': 0.9.11(encoding@0.1.13)
-      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/types': 1.2.2
       '@types/express': 4.17.25
       '@types/json-schema': 7.0.15
       '@types/luxon': 3.7.6
-      knex: 3.3.0(better-sqlite3@11.10.0)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      knex: 3.3.0(better-sqlite3@13.0.3)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
       luxon: 3.7.2
       zod: 4.6.7
     transitivePeerDependencies:
@@ -21383,21 +21378,21 @@ snapshots:
       - react-native
       - supports-color
 
-  '@backstage/plugin-app-backend@0.5.18(@types/express@4.17.25)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-app-backend@0.5.18(@types/express@4.17.25)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/config': 1.3.9
       '@backstage/config-loader': 1.11.3
       '@backstage/errors': 1.3.1
-      '@backstage/plugin-app-node': 0.1.49(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
-      '@backstage/plugin-auth-node': 0.7.6(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-app-node': 0.1.49(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-auth-node': 0.7.6(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/types': 1.2.2
       express: 4.22.3
       express-promise-router: 4.1.1(@types/express@4.17.25)(express@4.22.3)
       fs-extra: 11.4.1
       globby: 11.1.0
       helmet: 6.2.0
-      knex: 3.3.0(better-sqlite3@11.10.0)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      knex: 3.3.0(better-sqlite3@13.0.3)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
       lodash: 4.18.1
       luxon: 3.7.2
     transitivePeerDependencies:
@@ -21414,9 +21409,9 @@ snapshots:
       - supports-color
       - tedious
 
-  '@backstage/plugin-app-node@0.1.49(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-app-node@0.1.49(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/config-loader': 1.11.3
       '@types/express': 4.17.25
       express: 4.22.3
@@ -21445,13 +21440,13 @@ snapshots:
     optionalDependencies:
       '@types/react': 18.3.31
 
-  '@backstage/plugin-auth-backend-module-github-provider@0.5.7(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-auth-backend-module-github-provider@0.5.7(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/catalog-model': 1.10.1
       '@backstage/errors': 1.3.1
-      '@backstage/plugin-auth-node': 0.7.6(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
-      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-auth-node': 0.7.6(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       passport-github2: 0.1.12
       zod: 4.6.7
     transitivePeerDependencies:
@@ -21468,24 +21463,24 @@ snapshots:
       - supports-color
       - tedious
 
-  '@backstage/plugin-auth-backend@0.30.1(@types/express@4.17.25)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-auth-backend@0.30.1(@types/express@4.17.25)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/catalog-model': 1.10.1
       '@backstage/config': 1.3.9
       '@backstage/errors': 1.3.1
-      '@backstage/plugin-auth-node': 0.7.6(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
-      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-auth-node': 0.7.6(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/types': 1.2.2
       '@google-cloud/firestore': 7.11.6(encoding@0.1.13)
-      connect-session-knex: 4.0.2(better-sqlite3@11.10.0)(pg@8.23.1)
+      connect-session-knex: 4.0.2(better-sqlite3@13.0.3)(pg@8.23.1)
       cookie-parser: 1.4.7
       express: 4.22.3
       express-promise-router: 4.1.1(@types/express@4.17.25)(express@4.22.3)
       express-session: 1.19.0
       ipaddr.js: 2.5.0
       jose: 5.10.0
-      knex: 3.3.0(better-sqlite3@11.10.0)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      knex: 3.3.0(better-sqlite3@13.0.3)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
       lodash: 4.18.1
       luxon: 3.7.2
       matcher: 4.0.0
@@ -21508,9 +21503,9 @@ snapshots:
       - supports-color
       - tedious
 
-  '@backstage/plugin-auth-node@0.7.6(better-sqlite3@11.10.0)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)':
+  '@backstage/plugin-auth-node@0.7.6(better-sqlite3@13.0.3)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
       '@backstage/catalog-client': 1.16.2(encoding@0.1.13)
       '@backstage/catalog-model': 1.10.1
       '@backstage/config': 1.3.9
@@ -21538,9 +21533,9 @@ snapshots:
       - supports-color
       - tedious
 
-  '@backstage/plugin-auth-node@0.7.6(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-auth-node@0.7.6(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/catalog-client': 1.16.2(encoding@0.1.13)
       '@backstage/catalog-model': 1.10.1
       '@backstage/config': 1.3.9
@@ -21586,13 +21581,13 @@ snapshots:
       - react-native
       - supports-color
 
-  '@backstage/plugin-catalog-backend-module-github-org@0.3.26(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-catalog-backend-module-github-org@0.3.26(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/config': 1.3.9
-      '@backstage/plugin-catalog-backend-module-github': 0.14.0(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
-      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
-      '@backstage/plugin-events-node': 0.4.26(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-catalog-backend-module-github': 0.14.0(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-events-node': 0.4.26(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
     transitivePeerDependencies:
       - '@backstage/backend-test-utils'
       - better-sqlite3
@@ -21607,16 +21602,16 @@ snapshots:
       - supports-color
       - tedious
 
-  '@backstage/plugin-catalog-backend-module-github@0.14.0(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-catalog-backend-module-github@0.14.0(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/catalog-model': 1.10.1
       '@backstage/config': 1.3.9
       '@backstage/errors': 1.3.1
       '@backstage/integration': 2.1.2(encoding@0.1.13)
       '@backstage/plugin-catalog-common': 1.2.0(encoding@0.1.13)
-      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
-      '@backstage/plugin-events-node': 0.4.26(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-events-node': 0.4.26(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/types': 1.2.2
       '@octokit/auth-callback': 5.0.1
       '@octokit/core': 5.2.2
@@ -21643,12 +21638,12 @@ snapshots:
       - supports-color
       - tedious
 
-  '@backstage/plugin-catalog-backend-module-scaffolder-entity-model@0.2.24(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-catalog-backend-module-scaffolder-entity-model@0.2.24(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/catalog-model': 1.10.1
       '@backstage/plugin-catalog-common': 1.2.0(encoding@0.1.13)
-      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-scaffolder-common': 2.3.0(encoding@0.1.13)
     transitivePeerDependencies:
       - '@backstage/backend-test-utils'
@@ -21664,10 +21659,10 @@ snapshots:
       - supports-color
       - tedious
 
-  '@backstage/plugin-catalog-backend@4.0.0(@types/json-schema@7.0.15)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-catalog-backend@4.0.0(@types/json-schema@7.0.15)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-openapi-utils': 0.7.2(@types/json-schema@7.0.15)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-openapi-utils': 0.7.2(@types/json-schema@7.0.15)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/catalog-client': 1.16.2(encoding@0.1.13)
       '@backstage/catalog-model': 1.10.1
       '@backstage/config': 1.3.9
@@ -21675,10 +21670,10 @@ snapshots:
       '@backstage/filter-predicates': 0.1.5
       '@backstage/integration': 2.1.2(encoding@0.1.13)
       '@backstage/plugin-catalog-common': 1.2.0(encoding@0.1.13)
-      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
-      '@backstage/plugin-events-node': 0.4.26(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-events-node': 0.4.26(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-permission-common': 0.9.11(encoding@0.1.13)
-      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/types': 1.2.2
       '@opentelemetry/api': 1.9.1
       ajv: 8.20.0
@@ -21689,7 +21684,7 @@ snapshots:
       fs-extra: 11.4.1
       git-url-parse: 15.0.0
       glob: 13.0.6
-      knex: 3.3.0(better-sqlite3@11.10.0)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      knex: 3.3.0(better-sqlite3@13.0.3)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
       lodash: 4.18.1
       luxon: 3.7.2
       minimatch: 10.2.6
@@ -21798,15 +21793,15 @@ snapshots:
       - react-native
       - supports-color
 
-  '@backstage/plugin-catalog-node@2.2.5(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-catalog-node@2.2.5(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/catalog-client': 1.16.2(encoding@0.1.13)
       '@backstage/catalog-model': 1.10.1
       '@backstage/errors': 1.3.1
       '@backstage/plugin-catalog-common': 1.2.0(encoding@0.1.13)
       '@backstage/plugin-permission-common': 0.9.11(encoding@0.1.13)
-      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/types': 1.2.2
       '@opentelemetry/api': 1.9.1
       lodash: 4.18.1
@@ -21919,9 +21914,9 @@ snapshots:
       - react-native
       - supports-color
 
-  '@backstage/plugin-events-node@0.4.26(better-sqlite3@11.10.0)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)':
+  '@backstage/plugin-events-node@0.4.26(better-sqlite3@13.0.3)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
       '@backstage/errors': 1.3.1
       '@backstage/types': 1.2.2
       '@types/content-type': 1.1.9
@@ -21943,9 +21938,9 @@ snapshots:
       - supports-color
       - tedious
 
-  '@backstage/plugin-events-node@0.4.26(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-events-node@0.4.26(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/errors': 1.3.1
       '@backstage/types': 1.2.2
       '@types/content-type': 1.1.9
@@ -21987,22 +21982,22 @@ snapshots:
       - react-native
       - supports-color
 
-  '@backstage/plugin-kubernetes-backend@0.21.11(@types/express@4.17.25)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-kubernetes-backend@0.21.11(@types/express@4.17.25)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
       '@aws-crypto/sha256-js': 5.2.0
       '@aws-sdk/credential-providers': 3.1147.0
       '@azure/identity': 4.13.3
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/catalog-client': 1.16.2(encoding@0.1.13)
       '@backstage/catalog-model': 1.10.1
       '@backstage/config': 1.3.9
       '@backstage/errors': 1.3.1
       '@backstage/integration-aws-node': 0.2.2
-      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-kubernetes-common': 0.9.13(encoding@0.1.13)
-      '@backstage/plugin-kubernetes-node': 0.4.8(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-kubernetes-node': 0.4.8(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-permission-common': 0.9.11(encoding@0.1.13)
-      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/types': 1.2.2
       '@google-cloud/container': 5.19.0(encoding@0.1.13)
       '@jest-mock/express': 2.1.0
@@ -22057,9 +22052,9 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@backstage/plugin-kubernetes-node@0.4.8(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-kubernetes-node@0.4.8(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/catalog-model': 1.10.1
       '@backstage/plugin-kubernetes-common': 0.9.13(encoding@0.1.13)
       '@backstage/types': 1.2.2
@@ -22155,13 +22150,13 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@backstage/plugin-mcp-actions-backend@0.2.2(@types/express@4.17.25)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-mcp-actions-backend@0.2.2(@types/express@4.17.25)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/catalog-client': 1.16.2(encoding@0.1.13)
       '@backstage/config': 1.3.9
       '@backstage/errors': 1.3.1
-      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/types': 1.2.2
       '@cfworker/json-schema': 4.1.1
       '@modelcontextprotocol/sdk': 1.32.2(@cfworker/json-schema@4.1.1)(zod@4.6.7)
@@ -22218,14 +22213,14 @@ snapshots:
       - react-native
       - supports-color
 
-  '@backstage/plugin-permission-backend@0.7.16(@types/express@4.17.25)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-permission-backend@0.7.16(@types/express@4.17.25)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/config': 1.3.9
       '@backstage/errors': 1.3.1
-      '@backstage/plugin-auth-node': 0.7.6(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-auth-node': 0.7.6(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-permission-common': 0.9.11(encoding@0.1.13)
-      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       dataloader: 2.2.3
       express: 4.22.3
       express-promise-router: 4.1.1(@types/express@4.17.25)(express@4.22.3)
@@ -22256,9 +22251,9 @@ snapshots:
     transitivePeerDependencies:
       - encoding
 
-  '@backstage/plugin-permission-node@0.11.4(better-sqlite3@11.10.0)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)':
+  '@backstage/plugin-permission-node@0.11.4(better-sqlite3@13.0.3)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
       '@backstage/config': 1.3.9
       '@backstage/errors': 1.3.1
       '@backstage/plugin-permission-common': 0.9.11(encoding@0.1.13)
@@ -22281,9 +22276,9 @@ snapshots:
       - supports-color
       - tedious
 
-  '@backstage/plugin-permission-node@0.11.4(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-permission-node@0.11.4(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/config': 1.3.9
       '@backstage/errors': 1.3.1
       '@backstage/plugin-permission-common': 0.9.11(encoding@0.1.13)
@@ -22321,10 +22316,10 @@ snapshots:
       - encoding
       - react-router-dom
 
-  '@backstage/plugin-proxy-backend@0.6.18(@types/express@4.17.25)(better-sqlite3@11.10.0)(encoding@0.1.13)(express@5.3.0)(pg@8.23.1)':
+  '@backstage/plugin-proxy-backend@0.6.18(@types/express@4.17.25)(better-sqlite3@13.0.3)(encoding@0.1.13)(express@5.3.0)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
-      '@backstage/plugin-proxy-node': 0.1.19(@types/express@4.17.25)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-proxy-node': 0.1.19(@types/express@4.17.25)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/types': 1.2.2
       express-promise-router: 4.1.1(@types/express@4.17.25)(express@5.3.0)
       http-proxy-middleware: 2.0.10(@types/express@4.17.25)
@@ -22344,9 +22339,9 @@ snapshots:
       - supports-color
       - tedious
 
-  '@backstage/plugin-proxy-node@0.1.19(@types/express@4.17.25)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-proxy-node@0.1.19(@types/express@4.17.25)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       http-proxy-middleware: 2.0.10(@types/express@4.17.25)
     transitivePeerDependencies:
       - '@types/express'
@@ -22363,15 +22358,15 @@ snapshots:
       - supports-color
       - tedious
 
-  '@backstage/plugin-scaffolder-backend-module-github@0.10.0(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-scaffolder-backend-module-github@0.10.0(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/catalog-model': 1.10.1
       '@backstage/config': 1.3.9
       '@backstage/errors': 1.3.1
       '@backstage/integration': 2.1.2(encoding@0.1.13)
-      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
-      '@backstage/plugin-scaffolder-node': 0.13.7(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-scaffolder-node': 0.13.7(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/types': 1.2.2
       '@octokit/core': 5.2.2
       '@octokit/plugin-retry': 6.1.0(@octokit/core@5.2.2)
@@ -22395,20 +22390,20 @@ snapshots:
       - supports-color
       - tedious
 
-  '@backstage/plugin-scaffolder-backend@4.2.0(@types/json-schema@7.0.15)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-scaffolder-backend@4.2.0(@types/json-schema@7.0.15)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-openapi-utils': 0.7.2(@types/json-schema@7.0.15)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-openapi-utils': 0.7.2(@types/json-schema@7.0.15)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/catalog-model': 1.10.1
       '@backstage/config': 1.3.9
       '@backstage/errors': 1.3.1
       '@backstage/integration': 2.1.2(encoding@0.1.13)
-      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
-      '@backstage/plugin-events-node': 0.4.26(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-events-node': 0.4.26(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-permission-common': 0.9.11(encoding@0.1.13)
-      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-scaffolder-common': 2.3.0(encoding@0.1.13)
-      '@backstage/plugin-scaffolder-node': 0.13.7(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-scaffolder-node': 0.13.7(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/types': 1.2.2
       '@types/luxon': 3.7.6
       express: 4.22.3
@@ -22416,7 +22411,7 @@ snapshots:
       globby: 11.1.0
       isbinaryfile: 5.0.7
       jsonschema: 1.5.0
-      knex: 3.3.0(better-sqlite3@11.10.0)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      knex: 3.3.0(better-sqlite3@13.0.3)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
       lodash: 4.18.1
       logform: 2.7.0
       luxon: 3.7.2
@@ -22463,14 +22458,14 @@ snapshots:
       - encoding
       - supports-color
 
-  '@backstage/plugin-scaffolder-node@0.13.7(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-scaffolder-node@0.13.7(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/catalog-model': 1.10.1
       '@backstage/errors': 1.3.1
       '@backstage/integration': 2.1.2(encoding@0.1.13)
       '@backstage/plugin-permission-common': 0.9.11(encoding@0.1.13)
-      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-scaffolder-common': 2.3.0(encoding@0.1.13)
       '@backstage/types': 1.2.2
       '@isomorphic-git/pgp-plugin': 0.0.7
@@ -22627,17 +22622,17 @@ snapshots:
       - react-router
       - supports-color
 
-  '@backstage/plugin-search-backend-module-catalog@0.3.19(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-search-backend-module-catalog@0.3.19(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/catalog-client': 1.16.2(encoding@0.1.13)
       '@backstage/catalog-model': 1.10.1
       '@backstage/config': 1.3.9
       '@backstage/errors': 1.3.1
       '@backstage/plugin-catalog-common': 1.2.0(encoding@0.1.13)
-      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-permission-common': 0.9.11(encoding@0.1.13)
-      '@backstage/plugin-search-backend-node': 1.4.8(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-search-backend-node': 1.4.8(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-search-common': 1.2.25(encoding@0.1.13)
     transitivePeerDependencies:
       - '@backstage/backend-test-utils'
@@ -22653,18 +22648,18 @@ snapshots:
       - supports-color
       - tedious
 
-  '@backstage/plugin-search-backend-module-techdocs@0.4.18(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-search-backend-module-techdocs@0.4.18(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/catalog-client': 1.16.2(encoding@0.1.13)
       '@backstage/catalog-model': 1.10.1
       '@backstage/config': 1.3.9
       '@backstage/plugin-catalog-common': 1.2.0(encoding@0.1.13)
-      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-permission-common': 0.9.11(encoding@0.1.13)
-      '@backstage/plugin-search-backend-node': 1.4.8(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-search-backend-node': 1.4.8(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-search-common': 1.2.25(encoding@0.1.13)
-      '@backstage/plugin-techdocs-node': 2.0.2(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-techdocs-node': 2.0.2(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       lodash: 4.18.1
       p-limit: 3.1.0
     transitivePeerDependencies:
@@ -22682,9 +22677,9 @@ snapshots:
       - supports-color
       - tedious
 
-  '@backstage/plugin-search-backend-node@1.4.8(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-search-backend-node@1.4.8(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/config': 1.3.9
       '@backstage/errors': 1.3.1
       '@backstage/plugin-permission-common': 0.9.11(encoding@0.1.13)
@@ -22706,15 +22701,15 @@ snapshots:
       - supports-color
       - tedious
 
-  '@backstage/plugin-search-backend@2.1.7(@types/json-schema@7.0.15)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-search-backend@2.1.7(@types/json-schema@7.0.15)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-openapi-utils': 0.7.2(@types/json-schema@7.0.15)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-openapi-utils': 0.7.2(@types/json-schema@7.0.15)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/config': 1.3.9
       '@backstage/errors': 1.3.1
       '@backstage/plugin-permission-common': 0.9.11(encoding@0.1.13)
-      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
-      '@backstage/plugin-search-backend-node': 1.4.8(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-permission-node': 0.11.4(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-search-backend-node': 1.4.8(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/plugin-search-common': 1.2.25(encoding@0.1.13)
       '@backstage/types': 1.2.2
       dataloader: 2.2.3
@@ -22817,21 +22812,21 @@ snapshots:
     optionalDependencies:
       '@types/react': 18.3.31
 
-  '@backstage/plugin-techdocs-backend@2.3.0(@types/express@4.17.25)(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-techdocs-backend@2.3.0(@types/express@4.17.25)(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/catalog-client': 1.16.2(encoding@0.1.13)
       '@backstage/catalog-model': 1.10.1
       '@backstage/config': 1.3.9
       '@backstage/errors': 1.3.1
       '@backstage/integration': 2.1.2(encoding@0.1.13)
-      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
-      '@backstage/plugin-techdocs-node': 2.0.2(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-catalog-node': 2.2.5(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/plugin-techdocs-node': 2.0.2(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/types': 1.2.2
       express: 4.22.3
       express-promise-router: 4.1.1(@types/express@4.17.25)(express@4.22.3)
       fs-extra: 11.4.1
-      knex: 3.3.0(better-sqlite3@11.10.0)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      knex: 3.3.0(better-sqlite3@13.0.3)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
       p-limit: 3.1.0
       winston: 3.19.0
     transitivePeerDependencies:
@@ -22877,7 +22872,7 @@ snapshots:
       - react-native
       - supports-color
 
-  '@backstage/plugin-techdocs-node@2.0.2(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)':
+  '@backstage/plugin-techdocs-node@2.0.2(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)':
     dependencies:
       '@aws-sdk/client-s3': 3.1147.0
       '@aws-sdk/credential-providers': 3.1147.0
@@ -22885,7 +22880,7 @@ snapshots:
       '@aws-sdk/types': 3.974.6
       '@azure/identity': 4.13.3
       '@azure/storage-blob': 12.34.0
-      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@11.10.0)(encoding@0.1.13)(pg@8.23.1)
+      '@backstage/backend-plugin-api': 1.10.1(better-sqlite3@13.0.3)(encoding@0.1.13)(pg@8.23.1)
       '@backstage/catalog-model': 1.10.1
       '@backstage/config': 1.3.9
       '@backstage/errors': 1.3.1
@@ -26894,11 +26889,11 @@ snapshots:
 
   '@prisma/client-runtime-utils@7.10.1': {}
 
-  '@prisma/client@7.10.1(prisma@7.10.1(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(better-sqlite3@11.10.0)(magicast@0.5.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3))(typescript@6.0.3)':
+  '@prisma/client@7.10.1(prisma@7.10.1(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(better-sqlite3@13.0.3)(magicast@0.5.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3))(typescript@6.0.3)':
     dependencies:
       '@prisma/client-runtime-utils': 7.10.1
     optionalDependencies:
-      prisma: 7.10.1(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(better-sqlite3@11.10.0)(magicast@0.5.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
+      prisma: 7.10.1(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(better-sqlite3@13.0.3)(magicast@0.5.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3)
       typescript: 6.0.3
 
   '@prisma/config@7.10.1(magicast@0.5.3)':
@@ -31857,10 +31852,9 @@ snapshots:
 
   better-result@2.10.0: {}
 
-  better-sqlite3@11.10.0:
+  better-sqlite3@13.0.3:
     dependencies:
-      bindings: 1.5.0
-      prebuild-install: 7.1.3
+      node-addon-api: 8.9.2
 
   bfj@9.1.3:
     dependencies:
@@ -31902,10 +31896,6 @@ snapshots:
   binaryextensions@6.11.0:
     dependencies:
       editions: 6.22.0
-
-  bindings@1.5.0:
-    dependencies:
-      file-uri-to-path: 1.0.0
 
   bintrees@1.0.2: {}
 
@@ -32603,10 +32593,10 @@ snapshots:
 
   connect-history-api-fallback@2.0.0: {}
 
-  connect-session-knex@4.0.2(better-sqlite3@11.10.0)(pg@8.23.1):
+  connect-session-knex@4.0.2(better-sqlite3@13.0.3)(pg@8.23.1):
     dependencies:
       bluebird: 3.7.2
-      knex: 3.3.0(better-sqlite3@11.10.0)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
+      knex: 3.3.0(better-sqlite3@13.0.3)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1)
     transitivePeerDependencies:
       - better-sqlite3
       - mariadb
@@ -34252,7 +34242,8 @@ snapshots:
 
   exit-x@0.2.2: {}
 
-  expand-template@2.0.3: {}
+  expand-template@2.0.3:
+    optional: true
 
   expect-type@1.4.0: {}
 
@@ -34590,8 +34581,6 @@ snapshots:
       readable-web-to-node-stream: 3.0.4
       strtok3: 6.3.0
       token-types: 4.2.1
-
-  file-uri-to-path@1.0.0: {}
 
   filesize@8.0.7: {}
 
@@ -35098,7 +35087,8 @@ snapshots:
     dependencies:
       git-up: 8.1.1
 
-  github-from-package@0.0.0: {}
+  github-from-package@0.0.0:
+    optional: true
 
   glob-parent@5.1.2:
     dependencies:
@@ -38029,7 +38019,7 @@ snapshots:
 
   kleur@4.1.5: {}
 
-  knex@3.3.0(better-sqlite3@11.10.0)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1):
+  knex@3.3.0(better-sqlite3@13.0.3)(mysql2@3.24.5(@types/node@22.20.1))(pg@8.23.1):
     dependencies:
       colorette: 2.0.19
       commander: 10.0.1
@@ -38046,7 +38036,7 @@ snapshots:
       tarn: 3.1.2
       tildify: 2.0.0
     optionalDependencies:
-      better-sqlite3: 11.10.0
+      better-sqlite3: 13.0.3
       mysql2: 3.24.5(@types/node@22.20.1)
       pg: 8.23.1
     transitivePeerDependencies:
@@ -39264,7 +39254,8 @@ snapshots:
 
   nanoid@3.3.20: {}
 
-  napi-build-utils@2.0.0: {}
+  napi-build-utils@2.0.0:
+    optional: true
 
   napi-postinstall@0.3.4: {}
 
@@ -39348,6 +39339,7 @@ snapshots:
   node-abi@3.94.0:
     dependencies:
       semver: 7.8.5
+    optional: true
 
   node-abort-controller@3.1.1: {}
 
@@ -39356,8 +39348,7 @@ snapshots:
 
   node-addon-api@7.1.1: {}
 
-  node-addon-api@8.9.2:
-    optional: true
+  node-addon-api@8.9.2: {}
 
   node-domexception@1.0.0: {}
 
@@ -40663,6 +40654,7 @@ snapshots:
       simple-get: 4.0.1
       tar-fs: 2.1.5
       tunnel-agent: 0.6.0
+    optional: true
 
   prelude-ls@1.2.1: {}
 
@@ -40701,7 +40693,7 @@ snapshots:
     dependencies:
       parse-ms: 4.0.0
 
-  prisma@7.10.1(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(better-sqlite3@11.10.0)(magicast@0.5.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3):
+  prisma@7.10.1(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(better-sqlite3@13.0.3)(magicast@0.5.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3):
     dependencies:
       '@prisma/config': 7.10.1(magicast@0.5.3)
       '@prisma/dev': 0.24.17(typescript@6.0.3)
@@ -40710,7 +40702,7 @@ snapshots:
       mysql2: 3.24.5(@types/node@26.2.0)
       postgres: 3.4.7
     optionalDependencies:
-      better-sqlite3: 11.10.0
+      better-sqlite3: 13.0.3
       typescript: 6.0.3
     transitivePeerDependencies:
       - '@types/node'
@@ -43803,6 +43795,7 @@ snapshots:
   tunnel-agent@0.6.0:
     dependencies:
       safe-buffer: 5.2.1
+    optional: true
 
   tweetnacl@0.14.5: {}
 
