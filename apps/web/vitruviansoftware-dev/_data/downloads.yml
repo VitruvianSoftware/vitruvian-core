@@ -49,7 +49,7 @@ categories:
 
       - id: vitruvian-desktop
         name: Vitruvian Desktop
-        version: "3.85.0"
+        version: "3.86.0"
         summary: >-
           The flagship desktop control hub for Vitruvian. Orchestrates AI coding sessions,
           multi-agent workspaces, live status tracking, and terminal integration from the macOS menu bar.
@@ -57,20 +57,20 @@ categories:
         brew_cask: VitruvianSoftware/tap/vitruvian
         downloads:
           - label: Universal DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.85.0/Vitruvian-3.85.0-universal.dmg
-            size: 82.8 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.86.0/Vitruvian-3.86.0-universal.dmg
+            size: 83.1 MB
             arch: Universal
           - label: Apple Silicon DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.85.0/Vitruvian-3.85.0-arm64.dmg
-            size: 43.5 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.86.0/Vitruvian-3.86.0-arm64.dmg
+            size: 43.6 MB
             arch: arm64
           - label: Intel x86_64 DMG
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.85.0/Vitruvian-3.85.0-x86_64.dmg
-            size: 44.9 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.86.0/Vitruvian-3.86.0-x86_64.dmg
+            size: 45.1 MB
             arch: x86_64
           - label: Universal ZIP
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.85.0/Vitruvian-3.85.0-universal.zip
-            size: 82.8 MB
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.86.0/Vitruvian-3.86.0-universal.zip
+            size: 83.1 MB
             arch: Universal
         releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases?q=vitruvian
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/vitruvian
