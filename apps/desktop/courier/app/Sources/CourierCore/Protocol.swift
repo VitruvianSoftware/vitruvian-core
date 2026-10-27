@@ -16,7 +16,7 @@ import Foundation
 
 /// The protocol this app speaks, and the framing limit both sides keep.
 public enum CourierProtocol {
-    public static let version = 7
+    public static let version = 8
     /// The longest line either side may send, not counting the newline.
     public static let maxFrameBytes = 4_194_304
     /// protocol.json's `conventions.typing_repeat_ms`: while the text keeps changing, room.setTyping true goes again
@@ -2254,6 +2254,246 @@ public struct SendLocationParams: ProtocolType, Equatable, Hashable, Sendable {
     }
 }
 
+public struct BridgedStickerRef: ProtocolType, Equatable, Hashable, Sendable {
+    public static let protocolName = "BridgedStickerRef"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var network: String?
+    public var packURL: String?
+    public var id: String?
+
+    public init(network: String? = nil, packURL: String? = nil, id: String? = nil) {
+        self.network = network
+        self.packURL = packURL
+        self.id = id
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case network
+        case packURL = "pack_url"
+        case id
+    }
+}
+
+public typealias BridgedStickerWire = BridgedStickerRef
+
+public struct SendStickerParams: ProtocolType, Equatable, Hashable, Sendable {
+    public static let protocolName = "SendStickerParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomID: String
+    public var path: String?
+    public var mediaURL: String?
+    public var name: String?
+    public var emoji: String?
+    public var mimeType: String?
+    public var bridgedSticker: BridgedStickerRef?
+    public var replyTo: String?
+    public var threadRoot: String?
+    public var holdMS: Int?
+
+    public init(roomID: String, path: String? = nil, mediaURL: String? = nil, name: String? = nil,
+                emoji: String? = nil, mimeType: String? = nil, bridgedSticker: BridgedStickerRef? = nil,
+                replyTo: String? = nil, threadRoot: String? = nil, holdMS: Int? = nil) {
+        self.roomID = roomID
+        self.path = path
+        self.mediaURL = mediaURL
+        self.name = name
+        self.emoji = emoji
+        self.mimeType = mimeType
+        self.bridgedSticker = bridgedSticker
+        self.replyTo = replyTo
+        self.threadRoot = threadRoot
+        self.holdMS = holdMS
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomID = "room_id"
+        case path
+        case mediaURL = "media_url"
+        case name
+        case emoji
+        case mimeType = "mime_type"
+        case bridgedSticker = "bridged_sticker"
+        case replyTo = "reply_to"
+        case threadRoot = "thread_root"
+        case holdMS = "hold_ms"
+    }
+}
+
+public struct SendGIFParams: ProtocolType, Equatable, Hashable, Sendable {
+    public static let protocolName = "SendGIFParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomID: String
+    public var path: String?
+    public var mediaURL: String?
+    public var caption: String?
+    public var replyTo: String?
+    public var threadRoot: String?
+    public var holdMS: Int?
+
+    public init(roomID: String, path: String? = nil, mediaURL: String? = nil, caption: String? = nil,
+                replyTo: String? = nil, threadRoot: String? = nil, holdMS: Int? = nil) {
+        self.roomID = roomID
+        self.path = path
+        self.mediaURL = mediaURL
+        self.caption = caption
+        self.replyTo = replyTo
+        self.threadRoot = threadRoot
+        self.holdMS = holdMS
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomID = "room_id"
+        case path
+        case mediaURL = "media_url"
+        case caption
+        case replyTo = "reply_to"
+        case threadRoot = "thread_root"
+        case holdMS = "hold_ms"
+    }
+}
+
+public typealias MessageSendStickerParams = SendStickerParams
+public typealias MessageSendGIFParams = SendGIFParams
+
+public struct StickerItem: ProtocolType, Identifiable, Equatable, Hashable, Sendable {
+    public static let protocolName = "StickerItem"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var id: String
+    public var packID: String
+    public var shortcode: String?
+    public var name: String
+    public var emoji: String?
+    public var mediaURL: String
+    public var mimeType: String
+    public var width: Int?
+    public var height: Int?
+    public var usage: [String]
+    public var bridgedSticker: BridgedStickerRef?
+
+    public init(id: String, packID: String, shortcode: String? = nil, name: String, emoji: String? = nil,
+                mediaURL: String, mimeType: String, width: Int? = nil, height: Int? = nil,
+                usage: [String] = ["sticker"], bridgedSticker: BridgedStickerRef? = nil) {
+        self.id = id
+        self.packID = packID
+        self.shortcode = shortcode
+        self.name = name
+        self.emoji = emoji
+        self.mediaURL = mediaURL
+        self.mimeType = mimeType
+        self.width = width
+        self.height = height
+        self.usage = usage
+        self.bridgedSticker = bridgedSticker
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case id
+        case packID = "pack_id"
+        case shortcode
+        case name
+        case emoji
+        case mediaURL = "media_url"
+        case mimeType = "mime_type"
+        case width
+        case height
+        case usage
+        case bridgedSticker = "bridged_sticker"
+    }
+}
+
+public typealias StickerItemWire = StickerItem
+
+public struct StickerPack: ProtocolType, Identifiable, Equatable, Hashable, Sendable {
+    public static let protocolName = "StickerPack"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var id: String
+    public var title: String
+    public var source: String
+    public var network: String?
+    public var items: [StickerItem]
+
+    public init(id: String, title: String, source: String, network: String? = nil, items: [StickerItem] = []) {
+        self.id = id
+        self.title = title
+        self.source = source
+        self.network = network
+        self.items = items
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case id
+        case title
+        case source
+        case network
+        case items
+    }
+}
+
+public typealias StickerPackWire = StickerPack
+
+public struct ListStickersResult: ProtocolType, Equatable, Hashable, Sendable {
+    public static let protocolName = "ListStickersResult"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var packs: [StickerPack]
+    public var recentGIFs: [StickerItem]
+
+    public init(packs: [StickerPack] = [], recentGIFs: [StickerItem] = []) {
+        self.packs = packs
+        self.recentGIFs = recentGIFs
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case packs
+        case recentGIFs = "recent_gifs"
+    }
+}
+
+public typealias StickersListResult = ListStickersResult
+
+public struct StickersListParams: ProtocolType, Equatable, Hashable, Sendable {
+    public static let protocolName = "StickersListParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var refreshBridgePacks: Bool?
+
+    public init(refreshBridgePacks: Bool? = nil) {
+        self.refreshBridgePacks = refreshBridgePacks
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case refreshBridgePacks = "refresh_bridge_packs"
+    }
+}
+
+public struct ImportStickerParams: ProtocolType, Equatable, Hashable, Sendable {
+    public static let protocolName = "ImportStickerParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var path: String
+    public var shortcode: String?
+    public var name: String?
+    public var emoji: String?
+    public var usage: [String]?
+
+    public init(path: String, shortcode: String? = nil, name: String? = nil, emoji: String? = nil,
+                usage: [String]? = nil) {
+        self.path = path
+        self.shortcode = shortcode
+        self.name = name
+        self.emoji = emoji
+        self.usage = usage
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case path
+        case shortcode
+        case name
+        case emoji
+        case usage
+    }
+}
+
+public typealias StickersImportParams = ImportStickerParams
+public typealias StickersImportResult = StickerItem
+
 // MARK: - Typing, Reply Privately (protocol 5)
 
 /// room.setTyping: I am typing (true: at the first change and every `conventions.typing_repeat_ms` while the text
@@ -2430,6 +2670,17 @@ public struct FileKindFeatures: ProtocolType, Equatable, Hashable, Sendable {
         self.maxDurationSec = maxDurationSec
     }
 
+    public init?(from mediaCap: MediaCapFeature) {
+        guard mediaCap.supported else { return nil }
+        self.init(
+            supported: true,
+            mimeTypes: mediaCap.mimeTypes.isEmpty ? nil : mediaCap.mimeTypes,
+            caption: mediaCap.captions,
+            maxCaptionLength: mediaCap.maxCaptionLength,
+            maxSize: mediaCap.maxSize
+        )
+    }
+
     enum CodingKeys: String, CodingKey, CaseIterable {
         case supported
         case mimeTypes = "mime_types"
@@ -2439,6 +2690,70 @@ public struct FileKindFeatures: ProtocolType, Equatable, Hashable, Sendable {
         case maxDurationSec = "max_duration_sec"
     }
 }
+
+public struct MediaCapFeature: ProtocolType, Equatable, Hashable, Sendable {
+    public static let protocolName = "MediaCapFeature"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var supported: Bool
+    public var mimeTypes: [String]
+    public var captions: Bool
+    public var maxCaptionLength: Int?
+    public var maxSize: Int64?
+
+    public static let unsupported = MediaCapFeature(supported: false, mimeTypes: [], captions: false, maxCaptionLength: nil, maxSize: nil)
+
+    public init(supported: Bool = false, mimeTypes: [String] = [], captions: Bool = false,
+                maxCaptionLength: Int? = nil, maxSize: Int64? = nil) {
+        self.supported = supported
+        self.mimeTypes = mimeTypes
+        self.captions = captions
+        self.maxCaptionLength = maxCaptionLength
+        self.maxSize = maxSize
+    }
+
+    public init(from fileKind: FileKindFeatures?) {
+        guard let fileKind, fileKind.supported else {
+            self = .unsupported
+            return
+        }
+        self.init(
+            supported: true,
+            mimeTypes: fileKind.mimeTypes ?? [],
+            captions: fileKind.caption,
+            maxCaptionLength: fileKind.maxCaptionLength,
+            maxSize: fileKind.maxSize
+        )
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case supported
+        case mimeTypes = "mime_types"
+        case captions
+        case maxCaptionLength = "max_caption_length"
+        case maxSize = "max_size"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        supported = try container.decode(Bool.self, forKey: .supported)
+        mimeTypes = try container.decodeIfPresent([String].self, forKey: .mimeTypes) ?? []
+        captions = try container.decodeIfPresent(Bool.self, forKey: .captions) ?? false
+        maxCaptionLength = try container.decodeIfPresent(Int.self, forKey: .maxCaptionLength)
+        maxSize = try container.decodeIfPresent(Int64.self, forKey: .maxSize)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(supported, forKey: .supported)
+        try container.encode(mimeTypes, forKey: .mimeTypes)
+        try container.encode(captions, forKey: .captions)
+        try container.encodeIfPresent(maxCaptionLength, forKey: .maxCaptionLength)
+        try container.encodeIfPresent(maxSize, forKey: .maxSize)
+    }
+}
+
+public typealias MediaCapFeatureWire = MediaCapFeature
+public typealias RoomFeaturesResult = ChatFeatures
 
 /// What a person can do in one chat, as its network's bridge says (room.features). A greyed action says why from
 /// these, in Courier's words (MessageActions).
@@ -2497,11 +2812,42 @@ public struct ChatFeatures: ProtocolType, Equatable {
     public var fileFeatures: FileKindFeatures?
     public var gifFeatures: FileKindFeatures?
     public var stickerFeatures: FileKindFeatures?
+    public var sticker: MediaCapFeature {
+        get { MediaCapFeature(from: stickerFeatures) }
+        set {
+            let mimes = newValue.mimeTypes.isEmpty ? ["image/png", "image/webp"] : newValue.mimeTypes
+            stickerFeatures = newValue.supported
+                ? FileKindFeatures(
+                    supported: true,
+                    mimeTypes: mimes,
+                    caption: newValue.captions,
+                    maxCaptionLength: newValue.maxCaptionLength,
+                    maxSize: newValue.maxSize
+                )
+                : nil
+        }
+    }
+    public var gif: MediaCapFeature {
+        get { MediaCapFeature(from: gifFeatures) }
+        set {
+            let mimes = newValue.mimeTypes.isEmpty ? ["image/gif", "video/mp4"] : newValue.mimeTypes
+            gifFeatures = newValue.supported
+                ? FileKindFeatures(
+                    supported: true,
+                    mimeTypes: mimes,
+                    caption: newValue.captions,
+                    maxCaptionLength: newValue.maxCaptionLength,
+                    maxSize: newValue.maxSize
+                )
+                : nil
+        }
+    }
     public var locationSupported: Bool
     public var linkPreviewsSupported: Bool
 
     /// A chat with nothing stored and no network to ask: only send, reply and Delete for Me.
     public static let noFeatures = ChatFeatures(reply: true, source: .none)
+    public static let conservative = noFeatures
 
     public init(reply: Bool = false, thread: Bool = false, replyIsThread: Bool = false, edit: Bool = false,
                 editMaxAgeMS: Int64 = 0, editMaxCount: Int = 0, unsend: Bool = false, unsendMaxAgeMS: Int64 = 0,
@@ -2587,6 +2933,8 @@ public struct ChatFeatures: ProtocolType, Equatable {
         case fileFeatures = "file_features"
         case gifFeatures = "gif_features"
         case stickerFeatures = "sticker_features"
+        case sticker
+        case gif
         case locationSupported = "location_supported"
         case linkPreviewsSupported = "link_previews_supported"
     }
@@ -2626,8 +2974,12 @@ public struct ChatFeatures: ProtocolType, Equatable {
         audioFeatures = try container.decodeIfPresent(FileKindFeatures.self, forKey: .audioFeatures)
         voiceFeatures = try container.decodeIfPresent(FileKindFeatures.self, forKey: .voiceFeatures)
         fileFeatures = try container.decodeIfPresent(FileKindFeatures.self, forKey: .fileFeatures)
-        gifFeatures = try container.decodeIfPresent(FileKindFeatures.self, forKey: .gifFeatures)
-        stickerFeatures = try container.decodeIfPresent(FileKindFeatures.self, forKey: .stickerFeatures)
+        let decodedGifFeatures = try container.decodeIfPresent(FileKindFeatures.self, forKey: .gifFeatures)
+        let decodedStickerFeatures = try container.decodeIfPresent(FileKindFeatures.self, forKey: .stickerFeatures)
+        let decodedSticker = try container.decodeIfPresent(MediaCapFeature.self, forKey: .sticker)
+        let decodedGIF = try container.decodeIfPresent(MediaCapFeature.self, forKey: .gif)
+        gifFeatures = decodedGifFeatures ?? decodedGIF.flatMap(FileKindFeatures.init(from:))
+        stickerFeatures = decodedStickerFeatures ?? decodedSticker.flatMap(FileKindFeatures.init(from:))
         locationSupported = try container.decodeIfPresent(Bool.self, forKey: .locationSupported) ?? false
         linkPreviewsSupported = try container.decodeIfPresent(Bool.self, forKey: .linkPreviewsSupported) ?? false
     }
@@ -2668,6 +3020,8 @@ public struct ChatFeatures: ProtocolType, Equatable {
         try container.encodeIfPresent(fileFeatures, forKey: .fileFeatures)
         try container.encodeIfPresent(gifFeatures, forKey: .gifFeatures)
         try container.encodeIfPresent(stickerFeatures, forKey: .stickerFeatures)
+        try container.encode(sticker, forKey: .sticker)
+        try container.encode(gif, forKey: .gif)
         try container.encode(locationSupported, forKey: .locationSupported)
         try container.encode(linkPreviewsSupported, forKey: .linkPreviewsSupported)
     }
@@ -4292,6 +4646,8 @@ public enum ProtocolMethods {
         "message.sendFile": (SendFileParams.self, Sent.self),
         "message.sendVoice": (SendVoiceParams.self, Sent.self),
         "message.sendLocation": (SendLocationParams.self, Sent.self),
+        "message.sendSticker": (SendStickerParams.self, Sent.self),
+        "message.sendGIF": (SendGIFParams.self, Sent.self),
         "message.markPlayed": (MarkPlayedParams.self, Empty.self),
         "message.react": (ReactParams.self, Sent.self),
         "message.retry": (EventParams.self, Empty.self),
@@ -4339,6 +4695,8 @@ public enum ProtocolMethods {
         "merge.delete": (MergeDeleteParams.self, Empty.self),
         "merge.list": (Empty.self, MergeListResult.self),
         "merge.suggest": (Empty.self, MergeSuggestResult.self),
+        "stickers.list": (StickersListParams.self, ListStickersResult.self),
+        "stickers.import": (ImportStickerParams.self, StickerItem.self),
     ]
 
     /// Every type of protocol.json's "types".
@@ -4369,7 +4727,9 @@ public enum ProtocolMethods {
         BlastMessage.self, BlastSendParams.self, BlastSendResult.self, MergedChat.self, MergeSuggestion.self,
         MergeCreateParams.self, MergeUpdateParams.self, MergeDeleteParams.self, MergeListResult.self,
         MergeSuggestResult.self,
-        FileKindFeatures.self, LinkPreviewItem.self, MarkPlayedParams.self, SendVoiceParams.self, SendLocationParams.self,
+        FileKindFeatures.self, MediaCapFeature.self, LinkPreviewItem.self, MarkPlayedParams.self, SendVoiceParams.self, SendLocationParams.self,
+        BridgedStickerRef.self, SendStickerParams.self, SendGIFParams.self,
+        StickerItem.self, StickerPack.self, ListStickersResult.self, StickersListParams.self, ImportStickerParams.self,
     ]
 
     /// The open-valued fields, by "Type.field", with the values this app knows.

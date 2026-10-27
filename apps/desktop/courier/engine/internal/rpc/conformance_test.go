@@ -345,7 +345,7 @@ func (p *protocolSpec) checkExample(ex example) error {
 
 func TestEveryExampleFitsTheProtocol(t *testing.T) {
 	p, exs := loadProtocol(t)
-	require.Equal(t, 7, Protocol, "engine speaks protocol 7")
+	require.Equal(t, 8, Protocol, "engine speaks protocol 8")
 	require.Equal(t, Protocol, p.Protocol, "protocol.json and the engine speak the same protocol")
 	require.Equal(t, MaxFrameBytes, p.Transport.MaxFrameBytes)
 	for _, ex := range exs {
@@ -391,6 +391,7 @@ func TestEveryExampleFitsTheProtocol(t *testing.T) {
 func TestGoStructJSONKeysMatchProtocol(t *testing.T) {
 	p, _ := loadProtocol(t)
 	fk := &actions.FileKindFeatures{MimeTypes: []string{"image/png"}, MaxCaptionLength: 1, MaxSize: 1, MaxDurationSec: 1}
+	mc := actions.MediaCapFeature{Supported: true, MimeTypes: []string{"image/webp"}, Captions: true, MaxCaptionLength: 1, MaxSize: 1}
 	cases := []struct {
 		typeName string
 		val      any
@@ -399,14 +400,22 @@ func TestGoStructJSONKeysMatchProtocol(t *testing.T) {
 			Poll: &actions.PollFeatures{}, Disappearing: &actions.DisappearingFeatures{},
 			ImageFeatures: fk, VideoFeatures: fk, AudioFeatures: fk, VoiceFeatures: fk,
 			FileFeatures: fk, GIFFeatures: fk, StickerFeatures: fk,
+			Sticker: mc, GIF: mc,
 		}},
 		{"FileKindFeatures", *fk},
+		{"MediaCapFeature", mc},
 		{"Member", store.MemberHit{}},
 		{"RoomInfoResult", actions.RoomInfo{}},
 		{"ContactCandidate", actions.ContactCandidate{RoomID: "!r:courier.local"}},
 		{"BlastMessage", actions.BlastMessage{}},
 		{"MergedChat", mergedChatJSON{}},
 		{"MergeSuggestion", store.MergeSuggestion{}},
+		{"StickerItem", actions.StickerItem{
+			Shortcode: "s", Emoji: "🦜", Width: 1, Height: 1, Usage: []string{"sticker"},
+			BridgedSticker: &actions.BridgedStickerRef{Network: "n", PackURL: "u", ID: "i"},
+		}},
+		{"StickerPack", actions.StickerPack{Network: "n", Items: []actions.StickerItem{}}},
+		{"ListStickersResult", actions.ListStickersResult{Packs: []actions.StickerPack{}, RecentGIFs: []actions.StickerItem{}}},
 	}
 	for _, tc := range cases {
 		spec, ok := p.Types[tc.typeName]
@@ -1149,6 +1158,73 @@ func prepare(t *testing.T, w *world, name string, params map[string]any) {
 	case "message.sendLocation":
 		w.can(t, everything())
 		params["room_id"] = w.room
+	case "message.sendSticker":
+		w.can(t, everything())
+		path := filepath.Join(t.TempDir(), "party-parrot.png")
+		require.NoError(t, os.WriteFile(path, []byte("\x89PNG\r\n\x1a\nnot really a picture"), 0o600))
+		params["room_id"], params["path"] = w.room, path
+	case "message.sendGIF":
+		w.can(t, everything())
+		path := filepath.Join(t.TempDir(), "thumbs-up.gif")
+		require.NoError(t, os.WriteFile(path, []byte("GIF89a\x02\x00\x02\x00\x80\x00\x00\xff\xff\xff\x00\x00\x00!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x02\x00\x02\x00\x00\x02\x02D\x01\x00;"), 0o600))
+		params["room_id"], params["path"] = w.room, path
+	case "stickers.import":
+		pngData := []byte{
+			0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+			0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+			0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+			0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
+			0x89, 0x00, 0x00, 0x00, 0x0a, 0x49, 0x44, 0x41,
+			0x54, 0x78, 0x9c, 0x63, 0x00, 0x01, 0x00, 0x00,
+			0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00,
+			0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae,
+			0x42, 0x60, 0x82,
+		}
+		path := filepath.Join(t.TempDir(), "party_parrot.png")
+		require.NoError(t, os.WriteFile(path, pngData, 0o600))
+		params["path"] = path
+	case "stickers.list":
+		pngData := []byte{
+			0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+			0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+			0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+			0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4,
+			0x89, 0x00, 0x00, 0x00, 0x0a, 0x49, 0x44, 0x41,
+			0x54, 0x78, 0x9c, 0x63, 0x00, 0x01, 0x00, 0x00,
+			0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00,
+			0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae,
+			0x42, 0x60, 0x82,
+		}
+		path := filepath.Join(t.TempDir(), "party_parrot.png")
+		require.NoError(t, os.WriteFile(path, pngData, 0o600))
+		_, err := w.deps.Actions.ImportSticker(ctx, actions.ImportStickerReq{
+			Path:      path,
+			Shortcode: ":party_parrot:",
+			Name:      "Party Parrot",
+			Emoji:     "🦜",
+			Usage:     []string{"emoticon", "sticker"},
+		})
+		require.NoError(t, err)
+		_, err = w.s.InsertEvent(ctx, store.Event{
+			RoomID:  w.room,
+			EventID: "$st1",
+			Sender:  string(ids.Me),
+			Type:    "m.sticker",
+			Content: json.RawMessage(`{"msgtype":"m.image","body":"Happy Cat","url":"mxc://courier.local/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","info":{"mimetype":"image/webp","w":128,"h":128,"fi.mau.bridged_sticker":{"network":"telegram","pack_url":"https://t.me/addstickers/CatPack","id":"doc-9001","emoji":"😺"}}}`),
+			TS:      time.Now(),
+			Status:  "sent",
+		})
+		require.NoError(t, err)
+		_, err = w.s.InsertEvent(ctx, store.Event{
+			RoomID:  w.room,
+			EventID: "$gif1",
+			Sender:  string(ids.Me),
+			Type:    "m.room.message",
+			Content: json.RawMessage(`{"msgtype":"m.image","body":"Celebration","url":"mxc://courier.local/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","info":{"mimetype":"image/gif","w":240,"h":180,"fi.mau.gif":true}}`),
+			TS:      time.Now(),
+			Status:  "sent",
+		})
+		require.NoError(t, err)
 	default:
 		t.Fatalf("example %s has no setup in prepare: add one", name)
 	}

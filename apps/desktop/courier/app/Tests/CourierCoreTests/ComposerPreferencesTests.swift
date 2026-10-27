@@ -32,6 +32,9 @@ final class ComposerPreferencesTests: XCTestCase {
         XCTAssertFalse(preferences.incognito)
         XCTAssertTrue(preferences.showTyping)
         XCTAssertTrue(preferences.showIncognitoMark)
+        XCTAssertTrue(preferences.enableEmojiAutocomplete)
+        XCTAssertFalse(preferences.disableEmoticonReplacement)
+        XCTAssertFalse(preferences.autoSendGIFs)
         XCTAssertTrue(store.defaults.dictionaryRepresentation().keys.filter { $0.hasPrefix("courier.") }.isEmpty,
                       "reading the defaults writes nothing")
 
@@ -57,9 +60,15 @@ final class ComposerPreferencesTests: XCTestCase {
         preferences.incognito = true
         preferences.showTyping = false
         preferences.showIncognitoMark = false
+        preferences.enableEmojiAutocomplete = false
+        preferences.disableEmoticonReplacement = true
+        preferences.autoSendGIFs = true
         XCTAssertEqual(store.defaults.object(forKey: "courier.composer.incognito") as? Bool, true)
         XCTAssertEqual(store.defaults.object(forKey: "courier.composer.showTyping") as? Bool, false)
         XCTAssertEqual(store.defaults.object(forKey: "courier.composer.showIncognitoMark") as? Bool, false)
+        XCTAssertEqual(store.defaults.object(forKey: "courier.composer.enableEmojiAutocomplete") as? Bool, false)
+        XCTAssertEqual(store.defaults.object(forKey: "courier.composer.disableEmoticonReplacement") as? Bool, true)
+        XCTAssertEqual(store.defaults.object(forKey: "courier.composer.autoSendGIFs") as? Bool, true)
         XCTAssertEqual(store.defaults.integer(forKey: "courier.composer.undoSendMillis"), 5000)
         XCTAssertEqual(store.defaults.string(forKey: "courier.composer.upArrow"), "editLast")
 
@@ -76,6 +85,9 @@ final class ComposerPreferencesTests: XCTestCase {
         XCTAssertTrue(again.incognito)
         XCTAssertFalse(again.showTyping)
         XCTAssertFalse(again.showIncognitoMark)
+        XCTAssertFalse(again.enableEmojiAutocomplete)
+        XCTAssertTrue(again.disableEmoticonReplacement)
+        XCTAssertTrue(again.autoSendGIFs)
 
         // A window the engine wouldn't take reads as off, never as something else.
         store.defaults.set(1234, forKey: "courier.composer.undoSendMillis")

@@ -105,6 +105,10 @@ struct MainWindow: View {
                 search.close()
                 conversation.composer.voiceRecorder.cancelImmediately()
                 conversation.thread.composer.voiceRecorder.cancelImmediately()
+                conversation.composer.isStickerPickerPresented = false
+                conversation.composer.isGIFPickerPresented = false
+                conversation.thread.composer.isStickerPickerPresented = false
+                conversation.thread.composer.isGIFPickerPresented = false
             }
             .sheet(isPresented: addingNetwork) {
                 AddNetworkView(login: login)

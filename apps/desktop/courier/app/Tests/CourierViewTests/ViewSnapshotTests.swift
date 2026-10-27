@@ -169,6 +169,7 @@ final class ViewSnapshotTests: XCTestCase {
         voiceRecorder: VoiceRecorderModel? = nil
     ) -> ComposerModel {
         let composer = ComposerModel(
+            sender: SnapshotMessageSender(),
             draftDelay: 0,
             sleep: { _ in },
             now: { Fixture.now },
@@ -2139,9 +2140,709 @@ final class ViewSnapshotTests: XCTestCase {
             "cleanup must remove the courier-notif-* temporary directory"
         )
     }
+
+    // MARK: - Milestone 4.5c Task 6: EmojiAutocompletePicker snapshots and keyboard routing
+
+    func testEmojiAutocompletePickerSnapshotsAndKeyboardRouting() throws {
+        let preferences = ComposerPreferences(defaults: defaults())
+        let model = composer(text: "")
+        model.preferences = preferences
+        model.customEmojis = [
+            EmojiCandidate(
+                id: "imported:partyblob",
+                shortcode: "party_smile",
+                glyph: nil,
+                mediaURL: "courier://media/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                isCustom: true
+            ),
+        ]
+        model.textChanged(to: "hello :smi", replacing: NSRange(location: 0, length: 0), with: 10)
+        XCTAssertEqual(model.emojiQuery, "smi")
+        XCTAssertTrue(model.emojiCandidates.contains(where: { $0.isCustom && $0.shortcode == "party_smile" }))
+
+        var addedShortcode: String?
+        check(try Snapshot.render("emoji-autocomplete-picker", width: 280) {
+            EmojiAutocompletePicker(composer: model) { code in
+                addedShortcode = code
+            }
+            .padding(10)
+        })
+        XCTAssertNil(addedShortcode)
+
+        // Verify ComposerView mounts EmojiAutocompletePicker and routes ↑/↓/Return/Tab/Escape through Coordinator.
+        check(try Snapshot.render("composer-emoji-autocomplete", width: 620, prepare: { host in
+            guard let textView = host.first(PlainTextView.self),
+                  let delegate = textView.delegate else {
+                XCTFail("Expected PlainTextView and delegate in ComposerView")
+                return
+            }
+            XCTAssertEqual(model.selectedEmojiIndex, 0)
+            XCTAssertTrue(delegate.textView?(textView, doCommandBy: #selector(NSResponder.moveDown(_:))) ?? false)
+            XCTAssertEqual(model.selectedEmojiIndex, 1)
+            XCTAssertTrue(delegate.textView?(textView, doCommandBy: #selector(NSResponder.moveUp(_:))) ?? false)
+            XCTAssertEqual(model.selectedEmojiIndex, 0)
+        }) {
+            ComposerView(
+                composer: model,
+                preferences: preferences,
+                textHeight: .constant(ComposerTextView.minimumHeight),
+                menus: ComposerMenus(sendLater: {}, createPoll: {}, pollsUnavailable: nil)
+            )
+        })
+
+        // Verify Tab accepts the selected emoji candidate and Escape dismisses when open.
+        let hostView = NSHostingView(
+            rootView: ComposerView(
+                composer: model,
+                preferences: preferences,
+                textHeight: .constant(ComposerTextView.minimumHeight),
+                menus: ComposerMenus(sendLater: {}, createPoll: {}, pollsUnavailable: nil)
+            )
+        )
+        hostView.frame = NSRect(x: 0, y: 0, width: 620, height: 120)
+        hostView.layoutSubtreeIfNeeded()
+        let textView = try XCTUnwrap(hostView.first(PlainTextView.self))
+        let delegate = try XCTUnwrap(textView.delegate)
+        XCTAssertTrue(delegate.textView?(textView, doCommandBy: #selector(NSResponder.insertTab(_:))) ?? false)
+        XCTAssertNil(model.emojiQuery)
+        XCTAssertTrue(model.text.hasPrefix("hello "))
+        XCTAssertNotEqual(model.text, "hello :smi")
+
+        model.textChanged(to: "again :smi", replacing: NSRange(location: 0, length: (model.text as NSString).length), with: 10)
+        XCTAssertEqual(model.emojiQuery, "smi")
+        XCTAssertTrue(delegate.textView?(textView, doCommandBy: #selector(NSResponder.cancelOperation(_:))) ?? false)
+        XCTAssertNil(model.emojiQuery)
+    }
+
+    // MARK: - Milestone 4.5c Task 7: StickerPickerPopover empty and populated snapshots
+
+    func testStickerPickerPopoverEmptyAndPopulatedSnapshots() throws {
+        let emptyModel = composer(text: "")
+        check(try Snapshot.render("sticker-picker-empty", width: 340) {
+            StickerPickerPopover(composer: emptyModel)
+        })
+
+        let populatedModel = composer(text: "")
+        populatedModel.setStickerCatalogForTesting(
+            packs: [
+                StickerPackWire(
+                    id: "recent",
+                    title: "Recent",
+                    source: "recent",
+                    items: [
+                        StickerItemWire(
+                            id: "recent:1",
+                            packID: "recent",
+                            name: "Smiling Cat",
+                            emoji: "😺",
+                            mediaURL: "courier://media/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                            mimeType: "image/webp"
+                        ),
+                        StickerItemWire(
+                            id: "recent:2",
+                            packID: "recent",
+                            name: "Party Parrot",
+                            emoji: "🦜",
+                            mediaURL: "courier://media/fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+                            mimeType: "image/gif"
+                        ),
+                        StickerItemWire(
+                            id: "recent:3",
+                            packID: "recent",
+                            name: "Rocket Launch",
+                            emoji: "🚀",
+                            mediaURL: "courier://media/1111111111111111111111111111111111111111111111111111111111111111",
+                            mimeType: "image/png"
+                        ),
+                        StickerItemWire(
+                            id: "recent:4",
+                            packID: "recent",
+                            name: "Thumbs Up",
+                            emoji: "👍",
+                            mediaURL: "courier://media/2222222222222222222222222222222222222222222222222222222222222222",
+                            mimeType: "image/webp"
+                        ),
+                    ]
+                ),
+                StickerPackWire(id: "imported", title: "Imported", source: "imported", items: []),
+                StickerPackWire(id: "bridge:telegram:cats", title: "Cats", source: "bridge", network: "telegram", items: []),
+            ]
+        )
+        check(try Snapshot.render("sticker-picker-populated", width: 340) {
+            StickerPickerPopover(composer: populatedModel)
+        })
+    }
+
+    // MARK: - Milestone 4.5c Task 8: GIFPickerPopover and pending GIF pill snapshots
+
+    func testGIFPickerPopoverAndPendingGIFSnapshots() throws {
+        let emptyModel = composer(text: "")
+        check(try Snapshot.render("gif-picker-empty", width: 340) {
+            GIFPickerPopover(composer: emptyModel)
+        })
+
+        let populatedModel = composer(text: "")
+        populatedModel.setStickerCatalogForTesting(
+            packs: [],
+            recentGIFs: [
+                StickerItemWire(
+                    id: "gif:1",
+                    packID: "recent_gifs",
+                    name: "Party Parrot",
+                    emoji: "🦜",
+                    mediaURL: "courier://media/fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+                    mimeType: "image/gif",
+                    width: 320,
+                    height: 240,
+                    usage: ["gif"]
+                ),
+                StickerItemWire(
+                    id: "gif:2",
+                    packID: "recent_gifs",
+                    name: "Mind Blown",
+                    emoji: "🤯",
+                    mediaURL: "courier://media/1122334455667788112233445566778811223344556677881122334455667788",
+                    mimeType: "video/mp4",
+                    width: 480,
+                    height: 270,
+                    usage: ["gif"]
+                ),
+            ]
+        )
+        check(try Snapshot.render("gif-picker-populated", width: 340) {
+            GIFPickerPopover(composer: populatedModel)
+        })
+
+        let preferences = ComposerPreferences(defaults: defaults())
+        let stagedModel = composer(text: "Check out this loop")
+        stagedModel.preferences = preferences
+        stagedModel.pendingGIF = StickerItemWire(
+            id: "gif:1",
+            packID: "recent_gifs",
+            name: "Party Parrot",
+            emoji: "🦜",
+            mediaURL: "courier://media/fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+            mimeType: "image/gif",
+            width: 320,
+            height: 240,
+            usage: ["gif"]
+        )
+        check(try Snapshot.render("composer-pending-gif", width: 620) {
+            ComposerView(
+                composer: stagedModel,
+                preferences: preferences,
+                textHeight: .constant(ComposerTextView.minimumHeight),
+                menus: ComposerMenus(sendLater: {}, createPoll: {}, pollsUnavailable: nil)
+            )
+        })
+    }
+
+    // MARK: - Milestone 4.5c Task 9: Composer + menu and toolbar sticker/GIF/emoji entry points
+
+    func testComposerToolbarAndPlusMenuStickerGIFAndEmojiEntryPoints() throws {
+        let preferences = ComposerPreferences(defaults: defaults())
+        let model = composer(text: "Weekend trail crew!")
+        model.preferences = preferences
+        XCTAssertTrue(
+            model.canSend,
+            "composer in an open room with text must have canSend == true so the send arrow is active in the snapshot"
+        )
+        XCTAssertTrue(ComposerView.plusMenuMediaTitles.contains("Add Emoji…"))
+        XCTAssertEqual(model.addGIFMenuTitle, "Add GIF…")
+        XCTAssertEqual(model.addStickerMenuTitle, "Add Sticker…")
+        check(try Snapshot.render("composer-toolbar-media", width: 620) {
+            ComposerView(
+                composer: model,
+                preferences: preferences,
+                textHeight: .constant(ComposerTextView.minimumHeight),
+                menus: ComposerMenus(sendLater: {}, createPoll: {}, pollsUnavailable: nil)
+            )
+        })
+    }
+
+    func testEmojiAutocompletePublicInterfaceThumbnailLoaderAndStickerEmoticonFilter() async throws {
+        let loader = ThumbnailLoader()
+        let customCandidate = EmojiCandidate(
+            id: "mxc://courier.local/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            shortcode: "party_smile",
+            glyph: nil,
+            mediaURL: "mxc://courier.local/0123456789abcdef0123456789abcdef0123456789abcdef",
+            isCustom: true
+        )
+        let row = EmojiItemRow(
+            candidate: customCandidate,
+            isSelected: true,
+            thumbnailLoader: loader
+        )
+        XCTAssertEqual(row.candidate, customCandidate)
+        XCTAssertTrue(row.isSelected)
+        XCTAssertNotNil(row.thumbnailLoader)
+
+        var selectedCandidate: EmojiCandidate?
+        var addedShortcode: String?
+        let picker = EmojiAutocompletePicker(
+            query: "smi",
+            candidates: [customCandidate],
+            selectedIndex: 0,
+            thumbnailLoader: loader,
+            onSelect: { selectedCandidate = $0 },
+            onAddCustomEmoji: { addedShortcode = $0 }
+        )
+        XCTAssertEqual(picker.query, "smi")
+        XCTAssertEqual(picker.candidates, [customCandidate])
+        XCTAssertEqual(picker.selectedIndex, 0)
+        XCTAssertNotNil(picker.thumbnailLoader)
+        picker.onSelect(customCandidate)
+        XCTAssertEqual(selectedCandidate, customCandidate)
+        picker.onAddCustomEmoji("smi")
+        XCTAssertEqual(addedShortcode, "smi")
+
+        // Emoticon-only items (usage == ["emoticon"]) must be filtered out of StickerPickerPopover.
+        let emoticonOnly = StickerItemWire(
+            id: "imported:emo_only",
+            packID: "imported",
+            shortcode: "emo_only",
+            name: "emo_only",
+            mediaURL: "mxc://courier.local/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            mimeType: "image/png",
+            usage: ["emoticon"]
+        )
+        let stickerAndEmoticon = StickerItemWire(
+            id: "imported:both",
+            packID: "imported",
+            shortcode: "both",
+            name: "both",
+            mediaURL: "mxc://courier.local/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            mimeType: "image/png",
+            usage: ["emoticon", "sticker"]
+        )
+        let pack = StickerPackWire(
+            id: "imported",
+            title: "Imported",
+            source: "imported",
+            items: [emoticonOnly, stickerAndEmoticon]
+        )
+        XCTAssertEqual(
+            StickerPickerPopover.stickerItems(in: pack).map(\.id),
+            ["imported:both"]
+        )
+    }
+
+    // MARK: - Milestone 4.5c Task 10: Sticker and GIF timeline rendering and light/dark PNG snapshot tests
+
+    private func findNSImageView(in view: NSView) -> NSImageView? {
+        if let imageView = view as? NSImageView { return imageView }
+        for subview in view.subviews {
+            if let found = findNSImageView(in: subview) { return found }
+        }
+        return nil
+    }
+
+    private func makeTestStickerPNG(width: Int = 160, height: Int = 160) throws -> String {
+        let image = NSImage(size: NSSize(width: width, height: height), flipped: false) { rect in
+            NSColor.clear.setFill()
+            rect.fill()
+            let circleRect = rect.insetBy(dx: 12, dy: 12)
+            NSColor.systemOrange.setFill()
+            NSBezierPath(ovalIn: circleRect).fill()
+            let innerStar = circleRect.insetBy(dx: 30, dy: 30)
+            NSColor.systemYellow.setFill()
+            NSBezierPath(roundedRect: innerStar, xRadius: 16, yRadius: 16).fill()
+            return true
+        }
+        let tiff = try XCTUnwrap(image.tiffRepresentation)
+        let rep = try XCTUnwrap(NSBitmapImageRep(data: tiff))
+        let png = try XCTUnwrap(rep.representation(using: .png, properties: [:]))
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("courier-snapshot-sticker-\(width)x\(height).png")
+        try png.write(to: url, options: .atomic)
+        return url.path
+    }
+
+    func testStickerAndGIFReduceMotionAndFallbackAspectRatio() async throws {
+        let stickerPath = try makeTestStickerPNG(width: 150, height: 150)
+        let wideGIFPath = try makeTestPNG(width: 300, height: 150)
+
+        let receivedStickerEvent = Fixture.sticker(
+            "$sticker-rm",
+            name: "Party Parrot",
+            emoji: "🦜",
+            mine: false,
+            ts: 15,
+            mediaPath: stickerPath,
+            width: 150,
+            height: 150
+        )
+        let receivedStickerMsg = try XCTUnwrap(Fixture.messages([receivedStickerEvent]).first)
+        let receivedSticker = try XCTUnwrap(receivedStickerMsg.sticker)
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 400),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        let stickerHost = NSHostingView(
+            rootView: StickerAttachmentView(message: receivedStickerMsg, sticker: receivedSticker)
+        )
+        stickerHost.frame = NSRect(x: 0, y: 0, width: 200, height: 200)
+        // Initialize environment while NSWorkspace Reduce Motion is false so @Environment(\.accessibilityReduceMotion) is false.
+        stickerHost.layoutSubtreeIfNeeded()
+
+        // #4: When NSWorkspace.shared.accessibilityDisplayShouldReduceMotion becomes true while SwiftUI's
+        // @Environment(\.accessibilityReduceMotion) is false, StickerAttachmentView must still pause animation.
+        let origMethod = try XCTUnwrap(
+            class_getInstanceMethod(NSWorkspace.self, #selector(getter: NSWorkspace.accessibilityDisplayShouldReduceMotion))
+        )
+        let stubMethod = try XCTUnwrap(
+            class_getInstanceMethod(NSWorkspace.self, #selector(getter: NSWorkspace.courierTest_reduceMotionTrue))
+        )
+        method_exchangeImplementations(origMethod, stubMethod)
+        defer { method_exchangeImplementations(origMethod, stubMethod) }
+        XCTAssertTrue(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+
+        stickerHost.rootView = StickerAttachmentView(message: receivedStickerMsg, sticker: receivedSticker)
+        window.contentView = stickerHost
+        for _ in 0 ..< 50 {
+            try await Task.sleep(nanoseconds: 2_000_000)
+            stickerHost.layoutSubtreeIfNeeded()
+            if findNSImageView(in: stickerHost) != nil { break }
+        }
+        let stickerImageView = try XCTUnwrap(findNSImageView(in: stickerHost))
+        XCTAssertFalse(
+            stickerImageView.animates,
+            "StickerAttachmentView must pause animation when NSWorkspace Reduce Motion is enabled"
+        )
+
+        // #5a: When NSImage(contentsOfFile:) succeeds, StickerAttachmentView and GIFAttachmentView must not
+        // run an unused async ThumbnailLoader.shared.thumbnail(atPath:) decode.
+        for _ in 0..<50 { await Task.yield() }
+        let cachedAfterSticker = await ThumbnailLoader.shared.cachedPaths
+        XCTAssertFalse(
+            cachedAfterSticker.contains(stickerPath),
+            "StickerAttachmentView must skip async ThumbnailLoader decode when NSImage(contentsOfFile:) succeeded"
+        )
+
+        // #5b: When GIF width/height metadata is missing, GIFAttachmentView must preserve the image's aspect ratio
+        // and use .scaleProportionallyUpOrDown rather than .scaleAxesIndependently.
+        var unindexedGIFEvent = Fixture.gif(
+            "$gif-no-dims",
+            msgtype: "m.image",
+            fileName: "wide.gif",
+            caption: nil,
+            mine: false,
+            ts: 7,
+            mediaPath: wideGIFPath,
+            mimeType: "image/gif",
+            width: 0,
+            height: 0
+        )
+        if case var .object(c) = unindexedGIFEvent.content,
+           case var .object(info) = c["info"] {
+            info.removeValue(forKey: "w")
+            info.removeValue(forKey: "h")
+            c["info"] = .object(info)
+            unindexedGIFEvent.content = .object(c)
+        }
+        let unindexedGIFMsg = try XCTUnwrap(Fixture.messages([unindexedGIFEvent]).first)
+        let unindexedGIF = try XCTUnwrap(unindexedGIFMsg.gif)
+        XCTAssertNil(unindexedGIF.width)
+        XCTAssertNil(unindexedGIF.height)
+
+        let gifHost = NSHostingView(
+            rootView: GIFAttachmentView(message: unindexedGIFMsg, gif: unindexedGIF)
+        )
+        gifHost.frame = NSRect(x: 0, y: 0, width: 400, height: 400)
+        window.contentView = gifHost
+        for _ in 0 ..< 50 {
+            try await Task.sleep(nanoseconds: 2_000_000)
+            gifHost.layoutSubtreeIfNeeded()
+            if findNSImageView(in: gifHost) != nil { break }
+        }
+        let gifImageView = try XCTUnwrap(findNSImageView(in: gifHost))
+        XCTAssertEqual(
+            gifImageView.imageScaling,
+            .scaleProportionallyUpOrDown,
+            "GIFAttachmentView must scale proportionally, not .scaleAxesIndependently"
+        )
+        XCTAssertEqual(
+            gifImageView.frame.size,
+            CGSize(width: 300, height: 150),
+            "GIFAttachmentView fallback must preserve nsImage aspect ratio when w/h metadata is absent"
+        )
+        for _ in 0..<50 { await Task.yield() }
+        let cachedAfterGIF = await ThumbnailLoader.shared.cachedPaths
+        XCTAssertFalse(
+            cachedAfterGIF.contains(wideGIFPath),
+            "GIFAttachmentView must skip async ThumbnailLoader decode when NSImage(contentsOfFile:) succeeded"
+        )
+    }
+
+    func testStickerAndGIFTimelineRenderingAndComposingSnapshots() throws {
+        let stickerPath = try makeTestStickerPNG(width: 160, height: 160)
+        let gifFramePath = try makeTestPNG(width: 280, height: 180)
+
+        // Verify StickerAttachmentView and GIFAttachmentView sizing, ThumbnailLoader resolution, and Reduce Motion pause.
+        XCTAssertEqual(
+            StickerAttachmentView.displaySize(width: 320, height: 160),
+            CGSize(width: 160, height: 80),
+            "StickerAttachmentView constrains stickers up to 160×160 pt preserving aspect ratio"
+        )
+        XCTAssertTrue(StickerAttachmentView.shouldAnimate(reduceMotion: false))
+        XCTAssertFalse(StickerAttachmentView.shouldAnimate(reduceMotion: true))
+        XCTAssertTrue(GIFAttachmentView.shouldAnimate(reduceMotion: false))
+        XCTAssertFalse(GIFAttachmentView.shouldAnimate(reduceMotion: true))
+        XCTAssertEqual(GIFAttachmentView.cornerRadius, 12)
+
+        // 1. Received sticker (light and dark PNGs)
+        let receivedStickerEvent = Fixture.sticker(
+            "$sticker-recv",
+            name: "Party Parrot",
+            emoji: "🦜",
+            mine: false,
+            ts: 15,
+            mediaPath: stickerPath,
+            width: 160,
+            height: 160
+        )
+        let receivedStickerMsg = try XCTUnwrap(Fixture.messages([receivedStickerEvent]).first)
+        XCTAssertNotNil(receivedStickerMsg.sticker)
+        XCTAssertTrue(receivedStickerMsg.suppressesBubbleBackground)
+        XCTAssertEqual(
+            StickerAttachmentView.resolveLocalPath(message: receivedStickerMsg, sticker: try XCTUnwrap(receivedStickerMsg.sticker)),
+            stickerPath
+        )
+        check(try Snapshot.render("sticker-received", width: 520) {
+            timeline(Fixture.items([receivedStickerEvent], isDirect: true))
+        })
+
+        // 2. Sent sticker (light and dark PNGs)
+        let sentStickerEvent = Fixture.sticker(
+            "$sticker-sent",
+            name: "Rocket Launch",
+            emoji: "🚀",
+            mine: true,
+            ts: 10,
+            mediaPath: stickerPath,
+            width: 160,
+            height: 160
+        )
+        let sentStickerMsg = try XCTUnwrap(Fixture.messages([sentStickerEvent]).first)
+        XCTAssertNotNil(sentStickerMsg.sticker)
+        XCTAssertTrue(sentStickerMsg.suppressesBubbleBackground)
+        check(try Snapshot.render("sticker-sent", width: 520) {
+            timeline(Fixture.items([sentStickerEvent], isDirect: true), sent: "$sticker-sent")
+        })
+
+        // 3. Looping GIF (first frame, rounded 12 pt frame, top-leading "GIF" pill badge)
+        let loopingGIFEvent = Fixture.gif(
+            "$gif-loop",
+            msgtype: "m.image",
+            fileName: "animation.gif",
+            caption: nil,
+            mine: false,
+            ts: 8,
+            mediaPath: gifFramePath,
+            mimeType: "image/gif",
+            width: 280,
+            height: 180
+        )
+        let loopingGIFMsg = try XCTUnwrap(Fixture.messages([loopingGIFEvent]).first)
+        XCTAssertNotNil(loopingGIFMsg.gif)
+        XCTAssertNil(loopingGIFMsg.gif?.caption)
+        XCTAssertEqual(
+            GIFAttachmentView.resolveLocalPath(message: loopingGIFMsg, gif: try XCTUnwrap(loopingGIFMsg.gif)),
+            gifFramePath
+        )
+        check(try Snapshot.render("gif-looping", width: 520) {
+            timeline(Fixture.items([loopingGIFEvent], isDirect: true))
+        })
+
+        // 4. GIF with a caption rendered below the frame
+        let captionedGIFEvent = Fixture.gif(
+            "$gif-captioned",
+            msgtype: "m.image",
+            fileName: "animation.gif",
+            caption: "Summit view celebration!",
+            mine: true,
+            ts: 5,
+            mediaPath: gifFramePath,
+            mimeType: "image/gif",
+            width: 280,
+            height: 180
+        )
+        let captionedGIFMsg = try XCTUnwrap(Fixture.messages([captionedGIFEvent]).first)
+        XCTAssertEqual(captionedGIFMsg.gif?.caption, "Summit view celebration!")
+        check(try Snapshot.render("gif-with-caption", width: 520) {
+            timeline(Fixture.items([captionedGIFEvent], isDirect: true), sent: "$gif-captioned")
+        })
+
+        // 5. Sticker in a reply (sticker replying to a message, and a message replying to the sticker)
+        let promptEvent = Fixture.text("$prompt-1", "Ready for the morning climb?", mine: false, ts: 20, name: "Ann Example")
+        let replyStickerEvent = Fixture.sticker(
+            "$sticker-reply",
+            name: "Party Parrot",
+            emoji: "🦜",
+            mine: true,
+            ts: 18,
+            mediaPath: stickerPath,
+            width: 160,
+            height: 160,
+            replyTo: "$prompt-1"
+        )
+        var textReplyToSticker = Fixture.text("$reply-to-sticker", "Love that sticker!", mine: false, ts: 16, name: "Ann Example")
+        if case var .object(content) = textReplyToSticker.content {
+            content["m.relates_to"] = .object([
+                "m.in_reply_to": .object(["event_id": .string("$sticker-reply")]),
+            ])
+            textReplyToSticker.content = .object(content)
+        }
+        check(try Snapshot.render("sticker-in-reply", width: 520) {
+            timeline(Fixture.items([promptEvent, replyStickerEvent, textReplyToSticker], isDirect: true), sent: "$sticker-reply")
+        })
+
+        // 6. EmojiAutocompletePicker with ":party_parrot:" footer and GIFPickerPopover with search query
+        let emojiModel = composer(text: "")
+        emojiModel.setStickerCatalogForTesting(
+            packs: [
+                StickerPackWire(
+                    id: "imported",
+                    title: "Imported",
+                    source: "imported",
+                    items: [
+                        StickerItemWire(
+                            id: "imported:party_parrot_wave",
+                            packID: "imported",
+                            shortcode: "party_parrot_wave",
+                            name: "Party Parrot Wave",
+                            emoji: "🦜",
+                            mediaURL: stickerPath,
+                            mimeType: "image/png",
+                            width: 160,
+                            height: 160,
+                            usage: ["emoticon", "sticker"]
+                        ),
+                    ]
+                ),
+            ]
+        )
+        emojiModel.textChanged(to: "let's go :party_parrot", replacing: NSRange(location: 0, length: 0), with: 22)
+        XCTAssertEqual(emojiModel.emojiQuery, "party_parrot")
+        check(try Snapshot.render("emoji-autocomplete-party-parrot", width: 320) {
+            EmojiAutocompletePicker(composer: emojiModel) { _ in }
+                .padding(10)
+        })
+
+        let gifQueryModel = composer(text: "")
+        gifQueryModel.setStickerCatalogForTesting(
+            packs: [],
+            recentGIFs: [
+                StickerItemWire(
+                    id: "gif:1",
+                    packID: "recent_gifs",
+                    name: "Celebration Loop",
+                    emoji: "🎉",
+                    mediaURL: gifFramePath,
+                    mimeType: "image/gif",
+                    width: 280,
+                    height: 180,
+                    usage: ["gif"]
+                ),
+            ]
+        )
+        gifQueryModel.gifSearchQuery = "Celebration"
+        check(try Snapshot.render("gif-picker-search-query", width: 340) {
+            GIFPickerPopover(composer: gifQueryModel)
+        })
+    }
+
+    func testStickerAndGIFViewsLoadAsynchronouslyInTaskNotBody() async throws {
+        let stickerPath = try makeTestStickerPNG(width: 140, height: 140)
+        let gifPath = try makeTestPNG(width: 240, height: 140)
+
+        let stickerEvent = Fixture.sticker(
+            "$sticker-async",
+            name: "Async Parrot",
+            emoji: "🦜",
+            mine: false,
+            ts: 15,
+            mediaPath: stickerPath,
+            width: 140,
+            height: 140
+        )
+        let stickerMsg = try XCTUnwrap(Fixture.messages([stickerEvent]).first)
+        let sticker = try XCTUnwrap(stickerMsg.sticker)
+
+        let gifEvent = Fixture.gif(
+            "$gif-async",
+            msgtype: "m.image",
+            fileName: "async.gif",
+            caption: nil,
+            mine: false,
+            ts: 16,
+            mediaPath: gifPath,
+            mimeType: "image/gif",
+            width: 240,
+            height: 140
+        )
+        let gifMsg = try XCTUnwrap(Fixture.messages([gifEvent]).first)
+        let gif = try XCTUnwrap(gifMsg.gif)
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 400),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        let stickerHost = NSHostingView(
+            rootView: StickerAttachmentView(message: stickerMsg, sticker: sticker)
+        )
+        stickerHost.frame = NSRect(x: 0, y: 0, width: 200, height: 200)
+        window.contentView = stickerHost
+        stickerHost.layoutSubtreeIfNeeded()
+
+        XCTAssertNil(
+            findNSImageView(in: stickerHost),
+            "StickerAttachmentView must not synchronously read or decode files inside body before .task(id:) runs"
+        )
+        for _ in 0 ..< 50 {
+            try await Task.sleep(nanoseconds: 2_000_000)
+            stickerHost.layoutSubtreeIfNeeded()
+            if findNSImageView(in: stickerHost) != nil { break }
+        }
+        XCTAssertNotNil(
+            findNSImageView(in: stickerHost),
+            "StickerAttachmentView must populate @State image once .task(id:) completes"
+        )
+
+        let gifHost = NSHostingView(
+            rootView: GIFAttachmentView(message: gifMsg, gif: gif)
+        )
+        gifHost.frame = NSRect(x: 0, y: 0, width: 300, height: 200)
+        window.contentView = gifHost
+        gifHost.layoutSubtreeIfNeeded()
+
+        XCTAssertNil(
+            findNSImageView(in: gifHost),
+            "GIFAttachmentView must not synchronously read or decode files inside body before .task(id:) runs"
+        )
+        for _ in 0 ..< 50 {
+            try await Task.sleep(nanoseconds: 2_000_000)
+            gifHost.layoutSubtreeIfNeeded()
+            if findNSImageView(in: gifHost) != nil { break }
+        }
+        XCTAssertNotNil(
+            findNSImageView(in: gifHost),
+            "GIFAttachmentView must populate @State image once .task(id:) completes"
+        )
+    }
 }
 
 /// A sign-in caller whose every sign-in finishes at once with `finish`.
+extension NSWorkspace {
+    @objc fileprivate var courierTest_reduceMotionTrue: Bool { true }
+}
+
 private final class SnapshotLoginCaller: LoginCalling, @unchecked Sendable {
     var finish: LoginStep?
 
@@ -2160,6 +2861,22 @@ private struct SnapshotCredentials: CredentialStore {
     func read(account: String) throws -> String? { nil }
     func write(_ value: String, account: String) throws {}
     func delete(account: String) throws {}
+}
+
+private final class SnapshotMessageSender: MessageSending, @unchecked Sendable {
+    func sendText(roomID _: String, text _: String, replyTo _: String?) async throws {}
+    func sendFile(roomID _: String, url _: URL, size _: Int64, replyTo _: String?) async throws {}
+    func send(roomID _: String, rich _: RichText, replyTo _: String?, threadRoot _: String?, holdMillis _: Int) async throws -> String { "$snap" }
+    func sendFile(roomID _: String, url _: URL, size _: Int64, replyTo _: String?, threadRoot _: String?, holdMillis _: Int) async throws -> String { "$snap" }
+    func edit(eventID _: String, rich _: RichText) async throws {}
+    func schedule(roomID _: String, rich _: RichText, replyTo _: String?, threadRoot _: String?, due _: Date, condition _: SendLaterCondition) async throws {}
+    func undo(eventID _: String) async throws -> Draft { Draft(text: "", entities: [], replyTo: nil, threadRoot: nil) }
+    func sendHeld(roomID _: String?) async throws {}
+    func members(roomID _: String, query _: String) async throws -> [Member] { [] }
+    func status(of _: String, in _: String, thread _: String?) async throws -> StatusLine? { nil }
+    func setTyping(roomID _: String, typing _: Bool) async throws {}
+    func setUnreadFrom(eventID _: String) async throws {}
+    func directChat(roomID _: String, userID _: String) async throws -> String { "!dm" }
 }
 
 private final class SnapshotVoiceBackend: VoiceRecordingBackend, @unchecked Sendable {

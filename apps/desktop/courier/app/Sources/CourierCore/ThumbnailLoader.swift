@@ -83,6 +83,41 @@ public actor ThumbnailLoader {
 
     // MARK: - Reading the file
 
+    /// Resolves a local media path from a `courier://media/<sha256>`, `mxc://courier.local/<sha256>`, `file://` URL, or filesystem path.
+    public nonisolated static func resolveMediaPath(
+        _ mediaURL: String?,
+        dataDirectory: URL = EngineLocation.dataDirectory()
+    ) -> String? {
+        guard let raw = mediaURL?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
+            return nil
+        }
+        let hashCandidate: String?
+        if raw.hasPrefix("courier://media/") {
+            hashCandidate = String(raw.dropFirst("courier://media/".count))
+        } else if raw.hasPrefix("mxc://courier.local/") {
+            hashCandidate = String(raw.dropFirst("mxc://courier.local/".count))
+        } else {
+            hashCandidate = nil
+        }
+        if let hash = hashCandidate,
+           hash.count == 64,
+           hash.allSatisfy({ ("0"..."9").contains($0) || ("a"..."f").contains($0) }) {
+            let prefix = String(hash.prefix(2))
+            return dataDirectory
+                .appendingPathComponent("media", isDirectory: true)
+                .appendingPathComponent(prefix, isDirectory: true)
+                .appendingPathComponent(hash, isDirectory: false)
+                .path
+        }
+        if raw.hasPrefix("file://"), let url = URL(string: raw), url.isFileURL {
+            return url.path
+        }
+        if raw.hasPrefix("/") {
+            return raw
+        }
+        return nil
+    }
+
     private nonisolated static func pixelSize(ofFileAt path: String) -> CGSize? {
         guard let source = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil),
               let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],

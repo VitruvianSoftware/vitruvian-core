@@ -17,6 +17,7 @@ go_library(
         "polls.go",
         "privacy.go",
         "startchat.go",
+        "stickers.go",
         "typing.go",
         "voice.go",
     ],
@@ -38,6 +39,7 @@ go_library(
         "@net_maunium_go_mautrix//bridgev2/networkid",
         "@net_maunium_go_mautrix//event",
         "@net_maunium_go_mautrix//id",
+        "@org_golang_x_image//webp",
     ],
 )
 
@@ -55,6 +57,7 @@ go_test(
         "polls_test.go",
         "privacy_test.go",
         "send_test.go",
+        "stickers_test.go",
         "typing_test.go",
     ],
     embed = [":actions"],

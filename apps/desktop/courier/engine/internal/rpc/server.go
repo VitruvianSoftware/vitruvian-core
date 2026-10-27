@@ -53,7 +53,9 @@ import (
 // Protocol 7 adds rich media metadata (thumbnail_path, blurhash, duration_ms, waveform, is_gif, is_animated,
 // view_once, geo_uri, link_previews, played on Event; disable_link_preview on SendParams), per-kind file
 // capabilities on ChatFeatures, and message.markPlayed, message.sendVoice, and message.sendLocation.
-const Protocol = 7
+// Protocol 8 adds sticker and GIF capabilities on ChatFeatures (sticker, gif), sending stickers and GIFs
+// (message.sendSticker, message.sendGIF), and sticker/emoji catalog listing and import (stickers.list, stickers.import).
+const Protocol = 8
 
 // MaxFrameBytes is the longest line the engine reads, not counting its newline. A longer one closes the connection.
 const MaxFrameBytes = 4 << 20

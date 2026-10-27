@@ -367,7 +367,7 @@ final class ChatFeaturesTests: XCTestCase {
     }
 
     func testMediaCapabilityAndProtocolV7TypesRoundTrip() throws {
-        XCTAssertEqual(CourierProtocol.version, 7)
+        XCTAssertEqual(CourierProtocol.version, 8)
 
         let voiceCap = FileKindFeatures(
             supported: true,
@@ -460,5 +460,78 @@ final class ChatFeaturesTests: XCTestCase {
 
         let sendParams = SendParams(roomID: "!r1:courier.local", body: "https://example.test", disableLinkPreview: true)
         XCTAssertEqual(try JSONDecoder().decode(SendParams.self, from: JSONEncoder().encode(sendParams)).disableLinkPreview, true)
+    }
+
+    func testStickerAndGIFFeaturesDecodeAndConservativeDefaults() throws {
+        XCTAssertFalse(ChatFeatures.noFeatures.sticker.supported)
+        XCTAssertEqual(ChatFeatures.noFeatures.sticker.mimeTypes, [])
+        XCTAssertFalse(ChatFeatures.noFeatures.gif.supported)
+        XCTAssertEqual(ChatFeatures.noFeatures.gif.mimeTypes, [])
+        XCTAssertFalse(ChatFeatures.conservative.sticker.supported)
+        XCTAssertFalse(ChatFeatures.conservative.gif.supported)
+
+        let stickerCap = MediaCapFeatureWire(
+            supported: true,
+            mimeTypes: ["image/png", "image/webp"],
+            captions: false,
+            maxCaptionLength: nil,
+            maxSize: 16 * 1024 * 1024
+        )
+        let gifCap = MediaCapFeatureWire(
+            supported: true,
+            mimeTypes: ["video/mp4"],
+            captions: true,
+            maxCaptionLength: 1024,
+            maxSize: 16 * 1024 * 1024
+        )
+        let stickerKind = FileKindFeatures(
+            supported: true,
+            mimeTypes: ["image/png", "image/webp"],
+            caption: false,
+            maxCaptionLength: nil,
+            maxSize: 16 * 1024 * 1024
+        )
+        let gifKind = FileKindFeatures(
+            supported: true,
+            mimeTypes: ["video/mp4"],
+            caption: true,
+            maxCaptionLength: 1024,
+            maxSize: 16 * 1024 * 1024
+        )
+        let features = ChatFeatures(
+            source: .stored,
+            gifFeatures: gifKind,
+            stickerFeatures: stickerKind
+        )
+        let encoded = try JSONEncoder().encode(features)
+        let decoded = try JSONDecoder().decode(ChatFeatures.self, from: encoded)
+        XCTAssertEqual(decoded.sticker, stickerCap)
+        XCTAssertEqual(decoded.gif, gifCap)
+        XCTAssertTrue(decoded.supportsStickers)
+        XCTAssertTrue(decoded.supportsGIFs)
+        XCTAssertEqual(decoded.maxSizeBytes(for: "m.sticker"), 16 * 1024 * 1024)
+        XCTAssertEqual(decoded.maxSizeBytes(for: "fi.mau.gif"), 16 * 1024 * 1024)
+        XCTAssertFalse(decoded.supportsCaption(for: "m.sticker"))
+        XCTAssertTrue(decoded.supportsCaption(for: "fi.mau.gif"))
+
+        // Round-trip Go's actual JSON output where max_caption_length and max_size are omitted (omitempty).
+        let goOmittedJSON = Data(#"{"supported":true,"mime_types":["image/webp"],"captions":false}"#.utf8)
+        let decodedOmitted = try JSONDecoder().decode(MediaCapFeatureWire.self, from: goOmittedJSON)
+        XCTAssertNil(decodedOmitted.maxCaptionLength)
+        XCTAssertNil(decodedOmitted.maxSize)
+        let reencoded = try JSONSerialization.jsonObject(with: JSONEncoder().encode(decodedOmitted)) as? [String: Any]
+        XCTAssertNil(reencoded?["max_caption_length"])
+        XCTAssertNil(reencoded?["max_size"])
+
+        // Disagreement between sticker/gif and sticker_features/gif_features on the wire derives from the file-kind fields instead of failing decoding.
+        var badObj = try JSONSerialization.jsonObject(with: encoded) as? [String: Any] ?? [:]
+        badObj["sticker"] = ["supported": false, "mime_types": [] as [String], "captions": false] as [String: Any]
+        badObj["gif"] = ["supported": false, "mime_types": [] as [String], "captions": false] as [String: Any]
+        let badData = try JSONSerialization.data(withJSONObject: badObj)
+        let recovered = try JSONDecoder().decode(ChatFeatures.self, from: badData)
+        XCTAssertEqual(recovered.sticker, stickerCap, "sticker must be derived from sticker_features when sticker disagrees")
+        XCTAssertEqual(recovered.gif, gifCap, "gif must be derived from gif_features when gif disagrees")
+        XCTAssertTrue(recovered.supportsStickers)
+        XCTAssertTrue(recovered.supportsGIFs)
     }
 }

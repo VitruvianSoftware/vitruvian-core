@@ -1,6 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import Combine
 import Foundation
 
 /// The modifier keys held with a key, as the composer reads them. The view translates the system's flags.
@@ -61,9 +62,37 @@ public enum ComposerNotice: Equatable, Sendable {
     case noAnswer
     /// The engine refused a send. Nothing was sent, and what was typed is back in the composer.
     case sendFailed(reason: String)
+    /// Importing a sticker or custom emoji failed.
+    case importFailed(reason: String)
     /// The text is longer than the chat's network takes (`ChatFeatures.maxTextLength`, counted in bytes of UTF-8,
     /// so an emoji counts four). Nothing was sent, and the text stays to be shortened.
     case textTooLong
+
+    /// User-facing text shown in the notice banner under the composer.
+    public var displayText: String {
+        switch self {
+        case let .attachmentTooLarge(name):
+            String(localized: "Could not attach \(name) — total size would exceed 90 MB.")
+        case let .attachmentsLeftOut(names):
+            names.count == 1
+                ? String(localized: "Could not put \(names[0]) back — total size would exceed 90 MB.")
+                : String(localized: "Could not put \(names.count) files back — total size would exceed 90 MB: \(names.joined(separator: ", "))")
+        case let .notAFile(name):
+            String(localized: "Could not attach \(name). Courier can send files, not folders.")
+        case let .cannotRead(name):
+            String(localized: "Could not read \(name). It may have moved, or Courier may not be allowed to open it.")
+        case .noAnswer:
+            StatusLine.mayHaveBeenSentText
+        case let .sendFailed(reason):
+            reason.isEmpty ? String(localized: "The message could not be sent.")
+                : String(localized: "The message could not be sent: \(reason)")
+        case let .importFailed(reason):
+            reason.isEmpty ? String(localized: "Could not import sticker.")
+                : String(localized: "Could not import sticker: \(reason)")
+        case .textTooLong:
+            String(localized: "This message is too long for this chat. Shorten it, or send it in parts.")
+        }
+    }
 }
 
 /// Where the composer asks the text view to put the caret, in UTF-16 units. A new request has a higher serial.
@@ -136,6 +165,14 @@ public protocol MessageSending: AnyObject, Sendable {
     /// room.directChat: the one-to-one chat with `userID`, a person in the group `roomID`, found or made. Returns its
     /// room ID.
     func directChat(roomID: String, userID: String) async throws -> String
+    /// stickers.list: returns installed and recent sticker packs plus recent GIFs.
+    func listStickers(refreshBridgePacks: Bool) async throws -> StickersListResult
+    /// stickers.import: imports a local image file into the local sticker/emoji catalog.
+    func importSticker(_ params: StickersImportParams) async throws -> StickerItemWire
+    /// message.sendSticker: sends an `m.sticker` event to `params.roomID`.
+    func sendSticker(_ params: MessageSendStickerParams) async throws -> String
+    /// message.sendGIF: sends an animated GIF/MP4 (`fi.mau.gif: true`) to `params.roomID`.
+    func sendGIF(_ params: MessageSendGIFParams) async throws -> String
 }
 
 extension MessageSending {
@@ -161,6 +198,31 @@ extension MessageSending {
                          condition: SendLaterCondition, disableLinkPreview _: Bool?) async throws {
         try await schedule(roomID: roomID, rich: rich, replyTo: replyTo, threadRoot: threadRoot, due: due,
                            condition: condition)
+    }
+
+    public func listStickers(refreshBridgePacks _: Bool) async throws -> StickersListResult {
+        StickersListResult()
+    }
+
+    public func importSticker(_ params: StickersImportParams) async throws -> StickerItemWire {
+        StickerItemWire(
+            id: "imported:stub",
+            packID: "imported",
+            shortcode: params.shortcode,
+            name: params.name ?? "Sticker",
+            emoji: params.emoji,
+            mediaURL: "courier://media/stub",
+            mimeType: "image/png",
+            usage: params.usage ?? ["sticker"]
+        )
+    }
+
+    public func sendSticker(_: MessageSendStickerParams) async throws -> String {
+        ""
+    }
+
+    public func sendGIF(_: MessageSendGIFParams) async throws -> String {
+        ""
     }
 }
 
@@ -204,6 +266,36 @@ public final class ComposerModel: ObservableObject {
     @Published public private(set) var mentionQuery: (range: NSRange, text: String)?
     /// ";" plus letters at the caret: which quick reply. `range` covers the ";" and the letters.
     @Published public private(set) var quickReplyQuery: (range: NSRange, text: String)?
+    /// ":" plus 2+ shortcode characters at the caret when emoji autocomplete is enabled.
+    @Published public private(set) var emojiQuery: String?
+    /// The UTF-16 range of the active `:shortcode` token (including the leading `:`).
+    public private(set) var emojiQueryRange: NSRange?
+    /// Range of a `:shortcode` token dismissed with Escape so a repeated selection report at the same caret does not reopen it.
+    private var dismissedEmojiRange: NSRange?
+    /// Matching emoji candidates for `emojiQuery`.
+    @Published public private(set) var emojiCandidates: [EmojiCandidate] = []
+    /// Highlighted row in the emoji autocomplete popover.
+    @Published public var selectedEmojiIndex: Int = 0
+    /// Custom emoji candidates from installed packs, merged into `EmojiCatalog.shared.search`.
+    public var customEmojis: [EmojiCandidate] = []
+    /// Sticker packs loaded from `stickers.list` (`Recent`, `Imported`, and bridge packs).
+    @Published public private(set) var stickerPacks: [StickerPackWire] = []
+    /// Recent GIF items loaded from `stickers.list`.
+    @Published public private(set) var recentGIFs: [StickerItemWire] = []
+    /// Selected pack tab in `StickerPickerPopover`.
+    @Published public var selectedStickerPackID: String = "recent"
+    /// Search query in `StickerPickerPopover`.
+    @Published public var stickerSearchQuery: String = ""
+    /// Optional thumbnail loader used to render custom emoji, sticker, and GIF previews.
+    public var thumbnailLoader: ThumbnailLoader?
+    /// Offline GIF provider (StubGIFProvider in Iteration 1; zero network calls).
+    public var gifProvider: any GIFProvider = StubGIFProvider()
+    @Published public var isEmojiPickerPresented: Bool = false
+    @Published public var isStickerPickerPresented: Bool = false
+    @Published public var isGIFPickerPresented: Bool = false
+    @Published public var gifSearchQuery: String = ""
+    /// A GIF staged in the composer when `preferences.autoSendGIFs == false`.
+    @Published public var pendingGIF: StickerItemWire?
     /// My held (queued) messages in the open chat, newest last.
     @Published public private(set) var heldIDs: [String] = []
     @Published public private(set) var attachments: [ComposerAttachment] = []
@@ -240,7 +332,9 @@ public final class ComposerModel: ObservableObject {
     /// The person's plan: undo send holds and send later schedules only with it. Until it is set, neither.
     public var entitlement: any EntitlementProvider
     /// The composer's settings; nil is every default (undo send off).
-    public var preferences: ComposerPreferences?
+    public var preferences: ComposerPreferences? {
+        didSet { observePreferences() }
+    }
     public var quickReplies: QuickReplies?
     /// The composer's voice-note recorder.
     public let voiceRecorder: VoiceRecorderModel
@@ -283,17 +377,21 @@ public final class ComposerModel: ObservableObject {
         var text = ""
         var entities: [TextEntity] = []
         var attachments: [ComposerAttachment] = []
+        var pendingGIF: StickerItemWire?
         var reply: QuotedMessage?
         /// Notices about a send in a chat that was not open when it ended: shown when it is opened.
         var notices: [ComposerNotice] = []
 
-        var isEmpty: Bool { text.isEmpty && attachments.isEmpty && reply == nil && notices.isEmpty }
+        var isEmpty: Bool {
+            text.isEmpty && attachments.isEmpty && pendingGIF == nil && reply == nil && notices.isEmpty
+        }
 
         /// What was refused, back above what has been typed since. The files that were refused come first; any
         /// added since that would take the total past 90 MB are left out, and their names are returned.
         func restored(into current: Contents) -> (draft: Contents, leftOut: [String]) {
             var merged = current
             (merged.text, merged.entities) = ComposerModel.join((text, entities), (current.text, current.entities))
+            merged.pendingGIF = current.pendingGIF ?? pendingGIF
             merged.reply = current.reply ?? reply
             var total = attachments.reduce(Int64(0)) { $0 + $1.size }
             merged.attachments = attachments
@@ -312,6 +410,7 @@ public final class ComposerModel: ObservableObject {
 
     private enum Outgoing {
         case text(RichText)
+        case gif(StickerItemWire, caption: RichText?)
         case file(ComposerAttachment)
     }
 
@@ -341,6 +440,9 @@ public final class ComposerModel: ObservableObject {
     /// A line break about to be typed at the end of a block: the new line goes on in that block.
     private var continuingBlock: (kind: TextEntity.Kind, at: Int)?
     private var caretSerial = 0
+    private var preferencesCancellable: AnyCancellable?
+    private var initialStickerLoadStarted = false
+    private var stickerLoadGeneration = 0
     /// My held messages, by chat, and what Undo does with them.
     private let held = HeldMessages()
 
@@ -396,6 +498,18 @@ public final class ComposerModel: ObservableObject {
             self?.showToast(String(localized: "Message unsent from Courier"))
         }
         held.onToast = { [weak self] message in self?.showToast(message) }
+        observePreferences()
+    }
+
+    private func observePreferences() {
+        preferencesCancellable = preferences?.$enableEmojiAutocomplete
+            .sink { [weak self] enabled in
+                guard let self, !enabled else { return }
+                self.dismissEmojiAutocomplete()
+            }
+        if preferences?.enableEmojiAutocomplete == false {
+            dismissEmojiAutocomplete()
+        }
     }
 
     private var isEditing: Bool {
@@ -429,7 +543,7 @@ public final class ComposerModel: ObservableObject {
             }
             return action
         }
-        if mode == .new, trimmedText.isEmpty, attachments.isEmpty, let selected = selectedMessage() {
+        if mode == .new, trimmedText.isEmpty, attachments.isEmpty, pendingGIF == nil, let selected = selectedMessage() {
             act(on: selected)
         } else {
             submit()
@@ -440,6 +554,18 @@ public final class ComposerModel: ObservableObject {
     /// Escape ends an edit (what was in the composer comes back), or else clears the reply chip. False when there
     /// was neither, so the key can do something else.
     public func escape() -> Bool {
+        if emojiQuery != nil {
+            dismissEmojiAutocomplete()
+            return true
+        }
+        if isStickerPickerPresented {
+            isStickerPickerPresented = false
+            return true
+        }
+        if isGIFPickerPresented {
+            isGIFPickerPresented = false
+            return true
+        }
         if voiceRecorder.state != .idle {
             voiceRecorder.cancelImmediately()
             return true
@@ -474,6 +600,10 @@ public final class ComposerModel: ObservableObject {
         if voiceRecorder.state != .idle {
             voiceRecorder.cancelImmediately()
         }
+        isStickerPickerPresented = false
+        isGIFPickerPresented = false
+        isEmojiPickerPresented = false
+        dismissEmojiAutocomplete()
         stopTyping() // leaving the chat
         if isEditing { leaveEditing() }
         mode = .new
@@ -507,14 +637,30 @@ public final class ComposerModel: ObservableObject {
             setContents(draft.text, draft.entities)
         }
         attachments = draft.attachments
+        pendingGIF = draft.pendingGIF
         replyTarget = draft.reply
         notices = draft.notices
         heldIDs = room.map { held.ids(in: $0) } ?? []
-        if let room { drafts[room]?.notices = [] } // shown now, once
+        if let room {
+            drafts[room]?.notices = [] // shown now, once
+            if stickerPacks.isEmpty, !initialStickerLoadStarted, sender != nil {
+                initialStickerLoadStarted = true
+                Task { [weak self] in
+                    guard let self, self.stickerLoadGeneration == 0, self.stickerPacks.isEmpty else { return }
+                    await self.loadStickers(refresh: false)
+                }
+            }
+        }
     }
 
     private var currentContents: Contents {
-        Contents(text: text, entities: entities, attachments: attachments, reply: replyTarget)
+        Contents(
+            text: text,
+            entities: entities,
+            attachments: attachments,
+            pendingGIF: pendingGIF,
+            reply: replyTarget
+        )
     }
 
     /// The open chat's own draft: what is in the composer, or while editing, what was there before the edit.
@@ -526,6 +672,7 @@ public final class ComposerModel: ObservableObject {
             } else {
                 setContents(newValue.text, newValue.entities)
                 attachments = newValue.attachments
+                pendingGIF = newValue.pendingGIF
                 replyTarget = newValue.reply
             }
         }
@@ -542,6 +689,12 @@ public final class ComposerModel: ObservableObject {
         pendingKinds = []
         mentionQuery = nil
         quickReplyQuery = nil
+        emojiQuery = nil
+        emojiQueryRange = nil
+        dismissedEmojiRange = nil
+        emojiCandidates = []
+        selectedEmojiIndex = 0
+        selection = NSRange(location: (newText as NSString).length, length: 0)
     }
 
     /// The engine's draft of a chat, looked up. Nil (the lookup failed) leaves it unknown: it is looked up again
@@ -620,6 +773,10 @@ public final class ComposerModel: ObservableObject {
         if range.length > 0 {
             mentionQuery = nil
             quickReplyQuery = nil
+            emojiQuery = nil
+            emojiQueryRange = nil
+            emojiCandidates = []
+            selectedEmojiIndex = 0
         } else {
             updateQueries(caret: range.location)
         }
@@ -776,9 +933,70 @@ public final class ComposerModel: ObservableObject {
         entities = EntityEditing.fitted(EntityEditing.replacing(entities, range: range, with: length),
                                         to: replaced as NSString)
         pendingKinds = []
-        updateQueries(caret: range.location + length)
+        let newCaret = range.location + length
+        selection = NSRange(location: newCaret, length: 0)
+        updateQueries(caret: newCaret)
         caretSerial += 1
-        caretRequest = CaretRequest(location: range.location + length, serial: caretSerial)
+        caretRequest = CaretRequest(location: newCaret, serial: caretSerial)
+    }
+
+    // MARK: - Emoji Autocomplete
+
+    /// Moves the highlighted emoji candidate by `delta`, wrapping around `emojiCandidates`.
+    public func moveEmojiSelection(_ delta: Int) {
+        guard !emojiCandidates.isEmpty else {
+            selectedEmojiIndex = 0
+            return
+        }
+        let count = emojiCandidates.count
+        selectedEmojiIndex = ((selectedEmojiIndex + delta) % count + count) % count
+    }
+
+    /// Replaces the active `:shortcode` token (or inserts at `selection`) with `candidate` and clears autocomplete.
+    public func pickEmoji(_ candidate: EmojiCandidate) {
+        let replacement = candidate.glyph.map { "\($0) " } ?? ":\(candidate.shortcode): "
+        let string = text as NSString
+        let targetRange: NSRange
+        if let active = emojiQueryRange,
+           active.location >= 0,
+           active.location + active.length <= string.length {
+            targetRange = active
+        } else if selection.location >= 0,
+                  selection.location + selection.length <= string.length {
+            targetRange = selection
+        } else {
+            targetRange = NSRange(location: string.length, length: 0)
+        }
+        replaceText(in: targetRange, with: replacement)
+        dismissEmojiAutocomplete()
+    }
+
+    /// Dismisses the `:shortcode:` autocomplete popover without altering composer text.
+    public func dismissEmojiAutocomplete() {
+        if let active = emojiQueryRange {
+            dismissedEmojiRange = active
+        }
+        emojiQuery = nil
+        emojiQueryRange = nil
+        emojiCandidates = []
+        selectedEmojiIndex = 0
+    }
+
+    /// Explicitly opens `:shortcode:` autocomplete at the current selection or presents the emoji picker.
+    public func openEmojiAutocomplete() {
+        isStickerPickerPresented = false
+        isGIFPickerPresented = false
+        dismissedEmojiRange = nil
+        let caret = min(max(selection.location, 0), (text as NSString).length)
+        if let found = shortcodeQuery(caret: caret, minLength: 1) {
+            emojiQueryRange = found.range
+            emojiQuery = found.text
+            emojiCandidates = EmojiCatalog.shared.search(found.text, custom: customEmojis, limit: 8)
+            selectedEmojiIndex = 0
+            isEmojiPickerPresented = false
+        } else {
+            isEmojiPickerPresented = false
+        }
     }
 
     /// Text set as a whole (the view's binding, a paste it reports as a whole): what changed is worked out from the
@@ -801,6 +1019,7 @@ public final class ComposerModel: ObservableObject {
     }
 
     private func applyEdit(range: NSRange, length: Int) {
+        dismissedEmojiRange = nil
         var updated = EntityEditing.replacing(entities, range: range, with: length)
         let caret = range.location + length
         if !pendingKinds.isEmpty {
@@ -816,17 +1035,81 @@ public final class ComposerModel: ObservableObject {
             }
         }
         // As the engine will check them: a block joined to the line before gives that line up, and so on.
-        entities = EntityEditing.fitted(updated, to: text as NSString)
+        let preEditString = text as NSString
+        let insertedEndsWithNewline = length > 0
+            && caret <= preEditString.length
+            && preEditString.substring(with: NSRange(location: range.location, length: length)).hasSuffix("\n")
+        var currentEntities = EntityEditing.fitted(updated, to: preEditString)
+        var effectiveCaret = caret
+
+        if !openingChat,
+           length > 0,
+           !(preferences?.disableEmoticonReplacement ?? false),
+           effectiveCaret <= preEditString.length {
+            let prefix = preEditString.substring(to: effectiveCaret)
+            if let match = EmojiCatalog.trailingEmoticonReplacement(in: prefix),
+               !currentEntities.contains(where: { [.code, .pre, .link].contains($0.kind) && Self.touches($0, match.range) }) {
+                let replaced = preEditString.replacingCharacters(in: match.range, with: match.replacement)
+                let glyphLength = (match.replacement as NSString).length
+                settingContents = true
+                text = replaced
+                settingContents = false
+                currentEntities = Self.adjustingEntitiesForEmoticon(
+                    currentEntities,
+                    replacing: match.range,
+                    with: glyphLength,
+                    in: replaced as NSString
+                )
+                let delta = glyphLength - match.range.length
+                effectiveCaret += delta
+                if !pendingKinds.isEmpty {
+                    pendingAt = effectiveCaret
+                }
+                caretSerial += 1
+                caretRequest = CaretRequest(location: effectiveCaret, serial: caretSerial)
+            }
+        }
+
+        entities = currentEntities
         if let continuing = continuingBlock {
             continuingBlock = nil
             let string = text as NSString
-            if range.location == continuing.at, length > 0, caret <= string.length,
-               string.substring(with: NSRange(location: range.location, length: length)).hasSuffix("\n") {
+            if range.location == continuing.at, insertedEndsWithNewline, effectiveCaret <= string.length {
                 pendingKinds = [continuing.kind]
-                pendingAt = caret
+                pendingAt = effectiveCaret
             }
         }
-        updateQueries(caret: caret)
+        selection = NSRange(location: effectiveCaret, length: 0)
+        updateQueries(caret: effectiveCaret)
+    }
+
+    private static func adjustingEntitiesForEmoticon(
+        _ entities: [TextEntity],
+        replacing range: NSRange,
+        with glyphLength: Int,
+        in text: NSString
+    ) -> [TextEntity] {
+        let start = range.location
+        let end = range.location + range.length
+        let delta = glyphLength - range.length
+        var adjusted: [TextEntity] = []
+        for var entity in entities {
+            let first = entity.offset
+            let last = entity.offset + entity.length
+            if last <= start {
+                // Entirely before the emoticon token.
+            } else if end <= first {
+                entity.offset += delta
+            } else if first <= start, end <= last, entity.kind != .mention {
+                entity.length += delta
+            } else {
+                continue
+            }
+            if entity.length > 0 {
+                adjusted.append(entity)
+            }
+        }
+        return EntityEditing.fitted(adjusted.sorted(by: TextEntity.precedes), to: text)
     }
 
     private func updateQueries(caret: Int) {
@@ -835,6 +1118,67 @@ public final class ComposerModel: ObservableObject {
             entities.contains { $0.kind == .mention && $0.offset == found.range.location } ? nil : found
         }
         quickReplyQuery = quickReplies == nil ? nil : query(marker: ";", caret: caret)
+        if preferences?.enableEmojiAutocomplete ?? true,
+           let found = shortcodeQuery(caret: caret, minLength: 2),
+           found.range != dismissedEmojiRange {
+            let previousQuery = emojiQuery
+            emojiQueryRange = found.range
+            emojiQuery = found.text
+            emojiCandidates = EmojiCatalog.shared.search(found.text, custom: customEmojis, limit: 8)
+            if previousQuery != found.text || selectedEmojiIndex >= emojiCandidates.count {
+                selectedEmojiIndex = 0
+            }
+        } else {
+            if shortcodeQuery(caret: caret, minLength: 2)?.range != dismissedEmojiRange {
+                dismissedEmojiRange = nil
+            }
+            emojiQuery = nil
+            emojiQueryRange = nil
+            emojiCandidates = []
+            selectedEmojiIndex = 0
+        }
+    }
+
+    /// Scans backwards from `caret` for a `:shortcode` token preceded by start-of-text or whitespace/newline,
+    /// outside `.code`, `.pre`, `.link` entities and inline backtick code spans.
+    private func shortcodeQuery(caret: Int, minLength: Int) -> (range: NSRange, text: String)? {
+        let string = text as NSString
+        guard caret > 0, caret <= string.length else { return nil }
+        var index = caret
+        while index > 0, caret - index <= 64 {
+            let piece = string.rangeOfComposedCharacterSequence(at: index - 1)
+            let character = string.substring(with: piece)
+            if character == ":" {
+                if piece.location > 0 {
+                    let before = string.substring(with: string.rangeOfComposedCharacterSequence(at: piece.location - 1))
+                    if !before.allSatisfy({ $0.isWhitespace || $0.isNewline }) { return nil }
+                }
+                let tokenRange = NSRange(location: piece.location, length: caret - piece.location)
+                if entities.contains(where: { [.code, .pre, .link].contains($0.kind) && Self.touches($0, tokenRange) }) {
+                    return nil
+                }
+                let prefixBeforeColon = string.substring(to: piece.location)
+                let backtickCount = prefixBeforeColon.reduce(into: 0) { count, ch in
+                    if ch == "`" { count += 1 }
+                }
+                if backtickCount % 2 != 0 { return nil }
+                let start = piece.location + piece.length
+                let shortcode = string.substring(with: NSRange(location: start, length: caret - start))
+                guard shortcode.count >= minLength else { return nil }
+                if EmojiCatalog.isEmoticon(":" + shortcode) {
+                    return nil
+                }
+                if shortcode.hasPrefix("-"), shortcode != "-1" {
+                    return nil
+                }
+                return (tokenRange, shortcode)
+            }
+            guard character.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" || $0 == "-" || $0 == "+" }) else {
+                return nil
+            }
+            index = piece.location
+        }
+        return nil
     }
 
     /// `marker` and the letters after it up to `caret`, when the marker starts the text or follows something that
@@ -980,11 +1324,16 @@ public final class ComposerModel: ObservableObject {
     public func startEditing(_ message: TimelineMessage) {
         guard message.mine, roomID != nil else { return }
         if isEditing { leaveEditing() }
+        isStickerPickerPresented = false
+        isGIFPickerPresented = false
+        isEmojiPickerPresented = false
+        dismissEmojiAutocomplete()
         stash = currentContents
         stashedMode = mode
         mode = .editing(eventID: message.id, original: message.rich)
         setContents(message.rich.text, message.rich.entities)
         attachments = []
+        pendingGIF = nil
         replyTarget = nil
         notices = []
     }
@@ -995,7 +1344,8 @@ public final class ComposerModel: ObservableObject {
     /// none; ↑ then does what it otherwise does.
     @discardableResult
     public func editLast(in items: [TimelineItem]) -> Bool {
-        guard preferences?.upArrow == .editLast, !isEditing, trimmedText.isEmpty, attachments.isEmpty, roomID != nil
+        guard preferences?.upArrow == .editLast, !isEditing, trimmedText.isEmpty, attachments.isEmpty,
+              pendingGIF == nil, roomID != nil
         else { return false }
         let time = now()
         for case let .message(message) in items.reversed() where message.mine {
@@ -1025,6 +1375,7 @@ public final class ComposerModel: ObservableObject {
         stash = Contents()
         setContents(kept.text, kept.entities)
         attachments = kept.attachments
+        pendingGIF = kept.pendingGIF
         replyTarget = kept.reply
     }
 
@@ -1078,14 +1429,14 @@ public final class ComposerModel: ObservableObject {
 
     // MARK: - Sending
 
-    /// There is something to send: some text that is not only spaces, or a file.
+    /// There is something to send: some text that is not only spaces, a file, or a staged GIF.
     public var canSend: Bool {
-        roomID != nil && sender != nil && (!trimmedText.isEmpty || !attachments.isEmpty)
+        roomID != nil && sender != nil && (!trimmedText.isEmpty || !attachments.isEmpty || pendingGIF != nil)
     }
 
-    /// There is text to send later, and nothing else: files and edits can't be scheduled.
+    /// There is text to send later, and nothing else: files, GIFs, and edits can't be scheduled.
     public var canSchedule: Bool {
-        roomID != nil && sender != nil && !isEditing && !trimmedText.isEmpty && attachments.isEmpty
+        roomID != nil && sender != nil && !isEditing && !trimmedText.isEmpty && attachments.isEmpty && pendingGIF == nil
     }
 
     private var trimmedText: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -1125,6 +1476,11 @@ public final class ComposerModel: ObservableObject {
         return millis
     }
 
+    /// Sends the composer's text, staged GIF, and files to the open chat and awaits completion.
+    public func send(archive: Bool = false) async {
+        await submit(archive: archive)?.value
+    }
+
     /// Sends the composer's text and files to the open chat and empties it; in edit mode, sends the edit instead.
     /// The task is done when everything has been handed to the engine (or refused, or not answered); the view does
     /// not wait for it. `archive` (⌘↩) archives the chat once it has all gone. Text longer than the chat takes is
@@ -1133,7 +1489,31 @@ public final class ComposerModel: ObservableObject {
     public func submit(archive: Bool = false) -> Task<Void, Never>? {
         guard !isScheduling else { return nil }
         if case let .editing(eventID, original) = mode { return submitEdit(of: eventID, original: original) }
-        if attachments.isEmpty, trimmedText == "/voice", roomID != nil {
+        if attachments.isEmpty, roomID != nil,
+           trimmedText == "/gif" || trimmedText.hasPrefix("/gif ") {
+            guard canSendGIF else {
+                let netName = NetworkNames.displayName(of: network)
+                    ?? (network.isEmpty ? String(localized: "this chat") : network)
+                notices = [
+                    .sendFailed(
+                        reason: String(
+                            format: String(localized: "GIFs are not supported on %@."),
+                            netName
+                        )
+                    ),
+                ]
+                return nil
+            }
+            let query = trimmedText == "/gif"
+                ? ""
+                : String(trimmedText.dropFirst("/gif ".count)).trimmingCharacters(in: .whitespacesAndNewlines)
+            stopTyping()
+            setContents("", [])
+            notices = []
+            _ = openGIFPicker(query: query)
+            return nil
+        }
+        if attachments.isEmpty, pendingGIF == nil, trimmedText == "/voice", roomID != nil {
             stopTyping()
             setContents("", [])
             notices = []
@@ -1141,7 +1521,7 @@ public final class ComposerModel: ObservableObject {
                 await self?.startVoiceRecording()
             }
         }
-        if attachments.isEmpty, features.locationSupported,
+        if attachments.isEmpty, pendingGIF == nil, features.locationSupported,
            let coordinate = GeoCoordinate.parseLocationCommand(trimmedText),
            let room = roomID, let sender {
             let reply = replyTarget
@@ -1163,18 +1543,38 @@ public final class ComposerModel: ObservableObject {
             }
         }
         guard canSend, let room = roomID, let sender else { return nil }
+        if pendingGIF != nil, !canSendGIF {
+            let netName = NetworkNames.displayName(of: network)
+                ?? (network.isEmpty ? String(localized: "this chat") : network)
+            notices = [
+                .sendFailed(
+                    reason: String(
+                        format: String(localized: "GIFs are not supported on %@."),
+                        netName
+                    )
+                ),
+            ]
+            return nil
+        }
         let rich = outgoingText
         guard fitsChat(rich.text) else {
             notices = [.textTooLong]
             return nil
         }
-        let draft = Contents(text: rich.text, entities: rich.entities, attachments: attachments, reply: replyTarget)
+        let draft = Contents(
+            text: rich.text,
+            entities: rich.entities,
+            attachments: attachments,
+            pendingGIF: pendingGIF,
+            reply: replyTarget
+        )
         let thread = threadRoot
         let hold = holdMillis
         let disableLinkPreview = preferences?.disableOutgoingLinkPreviews
         stopTyping() // the engine stops typing for a send too (C8); this ends the composer's own pulses
         setContents("", [])
         attachments = []
+        pendingGIF = nil
         replyTarget = nil
         notices = []
         onSubmit()
@@ -1239,6 +1639,451 @@ public final class ComposerModel: ObservableObject {
         await task.value
     }
 
+    // MARK: - Stickers
+
+    private nonisolated static let allowedStickerExtensions: Set<String> = [
+        "png", "webp", "gif", "apng", "jpg", "jpeg",
+    ]
+    private nonisolated static let allowedGIFExtensions: Set<String> = [
+        "gif", "mp4", "m4v",
+    ]
+
+    /// Whether the open chat allows sending stickers according to the engine's `room.features`.
+    public var canSendSticker: Bool {
+        guard roomID != nil, !isEditing else { return false }
+        return features.source == .none || features.sticker.supported
+    }
+
+    /// Whether the open chat allows sending GIFs according to the engine's `room.features`.
+    public var canSendGIF: Bool {
+        guard roomID != nil, !isEditing else { return false }
+        return features.source == .none || features.gif.supported
+    }
+
+    /// Title for the Message menu's "Send Sticker…" item, including `"%1$@ (Unavailable for %2$@)"` when unsupported.
+    public var sendStickerMenuTitle: String {
+        guard roomID != nil, !isEditing else { return String(localized: "Send Sticker…") }
+        guard canSendSticker else {
+            return FormattingBar.unavailable(String(localized: "Send Sticker"), features: features, network: network)
+        }
+        return String(localized: "Send Sticker…")
+    }
+
+    /// Title for the Message menu's "Send GIF…" item, including `"%1$@ (Unavailable for %2$@)"` when unsupported.
+    public var sendGIFMenuTitle: String {
+        guard roomID != nil, !isEditing else { return String(localized: "Send GIF…") }
+        guard canSendGIF else {
+            return FormattingBar.unavailable(String(localized: "Send GIF"), features: features, network: network)
+        }
+        return String(localized: "Send GIF…")
+    }
+
+    /// Title for the composer `+` menu's "Add Sticker…" item, including `"%1$@ (Unavailable for %2$@)"` when unsupported.
+    public var addStickerMenuTitle: String {
+        guard roomID != nil, !isEditing else { return String(localized: "Add Sticker…") }
+        guard canSendSticker else {
+            return FormattingBar.unavailable(String(localized: "Add Sticker…"), features: features, network: network)
+        }
+        return String(localized: "Add Sticker…")
+    }
+
+    /// Title for the composer `+` menu's "Add GIF…" item, including `"%1$@ (Unavailable for %2$@)"` when unsupported.
+    public var addGIFMenuTitle: String {
+        guard roomID != nil, !isEditing else { return String(localized: "Add GIF…") }
+        guard canSendGIF else {
+            return FormattingBar.unavailable(String(localized: "Add GIF…"), features: features, network: network)
+        }
+        return String(localized: "Add GIF…")
+    }
+
+    /// Opens the sticker picker popover when the open chat supports stickers.
+    @discardableResult
+    public func openStickerPicker() -> Bool {
+        guard canSendSticker else { return false }
+        isGIFPickerPresented = false
+        isEmojiPickerPresented = false
+        dismissEmojiAutocomplete()
+        isStickerPickerPresented = true
+        return true
+    }
+
+    /// Opens the GIF picker popover when the open chat supports GIFs.
+    @discardableResult
+    public func openGIFPicker(query: String? = nil) -> Bool {
+        guard canSendGIF else { return false }
+        isStickerPickerPresented = false
+        isEmojiPickerPresented = false
+        dismissEmojiAutocomplete()
+        if let query {
+            gifSearchQuery = query
+        }
+        isGIFPickerPresented = true
+        return true
+    }
+
+    /// Clears a staged pending GIF from the composer.
+    public func removePendingGIF() {
+        pendingGIF = nil
+    }
+
+    /// Selects a GIF from `GIFPickerPopover`: sends immediately when `preferences.autoSendGIFs == true`,
+    /// or stages `pendingGIF` on the composer so the user can add a caption and press Return.
+    public func selectGIF(_ item: StickerItemWire) async {
+        guard roomID != nil, sender != nil else { return }
+        isGIFPickerPresented = false
+        guard canSendGIF else {
+            let netName = NetworkNames.displayName(of: network)
+                ?? (network.isEmpty ? String(localized: "this chat") : network)
+            notices = [
+                .sendFailed(
+                    reason: String(
+                        format: String(localized: "GIFs are not supported on %@."),
+                        netName
+                    )
+                ),
+            ]
+            return
+        }
+        notices = []
+        if preferences?.autoSendGIFs == true {
+            await sendGIFImmediately(item)
+        } else {
+            pendingGIF = item
+        }
+    }
+
+    /// Validates a local `.gif` or `.mp4` file and either sends it immediately (`autoSendGIFs == true`) or stages `pendingGIF`.
+    public func sendGIFFile(url: URL) async {
+        guard url.isFileURL else { return }
+        let fileName = url.lastPathComponent
+        guard let info = fileInfo(url) else {
+            notices = [.cannotRead(fileName: fileName)]
+            return
+        }
+        guard info.isRegularFile else {
+            notices = [.notAFile(fileName: fileName)]
+            return
+        }
+        guard info.size <= Self.maxAttachmentBytes else {
+            notices = [.attachmentTooLarge(fileName: fileName)]
+            return
+        }
+        let ext = url.pathExtension.lowercased()
+        guard Self.allowedGIFExtensions.contains(ext) else {
+            notices = [.sendFailed(reason: String(localized: "GIFs must be GIF or MP4 files."))]
+            return
+        }
+        let mimeType = (ext == "gif") ? "image/gif" : "video/mp4"
+        let item = StickerItemWire(
+            id: "file:\(url.path)",
+            packID: "local_gif",
+            name: fileName,
+            mediaURL: url.path,
+            mimeType: mimeType,
+            usage: ["gif"]
+        )
+        await selectGIF(item)
+    }
+
+    private func sendGIFImmediately(_ item: StickerItemWire) async {
+        guard let room = roomID, let sender else { return }
+        let reply = replyTarget
+        let thread = threadRoot
+        let hold = holdMillis
+        replyTarget = nil
+        notices = []
+        stopTyping()
+        onSubmit()
+
+        let params = Self.makeSendGIFParams(
+            roomID: room,
+            item: item,
+            caption: nil,
+            replyTo: reply?.eventID,
+            threadRoot: thread,
+            holdMS: hold
+        )
+
+        let task = enqueue(in: room) { [weak self] in
+            do {
+                let eventID = try await sender.sendGIF(params)
+                if hold > 0 {
+                    let copy = HeldCopy(gif: item, reply: reply, threadRoot: thread)
+                    self?.held.add(eventID, in: room, copy: copy, holdMillis: hold)
+                }
+                self?.onSent(room, eventID)
+            } catch {
+                guard let self else { return }
+                if self.roomID == room, self.replyTarget == nil {
+                    self.replyTarget = reply
+                }
+                switch Self.classify(
+                    error,
+                    network: self.network,
+                    maxSizeBytes: self.features.gif.maxSize
+                        ?? self.features.videoFeatures?.maxSize
+                        ?? self.features.imageFeatures?.maxSize
+                        ?? self.features.fileFeatures?.maxSize
+                ) {
+                case let .refused(reason):
+                    self.show([.sendFailed(reason: reason)], in: room)
+                case .unanswered:
+                    self.show([.noAnswer], in: room)
+                }
+            }
+            self?.onSettled()
+        }
+        await task.value
+    }
+
+    private static func makeSendGIFParams(
+        roomID: String,
+        item: StickerItemWire,
+        caption: String?,
+        replyTo: String?,
+        threadRoot: String?,
+        holdMS: Int
+    ) -> MessageSendGIFParams {
+        let path: String?
+        let mediaURL: String?
+        if item.mediaURL.hasPrefix("file://") {
+            path = URL(string: item.mediaURL)?.path
+            mediaURL = nil
+        } else if item.mediaURL.hasPrefix("/") {
+            path = item.mediaURL
+            mediaURL = nil
+        } else {
+            path = nil
+            mediaURL = item.mediaURL
+        }
+        let nonEmptyCaption = (caption?.isEmpty == false) ? caption : nil
+        return MessageSendGIFParams(
+            roomID: roomID,
+            path: path,
+            mediaURL: mediaURL,
+            caption: nonEmptyCaption,
+            replyTo: replyTo,
+            threadRoot: threadRoot,
+            holdMS: holdMS > 0 ? holdMS : nil
+        )
+    }
+
+    /// Populates the sticker and recent GIF catalog directly for snapshot and unit tests.
+    public func setStickerCatalogForTesting(packs: [StickerPackWire], recentGIFs: [StickerItemWire] = []) {
+        stickerLoadGeneration += 1
+        initialStickerLoadStarted = true
+        applyStickerCatalog(StickersListResult(packs: packs, recentGIFs: recentGIFs))
+    }
+
+    /// Loads installed and bridge sticker packs plus recent GIFs from the engine (`stickers.list`).
+    public func loadStickers(refresh: Bool = false) async {
+        guard let sender else { return }
+        stickerLoadGeneration += 1
+        let generation = stickerLoadGeneration
+        guard let result = try? await sender.listStickers(refreshBridgePacks: refresh) else { return }
+        guard stickerLoadGeneration == generation else { return }
+        applyStickerCatalog(result)
+    }
+
+    private func applyStickerCatalog(_ result: StickersListResult) {
+        stickerPacks = result.packs
+        recentGIFs = result.recentGIFs
+        if !result.packs.contains(where: { $0.id == selectedStickerPackID }) {
+            selectedStickerPackID = result.packs.first?.id ?? "recent"
+        }
+        rebuildCustomEmojisFromPacks()
+    }
+
+    private func rebuildCustomEmojisFromPacks() {
+        var seen = Set<String>()
+        var merged: [EmojiCandidate] = []
+        for pack in stickerPacks {
+            for item in pack.items {
+                guard let raw = item.shortcode?.trimmingCharacters(in: CharacterSet(charactersIn: ": \t\n")),
+                      !raw.isEmpty,
+                      item.usage.contains("emoticon") || pack.id == "imported"
+                else { continue }
+                let key = raw.lowercased()
+                guard seen.insert(key).inserted else { continue }
+                merged.append(
+                    EmojiCandidate(
+                        id: item.mediaURL,
+                        shortcode: raw,
+                        glyph: nil,
+                        mediaURL: item.mediaURL,
+                        isCustom: true
+                    )
+                )
+            }
+        }
+        customEmojis = merged
+        if emojiQuery != nil {
+            updateQueries(caret: selection.location)
+        }
+    }
+
+    /// Validates a local image file and imports it into the engine's sticker/emoji catalog (`stickers.import`).
+    public func importSticker(from url: URL, shortcode: String? = nil) async {
+        guard let sender, url.isFileURL else { return }
+        let fileName = url.lastPathComponent
+        guard let info = fileInfo(url) else {
+            notices = [.cannotRead(fileName: fileName)]
+            return
+        }
+        guard info.isRegularFile else {
+            notices = [.notAFile(fileName: fileName)]
+            return
+        }
+        guard info.size <= Self.maxAttachmentBytes else {
+            notices = [.attachmentTooLarge(fileName: fileName)]
+            return
+        }
+        let ext = url.pathExtension.lowercased()
+        guard Self.allowedStickerExtensions.contains(ext) else {
+            notices = [.importFailed(reason: String(localized: "Stickers must be PNG, WebP, GIF, or JPEG images."))]
+            return
+        }
+
+        let cleanShortcode = shortcode?.trimmingCharacters(in: CharacterSet(charactersIn: ": \t\n"))
+        let nonEmptyShortcode = (cleanShortcode?.isEmpty == false) ? cleanShortcode : nil
+        let usage = nonEmptyShortcode != nil ? ["emoticon", "sticker"] : ["sticker"]
+        let stem = url.deletingPathExtension().lastPathComponent
+        let itemName = nonEmptyShortcode ?? (stem.isEmpty ? "Sticker" : stem)
+        let params = StickersImportParams(
+            path: url.path,
+            shortcode: nonEmptyShortcode,
+            name: itemName,
+            emoji: nil,
+            usage: usage
+        )
+
+        do {
+            let imported = try await sender.importSticker(params)
+            notices = []
+            upsertImportedSticker(imported)
+        } catch {
+            let reason = EngineErrorText.text(
+                for: error,
+                network: network.isEmpty ? nil : network,
+                maxSizeBytes: Self.maxAttachmentBytes,
+                fallback: ""
+            )
+            if let room = roomID {
+                show([.importFailed(reason: reason)], in: room)
+            } else {
+                notices = [.importFailed(reason: reason)]
+            }
+        }
+    }
+
+    private func upsertImportedSticker(_ imported: StickerItemWire) {
+        if stickerPacks.isEmpty {
+            stickerPacks = [
+                StickerPackWire(id: "recent", title: "Recent", source: "recent", items: []),
+                StickerPackWire(id: "imported", title: "Imported", source: "imported", items: [imported]),
+            ]
+            selectedStickerPackID = "imported"
+        } else if let idx = stickerPacks.firstIndex(where: { $0.id == "imported" }) {
+            var pack = stickerPacks[idx]
+            if let existing = pack.items.firstIndex(where: {
+                $0.id == imported.id || (imported.shortcode != nil && $0.shortcode == imported.shortcode)
+            }) {
+                pack.items[existing] = imported
+            } else {
+                pack.items.append(imported)
+            }
+            stickerPacks[idx] = pack
+        } else {
+            stickerPacks.append(
+                StickerPackWire(id: "imported", title: "Imported", source: "imported", items: [imported])
+            )
+        }
+        rebuildCustomEmojisFromPacks()
+    }
+
+    /// Sends a sticker to the open chat (`message.sendSticker`), respecting the room's sticker capability and undo-send hold.
+    public func sendSticker(_ item: StickerItemWire) async {
+        guard let room = roomID, let sender else { return }
+        isStickerPickerPresented = false
+        guard features.source == .none || features.sticker.supported else {
+            let netName = NetworkNames.displayName(of: network)
+                ?? (network.isEmpty ? String(localized: "this chat") : network)
+            notices = [
+                .sendFailed(
+                    reason: String(
+                        format: String(localized: "Stickers are not supported on %@."),
+                        netName
+                    )
+                ),
+            ]
+            return
+        }
+
+        let reply = replyTarget
+        let thread = threadRoot
+        let hold = holdMillis
+        replyTarget = nil
+        notices = []
+        stopTyping()
+        onSubmit()
+
+        let path: String?
+        let mediaURL: String?
+        if item.mediaURL.hasPrefix("file://") {
+            path = URL(string: item.mediaURL)?.path
+            mediaURL = nil
+        } else if item.mediaURL.hasPrefix("/") {
+            path = item.mediaURL
+            mediaURL = nil
+        } else {
+            path = nil
+            mediaURL = item.mediaURL
+        }
+
+        let params = MessageSendStickerParams(
+            roomID: room,
+            path: path,
+            mediaURL: mediaURL,
+            name: item.name.isEmpty ? nil : item.name,
+            emoji: (item.emoji?.isEmpty == false) ? item.emoji : nil,
+            mimeType: item.mimeType.isEmpty ? nil : item.mimeType,
+            bridgedSticker: item.bridgedSticker,
+            replyTo: reply?.eventID,
+            threadRoot: thread,
+            holdMS: hold > 0 ? hold : nil
+        )
+
+        let task = enqueue(in: room) { [weak self] in
+            do {
+                let eventID = try await sender.sendSticker(params)
+                if hold > 0 {
+                    let copy = HeldCopy( isSticker: true, reply: reply, threadRoot: thread)
+                    self?.held.add(eventID, in: room, copy: copy, holdMillis: hold)
+                }
+                self?.onSent(room, eventID)
+            } catch {
+                guard let self else { return }
+                if self.roomID == room, self.replyTarget == nil {
+                    self.replyTarget = reply
+                }
+                switch Self.classify(
+                    error,
+                    network: self.network,
+                    maxSizeBytes: self.features.sticker.maxSize
+                        ?? self.features.imageFeatures?.maxSize
+                        ?? self.features.fileFeatures?.maxSize
+                ) {
+                case let .refused(reason):
+                    self.show([.sendFailed(reason: reason)], in: room)
+                case .unanswered:
+                    self.show([.noAnswer], in: room)
+                }
+            }
+            self?.onSettled()
+        }
+        await task.value
+    }
+
     /// Runs `work` after the chat's sends before it, so a chat's messages and edits go in the order given.
     private func enqueue(in room: String, _ work: @escaping @MainActor () async -> Void) -> Task<Void, Never> {
         let previous = queues[room]?.task
@@ -1286,7 +2131,7 @@ public final class ComposerModel: ObservableObject {
     }
 
     private func refusedEdit(_ eventID: String, original: RichText, rich: RichText, in room: String, reason: String) {
-        if room == roomID, mode == .new || threadRoot != nil, trimmedText.isEmpty, attachments.isEmpty {
+        if room == roomID, mode == .new || threadRoot != nil, trimmedText.isEmpty, attachments.isEmpty, pendingGIF == nil {
             stash = currentContents
             stashedMode = mode
             mode = .editing(eventID: eventID, original: original)
@@ -1344,7 +2189,12 @@ public final class ComposerModel: ObservableObject {
                          disableLinkPreview: Bool? = nil, archive: Bool,
                          with sender: MessageSending) async {
         var items: [Outgoing] = []
-        if !draft.text.isEmpty { items.append(.text(RichText(text: draft.text, entities: draft.entities))) }
+        if let gifItem = draft.pendingGIF {
+            let caption = draft.text.isEmpty ? nil : RichText(text: draft.text, entities: draft.entities)
+            items.append(.gif(gifItem, caption: caption))
+        } else if !draft.text.isEmpty {
+            items.append(.text(RichText(text: draft.text, entities: draft.entities)))
+        }
         items += draft.attachments.map(Outgoing.file)
         var reply = draft.reply
 
@@ -1359,6 +2209,23 @@ public final class ComposerModel: ObservableObject {
                                                     threadRoot: thread, holdMillis: hold,
                                                     disableLinkPreview: disableLinkPreview)
                     copy = HeldCopy(text: rich.text, entities: rich.entities, reply: reply, threadRoot: thread)
+                case let .gif(gifItem, caption):
+                    let params = Self.makeSendGIFParams(
+                        roomID: room,
+                        item: gifItem,
+                        caption: caption?.text,
+                        replyTo: reply?.eventID,
+                        threadRoot: thread,
+                        holdMS: hold
+                    )
+                    eventID = try await sender.sendGIF(params)
+                    copy = HeldCopy(
+                        text: caption?.text ?? "",
+                        entities: caption?.entities ?? [],
+                        gif: gifItem,
+                        reply: reply,
+                        threadRoot: thread
+                    )
                 case let .file(file):
                     eventID = try await sender.sendFile(roomID: room, url: file.url, size: file.size,
                                                         replyTo: reply?.eventID, threadRoot: thread, holdMillis: hold)
@@ -1369,9 +2236,15 @@ public final class ComposerModel: ObservableObject {
                 reply = nil
             } catch {
                 let itemMaxSize: Int64?
-                if case let .file(file) = item {
+                switch item {
+                case let .file(file):
                     itemMaxSize = self.maxFileSize(for: file.url)
-                } else {
+                case .gif:
+                    itemMaxSize = self.features.gif.maxSize
+                        ?? self.features.videoFeatures?.maxSize
+                        ?? self.features.imageFeatures?.maxSize
+                        ?? self.features.fileFeatures?.maxSize
+                case .text:
                     itemMaxSize = nil
                 }
                 switch Self.classify(error, network: self.network, maxSizeBytes: itemMaxSize) {
@@ -1406,6 +2279,12 @@ public final class ComposerModel: ObservableObject {
             case let .text(rich):
                 unsent.text = rich.text
                 unsent.entities = rich.entities
+            case let .gif(gifItem, caption):
+                unsent.pendingGIF = gifItem
+                if let caption {
+                    unsent.text = caption.text
+                    unsent.entities = caption.entities
+                }
             case let .file(file): unsent.attachments.append(file)
             }
         }
@@ -1567,6 +2446,7 @@ public final class ComposerModel: ObservableObject {
     private func restoreUndone(_ undone: HeldCopy, in room: String) {
         var current = room == roomID ? openContents : (drafts[room] ?? Contents())
         (current.text, current.entities) = Self.join((current.text, current.entities), (undone.text, undone.entities))
+        current.pendingGIF = current.pendingGIF ?? undone.gif
         current.reply = current.reply ?? undone.reply
         var leftOut: [String] = []
         if let file = undone.attachment {

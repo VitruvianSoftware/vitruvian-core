@@ -86,7 +86,7 @@
         "delete_leaves_group": false,
         "image_features": {
           "supported": true,
-          "mime_types": ["image/jpeg", "image/png"],
+          "mime_types": ["image/gif", "image/jpeg", "image/png"],
           "caption": true,
           "max_caption_length": 1024,
           "max_size": 104857600
@@ -103,6 +103,32 @@
           "mime_types": ["*/*"],
           "caption": true,
           "max_size": 104857600
+        },
+        "gif_features": {
+          "supported": true,
+          "mime_types": ["video/mp4"],
+          "caption": true,
+          "max_caption_length": 1024,
+          "max_size": 16777216
+        },
+        "sticker_features": {
+          "supported": true,
+          "mime_types": ["image/png", "image/webp"],
+          "caption": false,
+          "max_size": 16777216
+        },
+        "sticker": {
+          "supported": true,
+          "mime_types": ["image/png", "image/webp"],
+          "captions": false,
+          "max_size": 16777216
+        },
+        "gif": {
+          "supported": true,
+          "mime_types": ["video/mp4"],
+          "captions": true,
+          "max_caption_length": 1024,
+          "max_size": 16777216
         },
         "location_supported": true,
         "link_previews_supported": true

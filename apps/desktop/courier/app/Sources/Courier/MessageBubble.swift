@@ -505,18 +505,26 @@ struct MessageRowView: View {
             // The message reads as one line to VoiceOver; "Edited" is a button of its own beside it, and a poll's
             // options stay buttons.
             VStack(alignment: .leading, spacing: 5) {
-                if let reply = message.reply { QuoteView(reply: reply, onBubble: message.mine) }
+                if let reply = message.reply {
+                    QuoteView(reply: reply, onBubble: message.mine && !message.suppressesBubbleBackground)
+                        .padding(.horizontal, message.suppressesBubbleBackground ? 8 : 0)
+                        .padding(.vertical, message.suppressesBubbleBackground ? 4 : 0)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(message.suppressesBubbleBackground ? Color.primary.opacity(0.08) : .clear)
+                        )
+                }
                 content
                 if message.kind != .deleted && message.kind != .undecryptable {
                     ForEach(Array(message.linkPreviews.enumerated()), id: \.offset) { _, preview in
-                        LinkPreviewCardView(preview: preview, onBubble: message.mine)
+                        LinkPreviewCardView(preview: preview, onBubble: message.mine && !message.suppressesBubbleBackground)
                     }
                     if let embed = ExternalEmbedDescriptor.first(in: message) {
                         EmbedConsentCard(
                             messageID: message.id,
                             descriptor: embed,
                             isLoaded: actions.loadExternalEmbedsAutomatically || ui.loadedEmbeds.contains(message.id),
-                            onBubble: message.mine,
+                            onBubble: message.mine && !message.suppressesBubbleBackground,
                             onLoadEmbed: { ui.loadedEmbeds.insert(message.id) }
                         )
                     }
@@ -528,8 +536,8 @@ struct MessageRowView: View {
             if message.isEdited { editedButton }
         }
         .foregroundStyle(foreground)
-        .padding(.horizontal, message.kind == .image || message.kind == .sticker || message.kind == .video ? 4 : 11)
-        .padding(.vertical, message.kind == .image || message.kind == .sticker || message.kind == .video ? 4 : 7)
+        .padding(.horizontal, message.suppressesBubbleBackground ? 2 : (message.kind == .image || message.kind == .sticker || message.kind == .video ? 4 : 11))
+        .padding(.vertical, message.suppressesBubbleBackground ? 2 : (message.kind == .image || message.kind == .sticker || message.kind == .video ? 4 : 7))
         .background(RoundedRectangle(cornerRadius: 14).fill(fill))
         .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(isFailed ? Color.red : .clear, lineWidth: 1))
         // Held for undo send: dimmed until it goes.
@@ -579,24 +587,51 @@ struct MessageRowView: View {
                 Label(String(localized: "Waiting for this message to be decrypted"), systemImage: "lock")
                     .font(.callout.italic())
                     .foregroundStyle(foreground.opacity(0.75))
-            case .image, .sticker:
-                EnhancedImageView(message: message, onOpenLightbox: actions.openLightbox)
-                caption
+            case .sticker:
+                if let sticker = message.sticker {
+                    StickerAttachmentView(message: message, sticker: sticker, onOpenLightbox: actions.openLightbox)
+                } else {
+                    EnhancedImageView(message: message, onOpenLightbox: actions.openLightbox)
+                    caption
+                }
+            case .image:
+                if let gif = message.gif {
+                    GIFAttachmentView(
+                        message: message,
+                        gif: gif,
+                        onPopOutPiP: { actions.popOutPiP(message) },
+                        onOpenLightbox: actions.openLightbox
+                    )
+                    caption
+                } else {
+                    EnhancedImageView(message: message, onOpenLightbox: actions.openLightbox)
+                    caption
+                }
             case .video:
-                InlineVideoPlayer(
-                    messageID: message.id,
-                    roomID: message.roomID,
-                    mediaPath: message.mediaPath,
-                    thumbnailPath: message.thumbnailPath,
-                    blurhash: message.blurhash,
-                    width: message.width,
-                    height: message.height,
-                    durationMS: message.durationMS,
-                    isGIF: message.isGIF,
-                    onPopOutPiP: { actions.popOutPiP(message) },
-                    onOpenLightbox: { actions.openLightbox(message.id) }
-                )
-                caption
+                if let gif = message.gif {
+                    GIFAttachmentView(
+                        message: message,
+                        gif: gif,
+                        onPopOutPiP: { actions.popOutPiP(message) },
+                        onOpenLightbox: actions.openLightbox
+                    )
+                    caption
+                } else {
+                    InlineVideoPlayer(
+                        messageID: message.id,
+                        roomID: message.roomID,
+                        mediaPath: message.mediaPath,
+                        thumbnailPath: message.thumbnailPath,
+                        blurhash: message.blurhash,
+                        width: message.width,
+                        height: message.height,
+                        durationMS: message.durationMS,
+                        isGIF: message.isGIF,
+                        onPopOutPiP: { actions.popOutPiP(message) },
+                        onOpenLightbox: { actions.openLightbox(message.id) }
+                    )
+                    caption
+                }
             case .voiceNote:
                 VoiceNoteView(
                     message: message,
@@ -644,7 +679,7 @@ struct MessageRowView: View {
     @ViewBuilder
     private var caption: some View {
         if !message.rich.text.isEmpty {
-            RichTextView(rich: message.rich, onBubble: message.mine, revealed: ui.revealedBinding(message.id),
+            RichTextView(rich: message.rich, onBubble: message.mine && !message.suppressesBubbleBackground, revealed: ui.revealedBinding(message.id),
                          now: actions.now())
                 .padding(.horizontal, message.kind == .image || message.kind == .sticker || message.kind == .video ? 7 : 0)
                 .padding(.bottom, message.kind == .image || message.kind == .sticker || message.kind == .video ? 3 : 0)
@@ -652,11 +687,13 @@ struct MessageRowView: View {
     }
 
     private var fill: Color {
+        if message.suppressesBubbleBackground { return .clear }
         if message.kind == .deleted || message.kind == .undecryptable { return Color.primary.opacity(0.06) }
         return message.mine ? Color.accentColor : Color.primary.opacity(0.09)
     }
 
     private var foreground: Color {
+        if message.suppressesBubbleBackground { return .primary }
         if message.kind == .deleted || message.kind == .undecryptable { return .secondary }
         return message.mine ? .white : .primary
     }
@@ -942,5 +979,324 @@ enum LinkedText {
         }
         cache.setObject(Box(result), forKey: cacheKey)
         return result
+    }
+}
+
+/// AppKit `NSImageView` wrapper with transparent background and Reduce Motion-aware animation control.
+private struct BorderlessAnimatedNSImageView: NSViewRepresentable {
+    let image: NSImage
+    let animates: Bool
+    let scaling: NSImageScaling
+
+    func makeNSView(context _: Context) -> NSImageView {
+        let view = NSImageView()
+        view.imageFrameStyle = .none
+        view.wantsLayer = true
+        view.layer?.backgroundColor = NSColor.clear.cgColor
+        view.imageScaling = scaling
+        view.animates = animates
+        view.canDrawSubviewsIntoLayer = true
+        view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        view.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+        view.image = image
+        return view
+    }
+
+    func updateNSView(_ nsView: NSImageView, context _: Context) {
+        nsView.imageFrameStyle = .none
+        nsView.layer?.backgroundColor = NSColor.clear.cgColor
+        nsView.imageScaling = scaling
+        nsView.image = image
+        nsView.animates = animates
+    }
+}
+
+/// Borderless sticker attachment view (`StickerAttachment.tsx`): renders up to `160×160 pt` preserving aspect ratio
+/// on a transparent background with no message bubble, resolves local media via `ThumbnailLoader.resolveMediaPath`,
+/// and pauses animated stickers when macOS Reduce Motion is enabled.
+public struct StickerAttachmentView: View {
+    public static let maxDimension: CGFloat = 160
+
+    public let message: TimelineMessage
+    public let sticker: StickerAttachment
+    public var onOpenLightbox: (String) -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    @State private var loadedNSImage: NSImage?
+    @State private var asyncCGImage: CGImage?
+
+    public init(
+        message: TimelineMessage,
+        sticker: StickerAttachment,
+        onOpenLightbox: @escaping (String) -> Void = { _ in }
+    ) {
+        self.message = message
+        self.sticker = sticker
+        self.onOpenLightbox = onOpenLightbox
+    }
+
+    /// Computes a proportional sticker frame constrained to `160×160 pt`.
+    public static func displaySize(width: Int?, height: Int?) -> CGSize {
+        guard let width, let height, width > 0, height > 0 else {
+            return CGSize(width: 128, height: 128)
+        }
+        let scale = min(1.0, maxDimension / CGFloat(max(width, height)))
+        return CGSize(
+            width: max(48, (CGFloat(width) * scale).rounded()),
+            height: max(48, (CGFloat(height) * scale).rounded())
+        )
+    }
+
+    /// Returns whether animated sticker frames should play given the macOS Reduce Motion setting.
+    public static func shouldAnimate(reduceMotion: Bool) -> Bool {
+        !reduceMotion
+    }
+
+    /// Resolves the local file path for a sticker attachment using `ThumbnailLoader.resolveMediaPath`.
+    public static func resolveLocalPath(
+        message: TimelineMessage,
+        sticker: StickerAttachment,
+        dataDirectory: URL = EngineLocation.dataDirectory()
+    ) -> String? {
+        for candidate in [message.mediaPath, sticker.mediaURL, message.thumbnailPath] {
+            if let path = ThumbnailLoader.resolveMediaPath(candidate, dataDirectory: dataDirectory),
+               !path.isEmpty {
+                return path
+            }
+        }
+        return nil
+    }
+
+    private var frameSize: CGSize {
+        Self.displaySize(width: sticker.width ?? message.width, height: sticker.height ?? message.height)
+    }
+
+    private var resolvedPath: String? {
+        Self.resolveLocalPath(message: message, sticker: sticker)
+    }
+
+    private var reduceMotionEnabled: Bool {
+        accessibilityReduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+
+    public var body: some View {
+        let size = frameSize
+        let animate = Self.shouldAnimate(reduceMotion: reduceMotionEnabled)
+        ZStack {
+            if let nsImage = loadedNSImage {
+                BorderlessAnimatedNSImageView(
+                    image: nsImage,
+                    animates: animate,
+                    scaling: .scaleProportionallyUpOrDown
+                )
+                .frame(width: size.width, height: size.height)
+            } else if let cgImage = asyncCGImage {
+                Image(decorative: cgImage, scale: 2.0, orientation: .up)
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
+                    .frame(width: size.width, height: size.height)
+            } else {
+                VStack(spacing: 4) {
+                    if let emoji = sticker.emoji, !emoji.isEmpty {
+                        Text(verbatim: emoji)
+                            .font(.system(size: 52))
+                    } else {
+                        Image(systemName: "face.smiling")
+                            .font(.system(size: 36, weight: .medium))
+                            .foregroundStyle(.secondary)
+                    }
+                    if !sticker.name.isEmpty {
+                        Text(sticker.name)
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(Color.primary.opacity(0.08)))
+                    }
+                }
+                .frame(width: size.width, height: size.height)
+            }
+        }
+        .frame(width: size.width, height: size.height)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard resolvedPath != nil else { return }
+            onOpenLightbox(message.id)
+        }
+        .task(id: resolvedPath) {
+            guard loadedNSImage == nil,
+                  asyncCGImage == nil,
+                  let path = resolvedPath else { return }
+            let decoded = await Task.detached(priority: .utility) { () -> NSImage? in
+                guard FileManager.default.fileExists(atPath: path) else { return nil }
+                return NSImage(contentsOfFile: path)
+            }.value
+            if let decoded {
+                loadedNSImage = decoded
+            } else {
+                asyncCGImage = await ThumbnailLoader.shared.thumbnail(atPath: path)?.image
+            }
+        }
+        .help(sticker.name.isEmpty ? String(localized: "Sticker") : sticker.name)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(sticker.name.isEmpty ? String(localized: "Sticker") : sticker.name)
+        .accessibilityAddTraits(.isImage)
+    }
+}
+
+/// Looping GIF attachment view (`GIFAttachment.tsx` / `GifVideo.tsx`): renders inside a rounded `12 pt` media frame
+/// with a top-leading `"GIF"` pill badge, loops silently, resolves local media via `ThumbnailLoader.resolveMediaPath`,
+/// and pauses when macOS Reduce Motion is enabled.
+public struct GIFAttachmentView: View {
+    public static let cornerRadius: CGFloat = 12
+
+    public let message: TimelineMessage
+    public let gif: GIFAttachment
+    public var onPopOutPiP: () -> Void
+    public var onOpenLightbox: (String) -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    @State private var loadedNSImage: NSImage?
+    @State private var asyncCGImage: CGImage?
+    @State private var loadFailed = false
+
+    public init(
+        message: TimelineMessage,
+        gif: GIFAttachment,
+        onPopOutPiP: @escaping () -> Void = {},
+        onOpenLightbox: @escaping (String) -> Void = { _ in }
+    ) {
+        self.message = message
+        self.gif = gif
+        self.onPopOutPiP = onPopOutPiP
+        self.onOpenLightbox = onOpenLightbox
+    }
+
+    /// Returns whether GIF playback should loop automatically given the macOS Reduce Motion setting.
+    public static func shouldAnimate(reduceMotion: Bool) -> Bool {
+        !reduceMotion
+    }
+
+    /// Resolves the local file path for a GIF attachment using `ThumbnailLoader.resolveMediaPath`.
+    public static func resolveLocalPath(
+        message: TimelineMessage,
+        gif: GIFAttachment,
+        dataDirectory: URL = EngineLocation.dataDirectory()
+    ) -> String? {
+        for candidate in [message.mediaPath, gif.mediaURL, message.thumbnailPath] {
+            if let path = ThumbnailLoader.resolveMediaPath(candidate, dataDirectory: dataDirectory),
+               !path.isEmpty {
+                return path
+            }
+        }
+        return nil
+    }
+
+    private var isVideoGIF: Bool {
+        message.kind == .video || (gif.mimeType?.lowercased().hasPrefix("video/") == true)
+    }
+
+    private var resolvedPath: String? {
+        Self.resolveLocalPath(message: message, gif: gif)
+    }
+
+    private func frameSize(for nsImage: NSImage?) -> CGSize {
+        let imageWidth = nsImage.flatMap { $0.size.width > 0 ? Int($0.size.width.rounded()) : nil }
+        let imageHeight = nsImage.flatMap { $0.size.height > 0 ? Int($0.size.height.rounded()) : nil }
+        return EnhancedImageView.proportionalSize(
+            width: gif.width ?? message.width ?? imageWidth,
+            height: gif.height ?? message.height ?? imageHeight,
+            longestSide: EnhancedImageView.longestSide,
+            fallback: CGSize(width: 260, height: 180)
+        )
+    }
+
+    public var body: some View {
+        let size = frameSize(for: loadedNSImage)
+        let animate = Self.shouldAnimate(
+            reduceMotion: accessibilityReduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        )
+        ZStack(alignment: .topLeading) {
+            if isVideoGIF {
+                InlineVideoPlayer(
+                    messageID: message.id,
+                    roomID: message.roomID,
+                    mediaPath: resolvedPath ?? message.mediaPath,
+                    thumbnailPath: message.thumbnailPath,
+                    blurhash: message.blurhash,
+                    width: gif.width ?? message.width,
+                    height: gif.height ?? message.height,
+                    durationMS: message.durationMS,
+                    isGIF: true,
+                    onPopOutPiP: onPopOutPiP,
+                    onOpenLightbox: { onOpenLightbox(message.id) },
+                    initialIsPlaying: animate,
+                    initialIsMuted: true
+                )
+            } else if let nsImage = loadedNSImage {
+                BorderlessAnimatedNSImageView(
+                    image: nsImage,
+                    animates: animate,
+                    scaling: .scaleProportionallyUpOrDown
+                )
+                .frame(width: size.width, height: size.height)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    onOpenLightbox(message.id)
+                }
+            } else if let cgImage = asyncCGImage {
+                Image(decorative: cgImage, scale: 2.0, orientation: .up)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: size.width, height: size.height)
+                    .clipped()
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        onOpenLightbox(message.id)
+                    }
+            } else {
+                EnhancedImageView(
+                    message: message,
+                    forceBlurHashPlaceholder: !loadFailed,
+                    forceErrorState: loadFailed,
+                    onOpenLightbox: onOpenLightbox
+                )
+            }
+
+            Text(verbatim: "GIF")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Capsule().fill(Color.black.opacity(0.68)))
+                .padding(8)
+                .allowsHitTesting(false)
+        }
+        .frame(width: size.width, height: size.height)
+        .clipShape(RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous))
+        .task(id: resolvedPath) {
+            guard !isVideoGIF,
+                  loadedNSImage == nil,
+                  asyncCGImage == nil else { return }
+            guard let path = resolvedPath else {
+                if !message.mediaPath.isEmpty { loadFailed = true }
+                return
+            }
+            let decoded = await Task.detached(priority: .utility) { () -> NSImage? in
+                guard FileManager.default.fileExists(atPath: path) else { return nil }
+                return NSImage(contentsOfFile: path)
+            }.value
+            if let decoded {
+                loadedNSImage = decoded
+            } else if let cg = await ThumbnailLoader.shared.thumbnail(atPath: path)?.image {
+                asyncCGImage = cg
+            } else {
+                loadFailed = true
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(gif.caption ?? (message.fileName.isEmpty ? String(localized: "GIF") : message.fileName))
     }
 }

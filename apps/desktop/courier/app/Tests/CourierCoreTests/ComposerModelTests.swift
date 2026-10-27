@@ -439,12 +439,15 @@ extension ComposerModelTests {
 
     private var whatsApp: ChatFeatures {
         ChatFeatures(reply: true, edit: true, editMaxAgeMS: 15 * 60 * 1000, unsend: true,
-                     formatting: [.bold, .italic, .link, .mention], maxTextLength: 65536, source: .stored)
+                     formatting: [.bold, .italic, .link, .mention], maxTextLength: 65536, source: .stored,
+                     gifFeatures: FileKindFeatures(supported: true, mimeTypes: ["video/mp4"], caption: true, maxCaptionLength: 65536),
+                     stickerFeatures: FileKindFeatures(supported: true, mimeTypes: ["image/jpeg", "image/png", "image/webp", "video/lottie+json"]))
     }
 
     private var slack: ChatFeatures {
         ChatFeatures(reply: false, thread: true, replyIsThread: true, edit: true, unsend: true,
-                     formatting: [.bold, .mention], mentionRoom: true, source: .stored)
+                     formatting: [.bold, .mention], mentionRoom: true, source: .stored,
+                     gifFeatures: FileKindFeatures(supported: true, mimeTypes: ["image/gif"], caption: true, maxCaptionLength: 40000))
     }
 
     private struct Denies: EntitlementProvider {
@@ -1416,6 +1419,11 @@ final class FakeSender: MessageSending, @unchecked Sendable {
     private var _unreadFroms: [String] = []
     private var _directChats: [DirectChat] = []
     private var _directChatResult: Result<String, EngineError> = .success("!direct")
+    private var _stickersListResult = StickersListResult()
+    private var _stickerListRefreshes: [Bool] = []
+    private var _stickerImports: [StickersImportParams] = []
+    private var _stickerSends: [MessageSendStickerParams] = []
+    private var _gifSends: [MessageSendGIFParams] = []
     private var _log: [String] = []
     private var _failures: [EngineError] = []
     private var _members: [Member] = []
@@ -1467,6 +1475,14 @@ final class FakeSender: MessageSending, @unchecked Sendable {
         get { locked { _directChatResult } }
         set { locked { _directChatResult = newValue } }
     }
+    var stickersListResult: StickersListResult {
+        get { locked { _stickersListResult } }
+        set { locked { _stickersListResult = newValue } }
+    }
+    var stickerListRefreshes: [Bool] { locked { _stickerListRefreshes } }
+    var stickerImports: [StickersImportParams] { locked { _stickerImports } }
+    var stickerSends: [MessageSendStickerParams] { locked { _stickerSends } }
+    var gifSends: [MessageSendGIFParams] { locked { _gifSends } }
     /// Every call of the 4.3 methods, in order.
     var log: [String] { locked { _log } }
 
@@ -1684,6 +1700,60 @@ final class FakeSender: MessageSending, @unchecked Sendable {
         }
         if fails { throw EngineError.timedOut }
         return locked { _statuses[eventID] }
+    }
+
+    func listStickers(refreshBridgePacks: Bool) async throws -> StickersListResult {
+        locked {
+            _stickerListRefreshes.append(refreshBridgePacks)
+            return _stickersListResult
+        }
+    }
+
+    func importSticker(_ params: StickersImportParams) async throws -> StickerItemWire {
+        locked {
+            _stickerImports.append(params)
+            _log.append("importSticker")
+        }
+        if let failure = nextFailure() { throw failure }
+        let ext = URL(fileURLWithPath: params.path).pathExtension.lowercased()
+        let mime: String
+        switch ext {
+        case "webp": mime = "image/webp"
+        case "gif": mime = "image/gif"
+        case "jpg", "jpeg": mime = "image/jpeg"
+        default: mime = "image/png"
+        }
+        let key = params.shortcode ?? URL(fileURLWithPath: params.path).deletingPathExtension().lastPathComponent
+        return StickerItemWire(
+            id: "imported:\(key)",
+            packID: "imported",
+            shortcode: params.shortcode,
+            name: params.name ?? key,
+            emoji: params.emoji,
+            mediaURL: "courier://media/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            mimeType: mime,
+            width: 128,
+            height: 128,
+            usage: params.usage ?? ["sticker"]
+        )
+    }
+
+    func sendSticker(_ params: MessageSendStickerParams) async throws -> String {
+        locked {
+            _stickerSends.append(params)
+            _log.append("sendSticker")
+        }
+        if let failure = nextFailure() { throw failure }
+        return newID()
+    }
+
+    func sendGIF(_ params: MessageSendGIFParams) async throws -> String {
+        locked {
+            _gifSends.append(params)
+            _log.append("sendGIF")
+        }
+        if let failure = nextFailure() { throw failure }
+        return newID()
     }
 }
 
@@ -2147,6 +2217,744 @@ extension ComposerModelTests {
         XCTAssertEqual(
             composer.notice,
             .sendFailed(reason: "This file is larger than WhatsApp allows (100 MB).")
+        )
+    }
+
+    // MARK: - Emoji autocomplete, emoticon replacement, and /gif
+
+    func testEmojiShortcodeAutocompleteRespectsPreferenceAndPickReplacesToken() {
+        let made = makeComposer()
+        let composer = made.composer
+
+        type("hello :smi", into: composer)
+        XCTAssertEqual(composer.emojiQuery, "smi")
+        XCTAssertFalse(composer.emojiCandidates.isEmpty)
+        XCTAssertTrue(composer.emojiCandidates.contains(where: { $0.shortcode == "smile" }))
+
+        // Navigating selection wraps around.
+        composer.selectedEmojiIndex = 0
+        composer.moveEmojiSelection(1)
+        XCTAssertEqual(composer.selectedEmojiIndex, 1)
+        composer.moveEmojiSelection(-2)
+        XCTAssertEqual(composer.selectedEmojiIndex, composer.emojiCandidates.count - 1)
+
+        // Picking a Unicode emoji candidate replaces `:smi` with `"😄 "` and clears emojiQuery.
+        let smile = composer.emojiCandidates.first(where: { $0.shortcode == "smile" })
+            ?? EmojiCandidate(shortcode: "smile", glyph: "😄")
+        composer.pickEmoji(smile)
+        XCTAssertEqual(composer.text, "hello 😄 ")
+        XCTAssertNil(composer.emojiQuery)
+        XCTAssertTrue(composer.emojiCandidates.isEmpty)
+
+        // Picking a custom emoji candidate (`glyph == nil`) inserts `:custom_code: `.
+        type(":cus", into: composer)
+        let customCandidate = EmojiCandidate(
+            id: "mxc://courier.local/custom_code",
+            shortcode: "custom_code",
+            glyph: nil,
+            mediaURL: "mxc://courier.local/custom_code",
+            isCustom: true
+        )
+        composer.pickEmoji(customCandidate)
+        XCTAssertEqual(composer.text, "hello 😄 :custom_code: ")
+        XCTAssertNil(composer.emojiQuery)
+
+        // When enableEmojiAutocomplete is false, emojiQuery stays nil.
+        made.preferences.enableEmojiAutocomplete = false
+        composer.text = ""
+        type("hello :smi", into: composer)
+        XCTAssertNil(composer.emojiQuery)
+        XCTAssertTrue(composer.emojiCandidates.isEmpty)
+    }
+
+    func testEmoticonReplacementRespectsPreferenceURLsAndCodeSpans() {
+        let made = makeComposer()
+        let composer = made.composer
+
+        // Typing ":) " replaces with "🙂 ".
+        type(":) ", into: composer)
+        XCTAssertEqual(composer.text, "🙂 ")
+
+        // Typing ":-D\n" replaces with "😃\n".
+        composer.text = ""
+        type(":-D\n", into: composer)
+        XCTAssertEqual(composer.text, "😃\n")
+
+        // URLs are untouched.
+        composer.text = ""
+        type("https://example.com/:) ", into: composer)
+        XCTAssertEqual(composer.text, "https://example.com/:) ")
+
+        // Inline backtick code spans are untouched.
+        composer.text = ""
+        type("`:) ", into: composer)
+        XCTAssertEqual(composer.text, "`:) ")
+
+        // Inline .code entity is untouched.
+        composer.text = ""
+        type("code ", into: composer)
+        composer.toggle(.code, in: NSRange(location: 5, length: 0))
+        type(":) ", into: composer)
+        XCTAssertEqual(composer.text, "code :) ")
+
+        // Setting disableEmoticonReplacement = true leaves emoticons untouched.
+        made.preferences.disableEmoticonReplacement = true
+        composer.text = ""
+        type(":) ", into: composer)
+        XCTAssertEqual(composer.text, ":) ")
+    }
+
+    func testSlashGifCommandOpensGIFPickerAndSetsQuery() {
+        let made = makeComposer()
+        let composer = made.composer
+
+        type("/gif", into: composer)
+        XCTAssertNil(composer.submit())
+        XCTAssertTrue(composer.isGIFPickerPresented)
+        XCTAssertEqual(composer.gifSearchQuery, "")
+        XCTAssertEqual(composer.text, "")
+        XCTAssertTrue(made.sender.sends.isEmpty)
+
+        composer.isGIFPickerPresented = false
+        type("/gif cats", into: composer)
+        XCTAssertNil(composer.submit())
+        XCTAssertTrue(composer.isGIFPickerPresented)
+        XCTAssertEqual(composer.gifSearchQuery, "cats")
+        XCTAssertEqual(composer.text, "")
+        XCTAssertTrue(made.sender.sends.isEmpty)
+    }
+
+    func testEmoticonReplacementOnBlockquoteLineWithBeginNewlineDoesNotCrash() {
+        let composer = makeComposer().composer
+        type(":-D", into: composer)
+        composer.toggle(.blockquote, in: NSRange(location: 0, length: 0))
+        XCTAssertEqual(composer.entities, [TextEntity(kind: .blockquote, offset: 0, length: 3)])
+
+        XCTAssertTrue(composer.beginNewline(at: NSRange(location: 3, length: 0)))
+        type("\n", into: composer, at: 3)
+        XCTAssertEqual(composer.text, "😃\n")
+
+        type("next", into: composer)
+        XCTAssertEqual(composer.text, "😃\nnext")
+        XCTAssertEqual(composer.entities, [TextEntity(kind: .blockquote, offset: 0, length: 7)])
+    }
+
+    func testSelectionTracksEditsOpenEmojiAutocompleteEntityOverlapAndNoseEmoticons() {
+        let made = makeComposer()
+        let composer = made.composer
+
+        // 1. selection tracks applyEdit so openEmojiAutocomplete() finds ":s" at the caret.
+        type("hello :s", into: composer)
+        XCTAssertEqual(composer.selection, NSRange(location: 8, length: 0))
+        XCTAssertNil(composer.emojiQuery, "single letter after colon does not auto-open without explicit call")
+        composer.openEmojiAutocomplete()
+        XCTAssertEqual(composer.emojiQuery, "s")
+        XCTAssertFalse(composer.isEmojiPickerPresented)
+        XCTAssertFalse(composer.emojiCandidates.isEmpty)
+
+        // 2. selection tracks replaceText (via pickEmoji) and setContents (via open).
+        let smile = EmojiCandidate(shortcode: "smile", glyph: "😄")
+        composer.pickEmoji(smile)
+        XCTAssertEqual(composer.text, "hello 😄 ")
+        XCTAssertEqual(composer.selection, NSRange(location: (composer.text as NSString).length, length: 0))
+        composer.open("!b")
+        XCTAssertEqual(composer.selection, NSRange(location: 0, length: 0))
+        composer.open("!a")
+        XCTAssertEqual(composer.selection, NSRange(location: (composer.text as NSString).length, length: 0))
+
+        // 3. Entity overlap with .code, .pre, or .link across any part of the :token suppresses autocomplete.
+        composer.text = ""
+        type(":ab", into: composer)
+        composer.toggle(.code, in: NSRange(location: 0, length: 3))
+        XCTAssertEqual(composer.entities, [TextEntity(kind: .code, offset: 0, length: 3)])
+        type("c", into: composer, at: 3)
+        XCTAssertNil(composer.emojiQuery, "typing immediately after a .code ':ab' span must not trigger shortcode autocomplete")
+        XCTAssertTrue(composer.emojiCandidates.isEmpty)
+
+        // 4. Nose emoticons such as ':-D' or ':-P' must not open shortcode autocomplete.
+        for emoticon in [":-D", ":-P", ":-p", ":-O", ":-o"] {
+            composer.text = ""
+            type(emoticon, into: composer)
+            XCTAssertNil(composer.emojiQuery, "emoticon \(emoticon) must not open shortcode autocomplete")
+            XCTAssertTrue(composer.emojiCandidates.isEmpty)
+        }
+    }
+
+    func testSlashGifRequiresOpenChatAndDisablingEmojiAutocompleteDismissesImmediately() {
+        // 1. /gif with no open chat does not open the GIF picker or clear text.
+        let (closed, _) = make()
+        type("/gif cats", into: closed)
+        XCTAssertNil(closed.submit())
+        XCTAssertFalse(closed.isGIFPickerPresented)
+        XCTAssertEqual(closed.gifSearchQuery, "")
+        XCTAssertEqual(closed.text, "/gif cats")
+
+        // 2. Turning enableEmojiAutocomplete off closes an open suggestion list immediately.
+        let made = makeComposer()
+        let composer = made.composer
+        type("hello :smi", into: composer)
+        XCTAssertEqual(composer.emojiQuery, "smi")
+        XCTAssertFalse(composer.emojiCandidates.isEmpty)
+
+        made.preferences.enableEmojiAutocomplete = false
+        XCTAssertNil(composer.emojiQuery)
+        XCTAssertTrue(composer.emojiCandidates.isEmpty)
+    }
+
+    func testEmojiAutocompleteEscapeDismissesEvenOnRepeatedSelectionReport() {
+        let made = makeComposer()
+        let composer = made.composer
+
+        type("hello :smi", into: composer)
+        XCTAssertEqual(composer.emojiQuery, "smi")
+        XCTAssertFalse(composer.emojiCandidates.isEmpty)
+
+        // Pressing Escape while emoji autocomplete is active dismisses the autocomplete first.
+        XCTAssertTrue(composer.escape())
+        XCTAssertNil(composer.emojiQuery)
+        XCTAssertTrue(composer.emojiCandidates.isEmpty)
+
+        // A repeated selectionChanged report at the same caret location (e.g. from AppKit sync)
+        // must not reopen the dismissed autocomplete token.
+        composer.selectionChanged(to: NSRange(location: 10, length: 0))
+        XCTAssertNil(composer.emojiQuery)
+        XCTAssertTrue(composer.emojiCandidates.isEmpty)
+
+        // Typing another character changes the token range and reopens autocomplete.
+        type("l", into: composer)
+        XCTAssertEqual(composer.emojiQuery, "smil")
+        XCTAssertFalse(composer.emojiCandidates.isEmpty)
+    }
+
+    // MARK: - Task 7: Stickers catalog, import validation, and sending
+
+    func testLoadStickersPopulatesPacksRecentGIFsAndCustomEmojis() async {
+        let made = makeComposer()
+        let composer = made.composer
+        let customSticker = StickerItemWire(
+            id: "imported:party_parrot",
+            packID: "imported",
+            shortcode: "party_parrot",
+            name: "party_parrot",
+            emoji: "🦜",
+            mediaURL: "courier://media/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            mimeType: "image/gif",
+            width: 128,
+            height: 128,
+            usage: ["emoticon", "sticker"]
+        )
+        let bridgeSticker = StickerItemWire(
+            id: "bridge:telegram:cats:1",
+            packID: "bridge:telegram:cats",
+            name: "Smiling Cat",
+            emoji: "😺",
+            mediaURL: "courier://media/fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+            mimeType: "image/webp",
+            width: 512,
+            height: 512,
+            usage: ["sticker"],
+            bridgedSticker: BridgedStickerWire(network: "telegram", packURL: "tg://addstickers?set=cats", id: "doc1")
+        )
+        let recentGIF = StickerItemWire(
+            id: "gif:$e1",
+            packID: "recent_gifs",
+            name: "Celebrate",
+            mediaURL: "courier://media/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            mimeType: "image/gif",
+            width: 320,
+            height: 240,
+            usage: ["sticker"]
+        )
+        made.sender.stickersListResult = StickersListResult(
+            packs: [
+                StickerPackWire(id: "recent", title: "Recent", source: "recent", items: []),
+                StickerPackWire(id: "imported", title: "Imported", source: "imported", items: [customSticker]),
+                StickerPackWire(id: "bridge:telegram:cats", title: "Cats", source: "bridge", network: "telegram", items: [bridgeSticker]),
+            ],
+            recentGIFs: [recentGIF]
+        )
+
+        await composer.loadStickers(refresh: true)
+        XCTAssertEqual(made.sender.stickerListRefreshes.last, true)
+        XCTAssertEqual(composer.stickerPacks.map(\.id), ["recent", "imported", "bridge:telegram:cats"])
+        XCTAssertEqual(composer.recentGIFs, [recentGIF])
+        XCTAssertEqual(
+            composer.customEmojis,
+            [
+                EmojiCandidate(
+                    id: customSticker.mediaURL,
+                    shortcode: "party_parrot",
+                    glyph: nil,
+                    mediaURL: customSticker.mediaURL,
+                    isCustom: true
+                ),
+            ]
+        )
+    }
+
+    func testImportStickerValidatesFileAndUpdatesCatalog() async {
+        let made = makeComposer(sizes: [
+            "cat.png": 4096,
+            "party.webp": 2048,
+            "notes.txt": 128,
+            "huge.png": 91 * Self.megabyte,
+        ])
+        let composer = made.composer
+
+        // 1. Unreadable file is refused before calling the engine and leaves no trace in the catalog.
+        await composer.importSticker(from: file("missing.png"))
+        XCTAssertEqual(composer.notice, .cannotRead(fileName: "missing.png"))
+        XCTAssertTrue(made.sender.stickerImports.isEmpty)
+        XCTAssertTrue(composer.stickerPacks.isEmpty)
+
+        // 2. Oversized file (>90 MB) is refused before calling the engine.
+        composer.dismissNotice()
+        await composer.importSticker(from: file("huge.png"))
+        XCTAssertEqual(composer.notice, .attachmentTooLarge(fileName: "huge.png"))
+        XCTAssertTrue(made.sender.stickerImports.isEmpty)
+
+        // 3. Unsupported extension (.txt) is refused before calling the engine.
+        composer.dismissNotice()
+        await composer.importSticker(from: file("notes.txt"))
+        XCTAssertEqual(
+            composer.notice,
+            .importFailed(reason: "Stickers must be PNG, WebP, GIF, or JPEG images.")
+        )
+        XCTAssertTrue(made.sender.stickerImports.isEmpty)
+
+        // 4. Valid sticker import calls stickers.import and populates the Imported pack.
+        composer.dismissNotice()
+        await composer.importSticker(from: file("cat.png"))
+        XCTAssertNil(composer.notice)
+        XCTAssertEqual(made.sender.stickerImports.count, 1)
+        XCTAssertEqual(made.sender.stickerImports.first?.path, file("cat.png").path)
+        XCTAssertNil(made.sender.stickerImports.first?.shortcode)
+        XCTAssertEqual(made.sender.stickerImports.first?.usage, ["sticker"])
+        XCTAssertEqual(composer.stickerPacks.first(where: { $0.id == "imported" })?.items.map(\.name), ["cat"])
+
+        // 5. Importing with a shortcode registers both sticker and custom emoji candidate.
+        await composer.importSticker(from: file("party.webp"), shortcode: ":party_blob:")
+        XCTAssertEqual(made.sender.stickerImports.last?.shortcode, "party_blob")
+        XCTAssertEqual(made.sender.stickerImports.last?.usage, ["emoticon", "sticker"])
+        XCTAssertTrue(composer.customEmojis.contains(where: { $0.shortcode == "party_blob" && $0.isCustom }))
+    }
+
+    func testSendStickerForwardsBridgedStickerHoldAndRespectsRoomCapability() async {
+        var features = whatsApp
+        features.sticker = MediaCapFeature(
+            supported: true,
+            mimeTypes: ["image/png", "image/webp"],
+            captions: false,
+            maxSize: 1_048_576
+        )
+        let made = makeComposer(undoMillis: 2000, features: features, network: "telegram")
+        let composer = made.composer
+        composer.preferences?.undoSendHoldMillis = 3000
+        XCTAssertEqual(composer.preferences?.undoSendMillis, 3000)
+
+        let bridgeSticker = StickerItemWire(
+            id: "bridge:telegram:cats:1",
+            packID: "bridge:telegram:cats",
+            name: "Smiling Cat",
+            emoji: "😺",
+            mediaURL: "courier://media/fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+            mimeType: "image/webp",
+            width: 512,
+            height: 512,
+            usage: ["sticker"],
+            bridgedSticker: BridgedStickerWire(network: "telegram", packURL: "tg://addstickers?set=cats", id: "doc1")
+        )
+
+        composer.openStickerPicker()
+        XCTAssertTrue(composer.isStickerPickerPresented)
+        composer.startReply(to: quote("$q1", name: "Alice Example", text: "Hi!"))
+
+        await composer.sendSticker(bridgeSticker)
+        XCTAssertFalse(composer.isStickerPickerPresented, "sending a sticker closes the picker popover")
+        XCTAssertNil(composer.replyTarget, "reply target is consumed by the sticker send")
+        XCTAssertEqual(
+            made.sender.stickerSends,
+            [
+                MessageSendStickerParams(
+                    roomID: "!a",
+                    path: nil,
+                    mediaURL: bridgeSticker.mediaURL,
+                    name: "Smiling Cat",
+                    emoji: "😺",
+                    mimeType: "image/webp",
+                    bridgedSticker: bridgeSticker.bridgedSticker,
+                    replyTo: "$q1",
+                    threadRoot: nil,
+                    holdMS: 3000
+                ),
+            ]
+        )
+        XCTAssertEqual(composer.heldIDs, ["$sent1"], "held sticker send registers in HeldMessages for undo")
+
+        // Undoing the held sticker removes it from heldIDs without polluting the text box with the sticker's fallback body.
+        made.sender.undoResults["$sent1"] = .success(
+            Draft(text: "Smiling Cat", entities: [], replyTo: "$q1", threadRoot: nil)
+        )
+        let undone = await composer.undoNewestHeld()
+        XCTAssertTrue(undone)
+        XCTAssertEqual(composer.heldIDs, [])
+        XCTAssertEqual(composer.text, "")
+        XCTAssertEqual(composer.replyTarget?.eventID, "$q1")
+
+        // In a room where stickers are unsupported (e.g. Google Messages / SMS), openStickerPicker and sendSticker refuse.
+        var noStickers = whatsApp
+        noStickers.sticker = .unsupported
+        composer.features = noStickers
+        composer.network = "gmessages"
+        composer.cancelReply()
+
+        composer.openStickerPicker()
+        XCTAssertFalse(composer.isStickerPickerPresented, "picker does not open when room does not support stickers")
+        await composer.sendSticker(bridgeSticker)
+        XCTAssertEqual(made.sender.stickerSends.count, 1, "unsupported room never invokes message.sendSticker")
+        XCTAssertEqual(
+            composer.notice,
+            .sendFailed(reason: "Stickers are not supported on Google Messages.")
+        )
+    }
+
+    // MARK: - Task 8: GIF picker, staging, auto-send, and local file send
+
+    func testSelectGIFAutoSendsOrStagesPendingGIFWithCaptionAndHold() async {
+        let made = makeComposer(undoMillis: 2000)
+        let composer = made.composer
+        let gifItem = StickerItemWire(
+            id: "gif:recent:1",
+            packID: "recent_gifs",
+            name: "Party Parrot",
+            mediaURL: "courier://media/1122334455667788112233445566778811223344556677881122334455667788",
+            mimeType: "image/gif",
+            width: 320,
+            height: 240,
+            usage: ["gif"]
+        )
+
+        // 1. Default autoSendGIFs == false: selectGIF stages pendingGIF, closes popover, and Return sends with caption.
+        XCTAssertFalse(made.preferences.autoSendGIFs)
+        XCTAssertTrue(composer.openGIFPicker(query: "party"))
+        XCTAssertTrue(composer.isGIFPickerPresented)
+        XCTAssertEqual(composer.gifSearchQuery, "party")
+
+        await composer.selectGIF(gifItem)
+        XCTAssertFalse(composer.isGIFPickerPresented, "selecting a GIF closes the popover")
+        XCTAssertEqual(composer.pendingGIF, gifItem, "pendingGIF is staged when autoSendGIFs is false")
+        XCTAssertTrue(composer.canSend, "staged pendingGIF makes canSend true even with empty text")
+        XCTAssertTrue(made.sender.gifSends.isEmpty)
+
+        // Switching chats and editing preserve pendingGIF on the room's draft.
+        composer.open("!b")
+        XCTAssertNil(composer.pendingGIF)
+        composer.open("!a")
+        XCTAssertEqual(composer.pendingGIF, gifItem)
+
+        let editable = message("$m", in: items([event("$m", body: "old words", at: 0)]))
+        composer.startEditing(editable)
+        XCTAssertNil(composer.pendingGIF)
+        XCTAssertTrue(composer.escape())
+        XCTAssertEqual(composer.pendingGIF, gifItem)
+
+        type("look at this", into: composer)
+        composer.startReply(to: quote("$q2", name: "Alice Example", text: "Show me"))
+        await composer.send()
+
+        XCTAssertNil(composer.pendingGIF)
+        XCTAssertEqual(composer.text, "")
+        XCTAssertNil(composer.replyTarget)
+        XCTAssertEqual(
+            made.sender.gifSends,
+            [
+                MessageSendGIFParams(
+                    roomID: "!a",
+                    path: nil,
+                    mediaURL: gifItem.mediaURL,
+                    caption: "look at this",
+                    replyTo: "$q2",
+                    threadRoot: nil,
+                    holdMS: 2000
+                ),
+            ]
+        )
+        XCTAssertEqual(composer.heldIDs, ["$sent1"])
+
+        // Undoing a held GIF restores pendingGIF, caption text, and reply target.
+        made.sender.undoResults["$sent1"] = .success(
+            Draft(text: "look at this", entities: [], replyTo: "$q2", threadRoot: nil)
+        )
+        let undone = await composer.undoNewestHeld()
+        XCTAssertTrue(undone)
+        XCTAssertEqual(composer.pendingGIF, gifItem)
+        XCTAssertEqual(composer.text, "look at this")
+        XCTAssertEqual(composer.replyTarget?.eventID, "$q2")
+        composer.removePendingGIF()
+        XCTAssertNil(composer.pendingGIF)
+        composer.text = ""
+        composer.cancelReply()
+
+        // 2. When autoSendGIFs == true, selectGIF sends immediately without staging pendingGIF.
+        made.preferences.autoSendGIFs = true
+        XCTAssertTrue(composer.openGIFPicker())
+        XCTAssertTrue(composer.isGIFPickerPresented)
+        await composer.selectGIF(gifItem)
+        XCTAssertFalse(composer.isGIFPickerPresented)
+        XCTAssertNil(composer.pendingGIF)
+        XCTAssertEqual(made.sender.gifSends.count, 2)
+        XCTAssertEqual(
+            made.sender.gifSends.last,
+            MessageSendGIFParams(
+                roomID: "!a",
+                path: nil,
+                mediaURL: gifItem.mediaURL,
+                caption: nil,
+                replyTo: nil,
+                threadRoot: nil,
+                holdMS: 2000
+            )
+        )
+
+        // 3. When room does not support GIFs, openGIFPicker, /gif, and selectGIF refuse cleanly.
+        var noGIF = whatsApp
+        noGIF.gif = .unsupported
+        composer.features = noGIF
+        composer.network = "signal"
+        XCTAssertFalse(composer.canSendGIF)
+        XCTAssertFalse(composer.openGIFPicker())
+        XCTAssertFalse(composer.isGIFPickerPresented)
+
+        await composer.selectGIF(gifItem)
+        XCTAssertNil(composer.pendingGIF)
+        XCTAssertEqual(made.sender.gifSends.count, 2)
+        XCTAssertEqual(
+            composer.notice,
+            .sendFailed(reason: "GIFs are not supported on Signal.")
+        )
+    }
+
+    func testSendGIFFileValidatesLocalFileBeforeStagingOrAutoSending() async {
+        let made = makeComposer(
+            sizes: [
+                "dance.gif": 2048,
+                "loop.mp4": 4096,
+                "huge.gif": 95 * Self.megabyte,
+                "photo.png": 1024,
+            ]
+        )
+        let composer = made.composer
+
+        // 1. Unreadable file is refused with .cannotRead.
+        await composer.sendGIFFile(url: file("missing.gif"))
+        XCTAssertEqual(composer.notice, .cannotRead(fileName: "missing.gif"))
+        XCTAssertNil(composer.pendingGIF)
+        XCTAssertTrue(made.sender.gifSends.isEmpty)
+
+        // 2. Oversized file is refused with .attachmentTooLarge.
+        composer.dismissNotice()
+        await composer.sendGIFFile(url: file("huge.gif"))
+        XCTAssertEqual(composer.notice, .attachmentTooLarge(fileName: "huge.gif"))
+        XCTAssertNil(composer.pendingGIF)
+
+        // 3. Non-GIF/MP4 extension is refused before staging or calling the engine.
+        composer.dismissNotice()
+        await composer.sendGIFFile(url: file("photo.png"))
+        XCTAssertEqual(
+            composer.notice,
+            .sendFailed(reason: "GIFs must be GIF or MP4 files.")
+        )
+        XCTAssertNil(composer.pendingGIF)
+
+        // 4. Valid .gif file with autoSendGIFs == false stages pendingGIF; composer.send() sends with path.
+        composer.dismissNotice()
+        await composer.sendGIFFile(url: file("dance.gif"))
+        XCTAssertNil(composer.notice)
+        XCTAssertEqual(composer.pendingGIF?.mediaURL, file("dance.gif").path)
+        XCTAssertEqual(composer.pendingGIF?.mimeType, "image/gif")
+        await composer.send()
+        XCTAssertEqual(
+            made.sender.gifSends.last,
+            MessageSendGIFParams(roomID: "!a", path: file("dance.gif").path, mediaURL: nil, caption: nil)
+        )
+
+        // 5. Valid .mp4 file with autoSendGIFs == true sends immediately.
+        made.preferences.autoSendGIFs = true
+        await composer.sendGIFFile(url: file("loop.mp4"))
+        XCTAssertNil(composer.pendingGIF)
+        XCTAssertEqual(
+            made.sender.gifSends.last,
+            MessageSendGIFParams(roomID: "!a", path: file("loop.mp4").path, mediaURL: nil, caption: nil)
+        )
+    }
+
+    // MARK: - Fix Round 1 tests
+
+    func testOpeningRoomLoadsCustomEmojiCatalogForAutocompleteWithoutOpeningPicker() async {
+        let sender = FakeSender()
+        let customEmoji = StickerItemWire(
+            id: "imported:party_parrot",
+            packID: "imported",
+            shortcode: "party_parrot",
+            name: "party_parrot",
+            emoji: "🦜",
+            mediaURL: "mxc://courier.local/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            mimeType: "image/gif",
+            width: 128,
+            height: 128,
+            usage: ["emoticon", "sticker"]
+        )
+        sender.stickersListResult = StickersListResult(
+            packs: [
+                StickerPackWire(id: "imported", title: "Imported", source: "imported", items: [customEmoji]),
+            ],
+            recentGIFs: []
+        )
+        let preferences = ComposerPreferences(defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!)
+        let composer = ComposerModel(
+            sender: sender,
+            draftDelay: 0,
+            sleep: { _ in },
+            preferences: preferences,
+            now: { Date(timeIntervalSince1970: 1_000) }
+        )
+
+        // Open a room without calling loadStickers, openStickerPicker, or openGIFPicker.
+        composer.open("!a")
+        for _ in 0 ..< 10 {
+            if !composer.customEmojis.isEmpty { break }
+            await Task.yield()
+        }
+
+        XCTAssertEqual(sender.stickerListRefreshes, [false], "opening a room must never request a bridge sticker-pack refresh")
+        XCTAssertEqual(composer.customEmojis.map(\.shortcode), ["party_parrot"])
+        type("hello :party_", into: composer)
+        XCTAssertEqual(composer.emojiQuery, "party_")
+        XCTAssertTrue(
+            composer.emojiCandidates.contains(where: { $0.shortcode == "party_parrot" && $0.isCustom }),
+            "':' autocomplete must find imported custom emoji immediately after opening a room without opening any picker first"
+        )
+    }
+
+    func testOpenEmojiAutocompleteWithNoShortcodeDoesNotSwallowNextEscape() {
+        let made = makeComposer()
+        let composer = made.composer
+
+        composer.startReply(to: quote("$q1", name: "Alice Example", text: "Hello there"))
+        XCTAssertEqual(composer.replyTarget?.eventID, "$q1")
+
+        type("hello ", into: composer)
+        composer.openEmojiAutocomplete()
+        XCTAssertNil(composer.emojiQuery)
+
+        // Pressing Escape next must clear the reply chip instead of being swallowed by a stale isEmojiPickerPresented flag.
+        XCTAssertTrue(composer.escape())
+        XCTAssertNil(composer.replyTarget, "Escape must clear the reply chip rather than being swallowed by a stale emoji picker flag")
+    }
+
+    func testSlashGifWhenUnsupportedKeepsTextAndShowsNoticeAndWhileGIFStagedDoesNotSendSlashGifAsCaption() async {
+        // 1. When GIFs are unsupported in the room, '/gif' and '/gif cats' must keep the text and show a notice.
+        var noGIF = whatsApp
+        noGIF.gif = .unsupported
+        let unsupportedMade = makeComposer(features: noGIF, network: "signal")
+        let unsupportedComposer = unsupportedMade.composer
+
+        type("/gif cats", into: unsupportedComposer)
+        XCTAssertNil(unsupportedComposer.submit())
+        XCTAssertFalse(unsupportedComposer.isGIFPickerPresented)
+        XCTAssertEqual(unsupportedComposer.text, "/gif cats", "'/gif' when GIFs are unsupported must keep the user's text")
+        XCTAssertEqual(
+            unsupportedComposer.notice,
+            .sendFailed(reason: "GIFs are not supported on Signal.")
+        )
+
+        // 2. While a GIF is already staged, typing '/gif dogs' and pressing Return must NOT send '/gif dogs' as its caption.
+        let supportedMade = makeComposer()
+        let supportedComposer = supportedMade.composer
+        let stagedGIF = StickerItemWire(
+            id: "gif:staged:1",
+            packID: "recent_gifs",
+            name: "Party Parrot",
+            mediaURL: "mxc://courier.local/1122334455667788112233445566778811223344556677881122334455667788",
+            mimeType: "image/gif",
+            width: 320,
+            height: 240,
+            usage: ["gif"]
+        )
+        supportedComposer.pendingGIF = stagedGIF
+        type("/gif dogs", into: supportedComposer)
+        await supportedComposer.send()
+
+        XCTAssertTrue(
+            supportedMade.sender.gifSends.isEmpty,
+            "'/gif dogs' while a GIF is staged must open the GIF picker for 'dogs', not send '/gif dogs' as the staged GIF's caption"
+        )
+        XCTAssertTrue(supportedComposer.isGIFPickerPresented)
+        XCTAssertEqual(supportedComposer.gifSearchQuery, "dogs")
+        XCTAssertEqual(supportedComposer.text, "")
+        XCTAssertEqual(supportedComposer.pendingGIF, stagedGIF)
+    }
+
+    func testThumbnailLoaderResolvesCourierMediaAndMxcCourierLocalURLs() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("courier-thumb-test-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let hash = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+        let mediaSubdir = tempDir
+            .appendingPathComponent("media", isDirectory: true)
+            .appendingPathComponent("ab", isDirectory: true)
+        try FileManager.default.createDirectory(at: mediaSubdir, withIntermediateDirectories: true)
+        let storedFile = mediaSubdir.appendingPathComponent(hash)
+        try Data("PNG".utf8).write(to: storedFile)
+
+        XCTAssertEqual(
+            ThumbnailLoader.resolveMediaPath("courier://media/\(hash)", dataDirectory: tempDir),
+            storedFile.path
+        )
+        XCTAssertEqual(
+            ThumbnailLoader.resolveMediaPath("mxc://courier.local/\(hash)", dataDirectory: tempDir),
+            storedFile.path,
+            "engine stores mxc://courier.local/<sha256> (ids.ServerName = courier.local)"
+        )
+        XCTAssertNil(
+            ThumbnailLoader.resolveMediaPath("mxc://local.courier/\(hash)", dataDirectory: tempDir),
+            "wrong reversed domain mxc://local.courier/ must not resolve"
+        )
+    }
+
+    func testStickerImportErrorsUseImportWordingNotMessageSendFailed() async throws {
+        let made = makeComposer(sizes: [
+            "notes.txt": 128,
+            "broken.png": 1024,
+        ])
+        let composer = made.composer
+
+        // 1. Invalid extension during sticker import uses import wording, never "The message could not be sent".
+        await composer.importSticker(from: file("notes.txt"))
+        let invalidExtNotice = try XCTUnwrap(composer.notice)
+        XCTAssertFalse(
+            invalidExtNotice.displayText.contains("The message could not be sent"),
+            "sticker import error must not say 'The message could not be sent': got '\(invalidExtNotice.displayText)'"
+        )
+        XCTAssertTrue(
+            invalidExtNotice.displayText.localizedCaseInsensitiveContains("import")
+                || invalidExtNotice.displayText.contains("Stickers must be PNG"),
+            "got '\(invalidExtNotice.displayText)'"
+        )
+
+        // 2. Engine error during sticker import uses import wording, never "The message could not be sent".
+        composer.dismissNotice()
+        made.sender.failures = [.rpc(.other(-32099), message: "corrupt image", reason: nil)]
+        await composer.importSticker(from: file("broken.png"))
+        let engineFailureNotice = try XCTUnwrap(composer.notice)
+        XCTAssertFalse(
+            engineFailureNotice.displayText.contains("The message could not be sent"),
+            "engine sticker import error must not say 'The message could not be sent': got '\(engineFailureNotice.displayText)'"
+        )
+        XCTAssertTrue(
+            engineFailureNotice.displayText.localizedCaseInsensitiveContains("import"),
+            "engine sticker import error must use import wording: got '\(engineFailureNotice.displayText)'"
         )
     }
 }

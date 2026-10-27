@@ -245,8 +245,8 @@ final class ProtocolConformanceTests: XCTestCase {
     }
 
     func testProtocol6TypesDecodeAndRoundTrip() throws {
-        XCTAssertEqual(protocolVersion, 7)
-        XCTAssertEqual(CourierProtocol.version, 7)
+        XCTAssertEqual(protocolVersion, 8)
+        XCTAssertEqual(CourierProtocol.version, 8)
         XCTAssertEqual(RPCErrorCode(number: -32027), .networkRefused)
 
         let infoJSON = """
@@ -342,5 +342,65 @@ final class ProtocolConformanceTests: XCTestCase {
         let data = try JSONEncoder().encode(merge)
         let decodedMerge = try JSONDecoder().decode(MergedChat.self, from: data)
         XCTAssertEqual(decodedMerge, merge)
+    }
+
+    func testProtocol8StickerAndGIFTypesDecodeAndRoundTrip() throws {
+        var features = ChatFeatures.noFeatures
+        features.sticker = MediaCapFeature(
+            supported: true,
+            mimeTypes: ["image/png", "image/webp"],
+            captions: false,
+            maxCaptionLength: nil,
+            maxSize: 1_048_576
+        )
+        features.gif = MediaCapFeature(
+            supported: true,
+            mimeTypes: ["image/gif", "video/mp4"],
+            captions: true,
+            maxCaptionLength: 1024,
+            maxSize: 16_777_216
+        )
+        XCTAssertTrue(features.sticker.supported)
+        XCTAssertEqual(features.sticker.mimeTypes, ["image/png", "image/webp"])
+        XCTAssertEqual(features.sticker.maxSize, 1_048_576)
+        XCTAssertTrue(features.gif.supported)
+        XCTAssertTrue(features.gif.captions)
+        XCTAssertEqual(features.gif.maxCaptionLength, 1024)
+
+        let item = StickerItemWire(
+            id: "bridge:telegram:pack1:smile",
+            packID: "bridge:telegram:pack1",
+            shortcode: "smile_cat",
+            name: "Smiling Cat",
+            emoji: "😺",
+            mediaURL: "courier://media/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            mimeType: "image/webp",
+            width: 512,
+            height: 512,
+            usage: ["sticker", "emoticon"],
+            bridgedSticker: BridgedStickerWire(network: "telegram", packURL: "tg://addstickers?set=cats", id: "doc1")
+        )
+        let listResult = StickersListResult(
+            packs: [
+                StickerPackWire(id: "bridge:telegram:pack1", title: "Cats", source: "bridge", network: "telegram", items: [item]),
+            ],
+            recentGIFs: []
+        )
+        let listData = try JSONEncoder().encode(listResult)
+        XCTAssertEqual(try JSONDecoder().decode(StickersListResult.self, from: listData), listResult)
+
+        let sendSticker = MessageSendStickerParams(
+            roomID: "!a:courier.local",
+            mediaURL: item.mediaURL,
+            name: item.name,
+            emoji: item.emoji,
+            mimeType: item.mimeType,
+            bridgedSticker: item.bridgedSticker,
+            replyTo: "$r1",
+            threadRoot: "$t1",
+            holdMS: 2000
+        )
+        let sendData = try JSONEncoder().encode(sendSticker)
+        XCTAssertEqual(try JSONDecoder().decode(MessageSendStickerParams.self, from: sendData), sendSticker)
     }
 }

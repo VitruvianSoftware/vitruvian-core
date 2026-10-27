@@ -181,7 +181,7 @@ public enum FormattingBar {
     }
 
     /// "Bold (Unavailable for WhatsApp)"; for a chat whose features aren't known yet, why.
-    static func unavailable(_ name: String, features: ChatFeatures, network: String) -> String {
+    public static func unavailable(_ name: String, features: ChatFeatures, network: String) -> String {
         guard features.source != .none else {
             return MessageActions.Reason.unknown(MessageActions.Reason.Name(network))
         }

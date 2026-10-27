@@ -1,0 +1,30 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 47,
+    "method": "stickers.import",
+    "params": {
+      "path": "/Users/alex/Pictures/party_parrot.png",
+      "shortcode": ":party_parrot:",
+      "name": "Party Parrot",
+      "emoji": "🦜",
+      "usage": ["emoticon", "sticker"]
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 47,
+    "result": {
+      "id": "imported:party_parrot",
+      "pack_id": "imported",
+      "shortcode": "party_parrot",
+      "name": "Party Parrot",
+      "emoji": "🦜",
+      "media_url": "courier://media/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "mime_type": "image/png",
+      "width": 1,
+      "height": 1,
+      "usage": ["emoticon", "sticker"]
+    }
+  }
+}

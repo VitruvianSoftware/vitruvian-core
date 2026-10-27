@@ -1,6 +1,6 @@
 {
   "name": "Courier engine protocol",
-  "protocol": 7,
+  "protocol": 8,
   "doc": "How Courier.app talks to its courier-engine helper. This file is the single definition: the engine's Go tests and the app's Swift tests both check the examples in examples/ against it, and the Swift Codable types are named exactly as the entries in types. Copyright 2026 VitruvianSoftware, SPDX-License-Identifier: AGPL-3.0-or-later.",
 
   "transport": {
@@ -1137,6 +1137,41 @@
         "reply_to": { "type": "string?" }
       }
     },
+    "BridgedStickerRef": {
+      "doc": "Native network sticker identifier (fi.mau.bridged_sticker).",
+      "fields": {
+        "network": { "type": "string?" },
+        "pack_url": { "type": "string?" },
+        "id": { "type": "string?" }
+      }
+    },
+    "SendStickerParams": {
+      "doc": "Send a sticker (m.sticker) from a local file path or existing media URL.",
+      "fields": {
+        "room_id": { "type": "string" },
+        "path": { "type": "string?" },
+        "media_url": { "type": "string?" },
+        "name": { "type": "string?" },
+        "emoji": { "type": "string?" },
+        "mime_type": { "type": "string?" },
+        "bridged_sticker": { "type": "BridgedStickerRef?" },
+        "reply_to": { "type": "string?" },
+        "thread_root": { "type": "string?" },
+        "hold_ms": { "type": "int?" }
+      }
+    },
+    "SendGIFParams": {
+      "doc": "Send an animated GIF or looping MP4 (m.room.message with fi.mau.gif: true).",
+      "fields": {
+        "room_id": { "type": "string" },
+        "path": { "type": "string?" },
+        "media_url": { "type": "string?" },
+        "caption": { "type": "string?" },
+        "reply_to": { "type": "string?" },
+        "thread_root": { "type": "string?" },
+        "hold_ms": { "type": "int?" }
+      }
+    },
     "TextEntity": {
       "doc": "One formatting range of a message's text.",
       "fields": {
@@ -1290,6 +1325,8 @@
         "file_features": { "type": "FileKindFeatures?" },
         "gif_features": { "type": "FileKindFeatures?" },
         "sticker_features": { "type": "FileKindFeatures?" },
+        "sticker": { "type": "MediaCapFeature" },
+        "gif": { "type": "MediaCapFeature" },
         "location_supported": {
           "type": "bool?",
           "doc": "Whether the chat supports sending location pins (m.location)."
@@ -1309,6 +1346,16 @@
         "max_caption_length": { "type": "int?" },
         "max_size": { "type": "int?" },
         "max_duration_sec": { "type": "int?" }
+      }
+    },
+    "MediaCapFeature": {
+      "doc": "Sticker or GIF sending capabilities from a bridge's event.RoomFeatures.File map.",
+      "fields": {
+        "supported": { "type": "bool" },
+        "mime_types": { "type": "string[]" },
+        "captions": { "type": "bool" },
+        "max_caption_length": { "type": "int?" },
+        "max_size": { "type": "int?" }
       }
     },
     "PollFeatures": {
@@ -2160,6 +2207,64 @@
           "doc": "Suggested merges across networks."
         }
       }
+    },
+    "StickerItem": {
+      "doc": "A sticker, custom emoji, or recent GIF entry in the local catalog.",
+      "fields": {
+        "id": { "type": "string" },
+        "pack_id": { "type": "string" },
+        "shortcode": { "type": "string?" },
+        "name": { "type": "string" },
+        "emoji": { "type": "string?" },
+        "media_url": { "type": "string" },
+        "mime_type": { "type": "string" },
+        "width": { "type": "int?" },
+        "height": { "type": "int?" },
+        "usage": { "type": "string[]" },
+        "bridged_sticker": { "type": "BridgedStickerRef?" }
+      }
+    },
+    "StickerPack": {
+      "doc": "A sticker or custom emoji pack from recent history, user imports, or a connected bridge.",
+      "fields": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "source": { "type": "string" },
+        "network": { "type": "string?" },
+        "items": { "type": "StickerItem[]" }
+      }
+    },
+    "ListStickersResult": {
+      "fields": {
+        "packs": { "type": "StickerPack[]" },
+        "recent_gifs": { "type": "StickerItem[]" }
+      }
+    },
+    "StickersListParams": {
+      "fields": {
+        "refresh_bridge_packs": {
+          "type": "bool?",
+          "doc": "When true, refresh sticker and custom emoji packs from connected bridges."
+        }
+      }
+    },
+    "ImportStickerParams": {
+      "fields": {
+        "path": {
+          "type": "string",
+          "doc": "Absolute path to a local .png, .webp, .gif, .apng, or .jpg file."
+        },
+        "shortcode": {
+          "type": "string?",
+          "doc": "Optional custom emoji shortcode (surrounding colons are stripped)."
+        },
+        "name": { "type": "string?" },
+        "emoji": { "type": "string?" },
+        "usage": {
+          "type": "string[]?",
+          "doc": "Usage tags: sticker, emoticon, or both."
+        }
+      }
     }
   },
 
@@ -2661,6 +2766,30 @@
       "params": "SendLocationParams",
       "result": "Sent",
       "errors": [-32010, -32014, -32016, -32018, -32020, -32023]
+    },
+    "message.sendSticker": {
+      "doc": "Send a sticker (m.sticker) in a chat that supports stickers.",
+      "params": "SendStickerParams",
+      "result": "Sent",
+      "errors": [-32010, -32011, -32012, -32014, -32016, -32020, -32022, -32023]
+    },
+    "message.sendGIF": {
+      "doc": "Send an animated GIF or looping MP4 (fi.mau.gif) in a chat that supports GIFs.",
+      "params": "SendGIFParams",
+      "result": "Sent",
+      "errors": [-32010, -32011, -32012, -32014, -32016, -32020, -32022, -32023]
+    },
+    "stickers.list": {
+      "doc": "List recent, user-imported, and bridge-synced sticker and custom emoji packs plus recent GIFs.",
+      "params": "StickersListParams",
+      "result": "ListStickersResult",
+      "errors": []
+    },
+    "stickers.import": {
+      "doc": "Import a local image file as a user sticker and/or custom emoji.",
+      "params": "ImportStickerParams",
+      "result": "StickerItem",
+      "errors": [-32012, -32014]
     }
   },
 
