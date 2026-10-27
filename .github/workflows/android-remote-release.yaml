@@ -105,7 +105,10 @@ jobs:
           TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
           VERSION: ${{ needs.release-please.outputs.version || '' }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash apps/mobile/android-remote/scripts/publish.sh
+        run: |
+          rustc --edition=2021 -O --crate-type=lib --crate-name=android_remote_tools_lib apps/mobile/android-remote/tools/src/lib.rs -o /tmp/libandroid_remote_tools_lib.rlib
+          rustc --edition=2021 -O apps/mobile/android-remote/tools/src/publish_main.rs -L /tmp --extern android_remote_tools_lib=/tmp/libandroid_remote_tools_lib.rlib -o /tmp/android-remote-publish
+          /tmp/android-remote-publish
 
   # The Mac extension, on the same release. A job of its own because it needs
   # a Mac; it does not wait for the APK, and the APK does not wait for it.

@@ -28,7 +28,7 @@ load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
 package(default_visibility = ["//apps/mobile/android-remote:__subpackages__"])
 
-exports_files(["boot_smoke.sh"])
+exports_files(["src/boot_smoke_main.rs"])
 
 rust_library(
     name = "android_remote_tools_lib",

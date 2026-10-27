@@ -34,7 +34,6 @@ load("@build_bazel_rules_swift//swift:swift_binary.bzl", "swift_binary")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 swift_library(
@@ -182,14 +181,13 @@ rust_test(
     deps = ["//packages/vitruvian-sdk:conformance_rs_lib"],
 )
 
-# The menu finds the agent by the paths install.sh writes; fail when they drift.
+# The menu finds the agent by the paths the installer writes; fail when they drift.
 rust_test(
     name = "paths_match_installer_test",
     size = "small",
     srcs = ["scripts/src/paths_match_installer_test.rs"],
     data = [
         "Sources/RemoteMenuCore/AgentStatus.swift",
-        "//apps/mobile/android-remote/macagent:install.sh",
     ],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
@@ -229,14 +227,9 @@ macos_application(
 )
 
 # `bazel run --config=macos-app //apps/mobile/android-remote/macmenu:install`
-sh_binary(
+alias(
     name = "install",
-    srcs = ["install.sh"],
-    data = [
-        ":VitruvianRemote",
-        "//apps/mobile/android-remote/macagent",
-    ],
-    tags = ["manual"],
+    actual = ":install-rs",
 )
 
 pipeline_unit(
@@ -289,8 +282,13 @@ rust_library(
 rust_binary(
     name = "install-rs",
     srcs = ["scripts/src/install/main.rs"],
+    data = [
+        ":VitruvianRemote",
+        "//apps/mobile/android-remote/macagent",
+    ],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
+    tags = ["manual"],
     deps = [":install_lib"],
 )
 
