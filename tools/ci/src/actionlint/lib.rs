@@ -34,7 +34,26 @@ use std::os::unix::ffi::OsStringExt;
 use std::process::{Command, Stdio};
 
 /// actionlint.sh, for its header (the --help text).
-pub const SCRIPT: &str = include_str!("../../actionlint.sh");
+pub const SCRIPT: &str = "\
+# actionlint.sh — the required `actionlint` check, run locally.
+#
+# Usage:
+#   bazel run //tools/ci:actionlint                  # every workflow, as CI checks them
+#   bazel run //tools/ci:actionlint -- <file>...     # just these workflow files
+#
+# The same two steps as .github/workflows/actionlint.yaml: actionlint (pinned in
+# tools/tools.lock.json at the workflow's ACTIONLINT_VERSION) with shellcheck at
+# warning level over the `run:` blocks, then the check that every outside
+# action is pinned to a commit SHA (tools/ci/require-pinned-actions.sh).
+#
+# One difference: CI uses the shellcheck preinstalled on its runner; this uses
+# the pinned one from aspect_rules_lint, so a finding new to one shellcheck
+# release can show up on one side only.
+#
+# Exit codes: 0 clean, 1 something to fix, 2 the check could not run.
+
+set -euo pipefail
+";
 
 pub const RUNFILES_ACTIONLINT: &str = "multitool/tools/actionlint/actionlint";
 pub const RUNFILES_SHELLCHECK: &str = "multitool/tools/shellcheck/shellcheck";
