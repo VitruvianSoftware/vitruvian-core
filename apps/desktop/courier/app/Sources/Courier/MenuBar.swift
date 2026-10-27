@@ -25,13 +25,14 @@ struct MenuBarIcon: View {
 }
 
 /// The menu-bar icon's menu: how many chats are unread, top unread and recent chats (`DockMenuModel`), Open Courier,
-/// Lock/Unlock App, and Quit Courier.
+/// Minimize to Menu Bar, Lock/Unlock App, and Quit Courier.
 struct MenuBarMenu: View {
     @ObservedObject var spaces: SpacesModel
     @ObservedObject var inbox: InboxModel
     @ObservedObject var model: AppModel
     @ObservedObject var lifecycle: SystemLifecycleModel
     @ObservedObject var dockPreferences: DockAndTrayPreferences
+    let menuCoordinator: AppMenuCoordinator
     let openCourier: () -> Void
 
     private var dockMenu: DockMenuModel {
@@ -67,26 +68,23 @@ struct MenuBarMenu: View {
         }
         Divider()
         Button(String(localized: "Open Courier"), action: openCourier)
-        if lifecycle.isLocked {
-            Button(String(localized: "Unlock Courier…")) {
+        Button(String(localized: "Minimize to Menu Bar"), action: menuCoordinator.minimizeToMenuBar)
+            .keyboardShortcut("q", modifiers: [.command, .option])
+        Button(lifecycle.isLocked ? String(localized: "Unlock Courier…") : String(localized: "Lock App")) {
+            if lifecycle.isLocked {
                 openCourier()
-                Task { await lifecycle.unlock() }
             }
-        } else {
-            Button(String(localized: "Lock App")) {
-                lifecycle.lockNow()
-            }
+            Task { await menuCoordinator.lockOrUnlockApp() }
         }
         Divider()
         // Quit goes through the app's quit path, which stops the engine and then exits.
         Button(String(localized: "Quit Courier")) { NSApp.terminate(nil) }
+            .keyboardShortcut("q", modifiers: .command)
     }
 
     private func openChat(_ roomID: String) {
-        openCourier()
-        inbox.select(roomID)
-        if lifecycle.isLocked {
-            Task { await lifecycle.unlock() }
+        Task {
+            _ = await menuCoordinator.openChatFromExternalMenu(roomID)
         }
     }
 
@@ -108,15 +106,25 @@ struct MenuBarMenu: View {
 @MainActor
 final class MainWindowOpener {
     private var open: (() -> Void)?
+    private var openChatWindow: ((String) -> Void)?
 
-    func register(_ open: @escaping () -> Void) {
+    func register(
+        _ open: @escaping () -> Void,
+        openChatWindow: @escaping (String) -> Void = { _ in }
+    ) {
         self.open = open
+        self.openChatWindow = openChatWindow
     }
 
     func show() {
         NSApp.activate()
         // openWindow brings the window forward if it is open, and makes it again if the person closed it.
         open?()
+    }
+
+    func openChatInfo(_ roomID: String) {
+        NSApp.activate()
+        openChatWindow?(roomID)
     }
 }
 
@@ -128,7 +136,12 @@ struct OpenWindowRegistrar: View {
     var body: some View {
         Color.clear
             .frame(width: 0, height: 0)
-            .onAppear { opener.register { openWindow(id: "main") } }
+            .onAppear {
+                opener.register(
+                    { openWindow(id: "main") },
+                    openChatWindow: { roomID in openWindow(id: WindowID.chatInfo, value: roomID) }
+                )
+            }
     }
 }
 
@@ -159,9 +172,7 @@ final class DockBadge {
     }
 }
 
-/// `File ▸ Open…` (`menu:File Open…`) command item opening the file picker to attach files to the active composer.
-/// Note: `⌘O` is already bound on `Message ▸ Attach Files…` in `ConversationCommands.swift`, so the duplicate
-/// `.keyboardShortcut("o", modifiers: .command)` is omitted here to avoid a menu shortcut clash.
+/// `File ▸ Open…` (`menu:File Open…`, `⌘O`) command item opening the file picker to attach files to the active composer.
 struct FileOpenCommandItem: View {
     let composer: ComposerModel
     let isDisabled: Bool
@@ -170,6 +181,7 @@ struct FileOpenCommandItem: View {
         Button(String(localized: "Open…")) {
             AttachmentPicker.run(into: composer)
         }
+        .keyboardShortcut("o", modifiers: .command)
         .disabled(isDisabled)
     }
 }

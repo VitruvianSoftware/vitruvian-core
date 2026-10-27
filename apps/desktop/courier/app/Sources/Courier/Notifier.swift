@@ -277,16 +277,35 @@ final class Notifier: NSObject, NotificationDelivering, UNUserNotificationCenter
     }
 
     /// Opens the macOS System Settings Notifications pane.
-    func openSystemNotificationSettings(openURL: (URL) -> Void = { _ = NSWorkspace.shared.open($0) }) {
+    var openURLHandler: @MainActor (URL) -> Void = { _ = NSWorkspace.shared.open($0) }
+    var removeAllDeliveredHandler: @MainActor () -> Void = {
+        guard Notifier.isAvailable else { return }
+        UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+    }
+    var runProcessHandler: @MainActor (URL, [String]) -> Void = { executableURL, arguments in
+        _ = try? Process.run(executableURL, arguments: arguments)
+    }
+    lazy var requestSettingsHandler: @MainActor () -> Void = { [weak self] in
+        self?.requestPermission()
+    }
+
+    func openSystemNotificationSettings() {
+        openSystemNotificationSettings(openURL: openURLHandler)
+    }
+
+    func openSystemNotificationSettings(openURL: (URL) -> Void) {
         if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") {
             openURL(url)
         }
     }
 
-    /// Re-registers Courier's notification categories and delegate with the system notification center.
+    /// Clears delivered notifications, restarts macOS NotificationCenter, and re-requests/registers notification settings.
     func restartNotificationCenter() {
+        removeAllDeliveredHandler()
+        runProcessHandler(URL(fileURLWithPath: "/usr/bin/killall"), ["NotificationCenter"])
         started = false
         _ = start()
+        requestSettingsHandler()
     }
 }
 

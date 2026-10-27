@@ -82,18 +82,10 @@ extension BiometricAuthService {
 public struct LAContextBiometricService: BiometricAuthService {
     public init() {}
 
-    private static var preferredBiometricsPolicy: LAPolicy {
-        if #available(macOS 15.0, *) {
-            return .deviceOwnerAuthenticationWithBiometricsOrCompanion
-        } else {
-            return .deviceOwnerAuthenticationWithBiometricsOrWatch
-        }
-    }
-
     public func canEvaluateBiometricsOrWatch() -> Bool {
         let context = LAContext()
         var error: NSError?
-        if context.canEvaluatePolicy(Self.preferredBiometricsPolicy, error: &error) {
+        if context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) {
             return true
         }
         return context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error)
@@ -102,10 +94,10 @@ public struct LAContextBiometricService: BiometricAuthService {
     public func authenticate(reason: String) async throws -> Bool {
         let context = LAContext()
         var error: NSError?
-        let policy: LAPolicy = context.canEvaluatePolicy(Self.preferredBiometricsPolicy, error: &error)
-            ? Self.preferredBiometricsPolicy
-            : .deviceOwnerAuthentication
-        return try await context.evaluatePolicy(policy, localizedReason: reason)
+        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) else {
+            return false
+        }
+        return try await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason)
     }
 }
 
@@ -186,6 +178,7 @@ public final class SystemLifecycleModel: ObservableObject {
     private var isApplyingLoginState = true
     private var isApplyingLockState = true
     private var pendingLockTimerID: UUID?
+    public private(set) var launchUnlockTask: Task<Bool, Never>?
 
     public init(
         loginItemService: any LoginItemService = MACLoginItemService(),
@@ -218,19 +211,26 @@ public final class SystemLifecycleModel: ObservableObject {
         let storedAutoLock = (defaults.object(forKey: Self.key("autoLockEnabled")) as? Bool)
             ?? (defaults.object(forKey: Self.key("requireTouchIDOnLaunch")) as? Bool)
             ?? false
-        let effectiveAutoLock = storedAutoLock && biometricService.canEvaluateBiometricsOrWatch()
-        self.autoLockEnabled = effectiveAutoLock
+        self.autoLockEnabled = storedAutoLock
         let rawTimeout = defaults.object(forKey: Self.key("lockTimeout")) as? Int ?? LockTimeoutChoice.fiveMinutes.rawValue
         self.lockTimeout = LockTimeoutChoice(rawValue: rawTimeout) ?? .fiveMinutes
-        self.isLocked = effectiveAutoLock
+        self.isLocked = storedAutoLock
 
         if currentLoginStatus == .requiresApproval {
             self.lastErrorMessage = Self.requiresApprovalMessage
+        } else if storedAutoLock, !biometricService.canEvaluateBiometricsOrWatch() {
+            self.lastErrorMessage = String(localized: "Touch ID or your Mac password isn’t available right now.")
         }
 
         isInitializing = false
         isApplyingLoginState = false
         isApplyingLockState = false
+
+        if storedAutoLock {
+            self.launchUnlockTask = Task { @MainActor [weak self] in
+                await self?.unlockWithTouchID() ?? false
+            }
+        }
     }
 
     public convenience init(
@@ -377,6 +377,11 @@ public final class SystemLifecycleModel: ObservableObject {
 
     @discardableResult
     public func unlock() async -> Bool {
+        guard biometricService.canEvaluateBiometricsOrWatch() else {
+            isLocked = true
+            lastErrorMessage = String(localized: "Touch ID or your Mac password isn’t available right now.")
+            return false
+        }
         do {
             let success = try await biometricService.authenticate(reason: String(localized: "Unlock Courier"))
             if success {
@@ -386,12 +391,12 @@ public final class SystemLifecycleModel: ObservableObject {
                 return true
             } else {
                 isLocked = true
-                lastErrorMessage = String(localized: "Courier stays locked until you unlock with Touch ID or your password.")
+                lastErrorMessage = String(localized: "Authentication was cancelled or failed.")
                 return false
             }
         } catch {
             isLocked = true
-            lastErrorMessage = String(localized: "Courier stays locked until you unlock with Touch ID or your password.")
+            lastErrorMessage = String(localized: "Authentication was cancelled or failed.")
             return false
         }
     }
@@ -400,7 +405,7 @@ public final class SystemLifecycleModel: ObservableObject {
         startMinimized
     }
 
-    public func shouldTerminateWhenMainWindowClosed() -> Bool {
-        !minimizeToTrayOnClose
+    public var shouldTerminateWhenMainWindowClosed: Bool {
+        quitOnMainWindowClose
     }
 }

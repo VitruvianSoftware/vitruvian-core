@@ -2847,10 +2847,35 @@ final class ViewSnapshotTests: XCTestCase {
         )
         model.autoLockEnabled = true
         model.lockNow()
-        _ = await model.unlock() // triggers fail-closed error caption
         check(try Snapshot.render("app-lock-overlay", width: 520, height: 360) {
             AppLockOverlay(model: model)
         })
+    }
+
+    func testNotifierRestartNotificationCenterClearsDeliveredKillsDaemonAndReRequestsSettings() {
+        let notifier = Notifier()
+        var openedURLs: [URL] = []
+        var removedAllCount = 0
+        var killedProcesses: [(URL, [String])] = []
+        var requestedSettingsCount = 0
+
+        notifier.openURLHandler = { openedURLs.append($0) }
+        notifier.removeAllDeliveredHandler = { removedAllCount += 1 }
+        notifier.runProcessHandler = { url, args in killedProcesses.append((url, args)) }
+        notifier.requestSettingsHandler = { requestedSettingsCount += 1 }
+
+        notifier.openSystemNotificationSettings()
+        XCTAssertEqual(
+            openedURLs.map(\.absoluteString),
+            ["x-apple.systempreferences:com.apple.Notifications-Settings.extension"]
+        )
+
+        notifier.restartNotificationCenter()
+        XCTAssertEqual(removedAllCount, 1, "restartNotificationCenter must remove all delivered notifications")
+        XCTAssertEqual(killedProcesses.count, 1, "restartNotificationCenter must invoke /usr/bin/killall NotificationCenter")
+        XCTAssertEqual(killedProcesses.first?.0.path, "/usr/bin/killall")
+        XCTAssertEqual(killedProcesses.first?.1, ["NotificationCenter"])
+        XCTAssertEqual(requestedSettingsCount, 1, "restartNotificationCenter must re-request notification settings")
     }
 }
 

@@ -20,54 +20,72 @@ struct InboxCommands: Commands {
     /// is MainWindow's.)
     let conversation: ConversationModel
     @ObservedObject var lifecycle: SystemLifecycleModel
+    @ObservedObject var menuCoordinator: AppMenuCoordinator
     let minimizeToMenuBar: @MainActor () -> Void
     @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
-        // 02 §3.1's Search…, after Settings. It toggles the panel. (No other menu, and no key of the composer's,
-        // takes ⌘K or ⌘F: part 4.3's formatting keys must leave them to search.)
+        CommandGroup(replacing: .appInfo) {
+            Button(String(localized: "About Courier")) {
+                menuCoordinator.openSettings(.about)
+            }
+        }
+        // 02 §3.1's Accounts…, Search…, and Lock App, after Settings.
         CommandGroup(after: .appSettings) {
+            Button(String(localized: "Accounts…")) {
+                menuCoordinator.openSettings(.accounts)
+            }
+
             Button(String(localized: "Search…")) {
                 let visible = bringMainWindowForward()
                 search.toggle(visible: visible)
             }
             .keyboardShortcut("k", modifiers: .command)
+            .disabled(lifecycle.isLocked)
 
             Divider()
 
             Button(lifecycle.isLocked ? String(localized: "Unlock Courier…") : String(localized: "Lock App")) {
                 if lifecycle.isLocked {
                     _ = bringMainWindowForward()
-                    Task { await lifecycle.unlock() }
-                } else {
-                    lifecycle.lockNow()
                 }
+                Task { await menuCoordinator.lockOrUnlockApp() }
             }
         }
         CommandGroup(before: .appTermination) {
-            Button(String(localized: "Minimize to Menu Bar"), action: minimizeToMenuBar)
+            Button(String(localized: "Minimize to Menu Bar"), action: menuCoordinator.minimizeToMenuBar)
                 .keyboardShortcut("q", modifiers: [.command, .option])
         }
         // The first-run window has its own button; once a network is linked, this is the way to add another.
         CommandGroup(replacing: .newItem) {
-            Button(String(localized: "New Chat…")) {
+            Button(String(localized: "New Chat")) {
                 _ = bringMainWindowForward()
-                inbox.openStartNewChat(multiSelect: false)
+                menuCoordinator.newChat()
             }
             .keyboardShortcut("n", modifiers: .command)
-            .disabled(inbox.accounts.isEmpty)
+            .disabled(inbox.accounts.isEmpty || lifecycle.isLocked)
 
             Button(String(localized: "New Group or Blast…")) {
                 _ = bringMainWindowForward()
                 inbox.openStartNewChat(multiSelect: true)
             }
             .keyboardShortcut("n", modifiers: [.command, .shift])
-            .disabled(inbox.accounts.isEmpty)
+            .disabled(inbox.accounts.isEmpty || lifecycle.isLocked)
+
+            Button(String(localized: "Open Chat in New Window"), action: menuCoordinator.openChatInNewWindow)
+                .disabled(conversation.roomID == nil || lifecycle.isLocked)
 
             Divider()
 
             Button(String(localized: "Add a Network…"), action: inbox.addNetwork)
-                .disabled(inbox.accounts.isEmpty || login.screen != .closed)
+                .disabled(inbox.accounts.isEmpty || login.screen != .closed || lifecycle.isLocked)
+        }
+        CommandGroup(after: .importExport) {
+            Divider()
+            Button(String(localized: "Close Window"), action: menuCoordinator.closeWindow)
+                .keyboardShortcut("w", modifiers: .command)
+            Button(String(localized: "Close All"), action: menuCoordinator.closeAllWindows)
+                .keyboardShortcut("w", modifiers: [.command, .option])
         }
         // ⌘Z takes back my newest held message while the open chat has one (undo send); otherwise it undoes what
         // the toast says was just done, and otherwise it is the text's own undo. ⌘⇧Z sends the held messages now,
@@ -93,35 +111,46 @@ struct InboxCommands: Commands {
             .keyboardShortcut("z", modifiers: [.command, .shift])
         }
         CommandGroup(before: .sidebar) {
-            Button(preferences.showSpaceBar ? String(localized: "Hide Space Bar") : String(localized: "Show Space Bar")) {
-                preferences.showSpaceBar.toggle()
-            }
-            .keyboardShortcut("s", modifiers: .command)
+            Button(preferences.showSpaceBar ? String(localized: "Hide Space Bar") : String(localized: "Show Space Bar"),
+                   action: menuCoordinator.toggleSpaceBar)
+                .keyboardShortcut("s", modifiers: .command)
+            Button(menuCoordinator.isSidebarVisible ? String(localized: "Hide Sidebar") : String(localized: "Show Sidebar"),
+                   action: menuCoordinator.toggleSidebar)
+                .keyboardShortcut("s", modifiers: [.command, .option])
             Button(String(localized: "Edit Spaces…")) {
                 spaces.isEditing = true
                 openWindow(id: WindowID.editSpaces)
             }
+            .disabled(lifecycle.isLocked)
             Button(String(localized: "Edit Labels…")) { openWindow(id: WindowID.editLabels) }
+                .disabled(lifecycle.isLocked)
             Button(String(localized: "New Label…")) {
                 openWindow(id: WindowID.label, value: LabelWindowTarget.new(applyTo: []))
             }
+            .disabled(lifecycle.isLocked)
             Divider()
         }
         CommandMenu(String(localized: "Chat")) {
             Button(String(localized: "Next Chat"), action: inbox.selectNext)
                 .keyboardShortcut("]", modifiers: .command)
+                .disabled(lifecycle.isLocked)
             Button(String(localized: "Previous Chat"), action: inbox.selectPrevious)
                 .keyboardShortcut("[", modifiers: .command)
+                .disabled(lifecycle.isLocked)
             Button(String(localized: "Next Unread Chat"), action: inbox.selectNextUnread)
                 .keyboardShortcut("u", modifiers: .command)
+                .disabled(lifecycle.isLocked)
             Menu(String(localized: "Go to Chat")) {
-                ForEach(Array(inbox.rows.prefix(9).enumerated()), id: \.element.id) { index, row in
-                    Button(row.name.isEmpty ? String(localized: "Unnamed chat") : row.name) {
-                        inbox.selectChat(number: index + 1)
+                if !lifecycle.isLocked {
+                    ForEach(Array(inbox.rows.prefix(9).enumerated()), id: \.element.id) { index, row in
+                        Button(row.name.isEmpty ? String(localized: "Unnamed chat") : row.name) {
+                            inbox.selectChat(number: index + 1)
+                        }
+                        .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .control)
                     }
-                    .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .control)
                 }
             }
+            .disabled(lifecycle.isLocked)
             // The open chat's messages; with none open, every chat (as ⌘K). MainWindow also takes ⌘F, so that it
             // wins over the Edit menu's Find while typing.
             Button(String(localized: "Search in Chat…")) {
@@ -129,6 +158,7 @@ struct InboxCommands: Commands {
                 search.show(in: inbox.selectedRoomID)
             }
             .keyboardShortcut("f", modifiers: .command)
+            .disabled(lifecycle.isLocked)
             Divider()
             actions
             Divider()
@@ -141,15 +171,23 @@ struct InboxCommands: Commands {
             spaceKeys
         }
         CommandGroup(after: .help) {
+            Button(String(localized: "Report a Problem…")) {
+                menuCoordinator.openSettings(.reportProblem)
+            }
+            .keyboardShortcut("p", modifiers: [.command, .shift])
+
             Button(String(localized: "Keyboard Shortcuts")) {
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                menuCoordinator.openSettings(.shortcuts)
             }
             .keyboardShortcut("/", modifiers: .command)
 
-            Button(String(localized: "Report a Problem…")) {
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            Button(String(localized: "Privacy & Security")) {
+                menuCoordinator.openSettings(.privacy)
             }
-            .keyboardShortcut("p", modifiers: [.command, .shift])
+
+            Button(String(localized: "Changelog")) {
+                menuCoordinator.openSettings(.changelog)
+            }
         }
     }
 

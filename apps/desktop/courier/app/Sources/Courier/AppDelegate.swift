@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
+import Combine
 import CourierCore
 
 /// Owns the app's model, and so the engine: starts it at launch and stops it before the app quits. Closing the
@@ -28,6 +29,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let lifecycle = SystemLifecycleModel()
     /// Dock badge mode and menu-bar status item settings.
     let dockPreferences = DockAndTrayPreferences()
+    /// Shared menu coordinator invoked by the main menu bar, Dock menu, and menu-bar status item.
+    private(set) lazy var menuCoordinator = AppMenuCoordinator(
+        inbox: inbox,
+        lifecycle: lifecycle,
+        showMainWindow: { [weak self] in self?.windowOpener.show() },
+        showSettingsWindow: {
+            NSApp.activate()
+            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        },
+        hideApp: { NSApp.hide(nil) },
+        closeKeyWindow: { NSApp.keyWindow?.performClose(nil) },
+        closeAllAppWindows: { NSApp.windows.forEach { $0.performClose(nil) } },
+        openDetachedChat: { [weak self] roomID in self?.windowOpener.openChatInfo(roomID) }
+    )
     /// The sheets and popovers the inbox's menus and keys open.
     let inboxUI = InboxUI()
     /// Whether the message keys act on the chat's selected message or the thread pane's.
@@ -39,6 +54,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var notifications: NotificationCoordinator?
     private let notifier = Notifier()
     private var dockBadge: DockBadge?
+    private var statusItem: NSStatusItem?
+    private var statusItemSubscriptions = Set<AnyCancellable>()
     /// Held for as long as Courier runs: without it, App Nap slows a Courier whose window is closed or hidden, and
     /// the engine's messages, and so notifications, come late. It still lets the Mac sleep when idle.
     private var appNapActivity: NSObjectProtocol?
@@ -140,6 +157,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         signInWindows = SignInWindowPresenter(login: login)
         hideTypingQuestion = HideTypingQuestion(conversation: conversation, present: Self.askToHideTyping)
         dockBadge = DockBadge(spaces: spaces, dockPreferences: dockPreferences, lifecycle: lifecycle)
+        configureStatusItemObservers()
         let coordinator = NotificationCoordinator(
             appModel: model, delivery: notifier,
             row: { [inbox] id in inbox.rows.first { $0.roomID == id } },
@@ -165,10 +183,177 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func minimizeToMenuBar() {
-        NSApp.hide(nil)
+        menuCoordinator.minimizeToMenuBar()
+    }
+
+    private func configureStatusItemObservers() {
+        guard Notifier.isAvailable else { return }
+        Publishers.CombineLatest4(
+            dockPreferences.$showMenuBarIcon,
+            spaces.$spaces,
+            dockPreferences.$badgeMode,
+            lifecycle.$isLocked
+        )
+        .sink { [weak self] showIcon, spacesList, badgeMode, isLocked in
+            self?.updateStatusItem(
+                showIcon: showIcon,
+                spacesList: spacesList,
+                badgeMode: badgeMode,
+                isLocked: isLocked
+            )
+        }
+        .store(in: &statusItemSubscriptions)
+    }
+
+    private func updateStatusItem(
+        showIcon: Bool,
+        spacesList: [Space],
+        badgeMode: DockBadgeMode,
+        isLocked: Bool
+    ) {
+        guard Notifier.isAvailable else { return }
+        guard showIcon else {
+            if let existing = statusItem {
+                NSStatusBar.system.removeStatusItem(existing)
+                statusItem = nil
+            }
+            return
+        }
+        let item = statusItem ?? NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        statusItem = item
+        guard let button = item.button else { return }
+        let count = isLocked ? 0 : SpacesModel.badgeCount(of: spacesList, mode: badgeMode)
+        let symbolName = count > 0 ? "bubble.left.and.bubble.right.fill" : "bubble.left.and.bubble.right"
+        let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: String(localized: "Courier"))
+        image?.isTemplate = true
+        button.image = image
+        button.toolTip = String(localized: "Courier")
+        button.target = self
+        button.action = #selector(statusItemClicked(_:))
+        button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+    }
+
+    @objc private func statusItemClicked(_ sender: NSStatusBarButton) {
+        let event = NSApp.currentEvent
+        let isRightClick = event?.type == .rightMouseUp || event?.modifierFlags.contains(.control) == true
+        if isRightClick, let item = statusItem {
+            let menu = buildStatusItemMenu()
+            item.menu = menu
+            sender.performClick(nil)
+            item.menu = nil
+        } else {
+            windowOpener.show()
+        }
+    }
+
+    private func buildStatusItemMenu() -> NSMenu {
+        let menu = NSMenu(title: "Courier")
+        menu.autoenablesItems = false
+
+        let unreadTitle: String
+        if lifecycle.isLocked {
+            unreadTitle = String(localized: "Courier is locked")
+        } else {
+            let count = SpacesModel.badgeCount(of: spaces.spaces, mode: dockPreferences.badgeMode)
+            switch count {
+            case 0: unreadTitle = String(localized: "No unread chats")
+            case 1: unreadTitle = String(localized: "1 unread chat")
+            default: unreadTitle = String(localized: "\(count) unread chats")
+            }
+        }
+        let statusHeader = NSMenuItem(title: unreadTitle, action: nil, keyEquivalent: "")
+        statusHeader.isEnabled = false
+        menu.addItem(statusHeader)
+
+        let dockMenu = DockMenuModel.build(
+            isLocked: lifecycle.isLocked,
+            inboxRows: inbox.rows,
+            recentlyViewedRoomIDs: inbox.recentlyViewedRoomIDs,
+            currentRoomID: model.selectedRoomID
+        )
+        if !dockMenu.unreadChats.isEmpty {
+            menu.addItem(.separator())
+            let header = NSMenuItem(title: String(localized: "Unread Chats"), action: nil, keyEquivalent: "")
+            header.isEnabled = false
+            menu.addItem(header)
+            for chat in dockMenu.unreadChats {
+                let item = NSMenuItem(title: chat.title, action: #selector(selectDockMenuChat(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = chat.roomID
+                item.isEnabled = true
+                menu.addItem(item)
+            }
+        }
+        if !dockMenu.recentChats.isEmpty {
+            menu.addItem(.separator())
+            let header = NSMenuItem(title: String(localized: "Recent Chats"), action: nil, keyEquivalent: "")
+            header.isEnabled = false
+            menu.addItem(header)
+            for chat in dockMenu.recentChats {
+                let item = NSMenuItem(title: chat.title, action: #selector(selectDockMenuChat(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = chat.roomID
+                item.isEnabled = true
+                menu.addItem(item)
+            }
+        }
+
+        menu.addItem(.separator())
+        let openItem = NSMenuItem(title: String(localized: "Open Courier"), action: #selector(openCourierFromMenu(_:)), keyEquivalent: "")
+        openItem.target = self
+        openItem.isEnabled = true
+        menu.addItem(openItem)
+
+        let minItem = NSMenuItem(title: String(localized: "Minimize to Menu Bar"), action: #selector(minimizeFromMenu(_:)), keyEquivalent: "q")
+        minItem.keyEquivalentModifierMask = [.command, .option]
+        minItem.target = self
+        minItem.isEnabled = true
+        menu.addItem(minItem)
+
+        let lockTitle = lifecycle.isLocked ? String(localized: "Unlock Courier…") : String(localized: "Lock App")
+        let lockItem = NSMenuItem(title: lockTitle, action: #selector(lockOrUnlockFromMenu(_:)), keyEquivalent: "")
+        lockItem.target = self
+        lockItem.isEnabled = true
+        menu.addItem(lockItem)
+
+        menu.addItem(.separator())
+        let quitItem = NSMenuItem(title: String(localized: "Quit Courier"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        quitItem.keyEquivalentModifierMask = [.command]
+        quitItem.isEnabled = true
+        menu.addItem(quitItem)
+        return menu
+    }
+
+    @objc private func openCourierFromMenu(_ sender: NSMenuItem) {
+        windowOpener.show()
+    }
+
+    @objc private func minimizeFromMenu(_ sender: NSMenuItem) {
+        menuCoordinator.minimizeToMenuBar()
+    }
+
+    @objc private func lockOrUnlockFromMenu(_ sender: NSMenuItem) {
+        if lifecycle.isLocked {
+            windowOpener.show()
+        }
+        Task { await menuCoordinator.lockOrUnlockApp() }
     }
 
     func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        if lifecycle.isLocked {
+            let menu = NSMenu(title: "Courier")
+            menu.autoenablesItems = false
+            let unlockItem = NSMenuItem(
+                title: String(localized: "Unlock Courier…"),
+                action: #selector(lockOrUnlockFromMenu(_:)),
+                keyEquivalent: ""
+            )
+            unlockItem.target = self
+            unlockItem.isEnabled = true
+            menu.addItem(unlockItem)
+            return menu
+        }
+
         let dockMenu = DockMenuModel.build(
             isLocked: lifecycle.isLocked,
             inboxRows: inbox.rows,
@@ -214,8 +399,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func selectDockMenuChat(_ sender: NSMenuItem) {
         guard let roomID = sender.representedObject as? String else { return }
-        windowOpener.show()
-        inbox.select(roomID)
+        Task {
+            _ = await menuCoordinator.openChatFromExternalMenu(roomID)
+        }
     }
 
     /// The question as an alert: a sheet on the window in front (Settings, or the main window for the command bar),
@@ -248,7 +434,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        lifecycle.shouldTerminateWhenMainWindowClosed()
+        lifecycle.shouldTerminateWhenMainWindowClosed
     }
 
     /// Quitting first tells each chat I'm typing in that I stopped (both composers), then hands every held (undo

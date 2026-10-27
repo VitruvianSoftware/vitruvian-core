@@ -491,21 +491,15 @@ public enum NotificationPolicy {
             textBody = body(of: event)
             attachment = attachmentPath(of: event)
         }
-        var category: NotificationCategory = isUrgentOTP ? .messageOTP : .message
+        let category: NotificationCategory = isUrgentOTP ? .messageOTP : .message
 
-        if context.isAppLocked {
-            title = String(localized: "Courier")
-            subtitle = nil
-            textBody = String(localized: "New message")
-            attachment = nil
-            category = .scheduled
-        } else if override?.showPreviews == false {
+        if override?.showPreviews == false {
             subtitle = nil
             textBody = String(localized: "New message")
             attachment = nil
         }
 
-        let content = NotificationContent(
+        let rawContent = NotificationContent(
             eventID: event.eventID,
             roomID: event.roomID,
             title: title,
@@ -515,6 +509,7 @@ public enum NotificationPolicy {
             attachmentPath: attachment,
             sound: sound
         )
+        let content = redactIfLocked(rawContent, isLocked: context.isAppLocked)
         let effectiveDelay = otpCode != nil ? 0 : (preferences?.delaySeconds ?? 0)
         let effectiveRepeat = preferences?.repeatUnreadMinutes ?? 0
 
@@ -539,17 +534,36 @@ public enum NotificationPolicy {
         return key
     }
 
-    private static func resolveAccountOverride(
+    public static func resolveAccountOverride(
         for room: InboxRow,
         preferences: NotificationPreferences?,
-        explicitKey: String?
+        explicitKey: String? = nil
     ) -> AccountNotificationOverride? {
         guard let map = preferences?.accountOverrides, !map.isEmpty else { return nil }
-        if let explicitKey, let found = map[explicitKey] { return found }
+        if let explicitKey = explicitKey?.trimmingCharacters(in: .whitespacesAndNewlines), !explicitKey.isEmpty {
+            if let found = map[explicitKey] { return found }
+            if !room.network.isEmpty, let found = map["\(room.network):\(explicitKey)"] { return found }
+            if let found = map["account:\(explicitKey)"] { return found }
+        }
+        let loginName = room.loginName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !loginName.isEmpty {
+            if !room.network.isEmpty {
+                if let found = map["\(room.network):\(loginName)"] { return found }
+                if let found = map["account:\(room.network):\(loginName)"] { return found }
+            }
+            if let found = map["account:\(loginName)"] { return found }
+            if let found = map[loginName] { return found }
+        }
         if !room.network.isEmpty {
+            if let found = map["account:\(room.network)"] { return found }
             if let found = map[room.network] { return found }
-            if let (_, found) = map.first(where: { $0.key.hasPrefix(room.network + ":") }) {
-                return found
+            if explicitKey == nil, loginName.isEmpty {
+                let prefix = room.network + ":"
+                let accountPrefix = "account:" + room.network + ":"
+                let matches = map.filter { $0.key.hasPrefix(prefix) || $0.key.hasPrefix(accountPrefix) }
+                if matches.count == 1, let only = matches.first?.value {
+                    return only
+                }
             }
         }
         return nil
@@ -558,6 +572,30 @@ public enum NotificationPolicy {
     /// Whether the chat is muted: by itself, or by its account or one of its labels.
     public static func isMuted(_ room: InboxRow) -> Bool {
         room.muted || room.mutedBy != .none
+    }
+
+    /// Redacts notification content when Courier is locked (`isLocked == true`), hiding sender name,
+    /// chat title, message preview, media attachments, and interactive reply/copy actions across all paths.
+    public static func redactIfLocked(_ content: NotificationContent, isLocked: Bool) -> NotificationContent {
+        guard isLocked else { return content }
+        let redactedBody: String = switch content.category {
+        case .typing:
+            String(localized: "Someone is typing…")
+        case .reminder:
+            String(localized: "Reminder due")
+        case .message, .messageOTP, .scheduled:
+            String(localized: "New message")
+        }
+        return NotificationContent(
+            eventID: content.eventID,
+            roomID: content.roomID,
+            title: String(localized: "Courier"),
+            subtitle: nil,
+            body: redactedBody,
+            category: .scheduled,
+            attachmentPath: nil,
+            sound: content.sound
+        )
     }
 
     // MARK: - Someone starts typing

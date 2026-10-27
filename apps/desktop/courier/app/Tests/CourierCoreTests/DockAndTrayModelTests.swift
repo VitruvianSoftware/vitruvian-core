@@ -61,7 +61,7 @@ final class DockAndTrayModelTests: XCTestCase {
             makeRow("!rhid", name: "Recent Hidden", ts: 85, unread: 0, hidden: true),
         ]
 
-        let history = ["!curr", "!u2", "!rhid", "!r1", "!r2", "!r3", "!r4", "!r5", "!r6"]
+        let history = ["!curr", "!u2", "!rhid", "!u6", "!lp", "!r1", "!r2", "!r3", "!r4", "!r5", "!r6"]
 
         // 1. When locked, both unreadChats and recentChats are empty
         let lockedMenu = DockMenuModel.build(
@@ -74,7 +74,7 @@ final class DockAndTrayModelTests: XCTestCase {
         XCTAssertTrue(lockedMenu.unreadChats.isEmpty)
         XCTAssertTrue(lockedMenu.recentChats.isEmpty)
 
-        // 2. When unlocked, capped at 5 unread (excluding lowPriority and hidden) and 5 recent (excluding currentRoomID, unreadChats, and hidden)
+        // 2. When unlocked, capped at 5 unread (excluding lowPriority and hidden) and 5 recent (excluding currentRoomID, unreadChats, and hidden; overflow unread chats !u6 and !lp stay eligible for recentChats)
         let unlockedMenu = DockMenuModel.build(
             isLocked: false,
             inboxRows: rows,
@@ -85,7 +85,7 @@ final class DockAndTrayModelTests: XCTestCase {
         XCTAssertEqual(unlockedMenu.unreadChats.map(\.roomID), ["!u1", "!u2", "!u3", "!u4", "!u5"])
         XCTAssertEqual(unlockedMenu.unreadChats.first?.title.count, 40)
         XCTAssertEqual(unlockedMenu.unreadChats.first?.title.last, "…")
-        XCTAssertEqual(unlockedMenu.recentChats.map(\.roomID), ["!r1", "!r2", "!r3", "!r4", "!r5"])
+        XCTAssertEqual(unlockedMenu.recentChats.map(\.roomID), ["!u6", "!lp", "!r1", "!r2", "!r3"])
     }
 
     func testMenuBarIconPreferenceAndDockBadgeModes() throws {
@@ -103,5 +103,93 @@ final class DockAndTrayModelTests: XCTestCase {
         let reloaded = DockAndTrayPreferences(defaults: defaults)
         XCTAssertEqual(reloaded.badgeMode, .allChats)
         XCTAssertFalse(reloaded.showMenuBarIcon)
+    }
+
+    func testExternalMenuUnlockAndTwinMenuActionsShareOneModelAction() async throws {
+        let suiteName = "courier.test.dock.actions.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let supervisor = EngineSupervisor(
+            enginePath: "/Applications/Courier.app/Contents/Helpers/courier-engine",
+            dataDir: URL(fileURLWithPath: "/tmp/courier-test-dock"),
+            environment: [:],
+            launcher: FakeLauncher { _, _ in }
+        )
+        let appModel = AppModel(supervisor: supervisor)
+        let inboxPrefs = InboxPreferences(defaults: defaults)
+        let inbox = InboxModel(appModel: appModel, preferences: inboxPrefs)
+        let bio = FakeBiometricAuthService(available: true, result: .success(false))
+        let lifecycle = SystemLifecycleModel(
+            defaults: defaults,
+            loginItem: FakeLoginItemService(currentStatus: .notRegistered),
+            biometrics: bio
+        )
+
+        var shownMainCount = 0
+        var shownSettingsCount = 0
+        var hiddenAppCount = 0
+        var closedWindowCount = 0
+        var closedAllCount = 0
+        var detachedRooms: [String] = []
+
+        let coordinator = AppMenuCoordinator(
+            inbox: inbox,
+            lifecycle: lifecycle,
+            showMainWindow: { shownMainCount += 1 },
+            showSettingsWindow: { shownSettingsCount += 1 },
+            hideApp: { hiddenAppCount += 1 },
+            closeKeyWindow: { closedWindowCount += 1 },
+            closeAllAppWindows: { closedAllCount += 1 },
+            openDetachedChat: { detachedRooms.append($0) }
+        )
+
+        // 1. Lock App via twin action (Application menu / Tray menu)
+        await coordinator.lockOrUnlockApp()
+        XCTAssertTrue(lifecycle.isLocked)
+
+        // 2. Selecting a chat from Dock menu or Tray menu while locked must authenticate first and refuse to select on failure
+        let failedOpen = await coordinator.openChatFromExternalMenu("!r1")
+        XCTAssertFalse(failedOpen)
+        XCTAssertNil(inbox.selectedRoomID, "must not select chat when Touch ID unlock fails")
+        XCTAssertTrue(lifecycle.isLocked)
+
+        // 3. When Touch ID succeeds, selecting from Dock/Tray menu unlocks and selects the chat
+        bio.result = .success(true)
+        let succeededOpen = await coordinator.openChatFromExternalMenu("!r1")
+        XCTAssertTrue(succeededOpen)
+        XCTAssertFalse(lifecycle.isLocked)
+        XCTAssertEqual(inbox.selectedRoomID, "!r1")
+        XCTAssertGreaterThanOrEqual(shownMainCount, 1)
+
+        // 4. Minimize to Menu Bar (Application menu ⌘⌥Q and Tray menu ⌘⌥Q)
+        coordinator.minimizeToMenuBar()
+        XCTAssertEqual(hiddenAppCount, 1)
+
+        // 5. Settings sections from Application and Help menus (About Courier, Accounts…, Keyboard Shortcuts, Report a Problem…, Privacy & Security, Changelog)
+        for section in [SettingsSection.about, .accounts, .shortcuts, .reportProblem, .privacy, .changelog] {
+            coordinator.openSettings(section)
+            XCTAssertEqual(coordinator.activeSettingsSection, section)
+        }
+        XCTAssertEqual(shownSettingsCount, 6)
+
+        // 6. File menu actions: New Chat (⌘N), Open Chat in New Window, Close Window (⌘W), Close All (⌘⌥W)
+        coordinator.newChat()
+        XCTAssertNotNil(inbox.startNewChatDraft)
+        coordinator.openChatInNewWindow()
+        XCTAssertEqual(detachedRooms, ["!r1"])
+        XCTAssertEqual(coordinator.detachedChatRoomIDs, ["!r1"])
+        coordinator.closeWindow()
+        XCTAssertEqual(closedWindowCount, 1)
+        coordinator.closeAllWindows()
+        XCTAssertEqual(closedAllCount, 1)
+
+        // 7. View menu actions: Show/Hide Space Bar (⌘S) and Show/Hide Sidebar (⌘⌥S)
+        let initialSpaceBar = inboxPrefs.showSpaceBar
+        coordinator.toggleSpaceBar()
+        XCTAssertEqual(inboxPrefs.showSpaceBar, !initialSpaceBar)
+        XCTAssertTrue(coordinator.isSidebarVisible)
+        coordinator.toggleSidebar()
+        XCTAssertFalse(coordinator.isSidebarVisible)
     }
 }

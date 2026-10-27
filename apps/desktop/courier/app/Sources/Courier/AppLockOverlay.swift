@@ -44,9 +44,9 @@ public struct AppLockOverlay: View {
                 }
 
                 Button {
-                    Task { await model.unlock() }
+                    Task { await model.unlockWithTouchID() }
                 } label: {
-                    Label("Unlock with Touch ID", systemImage: "touchid")
+                    Label("Unlock with Touch ID…", systemImage: "touchid")
                         .padding(.horizontal, 8)
                 }
                 .buttonStyle(.borderedProminent)

@@ -82,9 +82,7 @@ public struct DockMenuModel: Equatable, Sendable {
                   !unreadSet.contains(roomID),
                   seenRecent.insert(roomID).inserted,
                   let row = rowsByID[roomID],
-                  !row.hidden,
-                  row.unread == 0,
-                  !row.markedUnread
+                  !row.hidden
             else {
                 continue
             }
@@ -122,5 +120,113 @@ public final class DockAndTrayPreferences: ObservableObject {
         self.badgeMode = DockBadgeMode(rawValue: rawBadge) ?? .unreadChats
         self.showMenuBarIcon = defaults.object(forKey: Self.key("showMenuBarIcon")) as? Bool ?? true
         isInitializing = false
+    }
+}
+
+/// Sections in the Settings window targeted by menu commands (`About Courier`, `Accounts…`, `Keyboard Shortcuts`, etc.).
+public enum SettingsSection: String, CaseIterable, Sendable {
+    case general
+    case accounts
+    case appearance
+    case inbox
+    case messages
+    case notifications
+    case shortcuts
+    case privacy
+    case changelog
+    case reportProblem
+    case about
+}
+
+/// Shared menu action model invoked identically by the native macOS menu bar, the Dock menu (`applicationDockMenu`),
+/// and the menu-bar status item (`02` §3.1, §3.2).
+@MainActor
+public final class AppMenuCoordinator: ObservableObject {
+    @Published public private(set) var activeSettingsSection: SettingsSection = .inbox
+    @Published public var isSidebarVisible: Bool = true
+    @Published public private(set) var detachedChatRoomIDs: [String] = []
+
+    public let inbox: InboxModel
+    public let lifecycle: SystemLifecycleModel
+    private let showMainWindow: @MainActor () -> Void
+    private let showSettingsWindow: @MainActor () -> Void
+    private let hideApp: @MainActor () -> Void
+    private let closeKeyWindow: @MainActor () -> Void
+    private let closeAllAppWindows: @MainActor () -> Void
+    private let openDetachedChat: @MainActor (String) -> Void
+
+    public init(
+        inbox: InboxModel,
+        lifecycle: SystemLifecycleModel,
+        showMainWindow: @escaping @MainActor () -> Void = {},
+        showSettingsWindow: @escaping @MainActor () -> Void = {},
+        hideApp: @escaping @MainActor () -> Void = {},
+        closeKeyWindow: @escaping @MainActor () -> Void = {},
+        closeAllAppWindows: @escaping @MainActor () -> Void = {},
+        openDetachedChat: @escaping @MainActor (String) -> Void = { _ in }
+    ) {
+        self.inbox = inbox
+        self.lifecycle = lifecycle
+        self.showMainWindow = showMainWindow
+        self.showSettingsWindow = showSettingsWindow
+        self.hideApp = hideApp
+        self.closeKeyWindow = closeKeyWindow
+        self.closeAllAppWindows = closeAllAppWindows
+        self.openDetachedChat = openDetachedChat
+    }
+
+    @discardableResult
+    public func openChatFromExternalMenu(_ roomID: String) async -> Bool {
+        if lifecycle.isLocked {
+            let unlocked = await lifecycle.unlockWithTouchID()
+            guard unlocked, !lifecycle.isLocked else { return false }
+        }
+        showMainWindow()
+        inbox.select(roomID)
+        return true
+    }
+
+    public func lockOrUnlockApp() async {
+        if lifecycle.isLocked {
+            _ = await lifecycle.unlockWithTouchID()
+        } else {
+            lifecycle.lockApp()
+        }
+    }
+
+    public func minimizeToMenuBar() {
+        hideApp()
+    }
+
+    public func openSettings(_ section: SettingsSection) {
+        activeSettingsSection = section
+        showSettingsWindow()
+    }
+
+    public func newChat() {
+        showMainWindow()
+        inbox.openStartNewChat()
+    }
+
+    public func openChatInNewWindow() {
+        guard let roomID = inbox.selectedRoomID else { return }
+        detachedChatRoomIDs.append(roomID)
+        openDetachedChat(roomID)
+    }
+
+    public func closeWindow() {
+        closeKeyWindow()
+    }
+
+    public func closeAllWindows() {
+        closeAllAppWindows()
+    }
+
+    public func toggleSpaceBar() {
+        inbox.preferences.showSpaceBar.toggle()
+    }
+
+    public func toggleSidebar() {
+        isSidebarVisible.toggle()
     }
 }

@@ -16,6 +16,15 @@ public protocol NotificationDelivering: AnyObject {
     func clear(roomID: String)
     /// Takes down one notification, by its id (`NotificationContent.eventID`), if it is shown.
     func remove(notificationID: String)
+    /// Opens the macOS System Settings Notifications pane.
+    func openSystemNotificationSettings()
+    /// Removes delivered notifications, restarts the macOS NotificationCenter daemon, and re-requests settings.
+    func restartNotificationCenter()
+}
+
+extension NotificationDelivering {
+    public func openSystemNotificationSettings() {}
+    public func restartNotificationCenter() {}
 }
 
 @MainActor
@@ -346,13 +355,34 @@ public final class NotificationCoordinator {
               NotificationPolicy.shouldNotifyTyping(room: row, context: context, on: preferences.typingNotifications)
         else { return }
         typingTold.insert(roomID)
-        delivery.deliver(NotificationPolicy.typingContent(room: row))
+        deliverRespectingLock(NotificationPolicy.typingContent(room: row))
     }
 
     /// The burst is over: its notification, if one was told, comes down.
     private func endTypingBurst(_ roomID: String) {
         guard typingTold.remove(roomID) != nil else { return }
         delivery.remove(notificationID: NotificationPolicy.typingID(roomID: roomID))
+    }
+
+    private func deliverRespectingLock(_ content: NotificationContent) {
+        delivery.deliver(NotificationPolicy.redactIfLocked(content, isLocked: isAppLocked()))
+    }
+
+    private func resolveAccountKey(for room: InboxRow) -> String? {
+        let loginName = room.loginName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let logins = appModel.accounts
+            .filter { $0.network == room.network }
+            .flatMap(\.logins)
+        if !loginName.isEmpty {
+            if let match = logins.first(where: { $0.accountID == loginName || $0.remoteName == loginName }) {
+                return "\(room.network):\(match.accountID)"
+            }
+            return room.network.isEmpty ? loginName : "\(room.network):\(loginName)"
+        }
+        if logins.count == 1, let only = logins.first, !only.accountID.isEmpty {
+            return "\(room.network):\(only.accountID)"
+        }
+        return nil
     }
 
     /// What the decision depends on now; nil before the app is connected.
@@ -400,7 +430,7 @@ public final class NotificationCoordinator {
                 chat = await lookUp(message.roomID, with: client)
                 guard client === appModel.client else { break }
             }
-            delivery.deliver(NotificationPolicy.scheduledContent(message, room: chat))
+            deliverRespectingLock(NotificationPolicy.scheduledContent(message, room: chat))
         }
         scheduledReads += 1
     }
@@ -438,7 +468,7 @@ public final class NotificationCoordinator {
         }
         // A chat the engine doesn't have has no name to show.
         guard let chat else { return }
-        delivery.deliver(NotificationPolicy.reminderContent(room: chat))
+        deliverRespectingLock(NotificationPolicy.reminderContent(room: chat))
     }
 
     /// Ends a chat's fired reminder without reading it. A failure is ignored, as Mark as Read's is.
@@ -454,6 +484,7 @@ public final class NotificationCoordinator {
         // A message deleted before it was announced is not announced.
         let deleted = NotificationPolicy.redactedEventIDs(in: events)
         let notifPrefs = preferences.notifications
+        let accountKey = resolveAccountKey(for: room)
         for event in events.reversed() where seen.insert(event.eventID) {
             // Their message ends the typing burst: its notification makes way for the message's own.
             if Timeline.isIncomingMessage(event) {
@@ -461,13 +492,20 @@ public final class NotificationCoordinator {
                 endTypingBurst(room.roomID)
             }
             guard !deleted.contains(event.eventID) else { continue }
-            playSoundEffectIfEligible(for: event, in: room, context: context, preferences: notifPrefs)
+            playSoundEffectIfEligible(
+                for: event,
+                in: room,
+                context: context,
+                preferences: notifPrefs,
+                accountKey: accountKey
+            )
 
             let decision = NotificationPolicy.evaluate(
                 event: event,
                 room: room,
                 context: context,
-                preferences: notifPrefs
+                preferences: notifPrefs,
+                accountKey: accountKey
             )
             guard decision.shouldNotify, let content = decision.content else { continue }
             if let otpCode = decision.otpCode {
@@ -497,9 +535,10 @@ public final class NotificationCoordinator {
         for event: Event,
         in room: InboxRow,
         context: NotificationPolicy.Context,
-        preferences: NotificationPreferences
+        preferences: NotificationPreferences,
+        accountKey: String?
     ) {
-        guard let soundEffects else { return }
+        guard let soundEffects, event.status != .failed else { return }
         let isMessage = event.type == "m.room.message" || event.type == "m.sticker" || event.type == Timeline.pollStartType
         guard isMessage, !Timeline.isEdit(event), TimerChange.of(event.content) == nil, CallNote.isNews(event) else {
             return
@@ -514,6 +553,20 @@ public final class NotificationCoordinator {
             }
         } else {
             guard !NotificationPolicy.isMuted(room), !room.lowPriority, !room.hidden else { return }
+            let allowRequests = preferences.requestNotificationsEnabled && context.requestNotifications
+            guard !room.request || allowRequests else { return }
+            if room.isDirect {
+                guard preferences.messageNotificationsEnabled else { return }
+            } else {
+                guard preferences.groupNotificationsEnabled else { return }
+            }
+            if let override = NotificationPolicy.resolveAccountOverride(
+                for: room,
+                preferences: preferences,
+                explicitKey: accountKey
+            ), !override.enabled {
+                return
+            }
             if preferences.soundEffectsMode.shouldPlay(for: .messageReceived) {
                 soundEffects.play(.messageReceived, volume: preferences.soundEffectsVolume)
             }
@@ -526,6 +579,8 @@ public final class NotificationCoordinator {
         delaySeconds: Int,
         repeatUnreadMinutes: Int
     ) {
+        let initialRow = row(roomID)
+        let hadUnreadMarkWhenScheduled = (initialRow?.unread ?? 0) > 0 || (initialRow?.markedUnread ?? false)
         var timerID: UUID?
         let id = scheduler.schedule(after: TimeInterval(delaySeconds)) { [weak self] in
             guard let self else { return }
@@ -533,6 +588,11 @@ public final class NotificationCoordinator {
                 self.pendingTimerIDsByRoom[roomID]?.remove(timerID)
             }
             if self.isLooking(), self.appModel.isOpen(roomID: roomID), !self.preferences.notifications.notifyWhenInFocus {
+                return
+            }
+            if hadUnreadMarkWhenScheduled,
+               let currentRow = self.row(roomID),
+               currentRow.unread == 0 && !currentRow.markedUnread {
                 return
             }
             self.deliverAndScheduleRepeatIfNeeded(
@@ -550,7 +610,7 @@ public final class NotificationCoordinator {
         roomID: String,
         repeatUnreadMinutes: Int
     ) {
-        delivery.deliver(content)
+        deliverRespectingLock(content)
         guard repeatUnreadMinutes > 0 else { return }
         var timerID: UUID?
         let id = scheduler.schedule(after: TimeInterval(repeatUnreadMinutes * 60)) { [weak self] in
@@ -564,7 +624,7 @@ public final class NotificationCoordinator {
             if let currentRow = self.row(roomID), currentRow.unread == 0 && !currentRow.markedUnread {
                 return
             }
-            self.delivery.deliver(content)
+            self.deliverRespectingLock(content)
         }
         timerID = id
         pendingTimerIDsByRoom[roomID, default: []].insert(id)
@@ -587,6 +647,14 @@ public final class NotificationCoordinator {
     public func copyOTPCode(forRoomID roomID: String) {
         guard let code = latestOTPByRoom[roomID] else { return }
         clipboard?.copyOTP(code)
+    }
+
+    public func openSystemNotificationSettings() {
+        delivery.openSystemNotificationSettings()
+    }
+
+    public func restartNotificationCenter() {
+        delivery.restartNotificationCenter()
     }
 
     /// A click: the chat opens in the main window, which comes forward.
@@ -645,10 +713,10 @@ public final class NotificationCoordinator {
                 case let line? where line.hasGone:
                     await markRead(roomID: roomID)
                 case .waiting?:
-                    delivery.deliver(NotificationPolicy.replyWaiting(roomID: roomID, title: row(roomID)?.name ?? ""))
+                    deliverRespectingLock(NotificationPolicy.replyWaiting(roomID: roomID, title: row(roomID)?.name ?? ""))
                 case .failed?, .notSent?, .noAccount?, .mayHaveBeenSent?:
-                    delivery.deliver(NotificationPolicy.replyNotSent(roomID: roomID, title: row(roomID)?.name ?? "",
-                                                                     mayHaveGone: line == .mayHaveBeenSent))
+                    deliverRespectingLock(NotificationPolicy.replyNotSent(roomID: roomID, title: row(roomID)?.name ?? "",
+                                                                          mayHaveGone: line == .mayHaveBeenSent))
                 default:
                     break // still on its way (sending, held), or its status couldn't be read
                 }
@@ -660,7 +728,7 @@ public final class NotificationCoordinator {
             }
         }
         restoreDraft(roomID, text, mayHaveGone)
-        delivery.deliver(NotificationPolicy.replyNotSent(roomID: roomID, title: row(roomID)?.name ?? "",
-                                                         mayHaveGone: mayHaveGone))
+        deliverRespectingLock(NotificationPolicy.replyNotSent(roomID: roomID, title: row(roomID)?.name ?? "",
+                                                              mayHaveGone: mayHaveGone))
     }
 }

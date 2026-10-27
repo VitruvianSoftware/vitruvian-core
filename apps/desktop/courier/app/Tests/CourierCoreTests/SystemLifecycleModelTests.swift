@@ -131,12 +131,12 @@ final class SystemLifecycleModelTests: XCTestCase {
         XCTAssertFalse(model.startMinimized)
         XCTAssertFalse(model.shouldHideMainWindowOnLaunch)
         XCTAssertTrue(model.minimizeToTrayOnClose)
-        XCTAssertFalse(model.shouldTerminateWhenMainWindowClosed())
+        XCTAssertFalse(model.shouldTerminateWhenMainWindowClosed)
 
         model.startMinimized = true
         model.minimizeToTrayOnClose = false
         XCTAssertTrue(model.shouldHideMainWindowOnLaunch)
-        XCTAssertTrue(model.shouldTerminateWhenMainWindowClosed())
+        XCTAssertTrue(model.shouldTerminateWhenMainWindowClosed)
 
         // Persisted across a fresh instance backed by the same UserDefaults
         let reloaded = SystemLifecycleModel(
@@ -147,7 +147,55 @@ final class SystemLifecycleModelTests: XCTestCase {
         XCTAssertTrue(reloaded.startMinimized)
         XCTAssertTrue(reloaded.shouldHideMainWindowOnLaunch)
         XCTAssertFalse(reloaded.minimizeToTrayOnClose)
-        XCTAssertTrue(reloaded.shouldTerminateWhenMainWindowClosed())
+        XCTAssertTrue(reloaded.shouldTerminateWhenMainWindowClosed)
+    }
+
+    func testRequireTouchIDOnLaunchFailsClosedWhenBiometricsUnavailableAndPromptsAtLaunch() async throws {
+        let suiteName = "courier.test.lifecycle.launchlock.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        defaults.set(true, forKey: SystemLifecycleModel.key("requireTouchIDOnLaunch"))
+        defaults.set(true, forKey: SystemLifecycleModel.key("autoLockEnabled"))
+
+        // 1. When Touch ID & password evaluation report unavailable at launch, app lock MUST fail closed (isLocked == true)
+        let unavailableBio = FakeBiometricAuthService(available: false, result: .success(false))
+        let lockedWhenUnavailable = SystemLifecycleModel(
+            defaults: defaults,
+            loginItem: FakeLoginItemService(currentStatus: .notRegistered),
+            biometrics: unavailableBio
+        )
+        XCTAssertTrue(lockedWhenUnavailable.isLocked, "app lock must fail closed at init even when biometrics report unavailable")
+        XCTAssertTrue(lockedWhenUnavailable.requireTouchIDOnLaunch, "requireTouchIDOnLaunch setting must not be silently cleared at launch")
+        let unlockedUnavailable = await lockedWhenUnavailable.unlockWithTouchID()
+        XCTAssertFalse(unlockedUnavailable)
+        XCTAssertTrue(lockedWhenUnavailable.isLocked)
+        let err = try XCTUnwrap(lockedWhenUnavailable.lastError)
+        XCTAssertFalse(err.isEmpty)
+        XCTAssertFalse(err.contains("LAContext"))
+
+        // 2. When biometrics are available and requireTouchIDOnLaunch is true, init starts locked and triggers unlockWithTouchID()
+        let failingBio = FakeBiometricAuthService(available: true, result: .success(false))
+        let lockedAtLaunch = SystemLifecycleModel(
+            defaults: defaults,
+            loginItem: FakeLoginItemService(currentStatus: .notRegistered),
+            biometrics: failingBio
+        )
+        XCTAssertTrue(lockedAtLaunch.isLocked)
+        _ = await lockedAtLaunch.launchUnlockTask?.value
+        XCTAssertEqual(failingBio.prompts, ["Unlock Courier"], "init must trigger unlockWithTouchID() when requireTouchIDOnLaunch is true")
+        XCTAssertTrue(lockedAtLaunch.isLocked, "must remain locked when launch authentication returns false")
+
+        // 3. When launch authentication succeeds, model unlocks after launch prompt completes
+        let succeedingBio = FakeBiometricAuthService(available: true, result: .success(true))
+        let unlocksAtLaunch = SystemLifecycleModel(
+            defaults: defaults,
+            loginItem: FakeLoginItemService(currentStatus: .notRegistered),
+            biometrics: succeedingBio
+        )
+        _ = await unlocksAtLaunch.launchUnlockTask?.value
+        XCTAssertEqual(succeedingBio.prompts, ["Unlock Courier"])
+        XCTAssertFalse(unlocksAtLaunch.isLocked)
     }
 }
 

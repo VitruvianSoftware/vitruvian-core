@@ -461,4 +461,100 @@ final class NotificationPolicyTests: XCTestCase {
         XCTAssertFalse(NotificationPolicy.evaluate(event: event(), room: row(direct: true), context: context(), preferences: prefs).shouldNotify)
         XCTAssertTrue(NotificationPolicy.evaluate(event: event(), room: row(direct: false), context: context(), preferences: prefs).shouldNotify)
     }
+
+    func testPerAccountOverrideLookupIsDeterministicAcrossMultipleAccountsOnSameNetwork() throws {
+        let suiteName = "courier.test.notifprefs.multiaccount.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let prefs = NotificationPreferences(defaults: defaults)
+        prefs.accountOverrides["slack:T1"] = AccountNotificationOverride(enabled: false, showPreviews: true, sound: NotificationSoundChoice.none)
+        prefs.accountOverrides["slack:T2"] = AccountNotificationOverride(enabled: true, showPreviews: false, sound: .harp)
+        prefs.accountOverrides["account:signal"] = AccountNotificationOverride(enabled: true, showPreviews: false, sound: .marimba)
+
+        var slackRoomT1 = row(direct: true)
+        slackRoomT1.network = "slack"
+        slackRoomT1.loginName = "T1"
+
+        var slackRoomT2 = row(direct: true)
+        slackRoomT2.network = "slack"
+        slackRoomT2.loginName = "T2"
+
+        var slackRoomT3 = row(direct: true)
+        slackRoomT3.network = "slack"
+        slackRoomT3.loginName = "T3"
+
+        var slackRoomUnnamed = row(direct: true)
+        slackRoomUnnamed.network = "slack"
+        slackRoomUnnamed.loginName = ""
+
+        var signalRoom = row(direct: true)
+        signalRoom.network = "signal"
+        signalRoom.loginName = ""
+
+        // 1. Room on slack:T1 resolves slack:T1 (disabled)
+        let d1 = NotificationPolicy.evaluate(event: event(), room: slackRoomT1, context: context(), preferences: prefs)
+        XCTAssertFalse(d1.shouldNotify, "slack:T1 must deterministically resolve to disabled")
+
+        // 2. Room on slack:T2 resolves slack:T2 (enabled, showPreviews = false, sound = .harp)
+        let d2 = NotificationPolicy.evaluate(event: event(), room: slackRoomT2, context: context(), preferences: prefs)
+        XCTAssertTrue(d2.shouldNotify, "slack:T2 must deterministically resolve to enabled")
+        XCTAssertEqual(d2.sound, .harp)
+        XCTAssertEqual(d2.content?.body, "New message")
+
+        // 3. Room on slack:T3 (unconfigured third account on same network) must NOT inherit slack:T1 or slack:T2
+        let d3 = NotificationPolicy.evaluate(event: event(), room: slackRoomT3, context: context(), preferences: prefs)
+        XCTAssertTrue(d3.shouldNotify, "unconfigured slack:T3 must not inherit slack:T1's disabled override")
+        XCTAssertEqual(d3.sound, .default)
+        XCTAssertEqual(d3.content?.body, "hi")
+
+        // 4. Room on slack with empty loginName when multiple slack:<id> accounts exist must NOT pick a random account override
+        for _ in 0 ..< 10 {
+            let dUnnamed = NotificationPolicy.evaluate(event: event(), room: slackRoomUnnamed, context: context(), preferences: prefs)
+            XCTAssertTrue(dUnnamed.shouldNotify, "multi-account network without network-level override must not pick arbitrary account")
+            XCTAssertEqual(dUnnamed.sound, .default)
+            XCTAssertEqual(dUnnamed.content?.body, "hi")
+        }
+
+        // 5. "account:<network>" key resolves for signalRoom
+        let dSignal = NotificationPolicy.evaluate(event: event(), room: signalRoom, context: context(), preferences: prefs)
+        XCTAssertTrue(dSignal.shouldNotify)
+        XCTAssertEqual(dSignal.sound, .marimba)
+        XCTAssertEqual(dSignal.content?.body, "New message")
+    }
+
+    func testRedactIfLockedRedactsAllNotificationCategories() {
+        let msg = NotificationContent(
+            eventID: "$1",
+            roomID: "!a",
+            title: "Alice Example",
+            subtitle: "Trail Crew",
+            body: "Secret code 123456",
+            category: .messageOTP,
+            attachmentPath: "/tmp/thumb.jpg",
+            sound: .harp
+        )
+        let unlocked = NotificationPolicy.redactIfLocked(msg, isLocked: false)
+        XCTAssertEqual(unlocked, msg)
+
+        let lockedMsg = NotificationPolicy.redactIfLocked(msg, isLocked: true)
+        XCTAssertEqual(lockedMsg.title, "Courier")
+        XCTAssertNil(lockedMsg.subtitle)
+        XCTAssertEqual(lockedMsg.body, "New message")
+        XCTAssertNil(lockedMsg.attachmentPath)
+        XCTAssertEqual(lockedMsg.category, .scheduled)
+        XCTAssertEqual(lockedMsg.sound, .harp)
+
+        let typing = NotificationPolicy.typingContent(room: row(name: "Alice Example"))
+        let lockedTyping = NotificationPolicy.redactIfLocked(typing, isLocked: true)
+        XCTAssertEqual(lockedTyping.title, "Courier")
+        XCTAssertEqual(lockedTyping.body, "Someone is typing…")
+        XCTAssertEqual(lockedTyping.category, .scheduled)
+
+        let reminder = NotificationPolicy.reminderContent(room: row(name: "Alice Example"))
+        let lockedReminder = NotificationPolicy.redactIfLocked(reminder, isLocked: true)
+        XCTAssertEqual(lockedReminder.title, "Courier")
+        XCTAssertEqual(lockedReminder.body, "Reminder due")
+        XCTAssertEqual(lockedReminder.category, .scheduled)
+    }
 }

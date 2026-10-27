@@ -105,18 +105,11 @@ struct MainWindow: View {
             // A chat's right-click menu opens search in that chat.
             .environment(\.searchInChat, { search.show(in: $0) })
             .onChange(of: controlActiveState, initial: true) { _, state in
-                let isKey = state == .key
-                ui.isMainWindowKey = isKey
-                if isKey {
-                    lifecycle.noteWindowBecameKey()
-                } else {
-                    lifecycle.noteWindowResignedKey()
-                }
+                ui.isMainWindowKey = state == .key
             }
             // A closed window takes its panel with it: the next ⌘K opens a fresh one, in view.
             .onDisappear {
                 ui.isMainWindowKey = false
-                lifecycle.noteWindowResignedKey()
                 search.close()
                 conversation.composer.voiceRecorder.cancelImmediately()
                 conversation.thread.composer.voiceRecorder.cancelImmediately()

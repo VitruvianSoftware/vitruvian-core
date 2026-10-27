@@ -42,6 +42,8 @@ final class NotificationCoordinatorTests: XCTestCase {
         var isAway = false
         /// Incognito is on (`ConversationModel.incognitoIsOn`).
         var incognito = false
+        /// App Lock is active (`SystemLifecycleModel.isLocked`).
+        var isLocked = false
         var shown = 0
         var drafts: [(room: String, text: String, mayHaveBeenSent: Bool)] = []
         var rows: [String: InboxRow] = ["!a": inboxRow("!a", name: "Chat A")]
@@ -78,6 +80,7 @@ final class NotificationCoordinatorTests: XCTestCase {
         let coordinator = NotificationCoordinator(
             appModel: app, delivery: delivery, row: { window.rows[$0] }, isLooking: { window.isKey },
             isAwayFromLatest: { window.isAway }, isIncognito: { window.incognito },
+            isAppLocked: { window.isLocked },
             restoreDraft: { window.drafts.append(($0, $1, $2)) }, showWindow: { window.shown += 1 },
             preferences: preferences, entitlement: entitlement,
             window: gather, replyTimeout: replyTimeout, clock: { clock.date }, defaults: effectiveDefaults,
@@ -1117,6 +1120,154 @@ final class NotificationCoordinatorTests: XCTestCase {
         XCTAssertEqual(soundPlayer.played.map(\.effect), [.messageReceived, .messageSent])
         await finish(h)
     }
+
+    func testRestartNotificationCenterAndOpenSystemNotificationSettings() async throws {
+        let h = try await start()
+        h.coordinator.openSystemNotificationSettings()
+        XCTAssertEqual(h.delivery.openedSettingsCount, 1)
+
+        h.coordinator.restartNotificationCenter()
+        XCTAssertEqual(h.delivery.restartedCenterCount, 1)
+        await finish(h)
+    }
+
+    func testLockedAppRedactsImmediateDelayedRepeatTypingAndReminderNotifications() async throws {
+        let scheduler = ManualNotificationScheduler()
+        let h = try await start(scheduler: scheduler)
+        h.preferences.typingNotifications = true
+        h.clock.advance(seconds: 5)
+
+        var unreadRow = inboxRow("!a", name: "Alice Example", direct: false)
+        unreadRow.unread = 1
+        h.window.rows["!a"] = unreadRow
+
+        // 1. Immediate notification while locked
+        h.window.isLocked = true
+        let ts1 = Int64(h.clock.date.timeIntervalSince1970 * 1000)
+        var msg1 = message("$lock-imm", ts: ts1, text: "Confidential immediate")
+        msg1["thumbnail_path"] = "/tmp/secret-imm.jpg"
+        msg1["content"] = ["msgtype": "m.image", "body": "Confidential immediate"]
+        h.script.events["!a"] = [msg1]
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$lock-imm"])
+        try await waitUntil { h.delivery.delivered.count == 1 }
+        let immNote = try XCTUnwrap(h.delivery.delivered.last)
+        XCTAssertEqual(immNote.title, "Courier")
+        XCTAssertNil(immNote.subtitle)
+        XCTAssertEqual(immNote.body, "New message")
+        XCTAssertNil(immNote.attachmentPath)
+        XCTAssertEqual(immNote.category, .scheduled)
+
+        // 2. Delayed/batched notification queued while unlocked at t=0, then app locks before timer fires at t=30s
+        h.window.isLocked = false
+        h.preferences.notifications.delaySeconds = 30
+        h.preferences.notifications.repeatUnreadMinutes = 2
+        let ts2 = ts1 + 1000
+        var msg2 = message("$lock-del", ts: ts2, text: "Confidential delayed")
+        msg2["thumbnail_path"] = "/tmp/secret-del.jpg"
+        msg2["content"] = ["msgtype": "m.image", "body": "Confidential delayed"]
+        h.script.events["!a"] = [msg2, msg1]
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$lock-del"])
+        try await settle(h, fetches: 2)
+        XCTAssertEqual(h.delivery.delivered.count, 1)
+
+        // Lock app at t=10s, then advance to t=30s
+        h.window.isLocked = true
+        h.clock.advance(seconds: 30)
+        await scheduler.advance(by: 30)
+        XCTAssertEqual(h.delivery.delivered.count, 2, "delayed notification must deliver at t=30s")
+        let delNote = try XCTUnwrap(h.delivery.delivered.last)
+        XCTAssertEqual(delNote.title, "Courier", "delayed notification firing while locked must redact title")
+        XCTAssertNil(delNote.subtitle, "delayed notification firing while locked must redact sender subtitle")
+        XCTAssertEqual(delNote.body, "New message", "delayed notification firing while locked must redact body")
+        XCTAssertNil(delNote.attachmentPath, "delayed notification firing while locked must redact media attachment")
+        XCTAssertEqual(delNote.category, .scheduled, "delayed notification firing while locked must not offer inline Reply")
+
+        // 3. Repeat-unread reminder firing at t=150s (120s after delivery) while locked must also be redacted
+        h.clock.advance(seconds: 120)
+        await scheduler.advance(by: 120)
+        XCTAssertEqual(h.delivery.delivered.count, 3, "repeat-unread must fire 120s after delayed delivery")
+        let repNote = try XCTUnwrap(h.delivery.delivered.last)
+        XCTAssertEqual(repNote.title, "Courier")
+        XCTAssertNil(repNote.subtitle)
+        XCTAssertEqual(repNote.body, "New message")
+        XCTAssertNil(repNote.attachmentPath)
+        XCTAssertEqual(repNote.category, .scheduled)
+
+        // 4. Typing notification while locked must redact chat title and who is typing
+        var typingRoomJSON = inboxRowJSON("!a", name: "Alice Example")
+        typingRoomJSON["typing"] = ["Alice Example"]
+        h.script.rooms = [typingRoomJSON]
+        h.server.notify(["kind": "typing", "room_id": "!a"])
+        try await waitUntil { h.delivery.delivered.count == 4 }
+        let typNote = try XCTUnwrap(h.delivery.delivered.last)
+        XCTAssertEqual(typNote.title, "Courier", "typing notification while locked must hide chat name")
+        XCTAssertNil(typNote.subtitle)
+        XCTAssertEqual(typNote.body, "Someone is typing…", "typing notification while locked must hide sender name")
+        XCTAssertEqual(typNote.category, .scheduled)
+
+        // 5. Reminder due notification while locked must redact chat title
+        h.server.notify(["kind": "reminder", "room_id": "!a"])
+        try await waitUntil { h.delivery.delivered.count == 5 }
+        let remNote = try XCTUnwrap(h.delivery.delivered.last)
+        XCTAssertEqual(remNote.title, "Courier", "reminder notification while locked must hide chat name")
+        XCTAssertNil(remNote.subtitle)
+        XCTAssertEqual(remNote.body, "Reminder due")
+        XCTAssertEqual(remNote.category, .scheduled)
+        await finish(h)
+    }
+
+    func testSoundEffectsRespectNotificationSettingsAndFailedStatus() async throws {
+        let soundPlayer = FakeSoundEffectPlayer()
+        let h = try await start(soundEffects: soundPlayer)
+        h.preferences.notifications.soundEffectsMode = .always
+        h.clock.advance(seconds: 5)
+
+        var unreadRow = inboxRow("!a", name: "Chat A", direct: true)
+        unreadRow.unread = 1
+        h.window.rows["!a"] = unreadRow
+
+        // 1. Failed incoming event must not play a sound effect
+        let ts1 = Int64(h.clock.date.timeIntervalSince1970 * 1000)
+        var failedMsg = message("$s-fail", ts: ts1, text: "Failed incoming")
+        failedMsg["status"] = "failed"
+        h.script.events["!a"] = [failedMsg]
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$s-fail"])
+        try await settle(h, fetches: 1)
+        XCTAssertTrue(soundPlayer.played.isEmpty, "failed event must not play sound effect")
+
+        // 2. When messageNotificationsEnabled == false, direct message must not play .messageReceived sound
+        h.preferences.notifications.messageNotificationsEnabled = false
+        let ts2 = ts1 + 1000
+        let dmMsg = message("$s-dm-off", ts: ts2, text: "Quiet DM")
+        h.script.events["!a"] = [dmMsg]
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$s-dm-off"])
+        try await settle(h, fetches: 2)
+        XCTAssertTrue(soundPlayer.played.isEmpty, "disabled DM notifications must suppress received sound effect")
+
+        // 3. Per-account override enabled == false must suppress received sound effect
+        h.preferences.notifications.messageNotificationsEnabled = true
+        h.preferences.notifications.accountOverrides["whatsapp"] = AccountNotificationOverride(enabled: false, showPreviews: true)
+        let ts3 = ts2 + 1000
+        let acctOffMsg = message("$s-acct-off", ts: ts3, text: "Quiet Account")
+        h.script.events["!a"] = [acctOffMsg]
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$s-acct-off"])
+        try await settle(h, fetches: 3)
+        XCTAssertTrue(soundPlayer.played.isEmpty, "disabled account override must suppress received sound effect")
+
+        // 4. Request chat when requestNotificationsEnabled == false must suppress received sound effect
+        h.preferences.notifications.accountOverrides.removeAll()
+        h.preferences.notifications.requestNotificationsEnabled = false
+        var reqRow = inboxRow("!a", name: "Chat A", direct: true, request: true)
+        reqRow.unread = 1
+        h.window.rows["!a"] = reqRow
+        let ts4 = ts3 + 1000
+        let reqMsg = message("$s-req-off", ts: ts4, text: "New request")
+        h.script.events["!a"] = [reqMsg]
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$s-req-off"])
+        try await settle(h, fetches: 4)
+        XCTAssertTrue(soundPlayer.played.isEmpty, "disabled request notifications must suppress received sound effect")
+        await finish(h)
+    }
 }
 
 // MARK: - Fixtures
@@ -1130,8 +1281,12 @@ final class FakeDelivery: NotificationDelivering {
     /// Everything done, in order: "deliver <id>", "remove <id>", "clear <room>".
     private(set) var log: [String] = []
     private(set) var permissionRequests = 0
+    private(set) var openedSettingsCount = 0
+    private(set) var restartedCenterCount = 0
 
     func requestPermission() { permissionRequests += 1 }
+    func openSystemNotificationSettings() { openedSettingsCount += 1 }
+    func restartNotificationCenter() { restartedCenterCount += 1 }
     func deliver(_ content: NotificationContent) {
         delivered.append(content)
         log.append("deliver " + content.eventID)
