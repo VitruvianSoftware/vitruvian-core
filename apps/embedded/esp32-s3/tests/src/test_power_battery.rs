@@ -191,6 +191,53 @@ pub fn test_pin_config_and_battery_curve() {
     assert_eq!(battery_status_color(80), COLOR_GREEN);
     assert_eq!(format_battery_badge(87, 4010), "87%");
     assert_eq!(format_battery_badge(-1, 0), "USB");
+
+    // 5-segment piecewise linear firmware curve (src/power.cpp)
+    let fw_calc_pct = |mv: i32| -> i32 {
+        if mv >= 4200 {
+            100
+        } else if mv <= 3200 {
+            0
+        } else if mv >= 4050 {
+            85 + (mv - 4050) * 15 / 150
+        } else if mv >= 3850 {
+            60 + (mv - 3850) * 25 / 200
+        } else if mv >= 3700 {
+            35 + (mv - 3700) * 25 / 150
+        } else if mv >= 3500 {
+            10 + (mv - 3500) * 25 / 200
+        } else {
+            (mv - 3200) * 10 / 300
+        }
+    };
+    assert_eq!(fw_calc_pct(4200), 100);
+    assert_eq!(fw_calc_pct(4050), 85);
+    assert_eq!(fw_calc_pct(3850), 60);
+    assert_eq!(fw_calc_pct(3700), 35);
+    assert_eq!(fw_calc_pct(3500), 10);
+    assert_eq!(fw_calc_pct(3200), 0);
+
+    let fw_tier = |pct: i32, charging: bool| -> (&'static str, u32) {
+        if charging {
+            ("LV_SYMBOL_CHARGE", COLOR_GREEN)
+        } else if pct >= 80 {
+            ("LV_SYMBOL_BATTERY_FULL", COLOR_GREEN)
+        } else if pct >= 55 {
+            ("LV_SYMBOL_BATTERY_3", COLOR_GREEN)
+        } else if pct >= 30 {
+            ("LV_SYMBOL_BATTERY_2", COLOR_ORANGE)
+        } else if pct >= 15 {
+            ("LV_SYMBOL_BATTERY_1", COLOR_ORANGE)
+        } else {
+            ("LV_SYMBOL_BATTERY_EMPTY", COLOR_RED)
+        }
+    };
+    assert_eq!(fw_tier(50, true), ("LV_SYMBOL_CHARGE", COLOR_GREEN));
+    assert_eq!(fw_tier(95, false), ("LV_SYMBOL_BATTERY_FULL", COLOR_GREEN));
+    assert_eq!(fw_tier(65, false), ("LV_SYMBOL_BATTERY_3", COLOR_GREEN));
+    assert_eq!(fw_tier(40, false), ("LV_SYMBOL_BATTERY_2", COLOR_ORANGE));
+    assert_eq!(fw_tier(20, false), ("LV_SYMBOL_BATTERY_1", COLOR_ORANGE));
+    assert_eq!(fw_tier(5, false), ("LV_SYMBOL_BATTERY_EMPTY", COLOR_RED));
 }
 
 pub fn test_power_button_state_machine() {

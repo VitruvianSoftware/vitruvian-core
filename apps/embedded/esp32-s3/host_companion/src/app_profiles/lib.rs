@@ -437,6 +437,87 @@ pub fn build_app_payload(profile: &AppProfile) -> String {
     )
 }
 
+#[derive(Debug, Clone)]
+pub struct FrontmostAppDetector {
+    pub debounce_s: f64,
+    pub confirmed_bundle_id: Option<String>,
+    pub confirmed_app_name: Option<String>,
+    pub pending_bundle_id: Option<String>,
+    pub pending_app_name: Option<String>,
+    pub pending_since: f64,
+}
+
+impl Default for FrontmostAppDetector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl FrontmostAppDetector {
+    pub const DEBOUNCE_S: f64 = 0.25;
+
+    pub fn new() -> Self {
+        Self {
+            debounce_s: Self::DEBOUNCE_S,
+            confirmed_bundle_id: None,
+            confirmed_app_name: None,
+            pending_bundle_id: None,
+            pending_app_name: None,
+            pending_since: 0.0,
+        }
+    }
+
+    pub fn observe(
+        &mut self,
+        candidate_bundle: &str,
+        candidate_name: &str,
+        now: f64,
+        force_immediate: bool,
+    ) -> Option<String> {
+        if force_immediate || self.confirmed_bundle_id.is_none() {
+            self.confirmed_bundle_id = Some(candidate_bundle.to_string());
+            self.confirmed_app_name = Some(candidate_name.to_string());
+            self.pending_bundle_id = None;
+            self.pending_app_name = None;
+            let profile = get_profile_for_bundle_and_name(candidate_bundle, candidate_name);
+            return Some(build_app_payload(profile));
+        }
+
+        if self.confirmed_bundle_id.as_deref() == Some(candidate_bundle) {
+            self.pending_bundle_id = None;
+            self.pending_app_name = None;
+            return None;
+        }
+
+        if self.pending_bundle_id.as_deref() != Some(candidate_bundle) {
+            self.pending_bundle_id = Some(candidate_bundle.to_string());
+            self.pending_app_name = Some(candidate_name.to_string());
+            self.pending_since = now;
+            return None;
+        }
+
+        if (now - self.pending_since) >= self.debounce_s {
+            self.confirmed_bundle_id = Some(candidate_bundle.to_string());
+            self.confirmed_app_name = Some(candidate_name.to_string());
+            self.pending_bundle_id = None;
+            self.pending_app_name = None;
+            let profile = get_profile_for_bundle_and_name(candidate_bundle, candidate_name);
+            return Some(build_app_payload(profile));
+        }
+
+        None
+    }
+
+    pub fn update(&mut self, force_immediate: bool) -> Option<String> {
+        let (candidate_bundle, candidate_name) = get_frontmost_app();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs_f64();
+        self.observe(&candidate_bundle, &candidate_name, now, force_immediate)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -601,5 +682,49 @@ mod tests {
     fn test_finder_bundle_maps_to_default() {
         let p = get_profile_for_bundle_and_name("com.apple.finder", "");
         assert_eq!(p.name, "default");
+    }
+
+    #[test]
+    fn test_frontmost_app_detector_debounce_and_force() {
+        let mut detector = FrontmostAppDetector::new();
+
+        // First observation confirms immediately
+        let first = detector.observe("com.microsoft.VSCode", "Code", 1.00, false);
+        assert!(first.is_some());
+        assert!(first.unwrap().contains(r#""app":"VS Code""#));
+        assert_eq!(
+            detector.confirmed_bundle_id.as_deref(),
+            Some("com.microsoft.VSCode")
+        );
+
+        // Same app returns None
+        assert!(detector
+            .observe("com.microsoft.VSCode", "Code", 1.05, false)
+            .is_none());
+
+        // Transient bounce (< 250ms) does not emit
+        assert!(detector
+            .observe("com.google.Chrome", "Google Chrome", 1.10, false)
+            .is_none());
+        assert!(detector
+            .observe("com.microsoft.VSCode", "Code", 1.20, false)
+            .is_none());
+        assert!(detector.pending_bundle_id.is_none());
+
+        // Stable transition (>= 250ms) emits Chrome
+        assert!(detector
+            .observe("com.google.Chrome", "Google Chrome", 2.00, false)
+            .is_none());
+        assert!(detector
+            .observe("com.google.Chrome", "Google Chrome", 2.15, false)
+            .is_none());
+        let confirmed = detector.observe("com.google.Chrome", "Google Chrome", 2.26, false);
+        assert!(confirmed.is_some());
+        assert!(confirmed.unwrap().contains(r#""app":"Chrome""#));
+
+        // Force immediate emits right away
+        let forced = detector.observe("com.tinyspeck.slackmacgap", "Slack", 2.30, true);
+        assert!(forced.is_some());
+        assert!(forced.unwrap().contains(r#""app":"Slack""#));
     }
 }

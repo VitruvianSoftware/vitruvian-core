@@ -120,6 +120,32 @@ pub fn test_frontmost_app_detector_debounce() {
         }
     }
     assert_eq!(emitted, vec!["VS Code", "Chrome", "Terminal"]);
+
+    let mut detector = app_profiles::FrontmostAppDetector::new();
+    let initial = detector.observe("com.microsoft.VSCode", "Code", 10.0, false);
+    assert!(initial.is_some());
+    assert!(initial.unwrap().contains("\"app\":\"VS Code\""));
+
+    // Sub-debounce bounce (< 250ms) does not emit
+    assert!(detector
+        .observe("com.google.Chrome", "Google Chrome", 10.10, false)
+        .is_none());
+    assert!(detector
+        .observe("com.microsoft.VSCode", "Code", 10.20, false)
+        .is_none());
+
+    // Sustained focus change (>= 250ms) emits Chrome
+    assert!(detector
+        .observe("com.google.Chrome", "Google Chrome", 11.00, false)
+        .is_none());
+    let confirmed = detector.observe("com.google.Chrome", "Google Chrome", 11.26, false);
+    assert!(confirmed.is_some());
+    assert!(confirmed.unwrap().contains("\"app\":\"Chrome\""));
+
+    // Force immediate bypasses debounce
+    let forced = detector.observe("com.tinyspeck.slackmacgap", "Slack", 11.30, true);
+    assert!(forced.is_some());
+    assert!(forced.unwrap().contains("\"app\":\"Slack\""));
 }
 
 pub fn run_suite() -> usize {
