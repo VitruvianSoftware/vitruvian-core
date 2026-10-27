@@ -51,11 +51,11 @@
     "@backstage/cli": "^0.36.6",
     "@types/jest": "^30.0.0",
     "@types/js-yaml": "^4.0.9",
-    "@types/node": "^22",
+    "@types/node": "^26",
     "jest": "catalog:",
     "jest-cli": "^30.4.2",
     "jest-environment-node": "^30.5.2",
-    "js-yaml": "^4.1.0",
+    "js-yaml": "^5.5.0",
     "ts-jest": "^29.4.15",
     "typescript": "~5.8.0"
   },
