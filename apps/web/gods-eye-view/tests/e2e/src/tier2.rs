@@ -21,9 +21,19 @@
 use super::runner::TestContext;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
+/// A fresh directory per run. Two tests in this binary run tier 2 at the same
+/// time on different threads (tier2_runs_without_panic and the full-suite
+/// test), so one fixed directory let one run delete the other's fixtures
+/// mid-check: an intermittent single failure in the full suite.
 fn temp_base() -> PathBuf {
-    let dir = std::env::temp_dir().join("e2e_gev_tier2_rs");
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+    let dir = std::env::temp_dir().join(format!(
+        "e2e_gev_tier2_rs_{}_{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ));
     let _ = fs::create_dir_all(&dir);
     dir
 }

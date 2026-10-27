@@ -122,8 +122,8 @@ fn fetch_blob(
 
 /// What the blocking arm does, given APP_TREE and the package count under
 /// APP_PREFIX. APP_TREE=absent is for an image whose application carries no
-/// package-managed dependency tree at all (mcp-slack since #3985: a std-only
-/// Rust binary compiled from source in the image). There the blocking arm has
+/// package-managed dependency tree at all (mcp-slack since #3985: a Rust
+/// binary built `--locked` from a lockfile osv-scan covers). There the blocking arm has
 /// nothing to cover, so it asserts the tree is still absent instead: a tree
 /// that reappears refuses rather than going unscanned.
 #[derive(Debug, PartialEq)]
