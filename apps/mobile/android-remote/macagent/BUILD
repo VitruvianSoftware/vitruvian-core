@@ -27,37 +27,24 @@
 # gazelle:ignore
 
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # `bazel run //apps/mobile/android-remote/macagent:install` -- install the agent
 # the repo just built as a login item for the current user. No sudo; it is a
 # user LaunchAgent because nothing it reads needs root. The script proves the
 # agent answers before it reports success.
-# The menu bar app (../macmenu) checks it still agrees with the paths this
-# installer writes.
-exports_files(
-    ["install.sh"],
-    visibility = ["//apps/mobile/android-remote/macmenu:__pkg__"],
-)
-
-sh_binary(
+alias(
     name = "install",
-    srcs = ["install.sh"],
-    data = [
-        "com.vitruvian.remote-agent.plist",
-        ":macagent",
-    ],
+    actual = ":install-rs",
 )
 
 # `bazel run //apps/mobile/android-remote/macagent:pair -- 482917` -- open a
 # five-minute pairing window for the phone showing that code. Writes only to
 # ~/.config/vitruvian-remote-agent; the installed agent picks it up with no
 # restart, because it re-reads that directory on every request.
-sh_binary(
+alias(
     name = "pair",
-    srcs = ["pair.sh"],
-    data = [":macagent"],
+    actual = ":pair-rs",
 )
 
 # The parsers are pure and pinned by fixtures, so this runs on Linux. What
