@@ -45,7 +45,7 @@
     "@material-ui/icons": "^4.11.3",
     "@material-ui/lab": "^4.0.0-alpha.61",
     "@material-ui/styles": "^4.11.5",
-    "@mui/material": "^5.16.7",
+    "@mui/material": "^9.5.0",
     "@roadiehq/backstage-plugin-argo-cd": "^2.13.1",
     "@roadiehq/backstage-plugin-github-pull-requests": "^3.9.1",
     "@roadiehq/backstage-plugin-prometheus": "^3.4.1",

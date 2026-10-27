@@ -11,7 +11,7 @@
     "@openfeature/web-sdk": "^1.1.0",
     "@tabula/shared": "workspace:*",
     "@vitruviansoftware/design-system": "workspace:*",
-    "framer-motion": "^13.0.0",
+    "framer-motion": "^14.6.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "zustand": "^5.0.16"
