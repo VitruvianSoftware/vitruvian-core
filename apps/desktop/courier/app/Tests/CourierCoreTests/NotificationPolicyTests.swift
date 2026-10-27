@@ -334,4 +334,131 @@ final class NotificationPolicyTests: XCTestCase {
         XCTAssertFalse(seen.insert("$4"))
         XCTAssertTrue(seen.insert("$1"), "the oldest was forgotten")
     }
+
+    // MARK: - Task 5: OTP extraction, per-account overrides, focus, reactions, and sound effects
+
+    func testOTPDetectorExtractsCodesAndIgnoresNonOTPNumbers() {
+        XCTAssertEqual(OTPDetector.extractCode(from: "Your Signal verification code is 482-910"), "482910")
+        XCTAssertEqual(OTPDetector.extractCode(from: "123456 is your login code"), "123456")
+        XCTAssertEqual(OTPDetector.extractCode(from: "Your 2FA passcode: 9042"), "9042")
+        XCTAssertEqual(OTPDetector.extractCode(from: "Use security code 84920178 to sign in"), "84920178")
+        XCTAssertEqual(OTPDetector.extractCode(from: "Your OTP is 123456."), "123456")
+        XCTAssertEqual(OTPDetector.extractCode(from: "PIN: 7741 for your card"), "7741")
+        XCTAssertNil(OTPDetector.extractCode(from: "Meet me at 1400 Pennsylvania Ave"))
+        XCTAssertNil(OTPDetector.extractCode(from: "Order #123456 has shipped"))
+        XCTAssertNil(OTPDetector.extractCode(from: "Your verification code is 12"))
+    }
+
+    func testPerAccountOverridesFocusReactionAndSoundSelectionInPolicy() throws {
+        let suiteName = "courier.test.notifprefs.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let prefs = NotificationPreferences(defaults: defaults)
+        XCTAssertEqual(prefs.soundEffectsMode, .never)
+        XCTAssertEqual(prefs.soundEffectsVolume, 0.7, accuracy: 0.001)
+        XCTAssertTrue(prefs.messageNotificationsEnabled)
+        XCTAssertEqual(prefs.messageSound, .default)
+        XCTAssertTrue(prefs.groupNotificationsEnabled)
+        XCTAssertEqual(prefs.groupSound, .default)
+        XCTAssertTrue(prefs.requestNotificationsEnabled)
+        XCTAssertFalse(prefs.notifyWhenInFocus)
+        XCTAssertTrue(prefs.notifyOnReaction)
+        XCTAssertFalse(prefs.typingNotificationsEnabled)
+        XCTAssertEqual(prefs.delaySeconds, 0)
+        XCTAssertEqual(prefs.repeatUnreadMinutes, 0)
+        XCTAssertFalse(prefs.autoCopyOTP)
+        XCTAssertTrue(prefs.accountOverrides.isEmpty)
+
+        // Volume clamping and delay/repeat validation: refused input leaves nothing invalid on disk.
+        prefs.soundEffectsVolume = 1.5
+        XCTAssertEqual(prefs.soundEffectsVolume, 1.0, accuracy: 0.001)
+        prefs.soundEffectsVolume = -0.25
+        XCTAssertEqual(prefs.soundEffectsVolume, 0.0, accuracy: 0.001)
+        prefs.delaySeconds = 30
+        XCTAssertEqual(prefs.delaySeconds, 30)
+        prefs.delaySeconds = 45 // invalid
+        XCTAssertEqual(prefs.delaySeconds, 30)
+        prefs.repeatUnreadMinutes = 5
+        XCTAssertEqual(prefs.repeatUnreadMinutes, 5)
+        prefs.repeatUnreadMinutes = 7 // invalid
+        XCTAssertEqual(prefs.repeatUnreadMinutes, 5)
+
+        // SoundEffectsMode triggers
+        XCTAssertFalse(SoundEffectsMode.never.shouldPlay(for: .messageSent))
+        XCTAssertFalse(SoundEffectsMode.never.shouldPlay(for: .messageReceived))
+        XCTAssertTrue(SoundEffectsMode.sentOnly.shouldPlay(for: .messageSent))
+        XCTAssertFalse(SoundEffectsMode.sentOnly.shouldPlay(for: .messageReceived))
+        XCTAssertFalse(SoundEffectsMode.receivedOnly.shouldPlay(for: .messageSent))
+        XCTAssertTrue(SoundEffectsMode.receivedOnly.shouldPlay(for: .messageReceived))
+        XCTAssertTrue(SoundEffectsMode.always.shouldPlay(for: .messageSent))
+        XCTAssertTrue(SoundEffectsMode.always.shouldPlay(for: .messageReceived))
+
+        // Per-account override: enabled = false suppresses normal messages
+        prefs.accountOverrides["whatsapp:wa-1"] = AccountNotificationOverride(enabled: false, showPreviews: true, sound: .marimba)
+        let disabledDecision = NotificationPolicy.evaluate(
+            event: event(),
+            room: row(),
+            context: context(),
+            preferences: prefs,
+            accountKey: "whatsapp:wa-1"
+        )
+        XCTAssertFalse(disabledDecision.shouldNotify)
+
+        // Per-account override: showPreviews = false replaces body with "New message" and omits media thumbnail
+        prefs.accountOverrides["whatsapp:wa-1"] = AccountNotificationOverride(enabled: true, showPreviews: false, sound: .marimba)
+        var imageEvent = event(content: .object(["msgtype": .string("m.image"), "body": .string("secret.jpg")]))
+        imageEvent.thumbnailPath = "/tmp/secret-thumb.jpg"
+        let noPreviewDecision = NotificationPolicy.evaluate(
+            event: imageEvent,
+            room: row(direct: false),
+            context: context(),
+            preferences: prefs,
+            accountKey: "whatsapp:wa-1"
+        )
+        XCTAssertTrue(noPreviewDecision.shouldNotify)
+        XCTAssertEqual(noPreviewDecision.sound, .marimba)
+        XCTAssertEqual(noPreviewDecision.content?.body, "New message")
+        XCTAssertNil(noPreviewDecision.content?.subtitle)
+        XCTAssertNil(noPreviewDecision.content?.attachmentPath)
+
+        // notifyWhenInFocus: when true, notifies even when looking at the open chat
+        prefs.accountOverrides.removeAll()
+        prefs.notifyWhenInFocus = false
+        XCTAssertFalse(
+            NotificationPolicy.evaluate(
+                event: event(),
+                room: row(),
+                context: context(open: "!a", key: true),
+                preferences: prefs
+            ).shouldNotify
+        )
+        prefs.notifyWhenInFocus = true
+        XCTAssertTrue(
+            NotificationPolicy.evaluate(
+                event: event(),
+                room: row(),
+                context: context(open: "!a", key: true),
+                preferences: prefs
+            ).shouldNotify
+        )
+
+        // notifyOnReaction: gates m.reaction events
+        let reaction = event(type: "m.reaction", content: .object([
+            "m.relates_to": .object(["rel_type": .string("m.annotation"), "event_id": .string("$0"), "key": .string("🎉")]),
+        ]))
+        prefs.notifyOnReaction = true
+        let reactionOn = NotificationPolicy.evaluate(event: reaction, room: row(), context: context(), preferences: prefs)
+        XCTAssertTrue(reactionOn.shouldNotify)
+        XCTAssertEqual(reactionOn.content?.body, "Reacted 🎉")
+        prefs.notifyOnReaction = false
+        let reactionOff = NotificationPolicy.evaluate(event: reaction, room: row(), context: context(), preferences: prefs)
+        XCTAssertFalse(reactionOff.shouldNotify)
+
+        // Global messageNotificationsEnabled vs groupNotificationsEnabled
+        prefs.messageNotificationsEnabled = false
+        prefs.groupNotificationsEnabled = true
+        XCTAssertFalse(NotificationPolicy.evaluate(event: event(), room: row(direct: true), context: context(), preferences: prefs).shouldNotify)
+        XCTAssertTrue(NotificationPolicy.evaluate(event: event(), room: row(direct: false), context: context(), preferences: prefs).shouldNotify)
+    }
 }

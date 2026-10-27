@@ -54,7 +54,10 @@ final class NotificationCoordinatorTests: XCTestCase {
                        replyTimeout: TimeInterval? = nil,
                        entitlement: any EntitlementProvider = AlwaysEntitled(),
                        defaults: UserDefaults? = nil,
-                       scheduled: [String: [[String: Any]]] = [:]) async throws -> Harness {
+                       scheduled: [String: [[String: Any]]] = [:],
+                       scheduler: (any NotificationTimerScheduling)? = nil,
+                       clipboard: (any ClipboardSink)? = nil,
+                       soundEffects: (any SoundEffectPlaying)? = nil) async throws -> Harness {
         let script = NotificationScript()
         script.scheduled = scheduled
         let server = try TestEngineServer(handler: script.handle)
@@ -70,19 +73,21 @@ final class NotificationCoordinatorTests: XCTestCase {
         let window = WindowState()
         let store = TestDefaults()
         defaultsStores.append(store)
-        let preferences = InboxPreferences(defaults: store.defaults)
+        let effectiveDefaults = defaults ?? store.defaults
+        let preferences = InboxPreferences(defaults: effectiveDefaults)
         let coordinator = NotificationCoordinator(
             appModel: app, delivery: delivery, row: { window.rows[$0] }, isLooking: { window.isKey },
             isAwayFromLatest: { window.isAway }, isIncognito: { window.incognito },
             restoreDraft: { window.drafts.append(($0, $1, $2)) }, showWindow: { window.shown += 1 },
             preferences: preferences, entitlement: entitlement,
-            window: gather, replyTimeout: replyTimeout, clock: { clock.date }, defaults: defaults ?? store.defaults)
+            window: gather, replyTimeout: replyTimeout, clock: { clock.date }, defaults: effectiveDefaults,
+            scheduler: scheduler, clipboard: clipboard, soundEffects: soundEffects)
         if connected {
             app.start()
             try await waitUntil { app.client != nil }
         }
         return Harness(script: script, server: server, app: app, delivery: delivery, coordinator: coordinator,
-                       clock: clock, window: window, preferences: preferences, defaults: defaults ?? store.defaults)
+                       clock: clock, window: window, preferences: preferences, defaults: effectiveDefaults)
     }
 
     private func finish(_ h: Harness) async { await h.app.stop() }
@@ -942,6 +947,176 @@ final class NotificationCoordinatorTests: XCTestCase {
         XCTAssertNil(h.delivery.delivered.first { $0.eventID == "$photo2" }?.attachmentPath)
         await finish(h)
     }
+
+    // MARK: - Task 5: Delay batching, OTP bypass & auto-copy, repeat unread, overrides & sound effects
+
+    func testDelayBatchingHoldsNormalMessageCancelsOnReadAndDeliversWhenUnread() async throws {
+        let scheduler = ManualNotificationScheduler()
+        let clipboard = FakeClipboardSink()
+        let h = try await start(scheduler: scheduler, clipboard: clipboard)
+        h.preferences.notifications.delaySeconds = 30
+        h.clock.advance(seconds: 5)
+
+        // 1. Normal message held for 30s, canceled when chat is read at t = 10s
+        h.script.events["!a"] = [message("$d1", ts: connectedMillis + 5000, text: "Dinner at 7?")]
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$d1"])
+        try await settle(h, fetches: 1)
+        XCTAssertTrue(h.delivery.delivered.isEmpty, "normal message must be held during delaySeconds window")
+
+        h.clock.advance(seconds: 10)
+        await scheduler.advance(by: 10)
+        XCTAssertTrue(h.delivery.delivered.isEmpty)
+
+        h.server.notify(["kind": "read", "room_id": "!a"])
+        try await waitUntil { h.delivery.cleared.contains("!a") }
+
+        h.clock.advance(seconds: 20)
+        await scheduler.advance(by: 20)
+        XCTAssertTrue(h.delivery.delivered.isEmpty, "reading chat at t=10s must cancel delayed notification before t=30s")
+
+        // 2. Normal message held for 30s, delivered at t = 30s when still unread
+        let now2 = Int64(h.clock.date.timeIntervalSince1970 * 1000)
+        h.script.events["!a"] = [message("$d2", ts: now2, text: "Are you still coming?")]
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$d2"])
+        try await settle(h, fetches: 2)
+        XCTAssertTrue(h.delivery.delivered.isEmpty)
+
+        h.clock.advance(seconds: 29)
+        await scheduler.advance(by: 29)
+        XCTAssertTrue(h.delivery.delivered.isEmpty)
+
+        h.clock.advance(seconds: 1)
+        await scheduler.advance(by: 1)
+        XCTAssertEqual(h.delivery.delivered.map(\.eventID), ["$d2"])
+        XCTAssertEqual(h.delivery.delivered.first?.body, "Are you still coming?")
+        await finish(h)
+    }
+
+    func testOTPMessageBypassesDelayAndAutoCopiesOnlyWhenEnabledEvenInMutedChat() async throws {
+        let scheduler = ManualNotificationScheduler()
+        let clipboard = FakeClipboardSink()
+        let h = try await start(scheduler: scheduler, clipboard: clipboard)
+        h.preferences.notifications.delaySeconds = 30
+        h.preferences.notifications.autoCopyOTP = false
+        h.clock.advance(seconds: 5)
+
+        // 1. autoCopyOTP == false: OTP message in unmuted chat bypasses 30s delay at t = 0s, but does NOT copy to clipboard
+        let ts1 = Int64(h.clock.date.timeIntervalSince1970 * 1000)
+        h.script.events["!a"] = [message("$otp1", ts: ts1, text: "Your verification code is 123456")]
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$otp1"])
+        try await waitUntil { h.delivery.delivered.count == 1 }
+        XCTAssertEqual(h.delivery.delivered.first?.eventID, "$otp1", "OTP message must bypass delaySeconds and deliver at t=0s")
+        XCTAssertEqual(h.delivery.delivered.first?.category, .message)
+        XCTAssertTrue(clipboard.copiedCodes.isEmpty, "autoCopyOTP is false: nothing may be written to clipboard")
+
+        // When autoCopyOTP == false, a muted chat remains silent even for an OTP message
+        h.window.rows["!a"] = inboxRow("!a", name: "Chat A", muted: true)
+        let ts2 = ts1 + 1000
+        h.script.events["!a"] = [message("$otp2", ts: ts2, text: "123456 is your login code")]
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$otp2"])
+        try await settle(h, fetches: 2)
+        XCTAssertEqual(h.delivery.delivered.count, 1)
+        XCTAssertTrue(clipboard.copiedCodes.isEmpty)
+
+        // 2. autoCopyOTP == true: OTP message in a muted chat (and disabled account override) still notifies at t = 0s and copies 123456
+        h.preferences.notifications.autoCopyOTP = true
+        h.preferences.notifications.accountOverrides["whatsapp"] = AccountNotificationOverride(enabled: false, showPreviews: true)
+        let ts3 = ts2 + 1000
+        h.script.events["!a"] = [message("$otp3", ts: ts3, text: "Your verification code is 123456")]
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$otp3"])
+        try await waitUntil { h.delivery.delivered.count == 2 }
+        let deliveredOTP = try XCTUnwrap(h.delivery.delivered.last)
+        XCTAssertEqual(deliveredOTP.eventID, "$otp3")
+        XCTAssertEqual(deliveredOTP.body, "Your verification code is 123456")
+        XCTAssertEqual(deliveredOTP.category, .messageOTP)
+        XCTAssertEqual(deliveredOTP.userInfo, ["room_id": "!a"], "never store OTP code in userInfo")
+        XCTAssertEqual(clipboard.copiedCodes, ["123456"])
+        await finish(h)
+    }
+
+    func testRepeatUnreadRePostsAtIntervalWhenUnreadAndCancelsWhenRead() async throws {
+        let scheduler = ManualNotificationScheduler()
+        let h = try await start(scheduler: scheduler)
+        h.preferences.notifications.repeatUnreadMinutes = 2
+        h.clock.advance(seconds: 5)
+
+        // 1. Unread chat re-posts once at t = 120s
+        var unreadRow = inboxRow("!a", name: "Chat A")
+        unreadRow.unread = 1
+        h.window.rows["!a"] = unreadRow
+        let ts1 = Int64(h.clock.date.timeIntervalSince1970 * 1000)
+        h.script.events["!a"] = [message("$r1", ts: ts1, text: "Please review")]
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$r1"])
+        try await waitUntil { h.delivery.delivered.count == 1 }
+
+        h.clock.advance(seconds: 60)
+        await scheduler.advance(by: 60)
+        XCTAssertEqual(h.delivery.delivered.count, 1)
+
+        h.clock.advance(seconds: 60)
+        await scheduler.advance(by: 60)
+        XCTAssertEqual(h.delivery.delivered.count, 2, "must re-post notification once at t=120s when still unread")
+        XCTAssertEqual(h.delivery.delivered.last?.eventID, "$r1")
+
+        // Does not repeat a second time at t = 240s
+        h.clock.advance(seconds: 120)
+        await scheduler.advance(by: 120)
+        XCTAssertEqual(h.delivery.delivered.count, 2)
+
+        // 2. Marked read at t = 60s cancels repeat timer before t = 120s
+        let ts2 = Int64(h.clock.date.timeIntervalSince1970 * 1000)
+        h.script.events["!a"] = [message("$r2", ts: ts2, text: "Second unread message")]
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$r2"])
+        try await waitUntil { h.delivery.delivered.count == 3 }
+
+        h.clock.advance(seconds: 60)
+        await scheduler.advance(by: 60)
+        h.server.notify(["kind": "read", "room_id": "!a"])
+        try await waitUntil { h.delivery.cleared.contains("!a") }
+
+        h.clock.advance(seconds: 60)
+        await scheduler.advance(by: 60)
+        XCTAssertEqual(h.delivery.delivered.count, 3, "reading chat at t=60s must prevent repeat notification at t=120s")
+        await finish(h)
+    }
+
+    func testPerAccountOverridesAndSoundEffectsInCoordinator() async throws {
+        let soundPlayer = FakeSoundEffectPlayer()
+        let h = try await start(soundEffects: soundPlayer)
+        h.preferences.notifications.soundEffectsMode = .always
+        h.preferences.notifications.soundEffectsVolume = 0.45
+        h.preferences.notifications.accountOverrides["whatsapp"] = AccountNotificationOverride(
+            enabled: true,
+            showPreviews: false,
+            sound: .harp
+        )
+        h.clock.advance(seconds: 5)
+
+        let ts1 = Int64(h.clock.date.timeIntervalSince1970 * 1000)
+        var incomingPhoto = message("$m1", ts: ts1, text: "photo.jpg")
+        incomingPhoto["content"] = ["msgtype": "m.image", "body": "photo.jpg"]
+        incomingPhoto["media_path"] = "/tmp/photo.jpg"
+        incomingPhoto["thumbnail_path"] = "/tmp/thumb.jpg"
+        h.script.events["!a"] = [incomingPhoto]
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$m1"])
+        try await waitUntil { h.delivery.delivered.count == 1 }
+
+        let note = try XCTUnwrap(h.delivery.delivered.first)
+        XCTAssertEqual(note.body, "New message")
+        XCTAssertNil(note.attachmentPath)
+        XCTAssertEqual(note.sound, .harp)
+        XCTAssertEqual(soundPlayer.played.map(\.effect), [.messageReceived])
+        XCTAssertEqual(soundPlayer.played.first?.volume ?? 0, 0.45, accuracy: 0.001)
+
+        // Outgoing message triggers .messageSent sound effect without notification
+        let ts2 = ts1 + 1000
+        h.script.events["!a"] = [message("$m2", ts: ts2, text: "my reply", mine: true), incomingPhoto]
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$m2"])
+        try await settle(h, fetches: 2)
+        XCTAssertEqual(h.delivery.delivered.count, 1)
+        XCTAssertEqual(soundPlayer.played.map(\.effect), [.messageReceived, .messageSent])
+        await finish(h)
+    }
 }
 
 // MARK: - Fixtures
@@ -970,6 +1145,26 @@ final class FakeDelivery: NotificationDelivering {
     func remove(notificationID: String) {
         removed.append(notificationID)
         log.append("remove " + notificationID)
+    }
+}
+
+@MainActor
+final class FakeClipboardSink: ClipboardSink {
+    private(set) var copiedCodes: [String] = []
+    func copyOTP(_ code: String) {
+        copiedCodes.append(code)
+    }
+}
+
+@MainActor
+final class FakeSoundEffectPlayer: SoundEffectPlaying {
+    struct Entry: Equatable {
+        let effect: SoundEffectEvent
+        let volume: Double
+    }
+    private(set) var played: [Entry] = []
+    func play(_ effect: SoundEffectEvent, volume: Double) {
+        played.append(Entry(effect: effect, volume: volume))
     }
 }
 

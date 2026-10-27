@@ -10,6 +10,8 @@ import Foundation
 public enum NotificationCategory: String, Equatable, Sendable, CaseIterable {
     /// A new message: Mark as Read, Reply and the remind-later buttons.
     case message
+    /// A new message containing a one-time verification code when auto-copy is enabled: includes Copy Code.
+    case messageOTP
     /// A reminder that came due: the same without Reply, because there is nothing new to answer.
     case reminder
     /// A scheduled message that didn't go (canceled, or missed): no buttons, since there is nothing to read or
@@ -23,8 +25,10 @@ public enum NotificationCategory: String, Equatable, Sendable, CaseIterable {
     /// when it doesn't include reminders (spec §3): a button that could only say no is not offered.
     public func actions(entitlement: any EntitlementProvider) -> [NotificationAction] {
         guard self != .scheduled, self != .typing else { return [] }
-        var actions: [NotificationAction] = [.markRead]
-        if self == .message { actions.append(.reply) }
+        var actions: [NotificationAction] = []
+        if self == .messageOTP { actions.append(.copyCode) }
+        actions.append(.markRead)
+        if self == .message || self == .messageOTP { actions.append(.reply) }
         if entitlement.isEntitled(.reminders) { actions += [.remindOneHour, .remindEightHours] }
         return actions
     }
@@ -32,7 +36,269 @@ public enum NotificationCategory: String, Equatable, Sendable, CaseIterable {
 
 /// A button on a notification.
 public enum NotificationAction: String, Equatable, Sendable, CaseIterable {
-    case markRead, reply, remindOneHour, remindEightHours
+    case copyCode, markRead, reply, remindOneHour, remindEightHours
+}
+
+/// Sound effect playback trigger mode.
+public enum SoundEffectsMode: String, CaseIterable, Codable, Sendable {
+    case never, sentOnly, receivedOnly, always
+
+    public func shouldPlay(for event: SoundEffectEvent) -> Bool {
+        switch self {
+        case .never: false
+        case .sentOnly: event == .messageSent
+        case .receivedOnly: event == .messageReceived
+        case .always: true
+        }
+    }
+}
+
+/// Event that can trigger an in-app sound effect.
+public enum SoundEffectEvent: String, Equatable, Sendable {
+    case messageSent
+    case messageReceived
+}
+
+/// Sound choice for message and group notifications.
+public enum NotificationSoundChoice: String, CaseIterable, Codable, Sendable {
+    case `default`, none, beeper, sounds, double, dreams, not, marimba, rain, harp, record, spirit
+}
+
+/// Per-account notification override.
+public struct AccountNotificationOverride: Codable, Equatable, Sendable {
+    public var enabled: Bool
+    public var showPreviews: Bool
+    public var sound: NotificationSoundChoice?
+
+    public init(enabled: Bool = true, showPreviews: Bool = true, sound: NotificationSoundChoice? = nil) {
+        self.enabled = enabled
+        self.showPreviews = showPreviews
+        self.sound = sound
+    }
+}
+
+/// Extracts a 4-8 digit OTP/2FA verification code when accompanied by an OTP keyword.
+public enum OTPDetector {
+    private static let keywordRegex = try! NSRegularExpression(
+        pattern: #"(?i)\b(security\s+code|verification|passcode|code|otp|2fa|pin)\b"#
+    )
+    private static let codeRegex = try! NSRegularExpression(
+        pattern: #"(?<![\d$+-])(?<!\d\.)\b(?:\d{3,4}-\d{3,4}|\d{4,8})\b(?![\d-]|\.\d)"#
+    )
+
+    /// Extracts a 4-8 digit OTP/2FA verification code when accompanied by an OTP keyword
+    /// ("code", "verification", "OTP", "2FA", "passcode", "security code", "pin").
+    public static func extractCode(from text: String) -> String? {
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard keywordRegex.firstMatch(in: text, options: [], range: range) != nil else {
+            return nil
+        }
+        let matches = codeRegex.matches(in: text, options: [], range: range)
+        for match in matches {
+            guard let matchRange = Range(match.range, in: text) else { continue }
+            let raw = String(text[matchRange])
+            let digits = raw.replacingOccurrences(of: "-", with: "")
+            guard (4...8).contains(digits.count), digits.allSatisfy(\.isNumber) else { continue }
+            if digits.count == 4, let value = Int(digits), (1900...2099).contains(value) {
+                continue
+            }
+            return digits
+        }
+        return nil
+    }
+}
+
+/// Extended notification preferences backed by UserDefaults.
+public final class NotificationPreferences: ObservableObject {
+    public static let allowedDelaySeconds: [Int] = [0, 10, 30, 60, 120, 300]
+    public static let allowedRepeatUnreadMinutes: [Int] = [0, 2, 5, 10]
+
+    @Published public var soundEffectsMode: SoundEffectsMode {
+        didSet {
+            guard !isInitializing else { return }
+            set(soundEffectsMode.rawValue, "soundEffectsMode")
+        }
+    }
+    @Published public var soundEffectsVolume: Double {
+        didSet {
+            let clamped = min(1.0, max(0.0, soundEffectsVolume))
+            if soundEffectsVolume != clamped {
+                soundEffectsVolume = clamped
+                return
+            }
+            guard !isInitializing else { return }
+            set(soundEffectsVolume, "soundEffectsVolume")
+        }
+    }
+    @Published public var messageNotificationsEnabled: Bool {
+        didSet {
+            guard !isInitializing else { return }
+            set(messageNotificationsEnabled, "messageNotificationsEnabled")
+        }
+    }
+    @Published public var messageSound: NotificationSoundChoice {
+        didSet {
+            guard !isInitializing else { return }
+            set(messageSound.rawValue, "messageSound")
+        }
+    }
+    @Published public var groupNotificationsEnabled: Bool {
+        didSet {
+            guard !isInitializing else { return }
+            set(groupNotificationsEnabled, "groupNotificationsEnabled")
+        }
+    }
+    @Published public var groupSound: NotificationSoundChoice {
+        didSet {
+            guard !isInitializing else { return }
+            set(groupSound.rawValue, "groupSound")
+        }
+    }
+    @Published public var requestNotificationsEnabled: Bool {
+        didSet {
+            guard !isInitializing else { return }
+            set(requestNotificationsEnabled, "requestNotificationsEnabled")
+            defaults.set(requestNotificationsEnabled, forKey: InboxPreferences.key("requestNotifications"))
+            onRequestNotificationsChanged?(requestNotificationsEnabled)
+        }
+    }
+    @Published public var notifyWhenInFocus: Bool {
+        didSet {
+            guard !isInitializing else { return }
+            set(notifyWhenInFocus, "notifyWhenInFocus")
+        }
+    }
+    @Published public var notifyOnReaction: Bool {
+        didSet {
+            guard !isInitializing else { return }
+            set(notifyOnReaction, "notifyOnReaction")
+        }
+    }
+    @Published public var typingNotificationsEnabled: Bool {
+        didSet {
+            guard !isInitializing else { return }
+            set(typingNotificationsEnabled, "typingNotificationsEnabled")
+            defaults.set(typingNotificationsEnabled, forKey: InboxPreferences.key("typingNotifications"))
+            onTypingNotificationsChanged?(typingNotificationsEnabled)
+        }
+    }
+    @Published public var delaySeconds: Int {
+        didSet {
+            guard Self.allowedDelaySeconds.contains(delaySeconds) else {
+                delaySeconds = oldValue
+                return
+            }
+            guard !isInitializing else { return }
+            set(delaySeconds, "delaySeconds")
+        }
+    }
+    @Published public var repeatUnreadMinutes: Int {
+        didSet {
+            guard Self.allowedRepeatUnreadMinutes.contains(repeatUnreadMinutes) else {
+                repeatUnreadMinutes = oldValue
+                return
+            }
+            guard !isInitializing else { return }
+            set(repeatUnreadMinutes, "repeatUnreadMinutes")
+        }
+    }
+    @Published public var autoCopyOTP: Bool {
+        didSet {
+            guard !isInitializing else { return }
+            set(autoCopyOTP, "autoCopyOTP")
+        }
+    }
+    @Published public var accountOverrides: [String: AccountNotificationOverride] {
+        didSet {
+            guard !isInitializing else { return }
+            if let data = try? JSONEncoder().encode(accountOverrides) {
+                defaults.set(data, forKey: Self.key("accountOverrides"))
+            }
+        }
+    }
+
+    public static func key(_ name: String) -> String { "courier.notifications." + name }
+
+    private let defaults: UserDefaults
+    private var isInitializing = true
+    var onRequestNotificationsChanged: ((Bool) -> Void)?
+    var onTypingNotificationsChanged: ((Bool) -> Void)?
+
+    public init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        func bool(_ name: String, _ fallback: Bool) -> Bool {
+            defaults.object(forKey: Self.key(name)) as? Bool ?? fallback
+        }
+        func value<T: RawRepresentable>(_ name: String, _ fallback: T) -> T where T.RawValue == String {
+            defaults.string(forKey: Self.key(name)).flatMap(T.init(rawValue:)) ?? fallback
+        }
+
+        soundEffectsMode = value("soundEffectsMode", SoundEffectsMode.never)
+        let rawVolume = defaults.object(forKey: Self.key("soundEffectsVolume")) as? Double ?? 0.7
+        soundEffectsVolume = min(1.0, max(0.0, rawVolume))
+        messageNotificationsEnabled = bool("messageNotificationsEnabled", true)
+        messageSound = value("messageSound", NotificationSoundChoice.default)
+        groupNotificationsEnabled = bool("groupNotificationsEnabled", true)
+        groupSound = value("groupSound", NotificationSoundChoice.default)
+        let reqFallback = defaults.object(forKey: InboxPreferences.key("requestNotifications")) as? Bool ?? true
+        requestNotificationsEnabled = bool("requestNotificationsEnabled", reqFallback)
+        notifyWhenInFocus = bool("notifyWhenInFocus", false)
+        notifyOnReaction = bool("notifyOnReaction", true)
+        let typingFallback = defaults.object(forKey: InboxPreferences.key("typingNotifications")) as? Bool ?? false
+        typingNotificationsEnabled = bool("typingNotificationsEnabled", typingFallback)
+
+        let rawDelay = defaults.object(forKey: Self.key("delaySeconds")) as? Int ?? 0
+        delaySeconds = Self.allowedDelaySeconds.contains(rawDelay) ? rawDelay : 0
+
+        let rawRepeat = defaults.object(forKey: Self.key("repeatUnreadMinutes")) as? Int ?? 0
+        repeatUnreadMinutes = Self.allowedRepeatUnreadMinutes.contains(rawRepeat) ? rawRepeat : 0
+
+        autoCopyOTP = bool("autoCopyOTP", false)
+        if let data = defaults.data(forKey: Self.key("accountOverrides")),
+           let decoded = try? JSONDecoder().decode([String: AccountNotificationOverride].self, from: data) {
+            accountOverrides = decoded
+        } else {
+            accountOverrides = [:]
+        }
+        isInitializing = false
+    }
+
+    private func set(_ value: Any?, _ name: String) {
+        if let value {
+            defaults.set(value, forKey: Self.key(name))
+        } else {
+            defaults.removeObject(forKey: Self.key(name))
+        }
+    }
+}
+
+/// Decision returned by `NotificationPolicy.evaluate`.
+public struct NotificationDecision: Equatable, Sendable {
+    public let shouldNotify: Bool
+    public let content: NotificationContent?
+    public let sound: NotificationSoundChoice
+    public let delaySeconds: Int
+    public let repeatUnreadMinutes: Int
+    public let otpCode: String?
+    public let shouldAutoCopyOTP: Bool
+
+    public init(
+        shouldNotify: Bool,
+        content: NotificationContent? = nil,
+        sound: NotificationSoundChoice = .default,
+        delaySeconds: Int = 0,
+        repeatUnreadMinutes: Int = 0,
+        otpCode: String? = nil,
+        shouldAutoCopyOTP: Bool = false
+    ) {
+        self.shouldNotify = shouldNotify
+        self.content = content
+        self.sound = sound
+        self.delaySeconds = delaySeconds
+        self.repeatUnreadMinutes = repeatUnreadMinutes
+        self.otpCode = otpCode
+        self.shouldAutoCopyOTP = shouldAutoCopyOTP
+    }
 }
 
 /// A notification, before the system draws it.
@@ -49,9 +315,12 @@ public struct NotificationContent: Equatable, Sendable {
     public let category: NotificationCategory
     /// Local path of a thumbnail or image/video/sticker attachment to show on the notification; nil for view-once media.
     public let attachmentPath: String?
+    /// Which notification sound to play.
+    public let sound: NotificationSoundChoice
 
     public init(eventID: String, roomID: String, title: String, subtitle: String?, body: String,
-                category: NotificationCategory = .message, attachmentPath: String? = nil) {
+                category: NotificationCategory = .message, attachmentPath: String? = nil,
+                sound: NotificationSoundChoice = .default) {
         self.eventID = eventID
         self.roomID = roomID
         self.title = title
@@ -59,6 +328,7 @@ public struct NotificationContent: Equatable, Sendable {
         self.body = body
         self.category = category
         self.attachmentPath = attachmentPath
+        self.sound = sound
     }
 
     /// Notifications of one chat are stacked together.
@@ -92,10 +362,19 @@ public enum NotificationPolicy {
         public var isLooking: Bool
         /// The setting "notify for message requests" (`InboxPreferences.requestNotifications`).
         public var requestNotifications: Bool
+        /// Whether to show notifications even for the open chat when the window is in focus.
+        public var notifyWhenInFocus: Bool
+        /// Whether reaction events (`m.reaction`) should notify.
+        public var notifyOnReaction: Bool
+        /// Whether the app lock screen is currently active (redacts all previews and hides reply actions).
+        public var isAppLocked: Bool
 
         public init(me: String, connectedAt: Int64, now: Int64, openRoomID: String?,
                     openMemberRoomIDs: Set<String> = [], isLooking: Bool,
-                    requestNotifications: Bool = true) {
+                    requestNotifications: Bool = true,
+                    notifyWhenInFocus: Bool = false,
+                    notifyOnReaction: Bool = false,
+                    isAppLocked: Bool = false) {
             self.me = me
             self.connectedAt = connectedAt
             self.now = now
@@ -103,6 +382,9 @@ public enum NotificationPolicy {
             self.openMemberRoomIDs = openMemberRoomIDs
             self.isLooking = isLooking
             self.requestNotifications = requestNotifications
+            self.notifyWhenInFocus = notifyWhenInFocus
+            self.notifyOnReaction = notifyOnReaction
+            self.isAppLocked = isAppLocked
         }
 
         /// True when `roomID` is the open chat or one of the open merged chat's member rooms.
@@ -123,7 +405,8 @@ public enum NotificationPolicy {
     /// while nobody is looking at it (the screen locked or asleep, or the person away).
     public static func shouldNotify(event: Event, room: InboxRow, context: Context) -> Bool {
         // Ruling 17: someone starting a poll is a message (its votes and its end are not).
-        guard event.type == "m.room.message" || event.type == "m.sticker" || event.type == Timeline.pollStartType
+        let isReaction = event.type == "m.reaction" && context.notifyOnReaction && reactionEmoji(of: event) != nil
+        guard event.type == "m.room.message" || event.type == "m.sticker" || event.type == Timeline.pollStartType || isReaction
         else { return false }
         guard !Timeline.isEdit(event) else { return false }
         // A note that the disappearing timer changed is a system line, not news (Ruling 40), and the engine doesn't
@@ -138,8 +421,138 @@ public enum NotificationPolicy {
         guard !room.lowPriority, !room.hidden else { return false }
         guard !room.request || context.requestNotifications else { return false }
         guard event.ts >= context.connectedAt, context.now - event.ts <= liveWindowMillis else { return false }
-        if context.isLooking, context.isOpen(roomID: event.roomID) { return false }
+        if !context.notifyWhenInFocus, context.isLooking, context.isOpen(roomID: event.roomID) { return false }
         return true
+    }
+
+    public static func evaluate(
+        event: Event,
+        room: InboxRow,
+        context: Context,
+        preferences: NotificationPreferences? = nil,
+        accountKey: String? = nil
+    ) -> NotificationDecision {
+        let noNotify = NotificationDecision(shouldNotify: false)
+        guard !event.mine, event.sender != context.me else { return noNotify }
+        guard event.ts >= context.connectedAt, context.now - event.ts <= liveWindowMillis else { return noNotify }
+        guard !Timeline.isEdit(event) else { return noNotify }
+        guard TimerChange.of(event.content) == nil else { return noNotify }
+        guard CallNote.isNews(event) else { return noNotify }
+
+        let allowReaction = preferences?.notifyOnReaction ?? context.notifyOnReaction
+        let reactionKey = event.type == "m.reaction" ? reactionEmoji(of: event) : nil
+        let isReaction = event.type == "m.reaction" && allowReaction && reactionKey != nil
+        let isMessage = event.type == "m.room.message" || event.type == "m.sticker" || event.type == Timeline.pollStartType
+        guard isMessage || isReaction else { return noNotify }
+
+        let rawText = event.type == "m.room.message" ? (event.content["body"]?.stringValue ?? "") : ""
+        let otpCode = rawText.isEmpty ? nil : OTPDetector.extractCode(from: rawText)
+        let autoCopyOTP = preferences?.autoCopyOTP ?? false
+        let isUrgentOTP = otpCode != nil && autoCopyOTP
+
+        guard !room.lowPriority, !room.hidden else { return noNotify }
+        let allowRequests = preferences?.requestNotificationsEnabled ?? context.requestNotifications
+        guard !room.request || allowRequests else { return noNotify }
+
+        let override = resolveAccountOverride(for: room, preferences: preferences, explicitKey: accountKey)
+
+        if !isUrgentOTP {
+            guard !isMuted(room) else { return noNotify }
+            if room.isDirect {
+                guard preferences?.messageNotificationsEnabled ?? true else { return noNotify }
+            } else {
+                guard preferences?.groupNotificationsEnabled ?? true else { return noNotify }
+            }
+            if let override, !override.enabled {
+                return noNotify
+            }
+        }
+
+        let notifyInFocus = preferences?.notifyWhenInFocus ?? context.notifyWhenInFocus
+        if !notifyInFocus, context.isLooking, context.isOpen(roomID: event.roomID) {
+            return noNotify
+        }
+
+        let baseSound = room.isDirect
+            ? (preferences?.messageSound ?? .default)
+            : (preferences?.groupSound ?? .default)
+        let sound = override?.sound ?? baseSound
+
+        var title = room.name.isEmpty ? event.senderName : room.name
+        if title.isEmpty { title = String(localized: "Courier") }
+        let sender = event.senderName.trimmingCharacters(in: .whitespaces)
+        var subtitle: String? = room.isDirect || sender.isEmpty ? nil : sender
+        var textBody: String
+        var attachment: String?
+        if let reactionKey {
+            textBody = String(localized: "Reacted \(reactionKey)")
+            attachment = nil
+        } else {
+            textBody = body(of: event)
+            attachment = attachmentPath(of: event)
+        }
+        var category: NotificationCategory = isUrgentOTP ? .messageOTP : .message
+
+        if context.isAppLocked {
+            title = String(localized: "Courier")
+            subtitle = nil
+            textBody = String(localized: "New message")
+            attachment = nil
+            category = .scheduled
+        } else if override?.showPreviews == false {
+            subtitle = nil
+            textBody = String(localized: "New message")
+            attachment = nil
+        }
+
+        let content = NotificationContent(
+            eventID: event.eventID,
+            roomID: event.roomID,
+            title: title,
+            subtitle: subtitle,
+            body: textBody,
+            category: category,
+            attachmentPath: attachment,
+            sound: sound
+        )
+        let effectiveDelay = otpCode != nil ? 0 : (preferences?.delaySeconds ?? 0)
+        let effectiveRepeat = preferences?.repeatUnreadMinutes ?? 0
+
+        return NotificationDecision(
+            shouldNotify: true,
+            content: content,
+            sound: sound,
+            delaySeconds: effectiveDelay,
+            repeatUnreadMinutes: effectiveRepeat,
+            otpCode: otpCode,
+            shouldAutoCopyOTP: isUrgentOTP
+        )
+    }
+
+    private static func reactionEmoji(of event: Event) -> String? {
+        guard event.type == "m.reaction", event.status != .failed else { return nil }
+        guard let rel = event.content["m.relates_to"],
+              rel["rel_type"]?.stringValue == "m.annotation",
+              let key = rel["key"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !key.isEmpty
+        else { return nil }
+        return key
+    }
+
+    private static func resolveAccountOverride(
+        for room: InboxRow,
+        preferences: NotificationPreferences?,
+        explicitKey: String?
+    ) -> AccountNotificationOverride? {
+        guard let map = preferences?.accountOverrides, !map.isEmpty else { return nil }
+        if let explicitKey, let found = map[explicitKey] { return found }
+        if !room.network.isEmpty {
+            if let found = map[room.network] { return found }
+            if let (_, found) = map.first(where: { $0.key.hasPrefix(room.network + ":") }) {
+                return found
+            }
+        }
+        return nil
     }
 
     /// Whether the chat is muted: by itself, or by its account or one of its labels.

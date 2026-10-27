@@ -43,13 +43,26 @@ public final class InboxPreferences: ObservableObject {
     @Published public var markReadOnArchive: Bool { didSet { set(markReadOnArchive, "markReadOnArchive") } }
     @Published public var afterArchive: AfterAction { didSet { set(afterArchive.rawValue, "afterArchive") } }
     @Published public var afterToggleRead: AfterAction { didSet { set(afterToggleRead.rawValue, "afterToggleRead") } }
-    @Published public var requestNotifications: Bool { didSet { set(requestNotifications, "requestNotifications") } }
+    @Published public var requestNotifications: Bool {
+        didSet {
+            set(requestNotifications, "requestNotifications")
+            if notifications.requestNotificationsEnabled != requestNotifications {
+                notifications.requestNotificationsEnabled = requestNotifications
+            }
+        }
+    }
     @Published public var lastUsedReminder: Date? { didSet { set(lastUsedReminder, "lastUsedReminder") } }
     /// "Notify when someone starts typing (supported platforms only)" (02 §1.5, off): one notification per burst of
     /// typing in a chat that would notify for a message (`NotificationPolicy.shouldNotifyTyping`).
     @Published public var typingNotifications: Bool {
-        didSet { set(typingNotifications, "typingNotifications") }
+        didSet {
+            set(typingNotifications, "typingNotifications")
+            if notifications.typingNotificationsEnabled != typingNotifications {
+                notifications.typingNotificationsEnabled = typingNotifications
+            }
+        }
     }
+    public let notifications: NotificationPreferences
 
     /// The key a setting is kept under.
     public static func key(_ name: String) -> String { "courier.inbox." + name }
@@ -58,6 +71,8 @@ public final class InboxPreferences: ObservableObject {
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        let notifPrefs = NotificationPreferences(defaults: defaults)
+        self.notifications = notifPrefs
         func bool(_ name: String, _ fallback: Bool) -> Bool {
             defaults.object(forKey: Self.key(name)) as? Bool ?? fallback
         }
@@ -78,9 +93,18 @@ public final class InboxPreferences: ObservableObject {
         markReadOnArchive = bool("markReadOnArchive", false)
         afterArchive = value("afterArchive", AfterAction.selectNext)
         afterToggleRead = value("afterToggleRead", AfterAction.selectNext)
-        requestNotifications = bool("requestNotifications", true)
+        requestNotifications = bool("requestNotifications", notifPrefs.requestNotificationsEnabled)
         lastUsedReminder = defaults.object(forKey: Self.key("lastUsedReminder")) as? Date
-        typingNotifications = bool("typingNotifications", false)
+        typingNotifications = bool("typingNotifications", notifPrefs.typingNotificationsEnabled)
+
+        notifPrefs.onRequestNotificationsChanged = { [weak self] enabled in
+            guard let self, self.requestNotifications != enabled else { return }
+            self.requestNotifications = enabled
+        }
+        notifPrefs.onTypingNotificationsChanged = { [weak self] enabled in
+            guard let self, self.typingNotifications != enabled else { return }
+            self.typingNotifications = enabled
+        }
     }
 
     private func set(_ value: Any?, _ name: String) {
