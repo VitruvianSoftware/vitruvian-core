@@ -284,9 +284,9 @@ def looked_at_what_matters(release_text):
     calls = [
         line
         for line in body("Assemble .app bundles")
-        if line.startswith("macos/scripts/bundle.sh ")
+        if line.startswith('"$RUNNER_TEMP/bundle-app" ')
     ]
-    expect("three bundle.sh calls", len(calls) == 3)
+    expect("three bundle-app calls", len(calls) == 3)
     expect(
         "the tool's zip, with the manifest at its top",
         any(

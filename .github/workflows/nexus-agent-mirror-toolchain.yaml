@@ -182,19 +182,20 @@ jobs:
       - name: Assemble .app bundles
         run: |
           VERSION="0.0.0-rehearsal"
-          chmod +x apps/desktop/nexus-agent/macos/scripts/bundle.sh
+          rustc --edition 2021 --crate-type lib --crate-name nexus_agent_scripts_lib apps/desktop/nexus-agent/macos/scripts/src/lib.rs -o "$RUNNER_TEMP/libnexus_agent_scripts_lib.rlib"
+          rustc --edition 2021 apps/desktop/nexus-agent/macos/scripts/src/bin/bundle.rs -L "$RUNNER_TEMP" --extern nexus_agent_scripts_lib="$RUNNER_TEMP/libnexus_agent_scripts_lib.rlib" -o "$RUNNER_TEMP/bundle-app"
 
           # Universal
           mkdir -p /tmp/dist-universal
-          apps/desktop/nexus-agent/macos/scripts/bundle.sh /tmp/universal/NexusAgent "$VERSION" /tmp/dist-universal
+          "$RUNNER_TEMP/bundle-app" /tmp/universal/NexusAgent "$VERSION" /tmp/dist-universal
 
           # arm64
           mkdir -p /tmp/dist-arm64
-          apps/desktop/nexus-agent/macos/scripts/bundle.sh /tmp/arm64/NexusAgent "$VERSION" /tmp/dist-arm64
+          "$RUNNER_TEMP/bundle-app" /tmp/arm64/NexusAgent "$VERSION" /tmp/dist-arm64
 
           # x86_64
           mkdir -p /tmp/dist-x86_64
-          apps/desktop/nexus-agent/macos/scripts/bundle.sh /tmp/x86_64/NexusAgent "$VERSION" /tmp/dist-x86_64
+          "$RUNNER_TEMP/bundle-app" /tmp/x86_64/NexusAgent "$VERSION" /tmp/dist-x86_64
 
       # Each app holds the copy of Mermaid where the chat view looks for it,
       # unchanged, with its licence, and is the signed executable for the
@@ -202,10 +203,11 @@ jobs:
       - name: Check the three apps
         run: |
           set -euo pipefail
-          check=apps/desktop/nexus-agent/macos/scripts/check_packaged_app.sh
-          bash "$check" /tmp/dist-universal/NexusAgent.app arm64 x86_64
-          bash "$check" /tmp/dist-arm64/NexusAgent.app arm64
-          bash "$check" /tmp/dist-x86_64/NexusAgent.app x86_64
+          rustc --edition 2021 --crate-type lib --crate-name nexus_agent_scripts_lib apps/desktop/nexus-agent/macos/scripts/src/lib.rs -o "$RUNNER_TEMP/libnexus_agent_scripts_lib.rlib"
+          rustc --edition 2021 apps/desktop/nexus-agent/macos/scripts/src/bin/check_packaged_app.rs -L "$RUNNER_TEMP" --extern nexus_agent_scripts_lib="$RUNNER_TEMP/libnexus_agent_scripts_lib.rlib" -o "$RUNNER_TEMP/check-packaged-app"
+          "$RUNNER_TEMP/check-packaged-app" /tmp/dist-universal/NexusAgent.app arm64 x86_64
+          "$RUNNER_TEMP/check-packaged-app" /tmp/dist-arm64/NexusAgent.app arm64
+          "$RUNNER_TEMP/check-packaged-app" /tmp/dist-x86_64/NexusAgent.app x86_64
 
       # The checks above read the app; this starts it, which nothing else
       # does between a change and a release. A runner has no settings and no
@@ -383,5 +385,5 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/unzipped"
           ditto -x -k NexusAgent-0.0.0-rehearsal-universal.zip "$RUNNER_TEMP/unzipped"
-          bash apps/desktop/nexus-agent/macos/scripts/check_packaged_app.sh \
+          "$RUNNER_TEMP/check-packaged-app" \
             "$RUNNER_TEMP/unzipped/NexusAgent.app" arm64 x86_64

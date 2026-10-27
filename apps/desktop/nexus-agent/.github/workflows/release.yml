@@ -160,19 +160,20 @@ jobs:
       - name: Assemble .app bundles
         run: |
           VERSION="${{ needs.detect.outputs.version }}"
-          chmod +x macos/scripts/bundle.sh
+          rustc --edition 2021 --crate-type lib --crate-name nexus_agent_scripts_lib macos/scripts/src/lib.rs -o "$RUNNER_TEMP/libnexus_agent_scripts_lib.rlib"
+          rustc --edition 2021 macos/scripts/src/bin/bundle.rs -L "$RUNNER_TEMP" --extern nexus_agent_scripts_lib="$RUNNER_TEMP/libnexus_agent_scripts_lib.rlib" -o "$RUNNER_TEMP/bundle-app"
 
           # Universal
           mkdir -p /tmp/dist-universal
-          macos/scripts/bundle.sh /tmp/universal/NexusAgent "$VERSION" /tmp/dist-universal
+          "$RUNNER_TEMP/bundle-app" /tmp/universal/NexusAgent "$VERSION" /tmp/dist-universal
 
           # arm64
           mkdir -p /tmp/dist-arm64
-          macos/scripts/bundle.sh /tmp/arm64/NexusAgent "$VERSION" /tmp/dist-arm64
+          "$RUNNER_TEMP/bundle-app" /tmp/arm64/NexusAgent "$VERSION" /tmp/dist-arm64
 
           # x86_64
           mkdir -p /tmp/dist-x86_64
-          macos/scripts/bundle.sh /tmp/x86_64/NexusAgent "$VERSION" /tmp/dist-x86_64
+          "$RUNNER_TEMP/bundle-app" /tmp/x86_64/NexusAgent "$VERSION" /tmp/dist-x86_64
 
       - name: Install create-dmg
         run: brew install create-dmg
