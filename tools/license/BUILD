@@ -18,11 +18,8 @@
 # Hand-written: gazelle would generate targets for the parity test.
 # gazelle:ignore
 
-load("@aspect_rules_py//py:defs.bzl", "py_test")
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/license:defs.bzl", "addlicense_run_target")
 
 # Glob patterns passed as -ignore flags to addlicense — generated / tool-managed
@@ -175,14 +172,6 @@ alias(
     visibility = ["//visibility:public"],
 )
 
-sh_binary(
-    name = "verify-sh",
-    srcs = ["verify.sh"],
-    visibility = ["//visibility:public"],
-)
-
-exports_files(["verify.sh"])
-
 rust_test(
     name = "license_verify_lib_test",
     size = "small",
@@ -191,38 +180,14 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
-# Throwaway git repos; the oversized-header case pins the SIGPIPE false verdict.
-sh_test(
+test_suite(
     name = "verify_test",
-    size = "small",
-    srcs = ["verify_test.sh"],
-    data = ["verify.sh"],
+    tests = [":license_verify_lib_test"],
 )
 
-# The same cases against the Rust binary.
-sh_test(
+test_suite(
     name = "verify-rs_test",
-    size = "small",
-    srcs = ["verify_test.sh"],
-    data = [":verify"],
-    env = {"VERIFY_UNDER_TEST": "$(rootpath :verify)"},
-)
-
-# verify.sh and :verify side by side over generated repositories: exit code,
-# stdout and stderr must match.
-py_test(
-    name = "verify_rs_parity_test",
-    size = "medium",
-    srcs = ["verify_rs_parity_test.py"],
-    data = [
-        "verify.sh",
-        ":verify",
-    ],
-    env = {
-        "VERIFY_RS": "$(rootpath :verify)",
-        "VERIFY_SH": "$(rootpath verify.sh)",
-    },
-    main = "verify_rs_parity_test.py",
+    tests = [":license_verify_lib_test"],
 )
 
 bzl_library(

@@ -93,5 +93,6 @@ def cloud_run_deploy(
         name = name,
         srcs = ["//tools/deploy:cloud-run.sh"],
         args = args,
+        data = ["//tools/deploy:cloud-run"],
         visibility = visibility,
     )

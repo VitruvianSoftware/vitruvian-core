@@ -2648,11 +2648,30 @@ check_copybara_infra_exclude() {
 #
 # The monorepo cannot see the effect of these maps, which is exactly why they
 # rotted: the only observer was a mirror nobody watched.
+COPYBARA_BIN_REL="tools/copybara/check-version-maps"
+find_copybara_bin() {
+  for _c in \
+    "${RUNFILES_DIR:-}/_main/$COPYBARA_BIN_REL" \
+    "$0.runfiles/_main/$COPYBARA_BIN_REL" \
+    "$START_PWD/$COPYBARA_BIN_REL"; do
+    if [ -x "$_c" ]; then
+      printf '%s' "$_c"
+      return 0
+    fi
+  done
+  return 1
+}
+
 check_copybara_version_maps() {
   cb="$COPYBARA_CONFIG_FILE"
   [ -f "$cb" ] || return 0
   checker="$ROOT/tools/copybara/check-version-maps.sh"
-  if [ ! -f "$checker" ]; then
+  checker_bin=""
+  if [ -f "$checker" ]; then
+    vm_out="$(BUILD_WORKSPACE_DIRECTORY="$ROOT" bash "$checker" 2>&1)" && return 0
+  elif [ -f "$ROOT/tools/copybara/src/lib.rs" ] && checker_bin="$(find_copybara_bin)"; then
+    vm_out="$(BUILD_WORKSPACE_DIRECTORY="$ROOT" "$checker_bin" 2>&1)" && return 0
+  else
     emit "copybara" "$GLYPH_FAIL" "$C_RED" "tools/copybara/check-version-maps.sh" \
       "missing" "present" \
       "the version-map checker is gone, so nothing verifies that the export maps still match this repo -- and a rule that skips when its checker is absent reports a clean run either way" \
@@ -2660,8 +2679,6 @@ check_copybara_version_maps() {
     OVERALL_FAIL=1; FAIL_COUNT=$((FAIL_COUNT + 1))
     return 0
   fi
-
-  vm_out="$(BUILD_WORKSPACE_DIRECTORY="$ROOT" bash "$checker" 2>&1)" && return 0
 
   # A herestring, not a pipe: a `while` on the right of a pipe runs in a
   # SUBSHELL, so OVERALL_FAIL would be set and then discarded.

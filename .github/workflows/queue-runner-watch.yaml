@@ -79,7 +79,14 @@ jobs:
       # A runner that starts but cannot run the queue's jobs (a missing tool, as
       # on 2026-10-20) fails here, and the fallback goes on.
       - name: The runner image has what the queue jobs need
-        run: BAZEL_VERSION="$(cat .bazelversion)" bash tools/ci-runner/parity.sh
+        run: |
+          set -euo pipefail
+          if ! command -v rustc >/dev/null 2>&1; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends rustc
+          fi
+          rustc --edition 2021 --crate-type lib --crate-name parity_lib tools/ci-runner/src/lib.rs -o "$RUNNER_TEMP/libparity_lib.rlib"
+          rustc --edition 2021 tools/ci-runner/src/main.rs -L "$RUNNER_TEMP" --extern parity_lib="$RUNNER_TEMP/libparity_lib.rlib" -o "$RUNNER_TEMP/parity"
+          BAZEL_VERSION="$(cat .bazelversion)" "$RUNNER_TEMP/parity"
 
   watch:
     if: ${{ vars.QUEUE_RUNNER == 'on' }}

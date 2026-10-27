@@ -29,7 +29,7 @@
 //! Headers are read from the file directly, so the SIGPIPE false verdict
 //! verify.sh's herestrings guard against cannot arise here at all.
 
-use std::io::{Read, Write};
+use std::io::Write;
 use std::process::{Command, Stdio};
 
 /// The apps that must each ship an MIT LICENSE.
@@ -133,12 +133,6 @@ fn head_lines(data: &[u8], n: usize) -> Vec<u8> {
     data[..end].iter().copied().filter(|&b| b != 0).collect()
 }
 
-fn read(path: &str) -> std::io::Result<Vec<u8>> {
-    let mut buf = Vec::new();
-    std::fs::File::open(path)?.read_to_end(&mut buf)?;
-    Ok(buf)
-}
-
 fn head_error(path: &str, e: &std::io::Error) -> String {
     let why = match e.raw_os_error() {
         Some(2) => "No such file or directory".to_string(),
@@ -155,9 +149,15 @@ fn head_error(path: &str, e: &std::io::Error) -> String {
 
 /// Runs the gate in the current directory; returns the exit code.
 pub fn verify() -> i32 {
+    let mut out = std::io::stdout().lock();
     let mut err = std::io::stderr().lock();
+    verify_in(std::path::Path::new("."), &mut out, &mut err)
+}
+
+/// Runs the gate in `root`; returns the exit code.
+pub fn verify_in(root: &std::path::Path, out: &mut dyn Write, err: &mut dyn Write) -> i32 {
     let mut fail = false;
-    let mut note = |msg: String, err: &mut std::io::StderrLock| {
+    let mut note = |msg: String, err: &mut dyn Write| {
         let _ = writeln!(err, "license-verify: FAIL — {msg}");
         fail = true;
     };
@@ -165,11 +165,15 @@ pub fn verify() -> i32 {
     // 1. Every first-party app has an MIT LICENSE + VitruvianSoftware holder.
     for app in APPS {
         let lf = format!("{app}/LICENSE");
-        if !std::fs::metadata(&lf).map(|m| m.is_file()).unwrap_or(false) {
-            note(format!("{lf} is missing"), &mut err);
+        let lf_path = root.join(&lf);
+        if !std::fs::metadata(&lf_path)
+            .map(|m| m.is_file())
+            .unwrap_or(false)
+        {
+            note(format!("{lf} is missing"), err);
             continue;
         }
-        let data = read(&lf).unwrap_or_default();
+        let data = std::fs::read(&lf_path).unwrap_or_default();
         let first: Vec<u8> = head_lines(&data, 1)
             .into_iter()
             .filter(|&b| b != b'\r' && b != b'\n')
@@ -177,19 +181,20 @@ pub fn verify() -> i32 {
         if first != b"MIT License" {
             note(
                 format!("{lf} is not an MIT License (first line is not 'MIT License')"),
-                &mut err,
+                err,
             );
         }
         if !has_holder(&data) {
             note(
                 format!("{lf} does not carry 'Copyright (c) <year> VitruvianSoftware'"),
-                &mut err,
+                err,
             );
         }
     }
 
     // 2. Any source header present must be MIT + VitruvianSoftware.
     let listed = Command::new("git")
+        .current_dir(root)
         .arg("ls-files")
         .args(PATHSPECS)
         .stdin(Stdio::null())
@@ -201,7 +206,7 @@ pub fn verify() -> i32 {
         if is_exempt(f) {
             continue;
         }
-        let data = match read(f) {
+        let data = match std::fs::read(root.join(f)) {
             Ok(d) => d,
             Err(e) => {
                 // verify.sh runs `head` under `set -e`: an unreadable file
@@ -215,13 +220,13 @@ pub fn verify() -> i32 {
             continue;
         }
         if !has_mit_grant(&hdr) {
-            note(format!("{f}: has a non-MIT license header"), &mut err);
+            note(format!("{f}: has a non-MIT license header"), err);
             continue;
         }
         if !has_holder(&hdr) {
             note(
                 format!("{f}: license header holder is not 'VitruvianSoftware'"),
-                &mut err,
+                err,
             );
         }
     }
@@ -234,7 +239,7 @@ pub fn verify() -> i32 {
         return 1;
     }
     let _ = writeln!(
-        std::io::stdout(),
+        out,
         "license-verify: OK — all first-party LICENSE files + source headers are MIT + VitruvianSoftware."
     );
     0
@@ -326,5 +331,143 @@ mod tests {
     fn head() {
         assert_eq!(head_lines(b"a\nb\nc", 2), b"a\nb\n");
         assert_eq!(head_lines(b"a\0b", 1), b"ab");
+    }
+
+    const MIT_BODY: &str = "//\n// Permission is hereby granted, free of charge, to any person obtaining a copy\n// of this software and associated documentation files (the \"Software\"), to deal\n// in the Software without restriction.";
+
+    fn run_repo_case(setup: impl FnOnce(&std::path::Path)) -> (i32, String) {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static SEQ: AtomicU64 = AtomicU64::new(0);
+        let id = SEQ.fetch_add(1, Ordering::Relaxed);
+        let tmp =
+            std::env::temp_dir().join(format!("license-verify-test-{}-{id}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        assert!(Command::new("git")
+            .args(["init", "-q", "."])
+            .current_dir(&tmp)
+            .status()
+            .unwrap()
+            .success());
+        for app in APPS {
+            let dir = tmp.join(app);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(
+                dir.join("LICENSE"),
+                "MIT License\n\nCopyright (c) 2026 VitruvianSoftware\n",
+            )
+            .unwrap();
+        }
+        setup(&tmp);
+        assert!(Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(&tmp)
+            .status()
+            .unwrap()
+            .success());
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let rc = verify_in(&tmp, &mut out, &mut err);
+        let _ = std::fs::remove_dir_all(&tmp);
+        let combined = format!(
+            "{}{}",
+            String::from_utf8_lossy(&out),
+            String::from_utf8_lossy(&err)
+        );
+        (rc, combined)
+    }
+
+    fn write_big_header(path: &std::path::Path, holder: &str) {
+        let pad = "x".repeat(8192);
+        let mut s = format!("// Copyright (c) 2026 {holder}\n{MIT_BODY}\n");
+        for _ in 0..25 {
+            s.push_str("// ");
+            s.push_str(&pad);
+            s.push('\n');
+        }
+        s.push_str("\npackage main\n");
+        std::fs::write(path, s).unwrap();
+    }
+
+    #[test]
+    fn repo_cases() {
+        let (rc, _) = run_repo_case(|root| {
+            std::fs::write(
+                root.join("a.go"),
+                format!("// Copyright (c) 2026 VitruvianSoftware\n{MIT_BODY}\n\npackage main\n"),
+            )
+            .unwrap();
+        });
+        assert_eq!(rc, 0, "valid-header");
+
+        let (rc, _) = run_repo_case(|root| {
+            write_big_header(&root.join("big.go"), "VitruvianSoftware");
+        });
+        assert_eq!(rc, 0, "big-valid-header");
+
+        let (rc, _) = run_repo_case(|root| {
+            std::fs::write(root.join("plain.go"), "package main\n\nfunc main() {}\n").unwrap();
+        });
+        assert_eq!(rc, 0, "no-header-skipped");
+
+        let (rc, out) = run_repo_case(|root| {
+            std::fs::write(
+                root.join("bad.go"),
+                format!("// Copyright (c) 2026 Somebody Else\n{MIT_BODY}\n\npackage main\n"),
+            )
+            .unwrap();
+        });
+        assert_ne!(rc, 0, "wrong-holder");
+        assert!(out.contains("license header holder is not 'VitruvianSoftware'"));
+
+        let (rc, out) = run_repo_case(|root| {
+            write_big_header(&root.join("bigbad.go"), "Somebody Else");
+        });
+        assert_ne!(rc, 0, "big-header-wrong-holder");
+        assert!(out.contains("license header holder is not 'VitruvianSoftware'"));
+
+        let (rc, out) = run_repo_case(|root| {
+            std::fs::write(
+                root.join("apache.go"),
+                "// Copyright 2026 VitruvianSoftware\n//\n// Licensed under the Apache License, Version 2.0\n\npackage main\n",
+            )
+            .unwrap();
+        });
+        assert_ne!(rc, 0, "non-mit-header");
+        assert!(out.contains("has a non-MIT license header"));
+
+        let (rc, _) = run_repo_case(|root| {
+            let dir = root.join("apps/desktop/vitruvian/Sources");
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(
+                dir.join("main.swift"),
+                "// SPDX-License-Identifier: GPL-3.0-or-later\n// Copyright (C) 2026 Vorssaint\n\nimport AppKit\n",
+            )
+            .unwrap();
+        });
+        assert_eq!(rc, 0, "gpl-fork-exempt");
+
+        let (rc, out) = run_repo_case(|root| {
+            let dir = root.join("apps/desktop/other");
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(
+                dir.join("main.swift"),
+                "// SPDX-License-Identifier: GPL-3.0-or-later\n// Copyright (C) 2026 Vorssaint\n\nimport AppKit\n",
+            )
+            .unwrap();
+        });
+        assert_ne!(rc, 0, "gpl-header-elsewhere");
+        assert!(out.contains("has a non-MIT license header"));
+
+        let (rc, out) = run_repo_case(|root| {
+            std::fs::write(
+                root.join("a.go"),
+                format!("// Copyright (c) 2026 VitruvianSoftware\n{MIT_BODY}\n\npackage main\n"),
+            )
+            .unwrap();
+            std::fs::remove_file(root.join("apps/suites/tabula/LICENSE")).unwrap();
+        });
+        assert_ne!(rc, 0, "missing-LICENSE");
+        assert!(out.contains("apps/suites/tabula/LICENSE is missing"));
     }
 }

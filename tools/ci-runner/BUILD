@@ -5,16 +5,6 @@
 # gazelle:ignore
 
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
-
-exports_files(["parity.sh"])
-
-sh_binary(
-    name = "parity-sh",
-    srcs = ["parity.sh"],
-    visibility = ["//visibility:public"],
-)
 
 rust_library(
     name = "parity_lib",
@@ -50,16 +40,7 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
-sh_test(
+test_suite(
     name = "parity_test",
-    size = "medium",
-    srcs = ["parity_test.sh"],
-    args = [
-        "$(rootpath parity.sh)",
-        "$(rootpath :parity)",
-    ],
-    data = [
-        "parity.sh",
-        ":parity",
-    ],
+    tests = [":parity_lib_test"],
 )
