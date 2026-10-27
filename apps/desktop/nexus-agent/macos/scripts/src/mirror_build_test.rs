@@ -41,7 +41,6 @@ fn test_mirror_build() {
         .arg(app.join("macos/Sources"))
         .arg(app.join("macos/Tests"))
         .arg(app.join("macos/Resources"))
-        .arg(app.join("macos/scripts"))
         .arg(&work)
         .status()
         .expect("cp macos sources");
@@ -100,15 +99,19 @@ fn test_mirror_build() {
     );
     let built = PathBuf::from(String::from_utf8_lossy(&bin_path_out.stdout).trim());
 
-    let status = Command::new("bash")
-        .arg(work.join("scripts/bundle.sh"))
+    let bundle_bin_rel = std::env::var("BUNDLE_BIN").expect("BUNDLE_BIN not set");
+    let bundle_bin = PathBuf::from(&test_srcdir)
+        .join(&test_workspace)
+        .join(bundle_bin_rel);
+    let status = Command::new(&bundle_bin)
         .arg(built.join("NexusAgent"))
         .arg("0.0.0")
         .arg(&dist_dir)
+        .current_dir(&work)
         .env("HOME", &home)
         .status()
-        .expect("bundle.sh");
-    assert!(status.success(), "bundle.sh failed");
+        .expect("bundle-app");
+    assert!(status.success(), "bundle-app failed");
 
     let packaged = dist_dir.join("NexusAgent.app");
     let status = Command::new("codesign")

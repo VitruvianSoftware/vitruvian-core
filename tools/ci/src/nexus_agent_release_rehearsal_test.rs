@@ -532,9 +532,9 @@ pub fn looked_at_what_matters(release_text: &str) -> Vec<String> {
     );
     let calls = body("Assemble .app bundles")
         .iter()
-        .filter(|l| l.starts_with("macos/scripts/bundle.sh "))
+        .filter(|l| l.starts_with("\"$RUNNER_TEMP/bundle-app\" "))
         .count();
-    expect("three bundle.sh calls", calls == 3);
+    expect("three bundle-app calls", calls == 3);
     expect(
         "the tool's zip, with the manifest at its top",
         body("Zip the tool's folder")

@@ -295,17 +295,20 @@ rust_test(
     size = "large",
     srcs = ["scripts/src/mirror_build_test.rs"],
     # The tests and the examples they share with the bot as well: the test
-    # also runs `swift test`. The release script and what it copies, because
+    # also runs `swift test`. The release bundler and what it copies, because
     # the test also packages the build the way a release does.
     data = [
         "Package.swift",
-        "scripts/bundle.sh",
+        ":bundle-app",
     ] + glob([
         "Resources/**",
         "Sources/**",
         "Tests/**",
     ]) + ["//apps/desktop/nexus-agent:testdata_files"],
     edition = "2021",
+    env = {
+        "BUNDLE_BIN": "$(rootpath :bundle-app)",
+    },
     env_inherit = ["DEVELOPER_DIR"],
     # SwiftPM wants the real toolchain and its own sandbox: run outside Bazel's.
     tags = [

@@ -111,7 +111,10 @@ jobs:
           # Advanced (bring your own client) or an Antigravity import.
           HOMESPEAKER_GOOGLE_CLIENT_ID: ${{ secrets.HOMESPEAKER_GOOGLE_CLIENT_ID }}
           HOMESPEAKER_GOOGLE_CLIENT_SECRET: ${{ secrets.HOMESPEAKER_GOOGLE_CLIENT_SECRET }}
-        run: bash apps/desktop/home-speaker/scripts/publish.sh
+        run: |
+          rustc --edition 2021 --crate-type lib --crate-name publish_lib apps/desktop/home-speaker/scripts/src/publish/lib.rs -o "$RUNNER_TEMP/libpublish_lib.rlib"
+          rustc --edition 2021 apps/desktop/home-speaker/scripts/src/publish/main.rs -L "$RUNNER_TEMP" --extern publish_lib="$RUNNER_TEMP/libpublish_lib.rlib" -o "$RUNNER_TEMP/home-speaker-publish"
+          "$RUNNER_TEMP/home-speaker-publish"
 
       # The job's last word, and not the publishing script's: ask GitHub what
       # the release holds. 1.12.0 and 1.13.0 were published with no files while
