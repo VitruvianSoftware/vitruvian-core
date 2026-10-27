@@ -1224,3 +1224,134 @@ Not in 4.5b, and not expected to work yet:
   - `setting:ai` Use OpenAI's Whisper model for Talk to Type and transcribing: part 4.7 (`AIProvider` voice-note transcription stub).
   - `setting:general` Show Telegram Topics as separate spaces: not planned in iteration 1 (`mautrix-telegram` does not expose forum topics as separate portal spaces).
   - `setting:general` Show WhatsApp Communities as separate spaces: not planned in iteration 1 (`mautrix-whatsapp` bridges community rooms directly without a separate space hierarchy).
+
+## Part 4.5c: stickers, GIFs and composer emoji
+
+Composer `:shortcode` emoji autocomplete (`EmojiAutocompletePicker.swift`), custom `:shortcode:` emoji import, automatic emoticon-to-emoji replacement (`EmoticonReplacer.swift`), the sticker picker (`StickerPickerPopover.swift`, `actions/stickers.go`), the offline GIF picker (`GIFPickerPopover.swift`), the message box `+` menu and toolbar entry points (`ComposerView.swift`, `ConversationCommands.swift`), the three composer settings in Settings ▸ Messages (`ComposerPreferences.swift`, `MessagesSettingsPane.swift`), and borderless sticker and looping GIF rendering in the timeline (`MessageBubble.swift`, `Timeline.swift`). What leaves this Mac for a network is:
+
+- stickers (`message.sendSticker`), GIFs (`message.sendGIF`), custom emoji images, and text messages containing replaced emoticons or completed emoji shortcodes when you send them;
+- reading sticker packs already exposed by a connected bridge when the sticker picker loads or when you click "Sync Packs".
+
+Stays on this Mac: typing `:shortcode` in the message box and filtering standard and custom emoji candidates (`EmojiAutocompletePicker.swift`); automatic replacement of ASCII emoticons like `:)` → `🙂` while typing (`EmoticonReplacer.swift`); importing local PNG, WebP, GIF or JPEG files into your sticker and custom emoji catalog (`stickers.import` in `actions/stickers.go` and `store/stickers.go`); searching your recent GIFs or picking a `.gif` / `.mp4` loop from Finder in the GIF picker (`GIFPickerPopover.swift` — online Tenor/Giphy GIF search is disabled so no search query ever leaves your Mac); rendering borderless stickers and looping GIFs in the timeline (`StickerAttachmentView` and `GIFAttachmentView` in `MessageBubble.swift`); and pausing animated stickers and GIFs when macOS Reduce Motion is on.
+
+### Before you start
+
+- Install the build with `bazel run --config=macos-app //apps/desktop/courier/app:install`. Your chats and networks stay as they are.
+- Out of the box in Settings ▸ Messages (⌘,) under **Composer** (`MessagesSettingsPane.swift`, `ComposerPreferences.swift`): "Enable emoji autocomplete" is on, "Disable automatic replacement of emoticons with emojis" is off, and "Automatically send GIFs after selection" is on.
+- Online GIF search (`NoopGIFProvider` in `GIFProvider.swift`) is disabled in this build so nothing leaves your Mac when you open or type in the GIF picker.
+- Do not open the same chat in the other chat app while testing. It would send a read receipt.
+- Never test on a real person’s chat. Use a chat with yourself or a test account. Never open a real chat in Beeper while testing.
+
+### Check these first
+
+All app checks are by hand on real accounts: there is no fake-network app mode, and views were checked only as PNG snapshots (`ViewSnapshotTests.swift`). Look at these before anything else.
+
+- [ ] Typing `:smi` in the message box opens the emoji autocomplete popover above the caret (`EmojiAutocompletePicker.swift`); `↑`/`↓` moves the selection, `Tab` or `Return` replaces `:smi` with the chosen emoji, and `Escape` dismisses the popover without clearing your draft.
+- [ ] Typing `:)` or `;-)` followed by a space or `Return` replaces the token with `🙂` or `😉` (`EmoticonReplacer.swift`), while emoticons inside inline code (`` `:)` ``), fenced code blocks, or URLs (`https://example.com/:)`) are never replaced. Turning "Disable automatic replacement of emoticons with emojis" on in Settings ▸ Messages stops replacement.
+- [ ] Pressing ⌘⌥⇧S (or Message ▸ Send Sticker…) opens the sticker picker (`StickerPickerPopover.swift`); clicking a sticker sends it immediately (`message.sendSticker`), and both sent and received stickers render borderless in the timeline with no bubble background (`StickerAttachmentView` in `MessageBubble.swift`).
+- [ ] Pressing ⌘⇧G (or Message ▸ Send GIF…) opens the GIF picker (`GIFPickerPopover.swift`) with the privacy notice ("Online GIF search is disabled so nothing leaves your Mac. Choose a GIF file or pick a recent GIF below."); picking a GIF sends immediately when "Automatically send GIFs after selection" is on, or stages a "GIF" attachment pill in the message box when it is off so you can add a caption before pressing `Return`.
+- [ ] Turning on macOS System Settings ▸ Accessibility ▸ Display ▸ Reduce motion pauses animated stickers and looping GIFs in the timeline (`StickerAttachmentView.shouldAnimate` and `GIFAttachmentView.shouldAnimate`).
+- Do the by-hand run on the installed build, once, start to end. Tick each step as you go (owner's by-hand day):
+  - [ ] Open Settings ▸ Messages (⌘,) and check the three **Composer** toggles: "Enable emoji autocomplete" (on by default), "Disable automatic replacement of emoticons with emojis" (off by default), and "Automatically send GIFs after selection" (on by default).
+  - [ ] In a test chat, type `let's go :smi`, navigate with `↑`/`↓`, and press `Return` to insert the emoji; then type `:party_parrot` and click "Add :party_parrot: to Custom Emoji" at the bottom of the autocomplete list, choose a small PNG on your Mac, type `:party_p` again, and pick the custom emoji from the list.
+  - [ ] Type `:)` and `<3` followed by a space and check they become `🙂 ` and `❤️ `; type `` `:)` `` and `https://example.com/:)` and check neither is replaced; toggle "Disable automatic replacement of emoticons with emojis" on in Settings ▸ Messages and check `:)` stays `:)` when followed by a space.
+  - [ ] Press ⌘⌥⇧S (Message ▸ Send Sticker…), click "Import Sticker…" to import a PNG or WebP image into the "Imported" tab, click "Sync Packs" to refresh bridge packs, search by name in "Search stickers", and click a sticker to send it; check that the sticker appears in the timeline without a bubble background, that replying to a sticker quotes "Sticker", and that replying with a sticker shows the quoted header above the borderless sticker.
+  - [ ] Press ⌘⇧G (Message ▸ Send GIF…), click "Choose GIF from Mac…" to send a `.gif` or `.mp4` loop with "Automatically send GIFs after selection" on; then turn "Automatically send GIFs after selection" off in Settings ▸ Messages, open ⌘⇧G, pick the GIF from the recent grid, check the staged "GIF" pill in the message box, type a caption, and press `Return` to send; check that the GIF loops silently in a 12 pt rounded frame with a top-leading "GIF" badge and the caption below.
+  - [ ] Click the `+` button in the message box and check "Add Emoji…" (opens the macOS character palette), "Add GIF…" and "Add Sticker…", plus the sticker and GIF buttons on the right of the message box; switch to a Google Messages chat and verify the sticker button and "Add Sticker…" are disabled with "Stickers are not supported on Google Messages".
+
+### The five things to check
+
+These are the five things this part was most worried about. Look at them before the rest.
+
+- [ ] GIF picking and emoji autocomplete make zero network requests. Opening the GIF picker or typing in "Search recent GIFs" searches only your local recent GIFs on this Mac (`NoopGIFProvider` in `GIFProvider.swift`) and shows "Online GIF search is disabled so nothing leaves your Mac. Choose a GIF file or pick a recent GIF below." Emoji autocomplete and emoticon replacement run entirely from the bundled shortcode table and your local custom emoji catalog.
+- [ ] Stickers and GIFs respect each network’s real bridge capabilities (`actions/stickers.go`). Before reading or hashing a file on disk, `SendSticker` and `SendGIF` check the room’s per-MIME `FileFeatures` size limit so oversized files are rejected without writing an orphan blob into the local media store. On Slack, where `mautrix-slack` does not declare `m.sticker` in `FileFeatures`, `SendSticker` converts the outgoing event to `m.image` while preserving sticker metadata. On Google Messages, where `mautrix-gmessages` does not support `m.sticker`, `SendSticker` refuses with a clear error and the composer disables the sticker entry points.
+- [ ] Imported stickers and custom emoji stay separated by usage (`store/stickers.go`, `StickerPickerPopover.swift`). Importing an image from the sticker picker records `usage: ["sticker"]`; importing from "Add :shortcode: to Custom Emoji" records `usage: ["emoticon", "sticker"]`; emoticon-only items (`usage: ["emoticon"]`) appear in `:shortcode` autocomplete without cluttering the sticker picker grid.
+- [ ] Stickers render borderless and GIFs loop silently with Reduce Motion support (`MessageBubble.swift`, `Timeline.swift`). Stickers (`m.sticker`) set `suppressesBubbleBackground` so `MessageRowView` draws no bubble background tint while keeping reactions, timestamp, "Sent" status and reply headers legible in both light and dark modes. GIFs (`m.image` or `m.video` with `info["fi.mau.gif"] = true`) render in a 12 pt rounded frame with a "GIF" pill badge and optional caption below, and both pause when macOS Reduce Motion is enabled. Redacted and view-once events never leak sticker or GIF attachments.
+- [ ] `Escape` and `Return` priority in the message box never loses a draft (`ComposerView.swift`, `ComposerModel.swift`). When the `:shortcode` autocomplete popover is open, `↑`/`↓`, `Tab` and `Return` are handled by the autocomplete list instead of moving focus to the message list or submitting the message, and pressing `Escape` dismisses the open autocomplete, sticker or GIF popover first before cancelling an edit or clearing a reply banner.
+
+### What to expect on each network
+
+Courier reads these sticker and GIF rules from each network’s pinned bridge (`mautrix-whatsapp`, `mautrix-signal`, `mautrix-telegram`, `mautrix-gmessages`, `mautrix-slack`).
+
+| | WhatsApp | Signal | Telegram | Google Messages | Slack |
+|---|---|---|---|---|---|
+| Outgoing stickers (`message.sendSticker`) | `m.sticker`: WebP full, PNG/JPEG/Lottie (`application/x-tgsticker`) partial via `ffmpeg`/`lottieconverter`; no caption | `m.sticker`: PNG, APNG full, WebP partial, GIF partial if `ffmpeg`; no caption | `m.sticker`: WebP, Lottie, WebM full, JPEG/PNG partial; no caption | Not supported (composer disables sticker button with "Stickers are not supported on Google Messages") | Bridge omits `m.sticker` from `FileFeatures`; Courier sends as `m.image` with sticker metadata |
+| Incoming stickers | `m.sticker` (`image/webp`, animated flag in `info.is_animated`) | `m.sticker` with `fi.mau.bridged_sticker` metadata | `m.sticker` (`image/webp`, `video/webm`, `application/x-tgsticker`) | Not supported by bridge | Incoming custom emoji/stickers bridged as images or reactions |
+| Outgoing GIFs (`message.sendGIF`) | `.mp4` sent as `m.video` with `info["fi.mau.gif"] = true` (`GifPlayback`); `.gif` sent as `m.image` with `info["fi.mau.gif"] = true` (bridge converts via `ffmpeg`) | `.gif` (`m.image`) and `.mp4` (`m.video`) with `info["fi.mau.gif"] = true`; caption up to 2000 | `.mp4` (`m.video`) full and `.gif` (`m.image`) partial with `info["fi.mau.gif"] = true`; caption 1024 (2048 Premium) | `image/gif` (`m.image`) full (100 MiB RCS / 1 MiB MMS); RCS sends caption as a separate text message | `image/gif` (`m.image`) and `.mp4` (`m.video`) with `info["fi.mau.gif"] = true`; caption up to 40000 |
+| Bridge sticker / emoji pack discovery (`stickers.list`) | Stickers cached locally as they arrive or are imported on this Mac | Stickers cached locally as they arrive or are imported on this Mac | Installed sticker packs synced from Telegram (`GetAvailableStickerPacks` when supported by bridge) plus local cache | Not supported | Custom workspace emoji synced via `GetCustomEmoji` when exposed by bridge plus local cache |
+
+- [ ] Each cell above holds on the real network. Check sending a sticker and a GIF on WhatsApp, Signal, Telegram and Slack, and check that Google Messages allows GIFs while disabling stickers.
+
+### Keys
+
+- [ ] `hotkey` Message: Send GIF: ⌘⇧G opens or closes the GIF picker popover in the open chat’s message box (Message ▸ Send GIF…, `ConversationCommands.swift`, `MainWindow.swift`).
+- [ ] `hotkey` Message: Send Sticker: ⌘⌥⇧S opens or closes the sticker picker popover in the open chat’s message box (Message ▸ Send Sticker…, `ConversationCommands.swift`, `MainWindow.swift`).
+
+### Settings
+
+- [ ] `setting:general` Enable emoji autocomplete: Settings ▸ Messages ▸ Composer, "Enable emoji autocomplete", on out of the box (`ComposerPreferences.swift`, `MessagesSettingsPane.swift`). When on, typing `:` followed by 2+ characters in the message box opens the emoji autocomplete list.
+- [ ] `setting:general` Disable automatic replacement of emoticons with emojis: Settings ▸ Messages ▸ Composer, "Disable automatic replacement of emoticons with emojis", off out of the box (`ComposerPreferences.swift`, `MessagesSettingsPane.swift`). When off, typing emoticons like `:)` followed by a space or `Return` replaces them with `🙂`. When on, emoticons stay as typed.
+- [ ] `setting:general` Automatically send GIFs after selection: Settings ▸ Messages ▸ Composer, "Automatically send GIFs after selection", on out of the box (`ComposerPreferences.swift`, `MessagesSettingsPane.swift`). When on, picking a GIF in the GIF picker sends it immediately. When off, picking a GIF stages a "GIF" pill in the message box so you can type an optional caption before pressing `Return`.
+
+### Menus
+
+- [ ] Message ▸ Send Sticker… (⌘⌥⇧S) and Message ▸ Send GIF… (⌘⇧G) sit in the Message menu (`ConversationCommands.swift`) and are disabled when no chat is open or when the open chat’s network does not support stickers or GIFs.
+
+### Components
+
+**Composer emoji autocomplete and emoticon replacement (completes the 4.3 composer item from `m4-acceptance.md:590` and 3 carried ledger rows from `m4-acceptance.md:960,963,964`)**
+
+- [ ] `component` Autocomplete.tsx: Typing `:` followed by 2+ shortcode characters in the message box opens `EmojiAutocompletePicker` (`EmojiAutocompletePicker.swift`) above the caret with up to 8 ranked standard and custom emoji matches, keyboard navigation (`↑`, `↓`, `Tab`, `Return`, `Escape`), and an "Add :shortcode: to Custom Emoji" footer button.
+- [ ] `component` Emoji.tsx: Clicking `+` in the message box (`ComposerView.swift`) offers "Add Emoji…" (opening `NSApplication.shared.orderFrontCharacterPalette`), "Add GIF…" and "Add Sticker…", alongside the dedicated sticker and GIF buttons on the trailing side of the message box.
+- [ ] `component` EmojiItem.tsx: Each row in `EmojiAutocompletePicker` (`EmojiItemRow` in `EmojiAutocompletePicker.swift`) renders a 20×20 pt Unicode glyph or local custom emoji thumbnail (via `ThumbnailLoader`), the `:shortcode:` label, and a "Custom" badge for imported or bridge custom emoji.
+
+**Sticker picker and GIF picker (completes the remaining carried ledger rows from `m4-acceptance.md:972,984,991,992,997,998,1000`)**
+
+- [ ] `component` StickerPicker.tsx: `StickerPickerPopover` (`StickerPickerPopover.swift`) shows pack tabs ("Recent", "Imported", and synced bridge packs with network badges), a "Search stickers" filter field, a 4-column 64×64 pt thumbnail grid that excludes emoticon-only items, an "Import Sticker…" button (`NSOpenPanel` for PNG, WebP, GIF and JPEG), and a "Sync Packs" button.
+- [ ] `component` GifPicker.tsx: `GIFPickerPopover` (`GIFPickerPopover.swift`) shows a "Search recent GIFs" field, the offline privacy banner when `gifProvider.isAvailable == false` ("Online GIF search is disabled so nothing leaves your Mac. Choose a GIF file or pick a recent GIF below."), a 2-column grid of recent local GIFs with "GIF" badges, and a "Choose GIF from Mac…" button (`NSOpenPanel` for `.gif` and `.mp4`).
+
+### Commands
+
+These are registered in Courier for the command bar (⌘J), which part 4.7 builds. They have no tick box here: they are "registered; shown in ⌘J by 4.7". The ones with a menu item or key above are checked there.
+
+- Courier registers "Send sticker" (⌘⌥⇧S) and "Send GIF" (⌘⇧G) in `CommandSet.messaging` (`Commands.swift`).
+
+### How it behaves
+
+Not failures. Do not report these as bugs.
+
+- Online GIF search (`GIFProvider`) is an offline stub in 4.5c (`NoopGIFProvider`): typing in the GIF picker filters only the recent GIFs already stored on this Mac and never contacts Tenor, Giphy or any other server. Part 4.7 tracks the online provider stub alongside the other external service stubs.
+- When you pick a custom image emoji from `:shortcode` autocomplete, Courier sends it as an image attachment with `:shortcode:` as the caption, because non-Matrix bridges (WhatsApp, Signal, Telegram, Google Messages) do not inline custom Matrix image shortcodes inside plain text runs.
+- On Slack, `mautrix-slack` does not advertise `m.sticker` in its `FileFeatures` map; Courier automatically sends stickers as `m.image` while keeping sticker metadata so the image still delivers in the channel.
+- On Google Messages, `mautrix-gmessages` does not support stickers; Courier disables the sticker button and "Add Sticker…" menu item with the explanation "Stickers are not supported on Google Messages".
+
+### Not ledger rows
+
+The inventory has no row for these, but they are what this part was built to do.
+
+**Borderless stickers and looping GIFs in the timeline (`MessageBubble.swift`, `Timeline.swift`, `ViewSnapshotTests.swift`)**
+
+- [ ] `Timeline.describe` and `Timeline.messages` populate `StickerAttachment` on `m.sticker` events and `GIFAttachment` on `m.image` / `m.video` events with `info["fi.mau.gif"] == true` (while keeping redacted and view-once events empty), and exclude GIFs from photo/video gallery grouping.
+- [ ] `StickerAttachmentView` renders stickers up to 160×160 pt with no bubble background (`suppressesBubbleBackground == true`), preserving reactions, timestamp, "Sent" status and reply quote headers in both light and dark modes (`sticker-received`, `sticker-sent`, `sticker-in-reply` PNG snapshots in `ViewSnapshotTests.swift`).
+- [ ] `GIFAttachmentView` renders looping GIFs inside a 12 pt rounded frame with a top-leading "GIF" badge and optional caption below (`gif-looping`, `gif-with-caption` PNG snapshots in `ViewSnapshotTests.swift`), and pauses when macOS Reduce Motion is on.
+
+### Carried to later parts
+
+All 10 ledger rows carried from 4.5b to 4.5c (`Autocomplete.tsx`, `Emoji.tsx`, `EmojiItem.tsx`, `GifPicker.tsx`, `StickerPicker.tsx`, `Message: Send GIF`, `Message: Send Sticker`, `Automatically send GIFs after selection`, `Disable automatic replacement of emoticons with emojis`, `Enable emoji autocomplete`) and the 4.3 composer `:shortcode` / emoticon / sticker / GIF item (`m4-acceptance.md:590`) are delivered in 4.5c above. Still deferred to later parts:
+
+- A reply-network shortcut (⌘L is Remind Me).
+- Deferred to later milestones or not planned in iteration 1 (14 ledger rows, unchanged from 4.5b):
+  - `command` Join a Matrix room: not planned in iteration 1 (Courier runs five non-Matrix bridges with no generic Matrix room join).
+  - `command` Open space in new window: part 4.6 window management.
+  - `command` Profile: not planned in iteration 1 (no Beeper cloud account profile pane).
+  - `component` ChangeEmailBrowserWindow.tsx: not planned in iteration 1 (no Beeper cloud account email management).
+  - `component` ChatThemeBrowserWindow.tsx: part 4.7 (Appearance, wallpapers and per-chat themes).
+  - `component` ChatThemeWindow.tsx: part 4.7 (Appearance, wallpapers and per-chat themes).
+  - `component` DeleteAccountModal.tsx: not planned in iteration 1 (no Beeper cloud account deletion).
+  - `component` DeleteAccountPrompt.tsx: not planned in iteration 1 (no Beeper cloud account deletion).
+  - `component` ThreadedRepliesBrowserWindow.tsx: thread replies open in the right-hand Thread Replies pane (4.3); detached thread windows are part 4.6 window management.
+  - `hotkey` Message: Talk to Type: part 4.7 (`AIProvider` dictation stub).
+  - `menu:File` Open Chat in New Window: part 4.6 window management (along with double-click chat "Open in New Window").
+  - `setting:ai` Use OpenAI's Whisper model for Talk to Type and transcribing: part 4.7 (`AIProvider` voice-note transcription stub).
+  - `setting:general` Show Telegram Topics as separate spaces: not planned in iteration 1 (`mautrix-telegram` does not expose forum topics as separate portal spaces).
+  - `setting:general` Show WhatsApp Communities as separate spaces: not planned in iteration 1 (`mautrix-whatsapp` bridges community rooms directly without a separate space hierarchy).
