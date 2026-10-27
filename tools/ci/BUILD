@@ -21,7 +21,6 @@
 # The orchestrator's hermetic tests drive the REAL decision engine (spec §4.2:
 # deploy-affected.sh is shelled, never rewritten), so the scripts must be
 # visible as runfiles to //tools/delivery/orchestrate:orchestrate_test.
-load("@aspect_rules_py//py:defs.bzl", "py_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
@@ -36,7 +35,6 @@ alias(
 )
 
 exports_files([
-    "actionlint.sh",
     "actionlint_test.sh",
     "affected-targets.sh",
     "affected-targets_test.sh",
@@ -57,10 +55,8 @@ exports_files([
     "deploy-affected_test.sh",
     "ensure-site-verification.sh",
     "ensure-site-verification_test.sh",
-    "fast-lane-report.sh",
     "foundation-app-digest-guard.sh",
     "foundation-app-digest-guard_test.sh",
-    "gate-evaluator.sh",
     "gate-evaluator_test.sh",
     "gcp-secret-or-fail.sh",
     "gcp-secret-or-fail_test.sh",
@@ -156,8 +152,8 @@ sh_test(
     name = "gate_evaluator_test",
     size = "small",
     srcs = ["gate-evaluator_test.sh"],
-    args = ["$(location gate-evaluator.sh)"],
-    data = ["gate-evaluator.sh"],
+    args = ["$(location :gate_evaluator)"],
+    data = [":gate_evaluator"],
 )
 
 # The drift detector shells the SAME decision engine the orchestrator does, so
@@ -274,10 +270,10 @@ sh_test(
 # requests. This fails when the steps the two share stop being the same, which
 # nothing else would report: the rehearsal would stay green while proving
 # nothing about the release. Reads both files as text; builds nothing.
-py_test(
+rust_test(
     name = "nexus_agent_release_rehearsal_test",
     size = "small",
-    srcs = ["nexus_agent_release_rehearsal_test.py"],
+    srcs = ["src/nexus_agent_release_rehearsal_test.rs"],
     args = [
         "$(rootpath //apps/desktop/nexus-agent:release_workflow)",
         "$(rootpath //:.github/workflows/nexus-agent-mirror-toolchain.yaml)",
@@ -286,21 +282,18 @@ py_test(
         "//:.github/workflows/nexus-agent-mirror-toolchain.yaml",
         "//apps/desktop/nexus-agent:release_workflow",
     ],
-    main = "nexus_agent_release_rehearsal_test.py",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    use_libtest_harness = False,
 )
 
 # `bazel run //tools/ci:actionlint` -- the required `actionlint` check, locally:
 # the pinned actionlint (tools/tools.lock.json, at the workflow's
 # ACTIONLINT_VERSION) with shellcheck over the `run:` blocks, then the
 # commit-SHA pin check the workflow runs from require-pinned-actions.sh.
-# The Rust port in src/actionlint/ (actionlint.sh's steps, messages and exit
-# codes, held to the script by :actionlint_rs_parity_test); --help is the
-# script's own header, compiled in. The script stays runnable as
-# :actionlint-sh.
 rust_library(
     name = "actionlint_lib",
     srcs = ["src/actionlint/lib.rs"],
-    compile_data = ["actionlint.sh"],
     crate_name = "actionlint",
     crate_root = "src/actionlint/lib.rs",
     edition = "2021",
@@ -340,16 +333,10 @@ rust_binary(
     ]
 ]
 
-sh_binary(
+alias(
     name = "actionlint-sh",
-    srcs = ["actionlint.sh"],
-    data = [
-        "require-pinned-actions.sh",
-        "@multitool//tools/actionlint",
-        "@multitool//tools/shellcheck",
-    ],
+    actual = ":actionlint",
     visibility = ["//visibility:public"],
-    deps = ["@bazel_tools//tools/bash/runfiles"],
 )
 
 # Throwaway repos and the real pinned binaries; also fails when the workflow's
@@ -359,13 +346,13 @@ sh_test(
     size = "small",
     srcs = ["actionlint_test.sh"],
     args = [
-        "$(location actionlint.sh)",
+        "$(location :actionlint)",
         "$(location //:.github/workflows/actionlint.yaml)",
         "$(location //tools:tools.lock.json)",
     ],
     data = [
-        "actionlint.sh",
         "require-pinned-actions.sh",
+        ":actionlint",
         "//:.github/workflows/actionlint.yaml",
         "//tools:tools.lock.json",
         "@multitool//tools/actionlint",
@@ -380,12 +367,11 @@ sh_test(
     size = "small",
     srcs = ["actionlint_test.sh"],
     args = [
-        "$(location actionlint.sh)",
+        "$(location :actionlint)",
         "$(location //:.github/workflows/actionlint.yaml)",
         "$(location //tools:tools.lock.json)",
     ],
     data = [
-        "actionlint.sh",
         "require-pinned-actions.sh",
         ":actionlint",
         "//:.github/workflows/actionlint.yaml",
@@ -404,27 +390,6 @@ rust_test(
     crate = ":actionlint_lib",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-)
-
-# Script and binary side by side on every case in actionlint_rs_parity_test.py
-# (fake actionlint, shellcheck and pin check, plus a runfiles tree with the
-# real runfiles.bash): exit code, stdout, stderr and every tool call, byte for
-# byte, under every bash on the machine.
-py_test(
-    name = "actionlint_rs_parity_test",
-    size = "medium",
-    srcs = ["actionlint_rs_parity_test.py"],
-    data = [
-        "actionlint.sh",
-        ":actionlint",
-        "@bazel_tools//tools/bash/runfiles",
-    ],
-    env = {
-        "ACTIONLINT_RS": "$(rootpath :actionlint)",
-        "ACTIONLINT_SH": "$(rootpath actionlint.sh)",
-    },
-    main = "actionlint_rs_parity_test.py",
-    deps = ["//tools/shell-compat:parity_harness"],  # keep
 )
 
 # ---------- Rust ports of CI / delivery helper scripts ----------
@@ -461,9 +426,9 @@ rust_binary(
     "gate_evaluator_rs",
 ]]
 
-sh_binary(
+alias(
     name = "gate-evaluator-sh",
-    srcs = ["gate-evaluator.sh"],
+    actual = ":gate_evaluator",
     visibility = ["//visibility:public"],
 )
 
@@ -472,10 +437,7 @@ sh_test(
     size = "small",
     srcs = ["gate-evaluator_test.sh"],
     args = ["$(location :gate_evaluator)"],
-    data = [
-        "gate-evaluator.sh",
-        ":gate_evaluator",
-    ],
+    data = [":gate_evaluator"],
 )
 
 # llvm-cache-key

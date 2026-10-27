@@ -34,8 +34,10 @@ LOCK="$(cd "$(dirname "$3")" && pwd)/$(basename "$3")"
 if [ -n "${ACTIONLINT_UNDER_TEST:-}" ]; then
     case "$ACTIONLINT_UNDER_TEST" in /*) ;; *) ACTIONLINT_UNDER_TEST="$PWD/$ACTIONLINT_UNDER_TEST" ;; esac
     UNDER_TEST=("$ACTIONLINT_UNDER_TEST")
-else
+elif [[ "$SCRIPT" == *.sh ]]; then
     UNDER_TEST=(bash "$SCRIPT")
+else
+    UNDER_TEST=("$SCRIPT")
 fi
 
 work="$(cd "$(mktemp -d)" && pwd -P)"
