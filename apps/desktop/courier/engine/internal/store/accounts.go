@@ -31,7 +31,8 @@ func (s *Store) SetRoomSpace(ctx context.Context, roomID string, isSpace bool, p
 	if isSpace {
 		sp = 1
 	}
-	res, err := s.db.Exec(ctx, `
+	res, err := s.db.Exec(
+		ctx, `
 		UPDATE rooms
 		SET is_space = CASE WHEN $1 = 1 THEN 1 ELSE is_space END,
 		    parent_space_id = CASE WHEN $1 = 1 AND $2 = '' THEN parent_space_id ELSE $2 END
@@ -65,7 +66,8 @@ func (s *Store) UpsertSubAccount(ctx context.Context, sub SubAccount) error {
 	if !validSubAccountShowInInbox(sub.ShowInInbox) {
 		return ErrBadValue
 	}
-	_, err := s.db.Exec(ctx, `
+	_, err := s.db.Exec(
+		ctx, `
 		INSERT INTO sub_accounts (network, login_id, sub_id, title, avatar_uri, kind, enabled, show_in_inbox)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT (network, login_id, sub_id) DO UPDATE SET
@@ -82,7 +84,8 @@ func (s *Store) UpsertSubAccount(ctx context.Context, sub SubAccount) error {
 // SubAccounts returns the sub-accounts for (network, loginID) ordered by kind ("space" first), title, and sub_id.
 // When loginID is "", all sub-accounts on network are returned.
 func (s *Store) SubAccounts(ctx context.Context, network, loginID string) ([]SubAccount, error) {
-	rows, err := s.db.Query(ctx, `
+	rows, err := s.db.Query(
+		ctx, `
 		SELECT network, login_id, sub_id, title, avatar_uri, kind, enabled, show_in_inbox
 		FROM sub_accounts
 		WHERE network = $1 AND ($2 = '' OR login_id = $2 OR login_id = '')
@@ -116,7 +119,8 @@ func (s *Store) UpdateSubAccount(ctx context.Context, network, loginID, subID st
 	}
 	var curEnabled int
 	var curShow, actualLoginID string
-	err := s.db.QueryRow(ctx, `
+	err := s.db.QueryRow(
+		ctx, `
 		SELECT login_id, enabled, show_in_inbox
 		FROM sub_accounts
 		WHERE network = $1 AND sub_id = $2 AND ($3 = '' OR login_id = $3 OR login_id = '')
@@ -136,7 +140,8 @@ func (s *Store) UpdateSubAccount(ctx context.Context, network, loginID, subID st
 	if showInInbox != nil {
 		curShow = *showInInbox
 	}
-	if _, err := s.db.Exec(ctx, `
+	if _, err := s.db.Exec(
+		ctx, `
 		UPDATE sub_accounts
 		SET enabled = $1, show_in_inbox = $2
 		WHERE network = $3 AND login_id = $4 AND sub_id = $5`,
@@ -153,7 +158,8 @@ func (s *Store) UpdateSubAccount(ctx context.Context, network, loginID, subID st
 // upserts them as kind="bot" sub-accounts (preserving existing enabled/show_in_inbox settings),
 // and returns the resulting sub-accounts list for (network, loginID).
 func (s *Store) SyncBotSubAccounts(ctx context.Context, network, loginID string) ([]SubAccount, error) {
-	rows, err := s.db.Query(ctx, `
+	rows, err := s.db.Query(
+		ctx, `
 		SELECT r.room_id, r.login_id,
 		       COALESCE(NULLIF(r.name, ''), p.display_name, ''),
 		       COALESCE(NULLIF(r.avatar_uri, ''), p.avatar_uri, '')
@@ -211,7 +217,7 @@ func (s *Store) SyncBotSubAccounts(ctx context.Context, network, loginID string)
 
 // RemoveAccountData removes login_state and sub_accounts for (network, loginID).
 // When deleteChats is true, it also deletes all rooms (and cascading events/members/state/reads/FTS)
-// belonging to (network, loginID), and if no logins remain on network, deletes rooms with login_id=''
+// belonging to (network, loginID), and if no logins remain on network, deletes rooms with login_id=”
 // on that network plus account_prefs and space_layout entries for account:<network>.
 func (s *Store) RemoveAccountData(ctx context.Context, network, loginID string, deleteChats bool) error {
 	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
@@ -279,7 +285,8 @@ func (s *Store) RemoveAccountData(ctx context.Context, network, loginID string, 
 					return err
 				}
 			}
-			if _, err := s.db.Exec(ctx, `
+			if _, err := s.db.Exec(
+				ctx, `
 				DELETE FROM merged_chats
 				WHERE (SELECT COUNT(*) FROM merged_chat_rooms mcr WHERE mcr.merge_id = merged_chats.merge_id) < 2`,
 			); err != nil {

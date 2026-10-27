@@ -272,6 +272,7 @@ func run(cfg config, stdout, stderr io.Writer) error {
 		Entitlement: ent,
 		Networks:    infos,
 		Version:     version,
+		DataDir:     cfg.data,
 		Log:         log,
 	}
 

@@ -726,6 +726,7 @@ func newWorldWaiting(t *testing.T, loginWait time.Duration) *world {
 		Entitlement: w.ent,
 		Networks:    testNetworks,
 		Version:     "0.3.0-test",
+		DataDir:     dir,
 	}
 	w.path = serve(t, w.deps)
 	return w
@@ -1446,4 +1447,138 @@ func TestMergeIDRejectedInRoomScopedRPCs(t *testing.T) {
 		e := c.fails(CodeInvalidParams, tc.method, tc.params)
 		require.Contains(t, string(e.Data), "merge_id", "%s(%v)", tc.method, tc.params)
 	}
+}
+
+func TestBridgesAndAccountsAndDiagnosticsRPCs(t *testing.T) {
+	ctx := context.Background()
+	w := newWorld(t)
+	waAccID := string(w.waLogin.ID)
+	require.NoError(t, w.s.SetLoginState(ctx, "whatsapp", waAccID, loginState("CONNECTED", waAccID, "Test Account", "")))
+	c := dial(t, w.path)
+	c.hello()
+
+	// 1. bridges.list returns the bridges with versions and linked accounts.
+	var bridgesRes struct {
+		Bridges []struct {
+			Network        string    `json:"network"`
+			DisplayName    string    `json:"display_name"`
+			BridgeID       string    `json:"bridge_id"`
+			ModulePath     string    `json:"module_path"`
+			Version        string    `json:"version"`
+			MautrixVersion string    `json:"mautrix_version"`
+			State          string    `json:"state"`
+			Error          string    `json:"error"`
+			Message        string    `json:"message"`
+			StartedAt      int64     `json:"started_at"`
+			Accounts       []account `json:"accounts"`
+		} `json:"bridges"`
+	}
+	c.ok("bridges.list", nil, &bridgesRes)
+	require.Len(t, bridgesRes.Bridges, 3)
+	require.Equal(t, "whatsapp", bridgesRes.Bridges[0].Network)
+	require.Len(t, bridgesRes.Bridges[0].Accounts, 1)
+	require.Equal(t, "signal", bridgesRes.Bridges[1].Network)
+	require.Empty(t, bridgesRes.Bridges[1].Accounts)
+	require.Equal(t, "telegram", bridgesRes.Bridges[2].Network)
+	require.Equal(t, "NOT_STARTED", bridgesRes.Bridges[2].State)
+	require.Equal(t, "Telegram needs an api_id and api_hash", bridgesRes.Bridges[2].Message)
+
+	// 2. bridges.restart restarts a running network and advances started_at.
+	beforeStarted := bridgesRes.Bridges[0].StartedAt
+	c.ok("bridges.restart", map[string]any{"network": "whatsapp"}, nil)
+	c.ok("bridges.list", nil, &bridgesRes)
+	require.Greater(t, bridgesRes.Bridges[0].StartedAt, beforeStarted)
+
+	// 3. accounts.subAccounts & accounts.setSubAccount.
+	require.NoError(t, w.s.UpsertSubAccount(ctx, store.SubAccount{
+		Network: "whatsapp", LoginID: waAccID, SubID: "!community:courier.local",
+		Title: "Neighborhood Community", AvatarURI: "mxc://courier.local/comm",
+		Kind: "space", Enabled: true, ShowInInbox: "all",
+	}))
+	var subRes struct {
+		SubAccounts []struct {
+			Network     string `json:"network"`
+			AccountID   string `json:"account_id"`
+			SubID       string `json:"sub_id"`
+			Title       string `json:"title"`
+			AvatarURI   string `json:"avatar_uri"`
+			Kind        string `json:"kind"`
+			Enabled     bool   `json:"enabled"`
+			ShowInInbox string `json:"show_in_inbox"`
+		} `json:"sub_accounts"`
+	}
+	c.ok("accounts.subAccounts", map[string]any{"network": "whatsapp", "account_id": waAccID}, &subRes)
+	require.Len(t, subRes.SubAccounts, 1)
+	require.Equal(t, "Neighborhood Community", subRes.SubAccounts[0].Title)
+	require.True(t, subRes.SubAccounts[0].Enabled)
+	require.Equal(t, "all", subRes.SubAccounts[0].ShowInInbox)
+
+	c.ok("accounts.setSubAccount", map[string]any{
+		"network": "whatsapp", "account_id": waAccID, "sub_id": "!community:courier.local",
+		"enabled": false, "show_in_inbox": "dms",
+	}, nil)
+	c.ok("accounts.subAccounts", map[string]any{"network": "whatsapp", "account_id": waAccID}, &subRes)
+	require.False(t, subRes.SubAccounts[0].Enabled)
+	require.Equal(t, "dms", subRes.SubAccounts[0].ShowInInbox)
+
+	// 4. diagnostics.export scrubs stderr and status_reason, never exposing raw message text or phone numbers.
+	failedID := string(ids.RandomEventID())
+	_, err := w.s.InsertEvent(ctx, store.Event{
+		RoomID: w.room, EventID: failedID, Sender: string(ids.Me), Type: "m.room.message",
+		Content:      json.RawMessage(`{"msgtype":"m.text","body":"Super secret text to +14155550199"}`),
+		TS:           time.Now(),
+		Status:       "failed",
+		StatusReason: "send to +14155550199 failed with token xoxc-123-456",
+	})
+	require.NoError(t, err)
+	if w.deps.DataDir != "" {
+		require.NoError(t, os.WriteFile(filepath.Join(w.deps.DataDir, "engine-stderr.log"), []byte(
+			"{\"level\":\"warn\",\"message\":\"syncing +14155550199\"}\npanic: secret crash +14155550199\n",
+		), 0o600))
+	}
+	var diagRes struct {
+		ProtocolVersion int      `json:"protocol_version"`
+		SchemaVersion   int      `json:"schema_version"`
+		GoVersion       string   `json:"go_version"`
+		ScrubbedStderr  []string `json:"scrubbed_stderr"`
+		RoomDetails     *struct {
+			RoomID   string `json:"room_id"`
+			Network  string `json:"network"`
+			IsDirect bool   `json:"is_direct"`
+		} `json:"room_details"`
+		MessageDetails *struct {
+			EventID      string `json:"event_id"`
+			RoomID       string `json:"room_id"`
+			Network      string `json:"network"`
+			Type         string `json:"type"`
+			TS           int64  `json:"ts"`
+			Status       string `json:"status"`
+			StatusReason string `json:"status_reason"`
+			HasMedia     bool   `json:"has_media"`
+			IsRedacted   bool   `json:"is_redacted"`
+		} `json:"message_details"`
+	}
+	c.ok("diagnostics.export", map[string]any{"room_id": w.room, "event_id": failedID}, &diagRes)
+	require.Equal(t, Protocol, diagRes.ProtocolVersion)
+	require.Equal(t, store.SchemaVersion, diagRes.SchemaVersion)
+	require.NotEmpty(t, diagRes.GoVersion)
+	require.NotNil(t, diagRes.RoomDetails)
+	require.Equal(t, w.room, diagRes.RoomDetails.RoomID)
+	require.NotNil(t, diagRes.MessageDetails)
+	require.Equal(t, failedID, diagRes.MessageDetails.EventID)
+	require.NotContains(t, diagRes.MessageDetails.StatusReason, "+14155550199")
+	require.NotContains(t, diagRes.MessageDetails.StatusReason, "xoxc-123-456")
+	require.Contains(t, diagRes.MessageDetails.StatusReason, "[id]")
+	for _, line := range diagRes.ScrubbedStderr {
+		require.NotContains(t, line, "+14155550199")
+		require.NotContains(t, line, "secret crash")
+	}
+
+	// 5. accounts.remove logs out and deletes chats when requested.
+	c.ok("accounts.remove", map[string]any{
+		"network": "whatsapp", "account_id": waAccID, "logout_remote": true, "delete_chats": true,
+	}, nil)
+	_, ok, err := w.s.GetRoom(ctx, w.room)
+	require.NoError(t, err)
+	require.False(t, ok, "deleted account's room must be removed when delete_chats is true")
 }

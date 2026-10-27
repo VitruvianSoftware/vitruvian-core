@@ -590,10 +590,12 @@ func (c *client) IsLoggedIn() bool {
 	at := c.connectedAt.Load()
 	return at != nil && time.Since(*at) >= c.n.LoginDelay
 }
+
 func (c *client) LogoutRemote(context.Context) {
 	c.n.LogoutRemoteCalls.Add(1)
 	c.Disconnect()
 }
+
 func (c *client) IsThisUser(_ context.Context, uid networkid.UserID) bool {
 	return uid == "me"
 }

@@ -72,19 +72,23 @@ func TestScrubStderrExport(t *testing.T) {
 }
 
 func TestScrubPathAndStartupError(t *testing.T) {
-	require.Equal(t,
+	require.Equal(
+		t,
 		"open ~/Library/Application Support/Courier/courier.db: token [id] for [id]",
 		ScrubPath("open /Users/alice/Library/Application Support/Courier/courier.db: token xoxc-123-456 for +14155550199"),
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		"open ~/data/courier.db: permission denied",
 		ScrubPath("open /home/bob/data/courier.db: permission denied"),
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		"courier-engine: cannot open ~/Library/Application Support/Courier: [id]",
 		ScrubStartupError("courier-engine:", errors.New("cannot open /Users/alice/Library/Application Support/Courier: +14155550199")),
 	)
-	require.Equal(t,
+	require.Equal(
+		t,
 		"error: cannot open ~/Library/Application Support/Courier-m1: [id]",
 		ScrubStartupError("error:", errors.New("cannot open /Users/alice/Library/Application Support/Courier-m1: xoxc-123-456")),
 	)

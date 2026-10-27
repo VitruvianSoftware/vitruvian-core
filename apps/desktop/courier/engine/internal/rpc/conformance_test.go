@@ -345,7 +345,7 @@ func (p *protocolSpec) checkExample(ex example) error {
 
 func TestEveryExampleFitsTheProtocol(t *testing.T) {
 	p, exs := loadProtocol(t)
-	require.Equal(t, 8, Protocol, "engine speaks protocol 8")
+	require.Equal(t, 9, Protocol, "engine speaks protocol 9")
 	require.Equal(t, Protocol, p.Protocol, "protocol.json and the engine speak the same protocol")
 	require.Equal(t, MaxFrameBytes, p.Transport.MaxFrameBytes)
 	for _, ex := range exs {
@@ -416,6 +416,14 @@ func TestGoStructJSONKeysMatchProtocol(t *testing.T) {
 		}},
 		{"StickerPack", actions.StickerPack{Network: "n", Items: []actions.StickerItem{}}},
 		{"ListStickersResult", actions.ListStickersResult{Packs: []actions.StickerPack{}, RecentGIFs: []actions.StickerItem{}}},
+		{"BridgeInfo", bridgeInfoJSON{Error: "e", Message: "m", Accounts: []account{}}},
+		{"SubAccountItem", subAccountItemJSON{}},
+		{"RoomDiagnostic", roomDiagnosticJSON{}},
+		{"MessageDiagnostic", messageDiagnosticJSON{}},
+		{"DiagnosticsExportResult", diagnosticsExportResultJSON{
+			Bridges: []bridgeInfoJSON{}, ScrubbedStderr: []string{},
+			RoomDetails: &roomDiagnosticJSON{}, MessageDetails: &messageDiagnosticJSON{},
+		}},
 	}
 	for _, tc := range cases {
 		spec, ok := p.Types[tc.typeName]
@@ -1225,6 +1233,24 @@ func prepare(t *testing.T, w *world, name string, params map[string]any) {
 			Status:  "sent",
 		})
 		require.NoError(t, err)
+	case "bridges.list", "bridges.restart":
+		waState(waAccount(), "CONNECTED", "Test Account", "")
+	case "accounts.remove":
+		params["account_id"] = waAccount()
+	case "accounts.subAccounts", "accounts.setSubAccount":
+		require.NoError(t, w.s.UpsertSubAccount(ctx, store.SubAccount{
+			Network: "whatsapp", LoginID: waAccount(), SubID: "!community:courier.local",
+			Title: "Neighborhood Community", AvatarURI: "mxc://courier.local/comm",
+			Kind: "space", Enabled: true, ShowInInbox: "all",
+		}))
+		params["account_id"] = waAccount()
+	case "diagnostics.export":
+		waState(waAccount(), "CONNECTED", "Test Account", "")
+		if w.deps.DataDir != "" {
+			require.NoError(t, os.WriteFile(filepath.Join(w.deps.DataDir, "engine-stderr.log"), []byte("panic: secret crash\n"), 0o600))
+		}
+		params["room_id"] = w.room
+		params["event_id"] = w.events[0]
 	default:
 		t.Fatalf("example %s has no setup in prepare: add one", name)
 	}

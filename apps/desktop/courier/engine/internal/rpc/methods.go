@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -24,6 +25,7 @@ import (
 	"github.com/VitruvianSoftware/courier/engine/internal/engine"
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
 	"github.com/VitruvianSoftware/courier/engine/internal/login"
+	"github.com/VitruvianSoftware/courier/engine/internal/logscrub"
 	"github.com/VitruvianSoftware/courier/engine/internal/richtext"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
 )
@@ -283,6 +285,14 @@ var methods = map[string]handler{
 	// Stickers & custom emoji catalog (stickers.go).
 	"stickers.list":   stickersList,
 	"stickers.import": stickersImport,
+
+	// Bridges, account removal, sub-accounts, and diagnostics (protocol 9).
+	"bridges.list":           bridgesList,
+	"bridges.restart":        bridgesRestart,
+	"accounts.remove":        accountsRemove,
+	"accounts.subAccounts":   accountsSubAccounts,
+	"accounts.setSubAccount": accountsSetSubAccount,
+	"diagnostics.export":     diagnosticsExport,
 }
 
 var errMissing = errors.New("a dependency this method needs is missing")
@@ -457,6 +467,14 @@ func accountsList(ctx context.Context, d *Deps, raw json.RawMessage) (any, error
 	if err := decode(raw, &struct{}{}); err != nil {
 		return nil, err
 	}
+	out, err := d.buildAccounts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"accounts": out}, nil
+}
+
+func (d *Deps) buildAccounts(ctx context.Context) ([]account, error) {
 	out := make([]account, 0, len(d.Networks))
 	for _, n := range d.Networks {
 		a := account{Network: n.Name, DisplayName: n.DisplayName, Flows: append([]string{}, n.Flows...), Syncs: []string{}}
@@ -517,7 +535,7 @@ func accountsList(ctx context.Context, d *Deps, raw json.RawMessage) (any, error
 		}
 		out = append(out, a)
 	}
-	return map[string]any{"accounts": out}, nil
+	return out, nil
 }
 
 // accountLogins is network's accounts (liveLogins of its stored states).
@@ -1745,4 +1763,352 @@ func loginCancel(_ context.Context, d *Deps, raw json.RawMessage) (any, error) {
 	}
 	d.Login.Cancel(id)
 	return nil, nil
+}
+
+type bridgeInfoJSON struct {
+	Network        string    `json:"network"`
+	DisplayName    string    `json:"display_name"`
+	BridgeID       string    `json:"bridge_id"`
+	ModulePath     string    `json:"module_path"`
+	Version        string    `json:"version"`
+	MautrixVersion string    `json:"mautrix_version"`
+	State          string    `json:"state"`
+	Error          string    `json:"error,omitempty"`
+	Message        string    `json:"message,omitempty"`
+	StartedAt      int64     `json:"started_at"`
+	Accounts       []account `json:"accounts"`
+}
+
+type subAccountItemJSON struct {
+	Network     string `json:"network"`
+	AccountID   string `json:"account_id"`
+	SubID       string `json:"sub_id"`
+	Title       string `json:"title"`
+	AvatarURI   string `json:"avatar_uri"`
+	Kind        string `json:"kind"`
+	Enabled     bool   `json:"enabled"`
+	ShowInInbox string `json:"show_in_inbox"`
+}
+
+type roomDiagnosticJSON struct {
+	RoomID   string `json:"room_id"`
+	Network  string `json:"network"`
+	IsDirect bool   `json:"is_direct"`
+}
+
+type messageDiagnosticJSON struct {
+	EventID      string `json:"event_id"`
+	RoomID       string `json:"room_id"`
+	Network      string `json:"network"`
+	Type         string `json:"type"`
+	TS           int64  `json:"ts"`
+	Status       string `json:"status"`
+	StatusReason string `json:"status_reason"`
+	HasMedia     bool   `json:"has_media"`
+	IsRedacted   bool   `json:"is_redacted"`
+}
+
+type diagnosticsExportResultJSON struct {
+	ProtocolVersion int                    `json:"protocol_version"`
+	SchemaVersion   int                    `json:"schema_version"`
+	GoVersion       string                 `json:"go_version"`
+	Bridges         []bridgeInfoJSON       `json:"bridges"`
+	ScrubbedStderr  []string               `json:"scrubbed_stderr"`
+	RoomDetails     *roomDiagnosticJSON    `json:"room_details,omitempty"`
+	MessageDetails  *messageDiagnosticJSON `json:"message_details,omitempty"`
+}
+
+func (d *Deps) knownNetwork(name string) bool {
+	for _, n := range d.Networks {
+		if n.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func (d *Deps) bridgeInfos(ctx context.Context) ([]bridgeInfoJSON, error) {
+	accs, err := d.buildAccounts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	byNet := map[string]engine.BridgeReport{}
+	if d.Engine != nil {
+		reps, err := d.Engine.Bridges(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, r := range reps {
+			byNet[r.Network] = r
+		}
+	}
+	out := make([]bridgeInfoJSON, 0, len(accs))
+	for _, a := range accs {
+		rep, ok := byNet[a.Network]
+		displayName := rep.DisplayName
+		if displayName == "" {
+			displayName = a.DisplayName
+		}
+		bridgeID := rep.BridgeID
+		if bridgeID == "" {
+			bridgeID = a.Network
+		}
+		modPath := rep.ModulePath
+		if modPath == "" {
+			modPath = "go.mau.fi/mautrix-" + a.Network
+		}
+		state := rep.State
+		if !ok || state == "" {
+			state = a.State
+		}
+		msg := rep.Message
+		if !ok && a.State == "NOT_STARTED" {
+			msg = a.NotStarted
+		}
+		biAccounts := make([]account, 0, len(a.Logins))
+		for _, l := range a.Logins {
+			biAccounts = append(biAccounts, account{
+				Network:        a.Network,
+				DisplayName:    a.DisplayName,
+				Flows:          a.Flows,
+				State:          l.State,
+				Error:          l.Error,
+				RemoteName:     l.RemoteName,
+				NotStarted:     a.NotStarted,
+				Syncs:          a.Syncs,
+				CanCreateGroup: l.CanCreateGroup,
+				Logins:         []loginJSON{l},
+			})
+		}
+		out = append(out, bridgeInfoJSON{
+			Network:        a.Network,
+			DisplayName:    displayName,
+			BridgeID:       bridgeID,
+			ModulePath:     modPath,
+			Version:        rep.Version,
+			MautrixVersion: rep.MautrixVer,
+			State:          state,
+			Error:          rep.Error,
+			Message:        msg,
+			StartedAt:      rep.StartedAtMS,
+			Accounts:       biAccounts,
+		})
+	}
+	return out, nil
+}
+
+func bridgesList(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
+	if err := decode(raw, &struct{}{}); err != nil {
+		return nil, err
+	}
+	bridges, err := d.bridgeInfos(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"bridges": bridges}, nil
+}
+
+func bridgesRestart(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
+	var p struct {
+		Network *string `json:"network"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	if err := required("network", p.Network); err != nil {
+		return nil, err
+	}
+	if !d.knownNetwork(*p.Network) {
+		return nil, store.ErrBadValue
+	}
+	if d.Engine == nil {
+		return nil, errMissing
+	}
+	if err := d.Engine.RestartNetwork(ctx, *p.Network); err != nil {
+		return nil, newError(CodeNotRunning)
+	}
+	return nil, nil
+}
+
+func accountsRemove(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
+	var p struct {
+		Network      *string `json:"network"`
+		AccountID    *string `json:"account_id"`
+		LogoutRemote *bool   `json:"logout_remote"`
+		DeleteChats  *bool   `json:"delete_chats"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	if err := required("network", p.Network); err != nil {
+		return nil, err
+	}
+	if err := required("account_id", p.AccountID); err != nil {
+		return nil, err
+	}
+	if p.LogoutRemote == nil {
+		return nil, invalidParams("logout_remote is required")
+	}
+	if p.DeleteChats == nil {
+		return nil, invalidParams("delete_chats is required")
+	}
+	if !d.knownNetwork(*p.Network) {
+		return nil, store.ErrBadValue
+	}
+	if d.Engine != nil {
+		if err := d.Engine.RemoveAccount(ctx, *p.Network, *p.AccountID, *p.LogoutRemote, *p.DeleteChats); err != nil {
+			return nil, err
+		}
+		return nil, nil
+	}
+	return nil, d.Store.RemoveAccountData(ctx, *p.Network, *p.AccountID, *p.DeleteChats)
+}
+
+func accountsSubAccounts(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
+	var p struct {
+		Network   *string `json:"network"`
+		AccountID *string `json:"account_id"`
+		Refresh   *bool   `json:"refresh"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	if err := required("network", p.Network); err != nil {
+		return nil, err
+	}
+	if err := required("account_id", p.AccountID); err != nil {
+		return nil, err
+	}
+	if !d.knownNetwork(*p.Network) {
+		return nil, store.ErrBadValue
+	}
+	var subs []store.SubAccount
+	var err error
+	if p.Refresh != nil && *p.Refresh && d.Engine != nil {
+		subs, err = d.Engine.RefreshSubAccounts(ctx, *p.Network, *p.AccountID)
+	} else {
+		subs, err = d.Store.SubAccounts(ctx, *p.Network, *p.AccountID)
+	}
+	if err != nil {
+		return nil, err
+	}
+	items := make([]subAccountItemJSON, 0, len(subs))
+	for _, s := range subs {
+		items = append(items, subAccountItemJSON{
+			Network:     s.Network,
+			AccountID:   s.LoginID,
+			SubID:       s.SubID,
+			Title:       s.Title,
+			AvatarURI:   s.AvatarURI,
+			Kind:        s.Kind,
+			Enabled:     s.Enabled,
+			ShowInInbox: s.ShowInInbox,
+		})
+	}
+	return map[string]any{"sub_accounts": items}, nil
+}
+
+func accountsSetSubAccount(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
+	var p struct {
+		Network     *string `json:"network"`
+		AccountID   *string `json:"account_id"`
+		SubID       *string `json:"sub_id"`
+		Enabled     *bool   `json:"enabled"`
+		ShowInInbox *string `json:"show_in_inbox"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	if err := required("network", p.Network); err != nil {
+		return nil, err
+	}
+	if err := required("account_id", p.AccountID); err != nil {
+		return nil, err
+	}
+	if err := required("sub_id", p.SubID); err != nil {
+		return nil, err
+	}
+	if !d.knownNetwork(*p.Network) {
+		return nil, store.ErrBadValue
+	}
+	return nil, d.Store.UpdateSubAccount(ctx, *p.Network, *p.AccountID, *p.SubID, p.Enabled, p.ShowInInbox)
+}
+
+func diagnosticsExport(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
+	var p struct {
+		RoomID  *string `json:"room_id"`
+		EventID *string `json:"event_id"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	bridges, err := d.bridgeInfos(ctx)
+	if err != nil {
+		return nil, err
+	}
+	scrubbedStderr := []string{}
+	if d.DataDir != "" {
+		if data, err := os.ReadFile(filepath.Join(d.DataDir, logscrub.StderrLogName)); err == nil {
+			if lines := logscrub.ScrubStderrExport(string(data)); lines != nil {
+				scrubbedStderr = lines
+			}
+		}
+	}
+	res := diagnosticsExportResultJSON{
+		ProtocolVersion: Protocol,
+		SchemaVersion:   store.SchemaVersion,
+		GoVersion:       runtime.Version(),
+		Bridges:         bridges,
+		ScrubbedStderr:  scrubbedStderr,
+	}
+	if p.RoomID != nil && *p.RoomID != "" {
+		r, err := d.room(ctx, *p.RoomID)
+		if err != nil {
+			return nil, err
+		}
+		res.RoomDetails = &roomDiagnosticJSON{
+			RoomID:   r.ID,
+			Network:  r.Network,
+			IsDirect: r.IsDirect,
+		}
+	}
+	if p.EventID != nil && *p.EventID != "" {
+		e, err := d.eventByID(ctx, *p.EventID)
+		if err != nil {
+			return nil, err
+		}
+		if p.RoomID != nil && *p.RoomID != "" && e.RoomID != *p.RoomID {
+			return nil, errNotFound
+		}
+		r, _, err := d.Store.GetRoom(ctx, e.RoomID)
+		if err != nil {
+			return nil, err
+		}
+		redacted, err := d.Store.Redacted(ctx, e.EventID)
+		if err != nil {
+			return nil, err
+		}
+		var fields map[string]json.RawMessage
+		_ = json.Unmarshal(e.Content, &fields)
+		var url string
+		if fields != nil {
+			_ = json.Unmarshal(fields["url"], &url)
+		}
+		status := e.Status
+		if status == "" {
+			status = "sent"
+		}
+		res.MessageDetails = &messageDiagnosticJSON{
+			EventID:      e.EventID,
+			RoomID:       e.RoomID,
+			Network:      r.Network,
+			Type:         e.Type,
+			TS:           ms(e.TS),
+			Status:       status,
+			StatusReason: logscrub.Redact(e.StatusReason),
+			HasMedia:     url != "",
+			IsRedacted:   redacted,
+		}
+	}
+	return res, nil
 }

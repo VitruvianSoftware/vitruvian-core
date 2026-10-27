@@ -55,7 +55,9 @@ import (
 // capabilities on ChatFeatures, and message.markPlayed, message.sendVoice, and message.sendLocation.
 // Protocol 8 adds sticker and GIF capabilities on ChatFeatures (sticker, gif), sending stickers and GIFs
 // (message.sendSticker, message.sendGIF), and sticker/emoji catalog listing and import (stickers.list, stickers.import).
-const Protocol = 8
+// Protocol 9 adds bridge management (bridges.list, bridges.restart), account removal and sub-accounts
+// (accounts.remove, accounts.subAccounts, accounts.setSubAccount), and scrubbed diagnostics export (diagnostics.export).
+const Protocol = 9
 
 // MaxFrameBytes is the longest line the engine reads, not counting its newline. A longer one closes the connection.
 const MaxFrameBytes = 4 << 20
@@ -90,6 +92,8 @@ type Deps struct {
 	Networks []NetworkInfo
 	// Version is the engine's version, sent in hello.
 	Version string
+	// DataDir is the engine's data directory, where engine-stderr.log lives for diagnostics.export.
+	DataDir string
 	// Log gets the engine's own failures: an internal error (the method and the error) and a recovered panic
 	// (with its stack). Nothing else is logged, never params or values. The zero value logs nothing.
 	Log zerolog.Logger

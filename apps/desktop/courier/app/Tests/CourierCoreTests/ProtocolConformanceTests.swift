@@ -245,8 +245,8 @@ final class ProtocolConformanceTests: XCTestCase {
     }
 
     func testProtocol6TypesDecodeAndRoundTrip() throws {
-        XCTAssertEqual(protocolVersion, 8)
-        XCTAssertEqual(CourierProtocol.version, 8)
+        XCTAssertEqual(protocolVersion, 9)
+        XCTAssertEqual(CourierProtocol.version, 9)
         XCTAssertEqual(RPCErrorCode(number: -32027), .networkRefused)
 
         let infoJSON = """
@@ -402,5 +402,75 @@ final class ProtocolConformanceTests: XCTestCase {
         )
         let sendData = try JSONEncoder().encode(sendSticker)
         XCTAssertEqual(try JSONDecoder().decode(MessageSendStickerParams.self, from: sendData), sendSticker)
+    }
+
+    func testProtocol9BridgesSubAccountsAndDiagnosticsDecodeAndRoundTrip() throws {
+        XCTAssertEqual(CourierProtocol.version, 9)
+        XCTAssertNotNil(ProtocolMethods.all["bridges.list"])
+        XCTAssertNotNil(ProtocolMethods.all["bridges.restart"])
+        XCTAssertNotNil(ProtocolMethods.all["accounts.remove"])
+        XCTAssertNotNil(ProtocolMethods.all["accounts.subAccounts"])
+        XCTAssertNotNil(ProtocolMethods.all["accounts.setSubAccount"])
+        XCTAssertNotNil(ProtocolMethods.all["diagnostics.export"])
+
+        let account = Account(
+            network: "whatsapp",
+            displayName: "WhatsApp",
+            flows: ["qr"],
+            state: .connected,
+            remoteName: "+15550100101",
+            syncs: [.pin, .mute],
+            logins: [Login(accountID: "wa-1", remoteName: "+15550100101", state: .connected)]
+        )
+        let bridge = BridgeInfo(
+            network: "whatsapp",
+            displayName: "WhatsApp",
+            bridgeID: "whatsapp",
+            modulePath: "go.mau.fi/mautrix-whatsapp",
+            version: "v0.2609.0",
+            mautrixVersion: "v0.31.0",
+            state: "CONNECTED",
+            startedAt: 1_760_600_000_000,
+            accounts: [account]
+        )
+        let bridgesRes = BridgesResult(bridges: [bridge])
+        let bridgesData = try JSONEncoder().encode(bridgesRes)
+        XCTAssertEqual(try JSONDecoder().decode(BridgesResult.self, from: bridgesData), bridgesRes)
+
+        let sub = SubAccountItem(
+            network: "slack",
+            accountID: "slack-1",
+            subID: "!space1:courier.local",
+            title: "Acme Workspace",
+            avatarURI: "mxc://courier.local/acme",
+            kind: "space",
+            enabled: true,
+            showInInbox: .all
+        )
+        let subRes = SubAccountsResult(subAccounts: [sub])
+        let subData = try JSONEncoder().encode(subRes)
+        XCTAssertEqual(try JSONDecoder().decode(SubAccountsResult.self, from: subData), subRes)
+
+        let diag = DiagnosticsExportResult(
+            protocolVersion: 9,
+            schemaVersion: 10,
+            goVersion: "go1.26.2",
+            bridges: [bridge],
+            scrubbedStderr: ["panic: [redacted]"],
+            roomDetails: RoomDiagnostic(roomID: "!r:courier.local", network: "whatsapp", isDirect: true),
+            messageDetails: MessageDiagnostic(
+                eventID: "$e1",
+                roomID: "!r:courier.local",
+                network: "whatsapp",
+                type: "m.room.message",
+                ts: 1_760_600_000_000,
+                status: "failed",
+                statusReason: "token [id] rejected",
+                hasMedia: false,
+                isRedacted: false
+            )
+        )
+        let diagData = try JSONEncoder().encode(diag)
+        XCTAssertEqual(try JSONDecoder().decode(DiagnosticsExportResult.self, from: diagData), diag)
     }
 }
