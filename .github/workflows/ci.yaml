@@ -536,7 +536,7 @@ jobs:
 
           # home-speaker build, unit tests & packaging validation
           bazel build "${cache[@]}" --config=macos-app //apps/desktop/home-speaker/... //apps/desktop/home-speaker:HomeSpeaker
-          (cd apps/desktop/home-speaker && ./scripts/test.sh)
+          bazel test "${cache[@]}" --config=macos-app //apps/desktop/home-speaker:HomeSpeakerTests
           # The Bitwarden -> HomeSpeaker secrets sync, against a fake `bw`.
           # `bazel build .../...` above compiles it but never RUNS it.
           bazel test "${cache[@]}" --config=macos-app //apps/desktop/home-speaker:sync_secrets_test
@@ -553,8 +553,8 @@ jobs:
           # fail here if they ever stop finding a bash 3.
           bazel test "${cache[@]}" --config=macos-app --test_env=REQUIRE_BASH32=1 //tools/desktop-package:package-desktop_test //apps/desktop/home-speaker:publish_test
           # The whole of it for real (SwiftPM build, codesign, hdiutil), short
-          # of uploading. publish.sh fails unless every artifact is in dist.
-          (cd apps/desktop/home-speaker && ./scripts/publish.sh --dry-run)
+          # of uploading. publish-rs fails unless every artifact is in dist.
+          bazel run "${cache[@]}" //apps/desktop/home-speaker:publish-rs -- --dry-run
 
           # Vitruvian Remote menu bar app: the .app bundle is `manual`, so build
           # it by label. Its tests run in the generated remote-mac-menu unit.
