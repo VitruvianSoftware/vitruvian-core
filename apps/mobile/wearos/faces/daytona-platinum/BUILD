@@ -24,7 +24,6 @@
 # gazelle:ignore
 
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("//tools/doctor:defs.bzl", "doctor")
 
 package(default_visibility = ["//apps/mobile/wearos:__subpackages__"])
@@ -95,29 +94,19 @@ rust_test(
     edition = "2021",
 )
 
-sh_binary(
+alias(
     name = "build_apk",
-    srcs = ["scripts/build_wff_apk.sh"],
-    data = [":wff_sources"],
+    actual = ":build-apk-rs",
 )
 
-sh_binary(
+alias(
     name = "install",
-    srcs = ["scripts/install.sh"],
-    data = [
-        "scripts/build_wff_apk.sh",
-        ":wff_sources",
-    ],
+    actual = ":install-rs",
 )
 
-sh_binary(
+alias(
     name = "publish",
-    srcs = ["scripts/publish.sh"],
-    data = [
-        ".release-please-manifest.json",
-        "scripts/build_wff_apk.sh",
-        ":wff_sources",
-    ],
+    actual = ":publish-rs",
 )
 
 rust_library(
@@ -136,6 +125,7 @@ rust_library(
 rust_binary(
     name = "build-apk-rs",
     srcs = ["scripts/src/build_wff_apk_main.rs"],
+    data = [":wff_sources"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [":daytona_scripts_lib"],
@@ -144,6 +134,7 @@ rust_binary(
 rust_binary(
     name = "install-rs",
     srcs = ["scripts/src/install_main.rs"],
+    data = [":wff_sources"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [":daytona_scripts_lib"],
@@ -152,6 +143,10 @@ rust_binary(
 rust_binary(
     name = "publish-rs",
     srcs = ["scripts/src/publish_main.rs"],
+    data = [
+        ".release-please-manifest.json",
+        ":wff_sources",
+    ],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [":daytona_scripts_lib"],

@@ -58,14 +58,26 @@ pub fn build_adb_args(serial: &str) -> Vec<String> {
 }
 
 fn resolve_repo_root() -> PathBuf {
-    if let Ok(bwd) = env::var("BUILD_WORKING_DIRECTORY") {
-        let p = PathBuf::from(&bwd);
-        if p.join("MODULE.bazel").is_file() {
-            return p;
+    for var in [
+        "BUILD_WORKSPACE_DIRECTORY",
+        "GITHUB_WORKSPACE",
+        "BUILD_WORKING_DIRECTORY",
+    ] {
+        if let Ok(bwd) = env::var(var) {
+            let p = PathBuf::from(&bwd);
+            if p.join("MODULE.bazel").is_file() {
+                return p;
+            }
         }
     }
     let exe = env::current_exe().unwrap_or_else(|_| PathBuf::from("."));
     let script_dir = exe.parent().unwrap_or(Path::new("."));
+    if let Some(root) = script_dir
+        .ancestors()
+        .find(|p| p.join("MODULE.bazel").is_file())
+    {
+        return root.to_path_buf();
+    }
     let suite_dir = script_dir.parent().unwrap_or(Path::new("."));
     suite_dir
         .ancestors()
@@ -75,13 +87,16 @@ fn resolve_repo_root() -> PathBuf {
 }
 
 fn try_adb_connect_serial(repo_root: &Path) -> Option<String> {
-    let script = repo_root.join("tools/adb-connect/adb_connect.py");
-    if !script.is_file() {
-        return None;
-    }
-    let output = Command::new("python3")
-        .arg(&script)
-        .args(["-d", "watch", "--print-serial"])
+    let output = Command::new("bazel")
+        .current_dir(repo_root)
+        .args([
+            "run",
+            "//tools/adb-connect",
+            "--",
+            "-d",
+            "watch",
+            "--print-serial",
+        ])
         .output()
         .ok()?;
     if output.status.success() {

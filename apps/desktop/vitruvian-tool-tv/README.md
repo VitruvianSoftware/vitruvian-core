@@ -28,7 +28,7 @@ bazel build //apps/desktop/vitruvian-tool-tv:tool-folder
 bazel test //apps/desktop/vitruvian-tool-tv/...
 
 # Build and zip the release asset without uploading it (macOS only)
-bash apps/desktop/vitruvian-tool-tv/scripts/publish-tool.sh --dry-run
+bazel run //apps/desktop/vitruvian-tool-tv:publish-tool -- --dry-run
 ```
 
 Outside the installed app's data folder (anything not under `Application

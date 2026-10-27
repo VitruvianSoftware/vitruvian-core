@@ -102,7 +102,10 @@ jobs:
           TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
           VERSION: ${{ needs.release-please.outputs.version || '' }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash apps/mobile/wearos/apps/scripts/publish.sh
+        run: |
+          rustc --edition 2021 --crate-name wearos_apps_scripts_lib --crate-type lib apps/mobile/wearos/apps/scripts/src/lib.rs -o /tmp/libwearos_apps_scripts_lib.rlib
+          rustc --edition 2021 apps/mobile/wearos/apps/scripts/src/publish_main.rs --extern wearos_apps_scripts_lib=/tmp/libwearos_apps_scripts_lib.rlib -o /tmp/wearos-publish
+          BUILD_WORKSPACE_DIRECTORY="$GITHUB_WORKSPACE" /tmp/wearos-publish
 
   check-release:
     needs: [release-please, publish-package]
