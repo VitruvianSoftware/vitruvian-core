@@ -34,23 +34,27 @@
 #
 # The build context is THIS directory, so `docker build mcp-slack/` works in
 # the monorepo and in the one-way standalone mirror alike (the mirror only ever
-# receives this subtree). That constraint is what dictates the `catalog:`
-# handling below.
+# receives this subtree). That is why the server keeps its own Cargo.lock in
+# rs/ rather than using the repo's root one.
+#
+# The server is Rust. The build stage compiles it with `cargo build --locked`,
+# so the image holds exactly the crate versions in rs/Cargo.lock, the ones
+# Bazel builds and tests (@mcp_slack_crates) and nothing re-resolved here.
+# The runtime is distroless: glibc, the CA bundle the HTTPS client trusts for
+# Slack and the issuer, and the binary. No shell, no package manager, no Node.
 
-# NODE_VERSION defaults to the repo canonical (the .nvmrc major) and CI passes
-# it explicitly from .nvmrc. //tools/conformance:check compares this default
-# against .nvmrc's major, so it cannot silently drift.
-ARG NODE_VERSION=22
-
-# --- Build stage: compile rs/src/ -> /app/mcp-slack with rustc --------------
+# --- Build stage --------------------------------------------------------------
 FROM rust:1.85-slim-bookworm AS build
-WORKDIR /app
-COPY rs/ ./rs/
-RUN rustc --edition 2021 -C opt-level=3 --crate-type lib --crate-name mcp_slack_rs_lib rs/src/lib.rs -o /tmp/libmcp_slack_rs_lib.rlib && \
-    rustc --edition 2021 -C opt-level=3 rs/src/main.rs -L /tmp --extern mcp_slack_rs_lib=/tmp/libmcp_slack_rs_lib.rlib -o /app/mcp-slack
+WORKDIR /src
+COPY rs/Cargo.toml rs/Cargo.lock ./
+COPY rs/src ./src
+RUN cargo build --release --locked --bin mcp-slack && \
+    install -m 0755 target/release/mcp-slack /mcp-slack
 
-# --- Runtime stage: compiled binary + package metadata only ----------------
-FROM node:${NODE_VERSION}-slim AS runtime
+# --- Runtime stage --------------------------------------------------------------
+# cc-debian12 matches the build stage's bookworm glibc and ships
+# /etc/ssl/certs/ca-certificates.crt, which the client loads as its trust store.
+FROM gcr.io/distroless/cc-debian12:nonroot AS runtime
 WORKDIR /app
 
 # PORT is the chart's contract (deployment.yaml containerPort: 3000), defaulted
@@ -58,24 +62,21 @@ WORKDIR /app
 # sets it explicitly rather than inheriting — two statements of the same number
 # is deliberate: this one keeps the image self-describing, that one keeps the
 # manifest readable.
-ENV NODE_ENV=production \
-    PORT=3000 \
+ENV PORT=3000 \
     MCP_TRANSPORT=http \
     HOME=/tmp
 
-COPY package.json ./
-COPY --from=build /app/mcp-slack ./mcp-slack
+COPY --from=build --chmod=0755 /mcp-slack /app/mcp-slack
 
 # The pod overrides USER with `runAsUser: 10001` (deploy/chart deployment.yaml),
 # a UID that exists in no image layer. Everything the process reads must
-# therefore be world-readable. `a+rX` grants read on files and traverse on
-# directories without making anything executable that was not already.
+# therefore be world-readable: the binary is copied 0755, and the CA bundle
+# is world-readable in the base image.
 #
 # USER is set to the same numeric UID so the image's own default matches the
 # pod's, rather than relying on the manifest to correct it. Numeric and not a
 # named user: `runAsNonRoot` is evaluated by the kubelet against a UID, and a
 # name it cannot resolve fails the pod rather than the check.
-RUN chmod -R a+rX /app
 USER 10001:10001
 
 # Documentation only — Kubernetes routes by containerPort, not by EXPOSE.

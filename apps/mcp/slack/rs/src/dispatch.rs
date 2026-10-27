@@ -44,10 +44,13 @@ fn opt_str(args: &JsonValue, name: &str) -> Result<Option<String>, SlackClientEr
     }
 }
 
-fn opt_num(args: &JsonValue, name: &str) -> Result<Option<usize>, SlackClientError> {
+/// The number exactly as sent. dispatch.ts handed it to the client
+/// unchanged, so Slack received `-1`, `0` or `0.5` as written; converting to
+/// an integer here would clamp negatives to 0 and truncate fractions.
+fn opt_num(args: &JsonValue, name: &str) -> Result<Option<f64>, SlackClientError> {
     match args.get(name) {
         None | Some(JsonValue::Null) => Ok(None),
-        Some(JsonValue::Number(n)) if n.is_finite() => Ok(Some(*n as usize)),
+        Some(JsonValue::Number(n)) if n.is_finite() => Ok(Some(*n)),
         _ => Err(SlackClientError::Message(format!(
             "Argument {name} must be a number when present."
         ))),
@@ -209,11 +212,11 @@ pub fn dispatch(
     match name {
         // Channels
         "slack_list_channels" => {
-            client.list_channels(opt_num(args, "limit")?, opt_str(args, "cursor")?.as_deref())
+            client.list_channels_num(opt_num(args, "limit")?, opt_str(args, "cursor")?.as_deref())
         }
         "slack_get_channel_info" => client.get_channel_info(&str_arg(args, "channel_id")?),
         "slack_get_channel_history" => {
-            client.get_channel_history(&str_arg(args, "channel_id")?, opt_num(args, "limit")?)
+            client.get_channel_history_num(&str_arg(args, "channel_id")?, opt_num(args, "limit")?)
         }
         "slack_get_thread_replies" => {
             client.get_thread_replies(&str_arg(args, "channel_id")?, &str_arg(args, "thread_ts")?)
@@ -236,7 +239,7 @@ pub fn dispatch(
         "slack_leave_channel" => {
             client.leave_channel(&str_arg(args, "channel_id")?, token_choice(args, "as")?)
         }
-        "slack_list_channel_members" => client.list_channel_members(
+        "slack_list_channel_members" => client.list_channel_members_num(
             &str_arg(args, "channel_id")?,
             opt_num(args, "limit")?,
             opt_str(args, "cursor")?.as_deref(),
@@ -244,24 +247,24 @@ pub fn dispatch(
         "slack_invite_to_channel" => {
             client.invite_to_channel(&str_arg(args, "channel_id")?, &str_array(args, "user_ids")?)
         }
-        "slack_list_unread" => client.list_unread(opt_num(args, "max_per_conversation")?),
+        "slack_list_unread" => client.list_unread_num(opt_num(args, "max_per_conversation")?),
         "slack_mark_read" => {
             client.mark_read(&str_arg(args, "channel_id")?, &str_arg(args, "timestamp")?)
         }
 
         // Users
         "slack_get_users" => {
-            client.get_users(opt_num(args, "limit")?, opt_str(args, "cursor")?.as_deref())
+            client.get_users_num(opt_num(args, "limit")?, opt_str(args, "cursor")?.as_deref())
         }
         "slack_get_user_profile" => client.get_user_profile(&str_arg(args, "user_id")?),
 
         // Search
-        "slack_search_messages" => client.search_messages(
+        "slack_search_messages" => client.search_messages_num(
             &str_arg(args, "query")?,
             opt_num(args, "count")?,
             opt_str(args, "sort")?.as_deref(),
         ),
-        "slack_search_files" => client.search_files(
+        "slack_search_files" => client.search_files_num(
             &str_arg(args, "query")?,
             opt_num(args, "count")?,
             opt_str(args, "sort")?.as_deref(),
@@ -332,7 +335,7 @@ pub fn dispatch(
 
         // Files
         "slack_get_file_info" => client.get_file_info(&file_id(args)?),
-        "slack_read_file" => client.read_file(&file_id(args)?, opt_num(args, "max_bytes")?),
+        "slack_read_file" => client.read_file_num(&file_id(args)?, opt_num(args, "max_bytes")?),
         "slack_upload_file" => client.upload_file(UploadFileInput {
             channel_id: str_arg(args, "channel_id")?,
             filename: str_arg(args, "filename")?,
@@ -641,5 +644,102 @@ mod tests {
         let err = dispatch(&client, "slack_get_message", &JsonValue::object(vec![])).unwrap_err();
         assert!(err.to_string().contains("permalink"));
         assert!(calls.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn numeric_arguments_reach_slack_as_javascript_wrote_them() {
+        let urls: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let urls_ref = urls.clone();
+        let _guard = set_mock_fetch(move |req| {
+            urls_ref.lock().unwrap().push(req.url.clone());
+            Ok(HttpResponse::json(
+                200,
+                JsonValue::parse(r#"{"ok":true,"channels":[{"id":"C1"}],"channel":{"last_read":"1.0"},"messages":[{"ts":"2.0"}]}"#)
+                    .unwrap(),
+            ))
+        });
+        let client = client_for(&stdio_env());
+        let query_of = |tool: &str, args: &str, key: &str| -> String {
+            urls.lock().unwrap().clear();
+            dispatch(&client, tool, &JsonValue::parse(args).unwrap()).unwrap();
+            let recorded = urls.lock().unwrap();
+            let url = recorded.last().unwrap();
+            crate::url::ParsedUrl::parse(url)
+                .unwrap()
+                .query_get(key)
+                .unwrap()
+                .to_string()
+        };
+        // Passed through as String(n): negatives, zero and fractions intact.
+        let hist = "slack_get_channel_history";
+        assert_eq!(
+            query_of(hist, r#"{"channel_id":"C1","limit":-1}"#, "limit"),
+            "-1"
+        );
+        assert_eq!(
+            query_of(hist, r#"{"channel_id":"C1","limit":0.5}"#, "limit"),
+            "0.5"
+        );
+        assert_eq!(
+            query_of(hist, r#"{"channel_id":"C1","limit":0}"#, "limit"),
+            "0"
+        );
+        assert_eq!(
+            query_of(hist, r#"{"channel_id":"C1","limit":1e21}"#, "limit"),
+            "1e+21"
+        );
+        assert_eq!(query_of(hist, r#"{"channel_id":"C1"}"#, "limit"), "10");
+        // Math.min(limit, 200) where the client bounds it.
+        let list = "slack_list_channels";
+        assert_eq!(query_of(list, r#"{"limit":-5}"#, "limit"), "-5");
+        assert_eq!(query_of(list, r#"{"limit":2.5}"#, "limit"), "2.5");
+        assert_eq!(query_of(list, r#"{"limit":500}"#, "limit"), "200");
+        assert_eq!(query_of("slack_get_users", r#"{"limit":-0}"#, "limit"), "0");
+        assert_eq!(
+            query_of(
+                "slack_search_messages",
+                r#"{"query":"q","count":7.25}"#,
+                "count"
+            ),
+            "7.25"
+        );
+        assert_eq!(
+            query_of(
+                "slack_search_files",
+                r#"{"query":"q","count":101}"#,
+                "count"
+            ),
+            "100"
+        );
+        assert_eq!(
+            query_of(
+                "slack_list_channel_members",
+                r#"{"channel_id":"C1","limit":-3}"#,
+                "limit"
+            ),
+            "-3"
+        );
+        // Math.min(Math.max(1, n), 200) for the unread page size.
+        let unread = "slack_list_unread";
+        assert_eq!(
+            query_of(unread, r#"{"max_per_conversation":0.5}"#, "limit"),
+            "1"
+        );
+        assert_eq!(
+            query_of(unread, r#"{"max_per_conversation":1.5}"#, "limit"),
+            "1.5"
+        );
+        assert_eq!(
+            query_of(unread, r#"{"max_per_conversation":900}"#, "limit"),
+            "200"
+        );
+        // Non-numbers are still refused before any call.
+        let err = dispatch(
+            &client,
+            hist,
+            &JsonValue::parse(r#"{"channel_id":"C1","limit":"5"}"#).unwrap(),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("must be a number"));
     }
 }

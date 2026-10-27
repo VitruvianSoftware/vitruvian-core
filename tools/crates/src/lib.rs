@@ -99,9 +99,14 @@ fn first_quoted(s: &str) -> Option<String> {
 /// Every member whose `rust-version` is missing or names another release.
 pub fn msrv_problems(workspace: &Path, toolchain: &str) -> Result<Vec<String>, String> {
     let root = read(&workspace.join("Cargo.toml"))?;
-    let members = workspace_members(&root);
+    let mut members = workspace_members(&root);
     if members.is_empty() {
-        return Err("no [workspace] members found in Cargo.toml".into());
+        // A single package that is its own workspace (an app with its own
+        // lock, like apps/mcp/slack/rs): the root manifest is the member.
+        if !root.lines().any(|line| line.trim() == "[package]") {
+            return Err("no [workspace] members and no [package] in Cargo.toml".into());
+        }
+        members.push(".".into());
     }
     let mut problems = Vec::new();
     for member in members {
@@ -115,16 +120,38 @@ pub fn msrv_problems(workspace: &Path, toolchain: &str) -> Result<Vec<String>, S
     Ok(problems)
 }
 
+/// Takes a leading `--dir <path>` off the arguments. The path must stay inside
+/// the repository, so it is relative and has no `..`.
+pub fn split_dir_arg(args: &[String]) -> Result<(Option<PathBuf>, Vec<String>), String> {
+    if args.first().map(String::as_str) != Some("--dir") {
+        return Ok((None, args.to_vec()));
+    }
+    let dir = args.get(1).ok_or("--dir needs a path")?;
+    let path = Path::new(dir);
+    if path.is_absolute()
+        || path
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return Err(format!(
+            "--dir must be a path inside the repository, got {dir}"
+        ));
+    }
+    Ok((Some(path.to_path_buf()), args[2..].to_vec()))
+}
+
 fn read(path: &Path) -> Result<String, String> {
     std::fs::read_to_string(path).map_err(|e| format!("cannot read {}: {e}", path.display()))
 }
 
 const USAGE: &str = "\
-usage: bazel run //tools/crates:lock [-- --check | -- <cargo update args>]
+usage: bazel run //tools/crates:lock -- [--dir <path>] [--check | <cargo update args>]
 
   (no args)   add what Cargo.toml now asks for; leave every other locked version alone
+  --dir P     lock the Cargo workspace at P (repo-relative) instead of the root one,
+              for an app that keeps its own Cargo.lock (e.g. apps/mcp/slack/rs)
   --check     fail if Cargo.lock does not match Cargo.toml (changes nothing)
-  <args>      passed to `cargo update`, e.g. `-p ring` or nothing-but `--verbose`
+  <args>      passed to `cargo update`, e.g. `-p ring` or `--verbose`
 ";
 
 pub fn run(args: &[String]) -> i32 {
@@ -152,6 +179,11 @@ fn try_run(args: &[String]) -> Result<i32, String> {
 
     let toolchain = toolchain_version(&read(&workspace.join("MODULE.bazel"))?)
         .ok_or("no rust.toolchain(versions = [...]) in MODULE.bazel")?;
+    let (dir, args) = split_dir_arg(args)?;
+    let workspace = match dir {
+        Some(dir) => workspace.join(dir),
+        None => workspace,
+    };
     let problems = msrv_problems(&workspace, &toolchain)?;
     if !problems.is_empty() {
         eprintln!(
@@ -168,6 +200,7 @@ fn try_run(args: &[String]) -> Result<i32, String> {
     let mut cmd = Command::new(&cargo);
     cmd.current_dir(&workspace)
         .env("CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS", "fallback");
+    let args = args.as_slice();
     let check = args.first().map(String::as_str) == Some("--check");
     if check {
         if args.len() > 1 {
@@ -253,6 +286,37 @@ rust-version = "not this"
             package_rust_version("[dependencies]\nrust-version = \"1.75\"\n"),
             None
         );
+    }
+
+    #[test]
+    fn splits_a_leading_dir_argument() {
+        let args = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(
+            split_dir_arg(&args(&["--dir", "apps/mcp/slack/rs", "--check"])).unwrap(),
+            (Some(PathBuf::from("apps/mcp/slack/rs")), args(&["--check"]))
+        );
+        assert_eq!(
+            split_dir_arg(&args(&["-p", "ring"])).unwrap(),
+            (None, args(&["-p", "ring"]))
+        );
+        assert!(split_dir_arg(&args(&["--dir"])).is_err());
+        assert!(split_dir_arg(&args(&["--dir", "/etc"])).is_err());
+        assert!(split_dir_arg(&args(&["--dir", "apps/../../x"])).is_err());
+    }
+
+    #[test]
+    fn a_package_that_is_its_own_workspace_is_checked_itself() {
+        let dir = std::env::temp_dir().join(format!("crates-lock-solo-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("Cargo.toml"),
+            "[workspace]\n\n[package]\nname = \"solo\"\nrust-version = \"1.70\"\n",
+        )
+        .unwrap();
+        let problems = msrv_problems(&dir, "1.75.0").unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(problems, vec![".: rust-version = \"1.70\"".to_string()]);
     }
 
     #[test]
