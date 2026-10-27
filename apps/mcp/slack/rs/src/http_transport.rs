@@ -993,7 +993,8 @@ fn auth_failure(error: &AuthError, metadata_url: &str) -> Response<RespBody> {
     let msg = error.message();
 
     if status == 403 {
-        let presented_part = match error.presented() {
+        // TS: `error.presented ? ... : ""`, so an empty string is left out too.
+        let presented_part = match error.presented().filter(|p| !p.is_empty()) {
             Some(p) => {
                 let label = error.presented_label().unwrap_or("presented");
                 format!(" {label}={}", header_safe(p))
@@ -2215,6 +2216,27 @@ mod tests {
             let refusal = lines.iter().find(|l| l.contains("refused")).unwrap();
             assert!(refusal.contains("client_id=777777777"));
             assert!(!refusal.contains("sub=777777777"));
+        }
+        {
+            // An empty client_id is left out of the line, as TS's truthiness
+            // check left it out.
+            let capture = capture_stderr();
+            with_server(
+                verifier_that(|| {
+                    Err(Ok(AuthError::ClientNotAllowed {
+                        client_id: Some(String::new()),
+                    }))
+                }),
+                |addr| {
+                    assert_eq!(post_mcp(addr, "{}").status, 403);
+                },
+            );
+            let lines = capture.lines();
+            let refusal = lines.iter().find(|l| l.contains("refused")).unwrap();
+            assert!(
+                refusal.starts_with("mcp-slack: refused insufficient_scope: "),
+                "{refusal}"
+            );
         }
         {
             let capture = capture_stderr();
