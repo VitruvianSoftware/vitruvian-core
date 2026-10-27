@@ -63,7 +63,11 @@ pub fn validate_build_dirs(root: &Path) -> Result<(), BuildCheckError> {
     if !root.join("dist-server").is_dir() {
         return Err(BuildCheckError::MissingDistServer);
     }
-    if !root.join("dist-server/server.js").is_file() {
+    if !root
+        .join("dist-server/oauth-user-inspector-server")
+        .is_file()
+        && !root.join("dist-server/server.js").is_file()
+    {
         return Err(BuildCheckError::MissingServerJs);
     }
     Ok(())

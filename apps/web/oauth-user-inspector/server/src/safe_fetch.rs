@@ -579,54 +579,66 @@ pub fn safe_fetch(
     parse_raw_http_response(&output.stdout, opts.max_bytes)
 }
 
+fn split_once_header_body(s: &str) -> Option<(&str, &str)> {
+    if let Some((h, b)) = s.split_once("\r\n\r\n") {
+        Some((h, b))
+    } else {
+        s.split_once("\n\n")
+    }
+}
+
 fn parse_raw_http_response(
     raw: &[u8],
     max_bytes: usize,
 ) -> Result<SafeFetchResponse, UpstreamError> {
     let text = String::from_utf8_lossy(raw);
-    let (header_block, body_str) = if let Some((h, b)) = text.split_once("\r\n\r\n") {
-        (h, b)
-    } else if let Some((h, b)) = text.split_once("\n\n") {
-        (h, b)
-    } else {
-        return Err(UpstreamError::new("Malformed upstream HTTP response"));
-    };
+    let mut remainder: &str = &text;
 
-    if body_str.len() > max_bytes {
-        return Err(UpstreamError::new(format!(
-            "Upstream response exceeded {max_bytes} bytes"
-        )));
-    }
+    loop {
+        let (header_block, body_str) = split_once_header_body(remainder)
+            .ok_or_else(|| UpstreamError::new("Malformed upstream HTTP response"))?;
 
-    let mut lines = header_block.lines();
-    let status_line = lines
-        .next()
-        .ok_or_else(|| UpstreamError::new("Empty upstream status line"))?;
-    let mut parts = status_line.splitn(3, ' ');
-    let _http_ver = parts.next();
-    let status_code: u16 = parts
-        .next()
-        .and_then(|s| s.parse().ok())
-        .ok_or_else(|| UpstreamError::new("Invalid upstream status code"))?;
-    let status_text = parts.next().unwrap_or("").trim().to_string();
+        let mut lines = header_block.lines();
+        let status_line = lines
+            .next()
+            .ok_or_else(|| UpstreamError::new("Empty upstream status line"))?;
+        let mut parts = status_line.splitn(3, ' ');
+        let _http_ver = parts.next();
+        let status_code: u16 = parts
+            .next()
+            .and_then(|s| s.parse().ok())
+            .ok_or_else(|| UpstreamError::new("Invalid upstream status code"))?;
+        let status_text = parts.next().unwrap_or("").trim().to_string();
 
-    if (300..400).contains(&status_code) {
-        return Err(UpstreamError::new(format!(
-            "Redirect blocked (status {status_code})"
-        )));
-    }
-
-    let mut headers = HashMap::new();
-    for line in lines {
-        if let Some((k, v)) = line.split_once(':') {
-            headers.insert(k.trim().to_ascii_lowercase(), v.trim().to_string());
+        if (100..200).contains(&status_code) {
+            remainder = body_str;
+            continue;
         }
-    }
 
-    Ok(SafeFetchResponse {
-        status: status_code,
-        status_text,
-        headers,
-        body: body_str.to_string(),
-    })
+        if body_str.len() > max_bytes {
+            return Err(UpstreamError::new(format!(
+                "Upstream response exceeded {max_bytes} bytes"
+            )));
+        }
+
+        if (300..400).contains(&status_code) {
+            return Err(UpstreamError::new(format!(
+                "Redirect blocked (status {status_code})"
+            )));
+        }
+
+        let mut headers = HashMap::new();
+        for line in lines {
+            if let Some((k, v)) = line.split_once(':') {
+                headers.insert(k.trim().to_ascii_lowercase(), v.trim().to_string());
+            }
+        }
+
+        return Ok(SafeFetchResponse {
+            status: status_code,
+            status_text,
+            headers,
+            body: body_str.to_string(),
+        });
+    }
 }
