@@ -2503,7 +2503,11 @@ final class ViewSnapshotTests: XCTestCase {
 
         stickerHost.rootView = StickerAttachmentView(message: receivedStickerMsg, sticker: receivedSticker)
         window.contentView = stickerHost
-        stickerHost.layoutSubtreeIfNeeded()
+        for _ in 0 ..< 50 {
+            try await Task.sleep(nanoseconds: 2_000_000)
+            stickerHost.layoutSubtreeIfNeeded()
+            if findNSImageView(in: stickerHost) != nil { break }
+        }
         let stickerImageView = try XCTUnwrap(findNSImageView(in: stickerHost))
         XCTAssertFalse(
             stickerImageView.animates,
@@ -2550,7 +2554,11 @@ final class ViewSnapshotTests: XCTestCase {
         )
         gifHost.frame = NSRect(x: 0, y: 0, width: 400, height: 400)
         window.contentView = gifHost
-        gifHost.layoutSubtreeIfNeeded()
+        for _ in 0 ..< 50 {
+            try await Task.sleep(nanoseconds: 2_000_000)
+            gifHost.layoutSubtreeIfNeeded()
+            if findNSImageView(in: gifHost) != nil { break }
+        }
         let gifImageView = try XCTUnwrap(findNSImageView(in: gifHost))
         XCTAssertEqual(
             gifImageView.imageScaling,
@@ -2746,6 +2754,87 @@ final class ViewSnapshotTests: XCTestCase {
         check(try Snapshot.render("gif-picker-search-query", width: 340) {
             GIFPickerPopover(composer: gifQueryModel)
         })
+    }
+
+    func testStickerAndGIFViewsLoadAsynchronouslyInTaskNotBody() async throws {
+        let stickerPath = try makeTestStickerPNG(width: 140, height: 140)
+        let gifPath = try makeTestPNG(width: 240, height: 140)
+
+        let stickerEvent = Fixture.sticker(
+            "$sticker-async",
+            name: "Async Parrot",
+            emoji: "🦜",
+            mine: false,
+            ts: 15,
+            mediaPath: stickerPath,
+            width: 140,
+            height: 140
+        )
+        let stickerMsg = try XCTUnwrap(Fixture.messages([stickerEvent]).first)
+        let sticker = try XCTUnwrap(stickerMsg.sticker)
+
+        let gifEvent = Fixture.gif(
+            "$gif-async",
+            msgtype: "m.image",
+            fileName: "async.gif",
+            caption: nil,
+            mine: false,
+            ts: 16,
+            mediaPath: gifPath,
+            mimeType: "image/gif",
+            width: 240,
+            height: 140
+        )
+        let gifMsg = try XCTUnwrap(Fixture.messages([gifEvent]).first)
+        let gif = try XCTUnwrap(gifMsg.gif)
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 400),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        let stickerHost = NSHostingView(
+            rootView: StickerAttachmentView(message: stickerMsg, sticker: sticker)
+        )
+        stickerHost.frame = NSRect(x: 0, y: 0, width: 200, height: 200)
+        window.contentView = stickerHost
+        stickerHost.layoutSubtreeIfNeeded()
+
+        XCTAssertNil(
+            findNSImageView(in: stickerHost),
+            "StickerAttachmentView must not synchronously read or decode files inside body before .task(id:) runs"
+        )
+        for _ in 0 ..< 50 {
+            try await Task.sleep(nanoseconds: 2_000_000)
+            stickerHost.layoutSubtreeIfNeeded()
+            if findNSImageView(in: stickerHost) != nil { break }
+        }
+        XCTAssertNotNil(
+            findNSImageView(in: stickerHost),
+            "StickerAttachmentView must populate @State image once .task(id:) completes"
+        )
+
+        let gifHost = NSHostingView(
+            rootView: GIFAttachmentView(message: gifMsg, gif: gif)
+        )
+        gifHost.frame = NSRect(x: 0, y: 0, width: 300, height: 200)
+        window.contentView = gifHost
+        gifHost.layoutSubtreeIfNeeded()
+
+        XCTAssertNil(
+            findNSImageView(in: gifHost),
+            "GIFAttachmentView must not synchronously read or decode files inside body before .task(id:) runs"
+        )
+        for _ in 0 ..< 50 {
+            try await Task.sleep(nanoseconds: 2_000_000)
+            gifHost.layoutSubtreeIfNeeded()
+            if findNSImageView(in: gifHost) != nil { break }
+        }
+        XCTAssertNotNil(
+            findNSImageView(in: gifHost),
+            "GIFAttachmentView must populate @State image once .task(id:) completes"
+        )
     }
 }
 

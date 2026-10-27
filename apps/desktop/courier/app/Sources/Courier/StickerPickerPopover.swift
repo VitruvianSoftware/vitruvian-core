@@ -279,7 +279,7 @@ private struct StickerCellView: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(Color.primary.opacity(isHovered ? 0.12 : 0.05))
-                if let cgImage = resolvedImage {
+                if let cgImage = loadedImage {
                     Image(decorative: cgImage, scale: 2.0, orientation: .up)
                         .resizable()
                         .interpolation(.high)
@@ -316,17 +316,10 @@ private struct StickerCellView: View {
         .accessibilityLabel(item.name)
         .task(id: item.mediaURL) {
             guard loadedImage == nil,
-                  let thumbnailLoader,
                   let path = ThumbnailLoader.resolveMediaPath(item.mediaURL)
             else { return }
-            loadedImage = await thumbnailLoader.thumbnail(atPath: path)?.image
+            let loader = thumbnailLoader ?? .shared
+            loadedImage = await loader.thumbnail(atPath: path)?.image
         }
-    }
-
-    private var resolvedImage: CGImage? {
-        if let loadedImage {
-            return loadedImage
-        }
-        return ThumbnailLoader.thumbnail(forMediaURL: item.mediaURL, maxPixelSize: 128)
     }
 }

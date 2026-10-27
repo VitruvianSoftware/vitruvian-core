@@ -497,8 +497,7 @@ private struct PendingGIFPillView: View {
                     .fill(Color.primary.opacity(0.08))
                     .frame(width: 40, height: 40)
 
-                if let cgImage = loadedThumbnail
-                    ?? ThumbnailLoader.thumbnail(forMediaURL: item.mediaURL, maxPixelSize: 80) {
+                if let cgImage = loadedThumbnail {
                     Image(decorative: cgImage, scale: 2.0, orientation: .up)
                         .resizable()
                         .scaledToFill()
@@ -553,9 +552,9 @@ private struct PendingGIFPillView: View {
         )
         .task(id: item.mediaURL) {
             guard loadedThumbnail == nil,
-                  let loader = thumbnailLoader,
                   let path = ThumbnailLoader.resolveMediaPath(item.mediaURL)
             else { return }
+            let loader = thumbnailLoader ?? .shared
             loadedThumbnail = await loader.thumbnail(atPath: path)?.image
         }
     }

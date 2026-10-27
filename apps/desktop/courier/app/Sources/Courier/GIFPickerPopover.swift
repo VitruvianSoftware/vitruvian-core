@@ -207,8 +207,7 @@ private struct GIFCellView: View {
                     .frame(height: 84)
 
                 Group {
-                    if let cgImage = loadedThumbnail
-                        ?? ThumbnailLoader.thumbnail(forMediaURL: item.mediaURL, maxPixelSize: 240) {
+                    if let cgImage = loadedThumbnail {
                         Image(decorative: cgImage, scale: 2.0, orientation: .up)
                             .resizable()
                             .scaledToFill()
@@ -260,9 +259,9 @@ private struct GIFCellView: View {
         .accessibilityLabel(item.name)
         .task(id: item.mediaURL) {
             guard loadedThumbnail == nil,
-                  let loader = thumbnailLoader,
                   let path = ThumbnailLoader.resolveMediaPath(item.mediaURL)
             else { return }
+            let loader = thumbnailLoader ?? .shared
             loadedThumbnail = await loader.thumbnail(atPath: path)?.image
         }
     }

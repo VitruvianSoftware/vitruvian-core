@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"image/jpeg"
 	"image/png"
 	"io"
 	"net"
@@ -1549,3 +1550,37 @@ func TestSendStickerWithoutBridgedStickerPreservesEmojiInStoredEvent(t *testing.
 	require.Empty(t, content.Info.BridgedSticker.ID)
 	require.Empty(t, content.Info.BridgedSticker.PackURL)
 }
+
+func TestSendStickerRejectsSpoofedMimeTypeAndLeavesNoBlob(t *testing.T) {
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+
+	caps := &event.RoomFeatures{
+		File: event.FileFeatureMap{
+			event.CapMsgSticker: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"image/webp": event.CapLevelFullySupported,
+				},
+				MaxSize: 512 * 1024,
+			},
+		},
+	}
+	w, webpOnlyRoom := startFeatureWorld(t, caps)
+
+	jpgPath := filepath.Join(tmpDir, "spoofed.webp")
+	img := image.NewRGBA(image.Rect(0, 0, 16, 16))
+	var jpgBuf bytes.Buffer
+	require.NoError(t, jpeg.Encode(&jpgBuf, img, nil))
+	require.NoError(t, os.WriteFile(jpgPath, jpgBuf.Bytes(), 0o600))
+
+	blobsBefore := countMediaBlobs(t, w.m.Dir)
+	_, err := w.a.SendSticker(ctx, SendStickerReq{
+		RoomID:   webpOnlyRoom,
+		Path:     jpgPath,
+		MimeType: "image/webp",
+		Name:     "Spoofed JPEG",
+	})
+	require.ErrorIs(t, err, ErrUnsupportedFeature, "SendSticker must sniff actual file bytes rather than trusting client-supplied MimeType")
+	require.Equal(t, blobsBefore, countMediaBlobs(t, w.m.Dir), "rejected spoofed sticker must leave no blob in media.Store")
+}
+

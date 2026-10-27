@@ -282,7 +282,7 @@ func convertFileFeatures(ff *event.FileFeatures) *FileKindFeatures {
 	}
 	var mimes []string
 	for mime, cap := range ff.MimeTypes {
-		if cap >= event.CapLevelPartialSupport || cap == event.CapLevelDropped {
+		if cap >= event.CapLevelPartialSupport {
 			mimes = append(mimes, mime)
 		}
 	}

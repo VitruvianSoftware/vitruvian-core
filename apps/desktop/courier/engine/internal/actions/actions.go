@@ -1178,14 +1178,8 @@ func (a *Actions) resolveMediaSource(
 		return "", nil, "", err
 	}
 	mimeType, detectedMsgType := detect(head[:n], filepath.Ext(srcPath))
-	if hint := baseType(hintMime); hint != "" {
+	if hint := baseType(hintMime); hint == "image/apng" && mimeType == "image/png" {
 		mimeType = hint
-		switch {
-		case strings.HasPrefix(mimeType, "image/"):
-			detectedMsgType = event.MsgImage
-		case strings.HasPrefix(mimeType, "video/"):
-			detectedMsgType = event.MsgVideo
-		}
 	}
 
 	info = &event.FileInfo{MimeType: mimeType, Size: int(fi.Size())}
@@ -1300,7 +1294,7 @@ func (a *Actions) SendSticker(ctx context.Context, req SendStickerReq) (SendResu
 		return SendResult{}, err
 	}
 
-	limit := a.maxSizeForKind(feats, event.MsgImage, req.MimeType)
+	limit := a.maxSizeForKind(feats, event.MsgImage, "")
 	if feats.Sticker.MaxSize > 0 {
 		limit = min(feats.Sticker.MaxSize, MaxFileCeiling)
 	}

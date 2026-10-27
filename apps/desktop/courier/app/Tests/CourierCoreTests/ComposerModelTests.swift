@@ -2826,6 +2826,7 @@ extension ComposerModelTests {
             await Task.yield()
         }
 
+        XCTAssertEqual(sender.stickerListRefreshes, [false], "opening a room must never request a bridge sticker-pack refresh")
         XCTAssertEqual(composer.customEmojis.map(\.shortcode), ["party_parrot"])
         type("hello :party_", into: composer)
         XCTAssertEqual(composer.emojiQuery, "party_")

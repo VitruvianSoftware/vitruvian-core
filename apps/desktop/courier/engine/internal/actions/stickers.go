@@ -12,6 +12,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
@@ -61,8 +62,9 @@ type ImportStickerReq struct {
 }
 
 type stickersCatalogFile struct {
-	Imported    []StickerItem `json:"imported"`
-	BridgePacks []StickerPack `json:"bridge_packs,omitempty"`
+	Imported            []StickerItem `json:"imported"`
+	BridgePacks         []StickerPack `json:"bridge_packs,omitempty"`
+	BridgePacksSyncedAt int64         `json:"bridge_packs_synced_at,omitempty"`
 }
 
 var allowedStickerExts = map[string]bool{
@@ -218,7 +220,17 @@ func (a *Actions) ImportSticker(_ context.Context, req ImportStickerReq) (Sticke
 	defer a.mu.Unlock()
 	cat, err := a.loadStickersCatalog()
 	if err != nil {
+		if a.m != nil {
+			_ = a.m.Delete(hash)
+		}
 		return StickerItem{}, err
+	}
+	existingRef := false
+	for i := range cat.Imported {
+		if cat.Imported[i].MediaURL == item.MediaURL {
+			existingRef = true
+			break
+		}
 	}
 	replaced := false
 	for i := range cat.Imported {
@@ -232,6 +244,9 @@ func (a *Actions) ImportSticker(_ context.Context, req ImportStickerReq) (Sticke
 		cat.Imported = append(cat.Imported, item)
 	}
 	if err := a.saveStickersCatalog(cat); err != nil {
+		if !existingRef && a.m != nil {
+			_ = a.m.Delete(hash)
+		}
 		return StickerItem{}, err
 	}
 	return item, nil
@@ -279,17 +294,19 @@ func (a *Actions) ListStickers(ctx context.Context, refreshBridgePacks bool) (Li
 	}
 
 	bridgePacks := cat.BridgePacks
-	if refreshBridgePacks || len(bridgePacks) == 0 {
+	if refreshBridgePacks {
 		fetched := a.fetchBridgeStickerPacks(ctx)
-		if len(fetched) > 0 || refreshBridgePacks {
-			bridgePacks = fetched
-			a.mu.Lock()
-			if latest, lerr := a.loadStickersCatalog(); lerr == nil {
-				latest.BridgePacks = bridgePacks
-				_ = a.saveStickersCatalog(latest)
-			}
-			a.mu.Unlock()
+		if fetched == nil {
+			fetched = []StickerPack{}
 		}
+		bridgePacks = fetched
+		a.mu.Lock()
+		if latest, lerr := a.loadStickersCatalog(); lerr == nil {
+			latest.BridgePacks = bridgePacks
+			latest.BridgePacksSyncedAt = time.Now().UnixMilli()
+			_ = a.saveStickersCatalog(latest)
+		}
+		a.mu.Unlock()
 	}
 
 	importedItems := cat.Imported
@@ -366,12 +383,12 @@ func (a *Actions) fetchBridgeStickerPacks(ctx context.Context) []StickerPack {
 				continue
 			}
 			for _, meta := range metas {
-				if meta == nil {
+				if meta == nil || meta.BridgedPack == nil {
 					continue
 				}
-				packURL := meta.DisplayName
-				if meta.BridgedPack != nil && meta.BridgedPack.URL != "" {
-					packURL = meta.BridgedPack.URL
+				packURL := strings.TrimSpace(meta.BridgedPack.URL)
+				if packURL == "" {
+					continue
 				}
 				dl, err := importer.DownloadImagePack(ctx, packURL)
 				if err != nil || dl == nil || dl.Content == nil {

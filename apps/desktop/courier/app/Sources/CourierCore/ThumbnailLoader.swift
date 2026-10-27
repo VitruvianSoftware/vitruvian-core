@@ -118,22 +118,6 @@ public actor ThumbnailLoader {
         return nil
     }
 
-    /// Synchronously decodes a bounded thumbnail for small local icons (such as custom emoji or sticker cells).
-    public nonisolated static func thumbnail(atPath path: String, maxPixelSize: Int = 640) -> CGImage? {
-        guard !path.isEmpty else { return nil }
-        return decode(path, maxPixelSize: maxPixelSize)?.image
-    }
-
-    /// Synchronously decodes a bounded thumbnail from a `mediaURL` (`courier://media/<sha256>`, `file://`, or path).
-    public nonisolated static func thumbnail(
-        forMediaURL mediaURL: String?,
-        maxPixelSize: Int = 640,
-        dataDirectory: URL = EngineLocation.dataDirectory()
-    ) -> CGImage? {
-        guard let path = resolveMediaPath(mediaURL, dataDirectory: dataDirectory) else { return nil }
-        return thumbnail(atPath: path, maxPixelSize: maxPixelSize)
-    }
-
     private nonisolated static func pixelSize(ofFileAt path: String) -> CGSize? {
         guard let source = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil),
               let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],

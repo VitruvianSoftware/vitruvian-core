@@ -237,6 +237,10 @@ type Network struct {
 	ImagePacks []*event.ImagePackMetadata
 	// DownloadedPacks maps pack URL -> ImportedImagePack returned by DownloadImagePack on StickerImportingNetworkAPI.
 	DownloadedPacks map[string]*bridgev2.ImportedImagePack
+	// ListImagePacksCalls counts how many times ListImagePacks was called on this network.
+	ListImagePacksCalls atomic.Int64
+	// DownloadImagePackCalls counts how many times DownloadImagePack was called on this network.
+	DownloadImagePackCalls atomic.Int64
 	// EchoTimers, when set before a timer change is sent, makes the network echo the change back while the bridge is
 	// still handling it, and the bridge pass the echo on as its notice (bridgev2's DisappearingMessageNotice with its
 	// com.beeper.action_message), as a network and bridge that don't drop their own echo would. No pinned bridge does:
@@ -796,6 +800,9 @@ func (c *client) HandleMatrixReactionRemove(_ context.Context, msg *bridgev2.Mat
 var _ bridgev2.StickerImportingNetworkAPI = (*client)(nil)
 
 func (c *client) ListImagePacks(_ context.Context) ([]*event.ImagePackMetadata, error) {
+	if c.n != nil {
+		c.n.ListImagePacksCalls.Add(1)
+	}
 	if c.n == nil || len(c.n.ImagePacks) == 0 {
 		return nil, nil
 	}
@@ -803,6 +810,9 @@ func (c *client) ListImagePacks(_ context.Context) ([]*event.ImagePackMetadata, 
 }
 
 func (c *client) DownloadImagePack(_ context.Context, url string) (*bridgev2.ImportedImagePack, error) {
+	if c.n != nil {
+		c.n.DownloadImagePackCalls.Add(1)
+	}
 	if c.n == nil || c.n.DownloadedPacks == nil {
 		return nil, errors.New("fakenet: pack not found")
 	}

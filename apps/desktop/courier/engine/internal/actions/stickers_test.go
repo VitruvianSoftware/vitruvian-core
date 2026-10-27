@@ -215,3 +215,157 @@ func TestImportAndListStickers(t *testing.T) {
 	require.Equal(t, "shipit", slackPack.Items[0].Shortcode)
 	require.Equal(t, []string{"emoticon"}, slackPack.Items[0].Usage)
 }
+
+func TestListStickersDoesNotSyncBridgePacksUnlessRefreshRequested(t *testing.T) {
+	ctx := context.Background()
+
+	var pngBuf bytes.Buffer
+	img := image.NewNRGBA(image.Rect(0, 0, 16, 16))
+	img.Set(1, 1, color.NRGBA{R: 50, G: 100, B: 200, A: 255})
+	require.NoError(t, png.Encode(&pngBuf, img))
+
+	n := fakenet.New()
+	w := startWorldOn(t, "telegram", n, true, zerolog.Nop())
+	_, _ = w.chat(t, "chat-1", "m-1")
+
+	bridgeHash, err := w.m.Put(pngBuf.Bytes())
+	require.NoError(t, err)
+	bridgeURI := ids.ContentURI(bridgeHash)
+
+	tgPackURL := "https://t.me/addstickers/CatPack"
+	tgMeta := event.ImagePackMetadata{
+		DisplayName: "Cat Pack",
+		Usage:       []event.ImagePackUsage{event.ImagePackUsageSticker},
+		BridgedPack: &event.BridgedStickerPack{
+			Network: "telegram",
+			URL:     tgPackURL,
+		},
+	}
+	n.ImagePacks = []*event.ImagePackMetadata{&tgMeta}
+	n.DownloadedPacks = map[string]*bridgev2.ImportedImagePack{
+		tgPackURL: {
+			Shortcode: "CatPack",
+			Content: &event.ImagePackEventContent{
+				Metadata: tgMeta,
+				Images: map[string]*event.ImagePackImage{
+					"happy_cat": {
+						URL:  bridgeURI,
+						Body: "😺",
+					},
+				},
+			},
+		},
+	}
+
+	// Non-refresh stickers.list (e.g. on chat open) with an empty cache must NEVER call ListImagePacks or DownloadImagePack.
+	initial, err := w.a.ListStickers(ctx, false)
+	require.NoError(t, err)
+	require.Zero(t, n.ListImagePacksCalls.Load(), "non-refresh stickers.list must not call ListImagePacks")
+	require.Zero(t, n.DownloadImagePackCalls.Load(), "non-refresh stickers.list must not call DownloadImagePack")
+	for _, p := range initial.Packs {
+		require.NotEqual(t, "bridge", p.Source, "non-refresh stickers.list on empty cache must not fetch bridge packs")
+	}
+
+	// Explicit refresh=true ("Sync Packs") calls ListImagePacks + DownloadImagePack and caches the result.
+	refreshed, err := w.a.ListStickers(ctx, true)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, n.ListImagePacksCalls.Load())
+	require.EqualValues(t, 1, n.DownloadImagePackCalls.Load())
+	var bridgePacks []StickerPack
+	for _, p := range refreshed.Packs {
+		if p.Source == "bridge" {
+			bridgePacks = append(bridgePacks, p)
+		}
+	}
+	require.Len(t, bridgePacks, 1)
+	require.Equal(t, "Cat Pack", bridgePacks[0].Title)
+
+	// Subsequent non-refresh stickers.list serves the cached pack without calling the bridge again.
+	cached, err := w.a.ListStickers(ctx, false)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, n.ListImagePacksCalls.Load())
+	require.EqualValues(t, 1, n.DownloadImagePackCalls.Load())
+	var cachedBridgePacks []StickerPack
+	for _, p := range cached.Packs {
+		if p.Source == "bridge" {
+			cachedBridgePacks = append(cachedBridgePacks, p)
+		}
+	}
+	require.Len(t, cachedBridgePacks, 1)
+
+	// When refresh=true returns an empty pack list, the empty result is still persisted with a timestamp.
+	n.ImagePacks = nil
+	n.DownloadedPacks = nil
+	emptyRefreshed, err := w.a.ListStickers(ctx, true)
+	require.NoError(t, err)
+	for _, p := range emptyRefreshed.Packs {
+		require.NotEqual(t, "bridge", p.Source)
+	}
+	rawCat, err := os.ReadFile(filepath.Join(w.dir, "media", "stickers.json"))
+	require.NoError(t, err)
+	require.Contains(t, string(rawCat), `"bridge_packs_synced_at"`, "refresh=true must persist sync timestamp even when bridge packs are empty")
+}
+
+func TestFetchBridgeStickerPacksSkipsPackWithoutURL(t *testing.T) {
+	ctx := context.Background()
+
+	n := fakenet.New()
+	w := startWorldOn(t, "telegram", n, true, zerolog.Nop())
+	_, _ = w.chat(t, "chat-1", "m-1")
+
+	noURLMeta := event.ImagePackMetadata{
+		DisplayName: "Cute Cats",
+		Usage:       []event.ImagePackUsage{event.ImagePackUsageSticker},
+		BridgedPack: &event.BridgedStickerPack{
+			Network: "telegram",
+			URL:     "",
+		},
+	}
+	n.ImagePacks = []*event.ImagePackMetadata{&noURLMeta}
+	n.DownloadedPacks = map[string]*bridgev2.ImportedImagePack{
+		"Cute Cats": {
+			Shortcode: "CuteCats",
+			Content: &event.ImagePackEventContent{
+				Metadata: noURLMeta,
+				Images: map[string]*event.ImagePackImage{
+					"cat1": {URL: "mxc://courier.local/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"},
+				},
+			},
+		},
+	}
+
+	res, err := w.a.ListStickers(ctx, true)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, n.ListImagePacksCalls.Load())
+	require.Zero(t, n.DownloadImagePackCalls.Load(), "pack without BridgedPack.URL must be skipped instead of passing DisplayName to DownloadImagePack")
+	for _, p := range res.Packs {
+		require.NotEqual(t, "bridge", p.Source)
+	}
+}
+
+func TestImportStickerRemovesBlobWhenCatalogSaveFails(t *testing.T) {
+	ctx := context.Background()
+
+	var pngBuf bytes.Buffer
+	img := image.NewNRGBA(image.Rect(0, 0, 16, 16))
+	img.Set(2, 2, color.NRGBA{R: 200, G: 50, B: 50, A: 255})
+	require.NoError(t, png.Encode(&pngBuf, img))
+
+	tmpDir := t.TempDir()
+	pngPath := filepath.Join(tmpDir, "orphan.png")
+	require.NoError(t, os.WriteFile(pngPath, pngBuf.Bytes(), 0o600))
+
+	n := fakenet.New()
+	w := startWorldOn(t, "telegram", n, true, zerolog.Nop())
+
+	// Make saveStickersCatalog fail by placing a non-empty directory at <mediaDir>/stickers.json.tmp.
+	require.NoError(t, os.MkdirAll(filepath.Join(w.m.Dir, "stickers.json.tmp", "blocker"), 0o700))
+
+	blobsBefore := countMediaBlobs(t, w.m.Dir)
+	_, err := w.a.ImportSticker(ctx, ImportStickerReq{
+		Path: pngPath,
+		Name: "Orphan Check",
+	})
+	require.Error(t, err)
+	require.Equal(t, blobsBefore, countMediaBlobs(t, w.m.Dir), "ImportSticker must remove the newly written blob when saving stickers.json fails")
+}

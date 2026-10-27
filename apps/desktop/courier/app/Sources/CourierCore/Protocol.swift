@@ -2978,20 +2978,6 @@ public struct ChatFeatures: ProtocolType, Equatable {
         let decodedStickerFeatures = try container.decodeIfPresent(FileKindFeatures.self, forKey: .stickerFeatures)
         let decodedSticker = try container.decodeIfPresent(MediaCapFeature.self, forKey: .sticker)
         let decodedGIF = try container.decodeIfPresent(MediaCapFeature.self, forKey: .gif)
-        if let decodedStickerFeatures, let decodedSticker,
-           MediaCapFeature(from: decodedStickerFeatures) != decodedSticker {
-            throw DecodingError.dataCorruptedError(
-                forKey: .sticker, in: container,
-                debugDescription: "sticker disagrees with sticker_features"
-            )
-        }
-        if let decodedGifFeatures, let decodedGIF,
-           MediaCapFeature(from: decodedGifFeatures) != decodedGIF {
-            throw DecodingError.dataCorruptedError(
-                forKey: .gif, in: container,
-                debugDescription: "gif disagrees with gif_features"
-            )
-        }
         gifFeatures = decodedGifFeatures ?? decodedGIF.flatMap(FileKindFeatures.init(from:))
         stickerFeatures = decodedStickerFeatures ?? decodedSticker.flatMap(FileKindFeatures.init(from:))
         locationSupported = try container.decodeIfPresent(Bool.self, forKey: .locationSupported) ?? false

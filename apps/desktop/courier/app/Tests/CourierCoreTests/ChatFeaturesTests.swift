@@ -523,10 +523,15 @@ final class ChatFeaturesTests: XCTestCase {
         XCTAssertNil(reencoded?["max_caption_length"])
         XCTAssertNil(reencoded?["max_size"])
 
-        // Disagreement between sticker and sticker_features on the wire must fail decoding.
+        // Disagreement between sticker/gif and sticker_features/gif_features on the wire derives from the file-kind fields instead of failing decoding.
         var badObj = try JSONSerialization.jsonObject(with: encoded) as? [String: Any] ?? [:]
         badObj["sticker"] = ["supported": false, "mime_types": [] as [String], "captions": false] as [String: Any]
+        badObj["gif"] = ["supported": false, "mime_types": [] as [String], "captions": false] as [String: Any]
         let badData = try JSONSerialization.data(withJSONObject: badObj)
-        XCTAssertThrowsError(try JSONDecoder().decode(ChatFeatures.self, from: badData))
+        let recovered = try JSONDecoder().decode(ChatFeatures.self, from: badData)
+        XCTAssertEqual(recovered.sticker, stickerCap, "sticker must be derived from sticker_features when sticker disagrees")
+        XCTAssertEqual(recovered.gif, gifCap, "gif must be derived from gif_features when gif disagrees")
+        XCTAssertTrue(recovered.supportsStickers)
+        XCTAssertTrue(recovered.supportsGIFs)
     }
 }

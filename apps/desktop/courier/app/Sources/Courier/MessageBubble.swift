@@ -1022,6 +1022,7 @@ public struct StickerAttachmentView: View {
     public var onOpenLightbox: (String) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    @State private var loadedNSImage: NSImage?
     @State private var asyncCGImage: CGImage?
 
     public init(
@@ -1082,16 +1083,14 @@ public struct StickerAttachmentView: View {
         let size = frameSize
         let animate = Self.shouldAnimate(reduceMotion: reduceMotionEnabled)
         ZStack {
-            if let path = resolvedPath,
-               FileManager.default.fileExists(atPath: path),
-               let nsImage = NSImage(contentsOfFile: path) {
+            if let nsImage = loadedNSImage {
                 BorderlessAnimatedNSImageView(
                     image: nsImage,
                     animates: animate,
                     scaling: .scaleProportionallyUpOrDown
                 )
                 .frame(width: size.width, height: size.height)
-            } else if let cgImage = asyncCGImage ?? resolvedPath.flatMap({ ThumbnailLoader.thumbnail(atPath: $0, maxPixelSize: 320) }) {
+            } else if let cgImage = asyncCGImage {
                 Image(decorative: cgImage, scale: 2.0, orientation: .up)
                     .resizable()
                     .interpolation(.high)
@@ -1127,10 +1126,18 @@ public struct StickerAttachmentView: View {
             onOpenLightbox(message.id)
         }
         .task(id: resolvedPath) {
-            guard asyncCGImage == nil,
-                  let path = resolvedPath,
-                  NSImage(contentsOfFile: path) == nil else { return }
-            asyncCGImage = await ThumbnailLoader.shared.thumbnail(atPath: path)?.image
+            guard loadedNSImage == nil,
+                  asyncCGImage == nil,
+                  let path = resolvedPath else { return }
+            let decoded = await Task.detached(priority: .utility) { () -> NSImage? in
+                guard FileManager.default.fileExists(atPath: path) else { return nil }
+                return NSImage(contentsOfFile: path)
+            }.value
+            if let decoded {
+                loadedNSImage = decoded
+            } else {
+                asyncCGImage = await ThumbnailLoader.shared.thumbnail(atPath: path)?.image
+            }
         }
         .help(sticker.name.isEmpty ? String(localized: "Sticker") : sticker.name)
         .accessibilityElement(children: .combine)
@@ -1151,7 +1158,9 @@ public struct GIFAttachmentView: View {
     public var onOpenLightbox: (String) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
+    @State private var loadedNSImage: NSImage?
     @State private var asyncCGImage: CGImage?
+    @State private var loadFailed = false
 
     public init(
         message: TimelineMessage,
@@ -1205,12 +1214,6 @@ public struct GIFAttachmentView: View {
     }
 
     public var body: some View {
-        let loadedNSImage: NSImage? = {
-            guard !isVideoGIF,
-                  let path = resolvedPath,
-                  FileManager.default.fileExists(atPath: path) else { return nil }
-            return NSImage(contentsOfFile: path)
-        }()
         let size = frameSize(for: loadedNSImage)
         let animate = Self.shouldAnimate(
             reduceMotion: accessibilityReduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
@@ -1243,7 +1246,7 @@ public struct GIFAttachmentView: View {
                 .onTapGesture {
                     onOpenLightbox(message.id)
                 }
-            } else if let cgImage = asyncCGImage ?? resolvedPath.flatMap({ ThumbnailLoader.thumbnail(atPath: $0, maxPixelSize: 640) }) {
+            } else if let cgImage = asyncCGImage {
                 Image(decorative: cgImage, scale: 2.0, orientation: .up)
                     .resizable()
                     .scaledToFill()
@@ -1254,7 +1257,12 @@ public struct GIFAttachmentView: View {
                         onOpenLightbox(message.id)
                     }
             } else {
-                EnhancedImageView(message: message, onOpenLightbox: onOpenLightbox)
+                EnhancedImageView(
+                    message: message,
+                    forceBlurHashPlaceholder: !loadFailed,
+                    forceErrorState: loadFailed,
+                    onOpenLightbox: onOpenLightbox
+                )
             }
 
             Text(verbatim: "GIF")
@@ -1270,10 +1278,23 @@ public struct GIFAttachmentView: View {
         .clipShape(RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous))
         .task(id: resolvedPath) {
             guard !isVideoGIF,
-                  asyncCGImage == nil,
-                  let path = resolvedPath,
-                  NSImage(contentsOfFile: path) == nil else { return }
-            asyncCGImage = await ThumbnailLoader.shared.thumbnail(atPath: path)?.image
+                  loadedNSImage == nil,
+                  asyncCGImage == nil else { return }
+            guard let path = resolvedPath else {
+                if !message.mediaPath.isEmpty { loadFailed = true }
+                return
+            }
+            let decoded = await Task.detached(priority: .utility) { () -> NSImage? in
+                guard FileManager.default.fileExists(atPath: path) else { return nil }
+                return NSImage(contentsOfFile: path)
+            }.value
+            if let decoded {
+                loadedNSImage = decoded
+            } else if let cg = await ThumbnailLoader.shared.thumbnail(atPath: path)?.image {
+                asyncCGImage = cg
+            } else {
+                loadFailed = true
+            }
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(gif.caption ?? (message.fileName.isEmpty ? String(localized: "GIF") : message.fileName))

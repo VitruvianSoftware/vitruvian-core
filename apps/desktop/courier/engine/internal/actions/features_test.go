@@ -609,8 +609,8 @@ func TestStickerAndGIFRoomFeatures(t *testing.T) {
 		MaxSize:          50 << 20,
 	}, gm.GIF)
 
-	// CapLevelRejected / CapLevelUnsupported MIME filtering (only CapLevelFullySupported, CapLevelPartialSupport,
-	// and CapLevelDropped count as sendable MIME types; MimeTypes sorted deterministically).
+	// CapLevelDropped / CapLevelRejected / CapLevelUnsupported MIME filtering (only >= CapLevelPartialSupport
+	// count as sendable MIME types; MimeTypes sorted deterministically).
 	filtered := FeaturesOf(&event.RoomFeatures{
 		File: event.FileFeatureMap{
 			event.CapMsgSticker: {
@@ -636,11 +636,11 @@ func TestStickerAndGIFRoomFeatures(t *testing.T) {
 	})
 	require.Equal(t, MediaCapFeature{
 		Supported:        true,
-		MimeTypes:        []string{"image/apng", "image/png", "image/webp"},
+		MimeTypes:        []string{"image/apng", "image/png"},
 		Captions:         true,
 		MaxCaptionLength: 200,
 		MaxSize:          512 << 10,
-	}, filtered.Sticker)
+	}, filtered.Sticker, "CapLevelDropped must not count as a sendable MIME type")
 	require.Equal(t, MediaCapFeature{
 		Supported: false,
 		MimeTypes: []string{},

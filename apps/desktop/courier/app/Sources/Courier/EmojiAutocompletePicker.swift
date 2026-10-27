@@ -27,8 +27,7 @@ public struct EmojiItemRow: View {
                 Text(glyph)
                     .font(.system(size: 18))
                     .frame(width: 20, height: 20)
-            } else if let cgImage = loadedImage
-                ?? ThumbnailLoader.thumbnail(forMediaURL: candidate.mediaURL, maxPixelSize: 40) {
+            } else if let cgImage = loadedImage {
                 Image(decorative: cgImage, scale: 2.0, orientation: .up)
                     .resizable()
                     .scaledToFit()
@@ -62,9 +61,9 @@ public struct EmojiItemRow: View {
         .contentShape(Rectangle())
         .task(id: candidate.mediaURL) {
             guard candidate.glyph == nil,
-                  let loader = thumbnailLoader,
                   let path = ThumbnailLoader.resolveMediaPath(candidate.mediaURL)
             else { return }
+            let loader = thumbnailLoader ?? .shared
             loadedImage = await loader.thumbnail(atPath: path)?.image
         }
     }
