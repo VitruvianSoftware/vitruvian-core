@@ -107,8 +107,37 @@ enum NotchScreenRefreshContract {
         var rect = CGRect.zero
         var isConcealedForMissionControl = false
         var settledCalls = 0
+        var isVisible = false
+        var relocationPending = false
+        var hidesOnArrival = false
+        var orderOuts = 0, orderFronts = 0, hides = 0
+        var didOrderOut: (() -> Void)?
+        var didOrderFront: (() -> Void)?
         func containsHover(_ point: CGPoint) -> Bool { rect.contains(point) }
         func whenSettled(_ body: @escaping () -> Void) { settledCalls += 1; body() }
+        func canRelocateOnScreen() -> Bool { isVisible || relocationPending }
+        func orderOutForRelocation() -> Bool {
+            guard canRelocateOnScreen() else { return false }
+            orderOuts += 1
+            relocationPending = true
+            isVisible = false
+            didOrderOut?()
+            return true
+        }
+        func orderFrontForRelocation() {
+            guard relocationPending else { return }
+            guard !hidesOnArrival else { cancelRelocation(); return }
+            relocationPending = false
+            isVisible = true
+            orderFronts += 1
+            didOrderFront?()
+        }
+        func hide(animated: Bool) {
+            hides += 1
+            hidesOnArrival = true
+            isVisible = false
+        }
+        func cancelRelocation() { relocationPending = false }
     }
     final class Service {
         var hiddenInFullscreen = false
@@ -139,13 +168,19 @@ enum NotchScreenRefreshContract {
         var reads: Int { menuSpace.reads }
         var appliedRooms: [CGFloat?] = []
         var presentations = 0
+        var presentedDisplays: [CGDirectDisplayID?] = []
+        var presentationHook: (() -> Void)?
         var collapses = 0
         func syncWithPreferences() { preferenceSyncs += 1 }
         func applyMenuSpace(_ room: CGFloat?) {
             appliedRooms.append(room)
             geometry.compactSideRoom = room
         }
-        func refreshPresentation(animated: Bool) { presentations += 1 }
+        func refreshPresentation(animated: Bool) {
+            presentations += 1
+            presentedDisplays.append(displayID)
+            presentationHook?()
+        }
         func collapse() { collapses += 1 }
         var displayHasMenuBar = true
         var followsPointer = false
@@ -161,9 +196,26 @@ enum NotchScreenRefreshContract {
         var choosingFileDropDestination = false
         var screenUpdates = 0
         var consumerSyncs = 0
+        var mirrorSyncs = 0, edgeClickSyncs = 0
+        var waveHolds: [CGDirectDisplayID] = []
+        var waveMatches = 0, waveKeeps = 0, waveReleases = 0
+        var screenUpdateHook: (() -> Void)?
+        var mirrorSyncHook: (() -> Void)?
+        var waveMatchHook: (() -> Void)?
+        func syncMirrors() { mirrorSyncs += 1; mirrorSyncHook?() }
+        func syncScreenEdgeClicks() { edgeClickSyncs += 1 }
+        func holdMusicWave(on id: CGDirectDisplayID) { waveHolds.append(id) }
+        func matchMusicWave() { waveMatches += 1; waveMatchHook?() }
+        func keepMusicWave() { waveKeeps += 1 }
+        func releaseMusicWave() { waveReleases += 1 }
+        /// The display the island's window is on its way to.
+        var mirrorHeldForArrival: CGDirectDisplayID? { refresh.mirrorHeldForArrival }
+        func move(to id: CGDirectDisplayID) { refresh.move(to: id) }
+        func cancelRelocation() { refresh.cancelRelocation() }
         /// The island takes the display its identifier names, as updateScreen does.
         func updateScreen() {
             screenUpdates += 1
+            screenUpdateHook?()
             if let screen = Display.screens.first(where: { $0.notchDisplayID == displayID }) {
                 geometry = NotchGeometry(screen: screen.frame, safeAreaTop: 0, cameraWidth: 0)
             }
@@ -212,11 +264,23 @@ enum NotchScreenRefreshContract {
                 resignKey: { [unowned self] in self.panel?.resignKey() },
                 rememberPasteTarget: { Clipboard.shared.rememberPasteTarget() },
                 collapse: { [unowned self] in self.collapse() },
-                takeDisplay: { [unowned self] id in
-                    self.displayID = id
-                    self.updateScreen()
-                },
+                selectDisplay: { [unowned self] id in self.displayID = id },
+                updateScreen: { [unowned self] in self.updateScreen() },
+                currentDisplayID: { [unowned self] in self.displayID },
+                displayExists: { id in Display.screens.contains { $0.notchDisplayID == id } },
                 syncVisibleConsumers: { [unowned self] in self.syncVisibleConsumers() },
+                hostIdentity: { [unowned self] in self.windowHost },
+                canRelocateOnScreen: { [unowned self] in self.windowHost?.canRelocateOnScreen() ?? false },
+                orderOutForRelocation: { [unowned self] in self.windowHost?.orderOutForRelocation() ?? false },
+                orderFrontForRelocation: { [unowned self] in self.windowHost?.orderFrontForRelocation() },
+                cancelHostRelocation: { [unowned self] in self.windowHost?.cancelRelocation() },
+                hideHost: { [unowned self] in self.windowHost?.hide(animated: false) },
+                syncMirrors: { [unowned self] in self.syncMirrors() },
+                syncScreenEdgeClicks: { [unowned self] in self.syncScreenEdgeClicks() },
+                holdWave: { [unowned self] in self.holdMusicWave(on: $0) },
+                matchWave: { [unowned self] in self.matchMusicWave() },
+                keepWave: { [unowned self] in self.keepMusicWave() },
+                releaseWave: { [unowned self] in self.releaseMusicWave() },
                 startMenuSpace: { [unowned self] in self.menuSpace.start() },
                 stopMenuSpace: { [unowned self] in self.menuSpace.stop() },
                 invalidateMenuSpace: { [unowned self] in self.menuSpace.invalidate() },
@@ -516,6 +580,7 @@ enum NotchScreenRefreshContract {
         suite.expect(!noMenuBar.menuSpace.isRunning && noMenuBar.reads == 0 && noMenuBar.geometry.compactSideRoom != nil,
                "a display without a menu bar keeps the island at rest with nothing to measure or cover")
         pointerFollowContracts(suite)
+        relocationContracts(suite)
 
         let ownApp = NSRunningApplication.current
         let behindLauncher = MenuBarOwnerWorkspace(menuBarOwner: ownApp, frontmost: nil)
@@ -657,6 +722,193 @@ enum NotchScreenRefreshContract {
         suite.expect(!stopping.pointerFollower.isWatching && Pointer.removed == removedBefore + 2
                      && !stopping.pointerFollower.hasPendingMove && stopping.displayID == 1,
                      "suspending the island removes its pointer monitors and drops a pending move")
+    }
+
+    /// Executes the module's own move and cancellation. Display selection,
+    /// presentation and native window operations remain controlled boundaries;
+    /// these checks cover callback ownership, not AppKit drawing or interaction.
+    private static func relocationContracts(_ suite: TestSuite) {
+        Clock.main = Scheduler()
+        defer { Clock.main = Scheduler(); Display.screens = [] }
+        let first = Display(1, CGRect(x: 0, y: 0, width: 1470, height: 956))
+        let second = Display(2, CGRect(x: 1470, y: 0, width: 1920, height: 1080))
+        let third = Display(3, CGRect(x: 3390, y: 0, width: 1920, height: 1080))
+        Display.screens = [first, second, third]
+        func island(visible: Bool = true) -> Service {
+            let service = Service()
+            service.displayID = 1
+            service.geometry = NotchGeometry(screen: first.frame, safeAreaTop: 32, cameraWidth: 179)
+            service.windowHost?.isVisible = visible
+            return service
+        }
+
+        let moving = island()
+        let movingHost = moving.windowHost!
+        var heldDuringLayout = false
+        var heldDuringReveal = false
+        moving.waveMatchHook = { [weak moving] in heldDuringLayout = moving?.mirrorHeldForArrival == 3 }
+        movingHost.didOrderFront = { [weak moving] in heldDuringReveal = moving?.mirrorHeldForArrival == 3 }
+        moving.move(to: 2)
+        suite.expect(!movingHost.isVisible && movingHost.relocationPending && movingHost.orderFronts == 0
+                     && moving.mirrorHeldForArrival == 2 && moving.waveHolds == [1],
+                     "a visible island leaves before its frame moves and keeps the destination copy until arrival")
+        moving.move(to: 3)
+        suite.expect(moving.mirrorHeldForArrival == 3 && moving.presentedDisplays == [2, 3]
+                     && movingHost.orderFronts == 0 && moving.waveHolds == [1, 2],
+                     "a second move takes over an arrival that has not yet returned to the screen")
+        Clock.main.advance(0)
+        suite.expect(moving.displayID == 3 && moving.geometry.screen == third.frame
+                     && movingHost.isVisible && !movingHost.relocationPending && movingHost.orderFronts == 1
+                     && moving.mirrorHeldForArrival == nil && moving.waveMatches == 1 && moving.waveKeeps == 1
+                     && moving.waveReleases == 1 && moving.mirrorSyncs == 3 && moving.edgeClickSyncs == 1,
+                     "only the newest arrival reveals the island, releases its copies and restores edge clicks")
+        suite.expect(heldDuringLayout && heldDuringReveal,
+                     "layout keeps the arrival gate until native reveal, so a nested refresh cannot show an undrawn island")
+
+        let hidden = island(visible: false)
+        hidden.move(to: 2)
+        suite.expect(hidden.displayID == 2 && hidden.presentations == 1 && hidden.mirrorHeldForArrival == nil
+                     && hidden.windowHost?.orderOuts == 0 && hidden.windowHost?.orderFronts == 0
+                     && hidden.waveReleases == 1 && Clock.main.pending == 0,
+                     "an already hidden island uses ordinary presentation without creating an arrival")
+
+        let selected = island()
+        selected.screenUpdateHook = { [weak selected] in selected?.displayID = 3 }
+        selected.move(to: 2)
+        suite.expect(selected.mirrorHeldForArrival == 3 && selected.presentedDisplays == [3],
+                     "a display choice made during screen update replaces the requested arrival destination")
+        Clock.main.advance(0)
+        suite.expect(selected.windowHost?.orderFronts == 1 && selected.mirrorHeldForArrival == nil
+                     && selected.geometry.screen == third.frame,
+                     "the island returns on the screen that was actually selected")
+
+        let redirected = island()
+        redirected.move(to: 2)
+        redirected.displayID = 3
+        redirected.updateScreen()
+        Clock.main.advance(0)
+        suite.expect(redirected.presentedDisplays == [2, 3] && redirected.geometry.screen == third.frame
+                     && redirected.windowHost?.orderFronts == 1 && redirected.mirrorHeldForArrival == nil,
+                     "a preference change before arrival refreshes the new display instead of leaving the island out")
+
+        let unplugged = island()
+        unplugged.move(to: 2)
+        Display.screens = [first, third]
+        unplugged.screenUpdateHook = { [weak unplugged] in unplugged?.displayID = 1 }
+        Clock.main.advance(0)
+        suite.expect(unplugged.screenUpdates == 2 && unplugged.consumerSyncs == 2
+                     && unplugged.presentedDisplays == [2, 1] && unplugged.geometry.screen == first.frame
+                     && unplugged.windowHost?.orderFronts == 1 && unplugged.mirrorHeldForArrival == nil,
+                     "an unplugged destination is reselected before the debounced screen notification arrives")
+        Display.screens = [first, second, third]
+
+        for suspended in [false, true] {
+            let unavailable = island()
+            let host = unavailable.windowHost!
+            unavailable.move(to: 2)
+            if suspended { unavailable.suspended = true } else { unavailable.running = false }
+            Clock.main.advance(0)
+            suite.expect(host.hides == 1 && !host.isVisible && !host.relocationPending && host.orderFronts == 0
+                         && unavailable.mirrorHeldForArrival == nil && unavailable.waveMatches == 0
+                         && unavailable.waveReleases == 1 && unavailable.edgeClickSyncs == 0,
+                         "an arrival queued before \(suspended ? "suspension" : "stop") hides without reviving the island")
+        }
+
+        let cancelled = island()
+        let oldHost = cancelled.windowHost!
+        cancelled.move(to: 2)
+        cancelled.cancelRelocation()
+        oldHost.hide(animated: false)
+        oldHost.cancelRelocation()
+        let replacement = Host()
+        replacement.isVisible = true
+        cancelled.windowHost = replacement
+        Clock.main.advance(0)
+        suite.expect(cancelled.mirrorHeldForArrival == nil && oldHost.orderFronts == 0 && replacement.isVisible
+                     && replacement.orderFronts == 0 && cancelled.waveMatches == 0 && cancelled.waveReleases == 1,
+                     "cancelling before teardown makes the old arrival inert even after presentation has restarted")
+
+        let replaced = island()
+        let replacedHost = replaced.windowHost!
+        replaced.move(to: 2)
+        let unrelated = Host()
+        unrelated.relocationPending = true
+        replaced.windowHost = unrelated
+        Clock.main.advance(0)
+        suite.expect(replacedHost.orderFronts == 0 && unrelated.orderFronts == 0 && unrelated.relocationPending
+                     && replaced.waveMatches == 0 && replaced.edgeClickSyncs == 0,
+                     "host identity prevents a delayed arrival from revealing a replacement window")
+
+        let interrupted = island()
+        let interruptedHost = interrupted.windowHost!
+        interruptedHost.didOrderOut = { [weak interrupted] in interrupted?.cancelRelocation() }
+        interrupted.move(to: 2)
+        suite.expect(interrupted.screenUpdates == 0 && interrupted.presentations == 0
+                     && interrupted.mirrorHeldForArrival == nil && Clock.main.pending == 0,
+                     "cancellation during native order-out stops the move before it updates the screen")
+
+        let withdrawn = island()
+        let withdrawnHost = withdrawn.windowHost!
+        withdrawn.screenUpdateHook = { [weak withdrawn] in
+            withdrawn?.cancelRelocation()
+            withdrawn?.windowHost = nil
+        }
+        withdrawn.move(to: 2)
+        suite.expect(withdrawn.presentations == 0 && withdrawn.consumerSyncs == 0
+                     && withdrawnHost.orderFronts == 0 && withdrawn.mirrorHeldForArrival == nil
+                     && Clock.main.pending == 0,
+                     "teardown during screen selection prevents presentation or a callback for the discarded host")
+
+        let matching = island()
+        let matchingHost = matching.windowHost!
+        matching.waveMatchHook = { [weak matching] in
+            matching?.waveMatchHook = nil
+            matching?.move(to: 3)
+        }
+        matching.move(to: 2)
+        Clock.main.advance(0)
+        suite.expect(matching.displayID == 3 && matching.presentedDisplays == [2, 3]
+                     && matchingHost.orderFronts == 1 && matchingHost.isVisible
+                     && matching.mirrorHeldForArrival == nil && matching.waveMatches == 2
+                     && matching.waveKeeps == 1 && matching.waveReleases == 1 && matching.edgeClickSyncs == 1,
+                     "a move reentered while copying bars owns the only reveal and release that follow")
+
+        let mirroring = island()
+        let mirroringHost = mirroring.windowHost!
+        mirroring.mirrorSyncHook = { [weak mirroring] in
+            guard let mirroring, mirroring.mirrorSyncs == 2 else { return }
+            mirroring.mirrorSyncHook = nil
+            mirroring.move(to: 3)
+        }
+        mirroring.move(to: 2)
+        Clock.main.advance(0)
+        suite.expect(mirroring.displayID == 3 && mirroringHost.orderFronts == 2 && mirroringHost.isVisible
+                     && mirroring.mirrorHeldForArrival == nil && mirroring.waveReleases == 1
+                     && mirroring.edgeClickSyncs == 1,
+                     "a move reentered while retiring a copy keeps its hold until its own arrival finishes")
+
+        let revealed = island()
+        let revealedHost = revealed.windowHost!
+        revealedHost.didOrderFront = { [weak revealed, weak revealedHost] in
+            revealedHost?.didOrderFront = nil
+            revealed?.move(to: 3)
+        }
+        revealed.move(to: 2)
+        Clock.main.advance(0)
+        suite.expect(revealed.displayID == 3 && revealedHost.orderFronts == 2 && revealedHost.isVisible
+                     && revealed.mirrorHeldForArrival == nil && revealed.waveReleases == 1
+                     && revealed.waveKeeps == 1 && revealed.edgeClickSyncs == 1,
+                     "a native reveal that starts another move cannot finish the newer move's mirror handoff")
+
+        let fullscreen = island()
+        let fullscreenHost = fullscreen.windowHost!
+        fullscreen.presentationHook = { [weak fullscreenHost] in fullscreenHost?.hide(animated: false) }
+        fullscreen.move(to: 2)
+        Clock.main.advance(0)
+        suite.expect(fullscreenHost.hides == 1 && fullscreenHost.orderFronts == 0 && !fullscreenHost.isVisible
+                     && !fullscreenHost.relocationPending && fullscreen.mirrorHeldForArrival == nil
+                     && fullscreen.waveReleases == 1,
+                     "a presentation that hides on its destination stays hidden when the queued arrival runs")
     }
 }
 

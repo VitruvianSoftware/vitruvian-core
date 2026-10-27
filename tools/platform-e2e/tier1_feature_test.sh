@@ -476,19 +476,19 @@ fi
 
 # 8.4: Test docs-only change-detection bypass in tools/pipeline/plan
 plan_json="$(run_pipeline_plan --format json 2>&1)"
-if grep -q "OperationDocsOnly" tools/pipeline/plan/classifier.go && echo "$plan_json" | jq -e 'has("is_docs_only")' >/dev/null 2>&1; then
+if grep -q "Operation::DocsOnly" tools/pipeline/plan/src/gates.rs && echo "$plan_json" | jq -e 'has("is_docs_only")' >/dev/null 2>&1; then
 	pass "F8.4: Docs-only change-detection bypass logic verified in classifier and plan engine"
 else
 	fail "F8.4: Docs-only bypass logic missing in plan or classifier"
 fi
 
 # 8.5: Verify operation classification in classifier
-if grep -q "OperationUIFeature" tools/pipeline/plan/classifier.go &&
-	grep -q "OperationBackendAPI" tools/pipeline/plan/classifier.go &&
-	grep -q "OperationDocsOnly" tools/pipeline/plan/classifier.go; then
+if grep -q "Operation::UiFeature" tools/pipeline/plan/src/gates.rs &&
+	grep -q "Operation::BackendApi" tools/pipeline/plan/src/gates.rs &&
+	grep -q "Operation::DocsOnly" tools/pipeline/plan/src/gates.rs; then
 	pass "F8.5: Operation classification logic (UI, Backend, Docs, Infra) verified"
 else
-	fail "F8.5: Operation types missing in classifier.go"
+	fail "F8.5: Operation types missing in gates.rs"
 fi
 
 # ------------------------------------------------------------------------------

@@ -174,6 +174,7 @@ package enum DefaultsKey {
     package static let diskImageInstallerUseUserApplications = "diskImageInstallerUseUserApplications"
     package static let autoQuitEnabled = "autoQuitEnabled"
     package static let autoQuitExceptions = "autoQuitExceptions"  // [bundle id] kept running
+    package static let autoQuitDockApps = "autoQuitDockApps"  // [bundle id] menu bar apps explicitly allowed to quit in the Dock
     // Quit/close protection: each shortcut owns its full configuration and app list.
     package static let quitProtectionQuitEnabled = "quitProtectionQuitEnabled"
     package static let quitProtectionQuitMode = "quitProtectionQuitMode"
@@ -709,6 +710,7 @@ package enum DefaultsKey {
     package static let screenshotWatermarkPresets = "screenshotWatermarkPresets"
     package static let screenshotOpenEditorDirectly = "screenshotOpenEditorDirectly"
     package static let screenshotCopyToClipboard = "screenshotCopyToClipboard"
+    package static let screenshotCopyImageOnly = "screenshotCopyImageOnly"
     package static let screenshotAddToShelf = "screenshotAddToShelf"
     package static let screenshotPreviewPosition = "screenshotPreviewPosition"
     package static let screenshotPreviewTakesFocus = "screenshotPreviewTakesFocus"
@@ -832,6 +834,7 @@ package enum DefaultsKey {
     // Optional top-of-screen workspace and activity presentations.
     package static let notchShowPlayingMusic = "notchShowPlayingMusic"
     package static let notchIncludeOtherPlayers = "notchIncludeOtherPlayers"
+    package static let notchMusicShowVolume = "notchMusicShowVolume"
     package static let notchPreferredPlayer = "notchPreferredPlayer"
     package static let notchDefaultProfileInitialized = "notchDefaultProfileInitialized" // local migration marker; never backed up
     package static let notchInitialExtensionsInstalled = "notchInitialExtensionsInstalled" // local first-install marker; never backed up

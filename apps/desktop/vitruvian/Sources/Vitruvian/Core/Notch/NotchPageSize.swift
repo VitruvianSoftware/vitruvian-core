@@ -18,7 +18,8 @@ extension NotchLayout {
                                  timerMode: @autoclosure () -> NotchTimerMode,
                                  timerHasSession: @autoclosure () -> Bool,
                                  hasPlayback: @autoclosure () -> Bool,
-                                 musicBand: @autoclosure () -> CGFloat) -> CGSize {
+                                 musicBand: @autoclosure () -> CGFloat,
+                                 musicShowsVolume: @autoclosure () -> Bool = false) -> CGSize {
         var size = content
         guard !detail else { return size }
         switch module {
@@ -44,7 +45,8 @@ extension NotchLayout {
             // Shorten the tracks before pushing mute and level controls offscreen.
             size.height = max(size.height, NotchLayout.mixerMinimumHeight)
         case .music:
-            size.height = max(size.height, NotchLayout.musicPlayerHeight(band: musicBand(), playing: hasPlayback()))
+            size.height = max(size.height, NotchLayout.musicPlayerHeight(band: musicBand(), playing: hasPlayback(),
+                                                                         showVolume: musicShowsVolume()))
         case .files:
             // One shelf tile and its vertical insets; the actions are in the top row.
             size.height = max(size.height, ShelfTileLayout.tileSize.height + ShelfTileLayout.inset * 2)

@@ -15,8 +15,6 @@ worktree. See README.md.
 # gazelle:ignore
 
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 _DATA = [
     "//:.gitleaks.toml",
@@ -31,7 +29,6 @@ rust_library(
         ["src/**/*.rs"],
         exclude = ["src/main.rs"],
     ),
-    compile_data = ["git.sh"],
     crate_root = "src/lib.rs",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
@@ -128,53 +125,6 @@ alias(
     visibility = ["//visibility:public"],
 )
 
-sh_binary(
-    name = "commit-sh",
-    srcs = ["git.sh"],
-    args = ["commit"],
-    data = _DATA,
-    visibility = ["//visibility:public"],
-    deps = ["@bazel_tools//tools/bash/runfiles"],
-)
-
-sh_binary(
-    name = "push-sh",
-    srcs = ["git.sh"],
-    args = ["push"],
-    data = _DATA,
-    visibility = ["//visibility:public"],
-    deps = ["@bazel_tools//tools/bash/runfiles"],
-)
-
-sh_binary(
-    name = "sync-sh",
-    srcs = ["git.sh"],
-    args = ["sync"],
-    data = _DATA,
-    visibility = ["//visibility:public"],
-    deps = ["@bazel_tools//tools/bash/runfiles"],
-)
-
-# Throwaway repos, a bare repo as origin, the real pinned gitleaks, and a fake
-# agent-app: no network, never the real repo.
-sh_test(
-    name = "git_test",
-    size = "medium",
-    srcs = ["git_test.sh"],
-    args = ["$(location git.sh)"],
-    data = ["git.sh"] + _DATA,
-    deps = ["@bazel_tools//tools/bash/runfiles"],
-)
-
-sh_test(
-    name = "git-rs_test",
-    size = "medium",
-    srcs = ["git_test.sh"],
-    args = ["$(location :git)"],
-    data = [":git"] + _DATA,
-    deps = ["@bazel_tools//tools/bash/runfiles"],
-)
-
 rust_test(
     name = "git_lib_test",
     size = "small",
@@ -183,18 +133,7 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
-sh_test(
-    name = "git-rs-parity_test",
-    size = "medium",
-    srcs = ["git-rs-parity_test.sh"],
-    args = [
-        "$(location git.sh)",
-        "$(location :git)",
-    ],
-    data = [
-        "git.sh",
-        ":git",
-    ] + _DATA,
-    shard_count = 3,
-    deps = ["@bazel_tools//tools/bash/runfiles"],
+test_suite(
+    name = "git_test",
+    tests = [":git_lib_test"],
 )

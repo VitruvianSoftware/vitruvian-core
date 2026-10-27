@@ -12,6 +12,11 @@ package struct AutoQuitSettings: View {
     @ObservedObject private var service = AutoQuitService.shared
     @AppStorage(Preferences.autoQuitEnabled) private var enabled: Bool
     @State private var showingAppPicker = false
+    @State private var showingDockAppPicker = false
+
+    private var dockAppsText: AutoQuitDockAppsStrings {
+        FeatureStrings.autoQuitDockApps(l10n.language)
+    }
 
     package var body: some View {
         Form {
@@ -86,6 +91,37 @@ package struct AutoQuitSettings: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section(dockAppsText.listTitle) {
+                ForEach(sortedDockApps, id: \.self) { bundleID in
+                    HStack(spacing: 9) {
+                        Image(nsImage: InstalledApps.icon(for: bundleID))
+                            .resizable().frame(width: 20, height: 20)
+                        Text(InstalledApps.name(for: bundleID))
+                        Spacer()
+                        Button {
+                            service.removeDockApp(bundleID)
+                        } label: {
+                            Image(systemName: "minus.circle.fill")
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(dockAppsText.removeButton)
+                    }
+                }
+                .disabled(!enabled)
+
+                Button {
+                    showingDockAppPicker = true
+                } label: {
+                    Label(dockAppsText.addButton, systemImage: "plus")
+                }
+                .disabled(!enabled)
+
+                Text(dockAppsText.caption)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             if enabled, !permissions.accessibility {
                 Section(l10n.s.permissionRequired) {
                     PermissionRow(kind: .accessibility)
@@ -95,6 +131,9 @@ package struct AutoQuitSettings: View {
         .formStyle(.grouped)
         .sheet(isPresented: $showingAppPicker) {
             appPickerSheet
+        }
+        .sheet(isPresented: $showingDockAppPicker) {
+            dockAppPickerSheet
         }
     }
 
@@ -112,6 +151,29 @@ package struct AutoQuitSettings: View {
             service.addException(bundleID)
         } loadApps: {
             InstalledApps.installedBundleApplications(excluding: excluded)
+        }
+    }
+
+    private var sortedDockApps: [String] {
+        service.dockApps.sorted {
+            InstalledApps.name(for: $0).localizedCaseInsensitiveCompare(InstalledApps.name(for: $1))
+                == .orderedAscending
+        }
+    }
+
+    private var dockAppPickerSheet: some View {
+        let excluded = Set(service.dockApps + Defaults.mandatoryAutoQuitExceptionBundleIDs)
+        return AppPickerView(emptyNote: dockAppsText.emptyNote) {
+            showingDockAppPicker = false
+        } onSelect: { url in
+            showingDockAppPicker = false
+            guard AutoQuitSupport.canAllowMenuBarQuit(bundleURL: url),
+                  let bundleID = Bundle(url: url)?.bundleIdentifier else { return }
+            service.addDockApp(bundleID)
+        } loadApps: {
+            InstalledApps.installedBundleApplications(excluding: excluded).filter {
+                AutoQuitSupport.canAllowMenuBarQuit(bundleURL: $0.url)
+            }
         }
     }
 

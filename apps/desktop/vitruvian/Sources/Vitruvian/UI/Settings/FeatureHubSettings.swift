@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Vorssaint
 
+import AppKit
 import SwiftUI
 import VitruvianCore
 import VitruvianDesign
@@ -76,14 +77,19 @@ package struct FeatureHubSettings: View {
                 if features.needsRestartToUnload {
                     restartCard
                 }
-            }
-            if tab == .features {
-                // The never-used offer comes and goes with installs too,
-                // so it shares one stable child with the summary.
-                FeatureHubStableGroup {
-                    summaryCard
-                    neverUsedCard
+                if tab == .features {
+                    // The never-used offer comes and goes with installs too,
+                    // so it shares one stable child with the summary.
+                    FeatureHubStableGroup {
+                        summaryCard
+                        neverUsedCard
+                    }
                 }
+            }
+            // Keep the header's identity stable when the notice changes.
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background { FeatureHubScrollAnchor() }
+            if tab == .features {
                 dynamicIslandCard
                 presetsCard
                 ForEach(FeatureGroup.allCases.filter { $0 != .dynamicIsland }, id: \.self) { group in
@@ -106,6 +112,12 @@ package struct FeatureHubSettings: View {
                 }
             }
         }
+        // Include the scroll view's document height in this transaction;
+        // animating that height would constrain an immediate notice adjustment
+        // against the old bottom limit for the duration of the animation.
+        .animation(nil, value: features.needsRestartToUnload)
+        .animation(nil, value: neverUsed)
+        .animation(nil, value: recentlyUninstalled)
         .alert(confirmingPreset.map { presetName($0) } ?? "",
                isPresented: Binding(get: { confirmingPreset != nil },
                                     set: { if !$0 { confirmingPreset = nil } }),
@@ -362,7 +374,7 @@ package struct FeatureHubSettings: View {
         .id(FeatureGroup.dynamicIsland)
     }
 
-    /// Groups start open; LazyVStack builds distant groups as they enter view.
+    /// Groups start open and are measured before scrolling begins.
     /// Closing a group removes its feature rows until the user reopens it.
     private func groupCard(_ group: FeatureGroup) -> some View {
         let members = AppFeature.features(in: group)
@@ -437,10 +449,10 @@ package struct FeatureHubSettings: View {
     }
 }
 
-/// The hub's scrolling column. Its lazy stack has to be the scroll view's own
-/// content (issue #2270): nested in a plain stack, it resized that stack each
-/// time a card came into view, scrolling stalled for up to a second, and the
-/// layout could keep redoing itself until Settings froze.
+/// The hub's scrolling column. These few cards contain many variable-height
+/// rows, so it measures them eagerly: a lazy stack re-estimated distant cards
+/// while scrolling and re-anchored the viewport in the layout loop reported in
+/// #2311 and #2642 (and, nested in another stack, in #2270).
 package struct FeatureHubScrollPage<Content: View>: View {
     private let content: Content
 
@@ -450,7 +462,7 @@ package struct FeatureHubScrollPage<Content: View>: View {
 
     package var body: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 20) {
                 content
             }
             .modifier(FeatureHubColumn())
@@ -459,9 +471,8 @@ package struct FeatureHubScrollPage<Content: View>: View {
 }
 
 /// Cards that come and go with installs, held together as one child of the
-/// page's lazy stack. Inserting or removing a lazy child above the viewport
-/// invalidates the stack's visible range: the page jumps, or goes blank until
-/// the next scroll event. Inside one stable child the change only resizes it.
+/// page's stack, so a change above the viewport only resizes that child
+/// instead of inserting or removing one.
 package struct FeatureHubStableGroup<Content: View>: View {
     private let content: Content
 
@@ -507,6 +518,141 @@ package struct FeatureHubTally {
     package var canInstallAll: Bool { installed != total }
     /// Uninstall all still has something to uninstall.
     package var canUninstallAll: Bool { installed != 0 }
+}
+
+/// A notice above the viewport can change height without moving the row the
+/// user is working on. SwiftUI's ID-based position only keeps an entire card
+/// visible; cards taller than the viewport need the exact pixel offset.
+package struct FeatureHubScrollAnchor: NSViewRepresentable {
+    package init() {}
+
+    package func makeNSView(context: Context) -> AnchorView { AnchorView() }
+    package func updateNSView(_ view: AnchorView, context: Context) { view.schedule() }
+    package static func dismantleNSView(_ view: AnchorView, coordinator: ()) { view.stop() }
+
+    package final class AnchorView: NSView {
+        private struct Geometry {
+            let prefixBottom: CGFloat
+            let documentSize: NSSize
+            let viewport: NSRect
+        }
+        private weak var scroll: NSScrollView?
+        // Only the main thread touches these, and deinit runs after the last reference.
+        nonisolated(unsafe) private var observer: NSObjectProtocol?
+        nonisolated(unsafe) private var documentObserver: NSObjectProtocol?
+        nonisolated(unsafe) private var adjustment: DispatchWorkItem?
+        private var geometry: Geometry?
+        private var restoring = false
+
+        deinit {
+            adjustment?.cancel()
+            if let observer { NotificationCenter.default.removeObserver(observer) }
+            if let documentObserver { NotificationCenter.default.removeObserver(documentObserver) }
+        }
+
+        package override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        package override func viewDidMoveToSuperview() {
+            super.viewDidMoveToSuperview()
+            schedule()
+        }
+        package override func setFrameSize(_ newSize: NSSize) {
+            super.setFrameSize(newSize)
+            schedule()
+        }
+
+        package func schedule() {
+            guard adjustment == nil else { return }
+            let work = DispatchWorkItem { [weak self] in self?.restore() }
+            adjustment = work
+            DispatchQueue.main.async(execute: work)
+        }
+
+        private func readGeometry() -> Geometry? {
+            guard let scroll, let document = scroll.documentView else { return nil }
+            return Geometry(prefixBottom: convert(bounds, to: document).maxY,
+                            documentSize: document.frame.size,
+                            viewport: scroll.contentView.bounds)
+        }
+
+        private func scrolled() {
+            guard !restoring, let current = readGeometry() else { return }
+            if let previous = geometry,
+               previous.documentSize != current.documentSize
+                || previous.prefixBottom != current.prefixBottom {
+                // A shrinking document can clamp the clip before the notice
+                // view is resized. Keep the earlier snapshot until layout ends.
+                schedule()
+                return
+            }
+            geometry = current
+        }
+
+        private func restore() {
+            guard let enclosing = enclosingScrollView,
+                  let document = enclosing.documentView else { stop(); return }
+            if scroll !== enclosing {
+                if let observer { NotificationCenter.default.removeObserver(observer) }
+                if let documentObserver { NotificationCenter.default.removeObserver(documentObserver) }
+                scroll = enclosing
+                geometry = nil
+                enclosing.contentView.postsBoundsChangedNotifications = true
+                observer = NotificationCenter.default.addObserver(
+                    forName: NSView.boundsDidChangeNotification,
+                    object: enclosing.contentView, queue: .main
+                ) { [weak self] _ in MainActor.assumeIsolated { self?.scrolled() } }
+                document.postsFrameChangedNotifications = true
+                documentObserver = NotificationCenter.default.addObserver(
+                    forName: NSView.frameDidChangeNotification,
+                    object: document, queue: .main
+                ) { [weak self] _ in MainActor.assumeIsolated { self?.schedule() } }
+            }
+            var waitingForDocument = false
+            defer {
+                if !waitingForDocument { geometry = readGeometry() }
+                adjustment = nil
+            }
+            enclosing.layoutSubtreeIfNeeded()
+            guard let previous = geometry, let current = readGeometry(),
+                  previous.viewport.minY >= previous.prefixBottom,
+                  previous.viewport.size == current.viewport.size,
+                  previous.documentSize.width == current.documentSize.width else { return }
+            let clip = enclosing.contentView
+            let expected = clip.constrainBoundsRect(previous.viewport)
+            // Keep an intentional scroll or navigation performed after the
+            // snapshot, while accepting the document's automatic bottom clamp.
+            guard abs(current.viewport.minY - expected.minY) < 0.5,
+                  abs(current.viewport.minX - expected.minX) < 0.5 else { return }
+            let delta = current.prefixBottom - previous.prefixBottom
+            guard abs(delta) > 0.01 else { return }
+            var target = previous.viewport
+            target.origin.y += delta
+            let constrained = clip.constrainBoundsRect(target)
+            if delta > 0,
+               current.documentSize.height == previous.documentSize.height,
+               target.minY > constrained.minY + 0.5 {
+                // The prefix can resize before SwiftUI grows its document.
+                // Keep the snapshot until that frame change permits the new
+                // offset, instead of losing it against the old bottom limit.
+                waitingForDocument = true
+                return
+            }
+            restoring = true
+            clip.scroll(to: constrained.origin)
+            enclosing.reflectScrolledClipView(clip)
+            restoring = false
+        }
+
+        package func stop() {
+            adjustment?.cancel()
+            adjustment = nil
+            if let observer { NotificationCenter.default.removeObserver(observer) }
+            observer = nil
+            if let documentObserver { NotificationCenter.default.removeObserver(documentObserver) }
+            documentObserver = nil
+            geometry = nil
+            scroll = nil
+        }
+    }
 }
 
 private extension FeatureGroup {

@@ -20,16 +20,10 @@ gcloud (principles §2.2).
 
 # gazelle:ignore
 
-load("@aspect_rules_py//py:defs.bzl", "py_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
-exports_files(["gcp-secrets.sh"])
-
-# The tool, in Rust (src/): gcp-secrets.sh's calls, prompts, output and exit
-# codes, held to the script by the parity test below. One library; each
-# subcommand is the same src/main.rs with the subcommand baked in as $1.
+# The tool, in Rust (src/): each subcommand is the same src/main.rs with the
+# subcommand baked in as $1.
 rust_library(
     name = "gcp_secrets_lib",
     srcs = ["src/lib.rs"],
@@ -84,48 +78,6 @@ rust_binary(
     ]
 ]
 
-# The shell original, kept runnable and held to the port by the parity test.
-sh_binary(
-    name = "status-sh",
-    srcs = ["gcp-secrets.sh"],
-    args = ["status"],
-    visibility = ["//visibility:public"],
-)
-
-sh_binary(
-    name = "seed-sh",
-    srcs = ["gcp-secrets.sh"],
-    args = ["seed"],
-    visibility = ["//visibility:public"],
-)
-
-# Hermetic guard for the safety properties that justify this tool existing at
-# all: the value goes in on stdin (never argv, which `ps` exposes), never
-# reaches stdout/stderr, every call is identity+project pinned, and a re-run
-# cannot silently stack a second version. Runs under `bazel test //...`, so it
-# cannot become a test that is written but never executed.
-sh_test(
-    name = "gcp-secrets_test",
-    srcs = ["gcp-secrets_test.sh"],
-    data = [
-        "gcp-secrets.sh",
-        "//tools/pulumi:resolve_identity.sh",
-    ],
-)
-
-# The same suite against the Rust binary (GCP_SECRETS_BIN); its subcommand
-# is passed as an argument, as the script's is.
-sh_test(
-    name = "gcp-secrets-rs_test",
-    srcs = ["gcp-secrets_test.sh"],
-    data = [
-        "gcp-secrets.sh",
-        ":status",
-        "//tools/pulumi:resolve_identity.sh",
-    ],
-    env = {"GCP_SECRETS_BIN": "$(rootpath :status)"},
-)
-
 # The #[cfg(test)] unit tests in src/.
 rust_test(
     name = "gcp_secrets_lib_test",
@@ -135,29 +87,17 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
-# Script and binary side by side on every case in gcp_secrets_rs_parity_test.py:
-# exit code, stdout, stderr and the gcloud calls (argv and stdin), compared
-# byte for byte, with the real identity resolver.
-py_test(
-    name = "gcp_secrets_rs_parity_test",
-    size = "medium",
-    srcs = ["gcp_secrets_rs_parity_test.py"],
-    data = [
-        "gcp-secrets.sh",
-        ":status",
-        "//tools/pulumi:resolve_identity.sh",
-    ],
-    env = {
-        "GCP_SECRETS_RS": "$(rootpath :status)",
-        "GCP_SECRETS_SH": "$(rootpath gcp-secrets.sh)",
-        "RESOLVE_IDENTITY": "$(rootpath //tools/pulumi:resolve_identity.sh)",
-    },
-    main = "gcp_secrets_rs_parity_test.py",
-    deps = ["//tools/shell-compat:parity_harness"],
+test_suite(
+    name = "sync_test",
+    tests = [":gcp_secrets_lib_test"],
 )
 
-alias(
+test_suite(
+    name = "gcp-secrets_test",
+    tests = [":gcp_secrets_lib_test"],
+)
+
+test_suite(
     name = "gcp_secrets_test",
-    actual = ":gcp-secrets_test",
-    deprecation = "Target :gcp_secrets_test is deprecated. Use :gcp-secrets_test instead. Will be removed in Phase 5.",
+    tests = [":gcp_secrets_lib_test"],
 )

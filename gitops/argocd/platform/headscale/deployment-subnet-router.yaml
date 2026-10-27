@@ -40,8 +40,17 @@ spec:
       labels:
         app.kubernetes.io/name: headscale-subnet-router
     spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
       automountServiceAccountToken: false
       enableServiceLinks: false
+      nodeSelector:
+        node.ipv1337.dev/link: wired
+        node-role.kubernetes.io/control-plane: "true"
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
       securityContext:
         fsGroup: 1000
       containers:
@@ -62,7 +71,10 @@ spec:
             - name: TS_EXTRA_ARGS
               value: "--login-server=https://headscale.ipv1337.dev --advertise-routes=192.168.86.0/24,10.44.86.0/24 --accept-routes=false --hostname=homelab-subnet-router"
             - name: TS_STATE_DIR
-              value: "/tmp/tailscale"
+              value: "/var/tmp/headscale-subnet-router"
+          volumeMounts:
+            - name: host-var-tmp
+              mountPath: /var/tmp
           resources:
             requests:
               cpu: 20m
@@ -77,3 +89,8 @@ spec:
             capabilities:
               drop:
                 - ALL
+      volumes:
+        - name: host-var-tmp
+          hostPath:
+            path: /var/tmp
+            type: Directory

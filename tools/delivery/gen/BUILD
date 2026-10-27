@@ -25,42 +25,12 @@
 #
 # Public visibility is required by the //tools/ci:gen alias, which lives in a
 # different package.
-#
-# :gen is the native Rust port (src/). The Go original stays buildable as
-# :gen-go, and :gen_rs_parity_test runs the two side by side — over the real
-# repository's delivery units, every testdata fixture, every flag and every
-# error case — requiring byte-identical workflows, stdout and stderr.
-#
-# Hand-written: the parity test reaches the real delivery() units and the
-# workflows in other packages.
 # gazelle:ignore
 
-load("@aspect_rules_py//py:defs.bzl", "py_test")
-load("@rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
-go_library(
-    name = "gen_lib",
-    srcs = ["main.go"],
-    importpath = "github.com/VitruvianSoftware/vitruvian-core/tools/delivery/gen",
-    visibility = ["//visibility:private"],
-    deps = ["//tools/ci/actionpins"],
-)
-
-go_binary(
-    name = "gen-go",
-    data = ["//:pins_manifest"],
-    embed = [":gen_lib"],
-    visibility = ["//visibility:public"],
-)
-
-# The generator in Rust. No crates: it reads the delivery() JSON with its own
-# port of encoding/json (src/gojson.rs) so a malformed declaration fails with
-# the Go generator's exact message, and it loads the action pin manifest itself
-# (src/actionpins.rs) rather than through //tools/ci/actionpins. Optimised in
-# every build mode.
 rust_library(
-    name = "gen_rs_lib",
+    name = "delivery_gen_lib",
     srcs = glob(
         ["src/**/*.rs"],
         exclude = ["src/main.rs"],
@@ -71,6 +41,11 @@ rust_library(
     rustc_flags = ["-Copt-level=3"],
 )
 
+alias(
+    name = "gen_rs_lib",
+    actual = ":delivery_gen_lib",
+)
+
 rust_binary(
     name = "gen",
     srcs = ["src/main.rs"],
@@ -78,7 +53,7 @@ rust_binary(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//visibility:public"],
-    deps = [":gen_rs_lib"],
+    deps = [":delivery_gen_lib"],
 )
 
 alias(
@@ -93,107 +68,21 @@ alias(
     visibility = ["//visibility:public"],
 )
 
-# The hermetic tests of main_test.go, ported (src/tests.rs), plus each
-# module's own.
 rust_test(
-    name = "gen_rs_lib_test",
+    name = "gen_test",
     size = "small",
-    crate = ":gen_rs_lib",
+    crate = ":delivery_gen_lib",
     data = glob(["testdata/**"]),
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
 )
 
-# The real delivery() units, by label. A unit missing from this list cannot
-# go unnoticed: the parity test also requires the generated set of workflows
-# to equal the committed delivery-*.yaml set, byte for byte, so a new unit
-# that is not listed here fails it (its app's workflow would differ).
-REAL_DELIVERY_UNITS = [
-    "//apps/desktop/vitruvian:vitruvian.delivery_unit",
-    "//apps/embedded/esp32-s3:esp32-s3.delivery_unit",
-    "//apps/suites/tabula/extension:tabula-dev-latest.delivery_unit",
-    "//apps/suites/tabula/infra/app:tabula-api.delivery_unit",
-    "//apps/suites/tabula/infra/build:tabula-build-stack.delivery_unit",
-    "//apps/suites/tabula/infra/identity:tabula-identity.delivery_unit",
-    "//apps/suites/tabula/infra/web:tabula-web.delivery_unit",
-    "//apps/web/oauth-user-inspector/infra/app:oauth-user-inspector.delivery_unit",
-    "//apps/web/oauth-user-inspector/infra/identity:oauth-user-inspector-identity.delivery_unit",
-    "//infrastructure/pulumi/platform/zitadel-apps:zitadel-apps.delivery_unit",
-    "//packages/peripherals:gravastar-mouse-publish.delivery_unit",
-    "//tools/charts:charts.delivery_unit",
-]
-
-# Holds the Rust generator to the Go one, side by side: both run as the real
-# CLI against a fake bazel that serves delivery() JSON, over the real
-# repository's units (the result must also equal the committed workflows),
-# every fixture at every phase, the flags, and each error case of
-# main_test.go — comparing exit codes, stdout, stderr and the files written.
-py_test(
-    name = "gen_rs_parity_test",
-    size = "medium",
-    srcs = ["gen_rs_parity_test.py"],
-    data = glob(["testdata/**"]) + REAL_DELIVERY_UNITS + [
-        ":gen",
-        ":gen-go",
-        "//:pins_manifest",
-        "//:workflow_files",
-    ],
-    env = {
-        "GEN_GO": "$(rootpath :gen-go)",
-        "GEN_RS": "$(rootpath :gen)",
-        "REAL_UNITS": " ".join(["$(rootpaths %s)" % u for u in REAL_DELIVERY_UNITS]),
-    },
-    main = "gen_rs_parity_test.py",
+test_suite(
+    name = "delivery_gen_lib_test",
+    tests = [":gen_test"],
 )
 
-# Two kinds of test, deliberately:
-#
-#   main_test.go   — HERMETIC. Golden files, determinism, the kill switch, the
-#                    Phase-1 job shape. `data` carries frozen fixture
-#                    declarations, so a BUILD change elsewhere in the repo
-#                    cannot flip these.
-#   parity_test.go — DELIBERATELY NOT hermetic. It compares the REAL generated
-#                    delivery-<app>.yaml workflows against the REAL legacy workflow it took the
-#                    development lane from; freezing copies of those two would
-#                    let them drift apart while the guard stayed green, which
-#                    is the failure it exists to catch (spec §6, Phase 1).
-#                    Both are exported by the ROOT BUILD (.github/ has no
-#                    package of its own) and reached by the relative path
-#                    "../../../.github/workflows/..." — rules_go runs a test
-#                    from its own package dir, so that path resolves against
-#                    the runfiles tree here and against the checkout under a
-#                    plain `GOWORK=off go test ./...`.
-go_test(
-    name = "gen_test",
-    size = "small",
-    srcs = [
-        "main_test.go",
-        "parity_test.go",
-    ],
-    data = glob(["testdata/**"]) + [
-        "//:pins_manifest",
-        # The whole workflow surface and every composite action, so the Phase-3
-        # guards can prove what they claim: every `uses:` resolves, every
-        # `with:` key is declared by its callee, and no workflow actively
-        # references one of the eight deleted per-app lanes. A hand-listed
-        # subset would make the "no workflow references a deleted one" scan
-        # vacuous for any file not on the list.
-        "//:composite_actions",
-        "//:workflow_files",
-        # The scripts the generated workflow shells out to: a `run:` naming a
-        # missing file is a failed job, and for a soak gate that is a blocked
-        # promotion.
-        "//apps/desktop/vitruvian:Tools/ci-setup-signing.sh",
-        "//apps/desktop/vitruvian:publish.sh",
-        "//apps/embedded/esp32-s3:publish.sh",
-        "//apps/suites/tabula/extension:publish-dev-latest.sh",
-        "//packages/peripherals:publish.sh",
-        "//tools/charts:publish.sh",
-        "//apps/suites/tabula/infra/app:cmd/revname/main.go",
-        "//tools/ci:require-dev-soak.sh",
-        "//tools/ci:resolve-deploy-base.sh",
-        "//tools/ci:resolve-unit-bases.sh",
-    ],
-    embed = [":gen_lib"],
-    deps = ["//tools/ci/actionpins"],
+test_suite(
+    name = "gen_rs_lib_test",
+    tests = [":gen_test"],
 )

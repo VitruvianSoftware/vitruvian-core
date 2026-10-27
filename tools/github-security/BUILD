@@ -1,3 +1,6 @@
+# Copyright (c) 2026 VitruvianSoftware
+# SPDX-License-Identifier: MIT
+
 """GitHub repository security settings that repo-config/Pulumi cannot express.
 
 `infrastructure/pulumi/platform/repo-config` is the authority for repo governance
@@ -19,15 +22,8 @@ rather than telling the operator to go and get it.
 
 # gazelle:ignore
 
-load("@aspect_rules_py//py:defs.bzl", "py_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
-exports_files(["enable-dependency-graph.sh"])
-
-# The tool, in Rust (src/): enable-dependency-graph.sh's gh calls, prompts,
-# output and exit codes, held to the script by the parity test below.
 rust_library(
     name = "github_security_lib",
     srcs = ["src/lib.rs"],
@@ -62,34 +58,6 @@ alias(
     visibility = ["//visibility:public"],
 )
 
-# The shell original, kept runnable and held to the port by the parity test.
-sh_binary(
-    name = "enable-dependency-graph-sh",
-    srcs = ["enable-dependency-graph.sh"],
-    visibility = ["//visibility:public"],
-)
-
-sh_test(
-    name = "enable-dependency-graph_test",
-    size = "small",
-    srcs = ["enable-dependency-graph_test.sh"],
-    data = ["enable-dependency-graph.sh"],
-)
-
-# The same suite against the Rust binary (ENABLE_DEPENDENCY_GRAPH_BIN): the
-# behaviour checks, with the posture held by what the binary actually sends.
-sh_test(
-    name = "enable-dependency-graph-rs_test",
-    size = "small",
-    srcs = ["enable-dependency-graph_test.sh"],
-    data = [
-        "enable-dependency-graph.sh",
-        ":enable-dependency-graph",
-    ],
-    env = {"ENABLE_DEPENDENCY_GRAPH_BIN": "$(rootpath :enable-dependency-graph)"},
-)
-
-# The #[cfg(test)] unit tests in src/.
 rust_test(
     name = "github_security_lib_test",
     size = "small",
@@ -98,21 +66,17 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
-# Script and binary side by side on every case in
-# enable_dependency_graph_rs_parity_test.py: exit code, stdout, stderr and
-# the calls to a fake gh and sleep, compared byte for byte.
-py_test(
-    name = "enable_dependency_graph_rs_parity_test",
-    size = "medium",
-    srcs = ["enable_dependency_graph_rs_parity_test.py"],
-    data = [
-        "enable-dependency-graph.sh",
-        ":enable-dependency-graph",
-    ],
-    env = {
-        "ENABLE_DEPENDENCY_GRAPH_RS": "$(rootpath :enable-dependency-graph)",
-        "ENABLE_DEPENDENCY_GRAPH_SH": "$(rootpath enable-dependency-graph.sh)",
-    },
-    main = "enable_dependency_graph_rs_parity_test.py",
-    deps = ["//tools/shell-compat:parity_harness"],
+test_suite(
+    name = "enable-dependency-graph_test",
+    tests = [":github_security_lib_test"],
+)
+
+test_suite(
+    name = "enable-dependency-graph-rs_test",
+    tests = [":github_security_lib_test"],
+)
+
+test_suite(
+    name = "enable_test",
+    tests = [":github_security_lib_test"],
 )

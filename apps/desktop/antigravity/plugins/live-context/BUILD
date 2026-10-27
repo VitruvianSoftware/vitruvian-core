@@ -11,7 +11,6 @@ Node.js, so there is nothing to build; these targets only run the unit tests.
 
 load("@aspect_rules_js//js:defs.bzl", "js_library", "js_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # gazelle:ignore
@@ -109,68 +108,24 @@ rust_test(
     ],
 )
 
-sh_test(
+test_suite(
     name = "inject-live-context_test",
-    size = "small",
-    srcs = ["hooks/inject-live-context_test.sh"],
-    args = ["$(location hooks/inject-live-context.sh)"],
-    data = [
-        "hooks/inject-live-context.sh",
-        "sidecars/panel/lib/core.mjs",
-        "@nodejs_toolchains//:resolved_toolchain",
-    ],
-    env = {"VITRUVIAN_NODE": "$(NODE_PATH)"},
-    toolchains = ["@nodejs_toolchains//:resolved_toolchain"],
+    tests = [":live_context_hooks_lib_test"],
 )
 
-sh_test(
+test_suite(
     name = "inject-live-context_rs_test",
-    size = "small",
-    srcs = ["hooks/inject-live-context_test.sh"],
-    args = [
-        "$(location :inject-live-context)",
-        "$(location hooks/inject-live-context.sh)",
-    ],
-    data = [
-        "hooks/inject-live-context.sh",
-        "sidecars/panel/lib/core.mjs",
-        ":inject-live-context",
-        "@nodejs_toolchains//:resolved_toolchain",
-    ],
-    env = {"VITRUVIAN_NODE": "$(NODE_PATH)"},
-    toolchains = ["@nodejs_toolchains//:resolved_toolchain"],
+    tests = [":live_context_hooks_lib_test"],
 )
 
-sh_test(
+test_suite(
     name = "verify-response-shape_test",
-    size = "small",
-    srcs = ["hooks/verify-response-shape_test.sh"],
-    args = ["$(location hooks/verify-response-shape.sh)"],
-    data = [
-        "hooks/verify-response-shape.sh",
-        "sidecars/panel/lib/core.mjs",
-        "@nodejs_toolchains//:resolved_toolchain",
-    ],
-    env = {"VITRUVIAN_NODE": "$(NODE_PATH)"},
-    toolchains = ["@nodejs_toolchains//:resolved_toolchain"],
+    tests = [":live_context_hooks_lib_test"],
 )
 
-sh_test(
+test_suite(
     name = "verify-response-shape_rs_test",
-    size = "small",
-    srcs = ["hooks/verify-response-shape_test.sh"],
-    args = [
-        "$(location :verify-response-shape)",
-        "$(location hooks/verify-response-shape.sh)",
-    ],
-    data = [
-        "hooks/verify-response-shape.sh",
-        "sidecars/panel/lib/core.mjs",
-        ":verify-response-shape",
-        "@nodejs_toolchains//:resolved_toolchain",
-    ],
-    env = {"VITRUVIAN_NODE": "$(NODE_PATH)"},
-    toolchains = ["@nodejs_toolchains//:resolved_toolchain"],
+    tests = [":live_context_hooks_lib_test"],
 )
 
 js_library(

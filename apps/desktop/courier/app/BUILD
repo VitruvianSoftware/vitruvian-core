@@ -14,7 +14,6 @@ load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 load(":version.bzl", "COURIER_VERSION")
 
@@ -145,24 +144,29 @@ macos_application(
 # The app Bazel built holds a working engine: Contents/Helpers/courier-engine
 # is an arm64 executable that answers --help with its usage, and the bundle's
 # version is COURIER_VERSION. It reads the archive :Courier already produced.
-sh_test(
+rust_test(
     name = "app_holds_engine_test",
     size = "small",
-    srcs = ["scripts/app_holds_engine_test.sh"],
+    srcs = ["scripts/src/bin/app_holds_engine.rs"],
     args = [
         COURIER_VERSION,
         "$(rootpaths :Courier)",
     ],
+    crate_root = "scripts/src/bin/app_holds_engine.rs",
     data = [":Courier"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
+    use_libtest_harness = False,
+    deps = [":courier_scripts_lib"],
 )
 
 # bazel run --config=macos-app //apps/desktop/courier/app:install [-- --dest DIR]
 #
 # Puts the app Bazel built into /Applications (or DIR) with Courier's own Telegram app ID added.
 # It builds nothing but its data (Courier.zip). The app ID never passes through a Bazel action,
-# whose outputs can land in the remote cache: scripts/inject-app-credentials.sh adds it to the
+# whose outputs can land in the remote cache: :inject-app-credentials adds it to the
 # unpacked app afterwards, on this Mac, from the environment or the gitignored secret store
 # (tools/sync-env-secrets), and signs the app again: the engine, then the app, with the Developer ID
 # if one is installed (and the hardened runtime) and Resources/Courier.entitlements. See README.md.
@@ -170,13 +174,13 @@ sh_binary(
     name = "install",
     srcs = ["scripts/install.sh"],
     args = [
-        "$(rootpath scripts/inject-app-credentials.sh)",
+        "$(rootpath :inject-app-credentials)",
         "$(rootpaths :Courier)",
     ],
     data = [
         "Resources/Courier.entitlements",
-        "scripts/inject-app-credentials.sh",
         ":Courier",
+        ":inject-app-credentials",
     ],
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
@@ -187,18 +191,13 @@ sh_binary(
 # --allow-missing. A fake codesign proves how it signs (the engine before the app, the identifier,
 # the hardened runtime and timestamp only with an identity, the entitlements). macOS-only (plutil, codesign) and `manual`: the courier-app-macos unit below
 # runs it by label.
-sh_test(
+rust_test(
     name = "inject_app_credentials_test",
     size = "small",
-    srcs = ["scripts/inject_app_credentials_test.sh"],
-    args = [
-        "$(rootpath scripts/inject-app-credentials.sh)",
-        "$(rootpath Resources/Courier.entitlements)",
-    ],
-    data = [
-        "Resources/Courier.entitlements",
-        "scripts/inject-app-credentials.sh",
-    ],
+    crate = ":courier_scripts_lib",
+    data = ["Resources/Courier.entitlements"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
 )
@@ -208,22 +207,27 @@ sh_test(
 # `manual` and not tied to macOS: it is the only test here that the presubmit
 # planner lists for a change made only in the engine or the protocol (it skips
 # manual tests), so it is what makes the planner select the unit below then.
-sh_test(
+rust_test(
     name = "engine_contract_test",
     size = "small",
-    srcs = ["scripts/engine_contract_test.sh"],
+    srcs = ["scripts/src/bin/engine_contract.rs"],
     args = [
         "$(rootpath //apps/desktop/courier/engine/cmd/courier-engine)",
         "$(rootpath Sources/CourierCore/EngineSupervisor.swift)",
         "$(rootpath Sources/CourierCore/Protocol.swift)",
         "$(rootpaths //apps/desktop/courier/protocol)",
     ],
+    crate_root = "scripts/src/bin/engine_contract.rs",
     data = [
         "Sources/CourierCore/EngineSupervisor.swift",
         "Sources/CourierCore/Protocol.swift",
         "//apps/desktop/courier/engine/cmd/courier-engine",
         "//apps/desktop/courier/protocol",
     ],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    use_libtest_harness = False,
+    deps = [":courier_scripts_lib"],
 )
 
 pipeline_unit(
@@ -324,56 +328,19 @@ alias(
     visibility = ["//apps/desktop/courier:__subpackages__"],
 )
 
-sh_test(
+test_suite(
     name = "engine_contract_rs_test",
-    size = "small",
-    srcs = ["scripts/engine-contract-rs_test.sh"],
-    args = [
-        "$(rootpath :engine-contract)",
-        "$(rootpath //apps/desktop/courier/engine/cmd/courier-engine)",
-        "$(rootpath Sources/CourierCore/EngineSupervisor.swift)",
-        "$(rootpath Sources/CourierCore/Protocol.swift)",
-        "$(rootpaths //apps/desktop/courier/protocol)",
-    ],
-    data = [
-        "Sources/CourierCore/EngineSupervisor.swift",
-        "Sources/CourierCore/Protocol.swift",
-        ":engine-contract",
-        "//apps/desktop/courier/engine/cmd/courier-engine",
-        "//apps/desktop/courier/protocol",
-    ],
+    tests = [":engine_contract_test"],
 )
 
-sh_test(
+test_suite(
     name = "app_holds_engine_rs_test",
-    size = "small",
-    srcs = ["scripts/app-holds-engine-rs_test.sh"],
-    args = [
-        "$(rootpath :app-holds-engine)",
-        COURIER_VERSION,
-        "$(rootpaths :Courier)",
-    ],
-    data = [
-        ":Courier",
-        ":app-holds-engine",
-    ],
     tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
+    tests = [":app_holds_engine_test"],
 )
 
-sh_test(
+test_suite(
     name = "inject_app_credentials_rs_test",
-    size = "small",
-    srcs = ["scripts/inject-app-credentials-rs_test.sh"],
-    args = [
-        "$(rootpath :inject-app-credentials)",
-        "$(rootpath Resources/Courier.entitlements)",
-    ],
-    data = [
-        "Resources/Courier.entitlements",
-        "scripts/inject_app_credentials_test.sh",
-        ":inject-app-credentials",
-    ],
     tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
+    tests = [":inject_app_credentials_test"],
 )

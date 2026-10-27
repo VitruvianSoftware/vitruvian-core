@@ -328,6 +328,24 @@ mod tests {
     }
 
     #[test]
+    fn committed_kit_files_are_in_sync() {
+        if !std::path::Path::new("packages/vitruvian-sdk/protocol").exists() {
+            return;
+        }
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let status = check("packages/vitruvian-sdk", &mut out, &mut err).unwrap();
+        assert_eq!(
+            status,
+            0,
+            "sdk-codegen --check failed:\n{}",
+            String::from_utf8_lossy(&err)
+        );
+        let names: Vec<&str> = emitters::all().iter().map(|e| e.name).collect();
+        assert_eq!(names, ["go", "python", "rust", "typescript"]);
+    }
+
+    #[test]
     fn a_crash_prints_the_traceback_line() {
         let e = PyErr::new("KeyError", "'$defs'");
         assert!(traceback(&e).ends_with("\nKeyError: '$defs'\n"));

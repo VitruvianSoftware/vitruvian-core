@@ -23,7 +23,6 @@
 #
 # gazelle:ignore
 
-load("@rules_python//python:defs.bzl", "py_binary")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("//tools/doctor:defs.bzl", "doctor")
@@ -38,11 +37,8 @@ exports_files([
 
 # `bazel run :generate_assets` re-renders src/main/res/drawable-nodpi.
 #
-# The default is the Rust port in src/ (std only, no crates). Like the
-# Python, it builds one SVG per asset and rasterises it with rsvg-convert
-# (librsvg, from PATH or /opt/homebrew/bin), so both need librsvg on the
-# host. The Python stays as :generate_assets_py until the port has run in
-# anger; :generate_assets_rs_parity_test holds the two to the same output.
+# It builds one SVG per asset and rasterises it with rsvg-convert (librsvg,
+# from PATH or /opt/homebrew/bin), so it needs librsvg on the host.
 rust_library(
     name = "generate_assets_lib",
     srcs = ["src/lib.rs"],
@@ -65,12 +61,6 @@ alias(
     actual = ":generate_assets",
 )
 
-py_binary(
-    name = "generate_assets_py",
-    srcs = ["scripts/generate_assets.py"],
-    main = "scripts/generate_assets.py",
-)
-
 # The #[cfg(test)] unit tests in src/lib.rs.
 rust_test(
     name = "generate_assets_lib_test",
@@ -80,22 +70,14 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
-# :generate_assets_py and :generate_assets side by side: the SVG each hands
-# to rsvg-convert must match byte for byte, every PNG must decode to the same
-# size and RGBA pixels, and the command lines and exit codes must hold. The
-# pixel half needs rsvg-convert on the host and skips (saying so) without it.
-py_test(
+test_suite(
+    name = "generate_assets_test",
+    tests = [":generate_assets_lib_test"],
+)
+
+test_suite(
     name = "generate_assets_rs_parity_test",
-    size = "medium",
-    srcs = ["generate_assets_rs_parity_test.py"],
-    data = [
-        ":generate_assets",
-        ":generate_assets_py",
-    ],
-    env = {
-        "GENERATE_ASSETS_PY": "$(rootpath :generate_assets_py)",
-        "GENERATE_ASSETS_RS": "$(rootpath :generate_assets)",
-    },
+    tests = [":generate_assets_lib_test"],
 )
 
 filegroup(

@@ -1693,19 +1693,19 @@ package final class ScreenshotEditorController: NSObject, NSWindowDelegate {
 
     @discardableResult
     nonisolated package static func copyImage(_ export: ScreenshotRenderer.Export, fileNamePrefix: String) -> Bool {
-        guard let data = ScreenshotRenderer.pngData(from: export.image, scale: export.scale),
-              let base = FileManager.default.urls(for: .cachesDirectory,
-                                                  in: .userDomainMask).first,
-              let bundleID = Bundle.main.bundleIdentifier
+        guard let data = ScreenshotRenderer.pngData(from: export.image, scale: export.scale)
         else { return false }
-        let folder = base.appendingPathComponent(bundleID, isDirectory: true)
-            .appendingPathComponent("Copied Screenshots", isDirectory: true)
+        let payload = clipboardPayload(from: export, png: data)
+        if UserDefaults.standard[Preferences.screenshotCopyImageOnly] {
+            return copyClipboardPayload(payload)
+        }
+        guard let folder = ScreenshotSupport.copiedFilesDirectory() else { return false }
         let name = ScreenshotSupport.fileName(prefix: fileNamePrefix, date: Date())
         guard let url = try? ScreenshotSupport.copiedFile(data: data, name: name,
                                                          directory: folder) else {
             return false
         }
-        guard copyFile(url, payload: clipboardPayload(from: export, png: data)) else {
+        guard copyFile(url, payload: payload, imageOnly: false) else {
             try? FileManager.default.removeItem(at: url)
             return false
         }
@@ -1714,15 +1714,21 @@ package final class ScreenshotEditorController: NSObject, NSWindowDelegate {
     }
 
     @discardableResult
-    nonisolated package static func copyFile(_ url: URL, payload: ClipboardPayload? = nil) -> Bool {
+    nonisolated package static func copyFile(_ url: URL?, payload: ClipboardPayload,
+                                             imageOnly: Bool = UserDefaults.standard[Preferences.screenshotCopyImageOnly]) -> Bool {
+        // Chromium treats a file URL as a file even when the same item has
+        // PNG/TIFF data. Keep the file representation for apps that need it,
+        // and let image-only copies reach image paste targets instead.
+        if imageOnly { return copyClipboardPayload(payload) }
+        guard let url else { return false }
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         let item = NSPasteboardItem()
         guard item.setString(url.absoluteString, forType: .fileURL) else { return false }
-        if let png = payload?.png {
+        if let png = payload.png {
             item.setData(png, forType: .png)
         }
-        if let tiff = payload?.tiff {
+        if let tiff = payload.tiff {
             item.setData(tiff, forType: .tiff)
         }
         guard pasteboard.writeObjects([item]) else { return false }
@@ -1754,6 +1760,7 @@ package final class ScreenshotEditorController: NSObject, NSWindowDelegate {
 
     @discardableResult
     nonisolated package static func copyClipboardPayload(_ payload: ClipboardPayload) -> Bool {
+        guard payload.png != nil || payload.tiff != nil else { return false }
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         let item = NSPasteboardItem()

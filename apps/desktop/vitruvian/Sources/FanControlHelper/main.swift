@@ -427,7 +427,8 @@ private final class FanControlController {
                         coolingLevel = requested
                         controlIntact = true
                     } catch {
-                        controlIntact = false
+                        _ = performRestore(reason: .hardwareChanged)
+                        return
                     }
                 }
             } else {

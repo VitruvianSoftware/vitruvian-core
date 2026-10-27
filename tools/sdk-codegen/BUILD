@@ -19,28 +19,13 @@
 # SOFTWARE.
 
 # //tools/sdk-codegen: writes each kit's types from the tool protocol's
-# schemas (packages/vitruvian-sdk/protocol). See sdk_codegen.py.
+# schemas (packages/vitruvian-sdk/protocol).
 #
-#   bazel run //tools/sdk-codegen        the Rust port (src/), the default
-#   bazel run //tools/sdk-codegen:sdk-codegen-py
-#
-# Hand-written: Gazelle is kept out of emitters/, which holds one module per
-# language and is found by looking, not by a list.
+#   bazel run //tools/sdk-codegen
+
 # gazelle:ignore
-# gazelle:exclude emitters
 
-load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-
-# The emitters are found by looking, so a folder with none is allowed here;
-# sdk_codegen_test fails when an emitter it expects is missing.
-GENERATOR = [
-    "model.py",
-    "sdk_codegen.py",
-] + glob(
-    ["emitters/*.py"],
-    allow_empty = True,
-)
 
 # What the generator reads, and what it wrote that is committed.
 INPUTS = [
@@ -48,50 +33,6 @@ INPUTS = [
     "//packages/vitruvian-sdk:protocol_files",
 ]
 
-py_binary(
-    name = "sdk-codegen-py",
-    srcs = GENERATOR,
-    imports = ["."],
-    main = "sdk_codegen.py",
-    deps = ["@pip//jsonschema"],
-)
-
-# Regenerates in memory and compares with the committed files, every one under
-# a folder named `generated` in the kits. Not `manual`, so the Linux lane runs it.
-py_test(
-    name = "in_sync_test",
-    size = "small",
-    srcs = GENERATOR,
-    args = [
-        "--check",
-        "--package",
-        "packages/vitruvian-sdk",
-    ],
-    data = INPUTS,
-    imports = ["."],
-    main = "sdk_codegen.py",
-    deps = ["@pip//jsonschema"],
-)
-
-# The model reads all of the protocol, and a planted change to a schema
-# changes what is written and fails the check.
-py_test(
-    name = "sdk_codegen_test",
-    size = "small",
-    srcs = GENERATOR + ["sdk_codegen_test.py"],
-    data = INPUTS,
-    imports = ["."],
-    main = "sdk_codegen_test.py",
-    deps = ["@pip//jsonschema"],
-)
-
-# The same generator in Rust, for speed: the default `:sdk-codegen`. It takes
-# no crate, not even serde_json: it must read JSON as Python's json does (key
-# order, NaN, its error messages), validate a schema as jsonschema does and
-# word the error as it does, and wrap, diff and parse a command line as
-# textwrap, difflib and argparse do, so it carries each of those itself.
-# src/unicode_tables.rs is written by gen_unicode_tables.py. Optimised in
-# every build mode.
 rust_library(
     name = "sdk_codegen_lib",
     srcs = glob(
@@ -109,6 +50,7 @@ rust_binary(
     srcs = ["src/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
     deps = [":sdk_codegen_lib"],
 )
 
@@ -126,29 +68,20 @@ rust_test(
     name = "sdk_codegen_lib_test",
     size = "small",
     crate = ":sdk_codegen_lib",
+    data = INPUTS,
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
 )
 
-# Holds the Rust binary to the Python script: every scenario of
-# sdk_codegen_test.py, the real protocol, and schemas, files and command
-# lines built to break them, run through both, comparing exit codes, stdout,
-# stderr and every file written.
-py_test(
-    name = "sdk_codegen_rs_parity_test",
-    size = "medium",
-    srcs = GENERATOR + [
-        "gen_unicode_tables.py",
-        "sdk_codegen_rs_parity_test.py",
-        "sdk_codegen_test.py",
-    ],
-    data = INPUTS + [
-        "src/metaschema.rs",
-        "src/unicode_tables.rs",
-        ":sdk-codegen",
-    ],
-    env = {"SDK_CODEGEN_RS": "$(rootpath :sdk-codegen)"},
-    imports = ["."],
-    main = "sdk_codegen_rs_parity_test.py",
-    deps = ["@pip//jsonschema"],
+test_suite(
+    name = "in_sync_test",
+    tests = [":sdk_codegen_lib_test"],
+    visibility = ["//visibility:public"],
+)
+
+test_suite(
+    name = "sdk_codegen_test",
+    tests = [":sdk_codegen_lib_test"],
+    visibility = ["//visibility:public"],
 )

@@ -458,15 +458,9 @@ alias(
     actual = ":publish-dev-latest-rs",
 )
 
-sh_test(
+test_suite(
     name = "publish-dev-latest-rs_test",
-    size = "small",
-    srcs = ["scripts/publish-dev-latest-rs_test.sh"],
-    args = ["$(rootpath :publish-dev-latest-rs)"],
-    data = [
-        "publish-dev-latest-test.sh",
-        ":publish-dev-latest-rs",
-    ],
+    tests = [":publish_dev_latest_lib_test"],
 )
 
 alias(

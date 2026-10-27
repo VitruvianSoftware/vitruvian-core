@@ -23,7 +23,6 @@
 # gazelle:ignore
 
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 rust_library(
     name = "design_sync_lib",
@@ -117,29 +116,12 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
-sh_test(
-    name = "design_sync_parity_test",
-    size = "small",
-    srcs = ["design_sync_parity_test.sh"],
-    args = [
-        "$(rootpath //:.design-sync/inject-reference-fonts.sh)",
-        "$(rootpath :inject_reference_fonts)",
-        "$(rootpath //:.design-sync/prepare.sh)",
-        "$(rootpath :prepare)",
-        "$(rootpath //tools:test-mcp-slack-e2e.sh)",
-        "$(rootpath :test_mcp_slack_e2e)",
-    ],
-    data = [
-        ":inject_reference_fonts",
-        ":prepare",
-        ":test_mcp_slack_e2e",
-        "//:.design-sync/inject-reference-fonts.sh",
-        "//:.design-sync/prepare.sh",
-        "//tools:test-mcp-slack-e2e.sh",
-        "@jq_toolchains//:resolved_toolchain",
-    ],
-    env = {
-        "JQ_BIN": "$(JQ_BIN)",
-    },
-    toolchains = ["@jq_toolchains//:resolved_toolchain"],
+test_suite(
+    name = "sync_test",
+    tests = [":design_sync_lib_test"],
+)
+
+test_suite(
+    name = "design_sync_test",
+    tests = [":design_sync_lib_test"],
 )

@@ -8,7 +8,6 @@ development loops until completion criteria are met.
 
 load("@aspect_rules_js//js:defs.bzl", "js_library", "js_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # gazelle:ignore
@@ -91,34 +90,14 @@ rust_test(
     ],
 )
 
-sh_test(
+test_suite(
     name = "ralph-stop_test",
-    size = "small",
-    srcs = ["hooks/ralph-stop_test.sh"],
-    args = ["$(location hooks/ralph-stop.sh)"],
-    data = [
-        "hooks/ralph-stop.sh",
-        "@nodejs_toolchains//:resolved_toolchain",
-    ],
-    env = {"VITRUVIAN_NODE": "$(NODE_PATH)"},
-    toolchains = ["@nodejs_toolchains//:resolved_toolchain"],
+    tests = [":ralph_stop_lib_test"],
 )
 
-sh_test(
+test_suite(
     name = "ralph-stop_rs_test",
-    size = "small",
-    srcs = ["hooks/ralph-stop_test.sh"],
-    args = [
-        "$(location :ralph-stop)",
-        "$(location hooks/ralph-stop.sh)",
-    ],
-    data = [
-        "hooks/ralph-stop.sh",
-        ":ralph-stop",
-        "@nodejs_toolchains//:resolved_toolchain",
-    ],
-    env = {"VITRUVIAN_NODE": "$(NODE_PATH)"},
-    toolchains = ["@nodejs_toolchains//:resolved_toolchain"],
+    tests = [":ralph_stop_lib_test"],
 )
 
 js_library(

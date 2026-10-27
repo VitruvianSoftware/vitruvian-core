@@ -5,36 +5,6 @@
 # gazelle:ignore
 
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
-
-exports_files([
-    "kind-cluster.sh",
-    "agy",
-    "copilot",
-])
-
-# --- Legacy shell wrappers ---------------------------------------------------
-
-sh_binary(
-    name = "kind-cluster-sh",
-    srcs = ["kind-cluster.sh"],
-    visibility = ["//visibility:public"],
-)
-
-sh_binary(
-    name = "agy-sh",
-    srcs = ["agy"],
-    visibility = ["//visibility:public"],
-)
-
-sh_binary(
-    name = "copilot-sh",
-    srcs = ["copilot"],
-    visibility = ["//visibility:public"],
-)
-
-# --- Rust port ----------------------------------------------------------------
 
 rust_library(
     name = "scripts_lib",
@@ -72,6 +42,12 @@ rust_binary(
 )
 
 alias(
+    name = "agy",
+    actual = ":agy-bin",
+    visibility = ["//visibility:public"],
+)
+
+alias(
     name = "agy-rs",
     actual = ":agy-bin",
     visibility = ["//visibility:public"],
@@ -87,12 +63,16 @@ rust_binary(
 )
 
 alias(
-    name = "copilot-rs",
+    name = "copilot",
     actual = ":copilot-bin",
     visibility = ["//visibility:public"],
 )
 
-# --- Tests --------------------------------------------------------------------
+alias(
+    name = "copilot-rs",
+    actual = ":copilot-bin",
+    visibility = ["//visibility:public"],
+)
 
 rust_test(
     name = "scripts_lib_test",
@@ -102,29 +82,17 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
-sh_test(
+test_suite(
     name = "scripts-parity_test",
-    size = "medium",
-    srcs = ["scripts-parity_test.sh"],
-    args = [
-        "$(rootpath kind-cluster.sh)",
-        "$(rootpath :kind-cluster)",
-        "$(rootpath agy)",
-        "$(rootpath :agy-bin)",
-        "$(rootpath copilot)",
-        "$(rootpath :copilot-bin)",
-    ],
-    data = [
-        "kind-cluster.sh",
-        ":kind-cluster",
-        "agy",
-        ":agy-bin",
-        "copilot",
-        ":copilot-bin",
-    ],
+    tests = [":scripts_lib_test"],
 )
 
-alias(
+test_suite(
     name = "scripts_parity_test",
-    actual = ":scripts-parity_test",
+    tests = [":scripts_lib_test"],
+)
+
+test_suite(
+    name = "verify-gcp-setup_test",
+    tests = [":scripts_lib_test"],
 )

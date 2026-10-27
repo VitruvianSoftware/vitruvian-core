@@ -39,6 +39,8 @@ spec:
       labels:
         app.kubernetes.io/name: headscale-node-agent
     spec:
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
       automountServiceAccountToken: false
       enableServiceLinks: false
       tolerations:
@@ -65,7 +67,10 @@ spec:
             - name: TS_EXTRA_ARGS
               value: "--login-server=https://headscale.ipv1337.dev --accept-routes=false --hostname=$(NODE_NAME)"
             - name: TS_STATE_DIR
-              value: "/tmp/tailscale"
+              value: "/var/tmp/headscale-node-agent"
+          volumeMounts:
+            - name: host-var-tmp
+              mountPath: /var/tmp
           resources:
             requests:
               cpu: 10m
@@ -80,3 +85,8 @@ spec:
             capabilities:
               drop:
                 - ALL
+      volumes:
+        - name: host-var-tmp
+          hostPath:
+            path: /var/tmp
+            type: Directory

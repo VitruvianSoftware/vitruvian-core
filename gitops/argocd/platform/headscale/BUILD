@@ -18,7 +18,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-load("@aspect_rules_py//py:defs.bzl", "py_test")
 load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
 load("//tools/gitops:defs.bzl", "gitops_manifest")
 
@@ -81,13 +80,4 @@ rust_test(
 alias(
     name = "headscale_values_rs_test",
     actual = ":headscale_values_test",
-)
-
-py_test(
-    name = "headscale_values_py_test",
-    size = "small",
-    srcs = ["headscale_values_test.py"],
-    data = DATA_FILES,
-    main = "headscale_values_test.py",
-    deps = ["@pip//pyyaml"],
 )

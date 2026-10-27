@@ -97,9 +97,37 @@ package final class NotchScreenRefresh {
         package var resignKey: () -> Void
         package var rememberPasteTarget: () -> Void
         package var collapse: () -> Void
-        /// Takes `displayID` and lays the island out on it (`updateScreen`).
-        package var takeDisplay: (CGDirectDisplayID) -> Void
+        /// Takes `displayID`, without laying the island out on it yet.
+        package var selectDisplay: (CGDirectDisplayID) -> Void
+        /// Lays the island out on the display it has taken, or on the one the
+        /// preferences choose instead (`updateScreen`).
+        package var updateScreen: () -> Void
+        package var currentDisplayID: () -> CGDirectDisplayID?
+        /// Whether an attached display has this identifier.
+        package var displayExists: (CGDirectDisplayID?) -> Bool
         package var syncVisibleConsumers: () -> Void
+
+        /// The island's window, by identity: a move waiting for its turn must
+        /// not act on a window that replaced the one it was started for.
+        package var hostIdentity: () -> AnyObject?
+        /// The window is on screen now, and may leave and come back.
+        package var canRelocateOnScreen: () -> Bool
+        /// Orders the window out so its frame moves offscreen; false when it
+        /// was not on screen.
+        package var orderOutForRelocation: () -> Bool
+        package var orderFrontForRelocation: () -> Void
+        package var cancelHostRelocation: () -> Void
+        package var hideHost: () -> Void
+        /// The copies of the island on the other displays.
+        package var syncMirrors: () -> Void
+        package var syncScreenEdgeClicks: () -> Void
+        /// The music wave across a move: drawn on the copy about to be
+        /// uncovered, repeated by the window covering it, kept on the copy
+        /// leaving, then let go.
+        package var holdWave: (CGDirectDisplayID) -> Void
+        package var matchWave: () -> Void
+        package var keepWave: () -> Void
+        package var releaseWave: () -> Void
 
         /// The menu reader (`NotchMenuSpaceReader`).
         package var startMenuSpace: () -> Void
@@ -126,8 +154,23 @@ package final class NotchScreenRefresh {
                      applyMenuSpace: @escaping (CGFloat?) -> Void, withdrawMenuSpace: @escaping () -> Void,
                      refreshPresentation: @escaping () -> Void, resignKey: @escaping () -> Void,
                      rememberPasteTarget: @escaping () -> Void, collapse: @escaping () -> Void,
-                     takeDisplay: @escaping (CGDirectDisplayID) -> Void,
+                     selectDisplay: @escaping (CGDirectDisplayID) -> Void,
+                     updateScreen: @escaping () -> Void,
+                     currentDisplayID: @escaping () -> CGDirectDisplayID?,
+                     displayExists: @escaping (CGDirectDisplayID?) -> Bool,
                      syncVisibleConsumers: @escaping () -> Void,
+                     hostIdentity: @escaping () -> AnyObject?,
+                     canRelocateOnScreen: @escaping () -> Bool,
+                     orderOutForRelocation: @escaping () -> Bool,
+                     orderFrontForRelocation: @escaping () -> Void,
+                     cancelHostRelocation: @escaping () -> Void,
+                     hideHost: @escaping () -> Void,
+                     syncMirrors: @escaping () -> Void,
+                     syncScreenEdgeClicks: @escaping () -> Void,
+                     holdWave: @escaping (CGDirectDisplayID) -> Void,
+                     matchWave: @escaping () -> Void,
+                     keepWave: @escaping () -> Void,
+                     releaseWave: @escaping () -> Void,
                      startMenuSpace: @escaping () -> Void, stopMenuSpace: @escaping () -> Void,
                      invalidateMenuSpace: @escaping () -> Void, readMenuSpace: @escaping () -> Void,
                      mascotWantsRoom: @escaping () -> Bool = { false }) {
@@ -160,8 +203,23 @@ package final class NotchScreenRefresh {
             self.resignKey = resignKey
             self.rememberPasteTarget = rememberPasteTarget
             self.collapse = collapse
-            self.takeDisplay = takeDisplay
+            self.selectDisplay = selectDisplay
+            self.updateScreen = updateScreen
+            self.currentDisplayID = currentDisplayID
+            self.displayExists = displayExists
             self.syncVisibleConsumers = syncVisibleConsumers
+            self.hostIdentity = hostIdentity
+            self.canRelocateOnScreen = canRelocateOnScreen
+            self.orderOutForRelocation = orderOutForRelocation
+            self.orderFrontForRelocation = orderFrontForRelocation
+            self.cancelHostRelocation = cancelHostRelocation
+            self.hideHost = hideHost
+            self.syncMirrors = syncMirrors
+            self.syncScreenEdgeClicks = syncScreenEdgeClicks
+            self.holdWave = holdWave
+            self.matchWave = matchWave
+            self.keepWave = keepWave
+            self.releaseWave = releaseWave
             self.startMenuSpace = startMenuSpace
             self.stopMenuSpace = stopMenuSpace
             self.invalidateMenuSpace = invalidateMenuSpace
@@ -174,6 +232,12 @@ package final class NotchScreenRefresh {
     private let island: Island
     private var preferenceSyncWork: DispatchWorkItem?
     private var screenRefreshWork: DispatchWorkItem?
+    /// Set while the live window is on its way to another display, so the copy
+    /// there stays up until that window has been drawn for it and ordered in.
+    package private(set) var mirrorHeldForArrival: CGDirectDisplayID?
+    /// Bumped on every move, so a reveal queued for the display just left does
+    /// not order the window in after a newer move, or after the island stops.
+    private var relocationTicket = 0
 
     package init(environment: Environment, island: Island) {
         self.environment = environment
@@ -284,11 +348,97 @@ package final class NotchScreenRefresh {
             && !island.holdsMusic()
     }
 
-    package func move(to displayID: CGDirectDisplayID) {
-        island.takeDisplay(displayID)
+    /// Moves the island to `destination`. On screen, it leaves first, so the
+    /// window server cannot stretch it across to the other display, with a
+    /// copy underneath so the display it leaves does not blink empty; it comes
+    /// back on the next turn, once what it shows has been drawn for the display
+    /// it landed on. A newer move, a stop or a replaced window takes over.
+    package func move(to destination: CGDirectDisplayID) {
+        guard let host = island.hostIdentity() else { return }
+        let reveal = island.canRelocateOnScreen()
+        relocationTicket += 1
+        let ticket = relocationTicket
+        let origin = island.currentDisplayID()
+        func isCurrent() -> Bool { relocationTicket == ticket && island.hostIdentity() === host }
+        island.selectDisplay(destination)
+        mirrorHeldForArrival = reveal ? destination : nil
+        if reveal {
+            // Keep the copy on the display being entered until the window is
+            // drawn for it. The copy on the display being left goes underneath.
+            island.syncMirrors()
+            guard isCurrent() else { return }
+            // Only the copy that was covered. The one on the display being
+            // entered is already drawing its wave; laying it out again flickers it.
+            if let origin { island.holdWave(origin) }
+            _ = island.orderOutForRelocation()
+        } else {
+            island.releaseWave()
+        }
+        guard isCurrent() else { return }
+        island.updateScreen()
+        guard isCurrent() else { return }
+        // Preferences or a disconnected display may choose a different screen.
+        if reveal { mirrorHeldForArrival = island.currentDisplayID() }
         // The menu space measured so far belongs to the display it left.
         invalidateMenuSpace()
         island.syncVisibleConsumers()
         island.refreshPresentation()
+        guard reveal, isCurrent() else { return }
+        let arrival = island.currentDisplayID()
+        // SwiftUI draws the new display's shape at the end of this turn, while
+        // the window is still out. It comes back on the next one, over the copy.
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.relocationTicket == ticket, self.island.hostIdentity() === host else { return }
+            self.arrive(ticket: ticket, host: host, planned: arrival)
+        }
+        environment.schedule(0, work)
+    }
+
+    /// The queued half of a move: the window returns over the copy it
+    /// covers, which then steps aside.
+    private func arrive(ticket: Int, host: AnyObject, planned arrival: CGDirectDisplayID?) {
+        func isCurrent() -> Bool { relocationTicket == ticket && island.hostIdentity() === host }
+        guard island.running(), !island.suspended() else {
+            cancelRelocation()
+            island.hideHost()
+            island.cancelHostRelocation()
+            island.syncMirrors()
+            return
+        }
+        // A screen can disappear before its debounced notification runs.
+        // Settle on the currently selected screen, or let teardown cancel us.
+        let missing = !island.displayExists(island.currentDisplayID())
+        if missing {
+            island.updateScreen()
+            guard isCurrent() else { return }
+            invalidateMenuSpace()
+            island.syncVisibleConsumers()
+        }
+        if missing || island.currentDisplayID() != arrival {
+            mirrorHeldForArrival = island.currentDisplayID()
+            island.refreshPresentation()
+            guard isCurrent() else { return }
+        }
+        // Take the bars already on that display, then cover them. Hiding the
+        // copy while it still holds its wave keeps those bars from falling to
+        // dots on the way out.
+        island.matchWave()
+        guard isCurrent() else { return }
+        island.orderFrontForRelocation()
+        guard isCurrent() else { return }
+        mirrorHeldForArrival = nil
+        island.keepWave()
+        island.syncMirrors()
+        guard isCurrent() else { return }
+        island.releaseWave()
+        island.syncScreenEdgeClicks()
+    }
+
+    /// Ends any move under way: the one that was queued becomes inert, and
+    /// the copies let go of the waves they were holding.
+    package func cancelRelocation() {
+        relocationTicket += 1
+        mirrorHeldForArrival = nil
+        island.releaseWave()
     }
 }

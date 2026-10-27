@@ -295,22 +295,21 @@ jobs:
           key: pipeline-rdeps-map-v1-${{ steps.base.outputs.sha }}
           restore-keys: ${{ steps.base.outputs.fallback_keys }}
 
-      # Build the planner with plain Go, as Presubmit's plan job does. Running
-      # it through `bazel run` costs about two minutes of Bazel startup before
-      # it answers (134s measured here with the map restored). If this build
+      # Build the planner to a standalone binary with `bazel build`
+      # (--config=remotecache-ci), as Presubmit's plan job does. If this build
       # fails the script falls back to `bazel run`, so it can only cost time.
-      - name: Set up Go
-        if: github.event_name == 'merge_group' || steps.gate.outputs.relevant != 'false'
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          cache: false
-
       - name: Build the planner
         if: github.event_name == 'merge_group' || steps.gate.outputs.relevant != 'false'
         run: |
-          if ! GOWORK=off CGO_ENABLED=0 go build -o "$RUNNER_TEMP/pipeline-plan" ./tools/pipeline/plan; then
-            echo "::warning::Could not build the planner with go; affected-targets.sh will use bazel run instead."
+          cache_flags=()
+          if [ -n "${BUILDBUDDY_API_KEY:-}" ]; then
+            cache_flags=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
+          fi
+          if bazel build "${cache_flags[@]}" //tools/pipeline/plan && cp -f bazel-bin/tools/pipeline/plan/plan "$RUNNER_TEMP/pipeline-plan" && chmod +x "$RUNNER_TEMP/pipeline-plan"; then
+            git checkout -- MODULE.bazel.lock 2>/dev/null || true
+          else
+            echo "::warning::Could not build the planner; affected-targets.sh will use bazel run instead."
+            git checkout -- MODULE.bazel.lock 2>/dev/null || true
             rm -f "$RUNNER_TEMP/pipeline-plan"
           fi
 

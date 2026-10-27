@@ -29,14 +29,12 @@
 #
 # Swift has no Gazelle, so this file is hand-written.
 
-load("@aspect_rules_py//py:defs.bzl", "py_test")
 load("@build_bazel_rules_apple//apple:macos.bzl", "macos_application")
 load("@build_bazel_rules_swift//swift:swift_binary.bzl", "swift_binary")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 swift_library(
@@ -142,36 +140,36 @@ genrule(
 # without ui.sections, settings round-trips, QR
 # pairing, and standalone/extension coexistence over real JSON-RPC stdio in a
 # scratch HOME with a stand-in agent binary.
-py_test(
+rust_test(
     name = "tool_conformance_test",
     size = "medium",
-    srcs = ["tool/conformance_test.py"],
-    args = [
-        "$(rootpath built/remote/vitruvian-tool.json)",
-        "$(rootpath //packages/vitruvian-sdk:conformance/conformance.py)",
-        "$(rootpath //packages/vitruvian-sdk:vitruvian-tool)",
-    ],
+    srcs = ["scripts/src/tool_conformance_test.rs"],
     data = [
         "built/remote/vitruvian-tool.json",
         ":tool-folder",
-        "//packages/vitruvian-sdk:conformance/conformance.py",
         "//packages/vitruvian-sdk:vitruvian-tool",
     ],
-    main = "tool/conformance_test.py",
+    edition = "2021",
+    env = {
+        "MANIFEST_PATH": "$(rootpath built/remote/vitruvian-tool.json)",
+        "VALIDATE_BIN": "$(rootpath //packages/vitruvian-sdk:vitruvian-tool)",
+    },
+    rustc_flags = ["-Copt-level=3"],
     tags = [
         "block-network",
         "manual",
     ],
     target_compatible_with = ["@platforms//os:macos"],
+    deps = [":tool_conformance_lib"],
 )
 
 # Verifies that the tool's version matches Version.swift, Info.plist, and
 # android-remote's BUILD version, and that release-please-config.json updates
 # all of them.
-py_test(
+rust_test(
     name = "tool_version_test",
     size = "small",
-    srcs = ["tool/version_test.py"],
+    srcs = ["scripts/src/tool_version_test.rs"],
     data = [
         "Resources/Info.plist",
         "Sources/RemoteMenuCore/Version.swift",
@@ -179,39 +177,34 @@ py_test(
         "//apps/mobile/android-remote:BUILD",
         "//apps/mobile/android-remote:release-please-config.json",
     ],
-    main = "tool/version_test.py",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = ["//packages/vitruvian-sdk:conformance_rs_lib"],
 )
 
 # The menu finds the agent by the paths install.sh writes; fail when they drift.
-sh_test(
+rust_test(
     name = "paths_match_installer_test",
     size = "small",
-    srcs = ["paths_match_installer_test.sh"],
-    args = [
-        "$(rootpath //apps/mobile/android-remote/macagent:install.sh)",
-        "$(rootpath Sources/RemoteMenuCore/AgentStatus.swift)",
-    ],
+    srcs = ["scripts/src/paths_match_installer_test.rs"],
     data = [
         "Sources/RemoteMenuCore/AgentStatus.swift",
         "//apps/mobile/android-remote/macagent:install.sh",
     ],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = ["//apps/mobile/android-remote/macagent:macagent_scripts_lib"],
 )
 
 # The release's zip of the extension (scripts/zip-tool.sh), against stand-in
 # programs and a stand-in lipo: what it holds, what it is called, the version
-# it refuses, and the half-universal build it refuses. macOS-only (zip, BSD
-# stat) and `manual`, like the Swift tests; the remote-mac-menu pipeline unit
-# below runs it by explicit label.
-sh_test(
+# it refuses, and the half-universal build it refuses.
+rust_test(
     name = "zip_tool_test",
     size = "small",
-    srcs = ["scripts/zip-tool_test.sh"],
-    data = [
-        "scripts/zip-tool.sh",
-        "tool/vitruvian-tool.json",
-    ],
-    tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
+    crate = ":zip_tool_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
 )
 
 # bazel-bin/apps/mobile/android-remote/macmenu/VitruvianRemote.zip. `manual`
@@ -280,12 +273,9 @@ rust_binary(
     deps = [":zip_tool_lib"],
 )
 
-rust_test(
+test_suite(
     name = "zip_tool_lib_test",
-    size = "small",
-    crate = ":zip_tool_lib",
-    edition = "2021",
-    rustc_flags = ["-Copt-level=3"],
+    tests = [":zip_tool_test"],
 )
 
 rust_library(
@@ -336,33 +326,14 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
-rust_test(
+test_suite(
     name = "paths_match_installer_rs_test",
-    size = "small",
-    srcs = ["scripts/src/paths_match_installer_test.rs"],
-    data = [
-        "Sources/RemoteMenuCore/AgentStatus.swift",
-        "//apps/mobile/android-remote/macagent:install.sh",
-    ],
-    edition = "2021",
-    rustc_flags = ["-Copt-level=3"],
-    deps = ["//apps/mobile/android-remote/macagent:macagent_scripts_lib"],
+    tests = [":paths_match_installer_test"],
 )
 
-rust_test(
+test_suite(
     name = "tool_version_rs_test",
-    size = "small",
-    srcs = ["scripts/src/tool_version_test.rs"],
-    data = [
-        "Resources/Info.plist",
-        "Sources/RemoteMenuCore/Version.swift",
-        "tool/vitruvian-tool.json",
-        "//apps/mobile/android-remote:BUILD",
-        "//apps/mobile/android-remote:release-please-config.json",
-    ],
-    edition = "2021",
-    rustc_flags = ["-Copt-level=3"],
-    deps = ["//packages/vitruvian-sdk:conformance_rs_lib"],
+    tests = [":tool_version_test"],
 )
 
 rust_library(
@@ -390,25 +361,8 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
-rust_test(
+test_suite(
     name = "tool_conformance_rs_test",
-    size = "medium",
-    srcs = ["scripts/src/tool_conformance_test.rs"],
-    data = [
-        "built/remote/vitruvian-tool.json",
-        ":tool-folder",
-        "//packages/vitruvian-sdk:vitruvian-tool",
-    ],
-    edition = "2021",
-    env = {
-        "MANIFEST_PATH": "$(rootpath built/remote/vitruvian-tool.json)",
-        "VALIDATE_BIN": "$(rootpath //packages/vitruvian-sdk:vitruvian-tool)",
-    },
-    rustc_flags = ["-Copt-level=3"],
-    tags = [
-        "block-network",
-        "manual",
-    ],
-    target_compatible_with = ["@platforms//os:macos"],
-    deps = [":tool_conformance_lib"],
+    tags = ["manual"],
+    tests = [":tool_conformance_test"],
 )

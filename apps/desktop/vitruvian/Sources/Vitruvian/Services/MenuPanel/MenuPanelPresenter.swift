@@ -553,15 +553,20 @@ package final class MenuPanelPresenter<P: MenuPanelPlatform> {
                              animate: Bool = true,
                              activate: Bool = true,
                              restoring savedAnchor: PanelAnchor? = nil) {
-        // An interrupted fade continues the same presentation. Keep the
-        // requested metric and activation source through its intermediate close.
-        let reopening = popoverIsFadingOut && popover.isShown
+        // An interrupted or unfinished close continues the same presentation.
+        // Keep the requested metric and activation source through its cleanup.
+        let wasReopening = popoverIsReopening
+        let reopening = wasReopening || (popoverIsFadingOut && popover.isShown)
+            || (popoverIsClosing && !popover.isShown)
         let interruptedCloseReason = popoverCloseReason
         popoverIsReopening = reopening
         finishPopoverFadeOut()
-        popoverIsReopening = false
+        if popoverIsClosing, !popover.isShown, !popoverIsFadingOut {
+            finishPopoverClose(recoverForeignClose: false)
+        }
+        popoverIsReopening = wasReopening
         defer {
-            if reopening, !popover.isShown {
+            if reopening, !wasReopening, !popover.isShown {
                 environment.holdStatusBadge(false)
                 releasePanelResources()
                 environment.returnActivation(endActivationTracking(), interruptedCloseReason)
@@ -583,7 +588,7 @@ package final class MenuPanelPresenter<P: MenuPanelPlatform> {
         if !animate {
             popover.animates = true
         }
-        if let window = popover.panelWindow {
+        if popover.isShown, let window = popover.panelWindow {
             environment.configureWindow(window)
             window.layOutContent()
             window.makeKey()
@@ -604,9 +609,15 @@ package final class MenuPanelPresenter<P: MenuPanelPlatform> {
         // — otherwise popoverDidClose never fires and both would leak, holding a
         // display object and a window observer for the rest of the session.
         guard popover.isShown else {
-            environment.holdStatusBadge(false)
-            endPopoverDriftCorrection()
-            if !reopening { _ = endActivationTracking() }
+            if popoverIsClosing {
+                popoverIsReopening = reopening
+                finishPopoverClose(recoverForeignClose: false)
+                popoverIsReopening = wasReopening
+            } else {
+                environment.holdStatusBadge(false)
+                endPopoverDriftCorrection()
+                if !reopening { _ = endActivationTracking() }
+            }
             return
         }
         if let window = popover.panelWindow {
@@ -614,6 +625,15 @@ package final class MenuPanelPresenter<P: MenuPanelPlatform> {
                                         anchor: savedAnchor ?? resolvePanelAnchor(for: button, window: window))
         }
         environment.installDismissMonitors()
+    }
+
+    /// A show that re-presented the popover ends the close it interrupted,
+    /// unless a fade-out is still running and will finish it.
+    package func popoverWasRepresented() {
+        guard !popoverIsFadingOut else { return }
+        popoverIsClosing = false
+        popoverCloseIsAppRequested = false
+        popoverCloseReason = nil
     }
 
     package func shouldDismissPopover(forLocalEvent event: NSEvent) -> Bool {
@@ -698,13 +718,19 @@ package final class MenuPanelPresenter<P: MenuPanelPlatform> {
     }
 
     package func popoverDidClose(_ notification: Notification) {
+        // A recovered close can still report back after the next presentation.
+        guard popoverIsClosing, !popover.isShown else { return }
+        finishPopoverClose()
+    }
+
+    private func finishPopoverClose(recoverForeignClose: Bool = true) {
         if !popover.isShown {
             environment.setPopoverVisible(false)
         }
         // Decided before anything below is torn down, and treated like a
         // metric anchor switch: the panel is about to be shown again in the
         // same turn, so the sampling and caches it is using stay alive.
-        let recoveryAnchor = anchorAfterForeignClose()
+        let recoveryAnchor = recoverForeignClose ? anchorAfterForeignClose() : nil
         if recoveryAnchor != nil {
             popoverIsSwitchingAnchor = true
             environment.setSwitchingAnchor(true)
@@ -722,11 +748,15 @@ package final class MenuPanelPresenter<P: MenuPanelPlatform> {
         popoverCloseIsAppRequested = false
         let closeReason = popoverCloseReason
         popoverCloseReason = nil
+        // A completion may present another panel or run a nested menu loop.
+        // Finish the old activation tracking before that new work starts.
+        let handsBackActivation = !popoverIsSwitchingAnchor && !popoverIsReopening
+        let activationSource = handsBackActivation ? endActivationTracking() : nil
         runPopoverCloseCompletions()
         if let recoveryAnchor {
             reopenPanelAfterForeignClose(anchor: recoveryAnchor)
-        } else if !popoverIsSwitchingAnchor && !popoverIsReopening {
-            environment.returnActivation(endActivationTracking(), closeReason)
+        } else if handsBackActivation {
+            environment.returnActivation(activationSource, closeReason)
         }
     }
 

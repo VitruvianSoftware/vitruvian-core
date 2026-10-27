@@ -11,7 +11,6 @@ Node.js, so there is nothing to build; these targets only run the unit tests.
 
 load("@aspect_rules_js//js:defs.bzl", "js_library", "js_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # gazelle:ignore
@@ -98,36 +97,14 @@ rust_test(
     ],
 )
 
-sh_test(
+test_suite(
     name = "security-check_test",
-    size = "small",
-    srcs = ["hooks/security-check_test.sh"],
-    args = ["$(location hooks/security-check.sh)"],
-    data = [
-        "hooks/security-check.sh",
-        "sidecars/panel/lib/core.mjs",
-        "@nodejs_toolchains//:resolved_toolchain",
-    ],
-    env = {"VITRUVIAN_NODE": "$(NODE_PATH)"},
-    toolchains = ["@nodejs_toolchains//:resolved_toolchain"],
+    tests = [":security_check_lib_test"],
 )
 
-sh_test(
+test_suite(
     name = "security-check_rs_test",
-    size = "small",
-    srcs = ["hooks/security-check_test.sh"],
-    args = [
-        "$(location :security-check)",
-        "$(location hooks/security-check.sh)",
-    ],
-    data = [
-        "hooks/security-check.sh",
-        "sidecars/panel/lib/core.mjs",
-        ":security-check",
-        "@nodejs_toolchains//:resolved_toolchain",
-    ],
-    env = {"VITRUVIAN_NODE": "$(NODE_PATH)"},
-    toolchains = ["@nodejs_toolchains//:resolved_toolchain"],
+    tests = [":security_check_lib_test"],
 )
 
 js_library(

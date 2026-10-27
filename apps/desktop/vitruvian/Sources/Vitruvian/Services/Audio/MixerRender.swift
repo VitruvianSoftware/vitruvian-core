@@ -3,12 +3,53 @@
 
 import Accelerate
 import CoreAudio
+import Darwin
 import VitruvianCore
 import VitruvianDesign
 
+/// The sample representation the mixer can render without conversion. A tap
+/// tied to a device stream inherits that stream's format; it is not always
+/// the interleaved Float32 produced by a stereo mixdown.
+package struct MixerTapFormat: Equatable {
+    package let sampleRate: Double
+    package let channels: Int
+    package let flags: AudioFormatFlags
+
+    package init?(_ format: AudioStreamBasicDescription, allowNonInterleaved: Bool = false) {
+        let channels = Int(format.mChannelsPerFrame)
+        let planar = format.mFormatFlags & kAudioFormatFlagIsNonInterleaved != 0
+        guard format.mFormatID == kAudioFormatLinearPCM,
+              format.mFormatFlags & kAudioFormatFlagIsFloat != 0,
+              format.mFormatFlags & kAudioFormatFlagIsPacked != 0,
+              allowNonInterleaved || !planar,
+              format.mFormatFlags & kAudioFormatFlagIsBigEndian == kAudioFormatFlagsNativeEndian,
+              format.mBitsPerChannel == 32, channels > 0,
+              UInt64(format.mBytesPerFrame) == UInt64(planar ? 1 : channels) * 4,
+              format.mFramesPerPacket == 1,
+              format.mBytesPerPacket == format.mBytesPerFrame,
+              format.mSampleRate.isFinite, format.mSampleRate > 0 else { return nil }
+        sampleRate = format.mSampleRate
+        self.channels = channels
+        flags = format.mFormatFlags
+    }
+
+    /// A direct tap avoids the system's stereo mixdown attenuation on wide
+    /// interfaces. Restrict it to one complete stream on the app's own output,
+    /// so every captured channel has the same destination and no other stream
+    /// or device is dropped. Other routes retain the stereo mixdown path.
+    package static func usesDeviceStream(processDevices: [[AudioObjectID]], outputDevice: AudioObjectID,
+                                         streamCount: Int, startingChannel: UInt32,
+                                         format: MixerTapFormat?) -> Bool {
+        guard outputDevice != 0, streamCount == 1, startingChannel == 1,
+              let format, format.channels > 2 else { return false }
+        let devices = Set(processDevices.flatMap { $0 })
+        return devices == [outputDevice]
+    }
+}
+
 /// Puts a tapped app's audio onto whatever shape the output device asks for.
 ///
-/// The tap always hands over the same thing: two interleaved channels. The
+/// The tap hands over interleaved Float32, validated when it is created. The
 /// device on the other side does not have to match. A headset in a call
 /// carries one channel, an audio interface can carry eight, and a device that
 /// also records puts its own microphone in front of the tap in the same list
@@ -42,9 +83,13 @@ package enum MixerRender {
                                tapChannels: Int) -> Int? {
         var lone: Int?
         for index in stride(from: buffers.count - 1, through: 0, by: -1)
-        where buffers[index].mData != nil && buffers[index].mNumberChannels > 0 {
-            if Int(buffers[index].mNumberChannels) == tapChannels { return index }
-            if buffers.count == 1 { lone = index }
+        where buffers[index].mNumberChannels > 0 {
+            if Int(buffers[index].mNumberChannels) == tapChannels {
+                // An empty tap is still the tap. Looking farther back could
+                // play a live microphone with the same channel count.
+                return buffers[index].mData == nil ? nil : index
+            }
+            if buffers.count == 1, buffers[index].mData != nil { lone = index }
         }
         return lone
     }
@@ -69,6 +114,12 @@ package enum MixerRender {
     /// a frame with no samples behind it.
     package static func silence(_ output: UnsafeMutableAudioBufferListPointer, from frame: Int = 0) {
         for buffer in output {
+            // A suspended callback may receive a new, unsupported format.
+            // Silence all bytes without interpreting them as Float32.
+            if frame == 0 {
+                if let data = buffer.mData { memset(data, 0, Int(buffer.mDataByteSize)) }
+                continue
+            }
             let channels = Int(buffer.mNumberChannels)
             guard channels > 0,
                   let destination = buffer.mData?.assumingMemoryBound(to: Float.self) else { continue }
@@ -110,13 +161,24 @@ package enum MixerRender {
     /// too, or buffered audio is cut off and then replayed late on the next
     /// callback. Draining delayed audio alone counts no cycle, so a stalled
     /// capture still reaches the engine's recovery check.
+    ///
+    /// An engine whose tap format changed has stopped rendering (`canRender`
+    /// answers false): the cycle silences every output byte, drops the
+    /// limiter's delay and counts nothing, so the old format's lookahead is
+    /// never drained into a new clock or read as the old Float32 layout.
     package static func limitedCycle(input: UnsafeMutableAudioBufferListPointer,
                                      output: UnsafeMutableAudioBufferListPointer,
                                      tapChannels: Int,
                                      gain: () -> Float,
                                      countCycle: () -> Void,
                                      limiter: MixerOutputLimiter,
-                                     release: Float) {
+                                     release: Float,
+                                     canRender: () -> Bool = { true }) {
+        guard canRender() else {
+            silence(output)
+            limiter.reset()
+            return
+        }
         _ = renderCycle(input: input, output: output, tapChannels: tapChannels, gain: gain, countCycle: countCycle)
         limiter.process(output, release: release)
     }
@@ -203,6 +265,13 @@ package final class MixerOutputLimiter {
 
     package init(channelCapacity: Int) {
         lookahead = BoostLookaheadBufferListLimiter(channelCapacity: channelCapacity)
+    }
+
+    /// Called only by the IO callback. The next valid buffer clears the
+    /// delay and envelope before rendering, without allocating new storage.
+    package func reset() {
+        lookahead.reset()
+        fallback = BoostBufferListLimiter()
     }
 
     /// Limits every writable output buffer up to the frames all of them hold.

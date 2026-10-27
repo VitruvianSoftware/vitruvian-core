@@ -180,19 +180,60 @@ a failure shows: a hook's stderr never reaches the agent. `tools/ci/kube-setup_t
 
 Verify with `kubectl get nodes` (context `lab`). If it works, you're done.
 
+```mermaid
+flowchart LR
+  subgraph CloudVM["Claude Code Cloud Sandbox (No /dev/net/tun, No Outbound UDP)"]
+    CLI["kubectl (--context lab) / curl / ssh"]
+    SOCKS["tailscaled (userspace networking)\nSOCKS5 Proxy on localhost:1055"]
+    CLI -->|"socks5://localhost:1055"| SOCKS
+  end
+
+  subgraph Public["Public DNS & Relay Layer"]
+    CF["Cloudflare DNS\nk8s-api.lab.ipv1337.dev\nA -> 100.64.0.6, 100.64.0.7, 100.64.0.8"]
+    DERP["Tailscale DERP Relay\n(HTTPS TCP/443 via $HTTPS_PROXY)"]
+  end
+
+  subgraph Homelab["Homelab Wired Control-Plane Nodes (fedora · nuc9i5 · nuc9i9)"]
+    NA["headscale-node-agent DaemonSet\n(100.64.0.6, 100.64.0.7, 100.64.0.8)\nTS_USERSPACE=true + hostNetwork=true"]
+    SR["headscale-subnet-router Deployment\n(100.64.0.2, pinned to wired CP)\nTS_USERSPACE=true + hostNetwork=true"]
+    API["k3s Apiserver\n(127.0.0.1:6443 / 192.168.86.64:6443)"]
+    SSH["Host sshd\n(127.0.0.1:22)"]
+  end
+
+  SOCKS -.->|"Guest OS /etc/resolv.conf"| CF
+  SOCKS <-->|"WireGuard over DERP"| DERP
+  DERP <--> NA
+  DERP <--> SR
+  NA -->|"netstack -> 127.0.0.1:6443"| API
+  NA -->|"netstack -> 127.0.0.1:22"| SSH
+  SR -->|"192.168.86.0/24 & 10.44.86.0/24"| API
+```
+
 **Prerequisites (set once, outside this repo):**
 - Env vars on the cloud environment (or, better, the `homelab` profile's Secret
   Manager entries — same values, rotated without touching the environment):
-  `TS_AUTHKEY` (reusable, and permitting **untagged** device registration — see
-  below) and `LAB_SA_TOKEN` (the **non-expiring** ServiceAccount
+  `TS_AUTHKEY` (reusable Headscale pre-auth key for user `james` or untagged
+  Tailscale key — see below) and `LAB_SA_TOKEN` (the **non-expiring** ServiceAccount
   token — `kubectl -n claude-code get secret claude-code-token -o
   jsonpath='{.data.token}' | base64 -d`, *not* `kubectl create token`, which
   expires).
+- Control plane & routes: `tailscale-up.sh` (maintained via
+  `bazel run //tools/cloud-bootstrap:configure-tailscale`) passes
+  `--accept-routes=true` and automatically selects
+  `--login-server=https://headscale.ipv1337.dev` whenever `TS_AUTHKEY` is a
+  Headscale pre-auth key (does not start with `tskey-`) or `TS_LOGIN_SERVER` is
+  set. Because userspace `tailscaled` (`--tun=userspace-networking`) uses
+  `dns.noopManager` and its SOCKS5 proxy resolves hostnames via the guest OS
+  `/etc/resolv.conf` (public Cloudflare DNS rather than `100.100.100.100`
+  MagicDNS), `k8s-api.lab.ipv1337.dev` publishes the three control-plane
+  Headscale tailnet A records (`100.64.0.6`, `100.64.0.7`, `100.64.0.8`) via
+  `gitops/argocd/platform/platform-config/k8s-api-dnsendpoint.yaml` and
+  `k8s-api-dns-reconciler.yaml`, while `--accept-routes=true` also routes LAN
+  subnets (`192.168.86.0/24`, `10.44.86.0/24`) through `homelab-subnet-router`.
 - Tailnet policy: **nothing to configure while the node joins untagged.**
-  `tailscale-up.sh` passes `--accept-routes=false` and no `--advertise-tags`, so
-  the node registers as a personal device of the tailnet owner and inherits that
-  account's access to its own machines. `tailscale status` shows it owned by
-  `james.nguyen@`, not tagged.
+  `tailscale-up.sh` passes no `--advertise-tags`, so the node registers as a
+  personal device of the tailnet owner (`james`) and inherits that account's
+  access to its own machines.
 
 > **Do not "fix" this by tagging the key.** A tagged node is owned by the *tag*,
 > not the user, and inherits none of that access — so `tag:claude-cloud` would

@@ -20,48 +20,15 @@
 
 # //apps/mobile/android-remote/macagent: the Mac half of Vitruvian Remote.
 #
-# A read-only Go daemon serving the machine's metrics over HTTP. Lives under
+# A read-only Rust daemon serving the machine's metrics over HTTP. Lives under
 # the app it serves so it inherits the app's CODEOWNERS and the inter-app
 # boundary (#82): nothing outside //apps/mobile/android-remote may depend on it.
 #
-# gazelle manages the go_* rules; the rest is hand-authored.
-# gazelle:go_visibility //apps/mobile/android-remote:__subpackages__
+# gazelle:ignore
 
-load("@rules_go//go:def.bzl", "go_binary", "go_library", "go_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
-
-go_library(
-    name = "macagent_lib",
-    srcs = [
-        "antigravity.go",
-        "exec.go",
-        "homespeaker.go",
-        "hook.go",
-        "main.go",
-        "mcp.go",
-        "notify.go",
-        "pair.go",
-        "pairpage.go",
-        "permission.go",
-        "phone.go",
-        "sampler.go",
-        "server.go",
-        "stream.go",
-        "tailnet.go",
-        "tv.go",
-    ],
-    importpath = "github.com/VitruvianSoftware/vitruvian-core/apps/mobile/android-remote/macagent",
-    visibility = ["//apps/mobile/android-remote:__subpackages__"],
-    deps = ["//apps/mobile/android-remote/macagent/metrics"],
-)
-
-go_binary(
-    name = "macagent",
-    embed = [":macagent_lib"],
-    visibility = ["//apps/mobile/android-remote:__subpackages__"],
-)
 
 # `bazel run //apps/mobile/android-remote/macagent:install` -- install the agent
 # the repo just built as a login item for the current user. No sudo; it is a
@@ -105,30 +72,6 @@ pipeline_unit(
     timeout_minutes = 10,
 )
 
-go_test(
-    name = "macagent_test",
-    srcs = [
-        "antigravity_test.go",
-        "exec_test.go",
-        "homespeaker_test.go",
-        "hook_test.go",
-        "notify_test.go",
-        "pair_test.go",
-        "pairpage_test.go",
-        "permission_test.go",
-        "phone_test.go",
-        "server_test.go",
-        "stream_test.go",
-        "tailnet_test.go",
-        "tv_test.go",
-        "v12_test.go",
-    ],
-    embed = [":macagent_lib"],
-    deps = ["//apps/mobile/android-remote/macagent/metrics"],
-)
-
-# --- Rust ports ---------------------------------------------------------------
-
 rust_library(
     name = "macagent_scripts_lib",
     srcs = ["scripts/src/lib.rs"],
@@ -167,4 +110,76 @@ rust_test(
     crate = ":macagent_scripts_lib",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
+)
+
+rust_library(
+    name = "macagent_rs_lib",
+    srcs = [
+        "rs/src/antigravity.rs",
+        "rs/src/exec.rs",
+        "rs/src/homespeaker.rs",
+        "rs/src/hook.rs",
+        "rs/src/http_util.rs",
+        "rs/src/lib.rs",
+        "rs/src/mcp.rs",
+        "rs/src/notify.rs",
+        "rs/src/pair.rs",
+        "rs/src/pairpage.rs",
+        "rs/src/permission.rs",
+        "rs/src/phone.rs",
+        "rs/src/sampler.rs",
+        "rs/src/server.rs",
+        "rs/src/stream.rs",
+        "rs/src/tailnet.rs",
+        "rs/src/tv.rs",
+    ],
+    crate_name = "vitruvian_remote_macagent",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/mobile/android-remote:__subpackages__"],
+    deps = ["//apps/mobile/android-remote/macagent/metrics:metrics_rs"],
+)
+
+alias(
+    name = "macagent_lib",
+    actual = ":macagent_rs_lib",
+    visibility = ["//apps/mobile/android-remote:__subpackages__"],
+)
+
+rust_binary(
+    name = "macagent",
+    srcs = ["rs/src/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//apps/mobile/android-remote:__subpackages__"],
+    deps = [
+        ":macagent_rs_lib",
+        "//apps/mobile/android-remote/macagent/metrics:metrics_rs",
+    ],
+)
+
+alias(
+    name = "macagent-rs",
+    actual = ":macagent",
+    visibility = ["//apps/mobile/android-remote:__subpackages__"],
+)
+
+alias(
+    name = "macagent_rs",
+    actual = ":macagent",
+    visibility = ["//apps/mobile/android-remote:__subpackages__"],
+)
+
+rust_test(
+    name = "macagent_rs_test",
+    size = "small",
+    crate = ":macagent_rs_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = ["//apps/mobile/android-remote/macagent/metrics:metrics_rs"],
+)
+
+test_suite(
+    name = "macagent_test",
+    tests = [":macagent_rs_test"],
 )
