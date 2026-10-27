@@ -23,7 +23,6 @@
 # skips it; the macOS pipeline unit builds it by explicit label with
 # --config=macos-app. See README.md for local usage.
 
-load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_test")
 load("@build_bazel_rules_apple//apple:macos.bzl", "macos_application", "macos_command_line_application", "macos_dylib")
 load("@build_bazel_rules_apple//apple:resources.bzl", "apple_resource_group")
 load("@build_bazel_rules_swift//swift:swift_binary.bzl", "swift_binary")
@@ -33,7 +32,6 @@ load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/delivery:defs.bzl", "delivery")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 load(
@@ -423,6 +421,26 @@ swift_binary(
     ],
 )
 
+rust_library(
+    name = "make_icons_rs_lib",
+    srcs = ["bazel/src/make_icons/lib.rs"],
+    crate_name = "make_icons",
+    edition = "2021",
+)
+
+rust_binary(
+    name = "make_icons_tool",
+    srcs = ["bazel/src/make_icons/main.rs"],
+    edition = "2021",
+    deps = [":make_icons_rs_lib"],
+)
+
+rust_test(
+    name = "make_icons_rs_test",
+    size = "small",
+    crate = ":make_icons_rs_lib",
+)
+
 genrule(
     name = "icons",
     srcs = glob(["Resources/Brand/*.png"]),
@@ -432,13 +450,33 @@ genrule(
         "icons/MenuBarIcon@2x.png",
         "icons/BrandMark.png",
     ],
-    cmd = "$(location bazel/make_icons.sh) $(location :make_icon) " + package_name() + "/Resources/Brand $(RULEDIR)/icons",
+    cmd = "$(location :make_icons_tool) $(location :make_icon) " + package_name() + "/Resources/Brand $(RULEDIR)/icons",
     tags = ["manual"],
     target_compatible_with = MACOS_ONLY,
     tools = [
-        "bazel/make_icons.sh",
         ":make_icon",
+        ":make_icons_tool",
     ],
+)
+
+rust_library(
+    name = "helper_version_plist_rs_lib",
+    srcs = ["bazel/src/helper_version_plist/lib.rs"],
+    crate_name = "helper_version_plist",
+    edition = "2021",
+)
+
+rust_binary(
+    name = "helper_version_plist_tool",
+    srcs = ["bazel/src/helper_version_plist/main.rs"],
+    edition = "2021",
+    deps = [":helper_version_plist_rs_lib"],
+)
+
+rust_test(
+    name = "helper_version_plist_rs_test",
+    size = "small",
+    crate = ":helper_version_plist_rs_lib",
 )
 
 genrule(
@@ -448,10 +486,10 @@ genrule(
         "Resources/com.vitruviansoftware.vitruvian.fan-control.plist",
     ],
     outs = ["fan_helper_version/Info.plist"],
-    cmd = "$(location bazel/helper_version_plist.sh) $(location :" + FAN_HELPER_ID + ") $(location Resources/com.vitruviansoftware.vitruvian.fan-control.plist) $@",
+    cmd = "$(execpath :helper_version_plist_tool) $(location :" + FAN_HELPER_ID + ") $(location Resources/com.vitruviansoftware.vitruvian.fan-control.plist) $@",
     tags = ["manual"],
     target_compatible_with = MACOS_ONLY,
-    tools = ["bazel/helper_version_plist.sh"],
+    tools = [":helper_version_plist_tool"],
 )
 
 rust_library(
@@ -554,7 +592,6 @@ rust_test(
     size = "small",
     crate = ":sync_sources_rs_lib",
     data = [
-        "Tests/generate_sources.py",
         "bazel/sources.bzl",
         "build.sh",
     ] + glob([
@@ -562,15 +599,14 @@ rust_test(
     ]),
 )
 
-# Upstream's Tests/mutation_checks.py: each listed regression must fail the
+# Upstream's mutation checks: each listed regression must fail the
 # test meant to catch it. It edits the checkout in place and drives
 # `bazel test` itself, so it is run rather than tested, on macOS:
 #   bazel run --config=macos-app //apps/desktop/vitruvian:mutation_checks
 # .github/workflows/vitruvian-mutation-checks.yaml runs it weekly.
-py_binary(
+alias(
     name = "mutation_checks",
-    srcs = ["Tests/mutation_checks.py"],
-    main = "Tests/mutation_checks.py",
+    actual = ":mutation_checks_rs",
 )
 
 # The same file, reading only: every mutation still quotes its source exactly.
@@ -578,23 +614,9 @@ py_binary(
 # request, instead of stopping the weekly run. Not `manual` and not macOS-only,
 # so it also runs wherever `bazel test //...` does. A few mutations are planted
 # in the tool protocol's sources, hence that package's files in `data`.
-py_test(
+test_suite(
     name = "mutation_fixtures_test",
-    size = "small",
-    srcs = ["Tests/mutation_checks.py"],
-    args = [
-        "--check",
-        "--app-dir",
-        package_name(),
-    ],
-    data = [
-        "Resources/Info.plist",
-        "//packages/vitruvian-sdk:protocol_sources",
-    ] + glob([
-        "Sources/**/*.swift",
-        "Tests/**/*.swift",
-    ]),
-    main = "Tests/mutation_checks.py",
+    tests = [":mutation_fixtures_rs_test"],
 )
 
 rust_library(
@@ -653,9 +675,7 @@ rust_test(
     name = "generate_sources_rs_test",
     size = "small",
     crate = ":generate_sources_rs_lib",
-    data = [
-        "Tests/generate_sources.py",
-    ] + glob([
+    data = glob([
         "Sources/**/*.swift",
     ]),
 )
@@ -721,11 +741,10 @@ rust_test(
     crate = ":uninstall_spaces_tests_rs_lib",
 )
 
-# Runs the unmodified upstream Tests/generate_sources.py (see sync_sources.py).
+# Emits generated test sources (see sync_sources).
 genrule(
     name = "generated_test_sources",
     srcs = [
-        "Tests/generate_sources.py",
         "build.sh",
     ] + glob([
         "Sources/**/*.swift",
@@ -778,10 +797,27 @@ swift_test(
     ],
 )
 
-sh_test(
+rust_library(
+    name = "run_unit_tests_rs_lib",
+    srcs = ["bazel/src/run_unit_tests/lib.rs"],
+    crate_name = "run_unit_tests",
+    edition = "2021",
+    deps = [
+        ":preference_cleanup_tests_rs_lib",
+        ":uninstall_spaces_tests_rs_lib",
+    ],
+)
+
+rust_test(
+    name = "run_unit_tests_rs_test",
+    size = "small",
+    crate = ":run_unit_tests_rs_lib",
+)
+
+rust_test(
     name = "unit_tests",
     size = "large",
-    srcs = ["bazel/run_unit_tests.sh"],
+    srcs = ["bazel/src/run_unit_tests/main.rs"],
     args = [
         "$(rootpath :unit_tests_bin)",
         package_name(),
@@ -798,6 +834,7 @@ sh_test(
         "Tests/**",
         "Tools/**",
     ]),
+    edition = "2021",
     # Where ToolProcessTests finds the tool it starts, where
     # ToolFolderExamplesTests finds the folders the SDK's command-line tool is
     # held to as well, and where ExternalToolSettingsTests finds the protocol's
@@ -815,36 +852,70 @@ sh_test(
         "no-sandbox",
     ],
     target_compatible_with = MACOS_ONLY,
+    use_libtest_harness = False,
+    deps = [":run_unit_tests_rs_lib"],
 )
 
-sh_test(
+rust_library(
+    name = "run_selftest_rs_lib",
+    srcs = ["bazel/src/run_selftest/lib.rs"],
+    crate_name = "run_selftest",
+    edition = "2021",
+)
+
+rust_test(
+    name = "run_selftest_rs_test",
+    size = "small",
+    crate = ":run_selftest_rs_lib",
+)
+
+rust_test(
     name = "selftest",
     size = "medium",
-    srcs = ["bazel/run_selftest.sh"],
+    srcs = ["bazel/src/run_selftest/main.rs"],
     args = [
         "Vitruvian",
         "$(rootpaths :Vitruvian)",
     ],
     data = [":Vitruvian"],
+    edition = "2021",
     tags = [
         "manual",
         "no-remote",
         "no-sandbox",
     ],
     target_compatible_with = MACOS_ONLY,
+    use_libtest_harness = False,
+    deps = [":run_selftest_rs_lib"],
 )
 
-sh_test(
+rust_library(
+    name = "run_binary_rs_lib",
+    srcs = ["bazel/src/run_binary/lib.rs"],
+    crate_name = "run_binary",
+    edition = "2021",
+)
+
+rust_test(
+    name = "run_binary_rs_test",
+    size = "small",
+    crate = ":run_binary_rs_lib",
+)
+
+rust_test(
     name = "fan_helper_selftest",
     size = "small",
-    srcs = ["bazel/run_binary.sh"],
+    srcs = ["bazel/src/run_binary/main.rs"],
     args = [
         "$(rootpath :" + FAN_HELPER_ID + ")",
         "--selftest",
     ],
     data = [":" + FAN_HELPER_ID],
+    edition = "2021",
     tags = ["manual"],
     target_compatible_with = MACOS_ONLY,
+    use_libtest_harness = False,
+    deps = [":run_binary_rs_lib"],
 )
 
 test_suite(

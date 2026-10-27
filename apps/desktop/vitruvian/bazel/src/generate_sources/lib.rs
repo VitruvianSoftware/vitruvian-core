@@ -377,7 +377,6 @@ pub fn run_cli(args: &[String]) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::process::Command;
 
     #[test]
     fn test_extract_factories_and_prune_stale_files() {
@@ -449,47 +448,17 @@ mod tests {
     }
 
     #[test]
-    fn test_parity_with_python_generate_sources() {
+    fn test_generate_from_committed_sources() {
         let app_dir = Path::new("apps/desktop/vitruvian");
-        if !app_dir.join("Tests/generate_sources.py").exists() {
+        if !app_dir.join("Sources/Vitruvian/Core").is_dir() {
             return;
         }
-        let tmp = env::temp_dir().join("test_vitruvian_generate_sources_parity");
+        let tmp = env::temp_dir().join("test_vitruvian_generate_sources_committed");
         let _ = fs::remove_dir_all(&tmp);
-
-        let py_root = tmp.join("py_root");
         let rs_out = tmp.join("rs_out");
-        fs::create_dir_all(py_root.join("Tests")).unwrap();
-        fs::copy(
-            app_dir.join("Tests/generate_sources.py"),
-            py_root.join("Tests/generate_sources.py"),
-        )
-        .unwrap();
-        #[cfg(unix)]
-        std::os::unix::fs::symlink(
-            fs::canonicalize(app_dir.join("Sources")).unwrap(),
-            py_root.join("Sources"),
-        )
-        .unwrap();
-
-        let status = Command::new("python3")
-            .arg(py_root.join("Tests/generate_sources.py"))
-            .status()
-            .expect("failed to run python3");
-        assert!(status.success(), "python3 generate_sources.py failed");
-
         generate(app_dir, &rs_out).unwrap();
-
-        let py_catalog =
-            fs::read_to_string(py_root.join("build/generated-tests/LocalizationCatalog.swift"))
-                .unwrap();
         let rs_catalog = fs::read_to_string(rs_out.join("LocalizationCatalog.swift")).unwrap();
-        assert_eq!(
-            rs_catalog, py_catalog,
-            "Rust generate_sources output must be byte-for-byte identical to Python generate_sources.py"
-        );
         assert!(rs_catalog.lines().count() > 50);
-
         let _ = fs::remove_dir_all(&tmp);
     }
 }
