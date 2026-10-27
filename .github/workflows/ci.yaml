@@ -1031,8 +1031,8 @@ jobs:
       - name: Assert example/library module pins are in sync
         run: |
           set -euo pipefail
-          rustc --edition 2021 --crate-type lib --crate-name gomod tools/gomod/src/lib.rs -o "$RUNNER_TEMP/libgomod.rlib"
-          rustc --edition 2021 tools/gomod/src/main.rs -L "$RUNNER_TEMP" --extern gomod="$RUNNER_TEMP/libgomod.rlib" -o "$RUNNER_TEMP/tidy"
+          rustc --edition 2021 --crate-type lib --crate-name gomod_lib tools/gomod/src/lib.rs -o "$RUNNER_TEMP/libgomod_lib.rlib"
+          rustc --edition 2021 tools/gomod/src/main.rs -L "$RUNNER_TEMP" --extern gomod_lib="$RUNNER_TEMP/libgomod_lib.rlib" -o "$RUNNER_TEMP/tidy"
           "$RUNNER_TEMP/tidy" --check
 
       - name: go build (every example module)
