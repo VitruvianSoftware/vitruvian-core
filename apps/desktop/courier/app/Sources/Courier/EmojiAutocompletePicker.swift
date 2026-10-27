@@ -153,7 +153,7 @@ public struct EmojiAutocompletePicker: View {
             }
         }
         .padding(6)
-        .frame(width: 260)
+        .frame(width: 280)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
         .overlay(
             RoundedRectangle(cornerRadius: 8)
@@ -161,7 +161,7 @@ public struct EmojiAutocompletePicker: View {
         )
         .shadow(color: .black.opacity(0.14), radius: 8, y: 3)
         .task {
-            if let composer = observedComposer, composer.stickerPacks.isEmpty {
+            if let composer = observedComposer, composer.stickerPacks.isEmpty && composer.customEmojis.isEmpty {
                 await composer.loadStickers(refresh: false)
             }
         }

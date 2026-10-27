@@ -570,4 +570,100 @@ enum Fixture {
             ),
         ]
     }
+
+    // MARK: - Part 4.5c Task 10: Stickers & GIFs timeline fixtures (real Go engine wire shape)
+
+    static func sticker(
+        _ id: String,
+        name: String = "Party Parrot",
+        emoji: String? = "🦜",
+        mine: Bool,
+        ts minutesAgo: Int,
+        mediaURL: String = "mxc://courier.local/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        mediaPath: String = "",
+        mimeType: String = "image/webp",
+        width: Int = 160,
+        height: Int = 160,
+        replyTo: String? = nil,
+        senderName: String = "Ann Example"
+    ) -> Event {
+        var info: [String: JSONValue] = [
+            "mimetype": .string(mimeType),
+            "size": .int(4096),
+            "w": .int(Int64(width)),
+            "h": .int(Int64(height)),
+        ]
+        if let emoji {
+            info["fi.mau.bridged_sticker"] = .object([
+                "network": .string("telegram"),
+                "pack_url": .string("https://t.me/addstickers/CatPack"),
+                "id": .string("doc-9001"),
+                "emoji": .string(emoji),
+            ])
+        }
+        var content: [String: JSONValue] = [
+            "msgtype": .string("m.image"),
+            "body": .string(name),
+            "url": .string(mediaURL),
+            "info": .object(info),
+        ]
+        if let replyTo {
+            content["m.relates_to"] = .object([
+                "m.in_reply_to": .object(["event_id": .string(replyTo)]),
+            ])
+        }
+        var evt = event(
+            id,
+            type: "m.sticker",
+            mine: mine,
+            ts: minutesAgo,
+            content: content,
+            name: senderName
+        )
+        evt.mediaPath = mediaPath
+        return evt
+    }
+
+    static func gif(
+        _ id: String,
+        msgtype: String = "m.image",
+        fileName: String = "animation.gif",
+        caption: String? = nil,
+        mine: Bool,
+        ts minutesAgo: Int,
+        mediaURL: String = "mxc://courier.local/fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+        mediaPath: String = "",
+        mimeType: String = "image/gif",
+        width: Int = 280,
+        height: Int = 180,
+        senderName: String = "Ann Example"
+    ) -> Event {
+        let info: [String: JSONValue] = [
+            "mimetype": .string(mimeType),
+            "size": .int(12345),
+            "w": .int(Int64(width)),
+            "h": .int(Int64(height)),
+            "is_animated": .bool(true),
+            "fi.mau.gif": .bool(true),
+        ]
+        let content: [String: JSONValue] = [
+            "msgtype": .string(msgtype),
+            "body": .string(caption ?? fileName),
+            "filename": .string(fileName),
+            "url": .string(mediaURL),
+            "info": .object(info),
+        ]
+        var evt = event(
+            id,
+            type: "m.room.message",
+            mine: mine,
+            ts: minutesAgo,
+            content: content,
+            name: senderName
+        )
+        evt.mediaPath = mediaPath
+        evt.isGIF = true
+        evt.isAnimated = true
+        return evt
+    }
 }

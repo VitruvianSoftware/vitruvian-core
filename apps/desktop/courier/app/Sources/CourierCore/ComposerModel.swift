@@ -1870,6 +1870,8 @@ public final class ComposerModel: ObservableObject {
 
     /// Populates the sticker and recent GIF catalog directly for snapshot and unit tests.
     public func setStickerCatalogForTesting(packs: [StickerPackWire], recentGIFs: [StickerItemWire] = []) {
+        stickerLoadGeneration += 1
+        initialStickerLoadStarted = true
         applyStickerCatalog(StickersListResult(packs: packs, recentGIFs: recentGIFs))
     }
 

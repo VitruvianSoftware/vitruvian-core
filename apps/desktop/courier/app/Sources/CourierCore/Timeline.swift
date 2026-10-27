@@ -271,6 +271,54 @@ public enum StatusLine: Equatable, Sendable {
 }
 
 public typealias Message = TimelineMessage
+public typealias MessageRow = TimelineMessage
+
+public struct StickerAttachment: Equatable, Sendable {
+    public var mediaURL: String
+    public var name: String
+    public var emoji: String?
+    public var mimeType: String?
+    public var width: Int?
+    public var height: Int?
+
+    public init(
+        mediaURL: String,
+        name: String,
+        emoji: String? = nil,
+        mimeType: String? = nil,
+        width: Int? = nil,
+        height: Int? = nil
+    ) {
+        self.mediaURL = mediaURL
+        self.name = name
+        self.emoji = emoji
+        self.mimeType = mimeType
+        self.width = width
+        self.height = height
+    }
+}
+
+public struct GIFAttachment: Equatable, Sendable {
+    public var mediaURL: String
+    public var caption: String?
+    public var mimeType: String?
+    public var width: Int?
+    public var height: Int?
+
+    public init(
+        mediaURL: String,
+        caption: String? = nil,
+        mimeType: String? = nil,
+        width: Int? = nil,
+        height: Int? = nil
+    ) {
+        self.mediaURL = mediaURL
+        self.caption = caption
+        self.mimeType = mimeType
+        self.width = width
+        self.height = height
+    }
+}
 
 public struct TimelineMessage: Equatable, Identifiable, Sendable {
     public let id: String
@@ -326,6 +374,10 @@ public struct TimelineMessage: Equatable, Identifiable, Sendable {
     public internal(set) var galleryItems: [GalleryItem]
     /// Whether the media was transcoded before sending (`fi.courier.transcoded`).
     public let isTranscoded: Bool
+    /// Decoded sticker attachment for `type == "m.sticker"`.
+    public let sticker: StickerAttachment?
+    /// Decoded looping GIF attachment for `m.image` / `m.video` with `info["fi.mau.gif"] == true` (or `image/gif`).
+    public let gif: GIFAttachment?
     public internal(set) var statusLine: StatusLine?
     /// The engine counts this kind of event as unread when it is from someone else: a message, a sticker or a poll
     /// (Ruling 17), not a message that could not be decrypted (or one that has since been deleted and was something
@@ -384,6 +436,8 @@ public struct TimelineMessage: Equatable, Identifiable, Sendable {
         played: Bool = false,
         galleryItems: [GalleryItem] = [],
         isTranscoded: Bool = false,
+        sticker: StickerAttachment? = nil,
+        gif: GIFAttachment? = nil,
         statusLine: StatusLine?,
         countsAsUnread: Bool,
         poll: PollTally?,
@@ -428,6 +482,8 @@ public struct TimelineMessage: Equatable, Identifiable, Sendable {
         self.played = played
         self.galleryItems = galleryItems
         self.isTranscoded = isTranscoded
+        self.sticker = sticker
+        self.gif = gif
         self.statusLine = statusLine
         self.countsAsUnread = countsAsUnread
         self.poll = poll
@@ -439,6 +495,11 @@ public struct TimelineMessage: Equatable, Identifiable, Sendable {
         self.reply = reply
         self.reactions = reactions
         self.startsGroup = startsGroup
+    }
+
+    /// Stickers render in a borderless container without the coloured text bubble background tint.
+    public var suppressesBubbleBackground: Bool {
+        kind == .sticker && !viewOnce && sticker != nil
     }
 
     /// A note of something that happened (a timer change, a call), not anyone's words: drawn as a line across the
@@ -663,6 +724,8 @@ public enum Timeline {
 
     private static func isGalleryCandidate(_ message: TimelineMessage) -> Bool {
         (message.kind == .image || message.kind == .video)
+            && !message.isGIF
+            && message.gif == nil
             && !message.viewOnce
             && message.reply == nil
             && message.thread == nil
@@ -918,6 +981,8 @@ public enum Timeline {
                 played: played,
                 galleryItems: [],
                 isTranscoded: !isDeleted && shown.isTranscoded,
+                sticker: isDeleted || viewOnce ? nil : shown.sticker,
+                gif: isDeleted || viewOnce ? nil : shown.gif,
                 statusLine: statusLine(of: base, me: me, newest: base.eventID == newestMine, isDirect: isDirect),
                 countsAsUnread: (base.type == "m.room.message" || base.type == "m.sticker" || base.type == pollStartType)
                     && TimerChange.of(base.content) == nil && CallNote.isNews(base),
@@ -991,6 +1056,8 @@ public enum Timeline {
         var viewOnce = false
         var geoURI: String?
         var isTranscoded = false
+        var sticker: StickerAttachment?
+        var gif: GIFAttachment?
     }
 
     /// The HTML of a message's content, when it has some.
@@ -1030,11 +1097,29 @@ public enum Timeline {
         case "m.room.encrypted":
             return Shown(kind: .undecryptable, body: "", rich: RichText(text: ""))
         case "m.sticker":
-            return Shown(kind: .sticker, body: "", rich: RichText(text: ""), fileName: content["body"]?.stringValue ?? "",
+            let name = content["body"]?.stringValue ?? ""
+            let urlString = content["url"]?.stringValue ?? ""
+            let mediaURL = urlString.isEmpty ? event.mediaPath : urlString
+            let emoji = info?["fi.mau.bridged_sticker"]?["emoji"]?.stringValue
+                ?? info?["emoji"]?.stringValue
+                ?? content["emoji"]?.stringValue
+            let width = number("w").map(Int.init)
+            let height = number("h").map(Int.init)
+            let viewOnce = event.viewOnce ?? false
+            let sticker = StickerAttachment(
+                mediaURL: mediaURL,
+                name: name,
+                emoji: emoji?.isEmpty == false ? emoji : nil,
+                mimeType: mime.isEmpty ? nil : mime,
+                width: width,
+                height: height
+            )
+            return Shown(kind: .sticker, body: "", rich: RichText(text: ""), fileName: name,
                          mimeType: mime, byteSize: number("size"),
-                         width: number("w").map(Int.init), height: number("h").map(Int.init),
+                         width: width, height: height,
                          thumbnailPath: event.thumbnailPath, blurhash: blurhash,
-                         isGIF: isGIF, isAnimated: isAnimated, isTranscoded: isTranscoded)
+                         isGIF: isGIF, isAnimated: isAnimated, viewOnce: viewOnce,
+                         isTranscoded: isTranscoded, sticker: sticker)
         case pollStartType:
             let start = content["org.matrix.msc3381.poll.start"]
             let question = event.poll?.question
@@ -1082,13 +1167,26 @@ public enum Timeline {
             let waveform: [Int] = event.waveform
                 ?? (content["org.matrix.msc1767.audio"]?["waveform"]?.arrayValue?.compactMap { $0.integerValue.map(Int.init) } ?? [])
             let viewOnce = event.viewOnce ?? false
+            let width = number("w").map(Int.init)
+            let height = number("h").map(Int.init)
+            let urlString = content["url"]?.stringValue ?? ""
+            let mediaURL = urlString.isEmpty ? event.mediaPath : urlString
+            let gif: GIFAttachment? = isGIF && (kind == .image || kind == .video)
+                ? GIFAttachment(
+                    mediaURL: mediaURL,
+                    caption: caption.isEmpty ? nil : caption,
+                    mimeType: mime.isEmpty ? nil : mime,
+                    width: width,
+                    height: height
+                )
+                : nil
             return Shown(kind: kind, body: caption, rich: rich(caption, html: html(of: content)), fileName: name,
                          mimeType: mime, byteSize: number("size"),
-                         width: number("w").map(Int.init), height: number("h").map(Int.init),
+                         width: width, height: height,
                          thumbnailPath: event.thumbnailPath, blurhash: blurhash,
                          durationMS: durationMS, waveform: waveform,
                          isGIF: isGIF, isAnimated: isAnimated, viewOnce: viewOnce,
-                         isTranscoded: isTranscoded)
+                         isTranscoded: isTranscoded, gif: gif)
         }
 
         var body = original

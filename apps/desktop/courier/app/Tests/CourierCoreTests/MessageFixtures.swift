@@ -238,3 +238,115 @@ func callNote(id: String, room: String, at n: Int64, by sender: String = "@ann:e
         "delivered": false, "read_by": [[String: Any]](),
     ]
 }
+
+// MARK: - Stickers & GIFs (4.5c)
+
+/// An `m.sticker` event with the exact wire shape written by `actions.SendSticker` (`actions.go:1332-1340`).
+func stickerEventFixture(
+    id: String,
+    room: String = "!a",
+    mine: Bool = false,
+    ts: Int64,
+    seq: Int64 = 1,
+    name: String = "Party Parrot",
+    emoji: String? = "🦜",
+    mediaURL: String = "mxc://courier.local/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    mediaPath: String = "",
+    mimeType: String = "image/webp",
+    width: Int = 128,
+    height: Int = 128,
+    size: Int64 = 4096,
+    replyTo: String? = nil,
+    viewOnce: Bool? = nil
+) -> Event {
+    var info: [String: JSONValue] = [
+        "mimetype": .string(mimeType),
+        "size": .int(size),
+        "w": .int(Int64(width)),
+        "h": .int(Int64(height)),
+    ]
+    if let emoji {
+        info["fi.mau.bridged_sticker"] = .object([
+            "network": .string("telegram"),
+            "pack_url": .string("https://t.me/addstickers/CatPack"),
+            "id": .string("doc-9001"),
+            "emoji": .string(emoji),
+        ])
+    }
+    var content: [String: JSONValue] = [
+        "msgtype": .string("m.image"),
+        "body": .string(name),
+        "url": .string(mediaURL),
+        "info": .object(info),
+    ]
+    if let replyTo {
+        content["m.relates_to"] = .object([
+            "m.in_reply_to": .object(["event_id": .string(replyTo)]),
+        ])
+    }
+    return Event(
+        eventID: id,
+        roomID: room,
+        sender: mine ? Timeline.meUserID : "@ann:example.test",
+        senderName: mine ? "me" : "Ann Example",
+        mine: mine,
+        type: "m.sticker",
+        content: .object(content),
+        ts: ts,
+        seq: seq,
+        status: .sent,
+        mediaPath: mediaPath,
+        viewOnce: viewOnce
+    )
+}
+
+/// An `m.room.message` GIF event (`info["fi.mau.gif"] == true`) with the exact wire shape written by `actions.SendGIF` (`actions.go:1429-1444`).
+func gifEventFixture(
+    id: String,
+    room: String = "!a",
+    mine: Bool = false,
+    ts: Int64,
+    seq: Int64 = 1,
+    msgtype: String = "m.image",
+    fileName: String = "animation.gif",
+    caption: String? = nil,
+    mediaURL: String = "mxc://courier.local/fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+    mediaPath: String = "",
+    mimeType: String = "image/gif",
+    width: Int = 320,
+    height: Int = 240,
+    size: Int64 = 12345,
+    viewOnce: Bool? = nil
+) -> Event {
+    let info: [String: JSONValue] = [
+        "mimetype": .string(mimeType),
+        "size": .int(size),
+        "w": .int(Int64(width)),
+        "h": .int(Int64(height)),
+        "is_animated": .bool(true),
+        "fi.mau.gif": .bool(true),
+    ]
+    let content: [String: JSONValue] = [
+        "msgtype": .string(msgtype),
+        "body": .string(caption ?? fileName),
+        "filename": .string(fileName),
+        "url": .string(mediaURL),
+        "info": .object(info),
+    ]
+    return Event(
+        eventID: id,
+        roomID: room,
+        sender: mine ? Timeline.meUserID : "@ann:example.test",
+        senderName: mine ? "me" : "Ann Example",
+        mine: mine,
+        type: "m.room.message",
+        content: .object(content),
+        ts: ts,
+        seq: seq,
+        status: .sent,
+        mediaPath: mediaPath,
+        isGIF: true,
+        isAnimated: true,
+        viewOnce: viewOnce
+    )
+}

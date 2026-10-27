@@ -2427,6 +2427,211 @@ final class ViewSnapshotTests: XCTestCase {
             ["imported:both"]
         )
     }
+
+    // MARK: - Milestone 4.5c Task 10: Sticker and GIF timeline rendering and light/dark PNG snapshot tests
+
+    private func makeTestStickerPNG(width: Int = 160, height: Int = 160) throws -> String {
+        let image = NSImage(size: NSSize(width: width, height: height), flipped: false) { rect in
+            NSColor.clear.setFill()
+            rect.fill()
+            let circleRect = rect.insetBy(dx: 12, dy: 12)
+            NSColor.systemOrange.setFill()
+            NSBezierPath(ovalIn: circleRect).fill()
+            NSColor.white.setStroke()
+            let border = NSBezierPath(ovalIn: circleRect)
+            border.lineWidth = 4
+            border.stroke()
+            let innerStar = circleRect.insetBy(dx: 30, dy: 30)
+            NSColor.systemYellow.setFill()
+            NSBezierPath(roundedRect: innerStar, xRadius: 16, yRadius: 16).fill()
+            return true
+        }
+        let tiff = try XCTUnwrap(image.tiffRepresentation)
+        let rep = try XCTUnwrap(NSBitmapImageRep(data: tiff))
+        let png = try XCTUnwrap(rep.representation(using: .png, properties: [:]))
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("courier-snapshot-sticker-\(width)x\(height).png")
+        try png.write(to: url, options: .atomic)
+        return url.path
+    }
+
+    func testStickerAndGIFTimelineRenderingAndComposingSnapshots() throws {
+        let stickerPath = try makeTestStickerPNG(width: 160, height: 160)
+        let gifFramePath = try makeTestPNG(width: 280, height: 180)
+
+        // Verify StickerAttachmentView and GIFAttachmentView sizing, ThumbnailLoader resolution, and Reduce Motion pause.
+        XCTAssertEqual(
+            StickerAttachmentView.displaySize(width: 320, height: 160),
+            CGSize(width: 160, height: 80),
+            "StickerAttachmentView constrains stickers up to 160×160 pt preserving aspect ratio"
+        )
+        XCTAssertTrue(StickerAttachmentView.shouldAnimate(reduceMotion: false))
+        XCTAssertFalse(StickerAttachmentView.shouldAnimate(reduceMotion: true))
+        XCTAssertTrue(GIFAttachmentView.shouldAnimate(reduceMotion: false))
+        XCTAssertFalse(GIFAttachmentView.shouldAnimate(reduceMotion: true))
+        XCTAssertEqual(GIFAttachmentView.cornerRadius, 12)
+
+        // 1. Received sticker (light and dark PNGs)
+        let receivedStickerEvent = Fixture.sticker(
+            "$sticker-recv",
+            name: "Party Parrot",
+            emoji: "🦜",
+            mine: false,
+            ts: 15,
+            mediaPath: stickerPath,
+            width: 160,
+            height: 160
+        )
+        let receivedStickerMsg = try XCTUnwrap(Fixture.messages([receivedStickerEvent]).first)
+        XCTAssertNotNil(receivedStickerMsg.sticker)
+        XCTAssertTrue(receivedStickerMsg.suppressesBubbleBackground)
+        XCTAssertEqual(
+            StickerAttachmentView.resolveLocalPath(message: receivedStickerMsg, sticker: try XCTUnwrap(receivedStickerMsg.sticker)),
+            stickerPath
+        )
+        check(try Snapshot.render("sticker-received", width: 520) {
+            timeline(Fixture.items([receivedStickerEvent], isDirect: true))
+        })
+
+        // 2. Sent sticker (light and dark PNGs)
+        let sentStickerEvent = Fixture.sticker(
+            "$sticker-sent",
+            name: "Rocket Launch",
+            emoji: "🚀",
+            mine: true,
+            ts: 10,
+            mediaPath: stickerPath,
+            width: 160,
+            height: 160
+        )
+        let sentStickerMsg = try XCTUnwrap(Fixture.messages([sentStickerEvent]).first)
+        XCTAssertNotNil(sentStickerMsg.sticker)
+        XCTAssertTrue(sentStickerMsg.suppressesBubbleBackground)
+        check(try Snapshot.render("sticker-sent", width: 520) {
+            timeline(Fixture.items([sentStickerEvent], isDirect: true), sent: "$sticker-sent")
+        })
+
+        // 3. Looping GIF (first frame, rounded 12 pt frame, top-leading "GIF" pill badge)
+        let loopingGIFEvent = Fixture.gif(
+            "$gif-loop",
+            msgtype: "m.image",
+            fileName: "animation.gif",
+            caption: nil,
+            mine: false,
+            ts: 8,
+            mediaPath: gifFramePath,
+            mimeType: "image/gif",
+            width: 280,
+            height: 180
+        )
+        let loopingGIFMsg = try XCTUnwrap(Fixture.messages([loopingGIFEvent]).first)
+        XCTAssertNotNil(loopingGIFMsg.gif)
+        XCTAssertNil(loopingGIFMsg.gif?.caption)
+        XCTAssertEqual(
+            GIFAttachmentView.resolveLocalPath(message: loopingGIFMsg, gif: try XCTUnwrap(loopingGIFMsg.gif)),
+            gifFramePath
+        )
+        check(try Snapshot.render("gif-looping", width: 520) {
+            timeline(Fixture.items([loopingGIFEvent], isDirect: true))
+        })
+
+        // 4. GIF with a caption rendered below the frame
+        let captionedGIFEvent = Fixture.gif(
+            "$gif-captioned",
+            msgtype: "m.image",
+            fileName: "animation.gif",
+            caption: "Summit view celebration!",
+            mine: true,
+            ts: 5,
+            mediaPath: gifFramePath,
+            mimeType: "image/gif",
+            width: 280,
+            height: 180
+        )
+        let captionedGIFMsg = try XCTUnwrap(Fixture.messages([captionedGIFEvent]).first)
+        XCTAssertEqual(captionedGIFMsg.gif?.caption, "Summit view celebration!")
+        check(try Snapshot.render("gif-with-caption", width: 520) {
+            timeline(Fixture.items([captionedGIFEvent], isDirect: true), sent: "$gif-captioned")
+        })
+
+        // 5. Sticker in a reply (sticker replying to a message, and a message replying to the sticker)
+        let promptEvent = Fixture.text("$prompt-1", "Ready for the morning climb?", mine: false, ts: 20, name: "Ann Example")
+        let replyStickerEvent = Fixture.sticker(
+            "$sticker-reply",
+            name: "Party Parrot",
+            emoji: "🦜",
+            mine: true,
+            ts: 18,
+            mediaPath: stickerPath,
+            width: 160,
+            height: 160,
+            replyTo: "$prompt-1"
+        )
+        var textReplyToSticker = Fixture.text("$reply-to-sticker", "Love that sticker!", mine: false, ts: 16, name: "Ann Example")
+        if case var .object(content) = textReplyToSticker.content {
+            content["m.relates_to"] = .object([
+                "m.in_reply_to": .object(["event_id": .string("$sticker-reply")]),
+            ])
+            textReplyToSticker.content = .object(content)
+        }
+        check(try Snapshot.render("sticker-in-reply", width: 520) {
+            timeline(Fixture.items([promptEvent, replyStickerEvent, textReplyToSticker], isDirect: true), sent: "$sticker-reply")
+        })
+
+        // 6. EmojiAutocompletePicker with ":party_parrot:" footer and GIFPickerPopover with search query
+        let emojiModel = composer(text: "")
+        emojiModel.setStickerCatalogForTesting(
+            packs: [
+                StickerPackWire(
+                    id: "imported",
+                    title: "Imported",
+                    source: "imported",
+                    items: [
+                        StickerItemWire(
+                            id: "imported:party_parrot_wave",
+                            packID: "imported",
+                            shortcode: "party_parrot_wave",
+                            name: "Party Parrot Wave",
+                            emoji: "🦜",
+                            mediaURL: stickerPath,
+                            mimeType: "image/png",
+                            width: 160,
+                            height: 160,
+                            usage: ["emoticon", "sticker"]
+                        ),
+                    ]
+                ),
+            ]
+        )
+        emojiModel.textChanged(to: "let's go :party_parrot", replacing: NSRange(location: 0, length: 0), with: 22)
+        XCTAssertEqual(emojiModel.emojiQuery, "party_parrot")
+        check(try Snapshot.render("emoji-autocomplete-party-parrot", width: 320) {
+            EmojiAutocompletePicker(composer: emojiModel) { _ in }
+                .padding(10)
+        })
+
+        let gifQueryModel = composer(text: "")
+        gifQueryModel.setStickerCatalogForTesting(
+            packs: [],
+            recentGIFs: [
+                StickerItemWire(
+                    id: "gif:1",
+                    packID: "recent_gifs",
+                    name: "Celebration Loop",
+                    emoji: "🎉",
+                    mediaURL: gifFramePath,
+                    mimeType: "image/gif",
+                    width: 280,
+                    height: 180,
+                    usage: ["gif"]
+                ),
+            ]
+        )
+        gifQueryModel.gifSearchQuery = "Celebration"
+        check(try Snapshot.render("gif-picker-search-query", width: 340) {
+            GIFPickerPopover(composer: gifQueryModel)
+        })
+    }
 }
 
 /// A sign-in caller whose every sign-in finishes at once with `finish`.
