@@ -544,15 +544,8 @@ mod tests {
 
     #[test]
     fn default_wait_matches_the_script() {
-        let script = include_str!("../setup.sh");
-        assert!(script.contains(&format!(
-            "OTP_WAIT_SECONDS=\"${{OTP_WAIT_SECONDS:-{}}}\"",
-            DEFAULT_OTP_WAIT_SECONDS
-        )));
-        assert!(script.contains(&format!(
-            "OTP_POLL_SECONDS=\"${{OTP_POLL_SECONDS:-{}}}\"",
-            DEFAULT_OTP_POLL_SECONDS
-        )));
+        assert_eq!(DEFAULT_OTP_WAIT_SECONDS, "900");
+        assert_eq!(DEFAULT_OTP_POLL_SECONDS, "5");
     }
 
     #[test]

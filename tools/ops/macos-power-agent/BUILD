@@ -22,13 +22,9 @@
 # gazelle:ignore
 
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 exports_files([
     "com.vitruvian.power-agent.plist",
-    "install.sh",
-    "power-agent.sh",
 ])
 
 rust_library(
@@ -55,29 +51,12 @@ rust_binary(
     srcs = ["src/bin/install.rs"],
     data = [
         "com.vitruvian.power-agent.plist",
-        "power-agent.sh",
         ":power-agent",
     ],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//visibility:public"],
     deps = [":macos_power_agent_lib"],
-)
-
-sh_binary(
-    name = "power-agent-sh",
-    srcs = ["power-agent.sh"],
-    visibility = ["//visibility:public"],
-)
-
-sh_binary(
-    name = "install-sh",
-    srcs = ["install.sh"],
-    data = [
-        "com.vitruvian.power-agent.plist",
-        "power-agent.sh",
-    ],
-    visibility = ["//visibility:public"],
 )
 
 rust_test(
@@ -88,23 +67,7 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
-sh_test(
-    name = "power_agent_parity_test",
-    size = "small",
-    srcs = ["power-agent-parity_test.sh"],
-    data = [
-        "com.vitruvian.power-agent.plist",
-        "install.sh",
-        "power-agent.sh",
-        ":install",
-        ":power-agent",
-    ],
-    env = {
-        "INSTALL_RS": "$(rlocationpath :install)",
-        "INSTALL_SH": "$(rlocationpath install.sh)",
-        "PLIST_RLOC": "$(rlocationpath com.vitruvian.power-agent.plist)",
-        "POWER_AGENT_RS": "$(rlocationpath :power-agent)",
-        "POWER_AGENT_SH": "$(rlocationpath power-agent.sh)",
-    },
-    deps = ["@bazel_tools//tools/bash/runfiles"],
+test_suite(
+    name = "power_agent_test",
+    tests = [":macos_power_agent_lib_test"],
 )
