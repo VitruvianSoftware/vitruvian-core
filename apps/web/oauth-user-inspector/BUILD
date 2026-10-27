@@ -18,12 +18,12 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# oauth-user-inspector: a Vite/React frontend + Express/TS backend served as one
+# oauth-user-inspector: a Vite/React frontend + Rust backend served as one
 # container (see Dockerfile + oauth-user-inspector/infra/app for the
-# Cloud Run deploy). The production build runs via pnpm/vite/tsc (the monorepo
-# does not bazel-build frontends — cf. tabula/web); bazel runs the jest suite so
-# the server tests land in CI. gazelle:ignore stops the JS/TS extension from
-# rewriting this hand-authored file.
+# Cloud Run deploy). The production frontend build runs via pnpm/vite (the monorepo
+# does not bazel-build frontends — cf. tabula/web); bazel builds and tests the
+# Rust server and helper suites in CI. gazelle:ignore stops the JS/TS extension
+# from rewriting this hand-authored file.
 # gazelle:ignore
 # gazelle:exclude frontend
 # gazelle:exclude server
@@ -35,61 +35,63 @@
 # as the root `gazelle:exclude infrastructure`). Keep gazelle out of them.
 # gazelle:exclude infra
 
-load("@aspect_rules_jest//jest:defs.bzl", "jest_test")
-load("@npm//:defs.bzl", "npm_link_all_packages")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/doctor:defs.bzl", "doctor")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 package(default_visibility = ["//apps/web/oauth-user-inspector:__subpackages__"])
 
-npm_link_all_packages(name = "node_modules")
+rust_library(
+    name = "oauth_server_lib",
+    srcs = [
+        "server/src/api_endpoints.rs",
+        "server/src/lib.rs",
+        "server/src/logger.rs",
+        "server/src/oauth_error_guide.rs",
+        "server/src/oauth_session.rs",
+        "server/src/rate_limit.rs",
+        "server/src/safe_fetch.rs",
+        "server/src/security_headers.rs",
+        "server/src/server.rs",
+        "server/src/userinfo_request.rs",
+    ],
+    crate_name = "oauth_server_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [
+        "@crates//:serde",
+        "@crates//:serde_json",
+    ],
+)
 
-# Server-side jest suite (ts-jest; testMatch **/__tests__/**/*.test.ts).
-jest_test(
+rust_binary(
+    name = "oauth-user-inspector-server",
+    srcs = ["server/src/bin/server.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":oauth_server_lib"],
+)
+
+alias(
+    name = "oauth_user_inspector_server",
+    actual = ":oauth-user-inspector-server",
+)
+
+# Server + pure-helper unit test suite (migrated from ts-jest to native Rust).
+rust_test(
     name = "unit_tests",
     size = "small",
-    config = "jest.config.cjs",
-    data = glob(
-        [
-            "server/**/*.ts",
-        ],
-        allow_empty = True,
-    ) + [
-        # Read at runtime by explore-endpoints-parity.test.ts to assert the UI
+    crate = ":oauth_server_lib",
+    data = [
+        # Read at runtime by explore_endpoints_parity to assert the UI
         # endpoint catalog matches the server's fail-closed /api/explore table.
         "frontend/utils/apiEndpoints.ts",
-        # Pure userinfo-routing helper + its suite: guards that LinkedIn's
-        # userinfo is fetched via the same-origin /api/explore proxy and never a
-        # CORS-blocked direct api.linkedin.com browser call.
-        "frontend/utils/userinfoRequest.ts",
-        "frontend/__tests__/userinfoRequest.test.ts",
-        "jest.config.cjs",
+        # Read at runtime by dependency_consistency to assert react & @types/react
+        # share the same major version.
         "package.json",
-        "server/tsconfig.server.json",
-        "tsconfig.json",
-        "tsconfig.test.json",
-        ":node_modules/@google-cloud/logging-winston",
-        ":node_modules/@google-cloud/secret-manager",
-        ":node_modules/@types/express",
-        ":node_modules/@types/jest",
-        ":node_modules/@types/node",
-        ":node_modules/@types/supertest",
-        ":node_modules/dotenv",
-        ":node_modules/express",
-        ":node_modules/js-base64",
-        ":node_modules/jwt-decode",
-        ":node_modules/supertest",
-        ":node_modules/ts-jest",
-        ":node_modules/typescript",
-        ":node_modules/uuid",
-        ":node_modules/winston",
     ],
-    node_modules = ":node_modules",
-    # Node 22.12+ require(esm) makes jest's generated config throw
-    # ERR_REQUIRE_ASYNC_MODULE; force the import() fallback (cf. tabula/web).
-    node_options = ["--no-experimental-require-module"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
 )
 
 # Developer-environment check: `bazel run //oauth-user-inspector:doctor`.
@@ -176,18 +178,9 @@ alias(
     actual = ":start-rs",
 )
 
-sh_test(
+test_suite(
     name = "check-sensitive_test",
-    size = "small",
-    srcs = ["scripts/check-sensitive_test.sh"],
-    args = [
-        "$(rootpath scripts/check-sensitive.sh)",
-        "$(rootpath :check-sensitive-rs)",
-    ],
-    data = [
-        "scripts/check-sensitive.sh",
-        ":check-sensitive-rs",
-    ],
+    tests = [":oauth_scripts_lib_test"],
 )
 
 alias(
@@ -195,18 +188,9 @@ alias(
     actual = ":check-sensitive_test",
 )
 
-sh_test(
+test_suite(
     name = "smoke_test",
-    size = "small",
-    srcs = ["scripts/smoke_test.sh"],
-    args = [
-        "$(rootpath //apps/web/oauth-user-inspector/infra/app:smoke.sh)",
-        "$(rootpath :smoke-rs)",
-    ],
-    data = [
-        ":smoke-rs",
-        "//apps/web/oauth-user-inspector/infra/app:smoke.sh",
-    ],
+    tests = [":oauth_scripts_lib_test"],
 )
 
 pipeline_unit(
