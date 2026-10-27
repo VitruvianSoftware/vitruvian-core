@@ -625,7 +625,10 @@ jobs:
       # required check's verdict rests on. A silent hole in :verify (see the
       # SIGPIPE case the test pins) is invisible in every other lane.
       - name: Self-test the license verifier
-        run: bash tools/license/verify_test.sh
+        run: |
+          set -euo pipefail
+          rustc --test --edition 2021 --crate-name license_verify tools/license/src/lib.rs -o "$RUNNER_TEMP/license_verify_test"
+          "$RUNNER_TEMP/license_verify_test"
       # This was the last heavy Bazel lane with NO changed-paths gate, so a
       # docs-only PR still paid the full ~3min LLVM toolchain fetch here after
       # build-test/tidy-check/conformance-check had all already short-circuited.

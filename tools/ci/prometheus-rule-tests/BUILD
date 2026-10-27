@@ -23,22 +23,12 @@
 # gazelle:ignore
 
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 exports_files([
-    "run.sh",
     "argocd.test.yml",
     "mcp-slack.test.yml",
     "oom.test.yml",
 ])
-
-sh_binary(
-    name = "run-sh",
-    srcs = ["run.sh"],
-    data = glob(["*.test.yml"]),
-    visibility = ["//visibility:public"],
-)
 
 rust_library(
     name = "prometheus_rule_tests_lib",
@@ -77,16 +67,7 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
-sh_test(
-    name = "run_parity_test",
-    size = "small",
-    srcs = ["run_parity_test.sh"],
-    args = [
-        "$(rootpath run.sh)",
-        "$(rootpath :run)",
-    ],
-    data = [
-        "run.sh",
-        ":run",
-    ] + glob(["*.test.yml"]),
+test_suite(
+    name = "run_test",
+    tests = [":prometheus_rule_tests_lib_test"],
 )
