@@ -6,6 +6,7 @@ go_library(
     importpath = "github.com/VitruvianSoftware/courier/engine/internal/engine",
     visibility = ["//apps/desktop/courier/engine:__subpackages__"],
     deps = [
+        "//apps/desktop/courier/engine",
         "//apps/desktop/courier/engine/internal/host",
         "//apps/desktop/courier/engine/internal/ids",
         "//apps/desktop/courier/engine/internal/localmatrix",

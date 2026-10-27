@@ -914,14 +914,22 @@ func TestModuleVersions(t *testing.T) {
 	t.Setenv("COURIER_TELEGRAM_API_ID", "424242")
 	t.Setenv("COURIER_TELEGRAM_API_HASH", "0123456789abcdef0123456789abcdef")
 
+	raw, err := os.ReadFile("../../go.mod")
+	require.NoError(t, err)
 	versions := ModuleVersions()
 	require.NotEmpty(t, versions)
-	for mod, wantVer := range pinnedBridges {
-		require.Equal(t, wantVer, versions[mod], "module %s version", mod)
+
+	pinInGoMod := func(mod string) string {
+		t.Helper()
+		m := regexp.MustCompile(`(?m)^\s*` + regexp.QuoteMeta(mod) + `\s+(\S+)`).FindStringSubmatch(string(raw))
+		require.NotNil(t, m, "go.mod must require %s", mod)
+		return m[1]
 	}
+
+	require.Equal(t, pinInGoMod("maunium.net/go/mautrix"), versions["maunium.net/go/mautrix"], "mautrix version must match go.mod")
 	for _, n := range All() {
 		require.NotEmpty(t, n.ModulePath, "network %s must declare ModulePath", n.Name)
-		require.NotEmpty(t, versions[n.ModulePath], "network %s module %s must have a version", n.Name, n.ModulePath)
+		require.Equal(t, pinInGoMod(n.ModulePath), versions[n.ModulePath], "network %s module %s must match go.mod", n.Name, n.ModulePath)
 		spec, err := n.Spec()
 		require.NoError(t, err, n.Name)
 		require.Equal(t, n.ModulePath, spec.ModulePath, n.Name)

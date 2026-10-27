@@ -13,6 +13,7 @@ import (
 	"runtime/debug"
 	"slices"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/status"
 
+	enginemod "github.com/VitruvianSoftware/courier/engine"
 	"github.com/VitruvianSoftware/courier/engine/internal/host"
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
 	"github.com/VitruvianSoftware/courier/engine/internal/localmatrix"
@@ -391,24 +393,60 @@ func (e *Engine) SetLogin(l LoginHook) {
 	}
 }
 
-// defaultModuleVersions holds the pinned bridge module versions from go.mod so Bazel binaries
-// (which compile packages without embedding go.mod Deps into debug.ReadBuildInfo) still report exact versions.
-var defaultModuleVersions = map[string]string{
-	"maunium.net/go/mautrix":      "v0.31.0",
-	"go.mau.fi/mautrix-whatsapp":  "v0.2609.0",
-	"go.mau.fi/mautrix-signal":    "v0.2609.0",
-	"go.mau.fi/mautrix-telegram":  "v0.2609.0",
-	"go.mau.fi/mautrix-gmessages": "v0.2609.0",
-	"go.mau.fi/mautrix-slack":     "v0.2609.1",
+// parseGoModVersions extracts module versions from a go.mod file's require and replace directives.
+func parseGoModVersions(raw string) map[string]string {
+	out := map[string]string{}
+	inRequire := false
+	inReplace := false
+	for _, line := range strings.Split(raw, "\n") {
+		if idx := strings.Index(line, "//"); idx >= 0 {
+			line = line[:idx]
+		}
+		line = strings.TrimSpace(line)
+		switch {
+		case line == "":
+			continue
+		case line == "require (":
+			inRequire = true
+			continue
+		case line == "replace (":
+			inReplace = true
+			continue
+		case line == ")":
+			inRequire = false
+			inReplace = false
+			continue
+		}
+		if inReplace || strings.HasPrefix(line, "replace ") {
+			rest := strings.TrimPrefix(line, "replace ")
+			if parts := strings.SplitN(rest, "=>", 2); len(parts) == 2 {
+				left := strings.Fields(parts[0])
+				right := strings.Fields(parts[1])
+				if len(left) >= 1 && len(right) >= 2 {
+					out[left[0]] = right[1]
+				}
+			}
+			continue
+		}
+		if inRequire {
+			if fields := strings.Fields(line); len(fields) >= 2 {
+				out[fields[0]] = fields[1]
+			}
+			continue
+		}
+		if strings.HasPrefix(line, "require ") {
+			if fields := strings.Fields(strings.TrimPrefix(line, "require ")); len(fields) >= 2 {
+				out[fields[0]] = fields[1]
+			}
+		}
+	}
+	return out
 }
 
-// ModuleVersions returns map[modulePath]version from runtime/debug.ReadBuildInfo(),
-// plus "maunium.net/go/mautrix" version.
+// ModuleVersions returns map[modulePath]version parsed at build time from the embedded go.mod,
+// overlaid with runtime/debug.ReadBuildInfo() when available.
 func ModuleVersions() map[string]string {
-	out := make(map[string]string, len(defaultModuleVersions))
-	for k, v := range defaultModuleVersions {
-		out[k] = v
-	}
+	out := parseGoModVersions(enginemod.GoMod)
 	if bi, ok := debug.ReadBuildInfo(); ok && bi != nil {
 		for _, dep := range bi.Deps {
 			ver := dep.Version

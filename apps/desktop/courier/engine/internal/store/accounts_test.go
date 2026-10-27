@@ -12,10 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestMigration9SubAccountsAndRoomSpaces(t *testing.T) {
-	TestMigration10SubAccountsAndRoomSpaces(t)
-}
-
 func TestMigration10SubAccountsAndRoomSpaces(t *testing.T) {
 	s, _ := openFixture(t, "m10.sql")
 	ctx := context.Background()

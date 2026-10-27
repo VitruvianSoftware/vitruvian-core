@@ -576,6 +576,9 @@ func TestStartFillsTheLoginsOfChatsThatHaveNone(t *testing.T) {
 	require.Empty(t, errs)
 	h, ok := first.Host("fake")
 	require.True(t, ok)
+	require.Eventually(t, func() bool {
+		return h.Bridge.DB.KV.Get(ctx, database.KeyBridgeInfoVersion) == "1,1"
+	}, 5*time.Second, 5*time.Millisecond)
 	for mxid, key := range map[id.RoomID]networkid.PortalKey{
 		"!old:courier.local":    {ID: "chat-old", Receiver: "login-b"},
 		"!kept:courier.local":   {ID: "chat-kept", Receiver: "login-b"},
