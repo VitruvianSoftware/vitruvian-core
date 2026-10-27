@@ -69,11 +69,16 @@ public struct MACLoginItemService: LoginItemService {
 /// Abstracts `LAContext` so unit tests never prompt Touch ID or system password dialogs.
 public protocol BiometricAuthService: Sendable {
     func canEvaluateBiometricsOrWatch() -> Bool
+    func canEvaluateDeviceOwnerAuthentication() -> Bool
     func authenticate(reason: String) async throws -> Bool
 }
 
 extension BiometricAuthService {
     public func canEvaluateBiometrics() -> Bool {
+        canEvaluateBiometricsOrWatch()
+    }
+
+    public func canEvaluateDeviceOwnerAuthentication() -> Bool {
         canEvaluateBiometricsOrWatch()
     }
 }
@@ -85,9 +90,12 @@ public struct LAContextBiometricService: BiometricAuthService {
     public func canEvaluateBiometricsOrWatch() -> Bool {
         let context = LAContext()
         var error: NSError?
-        if context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) {
-            return true
-        }
+        return context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error)
+    }
+
+    public func canEvaluateDeviceOwnerAuthentication() -> Bool {
+        let context = LAContext()
+        var error: NSError?
         return context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error)
     }
 
@@ -144,17 +152,29 @@ public final class SystemLifecycleModel: ObservableObject {
     @Published public var autoLockEnabled: Bool {
         didSet {
             guard !isApplyingLockState else { return }
-            if autoLockEnabled, !biometricService.canEvaluateBiometricsOrWatch() {
-                isApplyingLockState = true
-                autoLockEnabled = false
-                isApplyingLockState = false
-                lastErrorMessage = String(localized: "Touch ID or Apple Watch unlock isn’t available on this Mac.")
-                return
-            }
-            defaults.set(autoLockEnabled, forKey: Self.key("autoLockEnabled"))
-            if !autoLockEnabled {
+            if autoLockEnabled {
+                guard biometricService.canEvaluateDeviceOwnerAuthentication() else {
+                    isApplyingLockState = true
+                    autoLockEnabled = false
+                    isApplyingLockState = false
+                    lastErrorMessage = String(localized: "Touch ID or your Mac password isn’t available on this Mac.")
+                    return
+                }
+                lastErrorMessage = nil
+                persistAutoLockEnabled(true)
+            } else {
+                if isLocked {
+                    isApplyingLockState = true
+                    autoLockEnabled = true
+                    isApplyingLockState = false
+                    disableLockAuthTask?.cancel()
+                    disableLockAuthTask = Task { @MainActor [weak self] in
+                        await self?.authenticateAndDisableLock() ?? false
+                    }
+                    return
+                }
                 cancelPendingLockTimer()
-                isLocked = false
+                persistAutoLockEnabled(false)
             }
         }
     }
@@ -179,6 +199,7 @@ public final class SystemLifecycleModel: ObservableObject {
     private var isApplyingLockState = true
     private var pendingLockTimerID: UUID?
     public private(set) var launchUnlockTask: Task<Bool, Never>?
+    public private(set) var disableLockAuthTask: Task<Bool, Never>?
 
     public init(
         loginItemService: any LoginItemService = MACLoginItemService(),
@@ -218,7 +239,7 @@ public final class SystemLifecycleModel: ObservableObject {
 
         if currentLoginStatus == .requiresApproval {
             self.lastErrorMessage = Self.requiresApprovalMessage
-        } else if storedAutoLock, !biometricService.canEvaluateBiometricsOrWatch() {
+        } else if storedAutoLock, !biometricService.canEvaluateDeviceOwnerAuthentication() {
             self.lastErrorMessage = String(localized: "Touch ID or your Mac password isn’t available right now.")
         }
 
@@ -269,10 +290,7 @@ public final class SystemLifecycleModel: ObservableObject {
 
     public var requireTouchIDOnLaunch: Bool {
         get { autoLockEnabled }
-        set {
-            autoLockEnabled = newValue
-            defaults.set(autoLockEnabled, forKey: Self.key("requireTouchIDOnLaunch"))
-        }
+        set { autoLockEnabled = newValue }
     }
 
     public var lastError: String? {
@@ -290,6 +308,42 @@ public final class SystemLifecycleModel: ObservableObject {
     @discardableResult
     public func unlockWithTouchID() async -> Bool {
         await unlock()
+    }
+
+    @discardableResult
+    public func setAutoLockEnabled(_ enabled: Bool) async -> Bool {
+        if enabled {
+            autoLockEnabled = true
+            return autoLockEnabled
+        }
+        guard autoLockEnabled else { return true }
+        if isLocked {
+            return await authenticateAndDisableLock()
+        }
+        autoLockEnabled = false
+        return !autoLockEnabled
+    }
+
+    private func persistAutoLockEnabled(_ enabled: Bool) {
+        defaults.set(enabled, forKey: Self.key("autoLockEnabled"))
+        defaults.set(enabled, forKey: Self.key("requireTouchIDOnLaunch"))
+    }
+
+    private func authenticateAndDisableLock() async -> Bool {
+        let unlocked = await unlock()
+        guard unlocked, !isLocked else {
+            isApplyingLockState = true
+            autoLockEnabled = true
+            isApplyingLockState = false
+            persistAutoLockEnabled(true)
+            return false
+        }
+        cancelPendingLockTimer()
+        isApplyingLockState = true
+        autoLockEnabled = false
+        isApplyingLockState = false
+        persistAutoLockEnabled(false)
+        return true
     }
 
     private static var requiresApprovalMessage: String {
@@ -377,7 +431,7 @@ public final class SystemLifecycleModel: ObservableObject {
 
     @discardableResult
     public func unlock() async -> Bool {
-        guard biometricService.canEvaluateBiometricsOrWatch() else {
+        guard biometricService.canEvaluateDeviceOwnerAuthentication() else {
             isLocked = true
             lastErrorMessage = String(localized: "Touch ID or your Mac password isn’t available right now.")
             return false

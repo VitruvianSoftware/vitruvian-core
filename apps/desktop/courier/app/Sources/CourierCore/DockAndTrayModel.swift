@@ -199,17 +199,19 @@ public final class AppMenuCoordinator: ObservableObject {
     }
 
     public func openSettings(_ section: SettingsSection) {
+        guard !lifecycle.isLocked else { return }
         activeSettingsSection = section
         showSettingsWindow()
     }
 
     public func newChat() {
+        guard !lifecycle.isLocked else { return }
         showMainWindow()
         inbox.openStartNewChat()
     }
 
     public func openChatInNewWindow() {
-        guard let roomID = inbox.selectedRoomID else { return }
+        guard !lifecycle.isLocked, let roomID = inbox.selectedRoomID else { return }
         detachedChatRoomIDs.append(roomID)
         openDetachedChat(roomID)
     }
@@ -223,10 +225,12 @@ public final class AppMenuCoordinator: ObservableObject {
     }
 
     public func toggleSpaceBar() {
+        guard !lifecycle.isLocked else { return }
         inbox.preferences.showSpaceBar.toggle()
     }
 
     public func toggleSidebar() {
+        guard !lifecycle.isLocked else { return }
         isSidebarVisible.toggle()
     }
 }

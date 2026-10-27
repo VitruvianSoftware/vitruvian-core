@@ -197,6 +197,90 @@ final class SystemLifecycleModelTests: XCTestCase {
         XCTAssertEqual(succeedingBio.prompts, ["Unlock Courier"])
         XCTAssertFalse(unlocksAtLaunch.isLocked)
     }
+
+    func testTurningOffAutoLockWhileLockedRequiresAuthenticationAndCannotBypassLock() async throws {
+        let suiteName = "courier.test.lifecycle.lockbypass.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let bioService = FakeBiometricAuthService(available: true, result: .success(false))
+        let model = SystemLifecycleModel(
+            loginItemService: FakeLoginItemService(currentStatus: .notRegistered),
+            biometricService: bioService,
+            defaults: defaults
+        )
+
+        model.autoLockEnabled = true
+        model.lockNow()
+        XCTAssertTrue(model.isLocked)
+        XCTAssertTrue(model.autoLockEnabled)
+
+        // 1. Turning the lock off while locked with auth failing (returns false) leaves isLocked == true and autoLockEnabled == true
+        model.autoLockEnabled = false
+        XCTAssertTrue(model.isLocked, "turning off autoLockEnabled while locked must not synchronously unlock without authentication")
+        XCTAssertTrue(model.autoLockEnabled, "turning off autoLockEnabled while locked must keep autoLockEnabled true until auth succeeds")
+        _ = await model.disableLockAuthTask?.value
+        XCTAssertTrue(model.isLocked, "turning off autoLockEnabled while locked with failing auth must leave isLocked true")
+        XCTAssertTrue(model.autoLockEnabled, "turning off autoLockEnabled while locked with failing auth must leave autoLockEnabled true")
+        XCTAssertEqual(defaults.object(forKey: SystemLifecycleModel.key("autoLockEnabled")) as? Bool, true)
+
+        // 2. Turning the lock off via requireTouchIDOnLaunch while locked with auth throwing an error also leaves both true
+        bioService.result = .failure(NSError(domain: "LAErrorDomain", code: -2))
+        model.requireTouchIDOnLaunch = false
+        _ = await model.disableLockAuthTask?.value
+        XCTAssertTrue(model.isLocked)
+        XCTAssertTrue(model.autoLockEnabled)
+        XCTAssertTrue(model.requireTouchIDOnLaunch)
+
+        // 3. Turning the lock off while locked with auth succeeding sets both isLocked and autoLockEnabled to false
+        bioService.result = .success(true)
+        model.autoLockEnabled = false
+        _ = await model.disableLockAuthTask?.value
+        XCTAssertFalse(model.isLocked, "turning off autoLockEnabled while locked with succeeding auth must unlock the app")
+        XCTAssertFalse(model.autoLockEnabled, "turning off autoLockEnabled while locked with succeeding auth must disable auto-lock")
+        XCTAssertEqual(defaults.object(forKey: SystemLifecycleModel.key("autoLockEnabled")) as? Bool, false)
+    }
+
+    func testEnablingAutoLockAllowsDeviceOwnerAuthWhenOnlyBiometricsUnavailableAndRefusesWhenNeitherAvailable() async throws {
+        let suiteName = "courier.test.lifecycle.passwordfallback.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        // 1. When neither Touch ID nor Mac password (deviceOwnerAuthentication) can be evaluated, refuse with a plain message
+        let bioService = FakeBiometricAuthService(
+            biometricsAvailable: false,
+            deviceOwnerAuthAvailable: false,
+            result: .success(true)
+        )
+        let model = SystemLifecycleModel(
+            loginItemService: FakeLoginItemService(currentStatus: .notRegistered),
+            biometricService: bioService,
+            defaults: defaults
+        )
+
+        model.autoLockEnabled = true
+        XCTAssertFalse(model.autoLockEnabled, "must refuse to enable auto-lock when deviceOwnerAuthentication cannot be evaluated")
+        let refusalMessage = try XCTUnwrap(model.lastErrorMessage)
+        XCTAssertFalse(refusalMessage.isEmpty)
+        XCTAssertFalse(refusalMessage.contains("LAContext"))
+        XCTAssertFalse(refusalMessage.contains("Beeper"))
+
+        // 2. When only biometrics are unavailable (biometricsAvailable == false) but Mac password (deviceOwnerAuthentication) CAN be evaluated, allow enabling
+        bioService.biometricsAvailable = false
+        bioService.deviceOwnerAuthAvailable = true
+        model.autoLockEnabled = true
+        XCTAssertTrue(
+            model.autoLockEnabled,
+            "must allow enabling auto-lock when biometrics are unavailable but deviceOwnerAuthentication (Mac password) is available"
+        )
+        XCTAssertNil(model.lastErrorMessage)
+
+        model.lockNow()
+        XCTAssertTrue(model.isLocked)
+        let unlocked = await model.unlock()
+        XCTAssertTrue(unlocked)
+        XCTAssertFalse(model.isLocked)
+    }
 }
 
 // MARK: - Fakes
@@ -231,17 +315,36 @@ final class FakeLoginItemService: LoginItemService, @unchecked Sendable {
 }
 
 final class FakeBiometricAuthService: BiometricAuthService, @unchecked Sendable {
-    var available: Bool
+    var biometricsAvailable: Bool
+    var deviceOwnerAuthAvailable: Bool
+    var available: Bool {
+        get { deviceOwnerAuthAvailable }
+        set {
+            biometricsAvailable = newValue
+            deviceOwnerAuthAvailable = newValue
+        }
+    }
     var result: Result<Bool, Error>
     private(set) var prompts: [String] = []
 
     init(available: Bool, result: Result<Bool, Error>) {
-        self.available = available
+        self.biometricsAvailable = available
+        self.deviceOwnerAuthAvailable = available
+        self.result = result
+    }
+
+    init(biometricsAvailable: Bool, deviceOwnerAuthAvailable: Bool, result: Result<Bool, Error>) {
+        self.biometricsAvailable = biometricsAvailable
+        self.deviceOwnerAuthAvailable = deviceOwnerAuthAvailable
         self.result = result
     }
 
     func canEvaluateBiometricsOrWatch() -> Bool {
-        available
+        biometricsAvailable
+    }
+
+    func canEvaluateDeviceOwnerAuthentication() -> Bool {
+        deviceOwnerAuthAvailable
     }
 
     func authenticate(reason: String) async throws -> Bool {

@@ -148,6 +148,22 @@ final class DockAndTrayModelTests: XCTestCase {
         await coordinator.lockOrUnlockApp()
         XCTAssertTrue(lifecycle.isLocked)
 
+        // While locked, coordinator actions for Settings, New Chat, Open Chat in New Window, and View toggles must be refused without unlocking
+        let lockedSpaceBarBefore = inboxPrefs.showSpaceBar
+        let lockedSidebarBefore = coordinator.isSidebarVisible
+        coordinator.openSettings(.accounts)
+        coordinator.newChat()
+        coordinator.openChatInNewWindow()
+        coordinator.toggleSpaceBar()
+        coordinator.toggleSidebar()
+        XCTAssertEqual(coordinator.activeSettingsSection, .inbox, "must not open settings while locked")
+        XCTAssertEqual(shownSettingsCount, 0, "must not present Settings window while locked")
+        XCTAssertNil(inbox.startNewChatDraft, "must not start a new chat while locked")
+        XCTAssertTrue(detachedRooms.isEmpty, "must not open detached chat window while locked")
+        XCTAssertEqual(inboxPrefs.showSpaceBar, lockedSpaceBarBefore, "must not toggle space bar while locked")
+        XCTAssertEqual(coordinator.isSidebarVisible, lockedSidebarBefore, "must not toggle sidebar while locked")
+        XCTAssertTrue(lifecycle.isLocked)
+
         // 2. Selecting a chat from Dock menu or Tray menu while locked must authenticate first and refuse to select on failure
         let failedOpen = await coordinator.openChatFromExternalMenu("!r1")
         XCTAssertFalse(failedOpen)

@@ -29,12 +29,14 @@ struct InboxCommands: Commands {
             Button(String(localized: "About Courier")) {
                 menuCoordinator.openSettings(.about)
             }
+            .disabled(lifecycle.isLocked)
         }
         // 02 §3.1's Accounts…, Search…, and Lock App, after Settings.
         CommandGroup(after: .appSettings) {
             Button(String(localized: "Accounts…")) {
                 menuCoordinator.openSettings(.accounts)
             }
+            .disabled(lifecycle.isLocked)
 
             Button(String(localized: "Search…")) {
                 let visible = bringMainWindowForward()
@@ -101,6 +103,7 @@ struct InboxCommands: Commands {
                 }
             }
             .keyboardShortcut("z", modifiers: .command)
+            .disabled(lifecycle.isLocked)
             Button(String(localized: "Redo")) {
                 if let composer = heldComposer {
                     Task { await composer.sendHeldNow() }
@@ -109,14 +112,17 @@ struct InboxCommands: Commands {
                 }
             }
             .keyboardShortcut("z", modifiers: [.command, .shift])
+            .disabled(lifecycle.isLocked)
         }
         CommandGroup(before: .sidebar) {
             Button(preferences.showSpaceBar ? String(localized: "Hide Space Bar") : String(localized: "Show Space Bar"),
                    action: menuCoordinator.toggleSpaceBar)
                 .keyboardShortcut("s", modifiers: .command)
+                .disabled(lifecycle.isLocked)
             Button(menuCoordinator.isSidebarVisible ? String(localized: "Hide Sidebar") : String(localized: "Show Sidebar"),
                    action: menuCoordinator.toggleSidebar)
                 .keyboardShortcut("s", modifiers: [.command, .option])
+                .disabled(lifecycle.isLocked)
             Button(String(localized: "Edit Spaces…")) {
                 spaces.isEditing = true
                 openWindow(id: WindowID.editSpaces)
@@ -161,33 +167,42 @@ struct InboxCommands: Commands {
             .disabled(lifecycle.isLocked)
             Divider()
             actions
+                .disabled(lifecycle.isLocked)
             Divider()
             selecting
+                .disabled(lifecycle.isLocked)
             Divider()
             sweeps
+                .disabled(lifecycle.isLocked)
             Divider()
             filters
+                .disabled(lifecycle.isLocked)
             Divider()
             spaceKeys
+                .disabled(lifecycle.isLocked)
         }
         CommandGroup(after: .help) {
             Button(String(localized: "Report a Problem…")) {
                 menuCoordinator.openSettings(.reportProblem)
             }
             .keyboardShortcut("p", modifiers: [.command, .shift])
+            .disabled(lifecycle.isLocked)
 
             Button(String(localized: "Keyboard Shortcuts")) {
                 menuCoordinator.openSettings(.shortcuts)
             }
             .keyboardShortcut("/", modifiers: .command)
+            .disabled(lifecycle.isLocked)
 
             Button(String(localized: "Privacy & Security")) {
                 menuCoordinator.openSettings(.privacy)
             }
+            .disabled(lifecycle.isLocked)
 
             Button(String(localized: "Changelog")) {
                 menuCoordinator.openSettings(.changelog)
             }
+            .disabled(lifecycle.isLocked)
         }
     }
 
