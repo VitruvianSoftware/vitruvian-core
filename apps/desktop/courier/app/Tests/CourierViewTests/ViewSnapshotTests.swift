@@ -2836,6 +2836,33 @@ final class ViewSnapshotTests: XCTestCase {
             "GIFAttachmentView must populate @State image once .task(id:) completes"
         )
     }
+
+    // MARK: - Part 4.6 Task 6: App Lock Overlay
+
+    func testAppLockOverlayLightAndDark() async throws {
+        let model = SystemLifecycleModel(
+            loginItemService: SnapshotLoginItemService(),
+            biometricService: SnapshotBiometricService(),
+            defaults: defaults()
+        )
+        model.autoLockEnabled = true
+        model.lockNow()
+        _ = await model.unlock() // triggers fail-closed error caption
+        check(try Snapshot.render("app-lock-overlay", width: 520, height: 360) {
+            AppLockOverlay(model: model)
+        })
+    }
+}
+
+private struct SnapshotLoginItemService: LoginItemService {
+    func status() -> LoginItemRegistrationStatus { .notRegistered }
+    func register() throws {}
+    func unregister() throws {}
+}
+
+private struct SnapshotBiometricService: BiometricAuthService {
+    func canEvaluateBiometricsOrWatch() -> Bool { true }
+    func authenticate(reason: String) async throws -> Bool { false }
 }
 
 /// A sign-in caller whose every sign-in finishes at once with `finish`.
