@@ -20,9 +20,13 @@
 
 use std::fs;
 use std::io::Write;
-use std::net::UdpSocket;
+use std::net::{ToSocketAddrs, UdpSocket};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+pub const MDNS_HOSTNAME: &str = "vitruvian-companion.local";
+pub const NET_TELEMETRY_PORT: u16 = 8266;
+pub const WIFI_LIVENESS_TIMEOUT_S: f64 = 20.0;
 
 pub fn get_cpu_usage() -> u32 {
     if let Ok(output) = Command::new("sh")
@@ -298,6 +302,204 @@ pub fn send_over_http(host: &str, port: u16, data: &str) -> Result<(), String> {
     Ok(())
 }
 
+pub fn parse_networksetup_ssid(output: &str) -> Option<String> {
+    let text = output.trim();
+    if let Some(rest) = text.strip_prefix("Current Wi-Fi Network:") {
+        let ssid = rest.trim();
+        if !ssid.is_empty() && !ssid.to_lowercase().starts_with("you are not associated") {
+            return Some(ssid.to_string());
+        }
+    }
+    None
+}
+
+pub fn parse_ipconfig_ssid(output: &str) -> Option<String> {
+    for line in output.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("SSID") && !trimmed.starts_with("BSSID") {
+            if let Some(colon) = trimmed.find(':') {
+                let ssid = trimmed[colon + 1..].trim();
+                if !ssid.is_empty() && ssid != "<redacted>" {
+                    return Some(ssid.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+pub fn get_active_wifi_ssid() -> Option<String> {
+    for iface in ["en0", "en1"] {
+        if let Ok(output) = Command::new("/usr/sbin/networksetup")
+            .args(["-getairportnetwork", iface])
+            .output()
+        {
+            if output.status.success() {
+                if let Some(ssid) =
+                    parse_networksetup_ssid(&String::from_utf8_lossy(&output.stdout))
+                {
+                    return Some(ssid);
+                }
+            }
+        }
+    }
+
+    for iface in ["en0", "en1"] {
+        if let Ok(output) = Command::new("/usr/sbin/ipconfig")
+            .args(["getsummary", iface])
+            .output()
+        {
+            if output.status.success() {
+                if let Some(ssid) = parse_ipconfig_ssid(&String::from_utf8_lossy(&output.stdout)) {
+                    return Some(ssid);
+                }
+            }
+        }
+    }
+
+    None
+}
+
+pub fn get_wifi_password(ssid: &str) -> Option<String> {
+    if ssid.is_empty() {
+        return None;
+    }
+    if let Ok(output) = Command::new("/usr/bin/security")
+        .args(["find-generic-password", "-wa", ssid])
+        .output()
+    {
+        if output.status.success() {
+            let password = String::from_utf8_lossy(&output.stdout)
+                .trim_end_matches(&['\r', '\n'][..])
+                .to_string();
+            return Some(password);
+        }
+    }
+    None
+}
+
+pub fn build_wifi_set_payload(ssid: &str, password: &str) -> String {
+    format!(
+        r#"{{"cmd":"wifi_set","ssid":"{}","pass":"{}"}}"#,
+        json_escape(ssid),
+        json_escape(password)
+    )
+}
+
+pub fn serialize_wifi_set_packet(ssid: &str, password: &str) -> Vec<u8> {
+    let mut line = build_wifi_set_payload(ssid, password);
+    line.push('\n');
+    line.into_bytes()
+}
+
+pub fn resolve_companion_host(host: Option<&str>) -> Option<String> {
+    let target = host
+        .map(str::trim)
+        .filter(|h| !h.is_empty())
+        .unwrap_or(MDNS_HOSTNAME);
+    if let Ok(mut addrs) = (target, NET_TELEMETRY_PORT).to_socket_addrs() {
+        if let Some(addr) = addrs.find(|a| a.is_ipv4()) {
+            return Some(addr.ip().to_string());
+        }
+    }
+    None
+}
+
+pub fn build_mac_shortcut_command(mod_mask: u8, key: u8, cons: u16) -> Option<Vec<String>> {
+    if cons == 0x0030 || cons == 0x0032 {
+        return Some(vec!["pmset".into(), "displaysleepnow".into()]);
+    }
+    if cons == 0x00E2 {
+        return Some(vec![
+            "osascript".into(),
+            "-e".into(),
+            "set volume output muted not (output muted of (get volume settings))".into(),
+        ]);
+    }
+    if cons == 0x00E9 {
+        return Some(vec![
+            "osascript".into(),
+            "-e".into(),
+            "set volume output volume ((output volume of (get volume settings)) + 6)".into(),
+        ]);
+    }
+    if cons == 0x00EA {
+        return Some(vec![
+            "osascript".into(),
+            "-e".into(),
+            "set volume output volume ((output volume of (get volume settings)) - 6)".into(),
+        ]);
+    }
+
+    if key == 0 {
+        return None;
+    }
+
+    let mut using_parts: Vec<&'static str> = Vec::new();
+    if (mod_mask & 0x01) != 0 {
+        using_parts.push("control down");
+    }
+    if (mod_mask & 0x02) != 0 {
+        using_parts.push("shift down");
+    }
+    if (mod_mask & 0x04) != 0 {
+        using_parts.push("option down");
+    }
+    if (mod_mask & 0x08) != 0 {
+        using_parts.push("command down");
+    }
+
+    let using_clause = if using_parts.is_empty() {
+        String::new()
+    } else if using_parts.len() == 1 {
+        format!(" using {}", using_parts[0])
+    } else {
+        format!(" using {{{}}}", using_parts.join(", "))
+    };
+
+    let keycode_opt: Option<u16> = match key {
+        218 => Some(126), // Up arrow
+        217 => Some(125), // Down arrow
+        216 => Some(123), // Left arrow
+        215 => Some(124), // Right arrow
+        204 => Some(103), // F11
+        32 => Some(49),   // Space
+        176 => Some(36),  // Return
+        177 => Some(53),  // Escape
+        178 => Some(51),  // Backspace
+        179 => Some(48),  // Tab
+        _ => None,
+    };
+
+    let script = if let Some(keycode) = keycode_opt {
+        format!(
+            r#"tell application "System Events" to key code {}{}"#,
+            keycode, using_clause
+        )
+    } else if (32..=126).contains(&key) {
+        let ch = (key as char)
+            .to_string()
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"");
+        format!(
+            r#"tell application "System Events" to keystroke "{}"{}"#,
+            ch, using_clause
+        )
+    } else {
+        return None;
+    };
+
+    Some(vec!["osascript".into(), "-e".into(), script])
+}
+
+pub fn execute_mac_shortcut(mod_mask: u8, key: u8, cons: u16) {
+    if let Some(cmd) = build_mac_shortcut_command(mod_mask, key, cons) {
+        if let Some((prog, args)) = cmd.split_first() {
+            let _ = Command::new(prog).args(args).output();
+        }
+    }
+}
+
 fn json_escape(s: &str) -> String {
     s.replace('\\', "\\\\")
         .replace('"', "\\\"")
@@ -312,6 +514,11 @@ pub struct DaemonArgs {
     pub baud: u32,
     pub host: String,
     pub udp_port: u16,
+    pub wifi_host: Option<String>,
+    pub wifi_port: u16,
+    pub usb_only: bool,
+    pub wifi_only: bool,
+    pub wifi_sync: bool,
     pub interval: f64,
     pub repo: String,
     pub once: bool,
@@ -324,8 +531,13 @@ impl Default for DaemonArgs {
             mode: "serial".into(),
             port: None,
             baud: 115200,
-            host: "vitruvian-companion.local".into(),
-            udp_port: 8266,
+            host: MDNS_HOSTNAME.into(),
+            udp_port: NET_TELEMETRY_PORT,
+            wifi_host: None,
+            wifi_port: NET_TELEMETRY_PORT,
+            usb_only: false,
+            wifi_only: false,
+            wifi_sync: false,
             interval: 1.0,
             repo: ".".into(),
             once: false,
@@ -379,6 +591,28 @@ pub fn parse_daemon_args(args: &[String]) -> Result<DaemonArgs, String> {
                     .parse()
                     .map_err(|_| format!("invalid port: {}", args[i]))?;
             }
+            "--wifi-host" => {
+                i += 1;
+                if i >= args.len() {
+                    return Err("--wifi-host requires an argument".into());
+                }
+                result.wifi_host = Some(args[i].clone());
+                result.host = args[i].clone();
+            }
+            "--wifi-port" => {
+                i += 1;
+                if i >= args.len() {
+                    return Err("--wifi-port requires an argument".into());
+                }
+                let p: u16 = args[i]
+                    .parse()
+                    .map_err(|_| format!("invalid wifi port: {}", args[i]))?;
+                result.wifi_port = p;
+                result.udp_port = p;
+            }
+            "--usb-only" => result.usb_only = true,
+            "--wifi-only" => result.wifi_only = true,
+            "--wifi-sync" => result.wifi_sync = true,
             "--interval" => {
                 i += 1;
                 if i >= args.len() {
@@ -619,5 +853,68 @@ Now drawing from 'AC Power'
         );
         assert_eq!(extract_page_count("Pages active:     0."), 0);
         assert_eq!(extract_page_count("garbage"), 0);
+    }
+
+    #[test]
+    fn test_parse_networksetup_and_ipconfig_ssid() {
+        assert_eq!(
+            parse_networksetup_ssid("Current Wi-Fi Network: Home-5G\n"),
+            Some("Home-5G".to_string())
+        );
+        assert_eq!(
+            parse_networksetup_ssid("You are not associated with an AirPort network.\n"),
+            None
+        );
+        assert_eq!(
+            parse_ipconfig_ssid("  SSID : Home-5G\n  BSSID : 00:11:22:33:44:55\n"),
+            Some("Home-5G".to_string())
+        );
+        assert_eq!(parse_ipconfig_ssid("  SSID : <redacted>\n"), None);
+    }
+
+    #[test]
+    fn test_wifi_set_payload_and_packet() {
+        let payload = build_wifi_set_payload("My-WiFi", "s3cr3t\"pass");
+        assert_eq!(
+            payload,
+            r#"{"cmd":"wifi_set","ssid":"My-WiFi","pass":"s3cr3t\"pass"}"#
+        );
+        let packet = serialize_wifi_set_packet("My-WiFi", "pw");
+        assert!(packet.ends_with(b"\n"));
+    }
+
+    #[test]
+    fn test_build_mac_shortcut_command_cases() {
+        assert_eq!(
+            build_mac_shortcut_command(0, 0, 0x30),
+            Some(vec!["pmset".into(), "displaysleepnow".into()])
+        );
+        let mute_cmd = build_mac_shortcut_command(0, 0, 0xE2).unwrap();
+        assert_eq!(mute_cmd[0], "osascript");
+        assert!(mute_cmd[2].contains("output muted"));
+
+        let up_cmd = build_mac_shortcut_command(0x01, 218, 0).unwrap();
+        assert_eq!(up_cmd[0], "osascript");
+        assert!(up_cmd[2].contains("key code 126 using control down"));
+
+        let multi_mod = build_mac_shortcut_command(0x08 | 0x02, b'p', 0).unwrap();
+        assert!(multi_mod[2].contains(r#"keystroke "p" using {shift down, command down}"#));
+    }
+
+    #[test]
+    fn test_daemon_args_wifi_flags() {
+        let args = vec![
+            "--wifi-host".to_string(),
+            "192.168.4.1".to_string(),
+            "--wifi-port".to_string(),
+            "8266".to_string(),
+            "--wifi-only".to_string(),
+            "--wifi-sync".to_string(),
+        ];
+        let parsed = parse_daemon_args(&args).unwrap();
+        assert_eq!(parsed.wifi_host.as_deref(), Some("192.168.4.1"));
+        assert_eq!(parsed.wifi_port, 8266);
+        assert!(parsed.wifi_only);
+        assert!(parsed.wifi_sync);
     }
 }

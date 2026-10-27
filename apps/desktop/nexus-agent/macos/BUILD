@@ -1,10 +1,8 @@
-load("@aspect_rules_py//py:defs.bzl", "py_test")
 load("@build_bazel_rules_apple//apple:macos.bzl", "macos_application")
 load("@build_bazel_rules_swift//swift:swift_binary.bzl", "swift_binary")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # The shared core: built into this app AND into the Vitruvian desktop app
@@ -164,22 +162,22 @@ genrule(
 # script, under a home of its own: the handshake, a command, an unknown
 # command, the island panel opened and tapped, refusals, and a clean exit.
 # It starts the real program.
-py_test(
+rust_test(
     name = "tool_conformance_test",
     size = "medium",
-    srcs = ["tool/conformance_test.py"],
-    args = [
-        "$(rootpath built/nexus-agent/vitruvian-tool.json)",
-        "$(rootpath //packages/vitruvian-sdk:conformance/conformance.py)",
-        "$(rootpath //packages/vitruvian-sdk:vitruvian-tool)",
-    ],
+    srcs = ["tool/src/conformance_test.rs"],
     data = [
         "built/nexus-agent/vitruvian-tool.json",
         ":tool-folder",
-        "//packages/vitruvian-sdk:conformance/conformance.py",
+        "//packages/vitruvian-sdk:conformance_rs",
         "//packages/vitruvian-sdk:vitruvian-tool",
     ],
-    main = "tool/conformance_test.py",
+    edition = "2021",
+    env = {
+        "MANIFEST_PATH": "$(rootpath built/nexus-agent/vitruvian-tool.json)",
+        "CONFORMANCE_BIN": "$(rootpath //packages/vitruvian-sdk:conformance_rs)",
+        "VALIDATE_BIN": "$(rootpath //packages/vitruvian-sdk:vitruvian-tool)",
+    },
     tags = [
         "block-network",
         "manual",
@@ -189,10 +187,10 @@ py_test(
 
 # The tool's version is the app's, in the manifest, the tool's Version.swift
 # and the app's; and release-please writes all three. Not tied to macOS.
-py_test(
+rust_test(
     name = "tool_version_test",
     size = "small",
-    srcs = ["tool/version_test.py"],
+    srcs = ["tool/src/version_test.rs"],
     data = [
         "Package.swift",
         "Sources/NexusAgent/Version.swift",
@@ -200,7 +198,8 @@ py_test(
         "tool/vitruvian-tool.json",
         "//apps/desktop/nexus-agent:release_please_config",
     ],
-    main = "tool/version_test.py",
+    edition = "2021",
+    deps = ["@crates//:serde_json"],
 )
 
 # NexusAgent is a dependency-free SwiftUI/AppKit menu-bar agent (LSUIElement).
@@ -291,13 +290,13 @@ macos_application(
     deps = [":NexusAgentLib"],
 )
 
-sh_test(
+rust_test(
     name = "mirror_build_test",
     size = "large",
-    srcs = ["scripts/mirror_build_test.sh"],
-    # The tests and the examples they share with the bot as well: the script
+    srcs = ["scripts/src/mirror_build_test.rs"],
+    # The tests and the examples they share with the bot as well: the test
     # also runs `swift test`. The release script and what it copies, because
-    # the script also packages the build the way a release does.
+    # the test also packages the build the way a release does.
     data = [
         "Package.swift",
         "scripts/bundle.sh",
@@ -306,6 +305,7 @@ sh_test(
         "Sources/**",
         "Tests/**",
     ]) + ["//apps/desktop/nexus-agent:testdata_files"],
+    edition = "2021",
     env_inherit = ["DEVELOPER_DIR"],
     # SwiftPM wants the real toolchain and its own sandbox: run outside Bazel's.
     tags = [
@@ -315,33 +315,28 @@ sh_test(
     target_compatible_with = ["@platforms//os:macos"],
 )
 
-# The app Bazel built holds the copy of Mermaid the chat view ships
-# (scripts/bazel_app_holds_mermaid_test.sh says why nothing else would notice).
+# The app Bazel built holds the copy of Mermaid the chat view ships.
 # It reads the archive `:NexusAgent` already produced, so it costs no build
 # where the app is built: the macos-build job of .github/workflows/ci.yaml,
 # which runs it by label. It is deliberately not in the unit below, which does
 # not build the app and would have to.
-sh_test(
+rust_test(
     name = "app_holds_mermaid_test",
     size = "small",
-    srcs = ["scripts/bazel_app_holds_mermaid_test.sh"],
-    args = [
-        "NexusAgent",
-        "$(rootpaths :NexusAgent)",
-        "$(rootpaths :shared_ui_resources)",
-    ],
+    srcs = ["scripts/src/app_holds_mermaid_test.rs"],
     data = [
         ":NexusAgent",
         ":shared_ui_resources",
     ],
+    edition = "2021",
+    env = {
+        "APP_NAME": "NexusAgent",
+        "ARCHIVE_PATHS": "$(rootpaths :NexusAgent)",
+        "RESOURCE_PATHS": "$(rootpaths :shared_ui_resources)",
+    },
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
-)
-
-# The Vitruvian desktop app runs the same check on its own archive.
-exports_files(
-    ["scripts/bazel_app_holds_mermaid_test.sh"],
-    visibility = ["//apps/desktop/vitruvian:__pkg__"],
+    deps = [":nexus_agent_scripts_lib"],
 )
 
 # --- Rust ports of nexus-agent scripts ----------------------------------------
@@ -350,7 +345,10 @@ rust_library(
     name = "nexus_agent_scripts_lib",
     srcs = glob(
         ["scripts/src/**/*.rs"],
-        exclude = ["scripts/src/bin/*.rs"],
+        exclude = [
+            "scripts/src/*_test.rs",
+            "scripts/src/bin/*.rs",
+        ],
     ),
     crate_name = "nexus_agent_scripts_lib",
     edition = "2021",
@@ -415,65 +413,6 @@ rust_binary(
 ) for n in [
     "check_packaged_app",
 ]]
-
-sh_test(
-    name = "app_holds_mermaid_rs_test",
-    size = "small",
-    srcs = ["scripts/app-holds-mermaid-rs_test.sh"],
-    args = [
-        "$(rootpath :bazel-app-holds-mermaid)",
-        "NexusAgent",
-        "$(rootpaths :NexusAgent)",
-        "$(rootpaths :shared_ui_resources)",
-    ],
-    data = [
-        ":NexusAgent",
-        ":bazel-app-holds-mermaid",
-        ":shared_ui_resources",
-    ],
-    tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
-)
-
-# --- Rust ports of tool verification tests -----------------------------------
-
-rust_test(
-    name = "tool_version_rs_test",
-    size = "small",
-    srcs = ["tool/src/version_test.rs"],
-    data = [
-        "Package.swift",
-        "Sources/NexusAgent/Version.swift",
-        "Sources/NexusAgentToolCore/Version.swift",
-        "tool/vitruvian-tool.json",
-        "//apps/desktop/nexus-agent:release_please_config",
-    ],
-    edition = "2021",
-    deps = ["@crates//:serde_json"],
-)
-
-rust_test(
-    name = "tool_conformance_rs_test",
-    size = "medium",
-    srcs = ["tool/src/conformance_test.rs"],
-    data = [
-        "built/nexus-agent/vitruvian-tool.json",
-        ":tool-folder",
-        "//packages/vitruvian-sdk:conformance_rs",
-        "//packages/vitruvian-sdk:vitruvian-tool",
-    ],
-    edition = "2021",
-    env = {
-        "MANIFEST_PATH": "$(rootpath built/nexus-agent/vitruvian-tool.json)",
-        "CONFORMANCE_BIN": "$(rootpath //packages/vitruvian-sdk:conformance_rs)",
-        "VALIDATE_BIN": "$(rootpath //packages/vitruvian-sdk:vitruvian-tool)",
-    },
-    tags = [
-        "block-network",
-        "manual",
-    ],
-    target_compatible_with = ["@platforms//os:macos"],
-)
 
 pipeline_unit(
     name = "nexus-agent-macos",

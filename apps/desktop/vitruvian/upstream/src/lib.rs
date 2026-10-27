@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 pub const UPSTREAM_URL: &str = "https://github.com/vorssaint/vorssaint-utils";
 pub const UPSTREAM_BRANCH: &str = "main";
-pub const IMPORT_COMMIT: &str = "36e9598d781271cd85c510a24cf9a0df9acba943";
+pub const IMPORT_COMMIT: &str = "05ee8be1f69849d0f219d44f32de932bba1a3454";
 pub const APP_DIR: &str = "apps/desktop/vitruvian";
 pub const LEDGER: &str = "apps/desktop/vitruvian/upstream/ledger.tsv";
 

@@ -53,6 +53,7 @@ rust_binary(
     data = [
         "delivery-legacy.tsv",
         "version-pins.tsv",
+        "//tools/copybara:check-version-maps",
         "//tools/owners",
     ],
     edition = "2021",
@@ -89,6 +90,7 @@ sh_binary(
     data = [
         "delivery-legacy.tsv",
         "version-pins.tsv",
+        "//tools/copybara:check-version-maps",
         # check_owners runs the generator itself (`--check`) instead of
         # trusting that CODEOWNERS exists.
         "//tools/owners",

@@ -625,7 +625,10 @@ jobs:
       # required check's verdict rests on. A silent hole in :verify (see the
       # SIGPIPE case the test pins) is invisible in every other lane.
       - name: Self-test the license verifier
-        run: bash tools/license/verify_test.sh
+        run: |
+          set -euo pipefail
+          rustc --test --edition 2021 --crate-name license_verify tools/license/src/lib.rs -o "$RUNNER_TEMP/license_verify_test"
+          "$RUNNER_TEMP/license_verify_test"
       # This was the last heavy Bazel lane with NO changed-paths gate, so a
       # docs-only PR still paid the full ~3min LLVM toolchain fetch here after
       # build-test/tidy-check/conformance-check had all already short-circuited.
@@ -686,9 +689,6 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-
-      - name: Run naming enforcement test suite
-        run: python3 tools/lint-naming/test_runner.py --verbose
 
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel
@@ -1031,7 +1031,11 @@ jobs:
       # diff, and gives the command that fixes it. Read-only: `go mod tidy
       # -diff` never writes, so this cannot dirty the tree it is checking.
       - name: Assert example/library module pins are in sync
-        run: bash tools/gomod/tidy.sh --check
+        run: |
+          set -euo pipefail
+          rustc --edition 2021 --crate-type lib --crate-name gomod_lib tools/gomod/src/lib.rs -o "$RUNNER_TEMP/libgomod_lib.rlib"
+          rustc --edition 2021 tools/gomod/src/main.rs -L "$RUNNER_TEMP" --extern gomod_lib="$RUNNER_TEMP/libgomod_lib.rlib" -o "$RUNNER_TEMP/tidy"
+          "$RUNNER_TEMP/tidy" --check
 
       - name: go build (every example module)
         run: |

@@ -2197,3 +2197,22 @@ fn run(command: &str, args: &crate::argparse::Values) -> Res<i32> {
     }
     Ok(status)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn branch_and_tag_helpers() {
+        assert_eq!(
+            branch_for("dev.vitruvian.homespeaker", "1.20.0"),
+            "catalog/bump-dev.vitruvian.homespeaker-1.20.0"
+        );
+        let row = json::loads(r#"{"tagPrefix": "home-speaker-v"}"#).unwrap();
+        assert_eq!(
+            version_of(&row, "home-speaker-v1.20.0"),
+            Some("1.20.0".to_string())
+        );
+        assert_eq!(version_of(&row, "v1.20.0"), None);
+    }
+}

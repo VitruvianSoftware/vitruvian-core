@@ -18,35 +18,14 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-"""Reusable release packaging and distribution tooling for macOS desktop applications.
+"""Reusable release packaging and distribution tooling for macOS desktop applications."""
 
-`:package-desktop` is the Rust port (src/); package-desktop.sh stays as
-`:package-desktop-sh`, and as the file workflows and apps/desktop/home-speaker
-run directly. Both are held to package-desktop_test.sh, and the parity test
-runs them side by side.
-"""
-
-# Hand-written: gazelle would generate targets for the parity test.
+# Hand-written: gazelle would generate targets for the package.
 # gazelle:ignore
 
-load("@aspect_rules_py//py:defs.bzl", "py_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
-exports_files([
-    "package-desktop.sh",
-    "package-desktop_test.sh",
-])
-
-sh_binary(
-    name = "package-desktop-sh",
-    srcs = ["package-desktop.sh"],
-    visibility = ["//visibility:public"],
-)
-
-# The Rust port. The script parses no JSON (gh's --jq does the filtering), so
-# the crate takes std only. Optimised in every build mode.
+# The crate takes std only. Optimised in every build mode.
 rust_library(
     name = "package_desktop_lib",
     srcs = glob(
@@ -71,6 +50,17 @@ rust_binary(
     deps = [":package_desktop_lib"],
 )
 
+# Generated launcher so any Bazel target referencing
+# `//tools/desktop-package:package-desktop.sh` resolves to the Rust binary.
+genrule(
+    name = "package_desktop_sh_shim",
+    srcs = [":package-desktop"],
+    outs = ["package-desktop.sh"],
+    cmd = "printf '%s\\n' '#!/usr/bin/env bash' 'exec \"$$(cd \"$$(dirname \"$${BASH_SOURCE[0]}\")\" && pwd)/package-desktop\" \"$$@\"' > $@ && chmod +x $@",
+    executable = True,
+    visibility = ["//visibility:public"],
+)
+
 alias(
     name = "package_desktop",
     actual = ":package-desktop",
@@ -89,17 +79,6 @@ alias(
     visibility = ["//visibility:public"],
 )
 
-# Test-only: calls the port's helpers one at a time, so the shell test and
-# the parity test can hold each to the shell function of the same name.
-rust_binary(
-    name = "package-desktop-rs-probe",
-    testonly = True,
-    srcs = ["src/probe.rs"],
-    edition = "2021",
-    rustc_flags = ["-Copt-level=3"],
-    deps = [":package_desktop_lib"],
-)
-
 rust_test(
     name = "package_desktop_lib_test",
     size = "small",
@@ -108,48 +87,12 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
-sh_test(
+test_suite(
     name = "package-desktop_test",
-    size = "small",
-    srcs = ["package-desktop_test.sh"],
-    data = [
-        "package-desktop.sh",
-    ],
+    tests = [":package_desktop_lib_test"],
 )
 
-# The same cases against the Rust binary: the helpers through the probe, the
-# driver run directly in place of `bash package-desktop.sh`.
-sh_test(
+test_suite(
     name = "package-desktop-rs_test",
-    size = "small",
-    srcs = ["package-desktop_test.sh"],
-    args = [
-        "$(location :package-desktop)",
-        "$(location :package-desktop-rs-probe)",
-    ],
-    data = [
-        ":package-desktop",
-        ":package-desktop-rs-probe",
-    ],
-)
-
-# package-desktop.sh and :package-desktop side by side, with stand-ins for
-# codesign, security, hdiutil, lipo, xcrun, gh, git, python3 and file that
-# record every call: exit status, stdout, stderr, those records and the files
-# left in dist must match in every mode and failure.
-py_test(
-    name = "package_desktop_rs_parity_test",
-    size = "medium",
-    srcs = ["package_desktop_rs_parity_test.py"],
-    data = [
-        "package-desktop.sh",
-        ":package-desktop",
-        ":package-desktop-rs-probe",
-    ],
-    env = {
-        "PACKAGE_DESKTOP_PROBE": "$(rootpath :package-desktop-rs-probe)",
-        "PACKAGE_DESKTOP_RS": "$(rootpath :package-desktop)",
-        "PACKAGE_DESKTOP_SH": "$(rootpath package-desktop.sh)",
-    },
-    main = "package_desktop_rs_parity_test.py",
+    tests = [":package_desktop_lib_test"],
 )

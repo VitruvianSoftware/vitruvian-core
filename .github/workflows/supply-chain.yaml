@@ -147,7 +147,11 @@ jobs:
         env:
           BASE_REF: ${{ github.event_name == 'pull_request' && github.base_ref || '' }}
           BASE_REV: ${{ github.event_name == 'push' && github.event.before || github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
-        run: bash tools/osv-scan/osv-scan.sh
+        run: |
+          set -euo pipefail
+          rustc --edition 2021 --crate-type lib --crate-name osv_scan tools/osv-scan/src/lib.rs -o "$RUNNER_TEMP/libosv_scan.rlib"
+          rustc --edition 2021 tools/osv-scan/src/main.rs -L "$RUNNER_TEMP" --extern osv_scan="$RUNNER_TEMP/libosv_scan.rlib" -o "$RUNNER_TEMP/osv-scan"
+          "$RUNNER_TEMP/osv-scan"
 
   secret-scan:
     # gitleaks over the commits this change introduces. Diff-scoped on purpose:

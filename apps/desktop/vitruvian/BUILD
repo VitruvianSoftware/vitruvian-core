@@ -454,12 +454,6 @@ genrule(
     tools = ["bazel/helper_version_plist.sh"],
 )
 
-py_binary(
-    name = "bundle_info_plist_tool",
-    srcs = ["bazel/bundle_info_plist.py"],
-    main = "bazel/bundle_info_plist.py",
-)
-
 rust_library(
     name = "bundle_info_plist_rs_lib",
     srcs = ["bazel/src/bundle_info_plist/lib.rs"],
@@ -468,10 +462,15 @@ rust_library(
 )
 
 rust_binary(
-    name = "bundle_info_plist_rs",
+    name = "bundle_info_plist_tool",
     srcs = ["bazel/src/bundle_info_plist/main.rs"],
     edition = "2021",
     deps = [":bundle_info_plist_rs_lib"],
+)
+
+alias(
+    name = "bundle_info_plist_rs",
+    actual = ":bundle_info_plist_tool",
 )
 
 rust_test(
@@ -530,24 +529,24 @@ macos_application(
 
 # --- Tests --------------------------------------------------------------------
 
-py_binary(
-    name = "sync_sources",
-    srcs = ["bazel/sync_sources.py"],
-    main = "bazel/sync_sources.py",
-)
-
 rust_library(
     name = "sync_sources_rs_lib",
     srcs = ["bazel/src/sync_sources/lib.rs"],
     crate_name = "sync_sources",
     edition = "2021",
+    deps = [":generate_sources_rs_lib"],
 )
 
 rust_binary(
-    name = "sync_sources_rs",
+    name = "sync_sources",
     srcs = ["bazel/src/sync_sources/main.rs"],
     edition = "2021",
     deps = [":sync_sources_rs_lib"],
+)
+
+alias(
+    name = "sync_sources_rs",
+    actual = ":sync_sources",
 )
 
 rust_test(
@@ -848,23 +847,9 @@ sh_test(
     target_compatible_with = MACOS_ONLY,
 )
 
-py_test(
+test_suite(
     name = "sources_in_sync_test",
-    size = "small",
-    srcs = ["bazel/sync_sources.py"],
-    args = [
-        "--check",
-        "--app-dir",
-        package_name(),
-    ],
-    data = [
-        "Tests/generate_sources.py",
-        "bazel/sources.bzl",
-        "build.sh",
-    ] + glob([
-        "Sources/**/*.swift",
-    ]),
-    main = "bazel/sync_sources.py",
+    tests = [":sync_sources_rs_test"],
 )
 
 # The same guard for the tool protocol's Swift sources (packages/vitruvian-sdk),
@@ -881,26 +866,6 @@ TOOL_PROTOCOL_ARGS = [
     "tool_protocol",
 ] + ["$(rootpaths %s)" % group for group in TOOL_PROTOCOL]
 
-py_binary(
-    name = "pin_tool_protocol",
-    srcs = ["bazel/pin_nexus_agent_shared.py"],
-    args = TOOL_PROTOCOL_ARGS,
-    data = TOOL_PROTOCOL,
-    main = "bazel/pin_nexus_agent_shared.py",
-)
-
-py_test(
-    name = "tool_protocol_pin_test",
-    size = "small",
-    srcs = ["bazel/pin_nexus_agent_shared.py"],
-    args = [
-        "--check",
-        "$(rootpath bazel/tool_protocol.sha256)",
-    ] + TOOL_PROTOCOL_ARGS,
-    data = ["bazel/tool_protocol.sha256"] + TOOL_PROTOCOL,
-    main = "bazel/pin_nexus_agent_shared.py",
-)
-
 rust_library(
     name = "pin_nexus_agent_shared_rs_lib",
     srcs = ["bazel/src/pin_nexus_agent_shared/lib.rs"],
@@ -909,7 +874,7 @@ rust_library(
 )
 
 rust_binary(
-    name = "pin_tool_protocol_rs",
+    name = "pin_tool_protocol",
     srcs = ["bazel/src/pin_nexus_agent_shared/main.rs"],
     args = TOOL_PROTOCOL_ARGS,
     data = TOOL_PROTOCOL,
@@ -917,10 +882,25 @@ rust_binary(
     deps = [":pin_nexus_agent_shared_rs_lib"],
 )
 
+alias(
+    name = "pin_tool_protocol_rs",
+    actual = ":pin_tool_protocol",
+)
+
 rust_test(
     name = "pin_nexus_agent_shared_rs_test",
     size = "small",
     crate = ":pin_nexus_agent_shared_rs_lib",
+    data = ["bazel/tool_protocol.sha256"] + TOOL_PROTOCOL,
+    env = {
+        "TOOL_PROTOCOL_PIN_FILE": "$(rootpath bazel/tool_protocol.sha256)",
+        "TOOL_PROTOCOL_SOURCES": " ".join(["$(rootpaths %s)" % group for group in TOOL_PROTOCOL]),
+    },
+)
+
+test_suite(
+    name = "tool_protocol_pin_test",
+    tests = [":pin_nexus_agent_shared_rs_test"],
 )
 
 rust_library(
@@ -1127,58 +1107,25 @@ rust_test(
 # make-dmg.sh finds a disk image's attachments in what `hdiutil info` prints.
 # Held to the output a macOS runner printed when a failed create left an image
 # attached that the script could not find.
-sh_test(
+test_suite(
     name = "dmg_image_devices_test",
-    size = "small",
-    srcs = ["bazel/dmg_image_devices_test.sh"],
-    args = [
-        "$(rootpath Tools/dmg-image-devices.sh)",
-        "$(rootpath bazel/testdata/hdiutil-info-stale-image.txt)",
-    ],
-    data = [
-        "Tools/dmg-image-devices.sh",
-        "bazel/testdata/hdiutil-info-stale-image.txt",
-    ],
+    tests = [":dmg_image_devices_rs_test"],
 )
 
 # Whether a beta publish goes ahead, skips (a newer build is already on the
 # release) or refuses, from how its commit relates to the rolling tag's.
-sh_test(
+test_suite(
     name = "beta_publish_guard_test",
-    size = "small",
-    srcs = ["bazel/beta_publish_guard_test.sh"],
-    args = ["$(rootpath Tools/beta-publish-guard.sh)"],
-    data = ["Tools/beta-publish-guard.sh"],
+    tests = [":beta_publish_guard_rs_test"],
 )
 
 # Rules over how all of the code is written, not what one piece of it does: an
 # API that never appears, every SF Symbol and system tool named, the build
-# script's temp-dir sweep, and the rest (bazel/source_lints.py). They read the
-# sources as text, so they run here rather than in the unit tests.
-py_test(
+# script's temp-dir sweep, and the rest. They read the sources as text, so they
+# run here rather than in the unit tests.
+test_suite(
     name = "source_lints_test",
-    size = "small",
-    srcs = ["bazel/source_lints.py"],
-    args = [
-        "--app-dir",
-        package_name(),
-    ],
-    data = [
-        "Tools/beta-publish-guard.sh",
-        "Tools/dmg-image-devices.sh",
-        "Tools/make-dmg.sh",
-        "Tools/notarize.sh",
-        "Tools/package-release.sh",
-        "Tools/uninstall.sh",
-        "UPSTREAM.md",
-        "build.sh",
-        "publish.sh",
-    ] + glob([
-        "Resources/**",
-        "Sources/**/*.swift",
-        "Tests/**/*.swift",
-    ]),
-    main = "bazel/source_lints.py",
+    tests = [":source_lints_rs_test"],
 )
 
 rust_library(
@@ -1221,25 +1168,6 @@ rust_test(
 #   bazel run //apps/desktop/vitruvian:track_upstream -- status|triage|show|port
 # .github/workflows/vitruvian-upstream-watch.yaml runs `status` daily.
 
-py_binary(
-    name = "track_upstream",
-    srcs = ["upstream/upstream.py"],
-    main = "upstream/upstream.py",
-)
-
-# The tool against throwaway repositories, and the committed ledger's format.
-py_test(
-    name = "upstream_test",
-    size = "small",
-    srcs = [
-        "upstream/upstream.py",
-        "upstream/upstream_test.py",
-    ],
-    data = ["upstream/ledger.tsv"],
-    env = {"UPSTREAM_LEDGER": "$(rootpath upstream/ledger.tsv)"},
-    main = "upstream/upstream_test.py",
-)
-
 rust_library(
     name = "upstream_rs_lib",
     srcs = ["upstream/src/lib.rs"],
@@ -1248,10 +1176,15 @@ rust_library(
 )
 
 rust_binary(
-    name = "track_upstream_rs",
+    name = "track_upstream",
     srcs = ["upstream/src/main.rs"],
     edition = "2021",
     deps = [":upstream_rs_lib"],
+)
+
+alias(
+    name = "track_upstream_rs",
+    actual = ":track_upstream",
 )
 
 rust_test(
@@ -1260,6 +1193,11 @@ rust_test(
     crate = ":upstream_rs_lib",
     data = ["upstream/ledger.tsv"],
     env = {"UPSTREAM_LEDGER": "$(rootpath upstream/ledger.tsv)"},
+)
+
+test_suite(
+    name = "upstream_test",
+    tests = [":upstream_rs_test"],
 )
 
 # --- Pipeline -----------------------------------------------------------------

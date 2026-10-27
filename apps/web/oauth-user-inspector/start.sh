@@ -42,9 +42,9 @@ if [ ! -d "dist-server" ]; then
 	exit 1
 fi
 
-# Check if server.js exists
-if [ ! -f "dist-server/server.js" ]; then
-	echo "❌ Error: dist-server/server.js not found. Server build may have failed."
+# Check if server binary or server.js exists
+if [ ! -f "dist-server/oauth-user-inspector-server" ] && [ ! -f "dist-server/server.js" ]; then
+	echo "❌ Error: dist-server/oauth-user-inspector-server not found. Server build may have failed."
 	ls -la dist-server/
 	exit 1
 fi
@@ -56,4 +56,8 @@ echo "Contents of dist-server/ (backend):"
 ls -la dist-server/
 
 # Start the server
-exec node dist-server/server.js
+if [ -x "dist-server/oauth-user-inspector-server" ]; then
+	exec ./dist-server/oauth-user-inspector-server
+else
+	exec node dist-server/server.js
+fi

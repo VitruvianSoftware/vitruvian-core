@@ -21,15 +21,12 @@
 """The Tools section of vitruviansoftware.dev, copied from packages/vitruvian-sdk.
 
     bazel run //tools/sync-site-tools:sync       writes the copies (Rust)
-    bazel run //tools/sync-site-tools:sync-py    the same, from sync.py
 """
 
 # gazelle:ignore
 
-load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_library", "py_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
-# The files the catalog's part is written from, and the file it writes.
 SITE_FILES = [
     "//:.claude-plugin/marketplace.json",
     "//apps/desktop/antigravity/plugins/ext-marketplace:site_sources",
@@ -50,28 +47,12 @@ SITE_FILES = [
     "//catalog:tools.json",
 ]
 
-# Everything sync reads and writes in the repository, for the tests.
 SYNC_DATA = SITE_FILES + [
     "//apps/web/vitruviansoftware-dev:tools_pages",
     "//packages/vitruvian-sdk:release-please-config.json",
     "//packages/vitruvian-sdk:site_sources",
 ]
 
-# The catalog's part alone, for //catalog:bump, which rewrites _data/tools.yml
-# after it changes an entry.
-py_library(
-    name = "catalogue",
-    srcs = ["catalogue.py"],
-    imports = ["."],
-    visibility = ["//catalog:__pkg__"],
-)
-
-# --- Rust port -----------------------------------------------------------
-# src/ is sync.py, catalogue.py and registry.py in Rust: the same files, byte
-# for byte, the same stdout, stderr and exit status. It takes only std, no
-# crate, so Cargo.lock and MODULE.bazel stay as they are. src/unicode_tables.rs
-# (from gen_unicode_tables.py) carries the character classes Python's str and
-# re use. Optimised in every build mode.
 rust_library(
     name = "sync_site_tools_lib",
     srcs = glob(
@@ -82,6 +63,7 @@ rust_library(
     crate_root = "src/lib.rs",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
 )
 
 rust_binary(
@@ -89,33 +71,10 @@ rust_binary(
     srcs = ["src/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
     deps = [":sync_site_tools_lib"],
 )
 
-alias(
-    name = "sync-rs",
-    actual = ":sync",
-)
-
-alias(
-    name = "sync_rs",
-    actual = ":sync",
-)
-
-# sync.py itself, which the Rust port is held to.
-py_binary(
-    name = "sync-py",
-    srcs = [
-        "catalogue.py",
-        "registry.py",
-        "sync.py",
-    ],
-    imports = ["."],
-    main = "sync.py",
-)
-
-# The #[cfg(test)] unit tests in src/, and sync_test.py's tests that read the
-# repository, run against the committed files.
 rust_test(
     name = "sync_site_tools_lib_test",
     size = "small",
@@ -123,40 +82,16 @@ rust_test(
     data = SYNC_DATA,
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
 )
 
-# The committed copies are what sync.py writes from the SDK's files now. Not
-# `manual` and not tied to macOS: plain Python, so the Linux lane runs it,
-# whenever the guide, the protocol's README, a hello sample, the catalog or
-# a copy changes.
-py_test(
+test_suite(
     name = "in_sync_test",
-    size = "small",
-    srcs = ["sync_test.py"],
-    data = SYNC_DATA,
-    main = "sync_test.py",
-    deps = [":sync-py"],
+    tests = [":sync_site_tools_lib_test"],
+    visibility = ["//visibility:public"],
 )
 
-# sync.py and the Rust sync side by side: every case of sync_test.py, this
-# repository's own files, and trees built to break them (Unicode, newlines,
-# bad UTF-8 and JSON, wrong types, missing and unreadable files, odd plugin
-# folders, write failures). Generated files, stdout, stderr and exit status
-# must match byte for byte.
-py_test(
-    name = "sync_site_tools_rs_parity_test",
-    size = "small",
-    srcs = ["sync_site_tools_rs_parity_test.py"],
-    data = SYNC_DATA + [
-        "catalogue.py",
-        "gen_unicode_tables.py",
-        "registry.py",
-        "src/unicode_tables.rs",
-        "sync.py",
-        "sync_test.py",
-        ":sync",
-    ],
-    env = {"SYNC_RS": "$(rootpath :sync)"},
-    main = "sync_site_tools_rs_parity_test.py",
-    deps = [":sync-py"],
+test_suite(
+    name = "sync_test",
+    tests = [":sync_site_tools_lib_test"],
 )

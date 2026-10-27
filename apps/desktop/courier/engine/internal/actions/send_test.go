@@ -1583,4 +1583,3 @@ func TestSendStickerRejectsSpoofedMimeTypeAndLeavesNoBlob(t *testing.T) {
 	require.ErrorIs(t, err, ErrUnsupportedFeature, "SendSticker must sniff actual file bytes rather than trusting client-supplied MimeType")
 	require.Equal(t, blobsBefore, countMediaBlobs(t, w.m.Dir), "rejected spoofed sticker must leave no blob in media.Store")
 }
-

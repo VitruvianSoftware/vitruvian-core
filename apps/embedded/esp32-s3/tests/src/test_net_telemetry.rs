@@ -107,6 +107,22 @@ pub fn test_companion_discovery() {
     let default_args = DaemonArgs::default();
     assert_eq!(default_args.host, MDNS_HOSTNAME);
     assert_eq!(default_args.udp_port, NET_TELEMETRY_PORT);
+    assert_eq!(mac_stats_daemon::MDNS_HOSTNAME, MDNS_HOSTNAME);
+    assert_eq!(mac_stats_daemon::NET_TELEMETRY_PORT, NET_TELEMETRY_PORT);
+    assert_eq!(mac_stats_daemon::WIFI_LIVENESS_TIMEOUT_S, 20.0);
+
+    // Shortcut execution command parity
+    let kb_cmd = mac_stats_daemon::build_mac_shortcut_command(1, 218, 0).unwrap();
+    assert_eq!(kb_cmd[0], "osascript");
+    assert!(kb_cmd[2].contains("key code 126 using control down"));
+
+    let mute_cmd = mac_stats_daemon::build_mac_shortcut_command(0, 0, 226).unwrap();
+    assert_eq!(mute_cmd[0], "osascript");
+    assert!(mute_cmd[2].contains("output muted"));
+
+    let sleep_cmd = mac_stats_daemon::build_mac_shortcut_command(0, 0, 48).unwrap();
+    assert_eq!(sleep_cmd, vec!["pmset", "displaysleepnow"]);
+
     let version_h = read_component_file("include/version.h");
     assert!(version_h.contains("#define MDNS_HOSTNAME     \"vitruvian-companion\""));
     assert!(version_h.contains("#define MDNS_SERVICE      \"vitruvian\""));
@@ -237,6 +253,14 @@ pub fn test_firmware_source_invariants() {
 
     assert!(wifi_cpp.contains("MDNS.begin(MDNS_HOSTNAME)"));
     assert!(wifi_cpp.contains("MDNS.addService(MDNS_SERVICE, MDNS_PROTO, NET_TELEMETRY_PORT)"));
+    for key in ["\"version\"", "\"chip\"", "\"id\""] {
+        assert!(
+            wifi_cpp.contains(&format!(
+                "MDNS.addServiceTxt(MDNS_SERVICE, MDNS_PROTO, {key}"
+            )),
+            "missing mDNS TXT record for {key}"
+        );
+    }
     assert!(wifi_cpp.contains("mdns_start();"));
     assert!(wifi_cpp.matches("mdns_stop();").count() >= 3);
 
@@ -246,6 +270,13 @@ pub fn test_firmware_source_invariants() {
     assert!(
         main_cpp.contains("packet_router_handle(line.c_str(), line.length(), LINK_CHANNEL_USB)")
     );
+    let stop_idx = ui_cpp
+        .find("ota_manager_stop()")
+        .expect("missing ota_manager_stop in ui.cpp");
+    let portal_idx = ui_cpp
+        .find("wifi_manager_start_portal()")
+        .expect("missing wifi_manager_start_portal in ui.cpp");
+    assert!(stop_idx < portal_idx);
 
     assert!(router_h.contains("#define LINK_ACTIVE_WINDOW_MS 3000UL"));
     assert!(router_cpp.contains("net_telemetry_send_line(json)"));
@@ -255,9 +286,11 @@ pub fn test_firmware_source_invariants() {
     assert!(ui_cpp.contains("packet_router_emit(\"{\\\"cmd\\\":\\\"run_checks\\\""));
     assert!(ui_cpp.contains("packet_router_emit(\"{\\\"cmd\\\":\\\"open_pr\\\""));
     assert!(ui_cpp.contains("packet_router_emit(\"{\\\"cmd\\\":\\\"wifi_sync\\\"}\")"));
+    assert!(ui_cpp.contains("Display\\nSleep"));
 
     assert!(ota_cpp.contains("ArduinoOTA.setPassword(ota_password)"));
     assert!(ota_cpp.contains("ota_server->authenticate(OTA_HTTP_USER, ota_password)"));
+    assert!(ota_cpp.contains("if (updating) return;"));
 
     let idx = mac_hid_cpp
         .find("void trigger_display_sleep()")

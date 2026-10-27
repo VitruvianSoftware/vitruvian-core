@@ -81,11 +81,15 @@ jobs:
           persist-credentials: false
           fetch-depth: 2
 
-      # Plain Python, no network, well under a second. On every event, so the
-      # script that judges is tested where it runs, and so the job always has
-      # something true to report on merge_group.
+      # Plain Rust, no network, well under a second. Runs on pull_request (the
+      # merge_group queue runner tests //tools/release-scope:release_scope_test
+      # in the presubmit lane and reports via the merge_group step below).
       - name: The check's own tests
-        run: python3 tools/release-scope/release_scope_test.py
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          rustc --edition 2021 --test tools/release-scope/src/lib.rs -o "$RUNNER_TEMP/release-scope-test"
+          "$RUNNER_TEMP/release-scope-test"
 
       - name: Which products would this pull request release?
         if: github.event_name == 'pull_request'
@@ -116,7 +120,10 @@ jobs:
             echo "::error title=release-scope could not tell::Could not list the files this pull request changes."
             exit 2
           }
-          python3 tools/release-scope/release_scope.py \
+          rustc --edition 2021 --crate-type lib --crate-name release_scope tools/release-scope/src/lib.rs -o "$work/librelease_scope.rlib"
+          rustc --edition 2021 tools/release-scope/src/main.rs -L "$work" --extern release_scope="$work/librelease_scope.rlib" -o "$work/release-scope"
+          "$work/release-scope" \
+            --aliases tools/release-scope/aliases.json \
             --pr-json "$work/pr.json" \
             --commits-json "$work/commits.json" \
             --files "$work/files.txt" > "$work/report.txt" 2>&1

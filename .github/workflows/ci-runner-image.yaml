@@ -79,10 +79,13 @@ jobs:
 
       - name: Parity check (what the queue jobs expect)
         run: |
+          set -euo pipefail
+          rustc --edition 2021 --crate-type lib --crate-name parity_lib tools/ci-runner/src/lib.rs -o "$RUNNER_TEMP/libparity_lib.rlib"
+          rustc --edition 2021 tools/ci-runner/src/main.rs -L "$RUNNER_TEMP" --extern parity_lib="$RUNNER_TEMP/libparity_lib.rlib" -o "$RUNNER_TEMP/parity"
           docker run --rm -e ACTIONS_RUNNER_PRINT_LOG_TO_STDOUT= \
               -e BAZEL_VERSION="$(cat .bazelversion)" \
-              -v "$PWD/tools/ci-runner:/check:ro" \
-              vitruvian-ci-runner:check bash /check/parity.sh
+              -v "$RUNNER_TEMP/parity:/check/parity:ro" \
+              vitruvian-ci-runner:check /check/parity
 
       - name: Log in to GHCR
         if: ${{ github.event_name != 'pull_request' }}

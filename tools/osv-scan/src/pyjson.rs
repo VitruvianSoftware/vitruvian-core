@@ -18,23 +18,12 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! JSON as the bash tools' `python3 -c 'json.load(...)'` snippets see it.
+//! JSON as `python3 -c 'json.load(...)'` snippets see it.
 //!
-//! The shell scripts read manifests with Python and print fields with
-//! `print()`, so what reaches the terminal is Python's `str()` of a JSON
-//! value: `True`/`None`, `1e+20`, `['a', 1]`, keys in file order. This module
-//! parses with serde_json (through a custom `Deserialize`, so key order and
-//! Python's duplicate-key rule survive: the LAST value wins, at the FIRST
-//! key's position) and renders values the way CPython 3 does.
-//!
-//! Known gaps, all inputs no real manifest contains: `NaN`/`Infinity`
-//! literals, lone surrogate escapes and numbers beyond f64 range are rejected
-//! (Python accepts them); integers beyond 64 bits lose precision; `-0` reads
-//! as a float; nesting deeper than serde_json's 128 levels is rejected; and
-//! `repr()`'s "printable" test uses an approximation of Unicode's tables.
-
-use serde::de::{Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
-use std::fmt;
+//! Renders values the way CPython 3 does (`True`/`None`, `1e+20`, `['a', 1]`,
+//! keys in file order with Python's duplicate-key rule: the LAST value wins,
+//! at the FIRST key's position). Implemented with a zero-dependency RFC 8259
+//! parser so `//tools/osv-scan` compiles with `rustc` alone.
 
 /// A JSON value with Python's semantics.
 #[derive(Clone, Debug, PartialEq)]
@@ -109,7 +98,16 @@ impl Py {
 
 /// `json.loads(text)`.
 pub fn loads(text: &str) -> Result<Py, String> {
-    serde_json::from_str::<Py>(text).map_err(|e| e.to_string())
+    let mut p = JsonParser {
+        b: text.as_bytes(),
+        i: 0,
+    };
+    let v = p.value(0)?;
+    p.skip_ws();
+    if p.i != p.b.len() {
+        return Err("trailing characters".to_string());
+    }
+    Ok(v)
 }
 
 /// `json.load(open(path))`: read, decode as UTF-8, parse.
@@ -251,60 +249,256 @@ pub fn str_repr(s: &str) -> String {
     out
 }
 
-impl<'de> Deserialize<'de> for Py {
-    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        d.deserialize_any(PyVisitor)
-    }
+struct JsonParser<'a> {
+    b: &'a [u8],
+    i: usize,
 }
 
-struct PyVisitor;
-
-impl<'de> Visitor<'de> for PyVisitor {
-    type Value = Py;
-
-    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str("a JSON value")
-    }
-    fn visit_unit<E>(self) -> Result<Py, E> {
-        Ok(Py::None)
-    }
-    fn visit_bool<E>(self, b: bool) -> Result<Py, E> {
-        Ok(Py::Bool(b))
-    }
-    fn visit_i64<E>(self, i: i64) -> Result<Py, E> {
-        Ok(Py::Int(i as i128))
-    }
-    fn visit_u64<E>(self, u: u64) -> Result<Py, E> {
-        Ok(Py::Int(u as i128))
-    }
-    fn visit_f64<E>(self, f: f64) -> Result<Py, E> {
-        Ok(Py::Float(f))
-    }
-    fn visit_str<E>(self, s: &str) -> Result<Py, E> {
-        Ok(Py::Str(s.to_string()))
-    }
-    fn visit_string<E>(self, s: String) -> Result<Py, E> {
-        Ok(Py::Str(s))
-    }
-    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Py, A::Error> {
-        let mut v = Vec::new();
-        while let Some(item) = seq.next_element::<Py>()? {
-            v.push(item);
+impl<'a> JsonParser<'a> {
+    fn skip_ws(&mut self) {
+        while self.i < self.b.len() && matches!(self.b[self.i], b' ' | b'\t' | b'\r' | b'\n') {
+            self.i += 1;
         }
-        Ok(Py::List(v))
     }
-    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Py, A::Error> {
-        let mut items: Vec<(String, Py)> = Vec::new();
-        while let Some((k, v)) = map.next_entry::<String, Py>()? {
-            // Python's dict: a repeated key keeps its first position and
-            // takes the last value.
-            if let Some(slot) = items.iter_mut().find(|(ek, _)| *ek == k) {
-                slot.1 = v;
-            } else {
-                items.push((k, v));
+
+    fn value(&mut self, depth: usize) -> Result<Py, String> {
+        if depth > 128 {
+            return Err("recursion limit exceeded".to_string());
+        }
+        self.skip_ws();
+        let c = *self
+            .b
+            .get(self.i)
+            .ok_or_else(|| "unexpected EOF".to_string())?;
+        match c {
+            b'n' => {
+                if self.b.get(self.i..self.i + 4) == Some(b"null") {
+                    self.i += 4;
+                    Ok(Py::None)
+                } else {
+                    Err("expected null".to_string())
+                }
+            }
+            b't' => {
+                if self.b.get(self.i..self.i + 4) == Some(b"true") {
+                    self.i += 4;
+                    Ok(Py::Bool(true))
+                } else {
+                    Err("expected true".to_string())
+                }
+            }
+            b'f' => {
+                if self.b.get(self.i..self.i + 5) == Some(b"false") {
+                    self.i += 5;
+                    Ok(Py::Bool(false))
+                } else {
+                    Err("expected false".to_string())
+                }
+            }
+            b'"' => Ok(Py::Str(self.string()?)),
+            b'[' => {
+                self.i += 1;
+                let mut v = Vec::new();
+                self.skip_ws();
+                if self.b.get(self.i) == Some(&b']') {
+                    self.i += 1;
+                    return Ok(Py::List(v));
+                }
+                loop {
+                    v.push(self.value(depth + 1)?);
+                    self.skip_ws();
+                    match self.b.get(self.i) {
+                        Some(b',') => self.i += 1,
+                        Some(b']') => {
+                            self.i += 1;
+                            return Ok(Py::List(v));
+                        }
+                        _ => return Err("expected ',' or ']'".to_string()),
+                    }
+                }
+            }
+            b'{' => {
+                self.i += 1;
+                let mut items: Vec<(String, Py)> = Vec::new();
+                self.skip_ws();
+                if self.b.get(self.i) == Some(&b'}') {
+                    self.i += 1;
+                    return Ok(Py::Dict(items));
+                }
+                loop {
+                    self.skip_ws();
+                    if self.b.get(self.i) != Some(&b'"') {
+                        return Err("expected string key".to_string());
+                    }
+                    let k = self.string()?;
+                    self.skip_ws();
+                    if self.b.get(self.i) != Some(&b':') {
+                        return Err("expected ':'".to_string());
+                    }
+                    self.i += 1;
+                    let v = self.value(depth + 1)?;
+                    if let Some(slot) = items.iter_mut().find(|(ek, _)| *ek == k) {
+                        slot.1 = v;
+                    } else {
+                        items.push((k, v));
+                    }
+                    self.skip_ws();
+                    match self.b.get(self.i) {
+                        Some(b',') => self.i += 1,
+                        Some(b'}') => {
+                            self.i += 1;
+                            return Ok(Py::Dict(items));
+                        }
+                        _ => return Err("expected ',' or '}'".to_string()),
+                    }
+                }
+            }
+            b'-' | b'0'..=b'9' => self.number(),
+            _ => Err("unexpected character".to_string()),
+        }
+    }
+
+    fn hex4(&mut self) -> Result<u32, String> {
+        let h = self
+            .b
+            .get(self.i..self.i + 4)
+            .ok_or_else(|| "invalid unicode escape".to_string())?;
+        let s = std::str::from_utf8(h).map_err(|_| "invalid unicode escape".to_string())?;
+        let v = u32::from_str_radix(s, 16).map_err(|_| "invalid unicode escape".to_string())?;
+        self.i += 4;
+        Ok(v)
+    }
+
+    fn string(&mut self) -> Result<String, String> {
+        self.i += 1;
+        let mut out = String::new();
+        loop {
+            let start = self.i;
+            while self.i < self.b.len() {
+                let b = self.b[self.i];
+                if b == b'"' || b == b'\\' || b < 0x20 {
+                    break;
+                }
+                self.i += 1;
+            }
+            if self.i > start {
+                let chunk = std::str::from_utf8(&self.b[start..self.i])
+                    .map_err(|_| "invalid UTF-8".to_string())?;
+                out.push_str(chunk);
+            }
+            let c = *self
+                .b
+                .get(self.i)
+                .ok_or_else(|| "unterminated string".to_string())?;
+            self.i += 1;
+            match c {
+                b'"' => return Ok(out),
+                b'\\' => {
+                    let e = *self
+                        .b
+                        .get(self.i)
+                        .ok_or_else(|| "unterminated escape".to_string())?;
+                    self.i += 1;
+                    let ch = match e {
+                        b'"' => '"',
+                        b'\\' => '\\',
+                        b'/' => '/',
+                        b'b' => '\u{8}',
+                        b'f' => '\u{c}',
+                        b'n' => '\n',
+                        b'r' => '\r',
+                        b't' => '\t',
+                        b'u' => {
+                            let hi = self.hex4()?;
+                            let cp = if (0xd800..0xdc00).contains(&hi) {
+                                if self.b.get(self.i..self.i + 2) != Some(b"\\u") {
+                                    return Err("unpaired high surrogate".to_string());
+                                }
+                                self.i += 2;
+                                let lo = self.hex4()?;
+                                if !(0xdc00..0xe000).contains(&lo) {
+                                    return Err("invalid low surrogate".to_string());
+                                }
+                                0x10000 + ((hi - 0xd800) << 10) + (lo - 0xdc00)
+                            } else if (0xdc00..0xe000).contains(&hi) {
+                                return Err("unpaired low surrogate".to_string());
+                            } else {
+                                hi
+                            };
+                            char::from_u32(cp).ok_or_else(|| "invalid code point".to_string())?
+                        }
+                        _ => return Err("invalid escape".to_string()),
+                    };
+                    out.push(ch);
+                }
+                _ => return Err("unescaped control character".to_string()),
             }
         }
-        Ok(Py::Dict(items))
+    }
+
+    fn number(&mut self) -> Result<Py, String> {
+        let start = self.i;
+        let neg = if self.b.get(self.i) == Some(&b'-') {
+            self.i += 1;
+            true
+        } else {
+            false
+        };
+        match self.b.get(self.i) {
+            Some(b'0') => {
+                self.i += 1;
+                if matches!(self.b.get(self.i), Some(b'0'..=b'9')) {
+                    return Err("leading zero".to_string());
+                }
+            }
+            Some(b'1'..=b'9') => {
+                self.i += 1;
+                while matches!(self.b.get(self.i), Some(b'0'..=b'9')) {
+                    self.i += 1;
+                }
+            }
+            _ => return Err("invalid number".to_string()),
+        }
+        let mut is_float = false;
+        if self.b.get(self.i) == Some(&b'.') {
+            is_float = true;
+            self.i += 1;
+            if !matches!(self.b.get(self.i), Some(b'0'..=b'9')) {
+                return Err("invalid fraction".to_string());
+            }
+            while matches!(self.b.get(self.i), Some(b'0'..=b'9')) {
+                self.i += 1;
+            }
+        }
+        if matches!(self.b.get(self.i), Some(b'e' | b'E')) {
+            is_float = true;
+            self.i += 1;
+            if matches!(self.b.get(self.i), Some(b'+' | b'-')) {
+                self.i += 1;
+            }
+            if !matches!(self.b.get(self.i), Some(b'0'..=b'9')) {
+                return Err("invalid exponent".to_string());
+            }
+            while matches!(self.b.get(self.i), Some(b'0'..=b'9')) {
+                self.i += 1;
+            }
+        }
+        let raw = std::str::from_utf8(&self.b[start..self.i])
+            .map_err(|_| "invalid UTF-8 in number".to_string())?;
+        if !is_float && raw != "-0" {
+            if neg {
+                if let Ok(i) = raw.parse::<i64>() {
+                    return Ok(Py::Int(i as i128));
+                }
+            } else if let Ok(u) = raw.parse::<u64>() {
+                return Ok(Py::Int(u as i128));
+            }
+        }
+        let f: f64 = raw.parse().map_err(|_| "invalid float".to_string())?;
+        if f.is_infinite() || f.is_nan() {
+            return Err("number out of range".to_string());
+        }
+        Ok(Py::Float(f))
     }
 }
 

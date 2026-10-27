@@ -981,3 +981,132 @@ pub fn report(verdict: &Verdict) -> Result<PyStr, Exc> {
     }
     Ok(PyStr::join("\n", &out))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    fn sample_components() -> Vec<Component> {
+        let vis: Vec<PyVal> = VISIBLE_BY_DEFAULT
+            .iter()
+            .map(|s| PyVal::Str(py(s)))
+            .collect();
+        vec![
+            Component {
+                name: PyVal::Str(py("homelab")),
+                package_name: PyVal::Str(py("homelab")),
+                path: py("apps/cli/homelab"),
+                excludes: vec![],
+                visible: vis.clone(),
+                siblings: vec![py("apps/cli/homelab")],
+                config: py("apps/cli/homelab/release-please-config.json"),
+            },
+            Component {
+                name: PyVal::Str(py("vitruvian")),
+                package_name: PyVal::Str(py("vitruvian")),
+                path: py("apps/desktop/vitruvian"),
+                excludes: vec![],
+                visible: vis,
+                siblings: vec![py("apps/desktop/vitruvian")],
+                config: py("apps/desktop/vitruvian/release-please-config.json"),
+            },
+        ]
+    }
+
+    fn make_pr(title: &str, body: &str, files: &[&str]) -> PullRequest {
+        PullRequest {
+            title: PyVal::Str(py(title)),
+            body: PyVal::Str(py(body)),
+            files: files.iter().map(|f| py(f)).collect(),
+            commits: vec![PyVal::Str(py(title))],
+            author: PyVal::Str(py("alice")),
+            author_type: PyVal::Str(py("User")),
+            head_ref: PyVal::Str(py("feature-branch")),
+        }
+    }
+
+    #[test]
+    fn judges_scope_and_releases_footer() {
+        let components = sample_components();
+        let bad = judge(
+            &make_pr(
+                "fix: update Go deps",
+                "",
+                &[
+                    "apps/cli/homelab/go.mod",
+                    "apps/desktop/vitruvian/Info.plist",
+                ],
+            ),
+            &components,
+            &[],
+        )
+        .unwrap();
+        assert!(!bad.ok);
+        assert_eq!(bad.unnamed.len(), 2);
+        assert!(bad.unnamed[0].py_eq(&PyVal::Str(py("homelab"))));
+        assert!(bad.unnamed[1].py_eq(&PyVal::Str(py("vitruvian"))));
+
+        let scoped_ok = judge(
+            &make_pr("fix(homelab): fix flag", "", &["apps/cli/homelab/main.go"]),
+            &components,
+            &[],
+        )
+        .unwrap();
+        assert!(scoped_ok.ok);
+
+        let footer_ok = judge(
+            &make_pr(
+                "fix: shared update",
+                "Summary\n\nReleases: homelab, vitruvian\n",
+                &[
+                    "apps/cli/homelab/main.go",
+                    "apps/desktop/vitruvian/Info.plist",
+                ],
+            ),
+            &components,
+            &[],
+        )
+        .unwrap();
+        assert!(footer_ok.ok);
+
+        let chore_ok = judge(
+            &make_pr(
+                "chore: tidy everything",
+                "",
+                &[
+                    "apps/cli/homelab/main.go",
+                    "apps/desktop/vitruvian/Info.plist",
+                ],
+            ),
+            &components,
+            &[],
+        )
+        .unwrap();
+        assert!(chore_ok.ok);
+    }
+
+    #[test]
+    fn workflow_triggers_and_safety() {
+        let wf_path = Path::new(".github/workflows/release-scope.yaml");
+        if !wf_path.exists() {
+            return;
+        }
+        let raw = std::fs::read_to_string(wf_path).unwrap();
+        for needed in ["opened", "reopened", "synchronize", "edited"] {
+            assert!(raw.contains(needed), "missing PR trigger type {}", needed);
+        }
+        assert!(raw.contains("merge_group:"), "missing merge_group trigger");
+        for line in raw.lines() {
+            if line.trim_start().starts_with('#') {
+                continue;
+            }
+            assert!(
+                !line.contains("github.event.pull_request.title")
+                    && !line.contains("github.event.pull_request.body"),
+                "workflow interpolates PR title/body directly: {}",
+                line
+            );
+        }
+    }
+}

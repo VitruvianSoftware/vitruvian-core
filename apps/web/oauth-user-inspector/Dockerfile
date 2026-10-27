@@ -35,14 +35,21 @@
 # default equals canonical, so it cannot silently drift.
 ARG NODE_VERSION=22
 
-# --- Build stage: compile the Vite/React frontend (-> dist) + the TS server (-> dist-server)
+# --- Server build stage: compile the Rust backend (-> dist-server/oauth-user-inspector-server)
+FROM rust:1.85-slim-bookworm AS server-build
+WORKDIR /app/server
+COPY server/ ./
+RUN cargo build --release \
+    && mkdir -p /app/dist-server \
+    && cp target/release/oauth-user-inspector-server /app/dist-server/oauth-user-inspector-server
+
+# --- Frontend build stage: compile the Vite/React frontend (-> dist)
 FROM node:${NODE_VERSION}-slim AS build
 WORKDIR /app
 RUN corepack enable
 COPY package.json ./
 COPY tsconfig.json ./
 COPY frontend/ ./frontend/
-COPY server/ ./server/
 # This image builds the app STANDALONE: the Docker context is just
 # oauth-user-inspector/ (also all the copybara mirror has), with no monorepo root
 # pnpm-workspace.yaml, so pnpm cannot resolve `catalog:` references. Pin them to a
@@ -50,7 +57,7 @@ COPY server/ ./server/
 # runs, so the exact version is immaterial — only that pnpm can resolve it.
 RUN sed -i 's/"catalog:"/"^29.7.0"/g' package.json
 RUN pnpm install --no-frozen-lockfile
-RUN pnpm build
+RUN pnpm run build:frontend
 
 # --- Runtime stage: slim image with only production deps + built artifacts
 FROM node:${NODE_VERSION}-slim AS runtime
@@ -59,7 +66,7 @@ ENV NODE_ENV=production \
     PORT=8080
 RUN corepack enable \
     && apt-get update \
-    && apt-get install -y --no-install-recommends curl \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
 COPY package.json ./
 # Same standalone-build catalog neutralization as the build stage (see above);
@@ -67,9 +74,9 @@ COPY package.json ./
 RUN sed -i 's/"catalog:"/"^29.7.0"/g' package.json
 RUN pnpm install --prod --no-frozen-lockfile && pnpm store prune
 COPY --from=build /app/dist ./dist
-COPY --from=build /app/dist-server ./dist-server
+COPY --from=server-build /app/dist-server ./dist-server
 COPY start.sh ./
-RUN chmod +x start.sh \
+RUN chmod +x start.sh dist-server/oauth-user-inspector-server \
     && groupadd -r -g 1001 nodejs \
     && useradd -r -u 1001 -g nodejs nodejs \
     && chown -R nodejs:nodejs /app

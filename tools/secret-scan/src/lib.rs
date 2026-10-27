@@ -34,8 +34,48 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-/// secret-scan.sh itself: its header comment is the --help text.
-const SCRIPT: &str = include_str!("../secret-scan.sh");
+/// secret-scan header comment: the --help text.
+const SCRIPT: &str = "#!/usr/bin/env bash
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the \"Software\"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# secret-scan.sh — look for secrets with the same gitleaks and the same rules CI uses.
+#
+# Usage:
+#   bazel run //tools/secret-scan                     # the commits on this branch that main does not have
+#   bazel run //tools/secret-scan -- --staged         # what `git commit` would record right now
+#   bazel run //tools/secret-scan -- --range <a..b>   # the commits in a range, e.g. origin/main..HEAD
+#   bazel run //tools/secret-scan -- --unpushed       # the commits no branch on origin has yet
+#
+# gitleaks is pinned in tools/tools.lock.json (the version CI's
+# tools/ci/secret-scan.sh downloads) and the rules are the repo's .gitleaks.toml.
+# A finding names the file, the line and the rule. It never prints the secret.
+#
+# Exit codes: 0 nothing found, 1 something found, 2 the scan could not run.
+#
+# Environment (tests and callers such as //tools/git):
+#   GITLEAKS         path to the gitleaks binary (default: the pinned one in runfiles)
+#   GITLEAKS_CONFIG  path to the rules (default: the repo's .gitleaks.toml in runfiles)
+
+set -euo pipefail
+";
 
 const ADVICE: &str = "The secret itself is not printed. What to do:
   * A real secret: take it out of the file. If it was ever pushed, rotate it too.
