@@ -356,7 +356,7 @@ else
 fi
 
 # B5.4: Diff containing only root-level non-code files (.gitignore, README.md)
-if grep -q "OperationDocsOnly" tools/pipeline/plan/classifier.go && grep -q "isDocsOnly" tools/pipeline/plan/classifier.go; then
+if grep -q "Operation::DocsOnly" tools/pipeline/plan/src/gates.rs && grep -q "is_docs_only" tools/pipeline/plan/src/gates.rs; then
 	pass "B5.4: Root-level non-build files (.gitignore, README.md) classified as docs/inert"
 else
 	fail "B5.4: Classifier docs detection missing"
@@ -517,14 +517,14 @@ else
 fi
 
 # B8.2: Multi-discipline changeset spanning UI + API + Infra
-if grep -q "OperationMultiDiscipline" tools/pipeline/plan/classifier.go && grep -q "PersonaFullStackDev" tools/pipeline/plan/classifier.go; then
+if grep -q "Operation::MultiDiscipline" tools/pipeline/plan/src/gates.rs && grep -q "Persona::FullStackDev" tools/pipeline/plan/src/gates.rs; then
 	pass "B8.2: Changeset spanning frontend + backend + infra classified as OperationMultiDiscipline"
 else
 	fail "B8.2: Multi-discipline classification logic missing"
 fi
 
 # B8.3: Root build changes classified as platform admin operation
-if grep -q "PersonaPlatformAdmin" tools/pipeline/plan/classifier.go && grep -q "OperationGlobalConfig" tools/pipeline/plan/classifier.go; then
+if grep -q "Persona::PlatformAdmin" tools/pipeline/plan/src/gates.rs && grep -q "Operation::GlobalConfig" tools/pipeline/plan/src/gates.rs; then
 	pass "B8.3: Root build/toolchain modifications mapped to PersonaPlatformAdmin"
 else
 	fail "B8.3: Platform admin classification logic missing"

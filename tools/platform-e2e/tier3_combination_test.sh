@@ -179,7 +179,7 @@ fi
 echo "--- Combo 6: Docs-Only Fast Gate x Preview Lifecycle ---"
 # Docs-only PR bypasses ephemeral preview provisioning entirely
 plan_docs_out="$(run_pipeline_plan --format json 2>&1)"
-if grep -q "OperationDocsOnly" tools/pipeline/plan/classifier.go && echo "$plan_docs_out" | jq -e 'has("is_docs_only")' >/dev/null 2>&1; then
+if grep -q "Operation::DocsOnly" tools/pipeline/plan/src/gates.rs && echo "$plan_docs_out" | jq -e 'has("is_docs_only")' >/dev/null 2>&1; then
 	pass "C6: Docs-only changeset bypasses preview provisioning and database branch creation"
 else
 	fail "C6: Docs-only classification failed"
