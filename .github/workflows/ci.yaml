@@ -1029,7 +1029,11 @@ jobs:
       # diff, and gives the command that fixes it. Read-only: `go mod tidy
       # -diff` never writes, so this cannot dirty the tree it is checking.
       - name: Assert example/library module pins are in sync
-        run: bash tools/gomod/tidy.sh --check
+        run: |
+          set -euo pipefail
+          rustc --edition 2021 --crate-type lib --crate-name gomod tools/gomod/src/lib.rs -o "$RUNNER_TEMP/libgomod.rlib"
+          rustc --edition 2021 tools/gomod/src/main.rs -L "$RUNNER_TEMP" --extern gomod="$RUNNER_TEMP/libgomod.rlib" -o "$RUNNER_TEMP/tidy"
+          "$RUNNER_TEMP/tidy" --check
 
       - name: go build (every example module)
         run: |
