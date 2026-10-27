@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.22.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.22.0...mcp-slack-v1.22.1) (2026-10-27)
+
+
+### Bug Fixes
+
+* **mcp-slack:** make the Rust server production-ready on vetted crates ([#4018](https://github.com/VitruvianSoftware/vitruvian-core/issues/4018)) ([c785527](https://github.com/VitruvianSoftware/vitruvian-core/commit/c78552799409ef4635e6162c00162c1e580db510))
+
 ## [1.22.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/mcp-slack-v1.21.2...mcp-slack-v1.22.0) (2026-10-12)
 
 
