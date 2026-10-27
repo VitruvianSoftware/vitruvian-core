@@ -57,8 +57,8 @@
     "mcp": "node server/mcp/stdio.js"
   },
   "dependencies": {
-    "@jtarrio/signals": "^0.10.0",
-    "@jtarrio/webrtlsdr": "^3.0.6",
+    "@jtarrio/signals": "^0.10.3",
+    "@jtarrio/webrtlsdr": "^3.0.7",
     "@mapbox/vector-tile": "^3.0.0",
     "@meri-imperiumi/eccodes-wasm": "^2.48.2",
     "cesium": "1.146.0",
@@ -73,7 +73,7 @@
   "devDependencies": {
     "@cesium/engine": "26.4.0",
     "prettier": "3.9.10",
-    "puppeteer": "^25.14.0",
+    "puppeteer": "^25.16.0",
     "sharp": "^0.35.5",
     "vite": "^8.3.5",
     "vite-plugin-cesium": "^1.2.23"

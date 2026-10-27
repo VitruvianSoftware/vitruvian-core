@@ -22,13 +22,29 @@ use mcp_slack_rs_lib::auth::{
     create_token_verifier, full_scope_string, TokenVerifier, TokenVerifierConfig,
 };
 use mcp_slack_rs_lib::config::{resolve_config, TransportMode};
-use mcp_slack_rs_lib::http_transport::{start_http_transport, McpServer};
+use mcp_slack_rs_lib::http_transport::{
+    start_http_transport, wait_for_shutdown_signal, McpServer, DEFAULT_SHUTDOWN_GRACE_MS,
+    SERVER_NAME, SERVER_VERSION,
+};
 use mcp_slack_rs_lib::slack_client::SlackClient;
 use mcp_slack_rs_lib::tools::tools_for;
 use std::collections::HashMap;
 use std::io::{BufRead, Write};
 use std::sync::Arc;
-use std::time::Duration;
+
+/// SHUTDOWN_GRACE_MS (the chart derives it from terminationGracePeriodSeconds),
+/// else the 10 s the TS `close()` defaulted to.
+fn shutdown_grace_ms(env: &HashMap<String, String>) -> u64 {
+    match env.get("SHUTDOWN_GRACE_MS").map(|v| v.trim()) {
+        None | Some("") => DEFAULT_SHUTDOWN_GRACE_MS,
+        Some(raw) => raw.parse::<u64>().unwrap_or_else(|_| {
+            eprintln!(
+                "SHUTDOWN_GRACE_MS={raw:?} is not a whole number of milliseconds; using {DEFAULT_SHUTDOWN_GRACE_MS}"
+            );
+            DEFAULT_SHUTDOWN_GRACE_MS
+        }),
+    }
+}
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -67,8 +83,8 @@ fn main() {
     let tools_for_factory = advertised_tools.clone();
     let create_server = move || {
         McpServer::with_slack(
-            "mcp-slack",
-            "2.0.0",
+            SERVER_NAME,
+            SERVER_VERSION,
             client_for_factory.clone(),
             tools_for_factory.clone(),
         )
@@ -98,7 +114,8 @@ fn main() {
             }
         };
 
-        let _listener = match start_http_transport(create_server, http_cfg.clone(), verifier) {
+        let grace_ms = shutdown_grace_ms(&env_map);
+        let mut listener = match start_http_transport(create_server, http_cfg.clone(), verifier) {
             Ok(h) => h,
             Err(err) => {
                 eprintln!("Fatal error starting HTTP transport: {err}");
@@ -120,8 +137,23 @@ fn main() {
             full_scope_string(&http_cfg.project_id)
         );
 
-        loop {
-            std::thread::sleep(Duration::from_secs(3600));
+        match wait_for_shutdown_signal() {
+            Ok(signal) => {
+                // Same line the TS server wrote (index.ts drain()).
+                eprint!("{signal} received, draining\n");
+                match listener.close(grace_ms) {
+                    Ok(()) => std::process::exit(0),
+                    Err(err) => {
+                        eprintln!("Drain failed: {err}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            Err(err) => {
+                eprintln!("Fatal error installing signal handlers: {err}");
+                let _ = listener.close(0);
+                std::process::exit(1);
+            }
         }
     }
 
@@ -142,15 +174,11 @@ fn main() {
         if trimmed.is_empty() {
             continue;
         }
-        match server.handle_jsonrpc_message(trimmed) {
-            Ok(Some(resp)) => {
-                let _ = writeln!(stdout, "{}", resp);
-                let _ = stdout.flush();
-            }
-            Ok(None) => {}
-            Err(err) => {
-                eprintln!("mcp-slack stdio error: {err}");
-            }
+        // Only requests are answered. Notifications, responses and
+        // unparseable lines write nothing, as the SDK's stdio transport did.
+        if let Ok(Some(resp)) = server.handle_jsonrpc_message(trimmed) {
+            let _ = writeln!(stdout, "{}", resp);
+            let _ = stdout.flush();
         }
     }
 }

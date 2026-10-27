@@ -19,6 +19,18 @@ Cargo is a **nesting** resolver: it unifies within a semver-compatible range but
 *semver-incompatible* versions of a crate to be built into the same graph, with symbols mangled
 per version.
 
+## Changing the lock
+
+Edit a member's `Cargo.toml`, then run `bazel run //tools/crates:lock`. It adds what
+the manifests now ask for and leaves every other locked version alone
+(`-- -p <crate>` updates one crate; `-- --check` only checks).
+
+The lock has to suit the toolchain Bazel builds with (`rust.toolchain` in
+`MODULE.bazel`, 1.75.0), not whatever Rust is on your machine. The target uses
+cargo's MSRV-aware resolution for that, which keys on each member's
+`rust-version`, so every member must declare the toolchain's version; the target
+refuses to run until they do.
+
 ## Two apps, different versions
 
 Mostly a non-event. If one crate needs `rand@0.7` and another needs `rand@0.8`, Cargo resolves
@@ -41,7 +53,7 @@ duplicate):
 rand = { git = "https://github.com/rust-random/rand", tag = "0.8.5" }
 ```
 
-Then refresh the lock and re-pin the crate-universe repo.
+Then refresh the lock with `bazel run //tools/crates:lock`.
 
 ## Inspect / detect
 
