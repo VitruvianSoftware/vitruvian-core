@@ -13,7 +13,6 @@ load("@build_bazel_rules_apple//apple:versioning.bzl", "apple_bundle_version")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 load(":version.bzl", "COURIER_VERSION")
 
@@ -170,9 +169,9 @@ rust_test(
 # unpacked app afterwards, on this Mac, from the environment or the gitignored secret store
 # (tools/sync-env-secrets), and signs the app again: the engine, then the app, with the Developer ID
 # if one is installed (and the hardened runtime) and Resources/Courier.entitlements. See README.md.
-sh_binary(
+rust_binary(
     name = "install",
-    srcs = ["scripts/install.sh"],
+    srcs = ["scripts/src/bin/install.rs"],
     args = [
         "$(rootpath :inject-app-credentials)",
         "$(rootpaths :Courier)",
@@ -182,8 +181,12 @@ sh_binary(
         ":Courier",
         ":inject-app-credentials",
     ],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
+    visibility = ["//apps/desktop/courier:__subpackages__"],
+    deps = [":courier_scripts_lib"],
 )
 
 # The injector against a tiny stand-in app: it writes a valid TelegramApp.plist, signs the app so
@@ -313,18 +316,17 @@ alias(
     visibility = ["//apps/desktop/courier:__subpackages__"],
 )
 
-rust_binary(
+alias(
     name = "install-rs",
-    srcs = ["scripts/src/bin/install.rs"],
-    edition = "2021",
-    rustc_flags = ["-Copt-level=3"],
+    actual = ":install",
+    tags = ["manual"],
     visibility = ["//apps/desktop/courier:__subpackages__"],
-    deps = [":courier_scripts_lib"],
 )
 
 alias(
     name = "install_rs",
-    actual = ":install-rs",
+    actual = ":install",
+    tags = ["manual"],
     visibility = ["//apps/desktop/courier:__subpackages__"],
 )
 

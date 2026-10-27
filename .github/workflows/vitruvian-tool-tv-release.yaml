@@ -103,7 +103,8 @@ jobs:
           TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
           VERSION: ${{ needs.release-please.outputs.version || '' }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash apps/desktop/vitruvian-tool-tv/scripts/publish-tool.sh
+        run: |
+          ROOT="$GITHUB_WORKSPACE" TOOL_DIR="$GITHUB_WORKSPACE/apps/desktop/vitruvian-tool-tv" bazel run //apps/desktop/vitruvian-tool-tv:publish-tool
 
   check-release:
     needs: [release-please, publish-tool]

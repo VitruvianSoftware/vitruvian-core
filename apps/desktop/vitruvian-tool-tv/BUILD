@@ -99,10 +99,15 @@ rust_library(
 )
 
 rust_binary(
-    name = "publish-tool-rs",
+    name = "publish-tool",
     srcs = ["scripts/src/publish_tool/main.rs"],
     edition = "2021",
     deps = [":publish_tool_lib"],
+)
+
+alias(
+    name = "publish-tool-rs",
+    actual = ":publish-tool",
 )
 
 rust_test(

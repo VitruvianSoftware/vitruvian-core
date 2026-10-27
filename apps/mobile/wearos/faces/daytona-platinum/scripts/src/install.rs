@@ -78,17 +78,19 @@ fn find_watch_serial(repo_root: &Path) -> Option<String> {
         }
     }
 
-    let adb_connect = repo_root.join("tools/adb-connect/adb_connect.py");
-    if adb_connect.is_file() {
-        if let Ok(output) = Command::new("python3")
-            .args([
-                adb_connect.to_str().unwrap_or("adb_connect.py"),
-                "-d",
-                "watch",
-                "--print-serial",
-            ])
-            .output()
-        {
+    if let Ok(output) = Command::new("bazel")
+        .current_dir(repo_root)
+        .args([
+            "run",
+            "//tools/adb-connect",
+            "--",
+            "-d",
+            "watch",
+            "--print-serial",
+        ])
+        .output()
+    {
+        if output.status.success() {
             let serial = String::from_utf8_lossy(&output.stdout).trim().to_string();
             if !serial.is_empty() {
                 return Some(serial);
@@ -101,27 +103,18 @@ fn find_watch_serial(repo_root: &Path) -> Option<String> {
 
 pub fn run(args: &[String]) -> i32 {
     let _ = args;
-    let (repo_root, pkg_dir) = resolve_paths();
+    let (repo_root, _pkg_dir) = resolve_paths();
 
     // Create temp APK path
     let work_apk = env::temp_dir().join(format!("daytona-platinum-{}.apk", std::process::id()));
 
-    // Build via build_wff_apk.sh
-    let build_script = pkg_dir.join("scripts/build_wff_apk.sh");
-    let status = match Command::new("bash")
-        .arg(build_script.to_str().unwrap_or("build_wff_apk.sh"))
-        .arg(work_apk.to_str().unwrap_or("out.apk"))
-        .status()
+    // Build via build_wff_apk directly in Rust
+    if crate::build_wff_apk::run(&[
+        String::from("build_wff_apk"),
+        work_apk.to_string_lossy().to_string(),
+    ]) != 0
     {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("error: failed to run build_wff_apk.sh: {}", e);
-            let _ = std::fs::remove_file(&work_apk);
-            return 1;
-        }
-    };
-    if !status.success() {
-        eprintln!("error: build_wff_apk.sh failed");
+        eprintln!("error: build_wff_apk failed");
         let _ = std::fs::remove_file(&work_apk);
         return 1;
     }

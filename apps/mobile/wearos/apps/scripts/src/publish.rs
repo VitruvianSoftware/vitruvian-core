@@ -87,12 +87,51 @@ fn detect_android_home() -> Option<String> {
 }
 
 fn resolve_suite_dir() -> PathBuf {
+    for var in ["BUILD_WORKSPACE_DIRECTORY", "GITHUB_WORKSPACE"] {
+        if let Ok(val) = env::var(var) {
+            if !val.is_empty() {
+                return PathBuf::from(val).join("apps/mobile/wearos/apps");
+            }
+        }
+    }
     let exe = env::current_exe().unwrap_or_else(|_| PathBuf::from("."));
     let script_dir = exe.parent().unwrap_or(Path::new("."));
+    if let Some(root) = script_dir
+        .ancestors()
+        .find(|p| p.join("MODULE.bazel").is_file())
+    {
+        return root.join("apps/mobile/wearos/apps");
+    }
+    if let Ok(cwd) = env::current_dir() {
+        if let Some(root) = cwd.ancestors().find(|p| p.join("MODULE.bazel").is_file()) {
+            return root.join("apps/mobile/wearos/apps");
+        }
+    }
     script_dir.parent().unwrap_or(Path::new(".")).to_path_buf()
 }
 
 fn resolve_repo_root(suite_dir: &Path) -> PathBuf {
+    for var in ["BUILD_WORKSPACE_DIRECTORY", "GITHUB_WORKSPACE"] {
+        if let Ok(val) = env::var(var) {
+            if !val.is_empty() {
+                return PathBuf::from(val);
+            }
+        }
+    }
+    for start in [
+        Some(suite_dir.to_path_buf()),
+        env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|d| d.to_path_buf())),
+        env::current_dir().ok(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        if let Some(root) = start.ancestors().find(|p| p.join("MODULE.bazel").is_file()) {
+            return root.to_path_buf();
+        }
+    }
     suite_dir
         .ancestors()
         .nth(3)
