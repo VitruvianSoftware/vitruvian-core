@@ -305,6 +305,33 @@ pub fn test_buzzer_firmware_source() {
     let notes_click = parse_note_table(&buzzer_cpp, "Click");
     assert_eq!(notes_click, vec![(1000, 20)]);
 
+    let gap_line = buzzer_cpp
+        .lines()
+        .find(|l| l.contains("NOTE_GAP_MS"))
+        .expect("missing NOTE_GAP_MS");
+    let gap: u32 = gap_line
+        .split('=')
+        .next_back()
+        .unwrap()
+        .trim()
+        .trim_end_matches(';')
+        .parse()
+        .unwrap();
+    let pass_total: u32 = notes_pass.iter().map(|n| n.1).sum::<u32>()
+        + gap * (notes_pass.len().saturating_sub(1) as u32);
+    assert!(pass_total < 1000);
+
+    let set_muted_idx = buzzer_cpp
+        .find("void buzzer_set_muted(")
+        .expect("missing buzzer_set_muted");
+    let set_muted_body = &buzzer_cpp[set_muted_idx..];
+    assert!(set_muted_body.contains("playing = false;"));
+    assert!(set_muted_body.contains("silence();"));
+    assert!(buzzer_cpp.contains("NVS_SETTINGS_NS = \"settings\""));
+    assert!(buzzer_cpp.contains("NVS_MUTED_KEY = \"chimes_muted\""));
+    assert!(buzzer_cpp.contains("buzzer_prefs.getBool(NVS_MUTED_KEY, false)"));
+    assert!(buzzer_cpp.contains("buzzer_prefs.putBool(NVS_MUTED_KEY, muted)"));
+
     let max_notes_line = buzzer_h
         .lines()
         .find(|l| l.contains("#define BUZZER_MAX_NOTES"))
@@ -366,10 +393,45 @@ pub fn test_poll_scheduling_and_tls() {
     assert_eq!(backoff_ms(3600, 10), 3_600_000);
 
     let cloud_cpp = read_component_file("src/cloud_ci.cpp");
+    let cloud_h = read_component_file("src/cloud_ci.h");
     let main_cpp = read_component_file("src/main.cpp");
     let router_h = read_component_file("src/packet_router.h");
+    let router_cpp = read_component_file("src/packet_router.cpp");
     let ca_h = read_component_file("src/github_ca.h");
     let ui_cpp = read_component_file("src/ui.cpp");
+
+    assert!(cloud_h.contains("char sha[8];"));
+    for field in [
+        "name",
+        "status",
+        "conclusion",
+        "head_sha",
+        "head_branch",
+        "run_number",
+    ] {
+        assert!(
+            cloud_cpp.contains(&format!("run[\"{field}\"] = true")),
+            "missing filter field {field}"
+        );
+    }
+    let set_repo_idx = cloud_cpp
+        .find("void cloud_ci_set_repo")
+        .expect("missing cloud_ci_set_repo");
+    let set_repo_body = &cloud_cpp[set_repo_idx..];
+    assert!(set_repo_body.contains("primed = false;"));
+    assert!(set_repo_body.contains("last_run_number = -1;"));
+
+    assert!(router_cpp.contains("strcmp(cmd, \"cloud_config\") == 0"));
+    assert!(router_cpp.contains("cloud_ci_set_repo("));
+    assert!(router_cpp.contains("cloud_ci_set_token("));
+    assert!(router_cpp.contains("cloud_ci_set_enabled("));
+    assert!(router_cpp.contains("cloud_ci_has_token() ? \"yes\" : \"no\""));
+    for line in router_cpp.lines() {
+        if line.contains("Serial.print") && line.contains("[CLOUD]") {
+            assert!(!line.contains("token)"));
+            assert!(!line.contains("token,"));
+        }
+    }
 
     let idle_ms: u64 = main_cpp
         .lines()
