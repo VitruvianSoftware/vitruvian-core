@@ -23,6 +23,13 @@
 use std::io::Write;
 
 fn main() {
+    if let Ok(wd) = std::env::var("BUILD_WORKING_DIRECTORY")
+        .or_else(|_| std::env::var("BUILD_WORKSPACE_DIRECTORY"))
+    {
+        if !wd.is_empty() {
+            let _ = std::env::set_current_dir(wd);
+        }
+    }
     let argv: Vec<String> = std::env::args_os()
         .skip(1)
         .map(|a| a.to_string_lossy().into_owned())

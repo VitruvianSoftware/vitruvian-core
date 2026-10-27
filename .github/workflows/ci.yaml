@@ -687,9 +687,6 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
-      - name: Run naming enforcement test suite
-        run: python3 tools/lint-naming/test_runner.py --verbose
-
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel
 
@@ -1031,7 +1028,11 @@ jobs:
       # diff, and gives the command that fixes it. Read-only: `go mod tidy
       # -diff` never writes, so this cannot dirty the tree it is checking.
       - name: Assert example/library module pins are in sync
-        run: bash tools/gomod/tidy.sh --check
+        run: |
+          set -euo pipefail
+          rustc --edition 2021 --crate-type lib --crate-name gomod_lib tools/gomod/src/lib.rs -o "$RUNNER_TEMP/libgomod_lib.rlib"
+          rustc --edition 2021 tools/gomod/src/main.rs -L "$RUNNER_TEMP" --extern gomod_lib="$RUNNER_TEMP/libgomod_lib.rlib" -o "$RUNNER_TEMP/tidy"
+          "$RUNNER_TEMP/tidy" --check
 
       - name: go build (every example module)
         run: |

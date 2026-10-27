@@ -489,3 +489,26 @@ fn run(port: i64) -> Res<i32> {
     }
     Ok(0)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scenarios_list_is_complete() {
+        let names: Vec<&str> = SCENARIOS.iter().map(|(n, _)| *n).collect();
+        assert_eq!(
+            names,
+            vec![
+                "install",
+                "update",
+                "not-ours",
+                "mismatch",
+                "not-the-tool",
+                "slip",
+                "unreachable",
+                "rollback"
+            ]
+        );
+    }
+}

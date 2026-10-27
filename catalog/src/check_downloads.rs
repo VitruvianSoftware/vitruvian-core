@@ -286,3 +286,78 @@ fn run(base_path: &str, head_path: &str, tool: &str) -> Res<i32> {
     }
     Ok(if problems.is_empty() { 0 } else { 1 })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::zip::ZipWriter;
+
+    fn make_zip(files: &[(&str, &[u8])]) -> Vec<u8> {
+        let mut z = ZipWriter::new(true);
+        for (name, body) in files {
+            z.writestr(name, body, 3, 0o100644 << 16);
+        }
+        z.finish()
+    }
+
+    #[test]
+    fn check_downloads_accepts_good_and_refuses_bad() {
+        let manifest = r#"{
+            "id": "dev.vitruvian.reference",
+            "name": {"en": "Reference tool"},
+            "publisher": "VitruvianSoftware",
+            "description": {"en": "Says hello."},
+            "version": "0.1.0",
+            "protocol": "1",
+            "uses": ["notify"],
+            "contributes": {"commands": [{"id": "hello", "title": {"en": "Say hello"}}]}
+        }"#;
+        let zip_bytes = make_zip(&[("vitruvian-tool.json", manifest.as_bytes())]);
+        let sha = sha256::hexdigest(&zip_bytes);
+        let entry_json = format!(
+            r#"{{
+                "id": "dev.vitruvian.reference",
+                "name": {{"en": "Reference tool"}},
+                "publisher": "VitruvianSoftware",
+                "summary": {{"en": "Says hello."}},
+                "version": "0.1.0",
+                "protocol": "1",
+                "minimumAppVersion": "3.43.0",
+                "source": "https://github.com/VitruvianSoftware/vitruvian-sdk",
+                "download": {{
+                    "url": "https://github.com/VitruvianSoftware/vitruvian-sdk/releases/download/v0.1.0/ref.zip",
+                    "sha256": "{}",
+                    "size": {}
+                }},
+                "uses": ["notify"],
+                "commands": [{{"id": "hello", "title": {{"en": "Say hello"}}}}]
+            }}"#,
+            sha,
+            zip_bytes.len()
+        );
+        let entry = json::loads(&entry_json).unwrap();
+        let base =
+            json::loads(r#"{"version": 1, "generated": "2026-10-12T00:00:00Z", "tools": []}"#)
+                .unwrap();
+        let head = json::dict(vec![
+            ("version", Value::Int(1)),
+            ("generated", py::s("2026-10-12T00:00:01Z")),
+            ("tools", Value::List(vec![entry.clone()])),
+        ]);
+        let fetch_ok =
+            |_url: &Value, _size: &Value| -> Res<Option<Vec<u8>>> { Ok(Some(zip_bytes.clone())) };
+        let validate_ok = |_folder: &Path| -> Res<(i32, String)> { Ok((0, String::new())) };
+        assert_eq!(
+            check(&base, &head, &fetch_ok, &validate_ok).unwrap(),
+            Vec::<String>::new()
+        );
+
+        let stale_head = json::dict(vec![
+            ("version", Value::Int(1)),
+            ("generated", py::s("2026-10-12T00:00:00Z")),
+            ("tools", Value::List(vec![entry])),
+        ]);
+        let probs = check(&base, &stale_head, &fetch_ok, &validate_ok).unwrap();
+        assert!(probs.iter().any(|p| p.contains("not later than main's")));
+    }
+}

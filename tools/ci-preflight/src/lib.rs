@@ -34,7 +34,43 @@ use std::os::unix::fs::{MetadataExt, PermissionsExt};
 #[cfg(unix)]
 use std::os::unix::process::{CommandExt, ExitStatusExt};
 
-const SCRIPT_SOURCE: &str = include_str!("../ci-preflight.sh");
+const HELP_TEXT: &str = "\
+# ci-preflight.sh — what CI requires, and what is actually configured.
+#
+#   bazel run //tools/ci-preflight            # report; non-zero if required is missing
+#   bazel run //tools/ci-preflight -- --list  # just the required set, no network
+#
+# `//:doctor` answers \"can I build this repo on THIS machine\" (bazel, go, node
+# versions). Nothing answered the other half -- \"is the REPO wired up so CI can
+# actually run\" -- and that half fails in a uniquely nasty way: a missing secret
+# is not a compile error, it is an empty string. The workflow runs, authenticates
+# with nothing, and dies somewhere further down with a message about whatever it
+# failed to reach.
+#
+# THE REQUIRED SET IS DERIVED, NEVER HAND-MAINTAINED:
+#   Every `secrets.X` / `vars.X` in .github/workflows and .github/actions IS the
+#   requirement. A hand-written manifest would be a second source of truth that
+#   silently rots the first time someone adds a secret to a workflow -- the exact
+#   drift this is meant to detect. Add a secret reference to a workflow and it
+#   shows up here on the next run, with no edit to this file.
+#
+# THE DEPENDABOT CHECK IS THE POINT:
+#   GitHub gives Dependabot-authored PRs a SEPARATE secret store. A workflow that
+#   triggers on `pull_request` and reads `secrets.X` gets the empty string on
+#   every Dependabot PR unless X also exists in the Dependabot store. There is no
+#   warning: the value is simply empty.
+#
+#   That is not a hypothetical either. It is #1164 -- `pulumi stack select` exit
+#   3, \"PULUMI_ACCESS_TOKEN must be set for login during non-interactive CLI
+#   sessions\", on a PR whose entire diff was a go.mod version bump. The check
+#   costs one API call and would have named it before it was ever hit.
+#
+# DEGRADES, NEVER BLUFFS:
+#   Without `gh`, without auth, or with a token lacking admin scope, presence
+#   becomes \"?\" rather than a guess. An unknown is reported as unknown and never
+#   counted as either satisfied or missing -- a preflight that reports green
+#   because it could not look is worse than one that refuses to.
+";
 
 pub const GLYPH_OK: &str = "✓";
 pub const GLYPH_FAIL: &str = "✗";
@@ -228,14 +264,8 @@ impl Colors {
     }
 }
 
-/// Extract lines 21..=55 (1-indexed) of the embedded `ci-preflight.sh` script.
 pub fn help_text() -> String {
-    let mut out = String::new();
-    for line in SCRIPT_SOURCE.lines().skip(20).take(35) {
-        out.push_str(line);
-        out.push('\n');
-    }
-    out
+    HELP_TEXT.to_string()
 }
 
 /// Right-pad `s` with ASCII spaces up to `width` BYTES (matching bash `printf '%-Ns'` / `'%-Nb'`).
@@ -1571,11 +1601,14 @@ pub fn run_os(argv: &[OsString]) -> i32 {
     // ---------------------------------------------------------------------------
     let mut naming_failed: usize = 0;
     let lint_naming_py = Path::new(&root).join("tools/lint-naming/lint_naming.py");
-    if !list_only
-        && fs::metadata(&lint_naming_py)
-            .map(|m| m.is_file())
-            .unwrap_or(false)
-    {
+    let lint_naming_rs = Path::new(&root).join("tools/lint-naming/src/main.rs");
+    let has_lint_naming_py = fs::metadata(&lint_naming_py)
+        .map(|m| m.is_file())
+        .unwrap_or(false);
+    let has_lint_naming_rs = fs::metadata(&lint_naming_rs)
+        .map(|m| m.is_file())
+        .unwrap_or(false);
+    if !list_only && (has_lint_naming_py || has_lint_naming_rs) {
         printf_out_ln!(
             prog_name,
             337,
@@ -1602,17 +1635,18 @@ pub fn run_os(argv: &[OsString]) -> i32 {
             {
                 naming_failed = 1;
             }
-        } else if run_checked_tool(
-            prog_name,
-            343,
-            "python3",
-            &[
-                lint_naming_py.as_os_str(),
-                OsStr::new("--root"),
-                root.as_os_str(),
-                OsStr::new("--check"),
-            ],
-        ) != 0
+        } else if has_lint_naming_py
+            && run_checked_tool(
+                prog_name,
+                343,
+                "python3",
+                &[
+                    lint_naming_py.as_os_str(),
+                    OsStr::new("--root"),
+                    root.as_os_str(),
+                    OsStr::new("--check"),
+                ],
+            ) != 0
         {
             naming_failed = 1;
         }

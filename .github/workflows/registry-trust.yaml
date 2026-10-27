@@ -77,7 +77,11 @@ jobs:
       # secret. It exits 1 naming each package and version a person
       # published, and 2 when a registry could not be read.
       - name: Ask npm, crates.io and PyPI who published each version
-        run: python3 tools/registry-trust/check.py
+        run: |
+          set -euo pipefail
+          rustc --edition 2021 --crate-type lib --crate-name registry_trust tools/registry-trust/src/lib.rs -o "$RUNNER_TEMP/libregistry_trust.rlib"
+          rustc --edition 2021 tools/registry-trust/src/main.rs -L "$RUNNER_TEMP" --extern registry_trust="$RUNNER_TEMP/libregistry_trust.rlib" -o "$RUNNER_TEMP/check"
+          "$RUNNER_TEMP/check"
 
   # Separate job, so the check itself keeps read-only permissions on every
   # event. One issue, found by its exact title: later red days comment on it,

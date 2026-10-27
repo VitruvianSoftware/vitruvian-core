@@ -23,16 +23,10 @@
 //! their order, `repr`, `==` (where `1 == 1.0 == True`), `<`, hashing,
 //! truthiness, `in` and iteration.
 //!
-//! Reading goes through serde_json first. When it refuses a document, or
-//! the document holds a float (serde_json's default float parsing is not
-//! always correctly rounded) or a number too big for 64 bits, a scanner
-//! that follows CPython's `json` module reads it again: it gives the same
-//! value, or the same JSONDecodeError message, position and all.
+//! Reading uses a scanner that follows CPython's `json` module: it gives
+//! the same value, or the same JSONDecodeError message, position and all.
 
 use std::cmp::Ordering;
-use std::fmt;
-
-use serde::de::{Deserialize, Deserializer, MapAccess, SeqAccess, Visitor};
 
 use crate::pyerr::{Crash, Res};
 use crate::pystr;
@@ -323,6 +317,13 @@ impl Value {
         }
     }
 
+    pub fn field_mut(&mut self, key: &str) -> Option<&mut Value> {
+        match self {
+            Value::Dict(d) => d.get_mut(key),
+            _ => None,
+        }
+    }
+
     pub fn py_repr(&self) -> String {
         self.repr()
     }
@@ -333,81 +334,6 @@ impl Value {
             Value::Float(f) => Some(*f),
             _ => None,
         }
-    }
-
-    fn has_inexact_number(&self) -> bool {
-        match self {
-            Value::Float(_) => true,
-            Value::List(l) => l.iter().any(|v| v.has_inexact_number()),
-            Value::Dict(d) => d.iter().any(|(_, v)| v.has_inexact_number()),
-            _ => false,
-        }
-    }
-}
-
-// --- serde -------------------------------------------------------------------
-
-impl<'de> Deserialize<'de> for Value {
-    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Value, D::Error> {
-        d.deserialize_any(ValueVisitor)
-    }
-}
-
-struct ValueVisitor;
-
-impl<'de> Visitor<'de> for ValueVisitor {
-    type Value = Value;
-
-    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str("a JSON value")
-    }
-
-    fn visit_bool<E>(self, b: bool) -> Result<Value, E> {
-        Ok(Value::Bool(b))
-    }
-
-    fn visit_i64<E>(self, i: i64) -> Result<Value, E> {
-        Ok(Value::Int(i as i128))
-    }
-
-    fn visit_u64<E>(self, i: u64) -> Result<Value, E> {
-        Ok(Value::Int(i as i128))
-    }
-
-    fn visit_f64<E>(self, f: f64) -> Result<Value, E> {
-        Ok(Value::Float(f))
-    }
-
-    fn visit_str<E>(self, v: &str) -> Result<Value, E> {
-        Ok(Value::Str(v.to_string()))
-    }
-
-    fn visit_string<E>(self, v: String) -> Result<Value, E> {
-        Ok(Value::Str(v))
-    }
-
-    fn visit_unit<E>(self) -> Result<Value, E> {
-        Ok(Value::Null)
-    }
-
-    fn visit_none<E>(self) -> Result<Value, E> {
-        Ok(Value::Null)
-    }
-
-    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Value, A::Error> {
-        let mut out = Vec::new();
-        while let Some(v) = seq.next_element::<Value>()? {
-            out.push(v);
-        }
-        Ok(Value::List(out))
-    }
-
-    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Value, A::Error> {
-        let mut d = Dict::new();
-        while let Some((k, v)) = map.next_entry::<String, Value>()? {
-            d.insert(k, v);
-        }
-        Ok(Value::Dict(d))
     }
 }
 
@@ -422,11 +348,6 @@ pub fn loads(text: &str) -> Res<Value> {
             0,
         ));
     }
-    if let Ok(v) = serde_json::from_str::<Value>(text) {
-        if !v.has_inexact_number() {
-            return Ok(v);
-        }
-    }
     let chars: Vec<char> = text.chars().collect();
     Scanner {
         s: &chars,
@@ -440,11 +361,6 @@ pub fn loads(text: &str) -> Res<Value> {
 pub fn loads_bytes(data: &[u8]) -> Res<Value> {
     let text = decode_detected(data)?;
     let chars: Vec<char> = text.chars().collect();
-    if let Ok(v) = serde_json::from_str::<Value>(&text) {
-        if !v.has_inexact_number() {
-            return Ok(v);
-        }
-    }
     Scanner {
         s: &chars,
         depth: 0,
