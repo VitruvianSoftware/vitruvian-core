@@ -2430,6 +2430,14 @@ final class ViewSnapshotTests: XCTestCase {
 
     // MARK: - Milestone 4.5c Task 10: Sticker and GIF timeline rendering and light/dark PNG snapshot tests
 
+    private func findNSImageView(in view: NSView) -> NSImageView? {
+        if let imageView = view as? NSImageView { return imageView }
+        for subview in view.subviews {
+            if let found = findNSImageView(in: subview) { return found }
+        }
+        return nil
+    }
+
     private func makeTestStickerPNG(width: Int = 160, height: Int = 160) throws -> String {
         let image = NSImage(size: NSSize(width: width, height: height), flipped: false) { rect in
             NSColor.clear.setFill()
@@ -2437,10 +2445,6 @@ final class ViewSnapshotTests: XCTestCase {
             let circleRect = rect.insetBy(dx: 12, dy: 12)
             NSColor.systemOrange.setFill()
             NSBezierPath(ovalIn: circleRect).fill()
-            NSColor.white.setStroke()
-            let border = NSBezierPath(ovalIn: circleRect)
-            border.lineWidth = 4
-            border.stroke()
             let innerStar = circleRect.insetBy(dx: 30, dy: 30)
             NSColor.systemYellow.setFill()
             NSBezierPath(roundedRect: innerStar, xRadius: 16, yRadius: 16).fill()
@@ -2453,6 +2457,117 @@ final class ViewSnapshotTests: XCTestCase {
             .appendingPathComponent("courier-snapshot-sticker-\(width)x\(height).png")
         try png.write(to: url, options: .atomic)
         return url.path
+    }
+
+    func testStickerAndGIFReduceMotionAndFallbackAspectRatio() async throws {
+        let stickerPath = try makeTestStickerPNG(width: 150, height: 150)
+        let wideGIFPath = try makeTestPNG(width: 300, height: 150)
+
+        let receivedStickerEvent = Fixture.sticker(
+            "$sticker-rm",
+            name: "Party Parrot",
+            emoji: "🦜",
+            mine: false,
+            ts: 15,
+            mediaPath: stickerPath,
+            width: 150,
+            height: 150
+        )
+        let receivedStickerMsg = try XCTUnwrap(Fixture.messages([receivedStickerEvent]).first)
+        let receivedSticker = try XCTUnwrap(receivedStickerMsg.sticker)
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 400),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        let stickerHost = NSHostingView(
+            rootView: StickerAttachmentView(message: receivedStickerMsg, sticker: receivedSticker)
+        )
+        stickerHost.frame = NSRect(x: 0, y: 0, width: 200, height: 200)
+        // Initialize environment while NSWorkspace Reduce Motion is false so @Environment(\.accessibilityReduceMotion) is false.
+        stickerHost.layoutSubtreeIfNeeded()
+
+        // #4: When NSWorkspace.shared.accessibilityDisplayShouldReduceMotion becomes true while SwiftUI's
+        // @Environment(\.accessibilityReduceMotion) is false, StickerAttachmentView must still pause animation.
+        let origMethod = try XCTUnwrap(
+            class_getInstanceMethod(NSWorkspace.self, #selector(getter: NSWorkspace.accessibilityDisplayShouldReduceMotion))
+        )
+        let stubMethod = try XCTUnwrap(
+            class_getInstanceMethod(NSWorkspace.self, #selector(getter: NSWorkspace.courierTest_reduceMotionTrue))
+        )
+        method_exchangeImplementations(origMethod, stubMethod)
+        defer { method_exchangeImplementations(origMethod, stubMethod) }
+        XCTAssertTrue(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+
+        stickerHost.rootView = StickerAttachmentView(message: receivedStickerMsg, sticker: receivedSticker)
+        window.contentView = stickerHost
+        stickerHost.layoutSubtreeIfNeeded()
+        let stickerImageView = try XCTUnwrap(findNSImageView(in: stickerHost))
+        XCTAssertFalse(
+            stickerImageView.animates,
+            "StickerAttachmentView must pause animation when NSWorkspace Reduce Motion is enabled"
+        )
+
+        // #5a: When NSImage(contentsOfFile:) succeeds, StickerAttachmentView and GIFAttachmentView must not
+        // run an unused async ThumbnailLoader.shared.thumbnail(atPath:) decode.
+        for _ in 0..<50 { await Task.yield() }
+        let cachedAfterSticker = await ThumbnailLoader.shared.cachedPaths
+        XCTAssertFalse(
+            cachedAfterSticker.contains(stickerPath),
+            "StickerAttachmentView must skip async ThumbnailLoader decode when NSImage(contentsOfFile:) succeeded"
+        )
+
+        // #5b: When GIF width/height metadata is missing, GIFAttachmentView must preserve the image's aspect ratio
+        // and use .scaleProportionallyUpOrDown rather than .scaleAxesIndependently.
+        var unindexedGIFEvent = Fixture.gif(
+            "$gif-no-dims",
+            msgtype: "m.image",
+            fileName: "wide.gif",
+            caption: nil,
+            mine: false,
+            ts: 7,
+            mediaPath: wideGIFPath,
+            mimeType: "image/gif",
+            width: 0,
+            height: 0
+        )
+        if case var .object(c) = unindexedGIFEvent.content,
+           case var .object(info) = c["info"] {
+            info.removeValue(forKey: "w")
+            info.removeValue(forKey: "h")
+            c["info"] = .object(info)
+            unindexedGIFEvent.content = .object(c)
+        }
+        let unindexedGIFMsg = try XCTUnwrap(Fixture.messages([unindexedGIFEvent]).first)
+        let unindexedGIF = try XCTUnwrap(unindexedGIFMsg.gif)
+        XCTAssertNil(unindexedGIF.width)
+        XCTAssertNil(unindexedGIF.height)
+
+        let gifHost = NSHostingView(
+            rootView: GIFAttachmentView(message: unindexedGIFMsg, gif: unindexedGIF)
+        )
+        gifHost.frame = NSRect(x: 0, y: 0, width: 400, height: 400)
+        window.contentView = gifHost
+        gifHost.layoutSubtreeIfNeeded()
+        let gifImageView = try XCTUnwrap(findNSImageView(in: gifHost))
+        XCTAssertEqual(
+            gifImageView.imageScaling,
+            .scaleProportionallyUpOrDown,
+            "GIFAttachmentView must scale proportionally, not .scaleAxesIndependently"
+        )
+        XCTAssertEqual(
+            gifImageView.frame.size,
+            CGSize(width: 300, height: 150),
+            "GIFAttachmentView fallback must preserve nsImage aspect ratio when w/h metadata is absent"
+        )
+        for _ in 0..<50 { await Task.yield() }
+        let cachedAfterGIF = await ThumbnailLoader.shared.cachedPaths
+        XCTAssertFalse(
+            cachedAfterGIF.contains(wideGIFPath),
+            "GIFAttachmentView must skip async ThumbnailLoader decode when NSImage(contentsOfFile:) succeeded"
+        )
     }
 
     func testStickerAndGIFTimelineRenderingAndComposingSnapshots() throws {
@@ -2635,6 +2750,10 @@ final class ViewSnapshotTests: XCTestCase {
 }
 
 /// A sign-in caller whose every sign-in finishes at once with `finish`.
+extension NSWorkspace {
+    @objc fileprivate var courierTest_reduceMotionTrue: Bool { true }
+}
+
 private final class SnapshotLoginCaller: LoginCalling, @unchecked Sendable {
     var finish: LoginStep?
 

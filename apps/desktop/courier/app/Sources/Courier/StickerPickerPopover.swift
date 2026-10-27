@@ -14,8 +14,8 @@ enum StickerImportPicker {
         panel.allowsMultipleSelection = false
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
-        panel.allowedContentTypes = [.png, .webP, .gif]
-        panel.message = String(localized: "Choose a PNG, WebP, or GIF image to import as a sticker")
+        panel.allowedContentTypes = [.png, .webP, .gif, .jpeg]
+        panel.message = String(localized: "Choose a PNG, WebP, GIF, or JPEG image to import as a sticker")
         panel.prompt = String(localized: "Import Sticker…")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         Task {

@@ -1075,12 +1075,12 @@ public struct StickerAttachmentView: View {
     }
 
     private var reduceMotionEnabled: Bool {
-        accessibilityReduceMotion && NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        accessibilityReduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
     }
 
     public var body: some View {
         let size = frameSize
-        let animate = Self.shouldAnimate(reduceMotion: accessibilityReduceMotion || reduceMotionEnabled)
+        let animate = Self.shouldAnimate(reduceMotion: reduceMotionEnabled)
         ZStack {
             if let path = resolvedPath,
                FileManager.default.fileExists(atPath: path),
@@ -1127,7 +1127,9 @@ public struct StickerAttachmentView: View {
             onOpenLightbox(message.id)
         }
         .task(id: resolvedPath) {
-            guard asyncCGImage == nil, let path = resolvedPath else { return }
+            guard asyncCGImage == nil,
+                  let path = resolvedPath,
+                  NSImage(contentsOfFile: path) == nil else { return }
             asyncCGImage = await ThumbnailLoader.shared.thumbnail(atPath: path)?.image
         }
         .help(sticker.name.isEmpty ? String(localized: "Sticker") : sticker.name)
@@ -1187,21 +1189,29 @@ public struct GIFAttachmentView: View {
         message.kind == .video || (gif.mimeType?.lowercased().hasPrefix("video/") == true)
     }
 
-    private var frameSize: CGSize {
-        EnhancedImageView.proportionalSize(
-            width: gif.width ?? message.width,
-            height: gif.height ?? message.height,
+    private var resolvedPath: String? {
+        Self.resolveLocalPath(message: message, gif: gif)
+    }
+
+    private func frameSize(for nsImage: NSImage?) -> CGSize {
+        let imageWidth = nsImage.flatMap { $0.size.width > 0 ? Int($0.size.width.rounded()) : nil }
+        let imageHeight = nsImage.flatMap { $0.size.height > 0 ? Int($0.size.height.rounded()) : nil }
+        return EnhancedImageView.proportionalSize(
+            width: gif.width ?? message.width ?? imageWidth,
+            height: gif.height ?? message.height ?? imageHeight,
             longestSide: EnhancedImageView.longestSide,
             fallback: CGSize(width: 260, height: 180)
         )
     }
 
-    private var resolvedPath: String? {
-        Self.resolveLocalPath(message: message, gif: gif)
-    }
-
     public var body: some View {
-        let size = frameSize
+        let loadedNSImage: NSImage? = {
+            guard !isVideoGIF,
+                  let path = resolvedPath,
+                  FileManager.default.fileExists(atPath: path) else { return nil }
+            return NSImage(contentsOfFile: path)
+        }()
+        let size = frameSize(for: loadedNSImage)
         let animate = Self.shouldAnimate(
             reduceMotion: accessibilityReduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         )
@@ -1222,13 +1232,11 @@ public struct GIFAttachmentView: View {
                     initialIsPlaying: animate,
                     initialIsMuted: true
                 )
-            } else if let path = resolvedPath,
-                      FileManager.default.fileExists(atPath: path),
-                      let nsImage = NSImage(contentsOfFile: path) {
+            } else if let nsImage = loadedNSImage {
                 BorderlessAnimatedNSImageView(
                     image: nsImage,
                     animates: animate,
-                    scaling: .scaleAxesIndependently
+                    scaling: .scaleProportionallyUpOrDown
                 )
                 .frame(width: size.width, height: size.height)
                 .contentShape(Rectangle())
@@ -1261,7 +1269,10 @@ public struct GIFAttachmentView: View {
         .frame(width: size.width, height: size.height)
         .clipShape(RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous))
         .task(id: resolvedPath) {
-            guard !isVideoGIF, asyncCGImage == nil, let path = resolvedPath else { return }
+            guard !isVideoGIF,
+                  asyncCGImage == nil,
+                  let path = resolvedPath,
+                  NSImage(contentsOfFile: path) == nil else { return }
             asyncCGImage = await ThumbnailLoader.shared.thumbnail(atPath: path)?.image
         }
         .accessibilityElement(children: .contain)

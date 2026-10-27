@@ -1101,8 +1101,6 @@ public enum Timeline {
             let urlString = content["url"]?.stringValue ?? ""
             let mediaURL = urlString.isEmpty ? event.mediaPath : urlString
             let emoji = info?["fi.mau.bridged_sticker"]?["emoji"]?.stringValue
-                ?? info?["emoji"]?.stringValue
-                ?? content["emoji"]?.stringValue
             let width = number("w").map(Int.init)
             let height = number("h").map(Int.init)
             let viewOnce = event.viewOnce ?? false

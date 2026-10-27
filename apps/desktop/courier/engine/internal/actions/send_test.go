@@ -1497,3 +1497,55 @@ func TestSendGIFImageChecksImageCapabilityMaxSizeAndLeavesNoBlob(t *testing.T) {
 	require.Zero(t, inspectCalls, "refused 25 MiB PNG sticker must not decode/blurhash image")
 }
 
+func TestSendStickerWithoutBridgedStickerPreservesEmojiInStoredEvent(t *testing.T) {
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+
+	caps := &event.RoomFeatures{
+		File: event.FileFeatureMap{
+			event.CapMsgSticker: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"image/png": event.CapLevelFullySupported,
+				},
+				MaxSize: 512 * 1024,
+			},
+		},
+	}
+	w, room := startFeatureWorld(t, caps)
+
+	pngPath := filepath.Join(tmpDir, "local-sticker.png")
+	img := image.NewRGBA(image.Rect(0, 0, 16, 16))
+	var pngBuf bytes.Buffer
+	require.NoError(t, png.Encode(&pngBuf, img))
+	require.NoError(t, os.WriteFile(pngPath, pngBuf.Bytes(), 0o600))
+
+	res, err := w.a.SendSticker(ctx, SendStickerReq{
+		RoomID: room,
+		Path:   pngPath,
+		Name:   "Party Parrot",
+		Emoji:  "🦜",
+	})
+	require.NoError(t, err)
+
+	stored := w.get(t, res.EventID)
+
+	var content struct {
+		Body string `json:"body"`
+		URL  string `json:"url"`
+		Info struct {
+			BridgedSticker *struct {
+				Network string `json:"network"`
+				ID      string `json:"id"`
+				Emoji   string `json:"emoji"`
+				PackURL string `json:"pack_url"`
+			} `json:"fi.mau.bridged_sticker"`
+		} `json:"info"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stored.Content), &content))
+	require.Equal(t, "Party Parrot", content.Body)
+	require.NotNil(t, content.Info.BridgedSticker, "non-bridged sticker with emoji must persist emoji in info.fi.mau.bridged_sticker")
+	require.Equal(t, "🦜", content.Info.BridgedSticker.Emoji)
+	require.Empty(t, content.Info.BridgedSticker.Network)
+	require.Empty(t, content.Info.BridgedSticker.ID)
+	require.Empty(t, content.Info.BridgedSticker.PackURL)
+}

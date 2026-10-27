@@ -1324,6 +1324,10 @@ func (a *Actions) SendSticker(ctx context.Context, req SendStickerReq) (SendResu
 			ID:      req.BridgedSticker.ID,
 			Emoji:   req.Emoji,
 		}
+	} else if req.Emoji != "" {
+		info.BridgedSticker = &event.BridgedSticker{
+			Emoji: req.Emoji,
+		}
 	}
 	timer, err := a.chatTimer(ctx, req.RoomID)
 	if err != nil {

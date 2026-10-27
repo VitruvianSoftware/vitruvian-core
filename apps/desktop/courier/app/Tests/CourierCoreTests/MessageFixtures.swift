@@ -265,12 +265,14 @@ func stickerEventFixture(
         "w": .int(Int64(width)),
         "h": .int(Int64(height)),
     ]
-    if let emoji {
+    if let emoji, !emoji.isEmpty {
+        // Matches `actions.SendSticker` (`actions.go:1320-1331`) serialization of `event.BridgedSticker`
+        // when `BridgedSticker == nil && Emoji != ""`.
         info["fi.mau.bridged_sticker"] = .object([
-            "network": .string("telegram"),
-            "pack_url": .string("https://t.me/addstickers/CatPack"),
-            "id": .string("doc-9001"),
+            "network": .string(""),
+            "id": .string(""),
             "emoji": .string(emoji),
+            "pack_url": .string(""),
         ])
     }
     var content: [String: JSONValue] = [

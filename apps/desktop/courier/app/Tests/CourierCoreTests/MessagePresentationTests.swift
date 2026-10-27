@@ -336,6 +336,30 @@ final class MessagePresentationTests: XCTestCase {
         XCTAssertEqual(voRows.first?.viewOnce, true)
         XCTAssertNil(voRows.first?.sticker)
         XCTAssertFalse(voRows.first?.suppressesBubbleBackground ?? true)
+
+        // Non-wire top-level `content["emoji"]` or `info["emoji"]` fields (never emitted by the Go engine)
+        // are ignored; only `info["fi.mau.bridged_sticker"]["emoji"]` is read.
+        var nonWireEmojiSticker = stickerEventFixture(
+            id: "$sticker-nonwire",
+            room: "!a",
+            mine: false,
+            ts: stickerTS + 15_000,
+            seq: 6,
+            emoji: nil
+        )
+        if case var .object(c) = nonWireEmojiSticker.content,
+           case var .object(infoObj) = c["info"] {
+            infoObj["emoji"] = .string("👻")
+            c["info"] = .object(infoObj)
+            c["emoji"] = .string("👻")
+            nonWireEmojiSticker.content = .object(c)
+        }
+        let nonWireRows: [MessageRow] = Timeline.build(
+            events: [nonWireEmojiSticker],
+            me: Timeline.meUserID,
+            now: now
+        ).compactMap { if case let .message(m) = $0 { m } else { nil } }
+        XCTAssertNil(nonWireRows.first?.sticker?.emoji, "Timeline must only read emoji from info.fi.mau.bridged_sticker.emoji")
     }
 
     func testGIFEventProducesGIFAttachmentWithOptionalCaption() {
