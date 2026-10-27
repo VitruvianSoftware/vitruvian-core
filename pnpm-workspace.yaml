@@ -63,7 +63,7 @@ catalog:
   "@pulumi/random": ^4.0.0
   "@pulumi/command": ^1.0.0
   vitest: ^5.0.5
-  "@vitest/coverage-v8": ^4.1.10
+  "@vitest/coverage-v8": ^5.0.5
 
 # Named catalog `backstage`: Backstage 1.x is built against React Router v6 (its
 # plugins declare react-router-dom ^6.3.0 as a peer). Caret, not tilde -- the
