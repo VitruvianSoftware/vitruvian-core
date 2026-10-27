@@ -296,7 +296,6 @@ func main() {
 			"claude-cloud-core-github-token",
 			"claude-cloud-pulumi-token",
 			"claude-cloud-ts-authkey",
-			"claude-cloud-ts-authkey-bak",
 			"claude-cloud-lab-sa-token",
 			"claude-cloud-ssh-key",
 			"claude-cloud-buildbuddy-api-key",
