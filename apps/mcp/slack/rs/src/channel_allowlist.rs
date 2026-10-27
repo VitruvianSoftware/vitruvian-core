@@ -21,7 +21,7 @@
 use std::collections::HashSet;
 use std::fmt;
 
-use crate::json::JsonValue;
+use crate::json::{js_object_tag, js_string, JsonValue};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChannelVisibility {
@@ -58,7 +58,9 @@ pub enum ChannelAllowlistError {
     },
     ChannelVisibilityUnverifiable {
         channel_id: String,
-        received: JsonValue,
+        /// What Slack sent as `is_private`; `None` when the field was
+        /// missing (`undefined`), as distinct from `null`.
+        received: Option<JsonValue>,
     },
     MissingAllowlist,
     UnusableChannelParam {
@@ -67,17 +69,6 @@ pub enum ChannelAllowlistError {
     FileNotAllowed {
         file_id: String,
     },
-}
-
-fn js_object_tag(v: &JsonValue) -> &'static str {
-    match v {
-        JsonValue::Null => "[object Undefined]",
-        JsonValue::Bool(_) => "[object Boolean]",
-        JsonValue::Number(_) => "[object Number]",
-        JsonValue::String(_) => "[object String]",
-        JsonValue::Array(_) => "[object Array]",
-        JsonValue::Object(_) => "[object Object]",
-    }
 }
 
 impl ChannelAllowlistError {
@@ -111,14 +102,14 @@ impl ChannelAllowlistError {
                 received,
             } => format!(
                 "Cannot determine whether channel {channel_id} is private: Slack's response carried is_private as {} rather than a boolean. Refusing rather than assuming the declaration was correct.",
-                js_object_tag(received)
+                js_object_tag(received.as_ref())
             ),
             ChannelAllowlistError::MissingAllowlist => {
                 "SLACK_CHANNEL_IDS must list at least one channel ID when MCP_TRANSPORT=http. Refusing to expose an unbounded Slack surface.".to_string()
             }
             ChannelAllowlistError::UnusableChannelParam { value } => format!(
                 "Channel parameter must be a non-empty string; received {}. Refusing the call rather than sending an unverifiable channel to Slack.",
-                js_object_tag(value)
+                js_object_tag(Some(value))
             ),
             ChannelAllowlistError::FileNotAllowed { file_id } => format!(
                 "File {file_id} is not shared into any channel in this server's allow-list. Remote access to files is restricted to those shared into the channels listed in SLACK_CHANNEL_IDS."
@@ -189,11 +180,11 @@ pub struct FileShares {
 
 impl FileShares {
     pub fn from_json(file: &JsonValue) -> Self {
-        let id = file
-            .get("id")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
+        // `${file.id}` in the refusal: a missing id reads "undefined".
+        let id = match file.get("id") {
+            None => "undefined".to_string(),
+            Some(v) => js_string(v),
+        };
         Self {
             id,
             channels: file.get("channels").cloned(),
@@ -313,7 +304,7 @@ impl ChannelGuard {
         let Some(JsonValue::Bool(priv_bool)) = is_private else {
             return Err(ChannelAllowlistError::ChannelVisibilityUnverifiable {
                 channel_id: channel_id.to_string(),
-                received: is_private.cloned().unwrap_or(JsonValue::Null),
+                received: is_private.cloned(),
             });
         };
         let actual = if *priv_bool {
@@ -698,6 +689,21 @@ mod tests {
             guard.assert_visibility_matches("C_PUBLIC", Some(&"false".into())),
             Err(ChannelAllowlistError::ChannelVisibilityUnverifiable { .. })
         ));
+
+        // The message names the type as Object.prototype.toString does:
+        // a missing field is undefined, an explicit null is Null.
+        let tag_of = |is_private: Option<&JsonValue>| {
+            guard
+                .assert_visibility_matches("C_PUBLIC", is_private)
+                .unwrap_err()
+                .message()
+        };
+        assert!(tag_of(None).contains("is_private as [object Undefined] rather"));
+        assert!(tag_of(Some(&JsonValue::Null)).contains("is_private as [object Null] rather"));
+        assert!(tag_of(Some(&"false".into())).contains("[object String]"));
+        assert!(tag_of(Some(&JsonValue::Number(0.0))).contains("[object Number]"));
+        assert!(tag_of(Some(&JsonValue::array(vec![]))).contains("[object Array]"));
+        assert!(tag_of(Some(&JsonValue::empty_object())).contains("[object Object]"));
     }
 
     #[test]
