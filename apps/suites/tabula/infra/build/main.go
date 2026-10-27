@@ -269,6 +269,58 @@ func main() {
 			}
 		}
 
+		// Credentials for Claude Code cloud sessions (tools/cloud-bootstrap). Not
+		// tabula's, but they live in this project because it is where the profiles
+		// in tools/cloud-bootstrap/profiles.tsv already point (sa_project), and
+		// this stack is the one that deploys here.
+		//
+		// A cloud session cannot hold a service-account key
+		// (iam.disableServiceAccountKeyCreation), so it reaches GCP as the Pulumi
+		// ESC service account instead (gcp-bootstrap: pulumi_esc_service_account).
+		// That account is inert by default; the ONLY thing it gets here is
+		// secretAccessor, per secret, on the credentials a session needs. No
+		// project-wide grant, and no write access: seeding a value is a separate,
+		// human step (//tools/gcp-secrets:seed).
+		//
+		// Containers only, as above — a value is never committed. An unseeded
+		// container is inert: a reader gets NOT_FOUND on versions/latest.
+		//
+		// If a secret of one of these names already exists (they may have been
+		// created by hand), the first apply fails with "already exists"; adopt it
+		// with `pulumi import gcp:secretmanager/secret:Secret <name>
+		// projects/<project>/secrets/<name>` and re-run.
+		escSA := bootstrap.GetStringOutput(pulumi.String("pulumi_esc_service_account"))
+		claudeCloudSecrets := []string{
+			"claude-cloud-core-github-token",
+			"claude-cloud-pulumi-token",
+			"claude-cloud-ts-authkey",
+			"claude-cloud-ts-authkey-bak",
+			"claude-cloud-lab-sa-token",
+			"claude-cloud-ssh-key",
+			"claude-cloud-buildbuddy-api-key",
+		}
+		for _, secretID := range claudeCloudSecrets {
+			sec, err := secretmanager.NewSecret(ctx, secretID, &secretmanager.SecretArgs{
+				Project:  buildProject,
+				SecretId: pulumi.String(secretID),
+				Replication: &secretmanager.SecretReplicationArgs{
+					Auto: &secretmanager.SecretReplicationAutoArgs{},
+				},
+			})
+			if err != nil {
+				return err
+			}
+			if _, err := secretmanager.NewSecretIamMember(ctx, "esc-sa-accessor-"+secretID,
+				&secretmanager.SecretIamMemberArgs{
+					Project:  buildProject,
+					SecretId: sec.SecretId,
+					Role:     pulumi.String("roles/secretmanager.secretAccessor"),
+					Member:   pulumi.Sprintf("serviceAccount:%s", escSA),
+				}); err != nil {
+				return err
+			}
+		}
+
 		ctx.Export("artifact_registry", pulumi.Sprintf("%s-docker.pkg.dev/%s/tabula", region, buildProject))
 		ctx.Export("build_service_account", buildSA.Email)
 		return nil
