@@ -27,6 +27,54 @@ pub mod permalink;
 pub mod slack_client;
 pub mod tools;
 
+/// TLS for every outbound HTTPS call (Slack, and the issuer's key set).
+pub mod tls {
+    use std::sync::{Arc, OnceLock};
+
+    /// rustls on ring, trusting the system certificate store as
+    /// rustls-native-certs finds it (SSL_CERT_FILE / SSL_CERT_DIR first, then
+    /// the platform store; in the image, the distroless CA bundle). Built here
+    /// rather than through ureq's `native-certs` feature, which pulls in
+    /// rustls-native-certs 0.7 and with it the unmaintained rustls-pemfile
+    /// (RUSTSEC-2025-0134). Built once and shared.
+    pub fn client_config() -> Arc<rustls::ClientConfig> {
+        static CONFIG: OnceLock<Arc<rustls::ClientConfig>> = OnceLock::new();
+        CONFIG
+            .get_or_init(|| {
+                let loaded = rustls_native_certs::load_native_certs();
+                for err in &loaded.errors {
+                    eprintln!("mcp-slack: could not read a system CA certificate: {err}");
+                }
+                let mut roots = rustls::RootCertStore::empty();
+                let (added, _unparsable) = roots.add_parsable_certificates(loaded.certs);
+                if added == 0 {
+                    eprintln!(
+                        "mcp-slack: no CA certificates found; every HTTPS call (Slack, the issuer) will fail"
+                    );
+                }
+                let provider = Arc::new(rustls::crypto::ring::default_provider());
+                Arc::new(
+                    rustls::ClientConfig::builder_with_provider(provider)
+                        .with_safe_default_protocol_versions()
+                        .expect("ring supports rustls's default protocol versions")
+                        .with_root_certificates(roots)
+                        .with_no_client_auth(),
+                )
+            })
+            .clone()
+    }
+
+    #[cfg(test)]
+    mod tests {
+        #[test]
+        fn the_shared_config_loads_and_is_reused() {
+            let first = super::client_config();
+            let second = super::client_config();
+            assert!(std::sync::Arc::ptr_eq(&first, &second));
+        }
+    }
+}
+
 pub mod json {
     use std::fmt;
 

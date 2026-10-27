@@ -450,6 +450,7 @@ this check exists to enforce."
             config.jwks_timeout_ms.unwrap_or(5000),
         ))
         .redirects(0)
+        .tls_config(crate::tls::client_config())
         .user_agent("mcp-slack")
         .build();
 

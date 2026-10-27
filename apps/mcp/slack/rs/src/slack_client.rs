@@ -223,8 +223,8 @@ const MAX_REDIRECTS: u32 = 20;
 /// otherwise. Once stripped it is never re-added (ureq reuses the trimmed
 /// header list for later hops), so the token never reaches a host other than
 /// the one it was sent to. Read in ureq-2.12.1/src/unit.rs
-/// (`can_propagate_authorization_on_redirect`). TLS is ureq's rustls with the
-/// system trust store (`native-certs`), untouched.
+/// (`can_propagate_authorization_on_redirect`). TLS is the shared
+/// `crate::tls::client_config()`: rustls on ring with the system trust store.
 fn agent() -> &'static ureq::Agent {
     static AGENT: OnceLock<ureq::Agent> = OnceLock::new();
     AGENT.get_or_init(|| {
@@ -234,6 +234,7 @@ fn agent() -> &'static ureq::Agent {
             .timeout_write(IO_IDLE_TIMEOUT)
             .redirects(MAX_REDIRECTS)
             .redirect_auth_headers(ureq::RedirectAuthHeaders::SameHost)
+            .tls_config(crate::tls::client_config())
             .build()
     })
 }

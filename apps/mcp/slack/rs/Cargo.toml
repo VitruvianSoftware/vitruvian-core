@@ -56,9 +56,15 @@ http-body-util = "0.1"
 hyper = { version = "1", features = ["http1", "server"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 ring = "0.17"
+# The same rustls ureq uses, ring only (no aws-lc). TLS roots come from
+# rustls-native-certs 0.8 through crate::tls, not ureq's `native-certs`
+# feature: that one pulls rustls-native-certs 0.7 and the unmaintained
+# rustls-pemfile (RUSTSEC-2025-0134).
+rustls = { version = "0.23", default-features = false, features = ["logging", "ring", "std", "tls12"] }
+rustls-native-certs = "0.8"
 serde_json = { version = "1", features = ["float_roundtrip", "preserve_order"] }
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
-ureq = { version = "2.12", default-features = false, features = ["tls", "native-certs"] }
+ureq = { version = "2.12", default-features = false, features = ["tls"] }
 
 [profile.release]
 opt-level = 3

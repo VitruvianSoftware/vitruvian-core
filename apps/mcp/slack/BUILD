@@ -28,6 +28,8 @@ _CRATES = [
     "@mcp_slack_crates//:hyper",
     "@mcp_slack_crates//:hyper-util",
     "@mcp_slack_crates//:ring",
+    "@mcp_slack_crates//:rustls",
+    "@mcp_slack_crates//:rustls-native-certs",
     "@mcp_slack_crates//:serde_json",
     "@mcp_slack_crates//:tokio",
     "@mcp_slack_crates//:ureq",
