@@ -22,6 +22,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -31,7 +32,10 @@ import { promisify } from 'node:util';
 import { makeFixtureRoot } from './tooling/fixtureRoot.mjs';
 
 const run = promisify(execFile);
-const bashTest = process.platform === 'win32' ? test.skip : test;
+const hasLegacyScripts =
+  existsSync(new URL('../scripts/dev-cctv.sh', import.meta.url)) &&
+  existsSync(new URL('../scripts/dev-fresh.sh', import.meta.url));
+const bashTest = process.platform === 'win32' || !hasLegacyScripts ? test.skip : test;
 
 async function launch(overrides = {}, dotenv = '', omitCctv = false) {
   // Physical path: the launched process reports its cwd resolved, and macOS

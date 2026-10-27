@@ -35,7 +35,6 @@ const DOCUMENTED_KEYS = [
   ['docs/KNOWN-ISSUES.md', 'godsEyeView.{layout}.panelCollapsed.cctv-panel'],
   ['docs/KNOWN-ISSUES.md', 'godsEyeView.{layout}.panelCollapsed.<panel-id>'],
   ['docs/KNOWN-ISSUES.md', 'godsEyeView.{position}.panelPos.<panel-id>'],
-  ['scripts/dev-fresh.sh', 'godsEyeView.{layout}.panelCollapsed.cctv-panel'],
   ['docs/CURRENT-STATE.md', 'godsEyeView.{position}.panelPos.<panel-id>'],
   ['docs/CURRENT-STATE.md', 'godsEyeView.{position}.panelPos.<id>'],
   ['docs/CURRENT-STATE.md', 'godsEyeView.{layout}.panelCollapsed.<panel-id>'],
