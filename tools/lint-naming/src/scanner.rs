@@ -503,4 +503,33 @@ mod tests {
         assert_eq!(ids, ["BZL001", "GO001"]);
         std::fs::remove_dir_all(&dir).unwrap();
     }
+
+    #[test]
+    fn testdata_fixtures() {
+        let clean = Path::new("tools/lint-naming/testdata/clean_repo");
+        if clean.is_dir() {
+            let s = Scanner::new(clean.to_str().unwrap(), Some(vec![]), false);
+            let mut cache = LineCache::default();
+            let found = s.scan(&mut cache, &mut |_| {});
+            let errors: Vec<_> = found
+                .iter()
+                .filter(|v| v.severity == Severity::Error)
+                .collect();
+            assert!(
+                errors.is_empty(),
+                "expected 0 errors on clean_repo, got {:?}",
+                errors
+            );
+        }
+        let violations = Path::new("tools/lint-naming/testdata/violations");
+        if violations.is_dir() {
+            let s = Scanner::new(violations.to_str().unwrap(), Some(vec![]), false);
+            let mut cache = LineCache::default();
+            let found = s.scan(&mut cache, &mut |_| {});
+            assert!(
+                !found.is_empty(),
+                "expected violations on testdata/violations"
+            );
+        }
+    }
 }

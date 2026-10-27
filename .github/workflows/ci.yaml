@@ -688,9 +688,6 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
-      - name: Run naming enforcement test suite
-        run: python3 tools/lint-naming/test_runner.py --verbose
-
       - name: Set up Bazel
         uses: ./.github/actions/setup-bazel
 

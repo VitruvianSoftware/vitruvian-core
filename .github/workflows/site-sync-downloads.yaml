@@ -62,7 +62,10 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
-          python3 tools/sync-downloads/sync_downloads.py
+          set -euo pipefail
+          rustc --edition 2021 --crate-type lib --crate-name sync_downloads tools/sync-downloads/src/lib.rs -o "$RUNNER_TEMP/libsync_downloads.rlib"
+          rustc --edition 2021 tools/sync-downloads/src/main.rs -L "$RUNNER_TEMP" --extern sync_downloads="$RUNNER_TEMP/libsync_downloads.rlib" -o "$RUNNER_TEMP/sync_downloads"
+          "$RUNNER_TEMP/sync_downloads"
 
       # The App's full token: arming auto-merge needs the right to merge
       # (contents: write) as well as pull-requests: write, as in

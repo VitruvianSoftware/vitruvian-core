@@ -46,3 +46,8 @@ pub mod sign;
 pub mod signing;
 pub mod timefmt;
 pub mod zip;
+
+#[cfg(test)]
+mod catalog_test;
+#[cfg(test)]
+mod release_trigger_test;

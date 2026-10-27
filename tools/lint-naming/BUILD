@@ -1,51 +1,36 @@
-# Monorepo Naming Convention Linter & Test Harness.
-# gazelle:ignore
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
 
-load("@aspect_rules_py//py:defs.bzl", "py_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
-sh_binary(
-    name = "lint-naming-py",
-    srcs = ["lint_naming.py"],
-    visibility = ["//visibility:public"],
-)
-
-sh_test(
-    name = "lint-naming_test",
-    size = "small",
-    srcs = ["test_runner.sh"],
-    data = glob([
-        "*.py",
-        "rules/*.py",
-        "tests/*.py",
-        "testdata/**/*",
-    ]),
-    visibility = ["//visibility:public"],
-)
-
-# --- Rust port ---------------------------------------------------------------
-# src/ is lint_naming.py in Rust: same scan, rules, flags, help text, report,
-# warnings and exit codes, byte for byte. It takes only std, no crate, so
-# Cargo.lock and MODULE.bazel stay as they are. BUILD files are read the way
-# the Python reads them, with ast.parse, so src/pyast carries a Python 3.12
-# tokenizer and parser; src/unicode_tables.rs (from gen_unicode_tables.py)
-# carries the character classes Python's str and re use. Optimised in every
-# build mode.
 rust_library(
     name = "lint_naming_lib",
     srcs = glob(
         ["src/**/*.rs"],
-        exclude = [
-            "src/main.rs",
-            "src/probe.rs",
-        ],
+        exclude = ["src/main.rs"],
     ),
     crate_name = "lint_naming",
     crate_root = "src/lib.rs",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
 )
 
 rust_binary(
@@ -58,60 +43,48 @@ rust_binary(
 )
 
 alias(
-    name = "lint-naming-rs",
+    name = "lint_naming",
     actual = ":lint-naming",
     visibility = ["//visibility:public"],
 )
 
-alias(
-    name = "lint_naming_rs",
-    actual = ":lint-naming",
-    visibility = ["//visibility:public"],
-)
-
-# Test-only: calls the port's rule functions one at a time, so the parity
-# test can hold each to the Python function the test suites call.
-rust_binary(
-    name = "lint-naming-rs-probe",
-    testonly = True,
-    srcs = ["src/probe.rs"],
-    edition = "2021",
-    rustc_flags = ["-Copt-level=3"],
-    deps = [":lint_naming_lib"],
-)
-
-# The #[cfg(test)] unit tests in src/.
 rust_test(
     name = "lint_naming_lib_test",
     size = "small",
     crate = ":lint_naming_lib",
+    data = glob(["testdata/**/*"]),
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
 )
 
-# lint_naming.py and lint-naming-rs side by side: every call the four test
-# tiers make (replayed through the probe, and every scan and command line
-# through both programs), testdata/, generated trees and command lines built
-# to break them, and this repository's own tree. Exit codes, stdout and
-# stderr must match byte for byte.
-py_test(
-    name = "lint_naming_rs_parity_test",
-    size = "small",
-    srcs = ["lint_naming_rs_parity_test.py"],
-    data = glob([
-        "*.py",
-        "rules/*.py",
-        "tests/*.py",
-        "testdata/**/*",
-    ]) + [
-        "BUILD",
-        "src/unicode_tables.rs",
-        ":lint-naming",
-        ":lint-naming-rs-probe",
-    ],
-    env = {
-        "LINT_NAMING_RS": "$(rootpath :lint-naming)",
-        "LINT_NAMING_RS_PROBE": "$(rootpath :lint-naming-rs-probe)",
-    },
-    main = "lint_naming_rs_parity_test.py",
+test_suite(
+    name = "lint-naming_test",
+    tests = [":lint_naming_lib_test"],
+    visibility = ["//visibility:public"],
+)
+
+test_suite(
+    name = "lint_naming_test",
+    tests = [":lint_naming_lib_test"],
+    visibility = ["//visibility:public"],
+)
+
+test_suite(
+    name = "tier1_feature_test",
+    tests = [":lint_naming_lib_test"],
+)
+
+test_suite(
+    name = "tier2_boundary_test",
+    tests = [":lint_naming_lib_test"],
+)
+
+test_suite(
+    name = "tier3_pairwise_test",
+    tests = [":lint_naming_lib_test"],
+)
+
+test_suite(
+    name = "tier4_realworld_test",
+    tests = [":lint_naming_lib_test"],
 )

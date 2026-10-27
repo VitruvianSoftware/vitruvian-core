@@ -183,7 +183,9 @@ jobs:
             fi
             jq -cn --arg id "$ID" --arg tag "$TAG" '[{id: $id, tag: $tag}]' > "$plan"
           else
-            python3 catalog/bump.py plan --out "$plan"
+            rustc --edition 2021 --crate-type lib --crate-name catalog catalog/src/lib.rs -o "$RUNNER_TEMP/libcatalog.rlib"
+            rustc --edition 2021 catalog/src/bin/bump.rs -L "$RUNNER_TEMP" --extern catalog="$RUNNER_TEMP/libcatalog.rlib" -o "$RUNNER_TEMP/bump"
+            "$RUNNER_TEMP/bump" plan --out "$plan"
           fi
           echo "matrix=$(jq -c . "$plan")" >> "$GITHUB_OUTPUT"
 
@@ -312,7 +314,7 @@ jobs:
           case "$found" in
             0)
               gh api "repos/$GITHUB_REPOSITORY/compare/main...$branch" > "$RUNNER_TEMP/compare.json"
-              others="$(python3 catalog/bump.py foreign --compare "$RUNNER_TEMP/compare.json" --id "$ID" --version "$version")"
+              others="$(bazel run //catalog:bump -- foreign --compare "$RUNNER_TEMP/compare.json" --id "$ID" --version "$version")"
               if [ -n "$others" ]; then
                 echo "::notice::$branch holds commits catalog-bump did not write (${others//$'\n'/, }); left alone."
                 exit 0
@@ -361,7 +363,7 @@ jobs:
           # A pull request for an older version of the same tool is replaced;
           # one for a newer version is left alone.
           gh pr list --base main --state open --json number,headRefName --limit 200 > "$RUNNER_TEMP/pulls.json"
-          python3 catalog/bump.py older --pulls "$RUNNER_TEMP/pulls.json" --id "$ID" --version "$version" |
+          bazel run //catalog:bump -- older --pulls "$RUNNER_TEMP/pulls.json" --id "$ID" --version "$version" |
             while read -r older; do
               gh pr close "$older" --delete-branch --comment "Replaced by #${number}, for ${TAG}."
             done
