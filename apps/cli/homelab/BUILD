@@ -2,7 +2,7 @@ load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("//tools/doctor:defs.bzl", "doctor")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
-# gazelle:prefix github.com/VitruvianSoftware/homelab
+# gazelle:ignore
 # gazelle:exclude rs
 # Inter-app boundary (#82) for gazelle-generated packages: the hand-set
 # app-scoped visibility on //homelab/cmd/homelab is PRESERVED by gazelle on
