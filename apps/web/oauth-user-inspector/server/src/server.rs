@@ -53,9 +53,76 @@ pub trait SecretBackend: Send + Sync {
 
 pub struct DefaultSecretBackend;
 
+fn fetch_metadata_access_token() -> Result<String, String> {
+    let output = std::process::Command::new("curl")
+        .args([
+            "-sS",
+            "-f",
+            "--max-time",
+            "5",
+            "-H",
+            "Metadata-Flavor: Google",
+            "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
+        ])
+        .output()
+        .map_err(|e| format!("Failed to query GCE metadata server: {e}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "Metadata server token request failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    let json_val: Value = serde_json::from_slice(&output.stdout)
+        .map_err(|e| format!("Invalid metadata token JSON: {e}"))?;
+    json_val
+        .get("access_token")
+        .and_then(Value::as_str)
+        .map(|s| s.to_string())
+        .ok_or_else(|| "Missing access_token in metadata response".to_string())
+}
+
 impl SecretBackend for DefaultSecretBackend {
-    fn access_secret_version(&self, _name: &str) -> Result<Option<String>, String> {
-        Err("Secret Manager client not configured in standalone binary".to_string())
+    fn access_secret_version(&self, name: &str) -> Result<Option<String>, String> {
+        let token = match std::env::var("GOOGLE_OAUTH_ACCESS_TOKEN") {
+            Ok(t) if !t.trim().is_empty() => t.trim().to_string(),
+            _ => fetch_metadata_access_token()?,
+        };
+
+        let url = format!("https://secretmanager.googleapis.com/v1/{name}:access");
+        let output = std::process::Command::new("curl")
+            .args([
+                "-sS",
+                "-f",
+                "--max-time",
+                "10",
+                "-H",
+                &format!("Authorization: Bearer {token}"),
+                &url,
+            ])
+            .output()
+            .map_err(|e| format!("Failed to invoke curl for Secret Manager: {e}"))?;
+
+        if !output.status.success() {
+            return Err(format!(
+                "Secret Manager request failed: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            ));
+        }
+
+        let json_val: Value = serde_json::from_slice(&output.stdout)
+            .map_err(|e| format!("Invalid Secret Manager JSON response: {e}"))?;
+        let Some(data_b64) = json_val
+            .get("payload")
+            .and_then(|p| p.get("data"))
+            .and_then(Value::as_str)
+        else {
+            return Ok(None);
+        };
+        let decoded = base64_decode(data_b64)
+            .ok_or_else(|| "Failed to decode base64 secret payload".to_string())?;
+        let secret_str = String::from_utf8(decoded)
+            .map_err(|e| format!("Secret payload is not valid UTF-8: {e}"))?;
+        Ok(Some(secret_str))
     }
 }
 
@@ -237,6 +304,42 @@ pub fn base64_encode(input: &[u8]) -> String {
         }
     }
     out
+}
+
+/// Standard RFC 4648 Base64 decoder (also accepts URL-safe `-` / `_` alphabet).
+pub fn base64_decode(input: &str) -> Option<Vec<u8>> {
+    fn val(b: u8) -> Option<u8> {
+        match b {
+            b'A'..=b'Z' => Some(b - b'A'),
+            b'a'..=b'z' => Some(b - b'a' + 26),
+            b'0'..=b'9' => Some(b - b'0' + 52),
+            b'+' | b'-' => Some(62),
+            b'/' | b'_' => Some(63),
+            _ => None,
+        }
+    }
+    let clean: Vec<u8> = input
+        .bytes()
+        .filter(|b| !b.is_ascii_whitespace() && *b != b'=')
+        .collect();
+    let mut out = Vec::with_capacity(clean.len() * 3 / 4);
+    for chunk in clean.chunks(4) {
+        if chunk.len() < 2 {
+            return None;
+        }
+        let b0 = val(chunk[0])?;
+        let b1 = val(chunk[1])?;
+        out.push((b0 << 2) | (b1 >> 4));
+        if chunk.len() >= 3 {
+            let b2 = val(chunk[2])?;
+            out.push((b1 << 4) | (b2 >> 2));
+            if chunk.len() >= 4 {
+                let b3 = val(chunk[3])?;
+                out.push((b2 << 6) | b3);
+            }
+        }
+    }
+    Some(out)
 }
 
 /// Returns `true` if `path` matches common automated vulnerability-scanner probe
@@ -1837,41 +1940,52 @@ pub fn serve_http(app: Arc<App>, port: u16) -> std::io::Result<()> {
         let Ok(mut stream) = stream_res else {
             continue;
         };
-        let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
-        let _ = stream.set_write_timeout(Some(Duration::from_secs(10)));
-        let remote_ip = stream.peer_addr().ok().map(|a| a.ip().to_string());
+        let app_clone = Arc::clone(&app);
+        std::thread::spawn(move || {
+            let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
+            let _ = stream.set_write_timeout(Some(Duration::from_secs(10)));
+            let remote_ip = stream.peer_addr().ok().map(|a| a.ip().to_string());
 
-        let mut buf = vec![0u8; MAX_JSON_BODY_BYTES + 16 * 1024];
-        let Ok(n) = stream.read(&mut buf) else {
-            continue;
-        };
-        if n == 0 {
-            continue;
-        }
-        buf.truncate(n);
-
-        if let Some(req) = parse_wire_request(&buf, remote_ip) {
-            let resp = app.handle_request(&req);
-            let _ = write_wire_response(&mut stream, &resp);
-        }
+            if let Some(req) = read_wire_request(&mut stream, remote_ip) {
+                let resp = app_clone.handle_request(&req);
+                let _ = write_wire_response(&mut stream, &resp);
+            }
+        });
     }
     Ok(())
 }
 
-fn parse_wire_request(raw: &[u8], remote_ip: Option<String>) -> Option<HttpRequest> {
-    let header_end = raw
-        .windows(4)
+fn find_header_end(buf: &[u8]) -> Option<(usize, usize)> {
+    buf.windows(4)
         .position(|w| w == b"\r\n\r\n")
         .map(|p| (p, p + 4))
         .or_else(|| {
-            raw.windows(2)
+            buf.windows(2)
                 .position(|w| w == b"\n\n")
                 .map(|p| (p, p + 2))
-        })?;
+        })
+}
 
-    let header_str = String::from_utf8_lossy(&raw[..header_end.0]);
-    let body = raw[header_end.1..].to_vec();
+fn read_wire_request(stream: &mut impl Read, remote_ip: Option<String>) -> Option<HttpRequest> {
+    let max_total = MAX_JSON_BODY_BYTES + 32 * 1024;
+    let mut buf = Vec::with_capacity(8192);
+    let mut chunk = [0u8; 8192];
 
+    let header_end = loop {
+        if let Some(pos) = find_header_end(&buf) {
+            break pos;
+        }
+        if buf.len() >= max_total {
+            break (buf.len(), buf.len());
+        }
+        let n = stream.read(&mut chunk).ok()?;
+        if n == 0 {
+            return None;
+        }
+        buf.extend_from_slice(&chunk[..n]);
+    };
+
+    let header_str = String::from_utf8_lossy(&buf[..header_end.0]).to_string();
     let mut lines = header_str.lines();
     let req_line = lines.next()?;
     let mut parts = req_line.split_whitespace();
@@ -1884,6 +1998,28 @@ fn parse_wire_request(raw: &[u8], remote_ip: Option<String>) -> Option<HttpReque
             headers.insert(k.trim().to_ascii_lowercase(), v.trim().to_string());
         }
     }
+
+    let expected_body_len = headers
+        .get("content-length")
+        .and_then(|v| v.parse::<usize>().ok())
+        .unwrap_or(0)
+        .min(MAX_JSON_BODY_BYTES + 4096);
+
+    while buf.len().saturating_sub(header_end.1) < expected_body_len && buf.len() < max_total {
+        let Ok(n) = stream.read(&mut chunk) else {
+            break;
+        };
+        if n == 0 {
+            break;
+        }
+        buf.extend_from_slice(&chunk[..n]);
+    }
+
+    let body = if header_end.1 <= buf.len() {
+        buf[header_end.1..].to_vec()
+    } else {
+        Vec::new()
+    };
 
     Some(HttpRequest {
         method,
@@ -1911,6 +2047,7 @@ fn write_wire_response(stream: &mut impl Write, resp: &HttpResponse) -> std::io:
     for (k, v) in &resp.headers {
         write!(stream, "{}: {}\r\n", k, v)?;
     }
+    write!(stream, "Connection: close\r\n")?;
     write!(stream, "Content-Length: {}\r\n\r\n", resp.body.len())?;
     stream.write_all(&resp.body)?;
     stream.flush()
