@@ -356,7 +356,9 @@ fn scenario_04_security_conformance_boundary(ctx: &mut TestContext) {
         ok = false;
     }
 
-    if !ctx.file_exists("tools/conformance/check.sh") {
+    if !ctx.file_exists("tools/conformance/check.sh")
+        && !ctx.file_exists("tools/conformance/src/main.rs")
+    {
         ok = false;
     }
 

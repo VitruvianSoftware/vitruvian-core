@@ -26,6 +26,7 @@
 //! script by agent_app_rs_parity_test.py. It shares this library because a
 //! package has one rust_library (//tools/lint-naming).
 
+#[cfg(not(feature = "standalone_permission_drift"))]
 pub mod agent_app;
 pub mod argparse;
 pub mod drift;
