@@ -26,7 +26,6 @@
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("//tools/doctor:defs.bzl", "doctor")
-load("//tools/pytest:defs.bzl", "py_test")
 
 package(default_visibility = ["//apps/mobile/wearos:__subpackages__"])
 
@@ -88,10 +87,12 @@ filegroup(
     ]),
 )
 
-py_test(
+rust_test(
     name = "watchface_test",
-    srcs = ["watchface_test.py"],
+    size = "small",
+    srcs = ["src/watchface_test.rs"],
     data = [":wff_sources"],
+    edition = "2021",
 )
 
 sh_binary(

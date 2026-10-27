@@ -76,6 +76,16 @@ struct ConversationCommands: Commands {
                     !composer.voiceRecorder.isRecordingOrReviewing && !composer.features.supportsVoiceSend
                 )
             )
+            Button(composer.sendGIFMenuTitle) {
+                _ = composer.openGIFPicker()
+            }
+            .keyboardShortcut("g", modifiers: [.command, .shift])
+            .disabled(!composer.canSendGIF)
+            Button(composer.sendStickerMenuTitle) {
+                _ = composer.openStickerPicker()
+            }
+            .keyboardShortcut("s", modifiers: [.command, .option, .shift])
+            .disabled(!composer.canSendSticker)
             Divider()
             Button(conversation.isShowingChatInfo ? String(localized: "Hide Chat Info") : String(localized: "Show Chat Info"),
                    action: conversation.toggleChatInfo)

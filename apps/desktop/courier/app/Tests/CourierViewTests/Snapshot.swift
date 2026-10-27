@@ -47,8 +47,8 @@ enum Snapshot {
             // selection made in a text view). The run loop handles what is already waiting; nothing waits for time.
             window.displayIfNeeded()
             prepare(host)
-            for _ in 0 ..< 3 {
-                RunLoop.main.run(mode: .default, before: Date.distantPast)
+            for _ in 0 ..< 25 {
+                RunLoop.main.run(mode: .default, before: Date(timeIntervalSinceNow: 0.004))
                 host.layoutSubtreeIfNeeded()
             }
             window.displayIfNeeded()

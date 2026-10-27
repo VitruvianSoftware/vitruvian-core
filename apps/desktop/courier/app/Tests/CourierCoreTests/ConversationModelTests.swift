@@ -2592,6 +2592,7 @@ final class ConversationScript: @unchecked Sendable {
         case "poll.create": return .result(["event_id": "$poll"])
         case "message.history": return .result(["versions": [[String: Any]]()])
         case "scheduled.list": return .result(["scheduled": [[String: Any]]()])
+        case "stickers.list": return .result(stickersListJSON())
         case "message.forward":
             let ids = params?["room_ids"] as? [String] ?? []
             let failing = forwardFailures

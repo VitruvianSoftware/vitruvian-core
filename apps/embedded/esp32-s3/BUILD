@@ -253,7 +253,6 @@ rust_library(
         "include/**",
         "host_companion/**",
         "docs/**",
-        "tests/*.py",
     ]) + [
         "OWNERS",
         "README.md",

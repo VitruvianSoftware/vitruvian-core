@@ -458,6 +458,53 @@ final class CommandSetTests: XCTestCase {
         composer.features = voiceFeatures
         XCTAssertTrue(cmd.isEnabled(), "enabled when open chat supports voice notes")
     }
+
+    func testSendGIFAndSendStickerCommandsRegisteredUnderMessageCategory() {
+        let composer = ComposerModel(sender: nil)
+        let gifCmd = CommandSet.sendGIF(composer)
+        let stickerCmd = CommandSet.sendSticker(composer)
+        let mediaCmds = CommandSet.composerMedia(composer)
+        XCTAssertEqual(mediaCmds.map(\.id), ["message.sendGIF", "message.sendSticker"])
+
+        XCTAssertEqual(gifCmd.id, "message.sendGIF")
+        XCTAssertEqual(gifCmd.title, "Send GIF")
+        XCTAssertEqual(gifCmd.keys, "⌘⇧G")
+        XCTAssertEqual(gifCmd.key, "g")
+        XCTAssertEqual(gifCmd.modifiers, [.command, .shift])
+        XCTAssertEqual(gifCmd.category, .message)
+        XCTAssertFalse(gifCmd.isEnabled(), "disabled when no chat is open")
+
+        XCTAssertEqual(stickerCmd.id, "message.sendSticker")
+        XCTAssertEqual(stickerCmd.title, "Send Sticker")
+        XCTAssertEqual(stickerCmd.keys, "⌘⌥⇧S")
+        XCTAssertEqual(stickerCmd.key, "s")
+        XCTAssertEqual(stickerCmd.modifiers, [.command, .option, .shift])
+        XCTAssertEqual(stickerCmd.category, .message)
+        XCTAssertFalse(stickerCmd.isEnabled(), "disabled when no chat is open")
+
+        composer.open("!a")
+        var unsupported = ChatFeatures(source: .stored)
+        unsupported.gif = .unsupported
+        unsupported.sticker = .unsupported
+        composer.features = unsupported
+        XCTAssertFalse(gifCmd.isEnabled())
+        XCTAssertFalse(stickerCmd.isEnabled())
+
+        var supported = ChatFeatures(source: .stored)
+        supported.gif = MediaCapFeature(supported: true, mimeTypes: ["image/gif", "video/mp4"], captions: true)
+        supported.sticker = MediaCapFeature(supported: true, mimeTypes: ["image/png", "image/webp"])
+        composer.features = supported
+        XCTAssertTrue(gifCmd.isEnabled())
+        XCTAssertTrue(stickerCmd.isEnabled())
+
+        gifCmd.run()
+        XCTAssertTrue(composer.isGIFPickerPresented)
+        XCTAssertFalse(composer.isStickerPickerPresented)
+
+        stickerCmd.run()
+        XCTAssertTrue(composer.isStickerPickerPresented)
+        XCTAssertFalse(composer.isGIFPickerPresented)
+    }
 }
 
 /// The open chat, as the commands read it when they run.

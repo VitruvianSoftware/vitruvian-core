@@ -183,6 +183,18 @@ struct MessagesSettingsPane: View {
             }
             Toggle(String(localized: "Show formatting menu"), isOn: $preferences.showFormattingMenu)
                 .help(String(localized: "A bar of formatting buttons over the text you select."))
+            Toggle(String(localized: "Enable emoji autocomplete"), isOn: $preferences.enableEmojiAutocomplete)
+                .accessibilityIdentifier("settings.composing.enableEmojiAutocomplete")
+            Toggle(
+                String(localized: "Disable automatic replacement of emoticons with emojis"),
+                isOn: $preferences.disableEmoticonReplacement
+            )
+            .accessibilityIdentifier("settings.composing.disableEmoticonReplacement")
+            Toggle(
+                String(localized: "Automatically send GIFs after selection"),
+                isOn: $preferences.autoSendGIFs
+            )
+            .accessibilityIdentifier("settings.composing.autoSendGIFs")
         }
     }
 

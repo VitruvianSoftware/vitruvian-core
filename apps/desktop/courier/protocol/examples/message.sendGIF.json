@@ -1,0 +1,19 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 211,
+    "method": "message.sendGIF",
+    "params": {
+      "room_id": "!chat1:courier.local",
+      "path": "/tmp/thumbs-up.gif",
+      "caption": "Nice!"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 211,
+    "result": {
+      "event_id": "$gif1"
+    }
+  }
+}

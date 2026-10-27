@@ -124,7 +124,9 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           version="${TAG#home-speaker-v}"
-          bash tools/desktop-package/package-desktop.sh --verify-only \
+          rustc --edition 2021 --crate-type lib --crate-name package_desktop tools/desktop-package/src/lib.rs -o "$RUNNER_TEMP/libpackage_desktop.rlib"
+          rustc --edition 2021 tools/desktop-package/src/main.rs -L "$RUNNER_TEMP" --extern package_desktop="$RUNNER_TEMP/libpackage_desktop.rlib" -o "$RUNNER_TEMP/package-desktop"
+          "$RUNNER_TEMP/package-desktop" --verify-only \
             --app-name HomeSpeaker --version "${version}" --tag "${TAG}" \
             --require-asset "HomeSpeaker-${version}-tool.zip"
           gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" --json assets \

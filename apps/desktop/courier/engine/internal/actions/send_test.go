@@ -11,7 +11,9 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"image/jpeg"
 	"image/png"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -34,6 +36,7 @@ import (
 	"github.com/VitruvianSoftware/courier/engine/internal/entitlement"
 	"github.com/VitruvianSoftware/courier/engine/internal/fakenet"
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
+	"github.com/VitruvianSoftware/courier/engine/internal/media"
 	"github.com/VitruvianSoftware/courier/engine/internal/richtext"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
 	"github.com/VitruvianSoftware/courier/engine/internal/timers"
@@ -1102,4 +1105,481 @@ func TestLinkPreviewGuardRefusesTailnetLinkLocalULAAndHTTPDowngradeRedirect(t *t
 	httpsReq, err := http.NewRequest(http.MethodGet, "https://example.com/start", nil)
 	require.NoError(t, err)
 	require.Error(t, prodClient.CheckRedirect(httpReq, []*http.Request{httpsReq}), "https -> http redirect must be refused")
+}
+
+func TestSendStickerAndGIF(t *testing.T) {
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+
+	// Create a 24x18 PNG sticker file on disk.
+	stickerPNGPath := filepath.Join(tmpDir, "party-parrot.png")
+	img := image.NewRGBA(image.Rect(0, 0, 24, 18))
+	for y := 0; y < 18; y++ {
+		for x := 0; x < 24; x++ {
+			img.Set(x, y, color.RGBA{R: 220, G: 80, B: 140, A: 255})
+		}
+	}
+	var pngBuf bytes.Buffer
+	require.NoError(t, png.Encode(&pngBuf, img))
+	require.NoError(t, os.WriteFile(stickerPNGPath, pngBuf.Bytes(), 0o600))
+
+	// Create a GIF and an MP4 file on disk.
+	gifPath := filepath.Join(tmpDir, "thumbs-up.gif")
+	gifBytes := []byte("GIF89a\x10\x00\x0c\x00\x80\x00\x00\xff\xff\xff\x00\x00\x00!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x10\x00\x0c\x00\x00\x02\x02D\x01\x00;")
+	require.NoError(t, os.WriteFile(gifPath, gifBytes, 0o600))
+
+	mp4Path := filepath.Join(tmpDir, "dance.mp4")
+	mp4Bytes := []byte("\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom")
+	require.NoError(t, os.WriteFile(mp4Path, mp4Bytes, 0o600))
+
+	stickerAndGIFCaps := &event.RoomFeatures{
+		Reply:  event.CapLevelFullySupported,
+		Thread: event.CapLevelFullySupported,
+		File: event.FileFeatureMap{
+			event.CapMsgSticker: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"image/webp": event.CapLevelFullySupported,
+					"image/png":  event.CapLevelFullySupported,
+				},
+				MaxSize: 1024 * 1024,
+			},
+			event.CapMsgGIF: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"image/gif": event.CapLevelFullySupported,
+					"video/mp4": event.CapLevelFullySupported,
+				},
+				Caption: event.CapLevelFullySupported,
+				MaxSize: 16 * 1024 * 1024,
+			},
+			event.MsgImage: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{"*/*": event.CapLevelFullySupported},
+				MaxSize:   16 * 1024 * 1024,
+			},
+			event.MsgVideo: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{"*/*": event.CapLevelFullySupported},
+				MaxSize:   16 * 1024 * 1024,
+			},
+		},
+	}
+	w, room := startFeatureWorld(t, stickerAndGIFCaps)
+
+	// 1. SendSticker from local .png path with BridgedSticker metadata.
+	resSticker, err := w.a.SendSticker(ctx, SendStickerReq{
+		RoomID: room,
+		Path:   stickerPNGPath,
+		Name:   "Party Parrot",
+		Emoji:  "🦜",
+		BridgedSticker: &BridgedStickerRef{
+			Network: "signal",
+			PackURL: "https://signal.art/addstickers/#pack_id=aa&pack_key=bb",
+			ID:      "7",
+		},
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, resSticker.EventID)
+	sentFile := recv(t, w.n.Files, "sent sticker from path")
+	require.Equal(t, event.CapMsgSticker, sentFile.MsgType)
+	require.Equal(t, "Party Parrot", sentFile.Body)
+	require.Equal(t, "image/png", sentFile.MimeType)
+	require.Equal(t, 24, sentFile.Width)
+	require.Equal(t, 18, sentFile.Height)
+	require.Equal(t, len(pngBuf.Bytes()), sentFile.Size)
+
+	storedSticker := w.get(t, resSticker.EventID)
+	require.Equal(t, event.EventSticker.Type, storedSticker.Type)
+	rawSticker := content(t, storedSticker)
+	require.Equal(t, "m.image", rawSticker["msgtype"])
+	infoMap, ok := rawSticker["info"].(map[string]any)
+	require.True(t, ok)
+	bsMap, ok := infoMap["fi.mau.bridged_sticker"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "7", bsMap["id"])
+
+	// 2. SendSticker from existing courier://media/<hash> URL.
+	preHash, err := w.m.Put(pngBuf.Bytes())
+	require.NoError(t, err)
+	resFromURL, err := w.a.SendSticker(ctx, SendStickerReq{
+		RoomID:   room,
+		MediaURL: "courier://media/" + preHash,
+		Emoji:    "🎉",
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, resFromURL.EventID)
+	sentFromURL := recv(t, w.n.Files, "sent sticker from courier://media URL")
+	require.Equal(t, event.CapMsgSticker, sentFromURL.MsgType)
+	require.Equal(t, "🎉", sentFromURL.Body)
+	require.Equal(t, string(ids.ContentURI(preHash)), sentFromURL.URL)
+
+	// 3. SendSticker returns ErrUnsupportedFeature when room does not support CapMsgSticker (e.g. Slack / Google Messages).
+	wNoSticker, roomNoSticker := startFeatureWorld(t, slackFeatures())
+	_, err = wNoSticker.a.SendSticker(ctx, SendStickerReq{
+		RoomID: roomNoSticker,
+		Path:   stickerPNGPath,
+	})
+	require.ErrorIs(t, err, ErrUnsupportedFeature)
+	require.ErrorIs(t, err, ErrNotSupported)
+
+	// 4. SendGIF from .gif path (MsgImage, fi.mau.gif: true) and .mp4 path (MsgVideo, fi.mau.gif: true) with caption.
+	resGIF, err := w.a.SendGIF(ctx, SendGIFReq{
+		RoomID:  room,
+		Path:    gifPath,
+		Caption: "Great job!",
+	})
+	require.NoError(t, err)
+	sentGIF := recv(t, w.n.Files, "sent .gif")
+	require.Equal(t, event.MsgImage, sentGIF.MsgType)
+	require.Equal(t, "Great job!", sentGIF.Body)
+	require.Equal(t, "thumbs-up.gif", sentGIF.FileName)
+	storedGIF := w.get(t, resGIF.EventID)
+	require.Equal(t, event.EventMessage.Type, storedGIF.Type)
+	rawGIF := content(t, storedGIF)
+	gifInfo, ok := rawGIF["info"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, true, gifInfo["fi.mau.gif"])
+
+	resMP4GIF, err := w.a.SendGIF(ctx, SendGIFReq{
+		RoomID: room,
+		Path:   mp4Path,
+	})
+	require.NoError(t, err)
+	sentMP4GIF := recv(t, w.n.Files, "sent .mp4 gif")
+	require.Equal(t, event.MsgVideo, sentMP4GIF.MsgType)
+	require.Equal(t, "dance.mp4", sentMP4GIF.Body)
+	rawMP4 := content(t, w.get(t, resMP4GIF.EventID))
+	mp4Info, ok := rawMP4["info"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, true, mp4Info["fi.mau.gif"])
+
+	// 5. HoldMillis > 0 holds in outbox, Undo cancels cleanly, and Retry re-dispatches EventSticker / EventMessage.
+	heldSticker, err := w.a.SendSticker(ctx, SendStickerReq{
+		RoomID:     room,
+		Path:       stickerPNGPath,
+		HoldMillis: 5000,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "queued", w.get(t, heldSticker.EventID).Status)
+	_, err = w.a.Undo(ctx, heldSticker.EventID)
+	require.NoError(t, err)
+
+	heldGIF, err := w.a.SendGIF(ctx, SendGIFReq{
+		RoomID:     room,
+		Path:       gifPath,
+		Caption:    "Hold me",
+		HoldMillis: 5000,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "queued", w.get(t, heldGIF.EventID).Status)
+	undoneGIF, err := w.a.Undo(ctx, heldGIF.EventID)
+	require.NoError(t, err)
+	src, hasSrc := SourceOf(undoneGIF.Content)
+	require.True(t, hasSrc)
+	require.Equal(t, "Hold me", src.Text)
+
+	// Retry failed sticker re-dispatches EventSticker.
+	w.n.FailWith(errors.New("temporary failure"))
+	failedSticker, err := w.a.SendSticker(ctx, SendStickerReq{
+		RoomID: room,
+		Path:   stickerPNGPath,
+		Name:   "Retry Parrot",
+	})
+	require.NoError(t, err)
+	w.waitStatus(t, failedSticker.EventID, "failed")
+	w.n.FailWith(nil)
+	require.NoError(t, w.a.Retry(ctx, failedSticker.EventID))
+	retriedFile := recv(t, w.n.Files, "retried sticker")
+	require.Equal(t, event.CapMsgSticker, retriedFile.MsgType)
+	w.waitStatus(t, failedSticker.EventID, "sent")
+}
+
+func countMediaBlobs(t *testing.T, dir string) int {
+	t.Helper()
+	count := 0
+	_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d == nil || d.IsDir() {
+			return nil
+		}
+		if filepath.Base(path) == "stickers.json" || strings.HasPrefix(filepath.Base(path), ".upload-") {
+			return nil
+		}
+		count++
+		return nil
+	})
+	return count
+}
+
+func TestSendGIFMP4UsesVideoWithMauGIFFlag(t *testing.T) {
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+
+	mp4Path := filepath.Join(tmpDir, "loop.mp4")
+	mp4Bytes := []byte("\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom")
+	require.NoError(t, os.WriteFile(mp4Path, mp4Bytes, 0o600))
+
+	// Room whose GIF capability allows both image/gif and video/mp4.
+	bothCaps := &event.RoomFeatures{
+		File: event.FileFeatureMap{
+			event.CapMsgGIF: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"image/gif": event.CapLevelFullySupported,
+					"video/mp4": event.CapLevelFullySupported,
+				},
+				Caption: event.CapLevelFullySupported,
+				MaxSize: 16 * 1024 * 1024,
+			},
+			event.MsgImage: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"image/gif": event.CapLevelFullySupported,
+				},
+				MaxSize: 16 * 1024 * 1024,
+			},
+			event.MsgVideo: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"video/mp4": event.CapLevelFullySupported,
+				},
+				MaxSize: 16 * 1024 * 1024,
+			},
+		},
+	}
+	w, room := startFeatureWorld(t, bothCaps)
+	res, err := w.a.SendGIF(ctx, SendGIFReq{
+		RoomID: room,
+		Path:   mp4Path,
+	})
+	require.NoError(t, err)
+	sent := recv(t, w.n.Files, "sent mp4 gif")
+	require.Equal(t, event.MsgVideo, sent.MsgType)
+	raw := content(t, w.get(t, res.EventID))
+	infoMap, ok := raw["info"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, true, infoMap["fi.mau.gif"])
+
+	// Room whose GIF capability allows ONLY image/gif (like Google Messages or Slack) must refuse video/mp4
+	// with ErrUnsupportedFeature and leave nothing in media.Store.
+	gifOnlyCaps := &event.RoomFeatures{
+		File: event.FileFeatureMap{
+			event.CapMsgGIF: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"image/gif": event.CapLevelFullySupported,
+				},
+				MaxSize: 16 * 1024 * 1024,
+			},
+			event.MsgImage: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"image/gif": event.CapLevelFullySupported,
+				},
+				MaxSize: 16 * 1024 * 1024,
+			},
+		},
+	}
+	wGifOnly, roomGifOnly := startFeatureWorld(t, gifOnlyCaps)
+	blobsBefore := countMediaBlobs(t, wGifOnly.m.Dir)
+	_, err = wGifOnly.a.SendGIF(ctx, SendGIFReq{
+		RoomID: roomGifOnly,
+		Path:   mp4Path,
+	})
+	require.ErrorIs(t, err, ErrUnsupportedFeature)
+	require.Equal(t, blobsBefore, countMediaBlobs(t, wGifOnly.m.Dir), "refused SendGIF must not store blob")
+
+	// Sending a non-GIF/non-MP4 file (e.g. PNG) to SendGIF is always refused, even when CapMsgGIF has */*.
+	pngPath := filepath.Join(tmpDir, "still.png")
+	img := image.NewRGBA(image.Rect(0, 0, 8, 8))
+	var pngBuf bytes.Buffer
+	require.NoError(t, png.Encode(&pngBuf, img))
+	require.NoError(t, os.WriteFile(pngPath, pngBuf.Bytes(), 0o600))
+
+	wildcardCaps := &event.RoomFeatures{
+		File: event.FileFeatureMap{
+			event.CapMsgGIF: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{"*/*": event.CapLevelFullySupported},
+				MaxSize:   16 * 1024 * 1024,
+			},
+			event.MsgImage: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{"*/*": event.CapLevelFullySupported},
+				MaxSize:   16 * 1024 * 1024,
+			},
+		},
+	}
+	wWild, roomWild := startFeatureWorld(t, wildcardCaps)
+	blobsBeforeWild := countMediaBlobs(t, wWild.m.Dir)
+	_, err = wWild.a.SendGIF(ctx, SendGIFReq{
+		RoomID: roomWild,
+		Path:   pngPath,
+	})
+	require.ErrorIs(t, err, ErrUnsupportedFeature)
+	require.Equal(t, blobsBeforeWild, countMediaBlobs(t, wWild.m.Dir), "refused non-GIF must not store blob")
+}
+
+func TestSendGIFImageChecksImageCapabilityMaxSizeAndLeavesNoBlob(t *testing.T) {
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+
+	// Telegram-like capabilities: MsgImage has MaxSize 10 MiB, while CapMsgGIF has MaxSize 50 MiB.
+	// Because bridgev2's GetCapMsgType maps MsgImage to m.image (only MsgVideo+MauGIF maps to fi.mau.gif),
+	// an 11 MiB image/gif sent as MsgImage must be checked against MsgImage's 10 MiB limit and refused.
+	tgLikeCaps := &event.RoomFeatures{
+		File: event.FileFeatureMap{
+			event.MsgImage: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"image/gif":  event.CapLevelPartialSupport,
+					"image/png":  event.CapLevelFullySupported,
+					"image/webp": event.CapLevelPartialSupport,
+				},
+				Caption:          event.CapLevelFullySupported,
+				MaxCaptionLength: 1024,
+				MaxSize:          10 * 1024 * 1024,
+			},
+			event.CapMsgGIF: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"image/gif": event.CapLevelFullySupported,
+					"video/mp4": event.CapLevelFullySupported,
+				},
+				Caption:          event.CapLevelFullySupported,
+				MaxCaptionLength: 1024,
+				MaxSize:          50 * 1024 * 1024,
+			},
+			event.CapMsgSticker: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"image/webp": event.CapLevelFullySupported,
+				},
+				MaxSize: 512 * 1024,
+			},
+		},
+	}
+	w, room := startFeatureWorld(t, tgLikeCaps)
+
+	bigGIFPath := filepath.Join(tmpDir, "eleven-mib.gif")
+	gifHeader := []byte("GIF89a\x02\x00\x02\x00\x80\x00\x00\xff\xff\xff\x00\x00\x00!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x02\x00\x02\x00\x00\x02\x02D\x01\x00;")
+	bigGIF := make([]byte, 11*1024*1024)
+	copy(bigGIF, gifHeader)
+	require.NoError(t, os.WriteFile(bigGIFPath, bigGIF, 0o600))
+
+	blobsBefore := countMediaBlobs(t, w.m.Dir)
+	_, err := w.a.SendGIF(ctx, SendGIFReq{
+		RoomID: room,
+		Path:   bigGIFPath,
+	})
+	require.ErrorIs(t, err, ErrTooLarge)
+	require.Equal(t, blobsBefore, countMediaBlobs(t, w.m.Dir), "refused 11 MiB image/gif must not write to media.Store")
+
+	// Also verify a refused SendSticker (MIME disallowed by room's CapMsgSticker) writes nothing to media.Store.
+	pngPath := filepath.Join(tmpDir, "disallowed.png")
+	img := image.NewRGBA(image.Rect(0, 0, 8, 8))
+	var pngBuf bytes.Buffer
+	require.NoError(t, png.Encode(&pngBuf, img))
+	require.NoError(t, os.WriteFile(pngPath, pngBuf.Bytes(), 0o600))
+
+	blobsBeforeSticker := countMediaBlobs(t, w.m.Dir)
+	_, err = w.a.SendSticker(ctx, SendStickerReq{
+		RoomID: room,
+		Path:   pngPath,
+	})
+	require.ErrorIs(t, err, ErrUnsupportedFeature)
+	require.Equal(t, blobsBeforeSticker, countMediaBlobs(t, w.m.Dir), "refused SendSticker must not write to media.Store")
+
+	// A 25 MiB PNG sent as a sticker to a 512 KiB WebP-only room must be refused before image decoding/blurhashing runs.
+	bigPNGPath := filepath.Join(tmpDir, "twentyfive-mib.png")
+	bigPNG := make([]byte, 25*1024*1024)
+	copy(bigPNG, pngBuf.Bytes())
+	require.NoError(t, os.WriteFile(bigPNGPath, bigPNG, 0o600))
+
+	inspectCalls := 0
+	origInspect := inspectImageHook
+	inspectImageHook = func(r io.Reader) (media.Metadata, error) {
+		inspectCalls++
+		return origInspect(r)
+	}
+	defer func() { inspectImageHook = origInspect }()
+
+	_, err = w.a.SendSticker(ctx, SendStickerReq{
+		RoomID: room,
+		Path:   bigPNGPath,
+	})
+	require.Error(t, err)
+	require.Zero(t, inspectCalls, "refused 25 MiB PNG sticker must not decode/blurhash image")
+}
+
+func TestSendStickerWithoutBridgedStickerPreservesEmojiInStoredEvent(t *testing.T) {
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+
+	caps := &event.RoomFeatures{
+		File: event.FileFeatureMap{
+			event.CapMsgSticker: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"image/png": event.CapLevelFullySupported,
+				},
+				MaxSize: 512 * 1024,
+			},
+		},
+	}
+	w, room := startFeatureWorld(t, caps)
+
+	pngPath := filepath.Join(tmpDir, "local-sticker.png")
+	img := image.NewRGBA(image.Rect(0, 0, 16, 16))
+	var pngBuf bytes.Buffer
+	require.NoError(t, png.Encode(&pngBuf, img))
+	require.NoError(t, os.WriteFile(pngPath, pngBuf.Bytes(), 0o600))
+
+	res, err := w.a.SendSticker(ctx, SendStickerReq{
+		RoomID: room,
+		Path:   pngPath,
+		Name:   "Party Parrot",
+		Emoji:  "🦜",
+	})
+	require.NoError(t, err)
+
+	stored := w.get(t, res.EventID)
+
+	var content struct {
+		Body string `json:"body"`
+		URL  string `json:"url"`
+		Info struct {
+			BridgedSticker *struct {
+				Network string `json:"network"`
+				ID      string `json:"id"`
+				Emoji   string `json:"emoji"`
+				PackURL string `json:"pack_url"`
+			} `json:"fi.mau.bridged_sticker"`
+		} `json:"info"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(stored.Content), &content))
+	require.Equal(t, "Party Parrot", content.Body)
+	require.NotNil(t, content.Info.BridgedSticker, "non-bridged sticker with emoji must persist emoji in info.fi.mau.bridged_sticker")
+	require.Equal(t, "🦜", content.Info.BridgedSticker.Emoji)
+	require.Empty(t, content.Info.BridgedSticker.Network)
+	require.Empty(t, content.Info.BridgedSticker.ID)
+	require.Empty(t, content.Info.BridgedSticker.PackURL)
+}
+
+func TestSendStickerRejectsSpoofedMimeTypeAndLeavesNoBlob(t *testing.T) {
+	ctx := context.Background()
+	tmpDir := t.TempDir()
+
+	caps := &event.RoomFeatures{
+		File: event.FileFeatureMap{
+			event.CapMsgSticker: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"image/webp": event.CapLevelFullySupported,
+				},
+				MaxSize: 512 * 1024,
+			},
+		},
+	}
+	w, webpOnlyRoom := startFeatureWorld(t, caps)
+
+	jpgPath := filepath.Join(tmpDir, "spoofed.webp")
+	img := image.NewRGBA(image.Rect(0, 0, 16, 16))
+	var jpgBuf bytes.Buffer
+	require.NoError(t, jpeg.Encode(&jpgBuf, img, nil))
+	require.NoError(t, os.WriteFile(jpgPath, jpgBuf.Bytes(), 0o600))
+
+	blobsBefore := countMediaBlobs(t, w.m.Dir)
+	_, err := w.a.SendSticker(ctx, SendStickerReq{
+		RoomID:   webpOnlyRoom,
+		Path:     jpgPath,
+		MimeType: "image/webp",
+		Name:     "Spoofed JPEG",
+	})
+	require.ErrorIs(t, err, ErrUnsupportedFeature, "SendSticker must sniff actual file bytes rather than trusting client-supplied MimeType")
+	require.Equal(t, blobsBefore, countMediaBlobs(t, w.m.Dir), "rejected spoofed sticker must leave no blob in media.Store")
 }

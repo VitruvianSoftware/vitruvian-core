@@ -217,3 +217,11 @@ func eventJSON(id: String, room: String, status: String, body: String = "Hello")
         "delivered": false, "read_by": [[String: Any]](),
     ]
 }
+
+/// A `stickers.list` response payload as the engine writes it.
+func stickersListJSON(packs: [[String: Any]] = [], recentGIFs: [[String: Any]] = []) -> [String: Any] {
+    [
+        "packs": packs,
+        "recent_gifs": recentGIFs,
+    ]
+}

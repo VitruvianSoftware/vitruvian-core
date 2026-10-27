@@ -951,6 +951,27 @@ fn extract_starlark_string_value(line: &str) -> Option<String> {
 // check_copybara_version_maps (group: copybara)
 // ---------------------------------------------------------------------------
 
+const COPYBARA_BIN_REL: &str = "tools/copybara/check-version-maps";
+
+fn find_copybara_bin(start_pwd: &str) -> Option<String> {
+    let mut candidates: Vec<String> = Vec::new();
+    if let Ok(d) = std::env::var("RUNFILES_DIR") {
+        candidates.push(format!("{}/_main/{}", d, COPYBARA_BIN_REL));
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        let exe_str = exe.to_string_lossy();
+        candidates.push(format!("{}.runfiles/_main/{}", exe_str, COPYBARA_BIN_REL));
+    }
+    candidates.push(format!("{}/{}", start_pwd, COPYBARA_BIN_REL));
+
+    for c in &candidates {
+        if Path::new(c).is_file() {
+            return Some(c.clone());
+        }
+    }
+    None
+}
+
 pub fn check_copybara_version_maps(ctx: &Context) {
     let cb_path = format!("{}/tools/copybara/copy.bara.sky", ctx.root);
     if !Path::new(&cb_path).is_file() {
@@ -958,7 +979,29 @@ pub fn check_copybara_version_maps(ctx: &Context) {
     }
 
     let checker = format!("{}/tools/copybara/check-version-maps.sh", ctx.root);
-    if !Path::new(&checker).is_file() {
+    let checker_rs_src = format!("{}/tools/copybara/src/lib.rs", ctx.root);
+    let output = if Path::new(&checker).is_file() {
+        Command::new("bash")
+            .arg(&checker)
+            .env("BUILD_WORKSPACE_DIRECTORY", &ctx.root)
+            .output()
+    } else if Path::new(&checker_rs_src).is_file() {
+        if let Some(bin) = find_copybara_bin(&ctx.start_pwd) {
+            Command::new(&bin)
+                .env("BUILD_WORKSPACE_DIRECTORY", &ctx.root)
+                .output()
+        } else {
+            ctx.emit_fail(
+                "copybara",
+                "tools/copybara/check-version-maps.sh",
+                "missing",
+                "present",
+                "the version-map checker is gone, so nothing verifies that the export maps still match this repo -- and a rule that skips when its checker is absent reports a clean run either way",
+                "restore tools/copybara/check-version-maps.sh (see //tools/copybara:check-version-maps)",
+            );
+            return;
+        }
+    } else {
         ctx.emit_fail(
             "copybara",
             "tools/copybara/check-version-maps.sh",
@@ -968,12 +1011,7 @@ pub fn check_copybara_version_maps(ctx: &Context) {
             "restore tools/copybara/check-version-maps.sh (see //tools/copybara:check-version-maps)",
         );
         return;
-    }
-
-    let output = Command::new("bash")
-        .arg(&checker)
-        .env("BUILD_WORKSPACE_DIRECTORY", &ctx.root)
-        .output();
+    };
 
     let output = match output {
         Ok(o) => o,

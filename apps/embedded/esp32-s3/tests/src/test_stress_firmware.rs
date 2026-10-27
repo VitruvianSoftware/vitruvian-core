@@ -73,6 +73,44 @@ pub fn test_tile3_settings_geometry() {
             assert!(!switches[i].1.intersects(&switches[j].1));
         }
     }
+
+    // Tile 0 (System Deck), Tile 1 (Smart Deck), Tile 2 (Agent & CI Deck) bounding boxes
+    let tile0 = [
+        Rect::new(8, 6, 224, 24),
+        Rect::new(8, 34, 224, 52),
+        Rect::new(8, 92, 108, 72),
+        Rect::new(124, 92, 108, 72),
+        Rect::new(8, 170, 224, 48),
+        Rect::new(8, 224, 108, 30),
+        Rect::new(124, 224, 108, 30),
+    ];
+    let tile1 = [
+        Rect::new(8, 6, 224, 24),
+        Rect::new(8, 34, 224, 38),
+        Rect::new(7, 78, 111, 52),
+        Rect::new(122, 78, 111, 52),
+        Rect::new(7, 136, 111, 52),
+        Rect::new(122, 136, 111, 52),
+        Rect::new(7, 194, 111, 52),
+        Rect::new(122, 194, 111, 52),
+    ];
+    let tile2 = [
+        Rect::new(8, 6, 224, 24),
+        Rect::new(8, 34, 224, 86),
+        Rect::new(8, 126, 224, 86),
+        Rect::new(8, 218, 108, 34),
+        Rect::new(124, 218, 108, 34),
+    ];
+    for tile in [&tile0[..], &tile1[..], &tile2[..]] {
+        for r in tile {
+            assert!(VIEWPORT.contains_rect(r));
+        }
+        for i in 0..tile.len() {
+            for j in (i + 1)..tile.len() {
+                assert!(!tile[i].intersects(&tile[j]));
+            }
+        }
+    }
 }
 
 pub fn test_10000_point_button_hit_test() {
@@ -109,11 +147,30 @@ pub fn test_serial_protocol_fuzzing() {
     let long_app = "A".repeat(500);
     let truncated: String = long_app.chars().take(31).collect();
     assert_eq!(truncated.len(), 31);
+
+    let process_buttons = |labels: &[&str]| -> Vec<String> {
+        let mut out = Vec::with_capacity(6);
+        for i in 0..6 {
+            if let Some(&lbl) = labels.get(i) {
+                out.push(lbl.chars().take(19).collect());
+            } else {
+                out.push("-".to_string());
+            }
+        }
+        out
+    };
+    let many: Vec<&str> = (0..100).map(|_| "Btn").collect();
+    assert_eq!(process_buttons(&many).len(), 6);
+    let two = process_buttons(&["One", "Two"]);
+    assert_eq!(two, vec!["One", "Two", "-", "-", "-", "-"]);
+    let empty = process_buttons(&[]);
+    assert_eq!(empty, vec!["-", "-", "-", "-", "-", "-"]);
 }
 
 pub fn test_memory_and_flash_headroom() {
     let total_ram = 327_680usize;
     let used_ram = 83_040usize;
+    let dma_buffer_size = 240 * 40 * 2usize;
     let total_flash = 6_553_600usize;
     let used_flash = 591_737usize;
     let lvgl_pool = 48 * 1024usize;
@@ -122,6 +179,7 @@ pub fn test_memory_and_flash_headroom() {
     assert!((used_ram as f64 / total_ram as f64) < 0.50);
     assert!((used_flash as f64 / total_flash as f64) < 0.25);
     assert!(estimated_lvgl_widgets_bytes < lvgl_pool);
+    assert!(total_ram - used_ram - dma_buffer_size > 200_000);
 }
 
 pub fn run_suite() -> usize {

@@ -5,12 +5,26 @@ import Foundation
 
 /// Something the person can ask for by name, from the command bar (⌘J, part 4.7).
 public struct CourierCommand: Identifiable {
+    public enum Category: String, Equatable, Sendable {
+        case inbox
+        case search
+        case message
+        case accounts
+        case chatInfo
+    }
+
     /// The inventory ledger's name for it, in English, which never changes with the language.
     public let id: String
     /// What the person reads.
     public let title: String
     /// The shortcut as the menu shows it, when it has one.
     public let keys: String?
+    /// The primary shortcut key character, when applicable.
+    public let key: String?
+    /// The modifier flags for `key`, when applicable.
+    public let modifiers: KeyModifiers
+    /// The command bar category this command belongs to.
+    public let category: Category
     /// What to ask the person before running it, when it changes many chats at once; nil when it just runs. The
     /// command bar shows it with the command's title and runs the command only after a yes.
     public let confirmation: String?
@@ -18,6 +32,28 @@ public struct CourierCommand: Identifiable {
     public let isEnabled: @MainActor () -> Bool
     /// Does it. What takes the engine is started and not waited for.
     public let run: @MainActor () -> Void
+
+    public init(
+        id: String,
+        title: String,
+        keys: String?,
+        key: String? = nil,
+        modifiers: KeyModifiers = [],
+        category: Category = .message,
+        confirmation: String?,
+        isEnabled: @escaping @MainActor () -> Bool,
+        run: @escaping @MainActor () -> Void
+    ) {
+        self.id = id
+        self.title = title
+        self.keys = keys
+        self.key = key
+        self.modifiers = modifiers
+        self.category = category
+        self.confirmation = confirmation
+        self.isEnabled = isEnabled
+        self.run = run
+    }
 }
 
 /// The inbox's and search's commands, registered here for the command bar, which part 4.7 builds.
@@ -302,6 +338,44 @@ public enum CommandSet {
                 }
             }
         }
+    }
+
+    /// `hotkey Message: Send GIF` (`⌘⇧G`, `id: "message.sendGIF"`): opens `GIFPickerPopover` in the active composer.
+    @MainActor
+    public static func sendGIF(_ composer: ComposerModel) -> CourierCommand {
+        CourierCommand(
+            id: "message.sendGIF",
+            title: String(localized: "Send GIF"),
+            keys: "⌘⇧G",
+            key: "g",
+            modifiers: [.command, .shift],
+            category: .message,
+            confirmation: nil,
+            isEnabled: { composer.canSendGIF },
+            run: { _ = composer.openGIFPicker() }
+        )
+    }
+
+    /// `hotkey Message: Send Sticker` (`⌘⌥⇧S`, `id: "message.sendSticker"`): opens `StickerPickerPopover` in the active composer.
+    @MainActor
+    public static func sendSticker(_ composer: ComposerModel) -> CourierCommand {
+        CourierCommand(
+            id: "message.sendSticker",
+            title: String(localized: "Send Sticker"),
+            keys: "⌘⌥⇧S",
+            key: "s",
+            modifiers: [.command, .option, .shift],
+            category: .message,
+            confirmation: nil,
+            isEnabled: { composer.canSendSticker },
+            run: { _ = composer.openStickerPicker() }
+        )
+    }
+
+    /// Composer media commands (`message.sendGIF` and `message.sendSticker`) under `.message` category.
+    @MainActor
+    public static func composerMedia(_ composer: ComposerModel) -> [CourierCommand] {
+        [sendGIF(composer), sendSticker(composer)]
     }
 
     /// Something in the space shown is unread. The bar's count says so for the whole space; the chats loaded say so

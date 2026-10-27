@@ -30,22 +30,14 @@ also where its delivery() unit is declared.
                                        # changed chart to GHCR
 """
 
-load("@aspect_rules_py//py:defs.bzl", "py_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("//tools/delivery:defs.bzl", "delivery")
 
 # gazelle:ignore
 
-exports_files(["publish.sh"])
-
-# The break-glass entry point. CI runs the SAME script directly
-# (`bash tools/charts/publish.sh`, no Bazel on the runner's critical path);
-# this target is what makes the delivery() declaration below nameable and what
-# the runbook points at when Actions is unavailable. It is the Rust port in
-# src/ (publish.sh's scoping, walk, helm calls and exit codes, held to the
-# script by the parity test below); the script itself stays runnable as
-# :publish-sh.
+# The break-glass entry point. This target is what makes the delivery()
+# declaration below nameable and what the runbook points at when Actions is
+# unavailable.
 rust_library(
     name = "charts_lib",
     srcs = ["src/lib.rs"],
@@ -80,12 +72,6 @@ rust_binary(
     ]
 ]
 
-sh_binary(
-    name = "publish-sh",
-    srcs = ["publish.sh"],
-    visibility = ["//visibility:public"],
-)
-
 # The #[cfg(test)] unit tests in src/.
 rust_test(
     name = "charts_lib_test",
@@ -95,23 +81,9 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
-# Script and binary side by side on every case in publish_rs_parity_test.py
-# (fake git and helm): exit code, stdout, stderr and every helm call, byte
-# for byte, under every bash on the machine.
-py_test(
-    name = "publish_rs_parity_test",
-    size = "medium",
-    srcs = ["publish_rs_parity_test.py"],
-    data = [
-        "publish.sh",
-        ":publish",
-    ],
-    env = {
-        "PUBLISH_RS": "$(rootpath :publish)",
-        "PUBLISH_SH": "$(rootpath publish.sh)",
-    },
-    main = "publish_rs_parity_test.py",
-    deps = ["//tools/shell-compat:parity_harness"],
+test_suite(
+    name = "publish_test",
+    tests = [":charts_lib_test"],
 )
 
 # Delivery unit (delivery-orchestrator PHASE 2, Wave B2). The generated

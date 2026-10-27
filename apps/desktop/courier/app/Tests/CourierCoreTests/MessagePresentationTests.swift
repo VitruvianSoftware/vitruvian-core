@@ -212,4 +212,217 @@ final class MessagePresentationTests: XCTestCase {
         XCTAssertEqual(RichTextLayout.spoken(rich, revealed: false), "It was the Spoiler, obviously")
         XCTAssertEqual(RichTextLayout.spoken(rich, revealed: true), "It was the butler, obviously")
     }
+
+    // MARK: Stickers and GIFs (4.5c Task 10)
+
+    func testStickerEventProducesStickerAttachmentAndSuppressesBubbleBackgroundWhileKeepingReactionsTimestampAndReplyHeader() {
+        let baseTS = Int64(now.timeIntervalSince1970 * 1000) - 120_000
+        let quoteEvent = Event(
+            eventID: "$quote-1",
+            roomID: "!a",
+            sender: "@ann:example.test",
+            senderName: "Ann Example",
+            mine: false,
+            type: "m.room.message",
+            content: .object(["msgtype": .string("m.text"), "body": .string("See you on the trail!")]),
+            ts: baseTS,
+            seq: 1,
+            status: .sent
+        )
+        let stickerTS = baseTS + 15_000
+        let stickerEvent = stickerEventFixture(
+            id: "$sticker-1",
+            room: "!a",
+            mine: true,
+            ts: stickerTS,
+            seq: 2,
+            name: "Party Parrot",
+            emoji: "🦜",
+            mediaURL: "mxc://courier.local/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            mimeType: "image/webp",
+            width: 128,
+            height: 128,
+            size: 4096,
+            replyTo: "$quote-1"
+        )
+        let reactionEvent = Event(
+            eventID: "$react-1",
+            roomID: "!a",
+            sender: "@ann:example.test",
+            senderName: "Ann Example",
+            mine: false,
+            type: "m.reaction",
+            content: .object([
+                "m.relates_to": .object([
+                    "rel_type": .string("m.annotation"),
+                    "event_id": .string("$sticker-1"),
+                    "key": .string("🎉"),
+                ]),
+            ]),
+            ts: stickerTS + 2_000,
+            seq: 3,
+            status: .sent
+        )
+
+        let builtRows: [MessageRow] = Timeline.build(
+            events: [quoteEvent, stickerEvent, reactionEvent],
+            me: Timeline.meUserID,
+            now: now
+        ).compactMap { if case let .message(m) = $0 { m } else { nil } }
+
+        XCTAssertEqual(builtRows.count, 2)
+        let textRow = builtRows[0]
+        let stickerRow = builtRows[1]
+
+        XCTAssertNil(textRow.sticker)
+        XCTAssertFalse(textRow.suppressesBubbleBackground)
+
+        XCTAssertEqual(stickerRow.kind, .sticker)
+        XCTAssertEqual(
+            stickerRow.sticker,
+            StickerAttachment(
+                mediaURL: "mxc://courier.local/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                name: "Party Parrot",
+                emoji: "🦜",
+                mimeType: "image/webp",
+                width: 128,
+                height: 128
+            )
+        )
+        XCTAssertTrue(stickerRow.suppressesBubbleBackground, "m.sticker suppresses the coloured text bubble background")
+        XCTAssertEqual(stickerRow.ts, stickerTS, "sticker keeps its timestamp")
+        XCTAssertEqual(stickerRow.reactions, [ReactionChip(key: "🎉", count: 1, mine: false)], "sticker keeps its reactions")
+        XCTAssertEqual(
+            stickerRow.reply,
+            .quoted(QuotedMessage(eventID: "$quote-1", senderName: "Ann Example", mine: false, text: "See you on the trail!", kind: .text)),
+            "sticker keeps its reply header"
+        )
+
+        // Redacted and view-once events stay hidden as before.
+        let redaction = Event(
+            eventID: "$red-1",
+            roomID: "!a",
+            sender: Timeline.meUserID,
+            senderName: "me",
+            mine: true,
+            type: "m.room.redaction",
+            content: .object(["redacts": .string("$sticker-1")]),
+            ts: stickerTS + 5_000,
+            seq: 4,
+            status: .sent
+        )
+        let redactedRows: [MessageRow] = Timeline.build(
+            events: [stickerEvent, redaction],
+            me: Timeline.meUserID,
+            now: now
+        ).compactMap { if case let .message(m) = $0 { m } else { nil } }
+        XCTAssertEqual(redactedRows.first?.kind, .deleted)
+        XCTAssertNil(redactedRows.first?.sticker)
+        XCTAssertFalse(redactedRows.first?.suppressesBubbleBackground ?? true)
+
+        let viewOnceSticker = stickerEventFixture(
+            id: "$sticker-vo",
+            room: "!a",
+            mine: false,
+            ts: stickerTS + 10_000,
+            seq: 5,
+            viewOnce: true
+        )
+        let voRows: [MessageRow] = Timeline.build(
+            events: [viewOnceSticker],
+            me: Timeline.meUserID,
+            now: now
+        ).compactMap { if case let .message(m) = $0 { m } else { nil } }
+        XCTAssertEqual(voRows.first?.viewOnce, true)
+        XCTAssertNil(voRows.first?.sticker)
+        XCTAssertFalse(voRows.first?.suppressesBubbleBackground ?? true)
+
+        // Non-wire top-level `content["emoji"]` or `info["emoji"]` fields (never emitted by the Go engine)
+        // are ignored; only `info["fi.mau.bridged_sticker"]["emoji"]` is read.
+        var nonWireEmojiSticker = stickerEventFixture(
+            id: "$sticker-nonwire",
+            room: "!a",
+            mine: false,
+            ts: stickerTS + 15_000,
+            seq: 6,
+            emoji: nil
+        )
+        if case var .object(c) = nonWireEmojiSticker.content,
+           case var .object(infoObj) = c["info"] {
+            infoObj["emoji"] = .string("👻")
+            c["info"] = .object(infoObj)
+            c["emoji"] = .string("👻")
+            nonWireEmojiSticker.content = .object(c)
+        }
+        let nonWireRows: [MessageRow] = Timeline.build(
+            events: [nonWireEmojiSticker],
+            me: Timeline.meUserID,
+            now: now
+        ).compactMap { if case let .message(m) = $0 { m } else { nil } }
+        XCTAssertNil(nonWireRows.first?.sticker?.emoji, "Timeline must only read emoji from info.fi.mau.bridged_sticker.emoji")
+    }
+
+    func testGIFEventProducesGIFAttachmentWithOptionalCaption() {
+        let baseTS = Int64(now.timeIntervalSince1970 * 1000) - 60_000
+        let uncaptionedGIF = gifEventFixture(
+            id: "$gif-1",
+            room: "!a",
+            mine: false,
+            ts: baseTS,
+            seq: 1,
+            msgtype: "m.image",
+            fileName: "animation.gif",
+            caption: nil,
+            mediaURL: "mxc://courier.local/fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+            mimeType: "image/gif",
+            width: 320,
+            height: 240
+        )
+        let captionedGIF = gifEventFixture(
+            id: "$gif-2",
+            room: "!a",
+            mine: true,
+            ts: baseTS + 5_000,
+            seq: 2,
+            msgtype: "m.video",
+            fileName: "animation.mp4",
+            caption: "Trail summit celebration",
+            mediaURL: "mxc://courier.local/1122334455667788112233445566778811223344556677881122334455667788",
+            mimeType: "video/mp4",
+            width: 480,
+            height: 270
+        )
+
+        let rows: [MessageRow] = Timeline.build(
+            events: [uncaptionedGIF, captionedGIF],
+            me: Timeline.meUserID,
+            now: now
+        ).compactMap { if case let .message(m) = $0 { m } else { nil } }
+
+        XCTAssertEqual(rows.count, 2)
+        XCTAssertEqual(
+            rows[0].gif,
+            GIFAttachment(
+                mediaURL: "mxc://courier.local/fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+                caption: nil,
+                mimeType: "image/gif",
+                width: 320,
+                height: 240
+            )
+        )
+        XCTAssertEqual(rows[0].body, "")
+        XCTAssertFalse(rows[0].suppressesBubbleBackground)
+
+        XCTAssertEqual(
+            rows[1].gif,
+            GIFAttachment(
+                mediaURL: "mxc://courier.local/1122334455667788112233445566778811223344556677881122334455667788",
+                caption: "Trail summit celebration",
+                mimeType: "video/mp4",
+                width: 480,
+                height: 270
+            )
+        )
+        XCTAssertEqual(rows[1].body, "Trail summit celebration")
+    }
 }

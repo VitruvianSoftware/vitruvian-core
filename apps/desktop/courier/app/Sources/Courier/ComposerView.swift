@@ -4,6 +4,7 @@
 import AppKit
 import CourierCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Picks files for the composer. ⌘O and the plus menu both come here.
 @MainActor
@@ -97,6 +98,11 @@ struct ComposerView: View {
             if let reply = composer.replyTarget {
                 ReplyChip(quote: reply) { composer.cancelReply() }
             }
+            if let pendingGIF = composer.pendingGIF {
+                PendingGIFPillView(item: pendingGIF, thumbnailLoader: composer.thumbnailLoader) {
+                    composer.removePendingGIF()
+                }
+            }
             if !composer.attachments.isEmpty {
                 PendingAttachmentsStrip(
                     attachments: composer.attachments,
@@ -152,9 +158,46 @@ struct ComposerView: View {
                         .disabled(composer.roomID == nil)
                         .help(String(localized: "Record Voice Note (⌘⇧A)"))
                         .accessibilityLabel(String(localized: "Record voice note"))
+
+                        Button {
+                            _ = composer.openGIFPicker()
+                        } label: {
+                            Text(verbatim: "GIF")
+                                .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 2)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .strokeBorder(Color.primary.opacity(0.65), lineWidth: 1.2)
+                                )
+                                .frame(width: 28, height: 28)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!composer.canSendGIF)
+                        .help(composer.canSendGIF ? String(localized: "Send GIF (⌘⇧G)") : composer.sendGIFMenuTitle)
+                        .accessibilityLabel(String(localized: "Send GIF"))
+                        .popover(isPresented: $composer.isGIFPickerPresented, arrowEdge: .top) {
+                            GIFPickerPopover(composer: composer)
+                        }
+
+                        Button {
+                            _ = composer.openStickerPicker()
+                        } label: {
+                            Image(systemName: "sparkles.rectangle.stack")
+                                .font(.title3)
+                                .frame(width: 28, height: 28)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!composer.canSendSticker)
+                        .help(composer.canSendSticker ? String(localized: "Send Sticker (⌘⌥⇧S)") : composer.sendStickerMenuTitle)
+                        .accessibilityLabel(String(localized: "Send Sticker"))
+                        .popover(isPresented: $composer.isStickerPickerPresented, arrowEdge: .top) {
+                            StickerPickerPopover(composer: composer)
+                        }
                     }
 
                     Button {
+                        composer.openEmojiAutocomplete()
                         // The system's own picker, as ⌃⌘Space opens it.
                         NSApp.orderFrontCharacterPalette(nil)
                     } label: {
@@ -240,9 +283,35 @@ struct ComposerView: View {
         preferences.showFormattingMenu && ui.selection.length > 0 && ui.selection.location != NSNotFound
     }
 
-    /// The plus menu: Add Attachment (⌘O), and in a chat Send Later… and Create Poll….
+    static let plusMenuMediaTitles = [
+        String(localized: "Add Emoji…"),
+        String(localized: "Add GIF…"),
+        String(localized: "Add Sticker…"),
+    ]
+
+    /// The plus menu: Emoji, GIF (⌘⇧G), Sticker (⌘⌥⇧S), Add Attachment (⌘O), and in a chat Send Later… and Create Poll….
     private var plusMenu: some View {
         Menu {
+            Button(String(localized: "Add Emoji…")) {
+                composer.openEmojiAutocomplete()
+                if composer.emojiQuery == nil {
+                    NSApp.orderFrontCharacterPalette(nil)
+                }
+            }
+            .disabled(composer.roomID == nil)
+            Button(composer.addGIFMenuTitle) {
+                _ = composer.openGIFPicker()
+            }
+            .keyboardShortcut("g", modifiers: [.command, .shift])
+            .disabled(!composer.canSendGIF)
+            .help(composer.canSendGIF ? "" : composer.sendGIFMenuTitle)
+            Button(composer.addStickerMenuTitle) {
+                _ = composer.openStickerPicker()
+            }
+            .keyboardShortcut("s", modifiers: [.command, .option, .shift])
+            .disabled(!composer.canSendSticker)
+            .help(composer.canSendSticker ? "" : composer.sendStickerMenuTitle)
+            Divider()
             Button(String(localized: "Add Attachment…")) { AttachmentPicker.run(into: composer) }
             if let sendLater = menus.sendLater { sendLaterItem(sendLater) }
             if let createPoll = menus.createPoll {
@@ -315,7 +384,16 @@ struct ComposerView: View {
             QuickReplyPicker(replies: composer.quickReplyMatches, index: ui.pickerIndex) { reply in
                 composer.insertQuickReply(reply, replacing: query.range)
             }
+        } else if composer.emojiQuery != nil {
+            EmojiAutocompletePicker(composer: composer) { shortcode in
+                composer.dismissEmojiAutocomplete()
+                presentCustomEmojiImportPanel(shortcode: shortcode)
+            }
         }
+    }
+
+    private func presentCustomEmojiImportPanel(shortcode: String) {
+        StickerImportPicker.run(into: composer, shortcode: shortcode)
     }
 
     /// The people for what follows "@", once looked up; an answer for something typed since is dropped.
@@ -337,25 +415,7 @@ struct ComposerView: View {
     }
 
     private func noticeText(_ notice: ComposerNotice) -> String {
-        switch notice {
-        case let .attachmentTooLarge(name):
-            String(localized: "Could not attach \(name) — total size would exceed 90 MB.")
-        case let .attachmentsLeftOut(names):
-            names.count == 1
-                ? String(localized: "Could not put \(names[0]) back — total size would exceed 90 MB.")
-                : String(localized: "Could not put \(names.count) files back — total size would exceed 90 MB: \(names.joined(separator: ", "))")
-        case let .notAFile(name):
-            String(localized: "Could not attach \(name). Courier can send files, not folders.")
-        case let .cannotRead(name):
-            String(localized: "Could not read \(name). It may have moved, or Courier may not be allowed to open it.")
-        case .noAnswer:
-            StatusLine.mayHaveBeenSentText
-        case let .sendFailed(reason):
-            reason.isEmpty ? String(localized: "The message could not be sent.")
-                : String(localized: "The message could not be sent: \(reason)")
-        case .textTooLong:
-            String(localized: "This message is too long for this chat. Shorten it, or send it in parts.")
-        }
+        notice.displayText
     }
 }
 
@@ -420,6 +480,83 @@ struct EditBar: View {
             .accessibilityLabel(String(localized: "Cancel editing"))
         }
         .accessibilityElement(children: .contain)
+    }
+}
+
+/// Staged GIF pill shown above the composer text field when `preferences.autoSendGIFs == false`.
+private struct PendingGIFPillView: View {
+    let item: StickerItemWire
+    let thumbnailLoader: ThumbnailLoader?
+    let onRemove: () -> Void
+    @State private var loadedThumbnail: CGImage?
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.primary.opacity(0.08))
+                    .frame(width: 40, height: 40)
+
+                if let cgImage = loadedThumbnail {
+                    Image(decorative: cgImage, scale: 2.0, orientation: .up)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 40, height: 40)
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                } else if let emoji = item.emoji, !emoji.isEmpty {
+                    Text(verbatim: emoji)
+                        .font(.system(size: 20))
+                } else {
+                    Image(systemName: "play.rectangle.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 5) {
+                    Text(verbatim: "GIF")
+                        .font(.system(size: 9, weight: .bold, design: .rounded))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(Capsule().fill(Color.accentColor))
+                    Text(item.name)
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+                }
+                Text(String(localized: "Press Return to send with your caption"))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 4)
+
+            Button(action: onRemove) {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help(String(localized: "Remove GIF"))
+            .accessibilityLabel(String(localized: "Remove GIF"))
+        }
+        .padding(6)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.primary.opacity(0.05))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
+        )
+        .task(id: item.mediaURL) {
+            guard loadedThumbnail == nil,
+                  let path = ThumbnailLoader.resolveMediaPath(item.mediaURL)
+            else { return }
+            let loader = thumbnailLoader ?? .shared
+            loadedThumbnail = await loader.thumbnail(atPath: path)?.image
+        }
     }
 }
 
@@ -665,6 +802,28 @@ struct ComposerTextView: NSViewRepresentable {
         }
 
         func textView(_ textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+            if composer.emojiQuery != nil {
+                switch selector {
+                case #selector(NSResponder.moveUp(_:)):
+                    guard !composer.emojiCandidates.isEmpty else { break }
+                    composer.moveEmojiSelection(-1)
+                    return true
+                case #selector(NSResponder.moveDown(_:)):
+                    guard !composer.emojiCandidates.isEmpty else { break }
+                    composer.moveEmojiSelection(1)
+                    return true
+                case #selector(NSResponder.insertNewline(_:)), #selector(NSResponder.insertTab(_:)):
+                    guard !composer.emojiCandidates.isEmpty else { break }
+                    let idx = min(max(composer.selectedEmojiIndex, 0), composer.emojiCandidates.count - 1)
+                    composer.pickEmoji(composer.emojiCandidates[idx])
+                    return true
+                case #selector(NSResponder.cancelOperation(_:)):
+                    composer.dismissEmojiAutocomplete()
+                    return true
+                default:
+                    break
+                }
+            }
             if let picker = openPicker {
                 let ui = parent.ui
                 switch selector {

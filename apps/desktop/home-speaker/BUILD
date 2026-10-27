@@ -1,11 +1,9 @@
-load("@aspect_rules_py//py:defs.bzl", "py_test")
 load("@build_bazel_rules_apple//apple:macos.bzl", "macos_application")
 load("@build_bazel_rules_swift//swift:swift_binary.bzl", "swift_binary")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 swift_library(
     name = "HomeSpeakerCore",
@@ -134,35 +132,39 @@ genrule(
 # later (1.19.0 crashed there), and `bin/tool --claude-stop-hook` must answer
 # `{}` and exit 0. It starts the real program (bin/tool, from :tool-folder
 # below).
-py_test(
+rust_test(
     name = "tool_conformance_test",
     size = "medium",
-    srcs = ["tool/conformance_test.py"],
-    args = [
-        "$(rootpath built/homespeaker/vitruvian-tool.json)",
-        "$(rootpath //packages/vitruvian-sdk:conformance/conformance.py)",
-        "$(rootpath //packages/vitruvian-sdk:vitruvian-tool)",
-    ],
+    srcs = ["tool/src/conformance_test.rs"],
     data = [
         "built/homespeaker/vitruvian-tool.json",
         ":tool-folder",
-        "//packages/vitruvian-sdk:conformance/conformance.py",
+        "//packages/vitruvian-sdk:conformance_rs",
         "//packages/vitruvian-sdk:vitruvian-tool",
     ],
-    main = "tool/conformance_test.py",
+    edition = "2021",
+    env = {
+        "MANIFEST_PATH": "$(rootpath built/homespeaker/vitruvian-tool.json)",
+        "CONFORMANCE_BIN": "$(rootpath //packages/vitruvian-sdk:conformance_rs)",
+        "VALIDATE_BIN": "$(rootpath //packages/vitruvian-sdk:vitruvian-tool)",
+    },
     tags = [
         "block-network",
         "manual",
     ],
     target_compatible_with = ["@platforms//os:macos"],
+    deps = [
+        "//packages/vitruvian-sdk:conformance_rs_lib",
+        "@crates//:serde_json",
+    ],
 )
 
 # The tool's version is the app's, in the manifest, the tool's Version.swift
 # and the app's; and release-please writes all three. Not tied to macOS.
-py_test(
+rust_test(
     name = "tool_version_test",
     size = "small",
-    srcs = ["tool/version_test.py"],
+    srcs = ["tool/src/version_test.rs"],
     data = [
         "Package.swift",
         "Sources/HomeSpeakerCore/Version.swift",
@@ -170,7 +172,11 @@ py_test(
         "release-please-config.json",
         "tool/vitruvian-tool.json",
     ],
-    main = "tool/version_test.py",
+    edition = "2021",
+    deps = [
+        "//packages/vitruvian-sdk:conformance_rs_lib",
+        "@crates//:serde_json",
+    ],
 )
 
 macos_application(
@@ -184,56 +190,12 @@ macos_application(
     deps = [":HomeSpeakerLib"],
 )
 
-# The release's zip of the tool (scripts/zip-tool.sh), against a stand-in
-# binary: what it holds, what it is called, and the version it refuses.
-# macOS-only and `manual`, as sync_secrets_test is, for the same reasons.
-sh_test(
-    name = "zip_tool_test",
-    size = "small",
-    srcs = ["scripts/zip-tool_test.sh"],
-    data = [
-        "scripts/zip-tool.sh",
-        "tool/vitruvian-tool.json",
-    ],
-    tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
-)
-
-# publish.sh must fail when the packaging helper fails, or exits 0 having made
-# nothing (HomeSpeaker 1.12.0 and 1.13.0 shipped with no files that way). The
-# real publish.sh, with stand-ins for swift, lipo, ditto and the helper, so
-# unlike its neighbours it needs no Mac and is NOT `manual`: the Linux lane
-# runs it on every change. The macOS lane in ci.yaml also names it, with
-# REQUIRE_BASH32=1, because only there is /bin/bash the 3.2 the release
-# runner uses.
-sh_test(
-    name = "publish_test",
-    size = "small",
-    srcs = ["scripts/publish_test.sh"],
-    data = ["scripts/publish.sh"],
-)
-
 # `bazel run //apps/desktop/home-speaker:sync-secrets` -- put HomeSpeaker's
 # Slack user token on this Mac from Bitwarden, so the vault is the only place
 # it lives. Uses the session //tools/sync-env-secrets:unlock caches.
 sh_binary(
     name = "sync-secrets",
     srcs = ["scripts/sync-secrets.sh"],
-)
-
-# Runs against a fake `bw` and a temp secrets file: no vault, no real app.
-# macOS-only, like HomeSpeakerTests above: it needs jq, which the Linux remote
-# executors do not have, and the script it tests only makes sense on a Mac.
-# `manual` keeps it out of //tools/pipeline:plan's affected-test query (which
-# excludes manual) so the Linux lane never names it; the macOS lane in ci.yaml
-# runs it by explicit label, which ignores `manual`.
-sh_test(
-    name = "sync_secrets_test",
-    size = "small",
-    srcs = ["scripts/sync-secrets_test.sh"],
-    data = ["scripts/sync-secrets.sh"],
-    tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
 )
 
 # --- Rust ports ---------------------------------------------------------------
@@ -262,6 +224,11 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
+test_suite(
+    name = "zip_tool_test",
+    tests = [":zip_tool_lib_test"],
+)
+
 rust_library(
     name = "sync_secrets_lib",
     srcs = ["scripts/src/sync_secrets/lib.rs"],
@@ -284,6 +251,11 @@ rust_test(
     crate = ":sync_secrets_lib",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
+)
+
+test_suite(
+    name = "sync_secrets_test",
+    tests = [":sync_secrets_lib_test"],
 )
 
 rust_library(
@@ -310,49 +282,7 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
-# --- Rust ports of tool verification tests -----------------------------------
-
-rust_test(
-    name = "tool_version_rs_test",
-    size = "small",
-    srcs = ["tool/src/version_test.rs"],
-    data = [
-        "Package.swift",
-        "Sources/HomeSpeakerCore/Version.swift",
-        "Sources/HomeSpeakerToolCore/Version.swift",
-        "release-please-config.json",
-        "tool/vitruvian-tool.json",
-    ],
-    edition = "2021",
-    deps = [
-        "//packages/vitruvian-sdk:conformance_rs_lib",
-        "@crates//:serde_json",
-    ],
-)
-
-rust_test(
-    name = "tool_conformance_rs_test",
-    size = "medium",
-    srcs = ["tool/src/conformance_test.rs"],
-    data = [
-        "built/homespeaker/vitruvian-tool.json",
-        ":tool-folder",
-        "//packages/vitruvian-sdk:conformance_rs",
-        "//packages/vitruvian-sdk:vitruvian-tool",
-    ],
-    edition = "2021",
-    env = {
-        "MANIFEST_PATH": "$(rootpath built/homespeaker/vitruvian-tool.json)",
-        "CONFORMANCE_BIN": "$(rootpath //packages/vitruvian-sdk:conformance_rs)",
-        "VALIDATE_BIN": "$(rootpath //packages/vitruvian-sdk:vitruvian-tool)",
-    },
-    tags = [
-        "block-network",
-        "manual",
-    ],
-    target_compatible_with = ["@platforms//os:macos"],
-    deps = [
-        "//packages/vitruvian-sdk:conformance_rs_lib",
-        "@crates//:serde_json",
-    ],
+test_suite(
+    name = "publish_test",
+    tests = [":publish_lib_test"],
 )

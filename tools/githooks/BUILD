@@ -24,18 +24,10 @@
 
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 exports_files([
-    "check-config.sh",
     "pre-commit",
 ])
-
-sh_binary(
-    name = "check-config-sh",
-    srcs = ["check-config.sh"],
-    visibility = ["//visibility:public"],
-)
 
 sh_binary(
     name = "pre-commit-sh",
@@ -107,20 +99,12 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
-sh_test(
-    name = "githooks_parity_test",
-    size = "small",
-    srcs = ["githooks_parity_test.sh"],
-    args = [
-        "$(rootpath check-config.sh)",
-        "$(rootpath :check_config)",
-        "$(rootpath pre-commit)",
-        "$(rootpath :pre_commit)",
-    ],
-    data = [
-        "check-config.sh",
-        "pre-commit",
-        ":check_config",
-        ":pre_commit",
-    ],
+test_suite(
+    name = "githooks_test",
+    tests = [":githooks_lib_test"],
+)
+
+test_suite(
+    name = "check_config_test",
+    tests = [":githooks_lib_test"],
 )

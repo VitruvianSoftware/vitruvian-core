@@ -161,4 +161,9 @@ jobs:
         run: python3 -m pip install --disable-pip-version-check --quiet pyyaml
 
       - name: Run rule unit tests
-        run: bash tools/ci/prometheus-rule-tests/run.sh
+        run: |
+          set -euo pipefail
+          rustc --edition 2021 --crate-type lib --crate-name shell_compat tools/shell-compat/src/lib.rs -o "$RUNNER_TEMP/libshell_compat.rlib"
+          rustc --edition 2021 --crate-type lib --crate-name prometheus_rule_tests tools/ci/prometheus-rule-tests/src/lib.rs -L "$RUNNER_TEMP" --extern shell_compat="$RUNNER_TEMP/libshell_compat.rlib" -o "$RUNNER_TEMP/libprometheus_rule_tests.rlib"
+          rustc --edition 2021 tools/ci/prometheus-rule-tests/src/main.rs -L "$RUNNER_TEMP" --extern shell_compat="$RUNNER_TEMP/libshell_compat.rlib" --extern prometheus_rule_tests="$RUNNER_TEMP/libprometheus_rule_tests.rlib" -o "$RUNNER_TEMP/run"
+          "$RUNNER_TEMP/run"

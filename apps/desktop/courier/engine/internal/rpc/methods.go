@@ -193,6 +193,8 @@ var methods = map[string]handler{
 	"message.sendFile":     messageSendFile,
 	"message.sendVoice":    messageSendVoice,
 	"message.sendLocation": messageSendLocation,
+	"message.sendSticker":  messageSendSticker,
+	"message.sendGIF":      messageSendGIF,
 	"message.markPlayed":   messageMarkPlayed,
 	"message.react":        messageReact,
 	"message.retry":        messageRetry,
@@ -277,6 +279,10 @@ var methods = map[string]handler{
 
 	// Search (search.go).
 	"search.query": searchQuery,
+
+	// Stickers & custom emoji catalog (stickers.go).
+	"stickers.list":   stickersList,
+	"stickers.import": stickersImport,
 }
 
 var errMissing = errors.New("a dependency this method needs is missing")

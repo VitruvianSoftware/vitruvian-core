@@ -83,7 +83,8 @@ impl FirmwareNvsSim {
     }
 
     pub fn handle_serial_line(&mut self, line: &str) -> bool {
-        let msg_type = match json_extract_str(line, "type") {
+        let msg_type = json_extract_str(line, "type").or_else(|| json_extract_str(line, "cmd"));
+        let msg_type = match msg_type {
             Some(t) => t,
             None => return false,
         };
@@ -91,7 +92,9 @@ impl FirmwareNvsSim {
             return false;
         }
         let ssid = json_extract_str(line, "ssid").unwrap_or_default();
-        let password = json_extract_str(line, "password").unwrap_or_default();
+        let password = json_extract_str(line, "password")
+            .or_else(|| json_extract_str(line, "pass"))
+            .unwrap_or_default();
         if ssid.is_empty() || ssid.len() > 32 || password.len() > 63 {
             self.tx_lines.push(
                 "{\"type\":\"wifi_status\",\"connected\":false,\"error\":\"invalid_length\"}"
@@ -105,12 +108,72 @@ impl FirmwareNvsSim {
         );
         self.store
             .insert(("wifi_config".to_string(), "pass".to_string()), password);
+        self.store.insert(
+            ("wifi_config".to_string(), "enabled".to_string()),
+            "true".to_string(),
+        );
         self.connected_ssid = Some(ssid.clone());
         self.tx_lines.push(format!(
             "{{\"type\":\"wifi_status\",\"connected\":true,\"ssid\":\"{ssid}\",\"ip\":\"192.168.1.42\"}}"
         ));
         true
     }
+
+    pub fn power_cycle(&mut self) {
+        self.connected_ssid = None;
+        if self
+            .store
+            .get(&("wifi_config".to_string(), "enabled".to_string()))
+            .map(|v| v == "true")
+            .unwrap_or(false)
+        {
+            if let Some(ssid) = self
+                .store
+                .get(&("wifi_config".to_string(), "ssid".to_string()))
+                .cloned()
+            {
+                if !ssid.is_empty() {
+                    self.connected_ssid = Some(ssid);
+                }
+            }
+        }
+    }
+
+    pub fn disable_radio(&mut self) {
+        self.store.insert(
+            ("wifi_config".to_string(), "enabled".to_string()),
+            "false".to_string(),
+        );
+        self.connected_ssid = None;
+    }
+}
+
+pub fn firmware_dispatch(line: &str) -> &'static str {
+    let trimmed = line.trim();
+    if !trimmed.starts_with('{') || !trimmed.ends_with('}') {
+        return "ignored";
+    }
+    if let Some(cmd) = json_extract_str(trimmed, "cmd") {
+        if cmd == "wifi_set" {
+            return "wifi_set";
+        }
+        if cmd == "wifi_status" || cmd == "radio_status" {
+            return "radio_status_query";
+        }
+    }
+    if let Some(pkt_type) = json_extract_str(trimmed, "type") {
+        return match pkt_type.as_str() {
+            "stats" => "stats",
+            "app" => "app",
+            "agent_ci" => "agent_ci",
+            "deck_config" => "deck_config",
+            _ => "ignored",
+        };
+    }
+    if trimmed.contains("\"cpu\"") {
+        return "stats";
+    }
+    "ignored"
 }
 
 pub fn parse_networksetup_ssid(output: &str) -> Option<String> {
@@ -171,6 +234,33 @@ pub fn test_ssid_and_payload_serialization() {
         json_extract_str(&payload, "password").as_deref(),
         Some("p\"a\\ss")
     );
+
+    // Also verify mac_stats_daemon's exported helpers directly
+    assert_eq!(
+        mac_stats_daemon::parse_networksetup_ssid("Current Wi-Fi Network: Vitruvian-5G\n")
+            .as_deref(),
+        Some("Vitruvian-5G")
+    );
+    assert_eq!(
+        mac_stats_daemon::parse_ipconfig_ssid("  SSID : BackupLabWiFi\n").as_deref(),
+        Some("BackupLabWiFi")
+    );
+    let daemon_payload = mac_stats_daemon::build_wifi_set_payload("HomeNet", "p\"a\\ss");
+    assert_eq!(
+        json_extract_str(&daemon_payload, "cmd").as_deref(),
+        Some("wifi_set")
+    );
+    assert_eq!(
+        json_extract_str(&daemon_payload, "ssid").as_deref(),
+        Some("HomeNet")
+    );
+    assert_eq!(
+        json_extract_str(&daemon_payload, "pass").as_deref(),
+        Some("p\"a\\ss")
+    );
+    let daemon_pkt = mac_stats_daemon::serialize_wifi_set_packet("HomeNet", "pw");
+    assert!(daemon_pkt.ends_with(b"\n"));
+    assert!(daemon_pkt.len() < 1024);
 }
 
 pub fn test_zero_typing_companion_sync() {
@@ -226,9 +316,59 @@ pub fn test_firmware_nvs_and_80211_bounds() {
     assert!(sim.handle_serial_line(&build_wifi_set_payload("TestNet", &pass_63)));
     assert!(!sim.handle_serial_line(&build_wifi_set_payload("TestNet", &pass_64)));
 
+    let emoji_8 = "📡".repeat(8);
+    assert_eq!(emoji_8.len(), 32);
+    assert!(sim.handle_serial_line(&build_wifi_set_payload(&emoji_8, "pass")));
+
     let emoji_ssid = "📡".repeat(9);
     assert_eq!(emoji_ssid.len(), 36);
     assert!(!sim.handle_serial_line(&build_wifi_set_payload(&emoji_ssid, "pass")));
+
+    // Power-cycle persistence, reprovisioning, and radio disable
+    let mut nvs_sim = FirmwareNvsSim::new();
+    assert!(
+        nvs_sim.handle_serial_line(&mac_stats_daemon::build_wifi_set_payload(
+            "OfficeWiFi",
+            "hunter2"
+        ))
+    );
+    assert_eq!(nvs_sim.connected_ssid.as_deref(), Some("OfficeWiFi"));
+    nvs_sim.power_cycle();
+    assert_eq!(nvs_sim.connected_ssid.as_deref(), Some("OfficeWiFi"));
+    assert!(
+        nvs_sim.handle_serial_line(&mac_stats_daemon::build_wifi_set_payload(
+            "HomeWiFi",
+            "newsecret"
+        ))
+    );
+    nvs_sim.power_cycle();
+    assert_eq!(nvs_sim.connected_ssid.as_deref(), Some("HomeWiFi"));
+    nvs_sim.disable_radio();
+    nvs_sim.power_cycle();
+    assert!(nvs_sim.connected_ssid.is_none());
+
+    // Firmware dispatch priority
+    assert_eq!(
+        firmware_dispatch(r#"{"cmd":"wifi_set","type":"stats","ssid":"X","pass":"Y"}"#),
+        "wifi_set"
+    );
+    assert_eq!(
+        firmware_dispatch(r#"{"cmd":"wifi_status"}"#),
+        "radio_status_query"
+    );
+    assert_eq!(
+        firmware_dispatch(r#"{"cmd":"radio_status"}"#),
+        "radio_status_query"
+    );
+    assert_eq!(firmware_dispatch(r#"{"type":"stats","cpu":10}"#), "stats");
+    assert_eq!(firmware_dispatch(r#"{"cpu":5}"#), "stats");
+    assert_eq!(firmware_dispatch(r#"{"type":"app"}"#), "app");
+    assert_eq!(firmware_dispatch(r#"{"type":"agent_ci"}"#), "agent_ci");
+    assert_eq!(
+        firmware_dispatch(r#"{"type":"deck_config"}"#),
+        "deck_config"
+    );
+    assert_eq!(firmware_dispatch(r#"{"type":"unknown"}"#), "ignored");
 }
 
 pub fn run_suite() -> usize {

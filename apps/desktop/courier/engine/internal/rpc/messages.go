@@ -13,6 +13,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -158,11 +161,21 @@ type chatFeatures struct {
 	FileFeatures           *actions.FileKindFeatures `json:"file_features,omitempty"`
 	GIFFeatures            *actions.FileKindFeatures `json:"gif_features,omitempty"`
 	StickerFeatures        *actions.FileKindFeatures `json:"sticker_features,omitempty"`
+	Sticker                actions.MediaCapFeature   `json:"sticker"`
+	GIF                    actions.MediaCapFeature   `json:"gif"`
 	LocationSupported      bool                      `json:"location_supported"`
 	LinkPreviewsSupported  bool                      `json:"link_previews_supported"`
 }
 
 func (d *Deps) toChatFeatures(ctx context.Context, roomID string, f actions.Features) (chatFeatures, error) {
+	sticker := f.Sticker
+	if sticker.MimeTypes == nil {
+		sticker.MimeTypes = []string{}
+	}
+	gif := f.GIF
+	if gif.MimeTypes == nil {
+		gif.MimeTypes = []string{}
+	}
 	out := chatFeatures{
 		Reply: f.Reply, Thread: f.Thread, ReplyIsThread: f.ReplyIsThread, Edit: f.Edit,
 		EditMaxAgeMS: f.EditMaxAge.Milliseconds(), EditMaxCount: f.EditMaxCount, Unsend: f.Unsend,
@@ -176,7 +189,7 @@ func (d *Deps) toChatFeatures(ctx context.Context, roomID string, f actions.Feat
 		CanLeave: f.CanLeave, CanDelete: f.CanDelete, DeleteLeavesGroup: f.DeleteLeavesGroup,
 		ImageFeatures: f.ImageFeatures, VideoFeatures: f.VideoFeatures, AudioFeatures: f.AudioFeatures,
 		VoiceFeatures: f.VoiceFeatures, FileFeatures: f.FileFeatures, GIFFeatures: f.GIFFeatures,
-		StickerFeatures: f.StickerFeatures, LocationSupported: f.LocationSupported,
+		StickerFeatures: f.StickerFeatures, Sticker: sticker, GIF: gif, LocationSupported: f.LocationSupported,
 		LinkPreviewsSupported: f.LinkPreviewsSupported,
 	}
 	if f.Poll != nil {
@@ -904,4 +917,125 @@ func populateEventMedia(ctx context.Context, d *Deps, e store.Event, ev *eventJS
 	ev.GeoURI = e.GeoURI
 	ev.LinkPreviews = toLinkPreviews(e.LinkPreviews)
 	ev.Played = e.Played
+}
+
+func validateMediaPathOrURL(path, mediaURL string) error {
+	if path == "" && mediaURL == "" {
+		return invalidParams("path or media_url is required")
+	}
+	if path != "" {
+		if !filepath.IsAbs(path) {
+			return invalidParams("path must be absolute")
+		}
+		if fi, err := os.Stat(path); err != nil || !fi.Mode().IsRegular() {
+			return invalidParams("path is not a file that can be read")
+		}
+	}
+	return nil
+}
+
+func messageSendSticker(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
+	var p struct {
+		RoomID         *string                    `json:"room_id"`
+		Path           string                     `json:"path"`
+		MediaURL       string                     `json:"media_url"`
+		Name           string                     `json:"name"`
+		Emoji          string                     `json:"emoji"`
+		MimeType       string                     `json:"mime_type"`
+		BridgedSticker *actions.BridgedStickerRef `json:"bridged_sticker"`
+		ReplyTo        string                     `json:"reply_to"`
+		ThreadRoot     string                     `json:"thread_root"`
+		HoldMS         *int64                     `json:"hold_ms"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	if err := required("room_id", p.RoomID); err != nil {
+		return nil, err
+	}
+	if err := validateMediaPathOrURL(p.Path, p.MediaURL); err != nil {
+		return nil, err
+	}
+	hold, err := d.hold(p.HoldMS)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := d.queueableRoom(ctx, *p.RoomID); err != nil {
+		return nil, err
+	}
+	if err := d.replyAndThread(ctx, *p.RoomID, p.ReplyTo, p.ThreadRoot); err != nil {
+		return nil, err
+	}
+	res, err := d.Actions.SendSticker(ctx, actions.SendStickerReq{
+		RoomID:         *p.RoomID,
+		Path:           p.Path,
+		MediaURL:       p.MediaURL,
+		Name:           p.Name,
+		Emoji:          p.Emoji,
+		MimeType:       p.MimeType,
+		BridgedSticker: p.BridgedSticker,
+		ReplyTo:        p.ReplyTo,
+		ThreadRoot:     p.ThreadRoot,
+		HoldMillis:     int(hold.Milliseconds()),
+	})
+	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, fs.ErrPermission) {
+		return nil, invalidParams("path is not a file that can be read")
+	}
+	if err != nil {
+		return nil, err
+	}
+	if hold > 0 {
+		d.poke()
+	}
+	return sent{EventID: res.EventID}, nil
+}
+
+func messageSendGIF(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
+	var p struct {
+		RoomID     *string `json:"room_id"`
+		Path       string  `json:"path"`
+		MediaURL   string  `json:"media_url"`
+		Caption    string  `json:"caption"`
+		ReplyTo    string  `json:"reply_to"`
+		ThreadRoot string  `json:"thread_root"`
+		HoldMS     *int64  `json:"hold_ms"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	if err := required("room_id", p.RoomID); err != nil {
+		return nil, err
+	}
+	if err := validateMediaPathOrURL(p.Path, p.MediaURL); err != nil {
+		return nil, err
+	}
+	hold, err := d.hold(p.HoldMS)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := d.queueableRoom(ctx, *p.RoomID); err != nil {
+		return nil, err
+	}
+	if err := d.replyAndThread(ctx, *p.RoomID, p.ReplyTo, p.ThreadRoot); err != nil {
+		return nil, err
+	}
+	res, err := d.Actions.SendGIF(ctx, actions.SendGIFReq{
+		RoomID:     *p.RoomID,
+		Path:       p.Path,
+		MediaURL:   p.MediaURL,
+		Caption:    p.Caption,
+		ReplyTo:    p.ReplyTo,
+		ThreadRoot: p.ThreadRoot,
+		HoldMillis: int(hold.Milliseconds()),
+	})
+	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, fs.ErrPermission) {
+		return nil, invalidParams("path is not a file that can be read")
+	}
+	if err != nil {
+		return nil, err
+	}
+	if hold > 0 {
+		d.poke()
+	}
+	return sent{EventID: res.EventID}, nil
 }

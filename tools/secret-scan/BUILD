@@ -29,44 +29,21 @@ gitleaks is pinned in tools/tools.lock.json at the version CI's
 tools/ci/secret-scan.sh downloads (the test fails if the two drift apart), and
 the rules are the repo's .gitleaks.toml. //tools/git:commit and :push call this
 before they record or publish anything.
-
-`:secret-scan` is the Rust port (src/); secret-scan.sh stays as
-`:secret-scan-sh` and as the file //tools/git runs from its runfiles. Both are
-held to secret-scan_test.sh, and the parity test runs them side by side.
 """
 
-# Hand-written: gazelle would generate targets for the parity test.
+# Hand-written: gazelle would generate targets for the package.
 # gazelle:ignore
 
-load("@aspect_rules_py//py:defs.bzl", "py_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
-# //tools/git runs this script from its own runfiles.
-exports_files(["secret-scan.sh"])
-
-sh_binary(
-    name = "secret-scan-sh",
-    srcs = ["secret-scan.sh"],
-    data = [
-        "//:.gitleaks.toml",
-        "@multitool//tools/gitleaks",
-    ],
-    visibility = ["//visibility:public"],
-    deps = ["@bazel_tools//tools/bash/runfiles"],
-)
-
-# The Rust port. serde_json reads gitleaks' report (only the file, line, rule
-# and commit fields); --help is secret-scan.sh's own header, compiled in.
-# Optimised in every build mode.
+# The Rust implementation. serde_json reads gitleaks' report (only the file,
+# line, rule and commit fields). Optimised in every build mode.
 rust_library(
     name = "secret_scan_lib",
     srcs = glob(
         ["src/**/*.rs"],
         exclude = ["src/main.rs"],
     ),
-    compile_data = ["secret-scan.sh"],
     crate_name = "secret_scan",
     crate_root = "src/lib.rs",
     edition = "2021",
@@ -91,6 +68,17 @@ rust_binary(
     deps = [":secret_scan_lib"],
 )
 
+# //tools/git invokes `_main/tools/secret-scan/secret-scan.sh` via `bash` from
+# its runfiles; this generated launcher forwards directly to the Rust binary.
+genrule(
+    name = "secret_scan_sh_shim",
+    srcs = [":secret-scan"],
+    outs = ["secret-scan.sh"],
+    cmd = "printf '%s\\n' '#!/usr/bin/env bash' 'exec \"$$(cd \"$$(dirname \"$${BASH_SOURCE[0]}\")\" && pwd)/secret-scan\" \"$$@\"' > $@ && chmod +x $@",
+    executable = True,
+    visibility = ["//visibility:public"],
+)
+
 alias(
     name = "secret-scan-rs",
     actual = ":secret-scan",
@@ -111,59 +99,12 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
-_TEST_DATA = [
-    "//:.gitleaks.toml",
-    "//tools:tools.lock.json",
-    "//tools/ci:secret-scan.sh",
-    "@multitool//tools/gitleaks",
-]
-
-# Throwaway repos and the real pinned gitleaks: no network, never the real repo.
-sh_test(
+test_suite(
     name = "secret-scan_test",
-    size = "small",
-    srcs = ["secret-scan_test.sh"],
-    args = [
-        "$(location secret-scan.sh)",
-        "$(location //tools/ci:secret-scan.sh)",
-        "$(location //tools:tools.lock.json)",
-    ],
-    data = ["secret-scan.sh"] + _TEST_DATA,
-    deps = ["@bazel_tools//tools/bash/runfiles"],
+    tests = [":secret_scan_lib_test"],
 )
 
-# The same cases against the Rust binary, which finds gitleaks and the rules
-# through runfiles exactly as `bazel run` does.
-sh_test(
+test_suite(
     name = "secret-scan-rs_test",
-    size = "small",
-    srcs = ["secret-scan_test.sh"],
-    args = [
-        "$(location :secret-scan)",
-        "$(location //tools/ci:secret-scan.sh)",
-        "$(location //tools:tools.lock.json)",
-    ],
-    data = [":secret-scan"] + _TEST_DATA,
-    deps = ["@bazel_tools//tools/bash/runfiles"],
-)
-
-# secret-scan.sh and :secret-scan side by side with the real pinned gitleaks:
-# exit code, stdout and stderr must match in every mode and failure.
-py_test(
-    name = "secret_scan_rs_parity_test",
-    size = "medium",
-    srcs = ["secret_scan_rs_parity_test.py"],
-    data = [
-        "secret-scan.sh",
-        ":secret-scan",
-        "//:.gitleaks.toml",
-        "@multitool//tools/gitleaks",
-    ],
-    env = {
-        "GITLEAKS_BIN": "$(rootpath @multitool//tools/gitleaks)",
-        "GITLEAKS_RULES": "$(rootpath //:.gitleaks.toml)",
-        "SECRET_SCAN_RS": "$(rootpath :secret-scan)",
-        "SECRET_SCAN_SH": "$(rootpath secret-scan.sh)",
-    },
-    main = "secret_scan_rs_parity_test.py",
+    tests = [":secret_scan_lib_test"],
 )

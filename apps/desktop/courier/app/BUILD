@@ -79,7 +79,7 @@ swift_test(
 # broken layout before. SwiftPM's CourierViewTests is the same harness against the executable target.
 swift_test(
     name = "CourierViewTests",
-    size = "small",
+    size = "medium",
     srcs = glob(["Tests/CourierViewTests/**/*.swift"]),
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],

@@ -32,6 +32,20 @@ or `pulumi login`. The agent drives these tools, so every credential has to be a
 
 ## Two knobs on the cloud environment
 
+> **Status: the `VITRUVIAN_CLOUD_KEY` path described in this section cannot be
+> used today.** It needs a service-account key, and the org enforces
+> `iam.disableServiceAccountKeyCreation`
+> ([`gcp-org/envs/shared/org_policy.go`](../../infrastructure/pulumi/foundation/gcp-org/envs/shared/org_policy.go)),
+> so no such key can be created. Without it the session has no GCP identity
+> (`identity ✗ … not authenticated`) and **nothing is fetched from Secret
+> Manager**: every credential in `profiles.tsv` must instead be set directly on
+> the cloud environment, where a value already set wins (see below). Sessions get
+> *GCP* access keylessly — see
+> [GCP access](../../docs/admin/claude-code-cloud-sessions.md#gcp-access)
+> (`//tools/gcp-token` or Pulumi ESC). Fetching these secrets with that keyless
+> identity instead of a key is the intended direction but is not implemented;
+> until it is, the key-based text below describes the design, not the behaviour.
+
 | variable | what it is |
 | --- | --- |
 | `VITRUVIAN_PROFILE` | which profile this environment is. Selects a row of [`profiles.tsv`](profiles.tsv). Start with `all`. |
@@ -213,6 +227,9 @@ provider and no caller moves.
    `VITRUVIAN_CLOUD_KEY=<the key>`. The key is multiline JSON and the box is
    `.env` format, so base64 it onto one line: `base64 -w0 key.json`. (Only if you
    combine profiles do you need one `VITRUVIAN_CLOUD_KEY_<PROFILE>` each.)
+   **This step is currently impossible**: the org forbids creating the key (see
+   the status note under "Two knobs"). Until bootstrap can authenticate without
+   one, set the profile's credentials directly as environment variables instead.
 5. **Verify** from a session: `bazel run //tools/cloud-bootstrap:whoami`.
 
 ## What it installs, and what it deliberately does not

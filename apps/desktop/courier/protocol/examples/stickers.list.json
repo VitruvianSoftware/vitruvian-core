@@ -1,0 +1,72 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 48,
+    "method": "stickers.list",
+    "params": {
+      "refresh_bridge_packs": false
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 48,
+    "result": {
+      "packs": [
+        {
+          "id": "recent",
+          "title": "Recent",
+          "source": "recent",
+          "items": [
+            {
+              "id": "recent:$st1",
+              "pack_id": "recent",
+              "name": "Happy Cat",
+              "emoji": "😺",
+              "media_url": "courier://media/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "mime_type": "image/webp",
+              "width": 128,
+              "height": 128,
+              "usage": ["sticker"],
+              "bridged_sticker": {
+                "network": "telegram",
+                "pack_url": "https://t.me/addstickers/CatPack",
+                "id": "doc-9001"
+              }
+            }
+          ]
+        },
+        {
+          "id": "imported",
+          "title": "Imported",
+          "source": "imported",
+          "items": [
+            {
+              "id": "imported:party_parrot",
+              "pack_id": "imported",
+              "shortcode": "party_parrot",
+              "name": "Party Parrot",
+              "emoji": "🦜",
+              "media_url": "courier://media/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "mime_type": "image/png",
+              "width": 1,
+              "height": 1,
+              "usage": ["emoticon", "sticker"]
+            }
+          ]
+        }
+      ],
+      "recent_gifs": [
+        {
+          "id": "gif:$gif1",
+          "pack_id": "recent_gifs",
+          "name": "Celebration",
+          "media_url": "courier://media/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+          "mime_type": "image/gif",
+          "width": 240,
+          "height": 180,
+          "usage": ["sticker"]
+        }
+      ]
+    }
+  }
+}

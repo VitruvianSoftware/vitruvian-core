@@ -240,6 +240,42 @@ pub fn test_nvs_persistence_and_wear_dedup() {
     nvs.put_uchar("deck_cfg", "auto_rot", 0);
     assert_eq!(nvs.write_count, 1);
     assert_eq!(nvs.get_uchar("deck_cfg", "auto_rot", 1), 0);
+
+    // Coexistence with chimes_muted in settings namespace
+    nvs.put_uchar("settings", "chimes_muted", 1);
+    nvs.put_uchar("settings", "auto_rotate", 0);
+    assert_eq!(nvs.get_uchar("settings", "chimes_muted", 0), 1);
+    assert_eq!(nvs.get_uchar("settings", "auto_rotate", 1), 0);
+
+    // Auto-Rotate Settings card status label states
+    let status_text = |auto_rotate: bool, imu_ready: bool| -> &'static str {
+        if !auto_rotate {
+            "Locked: Portrait (0°)"
+        } else if imu_ready {
+            "Auto-Rotate: Enabled (QMI8658)"
+        } else {
+            "Auto-Rotate: IMU not detected"
+        }
+    };
+    assert_eq!(status_text(true, true), "Auto-Rotate: Enabled (QMI8658)");
+    assert_eq!(status_text(true, false), "Auto-Rotate: IMU not detected");
+    assert_eq!(status_text(false, true), "Locked: Portrait (0°)");
+
+    // Landscape 3x2 grid symmetry and settings card centering
+    let bw = 84;
+    let xs = [7, 98, 189];
+    let margin_left = xs[0];
+    let gap01 = xs[1] - (xs[0] + bw);
+    let gap12 = xs[2] - (xs[1] + bw);
+    let margin_right = 280 - (xs[2] + bw);
+    assert_eq!(margin_left, 7);
+    assert_eq!(gap01, 7);
+    assert_eq!(gap12, 7);
+    assert_eq!(margin_right, 7);
+
+    let card_x = |scr_w: i32| (scr_w - 224).max(16) / 2;
+    assert_eq!(card_x(240), 8);
+    assert_eq!(card_x(280), 28);
 }
 
 pub fn run_suite() -> usize {

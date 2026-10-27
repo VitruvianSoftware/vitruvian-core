@@ -463,6 +463,8 @@ func TestMessageActionTableMatchesTheBridges(t *testing.T) {
 		gotFeatures.FileFeatures = nil
 		gotFeatures.GIFFeatures = nil
 		gotFeatures.StickerFeatures = nil
+		gotFeatures.Sticker = actions.MediaCapFeature{}
+		gotFeatures.GIF = actions.MediaCapFeature{}
 		gotFeatures.LocationSupported = false
 		gotFeatures.LinkPreviewsSupported = false
 		require.Equal(t, r.want, gotFeatures, "what Courier offers in a %s", name)
@@ -776,6 +778,30 @@ func TestMediaCapabilitiesTableMatchesTheBridges(t *testing.T) {
 		require.NotNil(t, rf, name)
 		f := actions.FeaturesOf(rf)
 		network := strings.Fields(name)[0]
+
+		// Sticker and StickerFeatures, and GIF and GIFFeatures, must agree across every pinned bridge's real capabilities.
+		if f.StickerFeatures == nil {
+			require.Equal(t, actions.MediaCapFeature{MimeTypes: []string{}}, f.Sticker, "%s: Sticker vs StickerFeatures", name)
+		} else {
+			require.Equal(t, actions.MediaCapFeature{
+				Supported:        f.StickerFeatures.Supported,
+				MimeTypes:        f.StickerFeatures.MimeTypes,
+				Captions:         f.StickerFeatures.Caption,
+				MaxCaptionLength: f.StickerFeatures.MaxCaptionLength,
+				MaxSize:          f.StickerFeatures.MaxSize,
+			}, f.Sticker, "%s: Sticker vs StickerFeatures", name)
+		}
+		if f.GIFFeatures == nil {
+			require.Equal(t, actions.MediaCapFeature{MimeTypes: []string{}}, f.GIF, "%s: GIF vs GIFFeatures", name)
+		} else {
+			require.Equal(t, actions.MediaCapFeature{
+				Supported:        f.GIFFeatures.Supported,
+				MimeTypes:        f.GIFFeatures.MimeTypes,
+				Captions:         f.GIFFeatures.Caption,
+				MaxCaptionLength: f.GIFFeatures.MaxCaptionLength,
+				MaxSize:          f.GIFFeatures.MaxSize,
+			}, f.GIF, "%s: GIF vs GIFFeatures", name)
+		}
 
 		switch network {
 		case "whatsapp":
