@@ -36,7 +36,16 @@ use crate::sh::{self, errln, outln};
 use std::process::{Command, Stdio};
 
 const P: &str = "npm-trusted-publisher-bootstrap";
-const SCRIPT: &str = include_str!("../bootstrap.sh");
+const SCRIPT: &str = "\
+# Usage:
+#   bazel run //tools/npm-trusted-publisher:bootstrap
+#   bazel run //tools/npm-trusted-publisher:bootstrap -- --dry-run
+#   bazel run //tools/npm-trusted-publisher:bootstrap -- --no-login
+#
+# Env: NPM, MIRROR_REPO (default VitruvianSoftware/pulumi-library), MIRROR_DIR
+#      (use an existing checkout instead of cloning), SETUP_SH
+# Exit: 0 nothing to do or all published · 1 a publish failed · 2 precondition
+";
 
 /// `sed -n '/^# Usage:/,/^# Exit:/p' "$0"`.
 pub fn usage() -> String {

@@ -51,7 +51,57 @@ extern "C" {
     fn write(fd: c_int, buf: *const c_void, count: usize) -> isize;
 }
 
-pub const WORKTREE_SH: &str = include_str!("../worktree.sh");
+pub const WORKTREE_SH: &str = r#"#!/usr/bin/env bash
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# worktree.sh — create an isolated git worktree that also gets its OWN Bazel
+# server, so multiple concurrent sessions/agents don't stomp a shared HEAD or
+# contend on one output_base (issue #455). And take worktrees away again only
+# when that cannot lose work.
+#
+# Usage (run through Bazel so $BUILD_WORKSPACE_DIRECTORY points at the checkout):
+#   bazel run //tools/worktree -- <branch> [base-ref]   # create (base defaults to origin/main)
+#   bazel run //tools/worktree -- --detach <ref> <name> # a scratch tree at <ref>, no branch (reviews, bisects)
+#   bazel run //tools/worktree -- --list                # list worktrees
+#   bazel run //tools/worktree -- --remove <branch|name>             # remove that worktree (or scratch tree)
+#   bazel run //tools/worktree -- --remove <branch> --force          # ...with its uncommitted files
+#   bazel run //tools/worktree -- --remove <branch> --delete-branch  # ...and its branch, if clean AND landed
+#   bazel run //tools/worktree -- --lock [reason]       # keep the worktree you run it from safe from every pruner
+#   bazel run //tools/worktree -- --unlock              # ...and let it go again
+#                                     (both take --on <branch|name> to act on another worktree)
+#   bazel run //tools/worktree -- --prune               # DRY RUN: what would be removed, what is kept and why
+#   bazel run //tools/worktree -- --prune --execute     # remove every clean, landed, unlocked worktree + branch,
+#                                                       # every landed branch that has no worktree, and every
+#                                                       # clean, unlocked, unmoved scratch tree unused for a day
+#
+# Removing a worktree also removes its Bazel caches: its own output root, and
+# the default output base a plain `bazel` run there would have made.
+#
+# Environment:
+#   WORKTREE_ROOT    parent dir for worktrees (default: <repo-parent>/<repo>-worktrees)
+#   WORKTREE_LANDED  path to tools/landed/landed.sh (default: found in runfiles)
+#   WORKTREE_SCRATCH_TTL_HOURS  how old a scratch tree must be before --prune takes it (default 24)
+
+set -euo pipefail
+"#;
 
 const MARKER: &[u8] = b".vitruvian-worktree";
 const SCRATCH_MARK: &[u8] = b"vitruvian-scratch";
@@ -1180,9 +1230,14 @@ fn run_landed_merged(
     let spawn_res = {
         let stdout_stdio = unsafe { Stdio::from_raw_fd(write_fd1) };
         let stderr_stdio = unsafe { Stdio::from_raw_fd(write_fd2) };
-        Command::new("bash")
-            .arg(bytes_to_os(script))
-            .arg("--branch")
+        let mut cmd = if script.ends_with(b".sh") {
+            let mut c = Command::new("bash");
+            c.arg(bytes_to_os(script));
+            c
+        } else {
+            Command::new(bytes_to_os(script))
+        };
+        cmd.arg("--branch")
             .arg(bytes_to_os(branch))
             .env("BUILD_WORKSPACE_DIRECTORY", bytes_to_os(repo))
             .env("LANDED_BASE", bytes_to_os(base_ref))
@@ -1314,6 +1369,8 @@ impl Context {
     fn resolve_landed_script(&self) -> Option<Vec<u8>> {
         let rel = b"tools/landed/landed.sh";
         let runfiles_rel = b"_main/tools/landed/landed.sh";
+        let bin_rel = b"tools/landed/landed";
+        let bin_runfiles_rel = b"_main/tools/landed/landed";
 
         let wt_landed = env::var_os("WORKTREE_LANDED")
             .map(|v| v.into_vec())
@@ -1325,9 +1382,13 @@ impl Context {
 
         let candidates = [
             wt_landed,
+            bcat!(&rf_dir, "/", bin_runfiles_rel),
             bcat!(&rf_dir, "/", runfiles_rel),
+            bcat!(&self.start_pwd, "/", bin_rel),
             bcat!(&self.start_pwd, "/", rel),
+            bcat!(&self.argv0, ".runfiles/", bin_runfiles_rel),
             bcat!(&self.argv0, ".runfiles/", runfiles_rel),
+            bcat!(&self.repo, "/", bin_rel),
             bcat!(&self.repo, "/", rel),
         ];
 

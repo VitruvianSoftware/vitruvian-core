@@ -30,7 +30,77 @@ use std::path::Path;
 use std::process::{Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-const TIDY_SH_SOURCE: &str = include_str!("../tidy.sh");
+const TIDY_SH_SOURCE: &str = r#"#!/usr/bin/env bash
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+# tidy.sh — keep the `replace`-coupled Go modules' pins in sync.
+#
+#   bazel run //tools/gomod:tidy     # fix:   rewrite go.mod/go.sum in place
+#   bazel run //tools/gomod:check    # gate:  report drift, change nothing
+#
+# WHY THIS EXISTS — the example modules duplicate the library's dep graph:
+#   Every module under pulumi/examples/go-foundation consumes the library
+#   through a `replace` to a LOCAL PATH, but still carries its own full pin of
+#   the library's transitive graph (`google.golang.org/grpc v1.80.0 // indirect`
+#   and friends) in its own go.mod/go.sum.
+#
+#   Nothing keeps those two copies in step. Dependabot tidies ONLY the module it
+#   bumps -- it cannot see across a `replace` edge -- so bumping a library leaves
+#   every example that consumes it unbuildable. That is not hypothetical: PRs
+#   #1166/#1175/#1179 (grpc 1.80.0 -> 1.82.1) each red-lined `example-build`
+#   this way, and the error the developer actually saw was:
+#
+#       go: updates to go.mod needed; to update it:
+#           go mod tidy
+#
+#   -- which names no module, no dependency, and no PR. Three separate bumps
+#   were diagnosed from scratch before the shared cause was obvious.
+#
+# WHAT THIS FIXES, AND WHAT IT DOES NOT:
+#   This is the GATE, not the cure. It cannot stop a bump from desyncing the
+#   examples; it makes the desync fail EARLY and LEGIBLY, against the module and
+#   the diff that caused it, with the exact command that fixes it. The
+#   complementary half lives in .github/dependabot.yml, which groups the library
+#   and example directories into one update so a shared dependency moves on both
+#   sides in the same PR -- that reduces how often this gate fires, but grouping
+#   only covers deps that ALREADY exist in both go.mods, so it can never be the
+#   whole answer. Hence both.
+#
+# WHY `go mod tidy -diff` AND NOT tidy-then-`git diff`:
+#   -diff (Go 1.23+) computes the necessary changes and exits non-zero WITHOUT
+#   writing. The tidy-then-diff alternative mutates the tree inside a required
+#   check -- exactly the failure mode tools/osv-scan/osv-scan.sh documents at
+#   length (a gate that rewrites go.work.sum corrupts the checkout it is
+#   inspecting and reddens tidy-check two jobs later). Check mode here is
+#   read-only by construction, not by convention.
+#
+# GOWORK=off, deliberately:
+#   Same reason the rest of this repo's Go CI sets it. In workspace mode `go mod
+#   tidy` resolves against the workspace, not the module's own requirements, so
+#   it would compute a DIFFERENT (and wrong) answer than the standalone `go
+#   build` that example-build runs -- and could normalise go.work.sum as a side
+#   effect. The examples are also copybara-exported as standalone modules, so
+#   the standalone resolution is the only one that matches how they ship.
+set -euo pipefail
+
+"#;
 
 extern "C" {
     fn setlocale(category: i32, locale: *const c_char) -> *mut c_char;

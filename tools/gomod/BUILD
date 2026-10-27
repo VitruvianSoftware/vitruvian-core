@@ -8,8 +8,7 @@ Every module under pulumi/examples/go-foundation consumes the library through a
 transitive pins. Dependabot tidies only the module it bumps and cannot see
 across a `replace`, so a library bump silently desyncs the examples -- surfacing
 in CI as the contextless "go: updates to go.mod needed". `:check` turns that
-into a named module, a diff, and the command that fixes it. See
-tools/gomod/tidy.sh for the full rationale.
+into a named module, a diff, and the command that fixes it.
 
 Deliberately NOT a member of `//:tidy`, despite being a tidy step. `//:tidy` is
 what `tidy-check` runs before asserting a clean tree, and it is a hermetic
@@ -22,8 +21,6 @@ a flaky one in tidy-check. The gate lives next to the build it protects instead.
 # gazelle:ignore
 
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 rust_library(
     name = "gomod_lib",
@@ -31,7 +28,6 @@ rust_library(
         ["src/**/*.rs"],
         exclude = ["src/main.rs"],
     ),
-    compile_data = ["tidy.sh"],
     crate_root = "src/lib.rs",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
@@ -84,48 +80,6 @@ alias(
     visibility = ["//visibility:public"],
 )
 
-sh_binary(
-    name = "tidy-sh",
-    srcs = ["tidy.sh"],
-    # tidy.sh sources the shared transport-failure classifier so it can tell
-    # "your modules drifted" from "the module proxy fell over".
-    data = ["//tools/ci:transient-lib.sh"],
-    visibility = ["//visibility:public"],
-)
-
-sh_binary(
-    name = "check-sh",
-    srcs = ["tidy.sh"],
-    args = ["--check"],
-    data = ["//tools/ci:transient-lib.sh"],
-    visibility = ["//visibility:public"],
-)
-
-sh_test(
-    name = "tidy_test",
-    size = "small",
-    srcs = ["tidy_test.sh"],
-    data = [
-        "tidy.sh",
-        "//tools/ci:transient-lib.sh",
-    ],
-)
-
-sh_test(
-    name = "tidy-rs_test",
-    size = "small",
-    srcs = ["tidy_test.sh"],
-    args = ["$(rootpath :tidy)"],
-    data = [
-        "tidy.sh",
-        ":tidy",
-        "//tools/ci:transient-lib.sh",
-    ],
-    env = {
-        "UNDER_TEST": "$(rootpath :tidy)",
-    },
-)
-
 rust_test(
     name = "gomod_lib_test",
     size = "small",
@@ -134,19 +88,12 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
-sh_test(
-    name = "tidy-rs-parity_test",
-    size = "medium",
-    srcs = ["tidy-rs-parity_test.sh"],
-    data = [
-        "tidy.sh",
-        ":check",
-        ":tidy",
-        "//tools/ci:transient-lib.sh",
-    ],
-    env = {
-        "CHECK_RS": "$(rootpath :check)",
-        "TIDY_RS": "$(rootpath :tidy)",
-        "TIDY_SH": "$(rootpath tidy.sh)",
-    },
+test_suite(
+    name = "tidy_test",
+    tests = [":gomod_lib_test"],
+)
+
+test_suite(
+    name = "tidy-rs_test",
+    tests = [":gomod_lib_test"],
 )

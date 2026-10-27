@@ -22,41 +22,7 @@
 
 # gazelle:ignore
 
-load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_library", "py_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-
-py_library(
-    name = "lib",
-    srcs = ["adb_connect.py"],
-    imports = ["."],
-    visibility = ["//visibility:public"],
-)
-
-py_binary(
-    name = "adb-connect-py",
-    srcs = ["adb_connect.py"],
-    imports = ["."],
-    main = "adb_connect.py",
-    visibility = ["//visibility:public"],
-    deps = [":lib"],
-)
-
-py_test(
-    name = "adb_connect_test",
-    size = "small",
-    srcs = ["adb_connect_test.py"],
-    imports = ["."],
-    main = "adb_connect_test.py",
-    deps = [
-        ":lib",
-    ],
-)
-
-# --- Rust port (primary binary) ----------------------------------------------
-# src/ is a line-for-line port of adb_connect.py: same flags, help text,
-# output, JSON and exit codes. It needs only Rust std (it carries its own
-# Python-compatible json and argparse so messages match byte for byte), so
-# it adds no crate and Cargo.lock / MODULE.bazel stay as they are.
 
 rust_library(
     name = "adb_connect_lib",
@@ -91,8 +57,6 @@ alias(
     visibility = ["//visibility:public"],
 )
 
-# The #[cfg(test)] unit tests in src/, against a scripted System (the
-# Python tests' cases plus parser, json, argparse and textwrap checks).
 rust_test(
     name = "adb_connect_lib_test",
     size = "small",
@@ -100,20 +64,7 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
-# adb_connect.py and adb-connect (Rust) run side by side against the same
-# stand-in adb / dns-sd / tailscale programs: stdout, stderr, exit code,
-# the commands each one ran, and the files they read must all match.
-py_test(
-    name = "adb_connect_rs_parity_test",
-    size = "small",
-    srcs = ["adb_connect_rs_parity_test.py"],
-    args = [
-        "$(rootpath :adb-connect)",
-        "$(rootpath adb_connect.py)",
-    ],
-    data = [
-        "adb_connect.py",
-        ":adb-connect",
-    ],
-    main = "adb_connect_rs_parity_test.py",
+test_suite(
+    name = "adb_connect_test",
+    tests = [":adb_connect_lib_test"],
 )
