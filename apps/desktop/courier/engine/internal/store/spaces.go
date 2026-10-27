@@ -81,12 +81,24 @@ func showAllowsSQL(setting, isDirect string) string {
 	return `(` + setting + ` = 'all' OR (` + setting + ` = 'dms' AND ` + isDirect + ` = 1))`
 }
 
-// shownInInboxSQL is whether a chat's account and every one of its labels let it into the inbox space. r is the
-// rooms alias and ap the LEFT JOINed account_prefs alias.
+// subAccountMatchSQL matches a sub_accounts row sub to room r by parent_space_id or room_id (for bot DMs).
+func subAccountMatchSQL(r, sub string) string {
+	return `(` + sub + `.network = ` + r + `.network AND (` + sub + `.login_id = ` + r + `.login_id OR ` + r + `.login_id = '' OR ` + sub + `.login_id = '') AND (` + sub + `.sub_id = ` + r + `.parent_space_id OR ` + sub + `.sub_id = ` + r + `.room_id))`
+}
+
+// subAccountEnabledSQL is true unless room r belongs to a sub-account whose enabled = 0.
+func subAccountEnabledSQL(r string) string {
+	return `NOT EXISTS (SELECT 1 FROM sub_accounts sub WHERE ` + subAccountMatchSQL(r, "sub") + ` AND sub.enabled = 0)`
+}
+
+// shownInInboxSQL is whether a chat's account, sub-account, and every one of its labels let it into the inbox space.
+// r is the rooms alias and ap the LEFT JOINed account_prefs alias.
 func shownInInboxSQL(r, ap string) string {
 	return `(` + showAllowsSQL(`COALESCE(`+ap+`.show_in_inbox, 'all')`, r+`.is_direct`) + ` AND NOT EXISTS (
   SELECT 1 FROM room_labels sl JOIN labels sll ON sll.label_id = sl.label_id
-  WHERE sl.room_id = ` + r + `.room_id AND NOT ` + showAllowsSQL(`sll.show_in_inbox`, r+`.is_direct`) + `))`
+  WHERE sl.room_id = ` + r + `.room_id AND NOT ` + showAllowsSQL(`sll.show_in_inbox`, r+`.is_direct`) + `) AND NOT EXISTS (
+  SELECT 1 FROM sub_accounts sub
+  WHERE ` + subAccountMatchSQL(r, "sub") + ` AND NOT ` + showAllowsSQL(`sub.show_in_inbox`, r+`.is_direct`) + `))`
 }
 
 // countFacts are the chat facts of spaceCountsSQL's materialized c.
@@ -125,6 +137,7 @@ var spaceCountsSQL = `WITH c AS MATERIALIZED (
   LEFT JOIN room_prefs p ON p.room_id = r.room_id
   LEFT JOIN account_prefs ap ON ap.network = r.network
   ` + readMarkerJoins + `
+  WHERE r.is_space = 0 AND ` + subAccountEnabledSQL("r") + `
 )
 SELECT 'inbox', COUNT(*), COALESCE(SUM(c.unread), 0), COALESCE(SUM(c.unread AND NOT c.muted), 0) FROM c WHERE ` + builtinCountRule("inbox") + `
 UNION ALL SELECT 'reminders', COUNT(*), COALESCE(SUM(c.unread), 0), 0 FROM c WHERE ` + builtinCountRule("reminders") + `

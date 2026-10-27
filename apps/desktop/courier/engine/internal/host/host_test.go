@@ -15,8 +15,10 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 	"go.mau.fi/util/configupgrade"
+	"maunium.net/go/mautrix"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/event"
+	"maunium.net/go/mautrix/id"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/fakenet"
 	"github.com/VitruvianSoftware/courier/engine/internal/media"
@@ -362,4 +364,82 @@ func TestHostEnablesPhoneNumbersInProfile(t *testing.T) {
 	defer h.Stop()
 	require.True(t, h.Bridge.Config.PhoneNumbersInProfile)
 	require.True(t, h.Bridge.Config.BridgeMatrixLeave)
+}
+
+func TestCreateRoomSpaceAndLinkParentState(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	s, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	defer s.Close()
+	h, err := Start(ctx, dir, "fake", s, &media.Store{Dir: filepath.Join(dir, "media")}, fakenet.New(), zerolog.Nop())
+	require.NoError(t, err)
+	defer h.Stop()
+
+	bot := h.Bridge.Bot
+	stateKey := ""
+	spaceRoomID, err := bot.CreateRoom(ctx, &mautrix.ReqCreateRoom{
+		Name:              "Acme Workspace",
+		BeeperLocalRoomID: "!space-acme:courier.local",
+		CreationContent:   map[string]any{"type": "m.space"},
+		InitialState: []*event.Event{
+			{
+				Type:     event.StateBridge,
+				StateKey: &stateKey,
+				Content: event.Content{
+					Parsed: &event.BridgeEventContent{
+						Channel: event.BridgeInfoSection{
+							ID:       "T01234567",
+							Receiver: "login-acme",
+						},
+					},
+				},
+			},
+			{
+				Type:     event.StateRoomAvatar,
+				StateKey: &stateKey,
+				Content: event.Content{
+					Parsed: &event.RoomAvatarEventContent{
+						URL: id.ContentURIString("mxc://courier.local/acme-logo"),
+					},
+				},
+			},
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, id.RoomID("!space-acme:courier.local"), spaceRoomID)
+
+	subs, err := s.SubAccounts(ctx, "fake", "login-acme")
+	require.NoError(t, err)
+	require.Len(t, subs, 1)
+	require.Equal(t, store.SubAccount{
+		Network:     "fake",
+		LoginID:     "login-acme",
+		SubID:       "!space-acme:courier.local",
+		Title:       "Acme Workspace",
+		AvatarURI:   "mxc://courier.local/acme-logo",
+		Kind:        "space",
+		Enabled:     true,
+		ShowInInbox: "all",
+	}, subs[0])
+
+	// Create a child channel room and link it via m.space.parent.
+	childRoomID, err := bot.CreateRoom(ctx, &mautrix.ReqCreateRoom{
+		Name:              "#announcements",
+		BeeperLocalRoomID: "!chan-ann:courier.local",
+	})
+	require.NoError(t, err)
+	_, err = bot.SendState(ctx, childRoomID, event.StateSpaceParent, string(spaceRoomID), &event.Content{
+		Parsed: &event.SpaceParentEventContent{
+			Via:       []string{"courier.local"},
+			Canonical: true,
+		},
+	}, time.Now())
+	require.NoError(t, err)
+
+	// Disabling the sub-account hides the linked child room from InboxPage.
+	disabled := false
+	require.NoError(t, s.UpdateSubAccount(ctx, "fake", "login-acme", "!space-acme:courier.local", &disabled, nil))
+	page, _, err := s.InboxPage(ctx, store.InboxQuery{Space: "inbox"})
+	require.NoError(t, err)
+	require.Empty(t, page)
 }

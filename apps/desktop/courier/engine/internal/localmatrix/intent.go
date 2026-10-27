@@ -425,7 +425,44 @@ func (in *Intent) CreateRoom(ctx context.Context, req *mautrix.ReqCreateRoom) (i
 			return "", err
 		}
 	}
+	if typ, _ := req.CreationContent["type"].(string); typ == string(event.RoomTypeSpace) {
+		if err := in.c.store.SetRoomSpace(ctx, room.ID, true, ""); err != nil {
+			return "", err
+		}
+		cur, ok, err := in.c.store.GetRoom(ctx, room.ID)
+		if err != nil {
+			return "", err
+		}
+		if ok && !isPersonalFilteringSpace(req.InitialState) {
+			if err := in.c.store.UpsertSubAccount(ctx, store.SubAccount{
+				Network:     in.c.network,
+				LoginID:     cur.LoginID,
+				SubID:       room.ID,
+				Title:       cur.Name,
+				AvatarURI:   cur.AvatarURI,
+				Kind:        "space",
+				Enabled:     true,
+				ShowInInbox: "all",
+			}); err != nil {
+				return "", err
+			}
+		}
+	}
 	return roomID, nil
+}
+
+func isPersonalFilteringSpace(initial []*event.Event) bool {
+	for _, st := range initial {
+		if st.Type != event.StateBridge && st.Type != event.StateHalfShotBridge {
+			continue
+		}
+		if bc, ok := st.Content.Parsed.(*event.BridgeEventContent); ok {
+			if bc.BeeperRoomTypeV2 == "personal_filtering_space" || bc.Channel.ID == "__personal_filtering_space__" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // DeleteRoom with puppetsOnly=true removes just the ghosts. bridgev2 does that when portals merge or move, and

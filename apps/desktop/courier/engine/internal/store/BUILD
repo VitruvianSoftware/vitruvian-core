@@ -3,6 +3,7 @@ load("@rules_go//go:def.bzl", "go_library", "go_test")
 go_library(
     name = "store",
     srcs = [
+        "accounts.go",
         "autoarchive.go",
         "bookmarks.go",
         "callnotes.go",
@@ -46,6 +47,7 @@ go_library(
 go_test(
     name = "store_test",
     srcs = [
+        "accounts_test.go",
         "autoarchive_test.go",
         "bookmarks_test.go",
         "callnotes_test.go",

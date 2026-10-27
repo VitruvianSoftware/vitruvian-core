@@ -328,6 +328,7 @@ func (a *sqlArgs) add(v any) string {
 
 // whereConditions builds the active space, place, and filter WHERE conditions for the given table aliases.
 func (pq pageQuery) whereConditions(a roomAliases, networkArg, labelArg string) (where []string, needLast, needUnread bool) {
+	where = append(where, a.r+`.is_space = 0`, subAccountEnabledSQL(a.r))
 	switch pq.kind {
 	case kindAccount:
 		where = append(where, a.r+`.network = `+networkArg)
@@ -403,7 +404,7 @@ func (pq pageQuery) sql(after *pageKey) (string, []any) {
 	needUnread, needLast := false, false
 	if len(pq.roomIDs) > 0 {
 		ids, _ := json.Marshal(pq.roomIDs)
-		where = append(where, `r.room_id IN (SELECT value FROM json_each(`+args.add(string(ids))+`))`)
+		where = append(where, `r.is_space = 0`, `r.room_id IN (SELECT value FROM json_each(`+args.add(string(ids))+`))`)
 	} else {
 		var networkArg, labelArg string
 		switch pq.kind {

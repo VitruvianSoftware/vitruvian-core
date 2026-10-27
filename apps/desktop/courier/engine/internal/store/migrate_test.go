@@ -24,6 +24,7 @@ func TestShippedMigrationsAreUnchanged(t *testing.T) {
 		"c4981b6d91385f22edb826cfa056706ef31523bd4f1c4bf37b75ceaac1d3da47", // 6
 		"1a6ee8818fceb69daf61b57f324cb186d53aaf233664986091d4aad8579dcf15", // 7
 		"dc167f67c7688bfdb43c1e5cab3bf11518a9df29d85d7ded9d59244963fde860", // 8
+		"bb47b07faf0cba8d70f273e6c55be4b9090efa43d8931a78efef05bcc4794d93", // 9
 	}
 	for i, want := range shipped {
 		sum := sha256.Sum256([]byte(migrations[i]))

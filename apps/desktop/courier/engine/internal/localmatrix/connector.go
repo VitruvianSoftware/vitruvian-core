@@ -302,6 +302,34 @@ func (c *Connector) applyRoomState(ctx context.Context, roomID id.RoomID, evtTyp
 	if evtType == event.StateBridge || evtType == event.StateHalfShotBridge {
 		return c.applyBridgeInfo(ctx, roomID, raw, created)
 	}
+	if evtType == event.StateSpaceParent {
+		if stateKey == "" {
+			return nil
+		}
+		var sp struct {
+			Via *[]string `json:"via"`
+		}
+		_ = json.Unmarshal(raw, &sp)
+		parent := stateKey
+		if sp.Via != nil && len(*sp.Via) == 0 {
+			parent = ""
+		}
+		return c.store.SetRoomSpace(ctx, string(roomID), false, parent)
+	}
+	if evtType == event.StateSpaceChild {
+		if stateKey == "" {
+			return nil
+		}
+		var sc struct {
+			Via []string `json:"via"`
+		}
+		_ = json.Unmarshal(raw, &sc)
+		parent := ""
+		if len(sc.Via) > 0 {
+			parent = string(roomID)
+		}
+		return c.store.SetRoomSpace(ctx, stateKey, false, parent)
+	}
 	if evtType != event.StateRoomName && evtType != event.StateTopic && evtType != event.StateRoomAvatar {
 		return nil
 	}
@@ -350,13 +378,18 @@ func (c *Connector) applyBridgeInfo(ctx context.Context, roomID id.RoomID, raw j
 	var info struct {
 		Channel struct {
 			Receiver       string `json:"fi.mau.receiver"`
+			AltReceiver    string `json:"receiver"`
 			MessageRequest bool   `json:"com.beeper.message_request"`
 		} `json:"channel"`
 	}
 	if err := json.Unmarshal(raw, &info); err != nil {
 		return fmt.Errorf("invalid bridge info: %w", err)
 	}
-	if err := c.applyReceiver(ctx, roomID, info.Channel.Receiver); err != nil {
+	receiver := info.Channel.Receiver
+	if receiver == "" {
+		receiver = info.Channel.AltReceiver
+	}
+	if err := c.applyReceiver(ctx, roomID, receiver); err != nil {
 		return err
 	}
 	if info.Channel.MessageRequest && !created {

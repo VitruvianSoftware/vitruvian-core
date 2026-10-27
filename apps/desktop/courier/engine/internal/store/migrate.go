@@ -296,10 +296,24 @@ CREATE INDEX IF NOT EXISTS idx_merged_chat_rooms_room ON merged_chat_rooms(room_
     played_ts  INTEGER NOT NULL,
     PRIMARY KEY (room_id, event_id)
 ) STRICT;`,
+	// 10: sub-accounts (workspaces, communities, forums, bot DMs) and m.space filtering (milestone 4.6).
+	`ALTER TABLE rooms ADD COLUMN is_space INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE rooms ADD COLUMN parent_space_id TEXT NOT NULL DEFAULT '';
+CREATE TABLE sub_accounts (
+  network TEXT NOT NULL,
+  login_id TEXT NOT NULL,
+  sub_id TEXT NOT NULL,
+  title TEXT NOT NULL DEFAULT '',
+  avatar_uri TEXT NOT NULL DEFAULT '',
+  kind TEXT NOT NULL DEFAULT 'space',
+  enabled INTEGER NOT NULL DEFAULT 1,
+  show_in_inbox TEXT NOT NULL DEFAULT 'all' CHECK (show_in_inbox IN ('all', 'dms', 'none')),
+  PRIMARY KEY (network, login_id, sub_id)
+);`,
 }
 
 // SchemaVersion is the latest courier.db schema version (PRAGMA user_version).
-const SchemaVersion = 9
+const SchemaVersion = 10
 
 // migrate brings db up to the latest version.
 func migrate(ctx context.Context, db *dbutil.Database) error { return migrateWith(ctx, db, migrations) }

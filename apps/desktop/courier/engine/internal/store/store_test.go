@@ -1035,7 +1035,7 @@ func TestCreateAndUpdateMergedChatRequireDirectAndRefuseStealingRooms(t *testing
 func TestMigrationFromMilestone4_5a(t *testing.T) {
 	s, _ := openFixture(t, "m9.sql")
 	ctx := context.Background()
-	require.Equal(t, 9, SchemaVersion)
+	require.Equal(t, 10, SchemaVersion)
 	require.Equal(t, SchemaVersion, userVersion(t, s))
 	require.Equal(t, len(migrations), userVersion(t, s))
 

@@ -179,7 +179,7 @@ const primaryMergeRoomSQL = `NOT EXISTS (
 var inboxSQL = `SELECT ` + inboxColsSQL + `
 FROM rooms r
 ` + inboxJoinsSQL + `
-WHERE ` + primaryMergeRoomSQL + `
+WHERE r.is_space = 0 AND ` + subAccountEnabledSQL("r") + ` AND ` + primaryMergeRoomSQL + `
 ORDER BY r.last_ts DESC, r.created_at DESC`
 
 // Inbox lists every room, newest message first; rooms without a message follow, newest created first.
