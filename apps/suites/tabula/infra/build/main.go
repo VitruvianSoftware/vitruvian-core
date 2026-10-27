@@ -277,10 +277,12 @@ func main() {
 		// A cloud session cannot hold a service-account key
 		// (iam.disableServiceAccountKeyCreation), so it reaches GCP as the Pulumi
 		// ESC service account instead (gcp-bootstrap: pulumi_esc_service_account).
-		// That account is inert by default; the ONLY thing it gets here is
-		// secretAccessor, per secret, on the credentials a session needs. No
-		// project-wide grant, and no write access: seeding a value is a separate,
-		// human step (//tools/gcp-secrets:seed).
+		// That account is inert by default; the ONLY things it gets here are
+		// secretAccessor (read) and secretVersionAdder (write-only), per secret, on
+		// the credentials a session needs. No project-wide grant. secretVersionAdder
+		// lets an agent session seed or rotate a value without being able to read
+		// any existing one back; it is what lets //tools/gcp-secrets:seed run from
+		// a cloud session.
 		//
 		// Containers only, as above — a value is never committed. An unseeded
 		// container is inert: a reader gets NOT_FOUND on versions/latest.
@@ -315,6 +317,15 @@ func main() {
 					Project:  buildProject,
 					SecretId: sec.SecretId,
 					Role:     pulumi.String("roles/secretmanager.secretAccessor"),
+					Member:   pulumi.Sprintf("serviceAccount:%s", escSA),
+				}); err != nil {
+				return err
+			}
+			if _, err := secretmanager.NewSecretIamMember(ctx, "esc-sa-version-adder-"+secretID,
+				&secretmanager.SecretIamMemberArgs{
+					Project:  buildProject,
+					SecretId: sec.SecretId,
+					Role:     pulumi.String("roles/secretmanager.secretVersionAdder"),
 					Member:   pulumi.Sprintf("serviceAccount:%s", escSA),
 				}); err != nil {
 				return err
