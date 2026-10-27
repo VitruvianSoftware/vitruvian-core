@@ -367,6 +367,37 @@ crate.from_cargo(
 )
 use_repo(crate, "crates")
 
+# The Slack MCP server's crates. A separate hub with its own Cargo.lock because
+# the image builds from apps/mcp/slack alone (see apps/mcp/slack/rs/Cargo.toml).
+# Re-lock: bazel run //tools/crates:lock -- --dir apps/mcp/slack/rs
+crate.from_cargo(
+    name = "mcp_slack_crates",
+    cargo_lock = "//apps/mcp/slack:rs/Cargo.lock",
+    cargo_toml = "//apps/mcp/slack:rs/Cargo.toml",
+    platform_triples = [
+        "aarch64-apple-darwin",
+        "aarch64-unknown-linux-gnu",
+        "x86_64-apple-darwin",
+        "x86_64-unknown-linux-gnu",
+    ],
+)
+use_repo(crate, "mcp_slack_crates")
+
+# ring compiles C with cc-rs: same execroot problem, same wrapper as Courier's
+# libsignal annotation below. Linux too, since CI builds this on Linux.
+crate.annotation(
+    build_script_env = {
+        "CC_aarch64_apple_darwin": "$(execpath @@//apps/desktop/courier/libsignal:cc_in_execroot)",
+        "CC_aarch64_unknown_linux_gnu": "$(execpath @@//apps/desktop/courier/libsignal:cc_in_execroot)",
+        "CC_x86_64_apple_darwin": "$(execpath @@//apps/desktop/courier/libsignal:cc_in_execroot)",
+        "CC_x86_64_unknown_linux_gnu": "$(execpath @@//apps/desktop/courier/libsignal:cc_in_execroot)",
+        "COURIER_BAZEL_EXECROOT": "$${pwd}",
+    },
+    build_script_tools = ["@@//apps/desktop/courier/libsignal:cc_in_execroot"],
+    crate = "ring",
+    repositories = ["mcp_slack_crates"],
+)
+
 # --- libsignal (Courier's Signal bridge) -----------------------------------
 # mautrix-signal's libsignalgo links Signal's Rust library, libsignal_ffi.a,
 # through cgo. //apps/desktop/courier/libsignal builds it from source; README.md there

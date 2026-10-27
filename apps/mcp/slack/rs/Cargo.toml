@@ -1,0 +1,64 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# The Slack MCP server.
+#
+# Its own workspace and its own Cargo.lock, deliberately apart from the root
+# one: the image is built from apps/mcp/slack alone (the Dockerfile's context,
+# and all the standalone mirror receives), so the lock has to live in here for
+# `cargo build --locked` to work. Bazel reads the same lock through the
+# @mcp_slack_crates hub (MODULE.bazel). Re-lock with
+#   bazel run //tools/crates:lock -- --dir apps/mcp/slack/rs
+#
+# Everything that touches the network or crypto is a vetted crate, never
+# hand-rolled: hyper/tokio serve HTTP, ureq over rustls makes every HTTPS call
+# (Slack and the issuer's JWKS), ring checks the RS256 signature, serde_json
+# parses JSON. rust-version is the Bazel toolchain's, so the lock only holds
+# versions that toolchain can build.
+[workspace]
+
+[package]
+name = "mcp-slack"
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.75"
+publish = false
+
+[lib]
+name = "mcp_slack_rs_lib"
+path = "src/lib.rs"
+
+[[bin]]
+name = "mcp-slack"
+path = "src/main.rs"
+
+[dependencies]
+bytes = "1"
+http = "1"
+http-body-util = "0.1"
+hyper = { version = "1", features = ["http1", "server"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+ring = "0.17"
+serde_json = { version = "1", features = ["preserve_order"] }
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+ureq = { version = "2.12", default-features = false, features = ["tls", "native-certs"] }
+
+[profile.release]
+opt-level = 3
