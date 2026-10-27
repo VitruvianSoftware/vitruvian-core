@@ -646,6 +646,29 @@ use_repo(
 
 http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
+# Cargo for re-locking the root Cargo.lock (//tools/crates:lock), and nothing
+# else. The toolchain above is 1.75.0, and its cargo predates MSRV-aware
+# resolution (cargo 1.84), so it would lock crates that 1.75 cannot build. This
+# newer cargo only RESOLVES; every build still compiles with 1.75.0. Checksums
+# are static.rust-lang.org/dist/cargo-<version>-<triple>.tar.xz.sha256.
+_RELOCK_CARGO_VERSION = "1.99.1"
+
+[
+    http_archive(
+        name = "relock_cargo_" + triple.replace("-", "_"),
+        build_file_content = """exports_files(["cargo/bin/cargo"], visibility = ["//visibility:public"])""",
+        sha256 = sha256,
+        strip_prefix = "cargo-{}-{}".format(_RELOCK_CARGO_VERSION, triple),
+        url = "https://static.rust-lang.org/dist/cargo-{}-{}.tar.xz".format(_RELOCK_CARGO_VERSION, triple),
+    )
+    for triple, sha256 in {
+        "aarch64-apple-darwin": "685e563d94db1f003ffa5f5831439eec02569b9950b69867953c8213269c1eaf",
+        "aarch64-unknown-linux-gnu": "5156832e0c1254e9b49a79edabdc6d4c35f32f8fc1cf3ca700f268ff96087ab0",
+        "x86_64-apple-darwin": "6636dabcec164909d1c6eb9e2c596148787c84f7d3a02ff68a141569077f80b5",
+        "x86_64-unknown-linux-gnu": "53f3521949404d595efb06a55c12c5658d4ed1c75566f33d3d514eaebe70bd8a",
+    }.items()
+]
+
 # @signal_boringssl's BUILD.bazel loads @rules_license (already in the graph).
 bazel_dep(name = "rules_license", version = "1.0.0")
 
