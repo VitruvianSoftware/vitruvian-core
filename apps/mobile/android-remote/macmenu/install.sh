@@ -37,6 +37,7 @@ DEST="${VITRUVIAN_REMOTE_DEST:-/Applications}"
 RUNFILES="${RUNFILES_DIR:-$0.runfiles}"
 ZIP="${RUNFILES}/_main/apps/mobile/android-remote/macmenu/VitruvianRemote.zip"
 AGENT="${RUNFILES}/_main/apps/mobile/android-remote/macagent/macagent_/macagent"
+[ -f "$AGENT" ] || AGENT="${RUNFILES}/_main/apps/mobile/android-remote/macagent/macagent"
 if [ ! -f "$ZIP" ]; then
 	echo "install.sh: built app not found at ${ZIP} (run via: bazel run --config=macos-app //apps/mobile/android-remote/macmenu:install)" >&2
 	exit 1
