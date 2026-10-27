@@ -356,7 +356,12 @@ jobs:
           # and belongs with the Phase-3 preflight work.
           BEFORE_REV: ${{ github.event.before }}
           FORCED_PUSH: ${{ github.event.forced }}
-        run: bash tools/charts/publish.sh
+        run: |
+          # replaces tools/charts/publish.sh
+          rustc --edition 2021 --crate-type lib --crate-name shell_compat tools/shell-compat/src/lib.rs -o "$RUNNER_TEMP/libshell_compat.rlib"
+          rustc --edition 2021 --crate-type lib --crate-name charts tools/charts/src/lib.rs -L "$RUNNER_TEMP" --extern shell_compat="$RUNNER_TEMP/libshell_compat.rlib" -o "$RUNNER_TEMP/libcharts.rlib"
+          rustc --edition 2021 tools/charts/src/main.rs -L "$RUNNER_TEMP" --extern shell_compat="$RUNNER_TEMP/libshell_compat.rlib" --extern charts="$RUNNER_TEMP/libcharts.rlib" -o "$RUNNER_TEMP/charts-publish"
+          "$RUNNER_TEMP/charts-publish"
       - name: Visibility note
         run: |
           echo "New GHCR packages start private. Make each chart public once (UI or):"

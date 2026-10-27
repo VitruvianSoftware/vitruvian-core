@@ -18,6 +18,7 @@ load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
 _DATA = [
     "//:.gitleaks.toml",
+    "//tools/agent-app:agent-app",
     "//tools/agent-app:agent-app.sh",
     "//tools/secret-scan:secret-scan",
     "//tools/secret-scan:secret-scan.sh",

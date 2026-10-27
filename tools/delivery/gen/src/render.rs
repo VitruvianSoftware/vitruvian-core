@@ -410,7 +410,12 @@ fn render_charts_publish_steps(b: &mut String, _u: &Unit, _env: &str, opts: &Opt
     b.push_str("          # and belongs with the Phase-3 preflight work.\n");
     b.push_str("          BEFORE_REV: ${{ github.event.before }}\n");
     b.push_str("          FORCED_PUSH: ${{ github.event.forced }}\n");
-    b.push_str("        run: bash tools/charts/publish.sh\n");
+    b.push_str("        run: |\n");
+    b.push_str("          # replaces tools/charts/publish.sh\n");
+    b.push_str("          rustc --edition 2021 --crate-type lib --crate-name shell_compat tools/shell-compat/src/lib.rs -o \"$RUNNER_TEMP/libshell_compat.rlib\"\n");
+    b.push_str("          rustc --edition 2021 --crate-type lib --crate-name charts tools/charts/src/lib.rs -L \"$RUNNER_TEMP\" --extern shell_compat=\"$RUNNER_TEMP/libshell_compat.rlib\" -o \"$RUNNER_TEMP/libcharts.rlib\"\n");
+    b.push_str("          rustc --edition 2021 tools/charts/src/main.rs -L \"$RUNNER_TEMP\" --extern shell_compat=\"$RUNNER_TEMP/libshell_compat.rlib\" --extern charts=\"$RUNNER_TEMP/libcharts.rlib\" -o \"$RUNNER_TEMP/charts-publish\"\n");
+    b.push_str("          \"$RUNNER_TEMP/charts-publish\"\n");
     b.push_str("      - name: Visibility note\n");
     b.push_str("        run: |\n");
     b.push_str("          echo \"New GHCR packages start private. Make each chart public once (UI or):\"\n");
