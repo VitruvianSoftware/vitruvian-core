@@ -14,7 +14,6 @@ load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
 load("@rules_cc//cc:defs.bzl", "cc_library")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_static_library", "rust_test")
-load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load(":defs.bzl", "boringssl_prefix", "protoc_dist", "with_rust_1_98_1")
 
 package(default_visibility = ["//visibility:private"])
@@ -118,12 +117,6 @@ cc_library(
 )
 
 # Used by the ring annotation in MODULE.bazel.
-sh_binary(
-    name = "cc_in_execroot",
-    srcs = ["cc_in_execroot.sh"],
-    visibility = ["//visibility:public"],
-)
-
 rust_library(
     name = "cc_in_execroot_lib",
     srcs = ["scripts/src/cc_in_execroot/lib.rs"],
@@ -134,17 +127,23 @@ rust_library(
 )
 
 rust_binary(
-    name = "cc-in-execroot-rs",
+    name = "cc_in_execroot",
     srcs = ["scripts/src/cc_in_execroot/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-    visibility = ["//apps/desktop/courier:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [":cc_in_execroot_lib"],
 )
 
 alias(
+    name = "cc-in-execroot-rs",
+    actual = ":cc_in_execroot",
+    visibility = ["//apps/desktop/courier:__subpackages__"],
+)
+
+alias(
     name = "cc_in_execroot_rs",
-    actual = ":cc-in-execroot-rs",
+    actual = ":cc_in_execroot",
     visibility = ["//apps/desktop/courier:__subpackages__"],
 )
 
