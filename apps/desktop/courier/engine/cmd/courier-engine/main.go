@@ -91,7 +91,7 @@ func realMain(argv []string, stdout, stderr io.Writer) int {
 		return exitUsage
 	}
 	if err = run(cfg, stdout, stderr); err != nil {
-		fmt.Fprintln(stderr, "courier-engine:", err)
+		fmt.Fprintln(stderr, logscrub.ScrubStartupError("courier-engine:", err))
 		if errors.Is(err, datadir.ErrLocked) {
 			return exitLocked
 		}
@@ -202,7 +202,12 @@ func run(cfg config, stdout, stderr io.Writer) error {
 	// Every bridge logs through this logger (host.Start), and bridgev2 puts the chats and people it handles in its log
 	// context: the log writer keeps only what can't name anyone (never log who). The fatal "courier-engine: ..." line
 	// realMain prints is not a log line and doesn't go through it: the app reads it as it is written.
-	log := zerolog.New(logscrub.New(stderr)).Level(zerolog.WarnLevel).With().Timestamp().Logger()
+	rollingStderr, err := logscrub.OpenRollingFile(filepath.Join(cfg.data, "engine-stderr.log"), 0)
+	if err != nil {
+		return err
+	}
+	defer rollingStderr.Close()
+	log := zerolog.New(logscrub.New(io.MultiWriter(stderr, rollingStderr))).Level(zerolog.WarnLevel).With().Timestamp().Logger()
 	s, err := store.Open(filepath.Join(cfg.data, "courier.db"))
 	if err != nil {
 		return err

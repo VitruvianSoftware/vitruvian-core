@@ -275,6 +275,8 @@ var (
 		// (slackid.MakeUserID lower-cases it), and a Slack ID alone: a letter for its kind and 8 to 10 more.
 		{re: regexp.MustCompile(`\b[TtEe][A-Za-z0-9]{8,10}-[UuWwCcDdGgBb][A-Za-z0-9]{8,10}\b`), is: isSlackID},
 		{re: regexp.MustCompile(`\b[UuWwTtCcDdGgBbEe][A-Za-z0-9]{8,10}\b`), is: isSlackID},
+		// A Slack token (xoxb-..., xoxp-..., xoxc-..., xoxd-..., xoxa-...).
+		{re: regexp.MustCompile(`\bxox[a-zA-Z]-[A-Za-z0-9-]+\b`)},
 		// An international phone number, however it is written: +15551234567, +1 555-123-4567, +44 (20) 7946 0958.
 		{re: regexp.MustCompile(`\+\d(?:[ ().-]{0,2}\d){5,14}`)},
 		// A North American number written for people: (555) 123-4567, 555-123-4567, 555.123.4567.

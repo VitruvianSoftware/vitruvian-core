@@ -29,6 +29,7 @@ import (
 	"github.com/VitruvianSoftware/courier/engine/internal/engine"
 	"github.com/VitruvianSoftware/courier/engine/internal/entitlement"
 	"github.com/VitruvianSoftware/courier/engine/internal/fakenet"
+	"github.com/VitruvianSoftware/courier/engine/internal/logscrub"
 	"github.com/VitruvianSoftware/courier/engine/internal/media"
 	"github.com/VitruvianSoftware/courier/engine/internal/networks"
 	"github.com/VitruvianSoftware/courier/engine/internal/rpc"
@@ -377,7 +378,7 @@ func TestSecondEngineOnSameDirExits3(t *testing.T) {
 
 	second := launch(t, nil, "--data", data)
 	require.Equal(t, 3, second.exited(t, startTimeout))
-	require.Contains(t, second.stderr.String(), "another Courier engine is using "+data)
+	require.Contains(t, second.stderr.String(), "another Courier engine is using "+logscrub.ScrubPath(data))
 	require.Empty(t, second.stdout.String(), "a refused engine says nothing on stdout")
 
 	// The refused engine must not have removed the first one's socket: it still answers.
@@ -881,10 +882,37 @@ func TestTheEnginesLogNamesNoOne(t *testing.T) {
 	require.Contains(t, out, `"bridge":"fake"`)
 	require.Contains(t, out, `"message":"Failed to sync [id]"`)
 
-	// A fatal start-up error, with digits a log line would lose, is the app's to read as it was written.
-	long := filepath.Join(shortDir(t), "d1234567", strings.Repeat("x", 120))
+	// Ruling 10: a fatal start-up error scrubs home-directory paths to ~/ and redacts IDs/secrets.
+	long := filepath.Join("/Users/alice/Library/Application Support/Courier", "+15551234567", strings.Repeat("x", 120))
 	var fatal bytes.Buffer
 	require.Equal(t, exitFailed, realMain([]string{"--data", long}, io.Discard, &fatal))
-	require.True(t, strings.HasPrefix(fatal.String(), "courier-engine: the socket path "+filepath.Join(long, socketName)),
+	require.True(t, strings.HasPrefix(fatal.String(), "courier-engine: the socket path ~/Library/Application Support/Courier/[id]/"),
 		fatal.String())
+	require.NotContains(t, fatal.String(), "alice")
+	require.NotContains(t, fatal.String(), "15551234567")
+
+	// And engine-stderr.log is written inside data with mode 0600 and holds scrubbed JSON lines.
+	stderrLogPath := filepath.Join(data, logscrub.StderrLogName)
+	fi, err := os.Stat(stderrLogPath)
+	require.NoError(t, err)
+	require.Equal(t, os.FileMode(0o600), fi.Mode().Perm())
+	logged, err := os.ReadFile(stderrLogPath)
+	require.NoError(t, err)
+	require.Contains(t, string(logged), `"message":"Failed to sync [id]"`)
+	require.NotContains(t, string(logged), "15557654321")
+}
+
+func TestStartupFailureScrubsHomeDirAndSecrets(t *testing.T) {
+	badPath := filepath.Join("/Users/alice/Library/Application Support/Courier", "+14155550199", "xoxc-123-456", strings.Repeat("a", 100))
+	var stderr bytes.Buffer
+	code := realMain([]string{"--data", badPath}, io.Discard, &stderr)
+	require.Equal(t, exitFailed, code)
+	out := stderr.String()
+	require.Contains(t, out, "courier-engine:")
+	require.Contains(t, out, "~/Library/Application Support/Courier/[id]/[id]/")
+	require.NotContains(t, out, "/Users/alice")
+	require.NotContains(t, out, "alice")
+	require.NotContains(t, out, "+14155550199")
+	require.NotContains(t, out, "14155550199")
+	require.NotContains(t, out, "xoxc-123-456")
 }
