@@ -27,7 +27,6 @@ the crate universe @crates, so Cargo.lock and MODULE.bazel stay as they are.
 
 # gazelle:ignore
 
-load("@aspect_rules_py//py:defs.bzl", "py_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
 package(default_visibility = ["//apps/desktop/vitruvian-tool-tv:__subpackages__"])
@@ -73,22 +72,22 @@ genrule(
     visibility = ["//visibility:public"],
 )
 
-# The SDK's conformance script against the built folder: the Rust program
+# The SDK's conformance binary against the built folder: the Rust program
 # plays the app's side of the protocol end to end.
-py_test(
+rust_test(
     name = "vitruvian_tv_test",
     size = "small",
-    srcs = ["vitruvian_tv_test.py"],
-    args = [
-        "$(rootpath built/vitruvian-tv/vitruvian-tool.json)",
-        "$(rootpath //packages/vitruvian-sdk:conformance/conformance.py)",
-    ],
+    srcs = ["scripts/src/vitruvian_tv_test.rs"],
     data = [
         "built/vitruvian-tv/vitruvian-tool.json",
         ":tool-folder",
-        "//packages/vitruvian-sdk:conformance/conformance.py",
+        "//packages/vitruvian-sdk:conformance_rs",
     ],
-    main = "vitruvian_tv_test.py",
+    edition = "2021",
+    env = {
+        "MANIFEST_PATH": "$(rootpath built/vitruvian-tv/vitruvian-tool.json)",
+        "CONFORMANCE_BIN": "$(rootpath //packages/vitruvian-sdk:conformance_rs)",
+    },
 )
 
 rust_library(
@@ -110,20 +109,4 @@ rust_test(
     name = "publish_tool_lib_test",
     size = "small",
     crate = ":publish_tool_lib",
-)
-
-rust_test(
-    name = "vitruvian_tv_rs_test",
-    size = "small",
-    srcs = ["scripts/src/vitruvian_tv_test.rs"],
-    data = [
-        "built/vitruvian-tv/vitruvian-tool.json",
-        ":tool-folder",
-        "//packages/vitruvian-sdk:conformance_rs",
-    ],
-    edition = "2021",
-    env = {
-        "MANIFEST_PATH": "$(rootpath built/vitruvian-tv/vitruvian-tool.json)",
-        "CONFORMANCE_BIN": "$(rootpath //packages/vitruvian-sdk:conformance_rs)",
-    },
 )

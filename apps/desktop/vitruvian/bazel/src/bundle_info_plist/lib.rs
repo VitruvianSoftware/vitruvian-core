@@ -7,11 +7,18 @@ use std::path::{Path, PathBuf};
 
 pub struct Config {
     pub template: PathBuf,
-    pub version_env: PathBuf,
+    pub version_env: Option<PathBuf>,
     pub output: PathBuf,
 }
 
 pub fn parse_args(args: &[String]) -> Result<Config, String> {
+    if args.len() == 2 && !args[0].starts_with('-') && !args[1].starts_with('-') {
+        return Ok(Config {
+            template: PathBuf::from(&args[0]),
+            version_env: None,
+            output: PathBuf::from(&args[1]),
+        });
+    }
     let mut template = None;
     let mut version_env = None;
     let mut output = None;
@@ -40,10 +47,7 @@ pub fn parse_args(args: &[String]) -> Result<Config, String> {
                 output = Some(PathBuf::from(&args[i]));
             }
             "-h" | "--help" => {
-                return Err(
-                    "Usage: bundle_info_plist --template <path> --version-env <path> --output <path>"
-                        .into(),
-                );
+                return Err("Usage: bundle_info_plist <in Info.plist> <out Info.plist>".into());
             }
             other => return Err(format!("unknown argument: {}", other)),
         }
@@ -51,9 +55,84 @@ pub fn parse_args(args: &[String]) -> Result<Config, String> {
     }
     Ok(Config {
         template: template.ok_or("missing --template")?,
-        version_env: version_env.ok_or("missing --version-env")?,
+        version_env: Some(version_env.ok_or("missing --version-env")?),
         output: output.ok_or("missing --output")?,
     })
+}
+
+pub fn extract_numeric_version_prefix(version: &str) -> Option<&str> {
+    let bytes = version.as_bytes();
+    if bytes.is_empty() || !bytes[0].is_ascii_digit() {
+        return None;
+    }
+    let mut i = 0;
+    while i < bytes.len() && bytes[i].is_ascii_digit() {
+        i += 1;
+    }
+    let mut end = i;
+    let mut dots = 0;
+    while dots < 3 && i < bytes.len() && bytes[i] == b'.' {
+        i += 1;
+        let seg_start = i;
+        while i < bytes.len() && bytes[i].is_ascii_digit() {
+            i += 1;
+        }
+        if i == seg_start {
+            break;
+        }
+        end = i;
+        dots += 1;
+    }
+    Some(&version[..end])
+}
+
+pub fn transform_upstream_info_plist(source_path: &Path, xml: &str) -> Result<String, String> {
+    let key_tag = "<key>CFBundleShortVersionString</key>";
+    let key_pos = xml.find(key_tag).ok_or_else(|| {
+        format!(
+            "{}: missing CFBundleShortVersionString",
+            source_path.display()
+        )
+    })?;
+    let after_key = &xml[key_pos + key_tag.len()..];
+    let str_open = after_key.find("<string>").ok_or_else(|| {
+        format!(
+            "{}: missing <string> after CFBundleShortVersionString",
+            source_path.display()
+        )
+    })?;
+    let val_start = key_pos + key_tag.len() + str_open + "<string>".len();
+    let val_end_rel = xml[val_start..].find("</string>").ok_or_else(|| {
+        format!(
+            "{}: unterminated <string> after CFBundleShortVersionString",
+            source_path.display()
+        )
+    })?;
+    let val_end = val_start + val_end_rel;
+    let version = &xml[val_start..val_end];
+    let numeric = extract_numeric_version_prefix(version).ok_or_else(|| {
+        format!(
+            "{}: CFBundleShortVersionString {:?} has no numeric prefix",
+            source_path.display(),
+            version
+        )
+    })?;
+
+    let mut updated = String::with_capacity(xml.len() + 128);
+    updated.push_str(&xml[..val_start]);
+    updated.push_str(numeric);
+    updated.push_str(&xml[val_end..]);
+
+    let dict_close = updated
+        .rfind("</dict>")
+        .ok_or_else(|| format!("{}: missing closing </dict>", source_path.display()))?;
+    let mut final_xml = String::with_capacity(updated.len() + 128);
+    final_xml.push_str(&updated[..dict_close]);
+    final_xml.push_str("\t<key>VitruvianUpstreamVersion</key>\n\t<string>");
+    final_xml.push_str(version);
+    final_xml.push_str("</string>\n");
+    final_xml.push_str(&updated[dict_close..]);
+    Ok(final_xml)
 }
 
 pub fn load_version_env(path: &Path) -> Result<BTreeMap<String, String>, String> {
@@ -110,7 +189,6 @@ pub fn strip_key_from_plist(xml: &str, key_name: &str) -> String {
     while i < lines.len() {
         if lines[i].trim() == needle {
             i += 1;
-            // Skip following value element (<dict>...</dict>, <string>...</string>, <true/>, etc.)
             let mut depth = 0i32;
             while i < lines.len() {
                 let t = lines[i].trim();
@@ -142,10 +220,15 @@ pub fn strip_key_from_plist(xml: &str, key_name: &str) -> String {
 }
 
 pub fn run(config: &Config) -> Result<(), String> {
-    let env_values = load_version_env(&config.version_env)?;
     let raw = fs::read_to_string(&config.template)
         .map_err(|e| format!("read {}: {}", config.template.display(), e))?;
-    let rendered = render_info_plist(&raw, &env_values)?;
+    let rendered = match &config.version_env {
+        Some(ve) => {
+            let env_values = load_version_env(ve)?;
+            render_info_plist(&raw, &env_values)?
+        }
+        None => transform_upstream_info_plist(&config.template, &raw)?,
+    };
     if let Some(parent) = config.output.parent() {
         if !parent.as_os_str().is_empty() {
             fs::create_dir_all(parent).map_err(|e| format!("mkdir: {}", e))?;
@@ -159,6 +242,26 @@ pub fn run(config: &Config) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_transform_upstream_info_plist_strips_prerelease_and_adds_upstream_version() {
+        let src = "\
+<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<plist version=\"1.0\">
+<dict>
+\t<key>CFBundleShortVersionString</key>
+\t<string>3.4.1-beta.1</string>
+\t<key>LSUIElement</key>
+\t<true/>
+</dict>
+</plist>
+";
+        let out = transform_upstream_info_plist(Path::new("Info.plist"), src).unwrap();
+        assert!(out.contains("<key>CFBundleShortVersionString</key>\n\t<string>3.4.1</string>"));
+        assert!(
+            out.contains("<key>VitruvianUpstreamVersion</key>\n\t<string>3.4.1-beta.1</string>")
+        );
+    }
 
     #[test]
     fn test_parse_version_env() {
@@ -211,7 +314,13 @@ mod tests {
         ];
         let cfg = parse_args(&args).unwrap();
         assert_eq!(cfg.template, PathBuf::from("a.plist"));
-        assert_eq!(cfg.version_env, PathBuf::from("v.env"));
+        assert_eq!(cfg.version_env, Some(PathBuf::from("v.env")));
         assert_eq!(cfg.output, PathBuf::from("out.plist"));
+
+        let pos = vec!["in.plist".to_string(), "out.plist".to_string()];
+        let cfg2 = parse_args(&pos).unwrap();
+        assert_eq!(cfg2.template, PathBuf::from("in.plist"));
+        assert_eq!(cfg2.version_env, None);
+        assert_eq!(cfg2.output, PathBuf::from("out.plist"));
     }
 }
