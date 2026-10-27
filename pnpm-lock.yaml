@@ -193,8 +193,8 @@ importers:
         specifier: 7.10.1
         version: 7.10.1(prisma@7.10.1(@types/node@26.2.0)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(better-sqlite3@11.10.0)(magicast@0.5.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(typescript@6.0.3))(typescript@6.0.3)
       '@workos-inc/node':
-        specifier: ^10.9.0
-        version: 10.9.0
+        specifier: ^12.0.0
+        version: 12.0.0
       bcryptjs:
         specifier: ^3.0.2
         version: 3.0.3
@@ -8148,8 +8148,8 @@ packages:
     resolution: {integrity: sha512-BgYZfL2ADCXKOw2wJtkM3slhHotawWkgIRRxq4wEybnZQPjvAp71SPX35xepMykTw8gXlzWcWPTY31hlbnRsDA==}
     engines: {node: 18 >=18.20 || 20 || >=22}
 
-  '@workos-inc/node@10.9.0':
-    resolution: {integrity: sha512-Voxhxocg7Q9lpi1gJ6qyPCjgcjh7fZmxU0gR7BQRnv+ozCJ9Xj4jZulVt38tGMukniDI1uwTiXm+G2vdogpD4Q==}
+  '@workos-inc/node@12.0.0':
+    resolution: {integrity: sha512-ujB+xdaOHUrfHe5oMnNOrHV/g+AzZ+5VPCGayDLC4mHWTBHCZg6U5e9X8EDCmKSir8pSXAmJaJylTJNRZ+BSew==}
     engines: {node: '>=22.11.0'}
 
   '@xobotyi/scrollbar-width@1.9.5':
@@ -30290,7 +30290,7 @@ snapshots:
 
   '@wolfy1339/lru-cache@11.0.2-patch.1': {}
 
-  '@workos-inc/node@10.9.0': {}
+  '@workos-inc/node@12.0.0': {}
 
   '@xobotyi/scrollbar-width@1.9.5': {}
 
