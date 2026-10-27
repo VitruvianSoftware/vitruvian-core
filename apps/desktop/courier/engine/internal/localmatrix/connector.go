@@ -155,6 +155,11 @@ func (c *Connector) SendBridgeStatus(ctx context.Context, st *status.BridgeState
 	if c.stateBegun != nil {
 		c.stateBegun()
 	}
+	// When UserLogin.Delete runs, it deletes the login from br.userLoginsByID first and then enqueues StateLoggedOut
+	// on BridgeStateQueue. Ignore that post-deletion state so it does not re-create a deleted login_state row.
+	if c.br != nil && st.RemoteID != "" && st.StateEvent == status.StateLoggedOut && c.br.GetCachedUserLoginByID(st.RemoteID) == nil {
+		return nil
+	}
 	raw, err := json.Marshal(st)
 	if err != nil {
 		return err

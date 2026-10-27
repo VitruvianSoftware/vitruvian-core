@@ -863,3 +863,25 @@ func TestOneSignInPerNetworkAtATime(t *testing.T) {
 		w.start(t)
 	})
 }
+
+func TestCancelNetworkCancelsActiveLogin(t *testing.T) {
+	ctx := context.Background()
+	w := newWorld(t, false, displayStep("qr", bridgev2.LoginDisplayTypeQR, "x"), complete())
+	other := &fakenet.ScriptedLogin{Steps: []*bridgev2.LoginStep{displayStep("qr", bridgev2.LoginDisplayTypeQR, "y")}}
+
+	stepFake := w.start(t)
+	stepOther, err := w.d.StartProcess(ctx, "other", other)
+	require.NoError(t, err)
+
+	w.d.CancelNetwork("fake")
+	require.Equal(t, 1, w.script.Cancelled(), "CancelNetwork cancels the active login on that network")
+	require.Zero(t, other.Cancelled(), "CancelNetwork leaves other networks alone")
+
+	_, err = w.d.Wait(ctx, stepFake.LoginID)
+	require.ErrorIs(t, err, ErrUnknownLogin)
+
+	h, ok := w.eng.Host("fake")
+	require.True(t, ok)
+	w.d.SetHost("fake", h)
+	w.d.Cancel(stepOther.LoginID)
+}

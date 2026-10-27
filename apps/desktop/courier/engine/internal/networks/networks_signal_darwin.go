@@ -23,6 +23,7 @@ import (
 func platformNetworks() []Network {
 	return []Network{{
 		Name: "signal", DisplayName: "Signal",
+		ModulePath: "go.mau.fi/mautrix-signal",
 		// qr is the only flow mautrix-signal has (GetLoginFlows): Courier shows a QR code and the user scans it
 		// from Signal on their phone under Settings, Linked devices.
 		Flows: []string{"qr"},
@@ -34,8 +35,10 @@ func platformNetworks() []Network {
 // people to vote on the phone.
 func signalSpec() (engine.Spec, error) {
 	return engine.Spec{
-		Name:      "signal",
-		Connector: func() (bridgev2.NetworkConnector, error) { return &signal.SignalConnector{}, nil },
+		Name:        "signal",
+		DisplayName: "Signal",
+		ModulePath:  "go.mau.fi/mautrix-signal",
+		Connector:   func() (bridgev2.NetworkConnector, error) { return &signal.SignalConnector{}, nil },
 		Configure: func(data any) error {
 			cfg, ok := data.(*signal.SignalConfig)
 			if !ok {

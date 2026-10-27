@@ -31,8 +31,15 @@ import (
 type Network struct {
 	Name        string   // "whatsapp", "telegram", "gmessages", "slack", "signal"
 	DisplayName string   // "WhatsApp", ...
+	ModulePath  string   // "go.mau.fi/mautrix-whatsapp", ...
 	Flows       []string // login flow IDs this CLI offers, preferred first
 	Spec        func() (engine.Spec, error)
+}
+
+// ModuleVersions returns map[modulePath]version from runtime/debug.ReadBuildInfo(),
+// plus "maunium.net/go/mautrix" version.
+func ModuleVersions() map[string]string {
+	return engine.ModuleVersions()
 }
 
 // All lists the networks in the order the CLI shows them. Names are lowercase letters only: they become
@@ -41,28 +48,32 @@ func All() []Network {
 	return append([]Network{
 		{
 			Name: "whatsapp", DisplayName: "WhatsApp",
-			Flows: []string{"qr"},
-			Spec:  whatsappSpec,
+			ModulePath: "go.mau.fi/mautrix-whatsapp",
+			Flows:      []string{"qr"},
+			Spec:       whatsappSpec,
 		},
 		{
 			Name: "telegram", DisplayName: "Telegram",
-			Flows: []string{"qr", "phone"},
-			Spec:  telegramSpec,
+			ModulePath: "go.mau.fi/mautrix-telegram",
+			Flows:      []string{"qr", "phone"},
+			Spec:       telegramSpec,
 		},
 		{
 			Name: "gmessages", DisplayName: "Google Messages",
+			ModulePath: "go.mau.fi/mautrix-gmessages",
 			// Upstream disabled QR login ("Google has discontinued it", CHANGELOG v26.05) and no longer
 			// lists it in GetLoginFlows, though CreateLogin still accepts it. google needs a cookies step plus an emoji
 			// match on the phone.
 			Flows: []string{"google"},
-			Spec:  simpleSpec("gmessages", func() bridgev2.NetworkConnector { return &gmessages.GMConnector{} }),
+			Spec:  simpleSpec("gmessages", "Google Messages", "go.mau.fi/mautrix-gmessages", func() bridgev2.NetworkConnector { return &gmessages.GMConnector{} }),
 		},
 		{
 			Name: "slack", DisplayName: "Slack",
+			ModulePath: "go.mau.fi/mautrix-slack",
 			// email needs an emailed code (and a captcha cookies step if Slack demands one); token needs pasted
 			// browser cookies; app needs bot tokens.
 			Flows: []string{"email", "token", "app"},
-			Spec:  simpleSpec("slack", func() bridgev2.NetworkConnector { return &slack.SlackConnector{} }),
+			Spec:  simpleSpec("slack", "Slack", "go.mau.fi/mautrix-slack", func() bridgev2.NetworkConnector { return &slack.SlackConnector{} }),
 		},
 	}, platformNetworks()...)
 }
@@ -83,6 +94,12 @@ func Specs(nets []Network) []engine.Spec {
 		if err != nil {
 			spec = engine.Spec{Name: n.Name, Connector: func() (bridgev2.NetworkConnector, error) { return nil, err }}
 		}
+		if spec.DisplayName == "" {
+			spec.DisplayName = n.DisplayName
+		}
+		if spec.ModulePath == "" {
+			spec.ModulePath = n.ModulePath
+		}
 		specs = append(specs, spec)
 	}
 	return specs
@@ -99,11 +116,13 @@ func Get(name string) (Network, bool) {
 }
 
 // simpleSpec is the spec of a network that needs nothing beyond its connector's own example config.
-func simpleSpec(name string, newConnector func() bridgev2.NetworkConnector) func() (engine.Spec, error) {
+func simpleSpec(name, displayName, modulePath string, newConnector func() bridgev2.NetworkConnector) func() (engine.Spec, error) {
 	return func() (engine.Spec, error) {
 		return engine.Spec{
-			Name:      name,
-			Connector: func() (bridgev2.NetworkConnector, error) { return newConnector(), nil },
+			Name:        name,
+			DisplayName: displayName,
+			ModulePath:  modulePath,
+			Connector:   func() (bridgev2.NetworkConnector, error) { return newConnector(), nil },
 		}, nil
 	}
 }
@@ -114,8 +133,10 @@ func simpleSpec(name string, newConnector func() bridgev2.NetworkConnector) func
 // phone.
 func whatsappSpec() (engine.Spec, error) {
 	return engine.Spec{
-		Name:      "whatsapp",
-		Connector: func() (bridgev2.NetworkConnector, error) { return &whatsapp.WhatsAppConnector{}, nil },
+		Name:        "whatsapp",
+		DisplayName: "WhatsApp",
+		ModulePath:  "go.mau.fi/mautrix-whatsapp",
+		Connector:   func() (bridgev2.NetworkConnector, error) { return &whatsapp.WhatsAppConnector{}, nil },
 		Configure: func(data any) error {
 			cfg, ok := data.(*whatsapp.Config)
 			if !ok {
@@ -152,8 +173,10 @@ func telegramSpec() (engine.Spec, error) {
 		return engine.Spec{}, errors.New(telegramHashEnv + " must be the 32-character hex string shown as \"App api_hash\" at https://my.telegram.org")
 	}
 	return engine.Spec{
-		Name:      "telegram",
-		Connector: func() (bridgev2.NetworkConnector, error) { return &telegram.TelegramConnector{}, nil },
+		Name:        "telegram",
+		DisplayName: "Telegram",
+		ModulePath:  "go.mau.fi/mautrix-telegram",
+		Connector:   func() (bridgev2.NetworkConnector, error) { return &telegram.TelegramConnector{}, nil },
 		// Unmarshalling into the already decoded example config changes only these two keys; every other
 		// field keeps the default the example gave it. The hash is quoted so YAML never reads it as a number.
 		// The id is written from the parsed number: YAML reads a raw "0042" as octal, which would silently

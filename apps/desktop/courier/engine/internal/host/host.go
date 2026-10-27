@@ -164,6 +164,12 @@ func (h *Host) Stop() {
 	})
 }
 
+// Close shuts the bridge down and waits for its database connections to close.
+func (h *Host) Close() error {
+	h.Stop()
+	return nil
+}
+
 // dbCloseTimeout bounds how long Stop waits for in-flight queries to finish.
 const dbCloseTimeout = 5 * time.Second
 
