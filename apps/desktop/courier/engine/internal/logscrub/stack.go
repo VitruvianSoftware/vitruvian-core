@@ -6,9 +6,11 @@ package logscrub
 import (
 	"bufio"
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 )
@@ -27,20 +29,48 @@ var (
 	// Go stack trace header: "goroutine 42 [running]:" or "goroutine 1 [chan receive, 2 minutes]:"
 	goroutineRE = regexp.MustCompile(`^goroutine \d+ \[[a-zA-Z0-9 ,._-]+\]:$`)
 
-	// Go stack frame call line: "pkg/path.(*Type).Method(0x14000123456, 0x102938475, ...)"
+	// Go stack frame call line: "pkg/path.(*Type).Method(0x14000123456, 0x102938475, ...)" or "panic({0x..., 0x...})"
 	// Captures the qualified function name before the opening parenthesis of the argument list.
-	frameCallRE = regexp.MustCompile(`^((?:created by )?[A-Za-z0-9_./@-]+(?:\.\(\*?[A-Za-z0-9_]+(?:\[\.\.\.\])?\))?(?:\.[A-Za-z0-9_]+(?:\[\.\.\.\])?)+)\([^)]*\)( in goroutine \d+)?$`)
+	frameCallRE = regexp.MustCompile(`^((?:created by )?(?:panic|[A-Za-z0-9_./@-]+(?:\.\(\*?[A-Za-z0-9_]+(?:\[[^\]]+\])?\))?(?:\.[A-Za-z0-9_]+(?:\[[^\]]+\])?)+))\([^\n]*\)( in goroutine \d+)?$`)
 
 	// Go stack frame created-by line without parens: "created by pkg/path.Func in goroutine 1"
-	createdByRE = regexp.MustCompile(`^created by [A-Za-z0-9_./@-]+(?:\.\(\*?[A-Za-z0-9_]+\))?\.[A-Za-z0-9_]+( in goroutine \d+)?$`)
+	createdByRE = regexp.MustCompile(`^created by [A-Za-z0-9_./@-]+(?:\.\(\*?[A-Za-z0-9_]+(?:\[[^\]]+\])?\))?(?:\.[A-Za-z0-9_]+(?:\[[^\]]+\])?)+( in goroutine \d+)?$`)
 
 	// Go stack source location line: "\t/path/to/file.go:123 +0x45" or "\t/path/to/file.go:123"
 	frameFileRE = regexp.MustCompile(`^\t(.+\.go:\d+)( \+0x[0-9a-fA-F]+)?$`)
 )
 
-// ScrubPath replaces any /Users/<username> or /home/<username> prefix with ~,
-// strips local build/go-mod/bazel cache prefixes from source paths, and applies Redact.
+func replaceHomePrefix(s, home string) string {
+	home = strings.TrimRight(home, "/")
+	if home == "" || home == "/" {
+		return s
+	}
+	s = strings.ReplaceAll(s, home+"/", "~/")
+	for _, delim := range []string{":", " ", "\"", "'", "\t", "\r", "\n", ")"} {
+		s = strings.ReplaceAll(s, home+delim, "~"+delim)
+	}
+	if strings.HasSuffix(s, home) {
+		s = s[:len(s)-len(home)] + "~"
+	}
+	return s
+}
+
+// ScrubPath replaces os.UserHomeDir() (and its resolved realpath) as well as any /Users/<username>
+// or /home/<username> prefix with ~, and applies Redact.
 func ScrubPath(s string) string {
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		homes := []string{strings.TrimRight(home, "/")}
+		if realHome, err := filepath.EvalSymlinks(home); err == nil {
+			realHome = strings.TrimRight(realHome, "/")
+			if realHome != "" && !slices.Contains(homes, realHome) {
+				homes = append(homes, realHome)
+			}
+		}
+		slices.SortFunc(homes, func(a, b string) int { return len(b) - len(a) })
+		for _, h := range homes {
+			s = replaceHomePrefix(s, h)
+		}
+	}
 	s = userHomeRE.ReplaceAllStringFunc(s, func(m string) string {
 		if strings.HasSuffix(m, "/") {
 			return "~/"
@@ -145,12 +175,14 @@ func ScrubStderrExport(dump string) []string {
 }
 
 // RollingFile is a thread-safe writer that persists the tail of stderr to disk,
-// bounding the file size to maxBytes (default 256 KB) on complete line boundaries.
+// bounding the file size to maxBytes (default 256 KB) and trimming to the last
+// maxBytes/2 on a line boundary when rolling over.
 type RollingFile struct {
 	mu       sync.Mutex
 	path     string
 	maxBytes int
 	buf      []byte
+	f        *os.File
 }
 
 // OpenRollingFile opens or creates a bounded rolling file at path with mode 0600.
@@ -159,17 +191,35 @@ func OpenRollingFile(path string, maxBytes int) (*RollingFile, error) {
 		maxBytes = MaxStderrLogBytes
 	}
 	var existing []byte
+	rewrote := false
 	if b, err := os.ReadFile(path); err == nil {
-		existing = trimLeadingLine(b, maxBytes)
+		if len(b) > maxBytes {
+			existing = trimLeadingLine(b, maxBytes/2)
+			rewrote = true
+		} else {
+			existing = b
+		}
 	} else if !os.IsNotExist(err) {
 		return nil, err
 	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	_ = f.Chmod(0o600)
 	rf := &RollingFile{
 		path:     path,
 		maxBytes: maxBytes,
 		buf:      existing,
+		f:        f,
 	}
-	if err := rf.flushLocked(); err != nil {
+	if rewrote {
+		if err := rf.rewriteLocked(); err != nil {
+			_ = f.Close()
+			return nil, err
+		}
+	} else if _, err := f.Seek(0, io.SeekEnd); err != nil {
+		_ = f.Close()
 		return nil, err
 	}
 	return rf, nil
@@ -186,25 +236,68 @@ func trimLeadingLine(b []byte, maxBytes int) []byte {
 	return append([]byte(nil), b...)
 }
 
-// Write appends p to the rolling buffer and flushes the bounded tail to disk.
+// Write appends p to the open file on ordinary writes, and on rollover above
+// maxBytes truncates the file to the last maxBytes/2 on a line boundary.
 func (r *RollingFile) Write(p []byte) (int, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if err := r.ensureOpenLocked(); err != nil {
+		return 0, err
+	}
 	r.buf = append(r.buf, p...)
 	if len(r.buf) > r.maxBytes {
-		r.buf = trimLeadingLine(r.buf, r.maxBytes)
+		target := r.maxBytes / 2
+		if len(p) > target && len(p) <= r.maxBytes {
+			target = len(p)
+		}
+		r.buf = trimLeadingLine(r.buf, target)
+		if err := r.rewriteLocked(); err != nil {
+			return 0, err
+		}
+		return len(p), nil
 	}
-	if err := r.flushLocked(); err != nil {
+	if _, err := r.f.Write(p); err != nil {
 		return 0, err
 	}
 	return len(p), nil
 }
 
-func (r *RollingFile) flushLocked() error {
-	return os.WriteFile(r.path, r.buf, 0o600)
+func (r *RollingFile) ensureOpenLocked() error {
+	if r.f != nil {
+		return nil
+	}
+	f, err := os.OpenFile(r.path, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return err
+	}
+	_ = f.Chmod(0o600)
+	if _, err := f.Seek(0, io.SeekEnd); err != nil {
+		_ = f.Close()
+		return err
+	}
+	r.f = f
+	return nil
 }
 
-// Close is a no-op since Write flushes atomically, satisfying io.WriteCloser.
+func (r *RollingFile) rewriteLocked() error {
+	if err := r.f.Truncate(0); err != nil {
+		return err
+	}
+	if _, err := r.f.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+	_, err := r.f.Write(r.buf)
+	return err
+}
+
+// Close closes the underlying file handle.
 func (r *RollingFile) Close() error {
-	return nil
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.f == nil {
+		return nil
+	}
+	err := r.f.Close()
+	r.f = nil
+	return err
 }

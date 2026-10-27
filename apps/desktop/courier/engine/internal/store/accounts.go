@@ -70,7 +70,8 @@ func (s *Store) UpsertSubAccount(ctx context.Context, sub SubAccount) error {
 		ctx, `
 		INSERT INTO sub_accounts (network, login_id, sub_id, title, avatar_uri, kind, enabled, show_in_inbox)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-		ON CONFLICT (network, login_id, sub_id) DO UPDATE SET
+		ON CONFLICT (network, sub_id) DO UPDATE SET
+			login_id   = CASE WHEN excluded.login_id <> '' THEN excluded.login_id ELSE sub_accounts.login_id END,
 			title      = CASE WHEN excluded.title <> '' THEN excluded.title ELSE sub_accounts.title END,
 			avatar_uri = CASE WHEN excluded.avatar_uri <> '' THEN excluded.avatar_uri ELSE sub_accounts.avatar_uri END`,
 		sub.Network, sub.LoginID, sub.SubID, sub.Title, sub.AvatarURI, sub.Kind, b2i(sub.Enabled), sub.ShowInInbox,

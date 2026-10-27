@@ -404,7 +404,7 @@ func (pq pageQuery) sql(after *pageKey) (string, []any) {
 	needUnread, needLast := false, false
 	if len(pq.roomIDs) > 0 {
 		ids, _ := json.Marshal(pq.roomIDs)
-		where = append(where, `r.is_space = 0`, `r.room_id IN (SELECT value FROM json_each(`+args.add(string(ids))+`))`)
+		where = append(where, `r.is_space = 0`, subAccountEnabledSQL("r"), `r.room_id IN (SELECT value FROM json_each(`+args.add(string(ids))+`))`)
 	} else {
 		var networkArg, labelArg string
 		switch pq.kind {

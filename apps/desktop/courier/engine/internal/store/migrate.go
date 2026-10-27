@@ -308,7 +308,8 @@ CREATE TABLE sub_accounts (
   kind TEXT NOT NULL DEFAULT 'space',
   enabled INTEGER NOT NULL DEFAULT 1,
   show_in_inbox TEXT NOT NULL DEFAULT 'all' CHECK (show_in_inbox IN ('all', 'dms', 'none')),
-  PRIMARY KEY (network, login_id, sub_id)
+  PRIMARY KEY (network, login_id, sub_id),
+  UNIQUE (network, sub_id)
 );`,
 }
 

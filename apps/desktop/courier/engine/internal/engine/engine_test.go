@@ -5,11 +5,14 @@ package engine
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -816,4 +819,114 @@ func TestRefreshSubAccountsFromBridgeDB(t *testing.T) {
 	require.Equal(t, "Acme Corp", byID["!ws:courier.local"].Title)
 	require.Equal(t, "bot", byID["!botdm:courier.local"].Kind)
 	require.Equal(t, "Slackbot", byID["!botdm:courier.local"].Title)
+}
+
+func TestStartNetworksAndRestartNetworkConcurrent(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	s := openStore(t, dir)
+	m := &media.Store{Dir: filepath.Join(dir, "media")}
+	e := New(s)
+	t.Cleanup(e.Stop)
+
+	var inFlight atomic.Int32
+	var maxInFlight atomic.Int32
+	var callCount atomic.Int32
+	inConnector1 := make(chan struct{})
+	releaseConnector1 := make(chan struct{})
+	var releaseOnce sync.Once
+
+	spec := Spec{
+		Name:        "fake",
+		DisplayName: "Fake",
+		Connector: func() (bridgev2.NetworkConnector, error) {
+			cur := inFlight.Add(1)
+			defer inFlight.Add(-1)
+			for {
+				prev := maxInFlight.Load()
+				if cur <= prev || maxInFlight.CompareAndSwap(prev, cur) {
+					break
+				}
+			}
+			call := callCount.Add(1)
+			if call == 1 {
+				close(inConnector1)
+				<-releaseConnector1
+			} else {
+				releaseOnce.Do(func() { close(releaseConnector1) })
+			}
+			return fakenet.New(), nil
+		},
+	}
+
+	startDone := make(chan map[string]error, 1)
+	go func() {
+		startDone <- e.StartNetworks(ctx, dir, m, []Spec{spec}, quiet)
+	}()
+
+	<-inConnector1
+	restartDone := make(chan error, 1)
+	go func() {
+		restartDone <- e.RestartNetwork(ctx, "fake")
+	}()
+	for range 1000 {
+		runtime.Gosched()
+	}
+	releaseOnce.Do(func() { close(releaseConnector1) })
+
+	require.Empty(t, <-startDone)
+	require.NoError(t, <-restartDone)
+	require.Equal(t, int32(1), maxInFlight.Load(), "StartNetworks and RestartNetwork must never run startOne concurrently for the same network")
+}
+
+func TestRefreshSubAccountsFallbackRoomMetadataAndSurfaceStoreErrors(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	s := openStore(t, dir)
+	net := fakenet.New()
+	spec := Spec{
+		Name:        "slack",
+		DisplayName: "Slack",
+		ModulePath:  "go.mau.fi/mautrix-slack",
+		Connector:   func() (bridgev2.NetworkConnector, error) { return net, nil },
+	}
+	e, errs := Start(ctx, dir, s, &media.Store{Dir: filepath.Join(dir, "media")}, []Spec{spec}, quiet)
+	require.Empty(t, errs)
+	t.Cleanup(e.Stop)
+
+	h, ok := e.Host("slack")
+	require.True(t, ok)
+	_, err := net.LoginAs(ctx, h.Bridge, "T1-U1", "Acme Slack")
+	require.NoError(t, err)
+
+	// Space portal in bridge DB has empty Name and AvatarMXC, while courier.db has the room's title and avatar.
+	require.NoError(t, s.UpsertRoom(ctx, store.Room{
+		ID:        "!ws-fallback:courier.local",
+		Network:   "slack",
+		LoginID:   "T1-U1",
+		Name:      "Stored Workspace Title",
+		AvatarURI: "mxc://courier.local/stored-ws",
+	}))
+	require.NoError(t, h.Bridge.DB.Portal.Insert(ctx, &database.Portal{
+		PortalKey: networkid.PortalKey{ID: "space-fallback", Receiver: "T1-U1"},
+		MXID:      "!ws-fallback:courier.local",
+		Name:      "",
+		AvatarMXC: "",
+		RoomType:  database.RoomTypeSpace,
+	}))
+
+	subs, err := e.RefreshSubAccounts(ctx, "slack", "T1-U1")
+	require.NoError(t, err)
+	require.Len(t, subs, 1)
+	require.Equal(t, "Stored Workspace Title", subs[0].Title, "RefreshSubAccounts must fall back to room title in courier.db for spaces")
+	require.Equal(t, "mxc://courier.local/stored-ws", subs[0].AvatarURI, "RefreshSubAccounts must fall back to room avatar in courier.db for spaces")
+
+	// Surface store errors during the portal loop (when UpsertSubAccount fails).
+	rawDB, err := sql.Open("sqlite3", filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	defer rawDB.Close()
+	_, err = rawDB.ExecContext(ctx, `CREATE TRIGGER fail_sub_upsert BEFORE UPDATE ON sub_accounts BEGIN SELECT RAISE(ABORT, 'sub_accounts write failed'); END;`)
+	require.NoError(t, err)
+
+	_, err = e.RefreshSubAccounts(ctx, "slack", "T1-U1")
+	require.Error(t, err, "RefreshSubAccounts must surface store errors from the portal loop")
+	require.Contains(t, err.Error(), "sub_accounts write failed")
 }

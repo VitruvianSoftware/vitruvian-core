@@ -163,12 +163,17 @@ func (e *Engine) StartNetworks(ctx context.Context, dataDir string, m *media.Sto
 	e.dataDir = dataDir
 	e.media = m
 	e.log = log
+	alreadyRunning := make(map[string]bool, len(e.hosts))
+	for name := range e.hosts {
+		alreadyRunning[name] = true
+	}
 	e.starting.Add(1)
 	e.hostsMu.Unlock()
 	defer e.starting.Done()
 	e.Expect(specs)
 
 	bridgeCtx := context.WithoutCancel(ctx)
+	seenInSpecs := make(map[string]bool, len(specs))
 	for i, spec := range specs {
 		if ctx.Err() != nil || e.isStopped() {
 			e.notStarted(specs[i:], errs)
@@ -179,9 +184,22 @@ func (e *Engine) StartNetworks(ctx context.Context, dataDir string, m *media.Sto
 			e.failed(spec.Name, errs[spec.Name])
 			continue
 		}
-		if _, dup := e.Host(spec.Name); dup {
+		if seenInSpecs[spec.Name] || alreadyRunning[spec.Name] {
 			// Under its own key: errs[name] must stay absent for the network that IS running.
 			errs[spec.Name+" (duplicate)"] = fmt.Errorf("network %s is already running; names must be unique", spec.Name)
+			continue
+		}
+		seenInSpecs[spec.Name] = true
+
+		e.restartMu.Lock()
+		if ctx.Err() != nil || e.isStopped() {
+			e.restartMu.Unlock()
+			e.notStarted(specs[i:], errs)
+			break
+		}
+		if _, running := e.Host(spec.Name); running {
+			// Started concurrently by RestartNetwork while StartNetworks was on an earlier spec.
+			e.restartMu.Unlock()
 			continue
 		}
 		e.store.NetworkChanged(spec.Name) // its account is STARTING
@@ -189,6 +207,7 @@ func (e *Engine) StartNetworks(ctx context.Context, dataDir string, m *media.Sto
 		if err != nil {
 			errs[spec.Name] = err
 			e.failed(spec.Name, err)
+			e.restartMu.Unlock()
 			continue
 		}
 		e.pruneLoginStates(bridgeCtx, h, log)
@@ -207,6 +226,7 @@ func (e *Engine) StartNetworks(ctx context.Context, dataDir string, m *media.Sto
 		}
 		e.store.NetworkChanged(spec.Name)
 		e.store.SpacesChanged() // a linked account's space is now the running network's
+		e.restartMu.Unlock()
 	}
 	return errs
 }
@@ -362,6 +382,8 @@ func (e *Engine) Stop() {
 		e.stopped = true
 		e.hostsMu.Unlock()
 		e.starting.Wait()
+		e.restartMu.Lock()
+		defer e.restartMu.Unlock()
 		e.hostsMu.RLock()
 		order := append([]string(nil), e.order...)
 		hosts := make(map[string]*host.Host, len(e.hosts))
@@ -737,53 +759,82 @@ func (e *Engine) RefreshSubAccounts(ctx context.Context, network, accountID stri
 				continue
 			}
 			roomID := string(p.MXID)
+			r, roomOK, err := e.store.GetRoom(ctx, roomID)
+			if err != nil {
+				return nil, err
+			}
 			loginID := string(p.Receiver)
 			if loginID == "" && p.RelayLoginID != "" {
 				loginID = string(p.RelayLoginID)
 			}
-			if loginID == "" {
-				if r, ok, err := e.store.GetRoom(ctx, roomID); err == nil && ok && r.LoginID != "" {
-					loginID = r.LoginID
-				}
+			if loginID == "" && roomOK && r.LoginID != "" {
+				loginID = r.LoginID
 			}
 			if p.RoomType == database.RoomTypeSpace {
-				_ = e.store.SetRoomSpace(ctx, roomID, true, "")
+				if err := e.store.SetRoomSpace(ctx, roomID, true, ""); err != nil {
+					return nil, err
+				}
 				if loginID == accountID || (loginID == "" && accountID != "") {
-					_ = e.store.UpsertSubAccount(ctx, store.SubAccount{
+					title := p.Name
+					if title == "" && roomOK {
+						title = r.Name
+					}
+					avatar := string(p.AvatarMXC)
+					if avatar == "" && roomOK {
+						avatar = r.AvatarURI
+					}
+					if err := e.store.UpsertSubAccount(ctx, store.SubAccount{
 						Network:     network,
 						LoginID:     accountID,
 						SubID:       roomID,
-						Title:       p.Name,
-						AvatarURI:   string(p.AvatarMXC),
+						Title:       title,
+						AvatarURI:   avatar,
 						Kind:        "space",
 						Enabled:     true,
 						ShowInInbox: "all",
-					})
+					}); err != nil {
+						return nil, err
+					}
 				}
 				continue
 			}
 			if p.ParentKey.ID != "" {
 				if parentMXID, ok := spaceMXIDByKey[p.ParentKey]; ok {
-					_ = e.store.SetRoomSpace(ctx, roomID, false, parentMXID)
+					if err := e.store.SetRoomSpace(ctx, roomID, false, parentMXID); err != nil {
+						return nil, err
+					}
 				} else if parentMXID, ok := spaceMXIDByKey[networkid.PortalKey{ID: p.ParentKey.ID, Receiver: p.Receiver}]; ok {
-					_ = e.store.SetRoomSpace(ctx, roomID, false, parentMXID)
+					if err := e.store.SetRoomSpace(ctx, roomID, false, parentMXID); err != nil {
+						return nil, err
+					}
 				}
 			}
 			if p.RoomType == database.RoomTypeDM && p.OtherUserID != "" {
 				ghost, err := h.Bridge.DB.Ghost.GetByID(ctx, p.OtherUserID)
-				if err == nil && ghost != nil && ghost.IsBot {
+				if err != nil {
+					return nil, err
+				}
+				if ghost != nil && ghost.IsBot {
 					ghostMXID := string(ids.GhostMXID(network, p.OtherUserID))
-					_ = e.store.SetProfileExtraMeta(ctx, ghostMXID, ghost.Identifiers, "", true)
+					if err := e.store.SetProfileExtraMeta(ctx, ghostMXID, ghost.Identifiers, "", true); err != nil {
+						return nil, err
+					}
 					if loginID == accountID {
 						title := p.Name
 						if title == "" {
 							title = ghost.Name
 						}
+						if title == "" && roomOK {
+							title = r.Name
+						}
 						avatar := string(p.AvatarMXC)
 						if avatar == "" {
 							avatar = string(ghost.AvatarMXC)
 						}
-						_ = e.store.UpsertSubAccount(ctx, store.SubAccount{
+						if avatar == "" && roomOK {
+							avatar = r.AvatarURI
+						}
+						if err := e.store.UpsertSubAccount(ctx, store.SubAccount{
 							Network:     network,
 							LoginID:     accountID,
 							SubID:       roomID,
@@ -792,7 +843,9 @@ func (e *Engine) RefreshSubAccounts(ctx context.Context, network, accountID stri
 							Kind:        "bot",
 							Enabled:     true,
 							ShowInInbox: "all",
-						})
+						}); err != nil {
+							return nil, err
+						}
 					}
 				}
 			}

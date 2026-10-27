@@ -5,8 +5,10 @@ package logscrub
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"testing"
 
@@ -124,4 +126,121 @@ func TestRollingFileBoundsAt256KB(t *testing.T) {
 	exported := ScrubStderrExport(string(data))
 	require.NotEmpty(t, exported)
 	require.Equal(t, `{"level":"error","bridge":"signal","message":"latest line stays"}`, exported[len(exported)-1])
+}
+
+func TestScrubPathReplacesUserHomeDirAndRealpath(t *testing.T) {
+	t.Setenv("HOME", "/Volumes/Data/alice-example")
+	require.Equal(
+		t,
+		"open ~/Library/Application Support/Courier/courier.db: permission denied",
+		ScrubPath("open /Volumes/Data/alice-example/Library/Application Support/Courier/courier.db: permission denied"),
+	)
+	require.Equal(
+		t,
+		"cannot mkdir ~: file exists",
+		ScrubPath("cannot mkdir /Volumes/Data/alice-example: file exists"),
+	)
+
+	// Symlinked HOME -> realpath must also be scrubbed.
+	base := t.TempDir()
+	realHome := filepath.Join(base, "real-alice-home")
+	linkHome := filepath.Join(base, "link-alice-home")
+	require.NoError(t, os.MkdirAll(realHome, 0o700))
+	require.NoError(t, os.Symlink(realHome, linkHome))
+	t.Setenv("HOME", linkHome)
+
+	resolvedReal, err := filepath.EvalSymlinks(realHome)
+	require.NoError(t, err)
+	require.Equal(
+		t,
+		"open ~/Library/Courier/courier.db",
+		ScrubPath("open "+resolvedReal+"/Library/Courier/courier.db"),
+	)
+	require.Equal(
+		t,
+		"open ~/Library/Courier/courier.db",
+		ScrubPath("open "+linkHome+"/Library/Courier/courier.db"),
+	)
+}
+
+func TestRollingFileRolloverHalvesAndAppends(t *testing.T) {
+	path := filepath.Join(t.TempDir(), StderrLogName)
+	const maxBytes = 200
+	rf, err := OpenRollingFile(path, maxBytes)
+	require.NoError(t, err)
+	defer rf.Close()
+
+	// Write 4 lines of 45 bytes each = 180 bytes (under maxBytes = 200).
+	for i := 1; i <= 4; i++ {
+		line := fmt.Sprintf("{\"level\":\"info\",\"message\":\"line-%02d-padding\"}\n", i)
+		require.Len(t, line, 45)
+		_, err := rf.Write([]byte(line))
+		require.NoError(t, err)
+	}
+
+	// Verify ordinary writes append to the existing file without rewriting earlier bytes:
+	// overwrite byte 0 on disk via a separate descriptor, then do one more non-rollover write (10 bytes -> 190 <= 200).
+	fCheck, err := os.OpenFile(path, os.O_WRONLY, 0o600)
+	require.NoError(t, err)
+	_, err = fCheck.WriteAt([]byte("X"), 0)
+	require.NoError(t, err)
+	require.NoError(t, fCheck.Close())
+
+	_, err = rf.Write([]byte("short1234\n"))
+	require.NoError(t, err)
+
+	beforeRollover, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.Equal(t, byte('X'), beforeRollover[0], "ordinary write must append to the open file without rewriting the whole file")
+
+	// Next 45-byte write pushes total to 235 > 200, triggering rollover to <= maxBytes/2 (100 bytes).
+	fifth := fmt.Sprintf("{\"level\":\"info\",\"message\":\"line-%02d-padding\"}\n", 5)
+	_, err = rf.Write([]byte(fifth))
+	require.NoError(t, err)
+
+	afterRollover, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.LessOrEqual(t, len(afterRollover), maxBytes/2, "rollover must trim retained file to <= maxBytes/2")
+	require.True(t, strings.HasSuffix(string(afterRollover), fifth))
+}
+
+type genericCrashBox[T any] struct {
+	val T
+}
+
+//go:noinline
+func (b *genericCrashBox[T]) crash(secret T) {
+	panic(secret)
+}
+
+//go:noinline
+func triggerGenericPanic[T any](secret T) (stack string) {
+	defer func() {
+		if recover() != nil {
+			stack = string(debug.Stack())
+		}
+	}()
+	box := &genericCrashBox[T]{val: secret}
+	box.crash(secret)
+	return ""
+}
+
+func TestScrubStderrExportPreservesRealPanicAndGenericFrames(t *testing.T) {
+	realStack := triggerGenericPanic("+14155550199 secret panic payload")
+	require.Contains(t, realStack, "panic(")
+
+	dump := "panic: +14155550199 secret panic payload\n\n" + realStack +
+		"\ngithub.com/VitruvianSoftware/courier/engine/internal/logscrub.instantiated[go.shape.int,int](0x14000123456)\n" +
+		"\t/Users/alice/Workspace/vitruvian-core/apps/desktop/courier/engine/internal/logscrub/stack_test.go:180 +0x20\n"
+
+	scrubbed := ScrubStderrExport(dump)
+	joined := strings.Join(scrubbed, "\n")
+
+	require.Contains(t, scrubbed, "panic: [redacted]")
+	require.Contains(t, scrubbed, "panic(...)", "real Go runtime panic(...) frame must be preserved")
+	require.Contains(t, joined, "genericCrashBox[...]).crash(...)", "real Go generic method frame must be preserved")
+	require.Contains(t, joined, "triggerGenericPanic[...](...)", "real Go generic function frame must be preserved")
+	require.Contains(t, joined, "instantiated[go.shape.int,int](...)", "concrete/shape generic frame must be preserved")
+	require.NotContains(t, joined, "+14155550199")
+	require.NotContains(t, joined, "secret panic payload")
 }

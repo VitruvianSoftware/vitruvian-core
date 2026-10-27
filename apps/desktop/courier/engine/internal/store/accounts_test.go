@@ -174,3 +174,72 @@ func TestRemoveAccountDataSingleAndMultiAccount(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, ok, "shared room must be deleted when last account on network is removed with deleteChats=true")
 }
+
+func TestUpsertSubAccountNoDuplicatesAcrossEmptyAndAssignedLoginID(t *testing.T) {
+	s, ctx := open(t), context.Background()
+
+	// 1. Space portal initially discovered before ReceiverLogin is populated (login_id = "").
+	require.NoError(t, s.UpsertSubAccount(ctx, SubAccount{
+		Network: "slack", LoginID: "", SubID: "!ws:courier.local",
+		Title: "Acme Workspace", Kind: "space", Enabled: true, ShowInInbox: "all",
+	}))
+	disabled := false
+	dmsOnly := "dms"
+	require.NoError(t, s.UpdateSubAccount(ctx, "slack", "", "!ws:courier.local", &disabled, &dmsOnly))
+
+	// 2. Space portal later refreshed with login_id = "slack-1", then again with login_id = "".
+	require.NoError(t, s.UpsertSubAccount(ctx, SubAccount{
+		Network: "slack", LoginID: "slack-1", SubID: "!ws:courier.local",
+		Title: "Acme Workspace Updated", Kind: "space", Enabled: true, ShowInInbox: "all",
+	}))
+	require.NoError(t, s.UpsertSubAccount(ctx, SubAccount{
+		Network: "slack", LoginID: "", SubID: "!ws:courier.local",
+		Title: "Acme Workspace Updated", Kind: "space", Enabled: true, ShowInInbox: "all",
+	}))
+
+	subs, err := s.SubAccounts(ctx, "slack", "slack-1")
+	require.NoError(t, err)
+	require.Len(t, subs, 1, "space path twice with empty and non-empty login_id must yield one row")
+	require.Equal(t, "slack-1", subs[0].LoginID)
+	require.Equal(t, "Acme Workspace Updated", subs[0].Title)
+	require.False(t, subs[0].Enabled, "existing enabled=false must be preserved when login_id is filled")
+	require.Equal(t, "dms", subs[0].ShowInInbox, "existing show_in_inbox must be preserved when login_id is filled")
+
+	// 3. Bot DM room initially synced with login_id = "", disabled, then synced with login_id = "tg-1".
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!botdm:courier.local", Network: "telegram", Name: "AlertBot", IsDirect: true, LoginID: ""}))
+	require.NoError(t, s.SetMember(ctx, "!botdm:courier.local", "@me:courier.local", json.RawMessage(`{"membership":"join"}`)))
+	require.NoError(t, s.SetMember(ctx, "!botdm:courier.local", "@telegram_bot1:courier.local", json.RawMessage(`{"membership":"join"}`)))
+	require.NoError(t, s.UpsertProfile(ctx, Profile{UserID: "@telegram_bot1:courier.local", DisplayName: "AlertBot"}))
+	require.NoError(t, s.SetProfileExtraMeta(ctx, "@telegram_bot1:courier.local", nil, "", true))
+
+	bots, err := s.SyncBotSubAccounts(ctx, "telegram", "")
+	require.NoError(t, err)
+	require.Len(t, bots, 1)
+	require.NoError(t, s.UpdateSubAccount(ctx, "telegram", "", "!botdm:courier.local", &disabled, nil))
+
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!botdm:courier.local", Network: "telegram", Name: "AlertBot", IsDirect: true, LoginID: "tg-1"}))
+	bots, err = s.SyncBotSubAccounts(ctx, "telegram", "tg-1")
+	require.NoError(t, err)
+	require.Len(t, bots, 1, "bot-room path twice must yield one row")
+	require.Equal(t, "tg-1", bots[0].LoginID)
+	require.False(t, bots[0].Enabled)
+}
+
+func TestInboxPageWithRoomIDsRespectsDisabledSubAccount(t *testing.T) {
+	s, ctx := open(t), context.Background()
+
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!ws:courier.local", Network: "slack", Name: "Acme Workspace", LoginID: "slack-1"}))
+	require.NoError(t, s.SetRoomSpace(ctx, "!ws:courier.local", true, ""))
+	require.NoError(t, s.UpsertSubAccount(ctx, SubAccount{
+		Network: "slack", LoginID: "slack-1", SubID: "!ws:courier.local",
+		Title: "Acme Workspace", Kind: "space", Enabled: false, ShowInInbox: "all",
+	}))
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!dm:courier.local", Network: "slack", Name: "Alice Example", IsDirect: true, LoginID: "slack-1"}))
+	require.NoError(t, s.SetRoomSpace(ctx, "!dm:courier.local", false, "!ws:courier.local"))
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!ok:courier.local", Network: "slack", Name: "Enabled Chat", IsDirect: true, LoginID: "slack-1"}))
+
+	page, _, err := s.InboxPage(ctx, InboxQuery{RoomIDs: []string{"!dm:courier.local", "!ok:courier.local"}})
+	require.NoError(t, err)
+	require.Len(t, page, 1, "InboxPage with RoomIDs must exclude rooms belonging to a disabled sub-account")
+	require.Equal(t, "!ok:courier.local", page[0].ID)
+}
