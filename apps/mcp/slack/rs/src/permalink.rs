@@ -195,7 +195,8 @@ pub fn parse_file_reference(input: &str) -> Result<String, InvalidPermalinkError
             "not a file ID or file URL",
         ));
     }
-    let url = parse_url(trimmed).map_err(|e| InvalidPermalinkError::new(input, &e.reason))?;
+    // parseUrl(trimmed): its refusals quote the trimmed input, as in TS.
+    let url = parse_url(trimmed)?;
     let Some(rest) = url.pathname.strip_prefix("/files/") else {
         return Err(InvalidPermalinkError::new(
             input,
@@ -364,5 +365,35 @@ mod tests {
                 "expected {label} ({input}) to be rejected"
             );
         }
+    }
+
+    #[test]
+    fn file_reference_errors_quote_what_typescript_quoted() {
+        // A URL refusal from parseUrl(trimmed) quotes the trimmed input...
+        let err =
+            parse_file_reference("  https://evil.example.com/files/U1/F0123ABCD/x  ").unwrap_err();
+        assert!(err
+            .message
+            .starts_with("Cannot parse \"https://evil.example.com/files/U1/F0123ABCD/x\" as"));
+        assert!(err.message.contains("evil.example.com is not a Slack host"));
+        // ...while the other two refusals quote the input as given.
+        let err = parse_file_reference(" nope ").unwrap_err();
+        assert!(err.message.starts_with("Cannot parse \" nope \" as"));
+        let err = parse_file_reference(" https://acme.slack.com/archives/C1/p1700000000123456 ")
+            .unwrap_err();
+        assert!(err.message.starts_with(
+            "Cannot parse \" https://acme.slack.com/archives/C1/p1700000000123456 \""
+        ));
+        assert!(err.message.contains("path is not /files/"));
+    }
+
+    #[test]
+    fn permalinks_with_surrounding_whitespace_parse_as_new_url_would() {
+        assert_eq!(
+            parse_permalink("https://acme.slack.com/archives/C0123ABCD/p1700000000123456\n")
+                .unwrap()
+                .channel_id,
+            "C0123ABCD"
+        );
     }
 }
