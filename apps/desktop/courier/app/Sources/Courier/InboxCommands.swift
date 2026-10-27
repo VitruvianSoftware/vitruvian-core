@@ -19,6 +19,8 @@ struct InboxCommands: Commands {
     /// The open chat: ⌘Z and ⌘⇧Z act on its held (undo send) messages while it has some. (⌘C on a selected message
     /// is MainWindow's.)
     let conversation: ConversationModel
+    @ObservedObject var lifecycle: SystemLifecycleModel
+    let minimizeToMenuBar: @MainActor () -> Void
     @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
@@ -30,6 +32,21 @@ struct InboxCommands: Commands {
                 search.toggle(visible: visible)
             }
             .keyboardShortcut("k", modifiers: .command)
+
+            Divider()
+
+            Button(lifecycle.isLocked ? String(localized: "Unlock Courier…") : String(localized: "Lock App")) {
+                if lifecycle.isLocked {
+                    _ = bringMainWindowForward()
+                    Task { await lifecycle.unlock() }
+                } else {
+                    lifecycle.lockNow()
+                }
+            }
+        }
+        CommandGroup(before: .appTermination) {
+            Button(String(localized: "Minimize to Menu Bar"), action: minimizeToMenuBar)
+                .keyboardShortcut("q", modifiers: [.command, .option])
         }
         // The first-run window has its own button; once a network is linked, this is the way to add another.
         CommandGroup(replacing: .newItem) {
@@ -122,6 +139,17 @@ struct InboxCommands: Commands {
             filters
             Divider()
             spaceKeys
+        }
+        CommandGroup(after: .help) {
+            Button(String(localized: "Keyboard Shortcuts")) {
+                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            }
+            .keyboardShortcut("/", modifiers: .command)
+
+            Button(String(localized: "Report a Problem…")) {
+                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            }
+            .keyboardShortcut("p", modifiers: [.command, .shift])
         }
     }
 

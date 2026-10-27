@@ -28,6 +28,7 @@ struct MainWindow: View {
     @ObservedObject var preferences: InboxPreferences
     @ObservedObject var ui: InboxUI
     @ObservedObject var search: SearchModel
+    @ObservedObject var lifecycle: SystemLifecycleModel
     let labels: LabelsModel
     /// The message menu's actions, the open chat's scheduled messages, the composer's settings, and which messages
     /// the keys act on.
@@ -96,12 +97,26 @@ struct MainWindow: View {
                     )
                 }
             }
+            .overlay {
+                if lifecycle.isLocked {
+                    AppLockOverlay(model: lifecycle)
+                }
+            }
             // A chat's right-click menu opens search in that chat.
             .environment(\.searchInChat, { search.show(in: $0) })
-            .onChange(of: controlActiveState, initial: true) { _, state in ui.isMainWindowKey = state == .key }
+            .onChange(of: controlActiveState, initial: true) { _, state in
+                let isKey = state == .key
+                ui.isMainWindowKey = isKey
+                if isKey {
+                    lifecycle.noteWindowBecameKey()
+                } else {
+                    lifecycle.noteWindowResignedKey()
+                }
+            }
             // A closed window takes its panel with it: the next ⌘K opens a fresh one, in view.
             .onDisappear {
                 ui.isMainWindowKey = false
+                lifecycle.noteWindowResignedKey()
                 search.close()
                 conversation.composer.voiceRecorder.cancelImmediately()
                 conversation.thread.composer.voiceRecorder.cancelImmediately()

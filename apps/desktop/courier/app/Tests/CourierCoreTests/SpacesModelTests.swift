@@ -267,6 +267,17 @@ final class SpacesModelTests: XCTestCase {
         spaces.isEditing = true
         XCTAssertTrue(spaces.isEditing)
     }
+
+    func testBadgeCountModesUnreadChatsAllChatsAndNone() {
+        let spaces = [
+            Space(spaceID: "inbox", kind: .builtin, chats: 40, unreadChats: 9, attentionChats: 4),
+            Space(spaceID: "archive", kind: .builtin, chats: 10, unreadChats: 2, attentionChats: 0),
+        ]
+        XCTAssertEqual(SpacesModel.badgeCount(of: spaces, mode: .unreadChats), 4)
+        XCTAssertEqual(SpacesModel.badgeCount(of: spaces, mode: .allChats), 9)
+        XCTAssertEqual(SpacesModel.badgeCount(of: spaces, mode: .none), 0)
+        XCTAssertEqual(NotificationPolicy.badgeLabel(count: SpacesModel.badgeCount(of: spaces, mode: .none)), nil)
+    }
 }
 
 /// A Space as the engine writes it.

@@ -12,16 +12,18 @@ struct CourierApp: App {
         Window("Courier", id: "main") {
             MainWindow(model: delegate.model, inbox: delegate.inbox, conversation: delegate.conversation,
                        login: delegate.login, spaces: delegate.spaces, preferences: delegate.inbox.preferences,
-                       ui: delegate.inboxUI, search: delegate.search, labels: delegate.labels,
-                       messageActions: delegate.messageActions, scheduled: delegate.scheduled,
-                       composerPreferences: delegate.composerPreferences, focus: delegate.messageFocus)
+                       ui: delegate.inboxUI, search: delegate.search, lifecycle: delegate.lifecycle,
+                       labels: delegate.labels, messageActions: delegate.messageActions,
+                       scheduled: delegate.scheduled, composerPreferences: delegate.composerPreferences,
+                       focus: delegate.messageFocus)
                 .background(OpenWindowRegistrar(opener: delegate.windowOpener))
         }
         .defaultSize(width: 1020, height: 660)
         .commands {
             InboxCommands(inbox: delegate.inbox, login: delegate.login, spaces: delegate.spaces,
                           preferences: delegate.inbox.preferences, ui: delegate.inboxUI, search: delegate.search,
-                          conversation: delegate.conversation)
+                          conversation: delegate.conversation, lifecycle: delegate.lifecycle,
+                          minimizeToMenuBar: delegate.minimizeToMenuBar)
             ConversationCommands(conversation: delegate.conversation, chatComposer: delegate.conversation.composer,
                                  paneComposer: delegate.conversation.thread.composer,
                                  messageActions: delegate.messageActions, focus: delegate.messageFocus)
@@ -81,10 +83,18 @@ struct CourierApp: App {
         }
 
         // The menu-bar icon. Closing the window leaves Courier running (spec §2), and this is how to get it back.
-        MenuBarExtra {
-            MenuBarMenu(spaces: delegate.spaces, openCourier: delegate.windowOpener.show)
+        MenuBarExtra(
+            isInserted: Binding(
+                get: { delegate.dockPreferences.showMenuBarIcon },
+                set: { delegate.dockPreferences.showMenuBarIcon = $0 }
+            )
+        ) {
+            MenuBarMenu(spaces: delegate.spaces, inbox: delegate.inbox, model: delegate.model,
+                        lifecycle: delegate.lifecycle, dockPreferences: delegate.dockPreferences,
+                        openCourier: delegate.windowOpener.show)
         } label: {
-            MenuBarIcon(spaces: delegate.spaces)
+            MenuBarIcon(spaces: delegate.spaces, dockPreferences: delegate.dockPreferences,
+                        lifecycle: delegate.lifecycle)
         }
     }
 }

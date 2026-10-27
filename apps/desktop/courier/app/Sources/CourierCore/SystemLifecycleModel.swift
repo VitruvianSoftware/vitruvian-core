@@ -21,6 +21,21 @@ public protocol LoginItemService: Sendable {
     func unregister() throws
 }
 
+extension LoginItemService {
+    public var isEnabled: Bool {
+        let current = status()
+        return current == .enabled || current == .requiresApproval
+    }
+
+    public func setEnabled(_ enabled: Bool) throws {
+        if enabled {
+            try register()
+        } else {
+            try unregister()
+        }
+    }
+}
+
 /// Production adapter for `SMAppService.mainApp`, guarded by an `.app` bundle check.
 public struct MACLoginItemService: LoginItemService {
     public init() {}
@@ -55,6 +70,12 @@ public struct MACLoginItemService: LoginItemService {
 public protocol BiometricAuthService: Sendable {
     func canEvaluateBiometricsOrWatch() -> Bool
     func authenticate(reason: String) async throws -> Bool
+}
+
+extension BiometricAuthService {
+    public func canEvaluateBiometrics() -> Bool {
+        canEvaluateBiometricsOrWatch()
+    }
 }
 
 /// Production adapter for `LAContext` Touch ID / Apple Watch / device passcode authentication.
@@ -180,10 +201,23 @@ public final class SystemLifecycleModel: ObservableObject {
         let currentLoginStatus = loginItemService.status()
         self.loginItemStatus = currentLoginStatus
         self.launchAtLogin = (currentLoginStatus == .enabled || currentLoginStatus == .requiresApproval)
-        self.startMinimized = defaults.object(forKey: Self.key("startMinimized")) as? Bool ?? false
-        self.minimizeToTrayOnClose = defaults.object(forKey: Self.key("minimizeToTrayOnClose")) as? Bool ?? true
+        let storedStartMinimized = (defaults.object(forKey: Self.key("startMinimized")) as? Bool)
+            ?? (defaults.object(forKey: Self.key("keepMinimizedOnLaunch")) as? Bool)
+            ?? false
+        self.startMinimized = storedStartMinimized
+        let storedMinimizeToTray: Bool
+        if let minToTray = defaults.object(forKey: Self.key("minimizeToTrayOnClose")) as? Bool {
+            storedMinimizeToTray = minToTray
+        } else if let quitOnClose = defaults.object(forKey: Self.key("quitOnMainWindowClose")) as? Bool {
+            storedMinimizeToTray = !quitOnClose
+        } else {
+            storedMinimizeToTray = true
+        }
+        self.minimizeToTrayOnClose = storedMinimizeToTray
 
-        let storedAutoLock = defaults.object(forKey: Self.key("autoLockEnabled")) as? Bool ?? false
+        let storedAutoLock = (defaults.object(forKey: Self.key("autoLockEnabled")) as? Bool)
+            ?? (defaults.object(forKey: Self.key("requireTouchIDOnLaunch")) as? Bool)
+            ?? false
         let effectiveAutoLock = storedAutoLock && biometricService.canEvaluateBiometricsOrWatch()
         self.autoLockEnabled = effectiveAutoLock
         let rawTimeout = defaults.object(forKey: Self.key("lockTimeout")) as? Int ?? LockTimeoutChoice.fiveMinutes.rawValue
@@ -197,6 +231,65 @@ public final class SystemLifecycleModel: ObservableObject {
         isInitializing = false
         isApplyingLoginState = false
         isApplyingLockState = false
+    }
+
+    public convenience init(
+        defaults: UserDefaults = .standard,
+        loginItem: any LoginItemService,
+        biometrics: any BiometricAuthService
+    ) {
+        self.init(
+            loginItemService: loginItem,
+            biometricService: biometrics,
+            scheduler: nil,
+            defaults: defaults
+        )
+    }
+
+    public var openAtLogin: Bool {
+        get { launchAtLogin }
+        set { launchAtLogin = newValue }
+    }
+
+    public var keepMinimizedOnLaunch: Bool {
+        get { startMinimized }
+        set {
+            startMinimized = newValue
+            defaults.set(newValue, forKey: Self.key("keepMinimizedOnLaunch"))
+        }
+    }
+
+    public var quitOnMainWindowClose: Bool {
+        get { !minimizeToTrayOnClose }
+        set {
+            minimizeToTrayOnClose = !newValue
+            defaults.set(newValue, forKey: Self.key("quitOnMainWindowClose"))
+        }
+    }
+
+    public var requireTouchIDOnLaunch: Bool {
+        get { autoLockEnabled }
+        set {
+            autoLockEnabled = newValue
+            defaults.set(autoLockEnabled, forKey: Self.key("requireTouchIDOnLaunch"))
+        }
+    }
+
+    public var lastError: String? {
+        lastErrorMessage
+    }
+
+    public func setOpenAtLogin(_ enabled: Bool) {
+        launchAtLogin = enabled
+    }
+
+    public func lockApp() {
+        lockNow()
+    }
+
+    @discardableResult
+    public func unlockWithTouchID() async -> Bool {
+        await unlock()
     }
 
     private static var requiresApprovalMessage: String {

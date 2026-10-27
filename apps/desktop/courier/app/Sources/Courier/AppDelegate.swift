@@ -24,6 +24,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// once (a copy would miss a change until the next launch). The same for the quick replies.
     let composerPreferences: ComposerPreferences
     let quickReplies: QuickReplies
+    /// Launch at login, Touch ID app lock, and window lifecycle settings.
+    let lifecycle = SystemLifecycleModel()
+    /// Dock badge mode and menu-bar status item settings.
+    let dockPreferences = DockAndTrayPreferences()
     /// The sheets and popovers the inbox's menus and keys open.
     let inboxUI = InboxUI()
     /// Whether the message keys act on the chat's selected message or the thread pane's.
@@ -135,23 +139,83 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         signInWindows = SignInWindowPresenter(login: login)
         hideTypingQuestion = HideTypingQuestion(conversation: conversation, present: Self.askToHideTyping)
-        dockBadge = DockBadge(spaces: spaces)
+        dockBadge = DockBadge(spaces: spaces, dockPreferences: dockPreferences, lifecycle: lifecycle)
         let coordinator = NotificationCoordinator(
             appModel: model, delivery: notifier,
             row: { [inbox] id in inbox.rows.first { $0.roomID == id } },
             isLooking: { [attention] in attention.isLooking },
             isAwayFromLatest: { [conversation] in conversation.isHeldAwayFromLatest },
             isIncognito: { [conversation] in conversation.incognitoIsOn },
+            isAppLocked: { [lifecycle] in lifecycle.isLocked },
             restoreDraft: { [conversation] room, text, mayHaveBeenSent in
                 conversation.composer.restoreUnsent(text: text, in: room, mayHaveBeenSent: mayHaveBeenSent)
             },
             showWindow: { [windowOpener] in windowOpener.show() },
             // The inbox's own object, which Settings changes: a copy would ignore the change until the next launch.
-            preferences: inbox.preferences)
+            preferences: inbox.preferences,
+            clipboard: PasteboardClipboardSink(),
+            soundEffects: SoundEffectPlayer())
         notifier.coordinator = coordinator
         notifications = coordinator
         coordinator.start()
         model.start()
+        if lifecycle.shouldHideMainWindowOnLaunch {
+            DispatchQueue.main.async { NSApp.hide(nil) }
+        }
+    }
+
+    func minimizeToMenuBar() {
+        NSApp.hide(nil)
+    }
+
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        let dockMenu = DockMenuModel.build(
+            isLocked: lifecycle.isLocked,
+            inboxRows: inbox.rows,
+            recentlyViewedRoomIDs: inbox.recentlyViewedRoomIDs,
+            currentRoomID: model.selectedRoomID
+        )
+        guard !dockMenu.isEmpty else { return nil }
+
+        let menu = NSMenu(title: "Courier")
+        menu.autoenablesItems = false
+
+        if !dockMenu.unreadChats.isEmpty {
+            let header = NSMenuItem(title: String(localized: "Unread Chats"), action: nil, keyEquivalent: "")
+            header.isEnabled = false
+            menu.addItem(header)
+            for chat in dockMenu.unreadChats {
+                let item = NSMenuItem(title: chat.title, action: #selector(selectDockMenuChat(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = chat.roomID
+                item.isEnabled = true
+                menu.addItem(item)
+            }
+        }
+
+        if !dockMenu.recentChats.isEmpty {
+            if !dockMenu.unreadChats.isEmpty {
+                menu.addItem(.separator())
+            }
+            let header = NSMenuItem(title: String(localized: "Recent Chats"), action: nil, keyEquivalent: "")
+            header.isEnabled = false
+            menu.addItem(header)
+            for chat in dockMenu.recentChats {
+                let item = NSMenuItem(title: chat.title, action: #selector(selectDockMenuChat(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = chat.roomID
+                item.isEnabled = true
+                menu.addItem(item)
+            }
+        }
+
+        return menu
+    }
+
+    @objc private func selectDockMenuChat(_ sender: NSMenuItem) {
+        guard let roomID = sender.representedObject as? String else { return }
+        windowOpener.show()
+        inbox.select(roomID)
     }
 
     /// The question as an alert: a sheet on the window in front (Settings, or the main window for the command bar),
@@ -184,7 +248,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        false
+        lifecycle.shouldTerminateWhenMainWindowClosed()
     }
 
     /// Quitting first tells each chat I'm typing in that I stopped (both composers), then hands every held (undo

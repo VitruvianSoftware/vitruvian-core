@@ -131,9 +131,13 @@ public final class InboxModel: ObservableObject {
     public static let refreshPageSize = 500
     /// The most chats one call may name (protocol.json's "1 to 500 chats").
     static let batchSize = 500
+    /// Maximum number of recently viewed chat room IDs retained for the Dock menu.
+    public static let maxRecentlyViewed = 20
 
     /// The chats shown, in the engine's order for `query`.
     @Published public private(set) var rows: [InboxRow] = []
+    /// Most-recently-viewed chat room IDs (newest first), used by `DockMenuModel` for "Recent Chats".
+    @Published public private(set) var recentlyViewedRoomIDs: [String] = []
     /// Whether the inbox has been read at least once from the engine that is up or was.
     @Published public private(set) var isLoaded = false
     /// What the inbox lists. A change reads the first page again.
@@ -296,9 +300,23 @@ public final class InboxModel: ObservableObject {
             ?? lookedUpRow.flatMap { ($0.id == roomID || $0.roomID == roomID) ? $0 : nil }
     }
 
+    /// Records `roomID` at the front of `recentlyViewedRoomIDs` (deduplicated, capped at `maxRecentlyViewed`).
+    public func recordRecentlyViewed(_ roomID: String) {
+        guard !roomID.isEmpty, !roomID.hasPrefix("merge:") else { return }
+        var updated = recentlyViewedRoomIDs.filter { $0 != roomID }
+        updated.insert(roomID, at: 0)
+        if updated.count > Self.maxRecentlyViewed {
+            updated = Array(updated.prefix(Self.maxRecentlyViewed))
+        }
+        recentlyViewedRoomIDs = updated
+    }
+
     /// Another chat opened: the row looked up for the last is let go, and one the list doesn't have is looked up,
     /// once, by id (as SearchModel reads the chat it searches in).
     private func selectionChanged(to roomID: String?) {
+        if let roomID {
+            recordRecentlyViewed(roomID)
+        }
         // A lookup still out for the chat left behind isn't cancelled: a draft may be waiting on its answer.
         lookedUpRow = nil
         rowLookup = nil

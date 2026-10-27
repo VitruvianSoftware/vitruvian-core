@@ -36,8 +36,20 @@ public final class SpacesModel: ObservableObject {
         $spaces.map(Self.badgeCount(of:)).removeDuplicates().eraseToAnyPublisher()
     }
 
-    private static func badgeCount(of spaces: [Space]) -> Int {
-        spaces.first { $0.spaceID == "inbox" }?.attentionChats ?? 0
+    public static func badgeCount(of spaces: [Space]) -> Int {
+        badgeCount(of: spaces, mode: .unreadChats)
+    }
+
+    public static func badgeCount(of spaces: [Space], mode: DockBadgeMode) -> Int {
+        guard let inbox = spaces.first(where: { $0.spaceID == "inbox" }) else { return 0 }
+        switch mode {
+        case .unreadChats:
+            return inbox.attentionChats
+        case .allChats:
+            return inbox.unreadChats
+        case .none:
+            return 0
+        }
     }
 
     private let appModel: AppModel
