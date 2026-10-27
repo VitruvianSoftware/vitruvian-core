@@ -109,7 +109,7 @@ checksum = "a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563"
 
 [[package]]
 name = "vitruvian-tool-kit"
-version = "0.10.0"
+version = "1.9.0"
 dependencies = [
  "serde",
  "serde_json",

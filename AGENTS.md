@@ -260,7 +260,7 @@ Run every change to completion — an unmerged branch is unfinished work, not a 
   - Python: `pyproject.toml` → `./tools/repin` → `bazel run //:gazelle`
   - JS/TS: `pnpm add …` (one pnpm workspace / `pnpm-lock.yaml`)
   - Go: `go mod tidy` → `bazel mod tidy` → `bazel run //:gazelle` (multi-module `go.work`: `.`, `apps/cli/homelab`, `apps/cli/devx`)
-  - JVM: edit `maven.install` in `MODULE.bazel` → `bazel run @maven//:pin`; Rust: `Cargo.toml`; Ruby: `Gemfile`
+  - JVM: edit `maven.install` in `MODULE.bazel` → `bazel run @maven//:pin`; Rust: `Cargo.toml` → `bazel run //tools/crates:lock` (resolves for the Bazel toolchain's Rust version); Ruby: `Gemfile`
   - GitOps Helm chart pins (`gitops/argocd/**` `Application`/`ApplicationSet` `targetRevision`): tracked by Renovate
     (`renovate.json5`, scoped to `enabledManagers: ["argocd"]` only — it never touches the ecosystems above,
     which stay Dependabot's). Renovate opens the bump PR; review and merge it like any other PR, no re-lock step.
