@@ -432,4 +432,9 @@ jobs:
         if: github.event_name != 'pull_request'
         env:
           DIGEST: ${{ steps.publish.outputs.digest }}
+          # Since #3985 the server is a std-only Rust binary built from source
+          # in the image: no /app/node_modules, nothing for the blocking arm to
+          # scan. `absent` makes the scan require that, and refuse if a package
+          # tree ever comes back. See the script header.
+          APP_TREE: absent
         run: bash tools/ci/image-sbom-scan.sh
