@@ -319,12 +319,14 @@ alias(
 alias(
     name = "install-rs",
     actual = ":install",
+    tags = ["manual"],
     visibility = ["//apps/desktop/courier:__subpackages__"],
 )
 
 alias(
     name = "install_rs",
     actual = ":install",
+    tags = ["manual"],
     visibility = ["//apps/desktop/courier:__subpackages__"],
 )
 
