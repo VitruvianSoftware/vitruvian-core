@@ -18,10 +18,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-load("@aspect_rules_jest//jest:defs.bzl", "jest_test")
-load("@aspect_rules_js//js:defs.bzl", "js_binary")
-load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
-load("@npm//:defs.bzl", "npm_link_all_packages")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
@@ -30,7 +26,6 @@ load("//tools/pipeline:defs.bzl", "pipeline_unit")
 # checks run via `bazel test //tabula/...`, deploys via the
 # //tabula/infra/app project.
 # gazelle:ignore
-# gazelle:exclude src
 # gazelle:exclude rs
 
 # Inter-app boundary (#82): default targets to tabula-internal visibility so
@@ -39,80 +34,14 @@ load("//tools/pipeline:defs.bzl", "pipeline_unit")
 # deps) is preserved below.
 package(default_visibility = ["//apps/suites/tabula:__subpackages__"])
 
-npm_link_all_packages(name = "node_modules")
-
-ts_project(
-    name = "lib",
-    srcs = glob(
-        ["src/**/*.ts"],
-        exclude = ["src/**/*.test.ts"],
-    ),
-    declaration = True,
-    declaration_map = True,
-    resolve_json_module = True,
-    source_map = True,
-    transpiler = "tsc",
-    tsconfig = "tsconfig.json",
-    deps = [
-        ":node_modules/@types/inquirer",
-        ":node_modules/@types/node",
-        ":node_modules/chalk",
-        ":node_modules/commander",
-        ":node_modules/dotenv",
-        ":node_modules/inquirer",
-        ":node_modules/ora",
-        ":node_modules/table",
-    ],
-)
-
-js_binary(
+alias(
     name = "tabcli",
-    data = [":lib"],
-    entry_point = "src/index.js",
+    actual = ":tabcli-rs",
 )
 
-# Type gate for tests: jest runs swc-transpiled TS without type-checking, so
-# tests are type-checked here (mirroring //tabula/extension:tests_lib). The
-# emitted JS goes to dist_tests and is discarded — out_dir exists only to
-# avoid colliding with :lib's in-place outputs for the shared sources.
-ts_project(
-    name = "tests_lib",
-    testonly = True,
-    srcs = glob(["src/**/*.ts"]),
-    declaration = False,
-    extends = "tsconfig.json",
-    out_dir = "dist_tests",
-    resolve_json_module = True,
-    source_map = True,
-    transpiler = "tsc",
-    tsconfig = "tsconfig.test.json",
-    deps = [
-        ":node_modules/@types/inquirer",
-        ":node_modules/@types/jest",
-        ":node_modules/@types/node",
-        ":node_modules/chalk",
-        ":node_modules/commander",
-        ":node_modules/dotenv",
-        ":node_modules/inquirer",
-        ":node_modules/ora",
-        ":node_modules/table",
-    ],
-)
-
-jest_test(
+test_suite(
     name = "unit_tests",
-    size = "medium",
-    config = "jest.config.js",
-    data = glob(["src/**/*.ts"]) + [
-        ":node_modules/@swc/core",
-        ":node_modules/@swc/jest",
-        ":node_modules/chalk",
-        ":node_modules/commander",
-        "//apps/suites/tabula:jest_resolver",
-    ],
-    node_modules = ":node_modules",
-    # See //tabula/extension:unit_tests for why this flag is needed.
-    node_options = ["--no-experimental-require-module"],
+    tests = [":tabcli_rs_test"],
 )
 
 rust_library(

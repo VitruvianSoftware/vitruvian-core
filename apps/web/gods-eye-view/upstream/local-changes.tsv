@@ -16,8 +16,17 @@ Dockerfile	modified	The production image, published to GHCR and deployed by gito
 OWNERS	added	Monorepo code ownership.
 server.mjs	added	The production server the image runs. Upstream serves its /api routes from its Vite dev server; this serves dist/ and mounts upstream's own provider plugins through their configurePreviewServer hooks, as `vite preview` does, so upstream's routes reach production with each sync.
 scripts/bazel-unit-tests.mjs	added	Bazel entry point for upstream's test runner: puts a real node ahead of the rules_js shim, which upstream's spawned scripts cannot use.
+scripts/build-military-names.py	deleted	Superseded by the native Rust port in `scripts/src/build_military_names.rs` (`//apps/web/gods-eye-view:build_military_names_rs`).
+scripts/dev-cctv.sh	deleted	Superseded by the native Rust port in `scripts/src/dev_helpers.rs` (`//apps/web/gods-eye-view:dev_cctv_rs`).
+scripts/dev-fresh.sh	deleted	Superseded by the native Rust port in `scripts/src/dev_helpers.rs` (`//apps/web/gods-eye-view:dev_fresh_rs`).
+scripts/dev-secure.sh	deleted	Superseded by the native Rust port in `scripts/src/dev_helpers.rs` (`//apps/web/gods-eye-view:dev_secure_rs`).
+scripts/opensky-import-client.sh	deleted	Superseded by the native Rust port in `scripts/src/opensky_import_client.rs` (`//apps/web/gods-eye-view:opensky_import_client_rs`).
 scripts/src/	added	Native Rust ports of the helper scripts (`build-military-names`, `verify-cesium-assets`, `opensky-import-client`, `dev-cctv`, `dev-fresh`, `dev-secure`), standalone CLI tools (`cesium-render`, `pano-pinhole`, `sat-ortho`, `streetview-headings`, `streetview-panorama`), CelesTrak TLE mirror (`tle-mirror`), and architecture/format boundary checks (`check-import-directions`, `check-package-boundaries`, `check-format-scope`), plus their unit tests.
 src/camera.test.mjs	added	Pins HOME_VIEW, the landing view src/camera.js adds.
+src/devCctv.test.mjs	modified	Skips legacy bash launcher tests once `scripts/dev-cctv.sh` and `scripts/dev-fresh.sh` are superseded by `//apps/web/gods-eye-view:scripts_rs_test`.
+src/devFreshDotenv.test.mjs	modified	Skips legacy `scripts/dev-fresh.sh` source checks once `dev-fresh.sh` is superseded by `//apps/web/gods-eye-view:scripts_rs_test`, while keeping the `read-dotenv-value.mjs` tests active.
+src/toolProjectRoot.test.mjs	modified	Skips the legacy `scripts/dev-fresh.sh` launcher subtest once `dev-fresh.sh` is superseded by `//apps/web/gods-eye-view:scripts_rs_test`.
+src/tooling/panelStorageDocs.test.mjs	modified	Drops `scripts/dev-fresh.sh` from `DOCUMENTED_KEYS` once `dev-fresh.sh` is superseded by `scripts/src/dev_helpers.rs`.
 tests/e2e/	added	The monorepo's end-to-end suite against the production server.
 tests/e2e/src/	added	Native Rust port of the E2E test suite (262 tests across 5 tiers: feature, boundary, combination, scenario, adversarial). Runs hermetically in the Bazel sandbox in milliseconds without spawning python3, node, or bash subprocesses.
 tests/server/	added	:server_test, which boots server.mjs from the Dockerfile's runtime layout and checks it serves every route upstream mounts for `vite preview`, none of the dev-only ones, and the same-site gate on the paid ones.

@@ -22,10 +22,14 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { readDotenvValue } from '../scripts/read-dotenv-value.mjs';
+
+const hasDevFreshSh = existsSync(new URL('../scripts/dev-fresh.sh', import.meta.url));
+const shTest = hasDevFreshSh ? test : test.skip;
 
 test('dotenv reader preserves values without executing shell metacharacters', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'gev-dotenv-'));
@@ -79,14 +83,14 @@ test('an inherited export never masks the value written in the file', async () =
   }
 });
 
-test('dev-fresh gives explicit or dotenv Google configuration precedence over Keychain', async () => {
+shTest('dev-fresh gives explicit or dotenv Google configuration precedence over Keychain', async () => {
   const source = await fs.readFile(new URL('../scripts/dev-fresh.sh', import.meta.url), 'utf8');
   const precedence = source.indexOf('if [[ -n "${GOOGLE_MAPS_API_KEY_ENV}" ]]');
   const keychainFallback = source.indexOf('elif [[ -n "${GOOGLE_MAPS_API_KEY_KEYCHAIN}" ]]');
   assert.ok(precedence >= 0 && keychainFallback > precedence);
 });
 
-test('dev-fresh passes names-only boot provenance before resolving file fallbacks', async () => {
+shTest('dev-fresh passes names-only boot provenance before resolving file fallbacks', async () => {
   const source = await fs.readFile(new URL('../scripts/dev-fresh.sh', import.meta.url), 'utf8');
   const capture = source.indexOf('KEY_SETUP_EXTERNAL_KEYS=()');
   const dotenvResolution = source.indexOf('GOOGLE_MAPS_API_KEY_ENV="${GOOGLE_MAPS_API_KEY:-}"');
@@ -102,7 +106,7 @@ test('dev-fresh passes names-only boot provenance before resolving file fallback
   assert.match(source, /put_env GEV_KEY_SETUP_EXTERNAL_KEYS "\$\{KEY_SETUP_EXTERNAL_KEYS_CSV\}"/);
 });
 
-const bashTest = process.platform === 'win32' ? test.skip : test;
+const bashTest = process.platform === 'win32' || !hasDevFreshSh ? test.skip : test;
 
 bashTest('dev-fresh reports the real keyless startup map and fallback', async () => {
   const script = await fs.readFile(new URL('../scripts/dev-fresh.sh', import.meta.url), 'utf8');
