@@ -24,6 +24,29 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+pub mod auth_lib;
+pub mod crypto;
+pub mod device;
+pub mod errors;
+pub mod ids;
+pub mod migration_guard;
+pub mod presence;
+pub mod scanner_reject;
+pub mod schemas;
+pub mod secrets;
+pub mod server;
+pub mod services;
+pub mod store;
+pub mod sync_events;
+pub mod tiers;
+pub mod tombstones;
+pub mod workos;
+
+#[cfg(test)]
+mod tests_integration;
+#[cfg(test)]
+mod tests_unit;
+
 // ============================================================================
 // 1. Prisma Client Generation & Post-Processing (`generate-client.cjs`)
 // ============================================================================
