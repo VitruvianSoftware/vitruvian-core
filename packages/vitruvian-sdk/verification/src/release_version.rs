@@ -38,7 +38,7 @@ pub const CONSUMERS: &str = "packages/vitruvian-sdk/consumers";
 pub const TOOLS_ONLY: &[&str] = &[
     "name = \"VitruvianToolKit\"",
     "name = \"vitruvian-tool\"",
-    "[\"conformance/conformance.py\"]",
+    "name = \"conformance\"",
 ];
 
 pub const KIT_PLACES: &[(&str, &str, Option<&str>)] = &[

@@ -47,7 +47,7 @@ CONSUMERS = "packages/vitruvian-sdk/consumers"
 TOOLS_ONLY = [
     'name = "VitruvianToolKit"',
     'name = "vitruvian-tool"',
-    '["conformance/conformance.py"]',
+    'name = "conformance"',
 ]
 # The kits and the kit samples, each with the updater release-please needs.
 KIT_PLACES = [

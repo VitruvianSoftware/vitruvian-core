@@ -21,6 +21,7 @@
 
 //! Native Rust verification suites and reference tools for `packages/vitruvian-sdk`.
 
+pub mod conformance_suite;
 pub mod go_template;
 pub mod guide;
 pub mod init;
@@ -94,6 +95,9 @@ pub fn find_package_dir() -> Result<PathBuf, String> {
                 || cand.join("release-please-config.json").is_file()
                 || cand.join(".github/workflows/release.yml").is_file()
                 || cand.join("Package.swift").is_file()
+                || cand
+                    .join("conformance/reference-tool/vitruvian-tool.json")
+                    .is_file()
         })
         .ok_or_else(|| "could not locate packages/vitruvian-sdk directory".to_string())
 }
