@@ -38,7 +38,6 @@ load("@aspect_rules_swc//swc:defs.bzl", "swc")
 load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
 load("@bazel_skylib//lib:partial.bzl", "partial")
 load("@npm//:defs.bzl", "npm_link_all_packages")
-load("@rules_python//python:defs.bzl", "py_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("//tools/doctor:defs.bzl", "doctor")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
@@ -158,21 +157,6 @@ ts_project(
     ],
 )
 
-py_test(
-    name = "tokens_sync_test",
-    size = "small",
-    srcs = ["tools/tokens_sync_test.py"],
-    data = [
-        "src/index.ts",
-        "src/tokens.css",
-        "src/tokens.json",
-        "src/tokens.ts",
-    ] + glob([
-        "src/brand/**",
-        "src/fonts/**",
-    ]),
-)
-
 rust_library(
     name = "tokens_sync_lib",
     srcs = ["tools/src/lib.rs"],
@@ -190,7 +174,7 @@ rust_binary(
 )
 
 rust_test(
-    name = "tokens_sync_rs_test",
+    name = "tokens_sync_test",
     size = "small",
     crate = ":tokens_sync_lib",
     data = [
@@ -199,13 +183,17 @@ rust_test(
         "src/tokens.json",
         "src/tokens.ts",
         "src/vitruvian.css",
-        "tools/tokens_sync_test.py",
     ] + glob([
         "src/brand/**",
         "src/fonts/**",
     ]),
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
+)
+
+test_suite(
+    name = "tokens_sync_rs_test",
+    tests = [":tokens_sync_test"],
 )
 
 # The Storybook devserver: `bazel run //packages/design-system:storybook`.

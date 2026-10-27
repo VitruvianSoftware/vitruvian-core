@@ -367,8 +367,13 @@ jobs:
           swift build --package-path "$sdk" --product vitruvian-tool
           "$(swift build --package-path "$sdk" --show-bin-path)/vitruvian-tool" validate "$RUNNER_TEMP/tool"
           mkdir -p "$RUNNER_TEMP/tool-home"
-          HOME="$RUNNER_TEMP/tool-home" CFFIXED_USER_HOME="$RUNNER_TEMP/tool-home" \
-            python3 "$sdk/conformance/conformance.py" "$RUNNER_TEMP/tool"
+          if [[ -f "$sdk/conformance/conformance.py" ]]; then
+            HOME="$RUNNER_TEMP/tool-home" CFFIXED_USER_HOME="$RUNNER_TEMP/tool-home" \
+              python3 "$sdk/conformance/conformance.py" "$RUNNER_TEMP/tool"
+          else
+            HOME="$RUNNER_TEMP/tool-home" CFFIXED_USER_HOME="$RUNNER_TEMP/tool-home" \
+              cargo run --manifest-path "$sdk/conformance/Cargo.toml" --release -- "$RUNNER_TEMP/tool"
+          fi
 
       # The ZIP is what an installed app updates itself from, so the app that
       # comes back out of it is checked as well: `zip` must have kept the

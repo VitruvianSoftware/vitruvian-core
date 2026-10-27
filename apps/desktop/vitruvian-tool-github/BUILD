@@ -12,7 +12,6 @@
 #
 # gazelle:ignore
 
-load("@aspect_rules_py//py:defs.bzl", "py_test")
 load("@build_bazel_rules_swift//swift:swift_binary.bzl", "swift_binary")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
@@ -92,66 +91,6 @@ genrule(
     target_compatible_with = MACOS_ONLY,
 )
 
-# The built folder through `vitruvian-tool validate` and the conformance
-# script: the handshake, a command, an unknown command, the island panel
-# opened and tapped, refusals, and a clean exit. It starts the real program.
-py_test(
-    name = "conformance_test",
-    size = "small",
-    srcs = ["conformance_test.py"],
-    args = [
-        "$(rootpath built/github/vitruvian-tool.json)",
-        "$(rootpath //packages/vitruvian-sdk:conformance/conformance.py)",
-        "$(rootpath //packages/vitruvian-sdk:vitruvian-tool)",
-    ],
-    data = [
-        "built/github/vitruvian-tool.json",
-        ":tool-folder",
-        "//packages/vitruvian-sdk:conformance/conformance.py",
-        "//packages/vitruvian-sdk:vitruvian-tool",
-    ],
-    main = "conformance_test.py",
-    tags = [
-        "block-network",
-        "manual",
-    ],
-    target_compatible_with = MACOS_ONLY,
-)
-
-# The version is one number in three files, and the kit it builds against
-# is new enough. Not tied to macOS: the Linux lane runs it too.
-py_test(
-    name = "version_test",
-    size = "small",
-    srcs = ["version_test.py"],
-    data = [
-        ".release-please-manifest.json",
-        "Package.swift",
-        "Sources/GitHubToolCore/Version.swift",
-        "release-please-config.json",
-        "vitruvian-tool.json",
-    ],
-    main = "version_test.py",
-)
-
-# The mirror's own workflows (.github/workflows/, which run only in
-# VitruvianSoftware/vitruvian-tool-github): release.yml's `detect` and notes
-# steps, run as written with bash and git, and what each workflow may write.
-# Not tied to macOS. It runs bash and git on the machine, and the remote
-# execution image has no jq.
-py_test(
-    name = "mirror_workflows_test",
-    size = "small",
-    srcs = ["mirror_workflows_test.py"],
-    data = [
-        ".github/workflows/ci.yml",
-        ".github/workflows/release.yml",
-    ],
-    main = "mirror_workflows_test.py",
-    tags = ["no-remote-exec"],
-    deps = ["@pip//pyyaml"],
-)
-
 rust_library(
     name = "tests_rs_lib",
     srcs = [
@@ -175,20 +114,23 @@ rust_test(
     crate = ":tests_rs_lib",
 )
 
+# The built folder through `vitruvian-tool validate` and the conformance
+# validator: the handshake, a command, an unknown command, the island panel
+# opened and tapped, refusals, and a clean exit. It starts the real program.
 rust_test(
-    name = "conformance_rs_test",
+    name = "conformance_test",
     size = "small",
     srcs = ["tests_rs/src/conformance_test.rs"],
     data = [
         "built/github/vitruvian-tool.json",
         ":tool-folder",
-        "//packages/vitruvian-sdk:conformance_rs",
+        "//packages/vitruvian-sdk:conformance",
         "//packages/vitruvian-sdk:vitruvian-tool",
     ],
     edition = "2021",
     env = {
         "MANIFEST_PATH": "$(rootpath built/github/vitruvian-tool.json)",
-        "CONFORMANCE_BIN": "$(rootpath //packages/vitruvian-sdk:conformance_rs)",
+        "CONFORMANCE_BIN": "$(rootpath //packages/vitruvian-sdk:conformance)",
         "VALIDATE_BIN": "$(rootpath //packages/vitruvian-sdk:vitruvian-tool)",
     },
     tags = [
@@ -199,8 +141,16 @@ rust_test(
     deps = [":tests_rs_lib"],
 )
 
+test_suite(
+    name = "conformance_rs_test",
+    tags = ["manual"],
+    tests = [":conformance_test"],
+)
+
+# The version is one number in three files, and the kit it builds against
+# is new enough. Not tied to macOS: the Linux lane runs it too.
 rust_test(
-    name = "version_rs_test",
+    name = "version_test",
     size = "small",
     srcs = ["tests_rs/src/version_test.rs"],
     data = [
@@ -217,8 +167,18 @@ rust_test(
     ],
 )
 
+test_suite(
+    name = "version_rs_test",
+    tests = [":version_test"],
+)
+
+# The mirror's own workflows (.github/workflows/, which run only in
+# VitruvianSoftware/vitruvian-tool-github): release.yml's `detect` and notes
+# steps, run as written with bash and git, and what each workflow may write.
+# Not tied to macOS. It runs bash and git on the machine, and the remote
+# execution image has no jq.
 rust_test(
-    name = "mirror_workflows_rs_test",
+    name = "mirror_workflows_test",
     size = "small",
     srcs = ["tests_rs/src/mirror_workflows_test.rs"],
     data = [
@@ -228,6 +188,11 @@ rust_test(
     edition = "2021",
     tags = ["no-remote-exec"],
     deps = [":tests_rs_lib"],
+)
+
+test_suite(
+    name = "mirror_workflows_rs_test",
+    tests = [":mirror_workflows_test"],
 )
 
 pipeline_unit(
