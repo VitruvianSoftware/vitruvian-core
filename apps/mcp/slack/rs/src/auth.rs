@@ -18,17 +18,27 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+//! Bearer-token checks for the HTTP transport.
+//!
+//! A caller presents an RS256 access token from the Zitadel issuer. It is
+//! checked the way the TypeScript server checked it with jose 6.2.13
+//! (`jwtVerify` against `createRemoteJWKSet`), step for step and with the same
+//! error codes and messages, because those reach the client in the
+//! WWW-Authenticate header and decide 401 versus 503.
+//!
+//! Nothing here is hand-rolled crypto or networking: the signature check is
+//! ring's RSASSA-PKCS1-v1_5 / SHA-256, and the key set is fetched over HTTPS
+//! with ureq on rustls.
+
 use std::collections::HashSet;
 use std::fmt;
-use std::io::{Read, Write};
-use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::io::Read;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use crate::base64;
+use ring::signature::{RsaPublicKeyComponents, RSA_PKCS1_2048_8192_SHA256};
+
 use crate::json::JsonValue;
-use crate::url::ParsedUrl;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthError {
@@ -194,19 +204,28 @@ pub fn looks_like_jwt(token: &str) -> bool {
     })
 }
 
+/// The credential from an `Authorization: Bearer <token>` header. Same rule as
+/// the TS `/^Bearer[ ]+(.+)$/i` on the trimmed header, then a trim of the
+/// token: "Bearer" in any case, at least one space, then at least one
+/// character and no line terminator.
 pub fn extract_bearer_token(header: Option<&str>) -> Result<String, AuthError> {
     let Some(header) = header else {
         return Err(AuthError::MissingToken);
     };
     let trimmed = header.trim();
-    if trimmed.len() < 7 {
+    // `get` rather than slicing: byte 6 can fall inside a multi-byte
+    // character, and that must be a refusal, not a panic.
+    let (Some(prefix), Some(rest)) = (trimmed.get(..6), trimmed.get(6..)) else {
         return Err(AuthError::MissingToken);
-    }
-    let (prefix, rest) = trimmed.split_at(6);
+    };
     if !prefix.eq_ignore_ascii_case("bearer") || !rest.starts_with(' ') {
         return Err(AuthError::MissingToken);
     }
-    let token = rest.trim();
+    let after_spaces = rest.trim_start_matches(' ');
+    if after_spaces.is_empty() || after_spaces.contains(['\n', '\r', '\u{2028}', '\u{2029}']) {
+        return Err(AuthError::MissingToken);
+    }
+    let token = after_spaces.trim();
     if token.is_empty() {
         return Err(AuthError::MissingToken);
     }
@@ -224,7 +243,7 @@ pub fn audience_list(payload: &JsonValue) -> Vec<String> {
     }
 }
 
-/// All 14 JOSE error classes classified explicitly.
+/// The JOSE error classes, each classified explicitly.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum JoseErrorCode {
     JwksTimeout,
@@ -241,10 +260,13 @@ pub enum JoseErrorCode {
     JoseNotSupported,
     JweInvalid,
     JweDecryptionFailed,
+    /// A plain JOSEError: jose throws it for a key-set response that is not
+    /// a 200 or not JSON. Not on the identity-provider list, so 401.
+    JoseGeneric,
 }
 
 impl JoseErrorCode {
-    pub const ALL: [JoseErrorCode; 14] = [
+    pub const ALL: [JoseErrorCode; 15] = [
         JoseErrorCode::JwksTimeout,
         JoseErrorCode::JwksInvalid,
         JoseErrorCode::JwkInvalid,
@@ -259,6 +281,7 @@ impl JoseErrorCode {
         JoseErrorCode::JoseNotSupported,
         JoseErrorCode::JweInvalid,
         JoseErrorCode::JweDecryptionFailed,
+        JoseErrorCode::JoseGeneric,
     ];
 
     pub fn code(self) -> &'static str {
@@ -279,6 +302,7 @@ impl JoseErrorCode {
             JoseErrorCode::JoseNotSupported => "ERR_JOSE_NOT_SUPPORTED",
             JoseErrorCode::JweInvalid => "ERR_JWE_INVALID",
             JoseErrorCode::JweDecryptionFailed => "ERR_JWE_DECRYPTION_FAILED",
+            JoseErrorCode::JoseGeneric => "ERR_JOSE_GENERIC",
         }
     }
 }
@@ -325,145 +349,24 @@ pub fn is_idp_side_failure(error: &VerificationFailure) -> bool {
     }
 }
 
-/// Pure-Rust SHA-256 implementation (FIPS 180-4) for RS256 / JWS verification.
-pub fn sha256(data: &[u8]) -> [u8; 32] {
-    const K: [u32; 64] = [
-        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
-        0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe,
-        0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f,
-        0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
-        0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc,
-        0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
-        0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116,
-        0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
-        0xc67178f2,
-    ];
+/// jose's defaults for a remote key set: keep a fetched set for 10 minutes
+/// (cacheMaxAge), and refetch early for an unknown key at most every 30 seconds
+/// (cooldownDuration). The TS server never overrode them.
+const JWKS_CACHE_MAX_AGE: Duration = Duration::from_secs(600);
+const JWKS_COOLDOWN: Duration = Duration::from_secs(30);
+/// No key set is anywhere near this; it bounds what a misbehaving issuer can
+/// make the server buffer.
+const JWKS_MAX_BYTES: u64 = 1024 * 1024;
+/// jwtVerify's `clockTolerance: 30` in the TS server.
+const CLOCK_TOLERANCE_SECS: f64 = 30.0;
+/// jose's checkModulusLength for RS256.
+const MIN_RSA_MODULUS_BITS: usize = 2048;
 
-    let mut h: [u32; 8] = [
-        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
-        0x5be0cd19,
-    ];
-
-    let bit_len = (data.len() as u64) * 8;
-    let mut msg = data.to_vec();
-    msg.push(0x80);
-    while (msg.len() % 64) != 56 {
-        msg.push(0x00);
-    }
-    msg.extend_from_slice(&bit_len.to_be_bytes());
-
-    for chunk in msg.chunks_exact(64) {
-        let mut w = [0u32; 64];
-        for i in 0..16 {
-            w[i] = u32::from_be_bytes([
-                chunk[i * 4],
-                chunk[i * 4 + 1],
-                chunk[i * 4 + 2],
-                chunk[i * 4 + 3],
-            ]);
-        }
-        for i in 16..64 {
-            let s0 = w[i - 15].rotate_right(7) ^ w[i - 15].rotate_right(18) ^ (w[i - 15] >> 3);
-            let s1 = w[i - 2].rotate_right(17) ^ w[i - 2].rotate_right(19) ^ (w[i - 2] >> 10);
-            w[i] = w[i - 16]
-                .wrapping_add(s0)
-                .wrapping_add(w[i - 7])
-                .wrapping_add(s1);
-        }
-
-        let mut a = h[0];
-        let mut b = h[1];
-        let mut c = h[2];
-        let mut d = h[3];
-        let mut e = h[4];
-        let mut f = h[5];
-        let mut g = h[6];
-        let mut hh = h[7];
-
-        for i in 0..64 {
-            let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
-            let ch = (e & f) ^ ((!e) & g);
-            let temp1 = hh
-                .wrapping_add(s1)
-                .wrapping_add(ch)
-                .wrapping_add(K[i])
-                .wrapping_add(w[i]);
-            let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
-            let maj = (a & b) ^ (a & c) ^ (b & c);
-            let temp2 = s0.wrapping_add(maj);
-
-            hh = g;
-            g = f;
-            f = e;
-            e = d.wrapping_add(temp1);
-            d = c;
-            c = b;
-            b = a;
-            a = temp1.wrapping_add(temp2);
-        }
-
-        h[0] = h[0].wrapping_add(a);
-        h[1] = h[1].wrapping_add(b);
-        h[2] = h[2].wrapping_add(c);
-        h[3] = h[3].wrapping_add(d);
-        h[4] = h[4].wrapping_add(e);
-        h[5] = h[5].wrapping_add(f);
-        h[6] = h[6].wrapping_add(g);
-        h[7] = h[7].wrapping_add(hh);
-    }
-
-    let mut out = [0u8; 32];
-    for (i, word) in h.iter().enumerate() {
-        out[i * 4..i * 4 + 4].copy_from_slice(&word.to_be_bytes());
-    }
-    out
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SigningKey {
-    secret: [u8; 32],
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct VerifyingKey {
-    secret: [u8; 32],
-}
-
-static KEY_COUNTER: AtomicU64 = AtomicU64::new(1);
-
-pub fn generate_key_pair() -> (SigningKey, VerifyingKey) {
-    let counter = KEY_COUNTER.fetch_add(1, Ordering::SeqCst);
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    let seed = format!("mcp-slack-rs-key-{counter}-{nanos}");
-    let secret = sha256(seed.as_bytes());
-    (SigningKey { secret }, VerifyingKey { secret })
-}
-
-impl SigningKey {
-    pub fn sign(&self, signing_input: &[u8]) -> Vec<u8> {
-        let mut buf = Vec::with_capacity(32 + signing_input.len());
-        buf.extend_from_slice(&self.secret);
-        buf.extend_from_slice(signing_input);
-        sha256(&buf).to_vec()
-    }
-}
-
-impl VerifyingKey {
-    pub fn verify(&self, signing_input: &[u8], signature: &[u8]) -> bool {
-        let mut buf = Vec::with_capacity(32 + signing_input.len());
-        buf.extend_from_slice(&self.secret);
-        buf.extend_from_slice(signing_input);
-        let expected = sha256(&buf);
-        signature == expected.as_slice()
-    }
-}
-
+/// Key material for tests: returns a JSON Web Key Set (`{"keys": [...]}`), the
+/// counterpart of handing jose a local key set. Production leaves it unset and
+/// fetches the issuer's set.
 pub type KeySourceFn =
-    Arc<dyn Fn() -> Result<VerifyingKey, VerificationFailure> + Send + Sync + 'static>;
+    Arc<dyn Fn() -> Result<JsonValue, VerificationFailure> + Send + Sync + 'static>;
 
 #[derive(Clone)]
 pub struct TokenVerifierConfig {
@@ -495,6 +398,11 @@ pub trait TokenVerifier: Send + Sync {
     }
 }
 
+struct CachedJwks {
+    set: JsonValue,
+    fetched_at: Instant,
+}
+
 pub struct StandardTokenVerifier {
     issuer: String,
     project_id: String,
@@ -502,103 +410,13 @@ pub struct StandardTokenVerifier {
     allowed_client_id: String,
     jwks_uri: String,
     key_source: Option<KeySourceFn>,
-    jwks_timeout: Duration,
-}
-
-fn fetch_remote_jwks_key(
-    jwks_uri: &str,
-    timeout: Duration,
-) -> Result<VerifyingKey, VerificationFailure> {
-    let parsed = ParsedUrl::parse(jwks_uri)
-        .map_err(|e| VerificationFailure::non_jose(format!("Invalid JWKS URI: {e}")))?;
-    let port = parsed
-        .port
-        .unwrap_or(if parsed.protocol == "https:" { 443 } else { 80 });
-    let addr_str = format!("{}:{port}", parsed.hostname);
-    let addrs: Vec<SocketAddr> = addr_str
-        .to_socket_addrs()
-        .map_err(|e| VerificationFailure::non_jose(format!("fetch failed: {e}")))?
-        .collect();
-    let Some(addr) = addrs.first() else {
-        return Err(VerificationFailure::non_jose("fetch failed: no addresses"));
-    };
-
-    let mut stream = TcpStream::connect_timeout(addr, timeout).map_err(|e| {
-        if e.kind() == std::io::ErrorKind::TimedOut {
-            VerificationFailure::jose(JoseErrorCode::JwksTimeout, "JWKS request timed out")
-        } else {
-            VerificationFailure::non_jose(format!("fetch failed: {e}"))
-        }
-    })?;
-
-    let _ = stream.set_read_timeout(Some(timeout));
-    let _ = stream.set_write_timeout(Some(timeout));
-
-    let req = format!(
-        "GET {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n",
-        parsed.pathname, parsed.hostname
-    );
-    stream.write_all(req.as_bytes()).map_err(|e| {
-        if matches!(
-            e.kind(),
-            std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
-        ) {
-            VerificationFailure::jose(JoseErrorCode::JwksTimeout, "JWKS request timed out")
-        } else {
-            VerificationFailure::non_jose(format!("fetch failed: {e}"))
-        }
-    })?;
-
-    let mut response = Vec::new();
-    stream.read_to_end(&mut response).map_err(|e| {
-        if matches!(
-            e.kind(),
-            std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
-        ) {
-            VerificationFailure::jose(JoseErrorCode::JwksTimeout, "JWKS request timed out")
-        } else {
-            VerificationFailure::non_jose(format!("fetch failed: {e}"))
-        }
-    })?;
-
-    let text = String::from_utf8_lossy(&response);
-    let Some((_, body)) = text.split_once("\r\n\r\n") else {
-        return Err(VerificationFailure::jose(
-            JoseErrorCode::JwksInvalid,
-            "Malformed HTTP response from JWKS endpoint",
-        ));
-    };
-    let json = JsonValue::parse(body.trim())
-        .map_err(|_| VerificationFailure::jose(JoseErrorCode::JwksInvalid, "Invalid JWKS JSON"))?;
-    let Some(keys) = json.get("keys").and_then(|v| v.as_array()) else {
-        return Err(VerificationFailure::jose(
-            JoseErrorCode::JwksInvalid,
-            "JWKS has no keys array",
-        ));
-    };
-    let Some(first) = keys.first() else {
-        return Err(VerificationFailure::jose(
-            JoseErrorCode::JwksNoMatchingKey,
-            "No matching key in JWKS",
-        ));
-    };
-    let Some(k) = first.get("n").and_then(|v| v.as_str()) else {
-        return Err(VerificationFailure::jose(
-            JoseErrorCode::JwkInvalid,
-            "JWK missing modulus",
-        ));
-    };
-    let decoded = base64::decode(k)
-        .map_err(|_| VerificationFailure::jose(JoseErrorCode::JwkInvalid, "Invalid JWK base64"))?;
-    if decoded.len() != 32 {
-        return Err(VerificationFailure::jose(
-            JoseErrorCode::JwkInvalid,
-            "Invalid JWK key length",
-        ));
-    }
-    let mut secret = [0u8; 32];
-    secret.copy_from_slice(&decoded);
-    Ok(VerifyingKey { secret })
+    agent: ureq::Agent,
+    /// The last good key set. Held across a fetch, so concurrent requests
+    /// share one fetch instead of each starting their own (jose's
+    /// pendingFetch).
+    jwks: Mutex<Option<CachedJwks>>,
+    cache_max_age: Duration,
+    cooldown: Duration,
 }
 
 pub fn create_token_verifier(config: TokenVerifierConfig) -> Result<StandardTokenVerifier, String> {
@@ -624,6 +442,17 @@ this check exists to enforce."
         );
     }
 
+    // One deadline for the whole fetch, body included, like jose's
+    // AbortSignal.timeout. No redirects: jose fetches with
+    // `redirect: "manual"`, so a 3xx is just a non-200 answer.
+    let agent = ureq::AgentBuilder::new()
+        .timeout(Duration::from_millis(
+            config.jwks_timeout_ms.unwrap_or(5000),
+        ))
+        .redirects(0)
+        .user_agent("mcp-slack")
+        .build();
+
     Ok(StandardTokenVerifier {
         issuer,
         project_id: config.project_id,
@@ -631,7 +460,10 @@ this check exists to enforce."
         allowed_client_id: config.allowed_client_id,
         jwks_uri,
         key_source: config.key_source,
-        jwks_timeout: Duration::from_millis(config.jwks_timeout_ms.unwrap_or(5000)),
+        agent,
+        jwks: Mutex::new(None),
+        cache_max_age: JWKS_CACHE_MAX_AGE,
+        cooldown: JWKS_COOLDOWN,
     })
 }
 
@@ -678,21 +510,22 @@ impl StandardTokenVerifier {
             return Err(AuthError::SubjectNotAllowed { subject });
         }
 
-        if let Some(azp_val) = payload.get("azp") {
-            if !azp_val.is_null() {
-                let azp_str = match azp_val.as_str() {
-                    Some(s) => s.to_string(),
-                    None => azp_val.to_json_string(),
-                };
-                return Err(AuthError::AuthorizedPartyPresent { azp: azp_str });
-            }
+        // TS: `azp !== undefined`. Any azp key at all, null included, marks an
+        // id_token.
+        if let Some(azp) = payload.get("azp") {
+            let azp = match azp.as_str() {
+                Some(s) => s.to_string(),
+                None => azp.to_json_string(),
+            };
+            return Err(AuthError::AuthorizedPartyPresent { azp });
         }
 
+        // TS: `clientId !== allowedClientId`, reporting undefined as absent
+        // and anything that is not a string through JSON.stringify (so null
+        // is "null").
         match payload.get("client_id") {
             Some(JsonValue::String(cid)) if cid == &self.allowed_client_id => {}
-            None | Some(JsonValue::Null) => {
-                return Err(AuthError::ClientNotAllowed { client_id: None });
-            }
+            None => return Err(AuthError::ClientNotAllowed { client_id: None }),
             Some(JsonValue::String(cid)) => {
                 return Err(AuthError::ClientNotAllowed {
                     client_id: Some(cid.clone()),
@@ -716,81 +549,223 @@ impl StandardTokenVerifier {
         self.verify_token(&token)
     }
 
+    /// jose's `jwtVerify(token, jwks, { issuer, algorithms: ["RS256"],
+    /// clockTolerance: 30 })`, in jose's order: header, key, signature, and
+    /// only then the claims. Nothing in the payload is read before the
+    /// signature over it has been checked.
     fn jwt_verify(&self, token: &str) -> Result<JsonValue, VerificationFailure> {
         let parts: Vec<&str> = token.split('.').collect();
         if parts.len() != 3 {
-            return Err(VerificationFailure::jose(
-                JoseErrorCode::JwsInvalid,
-                "Invalid JWS compact serialization",
-            ));
+            return Err(jws_invalid("Invalid Compact JWS"));
         }
-        let header_bytes = base64::decode(parts[0]).map_err(|_| {
-            VerificationFailure::jose(JoseErrorCode::JwsInvalid, "Invalid JWS header base64")
-        })?;
-        let header_str = String::from_utf8(header_bytes).map_err(|_| {
-            VerificationFailure::jose(JoseErrorCode::JwsInvalid, "Invalid JWS header UTF-8")
-        })?;
-        let header = JsonValue::parse(&header_str).map_err(|_| {
-            VerificationFailure::jose(JoseErrorCode::JwsInvalid, "Invalid JWS header JSON")
-        })?;
+        let (encoded_header, encoded_payload, encoded_signature) = (parts[0], parts[1], parts[2]);
 
-        if header.get("alg").and_then(|v| v.as_str()) != Some("RS256") {
+        let header = b64url_decode(encoded_header)
+            .and_then(|bytes| String::from_utf8(bytes).ok())
+            .and_then(|text| JsonValue::parse(&text).ok())
+            .filter(|value| value.as_object().is_some())
+            .ok_or_else(|| jws_invalid("JWS Protected Header is invalid"))?;
+
+        let b64 = check_crit_and_b64(&header)?;
+
+        let alg = match header.get("alg") {
+            Some(JsonValue::String(alg)) if !alg.is_empty() => alg.as_str(),
+            _ => {
+                return Err(jws_invalid(
+                    "JWS \"alg\" (Algorithm) Header Parameter missing or invalid",
+                ))
+            }
+        };
+        if alg != "RS256" {
             return Err(VerificationFailure::jose(
                 JoseErrorCode::JoseAlgNotAllowed,
-                "alg not allowed",
+                "\"alg\" (Algorithm) Header Parameter value not allowed",
             ));
         }
 
-        let payload_bytes = base64::decode(parts[1]).map_err(|_| {
-            VerificationFailure::jose(JoseErrorCode::JwtInvalid, "Invalid JWT payload base64")
-        })?;
-        let payload_str = String::from_utf8(payload_bytes).map_err(|_| {
-            VerificationFailure::jose(JoseErrorCode::JwtInvalid, "Invalid JWT payload UTF-8")
-        })?;
-        let payload = JsonValue::parse(&payload_str).map_err(|_| {
-            VerificationFailure::jose(JoseErrorCode::JwtInvalid, "Invalid JWT payload JSON")
-        })?;
+        let key = self.resolve_key(alg, header.get("kid"))?;
 
-        let sig_bytes = base64::decode(parts[2]).map_err(|_| {
-            VerificationFailure::jose(JoseErrorCode::JwsInvalid, "Invalid JWS signature base64")
-        })?;
-
-        let key = match &self.key_source {
-            Some(ks) => ks()?,
-            None => fetch_remote_jwks_key(&self.jwks_uri, self.jwks_timeout)?,
+        let signature = b64url_decode(encoded_signature)
+            .ok_or_else(|| jws_invalid("Failed to base64url decode the signature"))?;
+        if key.modulus_bits() < MIN_RSA_MODULUS_BITS {
+            // A TypeError in jose, not a JOSEError, so it lands on the
+            // identity-provider side (503).
+            return Err(VerificationFailure::non_jose(
+                "RS256 requires key modulusLength to be 2048 bits or larger",
+            ));
+        }
+        let signing_input = format!("{encoded_header}.{encoded_payload}");
+        let components = RsaPublicKeyComponents {
+            n: key.n.as_slice(),
+            e: key.e.as_slice(),
         };
-
-        let signing_input = format!("{}.{}", parts[0], parts[1]);
-        if !key.verify(signing_input.as_bytes(), &sig_bytes) {
+        if components
+            .verify(
+                &RSA_PKCS1_2048_8192_SHA256,
+                signing_input.as_bytes(),
+                &signature,
+            )
+            .is_err()
+        {
             return Err(VerificationFailure::jose(
                 JoseErrorCode::JwsSignatureVerificationFailed,
                 "signature verification failed",
             ));
         }
 
-        let iss = payload.get("iss").and_then(|v| v.as_str()).unwrap_or("");
-        if iss != self.issuer {
+        let payload_bytes = b64url_decode(encoded_payload)
+            .ok_or_else(|| jws_invalid("Failed to base64url decode the payload"))?;
+        if !b64 {
             return Err(VerificationFailure::jose(
-                JoseErrorCode::JwtClaimValidationFailed,
-                format!("unexpected \"iss\" claim value ({iss})"),
+                JoseErrorCode::JwtInvalid,
+                "JWTs MUST NOT use unencoded payload",
             ));
         }
+        let claims = String::from_utf8(payload_bytes)
+            .ok()
+            .and_then(|text| JsonValue::parse(&text).ok())
+            .filter(|value| value.as_object().is_some())
+            .ok_or_else(|| {
+                VerificationFailure::jose(
+                    JoseErrorCode::JwtInvalid,
+                    "JWT Claims Set must be a top-level JSON object",
+                )
+            })?;
 
-        if let Some(exp) = payload.get("exp").and_then(|v| v.as_i64()) {
-            let now = SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs() as i64;
-            // clockTolerance: 30s
-            if now - 30 > exp {
+        self.validate_claims(&claims, unix_now())?;
+        Ok(claims)
+    }
+
+    /// jose's validateClaimsSet with only `issuer` and `clockTolerance` set.
+    fn validate_claims(&self, claims: &JsonValue, now: f64) -> Result<(), VerificationFailure> {
+        let iss = match claims.get("iss") {
+            None => return Err(claim_failed("missing required \"iss\" claim")),
+            Some(iss) => iss,
+        };
+        if iss.as_str() != Some(self.issuer.as_str()) {
+            return Err(claim_failed("unexpected \"iss\" claim value"));
+        }
+        numeric_date(claims, "iat")?;
+        if let Some(nbf) = numeric_date(claims, "nbf")? {
+            if nbf > now + CLOCK_TOLERANCE_SECS {
+                return Err(claim_failed("\"nbf\" claim timestamp check failed"));
+            }
+        }
+        if let Some(exp) = numeric_date(claims, "exp")? {
+            if exp <= now - CLOCK_TOLERANCE_SECS {
                 return Err(VerificationFailure::jose(
                     JoseErrorCode::JwtExpired,
                     "\"exp\" claim timestamp check failed",
                 ));
             }
         }
+        Ok(())
+    }
 
-        Ok(payload)
+    /// The key for this header: from the test key source, or from the cached
+    /// issuer key set, fetching it when it is older than 10 minutes and once
+    /// more (at most every 30 seconds) when no key in it matches.
+    fn resolve_key(
+        &self,
+        alg: &str,
+        kid: Option<&JsonValue>,
+    ) -> Result<RsaKey, VerificationFailure> {
+        if let Some(source) = &self.key_source {
+            return select_key(&source()?, alg, kid);
+        }
+        let mut cache = self.jwks.lock().unwrap_or_else(|p| p.into_inner());
+        let fresh = matches!(&*cache, Some(c) if c.fetched_at.elapsed() < self.cache_max_age);
+        if !fresh {
+            *cache = Some(self.fetch_jwks()?);
+        }
+        let (first, cooling_down) = match &*cache {
+            Some(cached) => (
+                select_key(&cached.set, alg, kid),
+                cached.fetched_at.elapsed() < self.cooldown,
+            ),
+            None => unreachable!("the key set was fetched above"),
+        };
+        match first {
+            Err(VerificationFailure::Jose {
+                code: JoseErrorCode::JwksNoMatchingKey,
+                ..
+            }) if !cooling_down => {
+                let refreshed = self.fetch_jwks()?;
+                let result = select_key(&refreshed.set, alg, kid);
+                *cache = Some(refreshed);
+                result
+            }
+            other => other,
+        }
+    }
+
+    /// One GET of the issuer's key set, classified the way jose classifies it:
+    /// a timeout is ERR_JWKS_TIMEOUT and an unreachable host is not a JOSE
+    /// error at all (both 503), while a non-200 or a body that is not JSON is
+    /// a generic JOSE error (401, as the TS server answered).
+    fn fetch_jwks(&self) -> Result<CachedJwks, VerificationFailure> {
+        let response = match self
+            .agent
+            .get(&self.jwks_uri)
+            .set("Accept", "application/json, application/jwk-set+json")
+            .call()
+        {
+            Ok(response) => response,
+            Err(ureq::Error::Status(_, response)) => response,
+            Err(ureq::Error::Transport(transport)) => {
+                return Err(if transport_timed_out(&transport) {
+                    VerificationFailure::jose(JoseErrorCode::JwksTimeout, "request timed out")
+                } else {
+                    VerificationFailure::non_jose("fetch failed")
+                });
+            }
+        };
+        if response.status() != 200 {
+            return Err(VerificationFailure::jose(
+                JoseErrorCode::JoseGeneric,
+                "Expected 200 OK from the JSON Web Key Set HTTP response",
+            ));
+        }
+        let mut body = Vec::new();
+        if let Err(e) = response
+            .into_reader()
+            .take(JWKS_MAX_BYTES)
+            .read_to_end(&mut body)
+        {
+            return Err(
+                if matches!(
+                    e.kind(),
+                    std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+                ) {
+                    VerificationFailure::jose(JoseErrorCode::JwksTimeout, "request timed out")
+                } else {
+                    VerificationFailure::non_jose("fetch failed")
+                },
+            );
+        }
+        let set = String::from_utf8(body)
+            .ok()
+            .and_then(|text| JsonValue::parse(&text).ok())
+            .ok_or_else(|| {
+                VerificationFailure::jose(
+                    JoseErrorCode::JoseGeneric,
+                    "Failed to parse the JSON Web Key Set HTTP response as JSON",
+                )
+            })?;
+        if !is_jwk_set(&set) {
+            return Err(jwks_malformed());
+        }
+        Ok(CachedJwks {
+            set,
+            fetched_at: Instant::now(),
+        })
+    }
+
+    #[cfg(test)]
+    fn with_cache_timing(mut self, cache_max_age: Duration, cooldown: Duration) -> Self {
+        self.cache_max_age = cache_max_age;
+        self.cooldown = cooldown;
+        self
     }
 }
 
@@ -800,567 +775,1087 @@ impl TokenVerifier for StandardTokenVerifier {
     }
 }
 
-/// Builder to mint signed JWTs in tests and local harnesses.
-pub struct JwtSigner {
-    claims: JsonValue,
-    alg: String,
+fn jws_invalid(message: &str) -> VerificationFailure {
+    VerificationFailure::jose(JoseErrorCode::JwsInvalid, message)
 }
 
-impl JwtSigner {
-    pub fn new(claims: JsonValue) -> Self {
-        Self {
-            claims,
-            alg: "RS256".to_string(),
+fn claim_failed(message: &str) -> VerificationFailure {
+    VerificationFailure::jose(JoseErrorCode::JwtClaimValidationFailed, message)
+}
+
+fn jwks_malformed() -> VerificationFailure {
+    VerificationFailure::jose(JoseErrorCode::JwksInvalid, "JSON Web Key Set malformed")
+}
+
+fn unix_now() -> f64 {
+    // jose: Math.floor(Date.now() / 1000).
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as f64
+}
+
+/// A present `iat`/`nbf`/`exp` must be a number; absent is fine.
+fn numeric_date(claims: &JsonValue, claim: &str) -> Result<Option<f64>, VerificationFailure> {
+    match claims.get(claim) {
+        None => Ok(None),
+        Some(JsonValue::Number(n)) => Ok(Some(*n)),
+        Some(_) => Err(claim_failed(&format!("\"{claim}\" claim must be a number"))),
+    }
+}
+
+/// jose's validateCrit + validateB64 for a JWS: `b64` is the only extension
+/// it recognises. Returns whether the payload is base64url-encoded.
+fn check_crit_and_b64(header: &JsonValue) -> Result<bool, VerificationFailure> {
+    let Some(crit) = header.get("crit") else {
+        return Ok(true);
+    };
+    let names = match crit.as_array() {
+        Some(items) if !items.is_empty() => items
+            .iter()
+            .map(|item| item.as_str().filter(|s| !s.is_empty()))
+            .collect::<Option<Vec<&str>>>(),
+        _ => None,
+    }
+    .ok_or_else(|| {
+        jws_invalid(
+            "\"crit\" (Critical) Header Parameter MUST be an array of non-empty strings when present",
+        )
+    })?;
+    for name in &names {
+        if *name != "b64" {
+            return Err(VerificationFailure::jose(
+                JoseErrorCode::JoseNotSupported,
+                format!("Extension Header Parameter \"{name}\" is not recognized"),
+            ));
+        }
+        if header.get(name).is_none() {
+            return Err(jws_invalid(&format!(
+                "Extension Header Parameter \"{name}\" is missing"
+            )));
         }
     }
-
-    pub fn set_protected_header(mut self, alg: &str) -> Self {
-        self.alg = alg.to_string();
-        self
+    if names.contains(&"b64") {
+        return match header.get("b64") {
+            Some(JsonValue::Bool(b64)) => Ok(*b64),
+            _ => Err(jws_invalid(
+                "The \"b64\" (base64url-encode payload) Header Parameter must be a boolean",
+            )),
+        };
     }
+    Ok(true)
+}
 
-    pub fn set_issuer(mut self, issuer: &str) -> Self {
-        self.claims.insert("iss", issuer.into());
-        self
-    }
+fn is_jwk_set(value: &JsonValue) -> bool {
+    value.as_object().is_some()
+        && value
+            .get("keys")
+            .and_then(|keys| keys.as_array())
+            .map_or(false, |keys| keys.iter().all(|k| k.as_object().is_some()))
+}
 
-    pub fn set_audience(mut self, aud: JsonValue) -> Self {
-        self.claims.insert("aud", aud);
-        self
-    }
+/// An RSA public key from a JWK, big-endian, leading zeros kept as given.
+struct RsaKey {
+    n: Vec<u8>,
+    e: Vec<u8>,
+}
 
-    pub fn set_subject(mut self, sub: &str) -> Self {
-        self.claims.insert("sub", sub.into());
-        self
+impl RsaKey {
+    fn modulus_bits(&self) -> usize {
+        match self.n.iter().position(|b| *b != 0) {
+            Some(first) => (self.n.len() - first) * 8 - self.n[first].leading_zeros() as usize,
+            None => 0,
+        }
     }
+}
 
-    pub fn set_issued_at(mut self) -> Self {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs() as i64;
-        self.claims.insert("iat", now.into());
-        self
+/// jose's createLocalJWKSet lookup: the keys usable for this header; exactly
+/// one must remain.
+fn select_key(
+    set: &JsonValue,
+    alg: &str,
+    kid: Option<&JsonValue>,
+) -> Result<RsaKey, VerificationFailure> {
+    if !is_jwk_set(set) {
+        return Err(jwks_malformed());
     }
+    let keys = set
+        .get("keys")
+        .and_then(|k| k.as_array())
+        .map_or(&[][..], |k| k.as_slice());
+    let candidates: Vec<&JsonValue> = keys
+        .iter()
+        .filter(|jwk| is_usable_jwk(jwk, alg, kid))
+        .collect();
+    match candidates.as_slice() {
+        [] => Err(VerificationFailure::jose(
+            JoseErrorCode::JwksNoMatchingKey,
+            "no applicable key found in the JSON Web Key Set",
+        )),
+        [jwk] => import_rsa_jwk(jwk),
+        _ => Err(VerificationFailure::jose(
+            JoseErrorCode::JwksMultipleMatchingKeys,
+            "multiple matching keys found in the JSON Web Key Set",
+        )),
+    }
+}
 
-    pub fn set_expiration_offset_secs(mut self, offset_secs: i64) -> Self {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs() as i64;
-        self.claims.insert("exp", (now + offset_secs).into());
-        self
-    }
+/// jose's isUsableJWK for an RSA algorithm. A JSON null is never "absent":
+/// jose compares against undefined, and null fails every one of these.
+fn is_usable_jwk(jwk: &JsonValue, alg: &str, kid: Option<&JsonValue>) -> bool {
+    let ext_ok = match jwk.get("ext") {
+        None => true,
+        Some(v) => v.as_bool().is_some(),
+    };
+    let key_ops_ok = match jwk.get("key_ops") {
+        None => true,
+        Some(JsonValue::Array(ops)) => {
+            let names: Option<Vec<&str>> = ops.iter().map(|op| op.as_str()).collect();
+            names.map_or(false, |names| {
+                let unique: HashSet<&str> = names.iter().copied().collect();
+                unique.len() == names.len() && unique.contains("verify")
+            })
+        }
+        Some(_) => false,
+    };
+    let kty_ok = jwk.get("kty").and_then(|v| v.as_str()) == Some("RSA");
+    let kid_ok = match kid {
+        None => true,
+        Some(JsonValue::String(kid)) => {
+            jwk.get("kid").and_then(|v| v.as_str()) == Some(kid.as_str())
+        }
+        Some(_) => false,
+    };
+    let alg_ok = match jwk.get("alg") {
+        None => true,
+        Some(v) => v.as_str() == Some(alg),
+    };
+    let use_ok = match jwk.get("use") {
+        None => true,
+        Some(v) => v.as_str() == Some("sig"),
+    };
+    ext_ok && key_ops_ok && kty_ok && kid_ok && alg_ok && use_ok
+}
 
-    pub fn sign(self, key: &SigningKey) -> String {
-        let header = JsonValue::object(vec![("alg", self.alg.as_str().into())]);
-        let h_b64 = base64::encode_url(header.to_json_string().as_bytes());
-        let p_b64 = base64::encode_url(self.claims.to_json_string().as_bytes());
-        let signing_input = format!("{h_b64}.{p_b64}");
-        let sig = key.sign(signing_input.as_bytes());
-        let s_b64 = base64::encode_url(&sig);
-        format!("{signing_input}.{s_b64}")
+fn import_rsa_jwk(jwk: &JsonValue) -> Result<RsaKey, VerificationFailure> {
+    let component = |name: &str| {
+        jwk.get(name)
+            .and_then(|v| v.as_str())
+            .and_then(b64url_decode)
+            .filter(|bytes| !bytes.is_empty())
+    };
+    match (component("n"), component("e")) {
+        (Some(n), Some(e)) => Ok(RsaKey { n, e }),
+        // WebCrypto's importKey rejects it with a DataError, which is not a
+        // JOSE error: identity-provider side, 503.
+        _ => Err(VerificationFailure::non_jose("Invalid RSA JSON Web Key")),
     }
+}
+
+/// Unpadded base64url, as JWS uses it. Like the forgiving decoder jose relies
+/// on, it rejects a length that leaves a single dangling character and
+/// ignores the unused low bits of the last character.
+fn b64url_decode(input: &str) -> Option<Vec<u8>> {
+    let mut out = Vec::with_capacity(input.len() * 3 / 4);
+    let mut buffer: u32 = 0;
+    let mut bits = 0;
+    for byte in input.bytes() {
+        let value = match byte {
+            b'A'..=b'Z' => byte - b'A',
+            b'a'..=b'z' => byte - b'a' + 26,
+            b'0'..=b'9' => byte - b'0' + 52,
+            b'-' => 62,
+            b'_' => 63,
+            _ => return None,
+        };
+        buffer = (buffer << 6) | u32::from(value);
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((buffer >> bits) as u8);
+            buffer &= (1 << bits) - 1;
+        }
+    }
+    if input.len() % 4 == 1 {
+        return None;
+    }
+    Some(out)
+}
+
+fn transport_timed_out(transport: &ureq::Transport) -> bool {
+    let mut source = std::error::Error::source(transport);
+    while let Some(err) = source {
+        if let Some(io) = err.downcast_ref::<std::io::Error>() {
+            if matches!(
+                io.kind(),
+                std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+            ) {
+                return true;
+            }
+        }
+        source = err.source();
+    }
+    false
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ring::rand::SystemRandom;
+    use ring::signature::{RsaKeyPair, RSA_PKCS1_SHA256};
+    use std::io::{BufRead, BufReader, Write};
     use std::net::TcpListener;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     const ISSUER: &str = "https://auth.example.test";
     const PROJECT_ID: &str = "123456789";
-    const OTHER_PROJECT_ID: &str = "987654321";
     const CLIENT_ID: &str = "555555555555555555";
-    const OTHER_CLIENT_ID: &str = "666666666666666666";
 
-    struct MintOpts<'a> {
-        audience: JsonValue,
-        issuer: &'a str,
-        subject: &'a str,
-        expires_in_secs: i64,
-        client_id: Option<&'a str>,
-        azp: Option<&'a str>,
-    }
+    // Throwaway 2048-bit RSA keys (PKCS#8 DER, base64url), generated for
+    // these tests only and used nowhere else.
+    const TEST_KEY_A: &str = concat!(
+        "MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCvutM9Ruknu7rIHzvYC02EWEa-9e1c7uKxV81fV2",
+        "RMN-iBE4rlA_sxIccFC8QeISKKeIg8dxlY3V1EbkRjY7TYyGcsie28b6dWUi9uUkZqTCG0cMu5laAR8YxUbWdetOHp",
+        "fwiD70KTDd_n2-Mgb84FfjpzEwSvFrdNgwGccDkcPzAqMkQcy7r-vEqKpLfLbw3iile4Tq_PILB6GriFVl63TEsosP",
+        "WVyGEncch5YPzngHL94zkoKmUQMKBgR5CTIE7V157bvw_OkXAfjG6LjGDNlS1rUN0nuuO56pZcSdhVNT0qkLainlmh",
+        "flaudwusJGEfrBjBXTHYnxZdHFMXUrmDAgMBAAECggEAVa34B5T24hYQhDliUrx0D5aA6-N5V0nsAn6mVhmEf_r0ZF",
+        "a0bmPqCfMHl8i8Vtpd_ni1KBIDrEXGDzLaKkF3cAkJ8PfRD4K66oYItTftOC-lcVZbpkEzOfx1KMbs0wrLaS60Zqt1",
+        "4MAvjtsxmuOYZio88lVv_7RKLEM3OmCnH8NJ7HJ2AZtk_9pBhWs3gVWNnf2HwZe2g9LpFKEpD1VZLKd9fv7IQ9Pki3",
+        "Om1m_EIuJhDTMS2ZtY52E5YDQzixuD2J1CylcofbwOCf02MXEvfWhZw_IzmTFuAr8VaxPBTpF3U_AMCvU5rOT-svEs",
+        "lh0ezfMS9FF8gJJhzwlEv82UuQKBgQDjw02gBCXfVmKmUN8PQiFVC7le3tdGREU6DetDeUiCH_fhkZLhZGCJ7XN0pL",
+        "FAD0kQy5JgIMRI_AmmCwLy5FBUyKlHCGS064ati-4m0Xu8j_q-MMp1co5J4d_S_b0hf3qyezHqCAiZb30rTTIQHQxI",
+        "mHCCW1MOLquW9hJ1kHDAawKBgQDFhBrAg1Xw6RgdhDr7P4UZUKHTWZnUVVL3Coqj5CYd6wSdhJOKG4IwIxELWk_TYl",
+        "dHR-LbBLKGTqkGWNxSigjU7bLL2ne7JtDvEJ82StD6Q9BFdifrYUCGNsdpdyTeQ_2fwaVXhpLgpUEyn3whbHZPMvqz",
+        "tL8XeUPtcGVAeV5RSQKBgElAyTiL3PpluDixjexEYqANs0L1_NrWnkU7sMz0twNS8NCVl13ygLIbsqRzS6bEw8UpFB",
+        "zirP6kQR4sMHiaQdPi7b6wzmL51Uj_1kqZ2WgeDpEY9CSuAWF1yhz8CtY5P-cjhDw29T0UBHfmzhEspoS6soTahm3r",
+        "SLi2z90L5ZedAoGAWRs17m_Rz7N426gR69NGOptzxiOAEJjFqwmobjO5NnoWRPHQlde_LfRD9jkyFg0hjtjRcTl3SL",
+        "wn6OMh0mLPhTAPH4RZy6bBT3jSOu4ZxS3ewdeCPuBK-cGwyNWlXliSDQaRjyD5Fju3ZB0rJPEHlsdK7tO1-eMNUAsK",
+        "wsF-WXECgYEAwPw6ZR4Qkg3Nvgm3gXg6u0kikIRkNwtrh1gFZCTb2OVt6pYGnTXlmv6dsUZEz7k3p7PRMsavi3sd8i",
+        "hKXawoJUsQ9-eQi6wO_uiFVIdV566aclIo_0nuVRjs8tQ5KI6eUZ0woMsrqfavYnwZ9H7RfOQW8Sjkc5hG1z5pc2gM",
+        "xLI",
+    );
+    const TEST_KEY_B: &str = concat!(
+        "MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCnHxjqdcU72UAr6bjXnvtc7eQgRNIUxBtjSAYZFf",
+        "XOz_KN1GlGGBd7eYoTVVNnQQbUKe54GAqzi0TBoR4baW9q0482j0Jf4UXPzxMk3cwgU9IgLausBlwmWQPeYknNeJVq",
+        "Y6o-UI9n2K4cxwzQI7VAYR2Hzz5iX4pyoSzc9fkpFjR2JYha6uGotuiC8uOC8ds5yoP8x_UzzkNC-Ft-mudBVoQb6y",
+        "VKfOdbMDsgMhHe9BcRy3HzFXZOXcl9NV-9YL8hpSJ2gs63NpaZguShRxdYKCJ6N31tuapAQdAmLdXpnyfNLbXwlsrU",
+        "OxWFHE5zPltTf-cpwLNh8ERuK6drZ3MDAgMBAAECggEAHhFDO1OrA6SHnh7zyZ9p3ANU6tVW8rOBtfAMYNEJo4bYPd",
+        "o8gobtGqL4S5grZEVXxC4zIFo6-qiQ20FwmD_08sRTXN6Tc4qlM8kuyZA6HIrYID_3RgDy7VdQkd8fJh-OylBaHdIC",
+        "qw1Z7gWF8aCrCIUwefG4aJyF3S_QUYTTqidw8WEfRcO6NvS_-fyrjIVY_9y51Gf2C4L367sKX6NzzeLcPF0QWouOO5",
+        "XwA7VTtt68idLO5KxgU-zLNbr5J_fpk2hXigps2dYKyAIYnisr-LgBPiSTQ_kBwCEMTitxP-yPr7l_VUJzL5Rr5ph0",
+        "VglAi0fU58MAlAR0U4C4Wb3PIQKBgQDeri8k_BMi8e2Y86bL0b-k22mtxQBlink_itnhCOd26MgnVJ5PHtoAr84sFk",
+        "Br3y1cx6DWqA_Kl-qV4OdbAvjZp3ep9fkLWsZqJm5DFBj3TUH64Y3Bkdh4rXcUzBORXynyINISIRAKuYVJqDNbZoJv",
+        "1h4U8_N0REYyZpMIZMFjMwKBgQDAILexZ2s1syO9k9e1GKHBL_GBzQHNoy_8sPSCACimRRaT2w0Tff1rx4oEO_WzBZ",
+        "A-pwTVtUtBiXufaxpCwlQ8VoHoZQ1b1cky8K8jVkE03cLq8_a2vqv8HebWubQmSe95tfjfhcFnt13w96wopQyLMBTD",
+        "WLzNt2cPtRz_zkKw8QKBgHMhY8affdVneAzIjMh8nbVCrBTn8hiNy7qKs7Ohwuq72CBdo6wMq3IHc3Vf29bqAK4jmI",
+        "jjQ6bffK4ZJgTsOHVwHHKHdkfkmwlu7TtJPM8_5okr7PrTyTQ7m4HpMYTLywgg5_vvlDe3S66VhFgRXAcukUcMCidm",
+        "1VRhrEt-rG35AoGBALhur-fdH02taeHSyn9N5flNzMiNw-1jee1Y8V7aSCtUpxfIcAUGLQAJzLPD21i_PnjmW_3Kyz",
+        "Nehw3CArOTWMmTQaGVX_2IfFwqL_X8FxxoxXRGPc-vuemLyszV99nJn9l2ljH8dGzb2ZI4L0vVJPV4cnYT-SqBpK2v",
+        "buchWWQBAoGBAJqdrfiXHJ3u_n9fDKcjvQZtClHrgda1QsWFILMIfAXbUuVzqR5ZE_gCol37ruZyhEHHGCfOWi8DNo",
+        "I7Hu7J4eOYQTQGuNMqB7-9pOV4kpeyw7dPWOpCab0m57qypesjZSVEr0145gip543VO9gO7_-T4uhA7z62Nff8kAu_",
+        "ahZB",
+    );
 
-    impl<'a> Default for MintOpts<'a> {
-        fn default() -> Self {
-            Self {
-                audience: PROJECT_ID.into(),
-                issuer: ISSUER,
-                subject: "user-42",
-                expires_in_secs: 300,
-                client_id: Some(CLIENT_ID),
-                azp: None,
+    fn b64url(bytes: &[u8]) -> String {
+        const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+        let mut out = String::new();
+        for chunk in bytes.chunks(3) {
+            let n = chunk.iter().fold(0u32, |acc, b| (acc << 8) | u32::from(*b))
+                << (8 * (3 - chunk.len()));
+            for i in 0..=chunk.len() {
+                out.push(ALPHABET[((n >> (18 - 6 * i)) & 63) as usize] as char);
             }
         }
+        out
     }
 
-    fn mint_token(key: &SigningKey, opts: MintOpts<'_>) -> String {
-        let mut claims = JsonValue::empty_object();
-        if let Some(cid) = opts.client_id {
-            claims.insert("client_id", cid.into());
-        }
-        if let Some(azp) = opts.azp {
-            claims.insert("azp", azp.into());
-        }
-        JwtSigner::new(claims)
-            .set_protected_header("RS256")
-            .set_issuer(opts.issuer)
-            .set_audience(opts.audience)
-            .set_subject(opts.subject)
-            .set_issued_at()
-            .set_expiration_offset_secs(opts.expires_in_secs)
-            .sign(key)
+    fn key_pair(pkcs8_b64url: &str) -> RsaKeyPair {
+        RsaKeyPair::from_pkcs8(&b64url_decode(pkcs8_b64url).unwrap()).unwrap()
     }
 
-    fn make_verifier(
-        pub_key: VerifyingKey,
-        project_id: &str,
-        allowed_subjects: Vec<&str>,
-        allowed_client_id: &str,
-    ) -> StandardTokenVerifier {
-        create_token_verifier(TokenVerifierConfig {
-            issuer: ISSUER.to_string(),
-            project_id: project_id.to_string(),
-            allowed_subjects: allowed_subjects.into_iter().map(str::to_string).collect(),
-            allowed_client_id: allowed_client_id.to_string(),
-            jwks_uri: None,
-            key_source: Some(Arc::new(move || Ok(pub_key.clone()))),
+    fn jwk(pair: &RsaKeyPair, kid: &str) -> JsonValue {
+        let public: RsaPublicKeyComponents<Vec<u8>> = pair.public().into();
+        JsonValue::object(vec![
+            ("kty", "RSA".into()),
+            ("kid", kid.into()),
+            ("alg", "RS256".into()),
+            ("use", "sig".into()),
+            ("n", b64url(&public.n).as_str().into()),
+            ("e", b64url(&public.e).as_str().into()),
+        ])
+    }
+
+    fn key_set(keys: Vec<JsonValue>) -> JsonValue {
+        JsonValue::object(vec![("keys", JsonValue::array(keys))])
+    }
+
+    fn sign_parts(pair: &RsaKeyPair, header: &str, payload: &str) -> String {
+        let signing_input = format!("{header}.{payload}");
+        let mut signature = vec![0u8; pair.public().modulus_len()];
+        pair.sign(
+            &RSA_PKCS1_SHA256,
+            &SystemRandom::new(),
+            signing_input.as_bytes(),
+            &mut signature,
+        )
+        .unwrap();
+        format!("{signing_input}.{}", b64url(&signature))
+    }
+
+    fn mint(pair: &RsaKeyPair, header: JsonValue, claims: &JsonValue) -> String {
+        sign_parts(
+            pair,
+            &b64url(header.to_json_string().as_bytes()),
+            &b64url(claims.to_json_string().as_bytes()),
+        )
+    }
+
+    fn header(kid: &str) -> JsonValue {
+        JsonValue::object(vec![("alg", "RS256".into()), ("kid", kid.into())])
+    }
+
+    fn claims() -> JsonValue {
+        let now = unix_now();
+        JsonValue::object(vec![
+            ("iss", ISSUER.into()),
+            (
+                "aud",
+                JsonValue::array(vec![PROJECT_ID.into(), "other".into()]),
+            ),
+            ("sub", "user-42".into()),
+            ("client_id", CLIENT_ID.into()),
+            ("iat", JsonValue::number(now)),
+            ("exp", JsonValue::number(now + 300.0)),
+        ])
+    }
+
+    fn with(mut claims: JsonValue, key: &str, value: JsonValue) -> JsonValue {
+        claims.insert(key, value);
+        claims
+    }
+
+    fn without(claims: JsonValue, key: &str) -> JsonValue {
+        let entries = claims
+            .as_object()
+            .unwrap()
+            .iter()
+            .filter(|(k, _)| k != key)
+            .cloned()
+            .collect();
+        JsonValue::Object(entries)
+    }
+
+    fn config(key_source: Option<KeySourceFn>, jwks_uri: Option<String>) -> TokenVerifierConfig {
+        TokenVerifierConfig {
+            issuer: format!("{ISSUER}/"),
+            project_id: PROJECT_ID.to_string(),
+            allowed_subjects: vec!["user-42".to_string()],
+            allowed_client_id: CLIENT_ID.to_string(),
+            jwks_uri,
+            key_source,
             jwks_timeout_ms: None,
-        })
-        .unwrap()
+        }
+    }
+
+    fn local_verifier(set: JsonValue) -> StandardTokenVerifier {
+        create_token_verifier(config(Some(Arc::new(move || Ok(set.clone()))), None)).unwrap()
+    }
+
+    fn verifier_a() -> (RsaKeyPair, StandardTokenVerifier) {
+        let a = key_pair(TEST_KEY_A);
+        let verifier = local_verifier(key_set(vec![jwk(&a, "a")]));
+        (a, verifier)
+    }
+
+    /// Status and the reason jose would have given.
+    fn refusal(result: Result<VerifiedCaller, AuthError>) -> (u16, String) {
+        match result {
+            Ok(caller) => panic!("expected a refusal, got {caller:?}"),
+            Err(AuthError::InvalidToken { reason }) => (401, reason),
+            Err(AuthError::IdpUnavailable { reason }) => (503, reason),
+            Err(other) => (other.status(), other.message()),
+        }
+    }
+
+    #[test]
+    fn bearer_extraction_matches_the_ts_regex() {
+        assert_eq!(extract_bearer_token(Some("Bearer abc")).unwrap(), "abc");
+        assert_eq!(
+            extract_bearer_token(Some("  bEaReR    abc  ")).unwrap(),
+            "abc"
+        );
+        assert_eq!(extract_bearer_token(Some("Bearer a b")).unwrap(), "a b");
+        for bad in [
+            None,
+            Some(""),
+            Some("Bearer"),
+            Some("Bearer "),
+            Some("Bearerabc"),
+            Some("Basic abc"),
+            Some("Bearer\tabc"),
+            Some("Bearer a\nb"),
+        ] {
+            assert_eq!(
+                extract_bearer_token(bad),
+                Err(AuthError::MissingToken),
+                "{bad:?}"
+            );
+        }
+        // Byte 6 inside a multi-byte character: a refusal, not a panic.
+        assert_eq!(
+            extract_bearer_token(Some("Beareé token")),
+            Err(AuthError::MissingToken)
+        );
+        assert_eq!(
+            extract_bearer_token(Some("ééééé")),
+            Err(AuthError::MissingToken)
+        );
     }
 
     #[test]
     fn looks_like_jwt_checks_three_base64url_segments() {
-        assert!(looks_like_jwt("aaa.bbb.ccc"));
-        assert!(looks_like_jwt("a-_A.b-_B.c-_C"));
-        assert!(!looks_like_jwt("Xk9fJ2mQ7bTn4vRz8sLpWc"));
-        assert!(!looks_like_jwt("two.segments"));
-        assert!(!looks_like_jwt("four.seg.ments.here"));
-        assert!(!looks_like_jwt("has.bad!chars.here"));
+        assert!(looks_like_jwt("a.b.c"));
+        assert!(looks_like_jwt("aZ09-_.x.y"));
+        assert!(!looks_like_jwt("a.b"));
+        assert!(!looks_like_jwt("a..c"));
+        assert!(!looks_like_jwt("a.b.c.d"));
+        assert!(!looks_like_jwt("a.b+.c"));
+        assert!(!looks_like_jwt("opaque-token"));
     }
 
     #[test]
-    fn extract_bearer_token_handles_headers() {
-        assert_eq!(
-            extract_bearer_token(Some("Bearer abc.def.ghi")).unwrap(),
-            "abc.def.ghi"
-        );
-        assert_eq!(
-            extract_bearer_token(Some("bearer abc.def.ghi")).unwrap(),
-            "abc.def.ghi"
-        );
-        assert_eq!(
-            extract_bearer_token(Some("  Bearer   abc.def.ghi  ")).unwrap(),
-            "abc.def.ghi"
-        );
-        assert_eq!(extract_bearer_token(None), Err(AuthError::MissingToken));
-        assert_eq!(extract_bearer_token(Some("")), Err(AuthError::MissingToken));
-        assert_eq!(
-            extract_bearer_token(Some("Basic abc")),
-            Err(AuthError::MissingToken)
-        );
-        assert_eq!(
-            extract_bearer_token(Some("Bearer ")),
-            Err(AuthError::MissingToken)
-        );
+    fn base64url_decoding_is_forgiving_like_jose() {
+        assert_eq!(b64url_decode("").unwrap(), b"");
+        assert_eq!(b64url_decode("YQ").unwrap(), b"a");
+        assert_eq!(b64url_decode("YWI").unwrap(), b"ab");
+        assert_eq!(b64url_decode("YWJj").unwrap(), b"abc");
+        assert_eq!(b64url_decode("-_8").unwrap(), vec![0xfb, 0xff]);
+        // Unused low bits are ignored, as forgiving-base64 does.
+        assert_eq!(b64url_decode("YR").unwrap(), b"a");
+        assert!(b64url_decode("YWJjZ").is_none());
+        assert!(b64url_decode("YW=").is_none());
+        assert!(b64url_decode("Y+").is_none());
     }
 
     #[test]
-    fn scope_string_helpers() {
-        assert_eq!(
-            audience_scope_for(PROJECT_ID),
-            format!("urn:zitadel:iam:org:project:id:{PROJECT_ID}:aud")
-        );
-        assert_eq!(
-            full_scope_string(PROJECT_ID),
-            format!("openid offline_access urn:zitadel:iam:org:project:id:{PROJECT_ID}:aud")
-        );
-    }
-
-    #[test]
-    fn token_verification_core_cases() {
-        let (priv_key, pub_key) = generate_key_pair();
-        let v = make_verifier(pub_key.clone(), PROJECT_ID, vec!["user-42"], CLIENT_ID);
-
-        let caller = v
-            .verify_token(&mint_token(&priv_key, MintOpts::default()))
+    fn a_valid_token_is_accepted() {
+        let (a, verifier) = verifier_a();
+        let caller = verifier
+            .verify_token(&mint(&a, header("a"), &claims()))
             .unwrap();
         assert_eq!(caller.subject, "user-42");
-
-        // Audience array
-        let tok_arr = mint_token(
-            &priv_key,
-            MintOpts {
-                audience: JsonValue::Array(vec![OTHER_PROJECT_ID.into(), PROJECT_ID.into()]),
-                ..MintOpts::default()
-            },
-        );
-        assert_eq!(v.verify_token(&tok_arr).unwrap().subject, "user-42");
-
-        // Different issuer
-        let tok_iss = mint_token(
-            &priv_key,
-            MintOpts {
-                issuer: "https://evil.example.test",
-                ..MintOpts::default()
-            },
-        );
-        assert!(matches!(
-            v.verify_token(&tok_iss),
-            Err(AuthError::InvalidToken { .. })
-        ));
-
-        // Expired token (-60s)
-        let tok_exp = mint_token(
-            &priv_key,
-            MintOpts {
-                expires_in_secs: -60,
-                ..MintOpts::default()
-            },
-        );
-        assert!(matches!(
-            v.verify_token(&tok_exp),
-            Err(AuthError::InvalidToken { .. })
-        ));
-
-        // 29s past expiry accepted, 31s rejected (30s tolerance)
-        let tok_29 = mint_token(
-            &priv_key,
-            MintOpts {
-                expires_in_secs: -29,
-                ..MintOpts::default()
-            },
-        );
-        assert_eq!(v.verify_token(&tok_29).unwrap().subject, "user-42");
-
-        let tok_31 = mint_token(
-            &priv_key,
-            MintOpts {
-                expires_in_secs: -31,
-                ..MintOpts::default()
-            },
-        );
-        assert!(matches!(
-            v.verify_token(&tok_31),
-            Err(AuthError::InvalidToken { .. })
-        ));
-
-        // Unknown signing key
-        let (attacker_priv, _) = generate_key_pair();
-        let forged = mint_token(&attacker_priv, MintOpts::default());
-        assert!(matches!(
-            v.verify_token(&forged),
-            Err(AuthError::InvalidToken { .. })
-        ));
-
-        // Opaque token
-        let opaque_err = v.verify_token("Xk9fJ2mQ7bTn4vRz8sLpWc").unwrap_err();
-        assert_eq!(opaque_err, AuthError::OpaqueToken);
-        assert!(opaque_err.message().contains("accessTokenType"));
-        assert_eq!(opaque_err.status(), 401);
-
-        // Wrong audience
-        let wrong_aud = mint_token(
-            &priv_key,
-            MintOpts {
-                audience: OTHER_PROJECT_ID.into(),
-                ..MintOpts::default()
-            },
-        );
-        let aud_err = v.verify_token(&wrong_aud).unwrap_err();
-        assert_eq!(aud_err.status(), 403);
-        assert_eq!(aud_err.code(), "insufficient_scope");
-        assert!(aud_err.message().contains(&full_scope_string(PROJECT_ID)));
-        assert!(aud_err.message().contains(OTHER_PROJECT_ID));
-
-        // No audience at all
-        let no_aud = JwtSigner::new(JsonValue::empty_object())
-            .set_protected_header("RS256")
-            .set_issuer(ISSUER)
-            .set_subject("user-42")
-            .set_issued_at()
-            .set_expiration_offset_secs(300)
-            .sign(&priv_key);
-        assert!(matches!(
-            v.verify_token(&no_aud),
-            Err(AuthError::AudienceMismatch { .. })
-        ));
-
-        // No subject
-        let no_sub = JwtSigner::new(JsonValue::empty_object())
-            .set_protected_header("RS256")
-            .set_issuer(ISSUER)
-            .set_audience(PROJECT_ID.into())
-            .set_issued_at()
-            .set_expiration_offset_secs(300)
-            .sign(&priv_key);
-        assert!(matches!(
-            v.verify_token(&no_sub),
-            Err(AuthError::InvalidToken { .. })
-        ));
-
-        // Authorization header
-        let valid_tok = mint_token(&priv_key, MintOpts::default());
         assert_eq!(
-            v.verify_header(Some(&format!("Bearer {valid_tok}")))
-                .unwrap()
-                .subject,
-            "user-42"
+            caller.claims.get("client_id").and_then(|v| v.as_str()),
+            Some(CLIENT_ID)
         );
-        assert_eq!(v.verify_header(None), Err(AuthError::MissingToken));
+        // Through the header path too.
+        let token = mint(&a, header("a"), &claims());
+        assert!(verifier
+            .verify_header(Some(&format!("Bearer {token}")))
+            .is_ok());
     }
 
     #[test]
-    fn idp_reachability_and_error_classification() {
-        let (priv_key, _pub_key) = generate_key_pair();
-        let dead_verifier = create_token_verifier(TokenVerifierConfig {
-            issuer: ISSUER.to_string(),
-            project_id: PROJECT_ID.to_string(),
-            allowed_subjects: vec!["user-42".to_string()],
-            allowed_client_id: CLIENT_ID.to_string(),
-            jwks_uri: Some("http://127.0.0.1:1/unreachable".to_string()),
-            key_source: None,
-            jwks_timeout_ms: Some(200),
-        })
-        .unwrap();
+    fn a_token_without_kid_uses_the_only_usable_key() {
+        let (a, verifier) = verifier_a();
+        let no_kid = JsonValue::object(vec![("alg", "RS256".into())]);
+        assert!(verifier.verify_token(&mint(&a, no_kid, &claims())).is_ok());
+    }
 
-        let err = dead_verifier
-            .verify_token(&mint_token(&priv_key, MintOpts::default()))
-            .unwrap_err();
-        assert!(matches!(err, AuthError::IdpUnavailable { .. }));
-        assert_eq!(err.status(), 503);
-        assert!(err.message().contains("not judged"));
+    #[test]
+    fn a_forged_or_tampered_signature_is_rejected() {
+        let a = key_pair(TEST_KEY_A);
+        let b = key_pair(TEST_KEY_B);
+        let verifier = local_verifier(key_set(vec![jwk(&a, "a")]));
+        // Signed by B but claiming A's key id.
+        assert_eq!(
+            refusal(verifier.verify_token(&mint(&b, header("a"), &claims()))),
+            (401, "signature verification failed".to_string())
+        );
+        // Payload swapped after signing.
+        let token = mint(&a, header("a"), &claims());
+        let parts: Vec<&str> = token.split('.').collect();
+        let forged = with(claims(), "sub", "user-43".into());
+        let tampered = format!(
+            "{}.{}.{}",
+            parts[0],
+            b64url(forged.to_json_string().as_bytes()),
+            parts[2]
+        );
+        assert_eq!(
+            refusal(verifier.verify_token(&tampered)),
+            (401, "signature verification failed".to_string())
+        );
+    }
 
-        // Unrecognised failure in keySource -> IdpUnavailable (503)
-        let custom_fail_verifier = create_token_verifier(TokenVerifierConfig {
-            issuer: ISSUER.to_string(),
-            project_id: PROJECT_ID.to_string(),
-            allowed_subjects: vec!["user-42".to_string()],
-            allowed_client_id: CLIENT_ID.to_string(),
-            jwks_uri: None,
-            key_source: Some(Arc::new(|| {
-                Err(VerificationFailure::non_jose(
-                    "something nobody anticipated",
-                ))
-            })),
-            jwks_timeout_ms: None,
-        })
-        .unwrap();
-        let err2 = custom_fail_verifier
-            .verify_token(&mint_token(&priv_key, MintOpts::default()))
-            .unwrap_err();
-        assert!(matches!(err2, AuthError::IdpUnavailable { .. }));
+    #[test]
+    fn the_key_is_picked_by_kid() {
+        let a = key_pair(TEST_KEY_A);
+        let b = key_pair(TEST_KEY_B);
+        let verifier = local_verifier(key_set(vec![jwk(&a, "a"), jwk(&b, "b")]));
+        assert!(verifier
+            .verify_token(&mint(&a, header("a"), &claims()))
+            .is_ok());
+        assert!(verifier
+            .verify_token(&mint(&b, header("b"), &claims()))
+            .is_ok());
+        // Unknown kid: no applicable key (401, jose's JWKSNoMatchingKey).
+        assert_eq!(
+            refusal(verifier.verify_token(&mint(&a, header("c"), &claims()))),
+            (
+                401,
+                "no applicable key found in the JSON Web Key Set".to_string()
+            )
+        );
+        // No kid and two usable keys: jose refuses to guess (503).
+        let no_kid = JsonValue::object(vec![("alg", "RS256".into())]);
+        assert_eq!(
+            refusal(verifier.verify_token(&mint(&a, no_kid, &claims()))),
+            (
+                503,
+                "multiple matching keys found in the JSON Web Key Set".to_string()
+            )
+        );
+        // A non-string kid matches nothing.
+        let numeric_kid = JsonValue::object(vec![
+            ("alg", "RS256".into()),
+            ("kid", JsonValue::number(1.0)),
+        ]);
+        assert_eq!(
+            refusal(verifier.verify_token(&mint(&a, numeric_kid, &claims()))).0,
+            401
+        );
+    }
 
-        // Hanging TCP server -> JWKS timeout -> 503 IdpUnavailableError
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = listener.local_addr().unwrap().port();
-        let handle = std::thread::spawn(move || {
-            if let Ok((_socket, _)) = listener.accept() {
-                std::thread::sleep(Duration::from_millis(200));
+    #[test]
+    fn unusable_keys_are_skipped_like_jose() {
+        let a = key_pair(TEST_KEY_A);
+        let usable = jwk(&a, "a");
+        for (field, value) in [
+            ("use", JsonValue::from("enc")),
+            ("use", JsonValue::Null),
+            ("alg", JsonValue::from("RS512")),
+            ("alg", JsonValue::Null),
+            ("kty", JsonValue::from("EC")),
+            ("ext", JsonValue::from("yes")),
+            ("key_ops", JsonValue::array(vec!["sign".into()])),
+            (
+                "key_ops",
+                JsonValue::array(vec!["verify".into(), "verify".into()]),
+            ),
+            ("key_ops", JsonValue::Null),
+        ] {
+            let verifier =
+                local_verifier(key_set(vec![with(usable.clone(), field, value.clone())]));
+            assert_eq!(
+                refusal(verifier.verify_token(&mint(&a, header("a"), &claims()))).0,
+                401,
+                "{field}={value}"
+            );
+        }
+        for (field, value) in [
+            ("ext", JsonValue::from(true)),
+            (
+                "key_ops",
+                JsonValue::array(vec!["verify".into(), "encrypt".into()]),
+            ),
+        ] {
+            let verifier =
+                local_verifier(key_set(vec![with(usable.clone(), field, value.clone())]));
+            assert!(
+                verifier
+                    .verify_token(&mint(&a, header("a"), &claims()))
+                    .is_ok(),
+                "{field}={value}"
+            );
+        }
+        // No alg or use on the key at all is fine.
+        let bare = without(without(usable, "alg"), "use");
+        assert!(local_verifier(key_set(vec![bare]))
+            .verify_token(&mint(&a, header("a"), &claims()))
+            .is_ok());
+    }
+
+    #[test]
+    fn a_short_rsa_key_is_an_identity_provider_problem() {
+        let a = key_pair(TEST_KEY_A);
+        // A 1024-bit modulus: refused before any signature check (jose's
+        // checkModulusLength throws a TypeError, so 503).
+        let mut short = jwk(&a, "a");
+        short.insert("n", b64url(&[0xc1; 128]).as_str().into());
+        assert_eq!(
+            refusal(local_verifier(key_set(vec![short])).verify_token(&mint(
+                &a,
+                header("a"),
+                &claims()
+            ))),
+            (
+                503,
+                "RS256 requires key modulusLength to be 2048 bits or larger".to_string()
+            )
+        );
+        let broken = without(jwk(&a, "a"), "n");
+        assert_eq!(
+            refusal(local_verifier(key_set(vec![broken])).verify_token(&mint(
+                &a,
+                header("a"),
+                &claims()
+            ))),
+            (503, "Invalid RSA JSON Web Key".to_string())
+        );
+    }
+
+    #[test]
+    fn modulus_bits_ignore_leading_zeros() {
+        assert_eq!(
+            RsaKey {
+                n: vec![0, 0x80, 0],
+                e: vec![1]
             }
-        });
-        let timeout_verifier = create_token_verifier(TokenVerifierConfig {
-            issuer: ISSUER.to_string(),
-            project_id: PROJECT_ID.to_string(),
-            allowed_subjects: vec!["user-42".to_string()],
-            allowed_client_id: CLIENT_ID.to_string(),
-            jwks_uri: Some(format!("http://127.0.0.1:{port}/jwks")),
-            key_source: None,
-            jwks_timeout_ms: Some(50),
-        })
-        .unwrap();
-        let err3 = timeout_verifier
-            .verify_token(&mint_token(&priv_key, MintOpts::default()))
-            .unwrap_err();
-        assert!(matches!(err3, AuthError::IdpUnavailable { .. }));
-        assert_eq!(err3.status(), 503);
-        let _ = handle.join();
+            .modulus_bits(),
+            16
+        );
+        assert_eq!(
+            RsaKey {
+                n: vec![0x01, 0xff],
+                e: vec![1]
+            }
+            .modulus_bits(),
+            9
+        );
+        assert_eq!(
+            RsaKey {
+                n: vec![0, 0],
+                e: vec![1]
+            }
+            .modulus_bits(),
+            0
+        );
+    }
 
-        // Explicit classification of all 14 JoseErrorCode values
-        assert_eq!(JoseErrorCode::ALL.len(), 14);
-        assert!(is_idp_side_failure(&VerificationFailure::jose(
-            JoseErrorCode::JwksTimeout,
-            ""
-        )));
-        assert!(is_idp_side_failure(&VerificationFailure::jose(
-            JoseErrorCode::JwksInvalid,
-            ""
-        )));
-        assert!(is_idp_side_failure(&VerificationFailure::jose(
-            JoseErrorCode::JwkInvalid,
-            ""
-        )));
-        assert!(is_idp_side_failure(&VerificationFailure::jose(
-            JoseErrorCode::JwksMultipleMatchingKeys,
-            ""
-        )));
+    #[test]
+    fn header_problems_are_reported_like_jose() {
+        let (a, verifier) = verifier_a();
+        let payload = b64url(claims().to_json_string().as_bytes());
+        let cases: Vec<(String, &str)> = vec![
+            (b64url(b"not json"), "JWS Protected Header is invalid"),
+            (b64url(b"[]"), "JWS Protected Header is invalid"),
+            (b64url(&[0xff, 0xfe]), "JWS Protected Header is invalid"),
+            (b64url(br#"{"kid":"a"}"#), "JWS \"alg\" (Algorithm) Header Parameter missing or invalid"),
+            (b64url(br#"{"alg":""}"#), "JWS \"alg\" (Algorithm) Header Parameter missing or invalid"),
+            (b64url(br#"{"alg":"HS256"}"#), "\"alg\" (Algorithm) Header Parameter value not allowed"),
+            (b64url(br#"{"alg":"none"}"#), "\"alg\" (Algorithm) Header Parameter value not allowed"),
+            (
+                b64url(br#"{"alg":"RS256","crit":[]}"#),
+                "\"crit\" (Critical) Header Parameter MUST be an array of non-empty strings when present",
+            ),
+            (
+                b64url(br#"{"alg":"RS256","crit":["exp"],"exp":1}"#),
+                "Extension Header Parameter \"exp\" is not recognized",
+            ),
+            (
+                b64url(br#"{"alg":"RS256","crit":["b64"]}"#),
+                "Extension Header Parameter \"b64\" is missing",
+            ),
+            (
+                b64url(br#"{"alg":"RS256","crit":["b64"],"b64":"no"}"#),
+                "The \"b64\" (base64url-encode payload) Header Parameter must be a boolean",
+            ),
+        ];
+        for (encoded_header, expected) in cases {
+            let token = sign_parts(&a, &encoded_header, &payload);
+            assert_eq!(
+                refusal(verifier.verify_token(&token)),
+                (401, expected.to_string()),
+                "{encoded_header}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_unencoded_payload_is_refused_after_the_signature_check() {
+        let (a, verifier) = verifier_a();
+        let header = b64url(br#"{"alg":"RS256","kid":"a","crit":["b64"],"b64":false}"#);
+        let token = sign_parts(&a, &header, "abc");
+        assert_eq!(
+            refusal(verifier.verify_token(&token)),
+            (401, "JWTs MUST NOT use unencoded payload".to_string())
+        );
+    }
+
+    #[test]
+    fn the_claims_must_be_a_json_object() {
+        let (a, verifier) = verifier_a();
+        let header = b64url(header("a").to_json_string().as_bytes());
+        for payload in [b"[]".to_vec(), b"\"x\"".to_vec(), b"{".to_vec(), vec![0xff]] {
+            let token = sign_parts(&a, &header, &b64url(&payload));
+            assert_eq!(
+                refusal(verifier.verify_token(&token)),
+                (
+                    401,
+                    "JWT Claims Set must be a top-level JSON object".to_string()
+                )
+            );
+        }
+    }
+
+    #[test]
+    fn deeply_nested_json_is_refused_without_crashing() {
+        let (a, verifier) = verifier_a();
+        let nested = "[".repeat(20_000);
+        let token = sign_parts(&a, &b64url(nested.as_bytes()), &b64url(b"{}"));
+        assert_eq!(
+            refusal(verifier.verify_token(&token)),
+            (401, "JWS Protected Header is invalid".to_string())
+        );
+    }
+
+    #[test]
+    fn issuer_and_time_claims_are_checked_like_jose() {
+        let (a, verifier) = verifier_a();
+        let now = unix_now();
+        let check =
+            |claims: JsonValue| refusal(verifier.verify_token(&mint(&a, header("a"), &claims)));
+        assert_eq!(
+            check(without(claims(), "iss")),
+            (401, "missing required \"iss\" claim".to_string())
+        );
+        assert_eq!(
+            check(with(claims(), "iss", "https://evil.example".into())),
+            (401, "unexpected \"iss\" claim value".to_string())
+        );
+        // The configured issuer's trailing slash is trimmed, the claim's is not.
+        assert_eq!(
+            check(with(claims(), "iss", format!("{ISSUER}/").as_str().into())),
+            (401, "unexpected \"iss\" claim value".to_string())
+        );
+        assert_eq!(
+            check(with(claims(), "iss", JsonValue::Null)).1,
+            "unexpected \"iss\" claim value"
+        );
+        assert_eq!(
+            check(with(claims(), "iat", "now".into())),
+            (401, "\"iat\" claim must be a number".to_string())
+        );
+        assert_eq!(
+            check(with(claims(), "exp", JsonValue::Null)),
+            (401, "\"exp\" claim must be a number".to_string())
+        );
+        assert_eq!(
+            check(with(claims(), "nbf", "soon".into())),
+            (401, "\"nbf\" claim must be a number".to_string())
+        );
+        assert_eq!(
+            check(with(claims(), "exp", JsonValue::number(now - 31.0))),
+            (401, "\"exp\" claim timestamp check failed".to_string())
+        );
+        // jose rejects exp <= now - tolerance, so exactly 30s ago is expired.
+        assert_eq!(
+            check(with(claims(), "exp", JsonValue::number(now - 30.0))).0,
+            401
+        );
+        assert_eq!(
+            check(with(claims(), "nbf", JsonValue::number(now + 31.0))),
+            (401, "\"nbf\" claim timestamp check failed".to_string())
+        );
+        let ok = |claims: JsonValue| {
+            verifier
+                .verify_token(&mint(&a, header("a"), &claims))
+                .is_ok()
+        };
+        assert!(ok(with(claims(), "exp", JsonValue::number(now - 25.0))));
+        assert!(ok(with(claims(), "nbf", JsonValue::number(now + 25.0))));
+        assert!(ok(without(without(claims(), "exp"), "iat")));
+    }
+
+    #[test]
+    fn audience_subject_azp_and_client_are_checked_like_the_ts_server() {
+        let (a, verifier) = verifier_a();
+        let check = |claims: JsonValue| verifier.verify_token(&mint(&a, header("a"), &claims));
+
+        let err = check(with(claims(), "aud", "987654321".into())).unwrap_err();
+        assert_eq!(err.status(), 403);
+        assert!(err.message().contains("Presented audience: 987654321."));
+        assert!(err.message().contains(&audience_scope_for(PROJECT_ID)));
+        let err = check(without(claims(), "aud")).unwrap_err();
+        assert!(err.message().contains("Presented audience: (none)."));
+
+        assert_eq!(
+            check(without(claims(), "sub")).unwrap_err(),
+            AuthError::InvalidToken {
+                reason: "token has no subject (sub) claim".to_string()
+            }
+        );
+        assert_eq!(
+            check(with(claims(), "sub", "user-7".into())).unwrap_err(),
+            AuthError::SubjectNotAllowed {
+                subject: "user-7".to_string()
+            }
+        );
+        assert_eq!(
+            check(with(claims(), "azp", "web".into())).unwrap_err(),
+            AuthError::AuthorizedPartyPresent {
+                azp: "web".to_string()
+            }
+        );
+        // azp: null is still an azp (TS: azp !== undefined).
+        assert_eq!(
+            check(with(claims(), "azp", JsonValue::Null)).unwrap_err(),
+            AuthError::AuthorizedPartyPresent {
+                azp: "null".to_string()
+            }
+        );
+        assert_eq!(
+            check(without(claims(), "client_id")).unwrap_err(),
+            AuthError::ClientNotAllowed { client_id: None }
+        );
+        assert_eq!(
+            check(with(claims(), "client_id", JsonValue::Null)).unwrap_err(),
+            AuthError::ClientNotAllowed {
+                client_id: Some("null".to_string())
+            }
+        );
+        assert_eq!(
+            check(with(claims(), "client_id", "".into())).unwrap_err(),
+            AuthError::ClientNotAllowed {
+                client_id: Some(String::new())
+            }
+        );
+        assert_eq!(
+            check(with(claims(), "client_id", JsonValue::number(7.0))).unwrap_err(),
+            AuthError::ClientNotAllowed {
+                client_id: Some("7".to_string())
+            }
+        );
+        assert_eq!(
+            check(with(claims(), "client_id", "666".into())).unwrap_err(),
+            AuthError::ClientNotAllowed {
+                client_id: Some("666".to_string())
+            }
+        );
+    }
+
+    #[test]
+    fn construction_refuses_an_open_door() {
+        let mut no_subjects = config(None, None);
+        no_subjects.allowed_subjects.clear();
+        assert!(create_token_verifier(no_subjects).is_err());
+        let mut no_client = config(None, None);
+        no_client.allowed_client_id.clear();
+        assert!(create_token_verifier(no_client).is_err());
+    }
+
+    #[test]
+    fn idp_side_classification_matches_jose() {
+        for code in JoseErrorCode::ALL {
+            let idp = is_idp_side_failure(&VerificationFailure::jose(code, "x"));
+            let expected = matches!(
+                code,
+                JoseErrorCode::JwksTimeout
+                    | JoseErrorCode::JwksInvalid
+                    | JoseErrorCode::JwkInvalid
+                    | JoseErrorCode::JwksMultipleMatchingKeys
+            );
+            assert_eq!(idp, expected, "{}", code.code());
+        }
         assert!(is_idp_side_failure(&VerificationFailure::non_jose(
             "fetch failed"
         )));
+    }
 
-        assert!(!is_idp_side_failure(&VerificationFailure::jose(
-            JoseErrorCode::JwtExpired,
-            ""
-        )));
-        assert!(!is_idp_side_failure(&VerificationFailure::jose(
-            JoseErrorCode::JwsSignatureVerificationFailed,
-            ""
-        )));
-        assert!(!is_idp_side_failure(&VerificationFailure::jose(
-            JoseErrorCode::JwtInvalid,
-            ""
-        )));
-        assert!(!is_idp_side_failure(&VerificationFailure::jose(
-            JoseErrorCode::JwksNoMatchingKey,
-            ""
-        )));
-        assert!(!is_idp_side_failure(&VerificationFailure::jose(
-            JoseErrorCode::JoseAlgNotAllowed,
-            ""
-        )));
+    /// A one-route HTTP server for the key set: what it answers can change
+    /// between requests, and it counts them.
+    struct JwksServer {
+        url: String,
+        hits: Arc<AtomicUsize>,
+        reply: Arc<Mutex<(u16, String, Duration)>>,
+    }
+
+    impl JwksServer {
+        fn start(status: u16, body: String) -> Self {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let url = format!("http://{}/oauth/v2/keys", listener.local_addr().unwrap());
+            let hits = Arc::new(AtomicUsize::new(0));
+            let reply = Arc::new(Mutex::new((status, body, Duration::ZERO)));
+            let (thread_hits, thread_reply) = (Arc::clone(&hits), Arc::clone(&reply));
+            std::thread::spawn(move || {
+                for stream in listener.incoming() {
+                    let Ok(mut stream) = stream else { continue };
+                    let mut reader = BufReader::new(stream.try_clone().unwrap());
+                    let mut line = String::new();
+                    while reader.read_line(&mut line).map_or(false, |n| n > 0) && line != "\r\n" {
+                        line.clear();
+                    }
+                    thread_hits.fetch_add(1, Ordering::SeqCst);
+                    let (status, body, delay) = thread_reply.lock().unwrap().clone();
+                    std::thread::sleep(delay);
+                    let location = if status == 302 {
+                        "Location: /elsewhere\r\n"
+                    } else {
+                        ""
+                    };
+                    let _ = write!(
+                        stream,
+                        "HTTP/1.1 {status} X\r\n{location}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    );
+                }
+            });
+            JwksServer { url, hits, reply }
+        }
+
+        fn set(&self, status: u16, body: String, delay: Duration) {
+            *self.reply.lock().unwrap() = (status, body, delay);
+        }
+
+        fn hits(&self) -> usize {
+            self.hits.load(Ordering::SeqCst)
+        }
+    }
+
+    fn remote_verifier(server: &JwksServer, timeout_ms: Option<u64>) -> StandardTokenVerifier {
+        let mut cfg = config(None, Some(server.url.clone()));
+        cfg.jwks_timeout_ms = timeout_ms;
+        create_token_verifier(cfg).unwrap()
     }
 
     #[test]
-    fn subject_allowlist_and_client_pinning() {
-        let (priv_key, pub_key) = generate_key_pair();
+    fn the_remote_key_set_is_fetched_once_and_cached() {
+        let a = key_pair(TEST_KEY_A);
+        let server = JwksServer::start(200, key_set(vec![jwk(&a, "a")]).to_json_string());
+        let verifier = remote_verifier(&server, None);
+        for _ in 0..3 {
+            verifier
+                .verify_token(&mint(&a, header("a"), &claims()))
+                .unwrap();
+        }
+        assert_eq!(server.hits(), 1);
 
-        // Admits listed subject
-        let v = make_verifier(
-            pub_key.clone(),
-            PROJECT_ID,
-            vec!["379361013981513322"],
-            CLIENT_ID,
+        // Past the cache age it is fetched again.
+        let verifier =
+            remote_verifier(&server, None).with_cache_timing(Duration::ZERO, Duration::ZERO);
+        verifier
+            .verify_token(&mint(&a, header("a"), &claims()))
+            .unwrap();
+        verifier
+            .verify_token(&mint(&a, header("a"), &claims()))
+            .unwrap();
+        assert_eq!(server.hits(), 3);
+    }
+
+    #[test]
+    fn a_rotated_key_is_picked_up_without_waiting_for_the_cache() {
+        let a = key_pair(TEST_KEY_A);
+        let b = key_pair(TEST_KEY_B);
+        let server = JwksServer::start(200, key_set(vec![jwk(&a, "a")]).to_json_string());
+
+        // Inside the cooldown, an unknown kid does not trigger a fetch.
+        let cooling = remote_verifier(&server, None);
+        cooling
+            .verify_token(&mint(&a, header("a"), &claims()))
+            .unwrap();
+        server.set(
+            200,
+            key_set(vec![jwk(&a, "a"), jwk(&b, "b")]).to_json_string(),
+            Duration::ZERO,
         );
-        let tok = mint_token(
-            &priv_key,
-            MintOpts {
-                subject: "379361013981513322",
-                ..MintOpts::default()
-            },
+        assert_eq!(
+            refusal(cooling.verify_token(&mint(&b, header("b"), &claims()))),
+            (
+                401,
+                "no applicable key found in the JSON Web Key Set".to_string()
+            )
         );
-        assert_eq!(v.verify_token(&tok).unwrap().subject, "379361013981513322");
+        assert_eq!(server.hits(), 1);
 
-        // Refuses unlisted subject with 403 and names it
-        let unlisted = mint_token(
-            &priv_key,
-            MintOpts {
-                subject: "123456789012345678",
-                ..MintOpts::default()
-            },
+        // Past the cooldown, it refetches once and finds the new key.
+        let rotated = remote_verifier(&server, None)
+            .with_cache_timing(Duration::from_secs(600), Duration::ZERO);
+        server.set(
+            200,
+            key_set(vec![jwk(&a, "a")]).to_json_string(),
+            Duration::ZERO,
         );
-        let sub_err = v.verify_token(&unlisted).unwrap_err();
-        assert_eq!(sub_err.status(), 403);
-        assert!(sub_err.message().contains("123456789012345678"));
-        assert_eq!(sub_err.presented(), Some("123456789012345678"));
-
-        // Refuses empty subject allow-list at construction
-        assert!(create_token_verifier(TokenVerifierConfig {
-            issuer: ISSUER.to_string(),
-            project_id: PROJECT_ID.to_string(),
-            allowed_subjects: vec![],
-            allowed_client_id: CLIENT_ID.to_string(),
-            jwks_uri: None,
-            key_source: None,
-            jwks_timeout_ms: None,
-        })
-        .is_err());
-
-        // Ordering: checks audience before subject
-        let wrong_aud_and_sub = mint_token(
-            &priv_key,
-            MintOpts {
-                audience: "some-other-project".into(),
-                subject: "not-listed",
-                ..MintOpts::default()
-            },
+        rotated
+            .verify_token(&mint(&a, header("a"), &claims()))
+            .unwrap();
+        server.set(
+            200,
+            key_set(vec![jwk(&a, "a"), jwk(&b, "b")]).to_json_string(),
+            Duration::ZERO,
         );
-        assert!(matches!(
-            v.verify_token(&wrong_aud_and_sub),
-            Err(AuthError::AudienceMismatch { .. })
-        ));
+        rotated
+            .verify_token(&mint(&b, header("b"), &claims()))
+            .unwrap();
+        assert_eq!(server.hits(), 3);
+        // ...and the refreshed set is kept.
+        rotated
+            .verify_token(&mint(&b, header("b"), &claims()))
+            .unwrap();
+        assert_eq!(server.hits(), 3);
+    }
 
-        // Client pinning
-        let v_default = make_verifier(pub_key.clone(), PROJECT_ID, vec!["user-42"], CLIENT_ID);
-        let wrong_client = mint_token(
-            &priv_key,
-            MintOpts {
-                client_id: Some(OTHER_CLIENT_ID),
-                ..MintOpts::default()
-            },
+    #[test]
+    fn key_set_failures_are_classified_like_jose() {
+        let a = key_pair(TEST_KEY_A);
+        let token = mint(&a, header("a"), &claims());
+        let server = JwksServer::start(500, "{}".to_string());
+        let outcome = |server: &JwksServer, timeout: Option<u64>| {
+            refusal(remote_verifier(server, timeout).verify_token(&token))
+        };
+
+        assert_eq!(
+            outcome(&server, None),
+            (
+                401,
+                "Expected 200 OK from the JSON Web Key Set HTTP response".to_string()
+            )
         );
-        let cid_err = v_default.verify_token(&wrong_client).unwrap_err();
-        assert_eq!(cid_err.status(), 403);
-        assert_eq!(cid_err.presented(), Some(OTHER_CLIENT_ID));
-
-        // Absent client_id
-        let absent_client = mint_token(
-            &priv_key,
-            MintOpts {
-                client_id: None,
-                ..MintOpts::default()
-            },
+        // No redirect following: a 302 is just not a 200.
+        server.set(302, String::new(), Duration::ZERO);
+        assert_eq!(
+            outcome(&server, None).1,
+            "Expected 200 OK from the JSON Web Key Set HTTP response"
         );
-        let absent_err = v_default.verify_token(&absent_client).unwrap_err();
-        assert_eq!(absent_err.presented(), None);
-        assert!(absent_err
-            .message()
-            .contains("Token is valid but carries no \"client_id\" claim"));
-
-        // Empty-string client_id (#1506)
-        let empty_client = mint_token(
-            &priv_key,
-            MintOpts {
-                client_id: Some(""),
-                ..MintOpts::default()
-            },
+        server.set(200, "<html>".to_string(), Duration::ZERO);
+        assert_eq!(
+            outcome(&server, None),
+            (
+                401,
+                "Failed to parse the JSON Web Key Set HTTP response as JSON".to_string()
+            )
         );
-        let empty_err = v_default.verify_token(&empty_client).unwrap_err();
-        assert_eq!(empty_err.presented(), Some(""));
-        assert!(empty_err
-            .message()
-            .contains("Token is valid but carries an empty \"client_id\" claim (\"\")"));
-
-        // Non-string client_id (#1499)
-        let mut num_cid_claims = JsonValue::empty_object();
-        num_cid_claims.insert("client_id", 987654321i64.into());
-        let num_cid_tok = JwtSigner::new(num_cid_claims)
-            .set_protected_header("RS256")
-            .set_issuer(ISSUER)
-            .set_audience(PROJECT_ID.into())
-            .set_subject("user-42")
-            .set_issued_at()
-            .set_expiration_offset_secs(300)
-            .sign(&priv_key);
-        let num_err = v_default.verify_token(&num_cid_tok).unwrap_err();
-        assert_eq!(num_err.presented(), Some("987654321"));
-
-        // Rejects token carrying azp before client_id is considered
-        let azp_tok = mint_token(
-            &priv_key,
-            MintOpts {
-                client_id: Some(CLIENT_ID),
-                azp: Some(CLIENT_ID),
-                ..MintOpts::default()
-            },
+        server.set(200, r#"{"keys":"nope"}"#.to_string(), Duration::ZERO);
+        assert_eq!(
+            outcome(&server, None),
+            (503, "JSON Web Key Set malformed".to_string())
         );
-        let azp_err = v_default.verify_token(&azp_tok).unwrap_err();
-        assert_eq!(azp_err.status(), 403);
-        assert_eq!(azp_err.presented(), Some(CLIENT_ID));
-        assert_eq!(azp_err.presented_label(), Some("azp"));
+        server.set(
+            200,
+            key_set(vec![jwk(&a, "a")]).to_json_string(),
+            Duration::from_millis(1500),
+        );
+        assert_eq!(
+            outcome(&server, Some(300)),
+            (503, "request timed out".to_string())
+        );
 
-        // Refuses empty client pin at construction
-        assert!(create_token_verifier(TokenVerifierConfig {
-            issuer: ISSUER.to_string(),
-            project_id: PROJECT_ID.to_string(),
-            allowed_subjects: vec!["user-42".to_string()],
-            allowed_client_id: "".to_string(),
-            jwks_uri: None,
-            key_source: None,
-            jwks_timeout_ms: None,
-        })
-        .is_err());
+        // Nobody listening at all.
+        let closed = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = closed.local_addr().unwrap();
+        drop(closed);
+        let mut cfg = config(None, Some(format!("http://{addr}/oauth/v2/keys")));
+        cfg.jwks_timeout_ms = Some(1000);
+        assert_eq!(
+            refusal(create_token_verifier(cfg).unwrap().verify_token(&token)),
+            (503, "fetch failed".to_string())
+        );
+    }
+
+    #[test]
+    fn the_jwks_uri_defaults_to_the_issuers_zitadel_path() {
+        let verifier = create_token_verifier(config(None, None)).unwrap();
+        assert_eq!(verifier.jwks_uri, format!("{ISSUER}/oauth/v2/keys"));
+        assert_eq!(verifier.issuer, ISSUER);
     }
 }
