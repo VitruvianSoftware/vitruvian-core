@@ -8,7 +8,6 @@ flows and live subagent fleet telemetry.
 
 load("@aspect_rules_js//js:defs.bzl", "js_library", "js_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # gazelle:ignore
@@ -42,26 +41,14 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
-sh_test(
+test_suite(
     name = "track-subagent_test",
-    size = "small",
-    srcs = ["hooks/track-subagent_test.sh"],
-    args = ["$(location hooks/track-subagent.sh)"],
-    data = ["hooks/track-subagent.sh"],
+    tests = [":track_subagent_lib_test"],
 )
 
-sh_test(
+test_suite(
     name = "track-subagent_rs_test",
-    size = "small",
-    srcs = ["hooks/track-subagent_test.sh"],
-    args = [
-        "$(location :track-subagent)",
-        "$(location hooks/track-subagent.sh)",
-    ],
-    data = [
-        "hooks/track-subagent.sh",
-        ":track-subagent",
-    ],
+    tests = [":track_subagent_lib_test"],
 )
 
 js_library(

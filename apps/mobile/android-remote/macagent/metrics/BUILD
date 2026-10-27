@@ -18,34 +18,9 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-load("@rules_go//go:def.bzl", "go_library", "go_test")
+# gazelle:ignore
+
 load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
-
-go_library(
-    name = "metrics",
-    srcs = [
-        "argocd.go",
-        "metrics.go",
-        "prs.go",
-        "sessions.go",
-        "tools.go",
-    ],
-    importpath = "github.com/VitruvianSoftware/vitruvian-core/apps/mobile/android-remote/macagent/metrics",
-    visibility = ["//apps/mobile/android-remote:__subpackages__"],
-)
-
-go_test(
-    name = "metrics_test",
-    srcs = [
-        "argocd_test.go",
-        "metrics_test.go",
-        "prs_test.go",
-        "sessions_test.go",
-        "tools_test.go",
-    ],
-    data = glob(["testdata/**"]),
-    embed = [":metrics"],
-)
 
 rust_library(
     name = "metrics_rs",
@@ -53,7 +28,13 @@ rust_library(
     crate_name = "vitruvian_remote_macagent_metrics",
     crate_root = "src/lib.rs",
     edition = "2021",
-    visibility = ["//apps/mobile/android-remote/macagent:__subpackages__"],
+    visibility = ["//apps/mobile/android-remote:__subpackages__"],
+)
+
+alias(
+    name = "metrics",
+    actual = ":metrics_rs",
+    visibility = ["//apps/mobile/android-remote:__subpackages__"],
 )
 
 rust_test(
@@ -61,4 +42,9 @@ rust_test(
     crate = ":metrics_rs",
     data = glob(["testdata/**"]),
     edition = "2021",
+)
+
+test_suite(
+    name = "metrics_test",
+    tests = [":metrics_rs_test"],
 )

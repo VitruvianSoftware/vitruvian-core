@@ -20,7 +20,6 @@
 
 # gazelle:ignore
 
-load("@rules_python//python:defs.bzl", "py_binary", "py_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
 package(default_visibility = ["//packages/design-system-android:__subpackages__"])
@@ -31,9 +30,6 @@ package(default_visibility = ["//packages/design-system-android:__subpackages__"
 #   --tokens packages/design-system/src/tokens.json \
 #   --header packages/design-system-android/tools/kt_license_header.txt \
 #   --out packages/design-system-android/src/main/kotlin/dev/vitruvian/design/VitruvianTokens.kt`
-#
-# :gen_tokens is the Rust port (src/); gen_tokens.py is the original, kept
-# runnable as :gen_tokens-py and held to the port by the parity test below.
 rust_binary(
     name = "gen_tokens",
     srcs = ["src/main.rs"],
@@ -56,15 +52,7 @@ alias(
     visibility = ["//visibility:public"],
 )
 
-py_binary(
-    name = "gen_tokens-py",
-    srcs = ["gen_tokens.py"],
-    data = ["kt_license_header.txt"],
-    main = "gen_tokens.py",
-    visibility = ["//visibility:public"],
-)
-
-# The port itself. It reads JSON with its own copy of CPython's scanner
+# It reads JSON with its own copy of CPython's scanner
 # rather than serde_json, which accepts a different language (no NaN, a
 # 128-deep limit, integers past 64 bits rounded) and words its errors
 # differently; serde_json is the reference the unit tests check that
@@ -97,30 +85,16 @@ rust_test(
     deps = ["@crates//:serde_json"],
 )
 
-# Holds the Rust binary to the Python script: both run as programs on the
-# real tokens.json and on token trees, files and command lines built to
-# break them, comparing exit codes, stdout, stderr and the file written.
-py_test(
+test_suite(
+    name = "gen_tokens_test",
+    tests = [":gen_tokens_lib_test"],
+    visibility = ["//visibility:public"],
+)
+
+test_suite(
     name = "gen_tokens_rs_parity_test",
-    size = "medium",
-    srcs = [
-        "gen_tokens_rs_parity_test.py",
-        "gen_unicode_tables.py",
-    ],
-    data = [
-        "gen_tokens.py",
-        "kt_license_header.txt",
-        "src/unicode_tables.rs",
-        ":gen_tokens",
-        ":gen_tokens-py",
-        "//packages/design-system:src/tokens.json",
-    ],
-    env = {
-        "GEN_TOKENS_PY": "$(rootpath :gen_tokens-py)",
-        "GEN_TOKENS_RS": "$(rootpath :gen_tokens)",
-        "TOKENS_JSON": "$(rootpath //packages/design-system:src/tokens.json)",
-    },
-    main = "gen_tokens_rs_parity_test.py",
+    tests = [":gen_tokens_lib_test"],
+    visibility = ["//visibility:public"],
 )
 
 rust_binary(
@@ -187,10 +161,7 @@ rust_test(
 )
 
 exports_files([
-    "gen_tokens.py",
     "kt_license_header.txt",
-    "parity_test.py",
     "src/parity_test.rs",
     "src/tokens_are_current.rs",
-    "tokens_are_current.sh",
 ])
