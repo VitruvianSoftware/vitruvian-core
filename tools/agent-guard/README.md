@@ -118,11 +118,9 @@ not write, move or delete `.claude/settings.json`, `.claude/settings.local.json`
 (it could switch hooks off), the hook scripts `.claude/*.sh` (session-start,
 block-queue-bypass, kube-setup, tailscale-up: they run from the project
 settings), `.agents/hooks.json`, `tools/agent-guard/hook.sh`, or the
-repo files that drive session start from the working copy with the
-session's credentials (`tools/cloud-bootstrap/cloud-bootstrap.sh`, which
-`session-start.sh` runs; `tools/cloud-bootstrap/profiles.tsv`, which it reads
-to decide which secrets each session fetches; and `tools/remote/setup.sh`, the
-build-cache configurator it runs) in any
+repo file that drives session start from the working copy with the
+session's credentials (`tools/remote/setup.sh`, the build-cache configurator
+`cloud-bootstrap.sh` runs) in any
 vitruvian-core checkout, through the file tools or the obvious shell
 writes (`>`, `tee`, `cp` onto them, `mv`, `rm`, `sed -i`, `perl -i`,
 `python -c` that writes, `chmod`). Those take effect before review, so
@@ -446,7 +444,7 @@ another branch; until one lands, the refusal says so and points to James.
 | | `edit/exec/rollout restart/scale/label/...` | no target: tell James |
 | `helm` | `install/upgrade/uninstall/rollback` | `bazel run //tools/gitops:helm`, or change git |
 | `bazel-cache` | `rm -r` of `~/.cache/bazel`, `~/Library/Caches/bazel` or `_bazel_*`; `find -delete` there; `bazel clean --expunge`; `--output_user_root`/`--output_base` | `bazel run //tools/bazel-cache:gc` |
-| `guard-config` | agents writing, moving or deleting the hook files in any checkout (`.claude/settings.json`, `.claude/settings.local.json`, `.claude/*.sh`, `.agents/hooks.json`, `tools/agent-guard/hook.sh`, and the files that drive session start: `tools/cloud-bootstrap/cloud-bootstrap.sh`, `tools/cloud-bootstrap/profiles.tsv` and `tools/remote/setup.sh`); changing agent-guard's entries in, or setting `"disableAllHooks": true` in, the backstop's user files (`~/.claude/settings.json`, `~/.gemini/config/hooks.json`), and any shell, Desktop Commander or agy write to them (other settings: Claude Code's Edit tools, see "Limits"); writing, moving or deleting the guard's log and cache (`~/.local/state/agent-guard`) or the old per-user copy (copying or reading FROM them is fine, in the shell or in `python -c`); `bazel run //tools/agent-guard:install` with anything but nothing, `--check` or `--dry-run` (so a real `--uninstall`, `--mode`, other flags, Bazel options), or from a checkout whose installer is not `origin/main`'s, and running `bazel-bin/.../install` or `install.py` directly for anything but `--check`/`--dry-run` (see "Who may do what"); hiding the agent session (`CLAUDECODE=`/`ANTIGRAVITY_*=`/`GEMINI_CLI=` prefixes, `env -u`, `env -i`, `unset`, `export -n`) in a command that runs anything agent-guard. Matched on the parsed commands, so `grep 'unset CLAUDECODE'` is just a grep | James does this from his own terminal; agents may run the plain install |
+| `guard-config` | agents writing, moving or deleting the hook files in any checkout (`.claude/settings.json`, `.claude/settings.local.json`, `.claude/*.sh`, `.agents/hooks.json`, `tools/agent-guard/hook.sh`, and the file that drives session start: `tools/remote/setup.sh`); changing agent-guard's entries in, or setting `"disableAllHooks": true` in, the backstop's user files (`~/.claude/settings.json`, `~/.gemini/config/hooks.json`), and any shell, Desktop Commander or agy write to them (other settings: Claude Code's Edit tools, see "Limits"); writing, moving or deleting the guard's log and cache (`~/.local/state/agent-guard`) or the old per-user copy (copying or reading FROM them is fine, in the shell or in `python -c`); `bazel run //tools/agent-guard:install` with anything but nothing, `--check` or `--dry-run` (so a real `--uninstall`, `--mode`, other flags, Bazel options), or from a checkout whose installer is not `origin/main`'s, and running `bazel-bin/.../install` or `install.py` directly for anything but `--check`/`--dry-run` (see "Who may do what"); hiding the agent session (`CLAUDECODE=`/`ANTIGRAVITY_*=`/`GEMINI_CLI=` prefixes, `env -u`, `env -i`, `unset`, `export -n`) in a command that runs anything agent-guard. Matched on the parsed commands, so `grep 'unset CLAUDECODE'` is just a grep | James does this from his own terminal; agents may run the plain install |
 | `oversize` | a command with more than 20,000 simple commands in it (the hook must answer inside its 10 s timeout, and command tools fail closed) | split it into smaller commands |
 
 **Always allowed:** read-only git (`status log diff show fetch rev-parse
@@ -566,8 +564,11 @@ jq -c 'select(.source // "" | startswith("working-copy"))' ~/.local/state/agent-
 - **Shell writes to the hook files are matched by name**, like everything
   else here. A patch can still reach them: `git apply`, `patch -p1` or
   `git checkout <ref> -- .claude/settings.json`, as can a script that writes
-  them. `tools/cloud-bootstrap/cloud-bootstrap.sh`, which
-  `.claude/session-start.sh` runs, is not protected either.
+  them. `tools/cloud-bootstrap/cloud-bootstrap.sh` and `profiles.tsv`, which
+  `.claude/session-start.sh` runs and reads, are not protected locally either:
+  an agent can edit them, and a session started on that branch runs the edit
+  before review. A PR that touches them still needs the guard owner's approval
+  (the `agent-guard-review` ruleset), so it cannot merge unreviewed.
 - **The installer is checked, not everything Bazel runs.** The guard compares
   the installer's own three files with `origin/main` and reads the bazelrc
   files, but any other Bazel target an agent writes can still write the user

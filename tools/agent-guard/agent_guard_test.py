@@ -604,21 +604,23 @@ TABLE = [
     ("chmod -x .claude/tailscale-up.sh", D, "guard-config", ""),
     ("echo x > .claude/new-hook.sh", D, "guard-config", ""),
     ("bash .claude/session-start.sh", A, None, ""),
-    # The repo scripts session-start.sh runs: cloud-bootstrap.sh, and the
-    # build-cache configurator it runs.
-    ("echo 'exit 0' > tools/cloud-bootstrap/cloud-bootstrap.sh", D, "guard-config", ""),
+    # The repo script session-start.sh runs that is still protected: the
+    # build-cache configurator. (cloud-bootstrap.sh and profiles.tsv were
+    # unprotected so an agent can change them in a PR the guard owner approves:
+    # they stay behind the agent-guard-review ruleset.)
+    ("echo 'exit 0' > tools/cloud-bootstrap/cloud-bootstrap.sh", A, None, ""),
     (
         "sed -i '' 's/exit 1/exit 0/' tools/cloud-bootstrap/cloud-bootstrap.sh",
-        D,
-        "guard-config",
+        A,
+        None,
         "",
     ),
     ("cp /tmp/x.sh tools/remote/setup.sh", D, "guard-config", ""),
     ("cat /tmp/x | tee tools/remote/setup.sh", D, "guard-config", ""),
     ("rm tools/remote/setup.sh", D, "guard-config", ""),
-    ("rm -rf tools/cloud-bootstrap", D, "guard-config", ""),
+    ("rm -rf tools/cloud-bootstrap", A, None, ""),
     ("mv tools/remote /tmp/remote", D, "guard-config", ""),
-    ("chmod -x tools/cloud-bootstrap/cloud-bootstrap.sh", D, "guard-config", ""),
+    ("chmod -x tools/cloud-bootstrap/cloud-bootstrap.sh", A, None, ""),
     (
         "python3 -c \"open('tools/remote/setup.sh', 'w').write('')\"",
         D,
@@ -627,8 +629,8 @@ TABLE = [
     ),
     (
         "echo x > {wt}/tools/cloud-bootstrap/cloud-bootstrap.sh",
-        D,
-        "guard-config",
+        A,
+        None,
         "out",
     ),
     ("cat tools/cloud-bootstrap/cloud-bootstrap.sh", A, None, ""),
@@ -638,12 +640,13 @@ TABLE = [
     ("bazel run //tools/cloud-bootstrap:whoami", A, None, ""),
     ("echo x >> tools/cloud-bootstrap/cloud-bootstrap_test.sh", A, None, ""),
     ("echo x > tools/remote/setup_test.sh", A, None, ""),
-    # profiles.tsv decides which secrets session start fetches.
-    ("echo x >> tools/cloud-bootstrap/profiles.tsv", D, "guard-config", ""),
-    ("cp /tmp/p.tsv tools/cloud-bootstrap/profiles.tsv", D, "guard-config", ""),
-    ("sed -i '' s/core/all/ tools/cloud-bootstrap/profiles.tsv", D, "guard-config", ""),
-    ("mv tools/cloud-bootstrap/profiles.tsv /tmp/p.tsv", D, "guard-config", ""),
-    ("rm tools/cloud-bootstrap/profiles.tsv", D, "guard-config", ""),
+    # profiles.tsv decides which secrets session start fetches; changing it is
+    # gated by the agent-guard-review ruleset, not by this local guard.
+    ("echo x >> tools/cloud-bootstrap/profiles.tsv", A, None, ""),
+    ("cp /tmp/p.tsv tools/cloud-bootstrap/profiles.tsv", A, None, ""),
+    ("sed -i '' s/core/all/ tools/cloud-bootstrap/profiles.tsv", A, None, ""),
+    ("mv tools/cloud-bootstrap/profiles.tsv /tmp/p.tsv", A, None, ""),
+    ("rm tools/cloud-bootstrap/profiles.tsv", A, None, ""),
     ("cat tools/cloud-bootstrap/profiles.tsv", A, None, ""),
     ("awk '{print $1}' tools/cloud-bootstrap/profiles.tsv", A, None, ""),
     ("cp tools/cloud-bootstrap/profiles.tsv /tmp/p.tsv", A, None, ""),
@@ -1864,11 +1867,7 @@ class HookIOTest(HookHarness):
 
     def test_desktop_commander_cannot_touch_the_session_start_scripts(self):
         dc = "mcp__plugin_desktop-commander_desktop-commander__"
-        for rel in (
-            "tools/cloud-bootstrap/cloud-bootstrap.sh",
-            "tools/cloud-bootstrap/profiles.tsv",
-            "tools/remote/setup.sh",
-        ):
+        for rel in ("tools/remote/setup.sh",):
             path = os.path.join(self.fx.repo, rel)
             for tool, tin in (
                 ("write_file", {"path": path, "content": "exit 0"}),
@@ -1969,8 +1968,6 @@ class HookIOTest(HookHarness):
                 ".claude/session-start.sh",
                 ".agents/hooks.json",
                 "tools/agent-guard/hook.sh",
-                "tools/cloud-bootstrap/cloud-bootstrap.sh",
-                "tools/cloud-bootstrap/profiles.tsv",
                 "tools/remote/setup.sh",
             ):
                 for root in (self.fx.repo, self.fx.wt):
@@ -2544,8 +2541,6 @@ class AntigravityHookTest(HookHarness):
             ".agents/hooks.json",
             ".claude/settings.json",
             "tools/agent-guard/hook.sh",
-            "tools/cloud-bootstrap/cloud-bootstrap.sh",
-            "tools/cloud-bootstrap/profiles.tsv",
             "tools/remote/setup.sh",
         ):
             path = os.path.join(self.fx.repo, rel)
