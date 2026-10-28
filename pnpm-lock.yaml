@@ -17,8 +17,8 @@ catalogs:
       specifier: ^1.0.0
       version: 1.2.1
     '@pulumi/gcp':
-      specifier: ^9.33.0
-      version: 9.34.0
+      specifier: ^10.2.0
+      version: 10.2.0
     '@pulumi/pulumi':
       specifier: ^3.0.0
       version: 3.268.0
@@ -943,8 +943,8 @@ importers:
         specifier: ^1.0.0
         version: 1.2.1(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@5.8.3))(typescript@5.8.3)
       '@pulumi/gcp':
-        specifier: ^9.33.0
-        version: 9.34.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@5.8.3))(typescript@5.8.3)
+        specifier: ^10.2.0
+        version: 10.2.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@5.8.3))(typescript@5.8.3)
       '@pulumi/pulumi':
         specifier: ^3.272.0
         version: 3.272.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@5.8.3))(typescript@5.8.3)
@@ -1056,7 +1056,7 @@ importers:
     dependencies:
       '@pulumi/gcp':
         specifier: 'catalog:'
-        version: 9.34.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@5.8.3))(typescript@5.8.3)
+        version: 10.2.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@5.8.3))(typescript@5.8.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
         version: 3.268.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@5.8.3))(typescript@5.8.3)
@@ -1081,7 +1081,7 @@ importers:
     dependencies:
       '@pulumi/gcp':
         specifier: 'catalog:'
-        version: 9.34.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
+        version: 10.2.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
         version: 3.268.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
@@ -1093,7 +1093,7 @@ importers:
     dependencies:
       '@pulumi/gcp':
         specifier: 'catalog:'
-        version: 9.34.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
+        version: 10.2.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
         version: 3.268.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
@@ -1108,7 +1108,7 @@ importers:
     dependencies:
       '@pulumi/gcp':
         specifier: 'catalog:'
-        version: 9.34.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
+        version: 10.2.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
         version: 3.268.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
@@ -1120,7 +1120,7 @@ importers:
     dependencies:
       '@pulumi/gcp':
         specifier: 'catalog:'
-        version: 9.34.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
+        version: 10.2.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
         version: 3.268.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
@@ -1129,7 +1129,7 @@ importers:
     dependencies:
       '@pulumi/gcp':
         specifier: 'catalog:'
-        version: 9.34.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
+        version: 10.2.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
         version: 3.268.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
@@ -1144,7 +1144,7 @@ importers:
     dependencies:
       '@pulumi/gcp':
         specifier: 'catalog:'
-        version: 9.34.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
+        version: 10.2.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
         version: 3.268.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
@@ -1156,7 +1156,7 @@ importers:
     dependencies:
       '@pulumi/gcp':
         specifier: 'catalog:'
-        version: 9.34.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
+        version: 10.2.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
         version: 3.268.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
@@ -1168,7 +1168,7 @@ importers:
     dependencies:
       '@pulumi/gcp':
         specifier: 'catalog:'
-        version: 9.34.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
+        version: 10.2.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
         version: 3.268.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
@@ -1180,7 +1180,7 @@ importers:
     dependencies:
       '@pulumi/gcp':
         specifier: 'catalog:'
-        version: 9.34.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
+        version: 10.2.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
         version: 3.268.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
@@ -1192,7 +1192,7 @@ importers:
     dependencies:
       '@pulumi/gcp':
         specifier: 'catalog:'
-        version: 9.34.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
+        version: 10.2.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
         version: 3.268.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
@@ -1204,7 +1204,7 @@ importers:
     dependencies:
       '@pulumi/gcp':
         specifier: 'catalog:'
-        version: 9.34.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
+        version: 10.2.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
         version: 3.268.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
@@ -1216,7 +1216,7 @@ importers:
     dependencies:
       '@pulumi/gcp':
         specifier: 'catalog:'
-        version: 9.34.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
+        version: 10.2.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
         version: 3.268.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
@@ -1228,7 +1228,7 @@ importers:
     dependencies:
       '@pulumi/gcp':
         specifier: 'catalog:'
-        version: 9.34.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
+        version: 10.2.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
         version: 3.268.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
@@ -1240,7 +1240,7 @@ importers:
     dependencies:
       '@pulumi/gcp':
         specifier: 'catalog:'
-        version: 9.34.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
+        version: 10.2.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
         version: 3.268.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
@@ -1255,7 +1255,7 @@ importers:
         version: 1.2.1(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/gcp':
         specifier: 'catalog:'
-        version: 9.34.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
+        version: 10.2.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
         version: 3.268.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
@@ -1267,7 +1267,7 @@ importers:
     dependencies:
       '@pulumi/gcp':
         specifier: 'catalog:'
-        version: 9.34.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
+        version: 10.2.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
         version: 3.268.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
@@ -1279,7 +1279,7 @@ importers:
     dependencies:
       '@pulumi/gcp':
         specifier: 'catalog:'
-        version: 9.34.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
+        version: 10.2.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
         version: 3.268.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
@@ -1291,7 +1291,7 @@ importers:
     dependencies:
       '@pulumi/gcp':
         specifier: 'catalog:'
-        version: 9.34.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
+        version: 10.2.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
         version: 3.268.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
@@ -1303,7 +1303,7 @@ importers:
     dependencies:
       '@pulumi/gcp':
         specifier: 'catalog:'
-        version: 9.34.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
+        version: 10.2.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
         version: 3.268.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
@@ -1315,7 +1315,7 @@ importers:
     dependencies:
       '@pulumi/gcp':
         specifier: 'catalog:'
-        version: 9.34.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
+        version: 10.2.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
         version: 3.268.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
@@ -1327,7 +1327,7 @@ importers:
     dependencies:
       '@pulumi/gcp':
         specifier: 'catalog:'
-        version: 9.34.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
+        version: 10.2.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
         version: 3.268.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
@@ -1339,7 +1339,7 @@ importers:
     dependencies:
       '@pulumi/gcp':
         specifier: 'catalog:'
-        version: 9.34.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
+        version: 10.2.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
         version: 3.268.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
@@ -1351,7 +1351,7 @@ importers:
     dependencies:
       '@pulumi/gcp':
         specifier: 'catalog:'
-        version: 9.34.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
+        version: 10.2.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
         version: 3.268.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
@@ -1363,7 +1363,7 @@ importers:
     dependencies:
       '@pulumi/gcp':
         specifier: 'catalog:'
-        version: 9.34.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
+        version: 10.2.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
         version: 3.268.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
@@ -1375,7 +1375,7 @@ importers:
     dependencies:
       '@pulumi/gcp':
         specifier: 'catalog:'
-        version: 9.34.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
+        version: 10.2.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
         version: 3.268.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
@@ -1387,7 +1387,7 @@ importers:
     dependencies:
       '@pulumi/gcp':
         specifier: 'catalog:'
-        version: 9.34.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
+        version: 10.2.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
         version: 3.268.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
@@ -1399,7 +1399,7 @@ importers:
     dependencies:
       '@pulumi/gcp':
         specifier: 'catalog:'
-        version: 9.34.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
+        version: 10.2.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
         version: 3.268.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
@@ -1411,7 +1411,7 @@ importers:
     dependencies:
       '@pulumi/gcp':
         specifier: 'catalog:'
-        version: 9.34.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
+        version: 10.2.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
         version: 3.268.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
@@ -1423,7 +1423,7 @@ importers:
     dependencies:
       '@pulumi/gcp':
         specifier: 'catalog:'
-        version: 9.34.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
+        version: 10.2.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
         version: 3.268.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
@@ -1435,7 +1435,7 @@ importers:
     dependencies:
       '@pulumi/gcp':
         specifier: 'catalog:'
-        version: 9.34.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
+        version: 10.2.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
         version: 3.268.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
@@ -1444,7 +1444,7 @@ importers:
     dependencies:
       '@pulumi/gcp':
         specifier: 'catalog:'
-        version: 9.34.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
+        version: 10.2.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
       '@pulumi/pulumi':
         specifier: 'catalog:'
         version: 3.268.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
@@ -4731,10 +4731,6 @@ packages:
     resolution: {integrity: sha512-7OsC1gNORBEawOa5+j2pXN9vsicaIOH5cPXxoR6fJOmH6/EXpJB2CajXOu1fPRFun2m1lktEFX11+P89hqO/og==}
     engines: {node: ^20.17.0 || >=22.9.0}
 
-  '@npmcli/git@6.0.3':
-    resolution: {integrity: sha512-GUYESQlxZRAdhs3UhbB6pVRNUELQOHXwK9ruDkwmCv2aZ5y0SApQzUJCg02p3A7Ue2J5hxvlk1YI53c00NmRyQ==}
-    engines: {node: ^18.17.0 || >=20.5.0}
-
   '@npmcli/git@7.0.2':
     resolution: {integrity: sha512-oeolHDjExNAJAnlYP2qzNjMX/Xi9bmu78C9dIGr4xjobrSKbuMYCph8lTzn4vnW3NjIqVmw/f8BCfouqyJXlRg==}
     engines: {node: ^20.17.0 || >=22.9.0}
@@ -4760,17 +4756,9 @@ packages:
     resolution: {integrity: sha512-uuG5HZFXLfyFKqg8QypsmgLQW7smiRjVc45bqD/ofZZcR/uxEjgQU8qDPv0s9TEeMUiAAU/GC5bR6++UdTirIQ==}
     engines: {node: ^20.17.0 || >=22.9.0}
 
-  '@npmcli/package-json@6.2.0':
-    resolution: {integrity: sha512-rCNLSB/JzNvot0SEyXqWZ7tX2B5dD2a1br2Dp0vSYVo5jh8Z0EZ7lS9TsZ1UtziddB1UfNUaMCc538/HztnJGA==}
-    engines: {node: ^18.17.0 || >=20.5.0}
-
   '@npmcli/package-json@7.0.5':
     resolution: {integrity: sha512-iVuTlG3ORq2iaVa1IWUxAO/jIp77tUKBhoMjuzYW2kL4MLN1bi/ofqkZ7D7OOwh8coAx1/S2ge0rMdGv8sLSOQ==}
     engines: {node: ^20.17.0 || >=22.9.0}
-
-  '@npmcli/promise-spawn@8.0.3':
-    resolution: {integrity: sha512-Yb00SWaL4F8w+K8YGhQ55+xE4RUNdMHV43WZGsiTM92gS+lC0mGsn7I4hLug7pbao035S6bj3Y3w0cUNGLfmkg==}
-    engines: {node: ^18.17.0 || >=20.5.0}
 
   '@npmcli/promise-spawn@9.0.1':
     resolution: {integrity: sha512-OLUaoqBuyxeTqUvjA3FZFiXUfYC1alp3Sa99gW3EUDz3tZ3CbXDdcZ7qWKBzicrJleIgucoWamWH1saAmH/l2Q==}
@@ -5636,8 +5624,8 @@ packages:
   '@pulumi/command@1.2.1':
     resolution: {integrity: sha512-mutNDIUYP67yCBYOVIidQyxuTwZDY9v/sx9EGbgIv4PXfyfolOKGgGLeoHEbI1lxRwaw2wbTZ3VNIynDnA5VKA==}
 
-  '@pulumi/gcp@9.34.0':
-    resolution: {integrity: sha512-EwUlWC1aJeGp434tpBkKDIAUjxDJ+AVoNfvLXFM32buGqZWIByRL8O6Sjl6Z57XTfQfTZIXIyVinBrcARXHbIQ==}
+  '@pulumi/gcp@10.2.0':
+    resolution: {integrity: sha512-SkNSx0MhAVQI/TI4/np9lrM41U1I1L6YeSrtq0D9flkwr3bHWcXKpvgYasJR6qL+3eoLt9UwZmGQuPpYUxIxdQ==}
 
   '@pulumi/pulumi@3.268.0':
     resolution: {integrity: sha512-VtTIr44eC78BX4cAeh2MEqJqVFu5/UfrmsxjLdH73YIPr5igPEo9JB4g5yqncTHcXNxbkxJXndMOEm1CkpJA5Q==}
@@ -10927,9 +10915,6 @@ packages:
     resolution: {integrity: sha512-xUtoPkMggbz0MPyPiIWr1Kp4aeWJjDZ6SMvURhimjdZgsRuDplF5/s9hcgGhyXMhs+6vpnuoiZ2kFiu3FMnS8Q==}
     engines: {node: '>=18'}
 
-  err-code@2.0.3:
-    resolution: {integrity: sha512-2bmlRpNKBxT/CRmPOlyISQpNj+qSeYvcym/uT0Jx2bMOlKLtSy1ZmLuVxSEKKyor/N5yhvp/ZiG1oE3DEYMSFA==}
-
   error-ex@1.3.4:
     resolution: {integrity: sha512-sqQamAnR14VgCr1A618A3sGrygcpK+HEbenA/HiEAkkUwcZIIB/tgWqHFxWgOyDh4nB4JCRimh79dR5Ywc9MDQ==}
 
@@ -12203,10 +12188,6 @@ packages:
     resolution: {integrity: sha512-puUZAUKT5m8Zzvs72XWy3HtvVbTWljRE66cP60bxJzAqf2DgICo7lYTY2IHUmLnNpjYvw5bvmoHvPc0QO2a62w==}
     engines: {node: ^16.14.0 || >=18.0.0}
 
-  hosted-git-info@8.1.0:
-    resolution: {integrity: sha512-Rw/B2DNQaPBICNXEm8balFz9a6WpZrkCGpcWFpy7nCj+NyhSdqXipmfvtmWt9xGfp0wZnBxB+iVpLmQMYt47Tw==}
-    engines: {node: ^18.17.0 || >=20.5.0}
-
   hosted-git-info@9.0.3:
     resolution: {integrity: sha512-Hc+ghLoSt6QaYZUv0WBiIvmMDZuZZ7oaDvdH8MbfOO4lOsxdXLEvuC6ePoGs9H1X9oCLyq6+NVN0MKqD+ydxyg==}
     engines: {node: ^20.17.0 || >=22.9.0}
@@ -12917,10 +12898,6 @@ packages:
   isexe@2.0.0:
     resolution: {integrity: sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw==}
 
-  isexe@3.1.5:
-    resolution: {integrity: sha512-6B3tLtFqtQS4ekarvLVMZ+X+VlvQekbe4taUkf/rhVO3d/h0M2rfARm/pXLcPEsjjMsFgrFgSrhQIxcSVrBz8w==}
-    engines: {node: '>=18'}
-
   isexe@4.0.0:
     resolution: {integrity: sha512-FFUtZMpoZ8RqHS3XeXEmHWLA4thH+ZxCv2lOiPIn1Xc7CxrqhWzNSDzD+/chS/zbYezmiwWLdQC09JdQKmthOw==}
     engines: {node: '>=20'}
@@ -13356,10 +13333,6 @@ packages:
 
   json-parse-even-better-errors@2.3.1:
     resolution: {integrity: sha512-xyFwyhro/JEof6Ghe2iz2NcXoj2sloNsWr/XsERDK/oiPCfaNhl5ONfp+jQdAZRQQ0IJWNzH9zIZF7li91kh2w==}
-
-  json-parse-even-better-errors@4.0.0:
-    resolution: {integrity: sha512-lR4MXjGNgkJc7tkQ97kb2nuEMnNCyU//XYVH0MKTGcXEiSudQ5MKGKen3C5QubYy0vmq+JGitUg92uuywGEwIA==}
-    engines: {node: ^18.17.0 || >=20.5.0}
 
   json-parse-even-better-errors@5.0.0:
     resolution: {integrity: sha512-ZF1nxZ28VhQouRWhUcVlUIN3qwSgPuswK05s/HIaoetAoE/9tngVmCHjSxmSQPav1nd+lPtTL0YZ/2AFdR/iYQ==}
@@ -14803,10 +14776,6 @@ packages:
     resolution: {integrity: sha512-JLSpbzh6UUXIEoqPsYBvVNVmyrjVZ1fzEFbqxKkTJQkWBO3xFzFT+KDnSKQWwOQNbuWRwt5LSD6HOTLGIWzfrw==}
     engines: {node: ^20.17.0 || >=22.9.0}
 
-  npm-install-checks@7.1.2:
-    resolution: {integrity: sha512-z9HJBCYw9Zr8BqXcllKIs5nI+QggAImbBdHphOzVYrz2CB4iQ6FzWyKmlqDZua+51nAu7FcemlbTc9VgQN5XDQ==}
-    engines: {node: ^18.17.0 || >=20.5.0}
-
   npm-install-checks@8.0.0:
     resolution: {integrity: sha512-ScAUdMpyzkbpxoNekQ3tNRdFI8SJ86wgKZSQZdUxT+bj0wVFpsEMWnkXP0twVe1gJyNF5apBWDJhhIbgrIViRA==}
     engines: {node: ^20.17.0 || >=22.9.0}
@@ -14819,17 +14788,9 @@ packages:
     resolution: {integrity: sha512-awzfKUO7v0FscrSpRoogyNm0sajikhBWpU0QMrW09AMi9n1PoKU6WaIqUzuJSQnpciZZmJ/jMZ2Egfmb/9LiWQ==}
     engines: {node: ^12.13.0 || ^14.15.0 || >=16.0.0}
 
-  npm-normalize-package-bin@4.0.0:
-    resolution: {integrity: sha512-TZKxPvItzai9kN9H/TkmCtx/ZN/hvr3vUycjlfmH0ootY9yFBzNOpiXAdIn1Iteqsvk4lQn6B5PTrt+n6h8k/w==}
-    engines: {node: ^18.17.0 || >=20.5.0}
-
   npm-normalize-package-bin@5.0.0:
     resolution: {integrity: sha512-CJi3OS4JLsNMmr2u07OJlhcrPxCeOeP/4xq67aWNai6TNWWbTrlNDgl8NcFKVlcBKp18GPj+EzbNIgrBfZhsag==}
     engines: {node: ^20.17.0 || >=22.9.0}
-
-  npm-package-arg@12.0.2:
-    resolution: {integrity: sha512-f1NpFjNI9O4VbKMOlA5QoBq/vSQPORHcTZ2feJpFkTHJ9eQkdlmZEKSjcAhxTGInC7RlEyScT9ui67NaOsjFWA==}
-    engines: {node: ^18.17.0 || >=20.5.0}
 
   npm-package-arg@13.0.2:
     resolution: {integrity: sha512-IciCE3SY3uE84Ld8WZU23gAPPV9rIYod4F+rc+vJ7h7cwAJt9Vk6TVsK60ry7Uj3SRS3bqRRIGuTp9YVlk6WNA==}
@@ -14843,10 +14804,6 @@ packages:
     resolution: {integrity: sha512-263/0NGrn32YFYi4J533qzrQ/krmmrWwhKkzwTuM4f/07ug51odoaNjUexxO4vxlzURHcmYMH1QjvHjsNDKLVg==}
     engines: {node: ^12.13.0 || ^14.15.0 || >=16.0.0}
     hasBin: true
-
-  npm-pick-manifest@10.0.0:
-    resolution: {integrity: sha512-r4fFa4FqYY8xaM7fHecQ9Z2nE9hgNfJR+EmoKv0+chvzWkBcORX3r0FpTByP+CbOVJDladMXnPQGVN8PBLGuTQ==}
-    engines: {node: ^18.17.0 || >=20.5.0}
 
   npm-pick-manifest@11.0.3:
     resolution: {integrity: sha512-buzyCfeoGY/PxKqmBqn1IUJrZnUi1VVJTdSSRPGI60tJdUhUoSQFhs0zycJokDdOznQentgrpf8LayEHyyYlqQ==}
@@ -15866,10 +15823,6 @@ packages:
     resolution: {integrity: sha512-DEvV2ZF2r2/63V+tK8hQvrR2ZGn10srHbXviTlcv7Kpzw8jWiNTqbVgjO3IY8RxrrOUF8VPMQQFysYYYv0YZxw==}
     engines: {node: '>=6'}
 
-  proc-log@5.0.0:
-    resolution: {integrity: sha512-Azwzvl90HaF0aCz1JrDdXQykFakSSNPaPoiZ9fm5qJIMHioDZEi7OAdRwSm6rSoPtY3Qutnm3L7ogmg3dc+wbQ==}
-    engines: {node: ^18.17.0 || >=20.5.0}
-
   proc-log@6.1.0:
     resolution: {integrity: sha512-iG+GYldRf2BQ0UDUAd6JQ/RwzaQy6mXmsk/IzlYyal4A4SNFw54MeH4/tLkF4I5WoWG9SQwuqWzS99jaFQHBuQ==}
     engines: {node: ^20.17.0 || >=22.9.0}
@@ -15901,10 +15854,6 @@ packages:
 
   promise-call-limit@3.0.2:
     resolution: {integrity: sha512-mRPQO2T1QQVw11E7+UdCJu7S61eJVWknzml9sC1heAdj1jxl0fWMBypIt9ZOcLFf8FkG995ZD7RnVk7HH72fZw==}
-
-  promise-retry@2.0.1:
-    resolution: {integrity: sha512-y+WKFlBR8BGXnsNlIHFGPZmyDf3DFMoLhaflAnyZgV6rG6xu+JwesTo2Q9R6XwYmtmwAFCkAk3e35jEdoeh/3g==}
-    engines: {node: '>=10'}
 
   promise.series@0.2.0:
     resolution: {integrity: sha512-VWQJyU2bcDTgZw8kpfBpB/ejZASlCrzwz5f2hjb/zlujOEB4oeiAhHygAWq8ubsX2GVkD4kCU5V2dwOTaCY5EQ==}
@@ -18531,10 +18480,6 @@ packages:
   validate-npm-package-license@3.0.4:
     resolution: {integrity: sha512-DpKm2Ui/xN7/HQKCtpZxoRWBhZ9Z0kqtygG8XCgNQ8ZlDnxuQmWhj566j8fN4Cu3/JmbhsDo7fcAJq4s9h27Ew==}
 
-  validate-npm-package-name@6.0.2:
-    resolution: {integrity: sha512-IUoow1YUtvoBBC06dXs8bR8B9vuA3aJfmQNKMoaPG/OFsPmoQvw8xh+6Ye25Gx9DQhoEom3Pcu9MKHerm/NpUQ==}
-    engines: {node: ^18.17.0 || >=20.5.0}
-
   validate-npm-package-name@7.0.2:
     resolution: {integrity: sha512-hVDIBwsRruT73PbK7uP5ebUt+ezEtCmzZz3F59BSr2F6OVFnJ/6h8liuvdLrQ88Xmnk6/+xGGuq+pG9WwTuy3A==}
     engines: {node: ^20.17.0 || >=22.9.0}
@@ -18874,11 +18819,6 @@ packages:
   which@2.0.2:
     resolution: {integrity: sha512-BLI3Tl1TW3Pvl70l3yq3Y64i+awpwXqsGBYWkkqMtnbXgrMD+yj7rhW0kuEDxzJaYXGjEW5ogapKNMEKNMjibA==}
     engines: {node: '>= 8'}
-    hasBin: true
-
-  which@5.0.0:
-    resolution: {integrity: sha512-JEdGzHwwkrbWoGOlIHqQ5gtprKGOenpDHpxE9zVR1bWbOtYRyPPHMe9FaP6x61CmNaTThSkb0DAJte5jD+DmzQ==}
-    engines: {node: ^18.17.0 || >=20.5.0}
     hasBin: true
 
   which@6.0.1:
@@ -25873,17 +25813,6 @@ snapshots:
     dependencies:
       semver: 7.8.5
 
-  '@npmcli/git@6.0.3':
-    dependencies:
-      '@npmcli/promise-spawn': 8.0.3
-      ini: 5.0.0
-      lru-cache: 10.4.3
-      npm-pick-manifest: 10.0.0
-      proc-log: 5.0.0
-      promise-retry: 2.0.1
-      semver: 7.8.5
-      which: 5.0.0
-
   '@npmcli/git@7.0.2':
     dependencies:
       '@gar/promise-retry': 1.0.3
@@ -25921,16 +25850,6 @@ snapshots:
 
   '@npmcli/node-gyp@5.0.0': {}
 
-  '@npmcli/package-json@6.2.0':
-    dependencies:
-      '@npmcli/git': 6.0.3
-      glob: 10.5.0
-      hosted-git-info: 8.1.0
-      json-parse-even-better-errors: 4.0.0
-      proc-log: 5.0.0
-      semver: 7.8.5
-      validate-npm-package-license: 3.0.4
-
   '@npmcli/package-json@7.0.5':
     dependencies:
       '@npmcli/git': 7.0.2
@@ -25940,10 +25859,6 @@ snapshots:
       proc-log: 6.1.0
       semver: 7.8.5
       spdx-expression-parse: 4.0.0
-
-  '@npmcli/promise-spawn@8.0.3':
-    dependencies:
-      which: 5.0.0
 
   '@npmcli/promise-spawn@9.0.1':
     dependencies:
@@ -26872,9 +26787,8 @@ snapshots:
       - ts-node
       - typescript
 
-  '@pulumi/gcp@9.34.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@5.8.3))(typescript@5.8.3)':
+  '@pulumi/gcp@10.2.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@5.8.3))(typescript@5.8.3)':
     dependencies:
-      '@npmcli/package-json': 6.2.0
       '@pulumi/pulumi': 3.272.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@5.8.3))(typescript@5.8.3)
       '@types/express': 4.17.25
     transitivePeerDependencies:
@@ -26882,9 +26796,8 @@ snapshots:
       - ts-node
       - typescript
 
-  '@pulumi/gcp@9.34.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)':
+  '@pulumi/gcp@10.2.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)':
     dependencies:
-      '@npmcli/package-json': 6.2.0
       '@pulumi/pulumi': 3.272.0(ts-node@10.9.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(@types/node@26.6.5)(typescript@6.0.3))(typescript@6.0.3)
       '@types/express': 4.17.25
     transitivePeerDependencies:
@@ -33436,8 +33349,6 @@ snapshots:
 
   environment@1.1.0: {}
 
-  err-code@2.0.3: {}
-
   error-ex@1.3.4:
     dependencies:
       is-arrayish: 0.2.1
@@ -35286,10 +35197,6 @@ snapshots:
     dependencies:
       lru-cache: 10.4.3
 
-  hosted-git-info@8.1.0:
-    dependencies:
-      lru-cache: 10.4.3
-
   hosted-git-info@9.0.3:
     dependencies:
       lru-cache: 11.5.3
@@ -36043,8 +35950,6 @@ snapshots:
   isbinaryfile@5.0.7: {}
 
   isexe@2.0.0: {}
-
-  isexe@3.1.5: {}
 
   isexe@4.0.0: {}
 
@@ -37171,8 +37076,6 @@ snapshots:
   json-buffer@3.0.1: {}
 
   json-parse-even-better-errors@2.3.1: {}
-
-  json-parse-even-better-errors@4.0.0: {}
 
   json-parse-even-better-errors@5.0.0: {}
 
@@ -38826,10 +38729,6 @@ snapshots:
     dependencies:
       npm-normalize-package-bin: 5.0.0
 
-  npm-install-checks@7.1.2:
-    dependencies:
-      semver: 7.8.5
-
   npm-install-checks@8.0.0:
     dependencies:
       semver: 7.8.5
@@ -38841,16 +38740,7 @@ snapshots:
 
   npm-normalize-package-bin@2.0.0: {}
 
-  npm-normalize-package-bin@4.0.0: {}
-
   npm-normalize-package-bin@5.0.0: {}
-
-  npm-package-arg@12.0.2:
-    dependencies:
-      hosted-git-info: 8.1.0
-      proc-log: 5.0.0
-      semver: 7.8.5
-      validate-npm-package-name: 6.0.2
 
   npm-package-arg@13.0.2:
     dependencies:
@@ -38870,13 +38760,6 @@ snapshots:
       ignore-walk: 5.0.1
       npm-bundled: 2.0.1
       npm-normalize-package-bin: 2.0.0
-
-  npm-pick-manifest@10.0.0:
-    dependencies:
-      npm-install-checks: 7.1.2
-      npm-normalize-package-bin: 4.0.0
-      npm-package-arg: 12.0.2
-      semver: 7.8.5
 
   npm-pick-manifest@11.0.3:
     dependencies:
@@ -40053,8 +39936,6 @@ snapshots:
 
   prismjs@1.30.0: {}
 
-  proc-log@5.0.0: {}
-
   proc-log@6.1.0: {}
 
   process-nextick-args@2.0.1: {}
@@ -40075,11 +39956,6 @@ snapshots:
   promise-all-reject-late@1.0.1: {}
 
   promise-call-limit@3.0.2: {}
-
-  promise-retry@2.0.1:
-    dependencies:
-      err-code: 2.0.3
-      retry: 0.12.0
 
   promise.series@0.2.0: {}
 
@@ -43423,8 +43299,6 @@ snapshots:
       spdx-correct: 3.2.0
       spdx-expression-parse: 3.0.1
 
-  validate-npm-package-name@6.0.2: {}
-
   validate-npm-package-name@7.0.2: {}
 
   validate.io-array@1.0.6: {}
@@ -44040,10 +43914,6 @@ snapshots:
   which@2.0.2:
     dependencies:
       isexe: 2.0.0
-
-  which@5.0.0:
-    dependencies:
-      isexe: 3.1.5
 
   which@6.0.1:
     dependencies:
