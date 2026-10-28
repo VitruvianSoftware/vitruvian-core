@@ -102,8 +102,13 @@ Inject the following server definition into the `mcpServers` object:
 
 ```json
 "slack": {
-  "command": "npx",
-  "args": ["-y", "@vitruviansoftware/mcp-slack@latest"],
+  "command": "docker",
+  "args": [
+    "run", "-i", "--rm",
+    "-e", "SLACK_BOT_TOKEN", "-e", "SLACK_USER_TOKEN", "-e", "SLACK_TEAM_ID",
+    "-e", "MCP_TRANSPORT=stdio",
+    "ghcr.io/vitruviansoftware/mcp-slack:main"
+  ],
   "env": {
     "SLACK_BOT_TOKEN": "xoxb-...",
     "SLACK_USER_TOKEN": "xoxp-...",
@@ -111,6 +116,10 @@ Inject the following server definition into the `mcpServers` object:
   }
 }
 ```
+
+`docker run -i` keeps the server's stdin open, and `-e NAME` (no value) hands
+Docker the variable from the `env` block above. The image already defaults to
+the HTTP transport, hence the explicit `MCP_TRANSPORT=stdio`.
 
 ### 2. Guide the User or Automate Slack App Creation
 To populate the tokens, a Slack app must be created.
@@ -285,12 +294,21 @@ something to hand-type.
 ### 4. Build & run
 
 ```bash
-npm install
-npm run build
-npm start
+# In the monorepo
+bazel run //apps/mcp/slack:mcp-slack-rs
+
+# Or build the image from this directory (the same build CI publishes)
+docker build -t mcp-slack .
 ```
 
 ### 5. Client Configuration Guides
+
+> **The npm package is retired.** `@vitruviansoftware/mcp-slack` 1.22.0 was the
+> last npm release, and it is the old TypeScript server. The server is now Rust
+> and ships as the container image below. `npx -y @vitruviansoftware/mcp-slack`
+> still installs 1.22.0 but gets no fixes. It needs Docker running locally. To
+> update the image, run `docker pull ghcr.io/vitruviansoftware/mcp-slack:main`
+> (or pin a digest for a fixed version).
 
 #### 5.1 Google Antigravity
 Add the server definition to your Antigravity MCP configuration (`~/.gemini/config/mcp_config.json`, `agy mcp add`, or **Antigravity Settings → MCP Servers**):
@@ -299,8 +317,13 @@ Add the server definition to your Antigravity MCP configuration (`~/.gemini/conf
 {
   "mcpServers": {
     "slack": {
-      "command": "npx",
-      "args": ["-y", "@vitruviansoftware/mcp-slack@latest"],
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm",
+        "-e", "SLACK_BOT_TOKEN", "-e", "SLACK_USER_TOKEN", "-e", "SLACK_TEAM_ID",
+        "-e", "MCP_TRANSPORT=stdio",
+        "ghcr.io/vitruviansoftware/mcp-slack:main"
+      ],
       "env": {
         "SLACK_BOT_TOKEN": "xoxb-...",
         "SLACK_USER_TOKEN": "xoxp-...",
@@ -318,8 +341,13 @@ Add to `~/.claude/mcp.json` or run `claude mcp add`:
 {
   "mcpServers": {
     "slack": {
-      "command": "npx",
-      "args": ["-y", "@vitruviansoftware/mcp-slack@latest"],
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm",
+        "-e", "SLACK_BOT_TOKEN", "-e", "SLACK_USER_TOKEN", "-e", "SLACK_TEAM_ID",
+        "-e", "MCP_TRANSPORT=stdio",
+        "ghcr.io/vitruviansoftware/mcp-slack:main"
+      ],
       "env": {
         "SLACK_BOT_TOKEN": "xoxb-...",
         "SLACK_USER_TOKEN": "xoxp-...",
@@ -332,7 +360,10 @@ Add to `~/.claude/mcp.json` or run `claude mcp add`:
 
 Or via the Claude Code CLI:
 ```bash
-claude mcp add slack -- npx -y @vitruviansoftware/mcp-slack@latest
+claude mcp add slack \
+  -e SLACK_BOT_TOKEN=xoxb-... -e SLACK_USER_TOKEN=xoxp-... -e SLACK_TEAM_ID=T... \
+  -- docker run -i --rm -e SLACK_BOT_TOKEN -e SLACK_USER_TOKEN -e SLACK_TEAM_ID \
+     -e MCP_TRANSPORT=stdio ghcr.io/vitruviansoftware/mcp-slack:main
 ```
 
 #### 5.3 Google Gemini Spark (Custom MCP App)
