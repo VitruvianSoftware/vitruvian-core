@@ -46,7 +46,6 @@ npm	@vitruviansoftware/foundation-pubsub	0.2.0	2026-05-06	published with an npm 
 npm	@vitruviansoftware/foundation-simple-bucket	0.3.0	2026-04-23	published with an npm token, before trusted publishing was set up for the package on 2026-08-21
 npm	@vitruviansoftware/foundation-vpc-service-controls	0.3.0	2026-05-06	published with an npm token, before trusted publishing was set up for the package on 2026-08-21
 npm	@vitruviansoftware/foundation-vpn-ha	0.3.0	2026-04-23	published with an npm token, before trusted publishing was set up for the package on 2026-08-21
-npm	@vitruviansoftware/mcp-slack	1.0.3	2026-05-07	published with an npm token, before trusted publishing was set up for the package on 2026-08-21
 npm	@vitruviansoftware/tool-kit	1.1.0	2026-10-13	first publish, by a person: npm refuses a trusted publisher for a package that does not exist yet
 pypi	vitruvian-tool-kit	1.1.0	2026-10-13	published by the workflow (VitruvianSoftware/vitruvian-sdk run 38434286281) before it attested its uploads; PyPI has no provenance for it, so nothing public says who published it
 crates	vitruvian-tool-kit	1.1.0	2026-10-13	first publish, by a person: crates.io refuses a trusted publisher for a package that does not exist yet
