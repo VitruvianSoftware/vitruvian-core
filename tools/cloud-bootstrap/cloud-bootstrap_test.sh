@@ -205,6 +205,54 @@ out="$(run_auth "$b64" VITRUVIAN_PROFILE=pinned)"
 assert_contains "a base64-encoded key is accepted" "$(cat "$work/gcloud.argv")" "activate-service-account"
 
 # ---------------------------------------------------------------------------
+echo "cloud-bootstrap: keyless identity via Pulumi ESC"
+# ---------------------------------------------------------------------------
+# The org forbids service-account keys, so with no key but a Pulumi token the
+# session takes the ESC environment's identity. Fake pulumi + curl: pulumi hands
+# back a long token, curl answers the tokeninfo lookup with a chosen account.
+ESC_SA_EXPECTED="sa-esc@x.iam.gserviceaccount.com"
+mkdir -p "$work/escbin"
+make_esc_tools() { # make_esc_tools <pulumi: ok|fail> <tokeninfo email>
+	if [ "$1" = ok ]; then
+		printf '#!/usr/bin/env bash\n[ "$1 $2" = "env open" ] && { printf "%%s\\n" "%s"; exit 0; }\nexit 1\n' \
+			"$(printf 'e%.0s' $(seq 1 120))" >"$work/escbin/pulumi"
+	else
+		printf '#!/usr/bin/env bash\nexit 1\n' >"$work/escbin/pulumi"
+	fi
+	printf '#!/usr/bin/env bash\necho "{\\"email\\": \\"%s\\"}"\n' "$2" >"$work/escbin/curl"
+	chmod +x "$work/escbin/pulumi" "$work/escbin/curl"
+}
+run_esc() { # run_esc <profile> [extra env...]
+	local profile="$1"
+	shift
+	run_auth "" VITRUVIAN_PROFILE="$profile" PATH="$work/escbin:$PATH" PULUMI_BIN="$work/escbin/pulumi" \
+		PULUMI_ACCESS_TOKEN="$(printf 'p%.0s' $(seq 1 44))" VITRUVIAN_ESC_SA="$ESC_SA_EXPECTED" "$@"
+}
+
+make_gcloud ok
+make_esc_tools ok "$ESC_SA_EXPECTED"
+out="$(run_esc pinned)"
+argv="$(cat "$work/gcloud.argv")"
+assert_contains "no key but a Pulumi token takes the ESC identity" "$out" "via Pulumi ESC"
+assert_contains "…secrets are read with the ESC token file" "$argv" "--access-token-file=$work/state/esc-token-pinned"
+assert_not_contains "…not as the profile's service account" "$argv" "--account="
+assert_not_contains "…and no service-account key is activated" "$argv" "activate-service-account"
+[ "$(stat -c %a "$work/state/esc-token-pinned" 2>/dev/null || stat -f %Lp "$work/state/esc-token-pinned")" = 600 ] &&
+	pass "the ESC token file is mode 600" || fail "the ESC token file is not mode 600"
+assert_not_contains "the ESC token itself is never echoed" "$out" "eeeeeeeeee"
+
+make_esc_tools ok "sa-someone-else@x.iam.gserviceaccount.com"
+out="$(run_esc pinned)"
+assert_contains "an ESC token for another account is refused" "$out" "REFUSING the ESC identity"
+assert_contains "…naming the account it belongs to" "$out" "sa-someone-else@x.iam.gserviceaccount.com"
+assert_not_contains "…and no secret is read with it" "$(cat "$work/gcloud.argv")" "secrets versions access"
+
+make_esc_tools fail "$ESC_SA_EXPECTED"
+out="$(run_esc pinned)"
+assert_contains "an ESC failure is reported, not hidden" "$out" "did not yield a GCP token"
+assert_not_contains "…and no secret is read" "$(cat "$work/gcloud.argv")" "secrets versions access"
+
+# ---------------------------------------------------------------------------
 echo "cloud-bootstrap: credential handling"
 # ---------------------------------------------------------------------------
 out="$(run_auth "$SA_KEY_GOOD" VITRUVIAN_PROFILE=pinned)"

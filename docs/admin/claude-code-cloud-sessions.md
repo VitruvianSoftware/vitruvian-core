@@ -25,15 +25,16 @@ that one script. Claude Code runs every hook of an event in parallel, so as thre
 separate hooks the later steps read `session.env` before cloud-bootstrap had
 written it. `tools/ci/session-start_test.sh` checks the order and the wiring.
 
-> **Status: the key-based Secret Manager flow below is not usable today.** The org
+> **`VITRUVIAN_CLOUD_KEY` cannot be created, so use the keyless path.** The org
 > forbids service-account keys (`iam.disableServiceAccountKeyCreation`, see
-> [GCP access](#gcp-access)), so `VITRUVIAN_CLOUD_KEY` cannot be created, the
-> session has no identity to read Secret Manager with, and bootstrap fetches
-> nothing. Credentials (`GH_TOKEN`, `PULUMI_ACCESS_TOKEN`, `TS_AUTHKEY`,
-> `LAB_SA_TOKEN`, `CLAUDE_SSH_KEY`, …) have to be set directly on the cloud
-> environment, and a value set there wins over Secret Manager. Keyless fetching is
-> the intended fix and is not implemented yet; the rest of this section describes
-> the design, not the current behaviour.
+> [GCP access](#gcp-access)). Instead, with only `PULUMI_ACCESS_TOKEN` on the
+> cloud environment, bootstrap gets a short-lived GCP token from Pulumi ESC and
+> reads the `claude-cloud-*` secrets from Secret Manager with it. That token
+> belongs to `sa-pulumi-esc`, not to the profile's `sa_account`. The environment
+> needs just `PULUMI_ACCESS_TOKEN` (and optionally `VITRUVIAN_PROFILE`); see
+> [`tools/cloud-bootstrap/README.md`](../../tools/cloud-bootstrap/README.md). The
+> description below still talks about the key; read it as "the identity
+> bootstrap reads secrets with".
 
 Two variables on the cloud environment drive it:
 
