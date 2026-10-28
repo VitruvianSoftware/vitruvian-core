@@ -31,8 +31,9 @@
 #
 # NO SECRET VALUES LIVE HERE. This file names secrets; the values are in the declared
 # project's Secret Manager (seed with //tools/gcp-secrets). The only credential on the
-# cloud environment itself is $VITRUVIAN_CLOUD_KEY — the profile's SA key, which can do
-# nothing but read that profile's secrets.
+# cloud environment itself is $PULUMI_ACCESS_TOKEN: bootstrap uses it to get a short-lived
+# GCP token from Pulumi ESC (sa-pulumi-esc), which can do nothing here but read the
+# claude-cloud-* secrets. A '-' secret means environment-only (PULUMI_ACCESS_TOKEN itself).
 #
 # FORMAT: columns separated by any whitespace (awk default), aligned with spaces for
 # readability (the .tsv extension is nominal — same convention as
@@ -62,7 +63,7 @@
 #   purpose     free text; may contain spaces; MUST be the last column
 #
 # profile  tools                          sa_account                                                              sa_project                     secrets                                                                                                        purpose
-all        bazel,direnv,gh,gcloud,pulumi,kubectl,tailscale  claude-cloud-all@prj-c-bu2-infra-pipeline-3d09.iam.gserviceaccount.com    prj-c-bu2-infra-pipeline-3d09  GH_TOKEN=claude-cloud-core-github-token,BUILDBUDDY_API_KEY=-,PULUMI_ACCESS_TOKEN=claude-cloud-pulumi-token,TS_AUTHKEY=claude-cloud-ts-authkey,LAB_SA_TOKEN=claude-cloud-lab-sa-token,CLAUDE_SSH_KEY=claude-cloud-ssh-key  DEFAULT. Everything, one service account, one key. Use this unless you specifically want a narrower session.
+all        bazel,direnv,gh,gcloud,pulumi,kubectl,tailscale  claude-cloud-all@prj-c-bu2-infra-pipeline-3d09.iam.gserviceaccount.com    prj-c-bu2-infra-pipeline-3d09  GH_TOKEN=claude-cloud-core-github-token,BUILDBUDDY_API_KEY=claude-cloud-buildbuddy-api-key,PULUMI_ACCESS_TOKEN=-,TS_AUTHKEY=claude-cloud-ts-authkey,LAB_SA_TOKEN=claude-cloud-lab-sa-token,CLAUDE_SSH_KEY=claude-cloud-ssh-key  DEFAULT. Everything, one service account, one key. Use this unless you specifically want a narrower session.
 core       bazel,direnv,gh                claude-cloud-core@prj-c-bu2-infra-pipeline-3d09.iam.gserviceaccount.com  prj-c-bu2-infra-pipeline-3d09  GH_TOKEN=claude-cloud-core-github-token,BUILDBUDDY_API_KEY=-                                   Default. Build, test, review and open PRs in the monorepo. No infrastructure credentials.
 infra      bazel,direnv,gh,gcloud,pulumi  claude-cloud-infra@prj-c-bu2-infra-pipeline-3d09.iam.gserviceaccount.com  prj-c-bu2-infra-pipeline-3d09  GH_TOKEN=claude-cloud-core-github-token,BUILDBUDDY_API_KEY=-,PULUMI_ACCESS_TOKEN=claude-cloud-pulumi-token  core + Pulumi/GCP infrastructure work (preview/up against the foundation and app stacks).
 homelab    bazel,direnv,gh,kubectl,tailscale        claude-cloud-lab@prj-c-bu2-infra-pipeline-3d09.iam.gserviceaccount.com   prj-c-bu2-infra-pipeline-3d09  GH_TOKEN=claude-cloud-core-github-token,TS_AUTHKEY=claude-cloud-ts-authkey,LAB_SA_TOKEN=claude-cloud-lab-sa-token,CLAUDE_SSH_KEY=claude-cloud-ssh-key  core + tailnet transport, k3s cluster admin and node SSH (feeds tailscale-up.sh / kube-setup.sh).

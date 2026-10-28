@@ -54,9 +54,13 @@
 # hand, in a box whose own UI warns "these are visible to anyone using this
 # environment". So instead there is exactly ONE credential on the environment:
 #
-#   $VITRUVIAN_CLOUD_KEY — the profile's GCP service-account key (raw JSON or
-#   base64-of-JSON), whose ONLY permission is `secretmanager.secretAccessor` on
-#   that profile's secrets.
+#   $PULUMI_ACCESS_TOKEN — used to open the Pulumi ESC environment and get a
+#   short-lived GCP token (authenticate_esc), whose ONLY permission here is
+#   `secretmanager.secretAccessor` on the claude-cloud-* secrets.
+#
+# (The original design used $VITRUVIAN_CLOUD_KEY, a service-account key. The org
+# forbids creating one — iam.disableServiceAccountKeyCreation — so that path is
+# kept only for an environment that already has a key.)
 #
 # Everything else is fetched from Secret Manager at session start, which gives
 # the properties that matter:
@@ -81,13 +85,14 @@
 # started, at the cost of the properties above.
 #
 # ---------------------------------------------------------------------------
-# WHY NOT KEYLESS
+# KEYLESS, VIA PULUMI ESC
 # ---------------------------------------------------------------------------
 # CI is keyless: GitHub Actions mints an OIDC token and Workload Identity
 # Federation exchanges it, so no key exists. A Claude cloud sandbox exposes no
-# OIDC issuer we can federate against, so a key is the floor today. profiles.tsv
-# is the only thing that would change if that stops being true: swap `sa_account`
-# for a WIF provider and no caller moves.
+# OIDC issuer of its own, but Pulumi Cloud does: ESC presents one and GCP
+# exchanges it (gcp-bootstrap/docs-pulumi-esc.md). The session authenticates to
+# ESC with $PULUMI_ACCESS_TOKEN and gets a ~1h token for `sa-pulumi-esc`, which is
+# not the profile's sa_account, so the identity pin is against ESC_SA.
 #
 # Best-effort by design: a bootstrap hiccup must never block the Claude session,
 # so `up`/`install`/`auth` exit 0 on every failure path (mirrors
@@ -487,10 +492,22 @@ key_client_email() {
 # gcloud EXITS 0 while printing "ERROR: … Reauthentication failed" to stderr on a
 # broken credential, so neither the status code nor an empty result can be
 # trusted alone (the same trap //tools/saas-cli and //tools/gcp-secrets guard).
+secret_reader() { # the identity secrets are read as, for log lines
+	if [ -n "$ESC_TOKEN_FILE" ]; then printf '%s' "$ESC_SA"; else printf '%s' "$P_SA_ACCOUNT"; fi
+}
+
 gcloud_secret() {
 	local name="$1" out rc err
+	local -a who
+	# With the keyless ESC identity (authenticate_esc) the credential is a token
+	# file, not an activated account; otherwise read as the profile's account.
+	if [ -n "$ESC_TOKEN_FILE" ]; then
+		who=(--access-token-file="$ESC_TOKEN_FILE")
+	else
+		who=(--account="$P_SA_ACCOUNT")
+	fi
 	err="$(mktemp)"
-	out="$("$GCLOUD_BIN" --account="$P_SA_ACCOUNT" --project="$P_SA_PROJECT" \
+	out="$("$GCLOUD_BIN" "${who[@]}" --project="$P_SA_PROJECT" \
 		secrets versions access latest --secret="$name" 2>"$err")" && rc=0 || rc=$?
 	if [ "$rc" -ne 0 ] || grep -q '^ERROR:' "$err" 2>/dev/null || [ -z "$out" ]; then
 		sed 's/^/    /' "$err" >&2
@@ -519,6 +536,61 @@ AUTH_STATE="none"
 # first-listed. Order the list to put the identity you want ambient first.
 PRIMARY_ACCOUNT=""
 
+# KEYLESS IDENTITY via Pulumi ESC. The org enforces iam.disableServiceAccountKeyCreation
+# (gcp-org/envs/shared/org_policy.go), so the service-account key the rest of this
+# file is written around cannot be created. A session instead presents its Pulumi
+# token to ESC, which exchanges an OIDC token for a ~1h GCP access token (the same
+# mechanism //tools/gcp-token uses). That token belongs to the ESC environment's
+# service account, NOT to the profile's sa_account, so the identity pin below is
+# against ESC_SA (the account gcp-bootstrap creates), and it is granted
+# secretAccessor on exactly the claude-cloud-* secrets (tabula build stack).
+#
+# The token is short-lived and is used only here, at session start, to read the
+# profile's secrets; it is not exported to the session.
+ESC_TOKEN_FILE=""
+ESC_SA="${VITRUVIAN_ESC_SA:-sa-pulumi-esc@prj-b-cicd-e096.iam.gserviceaccount.com}"
+PULUMI_BIN="${PULUMI_BIN:-pulumi}"
+authenticate_esc() { # authenticate_esc <profile>
+	local profile="$1" esc_env tok email f
+	esc_env="${VITRUVIAN_ESC_ENV:-ipv1337/vitruvian-core/cloud-session}"
+
+	if ! command -v "$PULUMI_BIN" >/dev/null 2>&1; then
+		AUTH_STATE="failed"
+		warn "pulumi is not installed — cannot mint the keyless ESC identity"
+		return 0
+	fi
+	if ! tok="$("$PULUMI_BIN" env open "$esc_env" gcp.login.accessToken --format string 2>/dev/null | tr -d '\r\n')" ||
+		! is_credential "$tok"; then
+		AUTH_STATE="failed"
+		warn "Pulumi ESC ($esc_env) did not yield a GCP token for profile '$profile'"
+		note "check \$PULUMI_ACCESS_TOKEN is valid and can open that environment."
+		return 0
+	fi
+
+	# IDENTITY PINNING, for ESC: refuse a token that is not the expected account,
+	# the same fail-closed reflex as the key path (a mis-pointed environment must
+	# not silently hand the session a different identity).
+	email="$(curl -fsS --max-time 15 -d "access_token=$tok" https://oauth2.googleapis.com/tokeninfo 2>/dev/null |
+		sed -n 's/.*"email": *"\([^"]*\)".*/\1/p' | head -1)"
+	if [ "$email" != "$ESC_SA" ]; then
+		AUTH_STATE="failed"
+		warn "REFUSING the ESC identity for profile '$profile': expected $ESC_SA"
+		note "but the token belongs to '${email:-<unverifiable>}'."
+		return 0
+	fi
+
+	mkdir -p "$STATE_DIR" && chmod 700 "$STATE_DIR"
+	f="$STATE_DIR/esc-token-${profile}"
+	(
+		umask 077
+		printf '%s' "$tok" >"$f"
+	)
+	ESC_TOKEN_FILE="$f"
+	AUTH_STATE="ok"
+	note "identity: $ESC_SA via Pulumi ESC ($esc_env) — keyless, reads this profile's secrets only"
+	return 0
+}
+
 authenticate() { # authenticate <profile>
 	local profile="$1"
 	scrub_placeholder_creds
@@ -542,6 +614,13 @@ authenticate() { # authenticate <profile>
 	# primary's path is what GOOGLE_APPLICATION_CREDENTIALS points at for the whole
 	# session, so they must not overwrite each other.
 	sa_key_file="$STATE_DIR/sa-key-${profile}.json"
+
+	# No key (it cannot be created — see authenticate_esc) but a Pulumi token:
+	# take the keyless ESC identity instead.
+	if [ -z "$key" ] && [ -n "${PULUMI_ACCESS_TOKEN:-}" ]; then
+		authenticate_esc "$profile"
+		return 0
+	fi
 
 	if [ -z "$key" ]; then
 		AUTH_STATE="failed"
@@ -685,9 +764,9 @@ materialise_secrets() { # materialise_secrets <profile>
 		if val="$(gcloud_secret "$name")"; then
 			env_set "$var" "$val"
 			CLAIMED="$CLAIMED $var=$name"
-			note "$var: from $name (as $P_SA_ACCOUNT)"
+			note "$var: from $name (as $(secret_reader))"
 		else
-			note "$var: could not read $name from $P_SA_PROJECT as $P_SA_ACCOUNT"
+			note "$var: could not read $name from $P_SA_PROJECT as $(secret_reader)"
 			note "  → seed it: bazel run //tools/gcp-secrets:seed -- <infra-dir> $name"
 			missing=$((missing + 1))
 		fi
