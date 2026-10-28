@@ -72,20 +72,24 @@ STATE_DIR_REL = ".local/state/agent-guard"
 # policy are NOT here: hook.sh runs them from origin/main, so an agent's edit to
 # them governs nothing until it is merged. `*` matches within one folder.
 #
-# The last three drive session start from the working copy, with the
-# session's credentials: .claude/session-start.sh runs cloud-bootstrap.sh,
-# which runs tools/remote/setup.sh to configure the build cache (with
-# BUILDBUDDY_API_KEY), and reads profiles.tsv to decide which tools to install,
-# which service account to use and which secrets to fetch into the session.
-# Nothing else in the chain runs or reads a repo file.
+# tools/remote/setup.sh drives session start from the working copy, with the
+# session's credentials: cloud-bootstrap.sh runs it to configure the build
+# cache (with BUILDBUDDY_API_KEY).
+#
+# tools/cloud-bootstrap/cloud-bootstrap.sh and profiles.tsv are deliberately NOT
+# here: they also run at session start with the session's credentials, but an
+# agent has to be able to change them (for example to move credentials from
+# environment variables into Secret Manager). They are still gated by review:
+# the agent-guard-review ruleset (guard_review.go) requires the guard owner's
+# approval on any PR that touches them, so such a change cannot merge unreviewed.
+# What this local guard no longer prevents is an agent editing them on a branch
+# that a session then starts from before review.
 PROTECTED_REPO_FILES = (
     ".claude/settings.json",
     ".claude/settings.local.json",
     ".claude/*.sh",
     ".agents/hooks.json",
     "tools/agent-guard/hook.sh",
-    "tools/cloud-bootstrap/cloud-bootstrap.sh",
-    "tools/cloud-bootstrap/profiles.tsv",
     "tools/remote/setup.sh",
 )
 
