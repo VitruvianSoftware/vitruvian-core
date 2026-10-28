@@ -22,7 +22,6 @@
 packages:
   - packages/*
   - tools
-  - apps/mcp/slack
   # The Vitruvian SDK's TypeScript kit, published as @vitruviansoftware/tool-kit
   # from the vitruvian-sdk mirror. packages/* above stops one folder down.
   - packages/vitruvian-sdk/kits/typescript

@@ -6,7 +6,7 @@
   "tag-separator": "-",
   "packages": {
     "apps/mcp/slack": {
-      "release-type": "node",
+      "release-type": "simple",
       "package-name": "@vitruviansoftware/mcp-slack",
       "component": "mcp-slack",
       "changelog-path": "CHANGELOG.md",

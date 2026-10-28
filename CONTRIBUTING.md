@@ -111,13 +111,13 @@ Each app type has its own inner loop. The table below is the practical per-type 
 | **Containerized SaaS web app** | `oauth-user-inspector` | `pnpm dev` (concurrently Vite + nodemon/tsc backend on `:8080) | `bazel test //apps/web/oauth-user-inspector/...` (jest server suite) |
 | **Go CLI** | `devx` | `bazel run //apps/cli/devx:devx -- <args>` (developer build of record); release builds via goreleaser only | `bazel test //apps/cli/devx/...` |
 | **Go CLI (infra/ops)** | `homelab` | `bazel run //apps/cli/homelab/cmd/homelab -- <args>` | `bazel test //apps/cli/homelab/...` |
-| **Agent / MCP (Node/TS)** | `mcp-slack` | `pnpm install && pnpm build && pnpm start` (the MCP host injects the Slack tokens as env) | — (no tests yet) |
+| **Agent / MCP (Rust)** | `mcp-slack` | `bazel run //apps/mcp/slack:mcp-slack-rs` (the MCP host injects the Slack tokens as env) | `bazel test //apps/mcp/slack/...` |
 | **Agent / MCP + macOS** | `nexus-agent` | `pnpm start` / `pnpm dev` for the bot; `bazel build --config=macos-app //apps/desktop/nexus-agent/macos:NexusAgent` for the menu-bar app | — (no tests yet) |
 
 > **Known divergences you will hit (all tracked in the Alignment Gaps doc):**
 > - **`tabula`'s docs were pre-monorepo and have been corrected.** They now live at [`apps/suites/tabula/docs/`](apps/suites/tabula/docs/index.md) (relocated so they mirror with the app), and the `getting-started/*` and `reference/infrastructure.md` pages have been rewritten to the real Bazel+pnpm+Pulumi flow (Node 22, no `docker-compose.yml`, no Terraform, no `BlueCentre` clone). If you hit any lingering `npm`/`docker-compose`/Terraform references in older tabula prose (e.g. deep in `apps/suites/tabula/CONTRIBUTING.md`), this SOP and the root README win.
 > - **`oauth-user-inspector` README deploy path is dead.** `npm run deploy` / `scripts/deploy.sh` invoke a retired Cloud Build flow (`gcloud builds submit --config cloudbuild.yaml`) and **no `cloudbuild.yaml` exists**. Deploy is CI-only (Section 8). Ignore that section of the README.
-> - **`mcp-slack` and `nexus-agent` are documented with bare `npm`** even though both are members of `pnpm-workspace.yaml`. Prefer `pnpm` to keep the single lockfile honest.
+> - **`nexus-agent` is documented with bare `npm`** even though it is a member of `pnpm-workspace.yaml`. Prefer `pnpm` to keep the single lockfile honest.
 > - **Two Go task runners exist out-of-band:** `devx` carries a `magefile.go`, `homelab` carries `.mise.toml`. **🎯 Target:** Bazel is the developer build of record for both; the Mage/mise runners are legacy and being retired (goreleaser stays for mirror releases only). Use the `bazel run` commands above.
 
 ### 3.2 Using devx / a local k8s cluster
@@ -362,7 +362,7 @@ Deploy mechanics are determined by **app type** (see the Applications & Categori
 |----------|--------|-----------|
 | **SaaS web service** (`tabula`, `oauth-user-inspector`) | **GCP Cloud Run** | image → Artifact Registry → **Pulumi `cloudrunv2`**, deployed by GitHub Actions via **keyless WIF**, keyed on a per-app **GitHub Environment** |
 | **CLI / developer tool** (`devx`, `homelab`) | Standalone-repo **GitHub Releases + Homebrew tap** | `goreleaser` + `release-please` from the mirror (**released, not deployed**) |
-| **Agent / MCP** (`mcp-slack`, `nexus-agent`) | npm / DMG (mirror) | `release-please`; *publishing CI is a gap — see below* |
+| **Agent / MCP** (`mcp-slack`, `nexus-agent`) | container image (`mcp-slack`) / DMG (`nexus-agent`) | `release-please`; `mcp-slack` publishes its image from `main`; *DMG publishing CI is a gap — see below* |
 | **Self-hosted platform** (`gitops/`) | dev-local **k3s** | **ArgoCD app-of-apps**, reconciled from git only (Section 9) |
 
 ### Cloud Run deploy (the two SaaS apps)

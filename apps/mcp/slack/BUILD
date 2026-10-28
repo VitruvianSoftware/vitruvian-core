@@ -73,7 +73,6 @@ rust_test(
     crate = ":mcp_slack_rs_lib",
     data = [
         "README.md",
-        "package.json",
     ],
 )
 

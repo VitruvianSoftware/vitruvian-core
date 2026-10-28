@@ -117,7 +117,7 @@ updates:
   #     per-app blocks produced manifest-only PRs that never touched the root
   #     lock, which caused every lock-skew incident (#531) and which the
   #     tidy-check lockfile-sync guard now rightly rejects. Root scope covers
-  #     every member of pnpm-workspace.yaml (tabula/*, mcp-slack, nexus-agent,
+  #     every member of pnpm-workspace.yaml (tabula/*, nexus-agent,
   #     oauth-user-inspector, tools, packages/*) with coherent lock updates.
   #     Group name *-minor-patch so dependabot-auto-merge enqueues them like
   #     the gomod groups. ───
