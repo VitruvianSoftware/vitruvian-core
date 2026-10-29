@@ -26,6 +26,21 @@ if ! command -v pulumi >/dev/null 2>&1; then
   exit 1
 fi
 
+# //tools/gcp-token, the GCP token minter (see the identity block below). The
+# pulumi_project() targets carry it as a data dep and pass its runfiles-relative
+# path in VITRUVIAN_GCP_TOKEN_BIN; resolve that now, while the working directory
+# is still the runfiles tree `bazel run` started us in. Unset or missing (a
+# direct `bash pulumi-cmd.sh`, say) leaves it empty and the plain gcloud
+# fallback applies.
+_minter="${VITRUVIAN_GCP_TOKEN_BIN:-}"
+if [ -n "$_minter" ] && [ "${_minter#/}" = "$_minter" ]; then
+  if [ -x "$PWD/$_minter" ]; then
+    _minter="$PWD/$_minter"
+  elif [ -n "${RUNFILES_DIR:-}" ] && [ -x "$RUNFILES_DIR/_main/$_minter" ]; then
+    _minter="$RUNFILES_DIR/_main/$_minter"
+  fi
+fi
+
 cd "${BUILD_WORKSPACE_DIRECTORY:?this target must be invoked via 'bazel run', not 'bazel test'}/$PROJECT_DIR"
 
 # These Pulumi modules are standalone Go modules (their own go.mod), deliberately
@@ -72,9 +87,9 @@ elif [ -f "$_id_map" ] && [ -f "$_id_resolver" ]; then
     # That is what lets a cloud session run this wrapper at all: the org enforces
     # iam.disableServiceAccountKeyCreation, so there is no key to hand a sandbox,
     # and the session holds only a ~1h token instead. See tools/gcp-token/README.md.
-    _minter="${BUILD_WORKSPACE_DIRECTORY}/tools/gcp-token/gcp-token.sh"
-    if [ -x "$_minter" ]; then
-      _gcp_token="$(bash "$_minter" "$_gcp_account")" || _gcp_token=""
+    # Without the minter (resolved at the top) this is plain local gcloud.
+    if [ -n "$_minter" ] && [ "${_minter#/}" != "$_minter" ] && [ -x "$_minter" ]; then
+      _gcp_token="$("$_minter" "$_gcp_account")" || _gcp_token=""
     else
       _gcp_token="$(gcloud auth print-access-token --account="$_gcp_account" 2>/dev/null)" || _gcp_token=""
     fi
