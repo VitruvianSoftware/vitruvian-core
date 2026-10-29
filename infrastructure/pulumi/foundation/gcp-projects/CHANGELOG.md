@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.15.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.15.1...foundation-gcp-projects-v1.15.2) (2026-10-29)
+
+
+### Bug Fixes
+
+* **gcp-projects:** document operator_reader_members for the dev project stack ([#4045](https://github.com/VitruvianSoftware/vitruvian-core/issues/4045)) ([f30e72d](https://github.com/VitruvianSoftware/vitruvian-core/commit/f30e72dedecbe33461cfd5cc6555409c69837d07))
+
 ## [1.15.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.15.0...foundation-gcp-projects-v1.15.1) (2026-09-02)
 
 
