@@ -25,6 +25,7 @@ mindmap
     Infra & Cloud
       //<pulumi project>:preview·up·…
       //tools/gcp-token
+      //tools/gcp-cloudrun:describe
       //tools/cloud-bootstrap
       //tools/gitops:*
       //tools/cluster:*
@@ -155,6 +156,7 @@ break-glass — the cluster's source of truth is git, reconciled by ArgoCD.
 | `//tools/sync-env-secrets:{apply,set,bw-push,bw-pull,unlock,lock}` | Sync GitHub Actions environment secrets from the Bitwarden-backed store |
 | `//tools/sync-env-secrets:{agent-keys-pull,agent-keys-push}` | Sync GitHub App private keys for bot identities (`atlas`, `quill`, etc.) to/from Bitwarden |
 | `//tools/gcp-token` | Mints short-lived GCP access tokens over the tailnet on-demand when the current machine has no local credentials (essential for cloud sessions) |
+| `//tools/gcp-cloudrun:describe -- --app <app> (--service <name> \| --revision <name>)` | **Read-only** look at a Cloud Run service or revision: describe (with the traffic split), revision list, and recent logs. Project from `gcp-identities.tsv` or `--env <env>` (the app's `Pulumi.<env>.yaml`); token from `//tools/gcp-token`. Runs only gcloud `describe`/`list`/`read`; any other verb is refused |
 | `//tools/cloud-bootstrap` | Bootstraps a bare cloud sandbox into an authenticated developer environment (`:whoami`, `:profiles`, `:install`, `:auth`, `:configure-tailscale`) |
 | `//tools/rotate-buildbuddy-key` | Guided BuildBuddy API key rotation |
 | `//tools/pulumi:rotate-access-token` | Rotate the Pulumi Cloud token CI uses (`PULUMI_ACCESS_TOKEN`); never printed. `--cleanup` deletes old ones once CI is green |
