@@ -41,8 +41,8 @@ Custom firmware for the **Waveshare ESP32-S3-Touch-LCD-1.69** development board,
     - **Bluetooth card** (`ble_hid.cpp`): radio toggle plus one-touch **[Pair BLE]** opening a 60-second advertising window; once paired, macros route over BLE HID whenever the USB cable is unplugged (`mac_hid.cpp` dual-transport dispatcher).
     - **Audio Chimes card** (`buzzer.cpp`): mute toggle for the CI chimes and touch clicks, persisted in NVS (`settings:chimes_muted`), plus the OTA endpoint hint.
 - **Host Companion (`host_companion/`)**:
-  - Python daemon (`mac_stats_daemon.py`) streaming CPU/RAM/time telemetry, frontmost app profiles (`app_profiles.py`), and local AI agent / git CI status (`agent_ci_monitor.py`) over USB CDC serial at 115200 baud.
-  - **Wi-Fi provisioning**: answers device `wifi_sync` requests (SSID via `networksetup`, passphrase via `VITRUVIAN_WIFI_PASS` env or the macOS keychain), or run `uv run apps/embedded/esp32-s3/host_companion/mac_stats_daemon.py --wifi-sync` for an explicit interactive one-shot.
+  - Rust daemon (`mac_stats_daemon`) streaming CPU/RAM/time telemetry, frontmost app profiles (`app_profiles`), and local AI agent / git CI status (`agent_ci_monitor`) over USB CDC serial at 115200 baud.
+  - **Wi-Fi provisioning**: answers device `wifi_sync` requests (SSID via `networksetup`, passphrase via `VITRUVIAN_WIFI_PASS` env or the macOS keychain), or run `bazel run //apps/embedded/esp32-s3:mac_stats_daemon_rs -- --wifi-sync` for an explicit interactive one-shot.
   - **Dual transport**: the same daemon streams over USB CDC when the cable is in and over UDP when it is not, discovering the device by mDNS. See *Untethered mode*.
 
 ## Untethered mode
@@ -102,14 +102,14 @@ bazel run //apps/embedded/esp32-s3:flash -- /dev/cu.usbmodemXXXX
 ### Run Host Stats Companion
 ```bash
 # Auto: USB when the cable is in, Wi-Fi (mDNS-discovered) when it is not
-uv run apps/embedded/esp32-s3/host_companion/mac_stats_daemon.py
+bazel run //apps/embedded/esp32-s3:mac_stats_daemon_rs
 
 # Pin the device instead of discovering it (no mDNS on this network)
-uv run apps/embedded/esp32-s3/host_companion/mac_stats_daemon.py --wifi-host 192.168.1.42
+bazel run //apps/embedded/esp32-s3:mac_stats_daemon_rs -- --wifi-host 192.168.1.42
 
 # Force one transport
-uv run apps/embedded/esp32-s3/host_companion/mac_stats_daemon.py --usb-only
-uv run apps/embedded/esp32-s3/host_companion/mac_stats_daemon.py --wifi-only
+bazel run //apps/embedded/esp32-s3:mac_stats_daemon_rs -- --usb-only
+bazel run //apps/embedded/esp32-s3:mac_stats_daemon_rs -- --wifi-only
 ```
 
 Discovery uses the OS resolver first (macOS resolves `.local` through

@@ -106,7 +106,6 @@ From the next release on, the workflow publishes and no person does.
 
 ```sh
 bazel run //tools/registry-trust:check
-python3 tools/registry-trust/check.py     # the same, with no Bazel
 ```
 
 It reads only public pages and needs no token. It exits 1 and names each

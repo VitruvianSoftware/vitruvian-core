@@ -6,7 +6,7 @@ permalink: /tools/examples/python-kit/
 source: packages/vitruvian-sdk/samples/hello-python-kit/README.md
 ---
 {%- comment -%}
-  Written by tools/sync-site-tools/sync.py from packages/vitruvian-sdk.
+  Written by tools/sync-site-tools from packages/vitruvian-sdk.
   Do not edit it: change the source, then run
     bazel run //tools/sync-site-tools:sync
 {%- endcomment -%}

@@ -36,8 +36,8 @@
 # job bump-guard turns it off at once when someone else pushes to the branch.
 #
 # What that protects, and what it doesn't. Both jobs check out main's
-# catalog/bump.py, which decides; catalog-bump's own commits only ever touch
-# catalog/tools.json and the site's _data/tools.yml, and bump.py holds any
+# //catalog:bump, which decides; catalog-bump's own commits only ever touch
+# catalog/tools.json and the site's _data/tools.yml, and //catalog:bump holds any
 # bump pull request that changes anything else. But on `pull_request` GitHub
 # runs THIS FILE as it stands in the pull request's merge commit: a person
 # with push access who edits it on a bump branch runs their own version,
@@ -114,13 +114,13 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
-      # main's bump.py decides, while the pull request leaves this file alone
+      # main's //catalog:bump decides, while the pull request leaves this file alone
       # (see the top of the file for what that does not cover).
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.base_ref }}
           persist-credentials: false
-          # bump.py, and the composite action that mints the App token.
+          # //catalog:bump, and the composite action that mints the App token.
           sparse-checkout: |
             catalog
             .github/actions
@@ -155,7 +155,7 @@ jobs:
   # may merge itself, and nobody held it (needs-human, do-not-automerge, a
   # draft). It arms at that commit only (--match-head-commit). When the
   # downloads did not pass it turns auto-merge off; a person's commit is held.
-  # `catalog/bump.py automerge` decides and acts; //catalog:bump_test tests
+  # `//catalog:bump -- automerge` decides and acts; //catalog:bump_test tests
   # it. Only a branch of this repository: a fork's pull request gets no secret.
   bump-automerge:
     needs: downloads
@@ -166,13 +166,13 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
-      # main's bump.py decides, while the pull request leaves this file alone
+      # main's //catalog:bump decides, while the pull request leaves this file alone
       # (see the top of the file for what that does not cover).
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.base_ref }}
           persist-credentials: false
-          # bump.py, and the composite action that mints the App token.
+          # //catalog:bump, and the composite action that mints the App token.
           sparse-checkout: |
             catalog
             .github/actions

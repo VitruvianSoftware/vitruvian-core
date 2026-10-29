@@ -46,7 +46,7 @@ This approach:
 
 ```bash
 # Create cluster with optimized settings
-./tools/kind-cluster.sh create
+bazel run //tools/scripts:kind-cluster -- create
 ```
 
 This creates a single-node cluster named `blueprint-dev` with:
@@ -59,13 +59,13 @@ This creates a single-node cluster named `blueprint-dev` with:
 
 ```bash
 # Check cluster status
-./tools/kind-cluster.sh status
+bazel run //tools/scripts:kind-cluster -- status
 
 # Restart cluster (useful after config changes)
-./tools/kind-cluster.sh restart
+bazel run //tools/scripts:kind-cluster -- restart
 
 # Delete cluster (frees ~800MB-1GB)
-./tools/kind-cluster.sh delete
+bazel run //tools/scripts:kind-cluster -- delete
 ```
 
 ### Configuration Files
@@ -107,7 +107,7 @@ The dev container is designed for resource-constrained environments:
 1. **Delete kind cluster when not in use:**
 
    ```bash
-   ./tools/kind-cluster.sh delete
+   bazel run //tools/scripts:kind-cluster -- delete
    ```
 
 2. **Configure Bazel cache location:**
@@ -161,7 +161,7 @@ groups | grep docker
 docker info
 
 # Delete and recreate cluster
-./tools/kind-cluster.sh restart
+bazel run //tools/scripts:kind-cluster -- restart
 
 # View kind logs
 kind export logs --name blueprint-dev
@@ -177,7 +177,7 @@ kind get clusters
 kubectl cluster-info --context kind-blueprint-dev
 
 # Or recreate cluster
-./tools/kind-cluster.sh restart
+bazel run //tools/scripts:kind-cluster -- restart
 ```
 
 ### Out of disk space
@@ -217,7 +217,7 @@ Edit `.devcontainer/kind-config.yaml` to:
 After changes, restart the cluster:
 
 ```bash
-./tools/kind-cluster.sh restart
+bazel run //tools/scripts:kind-cluster -- restart
 ```
 
 ## References

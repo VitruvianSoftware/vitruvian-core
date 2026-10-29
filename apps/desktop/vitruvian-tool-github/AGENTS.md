@@ -10,7 +10,7 @@ bundles; this is a tool, and its one artifact is a zip (see "Releases").
   because its code came from that app's GitHub feature. New files get
   `// SPDX-License-Identifier: GPL-3.0-or-later` and
   `// Copyright (C) 2026 VitruvianSoftware`. Never copy code from here into
-  an MIT part of the repository; `tools/license/verify.sh` exempts this
+  an MIT part of the repository; `//tools/license:verify` exempts this
   folder from the MIT header check, and nothing MIT may link `:GitHubToolCore`.
 - **It links the kit, and nothing of the app.** `//packages/vitruvian-sdk:VitruvianToolKit`
   and `:VitruvianToolProtocol` are visible to this package for that; the
@@ -69,7 +69,7 @@ bundles; this is a tool, and its one artifact is a zip (see "Releases").
 - To try it in the app: build `:tool-folder`, then Add from Folder… on
   Settings › Extensions, and pick
   `bazel-bin/apps/desktop/vitruvian-tool-github/built/github`.
-- `python3 packages/vitruvian-sdk/conformance/conformance.py bazel-bin/apps/desktop/vitruvian-tool-github/built/github`
+- `bazel run //packages/vitruvian-sdk:conformance -- bazel-bin/apps/desktop/vitruvian-tool-github/built/github`
   is what `:conformance_test` runs.
 
 ## Releases

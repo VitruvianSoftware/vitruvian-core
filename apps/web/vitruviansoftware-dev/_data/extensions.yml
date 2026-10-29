@@ -1,4 +1,4 @@
-# Written by tools/sync-site-tools/registry.py from monorepo plugin manifests.
+# Written by tools/sync-site-tools from monorepo plugin manifests.
 # Do not edit by hand; run:
 #   bazel run //tools/sync-site-tools:sync
 ecosystems:

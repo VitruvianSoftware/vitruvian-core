@@ -6,7 +6,7 @@ Standalone plugins and mods built specifically for **Claude Code** live in subdi
 
 You do **not** need to hand-edit `apps/web/vitruviansoftware-dev/_data/extensions.yml`, `apps/web/vitruviansoftware-dev/ai/catalog.json`, or the root `.claude-plugin/marketplace.json`.
 
-Any directory under `apps/claude-code/plugins/<name>/` (or `apps/desktop/antigravity/plugins/<name>/`) containing `.claude-plugin/plugin.json` or `plugin.json` is discovered automatically by `tools/sync-site-tools/registry.py`.
+Any directory under `apps/claude-code/plugins/<name>/` (or `apps/desktop/antigravity/plugins/<name>/`) containing `.claude-plugin/plugin.json` or `plugin.json` is discovered automatically by `//tools/sync-site-tools:sync`.
 
 ### Standard Directory Layout
 

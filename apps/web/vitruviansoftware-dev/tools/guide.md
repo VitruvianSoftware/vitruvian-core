@@ -6,7 +6,7 @@ permalink: /tools/guide/
 source: packages/vitruvian-sdk/docs/writing-a-tool.md
 ---
 {%- comment -%}
-  Written by tools/sync-site-tools/sync.py from packages/vitruvian-sdk.
+  Written by tools/sync-site-tools from packages/vitruvian-sdk.
   Do not edit it: change the source, then run
     bazel run //tools/sync-site-tools:sync
 {%- endcomment -%}

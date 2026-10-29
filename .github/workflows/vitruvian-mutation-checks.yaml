@@ -20,7 +20,7 @@
 
 name: Vitruvian Mutation Checks
 
-# apps/desktop/vitruvian/Tests/mutation_checks.py plants real regressions, one
+# //apps/desktop/vitruvian:mutation_checks plants real regressions, one
 # at a time, and requires each to fail the unit test meant to catch it. A test
 # that still passes with its regression in place is too weak to rely on
 # (REFACTOR.md step 7).
@@ -87,7 +87,7 @@ jobs:
           Either a planted regression no longer fails the test meant to catch it, so that test
           has gone weak, or a mutation no longer applies because its code moved. The run log
           names the mutation: strengthen the test, or update the mutation in
-          \`apps/desktop/vitruvian/Tests/mutation_checks.py\`.
+          \`//apps/desktop/vitruvian:mutation_checks\`.
 
           Failing run: ${run_url}"
           existing="$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')"
