@@ -564,7 +564,7 @@ jobs:
           # zipped, as android-remote-release.yaml does. Otherwise the Intel
           # build would first run on release day. Uses the job's BuildBuddy
           # key itself, like the release.
-          bash apps/mobile/android-remote/macmenu/scripts/publish-tool.sh --dry-run
+          bazel run "${cache[@]}" //apps/mobile/android-remote/macmenu:publish-tool-rs -- --dry-run
 
           # Vitruvian desktop app (GPL fork, apps/desktop/vitruvian): build only.
           # Changes to the app itself are built AND tested by the generated

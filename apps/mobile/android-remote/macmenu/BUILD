@@ -194,7 +194,7 @@ rust_test(
     deps = ["//apps/mobile/android-remote/macagent:macagent_scripts_lib"],
 )
 
-# The release's zip of the extension (scripts/zip-tool.sh), against stand-in
+# The release's zip of the extension (scripts/src/zip_tool), against stand-in
 # programs and a stand-in lipo: what it holds, what it is called, the version
 # it refuses, and the half-universal build it refuses.
 rust_test(
@@ -307,6 +307,7 @@ rust_library(
     crate_name = "publish_tool_lib",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
+    deps = [":zip_tool_lib"],
 )
 
 rust_binary(

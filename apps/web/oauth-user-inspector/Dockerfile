@@ -36,12 +36,21 @@
 ARG NODE_VERSION=22
 
 # --- Server build stage: compile the Rust backend (-> dist-server/oauth-user-inspector-server)
+# and the container entrypoint (scripts/src/bin/start.rs + scripts/src/lib.rs ->
+# dist-server/start), which checks the build outputs and execs the server.
 FROM rust:1.85-slim-bookworm AS server-build
 WORKDIR /app/server
 COPY server/ ./
 RUN cargo build --release \
     && mkdir -p /app/dist-server \
     && cp target/release/oauth-user-inspector-server /app/dist-server/oauth-user-inspector-server
+WORKDIR /app
+COPY scripts/ ./scripts/
+RUN rustc --edition=2021 -C opt-level=3 --crate-type=lib --crate-name=oauth_scripts_lib \
+        scripts/src/lib.rs --out-dir /tmp/start-build \
+    && rustc --edition=2021 -C opt-level=3 scripts/src/bin/start.rs \
+        -L /tmp/start-build --extern oauth_scripts_lib=/tmp/start-build/liboauth_scripts_lib.rlib \
+        -o /app/dist-server/start
 
 # --- Frontend build stage: compile the Vite/React frontend (-> dist)
 FROM node:${NODE_VERSION}-slim AS build
@@ -75,8 +84,7 @@ RUN sed -i 's/"catalog:"/"^29.7.0"/g' package.json
 RUN pnpm install --prod --no-frozen-lockfile && pnpm store prune
 COPY --from=build /app/dist ./dist
 COPY --from=server-build /app/dist-server ./dist-server
-COPY start.sh ./
-RUN chmod +x start.sh dist-server/oauth-user-inspector-server \
+RUN chmod +x dist-server/start dist-server/oauth-user-inspector-server \
     && groupadd -r -g 1001 nodejs \
     && useradd -r -u 1001 -g nodejs nodejs \
     && chown -R nodejs:nodejs /app
@@ -84,4 +92,4 @@ USER nodejs
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:8080/ || exit 1
-CMD ["./start.sh"]
+CMD ["/app/dist-server/start"]

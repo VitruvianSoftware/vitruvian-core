@@ -19,7 +19,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! Rust port of `apps/web/oauth-user-inspector/start.sh`.
+//! The container entrypoint (`dist-server/start`), the Rust successor of the
+//! former `start.sh`.
 
 use std::env;
 use std::os::unix::process::CommandExt;

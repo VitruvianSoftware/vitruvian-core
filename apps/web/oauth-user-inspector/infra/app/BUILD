@@ -82,7 +82,7 @@ delivery(
     # catalog-info/dashboard change). Each carve-out below is provably inert
     # for this unit, from the two things a deploy is a function of:
     #   * THE IMAGE — oauth-user-inspector/Dockerfile COPYs exactly
-    #     package.json, tsconfig.json, frontend/, server/ and start.sh. Nothing
+    #     package.json, tsconfig.json, frontend/, server/ and scripts/. Nothing
     #     listed here is in that set, so none of them can change the digest.
     #   * THE PULUMI PROGRAM — apps/web/oauth-user-inspector/infra/app/** (main.go, the
     #     Pulumi.<env>.yaml stack configs, smoke.sh), which is NOT excluded.
