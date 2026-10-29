@@ -44,9 +44,31 @@ impl BuildCheckError {
                 "❌ Error: dist-server directory not found. Server build may have failed."
             }
             BuildCheckError::MissingServerJs => {
-                "❌ Error: dist-server/server.js not found. Server build may have failed."
+                "❌ Error: dist-server/oauth-user-inspector-server not found. Server build may have failed."
             }
         }
+    }
+}
+
+/// How the container hands off to the real server.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ServerCommand {
+    /// The compiled Rust server (`dist-server/oauth-user-inspector-server`).
+    Native(&'static str),
+    /// The legacy Node server (`node dist-server/server.js`).
+    Node(&'static str),
+}
+
+/// Pick the server to exec, mirroring the former `start.sh`: prefer the native
+/// binary, fall back to `node dist-server/server.js`.
+pub fn select_server_command(root: &Path) -> ServerCommand {
+    if root
+        .join("dist-server/oauth-user-inspector-server")
+        .is_file()
+    {
+        ServerCommand::Native("dist-server/oauth-user-inspector-server")
+    } else {
+        ServerCommand::Node("dist-server/server.js")
     }
 }
 
@@ -134,7 +156,48 @@ pub fn run(_args: &[String]) -> i32 {
     println!("Contents of dist-server/ (backend):");
     run_ls_la(Some("dist-server/"));
 
-    let err = Command::new("node").arg("dist-server/server.js").exec();
-    eprintln!("failed to exec node dist-server/server.js: {err}");
+    let (err, what) = match select_server_command(&cwd) {
+        ServerCommand::Native(bin) => (Command::new(format!("./{bin}")).exec(), bin),
+        ServerCommand::Node(js) => (Command::new("node").arg(js).exec(), js),
+    };
+    eprintln!("failed to exec {what}: {err}");
     1
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    fn tmp(name: &str) -> std::path::PathBuf {
+        let d = env::temp_dir().join(format!("oui-start-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(d.join("dist-server")).unwrap();
+        d
+    }
+
+    /// Regression: the image ships only the native binary (no server.js); the
+    /// entrypoint must exec it rather than `node dist-server/server.js`, which
+    /// made Cloud Run revisions fail to listen on PORT.
+    #[test]
+    fn prefers_native_binary_when_present() {
+        let d = tmp("native");
+        fs::write(d.join("dist-server/oauth-user-inspector-server"), "").unwrap();
+        assert_eq!(
+            select_server_command(&d),
+            ServerCommand::Native("dist-server/oauth-user-inspector-server")
+        );
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn falls_back_to_node_server_js() {
+        let d = tmp("node");
+        fs::write(d.join("dist-server/server.js"), "").unwrap();
+        assert_eq!(
+            select_server_command(&d),
+            ServerCommand::Node("dist-server/server.js")
+        );
+        let _ = fs::remove_dir_all(&d);
+    }
 }
