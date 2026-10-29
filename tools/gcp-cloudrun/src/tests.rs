@@ -177,6 +177,11 @@ fn rejects_bad_arguments() {
         vec!["--project", "p", "--service", "s", "--since", "3 hours"],
         vec!["--project", "p", "--service", "s", "--limit", "all"],
         vec!["--project", "p", "--service", "s", "--bogus"],
+        vec!["--project", "p", "--revision", "--log-http"], // a name that is a flag
+        vec!["--project", "p", "--service", "-s"],
+        vec!["--project", "1p", "--service", "s"],
+        vec!["--project", "p", "--service", "s", "--since", "3\u{e9}"], // used to panic
+        vec!["--project", "p", "--service", "s", "--since", ""],
     ] {
         assert!(parse_args(&v(&bad)).is_err(), "should reject {:?}", bad);
     }
@@ -457,4 +462,65 @@ fn last_line_takes_the_token_after_diagnostics() {
         Some("ya29.abc")
     );
     assert_eq!(last_line("\n \n"), None);
+}
+
+// --- the real runner: the token file outlives nothing ------------------------
+
+fn script(dir: &Path, name: &str, body: &str) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let p = dir.join(name);
+    std::fs::write(&p, format!("#!/bin/sh\n{}\n", body)).unwrap();
+    std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+    p
+}
+
+/// Ctrl-C reaches gcloud and this tool together. The fake gcloud sends
+/// SIGINT to us (its parent) and exits as gcloud would; we must survive,
+/// stop, and delete the token file. Without the signal handlers this test
+/// process is killed by the SIGINT and the test fails.
+#[test]
+fn ctrl_c_during_gcloud_still_deletes_the_token_file() {
+    let dir = workspace("sigint");
+    let seen = dir.join("seen-token-file");
+    let token_bin = script(&dir, "gcp-token", &format!("echo diag >&2; echo {}", TOKEN));
+    let gcloud_bin = script(
+        &dir,
+        "gcloud",
+        &format!(
+            "cp \"$CLOUDSDK_AUTH_ACCESS_TOKEN_FILE\" '{seen}.content'; echo \"$CLOUDSDK_AUTH_ACCESS_TOKEN_FILE\" > '{seen}'; kill -INT $PPID; exit 130",
+            seen = seen.display()
+        ),
+    );
+    let mut r = SystemRunner::new(token_bin, gcloud_bin.display().to_string());
+    let code = run(
+        &v(&["--project", "prj-1", "--service", "svc"]),
+        &dir,
+        &mut r,
+    );
+    drop(r);
+    assert_eq!(code, 130, "stops after the interrupted command");
+    let file = std::fs::read_to_string(&seen).expect("gcloud ran once");
+    assert_eq!(
+        std::fs::read_to_string(format!("{}.content", seen.display())).unwrap(),
+        TOKEN
+    );
+    assert!(
+        !Path::new(file.trim()).exists(),
+        "token file left behind: {}",
+        file.trim()
+    );
+    assert!(signals::interrupted());
+}
+
+#[test]
+fn sweeps_token_files_of_dead_processes_only() {
+    let dir = workspace("sweep");
+    let dead = dir.join("gcp-cloudrun-2147483646.token"); // above any pid_max
+    let mine = dir.join(format!("gcp-cloudrun-{}.token", std::process::id()));
+    let other = dir.join("gcp-cloudrun-notes.txt");
+    for p in [&dead, &mine, &other] {
+        std::fs::write(p, "x").unwrap();
+    }
+    assert_eq!(sweep_stale_token_files(&dir), 1);
+    assert!(!dead.exists() && mine.exists() && other.exists());
 }

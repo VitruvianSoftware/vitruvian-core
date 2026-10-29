@@ -255,8 +255,10 @@ pub struct Args {
 
 /// Cloud Run names (services, revisions) and regions: lowercase letters,
 /// digits and hyphens. Checked because they are interpolated into a logging filter.
+/// It must start with a letter (as Cloud Run names, regions and project ids
+/// do), so a value can never be read by gcloud as a flag.
 fn valid_name(s: &str) -> bool {
-    !s.is_empty()
+    s.as_bytes().first().is_some_and(|c| c.is_ascii_lowercase())
         && s.len() <= 100
         && s.bytes()
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'-')
@@ -267,6 +269,9 @@ fn valid_project(s: &str) -> bool {
 }
 
 fn valid_since(s: &str) -> bool {
+    if s.is_empty() || !s.is_ascii() {
+        return false;
+    }
     let (n, unit) = s.split_at(s.len().saturating_sub(1));
     !n.is_empty()
         && n.bytes().all(|c| c.is_ascii_digit())
@@ -497,6 +502,10 @@ pub trait Runner {
     fn gcloud(&mut self, cmd: &GcloudCmd, token: &str) -> i32;
     fn say(&mut self, line: &str);
     fn warn(&mut self, line: &str);
+    /// True once the user has asked to stop (Ctrl-C, SIGTERM, SIGHUP).
+    fn interrupted(&self) -> bool {
+        false
+    }
 }
 
 pub fn run<R: Runner>(argv: &[String], workspace: &Path, r: &mut R) -> i32 {
@@ -541,13 +550,92 @@ pub fn run<R: Runner>(argv: &[String], workspace: &Path, r: &mut R) -> i32 {
     };
     let mut code = 0;
     for cmd in &cmds {
+        if r.interrupted() {
+            r.warn("gcp-cloudrun: interrupted");
+            return 130;
+        }
         r.say(&format!("\n== gcloud {} ==", cmd.argv().join(" ")));
         let c = r.gcloud(cmd, &token);
         if c != 0 && code == 0 {
             code = c;
         }
     }
+    if r.interrupted() {
+        r.warn("gcp-cloudrun: interrupted");
+        return 130;
+    }
     code
+}
+
+/// Signals, without a libc crate. Ctrl-C goes to gcloud and to us; if it
+/// killed us, the token file would outlive the run. So we catch SIGINT,
+/// SIGTERM and SIGHUP with a handler that only records them: gcloud still
+/// stops (a caught handler is reset to the default across exec, unlike an
+/// ignored signal), and we get back control to delete the file and exit.
+pub mod signals {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    static INTERRUPTED: AtomicBool = AtomicBool::new(false);
+    const SIGHUP: i32 = 1;
+    const SIGINT: i32 = 2;
+    const SIGTERM: i32 = 15;
+
+    extern "C" {
+        fn signal(sig: i32, handler: extern "C" fn(i32)) -> usize;
+        fn kill(pid: i32, sig: i32) -> i32;
+    }
+
+    extern "C" fn record(_: i32) {
+        INTERRUPTED.store(true, Ordering::SeqCst);
+    }
+
+    pub fn install() {
+        for s in [SIGHUP, SIGINT, SIGTERM] {
+            // SAFETY: `record` only stores to an atomic, which is async-signal-safe.
+            unsafe {
+                signal(s, record);
+            }
+        }
+    }
+
+    pub fn interrupted() -> bool {
+        INTERRUPTED.load(Ordering::SeqCst)
+    }
+
+    /// Whether a process with this pid exists (that we may signal).
+    pub fn alive(pid: i32) -> bool {
+        // SAFETY: signal 0 only checks for existence; nothing is delivered.
+        pid > 0 && unsafe { kill(pid, 0) } == 0
+    }
+}
+
+const TOKEN_FILE_PREFIX: &str = "gcp-cloudrun-";
+const TOKEN_FILE_SUFFIX: &str = ".token";
+
+/// Delete token files left in `dir` by runs whose process is gone (a
+/// SIGKILL cannot be caught). Returns how many were removed.
+pub fn sweep_stale_token_files(dir: &Path) -> usize {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return 0;
+    };
+    let mut removed = 0;
+    for e in entries.flatten() {
+        let name = e.file_name().to_string_lossy().to_string();
+        let Some(pid) = name
+            .strip_prefix(TOKEN_FILE_PREFIX)
+            .and_then(|r| r.strip_suffix(TOKEN_FILE_SUFFIX))
+            .and_then(|p| p.parse::<i32>().ok())
+        else {
+            continue;
+        };
+        if pid as u32 != std::process::id()
+            && !signals::alive(pid)
+            && fs::remove_file(e.path()).is_ok()
+        {
+            removed += 1;
+        }
+    }
+    removed
 }
 
 /// The real runner: `//tools/gcp-token` for the token, `gcloud` from PATH.
@@ -558,7 +646,11 @@ pub struct SystemRunner {
 }
 
 impl SystemRunner {
+    /// Also installs the signal handlers and sweeps token files that earlier,
+    /// killed runs left behind.
     pub fn new(gcp_token_bin: PathBuf, gcloud_bin: String) -> Self {
+        signals::install();
+        sweep_stale_token_files(&std::env::temp_dir());
         SystemRunner {
             gcp_token_bin,
             gcloud_bin,
@@ -576,7 +668,12 @@ impl SystemRunner {
         use std::io::Write;
         use std::os::unix::fs::OpenOptionsExt;
         let dir = std::env::temp_dir();
-        let path = dir.join(format!("gcp-cloudrun-{}.token", std::process::id()));
+        let path = dir.join(format!(
+            "{}{}{}",
+            TOKEN_FILE_PREFIX,
+            std::process::id(),
+            TOKEN_FILE_SUFFIX
+        ));
         let mut f = fs::OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -660,6 +757,10 @@ impl Runner for SystemRunner {
 
     fn warn(&mut self, line: &str) {
         eprintln!("{}", line);
+    }
+
+    fn interrupted(&self) -> bool {
+        signals::interrupted()
     }
 }
 
