@@ -37,12 +37,6 @@ load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 #   bazel run //tools/gitops:fedora-power-cycle -- --status
 #   bazel run //tools/gitops:fedora-power-cycle -- --cycle
 #   bazel run //tools/gitops:fedora-power-cycle -- --host 192.168.86.48 --off
-alias(
-    name = "fedora-power-cycle-py",
-    actual = ":fedora-power-cycle",
-    visibility = ["//visibility:public"],
-)
-
 # The one Rust library of this package (//tools/lint-naming allows one per
 # directory), holding two things:
 #   - fedora-power-cycle in Rust, standard library only;
@@ -99,11 +93,6 @@ rust_test(
     crate = ":fedora_power_cycle_lib",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-)
-
-test_suite(
-    name = "fedora_power_cycle_rs_parity_test",
-    tests = [":fedora_power_cycle_lib_test"],
 )
 
 # ---------------------------------------------------------------------------

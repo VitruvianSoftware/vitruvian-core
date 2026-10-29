@@ -18,10 +18,9 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! agent-app: agent-app.sh in Rust. The same command line, the same calls to
-//! curl, openssl, gh, git and the landed gate (argument for argument), the
-//! same output, exit codes and files. agent_app_rs_parity_test.py runs the
-//! two side by side.
+//! agent-app: the Rust replacement for the deleted agent-app.sh script. It
+//! kept the script's command line, its calls to curl, openssl, gh, git and the
+//! landed gate (argument for argument), its output, exit codes and files.
 //!
 //! What the script does with jq on its own machine (convert, installations,
 //! repos, token) is done here with serde_json (see jq.rs); the filters it

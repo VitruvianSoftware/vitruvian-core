@@ -70,12 +70,6 @@ alias(
     visibility = ["//visibility:public"],
 )
 
-alias(
-    name = "check-sh",
-    actual = ":check",
-    visibility = ["//visibility:public"],
-)
-
 rust_test(
     name = "conformance_check_test",
     size = "small",

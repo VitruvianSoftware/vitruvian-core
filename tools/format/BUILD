@@ -12,8 +12,6 @@ load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 # gazelle:exclude
 package(default_visibility = ["//:__subpackages__"])
 
-exports_files(["prettier_wrapper.sh"])
-
 prettier.prettier_binary(
     name = "prettier",
     # Include this js_library and its dependencies in the runfiles (runtime dependencies)

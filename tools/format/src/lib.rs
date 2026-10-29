@@ -19,7 +19,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! Rust port of `tools/format/prettier_wrapper.sh`.
+//! Rust replacement for the deleted `tools/format/prettier_wrapper.sh`.
 //!
 //! Locates `prettier_bin` in runfiles (`prettier_bin_/prettier_bin` or via
 //! recursive directory search), filters out symlink arguments (`-L "$arg"`),

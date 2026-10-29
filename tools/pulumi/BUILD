@@ -93,12 +93,6 @@ sh_test(
 # tokens are deleted in a separate, confirmed --cleanup step once CI is green.
 #   bazel run //tools/pulumi:rotate-access-token
 #   bazel run //tools/pulumi:rotate-access-token -- --cleanup [--delete-old ID]
-alias(
-    name = "rotate-access-token-py",
-    actual = ":rotate-access-token",
-    visibility = ["//visibility:public"],
-)
-
 test_suite(
     name = "rotate_access_token_test",
     tests = [":rotate_access_token_lib_test"],
@@ -152,11 +146,6 @@ rust_test(
     crate = ":rotate_access_token_lib",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-)
-
-test_suite(
-    name = "rotate_access_token_rs_parity_test",
-    tests = [":rotate_access_token_lib_test"],
 )
 
 # ---------------------------------------------------------------------------
@@ -292,9 +281,4 @@ sh_test(
         "PATH",
         "HOME",
     ],
-)
-
-test_suite(
-    name = "pulumi_tools_parity_test",
-    tests = [":rotate_access_token_lib_test"],
 )

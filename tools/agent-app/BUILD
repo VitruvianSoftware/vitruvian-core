@@ -64,8 +64,11 @@ rust_binary(
     deps = [":permission_drift_lib"],
 )
 
-# //tools/git and //tools/pipeline/verifiedrun invoke `_main/tools/agent-app/agent-app.sh`
-# via `bash` from their runfiles; this generated launcher forwards directly to the Rust binary.
+# agent-app.sh is no longer a source file: this genrule generates it, a two-line
+# launcher that execs the Rust `:agent-app` beside it. //tools/git still runs it
+# from runfiles (`_main/tools/agent-app/agent-app.sh`, overridable with
+# AGENT_APP), and //tools/pipeline/verifiedrun is handed its path with
+# `--agent-app=$(rlocationpath :agent-app.sh)`.
 genrule(
     name = "agent_app_sh_shim",
     srcs = [":agent-app"],
@@ -106,16 +109,6 @@ test_suite(
 test_suite(
     name = "agent-app-rs_test",
     tests = [":permission_drift_lib_test"],
-)
-
-test_suite(
-    name = "agent_app_rs_parity_test",
-    tests = [":permission_drift_lib_test"],
-)
-
-alias(
-    name = "permission-drift-py",
-    actual = ":permission-drift",
 )
 
 test_suite(
@@ -188,9 +181,4 @@ rust_test(
     ],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-)
-
-test_suite(
-    name = "permission_drift_rs_parity_test",
-    tests = [":permission_drift_lib_test"],
 )
