@@ -63,7 +63,7 @@ bazel run //tools/desktop-package:package-desktop -- \
 | `--skip-signing` | Skip codesigning (testing only) | `false` |
 | `--skip-dmg` | Skip DMG creation (headless/testing) | `false` |
 | `--skip-thinning` | Skip lipo thinning to arm64/x86_64 | `false` |
-| `--sync-downloads` | Run `sync_downloads.py` after packaging | `false` |
+| `--sync-downloads` | Run `//tools/sync-downloads:sync_downloads` after packaging (also runs for any `--tag` release that is not a dry run). Under `bazel run` the binary comes from runfiles; a binary built with plain `rustc` builds the tool from the checkout's sources | `false` |
 | `--dry-run` | Package and verify; do not upload/push | `false` |
 | `--require-asset <name>` | Also require `<name>` and `<name>.sha256` among the artifacts (repeatable). For a file the caller puts in `--dist-dir` itself, named `<App>-<version>*.zip` or `*.dmg` so it is checksummed and uploaded | None |
 | `--verify-only` | Package nothing; only check the expected artifacts exist (see below). Needs `--app-name` and `--version` or `--tag` | `false` |
