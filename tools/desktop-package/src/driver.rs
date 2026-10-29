@@ -23,7 +23,7 @@
 //! upload and read-back, the tap update and the downloads sync.
 //!
 //! Each step runs the programs the script runs (ditto, codesign, hdiutil,
-//! lipo, xcrun, gh, git, python3, shasum, and the coreutils that change the
+//! lipo, xcrun, gh, git, rustc, shasum, and the coreutils that change the
 //! file system), with the same arguments, in the same order, and prints the
 //! same lines. A step that fails ends the run with that step's status, as
 //! `set -e` does, after the staging directory is removed.
@@ -41,6 +41,10 @@ use crate::shell::{
     logical_path, mktemp_d, out, out_raw, shell_pwd, Shell, Step,
 };
 
+/// Where `bazel run` hands over the //tools/sync-downloads:sync_downloads
+/// binary (its rootpath; see BUILD).
+pub const SYNC_DOWNLOADS_ENV: &str = "PACKAGE_DESKTOP_SYNC_DOWNLOADS";
+
 /// `usage`'s text, as the script's heredoc holds it.
 pub const USAGE: &str = r#"Usage:
   package-desktop.sh [options]
@@ -52,7 +56,7 @@ Produces the full 6-point distribution contract:
   3. Intel x86_64 DMG (<App>-<version>-x86_64.dmg)
   4. Universal ZIP (<App>-<version>-universal.zip)
   5. Homebrew Cask formula in VitruvianSoftware/homebrew-tap (Casks/<app>.rb)
-  6. Sync to downloads catalog via tools/sync-downloads/sync_downloads.py
+  6. Sync to downloads catalog via //tools/sync-downloads:sync_downloads
 
 Options:
   --app-path <path>       Path to built .app bundle (e.g. dist/HomeSpeaker.app)
@@ -69,7 +73,7 @@ Options:
   --skip-signing          Skip codesigning
   --skip-dmg              Skip DMG generation (useful for testing environments)
   --skip-thinning         Skip lipo thinning (arm64/x86_64 DMGs)
-  --sync-downloads        Run tools/sync-downloads/sync_downloads.py after packaging
+  --sync-downloads        Run //tools/sync-downloads:sync_downloads after packaging
   --dry-run               Package artifacts locally and verify; do not upload to GitHub or push to tap
   --require-asset <name>  Also require <name> (and <name>.sha256) among the artifacts; repeatable.
                           For a file the caller put in --dist-dir itself, named <App>-<version>*.zip|dmg
@@ -1026,29 +1030,21 @@ impl Driver {
         }
 
         // 11. The downloads catalog.
-        let pwd = shell_pwd();
-        let script_dir = logical_path(&pwd, &dirname(&self.program));
-        let repo_root = {
-            let w = env("BUILD_WORKSPACE_DIRECTORY");
-            if w.is_empty() {
-                logical_path(&script_dir, "../..")
-            } else {
-                w
-            }
-        };
-        let sync_script = format!("{repo_root}/tools/sync-downloads/sync_downloads.py");
         if o.sync_downloads || (!o.tag.is_empty() && !o.dry_run) {
             out("==> Synchronizing downloads catalog...");
-            if is_file(&sync_script) {
-                let mut a = vec![sync_script.as_str()];
-                if o.dry_run {
-                    a.push("--dry-run");
+            let repo_root = self.repo_root();
+            match self.sync_downloads_tool(&repo_root)? {
+                Some(tool) => {
+                    let a: &[&str] = if o.dry_run { &["--dry-run"] } else { &[] };
+                    let mut c = cmd(&tool, a);
+                    c.current_dir(&repo_root).env("PWD", &repo_root);
+                    self.sh.must(821, &mut c)?;
                 }
-                self.run_line(821, "python3", &a)?;
-            } else {
-                err(&format!(
-                    "Warning: downloads catalog sync script not found at {sync_script}"
-                ));
+                None => err(&format!(
+                    "Warning: downloads catalog sync tool not found: set {SYNC_DOWNLOADS_ENV} \
+                     (bazel run sets it), or run from a checkout with rustc on PATH \
+                     (looked in {repo_root}/tools/sync-downloads/src)"
+                )),
             }
         }
 
@@ -1064,6 +1060,91 @@ impl Driver {
         ls.extend(listing.iter().map(|s| s.as_str()));
         self.sh.status(0, &mut cmd_quiet("ls", &ls), true);
         Ok(())
+    }
+
+    /// The checkout the downloads sync runs in: Bazel's workspace; else two
+    /// levels above the program (it lives in tools/desktop-package/); else,
+    /// for a binary rustc built somewhere else (as the release workflows and
+    /// the HomeSpeaker publisher build it), the checkout around the current
+    /// directory.
+    fn repo_root(&self) -> String {
+        let w = env("BUILD_WORKSPACE_DIRECTORY");
+        if !w.is_empty() {
+            return w;
+        }
+        let script_dir = logical_path(&shell_pwd(), &dirname(&self.program));
+        let beside = logical_path(&script_dir, "../..");
+        if is_dir(&format!("{beside}/tools/sync-downloads")) {
+            return beside;
+        }
+        let (top, code) = self.sh.capture(
+            0,
+            &mut cmd_quiet("git", &["rev-parse", "--show-toplevel"]),
+            true,
+        );
+        let top = chomp(top);
+        if code == 0 && !top.is_empty() {
+            top
+        } else {
+            beside
+        }
+    }
+
+    /// The //tools/sync-downloads:sync_downloads binary: the one `bazel run`
+    /// hands over in SYNC_DOWNLOADS_ENV, else one rustc builds from the
+    /// checkout's sources into the staging tree, the way the release
+    /// workflows build these tools. None when neither is possible.
+    fn sync_downloads_tool(&self, repo_root: &str) -> Step<Option<String>> {
+        let given = env(SYNC_DOWNLOADS_ENV);
+        if !given.is_empty() {
+            // A runfiles path, relative to where Bazel started the program.
+            return Ok(Some(
+                fs::canonicalize(&given)
+                    .map(|p| p.to_string_lossy().into_owned())
+                    .unwrap_or(given),
+            ));
+        }
+        let src = format!("{repo_root}/tools/sync-downloads/src");
+        let (lib, main) = (format!("{src}/lib.rs"), format!("{src}/main.rs"));
+        if !is_file(&lib) || !is_file(&main) || !has("rustc") {
+            return Ok(None);
+        }
+        let dir = format!("{}/sync-downloads", self.stage_root);
+        let rlib = format!("{dir}/libsync_downloads.rlib");
+        let bin = format!("{dir}/sync_downloads");
+        let extern_arg = format!("sync_downloads={rlib}");
+        self.run_line(0, "mkdir", &["-p", &dir])?;
+        self.run_line(
+            0,
+            "rustc",
+            &[
+                "--edition",
+                "2021",
+                "--crate-type",
+                "lib",
+                "--crate-name",
+                "sync_downloads",
+                &lib,
+                "-o",
+                &rlib,
+            ],
+        )?;
+        self.run_line(
+            0,
+            "rustc",
+            &[
+                "--edition",
+                "2021",
+                &main,
+                "-L",
+                &dir,
+                "--extern",
+                &extern_arg,
+                "-o",
+                &bin,
+            ],
+        )?;
+        Ok(Some(bin))
     }
 
     /// `(cd "$DIST_DIR" && <tool> "$local_art" > "${local_art}.sha256")`.
@@ -1222,6 +1303,68 @@ mod tests {
         assert_eq!(parse("p", &args(&["--help"]), &mut o), Parsed::Usage(0));
         assert_eq!(parse("p", &args(&["--bogus"]), &mut o), Parsed::Usage(1));
         assert_eq!(parse("p", &args(&["--tag"]), &mut o), Parsed::Exit(1));
+    }
+
+    /// A fresh directory under the test's temp dir.
+    fn scratch(name: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("package-desktop-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    /// --sync-downloads runs the sync tool Bazel hands over, from the repo
+    /// root, with --dry-run passed through. It used to look for the deleted
+    /// sync_downloads.py, warn, and carry on with exit 0.
+    #[test]
+    fn sync_downloads_runs_the_rust_tool() {
+        use std::os::unix::fs::PermissionsExt;
+        let t = scratch("sync");
+        let repo = t.join("repo");
+        fs::create_dir_all(repo.join("tools/sync-downloads")).unwrap();
+        let repo = fs::canonicalize(&repo).unwrap();
+        let called = t.join("called");
+        let tool = t.join("fake-sync");
+        fs::write(
+            &tool,
+            format!(
+                "#!/bin/sh\nprintf '%s|%s\\n' \"$(pwd -P)\" \"$*\" > '{}'\n",
+                called.display()
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(&tool, fs::Permissions::from_mode(0o755)).unwrap();
+        let app = t.join("Fake.app/Contents/MacOS");
+        fs::create_dir_all(&app).unwrap();
+        fs::write(app.join("Fake"), "#!/bin/sh\n").unwrap();
+        fs::write(t.join("Fake.app/Contents/Info.plist"), "<plist/>").unwrap();
+
+        // This is the only test that sets these, and none reads them.
+        std::env::set_var(SYNC_DOWNLOADS_ENV, &tool);
+        std::env::set_var("BUILD_WORKSPACE_DIRECTORY", &repo);
+        let code = main_with(
+            "package-desktop",
+            "/nonexistent/package-desktop",
+            &args(&[
+                "--app-path",
+                t.join("Fake.app").to_str().unwrap(),
+                "--app-name",
+                "Fake",
+                "--version",
+                "0.0.1",
+                "--dist-dir",
+                t.join("dist").to_str().unwrap(),
+                "--skip-signing",
+                "--skip-dmg",
+                "--skip-thinning",
+                "--sync-downloads",
+                "--dry-run",
+            ]),
+        );
+        assert_eq!(code, 0);
+        let got = fs::read_to_string(&called).expect("the sync tool was not run");
+        assert_eq!(got.trim_end(), format!("{}|--dry-run", repo.display()));
+        let _ = fs::remove_dir_all(&t);
     }
 
     #[test]
