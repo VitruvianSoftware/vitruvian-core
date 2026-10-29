@@ -18,13 +18,13 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! fedora_power_cycle.py in Rust, standard library only: the same command
-//! line, the same bytes to the Kasa HS300 strip, the same output and exit
-//! codes. Where the script dies with an uncaught exception, the port prints
-//! a traceback header and the same last line (`ConnectionRefusedError:
-//! [Errno 61] Connection refused`, `KeyError: 'id'`, ...) and exits 1. The
-//! parity test (fedora_power_cycle_rs_parity_test.py) holds the two together
-//! against a fake strip on localhost.
+//! fedora-power-cycle in Rust, standard library only: the command line,
+//! bytes to the Kasa HS300 strip, output and exit codes of the
+//! fedora_power_cycle.py it replaced (now deleted, with its parity test).
+//! Where the script died with an uncaught exception, this prints a traceback
+//! header and the same last line (`ConnectionRefusedError: [Errno 61]
+//! Connection refused`, `KeyError: 'id'`, ...) and exits 1. The unit tests in
+//! src/ check it against a fake strip on localhost.
 //!
 //! The crate also carries `ops`: the tools/gitops shell scripts in Rust
 //! (this package's one rust_library), run by src/bin/gitops_cli.rs.

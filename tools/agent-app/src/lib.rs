@@ -18,13 +18,13 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! permission_drift.py in Rust, standard library only: the same command
-//! line, the same GitHub requests, the same report and exit codes. The
-//! parity test (permission_drift_rs_parity_test.py) holds the two together.
+//! The permission-drift check in Rust, standard library only: the command
+//! line, GitHub requests, report and exit codes of the permission_drift.py it
+//! replaced (now deleted, with its parity test).
 //!
-//! agent_app is agent-app.sh in Rust (the `:agent-app` binary), held to the
-//! script by agent_app_rs_parity_test.py. It shares this library because a
-//! package has one rust_library (//tools/lint-naming).
+//! agent_app is the `:agent-app` binary, the Rust replacement for the deleted
+//! agent-app.sh script. It shares this library because a package has one
+//! rust_library (//tools/lint-naming).
 
 #[cfg(not(feature = "standalone_permission_drift"))]
 pub mod agent_app;

@@ -333,12 +333,6 @@ rust_binary(
     ]
 ]
 
-alias(
-    name = "actionlint-sh",
-    actual = ":actionlint",
-    visibility = ["//visibility:public"],
-)
-
 # Throwaway repos and the real pinned binaries; also fails when the workflow's
 # ACTIONLINT_VERSION and the lockfile drift apart.
 sh_test(
@@ -425,12 +419,6 @@ rust_binary(
     "gate-evaluator-rs",
     "gate_evaluator_rs",
 ]]
-
-alias(
-    name = "gate-evaluator-sh",
-    actual = ":gate_evaluator",
-    visibility = ["//visibility:public"],
-)
 
 sh_test(
     name = "gate_evaluator_rs_test",

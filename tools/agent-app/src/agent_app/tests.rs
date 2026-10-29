@@ -19,8 +19,7 @@
 // SOFTWARE.
 
 //! Unit tests for agent_app: the argument rules, the encodings and the jq
-//! programs. The whole program is held to agent-app.sh by
-//! agent_app_rs_parity_test.py.
+//! programs.
 
 use super::jq::{self, Prog, J};
 use super::*;
