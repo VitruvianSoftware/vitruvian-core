@@ -145,7 +145,12 @@ public class MainActivity : ComponentActivity() {
     // The system kills a foreground service under memory pressure and does not
     // always bring it back. Starting it here means opening the app repairs a
     // bridge that went quiet, which is otherwise invisible from the phone.
-    if (BridgeHub.enabled()) PhoneBridgeService.start(this)
+    if (BridgeHub.enabled()) {
+      // Not "off": the service has not run yet, and "off" while switched on
+      // reads as a stopped service -- a false alarm for the second it takes.
+      if (!BridgeHub.linked) BridgeHub.setLink(false, "starting…")
+      PhoneBridgeService.start(this)
+    }
     setContent { RemoteApp(state) }
     handleIntent(intent)
   }
@@ -173,10 +178,17 @@ public class MainActivity : ComponentActivity() {
     override fun setEnabled(enabled: Boolean) {
       BridgeHub.setEnabled(enabled)
       if (enabled) {
+        if (!BridgeHub.linked) BridgeHub.setLink(false, "starting…")
         PhoneBridgeService.start(this@MainActivity)
       } else {
         PhoneBridgeService.stop(this@MainActivity)
       }
+    }
+
+    override fun reconnect() {
+      BridgeHub.setEnabled(true)
+      if (!BridgeHub.linked) BridgeHub.setLink(false, "starting…")
+      PhoneBridgeService.reconnect(this@MainActivity)
     }
 
     override fun trustForAnHour() {

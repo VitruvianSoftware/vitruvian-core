@@ -34,11 +34,19 @@ public enum class Screen(public val title: String) {
   Hosts("Hosts"),
 }
 
-/** Whether this remote has a Mac, and whether it can reach it. */
+/**
+ * Whether this remote has a Mac, whether it can reach it, and whether it may act on it.
+ *
+ * [Unpaired] is the no-Mac-at-all onboarding state that locks navigation to Hosts. [NotPaired] is
+ * different and does not lock anything: the Mac answers the read tier, so every dashboard fills,
+ * but it holds no token for this phone and refuses every change. Reads alone must never look fully
+ * healthy, so this is what the shell shows instead of [Connected].
+ */
 public enum class Connection {
   Connected,
   Offline,
-  Unpaired
+  Unpaired,
+  NotPaired,
 }
 
 /**
@@ -402,6 +410,12 @@ public interface BridgeControl {
 
   /** Raises the runtime-permission dialog for one row. */
   public fun grant(id: String)
+
+  /**
+   * Dials the Mac now instead of waiting out the backoff, starting the service if it is not
+   * running. What the Reconnect button and a fresh pairing call.
+   */
+  public fun reconnect()
 }
 
 /**

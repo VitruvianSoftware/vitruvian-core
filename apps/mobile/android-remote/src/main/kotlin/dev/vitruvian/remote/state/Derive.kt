@@ -935,6 +935,127 @@ public object Derive {
   /** How many container rows the Mac screen shows before "Show all". */
   public const val CONTAINER_ROWS: Int = 8
 
+  // --- pairing: may this phone ACT, or only look ------------------------------
+
+  /**
+   * Whether the selected Mac will take orders from this phone.
+   *
+   * Reachable is not the same as allowed. The agent serves its read tier (metrics, host, processes)
+   * to anyone on the tailnet, so a phone holding no token still fills every dashboard and looked
+   * fully "connected" -- while every switch, dropdown and button behind the act tier was refused.
+   * This is the one question that tells those two apart, and the shell asks it before it says
+   * "connected".
+   */
+  public enum class Pairing {
+    /** No Mac configured: the app is simulating, and there is nothing to pair with. */
+    NoAgent,
+    /** A token is held. Acting will work unless the Mac says otherwise. */
+    Paired,
+    /** No token was ever issued for this Mac (or it was lost before anything was refused). */
+    NotPaired,
+    /** The Mac answered 401/403 to a token this phone held, and the token was dropped. */
+    Rejected,
+  }
+
+  /**
+   * [rejected] is only consulted while the token is blank: a token in hand means a pairing has
+   * succeeded since the refusal, so the old refusal is history and says nothing about now.
+   */
+  public fun pairing(hasAgent: Boolean, hasToken: Boolean, rejected: Boolean): Pairing =
+      when {
+        !hasAgent -> Pairing.NoAgent
+        hasToken -> Pairing.Paired
+        rejected -> Pairing.Rejected
+        else -> Pairing.NotPaired
+      }
+
+  /** True when the Mac can be looked at but not changed: the case the banner exists for. */
+  public fun needsPairing(pairing: Pairing): Boolean =
+      pairing == Pairing.NotPaired || pairing == Pairing.Rejected
+
+  /** The banner's label and body, or null when there is nothing to warn about. */
+  public fun pairingBanner(pairing: Pairing, mac: String): Pair<String, String>? =
+      when (pairing) {
+        Pairing.NotPaired ->
+            "Not paired with $mac" to
+                "This phone is not paired with $mac. You can look, but changes will not work."
+        Pairing.Rejected ->
+            "$mac stopped accepting this phone" to
+                "$mac refused this phone's pairing key. You can look, but changes will not " +
+                    "work until you pair again."
+        Pairing.NoAgent,
+        Pairing.Paired -> null
+      }
+
+  /** What an act refused for want of pairing says, wherever it is shown. Names the Mac. */
+  public fun notPairedText(mac: String): String = "Not paired with $mac — pair to make changes"
+
+  /** The one word the status dot beside a host carries. */
+  public fun connectionWord(pairing: Pairing, base: String): String =
+      if (needsPairing(pairing)) "connected · not paired" else base
+
+  // --- phone bridge: on is not the same as linked --------------------------
+
+  /** Why the bridge is switched on and still not linked. */
+  public enum class BridgeProblem {
+    /** Off, or linked: nothing to say. */
+    None,
+    /** Dialling, or between attempts. Transient; the plate says so, the banner does not. */
+    Connecting,
+    /** No token, or the Mac refused it. The link endpoint is act tier. */
+    NotPaired,
+    /** The Mac is not answering at all. */
+    Unreachable,
+    /** Switched on, but the service is not running (killed, or never started). */
+    Stopped,
+    /** Anything else; the link's own words carry it. */
+    Other,
+  }
+
+  /**
+   * [linkStatus] is what the bridge service last said about its link. `off` is the service's own
+   * word for "not running"; `not paired…` is what it says when it refuses to dial with no token,
+   * and an `AgentAuthException`'s message (`not paired (HTTP 401)`) when the Mac refused the one it
+   * had. Pairing is checked first because the service only re-reads the token between attempts, so
+   * for up to a minute its words can lag what the phone already knows.
+   */
+  public fun bridgeProblem(
+      enabled: Boolean,
+      linked: Boolean,
+      pairing: Pairing,
+      reachable: Boolean,
+      linkStatus: String,
+  ): BridgeProblem {
+    val status = linkStatus.trim().lowercase(Locale.ROOT)
+    return when {
+      !enabled || linked -> BridgeProblem.None
+      status == "off" -> BridgeProblem.Stopped
+      needsPairing(pairing) || status.startsWith("not paired") -> BridgeProblem.NotPaired
+      !reachable -> BridgeProblem.Unreachable
+      status.isEmpty() ||
+          status.startsWith("connecting") ||
+          status.startsWith("starting") ||
+          status == "linked" -> BridgeProblem.Connecting
+      else -> BridgeProblem.Other
+    }
+  }
+
+  /** The plate's and the banner's sentence for [problem], or null when there is nothing to say. */
+  public fun bridgeProblemText(problem: BridgeProblem, mac: String, linkStatus: String): String? =
+      when (problem) {
+        BridgeProblem.None -> null
+        BridgeProblem.Connecting -> "Phone Bridge is connecting to $mac…"
+        BridgeProblem.NotPaired ->
+            "Phone Bridge is on but cannot link: this phone is not paired with $mac."
+        BridgeProblem.Unreachable -> "Phone Bridge is on but cannot link: $mac is not answering."
+        BridgeProblem.Stopped -> "Phone Bridge is on but its service is not running."
+        BridgeProblem.Other -> "Phone Bridge is on but not linked: ${linkStatus.trim()}"
+      }
+
+  /** Whether the problem deserves the top-of-screen banner, not just the plate's line. */
+  public fun bridgeProblemIsBannerWorthy(problem: BridgeProblem): Boolean =
+      problem != BridgeProblem.None && problem != BridgeProblem.Connecting
+
   // --- Sony Google TV -----------------------------------------------------
 
   /** Status label for the Sony TV module header and tags. */
