@@ -55,15 +55,27 @@ pub fn parse_credentials(json_str: &str) -> Result<OpenSkyCredentials, String> {
     })
 }
 
+/// `path` as the caller meant it: `bazel run` starts the binary in its
+/// runfiles, so a relative path is taken from `working_dir`
+/// (BUILD_WORKING_DIRECTORY, the folder `bazel run` was typed in) when set.
+pub fn from_working_dir(path: &str, working_dir: Option<&str>) -> PathBuf {
+    let path = PathBuf::from(path);
+    match working_dir {
+        Some(dir) if !dir.is_empty() && path.is_relative() => PathBuf::from(dir).join(path),
+        _ => path,
+    }
+}
+
 pub fn resolve_credentials_path(explicit: Option<&str>) -> Result<PathBuf, String> {
+    let working_dir = std::env::var("BUILD_WORKING_DIRECTORY").ok();
     if let Some(path) = explicit {
         if !path.is_empty() {
-            return Ok(PathBuf::from(path));
+            return Ok(from_working_dir(path, working_dir.as_deref()));
         }
     }
     if let Ok(env_path) = std::env::var("OPENSKY_CREDENTIALS_FILE") {
         if !env_path.is_empty() {
-            return Ok(PathBuf::from(env_path));
+            return Ok(from_working_dir(&env_path, working_dir.as_deref()));
         }
     }
     if let Ok(home) = std::env::var("HOME") {

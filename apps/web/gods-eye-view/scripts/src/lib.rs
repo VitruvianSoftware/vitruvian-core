@@ -398,6 +398,56 @@ mod tests {
         assert_eq!(creds.client_secret, "s1");
     }
 
+    // ---- bazel run: where the app and the caller's files are ----
+
+    #[test]
+    fn roots_under_bazel_run_are_the_checkouts_app_folder() {
+        use std::path::PathBuf;
+        let exe = PathBuf::from("/x/bazel-out/bin/apps/web/gods-eye-view/dev_secure_rs");
+        let (source, root) = dev_helpers::roots_from(
+            Some(PathBuf::from("/repo")),
+            Some(exe.clone()),
+            PathBuf::from("/runfiles"),
+            None,
+        );
+        assert_eq!(source, PathBuf::from("/repo/apps/web/gods-eye-view"));
+        assert_eq!(root, source);
+        // GEV_PROJECT_ROOT moves only where the server runs.
+        let (source, root) = dev_helpers::roots_from(
+            Some(PathBuf::from("/repo")),
+            Some(exe),
+            PathBuf::from("/runfiles"),
+            Some(PathBuf::from("/other")),
+        );
+        assert_eq!(source, PathBuf::from("/repo/apps/web/gods-eye-view"));
+        assert_eq!(root, PathBuf::from("/other"));
+        // Outside bazel run: two levels above the binary, as from scripts/.
+        let (source, _) = dev_helpers::roots_from(
+            None,
+            Some(PathBuf::from("/app/scripts/dev-secure")),
+            PathBuf::from("/cwd"),
+            None,
+        );
+        assert_eq!(source, PathBuf::from("/app"));
+    }
+
+    #[test]
+    fn credentials_path_is_taken_from_where_bazel_run_was_typed() {
+        use std::path::PathBuf;
+        assert_eq!(
+            opensky_import_client::from_working_dir("creds.json", Some("/home/me")),
+            PathBuf::from("/home/me/creds.json")
+        );
+        assert_eq!(
+            opensky_import_client::from_working_dir("/abs/creds.json", Some("/home/me")),
+            PathBuf::from("/abs/creds.json")
+        );
+        assert_eq!(
+            opensky_import_client::from_working_dir("creds.json", None),
+            PathBuf::from("creds.json")
+        );
+    }
+
     // ---- dev_helpers: dotenv parsing ----
 
     #[test]
