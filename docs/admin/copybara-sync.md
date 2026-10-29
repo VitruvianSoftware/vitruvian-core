@@ -502,8 +502,8 @@ invariants across releases, downloads, and documentation:
 5. **Automated Catalog Synchronization (`tools/sync-downloads`):**
    - In a hybrid ecosystem where some components are standalone and others are monorepo
      subtrees, download catalogs (`_data/downloads.yml`) inevitably desynchronize on new releases.
-   - Wire any new downloadable component into `tools/sync-downloads/sync_downloads.py` (Bazel
-     target `//tools/sync-downloads:sync-downloads`) and the daily sync workflow
+   - Wire any new downloadable component into `sync_catalog` in `tools/sync-downloads/src/sync.rs`
+     (Bazel target `//tools/sync-downloads:sync_downloads`) and the daily sync workflow
      (`.github/workflows/site-sync-downloads.yaml`) to automate version, size, and URL updates.
 
 ---

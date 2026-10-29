@@ -140,7 +140,8 @@ When adding a new desktop app `apps/desktop/<app-name>`:
    - Ensure the cask identifier matches `<app-name>` in `VitruvianSoftware/homebrew-tap/Casks/<app-name>.rb`.
 5. **Downloads Catalog**:
    - Add entry under `categories.desktop.items` in `apps/web/vitruviansoftware-dev/_data/downloads.yml`.
-   - Add discovery block to `tools/sync-downloads/sync_downloads.py`.
+   - Add a discovery block to `sync_catalog` in `tools/sync-downloads/src/sync.rs`; the daily
+     `.github/workflows/site-sync-downloads.yaml` runs it.
 6. **Validation**:
    - Run `bazel test //...`
    - Run `bazel run //tools/conformance:check`
