@@ -5,7 +5,7 @@ when this machine has no credentials of its own.
 
 ```sh
 bazel run //tools/gcp-token -- james@vitruviansoftware.dev
-export GOOGLE_OAUTH_ACCESS_TOKEN="$(bazel run //tools/gcp-token -- <account> 2>/dev/null)"
+export GOOGLE_OAUTH_ACCESS_TOKEN="$(tools/gcp-token/gcp-token.sh <account>)"
 ```
 
 You mostly won't call it directly. [`//tools/pulumi`](../pulumi) already does (each
