@@ -20,6 +20,7 @@
 
 package dev.vitruvian.remote.screens
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +30,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -62,6 +65,7 @@ import dev.vitruvian.design.VSwitch
 import dev.vitruvian.design.VText
 import dev.vitruvian.design.Vitruvian
 import dev.vitruvian.design.VitruvianType
+import dev.vitruvian.remote.state.Derive
 import dev.vitruvian.remote.state.Format
 import dev.vitruvian.remote.state.MetricsSource
 import dev.vitruvian.remote.state.RemoteState
@@ -288,10 +292,19 @@ private fun AgentPlate(state: RemoteState) {
 }
 
 /** The pairing plate - registration marks and a six-digit code. */
+// BringIntoViewRequester is still @ExperimentalFoundationApi in the Compose BOM
+// pinned in MODULE.bazel (2024.11.00); it is the documented way to scroll a
+// child of a verticalScroll into view.
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun PairPlate(state: RemoteState) {
   val colors = Vitruvian
-  Plate(modifier = Modifier.fillMaxWidth(), marks = true) {
+  // "Pair now" on the banner lands here, not at the top of the page.
+  val requester = remember { BringIntoViewRequester() }
+  LaunchedEffect(state.pairFocusRequest) {
+    if (state.pairFocusRequest > 0) requester.bringIntoView()
+  }
+  Plate(modifier = Modifier.fillMaxWidth().bringIntoViewRequester(requester), marks = true) {
     Column(
         modifier = Modifier.padding(Space.s4),
         verticalArrangement = Arrangement.spacedBy(Space.s3),
@@ -306,7 +319,14 @@ private fun PairPlate(state: RemoteState) {
         // before a button silently refuses.
         Tag(
             text = if (state.paired) "paired" else "not paired",
-            tone = if (state.paired) TagTone.Ok else TagTone.Outline,
+            // Amber while a configured Mac is refusing changes: that is a
+            // problem, not merely a fact about a phone with no Mac yet.
+            tone =
+                when {
+                  state.paired -> TagTone.Ok
+                  state.needsPairing -> TagTone.Warn
+                  else -> TagTone.Outline
+                },
         )
       }
       // Paired: the code is noise until someone wants to pair again, so the
@@ -327,6 +347,10 @@ private fun PairPlate(state: RemoteState) {
           VButton("Re-pair", { repair = true })
         }
         return@Column
+      }
+      // Why this plate matters right now: the Mac answers, and refuses changes.
+      state.pairingBanner?.let { (_, body) ->
+        VText(text = body, style = VitruvianType.listSub, color = colors.warn)
       }
       VText(
           // The exact command, because a paraphrase of it is a command nobody
@@ -390,7 +414,13 @@ private fun PhoneBridgePlate(state: RemoteState) {
         Label(text = "Phone bridge", modifier = Modifier.weight(1f))
         Tag(
             text = if (state.bridgeLinked) "linked" else "not linked",
-            tone = if (state.bridgeLinked) TagTone.Ok else TagTone.Outline,
+            tone =
+                when {
+                  state.bridgeLinked -> TagTone.Ok
+                  // On and not linked is a problem; off and not linked is a choice.
+                  Derive.bridgeProblemIsBannerWorthy(state.bridgeProblem) -> TagTone.Warn
+                  else -> TagTone.Outline
+                },
         )
       }
       VText(
@@ -413,6 +443,30 @@ private fun PhoneBridgePlate(state: RemoteState) {
           style = VitruvianType.listSub,
           color = colors.textDim,
       )
+      // On but not linked: the reason in plain words, and the fix beside it.
+      // Not paired gets "Pair now" -- retrying a refused link would only be
+      // refused again.
+      val problem = state.bridgeProblem
+      state.bridgeProblemText?.let { text ->
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Space.s3),
+        ) {
+          VText(
+              text = text,
+              modifier = Modifier.weight(1f),
+              style = VitruvianType.listSub,
+              color =
+                  if (Derive.bridgeProblemIsBannerWorthy(problem)) colors.warn else colors.textDim,
+          )
+          when (problem) {
+            Derive.BridgeProblem.NotPaired -> VButton("Pair now", state::openPairing)
+            Derive.BridgeProblem.Stopped -> VButton("Start", state::reconnectBridge)
+            else -> VButton("Reconnect", state::reconnectBridge)
+          }
+        }
+      }
 
       Rule(modifier = Modifier.fillMaxWidth().height(1.dp))
 

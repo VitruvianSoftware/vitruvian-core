@@ -48,10 +48,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 
 /**
@@ -72,6 +74,12 @@ public class PhoneBridgeService : Service() {
   private var scope: CoroutineScope? = null
   private var link: Job? = null
   private val handle = ExecStreamHandle()
+
+  /**
+   * "Dial now": cuts the backoff short. Conflated, because three taps on Reconnect while the loop
+   * is asleep mean one attempt, not three.
+   */
+  private val kick = Channel<Unit>(Channel.CONFLATED)
 
   override fun onBind(intent: Intent?): IBinder? = null
 
@@ -98,6 +106,9 @@ public class PhoneBridgeService : Service() {
       return START_NOT_STICKY
     }
     startForegroundNotification()
+    // Reconnect also starts the service when it was not running, so the
+    // loop below is launched either way; the kick only matters to one asleep.
+    if (intent?.action == ACTION_RECONNECT) kick.trySend(Unit)
     if (link == null) {
       val created = CoroutineScope(SupervisorJob() + Dispatchers.IO)
       scope = created
@@ -150,8 +161,9 @@ public class PhoneBridgeService : Service() {
         else -> connect(host)
       }
       if (handle.cancelled) return
-      delay(backoffMs)
-      backoffMs = (backoffMs * 2).coerceAtMost(MAX_BACKOFF_MS)
+      // Asleep until the backoff runs out or someone asks for a retry.
+      val kicked = withTimeoutOrNull(backoffMs) { kick.receive() } != null
+      backoffMs = if (kicked) MIN_BACKOFF_MS else (backoffMs * 2).coerceAtMost(MAX_BACKOFF_MS)
       // A link that came up and stayed up resets the wait: an agent restarting
       // twice in a morning should not leave the phone waiting a minute.
       if (BridgeHub.linked) backoffMs = MIN_BACKOFF_MS
@@ -356,6 +368,9 @@ public class PhoneBridgeService : Service() {
     /** The notification action, and what the Stop button sends. */
     public const val ACTION_STOP: String = "dev.vitruvian.remote.bridge.STOP"
 
+    /** Dial the Mac now; starts the service first if it is not running. */
+    public const val ACTION_RECONNECT: String = "dev.vitruvian.remote.bridge.RECONNECT"
+
     private const val NOTIFICATION_ID = 0x8101
     private const val MIN_BACKOFF_MS = 2_000L
     private const val MAX_BACKOFF_MS = 60_000L
@@ -364,6 +379,12 @@ public class PhoneBridgeService : Service() {
     /** Starts the bridge. Safe to call when it is already running. */
     public fun start(context: Context) {
       ContextCompat.startForegroundService(context, Intent(context, PhoneBridgeService::class.java))
+    }
+
+    /** Starts it if needed and dials now instead of waiting out the backoff. */
+    public fun reconnect(context: Context) {
+      ContextCompat.startForegroundService(
+          context, Intent(context, PhoneBridgeService::class.java).setAction(ACTION_RECONNECT))
     }
 
     /** Stops it, through the same path the notification's button uses. */

@@ -28,9 +28,11 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import dev.vitruvian.design.VitruvianTheme
+import dev.vitruvian.remote.overlays.BridgeBanner
 import dev.vitruvian.remote.overlays.ConfirmDialog
 import dev.vitruvian.remote.overlays.MacroEditor
 import dev.vitruvian.remote.overlays.OfflineBanner
+import dev.vitruvian.remote.overlays.PairingBanner
 import dev.vitruvian.remote.overlays.UnpairedState
 import dev.vitruvian.remote.screens.AppsScreen
 import dev.vitruvian.remote.screens.ConsoleScreen
@@ -60,6 +62,8 @@ public fun RemoteApp(state: RemoteState) {
     val layout = rememberDeviceLayout()
     RemoteShell(state = state, layout = layout) { screen ->
       OfflineBanner(state)
+      PairingBanner(state)
+      BridgeBanner(state)
       if (state.isUnpaired) {
         UnpairedState(state)
       }
