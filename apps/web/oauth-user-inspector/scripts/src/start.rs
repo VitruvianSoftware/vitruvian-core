@@ -62,7 +62,10 @@ pub enum ServerCommand {
 /// Pick the server to exec, mirroring the former `start.sh`: prefer the native
 /// binary, fall back to `node dist-server/server.js`.
 pub fn select_server_command(root: &Path) -> ServerCommand {
-    if root.join("dist-server/oauth-user-inspector-server").is_file() {
+    if root
+        .join("dist-server/oauth-user-inspector-server")
+        .is_file()
+    {
         ServerCommand::Native("dist-server/oauth-user-inspector-server")
     } else {
         ServerCommand::Node("dist-server/server.js")
