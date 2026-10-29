@@ -383,7 +383,11 @@ fn render_tabula_dev_latest_steps(b: &mut String, _u: &Unit, _env: &str, opts: &
     b.push_str("          # a fork) the script builds locally instead of failing on auth.\n");
     b.push_str("          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}\n");
     b.push_str("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n");
-    b.push_str("        run: bash apps/suites/tabula/extension/publish-dev-latest.sh\n");
+    b.push_str("        run: |\n");
+    b.push_str("          # replaces apps/suites/tabula/extension/publish-dev-latest.sh\n");
+    b.push_str("          rustc --edition 2021 --crate-type lib --crate-name publish_dev_latest_lib apps/suites/tabula/extension/scripts/src/lib.rs -o \"$RUNNER_TEMP/libpublish_dev_latest_lib.rlib\"\n");
+    b.push_str("          rustc --edition 2021 apps/suites/tabula/extension/scripts/src/bin/publish_dev_latest.rs -L \"$RUNNER_TEMP\" --extern publish_dev_latest_lib=\"$RUNNER_TEMP/libpublish_dev_latest_lib.rlib\" -o \"$RUNNER_TEMP/publish-dev-latest\"\n");
+    b.push_str("          \"$RUNNER_TEMP/publish-dev-latest\"\n");
     Ok(())
 }
 

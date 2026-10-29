@@ -63,7 +63,7 @@
 #       paths:  apps/suites/tabula/infra/build/
 #       render: transcribed from .github/workflows/tabula-build-stack.yaml job "deploy"
 #   - tabula-dev-latest  kind=publish  run=//apps/suites/tabula/extension:publish-dev-latest  envs=publish  promotion=push-all
-#       paths:  apps/suites/tabula/infra/app/ apps/suites/tabula/extension/publish-dev-latest\.sh
+#       paths:  apps/suites/tabula/infra/app/ apps/suites/tabula/extension/scripts/src/
 #       graph:  //apps/suites/tabula/api:image_push //apps/suites/tabula/extension:chrome_zip
 #       render: transcribed from .github/workflows/tabula-dev-latest.yaml job "publish"
 #   - tabula-identity  kind=pulumi  run=//apps/suites/tabula/infra/identity:up  envs=development,nonproduction,production  promotion=push-all
@@ -633,7 +633,11 @@ jobs:
           # a fork) the script builds locally instead of failing on auth.
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash apps/suites/tabula/extension/publish-dev-latest.sh
+        run: |
+          # replaces apps/suites/tabula/extension/publish-dev-latest.sh
+          rustc --edition 2021 --crate-type lib --crate-name publish_dev_latest_lib apps/suites/tabula/extension/scripts/src/lib.rs -o "$RUNNER_TEMP/libpublish_dev_latest_lib.rlib"
+          rustc --edition 2021 apps/suites/tabula/extension/scripts/src/bin/publish_dev_latest.rs -L "$RUNNER_TEMP" --extern publish_dev_latest_lib="$RUNNER_TEMP/libpublish_dev_latest_lib.rlib" -o "$RUNNER_TEMP/publish-dev-latest"
+          "$RUNNER_TEMP/publish-dev-latest"
 
   # ======== unit: tabula-identity → development → nonproduction → production ========
   # Declared in apps/suites/tabula/infra/identity/BUILD; break-glass target: //apps/suites/tabula/infra/identity:up
