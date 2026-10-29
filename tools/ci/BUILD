@@ -2196,6 +2196,7 @@ rust_library(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [
+        "//tools/deploy:deploy_lib",
         "//tools/shell-compat:shell_compat",
     ],
 )
