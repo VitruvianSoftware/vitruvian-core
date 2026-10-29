@@ -20,11 +20,12 @@
 
 //! gen_tokens: VitruvianTokens.kt from the web design system's tokens.json.
 //!
-//! The Rust port of gen_tokens.py, held to it byte for byte by
-//! gen_tokens_rs_parity_test: the same Kotlin, command line, help and
-//! usage errors, and, where the script would die on a token tree it cannot
-//! read, the same exception at the same place (only the traceback's frames
-//! differ, since the port has no Python source to point at).
+//! The Rust port of the retired gen_tokens.py, which it matched byte for
+//! byte (gen_tokens_lib_test and :tokens_are_current hold it there): the
+//! same Kotlin, command line, help and usage errors, and, where the script
+//! would die on a token tree it cannot read, the same exception at the same
+//! place (only the traceback's frames differ, since the port has no Python
+//! source to point at).
 //!
 //! The pieces, each a part of Python the script leans on:
 //!   * `argparse` - Python 3.12's argparse, shared with the repository's

@@ -78,7 +78,7 @@ git and jq.
 In a clone of vitruvian-sdk there is no Bazel. Its own CI runs `swift build`,
 `swift test`, the conformance script on every sample, and the checks of the
 examples and the templates, in `.github/workflows/ci.yml`. The same
-commands work on your Mac. `docs/guide_test.py` runs only in vitruvian-core.
+commands work on your Mac. The guide check, `:guide_test`, runs only in vitruvian-core.
 
 After changing `samples/hello-python` or `samples/hello-swift`, run
 `bazel run //packages/vitruvian-sdk:sync-templates` and commit what it
