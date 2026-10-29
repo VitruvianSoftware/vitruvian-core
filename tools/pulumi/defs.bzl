@@ -78,12 +78,19 @@ def pulumi_project(name, dir, backend_url = None, visibility = ["//visibility:pu
     if backend_url:
         env["PULUMI_BACKEND_URL"] = backend_url
 
+    # The wrapper mints GCP tokens with //tools/gcp-token (local gcloud first,
+    # then the tailnet broker a Claude Code cloud session depends on), found
+    # through this runfiles-relative path. Same pattern as //tools/gcp-cloudrun.
+    cmd_env = dict(env)
+    cmd_env["VITRUVIAN_GCP_TOKEN_BIN"] = "$(rootpath //tools/gcp-token)"
+
     for subcmd in _SUBCOMMANDS:
         sh_binary(
             name = subcmd,
             srcs = ["//tools/pulumi:pulumi-cmd.sh"],
             args = [dir, subcmd],
-            env = env,
+            data = ["//tools/gcp-token"],
+            env = cmd_env,
             visibility = visibility,
         )
 
