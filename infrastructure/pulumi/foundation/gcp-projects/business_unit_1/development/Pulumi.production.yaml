@@ -37,6 +37,9 @@ config:
   # the stage that owns the project. Roles default to run.viewer +
   # monitoring.viewer and are validated against a read-only allowlist.
   foundation-projects-bu1-development:cluster_reader_members: "serviceAccount:sa-homelab-cluster@prj-b-cicd-e096.iam.gserviceaccount.com"
+  # Human operators with read-only Cloud Run + Logs on the oss-floating project
+  # (run.viewer + logging.viewer) so a red dev rollout can be diagnosed.
+  foundation-projects-bu1-development:operator_reader_members: "user:james.nguyen@gmail.com"
   foundation-projects-bu1-development:svpc_project_enabled: "false"
   foundation-projects-bu1-development:peering_project_enabled: "false"
   foundation-projects-bu1-development:confidential_space_enabled: "false"

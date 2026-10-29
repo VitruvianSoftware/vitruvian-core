@@ -76,6 +76,10 @@ type ProjectsConfig struct {
 	// access to this env's oss-floating project. Empty, nothing is granted.
 	ClusterReaderMembers []string
 	ClusterReaderRoles   []string
+	// OperatorReaderMembers are HUMAN operators who get read-only Cloud Run +
+	// Logs access to the oss-floating project to diagnose failed rollouts.
+	// Kept separate from ClusterReaderMembers so the homelab SA is not widened.
+	OperatorReaderMembers []string
 
 	// Apps whose PLATFORM-ISSUED deploy identity this leaf mints on the env's
 	// oss-floating project. Upstream seeds its app-infra pipeline SAs here too
@@ -224,6 +228,8 @@ func loadProjectsConfig(ctx *pulumi.Context) *ProjectsConfig {
 	if len(c.ClusterReaderRoles) == 0 {
 		c.ClusterReaderRoles = defaultClusterReaderRoles
 	}
+
+	c.OperatorReaderMembers = splitAppList(conf.Get("operator_reader_members"))
 
 	c.BootstrapStackName = conf.Get("bootstrap_stack_name")
 
@@ -511,6 +517,13 @@ func parseConditionalRoles(raw string) ([]app_deploy_identity.ConditionalRole, e
 // defaultClusterReaderRoles is what a "what is live and is it healthy" card
 // needs and nothing more. The module validates against its own allowlist too,
 // so widening this alone cannot grant write access.
+// operatorReaderRoles lets a human see what is deployed and why a revision
+// failed (run.viewer + logging.viewer); both are read-only.
+var operatorReaderRoles = []string{
+	"roles/run.viewer",
+	"roles/logging.viewer",
+}
+
 var defaultClusterReaderRoles = []string{
 	"roles/run.viewer",
 	"roles/monitoring.viewer",
