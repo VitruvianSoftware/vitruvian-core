@@ -6,7 +6,7 @@
   "main": "dist-server/server.js",
   "scripts": {
     "build:server": "cargo build --release --manifest-path server/Cargo.toml && mkdir -p dist-server && cp server/target/release/oauth-user-inspector-server dist-server/oauth-user-inspector-server",
-    "start": "./start.sh",
+    "start": "./dist-server/start",
     "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:server\"",
     "dev:server": "bazel run //apps/web/oauth-user-inspector:oauth-user-inspector-server",
     "dev:frontend": "cd frontend && vite",

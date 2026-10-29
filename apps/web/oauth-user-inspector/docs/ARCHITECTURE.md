@@ -26,7 +26,7 @@ deliberate exceptions noted below).
 | Secrets / logging | `@google-cloud/secret-manager`, `@google-cloud/logging-winston`, `winston` | Runtime creds read from GCP Secret Manager; structured logs to Cloud Logging when running on Cloud Run. |
 | Tests | **Jest 30** + **ts-jest** + **supertest** | Node test env. Outbound HTTP mocked with a CommonJS fetch mock. |
 | Package manager | **pnpm 10.20** | The monorepo is pnpm-workspace + Bazel. |
-| Container | multi-stage **Dockerfile** (`node:22-slim`) | Non-root `nodejs` user, `PORT=8080`, `HEALTHCHECK`, `CMD ["./start.sh"]`. |
+| Container | multi-stage **Dockerfile** (`node:22-slim`) | Non-root `nodejs` user, `PORT=8080`, `HEALTHCHECK`, `CMD ["/app/dist-server/start"]`. |
 | Deploy target | **Cloud Run v2** | Build-once / promote-by-digest, blue-green traffic, per-env. See [OPERATIONS.md](OPERATIONS.md). |
 
 There is **no database** and **no server-side session store**. The server is
@@ -255,11 +255,12 @@ The `Dockerfile` is multi-stage:
   `dist-server/`). A `sed` neutralizes the monorepo's pnpm `catalog:` version
   refs so the image builds standalone.
 - **runtime stage**: `NODE_ENV=production`, `PORT=8080`, prod-only deps, copies
-  `dist/` + `dist-server/` + `start.sh`, runs as non-root `nodejs` (uid 1001),
-  `EXPOSE 8080`, a curl `HEALTHCHECK` against `/`, and `CMD ["./start.sh"]`.
+  `dist/` + `dist-server/` (the server and the `start` entrypoint), runs as non-root `nodejs` (uid 1001),
+  `EXPOSE 8080`, a curl `HEALTHCHECK` against `/`, and `CMD ["/app/dist-server/start"]`.
 
-`start.sh` prints a short diagnostic banner, asserts the build outputs exist
-(fails fast with an `ls` if not), then `exec node dist-server/server.js`.
+`dist-server/start` (a Rust binary built from `scripts/src/bin/start.rs`) prints a
+short diagnostic banner, asserts the build outputs exist (fails fast with an `ls`
+if not), then execs the server.
 
 ## Testing
 

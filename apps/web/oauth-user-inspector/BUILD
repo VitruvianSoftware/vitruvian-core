@@ -176,6 +176,11 @@ rust_binary(
 )
 
 alias(
+    name = "start",
+    actual = ":start-rs",
+)
+
+alias(
     name = "start_rs",
     actual = ":start-rs",
 )

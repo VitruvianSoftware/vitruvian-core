@@ -9,7 +9,6 @@ Used by packages across //tools/...
 
 # gazelle:ignore
 
-load("@aspect_rules_py//py:defs.bzl", "py_library")
 load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
 
 rust_library(
@@ -27,14 +26,4 @@ rust_test(
     crate = ":shell_compat",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-)
-
-# The side-by-side harness each port's parity test runs: the script and the
-# binary in two identical sandboxes, compared on exit code, stdout, stderr
-# and every file left behind.
-py_library(
-    name = "parity_harness",
-    srcs = ["parity_harness.py"],
-    imports = ["."],
-    visibility = ["//tools:__subpackages__"],
 )
