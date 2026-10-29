@@ -90,3 +90,12 @@ project set. The BU's shared infra-pipeline project lives in the sibling
 | `vpc_service_control_perimeter_name` | VPC-SC perimeter name |
 | `peering_complete` | Module-dependency marker for the peering network |
 | `access_context_manager_policy_id` | Access Context Manager policy id |
+
+## Operator read-only access (`operator_reader_members`)
+
+`operator_reader_members` (comma-separated IAM members, e.g.
+`user:someone@example.com`) grants humans read-only `roles/run.viewer` and
+`roles/logging.viewer` on this env's oss-floating project, so a failed Cloud
+Run rollout can be diagnosed. It is separate from `cluster_reader_members`
+(homelab workloads) so neither list widens the other. Roles are validated
+against the read-only allowlist in `modules/cluster_reader`.
