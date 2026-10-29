@@ -21,15 +21,16 @@
 use std::process;
 
 fn main() {
-    let config = match publish::resolve_config() {
+    let runner = publish::RealRunner;
+    let config = match publish::resolve_config(&runner) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("Error: {}", e);
+            eprintln!("{}", e);
             process::exit(2);
         }
     };
 
-    if let Err(e) = publish::publish(&config) {
+    if let Err(e) = publish::publish(&config, &runner) {
         eprintln!("Error: {}", e);
         process::exit(1);
     }

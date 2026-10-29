@@ -92,7 +92,7 @@ Notes:
 
 ---
 
-## 4. Standalone Flashing with `flash.sh` / `esptool`
+## 4. Standalone Flashing with the Rust flasher / `esptool`
 
 For flashing distributed binary release zips without compiling from source:
 
@@ -101,8 +101,9 @@ For flashing distributed binary release zips without compiling from source:
 unzip esp32-s3-mac-controller.zip -d mac-ctrl-release
 cd mac-ctrl-release
 
-# Run standalone flash script
-./flash.sh /dev/cu.usbmodemXXXX
+# Build the std-only flasher beside the images, then run it
+rustc --edition 2021 -O flash/main.rs -o flash-esp32-s3
+./flash-esp32-s3 /dev/cu.usbmodemXXXX
 ```
 
 ### Manual `esptool` Command:

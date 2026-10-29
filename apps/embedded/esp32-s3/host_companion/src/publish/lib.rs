@@ -18,215 +18,377 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-use std::env;
+//! Rust port of `publish.sh`: build, stamp and publish the ESP32-S3 firmware bundle
+//! to a GitHub Release.
+//!
+//! ONE tool, TWO triggers: the generated `delivery-esp32-s3.yaml` runs it for the
+//! `esp32-s3` unit, and the break-glass path is `bazel run //apps/embedded/esp32-s3:publish`.
+//! `GRADE` selects the rung:
+//!
+//!   GRADE=beta        (push to main)  rolling prerelease `esp32-s3-beta-latest`;
+//!                     assets are overwritten and the tag is moved to HEAD.
+//!   GRADE=production  (release event) attach the assets to the release-please
+//!                     release named by `RELEASE_TAG` (esp32-s3-vX.Y.Z).
+//!
+//! Stamping happens HERE and not in the Bazel genrule: a genrule's action sees
+//! neither the workflow's env nor `.git`. The genrule produces the three raw
+//! images; this tool wraps them with `build_info.json` and the Rust flash helper
+//! sources into `esp32-s3-mac-controller.zip`.
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const TAG_PREFIX: &str = "esp32-s3-v";
-const BETA_TAG: &str = "esp32-s3-beta-latest";
-const PKG: &str = "apps/embedded/esp32-s3";
+pub const TAG_PREFIX: &str = "esp32-s3-v";
+pub const BETA_TAG: &str = "esp32-s3-beta-latest";
+pub const PKG: &str = "apps/embedded/esp32-s3";
+
+/// The flash helper that ships inside the zip (std-only; `rustc` builds it).
+pub const FLASH_SOURCES: [(&str, &str); 2] = [
+    ("host_companion/src/flash/main.rs", "flash/main.rs"),
+    ("host_companion/src/flash/lib.rs", "flash/lib.rs"),
+];
+
+pub const FLASH_README: &str = "Flashing the ESP32-S3\n\
+\n\
+This folder holds the three images (bootloader.bin, partitions.bin, firmware.bin)\n\
+and the flasher source in flash/. Build the flasher beside the images and run it:\n\
+\n\
+  rustc --edition 2021 -O flash/main.rs -o flash-esp32-s3\n\
+  ./flash-esp32-s3 [/dev/cu.usbmodemXXXX]\n\
+\n\
+It writes the images with esptool (installed, via uvx, or python3 -m esptool).\n";
+
+pub trait Runner {
+    /// Run to completion with inherited stdio; returns the exit code.
+    fn status(&self, program: &str, args: &[String], cwd: &Path) -> Result<i32, String>;
+    /// True when the command exits 0 (output discarded).
+    fn succeeds(&self, program: &str, args: &[String], cwd: &Path) -> bool;
+    /// Trimmed stdout of a command that exited 0.
+    fn capture(&self, program: &str, args: &[String], cwd: &Path) -> Option<String>;
+    fn var(&self, name: &str) -> Option<String>;
+}
+
+pub struct RealRunner;
+
+impl Runner for RealRunner {
+    fn status(&self, program: &str, args: &[String], cwd: &Path) -> Result<i32, String> {
+        let st = Command::new(program)
+            .args(args)
+            .current_dir(cwd)
+            .status()
+            .map_err(|e| format!("failed to run {}: {}", program, e))?;
+        Ok(st.code().unwrap_or(1))
+    }
+    fn succeeds(&self, program: &str, args: &[String], cwd: &Path) -> bool {
+        Command::new(program)
+            .args(args)
+            .current_dir(cwd)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    }
+    fn capture(&self, program: &str, args: &[String], cwd: &Path) -> Option<String> {
+        let out = Command::new(program)
+            .args(args)
+            .current_dir(cwd)
+            .output()
+            .ok()?;
+        if !out.status.success() {
+            return None;
+        }
+        Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    }
+    fn var(&self, name: &str) -> Option<String> {
+        std::env::var(name).ok()
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct PublishConfig {
-    pub workspace_dir: PathBuf,
+    pub root: PathBuf,
     pub grade: String,
     pub sha: String,
     pub tag: String,
     pub version: String,
-    pub firmware_tar: PathBuf,
-    pub dry_run: bool,
     pub is_beta: bool,
 }
 
-pub fn resolve_config() -> Result<PublishConfig, String> {
-    let workspace_dir = env::var("BUILD_WORKSPACE_DIRECTORY")
+fn sv(v: &[&str]) -> Vec<String> {
+    v.iter().map(|s| s.to_string()).collect()
+}
+
+/// `${BUILD_WORKSPACE_DIRECTORY:-$(git rev-parse --show-toplevel || pwd)}`.
+pub fn resolve_root(r: &dyn Runner) -> PathBuf {
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    if let Some(ws) = r.var("BUILD_WORKSPACE_DIRECTORY").filter(|w| !w.is_empty()) {
+        return PathBuf::from(ws);
+    }
+    r.capture("git", &sv(&["rev-parse", "--show-toplevel"]), &cwd)
+        .filter(|s| !s.is_empty())
         .map(PathBuf::from)
-        .or_else(|_| {
-            let output = Command::new("git")
-                .args(["rev-parse", "--show-toplevel"])
-                .output()
-                .map_err(|e| format!("git: {}", e))?;
-            if output.status.success() {
-                Ok(PathBuf::from(
-                    String::from_utf8_lossy(&output.stdout).trim(),
-                ))
-            } else {
-                Ok(env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
-            }
-        })
-        .unwrap_or_else(|_: String| PathBuf::from("."));
+        .unwrap_or(cwd)
+}
 
-    let grade = env::var("GRADE").unwrap_or_else(|_| "beta".into());
-    let dry_run = env::var("DRY_RUN")
-        .map(|v| v == "true" || v == "1")
-        .unwrap_or(false);
-
-    let sha = env::var("GITHUB_SHA").unwrap_or_else(|_| {
-        Command::new("git")
-            .args(["rev-parse", "HEAD"])
-            .output()
-            .ok()
-            .filter(|o| o.status.success())
-            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-            .unwrap_or_else(|| "0000000000000000000000000000000000000000".into())
-    });
+pub fn resolve_config(r: &dyn Runner) -> Result<PublishConfig, String> {
+    let root = resolve_root(r);
+    let grade = r
+        .var("GRADE")
+        .filter(|g| !g.is_empty())
+        .unwrap_or_else(|| "beta".into());
+    let sha = match r.var("GITHUB_SHA").filter(|s| !s.is_empty()) {
+        Some(s) => s,
+        None => r
+            .capture("git", &sv(&["rev-parse", "HEAD"]), &root)
+            .ok_or("git rev-parse HEAD failed and GITHUB_SHA is unset")?,
+    };
     let short_sha = &sha[..7.min(sha.len())];
+    let manifest_ver = read_manifest_version(&root)?;
 
-    let manifest_version = read_manifest_version(&workspace_dir)?;
-
-    let is_beta = grade == "beta";
     let (tag, version) = match grade.as_str() {
-        "beta" => {
-            let tag = env::var("TAG").unwrap_or_else(|_| BETA_TAG.into());
-            let version = format!("{}-beta.{}", manifest_version, short_sha);
-            (tag, version)
-        }
+        "beta" => (
+            r.var("TAG")
+                .filter(|t| !t.is_empty())
+                .unwrap_or_else(|| BETA_TAG.into()),
+            format!("{}-beta.{}", manifest_ver, short_sha),
+        ),
         "production" => {
-            let tag = env::var("RELEASE_TAG").unwrap_or_default();
+            // A dispatch of the production rung carries no release event, and
+            // re-uploading a release's assets from a different commit would silently
+            // replace what was released. Require the tag; never guess it.
+            let tag = r.var("RELEASE_TAG").unwrap_or_default();
             if tag.is_empty() {
                 return Err(format!(
-                    "publish: GRADE=production needs RELEASE_TAG={}X.Y.Z; refusing to guess",
+                    "publish: GRADE=production needs RELEASE_TAG={}X.Y.Z (the release-please tag); refusing to guess",
                     TAG_PREFIX
                 ));
             }
             if !tag.starts_with(TAG_PREFIX) {
                 return Err(format!(
-                    "publish: RELEASE_TAG={} is not an {}* release",
+                    "publish: RELEASE_TAG={} is not an {}* release; another component's release reached this rung",
                     tag, TAG_PREFIX
                 ));
             }
-            let version = tag.strip_prefix(TAG_PREFIX).unwrap().to_string();
+            let version = tag[TAG_PREFIX.len()..].to_string();
             (tag, version)
         }
-        _ => {
+        other => {
             return Err(format!(
                 "publish: unknown GRADE={} (beta|production)",
-                grade
-            ));
+                other
+            ))
         }
     };
 
-    let firmware_tar = env::var("FIRMWARE_TAR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| {
-            workspace_dir.join(format!("bazel-bin/{}/esp32_s3_firmware.tar.gz", PKG))
-        });
-
     Ok(PublishConfig {
-        workspace_dir,
+        root,
+        is_beta: grade == "beta",
         grade,
         sha,
         tag,
         version,
-        firmware_tar,
-        dry_run,
-        is_beta,
     })
 }
 
-fn read_manifest_version(workspace_dir: &Path) -> Result<String, String> {
-    let manifest_path = workspace_dir
-        .join(PKG)
-        .join(".release-please-manifest.json");
-    if !manifest_path.exists() {
-        return Ok("0.0.0".into());
-    }
+/// `jq -r '."apps/embedded/esp32-s3"' <pkg>/.release-please-manifest.json`; like jq under
+/// `set -e`, a missing file or key is an error (never a made-up `0.0.0`).
+pub fn read_manifest_version(root: &Path) -> Result<String, String> {
+    let path = root.join(PKG).join(".release-please-manifest.json");
     let content =
-        fs::read_to_string(&manifest_path).map_err(|e| format!("read manifest: {}", e))?;
+        fs::read_to_string(&path).map_err(|e| format!("read {}: {}", path.display(), e))?;
     let key = format!("\"{}\"", PKG);
-    for line in content.lines() {
-        if let Some(pos) = line.find(&key) {
-            let rest = &line[pos + key.len()..];
-            if let Some(colon) = rest.find(':') {
-                let after = &rest[colon + 1..];
-                let trimmed = after
-                    .trim()
-                    .trim_end_matches([',', '}'])
-                    .trim()
-                    .trim_matches('"');
-                if !trimmed.is_empty() {
-                    return Ok(trimmed.to_string());
-                }
-            }
-        }
-    }
-    Ok("0.0.0".into())
+    let at = content
+        .find(&key)
+        .ok_or_else(|| format!("{}: no {} entry", path.display(), key))?;
+    let rest = content[at + key.len()..].trim_start();
+    let rest = rest
+        .strip_prefix(':')
+        .ok_or_else(|| format!("{}: malformed {} entry", path.display(), key))?
+        .trim_start();
+    let rest = rest
+        .strip_prefix('"')
+        .ok_or_else(|| format!("{}: {} is not a string", path.display(), key))?;
+    let end = rest
+        .find('"')
+        .ok_or_else(|| format!("{}: unterminated version", path.display()))?;
+    Ok(rest[..end].to_string())
 }
 
-pub fn publish(config: &PublishConfig) -> Result<(), String> {
+pub fn build_info_json(cfg: &PublishConfig, built_at: &str) -> String {
+    format!(
+        "{{\n  \"version\": \"{}\",\n  \"grade\": \"{}\",\n  \"commit\": \"{}\",\n  \"builtAt\": \"{}\",\n  \"board\": \"Waveshare ESP32-S3-Touch-LCD-1.69\",\n  \"mcu\": \"ESP32-S3\",\n  \"flash_size\": \"16MB\",\n  \"framework\": \"arduino\",\n  \"lvgl_version\": \"8.4.0\"\n}}\n",
+        cfg.version, cfg.grade, cfg.sha, built_at
+    )
+}
+
+pub fn beta_notes(cfg: &PublishConfig, built_at: &str) -> String {
+    format!(
+        "Latest Beta Firmware Build: {}\nCommit: {}\nBuilt: {}\n\nArtifacts Included:\n* firmware.bin: Application binary (Flash at 0x10000)\n* bootloader.bin: ESP32-S3 second-stage bootloader (Flash at 0x0000)\n* partitions.bin: 16MB partition table (Flash at 0x8000)\n* build_info.json: version / grade / commit stamp\n* esp32-s3-mac-controller.zip: Full flashable archive with the Rust flash helper (flash/).",
+        cfg.version, cfg.sha, built_at
+    )
+}
+
+fn run(r: &dyn Runner, prog: &str, args: &[String], cwd: &Path, what: &str) -> Result<(), String> {
+    match r.status(prog, args, cwd)? {
+        0 => Ok(()),
+        c => Err(format!("{} failed (exit {})", what, c)),
+    }
+}
+
+fn work_dir(r: &dyn Runner) -> PathBuf {
+    let base = match r.var("RUNNER_TEMP").filter(|t| !t.is_empty()) {
+        Some(t) => PathBuf::from(t),
+        None => {
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0);
+            std::env::temp_dir().join(format!("esp32-s3-publish-{}-{}", std::process::id(), nanos))
+        }
+    };
+    base.join("esp32-s3-dist")
+}
+
+fn make_writable(p: &Path) -> Result<(), String> {
+    let mut perm = fs::metadata(p)
+        .map_err(|e| format!("stat {}: {}", p.display(), e))?
+        .permissions();
+    #[allow(clippy::permissions_set_readonly_false)]
+    perm.set_readonly(false);
+    fs::set_permissions(p, perm).map_err(|e| format!("chmod {}: {}", p.display(), e))
+}
+
+pub fn publish(cfg: &PublishConfig, r: &dyn Runner) -> Result<(), String> {
     eprintln!(
         "=== esp32-s3 publish: grade={} version={} tag={} commit={} ===",
-        config.grade, config.version, config.tag, config.sha
+        cfg.grade, cfg.version, cfg.tag, cfg.sha
     );
+    let root = &cfg.root;
 
-    if !config.firmware_tar.exists() {
-        return Err(format!(
-            "Firmware tar not found: {}",
-            config.firmware_tar.display()
-        ));
+    run(
+        r,
+        "bazel",
+        &sv(&["build", &format!("//{}:firmware", PKG)]),
+        root,
+        "bazel build firmware",
+    )?;
+
+    let work = work_dir(r);
+    let _ = fs::remove_dir_all(&work);
+    fs::create_dir_all(&work).map_err(|e| format!("mkdir {}: {}", work.display(), e))?;
+    for img in ["firmware", "bootloader", "partitions"] {
+        let src = root.join(format!("bazel-bin/{}/{}.bin", PKG, img));
+        let dst = work.join(format!("{}.bin", img));
+        fs::copy(&src, &dst).map_err(|e| format!("copy {}: {}", src.display(), e))?;
+        make_writable(&dst)?;
+    }
+    // The flasher ships as source (std-only) so it builds natively on the user's
+    // Mac; the release job runs on Linux and cannot cross-build a macOS binary.
+    fs::create_dir_all(work.join("flash")).map_err(|e| format!("mkdir flash: {}", e))?;
+    for (from, to) in FLASH_SOURCES {
+        let src = root.join(PKG).join(from);
+        fs::copy(&src, work.join(to)).map_err(|e| format!("copy {}: {}", src.display(), e))?;
+    }
+    fs::write(work.join("flash/README.txt"), FLASH_README)
+        .map_err(|e| format!("write README: {}", e))?;
+
+    let built_at = r
+        .capture("date", &sv(&["-u", "+%Y-%m-%dT%H:%M:%SZ"]), root)
+        .ok_or("date -u failed")?;
+    fs::write(
+        work.join("build_info.json"),
+        build_info_json(cfg, &built_at),
+    )
+    .map_err(|e| format!("write build_info.json: {}", e))?;
+
+    let zip = work.join("esp32-s3-mac-controller.zip");
+    let mut zip_args = sv(&["-q", zip.to_str().unwrap_or("")]);
+    zip_args.extend(sv(&[
+        "firmware.bin",
+        "bootloader.bin",
+        "partitions.bin",
+        "build_info.json",
+        "flash/main.rs",
+        "flash/lib.rs",
+        "flash/README.txt",
+    ]));
+    run(r, "zip", &zip_args, &work, "zip")?;
+
+    if cfg.is_beta && !r.succeeds("gh", &sv(&["release", "view", &cfg.tag]), root) {
+        run(
+            r,
+            "gh",
+            &sv(&[
+                "release",
+                "create",
+                &cfg.tag,
+                "--prerelease",
+                "--target",
+                &cfg.sha,
+                "--title",
+                "ESP32-S3 Firmware (Beta Rolling Release)",
+                "--notes",
+                "Rolling pre-release built automatically from commits landing on main.",
+            ]),
+            root,
+            "gh release create",
+        )?;
     }
 
-    if config.dry_run {
-        eprintln!(
-            "[DRY_RUN] Would create/upload release {} with tag {}",
-            config.version, config.tag
-        );
-        eprintln!("[DRY_RUN] Firmware tar: {}", config.firmware_tar.display());
-        eprintln!(
-            "=== esp32-s3 publish complete (dry run): {} ({}, {}) ===",
-            config.tag, config.version, config.grade
-        );
-        return Ok(());
+    let mut upload = sv(&["release", "upload", &cfg.tag]);
+    for f in [
+        "firmware.bin",
+        "bootloader.bin",
+        "partitions.bin",
+        "build_info.json",
+    ] {
+        upload.push(work.join(f).to_string_lossy().to_string());
     }
+    upload.push(zip.to_string_lossy().to_string());
+    upload.push("--clobber".into());
+    run(r, "gh", &upload, root, "gh release upload")?;
 
-    if config.is_beta {
-        let check = Command::new("gh")
-            .args(["release", "view", &config.tag])
-            .output()
-            .map_err(|e| format!("gh release view: {}", e))?;
-
-        if !check.status.success() {
-            let status = Command::new("gh")
-                .args([
-                    "release",
-                    "create",
-                    &config.tag,
-                    "--prerelease",
-                    "--target",
-                    &config.sha,
-                    "--title",
-                    "ESP32-S3 Firmware (Beta Rolling Release)",
-                    "--notes",
-                    "Rolling pre-release built automatically from commits landing on main.",
-                ])
-                .current_dir(&config.workspace_dir)
-                .status()
-                .map_err(|e| format!("gh release create: {}", e))?;
-            if !status.success() {
-                return Err("Failed to create beta release".into());
-            }
-        }
-    }
-
-    let status = Command::new("gh")
-        .args([
-            "release",
-            "upload",
-            &config.tag,
-            config.firmware_tar.to_str().unwrap_or(""),
-            "--clobber",
-        ])
-        .current_dir(&config.workspace_dir)
-        .status()
-        .map_err(|e| format!("gh release upload: {}", e))?;
-    if !status.success() {
-        return Err("Failed to upload release assets".into());
+    if cfg.is_beta {
+        // Move the rolling tag to the commit whose assets now sit on the release, so
+        // the release page's compare/source links agree with build_info.json. A
+        // failure here is a real failure, not something to paper over.
+        run(
+            r,
+            "gh",
+            &sv(&[
+                "api",
+                "-X",
+                "PATCH",
+                &format!("repos/{{owner}}/{{repo}}/git/refs/tags/{}", cfg.tag),
+                "-f",
+                &format!("sha={}", cfg.sha),
+                "-F",
+                "force=true",
+            ]),
+            root,
+            "gh api PATCH tag",
+        )?;
+        run(
+            r,
+            "gh",
+            &sv(&[
+                "release",
+                "edit",
+                &cfg.tag,
+                "--notes",
+                &beta_notes(cfg, &built_at),
+            ]),
+            root,
+            "gh release edit",
+        )?;
     }
 
     eprintln!(
         "=== esp32-s3 publish complete: {} ({}, {}) ===",
-        config.tag, config.version, config.grade
+        cfg.tag, cfg.version, cfg.grade
     );
     Ok(())
 }
@@ -234,190 +396,336 @@ pub fn publish(config: &PublishConfig) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{Mutex, MutexGuard};
+    use std::cell::RefCell;
+    use std::collections::HashMap;
 
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
+    type Call = (String, Vec<String>, PathBuf);
 
-    fn setup_env() -> MutexGuard<'static, ()> {
-        let guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        env::remove_var("GRADE");
-        env::remove_var("GITHUB_SHA");
-        env::remove_var("RELEASE_TAG");
-        env::remove_var("TAG");
-        env::remove_var("FIRMWARE_TAR");
-        env::remove_var("DRY_RUN");
-        env::remove_var("BUILD_WORKSPACE_DIRECTORY");
-        guard
+    struct Fake {
+        vars: HashMap<String, String>,
+        calls: RefCell<Vec<Call>>,
+        root: PathBuf,
+        release_exists: bool,
+        fail: Option<&'static str>, // fail when args join contains this
+    }
+
+    impl Fake {
+        fn new(root: &Path, vars: &[(&str, &str)]) -> Self {
+            Fake {
+                vars: vars
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect(),
+                calls: RefCell::new(vec![]),
+                root: root.to_path_buf(),
+                release_exists: false,
+                fail: None,
+            }
+        }
+        fn log(&self, p: &str, a: &[String], c: &Path) {
+            self.calls
+                .borrow_mut()
+                .push((p.into(), a.to_vec(), c.to_path_buf()));
+        }
+        fn lines(&self) -> Vec<String> {
+            self.calls
+                .borrow()
+                .iter()
+                .map(|(p, a, _)| format!("{} {}", p, a.join(" ")))
+                .collect()
+        }
+    }
+
+    impl Runner for Fake {
+        fn status(&self, p: &str, a: &[String], c: &Path) -> Result<i32, String> {
+            self.log(p, a, c);
+            if p == "bazel" {
+                // Like a real build: the three images appear under bazel-bin.
+                let d = self.root.join(format!("bazel-bin/{}", PKG));
+                fs::create_dir_all(&d).unwrap();
+                for i in ["firmware", "bootloader", "partitions"] {
+                    fs::write(d.join(format!("{}.bin", i)), format!("IMG:{}", i)).unwrap();
+                }
+            }
+            if let Some(f) = self.fail {
+                if format!("{} {}", p, a.join(" ")).contains(f) {
+                    return Ok(1);
+                }
+            }
+            Ok(0)
+        }
+        fn succeeds(&self, p: &str, a: &[String], c: &Path) -> bool {
+            self.log(p, a, c);
+            self.release_exists
+        }
+        fn capture(&self, p: &str, a: &[String], _c: &Path) -> Option<String> {
+            match p {
+                "date" => Some("2026-01-02T03:04:05Z".into()),
+                "git" if a.contains(&"HEAD".to_string()) => Some("f".repeat(40)),
+                _ => None,
+            }
+        }
+        fn var(&self, n: &str) -> Option<String> {
+            self.vars.get(n).cloned()
+        }
+    }
+
+    fn tmpdir(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("pub-test-{}-{}", name, std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    /// A fake workspace: manifest + the flash helper sources.
+    fn workspace(name: &str) -> PathBuf {
+        let root = tmpdir(name);
+        let pkg = root.join(PKG);
+        fs::create_dir_all(pkg.join("host_companion/src/flash")).unwrap();
+        fs::write(
+            pkg.join(".release-please-manifest.json"),
+            "{\n  \"apps/embedded/esp32-s3\": \"0.1.12\"\n}\n",
+        )
+        .unwrap();
+        fs::write(pkg.join("host_companion/src/flash/main.rs"), "// main").unwrap();
+        fs::write(pkg.join("host_companion/src/flash/lib.rs"), "// lib").unwrap();
+        root
+    }
+
+    fn cfg(root: &Path, grade: &str) -> PublishConfig {
+        let beta = grade == "beta";
+        PublishConfig {
+            root: root.to_path_buf(),
+            grade: grade.into(),
+            sha: "abcdef1234567890abcdef1234567890abcdef12".into(),
+            tag: if beta {
+                BETA_TAG.into()
+            } else {
+                "esp32-s3-v2.0.0".into()
+            },
+            version: if beta {
+                "0.1.12-beta.abcdef1".into()
+            } else {
+                "2.0.0".into()
+            },
+            is_beta: beta,
+        }
+    }
+
+    fn envs(root: &Path, extra: &[(&str, &str)]) -> Fake {
+        let mut v = vec![
+            ("BUILD_WORKSPACE_DIRECTORY", root.to_str().unwrap()),
+            ("GITHUB_SHA", "abcdef1234567890"),
+        ];
+        v.extend_from_slice(extra);
+        Fake::new(root, &v)
     }
 
     #[test]
-    fn test_dry_run_beta() {
-        let _g = setup_env();
-        let tmp = env::temp_dir().join("test_publish_dry_beta");
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).unwrap();
-
-        let tar = tmp.join("firmware.tar.gz");
-        fs::write(&tar, b"fake").unwrap();
-
-        let config = PublishConfig {
-            workspace_dir: tmp.clone(),
-            grade: "beta".into(),
-            sha: "abc1234567890".into(),
-            tag: BETA_TAG.into(),
-            version: "1.0.0-beta.abc1234".into(),
-            firmware_tar: tar,
-            dry_run: true,
-            is_beta: true,
-        };
-
-        let result = publish(&config);
-        assert!(result.is_ok(), "dry run beta failed: {:?}", result);
-        let _ = fs::remove_dir_all(&tmp);
+    fn beta_defaults() {
+        let root = workspace("beta-cfg");
+        let c = resolve_config(&envs(&root, &[("GRADE", "beta")])).unwrap();
+        assert!(c.is_beta);
+        assert_eq!(c.tag, BETA_TAG);
+        assert_eq!(c.version, "0.1.12-beta.abcdef1");
+        // grade defaults to beta
+        assert_eq!(resolve_config(&envs(&root, &[])).unwrap().grade, "beta");
     }
 
     #[test]
-    fn test_dry_run_production() {
-        let _g = setup_env();
-        let tmp = env::temp_dir().join("test_publish_dry_prod");
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).unwrap();
-
-        let tar = tmp.join("firmware.tar.gz");
-        fs::write(&tar, b"fake").unwrap();
-
-        let config = PublishConfig {
-            workspace_dir: tmp.clone(),
-            grade: "production".into(),
-            sha: "abc1234567890".into(),
-            tag: "esp32-s3-v2.0.0".into(),
-            version: "2.0.0".into(),
-            firmware_tar: tar,
-            dry_run: true,
-            is_beta: false,
-        };
-
-        let result = publish(&config);
-        assert!(result.is_ok(), "dry run production failed: {:?}", result);
-        let _ = fs::remove_dir_all(&tmp);
+    fn production_rules() {
+        let root = workspace("prod-cfg");
+        let c = resolve_config(&envs(
+            &root,
+            &[("GRADE", "production"), ("RELEASE_TAG", "esp32-s3-v3.1.0")],
+        ))
+        .unwrap();
+        assert!(!c.is_beta);
+        assert_eq!(c.version, "3.1.0");
+        let e = resolve_config(&envs(&root, &[("GRADE", "production")])).unwrap_err();
+        assert!(e.contains("refusing to guess"));
+        let e = resolve_config(&envs(
+            &root,
+            &[("GRADE", "production"), ("RELEASE_TAG", "tabula-v1.0.0")],
+        ))
+        .unwrap_err();
+        assert!(e.contains("is not an esp32-s3-v*"));
+        let e = resolve_config(&envs(&root, &[("GRADE", "staging")])).unwrap_err();
+        assert!(e.contains("unknown GRADE=staging"));
     }
 
     #[test]
-    fn test_missing_firmware_tar() {
-        let _g = setup_env();
-        let config = PublishConfig {
-            workspace_dir: PathBuf::from("/tmp"),
-            grade: "beta".into(),
-            sha: "abc1234".into(),
-            tag: BETA_TAG.into(),
-            version: "1.0.0-beta.abc1234".into(),
-            firmware_tar: PathBuf::from("/nonexistent/firmware.tar.gz"),
-            dry_run: false,
-            is_beta: true,
-        };
-
-        let result = publish(&config);
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("not found"));
+    fn manifest_is_required() {
+        let root = tmpdir("nomanifest");
+        assert!(read_manifest_version(&root).is_err());
+        let pkg = root.join(PKG);
+        fs::create_dir_all(&pkg).unwrap();
+        fs::write(pkg.join(".release-please-manifest.json"), "{}").unwrap();
+        assert!(read_manifest_version(&root).is_err());
+        fs::write(
+            pkg.join(".release-please-manifest.json"),
+            "{\"apps/embedded/esp32-s3\":\"1.2.3\"}",
+        )
+        .unwrap();
+        assert_eq!(read_manifest_version(&root).unwrap(), "1.2.3");
     }
 
     #[test]
-    fn test_production_missing_release_tag() {
-        let _g = setup_env();
-        env::set_var("GRADE", "production");
-        env::set_var("BUILD_WORKSPACE_DIRECTORY", "/tmp");
-        let result = resolve_config();
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("RELEASE_TAG"));
-        env::remove_var("GRADE");
-        env::remove_var("BUILD_WORKSPACE_DIRECTORY");
+    fn beta_publish_runs_the_full_shell_sequence() {
+        let root = workspace("beta-run");
+        let f = envs(
+            &root,
+            &[("RUNNER_TEMP", root.join("tmp").to_str().unwrap())],
+        );
+        let c = cfg(&root, "beta");
+        publish(&c, &f).unwrap();
+
+        let l = f.lines();
+        let sha = &c.sha;
+        // (a) it builds the firmware itself
+        assert_eq!(l[0], format!("bazel build //{}:firmware", PKG));
+        // zip bundles images + stamp + flash helper (c: the old zip shipped flash.sh)
+        let zip = l.iter().find(|x| x.starts_with("zip ")).expect("zip step");
+        assert!(zip.contains("esp32-s3-mac-controller.zip firmware.bin bootloader.bin partitions.bin build_info.json flash/main.rs flash/lib.rs flash/README.txt"), "{}", zip);
+        // release view -> create (release absent)
+        assert!(l.contains(&format!("gh release view {}", BETA_TAG)));
+        assert!(l.iter().any(|x| x.starts_with(&format!("gh release create {} --prerelease --target {} --title ESP32-S3 Firmware (Beta Rolling Release) --notes", BETA_TAG, sha))));
+        // five assets uploaded with --clobber
+        let up = l
+            .iter()
+            .find(|x| x.starts_with("gh release upload"))
+            .unwrap();
+        for n in [
+            "firmware.bin",
+            "bootloader.bin",
+            "partitions.bin",
+            "build_info.json",
+            "esp32-s3-mac-controller.zip",
+            "--clobber",
+        ] {
+            assert!(up.contains(n), "upload missing {}: {}", n, up);
+        }
+        // (c) the rolling tag is moved and the notes are edited, after the upload
+        let iu = l
+            .iter()
+            .position(|x| x.starts_with("gh release upload"))
+            .unwrap();
+        let ip = l.iter().position(|x| x == &format!("gh api -X PATCH repos/{{owner}}/{{repo}}/git/refs/tags/{} -f sha={} -F force=true", BETA_TAG, sha)).expect("tag PATCH");
+        let ie = l
+            .iter()
+            .position(|x| {
+                x.starts_with(&format!(
+                    "gh release edit {} --notes Latest Beta Firmware Build: 0.1.12-beta.abcdef1",
+                    BETA_TAG
+                ))
+            })
+            .expect("release edit");
+        assert!(iu < ip && ip < ie);
+        assert!(l[ie].contains("Built: 2026-01-02T03:04:05Z"));
+        assert!(l[ie].contains("esp32-s3-mac-controller.zip"));
     }
 
     #[test]
-    fn test_production_wrong_tag_prefix() {
-        let _g = setup_env();
-        env::set_var("GRADE", "production");
-        env::set_var("RELEASE_TAG", "tabula-v1.0.0");
-        env::set_var("BUILD_WORKSPACE_DIRECTORY", "/tmp");
-        let result = resolve_config();
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("not an"));
-        env::remove_var("GRADE");
-        env::remove_var("RELEASE_TAG");
-        env::remove_var("BUILD_WORKSPACE_DIRECTORY");
+    fn staged_bundle_contents_and_build_info() {
+        let root = workspace("bundle");
+        let tmp = root.join("tmp");
+        let f = envs(&root, &[("RUNNER_TEMP", tmp.to_str().unwrap())]);
+        publish(&cfg(&root, "beta"), &f).unwrap();
+        let w = tmp.join("esp32-s3-dist");
+        for (n, want) in [
+            ("firmware.bin", "IMG:firmware"),
+            ("bootloader.bin", "IMG:bootloader"),
+            ("partitions.bin", "IMG:partitions"),
+            ("flash/main.rs", "// main"),
+            ("flash/lib.rs", "// lib"),
+        ] {
+            assert_eq!(fs::read_to_string(w.join(n)).unwrap(), want, "{}", n);
+        }
+        assert!(w.join("flash/README.txt").is_file());
+        // (b) build_info.json is written, with the shell's exact shape
+        let bi = fs::read_to_string(w.join("build_info.json")).unwrap();
+        assert_eq!(bi, "{\n  \"version\": \"0.1.12-beta.abcdef1\",\n  \"grade\": \"beta\",\n  \"commit\": \"abcdef1234567890abcdef1234567890abcdef12\",\n  \"builtAt\": \"2026-01-02T03:04:05Z\",\n  \"board\": \"Waveshare ESP32-S3-Touch-LCD-1.69\",\n  \"mcu\": \"ESP32-S3\",\n  \"flash_size\": \"16MB\",\n  \"framework\": \"arduino\",\n  \"lvgl_version\": \"8.4.0\"\n}\n");
     }
 
     #[test]
-    fn test_unknown_grade() {
-        let _g = setup_env();
-        env::set_var("GRADE", "staging");
-        env::set_var("BUILD_WORKSPACE_DIRECTORY", "/tmp");
-        let result = resolve_config();
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("unknown GRADE"));
-        env::remove_var("GRADE");
-        env::remove_var("BUILD_WORKSPACE_DIRECTORY");
+    fn existing_beta_release_is_not_recreated() {
+        let root = workspace("exists");
+        let mut f = envs(
+            &root,
+            &[("RUNNER_TEMP", root.join("tmp").to_str().unwrap())],
+        );
+        f.release_exists = true;
+        publish(&cfg(&root, "beta"), &f).unwrap();
+        assert!(!f.lines().iter().any(|x| x.starts_with("gh release create")));
     }
 
     #[test]
-    fn test_beta_config_defaults() {
-        let _g = setup_env();
-        env::set_var("GRADE", "beta");
-        env::set_var("GITHUB_SHA", "deadbeef1234567890abcdef");
-        env::set_var("BUILD_WORKSPACE_DIRECTORY", "/tmp");
-        let config = resolve_config().unwrap();
-        assert!(config.is_beta);
-        assert_eq!(config.tag, BETA_TAG);
-        assert!(config.version.contains("beta.deadbee"));
-        env::remove_var("GRADE");
-        env::remove_var("GITHUB_SHA");
-        env::remove_var("BUILD_WORKSPACE_DIRECTORY");
+    fn production_uploads_only_and_never_touches_the_tag_or_notes() {
+        let root = workspace("prod-run");
+        let f = envs(
+            &root,
+            &[("RUNNER_TEMP", root.join("tmp").to_str().unwrap())],
+        );
+        publish(&cfg(&root, "production"), &f).unwrap();
+        let l = f.lines();
+        assert!(l
+            .iter()
+            .any(|x| x.starts_with("gh release upload esp32-s3-v2.0.0")));
+        assert!(!l.iter().any(|x| x.contains("release view")
+            || x.contains("release create")
+            || x.contains("api -X PATCH")
+            || x.contains("release edit")));
     }
 
     #[test]
-    fn test_production_config() {
-        let _g = setup_env();
-        env::set_var("GRADE", "production");
-        env::set_var("RELEASE_TAG", "esp32-s3-v3.1.0");
-        env::set_var("BUILD_WORKSPACE_DIRECTORY", "/tmp");
-        let config = resolve_config().unwrap();
-        assert!(!config.is_beta);
-        assert_eq!(config.tag, "esp32-s3-v3.1.0");
-        assert_eq!(config.version, "3.1.0");
-        env::remove_var("GRADE");
-        env::remove_var("RELEASE_TAG");
-        env::remove_var("BUILD_WORKSPACE_DIRECTORY");
+    fn tag_move_failure_is_a_real_failure() {
+        let root = workspace("patchfail");
+        let mut f = envs(
+            &root,
+            &[("RUNNER_TEMP", root.join("tmp").to_str().unwrap())],
+        );
+        f.fail = Some("api -X PATCH");
+        let e = publish(&cfg(&root, "beta"), &f).unwrap_err();
+        assert!(e.contains("gh api PATCH tag"));
+        assert!(!f.lines().iter().any(|x| x.starts_with("gh release edit")));
     }
 
     #[test]
-    fn test_firmware_tar_env_override() {
-        let _g = setup_env();
-        env::set_var("GRADE", "beta");
-        env::set_var("FIRMWARE_TAR", "/custom/path/fw.tar.gz");
-        env::set_var("BUILD_WORKSPACE_DIRECTORY", "/tmp");
-        let config = resolve_config().unwrap();
-        assert_eq!(config.firmware_tar, PathBuf::from("/custom/path/fw.tar.gz"));
-        env::remove_var("GRADE");
-        env::remove_var("FIRMWARE_TAR");
-        env::remove_var("BUILD_WORKSPACE_DIRECTORY");
+    fn a_failed_bazel_build_stops_everything() {
+        let root = workspace("bazelfail");
+        let mut f = envs(
+            &root,
+            &[("RUNNER_TEMP", root.join("tmp").to_str().unwrap())],
+        );
+        f.fail = Some("bazel build");
+        assert!(publish(&cfg(&root, "beta"), &f).is_err());
+        assert!(!f.lines().iter().any(|x| x.starts_with("gh ")));
     }
 
     #[test]
-    fn test_read_manifest_version_missing() {
-        let v = read_manifest_version(Path::new("/nonexistent")).unwrap();
-        assert_eq!(v, "0.0.0");
+    fn upload_failure_is_reported_before_the_tag_moves() {
+        let root = workspace("uploadfail");
+        let mut f = envs(
+            &root,
+            &[("RUNNER_TEMP", root.join("tmp").to_str().unwrap())],
+        );
+        f.fail = Some("release upload");
+        assert!(publish(&cfg(&root, "beta"), &f).is_err());
+        assert!(!f.lines().iter().any(|x| x.contains("api -X PATCH")));
     }
 
     #[test]
-    fn test_read_manifest_version_valid() {
-        let tmp = env::temp_dir().join("test_manifest_ver");
-        let _ = fs::remove_dir_all(&tmp);
-        let pkg_dir = tmp.join(PKG);
-        fs::create_dir_all(&pkg_dir).unwrap();
-        let manifest = pkg_dir.join(".release-please-manifest.json");
-        fs::write(&manifest, r#"{"apps/embedded/esp32-s3": "1.2.3"}"#).unwrap();
-        let v = read_manifest_version(&tmp).unwrap();
-        assert_eq!(v, "1.2.3");
-        let _ = fs::remove_dir_all(&tmp);
+    fn gh_runs_from_the_workspace_root() {
+        let root = workspace("cwd");
+        let f = envs(
+            &root,
+            &[("RUNNER_TEMP", root.join("tmp").to_str().unwrap())],
+        );
+        publish(&cfg(&root, "beta"), &f).unwrap();
+        for (p, _, cwd) in f.calls.borrow().iter() {
+            if p == "gh" || p == "bazel" {
+                assert_eq!(cwd, &root);
+            }
+        }
     }
 }

@@ -19,15 +19,14 @@
 # SOFTWARE.
 
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("//tools/delivery:defs.bzl", "delivery")
 
 package(default_visibility = ["//apps/embedded/esp32-s3:__subpackages__"])
 
 # The three flashable images, compiled by PlatformIO. NOT stamped: a genrule's
 # action sees no HOME/USER/git and none of the caller's env (see
-# build_firmware.sh), so version/grade/commit are applied by :publish, outside
-# Bazel, where the release context exists.
+# host_companion/src/build_firmware/lib.rs), so version/grade/commit are applied
+# by :publish, outside Bazel, where the release context exists.
 genrule(
     name = "firmware",
     srcs = glob([
@@ -49,35 +48,44 @@ genrule(
     tools = [":builder"],
 )
 
-sh_binary(
+# PlatformIO build, the body of :firmware.
+rust_binary(
     name = "builder",
-    srcs = ["build_firmware.sh"],
-    tags = ["manual"],
+    srcs = ["host_companion/src/build_firmware/main.rs"],
+    crate_name = "builder",
+    edition = "2021",
+    deps = [":build_firmware_lib"],
 )
 
 # `bazel run //apps/embedded/esp32-s3:flash [-- /dev/cu.usbmodemXXXX]`: the images land
-# beside flash.sh in runfiles, which is the bundle layout it flashes from.
-sh_binary(
+# in this binary's runfiles, which is the bundle layout it flashes from. main.rs
+# pulls lib.rs in by path (not as a crate) so the release zip can ship both files.
+rust_binary(
     name = "flash",
-    srcs = ["flash.sh"],
+    srcs = [
+        "host_companion/src/flash/lib.rs",
+        "host_companion/src/flash/main.rs",
+    ],
+    crate_name = "flash_main",
+    crate_root = "host_companion/src/flash/main.rs",
     data = [":firmware"],
+    edition = "2021",
     tags = [
         "local",
         "manual",
     ],
 )
 
-# Read by //tools/delivery/gen's guard that every `run:` in the generated
-# workflow points at a script that exists and is executable.
-exports_files(["publish.sh"])
-
-# Build + stamp + upload. The generated delivery workflow runs the script
-# directly (`bash apps/embedded/esp32-s3/publish.sh`); this target is the break-glass
-# path the runbook points at, and what the delivery() below names as `run`.
-sh_binary(
+# Build + stamp + upload. The generated delivery workflow compiles and runs it
+# with rustc; this target is the break-glass path the runbook points at, and what
+# the delivery() below names as `run`.
+rust_binary(
     name = "publish",
-    srcs = ["publish.sh"],
+    srcs = ["host_companion/src/publish/main.rs"],
+    crate_name = "publish_main",
+    edition = "2021",
     tags = ["manual"],
+    deps = [":publish_lib"],
 )
 
 # Delivery unit: the firmware release ladder.
@@ -121,13 +129,6 @@ rust_library(
     edition = "2021",
 )
 
-rust_binary(
-    name = "build_firmware_rs",
-    srcs = ["host_companion/src/build_firmware/main.rs"],
-    edition = "2021",
-    deps = [":build_firmware_lib"],
-)
-
 rust_test(
     name = "build_firmware_rs_test",
     size = "small",
@@ -142,13 +143,6 @@ rust_library(
     edition = "2021",
 )
 
-rust_binary(
-    name = "flash_rs",
-    srcs = ["host_companion/src/flash/main.rs"],
-    edition = "2021",
-    deps = [":flash_lib"],
-)
-
 rust_test(
     name = "flash_rs_test",
     size = "small",
@@ -161,13 +155,6 @@ rust_library(
     srcs = ["host_companion/src/publish/lib.rs"],
     crate_name = "publish",
     edition = "2021",
-)
-
-rust_binary(
-    name = "publish_rs",
-    srcs = ["host_companion/src/publish/main.rs"],
-    edition = "2021",
-    deps = [":publish_lib"],
 )
 
 rust_test(

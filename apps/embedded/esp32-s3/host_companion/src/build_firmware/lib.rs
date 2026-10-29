@@ -18,299 +18,562 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-use std::env;
+//! Rust port of `build_firmware.sh`: compile the ESP32-S3 firmware with PlatformIO
+//! and copy the three flashable images to the paths Bazel asked for. This is the
+//! body of the `//apps/embedded/esp32-s3:firmware` genrule.
+//!
+//! THE GENRULE'S ENVIRONMENT IS NOT YOUR SHELL'S. Bazel hands a `local`-tagged
+//! action only `PATH=/bin:/usr/bin:/usr/local/bin` and `TMPDIR`, and the execroot
+//! has no `.git`. So this tool:
+//!   * derives the home directory from the passwd database, never from `HOME`/`USER`;
+//!   * does NOT stamp version/grade/commit -- that is `publish`'s job, outside Bazel.
+
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-pub fn find_pio() -> Option<PathBuf> {
-    if let Ok(pio_bin) = env::var("PIO_BIN") {
-        let p = PathBuf::from(&pio_bin);
-        if p.exists() {
-            return Some(p);
-        }
-        return None;
+/// Everything this tool needs from the outside world, injectable for tests.
+pub trait Runner {
+    /// Run a command to completion with inherited stdio; returns its exit code.
+    fn status(
+        &self,
+        program: &str,
+        args: &[String],
+        env: &[(String, String)],
+    ) -> Result<i32, String>;
+    /// True when the command exits 0 (output discarded).
+    fn succeeds(&self, program: &str, args: &[String], env: &[(String, String)]) -> bool;
+    /// Run a command and return its trimmed stdout (`None` if it failed to run or exited non-zero).
+    fn capture(&self, program: &str, args: &[String]) -> Option<String>;
+    /// Value of an environment variable of the calling process.
+    fn var(&self, name: &str) -> Option<String>;
+    /// Directories prepended to PATH (where `uv tool install platformio` and Homebrew put `pio`).
+    fn tool_dirs(&self, user_home: &str) -> String {
+        format!("{}/.local/bin:/opt/homebrew/bin:/usr/local/bin", user_home)
     }
-
-    if let Some(path) = which("pio") {
-        return Some(path);
-    }
-
-    let home = env::var("HOME").unwrap_or_default();
-    if !home.is_empty() {
-        let candidate = PathBuf::from(&home)
-            .join(".platformio")
-            .join("penv")
-            .join("bin")
-            .join("pio");
-        if candidate.exists() {
-            return Some(candidate);
-        }
-    }
-
-    None
 }
 
-fn which(name: &str) -> Option<PathBuf> {
-    let path_var = env::var("PATH").unwrap_or_default();
-    for dir in path_var.split(':') {
-        let candidate = PathBuf::from(dir).join(name);
-        if candidate.is_file() {
-            return Some(candidate);
+pub struct RealRunner;
+
+impl Runner for RealRunner {
+    fn status(
+        &self,
+        program: &str,
+        args: &[String],
+        env: &[(String, String)],
+    ) -> Result<i32, String> {
+        let mut cmd = Command::new(program);
+        cmd.args(args);
+        for (k, v) in env {
+            cmd.env(k, v);
         }
+        let st = cmd
+            .status()
+            .map_err(|e| format!("failed to run {}: {}", program, e))?;
+        Ok(st.code().unwrap_or(1))
     }
-    None
+    fn succeeds(&self, program: &str, args: &[String], env: &[(String, String)]) -> bool {
+        let mut cmd = Command::new(program);
+        cmd.args(args)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+        for (k, v) in env {
+            cmd.env(k, v);
+        }
+        cmd.status().map(|s| s.success()).unwrap_or(false)
+    }
+    fn capture(&self, program: &str, args: &[String]) -> Option<String> {
+        let out = Command::new(program).args(args).output().ok()?;
+        if !out.status.success() {
+            return None;
+        }
+        Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    }
+    fn var(&self, name: &str) -> Option<String> {
+        std::env::var(name).ok()
+    }
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct BuildConfig {
-    pub out_tar_gz: PathBuf,
-    pub project_dir: Option<PathBuf>,
+    pub project_dir: PathBuf,
+    pub out_firmware: String,
+    pub out_bootloader: String,
+    pub out_partitions: String,
 }
 
-pub fn parse_args(args: &[String]) -> Result<BuildConfig, String> {
-    if args.is_empty() {
-        return Err("Usage: build_firmware <out_tar_gz> [--project-dir <dir>]".into());
+fn default_project_dir(r: &dyn Runner) -> PathBuf {
+    match r.var("BUILD_WORKSPACE_DIRECTORY") {
+        Some(ws) if !ws.is_empty() => PathBuf::from(ws).join("apps/embedded/esp32-s3"),
+        _ => PathBuf::from("."),
     }
-    let mut out_tar_gz = None;
-    let mut project_dir = None;
+}
+
+/// Same flags as the shell script (`--project_dir`, `--out_firmware`, `--out_bootloader`,
+/// `--out_partitions`); the dashed spellings are accepted too.
+pub fn parse_args(args: &[String], r: &dyn Runner) -> Result<BuildConfig, String> {
+    let mut cfg = BuildConfig {
+        project_dir: default_project_dir(r),
+        out_firmware: String::new(),
+        out_bootloader: String::new(),
+        out_partitions: String::new(),
+    };
     let mut i = 0;
     while i < args.len() {
-        match args[i].as_str() {
-            "--project-dir" | "--project_dir" => {
-                i += 1;
-                if i >= args.len() {
-                    return Err("--project-dir requires an argument".into());
-                }
-                project_dir = Some(PathBuf::from(&args[i]));
+        let flag = args[i].as_str();
+        let slot: &mut String = match flag {
+            "--out_firmware" | "--out-firmware" => &mut cfg.out_firmware,
+            "--out_bootloader" | "--out-bootloader" => &mut cfg.out_bootloader,
+            "--out_partitions" | "--out-partitions" => &mut cfg.out_partitions,
+            "--project_dir" | "--project-dir" => {
+                let v = args
+                    .get(i + 1)
+                    .ok_or_else(|| format!("{} requires an argument", flag))?;
+                cfg.project_dir = PathBuf::from(v);
+                i += 2;
+                continue;
             }
-            "-h" | "--help" => {
-                return Err("Usage: build_firmware <out_tar_gz> [--project-dir <dir>]".into());
-            }
-            other => {
-                if out_tar_gz.is_none() {
-                    out_tar_gz = Some(PathBuf::from(other));
-                } else {
-                    return Err(format!("unexpected argument: {}", other));
-                }
-            }
-        }
-        i += 1;
+            other => return Err(format!("Unknown argument: {}", other)),
+        };
+        let v = args
+            .get(i + 1)
+            .ok_or_else(|| format!("{} requires an argument", flag))?;
+        *slot = v.clone();
+        i += 2;
     }
-
-    Ok(BuildConfig {
-        out_tar_gz: out_tar_gz.ok_or("missing <out_tar_gz> argument")?,
-        project_dir,
-    })
+    Ok(cfg)
 }
 
-pub fn build_firmware(config: &BuildConfig) -> Result<(), String> {
-    let pio = find_pio();
-    let tmp = env::temp_dir().join("esp32-s3-build");
-    let _ = fs::remove_dir_all(&tmp);
-    fs::create_dir_all(&tmp).map_err(|e| format!("create temp dir: {}", e))?;
-
-    let fw_bin = tmp.join("firmware.bin");
-    let part_bin = tmp.join("partitions.bin");
-    let boot_bin = tmp.join("bootloader.bin");
-
-    if let Some(ref pio_path) = pio {
-        eprintln!("=== Building ESP32-S3 Firmware ===");
-
-        let mut cmd = Command::new(pio_path);
-        cmd.arg("run").arg("-e").arg("esp32-s3-devkitc-1");
-        if let Some(ref dir) = config.project_dir {
-            cmd.arg("-d").arg(dir);
-        }
-
-        let status = cmd
-            .status()
-            .map_err(|e| format!("failed to run pio: {}", e))?;
-        if !status.success() {
-            return Err("PlatformIO build failed".into());
-        }
-
-        let build_dir = config
-            .project_dir
-            .as_deref()
-            .unwrap_or(Path::new("."))
-            .join(".pio/build/esp32s3");
-
-        for (name, dest) in [
-            ("firmware.bin", &fw_bin),
-            ("partitions.bin", &part_bin),
-            ("bootloader.bin", &boot_bin),
-        ] {
-            let src = build_dir.join(name);
-            if !src.exists() {
-                return Err(format!("{} not found after build", name));
-            }
-            fs::copy(&src, dest).map_err(|e| format!("copy {}: {}", name, e))?;
-        }
+/// The passwd-database home directory (`eval echo ~$(id -un)` in the shell script).
+pub fn user_home(r: &dyn Runner) -> String {
+    let user = r.capture("id", &["-un".to_string()]).unwrap_or_default();
+    let home = r
+        .capture(
+            "sh",
+            &["-c".to_string(), format!("eval echo \"~{}\"", user)],
+        )
+        .unwrap_or_default();
+    if home.is_empty() || home.starts_with('~') {
+        r.var("HOME").unwrap_or_default()
     } else {
-        eprintln!("=== PlatformIO not found; creating placeholder firmware ===");
-        for (name, dest) in [
-            ("firmware.bin", &fw_bin),
-            ("partitions.bin", &part_bin),
-            ("bootloader.bin", &boot_bin),
-        ] {
-            let mut f = fs::File::create(dest).map_err(|e| format!("create {}: {}", name, e))?;
-            f.write_all(format!("PLACEHOLDER:{}\n", name).as_bytes())
-                .map_err(|e| format!("write {}: {}", name, e))?;
+        home
+    }
+}
+
+/// The environment the PlatformIO build runs under.
+pub fn build_env(r: &dyn Runner, user_home: &str) -> Vec<(String, String)> {
+    let home = r
+        .var("HOME")
+        .filter(|h| !h.is_empty())
+        .unwrap_or_else(|| user_home.to_string());
+    let path = format!(
+        "{}:{}",
+        r.tool_dirs(user_home),
+        r.var("PATH").unwrap_or_default()
+    );
+    let core = r
+        .var("PLATFORMIO_CORE_DIR")
+        .filter(|c| !c.is_empty())
+        .unwrap_or_else(|| format!("{}/.platformio", user_home));
+    vec![
+        ("HOME".into(), home),
+        ("PATH".into(), path),
+        ("PLATFORMIO_CORE_DIR".into(), core),
+    ]
+}
+
+fn on_path(path: &str, name: &str) -> bool {
+    path.split(':')
+        .filter(|d| !d.is_empty())
+        .any(|d| Path::new(d).join(name).is_file())
+}
+
+/// `pio`, else `uvx --from platformio pio`, else `python3 -m platformio` -- the shell's order.
+pub fn find_pio(r: &dyn Runner, env: &[(String, String)]) -> Result<Vec<String>, String> {
+    let path = env
+        .iter()
+        .find(|(k, _)| k == "PATH")
+        .map(|(_, v)| v.clone())
+        .unwrap_or_default();
+    let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+    if on_path(&path, "pio") {
+        return Ok(s(&["pio"]));
+    }
+    if on_path(&path, "uvx") {
+        return Ok(s(&["uvx", "--from", "platformio", "pio"]));
+    }
+    if r.succeeds("python3", &s(&["-m", "platformio", "--version"]), env) {
+        return Ok(s(&["python3", "-m", "platformio"]));
+    }
+    Err("PlatformIO not found. Install via: uv tool install platformio".into())
+}
+
+fn copy_out(src: &Path, dst: &str) -> Result<(), String> {
+    if dst.is_empty() {
+        return Ok(());
+    }
+    let dst = Path::new(dst);
+    if let Some(parent) = dst.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent).map_err(|e| format!("mkdir {}: {}", parent.display(), e))?;
         }
     }
+    fs::copy(src, dst)
+        .map_err(|e| format!("copy {} -> {}: {}", src.display(), dst.display(), e))?;
+    Ok(())
+}
 
-    create_tar_gz(&config.out_tar_gz, &tmp)?;
+pub fn build_firmware(cfg: &BuildConfig, r: &dyn Runner) -> Result<(), String> {
+    let home = user_home(r);
+    let env = build_env(r, &home);
+    let pio = find_pio(r, &env)?;
+
+    eprintln!("=== Building ESP32-S3 Firmware ===");
+    eprintln!("Project directory: {}", cfg.project_dir.display());
+    eprintln!(
+        "PlatformIO core:   {}",
+        env.iter()
+            .find(|(k, _)| k == "PLATFORMIO_CORE_DIR")
+            .map(|(_, v)| v.as_str())
+            .unwrap_or("")
+    );
+
+    let mut args: Vec<String> = pio[1..].to_vec();
+    args.extend([
+        "run".into(),
+        "-d".into(),
+        cfg.project_dir.to_string_lossy().to_string(),
+    ]);
+    let code = r.status(&pio[0], &args, &env)?;
+    if code != 0 {
+        return Err(format!("PlatformIO build failed (exit {})", code));
+    }
+
+    let build_dir = cfg.project_dir.join(".pio/build/esp32s3");
+    for img in ["firmware", "bootloader", "partitions"] {
+        let p = build_dir.join(format!("{}.bin", img));
+        if !p.is_file() {
+            return Err(format!("Build finished but {} not found!", p.display()));
+        }
+    }
+    copy_out(&build_dir.join("firmware.bin"), &cfg.out_firmware)?;
+    copy_out(&build_dir.join("bootloader.bin"), &cfg.out_bootloader)?;
+    copy_out(&build_dir.join("partitions.bin"), &cfg.out_partitions)?;
 
     eprintln!("=== Firmware Build Successful ===");
     Ok(())
 }
 
-fn create_tar_gz(out: &Path, dir: &Path) -> Result<(), String> {
-    let status = Command::new("tar")
-        .arg("-czf")
-        .arg(out)
-        .arg("-C")
-        .arg(dir)
-        .arg("firmware.bin")
-        .arg("partitions.bin")
-        .arg("bootloader.bin")
-        .status()
-        .map_err(|e| format!("tar: {}", e))?;
-    if !status.success() {
-        return Err("tar -czf failed".into());
-    }
-    Ok(())
-}
-
-pub fn tar_gz_contents(path: &Path) -> Result<Vec<String>, String> {
-    let output = Command::new("tar")
-        .arg("-tzf")
-        .arg(path)
-        .output()
-        .map_err(|e| format!("tar -tzf: {}", e))?;
-    if !output.status.success() {
-        return Err("tar -tzf failed".into());
-    }
-    let text = String::from_utf8_lossy(&output.stdout);
-    Ok(text.lines().map(|l| l.to_string()).collect())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
-    use std::sync::Mutex;
+    use std::cell::RefCell;
+    use std::collections::HashMap;
 
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
-
-    #[test]
-    fn test_placeholder_mode() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let tmp = env::temp_dir().join("test_build_fw_placeholder");
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).unwrap();
-        let out = tmp.join("firmware.tar.gz");
-
-        env::set_var("PIO_BIN", "/nonexistent/pio");
-
-        let config = BuildConfig {
-            out_tar_gz: out.clone(),
-            project_dir: None,
-        };
-
-        let result = build_firmware(&config);
-        env::remove_var("PIO_BIN");
-
-        assert!(result.is_ok(), "placeholder build failed: {:?}", result);
-        assert!(out.exists(), "tar.gz not created");
-
-        let contents = tar_gz_contents(&out).unwrap();
-        assert!(
-            contents.iter().any(|f| f.contains("firmware.bin")),
-            "missing firmware.bin in {:?}",
-            contents
-        );
-        assert!(
-            contents.iter().any(|f| f.contains("partitions.bin")),
-            "missing partitions.bin in {:?}",
-            contents
-        );
-        assert!(
-            contents.iter().any(|f| f.contains("bootloader.bin")),
-            "missing bootloader.bin in {:?}",
-            contents
-        );
-
-        let _ = fs::remove_dir_all(&tmp);
+    /// Records every command; `on_status` can create build output like a real `pio run`.
+    struct Fake {
+        vars: HashMap<String, String>,
+        calls: RefCell<Vec<(String, Vec<String>, Vec<(String, String)>)>>,
+        pio_exit: i32,
+        python_pio_ok: bool,
+        on_status: Box<dyn Fn(&[String])>,
     }
 
-    #[test]
-    fn test_fake_pio_bin() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let tmp = env::temp_dir().join("test_build_fw_fakepio");
-        let _ = fs::remove_dir_all(&tmp);
-        fs::create_dir_all(&tmp).unwrap();
-
-        let fake_pio = tmp.join("fake_pio.sh");
-        let proj = tmp.join("project");
-        let build_out = proj.join(".pio/build/esp32s3");
-        fs::create_dir_all(&build_out).unwrap();
-
-        for name in ["firmware.bin", "partitions.bin", "bootloader.bin"] {
-            fs::write(build_out.join(name), format!("FAKE:{}", name)).unwrap();
+    impl Fake {
+        fn new(vars: &[(&str, &str)]) -> Self {
+            Fake {
+                vars: vars
+                    .iter()
+                    .map(|(k, v)| (k.to_string(), v.to_string()))
+                    .collect(),
+                calls: RefCell::new(vec![]),
+                pio_exit: 0,
+                python_pio_ok: false,
+                on_status: Box::new(|_| {}),
+            }
         }
+    }
 
-        fs::write(&fake_pio, "#!/bin/sh\nexit 0\n").unwrap();
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&fake_pio, fs::Permissions::from_mode(0o755)).unwrap();
+    impl Runner for Fake {
+        fn status(&self, p: &str, a: &[String], e: &[(String, String)]) -> Result<i32, String> {
+            self.calls
+                .borrow_mut()
+                .push((p.into(), a.to_vec(), e.to_vec()));
+            (self.on_status)(a);
+            Ok(self.pio_exit)
         }
+        fn succeeds(&self, p: &str, a: &[String], e: &[(String, String)]) -> bool {
+            self.calls
+                .borrow_mut()
+                .push((p.into(), a.to_vec(), e.to_vec()));
+            self.python_pio_ok
+        }
+        fn capture(&self, p: &str, a: &[String]) -> Option<String> {
+            match p {
+                "id" => Some("builder".into()),
+                "sh" => {
+                    assert!(
+                        a[1].contains("~builder"),
+                        "passwd home must be derived for the user"
+                    );
+                    Some("/home/builder".into())
+                }
+                _ => None,
+            }
+        }
+        fn var(&self, n: &str) -> Option<String> {
+            self.vars.get(n).cloned()
+        }
+        // Hermetic: never pick up a real pio/uvx from the machine running the tests.
+        fn tool_dirs(&self, user_home: &str) -> String {
+            format!("{}/.local/bin", user_home)
+        }
+    }
 
-        env::set_var("PIO_BIN", fake_pio.to_str().unwrap());
+    fn tmpdir(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("bf-test-{}-{}", name, std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        d
+    }
 
-        let out = tmp.join("firmware.tar.gz");
-        let config = BuildConfig {
-            out_tar_gz: out.clone(),
-            project_dir: Some(proj),
+    fn fake_pio_dir(root: &Path) -> String {
+        let bin = root.join("bin");
+        fs::create_dir_all(&bin).unwrap();
+        fs::write(bin.join("pio"), "").unwrap();
+        bin.to_string_lossy().to_string()
+    }
+
+    fn write_images(project: &Path, which: &[&str]) {
+        let d = project.join(".pio/build/esp32s3");
+        fs::create_dir_all(&d).unwrap();
+        for w in which {
+            fs::write(d.join(format!("{}.bin", w)), format!("IMG:{}", w)).unwrap();
+        }
+    }
+
+    fn sv(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn parses_bazel_genrule_flags() {
+        let f = Fake::new(&[]);
+        let cfg = parse_args(
+            &sv(&[
+                "--project_dir",
+                "apps/embedded/esp32-s3",
+                "--out_firmware",
+                "o/firmware.bin",
+                "--out_bootloader",
+                "o/bootloader.bin",
+                "--out_partitions",
+                "o/partitions.bin",
+            ]),
+            &f,
+        )
+        .unwrap();
+        assert_eq!(cfg.project_dir, PathBuf::from("apps/embedded/esp32-s3"));
+        assert_eq!(cfg.out_firmware, "o/firmware.bin");
+        assert_eq!(cfg.out_bootloader, "o/bootloader.bin");
+        assert_eq!(cfg.out_partitions, "o/partitions.bin");
+    }
+
+    #[test]
+    fn unknown_argument_is_rejected_like_the_shell() {
+        let f = Fake::new(&[]);
+        let e = parse_args(&sv(&["--bogus"]), &f).unwrap_err();
+        assert_eq!(e, "Unknown argument: --bogus");
+        // the old Rust port took a positional tar path; that interface is gone
+        assert!(parse_args(&sv(&["out.tar.gz"]), &f).is_err());
+    }
+
+    #[test]
+    fn default_project_dir_is_the_package() {
+        let f = Fake::new(&[("BUILD_WORKSPACE_DIRECTORY", "/ws")]);
+        assert_eq!(
+            parse_args(&[], &f).unwrap().project_dir,
+            PathBuf::from("/ws/apps/embedded/esp32-s3")
+        );
+    }
+
+    #[test]
+    fn env_uses_passwd_home_and_prepends_tool_dirs() {
+        // Bazel's local action env: PATH and nothing else.
+        let f = Fake::new(&[("PATH", "/bin:/usr/bin:/usr/local/bin")]);
+        let home = user_home(&f);
+        assert_eq!(home, "/home/builder");
+        let env: HashMap<_, _> = build_env(&f, &home).into_iter().collect();
+        assert_eq!(env["HOME"], "/home/builder");
+        assert_eq!(
+            env["PATH"],
+            "/home/builder/.local/bin:/bin:/usr/bin:/usr/local/bin"
+        );
+        assert_eq!(
+            RealRunner.tool_dirs("/home/builder"),
+            "/home/builder/.local/bin:/opt/homebrew/bin:/usr/local/bin"
+        );
+        assert_eq!(env["PLATFORMIO_CORE_DIR"], "/home/builder/.platformio");
+    }
+
+    #[test]
+    fn env_respects_existing_home_and_core_dir() {
+        let f = Fake::new(&[
+            ("HOME", "/h"),
+            ("PLATFORMIO_CORE_DIR", "/core"),
+            ("PATH", "/x"),
+        ]);
+        let env: HashMap<_, _> = build_env(&f, "/home/builder").into_iter().collect();
+        assert_eq!(env["HOME"], "/h");
+        assert_eq!(env["PLATFORMIO_CORE_DIR"], "/core");
+    }
+
+    #[test]
+    fn pio_lookup_order() {
+        let root = tmpdir("order");
+        let with_pio = fake_pio_dir(&root);
+        let f = Fake::new(&[]);
+        let env = |p: &str| vec![("PATH".to_string(), p.to_string())];
+        assert_eq!(find_pio(&f, &env(&with_pio)).unwrap(), sv(&["pio"]));
+
+        let uvx_dir = root.join("uvx");
+        fs::create_dir_all(&uvx_dir).unwrap();
+        fs::write(uvx_dir.join("uvx"), "").unwrap();
+        assert_eq!(
+            find_pio(&f, &env(uvx_dir.to_str().unwrap())).unwrap(),
+            sv(&["uvx", "--from", "platformio", "pio"])
+        );
+
+        let mut f2 = Fake::new(&[]);
+        f2.python_pio_ok = true;
+        assert_eq!(
+            find_pio(&f2, &env("/nonexistent")).unwrap(),
+            sv(&["python3", "-m", "platformio"])
+        );
+
+        let e = find_pio(&f, &env("/nonexistent")).unwrap_err();
+        assert!(e.contains("PlatformIO not found"));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn builds_with_the_esp32s3_env_and_copies_the_three_images() {
+        let root = tmpdir("ok");
+        let project = root.join("proj");
+        write_images(&project, &["firmware", "bootloader", "partitions"]);
+        let f = Fake::new(&[("PATH", &fake_pio_dir(&root))]);
+        let cfg = BuildConfig {
+            project_dir: project.clone(),
+            out_firmware: root
+                .join("out/a/firmware.bin")
+                .to_string_lossy()
+                .to_string(),
+            out_bootloader: root
+                .join("out/b/bootloader.bin")
+                .to_string_lossy()
+                .to_string(),
+            out_partitions: root
+                .join("out/c/partitions.bin")
+                .to_string_lossy()
+                .to_string(),
         };
+        build_firmware(&cfg, &f).unwrap();
 
-        let result = build_firmware(&config);
-        env::remove_var("PIO_BIN");
+        let calls = f.calls.borrow();
+        let (prog, args, env) = &calls[0];
+        assert_eq!(prog, "pio");
+        // `pio run -d <project>` -- no `-e`: the old port passed a nonexistent env.
+        assert_eq!(args, &sv(&["run", "-d", project.to_str().unwrap()]));
+        assert!(!args.iter().any(|a| a == "-e"));
+        assert!(env.iter().any(|(k, _)| k == "PLATFORMIO_CORE_DIR"));
 
-        assert!(result.is_ok(), "fake pio build failed: {:?}", result);
-        assert!(out.exists());
-
-        let contents = tar_gz_contents(&out).unwrap();
-        assert!(contents.iter().any(|f| f.contains("firmware.bin")));
-        assert!(contents.iter().any(|f| f.contains("partitions.bin")));
-        assert!(contents.iter().any(|f| f.contains("bootloader.bin")));
-
-        let _ = fs::remove_dir_all(&tmp);
+        assert_eq!(
+            fs::read_to_string(&cfg.out_firmware).unwrap(),
+            "IMG:firmware"
+        );
+        assert_eq!(
+            fs::read_to_string(&cfg.out_bootloader).unwrap(),
+            "IMG:bootloader"
+        );
+        assert_eq!(
+            fs::read_to_string(&cfg.out_partitions).unwrap(),
+            "IMG:partitions"
+        );
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
-    fn test_parse_args_minimal() {
-        let args = vec!["out.tar.gz".to_string()];
-        let config = parse_args(&args).unwrap();
-        assert_eq!(config.out_tar_gz, PathBuf::from("out.tar.gz"));
-        assert!(config.project_dir.is_none());
+    fn missing_pio_fails_instead_of_writing_placeholders() {
+        let root = tmpdir("nopio");
+        let f = Fake::new(&[("PATH", "/nonexistent")]);
+        let out = root.join("firmware.bin");
+        let cfg = BuildConfig {
+            project_dir: root.clone(),
+            out_firmware: out.to_string_lossy().to_string(),
+            out_bootloader: String::new(),
+            out_partitions: String::new(),
+        };
+        let e = build_firmware(&cfg, &f).unwrap_err();
+        assert!(e.contains("PlatformIO not found"), "{}", e);
+        assert!(!out.exists(), "no placeholder image may be produced");
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
-    fn test_parse_args_with_project_dir() {
-        let args = vec![
-            "out.tar.gz".to_string(),
-            "--project-dir".to_string(),
-            "/my/project".to_string(),
-        ];
-        let config = parse_args(&args).unwrap();
-        assert_eq!(config.project_dir, Some(PathBuf::from("/my/project")));
+    fn failing_pio_run_fails_the_build() {
+        let root = tmpdir("piofail");
+        let mut f = Fake::new(&[("PATH", &fake_pio_dir(&root))]);
+        f.pio_exit = 2;
+        let cfg = BuildConfig {
+            project_dir: root.clone(),
+            out_firmware: String::new(),
+            out_bootloader: String::new(),
+            out_partitions: String::new(),
+        };
+        assert!(build_firmware(&cfg, &f)
+            .unwrap_err()
+            .contains("PlatformIO build failed"));
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
-    fn test_parse_args_empty() {
-        assert!(parse_args(&[]).is_err());
+    fn a_missing_image_after_the_build_is_an_error() {
+        let root = tmpdir("missing");
+        let project = root.join("proj");
+        write_images(&project, &["firmware", "bootloader"]); // no partitions.bin
+        let f = Fake::new(&[("PATH", &fake_pio_dir(&root))]);
+        let out = root.join("firmware.bin");
+        let cfg = BuildConfig {
+            project_dir: project,
+            out_firmware: out.to_string_lossy().to_string(),
+            out_bootloader: String::new(),
+            out_partitions: String::new(),
+        };
+        let e = build_firmware(&cfg, &f).unwrap_err();
+        assert!(e.contains("partitions.bin not found"), "{}", e);
+        assert!(
+            !out.exists(),
+            "nothing is copied when the build is incomplete"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn empty_out_paths_are_skipped() {
+        let root = tmpdir("skip");
+        let project = root.join("proj");
+        write_images(&project, &["firmware", "bootloader", "partitions"]);
+        let f = Fake::new(&[("PATH", &fake_pio_dir(&root))]);
+        let only = root.join("only.bin");
+        let cfg = BuildConfig {
+            project_dir: project,
+            out_firmware: only.to_string_lossy().to_string(),
+            out_bootloader: String::new(),
+            out_partitions: String::new(),
+        };
+        build_firmware(&cfg, &f).unwrap();
+        assert!(only.exists());
+        let _ = fs::remove_dir_all(&root);
     }
 }

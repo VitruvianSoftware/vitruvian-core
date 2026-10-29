@@ -128,7 +128,7 @@ delivery orchestrator's affected-detection, gating and kill switch:
 PR against main ──> iot-esp32-s3.yaml: bazel build //apps/embedded/esp32-s3:firmware
 
 Push to main ─────> delivery-esp32-s3.yaml esp32-s3-beta            [BETA GRADE]
-   (affected)         publish.sh GRADE=beta
+   (affected)         publish GRADE=beta
                       stamped 0.1.0-beta.<sha>, assets clobbered on the
                       rolling prerelease esp32-s3-beta-latest, tag moved to HEAD
 
@@ -137,11 +137,11 @@ Push to main ─────> iot-esp32-s3-release.yaml (release-please)
                       the GitHub Release esp32-s3-vX.Y.Z
                                 │
 Release published ─> delivery-esp32-s3.yaml esp32-s3-production     [PRODUCTION GRADE]
-   (esp32-s3-v*)      publish.sh GRADE=production RELEASE_TAG=esp32-s3-vX.Y.Z
+   (esp32-s3-v*)      publish GRADE=production RELEASE_TAG=esp32-s3-vX.Y.Z
                       stamped X.Y.Z, assets attached to that release
 ```
 
-Every rung runs the same script as the break-glass path:
+Every rung runs the same Rust tool (`host_companion/src/publish/`) as the break-glass path:
 
 ```bash
 # rolling beta from the checked-out HEAD
@@ -152,4 +152,5 @@ GRADE=production RELEASE_TAG=esp32-s3-vX.Y.Z bazel run //apps/embedded/esp32-s3:
 ```
 
 Each published bundle (`esp32-s3-mac-controller.zip`) contains the three
-images, `build_info.json`, and this directory's `flash.sh`.
+images, `build_info.json`, and the Rust flasher source (`flash/main.rs`, `flash/lib.rs`, `flash/README.txt`)
+that builds natively with `rustc --edition 2021 -O flash/main.rs -o flash-esp32-s3`.
