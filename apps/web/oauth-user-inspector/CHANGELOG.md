@@ -8,6 +8,13 @@ adoption and is kept verbatim as the app's history — it sat under an
 `[Unreleased]` heading, unchanged, for 69 commits.
 -->
 
+## [1.15.4](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.15.3...oauth-user-inspector-v1.15.4) (2026-10-29)
+
+
+### Bug Fixes
+
+* **oauth-user-inspector:** exec the native server binary from the Rust start entrypoint ([#4042](https://github.com/VitruvianSoftware/vitruvian-core/issues/4042)) ([f96eb0f](https://github.com/VitruvianSoftware/vitruvian-core/commit/f96eb0ffc013c18369d098fa4d314b680f6bc762))
+
 ## [1.15.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.15.2...oauth-user-inspector-v1.15.3) (2026-10-27)
 
 
