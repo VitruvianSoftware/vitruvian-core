@@ -41,10 +41,14 @@ rust_library(
     rustc_flags = ["-Copt-level=3"],
 )
 
+# The downloads sync (--sync-downloads) runs the binary named by
+# PACKAGE_DESKTOP_SYNC_DOWNLOADS (src/driver.rs).
 rust_binary(
     name = "package-desktop",
     srcs = ["src/main.rs"],
+    data = ["//tools/sync-downloads:sync_downloads"],
     edition = "2021",
+    env = {"PACKAGE_DESKTOP_SYNC_DOWNLOADS": "$(rootpath //tools/sync-downloads:sync_downloads)"},
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//visibility:public"],
     deps = [":package_desktop_lib"],

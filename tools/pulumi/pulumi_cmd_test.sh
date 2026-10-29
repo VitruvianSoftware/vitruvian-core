@@ -20,7 +20,13 @@ fail() { echo "  ✗ $1" >&2; fail_n=$((fail_n + 1)); }
 ws="$work/ws"
 mkdir -p "$ws/tabula/infra/web" "$ws/tools/pulumi" "$ws/infrastructure"
 : >"$ws/infrastructure/gcp-identities.tsv"
-printf '#!/usr/bin/env bash\nexit 0\n' >"$ws/tools/pulumi/resolve_identity.sh"
+# The resolver's real lookup (first whitespace column = project dir). The map is
+# empty except for the one row test 12 adds, so tests 1-11 resolve no identity.
+cat >"$ws/tools/pulumi/resolve_identity.sh" <<'EOF'
+#!/usr/bin/env bash
+[ -f "$1" ] || exit 0
+awk -v d="$2" '$1 ~ /^#/ { next } NF == 0 { next } $1 == d { printf "%s\t%s\n", $2, $3; exit }' "$1"
+EOF
 chmod +x "$ws/tools/pulumi/resolve_identity.sh"
 # The REAL retry helper: the wrapper execs it from the workspace tree, and
 # tests 8-11 below exercise it end to end through the wrapper.
@@ -34,7 +40,7 @@ n=0
 [ -f "$STUB_COUNT" ] && n="$(cat "$STUB_COUNT")"
 n=$((n + 1))
 echo "$n" >"$STUB_COUNT"
-echo "invocation $n: backend=${PULUMI_BACKEND_URL:-unset} args=$*" >>"$STUB_LOG"
+echo "invocation $n: backend=${PULUMI_BACKEND_URL:-unset} gcp_token=${GOOGLE_OAUTH_ACCESS_TOKEN:-unset} args=$*" >>"$STUB_LOG"
 if [ "${STUB_FAIL:-0}" -eq 1 ] && [ "$n" -le "${STUB_FAIL_TIMES:-999}" ]; then
     echo "simulated error: ${STUB_MSG:-failed}" >&2
     exit 23
@@ -164,6 +170,81 @@ else
     fail "retry budget not honoured — rc=$rc, invocations=$n (wanted rc=23, n=3)"
 fi
 
+# --- GCP token minting ------------------------------------------------------
+# A project pinned in gcp-identities.tsv gets its token from //tools/gcp-token
+# (local gcloud first, then the tailnet broker a cloud session depends on). The
+# pulumi_project() wrappers hand the minter over as VITRUVIAN_GCP_TOKEN_BIN, a
+# runfiles-relative path, so it must be resolved before the wrapper cd's into
+# the project. Regression: #3973 deleted tools/gcp-token/gcp-token.sh, the path
+# the wrapper looked for, and every run silently fell back to plain gcloud.
+mkdir -p "$ws/infra/minted"
+printf 'infra/minted  sa-test@prj-test.iam.gserviceaccount.com  prj-test  test row\n' \
+    >"$ws/infrastructure/gcp-identities.tsv"
+cat >"$stubs/gcloud" <<'EOF'
+#!/usr/bin/env bash
+echo "$*" >>"$GCLOUD_LOG"
+echo "gcloud-token"
+EOF
+chmod +x "$stubs/gcloud"
+# Laid out like a runfiles tree: the wrapper starts in "$rf" (as `bazel run`
+# does) and the minter sits at a path relative to it.
+rf="$work/runfiles/_main"
+mkdir -p "$rf/tools/gcp-token"
+cat >"$rf/tools/gcp-token/gcp-token" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$@" >>"$MINTER_LOG"
+echo "minted-token"
+EOF
+chmod +x "$rf/tools/gcp-token/gcp-token"
+
+# run_minted <VITRUVIAN_GCP_TOKEN_BIN value>: prints "<rc>|<minter argv>|<gcloud argv>|<pulumi log>".
+run_minted() {
+    local minter_log="$work/minter.$RANDOM" gcloud_log="$work/gcloud.$RANDOM"
+    local count="$work/count.$RANDOM" log="$work/log.$RANDOM"
+    : >"$minter_log"; : >"$gcloud_log"; : >"$count"; : >"$log"
+    (cd "$rf" && env -u GOOGLE_OAUTH_ACCESS_TOKEN -u GOOGLE_APPLICATION_CREDENTIALS \
+        -u CLOUDSDK_AUTH_ACCESS_TOKEN -u GOOGLE_CLOUD_PROJECT \
+        PATH="$stubs:/usr/bin:/bin" BUILD_WORKSPACE_DIRECTORY="$ws" \
+        VITRUVIAN_GCP_TOKEN_BIN="$1" \
+        MINTER_LOG="$minter_log" GCLOUD_LOG="$gcloud_log" \
+        STUB_COUNT="$count" STUB_LOG="$log" STUB_FAIL=0 \
+        PULUMI_BACKEND_URL="gs://b" CI=1 \
+        "$WRAPPER" infra/minted preview >/dev/null 2>&1)
+    local rc=$?
+    echo "$rc|$(tr '\n' ' ' <"$minter_log")|$(cat "$gcloud_log")|$(cat "$log")"
+}
+
+echo "--- 12. A pinned identity's token comes from //tools/gcp-token ---"
+res="$(run_minted tools/gcp-token/gcp-token)"
+IFS='|' read -r rc minted gcloud_argv pulumi_log <<<"$res"
+if [ "$rc" -eq 0 ] && [ "$minted" = "sa-test@prj-test.iam.gserviceaccount.com " ] \
+    && [ -z "$gcloud_argv" ] && [[ "$pulumi_log" == *"gcp_token=minted-token"* ]]; then
+    pass "minter invoked with the pinned account; pulumi got its token (gcloud not called)"
+else
+    fail "minter not used — rc=$rc minter_argv='$minted' gcloud_argv='$gcloud_argv' pulumi='$pulumi_log'"
+fi
+
+echo "--- 13. An absolute minter path works too ---"
+res="$(run_minted "$rf/tools/gcp-token/gcp-token")"
+IFS='|' read -r rc minted gcloud_argv pulumi_log <<<"$res"
+if [ "$rc" -eq 0 ] && [[ "$pulumi_log" == *"gcp_token=minted-token"* ]]; then
+    pass "absolute VITRUVIAN_GCP_TOKEN_BIN is used as is"
+else
+    fail "absolute minter path not used — rc=$rc minter_argv='$minted' pulumi='$pulumi_log'"
+fi
+
+echo "--- 14. No minter (e.g. a direct bash call) falls back to gcloud ---"
+for bin in "" "tools/gcp-token/missing"; do
+    res="$(run_minted "$bin")"
+    IFS='|' read -r rc minted gcloud_argv pulumi_log <<<"$res"
+    if [ "$rc" -eq 0 ] && [ -z "$minted" ] \
+        && [ "$gcloud_argv" = "auth print-access-token --account=sa-test@prj-test.iam.gserviceaccount.com" ] \
+        && [[ "$pulumi_log" == *"gcp_token=gcloud-token"* ]]; then
+        pass "VITRUVIAN_GCP_TOKEN_BIN='$bin': gcloud fallback, pulumi got its token"
+    else
+        fail "gcloud fallback broke for '$bin' — rc=$rc minter_argv='$minted' gcloud_argv='$gcloud_argv' pulumi='$pulumi_log'"
+    fi
+done
 
 echo
 if [ "$fail_n" -gt 0 ]; then
