@@ -609,22 +609,8 @@ test_suite(
 # with bash, git and jq, releases a version once and never 0.0.0; and no job
 # may write more than it must. `no-remote-exec`: the step needs jq and git on
 # the machine, and the remote execution image has no jq.
-py_test(
-    name = "mirror_workflows_test",
-    size = "small",
-    srcs = ["mirror_workflows_test.py"],
-    data = [
-        ".github/workflows/ci.yml",
-        ".github/workflows/kits.yml",
-        ".github/workflows/release.yml",
-    ],
-    main = "mirror_workflows_test.py",
-    tags = ["no-remote-exec"],
-    deps = ["@pip//pyyaml"],
-)
-
 rust_test(
-    name = "mirror_workflows_rs_test",
+    name = "mirror_workflows_test",
     size = "small",
     srcs = ["verification/src/bin/mirror_workflows_test.rs"],
     crate_root = "verification/src/bin/mirror_workflows_test.rs",
@@ -982,24 +968,8 @@ test_suite(
 # every piece of code in it against the sample it is taken from, every
 # command in it against what exists, and what it quotes the command as saying
 # against the command's own words. Not `manual` and not tied to macOS.
-py_test(
-    name = "guide_test",
-    size = "small",
-    srcs = ["docs/guide_test.py"],
-    data = PROTOCOL_FILES + glob(["samples/**"]) + [
-        "BUILD",
-        "Sources/VitruvianToolCLI/NewTool.swift",
-        "Sources/VitruvianToolCLI/Words.swift",
-        "docs/writing-a-tool.md",
-        "//packages/vitruvian-sdk/go/toolkit:app.go",
-        "//packages/vitruvian-sdk/kits/rust:src/app.rs",
-    ] + glob(["Sources/VitruvianToolKit/**/*.swift"]),
-    main = "docs/guide_test.py",
-    deps = ["@pip//jsonschema"],
-)
-
 rust_test(
-    name = "guide_rs_test",
+    name = "guide_test",
     size = "small",
     srcs = ["verification/src/bin/guide_test.rs"],
     crate_root = "verification/src/bin/guide_test.rs",
@@ -1018,34 +988,9 @@ rust_test(
 )
 
 # The version in release-please's two files and the one `--version` prints
-# agree. Plain Python, so the Linux lane runs it too.
-py_test(
-    name = "release_version_test",
-    size = "small",
-    srcs = ["release_version_test.py"],
-    data = [
-        ".release-please-manifest.json",
-        "BUILD",
-        "Sources/VitruvianToolCLI/Words.swift",
-        "kits/python/pyproject.toml",
-        "release-please-config.json",
-        "samples/hello-go/go.mod",
-        "samples/hello-panel-go/go.mod",
-        "samples/hello-panel-python/requirements.txt",
-        "samples/hello-panel-rust/Cargo.toml",
-        "samples/hello-panel-typescript/package.json",
-        "samples/hello-python-kit/requirements.txt",
-        "samples/hello-rust/Cargo.toml",
-        "samples/hello-typescript/package.json",
-        "//packages/vitruvian-sdk/go/toolkit:version.go",
-        "//packages/vitruvian-sdk/kits/rust:Cargo.toml",
-        "//packages/vitruvian-sdk/kits/typescript:package.json",
-    ],
-    main = "release_version_test.py",
-)
-
+# agree. Plain Rust, so the Linux lane runs it too.
 rust_test(
-    name = "release_version_rs_test",
+    name = "release_version_test",
     size = "small",
     srcs = ["verification/src/bin/release_version_test.rs"],
     crate_root = "verification/src/bin/release_version_test.rs",

@@ -8,8 +8,8 @@ language, with zero app dependencies.
 
 ## Tokens → Compose
 
-`packages/design-system-android/tools/gen_tokens.py` reads `tokens.json` and
-emits `VitruvianTokens.kt`. `bazel test //packages/design-system-android:tokens_are_current`
+`bazel run //packages/design-system-android/tools:gen_tokens` reads `tokens.json` and
+emits `VitruvianTokens.kt` (the exact command is in `packages/design-system-android/README.md`). `bazel test //packages/design-system-android:tokens_are_current`
 diffs the generated output in CI so Web and Android cannot drift. Read `px` as
 `dp`; font sizes as `sp`.
 

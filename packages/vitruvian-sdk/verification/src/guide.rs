@@ -19,7 +19,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! Native Rust port of `packages/vitruvian-sdk/docs/guide_test.py`.
+//! The guide check behind `:guide_test`.
 //! Verifies every fenced block, manifest field, protocol message, kit method table,
 //! and CLI usage reference in `docs/writing-a-tool.md` and the kit sample READMEs.
 
@@ -184,7 +184,7 @@ pub fn excerpt_problems(
     Vec::new()
 }
 
-/// Replaces `r" ?\\\n\s*"` with `" "`, matching `guide_test.py`'s `said_problems`.
+/// Replaces `r" ?\\\n\s*"` with `" "`: a Swift line continuation reads as one space.
 pub fn join_swift_line_continuations(source: &str) -> String {
     let mut out = String::with_capacity(source.len());
     let mut chars = source.chars().peekable();

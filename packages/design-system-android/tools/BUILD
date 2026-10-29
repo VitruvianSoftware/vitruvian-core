@@ -107,12 +107,6 @@ test_suite(
     visibility = ["//visibility:public"],
 )
 
-test_suite(
-    name = "gen_tokens_rs_parity_test",
-    tests = [":gen_tokens_lib_test"],
-    visibility = ["//visibility:public"],
-)
-
 rust_binary(
     name = "parity_test_rs",
     srcs = ["src/parity_test.rs"],
