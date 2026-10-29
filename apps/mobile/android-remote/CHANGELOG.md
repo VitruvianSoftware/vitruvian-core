@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.22](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.21...android-remote-v0.1.22) (2026-10-29)
+
+
+### Features
+
+* **android-remote:** say plainly when the phone is not paired and give a one-tap fix ([#4063](https://github.com/VitruvianSoftware/vitruvian-core/issues/4063)) ([536cf73](https://github.com/VitruvianSoftware/vitruvian-core/commit/536cf73db36f726cafad03c9fb244de8afe4ad5f))
+
 ## [0.1.21](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.20...android-remote-v0.1.21) (2026-10-24)
 
 
