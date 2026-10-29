@@ -26,7 +26,6 @@ load("@npm//apps/suites/tabula/extension:@playwright/test/package_json.bzl", pla
 load("@npm//apps/suites/tabula/extension:webpack-cli/package_json.bzl", webpack_cli = "bin")
 load("@rules_itest//:itest.bzl", "service_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("//tools/delivery:defs.bzl", "delivery")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
@@ -349,21 +348,13 @@ genrule(
     cmd = "cd $(location :dist_release) && zip -qrX $$OLDPWD/$@ . -x '*.map' -x '*.d.ts'",
 )
 
-# Break-glass publisher for the rolling dev-latest bundle. CI runs the SAME
-# script directly (`bash tabula/extension/publish-dev-latest.sh`); this target
-# is what the runbook points at when Actions is unavailable, and what the
-# delivery() declaration below names as its `run`.
-# Read by //tools/delivery/gen's guard that every `run:` in the generated
-# workflow points at a script that exists and is executable.
-exports_files(["publish-dev-latest.sh"])
-
-sh_binary(
+# Break-glass publisher for the rolling dev-latest bundle. CI compiles and runs
+# the SAME Rust crate with rustc; this alias is what the runbook points at when
+# Actions is unavailable, and what the delivery() declaration below names as its
+# `run`.
+alias(
     name = "publish-dev-latest",
-    srcs = ["publish-dev-latest.sh"],
-    # No visibility widening: `bazel run //tabula/extension:publish-dev-latest`
-    # is a COMMAND-LINE target, which visibility does not gate -- it gates
-    # dependencies, and nothing depends on this. Making it public would punch a
-    # hole in the inter-app firewall (#82) for nothing.
+    actual = ":publish-dev-latest-rs",
 )
 
 # Delivery unit (delivery-orchestrator PHASE 2, Wave B2): the rolling
@@ -381,9 +372,9 @@ sh_binary(
 # PHASE 3 CLOSED THE BREAK-GLASS GAP: `run` used to name :chrome_zip, a genrule
 # that `bazel run` cannot execute -- the one unit where the delivery target and
 # the break-glass target were not the same thing. The publish now lives in
-# publish-dev-latest.sh, which the generated workflow runs and
-# //apps/suites/tabula/extension:publish-dev-latest wraps, so both triggers execute one
-# script (spec §4.1).
+# the scripts/ Rust crate, which the generated workflow compiles and runs and
+# //apps/suites/tabula/extension:publish-dev-latest aliases, so both triggers execute one
+# program (spec §4.1).
 delivery(
     name = "tabula-dev-latest",
     app = "tabula",
@@ -393,8 +384,8 @@ delivery(
         # The publisher itself: the same coupling //tools/conformance:check
         # enforces for tools/deploy/ on the Cloud Run lanes -- the code that
         # performs the delivery must trigger the delivery. :chrome_zip does not
-        # depend on this script, so the graph cannot see it.
-        "apps/suites/tabula/extension/publish-dev-latest\\.sh",
+        # depend on this crate, so the graph cannot see it.
+        "apps/suites/tabula/extension/scripts/src/",
     ],
     # No GitHub Environment: the legacy publish job binds none; it uploads with
     # the run's own GITHUB_TOKEN under a job-level contents: write.

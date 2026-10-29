@@ -74,7 +74,7 @@
 #       paths:  apps/suites/tabula/infra/build/
 #       render: transcribed from .github/workflows/tabula-build-stack.yaml job "deploy"
 #   - tabula-dev-latest  kind=publish  run=//apps/suites/tabula/extension:publish-dev-latest  envs=publish  promotion=push-all
-#       paths:  apps/suites/tabula/infra/app/ apps/suites/tabula/extension/publish-dev-latest\.sh
+#       paths:  apps/suites/tabula/infra/app/ apps/suites/tabula/extension/scripts/src/
 #       graph:  //apps/suites/tabula/api:image_push //apps/suites/tabula/extension:chrome_zip
 #       render: transcribed from .github/workflows/tabula-dev-latest.yaml job "publish"
 #   - tabula-identity  kind=pulumi  run=//apps/suites/tabula/infra/identity:up  envs=development,nonproduction,production  promotion=push-all
