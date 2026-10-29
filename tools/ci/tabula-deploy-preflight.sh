@@ -85,10 +85,15 @@ fi
 rm -f "${err}"
 
 # --- live: what is serving now. Any failure/empty -> deploy. -----------------
+# "Live" is the revision carrying traffic (largest percent > 0), NOT
+# status.traffic[0]: that list's order is not a contract, and a failed candidate
+# at 0% behind the `candidate` tag can be listed first. Since the candidate's
+# name is the desired name, reading traffic[0] would skip a deploy that never
+# went live. Same rule as serving_revision in tools/deploy/src/lib.rs.
 gerr="$(mktemp)"
-live="$("${GCLOUD_BIN}" run services describe "${SERVICE_NAME}-${DEPLOY_ENV}" \
+svc_json="$("${GCLOUD_BIN}" run services describe "${SERVICE_NAME}-${DEPLOY_ENV}" \
   --project "${GCP_PROJECT_ID}" --region "${GCP_REGION}" \
-  --format='value(status.traffic[0].revisionName)' 2>"${gerr}")"
+  --format=json 2>"${gerr}")"
 grc=$?
 # gcloud can exit 0 while printing "ERROR: ... Reauthentication failed" — so an
 # ERROR on stderr is a failure even when the code is 0. Fail open either way.
@@ -100,8 +105,20 @@ if [ "${grc}" -ne 0 ] || grep -q '^ERROR:' "${gerr}" 2>/dev/null; then
 fi
 rm -f "${gerr}"
 
+# Unparseable JSON or nothing carrying traffic -> empty -> deploy (fail open).
+live="$(printf '%s' "${svc_json}" | python3 -I -c '
+import json, sys
+shares = {}
+for t in (json.load(sys.stdin).get("status") or {}).get("traffic") or []:
+    name, pct = t.get("revisionName") or "", t.get("percent") or 0
+    if name and pct > 0:
+        shares[name] = shares.get(name, 0) + pct
+if shares:
+    print(max(shares, key=shares.get))  # ties: first listed wins
+' 2>/dev/null)" || live=""
+
 if [ -z "${live}" ]; then
-  deploy "no live revision (first-ever deploy for ${SERVICE_NAME}-${DEPLOY_ENV})"
+  deploy "no revision carries traffic (first-ever deploy for ${SERVICE_NAME}-${DEPLOY_ENV}, or nothing serving)"
 fi
 
 echo "preflight[${DEPLOY_ENV}]: desired=${desired} live=${live}"

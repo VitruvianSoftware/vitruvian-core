@@ -164,9 +164,8 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
         .arg(shell_compat::os(&gcp_project_id))
         .arg("--region")
         .arg(shell_compat::os(&gcp_region))
-        .arg("--format=value(status.traffic[0].revisionName)");
+        .arg("--format=json");
     let gr = capture(91, &mut gcmd);
-    let live = subst(gr.stdout);
 
     if gr.status != 0 || grep_q_line_start(&gr.stderr, b"ERROR:") {
         if !gr.stderr.is_empty() {
@@ -187,12 +186,22 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
         );
     }
 
-    if live.is_empty() {
-        return deploy(
-            &deploy_env,
-            &cat(&[b"no live revision (first-ever deploy for ", &svc, b")"]),
-        );
-    }
+    // Live is the revision carrying traffic, never status.traffic[0]: a failed
+    // 0% candidate listed first has the desired name and would wrongly skip.
+    // Unparseable JSON or nothing serving -> deploy (fail open).
+    let live = match deploy::serving_revision(&gr.stdout) {
+        Some(v) => v,
+        None => {
+            return deploy(
+                &deploy_env,
+                &cat(&[
+                    b"no revision carries traffic (first-ever deploy for ",
+                    &svc,
+                    b", or nothing serving)",
+                ]),
+            )
+        }
+    };
 
     out(&cat(&[
         b"preflight[",

@@ -39,7 +39,11 @@ fails=0
 pass() { printf '  ✓ %s\n' "$1"; }
 fail() { printf '  ✗ %s\n' "$1" >&2; fails=$((fails + 1)); }
 
-# fake gcloud: prints $FAKE_LIVE, or simulates the exit-0 reauth error.
+# fake gcloud: serves status.traffic and honours --format the way gcloud does,
+# so the old `value(status.traffic[0].revisionName)` read and the JSON read
+# both see the same service. $FAKE_TRAFFIC is the raw traffic array; without
+# it, $FAKE_LIVE (if set) is a single revision at 100%. Also simulates the
+# exit-0 reauth error and a non-zero exit.
 cat > "$work/fake-gcloud" <<'EOF'
 #!/usr/bin/env bash
 if [ "${FAKE_GCLOUD_AUTHFAIL:-0}" = "1" ]; then
@@ -49,7 +53,21 @@ fi
 if [ "${FAKE_GCLOUD_RC:-0}" != "0" ]; then
   echo "ERROR: boom" >&2; exit "${FAKE_GCLOUD_RC}"
 fi
-printf '%s\n' "${FAKE_LIVE:-}"
+fmt=""
+for a in "$@"; do case "$a" in --format=*) fmt="${a#--format=}" ;; esac; done
+FAKE_FORMAT="$fmt" python3 -I -c '
+import json, os
+live = os.environ.get("FAKE_LIVE", "")
+traffic = os.environ.get("FAKE_TRAFFIC", "")
+traffic = json.loads(traffic) if traffic else ([{"revisionName": live, "percent": 100}] if live else [])
+fmt = os.environ["FAKE_FORMAT"]
+if fmt == "json":
+    print(json.dumps({"metadata": {"name": "svc"}, "status": {"traffic": traffic}}, indent=2))
+elif fmt == "value(status.traffic[0].revisionName)":
+    print(traffic[0].get("revisionName", "") if traffic else "")
+else:
+    raise SystemExit("fake-gcloud: unsupported --format=" + fmt)
+'
 EOF
 chmod +x "$work/fake-gcloud"
 
@@ -69,7 +87,7 @@ run() { # prints the unchanged= value written to GITHUB_OUTPUT
     SERVICE_NAME=tabula-api IMAGE_DIGEST="img@sha256:deadbeef12" \
     PULUMI_DIR="$work/app" CONFIG_FILE=Pulumi.development.yaml \
     GCLOUD_BIN="$work/fake-gcloud" REVNAME="$work/fake-revname" \
-    FAKE_DESIRED="${FAKE_DESIRED:-}" FAKE_LIVE="${FAKE_LIVE:-}" \
+    FAKE_DESIRED="${FAKE_DESIRED:-}" FAKE_LIVE="${FAKE_LIVE:-}" FAKE_TRAFFIC="${FAKE_TRAFFIC:-}" \
     FAKE_GCLOUD_RC="${FAKE_GCLOUD_RC:-0}" FAKE_GCLOUD_AUTHFAIL="${FAKE_GCLOUD_AUTHFAIL:-0}" \
     FAKE_REVNAME_RC="${FAKE_REVNAME_RC:-0}" \
       bash "$SCRIPT" >/dev/null 2>&1
@@ -79,7 +97,7 @@ run() { # prints the unchanged= value written to GITHUB_OUTPUT
     SERVICE_NAME=tabula-api IMAGE_DIGEST="img@sha256:deadbeef12" \
     PULUMI_DIR="$work/app" CONFIG_FILE=Pulumi.development.yaml \
     GCLOUD_BIN="$work/fake-gcloud" REVNAME="$work/fake-revname" \
-    FAKE_DESIRED="${FAKE_DESIRED:-}" FAKE_LIVE="${FAKE_LIVE:-}" \
+    FAKE_DESIRED="${FAKE_DESIRED:-}" FAKE_LIVE="${FAKE_LIVE:-}" FAKE_TRAFFIC="${FAKE_TRAFFIC:-}" \
     FAKE_GCLOUD_RC="${FAKE_GCLOUD_RC:-0}" FAKE_GCLOUD_AUTHFAIL="${FAKE_GCLOUD_AUTHFAIL:-0}" \
     FAKE_REVNAME_RC="${FAKE_REVNAME_RC:-0}" \
       "$SCRIPT" >/dev/null 2>&1
@@ -104,6 +122,18 @@ FAKE_DESIRED="x" FAKE_GCLOUD_AUTHFAIL=1 expect "gcloud exit-0 reauth error deplo
 
 echo "the skip must not fire when a single field differs"
 FAKE_DESIRED="tabula-api-development-de662165-1b062f" FAKE_LIVE="tabula-api-development-de662165-999999" expect "different config hash deploys" false
+
+echo "live is the revision carrying traffic, not the first traffic entry"
+# A failed candidate at 0% behind the candidate tag, listed first, has the
+# desired name (same digest + config). It is not live: skipping would leave
+# the old revision serving and report the deploy green.
+FAKE_DESIRED="tabula-api-development-de662165-1b062f" \
+  FAKE_TRAFFIC='[{"tag":"candidate","revisionName":"tabula-api-development-de662165-1b062f","url":"https://c"},{"revisionName":"tabula-api-development-aaaa1111-bbbbbb","percent":100}]' \
+  expect "failed 0% candidate listed first deploys" false
+FAKE_DESIRED="tabula-api-development-de662165-1b062f" \
+  FAKE_TRAFFIC='[{"tag":"candidate","revisionName":"tabula-api-development-aaaa1111-bbbbbb","percent":0},{"revisionName":"tabula-api-development-de662165-1b062f","percent":100}]' \
+  expect "desired serving 100% behind a 0% entry skips" true
+FAKE_DESIRED="x" FAKE_TRAFFIC='[{"tag":"candidate","revisionName":"x","percent":0}]' expect "nothing carrying traffic deploys" false
 
 if [ "$fails" -gt 0 ]; then echo "FAILED: $fails" >&2; exit 1; fi
 echo "ALL PASS"

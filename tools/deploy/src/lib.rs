@@ -31,9 +31,12 @@
 //! - the smoke step never falls back to the stable URL on a non-first deploy
 //!   (#808); the candidate URL is read from `gcloud ... --format=json`, which
 //!   the script filtered with jq and this port parses with serde_json.
-//! - a gcloud failure reading the stable revision that is not a NOT_FOUND is
-//!   reported, and then -- exactly as the script's `|| STABLE=""` does --
-//!   the deploy carries on as a first deploy.
+//! - the stable revision is the one carrying traffic in `gcloud ... describe
+//!   --format=json` (largest percent > 0), never `status.traffic[0]`: a
+//!   failed 0% candidate can be listed first.
+//! - a gcloud failure reading the stable revision that is not a NOT_FOUND,
+//!   or a service where nothing carries traffic, fails the deploy (exit 1)
+//!   instead of carrying on as a first deploy.
 
 use serde_json::Value;
 use shell_compat::{cat, err, out, subst};
@@ -134,10 +137,47 @@ pub fn looks_not_found(text: &[u8]) -> bool {
     .any(|n| shell_compat::contains(&lower, n))
 }
 
+/// serving_revision: the revision actually serving, from `gcloud run
+/// services describe --format=json`. Only `status.traffic` entries with a
+/// revisionName and a percent above 0 count (Cloud Run omits `percent` when
+/// it is 0); shares naming the same revision add up, and the largest total
+/// wins. On a tie the revision listed first wins. None when nothing carries
+/// traffic or the JSON is not a service.
+///
+/// The order of `status.traffic` is not a contract: a failed candidate at 0%
+/// behind the `candidate` tag can be listed first, and taking
+/// `status.traffic[0]` then promoted a revision that never started.
+pub fn serving_revision(describe_json: &[u8]) -> Option<Vec<u8>> {
+    let v: Value = serde_json::from_slice(describe_json).ok()?;
+    let mut shares: Vec<(&str, f64)> = Vec::new();
+    for t in v.pointer("/status/traffic")?.as_array()? {
+        let name = match t.get("revisionName").and_then(Value::as_str) {
+            Some(n) if !n.is_empty() => n,
+            _ => continue,
+        };
+        let pct = t.get("percent").and_then(Value::as_f64).unwrap_or(0.0);
+        if pct <= 0.0 {
+            continue;
+        }
+        match shares.iter_mut().find(|(n, _)| *n == name) {
+            Some(s) => s.1 += pct,
+            None => shares.push((name, pct)),
+        }
+    }
+    let mut best: Option<(&str, f64)> = None;
+    for (n, p) in shares {
+        if best.map_or(true, |(_, bp)| p > bp) {
+            best = Some((n, p));
+        }
+    }
+    best.map(|(n, _)| n.as_bytes().to_vec())
+}
+
 /// resolve_stable_revision: the currently-serving revision from a `gcloud
-/// run services describe` (status, stderr, stdout). Ok is what `$(...)`
-/// captures (empty for a confirmed first deploy); Err is what it prints on
-/// stderr before failing.
+/// run services describe --format=json` (status, stderr, stdout). Ok is the
+/// revision (empty for a confirmed first deploy); Err is what to print on
+/// stderr before failing closed. A service that exists but where no revision
+/// carries traffic is an error, never a first deploy.
 pub fn resolve_stable_revision(
     rc: i32,
     stderr_content: &[u8],
@@ -145,7 +185,14 @@ pub fn resolve_stable_revision(
     svc: &[u8],
 ) -> Result<Vec<u8>, Vec<u8>> {
     if rc == 0 {
-        return Ok(subst(bash_echo(stdout_value)));
+        return serving_revision(stdout_value).ok_or_else(|| {
+            cat(&[
+                b"cloud-run: ",
+                svc,
+                b" exists but no revision carries traffic (no status.traffic entry with a revisionName and percent > 0).\n",
+                b"cloud-run: refusing to guess -- treating this as a first deploy would route 100% of traffic to an unsmoked revision. Failing closed.\n",
+            ])
+        });
     }
     if looks_not_found(stderr_content) {
         return Ok(Vec::new());
@@ -520,9 +567,9 @@ impl Cfg {
         Ok(())
     }
 
-    /// The live stable revision: `gcloud run services describe` with the
-    /// value format, its stdout and stderr captured apart.
-    fn lookup_stable(&self) -> Vec<u8> {
+    /// The live stable revision: `gcloud run services describe` as JSON, its
+    /// stdout and stderr captured apart. Read-only.
+    fn lookup_stable(&self) -> Result<Vec<u8>, i32> {
         let mut cmd = Command::new("gcloud");
         cmd.args(["run", "services", "describe"])
             .arg(os(&self.svc))
@@ -530,18 +577,17 @@ impl Cfg {
             .arg(os(&self.project))
             .arg("--region")
             .arg(os(&self.region))
-            .arg("--format=value(status.traffic[0].revisionName)");
+            .arg("--format=json");
         let ran = shell_compat::capture(234, &mut cmd);
         let raw = subst(ran.stdout);
         let err_text = subst(ran.stderr);
-        match resolve_stable_revision(ran.status, &err_text, &raw, &self.svc) {
-            Ok(v) => v,
-            Err(msg) => {
-                // The script's `|| STABLE=""`: reported, then carried on.
-                err(&msg);
-                Vec::new()
-            }
-        }
+        // Fail closed (the script's original `|| exit 1`). #2053 turned this
+        // into `|| STABLE=""`, so an unreadable stable revision quietly
+        // became a first deploy.
+        resolve_stable_revision(ran.status, &err_text, &raw, &self.svc).map_err(|msg| {
+            err(&msg);
+            1
+        })
     }
 }
 
@@ -689,7 +735,7 @@ fn main_inner(args: &[Vec<u8>]) -> Exit {
     if !c.stable_override.is_empty() {
         c.stable = c.stable_override.clone();
     } else if !c.dry_run {
-        c.stable = c.lookup_stable();
+        c.stable = c.lookup_stable()?;
     }
     c.first_deploy = c.stable.is_empty();
     let first: &[u8] = if c.first_deploy { b"true" } else { b"false" };
@@ -799,10 +845,13 @@ mod tests {
     #[test]
     fn stable_revision_cases_from_cloud_run_test() {
         assert_eq!(
-            stable(0, "", "tabula-api-development-abc123"),
+            stable(
+                0,
+                "",
+                r#"{"status":{"traffic":[{"revisionName":"tabula-api-development-abc123","percent":100}]}}"#
+            ),
             Ok("tabula-api-development-abc123".into())
         );
-        assert_eq!(stable(0, "", ""), Ok(String::new()));
         for e in [
             "ERROR: (gcloud.run.services.describe) NOT_FOUND: Requested entity was not found.",
             "ERROR: (gcloud.run.services.describe) Cannot find service [x]",
@@ -828,11 +877,110 @@ mod tests {
             ""
         )
         .is_err());
-        assert_eq!(stable(0, "ERROR: warning", ""), Ok(String::new()));
         // empty stderr: echo gives "\n", sed indents it.
         assert!(stable(2, "", "")
             .unwrap_err()
             .contains("for svc:\n  \ncloud-run: refusing"));
+    }
+
+    fn serving(traffic: &str) -> Option<String> {
+        let j = format!(r#"{{"status":{{"traffic":{}}}}}"#, traffic);
+        serving_revision(j.as_bytes()).map(|v| String::from_utf8(v).unwrap())
+    }
+
+    /// The production failure (run 40817981512 onwards): a failed candidate
+    /// published at 0% behind the `candidate` tag is listed FIRST. The
+    /// stable revision is the one carrying the traffic, not the first entry.
+    #[test]
+    fn stable_is_the_revision_carrying_traffic_not_the_first_entry() {
+        assert_eq!(
+            serving(
+                r#"[{"tag":"candidate","revisionName":"B","percent":0},{"revisionName":"A","percent":100}]"#
+            ),
+            Some("A".into())
+        );
+        // Cloud Run omits `percent` when it is 0.
+        assert_eq!(
+            serving(
+                r#"[{"tag":"candidate","revisionName":"B","url":"https://c"},{"revisionName":"A","percent":100,"latestRevision":false}]"#
+            ),
+            Some("A".into())
+        );
+    }
+
+    #[test]
+    fn stable_revision_from_traffic_split() {
+        // normal: stable first, candidate at 0%
+        assert_eq!(
+            serving(
+                r#"[{"revisionName":"A","percent":100},{"tag":"candidate","revisionName":"B","percent":0}]"#
+            ),
+            Some("A".into())
+        );
+        // split: the largest share wins, wherever it is listed
+        assert_eq!(
+            serving(r#"[{"revisionName":"A","percent":90},{"revisionName":"B","percent":10}]"#),
+            Some("A".into())
+        );
+        assert_eq!(
+            serving(r#"[{"revisionName":"B","percent":10},{"revisionName":"A","percent":90}]"#),
+            Some("A".into())
+        );
+        // one revision named by two entries: its shares add up
+        assert_eq!(
+            serving(
+                r#"[{"revisionName":"B","percent":40},{"revisionName":"A","percent":30},{"revisionName":"A","percent":30}]"#
+            ),
+            Some("A".into())
+        );
+        // tie: the revision listed first wins
+        assert_eq!(
+            serving(r#"[{"revisionName":"A","percent":50},{"revisionName":"B","percent":50}]"#),
+            Some("A".into())
+        );
+        // an entry with traffic but no revision name is never chosen
+        assert_eq!(
+            serving(r#"[{"latestRevision":true,"percent":100},{"revisionName":"A","percent":0}]"#),
+            None
+        );
+        // nothing carries traffic
+        assert_eq!(
+            serving(r#"[{"tag":"candidate","revisionName":"B","percent":0}]"#),
+            None
+        );
+        assert_eq!(serving(r#"[{"tag":"candidate","revisionName":"B"}]"#), None);
+        assert_eq!(serving("[]"), None);
+        assert_eq!(serving_revision(br#"{"status":{}}"#), None);
+        assert_eq!(serving_revision(b""), None);
+        assert_eq!(serving_revision(b"not json"), None);
+    }
+
+    #[test]
+    fn existing_service_with_no_serving_revision_fails_closed() {
+        for o in [
+            r#"{"status":{"traffic":[]}}"#,
+            r#"{"status":{"traffic":[{"tag":"candidate","revisionName":"B","percent":0}]}}"#,
+            "",
+            "tabula-api-development-abc123",
+        ] {
+            let msg = stable(0, "", o).unwrap_err();
+            assert!(
+                msg.starts_with("cloud-run: svc exists but no revision carries traffic"),
+                "{}",
+                msg
+            );
+            assert!(msg.ends_with("Failing closed.\n"), "{}", msg);
+        }
+        // gcloud can exit 0 with an ERROR on stderr and nothing on stdout.
+        assert!(stable(0, "ERROR: Reauthentication failed.", "").is_err());
+        assert_eq!(
+            stable(
+                0,
+                "",
+                r#"{"status":{"traffic":[{"tag":"candidate","revisionName":"B","percent":0},{"revisionName":"A","percent":100}]}}"#
+            ),
+            Ok("A".into())
+        );
     }
 
     #[test]

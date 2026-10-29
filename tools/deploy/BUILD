@@ -25,6 +25,8 @@ rust_library(
     crate_root = "src/lib.rs",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
+    # tabula-deploy-preflight reuses serving_revision, so both agree on "live".
+    visibility = ["//tools/ci:__pkg__"],
     deps = [
         "//tools/shell-compat:shell_compat",
         "@crates//:serde_json",
