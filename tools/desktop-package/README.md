@@ -75,7 +75,7 @@ Before it finishes, and before the Homebrew cask is pushed, the tool checks that
 A release workflow should end with the same check as its own step, so the job's result does not rest on the publishing script alone:
 
 ```bash
-bash tools/desktop-package/package-desktop.sh --verify-only \
+bazel run //tools/desktop-package:package-desktop -- --verify-only \
   --app-name HomeSpeaker --version 1.13.1 --tag home-speaker-v1.13.1 \
   --require-asset HomeSpeaker-1.13.1-tool.zip
 ```
@@ -87,7 +87,7 @@ Release runners are Macs, and a Mac's `/bin/bash` is 3.2. Two things differ from
 - Expanding an **empty** array under `set -u` ends the script (`unbound variable`). Write `${args[@]+"${args[@]}"}`, never a bare `"${args[@]}"`, for any array that can be empty.
 - After that kind of abort an `EXIT` trap runs with `$?` equal to 0, and the script exits with the trap's status. A trap that only cleans up turns the abort into exit 0. Set a flag on the script's last line and have the trap exit non-zero without it.
 
-`package-desktop_test.sh` and `apps/desktop/home-speaker/scripts/publish_test.sh` check both; copy the shape for a new app.
+`//tools/desktop-package:package-desktop_test` and `//apps/desktop/home-speaker:publish_test` check both; copy the shape for a new app.
 
 ---
 

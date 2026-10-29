@@ -817,7 +817,7 @@ pub fn render_extensions_yml(extensions: &[Ext]) -> Result<Vec<u8>, PyErr> {
     };
     lit(
         &mut lines,
-        "# Written by tools/sync-site-tools/registry.py from monorepo plugin manifests.",
+        "# Written by tools/sync-site-tools from monorepo plugin manifests.",
     );
     lit(&mut lines, "# Do not edit by hand; run:");
     lit(&mut lines, "#   bazel run //tools/sync-site-tools:sync");

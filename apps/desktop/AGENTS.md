@@ -132,10 +132,10 @@ When adding a new desktop app `apps/desktop/<app-name>`:
    - Add a `release-please-config.json` and `.release-please-manifest.json`.
 2. **Packaging Script**:
    - Create `apps/desktop/<app-name>/scripts/publish.sh` (or `publish.sh`) that builds the universal binary/bundle and invokes `//tools/desktop-package:package-desktop`.
-   - It runs under the Mac's bash 3.2: read "Writing a script that calls this tool" in `tools/desktop-package/README.md` first, and give it a test like `apps/desktop/home-speaker/scripts/publish_test.sh`.
+   - It runs under the Mac's bash 3.2: read "Writing a script that calls this tool" in `tools/desktop-package/README.md` first, and give it a test like `//apps/desktop/home-speaker:publish_test`.
 3. **Release Workflow**:
    - Add `.github/workflows/<app-name>-release.yaml` (or declare delivery unit in `tools/delivery/defs.bzl`).
-   - End the publishing job with a `package-desktop.sh --verify-only` step, so a release with missing files fails the job.
+   - End the publishing job with a `//tools/desktop-package:package-desktop -- --verify-only` step, so a release with missing files fails the job.
 4. **Homebrew Tap**:
    - Ensure the cask identifier matches `<app-name>` in `VitruvianSoftware/homebrew-tap/Casks/<app-name>.rb`.
 5. **Downloads Catalog**:

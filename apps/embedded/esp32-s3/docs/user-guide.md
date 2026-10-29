@@ -55,7 +55,7 @@ flowchart TD
     BLE -->|No| UDP
     
     WIRELESS -->|Option B: Wi-Fi| UDP["UDP Packet to Port 8266<br/>{'cmd':'hid_action', ...}"]
-    UDP --> DAEMON{"Is mac_stats_daemon.py<br/>running on Mac?"}
+    UDP --> DAEMON{"Is mac_stats_daemon<br/>running on Mac?"}
     DAEMON -->|Yes| MAC_EXEC["Daemon executes action via AppleScript / pmset<br/>• Streams live CPU/RAM & Smart Deck profiles"]
     DAEMON -->|No| DROPPED["Action cannot be executed (Mac is not listening)"]
 ```
@@ -70,7 +70,7 @@ flowchart TD
 - When the USB cable is unplugged, physical USB electrical signals cannot travel to the Mac.
 - **To control your Mac on battery, you must use either Bluetooth or the Wi-Fi companion daemon**:
   1. **Option A: Bluetooth BLE (Standalone, Recommended)**: The ESP32 acts as a wireless Bluetooth keyboard. Once paired, buttons work directly without running any script on the Mac.
-  2. **Option B: Wi-Fi Companion Daemon**: The ESP32 beams commands over Wi-Fi UDP to `mac_stats_daemon.py` on your Mac.
+  2. **Option B: Wi-Fi Companion Daemon**: The ESP32 beams commands over Wi-Fi UDP to `mac_stats_daemon` on your Mac.
 
 ---
 
@@ -93,11 +93,11 @@ The Wi-Fi companion daemon provides bidirectional communication: it executes unt
 2. **Start the Mac Companion Daemon**:
    In a terminal on your Mac, run:
    ```bash
-   uv run apps/embedded/esp32-s3/host_companion/mac_stats_daemon.py
+   bazel run //apps/embedded/esp32-s3:mac_stats_daemon_rs
    ```
    *Note: If mDNS is disabled or blocked on your local network, specify the device's IP address directly (shown in the Settings Deck):*
    ```bash
-   uv run apps/embedded/esp32-s3/host_companion/mac_stats_daemon.py --wifi-host 192.168.86.65
+   bazel run //apps/embedded/esp32-s3:mac_stats_daemon_rs -- --wifi-host 192.168.86.65
    ```
 3. Once running, the device's header will display the Wi-Fi icon with your local IP address (`● 192.168.x.x`), and CPU/RAM bars will begin updating in real time.
 
@@ -185,7 +185,7 @@ When rotated into landscape, the UI automatically reflows:
 ### Why don't the system buttons control my Mac when running on battery?
 When unplugged, physical USB keystrokes cannot travel across the air. You must connect the device to your Mac using either:
 1. **Bluetooth**: In Settings Deck, tap **[Pair with Mac]**, then connect to **"Vitruvian Companion"** in macOS Bluetooth settings.
-2. **Wi-Fi Companion**: Run `uv run apps/embedded/esp32-s3/host_companion/mac_stats_daemon.py` in your Mac terminal.
+2. **Wi-Fi Companion**: Run `bazel run //apps/embedded/esp32-s3:mac_stats_daemon_rs` in your Mac terminal.
 
 ### The device turns off as soon as I release the power button from cold boot.
 Ensure you hold the power button for approximately **1 second** when turning it on. The firmware requires ~200ms to boot the bootloader and assert the `SYS_EN` hardware power latch on GPIO 41. Releasing too quickly before the latch engages drops power.

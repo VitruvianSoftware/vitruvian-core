@@ -25,7 +25,7 @@ name: Registry Trust
 # exports it, and the mirror's release.yml publishes with the runner's
 # identity. This asks npm, crates.io and PyPI, in public, whether that is what
 # happened, for every package release-please releases
-# (tools/registry-trust/check.py; docs/engineering/registry-trust.md).
+# (//tools/registry-trust:check; docs/engineering/registry-trust.md).
 #
 # It needs the network, so it is not a presubmit test: its logic is tested
 # with recorded answers in //tools/registry-trust:check_test.

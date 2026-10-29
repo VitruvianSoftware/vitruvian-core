@@ -33,7 +33,7 @@
 # says what to do: split it, use a type that does not release, or put a
 # `Releases: a, b` line in the description. The rules are release-please's own
 # and the products come from the release-please-config.json files; the logic and
-# its tests are tools/release-scope/release_scope.py.
+# its tests are //tools/release-scope:release_scope_test.
 #
 # `edited` is in the trigger on purpose: retitling, or adding the Releases line,
 # is how a failure is fixed, and neither pushes a commit.

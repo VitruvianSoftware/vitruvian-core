@@ -6,7 +6,7 @@ permalink: /tools/examples/swift/
 source: packages/vitruvian-sdk/samples/hello-swift
 ---
 {%- comment -%}
-  Written by tools/sync-site-tools/sync.py from packages/vitruvian-sdk.
+  Written by tools/sync-site-tools from packages/vitruvian-sdk.
   Do not edit it: change the source, then run
     bazel run //tools/sync-site-tools:sync
 {%- endcomment -%}

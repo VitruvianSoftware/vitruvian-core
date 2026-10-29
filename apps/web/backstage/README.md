@@ -86,7 +86,7 @@ In Claude Code (`~/.claude/mcp.json`) or Claude Desktop (`claude_desktop_config.
 Backstage ships about 200 packages as one tested set per release. Move them together, never one at a time:
 
 ```bash
-apps/web/backstage/bump-release.sh 1.55.3   # or: main, for the latest monthly release
+bazel run //apps/web/backstage:bump-release -- 1.55.3   # or: main, for the latest monthly release
 ```
 
 That sets every `@backstage/*` dependency to the versions that release shipped, records the release in `backstage.json` and `release-manifest.json`, and refreshes both lockfiles. Then:

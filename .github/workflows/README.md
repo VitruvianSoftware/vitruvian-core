@@ -73,7 +73,7 @@ version, or an update offered to every user that changes nothing. It happened
 three times on 13 October 2026 (#3193, #3211, #3217).
 
 **How it decides:** by release-please's own rules, with the products read from
-the `release-please-config.json` files (`tools/release-scope/release_scope.py`
+the `release-please-config.json` files (the code of `//tools/release-scope`
 says which rule comes from which file of release-please's source). A pull
 request releases a product when what it lands as has a releasing type (`feat`,
 `fix`, `perf`, `revert`, a `!`, a `BREAKING CHANGE` footer) and it changes a

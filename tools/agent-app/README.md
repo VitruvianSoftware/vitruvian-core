@@ -27,7 +27,7 @@ the step-by-step runbook is [docs/guides/creating-an-agent-github-app.md](../../
 | `issue-create --title <s> --body-file <f> \| --body <s> [gh issue create args]` | **How agents open issues.** Opens an issue in this repository as the agent. Title and body are required (without them gh prompts); `--repo` and `--web` are refused. |
 | `issue-comment <issue> --body-file <f> \| --body <s>` | Comments on an issue as the agent. The body is required. |
 | `issue-close <issue> [--comment <s>] [--reason completed\|"not planned"]` | Closes an issue as the agent. |
-| `branch-delete <branch>...` | **How agents delete branches on GitHub.** Deletes each branch only if [`//tools/landed`](../landed/landed.sh)`--remote-branch` proves its work is on `main` (below). Refuses `main`, names that are not plain branch names, and a branch with an open PR (use `pr-close <n> --delete-branch`). A merge-queue branch (`gh-readonly-queue/<base>/pr-<n>-…`) is deleted once PR `<n>` is merged or closed. Reads the branch's SHA again just before deleting and keeps it if it moved. Deletes the ones that pass, keeps the rest with the reason, and fails if any was kept. There is no override. |
+| `branch-delete <branch>...` | **How agents delete branches on GitHub.** Deletes each branch only if [`//tools/landed`](../landed)`--remote-branch` proves its work is on `main` (below). Refuses `main`, names that are not plain branch names, and a branch with an open PR (use `pr-close <n> --delete-branch`). A merge-queue branch (`gh-readonly-queue/<base>/pr-<n>-…`) is deleted once PR `<n>` is merged or closed. Reads the branch's SHA again just before deleting and keeps it if it moved. Deletes the ones that pass, keeps the rest with the reason, and fails if any was kept. There is no override. |
 
 Every `pr-*`, `issue-*`, `run-*`, `workflow-run` and `branch-delete` command takes `--agent <agent>` as its
 **first** argument (default `wren`, or `$AGENT_APP_AGENT`) and acts as that
@@ -67,7 +67,7 @@ passes it on any one of four proofs: its tip is on `main`; merging it into
 PR merged and every commit after the head is empty, a merge with no hand-made
 resolution, or a patch `main` already has. Everything else is kept, including
 work that looks abandoned: deleting that is a person's call, on GitHub. The
-gate is the committed `tools/landed/landed.sh`; `AGENT_APP_LANDED` replaces it
+gate is the committed `//tools/landed` binary; `AGENT_APP_LANDED` replaces it
 only under `bazel test`, so an agent cannot name a gate of its own.
 
 **Actions write is wren's only** ([`permissions.tsv`](permissions.tsv)). The

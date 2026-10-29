@@ -20,7 +20,7 @@
 
 # Builds vitruvian-ci-runner (tools/ci-runner), the image the homelab
 # merge-queue runners run, checks it has what the queue jobs expect
-# (tools/ci-runner/parity.sh), and pushes it to GHCR from main. The runner
+# (//tools/ci-runner:parity), and pushes it to GHCR from main. The runner
 # scale set pins it by digest (gitops/argocd/platform/actions-runners).
 # Spec: docs/superpowers/specs/2026-10-19-queue-runners-on-homelab-design.md §3
 
