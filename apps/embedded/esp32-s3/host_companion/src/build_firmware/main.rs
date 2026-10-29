@@ -23,7 +23,8 @@ use std::process;
 
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
-    let config = match build_firmware::parse_args(&args) {
+    let runner = build_firmware::RealRunner;
+    let config = match build_firmware::parse_args(&args, &runner) {
         Ok(c) => c,
         Err(e) => {
             eprintln!("{}", e);
@@ -31,7 +32,7 @@ fn main() {
         }
     };
 
-    if let Err(e) = build_firmware::build_firmware(&config) {
+    if let Err(e) = build_firmware::build_firmware(&config, &runner) {
         eprintln!("Error: {}", e);
         process::exit(1);
     }
