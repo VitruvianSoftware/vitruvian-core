@@ -279,4 +279,4 @@ repo_config (envs + WIF vars)
 | GitHub release search returns 0 | Sanitize release search query to product stem (e.g. `?q=myapp` instead of `?q=myapp-v`) |
 | Broken repo links in docs/catalog | Rewrite standalone `github.com/.../<repo>` links to monorepo deep links `/tree/main/<path>` |
 | Tooling ignored by Git | Avoid directory paths colliding with root `.gitignore` rules (e.g. `tools/site/`) |
-| Stale download catalogs | Wire app into `//tools/sync-downloads:sync-downloads` and `site-sync-downloads.yaml` |
+| Stale download catalogs | Wire app into `//tools/sync-downloads:sync_downloads` and `site-sync-downloads.yaml` |

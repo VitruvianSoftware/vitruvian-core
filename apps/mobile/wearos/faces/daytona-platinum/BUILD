@@ -73,11 +73,6 @@ test_suite(
     tests = [":generate_assets_lib_test"],
 )
 
-test_suite(
-    name = "generate_assets_rs_parity_test",
-    tests = [":generate_assets_lib_test"],
-)
-
 filegroup(
     name = "wff_sources",
     srcs = glob([
