@@ -74,6 +74,35 @@ Keep the list short. Each row is a merge to resolve in every sync from then on.
 - A fix that would help upstream too belongs upstream as a pull request. Once it
   lands there, the next sync drops the local copy of it.
 
+## Upstream docs that name deleted scripts
+
+Many upstream files still say to run `./scripts/dev-fresh.sh` and its siblings.
+Those shell scripts are gone from this copy. Native Rust launchers replaced them.
+We left the upstream files alone on purpose. Each edit would be a merge to
+resolve in every weekly sync. Use this table instead:
+
+| Upstream docs say | Run here |
+|---|---|
+| `./scripts/dev-fresh.sh` | `bazel run //apps/web/gods-eye-view:dev_fresh_rs` |
+| `./scripts/dev-secure.sh` | `npm run dev:secure` (runs `:dev_secure_rs`) |
+| `./scripts/dev-cctv.sh` | `bazel run //apps/web/gods-eye-view:dev_cctv_rs` |
+| `./scripts/opensky-import-client.sh` | `npm run opensky:import` (runs `:opensky_import_client_rs`) |
+| `scripts/verify-cesium-assets.sh` | `bazel run //apps/web/gods-eye-view:verify_cesium_assets_rs` |
+
+The files that mention them: `README.md`, `CONTRIBUTING.md`, `SECURITY.md`,
+`CHANGELOG.md`, `docs/CURRENT-STATE.md`, `docs/opensky-auth.md`, a comment in
+`vite.config.js`, and the `scripts/` helpers `qa-recent-imagery.mjs`,
+`qa-vessel-cards.mjs`, `qa-vessel-datum.mjs`, `setup-doctor.mjs`,
+`track-regression.mjs` and `qa-l9-matrix.mjs`. Their hints tell you to start
+the dev server with `dev-fresh.sh`; start it with the first row instead.
+
+One of them breaks rather than misleads. `scripts/qa-l9-matrix.mjs` is upstream's
+file and not in the list. Its check A8 reads `scripts/dev-fresh.sh`, so it
+reports a crash (the other checks still run). A8 tests the launcher's
+localhost-by-default and LAN warning, which the Rust launcher in
+`scripts/src/dev_helpers.rs` now does. Skip it with `--skip A8`, and cover the
+same ground with `bazel test //apps/web/gods-eye-view:scripts_rs_test`.
+
 ## The production server
 
 Upstream serves its `/api` routes from its Vite dev server. The production image
