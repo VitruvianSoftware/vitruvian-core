@@ -395,6 +395,35 @@ public enum CommandSet {
         )
     }
 
+    /// `command Show keyboard shortcuts` (`id: "Show keyboard shortcuts"`): opens the `⌘/` Keyboard Shortcuts sheet.
+    @MainActor
+    public static func showKeyboardShortcuts(_ hotkeys: HotkeyRegistry) -> CourierCommand {
+        let primary = hotkeys.primaryChord(for: "Keyboard Shortcuts")?.symbols ?? "⌘/"
+        return CourierCommand(
+            id: "Show keyboard shortcuts",
+            title: String(localized: "Show keyboard shortcuts"),
+            keys: primary,
+            category: .inbox,
+            confirmation: nil,
+            isEnabled: { true },
+            run: { hotkeys.isShortcutsSheetPresented = true }
+        )
+    }
+
+    /// `command Hotkeys` (`id: "Hotkeys"`): opens the Settings ▸ Shortcuts pane.
+    @MainActor
+    public static func hotkeys(_ coordinator: AppMenuCoordinator) -> CourierCommand {
+        CourierCommand(
+            id: "Hotkeys",
+            title: String(localized: "Hotkeys"),
+            keys: nil,
+            category: .inbox,
+            confirmation: nil,
+            isEnabled: { !coordinator.lifecycle.isLocked },
+            run: { coordinator.openSettings(.shortcuts) }
+        )
+    }
+
     /// Something in the space shown is unread. The bar's count says so for the whole space; the chats loaded say so
     /// only when the bar doesn't know the space yet.
     @MainActor

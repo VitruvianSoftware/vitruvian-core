@@ -2935,6 +2935,36 @@ final class ViewSnapshotTests: XCTestCase {
         lifecycle.lockApp()
         XCTAssertTrue(registry.showsLockOverlay(for: target))
     }
+
+    // MARK: - Part 4.6 Task 9: Shortcuts Sheet (`⌘/`) and Recorder Recording & Conflict Snapshots
+
+    func testHotkeysPaneAndShortcutsSheetSnapshots() throws {
+        let lifecycle = SystemLifecycleModel(
+            loginItemService: SnapshotLoginItemService(),
+            biometricService: SnapshotBiometricService(),
+            defaults: defaults()
+        )
+
+        // 1. Keyboard Shortcuts reference sheet (⌘/)
+        let sheetRegistry = HotkeyRegistry(defaults: defaults())
+        check(try Snapshot.render("keyboard-shortcuts-sheet", width: 760, height: 540) {
+            KeyboardShortcutsSheet(registry: sheetRegistry)
+        })
+
+        // 2. Shortcut recorder in recording state ("Press keys…")
+        let recordingRegistry = HotkeyRegistry(defaults: defaults())
+        recordingRegistry.beginRecording(for: "Command Bar")
+        check(try Snapshot.render("hotkeys-recorder-recording", width: 620, height: 520) {
+            HotkeysSettingsPane(registry: recordingRegistry, lifecycle: lifecycle)
+        })
+
+        // 3. Shortcut recorder in conflict state ("⌘K is already used by Search")
+        let conflictRegistry = HotkeyRegistry(defaults: defaults())
+        _ = conflictRegistry.record(KeyChord(key: "k", command: true), for: "Command Bar")
+        check(try Snapshot.render("hotkeys-recorder-conflict", width: 620, height: 520) {
+            HotkeysSettingsPane(registry: conflictRegistry, lifecycle: lifecycle)
+        })
+    }
 }
 
 private struct SnapshotLoginItemService: LoginItemService {

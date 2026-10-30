@@ -15,7 +15,9 @@ struct CourierApp: App {
                        ui: delegate.inboxUI, search: delegate.search, lifecycle: delegate.lifecycle,
                        labels: delegate.labels, messageActions: delegate.messageActions,
                        scheduled: delegate.scheduled, composerPreferences: delegate.composerPreferences,
-                       focus: delegate.messageFocus, detachedWindows: delegate.detachedWindows)
+                       focus: delegate.messageFocus, detachedWindows: delegate.detachedWindows,
+                       hotkeys: delegate.hotkeys,
+                       onOpenShortcutsSettings: { delegate.menuCoordinator.openSettings(.shortcuts) })
                 .background(OpenWindowRegistrar(opener: delegate.windowOpener))
         }
         .defaultSize(width: 1020, height: 660)
@@ -24,10 +26,12 @@ struct CourierApp: App {
                           preferences: delegate.inbox.preferences, ui: delegate.inboxUI, search: delegate.search,
                           conversation: delegate.conversation, lifecycle: delegate.lifecycle,
                           menuCoordinator: delegate.menuCoordinator,
-                          minimizeToMenuBar: delegate.minimizeToMenuBar)
+                          minimizeToMenuBar: delegate.minimizeToMenuBar,
+                          hotkeys: delegate.hotkeys)
             ConversationCommands(conversation: delegate.conversation, chatComposer: delegate.conversation.composer,
                                  paneComposer: delegate.conversation.thread.composer,
-                                 messageActions: delegate.messageActions, focus: delegate.messageFocus)
+                                 messageActions: delegate.messageActions, focus: delegate.messageFocus,
+                                 hotkeys: delegate.hotkeys)
         }
 
         // The windows the space bar, the menus and the chat menu open.
@@ -110,7 +114,9 @@ struct CourierApp: App {
         Settings {
             SettingsView(inbox: delegate.inbox, labels: delegate.labels, conversation: delegate.conversation,
                          composerPreferences: delegate.composerPreferences,
-                         quickReplies: delegate.quickReplies)
+                         quickReplies: delegate.quickReplies,
+                         hotkeys: delegate.hotkeys,
+                         lifecycle: delegate.lifecycle)
                 .overlay {
                     if delegate.lifecycle.isLocked {
                         AppLockOverlay(model: delegate.lifecycle)

@@ -17,6 +17,7 @@ struct ConversationCommands: Commands {
     @ObservedObject var paneComposer: ComposerModel
     let messageActions: MessageActionsModel
     @ObservedObject var focus: MessageFocus
+    @ObservedObject var hotkeys: HotkeyRegistry = HotkeyRegistry()
 
     var body: some Commands {
         CommandGroup(after: .newItem) {
@@ -28,33 +29,33 @@ struct ConversationCommands: Commands {
         }
         CommandMenu(String(localized: "Message")) {
             Button(String(localized: "Edit…"), action: edit)
-                .keyboardShortcut("t", modifiers: .command)
+                .registryShortcut("Message: Edit", in: hotkeys)
                 .disabled(conversation.roomID == nil)
             Button(String(localized: "Reply")) { reply() }
-                .keyboardShortcut("r", modifiers: .command)
+                .registryShortcut("Message: Quote & Reply", in: hotkeys)
                 .disabled(selected == nil)
             // The title and the action follow the same selection: Show Replies on a thread root selected in the
             // chat, otherwise the newest message.
             Button(showRepliesTarget == nil ? String(localized: "Jump to Newest Message") : String(localized: "Show Replies")) {
                 if let root = showRepliesTarget { conversation.openThread(root) } else { conversation.jumpToBottom() }
             }
-            .keyboardShortcut(.downArrow, modifiers: .command)
+            .registryShortcut(showRepliesTarget == nil ? "Scroll to the bottom of a chat" : "Show Replies", in: hotkeys)
             .disabled(conversation.roomID == nil)
             Button(String(localized: "Quick React")) { quickReact() }
-                .keyboardShortcut("r", modifiers: [.command, .shift])
+                .registryShortcut("Message: Quick React", in: hotkeys)
                 .disabled(selected == nil)
             Button(String(localized: "Forward…"), action: forward)
-                .keyboardShortcut("f", modifiers: [.command, .shift])
+                .registryShortcut("Message: Forward", in: hotkeys)
                 .disabled(conversation.roomID == nil)
             Button(String(localized: "Open First Link"), action: openLink)
-                .keyboardShortcut("h", modifiers: [.command, .shift])
+                .registryShortcut("Message: Open First Link", in: hotkeys)
                 .disabled(selected == nil)
             Divider()
             Button(String(localized: "Send Later…"), action: messageActions.requestSendLater)
-                .keyboardShortcut("l", modifiers: [.command, .shift])
+                .registryShortcut("Message: Send Later", in: hotkeys)
                 .disabled(conversation.roomID == nil)
             Button(String(localized: "Send Message and Archive")) { composer.submit(archive: true) }
-                .keyboardShortcut(.return, modifiers: .command)
+                .registryShortcut("Message: Send Message and Archive", in: hotkeys)
                 .disabled(conversation.roomID == nil)
             Button(String(localized: "Create Quick Reply from Draft…"), action: messageActions.requestQuickReplyFromDraft)
                 .disabled(!messageActions.canCreateQuickReply)
@@ -62,15 +63,15 @@ struct ConversationCommands: Commands {
             formatting
             Divider()
             Button(String(localized: "Attach Files…")) { AttachmentPicker.run(into: composer) }
-                .keyboardShortcut("o", modifiers: .command)
+                .registryShortcut("Chat: Send File", in: hotkeys)
                 .disabled(conversation.roomID == nil)
             Button(String(localized: "Download Attachments"), action: downloadAttachments)
-                .keyboardShortcut("d", modifiers: .command)
+                .registryShortcut("Download Attachments", in: hotkeys)
                 .disabled(!canDownloadAttachments)
             Button(String(localized: "Record Voice Note")) {
                 Task { await composer.startVoiceRecording() }
             }
-            .keyboardShortcut("a", modifiers: [.command, .shift])
+            .registryShortcut("Message: Record Audio", in: hotkeys)
             .disabled(
                 conversation.roomID == nil || (
                     !composer.voiceRecorder.isRecordingOrReviewing && !composer.features.supportsVoiceSend
@@ -79,17 +80,17 @@ struct ConversationCommands: Commands {
             Button(composer.sendGIFMenuTitle) {
                 _ = composer.openGIFPicker()
             }
-            .keyboardShortcut("g", modifiers: [.command, .shift])
+            .registryShortcut("Message: Send GIF", in: hotkeys)
             .disabled(!composer.canSendGIF)
             Button(composer.sendStickerMenuTitle) {
                 _ = composer.openStickerPicker()
             }
-            .keyboardShortcut("s", modifiers: [.command, .option, .shift])
+            .registryShortcut("Message: Send Sticker", in: hotkeys)
             .disabled(!composer.canSendSticker)
             Divider()
             Button(conversation.isShowingChatInfo ? String(localized: "Hide Chat Info") : String(localized: "Show Chat Info"),
                    action: conversation.toggleChatInfo)
-                .keyboardShortcut("i", modifiers: [.command, .shift])
+                .registryShortcut("Toggle Chat Info", in: hotkeys)
                 .disabled(conversation.roomID == nil)
             Button(conversation.isShowingCalendar ? String(localized: "Hide Calendar") : String(localized: "Show Calendar"),
                    action: conversation.toggleCalendar)
@@ -97,7 +98,7 @@ struct ConversationCommands: Commands {
             Button(String(localized: "Show Sender Profile")) {
                 Task { await conversation.showSenderCardForSelectedMessage() }
             }
-            .keyboardShortcut("o", modifiers: [.command, .shift])
+            .registryShortcut("Open User Profile", in: hotkeys)
             .disabled(conversation.roomID == nil)
         }
     }

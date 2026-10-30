@@ -37,6 +37,8 @@ struct MainWindow: View {
     let composerPreferences: ComposerPreferences
     let focus: MessageFocus
     var detachedWindows: DetachedWindowRegistry? = nil
+    @ObservedObject var hotkeys: HotkeyRegistry = HotkeyRegistry()
+    var onOpenShortcutsSettings: () -> Void = {}
     @Environment(\.openWindow) private var openWindow
     @Environment(\.controlActiveState) private var controlActiveState
 
@@ -184,6 +186,13 @@ struct MainWindow: View {
             .onChange(of: spaces.isEditing) { _, editing in
                 if editing { openWindow(id: WindowID.editSpaces) }
             }
+            .sheet(isPresented: $hotkeys.isShortcutsSheetPresented) {
+                KeyboardShortcutsSheet(
+                    registry: hotkeys,
+                    onCustomize: onOpenShortcutsSettings,
+                    onClose: { hotkeys.isShortcutsSheetPresented = false }
+                )
+            }
             .navigationTitle("Courier")
             .navigationSubtitle(StatusText.subtitle(for: model.engineState))
     }
@@ -274,11 +283,11 @@ struct MainWindow: View {
     private var alternateShortcuts: some View {
         Group {
             Button("", action: inbox.selectNext)
-                .keyboardShortcut(.downArrow, modifiers: [.command, .option])
+                .registryShortcut("Select Next Chat", in: hotkeys, chordIndex: 1)
             Button("", action: inbox.selectPrevious)
-                .keyboardShortcut(.upArrow, modifiers: [.command, .option])
+                .registryShortcut("Select Previous Chat", in: hotkeys, chordIndex: 1)
             Button("") { search.show(in: model.selectedRoomID) }
-                .keyboardShortcut("f", modifiers: .command)
+                .registryShortcut("Search: Room", in: hotkeys)
             // ⌘C, here before the Edit menu's: whatever can copy (selected text anywhere, a code block's too)
             // copies; only when nothing can, with the keyboard in the open chat, the selected message is copied.
             Button("", action: copy)

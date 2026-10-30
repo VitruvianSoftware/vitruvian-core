@@ -13,6 +13,8 @@ struct SettingsView: View {
     /// The one object the composers read, and the quick replies they offer.
     let composerPreferences: ComposerPreferences
     let quickReplies: QuickReplies
+    var hotkeys: HotkeyRegistry = HotkeyRegistry()
+    var lifecycle: SystemLifecycleModel = SystemLifecycleModel()
 
     var body: some View {
         TabView {
@@ -21,6 +23,8 @@ struct SettingsView: View {
             MessagesSettingsPane(preferences: composerPreferences, quickReplies: quickReplies,
                                  isEntitled: { inbox.isEntitled($0) }, conversation: conversation)
                 .tabItem { Label(String(localized: "Messages"), systemImage: "bubble.left") }
+            HotkeysSettingsPane(registry: hotkeys, lifecycle: lifecycle)
+                .tabItem { Label(String(localized: "Shortcuts"), systemImage: "command") }
         }
         .frame(width: 560)
     }

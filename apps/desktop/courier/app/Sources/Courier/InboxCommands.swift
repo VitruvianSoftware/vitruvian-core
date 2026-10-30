@@ -22,6 +22,7 @@ struct InboxCommands: Commands {
     @ObservedObject var lifecycle: SystemLifecycleModel
     @ObservedObject var menuCoordinator: AppMenuCoordinator
     let minimizeToMenuBar: @MainActor () -> Void
+    @ObservedObject var hotkeys: HotkeyRegistry = HotkeyRegistry()
     @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
@@ -42,7 +43,7 @@ struct InboxCommands: Commands {
                 let visible = bringMainWindowForward()
                 search.toggle(visible: visible)
             }
-            .keyboardShortcut("k", modifiers: .command)
+            .registryShortcut("Search", in: hotkeys)
             .disabled(lifecycle.isLocked)
 
             Divider()
@@ -56,7 +57,7 @@ struct InboxCommands: Commands {
         }
         CommandGroup(before: .appTermination) {
             Button(String(localized: "Minimize to Menu Bar"), action: menuCoordinator.minimizeToMenuBar)
-                .keyboardShortcut("q", modifiers: [.command, .option])
+                .registryShortcut("Minimize To Menu Bar", in: hotkeys)
         }
         // The first-run window has its own button; once a network is linked, this is the way to add another.
         CommandGroup(replacing: .newItem) {
@@ -64,7 +65,7 @@ struct InboxCommands: Commands {
                 _ = bringMainWindowForward()
                 menuCoordinator.newChat()
             }
-            .keyboardShortcut("n", modifiers: .command)
+            .registryShortcut("Chat: Start New", in: hotkeys)
             .disabled(inbox.accounts.isEmpty || lifecycle.isLocked)
 
             Button(String(localized: "New Group or Blast…")) {
@@ -117,11 +118,11 @@ struct InboxCommands: Commands {
         CommandGroup(before: .sidebar) {
             Button(preferences.showSpaceBar ? String(localized: "Hide Space Bar") : String(localized: "Show Space Bar"),
                    action: menuCoordinator.toggleSpaceBar)
-                .keyboardShortcut("s", modifiers: .command)
+                .registryShortcut("Toggle Space Bar", in: hotkeys)
                 .disabled(lifecycle.isLocked)
             Button(menuCoordinator.isSidebarVisible ? String(localized: "Hide Sidebar") : String(localized: "Show Sidebar"),
                    action: menuCoordinator.toggleSidebar)
-                .keyboardShortcut("s", modifiers: [.command, .option])
+                .registryShortcut("Toggle Sidebar", in: hotkeys)
                 .disabled(lifecycle.isLocked)
             Button(String(localized: "Edit Spaces…")) {
                 spaces.isEditing = true
@@ -138,21 +139,22 @@ struct InboxCommands: Commands {
         }
         CommandMenu(String(localized: "Chat")) {
             Button(String(localized: "Next Chat"), action: inbox.selectNext)
-                .keyboardShortcut("]", modifiers: .command)
+                .registryShortcut("Select Next Chat", in: hotkeys)
                 .disabled(lifecycle.isLocked)
             Button(String(localized: "Previous Chat"), action: inbox.selectPrevious)
-                .keyboardShortcut("[", modifiers: .command)
+                .registryShortcut("Select Previous Chat", in: hotkeys)
                 .disabled(lifecycle.isLocked)
             Button(String(localized: "Next Unread Chat"), action: inbox.selectNextUnread)
-                .keyboardShortcut("u", modifiers: .command)
+                .registryShortcut("Select Next Unread Chat", in: hotkeys)
                 .disabled(lifecycle.isLocked)
             Menu(String(localized: "Go to Chat")) {
                 if !lifecycle.isLocked {
+                    let chatMod = modifierFlags(for: "Switch First 9 Chats Modifier", fallback: .control)
                     ForEach(Array(inbox.rows.prefix(9).enumerated()), id: \.element.id) { index, row in
                         Button(row.name.isEmpty ? String(localized: "Unnamed chat") : row.name) {
                             inbox.selectChat(number: index + 1)
                         }
-                        .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .control)
+                        .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: chatMod)
                     }
                 }
             }
@@ -163,7 +165,7 @@ struct InboxCommands: Commands {
                 _ = bringMainWindowForward()
                 search.show(in: inbox.selectedRoomID)
             }
-            .keyboardShortcut("f", modifiers: .command)
+            .registryShortcut("Search: Room", in: hotkeys)
             .disabled(lifecycle.isLocked)
             Divider()
             actions
@@ -185,13 +187,14 @@ struct InboxCommands: Commands {
             Button(String(localized: "Report a Problem…")) {
                 menuCoordinator.openSettings(.reportProblem)
             }
-            .keyboardShortcut("p", modifiers: [.command, .shift])
+            .registryShortcut("Report a Problem", in: hotkeys)
             .disabled(lifecycle.isLocked)
 
             Button(String(localized: "Keyboard Shortcuts")) {
-                menuCoordinator.openSettings(.shortcuts)
+                _ = bringMainWindowForward()
+                hotkeys.isShortcutsSheetPresented.toggle()
             }
-            .keyboardShortcut("/", modifiers: .command)
+            .registryShortcut("Keyboard Shortcuts", in: hotkeys)
             .disabled(lifecycle.isLocked)
 
             Button(String(localized: "Privacy & Security")) {
@@ -204,6 +207,16 @@ struct InboxCommands: Commands {
             }
             .disabled(lifecycle.isLocked)
         }
+    }
+
+    private func modifierFlags(for id: String, fallback: EventModifiers) -> EventModifiers {
+        guard let chord = hotkeys.primaryChord(for: id) else { return fallback }
+        var mods: EventModifiers = []
+        if chord.command { mods.insert(.command) }
+        if chord.shift { mods.insert(.shift) }
+        if chord.option { mods.insert(.option) }
+        if chord.control { mods.insert(.control) }
+        return mods.isEmpty ? fallback : mods
     }
 
     /// The composer with held messages in the open chat: the chat's, else the thread pane's; nil when none.
@@ -231,25 +244,25 @@ struct InboxCommands: Commands {
         Button(all(\.archived) ? String(localized: "Unarchive") : String(localized: "Archive")) {
             Task { await inbox.archive(!all(\.archived)) }
         }
-        .keyboardShortcut("e", modifiers: .command)
+        .registryShortcut("Chat: Toggle Archive", in: hotkeys)
         .disabled(inbox.targets.isEmpty || (!all(\.archived) && all(\.pinned)))
         Button(inbox.toggleReadMarksRead ? String(localized: "Mark as Read") : String(localized: "Mark as Unread")) {
             Task { await inbox.toggleRead() }
         }
-        .keyboardShortcut("u", modifiers: [.command, .shift])
+        .registryShortcut("Chat: Toggle Mark As Read", in: hotkeys)
         .disabled(!inbox.canToggleRead)
         Button(all(\.muted) ? String(localized: "Unmute Chat") : String(localized: "Mute Chat")) {
             Task { await inbox.toggleMute() }
         }
-        .keyboardShortcut("m", modifiers: [.command, .shift])
+        .registryShortcut("Chat: Toggle Mute", in: hotkeys)
         .disabled(inbox.targets.isEmpty)
         Button(all(\.pinned) ? String(localized: "Unpin") : String(localized: "Pin")) {
             Task { await inbox.togglePin() }
         }
-        .keyboardShortcut("p", modifiers: .command)
+        .registryShortcut("Chat: Toggle Pin", in: hotkeys)
         .disabled(inbox.targets.isEmpty)
         Button(String(localized: "Remind Me…")) { ui.remindPopover = true }
-            .keyboardShortcut("l", modifiers: .command)
+            .registryShortcut("Remind Later", in: hotkeys)
             .disabled(inbox.targets.isEmpty)
     }
 
@@ -271,7 +284,7 @@ struct InboxCommands: Commands {
         Button(String(localized: "Archive All Read Chats…")) {
             Task { await Confirm.archiveAllRead(inbox) }
         }
-        .keyboardShortcut("e", modifiers: [.command, .shift])
+        .registryShortcut("Chat: Archive All Read", in: hotkeys)
         .disabled(!(byID["Archive all read chats"]?.isEnabled() ?? false))
         ForEach(["Archive all chats", "Archive all chats older than a week", "Mark all chats as read"], id: \.self) { id in
             if let command = byID[id] {
@@ -284,25 +297,26 @@ struct InboxCommands: Commands {
     @ViewBuilder
     private var filters: some View {
         Button(String(localized: "Cycle Filters"), action: inbox.cycleFilter)
-            .keyboardShortcut(.tab, modifiers: .option)
+            .registryShortcut("Cycle Filters", in: hotkeys)
         Button(inbox.query.filters.contains(.unread) ? String(localized: "Show All Chats")
             : String(localized: "Show Only Unread Chats"), action: inbox.toggleUnreadFilter)
-            .keyboardShortcut("y", modifiers: [.command, .shift])
+            .registryShortcut("Filter: Unread", in: hotkeys)
         Button(String(localized: "Filter by Account…")) { ui.accountPopover = true }
-            .keyboardShortcut("a", modifiers: [.command, .option])
+            .registryShortcut("Filter By Account", in: hotkeys)
             .disabled(!spaces.spaces.contains { $0.kind == .account })
     }
 
     @ViewBuilder
     private var spaceKeys: some View {
         Button(String(localized: "Next Account"), action: spaces.selectNextAccount)
-            .keyboardShortcut("]", modifiers: [.command, .shift])
+            .registryShortcut("Select Next Account", in: hotkeys)
         Button(String(localized: "Previous Account"), action: spaces.selectPreviousAccount)
-            .keyboardShortcut("[", modifiers: [.command, .shift])
+            .registryShortcut("Select Previous Account", in: hotkeys)
         Menu(String(localized: "Go to Space")) {
+            let spaceMod = modifierFlags(for: "Switch First 9 Spaces Modifier", fallback: .command)
             ForEach(Array(spaces.visible.prefix(9).enumerated()), id: \.element.spaceID) { index, space in
                 Button(SpaceLook.title(space)) { spaces.selectNumber(index + 1) }
-                    .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command)
+                    .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: spaceMod)
             }
         }
     }

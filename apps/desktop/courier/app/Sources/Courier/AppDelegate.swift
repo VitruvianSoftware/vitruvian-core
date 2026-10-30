@@ -29,6 +29,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let lifecycle = SystemLifecycleModel()
     /// Dock badge mode and menu-bar status item settings.
     let dockPreferences = DockAndTrayPreferences()
+    /// Shared keyboard shortcut registry read by menus, the ⌘/ sheet, and the Settings ▸ Shortcuts recorder.
+    let hotkeys: HotkeyRegistry
     /// Detached chat, space, and thread window registry and presenter.
     let detachedWindows: DetachedWindowRegistry
     private var detachedWindowManager: DetachedWindowManager?
@@ -142,6 +144,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.login = login
         spaces = SpacesModel(appModel: model, inbox: inbox)
         labels = LabelsModel(appModel: model)
+        let lifecycleRef = lifecycle
+        hotkeys = HotkeyRegistry(isAppLocked: { lifecycleRef.isLocked })
         detachedWindows = DetachedWindowRegistry(
             appModel: model,
             mainInbox: inbox,
