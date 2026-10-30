@@ -113,16 +113,16 @@ categories:
     items:
       - id: android-remote
         name: Vitruvian Remote
-        version: "0.1.21"
+        version: "0.1.22"
         summary: >-
           Android companion app for Vitruvian. Answer agent permission prompts, monitor
           coding sessions, and review status updates directly from your phone.
         platforms: ["Android (arm64-v8a, x86_64)"]
         downloads:
           - label: Android APK
-            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/android-remote-v0.1.21/VitruvianRemote-0.1.21.apk
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/android-remote-v0.1.22/VitruvianRemote-0.1.22.apk
             size: 8.4 MB
-        releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases/tag/android-remote-v0.1.21
+        releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases/tag/android-remote-v0.1.22
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/mobile/android-remote
         extensions_url: /ai/#eco-vitruvian-remote
         extensions_label: Companion Extensions
