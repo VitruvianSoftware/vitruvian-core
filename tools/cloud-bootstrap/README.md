@@ -49,11 +49,18 @@ or `pulumi login`. The agent drives these tools, so every credential has to be a
 >
 > The token is used only at session start and is not exported. A value already set
 > on the environment still wins over Secret Manager.
+>
+> **If the ESC step fails** (a cold session can run it before the network is ready),
+> it is retried 3 times, 5 s apart (`VITRUVIAN_ESC_RETRIES`,
+> `VITRUVIAN_ESC_RETRY_DELAY`). A token for the *wrong* account is refused, not
+> retried. If it still fails, the banner says why (`identity ✗ … why: …`) and the
+> command to re-run: `bash tools/cloud-bootstrap/cloud-bootstrap.sh auth`. When it
+> works, the banner shows `identity ✓ … via Pulumi ESC`.
 
 | variable | what it is |
 | --- | --- |
-| `PULUMI_ACCESS_TOKEN` | **The only required credential.** Lets bootstrap open the ESC environment. It cannot itself live in Secret Manager. |
-| `VITRUVIAN_PROFILE` | optional, defaults to the profile you set; selects a row of [`profiles.tsv`](profiles.tsv). Use `all`. |
+| `PULUMI_ACCESS_TOKEN` | **Required.** Lets bootstrap open the ESC environment. It cannot itself live in Secret Manager. |
+| `VITRUVIAN_PROFILE` | **Required.** Without it bootstrap does nothing. Selects a row of [`profiles.tsv`](profiles.tsv); use `all`. |
 | `VITRUVIAN_ESC_ENV` | optional, defaults to `ipv1337/vitruvian-core/cloud-session`. |
 
 Everything else (`GH_TOKEN`, `TS_AUTHKEY`, `LAB_SA_TOKEN`, `CLAUDE_SSH_KEY`,

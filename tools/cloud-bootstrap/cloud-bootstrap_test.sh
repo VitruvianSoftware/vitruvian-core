@@ -212,21 +212,41 @@ echo "cloud-bootstrap: keyless identity via Pulumi ESC"
 # back a long token, curl answers the tokeninfo lookup with a chosen account.
 ESC_SA_EXPECTED="sa-esc@x.iam.gserviceaccount.com"
 mkdir -p "$work/escbin"
-make_esc_tools() { # make_esc_tools <pulumi: ok|fail> <tokeninfo email>
-	if [ "$1" = ok ]; then
-		printf '#!/usr/bin/env bash\n[ "$1 $2" = "env open" ] && { printf "%%s\\n" "%s"; exit 0; }\nexit 1\n' \
-			"$(printf 'e%.0s' $(seq 1 120))" >"$work/escbin/pulumi"
-	else
-		printf '#!/usr/bin/env bash\nexit 1\n' >"$work/escbin/pulumi"
-	fi
+# Modes for the fake pulumi: ok (always a token), fail (always errors, with a
+# stderr line), flaky (errors on the first call only). Every call is counted in
+# pulumi.calls so a test can pin how many attempts were made.
+make_esc_tools() { # make_esc_tools <pulumi: ok|fail|flaky> <tokeninfo email>
+	: >"$work/escbin/pulumi.calls"
+	cat >"$work/escbin/pulumi" <<FAKE
+#!/usr/bin/env bash
+echo x >>"$work/escbin/pulumi.calls"
+n=\$(wc -l <"$work/escbin/pulumi.calls")
+case "$1" in
+  fail) echo "error: boom token exchange refused (HTTP 503)" >&2; exit 1 ;;
+  flaky) [ "\$n" -le 1 ] && { echo "error: network not ready yet" >&2; exit 1; } ;;
+esac
+[ "\$1 \$2" = "env open" ] && { printf '%s\n' "$(printf 'e%.0s' $(seq 1 120))"; exit 0; }
+exit 1
+FAKE
 	printf '#!/usr/bin/env bash\necho "{\\"email\\": \\"%s\\"}"\n' "$2" >"$work/escbin/curl"
 	chmod +x "$work/escbin/pulumi" "$work/escbin/curl"
 }
+esc_calls() { wc -l <"$work/escbin/pulumi.calls" | tr -d ' '; }
 run_esc() { # run_esc <profile> [extra env...]
 	local profile="$1"
 	shift
 	run_auth "" VITRUVIAN_PROFILE="$profile" PATH="$work/escbin:$PATH" PULUMI_BIN="$work/escbin/pulumi" \
-		PULUMI_ACCESS_TOKEN="$(printf 'p%.0s' $(seq 1 44))" VITRUVIAN_ESC_SA="$ESC_SA_EXPECTED" "$@"
+		PULUMI_ACCESS_TOKEN="$(printf 'p%.0s' $(seq 1 44))" VITRUVIAN_ESC_SA="$ESC_SA_EXPECTED" \
+		VITRUVIAN_ESC_RETRY_DELAY=0 "$@"
+}
+# whoami against whatever state the last run_esc left behind (run_auth wipes it).
+run_whoami_esc() { # run_whoami_esc <profile>
+	env -i PATH="$work/escbin:$PATH" HOME="$work/home" CLAUDE_CODE_REMOTE=true \
+		CLOUD_BOOTSTRAP_PROFILES="$PROFILES" CLOUD_BOOTSTRAP_STATE_DIR="$work/state" \
+		CLOUD_BOOTSTRAP_BASHRC="$work/home/.bashrc" GCLOUD_BIN="$work/gcloud" \
+		PULUMI_BIN="$work/escbin/pulumi" PULUMI_ACCESS_TOKEN="$(printf 'p%.0s' $(seq 1 44))" \
+		VITRUVIAN_ESC_SA="$ESC_SA_EXPECTED" VITRUVIAN_PROFILE="$1" \
+		bash "$SCRIPT" whoami 2>&1
 }
 
 make_gcloud ok
@@ -247,10 +267,40 @@ assert_contains "an ESC token for another account is refused" "$out" "REFUSING t
 assert_contains "…naming the account it belongs to" "$out" "sa-someone-else@x.iam.gserviceaccount.com"
 assert_not_contains "…and no secret is read with it" "$(cat "$work/gcloud.argv")" "secrets versions access"
 
+[ "$(esc_calls)" = 1 ] && pass "…and a wrong account is not retried (it is a refusal, not a blip)" ||
+	fail "a wrong-account token was retried ($(esc_calls) calls)"
+
 make_esc_tools fail "$ESC_SA_EXPECTED"
 out="$(run_esc pinned)"
 assert_contains "an ESC failure is reported, not hidden" "$out" "did not yield a GCP token"
+assert_contains "…with the reason pulumi gave" "$out" "boom token exchange refused"
+assert_contains "…and how many attempts were made" "$out" "after 3 attempts"
+assert_contains "…and the command to re-run" "$out" "cloud-bootstrap.sh auth"
 assert_not_contains "…and no secret is read" "$(cat "$work/gcloud.argv")" "secrets versions access"
+[ "$(esc_calls)" = 3 ] && pass "…after exactly the configured number of attempts" ||
+	fail "expected 3 attempts, saw $(esc_calls)"
+[ ! -e "$work/state/esc-token-pinned" ] && pass "…and no token file is left behind" ||
+	fail "a failed ESC run left a token file"
+
+# The banner must say WHY, not just "not authenticated".
+out="$(run_whoami_esc pinned)"
+assert_contains "the banner shows the identity as not authenticated" "$out" "not authenticated"
+assert_contains "…and says why" "$out" "why: pulumi env open"
+assert_contains "…and what to run" "$out" "fix: bash tools/cloud-bootstrap/cloud-bootstrap.sh auth"
+
+# A blip on the first attempt is retried, and the session still gets its secrets.
+make_esc_tools flaky "$ESC_SA_EXPECTED"
+out="$(run_esc pinned)"
+assert_contains "a transient ESC failure is retried" "$out" "retrying in"
+assert_contains "…and the retry succeeds" "$out" "via Pulumi ESC"
+assert_contains "…so the secrets are still read" "$(cat "$work/gcloud.argv")" "secrets versions access"
+[ "$(esc_calls)" = 2 ] && pass "…after exactly one retry" || fail "expected 2 attempts, saw $(esc_calls)"
+
+# And once ESC works, the banner must not claim otherwise (it used to: the
+# keyless identity is a token file, not an activated gcloud account).
+out="$(run_whoami_esc pinned)"
+assert_contains "a working ESC identity is shown as established" "$out" "via Pulumi ESC (keyless"
+assert_not_contains "…not as 'not authenticated'" "$out" "not authenticated"
 
 # ---------------------------------------------------------------------------
 echo "cloud-bootstrap: credential handling"
