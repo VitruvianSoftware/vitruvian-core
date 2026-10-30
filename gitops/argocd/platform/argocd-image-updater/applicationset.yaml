@@ -61,23 +61,6 @@
 #   docs never mentioning an argocd-image-updater-secret argocd.token for this
 #   path, unlike the pre-1.0 annotation-based controller.
 # - git.user/git.email set so write-back commits aren't attributed to nothing.
-# - KNOWN GAP, confirmed against live controller logs and upstream source --
-#   NOT a config mistake here, no Helm value fixes it: for the git:secret:
-#   write-back credential path specifically, pkg/argocd/gitcreds.go (v1.2.2)
-#   hardcodes NewSSHCreds(..., insecureIgnoreHostKey=true, ...), unconditionally
-#   passing -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null. The
-#   chart's `config.sshConfig` value (which this Application does NOT set)
-#   only affects the read-path Repository-credential SSH client, never this
-#   write-back path -- there is no way to pin GitHub's host key for it today.
-#   Filed upstream: argoproj-labs/argocd-image-updater#1760.
-#   Risk (reviewed by Aegis, security): SSH pubkey auth means an on-path MITM
-#   can't forward auth or steal the deploy key -- it can only drop/observe
-#   writes (availability, not integrity/confidentiality). Combined with the
-#   human-merge gate on the write-back PR, accepted as low severity; revisit
-#   once #1760 gets a fix upstream (or if we switch write-back to HTTPS + a
-#   fine-grained PAT, which sidesteps this SSH-only code path entirely).
-#   Fix proposed upstream as argoproj-labs/argocd-image-updater#1816 (opt-in
-#   `insecure: "false"` on the write-back secret); set it here once released.
 # - Egress is bounded by a CiliumNetworkPolicy in
 #   resources/egress-policy.yaml: DNS, the apiserver on 6443, and public
 #   internet on 443/22 only. It limits lateral movement, not exfiltration.
@@ -105,13 +88,7 @@ spec:
       source:
         repoURL: https://argoproj.github.io/argo-helm
         chart: argocd-image-updater
-        # UPGRADING TO A RELEASE WITH argoproj-labs/argocd-image-updater#1816
-        # (expected in app v1.4.0): also add `insecure: "false"` to the
-        # write-back SealedSecret (buzz-image-updater-git-creds), so git pushes
-        # verify GitHub's host key instead of skipping the check. Then confirm
-        # the "disabling strict host key checking" warning is gone from the
-        # controller logs. Tracked in issue #2473.
-        targetRevision: "1.3.2"
+        targetRevision: "1.4.0"
         helm:
           version: v3
           values: |
