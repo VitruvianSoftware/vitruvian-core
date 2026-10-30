@@ -215,6 +215,13 @@ pub fn resolve_dirs() -> Result<(PathBuf, PathBuf), String> {
         samples_candidates.push(cwd.join("samples"));
         samples_candidates.push(cwd);
     }
+    // `cargo test` (verification/Cargo.toml) runs this crate's tests in
+    // verification/cargo/sync-templates; samples/ is beside verification/.
+    if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
+        for ancestor in Path::new(&manifest_dir).ancestors() {
+            samples_candidates.push(ancestor.join("samples"));
+        }
+    }
     for var in ["RUNFILES_DIR", "TEST_SRCDIR"] {
         if let Ok(rf) = std::env::var(var) {
             if !rf.is_empty() {
