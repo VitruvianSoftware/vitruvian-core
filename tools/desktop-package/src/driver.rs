@@ -31,6 +31,7 @@
 use std::fs;
 use std::io::Write;
 use std::process::{Command, Stdio};
+use std::time::Duration;
 
 use crate::helpers::{
     basename, cask_name_for_app, clean_version, developer_id_from, dirname, first_fields,
@@ -44,6 +45,61 @@ use crate::shell::{
 /// Where `bazel run` hands over the //tools/sync-downloads:sync_downloads
 /// binary (its rootpath; see BUILD).
 pub const SYNC_DOWNLOADS_ENV: &str = "PACKAGE_DESKTOP_SYNC_DOWNLOADS";
+
+/// How many times the downloads sync runs before the release gives up on it.
+pub const SYNC_ATTEMPTS: u32 = 3;
+
+/// The wait before run `n + 1` of the downloads sync, after run `n`
+/// (1-based) failed: 5s, 10s.
+pub fn sync_backoff(n: u32) -> Duration {
+    Duration::from_secs(5 * 2u64.saturating_pow(n.saturating_sub(1)))
+}
+
+/// Runs the downloads sync (`run` returns its exit status) up to `attempts`
+/// times, sleeping with `sleep` between runs. By the time it runs the
+/// release is already uploaded, so a failure here is worth another go
+/// before the job is failed for it. An exit of 126 or 127 means the tool
+/// could not be started at all; that is not retried, since it would fail
+/// the same way again. On the last failure the run ends with the tool's
+/// status, as it did before retries, and the message names the daily
+/// `site-sync-downloads` workflow, which syncs the catalog anyway.
+pub fn sync_with_retries(
+    attempts: u32,
+    run: &mut dyn FnMut() -> i32,
+    sleep: &mut dyn FnMut(Duration),
+) -> Step {
+    let attempts = attempts.max(1);
+    let mut n = 1;
+    loop {
+        let code = run();
+        if code == 0 {
+            return Ok(());
+        }
+        let permanent = code == 126 || code == 127;
+        if permanent || n >= attempts {
+            let tries = if permanent {
+                "it could not be started".to_string()
+            } else {
+                format!("{n} attempt{}", if n == 1 { "" } else { "s" })
+            };
+            err(&format!(
+                "✗ Downloads catalog sync failed (exit {code}; {tries}). The release itself \
+                 is published. The daily site-sync-downloads workflow \
+                 (.github/workflows/site-sync-downloads.yaml, 05:00 UTC) will update the \
+                 catalog; to do it now, run that workflow by hand."
+            ));
+            return Err(code);
+        }
+        let wait = sync_backoff(n);
+        err(&format!(
+            "Warning: downloads catalog sync failed (exit {code}; attempt {n} of {attempts}); \
+             retrying in {}s",
+            wait.as_secs()
+        ));
+        sleep(wait);
+        n += 1;
+    }
+}
 
 /// `usage`'s text, as the script's heredoc holds it.
 pub const USAGE: &str = r#"Usage:
@@ -1036,9 +1092,15 @@ impl Driver {
             match self.sync_downloads_tool(&repo_root)? {
                 Some(tool) => {
                     let a: &[&str] = if o.dry_run { &["--dry-run"] } else { &[] };
-                    let mut c = cmd(&tool, a);
-                    c.current_dir(&repo_root).env("PWD", &repo_root);
-                    self.sh.must(821, &mut c)?;
+                    sync_with_retries(
+                        SYNC_ATTEMPTS,
+                        &mut || {
+                            let mut c = cmd(&tool, a);
+                            c.current_dir(&repo_root).env("PWD", &repo_root);
+                            self.sh.status(821, &mut c, false)
+                        },
+                        &mut std::thread::sleep,
+                    )?;
                 }
                 None => err(&format!(
                     "Warning: downloads catalog sync tool not found: set {SYNC_DOWNLOADS_ENV} \
@@ -1364,6 +1426,79 @@ mod tests {
         assert_eq!(code, 0);
         let got = fs::read_to_string(&called).expect("the sync tool was not run");
         assert_eq!(got.trim_end(), format!("{}|--dry-run", repo.display()));
+        let _ = fs::remove_dir_all(&t);
+    }
+
+    /// Runs the sync with scripted exit statuses and a sleeper that records
+    /// instead of waiting: (result, runs, waits).
+    fn sync_script(codes: &[i32]) -> (Step, usize, Vec<Duration>) {
+        let mut left = codes.iter().copied();
+        let mut runs = 0;
+        let mut slept = Vec::new();
+        let got = sync_with_retries(
+            SYNC_ATTEMPTS,
+            &mut || {
+                runs += 1;
+                left.next().expect("sync run more often than scripted")
+            },
+            &mut |d| slept.push(d),
+        );
+        (got, runs, slept)
+    }
+
+    #[test]
+    fn sync_retries_a_failure_then_succeeds() {
+        let (got, runs, slept) = sync_script(&[1, 1, 0]);
+        assert_eq!(got, Ok(()));
+        assert_eq!(runs, 3);
+        assert_eq!(slept, vec![Duration::from_secs(5), Duration::from_secs(10)]);
+    }
+
+    #[test]
+    fn sync_that_cannot_start_is_not_retried() {
+        for code in [126, 127] {
+            let (got, runs, slept) = sync_script(&[code]);
+            assert_eq!((got, runs, slept.len()), (Err(code), 1, 0));
+        }
+    }
+
+    #[test]
+    fn sync_fails_with_the_last_status_when_retries_run_out() {
+        let (got, runs, slept) = sync_script(&[1, 2, 3]);
+        assert_eq!(got, Err(3));
+        assert_eq!(runs, 3);
+        assert_eq!(slept.len(), 2);
+    }
+
+    /// A real program that fails its first run and works on its second, run
+    /// the way the driver runs the sync tool.
+    #[test]
+    fn sync_retries_a_real_flaky_tool() {
+        use std::os::unix::fs::PermissionsExt;
+        let t = scratch("sync-retry");
+        let count = t.join("count");
+        let tool = t.join("flaky-sync");
+        fs::write(
+            &tool,
+            format!(
+                "#!/bin/sh\necho x >> '{c}'\n[ \"$(wc -l < '{c}')\" -ge 2 ]\n",
+                c = count.display()
+            ),
+        )
+        .unwrap();
+        fs::set_permissions(&tool, fs::Permissions::from_mode(0o755)).unwrap();
+        let mut calls = 0;
+        let got = sync_with_retries(
+            SYNC_ATTEMPTS,
+            &mut || {
+                calls += 1;
+                Shell { argv0: "p".into() }.status(0, &mut cmd(tool.to_str().unwrap(), &[]), false)
+            },
+            &mut |_| {},
+        );
+        assert_eq!(got, Ok(()));
+        assert_eq!(calls, 2);
+        assert_eq!(fs::read_to_string(&count).unwrap().lines().count(), 2);
         let _ = fs::remove_dir_all(&t);
     }
 
