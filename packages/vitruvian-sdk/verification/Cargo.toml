@@ -1,0 +1,147 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# The SDK's checks as a Cargo workspace, for where there is no Bazel: the
+# vitruvian-sdk mirror's CI, and a person who clones it. In vitruvian-core,
+# the package's BUILD builds the same sources and this file is not read.
+# Standard library only: no crate comes from crates.io, so Cargo.lock names
+# these three packages and nothing else.
+#
+# From the package's folder (the mirror's root):
+#
+#   cargo test --manifest-path verification/Cargo.toml
+#       the reference tools and the broken ones through the conformance
+#       validator, the protocol's examples against its schemas, every
+#       sample's manifest and the Python sample, and the templates `init`
+#       copies against the samples
+#   cargo run --manifest-path verification/Cargo.toml --bin conformance -- <a tool's folder>
+#       the conformance validator against a tool
+#   cargo test --manifest-path verification/Cargo.toml --test samples_test -- <manifest>...
+#       built samples, named by their vitruvian-tool.json, against the validator
+#   cargo run --manifest-path verification/Cargo.toml --bin sync-templates -- --check
+#       the templates compiled into `vitruvian-tool init` match the samples
+#
+# It is a [workspace] of its own: otherwise Cargo takes the nearest one above
+# it (vitruvian-core's root Cargo.toml) for its own and refuses to build.
+
+[workspace]
+members = ["cargo/conformance", "cargo/sync-templates"]
+default-members = [".", "cargo/conformance", "cargo/sync-templates"]
+resolver = "2"
+
+[package]
+name = "vitruvian-sdk-verification"
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT"
+publish = false
+autobins = false
+autotests = false
+autoexamples = false
+autobenches = false
+
+[lib]
+name = "verification_rs_lib"
+path = "src/lib.rs"
+
+[dependencies]
+vitruvian-sdk-conformance = { path = "cargo/conformance" }
+
+# The reference tools, in Rust.
+[[bin]]
+name = "reference-tool-rs"
+path = "src/bin/reference_tool.rs"
+
+[[bin]]
+name = "reference-tool-2-rs"
+path = "src/bin/reference_tool_2.rs"
+
+# Each suite is a program that exits 1 on a problem, as under Bazel
+# (use_libtest_harness = False), so what follows `--` reaches it.
+[[test]]
+name = "conformance_test"
+path = "src/bin/conformance_test.rs"
+harness = false
+
+[[test]]
+name = "protocol_examples_test"
+path = "src/bin/protocol_examples_test.rs"
+harness = false
+
+# With no arguments: every sample's manifest, one SDK version across the
+# kits, and the Python sample. Given manifests: those built samples.
+[[test]]
+name = "samples_test"
+path = "src/bin/samples_test.rs"
+harness = false
+
+[[test]]
+name = "swift_template_cleanup_test"
+path = "src/bin/swift_template_cleanup_test.rs"
+harness = false
+
+# These read files the mirror does not have (BUILD files stay in
+# vitruvian-core), or need what Bazel hands them: a built `vitruvian-tool`,
+# Go, jq, a Mac. A plain `cargo test` leaves them out; name one with --test.
+[[test]]
+name = "guide_test"
+path = "src/bin/guide_test.rs"
+harness = false
+test = false
+
+[[test]]
+name = "release_version_test"
+path = "src/bin/release_version_test.rs"
+harness = false
+test = false
+
+[[test]]
+name = "mirror_workflows_test"
+path = "src/bin/mirror_workflows_test.rs"
+harness = false
+test = false
+
+[[test]]
+name = "go_template_test"
+path = "src/bin/go_template_test.rs"
+harness = false
+test = false
+
+[[test]]
+name = "init_test"
+path = "src/bin/init_test.rs"
+harness = false
+test = false
+
+[[test]]
+name = "swift_template_test"
+path = "src/bin/swift_template_test.rs"
+harness = false
+test = false
+
+# Bazel builds these with -Copt-level=3. The conformance checks time a
+# tool's replies, so a slow debug build of the validator would judge a tool
+# by a clock the app does not keep.
+[profile.dev]
+opt-level = 3
+
+[profile.test]
+opt-level = 3

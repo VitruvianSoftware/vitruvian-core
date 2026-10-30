@@ -40,18 +40,37 @@ jobs:
       - name: swift test
         run: swift test --skip-build
 
-      - name: The version is one number
-        run: python3 version_test.py
+      # The SDK's conformance validator, from the SDK mirror's main: the
+      # same code the monorepo runs against this tool. The kit SwiftPM
+      # resolved above is a release, and releases up to 1.9.0 carry the
+      # validator only as the Python script vitruvian-core has since
+      # replaced with Rust, so the validator is not taken from there.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: VitruvianSoftware/vitruvian-sdk
+          path: vitruvian-sdk
+          persist-credentials: false
 
-      # The tool as a folder, through the SDK's conformance script, taken
-      # from the kit SwiftPM resolved: the same script the monorepo runs.
-      - name: The built tool against the conformance script
+      # Rust 1.75.0, the version vitruvian-core's Bazel builds the validator
+      # with. The runner comes with rustup.
+      - name: Rust 1.75.0
+        run: |
+          rustup toolchain install 1.75.0 --profile minimal
+          rustup default 1.75.0
+
+      # The tool as a folder, through the conformance validator. It fails
+      # when the SDK has no verification/Cargo.toml: no check is skipped.
+      - name: The built tool against the conformance validator
         run: |
           bin="$(swift build --show-bin-path)"
           folder="$RUNNER_TEMP/built/github"
           mkdir -p "$folder/bin"
           cp vitruvian-tool.json "$folder/"
           cp "$bin/github-tool" "$folder/bin/tool"
-          sdk="$(find .build/checkouts -maxdepth 1 -name 'vitruvian-sdk*' -type d | head -1)"
-          test -n "$sdk"
-          HOME="$RUNNER_TEMP/home" python3 "$sdk/conformance/conformance.py" "$folder"
+          test -f vitruvian-sdk/verification/Cargo.toml
+          cargo build --locked --release --manifest-path vitruvian-sdk/verification/Cargo.toml --bin conformance
+          # Built first: Cargo and rustup find their own files under HOME.
+          HOME="$RUNNER_TEMP/home" vitruvian-sdk/verification/target/release/conformance "$folder"
+
+      - name: The version is one number
+        run: python3 version_test.py

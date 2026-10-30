@@ -1,0 +1,86 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: Vitruvian SDK Mirror Checks
+
+# The checks the vitruvian-sdk mirror runs with Cargo, run here first. The
+# mirror (VitruvianSoftware/vitruvian-sdk) has no Bazel, so its ci.yml runs
+# the SDK's checks through packages/vitruvian-sdk/verification/Cargo.toml.
+# Bazel builds the same sources here and never reads that file, so without
+# this a change that breaks the Cargo build (a new source file the manifest
+# does not know, a check that only finds its files under Bazel) would be
+# found only after it was exported, as the mirror going red. That happened
+# from 2026-10-27 to 2026-10-30, when the mirror still ran Python scripts
+# this repository had deleted.
+#
+# The same commands as the mirror's `checks` job and its kits.yml
+# conformance runs, from the package's folder, which is the mirror's root.
+# Only when the package changes. A standard GitHub-hosted runner on a public
+# repository is not billed. NOT a required check: red here means "the
+# mirror's CI would fail after the next export".
+
+on:
+  pull_request:
+    paths:
+      - 'packages/vitruvian-sdk/**'
+      - '.github/workflows/vitruvian-sdk-mirror-checks.yaml'
+  workflow_dispatch:
+
+# A newer push to the same pull request replaces the older run.
+concurrency:
+  group: vitruvian-sdk-mirror-checks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  cargo:
+    name: cargo (Rust 1.75.0)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: packages/vitruvian-sdk
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The version Bazel builds the same checks with (MODULE.bazel,
+      # rust.toolchain), and the one the mirror's workflows install.
+      - name: Rust 1.75.0
+        run: |
+          rustup toolchain install 1.75.0 --profile minimal
+          rustup default 1.75.0
+          cargo --version
+
+      - name: The protocol, the conformance validator, the samples and the templates
+        run: |
+          cargo test --locked --manifest-path verification/Cargo.toml
+          cargo run --locked --manifest-path verification/Cargo.toml --bin sync-templates -- --check
+
+      - name: The Rust sample through the conformance validator
+        run: |
+          cargo build --release --manifest-path samples/hello-rust/Cargo.toml
+          mkdir -p "$RUNNER_TEMP/hello-rust/bin"
+          cp ../../target/release/tool "$RUNNER_TEMP/hello-rust/bin/tool"
+          cp samples/hello-rust/vitruvian-tool.json "$RUNNER_TEMP/hello-rust/"
+          cargo run --locked --manifest-path verification/Cargo.toml --bin conformance -- "$RUNNER_TEMP/hello-rust" --expect-refusal

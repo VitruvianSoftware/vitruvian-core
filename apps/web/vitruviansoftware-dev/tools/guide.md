@@ -2011,9 +2011,9 @@ vitruvian-tool run ~/my-tool --command hello --app-path
 - `--refuse` refuses every request, to see that your commands still answer.
 - `--app-path` starts the tool with the short `PATH` the app has. Use it when
   the tool works in a terminal and not in the app.
-- `python3 conformance/conformance.py <folder>`, in `packages/vitruvian-sdk`,
-  runs seven scripted checks and exits with 0 when they pass. It needs Python
-  and nothing else.
+- `cargo run --manifest-path verification/Cargo.toml --bin conformance -- <folder>`,
+  in the vitruvian-sdk repository, runs seven scripted checks and exits with
+  0 when they pass. It needs Rust and nothing else.
 
 In the app, open the tool's row in Settings. The detail view shows the tool's
 log: what it wrote to standard error, what it sent as `log`, and what the app
