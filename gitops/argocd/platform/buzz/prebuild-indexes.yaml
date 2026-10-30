@@ -1,0 +1,71 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# buzz-db-prebuild-indexes-0078 — One-shot job to prebuild migration 78 indexes
+# concurrently on buzz's populated PostgreSQL tables.
+#
+# Upstream Buzz migration 78 introduces artifact sync query paths and requires
+# 4 indexes (artifact_heads_modified, artifact_heads_channel, channel_members_sync,
+# artifact_revisions_moves). On populated tables, migration 78 fails fast with
+# "prebuild channel_members_sync concurrently; see docs/artifact-sync-deployment.md"
+# if the indexes are absent. This job builds them concurrently so the relay rollout
+# can complete startup and health checks.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: buzz-db-prebuild-indexes-0078
+  namespace: buzz
+  labels:
+    app.kubernetes.io/name: buzz
+    app.kubernetes.io/component: db-migration
+spec:
+  ttlSecondsAfterFinished: 86400
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: buzz
+        app.kubernetes.io/component: db-migration
+    spec:
+      restartPolicy: OnFailure
+      nodeSelector:
+        node.ipv1337.dev/link: wired
+      containers:
+      - name: prebuild-indexes
+        image: ghcr.io/cloudnative-pg/postgresql:17.4
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: buzz-secrets
+              key: DATABASE_URL
+        command:
+        - /bin/bash
+        - -c
+        - |
+          set -euo pipefail
+          echo "Prebuilding migration 78 indexes concurrently on buzz-db..."
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 << 'EOSQL'
+          CREATE INDEX CONCURRENTLY IF NOT EXISTS artifact_heads_modified ON artifact_heads (community_id, modified_at, artifact_id);
+          CREATE INDEX CONCURRENTLY IF NOT EXISTS artifact_heads_channel ON artifact_heads (community_id, channel_id, artifact_id);
+          CREATE INDEX CONCURRENTLY IF NOT EXISTS channel_members_sync ON channel_members (community_id, pubkey, sync_modified_at, channel_id);
+          CREATE INDEX CONCURRENTLY IF NOT EXISTS artifact_revisions_moves ON artifact_revisions (community_id, modified_at, event_id) WHERE source_channel_id IS NOT NULL;
+          EOSQL
+          echo "Migration 78 indexes prebuilt successfully."
