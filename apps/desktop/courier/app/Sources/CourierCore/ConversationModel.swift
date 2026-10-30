@@ -498,6 +498,7 @@ public final class ConversationModel: ObservableObject {
                 lookUpDraft: @escaping @MainActor (String) async -> String? = { _ in nil },
                 chat: @escaping @MainActor (String) -> InboxRow? = { _ in nil },
                 preferences: ComposerPreferences? = nil,
+                followsAppSelection: Bool = true,
                 sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
                 now: @escaping @MainActor () -> Date = Date.init, locale: Locale = .current) {
         self.appModel = appModel
@@ -526,9 +527,11 @@ public final class ConversationModel: ObservableObject {
         }
         composer.quote = { [weak self] id in self?.message(id)?.quoted }
         composer.selectedMessage = { [weak self] in self?.selectedMessageID.flatMap { self?.message($0) } }
-        subscriptions.append(appModel.$selectedRoomID.removeDuplicates().sink { [weak self] room in
-            self?.open(room)
-        })
+        if followsAppSelection {
+            subscriptions.append(appModel.$selectedRoomID.removeDuplicates().sink { [weak self] room in
+                self?.open(room)
+            })
+        }
         subscriptions.append(appModel.$mergedChats.dropFirst().sink { [weak self] merges in
             guard let self else { return }
             if let room = self.roomID, room.hasPrefix("merge:"), merges[room] == nil {
@@ -556,6 +559,30 @@ public final class ConversationModel: ObservableObject {
     }
 
     // MARK: - Opening
+
+    /// Opens `room` directly on this conversation model (used by detached chat and space windows).
+    public func openDetachedRoom(_ room: String?) {
+        open(room)
+    }
+
+    /// Populates `items`, `isLoaded`, and chat metadata directly for deterministic view snapshots without an engine.
+    public func setSnapshotStateForTesting(
+        roomID: String,
+        items: [TimelineItem],
+        row: InboxRow? = nil,
+        features: ChatFeatures = .noFeatures,
+        lastOutgoingID: String? = nil
+    ) {
+        self.roomID = roomID
+        self.items = items
+        self.isLoaded = true
+        self.features = features
+        self.lastOutgoingID = lastOutgoingID
+        composer.open(roomID)
+        if let row {
+            learnChat(row, of: roomID)
+        }
+    }
 
     private func open(_ room: String?) {
         if let room, let merged = appModel.mergedChats[room] {

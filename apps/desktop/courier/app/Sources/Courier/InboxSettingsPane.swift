@@ -77,6 +77,7 @@ struct InboxSettingsPane: View {
                 Text(String(localized: "None")).tag(HoverAction.nothing)
             }
             Picker(String(localized: "Double-clicking a chat"), selection: $preferences.doubleClickAction) {
+                Text(String(localized: "Opens it in a new window")).tag(DoubleClickAction.openInNewWindow)
                 Text(String(localized: "Archives it")).tag(DoubleClickAction.archive)
                 Text(String(localized: "Marks it read or unread")).tag(DoubleClickAction.toggleRead)
                 Text(String(localized: "Mutes or unmutes it")).tag(DoubleClickAction.toggleMute)

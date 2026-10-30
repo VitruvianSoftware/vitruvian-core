@@ -13,6 +13,7 @@ struct InboxList: View {
     @ObservedObject var spaces: SpacesModel
     @ObservedObject var preferences: InboxPreferences
     @ObservedObject var ui: InboxUI
+    @Environment(\.openDetachedWindow) private var openDetachedWindow
     /// The chat the pointer is over: `x` selects it, and it shows the hover button.
     @State private var hovered: String?
 
@@ -222,6 +223,7 @@ struct InboxList: View {
     private func doubleClick(_ row: InboxRow) {
         let ids = [row.id]
         switch preferences.doubleClickAction {
+        case .openInNewWindow: openDetachedWindow?(.chat(roomID: row.roomID))
         case .archive: Task { await inbox.archive(!row.archived, ids: ids) }
         case .toggleRead: Task { await inbox.toggleRead(ids: ids) }
         case .toggleMute: Task { await inbox.toggleMute(ids: ids) }

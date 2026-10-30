@@ -36,6 +36,7 @@ struct MainWindow: View {
     let scheduled: ScheduledModel
     let composerPreferences: ComposerPreferences
     let focus: MessageFocus
+    var detachedWindows: DetachedWindowRegistry? = nil
     @Environment(\.openWindow) private var openWindow
     @Environment(\.controlActiveState) private var controlActiveState
 
@@ -104,6 +105,7 @@ struct MainWindow: View {
             }
             // A chat's right-click menu opens search in that chat.
             .environment(\.searchInChat, { search.show(in: $0) })
+            .environment(\.openDetachedWindow, { target in detachedWindows?.open(target) })
             .onChange(of: controlActiveState, initial: true) { _, state in
                 ui.isMainWindowKey = state == .key
             }

@@ -378,6 +378,23 @@ public enum CommandSet {
         [sendGIF(composer), sendSticker(composer)]
     }
 
+    /// `command Open space in new window` (`id: "Open space in new window"`): opens the current space in a detached window.
+    @MainActor
+    public static func openSpaceInNewWindow(
+        _ inbox: InboxModel,
+        registry: DetachedWindowRegistry
+    ) -> CourierCommand {
+        CourierCommand(
+            id: "Open space in new window",
+            title: String(localized: "Open space in new window"),
+            keys: nil,
+            category: .inbox,
+            confirmation: nil,
+            isEnabled: { true },
+            run: { registry.open(.space(spaceID: inbox.query.space)) }
+        )
+    }
+
     /// Something in the space shown is unread. The bar's count says so for the whole space; the chats loaded say so
     /// only when the bar doesn't know the space yet.
     @MainActor

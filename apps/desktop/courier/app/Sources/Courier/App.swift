@@ -15,7 +15,7 @@ struct CourierApp: App {
                        ui: delegate.inboxUI, search: delegate.search, lifecycle: delegate.lifecycle,
                        labels: delegate.labels, messageActions: delegate.messageActions,
                        scheduled: delegate.scheduled, composerPreferences: delegate.composerPreferences,
-                       focus: delegate.messageFocus)
+                       focus: delegate.messageFocus, detachedWindows: delegate.detachedWindows)
                 .background(OpenWindowRegistrar(opener: delegate.windowOpener))
         }
         .defaultSize(width: 1020, height: 660)

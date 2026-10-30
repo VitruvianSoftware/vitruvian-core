@@ -21,7 +21,9 @@ struct ChatContextMenu: View {
     var onLeaveGroup: ((String) -> Void)? = nil
     var onDeleteChat: ((String) -> Void)? = nil
     var onReportSpam: ((String) -> Void)? = nil
+    var onOpenInNewWindow: ((String) -> Void)? = nil
     @Environment(\.searchInChat) private var searchInChat
+    @Environment(\.openDetachedWindow) private var openDetachedWindow
 
     var body: some View {
         let rows = inbox.targetRows(ids)
@@ -110,6 +112,18 @@ struct ChatContextMenu: View {
 
         // 9. Reminders.
         RemindMeMenu(inbox: inbox, ui: ui, ids: ids)
+
+        // 18 of 02 §3.4.1: Open in New Window (single chat).
+        if rows.count == 1 {
+            let roomID = rows[0].roomID
+            Button(String(localized: "Open in New Window")) {
+                if let onOpenInNewWindow {
+                    onOpenInNewWindow(roomID)
+                } else {
+                    openDetachedWindow?(.chat(roomID: roomID))
+                }
+            }
+        }
 
         // 10.
         if !inbox.isSelecting {

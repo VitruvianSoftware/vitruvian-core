@@ -47,7 +47,9 @@ struct SpaceBar: View {
     @ObservedObject var spaces: SpacesModel
     @ObservedObject var inbox: InboxModel
     let labels: LabelsModel
+    var onOpenSpaceInNewWindow: ((String) -> Void)? = nil
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openDetachedWindow) private var openDetachedWindow
 
     static let width: CGFloat = 60
 
@@ -91,6 +93,13 @@ struct SpaceBar: View {
     private func menu(for space: Space) -> some View {
         switch space.kind {
         case .account:
+            Button(String(localized: "Open in New Window")) {
+                if let onOpenSpaceInNewWindow {
+                    onOpenSpaceInNewWindow(space.spaceID)
+                } else {
+                    openDetachedWindow?(.space(spaceID: space.spaceID))
+                }
+            }
             ShowInInboxMenu(space: space, spaces: spaces)
             Button(space.muted ? String(localized: "Unmute Space") : String(localized: "Mute Space")) {
                 Task { await spaces.setMuted(space.spaceID, !space.muted) }
@@ -111,6 +120,13 @@ struct SpaceBar: View {
                     ?? String(localized: "Reconnect")) { inbox.perform(banner) }
             }
         case .label:
+            Button(String(localized: "Open in New Window")) {
+                if let onOpenSpaceInNewWindow {
+                    onOpenSpaceInNewWindow(space.spaceID)
+                } else {
+                    openDetachedWindow?(.space(spaceID: space.spaceID))
+                }
+            }
             ShowInInboxMenu(space: space, spaces: spaces)
             Button(space.muted ? String(localized: "Unmute Label") : String(localized: "Mute Label")) {
                 Task { await spaces.setMuted(space.spaceID, !space.muted) }
@@ -124,6 +140,13 @@ struct SpaceBar: View {
                 Task { await LabelDeletion.confirmAndDelete(space.labelID, labels: labels) }
             }
         default:
+            Button(String(localized: "Open in New Window")) {
+                if let onOpenSpaceInNewWindow {
+                    onOpenSpaceInNewWindow(space.spaceID)
+                } else {
+                    openDetachedWindow?(.space(spaceID: space.spaceID))
+                }
+            }
             Button(String(localized: "Edit Spaces…")) {
                 spaces.isEditing = true
                 openWindow(id: WindowID.editSpaces)

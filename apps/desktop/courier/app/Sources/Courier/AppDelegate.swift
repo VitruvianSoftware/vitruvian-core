@@ -29,6 +29,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let lifecycle = SystemLifecycleModel()
     /// Dock badge mode and menu-bar status item settings.
     let dockPreferences = DockAndTrayPreferences()
+    /// Detached chat, space, and thread window registry and presenter.
+    let detachedWindows: DetachedWindowRegistry
+    private var detachedWindowManager: DetachedWindowManager?
     /// Shared menu coordinator invoked by the main menu bar, Dock menu, and menu-bar status item.
     private(set) lazy var menuCoordinator = AppMenuCoordinator(
         inbox: inbox,
@@ -40,8 +43,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         },
         hideApp: { NSApp.hide(nil) },
         closeKeyWindow: { NSApp.keyWindow?.performClose(nil) },
-        closeAllAppWindows: { NSApp.windows.forEach { $0.performClose(nil) } },
-        openDetachedChat: { [weak self] roomID in self?.windowOpener.openChatInfo(roomID) }
+        closeAllAppWindows: { [weak self] in
+            self?.detachedWindows.closeAll()
+            NSApp.windows.forEach { $0.performClose(nil) }
+        },
+        openDetachedChat: { [weak self] roomID in self?.detachedWindows.open(.chat(roomID: roomID)) }
     )
     /// The sheets and popovers the inbox's menus and keys open.
     let inboxUI = InboxUI()
@@ -136,6 +142,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.login = login
         spaces = SpacesModel(appModel: model, inbox: inbox)
         labels = LabelsModel(appModel: model)
+        detachedWindows = DetachedWindowRegistry(
+            appModel: model,
+            mainInbox: inbox,
+            lifecycle: lifecycle,
+            inboxPreferences: inbox.preferences,
+            composerPreferences: composerPreferences
+        )
         search = SearchModel(appModel: model, recents: RecentSearches(), open: { [model] in model.open($0) })
         // The inbox's buttons: Reconnect signs that account in again (the banner's account, or with none the network's
         // own sign-in), as Add does (Google Messages warns first).
@@ -155,6 +168,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             model.open(.message(roomID: roomID, eventID: messageID))
         }
         signInWindows = SignInWindowPresenter(login: login)
+        detachedWindowManager = DetachedWindowManager(
+            registry: detachedWindows,
+            appModel: model,
+            mainInbox: inbox,
+            spaces: spaces,
+            lifecycle: lifecycle
+        )
         hideTypingQuestion = HideTypingQuestion(conversation: conversation, present: Self.askToHideTyping)
         dockBadge = DockBadge(spaces: spaces, dockPreferences: dockPreferences, lifecycle: lifecycle)
         configureStatusItemObservers()

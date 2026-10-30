@@ -2877,6 +2877,64 @@ final class ViewSnapshotTests: XCTestCase {
         XCTAssertEqual(killedProcesses.first?.1, ["NotificationCenter"])
         XCTAssertEqual(requestedSettingsCount, 1, "restartNotificationCenter must re-request notification settings")
     }
+
+    // MARK: - Part 4.6 Task 8: Detached Chat Window Light & Dark Snapshots and Lock Overlay
+
+    func testDetachedChatWindowLightAndDarkAndLockOverlay() throws {
+        let app = offlineApp()
+        let inboxPrefs = InboxPreferences(defaults: defaults())
+        let composerPrefs = ComposerPreferences(defaults: defaults())
+        let mainInbox = InboxModel(appModel: app, preferences: inboxPrefs)
+        let row = Fixture.row(
+            "!dm-ann:courier.local",
+            "Ann Example",
+            network: "signal",
+            direct: true,
+            ts: 5,
+            preview: "See you at the trailhead at eight!",
+            mine: false
+        )
+        mainInbox.setSnapshotRowsForTesting([row])
+
+        let lifecycle = SystemLifecycleModel(
+            loginItemService: SnapshotLoginItemService(),
+            biometricService: SnapshotBiometricService(),
+            defaults: defaults()
+        )
+        let registry = DetachedWindowRegistry(
+            appModel: app,
+            mainInbox: mainInbox,
+            lifecycle: lifecycle,
+            inboxPreferences: inboxPrefs,
+            composerPreferences: composerPrefs
+        )
+        let target = DetachedWindowTarget.chat(roomID: row.roomID)
+        registry.open(target)
+        let session = try XCTUnwrap(registry.session(for: target))
+
+        let events = [
+            Fixture.text("$1", "Morning! Are we still meeting at the trailhead?", mine: true, ts: 15, delivered: true),
+            Fixture.text("$2", "See you at the trailhead at eight!", mine: false, ts: 5, name: "Ann Example"),
+        ]
+        session.conversation.setSnapshotStateForTesting(
+            roomID: row.roomID,
+            items: Fixture.items(events, isDirect: true),
+            row: row,
+            features: Fixture.features,
+            lastOutgoingID: "$1"
+        )
+        session.conversation.composer.sender = SnapshotMessageSender()
+        session.conversation.composer.text = "On my way with coffee!"
+
+        check(try Snapshot.render("detached-chat-window", width: 640, height: 480) {
+            DetachedChatWindowView(session: session, lifecycle: lifecycle)
+        })
+
+        // Verify locking the app covers the detached chat window with AppLockOverlay.
+        XCTAssertFalse(registry.showsLockOverlay(for: target))
+        lifecycle.lockApp()
+        XCTAssertTrue(registry.showsLockOverlay(for: target))
+    }
 }
 
 private struct SnapshotLoginItemService: LoginItemService {

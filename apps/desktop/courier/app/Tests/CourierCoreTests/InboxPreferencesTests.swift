@@ -99,7 +99,7 @@ final class InboxPreferencesTests: XCTestCase {
     }
 
     func testAValueThisVersionDoesNotKnowFallsBackToTheDefault() {
-        store.defaults.set("openInNewWindow", forKey: "courier.inbox.doubleClickAction")
+        store.defaults.set("unknownFutureAction", forKey: "courier.inbox.doubleClickAction")
         XCTAssertEqual(InboxPreferences(defaults: store.defaults).doubleClickAction, .nothing)
     }
 }

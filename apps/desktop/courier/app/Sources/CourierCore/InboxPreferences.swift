@@ -7,10 +7,12 @@ import Foundation
 /// What hovering a row offers.
 public enum HoverAction: String, CaseIterable, Sendable { case archive, toggleRead, menu, nothing }
 
-/// What double-clicking a row does. "Open in New Window" comes with 4.5, and becomes the default then.
+/// What double-clicking a row does.
 public enum DoubleClickAction: String, CaseIterable, Sendable {
-    case archive, toggleRead, toggleMute, toggleLowPriority, nothing
+    case openInNewWindow, archive, toggleRead, toggleMute, toggleLowPriority, nothing
 }
+
+public typealias DoubleClickChatAction = DoubleClickAction
 
 /// Which chat opens after the open one is archived, or its read state toggled.
 public enum AfterAction: String, CaseIterable, Sendable { case selectNext, selectPrevious, closeChat, nothing }
@@ -37,6 +39,10 @@ public final class InboxPreferences: ObservableObject {
     @Published public var hoverAction: HoverAction { didSet { set(hoverAction.rawValue, "hoverAction") } }
     @Published public var doubleClickAction: DoubleClickAction {
         didSet { set(doubleClickAction.rawValue, "doubleClickAction") }
+    }
+    public var doubleClickChat: DoubleClickAction {
+        get { doubleClickAction }
+        set { doubleClickAction = newValue }
     }
     @Published public var remindDefault: RemindCondition { didSet { set(remindDefault.rawValue, "remindDefault") } }
     @Published public var archiveAfterReminder: Bool { didSet { set(archiveAfterReminder, "archiveAfterReminder") } }

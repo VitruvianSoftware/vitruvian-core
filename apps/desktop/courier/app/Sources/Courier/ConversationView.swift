@@ -224,8 +224,9 @@ struct ConversationView: View {
     }
 
     private var chat: some View {
-        VStack(spacing: 0) {
-            ConversationHeader(row: inbox.selectedRow, networkName: inbox.selectedRow.map { inbox.networkName($0.network) },
+        let headerRow = conversation.roomID.flatMap { inbox.row(of: $0) } ?? inbox.selectedRow
+        return VStack(spacing: 0) {
+            ConversationHeader(row: headerRow, networkName: headerRow.map { inbox.networkName($0.network) },
                                conversation: conversation)
             Divider()
             timeline

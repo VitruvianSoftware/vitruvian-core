@@ -222,6 +222,9 @@ public final class InboxModel: ObservableObject {
     private var rowLookup: (roomID: String, serial: Int, task: Task<InboxRow?, Never>)?
     private var lookupSerial = 0
     private var selectionSubscription: AnyCancellable?
+    private let followsAppSelection: Bool
+    @Published private var detachedSelectedRoomID: String?
+    public var onSelectDetachedRoom: (@MainActor (String?) -> Void)?
 
     /// - Parameters:
     ///   - hasTelegramCredentials: whether the app has an app ID to start Telegram with (its own, or one the person
@@ -237,6 +240,7 @@ public final class InboxModel: ObservableObject {
     ///   - toastSleep: waits `toastDuration`; tests give one they can open.
     public init(appModel: AppModel, hasTelegramCredentials: @escaping @MainActor () -> Bool = { true },
                 preferences: InboxPreferences, entitlement: any EntitlementProvider = AlwaysEntitled(),
+                followsAppSelection: Bool = true,
                 window: TimeInterval = 0.1, retryDelay: TimeInterval = 2,
                 sleep: @escaping @Sendable (TimeInterval) async -> Void = { await waitForInboxWindow($0) },
                 toastDuration: TimeInterval = 6,
@@ -245,6 +249,7 @@ public final class InboxModel: ObservableObject {
         self.hasTelegramCredentials = hasTelegramCredentials
         self.preferences = preferences
         self.entitlement = entitlement
+        self.followsAppSelection = followsAppSelection
         self.window = window
         self.retryDelay = retryDelay
         self.sleep = sleep
@@ -254,8 +259,10 @@ public final class InboxModel: ObservableObject {
         subscription = appModel.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         appModel.onConnect { [weak self] _ in self?.requestRead(waiting: false) }
         appModel.onChange { [weak self] change in self?.handle(change) }
-        selectionSubscription = appModel.$selectedRoomID.removeDuplicates().sink { [weak self] roomID in
-            self?.selectionChanged(to: roomID)
+        if followsAppSelection {
+            selectionSubscription = appModel.$selectedRoomID.removeDuplicates().sink { [weak self] roomID in
+                self?.selectionChanged(to: roomID)
+            }
         }
     }
 
@@ -263,18 +270,28 @@ public final class InboxModel: ObservableObject {
 
     public var accounts: [Account] { appModel.accounts }
 
-    /// The open chat's id. It is the app model's; a refresh never changes it.
-    public var selectedRoomID: String? { appModel.selectedRoomID }
+    /// The open chat's id. It is the app model's (or, in a detached space window, that window's); a refresh never changes it.
+    public var selectedRoomID: String? {
+        followsAppSelection ? appModel.selectedRoomID : detachedSelectedRoomID
+    }
 
     /// Whether `roomID` is currently open in the conversation pane (directly or as a member of the open merged chat).
     public func isOpen(_ roomID: String) -> Bool {
-        appModel.isOpen(roomID: roomID)
+        if followsAppSelection {
+            return appModel.isOpen(roomID: roomID)
+        }
+        guard let selected = detachedSelectedRoomID else { return false }
+        if selected == roomID { return true }
+        if let merge = mergedChats[selected], merge.roomIDs.contains(roomID) {
+            return true
+        }
+        return false
     }
 
     /// The open chat's row: the list's, or for a chat the list doesn't have, the one looked up when it opened. Nil
     /// when nothing is open, or the open chat is neither in the list nor looked up (yet).
     public var selectedRow: InboxRow? {
-        guard let id = appModel.selectedRoomID else { return nil }
+        guard let id = selectedRoomID else { return nil }
         return knownRow(id)
     }
 
@@ -292,6 +309,12 @@ public final class InboxModel: ObservableObject {
     /// A chat's row as the inbox knows it: the list's, else the open chat's looked-up row; nil when it has neither.
     public func row(of roomID: String) -> InboxRow? {
         knownRow(roomID)
+    }
+
+    /// Populates `rows` and `isLoaded` directly for deterministic view snapshots without an engine.
+    public func setSnapshotRowsForTesting(_ rows: [InboxRow]) {
+        self.rows = rows
+        self.isLoaded = true
     }
 
     /// The list's row of a chat, else the open chat's looked-up row.
@@ -339,20 +362,27 @@ public final class InboxModel: ObservableObject {
     }
 
     public func select(_ roomID: String?) {
+        var resolved = roomID
         if let roomID, !query.space.hasPrefix("account:") {
             if let merged = mergedChats[roomID] {
                 onOpenMergedChat(merged)
-                appModel.selectedRoomID = merged.mergeID
-                return
-            }
-            if let row = rows.first(where: { $0.id == roomID }), !row.mergeID.isEmpty,
-               let merged = mergedChats[row.mergeID] {
+                resolved = merged.mergeID
+            } else if let row = rows.first(where: { $0.id == roomID }), !row.mergeID.isEmpty,
+                      let merged = mergedChats[row.mergeID] {
                 onOpenMergedChat(merged)
-                appModel.selectedRoomID = merged.mergeID
-                return
+                resolved = merged.mergeID
             }
         }
-        appModel.selectedRoomID = roomID
+        if followsAppSelection {
+            appModel.selectedRoomID = resolved
+        } else {
+            let changed = detachedSelectedRoomID != resolved
+            detachedSelectedRoomID = resolved
+            if changed {
+                selectionChanged(to: resolved)
+            }
+            onSelectDetachedRoom?(resolved)
+        }
     }
 
     /// A network's name for people, for its badge's tooltip: the engine's, or the network's own id before the
@@ -537,7 +567,7 @@ public final class InboxModel: ObservableObject {
     }
 
     private var selectedIndex: Int? {
-        guard let id = appModel.selectedRoomID else { return nil }
+        guard let id = selectedRoomID else { return nil }
         return rows.firstIndex { $0.id == id || $0.roomID == id }
     }
 
