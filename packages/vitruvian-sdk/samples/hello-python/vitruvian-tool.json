@@ -1,5 +1,5 @@
 {
-  "id": "dev.vitruvian.samples.hello-python",
+  "id": "not a valid id",
   "name": { "en": "Hello, in Python" },
   "description": { "en": "Says hello, and copies the time." },
   "version": "0.1.0",
