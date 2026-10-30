@@ -178,4 +178,155 @@ final class DetachedWindowModelTests: XCTestCase {
         let reloaded = InboxPreferences(defaults: defaults)
         XCTAssertEqual(reloaded.doubleClickChat, .openInNewWindow)
     }
+
+    func testDetachedChatSpaceAndThreadWindowsCopyToInjectedPasteboardAndWireServices() async throws {
+        let suite = "courier.test.detached.services.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let appModel = makeAppModel()
+        let inboxPrefs = InboxPreferences(defaults: defaults)
+        let composerPrefs = ComposerPreferences(defaults: defaults)
+        let quickReplies = QuickReplies(defaults: defaults)
+        let mainInbox = InboxModel(appModel: appModel, preferences: inboxPrefs)
+
+        final class RecordingPasteboard: TextPasteboard {
+            var strings: [String] = []
+            func setString(_ text: String) {
+                strings.append(text)
+            }
+        }
+        let pasteboard = RecordingPasteboard()
+        var openedURLs: [URL] = []
+
+        let registry = DetachedWindowRegistry(
+            appModel: appModel,
+            mainInbox: mainInbox,
+            inboxPreferences: inboxPrefs,
+            composerPreferences: composerPrefs,
+            quickReplies: quickReplies,
+            makePasteboard: { pasteboard },
+            openURL: { openedURLs.append($0) }
+        )
+
+        let makeTextEvent = { (id: String, room: String, text: String, linkURL: String?) -> Event in
+            var content: [String: JSONValue] = [
+                "msgtype": .string("m.text"),
+                "body": .string(text),
+            ]
+            if let linkURL {
+                content["m.mentiones"] = .object([:])
+                content["format"] = .string("org.matrix.custom.html")
+                content["formatted_body"] = .string("<a href=\"\(linkURL)\">\(text)</a>")
+            }
+            return Event(
+                eventID: id,
+                roomID: room,
+                sender: "@alice:courier.local",
+                senderName: "Alice Example",
+                mine: false,
+                type: "m.room.message",
+                content: .object(content),
+                ts: 1_761_400_000_000,
+                seq: 1,
+                status: .sent
+            )
+        }
+
+        // 1. Detached Chat Window (.chat)
+        let chatTarget = DetachedWindowTarget.chat(roomID: "!r1")
+        registry.open(chatTarget)
+        let chatSession = try XCTUnwrap(registry.session(for: chatTarget))
+        let chatItems = Timeline.build(
+            events: [makeTextEvent("$chat-msg", "!r1", "Hello from detached chat https://example.com/chat", "https://example.com/chat")],
+            me: "@me:courier.local",
+            now: Date(timeIntervalSince1970: 1_761_400_100)
+        )
+        chatSession.conversation.setSnapshotStateForTesting(roomID: "!r1", items: chatItems)
+        await chatSession.messageActions.perform(.copy, on: "$chat-msg", from: .chat)
+        XCTAssertEqual(pasteboard.strings.last, "Hello from detached chat https://example.com/chat")
+
+        await chatSession.messageActions.perform(.openFirstLink, on: "$chat-msg", from: .chat)
+        XCTAssertEqual(openedURLs.map(\.absoluteString), ["https://example.com/chat"])
+        XCTAssertTrue(chatSession.conversation.composer.quickReplies === quickReplies)
+        XCTAssertTrue(chatSession.messageActions.quickReplies === quickReplies)
+
+        chatSession.conversation.onToast("Detached chat toast")
+        XCTAssertEqual(chatSession.hostInbox.toast?.message, "Detached chat toast")
+
+        // 2. Detached Space Window (.space)
+        let spaceTarget = DetachedWindowTarget.space(spaceID: "work")
+        registry.open(spaceTarget)
+        let spaceSession = try XCTUnwrap(registry.session(for: spaceTarget))
+        spaceSession.inbox?.select("!r2")
+        let spaceItems = Timeline.build(
+            events: [makeTextEvent("$space-msg", "!r2", "Hello from detached space", nil)],
+            me: "@me:courier.local",
+            now: Date(timeIntervalSince1970: 1_761_400_100)
+        )
+        spaceSession.conversation.setSnapshotStateForTesting(roomID: "!r2", items: spaceItems)
+        await spaceSession.messageActions.perform(.copy, on: "$space-msg", from: .chat)
+        XCTAssertEqual(pasteboard.strings.last, "Hello from detached space")
+
+        // 3. Detached Thread Window (.thread)
+        let threadTarget = DetachedWindowTarget.thread(roomID: "!r1", rootEventID: "$root1")
+        registry.open(threadTarget)
+        let threadSession = try XCTUnwrap(registry.session(for: threadTarget))
+        let threadItems = Timeline.build(
+            events: [makeTextEvent("$thread-msg", "!r1", "Hello from detached thread", nil)],
+            me: "@me:courier.local",
+            now: Date(timeIntervalSince1970: 1_761_400_100)
+        )
+        threadSession.thread.setSnapshotStateForTesting(roomID: "!r1", rootID: "$root1", items: threadItems)
+        await threadSession.messageActions.perform(.copy, on: "$thread-msg", from: .thread)
+        XCTAssertEqual(pasteboard.strings.last, "Hello from detached thread")
+        XCTAssertEqual(
+            pasteboard.strings,
+            [
+                "Hello from detached chat https://example.com/chat",
+                "Hello from detached space",
+                "Hello from detached thread",
+            ]
+        )
+    }
+
+    func testDetachedWindowScheduledModelTracksDetachedRoomNotMainWindowSelection() {
+        let appModel = makeAppModel()
+        appModel.selectedRoomID = "!main-room"
+        let registry = DetachedWindowRegistry(appModel: appModel)
+
+        let chatTarget = DetachedWindowTarget.chat(roomID: "!detached-chat")
+        registry.open(chatTarget)
+        let chatSession = registry.session(for: chatTarget)
+        XCTAssertEqual(chatSession?.scheduled.roomID, "!detached-chat")
+
+        let spaceTarget = DetachedWindowTarget.space(spaceID: "work")
+        registry.open(spaceTarget)
+        let spaceSession = registry.session(for: spaceTarget)
+        XCTAssertNil(spaceSession?.scheduled.roomID)
+        spaceSession?.inbox?.select("!space-chat")
+        XCTAssertEqual(spaceSession?.scheduled.roomID, "!space-chat")
+
+        // Changing main window selection must not alter detached ScheduledModel roomID.
+        appModel.selectedRoomID = "!other-main-room"
+        XCTAssertEqual(chatSession?.scheduled.roomID, "!detached-chat")
+        XCTAssertEqual(spaceSession?.scheduled.roomID, "!space-chat")
+    }
+
+    func testDetachedWindowTargetCodableAndOnOpenWindowAlias() throws {
+        let targets: [DetachedWindowTarget] = [
+            .chat(roomID: "!r1"),
+            .space(spaceID: "work"),
+            .thread(roomID: "!r1", rootEventID: "$root1"),
+        ]
+        let encoded = try JSONEncoder().encode(targets)
+        let decoded = try JSONDecoder().decode([DetachedWindowTarget].self, from: encoded)
+        XCTAssertEqual(decoded, targets)
+
+        let registry = DetachedWindowRegistry()
+        var openedViaAlias: [DetachedWindowTarget] = []
+        registry.onOpenWindow = { openedViaAlias.append($0) }
+        registry.open(.chat(roomID: "!r1"))
+        XCTAssertEqual(openedViaAlias, [.chat(roomID: "!r1")])
+    }
 }

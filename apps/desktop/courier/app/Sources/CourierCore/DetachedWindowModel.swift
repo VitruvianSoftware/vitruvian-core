@@ -1,17 +1,11 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import AppKit
 import Combine
 import Foundation
 
-private final class DetachedSessionPasteboard: TextPasteboard {
-    var lastCopied: String?
-    func setString(_ text: String) {
-        lastCopied = text
-    }
-}
-
-public enum DetachedWindowTarget: Equatable, Hashable, Identifiable, Sendable {
+public enum DetachedWindowTarget: Equatable, Hashable, Codable, Identifiable, Sendable {
     case chat(roomID: String)
     case space(spaceID: String)
     case thread(roomID: String, rootEventID: String)
@@ -47,14 +41,22 @@ public final class DetachedWindowSession: ObservableObject {
         inboxPreferences: InboxPreferences,
         composerPreferences: ComposerPreferences? = nil,
         mainInbox: InboxModel? = nil,
-        pasteboard: TextPasteboard? = nil
+        quickReplies: QuickReplies? = nil,
+        entitlement: (any EntitlementProvider)? = nil,
+        pasteboard: TextPasteboard? = nil,
+        openURL: (@MainActor (URL) -> Void)? = nil
     ) {
         self.target = target
         self.appModel = appModel
         let resolvedComposerPrefs = composerPreferences ?? ComposerPreferences()
         self.composerPreferences = resolvedComposerPrefs
+        let resolvedEntitlement = entitlement ?? AlwaysEntitled()
+        let resolvedQuickReplies = quickReplies ?? QuickReplies()
+        let resolvedPasteboard = pasteboard ?? SystemPasteboard()
+        let resolvedOpenURL = openURL ?? { url in NSWorkspace.shared.open(url) }
         self.focus = MessageFocus()
-        self.scheduled = ScheduledModel(appModel: appModel)
+        let scheduled = ScheduledModel(appModel: appModel, followsAppSelection: false)
+        self.scheduled = scheduled
 
         switch target {
         case let .chat(roomID):
@@ -62,6 +64,7 @@ public final class DetachedWindowSession: ObservableObject {
             let fallbackInbox = mainInbox ?? InboxModel(
                 appModel: appModel,
                 preferences: inboxPreferences,
+                entitlement: resolvedEntitlement,
                 followsAppSelection: false
             )
             self.hostInbox = fallbackInbox
@@ -75,12 +78,13 @@ public final class DetachedWindowSession: ObservableObject {
                 followsAppSelection: false
             )
             conv.openDetachedRoom(roomID)
+            scheduled.openDetachedRoom(roomID)
             self.conversation = conv
             self.messageActions = MessageActionsModel(
                 conversation: conv,
                 appModel: appModel,
                 preferences: resolvedComposerPrefs,
-                pasteboard: pasteboard ?? DetachedSessionPasteboard()
+                pasteboard: resolvedPasteboard
             )
 
         case let .thread(roomID, rootEventID):
@@ -88,6 +92,7 @@ public final class DetachedWindowSession: ObservableObject {
             let fallbackInbox = mainInbox ?? InboxModel(
                 appModel: appModel,
                 preferences: inboxPreferences,
+                entitlement: resolvedEntitlement,
                 followsAppSelection: false
             )
             self.hostInbox = fallbackInbox
@@ -102,18 +107,20 @@ public final class DetachedWindowSession: ObservableObject {
             )
             conv.openDetachedRoom(roomID)
             conv.thread.open(rootEventID, in: roomID)
+            scheduled.openDetachedRoom(roomID)
             self.conversation = conv
             self.messageActions = MessageActionsModel(
                 conversation: conv,
                 appModel: appModel,
                 preferences: resolvedComposerPrefs,
-                pasteboard: pasteboard ?? DetachedSessionPasteboard()
+                pasteboard: resolvedPasteboard
             )
 
         case let .space(spaceID):
             let spaceInbox = InboxModel(
                 appModel: appModel,
                 preferences: inboxPreferences,
+                entitlement: resolvedEntitlement,
                 followsAppSelection: false
             )
             spaceInbox.query.space = spaceID
@@ -126,8 +133,24 @@ public final class DetachedWindowSession: ObservableObject {
                 preferences: resolvedComposerPrefs,
                 followsAppSelection: false
             )
-            spaceInbox.onSelectDetachedRoom = { [weak conv] roomID in
+            spaceInbox.onSelectDetachedRoom = { [weak conv, weak scheduled] roomID in
                 conv?.openDetachedRoom(roomID)
+                scheduled?.openDetachedRoom(roomID)
+            }
+            spaceInbox.isIncognito = { [weak conv] in conv?.incognitoIsOn ?? false }
+            spaceInbox.onSelectedRowLookedUp = { [weak conv] row in
+                conv?.learnUnreadCount(row.unread, of: row.roomID)
+                conv?.learnChat(row)
+            }
+            spaceInbox.onOpenMergedChat = { [weak conv, weak scheduled] merged in
+                conv?.openMergedChat(merged)
+                scheduled?.openDetachedRoom(merged.mergeID)
+            }
+            if let mainInbox {
+                spaceInbox.onAddNetwork = { [weak mainInbox] in mainInbox?.onAddNetwork() }
+                spaceInbox.onReconnect = { [weak mainInbox] network, accountID in
+                    mainInbox?.onReconnect(network, accountID)
+                }
             }
             self.inbox = spaceInbox
             self.hostInbox = spaceInbox
@@ -136,9 +159,27 @@ public final class DetachedWindowSession: ObservableObject {
                 conversation: conv,
                 appModel: appModel,
                 preferences: resolvedComposerPrefs,
-                pasteboard: pasteboard ?? DetachedSessionPasteboard()
+                pasteboard: resolvedPasteboard
             )
         }
+
+        let host = self.hostInbox
+        let conv = self.conversation
+        for composer in [conv.composer, conv.thread.composer] {
+            composer.entitlement = resolvedEntitlement
+            composer.quickReplies = resolvedQuickReplies
+            composer.onArchive = { [weak host] room in await host?.archive(true, ids: [room]) }
+            composer.onToast = { [weak host] message in host?.announce(message) }
+        }
+        conv.onToast = { [weak host] message in host?.announce(message) }
+        conv.planAfterToggleRead = { [weak host] in host?.planAfterToggleRead() ?? {} }
+        conv.isEntitled = { [weak host] feature in
+            host?.isEntitled(feature) ?? resolvedEntitlement.isEntitled(feature)
+        }
+        self.messageActions.quickReplies = resolvedQuickReplies
+        self.messageActions.onToast = { [weak host] message in host?.announce(message) }
+        self.messageActions.openURL = resolvedOpenURL
+        self.scheduled.onToast = { [weak host] message in host?.announce(message) }
     }
 }
 
@@ -154,9 +195,17 @@ public final class DetachedWindowRegistry: ObservableObject {
     private weak var lifecycle: SystemLifecycleModel?
     private let inboxPreferences: InboxPreferences
     private let composerPreferences: ComposerPreferences?
+    private let quickReplies: QuickReplies?
+    private let entitlement: (any EntitlementProvider)?
+    private let makePasteboard: (@MainActor () -> TextPasteboard)?
+    private let openURL: (@MainActor (URL) -> Void)?
     private var lifecycleSubscription: AnyCancellable?
 
     public var onOpen: ((DetachedWindowTarget) -> Void)?
+    public var onOpenWindow: ((DetachedWindowTarget) -> Void)? {
+        get { onOpen }
+        set { onOpen = newValue }
+    }
     public var onFocus: ((DetachedWindowTarget) -> Void)?
     public var onClose: ((DetachedWindowTarget) -> Void)?
 
@@ -166,6 +215,10 @@ public final class DetachedWindowRegistry: ObservableObject {
         lifecycle: SystemLifecycleModel? = nil,
         inboxPreferences: InboxPreferences? = nil,
         composerPreferences: ComposerPreferences? = nil,
+        quickReplies: QuickReplies? = nil,
+        entitlement: (any EntitlementProvider)? = nil,
+        makePasteboard: (@MainActor () -> TextPasteboard)? = nil,
+        openURL: (@MainActor (URL) -> Void)? = nil,
         onOpen: ((DetachedWindowTarget) -> Void)? = nil,
         onFocus: ((DetachedWindowTarget) -> Void)? = nil,
         onClose: ((DetachedWindowTarget) -> Void)? = nil
@@ -175,6 +228,10 @@ public final class DetachedWindowRegistry: ObservableObject {
         self.lifecycle = lifecycle
         self.inboxPreferences = inboxPreferences ?? mainInbox?.preferences ?? InboxPreferences()
         self.composerPreferences = composerPreferences
+        self.quickReplies = quickReplies
+        self.entitlement = entitlement
+        self.makePasteboard = makePasteboard
+        self.openURL = openURL
         self.onOpen = onOpen
         self.onFocus = onFocus
         self.onClose = onClose
@@ -198,7 +255,11 @@ public final class DetachedWindowRegistry: ObservableObject {
                 appModel: appModel,
                 inboxPreferences: inboxPreferences,
                 composerPreferences: composerPreferences,
-                mainInbox: mainInbox
+                mainInbox: mainInbox,
+                quickReplies: quickReplies,
+                entitlement: entitlement,
+                pasteboard: makePasteboard?(),
+                openURL: openURL
             )
         }
         openTargets.append(target)

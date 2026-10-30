@@ -2953,14 +2953,14 @@ final class ViewSnapshotTests: XCTestCase {
 
         // 2. Shortcut recorder in recording state ("Press keys…")
         let recordingRegistry = HotkeyRegistry(defaults: defaults())
-        recordingRegistry.beginRecording(for: "Command Bar")
         check(try Snapshot.render("hotkeys-recorder-recording", width: 620, height: 520) {
+            let _ = recordingRegistry.beginRecording(for: "Search: Room")
             HotkeysSettingsPane(registry: recordingRegistry, lifecycle: lifecycle)
         })
 
         // 3. Shortcut recorder in conflict state ("⌘K is already used by Search")
         let conflictRegistry = HotkeyRegistry(defaults: defaults())
-        _ = conflictRegistry.record(KeyChord(key: "k", command: true), for: "Command Bar")
+        _ = conflictRegistry.record(KeyChord(key: "k", command: true), for: "Search: Room")
         check(try Snapshot.render("hotkeys-recorder-conflict", width: 620, height: 520) {
             HotkeysSettingsPane(registry: conflictRegistry, lifecycle: lifecycle)
         })

@@ -49,6 +49,9 @@ struct DetachedChatWindowView: View {
         )
         .environment(\.openDetachedWindow, onOpenDetached)
         .frame(minWidth: 520, minHeight: 420)
+        .overlay(alignment: .bottom) {
+            ToastView(inbox: session.hostInbox)
+        }
         .overlay {
             if lifecycle.isLocked {
                 AppLockOverlay(model: lifecycle)
@@ -67,13 +70,15 @@ struct DetachedSpaceWindowView: View {
     @ObservedObject var lifecycle: SystemLifecycleModel
     @StateObject private var ui = InboxUI()
     var onOpenDetached: ((DetachedWindowTarget) -> Void)?
+    var onSearchInChat: (@MainActor (String) -> Void)?
 
     init(
         session: DetachedWindowSession,
         inbox: InboxModel,
         spaces: SpacesModel,
         lifecycle: SystemLifecycleModel,
-        onOpenDetached: ((DetachedWindowTarget) -> Void)? = nil
+        onOpenDetached: ((DetachedWindowTarget) -> Void)? = nil,
+        onSearchInChat: (@MainActor (String) -> Void)? = nil
     ) {
         self.session = session
         self.inbox = inbox
@@ -81,6 +86,7 @@ struct DetachedSpaceWindowView: View {
         self.spaces = spaces
         self.lifecycle = lifecycle
         self.onOpenDetached = onOpenDetached
+        self.onSearchInChat = onSearchInChat
     }
 
     var body: some View {
@@ -112,7 +118,65 @@ struct DetachedSpaceWindowView: View {
             }
         }
         .environment(\.openDetachedWindow, onOpenDetached)
+        .environment(\.searchInChat, onSearchInChat)
         .frame(minWidth: 740, minHeight: 460)
+        .sheet(item: $ui.customReminder) { request in
+            CustomReminderSheet(request: request, inbox: inbox)
+        }
+        .sheet(
+            isPresented: Binding(
+                get: { inbox.startNewChatDraft != nil },
+                set: { shown in if !shown { inbox.startNewChatDraft = nil } }
+            )
+        ) {
+            if let draft = inbox.startNewChatDraft {
+                StartNewChatView(
+                    draft: draft,
+                    onQueryChanged: { updated in
+                        inbox.updateStartNewChatDraft(updated)
+                    },
+                    onOpenDirectChat: { candidate in
+                        Task { await inbox.openDirectChat(with: candidate) }
+                    },
+                    onLookup: { action in
+                        Task { await inbox.performStartNewChatLookup(action) }
+                    },
+                    onCreateGroup: { updated in
+                        inbox.startNewChatDraft = updated
+                        Task { await inbox.submitNewGroupChat() }
+                    },
+                    onSendBlast: { updated in
+                        inbox.startNewChatDraft = updated
+                        Task { await inbox.submitBlast() }
+                    },
+                    onCancel: {
+                        inbox.startNewChatDraft = nil
+                    }
+                )
+            }
+        }
+        .sheet(
+            isPresented: Binding(
+                get: { inbox.mergedChatEditorDraft != nil },
+                set: { shown in if !shown { inbox.mergedChatEditorDraft = nil } }
+            )
+        ) {
+            if let draft = inbox.mergedChatEditorDraft {
+                MergedChatEditorSheet(
+                    draft: draft,
+                    onSave: { updated in
+                        inbox.mergedChatEditorDraft = updated
+                        Task { await inbox.saveMergedChatEditor() }
+                    },
+                    onUnmerge: { mergeID in
+                        Task { await inbox.unmergeChat(mergeID) }
+                    },
+                    onCancel: {
+                        inbox.mergedChatEditorDraft = nil
+                    }
+                )
+            }
+        }
         .overlay {
             if lifecycle.isLocked {
                 AppLockOverlay(model: lifecycle)
@@ -127,7 +191,21 @@ struct DetachedThreadWindowView: View {
     @ObservedObject var session: DetachedWindowSession
     @ObservedObject var conversation: ConversationModel
     @ObservedObject var thread: ThreadModel
+    @ObservedObject var messageActions: MessageActionsModel
     @ObservedObject var lifecycle: SystemLifecycleModel
+
+    private enum Sheet: Identifiable {
+        case forward(String), react(String), sendLater, quickReplyTitle
+
+        var id: String {
+            switch self {
+            case let .forward(id): "forward:\(id)"
+            case let .react(id): "react:\(id)"
+            case .sendLater: "sendLater"
+            case .quickReplyTitle: "quickReplyTitle"
+            }
+        }
+    }
 
     init(
         session: DetachedWindowSession,
@@ -136,6 +214,7 @@ struct DetachedThreadWindowView: View {
         self.session = session
         self.conversation = session.conversation
         self.thread = session.thread
+        self.messageActions = session.messageActions
         self.lifecycle = lifecycle
     }
 
@@ -144,17 +223,106 @@ struct DetachedThreadWindowView: View {
             thread: thread,
             conversation: conversation,
             composer: thread.composer,
-            messageActions: session.messageActions,
+            messageActions: messageActions,
             preferences: session.composerPreferences,
             focus: session.focus,
             showsOpenInNewWindowButton: false
         )
         .frame(minWidth: 380, minHeight: 440)
+        .sheet(item: sheetRequest) { sheet in
+            requestSheet(sheet)
+        }
+        .alert(confirmPrompt, isPresented: confirming) {
+            Button(confirmTitle, role: .destructive) {
+                Task { await messageActions.confirm() }
+            }
+            Button(String(localized: "Cancel"), role: .cancel) {
+                messageActions.dismissRequest()
+            }
+        }
+        .overlay(alignment: .bottom) {
+            ToastView(inbox: session.hostInbox)
+        }
         .overlay {
             if lifecycle.isLocked {
                 AppLockOverlay(model: lifecycle)
             }
         }
+    }
+
+    private var sheetRequest: Binding<Sheet?> {
+        Binding(get: {
+            switch messageActions.request {
+            case let .forward(id)?: .forward(id)
+            case let .reactionPicker(id)?: .react(id)
+            case .sendLater?: .sendLater
+            case .quickReplyTitle?: .quickReplyTitle
+            default: nil
+            }
+        }, set: { value in
+            if value == nil, sheetRequestIsShown {
+                messageActions.dismissRequest()
+            }
+        })
+    }
+
+    private var sheetRequestIsShown: Bool {
+        switch messageActions.request {
+        case .forward?, .reactionPicker?, .sendLater?, .quickReplyTitle?: true
+        default: false
+        }
+    }
+
+    @ViewBuilder
+    private func requestSheet(_ sheet: Sheet) -> some View {
+        switch sheet {
+        case let .forward(id):
+            ForwardPicker(
+                model: ForwardPickerModel(appModel: session.appModel),
+                networkName: session.hostInbox.networkName,
+                forward: { rooms in Task { await messageActions.forward(id, to: rooms) } },
+                cancel: messageActions.dismissRequest
+            )
+        case let .react(id):
+            ReactionPicker(
+                react: { key in
+                    messageActions.dismissRequest()
+                    Task { await conversation.react(to: id, key: key) }
+                },
+                cancel: messageActions.dismissRequest
+            )
+        case .sendLater:
+            SendLaterPicker(
+                composer: thread.composer,
+                preferences: session.composerPreferences,
+                done: messageActions.dismissRequest
+            )
+        case .quickReplyTitle:
+            QuickReplyTitleSheet(actions: messageActions)
+        }
+    }
+
+    private var confirming: Binding<Bool> {
+        Binding(get: {
+            if case .confirm? = messageActions.request { return true }
+            return false
+        }, set: { shown in
+            if !shown, case .confirm? = messageActions.request {
+                messageActions.dismissRequest()
+            }
+        })
+    }
+
+    private var confirmPrompt: String {
+        if case let .confirm(_, _, prompt)? = messageActions.request { return prompt }
+        return ""
+    }
+
+    private var confirmTitle: String {
+        if case let .confirm(action, _, _)? = messageActions.request, action == .unsend {
+            return String(localized: "Unsend")
+        }
+        return String(localized: "Delete")
     }
 }
 
@@ -166,6 +334,7 @@ final class DetachedWindowManager: NSObject, NSWindowDelegate {
     private weak var mainInbox: InboxModel?
     private weak var spaces: SpacesModel?
     private let lifecycle: SystemLifecycleModel
+    private let onSearchInChat: (@MainActor (String) -> Void)?
     private var windows: [DetachedWindowTarget: NSWindow] = [:]
     private var closingFromRegistry = Set<DetachedWindowTarget>()
 
@@ -174,13 +343,15 @@ final class DetachedWindowManager: NSObject, NSWindowDelegate {
         appModel: AppModel,
         mainInbox: InboxModel,
         spaces: SpacesModel,
-        lifecycle: SystemLifecycleModel
+        lifecycle: SystemLifecycleModel,
+        onSearchInChat: (@MainActor (String) -> Void)? = nil
     ) {
         self.registry = registry
         self.appModel = appModel
         self.mainInbox = mainInbox
         self.spaces = spaces
         self.lifecycle = lifecycle
+        self.onSearchInChat = onSearchInChat
         super.init()
 
         registry.onOpen = { [weak self] target in
@@ -232,7 +403,8 @@ final class DetachedWindowManager: NSObject, NSWindowDelegate {
                 lifecycle: lifecycle,
                 onOpenDetached: { [weak registry] childTarget in
                     registry?.open(childTarget)
-                }
+                },
+                onSearchInChat: onSearchInChat
             )
             controller = NSHostingController(rootView: view)
 

@@ -84,6 +84,7 @@ struct HotkeysSettingsPane: View {
             ShortcutCaptureMonitor(
                 isRecording: registry.recordingHotkeyID != nil && !lifecycle.isLocked,
                 isLocked: lifecycle.isLocked,
+                allowsModifierOnly: registry.recordingHotkeyID.map(HotkeyRegistry.isModifierOnlyDefinition) ?? false,
                 onCapture: { chord in
                     guard !lifecycle.isLocked, let id = registry.recordingHotkeyID else { return }
                     _ = registry.record(chord, for: id)
@@ -98,6 +99,9 @@ struct HotkeysSettingsPane: View {
             if locked {
                 registry.cancelRecording()
             }
+        }
+        .onDisappear {
+            registry.cancelRecording()
         }
     }
 
@@ -313,24 +317,31 @@ private struct HotkeyRowView: View {
     }
 }
 
-/// Captures key-down events while a shortcut row is in recording mode and the app is unlocked.
+/// Captures key-down (and modifier-only flagsChanged) events while a shortcut row is in recording mode and the app is unlocked.
 private struct ShortcutCaptureMonitor: NSViewRepresentable {
     let isRecording: Bool
     let isLocked: Bool
+    let allowsModifierOnly: Bool
     let onCapture: (KeyChord) -> Void
     let onCancel: () -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onCapture: onCapture, onCancel: onCancel)
+        Coordinator(
+            allowsModifierOnly: allowsModifierOnly,
+            onCapture: onCapture,
+            onCancel: onCancel
+        )
     }
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
+        context.coordinator.allowsModifierOnly = allowsModifierOnly
         context.coordinator.update(isRecording: isRecording && !isLocked)
         return view
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
+        context.coordinator.allowsModifierOnly = allowsModifierOnly
         context.coordinator.onCapture = onCapture
         context.coordinator.onCancel = onCancel
         context.coordinator.update(isRecording: isRecording && !isLocked)
@@ -342,11 +353,17 @@ private struct ShortcutCaptureMonitor: NSViewRepresentable {
 
     @MainActor
     final class Coordinator {
+        var allowsModifierOnly: Bool
         var onCapture: (KeyChord) -> Void
         var onCancel: () -> Void
         private var monitor: Any?
 
-        init(onCapture: @escaping (KeyChord) -> Void, onCancel: @escaping () -> Void) {
+        init(
+            allowsModifierOnly: Bool,
+            onCapture: @escaping (KeyChord) -> Void,
+            onCancel: @escaping () -> Void
+        ) {
+            self.allowsModifierOnly = allowsModifierOnly
             self.onCapture = onCapture
             self.onCancel = onCancel
         }
@@ -354,9 +371,22 @@ private struct ShortcutCaptureMonitor: NSViewRepresentable {
         func update(isRecording: Bool) {
             if isRecording {
                 guard monitor == nil else { return }
-                monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
                     guard let self else { return event }
                     let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+                    if event.type == .flagsChanged {
+                        guard self.allowsModifierOnly else { return event }
+                        if let chord = KeyChord.modifierOnlyChord(
+                            command: flags.contains(.command),
+                            shift: flags.contains(.shift),
+                            option: flags.contains(.option),
+                            control: flags.contains(.control)
+                        ) {
+                            self.onCapture(chord)
+                            return nil
+                        }
+                        return event
+                    }
                     if event.keyCode == 53 && flags.isEmpty { // Escape cancels recording
                         self.onCancel()
                         return nil
@@ -393,10 +423,17 @@ private struct ShortcutCaptureMonitor: NSViewRepresentable {
             case 125: keyName = "down"
             case 126: keyName = "up"
             default:
-                guard let chars = event.charactersIgnoringModifiers?.lowercased(), !chars.isEmpty else {
-                    return nil
+                if let fnKey = KeyChord.functionKeyName(
+                    forKeyCode: event.keyCode,
+                    charactersIgnoringModifiers: event.charactersIgnoringModifiers
+                ) {
+                    keyName = fnKey
+                } else {
+                    guard let chars = event.charactersIgnoringModifiers?.lowercased(), !chars.isEmpty else {
+                        return nil
+                    }
+                    keyName = chars
                 }
-                keyName = chars
             }
             return KeyChord(
                 key: keyName,
@@ -439,7 +476,7 @@ struct RegistryKeyboardShortcutModifier: ViewModifier {
         case "space", " ": keyEquivalent = .space
         case "backspace", "delete": keyEquivalent = .delete
         default:
-            guard let char = chord.key.lowercased().first else { return nil }
+            guard let char = KeyChord.keyEquivalentCharacter(for: chord.key) else { return nil }
             keyEquivalent = KeyEquivalent(char)
         }
 

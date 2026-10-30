@@ -225,6 +225,9 @@ public final class InboxModel: ObservableObject {
     private let followsAppSelection: Bool
     @Published private var detachedSelectedRoomID: String?
     public var onSelectDetachedRoom: (@MainActor (String?) -> Void)?
+    private var chatHistory: [String] = []
+    private var chatHistoryIndex: Int = -1
+    private var navigatingHistory = false
 
     /// - Parameters:
     ///   - hasTelegramCredentials: whether the app has an app ID to start Telegram with (its own, or one the person
@@ -332,6 +335,19 @@ public final class InboxModel: ObservableObject {
             updated = Array(updated.prefix(Self.maxRecentlyViewed))
         }
         recentlyViewedRoomIDs = updated
+        if !navigatingHistory {
+            if chatHistoryIndex >= 0, chatHistoryIndex < chatHistory.count, chatHistory[chatHistoryIndex] == roomID {
+                return
+            }
+            if chatHistoryIndex >= 0, chatHistoryIndex + 1 < chatHistory.count {
+                chatHistory.removeSubrange((chatHistoryIndex + 1)..<chatHistory.count)
+            }
+            chatHistory.append(roomID)
+            if chatHistory.count > Self.maxRecentlyViewed {
+                chatHistory.removeFirst(chatHistory.count - Self.maxRecentlyViewed)
+            }
+            chatHistoryIndex = chatHistory.count - 1
+        }
     }
 
     /// Another chat opened: the row looked up for the last is let go, and one the list doesn't have is looked up,
@@ -538,6 +554,39 @@ public final class InboxModel: ObservableObject {
 
     public func selectNext() { move(by: 1) }
     public func selectPrevious() { move(by: -1) }
+
+    /// `History: Previous Chat` (`⌃⌥←`): navigates back in recently viewed chat history.
+    public func selectPreviousRecentChat() {
+        guard chatHistoryIndex > 0 else { return }
+        chatHistoryIndex -= 1
+        let target = chatHistory[chatHistoryIndex]
+        navigatingHistory = true
+        defer { navigatingHistory = false }
+        select(target)
+    }
+
+    /// `History: Next Chat` (`⌃⌥→`): navigates forward in recently viewed chat history.
+    public func selectNextRecentChat() {
+        guard chatHistoryIndex >= 0, chatHistoryIndex + 1 < chatHistory.count else { return }
+        chatHistoryIndex += 1
+        let target = chatHistory[chatHistoryIndex]
+        navigatingHistory = true
+        defer { navigatingHistory = false }
+        select(target)
+    }
+
+    /// `Cycle Chats (hold shift to reverse)` (`⌃Tab` / `⌃⇧Tab`): cycles through `rows` wrapping at the ends.
+    public func cycleChat(reverse: Bool = false) {
+        guard !rows.isEmpty else { return }
+        let step = reverse ? -1 : 1
+        let target: Int
+        if let current = selectedIndex {
+            target = (current + step + rows.count) % rows.count
+        } else {
+            target = reverse ? rows.count - 1 : 0
+        }
+        select(rows[target].id)
+    }
 
     /// With nothing open, next opens the first chat and previous the last. The list does not wrap.
     private func move(by step: Int) {

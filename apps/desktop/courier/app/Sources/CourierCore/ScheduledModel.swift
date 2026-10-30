@@ -19,22 +19,35 @@ public final class ScheduledModel: ObservableObject {
     public var onToast: @MainActor (String) -> Void = { _ in }
 
     private let appModel: AppModel
-    private var roomID: String?
+    public private(set) var roomID: String?
     private var subscription: AnyCancellable?
     /// Goes up with each read: an answer older than the newest one shown, or for another chat, is dropped.
     private var serial = 0
     private var shownSerial = 0
 
-    public init(appModel: AppModel) {
+    public init(appModel: AppModel, followsAppSelection: Bool = true) {
         self.appModel = appModel
-        subscription = appModel.$selectedRoomID.removeDuplicates().sink { [weak self] room in
-            self?.open(room)
+        if followsAppSelection {
+            subscription = appModel.$selectedRoomID.removeDuplicates().sink { [weak self] room in
+                self?.open(room)
+            }
         }
         appModel.onConnect { [weak self] _ in self?.read() }
         appModel.onChange { [weak self] change in
-            guard let self, case let .scheduled(room) = change, self.appModel.isOpen(roomID: room) else { return }
+            guard let self, case let .scheduled(room) = change else { return }
+            if let currentRoom = self.roomID {
+                let memberIDs = self.appModel.mergedChats[currentRoom]?.roomIDs ?? [currentRoom]
+                guard memberIDs.contains(room) else { return }
+            } else {
+                guard self.appModel.isOpen(roomID: room) else { return }
+            }
             self.read()
         }
+    }
+
+    /// Opens a room explicitly for a detached window (`followsAppSelection == false`).
+    public func openDetachedRoom(_ room: String?) {
+        open(room)
     }
 
     private func open(_ room: String?) {

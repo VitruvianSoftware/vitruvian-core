@@ -145,6 +145,8 @@ public final class AppMenuCoordinator: ObservableObject {
     @Published public private(set) var activeSettingsSection: SettingsSection = .inbox
     @Published public var isSidebarVisible: Bool = true
     @Published public private(set) var detachedChatRoomIDs: [String] = []
+    @Published public private(set) var focusCount: Int = 0
+    @Published public private(set) var quitRequestedCount: Int = 0
 
     public let inbox: InboxModel
     public let lifecycle: SystemLifecycleModel
@@ -154,6 +156,7 @@ public final class AppMenuCoordinator: ObservableObject {
     private let closeKeyWindow: @MainActor () -> Void
     private let closeAllAppWindows: @MainActor () -> Void
     private let openDetachedChat: @MainActor (String) -> Void
+    private let quitApplication: @MainActor () -> Void
 
     public init(
         inbox: InboxModel,
@@ -163,7 +166,8 @@ public final class AppMenuCoordinator: ObservableObject {
         hideApp: @escaping @MainActor () -> Void = {},
         closeKeyWindow: @escaping @MainActor () -> Void = {},
         closeAllAppWindows: @escaping @MainActor () -> Void = {},
-        openDetachedChat: @escaping @MainActor (String) -> Void = { _ in }
+        openDetachedChat: @escaping @MainActor (String) -> Void = { _ in },
+        quitApplication: @escaping @MainActor () -> Void = {}
     ) {
         self.inbox = inbox
         self.lifecycle = lifecycle
@@ -173,6 +177,17 @@ public final class AppMenuCoordinator: ObservableObject {
         self.closeKeyWindow = closeKeyWindow
         self.closeAllAppWindows = closeAllAppWindows
         self.openDetachedChat = openDetachedChat
+        self.quitApplication = quitApplication
+    }
+
+    public func focusApp() {
+        focusCount += 1
+        showMainWindow()
+    }
+
+    public func quitApp() {
+        quitRequestedCount += 1
+        quitApplication()
     }
 
     @discardableResult

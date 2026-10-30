@@ -49,7 +49,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.detachedWindows.closeAll()
             NSApp.windows.forEach { $0.performClose(nil) }
         },
-        openDetachedChat: { [weak self] roomID in self?.detachedWindows.open(.chat(roomID: roomID)) }
+        openDetachedChat: { [weak self] roomID in self?.detachedWindows.open(.chat(roomID: roomID)) },
+        quitApplication: { NSApp.terminate(nil) }
     )
     /// The sheets and popovers the inbox's menus and keys open.
     let inboxUI = InboxUI()
@@ -151,7 +152,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             mainInbox: inbox,
             lifecycle: lifecycle,
             inboxPreferences: inbox.preferences,
-            composerPreferences: composerPreferences
+            composerPreferences: composerPreferences,
+            quickReplies: quickReplies,
+            entitlement: entitlement,
+            makePasteboard: { SystemPasteboard() },
+            openURL: { url in NSWorkspace.shared.open(url) }
         )
         search = SearchModel(appModel: model, recents: RecentSearches(), open: { [model] in model.open($0) })
         // The inbox's buttons: Reconnect signs that account in again (the banner's account, or with none the network's
@@ -177,7 +182,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             appModel: model,
             mainInbox: inbox,
             spaces: spaces,
-            lifecycle: lifecycle
+            lifecycle: lifecycle,
+            onSearchInChat: { [weak self] roomID in
+                self?.windowOpener.show()
+                self?.search.show(in: roomID)
+            }
         )
         hideTypingQuestion = HideTypingQuestion(conversation: conversation, present: Self.askToHideTyping)
         dockBadge = DockBadge(spaces: spaces, dockPreferences: dockPreferences, lifecycle: lifecycle)
@@ -474,13 +483,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             sender.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater
-    }
-}
-
-/// Copy's pasteboard: the system's general one, as plain text.
-private final class SystemPasteboard: TextPasteboard {
-    func setString(_ text: String) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
     }
 }

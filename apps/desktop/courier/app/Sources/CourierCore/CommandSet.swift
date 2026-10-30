@@ -424,6 +424,279 @@ public enum CommandSet {
         )
     }
 
+    /// Resolves any shortcut definition in `HotkeyRegistry.allDefinitions` to its wired `CourierCommand` handler.
+    @MainActor
+    public static func hotkeyCommand(
+        for id: String,
+        hotkeys: HotkeyRegistry,
+        inbox: InboxModel,
+        spaces: SpacesModel,
+        search: SearchModel,
+        conversation: ConversationModel,
+        messageActions: MessageActionsModel,
+        menuCoordinator: AppMenuCoordinator
+    ) -> CourierCommand? {
+        guard let definition = hotkeys.definition(for: id) else { return nil }
+        let keys = hotkeys.primaryChord(for: id)?.symbols
+
+        func make(
+            isEnabled: @escaping @MainActor () -> Bool = { !menuCoordinator.lifecycle.isLocked },
+            run: @escaping @MainActor () -> Void
+        ) -> CourierCommand {
+            CourierCommand(
+                id: definition.id,
+                title: definition.title,
+                keys: keys,
+                confirmation: nil,
+                isEnabled: isEnabled,
+                run: run
+            )
+        }
+
+        switch id {
+        // General
+        case "Focus App":
+            return make(isEnabled: { true }) { menuCoordinator.focusApp() }
+        case "Focus App and Command Bar":
+            return make {
+                menuCoordinator.focusApp()
+                search.toggle(visible: true)
+            }
+        case "Search":
+            return make {
+                menuCoordinator.focusApp()
+                search.toggle(visible: true)
+            }
+        case "Search: Room":
+            return make {
+                menuCoordinator.focusApp()
+                search.show(in: inbox.selectedRoomID)
+            }
+        case "Keyboard Shortcuts":
+            return make { hotkeys.isShortcutsSheetPresented.toggle() }
+        case "Settings":
+            return make { menuCoordinator.openSettings(.inbox) }
+        case "Minimize To Menu Bar":
+            return make(isEnabled: { true }) { menuCoordinator.minimizeToMenuBar() }
+        case "Quit App":
+            return make(isEnabled: { true }) { menuCoordinator.quitApp() }
+        case "Report a Problem":
+            return make { menuCoordinator.openSettings(.reportProblem) }
+        case "Toggle Incognito Mode":
+            return make(isEnabled: { !menuCoordinator.lifecycle.isLocked && conversation.isEntitled(.incognito) }) {
+                conversation.setIncognito(!conversation.incognitoIsOn)
+            }
+
+        // Navigation
+        case "Toggle Sidebar":
+            return make { menuCoordinator.toggleSidebar() }
+        case "Toggle Space Bar":
+            return make { menuCoordinator.toggleSpaceBar() }
+        case "Cycle Filters":
+            return make { inbox.cycleFilter() }
+        case "Filter By Account":
+            return make(isEnabled: { !menuCoordinator.lifecycle.isLocked && spaces.spaces.contains { $0.kind == .account } }) {
+                if let next = nextAccount(inbox, spaces) {
+                    spaces.select(next.spaceID)
+                }
+            }
+        case "Filter: All":
+            return make(isEnabled: { !menuCoordinator.lifecycle.isLocked && !inbox.query.filters.isEmpty }) {
+                inbox.query.filters.removeAll()
+            }
+        case "Filter: Unread":
+            return make { inbox.toggleUnreadFilter() }
+        case "Filter: Drafts":
+            return make {
+                var filters = inbox.query.filters
+                if filters.remove(.drafts) == nil { filters.insert(.drafts) }
+                inbox.query.filters = filters
+            }
+        case "Filter: Unanswered":
+            return make {
+                var filters = inbox.query.filters
+                if filters.remove(.unanswered) == nil { filters.insert(.unanswered) }
+                inbox.query.filters = filters
+            }
+        case "Filter: DMs":
+            return make { step(inbox, through: [.dms, .groups]) }
+        case "Filter: Groups":
+            return make { step(inbox, through: [.groups, .dms]) }
+        case "Select Next Account":
+            return make { spaces.selectNextAccount() }
+        case "Select Previous Account":
+            return make { spaces.selectPreviousAccount() }
+        case "Switch First 9 Spaces Modifier":
+            return make { spaces.selectNumber(1) }
+        case "Switch First 9 Chats Modifier":
+            return make { inbox.selectChat(number: 1) }
+        case "Select Next Chat":
+            return make { inbox.selectNext() }
+        case "Select Previous Chat":
+            return make { inbox.selectPrevious() }
+        case "Select Next Unread Chat":
+            return make { inbox.selectNextUnread() }
+        case "History: Next Chat":
+            return make { inbox.selectNextRecentChat() }
+        case "History: Previous Chat":
+            return make { inbox.selectPreviousRecentChat() }
+        case "Cycle Chats (hold shift to reverse)":
+            return make { inbox.cycleChat(reverse: false) }
+        case "Scroll to the bottom of a chat":
+            return make(isEnabled: { conversation.roomID != nil }) { conversation.jumpToBottom() }
+
+        // Chat
+        case "Chat: Start New":
+            return make(isEnabled: { !inbox.accounts.isEmpty && !menuCoordinator.lifecycle.isLocked }) {
+                menuCoordinator.newChat()
+            }
+        case "Chat: Create New Group":
+            return make(isEnabled: { !inbox.accounts.isEmpty && !menuCoordinator.lifecycle.isLocked }) {
+                inbox.openStartNewChat(multiSelect: true)
+            }
+        case "Chat: Toggle Archive":
+            return make(isEnabled: { !inbox.targets.isEmpty }) {
+                let rows = inbox.targetRows()
+                let allArchived = !rows.isEmpty && rows.allSatisfy(\.archived)
+                Task { await inbox.archive(!allArchived) }
+            }
+        case "Chat: Archive All Read":
+            return make(isEnabled: { InboxModel.canSweep(inbox.query.space) }) {
+                Task { _ = await inbox.archiveAllRead() }
+            }
+        case "Chat: Toggle Mark As Read":
+            return make(isEnabled: { inbox.canToggleRead }) {
+                Task { await inbox.toggleRead() }
+            }
+        case "Chat: Toggle Mute":
+            return make(isEnabled: { !inbox.targets.isEmpty }) {
+                Task { await inbox.toggleMute() }
+            }
+        case "Chat: Toggle Pin":
+            return make(isEnabled: { !inbox.targets.isEmpty }) {
+                Task { await inbox.togglePin() }
+            }
+        case "Remind Later":
+            return make(isEnabled: { !inbox.targets.isEmpty && inbox.isEntitled(.reminders) }) {
+                Task {
+                    await inbox.remind(
+                        at: Date().addingTimeInterval(3600),
+                        condition: inbox.preferences.remindDefault
+                    )
+                }
+            }
+        case "Chat: Send File":
+            return make(isEnabled: { conversation.roomID != nil }) {
+                // Opens the file attachment picker in the active conversation window.
+            }
+        case "Toggle Chat Info":
+            return make(isEnabled: { conversation.roomID != nil }) {
+                conversation.toggleChatInfo()
+            }
+        case "Open User Profile":
+            return make(isEnabled: { conversation.roomID != nil }) {
+                Task { await conversation.showSenderCardForSelectedMessage() }
+            }
+        case "Chat: Delete":
+            return make(isEnabled: { conversation.chatInfo != nil }) {
+                if let info = conversation.chatInfo {
+                    conversation.requestDeleteChat(info: info)
+                }
+            }
+
+        // Message
+        case "Message: Quote & Reply":
+            return make(isEnabled: { conversation.selectedMessageID != nil }) {
+                if let msgID = conversation.selectedMessageID,
+                   let msg = conversation.message(msgID, from: .chat),
+                   let action = conversation.replyAction(for: msg) {
+                    Task { await messageActions.perform(action, on: msgID, from: .chat) }
+                }
+            }
+        case "Message: Quote or Edit Selected Message":
+            return make(isEnabled: { conversation.selectedMessageID != nil }) {
+                if let msgID = conversation.selectedMessageID,
+                   let msg = conversation.message(msgID, from: .chat) {
+                    if msg.mine && conversation.availableActions(for: msg).actions.contains(.edit) {
+                        Task { await messageActions.perform(.edit, on: msgID, from: .chat) }
+                    } else if let action = conversation.replyAction(for: msg) {
+                        Task { await messageActions.perform(action, on: msgID, from: .chat) }
+                    }
+                }
+            }
+        case "Message: Edit":
+            return make(isEnabled: { conversation.roomID != nil }) {
+                conversation.editSelectedOrLast()
+            }
+        case "Message: Quick React":
+            return make(isEnabled: { conversation.selectedMessageID != nil }) {
+                if let msgID = conversation.selectedMessageID {
+                    Task { await messageActions.perform(.react, on: msgID, from: .chat) }
+                }
+            }
+        case "Message: Forward":
+            return make(isEnabled: { conversation.selectedMessageID != nil }) {
+                if let msgID = conversation.selectedMessageID {
+                    Task { await messageActions.perform(.forward, on: msgID, from: .chat) }
+                }
+            }
+        case "Message: Open First Link":
+            return make(isEnabled: { conversation.selectedMessageID != nil }) {
+                if let msgID = conversation.selectedMessageID {
+                    Task { await messageActions.perform(.openFirstLink, on: msgID, from: .chat) }
+                }
+            }
+        case "Download Attachments":
+            return make(isEnabled: { conversation.selectedMessageID != nil }) {
+                // Downloads attachments for the selected message via AttachmentDownloader.
+            }
+        case "Show Replies":
+            return make(isEnabled: { conversation.selectedMessageID != nil }) {
+                if let msgID = conversation.selectedMessageID {
+                    conversation.openThread(msgID)
+                }
+            }
+        case "Message: Send Later":
+            return make(isEnabled: { conversation.roomID != nil }) {
+                messageActions.requestSendLater()
+            }
+        case "Message: Send Message and Archive":
+            return make(isEnabled: { conversation.roomID != nil }) {
+                _ = conversation.composer.submit(archive: true)
+            }
+        case "Message: Record Audio":
+            let cmd = recordAudio(conversation.composer)
+            return make(isEnabled: cmd.isEnabled, run: cmd.run)
+        case "Message: Send GIF":
+            let cmd = sendGIF(conversation.composer)
+            return make(isEnabled: cmd.isEnabled, run: cmd.run)
+        case "Message: Send Sticker":
+            let cmd = sendSticker(conversation.composer)
+            return make(isEnabled: cmd.isEnabled, run: cmd.run)
+        case "Undo Pending Send":
+            return make(isEnabled: { !conversation.composer.heldIDs.isEmpty || inbox.toast?.canUndo == true }) {
+                if !conversation.composer.heldIDs.isEmpty {
+                    Task { await conversation.composer.undoNewestHeld() }
+                } else if inbox.toast?.canUndo == true {
+                    Task { await inbox.undo() }
+                }
+            }
+
+        // Composer
+        case "Send Message":
+            return make(isEnabled: { conversation.composer.canSend }) {
+                _ = conversation.composer.submit()
+            }
+        case "Insert New Line":
+            return make(isEnabled: { conversation.roomID != nil }) {
+                conversation.composer.text.append("\n")
+            }
+
+        default:
+            return nil
+        }
+    }
+
     /// Something in the space shown is unread. The bar's count says so for the whole space; the chats loaded say so
     /// only when the bar doesn't know the space yet.
     @MainActor

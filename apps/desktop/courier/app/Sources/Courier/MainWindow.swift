@@ -284,10 +284,69 @@ struct MainWindow: View {
         Group {
             Button("", action: inbox.selectNext)
                 .registryShortcut("Select Next Chat", in: hotkeys, chordIndex: 1)
+            Button("", action: inbox.selectNext)
+                .registryShortcut("Select Next Chat", in: hotkeys, chordIndex: 2)
             Button("", action: inbox.selectPrevious)
                 .registryShortcut("Select Previous Chat", in: hotkeys, chordIndex: 1)
+            Button("", action: inbox.selectPrevious)
+                .registryShortcut("Select Previous Chat", in: hotkeys, chordIndex: 2)
+            Button("") {
+                let rows = inbox.targetRows()
+                let allArchived = !rows.isEmpty && rows.allSatisfy(\.archived)
+                Task { await inbox.archive(!allArchived) }
+            }
+            .registryShortcut("Chat: Toggle Archive", in: hotkeys, chordIndex: 1)
+            Button("") { inbox.cycleChat(reverse: false) }
+                .registryShortcut("Cycle Chats (hold shift to reverse)", in: hotkeys)
             Button("") { search.show(in: model.selectedRoomID) }
                 .registryShortcut("Search: Room", in: hotkeys)
+            Button("") { NSApp.activate() }
+                .registryShortcut("Focus App", in: hotkeys)
+            Button("") {
+                NSApp.activate()
+                search.toggle(visible: true)
+            }
+            .registryShortcut("Focus App and Command Bar", in: hotkeys)
+            Button("") { conversation.setIncognito(!conversation.incognitoIsOn) }
+                .registryShortcut("Toggle Incognito Mode", in: hotkeys)
+            Button("") { inbox.query.filters.removeAll() }
+                .registryShortcut("Filter: All", in: hotkeys)
+            Button("") {
+                var filters = inbox.query.filters
+                if filters.remove(.drafts) == nil { filters.insert(.drafts) }
+                inbox.query.filters = filters
+            }
+            .registryShortcut("Filter: Drafts", in: hotkeys)
+            Button("") {
+                var filters = inbox.query.filters
+                if filters.remove(.unanswered) == nil { filters.insert(.unanswered) }
+                inbox.query.filters = filters
+            }
+            .registryShortcut("Filter: Unanswered", in: hotkeys)
+            Button("") {
+                var filters = inbox.query.filters
+                if filters.remove(.dms) == nil {
+                    filters.remove(.groups)
+                    filters.insert(.dms)
+                }
+                inbox.query.filters = filters
+            }
+            .registryShortcut("Filter: DMs", in: hotkeys)
+            Button("") {
+                var filters = inbox.query.filters
+                if filters.remove(.groups) == nil {
+                    filters.remove(.dms)
+                    filters.insert(.groups)
+                }
+                inbox.query.filters = filters
+            }
+            .registryShortcut("Filter: Groups", in: hotkeys)
+            Button("") {
+                if let info = conversation.chatInfo {
+                    conversation.requestDeleteChat(info: info)
+                }
+            }
+            .registryShortcut("Chat: Delete", in: hotkeys)
             // ⌘C, here before the Edit menu's: whatever can copy (selected text anywhere, a code block's too)
             // copies; only when nothing can, with the keyboard in the open chat, the selected message is copied.
             Button("", action: copy)

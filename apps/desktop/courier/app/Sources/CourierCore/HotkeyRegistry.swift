@@ -58,6 +58,55 @@ public struct KeyChord: Codable, Equatable, Hashable, Sendable {
 
     private static let functionKeys: Set<String> = Set((1...12).map { "f\($0)" })
 
+    /// Maps macOS virtual key codes (or `NSF1FunctionKey`–`NSF12FunctionKey` scalars) to `"f1"`–`"f12"`.
+    public static func functionKeyName(forKeyCode keyCode: UInt16, charactersIgnoringModifiers: String? = nil) -> String? {
+        switch keyCode {
+        case 122: return "f1"
+        case 120: return "f2"
+        case 99: return "f3"
+        case 118: return "f4"
+        case 96: return "f5"
+        case 97: return "f6"
+        case 98: return "f7"
+        case 100: return "f8"
+        case 101: return "f9"
+        case 109: return "f10"
+        case 103: return "f11"
+        case 111: return "f12"
+        default:
+            if let scalar = charactersIgnoringModifiers?.unicodeScalars.first,
+               (0xF704...0xF70F).contains(scalar.value) {
+                let index = Int(scalar.value - 0xF704) + 1
+                return "f\(index)"
+            }
+            return nil
+        }
+    }
+
+    /// Resolves a single-character key or function key (`"f1"`–`"f12"`) to its SwiftUI `KeyEquivalent` character.
+    public static func keyEquivalentCharacter(for rawKey: String) -> Character? {
+        let lower = rawKey.lowercased()
+        if lower.hasPrefix("f"),
+           let n = Int(lower.dropFirst()),
+           (1...12).contains(n),
+           let scalar = UnicodeScalar(0xF704 + n - 1) {
+            return Character(scalar)
+        }
+        guard lower.count == 1 else { return nil }
+        return lower.first
+    }
+
+    /// Builds a modifier-only chord (`key == ""`) when at least one primary modifier (`⌘`, `⌥`, `⌃`) is pressed.
+    public static func modifierOnlyChord(
+        command: Bool,
+        shift: Bool,
+        option: Bool,
+        control: Bool
+    ) -> KeyChord? {
+        guard command || option || control else { return nil }
+        return KeyChord(key: "", command: command, shift: shift, option: option, control: control)
+    }
+
     private static func displayKey(for rawKey: String) -> String {
         let lower = rawKey.lowercased()
         switch lower {
@@ -150,12 +199,6 @@ public final class HotkeyRegistry: ObservableObject {
             supportsGlobal: true
         ),
         HotkeyDefinition(
-            id: "Command Bar",
-            title: "Command Bar",
-            category: "General",
-            defaultChords: [KeyChord(key: "j", command: true)]
-        ),
-        HotkeyDefinition(
             id: "Search",
             title: "Search",
             category: "General",
@@ -192,40 +235,16 @@ public final class HotkeyRegistry: ObservableObject {
             defaultChords: [KeyChord(key: "q", command: true)]
         ),
         HotkeyDefinition(
-            id: "Reload App",
-            title: "Reload Window",
-            category: "General",
-            defaultChords: [KeyChord(key: "r", command: true, shift: true, option: true)]
-        ),
-        HotkeyDefinition(
             id: "Report a Problem",
             title: "Report a Problem",
             category: "General",
             defaultChords: [KeyChord(key: "p", command: true, shift: true)]
         ),
         HotkeyDefinition(
-            id: "Send Feedback",
-            title: "Send Feedback",
+            id: "Toggle Incognito Mode",
+            title: "Toggle Incognito Mode",
             category: "General",
-            defaultChords: [KeyChord(key: "/", command: true, option: true)]
-        ),
-        HotkeyDefinition(
-            id: "Zoom In",
-            title: "Zoom In",
-            category: "General",
-            defaultChords: [KeyChord(key: "=", command: true)]
-        ),
-        HotkeyDefinition(
-            id: "Zoom Out",
-            title: "Zoom Out",
-            category: "General",
-            defaultChords: [KeyChord(key: "-", command: true)]
-        ),
-        HotkeyDefinition(
-            id: "Reset Zoom",
-            title: "Actual Size",
-            category: "General",
-            defaultChords: [KeyChord(key: "0", command: true)]
+            defaultChords: []
         ),
 
         // Navigation
@@ -254,10 +273,40 @@ public final class HotkeyRegistry: ObservableObject {
             defaultChords: [KeyChord(key: "a", command: true, option: true)]
         ),
         HotkeyDefinition(
+            id: "Filter: All",
+            title: "Filter: All",
+            category: "Navigation",
+            defaultChords: []
+        ),
+        HotkeyDefinition(
             id: "Filter: Unread",
             title: "Filter: Unread",
             category: "Navigation",
             defaultChords: [KeyChord(key: "y", command: true, shift: true)]
+        ),
+        HotkeyDefinition(
+            id: "Filter: Drafts",
+            title: "Filter: Drafts",
+            category: "Navigation",
+            defaultChords: []
+        ),
+        HotkeyDefinition(
+            id: "Filter: Unanswered",
+            title: "Filter: Unanswered",
+            category: "Navigation",
+            defaultChords: []
+        ),
+        HotkeyDefinition(
+            id: "Filter: DMs",
+            title: "Filter: DMs",
+            category: "Navigation",
+            defaultChords: []
+        ),
+        HotkeyDefinition(
+            id: "Filter: Groups",
+            title: "Filter: Groups",
+            category: "Navigation",
+            defaultChords: []
         ),
         HotkeyDefinition(
             id: "Select Next Account",
@@ -340,6 +389,12 @@ public final class HotkeyRegistry: ObservableObject {
             defaultChords: [KeyChord(key: "n", command: true)]
         ),
         HotkeyDefinition(
+            id: "Chat: Create New Group",
+            title: "New Group or Blast",
+            category: "Chat",
+            defaultChords: [KeyChord(key: "n", command: true, shift: true)]
+        ),
+        HotkeyDefinition(
             id: "Chat: Toggle Archive",
             title: "Archive or Unarchive Chat",
             category: "Chat",
@@ -392,6 +447,12 @@ public final class HotkeyRegistry: ObservableObject {
             title: "Show Sender Profile",
             category: "Chat",
             defaultChords: [KeyChord(key: "o", command: true, shift: true)]
+        ),
+        HotkeyDefinition(
+            id: "Chat: Delete",
+            title: "Delete Chat",
+            category: "Chat",
+            defaultChords: []
         ),
 
         // Message
@@ -462,12 +523,6 @@ public final class HotkeyRegistry: ObservableObject {
             defaultChords: [KeyChord(key: "a", command: true, shift: true)]
         ),
         HotkeyDefinition(
-            id: "Message: Talk to Type",
-            title: "Talk to Type",
-            category: "Message",
-            defaultChords: [KeyChord(key: "t", command: true, shift: true)]
-        ),
-        HotkeyDefinition(
             id: "Message: Send GIF",
             title: "Send GIF",
             category: "Message",
@@ -478,6 +533,12 @@ public final class HotkeyRegistry: ObservableObject {
             title: "Send Sticker",
             category: "Message",
             defaultChords: [KeyChord(key: "s", command: true, shift: true, option: true)]
+        ),
+        HotkeyDefinition(
+            id: "Undo Pending Send",
+            title: "Undo Pending Send",
+            category: "Message",
+            defaultChords: [KeyChord(key: "z", command: true)]
         ),
 
         // Composer
@@ -582,9 +643,9 @@ public final class HotkeyRegistry: ObservableObject {
         chords(for: id).first
     }
 
-    /// Definitions matching `searchQuery` across title, ledger ID, category, or formatted key symbols.
-    public var filteredDefinitions: [HotkeyDefinition] {
-        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    /// Definitions matching `query` across title, ledger ID, category, or formatted key symbols.
+    public func filteredDefinitions(matching rawQuery: String) -> [HotkeyDefinition] {
+        let query = rawQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !query.isEmpty else { return Self.allDefinitions }
         return Self.allDefinitions.filter { def in
             if def.title.lowercased().contains(query) || def.id.lowercased().contains(query) || def.category.lowercased().contains(query) {
@@ -593,6 +654,11 @@ public final class HotkeyRegistry: ObservableObject {
             let activeSymbols = configuredChords(for: def.id).map { $0.symbols.lowercased() }
             return activeSymbols.contains { $0.contains(query) }
         }
+    }
+
+    /// Definitions matching `searchQuery` across title, ledger ID, category, or formatted key symbols.
+    public var filteredDefinitions: [HotkeyDefinition] {
+        filteredDefinitions(matching: searchQuery)
     }
 
     /// Starts recording a shortcut for `id`, unless the app is locked.
@@ -648,17 +714,15 @@ public final class HotkeyRegistry: ObservableObject {
 
         // Check conflicts against all other enabled actions in the registry.
         for other in Self.allDefinitions where other.id != id && isEnabled(other.id) {
-            // "Scroll to the bottom of a chat" and "Show Replies" share ⌘↓ contextually in ConversationCommands.
-            let isSharedDownArrowPair = Set([id, other.id]) == Set(["Scroll to the bottom of a chat", "Show Replies"])
-            if isSharedDownArrowPair { continue }
+            if Self.isContextualPair(id, other.id) { continue }
 
             let existingChords = chords(for: other.id)
             if existingChords.contains(chord) {
                 let symbol = chord.symbols
                 let error = HotkeyConflictError.alreadyUsed(
                     chord: symbol,
-                    existingAction: other.id,
-                    message: "\(symbol) is already used by \(other.id)"
+                    existingAction: other.title,
+                    message: "\(symbol) is already used by \(other.title)"
                 )
                 conflictErrors[id] = error
                 return .failure(error)
@@ -738,6 +802,7 @@ public final class HotkeyRegistry: ObservableObject {
 
         overrides["Message: Edit"] = [KeyChord(key: "i", command: true)]
         overrides["Chat: Toggle Mark As Read"] = [KeyChord(key: "u", command: true)]
+        disabledIDs.insert("Select Next Unread Chat")
         overrides["Chat: Toggle Archive"] = [
             KeyChord(key: "e", command: true),
             KeyChord(key: "e", command: true, shift: true),
@@ -753,6 +818,7 @@ public final class HotkeyRegistry: ObservableObject {
             KeyChord(key: "down", command: true, option: true),
             KeyChord(key: "tab", control: true),
         ]
+        disabledIDs.insert("Cycle Chats (hold shift to reverse)")
         overrides["Switch First 9 Chats Modifier"] = [KeyChord(key: "", command: true)]
         overrides["Switch First 9 Spaces Modifier"] = [KeyChord(key: "", control: true)]
         overrides["History: Previous Chat"] = [KeyChord(key: "left", option: true, control: true)]
@@ -766,6 +832,35 @@ public final class HotkeyRegistry: ObservableObject {
         if let conflict {
             self.conflictErrors[conflict.id] = conflict.error
         }
+    }
+
+    public static func isModifierOnlyDefinition(_ id: String) -> Bool {
+        id == "Switch First 9 Spaces Modifier" || id == "Switch First 9 Chats Modifier"
+    }
+
+    private static func isContextualPair(_ firstID: String, _ secondID: String) -> Bool {
+        let pair = Set([firstID, secondID])
+        return pair == Set(["Scroll to the bottom of a chat", "Show Replies"])
+            || pair == Set(["Message: Quote or Edit Selected Message", "Send Message"])
+    }
+
+    public func activeConflicts() -> [(firstID: String, secondID: String, chord: KeyChord)] {
+        var result: [(firstID: String, secondID: String, chord: KeyChord)] = []
+        let enabled = Self.allDefinitions.filter { isEnabled($0.id) }
+        for i in 0..<enabled.count {
+            for j in (i + 1)..<enabled.count {
+                let first = enabled[i]
+                let second = enabled[j]
+                if Self.isContextualPair(first.id, second.id) {
+                    continue
+                }
+                let firstChords = chords(for: first.id)
+                for chord in chords(for: second.id) where firstChords.contains(chord) {
+                    result.append((first.id, second.id, chord))
+                }
+            }
+        }
+        return result
     }
 
     private func persist() {

@@ -32,6 +32,13 @@ struct InboxCommands: Commands {
             }
             .disabled(lifecycle.isLocked)
         }
+        CommandGroup(replacing: .appSettings) {
+            Button(String(localized: "Settings…")) {
+                menuCoordinator.openSettings(.inbox)
+            }
+            .registryShortcut("Settings", in: hotkeys)
+            .disabled(lifecycle.isLocked)
+        }
         // 02 §3.1's Accounts…, Search…, and Lock App, after Settings.
         CommandGroup(after: .appSettings) {
             Button(String(localized: "Accounts…")) {
@@ -59,6 +66,10 @@ struct InboxCommands: Commands {
             Button(String(localized: "Minimize to Menu Bar"), action: menuCoordinator.minimizeToMenuBar)
                 .registryShortcut("Minimize To Menu Bar", in: hotkeys)
         }
+        CommandGroup(replacing: .appTermination) {
+            Button(String(localized: "Quit Courier"), action: menuCoordinator.quitApp)
+                .registryShortcut("Quit App", in: hotkeys)
+        }
         // The first-run window has its own button; once a network is linked, this is the way to add another.
         CommandGroup(replacing: .newItem) {
             Button(String(localized: "New Chat")) {
@@ -72,7 +83,7 @@ struct InboxCommands: Commands {
                 _ = bringMainWindowForward()
                 inbox.openStartNewChat(multiSelect: true)
             }
-            .keyboardShortcut("n", modifiers: [.command, .shift])
+            .registryShortcut("Chat: Create New Group", in: hotkeys)
             .disabled(inbox.accounts.isEmpty || lifecycle.isLocked)
 
             Button(String(localized: "Open Chat in New Window"), action: menuCoordinator.openChatInNewWindow)
@@ -103,7 +114,7 @@ struct InboxCommands: Commands {
                     NSApp.sendAction(Selector(("undo:")), to: nil, from: nil)
                 }
             }
-            .keyboardShortcut("z", modifiers: .command)
+            .registryShortcut("Undo Pending Send", in: hotkeys)
             .disabled(lifecycle.isLocked)
             Button(String(localized: "Redo")) {
                 if let composer = heldComposer {
@@ -146,6 +157,12 @@ struct InboxCommands: Commands {
                 .disabled(lifecycle.isLocked)
             Button(String(localized: "Next Unread Chat"), action: inbox.selectNextUnread)
                 .registryShortcut("Select Next Unread Chat", in: hotkeys)
+                .disabled(lifecycle.isLocked)
+            Button(String(localized: "Previous Viewed Chat"), action: inbox.selectPreviousRecentChat)
+                .registryShortcut("History: Previous Chat", in: hotkeys)
+                .disabled(lifecycle.isLocked)
+            Button(String(localized: "Next Viewed Chat"), action: inbox.selectNextRecentChat)
+                .registryShortcut("History: Next Chat", in: hotkeys)
                 .disabled(lifecycle.isLocked)
             Menu(String(localized: "Go to Chat")) {
                 if !lifecycle.isLocked {

@@ -1,6 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import AppKit
 import Combine
 import Foundation
 
@@ -8,6 +9,16 @@ import Foundation
 /// (Not "Pasteboard": Carbon has a type of that name, which every file importing AppKit also sees.)
 public protocol TextPasteboard: AnyObject {
     func setString(_ text: String)
+}
+
+/// Copy's pasteboard: the system's general one, as plain text.
+public final class SystemPasteboard: TextPasteboard {
+    public init() {}
+
+    public func setString(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
 }
 
 /// A step a message action needs from the person before it can go on: a question to answer, or a picker or sheet

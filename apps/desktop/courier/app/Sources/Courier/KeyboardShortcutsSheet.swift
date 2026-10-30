@@ -11,6 +11,7 @@ struct KeyboardShortcutsSheet: View {
     @ObservedObject var registry: HotkeyRegistry
     var onCustomize: () -> Void = {}
     var onClose: () -> Void = {}
+    @State private var sheetSearchQuery: String = ""
 
     private let columns = [
         GridItem(.flexible(minimum: 320), spacing: 20, alignment: .top),
@@ -53,12 +54,12 @@ struct KeyboardShortcutsSheet: View {
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
-                TextField(String(localized: "Search shortcuts..."), text: $registry.searchQuery)
+                TextField(String(localized: "Search shortcuts..."), text: $sheetSearchQuery)
                     .textFieldStyle(.plain)
                     .frame(width: 200)
-                if !registry.searchQuery.isEmpty {
+                if !sheetSearchQuery.isEmpty {
                     Button {
-                        registry.searchQuery = ""
+                        sheetSearchQuery = ""
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundStyle(.secondary)
@@ -136,7 +137,7 @@ struct KeyboardShortcutsSheet: View {
     }
 
     private func activeDefinitions(in category: String) -> [HotkeyDefinition] {
-        registry.filteredDefinitions.filter { def in
+        registry.filteredDefinitions(matching: sheetSearchQuery).filter { def in
             def.category == category
                 && registry.isEnabled(def.id)
                 && !registry.chords(for: def.id).isEmpty
