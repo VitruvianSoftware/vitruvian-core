@@ -39,4 +39,4 @@ images:
   - name: ghcr.io/vitruviansoftware/gods-eye-view
     newName: ghcr.io/vitruviansoftware/gods-eye-view
     newTag: latest
-    digest: sha256:ca67231868bd7c5a98fdb9eaf3ec61682404fbbe8a393d21e18e57b0c150cf2f
+    digest: sha256:4f9c8dae894970a7765c9b3a9b3df1e552eff96139db787dd34163d1dd63ae4e
