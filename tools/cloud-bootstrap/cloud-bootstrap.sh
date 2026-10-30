@@ -550,34 +550,80 @@ PRIMARY_ACCOUNT=""
 ESC_TOKEN_FILE=""
 ESC_SA="${VITRUVIAN_ESC_SA:-sa-pulumi-esc@prj-b-cicd-e096.iam.gserviceaccount.com}"
 PULUMI_BIN="${PULUMI_BIN:-pulumi}"
+# A cold session can run this before the sandbox's network is fully up, or hit a
+# one-off ESC / Google error, and a single attempt then leaves the session with no
+# secrets AND no tailnet (tailscale-up needs TS_AUTHKEY from here). So the mint is
+# retried; a wrong-account token is NOT retried, because that is a refusal, not a
+# transient failure. The reason is written to $STATE_DIR/esc-last-error so the
+# banner (and a later `whoami`) can say why instead of just "not authenticated".
+ESC_RETRIES="${VITRUVIAN_ESC_RETRIES:-3}"
+ESC_RETRY_DELAY="${VITRUVIAN_ESC_RETRY_DELAY:-5}"
+
+esc_fail() { # esc_fail <profile> <reason> — record why the keyless identity failed
+	AUTH_STATE="failed"
+	mkdir -p "$STATE_DIR" && chmod 700 "$STATE_DIR"
+	rm -f "$STATE_DIR/esc-token-$1"
+	(
+		umask 077
+		printf '%s\n' "$2" >"$STATE_DIR/esc-last-error"
+	)
+}
+
 authenticate_esc() { # authenticate_esc <profile>
-	local profile="$1" esc_env tok email f
+	local profile="$1" esc_env tok email f err reason attempt=1
 	esc_env="${VITRUVIAN_ESC_ENV:-ipv1337/vitruvian-core/cloud-session}"
+	# Anything left from an earlier run of this session is stale, whatever happens now.
+	rm -f "$STATE_DIR/esc-last-error" "$STATE_DIR/esc-token-$profile"
 
 	if ! command -v "$PULUMI_BIN" >/dev/null 2>&1; then
-		AUTH_STATE="failed"
+		esc_fail "$profile" "pulumi is not installed"
 		warn "pulumi is not installed — cannot mint the keyless ESC identity"
 		return 0
 	fi
-	if ! tok="$("$PULUMI_BIN" env open "$esc_env" gcp.login.accessToken --format string 2>/dev/null | tr -d '\r\n')" ||
-		! is_credential "$tok"; then
-		AUTH_STATE="failed"
-		warn "Pulumi ESC ($esc_env) did not yield a GCP token for profile '$profile'"
-		note "check \$PULUMI_ACCESS_TOKEN is valid and can open that environment."
-		return 0
-	fi
 
-	# IDENTITY PINNING, for ESC: refuse a token that is not the expected account,
-	# the same fail-closed reflex as the key path (a mis-pointed environment must
-	# not silently hand the session a different identity).
-	email="$(curl -fsS --max-time 15 -d "access_token=$tok" https://oauth2.googleapis.com/tokeninfo 2>/dev/null |
-		sed -n 's/.*"email": *"\([^"]*\)".*/\1/p' | head -1)"
-	if [ "$email" != "$ESC_SA" ]; then
-		AUTH_STATE="failed"
-		warn "REFUSING the ESC identity for profile '$profile': expected $ESC_SA"
-		note "but the token belongs to '${email:-<unverifiable>}'."
-		return 0
-	fi
+	while :; do
+		tok="" email="" reason=""
+		err="$(mktemp)"
+		if tok="$("$PULUMI_BIN" env open "$esc_env" gcp.login.accessToken --format string 2>"$err" | tr -d '\r\n')" &&
+			is_credential "$tok"; then
+			# IDENTITY PINNING, for ESC: refuse a token that is not the expected
+			# account, the same fail-closed reflex as the key path (a mis-pointed
+			# environment must not silently hand the session a different identity).
+			email="$(curl -fsS --max-time 15 -d "access_token=$tok" https://oauth2.googleapis.com/tokeninfo 2>/dev/null |
+				sed -n 's/.*"email": *"\([^"]*\)".*/\1/p' | head -1)"
+			if [ "$email" = "$ESC_SA" ]; then
+				rm -f "$err"
+				break
+			fi
+			if [ -n "$email" ]; then
+				rm -f "$err"
+				esc_fail "$profile" "the ESC token belongs to $email, not the expected $ESC_SA"
+				warn "REFUSING the ESC identity for profile '$profile': expected $ESC_SA"
+				note "but the token belongs to '$email'."
+				return 0
+			fi
+			reason="could not verify which account the ESC token belongs to (Google tokeninfo lookup failed)"
+		else
+			# The stderr line that names the error (pulumi opens with an info line such
+			# as "Logging in using access token…", which is not the reason), else the
+			# last line. Long token-looking runs are masked so the reason is readable
+			# without ever echoing a credential.
+			reason="pulumi env open $esc_env failed: $({ grep -i -m1 'error' "$err" || tail -n1 "$err"; } | sed -E 's/[A-Za-z0-9_.-]{40,}/…/g' | cut -c1-160)"
+		fi
+		rm -f "$err"
+
+		if [ "$attempt" -ge "$ESC_RETRIES" ]; then
+			esc_fail "$profile" "$reason (after $attempt attempts)"
+			warn "Pulumi ESC ($esc_env) did not yield a GCP token for profile '$profile' after $attempt attempts"
+			note "$reason"
+			note "check \$PULUMI_ACCESS_TOKEN is valid and can open that environment, then re-run:"
+			note "  bash tools/cloud-bootstrap/cloud-bootstrap.sh auth"
+			return 0
+		fi
+		note "ESC attempt $attempt/$ESC_RETRIES failed ($reason); retrying in ${ESC_RETRY_DELAY}s"
+		sleep "$ESC_RETRY_DELAY"
+		attempt=$((attempt + 1))
+	done
 
 	mkdir -p "$STATE_DIR" && chmod 700 "$STATE_DIR"
 	f="$STATE_DIR/esc-token-${profile}"
@@ -963,8 +1009,19 @@ report() {
 			else
 				printf '  identity   ✓ %s (project %s)\n' "$P_SA_ACCOUNT" "$P_SA_PROJECT"
 			fi
+		elif [ -s "$STATE_DIR/esc-token-$profile" ]; then
+			# The keyless identity is a token file, never an activated gcloud account,
+			# so the check above cannot see it: without this branch the banner says
+			# "not authenticated" while everything is in fact working.
+			printf '  identity   ✓ %s via Pulumi ESC (keyless; token used at session start)\n' "$ESC_SA"
 		else
 			printf '  identity   ✗ %s — not authenticated\n' "$P_SA_ACCOUNT"
+			if [ -s "$STATE_DIR/esc-last-error" ]; then
+				printf '             why: %s\n' "$(head -n1 "$STATE_DIR/esc-last-error")"
+				printf '             fix: bash tools/cloud-bootstrap/cloud-bootstrap.sh auth   (re-runs the ESC step)\n'
+			elif [ -n "${PULUMI_ACCESS_TOKEN:-}" ]; then
+				printf '             PULUMI_ACCESS_TOKEN is set but the ESC step has not run or left no record; run: bash tools/cloud-bootstrap/cloud-bootstrap.sh auth\n'
+			fi
 			rc=1
 		fi
 
