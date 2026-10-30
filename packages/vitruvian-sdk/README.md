@@ -132,10 +132,12 @@ permission or grants one.
 ## Checking a tool
 
 ```sh
-python3 conformance/conformance.py path/to/your-tool
+cargo run --manifest-path verification/Cargo.toml --bin conformance -- path/to/your-tool
 ```
 
-It needs Python 3 and nothing else, and it does not need the app. It starts
+Run it from this repository's root. It needs Rust 1.75 or later and no
+crate from crates.io, and it does not need the app. In vitruvian-core it is
+`bazel run //packages/vitruvian-sdk:conformance -- path/to/your-tool`. It starts
 your tool's program in a folder of its own and checks seven things, in order.
 The first failure stops the run.
 
@@ -262,6 +264,13 @@ example in the guide, the version in its three files, the mirror's workflows
 and the samples. Together the first two tests keep the schemas and the
 Swift types from drifting apart: see "Changing the protocol" in
 [`protocol/README.md`](protocol/README.md).
+
+Without Bazel, in this repository, the same checks that need no build run
+with Cargo: `cargo test --manifest-path verification/Cargo.toml` runs the
+conformance validator against the reference tools and the broken ones, the
+examples against the schemas, every sample's manifest, the Python sample,
+and the templates against the samples. `verification/Cargo.toml` says how
+to run the rest.
 
 After changing `samples/hello-python` or `samples/hello-swift`, run
 `bazel run //packages/vitruvian-sdk:sync-templates`: `init` holds a copy of

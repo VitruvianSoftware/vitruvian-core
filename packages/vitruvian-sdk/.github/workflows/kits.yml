@@ -59,12 +59,17 @@ jobs:
         run: |
           go vet ./...
           go test -race -count=1 ./...
-      - name: The Go sample through the conformance script
+      # The validator, built with the Rust vitruvian-core's Bazel uses.
+      - name: Rust 1.75.0
+        run: |
+          rustup toolchain install 1.75.0 --profile minimal
+          rustup default 1.75.0
+      - name: The Go sample through the conformance validator
         run: |
           mkdir -p "$RUNNER_TEMP/hello-go/bin"
           (cd samples/hello-go && go build -o "$RUNNER_TEMP/hello-go/bin/tool" .)
           cp samples/hello-go/vitruvian-tool.json "$RUNNER_TEMP/hello-go/"
-          python3 conformance/conformance.py "$RUNNER_TEMP/hello-go" --expect-refusal
+          cargo run --locked --manifest-path verification/Cargo.toml --bin conformance -- "$RUNNER_TEMP/hello-go" --expect-refusal
 
   rust:
     name: rust (${{ matrix.rust }})
@@ -95,13 +100,13 @@ jobs:
         run: |
           if [ "$RUST" = stable ]; then cargo fmt --check; fi
           cargo test
-      - name: The Rust sample through the conformance script
+      - name: The Rust sample through the conformance validator
         run: |
           (cd samples/hello-rust && cargo build --release)
           mkdir -p "$RUNNER_TEMP/hello-rust/bin"
           cp samples/hello-rust/target/release/tool "$RUNNER_TEMP/hello-rust/bin/tool"
           cp samples/hello-rust/vitruvian-tool.json "$RUNNER_TEMP/hello-rust/"
-          python3 conformance/conformance.py "$RUNNER_TEMP/hello-rust" --expect-refusal
+          cargo run --locked --manifest-path verification/Cargo.toml --bin conformance -- "$RUNNER_TEMP/hello-rust" --expect-refusal
 
   typescript:
     name: typescript
