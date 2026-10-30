@@ -362,6 +362,36 @@ public class RemoteState(
   public val paired: Boolean
     get() = agentToken.isNotBlank()
 
+  /**
+   * The Mac answered 401/403 to the token this phone held, and the token was dropped.
+   *
+   * Only changes the wording ("stopped accepting this phone" rather than "not paired"): a token
+   * issued since makes [pairing] read Paired whatever this says, so a stale refusal can never
+   * outlive the pairing that fixed it. Cleared anyway on success and on switching Macs.
+   */
+  public var pairRejected: Boolean by mutableStateOf(false)
+    private set
+
+  /** Whether this phone may act on the selected Mac, or only look. See [Derive.Pairing]. */
+  public val pairing: Derive.Pairing
+    get() =
+        Derive.pairing(hasAgent = agentUrl.isNotBlank(), hasToken = paired, rejected = pairRejected)
+
+  /** The Mac is configured but will refuse every change from this phone. */
+  public val needsPairing: Boolean
+    get() = Derive.needsPairing(pairing)
+
+  /** The top-of-screen banner's label and body, or null. */
+  public val pairingBanner: Pair<String, String>?
+    get() = Derive.pairingBanner(pairing, hostShortName)
+
+  /**
+   * Bumped by "Pair now". The Hosts screen watches it and scrolls the pairing plate into view, so
+   * the button lands on the code rather than at the top of a long settings page.
+   */
+  public var pairFocusRequest: Int by mutableStateOf(0)
+    private set
+
   /** [pairCode] as the Mac's `pair` subcommand wants it: six digits, no space. */
   public val pairDigits: String
     get() = pairCode.filterNot { it.isWhitespace() }
@@ -568,6 +598,25 @@ public class RemoteState(
    */
   public var bridgeLinkStatus: String by mutableStateOf("off")
     private set
+
+  /**
+   * Why the bridge is on and still not linked, judged from the phone's side as well as the
+   * service's. Reachability counts only once a poll has actually failed (`agentError` is blank
+   * until then), so a cold start does not flash "not answering" before the first reply.
+   */
+  public val bridgeProblem: Derive.BridgeProblem
+    get() =
+        Derive.bridgeProblem(
+            enabled = bridgeEnabled && bridgeAvailable,
+            linked = bridgeLinked,
+            pairing = pairing,
+            reachable = isLive || agentError.isBlank(),
+            linkStatus = bridgeLinkStatus,
+        )
+
+  /** [bridgeProblem] in a sentence, or null when there is nothing to say. */
+  public val bridgeProblemText: String?
+    get() = Derive.bridgeProblemText(bridgeProblem, hostShortName, bridgeLinkStatus)
 
   /** When the trust window shuts, epoch millis; 0 means it was never opened. */
   public var trustUntil: Long by mutableStateOf(0L)
@@ -789,6 +838,14 @@ public class RemoteState(
     get() = connection == Connection.Unpaired
 
   /**
+   * [connection] as the shell shows it: [Connection.NotPaired] whenever a configured Mac holds no
+   * token for this phone. Derived, not stored, so it can never disagree with the token.
+   */
+  public val shellConnection: Connection
+    get() =
+        if (connection == Connection.Connected && needsPairing) Connection.NotPaired else connection
+
+  /**
    * The Hosts list, one row per saved Mac.
    *
    * The mock pair is shown only while nothing real is saved -- that is the app with no Mac yet, and
@@ -818,16 +875,25 @@ public class RemoteState(
             if (live != null)
                 "$address · macOS ${live.osVersion} · ${Format.memoryBytes(live.memoryBytes)}"
             else address,
+        // Live but unpaired is amber, not green: the numbers are real, the
+        // switches are not. The tag says which half is missing.
         tone =
             when {
               !current -> StatusTone.Neutral
+              metricsSource == MetricsSource.Live && needsPairing -> StatusTone.Warn
               metricsSource == MetricsSource.Live -> StatusTone.Ok
               else -> StatusTone.Crit
             },
-        tag = if (current) metricsSource.label else "saved",
+        tag =
+            when {
+              !current -> "saved"
+              metricsSource == MetricsSource.Live && needsPairing -> "not paired"
+              else -> metricsSource.label
+            },
         tagTone =
             when {
               !current -> TagTone.Outline
+              metricsSource == MetricsSource.Live && needsPairing -> TagTone.Warn
               metricsSource == MetricsSource.Live -> TagTone.Ok
               else -> TagTone.Sanguine
             },
@@ -864,23 +930,26 @@ public class RemoteState(
         when {
           isUnpaired -> "no host"
           isOffline -> "$hostShortName · offline"
+          shellConnection == Connection.NotPaired -> "$hostShortName · not paired"
           else -> hostShortName
         }
 
   public val hostTone: StatusTone
     get() =
-        when (connection) {
+        when (shellConnection) {
           Connection.Connected -> StatusTone.Ok
           Connection.Offline -> StatusTone.Crit
           Connection.Unpaired -> StatusTone.Neutral
+          Connection.NotPaired -> StatusTone.Warn
         }
 
   public val connectionWord: String
     get() =
-        when (connection) {
+        when (shellConnection) {
           Connection.Connected -> "connected"
           Connection.Offline -> "unreachable"
           Connection.Unpaired -> "unpaired"
+          Connection.NotPaired -> Derive.connectionWord(pairing, "connected")
         }
 
   /** The line under the host name on Home: real when the agent has answered, the mock otherwise. */
@@ -3583,7 +3652,10 @@ public class RemoteState(
             }
             .onFailure {
               homeSpeakerNotice =
-                  "✗ homespeaker · $what: ${it.message ?: "failed"}" to StatusTone.Crit
+                  "✗ homespeaker · $what: ${
+                    if (it is AgentAuthException) failureText(it) else it.message ?: "failed"
+                  }" to
+                      StatusTone.Crit
               actFailed("homespeaker · $what", it)
             }
       } finally {
@@ -4664,7 +4736,11 @@ public class RemoteState(
     val token = runCatching { AgentClient(agentUrl).pair(pairCode) }.getOrNull() ?: return
     qrPairPending = false
     updateSelected { it.copy(token = token) }
+    pairRejected = false
     log("ok", "pairing · paired with ${agentHost?.hostname ?: agentHostLabel()}")
+    // The bridge re-reads the token only between attempts, up to a minute
+    // apart; dial now so "not linked · not paired" clears with the pairing.
+    if (bridgeEnabled) bridge?.reconnect()
   }
 
   private fun advance() {
@@ -5279,6 +5355,8 @@ public class RemoteState(
    * than live, because not a single byte has come back from the new address yet.
    */
   private fun resetHostSnapshots() {
+    // A refusal belongs to the Mac that made it.
+    pairRejected = false
     agentMetrics = null
     agentHost = null
     agentError = ""
@@ -6470,9 +6548,19 @@ public class RemoteState(
    * paint an approval that had already been answered.
    */
   public fun onBridgeStatus(status: BridgeStatus) {
+    val refusedNow =
+        !status.linked &&
+            status.link != bridgeLinkStatus &&
+            status.link.startsWith(LINK_REFUSED_PREFIX)
     bridgeEnabled = status.enabled
     bridgeLinked = status.linked
     bridgeLinkStatus = status.link
+    // The link is act tier. A 401/403 on it is the Mac refusing this phone's
+    // token like any other act, so it gets the same remedy -- dropped token,
+    // fresh code, the banner -- instead of only a dim line on one plate. On the
+    // transition only: after a re-pair the service keeps saying this until its
+    // next attempt, and that must not throw the NEW token away.
+    if (refusedNow) actFailed("bridge · link", AgentAuthException(status.link))
     trustUntil = status.trustUntil
     pendingApproval = status.pending
     bridgeAudit = status.audit
@@ -6496,6 +6584,34 @@ public class RemoteState(
     persistence.bridgeEnabled = value
     control.setEnabled(value)
     log(if (value) "ok" else "info", "bridge · ${if (value) "started" else "stopped"}")
+  }
+
+  /**
+   * "Reconnect" / "Retry": dial now rather than wait out the backoff, starting the service if it
+   * stopped. The answer arrives through [onBridgeStatus] like any other.
+   */
+  public fun reconnectBridge() {
+    val control = bridge
+    if (control == null) {
+      log("warn", "bridge · not available in this build")
+      return
+    }
+    if (!bridgeEnabled) {
+      bridgeEnabled = true
+      persistence.bridgeEnabled = true
+    }
+    control.reconnect()
+    log("info", "bridge · reconnecting to $hostShortName")
+  }
+
+  /**
+   * "Pair now": Hosts, scrolled to the pairing plate, with a code that has not expired -- a banner
+   * that lands on "expires in 0:00" would be one more dead end.
+   */
+  public fun openPairing() {
+    screen = Screen.Hosts
+    if (pairMillisLeft <= 0) regeneratePairCode()
+    pairFocusRequest++
   }
 
   /** "Trust agents for 1 hour". */
@@ -6615,7 +6731,7 @@ public class RemoteState(
       return null
     }
     if (!paired) {
-      log("warn", "$what · not paired")
+      log("warn", "$what · ${Derive.notPairedText(hostShortName)}")
       return null
     }
     return AgentClient(agentUrl, agentToken)
@@ -6637,6 +6753,9 @@ public class RemoteState(
   private fun actFailed(what: String, error: Throwable) {
     if (error is AgentAuthException && paired) {
       updateSelected { it.copy(token = "") }
+      // The banner now says the Mac refused this phone, on every screen that
+      // has controls, instead of the toggle quietly snapping back.
+      pairRejected = true
       regeneratePairCode()
       log("warn", "$what · token rejected, pair again with the new code")
       return
@@ -6650,7 +6769,7 @@ public class RemoteState(
    * KiB of that as a status label pushed the entire dashboard off the bottom of the screen.
    */
   private fun failureText(error: Throwable): String {
-    if (error is AgentAuthException) return "not paired"
+    if (error is AgentAuthException) return Derive.notPairedText(hostShortName)
     val text = (error.message ?: error::class.simpleName ?: "error").lineSequence().first()
     return if (text.length > FAILURE_TEXT_MAX) text.take(FAILURE_TEXT_MAX) + "…" else text
   }
@@ -6672,6 +6791,9 @@ public class RemoteState(
   private fun plural(count: Int): String = if (count == 1) "" else "s"
 
   private companion object {
+    /** How `AgentAuthException` words a refusal, and so how the bridge's link status reads one. */
+    const val LINK_REFUSED_PREFIX = "not paired (HTTP"
+
     const val POINTER_HINT = "drag · tap · 2-finger scroll · hold to drag · 3-finger swipe"
 
     const val PAIR_TTL_MS = 5 * 60 * 1000L

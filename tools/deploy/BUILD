@@ -25,6 +25,8 @@ rust_library(
     crate_root = "src/lib.rs",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
+    # tabula-deploy-preflight reuses serving_revision, so both agree on "live".
+    visibility = ["//tools/ci:__pkg__"],
     deps = [
         "//tools/shell-compat:shell_compat",
         "@crates//:serde_json",
@@ -35,7 +37,11 @@ rust_library(
 rust_binary(
     name = "cloud-run",
     srcs = ["src/main.rs"],
+    # It runs tools/pulumi/pulumi-cmd.sh, which inherits this and mints GCP
+    # tokens with //tools/gcp-token, as the pulumi_project() targets do.
+    data = ["//tools/gcp-token"],
     edition = "2021",
+    env = {"VITRUVIAN_GCP_TOKEN_BIN": "$(rootpath //tools/gcp-token)"},
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//visibility:public"],
     deps = [

@@ -3,7 +3,6 @@ load("@build_bazel_rules_swift//swift:swift_binary.bzl", "swift_binary")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 
 swift_library(
     name = "HomeSpeakerCore",
@@ -193,9 +192,12 @@ macos_application(
 # `bazel run //apps/desktop/home-speaker:sync-secrets` -- put HomeSpeaker's
 # Slack user token on this Mac from Bitwarden, so the vault is the only place
 # it lives. Uses the session //tools/sync-env-secrets:unlock caches.
-sh_binary(
+rust_binary(
     name = "sync-secrets",
-    srcs = ["scripts/sync-secrets.sh"],
+    srcs = ["scripts/src/sync_secrets/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":sync_secrets_lib"],
 )
 
 # --- Rust ports ---------------------------------------------------------------
@@ -237,12 +239,9 @@ rust_library(
     rustc_flags = ["-Copt-level=3"],
 )
 
-rust_binary(
+alias(
     name = "sync-secrets-rs",
-    srcs = ["scripts/src/sync_secrets/main.rs"],
-    edition = "2021",
-    rustc_flags = ["-Copt-level=3"],
-    deps = [":sync_secrets_lib"],
+    actual = ":sync-secrets",
 )
 
 rust_test(

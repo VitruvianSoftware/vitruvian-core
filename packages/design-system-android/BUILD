@@ -189,7 +189,6 @@ pipeline_unit(
         ":safe_area_test",
         ":tokens_are_current",
         "//packages/design-system-android/tools:gen_tokens_lib_test",
-        "//packages/design-system-android/tools:gen_tokens_rs_parity_test",
     ],
     tier = "L1",
     timeout_minutes = 20,

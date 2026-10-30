@@ -22,8 +22,8 @@ apiVersion: v2
 name: mcp-slack
 description: >-
   Remote HTTP transport for the mcp-slack MCP server — the internet-facing half
-  of the Gemini Spark integration. The stdio/npx path is unaffected and is not
-  deployed by this chart.
+  of the Gemini Spark integration. The stdio path (the same image, run locally
+  with `docker run -i`) is not deployed by this chart.
 type: application
 # The CHART's own packaging version, deliberately independent of the app's.
 # Nothing publishes this chart to a registry — ArgoCD reads it from a git path —
@@ -35,9 +35,9 @@ type: application
 # CONSTRUCTION. Asking nobody to wire it is the weaker half; the mechanism does
 # the work. Adding the marker here is what would break it.
 version: 0.1.0
-# The APP version, and it must track mcp-slack/package.json or it lies about
+# The APP version, and it must track mcp-slack/version.txt or it lies about
 # what the chart ships. It said "0.1.0" while the app was on 1.7.0, because
-# release-please bumps package.json and had no reason to look in here.
+# release-please bumps version.txt and had no reason to look in here.
 #
 # Cosmetic rather than dangerous — but CONDITIONALLY so, and the condition
 # lives in another file. appVersion selects nothing *while the image is pinned
@@ -63,4 +63,4 @@ version: 0.1.0
 # updater matches any line containing it and rewrites a version found there, so
 # a comment that quotes the marker becomes a second, invisible substitution site
 # — a doc string the release tooling would edit.
-appVersion: "1.22.0" # x-release-please-version
+appVersion: "1.22.1" # x-release-please-version

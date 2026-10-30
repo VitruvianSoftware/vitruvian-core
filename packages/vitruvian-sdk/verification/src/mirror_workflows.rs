@@ -19,7 +19,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! Native Rust port of `packages/vitruvian-sdk/mirror_workflows_test.py`.
+//! The mirror workflow check behind `:mirror_workflows_test`.
 //! Parses `.github/workflows/{ci,kits,release}.yml`, executes the `detect` and
 //! `Write the release notes` steps in temporary git repositories with `bash`,
 //! and verifies workflow permissions, commit-pinned actions, credential persistence,

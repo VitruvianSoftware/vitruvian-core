@@ -94,7 +94,10 @@ jobs:
           TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
           VERSION: ${{ needs.release-please.outputs.version || '' }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash apps/mobile/wearos/faces/daytona-platinum/scripts/publish.sh
+        run: |
+          rustc --edition 2021 --crate-name daytona_scripts_lib --crate-type lib apps/mobile/wearos/faces/daytona-platinum/scripts/src/lib.rs -o /tmp/libdaytona_scripts_lib.rlib
+          rustc --edition 2021 apps/mobile/wearos/faces/daytona-platinum/scripts/src/publish_main.rs --extern daytona_scripts_lib=/tmp/libdaytona_scripts_lib.rlib -o /tmp/daytona-publish
+          BUILD_WORKSPACE_DIRECTORY="$GITHUB_WORKSPACE" /tmp/daytona-publish
 
   check-release:
     needs: [release-please, publish-package]

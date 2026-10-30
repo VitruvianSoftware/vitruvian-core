@@ -20,7 +20,7 @@
 
 # Is the homelab runner pool taking jobs, and can it run them? Every 10 minutes
 # and after every push to main, a canary asks the homelab runners for a job and
-# runs the runner image's own parity checks (tools/ci-runner/parity.sh: bazel,
+# runs the runner image's own parity checks (//tools/ci-runner:parity: bazel,
 # shellcheck, node, sudo...) while tools/ci/queue-runner-watch.sh waits on a
 # GitHub-hosted runner. A canary nobody picks up in 4 minutes, or one whose
 # checks fail, sets the

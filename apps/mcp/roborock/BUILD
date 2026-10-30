@@ -12,7 +12,6 @@
 
 load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_library")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("//tools/pytest:defs.bzl", "py_test")
 
 package(default_visibility = ["//apps/mcp/roborock:__subpackages__"])
 
@@ -38,20 +37,9 @@ py_binary(
     deps = [":vitruvian_roborock"],
 )
 
-# One target for the suite: the tests share conftest.py, and every one of them
-# runs against fakes or a loopback server on an ephemeral port, never the cloud.
-# Not named "tests": the launcher would shadow the tests/ directory in runfiles.
-py_test(
+test_suite(
     name = "roborock_test",
-    size = "small",
-    srcs = glob(["tests/*.py"]),
-    imports = ["tests"],
-    deps = [
-        ":vitruvian_roborock",
-        "@pip//aiohttp",
-        "@pip//mcp",
-        "@pip//python_roborock",
-    ],
+    tests = [":roborock_rs_test"],
 )
 
 # The plugin manifests, for anything that packages or validates them.

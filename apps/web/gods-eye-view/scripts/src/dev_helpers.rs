@@ -477,14 +477,42 @@ pub fn lan_warning_message(host: &str, port: &str, lan_ip: Option<&str>) -> Opti
     }
 }
 
+/// This app's folder in the monorepo, from the repository root.
+pub const APP_DIR: &str = "apps/web/gods-eye-view";
+
+fn env_path(name: &str) -> Option<PathBuf> {
+    std::env::var_os(name).filter(|v| !v.is_empty()).map(PathBuf::from)
+}
+
 fn resolve_roots() -> (PathBuf, PathBuf) {
-    let source_root = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().and_then(|d| d.parent()).map(PathBuf::from))
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
-    let root_dir = std::env::var("GEV_PROJECT_ROOT")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| source_root.clone());
+    roots_from(
+        env_path("BUILD_WORKSPACE_DIRECTORY"),
+        std::env::current_exe().ok(),
+        std::env::current_dir().unwrap_or_default(),
+        env_path("GEV_PROJECT_ROOT"),
+    )
+}
+
+/// The app's source folder and the folder the dev server runs in.
+///
+/// Under `bazel run`, the binary sits in bazel-out, so the folder two levels
+/// above it is not the app: `workspace` (BUILD_WORKSPACE_DIRECTORY, which
+/// `bazel run` sets) names the checkout instead. Elsewhere it falls back to two
+/// levels above `exe`, as the shell scripts did from `scripts/`.
+/// `project_root` (GEV_PROJECT_ROOT) moves only where the server runs.
+pub fn roots_from(
+    workspace: Option<PathBuf>,
+    exe: Option<PathBuf>,
+    cwd: PathBuf,
+    project_root: Option<PathBuf>,
+) -> (PathBuf, PathBuf) {
+    let source_root = match workspace {
+        Some(ws) => ws.join(APP_DIR),
+        None => exe
+            .and_then(|p| p.parent().and_then(|d| d.parent()).map(PathBuf::from))
+            .unwrap_or(cwd),
+    };
+    let root_dir = project_root.unwrap_or_else(|| source_root.clone());
     (source_root, root_dir)
 }
 

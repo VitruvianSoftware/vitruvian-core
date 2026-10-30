@@ -32,34 +32,41 @@ or `pulumi login`. The agent drives these tools, so every credential has to be a
 
 ## Two knobs on the cloud environment
 
-> **Status: the `VITRUVIAN_CLOUD_KEY` path described in this section cannot be
-> used today.** It needs a service-account key, and the org enforces
-> `iam.disableServiceAccountKeyCreation`
+> **The service-account key path (`VITRUVIAN_CLOUD_KEY`) cannot be used.** The org
+> enforces `iam.disableServiceAccountKeyCreation`
 > ([`gcp-org/envs/shared/org_policy.go`](../../infrastructure/pulumi/foundation/gcp-org/envs/shared/org_policy.go)),
-> so no such key can be created. Without it the session has no GCP identity
-> (`identity ✗ … not authenticated`) and **nothing is fetched from Secret
-> Manager**: every credential in `profiles.tsv` must instead be set directly on
-> the cloud environment, where a value already set wins (see below). Sessions get
-> *GCP* access keylessly — see
-> [GCP access](../../docs/admin/claude-code-cloud-sessions.md#gcp-access)
-> (`//tools/gcp-token` or Pulumi ESC). Fetching these secrets with that keyless
-> identity instead of a key is the intended direction but is not implemented;
-> until it is, the key-based text below describes the design, not the behaviour.
+> so no such key can be created. The code still honors one if present, but the
+> supported path is **keyless, through Pulumi ESC**:
+>
+> 1. The environment holds `PULUMI_ACCESS_TOKEN`.
+> 2. Bootstrap runs `pulumi env open <VITRUVIAN_ESC_ENV> gcp.login.accessToken`
+>    (default `ipv1337/vitruvian-core/cloud-session`) for a ~1h GCP access token.
+> 3. It checks the token belongs to `sa-pulumi-esc@prj-b-cicd-e096` (override with
+>    `VITRUVIAN_ESC_SA`) and refuses any other account.
+> 4. It reads the profile's secrets from Secret Manager with that token. The ESC
+>    account has `secretAccessor` on exactly the `claude-cloud-*` secrets, declared
+>    in the tabula build stack (`apps/suites/tabula/infra/build`).
+>
+> The token is used only at session start and is not exported. A value already set
+> on the environment still wins over Secret Manager.
+>
+> **If the ESC step fails** (a cold session can run it before the network is ready),
+> it is retried 3 times, 5 s apart (`VITRUVIAN_ESC_RETRIES`,
+> `VITRUVIAN_ESC_RETRY_DELAY`). A token for the *wrong* account is refused, not
+> retried. If it still fails, the banner says why (`identity ✗ … why: …`) and the
+> command to re-run: `bash tools/cloud-bootstrap/cloud-bootstrap.sh auth`. When it
+> works, the banner shows `identity ✓ … via Pulumi ESC`.
 
 | variable | what it is |
 | --- | --- |
-| `VITRUVIAN_PROFILE` | which profile this environment is. Selects a row of [`profiles.tsv`](profiles.tsv). Start with `all`. |
-| `VITRUVIAN_CLOUD_KEY` | that profile's GCP service-account key (raw JSON or base64). The **only** credential on the environment. |
+| `PULUMI_ACCESS_TOKEN` | **Required.** Lets bootstrap open the ESC environment. It cannot itself live in Secret Manager. |
+| `VITRUVIAN_PROFILE` | **Required.** Without it bootstrap does nothing. Selects a row of [`profiles.tsv`](profiles.tsv); use `all`. |
+| `VITRUVIAN_ESC_ENV` | optional, defaults to `ipv1337/vitruvian-core/cloud-session`. |
 
-That is the whole configuration:
-
-```
-VITRUVIAN_PROFILE=all
-VITRUVIAN_CLOUD_KEY=<base64 of one service-account key>
-```
-
-One key unlocks every credential the agent needs — nothing else to set, and no
-ordering to think about.
+Everything else (`GH_TOKEN`, `TS_AUTHKEY`, `LAB_SA_TOKEN`, `CLAUDE_SSH_KEY`,
+`BUILDBUDDY_API_KEY`) comes from Secret Manager, so it can be rotated there
+without editing the cloud environment. Seed a value with
+`bazel run //tools/gcp-secrets:seed`, or by adding a version to the secret.
 
 ### The Setup script field
 
@@ -223,13 +230,12 @@ provider and no caller moves.
    bazel run //tools/gcp-secrets:seed -- apps/suites/tabula/infra/build claude-cloud-core-github-token
    ```
 3. **Add the row** to `profiles.tsv`.
-4. **Set the cloud environment's variables** to `VITRUVIAN_PROFILE=<name>` and
-   `VITRUVIAN_CLOUD_KEY=<the key>`. The key is multiline JSON and the box is
-   `.env` format, so base64 it onto one line: `base64 -w0 key.json`. (Only if you
-   combine profiles do you need one `VITRUVIAN_CLOUD_KEY_<PROFILE>` each.)
-   **This step is currently impossible**: the org forbids creating the key (see
-   the status note under "Two knobs"). Until bootstrap can authenticate without
-   one, set the profile's credentials directly as environment variables instead.
+4. **Set the cloud environment's variables** to `PULUMI_ACCESS_TOKEN` (and
+   optionally `VITRUVIAN_PROFILE=<name>`). Do not create a service-account key:
+   the org forbids it, and bootstrap authenticates through Pulumi ESC instead
+   (see the note under "Two knobs"). If your secrets live in a different
+   project than the ESC account can read, grant `sa-pulumi-esc`
+   `secretAccessor` on them in the stack that declares them.
 5. **Verify** from a session: `bazel run //tools/cloud-bootstrap:whoami`.
 
 ## What it installs, and what it deliberately does not

@@ -21,13 +21,13 @@
 name: preview-teardown
 
 # PAUSED (issue #2499): nothing provisions preview environments yet --
-# tools/preview/provision-preview.sh is not called by any workflow -- so the
+# //tools/preview:provision-preview is not called by any workflow -- so the
 # automatic triggers below only ran an empty sweep on every PR close and every
 # hour. They are commented out, not deleted; manual runs still work.
 #
-# To re-enable: wire provision-preview.sh into a PR workflow, then un-comment
-# these triggers. tools/conformance/check.sh fails until you do, as soon as any
-# workflow calls provision-preview.sh.
+# To re-enable: wire //tools/preview:provision-preview into a PR workflow, then
+# un-comment these triggers. //tools/conformance:check fails until you do, as
+# soon as any workflow mentions provision-preview.
 on:
   # pull_request:
   #   types: [closed]
@@ -90,13 +90,20 @@ jobs:
           PR_TARGET="${{ github.event.pull_request.number || github.event.inputs.pr || '' }}"
           ./tools/ci/preview-reaper.sh ${PR_TARGET} >> "$GITHUB_OUTPUT"
 
+      # Only the (paused) pull_request trigger reaches the two steps below, so
+      # manual runs never pay for a Bazel install.
+      - name: Install Bazel
+        if: github.event_name == 'pull_request' && github.event.action == 'closed'
+        uses: ./.github/actions/setup-bazel
+
       - name: Update PR Sticky Comment on Targeted Event
         if: github.event_name == 'pull_request' && github.event.action == 'closed'
         env:
           GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          ./tools/preview/pr-comment.sh \
-            --pr "${{ github.event.pull_request.number }}" \
+          bazel run //tools/preview:pr-comment -- \
+            --pr "${PR_NUMBER}" \
             --app "tabula" \
             --status "teardown"
 

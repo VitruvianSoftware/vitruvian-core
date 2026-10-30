@@ -56,12 +56,22 @@ pub fn run(args: &[String]) -> i32 {
 
     // Resolve RESOURCES_DIR the same way the shell script does:
     // SCRIPT_DIR=$(dirname "$0"), RESOURCES_DIR="${SCRIPT_DIR}/../Resources"
-    // For the Rust binary, use the exe's own location as SCRIPT_DIR equivalent.
+    // Fall back to standard workspace/mirror paths when compiled to $RUNNER_TEMP.
     let script_dir = match std::env::current_exe() {
         Ok(p) => p.parent().unwrap_or(Path::new(".")).to_path_buf(),
         Err(_) => PathBuf::from("."),
     };
-    let resources_dir = script_dir.join("../Resources");
+    let resources_candidates = [
+        script_dir.join("../Resources"),
+        script_dir.join("Resources"),
+        PathBuf::from("apps/desktop/nexus-agent/macos/Resources"),
+        PathBuf::from("macos/Resources"),
+        PathBuf::from("Resources"),
+    ];
+    let resources_dir = resources_candidates
+        .into_iter()
+        .find(|p| p.is_dir())
+        .unwrap_or_else(|| script_dir.join("../Resources"));
 
     let app_bundle = PathBuf::from(output_dir).join(format!("{}.app", APP_NAME));
 

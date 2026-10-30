@@ -96,21 +96,6 @@ jobs:
         with:
           persist-credentials: false
 
-      # Single source for the Node major: the Dockerfile's ARG default exists so
-      # `docker build mcp-slack/` works standalone, and //tools/conformance:check
-      # asserts that default equals .nvmrc's major. Passing it explicitly here
-      # means CI tracks .nvmrc even in the window before conformance runs.
-      - name: Resolve the canonical Node major from .nvmrc
-        id: node
-        run: |
-          set -euo pipefail
-          major="$(cut -d. -f1 .nvmrc)"
-          if [ -z "$major" ]; then
-            echo "::error::could not read a Node major from .nvmrc"
-            exit 1
-          fi
-          echo "major=${major}" >> "$GITHUB_OUTPUT"
-
       # binfmt handlers for the arm64 half of PLATFORMS. Without this the arm64
       # build fails on the first RUN rather than at configuration time, which
       # reads like a Dockerfile bug.
@@ -129,13 +114,10 @@ jobs:
         run: |
           set -euo pipefail
           docker buildx build --load \
-            --build-arg NODE_VERSION="${NODE_MAJOR}" \
             --build-arg GIT_REVISION="${GITHUB_SHA}" \
             --platform linux/amd64 \
             --tag mcp-slack:verify \
             apps/mcp/slack/
-        env:
-          NODE_MAJOR: ${{ steps.node.outputs.major }}
 
       # ASSERTION 1 — the pod runs as UID 10001 (deployment.yaml securityContext),
       # a UID that exists in no image layer. If any file the process reads is not
@@ -159,15 +141,9 @@ jobs:
           docker run --rm \
             --user 10001:10001 \
             --read-only --tmpfs /tmp \
-            --entrypoint node \
+            --entrypoint /app/mcp-slack \
             mcp-slack:verify \
-            --input-type=module \
-            -e "import { accessSync, constants } from 'node:fs';
-                accessSync('/app/dist/index.js', constants.R_OK);
-                console.log('uid ' + process.getuid() + ' can read /app/dist/index.js');
-                await import('jose');
-                await import('@modelcontextprotocol/sdk/server/streamableHttp.js');
-                console.log('uid ' + process.getuid() + ' loaded jose and the MCP SDK');"
+            --version
 
       # ASSERTION 2 — the provenance label. Nothing injects this automatically:
       # the repo's other Dockerfile carries no LABEL at all and its buildx call
@@ -202,12 +178,9 @@ jobs:
         run: |
           set -euo pipefail
           docker buildx build \
-            --build-arg NODE_VERSION="${NODE_MAJOR}" \
             --build-arg GIT_REVISION="${GITHUB_SHA}" \
             --platform "${PLATFORMS}" \
             apps/mcp/slack/
-        env:
-          NODE_MAJOR: ${{ steps.node.outputs.major }}
 
       # Everything above runs on pull_request too. Everything below is the
       # publish half and is skipped there — a PR must never be able to move the
@@ -221,29 +194,12 @@ jobs:
         id: publish
         run: |
           set -euo pipefail
-          # --sbom=true because the dependency tree that RUNS is not the tree
-          # anything scans. //tools/osv-scan reads the repo's committed
-          # lockfiles; this image installs with `pnpm install
-          # --no-frozen-lockfile` in a standalone context, which explicitly
-          # permits a different resolution and re-resolves at build time. So
-          # nothing pins the image's tree to the scanned one, nothing scans the
-          # image's tree, and two builds of the same commit can differ — the
-          # same late-binding the PNPM_VERSION pin fixed for the tool, one layer
-          # down in the packages.
-          #
-          # `--frozen-lockfile` is not the fix available here: the standalone
-          # Docker context is exactly why the `catalog:` rewrite exists, so there
-          # is no workspace lockfile to freeze against. Attaching an SBOM closes
-          # it at the artifact instead — osv-scanner can scan an SBOM directly.
-          #
-          # NOT already covered by what buildx attaches. Measured on the first
-          # published index rather than inferred from the flags: both
-          # attestation manifests carry exactly one in-toto layer with
-          # `in-toto.io/predicate-type: https://slsa.dev/provenance/v1`, and no
-          # SPDX predicate. Provenance records HOW it was built; it says nothing
-          # about what is inside. Aegis's finding.
+          # --sbom=true: the SBOM attestation is what the scan step below reads,
+          # so it can see the image's base layer (the reporting arm) and prove
+          # there is no package-installed application tree (APP_TREE=absent).
+          # buildx's default provenance attestation records how the image was
+          # built, not what is in it, so it is no substitute.
           docker buildx build --push \
-            --build-arg NODE_VERSION="${NODE_MAJOR}" \
             --build-arg GIT_REVISION="${GITHUB_SHA}" \
             --platform "${PLATFORMS}" \
             --sbom=true \
@@ -262,8 +218,6 @@ jobs:
             exit 1
           fi
           echo "digest=${digest}" >> "$GITHUB_OUTPUT"
-        env:
-          NODE_MAJOR: ${{ steps.node.outputs.major }}
 
       # ASSERTION 3 — re-verify on the PUSHED index, not the local image. The
       # local checks above prove the build was right; this proves what landed in
@@ -391,25 +345,20 @@ jobs:
         env:
           DIGEST: ${{ steps.publish.outputs.digest }}
 
-      # ASSERTION 5 — the image's OWN dependency tree carries no known
-      # advisories (#1503). This is not a duplicate of `osv-scan`.
+      # ASSERTION 5 — the image's SBOM, scanned (#1503).
       #
-      # `osv-scan` (required) reads the repo's committed LOCKFILES. This image
-      # does not install from them: mcp-slack/Dockerfile installs with
-      # `pnpm install --prod --no-frozen-lockfile` in a standalone Docker
-      # context, which explicitly permits a different resolution. Measured at
-      # digest sha256:63912eee... — the image resolved `jose@6.2.8` where the
-      # repo lockfile pins a different patch. So nothing PINNED the image's tree
-      # to the scanned tree, and nothing SCANNED the image's tree.
+      # Until #3985 the image installed npm packages with
+      # `pnpm install --no-frozen-lockfile`, so its tree drifted from the
+      # lockfile `osv-scan` reads, and this step's blocking arm scanned that
+      # tree. The server is now Rust built with `cargo build --locked` from
+      # apps/mcp/slack/rs/Cargo.lock, a committed lockfile `osv-scan` already
+      # scans, so the crates cannot drift from the scanned set. The blocking arm
+      # therefore runs with APP_TREE=absent: it requires that no package-managed
+      # tree has crept back into the image, and refuses if one has. The
+      # reporting arm still lists advisories in the distroless base.
       #
       # #1504 attached the SBOM this reads. Attaching an SBOM is not scanning it.
-      #
-      # TWO ARMS, ONE BLOCKS — see tools/ci/image-sbom-scan.sh for the full
-      # reasoning. Briefly: the blocking arm covers /app/node_modules (clean at
-      # first measurement, 0 of 93 packages), the reporting arm covers everything
-      # else (the Debian base contributed 39 advisory instances on day one,
-      # mostly unfixed upstream — blocking on those would be red on arrival for
-      # reasons no PR author can fix, and a gate like that gets deleted).
+      # See tools/ci/image-sbom-scan.sh for the two arms.
       #
       # BOUND, stated because the green does not carry it: this cannot pre-empt a
       # merge. PR runs build but never push, so there is no published index and
@@ -438,4 +387,9 @@ jobs:
         if: github.event_name != 'pull_request'
         env:
           DIGEST: ${{ steps.publish.outputs.digest }}
+          # Since #3985 the server is a Rust binary built --locked from a
+          # lockfile osv-scan covers: no /app/node_modules, nothing for the
+          # blocking arm to scan. `absent` makes the scan require that, and refuse if a package
+          # tree ever comes back. See the script header.
+          APP_TREE: absent
         run: bash tools/ci/image-sbom-scan.sh

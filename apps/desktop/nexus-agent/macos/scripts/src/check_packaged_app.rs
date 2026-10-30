@@ -123,12 +123,23 @@ pub fn run(args: &[String]) -> i32 {
     let want_archs = format!("{} ", sorted_archs.join(" "));
 
     // Resolve THIRD_PARTY_NOTICES.md relative to the binary's location,
-    // mirroring the shell script's SCRIPT_DIR/../../THIRD_PARTY_NOTICES.md.
+    // mirroring the shell script's SCRIPT_DIR/../../THIRD_PARTY_NOTICES.md,
+    // or from standard workspace/mirror paths when compiled to $RUNNER_TEMP.
     let script_dir = match std::env::current_exe() {
         Ok(p) => p.parent().unwrap_or(Path::new(".")).to_path_buf(),
         Err(_) => PathBuf::from("."),
     };
-    let notices_path = script_dir.join("../../THIRD_PARTY_NOTICES.md");
+    let notices_candidates = [
+        script_dir.join("../../THIRD_PARTY_NOTICES.md"),
+        script_dir.join("../THIRD_PARTY_NOTICES.md"),
+        PathBuf::from("apps/desktop/nexus-agent/THIRD_PARTY_NOTICES.md"),
+        PathBuf::from("THIRD_PARTY_NOTICES.md"),
+        PathBuf::from("../THIRD_PARTY_NOTICES.md"),
+    ];
+    let notices_path = notices_candidates
+        .into_iter()
+        .find(|p| p.is_file())
+        .unwrap_or_else(|| script_dir.join("../../THIRD_PARTY_NOTICES.md"));
 
     let notices_content = match fs::read_to_string(&notices_path) {
         Ok(c) => c,

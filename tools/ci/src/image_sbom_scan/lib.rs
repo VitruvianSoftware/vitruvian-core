@@ -21,7 +21,8 @@
 //! image-sbom-scan.sh — scan a published image's SBOM attestation for known
 //! advisories. Two arms: BLOCKING (APP_PREFIX packages via osv-scanner) and
 //! REPORTING (whole image). Fails closed on missing attestation, missing SBOM,
-//! zero app packages, or missing osv-scanner.
+//! zero app packages, or missing osv-scanner. APP_TREE=absent declares an image
+//! with no package-managed application tree; it then refuses if one appears.
 
 use shell_compat::{
     capture, cat, env, env_or, err, mktemp_dir, os, out, path, status, subst, write_file,
@@ -119,6 +120,41 @@ fn fetch_blob(
     write_file(out_path, &r.stdout, 0o644).is_ok()
 }
 
+/// What the blocking arm does, given APP_TREE and the package count under
+/// APP_PREFIX. APP_TREE=absent is for an image whose application carries no
+/// package-managed dependency tree at all (mcp-slack since #3985: a Rust
+/// binary built `--locked` from a lockfile osv-scan covers). There the blocking arm has
+/// nothing to cover, so it asserts the tree is still absent instead: a tree
+/// that reappears refuses rather than going unscanned.
+#[derive(Debug, PartialEq)]
+enum AppArm {
+    Scan,
+    SkipAbsent,
+    RefuseVacuous,
+    RefuseUnexpected,
+    RefuseUnknown,
+}
+
+fn app_arm(app_tree: &[u8], app_count: &[u8]) -> Option<AppArm> {
+    let zero = app_count == b"0";
+    let unknown = app_count.is_empty();
+    match app_tree {
+        b"present" => Some(if zero || unknown {
+            AppArm::RefuseVacuous
+        } else {
+            AppArm::Scan
+        }),
+        b"absent" => Some(if unknown {
+            AppArm::RefuseUnknown
+        } else if zero {
+            AppArm::SkipAbsent
+        } else {
+            AppArm::RefuseUnexpected
+        }),
+        _ => None,
+    }
+}
+
 fn jq_r(file: &[u8], filter: &[u8]) -> Vec<u8> {
     let r = capture(
         0,
@@ -179,6 +215,15 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
         }
     };
     let app_prefix = env_or("APP_PREFIX", b"/app/node_modules");
+    let app_tree = env_or("APP_TREE", b"present");
+    if app_arm(&app_tree, b"0").is_none() {
+        err(&cat(&[
+            b"::error::APP_TREE must be 'present' or 'absent', got '",
+            &app_tree,
+            b"'\n",
+        ]));
+        return 1;
+    }
 
     if !valid_digest(&digest) {
         err(&cat(&[
@@ -406,48 +451,84 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
             b"\n",
         ]));
 
-        if app_count == b"0" || app_count.is_empty() {
-            err(&cat(&[
-                b"::error::zero packages under ",
-                &app_prefix,
-                b" in ",
-                subject,
-                b" -- the blocking arm would pass vacuously.\n",
-            ]));
-            err(b"::error::Either the image layout changed or the filter is wrong. Refusing rather than reporting clean.\n");
-            return 1;
+        let arm = app_arm(&app_tree, &app_count).unwrap_or(AppArm::RefuseUnknown);
+        match arm {
+            AppArm::RefuseVacuous => {
+                err(&cat(&[
+                    b"::error::zero packages under ",
+                    &app_prefix,
+                    b" in ",
+                    subject,
+                    b" -- the blocking arm would pass vacuously.\n",
+                ]));
+                err(b"::error::Either the image layout changed or the filter is wrong. Refusing rather than reporting clean.\n");
+                err(b"::error::If the application no longer installs a dependency tree at all, set APP_TREE=absent.\n");
+                return 1;
+            }
+            AppArm::RefuseUnexpected => {
+                err(&cat(&[
+                    b"::error::APP_TREE=absent, but ",
+                    &app_count,
+                    b" packages sit under ",
+                    &app_prefix,
+                    b" in ",
+                    subject,
+                    b".\n",
+                ]));
+                err(b"::error::The application has a dependency tree again: drop APP_TREE=absent so the blocking arm scans it.\n");
+                return 1;
+            }
+            AppArm::RefuseUnknown => {
+                err(&cat(&[
+                    b"::error::could not count packages under ",
+                    &app_prefix,
+                    b" in ",
+                    subject,
+                    b". Refusing rather than reporting clean.\n",
+                ]));
+                return 1;
+            }
+            AppArm::SkipAbsent | AppArm::Scan => {}
         }
 
-        out(&cat(&[
-            b"--> BLOCKING scan: ",
-            &app_prefix,
-            b" (",
-            &app_count,
-            b" packages)\n",
-        ]));
-        let scan_rc = status(
-            0,
-            Command::new("osv-scanner")
-                .arg("scan")
-                .arg("source")
-                .arg(os(&cat(&[b"--sbom=", &app_path])))
-                .arg("--format")
-                .arg("table"),
-            false,
-        );
-        if scan_rc == 0 {
-            out(b"    no advisories in the application dependency tree\n");
-        } else {
-            err(&cat(&[
-                b"::error::advisories found under ",
+        if arm == AppArm::SkipAbsent {
+            out(&cat(&[
+                b"--> BLOCKING scan: skipped, APP_TREE=absent and none under ",
                 &app_prefix,
-                b" for ",
-                subject,
-                b".\n",
+                b" (as declared)\n",
             ]));
-            err(b"::error::At the default prefix this is the application's OWN dependency tree -- the one\n");
-            err(b"::error::osv-scan cannot see, because the image does not install from the committed lockfile.\n");
-            blocking_rc = 1;
+        } else {
+            out(&cat(&[
+                b"--> BLOCKING scan: ",
+                &app_prefix,
+                b" (",
+                &app_count,
+                b" packages)\n",
+            ]));
+            let scan_rc = status(
+                0,
+                Command::new("osv-scanner")
+                    .arg("scan")
+                    .arg("source")
+                    .arg(os(&cat(&[b"--sbom=", &app_path])))
+                    .arg("--format")
+                    .arg("table"),
+                false,
+            );
+            if scan_rc == 0 {
+                out(b"    no advisories in the application dependency tree\n");
+            } else {
+                err(&cat(&[
+                    b"::error::advisories found under ",
+                    &app_prefix,
+                    b" for ",
+                    subject,
+                    b".\n",
+                ]));
+                err(b"::error::At the default prefix this is the application's OWN dependency tree -- the one\n");
+                err(b"::error::osv-scan cannot see, because the image does not install from the committed lockfile.\n");
+                blocking_rc = 1;
+            }
         }
 
         out(&cat(&[
@@ -552,6 +633,28 @@ mod tests {
         let (reg, repo) = parse_image(b"registry.example.com/myimage").unwrap();
         assert_eq!(reg, b"registry.example.com");
         assert_eq!(repo, b"myimage");
+    }
+
+    #[test]
+    fn test_app_arm_present() {
+        assert_eq!(app_arm(b"present", b"93"), Some(AppArm::Scan));
+        assert_eq!(app_arm(b"present", b"0"), Some(AppArm::RefuseVacuous));
+        assert_eq!(app_arm(b"present", b""), Some(AppArm::RefuseVacuous));
+    }
+
+    #[test]
+    fn test_app_arm_absent() {
+        assert_eq!(app_arm(b"absent", b"0"), Some(AppArm::SkipAbsent));
+        // A tree that comes back must be scanned, not waved through.
+        assert_eq!(app_arm(b"absent", b"12"), Some(AppArm::RefuseUnexpected));
+        assert_eq!(app_arm(b"absent", b""), Some(AppArm::RefuseUnknown));
+    }
+
+    #[test]
+    fn test_app_arm_rejects_other_values() {
+        assert_eq!(app_arm(b"", b"0"), None);
+        assert_eq!(app_arm(b"Absent", b"0"), None);
+        assert_eq!(app_arm(b"none", b"0"), None);
     }
 
     #[test]

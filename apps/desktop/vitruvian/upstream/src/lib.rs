@@ -29,7 +29,13 @@ pub const UPSTREAM_ONLY: &[&str] = &[
     "Resources/Brand/",
 ];
 
-pub const FORK_RETIRED: &[&str] = &["Tests/generate_sources.py"];
+pub const FORK_RETIRED: &[&str] = &[
+    "Resources/Brand/make_placeholder_brand.py",
+    "Tests/PreferenceCleanupTests.sh",
+    "Tests/UninstallSpacesTests.sh",
+    "Tests/generate_sources.py",
+    "Tests/mutation_checks.py",
+];
 
 pub const STATUSES: &[&str] = &["pending", "ported", "skipped"];
 pub const COLUMNS: &[&str] = &["sha", "patch_id", "date", "status", "ref", "subject"];

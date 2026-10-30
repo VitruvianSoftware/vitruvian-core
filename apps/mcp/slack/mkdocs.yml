@@ -19,7 +19,7 @@
 # SOFTWARE.
 
 site_name: mcp-slack
-site_description: MCP server exposing Slack tools — TypeScript, published to npm as @vitruviansoftware/mcp-slack
+site_description: MCP server exposing Slack tools — Rust, published as a container image (ghcr.io/vitruviansoftware/mcp-slack)
 repo_url: https://github.com/VitruvianSoftware/vitruvian-core
 edit_uri: edit/main/mcp-slack/docs
 docs_dir: docs

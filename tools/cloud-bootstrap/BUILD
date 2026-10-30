@@ -11,12 +11,11 @@ credentials the session's PROFILE is allowed to hold.
 
 $VITRUVIAN_PROFILE (set on the cloud environment) selects one row of
 profiles.tsv, and that row is the blast-radius boundary: it decides which CLIs
-are installed and which secrets the session may materialise. By design the only
-credential on the environment itself is $VITRUVIAN_CLOUD_KEY -- the profile's
-service-account key, whose sole permission is reading that profile's secrets --
-and everything else comes from Secret Manager at session start. That key cannot be
-created while the org enforces iam.disableServiceAccountKeyCreation, so today the
-credentials are set directly on the environment (see README.md, "Two knobs").
+are installed and which secrets the session may materialise. The only credential
+the environment needs is $PULUMI_ACCESS_TOKEN: bootstrap uses it to get a short-lived
+GCP token from Pulumi ESC (the org forbids service-account keys,
+iam.disableServiceAccountKeyCreation) and reads the rest from Secret Manager at
+session start (see README.md, "Two knobs").
 
 It is also the first step of the SessionStart hook, .claude/session-start.sh,
 which is how it actually runs. The `bazel run` targets exist because the hook cannot be

@@ -1296,48 +1296,19 @@ mod tests {
         assert!(errs.iter().any(|e| e.contains("--radius-sm: 0px")));
     }
 
-    // ── (c) Python parity test ────────────────────────────────────────────
+    // ── (c) End-to-end directory drift detection test ─────────────────────
 
     #[test]
-    fn test_python_parity() {
-        use std::process::Command;
-
-        let python = match Command::new("python3").arg("--version").output() {
-            Ok(o) if o.status.success() => "python3",
-            _ => {
-                eprintln!("python3 not available, skipping parity test");
-                return;
-            }
-        };
-
+    fn test_run_all_checks_detects_broken_tokens_dir() {
         let pkg_dir = match find_pkg_dir() {
             Ok(d) => d,
             Err(_) => {
-                eprintln!("design-system not found, skipping parity test");
+                eprintln!("design-system not found, skipping end-to-end dir test");
                 return;
             }
         };
 
-        let test_py = pkg_dir.join("tools").join("tokens_sync_test.py");
-        if !test_py.is_file() {
-            eprintln!("tokens_sync_test.py not found, skipping parity test");
-            return;
-        }
-
-        // Both should pass on real files
-        let py_result = Command::new(python)
-            .arg(&test_py)
-            .env("PYTHONDONTWRITEBYTECODE", "1")
-            .current_dir(&pkg_dir)
-            .output()
-            .expect("failed to run python3");
         let rust_result = run_all_checks(&pkg_dir);
-
-        assert!(
-            py_result.status.success(),
-            "Python test failed on real files: {}",
-            String::from_utf8_lossy(&py_result.stderr)
-        );
         assert!(
             rust_result.is_ok(),
             "Rust check failed on real files: {:?}",
@@ -1441,23 +1412,7 @@ mod tests {
 }"##;
         fs::write(tmp_src.join("tokens.json"), broken_json).unwrap();
 
-        // Copy the test script
-        let tmp_tools = tmp.join("tools");
-        fs::create_dir_all(&tmp_tools).unwrap();
-        fs::copy(&test_py, tmp_tools.join("tokens_sync_test.py")).unwrap();
-
-        let py_broken = Command::new(python)
-            .arg(tmp_tools.join("tokens_sync_test.py"))
-            .env("PYTHONDONTWRITEBYTECODE", "1")
-            .current_dir(&tmp)
-            .output()
-            .expect("failed to run python3 on broken dir");
         let rust_broken = run_all_checks(&tmp);
-
-        assert!(
-            !py_broken.status.success(),
-            "Python should fail on broken tokens.json"
-        );
         assert!(
             rust_broken.is_err(),
             "Rust should fail on broken tokens.json"

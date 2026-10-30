@@ -30,6 +30,105 @@ import org.junit.Test
 /** What the v1.2 rows are coloured by. Each of these was a wrong colour waiting to happen. */
 public class DeriveTest {
 
+  // --- pairing: reachable is not the same as allowed ---------------------
+
+  @Test
+  public fun `a blank token on a reachable Mac is not paired, not connected`() {
+    // The incident: the agent answered every read, so the app said "connected" while
+    // every act was refused.
+    val p = Derive.pairing(hasAgent = true, hasToken = false, rejected = false)
+    assertEquals(Derive.Pairing.NotPaired, p)
+    assertTrue(Derive.needsPairing(p))
+    assertEquals("connected · not paired", Derive.connectionWord(p, "connected"))
+  }
+
+  @Test
+  public fun `a refused token reads as rejected until a pairing succeeds`() {
+    assertEquals(
+        Derive.Pairing.Rejected, Derive.pairing(hasAgent = true, hasToken = false, rejected = true))
+    // A fresh token clears the stale refusal without anyone resetting the flag.
+    val after = Derive.pairing(hasAgent = true, hasToken = true, rejected = true)
+    assertEquals(Derive.Pairing.Paired, after)
+    assertFalse(Derive.needsPairing(after))
+    assertEquals("connected", Derive.connectionWord(after, "connected"))
+  }
+
+  @Test
+  public fun `no agent means simulated, which needs no pairing banner`() {
+    val p = Derive.pairing(hasAgent = false, hasToken = false, rejected = true)
+    assertEquals(Derive.Pairing.NoAgent, p)
+    assertFalse(Derive.needsPairing(p))
+    assertEquals(null, Derive.pairingBanner(p, "atlas"))
+  }
+
+  @Test
+  public fun `the banner names the Mac and says changes will not work`() {
+    val (label, body) = Derive.pairingBanner(Derive.Pairing.NotPaired, "atlas")!!
+    assertEquals("Not paired with atlas", label)
+    assertEquals(
+        "This phone is not paired with atlas. You can look, but changes will not work.", body)
+    val (rLabel, rBody) = Derive.pairingBanner(Derive.Pairing.Rejected, "atlas")!!
+    assertTrue(rLabel.contains("atlas"))
+    assertTrue(rBody.contains("pair again"))
+    assertEquals(null, Derive.pairingBanner(Derive.Pairing.Paired, "atlas"))
+    assertEquals("Not paired with atlas — pair to make changes", Derive.notPairedText("atlas"))
+  }
+
+  // --- phone bridge: on is not the same as linked --------------------------
+
+  private fun bridge(
+      enabled: Boolean = true,
+      linked: Boolean = false,
+      pairing: Derive.Pairing = Derive.Pairing.Paired,
+      reachable: Boolean = true,
+      status: String = "",
+  ) = Derive.bridgeProblem(enabled, linked, pairing, reachable, status)
+
+  @Test
+  public fun `a bridge that is off or linked has nothing to say`() {
+    assertEquals(Derive.BridgeProblem.None, bridge(enabled = false, status = "off"))
+    assertEquals(Derive.BridgeProblem.None, bridge(linked = true, status = "linked"))
+    assertEquals(null, Derive.bridgeProblemText(Derive.BridgeProblem.None, "atlas", "linked"))
+  }
+
+  @Test
+  public fun `an unpaired phone's bridge says not paired, from either side`() {
+    // The phone knows before the service does: it re-reads the token between attempts.
+    assertEquals(
+        Derive.BridgeProblem.NotPaired,
+        bridge(pairing = Derive.Pairing.NotPaired, status = "connecting to atlas…"))
+    // The service's own refusal, and the Mac's 401 as AgentClient words it.
+    assertEquals(
+        Derive.BridgeProblem.NotPaired,
+        bridge(status = "not paired with atlas — pair on the Hosts screen"))
+    assertEquals(Derive.BridgeProblem.NotPaired, bridge(status = "not paired (HTTP 401)"))
+    assertEquals(
+        "Phone Bridge is on but cannot link: this phone is not paired with atlas.",
+        Derive.bridgeProblemText(Derive.BridgeProblem.NotPaired, "atlas", ""))
+  }
+
+  @Test
+  public fun `a stopped service and an unreachable Mac are told apart`() {
+    assertEquals(Derive.BridgeProblem.Stopped, bridge(status = "off"))
+    assertEquals(
+        Derive.BridgeProblem.Unreachable, bridge(reachable = false, status = "connect timed out"))
+    assertEquals(Derive.BridgeProblem.Other, bridge(status = "the Mac closed the link"))
+    assertEquals(
+        "Phone Bridge is on but not linked: the Mac closed the link",
+        Derive.bridgeProblemText(Derive.BridgeProblem.Other, "atlas", "the Mac closed the link"))
+  }
+
+  @Test
+  public fun `connecting shows on the plate but does not raise the banner`() {
+    val p = bridge(status = "connecting to atlas…")
+    assertEquals(Derive.BridgeProblem.Connecting, p)
+    assertFalse(Derive.bridgeProblemIsBannerWorthy(p))
+    // The moment between the switch and the service's first word is not "stopped".
+    assertEquals(Derive.BridgeProblem.Connecting, bridge(status = "starting…"))
+    assertTrue(Derive.bridgeProblemIsBannerWorthy(Derive.BridgeProblem.NotPaired))
+    assertTrue(Derive.bridgeProblemIsBannerWorthy(Derive.BridgeProblem.Stopped))
+  }
+
   // --- module row layout -------------------------------------------------
 
   @Test

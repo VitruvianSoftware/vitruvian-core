@@ -19,11 +19,12 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# Unit tests for tools/ci/gate-evaluator.sh
+# Unit tests for the gate evaluator, //tools/ci:gate_evaluator (Rust). The BUILD
+# rule gate_evaluator_rs_test passes the binary as $1.
 
 set -uo pipefail
 
-EVALUATOR="${1:-$(cd "$(dirname "$0")" && pwd)/gate-evaluator.sh}"
+EVALUATOR="${1:?usage: gate-evaluator_test.sh <path to the gate_evaluator binary>}"
 EVALUATOR="$(cd "$(dirname "$EVALUATOR")" && pwd)/$(basename "$EVALUATOR")"
 [ -f "$EVALUATOR" ] || { echo "FATAL: evaluator not found at $EVALUATOR"; exit 1; }
 
@@ -33,13 +34,9 @@ CASES=0
 run_test() {
   desc="$1"; expected_exit="$2"; shift 2
   CASES=$((CASES + 1))
-  
-  if [[ "$EVALUATOR" == *.sh ]]; then
-    env "$@" bash "$EVALUATOR" >/dev/null 2>&1 && actual_exit=0 || actual_exit=1
-  else
-    env "$@" "$EVALUATOR" >/dev/null 2>&1 && actual_exit=0 || actual_exit=1
-  fi
-  
+
+  env "$@" "$EVALUATOR" >/dev/null 2>&1 && actual_exit=0 || actual_exit=1
+
   if [ "$actual_exit" -eq "$expected_exit" ]; then
     printf "PASS  %s\n" "$desc"
   else

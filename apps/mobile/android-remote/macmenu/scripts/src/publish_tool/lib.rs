@@ -23,7 +23,7 @@
 use std::env;
 use std::fs;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -169,7 +169,6 @@ pub fn run(args: &[String]) -> i32 {
         }
     };
     let macmenu_dir = root.join(PKG);
-    let script_dir = macmenu_dir.join("scripts");
 
     let tag = env::var("TAG").unwrap_or_default();
     let version_env = env::var("VERSION").ok();
@@ -347,17 +346,19 @@ pub fn run(args: &[String]) -> i32 {
         }
     }
 
-    let zip_status = Command::new("bash")
-        .arg(script_dir.join("zip-tool.sh"))
-        .arg(work.join("universal/tool"))
-        .arg(work.join("universal/vitruvian-remote-agent"))
-        .arg(&version)
-        .arg(work.join("dist"))
-        .env("REMOTE_TOOL_REQUIRE_UNIVERSAL", "1")
-        .env("REMOTE_TOOL_MAX_MINOS", &min_macos)
-        .status();
-    if !zip_status.map(|s| s.success()).unwrap_or(false) {
-        eprintln!("error: zip-tool.sh failed");
+    let zip_opts = zip_tool_lib::Options {
+        tool: work.join("universal/tool"),
+        agent: work.join("universal/vitruvian-remote-agent"),
+        version: version.clone(),
+        dist: work.join("dist"),
+        manifest: manifest_path.clone(),
+        require_universal: true,
+        max_minos: Some(min_macos.clone()),
+        lipo: "lipo".to_string(),
+        vtool: "vtool".to_string(),
+    };
+    if let Err(e) = zip_tool_lib::package(&zip_opts) {
+        eprintln!("error: {e}");
         return 1;
     }
 

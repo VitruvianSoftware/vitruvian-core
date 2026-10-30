@@ -5,10 +5,11 @@ when this machine has no credentials of its own.
 
 ```sh
 bazel run //tools/gcp-token -- james@vitruviansoftware.dev
-export GOOGLE_OAUTH_ACCESS_TOKEN="$(tools/gcp-token/gcp-token.sh <account>)"
+export GOOGLE_OAUTH_ACCESS_TOKEN="$(bazel run --noshow_progress --ui_event_filters=-info //tools/gcp-token -- <account>)"
 ```
 
-You mostly won't call it directly. [`//tools/pulumi`](../pulumi) already does, so
+You mostly won't call it directly. [`//tools/pulumi`](../pulumi) already does (each
+`pulumi_project()` target carries it as a data dependency), so
 `bazel run //infrastructure/pulumi/<project>:preview` works from a cloud session
 with nothing extra.
 

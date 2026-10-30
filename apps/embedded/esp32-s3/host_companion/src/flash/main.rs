@@ -18,6 +18,13 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+// `lib.rs` is std-only and pulled in by path (not as a crate dependency) so the
+// release zip can ship exactly `main.rs` + `lib.rs` and a plain
+// `rustc --edition 2021 main.rs` builds the flasher.
+#[allow(dead_code)]
+#[path = "lib.rs"]
+mod flash;
+
 use std::env;
 use std::process;
 
@@ -36,7 +43,7 @@ fn main() {
         return;
     }
 
-    if let Err(e) = flash::flash(&flash_args) {
+    if let Err(e) = flash::flash(&flash_args, &flash::Env::from_process(), &flash::RealRunner) {
         eprintln!("Error: {}", e);
         process::exit(1);
     }

@@ -267,6 +267,9 @@ pub fn run(args: &[String]) -> i32 {
     let tool_dir = std::env::var("TOOL_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
+            if let Ok(bwd) = std::env::var("BUILD_WORKSPACE_DIRECTORY") {
+                return PathBuf::from(bwd).join(PKG);
+            }
             script_dir
                 .ancestors()
                 .find(|p| p.join("vitruvian-tool.json").exists())
@@ -274,6 +277,7 @@ pub fn run(args: &[String]) -> i32 {
                 .unwrap_or_else(|| PathBuf::from("."))
         });
     let root = std::env::var("ROOT")
+        .or_else(|_| std::env::var("BUILD_WORKSPACE_DIRECTORY"))
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
             tool_dir

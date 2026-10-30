@@ -83,16 +83,6 @@ rust_test(
 )
 
 test_suite(
-    name = "scripts-parity_test",
-    tests = [":scripts_lib_test"],
-)
-
-test_suite(
-    name = "scripts_parity_test",
-    tests = [":scripts_lib_test"],
-)
-
-test_suite(
     name = "verify-gcp-setup_test",
     tests = [":scripts_lib_test"],
 )

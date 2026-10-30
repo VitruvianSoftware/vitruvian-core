@@ -57,6 +57,15 @@
 #   3. osv-scanner missing or non-runnable   -> exit 1. An absent scanner emits
 #      empty JSON that parses cleanly to "no advisories".
 #
+# APP_TREE=absent: since #3985 mcp-slack is a Rust binary built inside the
+# image with `cargo build --locked` from its committed Cargo.lock, which
+# `osv-scan` already scans. Nothing is installed or re-resolved at build time,
+# so the drift above cannot happen and the blocking arm has nothing to scan.
+# Declaring that inverts control 2 rather than dropping it: the scan then
+# REQUIRES zero packages under APP_PREFIX, and refuses if a tree comes back (a
+# re-added npm install must be scanned, so drop the flag).
+# The reporting arm runs either way.
+#
 # Anonymous registry access throughout: no credential, same path the cluster
 # uses. Run it locally against any published digest:
 #
@@ -68,6 +77,11 @@ set -euo pipefail
 : "${IMAGE:?IMAGE is required (e.g. ghcr.io/vitruviansoftware/mcp-slack)}"
 : "${DIGEST:?DIGEST is required (the INDEX digest, sha256:...)}"
 APP_PREFIX="${APP_PREFIX:-/app/node_modules}"
+APP_TREE="${APP_TREE:-present}"
+case "${APP_TREE}" in
+  present|absent) ;;
+  *) echo "::error::APP_TREE must be 'present' or 'absent', got '${APP_TREE}'" >&2; exit 1 ;;
+esac
 
 # The index digest, not a platform manifest: the attestations hang off the index
 # and the chart pins the index (mcp-slack/deploy/chart/templates/_helpers.tpl,
@@ -177,20 +191,35 @@ while read -r att_digest subject; do
   app_count="$(jq -r '.packages | length' "${app}")"
 
   echo "    ${total} packages total, ${app_count} under ${APP_PREFIX}"
-  if [ "${app_count}" -eq 0 ]; then
-    echo "::error::zero packages under ${APP_PREFIX} in ${subject} -- the blocking arm would pass vacuously." >&2
-    echo "::error::Either the image layout changed or the filter is wrong. Refusing rather than reporting clean." >&2
-    exit 1
-  fi
-
-  echo "--> BLOCKING scan: ${APP_PREFIX} (${app_count} packages)"
-  if osv-scanner scan source --sbom="${app}" --format table; then
-    echo "    no advisories in the application dependency tree"
+  case "${app_count}" in
+    ''|*[!0-9]*)
+      echo "::error::could not count packages under ${APP_PREFIX} in ${subject}. Refusing rather than reporting clean." >&2
+      exit 1 ;;
+  esac
+  if [ "${APP_TREE}" = absent ]; then
+    if [ "${app_count}" -ne 0 ]; then
+      echo "::error::APP_TREE=absent, but ${app_count} packages sit under ${APP_PREFIX} in ${subject}." >&2
+      echo "::error::The application has a dependency tree again: drop APP_TREE=absent so the blocking arm scans it." >&2
+      exit 1
+    fi
+    echo "--> BLOCKING scan: skipped, APP_TREE=absent and none under ${APP_PREFIX} (as declared)"
   else
-    echo "::error::advisories found under ${APP_PREFIX} for ${subject}." >&2
-    echo "::error::At the default prefix this is the application's OWN dependency tree -- the one" >&2
-    echo "::error::osv-scan cannot see, because the image does not install from the committed lockfile." >&2
-    BLOCKING_RC=1
+    if [ "${app_count}" -eq 0 ]; then
+      echo "::error::zero packages under ${APP_PREFIX} in ${subject} -- the blocking arm would pass vacuously." >&2
+      echo "::error::Either the image layout changed or the filter is wrong. Refusing rather than reporting clean." >&2
+      echo "::error::If the application no longer installs a dependency tree at all, set APP_TREE=absent." >&2
+      exit 1
+    fi
+
+    echo "--> BLOCKING scan: ${APP_PREFIX} (${app_count} packages)"
+    if osv-scanner scan source --sbom="${app}" --format table; then
+      echo "    no advisories in the application dependency tree"
+    else
+      echo "::error::advisories found under ${APP_PREFIX} for ${subject}." >&2
+      echo "::error::At the default prefix this is the application's OWN dependency tree -- the one" >&2
+      echo "::error::osv-scan cannot see, because the image does not install from the committed lockfile." >&2
+      BLOCKING_RC=1
+    fi
   fi
 
   echo "--> REPORTING scan: whole image (${total} packages)"

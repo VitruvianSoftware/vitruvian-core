@@ -131,7 +131,14 @@ pub fn run(args: &[String]) -> i32 {
     let tag = env::var("TAG").unwrap_or_default();
     let version_env = env::var("VERSION").unwrap_or_default();
 
-    let app_dir = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let app_dir = if cwd.join("apps/mobile/android-remote/BUILD").is_file() {
+        let sub = cwd.join("apps/mobile/android-remote");
+        let _ = env::set_current_dir(&sub);
+        sub
+    } else {
+        cwd
+    };
     let version = if !version_env.is_empty() {
         version_env
     } else {
@@ -148,17 +155,22 @@ pub fn run(args: &[String]) -> i32 {
         version, tag_suffix
     );
 
-    let android_home = resolve_android_home();
-
-    if android_home.is_none() {
-        if dry_run {
-            println!("==> Dry run: ANDROID_HOME is unset; skipping local build check.");
-            return 0;
-        } else {
-            eprintln!("Error: ANDROID_HOME is unset. A local Android SDK is required to build the release APK.");
-            return 1;
+    let android_home = match resolve_android_home() {
+        Some(home) => {
+            env::set_var("ANDROID_HOME", &home);
+            home
         }
-    }
+        None => {
+            if dry_run {
+                println!("==> Dry run: ANDROID_HOME is unset; skipping local build check.");
+                return 0;
+            } else {
+                eprintln!("Error: ANDROID_HOME is unset. A local Android SDK is required to build the release APK.");
+                return 1;
+            }
+        }
+    };
+    let _ = android_home;
 
     println!("==> Building Android release APK with Bazel");
     let build_status = Command::new("bazel")

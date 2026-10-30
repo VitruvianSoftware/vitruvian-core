@@ -475,7 +475,6 @@ pub fn unused(root: &Value, top: &str, seen: &BTreeSet<(String, String)>) -> Vec
 }
 
 /// The fields of an example that the schema does not name.
-/// Mirrors `unknown_fields(value, schema, defs, path="")` in `docs/guide_test.py`.
 pub fn unknown_fields(value: &Value, schema: &Value, defs: &Value, path: &str) -> Vec<String> {
     let mut cur = schema;
     while let Some(ref_str) = cur.get("$ref").and_then(|v| v.as_str()) {

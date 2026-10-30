@@ -204,6 +204,15 @@ func main() {
 				return err
 			}
 
+			// Human operators: read-only Cloud Run + Logs on the same project.
+			if err := cluster_reader.Deploy(ctx, "operator-reader-"+cfg.Env, &cluster_reader.Args{
+				ProjectID: projects.OSSFloatingProjectID,
+				Members:   cfg.OperatorReaderMembers,
+				Roles:     operatorReaderRoles,
+			}); err != nil {
+				return err
+			}
+
 			// The BU pipeline SA must be able to PULL the images it deploys.
 			// A cross-project Artifact Registry pull needs reader for BOTH the
 			// Cloud Run service agent AND the deploying identity; the service

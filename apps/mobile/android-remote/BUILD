@@ -34,7 +34,7 @@
 load("@rules_android//android:rules.bzl", "android_binary")
 load("@rules_kotlin//kotlin:android.bzl", "kt_android_library")
 load("@rules_kotlin//kotlin:jvm.bzl", "kt_jvm_library", "kt_jvm_test")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
+load("@rules_rust//rust:defs.bzl", "rust_test")
 load("//tools/doctor:defs.bzl", "doctor")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
@@ -114,7 +114,7 @@ android_binary(
         "minSdkVersion": "26",
         "targetSdkVersion": "35",
         "versionCode": "1",
-        "versionName": "0.1.21",  # x-release-please-version
+        "versionName": "0.1.22",  # x-release-please-version
     },
     # No explicit visibility: the package default above already scopes this to
     # the app's own subpackages, and `bazel build //<this app>:app` needs no
@@ -333,16 +333,18 @@ doctor(
 # Run it yourself against an attached phone or emulator:
 #   bazel test //mobile/android/remote:boot_smoke \
 #     --test_env=ANDROID_HOME --test_env=PATH --test_output=all
-sh_test(
+rust_test(
     name = "boot_smoke",
     size = "large",
-    srcs = ["//apps/mobile/android-remote/tools:boot_smoke.sh"],
+    srcs = ["//apps/mobile/android-remote/tools:src/boot_smoke_main.rs"],
     data = [":app.apk"],
+    edition = "2021",
     env = {
         "APK": "$(rlocationpath :app.apk)",
         "APP_PACKAGE": "dev.vitruvian.remote",
         "APP_ACTIVITY": ".MainActivity",
     },
+    rustc_flags = ["-Copt-level=3"],
     tags = [
         # Drives an external device: never hermetic, never cacheable, and not
         # something a wildcard build should pick up.
@@ -358,7 +360,8 @@ sh_test(
         "no-remote",
         "no-sandbox",
     ],
-    deps = ["@bazel_tools//tools/bash/runfiles"],
+    use_libtest_harness = False,
+    deps = ["//apps/mobile/android-remote/tools:android_remote_tools_lib"],
 )
 
 pipeline_unit(

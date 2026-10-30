@@ -19,7 +19,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! Native Rust port of `packages/vitruvian-sdk/release_version_test.py`.
+//! The release version check behind `:release_version_test`.
 //! Verifies that `.release-please-manifest.json`, `release-please-config.json`,
 //! `Sources/VitruvianToolCLI/Words.swift`, `BUILD` visibility rules, and all
 //! kit/sample `extra-files` entries agree on a single version and consumer boundary.
@@ -38,7 +38,7 @@ pub const CONSUMERS: &str = "packages/vitruvian-sdk/consumers";
 pub const TOOLS_ONLY: &[&str] = &[
     "name = \"VitruvianToolKit\"",
     "name = \"vitruvian-tool\"",
-    "[\"conformance/conformance.py\"]",
+    "name = \"conformance\"",
 ];
 
 pub const KIT_PLACES: &[(&str, &str, Option<&str>)] = &[

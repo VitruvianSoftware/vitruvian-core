@@ -21,7 +21,6 @@
 # gazelle:ignore
 
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("//tools/doctor:defs.bzl", "doctor")
 
 package(default_visibility = ["//apps/mobile/wearos:__subpackages__"])
@@ -31,14 +30,14 @@ exports_files([
     "release-please-config.json",
 ])
 
-sh_binary(
+alias(
     name = "publish",
-    srcs = ["scripts/publish.sh"],
+    actual = ":publish-rs",
 )
 
-sh_binary(
+alias(
     name = "install_all",
-    srcs = ["scripts/install_all.sh"],
+    actual = ":install-all-rs",
 )
 
 rust_library(

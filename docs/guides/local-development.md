@@ -33,7 +33,7 @@ bazel run //tools/worktree -- my-branch
 | **oauth-user-inspector** | `pnpm dev` (Vite `:5173` + Express `:8080`) — or `devx up` | `bazel test //apps/web/oauth-user-inspector/...` | none (GCP Secret Manager) |
 | **devx** | `bazel run //apps/cli/devx:devx -- <args>` | `bazel test //apps/cli/devx/...` | — |
 | **homelab** | `bazel run //apps/cli/homelab/cmd/homelab -- <args>` | `bazel test //apps/cli/homelab/...` | — |
-| **mcp-slack** | `pnpm install && pnpm build && pnpm start` | — *(no tests yet)* | — |
+| **mcp-slack** | `bazel run //apps/mcp/slack:mcp-slack-rs` | `bazel test //apps/mcp/slack/...` | — |
 | **nexus-agent** | `pnpm dev` (bot); macOS app: `bazel build --config=macos-app //apps/desktop/nexus-agent/macos:NexusAgent` | — *(no tests yet)* | — |
 
 **Bazel is the build of record.** `pnpm`/`go` are fallbacks for editor flows and

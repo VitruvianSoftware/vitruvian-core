@@ -44,7 +44,7 @@
 # `bazel build //...` skips them.
 
 load("@aspect_rules_js//js:defs.bzl", "js_library")
-load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_library", "py_test")
+load("@aspect_rules_py//py:defs.bzl", "py_library", "py_test")
 load("@bazel_lib//lib:copy_to_directory.bzl", "copy_to_directory")
 load("@build_bazel_rules_swift//swift:swift_binary.bzl", "swift_binary")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
@@ -198,13 +198,6 @@ swift_binary(
     deps = [":VitruvianToolCLI"],
 )
 
-# The GitHub, Nexus Agent and HomeSpeaker tools' folder tests run the
-# conformance script on what they built, as the samples tests here do.
-exports_files(
-    ["conformance/conformance.py"],
-    visibility = ["//packages/vitruvian-sdk/consumers:tools"],
-)
-
 # macOS-only and `manual`, like every swift_test in the repository, so the
 # Linux lane never names it; the `vitruvian-sdk` pipeline unit below runs it by
 # explicit label on xcode-27.
@@ -286,41 +279,8 @@ rust_test(
 
 # bazel run //packages/vitruvian-sdk:conformance -- <a tool's folder>
 #
-# Plays the app's side of the protocol to any tool. Plain Python with no
-# dependencies, so a tool's author can also run the file itself.
-#
-# The program is not itself named `conformance`: its launcher would then sit
-# in the runfiles where the conformance/ folder must be, and it could not
-# find its own script. The alias gives it the name without the file.
-py_binary(
-    name = "conformance_script",
-    srcs = ["conformance/conformance.py"],
-    main = "conformance/conformance.py",
-)
-
-alias(
-    name = "conformance",
-    actual = ":conformance_script",
-)
-
-# The reference tools pass, one for each protocol version, and tools that
-# each break the protocol in one way are each caught by the check meant for
-# them. It starts real processes: Python ones, a few seconds in all. Not
-# `manual` and not tied to macOS, so the Linux lane runs it too.
-py_test(
-    name = "conformance_test",
-    size = "small",
-    srcs = [
-        "conformance/conformance.py",
-        "conformance/conformance_test.py",
-    ],
-    data = REFERENCE_TOOL + REFERENCE_TOOL_2,
-    main = "conformance/conformance_test.py",
-)
-
-# Native Rust port of the SDK conformance validator (std only, zero external
-# crates). Kept alongside conformance.py so existing Python callers continue to
-# import conformance.py while CLI users and parity tests run the native binary.
+# Plays the app's side of the protocol to any tool (std only, zero external
+# crates).
 rust_library(
     name = "conformance_rs_lib",
     srcs = glob(
@@ -335,7 +295,7 @@ rust_library(
 )
 
 rust_binary(
-    name = "conformance-rs",
+    name = "conformance",
     srcs = ["conformance/src/main.rs"],
     crate_root = "conformance/src/main.rs",
     edition = "2021",
@@ -345,8 +305,14 @@ rust_binary(
 )
 
 alias(
+    name = "conformance-rs",
+    actual = ":conformance",
+    visibility = ["//packages/vitruvian-sdk/consumers:tools"],
+)
+
+alias(
     name = "conformance_rs",
-    actual = ":conformance-rs",
+    actual = ":conformance",
     visibility = ["//packages/vitruvian-sdk/consumers:tools"],
 )
 
@@ -356,6 +322,26 @@ rust_test(
     crate = ":conformance_rs_lib",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
+)
+
+# The reference tools pass, one for each protocol version, and tools that
+# each break the protocol in one way are each caught by the check meant for
+# them. Not `manual` and not tied to macOS, so the Linux lane runs it too.
+rust_test(
+    name = "conformance_test",
+    size = "small",
+    srcs = ["verification/src/bin/conformance_test.rs"],
+    crate_root = "verification/src/bin/conformance_test.rs",
+    data = REFERENCE_TOOL + REFERENCE_TOOL_2,
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    use_libtest_harness = False,
+    deps = [":verification_rs_lib"],
+)
+
+test_suite(
+    name = "conformance_rs_test",
+    tests = [":conformance_test"],
 )
 
 # Native Rust verification suites and reference tools (std + conformance_rs_lib only,
@@ -538,29 +524,12 @@ filegroup(
     srcs = [":%s-folder" % sample for sample in NATIVE_SAMPLE_FOLDERS],
 )
 
-# Each built sample against the conformance script. They start real
-# processes, a second or two each. Not `manual` and not tied to macOS: a
-# py_test brings Bazel's own Python and the script, and the sample's
-# folder is its data, so nothing outside Bazel is needed.
-[
-    py_test(
-        name = language + "_sample_test",
-        size = "small",
-        srcs = [
-            "conformance/conformance.py",
-            "samples/samples_test.py",
-        ],
-        args = ["$(rootpath built/%s/vitruvian-tool.json)" % sample for sample in samples],
-        data = [":%s-folder" % sample for sample in samples] + ["built/%s/vitruvian-tool.json" % sample for sample in samples],
-        main = "samples/samples_test.py",
-        deps = ["@pip//jsonschema"],
-    )
-    for language, samples in NATIVE_SAMPLES.items()
-]
-
+# Each built sample against the conformance validator. They start real
+# processes, a second or two each. Not `manual` and not tied to macOS, so the
+# Linux lane runs them too.
 [
     rust_test(
-        name = language + "_sample_rs_test",
+        name = language + "_sample_test",
         size = "small",
         srcs = ["verification/src/bin/samples_test.rs"],
         args = ["$(rootpath built/%s/vitruvian-tool.json)" % sample for sample in samples],
@@ -574,34 +543,21 @@ filegroup(
     for language, samples in NATIVE_SAMPLES.items()
 ]
 
+[
+    test_suite(
+        name = language + "_sample_rs_test",
+        tests = [":" + language + "_sample_test"],
+    )
+    for language in NATIVE_SAMPLES
+]
+
 # What needs no build: every sample's manifest against the schema, one SDK
 # version across the kits, the kit samples and the command, and the plain
-# Python sample against the conformance script. Not `manual` and not tied to
+# Python sample against the conformance validator. Not `manual` and not tied to
 # macOS, so the Linux lane runs it too.
-py_test(
+rust_test(
     name = "samples_test",
     size = "small",
-    srcs = [
-        "conformance/conformance.py",
-        "samples/samples_test.py",
-    ],
-    data = glob([
-        "samples/**",
-        "Sources/VitruvianToolCLI/*.swift",
-    ]) + [
-        "kits/python/pyproject.toml",
-        "protocol/manifest.schema.json",
-        "//packages/vitruvian-sdk/go/toolkit:version.go",
-        "//packages/vitruvian-sdk/kits/rust:Cargo.toml",
-        "//packages/vitruvian-sdk/kits/typescript:package.json",
-    ],
-    main = "samples/samples_test.py",
-    deps = ["@pip//jsonschema"],
-)
-
-rust_test(
-    name = "samples_rs_test",
-    size = "small",
     srcs = ["verification/src/bin/samples_test.rs"],
     crate_root = "verification/src/bin/samples_test.rs",
     data = glob([
@@ -620,26 +576,16 @@ rust_test(
     deps = [":verification_rs_lib"],
 )
 
-# The Swift samples, built, against the conformance script. It starts
+test_suite(
+    name = "samples_rs_test",
+    tests = [":samples_test"],
+)
+
+# The Swift samples, built, against the conformance validator. It starts
 # real processes. `manual` and macOS-only: the pipeline unit names it.
-py_test(
+rust_test(
     name = "swift_samples_test",
     size = "small",
-    srcs = [
-        "conformance/conformance.py",
-        "samples/samples_test.py",
-    ],
-    args = ["$(rootpath built/%s/vitruvian-tool.json)" % sample for sample in SWIFT_SAMPLES],
-    data = [":sample-folders"] + ["built/%s/vitruvian-tool.json" % sample for sample in SWIFT_SAMPLES] + glob(["samples/**"]),
-    main = "samples/samples_test.py",
-    tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
-    deps = ["@pip//jsonschema"],
-)
-
-rust_test(
-    name = "swift_samples_rs_test",
-    size = "small",
     srcs = ["verification/src/bin/samples_test.rs"],
     args = ["$(rootpath built/%s/vitruvian-tool.json)" % sample for sample in SWIFT_SAMPLES],
     crate_root = "verification/src/bin/samples_test.rs",
@@ -650,6 +596,12 @@ rust_test(
     target_compatible_with = ["@platforms//os:macos"],
     use_libtest_harness = False,
     deps = [":verification_rs_lib"],
+)
+
+test_suite(
+    name = "swift_samples_rs_test",
+    tags = ["manual"],
+    tests = [":swift_samples_test"],
 )
 
 # The mirror's own workflows (.github/workflows/, which run only in
@@ -657,22 +609,8 @@ rust_test(
 # with bash, git and jq, releases a version once and never 0.0.0; and no job
 # may write more than it must. `no-remote-exec`: the step needs jq and git on
 # the machine, and the remote execution image has no jq.
-py_test(
-    name = "mirror_workflows_test",
-    size = "small",
-    srcs = ["mirror_workflows_test.py"],
-    data = [
-        ".github/workflows/ci.yml",
-        ".github/workflows/kits.yml",
-        ".github/workflows/release.yml",
-    ],
-    main = "mirror_workflows_test.py",
-    tags = ["no-remote-exec"],
-    deps = ["@pip//pyyaml"],
-)
-
 rust_test(
-    name = "mirror_workflows_rs_test",
+    name = "mirror_workflows_test",
     size = "small",
     srcs = ["verification/src/bin/mirror_workflows_test.rs"],
     crate_root = "verification/src/bin/mirror_workflows_test.rs",
@@ -770,38 +708,12 @@ copy_to_directory(
     },
 )
 
-# The kit samples, as shipped, against the conformance script. It starts
+# The kit samples, as shipped, against the conformance validator. It starts
 # real processes: Node through the sample's own bin/tool, which finds `node`
-# on the PATH the test gives it, and the Python sample through this test's
-# own Python. Not `manual` and not tied to macOS, so the Linux lane runs it.
-py_test(
-    name = "kit_samples_test",
-    size = "small",
-    srcs = [
-        "conformance/conformance.py",
-        "samples/samples_test.py",
-    ],
-    args = [
-        "$(rootpath :hello-typescript-folder)/vitruvian-tool.json",
-        "$(rootpath :hello-python-kit-folder)/vitruvian-tool.json",
-        "$(rootpath :hello-panel-typescript-folder)/vitruvian-tool.json",
-        "$(rootpath :hello-panel-python-folder)/vitruvian-tool.json",
-    ],
-    data = [
-        ":hello-panel-python-folder",
-        ":hello-panel-typescript-folder",
-        ":hello-python-kit-folder",
-        ":hello-typescript-folder",
-        "@nodejs_toolchains//:resolved_toolchain",
-    ],
-    env = {"VITRUVIAN_NODE": "$(NODE_PATH)"},
-    main = "samples/samples_test.py",
-    toolchains = ["@nodejs_toolchains//:resolved_toolchain"],
-    deps = ["@pip//jsonschema"],
-)
-
+# on the PATH the test gives it, and the Python sample through Python. Not
+# `manual` and not tied to macOS, so the Linux lane runs it.
 rust_test(
-    name = "kit_samples_rs_test",
+    name = "kit_samples_test",
     size = "small",
     srcs = ["verification/src/bin/samples_test.rs"],
     args = [
@@ -824,6 +736,11 @@ rust_test(
     toolchains = ["@nodejs_toolchains//:resolved_toolchain"],
     use_libtest_harness = False,
     deps = [":verification_rs_lib"],
+)
+
+test_suite(
+    name = "kit_samples_rs_test",
+    tests = [":kit_samples_test"],
 )
 
 # `vitruvian-tool init` starts a new tool from a copy of a hello sample, and
@@ -859,13 +776,6 @@ alias(
     actual = ":sync-templates",
 )
 
-py_binary(
-    name = "sync-templates-py",
-    srcs = ["samples/sync_templates.py"],
-    data = glob(["samples/hello-*/**"]),
-    main = "samples/sync_templates.py",
-)
-
 # The committed text is what the samples are now. Not `manual` and not tied
 # to macOS, so the Linux lane runs it too.
 rust_test(
@@ -874,54 +784,20 @@ rust_test(
     crate = ":sync_templates_rs_lib",
     data = glob(["samples/hello-*/**"]) + [
         "Sources/VitruvianToolCLI/Templates.swift",
-        "samples/sync_templates.py",
     ],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
 )
 
-alias(
+test_suite(
     name = "sync_templates_rs_lib_test",
-    actual = ":templates_in_sync_test",
+    tests = [":templates_in_sync_test"],
 )
 
-py_test(
-    name = "templates_in_sync_py_test",
-    size = "small",
-    srcs = ["samples/sync_templates.py"],
-    args = ["--check"],
-    data = glob(["samples/hello-*/**"]) + ["Sources/VitruvianToolCLI/Templates.swift"],
-    main = "samples/sync_templates.py",
-)
-
-# What `init` writes passes `validate`, the conformance script and `run`. It
+# What `init` writes passes `validate`, the conformance validator and `run`. It
 # starts the built command and real processes. `manual` and macOS-only.
-py_test(
-    name = "init_test",
-    size = "small",
-    srcs = [
-        "conformance/conformance.py",
-        "samples/init_test.py",
-    ],
-    args = ["$(rootpath :vitruvian-tool)"],
-    data = [
-        "Package.swift",
-        ":vitruvian-tool",
-        "//packages/vitruvian-sdk/kits/typescript:tool-kit-typescript",
-        "@nodejs_toolchains//:resolved_toolchain",
-    ] + glob(["kits/python/vitruvian_tool_kit/**/*.py"]),
-    env = {
-        "VITRUVIAN_NODE": "$(NODE_PATH)",
-        "VITRUVIAN_TOOL_KIT_TYPESCRIPT": "$(rootpath //packages/vitruvian-sdk/kits/typescript:tool-kit-typescript)",
-    },
-    main = "samples/init_test.py",
-    tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
-    toolchains = ["@nodejs_toolchains//:resolved_toolchain"],
-)
-
 rust_test(
-    name = "init_rs_test",
+    name = "init_test",
     size = "small",
     srcs = ["verification/src/bin/init_test.rs"],
     args = ["$(rootpath :vitruvian-tool)"],
@@ -945,6 +821,12 @@ rust_test(
     deps = [":verification_rs_lib"],
 )
 
+test_suite(
+    name = "init_rs_test",
+    tags = ["manual"],
+    tests = [":init_test"],
+)
+
 # The Swift tool `init --template swift` writes, built the way its author
 # builds it: the test runs the `build.sh` it wrote, which is `swift build`
 # with the Mac's own Swift toolchain, not Bazel's. It builds against a copy of
@@ -965,31 +847,8 @@ rust_test(
 # `TemporaryDirectory.XXXXXX` holding an empty `.keep-directory`, in the
 # Mac's real per-user temporary folder, whatever the environment says. The
 # test takes away the ones its own build made, and no others: see `sweep`.
-py_test(
-    name = "swift_template_test",
-    size = "large",
-    timeout = "long",
-    srcs = ["samples/swift_template_test.py"],
-    args = ["$(rootpath :vitruvian-tool)"],
-    data = [
-        "Package.swift",
-        ":vitruvian-tool",
-    ] + glob([
-        "Sources/**",
-        "Tests/**",
-        "samples/**",
-    ]),
-    main = "samples/swift_template_test.py",
-    tags = [
-        "manual",
-        "no-remote",
-        "no-sandbox",
-    ],
-    target_compatible_with = ["@platforms//os:macos"],
-)
-
 rust_test(
-    name = "swift_template_rs_test",
+    name = "swift_template_test",
     size = "large",
     timeout = "long",
     srcs = ["verification/src/bin/swift_template_test.rs"],
@@ -1015,25 +874,27 @@ rust_test(
     deps = [":verification_rs_lib"],
 )
 
-# The end of the test above: its folder goes even while something is still
-# writing into it, and what cannot go is named. Needs no Swift and no Mac.
-py_test(
-    name = "swift_template_cleanup_test",
-    srcs = [
-        "samples/swift_template_cleanup_test.py",
-        "samples/swift_template_test.py",
-    ],
-    main = "samples/swift_template_cleanup_test.py",
+test_suite(
+    name = "swift_template_rs_test",
+    tags = ["manual"],
+    tests = [":swift_template_test"],
 )
 
+# The end of the test above: its folder goes even while something is still
+# writing into it, and what cannot go is named. Needs no Swift and no Mac.
 rust_test(
-    name = "swift_template_cleanup_rs_test",
+    name = "swift_template_cleanup_test",
     srcs = ["verification/src/bin/swift_template_cleanup_test.rs"],
     crate_root = "verification/src/bin/swift_template_cleanup_test.rs",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     use_libtest_harness = False,
     deps = [":verification_rs_lib"],
+)
+
+test_suite(
+    name = "swift_template_cleanup_rs_test",
+    tests = [":swift_template_cleanup_test"],
 )
 
 # The Go kit as its own module, outside the workspace, through `go vet` with
@@ -1045,25 +906,8 @@ GO_KIT = [
     "//packages/vitruvian-sdk/go/toolkit/ui:sources",
 ]
 
-py_test(
-    name = "go_kit_vet_test",
-    size = "small",
-    srcs = [
-        "conformance/conformance.py",
-        "samples/go_template_test.py",
-    ],
-    args = [
-        "$(rootpath //tools/go-sdk:go)",
-        "$(rootpaths %s)" % GO_KIT[0],
-        "$(rootpaths %s)" % GO_KIT[1],
-        "$(rootpaths %s)" % GO_KIT[2],
-    ],
-    data = GO_KIT + ["//tools/go-sdk:go"],
-    main = "samples/go_template_test.py",
-)
-
 rust_test(
-    name = "go_kit_vet_rs_test",
+    name = "go_kit_vet_test",
     size = "small",
     srcs = ["verification/src/bin/go_template_test.rs"],
     args = [
@@ -1078,38 +922,19 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
     use_libtest_harness = False,
     deps = [":verification_rs_lib"],
+)
+
+test_suite(
+    name = "go_kit_vet_rs_test",
+    tests = [":go_kit_vet_test"],
 )
 
 # The same, then the tool `init --template go --sdk` writes, built by its
 # own build.sh with Bazel's Go first on the PATH, through `validate`, the
-# conformance script and `run`. It starts the built command, so `manual`
+# conformance validator and `run`. It starts the built command, so `manual`
 # and macOS-only, like init_test.
-py_test(
-    name = "go_template_test",
-    size = "medium",
-    srcs = [
-        "conformance/conformance.py",
-        "samples/go_template_test.py",
-    ],
-    args = [
-        "$(rootpath //tools/go-sdk:go)",
-        "$(rootpaths %s)" % GO_KIT[0],
-        "$(rootpaths %s)" % GO_KIT[1],
-        "$(rootpaths %s)" % GO_KIT[2],
-        "--tool",
-        "$(rootpath :vitruvian-tool)",
-    ],
-    data = GO_KIT + [
-        ":vitruvian-tool",
-        "//tools/go-sdk:go",
-    ],
-    main = "samples/go_template_test.py",
-    tags = ["manual"],
-    target_compatible_with = ["@platforms//os:macos"],
-)
-
 rust_test(
-    name = "go_template_rs_test",
+    name = "go_template_test",
     size = "medium",
     srcs = ["verification/src/bin/go_template_test.rs"],
     args = [
@@ -1131,30 +956,20 @@ rust_test(
     target_compatible_with = ["@platforms//os:macos"],
     use_libtest_harness = False,
     deps = [":verification_rs_lib"],
+)
+
+test_suite(
+    name = "go_template_rs_test",
+    tags = ["manual"],
+    tests = [":go_template_test"],
 )
 
 # The guide's examples: every message and manifest in it against the schemas,
 # every piece of code in it against the sample it is taken from, every
 # command in it against what exists, and what it quotes the command as saying
 # against the command's own words. Not `manual` and not tied to macOS.
-py_test(
-    name = "guide_test",
-    size = "small",
-    srcs = ["docs/guide_test.py"],
-    data = PROTOCOL_FILES + glob(["samples/**"]) + [
-        "BUILD",
-        "Sources/VitruvianToolCLI/NewTool.swift",
-        "Sources/VitruvianToolCLI/Words.swift",
-        "docs/writing-a-tool.md",
-        "//packages/vitruvian-sdk/go/toolkit:app.go",
-        "//packages/vitruvian-sdk/kits/rust:src/app.rs",
-    ] + glob(["Sources/VitruvianToolKit/**/*.swift"]),
-    main = "docs/guide_test.py",
-    deps = ["@pip//jsonschema"],
-)
-
 rust_test(
-    name = "guide_rs_test",
+    name = "guide_test",
     size = "small",
     srcs = ["verification/src/bin/guide_test.rs"],
     crate_root = "verification/src/bin/guide_test.rs",
@@ -1173,34 +988,9 @@ rust_test(
 )
 
 # The version in release-please's two files and the one `--version` prints
-# agree. Plain Python, so the Linux lane runs it too.
-py_test(
-    name = "release_version_test",
-    size = "small",
-    srcs = ["release_version_test.py"],
-    data = [
-        ".release-please-manifest.json",
-        "BUILD",
-        "Sources/VitruvianToolCLI/Words.swift",
-        "kits/python/pyproject.toml",
-        "release-please-config.json",
-        "samples/hello-go/go.mod",
-        "samples/hello-panel-go/go.mod",
-        "samples/hello-panel-python/requirements.txt",
-        "samples/hello-panel-rust/Cargo.toml",
-        "samples/hello-panel-typescript/package.json",
-        "samples/hello-python-kit/requirements.txt",
-        "samples/hello-rust/Cargo.toml",
-        "samples/hello-typescript/package.json",
-        "//packages/vitruvian-sdk/go/toolkit:version.go",
-        "//packages/vitruvian-sdk/kits/rust:Cargo.toml",
-        "//packages/vitruvian-sdk/kits/typescript:package.json",
-    ],
-    main = "release_version_test.py",
-)
-
+# agree. Plain Rust, so the Linux lane runs it too.
 rust_test(
-    name = "release_version_rs_test",
+    name = "release_version_test",
     size = "small",
     srcs = ["verification/src/bin/release_version_test.rs"],
     crate_root = "verification/src/bin/release_version_test.rs",

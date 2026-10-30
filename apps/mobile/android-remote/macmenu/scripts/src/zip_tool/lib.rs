@@ -18,74 +18,53 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+//! Rust port of `apps/mobile/android-remote/macmenu/scripts/zip-tool.sh`.
+//!
+//! The Vitruvian Remote extension for the Vitruvian app, as the app installs it
+//! from the catalog: a zip of the extension's folder with `vitruvian-tool.json`
+//! at the top, `bin/tool`, and `bin/vitruvian-remote-agent`, no folder of its
+//! own, no links. Named `VitruvianRemote-<version>-tool.zip`.
+//!
+//! ```text
+//! zip-tool-rs <remote-tool binary> <vitruvian-remote-agent binary> <version> <dist dir>
+//! ```
+//!
+//! With `REMOTE_TOOL_REQUIRE_UNIVERSAL=1` both programs must hold Apple silicon
+//! and Intel code. With `REMOTE_TOOL_MAX_MINOS=X.Y` every architecture of every
+//! program must say, in its `LC_BUILD_VERSION`, that it runs on macOS X.Y or
+//! older. The version must be the one `tool/vitruvian-tool.json` says.
+//!
+//! Prints the zip's size and SHA-256, which a catalog entry pins.
+
 use std::env;
 use std::fs;
-use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const TOOL_ID: &str = "com.vitruviansoftware.vitruvian.android-remote";
-const BINARY_NAME: &str = "android-remote-tool";
+pub const PKG: &str = "apps/mobile/android-remote/macmenu";
 
-const USAGE: &str = "\
-Usage: android-remote-zip-tool [OPTIONS]
-
-Packages the android-remote tool binary into a versioned zip.
-
-Options:
-  --version <ver>  Override the version (default: read from manifest.json)
-  -h, --help       Print this help message and exit
-
-Environment:
-  ANDROID_REMOTE_ZIP_OUT_DIR  Output directory (default: <pkg_dir>/dist)
-  ANDROID_REMOTE_TOOL_BIN     Path to the tool binary";
-
-#[derive(Debug)]
-pub struct Config {
-    pub version: Option<String>,
-    pub help: bool,
+/// Everything the packaging needs. `lipo`/`vtool` name the programs to run so a
+/// test can stand in for them.
+pub struct Options {
+    pub tool: PathBuf,
+    pub agent: PathBuf,
+    pub version: String,
+    pub dist: PathBuf,
+    pub manifest: PathBuf,
+    pub require_universal: bool,
+    pub max_minos: Option<String>,
+    pub lipo: String,
+    pub vtool: String,
 }
 
-pub fn parse_args(args: &[String]) -> Result<Config, String> {
-    let mut version = None;
-    let mut help = false;
-    let mut i = 1;
-    while i < args.len() {
-        match args[i].as_str() {
-            "-h" | "--help" => {
-                help = true;
-                i += 1;
-            }
-            "--version" => {
-                if i + 1 >= args.len() {
-                    return Err("--version requires a value".to_string());
-                }
-                version = Some(args[i + 1].clone());
-                i += 2;
-            }
-            other => {
-                return Err(format!("unknown flag: {other}"));
-            }
-        }
-    }
-    Ok(Config { version, help })
-}
-
-pub fn read_manifest_version(manifest_path: &Path) -> Result<String, String> {
-    let content = fs::read_to_string(manifest_path)
-        .map_err(|e| format!("failed to read {}: {e}", manifest_path.display()))?;
-    extract_version_from_manifest(&content)
-        .ok_or_else(|| format!("no \"version\" field found in {}", manifest_path.display()))
-}
-
-fn extract_version_from_manifest(content: &str) -> Option<String> {
+/// The version the manifest says: the first `"version": "<v>"` line, as the
+/// script's `sed -n ... | head -1` found it.
+pub fn manifest_version(content: &str) -> Option<String> {
     for line in content.lines() {
-        if let Some(pos) = line.find("\"version\"") {
-            let rest = &line[pos + "\"version\"".len()..];
-            let rest = rest.trim_start().trim_start_matches(':').trim_start();
-            if rest.starts_with('"') {
-                let inner = &rest[1..];
+        if let Some(pos) = line.find("\"version\":") {
+            let rest = line[pos + "\"version\":".len()..].trim_start_matches(' ');
+            if let Some(inner) = rest.strip_prefix('"') {
                 if let Some(end) = inner.find('"') {
                     return Some(inner[..end].to_string());
                 }
@@ -95,120 +74,236 @@ fn extract_version_from_manifest(content: &str) -> Option<String> {
     None
 }
 
-pub fn update_manifest_version(content: &str, new_version: &str) -> String {
-    let mut result = String::with_capacity(content.len());
-    for line in content.lines() {
-        if let Some(pos) = line.find("\"version\"") {
-            let rest = &line[pos + "\"version\"".len()..];
-            let trimmed = rest.trim_start().trim_start_matches(':').trim_start();
-            if trimmed.starts_with('"') {
-                let inner = &trimmed[1..];
-                if let Some(end) = inner.find('"') {
-                    let before = &line[..pos + "\"version\"".len()];
-                    let colon_space = &rest[..rest.len() - trimmed.len()];
-                    let after_val = &inner[end + 1..];
-                    result.push_str(before);
-                    result.push_str(colon_space);
-                    result.push('"');
-                    result.push_str(new_version);
-                    result.push('"');
-                    result.push_str(after_val);
-                    result.push('\n');
-                    continue;
+/// The oldest macOS each architecture of a program runs on, one
+/// `(arch, minos)` per slice, from `vtool -show-build`. A slice with no
+/// `LC_BUILD_VERSION` gives `(arch, "none")`.
+pub fn minos_per_arch(vtool_output: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let mut arch = String::new();
+    let mut minos = String::new();
+    let mut seen_thin = false;
+    let flush = |arch: &str, minos: &str, out: &mut Vec<(String, String)>| {
+        if !arch.is_empty() {
+            let m = if minos.is_empty() { "none" } else { minos };
+            out.push((arch.to_string(), m.to_string()));
+        }
+    };
+    for raw in vtool_output.lines() {
+        let line = raw.trim_end_matches('\r');
+        if let Some(pos) = line.find(" (architecture ") {
+            if line.ends_with("):") {
+                flush(&arch, &minos, &mut out);
+                arch = line[pos + " (architecture ".len()..line.len() - 2].to_string();
+                minos.clear();
+                continue;
+            }
+        }
+        if line.ends_with(':') && arch.is_empty() && !seen_thin {
+            arch = "thin".to_string();
+            seen_thin = true;
+            continue;
+        }
+        let mut fields = line.split_whitespace();
+        if fields.next() == Some("minos") {
+            if let Some(v) = fields.next() {
+                minos = v.to_string();
+            }
+        }
+    }
+    flush(&arch, &minos, &mut out);
+    out
+}
+
+/// Whether version `a` is newer than `b`, comparing X.Y.Z numerically.
+pub fn newer_than(a: &str, b: &str) -> bool {
+    let num = |s: &str| -> Vec<u64> {
+        s.split('.')
+            .map(|p| {
+                let digits: String = p.chars().take_while(|c| c.is_ascii_digit()).collect();
+                digits.parse().unwrap_or(0)
+            })
+            .collect()
+    };
+    let (x, y) = (num(a), num(b));
+    for i in 0..x.len().max(y.len()) {
+        let (xi, yi) = (*x.get(i).unwrap_or(&0), *y.get(i).unwrap_or(&0));
+        if xi > yi {
+            return true;
+        }
+        if xi < yi {
+            return false;
+        }
+    }
+    false
+}
+
+fn archs_of(lipo: &str, binary: &Path) -> Result<String, String> {
+    let out = Command::new(lipo)
+        .arg("-archs")
+        .arg(binary)
+        .output()
+        .map_err(|e| format!("failed to run {lipo}: {e}"))?;
+    if !out.status.success() {
+        return Err(format!("{lipo} -archs failed for {}", binary.display()));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+fn sha256_of(path: &Path) -> Result<String, String> {
+    for (prog, args) in [("shasum", vec!["-a", "256"]), ("sha256sum", vec![])] {
+        if let Ok(out) = Command::new(prog).args(&args).arg(path).output() {
+            if out.status.success() {
+                if let Some(h) = String::from_utf8_lossy(&out.stdout)
+                    .split_whitespace()
+                    .next()
+                {
+                    return Ok(h.to_string());
                 }
             }
         }
-        result.push_str(line);
-        result.push('\n');
     }
-    if !content.is_empty() && !content.ends_with('\n') {
-        result.pop();
-    }
-    result
+    Err("could not compute SHA-256 (no shasum or sha256sum)".to_string())
 }
 
-pub fn find_binary(_pkg_dir: &Path) -> Result<PathBuf, String> {
-    if let Ok(p) = env::var("ANDROID_REMOTE_TOOL_BIN") {
-        let path = PathBuf::from(&p);
-        if path.exists() {
-            return Ok(path);
-        }
-        return Err(format!(
-            "ANDROID_REMOTE_TOOL_BIN is set to {p} but the file does not exist"
-        ));
-    }
+/// Checks the programs, stages the extension's folder, and zips it into
+/// `dist`. Returns the zip's path.
+pub fn package(opts: &Options) -> Result<PathBuf, String> {
+    let programs = [&opts.tool, &opts.agent];
 
-    if let Ok(runfiles) = env::var("RUNFILES_DIR") {
-        let candidate = PathBuf::from(&runfiles)
-            .join("_main/apps/mobile/android-remote/macmenu/android-remote-tool");
-        if candidate.exists() {
-            return Ok(candidate);
-        }
-    }
-
-    if let Ok(exe) = env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            let candidate =
-                dir.join("_main/apps/mobile/android-remote/macmenu/android-remote-tool");
-            if candidate.exists() {
-                return Ok(candidate);
+    if opts.require_universal {
+        for binary in programs {
+            let archs = archs_of(&opts.lipo, binary)?;
+            if !(archs.contains("arm64") && archs.contains("x86_64")) {
+                return Err(format!(
+                    "expected a universal binary, {} is: {archs}",
+                    binary.display()
+                ));
             }
         }
     }
 
-    if let Ok(ws) = env::var("BUILD_WORKSPACE_DIRECTORY") {
-        let candidate = PathBuf::from(&ws)
-            .join("bazel-bin/apps/mobile/android-remote/macmenu/android-remote-tool");
-        if candidate.exists() {
-            return Ok(candidate);
+    if let Some(max) = opts.max_minos.as_deref().filter(|m| !m.is_empty()) {
+        for binary in programs {
+            let out = Command::new(&opts.vtool)
+                .arg("-show-build")
+                .arg(binary)
+                .output()
+                .map_err(|e| format!("failed to run {}: {e}", opts.vtool))?;
+            let slices = minos_per_arch(&String::from_utf8_lossy(&out.stdout));
+            if slices.is_empty() {
+                return Err(format!(
+                    "vtool found no architecture in {}",
+                    binary.display()
+                ));
+            }
+            for (arch, minos) in slices {
+                if minos == "none" || newer_than(&minos, max) {
+                    return Err(format!(
+                        "{} ({arch}) needs macOS {minos}; the extension supports macOS {max}",
+                        binary.display()
+                    ));
+                }
+            }
         }
     }
 
-    Err(
-        "could not find android-remote-tool binary: set ANDROID_REMOTE_TOOL_BIN, \
-         or run from a Bazel context with runfiles"
-            .to_string(),
-    )
-}
-
-pub fn compute_sha256(path: &Path) -> Result<String, String> {
-    let output = Command::new("shasum")
-        .args(["-a", "256"])
-        .arg(path)
-        .output()
-        .map_err(|e| format!("failed to run shasum: {e}"))?;
-    if !output.status.success() {
+    let manifest_text = fs::read_to_string(&opts.manifest)
+        .map_err(|e| format!("failed to read {}: {e}", opts.manifest.display()))?;
+    let said = manifest_version(&manifest_text).unwrap_or_default();
+    if said != opts.version {
         return Err(format!(
-            "shasum failed: {}",
-            String::from_utf8_lossy(&output.stderr)
+            "tool/vitruvian-tool.json says {said}, the release is {}",
+            opts.version
         ));
     }
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    stdout
-        .split_whitespace()
-        .next()
-        .map(|s| s.to_string())
-        .ok_or_else(|| "shasum produced no output".to_string())
+
+    let stage = env::temp_dir().join(format!(
+        "ar-zip-tool-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    let result = stage_and_zip(opts, &stage);
+    let _ = fs::remove_dir_all(&stage);
+    result
 }
 
-fn determine_pkg_dir() -> Result<PathBuf, String> {
-    let exe = env::current_exe().map_err(|e| format!("cannot determine executable path: {e}"))?;
-    let mut dir = exe
-        .parent()
-        .ok_or("executable has no parent directory")?
-        .to_path_buf();
-    for _ in 0..3 {
-        dir = dir
-            .parent()
-            .ok_or_else(|| format!("cannot determine package directory from {}", exe.display()))?
-            .to_path_buf();
+fn stage_and_zip(opts: &Options, stage: &Path) -> Result<PathBuf, String> {
+    let folder = stage.join("remote");
+    let bin = folder.join("bin");
+    fs::create_dir_all(&bin).map_err(|e| format!("failed to stage: {e}"))?;
+    // fs::copy follows links, so what lands in the folder is a plain file even
+    // when Bazel's output is one.
+    let copy = |from: &Path, to: &Path, mode: u32| -> Result<(), String> {
+        fs::copy(from, to).map_err(|e| format!("failed to copy {}: {e}", from.display()))?;
+        fs::set_permissions(to, fs::Permissions::from_mode(mode))
+            .map_err(|e| format!("failed to chmod {}: {e}", to.display()))
+    };
+    copy(&opts.manifest, &folder.join("vitruvian-tool.json"), 0o644)?;
+    copy(&opts.tool, &bin.join("tool"), 0o755)?;
+    copy(&opts.agent, &bin.join("vitruvian-remote-agent"), 0o755)?;
+
+    // The zip is made from inside the staging folder, so the dist folder is
+    // made whole first: `./dist` would otherwise name a folder in the staging one.
+    fs::create_dir_all(&opts.dist).map_err(|e| format!("failed to create dist: {e}"))?;
+    let dist = fs::canonicalize(&opts.dist).map_err(|e| format!("bad dist dir: {e}"))?;
+    let asset = dist.join(format!("VitruvianRemote-{}-tool.zip", opts.version));
+    let _ = fs::remove_file(&asset);
+    let status = Command::new("zip")
+        .args(["-q", "-r", "-X"])
+        .arg(&asset)
+        .arg(".")
+        .current_dir(&folder)
+        .status()
+        .map_err(|e| format!("failed to run zip: {e}"))?;
+    if !status.success() {
+        return Err("zip failed".to_string());
     }
-    Ok(dir)
+
+    let size = fs::metadata(&asset)
+        .map_err(|e| format!("zip was not created: {e}"))?
+        .len();
+    println!("==> {}", asset.display());
+    println!("size: {size}");
+    println!("sha256: {}", sha256_of(&asset)?);
+    Ok(asset)
+}
+
+fn default_manifest() -> PathBuf {
+    let base = env::var("BUILD_WORKSPACE_DIRECTORY")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| env::current_dir().unwrap_or_default());
+    base.join(PKG).join("tool/vitruvian-tool.json")
 }
 
 pub fn run(args: &[String]) -> i32 {
-    match run_inner(args) {
-        Ok(()) => 0,
+    if args.len() != 5 {
+        eprintln!(
+            "Usage: zip-tool-rs <remote-tool binary> <vitruvian-remote-agent binary> <version> <dist dir>"
+        );
+        return 1;
+    }
+    let opts = Options {
+        tool: PathBuf::from(&args[1]),
+        agent: PathBuf::from(&args[2]),
+        version: args[3].clone(),
+        dist: PathBuf::from(&args[4]),
+        manifest: env::var("REMOTE_TOOL_MANIFEST")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .map(PathBuf::from)
+            .unwrap_or_else(default_manifest),
+        require_universal: env::var("REMOTE_TOOL_REQUIRE_UNIVERSAL").as_deref() == Ok("1"),
+        max_minos: env::var("REMOTE_TOOL_MAX_MINOS").ok(),
+        lipo: "lipo".to_string(),
+        vtool: "vtool".to_string(),
+    };
+    match package(&opts) {
+        Ok(_) => 0,
         Err(msg) => {
             eprintln!("error: {msg}");
             1
@@ -216,252 +311,174 @@ pub fn run(args: &[String]) -> i32 {
     }
 }
 
-fn run_inner(args: &[String]) -> Result<(), String> {
-    let config = parse_args(args)?;
-    if config.help {
-        println!("{USAGE}");
-        return Ok(());
-    }
-
-    let pkg_dir = determine_pkg_dir()?;
-    let manifest_path = pkg_dir.join("manifest.json");
-
-    let manifest_version = read_manifest_version(&manifest_path)?;
-    let version = config.version.unwrap_or_else(|| manifest_version.clone());
-
-    let binary_path = find_binary(&pkg_dir)?;
-
-    let out_dir = match env::var("ANDROID_REMOTE_ZIP_OUT_DIR") {
-        Ok(d) => PathBuf::from(d),
-        Err(_) => pkg_dir.join("dist"),
-    };
-    fs::create_dir_all(&out_dir)
-        .map_err(|e| format!("failed to create output dir {}: {e}", out_dir.display()))?;
-
-    let tmp = tempdir()?;
-    let staging = tmp.join(TOOL_ID);
-    fs::create_dir_all(&staging).map_err(|e| format!("failed to create staging dir: {e}"))?;
-
-    let staged_manifest = staging.join("manifest.json");
-    let manifest_content =
-        fs::read_to_string(&manifest_path).map_err(|e| format!("failed to read manifest: {e}"))?;
-    if version != manifest_version {
-        let updated = update_manifest_version(&manifest_content, &version);
-        fs::write(&staged_manifest, &updated)
-            .map_err(|e| format!("failed to write staged manifest: {e}"))?;
-    } else {
-        fs::copy(&manifest_path, &staged_manifest)
-            .map_err(|e| format!("failed to copy manifest: {e}"))?;
-    }
-
-    let staged_binary = staging.join(BINARY_NAME);
-    fs::copy(&binary_path, &staged_binary).map_err(|e| format!("failed to copy binary: {e}"))?;
-    fs::set_permissions(&staged_binary, fs::Permissions::from_mode(0o755))
-        .map_err(|e| format!("failed to chmod binary: {e}"))?;
-
-    #[cfg(target_os = "macos")]
-    {
-        let status = Command::new("codesign")
-            .args(["--force", "--sign", "-"])
-            .arg(&staged_binary)
-            .status();
-        match status {
-            Ok(s) if s.success() => {}
-            Ok(s) => eprintln!("warning: codesign exited with {s}"),
-            Err(e) => eprintln!("warning: codesign failed to run: {e}"),
-        }
-    }
-
-    let zip_name = format!("{BINARY_NAME}-{version}.zip");
-    let zip_path = out_dir.join(&zip_name);
-    if zip_path.exists() {
-        fs::remove_file(&zip_path).map_err(|e| format!("failed to remove old zip: {e}"))?;
-    }
-
-    let ditto_ok = Command::new("ditto")
-        .args(["-c", "-k", "--norsrc", "--noextattr"])
-        .arg(&staging)
-        .arg(&zip_path)
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false);
-
-    if !ditto_ok {
-        let status = Command::new("zip")
-            .args(["-r", "-y", "-q"])
-            .arg(&zip_path)
-            .arg(".")
-            .current_dir(&staging)
-            .status()
-            .map_err(|e| format!("failed to run zip: {e}"))?;
-        if !status.success() {
-            return Err("zip command failed".to_string());
-        }
-    }
-
-    if !zip_path.exists() {
-        return Err(format!("zip was not created at {}", zip_path.display()));
-    }
-
-    let hash = compute_sha256(&zip_path)?;
-
-    let sha_path = out_dir.join(format!("{zip_name}.sha256"));
-    let mut f =
-        fs::File::create(&sha_path).map_err(|e| format!("failed to create sha256 file: {e}"))?;
-    writeln!(f, "{hash}  {zip_name}").map_err(|e| format!("failed to write sha256 file: {e}"))?;
-
-    println!("{}", zip_path.display());
-    println!("sha256: {hash}");
-
-    let _ = fs::remove_dir_all(&tmp);
-    Ok(())
-}
-
-fn tempdir() -> Result<PathBuf, String> {
-    let base = env::temp_dir();
-    let name = format!(
-        "ar-zip-tool-{}",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    );
-    let path = base.join(name);
-    fs::create_dir_all(&path).map_err(|e| format!("failed to create temp dir: {e}"))?;
-    Ok(path)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs;
-    use std::os::unix::fs::PermissionsExt;
 
-    fn make_temp_dir(label: &str) -> PathBuf {
-        let path = env::temp_dir().join(format!(
-            "ar-zip-test-{label}-{}",
+    fn temp(label: &str) -> PathBuf {
+        let p = env::temp_dir().join(format!(
+            "ar-zip-test-{label}-{}-{}",
+            std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
+                .unwrap()
                 .as_nanos()
         ));
-        fs::create_dir_all(&path).unwrap();
-        path
+        fs::create_dir_all(&p).unwrap();
+        p
     }
 
-    #[test]
-    fn version_from_manifest() {
-        let dir = make_temp_dir("ver-manifest");
-        let manifest = dir.join("manifest.json");
+    fn script(dir: &Path, name: &str, body: &str) -> String {
+        let p = dir.join(name);
+        fs::write(&p, format!("#!/bin/sh\n{body}\n")).unwrap();
+        fs::set_permissions(&p, fs::Permissions::from_mode(0o755)).unwrap();
+        p.to_string_lossy().into_owned()
+    }
+
+    fn have(prog: &str) -> bool {
+        Command::new(prog).arg("-v").output().is_ok() || Command::new(prog).output().is_ok()
+    }
+
+    struct Fixture {
+        dir: PathBuf,
+        opts: Options,
+    }
+
+    fn fixture(label: &str, lipo_out: &str, vtool_out: &str) -> Fixture {
+        let dir = temp(label);
+        fs::write(dir.join("tool"), "tool").unwrap();
+        fs::write(dir.join("agent"), "agent").unwrap();
         fs::write(
-            &manifest,
-            "{\n  \"name\": \"android-remote\",\n  \"version\": \"3.0.0\"\n}\n",
+            dir.join("vitruvian-tool.json"),
+            "{\n  \"version\": \"3.0.0\"\n}\n",
         )
         .unwrap();
-        let v = read_manifest_version(&manifest).unwrap();
-        assert_eq!(v, "3.0.0");
-        let _ = fs::remove_dir_all(&dir);
+        let lipo = script(&dir, "lipo", &format!("echo '{lipo_out}'"));
+        let vtool = script(&dir, "vtool", &format!("cat <<'EOT'\n{vtool_out}\nEOT"));
+        let opts = Options {
+            tool: dir.join("tool"),
+            agent: dir.join("agent"),
+            version: "3.0.0".to_string(),
+            dist: dir.join("dist"),
+            manifest: dir.join("vitruvian-tool.json"),
+            require_universal: false,
+            max_minos: None,
+            lipo,
+            vtool,
+        };
+        Fixture { dir, opts }
     }
 
-    #[test]
-    fn version_override_updates_staged_not_source() {
-        let dir = make_temp_dir("ver-override");
-        let manifest = dir.join("manifest.json");
-        let content = "{\n  \"version\": \"3.0.0\"\n}\n";
-        fs::write(&manifest, content).unwrap();
+    const FAT_14: &str = "x (architecture arm64):\n  cmd LC_BUILD_VERSION\n minos 14.0\nx (architecture x86_64):\n  cmd LC_BUILD_VERSION\n minos 14.0";
 
-        let updated = update_manifest_version(content, "4.0.0");
-        assert!(
-            updated.contains("\"4.0.0\""),
-            "staged should have 4.0.0: {updated}"
+    #[test]
+    fn manifest_version_first_match() {
+        assert_eq!(
+            manifest_version("{\n  \"version\": \"1.2.3\",\n  \"version\": \"9\"\n}"),
+            Some("1.2.3".to_string())
         );
+        assert_eq!(manifest_version("{}"), None);
+    }
 
-        let source = fs::read_to_string(&manifest).unwrap();
-        assert!(
-            source.contains("\"3.0.0\""),
-            "source should still have 3.0.0"
+    #[test]
+    fn newer_than_compares_numerically() {
+        assert!(newer_than("14.10", "14.9"));
+        assert!(newer_than("15.0", "14.99"));
+        assert!(!newer_than("14.0", "14.0"));
+        assert!(!newer_than("13.5", "14.0"));
+        assert!(!newer_than("14", "14.0.0"));
+    }
+
+    #[test]
+    fn minos_per_arch_fat_thin_and_none() {
+        assert_eq!(
+            minos_per_arch(FAT_14),
+            vec![
+                ("arm64".to_string(), "14.0".to_string()),
+                ("x86_64".to_string(), "14.0".to_string())
+            ]
         );
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn executable_bit() {
-        let dir = make_temp_dir("exec-bit");
-        let file = dir.join("tool");
-        fs::write(&file, "#!/bin/sh\n").unwrap();
-        fs::set_permissions(&file, fs::Permissions::from_mode(0o755)).unwrap();
-        let mode = fs::metadata(&file).unwrap().permissions().mode();
-        assert_ne!(mode & 0o111, 0, "executable bits should be set");
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn sha256_sidecar_format() {
-        let dir = make_temp_dir("sha256-fmt");
-        let file = dir.join("testfile.bin");
-        fs::write(&file, b"hello world\n").unwrap();
-
-        let hash = compute_sha256(&file).unwrap();
-        assert_eq!(hash.len(), 64, "sha256 hash should be 64 hex chars");
-
-        let sidecar_content = format!("{hash}  android-remote-tool-3.0.0.zip\n");
-        assert!(sidecar_content.contains("  android-remote-tool-3.0.0.zip\n"));
-        let parts: Vec<&str> = sidecar_content.trim().splitn(2, "  ").collect();
-        assert_eq!(parts.len(), 2);
-        assert_eq!(parts[0].len(), 64);
-        assert_eq!(parts[1], "android-remote-tool-3.0.0.zip");
-
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn missing_binary_error() {
-        let dir = make_temp_dir("missing-bin");
-        env::remove_var("ANDROID_REMOTE_TOOL_BIN");
-        let saved_runfiles = env::var("RUNFILES_DIR").ok();
-        let saved_ws = env::var("BUILD_WORKSPACE_DIRECTORY").ok();
-        env::set_var("RUNFILES_DIR", dir.join("nonexistent").as_os_str());
-        env::set_var(
-            "BUILD_WORKSPACE_DIRECTORY",
-            dir.join("nonexistent").as_os_str(),
+        assert_eq!(
+            minos_per_arch("x:\n  cmd LC_BUILD_VERSION\n minos 13.0"),
+            vec![("thin".to_string(), "13.0".to_string())]
         );
+        assert_eq!(
+            minos_per_arch("x (architecture arm64):\nx (architecture x86_64):\n minos 14.0"),
+            vec![
+                ("arm64".to_string(), "none".to_string()),
+                ("x86_64".to_string(), "14.0".to_string())
+            ]
+        );
+        assert!(minos_per_arch("").is_empty());
+    }
 
-        let result = find_binary(&dir);
-        assert!(result.is_err(), "should fail when no binary found");
+    #[test]
+    fn refuses_half_universal_build() {
+        let mut f = fixture("half", "arm64", FAT_14);
+        f.opts.require_universal = true;
+        let err = package(&f.opts).unwrap_err();
+        assert!(err.contains("expected a universal binary"), "{err}");
+        let _ = fs::remove_dir_all(&f.dir);
+    }
 
-        match saved_runfiles {
-            Some(v) => env::set_var("RUNFILES_DIR", v),
-            None => env::remove_var("RUNFILES_DIR"),
+    #[test]
+    fn refuses_program_too_new_or_unversioned() {
+        let mut f = fixture("minos", "arm64 x86_64", FAT_14);
+        f.opts.max_minos = Some("13.0".to_string());
+        let err = package(&f.opts).unwrap_err();
+        assert!(err.contains("needs macOS 14.0"), "{err}");
+        assert!(err.contains("supports macOS 13.0"), "{err}");
+        let _ = fs::remove_dir_all(&f.dir);
+
+        let mut g = fixture("nominos", "arm64 x86_64", "x (architecture arm64):");
+        g.opts.max_minos = Some("14.0".to_string());
+        let err = package(&g.opts).unwrap_err();
+        assert!(err.contains("needs macOS none"), "{err}");
+        let _ = fs::remove_dir_all(&g.dir);
+    }
+
+    #[test]
+    fn refuses_version_the_manifest_does_not_say() {
+        let mut f = fixture("ver", "arm64 x86_64", FAT_14);
+        f.opts.version = "9.9.9".to_string();
+        let err = package(&f.opts).unwrap_err();
+        assert!(err.contains("says 3.0.0, the release is 9.9.9"), "{err}");
+        let _ = fs::remove_dir_all(&f.dir);
+    }
+
+    #[test]
+    fn zip_holds_manifest_and_both_programs_at_the_top() {
+        if !have("zip") || !have("unzip") {
+            eprintln!("skipping: zip/unzip not available");
+            return;
         }
-        match saved_ws {
-            Some(v) => env::set_var("BUILD_WORKSPACE_DIRECTORY", v),
-            None => env::remove_var("BUILD_WORKSPACE_DIRECTORY"),
-        }
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn unknown_flag_error() {
-        let args: Vec<String> = vec!["prog".into(), "--bogus".into()];
-        let result = parse_args(&args);
-        assert!(result.is_err(), "unknown flag should be rejected");
-        assert!(
-            result.unwrap_err().contains("unknown flag"),
-            "error should mention unknown flag"
+        let mut f = fixture("zip", "arm64 x86_64", FAT_14);
+        f.opts.require_universal = true;
+        f.opts.max_minos = Some("14.0".to_string());
+        let asset = package(&f.opts).expect("package");
+        assert_eq!(
+            asset.file_name().unwrap().to_string_lossy(),
+            "VitruvianRemote-3.0.0-tool.zip"
         );
-    }
-
-    #[test]
-    fn version_without_value() {
-        let args: Vec<String> = vec!["prog".into(), "--version".into()];
-        let result = parse_args(&args);
-        assert!(result.is_err(), "--version without value should fail");
-    }
-
-    #[test]
-    fn help_exits_zero() {
-        let args: Vec<String> = vec!["prog".into(), "--help".into()];
-        let config = parse_args(&args).unwrap();
-        assert!(config.help, "--help should set help flag");
+        let listing = Command::new("unzip")
+            .arg("-Z1")
+            .arg(&asset)
+            .output()
+            .unwrap();
+        let mut names: Vec<String> = String::from_utf8_lossy(&listing.stdout)
+            .lines()
+            .map(str::to_string)
+            .filter(|n| !n.ends_with('/'))
+            .collect();
+        names.sort();
+        assert_eq!(
+            names,
+            vec![
+                "bin/tool".to_string(),
+                "bin/vitruvian-remote-agent".to_string(),
+                "vitruvian-tool.json".to_string()
+            ]
+        );
+        let _ = fs::remove_dir_all(&f.dir);
     }
 }

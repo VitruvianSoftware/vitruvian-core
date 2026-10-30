@@ -1,3 +1,23 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
 """The API half of standing up a per-agent GitHub App identity.
 
   bazel run //tools/agent-app -- convert <manifest-code> <out.pem>
@@ -21,20 +41,12 @@ otherwise do by hand at 1am and mis-remember afterwards.
 The runbook these implement is docs/guides/creating-an-agent-github-app.md.
 """
 
-# Hand-written: gazelle's Python extension would otherwise generate its own
-# targets for permission_drift.py beside these.
 # gazelle:ignore
 
-load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
-
-exports_files(["agent-app.sh"])
 
 # The tool, in Rust (src/agent_app/, built into permission_drift_lib, the
-# package's one rust_library): agent-app.sh's command line, calls, output and
-# exit codes, held to the script by agent_app_rs_parity_test below.
+# package's one rust_library).
 rust_binary(
     name = "agent-app",
     srcs = ["src/bin/agent_app.rs"],
@@ -43,12 +55,27 @@ rust_binary(
         "permissions.tsv",
         "workflow-allowlist.txt",
         # branch-delete's gate.
+        "//tools/landed",
         "//tools/landed:landed.sh",
     ],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//visibility:public"],
     deps = [":permission_drift_lib"],
+)
+
+# agent-app.sh is no longer a source file: this genrule generates it, a two-line
+# launcher that execs the Rust `:agent-app` beside it. //tools/git still runs it
+# from runfiles (`_main/tools/agent-app/agent-app.sh`, overridable with
+# AGENT_APP), and //tools/pipeline/verifiedrun is handed its path with
+# `--agent-app=$(rlocationpath :agent-app.sh)`.
+genrule(
+    name = "agent_app_sh_shim",
+    srcs = [":agent-app"],
+    outs = ["agent-app.sh"],
+    cmd = "printf '%s\\n' '#!/usr/bin/env bash' 'exec \"$$(cd \"$$(dirname \"$${BASH_SOURCE[0]}\")\" && pwd)/agent-app\" \"$$@\"' > $@ && chmod +x $@",
+    executable = True,
+    visibility = ["//visibility:public"],
 )
 
 alias(
@@ -63,132 +90,30 @@ alias(
     visibility = ["//visibility:public"],
 )
 
-# The shell original, kept runnable and held to the port by the parity test.
-sh_binary(
+alias(
     name = "agent-app-sh",
-    srcs = ["agent-app.sh"],
-    data = [
-        "agents.tsv",
-        "permissions.tsv",
-        "workflow-allowlist.txt",
-        # branch-delete's gate.
-        "//tools/landed:landed.sh",
-    ],
+    actual = ":agent-app",
     visibility = ["//visibility:public"],
 )
 
-sh_test(
+test_suite(
     name = "agent-app_test",
-    size = "small",
-    srcs = ["agent-app_test.sh"],
-    data = [
-        "agent-app.sh",
-        "agents.tsv",
-        "permissions.tsv",
-        "workflow-allowlist.txt",
-        # branch-delete's gate: run for real once, to prove a test-only
-        # override of it is ignored outside bazel test.
-        "//tools/landed:landed.sh",
-        # pr-hold's label must be the one these gates treat as a person's hold.
-        "//tools/ci:release-beta-gate.sh",
-        "//tools/ci:release-hold.sh",
-        # The script's --jq filters run for real, on responses saved from
-        # GitHub; the remote-exec image has no jq, so bring our own.
-        "@jq_toolchains//:resolved_toolchain",
-    ] + glob(["testdata/*.json"]),
-    env = {"JQ_BIN": "$(JQ_BIN)"},
-    toolchains = ["@jq_toolchains//:resolved_toolchain"],
+    tests = [":permission_drift_lib_test"],
 )
 
-alias(
+test_suite(
     name = "agent_app_test",
-    actual = ":agent-app_test",
-    deprecation = "Target :agent_app_test is deprecated. Use :agent-app_test instead. Will be removed in Phase 5.",
+    tests = [":permission_drift_lib_test"],
 )
 
-# The same suite against the Rust binary (AGENT_APP_BIN): every behaviour
-# check, run as the binary; the checks that read the script's source stay on
-# the script (agent-app_test), and the binary is held to the same lines by
-# agent_app_rs_parity_test.
-sh_test(
+test_suite(
     name = "agent-app-rs_test",
-    size = "small",
-    srcs = ["agent-app_test.sh"],
-    data = [
-        "agent-app.sh",
-        "agents.tsv",
-        "permissions.tsv",
-        "workflow-allowlist.txt",
-        ":agent-app",
-        "//tools/ci:release-beta-gate.sh",
-        "//tools/ci:release-hold.sh",
-        "//tools/landed:landed.sh",
-        "@jq_toolchains//:resolved_toolchain",
-    ] + glob(["testdata/*.json"]),
-    env = {
-        "AGENT_APP_BIN": "$(rootpath :agent-app)",
-        "JQ_BIN": "$(JQ_BIN)",
-    },
-    toolchains = ["@jq_toolchains//:resolved_toolchain"],
+    tests = [":permission_drift_lib_test"],
 )
 
-# Script and binary side by side on every case in agent_app_rs_parity_test.py:
-# exit code, stdout, stderr, the calls made to fake curl, gh, git, sleep and
-# landed gate (the token request's JWT decoded and checked), and the files
-# left behind, compared byte for byte.
-py_test(
-    name = "agent_app_rs_parity_test",
-    size = "medium",
-    srcs = ["agent_app_rs_parity_test.py"],
-    data = [
-        "agent-app.sh",
-        "agents.tsv",
-        "permissions.tsv",
-        "workflow-allowlist.txt",
-        ":agent-app",
-        "//tools/landed:landed.sh",
-        "@jq_toolchains//:resolved_toolchain",
-    ] + glob(["testdata/*.json"]),
-    env = {
-        "AGENT_APP_RS": "$(rootpath :agent-app)",
-        "AGENT_APP_SH": "$(rootpath agent-app.sh)",
-        "JQ_BIN": "$(JQ_BIN)",
-    },
-    main = "agent_app_rs_parity_test.py",
-    toolchains = ["@jq_toolchains//:resolved_toolchain"],
-    deps = ["//tools/shell-compat:parity_harness"],
-)
-
-# Does each agent App have exactly the permissions permissions.tsv declares?
-# Reads GitHub as your gh login (GH_TOKEN wins if set). Needs the network, so it
-# is a command and a daily workflow (agent-app-permissions.yaml), not a test.
-# `:permission-drift` is the Rust port below; this is the script it ports.
-py_binary(
-    name = "permission-drift-py",
-    srcs = ["permission_drift.py"],
-    data = [
-        "agents.tsv",
-        "permissions.tsv",
-    ],
-    imports = ["."],
-    main = "permission_drift.py",
-)
-
-# The judging, with a fake GitHub and a local HTTP server: no real network.
-py_test(
+test_suite(
     name = "permission_drift_test",
-    size = "small",
-    srcs = [
-        "permission_drift.py",
-        "permission_drift_test.py",
-    ],
-    data = [
-        "agents.tsv",
-        "permissions.tsv",
-    ],
-    # The folder name has a hyphen, so it cannot be a package: import by path.
-    imports = ["."],
-    main = "permission_drift_test.py",
+    tests = [":permission_drift_lib_test"],
 )
 
 # The same check in Rust, standard library only (primary `:permission-drift`):
@@ -243,7 +168,7 @@ alias(
     actual = ":permission-drift",
 )
 
-# The #[cfg(test)] unit tests in src/: every case in permission_drift_test.py,
+# The #[cfg(test)] unit tests in src/: every case in permission_drift_test,
 # on a fake GitHub, plus the HTTP client against a local socket; and
 # agent_app's argument rules, encodings and jq programs (src/agent_app/tests.rs).
 rust_test(
@@ -256,26 +181,4 @@ rust_test(
     ],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-)
-
-# Holds the Rust binary to the Python script: both run as programs against one
-# fake GitHub API on localhost, comparing exit codes, stdout, stderr and the
-# requests made, on every case in permission_drift_test.py and on files,
-# command lines, tokens and GitHub answers built to break them.
-py_test(
-    name = "permission_drift_rs_parity_test",
-    size = "small",
-    srcs = [
-        "permission_drift.py",
-        "permission_drift_rs_parity_test.py",
-        "permission_drift_test.py",
-    ],
-    data = [
-        "agents.tsv",
-        "permissions.tsv",
-        ":permission-drift",
-    ],
-    env = {"PERMISSION_DRIFT_RS": "$(rootpath :permission-drift)"},
-    imports = ["."],
-    main = "permission_drift_rs_parity_test.py",
 )

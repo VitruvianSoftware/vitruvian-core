@@ -288,7 +288,7 @@ jobs:
           restore-keys: |
             platformio-${{ runner.os }}-
       # `uv tool install` lands `pio` in ~/.local/bin, which is where
-      # build_firmware.sh looks -- the Bazel action that runs it sees
+      # the firmware builder looks -- the Bazel action that runs it sees
       # neither this job's PATH nor HOME. `--with pip`: PlatformIO
       # bootstraps its own penv via `python -m pip`, and a uv tool venv
       # ships without pip.
@@ -304,7 +304,11 @@ jobs:
           # Empty on a push; the script requires it for the production grade.
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash apps/embedded/esp32-s3/publish.sh
+        run: |
+          # replaces apps/embedded/esp32-s3/publish.sh
+          rustc --edition 2021 --crate-type lib --crate-name publish apps/embedded/esp32-s3/host_companion/src/publish/lib.rs -o "$RUNNER_TEMP/libpublish.rlib"
+          rustc --edition 2021 apps/embedded/esp32-s3/host_companion/src/publish/main.rs -L "$RUNNER_TEMP" --extern publish="$RUNNER_TEMP/libpublish.rlib" -o "$RUNNER_TEMP/esp32-s3-publish"
+          "$RUNNER_TEMP/esp32-s3-publish"
 
   # PROMOTION rung 1/1 — release-gated on a esp32-s3-v* release, never reached by a push.
   esp32-s3-production:
@@ -336,7 +340,7 @@ jobs:
           restore-keys: |
             platformio-${{ runner.os }}-
       # `uv tool install` lands `pio` in ~/.local/bin, which is where
-      # build_firmware.sh looks -- the Bazel action that runs it sees
+      # the firmware builder looks -- the Bazel action that runs it sees
       # neither this job's PATH nor HOME. `--with pip`: PlatformIO
       # bootstraps its own penv via `python -m pip`, and a uv tool venv
       # ships without pip.
@@ -352,4 +356,8 @@ jobs:
           # Empty on a push; the script requires it for the production grade.
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash apps/embedded/esp32-s3/publish.sh
+        run: |
+          # replaces apps/embedded/esp32-s3/publish.sh
+          rustc --edition 2021 --crate-type lib --crate-name publish apps/embedded/esp32-s3/host_companion/src/publish/lib.rs -o "$RUNNER_TEMP/libpublish.rlib"
+          rustc --edition 2021 apps/embedded/esp32-s3/host_companion/src/publish/main.rs -L "$RUNNER_TEMP" --extern publish="$RUNNER_TEMP/libpublish.rlib" -o "$RUNNER_TEMP/esp32-s3-publish"
+          "$RUNNER_TEMP/esp32-s3-publish"

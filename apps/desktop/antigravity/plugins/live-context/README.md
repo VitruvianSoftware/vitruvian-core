@@ -1,9 +1,9 @@
 # live-context
 
-An Antigravity desktop plugin that ports `.claude/gh-live-state.sh` and
-`~/.claude/response-contract-stop.py` to Antigravity's native `PreInvocation`
-and `Stop` lifecycle hooks, paired with a live configuration and diagnostics
-side panel.
+An Antigravity desktop plugin that gives the agent live Git and GitHub state
+and checks the shape of its replies, through Antigravity's native
+`PreInvocation` and `Stop` lifecycle hooks, paired with a live configuration
+and diagnostics side panel.
 
 ## What it does
 

@@ -79,7 +79,7 @@
 #       paths:  apps/suites/tabula/infra/build/
 #       render: transcribed from .github/workflows/tabula-build-stack.yaml job "deploy"
 #   - tabula-dev-latest  kind=publish  run=//apps/suites/tabula/extension:publish-dev-latest  envs=publish  promotion=push-all
-#       paths:  apps/suites/tabula/infra/app/ apps/suites/tabula/extension/publish-dev-latest\.sh
+#       paths:  apps/suites/tabula/infra/app/ apps/suites/tabula/extension/scripts/src/
 #       graph:  //apps/suites/tabula/api:image_push //apps/suites/tabula/extension:chrome_zip
 #       render: transcribed from .github/workflows/tabula-dev-latest.yaml job "publish"
 #   - tabula-identity  kind=pulumi  run=//apps/suites/tabula/infra/identity:up  envs=development,nonproduction,production  promotion=push-all
@@ -356,7 +356,12 @@ jobs:
           # and belongs with the Phase-3 preflight work.
           BEFORE_REV: ${{ github.event.before }}
           FORCED_PUSH: ${{ github.event.forced }}
-        run: bash tools/charts/publish.sh
+        run: |
+          # replaces tools/charts/publish.sh
+          rustc --edition 2021 --crate-type lib --crate-name shell_compat tools/shell-compat/src/lib.rs -o "$RUNNER_TEMP/libshell_compat.rlib"
+          rustc --edition 2021 --crate-type lib --crate-name charts tools/charts/src/lib.rs -L "$RUNNER_TEMP" --extern shell_compat="$RUNNER_TEMP/libshell_compat.rlib" -o "$RUNNER_TEMP/libcharts.rlib"
+          rustc --edition 2021 tools/charts/src/main.rs -L "$RUNNER_TEMP" --extern shell_compat="$RUNNER_TEMP/libshell_compat.rlib" --extern charts="$RUNNER_TEMP/libcharts.rlib" -o "$RUNNER_TEMP/charts-publish"
+          "$RUNNER_TEMP/charts-publish"
       - name: Visibility note
         run: |
           echo "New GHCR packages start private. Make each chart public once (UI or):"
@@ -398,7 +403,7 @@ jobs:
           restore-keys: |
             platformio-${{ runner.os }}-
       # `uv tool install` lands `pio` in ~/.local/bin, which is where
-      # build_firmware.sh looks -- the Bazel action that runs it sees
+      # the firmware builder looks -- the Bazel action that runs it sees
       # neither this job's PATH nor HOME. `--with pip`: PlatformIO
       # bootstraps its own penv via `python -m pip`, and a uv tool venv
       # ships without pip.
@@ -414,7 +419,11 @@ jobs:
           # Empty on a push; the script requires it for the production grade.
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash apps/embedded/esp32-s3/publish.sh
+        run: |
+          # replaces apps/embedded/esp32-s3/publish.sh
+          rustc --edition 2021 --crate-type lib --crate-name publish apps/embedded/esp32-s3/host_companion/src/publish/lib.rs -o "$RUNNER_TEMP/libpublish.rlib"
+          rustc --edition 2021 apps/embedded/esp32-s3/host_companion/src/publish/main.rs -L "$RUNNER_TEMP" --extern publish="$RUNNER_TEMP/libpublish.rlib" -o "$RUNNER_TEMP/esp32-s3-publish"
+          "$RUNNER_TEMP/esp32-s3-publish"
 
   # PROMOTION rung 1/1 — release-gated on a esp32-s3-v* release, never reached by a push.
   esp32-s3-production:
@@ -446,7 +455,7 @@ jobs:
           restore-keys: |
             platformio-${{ runner.os }}-
       # `uv tool install` lands `pio` in ~/.local/bin, which is where
-      # build_firmware.sh looks -- the Bazel action that runs it sees
+      # the firmware builder looks -- the Bazel action that runs it sees
       # neither this job's PATH nor HOME. `--with pip`: PlatformIO
       # bootstraps its own penv via `python -m pip`, and a uv tool venv
       # ships without pip.
@@ -462,7 +471,11 @@ jobs:
           # Empty on a push; the script requires it for the production grade.
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash apps/embedded/esp32-s3/publish.sh
+        run: |
+          # replaces apps/embedded/esp32-s3/publish.sh
+          rustc --edition 2021 --crate-type lib --crate-name publish apps/embedded/esp32-s3/host_companion/src/publish/lib.rs -o "$RUNNER_TEMP/libpublish.rlib"
+          rustc --edition 2021 apps/embedded/esp32-s3/host_companion/src/publish/main.rs -L "$RUNNER_TEMP" --extern publish="$RUNNER_TEMP/libpublish.rlib" -o "$RUNNER_TEMP/esp32-s3-publish"
+          "$RUNNER_TEMP/esp32-s3-publish"
 
   # ======== unit: gravastar-mouse-publish → beta → production ========
   # Declared in packages/peripherals/BUILD; break-glass target: //packages/peripherals:publish
@@ -1245,7 +1258,11 @@ jobs:
           # a fork) the script builds locally instead of failing on auth.
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash apps/suites/tabula/extension/publish-dev-latest.sh
+        run: |
+          # replaces apps/suites/tabula/extension/publish-dev-latest.sh
+          rustc --edition 2021 --crate-type lib --crate-name publish_dev_latest_lib apps/suites/tabula/extension/scripts/src/lib.rs -o "$RUNNER_TEMP/libpublish_dev_latest_lib.rlib"
+          rustc --edition 2021 apps/suites/tabula/extension/scripts/src/bin/publish_dev_latest.rs -L "$RUNNER_TEMP" --extern publish_dev_latest_lib="$RUNNER_TEMP/libpublish_dev_latest_lib.rlib" -o "$RUNNER_TEMP/publish-dev-latest"
+          "$RUNNER_TEMP/publish-dev-latest"
 
   # ======== unit: tabula-identity → development → nonproduction → production ========
   # Declared in apps/suites/tabula/infra/identity/BUILD; break-glass target: //apps/suites/tabula/infra/identity:up

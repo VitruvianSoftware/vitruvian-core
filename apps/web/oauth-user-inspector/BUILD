@@ -114,7 +114,9 @@ rust_library(
     name = "oauth_scripts_lib",
     srcs = [
         "scripts/src/check_sensitive.rs",
+        "scripts/src/deploy.rs",
         "scripts/src/lib.rs",
+        "scripts/src/setup_dev.rs",
         "scripts/src/smoke.rs",
         "scripts/src/start.rs",
     ],
@@ -174,8 +176,59 @@ rust_binary(
 )
 
 alias(
+    name = "start",
+    actual = ":start-rs",
+)
+
+alias(
     name = "start_rs",
     actual = ":start-rs",
+)
+
+rust_binary(
+    name = "deploy-cloudbuild",
+    srcs = ["scripts/src/bin/deploy.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":oauth_scripts_lib"],
+)
+
+alias(
+    name = "deploy_cloudbuild",
+    actual = ":deploy-cloudbuild",
+)
+
+alias(
+    name = "deploy-script-rs",
+    actual = ":deploy-cloudbuild",
+)
+
+alias(
+    name = "deploy_script_rs",
+    actual = ":deploy-cloudbuild",
+)
+
+rust_binary(
+    name = "setup-dev",
+    srcs = ["scripts/src/bin/setup_dev.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":oauth_scripts_lib"],
+)
+
+alias(
+    name = "setup_dev",
+    actual = ":setup-dev",
+)
+
+alias(
+    name = "setup-dev-rs",
+    actual = ":setup-dev",
+)
+
+alias(
+    name = "setup_dev_rs",
+    actual = ":setup-dev",
 )
 
 test_suite(

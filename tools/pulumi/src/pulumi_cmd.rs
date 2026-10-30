@@ -61,7 +61,34 @@ fn has_flag(args: &[String], names: &[&str]) -> bool {
     })
 }
 
-fn inject_gcp_identity(workspace: &str, project_dir: &str) {
+/// //tools/gcp-token, as the pulumi_project() targets hand it over: a
+/// runfiles-relative path in VITRUVIAN_GCP_TOKEN_BIN. Resolved against the
+/// working directory (the runfiles tree under `bazel run`), then RUNFILES_DIR,
+/// so call this before changing directory. Empty when unset or not found, which
+/// leaves the plain gcloud fallback.
+fn resolve_minter() -> String {
+    let bin = std::env::var("VITRUVIAN_GCP_TOKEN_BIN").unwrap_or_default();
+    if bin.is_empty() || bin.starts_with('/') {
+        return bin;
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        let p = cwd.join(&bin);
+        if is_executable(&p.to_string_lossy()) {
+            return p.to_string_lossy().into_owned();
+        }
+    }
+    if let Ok(rf) = std::env::var("RUNFILES_DIR") {
+        if !rf.is_empty() {
+            let p = format!("{}/_main/{}", rf, bin);
+            if is_executable(&p) {
+                return p;
+            }
+        }
+    }
+    bin
+}
+
+fn inject_gcp_identity(workspace: &str, project_dir: &str, minter: &str) {
     if env_set_nonempty("GOOGLE_OAUTH_ACCESS_TOKEN")
         || env_set_nonempty("GOOGLE_APPLICATION_CREDENTIALS")
         || env_set_nonempty("CLOUDSDK_AUTH_ACCESS_TOKEN")
@@ -95,9 +122,12 @@ fn inject_gcp_identity(workspace: &str, project_dir: &str) {
         std::process::exit(1);
     }
 
-    let minter = format!("{}/tools/gcp-token/gcp-token.sh", workspace);
-    let token = if is_executable(&minter) {
-        capture_stdout_lossy("bash", &[&minter, &account])
+    // //tools/gcp-token: local gcloud first, then (a Claude Code cloud session,
+    // with no credentials of its own) a token minted over the tailnet. Without
+    // the minter this is plain local gcloud. See tools/gcp-token/README.md.
+    let token = if minter.starts_with('/') && is_executable(minter) {
+        // stderr shown, as in pulumi-cmd.sh: the broker reports progress there.
+        capture_stdout(minter, &[&account], Stdio::inherit())
     } else {
         capture_stdout_lossy(
             "gcloud",
@@ -147,10 +177,15 @@ fn is_executable(path: &str) -> bool {
 }
 
 fn capture_stdout_lossy(cmd: &str, args: &[&str]) -> String {
+    capture_stdout(cmd, args, Stdio::null())
+}
+
+/// `$(cmd args...)`: stdout captured (trailing newlines trimmed), stderr as given.
+fn capture_stdout(cmd: &str, args: &[&str], stderr: Stdio) -> String {
     let output = Command::new(cmd)
         .args(args)
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(stderr)
         .output();
     match output {
         Ok(o) if o.status.success() => {
@@ -239,6 +274,9 @@ pub fn run(args: &[String]) -> i32 {
         }
     };
 
+    // Before the chdir below: the minter path is relative to the runfiles tree.
+    let minter = resolve_minter();
+
     let target_dir = format!("{}/{}", workspace, project_dir);
     if std::env::set_current_dir(&target_dir).is_err() {
         eprintln!("cannot cd to {}", target_dir);
@@ -248,7 +286,7 @@ pub fn run(args: &[String]) -> i32 {
     std::env::set_var("GOWORK", "off");
 
     // --- GCP identity injection ---
-    inject_gcp_identity(&workspace, project_dir);
+    inject_gcp_identity(&workspace, project_dir, &minter);
 
     // --- dev-local + backend resolution (combined from the two shell blocks) ---
     let is_dev_local = project_dir == DEV_LOCAL;

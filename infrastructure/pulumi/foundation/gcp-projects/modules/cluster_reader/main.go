@@ -55,6 +55,7 @@ import (
 var allowedRoles = map[string]bool{
 	"roles/run.viewer":        true,
 	"roles/monitoring.viewer": true,
+	"roles/logging.viewer":    true,
 }
 
 type Args struct {

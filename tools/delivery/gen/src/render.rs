@@ -383,7 +383,11 @@ fn render_tabula_dev_latest_steps(b: &mut String, _u: &Unit, _env: &str, opts: &
     b.push_str("          # a fork) the script builds locally instead of failing on auth.\n");
     b.push_str("          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}\n");
     b.push_str("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n");
-    b.push_str("        run: bash apps/suites/tabula/extension/publish-dev-latest.sh\n");
+    b.push_str("        run: |\n");
+    b.push_str("          # replaces apps/suites/tabula/extension/publish-dev-latest.sh\n");
+    b.push_str("          rustc --edition 2021 --crate-type lib --crate-name publish_dev_latest_lib apps/suites/tabula/extension/scripts/src/lib.rs -o \"$RUNNER_TEMP/libpublish_dev_latest_lib.rlib\"\n");
+    b.push_str("          rustc --edition 2021 apps/suites/tabula/extension/scripts/src/bin/publish_dev_latest.rs -L \"$RUNNER_TEMP\" --extern publish_dev_latest_lib=\"$RUNNER_TEMP/libpublish_dev_latest_lib.rlib\" -o \"$RUNNER_TEMP/publish-dev-latest\"\n");
+    b.push_str("          \"$RUNNER_TEMP/publish-dev-latest\"\n");
     Ok(())
 }
 
@@ -410,7 +414,12 @@ fn render_charts_publish_steps(b: &mut String, _u: &Unit, _env: &str, opts: &Opt
     b.push_str("          # and belongs with the Phase-3 preflight work.\n");
     b.push_str("          BEFORE_REV: ${{ github.event.before }}\n");
     b.push_str("          FORCED_PUSH: ${{ github.event.forced }}\n");
-    b.push_str("        run: bash tools/charts/publish.sh\n");
+    b.push_str("        run: |\n");
+    b.push_str("          # replaces tools/charts/publish.sh\n");
+    b.push_str("          rustc --edition 2021 --crate-type lib --crate-name shell_compat tools/shell-compat/src/lib.rs -o \"$RUNNER_TEMP/libshell_compat.rlib\"\n");
+    b.push_str("          rustc --edition 2021 --crate-type lib --crate-name charts tools/charts/src/lib.rs -L \"$RUNNER_TEMP\" --extern shell_compat=\"$RUNNER_TEMP/libshell_compat.rlib\" -o \"$RUNNER_TEMP/libcharts.rlib\"\n");
+    b.push_str("          rustc --edition 2021 tools/charts/src/main.rs -L \"$RUNNER_TEMP\" --extern shell_compat=\"$RUNNER_TEMP/libshell_compat.rlib\" --extern charts=\"$RUNNER_TEMP/libcharts.rlib\" -o \"$RUNNER_TEMP/charts-publish\"\n");
+    b.push_str("          \"$RUNNER_TEMP/charts-publish\"\n");
     b.push_str("      - name: Visibility note\n");
     b.push_str("        run: |\n");
     b.push_str("          echo \"New GHCR packages start private. Make each chart public once (UI or):\"\n");
@@ -437,7 +446,7 @@ fn render_esp32_s3_publish_steps(b: &mut String, _u: &Unit, env: &str, opts: &Op
     b.push_str("          restore-keys: |\n");
     b.push_str("            platformio-${{ runner.os }}-\n");
     b.push_str("      # `uv tool install` lands `pio` in ~/.local/bin, which is where\n");
-    b.push_str("      # build_firmware.sh looks -- the Bazel action that runs it sees\n");
+    b.push_str("      # the firmware builder looks -- the Bazel action that runs it sees\n");
     b.push_str("      # neither this job's PATH nor HOME. `--with pip`: PlatformIO\n");
     b.push_str("      # bootstraps its own penv via `python -m pip`, and a uv tool venv\n");
     b.push_str("      # ships without pip.\n");
@@ -453,7 +462,11 @@ fn render_esp32_s3_publish_steps(b: &mut String, _u: &Unit, env: &str, opts: &Op
     b.push_str("          # Empty on a push; the script requires it for the production grade.\n");
     b.push_str("          RELEASE_TAG: ${{ github.event.release.tag_name }}\n");
     b.push_str("          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n");
-    b.push_str("        run: bash apps/embedded/esp32-s3/publish.sh\n");
+    b.push_str("        run: |\n");
+    b.push_str("          # replaces apps/embedded/esp32-s3/publish.sh\n");
+    b.push_str("          rustc --edition 2021 --crate-type lib --crate-name publish apps/embedded/esp32-s3/host_companion/src/publish/lib.rs -o \"$RUNNER_TEMP/libpublish.rlib\"\n");
+    b.push_str("          rustc --edition 2021 apps/embedded/esp32-s3/host_companion/src/publish/main.rs -L \"$RUNNER_TEMP\" --extern publish=\"$RUNNER_TEMP/libpublish.rlib\" -o \"$RUNNER_TEMP/esp32-s3-publish\"\n");
+    b.push_str("          \"$RUNNER_TEMP/esp32-s3-publish\"\n");
     Ok(())
 }
 

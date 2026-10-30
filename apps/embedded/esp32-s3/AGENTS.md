@@ -29,14 +29,14 @@ protocol is [`docs/protocol.md`](docs/protocol.md); firmware and daemon move tog
 - **Host tests (what CI runs).** From the repo root:
   `uv run --no-project --with pytest,pyserial -- pytest apps/embedded/esp32-s3/tests/ -q` —
   the exact step in `.github/workflows/iot-esp32-s3.yaml`, which then builds the firmware.
-- **Daemon.** `uv run apps/embedded/esp32-s3/host_companion/mac_stats_daemon.py`
+- **Daemon.** `bazel run //apps/embedded/esp32-s3:mac_stats_daemon_rs`
   (`--usb-only`, `--wifi-only`, `--wifi-host <ip>`, `--wifi-sync`).
 
 ## Conventions & landmines
 
 - **Images are unstamped by design.** A Bazel action sees no `HOME`, no `.git` and none of the
   caller's environment, so version/grade/commit stamping (`build_info.json`) and the zip happen
-  in `publish.sh`, outside Bazel. Do not add `--stamp` or a workspace-status dependency to the
+  in the Rust `publish` tool (`host_companion/src/publish/`), outside Bazel. Do not add `--stamp` or a workspace-status dependency to the
   genrule.
 - **Release ladder** is the `esp32-s3` delivery unit declared in `BUILD` (`delivery(...)`):
   a PR runs `iot-esp32-s3.yaml`; a push to `main` publishes `esp32-s3-beta` (rolling

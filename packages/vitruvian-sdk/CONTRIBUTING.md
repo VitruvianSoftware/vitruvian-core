@@ -37,7 +37,7 @@ the tests refuse anything less.
 | An example | `protocol/examples/` | both of the above: they can only see a difference an example crosses |
 | The kits in other languages | `kits/` and `go/`, their types generated from the schema by `bazel run //tools/sdk-codegen` | `//tools/sdk-codegen:in_sync_test`, which fails when a generated file is not what the generator writes; and each kit's own tests, which hold that every request a tool may send has a call |
 | The app's pin | `apps/desktop/vitruvian/bazel/tool_protocol.sha256` in vitruvian-core, written by `bazel run //apps/desktop/vitruvian:pin_tool_protocol` | `tool_protocol_pin_test`, in the app's folder |
-| The conformance script and `vitruvian-tool run` | `conformance/conformance.py`, whose table of params is written by hand; `Sources/VitruvianToolCLI/Desk.swift` | `conformance_test`; `VitruvianToolCLITests`, which holds that the desk answers every request a tool may send |
+| The conformance script and `vitruvian-tool run` | `conformance/src`, built as `//packages/vitruvian-sdk:conformance`, whose table of params is written by hand; `Sources/VitruvianToolCLI/Desk.swift` | `conformance_test`; `VitruvianToolCLITests`, which holds that the desk answers every request a tool may send |
 
 **Additive within a version.** A new message or field needs no new version
 when an older tool or an older app can ignore it: a field nobody knows is
@@ -78,7 +78,7 @@ git and jq.
 In a clone of vitruvian-sdk there is no Bazel. Its own CI runs `swift build`,
 `swift test`, the conformance script on every sample, and the checks of the
 examples and the templates, in `.github/workflows/ci.yml`. The same
-commands work on your Mac. `docs/guide_test.py` runs only in vitruvian-core.
+commands work on your Mac. The guide check, `:guide_test`, runs only in vitruvian-core.
 
 After changing `samples/hello-python` or `samples/hello-swift`, run
 `bazel run //packages/vitruvian-sdk:sync-templates` and commit what it

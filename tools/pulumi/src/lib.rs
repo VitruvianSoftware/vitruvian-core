@@ -18,12 +18,12 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! rotate_access_token.py in Rust, standard library only: the same command
-//! line, the same Pulumi Cloud requests, the same `gh secret set` calls (the
-//! token over stdin, never in argv or on screen), the same prompts and the
-//! same output, byte for byte. Where the script dies with an uncaught
-//! exception the port prints a traceback ending in the same exception class.
-//! rotate_access_token_rs_parity_test.py holds the two together.
+//! rotate-access-token in Rust, standard library only: the command line,
+//! Pulumi Cloud requests, `gh secret set` calls (the token over stdin, never
+//! in argv or on screen), prompts and output, byte for byte, of the
+//! rotate_access_token.py it replaced (now deleted, with its parity test).
+//! Where the script died with an uncaught exception, this prints a traceback
+//! ending in the same exception class.
 
 pub mod argparse;
 pub mod create_app;

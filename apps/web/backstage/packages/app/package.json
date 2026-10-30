@@ -45,7 +45,7 @@
     "@material-ui/icons": "^4.11.3",
     "@material-ui/lab": "^4.0.0-alpha.61",
     "@material-ui/styles": "^4.11.5",
-    "@mui/material": "^5.16.7",
+    "@mui/material": "^9.5.0",
     "@roadiehq/backstage-plugin-argo-cd": "^2.13.1",
     "@roadiehq/backstage-plugin-github-pull-requests": "^3.9.1",
     "@roadiehq/backstage-plugin-prometheus": "^3.4.1",
@@ -59,7 +59,7 @@
   "devDependencies": {
     "@backstage/cli": "^0.36.6",
     "@types/jest": "^30.0.0",
-    "@types/node": "^22",
+    "@types/node": "^26",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "@types/react-router-dom": "^5.3.3",

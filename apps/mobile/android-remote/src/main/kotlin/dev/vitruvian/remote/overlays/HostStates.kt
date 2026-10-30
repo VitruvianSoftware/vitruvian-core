@@ -33,6 +33,7 @@ import dev.vitruvian.design.ButtonVariant
 import dev.vitruvian.design.EmptyState
 import dev.vitruvian.design.Space
 import dev.vitruvian.design.VButton
+import dev.vitruvian.remote.state.Derive
 import dev.vitruvian.remote.state.RemoteState
 import dev.vitruvian.remote.state.Screen
 import kotlinx.coroutines.launch
@@ -84,5 +85,64 @@ public fun ColumnScope.UnpairedState(state: RemoteState) {
       )
       VButton("Install guide", state::openInstallGuide)
     }
+  }
+}
+
+/**
+ * The screens with controls on them, plus Hosts where the fix lives. Remote, Mac and Console have
+ * their own per-control "pair" wording; a banner on each would be a fourth way to say it.
+ */
+private val PAIRING_BANNER_SCREENS = setOf(Screen.Home, Screen.Apps, Screen.Hosts)
+
+/**
+ * Connected but not paired: the Mac answers every read, and refuses every change.
+ *
+ * Not dismissible. It goes away when the condition does -- a token arriving -- because the incident
+ * it exists for was exactly this state with nothing on screen to explain it: switches that did
+ * nothing, a Mac saying "paired, not connected" and a phone saying "connected".
+ */
+@Composable
+public fun ColumnScope.PairingBanner(state: RemoteState) {
+  val (label, body) = state.pairingBanner ?: return
+  if (state.effectiveScreen !in PAIRING_BANNER_SCREENS) return
+  // The bridge fails for the same reason; one banner says both, rather than two stacked.
+  val bridge =
+      if (state.bridgeProblem == Derive.BridgeProblem.NotPaired) {
+        " Phone Bridge cannot link either."
+      } else {
+        ""
+      }
+  Banner(
+      tone = BannerTone.Warn,
+      label = label,
+      body = body + bridge,
+      modifier = Modifier.padding(start = Space.s4, end = Space.s4, top = Space.s4),
+  ) {
+    VButton(label = "Pair now", onClick = state::openPairing, variant = ButtonVariant.Primary)
+  }
+}
+
+/**
+ * Phone Bridge switched on but not linked, for a reason other than pairing (the pairing banner
+ * already says that one). Transient "connecting…" stays on the plate; this is for the states that
+ * do not fix themselves.
+ */
+@Composable
+public fun ColumnScope.BridgeBanner(state: RemoteState) {
+  if (state.needsPairing) return
+  if (state.effectiveScreen !in PAIRING_BANNER_SCREENS) return
+  val problem = state.bridgeProblem
+  if (!Derive.bridgeProblemIsBannerWorthy(problem)) return
+  val text = state.bridgeProblemText ?: return
+  Banner(
+      tone = BannerTone.Warn,
+      label = "Phone Bridge not linked",
+      body = text,
+      modifier = Modifier.padding(start = Space.s4, end = Space.s4, top = Space.s4),
+  ) {
+    VButton(
+        label = if (problem == Derive.BridgeProblem.Stopped) "Start" else "Reconnect",
+        onClick = state::reconnectBridge,
+    )
   }
 }

@@ -22,7 +22,7 @@ We'd love for you to contribute to our source code and to make it even better th
 1. Fork the repo and create your branch from `main`.
 2. If you've added code that should be tested, add tests.
 3. If you've changed APIs, update the documentation.
-4. Ensure the test suite passes (`npm run build`).
+4. Ensure the test suite passes (`bazel test //apps/mcp/slack:mcp_slack_rs_test`).
 5. Make sure your code respects the `addlicense` checks. We use Apache 2.0.
    ```bash
    go install github.com/google/addlicense@latest

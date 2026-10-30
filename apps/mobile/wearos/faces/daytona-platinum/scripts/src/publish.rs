@@ -20,7 +20,7 @@
 
 use std::env;
 use std::fs;
-use std::io::{self, Write};
+use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -170,21 +170,13 @@ pub fn run(args: &[String]) -> i32 {
     let apk_name = format!("{}-{}.apk", APK_PREFIX, version);
     let apk_path = dist_dir.join(&apk_name);
 
-    // Build via build_wff_apk.sh
-    let build_script = app_dir.join("scripts/build_wff_apk.sh");
-    let status = match Command::new("bash")
-        .arg(build_script.to_str().unwrap_or("build_wff_apk.sh"))
-        .arg(apk_path.to_str().unwrap_or("out.apk"))
-        .status()
+    // Build via build_wff_apk directly in Rust
+    if crate::build_wff_apk::run(&[
+        String::from("build_wff_apk"),
+        apk_path.to_string_lossy().to_string(),
+    ]) != 0
     {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("error: failed to run build_wff_apk.sh: {}", e);
-            return 1;
-        }
-    };
-    if !status.success() {
-        eprintln!("error: build_wff_apk.sh failed");
+        eprintln!("error: build_wff_apk failed");
         return 1;
     }
 

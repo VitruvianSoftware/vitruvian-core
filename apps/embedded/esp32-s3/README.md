@@ -41,8 +41,8 @@ Custom firmware for the **Waveshare ESP32-S3-Touch-LCD-1.69** development board,
     - **Bluetooth card** (`ble_hid.cpp`): radio toggle plus one-touch **[Pair BLE]** opening a 60-second advertising window; once paired, macros route over BLE HID whenever the USB cable is unplugged (`mac_hid.cpp` dual-transport dispatcher).
     - **Audio Chimes card** (`buzzer.cpp`): mute toggle for the CI chimes and touch clicks, persisted in NVS (`settings:chimes_muted`), plus the OTA endpoint hint.
 - **Host Companion (`host_companion/`)**:
-  - Python daemon (`mac_stats_daemon.py`) streaming CPU/RAM/time telemetry, frontmost app profiles (`app_profiles.py`), and local AI agent / git CI status (`agent_ci_monitor.py`) over USB CDC serial at 115200 baud.
-  - **Wi-Fi provisioning**: answers device `wifi_sync` requests (SSID via `networksetup`, passphrase via `VITRUVIAN_WIFI_PASS` env or the macOS keychain), or run `uv run apps/embedded/esp32-s3/host_companion/mac_stats_daemon.py --wifi-sync` for an explicit interactive one-shot.
+  - Rust daemon (`mac_stats_daemon`) streaming CPU/RAM/time telemetry, frontmost app profiles (`app_profiles`), and local AI agent / git CI status (`agent_ci_monitor`) over USB CDC serial at 115200 baud.
+  - **Wi-Fi provisioning**: answers device `wifi_sync` requests (SSID via `networksetup`, passphrase via `VITRUVIAN_WIFI_PASS` env or the macOS keychain), or run `bazel run //apps/embedded/esp32-s3:mac_stats_daemon_rs -- --wifi-sync` for an explicit interactive one-shot.
   - **Dual transport**: the same daemon streams over USB CDC when the cable is in and over UDP when it is not, discovering the device by mDNS. See *Untethered mode*.
 
 ## Untethered mode
@@ -102,14 +102,14 @@ bazel run //apps/embedded/esp32-s3:flash -- /dev/cu.usbmodemXXXX
 ### Run Host Stats Companion
 ```bash
 # Auto: USB when the cable is in, Wi-Fi (mDNS-discovered) when it is not
-uv run apps/embedded/esp32-s3/host_companion/mac_stats_daemon.py
+bazel run //apps/embedded/esp32-s3:mac_stats_daemon_rs
 
 # Pin the device instead of discovering it (no mDNS on this network)
-uv run apps/embedded/esp32-s3/host_companion/mac_stats_daemon.py --wifi-host 192.168.1.42
+bazel run //apps/embedded/esp32-s3:mac_stats_daemon_rs -- --wifi-host 192.168.1.42
 
 # Force one transport
-uv run apps/embedded/esp32-s3/host_companion/mac_stats_daemon.py --usb-only
-uv run apps/embedded/esp32-s3/host_companion/mac_stats_daemon.py --wifi-only
+bazel run //apps/embedded/esp32-s3:mac_stats_daemon_rs -- --usb-only
+bazel run //apps/embedded/esp32-s3:mac_stats_daemon_rs -- --wifi-only
 ```
 
 Discovery uses the OS resolver first (macOS resolves `.local` through
@@ -128,7 +128,7 @@ delivery orchestrator's affected-detection, gating and kill switch:
 PR against main ──> iot-esp32-s3.yaml: bazel build //apps/embedded/esp32-s3:firmware
 
 Push to main ─────> delivery-esp32-s3.yaml esp32-s3-beta            [BETA GRADE]
-   (affected)         publish.sh GRADE=beta
+   (affected)         publish GRADE=beta
                       stamped 0.1.0-beta.<sha>, assets clobbered on the
                       rolling prerelease esp32-s3-beta-latest, tag moved to HEAD
 
@@ -137,11 +137,11 @@ Push to main ─────> iot-esp32-s3-release.yaml (release-please)
                       the GitHub Release esp32-s3-vX.Y.Z
                                 │
 Release published ─> delivery-esp32-s3.yaml esp32-s3-production     [PRODUCTION GRADE]
-   (esp32-s3-v*)      publish.sh GRADE=production RELEASE_TAG=esp32-s3-vX.Y.Z
+   (esp32-s3-v*)      publish GRADE=production RELEASE_TAG=esp32-s3-vX.Y.Z
                       stamped X.Y.Z, assets attached to that release
 ```
 
-Every rung runs the same script as the break-glass path:
+Every rung runs the same Rust tool (`host_companion/src/publish/`) as the break-glass path:
 
 ```bash
 # rolling beta from the checked-out HEAD
@@ -152,4 +152,5 @@ GRADE=production RELEASE_TAG=esp32-s3-vX.Y.Z bazel run //apps/embedded/esp32-s3:
 ```
 
 Each published bundle (`esp32-s3-mac-controller.zip`) contains the three
-images, `build_info.json`, and this directory's `flash.sh`.
+images, `build_info.json`, and the Rust flasher source (`flash/main.rs`, `flash/lib.rs`, `flash/README.txt`)
+that builds natively with `rustc --edition 2021 -O flash/main.rs -o flash-esp32-s3`.

@@ -58,7 +58,7 @@ on:
     paths:
       - "tools/agent-app/agents.tsv"
       - "tools/agent-app/permissions.tsv"
-      - "tools/agent-app/permission_drift.py"
+      - "tools/agent-app/src/**"
       - ".github/actions/mint-pulumi-app-token/**"
       - ".github/workflows/agent-app-permissions.yaml"
 
@@ -88,7 +88,7 @@ jobs:
           owner: ${{ github.repository_owner }}
           permission-organization-administration: read
 
-      # Plain python3, standard library only: no Bazel, so no cache and no
+      # Plain rustc, standard library only: no Bazel, so no cache and no
       # BuildBuddy key. Exit 1 names each App and permission that drifted;
       # exit 2 means GitHub could not be read, which is never a pass.
       - name: Compare permissions.tsv with GitHub
@@ -96,7 +96,9 @@ jobs:
           GH_TOKEN: ${{ steps.token.outputs.token }}
         run: |
           set +e -u -o pipefail
-          python3 tools/agent-app/permission_drift.py | tee "$RUNNER_TEMP/report.txt"
+          rustc --edition 2021 --cfg 'feature="standalone_permission_drift"' --crate-type lib --crate-name permission_drift tools/agent-app/src/lib.rs -o "$RUNNER_TEMP/libpermission_drift.rlib"
+          rustc --edition 2021 tools/agent-app/src/main.rs -L "$RUNNER_TEMP" --extern permission_drift="$RUNNER_TEMP/libpermission_drift.rlib" -o "$RUNNER_TEMP/permission-drift"
+          BUILD_WORKSPACE_DIRECTORY="$PWD" "$RUNNER_TEMP/permission-drift" | tee "$RUNNER_TEMP/report.txt"
           rc=${PIPESTATUS[0]}
           {
             echo '```'

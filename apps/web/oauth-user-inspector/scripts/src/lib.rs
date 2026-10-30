@@ -20,12 +20,19 @@
 // SOFTWARE.
 
 pub mod check_sensitive;
+pub mod deploy;
+pub mod setup_dev;
 pub mod smoke;
 pub mod start;
 
 #[cfg(test)]
 mod tests {
     use super::check_sensitive::is_sensitive;
+    use super::deploy::{
+        compute_service_account, resolve_deploy_config, DEFAULT_REGION, REQUIRED_SERVICES,
+        SERVICE_NAME,
+    };
+    use super::setup_dev::{install_pre_commit_hook, PRE_COMMIT_HOOK_SCRIPT};
     use super::smoke::find_chrome_binary;
     use super::start::{resolve_env_or_default, validate_build_dirs, BuildCheckError};
     use std::fs;
@@ -145,6 +152,57 @@ mod tests {
 
         fs::write(tmp.join("dist-server/server.js"), "console.log('ok');\n").unwrap();
         assert_eq!(validate_build_dirs(&tmp), Ok(()));
+
+        let _ = fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn deploy_config_resolves_cli_args_and_gcloud_fallback() {
+        let args = vec![
+            "deploy".to_string(),
+            "my-project".to_string(),
+            "europe-west1".to_string(),
+        ];
+        let cfg = resolve_deploy_config(&args, || None).unwrap();
+        assert_eq!(cfg.project_id, "my-project");
+        assert_eq!(cfg.region, "europe-west1");
+        assert_eq!(cfg.service_name, SERVICE_NAME);
+
+        let fallback_args = vec!["deploy".to_string()];
+        let fallback_cfg =
+            resolve_deploy_config(&fallback_args, || Some("default-proj".to_string())).unwrap();
+        assert_eq!(fallback_cfg.project_id, "default-proj");
+        assert_eq!(fallback_cfg.region, DEFAULT_REGION);
+
+        assert!(resolve_deploy_config(&fallback_args, || None).is_err());
+        assert_eq!(
+            compute_service_account("1234567890"),
+            "1234567890-compute@developer.gserviceaccount.com"
+        );
+        assert_eq!(REQUIRED_SERVICES.len(), 4);
+    }
+
+    #[test]
+    fn setup_dev_installs_executable_pre_commit_hook() {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let tmp = std::env::temp_dir().join(format!("oauth-setup-dev-test-{nanos}"));
+        fs::create_dir_all(&tmp).unwrap();
+
+        let hook_path = install_pre_commit_hook(&tmp).unwrap();
+        assert_eq!(hook_path, tmp.join(".git/hooks/pre-commit"));
+        assert_eq!(
+            fs::read_to_string(&hook_path).unwrap(),
+            PRE_COMMIT_HOOK_SCRIPT
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = fs::metadata(&hook_path).unwrap().permissions().mode();
+            assert_ne!(mode & 0o111, 0);
+        }
 
         let _ = fs::remove_dir_all(&tmp);
     }

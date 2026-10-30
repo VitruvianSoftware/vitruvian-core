@@ -1,7 +1,4 @@
-load("@aspect_rules_js//js:defs.bzl", "js_library")
-load("@npm//:defs.bzl", "npm_link_all_packages")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("//tools/doctor:defs.bzl", "doctor")
 
 # gazelle:ignore
@@ -10,15 +7,11 @@ load("//tools/doctor:defs.bzl", "doctor")
 # so other top-level apps can't depend on internals.
 package(default_visibility = ["//apps/desktop/nexus-agent:__subpackages__"])
 
-npm_link_all_packages(name = "node_modules")
-
 # The examples both the bot's tests and the Mac apps' tests read
-# (testdata/README.md). Two targets over the same files: rules_js only copies
-# a file into a JavaScript test's sandbox when a js_library hands it over, and
-# the Swift test takes plain files.
-js_library(
+# (testdata/README.md).
+alias(
     name = "testdata",
-    srcs = glob(["testdata/*.json"]),
+    actual = ":testdata_files",
 )
 
 filegroup(
@@ -40,9 +33,9 @@ filegroup(
     visibility = ["//tools/ci:__pkg__"],
 )
 
-sh_binary(
+alias(
     name = "bot",
-    srcs = ["bot.sh"],
+    actual = ":bot-rs",
 )
 
 rust_library(

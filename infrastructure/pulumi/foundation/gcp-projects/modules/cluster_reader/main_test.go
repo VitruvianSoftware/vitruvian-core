@@ -53,7 +53,7 @@ func TestOnlyReadOnlyRolesAreAllowed(t *testing.T) {
 			t.Fatalf("%q must not be grantable by this module", r)
 		}
 	}
-	for _, r := range []string{"roles/run.viewer", "roles/monitoring.viewer"} {
+	for _, r := range []string{"roles/run.viewer", "roles/monitoring.viewer", "roles/logging.viewer"} {
 		if !allowedRoles[r] {
 			t.Fatalf("%q should be grantable", r)
 		}

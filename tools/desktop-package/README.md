@@ -63,7 +63,7 @@ bazel run //tools/desktop-package:package-desktop -- \
 | `--skip-signing` | Skip codesigning (testing only) | `false` |
 | `--skip-dmg` | Skip DMG creation (headless/testing) | `false` |
 | `--skip-thinning` | Skip lipo thinning to arm64/x86_64 | `false` |
-| `--sync-downloads` | Run `sync_downloads.py` after packaging | `false` |
+| `--sync-downloads` | Run `//tools/sync-downloads:sync_downloads` after packaging (also runs for any `--tag` release that is not a dry run). Under `bazel run` the binary comes from runfiles; a binary built with plain `rustc` builds the tool from the checkout's sources | `false` |
 | `--dry-run` | Package and verify; do not upload/push | `false` |
 | `--require-asset <name>` | Also require `<name>` and `<name>.sha256` among the artifacts (repeatable). For a file the caller puts in `--dist-dir` itself, named `<App>-<version>*.zip` or `*.dmg` so it is checksummed and uploaded | None |
 | `--verify-only` | Package nothing; only check the expected artifacts exist (see below). Needs `--app-name` and `--version` or `--tag` | `false` |
@@ -75,7 +75,7 @@ Before it finishes, and before the Homebrew cask is pushed, the tool checks that
 A release workflow should end with the same check as its own step, so the job's result does not rest on the publishing script alone:
 
 ```bash
-bash tools/desktop-package/package-desktop.sh --verify-only \
+bazel run //tools/desktop-package:package-desktop -- --verify-only \
   --app-name HomeSpeaker --version 1.13.1 --tag home-speaker-v1.13.1 \
   --require-asset HomeSpeaker-1.13.1-tool.zip
 ```
@@ -87,7 +87,7 @@ Release runners are Macs, and a Mac's `/bin/bash` is 3.2. Two things differ from
 - Expanding an **empty** array under `set -u` ends the script (`unbound variable`). Write `${args[@]+"${args[@]}"}`, never a bare `"${args[@]}"`, for any array that can be empty.
 - After that kind of abort an `EXIT` trap runs with `$?` equal to 0, and the script exits with the trap's status. A trap that only cleans up turns the abort into exit 0. Set a flag on the script's last line and have the trap exit non-zero without it.
 
-`package-desktop_test.sh` and `apps/desktop/home-speaker/scripts/publish_test.sh` check both; copy the shape for a new app.
+`//tools/desktop-package:package-desktop_test` and `//apps/desktop/home-speaker:publish_test` check both; copy the shape for a new app.
 
 ---
 

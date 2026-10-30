@@ -1,3 +1,23 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
 """Reusable Pulumi `bazel run` wrappers.
 
 `pulumi_project` (see defs.bzl) is applied in each Pulumi project's package to
@@ -12,7 +32,6 @@ No `pulumi` CLI is vendored here — the wrappers exec the developer's installed
 `pulumi_create_app` declares it as `//tools/pulumi:create-app` (run once per org).
 """
 
-load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
@@ -74,25 +93,9 @@ sh_test(
 # tokens are deleted in a separate, confirmed --cleanup step once CI is green.
 #   bazel run //tools/pulumi:rotate-access-token
 #   bazel run //tools/pulumi:rotate-access-token -- --cleanup [--delete-old ID]
-# :rotate-access-token is the Rust port (below); this is the Python original,
-# kept runnable and held to the port by the parity test.
-py_binary(
-    name = "rotate-access-token-py",
-    srcs = ["rotate_access_token.py"],
-    imports = ["."],
-    main = "rotate_access_token.py",
-    visibility = ["//visibility:public"],
-)
-
-py_test(
+test_suite(
     name = "rotate_access_token_test",
-    size = "small",
-    srcs = [
-        "rotate_access_token.py",
-        "rotate_access_token_test.py",
-    ],
-    imports = ["."],
-    main = "rotate_access_token_test.py",
+    tests = [":rotate_access_token_lib_test"],
 )
 
 # The same tool in Rust, standard library only, so Cargo.lock and
@@ -143,24 +146,6 @@ rust_test(
     crate = ":rotate_access_token_lib",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-)
-
-# Holds the Rust binary to the Python script: both run as programs against
-# one fake Pulumi Cloud on localhost and a fake gh, comparing exit codes,
-# stdout, stderr, the requests made and what gh was given, on every case in
-# rotate_access_token_test.py and on command lines, credentials, API
-# failures, prompts and answers built to break them.
-py_test(
-    name = "rotate_access_token_rs_parity_test",
-    size = "small",
-    srcs = [
-        "rotate_access_token.py",
-        "rotate_access_token_rs_parity_test.py",
-    ],
-    data = [":rotate-access-token"],
-    env = {"ROTATE_ACCESS_TOKEN_RS": "$(rootpath :rotate-access-token)"},
-    imports = ["."],
-    main = "rotate_access_token_rs_parity_test.py",
 )
 
 # ---------------------------------------------------------------------------
@@ -292,34 +277,6 @@ sh_test(
     srcs = ["pulumi_go_test_test.sh"],
     args = ["$(location :pulumi-go-test)"],
     data = [":pulumi-go-test"],
-    env_inherit = [
-        "PATH",
-        "HOME",
-    ],
-)
-
-# Parity test: create-app, pulumi-setup, pulumi-go-test — shell vs Rust
-# side-by-side with stubs for gh/jq/open/pulumi/go. Verifies exit codes,
-# stdout/stderr and recorded tool invocations match.
-sh_test(
-    name = "pulumi_tools_parity_test",
-    srcs = ["pulumi_tools_parity_test.sh"],
-    args = [
-        "$(location create-app.sh)",
-        "$(location :create-app)",
-        "$(location pulumi_setup.sh)",
-        "$(location :pulumi-setup)",
-        "$(location pulumi_go_test.sh)",
-        "$(location :pulumi-go-test)",
-    ],
-    data = [
-        "create-app.sh",
-        "pulumi_go_test.sh",
-        "pulumi_setup.sh",
-        ":create-app",
-        ":pulumi-go-test",
-        ":pulumi-setup",
-    ],
     env_inherit = [
         "PATH",
         "HOME",

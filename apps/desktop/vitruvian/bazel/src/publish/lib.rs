@@ -3,7 +3,7 @@
 
 //! Native Rust implementation of `apps/desktop/vitruvian/publish.sh`.
 //! Builds, packages, and publishes the Vitruvian DMG and ZIP artifacts to a GitHub Release,
-//! updates the Homebrew tap cask on production releases, and synchronizes the downloads catalog.
+//! and updates the Homebrew tap cask on production releases.
 
 use std::collections::BTreeMap;
 use std::env;
