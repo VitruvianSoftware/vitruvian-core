@@ -482,9 +482,16 @@ jobs:
        !(startsWith(github.head_ref, 'release-please--') &&
          github.event.pull_request.user.type == 'Bot' &&
          github.event.pull_request.head.repo.full_name == github.repository))) }}
-    # xcode-27: GitHub's image whose default Xcode is 27.0 (build 27A266a),
-    # the version pinned in .xcode-version. macos-latest (macOS 26) only has
-    # Xcode 26.x, whose Swift rejected code that 27.0 compiles (#2536).
+    # xcode-27: GitHub's macOS 27 image, which ships Xcode 27.0 (build 27A266a),
+    # 27.1 (27A9275, the image default) and 27.2 (27B48); select-xcode picks the
+    # one pinned in .xcode-version (currently 27.0, deliberately below the
+    # image's newest Xcode). The pin cannot follow 27.2 yet: the image's OS is
+    # 27.0.1 and Xcode 27.2 ships only the macosx27.2 SDK, so a 27.2-built
+    # XCTest aborts in dyld on the runner ("built for macOS 27.2 which is newer
+    # than running OS" -- PR #4068). Bump the pin when the image runs
+    # macOS >= 27.2.
+    # macos-latest (macOS 26) only has Xcode 26.x, whose Swift rejected
+    # code that 27.0 compiles (#2536).
     runs-on: xcode-27
     timeout-minutes: 45
     env:
