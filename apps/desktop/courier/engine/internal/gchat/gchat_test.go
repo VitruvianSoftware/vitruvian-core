@@ -817,6 +817,7 @@ func TestEndToEndConnectSyncStreamReconnectCatchUpAndBadCredentials(t *testing.T
 	var e2eReadStateCalls atomic.Int64
 	var e2eTypingCalls atomic.Int64
 	var pollStep atomic.Int64
+	var pingDoneForConn atomic.Int64
 	trigger401Ch := make(chan struct{})
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -860,23 +861,36 @@ func TestEndToEndConnectSyncStreamReconnectCatchUpAndBadCredentials(t *testing.T
 			w.Header().Set("Content-Type", "application/x-protobuf")
 			_, _ = w.Write(nil)
 		case "/u/0/webchannel/register":
+			if r.Method != http.MethodGet || r.URL.Query().Get("ignore_compass_cookie") != "1" {
+				http.Error(w, "bad register request", http.StatusBadRequest)
+				return
+			}
 			n := registerCalls.Add(1)
-			gs := fmt.Sprintf("gsession_%d", n)
-			w.Header().Set("X-HTTP-Session-Id", gs)
-			_, _ = fmt.Fprint(w, gs)
-		case "/u/0/webchannel/events_encoded":
+			w.Header().Add("Set-Cookie", fmt.Sprintf("COMPASS=dynamite-ui=gsession_%d; Path=/; Domain=chat.google.com; Secure; HttpOnly", n))
+			w.WriteHeader(http.StatusOK)
+		case "/u/0/webchannel/events":
 			if r.Method == http.MethodPost {
 				body, _ := io.ReadAll(r.Body)
-				if strings.HasPrefix(string(body), "count=0") {
-					sidFrame := fmt.Sprintf(`[[0,["c","sid_%d","",8]]]`, registerCalls.Load())
-					framed := fmt.Sprintf("%d\n%s", len([]rune(sidFrame)), sidFrame)
-					_, _ = fmt.Fprint(w, framed)
+				if !strings.Contains(string(body), "req0_data=") {
+					http.Error(w, "missing req0_data", http.StatusBadRequest)
 					return
 				}
+				pingDoneForConn.Store(registerCalls.Load())
 				w.WriteHeader(http.StatusOK)
 				return
 			}
-			// GET long-poll stream
+			if r.URL.Query().Get("SID") == "null" {
+				sid := fmt.Sprintf("sid_%d", registerCalls.Load())
+				w.Header().Set("X-HTTP-Initial-Response", fmt.Sprintf(`[[0,["c",%q,"",8,12]]]`, sid))
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			// Step 3a Ack GET runs before Step 3b Ping POST for the current connection.
+			if pingDoneForConn.Load() < registerCalls.Load() {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			// Step 4 GET long-poll stream
 			step := pollStep.Add(1)
 			switch step {
 			case 1:

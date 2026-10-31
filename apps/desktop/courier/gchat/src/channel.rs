@@ -481,11 +481,33 @@ crate::edition2021! {
             self.ofs.fetch_add(1, Ordering::SeqCst)
         }
 
-        /// Executes the 4-step WebChannel handshake and drains one long-poll response stream:
-        /// Step 1: `POST /u/0/webchannel/register` with `X-Goog-Encode-Response-If-Executable: base64`
-        /// Step 2: `POST /u/0/webchannel/events_encoded?...&RID=<rid>&CVER=22&X-HTTP-Session-Id=gsessionid`
-        /// Step 3: `GET /u/0/webchannel/events_encoded?gsessionid=...&SID=<sid>&RID=rpc&AID=<aid>&CI=0&TYPE=xmlhttp`
-        /// Step 4: Initial `POST` with `count=1&ofs=0&req0___data__=<json>` carrying `PingEvent`
+        fn next_zx(&self) -> String {
+            let seq = self.rid.load(Ordering::Relaxed) as u64;
+            let now = self.clock().now_ms();
+            let mut val = now
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(seq.wrapping_mul(1442695040888963407))
+                ^ 0x9e3779b97f4a7c15;
+            const ALPHABET: &[u8; 36] = b"0123456789abcdefghijklmnopqrstuvwxyz";
+            let mut out = String::with_capacity(12);
+            for _ in 0..12 {
+                out.push(ALPHABET[(val % 36) as usize] as char);
+                val /= 36;
+                if val == 0 {
+                    val = seq.wrapping_add(0x517cc1b727220a95);
+                }
+            }
+            out
+        }
+
+        /// Executes the 4-step WebChannel handshake (spec §6.2) and drains one long-poll response stream:
+        /// Step 1: `GET /u/0/webchannel/register?ignore_compass_cookie=1` (`Content-Type: application/x-protobuf`),
+        ///         extracting and absorbing rotated `COMPASS=dynamite-ui=<csessionid>` from `Set-Cookie`.
+        /// Step 2: `GET /u/0/webchannel/events?VER=8&RID=<rid>&t=1&zx=<zx>&CVER=22&$req=count%3D1%26ofs%3D0%26req0_data%3D%255B%255D&SID=null`
+        ///         and parsing `<sid>` from `X-HTTP-Initial-Response`.
+        /// Step 3: Ack `GET /u/0/webchannel/events?VER=8&RID=rpc&SID=<sid>&AID=0&CI=0&TYPE=xmlhttp&zx=<zx>&t=1`,
+        ///         then `POST /u/0/webchannel/events?VER=8&RID=<rid>&t=1&SID=<sid>&AID=0` with `count=1&ofs=0&req0_data=<PingEvent>`.
+        /// Step 4: Long-poll `GET /u/0/webchannel/events?VER=8&RID=rpc&t=1&zx=<zx>&CI=0&TYPE=xmlhttp&AID=<aid>&SID=<sid>`.
         pub async fn handshake_and_poll_once<F>(
             &self,
             mut on_event: F,
@@ -496,38 +518,41 @@ crate::edition2021! {
             self.aid.store(0, Ordering::SeqCst);
             self.ofs.store(0, Ordering::SeqCst);
 
-            // Step 1: POST /u/0/webchannel/register
-            let gsessionid = self.step1_register().await?;
+            // Step 1: GET /u/0/webchannel/register?ignore_compass_cookie=1
+            let _csessionid = self.step1_register().await?;
 
-            // Step 2: POST /u/0/webchannel/events_encoded?...&RID=<rid>&CVER=22&X-HTTP-Session-Id=gsessionid
-            let sid = self.step2_bind_sid(&gsessionid).await?;
+            // Step 2: GET /u/0/webchannel/events?...&SID=null -> X-HTTP-Initial-Response
+            let sid = self.step2_bind_sid().await?;
 
-            // Step 4: Send initial active PingEvent at ofs=0
-            self.step4_send_ping(&gsessionid, &sid).await?;
+            // Step 3: Ack GET + initial PingEvent POST at ofs=0, AID=0
+            self.step3_ack_and_ping(&sid).await?;
 
-            // Step 3: GET /u/0/webchannel/events_encoded?gsessionid=...&SID=<sid>&RID=rpc&AID=0&CI=0&TYPE=xmlhttp
-            let events = self.step3_poll_events(&gsessionid, &sid, &mut on_event).await?;
+            // Step 4: Long-poll GET /u/0/webchannel/events
+            let events = self.step4_poll_events(&sid, &mut on_event).await?;
 
             Ok(events)
         }
 
         pub async fn step1_register(&self) -> Result<String, GChatError> {
-            // Reset AID and ofs on every fresh session registration (matching ref/pkg/gchatmeow/channel.go:205-210).
+            // Reset AID and ofs on every fresh session registration (spec §6.2 Step 1).
             self.aid.store(0, Ordering::SeqCst);
             self.ofs.store(0, Ordering::SeqCst);
 
-            let url = self
+            let mut url = self
                 .base_url
                 .join("/u/0/webchannel/register")
                 .map_err(|e| GChatError::Internal(format!("invalid register URL: {e}")))?;
+            {
+                let mut qp = url.query_pairs_mut();
+                qp.append_pair("ignore_compass_cookie", "1");
+            }
             self.guard.validate_url(&url, false).await?;
 
             let mut req = self
                 .http
-                .post(url.clone())
+                .get(url.clone())
                 .header(USER_AGENT, &self.user_agent)
-                .header(CONTENT_TYPE, "application/x-protobuf")
-                .header("X-Goog-Encode-Response-If-Executable", "base64");
+                .header(CONTENT_TYPE, "application/x-protobuf");
             if let Some(cookie_hdr) = self.jar.cookie_header_for_request(&url) {
                 req = req.header(COOKIE, cookie_hdr);
             }
@@ -556,62 +581,53 @@ crate::edition2021! {
                 .filter_map(|v| v.to_str().ok().map(|s| s.to_owned()))
                 .collect();
 
-            let hdr_gsession = resp
-                .headers()
-                .get("X-HTTP-Session-Id")
-                .or_else(|| resp.headers().get("x-http-session-id"))
-                .and_then(|v| v.to_str().ok())
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty());
-
-            let body_bytes = resp
+            let _ = resp
                 .bytes()
                 .await
                 .map_err(|e| GChatError::Network(format!("register body read failed: {e}")))?;
-            let body_text = String::from_utf8_lossy(&body_bytes).trim().to_string();
 
-            if let Some(gs) = hdr_gsession {
-                return Ok(gs);
+            let Some(compass_val) = self.jar.absorb_set_cookies(&set_cookies) else {
+                return Err(GChatError::Protocol(
+                    "webchannel register missing COMPASS Set-Cookie".to_string(),
+                ));
+            };
+            let csessionid = compass_val
+                .strip_prefix("dynamite-ui=")
+                .unwrap_or(compass_val.as_str())
+                .trim()
+                .to_string();
+            if csessionid.is_empty() {
+                return Err(GChatError::Protocol(
+                    "webchannel register returned empty COMPASS csessionid".to_string(),
+                ));
             }
-            for sc in &set_cookies {
-                if let Some(idx) = sc.find("dynamite-ui=") {
-                    let rest = &sc[idx + "dynamite-ui=".len()..];
-                    let token = rest.split(';').next().unwrap_or("").trim();
-                    if !token.is_empty() {
-                        return Ok(token.to_string());
-                    }
-                }
-            }
-            if !body_text.is_empty() {
-                return Ok(body_text);
-            }
-            Ok("gsession_default".to_string())
+            Ok(csessionid)
         }
 
-        pub async fn step2_bind_sid(&self, gsessionid: &str) -> Result<String, GChatError> {
+        pub async fn step2_bind_sid(&self) -> Result<String, GChatError> {
             let rid = self.next_rid();
+            let zx = self.next_zx();
             let mut url = self
                 .base_url
-                .join("/u/0/webchannel/events_encoded")
-                .map_err(|e| GChatError::Internal(format!("invalid events_encoded URL: {e}")))?;
+                .join("/u/0/webchannel/events")
+                .map_err(|e| GChatError::Internal(format!("invalid events URL: {e}")))?;
             {
                 let mut qp = url.query_pairs_mut();
                 qp.append_pair("VER", "8");
-                qp.append_pair("gsessionid", gsessionid);
                 qp.append_pair("RID", &rid.to_string());
-                qp.append_pair("CVER", "22");
-                qp.append_pair("X-HTTP-Session-Id", gsessionid);
                 qp.append_pair("t", "1");
+                qp.append_pair("zx", &zx);
+                qp.append_pair("CVER", "22");
+                qp.append_pair("$req", "count=1&ofs=0&req0_data=%5B%5D");
+                qp.append_pair("SID", "null");
             }
             self.guard.validate_url(&url, false).await?;
 
             let mut req = self
                 .http
-                .post(url.clone())
+                .get(url.clone())
                 .header(USER_AGENT, &self.user_agent)
-                .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
-                .header("X-HTTP-Session-Id", gsessionid)
-                .body("count=0");
+                .header(reqwest::header::REFERER, "https://chat.google.com/");
             if let Some(cookie_hdr) = self.jar.cookie_header_for_request(&url) {
                 req = req.header(COOKIE, cookie_hdr);
             }
@@ -633,45 +649,95 @@ crate::edition2021! {
                 ));
             }
 
+            let set_cookies: Vec<String> = resp
+                .headers()
+                .get_all(reqwest::header::SET_COOKIE)
+                .iter()
+                .filter_map(|v| v.to_str().ok().map(|s| s.to_owned()))
+                .collect();
+            if !set_cookies.is_empty() {
+                self.jar.absorb_set_cookies(&set_cookies);
+            }
+
             let initial_hdr = resp
                 .headers()
                 .get("X-HTTP-Initial-Response")
+                .or_else(|| resp.headers().get("x-http-initial-response"))
                 .and_then(|v| v.to_str().ok())
                 .map(|s| s.to_owned());
 
-            let body_bytes = resp
+            let _ = resp
                 .bytes()
                 .await
                 .map_err(|e| GChatError::Network(format!("SID bind body read failed: {e}")))?;
 
             if let Some(hdr) = initial_hdr {
                 if let Some(sid) = parse_sid_from_json(&hdr) {
-                    return Ok(sid);
-                }
-            }
-
-            let body_str = String::from_utf8_lossy(&body_bytes);
-            if let Some(sid) = parse_sid_from_json(&body_str) {
-                return Ok(sid);
-            }
-
-            let mut parser = ChunkParser::new();
-            for frame in parser.push_bytes(&body_bytes)? {
-                if let Some(sid) = parse_sid_from_json(&frame) {
+                    self.aid.store(0, Ordering::SeqCst);
+                    self.ofs.store(0, Ordering::SeqCst);
                     return Ok(sid);
                 }
             }
 
             Err(GChatError::Protocol(
-                "missing SID in WebChannel initial response".to_string(),
+                "missing SID in WebChannel X-HTTP-Initial-Response header".to_string(),
             ))
         }
 
-        pub async fn step4_send_ping(
-            &self,
-            gsessionid: &str,
-            sid: &str,
-        ) -> Result<(), GChatError> {
+        pub async fn step3_ack_and_ping(&self, sid: &str) -> Result<(), GChatError> {
+            self.step3_ack_sid(sid).await?;
+            self.step3_send_ping(sid).await
+        }
+
+        pub async fn step3_ack_sid(&self, sid: &str) -> Result<(), GChatError> {
+            let zx = self.next_zx();
+            let mut url = self
+                .base_url
+                .join("/u/0/webchannel/events")
+                .map_err(|e| GChatError::Internal(format!("invalid events URL: {e}")))?;
+            {
+                let mut qp = url.query_pairs_mut();
+                qp.append_pair("VER", "8");
+                qp.append_pair("RID", "rpc");
+                qp.append_pair("SID", sid);
+                qp.append_pair("AID", "0");
+                qp.append_pair("CI", "0");
+                qp.append_pair("TYPE", "xmlhttp");
+                qp.append_pair("zx", &zx);
+                qp.append_pair("t", "1");
+            }
+            self.guard.validate_url(&url, false).await?;
+
+            let mut req = self
+                .http
+                .get(url.clone())
+                .header(USER_AGENT, &self.user_agent)
+                .header(reqwest::header::REFERER, "https://chat.google.com/");
+            if let Some(cookie_hdr) = self.jar.cookie_header_for_request(&url) {
+                req = req.header(COOKIE, cookie_hdr);
+            }
+
+            let resp = req
+                .send()
+                .await
+                .map_err(|e| GChatError::Network(format!("webchannel SID ack GET failed: {e}")))?;
+            let status = resp.status().as_u16();
+            if status == 401 || status == 403 {
+                return Err(GChatError::AuthExpired(format!(
+                    "webchannel SID ack returned HTTP {status}"
+                )));
+            }
+            if !resp.status().is_success() {
+                return Err(GChatError::HttpStatus(
+                    status,
+                    "webchannel SID ack GET failed".to_string(),
+                ));
+            }
+            let _ = resp.bytes().await;
+            Ok(())
+        }
+
+        pub async fn step3_send_ping(&self, sid: &str) -> Result<(), GChatError> {
             let rid = self.next_rid();
             let ofs = self.next_ofs();
             let aid = self.aid();
@@ -688,24 +754,24 @@ crate::edition2021! {
 
             let mut url = self
                 .base_url
-                .join("/u/0/webchannel/events_encoded")
-                .map_err(|e| GChatError::Internal(format!("invalid events_encoded URL: {e}")))?;
+                .join("/u/0/webchannel/events")
+                .map_err(|e| GChatError::Internal(format!("invalid events URL: {e}")))?;
             {
                 let mut qp = url.query_pairs_mut();
                 qp.append_pair("VER", "8");
-                qp.append_pair("gsessionid", gsessionid);
-                qp.append_pair("SID", sid);
                 qp.append_pair("RID", &rid.to_string());
-                qp.append_pair("AID", &aid.to_string());
                 qp.append_pair("t", "1");
+                qp.append_pair("SID", sid);
+                qp.append_pair("AID", &aid.to_string());
             }
             self.guard.validate_url(&url, false).await?;
 
-            let form_body = format!("count=1&ofs={ofs}&req0___data__={json_str}");
+            let form_body = format!("count=1&ofs={ofs}&req0_data={json_str}");
             let mut req = self
                 .http
                 .post(url.clone())
                 .header(USER_AGENT, &self.user_agent)
+                .header(reqwest::header::REFERER, "https://chat.google.com/")
                 .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
                 .body(form_body);
             if let Some(cookie_hdr) = self.jar.cookie_header_for_request(&url) {
@@ -731,9 +797,8 @@ crate::edition2021! {
             Ok(())
         }
 
-        pub async fn step3_poll_events<F>(
+        pub async fn step4_poll_events<F>(
             &self,
-            gsessionid: &str,
             sid: &str,
             on_event: &mut F,
         ) -> Result<Vec<pb::Event>, GChatError>
@@ -741,25 +806,29 @@ crate::edition2021! {
             F: FnMut(&pb::Event),
         {
             let aid = self.aid();
+            let zx = self.next_zx();
             let mut url = self
                 .base_url
-                .join("/u/0/webchannel/events_encoded")
-                .map_err(|e| GChatError::Internal(format!("invalid events_encoded URL: {e}")))?;
+                .join("/u/0/webchannel/events")
+                .map_err(|e| GChatError::Internal(format!("invalid events URL: {e}")))?;
             {
                 let mut qp = url.query_pairs_mut();
-                qp.append_pair("gsessionid", gsessionid);
-                qp.append_pair("SID", sid);
+                qp.append_pair("VER", "8");
                 qp.append_pair("RID", "rpc");
-                qp.append_pair("AID", &aid.to_string());
+                qp.append_pair("t", "1");
+                qp.append_pair("zx", &zx);
                 qp.append_pair("CI", "0");
                 qp.append_pair("TYPE", "xmlhttp");
+                qp.append_pair("AID", &aid.to_string());
+                qp.append_pair("SID", sid);
             }
             self.guard.validate_url(&url, false).await?;
 
             let mut req = self
                 .http
                 .get(url.clone())
-                .header(USER_AGENT, &self.user_agent);
+                .header(USER_AGENT, &self.user_agent)
+                .header(reqwest::header::REFERER, "https://chat.google.com/");
             if let Some(cookie_hdr) = self.jar.cookie_header_for_request(&url) {
                 req = req.header(COOKIE, cookie_hdr);
             }
@@ -846,10 +915,10 @@ crate::edition2021! {
                 return Ok((Vec::new(), false));
             };
 
-            let wc_desc = DESCRIPTOR_POOL
-                .get_message_by_name("googlechat.WebChannelEvent")
+            let stream_resp_desc = DESCRIPTOR_POOL
+                .get_message_by_name("googlechat.StreamEventsResponse")
                 .ok_or_else(|| {
-                    GChatError::Internal("missing WebChannelEvent descriptor".to_string())
+                    GChatError::Internal("missing StreamEventsResponse descriptor".to_string())
                 })?;
 
             let mut out = Vec::new();
@@ -870,8 +939,8 @@ crate::edition2021! {
                             saw_valid_frame = true;
                         } else if first.is_array() {
                             saw_valid_frame = true;
-                            if let Ok(wc) = decode_pblite::<pb::WebChannelEvent>(&wc_desc, first) {
-                                if let Some(ev) = wc.event {
+                            if let Ok(sr) = decode_pblite::<pb::StreamEventsResponse>(&stream_resp_desc, first) {
+                                if let Some(ev) = sr.event {
                                     let split = split_event_into_events(&ev);
                                     if split.is_empty() {
                                         out.push(ev);
@@ -903,23 +972,20 @@ crate::edition2021! {
                     break;
                 }
 
-                let gsession_res = tokio::select! {
+                let reg_res = tokio::select! {
                     _ = cancel_rx.changed() => break,
                     r = self.step1_register() => r,
                 };
-                let gsessionid = match gsession_res {
-                    Ok(id) => id,
-                    Err(e) => {
-                        if !self.handle_stream_error(e, &mut attempt, &mut cancel_rx, &mut emit).await {
-                            break;
-                        }
-                        continue;
+                if let Err(e) = reg_res {
+                    if !self.handle_stream_error(e, &mut attempt, &mut cancel_rx, &mut emit).await {
+                        break;
                     }
-                };
+                    continue;
+                }
 
                 let sid_res = tokio::select! {
                     _ = cancel_rx.changed() => break,
-                    r = self.step2_bind_sid(&gsessionid) => r,
+                    r = self.step2_bind_sid() => r,
                 };
                 let sid = match sid_res {
                     Ok(s) => s,
@@ -931,14 +997,19 @@ crate::edition2021! {
                     }
                 };
 
-                if let Err(e) = self.step4_send_ping(&gsessionid, &sid).await {
+                let ack_ping_res = tokio::select! {
+                    _ = cancel_rx.changed() => break,
+                    r = self.step3_ack_and_ping(&sid) => r,
+                };
+                if let Err(e) = ack_ping_res {
                     if !self.handle_stream_error(e, &mut attempt, &mut cancel_rx, &mut emit).await {
                         break;
                     }
                     continue;
                 }
 
-                emit(GCHAT_EVENT_KIND_CONNECTED, &[]);
+                let cookies_json = self.jar.to_cookie_map_json();
+                emit(GCHAT_EVENT_KIND_CONNECTED, cookies_json.as_bytes());
                 if attempt > 0 {
                     emit(GCHAT_EVENT_KIND_RESYNC, &[]);
                 }
@@ -955,7 +1026,7 @@ crate::edition2021! {
                     };
                     let poll_res = tokio::select! {
                         _ = cancel_rx.changed() => return,
-                        r = self.step3_poll_events(&gsessionid, &sid, &mut on_ev) => r,
+                        r = self.step4_poll_events(&sid, &mut on_ev) => r,
                     };
                     drop(on_ev);
                     match poll_res {
@@ -1148,66 +1219,114 @@ mod tests {
         let addr = listener.local_addr().expect("local addr");
 
         let server_thread = std::thread::spawn(move || {
-            // Step 1: POST /u/0/webchannel/register
+            // Step 1: GET /u/0/webchannel/register?ignore_compass_cookie=1
             {
                 let (mut stream, _) = listener.accept().expect("accept step 1");
                 let (first_line, headers, _) = read_http_request(&mut stream);
                 assert!(
-                    first_line.starts_with("POST /u/0/webchannel/register "),
+                    first_line.starts_with("GET /u/0/webchannel/register?ignore_compass_cookie=1 "),
                     "Step 1 unexpected request line: {first_line}"
                 );
                 let headers_lower = headers.to_ascii_lowercase();
                 assert!(
-                    headers_lower.contains("x-goog-encode-response-if-executable: base64"),
-                    "Step 1 missing X-Goog-Encode-Response-If-Executable header: {headers}"
+                    headers_lower.contains("content-type: application/x-protobuf"),
+                    "Step 1 missing Content-Type: application/x-protobuf header: {headers}"
                 );
                 let resp = concat!(
                     "HTTP/1.1 200 OK\r\n",
-                    "X-HTTP-Session-Id: gsession_abc\r\n",
-                    "Content-Length: 12\r\n",
-                    "Connection: close\r\n\r\n",
-                    "gsession_abc"
+                    "Set-Cookie: COMPASS=dynamite-ui=csession_abc; Path=/; Domain=chat.google.com; Secure; HttpOnly\r\n",
+                    "Content-Length: 0\r\n",
+                    "Connection: close\r\n\r\n"
                 );
                 stream.write_all(resp.as_bytes()).expect("write step 1");
             }
 
-            // Step 2: POST /u/0/webchannel/events_encoded?...&RID=<rid>&CVER=22&X-HTTP-Session-Id=gsessionid
+            // Step 2: GET /u/0/webchannel/events?VER=8&RID=<rid>&t=1&zx=<zx>&CVER=22&$req=count%3D1%26ofs%3D0%26req0_data%3D%255B%255D&SID=null
             {
                 let (mut stream, _) = listener.accept().expect("accept step 2");
-                let (first_line, _, _) = read_http_request(&mut stream);
+                let (first_line, headers, _) = read_http_request(&mut stream);
                 assert!(
-                    first_line.starts_with("POST /u/0/webchannel/events_encoded?"),
+                    first_line.starts_with("GET /u/0/webchannel/events?"),
                     "Step 2 unexpected request line: {first_line}"
                 );
+                for needle in [
+                    "VER=8",
+                    "RID=",
+                    "t=1",
+                    "zx=",
+                    "CVER=22",
+                    "%24req=count%3D1%26ofs%3D0%26req0_data%3D%255B%255D",
+                    "SID=null",
+                ] {
+                    assert!(
+                        first_line.contains(needle),
+                        "Step 2 query missing `{needle}`: {first_line}"
+                    );
+                }
+                let headers_lower = headers.to_ascii_lowercase();
                 assert!(
-                    first_line.contains("RID=")
-                        && first_line.contains("CVER=22")
-                        && first_line.contains("X-HTTP-Session-Id=gsession_abc"),
-                    "Step 2 query missing required params: {first_line}"
+                    headers_lower.contains("referer: https://chat.google.com/"),
+                    "Step 2 missing referer header: {headers}"
                 );
-                let sid_frame = "[[0,[\"c\",\"sid_123\",\"\",8]]]";
-                let body = format!("{}\n{}", sid_frame.encode_utf16().count(), sid_frame);
-                let resp = format!(
-                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                    body.len(),
-                    body
+                assert!(
+                    headers.contains("COMPASS=dynamite-ui=csession_abc"),
+                    "Step 2 must send rotated COMPASS cookie from Step 1: {headers}"
+                );
+                let resp = concat!(
+                    "HTTP/1.1 200 OK\r\n",
+                    "X-HTTP-Initial-Response: [[0,[\"c\",\"sid_123\",\"\",8,12]]]\r\n",
+                    "Content-Length: 0\r\n",
+                    "Connection: close\r\n\r\n"
                 );
                 stream.write_all(resp.as_bytes()).expect("write step 2");
             }
 
-            // Step 4: Initial POST with count=1&ofs=0&req0___data__=<json> carrying PingEvent
+            // Step 3a: Ack GET /u/0/webchannel/events?VER=8&RID=rpc&SID=sid_123&AID=0&CI=0&TYPE=xmlhttp&zx=<zx>&t=1
             {
-                let (mut stream, _) = listener.accept().expect("accept step 4 ping");
+                let (mut stream, _) = listener.accept().expect("accept step 3a ack GET");
+                let (first_line, _, _) = read_http_request(&mut stream);
+                assert!(
+                    first_line.starts_with("GET /u/0/webchannel/events?"),
+                    "Step 3a unexpected request line: {first_line}"
+                );
+                for needle in [
+                    "VER=8",
+                    "RID=rpc",
+                    "SID=sid_123",
+                    "AID=0",
+                    "CI=0",
+                    "TYPE=xmlhttp",
+                    "zx=",
+                    "t=1",
+                ] {
+                    assert!(
+                        first_line.contains(needle),
+                        "Step 3a ack GET missing `{needle}` in `{first_line}`"
+                    );
+                }
+                let resp = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+                stream.write_all(resp.as_bytes()).expect("write step 3a");
+            }
+
+            // Step 3b: Initial POST /u/0/webchannel/events?VER=8&RID=<rid>&t=1&SID=sid_123&AID=0 with count=1&ofs=0&req0_data=<json>
+            {
+                let (mut stream, _) = listener.accept().expect("accept step 3b ping POST");
                 let (first_line, _, body) = read_http_request(&mut stream);
                 assert!(
-                    first_line.starts_with("POST /u/0/webchannel/events_encoded?"),
-                    "Step 4 unexpected request line: {first_line}"
+                    first_line.starts_with("POST /u/0/webchannel/events?"),
+                    "Step 3b unexpected request line: {first_line}"
                 );
+                for needle in ["VER=8", "RID=", "t=1", "SID=sid_123", "AID=0"] {
+                    assert!(
+                        first_line.contains(needle),
+                        "Step 3b POST missing `{needle}` in `{first_line}`"
+                    );
+                }
                 assert!(
-                    body.starts_with("count=1&ofs=0&req0___data__="),
-                    "Step 4 unexpected form body: {body}"
+                    body.starts_with("count=1&ofs=0&req0_data="),
+                    "Step 3b unexpected form body: {body}"
                 );
-                let json_part = body.trim_start_matches("count=1&ofs=0&req0___data__=");
+                let json_part = body.trim_start_matches("count=1&ofs=0&req0_data=");
                 let val: Value = serde_json::from_str(json_part).expect("valid PingEvent pblite");
                 let desc = DESCRIPTOR_POOL
                     .get_message_by_name("googlechat.StreamEventsRequest")
@@ -1227,34 +1346,42 @@ mod tests {
                 assert_eq!(ping.client_notifications_enabled, Some(true));
 
                 let resp = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-                stream.write_all(resp.as_bytes()).expect("write step 4");
+                stream.write_all(resp.as_bytes()).expect("write step 3b");
             }
 
-            // Step 3: GET /u/0/webchannel/events_encoded?gsessionid=...&SID=sid_123&RID=rpc&AID=0&CI=0&TYPE=xmlhttp
+            // Step 4: Long-poll GET /u/0/webchannel/events?VER=8&RID=rpc&t=1&zx=<zx>&CI=0&TYPE=xmlhttp&AID=0&SID=sid_123
             {
-                let (mut stream, _) = listener.accept().expect("accept step 3 GET");
-                let (first_line, _, _) = read_http_request(&mut stream);
+                let (mut stream, _) = listener.accept().expect("accept step 4 GET");
+                let (first_line, headers, _) = read_http_request(&mut stream);
                 assert!(
-                    first_line.starts_with("GET /u/0/webchannel/events_encoded?"),
-                    "Step 3 unexpected request line: {first_line}"
+                    first_line.starts_with("GET /u/0/webchannel/events?"),
+                    "Step 4 unexpected request line: {first_line}"
                 );
                 for needle in [
-                    "gsessionid=gsession_abc",
-                    "SID=sid_123",
+                    "VER=8",
                     "RID=rpc",
-                    "AID=0",
+                    "t=1",
+                    "zx=",
                     "CI=0",
                     "TYPE=xmlhttp",
+                    "AID=0",
+                    "SID=sid_123",
                 ] {
                     assert!(
                         first_line.contains(needle),
-                        "Step 3 missing `{needle}` in `{first_line}`"
+                        "Step 4 missing `{needle}` in `{first_line}`"
                     );
                 }
+                assert!(
+                    headers
+                        .to_ascii_lowercase()
+                        .contains("referer: https://chat.google.com/"),
+                    "Step 4 missing referer header: {headers}"
+                );
 
                 // Chunk 1: [[1,["noop"]]]
                 let chunk1 = "[[1,[\"noop\"]]]";
-                // Chunk 2: [[2,[<WebChannelEvent with Event>]]]
+                // Chunk 2: [[2,[<StreamEventsResponse with Event>]]]
                 let event_chunk = json!([[
                     2,
                     [[[
@@ -1302,7 +1429,7 @@ mod tests {
                     body.len(),
                     body
                 );
-                stream.write_all(resp.as_bytes()).expect("write step 3");
+                stream.write_all(resp.as_bytes()).expect("write step 4");
             }
         });
 
@@ -1351,7 +1478,14 @@ mod tests {
             "Mozilla/5.0".to_string(),
             guard.clone(),
         ));
-        let wc = WebChannelClient::new(http, jar, xsrf, guard, "Mozilla/5.0".to_string(), base_url);
+        let wc = WebChannelClient::new(
+            http,
+            jar.clone(),
+            xsrf,
+            guard,
+            "Mozilla/5.0".to_string(),
+            base_url,
+        );
 
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -1364,6 +1498,60 @@ mod tests {
         server_thread.join().expect("server thread finished");
         assert_eq!(wc.aid(), 2, "AID must update to 2 after chunk [[2,[...]]]");
         assert_eq!(events.len(), 1);
+        assert!(
+            jar.to_cookie_map_json()
+                .contains("\"COMPASS\":\"dynamite-ui=csession_abc\""),
+            "rotated COMPASS must be absorbed into shared DomainCookieJar"
+        );
+    }
+
+    #[test]
+    fn test_webchannel_register_without_compass_cookie_fails_closed() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback");
+        let addr = listener.local_addr().expect("local addr");
+
+        let server_thread = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept step 1");
+            let _ = read_http_request(&mut stream);
+            // Respond 200 OK without Set-Cookie: COMPASS=...
+            let resp = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+            stream.write_all(resp.as_bytes()).expect("write step 1");
+        });
+
+        let guard = NetGuard::allow_loopback_for_test();
+        let http = guard.build_http_client().expect("build http client");
+        let jar = DomainCookieJar::from_scoped_cookies(vec![
+            ScopedCookie { name: "COMPASS".into(), value: "c1".into(), domain: "chat.google.com".into(), path: "/".into() },
+            ScopedCookie { name: "OSID".into(), value: "o1".into(), domain: "chat.google.com".into(), path: "/".into() },
+            ScopedCookie { name: "SID".into(), value: "s1".into(), domain: ".google.com".into(), path: "/".into() },
+            ScopedCookie { name: "HSID".into(), value: "h1".into(), domain: ".google.com".into(), path: "/".into() },
+            ScopedCookie { name: "SSID".into(), value: "ss1".into(), domain: ".google.com".into(), path: "/".into() },
+        ])
+        .expect("valid cookies")
+        .with_loopback_for_test(true);
+
+        let base_url = Url::parse(&format!("http://{addr}/")).expect("base url");
+        let xsrf = Arc::new(XsrfTokenManager::new(
+            http.clone(),
+            jar.clone(),
+            base_url.clone(),
+            "Mozilla/5.0".to_string(),
+            guard.clone(),
+        ));
+        let wc = WebChannelClient::new(http, jar, xsrf, guard, "Mozilla/5.0".to_string(), base_url);
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("tokio runtime");
+        let err = rt
+            .block_on(wc.step1_register())
+            .expect_err("register without COMPASS Set-Cookie must fail closed (no gsession_default fallback)");
+        server_thread.join().expect("server thread finished");
+        assert!(
+            matches!(err, GChatError::Protocol(_)),
+            "expected GChatError::Protocol, got: {err:?}"
+        );
     }
 
     crate::edition2021! {
@@ -1375,29 +1563,32 @@ mod tests {
         let (c2_done_tx, c2_done_rx) = tokio::sync::oneshot::channel::<()>();
 
         let server_thread = std::thread::spawn(move || {
-            // Connection 1: register -> bind SID -> ping (ofs=0, AID=0) -> GET (AID=0) -> emit AID=5, then 400 Unknown SID on rotation
+            // Connection 1: register -> bind SID -> ack GET -> ping POST (ofs=0, AID=0) -> GET (AID=0) -> emit AID=5, then 400 Unknown SID on rotation
             {
                 let (mut s, _) = listener.accept().expect("c1 step1");
                 let _ = read_http_request(&mut s);
-                s.write_all(b"HTTP/1.1 200 OK\r\nX-HTTP-Session-Id: gs1\r\nContent-Length: 3\r\nConnection: close\r\n\r\ngs1").unwrap();
+                s.write_all(b"HTTP/1.1 200 OK\r\nSet-Cookie: COMPASS=dynamite-ui=gs1; Path=/; Domain=chat.google.com\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
             }
             {
                 let (mut s, _) = listener.accept().expect("c1 step2");
                 let _ = read_http_request(&mut s);
-                let sid_frame = "[[0,[\"c\",\"sid_c1\",\"\",8]]]";
-                let body = format!("{}\n{}", sid_frame.encode_utf16().count(), sid_frame);
-                let resp = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body);
+                let resp = "HTTP/1.1 200 OK\r\nX-HTTP-Initial-Response: [[0,[\"c\",\"sid_c1\",\"\",8,12]]]\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
                 s.write_all(resp.as_bytes()).unwrap();
             }
             {
-                let (mut s, _) = listener.accept().expect("c1 step4 ping");
-                let (first_line, _, body) = read_http_request(&mut s);
-                assert!(first_line.contains("AID=0"), "c1 ping expected AID=0, got {first_line}");
-                assert!(body.starts_with("count=1&ofs=0&"), "c1 ping expected ofs=0, got {body}");
+                let (mut s, _) = listener.accept().expect("c1 step3a ack GET");
+                let _ = read_http_request(&mut s);
                 s.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
             }
             {
-                let (mut s, _) = listener.accept().expect("c1 step3 GET #1");
+                let (mut s, _) = listener.accept().expect("c1 step3b ping POST");
+                let (first_line, _, body) = read_http_request(&mut s);
+                assert!(first_line.contains("AID=0"), "c1 ping expected AID=0, got {first_line}");
+                assert!(body.starts_with("count=1&ofs=0&req0_data="), "c1 ping expected ofs=0, got {body}");
+                s.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
+            }
+            {
+                let (mut s, _) = listener.accept().expect("c1 step4 GET #1");
                 let (first_line, _, _) = read_http_request(&mut s);
                 assert!(first_line.contains("AID=0"), "c1 GET #1 expected AID=0, got {first_line}");
                 let chunk = "[[5,[\"noop\"]]]";
@@ -1406,34 +1597,37 @@ mod tests {
                 s.write_all(resp.as_bytes()).unwrap();
             }
             {
-                let (mut s, _) = listener.accept().expect("c1 step3 GET #2 drops with 400");
+                let (mut s, _) = listener.accept().expect("c1 step4 GET #2 drops with 400");
                 let (first_line, _, _) = read_http_request(&mut s);
                 assert!(first_line.contains("AID=5"), "c1 GET #2 rotation expected AID=5, got {first_line}");
                 s.write_all(b"HTTP/1.1 400 Bad Request\r\nContent-Length: 11\r\nConnection: close\r\n\r\nUnknown SID").unwrap();
             }
 
-            // Connection 2 (after reconnect): register -> bind SID -> ping MUST have AID=0 & ofs=0 -> GET MUST have AID=0
+            // Connection 2 (after reconnect): register -> bind SID -> ack GET -> ping MUST have AID=0 & ofs=0 -> GET MUST have AID=0
             {
                 let (mut s, _) = listener.accept().expect("c2 step1");
                 let _ = read_http_request(&mut s);
-                s.write_all(b"HTTP/1.1 200 OK\r\nX-HTTP-Session-Id: gs2\r\nContent-Length: 3\r\nConnection: close\r\n\r\ngs2").unwrap();
+                s.write_all(b"HTTP/1.1 200 OK\r\nSet-Cookie: COMPASS=dynamite-ui=gs2; Path=/; Domain=chat.google.com\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
             }
             {
                 let (mut s, _) = listener.accept().expect("c2 step2");
                 let _ = read_http_request(&mut s);
-                let sid_frame = "[[0,[\"c\",\"sid_c2\",\"\",8]]]";
-                let body = format!("{}\n{}", sid_frame.encode_utf16().count(), sid_frame);
-                let resp = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body);
+                let resp = "HTTP/1.1 200 OK\r\nX-HTTP-Initial-Response: [[0,[\"c\",\"sid_c2\",\"\",8,12]]]\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
                 s.write_all(resp.as_bytes()).unwrap();
             }
+            {
+                let (mut s, _) = listener.accept().expect("c2 step3a ack GET");
+                let _ = read_http_request(&mut s);
+                s.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
+            }
             let (c2_ping_line, _, c2_ping_body) = {
-                let (mut s, _) = listener.accept().expect("c2 step4 ping");
+                let (mut s, _) = listener.accept().expect("c2 step3b ping");
                 let req = read_http_request(&mut s);
                 s.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
                 req
             };
             let (c2_get_line, _, _) = {
-                let (mut s, _) = listener.accept().expect("c2 step3 GET");
+                let (mut s, _) = listener.accept().expect("c2 step4 GET");
                 let req = read_http_request(&mut s);
                 let _ = c2_done_tx.send(());
                 let chunk = "[[1,[\"noop\"]]]";
@@ -1496,7 +1690,7 @@ mod tests {
             clock.advance(Duration::from_millis(1050));
 
             resync_rx.recv().await.expect("expected GCHAT_EVENT_KIND_RESYNC on reconnect");
-            c2_done_rx.await.expect("expected c2 step3 GET request");
+            c2_done_rx.await.expect("expected c2 step4 GET request");
             let _ = cancel_tx.send(true);
             let _ = wc_task.await;
             server_thread.join().expect("server thread finished")
@@ -1504,15 +1698,15 @@ mod tests {
 
         assert!(
             c2_ping_line.contains("AID=0"),
-            "reconnect step4 ping must reset AID=0, got: {c2_ping_line}"
+            "reconnect step3b ping must reset AID=0, got: {c2_ping_line}"
         );
         assert!(
-            c2_ping_body.starts_with("count=1&ofs=0&"),
-            "reconnect step4 ping must reset ofs=0, got: {c2_ping_body}"
+            c2_ping_body.starts_with("count=1&ofs=0&req0_data="),
+            "reconnect step3b ping must reset ofs=0, got: {c2_ping_body}"
         );
         assert!(
             c2_get_line.contains("AID=0"),
-            "reconnect step3 GET must reset AID=0, got: {c2_get_line}"
+            "reconnect step4 GET must reset AID=0, got: {c2_get_line}"
         );
     }
 
@@ -1581,7 +1775,7 @@ mod tests {
             let wc_clone = wc.clone();
             let poll_task = tokio::spawn(async move {
                 let mut noop = |_: &pb::Event| {};
-                wc_clone.step3_poll_events("gs1", "sid1", &mut noop).await
+                wc_clone.step4_poll_events("sid1", &mut noop).await
             });
 
             // 3 trickles at 25s intervals (25s, 50s, 75s) keep read inactivity < 35s,

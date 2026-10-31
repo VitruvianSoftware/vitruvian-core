@@ -4,6 +4,7 @@
 use crate::GChatError;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::sync::{Arc, RwLock};
 use url::Url;
 
 pub const DEFAULT_MACOS_SAFARI_UA: &str =
@@ -50,7 +51,7 @@ fn has_invalid_cookie_chars(s: &str) -> bool {
 
 #[derive(Clone, Debug)]
 pub struct DomainCookieJar {
-    cookies: Vec<ScopedCookie>,
+    cookies: Arc<RwLock<Vec<ScopedCookie>>>,
     #[cfg(any(test, feature = "test-loopback"))]
     allow_loopback_for_test: bool,
 }
@@ -119,7 +120,7 @@ impl DomainCookieJar {
         }
 
         Ok(Self {
-            cookies: normalized,
+            cookies: Arc::new(RwLock::new(normalized)),
             #[cfg(any(test, feature = "test-loopback"))]
             allow_loopback_for_test: false,
         })
@@ -166,8 +167,9 @@ impl DomainCookieJar {
             return None;
         }
 
+        let guard = self.cookies.read().unwrap();
         let mut pairs = Vec::new();
-        for c in &self.cookies {
+        for c in guard.iter() {
             if c.domain == "chat.google.com" && is_chat_host {
                 pairs.push(format!("{}={}", c.name, c.value));
             } else if c.domain == "google.com" && is_google_host {
@@ -203,8 +205,81 @@ impl DomainCookieJar {
         None
     }
 
-    pub fn cookies(&self) -> &[ScopedCookie] {
-        &self.cookies
+    /// Absorbs `Set-Cookie` headers from a `chat.google.com` response into the shared jar
+    /// and returns the rotated `COMPASS` cookie value if one was present.
+    pub fn absorb_set_cookies(&self, set_cookie_headers: &[String]) -> Option<String> {
+        let mut compass_val = None;
+        let mut guard = self.cookies.write().unwrap();
+        for raw_hdr in set_cookie_headers {
+            let mut segments = raw_hdr.split(';');
+            let Some(first_seg) = segments.next() else {
+                continue;
+            };
+            let Some((raw_name, raw_val)) = first_seg.split_once('=') else {
+                continue;
+            };
+            let name = raw_name.trim().to_string();
+            let value = clean_cookie_value(raw_val);
+            if name.is_empty()
+                || value.is_empty()
+                || has_invalid_cookie_chars(&name)
+                || has_invalid_cookie_chars(&value)
+            {
+                continue;
+            }
+            let mut attr_domain: Option<String> = None;
+            for attr in segments {
+                if let Some((k, v)) = attr.split_once('=') {
+                    if k.trim().eq_ignore_ascii_case("domain") {
+                        attr_domain = Some(normalize_domain(v));
+                    }
+                }
+            }
+            let domain = match attr_domain {
+                Some(d) if d == "chat.google.com" || d == "google.com" => d,
+                Some(_) => continue,
+                None => {
+                    if REQUIRED_CHAT_COOKIES.contains(&name.as_str()) {
+                        "chat.google.com".to_string()
+                    } else {
+                        "google.com".to_string()
+                    }
+                }
+            };
+            if name == "COMPASS" {
+                if domain != "chat.google.com" {
+                    continue;
+                }
+                compass_val = Some(value.clone());
+            }
+            if let Some(existing) = guard
+                .iter_mut()
+                .find(|c| c.name == name && c.domain == domain)
+            {
+                existing.value = value;
+            } else {
+                guard.push(ScopedCookie {
+                    name,
+                    value,
+                    domain,
+                    path: "/".to_string(),
+                });
+            }
+        }
+        compass_val
+    }
+
+    pub fn to_cookie_map_json(&self) -> String {
+        let guard = self.cookies.read().unwrap();
+        let mut map = BTreeMap::new();
+        for c in guard.iter() {
+            map.insert(c.name.clone(), c.value.clone());
+        }
+        serde_json::to_string(&map).unwrap_or_else(|_| "{}".to_string())
+    }
+
+    pub fn cookies(&self) -> Vec<ScopedCookie> {
+        self.cookies.read().unwrap().clone()
     }
 }
 
