@@ -47,7 +47,9 @@ struct SpaceBar: View {
     @ObservedObject var spaces: SpacesModel
     @ObservedObject var inbox: InboxModel
     let labels: LabelsModel
+    var accountsAndBridges: AccountsAndBridgesModel? = nil
     var onOpenSpaceInNewWindow: ((String) -> Void)? = nil
+    var onOpenAccountSettings: ((String) -> Void)? = nil
     @Environment(\.openWindow) private var openWindow
     @Environment(\.openDetachedWindow) private var openDetachedWindow
 
@@ -89,6 +91,15 @@ struct SpaceBar: View {
         space.kind == .account && inbox.statusItems.contains { $0.network == space.network && $0.isStarting }
     }
 
+    private func primaryLogin(for network: String) -> Login? {
+        accountsAndBridges?
+            .bridges
+            .first(where: { $0.network == network })?
+            .accounts
+            .flatMap(\.logins)
+            .first
+    }
+
     @ViewBuilder
     private func menu(for space: Space) -> some View {
         switch space.kind {
@@ -108,6 +119,12 @@ struct SpaceBar: View {
             Button(String(localized: "Auto-Archive…")) {
                 openWindow(id: WindowID.autoArchive, value: space.spaceID)
             }
+            Button(String(localized: "Account Settings…")) {
+                if let login = primaryLogin(for: space.network) {
+                    accountsAndBridges?.selectAccount(network: space.network, accountID: login.accountID)
+                }
+                onOpenAccountSettings?(space.network)
+            }
             Divider()
             Button(String(localized: "Edit Spaces…")) {
                 spaces.isEditing = true
@@ -118,6 +135,35 @@ struct SpaceBar: View {
             ForEach(inbox.banners.filter { $0.network == space.network && $0.action == .reconnect }) { banner in
                 Button(banner.accountName.map { String(localized: "Reconnect \($0)") }
                     ?? String(localized: "Reconnect")) { inbox.perform(banner) }
+            }
+            Divider()
+            Button(String(localized: "Remove Account…"), role: .destructive) {
+                if let login = primaryLogin(for: space.network) {
+                    accountsAndBridges?.requestRemoveAccount(
+                        network: space.network,
+                        accountID: login.accountID,
+                        remoteName: login.remoteName,
+                        displayName: space.title
+                    )
+                }
+                onOpenAccountSettings?(space.network)
+            }
+            Menu(String(localized: "Developer")) {
+                Button(String(localized: "Copy Account ID")) {
+                    if let login = primaryLogin(for: space.network) {
+                        accountsAndBridges?.copyAccountID(login.accountID)
+                    }
+                }
+                Button(String(localized: "Copy Bridge ID")) {
+                    accountsAndBridges?.copyBridgeID(for: space.network)
+                }
+                Button(String(localized: "Copy Info as JSON")) {
+                    accountsAndBridges?.copyBridgeInfoJSON(for: space.network)
+                }
+                Divider()
+                Button(String(localized: "Restart Bridge")) {
+                    Task { await accountsAndBridges?.restartBridge(network: space.network) }
+                }
             }
         case .label:
             Button(String(localized: "Open in New Window")) {

@@ -1,0 +1,353 @@
+// Copyright 2026 VitruvianSoftware
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+import CourierCore
+import Foundation
+import XCTest
+
+private final class FakeDockTileService: DockTileService, @unchecked Sendable {
+    var dockBundles: Set<String> = ["net.whatsapp.WhatsApp", "ru.keepcoder.Telegram"]
+    var removedBundles: [String] = []
+
+    func isAppInDock(bundleIdentifier: String) -> Bool {
+        dockBundles.contains(bundleIdentifier)
+    }
+
+    func removeAppFromDock(bundleIdentifier: String) -> Bool {
+        guard dockBundles.remove(bundleIdentifier) != nil else { return false }
+        removedBundles.append(bundleIdentifier)
+        return true
+    }
+}
+
+private final class SpyTextPasteboard: TextPasteboard {
+    var copiedStrings: [String] = []
+    func setString(_ string: String) {
+        copiedStrings.append(string)
+    }
+}
+
+private struct LockedTestLoginItemService: LoginItemService {
+    func status() -> LoginItemRegistrationStatus { .notRegistered }
+    func register() throws {}
+    func unregister() throws {}
+}
+
+private struct LockedTestBiometricService: BiometricAuthService {
+    func canEvaluateBiometricsOrWatch() -> Bool { true }
+    func authenticate(reason _: String) async throws -> Bool { false }
+}
+
+@MainActor
+final class AccountsAndBridgesModelTests: XCTestCase {
+    override func tearDown() async throws {
+        AppLockGate.shared.resetForTesting()
+    }
+
+    private func makeConnectedApp(server: TestEngineServer) async throws -> (AppModel, FakeProcess) {
+        let socket = server.path
+        let launcher = FakeLauncher { _, process in process.printReady(socket: socket) }
+        let supervisor = EngineSupervisor(
+            enginePath: "/bin/true",
+            dataDir: URL(fileURLWithPath: "/tmp"),
+            environment: [:],
+            launcher: launcher
+        )
+        let app = AppModel(supervisor: supervisor)
+        app.start()
+        try await waitUntil { app.client != nil }
+        XCTAssertNotNil(app.client)
+        return (app, try XCTUnwrap(launcher.processes.first))
+    }
+
+    func testRefreshRestartRemoveSubAccountsAndRemoveOfficialAppFromDock() async throws {
+        var restartedNetworks: [String] = []
+        var removedCalls: [[String: Any]] = []
+        var subAccountUpdates: [[String: Any]] = []
+
+        let server = try TestEngineServer { method, params in
+            switch method {
+            case "hello":
+                return TestEngineServer.helloOK
+            case "accounts.list":
+                let logins: [[String: Any]] = removedCalls.isEmpty ? [
+                    [
+                        "account_id": "tg1",
+                        "remote_name": "@alice",
+                        "state": "CONNECTED",
+                        "error": "",
+                    ],
+                ] : []
+                return .result([
+                    "accounts": [
+                        [
+                            "network": "telegram",
+                            "display_name": "Telegram",
+                            "flows": ["qr", "phone"],
+                            "state": removedCalls.isEmpty ? "CONNECTED" : "UNCONFIGURED",
+                            "error": "",
+                            "remote_name": removedCalls.isEmpty ? "@alice" : "",
+                            "not_started": "",
+                            "syncs": [String](),
+                            "logins": logins,
+                        ],
+                    ],
+                ])
+            case "bridges.list":
+                let logins: [[String: Any]] = removedCalls.isEmpty ? [
+                    [
+                        "account_id": "tg1",
+                        "remote_name": "@alice",
+                        "state": "CONNECTED",
+                        "error": "",
+                    ],
+                ] : []
+                return .result([
+                    "bridges": [
+                        [
+                            "network": "telegram",
+                            "display_name": "Telegram",
+                            "bridge_id": "telegram",
+                            "module_path": "go.mau.fi/mautrix-telegram",
+                            "version": "v0.2609.0",
+                            "mautrix_version": "v0.31.0",
+                            "state": removedCalls.isEmpty ? "CONNECTED" : "UNCONFIGURED",
+                            "started_at": 1_700_000_000_000,
+                            "accounts": [
+                                [
+                                    "network": "telegram",
+                                    "display_name": "Telegram",
+                                    "flows": ["qr", "phone"],
+                                    "remote_name": removedCalls.isEmpty ? "@alice" : "",
+                                    "not_started": "",
+                                    "syncs": [String](),
+                                    "state": removedCalls.isEmpty ? "CONNECTED" : "UNCONFIGURED",
+                                    "error": "",
+                                    "logins": logins,
+                                ],
+                            ],
+                        ],
+                    ],
+                ])
+            case "bridges.restart":
+                if let net = params?["network"] as? String {
+                    restartedNetworks.append(net)
+                }
+                return .result([String: Any]())
+            case "accounts.remove":
+                if let params {
+                    removedCalls.append(params)
+                }
+                return .result([String: Any]())
+            case "accounts.subAccounts":
+                return .result([
+                    "sub_accounts": [
+                        [
+                            "network": "telegram",
+                            "account_id": "tg1",
+                            "sub_id": "!folder:courier.local",
+                            "title": "Work Folder",
+                            "avatar_uri": "",
+                            "kind": "space",
+                            "enabled": false,
+                            "show_in_inbox": "all",
+                        ],
+                    ],
+                ])
+            case "accounts.setSubAccount":
+                if let params {
+                    subAccountUpdates.append(params)
+                }
+                return .result([
+                    "network": "telegram",
+                    "account_id": "tg1",
+                    "sub_id": "!folder:courier.local",
+                    "title": "Work Folder",
+                    "avatar_uri": "",
+                    "kind": "space",
+                    "enabled": (params?["enabled"] as? Bool) ?? true,
+                    "show_in_inbox": (params?["show_in_inbox"] as? String) ?? "dms",
+                ])
+            default:
+                return .result([String: Any]())
+            }
+        }
+        defer { server.stop() }
+
+        let (app, process) = try await makeConnectedApp(server: server)
+        defer {
+            process.exit(0)
+            app.supervisor.stop()
+        }
+
+        let dock = FakeDockTileService()
+        let pasteboard = SpyTextPasteboard()
+        let model = AccountsAndBridgesModel(appModel: app, dockTileService: dock, pasteboard: pasteboard)
+
+        await model.refresh()
+        XCTAssertEqual(model.bridges.count, 1)
+        XCTAssertEqual(model.bridges.first?.version, "v0.2609.0")
+        XCTAssertEqual(model.selectedAccountKey, "telegram:tg1")
+
+        let json = try XCTUnwrap(model.bridgeJSON(for: "telegram"))
+        XCTAssertTrue(json.contains("mautrix-telegram"))
+        XCTAssertTrue(json.contains("v0.2609.0"))
+
+        model.copyAccountID("tg1")
+        XCTAssertEqual(pasteboard.copiedStrings.last, "tg1")
+        XCTAssertEqual(model.lastToast, "Account ID copied")
+
+        model.copyBridgeID(for: "telegram")
+        XCTAssertEqual(pasteboard.copiedStrings.last, "telegram")
+        XCTAssertEqual(model.lastToast, "Bridge ID copied")
+
+        model.copyBridgeInfoJSON(for: "telegram")
+        XCTAssertTrue(pasteboard.copiedStrings.last?.contains("mautrix-telegram") == true)
+        XCTAssertEqual(model.lastToast, "Bridge info copied")
+
+        await model.loadSubAccounts(network: "telegram", accountID: "tg1", forceRefresh: true)
+        XCTAssertEqual(model.subAccountsByKey["telegram:tg1"]?.count, 1)
+        XCTAssertEqual(model.subAccountsByKey["telegram:tg1"]?.first?.enabled, false)
+
+        await model.updateSubAccount(
+            network: "telegram",
+            accountID: "tg1",
+            subID: "!folder:courier.local",
+            enabled: true,
+            showInInbox: .dms
+        )
+        XCTAssertEqual(subAccountUpdates.count, 1)
+        XCTAssertEqual(model.subAccountsByKey["telegram:tg1"]?.first?.enabled, true)
+        XCTAssertEqual(model.subAccountsByKey["telegram:tg1"]?.first?.showInInbox, .dms)
+
+        await model.restartBridge(network: "telegram")
+        XCTAssertEqual(restartedNetworks, ["telegram"])
+        XCTAssertEqual(model.lastToast, "Bridge restarted")
+
+        XCTAssertTrue(model.canOfferRemoveFromDock(network: "telegram"))
+        XCTAssertTrue(model.removeOfficialAppFromDock(network: "telegram"))
+        XCTAssertEqual(dock.removedBundles, ["ru.keepcoder.Telegram"])
+        XCTAssertFalse(model.canOfferRemoveFromDock(network: "telegram"))
+        XCTAssertFalse(model.canOfferRemoveFromDock(network: "gmessages"))
+        XCTAssertFalse(model.removeOfficialAppFromDock(network: "gmessages"))
+
+        await model.removeAccount(network: "telegram", accountID: "tg1", logoutRemote: true, deleteChats: true)
+        XCTAssertEqual(removedCalls.count, 1)
+        XCTAssertEqual(removedCalls.first?["account_id"] as? String, "tg1")
+        XCTAssertEqual(removedCalls.first?["logout_remote"] as? Bool, true)
+        XCTAssertEqual(removedCalls.first?["delete_chats"] as? Bool, true)
+        XCTAssertNil(model.subAccountsByKey["telegram:tg1"])
+        XCTAssertNil(model.selectedAccountKey)
+        XCTAssertEqual(model.lastToast, "Account removed")
+    }
+
+    func testRemoveAccountConfirmationCancelPathDeletesNothingAndSlackDefaultLogoutRemoteIsFalse() async throws {
+        var removedCalls: [[String: Any]] = []
+        let server = try TestEngineServer { method, params in
+            switch method {
+            case "hello":
+                return TestEngineServer.helloOK
+            case "accounts.remove":
+                if let params {
+                    removedCalls.append(params)
+                }
+                return .result([String: Any]())
+            default:
+                return .result([String: Any]())
+            }
+        }
+        defer { server.stop() }
+
+        let (app, process) = try await makeConnectedApp(server: server)
+        defer {
+            process.exit(0)
+            app.supervisor.stop()
+        }
+
+        XCTAssertTrue(AccountsAndBridgesModel.defaultLogoutRemote(for: "whatsapp"))
+        XCTAssertTrue(AccountsAndBridgesModel.defaultLogoutRemote(for: "signal"))
+        XCTAssertTrue(AccountsAndBridgesModel.defaultLogoutRemote(for: "telegram"))
+        XCTAssertTrue(AccountsAndBridgesModel.defaultLogoutRemote(for: "gmessages"))
+        XCTAssertFalse(AccountsAndBridgesModel.defaultLogoutRemote(for: "slack"))
+
+        let model = AccountsAndBridgesModel(appModel: app, dockTileService: FakeDockTileService())
+        model.requestRemoveAccount(network: "slack", accountID: "sl1", remoteName: "Acme Workspace", displayName: "Slack")
+
+        let pending = try XCTUnwrap(model.pendingRemoval)
+        XCTAssertEqual(pending.network, "slack")
+        XCTAssertEqual(pending.accountID, "sl1")
+        XCTAssertFalse(pending.logoutRemote, "Slack must default logoutRemote to false so removing does not revoke browser cookies")
+        XCTAssertFalse(pending.deleteChats)
+        XCTAssertTrue(pending.message.contains("Acme Workspace"))
+        XCTAssertTrue(pending.message.contains("local chats"))
+
+        // Cancel path: must clear pendingRemoval and leave the account untouched (zero accounts.remove calls).
+        model.cancelRemoveAccount()
+        XCTAssertNil(model.pendingRemoval)
+        XCTAssertTrue(removedCalls.isEmpty, "Cancelling Remove Account confirmation must not call accounts.remove")
+
+        // Confirm path with WhatsApp (defaults logoutRemote == true).
+        model.requestRemoveAccount(network: "whatsapp", accountID: "wa1", remoteName: "+1 555 0101", displayName: "WhatsApp")
+        XCTAssertEqual(model.pendingRemoval?.logoutRemote, true)
+        model.pendingRemoval?.deleteChats = true
+        await model.confirmRemoveAccount()
+        XCTAssertNil(model.pendingRemoval)
+        XCTAssertEqual(removedCalls.count, 1)
+        XCTAssertEqual(removedCalls.first?["network"] as? String, "whatsapp")
+        XCTAssertEqual(removedCalls.first?["account_id"] as? String, "wa1")
+        XCTAssertEqual(removedCalls.first?["logout_remote"] as? Bool, true)
+        XCTAssertEqual(removedCalls.first?["delete_chats"] as? Bool, true)
+    }
+
+    func testMutationsAreRefusedWhileAppIsLocked() async throws {
+        var rpcMethods: [String] = []
+        let server = try TestEngineServer { method, _ in
+            if method == "hello" { return TestEngineServer.helloOK }
+            rpcMethods.append(method)
+            return .result([String: Any]())
+        }
+        defer { server.stop() }
+
+        let (app, process) = try await makeConnectedApp(server: server)
+        defer {
+            process.exit(0)
+            app.supervisor.stop()
+        }
+
+        let suiteName = "courier.accounts.lock.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { UserDefaults.standard.removePersistentDomain(forName: suiteName) }
+
+        let lifecycle = SystemLifecycleModel(
+            defaults: defaults,
+            loginItem: LockedTestLoginItemService(),
+            biometrics: LockedTestBiometricService()
+        )
+        let dock = FakeDockTileService()
+        let model = AccountsAndBridgesModel(appModel: app, dockTileService: dock, lifecycle: lifecycle)
+
+        model.requestRemoveAccount(network: "whatsapp", accountID: "wa1", remoteName: "+1 555 0101")
+        model.requestRestartBridge(network: "whatsapp")
+        XCTAssertNotNil(model.pendingRemoval)
+        XCTAssertNotNil(model.pendingRestartNetwork)
+
+        rpcMethods.removeAll()
+        lifecycle.lockApp()
+        XCTAssertTrue(lifecycle.isLocked)
+        XCTAssertNil(model.pendingRemoval, "Locking must dismiss pending Remove Account confirmation")
+        XCTAssertNil(model.pendingRestartNetwork, "Locking must dismiss pending Restart Bridge confirmation")
+
+        await model.restartBridge(network: "whatsapp")
+        await model.removeAccount(network: "whatsapp", accountID: "wa1", logoutRemote: true, deleteChats: true)
+        await model.loadSubAccounts(network: "telegram", accountID: "tg1", forceRefresh: true)
+        await model.updateSubAccount(network: "telegram", accountID: "tg1", subID: "!f:courier.local", enabled: true)
+        model.requestRemoveAccount(network: "whatsapp", accountID: "wa1")
+        model.requestRestartBridge(network: "whatsapp")
+        XCTAssertFalse(model.removeOfficialAppFromDock(network: "whatsapp"))
+
+        XCTAssertNil(model.pendingRemoval)
+        XCTAssertNil(model.pendingRestartNetwork)
+        XCTAssertTrue(dock.removedBundles.isEmpty)
+        XCTAssertTrue(rpcMethods.isEmpty, "Locked app must refuse all AccountsAndBridgesModel RPC mutations")
+    }
+}
