@@ -340,13 +340,16 @@ impl NetGuard {
         {
             return true;
         }
+        if lower.parse::<IpAddr>().is_ok() || lower.contains("xn--") {
+            return false;
+        }
         if ALLOWED_API_HOSTS.contains(&lower.as_str()) {
             return true;
         }
         if allow_media_hosts
-            && (lower.ends_with(".googleusercontent.com")
-                || lower.ends_with(".ggpht.com")
-                || lower.ends_with(".google.com"))
+            && (matches!(lower.as_str(), "docs.google.com" | "drive.google.com")
+                || has_valid_subdomain_suffix(&lower, ".googleusercontent.com")
+                || has_valid_subdomain_suffix(&lower, ".ggpht.com"))
         {
             return true;
         }
@@ -727,5 +730,19 @@ mod tests {
                 "{name} must not construct a reqwest::Client; all HTTP requests must go through NetGuard::build_http_client"
             );
         }
+    }
+
+    #[test]
+    fn test_is_host_allowed_enforces_subdomain_suffix_and_rejects_punycode_and_arbitrary_google_com() {
+        let guard = NetGuard::production();
+        assert!(guard.is_host_allowed("lh3.googleusercontent.com", true));
+        assert!(guard.is_host_allowed("yt3.ggpht.com", true));
+        assert!(guard.is_host_allowed("docs.google.com", true));
+        assert!(guard.is_host_allowed("drive.google.com", true));
+        assert!(!guard.is_host_allowed(".googleusercontent.com", true));
+        assert!(!guard.is_host_allowed("-bad.googleusercontent.com", true));
+        assert!(!guard.is_host_allowed("xn--evil.googleusercontent.com", true));
+        assert!(!guard.is_host_allowed("arbitrary.google.com", true));
+        assert!(!guard.is_host_allowed("142.250.190.46", true));
     }
 }
