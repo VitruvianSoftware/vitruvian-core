@@ -18,11 +18,13 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! bisect-culprit.sh — mechanical culprit-finding for a red nightly sweep.
+//! bisect-culprit — mechanical culprit-finding for a red nightly sweep.
 //! Bisects [GOOD_SHA, BAD_SHA] with `git bisect run` driving `bazel test`.
 
-use shell_compat::{capture, capture_stdout, cat, env, env_or_empty, err, out, status, subst};
-use std::process::Command;
+use shell_compat::{capture, cat, env, env_or_empty, err, out, spawn_diag, status, subst};
+use std::io::Read;
+use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex};
 
 fn rev_parse(rev: &[u8]) -> Option<Vec<u8>> {
     let r = capture(
@@ -44,22 +46,25 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
     let good_sha = match env("GOOD_SHA") {
         Some(v) if !v.is_empty() => v,
         _ => {
-            err(b"GOOD_SHA must be set (last green commit)\n");
-            return 2;
+            // bash's `${VAR:?msg}` in a non-interactive script: message, status 1.
+            err(b"bisect-culprit: GOOD_SHA: GOOD_SHA must be set (last green commit)\n");
+            return 1;
         }
     };
     let bad_sha = match env("BAD_SHA") {
         Some(v) if !v.is_empty() => v,
         _ => {
-            err(b"BAD_SHA must be set (known red commit)\n");
-            return 2;
+            // bash's `${VAR:?msg}` in a non-interactive script: message, status 1.
+            err(b"bisect-culprit: BAD_SHA: BAD_SHA must be set (known red commit)\n");
+            return 1;
         }
     };
     let targets = match env("TARGETS") {
         Some(v) if !v.is_empty() => v,
         _ => {
-            err(b"TARGETS must be set (space-separated Bazel labels)\n");
-            return 2;
+            // bash's `${VAR:?msg}` in a non-interactive script: message, status 1.
+            err(b"bisect-culprit: TARGETS: TARGETS must be set (space-separated Bazel labels)\n");
+            return 1;
         }
     };
     let bazel_args = env_or_empty("BAZEL_ARGS");
@@ -133,7 +138,9 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
         b"\n",
     ]));
 
-    status(
+    // The script runs under `set -e`, so a refused `git bisect start` ends it
+    // here with 1 (and the EXIT trap resets bisect state).
+    let start_rc = status(
         88,
         Command::new("git")
             .arg("bisect")
@@ -142,28 +149,25 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
             .arg(shell_compat::os(&good_sha)),
         false,
     );
-
-    let bisect_log;
-    let test_cmd = env("TEST_CMD");
-    if let Some(ref cmd) = test_cmd {
-        if !cmd.is_empty() {
-            let r = capture_stdout(
-                97,
-                Command::new("git")
-                    .arg("bisect")
-                    .arg("run")
-                    .arg("bash")
-                    .arg("-c")
-                    .arg(shell_compat::os(cmd)),
-            );
-            bisect_log = r.stdout.clone();
-            out(&r.stdout);
-        } else {
-            bisect_log = run_bazel_bisect(&bazel_args, &targets);
-        }
-    } else {
-        bisect_log = run_bazel_bisect(&bazel_args, &targets);
+    if start_rc != 0 {
+        let _ = capture(84, Command::new("git").arg("bisect").arg("reset"));
+        return 1;
     }
+
+    // `git bisect run ... 2>&1 | tee LOG`: the child's stdout and stderr both go
+    // to our stdout as they arrive, and are kept to read the verdict from.
+    let bisect_log = match env("TEST_CMD") {
+        Some(cmd) if !cmd.is_empty() => {
+            let mut c = Command::new("git");
+            c.arg("bisect")
+                .arg("run")
+                .arg("bash")
+                .arg("-c")
+                .arg(shell_compat::os(&cmd));
+            tee_run(97, &mut c)
+        }
+        _ => run_bazel_bisect(&bazel_args, &targets),
+    };
 
     // Reset bisect state
     let _ = capture(84, Command::new("git").arg("bisect").arg("reset"));
@@ -232,9 +236,59 @@ fn run_bazel_bisect(bazel_args: &[u8], targets: &[u8]) -> Vec<u8> {
     for target in shell_compat::ifs_split(targets) {
         cmd.arg(shell_compat::os(&target));
     }
-    let r = capture_stdout(100, &mut cmd);
-    out(&r.stdout);
-    r.stdout
+    tee_run(100, &mut cmd)
+}
+
+/// Run `cmd` with its stdout and stderr merged onto our stdout, line by line as
+/// they arrive (a bisect over a long range must not be silent for hours), and
+/// return everything it printed. The exit status is ignored, as in the script
+/// (`|| true`): the verdict is read from the log.
+fn tee_run(line: u32, cmd: &mut Command) -> Vec<u8> {
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => {
+            err(&spawn_diag(line, cmd, &e));
+            return Vec::new();
+        }
+    };
+    let log: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
+    let mut handles = Vec::new();
+    let pipes: [Box<dyn Read + Send>; 2] = [
+        Box::new(child.stdout.take().expect("piped stdout")),
+        Box::new(child.stderr.take().expect("piped stderr")),
+    ];
+    for mut pipe in pipes {
+        let log = Arc::clone(&log);
+        handles.push(std::thread::spawn(move || {
+            let mut buf = [0u8; 4096];
+            let mut pending: Vec<u8> = Vec::new();
+            loop {
+                let n = match pipe.read(&mut buf) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => n,
+                };
+                pending.extend_from_slice(&buf[..n]);
+                while let Some(i) = pending.iter().position(|&c| c == b'\n') {
+                    let line: Vec<u8> = pending.drain(..=i).collect();
+                    let mut g = log.lock().unwrap();
+                    out(&line);
+                    g.extend_from_slice(&line);
+                }
+            }
+            if !pending.is_empty() {
+                let mut g = log.lock().unwrap();
+                out(&pending);
+                g.extend_from_slice(&pending);
+            }
+        }));
+    }
+    for h in handles {
+        let _ = h.join();
+    }
+    let _ = child.wait();
+    let g = log.lock().unwrap();
+    g.clone()
 }
 
 fn find_first_bad(line: &[u8]) -> Option<Vec<u8>> {

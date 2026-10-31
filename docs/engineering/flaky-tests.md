@@ -62,7 +62,7 @@ commit since the last green sweep, across a batch of merges.
   run's commit), `targets` (the failing target(s) from the sweep log).
 - **Mechanism:** `git bisect run` driving `bazel test` on exactly the failing
   targets, with the BuildBuddy remote cache making midpoint builds cheap
-  (`tools/ci/bisect-culprit.sh`).
+  (`//tools/ci:bisect_culprit`).
 - **Output:** the first-bad commit, posted as a comment on the breakage issue
   when an `issue` number is supplied.
 
