@@ -42,7 +42,6 @@ type Client struct {
 
 	mu                 sync.Mutex
 	metaMu             sync.Mutex
-	ghostMu            sync.Mutex
 	loggedOut          bool
 	syncMu             sync.Mutex
 	ffiClient          *FFIClient
@@ -54,7 +53,10 @@ type Client struct {
 	portalWG           sync.WaitGroup
 	prewarmCh          chan networkid.UserID
 	prewarmedUsers     map[networkid.UserID]struct{}
-	seededGhosts       map[networkid.UserID]struct{}
+	// ghostMu serializes every bridgev2 ghost access we cause: QueueRemoteEvent
+	// runs synchronously, and bridgev2 shares ghosts across portals unlocked.
+	ghostMu            sync.Mutex
+	userInfoCache      map[networkid.UserID]*bridgev2.UserInfo
 	prewarmWG          sync.WaitGroup
 	mediaSem           chan struct{}
 	initialSyncDone    bool
@@ -368,22 +370,6 @@ func (c *Client) seedAndEnqueueGhostPrewarm(ctx context.Context, uid networkid.U
 	if uid == "" || uid == c.ownUserID() || c.UserLogin == nil || c.UserLogin.Bridge == nil {
 		return
 	}
-	c.ghostMu.Lock()
-	if c.seededGhosts == nil {
-		c.seededGhosts = make(map[networkid.UserID]struct{})
-	}
-	if _, seeded := c.seededGhosts[uid]; !seeded {
-		if ghost, err := c.UserLogin.Bridge.GetGhostByID(ctx, uid); err == nil && ghost != nil {
-			if ghost.Name == "" {
-				ghost.Name = string(uid)
-			}
-			ghost.NameSet = true
-			ghost.AvatarSet = true
-			c.seededGhosts[uid] = struct{}{}
-		}
-	}
-	c.ghostMu.Unlock()
-
 	c.mu.Lock()
 	streamCtx := c.streamCtx
 	ch := c.prewarmCh
@@ -443,7 +429,21 @@ func (c *Client) runGhostPrewarmWorker(streamCtx context.Context, ch <-chan netw
 			if streamCtx.Err() != nil || c.UserLogin == nil || c.UserLogin.Bridge == nil {
 				return
 			}
-			_, _ = c.fetchUserInfoByID(streamCtx, uid)
+			// Fetch off the event path, then apply under ghostMu so the write
+			// never overlaps bridgev2's event handling.
+			info, err := c.cachedUserInfo(streamCtx, uid)
+			if err != nil || info == nil || streamCtx.Err() != nil {
+				continue
+			}
+			c.ghostMu.Lock()
+			// Skip a ghost that already has this name (bridgev2 applied it from the
+			// cache); a second
+			// UpdateInfo races the DM-portal refresh bridgev2 spawns from the first.
+			if ghost, gerr := c.UserLogin.Bridge.GetGhostByID(streamCtx, uid); gerr == nil && ghost != nil &&
+				info.Name != nil && ghost.Name != *info.Name {
+				ghost.UpdateInfo(streamCtx, info)
+			}
+			c.ghostMu.Unlock()
 		}
 	}
 }
@@ -728,7 +728,61 @@ func (c *Client) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*bridg
 	if ghost == nil {
 		return &bridgev2.UserInfo{}, nil
 	}
-	return c.fetchUserInfoByID(ctx, ghost.ID)
+	// bridgev2 calls this inline, under ghostMu, while handling an event. On a
+	// cache miss with the stream up, hand the lookup to the prewarm workers
+	// (they apply it themselves) rather than stall every portal on an RPC.
+	c.mu.Lock()
+	info, ok := c.userInfoCache[ghost.ID]
+	streaming := c.streamCtx != nil && c.streamCtx.Err() == nil && c.prewarmCh != nil
+	c.mu.Unlock()
+	if ok {
+		// Nothing new: returning it again would re-run UpdateInfo on every
+		// event (an avatar that failed to settle keeps AvatarSet false), and
+		// each run races the DM-portal refresh bridgev2 spawned from the last.
+		if info.Name != nil && ghost.Name == *info.Name &&
+			(info.Avatar == nil || info.Avatar.ID == ghost.AvatarID) {
+			return nil, nil
+		}
+		return info, nil
+	}
+	if streaming {
+		c.seedAndEnqueueGhostPrewarm(ctx, ghost.ID)
+		return nil, nil
+	}
+	return c.cachedUserInfo(ctx, ghost.ID)
+}
+
+// userInfoLookupSem caps concurrent get_members lookups across all clients.
+var userInfoLookupSem = make(chan struct{}, 4)
+
+// cachedUserInfo returns the fetched info for uid, fetching it once on a miss.
+func (c *Client) cachedUserInfo(ctx context.Context, uid networkid.UserID) (*bridgev2.UserInfo, error) {
+	c.mu.Lock()
+	info, ok := c.userInfoCache[uid]
+	c.mu.Unlock()
+	if ok {
+		return info, nil
+	}
+	// One cap for every get_members lookup, inline or prewarm.
+	select {
+	case userInfoLookupSem <- struct{}{}:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	info, err := c.fetchUserInfoByID(ctx, uid)
+	<-userInfoLookupSem
+	// A failed lookup falls back to the raw ID as the name; don't cache that,
+	// so the next call retries instead of pinning the number for good.
+	if err != nil || info == nil || info.Name == nil || *info.Name == string(uid) {
+		return info, err
+	}
+	c.mu.Lock()
+	if c.userInfoCache == nil {
+		c.userInfoCache = make(map[networkid.UserID]*bridgev2.UserInfo)
+	}
+	c.userInfoCache[uid] = info
+	c.mu.Unlock()
+	return info, nil
 }
 
 func (c *Client) fetchUserInfoByID(ctx context.Context, uid networkid.UserID) (*bridgev2.UserInfo, error) {
@@ -773,6 +827,10 @@ func (c *Client) fetchUserInfoByID(ctx context.Context, uid networkid.UserID) (*
 				return c.downloadAvatar(ctx, avatarURL)
 			},
 		}
+	} else {
+		// An explicit "no avatar" lets bridgev2 mark the avatar settled; left
+		// nil, every later event re-runs UpdateInfo on this ghost.
+		info.Avatar = &bridgev2.Avatar{Remove: true}
 	}
 	return info, nil
 }

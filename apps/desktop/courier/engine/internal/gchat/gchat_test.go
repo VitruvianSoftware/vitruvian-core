@@ -3281,10 +3281,10 @@ func TestInboundAttachmentFailureAndHTMLBecomePlaceholdersWithoutAbortingBatchAn
 
 	require.Equal(t, "Second message in batch", fetchResp.Messages[1].ConvertedMessage.Parts[0].Content.Body)
 
-	// 2. GetUserInfo wires downloadAvatar for ghost profile avatars.
-	ghost, err := h.Bridge.GetGhostByID(ctx, MakeUserID("112233445566778899002"))
-	require.NoError(t, err)
-	uinfo, err := client.GetUserInfo(ctx, ghost)
+	// 2. The user-info fetch wires downloadAvatar for ghost profile avatars.
+	// (GetUserInfo itself returns nil once the ghost already matches, so test
+	// the fetch it is built on.)
+	uinfo, err := client.fetchUserInfoByID(ctx, MakeUserID("112233445566778899002"))
 	require.NoError(t, err)
 	require.NotNil(t, uinfo.Avatar, "GetUserInfo must populate Avatar when get_members returns avatar_url")
 	require.NotNil(t, uinfo.Avatar.Get)
@@ -5191,6 +5191,16 @@ func TestSyncWorldWith300MembersAndSlowGetMembersDoesNotDelayStreamEvents(t *tes
 	require.NotNil(t, bigResync.ChatInfo)
 	require.NotNil(t, bigResync.ChatInfo.Members)
 	require.GreaterOrEqual(t, len(bigResync.ChatInfo.Members.MemberMap), memberCount, "I6: synced space must include all 300 members")
+
+	// The prewarm must leave members with their fetched names, not their raw IDs.
+	memberUID := MakeUserID("112233445566778800001")
+	require.Eventually(t, func() bool {
+		// Ghost fields are written under ghostMu; read them the same way.
+		client.ghostMu.Lock()
+		defer client.ghostMu.Unlock()
+		ghost, err := h.Bridge.GetGhostByID(ctx, memberUID)
+		return err == nil && ghost != nil && ghost.Name == "Member User"
+	}, 5*time.Second, 20*time.Millisecond, "prewarmed member ghost must carry the fetched display name")
 }
 
 func TestServeGChatEngineHelperForAppE2E(t *testing.T) {
