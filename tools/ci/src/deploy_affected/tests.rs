@@ -692,3 +692,62 @@ fn bazel_run_acts_in_the_callers_directory() {
     let (in_repo, _) = fx.run(&sha, &[("EXTRA_PATH_REGEX", "oauth-user-inspector/")]);
     assert_eq!(in_repo, "true");
 }
+
+// --- large input ----------------------------------------------------------
+
+/// `n` commits on top of HEAD in one `git fast-import`, each with a `msg_len`
+/// byte message and its own file under `dir`. Returns the base sha.
+fn bulk_commits(fx: &Fx, n: usize, msg_len: usize, dir: &str) -> String {
+    use std::io::Write;
+    let base = fx.head();
+    let body = "a".repeat(msg_len);
+    let mut s = String::new();
+    for i in 0..n {
+        let msg = format!("feat(app): change {i}\n\n{body}\n");
+        s.push_str("commit refs/heads/main\n");
+        s.push_str("committer t <t@t> 1700000000 +0000\n");
+        s.push_str(&format!("data {}\n{msg}", msg.len()));
+        if i == 0 {
+            s.push_str(&format!("from {base}\n"));
+        }
+        s.push_str(&format!(
+            "M 100644 inline {dir}/a-fairly-long-directory-name-to-fatten-the-diff/file-{i:05}.txt\ndata 2\nx\n\n"
+        ));
+    }
+    let mut child = std::process::Command::new("git")
+        .arg("-C")
+        .arg(&fx.repo)
+        .args(["fast-import", "--quiet"])
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    child.stdin.take().unwrap().write_all(s.as_bytes()).unwrap();
+    assert!(child.wait().unwrap().success(), "git fast-import failed");
+    base
+}
+
+/// Several MB of commit messages and changed paths go through `grep -E`.
+/// Writing all of grep's stdin before reading its stdout deadlocks once grep's
+/// output fills the pipe (64 KiB), so this must finish, and quickly: the
+/// script took 0.28 s on 3,000 commits.
+#[test]
+fn a_huge_range_does_not_hang_the_grep_pipes() {
+    let fx = Fx::new();
+    let base = bulk_commits(&fx, 3000, 2000, "bigapp");
+    let out = fx.work.join("out-big");
+    std::fs::write(&out, "").unwrap();
+    let o = Run::new(&bin("BIN"))
+        .cwd(&fx.repo)
+        .env("GITHUB_OUTPUT", &out)
+        .env("BEFORE_REV", &base)
+        .env("EXTRA_PATH_REGEX", "bigapp/")
+        .env("EXCLUDE_PATH_REGEX", "bigapp/never-matches/")
+        .env("TD_BIN", &fx.td)
+        .env_remove("DEPLOY_TARGETS")
+        .go_within(std::time::Duration::from_secs(30))
+        .expect("deploy-affected hung on a large range (grep pipe deadlock)");
+    assert_eq!(o.code, 0, "{}", o.stderr);
+    assert_has(&read(&out), "affected=true", "a matching path deploys");
+    assert_has(&o.stdout, "path matched bigapp/", "reason");
+    assert_has(&o.stdout, "file-02999.txt", "every changed file is listed");
+}

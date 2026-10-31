@@ -118,28 +118,39 @@ fn grep_ere(text: &[u8], pattern: &[u8]) -> bool {
     shell_compat::status_with_input(0, &mut cmd, text, true) == 0
 }
 
+/// `grep <flag> <pattern>` over `text`: (exited 0, stdout). stdin is fed from
+/// its own thread while this one drains stdout; writing it all first
+/// deadlocks once grep's output fills the pipe (64 KiB). None when grep could
+/// not be started or waited on.
+fn grep_pipe(flag: &str, pattern: &[u8], text: &[u8]) -> Option<(bool, Vec<u8>)> {
+    let mut child = Command::new("grep")
+        .arg(flag)
+        .arg(os(pattern))
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .ok()?;
+    let mut stdin = child.stdin.take()?;
+    let input = text.to_vec();
+    // A write error (grep exited early) is fine: grep's verdict stands.
+    let writer = std::thread::spawn(move || {
+        use std::io::Write;
+        let _ = stdin.write_all(&input);
+    });
+    let o = child.wait_with_output();
+    let _ = writer.join();
+    let o = o.ok()?;
+    Some((o.status.success(), o.stdout))
+}
+
 fn grep_ere_output(text: &[u8], pattern: &[u8]) -> Vec<u8> {
     if pattern.is_empty() {
         return Vec::new();
     }
-    let mut cmd = Command::new("grep");
-    cmd.arg("-E")
-        .arg(os(pattern))
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null());
-    match cmd.spawn() {
-        Ok(mut child) => {
-            if let Some(mut stdin) = child.stdin.take() {
-                use std::io::Write;
-                let _ = stdin.write_all(text);
-            }
-            match child.wait_with_output() {
-                Ok(o) if o.status.success() => subst(o.stdout),
-                _ => Vec::new(),
-            }
-        }
-        Err(_) => Vec::new(),
+    match grep_pipe("-E", pattern, text) {
+        Some((true, out)) => subst(out),
+        _ => Vec::new(),
     }
 }
 
@@ -147,24 +158,10 @@ fn grep_ere_invert(text: &[u8], pattern: &[u8]) -> Vec<u8> {
     if pattern.is_empty() {
         return text.to_vec();
     }
-    let mut cmd = Command::new("grep");
-    cmd.arg("-Ev")
-        .arg(os(pattern))
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null());
-    match cmd.spawn() {
-        Ok(mut child) => {
-            if let Some(mut stdin) = child.stdin.take() {
-                use std::io::Write;
-                let _ = stdin.write_all(text);
-            }
-            match child.wait_with_output() {
-                Ok(o) => subst(o.stdout),
-                Err(_) => Vec::new(),
-            }
-        }
-        Err(_) => Vec::new(),
+    match grep_pipe("-Ev", pattern, text) {
+        // Exit 1 (every line matched) still means "these lines remain": none.
+        Some((_, out)) => subst(out),
+        None => Vec::new(),
     }
 }
 

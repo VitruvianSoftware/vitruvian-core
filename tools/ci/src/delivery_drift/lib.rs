@@ -779,7 +779,8 @@ fn find_judged_commit(
             .arg("--json")
             .arg("databaseId,status,headSha,conclusion")
             .arg("--jq")
-            .arg(r#".[] | "\(.databaseId) \(.status) \(.headSha) \(.conclusion)"#),
+            // r##: the filter itself ends in `"`, which would close an r#"..."#.
+            .arg(r##".[] | "\(.databaseId) \(.status) \(.headSha) \(.conclusion)""##),
     );
     if !r.ok() {
         return JudgedCommit {

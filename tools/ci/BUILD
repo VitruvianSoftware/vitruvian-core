@@ -731,16 +731,21 @@ rust_test(
     name = "delivery_drift_test",
     size = "small",
     srcs = ["src/delivery_drift/tests.rs"],
+    # The gh stub runs every --jq filter through the hermetic jq, so a filter
+    # jq cannot parse fails here as it would against GitHub.
     data = [
         ":delivery_drift",
         ":deploy_affected",
+        "@jq_toolchains//:resolved_toolchain",
     ],
     edition = "2021",
     env = {
         "BIN": "$(rootpath :delivery_drift)",
         "ENGINE": "$(rootpath :deploy_affected)",
+        "JQ_BIN": "$(JQ_BIN)",
     },
     rustc_flags = ["-Copt-level=3"],
+    toolchains = ["@jq_toolchains//:resolved_toolchain"],
     deps = [":ci_testkit"],
 )
 

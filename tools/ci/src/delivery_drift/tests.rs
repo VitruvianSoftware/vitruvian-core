@@ -67,6 +67,29 @@ recent() {
 }
 hits=" ${STUB_HIT_RUNS:-} "
 [ -z "${STUB_DELIVERED_SHA:-}" ] || hits="${hits}111 "
+# Like the real gh, every --jq filter goes through a real jq: a filter jq
+# cannot parse fails the call instead of being silently ignored.
+jqf=""; prev=""
+for a in "$@"; do [ "$prev" = "--jq" ] && jqf="$a"; prev="$a"; done
+if [ -n "$jqf" ]; then
+  jq -n "$jqf" >/dev/null 2>"${TMPDIR:-/tmp}/gh-stub-jq.$$"
+  if [ "$?" -eq 3 ]; then
+    echo "failed to parse jq expression (please check your filter): $(cat "${TMPDIR:-/tmp}/gh-stub-jq.$$")" >&2
+    rm -f "${TMPDIR:-/tmp}/gh-stub-jq.$$"; exit 1
+  fi
+  rm -f "${TMPDIR:-/tmp}/gh-stub-jq.$$"
+fi
+# "<id> <status> <sha> [<conclusion>]" lines -> the JSON array gh returns.
+as_runs_json() {
+  local sep="" id st sha concl
+  printf '['
+  while read -r id st sha concl; do
+    [ -n "$id" ] || continue
+    printf '%s{"databaseId":%s,"status":"%s","headSha":"%s","conclusion":"%s"}' "$sep" "$id" "$st" "$sha" "$concl"
+    sep=","
+  done
+  printf ']\n'
+}
 if [ "$1" = "run" ] && [ "$2" = "list" ]; then
   wf=""; limit=20; prev=""
   for a in "$@"; do
@@ -79,7 +102,9 @@ if [ "$1" = "run" ] && [ "$2" = "list" ]; then
   case "$*" in
     *"headSha"*)
       echo "$wf" >>"${STUB_POLL_LOG:-/dev/null}"
-      recent "$wf" | head -n "$limit"; exit 0 ;;
+      # Through the caller's own filter, so its output shape is tested too.
+      recent "$wf" | head -n "$limit" | as_runs_json | jq -r "$jqf" || exit 1
+      exit 0 ;;
     *) history "$wf" | head -n "$limit"; exit 0 ;;
   esac
 fi
@@ -233,6 +258,15 @@ impl Fx {
             ),
         );
         write_exe(stubs.join("gh"), GH_STUB);
+        // The hermetic jq the gh stub runs every --jq filter through.
+        // $(JQ_BIN) is an exec path; from the runfiles root external/x is ../x.
+        let jq = std::env::var("JQ_BIN").expect("JQ_BIN: the rust_test passes $(JQ_BIN)");
+        let jq = match jq.strip_prefix("external/") {
+            Some(rest) => format!("../{rest}"),
+            None => jq,
+        };
+        let jq = std::fs::canonicalize(&jq).unwrap_or_else(|e| panic!("JQ_BIN={jq}: {e}"));
+        std::os::unix::fs::symlink(jq, stubs.join("jq")).unwrap();
         write_exe(
             stubs.join("sleep"),
             "#!/usr/bin/env bash\necho \"sleep $*\" >>\"${STUB_SLEEP_LOG:-/dev/null}\"\n",
