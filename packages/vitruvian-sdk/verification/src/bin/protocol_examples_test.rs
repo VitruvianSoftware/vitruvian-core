@@ -19,9 +19,15 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+use std::path::Path;
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    ExitCode::from(verification_rs_lib::protocol_examples::main_with_args(&args) as u8)
+    // Cargo names the reference-tool-2 bin it built for this test here, and
+    // rules_rust does the same for the :reference-tool-2 in the test's data.
+    let cargo_bin = option_env!("CARGO_BIN_EXE_reference-tool-2").map(Path::new);
+    ExitCode::from(
+        verification_rs_lib::protocol_examples::main_with_reference(&args, cargo_bin) as u8,
+    )
 }

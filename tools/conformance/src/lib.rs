@@ -234,6 +234,39 @@ impl Context {
         discover::rel(&self.root, path)
     }
 
+    /// `//tools/conformance:workflow-labels`: only the workflow-label check,
+    /// run from tidy-check, whose job has already loaded the whole graph.
+    pub fn run_workflow_labels(&self) -> i32 {
+        checks::run_workflow_labels(self);
+        if self.is_dead() {
+            return 2;
+        }
+        emit::print_group(
+            &self.colors,
+            "Workflow Bazel labels (every //pkg:target a workflow or action runs resolves)",
+            &self.rows.get("LABELS"),
+        );
+        println!();
+        if self.overall_fail.get() {
+            println!(
+                "{}{} FAIL{} \u{2014} {} workflow label problem(s)",
+                self.colors.red,
+                emit::GLYPH_FAIL,
+                self.colors.reset,
+                self.fail_count.get()
+            );
+            1
+        } else {
+            println!(
+                "{}{} PASS{} \u{2014} every workflow label resolves",
+                self.colors.green,
+                emit::GLYPH_OK,
+                self.colors.reset
+            );
+            0
+        }
+    }
+
     pub fn run(&self) -> i32 {
         checks::run_all(self);
 

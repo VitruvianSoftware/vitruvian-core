@@ -30,7 +30,10 @@ rust_library(
     name = "conformance_check",
     srcs = glob(
         ["src/**/*.rs"],
-        exclude = ["src/main.rs"],
+        exclude = [
+            "src/main.rs",
+            "src/bin/**",
+        ],
     ),
     crate_name = "conformance_check",
     edition = "2021",
@@ -50,6 +53,21 @@ rust_binary(
         "//tools/copybara:check-version-maps",
         "//tools/owners",
     ],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":conformance_check",
+    ],
+)
+
+# `bazel run //tools/conformance:workflow-labels`: every Bazel label a
+# workflow or composite action runs must resolve. Its own binary because it
+# runs in tidy-check, not in :check -- see tools/conformance/src/checks/labels.rs.
+rust_binary(
+    name = "workflow-labels",
+    srcs = ["src/bin/workflow_labels.rs"],
+    data = ["version-pins.tsv"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//visibility:public"],

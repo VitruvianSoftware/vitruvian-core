@@ -912,6 +912,107 @@ pub(crate) fn uses_setup_bazel_directly(content: &str) -> bool {
         .any(|l| !l.starts_with('#') && l.contains("bazel-contrib/setup-bazel@"))
 }
 
+/// The `uses:` and `if:` of every step in a composite action, in order.
+fn composite_steps(content: &str) -> Vec<(String, Option<String>)> {
+    let mut steps: Vec<(String, Option<String>)> = Vec::new();
+    let mut step_indent: Option<usize> = None;
+    for raw in content.lines() {
+        let line = raw.trim_end_matches('\r');
+        let s = strip(line);
+        if s.is_empty() || s.starts_with('#') {
+            continue;
+        }
+        let ind = indent(line);
+        if let Some(rest) = s.strip_prefix("- ") {
+            if step_indent.is_none() || step_indent == Some(ind) {
+                step_indent = Some(ind);
+                steps.push((String::new(), None));
+                apply_step_key(steps.last_mut().unwrap(), rest);
+                continue;
+            }
+        }
+        if let (Some(si), Some(last)) = (step_indent, steps.last_mut()) {
+            if ind == si + 2 {
+                apply_step_key(last, s);
+            } else if ind <= si && !s.starts_with("- ") {
+                step_indent = None;
+            }
+        }
+    }
+    steps
+}
+
+fn apply_step_key(step: &mut (String, Option<String>), kv: &str) {
+    if let Some(v) = kv.strip_prefix("uses:") {
+        step.0 = v.split('#').next().unwrap_or("").trim().to_string();
+    } else if let Some(v) = kv.strip_prefix("if:") {
+        step.1 = Some(v.split(" #").next().unwrap_or("").trim().to_string());
+    }
+}
+
+/// (found, wanted, why) for each way the LLVM composite's restore steps stop
+/// honouring the save decision. Empty when both branch on `readonly`.
+pub(crate) fn llvm_restore_branch_problems(content: &str) -> Vec<(String, String, String)> {
+    let norm = |s: &str| {
+        s.split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .replace('"', "'")
+    };
+    let mut problems = Vec::new();
+    let steps = composite_steps(content);
+    let checks: &[(&str, &str, &str)] = &[
+        (
+            "actions/cache@",
+            "steps.mode.outputs.readonly != 'true'",
+            "the read+write restore does not branch on the save decision, so it saves wherever its `if:` lets it run -- MAY_SAVE is computed and then ignored",
+        ),
+        (
+            "actions/cache/restore@",
+            "steps.mode.outputs.readonly == 'true'",
+            "the read-only restore does not branch on the save decision, so a job barred from saving can end up with no restore, or with both",
+        ),
+    ];
+    for (uses, want, why) in checks {
+        let matching: Vec<&(String, Option<String>)> =
+            steps.iter().filter(|(u, _)| u.starts_with(uses)).collect();
+        if matching.len() != 1 {
+            problems.push((
+                format!("{} {} step(s)", matching.len(), uses.trim_end_matches('@')),
+                format!("exactly 1, if: {}", want),
+                why.to_string(),
+            ));
+            continue;
+        }
+        let got = matching[0].1.as_deref().map(norm).unwrap_or_default();
+        let got_bare = got
+            .trim_start_matches("${{")
+            .trim_end_matches("}}")
+            .trim()
+            .to_string();
+        if got_bare != *want {
+            problems.push((
+                if got.is_empty() {
+                    "no if:".to_string()
+                } else {
+                    format!("if: {}", got)
+                },
+                format!("if: {}", want),
+                why.to_string(),
+            ));
+        }
+    }
+    let mode_reads_may_save = content.contains("$MAY_SAVE");
+    if !mode_reads_may_save {
+        problems.push((
+            "MAY_SAVE unused".to_string(),
+            "mode step reads $MAY_SAVE".to_string(),
+            "the mode step no longer consults MAY_SAVE, so readonly no longer follows the main-and-GitHub-hosted guard".to_string(),
+        ));
+    }
+    problems
+}
+
 pub fn check_cache_save(ctx: &Context) {
     let actions_dir = format!("{}/.github/actions", ctx.root);
     let mut ok = true;
@@ -946,6 +1047,25 @@ pub fn check_cache_save(ctx: &Context) {
                 );
                 ok = false;
             }
+        }
+    }
+
+    // 1b. MAY_SAVE only matters if the restore steps act on it. The `mode`
+    //     step folds it into `readonly`; the read+write actions/cache step
+    //     must run only when readonly is false and the read-only one only
+    //     when it is true. Pointing the read+write step back at
+    //     `inputs.restore-only` would leave MAY_SAVE in place and saving
+    //     from every ref and runner again.
+    let llvm_rel = ".github/actions/llvm-cache-restore/action.yml";
+    if let Ok(content) =
+        fs::read_to_string(format!("{}/llvm-cache-restore/action.yml", actions_dir))
+    {
+        for problem in llvm_restore_branch_problems(&content) {
+            ctx.emit_fail(
+                "cachesave", llvm_rel, &problem.0, &problem.1, &problem.2,
+                "branch both restore steps on steps.mode.outputs.readonly: `!= 'true'` on actions/cache, `== 'true'` on actions/cache/restore",
+            );
+            ok = false;
         }
     }
 
@@ -1167,6 +1287,68 @@ jobs:
         assert!(!cache_save_expr_guarded(
             "${{ github.ref == 'refs/heads/main' && runner.environment == 'github-hosted' || github.event_name == 'merge_group' }}"
         ));
+    }
+
+    const LLVM_GOOD: &str = "\
+runs:
+  using: composite
+  steps:
+    - name: Decide whether this job may save
+      id: mode
+      shell: bash
+      env:
+        MAY_SAVE: ${{ github.ref == 'refs/heads/main' && runner.environment == 'github-hosted' }}
+      run: |
+        if [ \"$MAY_SAVE\" != \"true\" ]; then echo readonly=true; fi
+
+    - name: Restore the extracted LLVM toolchain
+      id: restore-rw
+      if: steps.mode.outputs.readonly != 'true'
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: x
+
+    - name: Restore the extracted LLVM toolchain (read-only)
+      id: restore-ro
+      if: steps.mode.outputs.readonly == 'true'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+      with:
+        path: x
+";
+
+    #[test]
+    fn llvm_restore_branches_on_readonly() {
+        assert!(
+            llvm_restore_branch_problems(LLVM_GOOD).is_empty(),
+            "{:?}",
+            llvm_restore_branch_problems(LLVM_GOOD)
+        );
+    }
+
+    #[test]
+    fn llvm_restore_pointed_back_at_restore_only_fails() {
+        // The gap aegis found: MAY_SAVE stays, the read+write step ignores it.
+        let bad = LLVM_GOOD.replace(
+            "if: steps.mode.outputs.readonly != 'true'",
+            "if: inputs.restore-only != 'true'",
+        );
+        let p = llvm_restore_branch_problems(&bad);
+        assert_eq!(p.len(), 1, "{:?}", p);
+        assert!(p[0].0.contains("inputs.restore-only"));
+    }
+
+    #[test]
+    fn llvm_readonly_step_must_branch_too() {
+        let bad = LLVM_GOOD.replace("      if: steps.mode.outputs.readonly == 'true'\n", "");
+        let p = llvm_restore_branch_problems(&bad);
+        assert_eq!(p.len(), 1, "{:?}", p);
+        assert_eq!(p[0].0, "no if:");
+    }
+
+    #[test]
+    fn llvm_mode_must_read_may_save() {
+        let bad = LLVM_GOOD.replace("\"$MAY_SAVE\"", "\"$OTHER\"");
+        assert_eq!(llvm_restore_branch_problems(&bad).len(), 1);
     }
 
     #[test]

@@ -35,7 +35,8 @@
 #    Bazel extracted under another           with some input of the llvm repo
 #                                            rule; see tools/ci/llvm-cache-key.sh)
 #
-# It then STAGES the toolchain for saving (#2456): on a key miss it hard-links
+# It then STAGES the toolchain for saving (#2456): on a key miss, in a job
+# whose restore saves (GitHub-hosted, main, not restore-only), it hard-links
 # whichever contents/<hash>/ actually holds clang into the llvm-cache-restore
 # composite's fixed stage folder, which that composite's post step saves. The
 # name is discovered here, after the build, so no file has to pin it -- the
@@ -97,8 +98,18 @@ runs:
           echo "::error title=llvm-contents-cache dead weight::cache HIT restored a candidate but Bazel materialized a NEW one anyway (candidates $PRE_COUNT -> $POST_COUNT): recorded-inputs validation rejected the restored dir, so every run now pays restore AND extraction. Investigate before this rots."
           exit 1
         fi
+        # Whether this job's restore saves at all (set by llvm-cache-restore).
+        # Only a GitHub-hosted job on main that is not restore-only does; the
+        # merge queue, pull requests, self-hosted runners and restore-only
+        # lanes never save, so telling them the toolchain was "staged for the
+        # post step to save" would be false.
+        SAVES="${LLVM_CACHE_SAVES:-true}"
         if [ "$CACHE_HIT" != "true" ] && [ -n "$LIVE" ]; then
-          echo "::notice::llvm-contents cache miss -- extracted under $(basename "$LIVE"); staged for the post step to save. Expected exactly once after a toolchain-affecting MODULE.bazel change, or after a runner-image point release moves /etc/os-release (see tools/ci/llvm-cache-key.sh)."
+          if [ "$SAVES" = "true" ]; then
+            echo "::notice::llvm-contents cache miss -- extracted under $(basename "$LIVE"); staged for this job's post step to save. Expected exactly once after a toolchain-affecting MODULE.bazel change, or after a runner-image point release moves /etc/os-release (see tools/ci/llvm-cache-key.sh)."
+          else
+            echo "::notice::llvm-contents cache miss -- extracted under $(basename "$LIVE"); NOT saved by this job (it restores only: merge queue, pull request, self-hosted runner or a restore-only lane). The entry is saved by the next GitHub-hosted read+write job on main to miss this key; until then every lane on it extracts again. Expected after a toolchain-affecting MODULE.bazel change, or after a runner-image point release moves /etc/os-release (see tools/ci/llvm-cache-key.sh)."
+          fi
         fi
         # Accumulation check: is the saved entry carrying candidates that some
         # runs will reject -- the dead-weight state above, caught while it is
@@ -121,10 +132,12 @@ runs:
         if [ "$CACHE_HIT" = "true" ] && [ "${PRE_COUNT:-0}" -gt 2 ]; then
           echo "::warning title=llvm-contents-cache accumulating::the restored entry holds $PRE_COUNT candidate dirs; one extraction accounts for 2, so this entry carries rejects that some runs will re-extract past. Check whether a new recorded input has appeared that tools/ci/llvm-cache-key.sh does not key on."
         fi
-        # Stage for the save. Only on a miss: actions/cache never saves on an
-        # exact primary-key hit, so staging then would be wasted work. A staging
-        # failure is a cost problem, not a correctness one -- warn, don't fail.
-        if [ "$CACHE_HIT" != "true" ] && [ -n "$LIVE" ] && [ -n "${LLVM_CACHE_STAGE:-}" ]; then
+        # Stage for the save. Only on a miss in a job that saves: actions/cache
+        # never saves on an exact primary-key hit, and a restore-only job has
+        # no post step to save with, so staging then would be wasted work. A
+        # staging failure is a cost problem, not a correctness one -- warn,
+        # don't fail.
+        if [ "$CACHE_HIT" != "true" ] && [ "$SAVES" = "true" ] && [ -n "$LIVE" ] && [ -n "${LLVM_CACHE_STAGE:-}" ]; then
           if ! bash "$STAGE_SH" stage "$LLVM_CACHE_STAGE" "$LLVM_CACHE_CONTENTS" >/dev/null; then
             echo "::warning title=llvm-contents-cache not staged::could not stage $(basename "$LIVE") for saving; the next run on this key will miss and extract again."
           fi

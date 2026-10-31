@@ -153,6 +153,20 @@ jobs:
             exit 1
           fi
 
+      # Every Bazel label a workflow or composite action runs must resolve; a
+      # renamed target otherwise stays green until its lane next runs. Here and
+      # not in conformance-check because the query loads packages whose .bzl
+      # files need external repositories: //:tidy above has fetched them all
+      # already, so this costs seconds (see tools/conformance/src/checks/labels.rs).
+      - name: Workflow Bazel labels resolve
+        if: steps.gate.outputs.relevant != 'false'
+        run: |
+          cache=()
+          if [ -n "${BUILDBUDDY_API_KEY}" ]; then
+            cache=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
+          fi
+          bazel run "${cache[@]}" //tools/conformance:workflow-labels
+
       # Tripwire: a cache HIT whose toolchain Bazel then ignored (it extracted
       # LLVM under a different content hash) means the cache key missed an
       # input that moved -- and this lane is quietly ~150s slower again. The
