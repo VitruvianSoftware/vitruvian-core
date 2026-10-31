@@ -1023,6 +1023,10 @@ func TestEndToEndConnectSyncStreamReconnectCatchUpAndBadCredentials(t *testing.T
 	}, 3*time.Second, 20*time.Millisecond, "Connect must sync world, open WebChannel stream, and deliver live message")
 
 	require.Equal(t, int64(1), worldSyncCalls.Load(), "Connect must run initial world sync once")
+	client.metaMu.Lock()
+	rotatedCompass := ul.Metadata.(*UserLoginMetadata).Cookies["COMPASS"]
+	client.metaMu.Unlock()
+	require.Equal(t, "dynamite-ui=gsession_1", rotatedCompass, "rotated COMPASS from /u/0/webchannel/register must be persisted into UserLoginMetadata")
 	recorded := client.recordedRemoteEvents()
 	require.Len(t, recorded, 1)
 	liveEvt, ok := recorded[0].(*simplevent.PreConvertedMessage)
@@ -1047,6 +1051,10 @@ func TestEndToEndConnectSyncStreamReconnectCatchUpAndBadCredentials(t *testing.T
 	}, 3*time.Second, 20*time.Millisecond, "reconnect must run catch_up_user and deliver missed message")
 
 	require.Equal(t, int64(1), catchUpUserCalls.Load())
+	client.metaMu.Lock()
+	rotatedCompass2 := ul.Metadata.(*UserLoginMetadata).Cookies["COMPASS"]
+	client.metaMu.Unlock()
+	require.Equal(t, "dynamite-ui=gsession_2", rotatedCompass2, "reconnect must persist second rotated COMPASS into UserLoginMetadata")
 	recordedAfterCatchUp := client.recordedRemoteEvents()
 	var missedDeliveries int
 	for _, ev := range recordedAfterCatchUp {
@@ -4169,6 +4177,42 @@ func TestStartDMByEmailEndToEndThroughRPCActionsAndFakeServer(t *testing.T) {
 	row, _ := rooms[0].(map[string]any)
 	require.Equal(t, roomID, row["room_id"])
 	require.Equal(t, "Bob Example", row["name"], "new DM in inbox must have name decoded from Group.name")
+}
+
+func TestRotatedCompassCookiePersistedAndGuardedByLogout(t *testing.T) {
+	ctx := context.Background()
+	h, ul, client := setupLoggedInGChatTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	})
+
+	// Simulate EventKindConnected with rotated COMPASS cookie payload from Rust WebChannelClient.
+	payload := []byte(`{"COMPASS":"dynamite-ui=rotated_compass_999","OSID":"osid_1","SID":"sid_1","HSID":"hsid_1","SSID":"ssid_1"}`)
+	client.processStreamNotification(ctx, streamNotification{
+		kind:    EventKindConnected,
+		payload: payload,
+	})
+
+	client.metaMu.Lock()
+	gotCompass := ul.Metadata.(*UserLoginMetadata).Cookies["COMPASS"]
+	client.metaMu.Unlock()
+	require.Equal(t, "dynamite-ui=rotated_compass_999", gotCompass)
+
+	// Verify persisted in SQLite database.
+	reloaded, err := h.Bridge.DB.UserLogin.GetByID(ctx, ul.ID)
+	require.NoError(t, err)
+	require.NotNil(t, reloaded)
+	require.Equal(t, "dynamite-ui=rotated_compass_999", reloaded.Metadata.(*UserLoginMetadata).Cookies["COMPASS"])
+
+	// After LogoutRemote, a late EventKindConnected callback must NOT re-persist cookies.
+	client.LogoutRemote(ctx)
+	client.processStreamNotification(ctx, streamNotification{
+		kind:    EventKindConnected,
+		payload: payload,
+	})
+	client.metaMu.Lock()
+	afterLogout := ul.Metadata.(*UserLoginMetadata).Cookies
+	client.metaMu.Unlock()
+	require.Nil(t, afterLogout, "late Connected callback after LogoutRemote must not re-persist cookies")
 }
 
 func TestServeGChatEngineHelperForAppE2E(t *testing.T) {

@@ -5,6 +5,7 @@ package gchat
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"sync"
@@ -32,6 +33,7 @@ type Client struct {
 
 	mu               sync.Mutex
 	metaMu           sync.Mutex
+	loggedOut        bool
 	syncMu           sync.Mutex
 	ffiClient        *FFIClient
 	cancelStream     context.CancelFunc
@@ -78,8 +80,12 @@ func (c *Client) Connect(ctx context.Context) {
 	if c.UserLogin == nil {
 		return
 	}
+	c.metaMu.Lock()
+	c.loggedOut = false
 	meta, ok := c.UserLogin.Metadata.(*UserLoginMetadata)
-	if !ok || meta == nil || !hasRequiredCookies(meta.Cookies) {
+	hasCookies := ok && meta != nil && hasRequiredCookies(meta.Cookies)
+	c.metaMu.Unlock()
+	if !hasCookies {
 		c.sendBridgeState(status.BridgeState{
 			StateEvent: status.StateBadCredentials,
 			Error:      "gchat-missing-cookies",
@@ -152,6 +158,7 @@ func (c *Client) processStreamNotification(ctx context.Context, item streamNotif
 	}
 	switch item.kind {
 	case EventKindConnected:
+		c.persistRotatedCookies(ctx, item.payload)
 		c.sendBridgeState(status.BridgeState{StateEvent: status.StateConnected})
 		c.mu.Lock()
 		needInitial := !c.initialSyncDone
@@ -269,8 +276,19 @@ func (c *Client) ensureFFIClient() (*FFIClient, error) {
 	if c.UserLogin == nil {
 		return nil, errors.New("gchat client has no UserLogin")
 	}
+	c.metaMu.Lock()
 	meta, ok := c.UserLogin.Metadata.(*UserLoginMetadata)
-	if !ok || meta == nil || len(meta.Cookies) == 0 {
+	var cookiesCopy map[string]string
+	var userAgent string
+	if ok && meta != nil && len(meta.Cookies) > 0 {
+		cookiesCopy = make(map[string]string, len(meta.Cookies))
+		for k, v := range meta.Cookies {
+			cookiesCopy[k] = v
+		}
+		userAgent = meta.UserAgent
+	}
+	c.metaMu.Unlock()
+	if len(cookiesCopy) == 0 {
 		return nil, errors.New("gchat UserLogin has no stored cookies")
 	}
 	var baseURL string
@@ -284,8 +302,8 @@ func (c *Client) ensureFFIClient() (*FFIClient, error) {
 		}
 	}
 	ffi, err := NewFFIClient(SessionConfig{
-		CookieMap: meta.Cookies,
-		UserAgent: meta.UserAgent,
+		CookieMap: cookiesCopy,
+		UserAgent: userAgent,
 		BaseURL:   baseURL,
 	})
 	if err != nil {
@@ -320,17 +338,63 @@ func (c *Client) IsLoggedIn() bool {
 	if c.lastBridgeState() == status.StateBadCredentials {
 		return false
 	}
+	c.metaMu.Lock()
+	defer c.metaMu.Unlock()
+	if c.loggedOut {
+		return false
+	}
 	meta, _ := c.UserLogin.Metadata.(*UserLoginMetadata)
 	return meta != nil && hasRequiredCookies(meta.Cookies)
 }
 
-func (c *Client) LogoutRemote(_ context.Context) {
+func (c *Client) persistRotatedCookies(ctx context.Context, payload []byte) {
+	if c.UserLogin == nil || len(payload) == 0 {
+		return
+	}
+	var rotated map[string]string
+	if err := json.Unmarshal(payload, &rotated); err != nil || len(rotated) == 0 {
+		return
+	}
+	c.metaMu.Lock()
+	defer c.metaMu.Unlock()
+	if c.loggedOut {
+		return
+	}
+	meta, ok := c.UserLogin.Metadata.(*UserLoginMetadata)
+	if !ok || meta == nil {
+		return
+	}
+	if meta.Cookies == nil {
+		meta.Cookies = make(map[string]string, len(rotated))
+	}
+	changed := false
+	for k, v := range rotated {
+		if v == "" {
+			continue
+		}
+		if meta.Cookies[k] != v {
+			meta.Cookies[k] = v
+			changed = true
+		}
+	}
+	if changed && c.UserLogin.Bridge != nil && c.UserLogin.Bridge.DB != nil {
+		_ = c.UserLogin.Save(ctx)
+	}
+}
+
+func (c *Client) LogoutRemote(ctx context.Context) {
 	c.Disconnect()
+	c.metaMu.Lock()
+	c.loggedOut = true
 	if c.UserLogin != nil {
 		if meta, ok := c.UserLogin.Metadata.(*UserLoginMetadata); ok && meta != nil {
 			meta.Cookies = nil
 		}
+		if c.UserLogin.Bridge != nil && c.UserLogin.Bridge.DB != nil {
+			_ = c.UserLogin.Save(ctx)
+		}
 	}
+	c.metaMu.Unlock()
 }
 
 func (c *Client) IsThisUser(_ context.Context, userID networkid.UserID) bool {
