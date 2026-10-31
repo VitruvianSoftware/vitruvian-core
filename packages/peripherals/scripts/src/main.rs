@@ -19,5 +19,5 @@
 // SOFTWARE.
 
 fn main() {
-    std::process::exit(peripherals_publish::run());
+    std::process::exit(peripherals_publish::main_rc());
 }

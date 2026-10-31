@@ -18,10 +18,38 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+//! `bazel run //packages/peripherals:publish` -- build the universal
+//! gravastar-mouse command and publish it to a GitHub Release, and (for a
+//! release) its Homebrew formula.
+//!
+//! ONE tool, TWO triggers (delivery-orchestrator spec §4.1): the generated
+//! .github/workflows/delivery-gravastar-mouse.yaml runs it for the
+//! `gravastar-mouse-publish` unit, and the break-glass path is the same
+//! `bazel run` on a Mac. The rung selects the grade:
+//!
+//!   GRADE=beta        (push to main)  rolling prerelease `gravastar-mouse-beta-latest`;
+//!                     the asset is overwritten and the tag is moved to HEAD.
+//!   GRADE=production  (release event) attach the asset to the release-please
+//!                     release named by RELEASE_TAG (gravastar-mouse-vX.Y.Z), then
+//!                     update Formula/gravastar-mouse.rb in
+//!                     VitruvianSoftware/homebrew-tap when HOMEBREW_TAP_TOKEN is set.
+//!
+//! The binary is universal (arm64 + x86_64) and signed ad hoc by rules_apple.
+//!
+//! Break-glass for production: check out the release tag, then
+//!   GRADE=production RELEASE_TAG=gravastar-mouse-vX.Y.Z bazel run //packages/peripherals:publish
+//!
+//! Replaced `packages/peripherals/publish.sh` and keeps its behaviour step for
+//! step: the same commands in the same order, `${VAR:-default}` treating an
+//! empty variable as unset, and `set -euo pipefail` -- a failing command ends
+//! the run with that command's status and nothing added. Std-only on purpose.
+
 use std::env;
 use std::fs;
+use std::io::{self, Write};
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 const PKG: &str = "packages/peripherals";
 const REPO: &str = "VitruvianSoftware/vitruvian-core";
@@ -34,228 +62,391 @@ pub enum Grade {
     Production,
 }
 
-impl Grade {
-    pub fn parse(s: &str) -> Result<Self, String> {
-        match s {
-            "beta" => Ok(Grade::Beta),
-            "production" => Ok(Grade::Production),
-            other => Err(format!(
-                "publish: unknown GRADE={} (beta|production)",
-                other
-            )),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct PublishConfig {
-    pub workspace_root: PathBuf,
+/// What the run publishes, decided before anything is built.
+#[derive(Debug, PartialEq)]
+pub struct Plan {
     pub grade: Grade,
-    pub sha: String,
-    pub manifest_version: String,
     pub tag: String,
     pub version: String,
-    pub asset_name: String,
-    pub buildbuddy_api_key: Option<String>,
-    pub homebrew_tap_token: Option<String>,
+    pub asset: String,
 }
 
-pub fn find_workspace_root() -> Result<PathBuf, String> {
-    if let Ok(dir) = env::var("BUILD_WORKSPACE_DIRECTORY") {
-        let p = PathBuf::from(&dir);
-        if p.is_dir() {
-            return Ok(p);
+/// `${NAME:-}`: unset and empty are the same.
+fn var(name: &str) -> Option<String> {
+    env::var(name).ok().filter(|v| !v.is_empty())
+}
+
+/// The `case "${GRADE}"` block. Errors carry the script's message and status 2.
+pub fn plan(
+    grade: &str,
+    tag: Option<&str>,
+    release_tag: Option<&str>,
+    sha: &str,
+    manifest_ver: &str,
+) -> Result<Plan, String> {
+    match grade {
+        "beta" => {
+            let sha7: String = sha.chars().take(7).collect();
+            Ok(Plan {
+                grade: Grade::Beta,
+                tag: tag.unwrap_or("gravastar-mouse-beta-latest").to_string(),
+                version: format!("{manifest_ver}-beta.{sha7}"),
+                asset: "gravastar-mouse-beta-macos.tar.gz".to_string(),
+            })
         }
-    }
-    if let Ok(output) = Command::new("git")
-        .args(["rev-parse", "--show-toplevel"])
-        .output()
-    {
-        if output.status.success() {
-            let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !s.is_empty() {
-                let p = PathBuf::from(&s);
-                if p.is_dir() {
-                    return Ok(p);
-                }
-            }
-        }
-    }
-    env::current_dir().map_err(|e| format!("publish: cannot determine workspace root: {}", e))
-}
-
-pub fn read_manifest_version(root: &Path) -> Result<String, String> {
-    let manifest_path = root.join(PKG).join(".release-please-manifest.json");
-    let content = fs::read_to_string(&manifest_path)
-        .map_err(|e| format!("publish: cannot read {}: {}", manifest_path.display(), e))?;
-    extract_manifest_version(&content)
-}
-
-pub fn extract_manifest_version(json: &str) -> Result<String, String> {
-    let key = "\"packages/peripherals\"";
-    let idx = json.find(key).ok_or_else(|| {
-        "publish: \"packages/peripherals\" not found in .release-please-manifest.json".to_string()
-    })?;
-    let after_key = &json[idx + key.len()..];
-    let colon_pos = after_key
-        .find(':')
-        .ok_or_else(|| "publish: malformed manifest JSON (no colon after key)".to_string())?;
-    let after_colon = &after_key[colon_pos + 1..];
-    let quote_start = after_colon.find('"').ok_or_else(|| {
-        "publish: malformed manifest JSON (no opening quote for value)".to_string()
-    })?;
-    let value_start = &after_colon[quote_start + 1..];
-    let quote_end = value_start.find('"').ok_or_else(|| {
-        "publish: malformed manifest JSON (no closing quote for value)".to_string()
-    })?;
-    let version = &value_start[..quote_end];
-    if version.is_empty() {
-        return Err("publish: empty version in .release-please-manifest.json".to_string());
-    }
-    Ok(version.to_string())
-}
-
-fn get_git_sha() -> Result<String, String> {
-    let output = Command::new("git")
-        .args(["rev-parse", "HEAD"])
-        .output()
-        .map_err(|e| format!("publish: git rev-parse HEAD failed: {}", e))?;
-    if !output.status.success() {
-        return Err("publish: git rev-parse HEAD failed".to_string());
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-}
-
-pub fn resolve_config() -> Result<PublishConfig, (String, i32)> {
-    let workspace_root = find_workspace_root().map_err(|e| (e, 1))?;
-    let grade_str = env::var("GRADE").unwrap_or_else(|_| "beta".to_string());
-    let grade = Grade::parse(&grade_str).map_err(|e| (e, 2))?;
-    let sha = env::var("GITHUB_SHA")
-        .or_else(|_| get_git_sha())
-        .map_err(|e| (e, 1))?;
-    let manifest_version = read_manifest_version(&workspace_root).map_err(|e| (e, 1))?;
-    let buildbuddy_api_key = env::var("BUILDBUDDY_API_KEY")
-        .ok()
-        .filter(|s| !s.is_empty());
-    let homebrew_tap_token = env::var("HOMEBREW_TAP_TOKEN")
-        .ok()
-        .filter(|s| !s.is_empty());
-
-    let (tag, version, asset_name) = match &grade {
-        Grade::Beta => {
-            let tag = env::var("TAG").unwrap_or_else(|_| "gravastar-mouse-beta-latest".to_string());
-            let sha7 = if sha.len() >= 7 { &sha[..7] } else { &sha };
-            let version = format!("{}-beta.{}", manifest_version, sha7);
-            let asset = "gravastar-mouse-beta-macos.tar.gz".to_string();
-            (tag, version, asset)
-        }
-        Grade::Production => {
-            let tag = env::var("RELEASE_TAG").unwrap_or_default();
+        "production" => {
+            // A dispatch of the production rung carries no release event, and
+            // re-uploading a release's asset from a different commit would
+            // silently replace what was released. Require the tag; never guess it.
+            let tag = release_tag.unwrap_or("");
             if tag.is_empty() {
-                return Err((
-                    format!(
-                        "publish: GRADE=production needs RELEASE_TAG={}X.Y.Z (the release-please tag); refusing to guess",
-                        TAG_PREFIX
-                    ),
-                    2,
-                ));
+                return Err(format!("publish: GRADE=production needs RELEASE_TAG={TAG_PREFIX}X.Y.Z (the release-please tag); refusing to guess"));
             }
-            if !tag.starts_with(TAG_PREFIX) {
-                return Err((
-                    format!(
-                        "publish: RELEASE_TAG={} is not a {}* release; another component's release reached this rung",
-                        tag, TAG_PREFIX
-                    ),
-                    2,
-                ));
+            let Some(version) = tag.strip_prefix(TAG_PREFIX) else {
+                return Err(format!("publish: RELEASE_TAG={tag} is not a {TAG_PREFIX}* release; another component's release reached this rung"));
+            };
+            if version != manifest_ver {
+                return Err(format!("publish: {tag} is version {version}, but this checkout is {manifest_ver}; check out the release tag first"));
             }
-            let version = tag[TAG_PREFIX.len()..].to_string();
-            if version != manifest_version {
-                return Err((
-                    format!(
-                        "publish: {} is version {}, but this checkout is {}; check out the release tag first",
-                        tag, version, manifest_version
-                    ),
-                    2,
-                ));
-            }
-            let asset = format!("gravastar-mouse-{}-macos.tar.gz", version);
-            (tag, version, asset)
+            Ok(Plan {
+                grade: Grade::Production,
+                tag: tag.to_string(),
+                version: version.to_string(),
+                asset: format!("gravastar-mouse-{version}-macos.tar.gz"),
+            })
         }
-    };
-
-    Ok(PublishConfig {
-        workspace_root,
-        grade,
-        sha,
-        manifest_version,
-        tag,
-        version,
-        asset_name,
-        buildbuddy_api_key,
-        homebrew_tap_token,
-    })
+        other => Err(format!("publish: unknown GRADE={other} (beta|production)")),
+    }
 }
 
-pub fn build_bazel_flags(config: &PublishConfig) -> Vec<String> {
+pub fn build_bazel_flags(buildbuddy_api_key: Option<&str>) -> Vec<String> {
     let mut flags = vec![
         "--config=macos-app".to_string(),
         "--macos_cpus=arm64,x86_64".to_string(),
     ];
-    if let Some(ref key) = config.buildbuddy_api_key {
+    if let Some(key) = buildbuddy_api_key {
         flags.push("--config=remotecache-ci".to_string());
-        flags.push(format!("--remote_header=x-buildbuddy-api-key={}", key));
+        flags.push(format!("--remote_header=x-buildbuddy-api-key={key}"));
     }
     flags
 }
 
-pub fn verify_binary(binary: &Path, manifest_version: &str) -> Result<(), (String, i32)> {
-    let output = Command::new("lipo")
-        .args(["-archs", &binary.to_string_lossy()])
-        .output()
-        .map_err(|e| (format!("publish: lipo -archs failed: {}", e), 1))?;
-    if !output.status.success() {
-        return Err((
-            format!("publish: lipo -archs {} failed", binary.display()),
-            1,
-        ));
+/// The first `bazel cquery --output=files` line naming the binary, and the
+/// status `$(cquery | grep '/gravastar-mouse$' | head -1)` had under pipefail:
+/// grep's 1 when nothing matched, else cquery's own.
+pub fn pick_binary(cquery_stdout: &[u8], cquery_status: i32) -> Result<String, i32> {
+    let text = String::from_utf8_lossy(cquery_stdout);
+    match text.lines().find(|l| l.ends_with("/gravastar-mouse")) {
+        None => Err(1),
+        Some(_) if cquery_status != 0 => Err(cquery_status),
+        Some(l) => Ok(l.to_string()),
     }
-    let archs = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    for arch in &["arm64", "x86_64"] {
-        let padded = format!(" {} ", archs);
-        let padded = format!(" {} ", padded.trim());
-        if !padded.contains(&format!(" {} ", arch)) {
-            return Err((
-                format!(
-                    "publish: {} is '{}', missing {}",
-                    binary.display(),
-                    archs,
-                    arch
-                ),
-                1,
-            ));
+}
+
+/// `[[ " ${archs} " == *" ${arch} "* ]]` for both architectures.
+pub fn missing_arch(archs: &str) -> Option<&'static str> {
+    let padded = format!(" {archs} ");
+    ["arm64", "x86_64"]
+        .into_iter()
+        .find(|a| !padded.contains(&format!(" {a} ")))
+}
+
+/// What `$(...)` keeps of a command's output: trailing newlines stripped.
+fn captured(mut v: Vec<u8>) -> String {
+    while v.last() == Some(&b'\n') {
+        v.pop();
+    }
+    String::from_utf8_lossy(&v).into_owned()
+}
+
+fn say(line: &str) {
+    let mut o = io::stdout().lock();
+    let _ = writeln!(o, "{line}");
+    let _ = o.flush();
+}
+
+/// A command bash could not start: its diagnostic and status.
+fn not_started(cmd: &Command, e: &io::Error) -> i32 {
+    let name = cmd.get_program().to_string_lossy().into_owned();
+    if e.kind() == io::ErrorKind::NotFound {
+        if name.contains('/') {
+            eprintln!("{name}: No such file or directory");
+        } else {
+            eprintln!("{name}: command not found");
+        }
+        127
+    } else {
+        eprintln!("{name}: Permission denied");
+        126
+    }
+}
+
+fn code(st: std::process::ExitStatus) -> i32 {
+    use std::os::unix::process::ExitStatusExt;
+    st.code()
+        .or_else(|| st.signal().map(|s| 128 + s))
+        .unwrap_or(1)
+}
+
+/// A plain command line under errexit: Ok on success, else its status.
+fn run(cmd: &mut Command) -> Result<(), i32> {
+    match cmd.status() {
+        Ok(s) if s.success() => Ok(()),
+        Ok(s) => Err(code(s)),
+        Err(e) => Err(not_started(cmd, &e)),
+    }
+}
+
+/// `$(cmd)` with stderr passed through: (status, stdout).
+fn capture(cmd: &mut Command) -> (i32, Vec<u8>) {
+    match cmd.stdout(Stdio::piped()).output() {
+        Ok(o) => (code(o.status), o.stdout),
+        Err(e) => (not_started(cmd, &e), Vec::new()),
+    }
+}
+
+/// `x="$(cmd)"` under errexit: the captured text, or the status to exit with.
+fn assign(cmd: &mut Command) -> Result<String, i32> {
+    match capture(cmd.stderr(Stdio::inherit())) {
+        (0, out) => Ok(captured(out)),
+        (rc, _) => Err(rc),
+    }
+}
+
+fn workspace_root() -> PathBuf {
+    if let Some(d) = var("BUILD_WORKSPACE_DIRECTORY") {
+        return PathBuf::from(d);
+    }
+    // $(git rev-parse --show-toplevel 2>/dev/null || pwd)
+    let mut git = Command::new("git");
+    git.args(["rev-parse", "--show-toplevel"])
+        .stderr(Stdio::null());
+    if let (0, out) = capture(&mut git) {
+        let top = captured(out);
+        if !top.is_empty() {
+            return PathBuf::from(top);
+        }
+    }
+    env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+}
+
+fn is_executable(p: &Path) -> bool {
+    fs::metadata(p).is_ok_and(|m| m.permissions().mode() & 0o111 != 0)
+}
+
+pub fn main_rc() -> i32 {
+    match publish() {
+        Ok(()) => 0,
+        Err(rc) => rc,
+    }
+}
+
+fn publish() -> Result<(), i32> {
+    let root = workspace_root();
+    if env::set_current_dir(&root).is_err() {
+        eprintln!("cd: {}: No such file or directory", root.display());
+        return Err(1);
+    }
+
+    let grade = var("GRADE").unwrap_or_else(|| "beta".to_string());
+    let sha = match var("GITHUB_SHA") {
+        Some(s) => s,
+        None => assign(Command::new("git").args(["rev-parse", "HEAD"]))?,
+    };
+    let manifest_ver = assign(Command::new("jq").args([
+        "-r",
+        ".\"packages/peripherals\"",
+        &format!("{PKG}/.release-please-manifest.json"),
+    ]))?;
+
+    let p = plan(
+        &grade,
+        var("TAG").as_deref(),
+        var("RELEASE_TAG").as_deref(),
+        &sha,
+        &manifest_ver,
+    )
+    .map_err(|msg| {
+        eprintln!("{msg}");
+        2
+    })?;
+    let (tag, version, asset) = (&p.tag, &p.version, &p.asset);
+
+    say(&format!(
+        "=== gravastar-mouse publish: grade={grade} version={version} tag={tag} commit={sha} ==="
+    ));
+
+    let flags = build_bazel_flags(var("BUILDBUDDY_API_KEY").as_deref());
+    let target = format!("//{PKG}:gravastar-mouse");
+    run(Command::new("bazel").arg("build").args(&flags).arg(&target))?;
+    let (cq_rc, cq_out) = capture(
+        Command::new("bazel")
+            .arg("cquery")
+            .args(&flags)
+            .args(["--output=files", &target])
+            .stderr(Stdio::null()),
+    );
+    let binary = pick_binary(&cq_out, cq_rc)?;
+    if binary.is_empty() || !is_executable(Path::new(&binary)) {
+        eprintln!("publish: bazel produced no gravastar-mouse binary for //{PKG}:gravastar-mouse");
+        return Err(1);
+    }
+
+    // What the release promises: both architectures, and the version it is named for.
+    let archs = assign(Command::new("lipo").args(["-archs", &binary]))?;
+    if let Some(arch) = missing_arch(&archs) {
+        eprintln!("publish: {binary} is '{archs}', missing {arch}");
+        return Err(1);
+    }
+    let reported = assign(Command::new(&binary).arg("--version"))?;
+    if reported != manifest_ver {
+        eprintln!("publish: the binary reports {reported}, but the manifest is {manifest_ver} (CLI.version out of step?)");
+        return Err(1);
+    }
+
+    let base = match var("RUNNER_TEMP") {
+        Some(t) => t,
+        None => assign(Command::new("mktemp").arg("-d"))?,
+    };
+    let work = PathBuf::from(base).join("gravastar-mouse-dist");
+    let stage = work.join("stage");
+    let io_fail = |what: &str, e: io::Error| {
+        eprintln!("publish: {what}: {e}");
+        1
+    };
+    if work.exists() {
+        fs::remove_dir_all(&work).map_err(|e| io_fail("rm -rf", e))?;
+    }
+    fs::create_dir_all(&stage).map_err(|e| io_fail("mkdir -p", e))?;
+    let staged = stage.join("gravastar-mouse");
+    fs::copy(&binary, &staged).map_err(|e| io_fail("cp", e))?;
+    fs::set_permissions(&staged, fs::Permissions::from_mode(0o755))
+        .map_err(|e| io_fail("chmod", e))?;
+    for f in ["LICENSE", "README.md"] {
+        fs::copy(Path::new(PKG).join(f), stage.join(f)).map_err(|e| io_fail("cp", e))?;
+    }
+    let archive = work.join(asset);
+    run(Command::new("tar")
+        .arg("-czf")
+        .arg(&archive)
+        .arg("-C")
+        .arg(&stage)
+        .args(["gravastar-mouse", "LICENSE", "README.md"]))?;
+    let digest = sha256_digest(&fs::read(&archive).map_err(|e| io_fail("shasum", e))?);
+    let sums = work.join(format!("{asset}.sha256"));
+    fs::write(&sums, format!("{digest}  {asset}\n")).map_err(|e| io_fail("write", e))?;
+    say(&format!("{asset}: sha256 {digest}"));
+
+    if p.grade == Grade::Beta {
+        let exists = Command::new("gh")
+            .args(["release", "view", tag])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success());
+        if !exists {
+            run(Command::new("gh").args([
+                "release",
+                "create",
+                tag,
+                "--prerelease",
+                "--target",
+                &sha,
+                "--title",
+                "gravastar-mouse (Beta Rolling Release)",
+                "--notes",
+                "Rolling pre-release built automatically from commits landing on main.",
+            ]))?;
         }
     }
 
-    let output = Command::new(binary)
-        .arg("--version")
-        .output()
-        .map_err(|e| {
-            (
-                format!("publish: {} --version failed: {}", binary.display(), e),
-                1,
-            )
-        })?;
-    let reported = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if reported != manifest_version {
-        return Err((
-            format!(
-                "publish: the binary reports {}, but the manifest is {} (CLI.version out of step?)",
-                reported, manifest_version
-            ),
-            1,
+    run(Command::new("gh")
+        .args(["release", "upload", tag])
+        .arg(&archive)
+        .arg(&sums)
+        .arg("--clobber"))?;
+
+    if p.grade == Grade::Beta {
+        // Move the rolling tag to the commit whose asset now sits on the release.
+        run(Command::new("gh")
+            .args([
+                "api",
+                "-X",
+                "PATCH",
+                &format!("repos/{{owner}}/{{repo}}/git/refs/tags/{tag}"),
+                "-f",
+                &format!("sha={sha}"),
+                "-F",
+                "force=true",
+            ])
+            .stdout(Stdio::null()))?;
+        let notes = format!(
+            "Latest beta build: {version}\nCommit: {sha}\n\n{asset}: the universal (arm64 + x86_64) gravastar-mouse command, with its LICENSE and README.\nsha256: {digest}"
+        );
+        run(Command::new("gh").args(["release", "edit", tag, "--notes", &notes]))?;
+        say(&format!(
+            "=== gravastar-mouse publish complete: {tag} ({version}, beta) ==="
+        ));
+        return Ok(());
+    }
+
+    let Some(token) = var("HOMEBREW_TAP_TOKEN") else {
+        say(&format!(
+            "publish: HOMEBREW_TAP_TOKEN is not set; skipping the {TAP} formula update"
+        ));
+        say(&format!(
+            "=== gravastar-mouse publish complete: {tag} ({version}, production) ==="
+        ));
+        return Ok(());
+    };
+
+    let tap_dir = work.join("tap");
+    run(Command::new("git")
+        .args(["clone", "--depth", "1"])
+        .arg(format!(
+            "https://x-access-token:{token}@github.com/{TAP}.git"
+        ))
+        .arg(&tap_dir))?;
+    fs::create_dir_all(tap_dir.join("Formula")).map_err(|e| io_fail("mkdir -p", e))?;
+    fs::write(
+        tap_dir.join("Formula/gravastar-mouse.rb"),
+        generate_formula(REPO, tag, asset, version, &digest),
+    )
+    .map_err(|e| io_fail("write formula", e))?;
+    let git = || {
+        let mut c = Command::new("git");
+        c.arg("-C").arg(&tap_dir);
+        c
+    };
+    run(git().args(["add", "Formula/gravastar-mouse.rb"]))?;
+    if git()
+        .args(["diff", "--cached", "--quiet"])
+        .status()
+        .is_ok_and(|s| s.success())
+    {
+        say(&format!(
+            "publish: {TAP} already has gravastar-mouse {version}"
+        ));
+    } else {
+        run(git().args([
+            "-c",
+            "user.name=github-actions[bot]",
+            "-c",
+            "user.email=41898282+github-actions[bot]@users.noreply.github.com",
+            "commit",
+            "-q",
+            "-m",
+            &format!("gravastar-mouse {version}"),
+        ]))?;
+        run(git().args(["push", "-q", "origin", "HEAD"]))?;
+        say(&format!(
+            "publish: {TAP} Formula/gravastar-mouse.rb is now {version}"
         ));
     }
+
+    say(&format!(
+        "=== gravastar-mouse publish complete: {tag} ({version}, production) ==="
+    ));
     Ok(())
 }
 
@@ -354,156 +545,9 @@ pub fn sha256_digest(data: &[u8]) -> String {
         .collect::<String>()
 }
 
-// ---------------------------------------------------------------------------
-// Staging, archiving, release operations
-// ---------------------------------------------------------------------------
-
-pub fn stage_and_archive(
-    config: &PublishConfig,
-    binary: &Path,
-) -> Result<(PathBuf, String), String> {
-    let work = env::var("RUNNER_TEMP")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| env::temp_dir())
-        .join("gravastar-mouse-dist");
-    if work.exists() {
-        fs::remove_dir_all(&work)
-            .map_err(|e| format!("publish: cannot clean {}: {}", work.display(), e))?;
-    }
-    let stage = work.join("stage");
-    fs::create_dir_all(&stage)
-        .map_err(|e| format!("publish: cannot create {}: {}", stage.display(), e))?;
-
-    let dest_binary = stage.join("gravastar-mouse");
-    fs::copy(binary, &dest_binary).map_err(|e| format!("publish: cannot copy binary: {}", e))?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&dest_binary, fs::Permissions::from_mode(0o755))
-            .map_err(|e| format!("publish: cannot chmod binary: {}", e))?;
-    }
-
-    let pkg_dir = config.workspace_root.join(PKG);
-    for file in &["LICENSE", "README.md"] {
-        let src = pkg_dir.join(file);
-        let dst = stage.join(file);
-        fs::copy(&src, &dst)
-            .map_err(|e| format!("publish: cannot copy {}: {}", src.display(), e))?;
-    }
-
-    let archive = work.join(&config.asset_name);
-    let tar_status = Command::new("tar")
-        .args(["-czf"])
-        .arg(&archive)
-        .args(["-C"])
-        .arg(&stage)
-        .args(["gravastar-mouse", "LICENSE", "README.md"])
-        .status()
-        .map_err(|e| format!("publish: tar failed: {}", e))?;
-    if !tar_status.success() {
-        return Err("publish: tar failed".to_string());
-    }
-
-    let archive_data =
-        fs::read(&archive).map_err(|e| format!("publish: cannot read archive: {}", e))?;
-    let digest = sha256_digest(&archive_data);
-
-    let sha_file = work.join(format!("{}.sha256", config.asset_name));
-    fs::write(&sha_file, format!("{}  {}\n", digest, config.asset_name))
-        .map_err(|e| format!("publish: cannot write sha256 file: {}", e))?;
-
-    eprintln!("{}: sha256 {}", config.asset_name, digest);
-
-    Ok((archive, digest))
-}
-
-pub fn create_or_upload_release(
-    config: &PublishConfig,
-    archive: &Path,
-    digest: &str,
-) -> Result<(), String> {
-    let sha_file = archive.with_extension("tar.gz.sha256");
-    let sha_path = archive
-        .parent()
-        .unwrap()
-        .join(format!("{}.sha256", config.asset_name));
-
-    if config.grade == Grade::Beta {
-        let view = Command::new("gh")
-            .args(["release", "view", &config.tag])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status();
-        let exists = view.map(|s| s.success()).unwrap_or(false);
-        if !exists {
-            let status = Command::new("gh")
-                .args([
-                    "release",
-                    "create",
-                    &config.tag,
-                    "--prerelease",
-                    "--target",
-                    &config.sha,
-                    "--title",
-                    "gravastar-mouse (Beta Rolling Release)",
-                    "--notes",
-                    "Rolling pre-release built automatically from commits landing on main.",
-                ])
-                .status()
-                .map_err(|e| format!("publish: gh release create failed: {}", e))?;
-            if !status.success() {
-                return Err("publish: gh release create failed".to_string());
-            }
-        }
-    }
-
-    let status = Command::new("gh")
-        .args(["release", "upload", &config.tag])
-        .arg(archive)
-        .arg(&sha_path)
-        .arg("--clobber")
-        .status()
-        .map_err(|e| format!("publish: gh release upload failed: {}", e))?;
-    if !status.success() {
-        return Err("publish: gh release upload failed".to_string());
-    }
-
-    if config.grade == Grade::Beta {
-        let _ = Command::new("gh")
-            .args([
-                "api",
-                "-X",
-                "PATCH",
-                &format!("repos/{{owner}}/{{repo}}/git/refs/tags/{}", config.tag),
-                "-f",
-                &format!("sha={}", config.sha),
-                "-F",
-                "force=true",
-            ])
-            .stdout(std::process::Stdio::null())
-            .status();
-
-        let notes = format!(
-            "Latest beta build: {}\nCommit: {}\n\n{}: the universal (arm64 + x86_64) gravastar-mouse command, with its LICENSE and README.\nsha256: {}",
-            config.version, config.sha, config.asset_name, digest
-        );
-        let _ = Command::new("gh")
-            .args(["release", "edit", &config.tag, "--notes", &notes])
-            .status();
-
-        eprintln!(
-            "=== gravastar-mouse publish complete: {} ({}, beta) ===",
-            config.tag, config.version
-        );
-    }
-
-    let _ = sha_file; // suppress unused warning
-    Ok(())
-}
-
 pub fn generate_formula(repo: &str, tag: &str, asset: &str, version: &str, digest: &str) -> String {
     format!(
-        r##"# Generated by packages/peripherals/publish.sh in {repo}; do not edit here.
+        r##"# Generated by //packages/peripherals:publish in {repo}; do not edit here.
 class GravastarMouse < Formula
   desc "Status light and MCP server for the RGB LED of a GravaStar mouse"
   homepage "https://github.com/{repo}/tree/main/packages/peripherals"
@@ -531,535 +575,121 @@ end
     )
 }
 
-pub fn update_homebrew_formula(config: &PublishConfig, digest: &str) -> Result<(), String> {
-    let Some(ref token) = config.homebrew_tap_token else {
-        eprintln!(
-            "publish: HOMEBREW_TAP_TOKEN is not set; skipping the {} formula update",
-            TAP
-        );
-        eprintln!(
-            "=== gravastar-mouse publish complete: {} ({}, production) ===",
-            config.tag, config.version
-        );
-        return Ok(());
-    };
-
-    let work = env::var("RUNNER_TEMP")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| env::temp_dir())
-        .join("gravastar-mouse-dist");
-    let tap_dir = work.join("tap");
-
-    let clone_url = format!("https://x-access-token:{}@github.com/{}.git", token, TAP);
-    let status = Command::new("git")
-        .args(["clone", "--depth", "1", &clone_url])
-        .arg(&tap_dir)
-        .status()
-        .map_err(|e| format!("publish: git clone tap failed: {}", e))?;
-    if !status.success() {
-        return Err("publish: git clone tap failed".to_string());
-    }
-
-    let formula_dir = tap_dir.join("Formula");
-    fs::create_dir_all(&formula_dir)
-        .map_err(|e| format!("publish: cannot create Formula dir: {}", e))?;
-
-    let formula = generate_formula(
-        REPO,
-        &config.tag,
-        &config.asset_name,
-        &config.version,
-        digest,
-    );
-    fs::write(formula_dir.join("gravastar-mouse.rb"), &formula)
-        .map_err(|e| format!("publish: cannot write formula: {}", e))?;
-
-    let _ = Command::new("git")
-        .args(["-C"])
-        .arg(&tap_dir)
-        .args(["add", "Formula/gravastar-mouse.rb"])
-        .status();
-
-    let diff = Command::new("git")
-        .args(["-C"])
-        .arg(&tap_dir)
-        .args(["diff", "--cached", "--quiet"])
-        .status()
-        .map_err(|e| format!("publish: git diff failed: {}", e))?;
-
-    if diff.success() {
-        eprintln!(
-            "publish: {} already has gravastar-mouse {}",
-            TAP, config.version
-        );
-    } else {
-        let status = Command::new("git")
-            .args(["-C"])
-            .arg(&tap_dir)
-            .args([
-                "-c",
-                "user.name=github-actions[bot]",
-                "-c",
-                "user.email=41898282+github-actions[bot]@users.noreply.github.com",
-                "commit",
-                "-q",
-                "-m",
-                &format!("gravastar-mouse {}", config.version),
-            ])
-            .status()
-            .map_err(|e| format!("publish: git commit failed: {}", e))?;
-        if !status.success() {
-            return Err("publish: git commit to tap failed".to_string());
-        }
-
-        let status = Command::new("git")
-            .args(["-C"])
-            .arg(&tap_dir)
-            .args(["push", "-q", "origin", "HEAD"])
-            .status()
-            .map_err(|e| format!("publish: git push failed: {}", e))?;
-        if !status.success() {
-            return Err("publish: git push to tap failed".to_string());
-        }
-
-        eprintln!(
-            "publish: {} Formula/gravastar-mouse.rb is now {}",
-            TAP, config.version
-        );
-    }
-
-    eprintln!(
-        "=== gravastar-mouse publish complete: {} ({}, production) ===",
-        config.tag, config.version
-    );
-    Ok(())
-}
-
-pub fn run() -> i32 {
-    let config = match resolve_config() {
-        Ok(c) => c,
-        Err((msg, code)) => {
-            eprintln!("{}", msg);
-            return code;
-        }
-    };
-
-    eprintln!(
-        "=== gravastar-mouse publish: grade={} version={} tag={} commit={} ===",
-        match config.grade {
-            Grade::Beta => "beta",
-            Grade::Production => "production",
-        },
-        config.version,
-        config.tag,
-        config.sha
-    );
-
-    let flags = build_bazel_flags(&config);
-    let target = format!("//{}:gravastar-mouse", PKG);
-
-    let mut build_args = vec!["build".to_string()];
-    build_args.extend(flags.clone());
-    build_args.push(target.clone());
-
-    let status = Command::new("bazel").args(&build_args).status();
-    match status {
-        Ok(s) if s.success() => {}
-        Ok(_) => {
-            eprintln!("publish: bazel build failed");
-            return 1;
-        }
-        Err(e) => {
-            eprintln!("publish: bazel build failed: {}", e);
-            return 1;
-        }
-    }
-
-    let mut cquery_args = vec!["cquery".to_string()];
-    cquery_args.extend(flags);
-    cquery_args.extend(["--output=files".to_string(), target]);
-
-    let cquery_out = Command::new("bazel")
-        .args(&cquery_args)
-        .stderr(std::process::Stdio::null())
-        .output();
-    let binary_path = match cquery_out {
-        Ok(out) if out.status.success() => {
-            let stdout = String::from_utf8_lossy(&out.stdout);
-            stdout
-                .lines()
-                .find(|l| l.ends_with("/gravastar-mouse"))
-                .map(|l| PathBuf::from(l.trim()))
-        }
-        _ => None,
-    };
-    let binary = match binary_path {
-        Some(ref p) if p.exists() => p,
-        _ => {
-            eprintln!(
-                "publish: bazel produced no gravastar-mouse binary for //{}:gravastar-mouse",
-                PKG
-            );
-            return 1;
-        }
-    };
-
-    if let Err((msg, code)) = verify_binary(binary, &config.manifest_version) {
-        eprintln!("{}", msg);
-        return code;
-    }
-
-    let (archive, digest) = match stage_and_archive(&config, binary) {
-        Ok(v) => v,
-        Err(e) => {
-            eprintln!("{}", e);
-            return 1;
-        }
-    };
-
-    if let Err(e) = create_or_upload_release(&config, &archive, &digest) {
-        eprintln!("{}", e);
-        return 1;
-    }
-
-    if config.grade == Grade::Production {
-        if let Err(e) = update_homebrew_formula(&config, &digest) {
-            eprintln!("{}", e);
-            return 1;
-        }
-    }
-
-    if config.grade == Grade::Beta {
-        // Message already printed in create_or_upload_release
-    } else {
-        // Message already printed in update_homebrew_formula
-    }
-
-    0
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
-
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
-    fn test_sha256_empty() {
+    fn test_sha256_vectors() {
         assert_eq!(
             sha256_digest(b""),
             "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         );
-    }
-
-    #[test]
-    fn test_sha256_abc() {
         assert_eq!(
             sha256_digest(b"abc"),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
-    }
-
-    #[test]
-    fn test_sha256_long() {
-        let data = vec![b'a'; 1_000_000];
         assert_eq!(
-            sha256_digest(&data),
+            sha256_digest(&vec![b'a'; 1_000_000]),
             "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0"
         );
     }
 
     #[test]
-    fn test_grade_parse() {
-        assert_eq!(Grade::parse("beta").unwrap(), Grade::Beta);
-        assert_eq!(Grade::parse("production").unwrap(), Grade::Production);
-        assert!(Grade::parse("staging").is_err());
-        let err = Grade::parse("foo").unwrap_err();
-        assert!(err.contains("unknown GRADE=foo"));
-    }
-
-    #[test]
-    fn test_resolve_config_production_missing_tag() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        // Save and restore env vars to avoid test interference.
-        let saved_grade = env::var("GRADE").ok();
-        let saved_release = env::var("RELEASE_TAG").ok();
-        let saved_bwd = env::var("BUILD_WORKSPACE_DIRECTORY").ok();
-        let saved_sha = env::var("GITHUB_SHA").ok();
-
-        env::set_var("GRADE", "production");
-        env::remove_var("RELEASE_TAG");
-        env::set_var("GITHUB_SHA", "abc1234567890");
-        // Point to a temp dir that has the manifest file.
-        let tmp = env::temp_dir().join("publish_test_prod_missing");
-        let pkg_dir = tmp.join(PKG);
-        let _ = fs::create_dir_all(&pkg_dir);
-        let _ = fs::write(
-            pkg_dir.join(".release-please-manifest.json"),
-            r#"{"packages/peripherals": "1.2.3"}"#,
-        );
-        env::set_var("BUILD_WORKSPACE_DIRECTORY", tmp.to_string_lossy().as_ref());
-
-        let result = resolve_config();
-
-        // Restore env.
-        match saved_grade {
-            Some(v) => env::set_var("GRADE", v),
-            None => env::remove_var("GRADE"),
-        }
-        match saved_release {
-            Some(v) => env::set_var("RELEASE_TAG", v),
-            None => env::remove_var("RELEASE_TAG"),
-        }
-        match saved_bwd {
-            Some(v) => env::set_var("BUILD_WORKSPACE_DIRECTORY", v),
-            None => env::remove_var("BUILD_WORKSPACE_DIRECTORY"),
-        }
-        match saved_sha {
-            Some(v) => env::set_var("GITHUB_SHA", v),
-            None => env::remove_var("GITHUB_SHA"),
-        }
-        let _ = fs::remove_dir_all(&tmp);
-
-        assert!(result.is_err());
-        let (msg, code) = result.unwrap_err();
-        assert_eq!(code, 2);
-        assert!(msg.contains("GRADE=production needs RELEASE_TAG="));
-    }
-
-    #[test]
-    fn test_resolve_config_production_wrong_prefix() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let saved_grade = env::var("GRADE").ok();
-        let saved_release = env::var("RELEASE_TAG").ok();
-        let saved_bwd = env::var("BUILD_WORKSPACE_DIRECTORY").ok();
-        let saved_sha = env::var("GITHUB_SHA").ok();
-
-        env::set_var("GRADE", "production");
-        env::set_var("RELEASE_TAG", "wrong-prefix-v1.0.0");
-        env::set_var("GITHUB_SHA", "abc1234567890");
-        let tmp = env::temp_dir().join("publish_test_prod_prefix");
-        let pkg_dir = tmp.join(PKG);
-        let _ = fs::create_dir_all(&pkg_dir);
-        let _ = fs::write(
-            pkg_dir.join(".release-please-manifest.json"),
-            r#"{"packages/peripherals": "1.0.0"}"#,
-        );
-        env::set_var("BUILD_WORKSPACE_DIRECTORY", tmp.to_string_lossy().as_ref());
-
-        let result = resolve_config();
-
-        match saved_grade {
-            Some(v) => env::set_var("GRADE", v),
-            None => env::remove_var("GRADE"),
-        }
-        match saved_release {
-            Some(v) => env::set_var("RELEASE_TAG", v),
-            None => env::remove_var("RELEASE_TAG"),
-        }
-        match saved_bwd {
-            Some(v) => env::set_var("BUILD_WORKSPACE_DIRECTORY", v),
-            None => env::remove_var("BUILD_WORKSPACE_DIRECTORY"),
-        }
-        match saved_sha {
-            Some(v) => env::set_var("GITHUB_SHA", v),
-            None => env::remove_var("GITHUB_SHA"),
-        }
-        let _ = fs::remove_dir_all(&tmp);
-
-        assert!(result.is_err());
-        let (msg, code) = result.unwrap_err();
-        assert_eq!(code, 2);
-        assert!(msg.contains("is not a gravastar-mouse-v* release"));
-    }
-
-    #[test]
-    fn test_resolve_config_production_version_mismatch() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let saved_grade = env::var("GRADE").ok();
-        let saved_release = env::var("RELEASE_TAG").ok();
-        let saved_bwd = env::var("BUILD_WORKSPACE_DIRECTORY").ok();
-        let saved_sha = env::var("GITHUB_SHA").ok();
-
-        env::set_var("GRADE", "production");
-        env::set_var("RELEASE_TAG", "gravastar-mouse-v2.0.0");
-        env::set_var("GITHUB_SHA", "abc1234567890");
-        let tmp = env::temp_dir().join("publish_test_prod_mismatch");
-        let pkg_dir = tmp.join(PKG);
-        let _ = fs::create_dir_all(&pkg_dir);
-        let _ = fs::write(
-            pkg_dir.join(".release-please-manifest.json"),
-            r#"{"packages/peripherals": "1.0.0"}"#,
-        );
-        env::set_var("BUILD_WORKSPACE_DIRECTORY", tmp.to_string_lossy().as_ref());
-
-        let result = resolve_config();
-
-        match saved_grade {
-            Some(v) => env::set_var("GRADE", v),
-            None => env::remove_var("GRADE"),
-        }
-        match saved_release {
-            Some(v) => env::set_var("RELEASE_TAG", v),
-            None => env::remove_var("RELEASE_TAG"),
-        }
-        match saved_bwd {
-            Some(v) => env::set_var("BUILD_WORKSPACE_DIRECTORY", v),
-            None => env::remove_var("BUILD_WORKSPACE_DIRECTORY"),
-        }
-        match saved_sha {
-            Some(v) => env::set_var("GITHUB_SHA", v),
-            None => env::remove_var("GITHUB_SHA"),
-        }
-        let _ = fs::remove_dir_all(&tmp);
-
-        assert!(result.is_err());
-        let (msg, code) = result.unwrap_err();
-        assert_eq!(code, 2);
-        assert!(msg.contains("is version 2.0.0, but this checkout is 1.0.0"));
-    }
-
-    #[test]
-    fn test_resolve_config_beta_defaults() {
-        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let saved_grade = env::var("GRADE").ok();
-        let saved_tag = env::var("TAG").ok();
-        let saved_bwd = env::var("BUILD_WORKSPACE_DIRECTORY").ok();
-        let saved_sha = env::var("GITHUB_SHA").ok();
-        let saved_release = env::var("RELEASE_TAG").ok();
-
-        env::set_var("GRADE", "beta");
-        env::remove_var("TAG");
-        env::set_var("GITHUB_SHA", "abcdef1234567890");
-        let tmp = env::temp_dir().join("publish_test_beta_defaults");
-        let pkg_dir = tmp.join(PKG);
-        let _ = fs::create_dir_all(&pkg_dir);
-        let _ = fs::write(
-            pkg_dir.join(".release-please-manifest.json"),
-            r#"{"packages/peripherals": "1.2.3"}"#,
-        );
-        env::set_var("BUILD_WORKSPACE_DIRECTORY", tmp.to_string_lossy().as_ref());
-
-        let result = resolve_config();
-
-        match saved_grade {
-            Some(v) => env::set_var("GRADE", v),
-            None => env::remove_var("GRADE"),
-        }
-        match saved_tag {
-            Some(v) => env::set_var("TAG", v),
-            None => env::remove_var("TAG"),
-        }
-        match saved_bwd {
-            Some(v) => env::set_var("BUILD_WORKSPACE_DIRECTORY", v),
-            None => env::remove_var("BUILD_WORKSPACE_DIRECTORY"),
-        }
-        match saved_sha {
-            Some(v) => env::set_var("GITHUB_SHA", v),
-            None => env::remove_var("GITHUB_SHA"),
-        }
-        match saved_release {
-            Some(v) => env::set_var("RELEASE_TAG", v),
-            None => env::remove_var("RELEASE_TAG"),
-        }
-        let _ = fs::remove_dir_all(&tmp);
-
-        let config = result.unwrap();
-        assert_eq!(config.grade, Grade::Beta);
-        assert_eq!(config.tag, "gravastar-mouse-beta-latest");
-        assert_eq!(config.version, "1.2.3-beta.abcdef1");
-        assert_eq!(config.asset_name, "gravastar-mouse-beta-macos.tar.gz");
-        assert_eq!(config.manifest_version, "1.2.3");
-    }
-
-    #[test]
-    fn test_build_flags_without_buildbuddy() {
-        let config = PublishConfig {
-            workspace_root: PathBuf::from("/tmp"),
-            grade: Grade::Beta,
-            sha: "abc".to_string(),
-            manifest_version: "1.0.0".to_string(),
-            tag: "t".to_string(),
-            version: "1.0.0".to_string(),
-            asset_name: "a.tar.gz".to_string(),
-            buildbuddy_api_key: None,
-            homebrew_tap_token: None,
-        };
-        let flags = build_bazel_flags(&config);
+    fn plan_beta_defaults_and_override() {
+        let p = plan("beta", None, None, "abcdef1234567890", "1.2.3").unwrap();
         assert_eq!(
-            flags,
+            p,
+            Plan {
+                grade: Grade::Beta,
+                tag: "gravastar-mouse-beta-latest".into(),
+                version: "1.2.3-beta.abcdef1".into(),
+                asset: "gravastar-mouse-beta-macos.tar.gz".into(),
+            }
+        );
+        assert_eq!(plan("beta", Some("t"), None, "ab", "1").unwrap().tag, "t");
+        assert_eq!(
+            plan("beta", None, None, "ab", "1").unwrap().version,
+            "1-beta.ab"
+        );
+    }
+
+    #[test]
+    fn plan_production_refuses_to_guess() {
+        let e = plan("production", None, None, "s", "1.0.0").unwrap_err();
+        assert!(e.contains("GRADE=production needs RELEASE_TAG=gravastar-mouse-vX.Y.Z"));
+        let e = plan("production", None, Some("esp32-s3-v1.0.0"), "s", "1.0.0").unwrap_err();
+        assert!(e.contains("is not a gravastar-mouse-v* release"));
+        let e = plan(
+            "production",
+            None,
+            Some("gravastar-mouse-v2.0.0"),
+            "s",
+            "1.0.0",
+        )
+        .unwrap_err();
+        assert!(e.contains("is version 2.0.0, but this checkout is 1.0.0"));
+        let p = plan(
+            "production",
+            Some("ignored"),
+            Some("gravastar-mouse-v1.0.0"),
+            "s",
+            "1.0.0",
+        )
+        .unwrap();
+        assert_eq!(
+            (p.tag.as_str(), p.asset.as_str()),
+            (
+                "gravastar-mouse-v1.0.0",
+                "gravastar-mouse-1.0.0-macos.tar.gz"
+            )
+        );
+        assert!(plan("staging", None, None, "s", "1")
+            .unwrap_err()
+            .contains("unknown GRADE=staging (beta|production)"));
+    }
+
+    #[test]
+    fn bazel_flags() {
+        assert_eq!(
+            build_bazel_flags(None),
             vec!["--config=macos-app", "--macos_cpus=arm64,x86_64"]
         );
-    }
-
-    #[test]
-    fn test_build_flags_with_buildbuddy() {
-        let config = PublishConfig {
-            workspace_root: PathBuf::from("/tmp"),
-            grade: Grade::Beta,
-            sha: "abc".to_string(),
-            manifest_version: "1.0.0".to_string(),
-            tag: "t".to_string(),
-            version: "1.0.0".to_string(),
-            asset_name: "a.tar.gz".to_string(),
-            buildbuddy_api_key: Some("secret123".to_string()),
-            homebrew_tap_token: None,
-        };
-        let flags = build_bazel_flags(&config);
         assert_eq!(
-            flags,
+            build_bazel_flags(Some("k")),
             vec![
                 "--config=macos-app",
                 "--macos_cpus=arm64,x86_64",
                 "--config=remotecache-ci",
-                "--remote_header=x-buildbuddy-api-key=secret123",
+                "--remote_header=x-buildbuddy-api-key=k"
             ]
         );
     }
 
     #[test]
-    fn test_generate_formula() {
-        let formula = generate_formula(
-            "VitruvianSoftware/vitruvian-core",
-            "gravastar-mouse-v1.2.3",
-            "gravastar-mouse-1.2.3-macos.tar.gz",
-            "1.2.3",
-            "abcdef1234567890",
+    fn cquery_pipeline_status() {
+        let out = b"bazel-out/b/gravastar-mouse.runfiles\nbazel-out/b/gravastar-mouse\n";
+        assert_eq!(
+            pick_binary(out, 0),
+            Ok("bazel-out/b/gravastar-mouse".into())
         );
-        assert!(formula.contains("class GravastarMouse < Formula"));
-        assert!(formula.contains(
-            r#"desc "Status light and MCP server for the RGB LED of a GravaStar mouse""#
-        ));
-        assert!(formula.contains(
-            r#"homepage "https://github.com/VitruvianSoftware/vitruvian-core/tree/main/packages/peripherals""#
-        ));
-        assert!(formula.contains(
-            r#"url "https://github.com/VitruvianSoftware/vitruvian-core/releases/download/gravastar-mouse-v1.2.3/gravastar-mouse-1.2.3-macos.tar.gz""#
-        ));
-        assert!(formula.contains(r#"version "1.2.3""#));
-        assert!(formula.contains(r#"sha256 "abcdef1234567890""#));
-        assert!(formula.contains(r#"license "MIT""#));
-        assert!(formula.contains("depends_on macos: :sonoma"));
-        assert!(formula.contains(r#"bin.install "gravastar-mouse""#));
-        assert!(formula.contains("assert_equal version.to_s, shell_output"));
-        assert!(formula.starts_with(
-            "# Generated by packages/peripherals/publish.sh in VitruvianSoftware/vitruvian-core; do not edit here."
-        ));
+        assert_eq!(pick_binary(out, 2), Err(2));
+        assert_eq!(pick_binary(b"bazel-out/b/other\n", 0), Err(1));
+        assert_eq!(pick_binary(b"", 2), Err(1));
     }
 
     #[test]
-    fn test_manifest_parse() {
-        let json = r#"{
-  "packages/peripherals": "3.14.1",
-  "packages/other": "1.0.0"
-}"#;
-        assert_eq!(extract_manifest_version(json).unwrap(), "3.14.1");
+    fn arch_check_is_word_exact() {
+        assert_eq!(missing_arch("x86_64 arm64"), None);
+        assert_eq!(missing_arch("arm64"), Some("x86_64"));
+        assert_eq!(missing_arch("arm64e x86_64h"), Some("arm64"));
     }
 
     #[test]
-    fn test_manifest_parse_missing_key() {
-        let json = r#"{"packages/other": "1.0.0"}"#;
-        assert!(extract_manifest_version(json).is_err());
+    fn formula_text() {
+        let f = generate_formula("o/r", "gravastar-mouse-v1.2.3", "a.tar.gz", "1.2.3", "d1g");
+        assert!(f.starts_with("# Generated by //packages/peripherals:publish in o/r; do not edit here.\nclass GravastarMouse < Formula\n"));
+        assert!(f.contains("  url \"https://github.com/o/r/releases/download/gravastar-mouse-v1.2.3/a.tar.gz\"\n  version \"1.2.3\"\n  sha256 \"d1g\"\n"));
+        assert!(f.contains("shell_output(\"#{bin}/gravastar-mouse --version\").strip"));
     }
 }
