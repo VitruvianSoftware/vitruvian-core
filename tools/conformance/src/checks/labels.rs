@@ -31,14 +31,26 @@
 //! (build, test, run, query, cquery, aquery, coverage), and a YAML value that
 //! is a label and nothing else (`target: //pkg:name`, an input to a reusable
 //! workflow). Prose, comments and other tools' `//` (sed, jq, URLs) are not.
-//! External labels (`@repo//...`) are left alone: resolving them would fetch
-//! repositories this lane has no other reason to fetch.
+//! External labels (`@repo//...`) are left alone.
 //!
 //! How they are resolved: ONE `bazel query --keep_going` over the whole set.
 //! Parsing BUILD files instead would miss every target a macro declares (the
 //! `*_typecheck_test`, `publish-tool` and `pkg` targets in the workflows today
-//! are all macro output), so a parse would need an allowlist that rots. Query
-//! loads only the ~60 packages named, which takes seconds on a warm server.
+//! are all macro output), so a parse would need an allowlist that rots.
+//!
+//! Where it runs: tidy-check (`bazel run //tools/conformance:workflow-labels`),
+//! not `//tools/conformance:check`. The query is NOT cheap on a fresh output
+//! base: loading the ~60 named packages loads their .bzl files, which fetches
+//! the external repositories they come from (grpc, gazelle, the pip and npm
+//! hubs and more; about 19 on a clean runner). In conformance-check that took
+//! the step from ~45s to ~3m and made a required check depend on those
+//! fetches. tidy-check has already run `//:tidy` over the whole graph by then,
+//! so every one of them is fetched and the query costs seconds.
+//!
+//! A fetch or load failure is still possible, so it is reported as such: a
+//! label counts as missing only when Bazel says "no such target" or "no such
+//! package ... BUILD file not found"; anything else is an infrastructure
+//! failure, worded so nobody goes looking for a renamed target that exists.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
@@ -124,7 +136,7 @@ pub(crate) fn bazel_command_args(line: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut rest = line;
     loop {
-        let found = ["bazel ", "bazelisk "]
+        let found = ["bazel ", "bazelisk ", "ibazel "]
             .iter()
             .filter_map(|w| {
                 let mut from = 0;
@@ -143,14 +155,32 @@ pub(crate) fn bazel_command_args(line: &str) -> Vec<String> {
             })
             .min();
         let Some((at, wlen)) = found else { break };
+        // `echo bazel test //x` prints a command, it does not run one.
+        let before = &rest[..at];
+        let cmd_start = before
+            .rfind([';', '&', '|', '(', '`'])
+            .map(|p| p + 1)
+            .unwrap_or(0);
+        let printed = {
+            let lead = before[cmd_start..].trim_start();
+            lead.starts_with("echo ") || lead.starts_with("printf ")
+        };
         let after = &rest[at + wlen..];
         let end = after.find([';', '|', '&']).unwrap_or(after.len());
         let segment = &after[..end];
         let mut words = segment.split_whitespace();
         let verb =
             words.find(|w| !(w.starts_with('-') || w.starts_with('$') || w.starts_with("\"$")));
-        if verb.is_some_and(|v| VERBS.contains(&v)) {
-            out.push(words.collect::<Vec<_>>().join(" "));
+        if !printed && verb.is_some_and(|v| VERBS.contains(&v)) {
+            // For `run`, what follows `--` is the program's own arguments,
+            // not targets (`bazel run //tools/x -- //some:label`). For
+            // build/test/query, `--` only ends the flags; targets follow.
+            let args: Vec<&str> = if verb == Some("run") {
+                words.take_while(|w| *w != "--").collect()
+            } else {
+                words.collect()
+            };
+            out.push(args.join(" "));
         }
         rest = &after[end..];
         if rest.is_empty() {
@@ -206,11 +236,19 @@ pub(crate) fn collect_refs(content: &str) -> Vec<LabelRef> {
                 let v = strip_trailing_comment(value)
                     .trim()
                     .trim_matches(|c| c == '"' || c == '\'');
-                if v.starts_with("//") && labels_in(v).first().map(String::as_str) == Some(v) {
-                    out.push(LabelRef {
-                        line: line_no,
-                        label: v.to_string(),
-                    });
+                // One label, or several separated by spaces (`targets: //a:b //c:d`).
+                let toks: Vec<&str> = v.split_whitespace().collect();
+                if !toks.is_empty()
+                    && toks.iter().all(|t| {
+                        t.starts_with("//") && labels_in(t).first().map(String::as_str) == Some(*t)
+                    })
+                {
+                    for t in toks {
+                        out.push(LabelRef {
+                            line: line_no,
+                            label: t.to_string(),
+                        });
+                    }
                 }
             }
         }
@@ -275,6 +313,51 @@ fn walk_yaml(dir: &Path, out: &mut Vec<String>) {
             out.push(p.to_string_lossy().to_string());
         }
     }
+}
+
+/// How a `bazel query --keep_going` error line bears on one label.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum QueryErr {
+    /// Bazel says the target or its package does not exist.
+    Missing,
+    /// The line is about this label's package, but for another reason
+    /// (an external repository failed to fetch, a .bzl failed to load).
+    Infra,
+}
+
+/// None when `line` is not an error about `label` (`//pkg:name`).
+pub(crate) fn query_error_kind(line: &str, label: &str) -> Option<QueryErr> {
+    if !line.contains("ERROR") {
+        return None;
+    }
+    let pkg = label
+        .trim_start_matches("//")
+        .split(':')
+        .next()
+        .unwrap_or("");
+    let pkg_q = format!("'{}'", pkg);
+    if !(line.contains(label) || line.contains(&pkg_q)) {
+        return None;
+    }
+    if line.contains(&format!("no such target '{}'", label)) {
+        return Some(QueryErr::Missing);
+    }
+    if line.contains(&format!("no such package {}", pkg_q)) && line.contains("BUILD file not found")
+    {
+        return Some(QueryErr::Missing);
+    }
+    Some(QueryErr::Infra)
+}
+
+/// An error line for the report: no "ERROR: " prefix, and no " defined by
+/// /abs/path/BUILD" (a machine path; the package already names the file).
+fn tidy_error(l: &str) -> String {
+    let l = match (l.find(" defined by "), l.rfind(" (did you mean")) {
+        (Some(a), Some(b)) if b > a => format!("{}{}", &l[..a], &l[b..]),
+        (Some(a), _) => l[..a].to_string(),
+        _ => l.to_string(),
+    };
+    l.trim().trim_start_matches("ERROR: ").to_string()
 }
 
 pub fn check_workflow_labels(ctx: &Context) {
@@ -399,34 +482,31 @@ pub fn check_workflow_labels(ctx: &Context) {
             continue;
         }
         failed = true;
-        let pkg = label
-            .trim_start_matches("//")
-            .split(':')
-            .next()
-            .unwrap_or("");
-        let why = stderr
+        let related: Vec<(QueryErr, &str)> = stderr
             .lines()
-            .find(|l| {
-                l.contains("ERROR")
-                    && (l.contains(label.as_str()) || l.contains(&format!("'{}'", pkg)))
-            })
-            // Drop " defined by /abs/path/BUILD": a machine path in the
-            // report, and the BUILD file is implied by the package.
-            .map(
-                |l| match (l.find(" defined by "), l.rfind(" (did you mean")) {
-                    (Some(a), Some(b)) if b > a => format!("{}{}", &l[..a], &l[b..]),
-                    (Some(a), _) => l[..a].to_string(),
-                    _ => l.to_string(),
-                },
-            )
-            .map(|l| l.trim().trim_start_matches("ERROR: ").to_string())
-            .unwrap_or_else(|| "bazel query did not return it".to_string());
+            .filter_map(|l| query_error_kind(l, label).map(|k| (k, l)))
+            .collect();
+        let missing = related.iter().find(|(k, _)| *k == QueryErr::Missing);
+        let why = missing
+            .or_else(|| related.first())
+            .map(|(_, l)| tidy_error(l))
+            .unwrap_or_else(|| "bazel query did not return it and named no reason".to_string());
         for at in places {
-            ctx.emit_fail(
-                "labels", at, label, "an existing target",
-                &format!("the workflow names a target that does not exist, so the step fails only when that lane next runs ({})", why),
-                "point the workflow at the target's current label, or restore the target",
-            );
+            if missing.is_some() {
+                ctx.emit_fail(
+                    "labels", at, label, "an existing target",
+                    &format!("the workflow names a target that does not exist, so the step fails only when that lane next runs ({})", why),
+                    "point the workflow at the target's current label, or restore the target",
+                );
+            } else {
+                // Not proof the target is gone: its package failed to load
+                // for another reason (a repository fetch, a broken .bzl).
+                ctx.emit_fail(
+                    "labels", at, label, "resolvable",
+                    &format!("could not resolve this label, and Bazel did not say the target is missing -- an infrastructure or load failure, not a renamed target ({})", why),
+                    "re-run the job; if it repeats, run `bazel query` on the label by hand to see the load error",
+                );
+            }
         }
     }
 
@@ -532,5 +612,52 @@ mod tests {
     fn query_expr_quotes_each_label() {
         let s: BTreeSet<String> = ["//a:b", "//c:d+e"].iter().map(|s| s.to_string()).collect();
         assert_eq!(query_expr(&s), "set(\"//a:b\" \"//c:d+e\")");
+    }
+
+    #[test]
+    fn run_args_after_double_dash_are_not_targets() {
+        let c = "  run: bazel run //tools/x:y -- //nope:x --flag\n";
+        assert_eq!(labels(c), vec!["//tools/x:y"]);
+    }
+
+    #[test]
+    fn run_args_after_double_dash_across_continuation() {
+        let c = "      run: |\n        bazel run \"${cache[@]}\" //tools/x:y \\\n          -- \\\n          //nope:x\n";
+        assert_eq!(labels(c), vec!["//tools/x:y"]);
+    }
+
+    #[test]
+    fn test_targets_after_double_dash_still_count() {
+        let c = "  run: bazel test -- //a:b //c:d\n";
+        assert_eq!(labels(c), vec!["//a:b", "//c:d"]);
+    }
+
+    #[test]
+    fn classify_query_errors() {
+        assert_eq!(
+            query_error_kind("ERROR: Skipping '//a:b': no such target '//a:b': target 'b' not declared in package 'a'", "//a:b"),
+            Some(QueryErr::Missing)
+        );
+        assert_eq!(
+            query_error_kind("ERROR: Skipping '//nope:x': no such package 'nope': BUILD file not found in any of the following directories.", "//nope:x"),
+            Some(QueryErr::Missing)
+        );
+        assert_eq!(
+            query_error_kind("ERROR: /w/apps/a/BUILD:3:1: error loading package 'apps/a': no such package '@@grpc+//bazel': fetch failed", "//apps/a:t"),
+            Some(QueryErr::Infra)
+        );
+        assert_eq!(query_error_kind("ERROR: something else", "//a:b"), None);
+    }
+
+    #[test]
+    fn printed_commands_and_ibazel() {
+        let c = "  run: |\n    echo bazel test //x:printed\n    echo \"run: $(bazel query //q:real)\"\n    ibazel run //w:watched\n";
+        assert_eq!(labels(c), vec!["//q:real", "//w:watched"]);
+    }
+
+    #[test]
+    fn several_labels_in_one_yaml_value() {
+        let c = "      with:\n        targets: //a:b //c:d\n        note: //a:b and more\n";
+        assert_eq!(labels(c), vec!["//a:b", "//c:d"]);
     }
 }

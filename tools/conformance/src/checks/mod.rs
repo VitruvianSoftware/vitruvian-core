@@ -57,7 +57,6 @@ pub fn run_all(ctx: &Context) {
     ci::check_job_timeouts(ctx);
     ci::check_sweep_backstop(ctx);
     ci::check_cache_save(ctx);
-    labels::check_workflow_labels(ctx);
 
     iac::check_zitadel_import(ctx);
     iac::check_pulumi_project_names(ctx);
@@ -95,4 +94,10 @@ pub fn run_all(ctx: &Context) {
     security::check_action_sha_pins(ctx);
     security::check_gitleaks_allowlist_paths(ctx);
     security::check_guard_review_paths(ctx);
+}
+
+/// The workflow-label check alone: `bazel run //tools/conformance:workflow-labels`.
+/// Not part of run_all (see the note in labels.rs on where it runs).
+pub fn run_workflow_labels(ctx: &Context) {
+    labels::check_workflow_labels(ctx);
 }

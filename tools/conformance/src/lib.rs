@@ -234,6 +234,39 @@ impl Context {
         discover::rel(&self.root, path)
     }
 
+    /// `//tools/conformance:workflow-labels`: only the workflow-label check,
+    /// run from tidy-check, whose job has already loaded the whole graph.
+    pub fn run_workflow_labels(&self) -> i32 {
+        checks::run_workflow_labels(self);
+        if self.is_dead() {
+            return 2;
+        }
+        emit::print_group(
+            &self.colors,
+            "Workflow Bazel labels (every //pkg:target a workflow or action runs resolves)",
+            &self.rows.get("LABELS"),
+        );
+        println!();
+        if self.overall_fail.get() {
+            println!(
+                "{}{} FAIL{} \u{2014} {} workflow label problem(s)",
+                self.colors.red,
+                emit::GLYPH_FAIL,
+                self.colors.reset,
+                self.fail_count.get()
+            );
+            1
+        } else {
+            println!(
+                "{}{} PASS{} \u{2014} every workflow label resolves",
+                self.colors.green,
+                emit::GLYPH_OK,
+                self.colors.reset
+            );
+            0
+        }
+    }
+
     pub fn run(&self) -> i32 {
         checks::run_all(self);
 
@@ -263,7 +296,6 @@ impl Context {
             ("TIMEOUT", "Job timeouts (#209: every job bounded — no 6h default-timeout runners)"),
             ("SWEEP", "Full-sweep backstop (affected-scoped lanes → scheduled //... sweep)"),
             ("CACHESAVE", "Actions cache saves (only GitHub-hosted jobs on main save; queue/PR refs and self-hosted runners restore only)"),
-            ("LABELS", "Workflow Bazel labels (every //pkg:target a workflow or action runs resolves)"),
             ("IAC", "IaC destructive-import guard (zitadel-apps must create, never import)"),
             ("PULUMI", "Pulumi program identity (unique project names · customDomain under its zone)"),
             ("COPYBARA", "Copybara infra-leak guard (<app>/infra/ is monorepo-only, never mirrored)"),
