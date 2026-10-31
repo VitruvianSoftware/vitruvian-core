@@ -24,6 +24,7 @@
 
 use crate::arith::{self, Vars};
 use crate::checks::parse_checks_json;
+use crate::post_merge::{decide, Decision, POST_MERGE_GRACE};
 use crate::sh::{
     self, capture, capture_merged, capture_or_echo, die, env_or, info, now, ok, on_path, prefix,
     read_fields, run_ids, test_cmp, warn,
@@ -54,7 +55,6 @@ Exit codes:
 ";
 
 const PIPELINE_SCRIPT: &str = "tools/pipeline-status/pipeline-status.sh";
-const POST_MERGE_GRACE: i64 = 60;
 
 /// The script's shell variables that `$(( ))` and `eval` can see.
 struct Shell {
@@ -594,8 +594,9 @@ pub fn run(script: &str, args: &[String]) -> i32 {
             return 0;
         };
 
-        match status.status {
-            0 => {
+        let post_elapsed = now - post_merge_start;
+        match decide(status.status, post_elapsed) {
+            Decision::Green => {
                 ok(&format!(
                     "All post-merge push workflows for commit {short} are GREEN!"
                 ));
@@ -609,38 +610,36 @@ pub fn run(script: &str, args: &[String]) -> i32 {
                 ));
                 return 0;
             }
-            1 => {
+            Decision::Failed => {
                 die(&format!(
                     "Post-merge pipeline FAILED on main for commit {short}!"
                 ));
                 sh::err_text(&format!("{}\n", status.out));
                 return 1;
             }
-            2 => {
+            Decision::InProgress => {
                 warn(&format!(
                     "Post-merge push workflows are currently IN PROGRESS / QUEUED... ({elapsed}s elapsed)"
                 ));
                 sh::sleep(&interval);
             }
-            3 => {
-                let post_elapsed = now - post_merge_start;
-                if post_elapsed < POST_MERGE_GRACE {
-                    info(&format!(
-                        "Waiting for GitHub Actions to register push workflows for {short}... ({post_elapsed}s/{POST_MERGE_GRACE}s grace period)"
-                    ));
-                    sh::sleep(&interval);
-                } else {
-                    // Never green on zero runs: a push to main always starts
-                    // workflows, so none after the grace period means they have
-                    // not registered (or the API is lagging). Keep waiting; the
-                    // deadline above ends the loop with a timeout, not a pass.
-                    warn(&format!(
-                        "No push workflow runs registered for {short} after {post_elapsed}s; still waiting ({elapsed}s elapsed)..."
-                    ));
-                    sh::sleep(&interval);
-                }
+            Decision::AwaitRegistration => {
+                info(&format!(
+                    "Waiting for GitHub Actions to register push workflows for {short}... ({post_elapsed}s/{POST_MERGE_GRACE}s grace period)"
+                ));
+                sh::sleep(&interval);
             }
-            rc => {
+            Decision::NoRunsStillWaiting => {
+                // Never green on zero runs: a push to main always starts
+                // workflows, so none after the grace period means they have
+                // not registered (or the API is lagging). Keep waiting; the
+                // deadline above ends the loop with a timeout, not a pass.
+                warn(&format!(
+                    "No push workflow runs registered for {short} after {post_elapsed}s; still waiting ({elapsed}s elapsed)..."
+                ));
+                sh::sleep(&interval);
+            }
+            Decision::Unexpected(rc) => {
                 warn(&format!(
                     "Unexpected pipeline-status return code ({rc}). Retrying in {interval}s..."
                 ));
