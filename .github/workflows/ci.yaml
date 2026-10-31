@@ -1011,7 +1011,12 @@ jobs:
             exit 1
           fi
           echo "race-testing ${count} go_test target(s)"
+          # A pattern file makes every target explicit, and Bazel errors on an
+          # explicit target this Linux runner cannot build (cgo against a
+          # macOS-only library, e.g. Courier's gchat). Skip those; they are
+          # race-tested on the macOS lane.
           bazel test --config=race --config=remote \
+            --skip_incompatible_explicit_targets \
             --remote_header=x-buildbuddy-api-key="${BUILDBUDDY_API_KEY}" \
             --target_pattern_file=/tmp/go-tests.txt
 
