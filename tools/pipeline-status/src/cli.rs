@@ -20,8 +20,9 @@
 
 //! pipeline-status.sh's `main`, step for step.
 
+use crate::batch::{resolve, Commit};
 use crate::evaluate::{
-    assess, list_failed, list_in_flight, runs_query, settle_secs_from_env, EMPTY_RETURN_STATUS,
+    list_failed, list_in_flight, runs_query, settle_secs_from_env, EMPTY_RETURN_STATUS,
 };
 use crate::sh::{self, capture, capture_or_echo, die, env_or, info, ok, on_path, prefix, warn};
 
@@ -126,22 +127,63 @@ pub fn run(script: &str, args: &[String]) -> i32 {
         "Checking GitHub Actions pipeline status for commit {short} in {repo}..."
     ));
 
-    let runs_json = capture_or_echo(
-        "gh",
-        &[
-            "api",
-            &runs_query(&repo, &sha, &env_or("PIPELINE_BRANCH", "main")),
-        ],
-        NO_RUNS_JSON,
-    );
-
     // Only the push to the branch counts, and only once it has settled.
     let branch = env_or("PIPELINE_BRANCH", "main");
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
-    let (evaluation, runs_json) = assess(&runs_json, &sha, &branch, now, settle_secs_from_env());
+    let runs_for = |commit: &str| {
+        capture_or_echo(
+            "gh",
+            &["api", &runs_query(&repo, commit, &branch)],
+            NO_RUNS_JSON,
+        )
+    };
+    // When the commit's age is unknown, assume it is new: never go looking
+    // through later commits on a guess.
+    let commit_epoch = capture("git", &["show", "-s", "--format=%ct", &sha])
+        .out
+        .trim()
+        .parse::<i64>()
+        .unwrap_or(now);
+    let later_commits = || {
+        sh::run_quiet("git", &["fetch", "origin", &branch, "-q"]);
+        capture(
+            "git",
+            &[
+                "log",
+                "--ancestry-path",
+                "--reverse",
+                "--format=%H%x09%s",
+                &format!("{sha}..origin/{branch}"),
+            ],
+        )
+        .out
+        .lines()
+        .filter_map(|l| {
+            let (h, subject) = l.split_once('\t')?;
+            Some(Commit {
+                sha: h.to_string(),
+                subject: subject.to_string(),
+            })
+        })
+        .collect()
+    };
+    let resolved = resolve(
+        &sha,
+        &branch,
+        commit_epoch,
+        now,
+        settle_secs_from_env(),
+        &runs_for,
+        &later_commits,
+    );
+    if let Some(note) = &resolved.note {
+        info(note);
+    }
+    let evaluation = resolved.evaluation;
+    let runs_json = resolved.runs_json;
     sh::err_text(&evaluation.stderr);
     if evaluation.status == EMPTY_RETURN_STATUS {
         // What bash 3.2 says as `return ""` fails.

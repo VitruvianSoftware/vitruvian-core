@@ -25,6 +25,23 @@ pub enum Decision {
     Unexpected(i32),
 }
 
+/// watch-pr's exit codes for the post-merge phase.
+pub const EXIT_GREEN: i32 = 0;
+pub const EXIT_FAILED: i32 = 1;
+pub const EXIT_TIMEOUT: i32 = 2;
+
+impl Decision {
+    /// The exit code that ends the watch, or `None` to keep polling. Only
+    /// `Green` exits 0; the deadline (not a `Decision`) exits `EXIT_TIMEOUT`.
+    pub fn exit_code(&self) -> Option<i32> {
+        match self {
+            Decision::Green => Some(EXIT_GREEN),
+            Decision::Failed => Some(EXIT_FAILED),
+            _ => None,
+        }
+    }
+}
+
 /// Map pipeline-status' exit code (0 green, 1 red, 2 in flight, 3 no runs)
 /// and the seconds since landing to the next step. Only `0` is ever `Green`;
 /// zero runs, however long, is never a pass.
@@ -61,5 +78,15 @@ mod tests {
         assert_eq!(decide(1, 0), Decision::Failed);
         assert_eq!(decide(2, 0), Decision::InProgress);
         assert_eq!(decide(9, 0), Decision::Unexpected(9));
+    }
+
+    #[test]
+    fn exit_codes_end_the_watch_only_on_green_or_red() {
+        assert_eq!(decide(0, 0).exit_code(), Some(0));
+        assert_eq!(decide(1, 0).exit_code(), Some(1));
+        for (rc, secs) in [(2, 0), (3, 0), (3, 10_000), (7, 0)] {
+            assert_eq!(decide(rc, secs).exit_code(), None, "rc {rc}");
+        }
+        assert_eq!(EXIT_TIMEOUT, 2);
     }
 }

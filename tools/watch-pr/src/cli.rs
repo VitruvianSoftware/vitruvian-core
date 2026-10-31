@@ -24,7 +24,7 @@
 
 use crate::arith::{self, Vars};
 use crate::checks::parse_checks_json;
-use crate::post_merge::{decide, Decision, POST_MERGE_GRACE};
+use crate::post_merge::{decide, Decision, EXIT_TIMEOUT, POST_MERGE_GRACE};
 use crate::sh::{
     self, capture, capture_merged, capture_or_echo, die, env_or, info, now, ok, on_path, prefix,
     read_fields, run_ids, test_cmp, warn,
@@ -389,7 +389,7 @@ pub fn run(script: &str, args: &[String]) -> i32 {
             die(&format!(
                 "Watchdog timed out after {timeout}s waiting for PR #{pr}."
             ));
-            return 2;
+            return EXIT_TIMEOUT;
         }
         let elapsed = now - start_time;
 
@@ -576,7 +576,7 @@ pub fn run(script: &str, args: &[String]) -> i32 {
             die(&format!(
                 "Watchdog timed out after {timeout}s waiting for post-merge pipeline on commit {short}."
             ));
-            return 2;
+            return EXIT_TIMEOUT;
         }
         let elapsed = now - start_time;
 
@@ -595,7 +595,8 @@ pub fn run(script: &str, args: &[String]) -> i32 {
         };
 
         let post_elapsed = now - post_merge_start;
-        match decide(status.status, post_elapsed) {
+        let decision = decide(status.status, post_elapsed);
+        match decision {
             Decision::Green => {
                 ok(&format!(
                     "All post-merge push workflows for commit {short} are GREEN!"
@@ -608,14 +609,14 @@ pub fn run(script: &str, args: &[String]) -> i32 {
                 ok(&format!(
                     "PR #{pr} successfully watched from submission to green post-merge pipeline on main! (Total time: {elapsed}s)"
                 ));
-                return 0;
+                return decision.exit_code().unwrap_or(0);
             }
             Decision::Failed => {
                 die(&format!(
                     "Post-merge pipeline FAILED on main for commit {short}!"
                 ));
                 sh::err_text(&format!("{}\n", status.out));
-                return 1;
+                return decision.exit_code().unwrap_or(1);
             }
             Decision::InProgress => {
                 warn(&format!(
