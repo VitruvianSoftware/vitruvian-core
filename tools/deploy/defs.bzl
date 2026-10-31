@@ -34,6 +34,7 @@ CI, the pinned human identity locally), not here.
 """
 
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 def cloud_run_deploy(
         name = "deploy",
@@ -89,12 +90,17 @@ def cloud_run_deploy(
     if custom_smoke_script_file:
         # A workspace-relative path; the tool reads it from the source tree.
         args += ["--custom-smoke-script-file", custom_smoke_script_file]
+
+    # The single `srcs` entry is the Rust sequencer itself: rules_shell
+    # symlinks it as the executable (no shell), as pulumi_project() does with
+    # //tools/pulumi:pulumi-cmd. A shell launcher here once looked for
+    # `cloud-run` beside itself, in the app's package, and every :deploy
+    # exited 126.
     sh_binary(
         name = name,
-        srcs = ["//tools/deploy:cloud-run.sh"],
+        srcs = ["//tools/deploy:cloud-run"],
         args = args,
         data = [
-            "//tools/deploy:cloud-run",
             "//tools/gcp-token",
             "//tools/pulumi:pulumi-cmd",
         ],
@@ -105,4 +111,20 @@ def cloud_run_deploy(
             "VITRUVIAN_PULUMI_CMD_BIN": "$(rootpath //tools/pulumi:pulumi-cmd)",
         },
         visibility = visibility,
+    )
+
+    # Runs this very target, with the args above, against a stub pulumi-cmd and
+    # gcloud: proves `bazel run :<name>` reaches the sequencer (every :deploy once
+    # exited 126 when its launcher looked for cloud-run in the app's directory). The smoke file is data so the runfiles tree, which
+    # stands in for the workspace, holds it.
+    smoke_data = []
+    if custom_smoke_script_file:
+        pkg, _, base = custom_smoke_script_file.rpartition("/")
+        smoke_data.append("//%s:%s" % (pkg, base))
+    sh_test(
+        name = name + "_launcher_test",
+        size = "small",
+        srcs = ["//tools/deploy:launcher-check"],
+        args = ["$(rootpath :%s)" % name] + args,
+        data = [":" + name] + smoke_data,
     )

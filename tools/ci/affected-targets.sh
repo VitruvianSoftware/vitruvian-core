@@ -195,10 +195,10 @@ fi
 # `deploy/` is allowlisted even though it ships tools/deploy/defs.bzl: that .bzl
 # is loaded by exactly two packages (tabula/infra/app, oauth-user-inspector/
 # infra/app) and the generated sh_binary carries srcs=["//tools/deploy:
-# cloud-run.sh"], so BOTH edges are target-determinator-tracked and land on the
+# cloud-run"], so BOTH edges are target-determinator-tracked and land on the
 # two dependent `:deploy` targets -- same class as the already-allowlisted
 # gitops/defs.bzl and lint/linters.bzl. The DEPLOY half of this pair does not
-# graph-track cloud-run.sh (its universe is DEPLOY_TARGETS, which holds the
+# graph-track //tools/deploy:cloud-run (its universe is DEPLOY_TARGETS, which holds the
 # image/zip artifacts, not `:deploy`), so the tabula delivery() units carry
 # `tools/deploy/` in EXTRA_PATH_REGEX to keep that gate firing -- narrowing the
 # TEST sweep here must never silently narrow the fail-open deploy gate.
