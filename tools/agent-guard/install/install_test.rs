@@ -193,7 +193,7 @@ impl Base {
         for (k, v) in extra {
             env.insert((*k).into(), (*v).into());
         }
-        self.ctx(env, "/nonexistent/install_rs")
+        self.ctx(env, "/nonexistent/install")
     }
 
     fn argv(&self, args: &[&str], workspace: &str) -> Vec<String> {
@@ -626,12 +626,12 @@ fn install_a_failing_self_test_puts_everything_back() {
     old_install(&t.b.home);
     t.co.write(
         "tools/agent-guard/hook.sh",
-        &testlib::launcher_text(&["/nonexistent/python3".into()]),
+        &testlib::launcher_text(&["/nonexistent/stand-in".into()]),
     );
     let before = t.b.texts();
     let (rc, out) = t.b.run_main(&[], &t.co.root);
     assert_eq!(rc, 4, "{}", out);
-    assert_in("no working python3", &out);
+    assert_in(testlib::live_flavor().nothing_ran(), &out);
     assert_eq!(t.b.texts(), before);
     assert!(isdir(&t.b.idir));
 }
@@ -712,7 +712,7 @@ fn installable(co: Checkout) -> Checkout {
     co
 }
 
-/// Where `bazel run //tools/agent-guard:install_rs` runs the binary from.
+/// Where `bazel run //tools/agent-guard:install` runs the binary from.
 fn bazel_built(tmp: &str, target: &str) -> String {
     join(
         tmp,
@@ -761,7 +761,7 @@ impl Agent {
     ) -> (i32, String) {
         let exe = running_from
             .map(|r| r.to_string())
-            .unwrap_or_else(|| bazel_built(&self.co.tmp, "install_rs"));
+            .unwrap_or_else(|| bazel_built(&self.co.tmp, "install"));
         let ctx = self.b.ctx(self.env(workspace, marker), &exe);
         let argv: Vec<String> = args.iter().map(|a| a.to_string()).collect();
         let rc = installer::main(&ctx, &argv);
@@ -884,19 +884,61 @@ fn agent_refused_when_hook_sh_differs_from_origin_main() {
     t.assert_refused(rc, &out, "tools/agent-guard/hook.sh in the main checkout");
 }
 
+/// A clean worktree of t's checkout, so the guard's own check (the checkout
+/// the installer runs from) passes and the installer's check of the main
+/// checkout is the one that decides.
+fn clean_worktree(t: &Agent) -> String {
+    let wt = join(&t.co.tmp, "vitruvian-core-worktrees/feat-x");
+    git(&t.co.root, &["worktree", "add", "-q", "--detach", &wt]);
+    wt
+}
+
 #[test]
-fn agent_refused_when_agent_guard_py_differs_from_origin_main() {
+fn agent_refused_when_the_guard_differs_from_origin_main() {
     let t = Agent::new();
+    let wt = clean_worktree(&t);
     t.co.append(
-        "tools/agent-guard/agent_guard.py",
-        "# an unreviewed local edit\n",
+        "tools/agent-guard/src/lib.rs",
+        "// an unreviewed local edit\n",
     );
-    let (rc, out) = t.agent(&[]);
+    let (rc, out) = t.agent_in(&[], &wt);
     t.assert_refused(
         rc,
         &out,
-        &format!("tools/agent-guard/agent_guard.py in {} differs", t.co.root),
+        &format!(
+            "tools/agent-guard/src/lib.rs in the main checkout {} differs",
+            t.co.root
+        ),
     );
+}
+
+#[test]
+fn agent_refused_when_the_checkout_adds_a_guard_file() {
+    let t = Agent::new();
+    let wt = clean_worktree(&t);
+    t.co.write("tools/agent-guard/src/extra.rs", "// not on main\n");
+    let (rc, out) = t.agent_in(&[], &wt);
+    t.assert_refused(
+        rc,
+        &out,
+        &format!(
+            "tools/agent-guard/src/extra.rs in the main checkout {} differs",
+            t.co.root
+        ),
+    );
+}
+
+#[test]
+fn agent_refused_when_main_has_no_guard() {
+    let t = Agent::new();
+    git(&t.co.root, &["rm", "-rq", "tools/agent-guard/src"]);
+    git(&t.co.root, &["commit", "-qm", "drop", "--no-gpg-sign"]);
+    git(
+        &t.co.root,
+        &["update-ref", "refs/remotes/origin/main", "HEAD"],
+    );
+    let (rc, out) = t.agent(&[]);
+    t.assert_refused(rc, &out, "has no origin/main:tools/agent-guard/src");
 }
 
 #[test]
@@ -992,8 +1034,8 @@ fn agent_an_edited_installer_in_a_worktree_is_refused() {
 #[test]
 fn agent_refused_unless_run_from_bazels_runfiles() {
     let t = Agent::new();
-    // Run directly, not as the binary Bazel built for :install_rs.
-    let direct = join(&t.co.root, "tools/agent-guard/install_rs");
+    // Run directly, not as the binary Bazel built for :install.
+    let direct = join(&t.co.root, "tools/agent-guard/install");
     let (rc, out) = t.run(&[], &t.co.root, "CLAUDECODE", Some(&direct));
     t.assert_refused(
         rc,
@@ -1001,7 +1043,7 @@ fn agent_refused_unless_run_from_bazels_runfiles() {
         "is not the one `bazel run //tools/agent-guard:install` builds",
     );
     // Bazel-built, but another target's binary.
-    let other = bazel_built(&t.co.tmp, "agent_guard_rs");
+    let other = bazel_built(&t.co.tmp, "agent-guard");
     let (rc, out) = t.run(&[], &t.co.root, "CLAUDECODE", Some(&other));
     t.assert_refused(rc, &out, "is not the one");
 }
@@ -1131,11 +1173,17 @@ fn check_fails_when_the_launcher_does_not_work() {
     let t = Chk::new();
     t.co.write(
         "tools/agent-guard/hook.sh",
-        &testlib::launcher_text(&["/nonexistent/python3".into()]),
+        &testlib::launcher_text(&["/nonexistent/stand-in".into()]),
     );
+    // The Rust launcher reuses the guard it built at install time: without
+    // that, nothing it tries can build one.
+    let cache = join(&t.b.home, ".local/state/agent-guard/cache");
+    if exists(&cache) {
+        fs::remove_dir_all(&cache).unwrap();
+    }
     let (rc, out) = t.check();
     assert_eq!(rc, 1);
-    assert_in("no working python3", &out);
+    assert_in(testlib::live_flavor().nothing_ran(), &out);
 }
 
 #[test]

@@ -91,8 +91,8 @@ fn mode_of(modes: &Modes, category: &str) -> String {
         .unwrap_or_else(|| "enforce".into())
 }
 
-/// A policy whose shape breaks agent_guard.py's load_policy outright (it
-/// raises AttributeError and the hook exits 1).
+/// A policy whose shape the loader cannot read at all: the hook exits 1, and
+/// hook.sh then tries the next copy of the guard.
 #[derive(Debug)]
 pub struct PolicyCrash(pub String);
 

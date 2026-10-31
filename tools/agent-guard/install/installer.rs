@@ -1070,6 +1070,53 @@ fn git_out(ctx: &Ctx, cwd: &str, args: &[&str]) -> Option<Vec<u8>> {
     }
 }
 
+/// The guard's source folder: what hook.sh builds from origin/main, or from
+/// the checkout when main's copy will not build.
+pub const GUARD_SRC_REL: &str = "tools/agent-guard/src";
+
+/// Every file under GUARD_SRC_REL on origin/main or in main's checkout,
+/// sorted; None if origin/main has no such folder.
+fn guard_files(ctx: &Ctx, main: &str) -> Option<Vec<String>> {
+    let listed = git_out(
+        ctx,
+        main,
+        &[
+            "ls-tree",
+            "-r",
+            "-z",
+            "--name-only",
+            "origin/main",
+            "--",
+            GUARD_SRC_REL,
+        ],
+    )?;
+    let mut files: Vec<String> = listed
+        .split(|b| *b == 0)
+        .filter(|p| !p.is_empty())
+        .map(|p| String::from_utf8_lossy(p).into_owned())
+        .collect();
+    if files.is_empty() {
+        return None;
+    }
+    fn walk(root: &str, rel: &str, out: &mut Vec<String>) {
+        let Ok(entries) = fs::read_dir(join(root, rel)) else {
+            return;
+        };
+        for e in entries.flatten() {
+            let child = format!("{}/{}", rel, e.file_name().to_string_lossy());
+            match e.file_type() {
+                Ok(ft) if ft.is_dir() => walk(root, &child, out),
+                Ok(_) => out.push(child),
+                Err(_) => {}
+            }
+        }
+    }
+    walk(main, GUARD_SRC_REL, &mut files);
+    files.sort();
+    files.dedup();
+    Some(files)
+}
+
 /// owner/name of the main checkout's origin, as configured (no insteadOf rewriting).
 pub fn origin_slug(ctx: &Ctx, main: &str) -> String {
     let url = git_out(ctx, main, &["config", "--get", "remote.origin.url"]).unwrap_or_default();
@@ -1085,21 +1132,17 @@ pub fn origin_slug(ctx: &Ctx, main: &str) -> String {
 
 /// Why this is not the installer `bazel run` builds from workspace ("" if it is).
 ///
-/// install.py checked it ran from `<...>/install.runfiles/` as a link to the
-/// workspace's own install.py. A compiled binary carries no link back to its
-/// sources, so the honest equivalent is what `bazel run` itself leaves:
-/// BUILD_WORKSPACE_DIRECTORY names this workspace, and the program is the
-/// one Bazel built for :install_rs (`.../bazel-out/<config>/bin/tools/
-/// agent-guard/install_rs`). Like install.py's check this is the second line:
-/// the guard's installer_problem (every installer source in the checkout is
-/// origin/main's, no run_under) is the first.
+/// A compiled binary carries no link back to its sources, so the honest
+/// check is what `bazel run` itself leaves: BUILD_WORKSPACE_DIRECTORY names
+/// this workspace, and the program is the one Bazel built for :install
+/// (`.../bazel-out/<config>/bin/tools/agent-guard/install`). This is the
+/// second line: the guard's installer_problem (every installer source in the
+/// checkout is origin/main's, no run_under) is the first.
 pub fn runfiles_problem(ctx: &Ctx, workspace: &str) -> String {
     let exe = realpath(&ctx.running_from);
     let built = match exe.rfind("/bazel-out/") {
         Some(i) => match exe[i + "/bazel-out/".len()..].split_once('/') {
-            Some((config, rest)) => {
-                !config.is_empty() && rest == "bin/tools/agent-guard/install_rs"
-            }
+            Some((config, rest)) => !config.is_empty() && rest == "bin/tools/agent-guard/install",
             None => false,
         },
         None => false,
@@ -1167,20 +1210,29 @@ pub fn agent_check(ctx: &Ctx, home: &str, workspace: &str) -> R<(Option<String>,
             }
         ));
     }
-    // (b) What the backstop will run is what main has reviewed.
-    for rel in [LAUNCHER_REL, "tools/agent-guard/agent_guard.py"] {
-        let Some(want) = git_out(
+    // (b) What the backstop will run is what main has reviewed: the launcher,
+    // and the guard it falls back to building from the checkout (every file
+    // under src/, on main or in the checkout, so an added file counts too).
+    let Some(guard) = guard_files(ctx, &main) else {
+        return refuse(format!(
+            "{} has no origin/main:{} to compare with; `git fetch` there first",
+            main, GUARD_SRC_REL
+        ));
+    };
+    for rel in std::iter::once(LAUNCHER_REL.to_string()).chain(guard) {
+        let want = git_out(
             ctx,
             &main,
             &["cat-file", "blob", &format!("origin/main:{}", rel)],
-        ) else {
+        );
+        if want.is_none() && rel == LAUNCHER_REL {
             return refuse(format!(
                 "{} has no origin/main:{} to compare with; `git fetch` there first",
                 main, rel
             ));
-        };
-        let have = fs::read(join(&main, rel)).ok();
-        if have.as_ref() != Some(&want) {
+        }
+        let have = fs::read(join(&main, &rel)).ok();
+        if have != want {
             return refuse(format!(
                 "{} in the main checkout {} differs from origin/main's; the backstop would \
 run unreviewed code. Bring that checkout up to date with main first",

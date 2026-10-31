@@ -19,8 +19,8 @@
 // SOFTWARE.
 
 //! InstallerSourceTest: an agent may run the installer only from a checkout
-//! where its sources (install.py, agent_guard.py, BUILD, and every file under
-//! tools/agent-guard/src and tools/agent-guard/install) are origin/main's and
+//! where its sources (BUILD, and every file under tools/agent-guard/src and
+//! tools/agent-guard/install) are origin/main's and
 //! no bazelrc sets run_under: an edited installer would otherwise run with
 //! James's HOME. Against a real git checkout.
 
@@ -40,7 +40,8 @@ const COMMANDS: [&str; 6] = [
     "bazel-bin/tools/agent-guard/install --dry-run",
 ];
 
-/// The Rust installer, which must be held to the same rule.
+/// The installer's label before the cutover (:install_rs), still held to the
+/// same rule should anything build it again.
 const RS_COMMANDS: [&str; 4] = [
     "bazel run //tools/agent-guard:install_rs",
     "bazel run //tools/agent-guard:install_rs -- --check",
@@ -74,11 +75,9 @@ impl Repo {
                 ".bazelrc",
                 "try-import %workspace%/user.bazelrc\nbuild --jobs=4\n# run_under in a comment is fine\n",
             ),
-            ("tools/agent-guard/install.py", "print('installer')\n"),
-            ("tools/agent-guard/agent_guard.py", "# guard\n"),
             (
                 "tools/agent-guard/BUILD",
-                "py_binary(name = \"install\", main = \"install.py\")\n",
+                "rust_binary(name = \"install\", crate_root = \"install/main.rs\")\n",
             ),
             ("tools/agent-guard/src/lib.rs", "// guard\n"),
             ("tools/agent-guard/install/main.rs", "// installer\n"),
@@ -150,27 +149,24 @@ fn allowed_when_the_installer_is_origin_mains() {
 }
 
 #[test]
-fn an_edited_install_py_is_refused() {
+fn an_edited_installer_is_refused() {
     let r = Repo::new();
     r.write(
-        "tools/agent-guard/install.py",
-        "print('anything I like')\n",
+        "tools/agent-guard/install/main.rs",
+        "// anything I like\n",
         None,
     );
     r.assert_all(
         D,
         None,
-        &format!("tools/agent-guard/install.py in {} differs", r.repo),
+        &format!("tools/agent-guard/install/main.rs in {} differs", r.repo),
     );
 }
 
 #[test]
 fn an_edited_build_or_guard_is_refused() {
     let r = Repo::new();
-    for rel in [
-        "tools/agent-guard/BUILD",
-        "tools/agent-guard/agent_guard.py",
-    ] {
+    for rel in ["tools/agent-guard/BUILD", "tools/agent-guard/src/lib.rs"] {
         r.write(rel, "# changed\n", None);
         r.assert_all(D, None, rel);
         r.git(&["checkout", "--", rel], None);
@@ -181,7 +177,7 @@ fn an_edited_build_or_guard_is_refused() {
 #[test]
 fn a_committed_but_unmerged_edit_is_refused() {
     let r = Repo::new();
-    r.write("tools/agent-guard/install.py", "print('mine')\n", None);
+    r.write("tools/agent-guard/install/main.rs", "// mine\n", None);
     r.git(&["commit", "-qam", "mine", "--no-gpg-sign"], None);
     r.assert_all(D, None, "differs from origin/main's");
 }
@@ -191,8 +187,8 @@ fn an_edited_installer_in_a_worktree_is_refused_there_only() {
     let r = Repo::new();
     let wt = join(&r.tmp.0, "vitruvian-core-worktrees/feat-x");
     r.git(&["worktree", "add", "-q", "--detach", &wt], None);
-    r.write("tools/agent-guard/install.py", "print('mine')\n", Some(&wt));
-    r.assert_all(D, Some(&wt), &format!("install.py in {} differs", wt));
+    r.write("tools/agent-guard/install/main.rs", "// mine\n", Some(&wt));
+    r.assert_all(D, Some(&wt), &format!("install/main.rs in {} differs", wt));
     r.assert_all(A, None, "");
 }
 
@@ -230,8 +226,9 @@ fn outside_a_checkout_is_refused() {
     );
 }
 
-// The Rust installer is built from every file under src/ and install/, so
-// each of those is held to origin/main too, and :install_rs is an installer.
+// The installer is built from every file under src/ and install/, so each of
+// those is held to origin/main too, and the old :install_rs label is an
+// installer.
 
 #[test]
 fn an_edited_file_under_src_is_refused() {
@@ -259,12 +256,12 @@ fn an_added_file_under_install_is_refused() {
 fn install_rs_is_treated_like_install() {
     let r = Repo::new();
     r.assert_these(&RS_COMMANDS, A, None, "");
-    r.write("tools/agent-guard/install.py", "print('mine')\n", None);
+    r.write("tools/agent-guard/install/main.rs", "// mine\n", None);
     r.assert_these(
         &RS_COMMANDS,
         D,
         None,
-        &format!("tools/agent-guard/install.py in {} differs", r.repo),
+        &format!("tools/agent-guard/install/main.rs in {} differs", r.repo),
     );
     let d = r.decide("bazel run //tools/agent-guard:install_rs", Some(&r.home));
     assert_eq!(d.decision, D, "{}", d.message);

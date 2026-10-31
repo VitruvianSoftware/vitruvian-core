@@ -18,22 +18,21 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! agent-guard's per-user backstop installer, in Rust: install.py, ported.
+//! agent-guard's per-user backstop installer.
 //!
-//!   bazel run //tools/agent-guard:install_rs                   # install or update the backstop
-//!   bazel run //tools/agent-guard:install_rs -- --dry-run      # show exactly what would change
-//!   bazel run //tools/agent-guard:install_rs -- --check        # repo wiring, backstop, and the launcher answering
-//!   bazel run //tools/agent-guard:install_rs -- --uninstall    # remove the backstop (and any old copy)
+//!   bazel run //tools/agent-guard:install                   # install or update the backstop
+//!   bazel run //tools/agent-guard:install -- --dry-run      # show exactly what would change
+//!   bazel run //tools/agent-guard:install -- --check        # repo wiring, backstop, and the launcher answering
+//!   bazel run //tools/agent-guard:install -- --uninstall    # remove the backstop (and any old copy)
 //!
-//! install.py stays the live installer until the cutover; this binary must
-//! behave as it does, message for message (its messages already name the
-//! canonical `bazel run //tools/agent-guard:install`). See install.py's
-//! docstring and README.md for who may do what, and why.
+//! A port of the retired install.py, message for message, so its users and
+//! tests saw no change at the cutover. See README.md for who may do what, and
+//! why.
 //!
 //! Standard library only, like the guard: JSON through agent_guard::pyval
-//! (Python's json semantics), plus small ports of the stdlib pieces
-//! install.py used (argparse, difflib, shlex, json's indent writer and error
-//! messages).
+//! (Python's json semantics), plus small ports of the Python stdlib pieces
+//! the installer used (argparse, difflib, shlex, json's indent writer and
+//! error messages).
 
 mod argparse;
 mod difflib;
@@ -44,6 +43,8 @@ mod sys;
 
 #[cfg(test)]
 mod install_test;
+#[cfg(test)]
+mod launcher_test;
 #[cfg(test)]
 mod testlib;
 

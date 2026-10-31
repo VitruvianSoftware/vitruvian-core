@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! agent-guard in Rust: the same decisions as agent_guard.py, compiled.
+//! agent-guard: the guard hook.sh compiles and runs.
 //!
 //! A PreToolUse hook for Claude Code and Antigravity. It reads the tool call
 //! on stdin, works out every program the command would run, and refuses the
@@ -26,14 +26,12 @@
 //! refusal names the replacement. It is a guardrail against habits, not a
 //! security boundary.
 //!
-//! agent_guard.py stays the source of truth (hook.sh runs it); this crate is a
-//! port that must decide exactly as it does, which
-//! `//tools/agent-guard:agent_guard_rs_parity_test` checks by running
-//! agent_guard_test.py's own table and hook tests against this binary.
+//! hook.sh compiles this crate from origin/main with plain `rustc -O`, so it
+//! must stay standard-library only and build on the Bazel toolchain's Rust
+//! (1.75) as well as a newer rustup one.
 
 mod unicode_tables;
 
-pub mod batch;
 pub mod classify;
 pub mod gitstate;
 pub mod guard;

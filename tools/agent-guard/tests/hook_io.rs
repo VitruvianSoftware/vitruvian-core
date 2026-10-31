@@ -369,7 +369,7 @@ fn file_tools_cannot_touch_the_hook_files() {
     // The guard's source and policy are fine to edit: they only take effect
     // once merged, because hook.sh runs origin/main's copy.
     for rel in [
-        "tools/agent-guard/agent_guard.py",
+        "tools/agent-guard/src/guard.rs",
         "tools/agent-guard/policy.json",
         ".claude/notes.md",
         "tools/cloud-bootstrap/cloud-bootstrap_test.sh",

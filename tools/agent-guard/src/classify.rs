@@ -241,8 +241,8 @@ impl Context {
 }
 
 thread_local! {
-    /// What `installer_problem` returns while a test has replaced it (the
-    /// Python tests patch it the same way), or None to really check.
+    /// What `installer_problem` returns while a test has replaced it, or None
+    /// to really check.
     pub static INSTALLER_PROBLEM_OVERRIDE: RefCell<Option<String>> = RefCell::new(None);
 }
 
@@ -1975,14 +1975,11 @@ pub fn installer_args_ok(args: &[String]) -> bool {
     !args.iter().any(|a| a == "--uninstall") || args.iter().any(|a| a == "--dry-run")
 }
 
-const INSTALLER_SOURCES: &[&str] = &[
-    "tools/agent-guard/install.py",
-    "tools/agent-guard/agent_guard.py",
-    "tools/agent-guard/BUILD",
-];
-/// The Rust installer (:install_rs) is built from every file in these
-/// folders, by glob: each file on origin/main and each file in the checkout
-/// must match, so an added file counts as an edit too.
+/// The installer's BUILD file, which says how it is built.
+const INSTALLER_SOURCES: &[&str] = &["tools/agent-guard/BUILD"];
+/// The installer (:install) is built from every file in these folders, by
+/// glob: each file on origin/main and each file in the checkout must match,
+/// so an added file counts as an edit too.
 const INSTALLER_SOURCE_DIRS: &[&str] = &["tools/agent-guard/src", "tools/agent-guard/install"];
 
 fn walk_files(root: &str, rel: &str, out: &mut Vec<String>) {
