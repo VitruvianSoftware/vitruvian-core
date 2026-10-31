@@ -3,29 +3,34 @@
 
 use std::collections::HashSet;
 
+/// The whole-disk device (`/dev/diskN`) of every attachment of the disk image
+/// at `target`, read from `hdiutil info` output, as
+/// `Tools/dmg-image-devices.sh` printed them: a section (between `====` lines)
+/// is the image's when its `image-path` or `image-alias` is the image, and a
+/// device line of that section names a whole disk. A path under `/private`
+/// and the same path without it are one image (`/var` is `/private/var`).
 pub fn extract_devices(hdiutil_info: &str, target: &str) -> Vec<String> {
-    let stripped = target.strip_prefix("/private").unwrap_or(target);
-    let private_prefixed = format!("/private{}", target);
-    let mut matched = false;
+    let bare = target.strip_prefix("/private").unwrap_or(target);
+    let same_image =
+        |path: &str| path == target || path.strip_prefix("/private").unwrap_or(path) == bare;
+    let mut mine = false;
     let mut seen = HashSet::new();
     let mut devices = Vec::new();
 
     for line in hdiutil_info.lines() {
-        let trimmed = line.trim_start();
-        if trimmed.starts_with("===") {
-            matched = false;
+        if !line.is_empty() && line.bytes().all(|b| b == b'=') {
+            mine = false;
             continue;
         }
-        if let Some(rest) = trimmed.strip_prefix("image-path") {
-            let rest_trimmed = rest.trim_start();
-            if let Some(after_colon) = rest_trimmed.strip_prefix(':') {
-                let path = after_colon.trim();
-                matched = path == target || path == private_prefixed || path == stripped;
-                continue;
+        if let Some(path) = attribute(line, "image-path").or_else(|| attribute(line, "image-alias"))
+        {
+            if same_image(path) {
+                mine = true;
             }
+            continue;
         }
-        if matched {
-            if let Some(dev) = extract_whole_disk(trimmed) {
+        if mine {
+            if let Some(dev) = whole_disk(line) {
                 if seen.insert(dev.clone()) {
                     devices.push(dev);
                 }
@@ -35,13 +40,26 @@ pub fn extract_devices(hdiutil_info: &str, target: &str) -> Vec<String> {
     devices
 }
 
-fn extract_whole_disk(trimmed_line: &str) -> Option<String> {
-    let rest = trimmed_line.strip_prefix("/dev/disk")?;
+/// The value of `name   : value`, for a line that starts with `name`.
+fn attribute<'a>(line: &'a str, name: &str) -> Option<&'a str> {
+    let rest = line.strip_prefix(name)?;
+    let rest = rest.trim_start_matches([' ', '\t']);
+    let value = rest.strip_prefix(':')?;
+    Some(value.trim_start_matches([' ', '\t']))
+}
+
+/// `/dev/diskN` for a line that starts with exactly that device followed by
+/// a blank (a slice such as `/dev/disk7s1` is not a whole disk).
+fn whole_disk(line: &str) -> Option<String> {
+    let rest = line.strip_prefix("/dev/disk")?;
     let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
     if digits.is_empty() {
         return None;
     }
-    Some(format!("/dev/disk{}", digits))
+    match rest[digits.len()..].chars().next() {
+        Some(' ') | Some('\t') => Some(format!("/dev/disk{}", digits)),
+        _ => None,
+    }
 }
 
 #[cfg(test)]
@@ -113,6 +131,44 @@ image-path      : /var/folders/xx/T/tmp.multi/rw.dmg
     fn test_private_prefixed_argument() {
         let got = extract_devices(FIXTURE, "/private/var/folders/xx/T/tmp.build/rw.dmg");
         assert_eq!(got, vec!["/dev/disk7"]);
+    }
+
+    #[test]
+    fn test_alias_alone_names_the_image() {
+        let info = "================\nimage-path      : /Volumes/x/link.dmg\nimage-alias     : /tmp/w/rw-2.dmg\n/dev/disk20\tGUID_partition_scheme\t\n/dev/disk20s1\tApple_HFS\t\n";
+        assert_eq!(
+            extract_devices(info, "/tmp/w/rw-2.dmg"),
+            vec!["/dev/disk20"]
+        );
+    }
+
+    #[test]
+    fn test_slices_alone_are_not_whole_disks() {
+        let info =
+            "================\nimage-path      : /tmp/w/rw-1.dmg\n/dev/disk21s1\tApple_HFS\t\n";
+        assert!(extract_devices(info, "/tmp/w/rw-1.dmg").is_empty());
+    }
+
+    /// The `hdiutil info` a macOS runner printed when a failed create left
+    /// its image attached with no mount point (bazel/testdata).
+    #[test]
+    fn test_runner_capture_finds_the_stale_image() {
+        let path = std::env::var("HDIUTIL_INFO_FIXTURE").expect("HDIUTIL_INFO_FIXTURE");
+        let info = std::fs::read_to_string(path).unwrap();
+        assert_eq!(
+            extract_devices(
+                &info,
+                "/var/folders/5n/5t77mfb93jd7q8v9s6f0dn0m0000gn/T/tmp.CoP6rzGdbe/rw.dmg"
+            ),
+            vec!["/dev/disk13"]
+        );
+        assert_eq!(
+            extract_devices(
+                &info,
+                "/System/Library/AssetsV2/com_apple_MobileAsset_PKITrustStore/purpose_auto/6dd55b0d06633a00de6f57ccb910a66a5ba2409a.asset/AssetData/Restore/SECUREPKITRUSTSTOREASSETS_SECUREPKITRUSTSTORE_Cryptex.dmg"
+            ),
+            vec!["/dev/disk3", "/dev/disk4"]
+        );
     }
 
     #[test]

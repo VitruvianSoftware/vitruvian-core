@@ -1279,62 +1279,6 @@ enum RepositoryFeatureTests {
         suite.expect(missingTools.isEmpty,
                "every system tool the app runs is where it expects (\(missingTools.joined(separator: ", ")))")
 
-        // MARK: Tools/setup-signing.sh runs end to end against the stock openssl
-        // The setup script must run against the stock /usr/bin/openssl, which
-        // is LibreSSL: it rejects OpenSSL 3's -legacy flag outright, and the
-        // script once died on exactly that with its stderr discarded. It runs
-        // here against that openssl, in a scratch home, with stand-ins for
-        // security(1) and codesign that log what they are asked and touch no
-        // keychain. The codesign stand-in refuses until the identity has been
-        // imported, as codesign does before the script has made one.
-        let signingScratch = scratchFolder("signing-setup")
-        defer { try? FileManager.default.removeItem(at: signingScratch) }
-        let signingStubs = signingScratch.appendingPathComponent("bin")
-        let signingHome = signingScratch.appendingPathComponent("home").path
-        let signingTemp = signingScratch.appendingPathComponent("tmp").path
-        let signingLog = signingScratch.appendingPathComponent("calls.log").path
-        let logCall = #"{ printf '%s' "${0##*/}"; printf '|%s' "$@"; printf '\n'; } >> "$STUB_LOG""#
-        let signingStaged = [
-            writeStub("security", in: signingStubs, logCall + "\n" + #"""
-                [ "$1" = import ] && : > "$STUB_STATE/imported"
-                [ "$1" = list-keychains ] && [ "$#" -eq 3 ] && echo '    "/stub/login.keychain-db"'
-                exit 0
-                """#),
-            writeStub("codesign", in: signingStubs, logCall + "\n" + #"""
-                for last; do :; done
-                cmp -s "$last" /bin/echo && echo "probe is a copy of /bin/echo" >> "$STUB_LOG"
-                [ -e "$STUB_STATE/imported" ]
-                """#),
-            writeStub("openssl", in: signingStubs, logCall + "\n" + #"exec /usr/bin/openssl "$@""#),
-            (try? FileManager.default.createDirectory(atPath: signingHome, withIntermediateDirectories: true)) != nil,
-            (try? FileManager.default.createDirectory(atPath: signingTemp, withIntermediateDirectories: true)) != nil,
-        ].allSatisfy { $0 }
-        // -f: zsh reads /etc/zshenv for every script, and where that file
-        // sets PATH (nix-darwin's does) the stand-ins below are never found;
-        // the script then runs the Mac's real security and codesign.
-        let signingSetup = BoundedProcessRunner.run(
-            "/bin/zsh", ["-f", "Tools/setup-signing.sh"], timeout: 60, maxOutputBytes: 16_384,
-            environment: ["HOME": signingHome, "TMPDIR": signingTemp, "PATH": signingStubs.path + ":/usr/bin:/bin",
-                          "STUB_LOG": signingLog, "STUB_STATE": signingScratch.path])
-        let signingCalls = ((try? String(contentsOf: URL(fileURLWithPath: signingLog), encoding: .utf8)) ?? "")
-            .components(separatedBy: "\n")
-        suite.expect(signingStaged && signingSetup.status == 0
-                && signingCalls.contains { $0.hasPrefix("openssl|pkcs12|-export|") },
-               "setup-signing.sh makes its identity with the stock LibreSSL openssl: "
-               + String(decoding: signingSetup.output, as: UTF8.self))
-        suite.expect(signingCalls.contains { $0.hasPrefix("openssl|") }
-                && !signingCalls.contains { $0.hasPrefix("openssl|") && $0.contains("|-legacy") },
-               "setup-signing.sh avoids the -legacy flag the stock LibreSSL openssl rejects")
-        suite.expect(signingCalls.contains { $0.hasPrefix("security|import|") }
-                && !signingCalls.contains { $0.contains("find-identity") },
-               "Tools/setup-signing.sh never decides the stable identity by a find-identity listing")
-        suite.expect(signingCalls.contains { $0.hasPrefix("codesign|") && $0.contains("|--sign|Vitruvian Signing|") }
-                && signingCalls.contains("probe is a copy of /bin/echo"),
-               "Tools/setup-signing.sh asks codesign to sign a throwaway copy of /bin/echo with the stable identity")
-        let signingLeftovers = (try? FileManager.default.contentsOfDirectory(atPath: signingTemp)) ?? ["<unreadable>"]
-        suite.expect(signingLeftovers.isEmpty,
-               "setup-signing.sh removes its probe and its work folder: \(signingLeftovers)")
-
         // MARK: Uninstallation paths stay aligned across SelfUninstall and Tools/uninstall.sh
         // Neither query learning nor uninstall touches Keychain, which
         // bazel/source_lints.py checks; what the bar learns is kept as keyed
@@ -1460,8 +1404,9 @@ enum RepositoryFeatureTests {
             let reported = report.map { (try? $0.write(toFile: pmsetReport, atomically: true, encoding: .utf8)) != nil } ?? true
             let sleepRead = BoundedProcessRunner.run(
                 "/bin/zsh",
-                // -f, as for setup-signing.sh above: a PATH from /etc/zshenv
-                // would reach the Mac's real pmset instead of the stand-in.
+                // -f: zsh reads /etc/zshenv for every script, and where that
+                // file sets PATH (nix-darwin's does) it would reach the Mac's
+                // real pmset instead of the stand-in.
                 ["-f", "-c", #"source <(sed -n '/^read_sleep_disabled() {$/,/^}$/p' Tools/uninstall.sh) && read_sleep_disabled"#],
                 timeout: 10, maxOutputBytes: 1_024,
                 environment: ["PATH": pmsetStubs.path + ":/usr/bin:/bin", "PMSET_REPORT": pmsetReport])

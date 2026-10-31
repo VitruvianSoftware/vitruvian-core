@@ -8,7 +8,7 @@ use std::process;
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
     if args.is_empty() || args[0].is_empty() {
-        eprintln!("usage: dmg-image-devices.sh <image-path>");
+        eprintln!("usage: dmg_image_devices <image-path> (hdiutil info on stdin)");
         process::exit(2);
     }
     let mut input = String::new();
