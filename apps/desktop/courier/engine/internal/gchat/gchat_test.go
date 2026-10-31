@@ -4743,6 +4743,108 @@ func TestManualClockNotOnProductionConnectorOrClientStructs(t *testing.T) {
 	require.False(t, hasClientManual, "production Client must not carry useManualClock")
 }
 
+func TestFFIClientCloseWaitsForInFlightRPCCall(t *testing.T) {
+	enableTestLoopback(t)
+
+	rpcEntered := make(chan struct{})
+	releaseRPC := make(chan struct{})
+	var enterOnce sync.Once
+	var inFlightRPCs atomic.Int64
+	var closeReturnedWhileRPCInFlight atomic.Bool
+	var closeDone atomic.Bool
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/u/0/mole/world":
+			w.Header().Set("Content-Type", "text/html")
+			_, _ = fmt.Fprint(w, `<!DOCTYPE html><html><script>window.WIZ_global_data = {"xsrf_token":"AF1QipP_rpc_close:1710000000000"};</script></html>`)
+		case "/u/0/api/get_self_user_status":
+			inFlightRPCs.Add(1)
+			defer func() {
+				if closeDone.Load() {
+					closeReturnedWhileRPCInFlight.Store(true)
+				}
+				inFlightRPCs.Add(-1)
+			}()
+			enterOnce.Do(func() {
+				close(rpcEntered)
+			})
+			select {
+			case <-releaseRPC:
+			case <-time.After(200 * time.Millisecond):
+			}
+			w.Header().Set("Content-Type", "application/x-protobuf")
+			_, _ = w.Write(buildSyntheticSelfUserStatusResponse("112233445566778899001"))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	ffi, err := NewFFIClient(SessionConfig{
+		CookieMap: map[string]string{
+			"COMPASS": "dynamite-ui=init",
+			"OSID":    "osid",
+			"SID":     "sid",
+			"HSID":    "hsid",
+			"SSID":    "ssid",
+		},
+		BaseURL: srv.URL,
+	})
+	require.NoError(t, err)
+	t.Cleanup(ffi.Close)
+
+	const numCallers = 4
+	var wg sync.WaitGroup
+	errs := make([]error, numCallers)
+	resps := make([][]byte, numCallers)
+	for i := 0; i < numCallers; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			if idx >= 2 {
+				<-rpcEntered
+			}
+			resps[idx], errs[idx] = ffi.RPCCall("get_self_user_status", nil)
+		}(i)
+	}
+
+	<-rpcEntered
+	closeReturned := make(chan struct{})
+	go func() {
+		ffi.Close()
+		closeDone.Store(true)
+		close(closeReturned)
+	}()
+
+	time.Sleep(30 * time.Millisecond)
+	select {
+	case <-closeReturned:
+		close(releaseRPC)
+		wg.Wait()
+		t.Fatal("FFIClient.Close returned while RPCCall was still in flight")
+	default:
+	}
+
+	close(releaseRPC)
+	<-closeReturned
+	wg.Wait()
+
+	require.False(t, closeReturnedWhileRPCInFlight.Load(), "Close must wait for all in-flight RPCCall invocations to finish")
+	require.Equal(t, int64(0), inFlightRPCs.Load())
+
+	for i := 0; i < numCallers; i++ {
+		if errs[i] != nil {
+			require.ErrorContains(t, errs[i], "closed gchat ffi client")
+		} else {
+			require.NotEmpty(t, resps[i])
+		}
+	}
+
+	_, afterErr := ffi.RPCCall("get_self_user_status", nil)
+	require.ErrorContains(t, afterErr, "closed gchat ffi client")
+}
+
 func TestServeGChatEngineHelperForAppE2E(t *testing.T) {
 	sockPath := os.Getenv("COURIER_GCHAT_E2E_SOCKET")
 	if sockPath == "" {

@@ -62,11 +62,10 @@ func (c *FFIClient) UseManualClock(fixedJitter float64) {
 	if c == nil {
 		return
 	}
-	c.mu.Lock()
-	ptr := c.ptr
-	c.mu.Unlock()
-	if ptr != nil {
-		C.gchat_use_manual_clock(ptr, C.double(fixedJitter))
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.ptr != nil {
+		C.gchat_use_manual_clock(c.ptr, C.double(fixedJitter))
 	}
 }
 
@@ -74,13 +73,12 @@ func (c *FFIClient) AdvanceManualClock(delta time.Duration) int {
 	if c == nil {
 		return 0
 	}
-	c.mu.Lock()
-	ptr := c.ptr
-	c.mu.Unlock()
-	if ptr == nil {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.ptr == nil {
 		return 0
 	}
-	return int(C.gchat_advance_manual_clock(ptr, C.uint64_t(delta.Milliseconds())))
+	return int(C.gchat_advance_manual_clock(c.ptr, C.uint64_t(delta.Milliseconds())))
 }
 
 func (c *Client) advanceManualClock(delta time.Duration) int {

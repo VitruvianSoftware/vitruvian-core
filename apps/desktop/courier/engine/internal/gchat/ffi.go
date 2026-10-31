@@ -73,7 +73,7 @@ type ConvertedInboundText struct {
 
 // FFIClient wraps a live *C.GChatClient handle.
 type FFIClient struct {
-	mu           sync.Mutex
+	mu           sync.RWMutex
 	ptr          *C.GChatClient
 	streamHandle cgo.Handle
 	hasStream    bool
@@ -126,10 +126,9 @@ func (c *FFIClient) RPCCall(endpoint string, reqProto []byte) ([]byte, error) {
 	if c == nil {
 		return nil, errors.New("nil gchat ffi client")
 	}
-	c.mu.Lock()
-	ptr := c.ptr
-	c.mu.Unlock()
-	if ptr == nil {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.ptr == nil {
 		return nil, errors.New("closed gchat ffi client")
 	}
 
@@ -143,7 +142,7 @@ func (c *FFIClient) RPCCall(endpoint string, reqProto []byte) ([]byte, error) {
 	var respOut C.GChatByteSlice
 	var errOut C.GChatByteSlice
 	st := C.gchat_rpc_call(
-		ptr,
+		c.ptr,
 		cEndpoint,
 		C.size_t(len(endpoint)),
 		reqPtr,
@@ -162,10 +161,9 @@ func (c *FFIClient) UploadMedia(groupID, filename, contentType string, data []by
 	if c == nil {
 		return nil, errors.New("nil gchat ffi client")
 	}
-	c.mu.Lock()
-	ptr := c.ptr
-	c.mu.Unlock()
-	if ptr == nil {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.ptr == nil {
 		return nil, errors.New("closed gchat ffi client")
 	}
 	reqObj := struct {
@@ -188,7 +186,7 @@ func (c *FFIClient) UploadMedia(groupID, filename, contentType string, data []by
 	var protoOut C.GChatByteSlice
 	var errOut C.GChatByteSlice
 	st := C.gchat_upload_media(
-		ptr,
+		c.ptr,
 		(*C.uint8_t)(unsafe.Pointer(&reqJSON[0])),
 		C.size_t(len(reqJSON)),
 		dataPtr,
@@ -207,10 +205,9 @@ func (c *FFIClient) DownloadMedia(kind, attachmentToken, contentType, rawURL str
 	if c == nil {
 		return nil, errors.New("nil gchat ffi client")
 	}
-	c.mu.Lock()
-	ptr := c.ptr
-	c.mu.Unlock()
-	if ptr == nil {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.ptr == nil {
 		return nil, errors.New("closed gchat ffi client")
 	}
 	reqObj := struct {
@@ -233,7 +230,7 @@ func (c *FFIClient) DownloadMedia(kind, attachmentToken, contentType, rawURL str
 	var bytesOut C.GChatByteSlice
 	var errOut C.GChatByteSlice
 	st := C.gchat_download_media(
-		ptr,
+		c.ptr,
 		(*C.uint8_t)(unsafe.Pointer(&reqJSON[0])),
 		C.size_t(len(reqJSON)),
 		&bytesOut,
@@ -437,7 +434,18 @@ func ValidateSession(cfg SessionConfig) (*ValidatedSession, error) {
 		return nil, err
 	}
 	defer c.Close()
+	return c.validateSession()
+}
 
+func (c *FFIClient) validateSession() (*ValidatedSession, error) {
+	if c == nil {
+		return nil, errors.New("nil gchat ffi client")
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if c.ptr == nil {
+		return nil, errors.New("closed gchat ffi client")
+	}
 	var selfJSON C.GChatByteSlice
 	var valErr C.GChatByteSlice
 	st := C.gchat_validate_session(c.ptr, &selfJSON, &valErr)
