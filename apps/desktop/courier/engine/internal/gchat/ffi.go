@@ -263,6 +263,20 @@ func goGChatEventCallback(userdata C.uintptr_t, eventKind C.int32_t, payloadPtr 
 	cb(int32(eventKind), data)
 }
 
+// StopStream stops any active WebChannel stream and waits for in-flight callbacks to finish before deleting the cgo.Handle.
+func (c *FFIClient) StopStream() {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.ptr != nil && c.hasStream {
+		C.gchat_stop_stream(c.ptr)
+		c.streamHandle.Delete()
+		c.hasStream = false
+	}
+}
+
 // StartStream starts the WebChannel stream on the Rust FFI client.
 func (c *FFIClient) StartStream(cb func(eventKind int32, payload []byte)) error {
 	if c == nil {

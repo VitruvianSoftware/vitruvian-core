@@ -4215,6 +4215,100 @@ func TestRotatedCompassCookiePersistedAndGuardedByLogout(t *testing.T) {
 	require.Nil(t, afterLogout, "late Connected callback after LogoutRemote must not re-persist cookies")
 }
 
+func TestStopStreamWaitsForInFlightCallbacksBeforeDeletingCgoHandle(t *testing.T) {
+	enableTestLoopback(t)
+
+	callbackEntered := make(chan struct{})
+	releaseCallback := make(chan struct{})
+	var callbackStillRunning atomic.Bool
+	var callbackFinishedAfterStop atomic.Bool
+	var stopReturned atomic.Bool
+	var pingDone atomic.Bool
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/u/0/mole/world":
+			w.Header().Set("Content-Type", "text/html")
+			_, _ = fmt.Fprint(w, `<!DOCTYPE html><html><script>window.WIZ_global_data = {"xsrf_token":"AF1QipP_tok:1710000000000"};</script></html>`)
+		case "/u/0/webchannel/register":
+			w.Header().Add("Set-Cookie", "COMPASS=dynamite-ui=csess_stop; Path=/; Domain=chat.google.com")
+			w.WriteHeader(http.StatusOK)
+		case "/u/0/webchannel/events":
+			if r.Method == http.MethodPost {
+				pingDone.Store(true)
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			if r.URL.Query().Get("SID") == "null" {
+				w.Header().Set("X-HTTP-Initial-Response", `[[0,["c","sid_stop","",8,12]]]`)
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			if !pingDone.Load() {
+				// Step 3a Ack GET: respond immediately so Step 3b Ping POST and Connected callback fire.
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+			<-r.Context().Done()
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	ffi, err := NewFFIClient(SessionConfig{
+		CookieMap: map[string]string{
+			"COMPASS": "dynamite-ui=init",
+			"OSID":    "osid",
+			"SID":     "sid",
+			"HSID":    "hsid",
+			"SSID":    "ssid",
+		},
+		BaseURL: srv.URL,
+	})
+	require.NoError(t, err)
+	t.Cleanup(ffi.Close)
+
+	var once sync.Once
+	err = ffi.StartStream(func(eventKind int32, payload []byte) {
+		callbackStillRunning.Store(true)
+		once.Do(func() {
+			close(callbackEntered)
+		})
+		<-releaseCallback
+		if stopReturned.Load() {
+			callbackFinishedAfterStop.Store(true)
+		}
+		callbackStillRunning.Store(false)
+	})
+	require.NoError(t, err)
+
+	<-callbackEntered
+	stopDone := make(chan struct{})
+	go func() {
+		ffi.StopStream()
+		stopReturned.Store(true)
+		close(stopDone)
+	}()
+
+	// Give StopStream a moment to signal and block waiting on the in-flight callback.
+	time.Sleep(30 * time.Millisecond)
+	select {
+	case <-stopDone:
+		t.Fatal("StopStream returned while callback was still in flight")
+	default:
+	}
+
+	close(releaseCallback)
+	<-stopDone
+	require.False(t, callbackStillRunning.Load(), "callback must not be running after StopStream returns")
+	require.False(t, callbackFinishedAfterStop.Load(), "StopStream must wait for in-flight callback to finish before returning")
+}
+
 func TestServeGChatEngineHelperForAppE2E(t *testing.T) {
 	sockPath := os.Getenv("COURIER_GCHAT_E2E_SOCKET")
 	if sockPath == "" {

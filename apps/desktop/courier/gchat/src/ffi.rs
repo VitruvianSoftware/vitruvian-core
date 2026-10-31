@@ -70,14 +70,20 @@ pub struct GChatClient {
     >,
 }
 
+impl GChatClient {
+    pub(crate) fn stop_stream_and_wait(&self) {
+        let prev = self.stream_state.lock().ok().and_then(|mut g| g.take());
+        if let Some((tx, handle)) = prev {
+            let _ = tx.send(true);
+            handle.abort();
+            let _ = self.runtime.block_on(handle);
+        }
+    }
+}
+
 impl Drop for GChatClient {
     fn drop(&mut self) {
-        if let Ok(mut guard) = self.stream_state.lock() {
-            if let Some((tx, handle)) = guard.take() {
-                let _ = tx.send(true);
-                handle.abort();
-            }
-        }
+        self.stop_stream_and_wait();
         self.refresh_handle.abort();
     }
 }
@@ -442,14 +448,12 @@ crate::edition2021! {
             return GChatStatus::GchatErrInvalidArg;
         }
         let client_ref = &*client;
+        client_ref.stop_stream_and_wait();
+
         let Ok(mut state_guard) = client_ref.stream_state.lock() else {
             write_err_slice(out_err, "stream_state mutex poisoned");
             return GChatStatus::GchatErrInternal;
         };
-        if let Some((prev_tx, prev_handle)) = state_guard.take() {
-            let _ = prev_tx.send(true);
-            prev_handle.abort();
-        }
 
         let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
         let clock: Arc<dyn crate::channel::ChannelClock> = client_ref
@@ -491,12 +495,7 @@ crate::edition2021! {
 pub unsafe extern "C" fn gchat_stop_stream(client: *mut GChatClient) {
     if !client.is_null() {
         let client_ref = &*client;
-        if let Ok(mut guard) = client_ref.stream_state.lock() {
-            if let Some((tx, handle)) = guard.take() {
-                let _ = tx.send(true);
-                handle.abort();
-            }
-        }
+        client_ref.stop_stream_and_wait();
         client_ref.refresh_handle.abort();
     }
 }
