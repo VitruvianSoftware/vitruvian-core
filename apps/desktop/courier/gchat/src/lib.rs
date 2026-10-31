@@ -1,7 +1,11 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-only
 
+pub mod auth;
+pub mod cookies;
 pub mod ffi;
+pub mod netguard;
+pub mod rpc;
 
 pub mod pb {
     #![allow(clippy::all, dead_code, non_camel_case_types, non_snake_case)]
@@ -10,6 +14,7 @@ pub mod pb {
 
 use once_cell::sync::Lazy as LazyLock;
 use prost_reflect::DescriptorPool;
+use thiserror::Error;
 
 pub const FILE_DESCRIPTOR_SET: &[u8] =
     include_bytes!(concat!(env!("OUT_DIR"), "/googlechat_descriptor.bin"));
@@ -17,6 +22,26 @@ pub const FILE_DESCRIPTOR_SET: &[u8] =
 pub static DESCRIPTOR_POOL: LazyLock<DescriptorPool> = LazyLock::new(|| {
     DescriptorPool::decode(FILE_DESCRIPTOR_SET).expect("valid googlechat.proto descriptor set")
 });
+
+#[derive(Debug, Error)]
+pub enum GChatError {
+    #[error("cookie validation failed: {0}")]
+    CookieValidation(String),
+    #[error("authentication expired or invalid: {0}")]
+    AuthExpired(String),
+    #[error("blocked by network guard: {0}")]
+    SsrfBlocked(String),
+    #[error("rate limited by Google Chat")]
+    RateLimited,
+    #[error("HTTP status {0}: {1}")]
+    HttpStatus(u16, String),
+    #[error("network error: {0}")]
+    Network(String),
+    #[error("protobuf error: {0}")]
+    Proto(String),
+    #[error("internal error: {0}")]
+    Internal(String),
+}
 
 #[cfg(test)]
 mod tests {

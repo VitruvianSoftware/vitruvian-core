@@ -32,8 +32,8 @@ protoc_dist(
 _CARGO_TOML = "apps/desktop/courier/gchat/Cargo.toml"
 
 _DEPS = all_crate_deps(
-    normal = True,
     package_name = _CARGO_TOML,
+    normal = True,
 )
 
 _PROC_MACRO_DEPS = all_crate_deps(
@@ -42,13 +42,13 @@ _PROC_MACRO_DEPS = all_crate_deps(
 )
 
 _BUILD_DEPS = all_crate_deps(
-    build = True,
     package_name = _CARGO_TOML,
+    build = True,
 )
 
 _BUILD_PROC_MACRO_DEPS = all_crate_deps(
-    build_proc_macro = True,
     package_name = _CARGO_TOML,
+    build_proc_macro = True,
 )
 
 cargo_build_script(
