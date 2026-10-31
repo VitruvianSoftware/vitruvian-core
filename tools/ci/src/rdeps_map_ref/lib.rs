@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! rdeps-map-ref.sh — store/fetch/prune rdeps maps as git refs.
+//! rdeps-map-ref — store/fetch/prune rdeps maps as git refs.
 
 use shell_compat::{capture, cat, env, env_or, err, os, out, subst};
 use std::process::Command;
@@ -92,8 +92,9 @@ fn map_commit(file: &[u8]) -> Vec<u8> {
 
 fn cmd_save(args: &[Vec<u8>], remote: &[u8]) -> i32 {
     if args.len() < 3 {
+        // The script's `${2:?usage: ...}`: message, status 1.
         log(b"usage: save <map.json> <sha>");
-        return 2;
+        return 1;
     }
     let file = &args[1];
     let sha = &args[2];
@@ -120,6 +121,15 @@ fn cmd_save(args: &[Vec<u8>], remote: &[u8]) -> i32 {
             .arg("-w")
             .arg(os(file)),
     );
+    if !r.ok() {
+        log(&cat(&[
+            b"could not store ",
+            file,
+            b" as a git object: ",
+            &r.stderr,
+        ]));
+        return 1;
+    }
     let blob = subst(r.stdout);
 
     let refspec = cat(&[b"+", &blob, b":", PREFIX, b"/", sha]);
@@ -151,7 +161,7 @@ fn cmd_save(args: &[Vec<u8>], remote: &[u8]) -> i32 {
 fn cmd_fetch(args: &[Vec<u8>], remote: &[u8], max_behind: usize) -> i32 {
     if args.len() < 2 {
         log(b"usage: fetch <out.json> <base>");
-        return 2;
+        return 1;
     }
     let out_path = &args[1];
     let base = if args.len() > 2 {
@@ -374,7 +384,11 @@ fn cmd_prune(remote: &[u8], keep: usize) -> i32 {
         for r in chunk {
             cmd.arg(os(r));
         }
-        let _ = capture(0, &mut cmd);
+        let r = capture(0, &mut cmd);
+        if !r.ok() {
+            log(&cat(&[b"could not delete stale maps: ", &r.stderr]));
+            return 1;
+        }
     }
     log(&cat(&[
         b"pruned ",
@@ -407,7 +421,7 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
         b"fetch" => cmd_fetch(args, &remote, max_behind),
         b"prune" => cmd_prune(&remote, keep),
         _ => {
-            log(b"usage: rdeps-map-ref.sh save <map.json> <sha> | fetch <out.json> <base> | prune");
+            log(b"usage: rdeps-map-ref save <map.json> <sha> | fetch <out.json> <base> | prune");
             2
         }
     }

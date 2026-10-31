@@ -57,14 +57,12 @@ rust_binary(
     ],
 )
 
-# Generated launcher so per-app cloud_run_deploy(...) sh_binary targets in
-# other packages can list `//tools/deploy:cloud-run.sh` in srcs.
-genrule(
-    name = "cloud_run_sh_shim",
-    srcs = [":cloud-run"],
-    outs = ["cloud-run.sh"],
-    cmd = "printf '%s\\n' '#!/usr/bin/env bash' 'exec \"$$(cd \"$$(dirname \"$${BASH_SOURCE[0]}\")\" && pwd)/cloud-run\" \"$$@\"' > $@ && chmod +x $@",
-    executable = True,
+# What every cloud_run_deploy() `<name>_launcher_test` runs: the app's real
+# :deploy target, against a stub pulumi-cmd and gcloud (src/launcher_check.rs).
+rust_binary(
+    name = "launcher-check",
+    srcs = ["src/launcher_check.rs"],
+    edition = "2021",
     visibility = ["//visibility:public"],
 )
 

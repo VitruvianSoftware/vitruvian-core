@@ -253,7 +253,7 @@ pub fn restrict_to_push(json: &str, sha: &str, branch: &str) -> String {
 }
 
 /// Seconds since the Unix epoch for `YYYY-MM-DDTHH:MM:SSZ`.
-fn parse_utc(ts: &str) -> Option<i64> {
+pub(crate) fn parse_utc(ts: &str) -> Option<i64> {
     let b = ts.as_bytes();
     if b.len() < 19 {
         return None;

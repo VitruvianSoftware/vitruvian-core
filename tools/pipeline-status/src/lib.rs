@@ -25,6 +25,7 @@
 //! Exit codes: 0 all green, 1 a run failed, 2 runs in flight, 3 no runs or
 //! the target could not be resolved.
 
+pub mod batch;
 pub mod cli;
 pub mod evaluate;
 pub mod jq;

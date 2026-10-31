@@ -75,7 +75,7 @@ jobs:
   actionlint:
     # Homelab runner for merge-queue and main jobs when QUEUE_RUNNER is on and the
     # fallback is off; GitHub-hosted otherwise, and always for pull requests
-    # (tools/ci/queue-runner-routing.sh holds this line exact).
+    # (//tools/ci:queue_runner_routing_test holds this line exact).
     runs-on: ${{ (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 10
     env:

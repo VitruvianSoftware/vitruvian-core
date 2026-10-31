@@ -477,6 +477,11 @@ fn flags() -> Vec<Flag> {
             default: Value::Str(String::new()),
         },
         Flag {
+            name: "rdeps-map-ref",
+            usage: "runfiles path of the rdeps-map-ref binary (set by the BUILD file)",
+            default: Value::Str(String::new()),
+        },
+        Flag {
             name: "agent-app",
             usage: "runfiles path of agent-app.sh (set by the BUILD file)",
             default: Value::Str(String::new()),
@@ -541,6 +546,10 @@ pub fn real_main(args: &[String]) -> i32 {
         return fail("run this with `bazel run //tools/pipeline/verifiedrun`");
     }
     let planner = match runfile(&f.str("planner")) {
+        Ok(p) => p,
+        Err(e) => return fail(&e),
+    };
+    let rdeps_map_ref = match runfile(&f.str("rdeps-map-ref")) {
         Ok(p) => p,
         Err(e) => return fail(&e),
     };
@@ -612,6 +621,7 @@ pub fn real_main(args: &[String]) -> i32 {
         &root,
         &work,
         &planner,
+        &rdeps_map_ref,
         &agent_app,
         &self_exe,
         &real_bazel,
@@ -633,6 +643,7 @@ fn run_in(
     root: &str,
     work: &str,
     planner: &str,
+    rdeps_map_ref: &str,
     agent_app: &str,
     self_exe: &str,
     real_bazel: &str,
@@ -715,8 +726,8 @@ fn run_in(
                 ctx,
                 root,
                 child_env(&shim_dir, &shim_env),
-                "bash",
-                &["tools/ci/rdeps-map-ref.sh", "fetch", &rdeps_map, base],
+                rdeps_map_ref,
+                &["fetch", &rdeps_map, base],
             );
             if let Some(e) = err {
                 exec::eprint(&format!(

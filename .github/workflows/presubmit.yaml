@@ -147,7 +147,15 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
           GH_TOKEN: ${{ github.token }}
-        run: bash tools/ci/rdeps-map-ref.sh fetch "$RUNNER_TEMP/pipeline-rdeps-map.json" "$BASE_SHA"
+        run: |
+          cache_flags=()
+          if [ -n "${BUILDBUDDY_API_KEY:-}" ]; then
+            cache_flags=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
+          fi
+          bazel build "${cache_flags[@]}" //tools/ci:rdeps_map_ref
+          cp -f bazel-bin/tools/ci/rdeps_map_ref "$RUNNER_TEMP/rdeps-map-ref"
+          chmod +x "$RUNNER_TEMP/rdeps-map-ref"
+          "$RUNNER_TEMP/rdeps-map-ref" fetch "$RUNNER_TEMP/pipeline-rdeps-map.json" "$BASE_SHA"
 
       - name: List recent ancestors of the diff base
         id: mapkeys
@@ -1165,7 +1173,7 @@ jobs:
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/web/oauth-user-inspector:oauth_scripts_lib_test //apps/web/oauth-user-inspector:deploy_smoke_test //apps/web/oauth-user-inspector:smoke_test //apps/web/oauth-user-inspector:unit_tests || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/web/oauth-user-inspector:oauth_scripts_lib_test //apps/web/oauth-user-inspector:deploy_smoke_test //apps/web/oauth-user-inspector:smoke_test //apps/web/oauth-user-inspector:unit_tests; else exit $rc; fi; }
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/web/oauth-user-inspector:oauth_scripts_lib_test //apps/web/oauth-user-inspector:deploy_smoke_test //apps/web/oauth-user-inspector:smoke_test //apps/web/oauth-user-inspector:unit_tests //apps/web/oauth-user-inspector/infra/app:deploy_launcher_test || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/web/oauth-user-inspector:oauth_scripts_lib_test //apps/web/oauth-user-inspector:deploy_smoke_test //apps/web/oauth-user-inspector:smoke_test //apps/web/oauth-user-inspector:unit_tests //apps/web/oauth-user-inspector/infra/app:deploy_launcher_test; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()
@@ -1501,7 +1509,7 @@ jobs:
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/tabula/api:integration_tests //apps/suites/tabula/api:tabula_api_tools_rs_test || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/tabula/api:integration_tests //apps/suites/tabula/api:tabula_api_tools_rs_test; else exit $rc; fi; }
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/tabula/api:integration_tests //apps/suites/tabula/api:tabula_api_tools_rs_test //apps/suites/tabula/infra/app:deploy_launcher_test || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/tabula/api:integration_tests //apps/suites/tabula/api:tabula_api_tools_rs_test //apps/suites/tabula/infra/app:deploy_launcher_test; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()
@@ -1630,7 +1638,7 @@ jobs:
           if [ -n "${BUILDBUDDY_API_KEY}" ]; then
             cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/tabula/web:unit_tests //apps/suites/tabula/web:typecheck_typecheck_test || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/tabula/web:unit_tests //apps/suites/tabula/web:typecheck_typecheck_test; else exit $rc; fi; }
+          bazel test "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/tabula/web:unit_tests //apps/suites/tabula/web:typecheck_typecheck_test //apps/suites/tabula/infra/web:deploy_launcher_test || { rc=$?; if [ $rc -eq 4 ]; then bazel build "${extra_flags[@]}" "${cache_flags[@]}" //apps/suites/tabula/web:unit_tests //apps/suites/tabula/web:typecheck_typecheck_test //apps/suites/tabula/infra/web:deploy_launcher_test; else exit $rc; fi; }
 
       - name: LLVM cache tripwire
         if: always()
@@ -1767,9 +1775,10 @@ jobs:
           if [ -n "${BUILDBUDDY_API_KEY:-}" ]; then
             cache_flags=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
           fi
-          bazel build "${cache_flags[@]}" //tools/pipeline/plan
+          bazel build "${cache_flags[@]}" //tools/pipeline/plan //tools/ci:rdeps_map_ref
           cp -f bazel-bin/tools/pipeline/plan/plan "$RUNNER_TEMP/pipeline-plan"
-          chmod +x "$RUNNER_TEMP/pipeline-plan"
+          cp -f bazel-bin/tools/ci/rdeps_map_ref "$RUNNER_TEMP/rdeps-map-ref"
+          chmod +x "$RUNNER_TEMP/pipeline-plan" "$RUNNER_TEMP/rdeps-map-ref"
           "$RUNNER_TEMP/pipeline-plan" --emit-rdeps-map="$RUNNER_TEMP/pipeline-rdeps-map.json" --repo-root="$PWD" --timeout-sec=2100
 
       - name: Keep it under a git ref
@@ -1777,8 +1786,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          bash tools/ci/rdeps-map-ref.sh save "$RUNNER_TEMP/pipeline-rdeps-map.json" "$GITHUB_SHA"
-          bash tools/ci/rdeps-map-ref.sh prune
+          "$RUNNER_TEMP/rdeps-map-ref" save "$RUNNER_TEMP/pipeline-rdeps-map.json" "$GITHUB_SHA"
+          "$RUNNER_TEMP/rdeps-map-ref" prune
 
       - name: Save it for PRs based on this commit
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6

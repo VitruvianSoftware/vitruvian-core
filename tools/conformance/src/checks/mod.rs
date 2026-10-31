@@ -26,6 +26,7 @@ mod ci;
 mod delivery;
 mod governance;
 mod iac;
+mod labels;
 mod security;
 mod versions;
 
@@ -93,4 +94,10 @@ pub fn run_all(ctx: &Context) {
     security::check_action_sha_pins(ctx);
     security::check_gitleaks_allowlist_paths(ctx);
     security::check_guard_review_paths(ctx);
+}
+
+/// The workflow-label check alone: `bazel run //tools/conformance:workflow-labels`.
+/// Not part of run_all (see the note in labels.rs on where it runs).
+pub fn run_workflow_labels(ctx: &Context) {
+    labels::check_workflow_labels(ctx);
 }

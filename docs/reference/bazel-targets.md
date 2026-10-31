@@ -72,6 +72,7 @@ mindmap
 |---|---|
 | `//tools/license:check` / `:verify` / `:add` | License headers: presence, MIT+holder content, auto-fix |
 | `//tools/conformance:check` | Version canonicalization, merge-queue check names, app metadata ↔ CODEOWNERS, visibility firewall, nightly-sweep pairing |
+| `//tools/conformance:workflow-labels` | Every Bazel label a workflow or composite action runs resolves (runs in tidy-check) |
 | `//tools/secret-scan` | `secret-scan`: CI's gitleaks version and `.gitleaks.toml` over this branch's commits (`--staged`, `--range a..b`, `--unpushed`). Names file and line, never the secret |
 | `//tools/ci:actionlint` | `actionlint`: the pinned actionlint with shellcheck over `.github/workflows`, then the commit-SHA pin check |
 | `//tools/techdocs:check` | Verifies that all 15 TechDocs sites compile cleanly with `mkdocs-techdocs-core` |
@@ -197,5 +198,5 @@ after changing its `build.sh` source lists: `bazel run //apps/desktop/vitruvian:
 
 `tools/ci/` holds the scripts the pipeline calls: `affected-targets.sh` (what to
 test), `deploy-affected.sh` (whether to deploy — fail-open), `migration-safety.sh`,
-`gitops-validate.sh`, `bisect-culprit.sh`, and friends. You rarely run these by hand;
+`gitops-validate.sh`, `//tools/ci:bisect_culprit`, and friends. You rarely run these by hand;
 read [CI/CD approach](../engineering/ci-cd-approach.md) for how they fit together.
