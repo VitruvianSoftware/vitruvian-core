@@ -877,36 +877,35 @@ pub unsafe extern "C" fn gchat_download_media(
         } else {
             req.kind.trim()
         };
-        let res: Result<(Vec<u8>, String), GChatError> = match kind {
-            "attachment" => {
-                client_ref
-                    .runtime
-                    .block_on(crate::media::download_attachment_with_content_type(
+        let res: Result<(Vec<u8>, String), GChatError> =
+            match kind {
+                "attachment" => client_ref.runtime.block_on(
+                    crate::media::download_attachment_with_content_type(
                         client_ref,
                         &req.attachment_token,
                         &req.content_type,
-                    ))
-            }
-            "avatar" => client_ref
-                .runtime
-                .block_on(crate::media::download_avatar(&client_ref.guard, &req.url)),
-            "external" => {
-                match client_ref
+                    ),
+                ),
+                "avatar" => client_ref
                     .runtime
-                    .block_on(crate::media::download_external_image_if_enabled(
-                        &client_ref.guard,
-                        &req.url,
-                        req.external_enabled,
-                    )) {
-                    Ok(Some(pair)) => Ok(pair),
-                    Ok(None) => Ok((Vec::new(), String::new())),
-                    Err(e) => Err(e),
+                    .block_on(crate::media::download_avatar(&client_ref.guard, &req.url)),
+                "external" => {
+                    match client_ref.runtime.block_on(
+                        crate::media::download_external_image_if_enabled(
+                            &client_ref.guard,
+                            &req.url,
+                            req.external_enabled,
+                        ),
+                    ) {
+                        Ok(Some(pair)) => Ok(pair),
+                        Ok(None) => Ok((Vec::new(), String::new())),
+                        Err(e) => Err(e),
+                    }
                 }
-            }
-            other => Err(GChatError::Protocol(format!(
-                "unsupported download_media kind: {other}"
-            ))),
-        };
+                other => Err(GChatError::Protocol(format!(
+                    "unsupported download_media kind: {other}"
+                ))),
+            };
         match res {
             Ok((bytes, _mime)) => {
                 write_slice_out(out_bytes, bytes);
@@ -984,14 +983,8 @@ mod tests {
             r#"{"cookie_map":{"COMPASS":"c","OSID":"o","SID":"s","HSID":"h","SSID":"ss"}}"#;
         let mut client: *mut GChatClient = ptr::null_mut();
         let mut err = GChatByteSlice::default();
-        let st = unsafe {
-            gchat_client_new(
-                valid_cfg.as_ptr(),
-                valid_cfg.len(),
-                &mut client,
-                &mut err,
-            )
-        };
+        let st =
+            unsafe { gchat_client_new(valid_cfg.as_ptr(), valid_cfg.len(), &mut client, &mut err) };
         assert_eq!(st, GChatStatus::GchatOk);
         assert!(!client.is_null());
 

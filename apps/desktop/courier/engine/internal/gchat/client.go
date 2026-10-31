@@ -40,19 +40,19 @@ type Client struct {
 	Main      *Connector
 	UserLogin *bridgev2.UserLogin
 
-	mu                 sync.Mutex
-	metaMu             sync.Mutex
-	loggedOut          bool
-	syncMu             sync.Mutex
-	ffiClient          *FFIClient
-	streamCtx          context.Context
-	cancelStream       context.CancelFunc
-	streamDone         chan struct{}
-	streamCh           chan streamNotification
-	portalQueues       map[networkid.PortalKey]chan bridgev2.RemoteEvent
-	portalWG           sync.WaitGroup
-	prewarmCh          chan networkid.UserID
-	prewarmedUsers     map[networkid.UserID]struct{}
+	mu             sync.Mutex
+	metaMu         sync.Mutex
+	loggedOut      bool
+	syncMu         sync.Mutex
+	ffiClient      *FFIClient
+	streamCtx      context.Context
+	cancelStream   context.CancelFunc
+	streamDone     chan struct{}
+	streamCh       chan streamNotification
+	portalQueues   map[networkid.PortalKey]chan bridgev2.RemoteEvent
+	portalWG       sync.WaitGroup
+	prewarmCh      chan networkid.UserID
+	prewarmedUsers map[networkid.UserID]struct{}
 	// ghostMu serializes every bridgev2 ghost access we cause: QueueRemoteEvent
 	// runs synchronously, and bridgev2 shares ghosts across portals unlocked.
 	ghostMu            sync.Mutex

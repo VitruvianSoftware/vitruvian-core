@@ -1521,11 +1521,36 @@ mod tests {
         let guard = NetGuard::allow_loopback_for_test();
         let http = guard.build_http_client().expect("build http client");
         let jar = DomainCookieJar::from_scoped_cookies(vec![
-            ScopedCookie { name: "COMPASS".into(), value: "c1".into(), domain: "chat.google.com".into(), path: "/".into() },
-            ScopedCookie { name: "OSID".into(), value: "o1".into(), domain: "chat.google.com".into(), path: "/".into() },
-            ScopedCookie { name: "SID".into(), value: "s1".into(), domain: ".google.com".into(), path: "/".into() },
-            ScopedCookie { name: "HSID".into(), value: "h1".into(), domain: ".google.com".into(), path: "/".into() },
-            ScopedCookie { name: "SSID".into(), value: "ss1".into(), domain: ".google.com".into(), path: "/".into() },
+            ScopedCookie {
+                name: "COMPASS".into(),
+                value: "c1".into(),
+                domain: "chat.google.com".into(),
+                path: "/".into(),
+            },
+            ScopedCookie {
+                name: "OSID".into(),
+                value: "o1".into(),
+                domain: "chat.google.com".into(),
+                path: "/".into(),
+            },
+            ScopedCookie {
+                name: "SID".into(),
+                value: "s1".into(),
+                domain: ".google.com".into(),
+                path: "/".into(),
+            },
+            ScopedCookie {
+                name: "HSID".into(),
+                value: "h1".into(),
+                domain: ".google.com".into(),
+                path: "/".into(),
+            },
+            ScopedCookie {
+                name: "SSID".into(),
+                value: "ss1".into(),
+                domain: ".google.com".into(),
+                path: "/".into(),
+            },
         ])
         .expect("valid cookies")
         .with_loopback_for_test(true);
@@ -1544,9 +1569,9 @@ mod tests {
             .enable_all()
             .build()
             .expect("tokio runtime");
-        let err = rt
-            .block_on(wc.step1_register())
-            .expect_err("register without COMPASS Set-Cookie must fail closed (no gsession_default fallback)");
+        let err = rt.block_on(wc.step1_register()).expect_err(
+            "register without COMPASS Set-Cookie must fail closed (no gsession_default fallback)",
+        );
         server_thread.join().expect("server thread finished");
         assert!(
             matches!(err, GChatError::Protocol(_)),

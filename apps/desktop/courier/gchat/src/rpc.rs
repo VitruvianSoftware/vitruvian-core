@@ -692,9 +692,18 @@ mod tests {
     #[test]
     fn test_retry_after_clamped_to_60_seconds_per_spec() {
         assert_eq!(parse_retry_after_clamped("0"), Some(Duration::from_secs(0)));
-        assert_eq!(parse_retry_after_clamped("45"), Some(Duration::from_secs(45)));
-        assert_eq!(parse_retry_after_clamped("60"), Some(Duration::from_secs(60)));
-        assert_eq!(parse_retry_after_clamped("120"), Some(Duration::from_secs(60)));
+        assert_eq!(
+            parse_retry_after_clamped("45"),
+            Some(Duration::from_secs(45))
+        );
+        assert_eq!(
+            parse_retry_after_clamped("60"),
+            Some(Duration::from_secs(60))
+        );
+        assert_eq!(
+            parse_retry_after_clamped("120"),
+            Some(Duration::from_secs(60))
+        );
     }
 
     #[test]

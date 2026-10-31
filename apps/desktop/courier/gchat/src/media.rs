@@ -30,7 +30,8 @@ fn decode_upload_metadata(raw: &[u8]) -> Result<pb::UploadMetadata, GChatError> 
         .or_else(|_| base64::engine::general_purpose::STANDARD_NO_PAD.decode(&cleaned))
         .unwrap_or_else(|_| raw.to_vec());
 
-    if let Ok(wrapped) = pb::ComGoogleRtcMeetingsV1UploadMetadata::decode(decoded_bytes.as_slice()) {
+    if let Ok(wrapped) = pb::ComGoogleRtcMeetingsV1UploadMetadata::decode(decoded_bytes.as_slice())
+    {
         if let Some(inner) = wrapped.upload_metadata {
             if inner.payload.is_some()
                 || inner.content_name.is_some()

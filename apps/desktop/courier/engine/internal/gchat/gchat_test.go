@@ -3079,7 +3079,8 @@ func TestMultiAttachmentInboundUsesZeroPaddedPartIDsAndOutboundUploadsViaScotty(
 	// strips cookies on CDN hop, stores in media.Store, and emits zero-padded PartIDs "att_0000" and "att_0001".
 	spaceGID := pb.SpaceGroupID("space_threaded")
 	inMsg := buildSyntheticMessageProto(spaceGID, "topic_in_med", "msg_in_med_1", "112233445566778899002", "Here are two files", 1710000900000000, "", 0, 0)
-	inMsg.Annotations = append(inMsg.Annotations,
+	inMsg.Annotations = append(
+		inMsg.Annotations,
 		buildUploadMetadataAnnotationProto(0, 0, "in_tok_0", "chart.png", "image/png"),
 		buildUploadMetadataAnnotationProto(0, 0, "in_tok_1", "report.pdf", "application/pdf"),
 	)
@@ -3161,7 +3162,8 @@ func TestInboundAttachmentFailureAndHTMLBecomePlaceholdersWithoutAbortingBatchAn
 			spaceGID := pb.SpaceGroupID("space_threaded")
 			// Message 1: text + failed attachment (att_0000) + text/html attachment (att_0001) + Message.attachments field 15 (att_0002)
 			msg1 := buildSyntheticMessageProto(spaceGID, "topic_b1", "msg_b1", "112233445566778899002", "First message in batch", 1710000910000000, "", 0, 0)
-			msg1.Annotations = append(msg1.Annotations,
+			msg1.Annotations = append(
+				msg1.Annotations,
 				buildUploadMetadataAnnotationProto(0, 0, "tok_fail_500", "broken.bin", "application/octet-stream"),
 				buildUploadMetadataAnnotationProto(0, 0, "tok_html_page", "login.html", "application/octet-stream"),
 			)
@@ -4323,9 +4325,9 @@ func TestCatchUpPaginatedFollowsMultiplePagesForUserAndGroup(t *testing.T) {
 	ctx := context.Background()
 
 	var (
-		mu             sync.Mutex
-		userReqsFrom   []int64
-		groupReqsFrom  []int64
+		mu            sync.Mutex
+		userReqsFrom  []int64
+		groupReqsFrom []int64
 	)
 
 	h, ul, client := setupLoggedInGChatTestEnv(t, func(w http.ResponseWriter, r *http.Request) {

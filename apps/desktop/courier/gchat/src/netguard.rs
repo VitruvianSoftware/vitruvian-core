@@ -733,7 +733,8 @@ mod tests {
     }
 
     #[test]
-    fn test_is_host_allowed_enforces_subdomain_suffix_and_rejects_punycode_and_arbitrary_google_com() {
+    fn test_is_host_allowed_enforces_subdomain_suffix_and_rejects_punycode_and_arbitrary_google_com(
+    ) {
         let guard = NetGuard::production();
         assert!(guard.is_host_allowed("lh3.googleusercontent.com", true));
         assert!(guard.is_host_allowed("yt3.ggpht.com", true));
