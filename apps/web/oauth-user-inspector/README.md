@@ -85,7 +85,7 @@ https://oauth-inspector.ipv1337.dev/
 > - <https://console.cloud.google.com/apis/library/siteverification.googleapis.com?project=prj-n-bu1-oss-floating-630b>
 > - <https://console.cloud.google.com/apis/library/siteverification.googleapis.com?project=prj-p-bu1-oss-floating-16e0>
 >
-> Details: [`tools/ci/ensure-site-verification.sh`](../../../tools/ci/ensure-site-verification.sh).
+> Details: [`//tools/ci:ensure_site_verification`](../../../tools/ci/src/ensure_site_verification/lib.rs).
 
 OAuth providers match `redirect_uri` **exactly** (the trailing slash is
 significant), so every hosted provider application must have that precise string

@@ -193,7 +193,7 @@ Keep the three homes straight; never commit a secret, not even Pulumi-encrypted.
       > (`.../siteverification.googleapis.com?project=<PROJECT_ID>`) — it cannot always be
       > enabled via `serviceusage`/IaC. **Do not assume it is blocked; run the check.**
       > Reporting this as a manual blocker without checking cost a whole cycle on tabula.
-      > Per-env ownership is self-verified in CI (`tools/ci/ensure-site-verification.sh`).
+      > Per-env ownership is self-verified in CI (`//tools/ci:ensure_site_verification`).
 
 ---
 

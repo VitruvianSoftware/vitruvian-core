@@ -91,6 +91,34 @@ pub fn err(b: &[u8]) {
     let _ = io::stderr().lock().write_all(b);
 }
 
+/// Run from where the caller ran `bazel run`, as the script did from its cwd.
+///
+/// `bazel run` starts a binary inside its runfiles tree, so without this a
+/// port that reads repo files, runs git or takes relative paths would act on
+/// the runfiles tree instead of the checkout. Bazel names the caller's
+/// directory in BUILD_WORKING_DIRECTORY; a binary run directly has none and
+/// stays where it is. The variable is then dropped, so a child (another port
+/// started with its own cwd) is not pulled back here. Returns 1, after the
+/// shell's message, when the directory cannot be entered.
+pub fn enter_bazel_run_cwd(prog: &str) -> i32 {
+    let Some(dir) = env("BUILD_WORKING_DIRECTORY").filter(|d| !d.is_empty()) else {
+        return 0;
+    };
+    if let Err(e) = std::env::set_current_dir(path(&dir)) {
+        err(&cat(&[
+            prog.as_bytes(),
+            b": cd: ",
+            &dir,
+            b": ",
+            strerror(&e).as_bytes(),
+            b"\n",
+        ]));
+        return 1;
+    }
+    std::env::remove_var("BUILD_WORKING_DIRECTORY");
+    0
+}
+
 /// Concatenate byte-ish pieces: `cat(&[b"a", name, b"\n"])`.
 pub fn cat(parts: &[&[u8]]) -> Vec<u8> {
     let mut v = Vec::new();
@@ -891,6 +919,39 @@ pub fn args() -> Vec<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // The only test here that touches the process cwd and environment.
+    #[test]
+    fn enter_bazel_run_cwd_moves_to_the_callers_dir_once() {
+        let start = std::env::current_dir().unwrap();
+        let target = fs::canonicalize(std::env::temp_dir()).unwrap();
+        std::env::remove_var("BUILD_WORKING_DIRECTORY");
+        assert_eq!(enter_bazel_run_cwd("t"), 0);
+        assert_eq!(
+            std::env::current_dir().unwrap(),
+            start,
+            "no variable: stay put"
+        );
+
+        std::env::set_var("BUILD_WORKING_DIRECTORY", &target);
+        assert_eq!(enter_bazel_run_cwd("t"), 0);
+        assert_eq!(
+            fs::canonicalize(std::env::current_dir().unwrap()).unwrap(),
+            target
+        );
+        assert!(
+            std::env::var_os("BUILD_WORKING_DIRECTORY").is_none(),
+            "children must not inherit it"
+        );
+
+        std::env::set_var(
+            "BUILD_WORKING_DIRECTORY",
+            "/nonexistent/enter-bazel-run-cwd",
+        );
+        assert_eq!(enter_bazel_run_cwd("t"), 1);
+        std::env::remove_var("BUILD_WORKING_DIRECTORY");
+        std::env::set_current_dir(start).unwrap();
+    }
 
     #[test]
     fn subst_strips_every_trailing_newline_and_nul() {

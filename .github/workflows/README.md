@@ -120,7 +120,7 @@ that PR, as the App, at the commit it just pushed (`--match-head-commit`), so
 the queue merges it on green CI. Before 2026-10-18 nothing armed them, and they
 sat open for hours with green checks.
 
-`tools/ci/site-pr-automerge.sh` does the arming, tested by
+`//tools/ci:site_pr_automerge` does the arming, tested by
 `//tools/ci:site_pr_automerge_test`. It turns auto-merge off before each push
 and arms again only at the new commit. It does not arm a PR labelled
 `do-not-automerge` or `needs-human`, or a draft; it never adds or removes those
