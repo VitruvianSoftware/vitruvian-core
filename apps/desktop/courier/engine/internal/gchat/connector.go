@@ -123,8 +123,24 @@ func defaultRoomCapabilities(portal *bridgev2.Portal) *event.RoomFeatures {
 	const maxUploadSize = 200 * 1024 * 1024
 	const maxTextLen = 4096
 
+	var stateCaps event.StateFeatureMap
+	var memberActions event.MemberFeatureMap
+	if !isDM {
+		stateCaps = event.StateFeatureMap{
+			event.StateRoomName.Type: {Level: event.CapLevelFullySupported},
+			event.StateTopic.Type:    {Level: event.CapLevelFullySupported},
+		}
+		memberActions = event.MemberFeatureMap{
+			event.MemberActionInvite: event.CapLevelFullySupported,
+			event.MemberActionKick:   event.CapLevelFullySupported,
+			event.MemberActionLeave:  event.CapLevelFullySupported,
+		}
+	}
+
 	return &event.RoomFeatures{
 		MaxTextLength: maxTextLen,
+		State:         stateCaps,
+		MemberActions: memberActions,
 		Formatting: event.FormattingFeatureMap{
 			event.FmtBold:                event.CapLevelFullySupported,
 			event.FmtItalic:              event.CapLevelFullySupported,
@@ -198,11 +214,19 @@ func defaultRoomCapabilities(portal *bridgev2.Portal) *event.RoomFeatures {
 		Reaction:            event.CapLevelFullySupported,
 		ReadReceipts:        true,
 		TypingNotifications: true,
+		DeleteChat:          isDM,
 	}
 }
 
 func (c *Connector) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
-	return &bridgev2.NetworkGeneralCapabilities{}
+	return &bridgev2.NetworkGeneralCapabilities{
+		Provisioning: bridgev2.ProvisioningCapabilities{
+			ResolveIdentifier: bridgev2.ResolveIdentifierCapabilities{
+				CreateDM:    true,
+				LookupEmail: true,
+			},
+		},
+	}
 }
 
 func (c *Connector) GetBridgeInfoVersion() (info, capabilities int) {

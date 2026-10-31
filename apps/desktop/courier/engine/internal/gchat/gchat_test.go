@@ -1751,6 +1751,7 @@ func TestOutboundMentionsAtRoomAndAtAllInSpaceAndDM(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NotNil(t, spacePortal)
+	require.NoError(t, spacePortal.CreateMatrixRoom(ctx, ul, nil))
 
 	dmPortal, err := h.Bridge.GetExistingPortalByKey(ctx, networkid.PortalKey{
 		ID:       MakeDMPortalID("dm_alpha"),
@@ -1758,6 +1759,7 @@ func TestOutboundMentionsAtRoomAndAtAllInSpaceAndDM(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NotNil(t, dmPortal)
+	require.NoError(t, dmPortal.CreateMatrixRoom(ctx, ul, nil))
 
 	// 1. Plain-text @room and @all in a Space -> rewritten to @all with USER_MENTION (MENTION_ALL = 4) annotations
 	plainSpaceResp, err := client.HandleMatrixMessage(ctx, &bridgev2.MatrixMessage{
@@ -2166,6 +2168,12 @@ func TestAdvertisedCapabilitiesAllHaveWorkingHandlers(t *testing.T) {
 		reactionReqs    [][]byte
 		readStateReqs   [][]byte
 		typingReqs      [][]byte
+		createDMReqs    [][]byte
+		getGroupReqs    [][]byte
+		updateGroupReqs [][]byte
+		createMemReqs   [][]byte
+		removeMemReqs   [][]byte
+		hideGroupReqs   [][]byte
 	)
 
 	h, ul, client := setupLoggedInGChatTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
@@ -2174,6 +2182,52 @@ func TestAdvertisedCapabilitiesAllHaveWorkingHandlers(t *testing.T) {
 		switch r.URL.Path {
 		case "/u/0/api/paginated_world":
 			_, _ = w.Write(buildSendTestPaginatedWorldResponse())
+		case "/u/0/api/create_dm":
+			mu.Lock()
+			createDMReqs = append(createDMReqs, body)
+			mu.Unlock()
+			var dmGroup []byte
+			dmGroup = append(dmGroup, encodeBytesField(1, encodeDMGroupID("dm_cap_created"))...)
+			var mem []byte
+			var memID []byte
+			memID = append(memID, encodeBytesField(1, encodeBytesField(1, encodeStringField(1, "112233445566778899002")))...)
+			mem = append(mem, encodeBytesField(1, memID)...)
+			var resp []byte
+			resp = append(resp, encodeBytesField(1, dmGroup)...)
+			resp = append(resp, encodeBytesField(4, mem)...)
+			_, _ = w.Write(resp)
+		case "/u/0/api/get_group":
+			mu.Lock()
+			getGroupReqs = append(getGroupReqs, body)
+			mu.Unlock()
+			var details []byte
+			details = append(details, encodeStringField(1, "Old description")...)
+			details = append(details, encodeStringField(2, "Keep guidelines intact")...)
+			var grp []byte
+			grp = append(grp, encodeBytesField(1, encodeSpaceGroupID("space_threaded"))...)
+			grp = append(grp, encodeStringField(4, "Threaded Eng")...)
+			grp = append(grp, encodeBytesField(37, details)...)
+			_, _ = w.Write(encodeBytesField(1, grp))
+		case "/u/0/api/update_group":
+			mu.Lock()
+			updateGroupReqs = append(updateGroupReqs, body)
+			mu.Unlock()
+			_, _ = w.Write(encodeBytesField(2, encodeVarintField(1, 610)))
+		case "/u/0/api/create_membership":
+			mu.Lock()
+			createMemReqs = append(createMemReqs, body)
+			mu.Unlock()
+			_, _ = w.Write(encodeBytesField(2, encodeVarintField(1, 611)))
+		case "/u/0/api/remove_memberships":
+			mu.Lock()
+			removeMemReqs = append(removeMemReqs, body)
+			mu.Unlock()
+			_, _ = w.Write(encodeBytesField(3, encodeVarintField(1, 612)))
+		case "/u/0/api/hide_group":
+			mu.Lock()
+			hideGroupReqs = append(hideGroupReqs, body)
+			mu.Unlock()
+			_, _ = w.Write(encodeBytesField(2, encodeVarintField(1, 613)))
 		case "/u/0/api/create_topic":
 			mu.Lock()
 			createTopicReqs = append(createTopicReqs, body)
@@ -2245,29 +2299,167 @@ func TestAdvertisedCapabilitiesAllHaveWorkingHandlers(t *testing.T) {
 
 	var api bridgev2.NetworkAPI = client
 
-	// 1. Walk NetworkGeneralCapabilities: no unimplemented provisioning or group-creation capabilities may be advertised.
+	// 1. Walk NetworkGeneralCapabilities: ResolveIdentifier (CreateDM + LookupEmail) is advertised and wired; GroupCreation stays empty (Owner Decision spec §13).
 	genCaps := client.Main.GetCapabilities()
 	require.NotNil(t, genCaps)
+	require.True(t, genCaps.Provisioning.ResolveIdentifier.CreateDM, "ResolveIdentifier.CreateDM must be advertised")
+	require.True(t, genCaps.Provisioning.ResolveIdentifier.LookupEmail, "ResolveIdentifier.LookupEmail must be advertised")
+	require.Empty(t, genCaps.Provisioning.GroupCreation, "GroupCreation must remain hidden per spec §13")
 	if genCaps.Provisioning.ResolveIdentifier.CreateDM || genCaps.Provisioning.ResolveIdentifier.LookupEmail || genCaps.Provisioning.ResolveIdentifier.LookupPhone || genCaps.Provisioning.ResolveIdentifier.LookupUsername {
-		_, ok := api.(bridgev2.IdentifierResolvingNetworkAPI)
+		resAPI, ok := api.(bridgev2.IdentifierResolvingNetworkAPI)
 		require.True(t, ok, "ResolveIdentifier advertised without IdentifierResolvingNetworkAPI")
-	}
-	if len(genCaps.Provisioning.GroupCreation) > 0 {
-		_, ok := api.(bridgev2.GroupCreatingNetworkAPI)
-		require.True(t, ok, "GroupCreation advertised without GroupCreatingNetworkAPI")
+		mu.Lock()
+		beforeDM := len(createDMReqs)
+		mu.Unlock()
+		dmResp, err := resAPI.ResolveIdentifier(ctx, "bob@example.com", true)
+		require.NoError(t, err)
+		require.NotNil(t, dmResp)
+		require.NotNil(t, dmResp.Chat)
+		mu.Lock()
+		require.Equal(t, beforeDM+1, len(createDMReqs), "ResolveIdentifier(startChat=true) must reach create_dm on fake server")
+		mu.Unlock()
 	}
 
-	// 2. Walk every capability in RoomFeatures on the synced threaded space and invoke its handler against the fake server.
+	dmPortal, err := h.Bridge.GetExistingPortalByKey(ctx, networkid.PortalKey{
+		ID:       MakeDMPortalID("dm_alpha"),
+		Receiver: ul.ID,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, dmPortal)
+
+	// 2. Walk every capability in RoomFeatures on the synced threaded space and DM and invoke its handler against the fake server.
 	caps := client.GetCapabilities(ctx, threadedSpace)
 	require.NotNil(t, caps)
+	dmCaps := client.GetCapabilities(ctx, dmPortal)
+	require.NotNil(t, dmCaps)
 
 	// Unimplemented capabilities must NOT be advertised.
 	require.False(t, caps.Poll.Partial(), "Poll must not be advertised without PollHandlingNetworkAPI")
 	require.Nil(t, caps.DisappearingTimer, "DisappearingTimer must not be advertised without DisappearTimerChangingNetworkAPI")
 	require.False(t, caps.LocationMessage.Partial(), "LocationMessage must not be advertised without location handler")
-	require.False(t, caps.DeleteChat, "DeleteChat must not be advertised without DeleteChatHandlingNetworkAPI")
-	require.Empty(t, caps.MemberActions, "MemberActions must not be advertised without MembershipHandlingNetworkAPI")
-	require.Empty(t, caps.State, "State capabilities must not be advertised without RoomName/RoomTopic/RoomAvatar handlers")
+	require.False(t, caps.DeleteChat, "DeleteChat must be false on Spaces (hide_group only hides DMs)")
+	require.True(t, dmCaps.DeleteChat, "DeleteChat must be true on DMs (hide_group)")
+
+	// Walk State capabilities on Space (m.room.name and m.room.topic)
+	require.NotEmpty(t, caps.State, "State capabilities must be advertised on Spaces")
+	if nameCap, ok := caps.State[event.StateRoomName.Type]; ok && nameCap.Level.Partial() {
+		nameAPI, ok := api.(bridgev2.RoomNameHandlingNetworkAPI)
+		require.True(t, ok, "StateRoomName advertised without RoomNameHandlingNetworkAPI")
+		mu.Lock()
+		beforeUpd := len(updateGroupReqs)
+		mu.Unlock()
+		changed, err := nameAPI.HandleMatrixRoomName(ctx, &bridgev2.MatrixRoomName{
+			MatrixEventBase: bridgev2.MatrixEventBase[*event.RoomNameEventContent]{
+				Portal:  threadedSpace,
+				Content: &event.RoomNameEventContent{Name: "Cap Space Name"},
+			},
+		})
+		require.NoError(t, err)
+		require.True(t, changed)
+		mu.Lock()
+		require.Equal(t, beforeUpd+1, len(updateGroupReqs), "StateRoomName must reach update_group on fake server")
+		mu.Unlock()
+	}
+	if topicCap, ok := caps.State[event.StateTopic.Type]; ok && topicCap.Level.Partial() {
+		topicAPI, ok := api.(bridgev2.RoomTopicHandlingNetworkAPI)
+		require.True(t, ok, "StateTopic advertised without RoomTopicHandlingNetworkAPI")
+		mu.Lock()
+		beforeGet := len(getGroupReqs)
+		beforeUpd := len(updateGroupReqs)
+		mu.Unlock()
+		changed, err := topicAPI.HandleMatrixRoomTopic(ctx, &bridgev2.MatrixRoomTopic{
+			MatrixEventBase: bridgev2.MatrixEventBase[*event.TopicEventContent]{
+				Portal:  threadedSpace,
+				Content: &event.TopicEventContent{Topic: "Cap Space Topic"},
+			},
+		})
+		require.NoError(t, err)
+		require.True(t, changed)
+		mu.Lock()
+		require.Equal(t, beforeGet+1, len(getGroupReqs), "StateTopic must call get_group first")
+		require.Equal(t, beforeUpd+1, len(updateGroupReqs), "StateTopic must reach update_group on fake server")
+		mu.Unlock()
+	}
+
+	// Walk MemberActions on Space (Invite, Kick, Leave)
+	require.NotEmpty(t, caps.MemberActions, "MemberActions must be advertised on Spaces")
+	memAPI, ok := api.(bridgev2.MembershipHandlingNetworkAPI)
+	require.True(t, ok, "MemberActions advertised without MembershipHandlingNetworkAPI")
+	targetGhost, err := h.Bridge.GetGhostByID(ctx, MakeUserID("112233445566778899002"))
+	require.NoError(t, err)
+	if caps.MemberActions[event.MemberActionInvite].Partial() {
+		mu.Lock()
+		before := len(createMemReqs)
+		mu.Unlock()
+		_, err := memAPI.HandleMatrixMembership(ctx, &bridgev2.MatrixMembershipChange{
+			MatrixRoomMeta: bridgev2.MatrixRoomMeta[*event.MemberEventContent]{
+				MatrixEventBase: bridgev2.MatrixEventBase[*event.MemberEventContent]{
+					Portal:  threadedSpace,
+					Content: &event.MemberEventContent{Membership: event.MembershipInvite},
+				},
+			},
+			Target: targetGhost,
+			Type:   bridgev2.Invite,
+		})
+		require.NoError(t, err)
+		mu.Lock()
+		require.Equal(t, before+1, len(createMemReqs), "MemberActionInvite must reach create_membership on fake server")
+		mu.Unlock()
+	}
+	if caps.MemberActions[event.MemberActionKick].Partial() {
+		mu.Lock()
+		before := len(removeMemReqs)
+		mu.Unlock()
+		_, err := memAPI.HandleMatrixMembership(ctx, &bridgev2.MatrixMembershipChange{
+			MatrixRoomMeta: bridgev2.MatrixRoomMeta[*event.MemberEventContent]{
+				MatrixEventBase: bridgev2.MatrixEventBase[*event.MemberEventContent]{
+					Portal:  threadedSpace,
+					Content: &event.MemberEventContent{Membership: event.MembershipLeave},
+				},
+			},
+			Target: targetGhost,
+			Type:   bridgev2.Kick,
+		})
+		require.NoError(t, err)
+		mu.Lock()
+		require.Equal(t, before+1, len(removeMemReqs), "MemberActionKick must reach remove_memberships on fake server")
+		mu.Unlock()
+	}
+	if caps.MemberActions[event.MemberActionLeave].Partial() {
+		mu.Lock()
+		before := len(removeMemReqs)
+		mu.Unlock()
+		_, err := memAPI.HandleMatrixMembership(ctx, &bridgev2.MatrixMembershipChange{
+			MatrixRoomMeta: bridgev2.MatrixRoomMeta[*event.MemberEventContent]{
+				MatrixEventBase: bridgev2.MatrixEventBase[*event.MemberEventContent]{
+					Portal:  threadedSpace,
+					Content: &event.MemberEventContent{Membership: event.MembershipLeave},
+				},
+			},
+			Target: ul,
+			Type:   bridgev2.Leave,
+		})
+		require.NoError(t, err)
+		mu.Lock()
+		require.Equal(t, before+1, len(removeMemReqs), "MemberActionLeave must reach remove_memberships on fake server")
+		mu.Unlock()
+	}
+
+	// Walk DeleteChat on DM
+	if dmCaps.DeleteChat {
+		delChatAPI, ok := api.(bridgev2.DeleteChatHandlingNetworkAPI)
+		require.True(t, ok, "DeleteChat advertised without DeleteChatHandlingNetworkAPI")
+		mu.Lock()
+		before := len(hideGroupReqs)
+		mu.Unlock()
+		require.NoError(t, delChatAPI.HandleMatrixDeleteChat(ctx, &bridgev2.MatrixDeleteChat{
+			Portal:  dmPortal,
+			Content: &event.BeeperChatDeleteEventContent{},
+		}))
+		mu.Lock()
+		require.Equal(t, before+1, len(hideGroupReqs), "DeleteChat on DM must reach hide_group on fake server")
+		mu.Unlock()
+	}
 
 	// Walk every advertised Formatting capability and verify it reaches the fake server via HandleMatrixMessage.
 	formattingSamples := map[event.FormattingFeature]string{
@@ -2678,6 +2870,7 @@ func TestMultiAttachmentInboundUsesZeroPaddedPartIDsAndOutboundUploadsViaScotty(
 	})
 	require.NoError(t, err)
 	require.NotNil(t, spacePortal)
+	require.NoError(t, spacePortal.CreateMatrixRoom(ctx, ul, nil))
 
 	dmPortal, err := h.Bridge.GetExistingPortalByKey(ctx, networkid.PortalKey{
 		ID:       MakeDMPortalID("dm_alpha"),
@@ -2685,6 +2878,7 @@ func TestMultiAttachmentInboundUsesZeroPaddedPartIDsAndOutboundUploadsViaScotty(
 	})
 	require.NoError(t, err)
 	require.NotNil(t, dmPortal)
+	require.NoError(t, dmPortal.CreateMatrixRoom(ctx, ul, nil))
 
 	countBlobs := func() int {
 		var n int
@@ -3035,4 +3229,603 @@ func TestInboundAttachmentFailureAndHTMLBecomePlaceholdersWithoutAbortingBatchAn
 	require.Len(t, preConv0.Data.Parts, 2)
 	require.Equal(t, networkid.PartID("att_0000"), preConv0.Data.Parts[1].ID)
 	require.Equal(t, event.MsgNotice, preConv0.Data.Parts[1].Content.MsgType)
+}
+
+func TestResolveIdentifierAndCreateDMByGaiaIDOrEmail(t *testing.T) {
+	ctx := context.Background()
+	var (
+		mu             sync.Mutex
+		createDMReqs   [][]byte
+		getMembersReqs [][]byte
+	)
+
+	h, ul, client := setupLoggedInGChatTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/x-protobuf")
+		switch r.URL.Path {
+		case "/u/0/api/paginated_world":
+			_, _ = w.Write(buildSendTestPaginatedWorldResponse())
+		case "/u/0/api/get_members":
+			mu.Lock()
+			getMembersReqs = append(getMembersReqs, body)
+			mu.Unlock()
+			if strings.Contains(string(body), "112233445566778899001") {
+				_, _ = w.Write(buildSyntheticGetMembersResponse(
+					"112233445566778899001",
+					"Ada Lovelace",
+					"ada@example.com",
+					"https://example.invalid/avatar/ada.png",
+				))
+				return
+			}
+			_, _ = w.Write(buildSyntheticGetMembersResponse(
+				"112233445566778899002",
+				"Bob Example",
+				"bob@example.com",
+				"https://example.invalid/avatar/bob.png",
+			))
+		case "/u/0/api/create_dm":
+			mu.Lock()
+			createDMReqs = append(createDMReqs, body)
+			idx := len(createDMReqs)
+			mu.Unlock()
+
+			dmID := fmt.Sprintf("dm_created_%d", idx)
+			var dmGroup []byte
+			dmGroup = append(dmGroup, encodeBytesField(1, encodeDMGroupID(dmID))...)
+
+			var memSelf, memOther []byte
+			memSelf = append(memSelf, encodeBytesField(1, encodeBytesField(1, encodeBytesField(1, encodeStringField(1, "112233445566778899001"))))...)
+			memOther = append(memOther, encodeBytesField(1, encodeBytesField(1, encodeBytesField(1, encodeStringField(1, "112233445566778899002"))))...)
+
+			var resp []byte
+			resp = append(resp, encodeBytesField(1, dmGroup)...)
+			resp = append(resp, encodeBytesField(4, memSelf)...)
+			resp = append(resp, encodeBytesField(4, memOther)...)
+			_, _ = w.Write(resp)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	require.NoError(t, client.syncWorld(ctx))
+
+	var api bridgev2.NetworkAPI = client
+	resAPI, ok := api.(bridgev2.IdentifierResolvingNetworkAPI)
+	require.True(t, ok, "Client must implement IdentifierResolvingNetworkAPI")
+	ghostDMAPI, ok := api.(bridgev2.GhostDMCreatingNetworkAPI)
+	require.True(t, ok, "Client must implement GhostDMCreatingNetworkAPI")
+
+	// 1. Start a DM by email -> POST /u/0/api/create_dm with Invitees (field 7 -> InviteeInfo { email (field 2): "bob@example.com" })
+	emailResp, err := resAPI.ResolveIdentifier(ctx, "bob@example.com", true)
+	require.NoError(t, err)
+	require.NotNil(t, emailResp)
+	require.Equal(t, MakeUserID("112233445566778899002"), emailResp.UserID)
+	require.NotNil(t, emailResp.Chat)
+	require.Equal(t, MakeDMPortalID("dm_created_1"), emailResp.Chat.PortalKey.ID)
+	require.Equal(t, ul.ID, emailResp.Chat.PortalKey.Receiver)
+	require.NotNil(t, emailResp.Chat.PortalInfo)
+	require.Equal(t, database.RoomTypeDM, *emailResp.Chat.PortalInfo.Type)
+
+	mu.Lock()
+	require.Len(t, createDMReqs, 1)
+	emailDMFields := parseProtoFields(createDMReqs[0])
+	mu.Unlock()
+	inviteeFields := parseProtoFields(firstFieldBytes(emailDMFields, 7)) // CreateDmRequest.invitees = 7
+	require.Equal(t, "bob@example.com", firstFieldString(inviteeFields, 2), "CreateDmRequest.invitees[0].email must match target email")
+	require.Empty(t, emailDMFields[1], "email create_dm must use invitees (field 7), not members (field 1)")
+
+	// 2. Start a DM by Gaia ID -> POST /u/0/api/create_dm with Members (field 1 -> UserId { id (field 1): "112233445566778899002", type (field 2): 0 })
+	gaiaResp, err := resAPI.ResolveIdentifier(ctx, "112233445566778899002", true)
+	require.NoError(t, err)
+	require.NotNil(t, gaiaResp)
+	require.Equal(t, MakeUserID("112233445566778899002"), gaiaResp.UserID)
+	require.NotNil(t, gaiaResp.Chat)
+	require.Equal(t, MakeDMPortalID("dm_created_2"), gaiaResp.Chat.PortalKey.ID)
+
+	mu.Lock()
+	require.Len(t, createDMReqs, 2)
+	gaiaDMFields := parseProtoFields(createDMReqs[1])
+	mu.Unlock()
+	memberUserFields := parseProtoFields(firstFieldBytes(gaiaDMFields, 1)) // CreateDmRequest.members = 1
+	require.Equal(t, "112233445566778899002", firstFieldString(memberUserFields, 1), "CreateDmRequest.members[0].id must match Gaia ID")
+	require.Empty(t, gaiaDMFields[7], "Gaia ID create_dm must use members (field 1), not invitees (field 7)")
+
+	// 3. CreateChatWithGhost (Reply Privately) -> POST /u/0/api/create_dm with Members
+	ghost, err := h.Bridge.GetGhostByID(ctx, MakeUserID("112233445566778899002"))
+	require.NoError(t, err)
+	ghostChatResp, err := ghostDMAPI.CreateChatWithGhost(ctx, ghost)
+	require.NoError(t, err)
+	require.NotNil(t, ghostChatResp)
+	require.Equal(t, MakeDMPortalID("dm_created_3"), ghostChatResp.PortalKey.ID)
+
+	// 4. ResolveIdentifier with startChat=false by Gaia ID -> looks up user via get_members without calling create_dm
+	mu.Lock()
+	beforeDMCount := len(createDMReqs)
+	mu.Unlock()
+	lookupResp, err := resAPI.ResolveIdentifier(ctx, "112233445566778899002", false)
+	require.NoError(t, err)
+	require.NotNil(t, lookupResp)
+	require.Equal(t, MakeUserID("112233445566778899002"), lookupResp.UserID)
+	require.Nil(t, lookupResp.Chat)
+	mu.Lock()
+	require.Len(t, createDMReqs, beforeDMCount, "ResolveIdentifier(startChat=false) must not call create_dm")
+	mu.Unlock()
+}
+
+func TestSetChatNameAndSetChatTopicPreservesSpaceGuidelines(t *testing.T) {
+	ctx := context.Background()
+	var (
+		mu              sync.Mutex
+		getGroupReqs    [][]byte
+		updateGroupReqs [][]byte
+		failGetGroup    atomic.Bool
+	)
+
+	h, ul, client := setupLoggedInGChatTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/x-protobuf")
+		switch r.URL.Path {
+		case "/u/0/api/paginated_world":
+			_, _ = w.Write(buildSendTestPaginatedWorldResponse())
+		case "/u/0/api/get_group":
+			mu.Lock()
+			getGroupReqs = append(getGroupReqs, body)
+			mu.Unlock()
+			if failGetGroup.Load() {
+				http.Error(w, "upstream get_group failure", http.StatusInternalServerError)
+				return
+			}
+			var details []byte
+			details = append(details, encodeStringField(1, "Initial space description")...)
+			details = append(details, encodeStringField(2, "Be respectful and keep threads focused.")...)
+			var grp []byte
+			grp = append(grp, encodeBytesField(1, encodeSpaceGroupID("space_threaded"))...)
+			grp = append(grp, encodeStringField(4, "Threaded Eng")...)
+			grp = append(grp, encodeBytesField(37, details)...) // Group.group_details = 37
+			_, _ = w.Write(encodeBytesField(1, grp))
+		case "/u/0/api/update_group":
+			mu.Lock()
+			updateGroupReqs = append(updateGroupReqs, body)
+			idx := len(updateGroupReqs)
+			mu.Unlock()
+			_, _ = w.Write(encodeBytesField(2, encodeVarintField(1, uint64(800+idx)))) // UpdateGroupResponse.group_revision = 2
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	require.NoError(t, client.syncWorld(ctx))
+
+	spacePortal, err := h.Bridge.GetExistingPortalByKey(ctx, networkid.PortalKey{
+		ID:       MakeSpacePortalID("space_threaded"),
+		Receiver: ul.ID,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, spacePortal)
+	require.NoError(t, spacePortal.CreateMatrixRoom(ctx, ul, nil))
+
+	dmPortal, err := h.Bridge.GetExistingPortalByKey(ctx, networkid.PortalKey{
+		ID:       MakeDMPortalID("dm_alpha"),
+		Receiver: ul.ID,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, dmPortal)
+	require.NoError(t, dmPortal.CreateMatrixRoom(ctx, ul, nil))
+
+	// 1. End-to-end rename Space through bridgev2 QueueMatrixEvent on synced portal -> POST /u/0/api/update_group
+	emptyKey := ""
+	nameRes := spacePortal.Bridge.QueueMatrixEvent(ctx, &event.Event{
+		ID:        "$rename_space_1",
+		RoomID:    spacePortal.MXID,
+		Sender:    "@me:courier.local",
+		Type:      event.StateRoomName,
+		StateKey:  &emptyKey,
+		Timestamp: 1710000800001,
+		Content: event.Content{
+			Parsed: &event.RoomNameEventContent{Name: "Core Platform Space"},
+		},
+	})
+	require.True(t, nameRes.Success, "QueueMatrixEvent(StateRoomName) must succeed: %v", nameRes.Error)
+
+	mu.Lock()
+	require.Len(t, updateGroupReqs, 1)
+	renameFields := parseProtoFields(updateGroupReqs[0])
+	mu.Unlock()
+	spaceIDFields := parseProtoFields(firstFieldBytes(renameFields, 1)) // UpdateGroupRequest.space_id = 1
+	require.Equal(t, "space_threaded", firstFieldString(spaceIDFields, 1))
+	require.Equal(t, "Core Platform Space", firstFieldString(renameFields, 2), "UpdateGroupRequest.name = 2")
+	require.Equal(t, uint64(1), firstFieldVarint(renameFields, 4), "UpdateGroupRequest.update_masks = UpdateMask_NAME (1)")
+
+	// 2. End-to-end change Space topic through bridgev2 QueueMatrixEvent -> calls get_group first, preserves guidelines, then calls update_group
+	topicRes := spacePortal.Bridge.QueueMatrixEvent(ctx, &event.Event{
+		ID:        "$topic_space_1",
+		RoomID:    spacePortal.MXID,
+		Sender:    "@me:courier.local",
+		Type:      event.StateTopic,
+		StateKey:  &emptyKey,
+		Timestamp: 1710000800002,
+		Content: event.Content{
+			Parsed: &event.TopicEventContent{Topic: "Updated platform description"},
+		},
+	})
+	require.True(t, topicRes.Success, "QueueMatrixEvent(StateTopic) must succeed: %v", topicRes.Error)
+
+	mu.Lock()
+	require.Len(t, getGroupReqs, 1, "changing topic must fetch existing group via get_group first")
+	require.Len(t, updateGroupReqs, 2)
+	getGrpFields := parseProtoFields(getGroupReqs[0])
+	topicUpdFields := parseProtoFields(updateGroupReqs[1])
+	mu.Unlock()
+
+	getGrpID := parseProtoFields(firstFieldBytes(getGrpFields, 1))
+	getSpaceID := parseProtoFields(firstFieldBytes(getGrpID, 1))
+	require.Equal(t, "space_threaded", firstFieldString(getSpaceID, 1))
+
+	updSpaceID := parseProtoFields(firstFieldBytes(topicUpdFields, 1))
+	require.Equal(t, "space_threaded", firstFieldString(updSpaceID, 1))
+	require.Equal(t, uint64(4), firstFieldVarint(topicUpdFields, 4), "UpdateGroupRequest.update_masks = UpdateMask_SPACE_DETAILS (4)")
+	detailsFields := parseProtoFields(firstFieldBytes(topicUpdFields, 7)) // UpdateGroupRequest.space_details = 7
+	require.Equal(t, "Updated platform description", firstFieldString(detailsFields, 1), "GroupDetails.description = 1")
+	require.Equal(t, "Be respectful and keep threads focused.", firstFieldString(detailsFields, 2), "GroupDetails.guidelines = 2 must be preserved from get_group")
+
+	// 3. If get_group fails, topic change must be refused and update_group must NOT be called (never wipe guidelines)
+	failGetGroup.Store(true)
+	failedTopicRes := spacePortal.Bridge.QueueMatrixEvent(ctx, &event.Event{
+		ID:        "$topic_space_fail",
+		RoomID:    spacePortal.MXID,
+		Sender:    "@me:courier.local",
+		Type:      event.StateTopic,
+		StateKey:  &emptyKey,
+		Timestamp: 1710000800003,
+		Content: event.Content{
+			Parsed: &event.TopicEventContent{Topic: "Would overwrite guidelines if allowed"},
+		},
+	})
+	require.False(t, failedTopicRes.Success, "StateTopic must fail when get_group fails")
+	require.Error(t, failedTopicRes.Error)
+	mu.Lock()
+	require.Len(t, updateGroupReqs, 2, "update_group must NOT be called when get_group fails")
+	mu.Unlock()
+
+	// 4. Renaming or changing topic on a DM is refused
+	dmNameRes := dmPortal.Bridge.QueueMatrixEvent(ctx, &event.Event{
+		ID:        "$rename_dm",
+		RoomID:    dmPortal.MXID,
+		Sender:    "@me:courier.local",
+		Type:      event.StateRoomName,
+		StateKey:  &emptyKey,
+		Timestamp: 1710000800004,
+		Content: event.Content{
+			Parsed: &event.RoomNameEventContent{Name: "Not a space"},
+		},
+	})
+	require.False(t, dmNameRes.Success, "renaming a DM must fail")
+}
+
+func TestMuteSyncAndMembershipAndHideGroup(t *testing.T) {
+	ctx := context.Background()
+	var (
+		mu            sync.Mutex
+		notifReqs     [][]byte
+		createMemReqs [][]byte
+		removeMemReqs [][]byte
+		hideGroupReqs [][]byte
+	)
+
+	h, ul, client := setupLoggedInGChatTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/x-protobuf")
+		switch r.URL.Path {
+		case "/u/0/api/paginated_world":
+			_, _ = w.Write(buildSendTestPaginatedWorldResponse())
+		case "/u/0/api/update_group_notification_settings":
+			mu.Lock()
+			notifReqs = append(notifReqs, body)
+			mu.Unlock()
+			_, _ = w.Write(encodeBytesField(2, encodeVarintField(1, 901)))
+		case "/u/0/api/create_membership":
+			mu.Lock()
+			createMemReqs = append(createMemReqs, body)
+			mu.Unlock()
+			_, _ = w.Write(encodeBytesField(2, encodeVarintField(1, 902)))
+		case "/u/0/api/remove_memberships":
+			mu.Lock()
+			removeMemReqs = append(removeMemReqs, body)
+			mu.Unlock()
+			_, _ = w.Write(encodeBytesField(3, encodeVarintField(1, 903)))
+		case "/u/0/api/hide_group":
+			mu.Lock()
+			hideGroupReqs = append(hideGroupReqs, body)
+			mu.Unlock()
+			_, _ = w.Write(encodeBytesField(2, encodeVarintField(1, 904)))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	require.NoError(t, client.syncWorld(ctx))
+
+	spacePortal, err := h.Bridge.GetExistingPortalByKey(ctx, networkid.PortalKey{
+		ID:       MakeSpacePortalID("space_threaded"),
+		Receiver: ul.ID,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, spacePortal)
+	require.NoError(t, spacePortal.CreateMatrixRoom(ctx, ul, nil))
+
+	unthreadedSpace, err := h.Bridge.GetExistingPortalByKey(ctx, networkid.PortalKey{
+		ID:       MakeSpacePortalID("space_unthreaded"),
+		Receiver: ul.ID,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, unthreadedSpace)
+	require.NoError(t, unthreadedSpace.CreateMatrixRoom(ctx, ul, nil))
+
+	dmPortal, err := h.Bridge.GetExistingPortalByKey(ctx, networkid.PortalKey{
+		ID:       MakeDMPortalID("dm_alpha"),
+		Receiver: ul.ID,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, dmPortal)
+	require.NoError(t, dmPortal.CreateMatrixRoom(ctx, ul, nil))
+
+	// 1. Permanent mute on Space -> POST /u/0/api/update_group_notification_settings (setting_type = 5, mute.state = 2)
+	muteSpaceRes := spacePortal.Bridge.QueueMatrixEvent(ctx, &event.Event{
+		ID:        "$mute_space",
+		RoomID:    spacePortal.MXID,
+		Sender:    "@me:courier.local",
+		Type:      event.AccountDataBeeperMute,
+		Timestamp: 1710000800010,
+		Content: event.Content{
+			Parsed: &event.BeeperMuteEventContent{MutedUntil: -1},
+		},
+	})
+	require.True(t, muteSpaceRes.Success, "permanent mute on Space must succeed: %v", muteSpaceRes.Error)
+
+	// 2. Unmute on Space -> POST /u/0/api/update_group_notification_settings (setting_type = 5, mute.state = 1)
+	unmuteSpaceRes := spacePortal.Bridge.QueueMatrixEvent(ctx, &event.Event{
+		ID:        "$unmute_space",
+		RoomID:    spacePortal.MXID,
+		Sender:    "@me:courier.local",
+		Type:      event.AccountDataBeeperMute,
+		Timestamp: 1710000800011,
+		Content: event.Content{
+			Parsed: &event.BeeperMuteEventContent{MutedUntil: 0},
+		},
+	})
+	require.True(t, unmuteSpaceRes.Success, "unmute on Space must succeed: %v", unmuteSpaceRes.Error)
+
+	// 3. Permanent mute on DM -> POST /u/0/api/update_group_notification_settings (setting_type = 4, mute.state = 2)
+	muteDMRes := dmPortal.Bridge.QueueMatrixEvent(ctx, &event.Event{
+		ID:        "$mute_dm",
+		RoomID:    dmPortal.MXID,
+		Sender:    "@me:courier.local",
+		Type:      event.AccountDataBeeperMute,
+		Timestamp: 1710000800012,
+		Content: event.Content{
+			Parsed: &event.BeeperMuteEventContent{MutedUntil: -1},
+		},
+	})
+	require.True(t, muteDMRes.Success, "permanent mute on DM must succeed: %v", muteDMRes.Error)
+
+	// 4. Timed mute (MutedUntil > 0) is refused with a plain-English message and sends no request
+	timedMuteRes := spacePortal.Bridge.QueueMatrixEvent(ctx, &event.Event{
+		ID:        "$timed_mute",
+		RoomID:    spacePortal.MXID,
+		Sender:    "@me:courier.local",
+		Type:      event.AccountDataBeeperMute,
+		Timestamp: 1710000800013,
+		Content: event.Content{
+			Parsed: &event.BeeperMuteEventContent{MutedUntil: 4102444800000},
+		},
+	})
+	require.False(t, timedMuteRes.Success, "timed mute must be refused")
+	require.Error(t, timedMuteRes.Error)
+	require.Contains(t, timedMuteRes.Error.Error(), "permanent mute")
+
+	mu.Lock()
+	require.Len(t, notifReqs, 3, "only the 3 permanent mute/unmute events may reach fake server")
+	muteSpaceFields := parseProtoFields(notifReqs[0])
+	unmuteSpaceFields := parseProtoFields(notifReqs[1])
+	muteDMFields := parseProtoFields(notifReqs[2])
+	mu.Unlock()
+
+	muteSpaceUpd := parseProtoFields(firstFieldBytes(muteSpaceFields, 2))
+	require.Equal(t, uint64(5), firstFieldVarint(muteSpaceUpd, 2), "Space setting_type = MUTE_STATE_CHANGE (5)")
+	require.Equal(t, uint64(2), firstFieldVarint(parseProtoFields(firstFieldBytes(muteSpaceUpd, 3)), 1), "Mute.state = MUTED (2)")
+
+	unmuteSpaceUpd := parseProtoFields(firstFieldBytes(unmuteSpaceFields, 2))
+	require.Equal(t, uint64(5), firstFieldVarint(unmuteSpaceUpd, 2))
+	require.Equal(t, uint64(1), firstFieldVarint(parseProtoFields(firstFieldBytes(unmuteSpaceUpd, 3)), 1), "Mute.state = UNMUTED (1)")
+
+	muteDMUpd := parseProtoFields(firstFieldBytes(muteDMFields, 2))
+	require.Equal(t, uint64(4), firstFieldVarint(muteDMUpd, 2), "DM setting_type = NOTIFICATION_LEVEL_OR_MUTE_STATE_CHANGED (4)")
+	require.Equal(t, uint64(2), firstFieldVarint(parseProtoFields(firstFieldBytes(muteDMUpd, 3)), 1), "Mute.state = MUTED (2)")
+
+	// 5. Invite user to Space -> POST /u/0/api/create_membership
+	_, err = h.Bridge.GetGhostByID(ctx, MakeUserID("112233445566778899002"))
+	require.NoError(t, err)
+	ghostMXID := "@gchat_112233445566778899002:courier.local"
+	inviteRes := spacePortal.Bridge.QueueMatrixEvent(ctx, &event.Event{
+		ID:        "$invite_bob",
+		RoomID:    spacePortal.MXID,
+		Sender:    "@me:courier.local",
+		Type:      event.StateMember,
+		StateKey:  &ghostMXID,
+		Timestamp: 1710000800014,
+		Content: event.Content{
+			Parsed: &event.MemberEventContent{Membership: event.MembershipInvite},
+		},
+		Unsigned: event.Unsigned{
+			PrevContent: &event.Content{
+				Raw:    map[string]any{"membership": string(event.MembershipLeave)},
+				Parsed: &event.MemberEventContent{Membership: event.MembershipLeave},
+			},
+		},
+	})
+	require.True(t, inviteRes.Success, "inviting member to Space must succeed: %v", inviteRes.Error)
+
+	// 6. Accept invite to Space -> POST /u/0/api/create_membership with own MemberId
+	meMXID := "@me:courier.local"
+	acceptRes := spacePortal.Bridge.QueueMatrixEvent(ctx, &event.Event{
+		ID:        "$accept_space",
+		RoomID:    spacePortal.MXID,
+		Sender:    "@me:courier.local",
+		Type:      event.StateMember,
+		StateKey:  &meMXID,
+		Timestamp: 1710000800015,
+		Content: event.Content{
+			Parsed: &event.MemberEventContent{Membership: event.MembershipJoin},
+		},
+		Unsigned: event.Unsigned{
+			PrevContent: &event.Content{
+				Raw:    map[string]any{"membership": string(event.MembershipInvite)},
+				Parsed: &event.MemberEventContent{Membership: event.MembershipInvite},
+			},
+		},
+	})
+	require.True(t, acceptRes.Success, "accepting invite to Space must succeed: %v", acceptRes.Error)
+
+	mu.Lock()
+	require.Len(t, createMemReqs, 2)
+	inviteFields := parseProtoFields(createMemReqs[0])
+	acceptFields := parseProtoFields(createMemReqs[1])
+	mu.Unlock()
+
+	inviteGrp := parseProtoFields(firstFieldBytes(inviteFields, 4)) // CreateMembershipRequest.group_id = 4
+	require.Equal(t, "space_threaded", firstFieldString(parseProtoFields(firstFieldBytes(inviteGrp, 1)), 1))
+	inviteeInfo := parseProtoFields(firstFieldBytes(parseProtoFields(firstFieldBytes(inviteFields, 8)), 1)) // invitee_member_infos (8) -> invitee_info (1)
+	require.Equal(t, "112233445566778899002", firstFieldString(parseProtoFields(firstFieldBytes(inviteeInfo, 1)), 1))
+
+	acceptMemID := parseProtoFields(firstFieldBytes(acceptFields, 2)) // CreateMembershipRequest.member_ids = 2
+	require.Equal(t, "112233445566778899001", firstFieldString(parseProtoFields(firstFieldBytes(acceptMemID, 1)), 1))
+
+	// 7. Kick member from Space -> POST /u/0/api/remove_memberships
+	kickRes := spacePortal.Bridge.QueueMatrixEvent(ctx, &event.Event{
+		ID:        "$kick_bob",
+		RoomID:    spacePortal.MXID,
+		Sender:    "@me:courier.local",
+		Type:      event.StateMember,
+		StateKey:  &ghostMXID,
+		Timestamp: 1710000800016,
+		Content: event.Content{
+			Parsed: &event.MemberEventContent{Membership: event.MembershipLeave},
+		},
+		Unsigned: event.Unsigned{
+			PrevContent: &event.Content{
+				Raw:    map[string]any{"membership": string(event.MembershipJoin)},
+				Parsed: &event.MemberEventContent{Membership: event.MembershipJoin},
+			},
+		},
+	})
+	require.True(t, kickRes.Success, "kicking member from Space must succeed: %v", kickRes.Error)
+
+	// 8. Decline invite to Space -> POST /u/0/api/remove_memberships with own MemberId
+	declineRes := unthreadedSpace.Bridge.QueueMatrixEvent(ctx, &event.Event{
+		ID:        "$decline_space",
+		RoomID:    unthreadedSpace.MXID,
+		Sender:    "@me:courier.local",
+		Type:      event.StateMember,
+		StateKey:  &meMXID,
+		Timestamp: 1710000800017,
+		Content: event.Content{
+			Parsed: &event.MemberEventContent{Membership: event.MembershipLeave},
+		},
+		Unsigned: event.Unsigned{
+			PrevContent: &event.Content{
+				Raw:    map[string]any{"membership": string(event.MembershipInvite)},
+				Parsed: &event.MemberEventContent{Membership: event.MembershipInvite},
+			},
+		},
+	})
+	require.True(t, declineRes.Success, "declining invite to Space must succeed: %v", declineRes.Error)
+
+	// 9. Leave Space -> POST /u/0/api/remove_memberships with own MemberId
+	leaveRes := spacePortal.Bridge.QueueMatrixEvent(ctx, &event.Event{
+		ID:        "$leave_space",
+		RoomID:    spacePortal.MXID,
+		Sender:    "@me:courier.local",
+		Type:      event.StateMember,
+		StateKey:  &meMXID,
+		Timestamp: 1710000800018,
+		Content: event.Content{
+			Parsed: &event.MemberEventContent{Membership: event.MembershipLeave},
+		},
+		Unsigned: event.Unsigned{
+			PrevContent: &event.Content{
+				Raw:    map[string]any{"membership": string(event.MembershipJoin)},
+				Parsed: &event.MemberEventContent{Membership: event.MembershipJoin},
+			},
+		},
+	})
+	require.True(t, leaveRes.Success, "leaving Space must succeed: %v", leaveRes.Error)
+
+	mu.Lock()
+	require.Len(t, removeMemReqs, 3, "kick, decline invite, and leave Space must each call remove_memberships")
+	kickFields := parseProtoFields(removeMemReqs[0])
+	declineFields := parseProtoFields(removeMemReqs[1])
+	leaveFields := parseProtoFields(removeMemReqs[2])
+	mu.Unlock()
+
+	require.Equal(t, "112233445566778899002", firstFieldString(parseProtoFields(firstFieldBytes(parseProtoFields(firstFieldBytes(kickFields, 1)), 1)), 1))
+	require.Equal(t, "space_threaded", firstFieldString(parseProtoFields(firstFieldBytes(parseProtoFields(firstFieldBytes(kickFields, 2)), 1)), 1))
+
+	require.Equal(t, "112233445566778899001", firstFieldString(parseProtoFields(firstFieldBytes(parseProtoFields(firstFieldBytes(declineFields, 1)), 1)), 1))
+	require.Equal(t, "space_unthreaded", firstFieldString(parseProtoFields(firstFieldBytes(parseProtoFields(firstFieldBytes(declineFields, 2)), 1)), 1))
+
+	require.Equal(t, "112233445566778899001", firstFieldString(parseProtoFields(firstFieldBytes(parseProtoFields(firstFieldBytes(leaveFields, 1)), 1)), 1))
+	require.Equal(t, "space_threaded", firstFieldString(parseProtoFields(firstFieldBytes(parseProtoFields(firstFieldBytes(leaveFields, 2)), 1)), 1))
+
+	// 10. Hide DM: leaving a DM via StateMember (Leave) or deleting a DM via BeeperDeleteChat calls hide_group with hide=true; DeleteForEveryone=true is refused
+	leaveDMRes := dmPortal.Bridge.QueueMatrixEvent(ctx, &event.Event{
+		ID:        "$leave_dm",
+		RoomID:    dmPortal.MXID,
+		Sender:    "@me:courier.local",
+		Type:      event.StateMember,
+		StateKey:  &meMXID,
+		Timestamp: 1710000800019,
+		Content: event.Content{
+			Parsed: &event.MemberEventContent{Membership: event.MembershipLeave},
+		},
+		Unsigned: event.Unsigned{
+			PrevContent: &event.Content{
+				Raw:    map[string]any{"membership": string(event.MembershipJoin)},
+				Parsed: &event.MemberEventContent{Membership: event.MembershipJoin},
+			},
+		},
+	})
+	require.True(t, leaveDMRes.Success, "leaving DM must call hide_group: %v", leaveDMRes.Error)
+
+	delEveryoneRes := dmPortal.Bridge.QueueMatrixEvent(ctx, &event.Event{
+		ID:        "$delete_dm_everyone",
+		RoomID:    dmPortal.MXID,
+		Sender:    "@me:courier.local",
+		Type:      event.BeeperDeleteChat,
+		Timestamp: 1710000800020,
+		Content: event.Content{
+			Parsed: &event.BeeperChatDeleteEventContent{DeleteForEveryone: true},
+		},
+	})
+	require.False(t, delEveryoneRes.Success, "DeleteForEveryone on DM must be refused")
+
+	delDMRes := dmPortal.Bridge.QueueMatrixEvent(ctx, &event.Event{
+		ID:        "$delete_dm",
+		RoomID:    dmPortal.MXID,
+		Sender:    "@me:courier.local",
+		Type:      event.BeeperDeleteChat,
+		Timestamp: 1710000800021,
+		Content: event.Content{
+			Parsed: &event.BeeperChatDeleteEventContent{DeleteForEveryone: false},
+		},
+	})
+	require.True(t, delDMRes.Success, "deleting/hiding DM must succeed: %v", delDMRes.Error)
+
+	mu.Lock()
+	require.Len(t, hideGroupReqs, 2, "both leaving DM and deleting DM must call hide_group")
+	hideFields := parseProtoFields(hideGroupReqs[1])
+	mu.Unlock()
+	hideGrpID := parseProtoFields(firstFieldBytes(hideFields, 1)) // HideGroupRequest.id = 1
+	require.Equal(t, "dm_alpha", firstFieldString(parseProtoFields(firstFieldBytes(hideGrpID, 3)), 1))
+	require.Equal(t, uint64(1), firstFieldVarint(hideFields, 2), "HideGroupRequest.hide = true (1)")
 }

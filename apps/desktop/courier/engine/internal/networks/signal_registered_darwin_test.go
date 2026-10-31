@@ -44,7 +44,7 @@ func platformClients() map[string]platformClient {
 			client: (*signal.SignalClient)(nil), sent: []string{"accept_request"}, implements: []string{"accept_request"},
 		},
 		"gchat": {
-			client: (*gchat.Client)(nil), sent: []string{}, implements: []string{},
+			client: (*gchat.Client)(nil), sent: []string{"mute"}, implements: []string{"mute"},
 		},
 	}
 }
@@ -103,7 +103,7 @@ func platformReceiptColumns() map[string]receiptNetwork {
 		},
 		"gchat": {
 			connector: gchat.NewConnector(), client: (*gchat.Client)(nil),
-			sends: []string{"read_receipts", "typing"}, replyPrivately: []string{},
+			sends: []string{"read_receipts", "typing"}, replyPrivately: []string{"resolve_identifier", "create_chat_with_ghost"},
 			implicitReads: false,
 		},
 	}
