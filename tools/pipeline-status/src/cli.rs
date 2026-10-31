@@ -20,7 +20,10 @@
 
 //! pipeline-status.sh's `main`, step for step.
 
-use crate::evaluate::{evaluate_runs_json, list_failed, list_in_flight, EMPTY_RETURN_STATUS};
+use crate::evaluate::{
+    evaluate_runs_json, list_failed, list_in_flight, restrict_to_push, still_registering,
+    EMPTY_RETURN_STATUS,
+};
 use crate::sh::{self, capture, capture_or_echo, die, env_or, info, ok, on_path, prefix, warn};
 
 const DEFAULT_REPO: &str = "VitruvianSoftware/vitruvian-core";
@@ -133,7 +136,26 @@ pub fn run(script: &str, args: &[String]) -> i32 {
         NO_RUNS_JSON,
     );
 
-    let evaluation = evaluate_runs_json(&runs_json);
+    // Only the push to main counts: merge_group / pull_request runs share the
+    // squash commit's SHA and finish long before the post-merge runs exist.
+    let branch = env_or("PIPELINE_BRANCH", "main");
+    let runs_json = restrict_to_push(&runs_json, &sha, &branch);
+    let settle: i64 = env_or("PIPELINE_SETTLE_SECS", "60").parse().unwrap_or(60);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+
+    let mut evaluation = evaluate_runs_json(&runs_json);
+    if evaluation.status == 0 && still_registering(&runs_json, now, settle) {
+        // Everything listed is done, but the push's other workflows may not
+        // have registered yet. Not green until the set has had time to appear.
+        evaluation.stdout = format!(
+            "SETTLING: runs registered under {settle}s ago, more may still appear ({})\n",
+            evaluation.stdout.trim_end()
+        );
+        evaluation.status = 2;
+    }
     sh::err_text(&evaluation.stderr);
     if evaluation.status == EMPTY_RETURN_STATUS {
         // What bash 3.2 says as `return ""` fails.
