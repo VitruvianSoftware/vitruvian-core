@@ -415,3 +415,10 @@ All automated tests run 100% offline against recorded synthetic fixtures; no tes
 | **3** | **Send path** | Outbound `create_topic`, `create_message`, thread replies, `SendReplyTarget` quote-replies, outbound HTML-to-UTF-16 `Annotation` converter (formatting, links, `@user` and `@all` mentions), `edit_message`, `delete_message`, `update_reaction` (`U+FE0F` stripping), `mark_group_readstate`, and `set_typing_state`. | All outbound message actions pass end-to-end against synthetic RPC fixtures, including `local_id` transaction echo deduplication and non-idempotent 5xx safety. |
 | **4** | **Media** | Scotty 2-step resumable upload (`/uploads`), `/api/get_attachment_url` redirect follower, avatar downloader, explicit Google host allowlists, and the IPv4/IPv6 SSRF DNS/dial guard. | Image, video, voice note, file, and avatar transfers pass fixture tests, and all SSRF/redirect/host-allowlist negative tests reject disallowed targets. |
 | **5** | **Polish & by-hand verification** | Space rename and topic update (`update_group` preserving `guidelines`), mute/unmute (`update_group_notification_settings`), DM creation (`create_dm`) and hiding (`hide_group`), space invite accept/decline/leave (`create_membership`, `remove_memberships`), `cargo-fuzz` targets, `logscrub` audit, and owner by-hand verification. | All offline tests and fuzzers pass, worktree is clean, and James verifies real Google Chat sign-in and live messaging on his Mac. |
+
+## 13. Owner decisions (2026-10-30)
+
+- The owner approved this spec.
+- Creating a new space stays hidden in the UI until it is verified by hand on a real account. The reference reports HTTP 400.
+- Starting a new direct message by email is enabled, as the reference supports it.
+- Build order: this work starts after milestone 4.6 lands. Protocol and migration numbers are the next free ones at that time.
