@@ -793,7 +793,9 @@ fn timed_gate(fx: &Fx, base: &str, env: &[(&str, &str)]) -> (Output, std::time::
 fn a_huge_range_of_subjects_does_not_hang_the_release_guard() {
     let fx = Fx::new();
     let pad = "x".repeat(80);
-    let base = bulk_commits(&fx, 3000, "bigapp", |i| format!("feat(app): change {i:05} {pad}"));
+    let base = bulk_commits(&fx, 3000, "bigapp", |i| {
+        format!("feat(app): change {i:05} {pad}")
+    });
     let (o, _, out) = timed_gate(&fx, &base, &[("EXTRA_PATH_REGEX", "elsewhere/")]);
     assert_eq!(o.code, 0, "{}", o.all());
     assert_has(&out, "affected=false", "no path matched");
@@ -815,7 +817,11 @@ fn a_huge_range_of_release_bumps_still_finds_the_one_real_commit() {
     let (o, _, out) = timed_gate(&fx, &base, &[("EXTRA_PATH_REGEX", "bigapp/")]);
     assert_eq!(o.code, 0, "{}", o.all());
     assert_has(&out, "affected=true", "the real commit deploys");
-    assert_lacks(&o.stdout, "release-please version bump", "not a release-only range");
+    assert_lacks(
+        &o.stdout,
+        "release-please version bump",
+        "not a release-only range",
+    );
 }
 
 /// Path-only mode: about 300 KiB of changed paths through `grep -E` and then
@@ -834,7 +840,11 @@ fn a_huge_changed_path_list_does_not_hang_the_path_match() {
     );
     assert_eq!(o.code, 0, "{}", o.all());
     assert_has(&out, "affected=true", "a matching path deploys");
-    assert_has(&o.stdout, "path matched bigapp/ (excluding bigapp/never-matches/)", "reason");
+    assert_has(
+        &o.stdout,
+        "path matched bigapp/ (excluding bigapp/never-matches/)",
+        "reason",
+    );
     assert_has(&o.stdout, "file-02999.txt", "every changed file is listed");
 }
 
@@ -846,6 +856,10 @@ fn a_huge_tools_change_does_not_hang_the_global_impact_guard() {
     let base = bulk_commits(&fx, 3000, "tools/bigtool", |i| format!("c{i}"));
     let (o, _, out) = timed_gate(&fx, &base, &[("DEPLOY_TARGETS", "//apps/x:image")]);
     assert_eq!(o.code, 0, "{}", o.all());
-    assert_has(&out, "affected=true", "an unlisted tools/ dir is global impact");
+    assert_has(
+        &out,
+        "affected=true",
+        "an unlisted tools/ dir is global impact",
+    );
     assert_has(&o.stdout, "global-impact file changed", "reason");
 }
