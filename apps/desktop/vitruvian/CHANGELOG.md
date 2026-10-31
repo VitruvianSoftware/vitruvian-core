@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.86.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.86.0...vitruvian-v3.86.1) (2026-10-31)
+
+
+### Bug Fixes
+
+* **vitruvian:** redact release secrets per argument and clean up keys on a signal ([#4113](https://github.com/VitruvianSoftware/vitruvian-core/issues/4113)) ([7a9cba9](https://github.com/VitruvianSoftware/vitruvian-core/commit/7a9cba91cfd55637654b8a9873b01e35a727db72))
+
 ## [3.86.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.85.0...vitruvian-v3.86.0) (2026-10-26)
 
 
