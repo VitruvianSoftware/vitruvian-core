@@ -18,8 +18,14 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! //tools/ci:deploy-affected: the Rust port.
+//! `bazel run //tools/ci:deploy_affected`: see lib.rs.
 
 fn main() {
+    // `bazel run` starts us in the runfiles tree; act from the caller's
+    // directory, as the script did.
+    let rc = shell_compat::enter_bazel_run_cwd("deploy-affected");
+    if rc != 0 {
+        std::process::exit(rc);
+    }
     std::process::exit(deploy_affected::run(&shell_compat::args()));
 }

@@ -20,7 +20,7 @@
 
 //! `bazel run //tools/delivery/orchestrate -- --out delivery-manifest.json`
 
-use orchestrate::{flags, gostd, Config, Env, DEFAULT_MANIFEST_NAME, DEPLOY_AFFECTED_REL};
+use orchestrate::{flags, gostd, Config, Env, DEFAULT_MANIFEST_NAME, ENGINE_RLOCATION};
 use std::io::Write;
 use std::os::unix::ffi::OsStrExt;
 
@@ -58,10 +58,29 @@ fn main() {
         gostd::join(&[&root, &flags.out])
     };
 
+    // The decision engine: DEPLOY_AFFECTED_BIN when set, else the
+    // deploy_affected binary in our runfiles.
+    let script = match env.get("DEPLOY_AFFECTED_BIN") {
+        s if !s.is_empty() => s,
+        _ => match runfiles::Runfiles::create()
+            .ok()
+            .and_then(|r| runfiles::rlocation!(r, ENGINE_RLOCATION))
+        {
+            Some(p) => p.to_string_lossy().into_owned(),
+            None => {
+                eprintln!(
+                    "orchestrate: cannot find the deploy-affected engine ({}) in the runfiles; run it as: bazel run //tools/delivery/orchestrate",
+                    ENGINE_RLOCATION
+                );
+                std::process::exit(1);
+            }
+        },
+    };
+
     let stdout = std::io::stdout();
     let mut lock = stdout.lock();
     let mut cfg = Config {
-        script: gostd::join(&[&root, DEPLOY_AFFECTED_REL]),
+        script,
         repo_root: root,
         bazel: flags.bazel,
         out: manifest_path,

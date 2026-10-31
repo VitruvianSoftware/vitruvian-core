@@ -270,7 +270,7 @@ Two gates decide what a change can affect, and both were wrong in ways that
 only showed up in production behaviour:
 
 - **Release attribution** (§6.1) — a path decided which artifact's *version* moved.
-- **Deploy attribution** — `deploy-affected.sh` treats any change under `tools/`
+- **Deploy attribution** — the deploy gate (`//tools/ci:deploy_affected`) treats any change under `tools/`
   outside an allowlist as *global-impact*, forcing a live deploy. `tools/conformance/`
   was not allowlisted, so editing a CI lint script deployed Cloud Run.
 

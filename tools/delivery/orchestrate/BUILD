@@ -45,22 +45,23 @@ rust_library(
 rust_binary(
     name = "orchestrate",
     srcs = ["src/main.rs"],
+    data = ["//tools/ci:deploy_affected"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//visibility:public"],
-    deps = [":delivery_orchestrate_lib"],
+    deps = [
+        ":delivery_orchestrate_lib",
+        "@rules_rust//rust/runfiles",
+    ],
 )
 
 rust_test(
     name = "orchestrate_test",
     size = "small",
     crate = ":delivery_orchestrate_lib",
-    data = [
-        "//tools/ci:deploy-affected.sh",
-        "//tools/ci:td-lib.sh",
-    ],
+    data = ["//tools/ci:deploy_affected"],
     edition = "2021",
-    env = {"DEPLOY_AFFECTED": "$(rootpath //tools/ci:deploy-affected.sh)"},
+    env = {"DEPLOY_AFFECTED": "$(rootpath //tools/ci:deploy_affected)"},
     rustc_flags = ["-Copt-level=3"],
 )
 

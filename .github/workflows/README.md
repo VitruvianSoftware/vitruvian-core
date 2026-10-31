@@ -131,7 +131,7 @@ labels. A failed arm fails the step, with a warning in the job summary.
 ### `delivery-drift.yaml` — did every app ship what is on `main`?
 
 Hourly, it asks each delivery unit whether the last commit it delivered still
-covers everything on `main` that affects it (`tools/ci/delivery-drift.sh`). A
+covers everything on `main` that affects it (`//tools/ci:delivery_drift`). A
 skipped delivery looks green in the runs list, so this is the check that can
 see one.
 

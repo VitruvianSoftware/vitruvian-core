@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! resolve-unit-bases.sh — per-unit durable diff bases for an app's delivery
+//! //tools/ci:resolve_unit_bases — per-unit durable diff bases for an app's delivery
 //! lane (#1842).
 
 use shell_compat::{capture, cat, env, env_or, env_or_empty, is_readable, out, subst};
@@ -104,8 +104,9 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
     let workflow_file = match env("WORKFLOW_FILE") {
         Some(v) if !v.is_empty() => v,
         _ => {
-            shell_compat::err(b"WORKFLOW_FILE must be set\n");
-            return 2;
+            // `${WORKFLOW_FILE:?...}`: bash names the variable and exits 1.
+            shell_compat::err(b"resolve-unit-bases: WORKFLOW_FILE: WORKFLOW_FILE must be set\n");
+            return 1;
         }
     };
     let workflow_path = match env("WORKFLOW_PATH") {
@@ -177,19 +178,13 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
             if !in_jobs {
                 continue;
             }
-            // Job definition: "  <name>:"
-            if line.len() >= 3
-                && line[0] == b' '
-                && line[1] == b' '
-                && line[2] != b' '
-                && line[2].is_ascii_lowercase()
-            {
+            // Job definition, awk's /^  [a-z0-9][a-z0-9-]*:[[:space:]]*$/
+            let lower_or_digit = |c: &u8| c.is_ascii_lowercase() || c.is_ascii_digit();
+            if line.len() >= 3 && line[0] == b' ' && line[1] == b' ' && lower_or_digit(&line[2]) {
                 let rest = &line[2..];
                 if let Some(colon) = rest.iter().position(|&c| c == b':') {
                     let name = &rest[..colon];
-                    if !name.is_empty()
-                        && name.iter().all(|c| c.is_ascii_alphanumeric() || *c == b'-')
-                    {
+                    if !name.is_empty() && name.iter().all(|c| lower_or_digit(c) || *c == b'-') {
                         let after = &rest[colon + 1..];
                         if after.iter().all(|c| c.is_ascii_whitespace()) {
                             current_job = name.to_vec();
@@ -262,12 +257,14 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
     // Pass 1: per job, its newest success
     let mut jobsucc: Vec<JobSuccess> = Vec::new();
     for (idx, run_line) in run_lines.iter().enumerate() {
-        let fields: Vec<&[u8]> = run_line.splitn(2, |&c| c == b' ').collect();
-        if fields.len() < 2 {
+        // `read -r run_id head_sha`: IFS-whitespace fields, the sha is the
+        // rest; a line with no sha still counts (its jobs carry an empty sha).
+        let fields = shell_compat::read_fields(run_line, b" \t\n", 2);
+        let run_id: &[u8] = &fields[0];
+        let head_sha: &[u8] = &fields[1];
+        if run_id.is_empty() {
             continue;
         }
-        let run_id = fields[0];
-        let head_sha = fields[1];
 
         let r = capture(
             162,
