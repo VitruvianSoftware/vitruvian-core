@@ -77,7 +77,9 @@ inputs:
       build-test and relies on THAT job to save; a second writer would just
       waste upload budget on a redundant save). When 'false' (the default),
       use full read+write actions/cache, which also saves a fresh extraction
-      in its post step on a cache miss.
+      in its post step on a cache miss -- but only in a GitHub-hosted job on
+      main; everywhere else (merge queue, pull requests, self-hosted runners)
+      the restore is read-only regardless of this input.
     required: false
     default: "false"
 
@@ -139,9 +141,28 @@ runs:
         echo "value=$key" >> "$GITHUB_OUTPUT"
         echo "llvm contents cache key: $key"
 
+    # Read+write only for a GitHub-hosted job on main; every other job is a
+    # pure reader. A cache saved on a merge-queue or PR ref is unreadable by
+    # anyone else yet evicts main's entries from the shared 10 GiB budget, and
+    # self-hosted runners upload too slowly to save safely -- see the note on
+    # the save guard in ../setup-bazel/action.yml (2026-10-31 queue incident).
+    - name: Decide whether this job may save
+      id: mode
+      shell: bash
+      env:
+        RESTORE_ONLY: ${{ inputs.restore-only }}
+        MAY_SAVE: ${{ github.ref == 'refs/heads/main' && runner.environment == 'github-hosted' }}
+      run: |
+        if [ "$RESTORE_ONLY" = "true" ] || [ "$MAY_SAVE" != "true" ]; then
+          echo "readonly=true" >> "$GITHUB_OUTPUT"
+          echo "LLVM contents cache: restore only (saves happen on GitHub-hosted main jobs)"
+        else
+          echo "readonly=false" >> "$GITHUB_OUTPUT"
+        fi
+
     - name: Restore the extracted LLVM toolchain
       id: restore-rw
-      if: inputs.restore-only != 'true'
+      if: steps.mode.outputs.readonly != 'true'
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       with:
         path: ${{ steps.paths.outputs.stage }}
@@ -149,7 +170,7 @@ runs:
 
     - name: Restore the extracted LLVM toolchain (read-only)
       id: restore-ro
-      if: inputs.restore-only == 'true'
+      if: steps.mode.outputs.readonly == 'true'
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
       with:
         path: ${{ steps.paths.outputs.stage }}
@@ -159,12 +180,12 @@ runs:
     # their outputs into one place so callers don't need to know which mode
     # was used. `steps.<id>.outcome` is populated even for a skipped step
     # (`skipped`), so it can't be string-concatenated like a normal output --
-    # branch on the same input instead.
+    # branch on the same decision instead.
     - name: Resolve restore outcome
       id: resolve
       shell: bash
       run: |
-        if [ "${{ inputs.restore-only }}" = "true" ]; then
+        if [ "${{ steps.mode.outputs.readonly }}" = "true" ]; then
           echo "outcome=${{ steps.restore-ro.outcome }}" >> "$GITHUB_OUTPUT"
           echo "cache-hit=${{ steps.restore-ro.outputs.cache-hit }}" >> "$GITHUB_OUTPUT"
         else

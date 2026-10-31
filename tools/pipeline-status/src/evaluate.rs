@@ -226,6 +226,76 @@ pub fn list_in_flight(json: &str) -> (String, String) {
     )
 }
 
+/// Keep only the runs a push to `branch` started for exactly `sha`.
+///
+/// The Actions API's `head_sha` filter also returns the merge queue's
+/// `merge_group` runs and any `pull_request` runs for that commit. A squash
+/// landed by the queue shares its SHA with the queue's trial commit, so those
+/// earlier, finished runs would otherwise be counted as the post-merge
+/// pipeline (PR 4087: 11 merge_group runs read as "11 passed out of 11" while
+/// the real push runs had not registered). Anything that is not an object
+/// with a `workflow_runs` array is returned untouched.
+pub fn restrict_to_push(json: &str, sha: &str, branch: &str) -> String {
+    let Ok(mut doc) = serde_json::from_str::<serde_json::Value>(json) else {
+        return json.to_string();
+    };
+    let Some(runs) = doc.get_mut("workflow_runs").and_then(|r| r.as_array_mut()) else {
+        return json.to_string();
+    };
+    runs.retain(|r| {
+        r.get("event").and_then(|v| v.as_str()) == Some("push")
+            && r.get("head_branch").and_then(|v| v.as_str()) == Some(branch)
+            && r.get("head_sha").and_then(|v| v.as_str()) == Some(sha)
+    });
+    let n = runs.len();
+    doc["total_count"] = serde_json::Value::from(n);
+    doc.to_string()
+}
+
+/// Seconds since the Unix epoch for `YYYY-MM-DDTHH:MM:SSZ`.
+fn parse_utc(ts: &str) -> Option<i64> {
+    let b = ts.as_bytes();
+    if b.len() < 19 {
+        return None;
+    }
+    let n = |a: usize, z: usize| ts.get(a..z)?.parse::<i64>().ok();
+    let (y, m, d) = (n(0, 4)?, n(5, 7)?, n(8, 10)?);
+    let (hh, mm, ss) = (n(11, 13)?, n(14, 16)?, n(17, 19)?);
+    let y2 = if m <= 2 { y - 1 } else { y };
+    let era = y2.div_euclid(400);
+    let yoe = y2 - era * 400;
+    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146097 + doe - 719468;
+    Some(days * 86400 + hh * 3600 + mm * 60 + ss)
+}
+
+/// True while the push runs may still be registering: the earliest run was
+/// created less than `settle_secs` ago. GitHub creates a push's workflows over
+/// a few seconds and quick ones (path-filter skips, tiny jobs) finish before
+/// the slow ones appear, so "everything listed is done" is not yet "everything
+/// is done". Applies only to the filtered (push-only) listing.
+pub fn still_registering(json: &str, now_epoch: i64, settle_secs: i64) -> bool {
+    if settle_secs <= 0 {
+        return false;
+    }
+    let Ok(doc) = serde_json::from_str::<serde_json::Value>(json) else {
+        return false;
+    };
+    let earliest = doc
+        .get("workflow_runs")
+        .and_then(|r| r.as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|r| {
+            r.get("created_at")
+                .and_then(|v| v.as_str())
+                .and_then(parse_utc)
+        })
+        .min();
+    matches!(earliest, Some(t) if now_epoch - t < settle_secs)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -332,5 +402,134 @@ mod tests {
             {"name":"E","status":"completed","conclusion":"timed_out","html_url":"u3"}]}"#;
         assert_eq!(list_failed(runs).0, "  - CI: u1\n  - E: u3\n");
         assert_eq!(list_in_flight(runs).0, "  - D (queued): null\n");
+    }
+
+    fn run(
+        id: u64,
+        name: &str,
+        event: &str,
+        branch: &str,
+        status: &str,
+        concl: &str,
+        at: &str,
+    ) -> String {
+        let c = if concl.is_empty() {
+            "null".to_string()
+        } else {
+            format!("\"{concl}\"")
+        };
+        format!(
+            r#"{{"id":{id},"workflow_id":{id},"name":"{name}","event":"{event}","head_branch":"{branch}","head_sha":"abc","status":"{status}","conclusion":{c},"created_at":"{at}"}}"#
+        )
+    }
+
+    /// PR 4087: eleven finished merge_group runs share the squash SHA; the
+    /// push runs are not there yet (or only some are, still running).
+    #[test]
+    fn merge_group_runs_are_not_the_post_merge_pipeline() {
+        let mq: Vec<String> = (1..=11)
+            .map(|i| {
+                run(
+                    i,
+                    &format!("w{i}"),
+                    "merge_group",
+                    "gh-readonly-queue/main/pr-1-x",
+                    "completed",
+                    "success",
+                    "2026-10-31T06:26:44Z",
+                )
+            })
+            .collect();
+        let json = format!(r#"{{"workflow_runs":[{}]}}"#, mq.join(","));
+        // Unfiltered (the old behaviour): a false green.
+        assert_eq!(eval(&json).1, 0);
+        // Filtered: nothing has run for the push yet.
+        assert_eq!(
+            eval(&restrict_to_push(&json, "abc", "main")),
+            ("NO_RUNS\n".into(), 3)
+        );
+        // Push runs registered and in flight alongside: not green.
+        let push = run(
+            50,
+            "Presubmit",
+            "push",
+            "main",
+            "in_progress",
+            "",
+            "2026-10-31T06:54:06Z",
+        );
+        let json = format!(r#"{{"workflow_runs":[{},{}]}}"#, mq.join(","), push);
+        assert_eq!(eval(&restrict_to_push(&json, "abc", "main")).1, 2);
+    }
+
+    #[test]
+    fn restrict_is_strict_on_sha_branch_and_event() {
+        let rs = [
+            run(
+                1,
+                "a",
+                "push",
+                "main",
+                "completed",
+                "success",
+                "2026-10-31T06:54:06Z",
+            ),
+            run(
+                2,
+                "b",
+                "push",
+                "feature",
+                "completed",
+                "failure",
+                "2026-10-31T06:54:06Z",
+            ),
+            run(
+                3,
+                "c",
+                "pull_request",
+                "main",
+                "completed",
+                "failure",
+                "2026-10-31T06:54:06Z",
+            ),
+            run(
+                4,
+                "d",
+                "push",
+                "main",
+                "completed",
+                "failure",
+                "2026-10-31T06:54:06Z",
+            )
+            .replace("\"abc\"", "\"other\""),
+        ];
+        let json = format!(r#"{{"workflow_runs":[{}]}}"#, rs.join(","));
+        assert_eq!(
+            eval(&restrict_to_push(&json, "abc", "main")),
+            ("ALL_PASSED: 1 passed out of 1 total\n".into(), 0)
+        );
+    }
+
+    #[test]
+    fn utc_parsing_and_settle_window() {
+        assert_eq!(parse_utc("1970-01-01T00:00:00Z"), Some(0));
+        assert_eq!(parse_utc("2026-10-31T06:54:06Z"), Some(1793429646));
+        let json = format!(
+            r#"{{"workflow_runs":[{}]}}"#,
+            run(
+                1,
+                "a",
+                "push",
+                "main",
+                "completed",
+                "success",
+                "2026-10-31T06:54:06Z"
+            )
+        );
+        let t = 1793429646;
+        assert!(still_registering(&json, t + 3, 60));
+        assert!(!still_registering(&json, t + 60, 60));
+        assert!(!still_registering(&json, t + 3, 0));
+        assert!(!still_registering(r#"{"workflow_runs":[]}"#, t, 60));
     }
 }

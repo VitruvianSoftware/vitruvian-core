@@ -21,11 +21,7 @@
 load("//tools/delivery:defs.bzl", "delivery")
 load("//tools/deploy:defs.bzl", "cloud_run_deploy")
 load("//tools/pulumi:defs.bzl", "pulumi_project")
-
-exports_files(
-    ["smoke.sh"],
-    visibility = ["//apps/web/oauth-user-inspector:__subpackages__"],
-)
+load(":smoke.bzl", "OAUTH_SMOKE")
 
 pulumi_project(
     name = "oauth-user-inspector",
@@ -41,9 +37,9 @@ pulumi_project(
 #     --env development --project prj-d-bu1-oss-floating-648a --image-digest <ref@sha256:..>
 cloud_run_deploy(
     name = "deploy",
-    # Reachable AND the React SPA actually mounts (see smoke.sh) -- kept in sync
-    # with oauth-user-inspector-deploy.yaml's custom-smoke-script.
-    custom_smoke_script_file = "apps/web/oauth-user-inspector/infra/app/smoke.sh",
+    # Reachable AND the React SPA actually mounts (//apps/web/oauth-user-inspector:smoke).
+    # One command for here and the delivery() below: see smoke.bzl.
+    custom_smoke_script = OAUTH_SMOKE,
     env_prefix = "OAUTH_USER_INSPECTOR",
     pulumi_dir = "apps/web/oauth-user-inspector/infra/app",
     region = "us-central1",
@@ -85,7 +81,7 @@ delivery(
     #     package.json, tsconfig.json, frontend/, server/ and scripts/. Nothing
     #     listed here is in that set, so none of them can change the digest.
     #   * THE PULUMI PROGRAM — apps/web/oauth-user-inspector/infra/app/** (main.go, the
-    #     Pulumi.<env>.yaml stack configs, smoke.sh), which is NOT excluded.
+    #     Pulumi.<env>.yaml stack configs), which is NOT excluded.
     # Deliberately NOT excluded, though tempting: scripts/, BUILD and the root
     # tsconfig/jest files — they are either reachable from the image build or
     # define the break-glass target, and the cost of a wrong exclusion here is
@@ -138,7 +134,7 @@ delivery(
     workflow_inputs = {
         "app-name": "oauth-user-inspector",
         "cloudflare-token-secret-project": "prj-d-bu1-oss-floating-648a",
-        "custom-smoke-script-file": "apps/web/oauth-user-inspector/infra/app/smoke.sh",
+        "custom-smoke-script": OAUTH_SMOKE,
         "default-region": "us-central1",
         "env-prefix": "OAUTH_USER_INSPECTOR",
         "pulumi-dir": "apps/web/oauth-user-inspector/infra/app",

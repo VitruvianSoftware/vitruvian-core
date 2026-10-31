@@ -677,7 +677,7 @@ jobs:
     with:
       app-name: "oauth-user-inspector"
       cloudflare-token-secret-project: "prj-d-bu1-oss-floating-648a"
-      custom-smoke-script-file: "apps/web/oauth-user-inspector/infra/app/smoke.sh"
+      custom-smoke-script: "bazel run //apps/web/oauth-user-inspector:smoke"
       default-region: "us-central1"
       env-prefix: "OAUTH_USER_INSPECTOR"
       environment: "development"
@@ -775,7 +775,7 @@ jobs:
     with:
       app-name: "oauth-user-inspector"
       cloudflare-token-secret-project: "prj-d-bu1-oss-floating-648a"
-      custom-smoke-script-file: "apps/web/oauth-user-inspector/infra/app/smoke.sh"
+      custom-smoke-script: "bazel run //apps/web/oauth-user-inspector:smoke"
       default-region: "us-central1"
       env-prefix: "OAUTH_USER_INSPECTOR"
       environment: "nonproduction"
@@ -833,7 +833,7 @@ jobs:
     with:
       app-name: "oauth-user-inspector"
       cloudflare-token-secret-project: "prj-d-bu1-oss-floating-648a"
-      custom-smoke-script-file: "apps/web/oauth-user-inspector/infra/app/smoke.sh"
+      custom-smoke-script: "bazel run //apps/web/oauth-user-inspector:smoke"
       default-region: "us-central1"
       env-prefix: "OAUTH_USER_INSPECTOR"
       environment: "production"

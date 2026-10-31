@@ -36,6 +36,7 @@
 # gazelle:exclude infra
 
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+load("//apps/web/oauth-user-inspector/infra/app:smoke.bzl", "OAUTH_SMOKE")
 load("//tools/doctor:defs.bzl", "doctor")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
@@ -154,17 +155,43 @@ alias(
     actual = ":check-sensitive-rs",
 )
 
+# The candidate smoke //tools/deploy runs against each new revision
+# (infra/app/BUILD's :deploy and the delivery workflow both call it).
 rust_binary(
-    name = "smoke-rs",
+    name = "smoke",
     srcs = ["scripts/src/bin/smoke.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [":oauth_scripts_lib"],
 )
 
-alias(
-    name = "smoke_rs",
-    actual = ":smoke-rs",
+# :smoke end to end against stub curl/Chrome (expectations: the replaced smoke.sh).
+rust_test(
+    name = "smoke_test",
+    size = "small",
+    srcs = ["scripts/tests/smoke_test.rs"],
+    data = [":smoke"],
+    edition = "2021",
+    env = {"SMOKE_BIN": "$(rootpath :smoke)"},
+)
+
+# :smoke the way a deploy runs it: through the real //tools/deploy:cloud-run
+# --phase smoke, with the command :deploy and the delivery unit share.
+rust_test(
+    name = "deploy_smoke_test",
+    size = "small",
+    srcs = ["scripts/tests/deploy_smoke_test.rs"],
+    data = [
+        ":smoke",
+        "//tools/deploy:cloud-run",
+    ],
+    edition = "2021",
+    env = {
+        "CLOUD_RUN_BIN": "$(rootpath //tools/deploy:cloud-run)",
+        # `$$`: Bazel expands make variables in env values.
+        "OAUTH_SMOKE": OAUTH_SMOKE.replace("$", "$$"),
+        "SMOKE_BIN": "$(rootpath :smoke)",
+    },
 )
 
 rust_binary(
@@ -241,16 +268,14 @@ alias(
     actual = ":check-sensitive_test",
 )
 
-test_suite(
-    name = "smoke_test",
-    tests = [":oauth_scripts_lib_test"],
-)
-
 pipeline_unit(
     name = "oauth-user-inspector",
     persona = "all",
     runner = "ubuntu-26.04",
     test_targets = [
+        ":oauth_scripts_lib_test",
+        ":deploy_smoke_test",
+        ":smoke_test",
         ":unit_tests",
         # cloud_run_deploy's launcher check: the real :deploy reaches the sequencer.
         "//apps/web/oauth-user-inspector/infra/app:deploy_launcher_test",
