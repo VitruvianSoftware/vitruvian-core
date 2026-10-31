@@ -9,6 +9,7 @@ macro_rules! edition2021 {
 }
 
 pub mod auth;
+pub mod channel;
 pub mod cookies;
 pub mod ffi;
 pub mod netguard;
