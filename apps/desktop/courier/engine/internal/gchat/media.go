@@ -192,6 +192,43 @@ func (c *Client) prepareOutgoingMessageContent(
 	return plainText, annotations, nil
 }
 
+func eventHasAttachmentDownload(eventProto []byte) bool {
+	var evt pb.Event
+	if err := pb.Unmarshal(eventProto, &evt); err != nil {
+		return false
+	}
+	checkBody := func(b *pb.Event_EventBody) bool {
+		if b == nil {
+			return false
+		}
+		mp := b.GetMessagePosted()
+		if mp == nil || mp.GetMessage() == nil {
+			return false
+		}
+		msg := mp.GetMessage()
+		for _, ann := range msg.GetAnnotations() {
+			if ann.GetUploadMetadata().GetAttachmentToken() != "" {
+				return true
+			}
+		}
+		for _, att := range msg.GetAttachments() {
+			if att.GetUploadMetadata().GetAttachmentToken() != "" {
+				return true
+			}
+		}
+		return false
+	}
+	if checkBody(evt.GetBody()) {
+		return true
+	}
+	for _, b := range evt.GetBodies() {
+		if checkBody(b) {
+			return true
+		}
+	}
+	return false
+}
+
 func extractMessageUploadMetadataList(rawMessageProto []byte) []*pb.UploadMetadata {
 	var msg pb.Message
 	if err := pb.Unmarshal(rawMessageProto, &msg); err != nil {

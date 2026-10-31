@@ -4564,6 +4564,114 @@ func TestSyncWorldQueuesChatResyncAndGetChatInfoIncludesSpaceMembers(t *testing.
 	require.NotContains(t, chatInfo.Members.MemberMap, MakeUserID("112233445566778899999"), "GetChatInfo must exclude non-joined invited member")
 }
 
+func TestInboundMediaDownloadDoesNotBlockLiveStreamDrainer(t *testing.T) {
+	enableTestLoopback(t)
+	ctx := context.Background()
+
+	mediaDownloadStarted := make(chan struct{})
+	releaseMediaDownload := make(chan struct{})
+	var startOnce sync.Once
+	var pingDone atomic.Bool
+
+	_, _, client := setupLoggedInGChatTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/u/0/api/paginated_world":
+			w.Header().Set("Content-Type", "application/x-protobuf")
+			_, _ = w.Write(buildSendTestPaginatedWorldResponse())
+		case "/u/0/webchannel/register":
+			w.Header().Add("Set-Cookie", "COMPASS=dynamite-ui=csess_media; Path=/; Domain=chat.google.com")
+			w.WriteHeader(http.StatusOK)
+		case "/u/0/webchannel/events":
+			if r.Method == http.MethodPost {
+				pingDone.Store(true)
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			if r.URL.Query().Get("SID") == "null" {
+				w.Header().Set("X-HTTP-Initial-Response", `[[0,["c","sid_media","",8,12]]]`)
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			if !pingDone.Load() {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			// Wait until attachment download is in flight, then push a plain-text WebChannel event on the same stream.
+			<-mediaDownloadStarted
+			eventChunk := `[[1,[[[[["space_threaded"]],null,6,[null,null,null,null,null,[[[[null,null,null,[null,"topic_m",[["space_threaded"]]]],"msg_fast_after_media"],[["112233445566778899002",0]],"1710000900000000",null,null,null,null,null,null,"Fast text while media downloads"]],null,null,null,null,null,6],null,["800"],["200"]]]]]]`
+			framed := fmt.Sprintf("%d\n%s", len([]rune(eventChunk)), eventChunk)
+			_, _ = fmt.Fprint(w, framed)
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+			<-r.Context().Done()
+		case "/u/0/api/get_attachment_url":
+			startOnce.Do(func() {
+				close(mediaDownloadStarted)
+			})
+			<-releaseMediaDownload
+			w.Header().Set("Content-Type", "application/pdf")
+			_, _ = w.Write([]byte("%PDF-1.4\nsynthetic-attachment-bytes\n"))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	// Feed an attachment-bearing EventKindEventProto into the live stream loop.
+	spaceGID := pb.SpaceGroupID("space_threaded")
+	attMsg := buildSyntheticMessageProto(spaceGID, "topic_m", "msg_slow_att", "112233445566778899002", "Attachment caption", 1710000899000000, "", 0, 0)
+	attMsg.Annotations = []*pb.Annotation{{
+		Type: pb.AnnotationType_UPLOAD_METADATA.Enum(),
+		Metadata: &pb.Annotation_UploadMetadata{
+			UploadMetadata: buildUploadMetadataProto("tok_slow_1", "doc.pdf", "application/pdf"),
+		},
+	}}
+	slowEvtBytes := pb.MustMarshal(&pb.Event{
+		GroupId: spaceGID,
+		Type:    pb.Event_MESSAGE_POSTED.Enum(),
+		Body: &pb.Event_EventBody{
+			EventType: pb.Event_MESSAGE_POSTED.Enum(),
+			Type: &pb.Event_EventBody_MessagePosted{
+				MessagePosted: &pb.MessageEvent{Message: attMsg},
+			},
+		},
+	})
+	require.True(t, eventHasAttachmentDownload(slowEvtBytes))
+
+	// Connect opens the stream; once connected, inject the slow attachment event via the FFI callback path
+	// by verifying that while /u/0/api/get_attachment_url is blocked on releaseMediaDownload, the subsequent
+	// WebChannel text event ("msg_fast_after_media") is drained and queued without waiting for the download!
+	client.Connect(ctx)
+	t.Cleanup(client.Disconnect)
+
+	client.mu.Lock()
+	ch := client.streamCh
+	client.mu.Unlock()
+	require.NotNil(t, ch)
+	ch <- streamNotification{kind: EventKindEventProto, payload: slowEvtBytes}
+
+	<-mediaDownloadStarted
+
+	require.Eventually(t, func() bool {
+		for _, ev := range client.recordedRemoteEvents() {
+			if m, ok := ev.(*simplevent.PreConvertedMessage); ok && m.ID == MakeMessageID("topic_m", "msg_fast_after_media") {
+				return true
+			}
+		}
+		return false
+	}, 2*time.Second, 20*time.Millisecond, "live stream drainer must deliver subsequent text messages while media download is blocked")
+
+	close(releaseMediaDownload)
+	require.Eventually(t, func() bool {
+		for _, ev := range client.recordedRemoteEvents() {
+			if m, ok := ev.(*simplevent.PreConvertedMessage); ok && m.ID == MakeMessageID("topic_m", "msg_slow_att") {
+				return true
+			}
+		}
+		return false
+	}, 2*time.Second, 20*time.Millisecond, "attachment message must complete and be delivered once download finishes")
+}
+
 func TestServeGChatEngineHelperForAppE2E(t *testing.T) {
 	sockPath := os.Getenv("COURIER_GCHAT_E2E_SOCKET")
 	if sockPath == "" {

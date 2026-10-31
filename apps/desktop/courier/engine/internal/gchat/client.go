@@ -45,6 +45,7 @@ type Client struct {
 	ffiClient          *FFIClient
 	cancelStream       context.CancelFunc
 	streamDone         chan struct{}
+	streamCh           chan streamNotification
 	initialSyncDone    bool
 	useManualClock     bool
 	manualJitter       float64
@@ -131,8 +132,14 @@ func (c *Client) Connect(ctx context.Context) {
 	}
 
 	streamCh := make(chan streamNotification, 256)
+	c.mu.Lock()
+	c.streamCh = streamCh
+	c.mu.Unlock()
+	mediaSem := make(chan struct{}, 4)
+	var mediaWG sync.WaitGroup
 	go func() {
 		defer close(doneCh)
+		defer mediaWG.Wait()
 		for {
 			select {
 			case <-streamCtx.Done():
@@ -140,6 +147,20 @@ func (c *Client) Connect(ctx context.Context) {
 			case item, ok := <-streamCh:
 				if !ok {
 					return
+				}
+				if item.kind == EventKindEventProto && eventHasAttachmentDownload(item.payload) {
+					mediaWG.Add(1)
+					go func(it streamNotification) {
+						defer mediaWG.Done()
+						select {
+						case <-streamCtx.Done():
+							return
+						case mediaSem <- struct{}{}:
+							defer func() { <-mediaSem }()
+						}
+						c.processStreamNotification(streamCtx, it)
+					}(item)
+					continue
 				}
 				c.processStreamNotification(streamCtx, item)
 			}
