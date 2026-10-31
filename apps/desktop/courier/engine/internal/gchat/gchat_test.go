@@ -4309,6 +4309,158 @@ func TestStopStreamWaitsForInFlightCallbacksBeforeDeletingCgoHandle(t *testing.T
 	require.False(t, callbackFinishedAfterStop.Load(), "StopStream must wait for in-flight callback to finish before returning")
 }
 
+func TestCatchUpPaginatedFollowsMultiplePagesForUserAndGroup(t *testing.T) {
+	enableTestLoopback(t)
+	ctx := context.Background()
+
+	var (
+		mu             sync.Mutex
+		userReqsFrom   []int64
+		groupReqsFrom  []int64
+	)
+
+	h, ul, client := setupLoggedInGChatTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/u/0/api/paginated_world":
+			w.Header().Set("Content-Type", "application/x-protobuf")
+			_, _ = w.Write(buildSendTestPaginatedWorldResponse())
+		case "/u/0/api/catch_up_user":
+			body, _ := io.ReadAll(r.Body)
+			var req pb.CatchUpUserRequest
+			require.NoError(t, pb.Unmarshal(body, &req))
+			fromRev := req.GetRange().GetFromRevisionTimestamp()
+			mu.Lock()
+			pageIdx := len(userReqsFrom)
+			userReqsFrom = append(userReqsFrom, fromRev)
+			mu.Unlock()
+
+			spaceGID := pb.SpaceGroupID("space_threaded")
+			w.Header().Set("Content-Type", "application/x-protobuf")
+			if pageIdx == 0 {
+				msg1 := buildSyntheticMessageProto(spaceGID, "topic_cu", "msg_cu_u1", "112233445566778899002", "User page 1", 1710000600000000, "", 0, 0)
+				_, _ = w.Write(pb.MustMarshal(&pb.CatchUpResponse{
+					Status: pb.CatchUpResponse_PAGINATED.Enum(),
+					Events: []*pb.Event{{
+						GroupId: spaceGID,
+						RevisionType: &pb.Event_UserRevision{
+							UserRevision: &pb.WriteRevision{Timestamp: pb.Int64(610)},
+						},
+						Bodies: []*pb.Event_EventBody{{
+							EventType: pb.Event_MESSAGE_POSTED.Enum(),
+							Type: &pb.Event_EventBody_MessagePosted{
+								MessagePosted: &pb.MessageEvent{Message: msg1},
+							},
+						}},
+					}},
+					ReadRevision: &pb.ReadRevision{Timestamp: pb.Int64(610)},
+				}))
+				return
+			}
+			msg2 := buildSyntheticMessageProto(spaceGID, "topic_cu", "msg_cu_u2", "112233445566778899002", "User page 2", 1710000601000000, "", 0, 0)
+			_, _ = w.Write(pb.MustMarshal(&pb.CatchUpResponse{
+				Status: pb.CatchUpResponse_COMPLETED.Enum(),
+				Events: []*pb.Event{{
+					GroupId: spaceGID,
+					RevisionType: &pb.Event_UserRevision{
+						UserRevision: &pb.WriteRevision{Timestamp: pb.Int64(620)},
+					},
+					Bodies: []*pb.Event_EventBody{{
+						EventType: pb.Event_MESSAGE_POSTED.Enum(),
+						Type: &pb.Event_EventBody_MessagePosted{
+							MessagePosted: &pb.MessageEvent{Message: msg2},
+						},
+					}},
+				}},
+				ReadRevision: &pb.ReadRevision{Timestamp: pb.Int64(620)},
+			}))
+		case "/u/0/api/catch_up_group":
+			body, _ := io.ReadAll(r.Body)
+			var req pb.CatchUpGroupRequest
+			require.NoError(t, pb.Unmarshal(body, &req))
+			fromRev := req.GetRange().GetFromRevisionTimestamp()
+			mu.Lock()
+			pageIdx := len(groupReqsFrom)
+			groupReqsFrom = append(groupReqsFrom, fromRev)
+			mu.Unlock()
+
+			spaceGID := pb.SpaceGroupID("space_threaded")
+			w.Header().Set("Content-Type", "application/x-protobuf")
+			if pageIdx == 0 {
+				msg1 := buildSyntheticMessageProto(spaceGID, "topic_cug", "msg_cu_g1", "112233445566778899002", "Group page 1", 1710000602000000, "", 0, 0)
+				_, _ = w.Write(pb.MustMarshal(&pb.CatchUpResponse{
+					Status: pb.CatchUpResponse_PAGINATED.Enum(),
+					Events: []*pb.Event{{
+						GroupId: spaceGID,
+						RevisionType: &pb.Event_GroupRevision{
+							GroupRevision: &pb.WriteRevision{Timestamp: pb.Int64(150)},
+						},
+						Bodies: []*pb.Event_EventBody{{
+							EventType: pb.Event_MESSAGE_POSTED.Enum(),
+							Type: &pb.Event_EventBody_MessagePosted{
+								MessagePosted: &pb.MessageEvent{Message: msg1},
+							},
+						}},
+					}},
+					ReadRevision: &pb.ReadRevision{Timestamp: pb.Int64(150)},
+				}))
+				return
+			}
+			msg2 := buildSyntheticMessageProto(spaceGID, "topic_cug", "msg_cu_g2", "112233445566778899002", "Group page 2", 1710000603000000, "", 0, 0)
+			_, _ = w.Write(pb.MustMarshal(&pb.CatchUpResponse{
+				Status: pb.CatchUpResponse_COMPLETED.Enum(),
+				Events: []*pb.Event{{
+					GroupId: spaceGID,
+					RevisionType: &pb.Event_GroupRevision{
+						GroupRevision: &pb.WriteRevision{Timestamp: pb.Int64(180)},
+					},
+					Bodies: []*pb.Event_EventBody{{
+						EventType: pb.Event_MESSAGE_POSTED.Enum(),
+						Type: &pb.Event_EventBody_MessagePosted{
+							MessagePosted: &pb.MessageEvent{Message: msg2},
+						},
+					}},
+				}},
+				ReadRevision: &pb.ReadRevision{Timestamp: pb.Int64(180)},
+			}))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	require.NoError(t, client.syncWorld(ctx))
+	require.NoError(t, client.catchUpAfterReconnect(ctx))
+
+	mu.Lock()
+	require.Equal(t, []int64{500, 610}, userReqsFrom, "catchUpAfterReconnect must paginate with updated FromRevisionTimestamp")
+	mu.Unlock()
+	require.Equal(t, int64(620), ul.Metadata.(*UserLoginMetadata).UserRevision)
+
+	portal, err := h.Bridge.GetExistingPortalByKey(ctx, networkid.PortalKey{
+		ID:       MakeSpacePortalID("space_threaded"),
+		Receiver: ul.ID,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, portal)
+	require.NoError(t, client.catchUpGroup(ctx, portal))
+
+	mu.Lock()
+	require.Equal(t, []int64{120, 150}, groupReqsFrom, "catchUpGroup must paginate with updated FromRevisionTimestamp")
+	mu.Unlock()
+	require.Equal(t, int64(180), portal.Metadata.(*PortalMetadata).GroupRevision)
+
+	evts := client.recordedRemoteEvents()
+	seenMsgs := make(map[networkid.MessageID]bool)
+	for _, ev := range evts {
+		if m, ok := ev.(*simplevent.PreConvertedMessage); ok {
+			seenMsgs[m.ID] = true
+		}
+	}
+	require.True(t, seenMsgs[MakeMessageID("topic_cu", "msg_cu_u1")])
+	require.True(t, seenMsgs[MakeMessageID("topic_cu", "msg_cu_u2")])
+	require.True(t, seenMsgs[MakeMessageID("topic_cug", "msg_cu_g1")])
+	require.True(t, seenMsgs[MakeMessageID("topic_cug", "msg_cu_g2")])
+}
+
 func TestServeGChatEngineHelperForAppE2E(t *testing.T) {
 	sockPath := os.Getenv("COURIER_GCHAT_E2E_SOCKET")
 	if sockPath == "" {

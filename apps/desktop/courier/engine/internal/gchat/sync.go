@@ -597,9 +597,12 @@ func isCatchUpAborted(status pb.CatchUpResponse_ResponseStatus) bool {
 		status == pb.CatchUpResponse_ABORTED_FROM_REVISION_TOO_OLD
 }
 
+const catchUpMaxPages = 100
+
 // catchUpAfterReconnect calls POST /u/0/api/catch_up_user with from_revision = UserLoginMetadata.UserRevision,
-// translates and dispatches every returned Event, falls back to syncWorld when from_revision == 0 or
-// CatchUpResponse.status is ABORTED_*, and advances user_revision without overwriting any portal's group_revision.
+// follows PAGINATED responses up to catchUpMaxPages, translates and dispatches every returned Event,
+// falls back to syncWorld when from_revision == 0 or CatchUpResponse.status is ABORTED_*, and advances
+// user_revision only after all pages are processed without overwriting any portal's group_revision.
 func (c *Client) catchUpAfterReconnect(ctx context.Context) error {
 	var fromRev int64
 	if c.UserLogin != nil {
@@ -613,43 +616,50 @@ func (c *Client) catchUpAfterReconnect(ctx context.Context) error {
 		return c.syncWorld(ctx)
 	}
 
-	reqBytes, err := pb.Marshal(&pb.CatchUpUserRequest{
-		Range: &pb.CatchUpRange{
-			FromRevisionTimestamp: pb.Int64(fromRev),
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("marshal catch_up_user request: %w", err)
-	}
-	respBytes, err := c.rpcCall(ctx, "catch_up_user", reqBytes)
-	if err != nil {
-		return fmt.Errorf("catch_up_user failed: %w", err)
-	}
-
-	var resp pb.CatchUpResponse
-	if err := pb.Unmarshal(respBytes, &resp); err != nil {
-		return fmt.Errorf("decode catch_up_user response: %w", err)
-	}
-
-	if isCatchUpAborted(resp.GetStatus()) {
-		return c.syncWorld(ctx)
-	}
-
 	maxUserRev := fromRev
-	if r := resp.GetReadRevision().GetTimestamp(); r > maxUserRev {
-		maxUserRev = r
-	}
+	for page := 0; page < catchUpMaxPages; page++ {
+		pageStartRev := maxUserRev
+		reqBytes, err := pb.Marshal(&pb.CatchUpUserRequest{
+			Range: &pb.CatchUpRange{
+				FromRevisionTimestamp: pb.Int64(pageStartRev),
+			},
+		})
+		if err != nil {
+			return fmt.Errorf("marshal catch_up_user request: %w", err)
+		}
+		respBytes, err := c.rpcCall(ctx, "catch_up_user", reqBytes)
+		if err != nil {
+			return fmt.Errorf("catch_up_user failed: %w", err)
+		}
 
-	for _, evt := range resp.GetEvents() {
-		if r := evt.GetUserRevision().GetTimestamp(); r > maxUserRev {
+		var resp pb.CatchUpResponse
+		if err := pb.Unmarshal(respBytes, &resp); err != nil {
+			return fmt.Errorf("decode catch_up_user response: %w", err)
+		}
+
+		if isCatchUpAborted(resp.GetStatus()) {
+			return c.syncWorld(ctx)
+		}
+
+		if r := resp.GetReadRevision().GetTimestamp(); r > maxUserRev {
 			maxUserRev = r
 		}
-		remoteEvts, err := c.translateEvent(ctx, evt, false, false)
-		if err != nil {
-			return err
+
+		for _, evt := range resp.GetEvents() {
+			if r := evt.GetUserRevision().GetTimestamp(); r > maxUserRev {
+				maxUserRev = r
+			}
+			remoteEvts, err := c.translateEvent(ctx, evt, false, false)
+			if err != nil {
+				return err
+			}
+			for _, re := range remoteEvts {
+				c.queueRemoteEvent(ctx, re)
+			}
 		}
-		for _, re := range remoteEvts {
-			c.queueRemoteEvent(ctx, re)
+
+		if resp.GetStatus() != pb.CatchUpResponse_PAGINATED || maxUserRev <= pageStartRev {
+			break
 		}
 	}
 
@@ -660,8 +670,9 @@ func (c *Client) catchUpAfterReconnect(ctx context.Context) error {
 }
 
 // catchUpGroup calls POST /u/0/api/catch_up_group for a single portal with from_revision = PortalMetadata.GroupRevision,
-// translates and dispatches every returned Event, falls back to syncWorld when from_revision == 0 or
-// CatchUpResponse.status is ABORTED_*, and advances only that portal's group_revision.
+// follows PAGINATED responses up to catchUpMaxPages, translates and dispatches every returned Event,
+// falls back to syncWorld when from_revision == 0 or CatchUpResponse.status is ABORTED_*, and advances
+// only that portal's group_revision after all pages are processed.
 func (c *Client) catchUpGroup(ctx context.Context, portal *bridgev2.Portal) error {
 	if portal == nil {
 		return fmt.Errorf("catchUpGroup called with nil portal")
@@ -681,48 +692,55 @@ func (c *Client) catchUpGroup(ctx context.Context, portal *bridgev2.Portal) erro
 	}
 
 	groupID := pb.PartsToGroupID(rawID, isDM)
-	reqBytes, err := pb.Marshal(&pb.CatchUpGroupRequest{
-		GroupId: groupID,
-		Range: &pb.CatchUpRange{
-			FromRevisionTimestamp: pb.Int64(fromRev),
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("marshal catch_up_group request: %w", err)
-	}
-
-	respBytes, err := c.rpcCall(ctx, "catch_up_group", reqBytes)
-	if err != nil {
-		return fmt.Errorf("catch_up_group failed: %w", err)
-	}
-
-	var resp pb.CatchUpResponse
-	if err := pb.Unmarshal(respBytes, &resp); err != nil {
-		return fmt.Errorf("decode catch_up_group response: %w", err)
-	}
-
-	if isCatchUpAborted(resp.GetStatus()) {
-		return c.syncWorld(ctx)
-	}
-
 	maxGroupRev := fromRev
-	if r := resp.GetReadRevision().GetTimestamp(); r > maxGroupRev {
-		maxGroupRev = r
-	}
+	for page := 0; page < catchUpMaxPages; page++ {
+		pageStartRev := maxGroupRev
+		reqBytes, err := pb.Marshal(&pb.CatchUpGroupRequest{
+			GroupId: groupID,
+			Range: &pb.CatchUpRange{
+				FromRevisionTimestamp: pb.Int64(pageStartRev),
+			},
+		})
+		if err != nil {
+			return fmt.Errorf("marshal catch_up_group request: %w", err)
+		}
 
-	for _, evt := range resp.GetEvents() {
-		if r := evt.GetGroupRevision().GetTimestamp(); r > maxGroupRev {
+		respBytes, err := c.rpcCall(ctx, "catch_up_group", reqBytes)
+		if err != nil {
+			return fmt.Errorf("catch_up_group failed: %w", err)
+		}
+
+		var resp pb.CatchUpResponse
+		if err := pb.Unmarshal(respBytes, &resp); err != nil {
+			return fmt.Errorf("decode catch_up_group response: %w", err)
+		}
+
+		if isCatchUpAborted(resp.GetStatus()) {
+			return c.syncWorld(ctx)
+		}
+
+		if r := resp.GetReadRevision().GetTimestamp(); r > maxGroupRev {
 			maxGroupRev = r
 		}
-		if evt.GetGroupId() == nil {
-			evt.GroupId = groupID
+
+		for _, evt := range resp.GetEvents() {
+			if r := evt.GetGroupRevision().GetTimestamp(); r > maxGroupRev {
+				maxGroupRev = r
+			}
+			if evt.GetGroupId() == nil {
+				evt.GroupId = groupID
+			}
+			remoteEvts, err := c.translateEvent(ctx, evt, false, false)
+			if err != nil {
+				return err
+			}
+			for _, re := range remoteEvts {
+				c.queueRemoteEvent(ctx, re)
+			}
 		}
-		remoteEvts, err := c.translateEvent(ctx, evt, false, false)
-		if err != nil {
-			return err
-		}
-		for _, re := range remoteEvts {
-			c.queueRemoteEvent(ctx, re)
+
+		if resp.GetStatus() != pb.CatchUpResponse_PAGINATED || maxGroupRev <= pageStartRev {
+			break
 		}
 	}
 
