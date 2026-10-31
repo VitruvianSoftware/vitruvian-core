@@ -141,6 +141,8 @@ pipeline_unit(
     test_targets = [
         ":unit_tests",
         ":typecheck_typecheck_test",
+        # cloud_run_deploy's launcher check: the real :deploy reaches the sequencer.
+        "//apps/suites/tabula/infra/web:deploy_launcher_test",
     ],
     tier = "L1",
     timeout_minutes = 15,

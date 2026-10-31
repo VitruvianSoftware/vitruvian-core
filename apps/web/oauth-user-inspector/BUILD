@@ -250,7 +250,11 @@ pipeline_unit(
     name = "oauth-user-inspector",
     persona = "all",
     runner = "ubuntu-26.04",
-    test_targets = [":unit_tests"],
+    test_targets = [
+        ":unit_tests",
+        # cloud_run_deploy's launcher check: the real :deploy reaches the sequencer.
+        "//apps/web/oauth-user-inspector/infra/app:deploy_launcher_test",
+    ],
     tier = "L1",
     timeout_minutes = 15,
 )

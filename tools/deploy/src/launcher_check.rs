@@ -23,7 +23,9 @@
 //! Runs the app's real `:deploy` target the way `bazel run` does (from the
 //! runfiles tree, with the flags the macro baked in) and checks it reaches the
 //! Rust sequencer and drives pulumi-cmd. Nothing real is touched: pulumi-cmd
-//! is a stub that only logs, and PATH holds nothing but a `gcloud` stub (plus `bash` and `cat`), so no
+//! is a stub that only logs, put at the very runfiles path the target is
+//! configured with (VITRUVIAN_PULUMI_CMD_BIN, which the test gets from the
+//! same `env` as the :deploy target), and PATH holds nothing but a `gcloud` stub (plus `bash` and `cat`), so no
 //! real pulumi, gcloud or curl can run. `--phase candidate` with a fixed
 //! `--stable-revision` never needs gcloud at all.
 //!
@@ -55,7 +57,7 @@ fn main() {
 
     // Under `bazel test` (and `bazel run`) the working directory is the
     // runfiles tree, which mirrors the workspace for every data file, so it
-    // also stands in for BUILD_WORKSPACE_DIRECTORY (--custom-smoke-script-file).
+    // stands in for BUILD_WORKSPACE_DIRECTORY (--custom-smoke-script-file).
     let cwd = std::env::current_dir().unwrap();
     let deploy = cwd.join(deploy);
     let tmp = std::env::var_os("TEST_TMPDIR")
@@ -66,7 +68,26 @@ fn main() {
     let bin = tmp.join("bin");
     std::fs::create_dir_all(&bin).unwrap();
     let log_line = "#!/bin/sh\nprintf '%s\\n' \"$*\" >>\"$0.log\"\n";
-    let pulumi_cmd = tmp.join("pulumi-cmd");
+    // The pulumi-cmd path the target is configured with: it must name a real
+    // file in the runfiles tree (a mis-wired label or path fails here), and
+    // the run below gets that same relative path, resolved against a copy of
+    // the tree where it is a stub. Nothing points the sequencer at the stub
+    // but that configured path.
+    let configured = std::env::var("VITRUVIAN_PULUMI_CMD_BIN").expect(
+        "VITRUVIAN_PULUMI_CMD_BIN is not set: the macro must give the test the target's env",
+    );
+    assert!(
+        Path::new(&configured).is_relative() && cwd.join(&configured).is_file(),
+        "the :deploy target's VITRUVIAN_PULUMI_CMD_BIN={configured:?} is not a file in its runfiles"
+    );
+    assert_eq!(
+        Path::new(&configured).file_name().and_then(|n| n.to_str()),
+        Some("pulumi-cmd"),
+        "the :deploy target's VITRUVIAN_PULUMI_CMD_BIN={configured:?} is not //tools/pulumi:pulumi-cmd"
+    );
+    let fake_root = tmp.join("runfiles").join("_main");
+    let pulumi_cmd = fake_root.join(&configured);
+    std::fs::create_dir_all(pulumi_cmd.parent().unwrap()).unwrap();
     write_exec(&pulumi_cmd, &format!("{log_line}exit 0\n"));
     // bash (for a launcher that is a shell script) and cat (the sequencer
     // reads --custom-smoke-script-file with it): neither reaches anything
@@ -84,11 +105,14 @@ fn main() {
     write_exec(&gcloud, &format!("{log_line}exit 1\n"));
 
     let mut c = Command::new(&deploy);
+    // RUNFILES_DIR is left unset: the sequencer's fallback to it would find
+    // the real pulumi-cmd.
     c.env_clear()
+        .current_dir(&fake_root)
         .env("PATH", &bin)
         .env("HOME", &tmp)
         .env("BUILD_WORKSPACE_DIRECTORY", &cwd)
-        .env("VITRUVIAN_PULUMI_CMD_BIN", &pulumi_cmd)
+        .env("VITRUVIAN_PULUMI_CMD_BIN", &configured)
         .args(baked)
         .args([
             "--env",
@@ -103,9 +127,6 @@ fn main() {
             "rev-stable",
         ])
         .stdin(Stdio::null());
-    if let Some(rf) = std::env::var_os("RUNFILES_DIR") {
-        c.env("RUNFILES_DIR", rf);
-    }
     let o = c
         .output()
         .unwrap_or_else(|e| panic!("could not start {}: {e}", deploy.display()));

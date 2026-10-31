@@ -96,26 +96,31 @@ def cloud_run_deploy(
     # //tools/pulumi:pulumi-cmd. A shell launcher here once looked for
     # `cloud-run` beside itself, in the app's package, and every :deploy
     # exited 126.
+    # What //tools/deploy:cloud-run sets for itself: an `env` on a data
+    # dependency does not reach a binary run through this target. Shared with
+    # the launcher test below, so it checks the paths `bazel run` really gets.
+    data = [
+        "//tools/gcp-token",
+        "//tools/pulumi:pulumi-cmd",
+    ]
+    env = {
+        "VITRUVIAN_GCP_TOKEN_BIN": "$(rootpath //tools/gcp-token)",
+        "VITRUVIAN_PULUMI_CMD_BIN": "$(rootpath //tools/pulumi:pulumi-cmd)",
+    }
     sh_binary(
         name = name,
         srcs = ["//tools/deploy:cloud-run"],
         args = args,
-        data = [
-            "//tools/gcp-token",
-            "//tools/pulumi:pulumi-cmd",
-        ],
-        # What //tools/deploy:cloud-run sets for itself: an `env` on a data
-        # dependency does not reach a binary run through this target.
-        env = {
-            "VITRUVIAN_GCP_TOKEN_BIN": "$(rootpath //tools/gcp-token)",
-            "VITRUVIAN_PULUMI_CMD_BIN": "$(rootpath //tools/pulumi:pulumi-cmd)",
-        },
+        data = data,
+        env = env,
         visibility = visibility,
     )
 
-    # Runs this very target, with the args above, against a stub pulumi-cmd and
-    # gcloud: proves `bazel run :<name>` reaches the sequencer (every :deploy once
-    # exited 126 when its launcher looked for cloud-run in the app's directory). The smoke file is data so the runfiles tree, which
+    # Runs this very target the way `bazel run :<name>` does: the same args
+    # and the same env, so the pulumi-cmd path it is configured with is the
+    # one checked (a stub is put at that path; see src/launcher_check.rs).
+    # Every :deploy once exited 126 when its launcher looked for cloud-run in
+    # the app's directory. The smoke file is data so the runfiles tree, which
     # stands in for the workspace, holds it.
     smoke_data = []
     if custom_smoke_script_file:
@@ -126,5 +131,6 @@ def cloud_run_deploy(
         size = "small",
         srcs = ["//tools/deploy:launcher-check"],
         args = ["$(rootpath :%s)" % name] + args,
-        data = [":" + name] + smoke_data,
+        data = [":" + name] + data + smoke_data,
+        env = env,
     )
