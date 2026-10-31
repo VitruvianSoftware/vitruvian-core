@@ -13,6 +13,7 @@ pub mod channel;
 pub mod cookies;
 pub mod ffi;
 pub mod fmt;
+pub mod fuzz_tests;
 pub mod media;
 pub mod netguard;
 pub mod pblite;

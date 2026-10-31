@@ -1543,3 +1543,41 @@ All items carried to 4.6 from earlier parts — the two-column Settings window (
   - `setting:general` Show Telegram Topics as separate spaces: not planned in iteration 1 (`mautrix-telegram` does not expose forum topics as separate portal spaces).
   - `setting:general` Show WhatsApp Communities as separate spaces: not planned in iteration 1 (`mautrix-whatsapp` bridges community rooms directly without a separate space hierarchy).
 
+---
+
+## Google Chat (`gchat` — Network 6: Rust `gchat_ffi` crate + Go `bridgev2` connector)
+
+### Automated verification (synthetic fixtures and loopback fake server only; no `*.google.com` network calls)
+
+- **Rust crate & C-ABI FFI (`apps/desktop/courier/gchat/src/lib.rs`, `apps/desktop/courier/gchat/src/ffi.rs`, `apps/desktop/courier/gchat/include/gchat.h`)**:
+  - `decode_pblite_dynamic` and `encode_pblite_dynamic` (`apps/desktop/courier/gchat/src/pblite.rs:23-297`, verified by `test_pblite_maps_one_indexed_array_positions_to_field_numbers` and `fuzz_pblite_event_never_panics_on_deep_and_malformed_json` in `apps/desktop/courier/gchat/src/fuzz_tests.rs`).
+  - `ChunkParser` (`apps/desktop/courier/gchat/src/channel.rs:165-320`, verified by `fuzz_chunk_parser_never_panics_on_adversarial_and_random_inputs` in `apps/desktop/courier/gchat/src/fuzz_tests.rs`).
+  - `DomainCookieJar` (`apps/desktop/courier/gchat/src/cookies.rs:52-209`, verified by `test_cookie_jar_validates_required_five_cookies_and_scopes_by_host` and `fuzz_cookies_never_panics_on_arbitrary_headers_and_maps` in `apps/desktop/courier/gchat/src/fuzz_tests.rs`) requires the five verified cookies `COMPASS` and `OSID` on `chat.google.com` plus `SSID`, `SID`, and `HSID` on `.google.com`, while keeping optional cookies (`SAPISID`, `APISID`, `__Secure-1PSID`, `__Secure-3PSID`) when present.
+  - `annotations_to_matrix_html` (`apps/desktop/courier/gchat/src/fmt/inbound.rs:310-644`) and `matrix_html_to_annotations` (`apps/desktop/courier/gchat/src/fmt/outbound.rs:737-769`, verified by `test_inbound_annotations_convert_utf16_spans_with_emojis_and_nested_styles`, `test_outbound_html_generates_utf16_annotations_for_all_supported_tags`, and `fuzz_fmt_annotations_never_splits_surrogate_pairs_or_panics` in `apps/desktop/courier/gchat/src/fuzz_tests.rs`).
+  - `validate_redirect_or_endpoint_url` (`apps/desktop/courier/gchat/src/netguard.rs`, verified by `TestProductionConfigRejectsLoopbackAndPrivateAddresses` in `apps/desktop/courier/engine/internal/gchat/gchat_test.go`) rejects loopback and private IP ranges in production while allowing loopback only under the `test-loopback` test build.
+- **Go `bridgev2` connector (`apps/desktop/courier/engine/internal/gchat/connector.go`, `apps/desktop/courier/engine/internal/gchat/rooms.go`)**:
+  - Cookie login and session validation (`Connector.CreateLogin` in `apps/desktop/courier/engine/internal/gchat/connector.go:220-340`, verified by `TestLoginCookiesFlowValidatesRequiredCookiesAndPersistsKeychainRef` in `apps/desktop/courier/engine/internal/gchat/gchat_test.go`).
+  - Initial `paginated_world` sync, `catch_up_group` / `catch_up_user`, and `list_topics` / `get_group` backfill (`Client.Connect` and `Client.FetchMessagesBetween` in `apps/desktop/courier/engine/internal/gchat/connector.go`, verified by `TestConnectRunsPaginatedWorldAndBackfillsSpacesAndDMs` in `apps/desktop/courier/engine/internal/gchat/gchat_test.go`).
+  - Outbound and inbound messages, threaded vs flat Spaces (`THREADING_ENABLED`), edits, unsend, reactions, typing, and read receipts (`Client.HandleMatrixMessage`, `Client.HandleMatrixEdit`, `Client.HandleMatrixMessageRemove`, `Client.HandleMatrixReaction`, `Client.HandleMatrixTyping`, `Client.HandleMatrixReadReceipt`, verified by `TestAdvertisedCapabilitiesAllHaveWorkingHandlers` in `apps/desktop/courier/engine/internal/gchat/gchat_test.go`).
+  - Media upload and authenticated download (`Client.uploadMedia` and `Client.downloadAttachment`, verified by `TestMediaUploadAndAuthenticatedDownload` in `apps/desktop/courier/engine/internal/gchat/gchat_test.go`).
+  - DM creation by Gaia ID or email (`Client.ResolveIdentifier` and `Client.CreateChatWithGhost` in `apps/desktop/courier/engine/internal/gchat/rooms.go:28-198`, verified by `TestResolveIdentifierAndCreateDMByGaiaIDOrEmail` in `apps/desktop/courier/engine/internal/gchat/gchat_test.go`), while Space creation (`GroupCreation`) remains unadvertised per spec §13.
+  - Space rename and description update preserving `guidelines` (`Client.HandleMatrixRoomName` and `Client.HandleMatrixRoomTopic` in `apps/desktop/courier/engine/internal/gchat/rooms.go:200-289`, verified by `TestSetChatNameAndSetChatTopicPreservesSpaceGuidelines` in `apps/desktop/courier/engine/internal/gchat/gchat_test.go`).
+  - Permanent mute/unmute sync (timed mute refused), invite accept/decline, Space membership (`create_membership` / `remove_memberships`), and DM hide (`hide_group`) (`Client.HandleMute`, `Client.HandleMatrixMembership`, `Client.HandleMatrixDeleteChat` in `apps/desktop/courier/engine/internal/gchat/rooms.go:291-497`, verified by `TestMuteSyncAndMembershipAndHideGroup` in `apps/desktop/courier/engine/internal/gchat/gchat_test.go` and `TestGroupAndChatManagementTableMatchesTheBridges` in `apps/desktop/courier/engine/internal/networks/networks_test.go`).
+  - Log scrubbing (`logscrub.Scrub` in `apps/desktop/courier/engine/internal/logscrub/logscrub.go:322-324`, verified by `TestLogscrubRedactsGoogleChatCookiesTokensGaiaIDsAndWebChannelURLs` in `apps/desktop/courier/engine/internal/logscrub/bridge_test.go`).
+- **Swift macOS UI & capabilities (`apps/desktop/courier/app/Sources/CourierCore/LoginFlowModel.swift`, `apps/desktop/courier/app/Sources/CourierCore/ChatFeatures.swift`, `apps/desktop/courier/app/Sources/Courier/SignInWindow.swift`)**:
+  - `NetworkNames.displayName` (`ChatFeatures.swift:22`), `NetworkAppearance.of` (`InboxPresentation.swift:145`), and `LoginFlowModel.offeredFlows` (`LoginFlowModel.swift:275, 319`, verified by `ChatFeaturesTests`, `CookieCollectorTests`, `LoginFlowModelTests`, and `ViewSnapshotTests.testGoogleChatSignInWindowAndChatSnapshotsLightAndDark` in `ViewSnapshotTests.swift`).
+
+### Owner's by-hand verification day (`apps/desktop/courier/engine/docs/gchat-by-hand.md`)
+
+Because automated tests never contact `*.google.com`, verify these live-account checks by hand following `apps/desktop/courier/engine/docs/gchat-by-hand.md`:
+
+- [ ] **Cookie Sign-In & Keychain Persistence**: Link Google Chat in `AddNetworkView` / `SignInWindowController`; verify `COMPASS`, `SSID`, `SID`, `OSID`, and `HSID` are collected and the account reconnects across app relaunch without re-prompting.
+- [ ] **Initial Sync (`paginated_world`)**: Confirm existing DMs and Spaces populate with names, avatars, unread counts, and recent history.
+- [ ] **WebChannel Real-Time Push**: Send a message from Google Chat web/mobile in a DM and a Space and confirm sub-2-second delivery in Courier.
+- [ ] **Rich Text & UTF-16 Annotations**: Send multi-codepoint emojis, bold, italic, strikethrough, inline code, code blocks, and `@mentions` in both directions and verify no span drift after emojis.
+- [ ] **Threaded vs Flat Spaces & Replies**: Reply in a threaded Space (`THREADING_ENABLED`) and quote-reply in a flat Space or DM.
+- [ ] **Edits, Unsend & Reactions**: Edit, react (`👍`), unreact, and delete a message in both directions.
+- [ ] **Attachments (Upload & Download)**: Send and receive a PNG image and a PDF document in Google Chat.
+- [ ] **Typing, Read Receipts & Mute**: Verify typing indicators, read watermarks, and Space mute/unmute sync both ways.
+- [ ] **Create DM by Email & Space Metadata**: Start a DM by email address and update a Space's name and description while preserving Space `guidelines`.
+- [ ] **Diagnostics Log Scrubbing Check**: Export a problem report (`ProblemReportSheet`) after live testing and confirm zero raw cookies, XSRF tokens, WebChannel `gsessionid` values, or 21-digit Gaia IDs appear.

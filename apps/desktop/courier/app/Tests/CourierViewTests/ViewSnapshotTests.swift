@@ -5,6 +5,7 @@ import AppKit
 import CourierCore
 import SwiftUI
 import UserNotifications
+import WebKit
 import XCTest
 
 @testable import Courier
@@ -4588,6 +4589,159 @@ final class ViewSnapshotTests: XCTestCase {
             errorBridgesData,
             "BridgesSettingsPane must visibly render model.lastError when non-nil"
         )
+    }
+
+    func testGoogleChatSignInWindowAndChatSnapshotsLightAndDark() async throws {
+        // 1. Google Chat sign-in window (AddNetworkView in .signIn state + SignInWindowContent bar)
+        let accounts = [
+            Account(network: "gchat", displayName: "Google Chat", flows: ["cookies"], state: .unconfigured),
+        ]
+        let caller = SnapshotLoginCaller()
+        caller.finish = try JSONDecoder().decode(LoginStep.self, from: Data("""
+        {"login_id": "gchat-login-1", "step_id": "fi.mau.gchat.login.cookies", "type": "cookies",
+         "instructions": "Sign in to your Google account to link Google Chat.",
+         "cookies": {
+           "url": "https://accounts.google.com/ServiceLogin?continue=https://chat.google.com/",
+           "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15",
+           "wait_for_url": "^https://chat\\\\.google\\\\.com/",
+           "fields": [
+             {"id": "COMPASS", "required": true, "sources": [{"type": "cookie", "name": "COMPASS", "cookie_domain": "chat.google.com"}]},
+             {"id": "SSID", "required": true, "sources": [{"type": "cookie", "name": "SSID", "cookie_domain": "google.com"}]},
+             {"id": "SID", "required": true, "sources": [{"type": "cookie", "name": "SID", "cookie_domain": "google.com"}]},
+             {"id": "OSID", "required": true, "sources": [{"type": "cookie", "name": "OSID", "cookie_domain": "chat.google.com"}]},
+             {"id": "HSID", "required": true, "sources": [{"type": "cookie", "name": "HSID", "cookie_domain": "google.com"}]}
+           ]
+         }}
+        """.utf8))
+        let login = LoginFlowModel(
+            caller: caller,
+            accounts: { accounts },
+            reloadAccounts: {},
+            credentials: SnapshotCredentials(),
+            builtInCredentials: { nil },
+            restartEngine: {}
+        )
+        login.begin(network: "gchat", flow: "cookies")
+        for _ in 0 ..< 200 {
+            if case .signIn = login.screen { break }
+            await Task.yield()
+        }
+        var reachedSignIn = false
+        if case .signIn = login.screen { reachedSignIn = true }
+        XCTAssertTrue(reachedSignIn, "login flow must enter .signIn for gchat cookies step")
+
+        let signInState = SignInWindowState()
+        signInState.bar.shown(URL(string: "https://chat.google.com/u/0/"))
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .nonPersistent()
+        let webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 640, height: 320), configuration: configuration)
+
+        try assertLightAndDarkSnapshot("gchat-signin-window", width: 640, height: 640) {
+            VStack(spacing: 0) {
+                AddNetworkView(login: login)
+                Divider()
+                SignInWindowContent(
+                    state: signInState,
+                    webView: webView,
+                    networkName: "Google Chat",
+                    signedIn: {}
+                )
+            }
+        }
+
+        // 2. Google Chat conversation view (from synthetic fixtures: Space row + rich timeline + composer)
+        let style = RowStyle(InboxPreferences(defaults: defaults()))
+        let spaceRow = Fixture.row(
+            "!gchat_space:courier.local",
+            "Platform Reliability Space",
+            network: "gchat",
+            direct: false,
+            ts: 2,
+            preview: "All checks green on the rollout.",
+            mine: true,
+            status: .seen,
+            login: "alice.example@gmail.com"
+        )
+        let dmRow = Fixture.row(
+            "!gchat_dm:courier.local",
+            "Bob Example",
+            network: "gchat",
+            direct: true,
+            ts: 5,
+            preview: "Can we review the design doc?",
+            unread: 1,
+            status: .delivered,
+            login: "alice.example@gmail.com"
+        )
+        let gchatEvents = [
+            Fixture.text(
+                "$gc1",
+                "Morning team — who is on call for the Google Chat bridge rollout?",
+                mine: false,
+                ts: 40,
+                html: "Morning team — who is on call for the <strong>Google Chat</strong> bridge rollout?",
+                thread: ThreadSummary(
+                    replies: 2,
+                    lastTS: Fixture.millis(15),
+                    lastSenders: ["Bob Example", "Alice Example"]
+                )
+            ),
+            Fixture.text(
+                "$gc2",
+                "I am covering today. Read receipts, threads, and reactions are live.",
+                mine: true,
+                ts: 10,
+                html: "I am covering today. <em>Read receipts</em>, <code>threads</code>, and reactions are live.",
+                delivered: true,
+                readBy: [Reader(userID: Fixture.ann, name: "Bob Example", ts: Fixture.millis(4))]
+            ),
+        ]
+        let preferences = ComposerPreferences(defaults: defaults())
+        let gchatComposer = composer(text: "Sounds great, thanks @Bob Example!")
+        gchatComposer.network = "gchat"
+
+        try assertLightAndDarkSnapshot("gchat-chat", width: 680) {
+            VStack(spacing: 0) {
+                InboxRowView(
+                    row: spaceRow,
+                    networkName: "Google Chat",
+                    now: Fixture.now,
+                    style: style,
+                    isSelecting: false,
+                    isSelected: true,
+                    isHovered: false,
+                    hoverAct: {},
+                    accept: {},
+                    decline: {}
+                ) { EmptyView() }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                Divider()
+                InboxRowView(
+                    row: dmRow,
+                    networkName: "Google Chat",
+                    now: Fixture.now,
+                    style: style,
+                    isSelecting: false,
+                    isSelected: false,
+                    isHovered: false,
+                    hoverAct: {},
+                    accept: {},
+                    decline: {}
+                ) { EmptyView() }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                Divider()
+                timeline(Fixture.items(gchatEvents), sent: "$gc2")
+                Divider()
+                ComposerView(
+                    composer: gchatComposer,
+                    preferences: preferences,
+                    textHeight: .constant(ComposerTextView.minimumHeight),
+                    menus: ComposerMenus(sendLater: {}, createPoll: {}, pollsUnavailable: "Google Chat doesn’t support polls.")
+                )
+            }
+        }
     }
 }
 

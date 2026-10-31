@@ -221,6 +221,11 @@ fn tokenize_html(html: &str) -> Vec<HtmlToken> {
                 i = j + 1;
                 continue;
             }
+            let raw_text = &html[i..];
+            if !raw_text.is_empty() {
+                tokens.push(HtmlToken::Text(unescape_html(raw_text)));
+            }
+            break;
         }
 
         let next_lt = html[i..]

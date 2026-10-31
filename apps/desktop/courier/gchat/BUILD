@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 #
 # gazelle:ignore
+# gazelle:exclude fuzz
 # gazelle:exclude include
 # gazelle:exclude proto
 # gazelle:exclude src
@@ -173,4 +174,32 @@ rust_test(
     edition = "2021",
     proc_macro_deps = _PROC_MACRO_DEPS,
     deps = _DEPS + [":gchat_build_script"],
+)
+
+rust_test(
+    name = "fuzz_chunk_parser_test",
+    srcs = ["fuzz/fuzz_targets/fuzz_chunk_parser.rs"],
+    edition = "2021",
+    deps = [":gchat_rlib"],
+)
+
+rust_test(
+    name = "fuzz_pblite_event_test",
+    srcs = ["fuzz/fuzz_targets/fuzz_pblite_event.rs"],
+    edition = "2021",
+    deps = [":gchat_rlib"],
+)
+
+rust_test(
+    name = "fuzz_fmt_annotations_test",
+    srcs = ["fuzz/fuzz_targets/fuzz_fmt_annotations.rs"],
+    edition = "2021",
+    deps = [":gchat_rlib"],
+)
+
+rust_test(
+    name = "fuzz_cookies_test",
+    srcs = ["fuzz/fuzz_targets/fuzz_cookies.rs"],
+    edition = "2021",
+    deps = [":gchat_rlib"],
 )

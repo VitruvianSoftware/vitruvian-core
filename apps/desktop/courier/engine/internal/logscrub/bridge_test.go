@@ -175,3 +175,133 @@ func waitRooms(t *testing.T, s *store.Store, want int) []string {
 	}, 10*time.Second, 20*time.Millisecond, "the bridge never stored the messages")
 	return got
 }
+
+func TestLogscrubRedactsGoogleChatCookiesTokensGaiaIDsAndWebChannelURLs(t *testing.T) {
+	cases := []struct {
+		name      string
+		in        string
+		forbidden []string
+	}{
+		{
+			name: "cookies",
+			in:   "Cookie: OSID=secret-osid-value; COMPASS=dynamite=secret-compass-val; __Secure-1PSID=secret-1psid; __Secure-3PSID=secret-3psid; SAPISID=secret-sapisid; APISID=secret-apisid; HSID=secret-hsid; SSID=secret-ssid; SID=secret-sid",
+			forbidden: []string{
+				"secret-osid-value",
+				"secret-compass-val",
+				"secret-1psid",
+				"secret-3psid",
+				"secret-sapisid",
+				"secret-apisid",
+				"secret-hsid",
+				"secret-ssid",
+				"secret-sid",
+			},
+		},
+		{
+			name:      "xsrf_token",
+			in:        "X-Framework-Xsrf-Token: AF1QipP_x9z0A1b2C3d4E5f6G7h8I9j0K1l2:1710000000000",
+			forbidden: []string{"AF1QipP_x9z0A1b2C3d4E5f6G7h8I9j0K1l2", "1710000000000"},
+		},
+		{
+			name:      "webchannel_url",
+			in:        "GET https://chat.google.com/webchannel/events?VER=8&AID=42&SID=AbCdEf123456&RID=78901&zx=xyz&t=1&gsessionid=GSessionSecret987654",
+			forbidden: []string{"AbCdEf123456", "GSessionSecret987654", "AID=42", "RID=78901"},
+		},
+		{
+			name:      "gaia_id_21_digits",
+			in:        "resolved user gchat_112233445566778899001 and raw 112233445566778899001 and user/112233445566778899001",
+			forbidden: []string{"112233445566778899001"},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			out := Scrub(c.in)
+			for _, f := range c.forbidden {
+				require.NotContains(t, out, f, "logscrub leaked %q in %q", f, out)
+			}
+		})
+	}
+
+	// End-to-end through the real bridge logger and diagnostics export (ScrubStderrExport):
+	// push a synthetic cookie value, XSRF token, email, and +15550100101 through gchat errors and logs
+	// and assert none reach the engine log or diagnostics export.
+	ctx := context.Background()
+	const (
+		network     = "gchat"
+		myGaia      = "112233445566778899001"
+		dmSpace     = "dm/SPACE_DM_1"
+		peerGaia    = "112233445566778899002"
+		cookieVal   = "OSID=secret-osid-value; COMPASS=dynamite=secret-compass-val; HSID=secret-hsid; SSID=secret-ssid; SID=secret-sid"
+		xsrfToken   = "AF1QipP_x9z0A1b2C3d4E5f6G7h8I9j0K1l2:1710000000000"
+		synthEmail  = "alice.example@gmail.com"
+		synthPhone  = "+15550100101"
+		messageBody = "zq-gchat-secret-body"
+	)
+	gchatErr := errors.New("gchat rpc failed with Cookie: " + cookieVal +
+		" X-Framework-Xsrf-Token: " + xsrfToken +
+		" for " + synthEmail + " (" + synthPhone + ") user/" + peerGaia)
+
+	raw, scrubbed := &syncBuffer{}, &syncBuffer{}
+	log := zerolog.New(io.MultiWriter(raw, New(scrubbed))).Level(zerolog.TraceLevel).With().Timestamp().Logger()
+
+	dir := t.TempDir()
+	s, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { s.Close() })
+	m := &media.Store{Dir: filepath.Join(dir, "media")}
+	n := fakenet.New()
+	direct := true
+	n.SetChat(dmSpace, fakenet.Chat{Direct: &direct})
+	eng, errs := engine.Start(ctx, dir, s, m,
+		[]engine.Spec{{Name: network, Connector: func() (bridgev2.NetworkConnector, error) { return n, nil }}}, log)
+	require.Empty(t, errs)
+	t.Cleanup(eng.Stop)
+	h, ok := eng.Host(network)
+	require.True(t, ok)
+	login, err := n.LoginAs(ctx, h.Bridge, myGaia, "Alice Example")
+	require.NoError(t, err)
+	a := actions.New(eng, s, m)
+
+	n.Incoming(login, dmSpace, peerGaia, "msg-gchat-1", messageBody)
+	rooms := waitRooms(t, s, 1)
+	dmRoom := string(ids.RoomID(network, networkid.PortalKey{ID: dmSpace, Receiver: login.ID}))
+	require.Contains(t, rooms, dmRoom)
+
+	n.FailWith(gchatErr)
+	sent, err := a.SendText(ctx, dmRoom, messageBody, "")
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		e, ok, err := s.GetEvent(ctx, sent)
+		return err == nil && ok && e.Status == "failed"
+	}, 10*time.Second, 20*time.Millisecond, "the refused gchat send never failed")
+
+	// Also emit a direct gchat error log line and startup error line into the logger / diagnostics export input.
+	log.Error().Str("bridge", "gchat").Err(gchatErr).Msg("gchat request failed for " + synthEmail + " " + synthPhone)
+	eng.Stop()
+
+	rawOut := raw.String()
+	engineLogOut := scrubbed.String()
+	diagnosticsInput := rawOut + "\ncourier-engine: " + gchatErr.Error() + "\npanic: " + gchatErr.Error() + "\n"
+	diagnosticsOut := strings.Join(ScrubStderrExport(diagnosticsInput), "\n")
+
+	for _, secret := range []string{
+		"secret-osid-value",
+		"secret-compass-val",
+		"secret-hsid",
+		"secret-ssid",
+		"secret-sid",
+		"AF1QipP_x9z0A1b2C3d4E5f6G7h8I9j0K1l2",
+		"1710000000000",
+		synthEmail,
+		synthPhone,
+		"15550100101",
+		myGaia,
+		peerGaia,
+	} {
+		require.Contains(t, rawOut, secret, "fixture: raw unscrubbed log must contain %q", secret)
+		require.NotContains(t, engineLogOut, secret, "engine log leaked %q", secret)
+		require.NotContains(t, diagnosticsOut, secret, "diagnostics export leaked %q", secret)
+	}
+	require.NotContains(t, rawOut+engineLogOut+diagnosticsOut, messageBody, "message body must never be logged")
+}
