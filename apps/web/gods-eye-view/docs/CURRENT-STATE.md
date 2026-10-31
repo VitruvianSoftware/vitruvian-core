@@ -5906,10 +5906,10 @@ Replay transport uses one Play/Pause toggle plus Cancel. During ascent only the 
 ## Tooling Snapshot
 
 - `tools/cesium-render.mjs`: headless Cesium render capture via Puppeteer.
-- `tools/streetview-panorama.mjs`: Street View tile panorama stitcher.
-- `tools/streetview-headings.mjs`: heading sweep capture; supports neighbor traversal.
-- `tools/pano-pinhole.mjs`: equirectangular-to-pinhole reprojection.
-- `tools/sat-ortho.mjs`: Map Tiles ortho stitch and centered crop with georef corners.
+- `:streetview_panorama` (Rust, `scripts/src/streetview_panorama.rs`): Street View tile panorama stitcher.
+- `:streetview_headings` (Rust, `scripts/src/streetview_headings.rs`): heading sweep capture; supports neighbor traversal.
+- `:pano_pinhole` (Rust, `scripts/src/pano_pinhole.rs`): equirectangular-to-pinhole reprojection.
+- `:sat_ortho` (Rust, `scripts/src/sat_ortho.rs`): Map Tiles ortho stitch and centered crop with georef corners.
 - `scripts/track-regression.mjs`: headless real-app regression harness for aircraft tracking/model/detection invariants (`npm run test:track`).
 - `scripts/qa-map-source-tray.mjs`: browser proof for the four-source Map Source
   tray — presentation, keyboard disclosure, responsive bounds, unpinned

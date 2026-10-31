@@ -30,6 +30,7 @@ pub mod sat_ortho;
 pub mod streetview_headings;
 pub mod streetview_panorama;
 pub mod tle_mirror;
+pub mod tool_io;
 pub mod verify_cesium_assets;
 
 #[cfg(test)]

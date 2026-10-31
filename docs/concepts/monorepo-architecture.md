@@ -99,7 +99,7 @@ is [Bazel targets & tools](../reference/bazel-targets.md); the rule behind it is
 flowchart LR
     subgraph Tooling["tools/ (Bazel-wrapped entrypoints)"]
         DEPLOY["//tools/deploy:cloud-run<br/>(Blue-green rollout engine)"]
-        PULUMI["//tools/pulumi:pulumi_cmd<br/>(Concurrency & lock retries)"]
+        PULUMI["//tools/pulumi:pulumi-cmd<br/>(Concurrency & lock retries)"]
         STATUS["//tools/pipeline-status<br/>//tools/landed<br/>(CI/CD health verification)"]
         SECRETS["//tools/sync-env-secrets<br/>(Vaultwarden integration)"]
     end

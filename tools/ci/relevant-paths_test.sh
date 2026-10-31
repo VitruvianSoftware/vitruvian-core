@@ -141,7 +141,7 @@ run_case "app OWNERS skips"                     false "" apps/cli/devx/OWNERS
 run_case "CODEOWNERS skips"                     false "" .github/CODEOWNERS
 run_case "site vitruviansoftware-dev skips"      false "" apps/web/vitruviansoftware-dev/downloads.html
 run_case ".agents skills skip"                   false "" .agents/skills/x/SKILL.yaml
-# agent-guard's Antigravity wiring is code: //tools/agent-guard:hook_test reads it.
+# agent-guard's Antigravity wiring is code: //tools/agent-guard:agent_guard_test reads it.
 run_case ".agents/hooks.json RUNS"              true  "" .agents/hooks.json
 run_case "source change runs"                   true  "" tabula/api/src/index.ts
 run_case "mixed docs+source runs"               true  "" docs/guide.md tabula/api/src/index.ts

@@ -102,6 +102,6 @@ artifact nonprod smoke-tested.
   and is why `bazel run //tools/npm-publish-audit:check` exists.
 - **Two Pulumi deploys cannot overlap.** Our Pulumi Cloud individual account
   allows one update account-wide, so an unrelated stack's deploy can reject
-  this one with a 409. `tools/pulumi/pulumi_cmd.sh` retries that specific error;
+  this one with a 409. `//tools/pulumi:pulumi-cmd` retries that specific error;
   see [Pulumi concurrent updates](pulumi-concurrent-updates.md) for why it cost
   a production promotion and what the root fix is.

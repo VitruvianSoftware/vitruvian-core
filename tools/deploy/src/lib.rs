@@ -24,8 +24,8 @@
 //! curl calls and the same <PREFIX>_ variables handed to them.
 //!
 //! What the script does that is easy to get wrong in a port, and is kept:
-//! - `pulumi up` goes through `bash <ws>/tools/pulumi/pulumi-cmd.sh`, so
-//!   identity and backend resolve as for `bazel run //<app>:up`.
+//! - `pulumi up` goes through //tools/pulumi:pulumi-cmd (from this binary's
+//!   runfiles), so identity and backend resolve as for `bazel run //<app>:up`.
 //! - per-invocation state reaches Pulumi as exported <PREFIX>_IMAGE_DIGEST
 //!   (or _IMAGE_TAG), <PREFIX>_STABLE_REVISION and <PREFIX>_PROMOTE (#499).
 //! - the smoke step never falls back to the stable URL on a non-first deploy
@@ -327,6 +327,32 @@ struct Cfg {
     first_deploy: bool,
 }
 
+/// //tools/pulumi:pulumi-cmd, as the BUILD file hands it over: a
+/// runfiles-relative path in VITRUVIAN_PULUMI_CMD_BIN (`$(rootpath ...)`),
+/// resolved against the working directory (the runfiles tree under `bazel
+/// run`), then $RUNFILES_DIR/_main; an absolute path is used as is. None when
+/// unset or not found.
+fn pulumi_cmd_bin() -> Option<std::path::PathBuf> {
+    let raw = std::env::var_os("VITRUVIAN_PULUMI_CMD_BIN")?;
+    let p = std::path::PathBuf::from(&raw);
+    if raw.is_empty() {
+        return None;
+    }
+    let candidates: Vec<std::path::PathBuf> = if p.is_absolute() {
+        vec![p]
+    } else {
+        let mut v = Vec::new();
+        if let Ok(cwd) = std::env::current_dir() {
+            v.push(cwd.join(&p));
+        }
+        if let Some(rf) = std::env::var_os("RUNFILES_DIR").filter(|v| !v.is_empty()) {
+            v.push(std::path::PathBuf::from(rf).join("_main").join(&p));
+        }
+        v
+    };
+    candidates.into_iter().find(|c| c.is_file())
+}
+
 /// Where pulumi_wrap's output goes.
 enum Wrap {
     /// `>/dev/null 2>&1`
@@ -346,9 +372,9 @@ impl Cfg {
         image_env_kv(&self.prefix, &self.image_digest, &self.image_tag)
     }
 
-    /// pulumi_wrap: `bash <ws>/tools/pulumi/pulumi-cmd.sh <dir> <args>`, or
-    /// the DRYRUN line. Ok carries (status, captured stdout); Err is the
-    /// script exiting.
+    /// pulumi_wrap: `pulumi-cmd <dir> <args>` (//tools/pulumi:pulumi-cmd,
+    /// see [`pulumi_cmd_bin`]), or the DRYRUN line. Ok carries (status,
+    /// captured stdout); Err is the script exiting.
     fn pulumi_wrap(&self, args: &[&[u8]], how: Wrap) -> Result<(i32, Vec<u8>), i32> {
         if self.dry_run {
             let joined: Vec<u8> = args.join(&b' ');
@@ -379,12 +405,15 @@ impl Cfg {
             }
             return Err(1);
         }
-        let wrap = cat(&[
-            &shell_compat::env_or_empty("BUILD_WORKSPACE_DIRECTORY"),
-            b"/tools/pulumi/pulumi-cmd.sh",
-        ]);
-        let mut cmd = Command::new("bash");
-        cmd.arg(os(&wrap)).arg(os(&self.pulumi_dir));
+        let wrap = match pulumi_cmd_bin() {
+            Some(p) => p,
+            None => {
+                err(b"cloud-run: //tools/pulumi:pulumi-cmd not found (VITRUVIAN_PULUMI_CMD_BIN); run through 'bazel run'\n");
+                return Err(1);
+            }
+        };
+        let mut cmd = Command::new(wrap);
+        cmd.arg(os(&self.pulumi_dir));
         for a in args {
             cmd.arg(os(a));
         }
@@ -806,6 +835,50 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// pulumi_wrap runs //tools/pulumi:pulumi-cmd (not a workspace script)
+    /// with `<pulumi_dir> <args>`, and hands back its status and stdout.
+    #[test]
+    fn pulumi_wrap_runs_the_pulumi_cmd_binary() {
+        use std::os::unix::fs::PermissionsExt;
+        let base = std::env::var("TEST_TMPDIR").unwrap_or_else(|_| "/tmp".into());
+        let dir = format!("{}/deploy-pulumi-wrap-{}", base, std::process::id());
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let stub = format!("{dir}/pulumi-cmd");
+        std::fs::write(
+            &stub,
+            "#!/bin/sh\nprintf '%s\\n' \"$*\" >\"$0.log\"\necho https://svc.example\nexit 3\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&stub, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::env::set_var("VITRUVIAN_PULUMI_CMD_BIN", &stub);
+        std::env::set_var("BUILD_WORKSPACE_DIRECTORY", &dir);
+        let cfg = Cfg {
+            pulumi_dir: b"apps/x/infra/app".to_vec(),
+            env: b"development".to_vec(),
+            ..Default::default()
+        };
+        let got = cfg.pulumi_wrap(
+            &[
+                b"stack",
+                b"output",
+                b"serviceUrl",
+                b"--stack",
+                b"development",
+            ],
+            Wrap::Capture,
+        );
+        assert_eq!(got, Ok((3, b"https://svc.example\n".to_vec())));
+        assert_eq!(
+            std::fs::read_to_string(format!("{stub}.log")).unwrap(),
+            "apps/x/infra/app stack output serviceUrl --stack development\n"
+        );
+
+        // Unset: no fallback to a workspace script; the deploy stops.
+        std::env::remove_var("VITRUVIAN_PULUMI_CMD_BIN");
+        assert_eq!(cfg.pulumi_wrap(&[b"up"], Wrap::Silent), Err(1));
+    }
 
     fn smoke(c: &str, f: &str, s: &str) -> Result<String, ()> {
         resolve_smoke_url(c.as_bytes(), f.as_bytes(), s.as_bytes())

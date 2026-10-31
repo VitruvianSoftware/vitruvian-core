@@ -20,6 +20,9 @@
 
 use std::collections::{HashMap, HashSet};
 use std::f64::consts::PI;
+use std::path::{Path, PathBuf};
+
+use crate::tool_io::{js_num, to_fixed, CurlFetcher, Fetcher, HttpRequest, ToolContext};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct StreetViewHeadingsOpts {
@@ -56,7 +59,7 @@ pub struct StreetViewMetadata {
 }
 
 pub const HELP_TEXT: &str =
-    "Usage: node tools/streetview-headings.mjs --lat <lat> --lon <lon> [--fov 90] [--pitch 0] [--size 640x640] [--neighbors]";
+    "Usage: bazel run //apps/web/gods-eye-view:streetview_headings -- --lat <lat> --lon <lon> [--fov 90] [--pitch 0] [--size 640x640] [--step 45] [--neighbors]";
 
 pub fn parse_args(args: &[String]) -> Result<StreetViewHeadingsOpts, String> {
     let mut lat: Option<f64> = None;
@@ -183,48 +186,36 @@ pub fn resolve_google_server_key(
     val("GOOGLE_MAPS_API_KEY")
 }
 
-/// Port of `loadApiKey` from `tools/streetview-headings.mjs`.
+/// Port of `loadApiKey` from the former `tools/streetview-headings.mjs`.
+///
+/// The explicit CLI key wins. Otherwise a server key set in the environment
+/// wins before `.env` is even read. Otherwise each variable takes the
+/// environment's value over `.env`'s (an empty environment value still
+/// overrides), and the server key is preferred over the browser key.
+/// `read_dotenv` returns `Ok(None)` when there is no `.env`; any other read
+/// failure is an error, as in the JS tool.
 pub fn load_api_key(
     override_key: Option<&str>,
     environment: &HashMap<String, String>,
-    dotenv_content: Option<&str>,
+    read_dotenv: impl FnOnce() -> Result<Option<String>, String>,
 ) -> Result<String, String> {
     if let Some(k) = override_key {
-        if !k.trim().is_empty() {
+        if !k.is_empty() {
             return Ok(k.to_string());
         }
     }
-    let server_only = resolve_google_server_key(environment, &HashMap::new());
-    if !server_only.is_empty() && environment.contains_key("GOOGLE_MAPS_SERVER_API_KEY") {
-        let trimmed = environment
-            .get("GOOGLE_MAPS_SERVER_API_KEY")
-            .map(|s| s.trim())
-            .unwrap_or("");
-        if !trimmed.is_empty() {
-            return Ok(trimmed.to_string());
-        }
+    let mut server_only = HashMap::new();
+    if let Some(v) = environment.get("GOOGLE_MAPS_SERVER_API_KEY") {
+        server_only.insert("GOOGLE_MAPS_SERVER_API_KEY".to_string(), v.clone());
     }
-
-    let mut from_dotenv = HashMap::new();
-    if let Some(content) = dotenv_content {
-        for line in content.lines() {
-            let trimmed = line.trim();
-            if trimmed.is_empty() || trimmed.starts_with('#') {
-                continue;
-            }
-            if let Some(eq_idx) = trimmed.find('=') {
-                let k = trimmed[..eq_idx].trim().to_string();
-                let mut v = trimmed[eq_idx + 1..].trim().to_string();
-                if (v.starts_with('"') && v.ends_with('"') && v.len() >= 2)
-                    || (v.starts_with('\'') && v.ends_with('\'') && v.len() >= 2)
-                {
-                    v = v[1..v.len() - 1].to_string();
-                }
-                from_dotenv.insert(k, v);
-            }
-        }
+    let server_key = resolve_google_server_key(&server_only, &HashMap::new());
+    if !server_key.is_empty() {
+        return Ok(server_key);
     }
-
+    let from_dotenv = match read_dotenv()? {
+        Some(content) => crate::tool_io::parse_env(&content),
+        None => HashMap::new(),
+    };
     let key = resolve_google_server_key(environment, &from_dotenv);
     if !key.is_empty() {
         return Ok(key);
@@ -233,6 +224,15 @@ pub fn load_api_key(
         "No API key found. Set GOOGLE_MAPS_SERVER_API_KEY (or GOOGLE_MAPS_API_KEY) in .env or pass --key."
             .into(),
     )
+}
+
+/// Read `.env` for [`load_api_key`]: missing is fine, unreadable is not.
+pub fn read_dotenv_strict(path: &Path) -> Result<Option<String>, String> {
+    match std::fs::read_to_string(path) {
+        Ok(s) => Ok(Some(s)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(_) => Err("Could not read the Street View tool environment file".into()),
+    }
 }
 
 pub fn generate_heading_directions(step: Option<u32>) -> Vec<HeadingDirection> {
@@ -263,71 +263,62 @@ pub fn haversine_distance_m(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
 
 /// Strip JSONP wrapper `_ && _( ... )` and extract first-order neighbor locations within `max_dist_m`.
 pub fn parse_neighbor_locations_jsonp(jsonp_text: &str, max_dist_m: f64) -> Vec<NeighborLocation> {
-    let start_paren = match jsonp_text.find('(') {
-        Some(idx) => idx + 1,
-        None => return Vec::new(),
-    };
-    let end_paren = match jsonp_text.rfind(')') {
-        Some(idx) if idx >= start_paren => idx,
-        _ => return Vec::new(),
-    };
-    let json_str = jsonp_text[start_paren..end_paren].trim();
-    let data: serde_json::Value = match serde_json::from_str(json_str) {
-        Ok(v) => v,
-        Err(_) => return Vec::new(),
-    };
+    parse_neighbor_locations(jsonp_text, max_dist_m).unwrap_or_default()
+}
 
-    let links = match data
+/// As [`parse_neighbor_locations_jsonp`], but says why nothing came back, with
+/// the warning the JS tool printed.
+pub fn parse_neighbor_locations(jsonp_text: &str, max_dist_m: f64) -> Result<Vec<NeighborLocation>, String> {
+    const PARSE: &str = "  Warning: could not parse neighbor metadata";
+    const EXTRACT: &str = "  Warning: could not extract neighbor links from metadata";
+    // text.replace(/^[^(]*\(\s*/, '').replace(/\s*\)\s*;?\s*$/, '')
+    let start = jsonp_text.find('(').map(|i| i + 1).unwrap_or(0);
+    let mut body = jsonp_text[start..].trim_end();
+    if let Some(b) = body.strip_suffix(';') {
+        body = b.trim_end();
+    }
+    if let Some(b) = body.strip_suffix(')') {
+        body = b;
+    }
+    let data: serde_json::Value = serde_json::from_str(body.trim()).map_err(|_| PARSE.to_string())?;
+
+    let links = data
         .get(1)
         .and_then(|v| v.get(5))
         .and_then(|v| v.get(0))
         .and_then(|v| v.get(3))
         .and_then(|v| v.get(0))
         .and_then(|v| v.as_array())
-    {
-        Some(arr) if !arr.is_empty() => arr,
-        _ => return Vec::new(),
+        .filter(|arr| !arr.is_empty())
+        .ok_or_else(|| EXTRACT.to_string())?;
+    let origin = |i: usize| {
+        links[0]
+            .get(2)
+            .and_then(|v| v.get(0))
+            .and_then(|v| v.get(i))
+            .and_then(|v| v.as_f64())
+            .ok_or_else(|| EXTRACT.to_string())
     };
-
-    let origin_lat = match links[0]
-        .get(2)
-        .and_then(|v| v.get(0))
-        .and_then(|v| v.get(2))
-        .and_then(|v| v.as_f64())
-    {
-        Some(lat) => lat,
-        None => return Vec::new(),
-    };
-    let origin_lon = match links[0]
-        .get(2)
-        .and_then(|v| v.get(0))
-        .and_then(|v| v.get(3))
-        .and_then(|v| v.as_f64())
-    {
-        Some(lon) => lon,
-        None => return Vec::new(),
-    };
+    let origin_lat = origin(2)?;
+    let origin_lon = origin(3)?;
 
     let mut neighbors = Vec::new();
     for link in links.iter().skip(1) {
         let coord = match link.get(2).and_then(|v| v.get(0)) {
-            Some(c) => c,
-            None => continue,
+            Some(c) if !c.is_null() => c,
+            _ => continue,
         };
-        let nlat = match coord.get(2).and_then(|v| v.as_f64()) {
-            Some(v) => v,
-            None => continue,
+        let (nlat, nlon) = match (
+            coord.get(2).and_then(|v| v.as_f64()),
+            coord.get(3).and_then(|v| v.as_f64()),
+        ) {
+            (Some(a), Some(b)) => (a, b),
+            _ => continue,
         };
-        let nlon = match coord.get(3).and_then(|v| v.as_f64()) {
-            Some(v) => v,
-            None => continue,
-        };
-
         let dist = haversine_distance_m(origin_lat, origin_lon, nlat, nlon);
         if dist > max_dist_m {
             continue;
         }
-
         let street = link
             .get(3)
             .and_then(|v| v.get(2))
@@ -335,7 +326,6 @@ pub fn parse_neighbor_locations_jsonp(jsonp_text: &str, max_dist_m: f64) -> Vec<
             .and_then(|v| v.get(0))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
-
         neighbors.push(NeighborLocation {
             lat: nlat,
             lon: nlon,
@@ -343,8 +333,7 @@ pub fn parse_neighbor_locations_jsonp(jsonp_text: &str, max_dist_m: f64) -> Vec<
             dist,
         });
     }
-
-    neighbors
+    Ok(neighbors)
 }
 
 /// Deduplicates candidate neighbor panoramas against the origin and previously seen `pano_id`s.
@@ -390,30 +379,323 @@ pub fn streetview_static_url(
 ) -> String {
     format!(
         "https://maps.googleapis.com/maps/api/streetview?location={},{}&heading={}&pitch={}&fov={}&size={}&source=outdoor&key={}",
-        lat, lon, heading, pitch, fov, size, api_key
+        js_num(lat), js_num(lon), heading, pitch, fov, size, api_key
+    )
+}
+
+pub fn streetview_metadata_url(lat: f64, lon: f64, api_key: &str) -> String {
+    format!(
+        "https://maps.googleapis.com/maps/api/streetview/metadata?location={},{}&source=outdoor&key={}",
+        js_num(lat),
+        js_num(lon),
+        api_key
+    )
+}
+
+/// Google's internal metadata endpoint the JS tool read neighbor panoramas from.
+pub fn neighbor_search_url(lat: f64, lon: f64) -> String {
+    format!(
+        "https://maps.googleapis.com/maps/api/js/GeoPhotoService.SingleImageSearch?pb=!1m5!1sapiv3!5sUS!11m2!1m1!1b0!2m4!1m2!3d{}!4d{}!2d50!3m18!2m2!1sen!2sUS!9m1!1e2!11m12!1m3!1e2!2b1!3e2!1m3!1e3!2b1!3e2!1m3!1e10!2b1!3e2!4m6!1e1!1e2!1e3!1e4!1e8!1e6&callback=_",
+        js_num(lat),
+        js_num(lon)
     )
 }
 
 pub fn heading_output_filename(lat: f64, lon: f64, heading: u32, name: &str) -> String {
-    format!("sv_{:.6}_{:.6}_{:03}_{}.jpg", lat, lon, heading, name)
+    format!(
+        "sv_{}_{}_{:03}_{}.jpg",
+        to_fixed(lat, 6),
+        to_fixed(lon, 6),
+        heading,
+        name
+    )
 }
 
-pub fn run(args: &[String]) -> Result<String, String> {
+fn get_neighbor_locations(fetcher: &dyn Fetcher, lat: f64, lon: f64) -> Result<Vec<NeighborLocation>, String> {
+    let res = fetcher.fetch(&HttpRequest::get(neighbor_search_url(lat, lon)))?;
+    if !res.ok() {
+        return Ok(Vec::new());
+    }
+    Ok(parse_neighbor_locations(&res.text(), 15.0).unwrap_or_else(|warning| {
+        println!("{}", warning);
+        Vec::new()
+    }))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn fetch_headings_for_location(
+    fetcher: &dyn Fetcher,
+    lat: f64,
+    lon: f64,
+    label: &str,
+    directions: &[HeadingDirection],
+    opts: &StreetViewHeadingsOpts,
+    api_key: &str,
+    outdir: &Path,
+    written: &mut Vec<PathBuf>,
+) -> Result<(), String> {
+    println!("\n  [{}] {}, {}", label, to_fixed(lat, 6), to_fixed(lon, 6));
+    for dir in directions {
+        let url = streetview_static_url(lat, lon, dir.heading, opts.pitch, opts.fov, &opts.size, api_key);
+        let res = fetcher.fetch(&HttpRequest::get(url).referer())?;
+        if !res.ok() {
+            println!("    {} ({}): FAILED {}", dir.name, dir.heading, res.status);
+            continue;
+        }
+        let out_path = outdir.join(heading_output_filename(lat, lon, dir.heading, &dir.name));
+        std::fs::write(&out_path, &res.body).map_err(|e| format!("{}: {}", out_path.display(), e))?;
+        println!(
+            "    {} ({}): {} KB",
+            dir.name,
+            dir.heading,
+            to_fixed(res.body.len() as f64 / 1024.0, 1)
+        );
+        written.push(out_path);
+    }
+    Ok(())
+}
+
+fn metadata(fetcher: &dyn Fetcher, lat: f64, lon: f64, api_key: &str) -> Result<Option<serde_json::Value>, String> {
+    let res = fetcher.fetch(&HttpRequest::get(streetview_metadata_url(lat, lon, api_key)).referer())?;
+    if !res.ok() {
+        return Ok(None);
+    }
+    res.json().map(Some)
+}
+
+/// Port of `main()` in the former `tools/streetview-headings.mjs`; returns the
+/// images written.
+pub fn execute(
+    opts: &StreetViewHeadingsOpts,
+    ctx: &ToolContext,
+    fetcher: &dyn Fetcher,
+) -> Result<Vec<PathBuf>, String> {
+    let dotenv_path = ctx.dotenv_path();
+    let api_key = load_api_key(opts.key.as_deref(), &ctx.env, || read_dotenv_strict(&dotenv_path))?;
+
+    let outdir = ctx.outdir(&opts.outdir);
+    std::fs::create_dir_all(&outdir).map_err(|e| format!("{}: {}", outdir.display(), e))?;
+
+    let directions = generate_heading_directions(opts.step);
+    println!("\nStreet View Headings");
+    println!("  Location: {}, {}", js_num(opts.lat), js_num(opts.lon));
+    println!("  FOV: {}, Pitch: {}, Size: {}", opts.fov, opts.pitch, opts.size);
+    println!("  Neighbors: {}", if opts.neighbors { "yes" } else { "no" });
+
+    let mut written = Vec::new();
+    fetch_headings_for_location(
+        fetcher, opts.lat, opts.lon, "origin", &directions, opts, &api_key, &outdir, &mut written,
+    )?;
+
+    if opts.neighbors {
+        println!("\nFetching neighbor locations...");
+        let neighbors = get_neighbor_locations(fetcher, opts.lat, opts.lon)?;
+        if neighbors.is_empty() {
+            println!("  No neighbors found.");
+        } else {
+            println!(
+                "  Raw neighbors: {} (deduplicating via metadata...)",
+                neighbors.len()
+            );
+            let origin_pano = metadata(fetcher, opts.lat, opts.lon, &api_key)?
+                .and_then(|m| m.get("pano_id").and_then(|v| v.as_str()).map(|s| s.to_string()));
+            let mut candidates = Vec::new();
+            for n in &neighbors {
+                let meta = match metadata(fetcher, n.lat, n.lon, &api_key)? {
+                    Some(m) => m,
+                    None => continue,
+                };
+                let pano_id = meta.get("pano_id").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let loc = meta.get("location");
+                let snapped = StreetViewMetadata {
+                    pano_id,
+                    lat: loc.and_then(|l| l.get("lat")).and_then(|v| v.as_f64()).unwrap_or(f64::NAN),
+                    lng: loc.and_then(|l| l.get("lng")).and_then(|v| v.as_f64()).unwrap_or(f64::NAN),
+                };
+                candidates.push((n.clone(), snapped));
+            }
+            let unique = deduplicate_neighbors(origin_pano.as_deref(), &candidates);
+
+            println!("  Unique neighbors: {}", unique.len());
+            for n in &unique {
+                let street = n.street.as_ref().filter(|s| !s.is_empty()).map(|s| format!(" ({})", s)).unwrap_or_default();
+                println!(
+                    "    {}, {}  {}m{}",
+                    to_fixed(n.lat, 6),
+                    to_fixed(n.lon, 6),
+                    to_fixed(n.dist, 1),
+                    street
+                );
+            }
+            for (i, n) in unique.iter().enumerate() {
+                let label = n
+                    .street
+                    .clone()
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| format!("neighbor-{}", i + 1));
+                fetch_headings_for_location(
+                    fetcher, n.lat, n.lon, &label, &directions, opts, &api_key, &outdir, &mut written,
+                )?;
+            }
+        }
+    }
+
+    println!("\nDone.");
+    Ok(written)
+}
+
+/// The CLI: `--help` text, or fetch and save.
+pub fn run(args: &[String]) -> Result<Option<String>, String> {
     if args.iter().any(|a| a == "--help") {
-        return Ok(HELP_TEXT.to_string());
+        return Ok(Some(HELP_TEXT.to_string()));
     }
     let opts = parse_args(args)?;
-    let env_map: HashMap<String, String> = std::env::vars().collect();
-    let dotenv = std::fs::read_to_string(".env").ok();
-    let _api_key = load_api_key(opts.key.as_deref(), &env_map, dotenv.as_deref())?;
-    let dirs = generate_heading_directions(opts.step);
-    Ok(format!(
-        "Street View Headings: {:.6}, {:.6} ({} headings, fov={}, pitch={}, size={})",
-        opts.lat,
-        opts.lon,
-        dirs.len(),
-        opts.fov,
-        opts.pitch,
-        opts.size
-    ))
+    execute(&opts, &ToolContext::from_process(), &CurlFetcher)?;
+    Ok(None)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tool_io::{ok_response, status_response, test_context, test_dir, MockFetcher};
+
+    fn env(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+        pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+    }
+
+    fn load(override_key: Option<&str>, path: &Path, environment: &[(&str, &str)]) -> Result<String, String> {
+        load_api_key(override_key, &env(environment), || read_dotenv_strict(path))
+    }
+
+    /// Moved from src/googleServerKey.test.mjs ("the Street View tool resolves
+    /// per-variable overrides before preferring the server key") when
+    /// tools/streetview-headings.mjs became this module: same cases, same file.
+    #[test]
+    fn resolves_per_variable_overrides_before_preferring_the_server_key() {
+        let root = test_dir("streetview_key");
+        let env_path = root.join(".env");
+        std::fs::write(
+            &env_path,
+            "GOOGLE_MAPS_API_KEY=file-browser\nGOOGLE_MAPS_SERVER_API_KEY=\"file-server\" # separate key\n",
+        )
+        .unwrap();
+        assert_eq!(load(None, &env_path, &[("GOOGLE_MAPS_API_KEY", "shell-browser")]).unwrap(), "file-server");
+        assert_eq!(load(None, &env_path, &[("GOOGLE_MAPS_SERVER_API_KEY", "shell-server")]).unwrap(), "shell-server");
+        assert_eq!(load(None, &env_path, &[("GOOGLE_MAPS_SERVER_API_KEY", "")]).unwrap(), "file-browser");
+        assert_eq!(load(Some("explicit-key"), &env_path, &[]).unwrap(), "explicit-key");
+        // A server key in the environment wins before .env is read at all.
+        assert_eq!(load(None, &root, &[("GOOGLE_MAPS_SERVER_API_KEY", "shell-server")]).unwrap(), "shell-server");
+        std::fs::write(&env_path, "GOOGLE_MAPS_API_KEY=file-browser\n").unwrap();
+        assert_eq!(load(None, &env_path, &[]).unwrap(), "file-browser");
+        std::fs::write(&env_path, "").unwrap();
+        assert!(load(None, &env_path, &[]).unwrap_err().contains("No API key found"));
+        // Missing .env is no key; an unreadable one is an error.
+        assert!(load(None, &root.join("absent"), &[]).unwrap_err().contains("No API key found"));
+        assert_eq!(
+            load(None, &root, &[]).unwrap_err(),
+            "Could not read the Street View tool environment file"
+        );
+    }
+
+    fn jsonp() -> String {
+        // Origin, a neighbour ~8 m north, a second ~8 m south (resolving to the
+        // origin's panorama), and one 200 m away.
+        r#"_ && _([null,[null,null,null,null,null,[[null,null,null,[[[null,null,[[null,null,30.268066,-97.742813]]],[null,null,[[null,null,30.268140,-97.742813]],[null,null,[["Congress Ave"]]]],[null,null,[[null,null,30.267990,-97.742813]]],[null,null,[[null,null,30.270000,-97.742813]],[null,null,[["Far St"]]]]]]]]]])"#.to_string()
+    }
+
+    #[test]
+    fn fetches_each_heading_then_unique_neighbours() {
+        let ctx = test_context("streetview_headings_ok", &[("GOOGLE_MAPS_SERVER_API_KEY", "srv")]);
+        let fetcher = MockFetcher::new(|req: &HttpRequest| {
+            let u = &req.url;
+            if u.contains("GeoPhotoService.SingleImageSearch") {
+                return ok_response(jsonp());
+            }
+            if u.contains("/streetview/metadata?location=30.268066,-97.742813&") {
+                return ok_response(r#"{"status":"OK","pano_id":"P0","location":{"lat":30.268066,"lng":-97.742813}}"#);
+            }
+            if u.contains("/streetview/metadata?location=30.26814,-97.742813&") {
+                return ok_response(r#"{"status":"OK","pano_id":"P1","location":{"lat":30.2681449,"lng":-97.7428101}}"#);
+            }
+            if u.contains("/streetview/metadata?location=30.26799,-97.742813&") {
+                return ok_response(r#"{"status":"OK","pano_id":"P0","location":{"lat":30.268066,"lng":-97.742813}}"#);
+            }
+            if u.contains("/maps/api/streetview?") {
+                if u.contains("location=30.268066,-97.742813&heading=180&") {
+                    return status_response(403, "");
+                }
+                return ok_response(format!("JPEG {}", u).into_bytes());
+            }
+            status_response(404, "")
+        });
+        let opts = parse_args(
+            &["--lat", "30.268066", "--lon", "-97.742813", "--step", "90", "--pitch", "-10", "--neighbors", "--outdir", "sv"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+        )
+        .unwrap();
+        let written = execute(&opts, &ctx, &fetcher).unwrap();
+        let names: Vec<String> = written
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "sv_30.268066_-97.742813_000_N.jpg",
+                "sv_30.268066_-97.742813_090_E.jpg",
+                "sv_30.268066_-97.742813_270_W.jpg",
+                "sv_30.268145_-97.742810_000_N.jpg",
+                "sv_30.268145_-97.742810_090_E.jpg",
+                "sv_30.268145_-97.742810_180_S.jpg",
+                "sv_30.268145_-97.742810_270_W.jpg",
+            ]
+        );
+        assert!(written.iter().all(|p| p.starts_with(ctx.project_root.join("sv"))));
+        // The image body is written as fetched.
+        let first = std::fs::read_to_string(&written[0]).unwrap();
+        assert_eq!(
+            first,
+            "JPEG https://maps.googleapis.com/maps/api/streetview?location=30.268066,-97.742813&heading=0&pitch=-10&fov=90&size=640x640&source=outdoor&key=srv"
+        );
+
+        let calls = fetcher.calls();
+        let static_calls: Vec<&HttpRequest> = calls.iter().filter(|c| c.url.contains("/maps/api/streetview?")).collect();
+        assert_eq!(static_calls.len(), 8);
+        assert!(static_calls.iter().all(|c| c.header_value("Referer") == Some("http://localhost:4173/")));
+        let geo = calls.iter().find(|c| c.url.contains("GeoPhotoService")).unwrap();
+        assert!(geo.url.contains("!3d30.268066!4d-97.742813!2d50!"));
+        assert!(geo.url.ends_with("&callback=_"));
+        assert_eq!(geo.header_value("Referer"), None);
+        // Origin metadata, then each of the two near neighbours; the far one is never looked up.
+        let meta: Vec<&str> = calls
+            .iter()
+            .filter(|c| c.url.contains("/streetview/metadata"))
+            .map(|c| c.url.as_str())
+            .collect();
+        assert_eq!(
+            meta,
+            [
+                "https://maps.googleapis.com/maps/api/streetview/metadata?location=30.268066,-97.742813&source=outdoor&key=srv",
+                "https://maps.googleapis.com/maps/api/streetview/metadata?location=30.26814,-97.742813&source=outdoor&key=srv",
+                "https://maps.googleapis.com/maps/api/streetview/metadata?location=30.26799,-97.742813&source=outdoor&key=srv",
+            ]
+        );
+    }
+
+    #[test]
+    fn without_neighbors_only_the_origin_is_fetched_and_metadata_errors_surface() {
+        let ctx = test_context("streetview_headings_plain", &[]);
+        let fetcher = MockFetcher::new(|_: &HttpRequest| ok_response("x"));
+        let opts = parse_args(&["--lat", "1", "--lon", "2", "--key", "k"].iter().map(|s| s.to_string()).collect::<Vec<_>>()).unwrap();
+        let written = execute(&opts, &ctx, &fetcher).unwrap();
+        assert_eq!(written.len(), 8);
+        assert_eq!(fetcher.calls().len(), 8);
+        assert!(written[1].ends_with("sv_1.000000_2.000000_045_NE.jpg"));
+
+        // A neighbour search that is not JSONP gives no neighbours, not an error.
+        assert!(parse_neighbor_locations("<html>", 15.0).unwrap_err().contains("could not parse"));
+        assert!(parse_neighbor_locations("_([1])", 15.0).unwrap_err().contains("could not extract"));
+    }
 }

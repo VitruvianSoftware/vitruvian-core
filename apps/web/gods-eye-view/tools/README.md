@@ -12,24 +12,29 @@ setup doctor. Without it, paths continue to resolve from this repository.
 
 ## Prerequisites
 
-- Node.js (via `mise`)
-- `sharp` and `puppeteer` (devDependencies — `npm install`)
-- Google Maps API key in `.env` as `GOOGLE_MAPS_API_KEY`
+- `cesium-render.mjs`: Node.js (via `mise`) and `puppeteer` (a devDependency, `npm install`)
+- The other four are Rust programs run with `bazel run`; they need `curl` on the `PATH`
+- Google Maps API key in `.env` as `GOOGLE_MAPS_API_KEY`. `streetview-headings`
+  prefers `GOOGLE_MAPS_SERVER_API_KEY` when it is set
 - APIs enabled on your Google Cloud project: **Map Tiles API**, **Street View Static API**
+
+Under `bazel run`, `.env` and `--outdir` resolve from this app's folder
+(`apps/web/gods-eye-view`, or `GEV_PROJECT_ROOT`), and `--input` from the
+directory you ran the command in. `-- --help` prints each tool's options.
 
 ---
 
-## sat-ortho.mjs
+## sat-ortho (`:sat_ortho`)
 
 Stitches satellite tiles from the Map Tiles API into a single ortho image centered on a lat/lon.
 
 ```sh
 # 2K ortho at zoom 21 (~6.4 cm/pixel, ~132m coverage)
-node tools/sat-ortho.mjs --lat 30.266476 --lon -97.73719
+bazel run //apps/web/gods-eye-view:sat_ortho -- --lat 30.266476 --lon -97.73719
 
 # Zoom 20 for wider coverage (~264m), or zoom 22 for max detail (~3.7 cm/pixel)
-node tools/sat-ortho.mjs --lat 30.266476 --lon -97.73719 --zoom 20 --size 2048
-node tools/sat-ortho.mjs --lat 30.266476 --lon -97.73719 --zoom 22 --size 2048
+bazel run //apps/web/gods-eye-view:sat_ortho -- --lat 30.266476 --lon -97.73719 --zoom 20 --size 2048
+bazel run //apps/web/gods-eye-view:sat_ortho -- --lat 30.266476 --lon -97.73719 --zoom 22 --size 2048
 ```
 
 | Option | Default | Description |
@@ -43,19 +48,19 @@ Reports GSD, ground coverage, and NW/SE corner coordinates for georeferencing.
 
 ---
 
-## streetview-headings.mjs
+## streetview-headings (`:streetview_headings`)
 
 Fetches 8 Street View static images (one per compass heading) at a location, with optional first-order neighbor traversal.
 
 ```sh
 # 8 images at the intersection
-node tools/streetview-headings.mjs --lat 30.266476 --lon -97.73719
+bazel run //apps/web/gods-eye-view:streetview_headings -- --lat 30.266476 --lon -97.73719
 
 # Include all first-order neighbor locations (auto-deduped)
-node tools/streetview-headings.mjs --lat 30.266476 --lon -97.73719 --neighbors
+bazel run //apps/web/gods-eye-view:streetview_headings -- --lat 30.266476 --lon -97.73719 --neighbors
 
 # Custom FOV and pitch
-node tools/streetview-headings.mjs --lat 30.266476 --lon -97.73719 --fov 120 --pitch -10
+bazel run //apps/web/gods-eye-view:streetview_headings -- --lat 30.266476 --lon -97.73719 --fov 120 --pitch -10
 ```
 
 | Option | Default | Description |
@@ -72,16 +77,16 @@ The `--neighbors` flag queries Google's panorama metadata for linked locations, 
 
 ---
 
-## streetview-panorama.mjs
+## streetview-panorama (`:streetview_panorama`)
 
 Fetches and stitches a full equirectangular panorama from the Map Tiles API (Street View tiles endpoint).
 
 ```sh
 # Default zoom 3 → 4096x2048 panorama
-node tools/streetview-panorama.mjs --lat 30.266476 --lon -97.73719
+bazel run //apps/web/gods-eye-view:streetview_panorama -- --lat 30.266476 --lon -97.73719
 
 # Max resolution (zoom 5 → up to 16384x8192)
-node tools/streetview-panorama.mjs --lat 30.266476 --lon -97.73719 --zoom 5
+bazel run //apps/web/gods-eye-view:streetview_panorama -- --lat 30.266476 --lon -97.73719 --zoom 5
 ```
 
 | Option | Default | Description |
@@ -91,29 +96,29 @@ node tools/streetview-panorama.mjs --lat 30.266476 --lon -97.73719 --zoom 5
 | `--zoom` | 3 | Tile zoom 0-5 (higher = larger pano) |
 | `--radius` | 50 | Search radius in meters for nearest panorama |
 
-Output is a standard equirectangular JPEG suitable as input for `pano-pinhole.mjs`.
+Output is a standard equirectangular JPEG suitable as input for `:pano_pinhole`.
 
 ---
 
-## pano-pinhole.mjs
+## pano-pinhole (`:pano_pinhole`)
 
 Reprojects an equirectangular panorama into pinhole (perspective) camera views. Uses inverse mapping with bilinear interpolation — every output pixel is sampled from the panorama, so there are no holes.
 
 ```sh
 # Single view: looking west, 90 deg FOV, 1920x1080
-node tools/pano-pinhole.mjs --input output/panorama_30.266476_-97.73719.jpg --heading 270 --hfov 90
+bazel run //apps/web/gods-eye-view:pano_pinhole -- --input output/panorama_30.266476_-97.73719.jpg --heading 270 --hfov 90
 
 # All 8 compass headings from one panorama
-node tools/pano-pinhole.mjs --input output/panorama_30.266476_-97.73719.jpg --all --hfov 90
+bazel run //apps/web/gods-eye-view:pano_pinhole -- --input output/panorama_30.266476_-97.73719.jpg --all --hfov 90
 
 # 2K output with narrow FOV
-node tools/pano-pinhole.mjs --input output/panorama_30.266476_-97.73719.jpg --heading 180 --hfov 60 --width 2560 --height 1440
+bazel run //apps/web/gods-eye-view:pano_pinhole -- --input output/panorama_30.266476_-97.73719.jpg --heading 180 --hfov 60 --width 2560 --height 1440
 
 # Specify focal length instead of FOV
-node tools/pano-pinhole.mjs --input output/panorama_30.266476_-97.73719.jpg --heading 90 --focal 2000
+bazel run //apps/web/gods-eye-view:pano_pinhole -- --input output/panorama_30.266476_-97.73719.jpg --heading 90 --focal 2000
 
 # 12 views at 30-degree steps
-node tools/pano-pinhole.mjs --input output/panorama_30.266476_-97.73719.jpg --all --step 30 --hfov 90
+bazel run //apps/web/gods-eye-view:pano_pinhole -- --input output/panorama_30.266476_-97.73719.jpg --all --step 30 --hfov 90
 ```
 
 | Option | Default | Description |
@@ -172,16 +177,16 @@ Uses progressive SSE refinement and automatic ground-height sampling. Street-lev
 
 ```sh
 # 1. Get a satellite ortho of an intersection
-node tools/sat-ortho.mjs --lat 30.266476 --lon -97.73719 --zoom 21
+bazel run //apps/web/gods-eye-view:sat_ortho -- --lat 30.266476 --lon -97.73719 --zoom 21
 
 # 2. Fetch a 4K panorama at the same location
-node tools/streetview-panorama.mjs --lat 30.266476 --lon -97.73719
+bazel run //apps/web/gods-eye-view:streetview_panorama -- --lat 30.266476 --lon -97.73719
 
 # 3. Extract 8 pinhole views from the panorama
-node tools/pano-pinhole.mjs --input output/panorama_30.266476_-97.73719.jpg --all --hfov 90
+bazel run //apps/web/gods-eye-view:pano_pinhole -- --input output/panorama_30.266476_-97.73719.jpg --all --hfov 90
 
 # 4. Also grab the Street View static API versions for comparison
-node tools/streetview-headings.mjs --lat 30.266476 --lon -97.73719
+bazel run //apps/web/gods-eye-view:streetview_headings -- --lat 30.266476 --lon -97.73719
 
 # 5. Render a 3D view of the same location from above
 node tools/cesium-render.mjs --lookat-lat 30.266476 --lookat-lon -97.73719 --pitch -90 --height 50 --fov 90 --width 2560 --height-px 1440

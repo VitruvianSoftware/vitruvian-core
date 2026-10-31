@@ -250,20 +250,10 @@ swift_test(
 
 # The examples, judged by the schemas, and every line the reference tool of
 # protocol 2 writes in a short session. Not `manual` and not tied to macOS:
-# it is plain Python, so the Linux lane runs it too.
-py_test(
-    name = "protocol_examples_test",
-    size = "small",
-    srcs = ["protocol/protocol_examples_test.py"],
-    data = PROTOCOL_FILES + REFERENCE_MANIFESTS + [
-        "conformance/reference-tool-2/bin/reference_tool_2.py",
-    ],
-    main = "protocol/protocol_examples_test.py",
-    deps = ["@pip//jsonschema"],
-)
-
+# plain Rust, so the Linux lane runs it too. verification/Cargo.toml runs the
+# same program in the mirror.
 rust_test(
-    name = "protocol_examples_rs_test",
+    name = "protocol_examples_test",
     size = "small",
     srcs = ["verification/src/bin/protocol_examples_test.rs"],
     crate_root = "verification/src/bin/protocol_examples_test.rs",
@@ -275,6 +265,11 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
     use_libtest_harness = False,
     deps = [":verification_rs_lib"],
+)
+
+test_suite(
+    name = "protocol_examples_rs_test",
+    tests = [":protocol_examples_test"],
 )
 
 # bazel run //packages/vitruvian-sdk:conformance -- <a tool's folder>

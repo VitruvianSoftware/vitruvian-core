@@ -88,6 +88,13 @@ pub fn find_package_dir() -> Result<PathBuf, String> {
             }
         }
     }
+    // `cargo test` and `cargo run` (verification/Cargo.toml) set this to
+    // verification/, whose parent is the package.
+    if let Ok(manifest_dir) = env::var("CARGO_MANIFEST_DIR") {
+        if let Some(parent) = Path::new(&manifest_dir).parent() {
+            candidates.push(parent.to_path_buf());
+        }
+    }
     candidates
         .into_iter()
         .find(|cand| {

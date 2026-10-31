@@ -1,0 +1,1185 @@
+[
+  "# --- read-only git: allowed ------------------------------------------------",
+  ["git status", "allow", null, ""],
+  ["git status --porcelain", "allow", null, ""],
+  ["git log --oneline -20", "allow", null, ""],
+  ["git log origin/main..HEAD --format=%H", "allow", null, ""],
+  ["git diff", "allow", null, ""],
+  ["git diff --stat origin/main...HEAD", "allow", null, ""],
+  ["git show HEAD:tools/ci/agent-fast-lane.sh", "allow", null, ""],
+  ["git fetch origin main", "allow", null, ""],
+  ["git fetch --prune", "allow", null, ""],
+  ["git rev-parse --show-toplevel", "allow", null, ""],
+  ["git rev-parse --abbrev-ref HEAD", "allow", null, ""],
+  ["git ls-files -m", "allow", null, ""],
+  ["git grep -n TODO -- '*.go'", "allow", null, ""],
+  ["git blame -L 10,20 README.md", "allow", null, ""],
+  ["git branch", "allow", null, ""],
+  ["git branch --list 'feat/*'", "allow", null, ""],
+  ["git branch -a --contains abc123", "allow", null, ""],
+  ["git branch --show-current", "allow", null, ""],
+  ["git branch -vv", "allow", null, ""],
+  ["git worktree list", "allow", null, ""],
+  ["git worktree list --porcelain", "allow", null, ""],
+  ["git merge-base --is-ancestor abc origin/main", "allow", null, ""],
+  ["git cat-file -p HEAD", "allow", null, ""],
+  ["git config --get user.email", "allow", null, ""],
+  ["git config user.name", "allow", null, ""],
+  ["git config --list --show-origin", "allow", null, ""],
+  ["git remote -v", "allow", null, ""],
+  ["git remote get-url origin", "allow", null, ""],
+  ["git stash list", "allow", null, ""],
+  ["git stash show -p stash@{0}", "allow", null, ""],
+  ["git tag -l 'vitruvian-v*'", "allow", null, ""],
+  ["git tag", "allow", null, ""],
+  ["git describe --tags", "allow", null, ""],
+  ["git rev-list --count HEAD", "allow", null, ""],
+  ["git for-each-ref refs/heads", "allow", null, ""],
+  ["git pull --ff-only", "allow", null, "primary"],
+  ["git apply --check fix.patch", "allow", null, ""],
+  ["git checkout -- README.md", "allow", null, ""],
+  ["git checkout README.md", "allow", null, ""],
+  ["git checkout HEAD~1 -- src/main.go", "allow", null, ""],
+  ["git restore src/main.go", "allow", null, ""],
+  ["git --no-pager log -1", "allow", null, ""],
+  ["git -C {repo} status", "allow", null, ""],
+  ["/usr/bin/git log -3", "allow", null, ""],
+  ["git commit --help", "allow", null, ""],
+  ["git --version", "allow", null, ""],
+  ["git reflog -10", "allow", null, ""],
+  ["git shortlog -sn", "allow", null, ""],
+  ["git ls-remote origin", "allow", null, ""],
+  ["git range-diff a...b", "allow", null, ""],
+  "# --- read-only gh: allowed -------------------------------------------------",
+  ["gh pr view 3427 --json state", "allow", null, ""],
+  ["gh pr list --author @me", "allow", null, ""],
+  ["gh pr checks 3427", "allow", null, ""],
+  ["gh pr diff 3427", "allow", null, ""],
+  ["gh pr status", "allow", null, ""],
+  ["gh run list --workflow ci.yaml", "allow", null, ""],
+  ["gh run view 123 --log-failed", "allow", null, ""],
+  ["gh run watch 123", "allow", null, ""],
+  ["gh workflow list", "allow", null, ""],
+  ["gh issue view 3418", "allow", null, ""],
+  ["gh issue comment 3418 --body 'step 2 live'", "allow", null, ""],
+  ["gh issue create --title x --body y", "allow", null, ""],
+  [
+    "gh api repos/VitruvianSoftware/vitruvian-core/pulls/3427",
+    "allow",
+    null,
+    ""
+  ],
+  ["gh api -X GET search/issues -f q=repo:x", "allow", null, ""],
+  [
+    "gh api --paginate repos/o/r/actions/runs --jq '.workflow_runs[].id'",
+    "allow",
+    null,
+    ""
+  ],
+  ["gh api graphql -f query='query { viewer { login } }'", "allow", null, ""],
+  [
+    "gh api graphql -F owner=x -f query='{ repository(owner:$owner,name:\"r\"){ id } }'",
+    "allow",
+    null,
+    ""
+  ],
+  ["gh auth status", "allow", null, ""],
+  ["gh search prs --author @me", "allow", null, ""],
+  ["gh release list", "allow", null, ""],
+  ["gh repo view --json name", "allow", null, ""],
+  ["gh --version", "allow", null, ""],
+  "# --- Bazel and ungoverned programs: allowed --------------------------------",
+  ["bazel test //...", "allow", null, ""],
+  ["bazel run //tools/worktree -- feat/x", "allow", null, ""],
+  ["bazel run //tools/git:commit -- -m 'feat: x' a.go", "allow", null, ""],
+  ["bazel run //tools/agent-app -- pr-create --title x", "allow", null, ""],
+  ["bazelisk build //apps/cli/devx/...", "allow", null, ""],
+  ["aspect lint //tools/...", "allow", null, ""],
+  ["bazel clean", "allow", null, ""],
+  ["bazel run //tools/agent-guard:install -- --dry-run", "allow", null, ""],
+  ["bazel run //tools/agent-guard:install -- --check", "allow", null, ""],
+  ["cat README.md", "allow", null, ""],
+  ["ls -la tools/", "allow", null, ""],
+  ["jq .name package.json", "allow", null, ""],
+  [
+    "python3 -c 'import json; print(json.load(open(\"a.json\")))'",
+    "allow",
+    null,
+    ""
+  ],
+  ["rg -n agent-guard docs/", "allow", null, ""],
+  ["docker ps", "allow", null, ""],
+  ["rm -rf node_modules", "allow", null, ""],
+  ["rm -rf {repo}/bazel-out/tmp", "allow", null, ""],
+  ["rm -f /tmp/x.log", "allow", null, ""],
+  ["cat <<EOF > notes.txt\ngit push\ngit commit -m x\nEOF", "allow", null, ""],
+  ["echo 'git push is blocked'", "allow", null, ""],
+  ["npm view react version", "allow", null, ""],
+  ["pnpm why typescript", "allow", null, ""],
+  ["npm outdated", "allow", null, ""],
+  ["go version", "allow", null, ""],
+  ["go env GOPATH", "allow", null, ""],
+  ["go list -m -u all", "allow", null, ""],
+  ["swift --version", "allow", null, ""],
+  ["xcodebuild -version", "allow", null, ""],
+  ["xcrun simctl list devices", "allow", null, ""],
+  ["cargo metadata --format-version 1", "allow", null, ""],
+  ["kubectl get pods -n backstage", "allow", null, ""],
+  ["kubectl -n argocd describe app tabula", "allow", null, ""],
+  ["kubectl logs -n backstage deploy/backstage --tail 50", "allow", null, ""],
+  ["kubectl rollout status deploy/x -n y", "allow", null, ""],
+  ["helm template ./chart", "allow", null, ""],
+  ["helm list -A", "allow", null, ""],
+  ["pulumi version", "allow", null, ""],
+  ["pulumi stack ls", "allow", null, ""],
+  ["command -v git", "allow", null, ""],
+  ["gofmt --version", "allow", null, ""],
+  ["cat ~/.local/state/agent-guard/log.jsonl | jq -c .", "allow", null, ""],
+  ["tail -5 ~/.local/state/agent-guard/log.jsonl", "allow", null, ""],
+  "# --- git writes: blocked ---------------------------------------------------",
+  ["git add .", "deny", "git-commit", ""],
+  ["git add -A && git commit -m 'feat: x'", "deny", "git-commit", ""],
+  ["git commit -m 'fix: y'", "deny", "git-commit", ""],
+  ["git commit --amend --no-edit", "deny", "git-commit", ""],
+  ["git rm -r old/", "deny", "git-commit", ""],
+  ["git mv a.go b.go", "deny", "git-commit", ""],
+  ["git push -u origin feat/agent-guard", "deny", "git-push", ""],
+  ["git push --force-with-lease", "deny", "git-push", ""],
+  ["git rebase -q origin/main", "deny", "git-history", ""],
+  ["git rebase -i HEAD~3", "deny", "git-history", ""],
+  ["git reset --hard origin/main", "deny", "git-history", ""],
+  ["git reset HEAD~1", "deny", "git-history", ""],
+  ["git merge origin/main", "deny", "git-history", ""],
+  ["git cherry-pick abc123", "deny", "git-history", ""],
+  ["git revert HEAD", "deny", "git-history", ""],
+  ["git pull", "deny", "git-history", "primary"],
+  ["git pull --rebase", "deny", "git-history", "primary"],
+  ["git pull --ff-only", "deny", "git-history", "worktree"],
+  ["git tag v1.2.3", "deny", "git-history", ""],
+  ["git tag -d v1.2.3", "deny", "git-history", ""],
+  ["git stash", "deny", "git-stash", ""],
+  ["git stash push -m wip", "deny", "git-stash", ""],
+  ["git stash pop", "deny", "git-stash", ""],
+  ["git checkout -b feat/x", "deny", "git-branch", ""],
+  ["git checkout main", "deny", "git-branch", ""],
+  ["git checkout --detach origin/main", "deny", "git-branch", ""],
+  ["git switch -c feat/x", "deny", "git-branch", ""],
+  ["git switch main", "deny", "git-branch", ""],
+  ["git branch -D feat/old", "deny", "git-branch", ""],
+  ["git branch -d feat/old", "deny", "git-branch", ""],
+  ["git branch feat/new", "deny", "git-branch", ""],
+  ["git branch -m old new", "deny", "git-branch", ""],
+  ["git worktree add ../wt -b feat/x origin/main", "deny", "git-worktree", ""],
+  ["git worktree add --detach $SP/rv abc123", "deny", "git-worktree", ""],
+  ["git worktree remove --force ../wt", "deny", "git-worktree", ""],
+  ["git worktree prune", "deny", "git-worktree", ""],
+  ["git worktree lock ../wt --reason wip", "deny", "git-worktree", ""],
+  ["git worktree unlock ../wt", "deny", "git-worktree", ""],
+  ["git config user.email bot@example.com", "deny", "git-other", ""],
+  ["git config --unset core.hooksPath", "deny", "git-other", ""],
+  ["git remote add fork https://github.com/x/y", "deny", "git-other", ""],
+  ["git apply fix.patch", "allow", null, ""],
+  ["git clean -fdx", "deny", "git-other", ""],
+  ["git gc --prune=now", "deny", "git-other", ""],
+  ["git update-ref refs/heads/main abc", "deny", "git-other", ""],
+  ["git am < 0001.patch", "deny", "git-history", ""],
+  ["git bisect start", "deny", "git-history", ""],
+  "# --- escape hatches: still seen -------------------------------------------",
+  ["/usr/bin/git commit -m x", "deny", "git-commit", ""],
+  ["git -C {repo} push", "deny", "git-push", ""],
+  ["cd {out} && git -C {repo} push origin HEAD", "deny", "git-push", ""],
+  ["cd {repo} && git push", "deny", "git-push", "out"],
+  ["git -c user.name=x commit -m y", "deny", "git-commit", ""],
+  ["git --no-pager -C . commit -m y", "deny", "git-commit", ""],
+  ["git status; git push", "deny", "git-push", ""],
+  ["git status || git push", "deny", "git-push", ""],
+  ["git diff | git apply --index", "deny", "git-commit", ""],
+  ["(git add . && git commit -m x)", "deny", "git-commit", ""],
+  ["{ git add .; git commit -m x; }", "deny", "git-commit", ""],
+  ["echo $(git push 2>&1)", "deny", "git-push", ""],
+  ["echo `git push`", "deny", "git-push", ""],
+  ["x=\"$(git commit -m y)\"", "deny", "git-commit", ""],
+  ["diff <(git push) /dev/null", "deny", "git-push", ""],
+  ["bash -c 'git push origin HEAD'", "deny", "git-push", ""],
+  ["sh -c \"git commit -m 'x'\"", "deny", "git-commit", ""],
+  ["zsh -lc 'git stash'", "deny", "git-stash", ""],
+  ["bash <<'EOF'\ngit push\nEOF", "deny", "git-push", ""],
+  ["bash <<< 'git push'", "deny", "git-push", ""],
+  ["eval \"git push origin HEAD\"", "deny", "git-push", ""],
+  ["env GIT_AUTHOR_NAME=x git commit -m y", "deny", "git-commit", ""],
+  ["GIT_EDITOR=true git rebase --continue", "deny", "git-history", ""],
+  ["env -i PATH=/usr/bin git push", "deny", "git-push", ""],
+  ["env -S 'git push'", "deny", "git-push", ""],
+  ["nice -n 10 go test ./...", "deny", "go", ""],
+  ["time go test ./...", "deny", "go", ""],
+  ["timeout 300 go test ./...", "deny", "go", ""],
+  ["timeout -s KILL 5m swift test", "deny", "swift", ""],
+  ["nohup pnpm install &", "deny", "node", ""],
+  ["command git push", "deny", "git-push", ""],
+  ["exec git push", "deny", "git-push", ""],
+  ["sudo -u james git push", "deny", "git-push", ""],
+  ["caffeinate -i go test ./...", "deny", "go", ""],
+  ["echo feat/old | xargs git branch -D", "deny", "git-branch", ""],
+  ["ls | xargs -I{} git add {}", "deny", "git-commit", ""],
+  ["find . -name '*.go' -exec gofmt -w {} \\;", "deny", "lint", ""],
+  ["watch -n 30 gh run rerun 123", "deny", "gh-run", ""],
+  [
+    "if git diff --quiet; then :; else git commit -am x; fi",
+    "deny",
+    "git-commit",
+    ""
+  ],
+  ["for b in a b; do git branch -D \"$b\"; done", "deny", "git-branch", ""],
+  [
+    "while read b; do git push origin \"$b\"; done < branches.txt",
+    "deny",
+    "git-push",
+    ""
+  ],
+  ["git status &&\ngit push", "deny", "git-push", ""],
+  ["git status \\\n && git push", "deny", "git-push", ""],
+  ["uv run pytest tools/x", "deny", "pytest", ""],
+  ["python3 -m pytest -q", "deny", "pytest", ""],
+  ["python -m ruff check .", "deny", "lint", ""],
+  ["direnv exec . go test ./...", "deny", "go", ""],
+  ["git commit -m \"unterminated", "deny", "git-commit", ""],
+  "# --- gh writes: blocked ----------------------------------------------------",
+  ["gh pr create --base main --title x --body-file b.md", "deny", "gh-pr", ""],
+  ["gh pr edit 3345 --body-file b.md", "deny", "gh-pr", ""],
+  ["gh pr comment 3345 --body ok", "deny", "gh-pr", ""],
+  ["gh pr merge 84 --squash --auto", "deny", "gh-pr", ""],
+  ["gh pr merge 84 --admin", "deny", "gh-pr", ""],
+  ["gh pr ready 84", "deny", "gh-pr", ""],
+  ["gh pr close 84", "deny", "gh-pr", ""],
+  ["gh pr review 84 --approve", "deny", "gh-pr", ""],
+  ["gh pr checkout 84", "deny", "git-branch", ""],
+  [
+    "gh -R VitruvianSoftware/vitruvian-core pr merge 9 --auto",
+    "deny",
+    "gh-pr",
+    "out"
+  ],
+  ["gh workflow run ci.yaml --ref main", "deny", "gh-run", ""],
+  ["gh run rerun 123 --failed", "deny", "gh-run", ""],
+  ["gh run cancel 123", "deny", "gh-run", ""],
+  ["gh run delete 123", "deny", "gh-run", ""],
+  ["gh workflow enable ci.yaml", "deny", "gh-run", ""],
+  ["gh workflow disable ci.yaml", "deny", "gh-run", ""],
+  ["gh run rerun 123 --job 456", "deny", "gh-run", ""],
+  [
+    "gh api -X PUT repos/VitruvianSoftware/vitruvian-core/pulls/1/merge",
+    "deny",
+    "gh-api",
+    ""
+  ],
+  [
+    "gh api --method=POST repos/{owner}/{repo}/issues/1/labels -f labels[]=x",
+    "deny",
+    "gh-api",
+    ""
+  ],
+  [
+    "gh api repos/:owner/:repo/issues/1/comments -f body=hi",
+    "deny",
+    "gh-api",
+    ""
+  ],
+  [
+    "gh api -XDELETE repos/VitruvianSoftware/vitruvian-core/git/refs/heads/x",
+    "deny",
+    "gh-api",
+    ""
+  ],
+  [
+    "gh api graphql -f query='mutation { enablePullRequestAutoMerge(input:{}) { clientMutationId } }'",
+    "deny",
+    "gh-api",
+    ""
+  ],
+  ["gh api graphql -f query=@-", "deny", "gh-api", ""],
+  ["gh release create v1 --notes x", "deny", "gh-other", ""],
+  ["gh secret set FOO --body bar", "deny", "gh-other", ""],
+  ["gh label create x", "deny", "gh-other", ""],
+  "# --- dev toolchains: blocked -----------------------------------------------",
+  ["go test ./...", "deny", "go", ""],
+  ["go vet ./...", "deny", "go", ""],
+  ["go build -o /tmp/x ./cmd/x", "deny", "go", ""],
+  ["go run ./tools/pipeline/plan", "deny", "go", ""],
+  ["go mod tidy", "deny", "go", ""],
+  ["go fmt ./...", "deny", "go", ""],
+  ["swift build --build-tests", "deny", "swift", ""],
+  ["swift test --filter Foo", "deny", "swift", ""],
+  ["swift run nexus-agent", "deny", "swift", ""],
+  ["xcodebuild -scheme X test", "deny", "xcode", ""],
+  ["xcrun notarytool submit x.zip --wait", "deny", "xcode", ""],
+  ["npm install", "deny", "node", ""],
+  ["npm ci", "deny", "node", ""],
+  ["npm test", "deny", "node", ""],
+  ["npm run build", "deny", "node", ""],
+  ["pnpm install --frozen-lockfile", "deny", "node", ""],
+  ["pnpm add -D jest", "deny", "node", ""],
+  ["pnpm --filter tabula-web test", "deny", "node", ""],
+  ["pnpm dlx create-x", "deny", "node", ""],
+  ["npx -y @anthropic-ai/foo", "deny", "node", ""],
+  ["yarn", "deny", "node", ""],
+  ["yarn add react", "deny", "node", ""],
+  ["cargo test", "deny", "cargo", ""],
+  ["cargo build --release", "deny", "cargo", ""],
+  ["cargo publish", "deny", "cargo", ""],
+  ["./gradlew assembleDebug", "deny", "gradle", ""],
+  ["gradle build", "deny", "gradle", ""],
+  ["pytest -q tools/", "deny", "pytest", ""],
+  ["gofmt -l .", "deny", "lint", ""],
+  ["gofmt -w x.go", "deny", "lint", ""],
+  ["golangci-lint run ./...", "deny", "lint", ""],
+  ["ruff check .", "deny", "lint", ""],
+  ["eslint src", "deny", "lint", ""],
+  ["prettier --write .", "deny", "lint", ""],
+  ["shellcheck tools/x.sh", "deny", "lint", ""],
+  ["actionlint", "deny", "actionlint", ""],
+  ["actionlint .github/workflows/ci.yaml", "deny", "actionlint", ""],
+  ["gitleaks git --log-opts=origin/main..HEAD", "deny", "secret-scan", ""],
+  ["gitleaks detect --no-git", "deny", "secret-scan", ""],
+  "# --- infra and clusters: blocked -------------------------------------------",
+  ["pulumi up --yes", "deny", "iac", ""],
+  ["pulumi destroy", "deny", "iac", ""],
+  ["pulumi import gcp:x y z", "deny", "iac", ""],
+  ["pulumi refresh -s dev", "deny", "iac", ""],
+  ["pulumi preview -s dev-local", "deny", "iac", ""],
+  ["terraform apply", "deny", "iac", ""],
+  ["kubectl apply -f x.yaml", "deny", "kubectl", ""],
+  ["kubectl delete pod x -n y", "deny", "kubectl", ""],
+  ["kubectl patch deploy x -p '{}'", "deny", "kubectl", ""],
+  ["kubectl edit cm x", "deny", "kubectl", ""],
+  [
+    "kubectl -n backstage exec -it deploy/backstage -- sh",
+    "deny",
+    "kubectl",
+    ""
+  ],
+  ["kubectl rollout restart deploy/x -n y", "deny", "kubectl", ""],
+  ["kubectl scale deploy x --replicas=0", "deny", "kubectl", ""],
+  ["helm install x ./chart", "deny", "helm", ""],
+  ["helm upgrade --install x ./chart", "deny", "helm", ""],
+  ["helm uninstall x", "deny", "helm", ""],
+  "# --- Bazel caches (blocked from anywhere) ----------------------------------",
+  ["rm -rf ~/Library/Caches/bazel", "deny", "bazel-cache", "out"],
+  ["rm -rf ~/.cache/bazel", "deny", "bazel-cache", "out"],
+  ["rm -rf $HOME/.cache/bazel/worktrees/feat-x", "deny", "bazel-cache", "out"],
+  ["rm -fr /private/var/tmp/_bazel_james/abc", "deny", "bazel-cache", "out"],
+  [
+    "chmod -R u+w ~/.cache/bazel && rm -rf ~/.cache/bazel",
+    "deny",
+    "bazel-cache",
+    "out"
+  ],
+  ["find ~/.cache/bazel -mindepth 1 -delete", "deny", "bazel-cache", "out"],
+  ["bazel clean --expunge", "deny", "bazel-cache", ""],
+  ["bazel --output_user_root=/tmp/x build //...", "deny", "bazel-cache", ""],
+  ["rm -rf {wt}", "deny", "git-worktree", "out"],
+  "# --- the guard itself (blocked from anywhere) ------------------------------",
+  [
+    "bazel run //tools/agent-guard:install -- --uninstall",
+    "deny",
+    "guard-config",
+    ""
+  ],
+  [
+    "bazel run //tools/agent-guard:install -- --mode all=off",
+    "deny",
+    "guard-config",
+    ""
+  ],
+  "# Agents may install (install.py then checks the main checkout), check and",
+  "# dry-run; anything else on the installer is James's.",
+  ["bazel run //tools/agent-guard:install", "allow", null, ""],
+  ["bazel run //tools/agent-guard:install --", "allow", null, ""],
+  ["bazel run @//tools/agent-guard:install", "allow", null, ""],
+  ["bazelisk run //tools/agent-guard:install", "allow", null, ""],
+  [
+    "bazel run //tools/agent-guard:install -- --dry-run --check",
+    "allow",
+    null,
+    ""
+  ],
+  ["cd {repo}/tools/agent-guard && bazel run :install", "allow", null, ""],
+  [
+    "cd {repo}/tools/agent-guard && bazel run :install -- --uninstall",
+    "deny",
+    "guard-config",
+    ""
+  ],
+  [
+    "bazel run //tools/agent-guard:install -- --uninstall --dry-run",
+    "allow",
+    null,
+    ""
+  ],
+  [
+    "bazel run //tools/agent-guard:install -- --dry-run --uninstall",
+    "allow",
+    null,
+    ""
+  ],
+  [
+    "bazel run //tools/agent-guard:install -- --mode=all=off",
+    "deny",
+    "guard-config",
+    ""
+  ],
+  [
+    "bazel run //tools/agent-guard:install -- --home /tmp/h",
+    "deny",
+    "guard-config",
+    ""
+  ],
+  [
+    "bazel run //tools/agent-guard:install -- --workspace /tmp/w",
+    "deny",
+    "guard-config",
+    ""
+  ],
+  [
+    "bazel run //tools/agent-guard:install -- --check --force",
+    "deny",
+    "guard-config",
+    ""
+  ],
+  ["bazel run //tools/agent-guard:install extra", "deny", "guard-config", ""],
+  [
+    "bazel run //tools/agent-guard:install --config=ci",
+    "deny",
+    "guard-config",
+    ""
+  ],
+  [
+    "bazel run --run_under='env -u CLAUDECODE' //tools/agent-guard:install",
+    "deny",
+    "guard-config",
+    ""
+  ],
+  [
+    "bazel run --script_path=/tmp/i.sh //tools/agent-guard:install",
+    "deny",
+    "guard-config",
+    ""
+  ],
+  [
+    "bazel --bazelrc=/tmp/rc run //tools/agent-guard:install",
+    "deny",
+    "guard-config",
+    ""
+  ],
+  [
+    "env -u CLAUDECODE bazel run //tools/agent-guard:install",
+    "deny",
+    "guard-config",
+    ""
+  ],
+  ["bazel-bin/tools/agent-guard/install", "deny", "guard-config", ""],
+  [
+    "python3 tools/agent-guard/install.py --uninstall --dry-run",
+    "allow",
+    null,
+    ""
+  ],
+  "# --- the backstop's user files: read freely, written only by the Edit tools",
+  ["echo '{}' > ~/.claude/settings.json", "deny", "guard-config", "out"],
+  [
+    "jq '.a=1' ~/.claude/settings.json > /tmp/s && mv /tmp/s ~/.claude/settings.json",
+    "deny",
+    "guard-config",
+    "out"
+  ],
+  [
+    "sed -i '' 's/agent-guard/x/' ~/.claude/settings.json",
+    "deny",
+    "guard-config",
+    "out"
+  ],
+  ["cp /tmp/h.json ~/.gemini/config/hooks.json", "deny", "guard-config", "out"],
+  ["cp /tmp/hooks.json ~/.gemini/config/", "deny", "guard-config", "out"],
+  [
+    "tee ~/.gemini/config/hooks.json < /tmp/h.json",
+    "deny",
+    "guard-config",
+    "out"
+  ],
+  ["rm ~/.claude/settings.json", "deny", "guard-config", "out"],
+  ["rm -rf ~/.gemini", "deny", "guard-config", "out"],
+  ["mv ~/.claude/settings.json /tmp/s.json", "deny", "guard-config", "out"],
+  [
+    "perl -pi -e 's/x/y/' ~/.claude/settings.json",
+    "deny",
+    "guard-config",
+    "out"
+  ],
+  ["ln -sf /tmp/s.json ~/.claude/settings.json", "deny", "guard-config", "out"],
+  [
+    "python3 -c \"open('{home}/.claude/settings.json', 'w').write('{}')\"",
+    "deny",
+    "guard-config",
+    "out"
+  ],
+  ["cat ~/.claude/settings.json", "allow", null, "out"],
+  ["jq .hooks ~/.claude/settings.json", "allow", null, "out"],
+  ["grep -n agent-guard ~/.gemini/config/hooks.json", "allow", null, "out"],
+  ["cp ~/.claude/settings.json /tmp/backup.json", "allow", null, "out"],
+  ["perl -ne 'print if /hook/' ~/.claude/settings.json", "allow", null, "out"],
+  ["ls -la ~/.claude ~/.gemini/config", "allow", null, "out"],
+  ["echo note > ~/.claude/notes.md", "allow", null, "out"],
+  [
+    "python3 -c \"print(open('{home}/.claude/settings.json').read())\"",
+    "allow",
+    null,
+    "out"
+  ],
+  [
+    "bazel run //tools/git:commit -- -m 'tools/agent-guard:install'",
+    "allow",
+    null,
+    ""
+  ],
+  [
+    "sed -i '' s/enforce/off/ ~/.local/share/agent-guard/policy.json",
+    "deny",
+    "guard-config",
+    "out"
+  ],
+  [
+    "echo '{}' > ~/.local/share/agent-guard/policy.json",
+    "deny",
+    "guard-config",
+    "out"
+  ],
+  ["rm ~/.local/state/agent-guard/log.jsonl", "deny", "guard-config", "out"],
+  [
+    "cp /tmp/p.json $HOME/.local/share/agent-guard/policy.json",
+    "deny",
+    "guard-config",
+    "out"
+  ],
+  "# --- the guard's folders in HOME: a read or copy SOURCE is fine ------------",
+  ["cp -R ~/.local/share/agent-guard /tmp/scratch-ag", "allow", null, "out"],
+  [
+    "cp ~/.local/state/agent-guard/log.jsonl /tmp/log.jsonl",
+    "allow",
+    null,
+    "out"
+  ],
+  ["rsync -a ~/.local/share/agent-guard/ /tmp/ag/", "allow", null, "out"],
+  ["cp /tmp/p.json ~/.local/share/agent-guard/", "deny", "guard-config", "out"],
+  [
+    "cp -t ~/.local/state/agent-guard /tmp/log.jsonl",
+    "deny",
+    "guard-config",
+    "out"
+  ],
+  ["mv ~/.local/share/agent-guard /tmp/ag", "deny", "guard-config", "out"],
+  [
+    "python3 -c \"import shutil; shutil.copytree('{home}/.local/share/agent-guard', '/tmp/ag')\"",
+    "allow",
+    null,
+    "out"
+  ],
+  [
+    "python3 -c \"print(open('{home}/.local/state/agent-guard/log.jsonl').read()[-200:])\"",
+    "allow",
+    null,
+    "out"
+  ],
+  [
+    "python3.15 -c \"import json; json.load(open('{home}/.local/share/agent-guard/policy.json'))\"",
+    "allow",
+    null,
+    "out"
+  ],
+  [
+    "python3 -c \"open('/tmp/x', 'w').write(open('{home}/.local/share/agent-guard/policy.json').read())\"",
+    "allow",
+    null,
+    "out"
+  ],
+  [
+    "python3 -c \"open('{home}/.local/share/agent-guard/policy.json', 'w').write('{}')\"",
+    "deny",
+    "guard-config",
+    "out"
+  ],
+  [
+    "python3 -c \"import shutil; shutil.rmtree('{home}/.local/share/agent-guard')\"",
+    "deny",
+    "guard-config",
+    "out"
+  ],
+  [
+    "python3 -c \"import shutil; shutil.copy('/tmp/p.json', '{home}/.local/share/agent-guard/policy.json')\"",
+    "deny",
+    "guard-config",
+    "out"
+  ],
+  [
+    "python3.15 -c \"import os; os.remove('{home}/.local/state/agent-guard/log.jsonl')\"",
+    "deny",
+    "guard-config",
+    "out"
+  ],
+  [
+    "python3 -c \"from pathlib import Path; Path('{home}/.local/share/agent-guard/policy.json').write_text('{}')\"",
+    "deny",
+    "guard-config",
+    "out"
+  ],
+  [
+    "python3 -c \"import shutil; shutil.copy('.claude/settings.json', '/tmp/s.json')\"",
+    "allow",
+    null,
+    ""
+  ],
+  [
+    "python3 -c \"import shutil; shutil.copy('/tmp/s.json', '.claude/settings.json')\"",
+    "deny",
+    "guard-config",
+    ""
+  ],
+  "# --- the checkout's hook files: they take effect before review -------------",
+  [
+    "sed -i '' /agent-guard/d .claude/settings.json",
+    "deny",
+    "guard-config",
+    ""
+  ],
+  [
+    "jq 'del(.hooks)' .claude/settings.json > /tmp/s && mv /tmp/s .claude/settings.json",
+    "deny",
+    "guard-config",
+    ""
+  ],
+  ["echo '{}' > .agents/hooks.json", "deny", "guard-config", ""],
+  ["echo '{}' >| .agents/hooks.json", "deny", "guard-config", ""],
+  ["cat /tmp/x | tee .agents/hooks.json", "deny", "guard-config", ""],
+  ["cp /tmp/hooks.json .agents/hooks.json", "deny", "guard-config", ""],
+  ["cp /tmp/hooks.json .agents/", "deny", "guard-config", ""],
+  ["cp -t .claude /tmp/settings.json", "deny", "guard-config", ""],
+  ["rm .agents/hooks.json", "deny", "guard-config", ""],
+  ["rm -rf .claude", "deny", "guard-config", ""],
+  ["mv .agents /tmp/agents", "deny", "guard-config", ""],
+  ["mv tools/agent-guard /tmp/ag", "deny", "guard-config", ""],
+  ["chmod -R a-w tools", "deny", "guard-config", ""],
+  ["echo 'exit 0' > tools/agent-guard/hook.sh", "deny", "guard-config", ""],
+  [
+    "perl -pi -e s/block/continue/ .claude/settings.json",
+    "deny",
+    "guard-config",
+    ""
+  ],
+  [
+    "python3 -c \"open('.claude/settings.json', 'w').write('{}')\"",
+    "deny",
+    "guard-config",
+    ""
+  ],
+  [
+    "echo '{\"disableAllHooks\": true}' > .claude/settings.local.json",
+    "deny",
+    "guard-config",
+    ""
+  ],
+  ["cd .claude && echo '{}' > settings.json", "deny", "guard-config", ""],
+  ["echo '{}' > {wt}/.claude/settings.json", "deny", "guard-config", "out"],
+  ["rm {repo}/.agents/hooks.json", "deny", "guard-config", "out"],
+  ["echo 'exit 0' > .claude/block-queue-bypass.sh", "deny", "guard-config", ""],
+  [
+    "sed -i '' 's/exit 2/exit 0/' .claude/block-queue-bypass.sh",
+    "deny",
+    "guard-config",
+    ""
+  ],
+  ["rm .claude/session-start.sh", "deny", "guard-config", ""],
+  ["cp /tmp/x.sh .claude/kube-setup.sh", "deny", "guard-config", ""],
+  ["chmod -x .claude/tailscale-up.sh", "deny", "guard-config", ""],
+  ["echo x > .claude/new-hook.sh", "deny", "guard-config", ""],
+  ["bash .claude/session-start.sh", "allow", null, ""],
+  "# The repo script session-start.sh runs that is still protected: the",
+  "# build-cache configurator. (cloud-bootstrap.sh and profiles.tsv were",
+  "# unprotected so an agent can change them in a PR the guard owner approves:",
+  "# they stay behind the agent-guard-review ruleset.)",
+  [
+    "echo 'exit 0' > tools/cloud-bootstrap/cloud-bootstrap.sh",
+    "allow",
+    null,
+    ""
+  ],
+  [
+    "sed -i '' 's/exit 1/exit 0/' tools/cloud-bootstrap/cloud-bootstrap.sh",
+    "allow",
+    null,
+    ""
+  ],
+  ["cp /tmp/x.sh tools/remote/setup.sh", "deny", "guard-config", ""],
+  ["cat /tmp/x | tee tools/remote/setup.sh", "deny", "guard-config", ""],
+  ["rm tools/remote/setup.sh", "deny", "guard-config", ""],
+  ["rm -rf tools/cloud-bootstrap", "allow", null, ""],
+  ["mv tools/remote /tmp/remote", "deny", "guard-config", ""],
+  ["chmod -x tools/cloud-bootstrap/cloud-bootstrap.sh", "allow", null, ""],
+  [
+    "python3 -c \"open('tools/remote/setup.sh', 'w').write('')\"",
+    "deny",
+    "guard-config",
+    ""
+  ],
+  [
+    "echo x > {wt}/tools/cloud-bootstrap/cloud-bootstrap.sh",
+    "allow",
+    null,
+    "out"
+  ],
+  ["cat tools/cloud-bootstrap/cloud-bootstrap.sh", "allow", null, ""],
+  ["sed -n 1,40p tools/remote/setup.sh", "allow", null, ""],
+  ["cp tools/remote/setup.sh /tmp/setup.sh", "allow", null, ""],
+  ["bash tools/cloud-bootstrap/cloud-bootstrap.sh whoami", "allow", null, ""],
+  ["bazel run //tools/cloud-bootstrap:whoami", "allow", null, ""],
+  [
+    "echo x >> tools/cloud-bootstrap/cloud-bootstrap_test.sh",
+    "allow",
+    null,
+    ""
+  ],
+  ["echo x > tools/remote/setup_test.sh", "allow", null, ""],
+  "# profiles.tsv decides which secrets session start fetches; changing it is",
+  "# gated by the agent-guard-review ruleset, not by this local guard.",
+  ["echo x >> tools/cloud-bootstrap/profiles.tsv", "allow", null, ""],
+  ["cp /tmp/p.tsv tools/cloud-bootstrap/profiles.tsv", "allow", null, ""],
+  [
+    "sed -i '' s/core/all/ tools/cloud-bootstrap/profiles.tsv",
+    "allow",
+    null,
+    ""
+  ],
+  ["mv tools/cloud-bootstrap/profiles.tsv /tmp/p.tsv", "allow", null, ""],
+  ["rm tools/cloud-bootstrap/profiles.tsv", "allow", null, ""],
+  ["cat tools/cloud-bootstrap/profiles.tsv", "allow", null, ""],
+  ["awk '{print $1}' tools/cloud-bootstrap/profiles.tsv", "allow", null, ""],
+  ["cp tools/cloud-bootstrap/profiles.tsv /tmp/p.tsv", "allow", null, ""],
+  ["echo x > tools/cloud-bootstrap/README.md", "allow", null, ""],
+  ["cat .claude/block-queue-bypass.sh", "allow", null, ""],
+  ["echo x > .claude/sub/x.sh", "allow", null, ""],
+  ["cat .claude/settings.json", "allow", null, ""],
+  ["jq '.hooks.PreToolUse' .claude/settings.json", "allow", null, ""],
+  [
+    "git diff origin/main -- .claude/settings.json .agents/hooks.json",
+    "allow",
+    null,
+    ""
+  ],
+  ["git log -p -- tools/agent-guard/hook.sh", "allow", null, ""],
+  ["printf '{}' | /bin/sh tools/agent-guard/hook.sh", "allow", null, ""],
+  ["cp tools/agent-guard/hook.sh /tmp/hook.sh", "allow", null, ""],
+  ["sed -n 1,20p tools/agent-guard/hook.sh", "allow", null, ""],
+  ["diff .agents/hooks.json /tmp/hooks.json", "allow", null, ""],
+  ["sed -i '' s/foo/bar/ tools/agent-guard/agent_guard.py", "allow", null, ""],
+  ["echo '{}' > tools/agent-guard/policy.json", "allow", null, ""],
+  ["mkdir -p .agents/rules && echo x > .agents/rules/x.md", "allow", null, ""],
+  ["echo x > .claude/notes.md", "allow", null, ""],
+  ["bazel test //tools/agent-guard/...", "allow", null, ""],
+  [
+    "bazel run //tools/git:commit -- -m 'cache in ~/.local/state/agent-guard/cache' tools/agent-guard/hook.sh",
+    "allow",
+    null,
+    ""
+  ],
+  ["echo '{}' > /tmp/elsewhere/.claude/settings.json", "allow", null, "out"],
+  "# --- fetches that could move origin/main (hook.sh runs the guard from it) --",
+  ["git fetch", "allow", null, ""],
+  ["git fetch origin", "allow", null, ""],
+  ["git fetch -q origin main", "allow", null, ""],
+  ["git fetch --prune origin", "allow", null, ""],
+  ["git fetch --all --prune", "allow", null, ""],
+  ["git fetch origin refs/pull/12/head", "allow", null, ""],
+  ["git fetch https://github.com/evil/fork main", "allow", null, ""],
+  ["git fetch --depth 1 origin main", "allow", null, ""],
+  [
+    "git fetch https://github.com/evil/fork +main:refs/remotes/origin/main",
+    "deny",
+    "git-other",
+    ""
+  ],
+  [
+    "git fetch origin +refs/heads/x:refs/remotes/origin/main",
+    "deny",
+    "git-other",
+    ""
+  ],
+  ["git fetch evil main:main", "deny", "git-other", ""],
+  ["git fetch origin main:refs/heads/main", "deny", "git-other", ""],
+  [
+    "git fetch upstream '+refs/heads/*:refs/remotes/origin/*'",
+    "deny",
+    "git-other",
+    ""
+  ],
+  ["git fetch -q --depth=1 origin pr:refs/heads/pr", "deny", "git-other", ""],
+  [
+    "git fetch https://github.com/evil/fork main --refmap='+refs/heads/*:refs/remotes/origin/*'",
+    "deny",
+    "git-other",
+    ""
+  ],
+  [
+    "git -c remote.origin.url=https://github.com/evil/fork fetch origin",
+    "deny",
+    "git-other",
+    ""
+  ],
+  [
+    "git -c url.https://github.com/evil/.insteadOf=https://github.com/VitruvianSoftware/ fetch",
+    "deny",
+    "git-other",
+    ""
+  ],
+  [
+    "git -C {wt} fetch https://x/y main:refs/remotes/origin/main",
+    "deny",
+    "git-other",
+    ""
+  ],
+  [
+    "git pull --ff-only evil main:refs/remotes/origin/main",
+    "deny",
+    "git-other",
+    "primary"
+  ],
+  [
+    "git pull --ff-only --log evil main:refs/remotes/origin/main",
+    "deny",
+    "git-other",
+    "primary"
+  ],
+  ["git fetch -- evil main:refs/remotes/origin/main", "deny", "git-other", ""],
+  "# --- in-progress merge / rebase / cherry-pick ------------------------------",
+  ["git merge --continue", "allow", null, "merging"],
+  ["git merge --abort", "allow", null, "merging"],
+  ["git merge --continue", "deny", "git-history", ""],
+  ["git merge --abort", "deny", "git-history", ""],
+  ["git rebase --continue", "allow", null, "rebasing"],
+  ["git rebase --abort", "allow", null, "rebasing"],
+  ["git rebase --skip", "allow", null, "rebasing"],
+  ["GIT_EDITOR=true git rebase --continue", "allow", null, "rebasing"],
+  ["git rebase --continue", "deny", "git-history", ""],
+  ["git rebase --abort", "deny", "git-history", ""],
+  ["git rebase --skip", "deny", "git-history", ""],
+  ["git rebase --continue", "deny", "git-history", "merging"],
+  ["git cherry-pick --continue", "allow", null, "picking"],
+  ["git cherry-pick --abort", "allow", null, "picking"],
+  ["git cherry-pick --continue", "deny", "git-history", ""],
+  ["git cherry-pick --abort", "deny", "git-history", ""],
+  ["git add src/conflicted.go", "allow", null, "merging"],
+  ["git add src/conflicted.go", "allow", null, "rebasing"],
+  ["git add src/conflicted.go", "allow", null, "picking"],
+  ["git add src/conflicted.go", "deny", "git-commit", ""],
+  ["git add src/other.go", "deny", "git-commit", "merging"],
+  ["git add .", "deny", "git-commit", "merging"],
+  ["git add -A", "deny", "git-commit", "rebasing"],
+  ["git commit --no-edit", "deny", "git-commit", "merging"],
+  ["git commit", "deny", "git-commit", "merging"],
+  "# --- heredoc bodies are data, even with apostrophes (fix round 1) ---------",
+  [
+    "gh issue comment 3418 --body \"$(cat <<'EOF'\nIt didn't break.\nRan `go test ./...`\nEOF\n)\"",
+    "allow",
+    null,
+    ""
+  ],
+  [
+    "speaker-broadcast \"$(cat <<'EOF'\nPR's merged; git push done\nEOF\n)\"",
+    "allow",
+    null,
+    ""
+  ],
+  [
+    "bazel run //tools/git:commit -- -m \"$(cat <<'EOF'\nfix: don't git push from scripts\n\nIt's npm test's job.\nEOF\n)\"",
+    "allow",
+    null,
+    ""
+  ],
+  [
+    "bazel run //tools/git:commit -- -m \"$(cat <<EOF\nfeat: it's done\nRan \\`go test\\` and \\$(npm test)\nEOF\n)\"",
+    "allow",
+    null,
+    ""
+  ],
+  [
+    "gh pr view 1 --json body -q \"$(cat <<-'EOF'\n\tquote \" and ' and `git push` and $(git commit)\n\tEOF\n)\"",
+    "allow",
+    null,
+    ""
+  ],
+  [
+    "speaker-broadcast \"$(cat <<\"END\"\nwe'll npm test then go test; git push\nEND\n)\"",
+    "allow",
+    null,
+    ""
+  ],
+  [
+    "x=$(cat <<'EOF'\nit's `git push` time\nEOF\n); echo \"$x\"",
+    "allow",
+    null,
+    ""
+  ],
+  [
+    "gh issue comment 1 --body \"$(cat <<'EOF'\ndidn't\nEOF\n)\" && git push",
+    "deny",
+    "git-push",
+    ""
+  ],
+  ["echo \"$(cat <<'EOF'\nwon't\nEOF\n)\"; go test ./...", "deny", "go", ""],
+  ["bash <<'EOF'\nit's\ngit push\nEOF", "deny", "git-push", ""],
+  ["cat <<EOF | sh\ngit commit -m \"don't\"\nEOF", "allow", null, ""],
+  ["echo $((1 << 2)) && git status", "allow", null, ""],
+  "# --- gh aimed at another repository is out of scope ----------------------",
+  [
+    "gh -R VitruvianSoftware/devx pr merge 3 --squash --auto",
+    "allow",
+    null,
+    ""
+  ],
+  ["gh --repo x/y pr create --title t --body b", "allow", null, ""],
+  [
+    "gh pr comment https://github.com/VitruvianSoftware/devx/pull/12 --body ok",
+    "allow",
+    null,
+    ""
+  ],
+  [
+    "gh api repos/VitruvianSoftware/homelab/issues/5/comments -f body=hi",
+    "allow",
+    null,
+    ""
+  ],
+  ["gh api -X PUT /repos/someone/else/pulls/1/merge", "allow", null, ""],
+  [
+    "gh workflow run ci.yaml -R VitruvianSoftware/nexus-agent",
+    "allow",
+    null,
+    ""
+  ],
+  [
+    "gh -R VitruvianSoftware/vitruvian-core pr merge 9 --auto",
+    "deny",
+    "gh-pr",
+    ""
+  ],
+  [
+    "gh api repos/VitruvianSoftware/vitruvian-core/issues/1/labels -f labels[]=x",
+    "deny",
+    "gh-api",
+    "out"
+  ],
+  ["gh api repos/{owner}/{repo}/pulls/1/merge -X PUT", "deny", "gh-api", ""],
+  [
+    "gh pr merge https://github.com/VitruvianSoftware/vitruvian-core/pull/3 --auto",
+    "deny",
+    "gh-pr",
+    "out"
+  ],
+  "# --- only :install is the installer ---------------------------------------",
+  ["bazel run //tools/agent-guard -- --version", "allow", null, ""],
+  ["bazel run //tools/agent-guard < payload.json", "allow", null, ""],
+  ["bazel run //tools/agent-guard:install -- --help", "allow", null, ""],
+  "# --- git apply and git clean -n -------------------------------------------",
+  ["git apply --3way fix.patch", "deny", "git-commit", ""],
+  ["git apply -p1 < fix.patch", "allow", null, ""],
+  ["git clean -n", "allow", null, ""],
+  ["git clean -nd", "allow", null, ""],
+  ["git clean --dry-run -x", "allow", null, ""],
+  ["git clean -f", "deny", "git-other", ""],
+  "# --- running the installer around the guard -------------------------------",
+  ["python3 tools/agent-guard/install.py", "deny", "guard-config", ""],
+  [
+    "python3 tools/agent-guard/install.py --uninstall",
+    "deny",
+    "guard-config",
+    ""
+  ],
+  [
+    "env -u CLAUDECODE python3 tools/agent-guard/install.py",
+    "deny",
+    "guard-config",
+    ""
+  ],
+  [
+    "bazel-bin/tools/agent-guard/install --mode all=off",
+    "deny",
+    "guard-config",
+    ""
+  ],
+  [
+    "unset CLAUDECODE; bazel run //tools/agent-guard:install",
+    "deny",
+    "guard-config",
+    ""
+  ],
+  [
+    "env -u ANTIGRAVITY_AGENT bazel run //tools/agent-guard:install -- --dry-run",
+    "deny",
+    "guard-config",
+    ""
+  ],
+  ["python3 tools/agent-guard/install.py --dry-run", "allow", null, ""],
+  ["bazel-bin/tools/agent-guard/install --check", "allow", null, ""],
+  ["cat tools/agent-guard/install.py", "allow", null, ""],
+  ["env -u CLAUDECODE go version", "allow", null, ""],
+  "# --- fix round 2: the reviewer's cases5, marker hiding, unquoted heredocs ---",
+  [
+    "grep -n 'unset CLAUDECODE' tools/agent-guard/install.py",
+    "allow",
+    null,
+    ""
+  ],
+  ["rg -n 'CLAUDECODE=' tools/agent-guard/", "allow", null, ""],
+  [
+    "bazel test //tools/agent-guard/... --test_env=CLAUDECODE= ",
+    "allow",
+    null,
+    ""
+  ],
+  [
+    "git diff origin/main -- tools/agent-guard/ | grep -n 'env -u CLAUDECODE'",
+    "allow",
+    null,
+    ""
+  ],
+  ["sed -n '1,40p' tools/agent-guard/README.md", "allow", null, ""],
+  ["python3 -m py_compile tools/agent-guard/install.py", "allow", null, ""],
+  ["python3 -I tools/agent-guard/install.py --dry-run", "allow", null, ""],
+  ["python3 tools/agent-guard/install.py --check", "allow", null, ""],
+  ["bazel test //tools/agent-guard:install_test", "allow", null, ""],
+  [
+    "CLAUDECODE= bazel run //tools/agent-guard:install",
+    "deny",
+    "guard-config",
+    ""
+  ],
+  [
+    "gh pr merge 1 --auto -R VitruvianSoftware/vitruvian-core",
+    "deny",
+    "gh-pr",
+    ""
+  ],
+  [
+    "gh pr merge https://github.com/VitruvianSoftware/vitruvian-core/pull/1 --auto",
+    "deny",
+    "gh-pr",
+    ""
+  ],
+  [
+    "gh api -X POST repos/VitruvianSoftware/vitruvian-core/issues/1/comments -f body=x",
+    "deny",
+    "gh-api",
+    ""
+  ],
+  [
+    "gh api -X POST repos/{owner}/{repo}/issues/1/comments -f body=x",
+    "deny",
+    "gh-api",
+    ""
+  ],
+  ["gh pr merge 5 --auto --repo=VitruvianSoftware/devx", "allow", null, ""],
+  [
+    "gh pr merge https://github.com/VitruvianSoftware/devx/pull/5 --auto",
+    "allow",
+    null,
+    ""
+  ],
+  ["echo $((1 << 2))", "allow", null, ""],
+  ["x=$(cat <<EOF\nit's $(date)\nEOF\n); echo \"$x\"", "allow", null, ""],
+  [
+    "echo \"$(cat <<'A'\nfirst it's\nA\n)\" \"$(cat <<'B'\nsecond (unbalanced\nB\n)\"",
+    "allow",
+    null,
+    ""
+  ],
+  [
+    "bazel run //tools/git:commit -- -m \"$(cat <<'EOF'\nfix: it's done\n\ngit push and go test both pass; `npm test` too\nEOF\n)\"",
+    "allow",
+    null,
+    ""
+  ],
+  ["echo \"$(cat <<'EOF'\nhi\nEOF\n)\" && git push", "deny", "git-push", ""],
+  [
+    "gh issue comment 1 --body \"$(cat <<EOF\n$(git push)\nEOF\n)\"",
+    "deny",
+    "git-push",
+    ""
+  ],
+  ["rg -n 'ANTIGRAVITY_AGENT=' tools/agent-guard/", "allow", null, ""],
+  [
+    "echo 'env -i bazel run //tools/agent-guard:install' >> notes.txt",
+    "allow",
+    null,
+    ""
+  ],
+  [
+    "env -u CLAUDECODE bazel run //tools/agent-guard:install -- --dry-run",
+    "deny",
+    "guard-config",
+    ""
+  ],
+  [
+    "env --unset=CLAUDECODE bazel run //tools/agent-guard:install -- --check",
+    "deny",
+    "guard-config",
+    ""
+  ],
+  [
+    "env -uCLAUDECODE python3 tools/agent-guard/install.py --dry-run",
+    "deny",
+    "guard-config",
+    ""
+  ],
+  [
+    "env -i bazel run //tools/agent-guard:install -- --dry-run",
+    "deny",
+    "guard-config",
+    ""
+  ],
+  [
+    "unset CLAUDECODE; bazel run //tools/agent-guard:install -- --check",
+    "deny",
+    "guard-config",
+    ""
+  ],
+  [
+    "export -n CLAUDECODE && python3 tools/agent-guard/install.py --dry-run",
+    "deny",
+    "guard-config",
+    ""
+  ],
+  [
+    "ANTIGRAVITY_AGENT= bazel run //tools/agent-guard:install -- --dry-run",
+    "deny",
+    "guard-config",
+    ""
+  ],
+  [
+    "GEMINI_CLI= python3 tools/agent-guard/install.py --check",
+    "deny",
+    "guard-config",
+    ""
+  ],
+  [
+    "bash -c 'unset CLAUDECODE; bazel run //tools/agent-guard:install -- --dry-run'",
+    "deny",
+    "guard-config",
+    ""
+  ],
+  ["cat <<EOF\nRan `git push` for you\nEOF", "deny", "git-push", ""],
+  ["cat <<EOF\nRan \\`git push\\` and \\$(go test)\nEOF", "allow", null, ""],
+  ["cat <<'EOF'\nRan `git push` and $(go test)\nEOF", "allow", null, ""],
+  ["cat <<\\EOF\n$(git push)\nEOF", "allow", null, ""],
+  [
+    "gh pr create --body \"$(cat <<EOF\nSummary: $(git log --oneline -1)\nEOF\n)\"",
+    "deny",
+    "gh-pr",
+    ""
+  ]
+]

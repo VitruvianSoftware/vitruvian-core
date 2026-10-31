@@ -43,8 +43,8 @@ flowchart LR
   U["backstop<br/>~/.claude/settings.json<br/>~/.gemini/config/hooks.json"] --> HM["tools/agent-guard/hook.sh<br/>(the main checkout)"]
   HM --> Q
   H --> Q{"origin/main has the guard?"}
-  Q -- yes --> M["run origin/main's agent_guard.py + policy.json<br/>(cached by blob id)"]
-  Q -- "no, or git fails" --> L["run this checkout's copy<br/>(logged as working-copy)"]
+  Q -- yes --> M["build origin/main's src/ once, run it + policy.json<br/>(cached by git object id)"]
+  Q -- "no, it will not build or run, or git fails" --> L["build and run this checkout's copy<br/>(logged as working-copy)"]
 ```
 
 - **Claude Code**: `.claude/settings.json` has two `PreToolUse` entries, both
@@ -80,38 +80,38 @@ the working folder (agy runs it from `.agents/`, Claude Code from wherever the
 agent is). Then:
 
 1. **It runs the guard as it is on `origin/main`, not this checkout's copy.**
-   `git rev-parse origin/main:tools/agent-guard/agent_guard.py` (and
-   `policy.json`) gives their blob ids; the files are written once per change
-   on main to `~/.local/state/agent-guard/cache/` and reused from there. So an
-   agent's edit to `agent_guard.py` or `policy.json` in a worktree governs
+   The guard is Rust, standard library only. `git rev-parse
+   origin/main:tools/agent-guard/src` (and `policy.json`) gives their git
+   object ids; the first call after main changes extracts that `src/` and
+   compiles it with plain `rustc -O` into
+   `~/.local/state/agent-guard/cache/guard-<id>`, and later calls reuse the
+   binary. So an agent's edit to `src/` or `policy.json` in a worktree governs
    nothing until it is merged, and agents may edit those files like any other
    code; the pull request then waits for James's approval (see "Who may do
-   what"). `origin/main` is as fresh as your last fetch.
+   what"). `origin/main` is as fresh as your last fetch. The cache is not in
+   `$TMPDIR`: agents can write there, and the next id is predictable, so an
+   agent could plant a binary that allows everything.
 2. **If that is not possible**, because there is no `origin/main`, main has no
-   guard yet, git is missing, or the cache cannot be written, it runs this
-   checkout's copy and says so: on stderr, and in the log's `source` field
-   (`working-copy (why)` instead of `origin/main:<blob>`). It does the same if
-   main's copy will not start on a python.
-3. **It tries each python3 in turn**, with `-I -S` (no `PYTHON*` variables, no
-   site packages; the guard needs only the standard library), until one exits
-   cleanly. The order is the one the per-user installer used: Homebrew's
-   versioned links newest first (`/opt/homebrew/opt/python@3.N/bin/python3.N`,
-   then `/usr/local/opt/...`; independent of Xcode, stable across patch
-   upgrades, and including every `python@3.N` installed on request, which
-   Homebrew's cleanup leaves alone), then the Command Line Tools' python3,
-   then Apple's `/usr/bin/python3` shim (resolved through `xcode-select` on
-   every call, so it fails while Xcode is being replaced). It exits 1 only if
-   none works, and the call is then refused (Claude Code's `onFailure: block`;
-   agy always fails closed). It caches the guard's bytecode for whichever
-   python runs, since Apple's never writes its own.
+   guard, git is missing, the cache cannot be written, or main's copy will
+   not build or exits non-zero, it builds and runs this checkout's copy
+   (cached by a checksum of its source) and says so: on stderr, and in the
+   log's `source` field (`working-copy (why)` instead of `origin/main:<id>`).
+   If that will not build or run either, it runs the newest build of main it
+   made before (`origin/main:<id> (stale: why)`): never an older working
+   copy, which could be an agent's unreviewed edit. A source that no rustc
+   here builds is remembered (`guard-<id>.failed`), so later calls do not pay
+   for the attempt again until the set of compilers changes.
+3. **It tries each rustc it can find in turn**: rustup's toolchains (their own
+   binaries, not rustup's `~/.cargo/bin` proxy, which can stop to download a
+   toolchain), Homebrew's, Bazel's rules_rust toolchains in the output bases,
+   then whatever `rustc` is on `PATH`. It exits 1 only if no copy of the guard
+   builds and runs, and the call is then refused (Claude Code's `onFailure:
+   block`; agy always fails closed).
 
-**Speed.** About 48 ms a call on this Mac with a warm cache (median of 30,
-Homebrew python 3.15): ~4 ms for `sh`, ~12 ms for the `git rev-parse`, ~14 ms
-for python to start, the rest the guard. The first call after main changes
-also writes the cache: ~110 ms. The old copied install was ~30 ms because it
-had no git step. If those 12 ms ever matter, the launcher could key its cache on
-the `origin/main` commit read straight from `.git` (no process) and call git
-only when that commit changes.
+**Speed.** The first call after main changes compiles the guard: about 2.5 s
+on this Mac. Later calls cost about 50 ms (median of 30, measured on the
+working-copy path, which also checksums `src/`): `sh`, ~8 ms for the `git
+rev-parse`, and the guard itself, which starts in a few milliseconds.
 
 **The guard's own files are protected** (category `guard-config`): agents may
 not write, move or delete `.claude/settings.json`, `.claude/settings.local.json`
@@ -142,7 +142,7 @@ bazel run //tools/agent-guard:install -- --check
 ```
 
 It fails if agent-guard's entries in either repo file are missing or differ
-from `install.py`'s `claude_entries()`/`agy_entry()`, if
+from the installer's `claude_entries()`/`agy_entry()`, if
 `"disableAllHooks": false` is missing, or if the backstop is missing, still
 the old copy, or points at a `hook.sh` that is gone. Then it runs the repo
 launcher and the backstop on sample tool calls in Claude Code's and agy's real
@@ -167,7 +167,7 @@ bazel run //tools/agent-guard:install
 It merges the same two Claude Code entries into `~/.claude/settings.json`, and
 the same `agent-guard` hook into `~/.gemini/config/hooks.json` if `~/.gemini`
 exists. The command is a short `/bin/sh -c '...'` script written into the
-entry itself (`BACKSTOP_SCRIPT` in `install.py`), given the main checkout's
+entry itself (`BACKSTOP_SCRIPT` in `install/installer.rs`), given the main checkout's
 absolute path, which is found from wherever you run the install, even a
 worktree. If `<main checkout>/tools/agent-guard/hook.sh` exists, the script
 runs it. Nothing is copied:
@@ -276,38 +276,40 @@ The guard lets an agent run the target exactly as
 `--uninstall`, `--mode`, every other flag or argument (`--home`,
 `--workspace`), any Bazel option on that command (`--run_under` or
 `--script_path` could run it as something else, or without the agent marker),
-running `install.py` or `bazel-bin/.../install` directly for anything but
+running `bazel-bin/.../install` directly for anything but
 those read-only flags, and hiding the agent marker.
 
 **And only the installer as `origin/main` has it.** `bazel run` builds the
-installer from the checkout it runs in, so an agent's own edit to `install.py`
-would run with James's HOME and skip any check `install.py` makes. So the
+installer from the checkout it runs in, so an agent's own edit to it would
+run with James's HOME and skip any check the installer makes. So the
 guard, which itself runs from `origin/main`, allows any of those runs (`bazel
 run`, or the direct read-only ones) only when, in that checkout,
-`tools/agent-guard/install.py`, `agent_guard.py` and `BUILD` are byte for byte
-`origin/main`'s, and no bazelrc that `bazel run` reads there (`/etc/bazel.bazelrc`,
+`tools/agent-guard/BUILD` and every file under `src/` and `install/` (the
+installer's crate and the guard library it links) are byte for byte
+`origin/main`'s, a file added there counting as an edit, and no bazelrc that `bazel run` reads there (`/etc/bazel.bazelrc`,
 the workspace `.bazelrc` and everything it imports, `user.bazelrc` included,
 and `~/.bazelrc`) mentions `run_under` or `script_path` outside a comment.
 An agent changing the installer tests it with `bazel test`, and runs it once
 the change is on main.
 
-`install.py` then checks again (a second line: an edited `install.py` would
+The installer then checks again (a second line: an edited installer would
 skip it, which is why the guard checks first). When it sees an agent marker
 (`CLAUDECODE`, `ANTIGRAVITY_*`, `GEMINI_CLI`), it installs only if all of
 these hold, and otherwise refuses with the reason:
 
-- **It is the installer `bazel run` built from that checkout**: it runs from
-  the target's runfiles (`.../install.runfiles/...`), and that file is a link
-  to the checkout's own `tools/agent-guard/install.py`, which, with
-  `agent_guard.py` and `BUILD`, is `origin/main`'s (the guard's check again).
+- **It is the installer `bazel run` built from that checkout**: the program
+  is the one Bazel built for `:install` (`.../bazel-out/<config>/bin/tools/agent-guard/install`)
+  and `BUILD_WORKSPACE_DIRECTORY` names that checkout, whose installer
+  sources are `origin/main`'s (the guard's check again).
 - **The main checkout is the real one**: the parent of the git common dir of
   the checkout `bazel run` ran in (as for any install), a primary checkout
   whose `MODULE.bazel` declares `vitruvian_core` and whose `origin` is
   `github.com/VitruvianSoftware/vitruvian-core`. `--home` and `--workspace`
   are refused, so an agent installs only for its own HOME.
-- **That checkout's `tools/agent-guard/hook.sh` and `agent_guard.py` are byte
-  for byte `origin/main`'s**, so the backstop never points at unreviewed
-  launcher code. A local edit or an unmerged commit there means "bring it up
+- **That checkout's `tools/agent-guard/hook.sh` and every file under
+  `tools/agent-guard/src/` are byte for byte `origin/main`'s**, so the
+  backstop never points at unreviewed launcher code, or a working copy of
+  the guard the launcher could fall back to. A local edit or an unmerged commit there means "bring it up
   to date with main first"; no `origin/main` means "fetch first".
 - **The old copied install is gone, and any backstop already there runs this
   same checkout.** Migrating off the old copy and moving the backstop are
@@ -324,7 +326,7 @@ agent may run the install, and why not.
 **The first switch from the old copied install is James's.** A Mac still on
 the old install (the guard copied to `~/.local/share/agent-guard`) runs that
 copy as its per-user hook, and that copy refuses every agent install and does
-not know this rule; `install.py` refuses an agent install while it is there as
+not know this rule; the installer refuses an agent install while it is there as
 well. So James runs `bazel run //tools/agent-guard:install` once, from his own
 terminal. After that, agents can reinstall.
 
@@ -394,8 +396,9 @@ Verified live against agy 1.4.0. The entry in `.agents/hooks.json`:
 
 A broken hook refuses every command an agent runs (by design: it fails
 closed). In Claude Code, file edits keep working; in agy, which has one
-matcher for commands and file writes, probably not. The launcher's python
-fallback and its working-copy fallback make this unlikely. Run
+matcher for commands and file writes, probably not. The launcher's rustc
+fallbacks, its working-copy fallback and its last-resort older build make
+this unlikely. Run
 `bazel run //tools/agent-guard:install -- --check` from your own terminal
 (hooks do not run there) to see why. To switch the guard off while you fix it,
 from your own terminal: remove the two agent-guard entries from
@@ -553,8 +556,9 @@ jq -c 'select(.source // "" | startswith("working-copy"))' ~/.local/state/agent-
   freely. A target that misbehaves has to be fixed in the target.
 - **Only the tools in its matchers.** A new MCP server or agy tool that runs
   commands or changes the repo is a gap until it is added to the matchers in
-  `install.py`, the two hook files and the tool tables in `agent_guard.py`
-  (`hook_test` fails if the files and `install.py` disagree).
+  `install/installer.rs`, the two hook files and the tool tables in
+  `src/guard.rs` (`agent_guard_test` and `install_test` fail if the files
+  and the installer disagree).
 - **The launcher and the two hook files run from the checkout**, not from
   `origin/main`: something has to start the hook. That is why agents may not
   write them. A checkout whose files were changed by hand, or a branch that
@@ -570,10 +574,10 @@ jq -c 'select(.source // "" | startswith("working-copy"))' ~/.local/state/agent-
   before review. A PR that touches them still needs the guard owner's approval
   (the `agent-guard-review` ruleset), so it cannot merge unreviewed.
 - **The installer is checked, not everything Bazel runs.** The guard compares
-  the installer's own three files with `origin/main` and reads the bazelrc
+  the installer's own files with `origin/main` and reads the bazelrc
   files, but any other Bazel target an agent writes can still write the user
   files, as can a bazelisk wrapper (`tools/bazel`, `.bazeliskrc`) or a changed
-  toolchain in `MODULE.bazel`. The "real checkout" test in `install.py` reads
+  toolchain in `MODULE.bazel`. The installer's "real checkout" test reads
   `MODULE.bazel`, `origin`'s URL and `origin/main` locally, so a repo built to
   forge all three passes it. These stop mistakes, not a determined agent.
 - **The installer is not a special route.** Any `bazel run` of edited code can
@@ -617,32 +621,47 @@ jq -c 'select(.source // "" | startswith("working-copy"))' ~/.local/state/agent-
 bazel test //tools/agent-guard/...
 ```
 
+The guard and its installer are Rust (`src/` and `install/`), standard
+library only; the Python implementation was retired once the Rust one decided
+every case the same way (#4081, then this cutover).
+
 `agent_guard_test` replays a table of 400+ real commands (from a week of agent
-logs) against expected decisions, plus redaction, scope, modes, the hook's
+logs, `testdata/decision_table.json`) against expected decisions, plus
+redaction, scope, modes, the hook's
 input and output in both formats (including agy's captured payload shape,
 the missing-`Cwd` fallback and the log fields), the hook files' protection,
 the backstop user files' protection (Edit, MultiEdit and Write that keep or
 change agent-guard's entries or set `"disableAllHooks": true` (and allow
 `false`), and the other tools),
-the installer allowed only as `origin/main` has it (an edited `install.py`,
-`BUILD` or `agent_guard.py`, in the checkout or a worktree, committed or not;
+the installer allowed only as `origin/main` has it (an edited `BUILD` or file
+under `src/` or `install/`, in the checkout or a worktree, committed or not;
 no `origin/main`; `run_under` in a bazelrc), a real git merge conflict, and
-timing on 100 KB, 1 MB and 5 MB inputs.
-`hook_test` runs `hook.sh` in a throwaway git checkout with an `origin/main`:
-origin/main's guard wins over a broken local edit, a merged change takes
-effect, the cache, each working-copy fallback, the python fallback, agy's
-`.agents/` working folder; it also reads the real `.claude/settings.json` and
-`.agents/hooks.json` and fails if agent-guard is unwired from either.
+timing on 100 KB, 1 MB and 5 MB inputs. It also reads the real
+`.claude/settings.json` and `.agents/hooks.json` and fails if agent-guard is
+unwired from either.
+`hook_test` runs each launcher in the tree (`hook.sh`, and `proposed-hook.sh`
+while one waits to replace it) in a throwaway git checkout with an
+`origin/main`: origin/main's guard wins over a broken local edit, a merged
+change takes effect, the cache, each working-copy fallback, a failed build
+remembered, the last-resort older build, each compiler tried in turn, agy's
+`.agents/` working folder. Those use a stub compiler; one case builds the
+real `src/` with the Bazel toolchain's rustc through the launcher and checks
+the real guard's answers and log.
 `install_test` runs against a temporary HOME: the backstop's two entries and
 agy hook pointing at the main checkout (also from a worktree), migrating and
 deleting the old copy, idempotence, dry run, rollback when the self-test
 fails, `--uninstall` (both files, shared groups, the desktop app's JSON style,
 a broken `hooks.json`), an agent's install (it succeeds with a main checkout
 matching its `origin/main`, also from a worktree, and is logged; it is refused
-when `hook.sh`, `agent_guard.py` or a worktree's `install.py` differ from
-`origin/main`, when not run from Bazel's runfiles of that checkout, outside a
+when the main checkout's `hook.sh` or `src/` or a worktree's installer differ
+from `origin/main`, when not run from Bazel's build of that checkout, outside a
 checkout, for a repo that is not vitruvian-core or whose `origin` is not, while
 the old copy is installed, or to move the backstop; `--uninstall` and `--mode`
 are refused), and `--check`
 passing and failing (no backstop, the old copy, a moved main checkout, an
 unwired repo file, a broken launcher, a category switched off).
+
+The guard also checks that every file a
+refusal's "pending" target names exists and holds the target
+(`:pending_target_files`), so deleting a tool cannot again leave refusals
+saying its replacement "is not in this checkout yet".

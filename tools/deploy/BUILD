@@ -3,7 +3,7 @@
 # Local + CI deploy tooling: the blue-green Cloud Run rollout as a bazel target.
 #
 # //tools/deploy:cloud-run runs the candidate -> smoke -> promote sequence for a
-# Cloud Run app stack, reusing //tools/pulumi:pulumi_cmd.sh for the apply (so
+# Cloud Run app stack, reusing //tools/pulumi:pulumi-cmd for the apply (so
 # auth, GCP identity, and the Pulumi backend resolve exactly as `bazel run
 # //<app>:up`). It is the single source of truth the reusable deploy workflow
 # calls, so the same rollout runs from a workstation when GitHub Actions is down.
@@ -37,11 +37,18 @@ rust_library(
 rust_binary(
     name = "cloud-run",
     srcs = ["src/main.rs"],
-    # It runs tools/pulumi/pulumi-cmd.sh, which inherits this and mints GCP
+    # It runs //tools/pulumi:pulumi-cmd, which inherits these and mints GCP
     # tokens with //tools/gcp-token, as the pulumi_project() targets do.
-    data = ["//tools/gcp-token"],
+    # cloud_run_deploy (defs.bzl) passes the same two to its per-app targets.
+    data = [
+        "//tools/gcp-token",
+        "//tools/pulumi:pulumi-cmd",
+    ],
     edition = "2021",
-    env = {"VITRUVIAN_GCP_TOKEN_BIN": "$(rootpath //tools/gcp-token)"},
+    env = {
+        "VITRUVIAN_GCP_TOKEN_BIN": "$(rootpath //tools/gcp-token)",
+        "VITRUVIAN_PULUMI_CMD_BIN": "$(rootpath //tools/pulumi:pulumi-cmd)",
+    },
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//visibility:public"],
     deps = [

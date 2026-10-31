@@ -8,7 +8,7 @@
 #
 # FORMAT: columns separated by any whitespace (awk default), aligned with spaces for
 # readability (the .tsv extension is nominal). Consumers MUST skip `#` comment and blank
-# lines (the reference parser //tools/pulumi/resolve_identity.sh does). Columns:
+# lines (the reference parser //tools/pulumi:resolve-identity does). Columns:
 #   infra_dir    workspace-relative Pulumi project dir (resolver key); '-' = reference-only row
 #   account      Google account email to authenticate as
 #   gcp_project  default GCP project (exported as GOOGLE_CLOUD_PROJECT); '-' if N/A

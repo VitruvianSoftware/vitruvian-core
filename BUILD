@@ -59,7 +59,7 @@ exports_files(
 
 # agent-guard's hook files. .claude is in .bazelignore (Claude Code keeps
 # worktrees under it), but a file named from this package still resolves.
-# //tools/agent-guard:hook_test fails if agent-guard is unwired from either.
+# //tools/agent-guard:agent_guard_test fails if agent-guard is unwired from either.
 exports_files(
     [
         ".agents/hooks.json",

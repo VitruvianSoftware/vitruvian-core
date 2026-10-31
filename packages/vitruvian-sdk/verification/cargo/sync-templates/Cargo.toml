@@ -1,0 +1,45 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# The template writer, a member of verification/Cargo.toml. Its sources are
+# samples/src, which the package's BUILD builds as :sync_templates_rs_lib and
+# :sync-templates; its unit tests are :templates_in_sync_test. No Cargo.toml
+# may sit in samples/ itself: Cargo would take it for the workspace of the
+# Rust samples in the folders below it, and refuse to build them.
+
+[package]
+name = "vitruvian-sdk-sync-templates"
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT"
+publish = false
+autobins = false
+autotests = false
+autoexamples = false
+autobenches = false
+
+[lib]
+name = "sync_templates_rs_lib"
+path = "../../../samples/src/lib.rs"
+
+[[bin]]
+name = "sync-templates"
+path = "../../../samples/src/main.rs"

@@ -21,8 +21,8 @@
 """agent-guard: a Claude Code and Antigravity hook that keeps agents' repo and dev operations on Bazel targets.
 
 It runs from the repo: .claude/settings.json and .agents/hooks.json call
-hook.sh, which runs the guard as it is on origin/main. A thin per-user
-backstop covers sessions started outside the repo.
+hook.sh, which builds and runs the guard as it is on origin/main. A thin
+per-user backstop covers sessions started outside the repo.
 
   bazel run //tools/agent-guard:install                  # install the backstop (once)
   bazel run //tools/agent-guard:install -- --check       # wiring, backstop and launcher OK?
@@ -30,118 +30,26 @@ backstop covers sessions started outside the repo.
 See README.md.
 """
 
-# Hand-written: gazelle's Python extension would otherwise generate its own
-# targets beside these, and the folder name has a hyphen, so it cannot be a
-# package: everything imports by path.
+# Hand-written: the guard's crate is built two ways (here, and by hook.sh with
+# plain rustc), and the tests' data is chosen by hand.
 # gazelle:ignore
 
-load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_library", "py_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
-exports_files([
-    "agent_guard.py",
-    "hook.sh",
-    "policy.json",
-])
-
-# The guard on its own. Not how it runs in practice (hook.sh runs origin/main's
-# copy on the machine's python3), but handy for trying a payload:
-#   echo '{"tool_name":"Bash","cwd":"'$PWD'","tool_input":{"command":"git push"}}' | bazel run //tools/agent-guard
-py_binary(
-    name = "agent-guard",
-    srcs = ["agent_guard.py"],
-    data = ["policy.json"],
-    imports = ["."],
-    main = "agent_guard.py",
-)
-
-# Installs the per-user backstop (entries running the main checkout's hook.sh),
-# migrating the old copied install; --check, --dry-run, --uninstall.
-py_binary(
-    name = "install",
-    srcs = [
-        "agent_guard.py",
-        "install.py",
-    ],
-    data = ["policy.json"],
-    imports = ["."],
-    main = "install.py",
-)
-
-# The repo's hook files and the launcher, for the tests.
-filegroup(
-    name = "wiring",
-    srcs = [
+# The launchers: hook.sh, and proposed-hook.sh while it waits for James to
+# move it over hook.sh. A glob, so this file still loads once it has.
+LAUNCHERS = glob(
+    [
         "hook.sh",
-        "//:.agents/hooks.json",
-        "//:.claude/settings.json",
+        "proposed-hook.sh",
     ],
+    allow_empty = True,
 )
 
-py_library(
-    name = "testlib",
-    testonly = True,
-    srcs = ["testlib.py"],
-    data = [
-        "agent_guard.py",
-        "policy.json",
-        ":wiring",
-    ],
-    imports = ["."],
-)
+exports_files(LAUNCHERS + ["policy.json"])
 
-# The decision table (400+ real commands), redaction, scope, modes, hook I/O,
-# the hook files' protection, and a real-git merge conflict for the
-# in-progress checks.
-py_test(
-    name = "agent_guard_test",
-    size = "small",
-    srcs = [
-        "agent_guard.py",
-        "agent_guard_test.py",
-    ],
-    data = ["policy.json"],
-    imports = ["."],
-    main = "agent_guard_test.py",
-)
-
-# hook.sh in a throwaway git checkout: origin/main's guard rather than a local
-# edit, the working-copy fallbacks, the python fallback, both agents' working
-# folders; and the repo's real .claude/settings.json and .agents/hooks.json,
-# which fail the test if agent-guard is unwired from either.
-py_test(
-    name = "hook_test",
-    size = "small",
-    srcs = [
-        "agent_guard.py",
-        "hook_test.py",
-        "install.py",
-    ],
-    imports = ["."],
-    main = "hook_test.py",
-    deps = [":testlib"],
-)
-
-# The backstop against a temporary HOME (install, migration, rollback,
-# uninstall) and --check against a throwaway checkout.
-py_test(
-    name = "install_test",
-    size = "small",
-    srcs = [
-        "agent_guard.py",
-        "install.py",
-        "install_test.py",
-    ],
-    imports = ["."],
-    main = "install_test.py",
-    deps = [":testlib"],
-)
-
-# --- The Rust port -----------------------------------------------------------
-# agent_guard.py stays the guard hook.sh runs; agent_guard_rs is a compiled
-# port that must decide exactly as it does. The parity test below holds it to
-# that by running agent_guard_test.py's own decision table and hook tests
-# against the binary.
+# The guard's crate. hook.sh compiles the same src/ with plain `rustc -O`, so
+# it stays standard-library only: no deps here either.
 rust_library(
     name = "agent_guard_lib",
     srcs = glob(
@@ -151,21 +59,60 @@ rust_library(
     crate_name = "agent_guard",
     crate_root = "src/lib.rs",
     edition = "2021",
-    # Optimised in every build mode: speed is why this port exists, and an
-    # unoptimised build is slower than the Python guard on megabyte commands.
+    # Optimised in every build mode, as hook.sh builds it: an unoptimised
+    # guard is slow on megabyte commands.
     rustc_flags = ["-Copt-level=3"],
-    deps = ["@crates//:serde_json"],
 )
 
-# The hook, as the Python one: payload on stdin, answer on stdout.
-#   echo '{"tool_name":"Bash","cwd":"'$PWD'","tool_input":{"command":"git push"}}' | bazel run //tools/agent-guard:agent_guard_rs
+# The guard on its own. Not how it runs in practice (hook.sh builds
+# origin/main's copy with the machine's rustc), but handy for trying a payload:
+#   echo '{"tool_name":"Bash","cwd":"'$PWD'","tool_input":{"command":"git push"}}' | bazel run //tools/agent-guard
 rust_binary(
-    name = "agent_guard_rs",
+    name = "agent-guard",
     srcs = ["src/main.rs"],
+    # The name hook.sh gives it, and not the library's.
+    crate_name = "agent_guard_hook",
     data = ["policy.json"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [":agent_guard_lib"],
+)
+
+# Installs the per-user backstop (entries running the main checkout's hook.sh),
+# migrating the old copied install; --check, --dry-run, --uninstall. Standard
+# library only, like the guard.
+rust_binary(
+    name = "install",
+    srcs = glob(["install/**/*.rs"]),
+    crate_root = "install/main.rs",
+    data = ["policy.json"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":agent_guard_lib"],
+)
+
+# The files the guard's "pending" targets name (classify.rs T_*): the refusal
+# advice checks them to say whether a target exists yet. The tests fail if one
+# is missing or no longer holds its target, so a deleted or renamed tool
+# cannot leave every refusal claiming its replacement "is not in this checkout
+# yet" (it did, for //tools/agent-app and //tools/worktree, after their
+# scripts were removed in #3973 and #3987).
+filegroup(
+    name = "pending_target_files",
+    srcs = [
+        "//tools/ci:BUILD",
+        "//tools/git:BUILD",
+        "//tools/secret-scan:BUILD",
+    ],
+)
+
+# The repo's hook files and the launchers, for the tests.
+filegroup(
+    name = "wiring",
+    srcs = LAUNCHERS + [
+        "//:.agents/hooks.json",
+        "//:.claude/settings.json",
+    ],
 )
 
 # The crate's own unit tests (the parser, the regex ports, JSON, paths).
@@ -173,28 +120,63 @@ rust_test(
     name = "agent_guard_lib_test",
     size = "small",
     crate = ":agent_guard_lib",
+    data = [":pending_target_files"],
     edition = "2021",
 )
 
-# agent_guard_rs against agent_guard.py: every row of agent_guard_test.py's
-# TABLE through both, compared field by field (decision, category, message,
-# scope, op), then agent_guard_test.py's own test classes (table, scope,
-# modes, installer source, redaction, parser, hook I/O, Antigravity, user
-# files, performance, real git state) re-run with the binary in the Python
-# guard's place.
-py_test(
-    name = "agent_guard_rs_parity_test",
+# The decision table (400+ real commands, testdata/decision_table.json),
+# redaction, scope, modes, hook I/O, the hook files' protection, the repo's
+# real .claude/settings.json and .agents/hooks.json (which fail the test if
+# agent-guard is unwired from either), and a real-git merge conflict for the
+# in-progress checks. Calls the library directly.
+rust_test(
+    name = "agent_guard_test",
     size = "small",
-    srcs = [
-        "agent_guard.py",
-        "agent_guard_rs_parity_test.py",
-        "agent_guard_test.py",
-    ],
+    srcs = glob(["tests/**/*.rs"]),
+    crate_root = "tests/main.rs",
     data = [
         "policy.json",
-        ":agent_guard_rs",
+        "testdata/decision_table.json",
+        ":wiring",
     ],
-    env = {"AGENT_GUARD_RS": "$(rootpath :agent_guard_rs)"},
-    imports = ["."],
-    main = "agent_guard_rs_parity_test.py",
+    edition = "2021",
+    deps = [":agent_guard_lib"],
+)
+
+# The backstop against a temporary HOME (install, migration, rollback,
+# uninstall, the agent checks) and --check against a throwaway checkout.
+rust_test(
+    name = "install_test",
+    size = "small",
+    args = [
+        "--skip",
+        "launcher_test::",
+    ],
+    crate = ":install",
+    data = [
+        "policy.json",
+        ":wiring",
+    ],
+    edition = "2021",
+)
+
+# Each launcher (hook.sh, proposed-hook.sh while it exists) in a throwaway git
+# checkout: origin/main's guard rather than a local edit, the working-copy and
+# stale-build fallbacks, each program tried in turn, both agents' working
+# folders; and the Rust launcher building the real src/ with the toolchain's
+# rustc, then answering.
+rust_test(
+    name = "hook_test",
+    size = "medium",
+    args = ["launcher_test::"],
+    crate = ":install",
+    data = glob(["src/*.rs"]) + [
+        "policy.json",
+        ":wiring",
+        "@rules_rust//rust/toolchain:current_rust_stdlib_files",
+        "@rules_rust//rust/toolchain:current_rustc_files",
+        "@rules_rust//rust/toolchain:current_rustc_lib_files",
+    ],
+    edition = "2021",
+    env = {"AGENT_GUARD_RUSTC": "$(rootpath @rules_rust//rust/toolchain:current_rustc_files)"},
 )

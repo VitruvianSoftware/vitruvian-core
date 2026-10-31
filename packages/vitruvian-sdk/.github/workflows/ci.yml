@@ -22,7 +22,10 @@
 # packages/vitruvian-sdk/.github/workflows/ci.yml and reaches the mirror's root
 # with every Copybara export; it runs only there. vitruvian-core builds and
 # tests the same package with Bazel; this checks what a person who clones the
-# mirror gets: SwiftPM, and Python with one package.
+# mirror gets: SwiftPM, and Cargo (verification/Cargo.toml) for the checks.
+#
+# Rust 1.75.0, the version vitruvian-core's Bazel builds the same checks with
+# (rust.toolchain in its MODULE.bazel). The runners come with rustup.
 #
 # GitHub-hosted runners, free for a public repository. The Swift job uses the
 # runner's default Xcode and prints its version, because that is the Swift a
@@ -75,36 +78,38 @@ jobs:
           VITRUVIAN_HELLO_SWIFT="$RUNNER_TEMP/built/hello-swift/vitruvian-tool.json" \
             swift test --skip-build
 
-      - name: The samples against the conformance script, the Swift ones built
+      - name: Rust 1.75.0
         run: |
-          python3 -m venv "$RUNNER_TEMP/venv"
-          "$RUNNER_TEMP/venv/bin/pip" install --quiet jsonschema==4.26.0
-          "$RUNNER_TEMP/venv/bin/python" samples/samples_test.py \
+          rustup toolchain install 1.75.0 --profile minimal
+          rustup default 1.75.0
+
+      - name: The Swift samples, built, against the conformance validator
+        run: |
+          cargo test --manifest-path verification/Cargo.toml --test samples_test -- \
             "$RUNNER_TEMP/built/hello-swift/vitruvian-tool.json" \
             "$RUNNER_TEMP/built/hello-panel-swift/vitruvian-tool.json" \
             "$RUNNER_TEMP/built/front-window/vitruvian-tool.json"
 
-  python:
+  checks:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Install jsonschema
+      - name: Rust 1.75.0
         run: |
-          python3 -m venv "$RUNNER_TEMP/venv"
-          "$RUNNER_TEMP/venv/bin/pip" install --quiet jsonschema==4.26.0
+          rustup toolchain install 1.75.0 --profile minimal
+          rustup default 1.75.0
 
-      # The examples against the schemas, the conformance script against the
-      # two reference tools and the tools that each break it in one way, every
-      # sample's manifest and the Python sample, and the templates `init`
-      # holds against the samples. Plain Python: no Mac needed.
-      - name: The protocol, the conformance script, the samples and the templates
+      # The examples against the schemas, the conformance validator against
+      # the two reference tools and the tools that each break it in one way,
+      # every sample's manifest and the Python sample, and the templates
+      # `init` holds against the samples. Standard library only: --locked
+      # holds Cargo to the committed Cargo.lock, and there is nothing to
+      # fetch. No Mac needed.
+      - name: The protocol, the conformance validator, the samples and the templates
         run: |
-          py="$RUNNER_TEMP/venv/bin/python"
-          "$py" protocol/protocol_examples_test.py
-          "$py" conformance/conformance_test.py
-          "$py" samples/samples_test.py
-          "$py" samples/sync_templates.py --check
+          cargo test --locked --manifest-path verification/Cargo.toml
+          cargo run --locked --manifest-path verification/Cargo.toml --bin sync-templates -- --check
