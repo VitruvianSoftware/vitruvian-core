@@ -608,52 +608,49 @@ pub unsafe extern "C" fn gchat_html_to_annotations(
             return GChatStatus::GchatErrInvalidArg;
         }
     };
-    let html = val
-        .get("html")
+    let plain_body = val
+        .get("plain_body")
         .or_else(|| val.get("text"))
         .and_then(|v| v.as_str())
         .unwrap_or("");
+    let formatted_body = val
+        .get("formatted_body")
+        .or_else(|| val.get("html"))
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty());
+    let allow_mention_all = val
+        .get("allow_mention_all")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
 
-    let mut plain = String::new();
-    let mut annotations = Vec::new();
-    let mut rest = html;
-    while let Some(open_idx) = rest.find("<b>") {
-        plain.push_str(&rest[..open_idx]);
-        let after_open = &rest[open_idx + 3..];
-        if let Some(close_idx) = after_open.find("</b>") {
-            let bold_text = &after_open[..close_idx];
-            let start = plain.chars().count() as i32;
-            let len = bold_text.chars().count() as i32;
-            plain.push_str(bold_text);
-            annotations.push(pb::Annotation {
-                r#type: Some(pb::AnnotationType::FormatData as i32),
-                start_index: Some(start),
-                length: Some(len),
-                metadata: Some(pb::annotation::Metadata::FormatMetadata(
-                    pb::FormatMetadata {
-                        format_type: Some(pb::format_metadata::FormatType::Bold as i32),
-                        ..Default::default()
-                    },
-                )),
-                ..Default::default()
-            });
-            rest = &after_open[close_idx + 4..];
-        } else {
-            plain.push_str("<b>");
-            rest = after_open;
+    let converted = match crate::fmt::outbound::matrix_html_to_annotations(
+        plain_body,
+        formatted_body,
+        allow_mention_all,
+    ) {
+        Ok(c) => c,
+        Err(e) => {
+            let st = status_from_error(&e);
+            write_err_slice(out_err, e.to_string());
+            return st;
         }
-    }
-    plain.push_str(rest);
+    };
 
+    let annotations_b64: Vec<String> = converted
+        .annotations
+        .iter()
+        .map(|a| base64::engine::general_purpose::STANDARD.encode(a.encode_to_vec()))
+        .collect();
     let msg = pb::Message {
-        text_body: Some(plain.clone()),
-        annotations,
+        text_body: Some(converted.text.clone()),
+        annotations: converted.annotations,
         ..Default::default()
     };
     let proto_b64 = base64::engine::general_purpose::STANDARD.encode(msg.encode_to_vec());
     let out_json = serde_json::json!({
-        "text": plain,
+        "text": converted.text,
         "message_proto_base64": proto_b64,
+        "annotations_proto_base64": annotations_b64,
     });
     write_slice_out(out_result_json, out_json.to_string().into_bytes());
     GChatStatus::GchatOk
