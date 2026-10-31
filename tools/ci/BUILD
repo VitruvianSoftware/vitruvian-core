@@ -49,12 +49,8 @@ exports_files([
     "chart-render.sh",
     "delivery-drift.sh",
     "delivery-drift_test.sh",
-    "dependabot-lock-rebase.sh",
-    "dependabot-lock-rebase_test.sh",
     "deploy-affected.sh",
     "deploy-affected_test.sh",
-    "ensure-site-verification.sh",
-    "ensure-site-verification_test.sh",
     "foundation-app-digest-guard.sh",
     "foundation-app-digest-guard_test.sh",
     "gate-evaluator_test.sh",
@@ -107,10 +103,6 @@ exports_files([
     "secret-scan.sh",
     "secret-scan_test.sh",
     "session-start_test.sh",
-    "site-pr-automerge.sh",
-    "site-pr-automerge_test.sh",
-    "tabula-deploy-preflight.sh",
-    "tabula-deploy-preflight_test.sh",
     "td-lib.sh",
     "transient-lib.sh",
     "workflow-git-push-credentials_test.sh",
@@ -136,16 +128,6 @@ sh_test(
     srcs = ["llvm-cache-stage_test.sh"],
     args = ["$(location llvm-cache-stage.sh)"],
     data = ["llvm-cache-stage.sh"],
-)
-
-# Arms auto-merge on the website PRs catalog-publish and site-sync-downloads
-# open, at the commit they pushed, and leaves a held PR alone. Fake gh only.
-sh_test(
-    name = "site_pr_automerge_test",
-    size = "small",
-    srcs = ["site-pr-automerge_test.sh"],
-    args = ["$(location site-pr-automerge.sh)"],
-    data = ["site-pr-automerge.sh"],
 )
 
 sh_test(
@@ -353,6 +335,18 @@ rust_test(
 )
 
 # ---------- Rust ports of CI / delivery helper scripts ----------
+
+# Shared by the black-box rust_tests below: temp dirs, fake executables on
+# PATH, throwaway git repos, and a runner for the binary under test.
+rust_library(
+    name = "ci_testkit",
+    testonly = True,
+    srcs = ["src/testkit/lib.rs"],
+    crate_name = "ci_testkit",
+    crate_root = "src/testkit/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
 
 # gate-evaluator
 rust_library(
@@ -607,21 +601,17 @@ rust_binary(
     ],
 )
 
-sh_binary(
-    name = "site-pr-automerge-sh",
-    srcs = ["site-pr-automerge.sh"],
-    visibility = ["//visibility:public"],
-)
-
-sh_test(
-    name = "site_pr_automerge_rs_test",
+# Black-box: runs the REAL binary as CI does, with fake gh/gcloud/curl on
+# PATH and throwaway git repos. Ported case for case from the shell suite.
+rust_test(
+    name = "site_pr_automerge_test",
     size = "small",
-    srcs = ["site-pr-automerge_test.sh"],
-    args = ["$(location :site_pr_automerge)"],
-    data = [
-        "site-pr-automerge.sh",
-        ":site_pr_automerge",
-    ],
+    srcs = ["src/site_pr_automerge/tests.rs"],
+    data = [":site_pr_automerge"],
+    edition = "2021",
+    env = {"BIN": "$(rootpath :site_pr_automerge)"},
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":ci_testkit"],
 )
 
 # deploy-affected
@@ -880,31 +870,25 @@ rust_binary(
     ],
 )
 
-sh_test(
+# Black-box: runs the REAL binary as CI does, with fake gh/gcloud/curl on
+# PATH and throwaway git repos. Ported case for case from the shell suite.
+rust_test(
     name = "ensure_site_verification_test",
     size = "small",
-    srcs = ["ensure-site-verification_test.sh"],
-    args = ["$(location ensure-site-verification.sh)"],
+    srcs = ["src/ensure_site_verification/tests.rs"],
+    # The port shells out to jq, which the RBE image lacks: the hermetic one.
     data = [
-        "ensure-site-verification.sh",
-        "@jq_toolchains//:resolved_toolchain",
-    ],
-    env = {"JQ_BIN": "$(JQ_BIN)"},
-    toolchains = ["@jq_toolchains//:resolved_toolchain"],
-)
-
-sh_test(
-    name = "ensure_site_verification_rs_test",
-    size = "small",
-    srcs = ["ensure-site-verification_test.sh"],
-    args = ["$(location :ensure_site_verification)"],
-    data = [
-        "ensure-site-verification.sh",
         ":ensure_site_verification",
         "@jq_toolchains//:resolved_toolchain",
     ],
-    env = {"JQ_BIN": "$(JQ_BIN)"},
+    edition = "2021",
+    env = {
+        "BIN": "$(rootpath :ensure_site_verification)",
+        "JQ_BIN": "$(JQ_BIN)",
+    },
+    rustc_flags = ["-Copt-level=3"],
     toolchains = ["@jq_toolchains//:resolved_toolchain"],
+    deps = [":ci_testkit"],
 )
 
 # affected-targets
@@ -1435,25 +1419,17 @@ rust_binary(
     ],
 )
 
-sh_test(
+# Black-box: runs the REAL binary as CI does, with fake gh/gcloud/curl on
+# PATH and throwaway git repos. Ported case for case from the shell suite.
+rust_test(
     name = "dependabot_lock_rebase_test",
     size = "small",
-    srcs = ["dependabot-lock-rebase_test.sh"],
-    args = ["$(location dependabot-lock-rebase.sh)"],
-    data = [
-        "dependabot-lock-rebase.sh",
-    ],
-)
-
-sh_test(
-    name = "dependabot_lock_rebase_rs_test",
-    size = "small",
-    srcs = ["dependabot-lock-rebase_test.sh"],
-    args = ["$(location :dependabot_lock_rebase)"],
-    data = [
-        "dependabot-lock-rebase.sh",
-        ":dependabot_lock_rebase",
-    ],
+    srcs = ["src/dependabot_lock_rebase/tests.rs"],
+    data = [":dependabot_lock_rebase"],
+    edition = "2021",
+    env = {"BIN": "$(rootpath :dependabot_lock_rebase)"},
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":ci_testkit"],
 )
 
 # release-hold
@@ -1853,25 +1829,17 @@ rust_binary(
     ],
 )
 
-sh_test(
+# Black-box: runs the REAL binary as CI does, with fake gh/gcloud/curl on
+# PATH and throwaway git repos. Ported case for case from the shell suite.
+rust_test(
     name = "tabula_deploy_preflight_test",
     size = "small",
-    srcs = ["tabula-deploy-preflight_test.sh"],
-    args = ["$(location tabula-deploy-preflight.sh)"],
-    data = [
-        "tabula-deploy-preflight.sh",
-    ],
-)
-
-sh_test(
-    name = "tabula_deploy_preflight_rs_test",
-    size = "small",
-    srcs = ["tabula-deploy-preflight_test.sh"],
-    args = ["$(location :tabula_deploy_preflight)"],
-    data = [
-        "tabula-deploy-preflight.sh",
-        ":tabula_deploy_preflight",
-    ],
+    srcs = ["src/tabula_deploy_preflight/tests.rs"],
+    data = [":tabula_deploy_preflight"],
+    edition = "2021",
+    env = {"BIN": "$(rootpath :tabula_deploy_preflight)"},
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":ci_testkit"],
 )
 
 # release-pr-dequeue

@@ -23,7 +23,7 @@
 #
 # Who merges it: this workflow arms auto-merge on the pull request, at the
 # commit it pushed, so the merge queue merges it once its checks pass
-# (tools/ci/site-pr-automerge.sh). Not when a person holds it with
+# (//tools/ci:site_pr_automerge). Not when a person holds it with
 # do-not-automerge or needs-human, or leaves it a draft.
 name: site-sync-downloads
 
@@ -43,12 +43,17 @@ concurrency:
 jobs:
   sync-downloads:
     runs-on: ubuntu-26.04
-    timeout-minutes: 10
+    # Bazel builds the auto-merge helper below; a cold cache needs the room.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
+
+      # For //tools/ci:site_pr_automerge, which arms auto-merge on the PR.
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
 
       - name: Mint App token for PR operations
         id: app-token
@@ -92,7 +97,7 @@ jobs:
 
           # Off before the push: an arming made for an earlier commit must not
           # carry this one. It is armed again below, at this commit only.
-          bash tools/ci/site-pr-automerge.sh disarm --branch "$branch"
+          bazel run //tools/ci:site_pr_automerge -- disarm --branch "$branch"
 
           git checkout -B "$branch"
           git add apps/web/vitruviansoftware-dev/_data/downloads.yml
@@ -121,4 +126,4 @@ jobs:
               --head "$branch"
           fi
 
-          bash tools/ci/site-pr-automerge.sh arm --branch "$branch" --sha "$sha"
+          bazel run //tools/ci:site_pr_automerge -- arm --branch "$branch" --sha "$sha"

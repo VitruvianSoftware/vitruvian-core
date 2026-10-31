@@ -130,4 +130,4 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REPO: ${{ github.repository }}
-        run: bash tools/ci/dependabot-lock-rebase.sh
+        run: bazel run //tools/ci:dependabot_lock_rebase

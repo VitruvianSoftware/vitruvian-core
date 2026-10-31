@@ -21,5 +21,11 @@
 //! //tools/ci:ensure-site-verification: the Rust port.
 
 fn main() {
+    // `bazel run` starts us in the runfiles tree; act from the caller's
+    // directory, as the script did.
+    let rc = shell_compat::enter_bazel_run_cwd("ensure-site-verification");
+    if rc != 0 {
+        std::process::exit(rc);
+    }
     std::process::exit(ensure_site_verification::run(&shell_compat::args()));
 }

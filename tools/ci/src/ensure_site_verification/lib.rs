@@ -18,10 +18,14 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! ensure-site-verification.sh — automated Google domain-ownership
+//! //tools/ci:ensure_site_verification — automated Google domain-ownership
 //! self-verification for Cloud Run DomainMappings.
 
-use shell_compat::{capture, cat, env, env_or, env_or_empty, err, mktemp_dir, os, out, subst};
+// `capture` is for the one `$(... 2>/dev/null)`; every other `$(...)` lets
+// the command's stderr reach the log, as `capture_stdout` does.
+use shell_compat::{
+    capture, capture_stdout, cat, env, env_or, env_or_empty, err, mktemp_dir, os, out, subst,
+};
 use std::process::Command;
 
 fn log(msg: &[u8]) {
@@ -158,7 +162,10 @@ impl Drop for WorkDir {
     }
 }
 
-/// sv_call: call the Site Verification API. Returns (http_code, response_body).
+/// sv_call: call the Site Verification API; the body lands in `resp_file`.
+/// Returns the HTTP code curl printed and curl's own exit status: where the
+/// script ran it under `set -e`, a curl that failed outright ended the run
+/// with that status.
 fn sv_call(
     method: &[u8],
     url: &[u8],
@@ -166,7 +173,7 @@ fn sv_call(
     token: &[u8],
     quota_project: &[u8],
     resp_file: &[u8],
-) -> Vec<u8> {
+) -> (Vec<u8>, i32) {
     let mut args: Vec<Vec<u8>> = vec![
         b"-sS".to_vec(),
         b"-o".to_vec(),
@@ -193,8 +200,8 @@ fn sv_call(
     for a in &args {
         cmd.arg(os(a));
     }
-    let r = capture(0, &mut cmd);
-    subst(r.stdout)
+    let r = capture_stdout(0, &mut cmd);
+    (subst(r.stdout), r.status)
 }
 
 /// cf_call: call the Cloudflare API. Returns http_code.
@@ -221,19 +228,19 @@ fn cf_call(method: &[u8], url: &[u8], body: &[u8], token: &[u8], resp_file: &[u8
     for a in &args {
         cmd.arg(os(a));
     }
-    let r = capture(0, &mut cmd);
+    let r = capture_stdout(0, &mut cmd);
     subst(r.stdout)
 }
 
 /// Read a jq expression from a file.
 fn jq_file(file: &[u8], expr: &str) -> Vec<u8> {
-    let r = capture(0, Command::new("jq").arg("-r").arg(expr).arg(os(file)));
+    let r = capture_stdout(0, Command::new("jq").arg("-r").arg(expr).arg(os(file)));
     subst(r.stdout)
 }
 
 /// Read a jq expression from a file with --arg.
 fn jq_file_arg(file: &[u8], expr: &str, argname: &str, argval: &[u8]) -> Vec<u8> {
-    let r = capture(
+    let r = capture_stdout(
         0,
         Command::new("jq")
             .arg("-r")
@@ -263,7 +270,7 @@ fn sv_error_summary(resp_file: &[u8]) -> Vec<u8> {
 
 /// URL-encode a string using jq's @uri filter.
 fn jq_uri_encode(value: &[u8]) -> Vec<u8> {
-    let r = capture(
+    let r = capture_stdout(
         0,
         Command::new("jq")
             .arg("-rn")
@@ -283,7 +290,7 @@ fn jq_build(expr: &str, args: &[(&str, &[u8])]) -> Vec<u8> {
         cmd.arg("--arg").arg(*name).arg(os(val));
     }
     cmd.arg(expr);
-    let r = capture(0, &mut cmd);
+    let r = capture_stdout(0, &mut cmd);
     subst(r.stdout)
 }
 
@@ -303,7 +310,9 @@ fn get_verification_token(
             b"\"}",
         ]);
         let url = cat(&[sv_base, b"/token"]);
-        let code = sv_call(b"POST", &url, &body, sv_token, quota_project, resp_file);
+        // Called as `txt="$(get_verification_token ...)" || return 1`: errexit
+        // is off there, so a failed curl is just a non-200 code.
+        let (code, _) = sv_call(b"POST", &url, &body, sv_token, quota_project, resp_file);
         if code == b"200" {
             let token = jq_file(resp_file, r#".token // empty"#);
             if !token.is_empty() {
@@ -420,7 +429,7 @@ fn ensure_cloudflare_txt(
 fn wait_for_txt(zone: &[u8], txt: &[u8], doh_base: &[u8]) -> bool {
     for i in 1..=24 {
         let url = cat(&[doh_base, b"/resolve?name=", zone, b"&type=TXT"]);
-        let r = capture(0, Command::new("curl").arg("-sS").arg(os(&url)));
+        let r = capture_stdout(0, Command::new("curl").arg("-sS").arg(os(&url)));
         if r.ok() {
             // Pipe through jq to check.
             let mut jq = Command::new("jq");
@@ -430,8 +439,7 @@ fn wait_for_txt(zone: &[u8], txt: &[u8], doh_base: &[u8]) -> bool {
                 .arg(os(txt))
                 .arg(r#"[.Answer[]?.data | gsub("\""; "")] | any(. == $txt)"#)
                 .stdin(std::process::Stdio::piped())
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null());
+                .stdout(std::process::Stdio::null());
             let rc = shell_compat::status_with_input(0, &mut jq, &r.stdout, true);
             if rc == 0 {
                 log(&cat(&[
@@ -464,16 +472,16 @@ fn verify_zone(
     cf_token: &[u8],
     doh_base: &[u8],
     resp_file: &[u8],
-) -> bool {
+) -> Result<(), i32> {
     let txt = match get_verification_token(zone, sv_base, sv_token, quota_project, resp_file) {
         Some(t) => t,
-        None => return false,
+        None => return Err(1),
     };
     if !ensure_cloudflare_txt(zone, &txt, cf_base, cf_token, resp_file) {
-        return false;
+        return Err(1);
     }
     if !wait_for_txt(zone, &txt, doh_base) {
-        return false;
+        return Err(1);
     }
     // Retry insert — Google's own resolvers can lag public visibility.
     for i in 1..=8 {
@@ -484,10 +492,15 @@ fn verify_zone(
                 zone,
                 b"\",\"type\":\"INET_DOMAIN\"}}",
             ]);
-            let code = sv_call(b"POST", &url, &body, sv_token, quota_project, resp_file);
+            // verify_zone runs as a plain command under `set -e`: a curl
+            // that fails outright ends the whole run with its status.
+            let (code, curl_rc) = sv_call(b"POST", &url, &body, sv_token, quota_project, resp_file);
+            if curl_rc != 0 {
+                return Err(curl_rc);
+            }
             if code == b"200" {
                 log(&cat(&[zone, b" verified (method ", method, b")"]));
-                return true;
+                return Ok(());
             }
             log(&cat(&[
                 b"insert(",
@@ -510,7 +523,7 @@ fn verify_zone(
         zone,
         b" did not succeed",
     ]));
-    false
+    Err(1)
 }
 
 pub fn run(_args: &[Vec<u8>]) -> i32 {
@@ -662,7 +675,10 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
 
         // Check if already a verified owner.
         let url = cat(&[&sv_base, b"/webResource/", &id_enc]);
-        let code = sv_call(b"GET", &url, b"", &sv_token, &quota_project, &resp_file);
+        let (code, curl_rc) = sv_call(b"GET", &url, b"", &sv_token, &quota_project, &resp_file);
+        if curl_rc != 0 {
+            return curl_rc; // `code="$(sv_call ...)"` under set -e
+        }
         if code == b"200" {
             log(&cat(&[b"already a verified owner of ", zone, b"; no-op"]));
             continue;
@@ -676,7 +692,8 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
             b") \xe2\x80\x94 self-verifying",
         ]));
 
-        verify_zone(
+        // `verify_zone "$zone"` under set -e: its failure ends the run.
+        if let Err(rc) = verify_zone(
             zone,
             &sv_base,
             &sv_token,
@@ -685,11 +702,16 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
             &cf_token,
             &doh_base,
             &resp_file,
-        );
+        ) {
+            return rc;
+        }
 
         // Assert convergence.
         let url = cat(&[&sv_base, b"/webResource/", &id_enc]);
-        let code = sv_call(b"GET", &url, b"", &sv_token, &quota_project, &resp_file);
+        let (code, curl_rc) = sv_call(b"GET", &url, b"", &sv_token, &quota_project, &resp_file);
+        if curl_rc != 0 {
+            return curl_rc;
+        }
         if code != b"200" {
             log_err(&cat(&[
                 b"webResource GET for ",
