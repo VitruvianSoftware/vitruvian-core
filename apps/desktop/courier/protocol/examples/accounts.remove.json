@@ -1,0 +1,18 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "accounts.remove",
+    "params": {
+      "network": "whatsapp",
+      "account_id": "whatsapp-login",
+      "logout_remote": true,
+      "delete_chats": true
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {}
+  }
+}

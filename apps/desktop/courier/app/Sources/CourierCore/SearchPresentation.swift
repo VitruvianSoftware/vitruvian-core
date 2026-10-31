@@ -8,11 +8,15 @@ import Foundation
 /// A found message's date: the time today, the day and month this year, else the whole date.
 public enum SearchDate {
     public static func text(forMillis millis: Int64, now: Date = Date(), calendar: Calendar = .current,
-                            locale: Locale = .current) -> String {
+                            locale: Locale = .current,
+                            timeFormat: TimeFormatPreference = .system) -> String {
         guard millis > 0 else { return "" }
         let date = Date(timeIntervalSince1970: TimeInterval(millis) / 1000)
         let style = Date.FormatStyle(locale: locale, calendar: calendar, timeZone: calendar.timeZone)
         if calendar.isDate(date, inSameDayAs: now) {
+            if timeFormat != .system {
+                return timeFormat.formatTime(date, locale: locale, timeZone: calendar.timeZone)
+            }
             return date.formatted(style.hour().minute())
         }
         if calendar.isDate(date, equalTo: now, toGranularity: .year) {

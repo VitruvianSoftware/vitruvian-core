@@ -354,6 +354,8 @@ public final class ConversationModel: ObservableObject {
     public var calendarBridge = CalendarBridge()
     /// Active view-once message being viewed in `ViewOnceSheet`.
     @Published public var activeViewOnceMessage: TimelineMessage?
+    /// Whether the poll creator sheet (`PollCreatorWindow`) is presented.
+    @Published public var isCreatingPoll = false
     /// Active message or gallery tile ID opened in the in-app lightbox.
     @Published public var activeLightboxMessageID: String?
     /// Full-window attachment lightbox model (`AttachmentCarousel.tsx`).
@@ -409,6 +411,38 @@ public final class ConversationModel: ObservableObject {
     /// A wake is never nearer than this, so a clock that disagrees with the sleeper cannot make it spin.
     static let minimumWake: Int64 = 100
     private var subscriptions: [AnyCancellable] = []
+    private weak var observedLifecycle: SystemLifecycleModel?
+
+    public var lifecycle: SystemLifecycleModel {
+        observedLifecycle
+            ?? composer.hotkeyDispatcher?.lifecycle
+            ?? appModel.lifecycle
+    }
+
+    public var isLocked: Bool {
+        if !AppLockGate.shared.canPerform(.other, lifecycle: lifecycle) {
+            return true
+        }
+        if let hotkeys = composer.hotkeys, hotkeys.isLocked {
+            return true
+        }
+        return false
+    }
+
+    /// Dismisses every active sheet, popover, confirmation alert, and overlay owned by this conversation.
+    public func dismissAllPresentations() {
+        activeViewOnceMessage = nil
+        activeEditGroupDraft = nil
+        activeAddParticipantsRoom = nil
+        activeReportSpamDraft = nil
+        pendingRoomConfirmation = nil
+        isCreatingPoll = false
+        asksToHideTyping = false
+        closeLightbox()
+        dismissSenderCard()
+        composer.dismissAllPresentations()
+        thread.composer.dismissAllPresentations()
+    }
 
     // What is loaded.
     private var events: [String: Event] = [:]
@@ -498,6 +532,7 @@ public final class ConversationModel: ObservableObject {
                 lookUpDraft: @escaping @MainActor (String) async -> String? = { _ in nil },
                 chat: @escaping @MainActor (String) -> InboxRow? = { _ in nil },
                 preferences: ComposerPreferences? = nil,
+                followsAppSelection: Bool = true,
                 sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
                 now: @escaping @MainActor () -> Date = Date.init, locale: Locale = .current) {
         self.appModel = appModel
@@ -526,9 +561,11 @@ public final class ConversationModel: ObservableObject {
         }
         composer.quote = { [weak self] id in self?.message(id)?.quoted }
         composer.selectedMessage = { [weak self] in self?.selectedMessageID.flatMap { self?.message($0) } }
-        subscriptions.append(appModel.$selectedRoomID.removeDuplicates().sink { [weak self] room in
-            self?.open(room)
-        })
+        if followsAppSelection {
+            subscriptions.append(appModel.$selectedRoomID.removeDuplicates().sink { [weak self] room in
+                self?.open(room)
+            })
+        }
         subscriptions.append(appModel.$mergedChats.dropFirst().sink { [weak self] merges in
             guard let self else { return }
             if let room = self.roomID, room.hasPrefix("merge:"), merges[room] == nil {
@@ -552,10 +589,46 @@ public final class ConversationModel: ObservableObject {
         appModel.onConnect { [weak self] client in await self?.reload(from: client) }
         appModel.onChange { [weak self] change in self?.handle(change) }
         self.attention.onReturn { [weak self] in self?.personReturned() }
+        subscriptions.append(
+            NotificationCenter.default.publisher(for: SystemLifecycleModel.didLockNotification)
+                .sink { [weak self] notification in
+                    guard let self else { return }
+                    if let lifecycle = notification.object as? SystemLifecycleModel {
+                        self.observedLifecycle = lifecycle
+                    }
+                    self.dismissAllPresentations()
+                }
+        )
         preferencesChanged()
     }
 
     // MARK: - Opening
+
+    /// Opens `room` directly on this conversation model (used by detached chat and space windows).
+    public func openDetachedRoom(_ room: String?) {
+        open(room)
+    }
+
+    /// Populates `items`, `isLoaded`, and chat metadata directly for deterministic view snapshots without an engine.
+    public func setSnapshotStateForTesting(
+        roomID: String,
+        items: [TimelineItem],
+        row: InboxRow? = nil,
+        features: ChatFeatures = .noFeatures,
+        lastOutgoingID: String? = nil
+    ) {
+        self.roomID = roomID
+        self.items = items
+        self.isLoaded = true
+        self.features = features
+        self.lastOutgoingID = lastOutgoingID
+        composer.open(roomID)
+        if let row {
+            learnChat(row, of: roomID)
+        } else {
+            handOnChat()
+        }
+    }
 
     private func open(_ room: String?) {
         if let room, let merged = appModel.mergedChats[room] {
@@ -611,6 +684,7 @@ public final class ConversationModel: ObservableObject {
 
     /// Cycles the active reply room across the rooms of the open merged chat and persists `last_room_id` via `merge.update`.
     public func cycleMergedReplyNetwork() {
+        guard !isLocked else { return }
         guard var merged = mergedChat, !merged.roomIDs.isEmpty else { return }
         let current = activeReplyRoomID ?? merged.lastRoomID
         let nextIndex: Int
@@ -759,7 +833,7 @@ public final class ConversationModel: ObservableObject {
 
     /// Opens the thread pane on `rootID` in the open chat, at `replyID` when given (a search result).
     public func openThread(_ rootID: String, at replyID: String? = nil) {
-        guard let room = roomID else { return }
+        guard !isLocked, let room = roomID else { return }
         thread.open(rootID, in: room, at: replyID)
         handOnChat()
     }
@@ -1124,7 +1198,8 @@ public final class ConversationModel: ObservableObject {
     /// The header keeps showing the engine's timer: it moves when the engine reports the change, which the call
     /// brings (a room change) and this reads for. A refusal is a toast, and changes nothing.
     public func setTimer(_ choice: DisappearingChoice) async {
-        guard let room = activeReplyRoomID ?? roomID, !room.hasPrefix("merge:"), !isChangingTimer,
+        guard !isLocked,
+              let room = activeReplyRoomID ?? roomID, !room.hasPrefix("merge:"), !isChangingTimer,
               let offered = timerChoices.first(where: { $0.type == choice.type && $0.timerMS == choice.timerMS })
         else { return }
         let network = self.network
@@ -1535,7 +1610,7 @@ public final class ConversationModel: ObservableObject {
     /// Turning it on while my typing shows asks whether to hide that too (`asksToHideTyping`). Inferred (inventory
     /// 01 §7 "asks whether to also hide typing"): the question's wording is Courier's.
     public func setIncognito(_ on: Bool) {
-        guard let preferences, preferences.incognito != on else { return }
+        guard !isLocked, let preferences, preferences.incognito != on else { return }
         if on, !isEntitled(.incognito) { return }
         preferences.incognito = on
         asksToHideTyping = on && preferences.showTyping
@@ -1561,6 +1636,7 @@ public final class ConversationModel: ObservableObject {
 
     /// The person is looking again: what waited for them is read now.
     private func personReturned() {
+        guard !isLocked else { return }
         if needsRead, isLoaded { markRead() }
     }
 
@@ -1568,6 +1644,7 @@ public final class ConversationModel: ObservableObject {
     /// Unread from a message that stayed on the chat, until it is reopened, a new message comes or I reply; and not
     /// while Incognito is on, unless I replied (`reply`).
     private func markRead(reply: Bool = false) {
+        guard !isLocked else { return }
         needsRead = false
         guard !holdsRead, reply || !incognitoIsOn, let room = roomID, let client = appModel.client else { return }
         let rooms = appModel.scopeRoomIDs(for: room).filter { !$0.hasPrefix("merge:") }
@@ -1603,6 +1680,7 @@ public final class ConversationModel: ObservableObject {
 
     /// Starts a reply to the message in the composer.
     public func reply(to eventID: String) {
+        guard !isLocked else { return }
         for case let .message(message) in items where message.id == eventID && message.kind != .deleted {
             composer.startReply(to: message.quoted)
             return
@@ -1611,6 +1689,7 @@ public final class ConversationModel: ObservableObject {
 
     /// ⌘R: replies to the selected message.
     public func replyToSelected() {
+        guard !isLocked else { return }
         guard let id = selectedMessageID else { return }
         reply(to: id)
     }
@@ -1641,6 +1720,7 @@ public final class ConversationModel: ObservableObject {
     /// the newest, so ↑↑↑ walks up the chat. False with no message to select.
     @discardableResult
     public func selectOlderMessage() -> Bool {
+        guard !isLocked else { return false }
         let ids = items.compactMap { item -> String? in if case let .message(message) = item { message.id } else { nil } }
         guard let newest = ids.last else { return false }
         guard let selected = selectedMessageID, let index = ids.firstIndex(of: selected) else {
@@ -1668,6 +1748,7 @@ public final class ConversationModel: ObservableObject {
     /// message the chat still lets me edit. False when there is none.
     @discardableResult
     public func editSelectedOrLast() -> Bool {
+        guard !isLocked else { return false }
         if let selected = selectedMessage, availableActions(for: selected).actions.contains(.edit) {
             composer.startEditing(selected)
             return true
@@ -1683,6 +1764,7 @@ public final class ConversationModel: ObservableObject {
 
     /// ⌘⇧H: the selected message's first link, for the view to open; nil when it has none.
     public func firstLinkOfSelected() -> URL? {
+        guard !isLocked else { return nil }
         guard let selected = selectedMessage, availableActions(for: selected).actions.contains(.openFirstLink) else {
             return nil
         }
@@ -1691,12 +1773,14 @@ public final class ConversationModel: ObservableObject {
 
     /// ⌘⇧R: reacts to the selected message with the quick reaction (Settings ▸ Messages).
     public func quickReactToSelected() async {
+        guard !isLocked else { return }
         guard let selected = selectedMessage, availableActions(for: selected).actions.contains(.react) else { return }
         await react(to: selected.id, key: preferences?.quickReaction ?? "❤️")
     }
 
     /// ⌘↓ ("Show Replies"): on a selected thread root, opens its thread; otherwise scrolls to the newest message.
     public func showRepliesOrJumpToBottom() {
+        guard !isLocked else { return }
         if let selected = selectedMessage, selected.thread != nil {
             openThread(selected.id)
         } else {
@@ -1718,6 +1802,7 @@ public final class ConversationModel: ObservableObject {
 
     /// Shows or hides the Chat Info right pane (⌘⇧I), loading `room.info` and bookmarks when opened.
     public func toggleChatInfo() {
+        guard !isLocked else { return }
         isShowingChatInfo.toggle()
         if isShowingChatInfo {
             Task { [weak self] in await self?.refreshChatInfo() }
@@ -1726,6 +1811,7 @@ public final class ConversationModel: ObservableObject {
 
     /// Shows or hides the Calendar right pane (`⌘⌥K`), loading the selected day's agenda on demand when opened.
     public func toggleCalendar() {
+        guard !isLocked else { return }
         isShowingCalendar.toggle()
         if isShowingCalendar {
             Task { [weak self] in await self?.calendarBridge.loadSelectedDay() }
@@ -1734,6 +1820,7 @@ public final class ConversationModel: ObservableObject {
 
     /// Opens the Chat Info pane if closed and asks its filter field to take focus.
     public func focusChatInfoSearch() {
+        guard !isLocked else { return }
         if !isShowingChatInfo {
             isShowingChatInfo = true
             Task { [weak self] in await self?.refreshChatInfo() }
@@ -1744,12 +1831,12 @@ public final class ConversationModel: ObservableObject {
     /// Reads `room.info` and the chat's bookmarked messages (`search.query` with `sections: [.bookmarks]`) for the
     /// open chat. When `force` is true, passes `refresh: true` so the bridge refreshes live participant/room info.
     public func refreshChatInfo(force: Bool = false) async {
-        guard let room = roomID else { return }
+        guard !isLocked, let room = roomID else { return }
         let targetRoom = activeReplyRoomID ?? room
         isRefreshingChatInfo = true
         defer { isRefreshingChatInfo = false }
         let (info, bookmarks) = await fetchChatInfo(for: targetRoom, force: force)
-        guard room == roomID else { return }
+        guard !isLocked, room == roomID else { return }
         if let info {
             chatInfo = info
         }
@@ -1759,7 +1846,7 @@ public final class ConversationModel: ObservableObject {
     /// Reads `room.info` and bookmarked messages for a specific `roomID` (used by both the right pane and standalone
     /// Chat Info windows).
     public func fetchChatInfo(for targetRoom: String, force: Bool = false) async -> (info: RoomInfoResult?, bookmarks: [MessageHit]) {
-        guard let client = appModel.client else { return (nil, []) }
+        guard !isLocked, let client = appModel.client else { return (nil, []) }
         async let infoCall: RoomInfoResult? = try? client.call(
             "room.info",
             RoomInfoParams(roomID: targetRoom, refresh: force ? true : nil)
@@ -1780,13 +1867,17 @@ public final class ConversationModel: ObservableObject {
 
     /// Opens the chat at `eventID` (for jumping to a pinned or bookmarked message from Chat Info).
     public func openEvent(_ eventID: String, in targetRoomID: String? = nil) {
-        guard let room = targetRoomID ?? roomID else { return }
+        guard !isLocked, let room = targetRoomID ?? roomID else { return }
         appModel.open(.message(roomID: room, eventID: eventID))
     }
 
     /// Exports the chat's messages to `url` via `room.export`. Never writes anywhere the person didn't pick.
     @discardableResult
     public func exportChat(roomID targetRoomID: String? = nil, to url: URL) async throws -> Int {
+        guard !isLocked else {
+            throw EngineError.rpc(.badValue, message: "Courier is locked", reason: "locked")
+        }
+        try AppLockGate.shared.ensureUnlocked(.export, lifecycle: lifecycle)
         guard let room = targetRoomID ?? activeReplyRoomID ?? roomID, let client = appModel.client else {
             throw EngineError.notConnected
         }
@@ -1801,6 +1892,7 @@ public final class ConversationModel: ObservableObject {
 
     /// Opens the Edit Group / Edit Chat sheet for `info` (or the open chat's `chatInfo`).
     public func beginEditChat(info: RoomInfoResult? = nil, roomID targetRoomID: String? = nil) async {
+        guard !isLocked else { return }
         let resolvedInfo: RoomInfoResult?
         if let info {
             resolvedInfo = info
@@ -1852,6 +1944,7 @@ public final class ConversationModel: ObservableObject {
 
     /// Opens the Add Participants sheet for `info` (or the open chat's `chatInfo`).
     public func beginAddParticipants(info: RoomInfoResult? = nil) async {
+        guard !isLocked else { return }
         if let info {
             activeAddParticipantsRoom = info
             return
@@ -1867,6 +1960,7 @@ public final class ConversationModel: ObservableObject {
 
     /// Opens the Report Spam sheet for `info` or `targetRoomID`, with `alsoLeaveOrDelete` unticked by default.
     public func beginReportSpam(info: RoomInfoResult? = nil, roomID targetRoomID: String? = nil) async {
+        guard !isLocked else { return }
         let resolvedInfo: RoomInfoResult?
         if let info {
             resolvedInfo = info
@@ -1909,7 +2003,7 @@ public final class ConversationModel: ObservableObject {
     /// - `.justForMe`: dispatches `room.setLocalOverride` with `local_name` and `local_avatar_path`.
     @discardableResult
     public func saveGroupEdit(_ draft: EditGroupDraft) async -> Bool {
-        guard let client = appModel.client else { return false }
+        guard !isLocked, let client = appModel.client else { return false }
         let owner = generation
         let targetNetwork = !draft.network.isEmpty ? draft.network : (chat(draft.roomID)?.network ?? network)
         do {
@@ -1975,7 +2069,7 @@ public final class ConversationModel: ObservableObject {
     /// Resets the chat's local override (`room.setLocalOverride` with empty name and avatar path).
     @discardableResult
     public func resetLocalOverride(roomID targetRoomID: String? = nil, network targetNetwork: String? = nil) async -> Bool {
-        guard let room = targetRoomID ?? activeReplyRoomID ?? roomID, let client = appModel.client else {
+        guard !isLocked, let room = targetRoomID ?? activeReplyRoomID ?? roomID, let client = appModel.client else {
             return false
         }
         let owner = generation
@@ -2005,7 +2099,7 @@ public final class ConversationModel: ObservableObject {
     /// Reports `draft.roomID` as spam via `room.reportSpam(room_id:leave_or_delete:)`.
     @discardableResult
     public func reportSpam(_ draft: ReportSpamDraft) async -> Bool {
-        guard let client = appModel.client else { return false }
+        guard !isLocked, let client = appModel.client else { return false }
         let owner = generation
         let resolvedNetwork = !draft.network.isEmpty ? draft.network : (chat(draft.roomID)?.network ?? network)
         do {
@@ -2033,7 +2127,8 @@ public final class ConversationModel: ObservableObject {
     /// Invites `userIDs` into `targetRoomID` via `room.invite`.
     @discardableResult
     public func inviteParticipants(userIDs: [String], in targetRoomID: String? = nil) async -> Bool {
-        guard !userIDs.isEmpty,
+        guard !isLocked,
+              !userIDs.isEmpty,
               let room = targetRoomID ?? activeReplyRoomID ?? roomID,
               let client = appModel.client else { return false }
         let owner = generation
@@ -2062,7 +2157,7 @@ public final class ConversationModel: ObservableObject {
 
     /// Queries `people.contacts` + `search.query(sections: [.inGroups])` for `AddParticipantsSheet`.
     public func searchInviteCandidates(query: String, network targetNetwork: String, existingMemberIDs: Set<String> = []) async -> [ContactCandidate] {
-        guard let client = appModel.client else { return [] }
+        guard !isLocked, let client = appModel.client else { return [] }
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         async let contactsCall: PeopleContactsResult? = try? client.call(
             "people.contacts",
@@ -2102,7 +2197,7 @@ public final class ConversationModel: ObservableObject {
     /// Promotes or demotes a group participant via `room.setAdmin`.
     @discardableResult
     public func setParticipantAdmin(userID: String, isAdmin: Bool, in targetRoomID: String? = nil) async -> Bool {
-        guard let room = targetRoomID ?? activeReplyRoomID ?? roomID, let client = appModel.client else {
+        guard !isLocked, let room = targetRoomID ?? activeReplyRoomID ?? roomID, let client = appModel.client else {
             return false
         }
         let owner = generation
@@ -2131,7 +2226,7 @@ public final class ConversationModel: ObservableObject {
     /// Removes `userID` from `targetRoomID` via `room.kick`.
     @discardableResult
     public func removeParticipant(userID: String, reason: String? = nil, in targetRoomID: String? = nil) async -> Bool {
-        guard let room = targetRoomID ?? activeReplyRoomID ?? roomID, let client = appModel.client else {
+        guard !isLocked, let room = targetRoomID ?? activeReplyRoomID ?? roomID, let client = appModel.client else {
             return false
         }
         let owner = generation
@@ -2160,7 +2255,7 @@ public final class ConversationModel: ObservableObject {
     /// Opens or creates a 1:1 direct chat with `userID` from `targetRoomID` via `room.directChat`.
     @discardableResult
     public func messageParticipant(userID: String, in targetRoomID: String? = nil) async -> String? {
-        guard let room = targetRoomID ?? activeReplyRoomID ?? roomID, let client = appModel.client else {
+        guard !isLocked, let room = targetRoomID ?? activeReplyRoomID ?? roomID, let client = appModel.client else {
             return nil
         }
         let owner = generation
@@ -2183,7 +2278,7 @@ public final class ConversationModel: ObservableObject {
     /// Leaves `targetRoomID` via `room.leave`.
     @discardableResult
     public func leaveGroup(roomID targetRoomID: String? = nil) async -> Bool {
-        guard let room = targetRoomID ?? activeReplyRoomID ?? roomID, let client = appModel.client else {
+        guard !isLocked, let room = targetRoomID ?? activeReplyRoomID ?? roomID, let client = appModel.client else {
             return false
         }
         let owner = generation
@@ -2209,7 +2304,7 @@ public final class ConversationModel: ObservableObject {
     /// Deletes `targetRoomID` via `room.delete`.
     @discardableResult
     public func deleteChat(roomID targetRoomID: String? = nil) async -> Bool {
-        guard let room = targetRoomID ?? activeReplyRoomID ?? roomID, let client = appModel.client else {
+        guard !isLocked, let room = targetRoomID ?? activeReplyRoomID ?? roomID, let client = appModel.client else {
             return false
         }
         let owner = generation
@@ -2234,6 +2329,7 @@ public final class ConversationModel: ObservableObject {
 
     /// Stages a confirmation alert to leave a group.
     public func requestLeaveGroup(info: RoomInfoResult? = nil, roomID targetRoomID: String? = nil) {
+        guard !isLocked else { return }
         let resolvedRoom = info?.roomID ?? targetRoomID ?? activeReplyRoomID ?? roomID ?? ""
         guard !resolvedRoom.isEmpty else { return }
         let name = info?.name ?? chat(resolvedRoom)?.name ?? chatInfo?.name ?? ""
@@ -2243,6 +2339,7 @@ public final class ConversationModel: ObservableObject {
 
     /// Stages a confirmation alert to delete a chat.
     public func requestDeleteChat(info: RoomInfoResult? = nil, roomID targetRoomID: String? = nil) {
+        guard !isLocked else { return }
         let resolvedRoom = info?.roomID ?? targetRoomID ?? activeReplyRoomID ?? roomID ?? ""
         guard !resolvedRoom.isEmpty else { return }
         let name = info?.name ?? chat(resolvedRoom)?.name ?? chatInfo?.name ?? ""
@@ -2260,6 +2357,7 @@ public final class ConversationModel: ObservableObject {
 
     /// Stages a confirmation alert to remove `member` from a group.
     public func requestRemoveParticipant(_ member: Member, info: RoomInfoResult? = nil) {
+        guard !isLocked else { return }
         let resolvedRoom = info?.roomID ?? activeReplyRoomID ?? roomID ?? ""
         guard !resolvedRoom.isEmpty else { return }
         let groupName = info?.name ?? chat(resolvedRoom)?.name ?? chatInfo?.name ?? ""
@@ -2274,7 +2372,10 @@ public final class ConversationModel: ObservableObject {
 
     /// Executes the currently staged `pendingRoomConfirmation`.
     public func confirmRoomAction() async {
-        guard let request = pendingRoomConfirmation else { return }
+        guard !isLocked, let request = pendingRoomConfirmation else {
+            pendingRoomConfirmation = nil
+            return
+        }
         pendingRoomConfirmation = nil
         switch request {
         case let .leaveGroup(roomID, _, _):
@@ -2297,6 +2398,7 @@ public final class ConversationModel: ObservableObject {
     /// leaves both the trigger and the card.
     public func setTriggerHovered(_ hovering: Bool, for message: TimelineMessage) {
         guard !message.mine else { return }
+        if hovering, isLocked { return }
         isHoveringSenderTrigger = hovering
         if hovering {
             if activeSenderCard?.messageID == message.id { return }
@@ -2345,6 +2447,7 @@ public final class ConversationModel: ObservableObject {
 
     /// Opens the sender hover card for `message`, loading on-demand Contacts match and shared groups.
     public func openSenderCard(for message: TimelineMessage) async {
+        guard !isLocked else { return }
         let targetRoom = !message.roomID.isEmpty ? message.roomID : (activeReplyRoomID ?? roomID ?? "")
         if chatInfo == nil, !targetRoom.isEmpty, let fetched = await fetchChatInfo(for: targetRoom, force: false).info {
             if targetRoom == roomID || targetRoom == activeReplyRoomID {
@@ -2393,6 +2496,7 @@ public final class ConversationModel: ObservableObject {
     /// If the selected message is outgoing (`mine`), falls back to the other person in a 1:1 chat or the latest
     /// incoming message in the timeline.
     public func showSenderCardForSelectedMessage() async {
+        guard !isLocked else { return }
         if let id = selectedMessageID, let msg = message(id, from: .chat), !msg.mine {
             await openSenderCard(for: msg)
             return
@@ -2468,7 +2572,7 @@ public final class ConversationModel: ObservableObject {
 
     /// Opens an unopened view-once message in `ViewOnceSheet`.
     public func openViewOnce(_ message: TimelineMessage) {
-        guard message.viewOnce, !message.played else { return }
+        guard !isLocked, message.viewOnce, !message.played else { return }
         activeViewOnceMessage = message
     }
 
@@ -2484,6 +2588,7 @@ public final class ConversationModel: ObservableObject {
     ///
     /// View-once media never opens in the lightbox.
     public func openLightbox(_ messageID: String) {
+        guard !isLocked else { return }
         if isViewOnceEvent(messageID) {
             activeLightboxMessageID = nil
             carousel.close()
@@ -2523,6 +2628,7 @@ public final class ConversationModel: ObservableObject {
     /// Marks a view-once or voice-note message as played (`message.markPlayed`) on this Mac only (played state never
     /// goes to the network).
     public func markPlayed(_ eventID: String, roomID explicitRoomID: String? = nil) async {
+        guard !isLocked else { return }
         locallyMarkedPlayed.insert(eventID)
         let messageRoom = explicitRoomID ?? message(eventID, from: .chat)?.roomID
         if var existing = events[eventID] {
@@ -2599,7 +2705,7 @@ public final class ConversationModel: ObservableObject {
     /// Staying on the chat, it isn't marked read again until it is reopened or a new message comes (Inferred
     /// (inventory 02 §3.4.2 item 8)). A refusal is a toast, and nothing moves.
     public func markUnread(from messageID: String) async {
-        guard let room = roomID, let sender = composer.sender, let message = message(messageID, from: .chat),
+        guard !isLocked, let room = roomID, let sender = composer.sender, let message = message(messageID, from: .chat),
               availableActions(for: message).actions.contains(.markUnread) else { return }
         let owner = generation
         let after = planAfterToggleRead()
@@ -2620,7 +2726,7 @@ public final class ConversationModel: ObservableObject {
     /// or one the network makes) opens, with the message quoted in its composer (`ComposerModel.startPrivateReply`)
     /// once that chat's features are read. A refusal is a toast in Courier's words, and the group stays open.
     public func replyPrivately(to messageID: String) async {
-        guard let room = roomID, let sender = composer.sender, let message = message(messageID, from: .chat),
+        guard !isLocked, let room = roomID, let sender = composer.sender, let message = message(messageID, from: .chat),
               availableActions(for: message).actions.contains(.replyPrivately) else { return }
         let owner = generation
         let network = self.network
@@ -2666,7 +2772,7 @@ public final class ConversationModel: ObservableObject {
     }
 
     private func act(_ call: (EngineClient, String) async throws -> Void) async {
-        guard let room = roomID, let client = appModel.client else { return }
+        guard !isLocked, let room = roomID, let client = appModel.client else { return }
         let owner = generation
         do {
             try await call(client, room)

@@ -36,8 +36,20 @@ public final class SpacesModel: ObservableObject {
         $spaces.map(Self.badgeCount(of:)).removeDuplicates().eraseToAnyPublisher()
     }
 
-    private static func badgeCount(of spaces: [Space]) -> Int {
-        spaces.first { $0.spaceID == "inbox" }?.attentionChats ?? 0
+    public static func badgeCount(of spaces: [Space]) -> Int {
+        badgeCount(of: spaces, mode: .unreadChats)
+    }
+
+    public static func badgeCount(of spaces: [Space], mode: DockBadgeMode) -> Int {
+        guard let inbox = spaces.first(where: { $0.spaceID == "inbox" }) else { return 0 }
+        switch mode {
+        case .unreadChats:
+            return inbox.attentionChats
+        case .allChats:
+            return inbox.unreadChats
+        case .none:
+            return 0
+        }
     }
 
     private let appModel: AppModel
@@ -45,23 +57,41 @@ public final class SpacesModel: ObservableObject {
     private let window: TimeInterval
     private let sleep: @Sendable (TimeInterval) async -> Void
     private var subscription: AnyCancellable?
+    private var lockSubscription: AnyCancellable?
+    private weak var observedLifecycle: SystemLifecycleModel?
 
     /// The task that reads, from the first change until the last read is done. Nil when idle.
     private var reading: Task<Void, Never>?
     private var readInFlight = false
     private var readAgain = false
 
+    public var lifecycle: SystemLifecycleModel {
+        observedLifecycle ?? inbox.lifecycle
+    }
+
+    public var isLocked: Bool {
+        !AppLockGate.shared.canPerform(.other, lifecycle: observedLifecycle ?? inbox.lifecycle)
+    }
+
     /// - Parameters:
     ///   - window: how long changes are gathered before one read, in seconds.
     ///   - sleep: waits `window`; tests give one they can open.
     public init(appModel: AppModel, inbox: InboxModel, window: TimeInterval = 0.1,
-                sleep: @escaping @Sendable (TimeInterval) async -> Void = { await waitForInboxWindow($0) }) {
+                sleep: @escaping @Sendable (TimeInterval) async -> Void = { await waitForInboxWindow($0) },
+                lifecycle: SystemLifecycleModel? = nil) {
         self.appModel = appModel
         self.inbox = inbox
         self.window = window
         self.sleep = sleep
+        self.observedLifecycle = lifecycle
         // The views watch this model; the inbox's query (the space shown) is the inbox's.
         subscription = inbox.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        lockSubscription = NotificationCenter.default
+            .publisher(for: SystemLifecycleModel.didLockNotification)
+            .sink { [weak self] notification in
+                self?.observedLifecycle = notification.object as? SystemLifecycleModel
+                self?.isEditing = false
+            }
         appModel.onConnect { [weak self] _ in self?.requestRead(waiting: false) }
         appModel.onChange { [weak self] change in self?.handle(change) }
         // Built after the engine was greeted: its greeting is gone, so read now.
@@ -73,6 +103,11 @@ public final class SpacesModel: ObservableObject {
     /// Shows a space's chats. The place filters (Archived, Low priority, Hidden, Requests, Reminders, Send later)
     /// go, since the space is the place; Unread, DMs and the others stay.
     public func select(_ spaceID: String) {
+        guard !isLocked else { return }
+        applySpace(spaceID)
+    }
+
+    private func applySpace(_ spaceID: String) {
         var query = inbox.query
         query.space = spaceID
         query.filters.subtract(Self.placeFilters)
@@ -81,16 +116,23 @@ public final class SpacesModel: ObservableObject {
 
     /// ⌘1–⌘9: the nth space on the bar. Past the last one, nothing happens.
     public func selectNumber(_ n: Int) {
+        guard !isLocked else { return }
         let bar = visible
         guard n >= 1, n <= bar.count else { return }
         select(bar[n - 1].spaceID)
     }
 
     /// ⌘⇧]: the next space on the bar, and after the last the first. From a hidden space, the first.
-    public func selectNextAccount() { move(by: 1) }
+    public func selectNextAccount() {
+        guard !isLocked else { return }
+        move(by: 1)
+    }
 
     /// ⌘⇧[: the previous space on the bar, and before the first the last. From a hidden space, the last.
-    public func selectPreviousAccount() { move(by: -1) }
+    public func selectPreviousAccount() {
+        guard !isLocked else { return }
+        move(by: -1)
+    }
 
     private func move(by step: Int) {
         let bar = visible
@@ -108,6 +150,7 @@ public final class SpacesModel: ObservableObject {
 
     /// Saves the bar's order and what is hidden. The toast says so; a layout the engine refuses says why instead.
     public func saveLayout(order: [String], hidden: [String]) async {
+        guard !isLocked else { return }
         guard let client = appModel.client else { return }
         do {
             let _: Empty = try await client.call("spaces.setLayout", SpaceLayoutParams(order: order, hidden: hidden))
@@ -120,12 +163,14 @@ public final class SpacesModel: ObservableObject {
 
     /// Mutes or unmutes an account's or a label's chats. A built-in space has no such setting.
     public func setMuted(_ spaceID: String, _ muted: Bool) async {
+        guard !isLocked else { return }
         await update(SpaceUpdateParams(spaceID: spaceID, muted: muted))
     }
 
     /// Which of an account's or a label's chats also show in the inbox: "all", "dms" or "none". Anything else is
     /// not asked of the engine.
     public func setShowInInbox(_ spaceID: String, _ value: String) async {
+        guard !isLocked else { return }
         let value = ShowInInbox(rawValue: value)
         guard ShowInInbox.settable.contains(value) else { return }
         await update(SpaceUpdateParams(spaceID: spaceID, showInInbox: value))
@@ -188,8 +233,13 @@ public final class SpacesModel: ObservableObject {
         if spaces != result.spaces { spaces = result.spaces }
         // The space shown is gone (its label was deleted): the inbox is what is left to show.
         if !result.spaces.isEmpty, !result.spaces.contains(where: { $0.spaceID == inbox.query.space }) {
-            select("inbox")
+            applySpace("inbox")
         }
+    }
+
+    /// Populates `spaces` directly for deterministic tests without an engine.
+    public func setSpacesForTesting(_ spaces: [Space]) {
+        self.spaces = spaces
     }
 }
 

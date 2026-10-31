@@ -9,6 +9,7 @@ import SwiftUI
 struct EditHistoryView: View {
     let versions: [Version]?
     let mine: Bool
+    var timeFormat: TimeFormatPreference = .system
     @State private var revealed = true
 
     var body: some View {
@@ -37,7 +38,7 @@ struct EditHistoryView: View {
     }
 
     private func label(_ index: Int, of count: Int, at ts: Int64) -> String {
-        let time = Date(timeIntervalSince1970: Double(ts) / 1000).formatted(date: .abbreviated, time: .shortened)
+        let time = timeFormat.formatDateTime(Date(timeIntervalSince1970: Double(ts) / 1000), dateStyle: .medium)
         if index == 0 { return String(localized: "Original, \(time)") }
         if index == count - 1 { return String(localized: "Current, \(time)") }
         return String(localized: "Edited \(time)")

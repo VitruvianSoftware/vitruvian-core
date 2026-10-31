@@ -219,11 +219,11 @@ public struct EditGroupSheet: View {
     }
 
     private func pickAvatar() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.image]
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-        if panel.runModal() == .OK, let url = panel.url {
+        if let url = AppLockGate.shared.runOpenPanel(action: .settingsChange, configure: { panel in
+            panel.allowedContentTypes = [.image]
+            panel.allowsMultipleSelection = false
+            panel.canChooseDirectories = false
+        })?.first {
             draft.avatarPath = url.path
         }
     }

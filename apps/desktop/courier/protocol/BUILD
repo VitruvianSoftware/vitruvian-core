@@ -24,3 +24,13 @@ filegroup(
         "//apps/desktop/courier/engine:__subpackages__",
     ],
 )
+
+# Shared crash and stderr scrubbing fixture run by both Go (engine/internal/logscrub) and Swift (CourierCoreTests).
+filegroup(
+    name = "logscrub_cases",
+    srcs = ["logscrub/cases.json"],
+    visibility = [
+        "//apps/desktop/courier/app:__subpackages__",
+        "//apps/desktop/courier/engine:__subpackages__",
+    ],
+)

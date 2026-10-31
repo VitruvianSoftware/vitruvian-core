@@ -1,0 +1,70 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "bridges.list"
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+      "bridges": [
+        {
+          "network": "whatsapp",
+          "display_name": "WhatsApp",
+          "bridge_id": "whatsapp",
+          "module_path": "go.mau.fi/mautrix-whatsapp",
+          "version": "v0.2609.0",
+          "mautrix_version": "v0.31.0",
+          "state": "CONNECTED",
+          "started_at": 1760600000000,
+          "accounts": [
+            {
+              "network": "whatsapp",
+              "display_name": "WhatsApp",
+              "flows": ["qr", "phone"],
+              "state": "CONNECTED",
+              "error": "",
+              "remote_name": "Test Account",
+              "not_started": "",
+              "syncs": ["pin", "mute", "accept_request"],
+              "can_create_group": true,
+              "logins": [
+                {
+                  "account_id": "whatsapp-login",
+                  "remote_name": "Test Account",
+                  "state": "CONNECTED",
+                  "error": "",
+                  "can_create_group": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "network": "signal",
+          "display_name": "Signal",
+          "bridge_id": "signal",
+          "module_path": "go.mau.fi/mautrix-signal",
+          "version": "v0.2609.0",
+          "mautrix_version": "v0.31.0",
+          "state": "UNCONFIGURED",
+          "started_at": 1760600000000,
+          "accounts": []
+        },
+        {
+          "network": "telegram",
+          "display_name": "Telegram",
+          "bridge_id": "telegram",
+          "module_path": "go.mau.fi/mautrix-telegram",
+          "version": "v0.2609.0",
+          "mautrix_version": "v0.31.0",
+          "state": "NOT_STARTED",
+          "message": "Telegram needs an api_id and api_hash",
+          "started_at": 0,
+          "accounts": []
+        }
+      ]
+    }
+  }
+}

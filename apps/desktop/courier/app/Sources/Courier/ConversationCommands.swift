@@ -17,94 +17,156 @@ struct ConversationCommands: Commands {
     @ObservedObject var paneComposer: ComposerModel
     let messageActions: MessageActionsModel
     @ObservedObject var focus: MessageFocus
+    @ObservedObject var hotkeys: HotkeyRegistry
+    @ObservedObject var hotkeyDispatcher: HotkeyDispatcher
+    @ObservedObject var lifecycle: SystemLifecycleModel
 
     var body: some Commands {
         CommandGroup(after: .newItem) {
             Divider()
             FileOpenCommandItem(
                 composer: composer,
-                isDisabled: conversation.roomID == nil
+                hotkeys: hotkeys,
+                hotkeyDispatcher: hotkeyDispatcher,
+                isDisabled: !hotkeyDispatcher.canPerform("Chat: Send File")
             )
         }
         CommandMenu(String(localized: "Message")) {
-            Button(String(localized: "Edit…"), action: edit)
-                .keyboardShortcut("t", modifiers: .command)
-                .disabled(conversation.roomID == nil)
-            Button(String(localized: "Reply")) { reply() }
-                .keyboardShortcut("r", modifiers: .command)
-                .disabled(selected == nil)
+            Button(String(localized: "Edit…")) {
+                _ = hotkeyDispatcher.perform("Message: Edit")
+            }
+            .registryShortcut("Message: Edit", in: hotkeys)
+            .disabled(!hotkeyDispatcher.canPerform("Message: Edit"))
+            Button(String(localized: "Reply")) {
+                _ = hotkeyDispatcher.perform("Message: Quote & Reply")
+            }
+            .registryShortcut("Message: Quote & Reply", in: hotkeys)
+            .disabled(!hotkeyDispatcher.canPerform("Message: Quote & Reply"))
             // The title and the action follow the same selection: Show Replies on a thread root selected in the
             // chat, otherwise the newest message.
-            Button(showRepliesTarget == nil ? String(localized: "Jump to Newest Message") : String(localized: "Show Replies")) {
-                if let root = showRepliesTarget { conversation.openThread(root) } else { conversation.jumpToBottom() }
+            let showRepliesOrScrollID = showRepliesOrScrollCommandID
+            Button(showRepliesOrJumpMenuTitle) {
+                _ = hotkeyDispatcher.perform(showRepliesOrScrollID)
             }
-            .keyboardShortcut(.downArrow, modifiers: .command)
-            .disabled(conversation.roomID == nil)
-            Button(String(localized: "Quick React")) { quickReact() }
-                .keyboardShortcut("r", modifiers: [.command, .shift])
-                .disabled(selected == nil)
-            Button(String(localized: "Forward…"), action: forward)
-                .keyboardShortcut("f", modifiers: [.command, .shift])
-                .disabled(conversation.roomID == nil)
-            Button(String(localized: "Open First Link"), action: openLink)
-                .keyboardShortcut("h", modifiers: [.command, .shift])
-                .disabled(selected == nil)
+            .registryShortcut(showRepliesOrScrollID, in: hotkeys)
+            .disabled(!hotkeyDispatcher.canPerform(showRepliesOrScrollID))
+            Button(String(localized: "Quick React")) {
+                _ = hotkeyDispatcher.perform("Message: Quick React")
+            }
+            .registryShortcut("Message: Quick React", in: hotkeys)
+            .disabled(!hotkeyDispatcher.canPerform("Message: Quick React"))
+            Button(String(localized: "Forward…")) {
+                _ = hotkeyDispatcher.perform("Message: Forward")
+            }
+            .registryShortcut("Message: Forward", in: hotkeys)
+            .disabled(!hotkeyDispatcher.canPerform("Message: Forward"))
+            Button(String(localized: "Open First Link")) {
+                _ = hotkeyDispatcher.perform("Message: Open First Link")
+            }
+            .registryShortcut("Message: Open First Link", in: hotkeys)
+            .disabled(!hotkeyDispatcher.canPerform("Message: Open First Link"))
             Divider()
-            Button(String(localized: "Send Later…"), action: messageActions.requestSendLater)
-                .keyboardShortcut("l", modifiers: [.command, .shift])
-                .disabled(conversation.roomID == nil)
-            Button(String(localized: "Send Message and Archive")) { composer.submit(archive: true) }
-                .keyboardShortcut(.return, modifiers: .command)
-                .disabled(conversation.roomID == nil)
+            Button(String(localized: "Send Later…")) {
+                _ = hotkeyDispatcher.perform("Message: Send Later")
+            }
+            .registryShortcut("Message: Send Later", in: hotkeys)
+            .disabled(!hotkeyDispatcher.canPerform("Message: Send Later"))
+            Button(String(localized: "Send Message and Archive")) {
+                _ = hotkeyDispatcher.perform("Message: Send Message and Archive")
+            }
+            .registryShortcut("Message: Send Message and Archive", in: hotkeys)
+            .disabled(!hotkeyDispatcher.canPerform("Message: Send Message and Archive"))
             Button(String(localized: "Create Quick Reply from Draft…"), action: messageActions.requestQuickReplyFromDraft)
-                .disabled(!messageActions.canCreateQuickReply)
+                .disabled(!messageActions.canCreateQuickReply || lifecycle.isLocked)
             Divider()
             formatting
+                .disabled(lifecycle.isLocked)
             Divider()
-            Button(String(localized: "Attach Files…")) { AttachmentPicker.run(into: composer) }
-                .keyboardShortcut("o", modifiers: .command)
-                .disabled(conversation.roomID == nil)
-            Button(String(localized: "Download Attachments"), action: downloadAttachments)
-                .keyboardShortcut("d", modifiers: .command)
-                .disabled(!canDownloadAttachments)
+            Button(String(localized: "Attach Files…")) {
+                _ = hotkeyDispatcher.perform("Chat: Send File")
+            }
+            .registryShortcut("Chat: Send File", in: hotkeys)
+            .disabled(!hotkeyDispatcher.canPerform("Chat: Send File"))
+            Button(String(localized: "Download Attachments")) {
+                _ = hotkeyDispatcher.perform("Download Attachments")
+            }
+            .registryShortcut("Download Attachments", in: hotkeys)
+            .disabled(!hotkeyDispatcher.canPerform("Download Attachments"))
             Button(String(localized: "Record Voice Note")) {
-                Task { await composer.startVoiceRecording() }
+                _ = hotkeyDispatcher.perform("Message: Record Audio")
             }
-            .keyboardShortcut("a", modifiers: [.command, .shift])
-            .disabled(
-                conversation.roomID == nil || (
-                    !composer.voiceRecorder.isRecordingOrReviewing && !composer.features.supportsVoiceSend
-                )
-            )
-            Button(composer.sendGIFMenuTitle) {
-                _ = composer.openGIFPicker()
+            .registryShortcut("Message: Record Audio", in: hotkeys)
+            .disabled(!hotkeyDispatcher.canPerform("Message: Record Audio"))
+            Button(sendGIFMenuTitle) {
+                _ = hotkeyDispatcher.perform("Message: Send GIF")
             }
-            .keyboardShortcut("g", modifiers: [.command, .shift])
-            .disabled(!composer.canSendGIF)
-            Button(composer.sendStickerMenuTitle) {
-                _ = composer.openStickerPicker()
+            .registryShortcut("Message: Send GIF", in: hotkeys)
+            .disabled(!hotkeyDispatcher.canPerform("Message: Send GIF"))
+            Button(sendStickerMenuTitle) {
+                _ = hotkeyDispatcher.perform("Message: Send Sticker")
             }
-            .keyboardShortcut("s", modifiers: [.command, .option, .shift])
-            .disabled(!composer.canSendSticker)
+            .registryShortcut("Message: Send Sticker", in: hotkeys)
+            .disabled(!hotkeyDispatcher.canPerform("Message: Send Sticker"))
             Divider()
-            Button(conversation.isShowingChatInfo ? String(localized: "Hide Chat Info") : String(localized: "Show Chat Info"),
-                   action: conversation.toggleChatInfo)
-                .keyboardShortcut("i", modifiers: [.command, .shift])
-                .disabled(conversation.roomID == nil)
-            Button(conversation.isShowingCalendar ? String(localized: "Hide Calendar") : String(localized: "Show Calendar"),
+            Button(chatInfoMenuTitle) {
+                _ = hotkeyDispatcher.perform("Toggle Chat Info")
+            }
+            .registryShortcut("Toggle Chat Info", in: hotkeys)
+            .disabled(!hotkeyDispatcher.canPerform("Toggle Chat Info"))
+            Button(calendarMenuTitle,
                    action: conversation.toggleCalendar)
                 .keyboardShortcut("k", modifiers: [.command, .option])
+                .disabled(lifecycle.isLocked)
             Button(String(localized: "Show Sender Profile")) {
-                Task { await conversation.showSenderCardForSelectedMessage() }
+                _ = hotkeyDispatcher.perform("Open User Profile")
             }
-            .keyboardShortcut("o", modifiers: [.command, .shift])
-            .disabled(conversation.roomID == nil)
+            .registryShortcut("Open User Profile", in: hotkeys)
+            .disabled(!hotkeyDispatcher.canPerform("Open User Profile"))
+            Button(String(localized: "Delete Chat…")) {
+                _ = hotkeyDispatcher.perform("Chat: Delete")
+            }
+            .registryShortcut("Chat: Delete", in: hotkeys)
+            .disabled(!hotkeyDispatcher.canPerform("Chat: Delete"))
         }
+    }
+
+    var showRepliesOrScrollCommandID: String {
+        guard !lifecycle.isLocked else { return "Scroll to the bottom of a chat" }
+        return hotkeyDispatcher.showRepliesTarget == nil
+            ? "Scroll to the bottom of a chat"
+            : "Show Replies"
+    }
+
+    var showRepliesOrJumpMenuTitle: String {
+        guard !lifecycle.isLocked else { return String(localized: "Jump to Newest Message") }
+        return hotkeyDispatcher.showRepliesTarget == nil
+            ? String(localized: "Jump to Newest Message")
+            : String(localized: "Show Replies")
+    }
+
+    var sendGIFMenuTitle: String {
+        guard !lifecycle.isLocked else { return String(localized: "Send GIF…") }
+        return composer.sendGIFMenuTitle
+    }
+
+    var sendStickerMenuTitle: String {
+        guard !lifecycle.isLocked else { return String(localized: "Send Sticker…") }
+        return composer.sendStickerMenuTitle
+    }
+
+    var chatInfoMenuTitle: String {
+        guard !lifecycle.isLocked else { return String(localized: "Show Chat Info") }
+        return conversation.isShowingChatInfo ? String(localized: "Hide Chat Info") : String(localized: "Show Chat Info")
+    }
+
+    var calendarMenuTitle: String {
+        guard !lifecycle.isLocked else { return String(localized: "Show Calendar") }
+        return conversation.isShowingCalendar ? String(localized: "Hide Calendar") : String(localized: "Show Calendar")
     }
 
     /// The composer the keys type into: the thread pane's after a click there, else the chat's.
     private var composer: ComposerModel {
-        focus.inPane && conversation.thread.roomID != nil ? conversation.thread.composer : conversation.composer
+        hotkeyDispatcher.activeComposer
     }
 
     /// Format ▸ the formatting keys, on the selection of the composer whose text view has the keyboard in the key
@@ -115,132 +177,13 @@ struct ConversationCommands: Commands {
         return Menu(String(localized: "Format")) {
             ForEach(FormattingBar.order, id: \.self) { kind in
                 Button(FormattingBar.title(of: kind) + (kind == .link ? "…" : "")) {
-                    guard let typing, typing.hasKeyboard else { return }
+                    guard !lifecycle.isLocked, let typing, typing.hasKeyboard else { return }
                     typing.formattingKey(kind, in: typing.selection)
                 }
                 .modifier(FormatShortcut(kind: kind))
-                .disabled(typing == nil)
+                .disabled(typing == nil || lifecycle.isLocked)
             }
         }
-    }
-
-    /// The message the keys act on, and where it was selected.
-    private var selected: (id: String, source: MessageSource)? {
-        focus.target(chatSelection: conversation.selectedMessageID)
-    }
-
-    /// The thread root ⌘↓ opens: the message selected in the chat, when it has replies.
-    private var showRepliesTarget: String? {
-        guard let selected, selected.source == .chat,
-              conversation.message(selected.id, from: .chat)?.thread != nil else { return nil }
-        return selected.id
-    }
-
-    private func offers(_ action: MessageAction) -> Bool {
-        guard let selected, let message = conversation.message(selected.id, from: selected.source) else { return false }
-        return conversation.availableActions(for: message).actions.contains(action)
-    }
-
-    /// ⌘T: the selected message, or my last one the chat still lets me edit.
-    private func edit() {
-        if let selected, selected.source == .thread {
-            Task { await messageActions.perform(.edit, on: selected.id, from: .thread) }
-        } else {
-            conversation.editSelectedOrLast()
-        }
-    }
-
-    /// ⌘R: Reply, or where replies are thread replies, Reply in Thread.
-    private func reply() {
-        guard let selected, let message = conversation.message(selected.id, from: selected.source),
-              let action = conversation.replyAction(for: message) else { return }
-        Task { await messageActions.perform(action, on: selected.id, from: selected.source) }
-    }
-
-    /// ⌘⇧R: the quick reaction (Settings ▸ Messages).
-    private func quickReact() {
-        guard let selected else { return }
-        if selected.source == .chat {
-            Task { await conversation.quickReactToSelected() }
-        } else if offers(.react) {
-            let key = conversation.preferences?.quickReaction ?? "❤️"
-            Task { await conversation.react(to: selected.id, key: key) }
-        }
-    }
-
-    /// ⌘⇧F: the forward picker, or "Select a message to forward".
-    private func forward() {
-        if let selected, selected.source == .thread {
-            Task { await messageActions.perform(.forward, on: selected.id, from: .thread) }
-        } else {
-            messageActions.forwardSelected()
-        }
-    }
-
-    /// ⌘⇧H: the selected message's first link, in the browser.
-    private func openLink() {
-        guard let selected else { return }
-        Task { await messageActions.perform(.openFirstLink, on: selected.id, from: selected.source) }
-    }
-
-    private var canDownloadAttachments: Bool {
-        if let lightboxID = conversation.activeLightboxMessageID {
-            return hasDownloadableAttachment(forLightboxID: lightboxID)
-        }
-        guard let selected,
-              let message = conversation.message(selected.id, from: selected.source),
-              !message.viewOnce
-        else {
-            return false
-        }
-        if !message.galleryItems.isEmpty {
-            return message.galleryItems.contains { isLocalMediaStorePath($0.mediaPath) }
-        }
-        return isLocalMediaStorePath(message.mediaPath)
-    }
-
-    /// ⌘D: downloads all local attachments on the selected message (or the active lightbox item).
-    private func downloadAttachments() {
-        let prefs = conversation.preferences ?? ComposerPreferences()
-        if let lightboxID = conversation.activeLightboxMessageID {
-            for case let .message(msg) in conversation.items {
-                if msg.id == lightboxID {
-                    ReceivedFile.downloadAll(on: msg, preferences: prefs)
-                    return
-                }
-                if let item = msg.galleryItems.first(where: { $0.id == lightboxID }),
-                   isLocalMediaStorePath(item.mediaPath) {
-                    let downloader = AttachmentDownloader(preferences: prefs)
-                    _ = try? downloader.download(
-                        sourcePath: item.mediaPath,
-                        suggestedName: item.fileName.isEmpty ? "attachment" : item.fileName,
-                        mimeType: item.mimeType
-                    )
-                    return
-                }
-            }
-        }
-        guard let selected,
-              let message = conversation.message(selected.id, from: selected.source)
-        else {
-            return
-        }
-        ReceivedFile.downloadAll(on: message, preferences: prefs)
-    }
-
-    private func hasDownloadableAttachment(forLightboxID lightboxID: String) -> Bool {
-        for case let .message(msg) in conversation.items where !msg.viewOnce {
-            if msg.id == lightboxID {
-                if !msg.galleryItems.isEmpty {
-                    return msg.galleryItems.contains { isLocalMediaStorePath($0.mediaPath) }
-                }
-                return isLocalMediaStorePath(msg.mediaPath)
-            }
-            if let item = msg.galleryItems.first(where: { $0.id == lightboxID }) {
-                return isLocalMediaStorePath(item.mediaPath)
-            }
-        }
-        return false
     }
 }
 

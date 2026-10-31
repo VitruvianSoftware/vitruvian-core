@@ -17,6 +17,7 @@ final class ViewSnapshotTests: XCTestCase {
     private var suites: [String] = []
 
     override func tearDown() async throws {
+        AppLockGate.shared.resetForTesting()
         for suite in suites { UserDefaults.standard.removePersistentDomain(forName: suite) }
         suites = []
     }
@@ -53,6 +54,38 @@ final class ViewSnapshotTests: XCTestCase {
             XCTAssertGreaterThan(size.width, 100, file: file, line: line)
             XCTAssertGreaterThan(size.height, 30, file: file, line: line)
         }
+    }
+
+    private func assertLightAndDarkSnapshot<V: View>(
+        _ name: String,
+        width: CGFloat,
+        height: CGFloat? = nil,
+        prepare: @MainActor (NSView) -> Void = { _ in },
+        file: StaticString = #filePath,
+        line: UInt = #line,
+        @ViewBuilder _ view: () -> V
+    ) throws {
+        let sizes = try Snapshot.render(name, width: width, height: height, prepare: prepare, view)
+        check(sizes, file: file, line: line)
+        let lightURL = Snapshot.directory.appendingPathComponent("\(name)-light.png")
+        let darkURL = Snapshot.directory.appendingPathComponent("\(name)-dark.png")
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: lightURL.path),
+            "Expected light snapshot PNG \(name)-light.png to be rendered",
+            file: file,
+            line: line
+        )
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: darkURL.path),
+            "Expected dark snapshot PNG \(name)-dark.png to be rendered",
+            file: file,
+            line: line
+        )
+        let lightData = try Data(contentsOf: lightURL)
+        let darkData = try Data(contentsOf: darkURL)
+        XCTAssertFalse(lightData.isEmpty, "Light snapshot PNG \(name)-light.png must not be empty", file: file, line: line)
+        XCTAssertFalse(darkData.isEmpty, "Dark snapshot PNG \(name)-dark.png must not be empty", file: file, line: line)
+        XCTAssertNotEqual(lightData, darkData, "Light and dark snapshots for \(name) must differ in appearance", file: file, line: line)
     }
 
     // MARK: Bubbles
@@ -2836,6 +2869,1737 @@ final class ViewSnapshotTests: XCTestCase {
             "GIFAttachmentView must populate @State image once .task(id:) completes"
         )
     }
+
+    // MARK: - Part 4.6 Task 6: App Lock Overlay
+
+    func testAppLockOverlayLightAndDark() async throws {
+        let model = SystemLifecycleModel(
+            loginItemService: SnapshotLoginItemService(),
+            biometricService: SnapshotBiometricService(),
+            defaults: defaults()
+        )
+        model.autoLockEnabled = true
+        model.lockNow()
+        check(try Snapshot.render("app-lock-overlay", width: 520, height: 360) {
+            AppLockOverlay(model: model)
+        })
+    }
+
+    func testNotifierRestartNotificationCenterClearsDeliveredKillsDaemonAndReRequestsSettings() {
+        let notifier = Notifier()
+        var openedURLs: [URL] = []
+        var removedAllCount = 0
+        var killedProcesses: [(URL, [String])] = []
+        var requestedSettingsCount = 0
+
+        notifier.openURLHandler = { openedURLs.append($0) }
+        notifier.removeAllDeliveredHandler = { removedAllCount += 1 }
+        notifier.runProcessHandler = { url, args in killedProcesses.append((url, args)) }
+        notifier.requestSettingsHandler = { requestedSettingsCount += 1 }
+
+        notifier.openSystemNotificationSettings()
+        XCTAssertEqual(
+            openedURLs.map(\.absoluteString),
+            ["x-apple.systempreferences:com.apple.Notifications-Settings.extension"]
+        )
+
+        notifier.restartNotificationCenter()
+        XCTAssertEqual(removedAllCount, 1, "restartNotificationCenter must remove all delivered notifications")
+        XCTAssertEqual(killedProcesses.count, 1, "restartNotificationCenter must invoke /usr/bin/killall NotificationCenter")
+        XCTAssertEqual(killedProcesses.first?.0.path, "/usr/bin/killall")
+        XCTAssertEqual(killedProcesses.first?.1, ["NotificationCenter"])
+        XCTAssertEqual(requestedSettingsCount, 1, "restartNotificationCenter must re-request notification settings")
+    }
+
+    // MARK: - Part 4.6 Task 8: Detached Chat Window Light & Dark Snapshots and Lock Overlay
+
+    func testDetachedChatWindowLightAndDarkAndLockOverlay() throws {
+        let app = offlineApp()
+        let inboxPrefs = InboxPreferences(defaults: defaults())
+        let composerPrefs = ComposerPreferences(defaults: defaults())
+        let mainInbox = InboxModel(appModel: app, preferences: inboxPrefs)
+        let row = Fixture.row(
+            "!dm-ann:courier.local",
+            "Ann Example",
+            network: "signal",
+            direct: true,
+            ts: 5,
+            preview: "See you at the trailhead at eight!",
+            mine: false
+        )
+        mainInbox.setSnapshotRowsForTesting([row])
+
+        let lifecycle = SystemLifecycleModel(
+            loginItemService: SnapshotLoginItemService(),
+            biometricService: SnapshotBiometricService(),
+            defaults: defaults()
+        )
+        let registry = DetachedWindowRegistry(
+            appModel: app,
+            mainInbox: mainInbox,
+            lifecycle: lifecycle,
+            inboxPreferences: inboxPrefs,
+            composerPreferences: composerPrefs
+        )
+        let target = DetachedWindowTarget.chat(roomID: row.roomID)
+        registry.open(target)
+        let session = try XCTUnwrap(registry.session(for: target))
+
+        let events = [
+            Fixture.text("$1", "Morning! Are we still meeting at the trailhead?", mine: true, ts: 15, delivered: true),
+            Fixture.text("$2", "See you at the trailhead at eight!", mine: false, ts: 5, name: "Ann Example"),
+        ]
+        session.conversation.setSnapshotStateForTesting(
+            roomID: row.roomID,
+            items: Fixture.items(events, isDirect: true),
+            row: row,
+            features: Fixture.features,
+            lastOutgoingID: "$1"
+        )
+        session.conversation.composer.sender = SnapshotMessageSender()
+        session.conversation.composer.text = "On my way with coffee!"
+
+        check(try Snapshot.render("detached-chat-window", width: 640, height: 480) {
+            DetachedChatWindowView(session: session, lifecycle: lifecycle)
+        })
+
+        // Verify locking the app covers the detached chat window with AppLockOverlay.
+        XCTAssertFalse(registry.showsLockOverlay(for: target))
+        lifecycle.lockApp()
+        XCTAssertTrue(registry.showsLockOverlay(for: target))
+        check(try Snapshot.render("detached-chat-window-locked", width: 640, height: 480) {
+            DetachedChatWindowView(session: session, lifecycle: lifecycle)
+        })
+    }
+
+    // MARK: - Part 4.6 Task 9: Shortcuts Sheet (`⌘/`) and Recorder Recording & Conflict Snapshots
+
+    func testHotkeysPaneAndShortcutsSheetSnapshots() throws {
+        let lifecycle = SystemLifecycleModel(
+            loginItemService: SnapshotLoginItemService(),
+            biometricService: SnapshotBiometricService(),
+            defaults: defaults()
+        )
+
+        // 1. Keyboard Shortcuts reference sheet (⌘/)
+        let sheetRegistry = HotkeyRegistry(defaults: defaults())
+        try assertLightAndDarkSnapshot("keyboard-shortcuts-sheet", width: 760, height: 540) {
+            KeyboardShortcutsSheet(registry: sheetRegistry)
+        }
+
+        // 2. Shortcut recorder in recording state ("Press keys…")
+        let recordingRegistry = HotkeyRegistry(defaults: defaults())
+        try assertLightAndDarkSnapshot("hotkeys-recorder-recording", width: 620, height: 520) {
+            let _ = recordingRegistry.beginRecording(for: "Search: Room")
+            HotkeysSettingsPane(registry: recordingRegistry, lifecycle: lifecycle)
+        }
+
+        // 3. Shortcut recorder in conflict state ("⌘K is already used by Search")
+        let conflictRegistry = HotkeyRegistry(defaults: defaults())
+        _ = conflictRegistry.record(KeyChord(key: "k", command: true), for: "Search: Room")
+        try assertLightAndDarkSnapshot("hotkeys-recorder-conflict", width: 620, height: 520) {
+            HotkeysSettingsPane(registry: conflictRegistry, lifecycle: lifecycle)
+        }
+    }
+
+    func testPictureInPictureAndQuickLookCloseOnAppLock() throws {
+        final class SpyQuickLookPanel: QuickLookPanelControlling {
+            var isVisible = false
+            var presentCount = 0
+            var closeCount = 0
+            func presentPreview(for _: AnyObject) {
+                isVisible = true
+                presentCount += 1
+            }
+            func closePreview() {
+                isVisible = false
+                closeCount += 1
+            }
+        }
+
+        final class SpyPiPController: PictureInPictureControlling {
+            var isPresentingPiP = true
+            var pauseAndCloseCount = 0
+            func pauseAndCloseForAppLock() {
+                isPresentingPiP = false
+                pauseAndCloseCount += 1
+            }
+        }
+
+        let tempMediaURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("courier-lock-pip-\(UUID().uuidString).mp4")
+        try Data("fake-mp4".utf8).write(to: tempMediaURL)
+        defer { try? FileManager.default.removeItem(at: tempMediaURL) }
+
+        let pipController = PictureInPictureController.shared
+        pipController.show(
+            PiPVideoItem(
+                messageID: "$pip-lock",
+                roomID: "!r1",
+                mediaPath: tempMediaURL.path,
+                title: "Private Video",
+                durationMS: 10000,
+                elapsedMS: 2000,
+                isPlaying: true
+            )
+        )
+        XCTAssertNotNil(pipController.activeItem, "PiP must be active before locking")
+
+        let spyQLPanel = SpyQuickLookPanel()
+        let quickLook = QuickLookPreviewCoordinator(panelController: spyQLPanel)
+        quickLook.preview(url: tempMediaURL)
+        XCTAssertTrue(spyQLPanel.isVisible, "Quick Look panel must be visible before locking")
+        XCTAssertEqual(quickLook.numberOfPreviewItems(in: nil), 1)
+
+        let spyPiP = SpyPiPController()
+        _ = spyPiP
+
+        let lifecycle = SystemLifecycleModel(
+            defaults: defaults(),
+            loginItem: SnapshotLoginItemService(),
+            biometrics: SnapshotBiometricService()
+        )
+        lifecycle.lockNow()
+        XCTAssertTrue(lifecycle.isLocked)
+
+        XCTAssertNil(pipController.activeItem, "PictureInPictureController must pause and close on app lock")
+        XCTAssertFalse(spyQLPanel.isVisible, "QuickLookPreviewCoordinator must close QLPreviewPanel on app lock")
+        XCTAssertEqual(spyQLPanel.closeCount, 1, "QuickLookPreviewCoordinator must invoke closePreview() on app lock")
+        XCTAssertEqual(quickLook.numberOfPreviewItems(in: nil), 0, "QuickLookPreviewCoordinator must clear previewURL on app lock")
+    }
+
+    func testWindowTitlesMenuItemTitlesAndNotifierClearAllWhileLocked() async throws {
+        final class AlwaysPassBiometrics: BiometricAuthService {
+            func canEvaluateBiometricsOrWatch() -> Bool { true }
+            func authenticate(reason _: String) async throws -> Bool { true }
+        }
+        final class FakeLoginCaller: LoginCalling, @unchecked Sendable {
+            func start(network _: String, flow _: String, another _: Bool, accountID _: String?) async throws -> LoginStep {
+                throw EngineError.notConnected
+            }
+            func submit(loginID _: String, values _: [String: String]) async throws -> LoginStep {
+                throw EngineError.notConnected
+            }
+            func wait(loginID _: String) async throws -> LoginStep {
+                throw EngineError.notConnected
+            }
+            func cancel(loginID _: String) async throws {}
+        }
+        final class MemoryCredentials: CredentialStore, @unchecked Sendable {
+            var data: [String: String] = [:]
+            func read(account: String) throws -> String? { data[account] }
+            func write(_ value: String, account: String) throws { data[account] = value }
+            func delete(account: String) throws { data.removeValue(forKey: account) }
+        }
+
+        let testDefaults = defaults()
+        let lifecycle = SystemLifecycleModel(
+            defaults: testDefaults,
+            loginItem: SnapshotLoginItemService(),
+            biometrics: AlwaysPassBiometrics()
+        )
+        let appModel = offlineApp()
+        let inboxPrefs = InboxPreferences(defaults: testDefaults)
+        let composerPrefs = ComposerPreferences(defaults: testDefaults)
+        let inbox = InboxModel(appModel: appModel, preferences: inboxPrefs)
+        var row = Fixture.row(
+            "!r1",
+            "Alice Secret",
+            network: "signal",
+            direct: true,
+            ts: 5,
+            preview: "Confidential",
+            mine: false
+        )
+        row.pinned = true
+        row.muted = true
+        row.archived = true
+        row.unread = 0
+        inbox.setSnapshotRowsForTesting([row])
+
+        let spaces = SpacesModel(appModel: appModel, inbox: inbox, lifecycle: lifecycle)
+        spaces.setSpacesForTesting([
+            Space(spaceID: "inbox", kind: .builtin, title: "Inbox"),
+            Space(spaceID: "work", kind: .account, title: "Secret Work Space", network: "signal"),
+        ])
+
+        final class NoopPasteboard: TextPasteboard {
+            func setString(_: String) {}
+        }
+        let labels = LabelsModel(appModel: appModel, lifecycle: lifecycle)
+        let conversation = ConversationModel(appModel: appModel, preferences: composerPrefs)
+        let messageActions = MessageActionsModel(
+            conversation: conversation,
+            appModel: appModel,
+            preferences: composerPrefs,
+            pasteboard: NoopPasteboard()
+        )
+        let focus = MessageFocus()
+        let ui = InboxUI()
+        let search = SearchModel(
+            appModel: appModel,
+            recents: RecentSearches(defaults: testDefaults),
+            open: { _ in }
+        )
+        let login = LoginFlowModel(
+            caller: FakeLoginCaller(),
+            accounts: { appModel.accounts },
+            reloadAccounts: {},
+            credentials: MemoryCredentials(),
+            builtInCredentials: { nil },
+            restartEngine: {}
+        )
+        let hotkeys = HotkeyRegistry(defaults: testDefaults, isAppLocked: { lifecycle.isLocked })
+        let menuCoordinator = AppMenuCoordinator(inbox: inbox, lifecycle: lifecycle)
+
+        let detachedRegistry = DetachedWindowRegistry(
+            appModel: appModel,
+            mainInbox: inbox,
+            lifecycle: lifecycle,
+            inboxPreferences: inboxPrefs,
+            composerPreferences: composerPrefs
+        )
+        let detachedManager = DetachedWindowManager(
+            registry: detachedRegistry,
+            appModel: appModel,
+            mainInbox: inbox,
+            spaces: spaces,
+            lifecycle: lifecycle
+        )
+        detachedRegistry.open(.chat(roomID: "!r1"))
+        detachedRegistry.open(.space(spaceID: "work"))
+        detachedRegistry.open(.thread(roomID: "!r1", rootEventID: "$root1"))
+
+        guard let chatWindow = detachedManager.windows[.chat(roomID: "!r1")] else {
+            return XCTFail("Missing detached chat window")
+        }
+        guard let spaceWindow = detachedManager.windows[.space(spaceID: "work")] else {
+            return XCTFail("Missing detached space window")
+        }
+        guard let threadWindow = detachedManager.windows[.thread(roomID: "!r1", rootEventID: "$root1")] else {
+            return XCTFail("Missing detached thread window")
+        }
+
+        XCTAssertEqual(chatWindow.title, "Alice Secret")
+        XCTAssertEqual(spaceWindow.title, "Secret Work Space")
+        XCTAssertEqual(threadWindow.title, "Thread — Alice Secret")
+
+        // Create auxiliary NSWindows hosting LockableWindowContent for MainWindow, ChatInfoWindow, and LabelEditorWindow.
+        let mainNSWindow = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        mainNSWindow.isReleasedWhenClosed = false
+        mainNSWindow.contentViewController = NSHostingController(
+            rootView: LockableWindowContent(lifecycle: lifecycle) {
+                Text("Main")
+            }
+        )
+        mainNSWindow.contentView?.layoutSubtreeIfNeeded()
+        mainNSWindow.title = "Courier"
+        mainNSWindow.subtitle = "Connected"
+
+        let chatInfoNSWindow = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 340, height: 620),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        chatInfoNSWindow.isReleasedWhenClosed = false
+        chatInfoNSWindow.contentViewController = NSHostingController(
+            rootView: LockableWindowContent(lifecycle: lifecycle) {
+                ChatInfoWindow(roomID: "!r1", conversation: conversation)
+            }
+        )
+        chatInfoNSWindow.contentView?.layoutSubtreeIfNeeded()
+        chatInfoNSWindow.title = "Chat Info — Alice Secret"
+
+        let labelEditorNSWindow = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 320),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        labelEditorNSWindow.isReleasedWhenClosed = false
+        labelEditorNSWindow.contentViewController = NSHostingController(
+            rootView: LockableWindowContent(lifecycle: lifecycle) {
+                LabelEditorWindow(target: .new(applyTo: []), labels: labels, spaces: spaces, inbox: inbox)
+            }
+        )
+        labelEditorNSWindow.contentView?.layoutSubtreeIfNeeded()
+        defer {
+            detachedRegistry.closeAll()
+            mainNSWindow.close()
+            chatInfoNSWindow.close()
+            labelEditorNSWindow.close()
+        }
+
+        // Configure active chat/inbox state before locking to test LEAK-3 menu item titles.
+        inbox.select("!r1")
+        inbox.beginSelecting()
+        inbox.toggleUnreadFilter()
+        inboxPrefs.showSpaceBar = true
+        menuCoordinator.isSidebarVisible = true
+        conversation.isEntitled = { _ in true }
+        conversation.isShowingChatInfo = true
+        conversation.isShowingCalendar = true
+        let rootEvent = Fixture.text(
+            "$root1",
+            "Thread root",
+            mine: false,
+            ts: 60,
+            thread: ThreadSummary(replies: 2, lastTS: Fixture.millis(5), lastSenders: ["Bob"])
+        )
+        let restrictedFeatures = ChatFeatures(
+            reply: true,
+            thread: true,
+            edit: true,
+            unsend: true,
+            source: .stored,
+            canDelete: true,
+            gifFeatures: FileKindFeatures(supported: false),
+            stickerFeatures: FileKindFeatures(supported: false)
+        )
+        conversation.setSnapshotStateForTesting(
+            roomID: "!r1",
+            items: Fixture.items([rootEvent], isDirect: true),
+            row: row,
+            features: restrictedFeatures
+        )
+        conversation.composer.open("!r1")
+        conversation.composer.network = "signal"
+        conversation.composer.features = restrictedFeatures
+        conversation.selectedMessageID = "$root1"
+
+        let dispatcher = HotkeyDispatcher(
+            inbox: inbox,
+            spaces: spaces,
+            conversation: conversation,
+            messageActions: messageActions,
+            search: search,
+            lifecycle: lifecycle,
+            menuCoordinator: menuCoordinator,
+            focus: focus,
+            hotkeys: hotkeys
+        )
+        _ = dispatcher.perform("Toggle Incognito Mode")
+        let inboxCommands = InboxCommands(
+            inbox: inbox,
+            login: login,
+            spaces: spaces,
+            preferences: inboxPrefs,
+            ui: ui,
+            search: search,
+            conversation: conversation,
+            lifecycle: lifecycle,
+            menuCoordinator: menuCoordinator,
+            minimizeToMenuBar: {},
+            hotkeys: hotkeys,
+            hotkeyDispatcher: dispatcher
+        )
+        let conversationCommands = ConversationCommands(
+            conversation: conversation,
+            chatComposer: conversation.composer,
+            paneComposer: conversation.thread.composer,
+            messageActions: messageActions,
+            focus: focus,
+            hotkeys: hotkeys,
+            hotkeyDispatcher: dispatcher,
+            lifecycle: lifecycle
+        )
+
+        // LEAK-2: Verify Notifier.clearAll() invokes removeAllDeliveredHandler.
+        let notifier = Notifier()
+        var removeAllDeliveredCalled = 0
+        notifier.removeAllDeliveredHandler = {
+            removeAllDeliveredCalled += 1
+        }
+        notifier.clearAll()
+        XCTAssertEqual(
+            removeAllDeliveredCalled,
+            1,
+            "Notifier.clearAll() must invoke removeAllDeliveredHandler (UNUserNotificationCenter.removeAllDeliveredNotifications)"
+        )
+
+        // Lock the app and verify LEAK-1 (window titles) and LEAK-3 (menu item titles).
+        lifecycle.lockNow()
+        try await Task.sleep(nanoseconds: 20_000_000)
+
+        // LEAK-1 assertions: every window title while locked must be plain "Courier" with empty subtitle.
+        XCTAssertEqual(mainNSWindow.title, "Courier", "Main window title must be 'Courier' while locked")
+        XCTAssertEqual(mainNSWindow.subtitle, "", "Main window subtitle must be empty while locked")
+        XCTAssertEqual(chatWindow.title, "Courier", "Detached chat window title must be 'Courier' while locked")
+        XCTAssertEqual(spaceWindow.title, "Courier", "Detached space window title must be 'Courier' while locked")
+        XCTAssertEqual(threadWindow.title, "Courier", "Detached thread window title must be 'Courier' while locked")
+        XCTAssertEqual(chatInfoNSWindow.title, "Courier", "Chat Info window title must be 'Courier' while locked")
+        XCTAssertEqual(labelEditorNSWindow.title, "Courier", "Label Editor window title must be 'Courier' while locked")
+
+        // LEAK-3 assertions: menu item titles while locked must not reveal chat or inbox state.
+        XCTAssertEqual(inboxCommands.spaceBarMenuTitle, "Show Space Bar", "Space Bar menu item title must not leak state while locked")
+        XCTAssertEqual(inboxCommands.sidebarMenuTitle, "Show Sidebar", "Sidebar menu item title must not leak state while locked")
+        XCTAssertEqual(inboxCommands.incognitoMenuTitle, "Turn On Incognito Mode", "Incognito menu item title must not leak state while locked")
+        XCTAssertEqual(inboxCommands.archiveMenuTitle, "Archive", "Archive menu item title must not leak chat archived state while locked")
+        XCTAssertEqual(inboxCommands.markReadMenuTitle, "Mark as Read", "Mark as Read menu item title must not leak chat read state while locked")
+        XCTAssertEqual(inboxCommands.muteMenuTitle, "Mute Chat", "Mute menu item title must not leak chat muted state while locked")
+        XCTAssertEqual(inboxCommands.pinMenuTitle, "Pin", "Pin menu item title must not leak chat pinned state while locked")
+        XCTAssertEqual(inboxCommands.selectingMenuTitle, "Begin Selecting", "Selecting menu item title must not leak selection state while locked")
+        XCTAssertEqual(inboxCommands.unreadFilterMenuTitle, "Show Only Unread Chats", "Unread filter menu item title must not leak filter state while locked")
+        XCTAssertEqual(conversationCommands.showRepliesOrJumpMenuTitle, "Jump to Newest Message", "Show Replies menu item title must not leak thread selection while locked")
+        XCTAssertEqual(conversationCommands.sendGIFMenuTitle, "Send GIF…", "Send GIF menu item title must not leak chat network while locked")
+        XCTAssertEqual(conversationCommands.sendStickerMenuTitle, "Send Sticker…", "Send Sticker menu item title must not leak chat network while locked")
+        XCTAssertEqual(conversationCommands.chatInfoMenuTitle, "Show Chat Info", "Chat Info menu item title must not leak pane state while locked")
+        XCTAssertEqual(conversationCommands.calendarMenuTitle, "Show Calendar", "Calendar menu item title must not leak pane state while locked")
+
+        // Unlock and verify LEAK-1 window titles come back.
+        _ = await lifecycle.unlockWithTouchID()
+        try await Task.sleep(nanoseconds: 20_000_000)
+        XCTAssertEqual(chatWindow.title, "Alice Secret", "Detached chat window title must be restored on unlock")
+        XCTAssertEqual(spaceWindow.title, "Secret Work Space", "Detached space window title must be restored on unlock")
+        XCTAssertEqual(threadWindow.title, "Thread — Alice Secret", "Detached thread window title must be restored on unlock")
+        XCTAssertEqual(chatInfoNSWindow.title, "Chat Info — Alice Secret", "Chat Info window title must be restored on unlock")
+        XCTAssertEqual(labelEditorNSWindow.title, "New Label", "Label Editor window title must be restored on unlock")
+    }
+
+    // MARK: - Milestone 4.6 Tasks 10, 11, 12: Accounts, Bridges, Problem Report, and Settings Shell with Search
+
+    func testMilestone46SettingsAccountsBridgesProblemReportAndSearchLightAndDark() throws {
+        struct StubDockTile: DockTileService {
+            func isAppInDock(bundleIdentifier: String) -> Bool {
+                bundleIdentifier == "net.whatsapp.WhatsApp" || bundleIdentifier == "ru.keepcoder.Telegram"
+            }
+            func removeAppFromDock(bundleIdentifier _: String) -> Bool { true }
+        }
+        final class StubPasteboard: TextPasteboard {
+            func setString(_: String) {}
+        }
+
+        let testDefaults = defaults()
+        let app = offlineApp()
+        let lifecycle = SystemLifecycleModel(
+            loginItemService: SnapshotLoginItemService(),
+            biometricService: SnapshotBiometricService(),
+            defaults: testDefaults
+        )
+        let inboxPrefs = InboxPreferences(defaults: testDefaults)
+        let composerPrefs = ComposerPreferences(defaults: testDefaults)
+        let notificationPrefs = NotificationPreferences(defaults: testDefaults)
+        let dockPrefs = DockAndTrayPreferences(defaults: testDefaults)
+        let quickReplies = QuickReplies(defaults: testDefaults)
+        try quickReplies.add(title: "omw", text: "On my way, {first_name}!")
+        try quickReplies.add(title: "intro", text: "Hi {full_name} ({username}), my number is {phone_number}.")
+        let hotkeys = HotkeyRegistry(defaults: testDefaults, isAppLocked: { lifecycle.isLocked })
+        let inbox = InboxModel(appModel: app, preferences: inboxPrefs, lifecycle: lifecycle)
+        let spaces = SpacesModel(appModel: app, inbox: inbox, lifecycle: lifecycle)
+        let labels = LabelsModel(appModel: app, lifecycle: lifecycle)
+        let conv = conversation(composerPrefs, entitled: true)
+        let login = LoginFlowModel(
+            caller: SnapshotLoginCaller(),
+            accounts: { app.accounts },
+            reloadAccounts: {},
+            credentials: SnapshotCredentials(),
+            builtInCredentials: { nil },
+            restartEngine: {}
+        )
+
+        let bridgesFixtureJSON = """
+        [
+          {
+            "network": "telegram",
+            "display_name": "Telegram",
+            "bridge_id": "telegram",
+            "module_path": "go.mau.fi/mautrix-telegram",
+            "version": "v0.2609.0",
+            "mautrix_version": "v0.31.0",
+            "state": "CONNECTED",
+            "started_at": 1761400000000,
+            "accounts": [
+              {
+                "network": "telegram",
+                "display_name": "Telegram",
+                "flows": ["phone", "qr"],
+                "state": "CONNECTED",
+                "error": "",
+                "remote_name": "@alice_example",
+                "not_started": "",
+                "syncs": ["messages"],
+                "logins": [
+                  {
+                    "account_id": "tg-1",
+                    "remote_name": "@alice_example",
+                    "state": "CONNECTED",
+                    "error": ""
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "network": "whatsapp",
+            "display_name": "WhatsApp",
+            "bridge_id": "whatsapp",
+            "module_path": "go.mau.fi/mautrix-whatsapp",
+            "version": "v0.2609.0",
+            "mautrix_version": "v0.31.0",
+            "state": "CONNECTED",
+            "started_at": 1761400000000,
+            "accounts": [
+              {
+                "network": "whatsapp",
+                "display_name": "WhatsApp",
+                "flows": ["qr", "phone"],
+                "state": "CONNECTED",
+                "error": "",
+                "remote_name": "+1 555 010 0101",
+                "not_started": "",
+                "syncs": ["messages"],
+                "logins": [
+                  {
+                    "account_id": "wa-1",
+                    "remote_name": "+1 555 010 0101",
+                    "state": "CONNECTED",
+                    "error": ""
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "network": "slack",
+            "display_name": "Slack",
+            "bridge_id": "slack",
+            "module_path": "go.mau.fi/mautrix-slack",
+            "version": "v0.2609.1",
+            "mautrix_version": "v0.31.0",
+            "state": "BAD_CREDENTIALS",
+            "error": "token_revoked",
+            "message": "Your Slack session expired. Reconnect to continue receiving messages.",
+            "started_at": 1761400000000,
+            "accounts": [
+              {
+                "network": "slack",
+                "display_name": "Slack",
+                "flows": ["token"],
+                "state": "BAD_CREDENTIALS",
+                "error": "token_revoked",
+                "message": "Your Slack session expired.",
+                "remote_name": "Example Workspace",
+                "not_started": "",
+                "syncs": ["messages"],
+                "logins": [
+                  {
+                    "account_id": "sl-1",
+                    "remote_name": "Example Workspace",
+                    "state": "BAD_CREDENTIALS",
+                    "error": "token_revoked",
+                    "message": "Your Slack session expired."
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+        """
+        let bridges = try JSONDecoder().decode([BridgeInfo].self, from: Data(bridgesFixtureJSON.utf8))
+        let subAccountsJSON = """
+        [
+          {
+            "network": "telegram",
+            "account_id": "tg-1",
+            "sub_id": "!folder1:courier.local",
+            "title": "Work Chats",
+            "avatar_uri": "",
+            "kind": "space",
+            "enabled": true,
+            "show_in_inbox": "all"
+          },
+          {
+            "network": "telegram",
+            "account_id": "tg-1",
+            "sub_id": "!folder2:courier.local",
+            "title": "Muted Channels",
+            "avatar_uri": "",
+            "kind": "space",
+            "enabled": false,
+            "show_in_inbox": "none"
+          },
+          {
+            "network": "telegram",
+            "account_id": "tg-1",
+            "sub_id": "!bot1:courier.local",
+            "title": "Courier Helper Bot",
+            "avatar_uri": "",
+            "kind": "bot",
+            "enabled": true,
+            "show_in_inbox": "dms"
+          }
+        ]
+        """
+        let subAccounts = try JSONDecoder().decode([SubAccountItem].self, from: Data(subAccountsJSON.utf8))
+
+        let accountsModel = AccountsAndBridgesModel(
+            appModel: app,
+            dockTileService: StubDockTile(),
+            pasteboard: StubPasteboard(),
+            lifecycle: lifecycle
+        )
+        accountsModel.setSnapshotStateForTesting(
+            bridges: bridges,
+            subAccountsByKey: ["telegram:tg-1": subAccounts],
+            selectedAccountKey: "telegram:tg-1",
+            expandedBridgeNetworks: ["whatsapp", "slack"]
+        )
+
+        // 1. Accounts pane (Telegram selected with Folders & Bots + Dock cleanup + Space settings)
+        check(try Snapshot.render("settings-accounts", width: 760, height: 640) {
+            AccountsSettingsPane(
+                model: accountsModel,
+                spaces: spaces,
+                notifications: notificationPrefs,
+                onAddAccount: {},
+                onReconnect: { _, _ in }
+            )
+        })
+
+        // 2. Remove Account confirmation dialog sheet
+        accountsModel.requestRemoveAccount(
+            network: "whatsapp",
+            accountID: "wa-1",
+            remoteName: "+1 555 010 0101",
+            displayName: "WhatsApp"
+        )
+        if let removal = accountsModel.pendingRemoval {
+            check(try Snapshot.render("settings-accounts-remove-confirm", width: 440) {
+                RemoveAccountConfirmationSheet(
+                    confirmation: .constant(removal),
+                    onConfirm: {},
+                    onCancel: {}
+                )
+            })
+        }
+        accountsModel.cancelRemoveAccount()
+
+        // 3. Bridges pane (connected + error state + expanded details)
+        check(try Snapshot.render("settings-bridges", width: 720, height: 620) {
+            BridgesSettingsPane(
+                model: accountsModel,
+                onOpenAccountSettings: { _, _ in },
+                onAddAccount: { _ in }
+            )
+        })
+
+        // 4. Problem Report sheet (with scrubbed JSON + stderr preview & Include Message Details toggle)
+        let diagJSON = """
+        {
+          "protocol_version": 9,
+          "schema_version": 10,
+          "go_version": "go1.26.2",
+          "bridges": \(bridgesFixtureJSON),
+          "scrubbed_stderr": [
+            "{\\"level\\":\\"warn\\",\\"network\\":\\"whatsapp\\",\\"message\\":\\"websocket closed\\",\\"retry_in\\":5}",
+            "panic: runtime error: index out of range",
+            "goroutine 42 [running]:",
+            "apps/desktop/courier/engine/internal/host.(*Manager).Run()",
+            "\\tapps/desktop/courier/engine/internal/host/manager.go:188 +0x120"
+          ],
+          "room_details": {
+            "room_id": "!room1:courier.local",
+            "network": "whatsapp",
+            "is_direct": true
+          },
+          "message_details": {
+            "event_id": "$evt1",
+            "room_id": "!room1:courier.local",
+            "network": "whatsapp",
+            "type": "m.room.message",
+            "ts": 1761401234000,
+            "status": "failed",
+            "status_reason": "[id] not reachable",
+            "has_media": false,
+            "is_redacted": false
+          }
+        }
+        """
+        let exportedDiag = try JSONDecoder().decode(DiagnosticsExportResult.self, from: Data(diagJSON.utf8))
+        let reportModel = ProblemReportModel(
+            appModel: app,
+            contextRoomID: "!room1:courier.local",
+            contextEventID: "$evt1"
+        )
+        reportModel.descriptionText = "Sending a message in WhatsApp failed right after waking my Mac from sleep."
+        reportModel.includeMessageDetails = true
+        reportModel.setSnapshotStateForTesting(diagnostics: exportedDiag)
+
+        check(try Snapshot.render("problem-report-sheet", width: 580, height: 620) {
+            ProblemReportSheet(model: reportModel, pasteboard: StubPasteboard(), onDismiss: {})
+        })
+
+        // 5. Two-column Settings shell with active search results ("delay" matching suggestions) and highlighted target
+        let nav = SettingsNavigationModel(selectedPane: .notifications)
+        nav.searchQuery = "delay"
+        nav.highlightedSettingID = "notifications.delay"
+        check(try Snapshot.render("settings-window-search", width: 840, height: 640) {
+            SettingsWindow(
+                navigation: nav,
+                app: app,
+                inbox: inbox,
+                spaces: spaces,
+                labels: labels,
+                conversation: conv,
+                inboxPreferences: inboxPrefs,
+                composerPreferences: composerPrefs,
+                notificationPreferences: notificationPrefs,
+                quickReplies: quickReplies,
+                hotkeys: hotkeys,
+                lifecycle: lifecycle,
+                dockPreferences: dockPrefs,
+                accountsAndBridges: accountsModel,
+                loginFlow: login,
+                problemReport: reportModel
+            )
+        })
+
+        // 6. Settings shell showing Appearance, Notifications, Quick Replies, and About panes
+        let appearanceNav = SettingsNavigationModel(selectedPane: .appearance)
+        check(try Snapshot.render("settings-appearance", width: 840, height: 640) {
+            SettingsWindow(
+                navigation: appearanceNav,
+                app: app,
+                inbox: inbox,
+                spaces: spaces,
+                labels: labels,
+                conversation: conv,
+                inboxPreferences: inboxPrefs,
+                composerPreferences: composerPrefs,
+                notificationPreferences: notificationPrefs,
+                quickReplies: quickReplies,
+                hotkeys: hotkeys,
+                lifecycle: lifecycle,
+                dockPreferences: dockPrefs,
+                accountsAndBridges: accountsModel,
+                loginFlow: login,
+                problemReport: reportModel
+            )
+        })
+
+        let notifNav = SettingsNavigationModel(selectedPane: .notifications)
+        check(try Snapshot.render("settings-notifications", width: 840, height: 640) {
+            SettingsWindow(
+                navigation: notifNav,
+                app: app,
+                inbox: inbox,
+                spaces: spaces,
+                labels: labels,
+                conversation: conv,
+                inboxPreferences: inboxPrefs,
+                composerPreferences: composerPrefs,
+                notificationPreferences: notificationPrefs,
+                quickReplies: quickReplies,
+                hotkeys: hotkeys,
+                lifecycle: lifecycle,
+                dockPreferences: dockPrefs,
+                accountsAndBridges: accountsModel,
+                loginFlow: login,
+                problemReport: reportModel
+            )
+        })
+
+        let quickRepliesNav = SettingsNavigationModel(selectedPane: .quickReplies)
+        check(try Snapshot.render("settings-quick-replies", width: 840, height: 580) {
+            SettingsWindow(
+                navigation: quickRepliesNav,
+                app: app,
+                inbox: inbox,
+                spaces: spaces,
+                labels: labels,
+                conversation: conv,
+                inboxPreferences: inboxPrefs,
+                composerPreferences: composerPrefs,
+                notificationPreferences: notificationPrefs,
+                quickReplies: quickReplies,
+                hotkeys: hotkeys,
+                lifecycle: lifecycle,
+                dockPreferences: dockPrefs,
+                accountsAndBridges: accountsModel,
+                loginFlow: login,
+                problemReport: reportModel
+            )
+        })
+
+        let aboutNav = SettingsNavigationModel(selectedPane: .about)
+        check(try Snapshot.render("settings-about", width: 840, height: 600) {
+            SettingsWindow(
+                navigation: aboutNav,
+                app: app,
+                inbox: inbox,
+                spaces: spaces,
+                labels: labels,
+                conversation: conv,
+                inboxPreferences: inboxPrefs,
+                composerPreferences: composerPrefs,
+                notificationPreferences: notificationPrefs,
+                quickReplies: quickReplies,
+                hotkeys: hotkeys,
+                lifecycle: lifecycle,
+                dockPreferences: dockPrefs,
+                accountsAndBridges: accountsModel,
+                loginFlow: login,
+                problemReport: reportModel
+            )
+        })
+    }
+
+    func testInboxListAndSearchRowsObserveComposerPreferencesTimeFormat() throws {
+        let testDefaults = defaults()
+        let app = offlineApp()
+        let lifecycle = SystemLifecycleModel(
+            loginItemService: SnapshotLoginItemService(),
+            biometricService: SnapshotBiometricService(),
+            defaults: testDefaults
+        )
+        let inboxPrefs = InboxPreferences(defaults: testDefaults)
+        let composerPrefs = ComposerPreferences(defaults: testDefaults)
+        let inbox = InboxModel(appModel: app, preferences: inboxPrefs, lifecycle: lifecycle)
+        let spaces = SpacesModel(appModel: app, inbox: inbox, lifecycle: lifecycle)
+        let ui = InboxUI()
+
+        let utc = TimeZone(secondsFromGMT: 0)!
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = utc
+        let ukLocale = Locale(identifier: "en_GB")
+        let afternoonMillis = Int64(1_700_055_000_000) // 2023-11-15 13:30:00 UTC
+        let sameDayNow = Date(timeIntervalSince1970: 1_700_060_000)
+
+        let row = Fixture.row("!r1", "Alice Example", ts: 5, preview: "Hello", mine: false)
+        var timedRow = row
+        timedRow.lastTS = afternoonMillis
+
+        let hit = MessageHit(
+            eventID: "$hit1",
+            roomID: "!r1",
+            roomName: "Alice Example",
+            network: "whatsapp",
+            isDirect: true,
+            place: .inbox,
+            sender: "@alice:courier.local",
+            senderName: "Alice Example",
+            mine: false,
+            ts: afternoonMillis,
+            seq: 1,
+            kind: .video,
+            snippet: "Hello there"
+        )
+
+        composerPrefs.timeFormat = .twelveHour
+        let inboxList = InboxList(
+            inbox: inbox,
+            spaces: spaces,
+            preferences: inboxPrefs,
+            composerPreferences: composerPrefs,
+            ui: ui
+        )
+        let searchRow = SearchRowView(
+            item: .message(hit),
+            isSelected: false,
+            networkName: { $0 },
+            composerPreferences: composerPrefs
+        )
+        let mediaCell = MediaCell(
+            hit: hit,
+            isSelected: false,
+            composerPreferences: composerPrefs
+        )
+
+        XCTAssertTrue(inboxList.composerPreferences === composerPrefs)
+        XCTAssertTrue(searchRow.composerPreferences === composerPrefs)
+        XCTAssertTrue(mediaCell.composerPreferences === composerPrefs)
+
+        XCTAssertEqual(inboxList.rowStyle.timeFormat, .twelveHour)
+        XCTAssertEqual(
+            inboxList.formattedRowTimestamp(timedRow, now: sameDayNow, calendar: calendar, locale: ukLocale),
+            "1:30 PM"
+        )
+        XCTAssertEqual(
+            searchRow.formattedTimestamp(now: sameDayNow, calendar: calendar, locale: ukLocale),
+            "1:30 PM"
+        )
+        XCTAssertTrue(
+            mediaCell.helpText(now: sameDayNow, calendar: calendar, locale: ukLocale).hasSuffix("· 1:30 PM")
+        )
+
+        // Changing composerPrefs.timeFormat immediately updates InboxList, SearchRowView, and MediaCell timestamps
+        // without touching UserDefaults.standard.
+        composerPrefs.timeFormat = .twentyFourHour
+        XCTAssertEqual(inboxList.rowStyle.timeFormat, .twentyFourHour)
+        XCTAssertEqual(
+            inboxList.formattedRowTimestamp(timedRow, now: sameDayNow, calendar: calendar, locale: ukLocale),
+            "13:30"
+        )
+        XCTAssertEqual(
+            searchRow.formattedTimestamp(now: sameDayNow, calendar: calendar, locale: ukLocale),
+            "13:30"
+        )
+        XCTAssertTrue(
+            mediaCell.helpText(now: sameDayNow, calendar: calendar, locale: ukLocale).hasSuffix("· 13:30")
+        )
+    }
+
+    func testEverySearchResultHighlightsItsOwnControlIncludingAccountsEmptyState() throws {
+        let testDefaults = defaults()
+        let app = offlineApp()
+        let lifecycle = SystemLifecycleModel(
+            loginItemService: SnapshotLoginItemService(),
+            biometricService: SnapshotBiometricService(),
+            defaults: testDefaults
+        )
+        let inboxPrefs = InboxPreferences(defaults: testDefaults)
+        let composerPrefs = ComposerPreferences(defaults: testDefaults)
+        let notificationPrefs = inboxPrefs.notifications
+        let dockPrefs = DockAndTrayPreferences(defaults: testDefaults)
+        let quickReplies = QuickReplies(defaults: testDefaults)
+        let hotkeys = HotkeyRegistry(defaults: testDefaults, isAppLocked: { lifecycle.isLocked })
+        let inbox = InboxModel(appModel: app, preferences: inboxPrefs, lifecycle: lifecycle)
+        let spaces = SpacesModel(appModel: app, inbox: inbox, lifecycle: lifecycle)
+        let labels = LabelsModel(appModel: app, lifecycle: lifecycle)
+        let conv = conversation(composerPrefs, entitled: true)
+        let login = LoginFlowModel(
+            caller: SnapshotLoginCaller(),
+            accounts: { app.accounts },
+            reloadAccounts: {},
+            credentials: SnapshotCredentials(),
+            builtInCredentials: { nil },
+            restartEngine: {}
+        )
+
+        let populatedBridgesJSON = """
+        [
+          {
+            "network": "telegram",
+            "display_name": "Telegram",
+            "bridge_id": "telegram",
+            "module_path": "go.mau.fi/mautrix-telegram",
+            "version": "v0.2609.2",
+            "mautrix_version": "v0.31.0",
+            "state": "CONNECTED",
+            "error": "",
+            "message": "Connected",
+            "started_at": 1761400000000,
+            "supports_sub_accounts": true,
+            "accounts": [
+              {
+                "network": "telegram",
+                "display_name": "Telegram",
+                "flows": ["phone"],
+                "state": "CONNECTED",
+                "error": "",
+                "message": "Connected",
+                "remote_name": "@alice_tg (Alice Example)",
+                "not_started": "",
+                "syncs": ["messages", "spaces"],
+                "supports_sub_accounts": true,
+                "logins": [
+                  {
+                    "account_id": "tg-1",
+                    "remote_name": "@alice_tg (Alice Example)",
+                    "state": "CONNECTED",
+                    "error": "",
+                    "message": "Connected"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+        """
+        let populatedBridges = try JSONDecoder().decode([BridgeInfo].self, from: Data(populatedBridgesJSON.utf8))
+        let populatedAccountsModel = AccountsAndBridgesModel(appModel: app, lifecycle: lifecycle)
+        populatedAccountsModel.setSnapshotStateForTesting(
+            bridges: populatedBridges,
+            subAccountsByKey: [:],
+            selectedAccountKey: "telegram:tg-1"
+        )
+        let emptyAccountsModel = AccountsAndBridgesModel(appModel: app, lifecycle: lifecycle)
+        emptyAccountsModel.setSnapshotStateForTesting(bridges: [], subAccountsByKey: [:], selectedAccountKey: nil)
+        let reportModel = ProblemReportModel(appModel: app)
+        let nav = SettingsNavigationModel()
+
+        SettingAnchorTracker.isTracking = true
+        defer {
+            SettingAnchorTracker.isTracking = false
+            SettingAnchorTracker.reset()
+        }
+
+        for (stateLabel, accountsModel) in [("populated accounts state", populatedAccountsModel), ("empty accounts state", emptyAccountsModel)] {
+            nav.bind(accountsAndBridges: accountsModel)
+            for setting in SettingsNavigationModel.allSettings {
+                SettingAnchorTracker.reset()
+                nav.jump(to: setting)
+                let windowView = SettingsWindow(
+                    navigation: nav,
+                    app: app,
+                    inbox: inbox,
+                    spaces: spaces,
+                    labels: labels,
+                    conversation: conv,
+                    inboxPreferences: inboxPrefs,
+                    composerPreferences: composerPrefs,
+                    notificationPreferences: notificationPrefs,
+                    quickReplies: quickReplies,
+                    hotkeys: hotkeys,
+                    lifecycle: lifecycle,
+                    dockPreferences: dockPrefs,
+                    accountsAndBridges: accountsModel,
+                    loginFlow: login,
+                    problemReport: reportModel
+                )
+                let host = NSHostingView(rootView: windowView)
+                host.frame = NSRect(x: 0, y: 0, width: 840, height: 2600)
+                host.layoutSubtreeIfNeeded()
+                _ = host.fittingSize
+
+                XCTAssertTrue(
+                    SettingAnchorTracker.renderedIDs.contains(setting.id),
+                    "Expected settingAnchor \(setting.id) to be rendered in pane \(setting.pane.rawValue) (\(stateLabel))"
+                )
+                XCTAssertEqual(
+                    SettingAnchorTracker.highlightedIDs,
+                    [setting.id],
+                    "Expected settingAnchor \(setting.id) to be highlighted in pane \(setting.pane.rawValue) (\(stateLabel))"
+                )
+            }
+        }
+    }
+
+    // MARK: - Milestone 4.6 Task 13: Light & Dark View Snapshot Suite
+
+    private func makeMilestone46SnapshotFixture() throws -> (
+        app: AppModel,
+        lifecycle: SystemLifecycleModel,
+        inboxPrefs: InboxPreferences,
+        composerPrefs: ComposerPreferences,
+        notificationPrefs: NotificationPreferences,
+        dockPrefs: DockAndTrayPreferences,
+        quickReplies: QuickReplies,
+        hotkeys: HotkeyRegistry,
+        inbox: InboxModel,
+        spaces: SpacesModel,
+        labels: LabelsModel,
+        conversation: ConversationModel,
+        login: LoginFlowModel,
+        accountsModel: AccountsAndBridgesModel,
+        reportModel: ProblemReportModel
+    ) {
+        struct StubDockTile: DockTileService {
+            func isAppInDock(bundleIdentifier: String) -> Bool {
+                bundleIdentifier == "net.whatsapp.WhatsApp" || bundleIdentifier == "ru.keepcoder.Telegram"
+            }
+            func removeAppFromDock(bundleIdentifier _: String) -> Bool { true }
+        }
+        final class StubPasteboard: TextPasteboard {
+            func setString(_: String) {}
+        }
+
+        let testDefaults = defaults()
+        testDefaults.set(true, forKey: SystemLifecycleModel.key("requireTouchID"))
+        testDefaults.set(15, forKey: SystemLifecycleModel.key("lockTimeoutMinutes"))
+        let app = offlineApp()
+        let lifecycle = SystemLifecycleModel(
+            loginItemService: SnapshotLoginItemService(),
+            biometricService: SnapshotBiometricService(),
+            defaults: testDefaults
+        )
+        let inboxPrefs = InboxPreferences(defaults: testDefaults)
+        let composerPrefs = ComposerPreferences(defaults: testDefaults)
+        let notificationPrefs = inboxPrefs.notifications
+        notificationPrefs.autoCopyOTP = true
+        notificationPrefs.soundEffectsMode = .always
+        notificationPrefs.soundEffectsVolume = 0.8
+        notificationPrefs.delaySeconds = 5
+        notificationPrefs.repeatUnreadMinutes = 5
+        notificationPrefs.accountOverrides["telegram:tg-1"] = AccountNotificationOverride(
+            enabled: true,
+            showPreviews: true,
+            sound: .default
+        )
+        notificationPrefs.accountOverrides["slack:sl-1"] = AccountNotificationOverride(
+            enabled: true,
+            showPreviews: false,
+            sound: NotificationSoundChoice.none
+        )
+        let dockPrefs = DockAndTrayPreferences(defaults: testDefaults)
+        let quickReplies = QuickReplies(defaults: testDefaults)
+        try quickReplies.add(title: "omw", text: "On my way, {first_name}!")
+        try quickReplies.add(title: "intro", text: "Hi {full_name} ({username}), my number is {phone_number} and email is {email}.")
+        let hotkeys = HotkeyRegistry(defaults: testDefaults, isAppLocked: { lifecycle.isLocked })
+        let inbox = InboxModel(appModel: app, preferences: inboxPrefs, lifecycle: lifecycle)
+        let spaces = SpacesModel(appModel: app, inbox: inbox, lifecycle: lifecycle)
+        let labels = LabelsModel(appModel: app, lifecycle: lifecycle)
+        let conv = conversation(composerPrefs, entitled: true)
+        let login = LoginFlowModel(
+            caller: SnapshotLoginCaller(),
+            accounts: { app.accounts },
+            reloadAccounts: {},
+            credentials: SnapshotCredentials(),
+            builtInCredentials: { nil },
+            restartEngine: {}
+        )
+
+        let bridgesFixtureJSON = """
+        [
+          {
+            "network": "telegram",
+            "display_name": "Telegram",
+            "bridge_id": "telegram",
+            "module_path": "go.mau.fi/mautrix-telegram",
+            "version": "v0.2609.0",
+            "mautrix_version": "v0.31.0",
+            "state": "CONNECTED",
+            "started_at": 1761400000000,
+            "supports_sub_accounts": true,
+            "accounts": [
+              {
+                "network": "telegram",
+                "display_name": "Telegram",
+                "flows": ["phone", "qr"],
+                "state": "CONNECTED",
+                "error": "",
+                "remote_name": "@alice_example",
+                "not_started": "",
+                "syncs": ["messages", "spaces"],
+                "supports_sub_accounts": true,
+                "logins": [
+                  {
+                    "account_id": "tg-1",
+                    "remote_name": "@alice_example",
+                    "state": "CONNECTED",
+                    "error": ""
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "network": "whatsapp",
+            "display_name": "WhatsApp",
+            "bridge_id": "whatsapp",
+            "module_path": "go.mau.fi/mautrix-whatsapp",
+            "version": "v0.2609.0",
+            "mautrix_version": "v0.31.0",
+            "state": "CONNECTED",
+            "started_at": 1761400000000,
+            "accounts": [
+              {
+                "network": "whatsapp",
+                "display_name": "WhatsApp",
+                "flows": ["qr", "phone"],
+                "state": "CONNECTED",
+                "error": "",
+                "remote_name": "+1 555 010 0101",
+                "not_started": "",
+                "syncs": ["messages"],
+                "logins": [
+                  {
+                    "account_id": "wa-1",
+                    "remote_name": "+1 555 010 0101",
+                    "state": "CONNECTED",
+                    "error": ""
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "network": "slack",
+            "display_name": "Slack",
+            "bridge_id": "slack",
+            "module_path": "go.mau.fi/mautrix-slack",
+            "version": "v0.2609.1",
+            "mautrix_version": "v0.31.0",
+            "state": "BAD_CREDENTIALS",
+            "error": "token_revoked",
+            "message": "Your Slack session expired. Reconnect to continue receiving messages.",
+            "started_at": 1761400000000,
+            "accounts": [
+              {
+                "network": "slack",
+                "display_name": "Slack",
+                "flows": ["token"],
+                "state": "BAD_CREDENTIALS",
+                "error": "token_revoked",
+                "message": "Your Slack session expired. Reconnect to continue receiving messages.",
+                "remote_name": "Example Workspace",
+                "not_started": "",
+                "syncs": ["messages"],
+                "logins": [
+                  {
+                    "account_id": "sl-1",
+                    "remote_name": "Example Workspace",
+                    "state": "BAD_CREDENTIALS",
+                    "error": "token_revoked",
+                    "message": "Your Slack session expired. Reconnect to continue receiving messages."
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+        """
+        let bridges = try JSONDecoder().decode([BridgeInfo].self, from: Data(bridgesFixtureJSON.utf8))
+        app.setAccountsForTesting(bridges.flatMap(\.accounts))
+
+        let spacesJSON = """
+        [
+          {
+            "space_id": "inbox",
+            "kind": "builtin",
+            "title": "Inbox",
+            "network": "",
+            "label_id": 0,
+            "color": 0,
+            "icon": "",
+            "hidden": false,
+            "muted": false,
+            "show_in_inbox": "",
+            "chats": 8,
+            "unread_chats": 3,
+            "attention_chats": 2
+          },
+          {
+            "space_id": "account:telegram",
+            "kind": "account",
+            "title": "Telegram",
+            "network": "telegram",
+            "label_id": 0,
+            "color": 0,
+            "icon": "",
+            "hidden": false,
+            "muted": false,
+            "show_in_inbox": "all",
+            "chats": 4,
+            "unread_chats": 2,
+            "attention_chats": 0
+          },
+          {
+            "space_id": "account:whatsapp",
+            "kind": "account",
+            "title": "WhatsApp",
+            "network": "whatsapp",
+            "label_id": 0,
+            "color": 0,
+            "icon": "",
+            "hidden": false,
+            "muted": false,
+            "show_in_inbox": "all",
+            "chats": 3,
+            "unread_chats": 1,
+            "attention_chats": 0
+          },
+          {
+            "space_id": "account:slack",
+            "kind": "account",
+            "title": "Slack",
+            "network": "slack",
+            "label_id": 0,
+            "color": 0,
+            "icon": "",
+            "hidden": false,
+            "muted": false,
+            "show_in_inbox": "dms",
+            "chats": 1,
+            "unread_chats": 0,
+            "attention_chats": 0
+          }
+        ]
+        """
+        let decodedSpaces = try JSONDecoder().decode([Space].self, from: Data(spacesJSON.utf8))
+        spaces.setSpacesForTesting(decodedSpaces)
+
+        let subAccountsJSON = """
+        [
+          {
+            "network": "telegram",
+            "account_id": "tg-1",
+            "sub_id": "!folder1:courier.local",
+            "title": "Work Chats",
+            "avatar_uri": "",
+            "kind": "space",
+            "enabled": true,
+            "show_in_inbox": "all"
+          },
+          {
+            "network": "telegram",
+            "account_id": "tg-1",
+            "sub_id": "!folder2:courier.local",
+            "title": "Muted Channels",
+            "avatar_uri": "",
+            "kind": "space",
+            "enabled": false,
+            "show_in_inbox": "none"
+          },
+          {
+            "network": "telegram",
+            "account_id": "tg-1",
+            "sub_id": "!bot1:courier.local",
+            "title": "Courier Helper Bot",
+            "avatar_uri": "",
+            "kind": "bot",
+            "enabled": true,
+            "show_in_inbox": "dms"
+          }
+        ]
+        """
+        let subAccounts = try JSONDecoder().decode([SubAccountItem].self, from: Data(subAccountsJSON.utf8))
+
+        let accountsModel = AccountsAndBridgesModel(
+            appModel: app,
+            dockTileService: StubDockTile(),
+            pasteboard: StubPasteboard(),
+            lifecycle: lifecycle
+        )
+        accountsModel.setSnapshotStateForTesting(
+            bridges: bridges,
+            subAccountsByKey: ["telegram:tg-1": subAccounts],
+            selectedAccountKey: "telegram:tg-1",
+            expandedBridgeNetworks: ["whatsapp", "slack"]
+        )
+
+        let diagJSON = """
+        {
+          "protocol_version": 9,
+          "schema_version": 10,
+          "go_version": "go1.26.2",
+          "bridges": \(bridgesFixtureJSON),
+          "scrubbed_stderr": [
+            "{\\"level\\":\\"warn\\",\\"network\\":\\"whatsapp\\",\\"message\\":\\"websocket closed\\",\\"retry_in\\":5}",
+            "panic: [redacted]",
+            "goroutine 42 [running]:",
+            "apps/desktop/courier/engine/internal/host.(*Manager).Run(...)",
+            "\\t~/Workspace/courier/engine/internal/host/manager.go:188 +0x120"
+          ],
+          "room_details": {
+            "room_id": "!room1:courier.local",
+            "network": "whatsapp",
+            "is_direct": true
+          },
+          "message_details": {
+            "event_id": "$evt1",
+            "room_id": "!room1:courier.local",
+            "network": "whatsapp",
+            "type": "m.room.message",
+            "ts": 1761401234000,
+            "status": "failed",
+            "status_reason": "[id] not reachable",
+            "has_media": false,
+            "is_redacted": false
+          }
+        }
+        """
+        let exportedDiag = try JSONDecoder().decode(DiagnosticsExportResult.self, from: Data(diagJSON.utf8))
+        let reportModel = ProblemReportModel(
+            appModel: app,
+            contextRoomID: "!room1:courier.local",
+            contextEventID: "$evt1"
+        )
+        reportModel.descriptionText = "Sending a message in WhatsApp failed right after waking my Mac from sleep."
+        reportModel.includeMessageDetails = true
+        reportModel.setSnapshotStateForTesting(diagnostics: exportedDiag)
+
+        return (
+            app,
+            lifecycle,
+            inboxPrefs,
+            composerPrefs,
+            notificationPrefs,
+            dockPrefs,
+            quickReplies,
+            hotkeys,
+            inbox,
+            spaces,
+            labels,
+            conv,
+            login,
+            accountsModel,
+            reportModel
+        )
+    }
+
+    func testSettingsWindowGeneralAndSearchSnapshots() throws {
+        let f = try makeMilestone46SnapshotFixture()
+
+        let generalNav = SettingsNavigationModel(selectedPane: .general)
+        try assertLightAndDarkSnapshot("settings-window-general", width: 880, height: 1580) {
+            SettingsWindow(
+                navigation: generalNav,
+                app: f.app,
+                inbox: f.inbox,
+                spaces: f.spaces,
+                labels: f.labels,
+                conversation: f.conversation,
+                inboxPreferences: f.inboxPrefs,
+                composerPreferences: f.composerPrefs,
+                notificationPreferences: f.notificationPrefs,
+                quickReplies: f.quickReplies,
+                hotkeys: f.hotkeys,
+                lifecycle: f.lifecycle,
+                dockPreferences: f.dockPrefs,
+                accountsAndBridges: f.accountsModel,
+                loginFlow: f.login,
+                problemReport: f.reportModel
+            )
+        }
+
+        let searchNav = SettingsNavigationModel(selectedPane: .general)
+        searchNav.searchQuery = "Touch ID"
+        searchNav.highlightedSettingID = "general.requireTouchID"
+        try assertLightAndDarkSnapshot("settings-window-search-suggestions", width: 880, height: 680) {
+            SettingsWindow(
+                navigation: searchNav,
+                app: f.app,
+                inbox: f.inbox,
+                spaces: f.spaces,
+                labels: f.labels,
+                conversation: f.conversation,
+                inboxPreferences: f.inboxPrefs,
+                composerPreferences: f.composerPrefs,
+                notificationPreferences: f.notificationPrefs,
+                quickReplies: f.quickReplies,
+                hotkeys: f.hotkeys,
+                lifecycle: f.lifecycle,
+                dockPreferences: f.dockPrefs,
+                accountsAndBridges: f.accountsModel,
+                loginFlow: f.login,
+                problemReport: f.reportModel
+            )
+        }
+    }
+
+    func testSettingsWindowAppearanceAndNotificationsSnapshots() throws {
+        let f = try makeMilestone46SnapshotFixture()
+
+        let appearanceNav = SettingsNavigationModel(selectedPane: .appearance)
+        try assertLightAndDarkSnapshot("settings-window-appearance", width: 880, height: 1020) {
+            SettingsWindow(
+                navigation: appearanceNav,
+                app: f.app,
+                inbox: f.inbox,
+                spaces: f.spaces,
+                labels: f.labels,
+                conversation: f.conversation,
+                inboxPreferences: f.inboxPrefs,
+                composerPreferences: f.composerPrefs,
+                notificationPreferences: f.notificationPrefs,
+                quickReplies: f.quickReplies,
+                hotkeys: f.hotkeys,
+                lifecycle: f.lifecycle,
+                dockPreferences: f.dockPrefs,
+                accountsAndBridges: f.accountsModel,
+                loginFlow: f.login,
+                problemReport: f.reportModel
+            )
+        }
+
+        let notificationsNav = SettingsNavigationModel(selectedPane: .notifications)
+        try assertLightAndDarkSnapshot("settings-window-notifications", width: 880, height: 920) {
+            SettingsWindow(
+                navigation: notificationsNav,
+                app: f.app,
+                inbox: f.inbox,
+                spaces: f.spaces,
+                labels: f.labels,
+                conversation: f.conversation,
+                inboxPreferences: f.inboxPrefs,
+                composerPreferences: f.composerPrefs,
+                notificationPreferences: f.notificationPrefs,
+                quickReplies: f.quickReplies,
+                hotkeys: f.hotkeys,
+                lifecycle: f.lifecycle,
+                dockPreferences: f.dockPrefs,
+                accountsAndBridges: f.accountsModel,
+                loginFlow: f.login,
+                problemReport: f.reportModel
+            )
+        }
+    }
+
+    func testAccountsAndAccountDetailPaneSnapshots() throws {
+        let f = try makeMilestone46SnapshotFixture()
+
+        // 1. Connected account detail (Telegram with Space & Inbox, Notifications override, Folders & Bots, and Remove from Dock)
+        f.accountsModel.selectedAccountKey = "telegram:tg-1"
+        try assertLightAndDarkSnapshot("settings-accounts-connected", width: 780, height: 860) {
+            AccountsSettingsPane(
+                model: f.accountsModel,
+                spaces: f.spaces,
+                notifications: f.notificationPrefs,
+                onAddAccount: {},
+                onReconnect: { _, _ in }
+            )
+        }
+
+        // 2. Disconnected account detail (Slack in BAD_CREDENTIALS state showing "Signed out — reconnect", error banner, and "Reconnect…" button)
+        f.accountsModel.selectedAccountKey = "slack:sl-1"
+        try assertLightAndDarkSnapshot("settings-accounts-disconnected", width: 780, height: 640) {
+            AccountsSettingsPane(
+                model: f.accountsModel,
+                spaces: f.spaces,
+                notifications: f.notificationPrefs,
+                onAddAccount: {},
+                onReconnect: { _, _ in }
+            )
+        }
+
+        // 3. Remove Account confirmation sheet
+        f.accountsModel.requestRemoveAccount(
+            network: "whatsapp",
+            accountID: "wa-1",
+            remoteName: "+1 555 010 0101",
+            displayName: "WhatsApp"
+        )
+        let removal = try XCTUnwrap(f.accountsModel.pendingRemoval)
+        try assertLightAndDarkSnapshot("settings-accounts-remove-sheet", width: 440) {
+            RemoveAccountConfirmationSheet(
+                confirmation: .constant(removal),
+                onConfirm: {},
+                onCancel: {}
+            )
+        }
+        f.accountsModel.cancelRemoveAccount()
+    }
+
+    func testBridgesSettingsPaneSnapshots() throws {
+        let f = try makeMilestone46SnapshotFixture()
+        f.accountsModel.expandedBridgeNetworks = ["whatsapp", "slack"]
+
+        try assertLightAndDarkSnapshot("settings-bridges-expanded", width: 760, height: 660) {
+            BridgesSettingsPane(
+                model: f.accountsModel,
+                onOpenAccountSettings: { _, _ in },
+                onAddAccount: { _ in }
+            )
+        }
+    }
+
+    func testQuickRepliesAndAboutPanesSnapshots() throws {
+        let f = try makeMilestone46SnapshotFixture()
+
+        let quickRepliesNav = SettingsNavigationModel(selectedPane: .quickReplies)
+        try assertLightAndDarkSnapshot("settings-window-quick-replies", width: 860, height: 600) {
+            SettingsWindow(
+                navigation: quickRepliesNav,
+                app: f.app,
+                inbox: f.inbox,
+                spaces: f.spaces,
+                labels: f.labels,
+                conversation: f.conversation,
+                inboxPreferences: f.inboxPrefs,
+                composerPreferences: f.composerPrefs,
+                notificationPreferences: f.notificationPrefs,
+                quickReplies: f.quickReplies,
+                hotkeys: f.hotkeys,
+                lifecycle: f.lifecycle,
+                dockPreferences: f.dockPrefs,
+                accountsAndBridges: f.accountsModel,
+                loginFlow: f.login,
+                problemReport: f.reportModel
+            )
+        }
+
+        try assertLightAndDarkSnapshot("settings-about-expanded", width: 760, height: 1120) {
+            AboutSettingsPane(
+                lifecycle: f.lifecycle,
+                highlightedSettingID: "about.changelog",
+                showChangelog: true,
+                showPrivacyDetails: true,
+                showLegalNotices: true
+            )
+        }
+    }
+
+    func testProblemReportSheetAndAppLockOverlaySnapshots() throws {
+        let f = try makeMilestone46SnapshotFixture()
+
+        try assertLightAndDarkSnapshot("problem-report-sheet-preview", width: 580, height: 620) {
+            ProblemReportSheet(model: f.reportModel, onDismiss: {})
+        }
+
+        f.lifecycle.lockApp()
+        try assertLightAndDarkSnapshot("app-lock-overlay-screen", width: 640, height: 440) {
+            AppLockOverlay(model: f.lifecycle)
+        }
+    }
+
+    func testAccountsAndBridgesSettingsPanesRenderLastError() throws {
+        let f = try makeMilestone46SnapshotFixture()
+        f.accountsModel.selectedAccountKey = "telegram:tg-1"
+        f.lifecycle.lockNow()
+        XCTAssertNil(f.accountsModel.lastError)
+
+        _ = try Snapshot.render("accounts-error-check-clean", width: 780, height: 960) {
+            AccountsSettingsPane(
+                model: f.accountsModel,
+                spaces: f.spaces,
+                notifications: f.notificationPrefs,
+                onAddAccount: {},
+                onReconnect: { _, _ in }
+            )
+        }
+        let cleanAccountsData = try Data(contentsOf: Snapshot.directory.appendingPathComponent("accounts-error-check-clean-light.png"))
+
+        _ = try Snapshot.render("bridges-error-check-clean", width: 760, height: 720) {
+            BridgesSettingsPane(
+                model: f.accountsModel,
+                onOpenAccountSettings: { _, _ in },
+                onAddAccount: { _ in }
+            )
+        }
+        let cleanBridgesData = try Data(contentsOf: Snapshot.directory.appendingPathComponent("bridges-error-check-clean-light.png"))
+
+        f.accountsModel.requestRestartBridge(network: "telegram")
+        XCTAssertNotNil(f.accountsModel.lastError)
+
+        _ = try Snapshot.render("accounts-error-check-shown", width: 780, height: 960) {
+            AccountsSettingsPane(
+                model: f.accountsModel,
+                spaces: f.spaces,
+                notifications: f.notificationPrefs,
+                onAddAccount: {},
+                onReconnect: { _, _ in }
+            )
+        }
+        let errorAccountsData = try Data(contentsOf: Snapshot.directory.appendingPathComponent("accounts-error-check-shown-light.png"))
+
+        _ = try Snapshot.render("bridges-error-check-shown", width: 760, height: 720) {
+            BridgesSettingsPane(
+                model: f.accountsModel,
+                onOpenAccountSettings: { _, _ in },
+                onAddAccount: { _ in }
+            )
+        }
+        let errorBridgesData = try Data(contentsOf: Snapshot.directory.appendingPathComponent("bridges-error-check-shown-light.png"))
+
+        XCTAssertNotEqual(
+            cleanAccountsData,
+            errorAccountsData,
+            "AccountsSettingsPane must visibly render model.lastError when non-nil"
+        )
+        XCTAssertNotEqual(
+            cleanBridgesData,
+            errorBridgesData,
+            "BridgesSettingsPane must visibly render model.lastError when non-nil"
+        )
+    }
+}
+
+private struct SnapshotLoginItemService: LoginItemService {
+    func status() -> LoginItemRegistrationStatus { .notRegistered }
+    func register() throws {}
+    func unregister() throws {}
+}
+
+private struct SnapshotBiometricService: BiometricAuthService {
+    func canEvaluateBiometricsOrWatch() -> Bool { true }
+    func authenticate(reason: String) async throws -> Bool { false }
 }
 
 /// A sign-in caller whose every sign-in finishes at once with `finish`.

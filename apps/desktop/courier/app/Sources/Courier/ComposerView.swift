@@ -10,14 +10,14 @@ import UniformTypeIdentifiers
 @MainActor
 enum AttachmentPicker {
     static func run(into composer: ComposerModel) {
-        let panel = NSOpenPanel()
-        panel.allowsMultipleSelection = true
-        panel.canChooseFiles = true
-        panel.canChooseDirectories = false
-        panel.message = String(localized: "Choose files to send")
-        panel.prompt = String(localized: "Attach")
-        guard panel.runModal() == .OK else { return }
-        composer.attach(panel.urls)
+        guard let urls = AppLockGate.shared.runOpenPanel(action: .send, lifecycle: composer.lifecycle, configure: { panel in
+            panel.allowsMultipleSelection = true
+            panel.canChooseFiles = true
+            panel.canChooseDirectories = false
+            panel.message = String(localized: "Choose files to send")
+            panel.prompt = String(localized: "Attach")
+        }) else { return }
+        composer.attach(urls)
     }
 }
 
@@ -40,6 +40,25 @@ final class ComposerUI: ObservableObject {
     /// A picker closed with Esc stays closed until what is typed after "@" or ";" changes.
     @Published var dismissedQuery: NSRange?
     @Published var link: LinkRequest?
+    private var lockObserver: NSObjectProtocol?
+
+    init() {
+        lockObserver = NotificationCenter.default.addObserver(
+            forName: SystemLifecycleModel.didLockNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.link = nil
+            }
+        }
+    }
+
+    deinit {
+        if let lockObserver {
+            NotificationCenter.default.removeObserver(lockObserver)
+        }
+    }
 }
 
 /// The bottom of a chat (01 §6's ComposeMessage): what is being replied to or edited, files waiting to go, the
@@ -131,6 +150,7 @@ struct ComposerView: View {
                         height: $textHeight,
                         placeholder: placeholder,
                         focusToken: "\(composer.roomID ?? "")|\(composer.replyTarget?.eventID ?? "")|\(modeToken)",
+                        isSpellcheckEnabled: preferences.enableSpellcheck,
                         onEscape: { escapeFirst() || composer.escape() || escapeLast() },
                         onUpArrow: upArrow,
                         onPasteFiles: { urls in
@@ -146,68 +166,14 @@ struct ComposerView: View {
                     if case .editing = composer.mode {
                         EmptyView()
                     } else {
-                        Button {
-                            composer.preferences = preferences
-                            Task { await composer.startVoiceRecording() }
-                        } label: {
-                            Image(systemName: "mic")
-                                .font(.title3)
-                                .frame(width: 28, height: 28)
+                        secondaryActionButton
+                        if preferences.primaryComposerButton != .gifPicker && preferences.secondaryComposerButton != .gifPicker {
+                            gifToolbarButton
                         }
-                        .buttonStyle(.plain)
-                        .disabled(composer.roomID == nil)
-                        .help(String(localized: "Record Voice Note (⌘⇧A)"))
-                        .accessibilityLabel(String(localized: "Record voice note"))
-
-                        Button {
-                            _ = composer.openGIFPicker()
-                        } label: {
-                            Text(verbatim: "GIF")
-                                .font(.system(size: 9.5, weight: .bold, design: .rounded))
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 2)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .strokeBorder(Color.primary.opacity(0.65), lineWidth: 1.2)
-                                )
-                                .frame(width: 28, height: 28)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(!composer.canSendGIF)
-                        .help(composer.canSendGIF ? String(localized: "Send GIF (⌘⇧G)") : composer.sendGIFMenuTitle)
-                        .accessibilityLabel(String(localized: "Send GIF"))
-                        .popover(isPresented: $composer.isGIFPickerPresented, arrowEdge: .top) {
-                            GIFPickerPopover(composer: composer)
-                        }
-
-                        Button {
-                            _ = composer.openStickerPicker()
-                        } label: {
-                            Image(systemName: "sparkles.rectangle.stack")
-                                .font(.title3)
-                                .frame(width: 28, height: 28)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(!composer.canSendSticker)
-                        .help(composer.canSendSticker ? String(localized: "Send Sticker (⌘⌥⇧S)") : composer.sendStickerMenuTitle)
-                        .accessibilityLabel(String(localized: "Send Sticker"))
-                        .popover(isPresented: $composer.isStickerPickerPresented, arrowEdge: .top) {
-                            StickerPickerPopover(composer: composer)
-                        }
+                        stickerToolbarButton
                     }
 
-                    Button {
-                        composer.openEmojiAutocomplete()
-                        // The system's own picker, as ⌃⌘Space opens it.
-                        NSApp.orderFrontCharacterPalette(nil)
-                    } label: {
-                        Image(systemName: "face.smiling")
-                            .font(.title3)
-                            .frame(width: 28, height: 28)
-                    }
-                    .buttonStyle(.plain)
-                    .help(String(localized: "Emoji & Symbols (⌃⌘Space)"))
-                    .accessibilityLabel(String(localized: "Emoji and symbols"))
+                    primaryActionButton
 
                     sendButton
                 }
@@ -219,7 +185,11 @@ struct ComposerView: View {
         .onChange(of: composer.mentionQuery?.text) { _, _ in findMembers() }
         // ⌘⇧K, the bar's Link, or the Message menu's Link…: the dialog, over the range asked for.
         .onChange(of: composer.linkRequest) { _, request in
-            if let request { ui.link = LinkRequest(composer: composer, range: request.range) }
+            if let request {
+                ui.link = LinkRequest(composer: composer, range: request.range)
+            } else {
+                ui.link = nil
+            }
         }
         .onChange(of: pickerToken) { _, _ in ui.pickerIndex = 0 }
     }
@@ -300,16 +270,24 @@ struct ComposerView: View {
             }
             .disabled(composer.roomID == nil)
             Button(composer.addGIFMenuTitle) {
-                _ = composer.openGIFPicker()
+                if let dispatcher = composer.hotkeyDispatcher {
+                    _ = dispatcher.perform("Message: Send GIF")
+                } else {
+                    _ = composer.openGIFPicker()
+                }
             }
-            .keyboardShortcut("g", modifiers: [.command, .shift])
-            .disabled(!composer.canSendGIF)
+            .registryShortcut("Message: Send GIF", in: composer.hotkeyDispatcher?.hotkeys ?? HotkeyRegistry())
+            .disabled(!composer.canSendGIF || composer.hotkeyDispatcher?.lifecycle.isLocked == true)
             .help(composer.canSendGIF ? "" : composer.sendGIFMenuTitle)
             Button(composer.addStickerMenuTitle) {
-                _ = composer.openStickerPicker()
+                if let dispatcher = composer.hotkeyDispatcher {
+                    _ = dispatcher.perform("Message: Send Sticker")
+                } else {
+                    _ = composer.openStickerPicker()
+                }
             }
-            .keyboardShortcut("s", modifiers: [.command, .option, .shift])
-            .disabled(!composer.canSendSticker)
+            .registryShortcut("Message: Send Sticker", in: composer.hotkeyDispatcher?.hotkeys ?? HotkeyRegistry())
+            .disabled(!composer.canSendSticker || composer.hotkeyDispatcher?.lifecycle.isLocked == true)
             .help(composer.canSendSticker ? "" : composer.sendStickerMenuTitle)
             Divider()
             Button(String(localized: "Add Attachment…")) { AttachmentPicker.run(into: composer) }
@@ -364,6 +342,135 @@ struct ComposerView: View {
         }
         .help(String(localized: "Send (Return). Right-click for Send Later and Send and Archive."))
         .accessibilityLabel(String(localized: "Send"))
+    }
+
+    @ViewBuilder
+    private var primaryActionButton: some View {
+        switch preferences.primaryComposerButton {
+        case .emojiPicker:
+            emojiToolbarButton
+        case .gifPicker:
+            gifToolbarButton
+        case .addAttachment:
+            attachmentToolbarButton
+        case .sendLater:
+            sendLaterToolbarButton
+        case .none:
+            EmptyView()
+        }
+    }
+
+    @ViewBuilder
+    private var secondaryActionButton: some View {
+        switch preferences.secondaryComposerButton {
+        case .recordAudio:
+            recordAudioToolbarButton
+        case .gifPicker:
+            gifToolbarButton
+        case .addAttachment:
+            attachmentToolbarButton
+        case .sendLater:
+            sendLaterToolbarButton
+        case .none:
+            EmptyView()
+        }
+    }
+
+    private var emojiToolbarButton: some View {
+        Button {
+            composer.openEmojiAutocomplete()
+            NSApp.orderFrontCharacterPalette(nil)
+        } label: {
+            Image(systemName: "face.smiling")
+                .font(.title3)
+                .frame(width: 28, height: 28)
+        }
+        .buttonStyle(.plain)
+        .help(String(localized: "Emoji & Symbols (⌃⌘Space)"))
+        .accessibilityLabel(String(localized: "Emoji and symbols"))
+    }
+
+    private var recordAudioToolbarButton: some View {
+        Button {
+            composer.preferences = preferences
+            Task { await composer.startVoiceRecording() }
+        } label: {
+            Image(systemName: "mic")
+                .font(.title3)
+                .frame(width: 28, height: 28)
+        }
+        .buttonStyle(.plain)
+        .disabled(composer.roomID == nil)
+        .help(String(localized: "Record Voice Note (⌘⇧A)"))
+        .accessibilityLabel(String(localized: "Record voice note"))
+    }
+
+    private var gifToolbarButton: some View {
+        Button {
+            _ = composer.openGIFPicker()
+        } label: {
+            Text(verbatim: "GIF")
+                .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                .padding(.horizontal, 4)
+                .padding(.vertical, 2)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .strokeBorder(Color.primary.opacity(0.65), lineWidth: 1.2)
+                )
+                .frame(width: 28, height: 28)
+        }
+        .buttonStyle(.plain)
+        .disabled(!composer.canSendGIF)
+        .help(composer.canSendGIF ? String(localized: "Send GIF (⌘⇧G)") : composer.sendGIFMenuTitle)
+        .accessibilityLabel(String(localized: "Send GIF"))
+        .popover(isPresented: $composer.isGIFPickerPresented, arrowEdge: .top) {
+            GIFPickerPopover(composer: composer)
+        }
+    }
+
+    private var stickerToolbarButton: some View {
+        Button {
+            _ = composer.openStickerPicker()
+        } label: {
+            Image(systemName: "sparkles.rectangle.stack")
+                .font(.title3)
+                .frame(width: 28, height: 28)
+        }
+        .buttonStyle(.plain)
+        .disabled(!composer.canSendSticker)
+        .help(composer.canSendSticker ? String(localized: "Send Sticker (⌘⌥⇧S)") : composer.sendStickerMenuTitle)
+        .accessibilityLabel(String(localized: "Send Sticker"))
+        .popover(isPresented: $composer.isStickerPickerPresented, arrowEdge: .top) {
+            StickerPickerPopover(composer: composer)
+        }
+    }
+
+    private var attachmentToolbarButton: some View {
+        Button {
+            AttachmentPicker.run(into: composer)
+        } label: {
+            Image(systemName: "paperclip")
+                .font(.title3)
+                .frame(width: 28, height: 28)
+        }
+        .buttonStyle(.plain)
+        .disabled(composer.roomID == nil)
+        .help(String(localized: "Add Attachment (⌘O)"))
+        .accessibilityLabel(String(localized: "Add Attachment"))
+    }
+
+    private var sendLaterToolbarButton: some View {
+        Button {
+            menus.sendLater?()
+        } label: {
+            Image(systemName: "clock.arrow.circlepath")
+                .font(.title3)
+                .frame(width: 28, height: 28)
+        }
+        .buttonStyle(.plain)
+        .disabled(!composer.canSchedule || menus.sendLater == nil)
+        .help(String(localized: "Send Later (⌘⇧L)"))
+        .accessibilityLabel(String(localized: "Send Later"))
     }
 
     // MARK: Pickers
@@ -620,6 +727,7 @@ struct ComposerTextView: NSViewRepresentable {
     let placeholder: String
     /// Changes whenever the box should take the keyboard: another chat, a reply or an edit started.
     let focusToken: String
+    var isSpellcheckEnabled: Bool = true
     let onEscape: () -> Bool
     /// ↑ in an empty box; true when it was used.
     let onUpArrow: () -> Bool
@@ -647,6 +755,7 @@ struct ComposerTextView: NSViewRepresentable {
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticLinkDetectionEnabled = false
+        textView.isContinuousSpellCheckingEnabled = isSpellcheckEnabled
         textView.font = PlainTextView.baseFont
         textView.textColor = .labelColor
         textView.typingAttributes = PlainTextView.baseAttributes
@@ -672,6 +781,9 @@ struct ComposerTextView: NSViewRepresentable {
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         context.coordinator.parent = self
         guard let textView = context.coordinator.textView else { return }
+        if textView.isContinuousSpellCheckingEnabled != isSpellcheckEnabled {
+            textView.isContinuousSpellCheckingEnabled = isSpellcheckEnabled
+        }
         context.coordinator.sync()
         textView.placeholder = placeholder
         context.coordinator.updateHeight()
@@ -776,6 +888,7 @@ struct ComposerTextView: NSViewRepresentable {
         /// A formatting key on the text view's selection. A kind the chat doesn't keep says why (a toast); the link
         /// key asks for the dialog. ` is a key only where code is kept: elsewhere it types `.
         func format(_ kind: TextEntity.Kind, typed: Bool) -> Bool {
+            guard composer.hotkeyDispatcher?.lifecycle.isLocked != true else { return false }
             guard let textView else { return false }
             if typed, !composer.features.keeps(kind) { return false }
             composer.formattingKey(kind, in: textView.selectedRange())
@@ -802,6 +915,7 @@ struct ComposerTextView: NSViewRepresentable {
         }
 
         func textView(_ textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+            guard composer.hotkeyDispatcher?.lifecycle.isLocked != true else { return true }
             if composer.emojiQuery != nil {
                 switch selector {
                 case #selector(NSResponder.moveUp(_:)):

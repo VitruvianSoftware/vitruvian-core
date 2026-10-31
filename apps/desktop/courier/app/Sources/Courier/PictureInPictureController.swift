@@ -60,12 +60,18 @@ public struct PiPVideoItem: Equatable, Identifiable, Sendable {
 /// .fullScreenAuxiliary]`) with play/pause, scrub bar, Return to Chat button, and Close button so a video keeps
 /// playing while switching or closing chats, and stops when Courier quits.
 @MainActor
-public final class PictureInPictureController: ObservableObject {
+public final class PictureInPictureController: ObservableObject, PictureInPictureControlling {
     public static let shared = PictureInPictureController()
 
     @Published public private(set) var activeItem: PiPVideoItem?
     public private(set) var panel: NSPanel?
     public private(set) var player: AVPlayer?
+
+    public var isPresentingPiP: Bool { activeItem != nil }
+
+    public func pauseAndCloseForAppLock() {
+        close()
+    }
 
     /// Invoked when the person clicks Return to Chat (`roomID, messageID`).
     public var onReturnToChat: (@MainActor (_ roomID: String, _ messageID: String) -> Void)?
@@ -73,8 +79,10 @@ public final class PictureInPictureController: ObservableObject {
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
     private var terminationObserver: NSObjectProtocol?
+    private var lockObserver: NSObjectProtocol?
 
     public init() {
+        AppLockGate.shared.registerPiPController(self)
         terminationObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification,
             object: nil,
@@ -84,11 +92,30 @@ public final class PictureInPictureController: ObservableObject {
                 self?.stopForApplicationTermination()
             }
         }
+        lockObserver = NotificationCenter.default.addObserver(
+            forName: SystemLifecycleModel.didLockNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.pauseAndCloseForAppLock()
+            }
+        }
+    }
+
+    deinit {
+        if let terminationObserver {
+            NotificationCenter.default.removeObserver(terminationObserver)
+        }
+        if let lockObserver {
+            NotificationCenter.default.removeObserver(lockObserver)
+        }
     }
 
     /// Opens or updates the floating Picture-in-Picture window for `item`.
     /// Refuses non-local URLs so Picture-in-Picture only ever plays from the local media store.
     public func show(_ item: PiPVideoItem) {
+        guard AppLockGate.shared.canPerform(.other) else { return }
         guard let localURL = InlineVideoPlayer.localMediaURL(for: item.mediaPath) else {
             return
         }
@@ -144,6 +171,10 @@ public final class PictureInPictureController: ObservableObject {
     }
 
     public func togglePlayPause() {
+        guard AppLockGate.shared.canPerform(.other) else {
+            pauseAndCloseForAppLock()
+            return
+        }
         guard var current = activeItem else { return }
         current.isPlaying.toggle()
         activeItem = current
@@ -155,6 +186,10 @@ public final class PictureInPictureController: ObservableObject {
     }
 
     public func seek(toFraction fraction: Double) {
+        guard AppLockGate.shared.canPerform(.other) else {
+            pauseAndCloseForAppLock()
+            return
+        }
         guard var current = activeItem else { return }
         let clamped = min(max(fraction, 0), 1)
         let total = max(current.durationMS ?? 0, 1)
@@ -166,7 +201,7 @@ public final class PictureInPictureController: ObservableObject {
     }
 
     public func returnToChat() {
-        guard let current = activeItem else { return }
+        guard AppLockGate.shared.canPerform(.openChat), let current = activeItem else { return }
         onReturnToChat?(current.roomID, current.messageID)
     }
 

@@ -12,6 +12,7 @@ go_library(
     visibility = ["//apps/desktop/courier/engine:__subpackages__"],
     deps = [
         "//apps/desktop/courier/engine/internal/engine",
+        "//apps/desktop/courier/engine/internal/host",
         "//apps/desktop/courier/engine/internal/store",
         "@net_maunium_go_mautrix//bridgev2",
     ],

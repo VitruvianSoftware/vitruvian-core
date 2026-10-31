@@ -34,7 +34,6 @@ struct ConversationView: View {
     /// The scroll to a message (a search result) that has been made. Until it is, the bottom being in view is the
     /// timeline starting there, not the person reaching it, and reads nothing newer.
     @State private var scrolledToMessage: Int?
-    @State private var creatingPoll = false
     @State private var inviteCandidates: [ContactCandidate] = []
 
     var body: some View {
@@ -125,10 +124,10 @@ struct ConversationView: View {
             }
         }
         .sheet(item: sheetRequest) { sheet in requestSheet(sheet) }
-        .sheet(isPresented: $creatingPoll) {
+        .sheet(isPresented: $conversation.isCreatingPoll) {
             if let polls = conversation.features.poll {
                 PollCreatorWindow(features: polls, create: { await messageActions.createPoll($0) },
-                                  close: { creatingPoll = false })
+                                  close: { conversation.isCreatingPoll = false })
             }
         }
         .sheet(item: $conversation.activeEditGroupDraft) { draft in
@@ -224,8 +223,9 @@ struct ConversationView: View {
     }
 
     private var chat: some View {
-        VStack(spacing: 0) {
-            ConversationHeader(row: inbox.selectedRow, networkName: inbox.selectedRow.map { inbox.networkName($0.network) },
+        let headerRow = conversation.roomID.flatMap { inbox.row(of: $0) } ?? inbox.selectedRow
+        return VStack(spacing: 0) {
+            ConversationHeader(row: headerRow, networkName: headerRow.map { inbox.networkName($0.network) },
                                conversation: conversation)
             Divider()
             timeline
@@ -242,7 +242,7 @@ struct ConversationView: View {
                          activeReplyAccountName: conversation.activeReplyRoomID.flatMap { inbox.row(of: $0)?.loginName } ?? "",
                          onCycleReplyNetwork: conversation.cycleMergedReplyNetwork,
                          menus: ComposerMenus(sendLater: messageActions.requestSendLater,
-                                              createPoll: { creatingPoll = true },
+                                              createPoll: { conversation.isCreatingPoll = true },
                                               pollsUnavailable: conversation.features.pollsUnavailableReason(
                                                   network: conversation.network)),
                          escapeFirst: { inbox.escape() }, escapeLast: closeThread, upArrow: upArrow)

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
+import Combine
 import CourierCore
 
 /// Owns the app's model, and so the engine: starts it at launch and stops it before the app quits. Closing the
@@ -24,6 +25,68 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// once (a copy would miss a change until the next launch). The same for the quick replies.
     let composerPreferences: ComposerPreferences
     let quickReplies: QuickReplies
+    /// Launch at login, Touch ID app lock, and window lifecycle settings.
+    let lifecycle = SystemLifecycleModel()
+    /// Dock badge mode and menu-bar status item settings.
+    let dockPreferences = DockAndTrayPreferences()
+    /// Shared Settings navigation and search model (`⌘,`).
+    let settingsNavigation = SettingsNavigationModel()
+    /// Shared per-account and global notification preferences (the single instance owned by `inbox.preferences`).
+    var notificationPreferences: NotificationPreferences { inbox.preferences.notifications }
+    /// Accounts and Bridges settings model (`AccountsAndBridgesModel`).
+    let accountsAndBridges: AccountsAndBridgesModel
+    /// Local problem report bundle model (`ProblemReportModel`).
+    let problemReport: ProblemReportModel
+    /// Shared keyboard shortcut registry read by menus, the ⌘/ sheet, and the Settings ▸ Shortcuts recorder.
+    let hotkeys: HotkeyRegistry
+    /// Detached chat, space, and thread window registry and presenter.
+    let detachedWindows: DetachedWindowRegistry
+    private var detachedWindowManager: DetachedWindowManager?
+    /// Shared menu coordinator invoked by the main menu bar, Dock menu, and menu-bar status item.
+    private(set) lazy var menuCoordinator = AppMenuCoordinator(
+        inbox: inbox,
+        lifecycle: lifecycle,
+        settingsNavigation: settingsNavigation,
+        showMainWindow: { [weak self] in self?.windowOpener.show() },
+        showSettingsWindow: {
+            NSApp.activate()
+            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        },
+        hideApp: { NSApp.hide(nil) },
+        closeKeyWindow: { NSApp.keyWindow?.performClose(nil) },
+        closeAllAppWindows: { [weak self] in
+            self?.detachedWindows.closeAll()
+            NSApp.windows.forEach { $0.performClose(nil) }
+        },
+        openDetachedChat: { [weak self] roomID in self?.detachedWindows.open(.chat(roomID: roomID)) },
+        quitApplication: { NSApp.terminate(nil) }
+    )
+    /// Single live dispatcher for all menu commands, window-scoped shortcuts, composer Return handling, and global hotkeys.
+    private(set) lazy var hotkeyDispatcher = HotkeyDispatcher(
+        inbox: inbox,
+        spaces: spaces,
+        conversation: conversation,
+        messageActions: messageActions,
+        search: search,
+        lifecycle: lifecycle,
+        menuCoordinator: menuCoordinator,
+        focus: messageFocus,
+        hotkeys: hotkeys,
+        bringMainWindowForward: { [weak self] in
+            guard let self else { return true }
+            guard !self.inboxUI.isMainWindowKey else { return true }
+            self.windowOpener.show()
+            return false
+        },
+        onFilterByAccount: { [weak self] in self?.inboxUI.accountPopover = true },
+        onRemindLater: { [weak self] in self?.inboxUI.remindPopover = true },
+        onAttachFiles: { composer in AttachmentPicker.run(into: composer) },
+        onArchiveAllRead: { [weak self] in
+            guard let self else { return }
+            await Confirm.archiveAllRead(self.inbox)
+        }
+    )
+    private var globalHotkeyMonitor: GlobalHotkeyMonitor?
     /// The sheets and popovers the inbox's menus and keys open.
     let inboxUI = InboxUI()
     /// Whether the message keys act on the chat's selected message or the thread pane's.
@@ -33,8 +96,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let windowOpener = MainWindowOpener()
     private var signInWindows: SignInWindowPresenter?
     private var notifications: NotificationCoordinator?
-    private let notifier = Notifier()
+    let notifier = Notifier()
     private var dockBadge: DockBadge?
+    private var statusItem: NSStatusItem?
+    private var statusItemSubscriptions = Set<AnyCancellable>()
     /// Held for as long as Courier runs: without it, App Nap slows a Courier whose window is closed or hidden, and
     /// the engine's messages, and so notifications, come late. It still lets the Mac sleep when idle.
     private var appNapActivity: NSObjectProtocol?
@@ -49,13 +114,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             environment: environment,
             launcher: FoundationProcessLauncher()
         )
-        model = AppModel(supervisor: supervisor)
+        model = AppModel(supervisor: supervisor, lifecycle: lifecycle)
         // Telegram's keys: Courier's own, packaged into the app, else the ones the person saved.
         let telegram = TelegramCredentialSource()
         // The person's plan, one for every model that asks (part 4.7 brings plans; until then, everything).
         let entitlement: any EntitlementProvider = AlwaysEntitled()
         let inbox = InboxModel(appModel: model, hasTelegramCredentials: { telegram.hasCredentials },
-                              preferences: InboxPreferences(), entitlement: entitlement)
+                              preferences: InboxPreferences(), entitlement: entitlement, lifecycle: lifecycle)
         self.inbox = inbox
         let attention = Attention(source: SystemPresence())
         self.attention = attention
@@ -113,8 +178,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.scheduled = scheduled
         let login = LoginFlowModel(appModel: model)
         self.login = login
-        spaces = SpacesModel(appModel: model, inbox: inbox)
-        labels = LabelsModel(appModel: model)
+        let accountsAndBridges = AccountsAndBridgesModel(appModel: model, lifecycle: lifecycle)
+        self.accountsAndBridges = accountsAndBridges
+        settingsNavigation.bind(accountsAndBridges: accountsAndBridges)
+        problemReport = ProblemReportModel(appModel: model)
+        spaces = SpacesModel(appModel: model, inbox: inbox, lifecycle: lifecycle)
+        labels = LabelsModel(appModel: model, lifecycle: lifecycle)
+        let lifecycleRef = lifecycle
+        hotkeys = HotkeyRegistry(isAppLocked: { lifecycleRef.isLocked })
+        for composer in [conversation.composer, conversation.thread.composer] {
+            composer.hotkeys = hotkeys
+        }
+        detachedWindows = DetachedWindowRegistry(
+            appModel: model,
+            mainInbox: inbox,
+            lifecycle: lifecycle,
+            inboxPreferences: inbox.preferences,
+            composerPreferences: composerPreferences,
+            quickReplies: quickReplies,
+            entitlement: entitlement,
+            makePasteboard: { SystemPasteboard() },
+            openURL: { url in NSWorkspace.shared.open(url) },
+            hotkeys: hotkeys
+        )
         search = SearchModel(appModel: model, recents: RecentSearches(), open: { [model] in model.open($0) })
         // The inbox's buttons: Reconnect signs that account in again (the banner's account, or with none the network's
         // own sign-in), as Add does (Google Messages warns first).
@@ -134,24 +220,285 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             model.open(.message(roomID: roomID, eventID: messageID))
         }
         signInWindows = SignInWindowPresenter(login: login)
+        globalHotkeyMonitor = GlobalHotkeyMonitor(registry: hotkeys, dispatcher: hotkeyDispatcher)
+        detachedWindowManager = DetachedWindowManager(
+            registry: detachedWindows,
+            appModel: model,
+            mainInbox: inbox,
+            spaces: spaces,
+            lifecycle: lifecycle,
+            onSearchInChat: { [weak self] roomID in
+                self?.windowOpener.show()
+                self?.search.show(in: roomID)
+            }
+        )
         hideTypingQuestion = HideTypingQuestion(conversation: conversation, present: Self.askToHideTyping)
-        dockBadge = DockBadge(spaces: spaces)
+        dockBadge = DockBadge(spaces: spaces, dockPreferences: dockPreferences, lifecycle: lifecycle)
+        configureStatusItemObservers()
         let coordinator = NotificationCoordinator(
             appModel: model, delivery: notifier,
             row: { [inbox] id in inbox.rows.first { $0.roomID == id } },
             isLooking: { [attention] in attention.isLooking },
             isAwayFromLatest: { [conversation] in conversation.isHeldAwayFromLatest },
             isIncognito: { [conversation] in conversation.incognitoIsOn },
+            isAppLocked: { [lifecycle] in lifecycle.isLocked },
             restoreDraft: { [conversation] room, text, mayHaveBeenSent in
                 conversation.composer.restoreUnsent(text: text, in: room, mayHaveBeenSent: mayHaveBeenSent)
             },
             showWindow: { [windowOpener] in windowOpener.show() },
             // The inbox's own object, which Settings changes: a copy would ignore the change until the next launch.
-            preferences: inbox.preferences)
+            preferences: inbox.preferences,
+            clipboard: PasteboardClipboardSink(),
+            soundEffects: SoundEffectPlayer())
         notifier.coordinator = coordinator
         notifications = coordinator
         coordinator.start()
         model.start()
+        if lifecycle.shouldHideMainWindowOnLaunch {
+            DispatchQueue.main.async { NSApp.hide(nil) }
+        }
+    }
+
+    func minimizeToMenuBar() {
+        menuCoordinator.minimizeToMenuBar()
+    }
+
+    private func configureStatusItemObservers() {
+        guard Notifier.isAvailable else { return }
+        Publishers.CombineLatest4(
+            dockPreferences.$showMenuBarIcon,
+            spaces.$spaces,
+            dockPreferences.$badgeMode,
+            lifecycle.$isLocked
+        )
+        .sink { [weak self] showIcon, spacesList, badgeMode, isLocked in
+            self?.updateStatusItem(
+                showIcon: showIcon,
+                spacesList: spacesList,
+                badgeMode: badgeMode,
+                isLocked: isLocked
+            )
+        }
+        .store(in: &statusItemSubscriptions)
+    }
+
+    private func updateStatusItem(
+        showIcon: Bool,
+        spacesList: [Space],
+        badgeMode: DockBadgeMode,
+        isLocked: Bool
+    ) {
+        guard Notifier.isAvailable else { return }
+        guard showIcon else {
+            if let existing = statusItem {
+                NSStatusBar.system.removeStatusItem(existing)
+                statusItem = nil
+            }
+            return
+        }
+        let item = statusItem ?? NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        statusItem = item
+        guard let button = item.button else { return }
+        let count = isLocked ? 0 : SpacesModel.badgeCount(of: spacesList, mode: badgeMode)
+        let symbolName = count > 0 ? "bubble.left.and.bubble.right.fill" : "bubble.left.and.bubble.right"
+        let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: String(localized: "Courier"))
+        image?.isTemplate = true
+        button.image = image
+        button.toolTip = String(localized: "Courier")
+        button.target = self
+        button.action = #selector(statusItemClicked(_:))
+        button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+    }
+
+    @objc private func statusItemClicked(_ sender: NSStatusBarButton) {
+        let event = NSApp.currentEvent
+        let isRightClick = event?.type == .rightMouseUp || event?.modifierFlags.contains(.control) == true
+        if isRightClick, let item = statusItem {
+            let menu = buildStatusItemMenu()
+            item.menu = menu
+            sender.performClick(nil)
+            item.menu = nil
+        } else {
+            windowOpener.show()
+        }
+    }
+
+    private func buildStatusItemMenu() -> NSMenu {
+        let menu = NSMenu(title: "Courier")
+        menu.autoenablesItems = false
+
+        let unreadTitle: String
+        if lifecycle.isLocked {
+            unreadTitle = String(localized: "Courier is locked")
+        } else {
+            let count = SpacesModel.badgeCount(of: spaces.spaces, mode: dockPreferences.badgeMode)
+            switch count {
+            case 0: unreadTitle = String(localized: "No unread chats")
+            case 1: unreadTitle = String(localized: "1 unread chat")
+            default: unreadTitle = String(localized: "\(count) unread chats")
+            }
+        }
+        let statusHeader = NSMenuItem(title: unreadTitle, action: nil, keyEquivalent: "")
+        statusHeader.isEnabled = false
+        menu.addItem(statusHeader)
+
+        let dockMenu = DockMenuModel.build(
+            isLocked: lifecycle.isLocked,
+            inboxRows: inbox.rows,
+            recentlyViewedRoomIDs: inbox.recentlyViewedRoomIDs,
+            currentRoomID: model.selectedRoomID
+        )
+        if !dockMenu.unreadChats.isEmpty {
+            menu.addItem(.separator())
+            let header = NSMenuItem(title: String(localized: "Unread Chats"), action: nil, keyEquivalent: "")
+            header.isEnabled = false
+            menu.addItem(header)
+            for chat in dockMenu.unreadChats {
+                let item = NSMenuItem(title: chat.title, action: #selector(selectDockMenuChat(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = chat.roomID
+                item.isEnabled = true
+                menu.addItem(item)
+            }
+        }
+        if !dockMenu.recentChats.isEmpty {
+            menu.addItem(.separator())
+            let header = NSMenuItem(title: String(localized: "Recent Chats"), action: nil, keyEquivalent: "")
+            header.isEnabled = false
+            menu.addItem(header)
+            for chat in dockMenu.recentChats {
+                let item = NSMenuItem(title: chat.title, action: #selector(selectDockMenuChat(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = chat.roomID
+                item.isEnabled = true
+                menu.addItem(item)
+            }
+        }
+
+        menu.addItem(.separator())
+        let openItem = NSMenuItem(title: String(localized: "Open Courier"), action: #selector(openCourierFromMenu(_:)), keyEquivalent: "")
+        openItem.target = self
+        openItem.isEnabled = true
+        menu.addItem(openItem)
+
+        let minItem = NSMenuItem(title: String(localized: "Minimize to Menu Bar"), action: #selector(minimizeFromMenu(_:)), keyEquivalent: "")
+        applyMenuChord(hotkeys.primaryChord(for: "Minimize To Menu Bar"), to: minItem, enabled: !lifecycle.isLocked)
+        minItem.target = self
+        minItem.isEnabled = !lifecycle.isLocked
+        menu.addItem(minItem)
+
+        let lockTitle = lifecycle.isLocked ? String(localized: "Unlock Courier…") : String(localized: "Lock App")
+        let lockItem = NSMenuItem(title: lockTitle, action: #selector(lockOrUnlockFromMenu(_:)), keyEquivalent: "")
+        lockItem.target = self
+        lockItem.isEnabled = true
+        menu.addItem(lockItem)
+
+        menu.addItem(.separator())
+        let quitItem = NSMenuItem(title: String(localized: "Quit Courier"), action: #selector(quitFromMenu(_:)), keyEquivalent: "")
+        applyMenuChord(hotkeys.primaryChord(for: "Quit App"), to: quitItem, enabled: !lifecycle.isLocked)
+        quitItem.target = self
+        quitItem.isEnabled = !lifecycle.isLocked
+        menu.addItem(quitItem)
+        return menu
+    }
+
+    private func applyMenuChord(_ chord: KeyChord?, to item: NSMenuItem, enabled: Bool) {
+        guard enabled, let chord else {
+            item.keyEquivalent = ""
+            item.keyEquivalentModifierMask = []
+            return
+        }
+        item.keyEquivalent = chord.key
+        var mask: NSEvent.ModifierFlags = []
+        if chord.command { mask.insert(.command) }
+        if chord.shift { mask.insert(.shift) }
+        if chord.option { mask.insert(.option) }
+        if chord.control { mask.insert(.control) }
+        item.keyEquivalentModifierMask = mask
+    }
+
+    @objc private func openCourierFromMenu(_ sender: NSMenuItem) {
+        windowOpener.show()
+    }
+
+    @objc private func minimizeFromMenu(_ sender: NSMenuItem) {
+        menuCoordinator.minimizeToMenuBar()
+    }
+
+    @objc private func quitFromMenu(_ sender: NSMenuItem) {
+        menuCoordinator.quitApp()
+    }
+
+    @objc private func lockOrUnlockFromMenu(_ sender: NSMenuItem) {
+        if lifecycle.isLocked {
+            windowOpener.show()
+        }
+        Task { await menuCoordinator.lockOrUnlockApp() }
+    }
+
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        if lifecycle.isLocked {
+            let menu = NSMenu(title: "Courier")
+            menu.autoenablesItems = false
+            let unlockItem = NSMenuItem(
+                title: String(localized: "Unlock Courier…"),
+                action: #selector(lockOrUnlockFromMenu(_:)),
+                keyEquivalent: ""
+            )
+            unlockItem.target = self
+            unlockItem.isEnabled = true
+            menu.addItem(unlockItem)
+            return menu
+        }
+
+        let dockMenu = DockMenuModel.build(
+            isLocked: lifecycle.isLocked,
+            inboxRows: inbox.rows,
+            recentlyViewedRoomIDs: inbox.recentlyViewedRoomIDs,
+            currentRoomID: model.selectedRoomID
+        )
+        guard !dockMenu.isEmpty else { return nil }
+
+        let menu = NSMenu(title: "Courier")
+        menu.autoenablesItems = false
+
+        if !dockMenu.unreadChats.isEmpty {
+            let header = NSMenuItem(title: String(localized: "Unread Chats"), action: nil, keyEquivalent: "")
+            header.isEnabled = false
+            menu.addItem(header)
+            for chat in dockMenu.unreadChats {
+                let item = NSMenuItem(title: chat.title, action: #selector(selectDockMenuChat(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = chat.roomID
+                item.isEnabled = true
+                menu.addItem(item)
+            }
+        }
+
+        if !dockMenu.recentChats.isEmpty {
+            if !dockMenu.unreadChats.isEmpty {
+                menu.addItem(.separator())
+            }
+            let header = NSMenuItem(title: String(localized: "Recent Chats"), action: nil, keyEquivalent: "")
+            header.isEnabled = false
+            menu.addItem(header)
+            for chat in dockMenu.recentChats {
+                let item = NSMenuItem(title: chat.title, action: #selector(selectDockMenuChat(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = chat.roomID
+                item.isEnabled = true
+                menu.addItem(item)
+            }
+        }
+
+        return menu
+    }
+
+    @objc private func selectDockMenuChat(_ sender: NSMenuItem) {
+        guard let roomID = sender.representedObject as? String else { return }
+        Task {
+            _ = await menuCoordinator.openChatFromExternalMenu(roomID)
+        }
     }
 
     /// The question as an alert: a sheet on the window in front (Settings, or the main window for the command bar),
@@ -163,28 +510,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.addButton(withTitle: ConversationModel.hideTypingButton)
         alert.addButton(withTitle: ConversationModel.keepShowingTypingButton).keyEquivalent = "\u{1b}"
         if let window = NSApp.keyWindow {
+            var lockObserver: NSObjectProtocol?
+            lockObserver = NotificationCenter.default.addObserver(
+                forName: SystemLifecycleModel.didLockNotification,
+                object: nil,
+                queue: .main
+            ) { [weak window] _ in
+                MainActor.assumeIsolated {
+                    guard let window, window.attachedSheet === alert.window else { return }
+                    window.endSheet(alert.window, returnCode: .abort)
+                }
+            }
             alert.beginSheetModal(for: window) { response in
+                if let lockObserver { NotificationCenter.default.removeObserver(lockObserver) }
                 let hide = response == .alertFirstButtonReturn
                 Task { @MainActor in answer(hide) }
             }
             return { [weak window] in
+                if let lockObserver { NotificationCenter.default.removeObserver(lockObserver) }
                 guard let window, window.attachedSheet === alert.window else { return }
                 window.endSheet(alert.window, returnCode: .abort)
+            }
+        }
+        var lockObserver: NSObjectProtocol?
+        lockObserver = NotificationCenter.default.addObserver(
+            forName: SystemLifecycleModel.didLockNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            MainActor.assumeIsolated {
+                if NSApp.modalWindow === alert.window { NSApp.abortModal() }
             }
         }
         // Run on the next turn, so the way to take it down is handed back first: runModal doesn't return until the
         // alert is answered or stopped.
         DispatchQueue.main.async {
             let response = alert.runModal()
+            if let lockObserver { NotificationCenter.default.removeObserver(lockObserver) }
             Task { @MainActor in answer(response == .alertFirstButtonReturn) }
         }
         return {
+            if let lockObserver { NotificationCenter.default.removeObserver(lockObserver) }
             if NSApp.modalWindow === alert.window { NSApp.abortModal() }
         }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        false
+        lifecycle.shouldTerminateWhenMainWindowClosed
     }
 
     /// Quitting first tells each chat I'm typing in that I stopped (both composers), then hands every held (undo
@@ -200,13 +572,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             sender.reply(toApplicationShouldTerminate: true)
         }
         return .terminateLater
-    }
-}
-
-/// Copy's pasteboard: the system's general one, as plain text.
-private final class SystemPasteboard: TextPasteboard {
-    func setString(_ text: String) {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
     }
 }

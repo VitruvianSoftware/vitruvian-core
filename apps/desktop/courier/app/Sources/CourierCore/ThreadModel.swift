@@ -381,6 +381,16 @@ public final class ThreadModel: ObservableObject {
         for case let .message(message) in items where message.id == eventID { return message }
         return nil
     }
+
+    /// Populates `roomID`, `rootID`, `items`, and `isLoaded` directly for deterministic testing without an engine.
+    public func setSnapshotStateForTesting(roomID: String, rootID: String, items: [TimelineItem]) {
+        self.roomID = roomID
+        self.rootID = rootID
+        self.items = items
+        self.isLoaded = true
+        composer.open(roomID)
+        composer.startThread(rootID)
+    }
 }
 
 /// The engine's sender for the thread pane's composer: everything as the chat's composer sends it, except the

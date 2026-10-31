@@ -1,0 +1,94 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "diagnostics.export",
+    "params": {
+      "room_id": "!4f1c2b7a9d0e3f56a8b1c2d3e4f5a6b7:courier.local",
+      "event_id": "$m1"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+      "protocol_version": 9,
+      "schema_version": 10,
+      "go_version": "go1.26.2",
+      "bridges": [
+        {
+          "network": "whatsapp",
+          "display_name": "WhatsApp",
+          "bridge_id": "whatsapp",
+          "module_path": "go.mau.fi/mautrix-whatsapp",
+          "version": "v0.2609.0",
+          "mautrix_version": "v0.31.0",
+          "state": "CONNECTED",
+          "started_at": 1760600000000,
+          "accounts": [
+            {
+              "network": "whatsapp",
+              "display_name": "WhatsApp",
+              "flows": ["qr", "phone"],
+              "state": "CONNECTED",
+              "error": "",
+              "remote_name": "Test Account",
+              "not_started": "",
+              "syncs": ["pin", "mute", "accept_request"],
+              "can_create_group": true,
+              "logins": [
+                {
+                  "account_id": "whatsapp-login",
+                  "remote_name": "Test Account",
+                  "state": "CONNECTED",
+                  "error": "",
+                  "can_create_group": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "network": "signal",
+          "display_name": "Signal",
+          "bridge_id": "signal",
+          "module_path": "go.mau.fi/mautrix-signal",
+          "version": "v0.2609.0",
+          "mautrix_version": "v0.31.0",
+          "state": "UNCONFIGURED",
+          "started_at": 1760600000000,
+          "accounts": []
+        },
+        {
+          "network": "telegram",
+          "display_name": "Telegram",
+          "bridge_id": "telegram",
+          "module_path": "go.mau.fi/mautrix-telegram",
+          "version": "v0.2609.0",
+          "mautrix_version": "v0.31.0",
+          "state": "NOT_STARTED",
+          "message": "Telegram needs an api_id and api_hash",
+          "started_at": 0,
+          "accounts": []
+        }
+      ],
+      "scrubbed_stderr": ["panic: [redacted]"],
+      "room_details": {
+        "room_id": "!4f1c2b7a9d0e3f56a8b1c2d3e4f5a6b7:courier.local",
+        "network": "whatsapp",
+        "is_direct": false
+      },
+      "message_details": {
+        "event_id": "$m1",
+        "room_id": "!4f1c2b7a9d0e3f56a8b1c2d3e4f5a6b7:courier.local",
+        "network": "whatsapp",
+        "type": "m.room.message",
+        "ts": 1760600000000,
+        "status": "sent",
+        "status_reason": "",
+        "has_media": false,
+        "is_redacted": false
+      }
+    }
+  }
+}

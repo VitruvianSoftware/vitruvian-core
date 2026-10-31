@@ -16,7 +16,8 @@ import Foundation
 
 /// The protocol this app speaks, and the framing limit both sides keep.
 public enum CourierProtocol {
-    public static let version = 8
+    public static let version = 9
+    public static let schemaVersion = 10
     /// The longest line either side may send, not counting the newline.
     public static let maxFrameBytes = 4_194_304
     /// protocol.json's `conventions.typing_repeat_ms`: while the text keeps changing, room.setTyping true goes again
@@ -4535,6 +4536,306 @@ public struct MergeSuggestResult: ProtocolType, Equatable {
     }
 }
 
+public struct BridgeInfo: ProtocolType, Equatable, Identifiable {
+    public static let protocolName = "BridgeInfo"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var network: String
+    public var displayName: String
+    public var bridgeID: String
+    public var modulePath: String
+    public var version: String
+    public var mautrixVersion: String
+    public var state: String
+    public var error: String?
+    public var message: String?
+    public var startedAt: Int64
+    public var accounts: [Account]
+    public var id: String { network }
+
+    public init(network: String, displayName: String, bridgeID: String, modulePath: String, version: String,
+                mautrixVersion: String, state: String, error: String? = nil, message: String? = nil,
+                startedAt: Int64, accounts: [Account]) {
+        self.network = network
+        self.displayName = displayName
+        self.bridgeID = bridgeID
+        self.modulePath = modulePath
+        self.version = version
+        self.mautrixVersion = mautrixVersion
+        self.state = state
+        self.error = error
+        self.message = message
+        self.startedAt = startedAt
+        self.accounts = accounts
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case network
+        case displayName = "display_name"
+        case bridgeID = "bridge_id"
+        case modulePath = "module_path"
+        case version
+        case mautrixVersion = "mautrix_version"
+        case state
+        case error
+        case message
+        case startedAt = "started_at"
+        case accounts
+    }
+}
+
+public struct BridgesResult: ProtocolType, Equatable {
+    public static let protocolName = "BridgesResult"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var bridges: [BridgeInfo]
+
+    public init(bridges: [BridgeInfo]) { self.bridges = bridges }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case bridges
+    }
+}
+
+public struct BridgeRestartParams: ProtocolType, Equatable {
+    public static let protocolName = "BridgeRestartParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var network: String
+
+    public init(network: String) { self.network = network }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case network
+    }
+}
+
+public struct AccountRemoveParams: ProtocolType, Equatable {
+    public static let protocolName = "AccountRemoveParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var network: String
+    public var accountID: String
+    public var logoutRemote: Bool
+    public var deleteChats: Bool
+
+    public init(network: String, accountID: String, logoutRemote: Bool, deleteChats: Bool) {
+        self.network = network
+        self.accountID = accountID
+        self.logoutRemote = logoutRemote
+        self.deleteChats = deleteChats
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case network
+        case accountID = "account_id"
+        case logoutRemote = "logout_remote"
+        case deleteChats = "delete_chats"
+    }
+}
+
+public struct SubAccountItem: ProtocolType, Equatable, Hashable, Identifiable {
+    public static let protocolName = "SubAccountItem"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var network: String
+    public var accountID: String
+    public var subID: String
+    public var title: String
+    public var avatarURI: String
+    public var kind: String
+    public var enabled: Bool
+    public var showInInbox: ShowInInbox
+    public var id: String { "\(network):\(accountID):\(subID)" }
+
+    public init(network: String, accountID: String, subID: String, title: String, avatarURI: String = "",
+                kind: String, enabled: Bool, showInInbox: ShowInInbox) {
+        self.network = network
+        self.accountID = accountID
+        self.subID = subID
+        self.title = title
+        self.avatarURI = avatarURI
+        self.kind = kind
+        self.enabled = enabled
+        self.showInInbox = showInInbox
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case network
+        case accountID = "account_id"
+        case subID = "sub_id"
+        case title
+        case avatarURI = "avatar_uri"
+        case kind
+        case enabled
+        case showInInbox = "show_in_inbox"
+    }
+}
+
+public struct SubAccountsParams: ProtocolType, Equatable {
+    public static let protocolName = "SubAccountsParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var network: String
+    public var accountID: String
+    public var refresh: Bool?
+
+    public init(network: String, accountID: String, refresh: Bool? = nil) {
+        self.network = network
+        self.accountID = accountID
+        self.refresh = refresh
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case network
+        case accountID = "account_id"
+        case refresh
+    }
+}
+
+public struct SubAccountsResult: ProtocolType, Equatable {
+    public static let protocolName = "SubAccountsResult"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var subAccounts: [SubAccountItem]
+
+    public init(subAccounts: [SubAccountItem]) { self.subAccounts = subAccounts }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case subAccounts = "sub_accounts"
+    }
+}
+
+public struct SetSubAccountParams: ProtocolType, Equatable {
+    public static let protocolName = "SetSubAccountParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var network: String
+    public var accountID: String
+    public var subID: String
+    public var enabled: Bool?
+    public var showInInbox: ShowInInbox?
+
+    public init(network: String, accountID: String, subID: String, enabled: Bool? = nil,
+                showInInbox: ShowInInbox? = nil) {
+        self.network = network
+        self.accountID = accountID
+        self.subID = subID
+        self.enabled = enabled
+        self.showInInbox = showInInbox
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case network
+        case accountID = "account_id"
+        case subID = "sub_id"
+        case enabled
+        case showInInbox = "show_in_inbox"
+    }
+}
+
+public struct DiagnosticsExportParams: ProtocolType, Equatable {
+    public static let protocolName = "DiagnosticsExportParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomID: String?
+    public var eventID: String?
+
+    public init(roomID: String? = nil, eventID: String? = nil) {
+        self.roomID = roomID
+        self.eventID = eventID
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomID = "room_id"
+        case eventID = "event_id"
+    }
+}
+
+public struct RoomDiagnostic: ProtocolType, Equatable, Hashable {
+    public static let protocolName = "RoomDiagnostic"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomID: String
+    public var network: String
+    public var isDirect: Bool
+
+    public init(roomID: String, network: String, isDirect: Bool) {
+        self.roomID = roomID
+        self.network = network
+        self.isDirect = isDirect
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomID = "room_id"
+        case network
+        case isDirect = "is_direct"
+    }
+}
+
+public struct MessageDiagnostic: ProtocolType, Equatable, Hashable {
+    public static let protocolName = "MessageDiagnostic"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var eventID: String
+    public var roomID: String
+    public var network: String
+    public var type: String
+    public var ts: Int64
+    public var status: String
+    public var statusReason: String
+    public var hasMedia: Bool
+    public var isRedacted: Bool
+
+    public init(eventID: String, roomID: String, network: String, type: String, ts: Int64, status: String,
+                statusReason: String = "", hasMedia: Bool = false, isRedacted: Bool = false) {
+        self.eventID = eventID
+        self.roomID = roomID
+        self.network = network
+        self.type = type
+        self.ts = ts
+        self.status = status
+        self.statusReason = statusReason
+        self.hasMedia = hasMedia
+        self.isRedacted = isRedacted
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case eventID = "event_id"
+        case roomID = "room_id"
+        case network
+        case type
+        case ts
+        case status
+        case statusReason = "status_reason"
+        case hasMedia = "has_media"
+        case isRedacted = "is_redacted"
+    }
+}
+
+public struct DiagnosticsExportResult: ProtocolType, Equatable {
+    public static let protocolName = "DiagnosticsExportResult"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var protocolVersion: Int
+    public var schemaVersion: Int
+    public var goVersion: String
+    public var bridges: [BridgeInfo]
+    public var scrubbedStderr: [String]
+    public var roomDetails: RoomDiagnostic?
+    public var messageDetails: MessageDiagnostic?
+
+    public init(protocolVersion: Int, schemaVersion: Int, goVersion: String, bridges: [BridgeInfo],
+                scrubbedStderr: [String], roomDetails: RoomDiagnostic? = nil,
+                messageDetails: MessageDiagnostic? = nil) {
+        self.protocolVersion = protocolVersion
+        self.schemaVersion = schemaVersion
+        self.goVersion = goVersion
+        self.bridges = bridges
+        self.scrubbedStderr = scrubbedStderr
+        self.roomDetails = roomDetails
+        self.messageDetails = messageDetails
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case protocolVersion = "protocol_version"
+        case schemaVersion = "schema_version"
+        case goVersion = "go_version"
+        case bridges
+        case scrubbedStderr = "scrubbed_stderr"
+        case roomDetails = "room_details"
+        case messageDetails = "message_details"
+    }
+}
+
 // MARK: - Changes
 
 /// Something the app shows has changed: re-query it. A `Changed` notification, read.
@@ -4608,6 +4909,113 @@ public enum Change: Equatable, Hashable, Sendable {
 /// The methods, with the types of their params and results, as protocol.json's "methods".
 public enum ProtocolMethods {
     public static let changedNotification = "changed"
+
+    /// Whether a protocol method is read-only/background or a user-initiated mutation refused while locked.
+    public enum AccessClassification: String, Equatable, Sendable {
+        case readOnlyOrBackground
+        case userInitiatedMutation
+    }
+
+    /// Classification of every method in `protocol.json` for `EngineClient`'s app-lock chokepoint.
+    public static let classifications: [String: AccessClassification] = [
+        "hello": .readOnlyOrBackground,
+        "accounts.list": .readOnlyOrBackground,
+        "inbox.list": .readOnlyOrBackground,
+        "spaces.list": .readOnlyOrBackground,
+        "spaces.setLayout": .userInitiatedMutation,
+        "spaces.update": .userInitiatedMutation,
+        "labels.create": .userInitiatedMutation,
+        "labels.update": .userInitiatedMutation,
+        "labels.delete": .userInitiatedMutation,
+        "room.setPinned": .userInitiatedMutation,
+        "room.setArchived": .userInitiatedMutation,
+        "room.setLowPriority": .userInitiatedMutation,
+        "room.setHidden": .userInitiatedMutation,
+        "room.setMarkedUnread": .userInitiatedMutation,
+        "room.setLabel": .userInitiatedMutation,
+        "room.setDraft": .userInitiatedMutation,
+        "room.acceptRequest": .userInitiatedMutation,
+        "reminder.set": .userInitiatedMutation,
+        "reminder.clear": .userInitiatedMutation,
+        "reminder.clearAll": .userInitiatedMutation,
+        "inbox.archiveMatching": .userInitiatedMutation,
+        "inbox.markAllRead": .userInitiatedMutation,
+        "autoArchive.list": .readOnlyOrBackground,
+        "autoArchive.set": .userInitiatedMutation,
+        "autoArchive.delete": .userInitiatedMutation,
+        "search.query": .readOnlyOrBackground,
+        "room.events": .readOnlyOrBackground,
+        "room.features": .readOnlyOrBackground,
+        "room.markRead": .userInitiatedMutation,
+        "room.setTyping": .userInitiatedMutation,
+        "room.setUnreadFrom": .userInitiatedMutation,
+        "room.members": .readOnlyOrBackground,
+        "room.directChat": .userInitiatedMutation,
+        "room.setMuted": .userInitiatedMutation,
+        "message.send": .userInitiatedMutation,
+        "message.sendFile": .userInitiatedMutation,
+        "message.sendVoice": .userInitiatedMutation,
+        "message.sendLocation": .userInitiatedMutation,
+        "message.sendSticker": .userInitiatedMutation,
+        "message.sendGIF": .userInitiatedMutation,
+        "message.markPlayed": .userInitiatedMutation,
+        "message.react": .userInitiatedMutation,
+        "message.retry": .userInitiatedMutation,
+        "message.discard": .userInitiatedMutation,
+        "room.setDisappearing": .userInitiatedMutation,
+        "message.edit": .userInitiatedMutation,
+        "message.unsend": .userInitiatedMutation,
+        "message.deleteForMe": .userInitiatedMutation,
+        "message.forward": .userInitiatedMutation,
+        "message.history": .userInitiatedMutation,
+        "message.undo": .userInitiatedMutation,
+        "message.sendHeld": .userInitiatedMutation,
+        "message.setBookmarked": .userInitiatedMutation,
+        "message.schedule": .userInitiatedMutation,
+        "scheduled.list": .readOnlyOrBackground,
+        "scheduled.update": .userInitiatedMutation,
+        "scheduled.sendNow": .userInitiatedMutation,
+        "scheduled.delete": .userInitiatedMutation,
+        "poll.create": .userInitiatedMutation,
+        "poll.vote": .userInitiatedMutation,
+        "login.start": .userInitiatedMutation,
+        "login.submit": .userInitiatedMutation,
+        "login.wait": .userInitiatedMutation,
+        "login.cancel": .userInitiatedMutation,
+        "room.info": .userInitiatedMutation,
+        "room.setLocalOverride": .userInitiatedMutation,
+        "room.export": .userInitiatedMutation,
+        "room.reportSpam": .userInitiatedMutation,
+        "room.setName": .userInitiatedMutation,
+        "room.setTopic": .userInitiatedMutation,
+        "room.setAvatar": .userInitiatedMutation,
+        "room.invite": .userInitiatedMutation,
+        "room.kick": .userInitiatedMutation,
+        "room.setAdmin": .userInitiatedMutation,
+        "room.leave": .userInitiatedMutation,
+        "room.delete": .userInitiatedMutation,
+        "people.contacts": .userInitiatedMutation,
+        "people.resolve": .userInitiatedMutation,
+        "room.createGroup": .userInitiatedMutation,
+        "blast.send": .userInitiatedMutation,
+        "merge.list": .readOnlyOrBackground,
+        "merge.suggest": .userInitiatedMutation,
+        "merge.create": .userInitiatedMutation,
+        "merge.update": .userInitiatedMutation,
+        "merge.delete": .userInitiatedMutation,
+        "stickers.list": .userInitiatedMutation,
+        "stickers.import": .userInitiatedMutation,
+        "bridges.list": .userInitiatedMutation,
+        "bridges.restart": .userInitiatedMutation,
+        "accounts.remove": .userInitiatedMutation,
+        "accounts.subAccounts": .userInitiatedMutation,
+        "accounts.setSubAccount": .userInitiatedMutation,
+        "diagnostics.export": .userInitiatedMutation,
+    ]
+
+    public static func classification(for method: String) -> AccessClassification? {
+        classifications[method]
+    }
 
     public static let all: [String: (params: any ProtocolType.Type, result: any ProtocolType.Type)] = [
         "hello": (HelloParams.self, HelloResult.self),
@@ -4697,6 +5105,12 @@ public enum ProtocolMethods {
         "merge.suggest": (Empty.self, MergeSuggestResult.self),
         "stickers.list": (StickersListParams.self, ListStickersResult.self),
         "stickers.import": (ImportStickerParams.self, StickerItem.self),
+        "bridges.list": (Empty.self, BridgesResult.self),
+        "bridges.restart": (BridgeRestartParams.self, Empty.self),
+        "accounts.remove": (AccountRemoveParams.self, Empty.self),
+        "accounts.subAccounts": (SubAccountsParams.self, SubAccountsResult.self),
+        "accounts.setSubAccount": (SetSubAccountParams.self, Empty.self),
+        "diagnostics.export": (DiagnosticsExportParams.self, DiagnosticsExportResult.self),
     ]
 
     /// Every type of protocol.json's "types".
@@ -4730,6 +5144,9 @@ public enum ProtocolMethods {
         FileKindFeatures.self, MediaCapFeature.self, LinkPreviewItem.self, MarkPlayedParams.self, SendVoiceParams.self, SendLocationParams.self,
         BridgedStickerRef.self, SendStickerParams.self, SendGIFParams.self,
         StickerItem.self, StickerPack.self, ListStickersResult.self, StickersListParams.self, ImportStickerParams.self,
+        BridgeInfo.self, BridgesResult.self, BridgeRestartParams.self, AccountRemoveParams.self, SubAccountItem.self,
+        SubAccountsParams.self, SubAccountsResult.self, SetSubAccountParams.self, DiagnosticsExportParams.self,
+        RoomDiagnostic.self, MessageDiagnostic.self, DiagnosticsExportResult.self,
     ]
 
     /// The open-valued fields, by "Type.field", with the values this app knows.
@@ -4774,6 +5191,9 @@ public enum ProtocolMethods {
         "LoginField.type": LoginFieldType.known.map(\.rawValue),
         "LoginCookieSource.type": LoginCookieSourceType.known.map(\.rawValue),
         "Changed.kind": ChangedKind.known.map(\.rawValue),
+        "SubAccountItem.kind": ["space", "bot"],
+        "SubAccountItem.show_in_inbox": ShowInInbox.settable.map(\.rawValue),
+        "SetSubAccountParams.show_in_inbox": ShowInInbox.settable.map(\.rawValue),
     ]
 }
 

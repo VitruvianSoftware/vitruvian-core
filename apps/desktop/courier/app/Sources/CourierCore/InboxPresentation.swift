@@ -103,7 +103,8 @@ public enum RelativeTime {
     }
 
     public static func text(forMillis millis: Int64, now: Date = Date(), calendar: Calendar = .current,
-                            locale: Locale = .current) -> String {
+                            locale: Locale = .current,
+                            timeFormat: TimeFormatPreference = .system) -> String {
         guard millis > 0 else { return "" }
         let date = Date(timeIntervalSince1970: TimeInterval(millis) / 1000)
         let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: date),
@@ -113,6 +114,9 @@ public enum RelativeTime {
         case 0: style = .time
         case 1 ... 6: style = .weekday
         default: style = .date // older, or ahead of this clock
+        }
+        if style == .time, timeFormat != .system {
+            return timeFormat.formatTime(date, locale: locale, timeZone: calendar.timeZone)
         }
         return formatter(style, calendar: calendar, locale: locale).string(from: date)
     }

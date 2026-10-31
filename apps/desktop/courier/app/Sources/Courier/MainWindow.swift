@@ -15,6 +15,31 @@ final class InboxUI: ObservableObject {
     /// The main window is open and in front (key). ⌘K closes a panel only then; otherwise it brings the window
     /// forward and opens it.
     var isMainWindowKey = false
+    private var lockObserver: NSObjectProtocol?
+
+    init() {
+        lockObserver = NotificationCenter.default.addObserver(
+            forName: SystemLifecycleModel.didLockNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.dismissAllPresentations()
+            }
+        }
+    }
+
+    deinit {
+        if let lockObserver {
+            NotificationCenter.default.removeObserver(lockObserver)
+        }
+    }
+
+    func dismissAllPresentations() {
+        if customReminder != nil { customReminder = nil }
+        if remindPopover { remindPopover = false }
+        if accountPopover { accountPopover = false }
+    }
 }
 
 /// The main window: how the engine is doing until it is up, then the space bar, the chat list and the
@@ -28,154 +53,181 @@ struct MainWindow: View {
     @ObservedObject var preferences: InboxPreferences
     @ObservedObject var ui: InboxUI
     @ObservedObject var search: SearchModel
+    @ObservedObject var lifecycle: SystemLifecycleModel
     let labels: LabelsModel
     /// The message menu's actions, the open chat's scheduled messages, the composer's settings, and which messages
     /// the keys act on.
     let messageActions: MessageActionsModel
     let scheduled: ScheduledModel
-    let composerPreferences: ComposerPreferences
+    @ObservedObject var composerPreferences: ComposerPreferences
     let focus: MessageFocus
+    var detachedWindows: DetachedWindowRegistry? = nil
+    @ObservedObject var hotkeys: HotkeyRegistry
+    var hotkeyDispatcher: HotkeyDispatcher? = nil
+    var onOpenShortcutsSettings: () -> Void = {}
     @Environment(\.openWindow) private var openWindow
     @Environment(\.controlActiveState) private var controlActiveState
 
     var body: some View {
-        content
-            .frame(minWidth: 480, maxWidth: .infinity, minHeight: 320, maxHeight: .infinity)
-            .overlay {
-                if search.phase != .closed {
-                    SearchOverlay(search: search, inbox: inbox)
+        LockableWindowContent(lifecycle: lifecycle) {
+            content
+                .frame(minWidth: 480, maxWidth: .infinity, minHeight: 320, maxHeight: .infinity)
+                .overlay {
+                    if search.phase != .closed {
+                        SearchOverlay(search: search, inbox: inbox, composerPreferences: composerPreferences)
+                    }
                 }
-            }
-            .overlay {
-                if conversation.carousel.isPresented {
-                    AttachmentCarouselOverlay(
-                        model: conversation.carousel,
-                        onGoToMessage: { item in
-                            conversation.closeLightbox()
-                            model.open(.message(roomID: item.roomID, eventID: item.eventID))
-                        },
-                        onReact: { item, emoji in
-                            Task { await conversation.react(to: item.eventID, key: emoji) }
-                        },
-                        onReply: { item in
-                            conversation.closeLightbox()
-                            if let msg = conversation.message(item.eventID, from: .chat),
-                               let action = conversation.replyAction(for: msg) {
-                                Task { await messageActions.perform(action, on: item.eventID, from: .chat) }
+                .overlay {
+                    if conversation.carousel.isPresented {
+                        AttachmentCarouselOverlay(
+                            model: conversation.carousel,
+                            onGoToMessage: { item in
+                                conversation.closeLightbox()
+                                model.open(.message(roomID: item.roomID, eventID: item.eventID))
+                            },
+                            onReact: { item, emoji in
+                                Task { await conversation.react(to: item.eventID, key: emoji) }
+                            },
+                            onReply: { item in
+                                conversation.closeLightbox()
+                                if let msg = conversation.message(item.eventID, from: .chat),
+                                   let action = conversation.replyAction(for: msg) {
+                                    Task { await messageActions.perform(action, on: item.eventID, from: .chat) }
+                                }
+                            },
+                            onCopyImage: { item in
+                                guard !item.viewOnce,
+                                      isLocalMediaStorePath(item.mediaPath),
+                                      let nsImage = NSImage(contentsOfFile: item.mediaPath)
+                                else { return }
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.writeObjects([nsImage])
+                                conversation.onToast(String(localized: "Copied image"))
+                            },
+                            onQuickLook: { item in
+                                guard !item.viewOnce, isLocalMediaStorePath(item.mediaPath) else { return }
+                                QuickLookPreviewCoordinator.shared.preview(
+                                    fileAtPath: item.mediaPath,
+                                    suggestedName: item.fileName
+                                )
+                            },
+                            onDownload: { item in
+                                guard !item.viewOnce, isLocalMediaStorePath(item.mediaPath) else { return }
+                                let downloader = AttachmentDownloader(preferences: composerPreferences)
+                                if let saved = try? downloader.download(
+                                    sourcePath: item.mediaPath,
+                                    suggestedName: item.fileName
+                                ) {
+                                    conversation.onToast(String(localized: "Saved \(saved.lastPathComponent)"))
+                                }
+                            },
+                            onClose: {
+                                conversation.closeLightbox()
                             }
-                        },
-                        onCopyImage: { item in
-                            guard !item.viewOnce,
-                                  isLocalMediaStorePath(item.mediaPath),
-                                  let nsImage = NSImage(contentsOfFile: item.mediaPath)
-                            else { return }
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.writeObjects([nsImage])
-                            conversation.onToast(String(localized: "Copied image"))
-                        },
-                        onQuickLook: { item in
-                            guard !item.viewOnce, isLocalMediaStorePath(item.mediaPath) else { return }
-                            QuickLookPreviewCoordinator.shared.preview(
-                                fileAtPath: item.mediaPath,
-                                suggestedName: item.fileName
-                            )
-                        },
-                        onDownload: { item in
-                            guard !item.viewOnce, isLocalMediaStorePath(item.mediaPath) else { return }
-                            let downloader = AttachmentDownloader(preferences: composerPreferences)
-                            if let saved = try? downloader.download(
-                                sourcePath: item.mediaPath,
-                                suggestedName: item.fileName
-                            ) {
-                                conversation.onToast(String(localized: "Saved \(saved.lastPathComponent)"))
+                        )
+                    }
+                }
+                // A chat's right-click menu opens search in that chat.
+                .environment(\.searchInChat, { search.show(in: $0) })
+                .environment(\.openDetachedWindow, { target in detachedWindows?.open(target) })
+                .onChange(of: controlActiveState, initial: true) { _, state in
+                    ui.isMainWindowKey = state == .key
+                }
+                // A closed window takes its panel with it: the next ⌘K opens a fresh one, in view.
+                .onDisappear {
+                    ui.isMainWindowKey = false
+                    search.close()
+                    conversation.composer.voiceRecorder.cancelImmediately()
+                    conversation.thread.composer.voiceRecorder.cancelImmediately()
+                    conversation.composer.isStickerPickerPresented = false
+                    conversation.composer.isGIFPickerPresented = false
+                    conversation.thread.composer.isStickerPickerPresented = false
+                    conversation.thread.composer.isGIFPickerPresented = false
+                }
+                .sheet(isPresented: addingNetwork) {
+                    AddNetworkView(login: login)
+                }
+                .sheet(item: customReminderBinding) { request in
+                    CustomReminderSheet(request: request, inbox: inbox)
+                }
+                .sheet(
+                    isPresented: Binding(
+                        get: { inbox.startNewChatDraft != nil },
+                        set: { shown in if !shown { inbox.startNewChatDraft = nil } }
+                    )
+                ) {
+                    if let draft = inbox.startNewChatDraft {
+                        StartNewChatView(
+                            draft: draft,
+                            onQueryChanged: { updated in
+                                inbox.updateStartNewChatDraft(updated)
+                            },
+                            onOpenDirectChat: { candidate in
+                                Task { await inbox.openDirectChat(with: candidate) }
+                            },
+                            onLookup: { action in
+                                Task { await inbox.performStartNewChatLookup(action) }
+                            },
+                            onCreateGroup: { updated in
+                                inbox.startNewChatDraft = updated
+                                Task { await inbox.submitNewGroupChat() }
+                            },
+                            onSendBlast: { updated in
+                                inbox.startNewChatDraft = updated
+                                Task { await inbox.submitBlast() }
+                            },
+                            onCancel: {
+                                inbox.startNewChatDraft = nil
                             }
-                        },
-                        onClose: {
-                            conversation.closeLightbox()
-                        }
+                        )
+                    }
+                }
+                .sheet(
+                    isPresented: Binding(
+                        get: { inbox.mergedChatEditorDraft != nil },
+                        set: { shown in if !shown { inbox.mergedChatEditorDraft = nil } }
+                    )
+                ) {
+                    if let draft = inbox.mergedChatEditorDraft {
+                        MergedChatEditorSheet(
+                            draft: draft,
+                            onSave: { updated in
+                                inbox.mergedChatEditorDraft = updated
+                                Task { await inbox.saveMergedChatEditor() }
+                            },
+                            onUnmerge: { mergeID in
+                                Task { await inbox.unmergeChat(mergeID) }
+                            },
+                            onCancel: {
+                                inbox.mergedChatEditorDraft = nil
+                            }
+                        )
+                    }
+                }
+                // The Edit spaces command (and the bar's menus) ask for the window this way.
+                .onChange(of: spaces.isEditing) { _, editing in
+                    if editing { openWindow(id: WindowID.editSpaces) }
+                }
+                .sheet(isPresented: $hotkeys.isShortcutsSheetPresented) {
+                    KeyboardShortcutsSheet(
+                        registry: hotkeys,
+                        onCustomize: onOpenShortcutsSettings,
+                        onClose: { hotkeys.isShortcutsSheetPresented = false }
                     )
                 }
+                .navigationTitle("Courier")
+                .navigationSubtitle(lifecycle.isLocked ? "" : StatusText.subtitle(for: model.engineState))
+        }
+    }
+
+    private var customReminderBinding: Binding<ReminderRequest?> {
+        Binding(
+            get: { ui.customReminder ?? inbox.customReminder },
+            set: { value in
+                ui.customReminder = value
+                inbox.customReminder = value
             }
-            // A chat's right-click menu opens search in that chat.
-            .environment(\.searchInChat, { search.show(in: $0) })
-            .onChange(of: controlActiveState, initial: true) { _, state in ui.isMainWindowKey = state == .key }
-            // A closed window takes its panel with it: the next ⌘K opens a fresh one, in view.
-            .onDisappear {
-                ui.isMainWindowKey = false
-                search.close()
-                conversation.composer.voiceRecorder.cancelImmediately()
-                conversation.thread.composer.voiceRecorder.cancelImmediately()
-                conversation.composer.isStickerPickerPresented = false
-                conversation.composer.isGIFPickerPresented = false
-                conversation.thread.composer.isStickerPickerPresented = false
-                conversation.thread.composer.isGIFPickerPresented = false
-            }
-            .sheet(isPresented: addingNetwork) {
-                AddNetworkView(login: login)
-            }
-            .sheet(item: $ui.customReminder) { request in
-                CustomReminderSheet(request: request, inbox: inbox)
-            }
-            .sheet(
-                isPresented: Binding(
-                    get: { inbox.startNewChatDraft != nil },
-                    set: { shown in if !shown { inbox.startNewChatDraft = nil } }
-                )
-            ) {
-                if let draft = inbox.startNewChatDraft {
-                    StartNewChatView(
-                        draft: draft,
-                        onQueryChanged: { updated in
-                            inbox.updateStartNewChatDraft(updated)
-                        },
-                        onOpenDirectChat: { candidate in
-                            Task { await inbox.openDirectChat(with: candidate) }
-                        },
-                        onLookup: { action in
-                            Task { await inbox.performStartNewChatLookup(action) }
-                        },
-                        onCreateGroup: { updated in
-                            inbox.startNewChatDraft = updated
-                            Task { await inbox.submitNewGroupChat() }
-                        },
-                        onSendBlast: { updated in
-                            inbox.startNewChatDraft = updated
-                            Task { await inbox.submitBlast() }
-                        },
-                        onCancel: {
-                            inbox.startNewChatDraft = nil
-                        }
-                    )
-                }
-            }
-            .sheet(
-                isPresented: Binding(
-                    get: { inbox.mergedChatEditorDraft != nil },
-                    set: { shown in if !shown { inbox.mergedChatEditorDraft = nil } }
-                )
-            ) {
-                if let draft = inbox.mergedChatEditorDraft {
-                    MergedChatEditorSheet(
-                        draft: draft,
-                        onSave: { updated in
-                            inbox.mergedChatEditorDraft = updated
-                            Task { await inbox.saveMergedChatEditor() }
-                        },
-                        onUnmerge: { mergeID in
-                            Task { await inbox.unmergeChat(mergeID) }
-                        },
-                        onCancel: {
-                            inbox.mergedChatEditorDraft = nil
-                        }
-                    )
-                }
-            }
-            // The Edit spaces command (and the bar's menus) ask for the window this way.
-            .onChange(of: spaces.isEditing) { _, editing in
-                if editing { openWindow(id: WindowID.editSpaces) }
-            }
-            .navigationTitle("Courier")
-            .navigationSubtitle(StatusText.subtitle(for: model.engineState))
+        )
     }
 
     @ViewBuilder
@@ -227,7 +279,13 @@ struct MainWindow: View {
                         SpaceBar(spaces: spaces, inbox: inbox, labels: labels)
                         Divider()
                     }
-                    InboxList(inbox: inbox, spaces: spaces, preferences: preferences, ui: ui)
+                    InboxList(
+                        inbox: inbox,
+                        spaces: spaces,
+                        preferences: preferences,
+                        composerPreferences: composerPreferences,
+                        ui: ui
+                    )
                 }
                 .navigationSplitViewColumnWidth(min: preferences.showSpaceBar ? 260 + SpaceBar.width : 260,
                                                 ideal: preferences.showSpaceBar ? 340 + SpaceBar.width : 340,
@@ -256,23 +314,46 @@ struct MainWindow: View {
         .background { alternateShortcuts }
     }
 
-    /// The second keys for next and previous chat (⌘⌥↓, ⌘⌥↑). The menu shows ⌘] and ⌘[, and a menu item has only
-    /// one key, so these are buttons nobody sees.
-    ///
-    /// ⌘F is here too, as well as on the Chat menu's Search in Chat…: the window reads its own keys before the menu
-    /// bar's, so ⌘F is search's even where the Edit menu's Find would take it (the composer, say).
+    private var resolvedHotkeyDispatcher: HotkeyDispatcher {
+        if let hotkeyDispatcher {
+            return hotkeyDispatcher
+        }
+        return HotkeyDispatcher(
+            inbox: inbox,
+            spaces: spaces,
+            conversation: conversation,
+            messageActions: messageActions,
+            search: search,
+            lifecycle: lifecycle,
+            menuCoordinator: AppMenuCoordinator(inbox: inbox, lifecycle: lifecycle),
+            focus: focus,
+            hotkeys: hotkeys
+        )
+    }
+
+    /// The second keys for next and previous chat (⌘⌥↓, ⌘⌥↑) and window-scoped shortcuts.
+    /// Every binding routes through `HotkeyDispatcher` so lock (`!lifecycle.isLocked`) and entitlements
+    /// (`.incognito`, `.reminders`) are enforced in one place.
     private var alternateShortcuts: some View {
-        Group {
-            Button("", action: inbox.selectNext)
-                .keyboardShortcut(.downArrow, modifiers: [.command, .option])
-            Button("", action: inbox.selectPrevious)
-                .keyboardShortcut(.upArrow, modifiers: [.command, .option])
-            Button("") { search.show(in: model.selectedRoomID) }
-                .keyboardShortcut("f", modifiers: .command)
+        let dispatcher = resolvedHotkeyDispatcher
+        return Group {
+            ForEach(HotkeyDispatcher.windowShortcutBindings) { binding in
+                Button("") {
+                    _ = dispatcher.perform(binding)
+                }
+                .registryShortcut(
+                    binding.hotkeyID,
+                    in: hotkeys,
+                    chordIndex: binding.chordIndex,
+                    extraModifiers: binding.reversesCycle ? .shift : []
+                )
+                .disabled(!dispatcher.canPerform(binding.hotkeyID))
+            }
             // ⌘C, here before the Edit menu's: whatever can copy (selected text anywhere, a code block's too)
             // copies; only when nothing can, with the keyboard in the open chat, the selected message is copied.
             Button("", action: copy)
                 .keyboardShortcut("c", modifiers: .command)
+                .disabled(lifecycle.isLocked)
         }
         .opacity(0)
         .frame(width: 0, height: 0)
@@ -280,6 +361,7 @@ struct MainWindow: View {
     }
 
     private func copy() {
+        guard !lifecycle.isLocked else { return }
         let canCopy = CopyResponder.canCopy()
         // Not the search panel, a sheet over the window, or a window without a chat open.
         let inConversation = ui.isMainWindowKey && search.phase == .closed && model.selectedRoomID != nil

@@ -10,14 +10,14 @@ import UniformTypeIdentifiers
 @MainActor
 enum GIFFilePicker {
     static func run(into composer: ComposerModel) {
-        let panel = NSOpenPanel()
-        panel.allowsMultipleSelection = false
-        panel.canChooseFiles = true
-        panel.canChooseDirectories = false
-        panel.allowedContentTypes = [.gif, .mpeg4Movie]
-        panel.message = String(localized: "Choose a GIF or short loop to send")
-        panel.prompt = String(localized: "Choose GIF")
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard let url = AppLockGate.shared.runOpenPanel(action: .send, lifecycle: composer.lifecycle, configure: { panel in
+            panel.allowsMultipleSelection = false
+            panel.canChooseFiles = true
+            panel.canChooseDirectories = false
+            panel.allowedContentTypes = [.gif, .mpeg4Movie]
+            panel.message = String(localized: "Choose a GIF or short loop to send")
+            panel.prompt = String(localized: "Choose GIF")
+        })?.first else { return }
         Task { await composer.sendGIFFile(url: url) }
     }
 }

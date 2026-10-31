@@ -47,7 +47,11 @@ struct SpaceBar: View {
     @ObservedObject var spaces: SpacesModel
     @ObservedObject var inbox: InboxModel
     let labels: LabelsModel
+    var accountsAndBridges: AccountsAndBridgesModel? = nil
+    var onOpenSpaceInNewWindow: ((String) -> Void)? = nil
+    var onOpenAccountSettings: ((String) -> Void)? = nil
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openDetachedWindow) private var openDetachedWindow
 
     static let width: CGFloat = 60
 
@@ -87,10 +91,26 @@ struct SpaceBar: View {
         space.kind == .account && inbox.statusItems.contains { $0.network == space.network && $0.isStarting }
     }
 
+    private func primaryLogin(for network: String) -> Login? {
+        accountsAndBridges?
+            .bridges
+            .first(where: { $0.network == network })?
+            .accounts
+            .flatMap(\.logins)
+            .first
+    }
+
     @ViewBuilder
     private func menu(for space: Space) -> some View {
         switch space.kind {
         case .account:
+            Button(String(localized: "Open in New Window")) {
+                if let onOpenSpaceInNewWindow {
+                    onOpenSpaceInNewWindow(space.spaceID)
+                } else {
+                    openDetachedWindow?(.space(spaceID: space.spaceID))
+                }
+            }
             ShowInInboxMenu(space: space, spaces: spaces)
             Button(space.muted ? String(localized: "Unmute Space") : String(localized: "Mute Space")) {
                 Task { await spaces.setMuted(space.spaceID, !space.muted) }
@@ -98,6 +118,12 @@ struct SpaceBar: View {
             .help(String(localized: "Mutes every chat of this account on this Mac."))
             Button(String(localized: "Auto-Archive…")) {
                 openWindow(id: WindowID.autoArchive, value: space.spaceID)
+            }
+            Button(String(localized: "Account Settings…")) {
+                if let login = primaryLogin(for: space.network) {
+                    accountsAndBridges?.selectAccount(network: space.network, accountID: login.accountID)
+                }
+                onOpenAccountSettings?(space.network)
             }
             Divider()
             Button(String(localized: "Edit Spaces…")) {
@@ -110,7 +136,43 @@ struct SpaceBar: View {
                 Button(banner.accountName.map { String(localized: "Reconnect \($0)") }
                     ?? String(localized: "Reconnect")) { inbox.perform(banner) }
             }
+            Divider()
+            Button(String(localized: "Remove Account…"), role: .destructive) {
+                if let login = primaryLogin(for: space.network) {
+                    accountsAndBridges?.requestRemoveAccount(
+                        network: space.network,
+                        accountID: login.accountID,
+                        remoteName: login.remoteName,
+                        displayName: space.title
+                    )
+                }
+                onOpenAccountSettings?(space.network)
+            }
+            Menu(String(localized: "Developer")) {
+                Button(String(localized: "Copy Account ID")) {
+                    if let login = primaryLogin(for: space.network) {
+                        accountsAndBridges?.copyAccountID(login.accountID)
+                    }
+                }
+                Button(String(localized: "Copy Bridge ID")) {
+                    accountsAndBridges?.copyBridgeID(for: space.network)
+                }
+                Button(String(localized: "Copy Info as JSON")) {
+                    accountsAndBridges?.copyBridgeInfoJSON(for: space.network)
+                }
+                Divider()
+                Button(String(localized: "Restart Bridge")) {
+                    Task { await accountsAndBridges?.restartBridge(network: space.network) }
+                }
+            }
         case .label:
+            Button(String(localized: "Open in New Window")) {
+                if let onOpenSpaceInNewWindow {
+                    onOpenSpaceInNewWindow(space.spaceID)
+                } else {
+                    openDetachedWindow?(.space(spaceID: space.spaceID))
+                }
+            }
             ShowInInboxMenu(space: space, spaces: spaces)
             Button(space.muted ? String(localized: "Unmute Label") : String(localized: "Mute Label")) {
                 Task { await spaces.setMuted(space.spaceID, !space.muted) }
@@ -124,6 +186,13 @@ struct SpaceBar: View {
                 Task { await LabelDeletion.confirmAndDelete(space.labelID, labels: labels) }
             }
         default:
+            Button(String(localized: "Open in New Window")) {
+                if let onOpenSpaceInNewWindow {
+                    onOpenSpaceInNewWindow(space.spaceID)
+                } else {
+                    openDetachedWindow?(.space(spaceID: space.spaceID))
+                }
+            }
             Button(String(localized: "Edit Spaces…")) {
                 spaces.isEditing = true
                 openWindow(id: WindowID.editSpaces)

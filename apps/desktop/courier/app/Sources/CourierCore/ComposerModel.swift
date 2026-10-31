@@ -336,6 +336,10 @@ public final class ComposerModel: ObservableObject {
         didSet { observePreferences() }
     }
     public var quickReplies: QuickReplies?
+    /// Shared hotkey registry for checking "Send Message", "Insert New Line", and "Message: Quote or Edit Selected Message".
+    public weak var hotkeys: HotkeyRegistry?
+    /// Shared live shortcut dispatcher for composer return-key shortcuts.
+    public weak var hotkeyDispatcher: HotkeyDispatcher?
     /// The composer's voice-note recorder.
     public let voiceRecorder: VoiceRecorderModel
     /// Called when a send is done, whether it worked or not, so the chat can read what the engine has.
@@ -441,10 +445,48 @@ public final class ComposerModel: ObservableObject {
     private var continuingBlock: (kind: TextEntity.Kind, at: Int)?
     private var caretSerial = 0
     private var preferencesCancellable: AnyCancellable?
+    private var lockCancellable: AnyCancellable?
+    private weak var observedLifecycle: SystemLifecycleModel?
     private var initialStickerLoadStarted = false
     private var stickerLoadGeneration = 0
     /// My held messages, by chat, and what Undo does with them.
     private let held = HeldMessages()
+
+    public var lifecycle: SystemLifecycleModel {
+        observedLifecycle
+            ?? hotkeyDispatcher?.lifecycle
+            ?? AppLockGate.shared.lifecycle
+    }
+
+    public var isLocked: Bool {
+        if !AppLockGate.shared.canPerform(.send, lifecycle: lifecycle) {
+            return true
+        }
+        if let hotkeys, hotkeys.isLocked {
+            return true
+        }
+        return false
+    }
+
+    /// Dismisses the link dialog request.
+    public func dismissLinkRequest() {
+        linkRequest = nil
+    }
+
+    /// Dismisses every active popover, picker, dialog, and recording state owned by this composer.
+    public func dismissAllPresentations() {
+        isEmojiPickerPresented = false
+        isStickerPickerPresented = false
+        isGIFPickerPresented = false
+        linkRequest = nil
+        mentionQuery = nil
+        quickReplyQuery = nil
+        dismissEmojiAutocomplete()
+        if voiceRecorder.state != .idle {
+            voiceRecorder.cancelImmediately()
+        }
+        stopTyping()
+    }
 
     // Typing.
     /// The chat a start was sent to and no stop yet; nil while I'm not typing anywhere.
@@ -498,6 +540,14 @@ public final class ComposerModel: ObservableObject {
             self?.showToast(String(localized: "Message unsent from Courier"))
         }
         held.onToast = { [weak self] message in self?.showToast(message) }
+        lockCancellable = NotificationCenter.default.publisher(for: SystemLifecycleModel.didLockNotification)
+            .sink { [weak self] notification in
+                guard let self else { return }
+                if let lifecycle = notification.object as? SystemLifecycleModel {
+                    self.observedLifecycle = lifecycle
+                }
+                self.dismissAllPresentations()
+            }
         observePreferences()
     }
 
@@ -534,6 +584,45 @@ public final class ComposerModel: ObservableObject {
     /// replies to it (02 §2.2 "Quote or Edit Selected Message").
     @discardableResult
     public func handleReturn(modifiers: KeyModifiers) -> ReturnKeyAction {
+        guard !isLocked else { return .send }
+        if let dispatcher = hotkeyDispatcher, dispatcher.lifecycle.isLocked {
+            return .send
+        }
+        let resolvedHotkeys = hotkeyDispatcher?.hotkeys ?? hotkeys
+        if let resolvedHotkeys {
+            guard !resolvedHotkeys.isLocked else { return .send }
+            let chord = KeyChord(
+                key: "enter",
+                command: modifiers.contains(.command),
+                shift: modifiers.contains(.shift),
+                option: modifiers.contains(.option),
+                control: modifiers.contains(.control)
+            )
+            if resolvedHotkeys.chords(for: "Insert New Line").contains(chord) {
+                return .newline
+            }
+            if voiceRecorder.isRecordingOrReviewing {
+                guard resolvedHotkeys.chords(for: "Send Message").contains(chord) else { return .send }
+                Task { [weak self] in
+                    guard let self else { return }
+                    await self.voiceRecorder.stopAndSend(using: self)
+                }
+                return .send
+            }
+            if mode == .new, trimmedText.isEmpty, attachments.isEmpty, pendingGIF == nil, let selected = selectedMessage() {
+                if resolvedHotkeys.chords(for: "Message: Quote or Edit Selected Message").contains(chord) {
+                    act(on: selected)
+                } else if resolvedHotkeys.chords(for: "Send Message").contains(chord) {
+                    submit()
+                }
+                return .send
+            }
+            if resolvedHotkeys.chords(for: "Send Message").contains(chord) {
+                submit()
+            }
+            return .send
+        }
+
         let action = Self.action(forReturn: modifiers)
         guard action == .send else { return action }
         if voiceRecorder.isRecordingOrReviewing {
@@ -729,13 +818,13 @@ public final class ComposerModel: ObservableObject {
 
     /// Typing (or a send that emptied the box): the draft is saved once the text has rested for `draftDelay`.
     private func draftTextChanged() {
-        guard !openingChat, let room = roomID, !unknownDrafts.contains(room) else { return }
+        guard !isLocked, !openingChat, let room = roomID, !unknownDrafts.contains(room) else { return }
         draftToken += 1
         guard draftBody != (savedTexts[room] ?? "") else { return } // back to what the engine has: nothing to save
         let token = draftToken
         Task { [weak self, sleep, draftDelay] in
             await sleep(draftDelay)
-            guard let self, self.draftToken == token, self.roomID == room else { return }
+            guard let self, !self.isLocked, self.draftToken == token, self.roomID == room else { return }
             self.saveDraft(self.draftBody, in: room)
         }
     }
@@ -759,6 +848,7 @@ public final class ComposerModel: ObservableObject {
     /// follow it (EntityEditing.replacing); typed where a formatting key was pressed with no selection, it takes that
     /// formatting; and "@" or ";" with letters at the caret is looked up.
     public func textChanged(to text: String, replacing range: NSRange, with length: Int) {
+        guard !isLocked else { return }
         settingContents = true
         self.text = text
         settingContents = false
@@ -807,7 +897,7 @@ public final class ComposerModel: ObservableObject {
     /// ("Spoiler (Unavailable for WhatsApp)"). False when nothing was done.
     @discardableResult
     public func formattingKey(_ kind: TextEntity.Kind, in range: NSRange) -> Bool {
-        guard roomID != nil else { return false }
+        guard !isLocked, roomID != nil else { return false }
         guard features.keeps(kind) else {
             if let item = FormattingBar.items(features: features, network: network).first(where: { $0.kind == kind }) {
                 showToast(item.help)
@@ -827,6 +917,7 @@ public final class ComposerModel: ObservableObject {
     /// url takes the links off `range` and keeps their words. An address the engine wouldn't take (not http, https
     /// or mailto) changes nothing.
     public func setLink(_ url: URL?, text words: String, in range: NSRange) {
+        guard !isLocked else { return }
         guard let url else {
             entities.removeAll { $0.kind == .link && Self.touches($0, range) }
             return
@@ -877,7 +968,7 @@ public final class ComposerModel: ObservableObject {
     /// "Insert as Draft" on someone else's message: its text and formatting go into the composer, below what is
     /// typed (after a blank line), so nothing typed is lost. While editing, it waits with what was there before.
     public func insertAsDraft(_ rich: RichText) {
-        guard roomID != nil, !rich.text.isEmpty else { return }
+        guard !isLocked, roomID != nil, !rich.text.isEmpty else { return }
         var open = openContents
         (open.text, open.entities) = Self.join((open.text, open.entities), (rich.text, rich.entities))
         openContents = open
@@ -1002,6 +1093,12 @@ public final class ComposerModel: ObservableObject {
     /// Text set as a whole (the view's binding, a paste it reports as a whole): what changed is worked out from the
     /// two texts, the shortest change that turns one into the other, and the ranges follow it.
     private func textDidChange(from old: String) {
+        if !settingContents, !openingChat, isLocked {
+            settingContents = true
+            text = old
+            settingContents = false
+            return
+        }
         if !settingContents {
             let before = Array(old.utf16)
             let after = Array(text.utf16)
@@ -1232,7 +1329,7 @@ public final class ComposerModel: ObservableObject {
     /// back, an undone message or a quote put in is not typing.
     private func typingChanged() {
         guard !openingChat, let room = roomID else { return }
-        guard !text.isEmpty, sendsTyping() else {
+        guard !isLocked, !text.isEmpty, sendsTyping() else {
             stopTyping()
             return
         }
@@ -1311,6 +1408,7 @@ public final class ComposerModel: ObservableObject {
     // MARK: - Reply, edit, thread
 
     public func startReply(to message: QuotedMessage) {
+        guard !isLocked else { return }
         if isEditing { leaveEditing() }
         replyTarget = message
     }
@@ -1322,7 +1420,7 @@ public final class ComposerModel: ObservableObject {
     /// Loads a message of mine to edit: its text and formatting replace the composer's, which come back on Escape
     /// or once the edit is sent.
     public func startEditing(_ message: TimelineMessage) {
-        guard message.mine, roomID != nil else { return }
+        guard !isLocked, message.mine, roomID != nil else { return }
         if isEditing { leaveEditing() }
         isStickerPickerPresented = false
         isGIFPickerPresented = false
@@ -1344,7 +1442,8 @@ public final class ComposerModel: ObservableObject {
     /// none; ↑ then does what it otherwise does.
     @discardableResult
     public func editLast(in items: [TimelineItem]) -> Bool {
-        guard preferences?.upArrow == .editLast, !isEditing, trimmedText.isEmpty, attachments.isEmpty,
+        guard !isLocked,
+              preferences?.upArrow == .editLast, !isEditing, trimmedText.isEmpty, attachments.isEmpty,
               pendingGIF == nil, roomID != nil
         else { return false }
         let time = now()
@@ -1359,6 +1458,7 @@ public final class ComposerModel: ObservableObject {
 
     /// Writes in a thread: what is sent goes in it, until `endThread`.
     public func startThread(_ rootID: String) {
+        guard !isLocked else { return }
         if isEditing { leaveEditing() }
         mode = .thread(rootID: rootID)
     }
@@ -1384,6 +1484,7 @@ public final class ComposerModel: ObservableObject {
     /// Adds files to what will be sent. A folder, an unreadable file, or a file that would take the total past
     /// 90 MB is left out, and `notices` says which. While editing, they wait with what was in the composer.
     public func attach(_ urls: [URL]) {
+        guard !isLocked else { return }
         notices = []
         var list = isEditing ? stash.attachments : attachments
         for url in urls where url.isFileURL {
@@ -1487,7 +1588,7 @@ public final class ComposerModel: ObservableObject {
     /// refused at once (nil), with `notices` saying why.
     @discardableResult
     public func submit(archive: Bool = false) -> Task<Void, Never>? {
-        guard !isScheduling else { return nil }
+        guard !isLocked, !isScheduling else { return nil }
         if case let .editing(eventID, original) = mode { return submitEdit(of: eventID, original: original) }
         if attachments.isEmpty, roomID != nil,
            trimmedText == "/gif" || trimmedText.hasPrefix("/gif ") {
@@ -1593,14 +1694,14 @@ public final class ComposerModel: ObservableObject {
 
     /// Starts recording a voice note in the open chat (`⌘⇧A`, the microphone button, or `/voice`).
     public func startVoiceRecording() async {
-        guard roomID != nil else { return }
+        guard !isLocked, roomID != nil else { return }
         let preferredUID = preferences?.preferredMicrophoneUID ?? ""
         await voiceRecorder.start(preferredDeviceUID: preferredUID)
     }
 
     /// Sends a recorded voice note to the open chat via `message.sendVoice`.
     public func sendVoiceNote(url: URL, durationMS: Int, waveform: [Int]) async {
-        guard let room = roomID, let sender else { return }
+        guard !isLocked, let room = roomID, let sender else { return }
         let reply = replyTarget
         replyTarget = nil
         notices = []
@@ -1662,7 +1763,7 @@ public final class ComposerModel: ObservableObject {
 
     /// Title for the Message menu's "Send Sticker…" item, including `"%1$@ (Unavailable for %2$@)"` when unsupported.
     public var sendStickerMenuTitle: String {
-        guard roomID != nil, !isEditing else { return String(localized: "Send Sticker…") }
+        guard !isLocked, roomID != nil, !isEditing else { return String(localized: "Send Sticker…") }
         guard canSendSticker else {
             return FormattingBar.unavailable(String(localized: "Send Sticker"), features: features, network: network)
         }
@@ -1671,7 +1772,7 @@ public final class ComposerModel: ObservableObject {
 
     /// Title for the Message menu's "Send GIF…" item, including `"%1$@ (Unavailable for %2$@)"` when unsupported.
     public var sendGIFMenuTitle: String {
-        guard roomID != nil, !isEditing else { return String(localized: "Send GIF…") }
+        guard !isLocked, roomID != nil, !isEditing else { return String(localized: "Send GIF…") }
         guard canSendGIF else {
             return FormattingBar.unavailable(String(localized: "Send GIF"), features: features, network: network)
         }
@@ -1699,7 +1800,7 @@ public final class ComposerModel: ObservableObject {
     /// Opens the sticker picker popover when the open chat supports stickers.
     @discardableResult
     public func openStickerPicker() -> Bool {
-        guard canSendSticker else { return false }
+        guard !isLocked, canSendSticker else { return false }
         isGIFPickerPresented = false
         isEmojiPickerPresented = false
         dismissEmojiAutocomplete()
@@ -1710,7 +1811,7 @@ public final class ComposerModel: ObservableObject {
     /// Opens the GIF picker popover when the open chat supports GIFs.
     @discardableResult
     public func openGIFPicker(query: String? = nil) -> Bool {
-        guard canSendGIF else { return false }
+        guard !isLocked, canSendGIF else { return false }
         isStickerPickerPresented = false
         isEmojiPickerPresented = false
         dismissEmojiAutocomplete()
@@ -1729,7 +1830,7 @@ public final class ComposerModel: ObservableObject {
     /// Selects a GIF from `GIFPickerPopover`: sends immediately when `preferences.autoSendGIFs == true`,
     /// or stages `pendingGIF` on the composer so the user can add a caption and press Return.
     public func selectGIF(_ item: StickerItemWire) async {
-        guard roomID != nil, sender != nil else { return }
+        guard !isLocked, roomID != nil, sender != nil else { return }
         isGIFPickerPresented = false
         guard canSendGIF else {
             let netName = NetworkNames.displayName(of: network)
@@ -1877,11 +1978,11 @@ public final class ComposerModel: ObservableObject {
 
     /// Loads installed and bridge sticker packs plus recent GIFs from the engine (`stickers.list`).
     public func loadStickers(refresh: Bool = false) async {
-        guard let sender else { return }
+        guard !isLocked, let sender else { return }
         stickerLoadGeneration += 1
         let generation = stickerLoadGeneration
         guard let result = try? await sender.listStickers(refreshBridgePacks: refresh) else { return }
-        guard stickerLoadGeneration == generation else { return }
+        guard !isLocked, stickerLoadGeneration == generation else { return }
         applyStickerCatalog(result)
     }
 
@@ -1924,7 +2025,7 @@ public final class ComposerModel: ObservableObject {
 
     /// Validates a local image file and imports it into the engine's sticker/emoji catalog (`stickers.import`).
     public func importSticker(from url: URL, shortcode: String? = nil) async {
-        guard let sender, url.isFileURL else { return }
+        guard !isLocked, let sender, url.isFileURL else { return }
         let fileName = url.lastPathComponent
         guard let info = fileInfo(url) else {
             notices = [.cannotRead(fileName: fileName)]
@@ -2003,7 +2104,7 @@ public final class ComposerModel: ObservableObject {
 
     /// Sends a sticker to the open chat (`message.sendSticker`), respecting the room's sticker capability and undo-send hold.
     public func sendSticker(_ item: StickerItemWire) async {
-        guard let room = roomID, let sender else { return }
+        guard !isLocked, let room = roomID, let sender else { return }
         isStickerPickerPresented = false
         guard features.source == .none || features.sticker.supported else {
             let netName = NetworkNames.displayName(of: network)
@@ -2370,7 +2471,7 @@ public final class ComposerModel: ObservableObject {
     /// longer than the chat takes is refused with why. The engine's refusal (a time in the past, say) is thrown, and
     /// the text stays. One at a time: while one is with the engine, another (or Return) does nothing.
     public func schedule(at due: Date, condition: SendLaterCondition) async throws {
-        guard !isScheduling, let room = roomID, let sender else { return }
+        guard !isLocked, !isScheduling, let room = roomID, let sender else { return }
         guard entitlement.isEntitled(.sendLater) else {
             showToast(String(localized: "Available with a plan"))
             return
@@ -2423,7 +2524,7 @@ public final class ComposerModel: ObservableObject {
     /// ⌘Z takes the newest. True when it was held.
     @discardableResult
     public func undoHeld(_ eventID: String?) async -> Bool {
-        guard let room = roomID else { return false }
+        guard !isLocked, let room = roomID else { return false }
         switch await held.undoNewest(in: room, id: eventID) {
         case .nothingHeld:
             return false
@@ -2474,7 +2575,7 @@ public final class ComposerModel: ObservableObject {
     /// already took it back, or it is being taken back).
     @discardableResult
     public func dontSend(_ eventID: String) async -> Bool {
-        guard let room = roomID else { return false }
+        guard !isLocked, let room = roomID else { return false }
         held.holdWaiting(eventID, in: room)
         return await undoHeld(eventID)
     }
@@ -2483,7 +2584,7 @@ public final class ComposerModel: ObservableObject {
     /// would leave them to fail as "not connected"); until then, and if the call fails, they stay held, and go when
     /// their windows end.
     public func sendHeldNow() async {
-        guard let room = roomID else { return }
+        guard !isLocked, let room = roomID else { return }
         await held.sendNow(in: room)
     }
 }

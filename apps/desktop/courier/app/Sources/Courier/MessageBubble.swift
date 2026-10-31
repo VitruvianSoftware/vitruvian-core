@@ -21,6 +21,8 @@ struct MessageActions {
     var menu: (TimelineMessage) -> [[MessageMenuItem]] = { _ in [] }
     /// A menu item chosen, for the message.
     var perform: (MessageMenuItem.Command, String) -> Void = { _, _ in }
+    var hotkeys: HotkeyRegistry? = nil
+    var hotkeyDispatcher: HotkeyDispatcher? = nil
     /// A held ("Queued") message clicked: undoes it, when the preference says so.
     var undoHeld: ((String) -> Void)?
     /// A poll's options chosen ([] takes my vote back).
@@ -60,6 +62,10 @@ struct MessageActions {
     var voiceNoteQueue: (String) -> [AudioPlayerModel.Track] = { _ in [] }
     /// Whether external media embeds load automatically without click-to-load consent.
     var loadExternalEmbedsAutomatically = false
+    /// Preferred time format (`ComposerPreferences.timeFormat`).
+    var timeFormat: TimeFormatPreference = .system
+    /// Whether message timestamps are shown in the timeline header (`ComposerPreferences.showMessageTimestamps`).
+    var showMessageTimestamps = true
     /// Pops a video message out into the floating Picture-in-Picture window.
     var popOutPiP: @MainActor (TimelineMessage) -> Void = { message in
         PictureInPictureController.shared.show(
@@ -259,7 +265,13 @@ private struct TimerNoteRow: View {
         .padding(.vertical, 6)
         .contentShape(Rectangle())
         .onTapGesture { actions.select(message.id) }
-        .contextMenu { MessageMenuItems(sections: actions.menu(message)) { actions.perform($0, message.id) } }
+        .contextMenu {
+            MessageMenuItems(
+                sections: actions.menu(message),
+                hotkeys: actions.hotkeys ?? HotkeyRegistry(),
+                hotkeyDispatcher: actions.hotkeyDispatcher
+            ) { actions.perform($0, message.id) }
+        }
         .accessibilityElement(children: .combine)
     }
 }
@@ -294,7 +306,13 @@ private struct CallNoteRow: View {
         .padding(.vertical, 6)
         .contentShape(Rectangle())
         .onTapGesture { actions.select(message.id) }
-        .contextMenu { MessageMenuItems(sections: actions.menu(message)) { actions.perform($0, message.id) } }
+        .contextMenu {
+            MessageMenuItems(
+                sections: actions.menu(message),
+                hotkeys: actions.hotkeys ?? HotkeyRegistry(),
+                hotkeyDispatcher: actions.hotkeyDispatcher
+            ) { actions.perform($0, message.id) }
+        }
         .accessibilityElement(children: .combine)
     }
 }
@@ -334,7 +352,7 @@ struct MessageRowView: View {
                 }
                 if message.editFailed != nil { editNotSent }
                 if ui.historyOpen.contains(message.id) {
-                    EditHistoryView(versions: ui.versions[message.id], mine: message.mine)
+                    EditHistoryView(versions: ui.versions[message.id], mine: message.mine, timeFormat: actions.timeFormat)
                 }
                 if let thread = message.thread, thread.replies > 0, let open = actions.openThread {
                     ThreadSummaryLine(summary: thread) { open(message.id) }
@@ -404,7 +422,17 @@ struct MessageRowView: View {
                 )
             }
         }
-        .contextMenu { MessageMenuItems(sections: actions.menu(message)) { actions.perform($0, message.id) } }
+        .contextMenu {
+            MessageMenuItems(
+                sections: actions.menu(message),
+                hotkeys: actions.hotkeys ?? HotkeyRegistry(),
+                hotkeyDispatcher: actions.hotkeyDispatcher
+            ) { actions.perform($0, message.id) }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: SystemLifecycleModel.didLockNotification)) { _ in
+            showsMenu = false
+            activeDetectedDate = nil
+        }
         .accessibilityElement(children: .contain)
     }
 
@@ -482,9 +510,11 @@ struct MessageRowView: View {
                         actions.hoverSender(hovering, message)
                     }
             }
-            Text(Date(timeIntervalSince1970: Double(message.ts) / 1000), style: .time)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+            if actions.showMessageTimestamps {
+                Text(actions.timeFormat.formatTime(Date(timeIntervalSince1970: Double(message.ts) / 1000)))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
         }
         .padding(.horizontal, 4)
     }
@@ -810,7 +840,7 @@ struct MessageRowView: View {
             // pane shows none, as it shows no Sent).
             if showsSent {
                 Text(message.statusLine.flatMap { line in
-                    StatusLine.seenText(line, time: { $0.formatted(date: .omitted, time: .shortened) })
+                    StatusLine.seenText(line, time: { actions.timeFormat.formatTime($0) })
                 } ?? StatusLine.deliveredLabel)
                     .font(.caption2)
                     .foregroundStyle(.secondary)

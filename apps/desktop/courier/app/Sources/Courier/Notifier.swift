@@ -16,9 +16,11 @@ import UniformTypeIdentifiers
 @MainActor
 final class Notifier: NSObject, NotificationDelivering, UNUserNotificationCenterDelegate {
     static let categoryID = "com.vitruviansoftware.courier.message"
+    static let messageOTPCategoryID = "com.vitruviansoftware.courier.message-otp"
     static let reminderCategoryID = "com.vitruviansoftware.courier.reminder"
     static let scheduledCategoryID = "com.vitruviansoftware.courier.scheduled"
     static let typingCategoryID = "com.vitruviansoftware.courier.typing"
+    static let copyCodeActionID = "com.vitruviansoftware.courier.copy-code"
     static let markReadActionID = "com.vitruviansoftware.courier.mark-read"
     static let replyActionID = "com.vitruviansoftware.courier.reply"
     static let remindOneHourActionID = "com.vitruviansoftware.courier.remind-1h"
@@ -58,6 +60,8 @@ final class Notifier: NSObject, NotificationDelivering, UNUserNotificationCenter
 
     private func action(_ action: NotificationAction) -> UNNotificationAction {
         switch action {
+        case .copyCode:
+            UNNotificationAction(identifier: Self.copyCodeActionID, title: String(localized: "Copy Code"), options: [])
         case .markRead:
             UNNotificationAction(identifier: Self.markReadActionID, title: String(localized: "Mark as Read"), options: [])
         case .reply:
@@ -76,6 +80,7 @@ final class Notifier: NSObject, NotificationDelivering, UNUserNotificationCenter
     private static func categoryID(of category: NotificationCategory) -> String {
         switch category {
         case .message: categoryID
+        case .messageOTP: messageOTPCategoryID
         case .reminder: reminderCategoryID
         case .scheduled: scheduledCategoryID
         case .typing: typingCategoryID
@@ -98,7 +103,7 @@ final class Notifier: NSObject, NotificationDelivering, UNUserNotificationCenter
         if let subtitle = content.subtitle { message.subtitle = subtitle }
         message.body = content.body
         // Someone typing is a quiet heads-up; their message, when it comes, makes the sound.
-        message.sound = content.category == .typing ? nil : .default
+        message.sound = Self.notificationSound(for: content.sound, category: content.category)
         message.threadIdentifier = content.threadIdentifier
         message.categoryIdentifier = Self.categoryID(of: content.category)
         message.userInfo = content.userInfo
@@ -225,6 +230,13 @@ final class Notifier: NSObject, NotificationDelivering, UNUserNotificationCenter
         center.removeDeliveredNotifications(withIdentifiers: [notificationID])
     }
 
+    func clearAll() {
+        removeAllDeliveredHandler()
+        if let center = start() {
+            center.removeAllPendingNotificationRequests()
+        }
+    }
+
     // MARK: - UNUserNotificationCenterDelegate
 
     /// A message for another chat shows even while Courier is in front.
@@ -241,6 +253,8 @@ final class Notifier: NSObject, NotificationDelivering, UNUserNotificationCenter
         guard let roomID else { return }
         await MainActor.run {
             switch action {
+            case Self.copyCodeActionID:
+                coordinator?.copyOTPCode(forRoomID: roomID)
             case Self.markReadActionID:
                 Task { await coordinator?.markRead(roomID: roomID) }
             case Self.replyActionID:
@@ -255,5 +269,92 @@ final class Notifier: NSObject, NotificationDelivering, UNUserNotificationCenter
                 break
             }
         }
+    }
+
+    static func notificationSound(for choice: NotificationSoundChoice, category: NotificationCategory) -> UNNotificationSound? {
+        guard category != .typing else { return nil }
+        switch choice {
+        case .none:
+            return nil
+        case .default:
+            return .default
+        case .beeper, .sounds, .double, .dreams, .not, .marimba, .rain, .harp, .record, .spirit:
+            return UNNotificationSound(named: UNNotificationSoundName("\(choice.rawValue).caf"))
+        }
+    }
+
+    /// Opens the macOS System Settings Notifications pane.
+    var openURLHandler: @MainActor (URL) -> Void = { _ = NSWorkspace.shared.open($0) }
+    var removeAllDeliveredHandler: @MainActor () -> Void = {
+        guard Notifier.isAvailable else { return }
+        UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+    }
+    var runProcessHandler: @MainActor (URL, [String]) -> Void = { executableURL, arguments in
+        _ = try? Process.run(executableURL, arguments: arguments)
+    }
+    lazy var requestSettingsHandler: @MainActor () -> Void = { [weak self] in
+        self?.requestPermission()
+    }
+
+    func openSystemNotificationSettings() {
+        openSystemNotificationSettings(openURL: openURLHandler)
+    }
+
+    func openSystemNotificationSettings(openURL: (URL) -> Void) {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") {
+            openURL(url)
+        }
+    }
+
+    /// Clears delivered notifications, restarts macOS NotificationCenter, and re-requests/registers notification settings.
+    func restartNotificationCenter() {
+        removeAllDeliveredHandler()
+        runProcessHandler(URL(fileURLWithPath: "/usr/bin/killall"), ["NotificationCenter"])
+        started = false
+        _ = start()
+        requestSettingsHandler()
+    }
+}
+
+/// Copies one-time verification codes to the general pasteboard with concealed and transient markers.
+@MainActor
+final class PasteboardClipboardSink: ClipboardSink {
+    static let concealedType = NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")
+    static let transientType = NSPasteboard.PasteboardType("org.nspasteboard.TransientType")
+
+    private let pasteboard: NSPasteboard
+
+    init(pasteboard: NSPasteboard = .general) {
+        self.pasteboard = pasteboard
+    }
+
+    func copyOTP(_ code: String) {
+        pasteboard.clearContents()
+        pasteboard.setString(code, forType: .string)
+        pasteboard.setData(Data(), forType: Self.concealedType)
+        pasteboard.setData(Data(), forType: Self.transientType)
+    }
+}
+
+/// Plays in-app message sent/received sound effects at the configured volume.
+@MainActor
+final class SoundEffectPlayer: SoundEffectPlaying {
+    private let backend: @MainActor (SoundEffectEvent, Float) -> Void
+
+    init(backend: @escaping @MainActor (SoundEffectEvent, Float) -> Void = SoundEffectPlayer.defaultBackend) {
+        self.backend = backend
+    }
+
+    func play(_ effect: SoundEffectEvent, volume: Double) {
+        let clamped = Float(min(1.0, max(0.0, volume)))
+        guard clamped > 0 else { return }
+        backend(effect, clamped)
+    }
+
+    private static func defaultBackend(effect: SoundEffectEvent, volume: Float) {
+        let name = effect == .messageSent ? "Hero" : "Tink"
+        guard let sound = NSSound(named: NSSound.Name(name))?.copy() as? NSSound else { return }
+        sound.volume = volume
+        sound.play()
     }
 }

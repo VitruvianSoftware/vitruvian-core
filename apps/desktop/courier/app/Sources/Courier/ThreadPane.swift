@@ -13,6 +13,9 @@ struct ThreadPane: View {
     @ObservedObject var messageActions: MessageActionsModel
     @ObservedObject var preferences: ComposerPreferences
     @ObservedObject var focus: MessageFocus
+    var showsOpenInNewWindowButton = true
+    var onOpenInNewWindow: ((String, String) -> Void)?
+    @Environment(\.openDetachedWindow) private var openDetachedWindow
     @StateObject private var ui = MessageUI()
     @State private var composerTextHeight: CGFloat = ComposerTextView.minimumHeight
 
@@ -63,12 +66,28 @@ struct ThreadPane: View {
             Text(String(localized: "Thread"))
                 .font(.headline)
             Spacer(minLength: 0)
-            Button(action: close) {
-                Image(systemName: "xmark")
+            if showsOpenInNewWindowButton, let roomID = thread.roomID, let rootID = thread.rootID {
+                Button {
+                    if let onOpenInNewWindow {
+                        onOpenInNewWindow(roomID, rootID)
+                    } else {
+                        openDetachedWindow?(.thread(roomID: roomID, rootEventID: rootID))
+                    }
+                } label: {
+                    Image(systemName: "macwindow.badge.plus")
+                }
+                .buttonStyle(.borderless)
+                .help(String(localized: "Open in New Window"))
+                .accessibilityLabel(String(localized: "Open in New Window"))
             }
-            .buttonStyle(.borderless)
-            .help(String(localized: "Close (Esc)"))
-            .accessibilityLabel(String(localized: "Close thread"))
+            if showsOpenInNewWindowButton {
+                Button(action: close) {
+                    Image(systemName: "xmark")
+                }
+                .buttonStyle(.borderless)
+                .help(String(localized: "Close (Esc)"))
+                .accessibilityLabel(String(localized: "Close thread"))
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)

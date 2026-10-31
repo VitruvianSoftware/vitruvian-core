@@ -68,6 +68,7 @@ func TestRedactTakesOutEveryShapeOfID(t *testing.T) {
 		"ghost t0123abcd-u0456efgh not found":      "ghost [id] not found",
 		"portal TABCDEFG1-CABCDEFGH1 not found":    "portal [id] not found",
 		"login u0abcdefgh failed":                  "login [id] failed",
+		"token xoxc-123-456 rejected":              "token [id] rejected",
 		"edit target 3EB0C431D5A8B7E2F1 not found": "edit target [id] not found",
 		// Quotes and URLs.
 		`no chat named "Ana Lima"`: "no chat named [quoted]",

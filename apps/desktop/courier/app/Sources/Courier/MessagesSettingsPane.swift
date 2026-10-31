@@ -19,7 +19,6 @@ struct MessagesSettingsPane: View {
     let conversation: ConversationModel
     var voiceRecorder: VoiceRecorderModel? = nil
     @State private var selectedReply: QuickReply.ID?
-    @State private var editing: QuickReplyEdit?
 
     private var activeVoiceRecorder: VoiceRecorderModel {
         voiceRecorder ?? conversation.composer.voiceRecorder
@@ -73,7 +72,7 @@ struct MessagesSettingsPane: View {
         }
         .formStyle(.grouped)
         .frame(minHeight: 560)
-        .sheet(item: $editing) { edit in QuickReplyEditor(edit: edit, quickReplies: quickReplies) }
+        .sheet(item: $quickReplies.editing) { edit in QuickReplyEditor(edit: edit, quickReplies: quickReplies) }
     }
 
     // MARK: Downloads
@@ -100,16 +99,16 @@ struct MessagesSettingsPane: View {
     }
 
     private func chooseDownloadsDirectory() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.canCreateDirectories = true
         let current = (preferences.downloadsDirectoryPath as NSString).expandingTildeInPath
-        panel.directoryURL = URL(fileURLWithPath: current, isDirectory: true)
-        panel.prompt = String(localized: "Choose")
-        panel.message = String(localized: "Choose a folder for downloaded attachments")
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard let url = AppLockGate.shared.runOpenPanel(action: .settingsChange, configure: { panel in
+            panel.canChooseFiles = false
+            panel.canChooseDirectories = true
+            panel.allowsMultipleSelection = false
+            panel.canCreateDirectories = true
+            panel.directoryURL = URL(fileURLWithPath: current, isDirectory: true)
+            panel.prompt = String(localized: "Choose")
+            panel.message = String(localized: "Choose a folder for downloaded attachments")
+        })?.first else { return }
         preferences.downloadsDirectoryPath = url.path
     }
 
@@ -181,8 +180,19 @@ struct MessagesSettingsPane: View {
                 Text(String(localized: "Move focus to the message list")).tag(UpArrowAction.focusMessages)
                 Text(String(localized: "Edit your last message")).tag(UpArrowAction.editLast)
             }
+            Toggle(String(localized: "Enable spellcheck"), isOn: $preferences.enableSpellcheck)
             Toggle(String(localized: "Show formatting menu"), isOn: $preferences.showFormattingMenu)
                 .help(String(localized: "A bar of formatting buttons over the text you select."))
+            Picker(String(localized: "Primary composer button"), selection: $preferences.primaryComposerButton) {
+                ForEach(PrimaryComposerButton.allCases, id: \.self) { button in
+                    Text(button.label).tag(button)
+                }
+            }
+            Picker(String(localized: "Secondary composer button"), selection: $preferences.secondaryComposerButton) {
+                ForEach(SecondaryComposerButton.allCases, id: \.self) { button in
+                    Text(button.label).tag(button)
+                }
+            }
             Toggle(String(localized: "Enable emoji autocomplete"), isOn: $preferences.enableEmojiAutocomplete)
                 .accessibilityIdentifier("settings.composing.enableEmojiAutocomplete")
             Toggle(
@@ -220,11 +230,11 @@ struct MessagesSettingsPane: View {
                 .frame(minHeight: 110)
             }
             HStack {
-                Button(String(localized: "Add…")) { editing = QuickReplyEdit(reply: nil) }
+                Button(String(localized: "Add…")) { quickReplies.editing = QuickReplyEdit(reply: nil) }
                     .disabled(quickReplies.all.count >= QuickReplies.maxCount)
                 Button(String(localized: "Edit…")) {
                     if let reply = quickReplies.all.first(where: { $0.id == selectedReply }) {
-                        editing = QuickReplyEdit(reply: reply)
+                        quickReplies.editing = QuickReplyEdit(reply: reply)
                     }
                 }
                 .disabled(selectedReply == nil)
@@ -234,18 +244,12 @@ struct MessagesSettingsPane: View {
                 }
                 .disabled(selectedReply == nil)
             }
-            Text(String(localized: "Type ; and the title in a chat. {first_name}, {last_name} and {full_name} fill in the other person’s name."))
+            Text(String(localized: "Type ; and the title in a chat. {first_name}, {last_name}, {full_name}, {username}, {phone_number}, and {email} fill in contact details."))
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
-}
-
-/// A quick reply being added (nil) or changed.
-struct QuickReplyEdit: Identifiable {
-    let id = UUID()
-    let reply: QuickReply?
 }
 
 /// Adds or changes a quick reply: its title (what follows ";") and its text.

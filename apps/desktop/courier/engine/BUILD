@@ -1,3 +1,4 @@
+load("@rules_go//go:def.bzl", "go_library")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # gazelle:prefix github.com/VitruvianSoftware/courier/engine
@@ -24,4 +25,11 @@ pipeline_unit(
     test_targets = ["//apps/desktop/courier/engine/..."],
     tier = "L1",
     timeout_minutes = 60,
+)
+
+go_library(
+    name = "engine",
+    srcs = ["gomod.go"],
+    embedsrcs = ["go.mod"],
+    importpath = "github.com/VitruvianSoftware/courier/engine",
 )

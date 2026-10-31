@@ -21,6 +21,7 @@ go_library(
         "//apps/desktop/courier/engine/internal/entitlement",
         "//apps/desktop/courier/engine/internal/ids",
         "//apps/desktop/courier/engine/internal/login",
+        "//apps/desktop/courier/engine/internal/logscrub",
         "//apps/desktop/courier/engine/internal/media",
         "//apps/desktop/courier/engine/internal/richtext",
         "//apps/desktop/courier/engine/internal/search",

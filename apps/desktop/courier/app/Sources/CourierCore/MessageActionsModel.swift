@@ -1,6 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import AppKit
 import Combine
 import Foundation
 
@@ -8,6 +9,16 @@ import Foundation
 /// (Not "Pasteboard": Carbon has a type of that name, which every file importing AppKit also sees.)
 public protocol TextPasteboard: AnyObject {
     func setString(_ text: String)
+}
+
+/// Copy's pasteboard: the system's general one, as plain text.
+public final class SystemPasteboard: TextPasteboard {
+    public init() {}
+
+    public func setString(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
 }
 
 /// A step a message action needs from the person before it can go on: a question to answer, or a picker or sheet
@@ -25,6 +36,8 @@ public enum MessageActionRequest: Equatable, Sendable {
     case sendLater
     /// "Create quick reply from draft": a title, then `createQuickReply(title:)`.
     case quickReplyTitle
+    /// "Report a Problem", pre-filled with the active chat and/or message ID.
+    case reportProblem(roomID: String?, eventID: String?)
 }
 
 /// Where a message was acted on: the chat's timeline, or the thread pane (a thread's root is in both).
@@ -107,6 +120,7 @@ public final class MessageActionsModel: ObservableObject {
     private let appModel: AppModel
     private let preferences: ComposerPreferences
     private let pasteboard: TextPasteboard
+    private weak var observedLifecycle: SystemLifecycleModel?
     private var subscriptions: [AnyCancellable] = []
     /// Unsends the engine took, by their redaction's event ID, with the chat's network for the toast: the network
     /// may still refuse them.
@@ -123,6 +137,9 @@ public final class MessageActionsModel: ObservableObject {
         self.appModel = appModel
         self.preferences = preferences
         self.pasteboard = pasteboard
+        self.formatTime = { [weak preferences] date in
+            (preferences?.timeFormat ?? .system).formatDateTime(date, dateStyle: .short)
+        }
         appModel.onChange { [weak self] change in self?.handle(change) }
         // @Published hands over the new value before it is stored: it is the one looked at.
         subscriptions.append(conversation.$items.sink { [weak self] items in self?.timelineChanged(items) })
@@ -131,6 +148,29 @@ public final class MessageActionsModel: ObservableObject {
             self?.changedStatuses = []
             self?.request = nil
         })
+        subscriptions.append(
+            NotificationCenter.default
+                .publisher(for: SystemLifecycleModel.didLockNotification)
+                .sink { [weak self] notification in
+                    self?.observedLifecycle = notification.object as? SystemLifecycleModel
+                    self?.dismissAllPresentations()
+                }
+        )
+    }
+
+    public func dismissAllPresentations() {
+        request = nil
+    }
+
+    public var lifecycle: SystemLifecycleModel {
+        observedLifecycle
+            ?? conversation.composer.hotkeyDispatcher?.lifecycle
+            ?? conversation.lifecycle
+    }
+
+    public var isLocked: Bool {
+        !AppLockGate.shared.canPerform(.other, lifecycle: lifecycle)
+            || conversation.isLocked
     }
 
     // MARK: - The menu
@@ -140,6 +180,7 @@ public final class MessageActionsModel: ObservableObject {
     /// looked for where it was acted on first, then in the other (a reply is only in the pane; the root is in both).
     /// What goes into a composer (Edit, Reply, Insert as Draft) goes into the one of the place it is found in.
     public func perform(_ action: MessageAction, on messageID: String, from source: MessageSource = .chat) async {
+        guard !isLocked else { return }
         let thread = conversation.thread
         let paneOpen = thread.roomID != nil && thread.roomID == conversation.roomID
         let inChat = conversation.message(messageID)
@@ -204,9 +245,67 @@ public final class MessageActionsModel: ObservableObject {
         }
     }
 
+    /// Copies a scrubbed JSON summary (`event_id`, `room_id`, `network`, `type`, `ts`, `status`, `status_reason`,
+    /// `has_media`, `is_redacted`) of `messageID` to the clipboard and announces `"Message details copied"`.
+    public func copyMessageDetails(_ messageID: String, from source: MessageSource = .chat) {
+        guard !isLocked else { return }
+        guard let message = conversation.message(messageID, from: source) else { return }
+        let roomID = message.roomID.isEmpty ? (conversation.roomID ?? "") : message.roomID
+        let network = conversation.activeReplyNetwork ?? conversation.network
+        let type: String = switch message.kind {
+        case .poll: "org.matrix.msc3381.poll.start"
+        case .sticker: "m.sticker"
+        default: "m.room.message"
+        }
+        let status: String = switch message.statusLine {
+        case .queued: "queued"
+        case .waiting, .noAccount: "waiting"
+        case .sending: "pending"
+        case .failed, .mayHaveBeenSent, .notSent: "failed"
+        case .sent, .delivered, .seen, nil: "sent"
+        }
+        let rawReason: String = switch message.statusLine {
+        case let .failed(reason): reason
+        case .mayHaveBeenSent: StatusLine.mayHaveBeenSentReason
+        case .notSent(.appClosed): StatusLine.notSentReason
+        case .notSent(.notConnected): StatusLine.notConnectedReason
+        case .noAccount: StatusLine.noAccountReason
+        default: ""
+        }
+        let diagnostic = MessageDiagnostic(
+            eventID: message.id,
+            roomID: roomID,
+            network: network,
+            type: type,
+            ts: message.ts,
+            status: status,
+            statusReason: StderrExportFilter.scrubPath(rawReason),
+            hasMedia: message.kind.isMedia || !message.mediaPath.isEmpty,
+            isRedacted: message.kind == .deleted
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        guard let data = try? encoder.encode(diagnostic),
+              let json = String(data: data, encoding: .utf8) else { return }
+        pasteboard.setString(json)
+        onToast(String(localized: "Message details copied"))
+    }
+
+    /// Opens the Report a Problem sheet pre-filled with `contextRoomID` and `contextEventID`.
+    public func reportProblem(for messageID: String? = nil, from source: MessageSource = .chat) {
+        guard !isLocked else { return }
+        if let messageID, let message = conversation.message(messageID, from: source) {
+            let room = message.roomID.isEmpty ? conversation.roomID : message.roomID
+            request = .reportProblem(roomID: room, eventID: message.id)
+        } else {
+            request = .reportProblem(roomID: conversation.roomID, eventID: messageID)
+        }
+    }
+
     /// "Don't Send" on a message waiting for its network: takes it back as Undo does (message.undo), and what was
     /// typed goes back into the composer of the place it was acted on. Only a message of mine that waits.
     public func dontSend(_ messageID: String, from source: MessageSource = .chat) async {
+        guard !isLocked else { return }
         guard let message = conversation.message(messageID, from: source), message.mine,
               message.statusLine?.isWaiting == true else { return }
         let inPane = conversation.thread.roomID == conversation.roomID && conversation.thread.message(messageID) != nil
@@ -220,6 +319,10 @@ public final class MessageActionsModel: ObservableObject {
 
     /// The person said yes to the question asked (`request` is `.confirm`): it is done now.
     public func confirm() async {
+        guard !isLocked else {
+            request = nil
+            return
+        }
         guard case let .confirm(action, messageID, _)? = request else { return }
         request = nil
         switch action {
@@ -238,6 +341,7 @@ public final class MessageActionsModel: ObservableObject {
 
     /// ⌘⇧F: the forward picker for the selected message, or a toast saying to select one.
     public func forwardSelected() {
+        guard !isLocked else { return }
         guard let selected = conversation.selectedMessage,
               conversation.availableActions(for: selected).actions.contains(.forward) else {
             onToast(String(localized: "Select a message to forward"))
@@ -265,6 +369,7 @@ public final class MessageActionsModel: ObservableObject {
     /// the view sends the system's Copy.
     @discardableResult
     public func copySelected(responderCanCopy: Bool, inConversation: Bool, focus: MessageFocus) async -> CopyChoice {
+        guard !isLocked else { return .nothing }
         let choice = Self.copyChoice(responderCanCopy: responderCanCopy, place: focus.copyPlace(inConversation: inConversation),
                                      chatSelection: conversation.selectedMessageID, paneSelection: focus.paneSelection)
         guard case let .message(id, source) = choice, let message = conversation.message(id, from: source),
@@ -277,12 +382,14 @@ public final class MessageActionsModel: ObservableObject {
 
     /// ⌘⇧L and "Send later": the Send Later picker, when the composer has text that can be scheduled.
     public func requestSendLater() {
+        guard !isLocked else { return }
         guard conversation.composer.canSchedule else { return }
         request = .sendLater
     }
 
     /// "Create quick reply from draft": asks for a title for the composer's text.
     public func requestQuickReplyFromDraft() {
+        guard !isLocked else { return }
         guard canCreateQuickReply else { return }
         request = .quickReplyTitle
     }
@@ -295,6 +402,7 @@ public final class MessageActionsModel: ObservableObject {
     /// Saves the composer's text as a quick reply called `title`. False, with a toast saying why, when it can't be.
     @discardableResult
     public func createQuickReply(title: String) -> Bool {
+        guard !isLocked else { return false }
         guard let quickReplies else { return false }
         do {
             try quickReplies.add(title: title, text: conversation.composer.text)
@@ -316,6 +424,7 @@ public final class MessageActionsModel: ObservableObject {
     @discardableResult
     public func forward(_ messageID: String, to roomIDs: [String]) async
         -> (sent: Int, failed: [String], unanswered: [String]) {
+        guard !isLocked else { return (0, [], []) }
         var unique: [String] = []
         for id in roomIDs where !unique.contains(id) { unique.append(id) }
         guard !unique.isEmpty else { return (0, [], []) }
@@ -359,6 +468,7 @@ public final class MessageActionsModel: ObservableObject {
 
     /// Votes in a poll with these options ([] takes my vote back). The chat is read again for the tally.
     public func vote(_ pollID: String, options: [String]) async {
+        guard !isLocked else { return }
         await call(fallback: String(localized: "Your vote wasn’t counted. Try again.")) { client in
             let _: Sent = try await client.call("poll.vote", VoteParams(eventID: pollID, optionIDs: options))
         }
@@ -367,7 +477,7 @@ public final class MessageActionsModel: ObservableObject {
 
     /// A message's versions, first as sent and then each edit, oldest first; [] (and a toast) when they can't be read.
     public func history(of messageID: String) async -> [Version] {
-        guard let client = appModel.client else { return [] }
+        guard !isLocked, let client = appModel.client else { return [] }
         do {
             let result: HistoryResult = try await client.call("message.history", EventParams(eventID: messageID))
             return result.versions
@@ -381,6 +491,7 @@ public final class MessageActionsModel: ObservableObject {
     /// draft has problems (the window shows them), or the engine refused it (a toast).
     @discardableResult
     public func createPoll(_ draft: PollDraft) async -> Bool {
+        guard !isLocked else { return false }
         guard let room = conversation.roomID else { return false }
         guard let polls = conversation.features.poll else {
             if let reason = conversation.features.pollsUnavailableReason(network: conversation.network) {

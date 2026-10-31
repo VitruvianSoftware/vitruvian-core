@@ -14,7 +14,10 @@ final class EngineClientTests: XCTestCase {
         server = try TestEngineServer()
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
+        await MainActor.run {
+            AppLockGate.shared.resetForTesting()
+        }
         server.stop()
     }
 
@@ -229,6 +232,318 @@ final class EngineClientTests: XCTestCase {
             _ = try await client.connect()
             XCTFail("connected to a socket that does not exist")
         } catch {}
+    }
+
+    @MainActor
+    func testEveryProtocolMethodIsClassifiedAndMutatingMethodsAreRefusedWhileLocked() async throws {
+        let dir = try XCTUnwrap(ProtocolConformanceTests.protocolDirectory(), "protocol.json not found")
+        let specData = try Data(contentsOf: dir.appendingPathComponent("protocol.json"))
+        let spec = try XCTUnwrap(JSONSerialization.jsonObject(with: specData) as? [String: Any])
+        let specMethods = try XCTUnwrap(spec["methods"] as? [String: [String: Any]])
+        let allMethodNames = specMethods.keys.sorted()
+        XCTAssertGreaterThanOrEqual(allMethodNames.count, 58)
+
+        // 1. Every method in protocol.json must have an explicit classification (and no extra unknown keys).
+        XCTAssertEqual(
+            Set(ProtocolMethods.classifications.keys),
+            Set(allMethodNames),
+            "Every method in protocol.json must be classified as readOnlyOrBackground or userInitiatedMutation"
+        )
+
+        let expectedReadOnly: Set<String> = [
+            "hello",
+            "accounts.list",
+            "inbox.list",
+            "spaces.list",
+            "autoArchive.list",
+            "search.query",
+            "room.events",
+            "room.features",
+            "room.members",
+            "scheduled.list",
+            "merge.list",
+        ]
+        // Go handlers that fetch from remote networks or write to SQLite/disk (including people.contacts, room.info,
+        // stickers.list, accounts.subAccounts) must never be classified as readOnlyOrBackground.
+        let goHandlersThatFetchOrWrite: Set<String> = [
+            "people.contacts",
+            "room.info",
+            "stickers.list",
+            "accounts.subAccounts",
+            "message.history",
+            "merge.suggest",
+            "bridges.list",
+            "spaces.setLayout",
+            "spaces.update",
+            "labels.create",
+            "labels.update",
+            "labels.delete",
+            "room.setPinned",
+            "room.setArchived",
+            "room.setLowPriority",
+            "room.setHidden",
+            "room.setMarkedUnread",
+            "room.setLabel",
+            "room.setDraft",
+            "room.acceptRequest",
+            "reminder.set",
+            "reminder.clear",
+            "reminder.clearAll",
+            "inbox.archiveMatching",
+            "inbox.markAllRead",
+            "autoArchive.set",
+            "autoArchive.delete",
+            "room.markRead",
+            "room.setTyping",
+            "room.setUnreadFrom",
+            "room.directChat",
+            "room.setMuted",
+            "message.send",
+            "message.sendFile",
+            "message.sendVoice",
+            "message.sendLocation",
+            "message.sendSticker",
+            "message.sendGIF",
+            "message.markPlayed",
+            "message.react",
+            "message.retry",
+            "message.discard",
+            "room.setDisappearing",
+            "message.edit",
+            "message.unsend",
+            "message.deleteForMe",
+            "message.forward",
+            "message.undo",
+            "message.sendHeld",
+            "message.setBookmarked",
+            "message.schedule",
+            "scheduled.update",
+            "scheduled.sendNow",
+            "scheduled.delete",
+            "poll.create",
+            "poll.vote",
+            "login.start",
+            "login.submit",
+            "login.wait",
+            "login.cancel",
+            "room.setLocalOverride",
+            "room.export",
+            "room.reportSpam",
+            "room.setName",
+            "room.setTopic",
+            "room.setAvatar",
+            "room.invite",
+            "room.kick",
+            "room.setAdmin",
+            "room.leave",
+            "room.delete",
+            "people.resolve",
+            "room.createGroup",
+            "blast.send",
+            "merge.create",
+            "merge.update",
+            "merge.delete",
+            "stickers.import",
+            "bridges.restart",
+            "accounts.remove",
+            "accounts.setSubAccount",
+            "diagnostics.export",
+        ]
+        for method in goHandlersThatFetchOrWrite.sorted() {
+            XCTAssertEqual(
+                ProtocolMethods.classification(for: method),
+                .userInitiatedMutation,
+                "Go handler '\(method)' fetches over network or writes state and must be classified as userInitiatedMutation"
+            )
+        }
+        let expectedMutating = Set(allMethodNames).subtracting(expectedReadOnly).sorted()
+
+        for method in allMethodNames {
+            let expected: ProtocolMethods.AccessClassification = expectedReadOnly.contains(method)
+                ? .readOnlyOrBackground
+                : .userInitiatedMutation
+            XCTAssertEqual(
+                ProtocolMethods.classification(for: method),
+                expected,
+                "Method '\(method)' must be classified as \(expected)"
+            )
+        }
+
+        // 2. While locked, EngineClient centrally refuses every mutating method with EngineError.appLocked
+        //    without sending the request over the socket.
+        let suiteName = "courier.test.engineclient.lock.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        struct AlwaysBiometric: BiometricAuthService {
+            func canEvaluateBiometricsOrWatch() -> Bool { true }
+            func authenticate(reason _: String) async throws -> Bool { true }
+        }
+        struct NoopLoginItem: LoginItemService {
+            func status() -> LoginItemRegistrationStatus { .notRegistered }
+            func register() throws {}
+            func unregister() throws {}
+        }
+
+        let lifecycle = SystemLifecycleModel(
+            defaults: defaults,
+            loginItem: NoopLoginItem(),
+            biometrics: AlwaysBiometric()
+        )
+        server.setHandler { method, _ in
+            method == "hello" ? TestEngineServer.helloOK : .result([:])
+        }
+        let client = EngineClient(socketPath: server.path)
+        _ = try await client.connect()
+
+        lifecycle.lockNow()
+        XCTAssertTrue(lifecycle.isLocked)
+
+        for method in expectedMutating {
+            do {
+                let _: JSONValue = try await client.call(method, Empty())
+                XCTFail("Mutating method '\(method)' must be refused by EngineClient while locked")
+            } catch let error as EngineError {
+                XCTAssertEqual(
+                    error,
+                    .appLocked,
+                    "Mutating method '\(method)' must throw EngineError.appLocked while locked"
+                )
+            }
+        }
+
+        // None of the mutating calls may have reached the engine server while locked.
+        let sentMutating = server.receivedMethods().filter { !expectedReadOnly.contains($0) }
+        XCTAssertEqual(
+            sentMutating,
+            [],
+            "Zero mutating RPC requests may reach the engine socket while locked"
+        )
+
+        // Read-only background sync calls (e.g. accounts.list) still succeed while locked.
+        let _: JSONValue = try await client.call("accounts.list", Empty())
+        XCTAssertTrue(server.receivedMethods().contains("accounts.list"))
+        await client.close()
+    }
+
+    @MainActor
+    func testQuitWhileLockedFlushesHeldMessagesWhileRoomSpecificSendHeldRemainsRefused() async throws {
+        var sendHeldPayloads: [[String: Any]] = []
+        server.setHandler { method, params in
+            if method == "hello" { return TestEngineServer.helloOK }
+            if method == "message.sendHeld" {
+                sendHeldPayloads.append(params ?? [:])
+            }
+            return .result([:])
+        }
+
+        let suiteName = "courier.test.quitlock.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        struct AlwaysBiometric: BiometricAuthService {
+            func canEvaluateBiometricsOrWatch() -> Bool { true }
+            func authenticate(reason _: String) async throws -> Bool { true }
+        }
+        struct NoopLoginItem: LoginItemService {
+            func status() -> LoginItemRegistrationStatus { .notRegistered }
+            func register() throws {}
+            func unregister() throws {}
+        }
+
+        AppLockGate.shared.resetForTesting()
+        let lifecycle = SystemLifecycleModel(
+            defaults: defaults,
+            loginItem: NoopLoginItem(),
+            biometrics: AlwaysBiometric()
+        )
+        let socket = server.path
+        let launcher = FakeLauncher { _, process in process.printReady(socket: socket) }
+        let supervisor = EngineSupervisor(
+            enginePath: "/bin/true",
+            dataDir: URL(fileURLWithPath: "/tmp"),
+            environment: [:],
+            launcher: launcher
+        )
+        let app = AppModel(supervisor: supervisor, lifecycle: lifecycle)
+        let conv = ConversationModel(appModel: app)
+        app.start()
+        try await waitUntil { app.client != nil }
+        let process: FakeProcess = try XCTUnwrap(launcher.processes.first)
+        defer {
+            process.exit(0)
+            app.supervisor.stop()
+        }
+
+        lifecycle.lockNow()
+        XCTAssertTrue(AppLockGate.shared.isLocked)
+
+        // Room-specific 'send now' (⌘⇧Z) is a user-initiated mutation and must remain refused while locked.
+        let client: EngineClient = try XCTUnwrap(app.client)
+        do {
+            let _: Empty = try await client.call("message.sendHeld", RoomOptionalParams(roomID: "!r1:courier.local"))
+            XCTFail("Room-specific message.sendHeld must be refused while locked")
+        } catch let error as EngineError {
+            XCTAssertEqual(error, .appLocked)
+        }
+        XCTAssertTrue(sendHeldPayloads.isEmpty, "Refused room-specific sendHeld must not reach the engine")
+
+        // Quitting while locked must still flush held messages via the room-less message.sendHeld call.
+        Task {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            process.exit(0)
+        }
+        await app.quit(conv)
+        XCTAssertEqual(sendHeldPayloads.count, 1, "Quitting while locked must send room-less message.sendHeld to the engine")
+        XCTAssertNil(sendHeldPayloads.first?["room_id"], "Quit flush message.sendHeld must be room-less")
+    }
+
+    @MainActor
+    func testAppLockGateSharedIsNeverRepointedByStraySystemLifecycleModelInit() throws {
+        struct AlwaysBiometric: BiometricAuthService {
+            func canEvaluateBiometricsOrWatch() -> Bool { true }
+            func authenticate(reason _: String) async throws -> Bool { true }
+        }
+        struct NoopLoginItem: LoginItemService {
+            func status() -> LoginItemRegistrationStatus { .notRegistered }
+            func register() throws {}
+            func unregister() throws {}
+        }
+
+        let primarySuite = "courier.test.lockgate.primary.\(UUID().uuidString)"
+        let primaryDefaults = try XCTUnwrap(UserDefaults(suiteName: primarySuite))
+        defer { primaryDefaults.removePersistentDomain(forName: primarySuite) }
+
+        let straySuite = "courier.test.lockgate.stray.\(UUID().uuidString)"
+        let strayDefaults = try XCTUnwrap(UserDefaults(suiteName: straySuite))
+        defer { strayDefaults.removePersistentDomain(forName: straySuite) }
+
+        AppLockGate.shared.resetForTesting()
+        let primary = SystemLifecycleModel(
+            defaults: primaryDefaults,
+            loginItem: NoopLoginItem(),
+            biometrics: AlwaysBiometric()
+        )
+        primary.lockNow()
+        XCTAssertTrue(primary.isLocked)
+        XCTAssertTrue(AppLockGate.shared.lifecycle === primary)
+        XCTAssertTrue(AppLockGate.shared.isLocked)
+
+        // Creating a stray unlocked SystemLifecycleModel while primary is bound must NOT re-point AppLockGate.shared.
+        let stray = SystemLifecycleModel(
+            defaults: strayDefaults,
+            loginItem: NoopLoginItem(),
+            biometrics: AlwaysBiometric()
+        )
+        XCTAssertFalse(stray.isLocked)
+        XCTAssertTrue(
+            AppLockGate.shared.lifecycle === primary,
+            "AppLockGate.shared.lifecycle must remain bound to the primary SystemLifecycleModel when a stray instance is initialized"
+        )
+        XCTAssertTrue(
+            AppLockGate.shared.isLocked,
+            "AppLockGate.shared.isLocked must remain true when a stray unlocked SystemLifecycleModel is initialized"
+        )
     }
 
     // MARK: -

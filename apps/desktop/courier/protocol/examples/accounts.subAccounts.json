@@ -1,0 +1,30 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "accounts.subAccounts",
+    "params": {
+      "network": "whatsapp",
+      "account_id": "whatsapp-login",
+      "refresh": true
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+      "sub_accounts": [
+        {
+          "network": "whatsapp",
+          "account_id": "whatsapp-login",
+          "sub_id": "!community:courier.local",
+          "title": "Neighborhood Community",
+          "avatar_uri": "mxc://courier.local/comm",
+          "kind": "space",
+          "enabled": true,
+          "show_in_inbox": "all"
+        }
+      ]
+    }
+  }
+}

@@ -6,6 +6,7 @@ go_library(
     importpath = "github.com/VitruvianSoftware/courier/engine/internal/engine",
     visibility = ["//apps/desktop/courier/engine:__subpackages__"],
     deps = [
+        "//apps/desktop/courier/engine",
         "//apps/desktop/courier/engine/internal/host",
         "//apps/desktop/courier/engine/internal/ids",
         "//apps/desktop/courier/engine/internal/localmatrix",
@@ -13,6 +14,9 @@ go_library(
         "//apps/desktop/courier/engine/internal/store",
         "@com_github_rs_zerolog//:zerolog",
         "@net_maunium_go_mautrix//bridgev2",
+        "@net_maunium_go_mautrix//bridgev2/database",
+        "@net_maunium_go_mautrix//bridgev2/networkid",
+        "@net_maunium_go_mautrix//bridgev2/status",
     ],
 )
 
@@ -22,6 +26,7 @@ go_test(
     embed = [":engine"],
     deps = [
         "//apps/desktop/courier/engine/internal/fakenet",
+        "//apps/desktop/courier/engine/internal/host",
         "//apps/desktop/courier/engine/internal/ids",
         "//apps/desktop/courier/engine/internal/media",
         "//apps/desktop/courier/engine/internal/store",

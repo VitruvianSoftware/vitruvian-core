@@ -137,4 +137,28 @@ final class ReminderPresetsTests: XCTestCase {
         XCTAssertEqual(ReminderPresets.presets(now: now, calendar: calendar, lastUsed: nil).count, 6)
         XCTAssertEqual(ReminderPresets.presets(now: now, calendar: calendar).count, 6)
     }
+
+    func testCustomTimeSuggestionsAddRemoveAndReset() {
+        let store = TestDefaults()
+        defer { store.remove() }
+        let preferences = InboxPreferences(defaults: store.defaults)
+        XCTAssertEqual(preferences.timeSuggestions, ReminderPresets.defaultSuggestions)
+
+        XCTAssertTrue(preferences.addTimeSuggestion("In 3 weeks"))
+        XCTAssertEqual(preferences.timeSuggestions.last, "In 3 weeks")
+
+        let now = at(2026, 10, 21, 10)
+        let resolved = ReminderPresets.presets(
+            now: now,
+            calendar: calendar,
+            suggestions: preferences.timeSuggestions
+        )
+        XCTAssertTrue(resolved.contains { $0.title == "In 3 weeks" })
+
+        preferences.removeTimeSuggestion("In Two Hours")
+        XCTAssertFalse(preferences.timeSuggestions.contains("In Two Hours"))
+
+        preferences.resetTimeSuggestions()
+        XCTAssertEqual(preferences.timeSuggestions, ReminderPresets.defaultSuggestions)
+    }
 }

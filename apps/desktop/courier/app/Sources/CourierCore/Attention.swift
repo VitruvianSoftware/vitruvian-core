@@ -1,6 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import Combine
 import Foundation
 
 /// What the Mac knows about whether someone is at it. The app's is `SystemPresence`; tests give one they set.
@@ -45,21 +46,44 @@ public final class Attention {
     public private(set) var windowIsKey = false
     private let source: PresenceSource
     private let pollInterval: TimeInterval?
+    private let isAppLocked: @MainActor () -> Bool
     private var hooks: [@MainActor () -> Void] = []
     private var wasLooking = false
     private var poll: Task<Void, Never>?
+    private var lockCancellables: [AnyCancellable] = []
 
     /// - Parameter pollInterval: how often the idle time is checked while the window is key; nil never (tests call
     ///   `reevaluate`).
-    public init(source: PresenceSource, pollInterval: TimeInterval? = 5) {
+    public init(
+        source: PresenceSource,
+        pollInterval: TimeInterval? = 5,
+        isAppLocked: @escaping @MainActor () -> Bool = { AppLockGate.shared.isLocked }
+    ) {
         self.source = source
         self.pollInterval = pollInterval
+        self.isAppLocked = isAppLocked
         source.onChange = { [weak self] in self?.reevaluate() }
+        lockCancellables.append(
+            NotificationCenter.default.publisher(for: SystemLifecycleModel.didLockNotification)
+                .sink { [weak self] _ in
+                    self?.reevaluate()
+                }
+        )
+        lockCancellables.append(
+            NotificationCenter.default.publisher(for: SystemLifecycleModel.didUnlockNotification)
+                .sink { [weak self] _ in
+                    self?.reevaluate()
+                }
+        )
     }
 
     /// Whether the person is looking now. Read fresh each time: the idle time moves on its own.
     public var isLooking: Bool {
-        windowIsKey && !source.isScreenLocked && !source.isDisplayAsleep
+        windowIsKey
+            && !isAppLocked()
+            && !AppLockGate.shared.isLocked
+            && !source.isScreenLocked
+            && !source.isDisplayAsleep
             && source.secondsSinceLastInput < Self.idleLimit
     }
 

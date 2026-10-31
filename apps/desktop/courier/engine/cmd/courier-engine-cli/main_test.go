@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -537,4 +538,21 @@ func TestTheCLIsLogNamesNoOne(t *testing.T) {
 	require.Contains(t, out.String(), "Failed to sync [id]")
 	require.Contains(t, out.String(), "whatsapp")
 	require.NotContains(t, out.String(), "below warn")
+}
+
+func TestCLIStartupFailureScrubsHomeDirAndSecrets(t *testing.T) {
+	badFile := filepath.Join(t.TempDir(), "Users", "alice", "+14155550199", "xoxc-123-456")
+	require.NoError(t, os.MkdirAll(filepath.Dir(badFile), 0o700))
+	require.NoError(t, os.WriteFile(badFile, []byte("not a dir"), 0o600))
+	var stderr bytes.Buffer
+	code := realMain([]string{"--data", badFile, "chats"}, &stderr)
+	require.Equal(t, 1, code)
+	out := stderr.String()
+	require.True(t, bytes.HasPrefix(stderr.Bytes(), []byte("error: ")), out)
+	require.Contains(t, out, "~/[id]/[id]")
+	require.NotContains(t, out, "/Users/alice")
+	require.NotContains(t, out, "alice")
+	require.NotContains(t, out, "+14155550199")
+	require.NotContains(t, out, "14155550199")
+	require.NotContains(t, out, "xoxc-123-456")
 }

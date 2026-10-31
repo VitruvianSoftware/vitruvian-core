@@ -13,13 +13,24 @@ import Foundation
 public final class AttachmentDownloader {
     public let preferences: ComposerPreferences
     private let promptSavePanel: (String, URL) -> URL?
+    private var explicitLifecycle: SystemLifecycleModel?
+
+    public var lifecycle: SystemLifecycleModel {
+        explicitLifecycle ?? AppLockGate.shared.lifecycle
+    }
+
+    public var isLocked: Bool {
+        !AppLockGate.shared.canPerform(.download, lifecycle: explicitLifecycle)
+    }
 
     public init(
         preferences: ComposerPreferences,
-        promptSavePanel: @escaping (String, URL) -> URL? = AttachmentDownloader.defaultSavePanel
+        promptSavePanel: @escaping (String, URL) -> URL? = AttachmentDownloader.defaultSavePanel,
+        lifecycle: SystemLifecycleModel? = nil
     ) {
         self.preferences = preferences
         self.promptSavePanel = promptSavePanel
+        self.explicitLifecycle = lifecycle
     }
 
     /// Saves `sourcePath` with `suggestedName`, stamping `kLSQuarantineTypeOtherDownload` and deduplicating filenames (`report (1).pdf`).
@@ -29,6 +40,7 @@ public final class AttachmentDownloader {
         suggestedName: String?,
         mimeType: String = ""
     ) throws -> URL? {
+        guard !isLocked else { return nil }
         let trimmed = sourcePath.trimmingCharacters(in: .whitespacesAndNewlines)
         let lower = trimmed.lowercased()
         guard !trimmed.isEmpty,
@@ -59,7 +71,7 @@ public final class AttachmentDownloader {
         try manager.createDirectory(at: defaultDirectoryURL, withIntermediateDirectories: true)
 
         if preferences.alwaysAskWhereToSaveFiles {
-            guard let chosenURL = promptSavePanel(safeFileName, defaultDirectoryURL) else {
+            guard let chosenURL = promptSavePanel(safeFileName, defaultDirectoryURL), !isLocked else {
                 return nil
             }
             let targetDirectory = chosenURL.deletingLastPathComponent()
@@ -72,6 +84,7 @@ public final class AttachmentDownloader {
             )
         }
 
+        guard !isLocked else { return nil }
         return try Self.copyAtomicallyWithQuarantine(
             from: sourceURL,
             toDirectory: defaultDirectoryURL,
@@ -81,15 +94,14 @@ public final class AttachmentDownloader {
 
     nonisolated public static func defaultSavePanel(suggestedName: String, defaultDirectoryURL: URL) -> URL? {
         MainActor.assumeIsolated {
-            let panel = NSSavePanel()
-            panel.nameFieldStringValue = suggestedName
-            panel.directoryURL = defaultDirectoryURL
-            panel.canCreateDirectories = true
-            panel.isExtensionHidden = false
-            panel.prompt = String(localized: "Save")
-            panel.message = String(localized: "Choose where to save this file")
-            guard panel.runModal() == .OK else { return nil }
-            return panel.url
+            AppLockGate.shared.runSavePanel(action: .download) { panel in
+                panel.nameFieldStringValue = suggestedName
+                panel.directoryURL = defaultDirectoryURL
+                panel.canCreateDirectories = true
+                panel.isExtensionHidden = false
+                panel.prompt = String(localized: "Save")
+                panel.message = String(localized: "Choose where to save this file")
+            }
         }
     }
 

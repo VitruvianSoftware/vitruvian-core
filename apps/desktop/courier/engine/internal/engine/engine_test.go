@@ -5,11 +5,14 @@ package engine
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -24,6 +27,7 @@ import (
 	"maunium.net/go/mautrix/id"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/fakenet"
+	"github.com/VitruvianSoftware/courier/engine/internal/host"
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
 	"github.com/VitruvianSoftware/courier/engine/internal/media"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
@@ -575,6 +579,9 @@ func TestStartFillsTheLoginsOfChatsThatHaveNone(t *testing.T) {
 	require.Empty(t, errs)
 	h, ok := first.Host("fake")
 	require.True(t, ok)
+	require.Eventually(t, func() bool {
+		return h.Bridge.DB.KV.Get(ctx, database.KeyBridgeInfoVersion) == "1,1"
+	}, 5*time.Second, 5*time.Millisecond)
 	for mxid, key := range map[id.RoomID]networkid.PortalKey{
 		"!old:courier.local":    {ID: "chat-old", Receiver: "login-b"},
 		"!kept:courier.local":   {ID: "chat-kept", Receiver: "login-b"},
@@ -601,4 +608,390 @@ func TestStartFillsTheLoginsOfChatsThatHaveNone(t *testing.T) {
 		"!old:courier.local": "login-b", "!kept:courier.local": "login-a", "!shared:courier.local": "",
 		"!noportal:courier.local": "",
 	}, got)
+}
+
+type fakeLoginHook struct {
+	mu        sync.Mutex
+	cancelled []string
+	hosts     map[string]bool
+}
+
+func (f *fakeLoginHook) CancelNetwork(network string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.cancelled = append(f.cancelled, network)
+}
+
+func (f *fakeLoginHook) SetHost(network string, h *host.Host) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.hosts == nil {
+		f.hosts = map[string]bool{}
+	}
+	f.hosts[network] = h != nil
+}
+
+func TestRestartNetworkAndBridgesReport(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	s := openStore(t, dir)
+	var mu sync.Mutex
+	var created []*gatedNet
+	spec := Spec{
+		Name:        "whatsapp",
+		DisplayName: "WhatsApp",
+		ModulePath:  "go.mau.fi/mautrix-whatsapp",
+		Connector: func() (bridgev2.NetworkConnector, error) {
+			n := open()
+			mu.Lock()
+			created = append(created, n)
+			mu.Unlock()
+			return n, nil
+		},
+	}
+	e, errs := Start(ctx, dir, s, &media.Store{Dir: filepath.Join(dir, "media")}, []Spec{spec}, quiet)
+	require.Empty(t, errs)
+	t.Cleanup(e.Stop)
+
+	hook := &fakeLoginHook{}
+	e.SetLogin(hook)
+
+	reportsBefore, err := e.Bridges(ctx)
+	require.NoError(t, err)
+	require.Len(t, reportsBefore, 1)
+	require.Equal(t, "whatsapp", reportsBefore[0].Network)
+	require.Equal(t, "WhatsApp", reportsBefore[0].DisplayName)
+	require.Equal(t, "go.mau.fi/mautrix-whatsapp", reportsBefore[0].ModulePath)
+	require.NotEmpty(t, reportsBefore[0].Version)
+	require.NotEmpty(t, reportsBefore[0].MautrixVer)
+	require.Greater(t, reportsBefore[0].StartedAtMS, int64(0))
+
+	// Run concurrent Status and Host reads while RestartNetwork executes.
+	stopReaders := make(chan struct{})
+	var readersWG sync.WaitGroup
+	readersWG.Add(1)
+	go func() {
+		defer readersWG.Done()
+		for {
+			select {
+			case <-stopReaders:
+				return
+			default:
+				_ = e.Status("whatsapp")
+				_, _ = e.Host("whatsapp")
+			}
+		}
+	}()
+
+	require.NoError(t, e.RestartNetwork(ctx, "whatsapp"))
+	close(stopReaders)
+	readersWG.Wait()
+
+	mu.Lock()
+	require.Len(t, created, 2, "RestartNetwork must stop the old connector and construct a new one")
+	firstConn, secondConn := created[0], created[1]
+	mu.Unlock()
+	require.True(t, closed(firstConn.stopped), "old connector must be stopped")
+	require.False(t, closed(secondConn.stopped), "new connector must be running")
+
+	hook.mu.Lock()
+	require.Equal(t, []string{"whatsapp"}, hook.cancelled)
+	require.True(t, hook.hosts["whatsapp"])
+	hook.mu.Unlock()
+
+	reportsAfter, err := e.Bridges(ctx)
+	require.NoError(t, err)
+	require.Len(t, reportsAfter, 1)
+	require.Greater(t, reportsAfter[0].StartedAtMS, reportsBefore[0].StartedAtMS, "startedAt must advance on restart")
+}
+
+func TestRemoveAccountLogoutAndDeleteChats(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	s := openStore(t, dir)
+	net := fakenet.New()
+	spec := Spec{
+		Name:        "telegram",
+		DisplayName: "Telegram",
+		ModulePath:  "go.mau.fi/mautrix-telegram",
+		Connector:   func() (bridgev2.NetworkConnector, error) { return net, nil },
+	}
+	e, errs := Start(ctx, dir, s, &media.Store{Dir: filepath.Join(dir, "media")}, []Spec{spec}, quiet)
+	require.Empty(t, errs)
+	t.Cleanup(e.Stop)
+
+	h, ok := e.Host("telegram")
+	require.True(t, ok)
+
+	// Create two accounts on telegram: tg-1 and tg-2.
+	ul1, err := net.LoginAs(ctx, h.Bridge, "tg-1", "Alice Example (+15550100101)")
+	require.NoError(t, err)
+	ul2, err := net.LoginAs(ctx, h.Bridge, "tg-2", "Bob Example (+15550100102)")
+	require.NoError(t, err)
+
+	net.Incoming(ul1, "chat-1", "u1", "m1", "hello from tg-1")
+	net.Incoming(ul2, "chat-2", "u2", "m2", "hello from tg-2")
+	room1 := roomWith(t, s, "telegram", "hello from tg-1")
+	room2 := roomWith(t, s, "telegram", "hello from tg-2")
+	require.NoError(t, s.SetLoginState(ctx, "telegram", "tg-1", json.RawMessage(`{"state_event":"CONNECTED"}`)))
+	require.NoError(t, s.SetLoginState(ctx, "telegram", "tg-2", json.RawMessage(`{"state_event":"CONNECTED"}`)))
+
+	// Remove tg-1 with logoutRemote=true and deleteChats=true.
+	require.NoError(t, e.RemoveAccount(ctx, "telegram", "tg-1", true, true))
+	require.Equal(t, int64(1), net.LogoutRemoteCalls.Load(), "LogoutRemote must be called when logoutRemote is true")
+	require.Nil(t, h.Bridge.GetCachedUserLoginByID("tg-1"), "tg-1 must be removed from bridge cache")
+	dbUL1, err := h.Bridge.DB.UserLogin.GetByID(ctx, "tg-1")
+	require.NoError(t, err)
+	require.Nil(t, dbUL1, "tg-1 must be deleted from bridge DB")
+
+	_, ok1, err := s.GetRoom(ctx, room1)
+	require.NoError(t, err)
+	require.False(t, ok1, "room1 must be deleted when deleteChats=true")
+	_, ok2, err := s.GetRoom(ctx, room2)
+	require.NoError(t, err)
+	require.True(t, ok2, "room2 of tg-2 must remain")
+
+	// Remove tg-2 with logoutRemote=false and deleteChats=false.
+	require.NoError(t, e.RemoveAccount(ctx, "telegram", "tg-2", false, false))
+	require.Equal(t, int64(1), net.LogoutRemoteCalls.Load(), "LogoutRemote must not be called when logoutRemote is false")
+	dbUL2, err := h.Bridge.DB.UserLogin.GetByID(ctx, "tg-2")
+	require.NoError(t, err)
+	require.Nil(t, dbUL2, "tg-2 must be deleted from bridge DB")
+	_, ok2After, err := s.GetRoom(ctx, room2)
+	require.NoError(t, err)
+	require.True(t, ok2After, "room2 must remain when deleteChats=false")
+	states, err := s.LoginStates(ctx, "telegram")
+	require.NoError(t, err)
+	for _, st := range states {
+		require.Empty(t, st.LoginID, "no account login_state rows may remain")
+	}
+}
+
+func TestRefreshSubAccountsFromBridgeDB(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	s := openStore(t, dir)
+	net := fakenet.New()
+	spec := Spec{
+		Name:        "slack",
+		DisplayName: "Slack",
+		ModulePath:  "go.mau.fi/mautrix-slack",
+		Connector:   func() (bridgev2.NetworkConnector, error) { return net, nil },
+	}
+	e, errs := Start(ctx, dir, s, &media.Store{Dir: filepath.Join(dir, "media")}, []Spec{spec}, quiet)
+	require.Empty(t, errs)
+	t.Cleanup(e.Stop)
+
+	h, ok := e.Host("slack")
+	require.True(t, ok)
+	_, err := net.LoginAs(ctx, h.Bridge, "T1-U1", "Acme Slack")
+	require.NoError(t, err)
+
+	// Seed a space portal and a bot DM portal in the bridge DB and store.
+	require.NoError(t, s.UpsertRoom(ctx, store.Room{ID: "!ws:courier.local", Network: "slack", LoginID: "T1-U1", Name: "Acme Corp"}))
+	require.NoError(t, h.Bridge.DB.Portal.Insert(ctx, &database.Portal{
+		PortalKey: networkid.PortalKey{ID: "space-T1", Receiver: "T1-U1"},
+		MXID:      "!ws:courier.local",
+		Name:      "Acme Corp",
+		RoomType:  database.RoomTypeSpace,
+	}))
+
+	require.NoError(t, s.UpsertRoom(ctx, store.Room{ID: "!botdm:courier.local", Network: "slack", LoginID: "T1-U1", Name: "Slackbot", IsDirect: true}))
+	require.NoError(t, h.Bridge.DB.Ghost.Insert(ctx, &database.Ghost{
+		BridgeID: h.Bridge.ID,
+		ID:       "U-BOT",
+		Name:     "Slackbot",
+		IsBot:    true,
+	}))
+	require.NoError(t, h.Bridge.DB.Portal.Insert(ctx, &database.Portal{
+		PortalKey:   networkid.PortalKey{ID: "dm-bot", Receiver: "T1-U1"},
+		MXID:        "!botdm:courier.local",
+		Name:        "Slackbot",
+		RoomType:    database.RoomTypeDM,
+		OtherUserID: "U-BOT",
+	}))
+
+	subs, err := e.RefreshSubAccounts(ctx, "slack", "T1-U1")
+	require.NoError(t, err)
+	require.Len(t, subs, 2)
+	byID := map[string]store.SubAccount{}
+	for _, sub := range subs {
+		byID[sub.SubID] = sub
+	}
+	require.Equal(t, "space", byID["!ws:courier.local"].Kind)
+	require.Equal(t, "Acme Corp", byID["!ws:courier.local"].Title)
+	require.Equal(t, "bot", byID["!botdm:courier.local"].Kind)
+	require.Equal(t, "Slackbot", byID["!botdm:courier.local"].Title)
+}
+
+func TestStartNetworksAndRestartNetworkConcurrent(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	s := openStore(t, dir)
+	m := &media.Store{Dir: filepath.Join(dir, "media")}
+	e := New(s)
+	t.Cleanup(e.Stop)
+
+	var inFlight atomic.Int32
+	var maxInFlight atomic.Int32
+	var callCount atomic.Int32
+	inConnector1 := make(chan struct{})
+	releaseConnector1 := make(chan struct{})
+	var releaseOnce sync.Once
+
+	spec := Spec{
+		Name:        "fake",
+		DisplayName: "Fake",
+		Connector: func() (bridgev2.NetworkConnector, error) {
+			cur := inFlight.Add(1)
+			defer inFlight.Add(-1)
+			for {
+				prev := maxInFlight.Load()
+				if cur <= prev || maxInFlight.CompareAndSwap(prev, cur) {
+					break
+				}
+			}
+			call := callCount.Add(1)
+			if call == 1 {
+				close(inConnector1)
+				<-releaseConnector1
+			} else {
+				releaseOnce.Do(func() { close(releaseConnector1) })
+			}
+			return fakenet.New(), nil
+		},
+	}
+
+	startDone := make(chan map[string]error, 1)
+	go func() {
+		startDone <- e.StartNetworks(ctx, dir, m, []Spec{spec}, quiet)
+	}()
+
+	<-inConnector1
+	restartDone := make(chan error, 1)
+	go func() {
+		restartDone <- e.RestartNetwork(ctx, "fake")
+	}()
+	for range 1000 {
+		runtime.Gosched()
+	}
+	releaseOnce.Do(func() { close(releaseConnector1) })
+
+	require.Empty(t, <-startDone)
+	require.NoError(t, <-restartDone)
+	require.Equal(t, int32(1), maxInFlight.Load(), "StartNetworks and RestartNetwork must never run startOne concurrently for the same network")
+}
+
+func TestRefreshSubAccountsFallbackRoomMetadataAndSurfaceStoreErrors(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	s := openStore(t, dir)
+	net := fakenet.New()
+	spec := Spec{
+		Name:        "slack",
+		DisplayName: "Slack",
+		ModulePath:  "go.mau.fi/mautrix-slack",
+		Connector:   func() (bridgev2.NetworkConnector, error) { return net, nil },
+	}
+	e, errs := Start(ctx, dir, s, &media.Store{Dir: filepath.Join(dir, "media")}, []Spec{spec}, quiet)
+	require.Empty(t, errs)
+	t.Cleanup(e.Stop)
+
+	h, ok := e.Host("slack")
+	require.True(t, ok)
+	_, err := net.LoginAs(ctx, h.Bridge, "T1-U1", "Acme Slack")
+	require.NoError(t, err)
+
+	// Space portal in bridge DB has empty Name and AvatarMXC, while courier.db has the room's title and avatar.
+	require.NoError(t, s.UpsertRoom(ctx, store.Room{
+		ID:        "!ws-fallback:courier.local",
+		Network:   "slack",
+		LoginID:   "T1-U1",
+		Name:      "Stored Workspace Title",
+		AvatarURI: "mxc://courier.local/stored-ws",
+	}))
+	require.NoError(t, h.Bridge.DB.Portal.Insert(ctx, &database.Portal{
+		PortalKey: networkid.PortalKey{ID: "space-fallback", Receiver: "T1-U1"},
+		MXID:      "!ws-fallback:courier.local",
+		Name:      "",
+		AvatarMXC: "",
+		RoomType:  database.RoomTypeSpace,
+	}))
+
+	subs, err := e.RefreshSubAccounts(ctx, "slack", "T1-U1")
+	require.NoError(t, err)
+	require.Len(t, subs, 1)
+	require.Equal(t, "Stored Workspace Title", subs[0].Title, "RefreshSubAccounts must fall back to room title in courier.db for spaces")
+	require.Equal(t, "mxc://courier.local/stored-ws", subs[0].AvatarURI, "RefreshSubAccounts must fall back to room avatar in courier.db for spaces")
+
+	// Surface store errors during the portal loop (when UpsertSubAccount fails).
+	rawDB, err := sql.Open("sqlite3", filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	defer rawDB.Close()
+	_, err = rawDB.ExecContext(ctx, `CREATE TRIGGER fail_sub_upsert BEFORE UPDATE ON sub_accounts BEGIN SELECT RAISE(ABORT, 'sub_accounts write failed'); END;`)
+	require.NoError(t, err)
+
+	_, err = e.RefreshSubAccounts(ctx, "slack", "T1-U1")
+	require.Error(t, err, "RefreshSubAccounts must surface store errors from the portal loop")
+	require.Contains(t, err.Error(), "sub_accounts write failed")
+}
+
+func TestRemoveAccountSerialisedWithRestartNetwork(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	s := openStore(t, dir)
+	m := &media.Store{Dir: filepath.Join(dir, "media")}
+
+	var callCount atomic.Int32
+	inRestart := make(chan struct{})
+	releaseRestart := make(chan struct{})
+	var releaseOnce sync.Once
+
+	spec := Spec{
+		Name:        "whatsapp",
+		DisplayName: "WhatsApp",
+		Connector: func() (bridgev2.NetworkConnector, error) {
+			if callCount.Add(1) == 2 {
+				close(inRestart)
+				<-releaseRestart
+			}
+			return fakenet.New(), nil
+		},
+	}
+
+	e, errs := Start(ctx, dir, s, m, []Spec{spec}, quiet)
+	require.Empty(t, errs)
+	t.Cleanup(func() {
+		releaseOnce.Do(func() { close(releaseRestart) })
+		e.Stop()
+	})
+
+	h, ok := e.Host("whatsapp")
+	require.True(t, ok)
+	_, err := fakenet.New().LoginAs(ctx, h.Bridge, "wa-1", "Alice")
+	require.NoError(t, err)
+	require.NoError(t, s.SetLoginState(ctx, "whatsapp", "wa-1", json.RawMessage(`{"state_event":"CONNECTED","remote_id":"wa-1"}`)))
+
+	restartDone := make(chan error, 1)
+	go func() {
+		restartDone <- e.RestartNetwork(ctx, "whatsapp")
+	}()
+
+	<-inRestart
+
+	var removeFinishedWhileRestartInFlight atomic.Bool
+	removeDone := make(chan error, 1)
+	go func() {
+		err := e.RemoveAccount(ctx, "whatsapp", "wa-1", false, true)
+		select {
+		case <-releaseRestart:
+		default:
+			removeFinishedWhileRestartInFlight.Store(true)
+		}
+		removeDone <- err
+	}()
+
+	for range 1000 {
+		runtime.Gosched()
+	}
+	time.Sleep(30 * time.Millisecond)
+	require.False(t, removeFinishedWhileRestartInFlight.Load(), "RemoveAccount must block on restartMu while RestartNetwork is in flight")
+
+	releaseOnce.Do(func() { close(releaseRestart) })
+	require.NoError(t, <-restartDone)
+	require.NoError(t, <-removeDone)
 }

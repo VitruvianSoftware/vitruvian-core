@@ -241,6 +241,8 @@ type Network struct {
 	ListImagePacksCalls atomic.Int64
 	// DownloadImagePackCalls counts how many times DownloadImagePack was called on this network.
 	DownloadImagePackCalls atomic.Int64
+	// LogoutRemoteCalls counts how many times LogoutRemote was called on this network.
+	LogoutRemoteCalls atomic.Int64
 	// EchoTimers, when set before a timer change is sent, makes the network echo the change back while the bridge is
 	// still handling it, and the bridge pass the echo on as its notice (bridgev2's DisappearingMessageNotice with its
 	// com.beeper.action_message), as a network and bridge that don't drop their own echo would. No pinned bridge does:
@@ -588,7 +590,12 @@ func (c *client) IsLoggedIn() bool {
 	at := c.connectedAt.Load()
 	return at != nil && time.Since(*at) >= c.n.LoginDelay
 }
-func (c *client) LogoutRemote(context.Context) {}
+
+func (c *client) LogoutRemote(context.Context) {
+	c.n.LogoutRemoteCalls.Add(1)
+	c.Disconnect()
+}
+
 func (c *client) IsThisUser(_ context.Context, uid networkid.UserID) bool {
 	return uid == "me"
 }

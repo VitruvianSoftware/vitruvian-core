@@ -4,6 +4,17 @@
 import Combine
 import Foundation
 
+/// The chats a Custom… reminder is for, fixed when Custom… was chosen.
+public struct ReminderRequest: Identifiable, Equatable, Sendable {
+    public let id: UUID
+    public let ids: [String]
+
+    public init(id: UUID = UUID(), ids: [String]) {
+        self.id = id
+        self.ids = ids
+    }
+}
+
 /// A banner above the inbox: an account that needs the person.
 public struct AccountBanner: Equatable, Identifiable, Sendable {
     public enum Reason: Equatable, Sendable {
@@ -131,9 +142,13 @@ public final class InboxModel: ObservableObject {
     public static let refreshPageSize = 500
     /// The most chats one call may name (protocol.json's "1 to 500 chats").
     static let batchSize = 500
+    /// Maximum number of recently viewed chat room IDs retained for the Dock menu.
+    public static let maxRecentlyViewed = 20
 
     /// The chats shown, in the engine's order for `query`.
     @Published public private(set) var rows: [InboxRow] = []
+    /// Most-recently-viewed chat room IDs (newest first), used by `DockMenuModel` for "Recent Chats".
+    @Published public private(set) var recentlyViewedRoomIDs: [String] = []
     /// Whether the inbox has been read at least once from the engine that is up or was.
     @Published public private(set) var isLoaded = false
     /// What the inbox lists. A change reads the first page again.
@@ -151,6 +166,12 @@ public final class InboxModel: ObservableObject {
     @Published public var startNewChatDraft: StartNewChatDraft?
     /// Active Merge / Edit Merged Chat modal draft.
     @Published public var mergedChatEditorDraft: MergedChatEditorDraft?
+    /// Active Custom… reminder sheet request (`RemindMeMenu`).
+    @Published public var customReminder: ReminderRequest?
+    /// Whether the ⌘L Remind Me popover is presented.
+    @Published public var isRemindPopoverPresented = false
+    /// Whether the ⌘⌥A Filter by Account popover is presented.
+    @Published public var isAccountPopoverPresented = false
     /// Known merged chats keyed by `mergeID` (`merge:xyz`), owned by `AppModel.mergedChats`.
     public var mergedChats: [String: MergedChat] {
         get { appModel.mergedChats }
@@ -218,6 +239,14 @@ public final class InboxModel: ObservableObject {
     private var rowLookup: (roomID: String, serial: Int, task: Task<InboxRow?, Never>)?
     private var lookupSerial = 0
     private var selectionSubscription: AnyCancellable?
+    private weak var observedLifecycle: SystemLifecycleModel?
+    private var lockObserver: AnyCancellable?
+    private let followsAppSelection: Bool
+    @Published private var detachedSelectedRoomID: String?
+    public var onSelectDetachedRoom: (@MainActor (String?) -> Void)?
+    private var chatHistory: [String] = []
+    private var chatHistoryIndex: Int = -1
+    private var navigatingHistory = false
 
     /// - Parameters:
     ///   - hasTelegramCredentials: whether the app has an app ID to start Telegram with (its own, or one the person
@@ -233,44 +262,88 @@ public final class InboxModel: ObservableObject {
     ///   - toastSleep: waits `toastDuration`; tests give one they can open.
     public init(appModel: AppModel, hasTelegramCredentials: @escaping @MainActor () -> Bool = { true },
                 preferences: InboxPreferences, entitlement: any EntitlementProvider = AlwaysEntitled(),
+                followsAppSelection: Bool = true,
                 window: TimeInterval = 0.1, retryDelay: TimeInterval = 2,
                 sleep: @escaping @Sendable (TimeInterval) async -> Void = { await waitForInboxWindow($0) },
                 toastDuration: TimeInterval = 6,
-                toastSleep: @escaping @Sendable (TimeInterval) async -> Void = { await waitForInboxWindow($0) }) {
+                toastSleep: @escaping @Sendable (TimeInterval) async -> Void = { await waitForInboxWindow($0) },
+                lifecycle: SystemLifecycleModel? = nil) {
         self.appModel = appModel
         self.hasTelegramCredentials = hasTelegramCredentials
         self.preferences = preferences
         self.entitlement = entitlement
+        self.followsAppSelection = followsAppSelection
         self.window = window
         self.retryDelay = retryDelay
         self.sleep = sleep
         self.toastDuration = toastDuration
         self.toastSleep = toastSleep
+        self.observedLifecycle = lifecycle
         // The views watch this model; the open chat and the accounts are the app model's.
         subscription = appModel.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         appModel.onConnect { [weak self] _ in self?.requestRead(waiting: false) }
         appModel.onChange { [weak self] change in self?.handle(change) }
-        selectionSubscription = appModel.$selectedRoomID.removeDuplicates().sink { [weak self] roomID in
-            self?.selectionChanged(to: roomID)
+        if followsAppSelection {
+            selectionSubscription = appModel.$selectedRoomID.removeDuplicates().sink { [weak self] roomID in
+                self?.selectionChanged(to: roomID)
+            }
         }
+        self.lockObserver = NotificationCenter.default
+            .publisher(for: SystemLifecycleModel.didLockNotification)
+            .sink { [weak self] notification in
+                self?.observedLifecycle = notification.object as? SystemLifecycleModel
+                self?.dismissAllPresentations()
+            }
+    }
+
+    /// Clears all sheets, popovers, and bulk-selection mode owned by `InboxModel`.
+    public func dismissAllPresentations() {
+        startNewChatSearchTask?.cancel()
+        startNewChatSearchTask = nil
+        startNewChatDraft = nil
+        mergedChatEditorDraft = nil
+        customReminder = nil
+        isRemindPopoverPresented = false
+        isAccountPopoverPresented = false
+        if isSelecting {
+            endSelecting()
+        }
+    }
+
+    public var lifecycle: SystemLifecycleModel {
+        observedLifecycle ?? appModel.lifecycle
+    }
+
+    public var isLocked: Bool {
+        !AppLockGate.shared.canPerform(.other, lifecycle: observedLifecycle ?? appModel.lifecycle)
     }
 
     // MARK: - What the views show
 
     public var accounts: [Account] { appModel.accounts }
 
-    /// The open chat's id. It is the app model's; a refresh never changes it.
-    public var selectedRoomID: String? { appModel.selectedRoomID }
+    /// The open chat's id. It is the app model's (or, in a detached space window, that window's); a refresh never changes it.
+    public var selectedRoomID: String? {
+        followsAppSelection ? appModel.selectedRoomID : detachedSelectedRoomID
+    }
 
     /// Whether `roomID` is currently open in the conversation pane (directly or as a member of the open merged chat).
     public func isOpen(_ roomID: String) -> Bool {
-        appModel.isOpen(roomID: roomID)
+        if followsAppSelection {
+            return appModel.isOpen(roomID: roomID)
+        }
+        guard let selected = detachedSelectedRoomID else { return false }
+        if selected == roomID { return true }
+        if let merge = mergedChats[selected], merge.roomIDs.contains(roomID) {
+            return true
+        }
+        return false
     }
 
     /// The open chat's row: the list's, or for a chat the list doesn't have, the one looked up when it opened. Nil
     /// when nothing is open, or the open chat is neither in the list nor looked up (yet).
     public var selectedRow: InboxRow? {
-        guard let id = appModel.selectedRoomID else { return nil }
+        guard let id = selectedRoomID else { return nil }
         return knownRow(id)
     }
 
@@ -290,15 +363,48 @@ public final class InboxModel: ObservableObject {
         knownRow(roomID)
     }
 
+    /// Populates `rows` and `isLoaded` directly for deterministic view snapshots without an engine.
+    public func setSnapshotRowsForTesting(_ rows: [InboxRow]) {
+        self.rows = rows
+        self.isLoaded = true
+    }
+
     /// The list's row of a chat, else the open chat's looked-up row.
     private func knownRow(_ roomID: String) -> InboxRow? {
         rows.first { $0.id == roomID || $0.roomID == roomID }
             ?? lookedUpRow.flatMap { ($0.id == roomID || $0.roomID == roomID) ? $0 : nil }
     }
 
+    /// Records `roomID` at the front of `recentlyViewedRoomIDs` (deduplicated, capped at `maxRecentlyViewed`).
+    public func recordRecentlyViewed(_ roomID: String) {
+        guard !roomID.isEmpty, !roomID.hasPrefix("merge:") else { return }
+        var updated = recentlyViewedRoomIDs.filter { $0 != roomID }
+        updated.insert(roomID, at: 0)
+        if updated.count > Self.maxRecentlyViewed {
+            updated = Array(updated.prefix(Self.maxRecentlyViewed))
+        }
+        recentlyViewedRoomIDs = updated
+        if !navigatingHistory {
+            if chatHistoryIndex >= 0, chatHistoryIndex < chatHistory.count, chatHistory[chatHistoryIndex] == roomID {
+                return
+            }
+            if chatHistoryIndex >= 0, chatHistoryIndex + 1 < chatHistory.count {
+                chatHistory.removeSubrange((chatHistoryIndex + 1)..<chatHistory.count)
+            }
+            chatHistory.append(roomID)
+            if chatHistory.count > Self.maxRecentlyViewed {
+                chatHistory.removeFirst(chatHistory.count - Self.maxRecentlyViewed)
+            }
+            chatHistoryIndex = chatHistory.count - 1
+        }
+    }
+
     /// Another chat opened: the row looked up for the last is let go, and one the list doesn't have is looked up,
     /// once, by id (as SearchModel reads the chat it searches in).
     private func selectionChanged(to roomID: String?) {
+        if let roomID {
+            recordRecentlyViewed(roomID)
+        }
         // A lookup still out for the chat left behind isn't cancelled: a draft may be waiting on its answer.
         lookedUpRow = nil
         rowLookup = nil
@@ -321,20 +427,28 @@ public final class InboxModel: ObservableObject {
     }
 
     public func select(_ roomID: String?) {
+        guard !isLocked else { return }
+        var resolved = roomID
         if let roomID, !query.space.hasPrefix("account:") {
             if let merged = mergedChats[roomID] {
                 onOpenMergedChat(merged)
-                appModel.selectedRoomID = merged.mergeID
-                return
-            }
-            if let row = rows.first(where: { $0.id == roomID }), !row.mergeID.isEmpty,
-               let merged = mergedChats[row.mergeID] {
+                resolved = merged.mergeID
+            } else if let row = rows.first(where: { $0.id == roomID }), !row.mergeID.isEmpty,
+                      let merged = mergedChats[row.mergeID] {
                 onOpenMergedChat(merged)
-                appModel.selectedRoomID = merged.mergeID
-                return
+                resolved = merged.mergeID
             }
         }
-        appModel.selectedRoomID = roomID
+        if followsAppSelection {
+            appModel.selectedRoomID = resolved
+        } else {
+            let changed = detachedSelectedRoomID != resolved
+            detachedSelectedRoomID = resolved
+            if changed {
+                selectionChanged(to: resolved)
+            }
+            onSelectDetachedRoom?(resolved)
+        }
     }
 
     /// A network's name for people, for its badge's tooltip: the engine's, or the network's own id before the
@@ -491,6 +605,39 @@ public final class InboxModel: ObservableObject {
     public func selectNext() { move(by: 1) }
     public func selectPrevious() { move(by: -1) }
 
+    /// `History: Previous Chat` (`⌃⌥←`): navigates back in recently viewed chat history.
+    public func selectPreviousRecentChat() {
+        guard chatHistoryIndex > 0 else { return }
+        chatHistoryIndex -= 1
+        let target = chatHistory[chatHistoryIndex]
+        navigatingHistory = true
+        defer { navigatingHistory = false }
+        select(target)
+    }
+
+    /// `History: Next Chat` (`⌃⌥→`): navigates forward in recently viewed chat history.
+    public func selectNextRecentChat() {
+        guard chatHistoryIndex >= 0, chatHistoryIndex + 1 < chatHistory.count else { return }
+        chatHistoryIndex += 1
+        let target = chatHistory[chatHistoryIndex]
+        navigatingHistory = true
+        defer { navigatingHistory = false }
+        select(target)
+    }
+
+    /// `Cycle Chats (hold shift to reverse)` (`⌃Tab` / `⌃⇧Tab`): cycles through `rows` wrapping at the ends.
+    public func cycleChat(reverse: Bool = false) {
+        guard !rows.isEmpty else { return }
+        let step = reverse ? -1 : 1
+        let target: Int
+        if let current = selectedIndex {
+            target = (current + step + rows.count) % rows.count
+        } else {
+            target = reverse ? rows.count - 1 : 0
+        }
+        select(rows[target].id)
+    }
+
     /// With nothing open, next opens the first chat and previous the last. The list does not wrap.
     private func move(by step: Int) {
         guard !rows.isEmpty else { return }
@@ -519,7 +666,7 @@ public final class InboxModel: ObservableObject {
     }
 
     private var selectedIndex: Int? {
-        guard let id = appModel.selectedRoomID else { return nil }
+        guard let id = selectedRoomID else { return nil }
         return rows.firstIndex { $0.id == id || $0.roomID == id }
     }
 
@@ -528,6 +675,7 @@ public final class InboxModel: ObservableObject {
     /// Cycle Filters (⌥Tab): Unread, Drafts, Unanswered, DMs, Groups, then All, one at a time. From any other
     /// filters it starts at Unread.
     public func cycleFilter() {
+        guard !isLocked else { return }
         let cycle = InboxFilter.cycle
         if query.filters.count == 1, let current = query.filters.first, let index = cycle.firstIndex(of: current) {
             query.filters = index + 1 < cycle.count ? [cycle[index + 1]] : []
@@ -538,6 +686,7 @@ public final class InboxModel: ObservableObject {
 
     /// ⌘⇧Y: the Unread filter on or off, the other filters as they are.
     public func toggleUnreadFilter() {
+        guard !isLocked else { return }
         if query.filters.contains(.unread) {
             query.filters.remove(.unread)
         } else {
@@ -618,7 +767,7 @@ public final class InboxModel: ObservableObject {
 
     /// Starts selecting, with the open chat selected.
     public func beginSelecting() {
-        guard !isSelecting else { return }
+        guard !isLocked, !isSelecting else { return }
         isSelecting = true
         selection = selectedRoomID.map { [$0] } ?? []
         anchor = selectedRoomID
@@ -1010,6 +1159,7 @@ public final class InboxModel: ObservableObject {
     /// offers). Undo unarchives exactly the chats this archived. Returns how many it archived.
     /// `space` nil is the space shown; an auto-archive section names its own.
     public func archiveAll(readOnly: Bool, olderThanDays days: Int = 0, space: String? = nil) async -> Int {
+        guard !isLocked else { return 0 }
         dismissToast()
         let space = space ?? query.space
         guard let client = appModel.client, Self.canSweep(space) else { return 0 }
@@ -1031,6 +1181,7 @@ public final class InboxModel: ObservableObject {
     /// read. There is no Undo: a network has heard it. Returns how many it marked.
     @discardableResult
     public func markAllRead() async -> Int {
+        guard !isLocked else { return 0 }
         dismissToast()
         guard let client = appModel.client else { return 0 }
         let space = query.space
@@ -1049,6 +1200,7 @@ public final class InboxModel: ObservableObject {
 
     /// ⌘Z while a toast with Undo shows: reverses what it did, for exactly the chats it changed.
     public func undo() async {
+        guard !isLocked else { return }
         guard toast?.canUndo == true, let action = undoAction else { return }
         dismissToast()
         await action()
@@ -1163,6 +1315,7 @@ public final class InboxModel: ObservableObject {
 
     /// The chats an action acts on: those given, else `targets`. A new action takes the toast down.
     private func beginAction(_ ids: [String]? = nil) -> [String] {
+        guard !isLocked else { return [] }
         dismissToast()
         return ids ?? targets
     }
@@ -1405,6 +1558,7 @@ public final class InboxModel: ObservableObject {
 
     /// Opens the Start New Chat sheet (`⌘N` when `multiSelect == false`, `⌘⇧N` when `multiSelect == true`).
     public func openStartNewChat(multiSelect: Bool = false) {
+        guard !isLocked else { return }
         let draft = StartNewChatDraft(
             accounts: accounts,
             candidates: [],
@@ -1418,7 +1572,7 @@ public final class InboxModel: ObservableObject {
 
     /// Updates the Start New Chat search query and/or account filter, debounced by 300 ms.
     public func updateStartNewChatQuery(_ query: String, accountFilter: String? = nil) {
-        guard startNewChatDraft != nil else { return }
+        guard !isLocked, startNewChatDraft != nil else { return }
         startNewChatDraft?.query = query
         if let accountFilter {
             startNewChatDraft?.selectedAccountFilter = accountFilter
@@ -1428,6 +1582,7 @@ public final class InboxModel: ObservableObject {
 
     /// Updates the Start New Chat draft, debouncing contact search by 300 ms when the query or account filter changed.
     public func updateStartNewChatDraft(_ updated: StartNewChatDraft) {
+        guard !isLocked else { return }
         let queryChanged = startNewChatDraft?.query != updated.query
             || startNewChatDraft?.selectedAccountFilter != updated.selectedAccountFilter
         startNewChatDraft = updated
@@ -1448,7 +1603,7 @@ public final class InboxModel: ObservableObject {
 
     /// Queries `people.contacts` for the current `startNewChatDraft` query and optional account filter.
     public func refreshStartNewChatCandidates() async {
-        guard let draft = startNewChatDraft, let client = appModel.client else { return }
+        guard !isLocked, let draft = startNewChatDraft, let client = appModel.client else { return }
         let query = draft.query
         let filter = draft.selectedAccountFilter
         let params: PeopleContactsParams
@@ -1468,6 +1623,7 @@ public final class InboxModel: ObservableObject {
 
     /// Opens or creates a 1:1 chat with `candidate` and closes the Start New Chat sheet.
     public func openDirectChat(with candidate: ContactCandidate) async {
+        guard !isLocked else { return }
         if let existingRoomID = candidate.roomID, !existingRoomID.isEmpty {
             startNewChatDraft = nil
             select(existingRoomID)
@@ -1495,6 +1651,7 @@ public final class InboxModel: ObservableObject {
 
     /// Resolves `action.query` on `action.network` / `action.accountID` via `people.resolve(startChat: true)`.
     public func performStartNewChatLookup(_ action: StartNewChatLookupAction) async {
+        guard !isLocked else { return }
         guard let client = appModel.client else { return }
         startNewChatDraft?.isSubmitting = true
         startNewChatDraft?.errorMessage = nil
@@ -1529,6 +1686,7 @@ public final class InboxModel: ObservableObject {
 
     /// Creates a group chat via `room.createGroup` for the selected recipients in `startNewChatDraft`.
     public func submitNewGroupChat() async {
+        guard !isLocked else { return }
         guard let draft = startNewChatDraft,
               let first = draft.selectedRecipients.first,
               let client = appModel.client else { return }
@@ -1558,6 +1716,7 @@ public final class InboxModel: ObservableObject {
 
     /// Ensures each recipient has a 1:1 `roomID`, then calls `blast.send` and records per-recipient outcomes.
     public func submitBlast() async {
+        guard !isLocked else { return }
         guard let draft = startNewChatDraft, let client = appModel.client else { return }
         let text = draft.blastText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
@@ -1636,6 +1795,7 @@ public final class InboxModel: ObservableObject {
 
     /// Opens `MergedChatEditorSheet` for creating a merge starting with `row` or editing an existing merged chat.
     public func openMergeEditor(for row: InboxRow) {
+        guard !isLocked else { return }
         let existing = mergedChat(for: row)
         let directRooms = rows.filter { $0.isDirect && !$0.roomID.hasPrefix("merge:") }
         mergedChatEditorDraft = MergedChatEditorDraft(
@@ -1664,6 +1824,7 @@ public final class InboxModel: ObservableObject {
 
     /// Saves the active `mergedChatEditorDraft` via `merge.create` or `merge.update`.
     public func saveMergedChatEditor() async {
+        guard !isLocked else { return }
         guard let draft = mergedChatEditorDraft, draft.canSave, let client = appModel.client else { return }
         mergedChatEditorDraft?.isSubmitting = true
         mergedChatEditorDraft?.errorMessage = nil
@@ -1701,6 +1862,7 @@ public final class InboxModel: ObservableObject {
 
     /// Unmerges `mergeID` via `merge.delete`.
     public func unmergeChat(_ mergeID: String) async {
+        guard !isLocked else { return }
         guard let client = appModel.client else { return }
         mergedChatEditorDraft?.isSubmitting = true
         mergedChatEditorDraft?.errorMessage = nil

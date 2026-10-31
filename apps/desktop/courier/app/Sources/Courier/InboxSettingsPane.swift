@@ -4,25 +4,63 @@
 import CourierCore
 import SwiftUI
 
-/// Courier ▸ Settings: Inbox and Messages; part 4.6 adds the others (and may move rows between them).
+/// Courier ▸ Settings (`⌘,`): delegates to the two-column `SettingsWindow` shell across all 8 panes.
 struct SettingsView: View {
+    var appModel: AppModel? = nil
     let inbox: InboxModel
+    var spaces: SpacesModel? = nil
     let labels: LabelsModel
     /// Incognito is turned on and off through it, so that turning it on asks about typing.
     let conversation: ConversationModel
     /// The one object the composers read, and the quick replies they offer.
     let composerPreferences: ComposerPreferences
     let quickReplies: QuickReplies
+    let hotkeys: HotkeyRegistry
+    let lifecycle: SystemLifecycleModel
+    let navigation: SettingsNavigationModel
+    var notificationPreferences: NotificationPreferences? = nil
+    let dockPreferences: DockAndTrayPreferences
+    var accountsAndBridges: AccountsAndBridgesModel? = nil
+    var loginFlow: LoginFlowModel? = nil
+    var problemReport: ProblemReportModel? = nil
+    var onRestartNotificationCenter: () -> Void = {}
+
+    private var resolvedAppModel: AppModel {
+        if let appModel {
+            return appModel
+        }
+        return AppModel(
+            supervisor: EngineSupervisor(
+                enginePath: "/nonexistent/courier-engine",
+                dataDir: FileManager.default.temporaryDirectory.appendingPathComponent("courier-settings"),
+                environment: [:],
+                launcher: FoundationProcessLauncher()
+            ),
+            lifecycle: lifecycle
+        )
+    }
 
     var body: some View {
-        TabView {
-            InboxSettingsPane(preferences: inbox.preferences, labels: labels, inbox: inbox)
-                .tabItem { Label(String(localized: "Inbox"), systemImage: "tray") }
-            MessagesSettingsPane(preferences: composerPreferences, quickReplies: quickReplies,
-                                 isEntitled: { inbox.isEntitled($0) }, conversation: conversation)
-                .tabItem { Label(String(localized: "Messages"), systemImage: "bubble.left") }
-        }
-        .frame(width: 560)
+        let resolvedApp = resolvedAppModel
+        SettingsWindow(
+            navigation: navigation,
+            app: resolvedApp,
+            inbox: inbox,
+            spaces: spaces ?? SpacesModel(appModel: resolvedApp, inbox: inbox, lifecycle: lifecycle),
+            labels: labels,
+            conversation: conversation,
+            inboxPreferences: inbox.preferences,
+            composerPreferences: composerPreferences,
+            notificationPreferences: notificationPreferences ?? inbox.preferences.notifications,
+            quickReplies: quickReplies,
+            hotkeys: hotkeys,
+            lifecycle: lifecycle,
+            dockPreferences: dockPreferences,
+            accountsAndBridges: accountsAndBridges ?? AccountsAndBridgesModel(appModel: resolvedApp, lifecycle: lifecycle),
+            loginFlow: loginFlow ?? LoginFlowModel(appModel: resolvedApp),
+            problemReport: problemReport ?? ProblemReportModel(appModel: resolvedApp),
+            onRestartNotificationCenter: onRestartNotificationCenter
+        )
     }
 }
 
@@ -77,6 +115,7 @@ struct InboxSettingsPane: View {
                 Text(String(localized: "None")).tag(HoverAction.nothing)
             }
             Picker(String(localized: "Double-clicking a chat"), selection: $preferences.doubleClickAction) {
+                Text(String(localized: "Opens it in a new window")).tag(DoubleClickAction.openInNewWindow)
                 Text(String(localized: "Archives it")).tag(DoubleClickAction.archive)
                 Text(String(localized: "Marks it read or unread")).tag(DoubleClickAction.toggleRead)
                 Text(String(localized: "Mutes or unmutes it")).tag(DoubleClickAction.toggleMute)

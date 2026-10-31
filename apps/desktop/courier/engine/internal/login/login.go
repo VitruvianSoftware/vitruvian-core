@@ -22,6 +22,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/engine"
+	"github.com/VitruvianSoftware/courier/engine/internal/host"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
 )
 
@@ -64,6 +65,7 @@ type Driver struct {
 	mu       sync.Mutex
 	sessions map[string]*session
 	starting map[string]bool // networks a Start is setting up a sign-in for; guarded by mu
+	hosts    map[string]*host.Host
 }
 
 // NewDriver makes a driver that starts sign-ins on e's networks. flows says which login flows a network offers,
@@ -71,7 +73,11 @@ type Driver struct {
 // flows are not listed by the connector). s says whether the account a network has still works, and may be
 // nil when that does not matter (every network with an account is then linked).
 func NewDriver(e *engine.Engine, s *store.Store, flows func(network string) ([]string, bool)) *Driver {
-	return &Driver{IdleTimeout: DefaultIdleTimeout, eng: e, store: s, flows: flows}
+	d := &Driver{IdleTimeout: DefaultIdleTimeout, eng: e, store: s, flows: flows}
+	if e != nil {
+		e.SetLogin(d)
+	}
+	return d
 }
 
 // session is one sign-in in progress.
@@ -342,6 +348,35 @@ func (d *Driver) Cancel(loginID string) {
 	d.mu.Unlock()
 	if s != nil {
 		d.cancelSession(s)
+	}
+}
+
+// CancelNetwork ends any active interactive sign-in session for network.
+func (d *Driver) CancelNetwork(network string) {
+	d.mu.Lock()
+	var toCancel []*session
+	for _, s := range d.sessions {
+		if s.network == network {
+			toCancel = append(toCancel, s)
+		}
+	}
+	d.mu.Unlock()
+	for _, s := range toCancel {
+		d.cancelSession(s)
+	}
+}
+
+// SetHost updates the host reference for network under d.mu.
+func (d *Driver) SetHost(network string, h *host.Host) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.hosts == nil {
+		d.hosts = map[string]*host.Host{}
+	}
+	if h == nil {
+		delete(d.hosts, network)
+	} else {
+		d.hosts[network] = h
 	}
 }
 

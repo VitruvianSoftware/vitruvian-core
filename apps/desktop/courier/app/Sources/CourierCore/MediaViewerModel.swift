@@ -244,6 +244,7 @@ public final class MediaViewerModel: ObservableObject {
 
     /// Resets paging and loads the first page for the current `tab`, `sentBy`, `query`, and `roomID`.
     public func refresh() async {
+        guard AppLockGate.shared.canPerform(.other, lifecycle: appModel.lifecycle) else { return }
         nextCursor = nil
         hasMore = false
         rawItems = []
@@ -254,12 +255,14 @@ public final class MediaViewerModel: ObservableObject {
 
     /// Loads the next page using `nextCursor` when `hasMore` is true.
     public func loadNextPage() async {
+        guard AppLockGate.shared.canPerform(.other, lifecycle: appModel.lifecycle) else { return }
         guard hasMore, !isLoading, let cursor = nextCursor, !cursor.isEmpty else { return }
         await fetchPage(cursor: cursor, append: true)
     }
 
     /// Toggles selection of `eventID` for batch download or deletion.
     public func toggleSelected(_ eventID: String) {
+        guard AppLockGate.shared.canPerform(.other, lifecycle: appModel.lifecycle) else { return }
         if selectedEventIDs.contains(eventID) {
             selectedEventIDs.remove(eventID)
         } else {
@@ -269,11 +272,13 @@ public final class MediaViewerModel: ObservableObject {
 
     /// Clears all selected items.
     public func clearSelection() {
+        guard AppLockGate.shared.canPerform(.other, lifecycle: appModel.lifecycle) else { return }
         selectedEventIDs.removeAll()
     }
 
     /// Deletes all selected items: calls `message.unsend` when `forEveryone && item.mine`, otherwise `message.deleteForMe`.
     public func deleteSelected(forEveryone: Bool) async {
+        guard AppLockGate.shared.canPerform(.other, lifecycle: appModel.lifecycle) else { return }
         guard let client = appModel.client else { return }
         let selected = items.filter { selectedEventIDs.contains($0.eventID) }
         guard !selected.isEmpty else { return }
@@ -297,6 +302,7 @@ public final class MediaViewerModel: ObservableObject {
     /// Downloads all selected local-store attachments via `AttachmentDownloader`.
     @discardableResult
     public func downloadSelected(using downloader: AttachmentDownloader) -> [URL] {
+        guard AppLockGate.shared.canPerform(.download, lifecycle: appModel.lifecycle) else { return [] }
         let selected = items.filter { selectedEventIDs.contains($0.eventID) && !$0.viewOnce }
         var urls: [URL] = []
         for hit in selected where isLocalMediaStorePath(hit.mediaPath) {

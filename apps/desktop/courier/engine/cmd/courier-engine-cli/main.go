@@ -124,21 +124,26 @@ func parseArgs(argv []string) (args, error) {
 }
 
 func main() {
-	a, err := parseArgs(os.Args[1:])
+	os.Exit(realMain(os.Args[1:], os.Stderr))
+}
+
+func realMain(argv []string, stderr io.Writer) int {
+	a, err := parseArgs(argv)
 	if err != nil {
 		if !errors.Is(err, flag.ErrHelp) {
-			fmt.Fprintln(os.Stderr, err)
+			fmt.Fprintln(stderr, err)
 		}
-		os.Exit(2)
+		return 2
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	releaseSignalWhenDone(ctx, stop)
 	if err = run(ctx, a); err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
+		fmt.Fprintln(stderr, logscrub.ScrubStartupError("error:", err))
 		stop()
-		os.Exit(1)
+		return 1
 	}
+	return 0
 }
 
 // releaseSignalWhenDone hands Ctrl-C back to Go's default handler once the first one has been caught, so a

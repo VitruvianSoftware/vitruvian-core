@@ -1,0 +1,19 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "accounts.setSubAccount",
+    "params": {
+      "network": "whatsapp",
+      "account_id": "whatsapp-login",
+      "sub_id": "!community:courier.local",
+      "enabled": false,
+      "show_in_inbox": "dms"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {}
+  }
+}
