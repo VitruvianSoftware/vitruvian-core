@@ -18,49 +18,92 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+//! Candidate smoke for oauth-user-inspector: reachable AND the React SPA
+//! actually mounts. index.html is a static shell that 200s even when the
+//! bundle throws on mount (how the 2026-06-27 react/react-dom mismatch reached
+//! prod past an HTTP-200-only check), so a plain curl is not enough. `CAND` is
+//! the candidate revision's dedicated URL, exported by //tools/deploy:cloud-run.
+//!
+//! Single source of truth for the oauth smoke: the local `:deploy` target
+//! (infra/app/BUILD) and the delivery workflow both run
+//! `bazel run //apps/web/oauth-user-inspector:smoke`.
+//!
+//! Replaced `infra/app/smoke.sh`, which //tools/deploy ran as `bash -c`
+//! WITHOUT errexit, and keeps its exact behaviour:
+//! - curl's result does not decide anything (it warms the revision up, with
+//!   retries); the DOM check is the gate.
+//! - Chrome is found the way bash's `command -v` finds it, including its
+//!   fallback to a non-executable match, which then fails to start.
+//! - The DOM is what `$(...)` captured: NUL bytes dropped, trailing newlines
+//!   stripped, everything else byte for byte.
+
 use std::env;
+use std::ffi::OsString;
 use std::fs;
 use std::io::{self, Write};
 use std::os::unix::fs::PermissionsExt;
-use std::process::Command;
+use std::path::PathBuf;
+use std::process::{Command, Stdio};
 
 const CHROME_CANDIDATES: &[&str] = &["google-chrome-stable", "google-chrome", "chromium-browser"];
+const MOUNTED: &[u8] = b"Select a provider";
 
-fn command_exists(name: &str) -> bool {
-    let Some(path_var) = env::var_os("PATH") else {
-        return false;
-    };
+/// bash's PATH search for `command -v NAME`: the first executable regular file;
+/// failing that, the first non-directory file it saw (bash reports it anyway).
+pub fn command_v(name: &str, path_var: Option<OsString>) -> Option<PathBuf> {
+    let path_var = path_var?;
+    let mut fallback = None;
     for dir in env::split_paths(&path_var) {
+        let dir = if dir.as_os_str().is_empty() {
+            PathBuf::from(".")
+        } else {
+            dir
+        };
         let candidate = dir.join(name);
-        if let Ok(meta) = fs::metadata(&candidate) {
-            if meta.is_file() && (meta.permissions().mode() & 0o111 != 0) {
-                return true;
-            }
+        let Ok(meta) = fs::metadata(&candidate) else {
+            continue;
+        };
+        if meta.is_dir() {
+            continue;
         }
+        if meta.permissions().mode() & 0o111 != 0 {
+            return Some(candidate);
+        }
+        fallback.get_or_insert(candidate);
     }
-    false
+    fallback
 }
 
-pub fn find_chrome_binary<F: Fn(&str) -> bool>(exists: F) -> Option<String> {
-    for candidate in CHROME_CANDIDATES {
-        if exists(candidate) {
-            return Some(candidate.to_string());
-        }
+pub fn find_chrome_binary<F: Fn(&str) -> Option<PathBuf>>(lookup: F) -> Option<PathBuf> {
+    CHROME_CANDIDATES.iter().find_map(|c| lookup(c))
+}
+
+/// `DOM="$(...)"`: NUL bytes dropped, trailing newlines stripped.
+pub fn as_captured(mut raw: Vec<u8>) -> Vec<u8> {
+    raw.retain(|&b| b != 0);
+    while raw.last() == Some(&b'\n') {
+        raw.pop();
     }
-    None
+    raw
+}
+
+/// `printf '%s' "$DOM" | grep -q "Select a provider"`.
+pub fn mounted(dom: &[u8]) -> bool {
+    dom.windows(MOUNTED.len()).any(|w| w == MOUNTED)
 }
 
 pub fn run(_args: &[String]) -> i32 {
-    let cand = env::var("CAND").unwrap_or_default();
+    let cand = env::var_os("CAND").unwrap_or_default();
     if cand.is_empty() {
         println!("Service is disabled or candidate URL is empty — skipping smoke check.");
         return 0;
     }
+    let mut url = cand;
+    url.push("/");
 
-    let url = format!("{}/", cand);
-    println!("Smoke-checking {}", url);
-
-    let curl_ok = Command::new("curl")
+    println!("Smoke-checking {}", url.to_string_lossy());
+    let _ = io::stdout().flush();
+    let _ = Command::new("curl")
         .args([
             "--fail",
             "--retry",
@@ -68,50 +111,41 @@ pub fn run(_args: &[String]) -> i32 {
             "--retry-delay",
             "5",
             "--retry-connrefused",
-            &url,
         ])
-        .stdout(std::process::Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false);
-    if !curl_ok {
-        return 1;
-    }
+        .arg(&url)
+        .stdout(Stdio::null())
+        .status();
 
-    let chrome = match find_chrome_binary(command_exists) {
-        Some(c) => c,
-        None => {
-            println!("::error::no headless Chrome available -- cannot verify the app mounts");
-            return 1;
-        }
+    let Some(chrome) = find_chrome_binary(|c| command_v(c, env::var_os("PATH"))) else {
+        println!("::error::no headless Chrome available -- cannot verify the app mounts");
+        return 1;
     };
 
-    let dom_output = Command::new(&chrome)
+    let raw = Command::new(&chrome)
         .args([
             "--headless=new",
             "--no-sandbox",
             "--disable-gpu",
             "--virtual-time-budget=10000",
             "--dump-dom",
-            &url,
         ])
-        .stderr(std::process::Stdio::null())
-        .output();
+        .arg(&url)
+        .stderr(Stdio::null())
+        .output()
+        .map(|o| o.stdout)
+        .unwrap_or_default();
+    let dom = as_captured(raw);
 
-    let dom = match dom_output {
-        Ok(o) => String::from_utf8_lossy(&o.stdout).to_string(),
-        Err(_) => String::new(),
-    };
-
-    if dom.contains("Select a provider") {
-        println!("Smoke OK: React app mounted.");
+    let mut stdout = io::stdout().lock();
+    if mounted(&dom) {
+        let _ = stdout.write_all(b"Smoke OK: React app mounted.\n");
         0
     } else {
-        println!("::error::App did NOT mount -- served only the static fallback (broken frontend bundle).");
-        let bytes = dom.as_bytes();
-        let take = bytes.len().min(800);
-        let _ = io::stdout().write_all(&bytes[..take]);
-        let _ = io::stdout().flush();
+        let _ = stdout.write_all(
+            b"::error::App did NOT mount -- served only the static fallback (broken frontend bundle).\n",
+        );
+        let _ = stdout.write_all(&dom[..dom.len().min(800)]);
+        let _ = stdout.flush();
         1
     }
 }

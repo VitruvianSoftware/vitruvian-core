@@ -33,7 +33,7 @@ mod tests {
         SERVICE_NAME,
     };
     use super::setup_dev::{install_pre_commit_hook, PRE_COMMIT_HOOK_SCRIPT};
-    use super::smoke::find_chrome_binary;
+    use super::smoke::{as_captured, command_v, find_chrome_binary, mounted};
     use super::start::{resolve_env_or_default, validate_build_dirs, BuildCheckError};
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -88,28 +88,53 @@ mod tests {
         assert!(!is_sensitive("distribute.sh"));
     }
 
+    fn by_name(name: &str) -> impl Fn(&str) -> Option<std::path::PathBuf> + '_ {
+        move |c| (c == name).then(|| std::path::PathBuf::from(c))
+    }
+
     #[test]
     fn chrome_binary_returns_none_when_missing() {
-        let result = find_chrome_binary(|_| false);
-        assert!(result.is_none());
+        assert!(find_chrome_binary(|_| None).is_none());
     }
 
     #[test]
-    fn chrome_binary_prefers_stable() {
-        let result = find_chrome_binary(|name| name == "google-chrome-stable");
-        assert_eq!(result, Some("google-chrome-stable".to_string()));
+    fn chrome_binary_prefers_stable_then_chrome_then_chromium() {
+        for name in ["google-chrome-stable", "google-chrome", "chromium-browser"] {
+            assert_eq!(
+                find_chrome_binary(by_name(name)),
+                Some(std::path::PathBuf::from(name))
+            );
+        }
     }
 
     #[test]
-    fn chrome_binary_falls_back_to_chrome() {
-        let result = find_chrome_binary(|name| name == "google-chrome");
-        assert_eq!(result, Some("google-chrome".to_string()));
+    fn command_v_falls_back_to_a_non_executable_match_like_bash() {
+        use std::os::unix::fs::PermissionsExt;
+        let base = std::env::var_os("TEST_TMPDIR")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir)
+            .join(format!("smoke-cmdv-{}", std::process::id()));
+        let (a, b, c) = (base.join("a"), base.join("b"), base.join("c"));
+        for d in [&a, &b, &c] {
+            fs::create_dir_all(d).unwrap();
+        }
+        fs::create_dir_all(a.join("tool")).unwrap(); // a directory never matches
+        fs::write(b.join("tool"), "").unwrap(); // not executable: the fallback
+        fs::write(c.join("tool"), "").unwrap();
+        let path = std::env::join_paths([&a, &b, &c]).unwrap();
+        assert_eq!(command_v("tool", Some(path.clone())), Some(b.join("tool")));
+        fs::set_permissions(c.join("tool"), fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(command_v("tool", Some(path)), Some(c.join("tool")));
+        assert_eq!(command_v("tool", None), None);
+        let _ = fs::remove_dir_all(&base);
     }
 
     #[test]
-    fn chrome_binary_falls_back_to_chromium() {
-        let result = find_chrome_binary(|name| name == "chromium-browser");
-        assert_eq!(result, Some("chromium-browser".to_string()));
+    fn dom_is_what_command_substitution_captured() {
+        assert_eq!(as_captured(b"<p>x</p>\n\n".to_vec()), b"<p>x</p>");
+        assert_eq!(as_captured(b"a\0b\n\xff".to_vec()), b"ab\n\xff");
+        assert!(mounted(b"<div>Select a provider</div>"));
+        assert!(!mounted(b"Select a\nprovider"));
     }
 
     #[test]
