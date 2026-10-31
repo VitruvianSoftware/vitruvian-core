@@ -15,13 +15,16 @@ pub const BROKER_PREFIX: &str = "Sources/Vitruvian/Services/Platform/Broker/";
 pub const RUNTIME_PREFIX: &str = "Sources/Vitruvian/Services/Platform/External/";
 pub const MODIFICATION_LOG_FLOOR: usize = 260;
 
-pub const RELEASE_SCRIPTS: &[&str] = &[
-    "publish.sh",
-    "Tools/beta-publish-guard.sh",
-    "Tools/package-release.sh",
-    "Tools/make-dmg.sh",
-    "Tools/dmg-image-devices.sh",
-    "Tools/notarize.sh",
+/// The release tools' sources, scanned for relative paths that are a case
+/// twin of something in the package (`build/` is the BUILD file).
+pub const RELEASE_SOURCES: &[&str] = &[
+    "bazel/src/publish/lib.rs",
+    "bazel/src/beta_publish_guard/lib.rs",
+    "bazel/src/package_release/lib.rs",
+    "bazel/src/make_dmg/lib.rs",
+    "bazel/src/dmg_image_devices/lib.rs",
+    "bazel/src/notarize/lib.rs",
+    "bazel/src/release_exec/lib.rs",
 ];
 
 pub const SESSION_TAP_OWNERS: &[&str] = &[
@@ -604,7 +607,7 @@ pub fn adds_that_wait(text: &str) -> (usize, usize) {
     (adds, told)
 }
 
-// --- The 59 Rules in exact RULES order ------------------------------------------
+// --- The 56 Rules in exact RULES order ------------------------------------------
 
 type RuleFn = fn(&Repository) -> Vec<String>;
 
@@ -734,18 +737,6 @@ pub const RULES: &[(&str, RuleFn)] = &[
     (
         "release_scripts_have_no_case_twins",
         release_scripts_have_no_case_twins,
-    ),
-    (
-        "dmg_detach_accepts_a_mount_that_is_gone",
-        dmg_detach_accepts_a_mount_that_is_gone,
-    ),
-    (
-        "dmg_is_signed_after_compressing",
-        dmg_is_signed_after_compressing,
-    ),
-    (
-        "beta_publish_decides_before_it_uploads",
-        beta_publish_decides_before_it_uploads,
     ),
     (
         "about_box_credits_both_authors",
@@ -1903,11 +1894,11 @@ fn build_signs_with_a_stable_identity(repo: &Repository) -> Vec<String> {
                 }
             }
         }
-        t.starts_with("./Tools/setup-signing.sh")
+        t.starts_with("bazel run //apps/desktop/vitruvian:setup_signing")
     });
     if !has_setup_call {
         problems.push(
-            "an identity-less build that installs invokes Tools/setup-signing.sh itself".into(),
+            "an identity-less build that installs runs //apps/desktop/vitruvian:setup_signing itself".into(),
         );
     }
     let code: Vec<&str> = lines
@@ -1948,7 +1939,7 @@ fn release_scripts_have_no_case_twins(repo: &Repository) -> Vec<String> {
         "mkdir -p build/stage",
         "cp \"${PKG}/build/x\" dist/",
         "./build/run",
-        "ls /usr/build/ Tools/notarize.sh",
+        "ls /usr/build/ Tools/MakeDMGBackground.swift",
     ]
     .join("\n");
     if relative_path_roots(&sample) != vec!["build", "build", "dist", "build", "Tools"] {
@@ -1956,7 +1947,7 @@ fn release_scripts_have_no_case_twins(repo: &Repository) -> Vec<String> {
     }
     let mut roots: BTreeSet<String> = repo.root_names.iter().cloned().collect();
     roots.insert("BUILD".into());
-    for path in RELEASE_SCRIPTS {
+    for path in RELEASE_SOURCES {
         let text = repo.read_text(path);
         if text.is_empty() {
             problems.push(format!("{} is readable for the release path check", path));
@@ -1974,94 +1965,6 @@ fn release_scripts_have_no_case_twins(repo: &Repository) -> Vec<String> {
                     path, part, twin
                 ));
             }
-        }
-    }
-    problems
-}
-
-fn dmg_detach_accepts_a_mount_that_is_gone(repo: &Repository) -> Vec<String> {
-    let text = repo.read_text("Tools/make-dmg.sh");
-    if text.is_empty() {
-        return vec!["Tools/make-dmg.sh is readable for the detach check".into()];
-    }
-    let mut problems = Vec::new();
-    if !text.contains("! -d \"$MOUNT\"") {
-        problems.push("make-dmg.sh checks the mount is gone between detach retries".into());
-    }
-    if !text.contains("[[ $detached -ne 1 && -d \"$MOUNT\" ]]") {
-        problems.push("make-dmg.sh forces a detach only while the mount still exists".into());
-    }
-    if !text.contains("hdiutil info") {
-        problems.push("make-dmg.sh waits for the image to be released before converting".into());
-    }
-    let convert: Vec<&str> = text
-        .lines()
-        .filter(|x| x.contains("hdiutil convert"))
-        .collect();
-    if convert.is_empty() || convert.iter().any(|x| x.contains("-quiet")) {
-        problems.push("make-dmg.sh converts without -quiet so a failure says why".into());
-    }
-    if text.matches("release_image \"$RW\"").count() < 2 {
-        problems.push(
-            "make-dmg.sh releases a still-attached image by its device nodes, after a failed create and before converting".into(),
-        );
-    }
-    if !text.contains("RW=\"$WORK/rw-$attempt.dmg\"") {
-        problems.push(
-            "make-dmg.sh writes each create attempt to its own file, so a failed attempt's leftover is never taken for the image packaged".into(),
-        );
-    }
-    if !text.contains("convert failed (attempt") {
-        problems.push("make-dmg.sh retries a failed convert".into());
-    }
-    problems
-}
-
-fn dmg_is_signed_after_compressing(repo: &Repository) -> Vec<String> {
-    let text = repo.read_text("Tools/make-dmg.sh");
-    if text.is_empty() {
-        return vec!["Tools/make-dmg.sh is readable for the DMG signing check".into()];
-    }
-    let sign = "codesign --force --timestamp --sign \"$DEVELOPER_ID\" \"$OUT\"";
-    let Some(sign_idx) = text.find(sign) else {
-        return vec!["make-dmg.sh signs the compressed disk image with the Developer ID".into()];
-    };
-    if let Some(conv_idx) = text.find("hdiutil convert") {
-        if sign_idx < conv_idx {
-            return vec![
-                "make-dmg.sh signs the disk image after compressing it, not before".into(),
-            ];
-        }
-    }
-    if !text.contains("codesign --verify --strict \"$OUT\"") {
-        return vec!["make-dmg.sh verifies the disk image's signature".into()];
-    }
-    Vec::new()
-}
-
-fn beta_publish_decides_before_it_uploads(repo: &Repository) -> Vec<String> {
-    let text = repo.read_text("publish.sh");
-    if text.is_empty() {
-        return vec!["publish.sh is readable for the beta ordering check".into()];
-    }
-    let Some(guard) = text.find("Tools/beta-publish-guard.sh") else {
-        return vec![
-            "publish.sh asks Tools/beta-publish-guard.sh before it publishes a beta".into(),
-        ];
-    };
-    let mut problems = Vec::new();
-    for write in [
-        "gh release create \"${TAG}\"",
-        "gh release upload \"${TAG}\"",
-        "gh api -X PATCH",
-    ] {
-        match text.find(write) {
-            None => problems.push(format!("publish.sh still writes with `{}`", write)),
-            Some(at) if at < guard => problems.push(format!(
-                "publish.sh decides before `{}`, not after it",
-                write
-            )),
-            _ => {}
         }
     }
     problems
@@ -2859,8 +2762,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_59_rules_registered() {
-        assert_eq!(RULES.len(), 59);
+    fn test_56_rules_registered() {
+        assert_eq!(RULES.len(), 56);
     }
 
     #[test]
@@ -2869,7 +2772,7 @@ mod tests {
             "mkdir -p build/stage",
             "cp \"${PKG}/build/x\" dist/",
             "./build/run",
-            "ls /usr/build/ Tools/notarize.sh",
+            "ls /usr/build/ Tools/MakeDMGBackground.swift",
         ]
         .join("\n");
         assert_eq!(
@@ -2883,7 +2786,7 @@ mod tests {
     }
 
     #[test]
-    fn test_live_vitruvian_repository_passes_all_59_rules() {
+    fn test_live_vitruvian_repository_passes_all_56_rules() {
         let candidate = Path::new("apps/desktop/vitruvian");
         let app_dir = if candidate.join("Sources").is_dir() {
             candidate.to_path_buf()

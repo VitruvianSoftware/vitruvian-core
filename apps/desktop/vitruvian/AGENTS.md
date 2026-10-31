@@ -16,14 +16,20 @@ This guide adds to the root `AGENTS.md` for this subtree. Read
   update feed, upload/feedback server or community link in what the app shows or
   calls (see `TRADEMARKS.md`). Keep upstream's copyright lines, which are legal
   notices, not branding. Releases ship as DMGs from the `vitruvian` delivery
-  unit (`publish.sh`); check anything that lands in the bundle (artwork, GIFs,
-  strings) for upstream's brand first.
+  unit (`bazel run //apps/desktop/vitruvian:publish`); check anything that
+  lands in the bundle (artwork, GIFs, strings) for upstream's brand first.
 
 ## Building
 
 - Use Bazel with `--config=macos-app` (see `README.md`). The targets are
   `manual`, so name them explicitly. Do not wire `build.sh` into CI: it stays only
   because upstream tests read its text.
+- The release path is Rust, in `bazel/src/`: `publish` -> `package_release`
+  -> `make_dmg` (with `dmg_image_devices`) and `notarize`, plus
+  `beta_publish_guard`, `ci_setup_signing` and `setup_signing`, each with a
+  `bazel run` target of its name. Every command they run goes through
+  `release_exec`'s `Runner`; change a release step in Rust together with the
+  `FakeRunner` test that replays it. Do not bring back shell scripts for it.
 - `Core/`, `Design/` and `UI/` build in Swift 6 mode. Shared state there
   says what protects it: a lock or the main thread (`nonisolated(unsafe)`
   with a comment naming the guard), `@MainActor`, or `Sendable`. Isolate a

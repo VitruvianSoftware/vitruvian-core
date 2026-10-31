@@ -96,14 +96,14 @@ legacy_identity_installed() {
 # keeps showing them as granted, and no new prompt ever appears. A plain
 # --install strands them under the released bundle id, on the app the user
 # actually relies on. When no identity is installed, create the stable local one
-# up front instead of falling through to ad-hoc — setup-signing.sh is free,
+# up front instead of falling through to ad-hoc — setup_signing is free,
 # offline and idempotent. Gating on the install rather than the variant keeps
 # this off CI, where neither ci.yml nor release.yml passes --install.
 if (( DEV || INSTALL )) && [[ -z "$(developer_id_identity)" ]] \
     && ! legacy_identity_installed; then
     echo "▸ No signing identity installed; creating the stable local one…"
-    if ! ./Tools/setup-signing.sh; then
-        echo "  ⚠ Tools/setup-signing.sh failed; signing ad-hoc instead." >&2
+    if ! bazel run //apps/desktop/vitruvian:setup_signing; then
+        echo "  ⚠ //apps/desktop/vitruvian:setup_signing failed; signing ad-hoc instead." >&2
         echo "    Accessibility and Screen Recording grants will not survive rebuilds:" >&2
         echo "    System Settings will show them as granted while the app is not trusted." >&2
         echo "    After fixing the identity, clear the stale grant once with:" >&2
@@ -806,7 +806,7 @@ sign_bundle() {
     elif legacy_identity_installed; then
         echo "  signing with legacy self-signed identity: $LEGACY_IDENTITY"
     else
-        echo "  signing ad-hoc (no identity installed — run Tools/setup-signing.sh)"
+        echo "  signing ad-hoc (no identity installed — run bazel run //apps/desktop/vitruvian:setup_signing)"
     fi
     [[ -f "$helper" ]] && codesign_fan_helper "$helper"
     [[ -f "$adapter" ]] && codesign_now_playing_adapter "$adapter"

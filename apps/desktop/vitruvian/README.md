@@ -40,7 +40,7 @@ release-please components:
   and creates the GitHub Release.
 - **The `vitruvian` delivery unit** (declared in `BUILD`, rendered into the
   generated `.github/workflows/delivery-vitruvian.yaml`) builds and publishes the DMG on
-  the `xcode-27` runner by running `publish.sh`:
+  the `xcode-27` runner by running `bazel run //apps/desktop/vitruvian:publish`:
   - on every push to `main` that touches the app, `Vitruvian-beta.dmg` on the
     rolling `vitruvian-beta-latest` prerelease;
   - on each `vitruvian-v*` release, `Vitruvian-X.Y.Z.dmg` on that release.
@@ -57,13 +57,19 @@ lands while it is queued, `vitruvian-release` first takes it out of the queue
 (`tools/ci/release-pr-dequeue.sh`), release-please adds the change, and the gate
 queues it again after that change's beta.
 
-`publish.sh` builds the app and hands it to `Tools/package-release.sh`, which:
+`publish` builds the app and hands it to `package_release`, which:
 
 - signs it: with the `VITRUVIAN_SIGNING_CERT_P12` /
-  `VITRUVIAN_SIGNING_CERT_PASSWORD` Developer ID when those secrets exist,
-  ad hoc otherwise;
-- notarizes it when the `VITRUVIAN_NOTARY_*` secrets exist;
-- packages the DMG with `Tools/make-dmg.sh`.
+  `VITRUVIAN_SIGNING_CERT_PASSWORD` Developer ID when those secrets exist
+  (`ci_setup_signing` imports it into a keychain first), ad hoc otherwise;
+- notarizes it when the `VITRUVIAN_NOTARY_*` secrets exist (`notarize`);
+- packages the DMGs with `make_dmg`: universal, arm64 and x86_64.
+
+All of these are Rust programs in `bazel/src/` with a `bazel run` target of the
+same name in `BUILD`. Their tests replay each command the release runs (codesign,
+hdiutil, gh, notarytool) against a recording stand-in, so
+`bazel test //apps/desktop/vitruvian:publish_test` and its siblings check the
+release without a Mac's keychain or Apple's servers.
 
 To publish a release's DMG again, run `delivery-vitruvian.yaml` by hand from the release
 tag with unit `vitruvian` and environment `production`, or on a Mac, from a
@@ -74,7 +80,7 @@ GRADE=production RELEASE_TAG=vitruvian-vX.Y.Z bazel run //apps/desktop/vitruvian
 ```
 
 Tags before `vitruvian-v3.7.0` cannot be published this way: earlier ones
-predate `publish.sh`, and `vitruvian-v3.6.0` still staged the app under
+predate the `publish` release path, and `vitruvian-v3.6.0` still staged the app under
 `build/`, which is the package's `BUILD` file on macOS. The first release with
 a DMG is `vitruvian-v3.7.0`.
 
@@ -193,9 +199,8 @@ module, and the app is now split into modules (see below). Use Bazel.
 | `Sources/HIDEventSystem/`, `Sources/VMStatisticsCompat/` | C module maps for private or compat headers |
 | `Tests/` | Upstream's custom test runner, `generate_sources.py` extractor and fixtures |
 | `Resources/` | Info.plist, entitlements, launchd plist, localized InfoPlist strings, brand masters, GIFs and images |
-| `Tools/` | Icon generator (run by the build), upstream's signing, notarization and DMG scripts, and `package-release.sh`, which signs and packages a Bazel-built app |
-| `bazel/` | Build glue: generated source lists, genrule scripts and test wrappers |
-| `publish.sh` | Builds the DMG and attaches it to a GitHub Release (the `vitruvian` delivery unit and `bazel run :publish`) |
+| `Tools/` | Icon and DMG background generators, `uninstall.sh`, and the by-hand and fixture tools |
+| `bazel/` | Build glue: generated source lists, the Rust build, test and release tools (`bazel/src/`) |
 
 Architecture review notes and the planned refactor are tracked in the PRs that
 follow the import.
