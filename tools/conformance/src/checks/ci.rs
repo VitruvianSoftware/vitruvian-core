@@ -1114,7 +1114,7 @@ pub fn check_cache_save(ctx: &Context) {
 
 pub fn check_ci_gate_lists_match(ctx: &Context) {
     let deploy_affected = format!("{}/tools/ci/src/deploy_affected/lib.rs", ctx.root);
-    let affected_targets = format!("{}/tools/ci/affected-targets.sh", ctx.root);
+    let affected_targets = format!("{}/tools/ci/src/affected_targets/lib.rs", ctx.root);
 
     let extract_pattern = |path: &str| -> Option<String> {
         let content = fs::read_to_string(path).ok()?;
@@ -1150,7 +1150,7 @@ pub fn check_ci_gate_lists_match(ctx: &Context) {
                     "tools/ci gate allowlists",
                     "diverged",
                     "identical",
-                    "the deploy gate (tools/ci/src/deploy_affected/lib.rs) and affected-targets.sh disagree on the global-impact allowlist, so CI and deploy disagree about what a change can affect",
+                    "the deploy gate (tools/ci/src/deploy_affected/lib.rs) and the test gate (tools/ci/src/affected_targets/lib.rs) disagree on the global-impact allowlist, so CI and deploy disagree about what a change can affect",
                     "make the '^tools/(...)' patterns identical in both files",
                 );
             }
@@ -1162,7 +1162,7 @@ pub fn check_ci_gate_lists_match(ctx: &Context) {
                 "pattern not found",
                 "one per file",
                 "could not locate the global-impact allowlist in one of the gate scripts - the guard cannot verify them",
-                "check the '^tools/(...)' pattern still exists in both tools/ci/src/deploy_affected/lib.rs and affected-targets.sh",
+                "check the '^tools/(...)' pattern still exists in both tools/ci/src/deploy_affected/lib.rs and tools/ci/src/affected_targets/lib.rs",
             );
         }
     }

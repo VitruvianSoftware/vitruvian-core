@@ -341,7 +341,7 @@ fn run_records_a_pass_that_ran_remotely() {
     assert_eq!(
         o.out,
         format!(
-            "verified-run: commit aaaaaaaaaaaa, files (tree) {b}\nCompared with cccccccccccc, the merge base with origin/main.\n\n1 changed file(s). What runs here, and why:\n  - build-test: the affected targets, chosen by tools/ci/affected-targets.sh exactly as on a PR.\n  - unit api: picked by the planner; 1 target(s).\nLeft to CI (not covered by this record):\n  - unit mac: runs on a macOS runner; the remote machines are Linux\nAlso left to CI: the fast checks and every other CI job (macOS build, race tests, lint, ...).\n\n\nPASSED on the remote machines: 2 Bazel run(s), lanes build-test, unit:api.\nBuild results: https://app.buildbuddy.io/history/commit/{a}\nRecord: context \"verified-run\", tree={b} base=cccccccccccc plan={d}\nRecorded on commit aaaaaaaaaaaa.\n",
+            "verified-run: commit aaaaaaaaaaaa, files (tree) {b}\nCompared with cccccccccccc, the merge base with origin/main.\n\n1 changed file(s). What runs here, and why:\n  - build-test: the affected targets, chosen by //tools/ci:affected_targets exactly as on a PR.\n  - unit api: picked by the planner; 1 target(s).\nLeft to CI (not covered by this record):\n  - unit mac: runs on a macOS runner; the remote machines are Linux\nAlso left to CI: the fast checks and every other CI job (macOS build, race tests, lint, ...).\n\n\nPASSED on the remote machines: 2 Bazel run(s), lanes build-test, unit:api.\nBuild results: https://app.buildbuddy.io/history/commit/{a}\nRecord: context \"verified-run\", tree={b} base=cccccccccccc plan={d}\nRecorded on commit aaaaaaaaaaaa.\n",
             a = "a".repeat(40),
             b = "b".repeat(40),
             d = &digest[..12]

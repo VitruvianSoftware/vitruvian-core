@@ -258,7 +258,7 @@ jobs:
           echo "sha=${sha}" >> "$GITHUB_OUTPUT"
           # The map for a commit appears 16-39 min after it lands, later than
           # the next queue entry needs it (#2841). Offer the base's recent
-          # ancestors as fallbacks, nearest first; affected-targets.sh decides
+          # ancestors as fallbacks, nearest first; //tools/ci:affected_targets decides
           # whether an older map is safe to use and compares against its commit.
           keys=""
           if [ -n "$sha" ] && git rev-parse --verify --quiet "${sha}^{commit}" >/dev/null; then
@@ -317,13 +317,31 @@ jobs:
           if bazel build "${cache_flags[@]}" //tools/pipeline/plan && cp -f bazel-bin/tools/pipeline/plan/plan "$RUNNER_TEMP/pipeline-plan" && chmod +x "$RUNNER_TEMP/pipeline-plan"; then
             git checkout -- MODULE.bazel.lock 2>/dev/null || true
           else
-            echo "::warning::Could not build the planner; affected-targets.sh will use bazel run instead."
+            echo "::warning::Could not build the planner; affected-targets will use bazel run instead."
             git checkout -- MODULE.bazel.lock 2>/dev/null || true
             rm -f "$RUNNER_TEMP/pipeline-plan"
           fi
 
+      # The selector itself, //tools/ci:affected_targets, copied out of bazel-bin:
+      # it runs `bazel` itself, so it must not run under `bazel run`. Unlike the
+      # planner this one is required, so a failed build fails the job.
+      - name: Build affected-targets
+        if: github.event_name == 'merge_group' || steps.gate.outputs.relevant != 'false'
+        run: |
+          cache_flags=()
+          if [ -n "${BUILDBUDDY_API_KEY:-}" ]; then
+            cache_flags=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
+          fi
+          bazel build "${cache_flags[@]}" //tools/ci:affected_targets
+          cp -f bazel-bin/tools/ci/affected_targets "$RUNNER_TEMP/affected-targets"
+          chmod +x "$RUNNER_TEMP/affected-targets"
+          test -x "$RUNNER_TEMP/affected-targets" || { echo "::error::the affected-targets binary was not built"; exit 1; }
+          # A build can rewrite the lockfile; a dirty MODULE.bazel.lock would
+          # read as a global-impact change and force a full sweep.
+          git checkout -- MODULE.bazel.lock 2>/dev/null || true
+
       # --- ALL LANES: AFFECTED targets, fall back to //... on any doubt. ------
-      # Every lane runs tools/ci/affected-targets.sh; only the diff BASE differs:
+      # Every lane runs the affected-targets binary; only the diff BASE differs:
       #   pull_request  merge-base vs origin/${{ github.base_ref }}
       #   merge_group   the queue base (github.event.merge_group.base_sha) --
       #                 exactly the main tip this group would land on
@@ -350,7 +368,7 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
           RDEPS_MAP: ${{ runner.temp }}/pipeline-rdeps-map.json
           PLAN_BIN: ${{ runner.temp }}/pipeline-plan
-        run: bash tools/ci/affected-targets.sh
+        run: ${{ runner.temp }}/affected-targets
 
       # MERGE QUEUE (merge_group). base_sha is reachable because the checkout
       # above uses fetch-depth: 0 (build-macos already relies on the same).
@@ -360,7 +378,7 @@ jobs:
           BEFORE_REV: ${{ github.event.merge_group.base_sha }}
           RDEPS_MAP: ${{ runner.temp }}/pipeline-rdeps-map.json
           PLAN_BIN: ${{ runner.temp }}/pipeline-plan
-        run: bash tools/ci/affected-targets.sh
+        run: ${{ runner.temp }}/affected-targets
 
       # POSTSUBMIT (push to main). Verifies the landed commit. A queue-merged
       # commit whose exact tree just passed as merge_group never gets here: the
@@ -377,7 +395,7 @@ jobs:
           FORCED_PUSH: ${{ github.event.forced }}
           RDEPS_MAP: ${{ runner.temp }}/pipeline-rdeps-map.json
           PLAN_BIN: ${{ runner.temp }}/pipeline-plan
-        run: bash tools/ci/affected-targets.sh
+        run: ${{ runner.temp }}/affected-targets
 
   # macOS build, split so a premium macOS runner is claimed ONLY when a macOS-
   # relevant path actually changed (#821). Previously the whole build-macos job

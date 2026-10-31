@@ -326,7 +326,7 @@ impl Verifier<'_> {
             "\n{} changed file(s). What runs here, and why:",
             p.changed_files.len()
         ));
-        self.say("  - build-test: the affected targets, chosen by tools/ci/affected-targets.sh exactly as on a PR.");
+        self.say("  - build-test: the affected targets, chosen by //tools/ci:affected_targets exactly as on a PR.");
         for u in &covered {
             self.say(&format!(
                 "  - unit {}: picked by the planner; {} target(s).",
@@ -477,6 +477,11 @@ fn flags() -> Vec<Flag> {
             default: Value::Str(String::new()),
         },
         Flag {
+            name: "affected-targets",
+            usage: "runfiles path of the affected-targets binary (set by the BUILD file)",
+            default: Value::Str(String::new()),
+        },
+        Flag {
             name: "rdeps-map-ref",
             usage: "runfiles path of the rdeps-map-ref binary (set by the BUILD file)",
             default: Value::Str(String::new()),
@@ -546,6 +551,10 @@ pub fn real_main(args: &[String]) -> i32 {
         return fail("run this with `bazel run //tools/pipeline/verifiedrun`");
     }
     let planner = match runfile(&f.str("planner")) {
+        Ok(p) => p,
+        Err(e) => return fail(&e),
+    };
+    let affected_targets = match runfile(&f.str("affected-targets")) {
         Ok(p) => p,
         Err(e) => return fail(&e),
     };
@@ -621,6 +630,7 @@ pub fn real_main(args: &[String]) -> i32 {
         &root,
         &work,
         &planner,
+        &affected_targets,
         &rdeps_map_ref,
         &agent_app,
         &self_exe,
@@ -643,6 +653,7 @@ fn run_in(
     root: &str,
     work: &str,
     planner: &str,
+    affected_targets: &str,
     rdeps_map_ref: &str,
     agent_app: &str,
     self_exe: &str,
@@ -773,8 +784,8 @@ fn run_in(
                 ctx,
                 root,
                 child_env(&shim_dir, &extra),
-                "bash",
-                &["tools/ci/affected-targets.sh"],
+                affected_targets,
+                &[],
             )
         }),
         run_unit: Box::new(|u: &Unit| {

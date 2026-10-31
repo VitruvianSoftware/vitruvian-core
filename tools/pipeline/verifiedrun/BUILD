@@ -48,12 +48,14 @@ rust_binary(
     srcs = ["src/main.rs"],
     args = [
         "--planner=$(rlocationpath //tools/pipeline/plan)",
+        "--affected-targets=$(rlocationpath //tools/ci:affected_targets)",
         "--rdeps-map-ref=$(rlocationpath //tools/ci:rdeps_map_ref)",
         "--agent-app=$(rlocationpath //tools/agent-app:agent-app.sh)",
     ],
     data = [
         "//tools/agent-app",
         "//tools/agent-app:agent-app.sh",
+        "//tools/ci:affected_targets",
         "//tools/ci:rdeps_map_ref",
         "//tools/pipeline/plan",
     ],
