@@ -245,14 +245,14 @@ enum Confirm {
         let button = alert.addButton(withTitle: action)
         button.hasDestructiveAction = destructive
         alert.addButton(withTitle: String(localized: "Cancel"))
-        return alert.runModal() == .alertFirstButtonReturn
+        return AppLockGate.shared.runAlertModal(alert) == .alertFirstButtonReturn
     }
 
     static func tell(_ message: String) {
         let alert = NSAlert()
         alert.messageText = message
         alert.addButton(withTitle: String(localized: "OK"))
-        alert.runModal()
+        _ = AppLockGate.shared.runAlertModal(alert)
     }
 
     /// Runs a command, after its confirmation when it has one (a bulk command): only an OK runs it.

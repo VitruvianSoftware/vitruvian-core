@@ -10,14 +10,14 @@ import UniformTypeIdentifiers
 @MainActor
 enum StickerImportPicker {
     static func run(into composer: ComposerModel, shortcode: String? = nil) {
-        let panel = NSOpenPanel()
-        panel.allowsMultipleSelection = false
-        panel.canChooseFiles = true
-        panel.canChooseDirectories = false
-        panel.allowedContentTypes = [.png, .webP, .gif, .jpeg]
-        panel.message = String(localized: "Choose a PNG, WebP, GIF, or JPEG image to import as a sticker")
-        panel.prompt = String(localized: "Import Sticker…")
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard let url = AppLockGate.shared.runOpenPanel(action: .send, lifecycle: composer.lifecycle, configure: { panel in
+            panel.allowsMultipleSelection = false
+            panel.canChooseFiles = true
+            panel.canChooseDirectories = false
+            panel.allowedContentTypes = [.png, .webP, .gif, .jpeg]
+            panel.message = String(localized: "Choose a PNG, WebP, GIF, or JPEG image to import as a sticker")
+            panel.prompt = String(localized: "Import Sticker…")
+        })?.first else { return }
         Task {
             await composer.importSticker(from: url, shortcode: shortcode)
         }

@@ -16,6 +16,7 @@ final class HotkeyRegistryTests: XCTestCase {
     }
 
     override func tearDown() async throws {
+        AppLockGate.shared.resetForTesting()
         if let suiteName {
             UserDefaults.standard.removePersistentDomain(forName: suiteName)
         }
@@ -557,8 +558,6 @@ final class HotkeyRegistryTests: XCTestCase {
             loginItem: FakeLoginItemService(currentStatus: .notRegistered),
             biometrics: FakeBiometricAuthService(available: true, result: .success(true))
         )
-        lifecycle.lockApp()
-        XCTAssertTrue(lifecycle.isLocked)
 
         var hideAppCount = 0
         let coordinator = AppMenuCoordinator(
@@ -598,6 +597,8 @@ final class HotkeyRegistryTests: XCTestCase {
         inbox.select("!r1")
         conversation.setSnapshotStateForTesting(roomID: "!r1", items: [])
         conversation.composer.text = "Locked draft"
+        lifecycle.lockApp()
+        XCTAssertTrue(lifecycle.isLocked)
 
         for definition in HotkeyRegistry.allDefinitions {
             XCTAssertFalse(
@@ -1230,5 +1231,192 @@ final class HotkeyRegistryTests: XCTestCase {
         XCTAssertFalse(dispatcher.canPerform("Message: Send Later"))
         XCTAssertFalse(dispatcher.perform("Message: Send Later"))
         XCTAssertNil(messageActions.request)
+    }
+
+    func testLaunchingWithLockOnEveryModelAndDetachedSessionReportsLockedAndRefusesActions() async throws {
+        let suiteName = "courier.test.hotkeys.launchlocked.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        final class SpyPasteboard: TextPasteboard {
+            var copied: String?
+            func setString(_ text: String) { copied = text }
+        }
+        final class FakeLoginCaller: LoginCalling, @unchecked Sendable {
+            var startCount = 0
+            func start(network _: String, flow _: String, another _: Bool, accountID _: String?) async throws -> LoginStep {
+                startCount += 1
+                throw EngineError.notConnected
+            }
+            func submit(loginID _: String, values _: [String: String]) async throws -> LoginStep {
+                throw EngineError.notConnected
+            }
+            func wait(loginID _: String) async throws -> LoginStep {
+                throw EngineError.notConnected
+            }
+            func cancel(loginID _: String) async throws {}
+        }
+        final class MemoryCredentials: CredentialStore, @unchecked Sendable {
+            var data: [String: String] = [:]
+            func read(account: String) throws -> String? { data[account] }
+            func write(_ value: String, account: String) throws { data[account] = value }
+            func delete(account: String) throws { data.removeValue(forKey: account) }
+        }
+
+        // Persist autoLockEnabled = true BEFORE launch so SystemLifecycleModel starts locked in init
+        // without any subsequent lockNow() / didLockNotification call.
+        defaults.set(true, forKey: SystemLifecycleModel.key("autoLockEnabled"))
+        defaults.set(true, forKey: SystemLifecycleModel.key("requireTouchIDOnLaunch"))
+        let lifecycle = SystemLifecycleModel(
+            defaults: defaults,
+            loginItem: FakeLoginItemService(currentStatus: .notRegistered),
+            biometrics: FakeBiometricAuthService(available: true, result: .success(false))
+        )
+        XCTAssertTrue(lifecycle.isLocked, "SystemLifecycleModel must start locked when autoLockEnabled is stored on launch")
+
+        let supervisor = EngineSupervisor(
+            enginePath: "/Applications/Courier.app/Contents/Helpers/courier-engine",
+            dataDir: URL(fileURLWithPath: "/tmp/courier-test-launchlocked"),
+            environment: [:],
+            launcher: FakeLauncher { _, _ in }
+        )
+        let appModel = AppModel(supervisor: supervisor)
+        let inboxPrefs = InboxPreferences(defaults: defaults)
+        let composerPrefs = ComposerPreferences(defaults: defaults)
+        let quickReplies = QuickReplies(defaults: defaults)
+        let inbox = InboxModel(appModel: appModel, preferences: inboxPrefs)
+        let spaces = SpacesModel(appModel: appModel, inbox: inbox)
+        let labels = LabelsModel(appModel: appModel, lifecycle: lifecycle)
+        let conversation = ConversationModel(appModel: appModel, preferences: composerPrefs)
+        let mainPasteboard = SpyPasteboard()
+        let messageActions = MessageActionsModel(
+            conversation: conversation,
+            appModel: appModel,
+            preferences: composerPrefs,
+            pasteboard: mainPasteboard
+        )
+        let scheduled = ScheduledModel(appModel: appModel)
+        let search = SearchModel(appModel: appModel, recents: RecentSearches(defaults: defaults), open: { _ in })
+        let login = LoginFlowModel(
+            caller: FakeLoginCaller(),
+            accounts: { appModel.accounts },
+            reloadAccounts: {},
+            credentials: MemoryCredentials(),
+            builtInCredentials: { nil },
+            restartEngine: {}
+        )
+        let detachedPasteboard = SpyPasteboard()
+        let detachedRegistry = DetachedWindowRegistry(
+            appModel: appModel,
+            mainInbox: inbox,
+            lifecycle: lifecycle,
+            inboxPreferences: inboxPrefs,
+            composerPreferences: composerPrefs,
+            quickReplies: quickReplies,
+            makePasteboard: { detachedPasteboard }
+        )
+
+        let items = Timeline.build(
+            events: [
+                Event(
+                    eventID: "$m1",
+                    roomID: "!r1",
+                    sender: "@alice:courier.local",
+                    senderName: "Alice",
+                    mine: false,
+                    type: "m.room.message",
+                    content: .object(["msgtype": .string("m.text"), "body": .string("Secret code 123456")]),
+                    ts: 1_761_400_000_000,
+                    seq: 1,
+                    status: .sent
+                ),
+            ],
+            me: "@me:courier.local",
+            now: Date(timeIntervalSince1970: 1_761_400_100)
+        )
+        conversation.setSnapshotStateForTesting(roomID: "!r1", items: items)
+
+        // Open detached windows while launch-locked (or verify sessions created from registry).
+        let chatTarget = DetachedWindowTarget.chat(roomID: "!r1")
+        let spaceTarget = DetachedWindowTarget.space(spaceID: "work")
+        let threadTarget = DetachedWindowTarget.thread(roomID: "!r1", rootEventID: "$m1")
+        let detachedChatSession = DetachedWindowSession(
+            target: chatTarget,
+            appModel: appModel,
+            inboxPreferences: inboxPrefs,
+            composerPreferences: composerPrefs,
+            mainInbox: inbox,
+            quickReplies: quickReplies,
+            pasteboard: detachedPasteboard
+        )
+        detachedChatSession.conversation.setSnapshotStateForTesting(roomID: "!r1", items: items)
+        let detachedSpaceSession = DetachedWindowSession(
+            target: spaceTarget,
+            appModel: appModel,
+            inboxPreferences: inboxPrefs,
+            composerPreferences: composerPrefs,
+            mainInbox: inbox,
+            quickReplies: quickReplies,
+            pasteboard: detachedPasteboard
+        )
+        let detachedThreadSession = DetachedWindowSession(
+            target: threadTarget,
+            appModel: appModel,
+            inboxPreferences: inboxPrefs,
+            composerPreferences: composerPrefs,
+            mainInbox: inbox,
+            quickReplies: quickReplies,
+            pasteboard: detachedPasteboard
+        )
+
+        // Every model and detached session must report isLocked == true at launch AND refuse actions while launch-locked.
+        XCTAssertTrue(appModel.isLocked, "AppModel must report isLocked == true when launched with lock on")
+        XCTAssertTrue(inbox.isLocked, "InboxModel must report isLocked == true when launched with lock on")
+        XCTAssertTrue(spaces.isLocked, "SpacesModel must report isLocked == true when launched with lock on")
+        XCTAssertTrue(conversation.isLocked, "ConversationModel must report isLocked == true when launched with lock on")
+        XCTAssertTrue(conversation.composer.isLocked, "ComposerModel must report isLocked == true when launched with lock on")
+        XCTAssertTrue(messageActions.isLocked, "MessageActionsModel must report isLocked == true when launched with lock on")
+        XCTAssertTrue(scheduled.isLocked, "ScheduledModel must report isLocked == true when launched with lock on")
+        XCTAssertTrue(search.isLocked, "SearchModel must report isLocked == true when launched with lock on")
+        XCTAssertTrue(login.isLocked, "LoginFlowModel must report isLocked == true when launched with lock on")
+        XCTAssertTrue(quickReplies.isLocked, "QuickReplies must report isLocked == true when launched with lock on")
+        XCTAssertTrue(labels.isLocked, "LabelsModel must report isLocked == true when launched with lock on")
+        XCTAssertTrue(detachedChatSession.isLocked, "Detached chat session must report isLocked == true when launched with lock on")
+        XCTAssertTrue(detachedSpaceSession.isLocked, "Detached space session must report isLocked == true when launched with lock on")
+        XCTAssertTrue(detachedThreadSession.isLocked, "Detached thread session must report isLocked == true when launched with lock on")
+        XCTAssertTrue(detachedChatSession.conversation.isLocked, "Detached chat ConversationModel must report isLocked == true when launched with lock on")
+        XCTAssertTrue(detachedSpaceSession.conversation.isLocked, "Detached space ConversationModel must report isLocked == true when launched with lock on")
+        XCTAssertTrue(detachedThreadSession.conversation.isLocked, "Detached thread ConversationModel must report isLocked == true when launched with lock on")
+
+        inbox.select("!r1")
+        XCTAssertNil(appModel.selectedRoomID, "InboxModel.select must be refused when launched locked")
+        spaces.select("work")
+        XCTAssertEqual(inbox.query.space, "inbox", "SpacesModel.select must be refused when launched locked")
+        search.show()
+        XCTAssertEqual(search.phase, .closed, "SearchModel.show must be refused when launched locked")
+        login.showPicker()
+        XCTAssertEqual(login.screen, .closed, "LoginFlowModel.showPicker must be refused when launched locked")
+        try? quickReplies.add(title: "locked", text: "locked")
+        XCTAssertTrue(quickReplies.all.isEmpty, "QuickReplies.add must be refused when launched locked")
+        conversation.setSnapshotStateForTesting(roomID: "!r1", items: items)
+        await messageActions.perform(.copy, on: "$m1", from: .chat)
+        XCTAssertNil(mainPasteboard.copied, "MessageActionsModel.perform(.copy) must be refused when launched locked")
+        await detachedChatSession.messageActions.perform(.copy, on: "$m1", from: .chat)
+        XCTAssertNil(detachedPasteboard.copied, "DetachedWindowSession.messageActions.perform(.copy) must be refused when launched locked")
+        detachedSpaceSession.inbox?.select("!r1")
+        XCTAssertNil(detachedSpaceSession.inbox?.selectedRoomID, "Detached space InboxModel.select must be refused when launched locked")
+        let audioPlayer = AudioPlayerModel(appModel: appModel, conversation: conversation, preferences: composerPrefs, defaults: defaults)
+        audioPlayer.cycleSpeed()
+        XCTAssertEqual(audioPlayer.speed, .one, "AudioPlayerModel.cycleSpeed must be refused when launched locked")
+        _ = detachedRegistry
+
+        let exportURL = FileManager.default.temporaryDirectory.appendingPathComponent("locked-export-\(UUID().uuidString).txt")
+        defer { try? FileManager.default.removeItem(at: exportURL) }
+        do {
+            _ = try await conversation.exportChat(roomID: "!r1", to: exportURL)
+            XCTFail("ConversationModel.exportChat must throw while locked")
+        } catch let error as EngineError {
+            XCTAssertEqual(error, .rpc(.badValue, message: "Courier is locked", reason: "locked"))
+        }
     }
 }

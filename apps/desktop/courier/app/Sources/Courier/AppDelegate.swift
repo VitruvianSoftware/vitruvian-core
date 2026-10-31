@@ -105,13 +105,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             environment: environment,
             launcher: FoundationProcessLauncher()
         )
-        model = AppModel(supervisor: supervisor)
+        model = AppModel(supervisor: supervisor, lifecycle: lifecycle)
         // Telegram's keys: Courier's own, packaged into the app, else the ones the person saved.
         let telegram = TelegramCredentialSource()
         // The person's plan, one for every model that asks (part 4.7 brings plans; until then, everything).
         let entitlement: any EntitlementProvider = AlwaysEntitled()
         let inbox = InboxModel(appModel: model, hasTelegramCredentials: { telegram.hasCredentials },
-                              preferences: InboxPreferences(), entitlement: entitlement)
+                              preferences: InboxPreferences(), entitlement: entitlement, lifecycle: lifecycle)
         self.inbox = inbox
         let attention = Attention(source: SystemPresence())
         self.attention = attention
@@ -169,10 +169,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.scheduled = scheduled
         let login = LoginFlowModel(appModel: model)
         self.login = login
-        spaces = SpacesModel(appModel: model, inbox: inbox)
+        spaces = SpacesModel(appModel: model, inbox: inbox, lifecycle: lifecycle)
         labels = LabelsModel(appModel: model, lifecycle: lifecycle)
         let lifecycleRef = lifecycle
         hotkeys = HotkeyRegistry(isAppLocked: { lifecycleRef.isLocked })
+        for composer in [conversation.composer, conversation.thread.composer] {
+            composer.hotkeys = hotkeys
+        }
         detachedWindows = DetachedWindowRegistry(
             appModel: model,
             mainInbox: inbox,

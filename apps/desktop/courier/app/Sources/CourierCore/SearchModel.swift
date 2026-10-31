@@ -253,8 +253,12 @@ public final class SearchModel: ObservableObject {
         }
     }
 
-    private var isLocked: Bool {
-        observedLifecycle?.isLocked == true
+    public var lifecycle: SystemLifecycleModel {
+        observedLifecycle ?? appModel.lifecycle
+    }
+
+    public var isLocked: Bool {
+        !AppLockGate.shared.canPerform(.openChat, lifecycle: lifecycle)
     }
 
     // MARK: - Opening and closing

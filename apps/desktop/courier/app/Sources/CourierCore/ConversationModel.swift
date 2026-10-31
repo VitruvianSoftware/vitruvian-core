@@ -413,10 +413,19 @@ public final class ConversationModel: ObservableObject {
     private var subscriptions: [AnyCancellable] = []
     private weak var observedLifecycle: SystemLifecycleModel?
 
-    private var isLocked: Bool {
-        if let observedLifecycle { return observedLifecycle.isLocked }
-        if let dispatcher = composer.hotkeyDispatcher { return dispatcher.lifecycle.isLocked }
-        if let hotkeys = composer.hotkeys { return hotkeys.isLocked }
+    public var lifecycle: SystemLifecycleModel {
+        observedLifecycle
+            ?? composer.hotkeyDispatcher?.lifecycle
+            ?? appModel.lifecycle
+    }
+
+    public var isLocked: Bool {
+        if !AppLockGate.shared.canPerform(.other, lifecycle: lifecycle) {
+            return true
+        }
+        if let hotkeys = composer.hotkeys, hotkeys.isLocked {
+            return true
+        }
         return false
     }
 
@@ -1845,13 +1854,17 @@ public final class ConversationModel: ObservableObject {
 
     /// Opens the chat at `eventID` (for jumping to a pinned or bookmarked message from Chat Info).
     public func openEvent(_ eventID: String, in targetRoomID: String? = nil) {
-        guard let room = targetRoomID ?? roomID else { return }
+        guard !isLocked, let room = targetRoomID ?? roomID else { return }
         appModel.open(.message(roomID: room, eventID: eventID))
     }
 
     /// Exports the chat's messages to `url` via `room.export`. Never writes anywhere the person didn't pick.
     @discardableResult
     public func exportChat(roomID targetRoomID: String? = nil, to url: URL) async throws -> Int {
+        guard !isLocked else {
+            throw EngineError.rpc(.badValue, message: "Courier is locked", reason: "locked")
+        }
+        try AppLockGate.shared.ensureUnlocked(.export, lifecycle: lifecycle)
         guard let room = targetRoomID ?? activeReplyRoomID ?? roomID, let client = appModel.client else {
             throw EngineError.notConnected
         }
@@ -2171,7 +2184,7 @@ public final class ConversationModel: ObservableObject {
     /// Promotes or demotes a group participant via `room.setAdmin`.
     @discardableResult
     public func setParticipantAdmin(userID: String, isAdmin: Bool, in targetRoomID: String? = nil) async -> Bool {
-        guard let room = targetRoomID ?? activeReplyRoomID ?? roomID, let client = appModel.client else {
+        guard !isLocked, let room = targetRoomID ?? activeReplyRoomID ?? roomID, let client = appModel.client else {
             return false
         }
         let owner = generation
@@ -2200,7 +2213,7 @@ public final class ConversationModel: ObservableObject {
     /// Removes `userID` from `targetRoomID` via `room.kick`.
     @discardableResult
     public func removeParticipant(userID: String, reason: String? = nil, in targetRoomID: String? = nil) async -> Bool {
-        guard let room = targetRoomID ?? activeReplyRoomID ?? roomID, let client = appModel.client else {
+        guard !isLocked, let room = targetRoomID ?? activeReplyRoomID ?? roomID, let client = appModel.client else {
             return false
         }
         let owner = generation
@@ -2229,7 +2242,7 @@ public final class ConversationModel: ObservableObject {
     /// Opens or creates a 1:1 direct chat with `userID` from `targetRoomID` via `room.directChat`.
     @discardableResult
     public func messageParticipant(userID: String, in targetRoomID: String? = nil) async -> String? {
-        guard let room = targetRoomID ?? activeReplyRoomID ?? roomID, let client = appModel.client else {
+        guard !isLocked, let room = targetRoomID ?? activeReplyRoomID ?? roomID, let client = appModel.client else {
             return nil
         }
         let owner = generation
@@ -2252,7 +2265,7 @@ public final class ConversationModel: ObservableObject {
     /// Leaves `targetRoomID` via `room.leave`.
     @discardableResult
     public func leaveGroup(roomID targetRoomID: String? = nil) async -> Bool {
-        guard let room = targetRoomID ?? activeReplyRoomID ?? roomID, let client = appModel.client else {
+        guard !isLocked, let room = targetRoomID ?? activeReplyRoomID ?? roomID, let client = appModel.client else {
             return false
         }
         let owner = generation
@@ -2278,7 +2291,7 @@ public final class ConversationModel: ObservableObject {
     /// Deletes `targetRoomID` via `room.delete`.
     @discardableResult
     public func deleteChat(roomID targetRoomID: String? = nil) async -> Bool {
-        guard let room = targetRoomID ?? activeReplyRoomID ?? roomID, let client = appModel.client else {
+        guard !isLocked, let room = targetRoomID ?? activeReplyRoomID ?? roomID, let client = appModel.client else {
             return false
         }
         let owner = generation

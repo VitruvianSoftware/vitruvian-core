@@ -165,19 +165,31 @@ public final class AudioPlayerModel: ObservableObject {
     private var progressTimer: Timer?
     private var cancellables: Set<AnyCancellable> = []
     private var terminationObserver: NSObjectProtocol?
+    private var lockObserver: NSObjectProtocol?
+    private weak var observedLifecycle: SystemLifecycleModel?
+
+    public var lifecycle: SystemLifecycleModel {
+        observedLifecycle ?? conversation?.lifecycle ?? appModel?.lifecycle ?? AppLockGate.shared.lifecycle
+    }
+
+    public var isLocked: Bool {
+        !AppLockGate.shared.canPerform(.other, lifecycle: lifecycle)
+    }
 
     public init(
         appModel: AppModel? = nil,
         conversation: ConversationModel? = nil,
         preferences: ComposerPreferences? = nil,
         defaults: UserDefaults = .standard,
-        backend: (any AudioPlaybackBackend)? = nil
+        backend: (any AudioPlaybackBackend)? = nil,
+        lifecycle: SystemLifecycleModel? = nil
     ) {
         self.appModel = appModel
         self.conversation = conversation
         self.preferences = preferences
         self.defaults = defaults
         self.backend = backend ?? AVAudioPlayerBackend()
+        self.observedLifecycle = lifecycle
 
         if let stored = defaults.object(forKey: Self.speedDefaultsKey) as? Double,
            let resolved = Speed(rawValue: stored) {
@@ -197,12 +209,25 @@ public final class AudioPlayerModel: ObservableObject {
                 self?.stopForApplicationTermination()
             }
         }
+        lockObserver = NotificationCenter.default.addObserver(
+            forName: SystemLifecycleModel.didLockNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            MainActor.assumeIsolated {
+                self?.observedLifecycle = notification.object as? SystemLifecycleModel
+                self?.stop()
+            }
+        }
     }
 
     deinit {
         progressTimer?.invalidate()
         if let terminationObserver {
             NotificationCenter.default.removeObserver(terminationObserver)
+        }
+        if let lockObserver {
+            NotificationCenter.default.removeObserver(lockObserver)
         }
     }
 
@@ -275,6 +300,7 @@ public final class AudioPlayerModel: ObservableObject {
     }
 
     public func playOrPause(_ track: Track, queueInRoom: [Track] = []) {
+        guard !isLocked else { return }
         guard let url = Self.localMediaURL(for: track.mediaPath) else { return }
 
         if currentTrack?.eventID == track.eventID {
@@ -300,7 +326,7 @@ public final class AudioPlayerModel: ObservableObject {
     }
 
     public func seek(to fraction: Double) {
-        guard let track = currentTrack else { return }
+        guard !isLocked, let track = currentTrack else { return }
         let clamped = min(max(fraction, 0), 1)
         backend.seek(toFraction: clamped)
         progress = clamped
@@ -308,6 +334,7 @@ public final class AudioPlayerModel: ObservableObject {
     }
 
     public func cycleSpeed() {
+        guard !isLocked else { return }
         let next = speed.next
         speed = next
         defaults.set(next.rawValue, forKey: Self.speedDefaultsKey)
@@ -329,6 +356,10 @@ public final class AudioPlayerModel: ObservableObject {
     }
 
     public func handleTrackFinished() async {
+        guard !isLocked else {
+            stop()
+            return
+        }
         guard let finished = currentTrack else { return }
         stopProgressTimer()
 

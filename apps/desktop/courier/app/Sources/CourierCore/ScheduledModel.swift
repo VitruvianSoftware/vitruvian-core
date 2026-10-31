@@ -63,8 +63,12 @@ public final class ScheduledModel: ObservableObject {
         reschedulingMessage = nil
     }
 
-    private var isLocked: Bool {
-        observedLifecycle?.isLocked == true
+    public var lifecycle: SystemLifecycleModel {
+        observedLifecycle ?? appModel.lifecycle
+    }
+
+    public var isLocked: Bool {
+        !AppLockGate.shared.canPerform(.send, lifecycle: lifecycle)
     }
 
     /// Opens a room explicitly for a detached window (`followsAppSelection == false`).

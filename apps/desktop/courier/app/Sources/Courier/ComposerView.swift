@@ -10,14 +10,14 @@ import UniformTypeIdentifiers
 @MainActor
 enum AttachmentPicker {
     static func run(into composer: ComposerModel) {
-        let panel = NSOpenPanel()
-        panel.allowsMultipleSelection = true
-        panel.canChooseFiles = true
-        panel.canChooseDirectories = false
-        panel.message = String(localized: "Choose files to send")
-        panel.prompt = String(localized: "Attach")
-        guard panel.runModal() == .OK else { return }
-        composer.attach(panel.urls)
+        guard let urls = AppLockGate.shared.runOpenPanel(action: .send, lifecycle: composer.lifecycle, configure: { panel in
+            panel.allowsMultipleSelection = true
+            panel.canChooseFiles = true
+            panel.canChooseDirectories = false
+            panel.message = String(localized: "Choose files to send")
+            panel.prompt = String(localized: "Attach")
+        }) else { return }
+        composer.attach(urls)
     }
 }
 

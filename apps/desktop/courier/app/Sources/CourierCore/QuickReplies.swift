@@ -109,9 +109,17 @@ public final class QuickReplies: ObservableObject {
         editing = nil
     }
 
-    private var isLocked: Bool {
-        guard let lifecycle = observedLifecycle, Thread.isMainThread else { return false }
-        return MainActor.assumeIsolated { lifecycle.isLocked }
+    public var lifecycle: SystemLifecycleModel {
+        MainActor.assumeIsolated {
+            observedLifecycle ?? AppLockGate.shared.lifecycle
+        }
+    }
+
+    public var isLocked: Bool {
+        guard Thread.isMainThread else { return false }
+        return MainActor.assumeIsolated {
+            !AppLockGate.shared.canPerform(.settingsChange, lifecycle: observedLifecycle)
+        }
     }
 
     public func add(title: String, text: String) throws {

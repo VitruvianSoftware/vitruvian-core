@@ -14,24 +14,75 @@ enum FileSize {
     }
 }
 
-/// Coordinates macOS Quick Look (`QLPreviewPanel`) for local, quarantined attachment copies.
+/// Default `QLPreviewPanel`-backed controller for `QuickLookPreviewCoordinator`.
 @MainActor
-final class QuickLookPreviewCoordinator: NSObject, QLPreviewPanelDataSource, QLPreviewPanelDelegate {
-    static let shared = QuickLookPreviewCoordinator()
-    private var previewURL: URL?
+public final class SystemQuickLookPanelController: QuickLookPanelControlling {
+    public private(set) var isVisible = false
 
-    func preview(url: URL) {
-        guard url.isFileURL else { return }
-        previewURL = url
+    public init() {}
+
+    public func presentPreview(for coordinator: AnyObject) {
+        isVisible = true
         guard let panel = QLPreviewPanel.shared() else { return }
-        panel.dataSource = self
-        panel.delegate = self
+        panel.dataSource = coordinator as? any QLPreviewPanelDataSource
+        panel.delegate = coordinator as? any QLPreviewPanelDelegate
         panel.reloadData()
         panel.makeKeyAndOrderFront(nil)
     }
 
+    public func closePreview() {
+        isVisible = false
+        guard QLPreviewPanel.sharedPreviewPanelExists(), let panel = QLPreviewPanel.shared() else { return }
+        panel.orderOut(nil)
+        panel.close()
+    }
+}
+
+/// Coordinates macOS Quick Look (`QLPreviewPanel`) for local, quarantined attachment copies.
+@MainActor
+public final class QuickLookPreviewCoordinator: NSObject, QuickLookPreviewCoordinating, QLPreviewPanelDataSource, QLPreviewPanelDelegate {
+    public static let shared = QuickLookPreviewCoordinator()
+    private var previewURL: URL?
+    public let panelController: any QuickLookPanelControlling
+    private var lockObserver: NSObjectProtocol?
+
+    public var currentPreviewURL: URL? { previewURL }
+
+    public init(panelController: (any QuickLookPanelControlling)? = nil) {
+        self.panelController = panelController ?? SystemQuickLookPanelController()
+        super.init()
+        AppLockGate.shared.registerQuickLookCoordinator(self)
+        lockObserver = NotificationCenter.default.addObserver(
+            forName: SystemLifecycleModel.didLockNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.closeForAppLock()
+            }
+        }
+    }
+
+    deinit {
+        if let lockObserver {
+            NotificationCenter.default.removeObserver(lockObserver)
+        }
+    }
+
+    public func preview(url: URL) {
+        guard AppLockGate.shared.canPerform(.other), url.isFileURL else { return }
+        previewURL = url
+        panelController.presentPreview(for: self)
+    }
+
+    public func closeForAppLock() {
+        guard previewURL != nil || panelController.isVisible else { return }
+        previewURL = nil
+        panelController.closePreview()
+    }
+
     func preview(fileAtPath path: String, suggestedName: String = "") {
-        guard isLocalMediaStorePath(path) else { return }
+        guard AppLockGate.shared.canPerform(.other), isLocalMediaStorePath(path) else { return }
         let source = URL(fileURLWithPath: path)
         Task.detached(priority: .userInitiated) {
             let resolved = (try? OpenFileCache.shared.prepare(
@@ -40,18 +91,19 @@ final class QuickLookPreviewCoordinator: NSObject, QLPreviewPanelDataSource, QLP
                 mimeType: ""
             )) ?? source
             await MainActor.run {
+                guard AppLockGate.shared.canPerform(.other) else { return }
                 QuickLookPreviewCoordinator.shared.preview(url: resolved)
             }
         }
     }
 
-    nonisolated func numberOfPreviewItems(in _: QLPreviewPanel!) -> Int {
+    public nonisolated func numberOfPreviewItems(in _: QLPreviewPanel!) -> Int {
         MainActor.assumeIsolated {
             previewURL == nil ? 0 : 1
         }
     }
 
-    nonisolated func previewPanel(_: QLPreviewPanel!, previewItemAt _: Int) -> (any QLPreviewItem)! {
+    public nonisolated func previewPanel(_: QLPreviewPanel!, previewItemAt _: Int) -> (any QLPreviewItem)! {
         MainActor.assumeIsolated {
             previewURL as NSURL?
         }
@@ -65,7 +117,7 @@ final class QuickLookPreviewCoordinator: NSObject, QLPreviewPanelDataSource, QLP
 enum ReceivedFile {
     @MainActor
     static func open(_ message: TimelineMessage) {
-        guard !message.viewOnce, isLocalMediaStorePath(message.mediaPath) else { return }
+        guard AppLockGate.shared.canPerform(.other), !message.viewOnce, isLocalMediaStorePath(message.mediaPath) else { return }
         let source = URL(fileURLWithPath: message.mediaPath)
         let name = message.fileName
         let mime = message.mimeType
@@ -73,7 +125,7 @@ enum ReceivedFile {
             do {
                 let copy = try OpenFileCache.shared.prepare(source: source, fileName: name, mimeType: mime)
                 await MainActor.run {
-                    guard copy.isFileURL else { return }
+                    guard AppLockGate.shared.canPerform(.other), copy.isFileURL else { return }
                     _ = NSWorkspace.shared.open(copy)
                 }
             } catch {
@@ -84,7 +136,7 @@ enum ReceivedFile {
 
     @MainActor
     static func quickLook(_ message: TimelineMessage) {
-        guard !message.viewOnce, isLocalMediaStorePath(message.mediaPath) else { return }
+        guard AppLockGate.shared.canPerform(.other), !message.viewOnce, isLocalMediaStorePath(message.mediaPath) else { return }
         let source = URL(fileURLWithPath: message.mediaPath)
         let name = message.fileName
         let mime = message.mimeType
@@ -92,6 +144,7 @@ enum ReceivedFile {
             do {
                 let copy = try OpenFileCache.shared.prepare(source: source, fileName: name, mimeType: mime)
                 await MainActor.run {
+                    guard AppLockGate.shared.canPerform(.other) else { return }
                     QuickLookPreviewCoordinator.shared.preview(url: copy)
                 }
             } catch {

@@ -68,6 +68,13 @@ public final class AppModel: ObservableObject {
     private var pendingSerial = 0
 
     public let supervisor: EngineSupervisor
+    private var explicitLifecycle: SystemLifecycleModel?
+    public var lifecycle: SystemLifecycleModel {
+        explicitLifecycle ?? AppLockGate.shared.lifecycle
+    }
+    public var isLocked: Bool {
+        !AppLockGate.shared.canPerform(.openChat, lifecycle: explicitLifecycle)
+    }
     private var hooks: [@MainActor (EngineClient) async -> Void] = []
     private var changeHooks: [@MainActor (Change) -> Void] = []
     private let clock: @Sendable () -> Date
@@ -77,9 +84,14 @@ public final class AppModel: ObservableObject {
     private var connection: Task<Void, Never>?
 
     /// - Parameter clock: the time `connectedAt` takes; tests give one they move.
-    public init(supervisor: EngineSupervisor, clock: @escaping @Sendable () -> Date = { Date() }) {
+    public init(
+        supervisor: EngineSupervisor,
+        clock: @escaping @Sendable () -> Date = { Date() },
+        lifecycle: SystemLifecycleModel? = nil
+    ) {
         self.supervisor = supervisor
         self.clock = clock
+        self.explicitLifecycle = lifecycle
     }
 
     /// Runs `hook` with the new client every time the app must read everything again: after each connect, and
@@ -189,6 +201,7 @@ public final class AppModel: ObservableObject {
     /// is set first, then `selectedRoomID`, so the conversation opening the chat finds it (or, when the chat is
     /// already open, sees it arrive and moves to it in place).
     public func open(_ target: SearchTarget) {
+        guard !isLocked else { return }
         switch target {
         case let .chat(roomID):
             selectedRoomID = roomID

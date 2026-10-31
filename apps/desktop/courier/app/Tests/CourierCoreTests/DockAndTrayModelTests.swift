@@ -7,6 +7,10 @@ import XCTest
 
 @MainActor
 final class DockAndTrayModelTests: XCTestCase {
+    override func tearDown() async throws {
+        AppLockGate.shared.resetForTesting()
+    }
+
     private func makeRow(
         _ id: String,
         name: String,

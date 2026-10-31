@@ -266,7 +266,8 @@ public final class InboxModel: ObservableObject {
                 window: TimeInterval = 0.1, retryDelay: TimeInterval = 2,
                 sleep: @escaping @Sendable (TimeInterval) async -> Void = { await waitForInboxWindow($0) },
                 toastDuration: TimeInterval = 6,
-                toastSleep: @escaping @Sendable (TimeInterval) async -> Void = { await waitForInboxWindow($0) }) {
+                toastSleep: @escaping @Sendable (TimeInterval) async -> Void = { await waitForInboxWindow($0) },
+                lifecycle: SystemLifecycleModel? = nil) {
         self.appModel = appModel
         self.hasTelegramCredentials = hasTelegramCredentials
         self.preferences = preferences
@@ -277,6 +278,7 @@ public final class InboxModel: ObservableObject {
         self.sleep = sleep
         self.toastDuration = toastDuration
         self.toastSleep = toastSleep
+        self.observedLifecycle = lifecycle
         // The views watch this model; the open chat and the accounts are the app model's.
         subscription = appModel.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         appModel.onConnect { [weak self] _ in self?.requestRead(waiting: false) }
@@ -308,8 +310,12 @@ public final class InboxModel: ObservableObject {
         }
     }
 
-    private var isLocked: Bool {
-        observedLifecycle?.isLocked == true
+    public var lifecycle: SystemLifecycleModel {
+        observedLifecycle ?? appModel.lifecycle
+    }
+
+    public var isLocked: Bool {
+        !AppLockGate.shared.canPerform(.other, lifecycle: observedLifecycle ?? appModel.lifecycle)
     }
 
     // MARK: - What the views show
@@ -421,6 +427,7 @@ public final class InboxModel: ObservableObject {
     }
 
     public func select(_ roomID: String?) {
+        guard !isLocked else { return }
         var resolved = roomID
         if let roomID, !query.space.hasPrefix("account:") {
             if let merged = mergedChats[roomID] {
@@ -668,6 +675,7 @@ public final class InboxModel: ObservableObject {
     /// Cycle Filters (⌥Tab): Unread, Drafts, Unanswered, DMs, Groups, then All, one at a time. From any other
     /// filters it starts at Unread.
     public func cycleFilter() {
+        guard !isLocked else { return }
         let cycle = InboxFilter.cycle
         if query.filters.count == 1, let current = query.filters.first, let index = cycle.firstIndex(of: current) {
             query.filters = index + 1 < cycle.count ? [cycle[index + 1]] : []
@@ -678,6 +686,7 @@ public final class InboxModel: ObservableObject {
 
     /// ⌘⇧Y: the Unread filter on or off, the other filters as they are.
     public func toggleUnreadFilter() {
+        guard !isLocked else { return }
         if query.filters.contains(.unread) {
             query.filters.remove(.unread)
         } else {
@@ -758,7 +767,7 @@ public final class InboxModel: ObservableObject {
 
     /// Starts selecting, with the open chat selected.
     public func beginSelecting() {
-        guard !isSelecting else { return }
+        guard !isLocked, !isSelecting else { return }
         isSelecting = true
         selection = selectedRoomID.map { [$0] } ?? []
         anchor = selectedRoomID
@@ -1150,6 +1159,7 @@ public final class InboxModel: ObservableObject {
     /// offers). Undo unarchives exactly the chats this archived. Returns how many it archived.
     /// `space` nil is the space shown; an auto-archive section names its own.
     public func archiveAll(readOnly: Bool, olderThanDays days: Int = 0, space: String? = nil) async -> Int {
+        guard !isLocked else { return 0 }
         dismissToast()
         let space = space ?? query.space
         guard let client = appModel.client, Self.canSweep(space) else { return 0 }
@@ -1171,6 +1181,7 @@ public final class InboxModel: ObservableObject {
     /// read. There is no Undo: a network has heard it. Returns how many it marked.
     @discardableResult
     public func markAllRead() async -> Int {
+        guard !isLocked else { return 0 }
         dismissToast()
         guard let client = appModel.client else { return 0 }
         let space = query.space
@@ -1189,6 +1200,7 @@ public final class InboxModel: ObservableObject {
 
     /// ⌘Z while a toast with Undo shows: reverses what it did, for exactly the chats it changed.
     public func undo() async {
+        guard !isLocked else { return }
         guard toast?.canUndo == true, let action = undoAction else { return }
         dismissToast()
         await action()

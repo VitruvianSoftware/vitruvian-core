@@ -99,16 +99,16 @@ struct MessagesSettingsPane: View {
     }
 
     private func chooseDownloadsDirectory() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.canCreateDirectories = true
         let current = (preferences.downloadsDirectoryPath as NSString).expandingTildeInPath
-        panel.directoryURL = URL(fileURLWithPath: current, isDirectory: true)
-        panel.prompt = String(localized: "Choose")
-        panel.message = String(localized: "Choose a folder for downloaded attachments")
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard let url = AppLockGate.shared.runOpenPanel(action: .settingsChange, configure: { panel in
+            panel.canChooseFiles = false
+            panel.canChooseDirectories = true
+            panel.allowsMultipleSelection = false
+            panel.canCreateDirectories = true
+            panel.directoryURL = URL(fileURLWithPath: current, isDirectory: true)
+            panel.prompt = String(localized: "Choose")
+            panel.message = String(localized: "Choose a folder for downloaded attachments")
+        })?.first else { return }
         preferences.downloadsDirectoryPath = url.path
     }
 

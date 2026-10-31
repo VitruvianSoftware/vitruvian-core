@@ -7,6 +7,10 @@ import XCTest
 
 @MainActor
 final class SystemLifecycleModelTests: XCTestCase {
+    override func tearDown() async throws {
+        AppLockGate.shared.resetForTesting()
+    }
+
     func testLaunchAtLoginRegistersAndUnregistersViaInjectedServiceAndHandlesRequiresApproval() throws {
         let suiteName = "courier.test.lifecycle.login.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))

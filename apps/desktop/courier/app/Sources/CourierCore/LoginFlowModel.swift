@@ -245,8 +245,12 @@ public final class LoginFlowModel: ObservableObject {
         }
     }
 
-    private var isLocked: Bool {
-        observedLifecycle?.isLocked == true
+    public var lifecycle: SystemLifecycleModel {
+        observedLifecycle ?? AppLockGate.shared.lifecycle
+    }
+
+    public var isLocked: Bool {
+        !AppLockGate.shared.canPerform(.settingsChange, lifecycle: lifecycle)
     }
 
     /// The app's: the engine that is up, its accounts, the Keychain and the supervisor.

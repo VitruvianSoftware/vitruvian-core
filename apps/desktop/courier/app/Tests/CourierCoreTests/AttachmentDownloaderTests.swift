@@ -29,6 +29,7 @@ final class AttachmentDownloaderTests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
+        AppLockGate.shared.resetForTesting()
         if let suiteName {
             UserDefaults.standard.removePersistentDomain(forName: suiteName)
         }
@@ -118,5 +119,54 @@ final class AttachmentDownloaderTests: XCTestCase {
         let resourceValues = try saved.resourceValues(forKeys: [.quarantinePropertiesKey])
         XCTAssertNotNil(resourceValues.quarantineProperties)
         XCTAssertGreaterThan(getxattr(saved.path, "com.apple.quarantine", nil, 0, 0, 0), 0)
+    }
+
+    func testSavePanelActionAfterLockDoesNothing() throws {
+        let preferences = ComposerPreferences(defaults: defaults)
+        preferences.downloadsDirectoryPath = downloadsDir.path
+        preferences.alwaysAskWhereToSaveFiles = true
+
+        let source = try makeMediaFile(named: String(repeating: "e5", count: 32), content: "top-secret-payload")
+        let chosenURL = downloadsDir.appendingPathComponent("secret-after-lock.pdf")
+
+        struct AlwaysBiometric: BiometricAuthService {
+            func canEvaluateBiometricsOrWatch() -> Bool { true }
+            func authenticate(reason _: String) async throws -> Bool { true }
+        }
+        struct NoopLoginItem: LoginItemService {
+            func status() -> LoginItemRegistrationStatus { .notRegistered }
+            func register() throws {}
+            func unregister() throws {}
+        }
+
+        let lifecycle = SystemLifecycleModel(
+            defaults: defaults,
+            loginItem: NoopLoginItem(),
+            biometrics: AlwaysBiometric()
+        )
+        lifecycle.autoLockEnabled = true
+
+        // Simulate the app locking while NSSavePanel is open right before the panel returns .OK with chosenURL.
+        let downloader = AttachmentDownloader(preferences: preferences) { _, _ in
+            lifecycle.lockNow()
+            return chosenURL
+        }
+
+        let resultAfterPanelLock = try downloader.download(sourcePath: source.path, suggestedName: "secret.pdf")
+        XCTAssertNil(resultAfterPanelLock, "Save panel action returning after lock must do nothing and return nil")
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: chosenURL.path),
+            "Save panel action returning after lock must not write the file to disk"
+        )
+
+        // Also verify direct download (alwaysAskWhereToSaveFiles == false) while locked does nothing.
+        preferences.alwaysAskWhereToSaveFiles = false
+        let directTarget = downloadsDir.appendingPathComponent("direct-while-locked.pdf")
+        let resultWhileLocked = try downloader.download(sourcePath: source.path, suggestedName: "direct-while-locked.pdf")
+        XCTAssertNil(resultWhileLocked, "Download while locked must do nothing and return nil")
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: directTarget.path),
+            "Download while locked must not write the file to disk"
+        )
     }
 }

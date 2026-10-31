@@ -519,8 +519,8 @@ public enum NotificationPolicy {
             sound: sound,
             delaySeconds: effectiveDelay,
             repeatUnreadMinutes: effectiveRepeat,
-            otpCode: otpCode,
-            shouldAutoCopyOTP: isUrgentOTP
+            otpCode: context.isAppLocked ? nil : otpCode,
+            shouldAutoCopyOTP: isUrgentOTP && !context.isAppLocked
         )
     }
 

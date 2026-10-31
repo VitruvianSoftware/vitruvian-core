@@ -17,6 +17,7 @@ final class ViewSnapshotTests: XCTestCase {
     private var suites: [String] = []
 
     override func tearDown() async throws {
+        AppLockGate.shared.resetForTesting()
         for suite in suites { UserDefaults.standard.removePersistentDomain(forName: suite) }
         suites = []
     }
@@ -2967,6 +2968,72 @@ final class ViewSnapshotTests: XCTestCase {
         check(try Snapshot.render("hotkeys-recorder-conflict", width: 620, height: 520) {
             HotkeysSettingsPane(registry: conflictRegistry, lifecycle: lifecycle)
         })
+    }
+
+    func testPictureInPictureAndQuickLookCloseOnAppLock() throws {
+        final class SpyQuickLookPanel: QuickLookPanelControlling {
+            var isVisible = false
+            var presentCount = 0
+            var closeCount = 0
+            func presentPreview(for _: AnyObject) {
+                isVisible = true
+                presentCount += 1
+            }
+            func closePreview() {
+                isVisible = false
+                closeCount += 1
+            }
+        }
+
+        final class SpyPiPController: PictureInPictureControlling {
+            var isPresentingPiP = true
+            var pauseAndCloseCount = 0
+            func pauseAndCloseForAppLock() {
+                isPresentingPiP = false
+                pauseAndCloseCount += 1
+            }
+        }
+
+        let tempMediaURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("courier-lock-pip-\(UUID().uuidString).mp4")
+        try Data("fake-mp4".utf8).write(to: tempMediaURL)
+        defer { try? FileManager.default.removeItem(at: tempMediaURL) }
+
+        let pipController = PictureInPictureController.shared
+        pipController.show(
+            PiPVideoItem(
+                messageID: "$pip-lock",
+                roomID: "!r1",
+                mediaPath: tempMediaURL.path,
+                title: "Private Video",
+                durationMS: 10000,
+                elapsedMS: 2000,
+                isPlaying: true
+            )
+        )
+        XCTAssertNotNil(pipController.activeItem, "PiP must be active before locking")
+
+        let spyQLPanel = SpyQuickLookPanel()
+        let quickLook = QuickLookPreviewCoordinator(panelController: spyQLPanel)
+        quickLook.preview(url: tempMediaURL)
+        XCTAssertTrue(spyQLPanel.isVisible, "Quick Look panel must be visible before locking")
+        XCTAssertEqual(quickLook.numberOfPreviewItems(in: nil), 1)
+
+        let spyPiP = SpyPiPController()
+        _ = spyPiP
+
+        let lifecycle = SystemLifecycleModel(
+            defaults: defaults(),
+            loginItem: SnapshotLoginItemService(),
+            biometrics: SnapshotBiometricService()
+        )
+        lifecycle.lockNow()
+        XCTAssertTrue(lifecycle.isLocked)
+
+        XCTAssertNil(pipController.activeItem, "PictureInPictureController must pause and close on app lock")
+        XCTAssertFalse(spyQLPanel.isVisible, "QuickLookPreviewCoordinator must close QLPreviewPanel on app lock")
+        XCTAssertEqual(spyQLPanel.closeCount, 1, "QuickLookPreviewCoordinator must invoke closePreview() on app lock")
+        XCTAssertEqual(quickLook.numberOfPreviewItems(in: nil), 0, "QuickLookPreviewCoordinator must clear previewURL on app lock")
     }
 }
 

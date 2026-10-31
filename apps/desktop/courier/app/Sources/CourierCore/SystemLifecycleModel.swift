@@ -1,6 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import AppKit
 import Combine
 import Foundation
 import LocalAuthentication
@@ -128,6 +129,268 @@ public enum LockTimeoutChoice: Int, CaseIterable, Codable, Sendable {
     }
 }
 
+/// Injectable abstraction over Courier's floating Picture-in-Picture window (`PictureInPictureController`)
+/// so app-lock tests can verify PiP pause/close behavior deterministically.
+@MainActor
+public protocol PictureInPictureControlling: AnyObject {
+    var isPresentingPiP: Bool { get }
+    func pauseAndCloseForAppLock()
+}
+
+/// Injectable abstraction over `QLPreviewPanel` so unit tests can verify Quick Look presentation and
+/// app-lock dismissal without requiring a live WindowServer `QLPreviewPanel`.
+@MainActor
+public protocol QuickLookPanelControlling: AnyObject {
+    var isVisible: Bool { get }
+    func presentPreview(for coordinator: AnyObject)
+    func closePreview()
+}
+
+/// Coordinator that presents Quick Look previews and closes them when Courier locks.
+@MainActor
+public protocol QuickLookPreviewCoordinating: AnyObject {
+    var currentPreviewURL: URL? { get }
+    func preview(url: URL)
+    func closeForAppLock()
+}
+
+/// Categories of user-initiated actions gated by `AppLockGate` and `SystemLifecycleModel`.
+public enum UserActionKind: String, CaseIterable, Sendable {
+    case send
+    case reply
+    case markRead
+    case react
+    case archive
+    case export
+    case download
+    case settingsChange
+    case copyCode
+    case openChat
+    case other
+}
+
+/// Modal panel or alert that can be aborted synchronously when Courier enters App Lock.
+@MainActor
+public protocol LockAbortableModal: AnyObject {
+    func abortForAppLock()
+}
+
+extension NSSavePanel: LockAbortableModal {
+    @MainActor
+    public func abortForAppLock() {
+        cancel(nil)
+        if NSApp?.modalWindow === self {
+            NSApp?.abortModal()
+        }
+    }
+}
+
+extension NSAlert: LockAbortableModal {
+    @MainActor
+    public func abortForAppLock() {
+        if NSApp?.modalWindow === window {
+            NSApp?.abortModal()
+        }
+        window.orderOut(nil)
+    }
+}
+
+/// Central action-layer lock gate in `CourierCore` that every user-initiated action, modal panel,
+/// Picture-in-Picture controller, and Quick Look coordinator routes through.
+@MainActor
+public final class AppLockGate {
+    public static let shared = AppLockGate()
+
+    private struct WeakModal {
+        weak var value: (any LockAbortableModal)?
+    }
+
+    private struct WeakPiP {
+        weak var value: (any PictureInPictureControlling)?
+    }
+
+    private struct WeakQuickLook {
+        weak var value: (any QuickLookPreviewCoordinating)?
+    }
+
+    private final class UnlockedFallbackLoginItemService: LoginItemService {
+        func status() -> LoginItemRegistrationStatus { .notRegistered }
+        func register() throws {}
+        func unregister() throws {}
+    }
+
+    private final class UnlockedFallbackBiometricService: BiometricAuthService {
+        func canEvaluateBiometricsOrWatch() -> Bool { true }
+        func canEvaluateDeviceOwnerAuthentication() -> Bool { true }
+        func authenticate(reason _: String) async throws -> Bool { true }
+    }
+
+    private weak var boundLifecycle: SystemLifecycleModel?
+    private lazy var fallbackLifecycle: SystemLifecycleModel = {
+        let suiteName = "courier.lockgate.fallback.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName) ?? .standard
+        defaults.set(false, forKey: SystemLifecycleModel.key("autoLockEnabled"))
+        defaults.set(false, forKey: SystemLifecycleModel.key("requireTouchIDOnLaunch"))
+        return SystemLifecycleModel(
+            loginItemService: UnlockedFallbackLoginItemService(),
+            biometricService: UnlockedFallbackBiometricService(),
+            scheduler: nil,
+            defaults: defaults,
+            bindToSharedGate: false
+        )
+    }()
+
+    private var activeModals: [WeakModal] = []
+    private var pipControllers: [WeakPiP] = []
+    private var quickLookCoordinators: [WeakQuickLook] = []
+
+    private init() {}
+
+    /// Non-optional active `SystemLifecycleModel` observed across models and detached window sessions.
+    public var lifecycle: SystemLifecycleModel {
+        boundLifecycle ?? fallbackLifecycle
+    }
+
+    public var isLocked: Bool {
+        lifecycle.isLocked
+    }
+
+    public func bind(_ lifecycle: SystemLifecycleModel) {
+        boundLifecycle = lifecycle
+    }
+
+    public func resetForTesting() {
+        boundLifecycle = nil
+        activeModals.removeAll()
+    }
+
+    /// Central gate check for user-initiated actions outside the lock screen.
+    public func canPerform(
+        _ action: UserActionKind = .other,
+        lifecycle explicitLifecycle: SystemLifecycleModel? = nil
+    ) -> Bool {
+        _ = action
+        let resolved = explicitLifecycle ?? lifecycle
+        return !resolved.isLocked && !isLocked
+    }
+
+    /// Throws `EngineError.rpc(.badValue, message: "Courier is locked", reason: "locked")` if locked.
+    public func ensureUnlocked(
+        _ action: UserActionKind = .other,
+        lifecycle explicitLifecycle: SystemLifecycleModel? = nil
+    ) throws {
+        guard canPerform(action, lifecycle: explicitLifecycle) else {
+            throw EngineError.rpc(.badValue, message: "Courier is locked", reason: "locked")
+        }
+    }
+
+    public func registerModal(_ modal: any LockAbortableModal) {
+        activeModals.removeAll { $0.value == nil || $0.value === modal }
+        activeModals.append(WeakModal(value: modal))
+        if isLocked {
+            modal.abortForAppLock()
+        }
+    }
+
+    public func unregisterModal(_ modal: any LockAbortableModal) {
+        activeModals.removeAll { $0.value == nil || $0.value === modal }
+    }
+
+    public func registerPiPController(_ controller: any PictureInPictureControlling) {
+        pipControllers.removeAll { $0.value == nil || $0.value === controller }
+        pipControllers.append(WeakPiP(value: controller))
+        if isLocked {
+            controller.pauseAndCloseForAppLock()
+        }
+    }
+
+    public func registerQuickLookCoordinator(_ coordinator: any QuickLookPreviewCoordinating) {
+        quickLookCoordinators.removeAll { $0.value == nil || $0.value === coordinator }
+        quickLookCoordinators.append(WeakQuickLook(value: coordinator))
+        if isLocked {
+            coordinator.closeForAppLock()
+        }
+    }
+
+    /// Runs an AppKit modal (`NSSavePanel`, `NSOpenPanel`, `NSAlert`) while registered for lock abort,
+    /// and verifies the lock gate both before presenting and after the modal returns.
+    public func runModal<T>(
+        _ modal: any LockAbortableModal,
+        action: UserActionKind = .other,
+        lifecycle explicitLifecycle: SystemLifecycleModel? = nil,
+        body: @MainActor () -> T
+    ) -> T? {
+        guard canPerform(action, lifecycle: explicitLifecycle) else { return nil }
+        registerModal(modal)
+        defer { unregisterModal(modal) }
+        let result = body()
+        guard canPerform(action, lifecycle: explicitLifecycle) else { return nil }
+        return result
+    }
+
+    public func runSavePanel(
+        action: UserActionKind = .download,
+        lifecycle explicitLifecycle: SystemLifecycleModel? = nil,
+        configure: @MainActor (NSSavePanel) -> Void
+    ) -> URL? {
+        guard canPerform(action, lifecycle: explicitLifecycle) else { return nil }
+        let panel = NSSavePanel()
+        configure(panel)
+        guard let url = runModal(panel, action: action, lifecycle: explicitLifecycle, body: {
+            panel.runModal() == .OK ? panel.url : nil
+        }) else {
+            return nil
+        }
+        return url
+    }
+
+    public func runOpenPanel(
+        action: UserActionKind = .other,
+        lifecycle explicitLifecycle: SystemLifecycleModel? = nil,
+        configure: @MainActor (NSOpenPanel) -> Void
+    ) -> [URL]? {
+        guard canPerform(action, lifecycle: explicitLifecycle) else { return nil }
+        let panel = NSOpenPanel()
+        configure(panel)
+        guard let urls = runModal(panel, action: action, lifecycle: explicitLifecycle, body: {
+            panel.runModal() == .OK ? panel.urls : nil
+        }) else {
+            return nil
+        }
+        return urls
+    }
+
+    public func runAlertModal(
+        _ alert: NSAlert,
+        action: UserActionKind = .other,
+        lifecycle explicitLifecycle: SystemLifecycleModel? = nil
+    ) -> NSApplication.ModalResponse? {
+        runModal(alert, action: action, lifecycle: explicitLifecycle) {
+            alert.runModal()
+        }
+    }
+
+    public func handleDidLock(from source: SystemLifecycleModel) {
+        boundLifecycle = source
+        let modals = activeModals.compactMap(\.value)
+        activeModals.removeAll()
+        for modal in modals {
+            modal.abortForAppLock()
+        }
+        if NSApp?.modalWindow != nil {
+            NSApp?.abortModal()
+        }
+        pipControllers.removeAll { $0.value == nil }
+        for entry in pipControllers {
+            entry.value?.pauseAndCloseForAppLock()
+        }
+        quickLookCoordinators.removeAll { $0.value == nil }
+        for entry in quickLookCoordinators {
+            entry.value?.closeForAppLock()
+        }
+    }
+}
+
 /// Manages Launch at Login (`SMAppService`), Touch ID App Lock (`LAContext`), and window lifecycle settings.
 @MainActor
 public final class SystemLifecycleModel: ObservableObject {
@@ -215,7 +478,8 @@ public final class SystemLifecycleModel: ObservableObject {
         loginItemService: any LoginItemService = MACLoginItemService(),
         biometricService: any BiometricAuthService = LAContextBiometricService(),
         scheduler: (any NotificationTimerScheduling)? = nil,
-        defaults: UserDefaults = .standard
+        defaults: UserDefaults = .standard,
+        bindToSharedGate: Bool = true
     ) {
         self.loginItemService = loginItemService
         self.biometricService = biometricService
@@ -256,6 +520,10 @@ public final class SystemLifecycleModel: ObservableObject {
         isInitializing = false
         isApplyingLoginState = false
         isApplyingLockState = false
+
+        if bindToSharedGate {
+            AppLockGate.shared.bind(self)
+        }
 
         if storedAutoLock {
             self.launchUnlockTask = Task { @MainActor [weak self] in
@@ -408,7 +676,16 @@ public final class SystemLifecycleModel: ObservableObject {
         }
     }
 
+    public func canPerformUserAction(_ action: UserActionKind = .other) -> Bool {
+        AppLockGate.shared.canPerform(action, lifecycle: self)
+    }
+
+    public func ensureUnlocked(_ action: UserActionKind = .other) throws {
+        try AppLockGate.shared.ensureUnlocked(action, lifecycle: self)
+    }
+
     private func notifyLocked() {
+        AppLockGate.shared.handleDidLock(from: self)
         for handler in lockHandlers {
             handler()
         }

@@ -752,14 +752,15 @@ public struct ChatInfoPane: View {
 
     /// Presents `NSSavePanel` in the view only and hands the chosen URL to `onExport`.
     private func promptExportChat() {
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.plainText]
         let baseName = info.name.isEmpty ? "chat-export" : info.name.replacingOccurrences(of: "/", with: "-")
-        panel.nameFieldStringValue = "\(baseName).txt"
-        panel.canCreateDirectories = true
-        if panel.runModal() == .OK, let url = panel.url {
-            onExport(url)
+        guard let url = AppLockGate.shared.runSavePanel(action: .export, configure: { panel in
+            panel.allowedContentTypes = [.plainText]
+            panel.nameFieldStringValue = "\(baseName).txt"
+            panel.canCreateDirectories = true
+        }) else {
+            return
         }
+        onExport(url)
     }
 
     private static func eventBody(_ event: Event) -> String {

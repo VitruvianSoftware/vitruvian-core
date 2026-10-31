@@ -157,9 +157,15 @@ public final class MessageActionsModel: ObservableObject {
         request = nil
     }
 
-    private var isLocked: Bool {
-        observedLifecycle?.isLocked == true
-            || conversation.composer.hotkeyDispatcher?.lifecycle.isLocked == true
+    public var lifecycle: SystemLifecycleModel {
+        observedLifecycle
+            ?? conversation.composer.hotkeyDispatcher?.lifecycle
+            ?? conversation.lifecycle
+    }
+
+    public var isLocked: Bool {
+        !AppLockGate.shared.canPerform(.other, lifecycle: lifecycle)
+            || conversation.isLocked
     }
 
     // MARK: - The menu

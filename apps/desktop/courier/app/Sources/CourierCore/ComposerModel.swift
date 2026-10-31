@@ -452,10 +452,19 @@ public final class ComposerModel: ObservableObject {
     /// My held messages, by chat, and what Undo does with them.
     private let held = HeldMessages()
 
-    private var isLocked: Bool {
-        if let observedLifecycle { return observedLifecycle.isLocked }
-        if let dispatcher = hotkeyDispatcher { return dispatcher.lifecycle.isLocked }
-        if let hotkeys { return hotkeys.isLocked }
+    public var lifecycle: SystemLifecycleModel {
+        observedLifecycle
+            ?? hotkeyDispatcher?.lifecycle
+            ?? AppLockGate.shared.lifecycle
+    }
+
+    public var isLocked: Bool {
+        if !AppLockGate.shared.canPerform(.send, lifecycle: lifecycle) {
+            return true
+        }
+        if let hotkeys, hotkeys.isLocked {
+            return true
+        }
         return false
     }
 

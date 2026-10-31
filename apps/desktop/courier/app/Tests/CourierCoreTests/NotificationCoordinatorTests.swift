@@ -12,6 +12,7 @@ final class NotificationCoordinatorTests: XCTestCase {
     private var servers: [TestEngineServer] = []
 
     override func tearDown() async throws {
+        AppLockGate.shared.resetForTesting()
         for server in servers { server.stop() }
         servers = []
         for store in defaultsStores { store.remove() }
@@ -1266,6 +1267,81 @@ final class NotificationCoordinatorTests: XCTestCase {
         h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$s-req-off"])
         try await settle(h, fetches: 4)
         XCTAssertTrue(soundPlayer.played.isEmpty, "disabled request notifications must suppress received sound effect")
+        await finish(h)
+    }
+
+    func testNotificationBannerActionsAndAutoCopyOTPDoNothingWhileLocked() async throws {
+        let clipboard = FakeClipboardSink()
+        let h = try await start(clipboard: clipboard)
+        h.preferences.notifications.autoCopyOTP = true
+        h.clock.advance(seconds: 5)
+
+        // Deliver an OTP message while unlocked so a code is cached for !a.
+        let ts1 = Int64(h.clock.date.timeIntervalSince1970 * 1000)
+        let otpUnlocked = message("$otp-1", ts: ts1, text: "Your security code is 482910")
+        h.script.events["!a"] = [otpUnlocked]
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$otp-1"])
+        try await waitUntil { h.delivery.delivered.count == 1 }
+        XCTAssertEqual(clipboard.copiedCodes, ["482910"])
+
+        // Lock the app.
+        h.window.isLocked = true
+        let initialShown = h.window.shown
+        let initialSentCalls = h.server.receivedMethods().filter { $0 == "message.send" }.count
+        let initialMarkReadCalls = h.server.receivedMethods().filter { $0 == "room.markRead" }.count
+        let initialReminderCalls = h.server.receivedMethods().filter { $0 == "reminder.set" }.count
+
+        // 1. Inline Reply while locked must not send or restore draft; brings Courier forward to lock screen instead.
+        await h.coordinator.reply(roomID: "!a", text: "locked reply")
+        XCTAssertEqual(
+            h.server.receivedMethods().filter { $0 == "message.send" }.count,
+            initialSentCalls,
+            "Notification inline reply while locked must not call message.send"
+        )
+        XCTAssertTrue(h.window.drafts.isEmpty, "Notification inline reply while locked must not mutate drafts")
+        XCTAssertEqual(h.window.shown, initialShown + 1, "Notification inline reply while locked must bring Courier forward to lock screen")
+
+        // 2. Mark as Read while locked must not call room.markRead; brings Courier forward instead.
+        await h.coordinator.markRead(roomID: "!a")
+        XCTAssertEqual(
+            h.server.receivedMethods().filter { $0 == "room.markRead" }.count,
+            initialMarkReadCalls,
+            "Notification Mark as Read while locked must not call room.markRead"
+        )
+        XCTAssertEqual(h.window.shown, initialShown + 2, "Notification Mark as Read while locked must bring Courier forward to lock screen")
+
+        // 3. Remind while locked must not call reminder.set; brings Courier forward instead.
+        await h.coordinator.remind(roomID: "!a", after: NotificationCoordinator.remindOneHour)
+        XCTAssertEqual(
+            h.server.receivedMethods().filter { $0 == "reminder.set" }.count,
+            initialReminderCalls,
+            "Notification Remind while locked must not call reminder.set"
+        )
+        XCTAssertEqual(h.window.shown, initialShown + 3, "Notification Remind while locked must bring Courier forward to lock screen")
+
+        // 4. Copy Code while locked must not copy to clipboard; brings Courier forward instead.
+        h.coordinator.copyOTPCode(forRoomID: "!a")
+        XCTAssertEqual(clipboard.copiedCodes, ["482910"], "Notification Copy Code while locked must not copy OTP to clipboard")
+        XCTAssertEqual(h.window.shown, initialShown + 4, "Notification Copy Code while locked must bring Courier forward to lock screen")
+
+        // 5. Click-to-open while locked must not change selectedRoomID; brings Courier forward instead.
+        XCTAssertNil(h.app.selectedRoomID)
+        h.coordinator.open(roomID: "!a")
+        XCTAssertNil(h.app.selectedRoomID, "Notification click-to-open while locked must not open chat")
+        XCTAssertEqual(h.window.shown, initialShown + 5, "Notification click-to-open while locked must bring Courier forward to lock screen")
+
+        // 6. Incoming OTP message while locked keeps banner content redacted AND skips automatic OTP clipboard copy.
+        let ts2 = ts1 + 1000
+        let otpLocked = message("$otp-2", ts: ts2, text: "Your verification code is 918273")
+        h.script.events["!a"] = [otpLocked, otpUnlocked]
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$otp-2"])
+        try await waitUntil { h.delivery.delivered.count == 2 }
+        let lockedBanner = try XCTUnwrap(h.delivery.delivered.last)
+        XCTAssertEqual(lockedBanner.title, "Courier")
+        XCTAssertEqual(lockedBanner.body, "New message")
+        XCTAssertEqual(lockedBanner.category, .scheduled)
+        XCTAssertEqual(clipboard.copiedCodes, ["482910"], "Automatic OTP clipboard copy must be skipped while locked")
+
         await finish(h)
     }
 }

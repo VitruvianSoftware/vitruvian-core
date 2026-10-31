@@ -55,8 +55,12 @@ public final class LabelsModel: ObservableObject {
         if appModel.client != nil { readRules() }
     }
 
-    private var isLocked: Bool {
-        observedLifecycle?.isLocked == true
+    public var lifecycle: SystemLifecycleModel {
+        observedLifecycle ?? appModel.lifecycle
+    }
+
+    public var isLocked: Bool {
+        !AppLockGate.shared.canPerform(.settingsChange, lifecycle: lifecycle)
     }
 
     private func ensureUnlocked() throws {

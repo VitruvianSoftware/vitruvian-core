@@ -7,6 +7,10 @@ import XCTest
 
 @MainActor
 final class DetachedWindowModelTests: XCTestCase {
+    override func tearDown() async throws {
+        AppLockGate.shared.resetForTesting()
+    }
+
     private func makeAppModel() -> AppModel {
         let supervisor = EngineSupervisor(
             enginePath: "/Applications/Courier.app/Contents/Helpers/courier-engine",

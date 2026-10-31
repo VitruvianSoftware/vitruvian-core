@@ -186,6 +186,7 @@ public final class NotificationCoordinator {
     private var pendingTimerIDsByRoom: [String: Set<UUID>] = [:]
     /// Most recent extracted OTP code per chat (in-memory only), for the "Copy Code" notification button.
     private var latestOTPByRoom: [String: String] = [:]
+    private var lockObserver: NSObjectProtocol?
 
     /// The UserDefaults key of the scheduled messages already told about.
     public static let toldScheduledKey = "courier.notifications.toldScheduled"
@@ -247,6 +248,25 @@ public final class NotificationCoordinator {
         self.soundEffects = soundEffects
         appModel.onChange { [weak self] change in self?.handle(change) }
         appModel.onConnect { [weak self] client in await self?.readScheduled(roomID: nil, with: client) }
+        lockObserver = NotificationCenter.default.addObserver(
+            forName: SystemLifecycleModel.didLockNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.latestOTPByRoom.removeAll()
+            }
+        }
+    }
+
+    deinit {
+        if let lockObserver {
+            NotificationCenter.default.removeObserver(lockObserver)
+        }
+    }
+
+    private var isCurrentlyLocked: Bool {
+        isAppLocked() || !AppLockGate.shared.canPerform(.other)
     }
 
     /// Asks for permission to notify; the app calls it once at launch.
@@ -365,7 +385,7 @@ public final class NotificationCoordinator {
     }
 
     private func deliverRespectingLock(_ content: NotificationContent) {
-        delivery.deliver(NotificationPolicy.redactIfLocked(content, isLocked: isAppLocked()))
+        delivery.deliver(NotificationPolicy.redactIfLocked(content, isLocked: isCurrentlyLocked))
     }
 
     private func resolveAccountKey(for room: InboxRow) -> String? {
@@ -394,7 +414,7 @@ public final class NotificationCoordinator {
             isLooking: isLooking(), requestNotifications: preferences.requestNotifications,
             notifyWhenInFocus: preferences.notifications.notifyWhenInFocus,
             notifyOnReaction: preferences.notifications.notifyOnReaction,
-            isAppLocked: isAppLocked())
+            isAppLocked: isCurrentlyLocked)
     }
 
     // MARK: - Send later
@@ -508,7 +528,7 @@ public final class NotificationCoordinator {
                 accountKey: accountKey
             )
             guard decision.shouldNotify, let content = decision.content else { continue }
-            if let otpCode = decision.otpCode {
+            if let otpCode = decision.otpCode, !context.isAppLocked, !isCurrentlyLocked {
                 latestOTPByRoom[room.roomID] = otpCode
                 if decision.shouldAutoCopyOTP {
                     clipboard?.copyOTP(otpCode)
@@ -644,27 +664,53 @@ public final class NotificationCoordinator {
     // MARK: - What is done on a notification
 
     /// Copies the most recently extracted OTP code for `roomID` to the clipboard.
+    /// While locked, drops the action and brings Courier forward to the lock screen.
     public func copyOTPCode(forRoomID roomID: String) {
+        guard !isCurrentlyLocked else {
+            showWindow()
+            return
+        }
         guard let code = latestOTPByRoom[roomID] else { return }
         clipboard?.copyOTP(code)
     }
 
     public func openSystemNotificationSettings() {
+        guard !isCurrentlyLocked else {
+            showWindow()
+            return
+        }
         delivery.openSystemNotificationSettings()
     }
 
     public func restartNotificationCenter() {
+        guard !isCurrentlyLocked else {
+            showWindow()
+            return
+        }
         delivery.restartNotificationCenter()
     }
 
     /// A click: the chat opens in the main window, which comes forward.
+    /// While locked, drops the room selection and brings Courier forward to the lock screen.
     public func open(roomID: String) {
+        guard !isCurrentlyLocked else {
+            showWindow()
+            return
+        }
         appModel.selectedRoomID = roomID
         showWindow()
     }
 
-    /// "Mark as Read".
+    /// "Mark as Read". While locked, drops the action and brings Courier forward to the lock screen.
     public func markRead(roomID: String) async {
+        guard !isCurrentlyLocked else {
+            showWindow()
+            return
+        }
+        await performMarkRead(roomID: roomID)
+    }
+
+    private func performMarkRead(roomID: String) async {
         cancelTimers(forRoomID: roomID)
         latestOTPByRoom.removeValue(forKey: roomID)
         if let client = appModel.client {
@@ -684,8 +730,12 @@ public final class NotificationCoordinator {
 
     /// "Remind in 1 Hour" and "Remind in 8 Hours": a reminder `seconds` from now, brought back as the person's
     /// default says. Like Mark as Read, a failure is ignored; the buttons are only offered with the plan, and a
-    /// denial or a dead engine changes nothing.
+    /// denial or a dead engine changes nothing. While locked, drops the action and brings Courier forward.
     public func remind(roomID: String, after seconds: TimeInterval) async {
+        guard !isCurrentlyLocked else {
+            showWindow()
+            return
+        }
         guard entitlement.isEntitled(.reminders), let client = appModel.client else { return }
         let dueAt = Self.millis(clock()) + Int64((seconds * 1000).rounded())
         let _: Empty? = try? await client.call(
@@ -695,8 +745,12 @@ public final class NotificationCoordinator {
     /// The inline "Reply": sends the typed text to the chat. If it cannot be sent (the engine is not up, or refuses),
     /// the text goes into that chat's draft and a notification says so, so the words are never lost. A send the
     /// engine took but stored failed, or waiting for its network, is in the chat already: a notification says that
-    /// it wasn't sent, or that it goes when the network is back.
+    /// it wasn't sent, or that it goes when the network is back. While locked, drops the action and brings Courier forward.
     public func reply(roomID: String, text: String) async {
+        guard !isCurrentlyLocked else {
+            showWindow()
+            return
+        }
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         var mayHaveGone = false
@@ -711,7 +765,7 @@ public final class NotificationCoordinator {
                 let line = await status(of: sent.eventID, in: roomID, with: client)
                 switch line {
                 case let line? where line.hasGone:
-                    await markRead(roomID: roomID)
+                    await performMarkRead(roomID: roomID)
                 case .waiting?:
                     deliverRespectingLock(NotificationPolicy.replyWaiting(roomID: roomID, title: row(roomID)?.name ?? ""))
                 case .failed?, .notSent?, .noAccount?, .mayHaveBeenSent?:

@@ -26,6 +26,7 @@ public enum DetachedWindowTarget: Equatable, Hashable, Codable, Identifiable, Se
 public final class DetachedWindowSession: ObservableObject {
     public let target: DetachedWindowTarget
     public let appModel: AppModel
+    public let lifecycle: SystemLifecycleModel
     public let conversation: ConversationModel
     public let inbox: InboxModel?
     public let hostInbox: InboxModel
@@ -34,6 +35,9 @@ public final class DetachedWindowSession: ObservableObject {
     public let scheduled: ScheduledModel
     public let focus: MessageFocus
     public var thread: ThreadModel { conversation.thread }
+    public var isLocked: Bool {
+        !AppLockGate.shared.canPerform(.other, lifecycle: lifecycle)
+    }
 
     public init(
         target: DetachedWindowTarget,
@@ -45,10 +49,13 @@ public final class DetachedWindowSession: ObservableObject {
         entitlement: (any EntitlementProvider)? = nil,
         pasteboard: TextPasteboard? = nil,
         openURL: (@MainActor (URL) -> Void)? = nil,
-        hotkeys: HotkeyRegistry? = nil
+        hotkeys: HotkeyRegistry? = nil,
+        lifecycle: SystemLifecycleModel? = nil
     ) {
         self.target = target
         self.appModel = appModel
+        let resolvedLifecycle = lifecycle ?? mainInbox?.lifecycle ?? appModel.lifecycle
+        self.lifecycle = resolvedLifecycle
         let resolvedComposerPrefs = composerPreferences ?? ComposerPreferences()
         self.composerPreferences = resolvedComposerPrefs
         let resolvedEntitlement = entitlement ?? AlwaysEntitled()
@@ -66,7 +73,8 @@ public final class DetachedWindowSession: ObservableObject {
                 appModel: appModel,
                 preferences: inboxPreferences,
                 entitlement: resolvedEntitlement,
-                followsAppSelection: false
+                followsAppSelection: false,
+                lifecycle: resolvedLifecycle
             )
             self.hostInbox = fallbackInbox
             let conv = ConversationModel(
@@ -94,7 +102,8 @@ public final class DetachedWindowSession: ObservableObject {
                 appModel: appModel,
                 preferences: inboxPreferences,
                 entitlement: resolvedEntitlement,
-                followsAppSelection: false
+                followsAppSelection: false,
+                lifecycle: resolvedLifecycle
             )
             self.hostInbox = fallbackInbox
             let conv = ConversationModel(
@@ -122,7 +131,8 @@ public final class DetachedWindowSession: ObservableObject {
                 appModel: appModel,
                 preferences: inboxPreferences,
                 entitlement: resolvedEntitlement,
-                followsAppSelection: false
+                followsAppSelection: false,
+                lifecycle: resolvedLifecycle
             )
             spaceInbox.query.space = spaceID
             let conv = ConversationModel(
@@ -194,7 +204,13 @@ public final class DetachedWindowRegistry: ObservableObject {
     private var focusCounts: [DetachedWindowTarget: Int] = [:]
     private weak var appModel: AppModel?
     private weak var mainInbox: InboxModel?
-    private weak var lifecycle: SystemLifecycleModel?
+    private weak var explicitLifecycle: SystemLifecycleModel?
+    public var lifecycle: SystemLifecycleModel {
+        explicitLifecycle ?? mainInbox?.lifecycle ?? appModel?.lifecycle ?? AppLockGate.shared.lifecycle
+    }
+    public var isLocked: Bool {
+        !AppLockGate.shared.canPerform(.other, lifecycle: lifecycle)
+    }
     private let inboxPreferences: InboxPreferences
     private let composerPreferences: ComposerPreferences?
     private let quickReplies: QuickReplies?
@@ -229,7 +245,7 @@ public final class DetachedWindowRegistry: ObservableObject {
     ) {
         self.appModel = appModel
         self.mainInbox = mainInbox
-        self.lifecycle = lifecycle
+        self.explicitLifecycle = lifecycle
         self.inboxPreferences = inboxPreferences ?? mainInbox?.preferences ?? InboxPreferences()
         self.composerPreferences = composerPreferences
         self.quickReplies = quickReplies
@@ -240,14 +256,14 @@ public final class DetachedWindowRegistry: ObservableObject {
         self.onOpen = onOpen
         self.onFocus = onFocus
         self.onClose = onClose
-        if let lifecycle {
-            self.lifecycleSubscription = lifecycle.objectWillChange.sink { [weak self] _ in
-                self?.objectWillChange.send()
-            }
+        let resolvedLifecycle = lifecycle ?? mainInbox?.lifecycle ?? appModel?.lifecycle ?? AppLockGate.shared.lifecycle
+        self.lifecycleSubscription = resolvedLifecycle.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
         }
     }
 
     public func open(_ target: DetachedWindowTarget) {
+        guard !isLocked else { return }
         if openTargets.contains(target) {
             focusCounts[target, default: 0] += 1
             focusedTarget = target
@@ -265,7 +281,8 @@ public final class DetachedWindowRegistry: ObservableObject {
                 entitlement: entitlement,
                 pasteboard: makePasteboard?(),
                 openURL: openURL,
-                hotkeys: hotkeys
+                hotkeys: hotkeys,
+                lifecycle: lifecycle
             )
         }
         openTargets.append(target)
@@ -310,6 +327,6 @@ public final class DetachedWindowRegistry: ObservableObject {
     /// Whether the detached window for `target` is covered by the app lock overlay (`SystemLifecycleModel.isLocked`).
     public func showsLockOverlay(for target: DetachedWindowTarget) -> Bool {
         guard openTargets.contains(target) else { return false }
-        return lifecycle?.isLocked ?? false
+        return isLocked
     }
 }
