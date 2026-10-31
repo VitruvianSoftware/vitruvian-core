@@ -103,20 +103,15 @@ rust_library(
 )
 
 rust_binary(
-    name = "workspace-status-rs",
+    name = "workspace-status",
     srcs = ["src/workspace_status/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [":workspace_status_lib"],
 )
 
-alias(
-    name = "workspace_status_rs",
-    actual = ":workspace-status-rs",
-)
-
 rust_test(
-    name = "workspace_status_rs_test",
+    name = "workspace_status_test",
     size = "small",
     crate = ":workspace_status_lib",
     edition = "2021",

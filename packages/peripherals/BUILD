@@ -33,7 +33,6 @@ load("@build_bazel_rules_apple//apple:macos.bzl", "macos_command_line_applicatio
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("//tools/delivery:defs.bzl", "delivery")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
@@ -100,14 +99,14 @@ swift_library(
 #
 # A signed command-line tool rather than a bare swift_binary: the Vitruvian app
 # carries it in Contents/Helpers (codesign --deep checks every nested binary),
-# and the release build makes it universal with --macos_cpus (publish.sh).
+# and the release build makes it universal with --macos_cpus (:publish).
 macos_command_line_application(
     name = "gravastar-mouse",
     bundle_id = "com.vitruviansoftware.gravastar-mouse",
     minimum_os_version = "14.0",
     # `manual`, like the app's fan helper: rules_apple resolves its Mac
     # toolchain before target_compatible_with can skip it, so a Linux
-    # `bazel build //...` would fail on it. The app and publish.sh name it.
+    # `bazel build //...` would fail on it. The app and :publish name it.
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
     visibility = ["//visibility:public"],
@@ -135,23 +134,13 @@ pipeline_unit(
     name = "peripherals",
     persona = "platform",
     runner = "xcode-27",
-    test_targets = [":PeripheralsTests"],
+    test_targets = [
+        ":PeripheralsTests",
+        ":publish_lib_test",
+        ":publish_test",
+    ],
     tier = "L1",
     timeout_minutes = 30,
-)
-
-# Read by //tools/delivery/gen's guard that every `run:` in the generated
-# workflow points at a script that exists and is executable.
-exports_files(["publish.sh"])
-
-# Build the universal binary + upload it (and, for a release, the Homebrew
-# formula). The generated delivery workflow runs the script directly
-# (`bash packages/peripherals/publish.sh`); this target is the break-glass path
-# and what the delivery() below names as `run`.
-sh_binary(
-    name = "publish",
-    srcs = ["publish.sh"],
-    tags = ["manual"],
 )
 
 # Delivery unit: the gravastar-mouse release ladder.
@@ -188,7 +177,12 @@ delivery(
     run = "//packages/peripherals:publish",
 )
 
-# --- Rust port of publish.sh (std-only, zero external crates) ---
+# --- The gravastar-mouse publisher ---
+#
+# Build the universal binary + upload it (and, for a release, the Homebrew
+# formula). The generated delivery workflow runs `bazel run` on this target,
+# which is also the break-glass path and what the delivery() above names as
+# `run`. Std-only Rust (it replaced publish.sh; see scripts/src/lib.rs).
 
 rust_library(
     name = "publish_lib",
@@ -199,7 +193,7 @@ rust_library(
 )
 
 rust_binary(
-    name = "publish_rs",
+    name = "publish",
     srcs = ["scripts/src/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
@@ -212,4 +206,22 @@ rust_test(
     crate = ":publish_lib",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
+)
+
+# :publish end to end against stub bazel/lipo/gh/git (expectations: the
+# replaced publish.sh on the same stubs).
+rust_test(
+    name = "publish_test",
+    size = "small",
+    srcs = ["scripts/tests/publish_test.rs"],
+    data = [
+        ":publish",
+        "@jq_toolchains//:resolved_toolchain",
+    ],
+    edition = "2021",
+    env = {
+        "JQ_BIN": "$(JQ_BIN)",
+        "PUBLISH_BIN": "$(rootpath :publish)",
+    },
+    toolchains = ["@jq_toolchains//:resolved_toolchain"],
 )

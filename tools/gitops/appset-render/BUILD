@@ -15,12 +15,6 @@ rust_library(
     visibility = ["//visibility:public"],
 )
 
-alias(
-    name = "appset_render_rs_lib",
-    actual = ":appset_render_lib",
-    visibility = ["//visibility:public"],
-)
-
 # `bazel run //tools/gitops/appset-render` — check every ApplicationSet under
 # gitops/argocd parses as the ArgoCD controller would parse it.
 rust_binary(
@@ -34,18 +28,6 @@ rust_binary(
 
 alias(
     name = "appset_render",
-    actual = ":appset-render",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "appset-render-rs",
-    actual = ":appset-render",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "appset_render_rs",
     actual = ":appset-render",
     visibility = ["//visibility:public"],
 )
@@ -65,10 +47,5 @@ test_suite(
 
 test_suite(
     name = "appset_render_lib_test",
-    tests = [":appset-render_test"],
-)
-
-test_suite(
-    name = "appset_render_rs_lib_test",
     tests = [":appset-render_test"],
 )

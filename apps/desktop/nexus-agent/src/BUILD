@@ -5,28 +5,8 @@ load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 alias(
     name = "bot",
-    actual = ":bot-engine-rs",
+    actual = ":bot-engine",
     visibility = ["//apps/desktop/nexus-agent:__subpackages__"],
-)
-
-test_suite(
-    name = "annotations_test",
-    tests = [":annotations_rs_test"],
-)
-
-test_suite(
-    name = "formatter_test",
-    tests = [":formatter_rs_test"],
-)
-
-test_suite(
-    name = "sessions_test",
-    tests = [":sessions_rs_test"],
-)
-
-test_suite(
-    name = "shared_cases_test",
-    tests = [":shared_cases_rs_test"],
 )
 
 test_suite(
@@ -52,18 +32,12 @@ rust_library(
 )
 
 rust_binary(
-    name = "bot-engine-rs",
+    name = "bot-engine",
     srcs = ["rs/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//apps/desktop/nexus-agent:__subpackages__"],
     deps = [":nexus_agent_src_lib"],
-)
-
-alias(
-    name = "bot_engine_rs",
-    actual = ":bot-engine-rs",
-    visibility = ["//apps/desktop/nexus-agent:__subpackages__"],
 )
 
 rust_test(
@@ -75,7 +49,7 @@ rust_test(
 )
 
 rust_test(
-    name = "annotations_rs_test",
+    name = "annotations_test",
     size = "small",
     srcs = ["rs/annotations_test.rs"],
     edition = "2021",
@@ -84,7 +58,7 @@ rust_test(
 )
 
 rust_test(
-    name = "formatter_rs_test",
+    name = "formatter_test",
     size = "small",
     srcs = ["rs/formatter_test.rs"],
     edition = "2021",
@@ -93,7 +67,7 @@ rust_test(
 )
 
 rust_test(
-    name = "sessions_rs_test",
+    name = "sessions_test",
     size = "small",
     srcs = ["rs/sessions_test.rs"],
     edition = "2021",
@@ -102,7 +76,7 @@ rust_test(
 )
 
 rust_test(
-    name = "shared_cases_rs_test",
+    name = "shared_cases_test",
     size = "small",
     srcs = ["rs/shared_cases_test.rs"],
     data = ["//apps/desktop/nexus-agent:testdata_files"],
@@ -116,14 +90,14 @@ pipeline_unit(
     persona = "backend",
     runner = "ubuntu-26.04",
     test_targets = [
-        ":annotations_rs_test",
         ":annotations_test",
-        ":formatter_rs_test",
+        ":annotations_test",
+        ":formatter_test",
         ":formatter_test",
         ":nexus_agent_src_lib_test",
-        ":sessions_rs_test",
         ":sessions_test",
-        ":shared_cases_rs_test",
+        ":sessions_test",
+        ":shared_cases_test",
         ":shared_cases_test",
         ":typecheck_typecheck_test",
     ],

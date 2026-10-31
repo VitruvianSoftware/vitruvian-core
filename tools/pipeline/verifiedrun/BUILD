@@ -37,15 +37,10 @@ rust_library(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [
-        "//tools/pipeline/unitfile:unitfile_rs_lib",
+        "//tools/pipeline/unitfile:unitfile_lib",
         "@crates//:serde",
         "@crates//:serde_json",
     ],
-)
-
-alias(
-    name = "verifiedrun_rs_lib",
-    actual = ":pipeline_verifiedrun_lib",
 )
 
 rust_binary(
@@ -65,22 +60,10 @@ rust_binary(
     visibility = ["//visibility:public"],
     deps = [
         ":pipeline_verifiedrun_lib",
-        "//tools/pipeline/unitfile:unitfile_rs_lib",
+        "//tools/pipeline/unitfile:unitfile_lib",
         "@crates//:serde",
         "@crates//:serde_json",
     ],
-)
-
-alias(
-    name = "verifiedrun-rs",
-    actual = ":verifiedrun",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "verifiedrun_rs",
-    actual = ":verifiedrun",
-    visibility = ["//visibility:public"],
 )
 
 rust_test(
@@ -94,10 +77,5 @@ rust_test(
 
 test_suite(
     name = "pipeline_verifiedrun_lib_test",
-    tests = [":verifiedrun_test"],
-)
-
-test_suite(
-    name = "verifiedrun_rs_lib_test",
     tests = [":verifiedrun_test"],
 )

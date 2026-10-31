@@ -46,7 +46,7 @@ rust_binary(
 )
 
 rust_binary(
-    name = "watch-pr-rs-probe",
+    name = "watch-pr-probe",
     testonly = True,
     srcs = ["src/probe.rs"],
     edition = "2021",
@@ -64,10 +64,5 @@ rust_test(
 
 test_suite(
     name = "watch-pr_test",
-    tests = [":watch_pr_lib_test"],
-)
-
-test_suite(
-    name = "watch-pr-rs_test",
     tests = [":watch_pr_lib_test"],
 )

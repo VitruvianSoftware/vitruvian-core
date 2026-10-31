@@ -20,7 +20,7 @@
 # SOFTWARE.
 
 # Unit tests for the gate evaluator, //tools/ci:gate_evaluator (Rust). The BUILD
-# rule gate_evaluator_rs_test passes the binary as $1.
+# rule gate_evaluator_test passes the binary as $1.
 
 set -uo pipefail
 

@@ -26,7 +26,7 @@
 //! own, no links. Named `VitruvianRemote-<version>-tool.zip`.
 //!
 //! ```text
-//! zip-tool-rs <remote-tool binary> <vitruvian-remote-agent binary> <version> <dist dir>
+//! zip-tool <remote-tool binary> <vitruvian-remote-agent binary> <version> <dist dir>
 //! ```
 //!
 //! With `REMOTE_TOOL_REQUIRE_UNIVERSAL=1` both programs must hold Apple silicon
@@ -283,7 +283,7 @@ fn default_manifest() -> PathBuf {
 pub fn run(args: &[String]) -> i32 {
     if args.len() != 5 {
         eprintln!(
-            "Usage: zip-tool-rs <remote-tool binary> <vitruvian-remote-agent binary> <version> <dist dir>"
+            "Usage: zip-tool <remote-tool binary> <vitruvian-remote-agent binary> <version> <dist dir>"
         );
         return 1;
     }

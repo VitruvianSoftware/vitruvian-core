@@ -73,18 +73,6 @@ rust_binary(
     deps = [":fedora_power_cycle_lib"],
 )
 
-alias(
-    name = "fedora-power-cycle-rs",
-    actual = ":fedora-power-cycle",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "fedora_power_cycle_rs",
-    actual = ":fedora-power-cycle",
-    visibility = ["//visibility:public"],
-)
-
 # The #[cfg(test)] unit tests in src/: a loopback strip, and the ops modules'
 # jq filters, HMAC-SHA256, base64 and bash emulations.
 rust_test(
@@ -305,15 +293,6 @@ TOOL_OF = {
 
 [
     alias(
-        name = name + "-rs",
-        actual = ":" + name,
-        visibility = ["//visibility:public"],
-    )
-    for name in TOOLS
-]
-
-[
-    alias(
         name = name + "-sh",
         actual = ":" + name,
         visibility = ["//visibility:public"],
@@ -329,13 +308,8 @@ TOOL_OF = {
     for test_name in [
         "kubeseal_context_test",
         "ntfy_manage_users_test",
-        "ntfy-manage-users-rs_test",
         "rotate_github_otel_webhook_secret_test",
-        "rotate-github-otel-webhook-secret-rs_test",
         "cicd_telemetry_smoke_test",
-        "cicd-telemetry-smoke-rs_test",
         "seal_arc_github_app_test",
-        "seal-arc-github-app-rs_test",
-        "gitops_rs_parity_test",
     ]
 ]

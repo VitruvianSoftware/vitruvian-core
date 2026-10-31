@@ -166,7 +166,7 @@ rust_library(
 )
 
 rust_binary(
-    name = "tokens_sync_rs",
+    name = "tokens_sync",
     srcs = ["tools/src/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
@@ -189,11 +189,6 @@ rust_test(
     ]),
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-)
-
-test_suite(
-    name = "tokens_sync_rs_test",
-    tests = [":tokens_sync_test"],
 )
 
 # The Storybook devserver: `bazel run //packages/design-system:storybook`.

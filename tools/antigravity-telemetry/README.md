@@ -148,9 +148,9 @@ history already in Prometheus and Thanos.
 one subcommand per Python entry point:
 
 ```bash
-bazel run //tools/antigravity-telemetry:antigravity-telemetry-rs -- status
-bazel run //tools/antigravity-telemetry:antigravity-telemetry-rs -- session-exporter --once
-echo '{"hook_event": "Stop"}' | bazel run //tools/antigravity-telemetry:antigravity-telemetry-rs -- telemetry-hook
+bazel run //tools/antigravity-telemetry:antigravity-telemetry -- status
+bazel run //tools/antigravity-telemetry:antigravity-telemetry -- session-exporter --once
+echo '{"hook_event": "Stop"}' | bazel run //tools/antigravity-telemetry:antigravity-telemetry -- telemetry-hook
 ```
 
 It sends the same OTLP JSON, writes the same state file and prints the same

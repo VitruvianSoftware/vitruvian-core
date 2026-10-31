@@ -79,18 +79,6 @@ genrule(
     visibility = ["//visibility:public"],
 )
 
-alias(
-    name = "secret-scan-rs",
-    actual = ":secret-scan",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "secret_scan_rs",
-    actual = ":secret-scan",
-    visibility = ["//visibility:public"],
-)
-
 rust_test(
     name = "secret_scan_lib_test",
     size = "small",
@@ -101,11 +89,6 @@ rust_test(
 
 test_suite(
     name = "secret-scan_test",
-    tests = [":secret_scan_lib_test"],
-)
-
-test_suite(
-    name = "secret-scan-rs_test",
     tests = [":secret_scan_lib_test"],
 )
 

@@ -61,8 +61,3 @@ test_suite(
     name = "publish-local_test",
     tests = [":release_lib_test"],
 )
-
-test_suite(
-    name = "publish-local-rs_test",
-    tests = [":release_lib_test"],
-)

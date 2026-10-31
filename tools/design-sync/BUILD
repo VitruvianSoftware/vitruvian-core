@@ -60,12 +60,6 @@ alias(
     visibility = ["//visibility:public"],
 )
 
-alias(
-    name = "inject-reference-fonts-rs",
-    actual = ":inject_reference_fonts",
-    visibility = ["//visibility:public"],
-)
-
 rust_binary(
     name = "prepare",
     srcs = ["src/bin/prepare.rs"],
@@ -76,12 +70,6 @@ rust_binary(
         ":design_sync_lib",
         "//tools/shell-compat:shell_compat",
     ],
-)
-
-alias(
-    name = "prepare-rs",
-    actual = ":prepare",
-    visibility = ["//visibility:public"],
 )
 
 rust_binary(
@@ -116,12 +104,35 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
+# The two tools end to end, run the way `bazel run` runs them (see the test's
+# header for where its expectations came from).
+rust_test(
+    name = "cli_test",
+    size = "small",
+    srcs = ["tests/cli_test.rs"],
+    data = [
+        ":inject_reference_fonts",
+        ":prepare",
+    ],
+    edition = "2021",
+    env = {
+        "INJECT_BIN": "$(rootpath :inject_reference_fonts)",
+        "PREPARE_BIN": "$(rootpath :prepare)",
+    },
+)
+
 test_suite(
     name = "sync_test",
-    tests = [":design_sync_lib_test"],
+    tests = [
+        ":cli_test",
+        ":design_sync_lib_test",
+    ],
 )
 
 test_suite(
     name = "design_sync_test",
-    tests = [":design_sync_lib_test"],
+    tests = [
+        ":cli_test",
+        ":design_sync_lib_test",
+    ],
 )

@@ -54,16 +54,6 @@ rust_binary(
     deps = [":sdk_codegen_lib"],
 )
 
-alias(
-    name = "sdk-codegen-rs",
-    actual = ":sdk-codegen",
-)
-
-alias(
-    name = "sdk_codegen_rs",
-    actual = ":sdk-codegen",
-)
-
 rust_test(
     name = "sdk_codegen_lib_test",
     size = "small",

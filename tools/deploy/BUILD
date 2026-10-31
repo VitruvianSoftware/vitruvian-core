@@ -66,18 +66,6 @@ rust_binary(
     visibility = ["//visibility:public"],
 )
 
-[
-    alias(
-        name = name,
-        actual = ":cloud-run",
-        visibility = ["//visibility:public"],
-    )
-    for name in [
-        "cloud-run-rs",
-        "cloud_run_rs",
-    ]
-]
-
 # The #[cfg(test)] unit tests in src/.
 rust_test(
     name = "deploy_lib_test",
@@ -89,10 +77,5 @@ rust_test(
 
 test_suite(
     name = "cloud-run_test",
-    tests = [":deploy_lib_test"],
-)
-
-test_suite(
-    name = "cloud-run-rs_test",
     tests = [":deploy_lib_test"],
 )

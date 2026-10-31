@@ -50,16 +50,6 @@ rust_binary(
     deps = [":grafana_dashboards_tests_lib"],
 )
 
-alias(
-    name = "runner-rs",
-    actual = ":runner",
-)
-
-alias(
-    name = "runner_rs",
-    actual = ":runner",
-)
-
 rust_test(
     name = "tier1_schema_test",
     size = "small",

@@ -54,18 +54,6 @@ alias(
     visibility = ["//visibility:public"],
 )
 
-alias(
-    name = "check-loopback-rs",
-    actual = ":check-loopback",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "check_loopback_rs",
-    actual = ":check-loopback",
-    visibility = ["//visibility:public"],
-)
-
 rust_test(
     name = "check_loopback_lib_test",
     size = "small",
@@ -81,11 +69,6 @@ test_suite(
 
 test_suite(
     name = "check-loopback_test",
-    tests = [":check_loopback_lib_test"],
-)
-
-test_suite(
-    name = "check-loopback-rs_test",
     tests = [":check_loopback_lib_test"],
 )
 

@@ -35,7 +35,7 @@ no design value of its own.
 - **Release and distribution.** Release-please cuts `android-remote-vX.Y.Z` on merge to `main`.
   `.github/workflows/android-remote-release.yaml` packages the release APK with multi-ABI support
   via `scripts/publish.sh` and attaches `VitruvianRemote-X.Y.Z.apk` to GitHub Releases. A macOS
-  job runs `bazel run //apps/mobile/android-remote/macmenu:publish-tool-rs`, which attaches `VitruvianRemote-X.Y.Z-tool.zip`,
+  job runs `bazel run //apps/mobile/android-remote/macmenu:publish-tool`, which attaches `VitruvianRemote-X.Y.Z-tool.zip`,
   the Mac extension as the Vitruvian catalog installs it (universal, ad hoc signed).
 
 ## House rules

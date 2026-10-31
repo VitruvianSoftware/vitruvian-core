@@ -9,7 +9,7 @@ fn test_all_mutation_fixtures_match_real_sources() {
     let problems = mutation_checks::stale_fixtures(app_dir);
     assert!(
         problems.is_empty(),
-        "These mutations in mutation_checks_rs no longer match the source they quote:\n  {}",
+        "These mutations in mutation_checks no longer match the source they quote:\n  {}",
         problems.join("\n  ")
     );
     assert_eq!(mutation_checks::check(app_dir), 0);

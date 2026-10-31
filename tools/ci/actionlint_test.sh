@@ -29,12 +29,7 @@ SCRIPT="${1:?usage: actionlint_test.sh <actionlint.sh> <actionlint.yaml> <tools.
 SCRIPT="$(cd "$(dirname "$SCRIPT")" && pwd)/$(basename "$SCRIPT")"
 WORKFLOW="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"
 LOCK="$(cd "$(dirname "$3")" && pwd)/$(basename "$3")"
-# ACTIONLINT_UNDER_TEST runs the same suite against another build of the tool
-# (the Rust port, :actionlint-rs_test), called as the script is.
-if [ -n "${ACTIONLINT_UNDER_TEST:-}" ]; then
-    case "$ACTIONLINT_UNDER_TEST" in /*) ;; *) ACTIONLINT_UNDER_TEST="$PWD/$ACTIONLINT_UNDER_TEST" ;; esac
-    UNDER_TEST=("$ACTIONLINT_UNDER_TEST")
-elif [[ "$SCRIPT" == *.sh ]]; then
+if [[ "$SCRIPT" == *.sh ]]; then
     UNDER_TEST=(bash "$SCRIPT")
 else
     UNDER_TEST=("$SCRIPT")

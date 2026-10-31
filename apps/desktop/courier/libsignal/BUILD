@@ -135,20 +135,8 @@ rust_binary(
     deps = [":cc_in_execroot_lib"],
 )
 
-alias(
-    name = "cc-in-execroot-rs",
-    actual = ":cc_in_execroot",
-    visibility = ["//apps/desktop/courier:__subpackages__"],
-)
-
-alias(
-    name = "cc_in_execroot_rs",
-    actual = ":cc_in_execroot",
-    visibility = ["//apps/desktop/courier:__subpackages__"],
-)
-
 rust_test(
-    name = "cc_in_execroot_rs_test",
+    name = "cc_in_execroot_test",
     size = "small",
     crate = ":cc_in_execroot_lib",
     edition = "2021",

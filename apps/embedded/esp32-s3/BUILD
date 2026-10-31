@@ -130,7 +130,7 @@ rust_library(
 )
 
 rust_test(
-    name = "build_firmware_rs_test",
+    name = "build_firmware_test",
     size = "small",
     crate = ":build_firmware_lib",
     edition = "2021",
@@ -144,7 +144,7 @@ rust_library(
 )
 
 rust_test(
-    name = "flash_rs_test",
+    name = "flash_test",
     size = "small",
     crate = ":flash_lib",
     edition = "2021",
@@ -158,7 +158,7 @@ rust_library(
 )
 
 rust_test(
-    name = "publish_rs_test",
+    name = "publish_test",
     size = "small",
     crate = ":publish_lib",
     edition = "2021",
@@ -172,14 +172,14 @@ rust_library(
 )
 
 rust_binary(
-    name = "app_profiles_rs",
+    name = "app_profiles",
     srcs = ["host_companion/src/app_profiles/main.rs"],
     edition = "2021",
     deps = [":app_profiles_lib"],
 )
 
 rust_test(
-    name = "app_profiles_rs_test",
+    name = "app_profiles_test",
     size = "small",
     crate = ":app_profiles_lib",
     edition = "2021",
@@ -193,14 +193,14 @@ rust_library(
 )
 
 rust_binary(
-    name = "agent_ci_monitor_rs",
+    name = "agent_ci_monitor",
     srcs = ["host_companion/src/agent_ci_monitor/main.rs"],
     edition = "2021",
     deps = [":agent_ci_monitor_lib"],
 )
 
 rust_test(
-    name = "agent_ci_monitor_rs_test",
+    name = "agent_ci_monitor_test",
     size = "small",
     crate = ":agent_ci_monitor_lib",
     edition = "2021",
@@ -214,14 +214,14 @@ rust_library(
 )
 
 rust_binary(
-    name = "mac_stats_daemon_rs",
+    name = "mac_stats_daemon",
     srcs = ["host_companion/src/mac_stats_daemon/main.rs"],
     edition = "2021",
     deps = [":mac_stats_daemon_lib"],
 )
 
 rust_test(
-    name = "mac_stats_daemon_rs_test",
+    name = "mac_stats_daemon_test",
     size = "small",
     crate = ":mac_stats_daemon_lib",
     edition = "2021",
@@ -255,14 +255,14 @@ rust_library(
 )
 
 rust_binary(
-    name = "firmware_tests_rs",
+    name = "firmware_tests",
     srcs = ["tests/src/main.rs"],
     edition = "2021",
     deps = [":firmware_tests_lib"],
 )
 
 rust_test(
-    name = "firmware_tests_rs_test",
+    name = "firmware_tests_test",
     size = "small",
     crate = ":firmware_tests_lib",
     edition = "2021",

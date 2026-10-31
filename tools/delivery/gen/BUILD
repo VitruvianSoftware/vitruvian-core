@@ -41,11 +41,6 @@ rust_library(
     rustc_flags = ["-Copt-level=3"],
 )
 
-alias(
-    name = "gen_rs_lib",
-    actual = ":delivery_gen_lib",
-)
-
 rust_binary(
     name = "gen",
     srcs = ["src/main.rs"],
@@ -54,18 +49,6 @@ rust_binary(
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//visibility:public"],
     deps = [":delivery_gen_lib"],
-)
-
-alias(
-    name = "gen-rs",
-    actual = ":gen",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "gen_rs",
-    actual = ":gen",
-    visibility = ["//visibility:public"],
 )
 
 rust_test(
@@ -79,10 +62,5 @@ rust_test(
 
 test_suite(
     name = "delivery_gen_lib_test",
-    tests = [":gen_test"],
-)
-
-test_suite(
-    name = "gen_rs_lib_test",
     tests = [":gen_test"],
 )

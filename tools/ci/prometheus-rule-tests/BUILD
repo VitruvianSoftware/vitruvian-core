@@ -53,12 +53,6 @@ rust_binary(
     ],
 )
 
-alias(
-    name = "run-rs",
-    actual = ":run",
-    visibility = ["//visibility:public"],
-)
-
 rust_test(
     name = "prometheus_rule_tests_lib_test",
     size = "small",

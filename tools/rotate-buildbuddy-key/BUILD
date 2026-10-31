@@ -46,18 +46,6 @@ rust_binary(
     deps = [":rotate_buildbuddy_key_lib"],
 )
 
-[
-    alias(
-        name = name,
-        actual = ":rotate-buildbuddy-key",
-        visibility = ["//visibility:public"],
-    )
-    for name in [
-        "rotate-buildbuddy-key-rs",
-        "rotate-buildbuddy-key_rs",
-    ]
-]
-
 rust_test(
     name = "rotate_buildbuddy_key_lib_test",
     size = "small",

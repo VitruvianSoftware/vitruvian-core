@@ -259,17 +259,12 @@ rust_test(
     crate_root = "verification/src/bin/protocol_examples_test.rs",
     data = PROTOCOL_FILES + REFERENCE_MANIFESTS + [
         "conformance/reference-tool-2/bin/reference_tool_2.py",
-        ":reference-tool-2-rs",
+        ":reference-tool-2",
     ],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     use_libtest_harness = False,
-    deps = [":verification_rs_lib"],
-)
-
-test_suite(
-    name = "protocol_examples_rs_test",
-    tests = [":protocol_examples_test"],
+    deps = [":verification_lib"],
 )
 
 # bazel run //packages/vitruvian-sdk:conformance -- <a tool's folder>
@@ -277,7 +272,7 @@ test_suite(
 # Plays the app's side of the protocol to any tool (std only, zero external
 # crates).
 rust_library(
-    name = "conformance_rs_lib",
+    name = "conformance_lib",
     srcs = glob(
         ["conformance/src/**/*.rs"],
         exclude = ["conformance/src/main.rs"],
@@ -296,25 +291,13 @@ rust_binary(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//packages/vitruvian-sdk/consumers:tools"],
-    deps = [":conformance_rs_lib"],
-)
-
-alias(
-    name = "conformance-rs",
-    actual = ":conformance",
-    visibility = ["//packages/vitruvian-sdk/consumers:tools"],
-)
-
-alias(
-    name = "conformance_rs",
-    actual = ":conformance",
-    visibility = ["//packages/vitruvian-sdk/consumers:tools"],
+    deps = [":conformance_lib"],
 )
 
 rust_test(
-    name = "conformance_rs_lib_test",
+    name = "conformance_lib_test",
     size = "small",
-    crate = ":conformance_rs_lib",
+    crate = ":conformance_lib",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
 )
@@ -331,18 +314,13 @@ rust_test(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     use_libtest_harness = False,
-    deps = [":verification_rs_lib"],
-)
-
-test_suite(
-    name = "conformance_rs_test",
-    tests = [":conformance_test"],
+    deps = [":verification_lib"],
 )
 
 # Native Rust verification suites and reference tools (std + conformance_rs_lib only,
 # zero external crates).
 rust_library(
-    name = "verification_rs_lib",
+    name = "verification_lib",
     srcs = glob(
         ["verification/src/*.rs"],
     ),
@@ -350,43 +328,33 @@ rust_library(
     crate_root = "verification/src/lib.rs",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-    deps = [":conformance_rs_lib"],
+    deps = [":conformance_lib"],
 )
 
 rust_test(
-    name = "verification_rs_lib_test",
+    name = "verification_lib_test",
     size = "small",
-    crate = ":verification_rs_lib",
+    crate = ":verification_lib",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
 )
 
 rust_binary(
-    name = "reference-tool-rs",
+    name = "reference-tool",
     srcs = ["verification/src/bin/reference_tool.rs"],
     crate_root = "verification/src/bin/reference_tool.rs",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-    deps = [":verification_rs_lib"],
-)
-
-alias(
-    name = "reference_tool_rs",
-    actual = ":reference-tool-rs",
+    deps = [":verification_lib"],
 )
 
 rust_binary(
-    name = "reference-tool-2-rs",
+    name = "reference-tool-2",
     srcs = ["verification/src/bin/reference_tool_2.rs"],
     crate_root = "verification/src/bin/reference_tool_2.rs",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-    deps = [":verification_rs_lib"],
-)
-
-alias(
-    name = "reference_tool_2_rs",
-    actual = ":reference-tool-2-rs",
+    deps = [":verification_lib"],
 )
 
 # --- The samples ---------------------------------------------------------------
@@ -533,17 +501,9 @@ filegroup(
         edition = "2021",
         rustc_flags = ["-Copt-level=3"],
         use_libtest_harness = False,
-        deps = [":verification_rs_lib"],
+        deps = [":verification_lib"],
     )
     for language, samples in NATIVE_SAMPLES.items()
-]
-
-[
-    test_suite(
-        name = language + "_sample_rs_test",
-        tests = [":" + language + "_sample_test"],
-    )
-    for language in NATIVE_SAMPLES
 ]
 
 # What needs no build: every sample's manifest against the schema, one SDK
@@ -568,12 +528,7 @@ rust_test(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     use_libtest_harness = False,
-    deps = [":verification_rs_lib"],
-)
-
-test_suite(
-    name = "samples_rs_test",
-    tests = [":samples_test"],
+    deps = [":verification_lib"],
 )
 
 # The Swift samples, built, against the conformance validator. It starts
@@ -590,13 +545,7 @@ rust_test(
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
     use_libtest_harness = False,
-    deps = [":verification_rs_lib"],
-)
-
-test_suite(
-    name = "swift_samples_rs_test",
-    tags = ["manual"],
-    tests = [":swift_samples_test"],
+    deps = [":verification_lib"],
 )
 
 # The mirror's own workflows (.github/workflows/, which run only in
@@ -618,7 +567,7 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
     tags = ["no-remote-exec"],
     use_libtest_harness = False,
-    deps = [":verification_rs_lib"],
+    deps = [":verification_lib"],
 )
 
 # --- The kits ------------------------------------------------------------------
@@ -730,12 +679,7 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
     toolchains = ["@nodejs_toolchains//:resolved_toolchain"],
     use_libtest_harness = False,
-    deps = [":verification_rs_lib"],
-)
-
-test_suite(
-    name = "kit_samples_rs_test",
-    tests = [":kit_samples_test"],
+    deps = [":verification_lib"],
 )
 
 # `vitruvian-tool init` starts a new tool from a copy of a hello sample, and
@@ -743,7 +687,7 @@ test_suite(
 #
 #   bazel run //packages/vitruvian-sdk:sync-templates
 rust_library(
-    name = "sync_templates_rs_lib",
+    name = "sync_templates_lib",
     srcs = ["samples/src/lib.rs"],
     crate_name = "sync_templates_rs_lib",
     crate_root = "samples/src/lib.rs",
@@ -758,17 +702,7 @@ rust_binary(
     data = glob(["samples/hello-*/**"]),
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-    deps = [":sync_templates_rs_lib"],
-)
-
-alias(
-    name = "sync-templates-rs",
-    actual = ":sync-templates",
-)
-
-alias(
-    name = "sync_templates_rs",
-    actual = ":sync-templates",
+    deps = [":sync_templates_lib"],
 )
 
 # The committed text is what the samples are now. Not `manual` and not tied
@@ -776,17 +710,12 @@ alias(
 rust_test(
     name = "templates_in_sync_test",
     size = "small",
-    crate = ":sync_templates_rs_lib",
+    crate = ":sync_templates_lib",
     data = glob(["samples/hello-*/**"]) + [
         "Sources/VitruvianToolCLI/Templates.swift",
     ],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-)
-
-test_suite(
-    name = "sync_templates_rs_lib_test",
-    tests = [":templates_in_sync_test"],
 )
 
 # What `init` writes passes `validate`, the conformance validator and `run`. It
@@ -813,13 +742,7 @@ rust_test(
     target_compatible_with = ["@platforms//os:macos"],
     toolchains = ["@nodejs_toolchains//:resolved_toolchain"],
     use_libtest_harness = False,
-    deps = [":verification_rs_lib"],
-)
-
-test_suite(
-    name = "init_rs_test",
-    tags = ["manual"],
-    tests = [":init_test"],
+    deps = [":verification_lib"],
 )
 
 # The Swift tool `init --template swift` writes, built the way its author
@@ -866,13 +789,7 @@ rust_test(
     ],
     target_compatible_with = ["@platforms//os:macos"],
     use_libtest_harness = False,
-    deps = [":verification_rs_lib"],
-)
-
-test_suite(
-    name = "swift_template_rs_test",
-    tags = ["manual"],
-    tests = [":swift_template_test"],
+    deps = [":verification_lib"],
 )
 
 # The end of the test above: its folder goes even while something is still
@@ -884,12 +801,7 @@ rust_test(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     use_libtest_harness = False,
-    deps = [":verification_rs_lib"],
-)
-
-test_suite(
-    name = "swift_template_cleanup_rs_test",
-    tests = [":swift_template_cleanup_test"],
+    deps = [":verification_lib"],
 )
 
 # The Go kit as its own module, outside the workspace, through `go vet` with
@@ -916,12 +828,7 @@ rust_test(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     use_libtest_harness = False,
-    deps = [":verification_rs_lib"],
-)
-
-test_suite(
-    name = "go_kit_vet_rs_test",
-    tests = [":go_kit_vet_test"],
+    deps = [":verification_lib"],
 )
 
 # The same, then the tool `init --template go --sdk` writes, built by its
@@ -950,13 +857,7 @@ rust_test(
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
     use_libtest_harness = False,
-    deps = [":verification_rs_lib"],
-)
-
-test_suite(
-    name = "go_template_rs_test",
-    tags = ["manual"],
-    tests = [":go_template_test"],
+    deps = [":verification_lib"],
 )
 
 # The guide's examples: every message and manifest in it against the schemas,
@@ -979,7 +880,7 @@ rust_test(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     use_libtest_harness = False,
-    deps = [":verification_rs_lib"],
+    deps = [":verification_lib"],
 )
 
 # The version in release-please's two files and the one `--version` prints
@@ -1010,7 +911,7 @@ rust_test(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     use_libtest_harness = False,
-    deps = [":verification_rs_lib"],
+    deps = [":verification_lib"],
 )
 
 pipeline_unit(

@@ -43,7 +43,7 @@ rust_library(
 )
 
 rust_binary(
-    name = "publish-rs",
+    name = "publish",
     srcs = ["src/publish_main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
@@ -51,7 +51,7 @@ rust_binary(
 )
 
 rust_binary(
-    name = "boot-smoke-rs",
+    name = "boot-smoke",
     srcs = ["src/boot_smoke_main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],

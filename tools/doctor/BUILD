@@ -44,18 +44,6 @@ rust_binary(
     deps = [":doctor_lib"],
 )
 
-alias(
-    name = "doctor-rs",
-    actual = ":doctor",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "doctor_rs",
-    actual = ":doctor",
-    visibility = ["//visibility:public"],
-)
-
 # The #[cfg(test)] unit tests in src/.
 rust_test(
     name = "doctor_lib_test",

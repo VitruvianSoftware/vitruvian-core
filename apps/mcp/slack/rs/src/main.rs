@@ -51,7 +51,7 @@ fn main() {
     for arg in &args {
         if arg == "--help" || arg == "-h" {
             println!("mcp-slack v2.0.0 - Model Context Protocol server for Slack");
-            println!("Usage: mcp-slack-rs [--help] [--version]");
+            println!("Usage: mcp-slack [--help] [--version]");
             println!("Configured via environment variables (MCP_TRANSPORT=stdio|http, SLACK_BOT_TOKEN, SLACK_TEAM_ID, etc.).");
             return;
         }

@@ -67,12 +67,6 @@ alias(
     visibility = ["//visibility:public"],
 )
 
-alias(
-    name = "check-config-rs",
-    actual = ":check_config",
-    visibility = ["//visibility:public"],
-)
-
 rust_binary(
     name = "pre_commit",
     srcs = ["src/bin/pre_commit.rs"],
@@ -83,12 +77,6 @@ rust_binary(
         ":githooks_lib",
         "//tools/shell-compat:shell_compat",
     ],
-)
-
-alias(
-    name = "pre-commit-rs",
-    actual = ":pre_commit",
-    visibility = ["//visibility:public"],
 )
 
 rust_test(

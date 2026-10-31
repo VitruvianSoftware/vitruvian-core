@@ -69,30 +69,6 @@ alias(
     visibility = ["//visibility:public"],
 )
 
-alias(
-    name = "run-postgres-rs",
-    actual = ":run-postgres",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "run_postgres_rs",
-    actual = ":run-postgres",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "check-postgres-rs",
-    actual = ":check-postgres",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "check_postgres_rs",
-    actual = ":check-postgres",
-    visibility = ["//visibility:public"],
-)
-
 rust_test(
     name = "postgres_lib_test",
     size = "small",
@@ -103,11 +79,6 @@ rust_test(
 
 test_suite(
     name = "postgres_test",
-    tests = [":postgres_lib_test"],
-)
-
-test_suite(
-    name = "postgres-rs_test",
     tests = [":postgres_lib_test"],
 )
 

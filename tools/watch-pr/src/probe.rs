@@ -21,7 +21,7 @@
 //! Test-only: runs the port's `parse_checks_json` the way the shell test
 //! calls the script's, so the same test can run against the binary.
 //!
-//!   watch-pr-rs-probe parse-checks-json '<json>'
+//!   watch-pr-probe parse-checks-json '<json>'
 
 use std::io::Write;
 
@@ -37,7 +37,7 @@ fn main() {
             std::process::exit(p.status);
         }
         _ => {
-            eprintln!("usage: watch-pr-rs-probe parse-checks-json <json>");
+            eprintln!("usage: watch-pr-probe parse-checks-json <json>");
             std::process::exit(64);
         }
     }

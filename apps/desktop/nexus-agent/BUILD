@@ -33,11 +33,6 @@ filegroup(
     visibility = ["//tools/ci:__pkg__"],
 )
 
-alias(
-    name = "bot",
-    actual = ":bot-rs",
-)
-
 rust_library(
     name = "bot_lib",
     srcs = ["//apps/desktop/nexus-agent/src:bot_lib.rs"],
@@ -48,18 +43,12 @@ rust_library(
 )
 
 rust_binary(
-    name = "bot-rs",
+    name = "bot",
     srcs = ["//apps/desktop/nexus-agent/src:bot_main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//apps/desktop/nexus-agent:__subpackages__"],
     deps = [":bot_lib"],
-)
-
-alias(
-    name = "bot_rs",
-    actual = ":bot-rs",
-    visibility = ["//apps/desktop/nexus-agent:__subpackages__"],
 )
 
 rust_test(

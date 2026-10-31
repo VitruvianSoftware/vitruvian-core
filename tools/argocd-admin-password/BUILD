@@ -39,16 +39,6 @@ rust_binary(
     deps = [":argocd_admin_password_lib"],
 )
 
-alias(
-    name = "sync-rs",
-    actual = ":sync",
-)
-
-alias(
-    name = "sync_rs",
-    actual = ":sync",
-)
-
 # The #[cfg(test)] unit tests in src/ (the jq programs, base64, the item
 # document, dates).
 rust_test(

@@ -101,7 +101,7 @@ rust_library(
 )
 
 rust_binary(
-    name = "sidecar-rs",
+    name = "sidecar",
     srcs = ["sidecars/panel/src/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
@@ -137,11 +137,6 @@ test_suite(
     tests = [":record_turn_lib_test"],
 )
 
-test_suite(
-    name = "record-turn_rs_test",
-    tests = [":record_turn_lib_test"],
-)
-
 pipeline_unit(
     name = "antigravity-receipts-report",
     persona = "backend",
@@ -149,7 +144,7 @@ pipeline_unit(
     test_targets = [
         ":core_test",
         ":openui_test",
-        ":record-turn_rs_test",
+        ":record_turn_lib_test",
         ":record-turn_test",
         ":record_turn_lib_test",
         ":sidecar_lib_test",

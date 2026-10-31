@@ -35,15 +35,10 @@ rust_library(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [
-        "//tools/pipeline/unitfile:unitfile_rs_lib",
+        "//tools/pipeline/unitfile:unitfile_lib",
         "@crates//:serde",
         "@crates//:serde_json",
     ],
-)
-
-alias(
-    name = "plan_rs_lib",
-    actual = ":pipeline_plan_lib",
 )
 
 rust_binary(
@@ -54,22 +49,10 @@ rust_binary(
     visibility = ["//visibility:public"],
     deps = [
         ":pipeline_plan_lib",
-        "//tools/pipeline/unitfile:unitfile_rs_lib",
+        "//tools/pipeline/unitfile:unitfile_lib",
         "@crates//:serde",
         "@crates//:serde_json",
     ],
-)
-
-alias(
-    name = "plan-rs",
-    actual = ":plan",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "plan_rs",
-    actual = ":plan",
-    visibility = ["//visibility:public"],
 )
 
 rust_test(
@@ -82,10 +65,5 @@ rust_test(
 
 test_suite(
     name = "pipeline_plan_lib_test",
-    tests = [":plan_test"],
-)
-
-test_suite(
-    name = "plan_rs_lib_test",
     tests = [":plan_test"],
 )

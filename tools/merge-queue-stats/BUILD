@@ -34,16 +34,6 @@ rust_binary(
     deps = [":merge_queue_stats_lib"],
 )
 
-alias(
-    name = "merge-queue-stats-rs",
-    actual = ":merge-queue-stats",
-)
-
-alias(
-    name = "merge_queue_stats_rs",
-    actual = ":merge-queue-stats",
-)
-
 rust_test(
     name = "merge_queue_stats_lib_test",
     size = "small",

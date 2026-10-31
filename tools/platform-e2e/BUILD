@@ -35,16 +35,6 @@ rust_binary(
     deps = [":runner_lib"],
 )
 
-alias(
-    name = "runner-rs",
-    actual = ":runner",
-)
-
-alias(
-    name = "runner_rs",
-    actual = ":runner",
-)
-
 rust_test(
     name = "runner_lib_test",
     size = "small",

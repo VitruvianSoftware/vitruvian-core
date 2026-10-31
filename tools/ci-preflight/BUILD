@@ -45,8 +45,3 @@ test_suite(
     name = "ci-preflight_test",
     tests = [":ci_preflight_lib_test"],
 )
-
-test_suite(
-    name = "ci-preflight-rs_test",
-    tests = [":ci_preflight_lib_test"],
-)

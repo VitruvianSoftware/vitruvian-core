@@ -79,18 +79,6 @@ genrule(
 )
 
 alias(
-    name = "agent-app-rs",
-    actual = ":agent-app",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "agent_app_rs",
-    actual = ":agent-app",
-    visibility = ["//visibility:public"],
-)
-
-alias(
     name = "agent-app-sh",
     actual = ":agent-app",
     visibility = ["//visibility:public"],
@@ -103,11 +91,6 @@ test_suite(
 
 test_suite(
     name = "agent_app_test",
-    tests = [":permission_drift_lib_test"],
-)
-
-test_suite(
-    name = "agent-app-rs_test",
     tests = [":permission_drift_lib_test"],
 )
 
@@ -156,16 +139,6 @@ rust_binary(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [":permission_drift_lib"],
-)
-
-alias(
-    name = "permission-drift-rs",
-    actual = ":permission-drift",
-)
-
-alias(
-    name = "permission_drift_rs",
-    actual = ":permission-drift",
 )
 
 # The #[cfg(test)] unit tests in src/: every case in permission_drift_test,

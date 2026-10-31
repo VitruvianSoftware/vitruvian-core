@@ -42,11 +42,6 @@ rust_library(
     ],
 )
 
-alias(
-    name = "orchestrate_rs_lib",
-    actual = ":delivery_orchestrate_lib",
-)
-
 rust_binary(
     name = "orchestrate",
     srcs = ["src/main.rs"],
@@ -54,18 +49,6 @@ rust_binary(
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//visibility:public"],
     deps = [":delivery_orchestrate_lib"],
-)
-
-alias(
-    name = "orchestrate-rs",
-    actual = ":orchestrate",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "orchestrate_rs",
-    actual = ":orchestrate",
-    visibility = ["//visibility:public"],
 )
 
 rust_test(
@@ -83,10 +66,5 @@ rust_test(
 
 test_suite(
     name = "delivery_orchestrate_lib_test",
-    tests = [":orchestrate_test"],
-)
-
-test_suite(
-    name = "orchestrate_rs_lib_test",
     tests = [":orchestrate_test"],
 )

@@ -315,34 +315,3 @@ alias(
     actual = ":app-holds-engine",
     visibility = ["//apps/desktop/courier:__subpackages__"],
 )
-
-alias(
-    name = "install-rs",
-    actual = ":install",
-    tags = ["manual"],
-    visibility = ["//apps/desktop/courier:__subpackages__"],
-)
-
-alias(
-    name = "install_rs",
-    actual = ":install",
-    tags = ["manual"],
-    visibility = ["//apps/desktop/courier:__subpackages__"],
-)
-
-test_suite(
-    name = "engine_contract_rs_test",
-    tests = [":engine_contract_test"],
-)
-
-test_suite(
-    name = "app_holds_engine_rs_test",
-    tags = ["manual"],
-    tests = [":app_holds_engine_test"],
-)
-
-test_suite(
-    name = "inject_app_credentials_rs_test",
-    tags = ["manual"],
-    tests = [":inject_app_credentials_test"],
-)

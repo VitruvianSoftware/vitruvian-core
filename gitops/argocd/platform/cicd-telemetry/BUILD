@@ -37,8 +37,3 @@ rust_test(
     data = DATA_FILES,
     edition = "2021",
 )
-
-alias(
-    name = "collector_config_rs_test",
-    actual = ":collector_config_test",
-)

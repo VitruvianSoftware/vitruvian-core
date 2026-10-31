@@ -30,16 +30,6 @@ exports_files([
     "release-please-config.json",
 ])
 
-alias(
-    name = "publish",
-    actual = ":publish-rs",
-)
-
-alias(
-    name = "install_all",
-    actual = ":install-all-rs",
-)
-
 rust_library(
     name = "wearos_apps_scripts_lib",
     srcs = [
@@ -53,7 +43,7 @@ rust_library(
 )
 
 rust_binary(
-    name = "install-all-rs",
+    name = "install_all",
     srcs = ["scripts/src/install_all_main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
@@ -61,7 +51,7 @@ rust_binary(
 )
 
 rust_binary(
-    name = "publish-rs",
+    name = "publish",
     srcs = ["scripts/src/publish_main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],

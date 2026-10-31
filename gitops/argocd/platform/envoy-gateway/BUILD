@@ -31,8 +31,3 @@ rust_test(
     data = ["gateway/envoyproxy.yaml"],
     edition = "2021",
 )
-
-alias(
-    name = "envoyproxy_rs_test",
-    actual = ":envoyproxy_test",
-)

@@ -34,16 +34,11 @@ rust_library(
 )
 
 rust_binary(
-    name = "pulumi-foundation-helpers-rs",
+    name = "pulumi-foundation-helpers",
     srcs = ["src/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [":pulumi_foundation_helpers_lib"],
-)
-
-alias(
-    name = "pulumi_foundation_helpers_rs",
-    actual = ":pulumi-foundation-helpers-rs",
 )
 
 rust_test(

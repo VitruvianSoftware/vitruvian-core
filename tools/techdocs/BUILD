@@ -46,18 +46,6 @@ rust_binary(
     ],
 )
 
-[
-    alias(
-        name = name,
-        actual = ":check",
-        visibility = ["//visibility:public"],
-    )
-    for name in [
-        "check-rs",
-        "check_rs",
-    ]
-]
-
 rust_test(
     name = "techdocs_lib_test",
     size = "small",

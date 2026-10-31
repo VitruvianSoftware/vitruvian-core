@@ -92,7 +92,7 @@ genrule(
 )
 
 rust_library(
-    name = "tests_rs_lib",
+    name = "tests_lib",
     srcs = [
         "tests_rs/src/conformance.rs",
         "tests_rs/src/lib.rs",
@@ -103,15 +103,15 @@ rust_library(
     crate_root = "tests_rs/src/lib.rs",
     edition = "2021",
     deps = [
-        "//packages/vitruvian-sdk:conformance_rs_lib",
+        "//packages/vitruvian-sdk:conformance_lib",
         "@crates//:serde_json",
     ],
 )
 
 rust_test(
-    name = "tests_rs_lib_test",
+    name = "tests_lib_test",
     size = "small",
-    crate = ":tests_rs_lib",
+    crate = ":tests_lib",
 )
 
 # The built folder through `vitruvian-tool validate` and the conformance
@@ -138,13 +138,7 @@ rust_test(
         "manual",
     ],
     target_compatible_with = MACOS_ONLY,
-    deps = [":tests_rs_lib"],
-)
-
-test_suite(
-    name = "conformance_rs_test",
-    tags = ["manual"],
-    tests = [":conformance_test"],
+    deps = [":tests_lib"],
 )
 
 # The version is one number in three files, and the kit it builds against
@@ -162,14 +156,9 @@ rust_test(
     ],
     edition = "2021",
     deps = [
-        ":tests_rs_lib",
+        ":tests_lib",
         "@crates//:serde_json",
     ],
-)
-
-test_suite(
-    name = "version_rs_test",
-    tests = [":version_test"],
 )
 
 # The mirror's own workflows (.github/workflows/, which run only in
@@ -187,12 +176,7 @@ rust_test(
     ],
     edition = "2021",
     tags = ["no-remote-exec"],
-    deps = [":tests_rs_lib"],
-)
-
-test_suite(
-    name = "mirror_workflows_rs_test",
-    tests = [":mirror_workflows_test"],
+    deps = [":tests_lib"],
 )
 
 pipeline_unit(

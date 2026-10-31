@@ -39,18 +39,6 @@ rust_binary(
     deps = [":osv_scan_lib"],
 )
 
-alias(
-    name = "osv-scan-rs",
-    actual = ":osv-scan",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "osv_scan_rs",
-    actual = ":osv-scan",
-    visibility = ["//visibility:public"],
-)
-
 rust_test(
     name = "osv_scan_lib_test",
     size = "small",
@@ -61,10 +49,5 @@ rust_test(
 
 test_suite(
     name = "osv-scan_test",
-    tests = [":osv_scan_lib_test"],
-)
-
-test_suite(
-    name = "osv-scan-rs_test",
     tests = [":osv_scan_lib_test"],
 )

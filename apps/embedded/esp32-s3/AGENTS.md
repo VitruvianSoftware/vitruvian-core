@@ -29,7 +29,7 @@ protocol is [`docs/protocol.md`](docs/protocol.md); firmware and daemon move tog
 - **Host tests (what CI runs).** From the repo root:
   `uv run --no-project --with pytest,pyserial -- pytest apps/embedded/esp32-s3/tests/ -q` —
   the exact step in `.github/workflows/iot-esp32-s3.yaml`, which then builds the firmware.
-- **Daemon.** `bazel run //apps/embedded/esp32-s3:mac_stats_daemon_rs`
+- **Daemon.** `bazel run //apps/embedded/esp32-s3:mac_stats_daemon`
   (`--usb-only`, `--wifi-only`, `--wifi-host <ip>`, `--wifi-sync`).
 
 ## Conventions & landmines

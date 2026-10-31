@@ -46,11 +46,6 @@ test_suite(
     tests = [":track_subagent_lib_test"],
 )
 
-test_suite(
-    name = "track-subagent_rs_test",
-    tests = [":track_subagent_lib_test"],
-)
-
 js_library(
     name = "lib",
     srcs = [
@@ -108,7 +103,7 @@ rust_library(
 )
 
 rust_binary(
-    name = "sidecar-rs",
+    name = "sidecar",
     srcs = ["sidecars/panel/src/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
@@ -148,7 +143,7 @@ pipeline_unit(
         ":core_test",
         ":openui_test",
         ":sidecar_lib_test",
-        ":track-subagent_rs_test",
+        ":track_subagent_lib_test",
         ":track-subagent_test",
         ":track_subagent_lib_test",
         ":version_rs_test",

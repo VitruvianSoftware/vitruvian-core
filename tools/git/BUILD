@@ -79,54 +79,6 @@ rust_binary(
     deps = [":git_lib"],
 )
 
-alias(
-    name = "git-rs",
-    actual = ":git",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "git_rs",
-    actual = ":git",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "commit-rs",
-    actual = ":commit",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "commit_rs",
-    actual = ":commit",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "push-rs",
-    actual = ":push",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "push_rs",
-    actual = ":push",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "sync-rs",
-    actual = ":sync",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "sync_rs",
-    actual = ":sync",
-    visibility = ["//visibility:public"],
-)
-
 rust_test(
     name = "git_lib_test",
     size = "small",

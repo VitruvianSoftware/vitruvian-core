@@ -46,18 +46,6 @@ rust_binary(
     deps = [":npm_trusted_publisher_lib"],
 )
 
-alias(
-    name = "setup-rs",
-    actual = ":setup",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "bootstrap-rs",
-    actual = ":bootstrap",
-    visibility = ["//visibility:public"],
-)
-
 rust_test(
     name = "npm_trusted_publisher_lib_test",
     size = "small",
@@ -72,15 +60,5 @@ test_suite(
 
 test_suite(
     name = "bootstrap_test",
-    tests = [":npm_trusted_publisher_lib_test"],
-)
-
-test_suite(
-    name = "setup-rs_test",
-    tests = [":npm_trusted_publisher_lib_test"],
-)
-
-test_suite(
-    name = "bootstrap-rs_test",
     tests = [":npm_trusted_publisher_lib_test"],
 )

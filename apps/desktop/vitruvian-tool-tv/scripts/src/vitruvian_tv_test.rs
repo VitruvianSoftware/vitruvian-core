@@ -35,7 +35,7 @@ fn built_dir() -> PathBuf {
 fn conformance_bin() -> PathBuf {
     PathBuf::from(
         std::env::var("CONFORMANCE_BIN")
-            .expect("CONFORMANCE_BIN must point to the conformance_rs binary"),
+            .expect("CONFORMANCE_BIN must point to the conformance binary"),
     )
 }
 

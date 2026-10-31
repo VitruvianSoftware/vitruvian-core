@@ -56,7 +56,7 @@ rust_library(
 )
 
 rust_binary(
-    name = "bump-release-rs",
+    name = "bump-release",
     srcs = ["src/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
@@ -65,20 +65,8 @@ rust_binary(
 )
 
 alias(
-    name = "bump_release_rs",
-    actual = ":bump-release-rs",
-    visibility = ["//apps/web/backstage:__subpackages__"],
-)
-
-alias(
-    name = "bump-release",
-    actual = ":bump-release-rs",
-    visibility = ["//apps/web/backstage:__subpackages__"],
-)
-
-alias(
     name = "bump_release",
-    actual = ":bump-release-rs",
+    actual = ":bump-release",
     visibility = ["//apps/web/backstage:__subpackages__"],
 )
 

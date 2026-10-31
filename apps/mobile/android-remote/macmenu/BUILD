@@ -178,7 +178,7 @@ rust_test(
     ],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-    deps = ["//packages/vitruvian-sdk:conformance_rs_lib"],
+    deps = ["//packages/vitruvian-sdk:conformance_lib"],
 )
 
 # The menu finds the agent by the paths the installer writes; fail when they drift.
@@ -226,13 +226,6 @@ macos_application(
     deps = [":RemoteMenuLib"],
 )
 
-# `bazel run --config=macos-app //apps/mobile/android-remote/macmenu:install`
-alias(
-    name = "install",
-    actual = ":install-rs",
-    tags = ["manual"],
-)
-
 pipeline_unit(
     name = "remote-mac-menu",
     persona = "frontend",
@@ -260,7 +253,7 @@ rust_library(
 )
 
 rust_binary(
-    name = "zip-tool-rs",
+    name = "zip-tool",
     srcs = ["scripts/src/zip_tool/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
@@ -280,8 +273,9 @@ rust_library(
     rustc_flags = ["-Copt-level=3"],
 )
 
+# `bazel run --config=macos-app //apps/mobile/android-remote/macmenu:install`
 rust_binary(
-    name = "install-rs",
+    name = "install",
     srcs = ["scripts/src/install/main.rs"],
     data = [
         ":VitruvianRemote",
@@ -311,7 +305,7 @@ rust_library(
 )
 
 rust_binary(
-    name = "publish-tool-rs",
+    name = "publish-tool",
     srcs = ["scripts/src/publish_tool/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
@@ -326,27 +320,17 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
-test_suite(
-    name = "paths_match_installer_rs_test",
-    tests = [":paths_match_installer_test"],
-)
-
-test_suite(
-    name = "tool_version_rs_test",
-    tests = [":tool_version_test"],
-)
-
 rust_library(
     name = "tool_conformance_lib",
     srcs = ["scripts/src/tool_conformance/lib.rs"],
     crate_name = "tool_conformance_lib",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-    deps = ["//packages/vitruvian-sdk:conformance_rs_lib"],
+    deps = ["//packages/vitruvian-sdk:conformance_lib"],
 )
 
 rust_binary(
-    name = "tool-conformance-rs",
+    name = "tool-conformance",
     srcs = ["scripts/src/tool_conformance/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
@@ -359,10 +343,4 @@ rust_test(
     crate = ":tool_conformance_lib",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-)
-
-test_suite(
-    name = "tool_conformance_rs_test",
-    tags = ["manual"],
-    tests = [":tool_conformance_test"],
 )

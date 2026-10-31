@@ -29,24 +29,6 @@
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
-# `bazel run //apps/mobile/android-remote/macagent:install` -- install the agent
-# the repo just built as a login item for the current user. No sudo; it is a
-# user LaunchAgent because nothing it reads needs root. The script proves the
-# agent answers before it reports success.
-alias(
-    name = "install",
-    actual = ":install-rs",
-)
-
-# `bazel run //apps/mobile/android-remote/macagent:pair -- 482917` -- open a
-# five-minute pairing window for the phone showing that code. Writes only to
-# ~/.config/vitruvian-remote-agent; the installed agent picks it up with no
-# restart, because it re-reads that directory on every request.
-alias(
-    name = "pair",
-    actual = ":pair-rs",
-)
-
 # The parsers are pure and pinned by fixtures, so this runs on Linux. What
 # the Linux runner cannot check is the macOS commands themselves; that needs
 # `bazel run` on a Mac and a curl, and the README says so.
@@ -68,8 +50,12 @@ rust_library(
     visibility = ["//apps/mobile/android-remote:__subpackages__"],
 )
 
+# `bazel run //apps/mobile/android-remote/macagent:install` -- install the agent
+# the repo just built as a login item for the current user. No sudo; it is a
+# user LaunchAgent because nothing it reads needs root. The script proves the
+# agent answers before it reports success.
 rust_binary(
-    name = "install-rs",
+    name = "install",
     srcs = ["scripts/src/install_main.rs"],
     data = [
         "com.vitruvian.remote-agent.plist",
@@ -81,8 +67,12 @@ rust_binary(
     deps = [":macagent_scripts_lib"],
 )
 
+# `bazel run //apps/mobile/android-remote/macagent:pair -- 482917` -- open a
+# five-minute pairing window for the phone showing that code. Writes only to
+# ~/.config/vitruvian-remote-agent; the installed agent picks it up with no
+# restart, because it re-reads that directory on every request.
 rust_binary(
-    name = "pair-rs",
+    name = "pair",
     srcs = ["scripts/src/pair_main.rs"],
     data = [":macagent"],
     edition = "2021",
@@ -100,7 +90,7 @@ rust_test(
 )
 
 rust_library(
-    name = "macagent_rs_lib",
+    name = "macagent_lib",
     srcs = [
         "rs/src/antigravity.rs",
         "rs/src/exec.rs",
@@ -124,13 +114,7 @@ rust_library(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//apps/mobile/android-remote:__subpackages__"],
-    deps = ["//apps/mobile/android-remote/macagent/metrics:metrics_rs"],
-)
-
-alias(
-    name = "macagent_lib",
-    actual = ":macagent_rs_lib",
-    visibility = ["//apps/mobile/android-remote:__subpackages__"],
+    deps = ["//apps/mobile/android-remote/macagent/metrics"],
 )
 
 rust_binary(
@@ -140,33 +124,16 @@ rust_binary(
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//apps/mobile/android-remote:__subpackages__"],
     deps = [
-        ":macagent_rs_lib",
-        "//apps/mobile/android-remote/macagent/metrics:metrics_rs",
+        ":macagent_lib",
+        "//apps/mobile/android-remote/macagent/metrics",
     ],
 )
 
-alias(
-    name = "macagent-rs",
-    actual = ":macagent",
-    visibility = ["//apps/mobile/android-remote:__subpackages__"],
-)
-
-alias(
-    name = "macagent_rs",
-    actual = ":macagent",
-    visibility = ["//apps/mobile/android-remote:__subpackages__"],
-)
-
 rust_test(
-    name = "macagent_rs_test",
+    name = "macagent_test",
     size = "small",
-    crate = ":macagent_rs_lib",
+    crate = ":macagent_lib",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-    deps = ["//apps/mobile/android-remote/macagent/metrics:metrics_rs"],
-)
-
-test_suite(
-    name = "macagent_test",
-    tests = [":macagent_rs_test"],
+    deps = ["//apps/mobile/android-remote/macagent/metrics"],
 )

@@ -39,18 +39,6 @@ rust_binary(
     deps = [":apple_signing_lib"],
 )
 
-alias(
-    name = "apple-signing-rs",
-    actual = ":apple-signing",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "apple_signing_rs",
-    actual = ":apple-signing",
-    visibility = ["//visibility:public"],
-)
-
 # The #[cfg(test)] unit tests in src/.
 rust_test(
     name = "apple_signing_lib_test",

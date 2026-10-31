@@ -80,24 +80,6 @@ rust_library(
     for op in _OPS
 ]
 
-[
-    alias(
-        name = op + "-rs",
-        actual = ":" + op,
-        visibility = ["//visibility:public"],
-    )
-    for op in _OPS
-]
-
-[
-    alias(
-        name = op.replace("-", "_") + "_rs",
-        actual = ":" + op,
-        visibility = ["//visibility:public"],
-    )
-    for op in _OPS
-]
-
 rust_test(
     name = "cluster_lib_test",
     size = "small",

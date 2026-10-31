@@ -66,7 +66,7 @@ rust_library(
 )
 
 rust_binary(
-    name = "sidecar-rs",
+    name = "sidecar",
     srcs = ["sidecars/panel/src/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
@@ -99,11 +99,6 @@ rust_test(
 
 test_suite(
     name = "evaluate-rules_test",
-    tests = [":evaluate_rules_lib_test"],
-)
-
-test_suite(
-    name = "evaluate-rules_rs_test",
     tests = [":evaluate_rules_lib_test"],
 )
 
@@ -153,7 +148,7 @@ pipeline_unit(
     runner = "ubuntu-26.04",
     test_targets = [
         ":core_test",
-        ":evaluate-rules_rs_test",
+        ":evaluate_rules_lib_test",
         ":evaluate-rules_test",
         ":evaluate_rules_lib_test",
         ":openui_test",
