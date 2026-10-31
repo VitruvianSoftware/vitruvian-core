@@ -174,14 +174,16 @@ func (c *Client) Connect(ctx context.Context) {
 				close(q)
 				delete(c.portalQueues, pk)
 			}
-			if c.prewarmCh != nil {
-				close(c.prewarmCh)
-				c.prewarmCh = nil
-			}
 			c.portalQueues = nil
 			c.streamCtx = nil
 			c.mu.Unlock()
 			c.portalWG.Wait()
+			c.mu.Lock()
+			if c.prewarmCh != nil {
+				close(c.prewarmCh)
+				c.prewarmCh = nil
+			}
+			c.mu.Unlock()
 			c.prewarmWG.Wait()
 		}()
 		for {
@@ -397,13 +399,12 @@ func (c *Client) seedAndEnqueueGhostPrewarm(ctx context.Context, uid networkid.U
 		return
 	}
 	c.prewarmedUsers[uid] = struct{}{}
-	c.mu.Unlock()
-
 	select {
 	case <-streamCtx.Done():
 	case ch <- uid:
 	default:
 	}
+	c.mu.Unlock()
 }
 
 func (c *Client) seedEventGhosts(ctx context.Context, evt bridgev2.RemoteEvent) {
