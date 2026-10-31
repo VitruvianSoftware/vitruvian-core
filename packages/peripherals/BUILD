@@ -161,7 +161,7 @@ delivery(
         "production",
     ],
     # Path-only mode: this regex IS the unit's complete trigger set
-    # (tools/ci/deploy-affected.sh step 2), so it names the whole package.
+    # (//tools/ci:deploy_affected, step 2), so it names the whole package.
     extra_paths = ["packages/peripherals/"],
     # No GitHub Environment: the publish binds none; it uploads with the run's
     # own GITHUB_TOKEN under a job-level contents: write.
