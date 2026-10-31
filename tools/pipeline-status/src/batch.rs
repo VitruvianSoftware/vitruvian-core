@@ -101,7 +101,8 @@ pub fn check_runs_response(json: &str) -> Result<(), String> {
     }
 }
 
-/// Judge the push that landed `sha`.
+/// Judge the push that landed `sha`: its own push runs if it has any,
+/// otherwise the tip of the push that holds it.
 ///
 /// `activity` fetches the activity listing, `range(before, after)` the
 /// commits of a push, `runs_for(commit)` the runs listing; each reports a
@@ -116,6 +117,20 @@ pub fn resolve(
     range: &dyn Fn(&str, &str) -> Result<String, String>,
     runs_for: &dyn Fn(&str) -> Result<String, String>,
 ) -> Outcome {
+    // A commit with push runs of its own (an unbatched push, or a batch tip) is
+    // judged directly: no activity or compare calls, and no age limit.
+    if let Ok(raw) = runs_for(sha).and_then(|j| check_runs_response(&j).map(|_| j)) {
+        let (evaluation, runs_json) = assess(&raw, sha, branch, now, settle);
+        if evaluation.status != 3 {
+            return Outcome::Judged(Resolved {
+                evaluation,
+                runs_json,
+                sha: sha.to_string(),
+                note: None,
+            });
+        }
+    }
+    // No runs of its own: it may be a non-tip of a batch. Find its push.
     let pushes = match activity().and_then(|j| parse_activity(&j)) {
         Ok(p) => p,
         Err(e) => return Outcome::Waiting(format!("cannot read the push history: {e}")),
@@ -137,7 +152,7 @@ pub fn resolve(
     }
     let Some(push) = found else {
         return Outcome::Waiting(format!(
-            "commit {} is not in the {MAX_PUSHES} newest pushes to {branch} yet",
+            "commit {} has no push runs and is not in the {MAX_PUSHES} newest pushes to {branch}",
             sha.chars().take(8).collect::<String>()
         ));
     };
@@ -162,10 +177,8 @@ pub fn resolve(
     }
     let note = (tip != sha).then(|| {
         let short: String = tip.chars().take(8).collect();
-        format!(
-            "batched: {} landed in a push whose tip is {short}; evaluating the tip's runs",
-            sha.chars().take(8).collect::<String>()
-        )
+        let own: String = sha.chars().take(8).collect();
+        format!("batched: {own} landed in a push whose tip is {short}; evaluating the tip's runs")
     });
     Outcome::Judged(Resolved {
         evaluation,
@@ -406,5 +419,63 @@ mod tests {
         assert_eq!(parse_activity(&activity_json()).unwrap().len(), 4);
         assert!(parse_range(r#"{"total_commits":150,"commits":[{"sha":"a"}]}"#).is_err());
         assert!(parse_range("{}").is_err());
+    }
+
+    /// An old single-push commit has its own runs and is far past the 15-push
+    /// search. It must resolve without touching activity or compare.
+    /// Fail-before: searching activity first finds nothing and waits.
+    #[test]
+    fn a_commit_with_its_own_push_runs_is_judged_without_any_search() {
+        let old = "0ld0000000000000000000000000000000000000";
+        let own = |sha: &str| {
+            Ok(format!(
+                r#"{{"workflow_runs":[{}]}}"#,
+                run(sha, "completed", "success", "2026-10-20T06:00:00Z")
+            ))
+        };
+        let activity_calls = RefCell::new(0);
+        let shallow_activity = || {
+            *activity_calls.borrow_mut() += 1;
+            act()
+        };
+        let range_calls = RefCell::new(0);
+        let counting_range = |b: &str, a: &str| {
+            *range_calls.borrow_mut() += 1;
+            range_json(b, a)
+        };
+        let r = judged(resolve(
+            old,
+            "main",
+            at("2026-10-31T10:30:00Z"),
+            60,
+            &shallow_activity,
+            &counting_range,
+            &own,
+        ));
+        assert_eq!((r.evaluation.status, r.sha.as_str()), (0, old));
+        assert!(r.note.is_none());
+        assert_eq!((*activity_calls.borrow(), *range_calls.borrow()), (0, 0));
+    }
+
+    /// Own runs still settle: a fresh all-done set is not green yet.
+    #[test]
+    fn own_runs_still_wait_out_the_settle_window() {
+        let sha = "abc0000000000000000000000000000000000000";
+        let own = |s: &str| {
+            Ok(format!(
+                r#"{{"workflow_runs":[{}]}}"#,
+                run(s, "completed", "success", "2026-10-31T10:29:50Z")
+            ))
+        };
+        let r = judged(resolve(
+            sha,
+            "main",
+            at("2026-10-31T10:30:00Z"),
+            60,
+            &act,
+            &range_json,
+            &own,
+        ));
+        assert_eq!(r.evaluation.status, 2);
     }
 }
