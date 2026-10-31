@@ -496,7 +496,6 @@ pub unsafe extern "C" fn gchat_stop_stream(client: *mut GChatClient) {
     if !client.is_null() {
         let client_ref = &*client;
         client_ref.stop_stream_and_wait();
-        client_ref.refresh_handle.abort();
     }
 }
 
@@ -917,5 +916,35 @@ mod tests {
         );
         assert!(!ok_client.is_null());
         unsafe { gchat_client_free(ok_client) };
+    }
+
+    #[test]
+    fn test_stop_stream_does_not_abort_xsrf_refresh_handle() {
+        let valid_cfg =
+            r#"{"cookie_map":{"COMPASS":"c","OSID":"o","SID":"s","HSID":"h","SSID":"ss"}}"#;
+        let mut client: *mut GChatClient = ptr::null_mut();
+        let mut err = GChatByteSlice::default();
+        let st = unsafe {
+            gchat_client_new(
+                valid_cfg.as_ptr(),
+                valid_cfg.len(),
+                &mut client,
+                &mut err,
+            )
+        };
+        assert_eq!(st, GChatStatus::GchatOk);
+        assert!(!client.is_null());
+
+        unsafe {
+            gchat_stop_stream(client);
+            // Give the runtime a tick in case abort() was scheduled on refresh_handle.
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            let client_ref = &*client;
+            assert!(
+                !client_ref.refresh_handle.is_finished(),
+                "gchat_stop_stream must not abort the 6-hour XSRF refresh background task"
+            );
+            gchat_client_free(client);
+        }
     }
 }
