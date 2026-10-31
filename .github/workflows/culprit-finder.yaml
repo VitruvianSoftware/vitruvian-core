@@ -88,7 +88,18 @@ jobs:
           BAD_SHA: ${{ inputs.bad || github.sha }}
           TARGETS: ${{ inputs.targets }}
           BAZEL_ARGS: "--config=remote --remote_header=x-buildbuddy-api-key=${{ secrets.BUILDBUDDY_API_KEY }}"
-        run: bash tools/ci/bisect-culprit.sh
+        run: |
+          # Build the bisector once, at the tip, and copy it out: the bisect
+          # checks older commits out underneath it, and `bazel run` would
+          # start it in the runfiles tree rather than the checkout.
+          # shellcheck disable=SC2086
+          bazel build ${BAZEL_ARGS} //tools/ci:bisect_culprit
+          cp -f bazel-bin/tools/ci/bisect_culprit "$RUNNER_TEMP/bisect-culprit"
+          chmod +x "$RUNNER_TEMP/bisect-culprit"
+          # A build can rewrite the lockfile; a dirty tree would stop the first
+          # `git bisect` checkout.
+          git checkout -- MODULE.bazel.lock 2>/dev/null || true
+          "$RUNNER_TEMP/bisect-culprit"
 
       - name: Post the culprit onto the breakage issue
         if: ${{ always() && inputs.issue != '' }}
