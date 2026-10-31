@@ -143,6 +143,13 @@ public final class InboxPreferences: ObservableObject {
             }
         }
     }
+    /// Customizable time suggestions for Remind Me and Send Later (`setting:general Time suggestions`, min 1, max 8).
+    @Published public var timeSuggestions: [String] {
+        didSet {
+            guard canMutate({ timeSuggestions = oldValue }) else { return }
+            set(timeSuggestions, "timeSuggestions")
+        }
+    }
     public let notifications: NotificationPreferences
 
     /// The key a setting is kept under.
@@ -190,6 +197,12 @@ public final class InboxPreferences: ObservableObject {
         requestNotifications = bool("requestNotifications", notifPrefs.requestNotificationsEnabled)
         lastUsedReminder = defaults.object(forKey: Self.key("lastUsedReminder")) as? Date
         typingNotifications = bool("typingNotifications", notifPrefs.typingNotificationsEnabled)
+        if let storedSuggestions = defaults.stringArray(forKey: Self.key("timeSuggestions")),
+           !storedSuggestions.isEmpty {
+            timeSuggestions = Array(storedSuggestions.prefix(ReminderPresets.maxSuggestionsCount))
+        } else {
+            timeSuggestions = ReminderPresets.defaultSuggestions
+        }
 
         notifPrefs.onRequestNotificationsChanged = { [weak self] enabled in
             guard let self, self.requestNotifications != enabled else { return }
@@ -208,5 +221,28 @@ public final class InboxPreferences: ObservableObject {
         } else {
             defaults.removeObject(forKey: Self.key(name))
         }
+    }
+
+    @discardableResult
+    public func addTimeSuggestion(_ raw: String) -> Bool {
+        guard AppLockGate.isCurrentActionAllowedForSettings else { return false }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              timeSuggestions.count < ReminderPresets.maxSuggestionsCount,
+              !timeSuggestions.contains(where: { $0.caseInsensitiveCompare(trimmed) == .orderedSame })
+        else { return false }
+        timeSuggestions.append(trimmed)
+        return true
+    }
+
+    public func removeTimeSuggestion(_ suggestion: String) {
+        guard AppLockGate.isCurrentActionAllowedForSettings else { return }
+        guard timeSuggestions.count > ReminderPresets.minSuggestionsCount else { return }
+        timeSuggestions.removeAll { $0 == suggestion }
+    }
+
+    public func resetTimeSuggestions() {
+        guard AppLockGate.isCurrentActionAllowedForSettings else { return }
+        timeSuggestions = ReminderPresets.defaultSuggestions
     }
 }

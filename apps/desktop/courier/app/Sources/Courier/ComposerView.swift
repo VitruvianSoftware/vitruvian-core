@@ -150,6 +150,7 @@ struct ComposerView: View {
                         height: $textHeight,
                         placeholder: placeholder,
                         focusToken: "\(composer.roomID ?? "")|\(composer.replyTarget?.eventID ?? "")|\(modeToken)",
+                        isSpellcheckEnabled: preferences.enableSpellcheck,
                         onEscape: { escapeFirst() || composer.escape() || escapeLast() },
                         onUpArrow: upArrow,
                         onPasteFiles: { urls in
@@ -165,68 +166,14 @@ struct ComposerView: View {
                     if case .editing = composer.mode {
                         EmptyView()
                     } else {
-                        Button {
-                            composer.preferences = preferences
-                            Task { await composer.startVoiceRecording() }
-                        } label: {
-                            Image(systemName: "mic")
-                                .font(.title3)
-                                .frame(width: 28, height: 28)
+                        secondaryActionButton
+                        if preferences.primaryComposerButton != .gifPicker && preferences.secondaryComposerButton != .gifPicker {
+                            gifToolbarButton
                         }
-                        .buttonStyle(.plain)
-                        .disabled(composer.roomID == nil)
-                        .help(String(localized: "Record Voice Note (⌘⇧A)"))
-                        .accessibilityLabel(String(localized: "Record voice note"))
-
-                        Button {
-                            _ = composer.openGIFPicker()
-                        } label: {
-                            Text(verbatim: "GIF")
-                                .font(.system(size: 9.5, weight: .bold, design: .rounded))
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 2)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 4)
-                                        .strokeBorder(Color.primary.opacity(0.65), lineWidth: 1.2)
-                                )
-                                .frame(width: 28, height: 28)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(!composer.canSendGIF)
-                        .help(composer.canSendGIF ? String(localized: "Send GIF (⌘⇧G)") : composer.sendGIFMenuTitle)
-                        .accessibilityLabel(String(localized: "Send GIF"))
-                        .popover(isPresented: $composer.isGIFPickerPresented, arrowEdge: .top) {
-                            GIFPickerPopover(composer: composer)
-                        }
-
-                        Button {
-                            _ = composer.openStickerPicker()
-                        } label: {
-                            Image(systemName: "sparkles.rectangle.stack")
-                                .font(.title3)
-                                .frame(width: 28, height: 28)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(!composer.canSendSticker)
-                        .help(composer.canSendSticker ? String(localized: "Send Sticker (⌘⌥⇧S)") : composer.sendStickerMenuTitle)
-                        .accessibilityLabel(String(localized: "Send Sticker"))
-                        .popover(isPresented: $composer.isStickerPickerPresented, arrowEdge: .top) {
-                            StickerPickerPopover(composer: composer)
-                        }
+                        stickerToolbarButton
                     }
 
-                    Button {
-                        composer.openEmojiAutocomplete()
-                        // The system's own picker, as ⌃⌘Space opens it.
-                        NSApp.orderFrontCharacterPalette(nil)
-                    } label: {
-                        Image(systemName: "face.smiling")
-                            .font(.title3)
-                            .frame(width: 28, height: 28)
-                    }
-                    .buttonStyle(.plain)
-                    .help(String(localized: "Emoji & Symbols (⌃⌘Space)"))
-                    .accessibilityLabel(String(localized: "Emoji and symbols"))
+                    primaryActionButton
 
                     sendButton
                 }
@@ -395,6 +342,135 @@ struct ComposerView: View {
         }
         .help(String(localized: "Send (Return). Right-click for Send Later and Send and Archive."))
         .accessibilityLabel(String(localized: "Send"))
+    }
+
+    @ViewBuilder
+    private var primaryActionButton: some View {
+        switch preferences.primaryComposerButton {
+        case .emojiPicker:
+            emojiToolbarButton
+        case .gifPicker:
+            gifToolbarButton
+        case .addAttachment:
+            attachmentToolbarButton
+        case .sendLater:
+            sendLaterToolbarButton
+        case .none:
+            EmptyView()
+        }
+    }
+
+    @ViewBuilder
+    private var secondaryActionButton: some View {
+        switch preferences.secondaryComposerButton {
+        case .recordAudio:
+            recordAudioToolbarButton
+        case .gifPicker:
+            gifToolbarButton
+        case .addAttachment:
+            attachmentToolbarButton
+        case .sendLater:
+            sendLaterToolbarButton
+        case .none:
+            EmptyView()
+        }
+    }
+
+    private var emojiToolbarButton: some View {
+        Button {
+            composer.openEmojiAutocomplete()
+            NSApp.orderFrontCharacterPalette(nil)
+        } label: {
+            Image(systemName: "face.smiling")
+                .font(.title3)
+                .frame(width: 28, height: 28)
+        }
+        .buttonStyle(.plain)
+        .help(String(localized: "Emoji & Symbols (⌃⌘Space)"))
+        .accessibilityLabel(String(localized: "Emoji and symbols"))
+    }
+
+    private var recordAudioToolbarButton: some View {
+        Button {
+            composer.preferences = preferences
+            Task { await composer.startVoiceRecording() }
+        } label: {
+            Image(systemName: "mic")
+                .font(.title3)
+                .frame(width: 28, height: 28)
+        }
+        .buttonStyle(.plain)
+        .disabled(composer.roomID == nil)
+        .help(String(localized: "Record Voice Note (⌘⇧A)"))
+        .accessibilityLabel(String(localized: "Record voice note"))
+    }
+
+    private var gifToolbarButton: some View {
+        Button {
+            _ = composer.openGIFPicker()
+        } label: {
+            Text(verbatim: "GIF")
+                .font(.system(size: 9.5, weight: .bold, design: .rounded))
+                .padding(.horizontal, 4)
+                .padding(.vertical, 2)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .strokeBorder(Color.primary.opacity(0.65), lineWidth: 1.2)
+                )
+                .frame(width: 28, height: 28)
+        }
+        .buttonStyle(.plain)
+        .disabled(!composer.canSendGIF)
+        .help(composer.canSendGIF ? String(localized: "Send GIF (⌘⇧G)") : composer.sendGIFMenuTitle)
+        .accessibilityLabel(String(localized: "Send GIF"))
+        .popover(isPresented: $composer.isGIFPickerPresented, arrowEdge: .top) {
+            GIFPickerPopover(composer: composer)
+        }
+    }
+
+    private var stickerToolbarButton: some View {
+        Button {
+            _ = composer.openStickerPicker()
+        } label: {
+            Image(systemName: "sparkles.rectangle.stack")
+                .font(.title3)
+                .frame(width: 28, height: 28)
+        }
+        .buttonStyle(.plain)
+        .disabled(!composer.canSendSticker)
+        .help(composer.canSendSticker ? String(localized: "Send Sticker (⌘⌥⇧S)") : composer.sendStickerMenuTitle)
+        .accessibilityLabel(String(localized: "Send Sticker"))
+        .popover(isPresented: $composer.isStickerPickerPresented, arrowEdge: .top) {
+            StickerPickerPopover(composer: composer)
+        }
+    }
+
+    private var attachmentToolbarButton: some View {
+        Button {
+            AttachmentPicker.run(into: composer)
+        } label: {
+            Image(systemName: "paperclip")
+                .font(.title3)
+                .frame(width: 28, height: 28)
+        }
+        .buttonStyle(.plain)
+        .disabled(composer.roomID == nil)
+        .help(String(localized: "Add Attachment (⌘O)"))
+        .accessibilityLabel(String(localized: "Add Attachment"))
+    }
+
+    private var sendLaterToolbarButton: some View {
+        Button {
+            menus.sendLater?()
+        } label: {
+            Image(systemName: "clock.arrow.circlepath")
+                .font(.title3)
+                .frame(width: 28, height: 28)
+        }
+        .buttonStyle(.plain)
+        .disabled(!composer.canSchedule || menus.sendLater == nil)
+        .help(String(localized: "Send Later (⌘⇧L)"))
+        .accessibilityLabel(String(localized: "Send Later"))
     }
 
     // MARK: Pickers
@@ -651,6 +727,7 @@ struct ComposerTextView: NSViewRepresentable {
     let placeholder: String
     /// Changes whenever the box should take the keyboard: another chat, a reply or an edit started.
     let focusToken: String
+    var isSpellcheckEnabled: Bool = true
     let onEscape: () -> Bool
     /// ↑ in an empty box; true when it was used.
     let onUpArrow: () -> Bool
@@ -678,6 +755,7 @@ struct ComposerTextView: NSViewRepresentable {
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticLinkDetectionEnabled = false
+        textView.isContinuousSpellCheckingEnabled = isSpellcheckEnabled
         textView.font = PlainTextView.baseFont
         textView.textColor = .labelColor
         textView.typingAttributes = PlainTextView.baseAttributes
@@ -703,6 +781,9 @@ struct ComposerTextView: NSViewRepresentable {
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         context.coordinator.parent = self
         guard let textView = context.coordinator.textView else { return }
+        if textView.isContinuousSpellCheckingEnabled != isSpellcheckEnabled {
+            textView.isContinuousSpellCheckingEnabled = isSpellcheckEnabled
+        }
         context.coordinator.sync()
         textView.placeholder = placeholder
         context.coordinator.updateHeight()

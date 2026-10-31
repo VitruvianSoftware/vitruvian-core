@@ -95,4 +95,30 @@ final class ComposerPreferencesTests: XCTestCase {
         store.defaults.set("", forKey: "courier.composer.quickReaction")
         XCTAssertEqual(ComposerPreferences(defaults: store.defaults).quickReaction, "❤️")
     }
+
+    func testPrimarySecondaryComposerButtonsAndTimeFormatPersistence() {
+        let preferences = ComposerPreferences(defaults: store.defaults)
+        XCTAssertEqual(preferences.primaryComposerButton, .emojiPicker)
+        XCTAssertEqual(preferences.secondaryComposerButton, .recordAudio)
+        XCTAssertEqual(preferences.timeFormat, .system)
+        XCTAssertTrue(preferences.showMessageTimestamps)
+        XCTAssertTrue(preferences.enableSpellcheck)
+
+        preferences.primaryComposerButton = .sendLater
+        preferences.secondaryComposerButton = .gifPicker
+        preferences.timeFormat = .twentyFourHour
+        preferences.showMessageTimestamps = false
+        preferences.enableSpellcheck = false
+
+        XCTAssertEqual(store.defaults.string(forKey: "courier.composer.primaryComposerButton"), "sendLater")
+        XCTAssertEqual(store.defaults.string(forKey: "courier.composer.secondaryComposerButton"), "gifPicker")
+        XCTAssertEqual(store.defaults.string(forKey: "courier.composer.timeFormat"), "twentyFourHour")
+
+        let reloaded = ComposerPreferences(defaults: store.defaults)
+        XCTAssertEqual(reloaded.primaryComposerButton, .sendLater)
+        XCTAssertEqual(reloaded.secondaryComposerButton, .gifPicker)
+        XCTAssertEqual(reloaded.timeFormat, .twentyFourHour)
+        XCTAssertFalse(reloaded.showMessageTimestamps)
+        XCTAssertFalse(reloaded.enableSpellcheck)
+    }
 }

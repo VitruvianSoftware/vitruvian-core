@@ -125,27 +125,41 @@ struct AccountsSettingsPane: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .padding()
             } else {
-                List(selection: $model.selectedAccountKey) {
-                    ForEach(entries) { entry in
-                        HStack(spacing: 8) {
-                            Circle()
-                                .fill(statusColor(entry.state))
-                                .frame(width: 8, height: 8)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(entry.displayName)
-                                    .font(.body.weight(.medium))
-                                Text(entry.remoteName)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
+                ScrollView {
+                    VStack(spacing: 4) {
+                        ForEach(entries) { entry in
+                            let isSelected = model.selectedAccountKey == entry.key
+                            Button {
+                                model.selectedAccountKey = entry.key
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Circle()
+                                        .fill(statusColor(entry.state))
+                                        .frame(width: 8, height: 8)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(entry.displayName)
+                                            .font(.body.weight(isSelected ? .semibold : .medium))
+                                            .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
+                                        Text(entry.remoteName)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                    }
+                                    Spacer()
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                        .fill(isSelected ? Color.accentColor.opacity(0.14) : Color.clear)
+                                )
                             }
-                            Spacer()
+                            .buttonStyle(.plain)
                         }
-                        .tag(Optional(entry.key))
-                        .padding(.vertical, 2)
                     }
+                    .padding(8)
                 }
-                .listStyle(.sidebar)
             }
         }
     }

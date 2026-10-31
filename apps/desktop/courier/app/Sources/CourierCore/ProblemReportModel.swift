@@ -664,4 +664,13 @@ public final class ProblemReportModel: ObservableObject {
         }
         previewStderrText = payload.stderrLines.joined(separator: "\n")
     }
+
+    /// Populates diagnostic state directly for snapshot and unit tests without a running engine.
+    public func setSnapshotStateForTesting(
+        diagnostics: DiagnosticsExportResult,
+        scrubbedSupervisorLines: [String] = []
+    ) {
+        self.diagnostics = diagnostics
+        self.scrubbedSupervisorLines = scrubbedSupervisorLines
+    }
 }

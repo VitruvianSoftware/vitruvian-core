@@ -29,8 +29,12 @@ struct RemindMeItems: View {
 
     var body: some View {
         if inbox.isEntitled(.reminders) {
-            let presets = ReminderPresets.presets(now: Date(), calendar: .current,
-                                                  lastUsed: inbox.preferences.lastUsedReminder)
+            let presets = ReminderPresets.presets(
+                now: Date(),
+                calendar: .current,
+                lastUsed: inbox.preferences.lastUsedReminder,
+                suggestions: inbox.preferences.timeSuggestions
+            )
             ForEach(Array(presets.enumerated()), id: \.offset) { _, preset in
                 Button(preset.title) { remind(preset.title, fallback: preset.date) }
             }
@@ -57,7 +61,12 @@ struct RemindMeItems: View {
     /// A menu is drawn before it is opened, so "In an Hour" is worked out again from now when it is chosen.
     private func remind(_ title: String, fallback: Date) {
         let now = Date()
-        let due = ReminderPresets.presets(now: now, calendar: .current, lastUsed: inbox.preferences.lastUsedReminder)
+        let due = ReminderPresets.presets(
+            now: now,
+            calendar: .current,
+            lastUsed: inbox.preferences.lastUsedReminder,
+            suggestions: inbox.preferences.timeSuggestions
+        )
             .first { $0.title == title }?.date ?? fallback
         let condition = inbox.preferences.remindDefault
         Task { await inbox.remind(at: max(due, now.addingTimeInterval(60)), condition: condition, ids: ids) }

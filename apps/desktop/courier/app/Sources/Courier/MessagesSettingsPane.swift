@@ -180,8 +180,19 @@ struct MessagesSettingsPane: View {
                 Text(String(localized: "Move focus to the message list")).tag(UpArrowAction.focusMessages)
                 Text(String(localized: "Edit your last message")).tag(UpArrowAction.editLast)
             }
+            Toggle(String(localized: "Enable spellcheck"), isOn: $preferences.enableSpellcheck)
             Toggle(String(localized: "Show formatting menu"), isOn: $preferences.showFormattingMenu)
                 .help(String(localized: "A bar of formatting buttons over the text you select."))
+            Picker(String(localized: "Primary composer button"), selection: $preferences.primaryComposerButton) {
+                ForEach(PrimaryComposerButton.allCases, id: \.self) { button in
+                    Text(button.label).tag(button)
+                }
+            }
+            Picker(String(localized: "Secondary composer button"), selection: $preferences.secondaryComposerButton) {
+                ForEach(SecondaryComposerButton.allCases, id: \.self) { button in
+                    Text(button.label).tag(button)
+                }
+            }
             Toggle(String(localized: "Enable emoji autocomplete"), isOn: $preferences.enableEmojiAutocomplete)
                 .accessibilityIdentifier("settings.composing.enableEmojiAutocomplete")
             Toggle(
@@ -233,7 +244,7 @@ struct MessagesSettingsPane: View {
                 }
                 .disabled(selectedReply == nil)
             }
-            Text(String(localized: "Type ; and the title in a chat. {first_name}, {last_name} and {full_name} fill in the other person’s name."))
+            Text(String(localized: "Type ; and the title in a chat. {first_name}, {last_name}, {full_name}, {username}, {phone_number}, and {email} fill in contact details."))
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

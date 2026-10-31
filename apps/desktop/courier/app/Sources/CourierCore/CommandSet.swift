@@ -390,8 +390,11 @@ public enum CommandSet {
             keys: nil,
             category: .inbox,
             confirmation: nil,
-            isEnabled: { true },
-            run: { registry.open(.space(spaceID: inbox.query.space)) }
+            isEnabled: { !inbox.lifecycle.isLocked && AppLockGate.shared.canPerform(.openChat) },
+            run: {
+                guard !inbox.lifecycle.isLocked, AppLockGate.shared.canPerform(.openChat) else { return }
+                registry.open(.space(spaceID: inbox.query.space))
+            }
         )
     }
 
@@ -405,8 +408,11 @@ public enum CommandSet {
             keys: primary,
             category: .inbox,
             confirmation: nil,
-            isEnabled: { true },
-            run: { hotkeys.isShortcutsSheetPresented = true }
+            isEnabled: { AppLockGate.shared.canPerform(.other) },
+            run: {
+                guard AppLockGate.shared.canPerform(.other) else { return }
+                hotkeys.isShortcutsSheetPresented = true
+            }
         )
     }
 
@@ -421,6 +427,214 @@ public enum CommandSet {
             confirmation: nil,
             isEnabled: { !coordinator.lifecycle.isLocked },
             run: { coordinator.openSettings(.shortcuts) }
+        )
+    }
+
+    // MARK: - Milestone 4.6 Settings, Help & System Commands
+
+    @MainActor
+    public static func settings(
+        _ navigation: SettingsNavigationModel,
+        openWindow: @escaping @MainActor () -> Void = {}
+    ) -> CourierCommand {
+        paneCommand(id: "Settings", title: String(localized: "Settings"), keys: "⌘,", pane: .general, navigation: navigation, openWindow: openWindow)
+    }
+
+    @MainActor
+    public static func general(
+        _ navigation: SettingsNavigationModel,
+        openWindow: @escaping @MainActor () -> Void = {}
+    ) -> CourierCommand {
+        paneCommand(id: "General", title: String(localized: "General"), keys: nil, pane: .general, navigation: navigation, openWindow: openWindow)
+    }
+
+    @MainActor
+    public static func appearance(
+        _ navigation: SettingsNavigationModel,
+        openWindow: @escaping @MainActor () -> Void = {}
+    ) -> CourierCommand {
+        paneCommand(id: "Appearance", title: String(localized: "Appearance"), keys: nil, pane: .appearance, navigation: navigation, openWindow: openWindow)
+    }
+
+    @MainActor
+    public static func notifications(
+        _ navigation: SettingsNavigationModel,
+        openWindow: @escaping @MainActor () -> Void = {}
+    ) -> CourierCommand {
+        paneCommand(id: "Notifications", title: String(localized: "Notifications"), keys: nil, pane: .notifications, navigation: navigation, openWindow: openWindow)
+    }
+
+    @MainActor
+    public static func accounts(
+        _ navigation: SettingsNavigationModel,
+        openWindow: @escaping @MainActor () -> Void = {}
+    ) -> CourierCommand {
+        paneCommand(id: "Accounts", title: String(localized: "Accounts"), keys: nil, pane: .accounts, navigation: navigation, openWindow: openWindow)
+    }
+
+    @MainActor
+    public static func account(
+        _ navigation: SettingsNavigationModel,
+        accountKey: String? = nil,
+        openWindow: @escaping @MainActor () -> Void = {}
+    ) -> CourierCommand {
+        CourierCommand(
+            id: "Account",
+            title: String(localized: "Account"),
+            keys: nil,
+            category: .accounts,
+            confirmation: nil,
+            isEnabled: { AppLockGate.shared.canPerform(.settingsChange) },
+            run: {
+                guard AppLockGate.shared.canPerform(.settingsChange) else { return }
+                navigation.openPane(.accounts, accountKey: accountKey)
+                openWindow()
+            }
+        )
+    }
+
+    @MainActor
+    public static func hotkeys(
+        _ navigation: SettingsNavigationModel,
+        openWindow: @escaping @MainActor () -> Void = {}
+    ) -> CourierCommand {
+        paneCommand(id: "Hotkeys", title: String(localized: "Hotkeys"), keys: nil, pane: .hotkeys, navigation: navigation, openWindow: openWindow)
+    }
+
+    @MainActor
+    public static func quickReplies(
+        _ navigation: SettingsNavigationModel,
+        openWindow: @escaping @MainActor () -> Void = {}
+    ) -> CourierCommand {
+        paneCommand(id: "Quick Replies", title: String(localized: "Quick Replies"), keys: nil, pane: .quickReplies, navigation: navigation, openWindow: openWindow)
+    }
+
+    @MainActor
+    public static func bridges(
+        _ navigation: SettingsNavigationModel,
+        openWindow: @escaping @MainActor () -> Void = {}
+    ) -> CourierCommand {
+        paneCommand(id: "Bridges", title: String(localized: "Bridges"), keys: nil, pane: .bridges, navigation: navigation, openWindow: openWindow)
+    }
+
+    @MainActor
+    public static func about(
+        _ navigation: SettingsNavigationModel,
+        openWindow: @escaping @MainActor () -> Void = {}
+    ) -> CourierCommand {
+        paneCommand(id: "About", title: String(localized: "About"), keys: nil, pane: .about, navigation: navigation, openWindow: openWindow)
+    }
+
+    @MainActor
+    public static func help(
+        _ navigation: SettingsNavigationModel,
+        openWindow: @escaping @MainActor () -> Void = {}
+    ) -> CourierCommand {
+        paneCommand(id: "Help", title: String(localized: "Help"), keys: nil, pane: .about, navigation: navigation, openWindow: openWindow)
+    }
+
+    @MainActor
+    public static func lockApp(_ lifecycle: SystemLifecycleModel) -> CourierCommand {
+        CourierCommand(
+            id: "Lock app",
+            title: String(localized: "Lock app"),
+            keys: nil,
+            category: .inbox,
+            confirmation: nil,
+            isEnabled: { !lifecycle.isLocked },
+            run: { lifecycle.lockApp() }
+        )
+    }
+
+    @MainActor
+    public static func reportProblem(
+        presentReportProblem: @escaping @MainActor () -> Void
+    ) -> CourierCommand {
+        CourierCommand(
+            id: "Report a problem",
+            title: String(localized: "Report a problem"),
+            keys: "⌘⇧P",
+            category: .inbox,
+            confirmation: nil,
+            isEnabled: { AppLockGate.shared.canPerform(.export) },
+            run: {
+                guard AppLockGate.shared.canPerform(.export) else { return }
+                presentReportProblem()
+            }
+        )
+    }
+
+    @MainActor
+    public static func restartNotificationCenter(
+        _ restart: @escaping @MainActor () -> Void
+    ) -> CourierCommand {
+        CourierCommand(
+            id: "Restart Notification Center",
+            title: String(localized: "Restart Notification Center"),
+            keys: nil,
+            category: .inbox,
+            confirmation: nil,
+            isEnabled: { AppLockGate.shared.canPerform(.settingsChange) },
+            run: {
+                guard AppLockGate.shared.canPerform(.settingsChange) else { return }
+                restart()
+            }
+        )
+    }
+
+    /// All Milestone 4.6 Settings, Help, and System commands for the command bar.
+    @MainActor
+    public static func settingsAndSystem(
+        navigation: SettingsNavigationModel,
+        inbox: InboxModel,
+        lifecycle: SystemLifecycleModel,
+        hotkeys: HotkeyRegistry,
+        detachedRegistry: DetachedWindowRegistry,
+        openSettingsWindow: @escaping @MainActor () -> Void = {},
+        presentReportProblem: @escaping @MainActor () -> Void = {},
+        restartNotificationCenter: @escaping @MainActor () -> Void = {}
+    ) -> [CourierCommand] {
+        [
+            settings(navigation, openWindow: openSettingsWindow),
+            general(navigation, openWindow: openSettingsWindow),
+            appearance(navigation, openWindow: openSettingsWindow),
+            notifications(navigation, openWindow: openSettingsWindow),
+            accounts(navigation, openWindow: openSettingsWindow),
+            account(navigation, openWindow: openSettingsWindow),
+            Self.hotkeys(navigation, openWindow: openSettingsWindow),
+            quickReplies(navigation, openWindow: openSettingsWindow),
+            bridges(navigation, openWindow: openSettingsWindow),
+            about(navigation, openWindow: openSettingsWindow),
+            help(navigation, openWindow: openSettingsWindow),
+            lockApp(lifecycle),
+            reportProblem(presentReportProblem: presentReportProblem),
+            Self.restartNotificationCenter(restartNotificationCenter),
+            openSpaceInNewWindow(inbox, registry: detachedRegistry),
+            showKeyboardShortcuts(hotkeys),
+        ]
+    }
+
+    @MainActor
+    private static func paneCommand(
+        id: String,
+        title: String,
+        keys: String?,
+        pane: SettingsPaneID,
+        navigation: SettingsNavigationModel,
+        openWindow: @escaping @MainActor () -> Void
+    ) -> CourierCommand {
+        CourierCommand(
+            id: id,
+            title: title,
+            keys: keys,
+            category: .inbox,
+            confirmation: nil,
+            isEnabled: { AppLockGate.shared.canPerform(.settingsChange) },
+            run: {
+                guard AppLockGate.shared.canPerform(.settingsChange) else { return }
+                navigation.openPane(pane)
+                openWindow()
+            }
         )
     }
 

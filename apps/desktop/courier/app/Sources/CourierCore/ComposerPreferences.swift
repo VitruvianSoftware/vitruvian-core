@@ -29,6 +29,59 @@ public enum SendLaterCondition: String, CaseIterable, Sendable {
     public var wire: ScheduleCondition { ScheduleCondition(rawValue: rawValue) }
 }
 
+/// Primary action button shown beside the send button in the composer (`setting:appearance Primary composer button`).
+public enum PrimaryComposerButton: String, CaseIterable, Codable, Sendable {
+    case emojiPicker
+    case gifPicker
+    case addAttachment
+    case sendLater
+    case none
+
+    public var label: String {
+        switch self {
+        case .emojiPicker: String(localized: "Emoji picker")
+        case .gifPicker: String(localized: "GIF picker")
+        case .addAttachment: String(localized: "Add attachment")
+        case .sendLater: String(localized: "Send later")
+        case .none: String(localized: "None")
+        }
+    }
+}
+
+/// Secondary action button shown in the composer (`setting:appearance Secondary composer button`).
+public enum SecondaryComposerButton: String, CaseIterable, Codable, Sendable {
+    case recordAudio
+    case gifPicker
+    case addAttachment
+    case sendLater
+    case none
+
+    public var label: String {
+        switch self {
+        case .recordAudio: String(localized: "Record voice note")
+        case .gifPicker: String(localized: "GIF picker")
+        case .addAttachment: String(localized: "Add attachment")
+        case .sendLater: String(localized: "Send later")
+        case .none: String(localized: "None")
+        }
+    }
+}
+
+/// Clock format preference (`setting:general Time Format`).
+public enum TimeFormatPreference: String, CaseIterable, Codable, Sendable {
+    case system
+    case twelveHour
+    case twentyFourHour
+
+    public var label: String {
+        switch self {
+        case .system: String(localized: "System Default")
+        case .twelveHour: String(localized: "12-hour (1:30 PM)")
+        case .twentyFourHour: String(localized: "24-hour (13:30)")
+        }
+    }
+}
+
 /// The composer's settings, kept in UserDefaults under "courier.composer.<name>" (inventory 02 §1.2). They are the
 /// Mac's own settings: nothing here reaches a network, though `undoSendMillis` is passed on each send as `hold_ms`.
 public final class ComposerPreferences: ObservableObject {
@@ -206,6 +259,41 @@ public final class ComposerPreferences: ObservableObject {
             defaults.set(loadExternalEmbedsAutomatically, forKey: Self.loadExternalEmbedsAutomaticallyKey)
         }
     }
+    /// "Primary composer button" (`setting:appearance Primary composer button`, default `.emojiPicker`).
+    @Published public var primaryComposerButton: PrimaryComposerButton {
+        didSet {
+            guard canMutate({ primaryComposerButton = oldValue }) else { return }
+            set(primaryComposerButton.rawValue, "primaryComposerButton")
+        }
+    }
+    /// "Secondary composer button" (`setting:appearance Secondary composer button`, default `.recordAudio`).
+    @Published public var secondaryComposerButton: SecondaryComposerButton {
+        didSet {
+            guard canMutate({ secondaryComposerButton = oldValue }) else { return }
+            set(secondaryComposerButton.rawValue, "secondaryComposerButton")
+        }
+    }
+    /// "Time Format" (`setting:general Time Format`, default `.system`).
+    @Published public var timeFormat: TimeFormatPreference {
+        didSet {
+            guard canMutate({ timeFormat = oldValue }) else { return }
+            set(timeFormat.rawValue, "timeFormat")
+        }
+    }
+    /// "Show message timestamps" (`setting:appearance Show message timestamps`, default `true`).
+    @Published public var showMessageTimestamps: Bool {
+        didSet {
+            guard canMutate({ showMessageTimestamps = oldValue }) else { return }
+            set(showMessageTimestamps, "showMessageTimestamps")
+        }
+    }
+    /// "Enable spellcheck" (`setting:appearance Enable spellcheck`, default `true`).
+    @Published public var enableSpellcheck: Bool {
+        didSet {
+            guard canMutate({ enableSpellcheck = oldValue }) else { return }
+            set(enableSpellcheck, "enableSpellcheck")
+        }
+    }
 
     /// The key a setting is kept under.
     public static func key(_ name: String) -> String { "courier.composer." + name }
@@ -259,6 +347,11 @@ public final class ComposerPreferences: ObservableObject {
         alwaysAskWhereToSaveFiles = defaults.object(forKey: Self.alwaysAskWhereToSaveFilesKey) as? Bool ?? false
         disableOutgoingLinkPreviews = defaults.object(forKey: Self.disableOutgoingLinkPreviewsKey) as? Bool ?? true
         loadExternalEmbedsAutomatically = defaults.object(forKey: Self.loadExternalEmbedsAutomaticallyKey) as? Bool ?? false
+        primaryComposerButton = value("primaryComposerButton", PrimaryComposerButton.emojiPicker)
+        secondaryComposerButton = value("secondaryComposerButton", SecondaryComposerButton.recordAudio)
+        timeFormat = value("timeFormat", TimeFormatPreference.system)
+        showMessageTimestamps = bool("showMessageTimestamps", true)
+        enableSpellcheck = bool("enableSpellcheck", true)
         isInitializing = false
     }
 

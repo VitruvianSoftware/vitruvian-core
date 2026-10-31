@@ -505,6 +505,103 @@ final class CommandSetTests: XCTestCase {
         XCTAssertTrue(composer.isStickerPickerPresented)
         XCTAssertFalse(composer.isGIFPickerPresented)
     }
+
+    func testSettingsAndSystemCommandsRouteToHandlers() async throws {
+        struct AlwaysBiometric: BiometricAuthService {
+            func canEvaluateBiometricsOrWatch() -> Bool { true }
+            func canEvaluateDeviceOwnerAuthentication() -> Bool { true }
+            func authenticate(reason _: String) async throws -> Bool { true }
+        }
+        struct StubLoginItem: LoginItemService {
+            func status() -> LoginItemRegistrationStatus { .notRegistered }
+            func register() throws {}
+            func unregister() throws {}
+        }
+
+        let (h, _, _) = try await start()
+        let testStore = TestDefaults()
+        defer {
+            AppLockGate.shared.resetForTesting()
+            testStore.remove()
+        }
+        let lifecycle = SystemLifecycleModel(
+            loginItemService: StubLoginItem(),
+            biometricService: AlwaysBiometric(),
+            defaults: testStore.defaults
+        )
+        let navigation = SettingsNavigationModel()
+        let hotkeys = HotkeyRegistry(defaults: testStore.defaults)
+        let detached = DetachedWindowRegistry(
+            appModel: h.app,
+            mainInbox: h.inbox,
+            lifecycle: lifecycle,
+            inboxPreferences: h.preferences,
+            composerPreferences: ComposerPreferences(defaults: testStore.defaults),
+            quickReplies: QuickReplies(defaults: testStore.defaults),
+            entitlement: AlwaysEntitled(),
+            makePasteboard: { FakePasteboard() },
+            openURL: { _ in },
+            hotkeys: hotkeys
+        )
+        var openedSettingsWindowCount = 0
+        var didReportProblem = false
+        var didRestartNotificationCenter = false
+
+        let cmds = CommandSet.settingsAndSystem(
+            navigation: navigation,
+            inbox: h.inbox,
+            lifecycle: lifecycle,
+            hotkeys: hotkeys,
+            detachedRegistry: detached,
+            openSettingsWindow: { openedSettingsWindowCount += 1 },
+            presentReportProblem: { didReportProblem = true },
+            restartNotificationCenter: { didRestartNotificationCenter = true }
+        )
+        let byID = Dictionary(uniqueKeysWithValues: cmds.map { ($0.id, $0) })
+
+        let expectedPanes: [(String, SettingsPaneID)] = [
+            ("Settings", .general),
+            ("General", .general),
+            ("Appearance", .appearance),
+            ("Notifications", .notifications),
+            ("Accounts", .accounts),
+            ("Account", .accounts),
+            ("Hotkeys", .hotkeys),
+            ("Quick Replies", .quickReplies),
+            ("Bridges", .bridges),
+            ("About", .about),
+            ("Help", .about),
+        ]
+
+        for (commandID, expectedPane) in expectedPanes {
+            let cmd = try XCTUnwrap(byID[commandID], "Missing command \(commandID)")
+            XCTAssertTrue(cmd.isEnabled())
+            cmd.run()
+            XCTAssertEqual(navigation.selectedPane, expectedPane, "Command \(commandID) did not select \(expectedPane)")
+        }
+        XCTAssertEqual(openedSettingsWindowCount, expectedPanes.count)
+
+        let reportCmd = try XCTUnwrap(byID["Report a problem"])
+        reportCmd.run()
+        XCTAssertTrue(didReportProblem)
+
+        let restartNotifCmd = try XCTUnwrap(byID["Restart Notification Center"])
+        restartNotifCmd.run()
+        XCTAssertTrue(didRestartNotificationCenter)
+
+        let openSpaceCmd = try XCTUnwrap(byID["Open space in new window"])
+        openSpaceCmd.run()
+        XCTAssertTrue(detached.openTargets.contains(.space(spaceID: "inbox")))
+
+        let shortcutsCmd = try XCTUnwrap(byID["Show keyboard shortcuts"])
+        shortcutsCmd.run()
+        XCTAssertTrue(hotkeys.isShortcutsSheetPresented)
+
+        let lockCmd = try XCTUnwrap(byID["Lock app"])
+        lockCmd.run()
+        XCTAssertTrue(lifecycle.isLocked)
+        XCTAssertFalse(try XCTUnwrap(byID["Settings"]).isEnabled(), "commands are disabled while locked")
+    }
 }
 
 /// The open chat, as the commands read it when they run.

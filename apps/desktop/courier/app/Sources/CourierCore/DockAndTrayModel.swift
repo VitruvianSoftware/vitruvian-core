@@ -160,6 +160,7 @@ public final class AppMenuCoordinator: ObservableObject {
     @Published public private(set) var detachedChatRoomIDs: [String] = []
     @Published public private(set) var focusCount: Int = 0
     @Published public private(set) var quitRequestedCount: Int = 0
+    public let settingsNavigation: SettingsNavigationModel = SettingsNavigationModel()
 
     public let inbox: InboxModel
     public let lifecycle: SystemLifecycleModel
@@ -229,6 +230,23 @@ public final class AppMenuCoordinator: ObservableObject {
     public func openSettings(_ section: SettingsSection) {
         guard !lifecycle.isLocked else { return }
         activeSettingsSection = section
+        switch section {
+        case .general, .inbox, .messages:
+            settingsNavigation.openPane(.general)
+        case .appearance:
+            settingsNavigation.openPane(.appearance)
+        case .notifications:
+            settingsNavigation.openPane(.notifications)
+        case .accounts:
+            settingsNavigation.openPane(.accounts)
+        case .shortcuts:
+            settingsNavigation.openPane(.hotkeys)
+        case .privacy, .changelog, .about:
+            settingsNavigation.openPane(.about)
+        case .reportProblem:
+            settingsNavigation.openPane(.about)
+            settingsNavigation.isPresentingProblemReport = true
+        }
         showSettingsWindow()
     }
 

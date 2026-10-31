@@ -29,6 +29,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let lifecycle = SystemLifecycleModel()
     /// Dock badge mode and menu-bar status item settings.
     let dockPreferences = DockAndTrayPreferences()
+    /// Shared Settings navigation and search model (`⌘,`).
+    let settingsNavigation = SettingsNavigationModel()
+    /// Shared per-account and global notification preferences.
+    let notificationPreferences = NotificationPreferences()
+    /// Accounts and Bridges settings model (`AccountsAndBridgesModel`).
+    let accountsAndBridges: AccountsAndBridgesModel
+    /// Local problem report bundle model (`ProblemReportModel`).
+    let problemReport: ProblemReportModel
     /// Shared keyboard shortcut registry read by menus, the ⌘/ sheet, and the Settings ▸ Shortcuts recorder.
     let hotkeys: HotkeyRegistry
     /// Detached chat, space, and thread window registry and presenter.
@@ -87,7 +95,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let windowOpener = MainWindowOpener()
     private var signInWindows: SignInWindowPresenter?
     private var notifications: NotificationCoordinator?
-    private let notifier = Notifier()
+    let notifier = Notifier()
     private var dockBadge: DockBadge?
     private var statusItem: NSStatusItem?
     private var statusItemSubscriptions = Set<AnyCancellable>()
@@ -169,6 +177,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.scheduled = scheduled
         let login = LoginFlowModel(appModel: model)
         self.login = login
+        accountsAndBridges = AccountsAndBridgesModel(appModel: model, lifecycle: lifecycle)
+        problemReport = ProblemReportModel(appModel: model)
         spaces = SpacesModel(appModel: model, inbox: inbox, lifecycle: lifecycle)
         labels = LabelsModel(appModel: model, lifecycle: lifecycle)
         let lifecycleRef = lifecycle

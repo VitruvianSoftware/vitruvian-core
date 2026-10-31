@@ -3329,6 +3329,394 @@ final class ViewSnapshotTests: XCTestCase {
         XCTAssertEqual(chatInfoNSWindow.title, "Chat Info — Alice Secret", "Chat Info window title must be restored on unlock")
         XCTAssertEqual(labelEditorNSWindow.title, "New Label", "Label Editor window title must be restored on unlock")
     }
+
+    // MARK: - Milestone 4.6 Tasks 10, 11, 12: Accounts, Bridges, Problem Report, and Settings Shell with Search
+
+    func testMilestone46SettingsAccountsBridgesProblemReportAndSearchLightAndDark() throws {
+        struct StubDockTile: DockTileService {
+            func isAppInDock(bundleIdentifier: String) -> Bool {
+                bundleIdentifier == "net.whatsapp.WhatsApp" || bundleIdentifier == "ru.keepcoder.Telegram"
+            }
+            func removeAppFromDock(bundleIdentifier _: String) -> Bool { true }
+        }
+        final class StubPasteboard: TextPasteboard {
+            func setString(_: String) {}
+        }
+
+        let testDefaults = defaults()
+        let app = offlineApp()
+        let lifecycle = SystemLifecycleModel(
+            loginItemService: SnapshotLoginItemService(),
+            biometricService: SnapshotBiometricService(),
+            defaults: testDefaults
+        )
+        let inboxPrefs = InboxPreferences(defaults: testDefaults)
+        let composerPrefs = ComposerPreferences(defaults: testDefaults)
+        let notificationPrefs = NotificationPreferences(defaults: testDefaults)
+        let dockPrefs = DockAndTrayPreferences(defaults: testDefaults)
+        let quickReplies = QuickReplies(defaults: testDefaults)
+        try quickReplies.add(title: "omw", text: "On my way, {first_name}!")
+        try quickReplies.add(title: "intro", text: "Hi {full_name} ({username}), my number is {phone_number}.")
+        let hotkeys = HotkeyRegistry(defaults: testDefaults, isAppLocked: { lifecycle.isLocked })
+        let inbox = InboxModel(appModel: app, preferences: inboxPrefs, lifecycle: lifecycle)
+        let spaces = SpacesModel(appModel: app, inbox: inbox, lifecycle: lifecycle)
+        let labels = LabelsModel(appModel: app, lifecycle: lifecycle)
+        let conv = conversation(composerPrefs, entitled: true)
+        let login = LoginFlowModel(
+            caller: SnapshotLoginCaller(),
+            accounts: { app.accounts },
+            reloadAccounts: {},
+            credentials: SnapshotCredentials(),
+            builtInCredentials: { nil },
+            restartEngine: {}
+        )
+
+        let bridgesFixtureJSON = """
+        [
+          {
+            "network": "telegram",
+            "display_name": "Telegram",
+            "bridge_id": "telegram",
+            "module_path": "go.mau.fi/mautrix-telegram",
+            "version": "v0.2609.0",
+            "mautrix_version": "v0.31.0",
+            "state": "CONNECTED",
+            "started_at": 1761400000000,
+            "accounts": [
+              {
+                "network": "telegram",
+                "display_name": "Telegram",
+                "flows": ["phone", "qr"],
+                "state": "CONNECTED",
+                "error": "",
+                "remote_name": "@alice_example",
+                "not_started": "",
+                "syncs": ["messages"],
+                "logins": [
+                  {
+                    "account_id": "tg-1",
+                    "remote_name": "@alice_example",
+                    "state": "CONNECTED",
+                    "error": ""
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "network": "whatsapp",
+            "display_name": "WhatsApp",
+            "bridge_id": "whatsapp",
+            "module_path": "go.mau.fi/mautrix-whatsapp",
+            "version": "v0.2609.0",
+            "mautrix_version": "v0.31.0",
+            "state": "CONNECTED",
+            "started_at": 1761400000000,
+            "accounts": [
+              {
+                "network": "whatsapp",
+                "display_name": "WhatsApp",
+                "flows": ["qr", "phone"],
+                "state": "CONNECTED",
+                "error": "",
+                "remote_name": "+1 555 010 0101",
+                "not_started": "",
+                "syncs": ["messages"],
+                "logins": [
+                  {
+                    "account_id": "wa-1",
+                    "remote_name": "+1 555 010 0101",
+                    "state": "CONNECTED",
+                    "error": ""
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "network": "slack",
+            "display_name": "Slack",
+            "bridge_id": "slack",
+            "module_path": "go.mau.fi/mautrix-slack",
+            "version": "v0.2609.1",
+            "mautrix_version": "v0.31.0",
+            "state": "BAD_CREDENTIALS",
+            "error": "token_revoked",
+            "message": "Your Slack session expired. Reconnect to continue receiving messages.",
+            "started_at": 1761400000000,
+            "accounts": [
+              {
+                "network": "slack",
+                "display_name": "Slack",
+                "flows": ["token"],
+                "state": "BAD_CREDENTIALS",
+                "error": "token_revoked",
+                "message": "Your Slack session expired.",
+                "remote_name": "Example Workspace",
+                "not_started": "",
+                "syncs": ["messages"],
+                "logins": [
+                  {
+                    "account_id": "sl-1",
+                    "remote_name": "Example Workspace",
+                    "state": "BAD_CREDENTIALS",
+                    "error": "token_revoked",
+                    "message": "Your Slack session expired."
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+        """
+        let bridges = try JSONDecoder().decode([BridgeInfo].self, from: Data(bridgesFixtureJSON.utf8))
+        let subAccountsJSON = """
+        [
+          {
+            "network": "telegram",
+            "account_id": "tg-1",
+            "sub_id": "!folder1:courier.local",
+            "title": "Work Chats",
+            "avatar_uri": "",
+            "kind": "space",
+            "enabled": true,
+            "show_in_inbox": "all"
+          },
+          {
+            "network": "telegram",
+            "account_id": "tg-1",
+            "sub_id": "!folder2:courier.local",
+            "title": "Muted Channels",
+            "avatar_uri": "",
+            "kind": "space",
+            "enabled": false,
+            "show_in_inbox": "none"
+          },
+          {
+            "network": "telegram",
+            "account_id": "tg-1",
+            "sub_id": "!bot1:courier.local",
+            "title": "Courier Helper Bot",
+            "avatar_uri": "",
+            "kind": "bot",
+            "enabled": true,
+            "show_in_inbox": "dms"
+          }
+        ]
+        """
+        let subAccounts = try JSONDecoder().decode([SubAccountItem].self, from: Data(subAccountsJSON.utf8))
+
+        let accountsModel = AccountsAndBridgesModel(
+            appModel: app,
+            dockTileService: StubDockTile(),
+            pasteboard: StubPasteboard(),
+            lifecycle: lifecycle
+        )
+        accountsModel.setSnapshotStateForTesting(
+            bridges: bridges,
+            subAccountsByKey: ["telegram:tg-1": subAccounts],
+            selectedAccountKey: "telegram:tg-1",
+            expandedBridgeNetworks: ["whatsapp", "slack"]
+        )
+
+        // 1. Accounts pane (Telegram selected with Folders & Bots + Dock cleanup + Space settings)
+        check(try Snapshot.render("settings-accounts", width: 760, height: 640) {
+            AccountsSettingsPane(
+                model: accountsModel,
+                spaces: spaces,
+                notifications: notificationPrefs,
+                onAddAccount: {},
+                onReconnect: { _, _ in }
+            )
+        })
+
+        // 2. Remove Account confirmation dialog sheet
+        accountsModel.requestRemoveAccount(
+            network: "whatsapp",
+            accountID: "wa-1",
+            remoteName: "+1 555 010 0101",
+            displayName: "WhatsApp"
+        )
+        if let removal = accountsModel.pendingRemoval {
+            check(try Snapshot.render("settings-accounts-remove-confirm", width: 440) {
+                RemoveAccountConfirmationSheet(
+                    confirmation: .constant(removal),
+                    onConfirm: {},
+                    onCancel: {}
+                )
+            })
+        }
+        accountsModel.cancelRemoveAccount()
+
+        // 3. Bridges pane (connected + error state + expanded details)
+        check(try Snapshot.render("settings-bridges", width: 720, height: 620) {
+            BridgesSettingsPane(
+                model: accountsModel,
+                onOpenAccountSettings: { _, _ in },
+                onAddAccount: { _ in }
+            )
+        })
+
+        // 4. Problem Report sheet (with scrubbed JSON + stderr preview & Include Message Details toggle)
+        let diagJSON = """
+        {
+          "protocol_version": 9,
+          "schema_version": 10,
+          "go_version": "go1.26.2",
+          "bridges": \(bridgesFixtureJSON),
+          "scrubbed_stderr": [
+            "{\\"level\\":\\"warn\\",\\"network\\":\\"whatsapp\\",\\"message\\":\\"websocket closed\\",\\"retry_in\\":5}",
+            "panic: runtime error: index out of range",
+            "goroutine 42 [running]:",
+            "apps/desktop/courier/engine/internal/host.(*Manager).Run()",
+            "\\tapps/desktop/courier/engine/internal/host/manager.go:188 +0x120"
+          ],
+          "room_details": {
+            "room_id": "!room1:courier.local",
+            "network": "whatsapp",
+            "is_direct": true
+          },
+          "message_details": {
+            "event_id": "$evt1",
+            "room_id": "!room1:courier.local",
+            "network": "whatsapp",
+            "type": "m.room.message",
+            "ts": 1761401234000,
+            "status": "failed",
+            "status_reason": "[id] not reachable",
+            "has_media": false,
+            "is_redacted": false
+          }
+        }
+        """
+        let exportedDiag = try JSONDecoder().decode(DiagnosticsExportResult.self, from: Data(diagJSON.utf8))
+        let reportModel = ProblemReportModel(
+            appModel: app,
+            contextRoomID: "!room1:courier.local",
+            contextEventID: "$evt1"
+        )
+        reportModel.descriptionText = "Sending a message in WhatsApp failed right after waking my Mac from sleep."
+        reportModel.includeMessageDetails = true
+        reportModel.setSnapshotStateForTesting(diagnostics: exportedDiag)
+
+        check(try Snapshot.render("problem-report-sheet", width: 580, height: 620) {
+            ProblemReportSheet(model: reportModel, pasteboard: StubPasteboard(), onDismiss: {})
+        })
+
+        // 5. Two-column Settings shell with active search results ("delay" / "dock" matching suggestions) and General pane
+        let nav = SettingsNavigationModel(selectedPane: .general)
+        nav.searchQuery = "delay"
+        nav.highlightedSettingID = "general.timeSuggestions"
+        check(try Snapshot.render("settings-window-search", width: 840, height: 640) {
+            SettingsWindow(
+                navigation: nav,
+                app: app,
+                inbox: inbox,
+                spaces: spaces,
+                labels: labels,
+                conversation: conv,
+                inboxPreferences: inboxPrefs,
+                composerPreferences: composerPrefs,
+                notificationPreferences: notificationPrefs,
+                quickReplies: quickReplies,
+                hotkeys: hotkeys,
+                lifecycle: lifecycle,
+                dockPreferences: dockPrefs,
+                accountsAndBridges: accountsModel,
+                loginFlow: login,
+                problemReport: reportModel
+            )
+        })
+
+        // 6. Settings shell showing Appearance, Notifications, Quick Replies, and About panes
+        let appearanceNav = SettingsNavigationModel(selectedPane: .appearance)
+        check(try Snapshot.render("settings-appearance", width: 840, height: 640) {
+            SettingsWindow(
+                navigation: appearanceNav,
+                app: app,
+                inbox: inbox,
+                spaces: spaces,
+                labels: labels,
+                conversation: conv,
+                inboxPreferences: inboxPrefs,
+                composerPreferences: composerPrefs,
+                notificationPreferences: notificationPrefs,
+                quickReplies: quickReplies,
+                hotkeys: hotkeys,
+                lifecycle: lifecycle,
+                dockPreferences: dockPrefs,
+                accountsAndBridges: accountsModel,
+                loginFlow: login,
+                problemReport: reportModel
+            )
+        })
+
+        let notifNav = SettingsNavigationModel(selectedPane: .notifications)
+        check(try Snapshot.render("settings-notifications", width: 840, height: 640) {
+            SettingsWindow(
+                navigation: notifNav,
+                app: app,
+                inbox: inbox,
+                spaces: spaces,
+                labels: labels,
+                conversation: conv,
+                inboxPreferences: inboxPrefs,
+                composerPreferences: composerPrefs,
+                notificationPreferences: notificationPrefs,
+                quickReplies: quickReplies,
+                hotkeys: hotkeys,
+                lifecycle: lifecycle,
+                dockPreferences: dockPrefs,
+                accountsAndBridges: accountsModel,
+                loginFlow: login,
+                problemReport: reportModel
+            )
+        })
+
+        let quickRepliesNav = SettingsNavigationModel(selectedPane: .quickReplies)
+        check(try Snapshot.render("settings-quick-replies", width: 840, height: 580) {
+            SettingsWindow(
+                navigation: quickRepliesNav,
+                app: app,
+                inbox: inbox,
+                spaces: spaces,
+                labels: labels,
+                conversation: conv,
+                inboxPreferences: inboxPrefs,
+                composerPreferences: composerPrefs,
+                notificationPreferences: notificationPrefs,
+                quickReplies: quickReplies,
+                hotkeys: hotkeys,
+                lifecycle: lifecycle,
+                dockPreferences: dockPrefs,
+                accountsAndBridges: accountsModel,
+                loginFlow: login,
+                problemReport: reportModel
+            )
+        })
+
+        let aboutNav = SettingsNavigationModel(selectedPane: .about)
+        check(try Snapshot.render("settings-about", width: 840, height: 600) {
+            SettingsWindow(
+                navigation: aboutNav,
+                app: app,
+                inbox: inbox,
+                spaces: spaces,
+                labels: labels,
+                conversation: conv,
+                inboxPreferences: inboxPrefs,
+                composerPreferences: composerPrefs,
+                notificationPreferences: notificationPrefs,
+                quickReplies: quickReplies,
+                hotkeys: hotkeys,
+                lifecycle: lifecycle,
+                dockPreferences: dockPrefs,
+                accountsAndBridges: accountsModel,
+                loginFlow: login,
+                problemReport: reportModel
+            )
+        })
+    }
 }
 
 private struct SnapshotLoginItemService: LoginItemService {

@@ -4,9 +4,11 @@
 import CourierCore
 import SwiftUI
 
-/// Courier ▸ Settings: Inbox and Messages; part 4.6 adds the others (and may move rows between them).
+/// Courier ▸ Settings (`⌘,`): delegates to the two-column `SettingsWindow` shell across all 8 panes.
 struct SettingsView: View {
+    var appModel: AppModel? = nil
     let inbox: InboxModel
+    var spaces: SpacesModel? = nil
     let labels: LabelsModel
     /// Incognito is turned on and off through it, so that turning it on asks about typing.
     let conversation: ConversationModel
@@ -15,18 +17,50 @@ struct SettingsView: View {
     let quickReplies: QuickReplies
     var hotkeys: HotkeyRegistry = HotkeyRegistry()
     var lifecycle: SystemLifecycleModel = SystemLifecycleModel()
+    var navigation: SettingsNavigationModel = SettingsNavigationModel()
+    var notificationPreferences: NotificationPreferences = NotificationPreferences()
+    var dockPreferences: DockAndTrayPreferences = DockAndTrayPreferences()
+    var accountsAndBridges: AccountsAndBridgesModel? = nil
+    var loginFlow: LoginFlowModel? = nil
+    var problemReport: ProblemReportModel? = nil
+    var onRestartNotificationCenter: () -> Void = {}
+
+    private var resolvedAppModel: AppModel {
+        if let appModel {
+            return appModel
+        }
+        return AppModel(
+            supervisor: EngineSupervisor(
+                enginePath: "/nonexistent/courier-engine",
+                dataDir: FileManager.default.temporaryDirectory.appendingPathComponent("courier-settings"),
+                environment: [:],
+                launcher: FoundationProcessLauncher()
+            ),
+            lifecycle: lifecycle
+        )
+    }
 
     var body: some View {
-        TabView {
-            InboxSettingsPane(preferences: inbox.preferences, labels: labels, inbox: inbox)
-                .tabItem { Label(String(localized: "Inbox"), systemImage: "tray") }
-            MessagesSettingsPane(preferences: composerPreferences, quickReplies: quickReplies,
-                                 isEntitled: { inbox.isEntitled($0) }, conversation: conversation)
-                .tabItem { Label(String(localized: "Messages"), systemImage: "bubble.left") }
-            HotkeysSettingsPane(registry: hotkeys, lifecycle: lifecycle)
-                .tabItem { Label(String(localized: "Shortcuts"), systemImage: "command") }
-        }
-        .frame(width: 560)
+        let resolvedApp = resolvedAppModel
+        SettingsWindow(
+            navigation: navigation,
+            app: resolvedApp,
+            inbox: inbox,
+            spaces: spaces ?? SpacesModel(appModel: resolvedApp, inbox: inbox, lifecycle: lifecycle),
+            labels: labels,
+            conversation: conversation,
+            inboxPreferences: inbox.preferences,
+            composerPreferences: composerPreferences,
+            notificationPreferences: notificationPreferences,
+            quickReplies: quickReplies,
+            hotkeys: hotkeys,
+            lifecycle: lifecycle,
+            dockPreferences: dockPreferences,
+            accountsAndBridges: accountsAndBridges ?? AccountsAndBridgesModel(appModel: resolvedApp, lifecycle: lifecycle),
+            loginFlow: loginFlow ?? LoginFlowModel(appModel: resolvedApp),
+            problemReport: problemReport ?? ProblemReportModel(appModel: resolvedApp),
+            onRestartNotificationCenter: onRestartNotificationCenter
+        )
     }
 }
 

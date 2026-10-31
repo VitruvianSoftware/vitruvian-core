@@ -18,7 +18,10 @@ struct CourierApp: App {
                        focus: delegate.messageFocus, detachedWindows: delegate.detachedWindows,
                        hotkeys: delegate.hotkeys,
                        hotkeyDispatcher: delegate.hotkeyDispatcher,
-                       onOpenShortcutsSettings: { delegate.menuCoordinator.openSettings(.shortcuts) })
+                       onOpenShortcutsSettings: {
+                           delegate.settingsNavigation.openPane(.hotkeys)
+                           delegate.menuCoordinator.openSettings(.shortcuts)
+                       })
                 .background(OpenWindowRegistrar(opener: delegate.windowOpener))
         }
         .defaultSize(width: 1020, height: 660)
@@ -99,13 +102,29 @@ struct CourierApp: App {
 
         Settings {
             LockableWindowContent(lifecycle: delegate.lifecycle) {
-                SettingsView(inbox: delegate.inbox, labels: delegate.labels, conversation: delegate.conversation,
-                             composerPreferences: delegate.composerPreferences,
-                             quickReplies: delegate.quickReplies,
-                             hotkeys: delegate.hotkeys,
-                             lifecycle: delegate.lifecycle)
+                SettingsView(
+                    appModel: delegate.model,
+                    inbox: delegate.inbox,
+                    spaces: delegate.spaces,
+                    labels: delegate.labels,
+                    conversation: delegate.conversation,
+                    composerPreferences: delegate.composerPreferences,
+                    quickReplies: delegate.quickReplies,
+                    hotkeys: delegate.hotkeys,
+                    lifecycle: delegate.lifecycle,
+                    navigation: delegate.settingsNavigation,
+                    notificationPreferences: delegate.notificationPreferences,
+                    dockPreferences: delegate.dockPreferences,
+                    accountsAndBridges: delegate.accountsAndBridges,
+                    loginFlow: delegate.login,
+                    problemReport: delegate.problemReport,
+                    onRestartNotificationCenter: {
+                        delegate.notifier.clearAll()
+                    }
+                )
             }
         }
+        .defaultSize(width: 820, height: 600)
 
         // The menu-bar icon. Closing the window leaves Courier running (spec §2), and this is how to get it back.
         MenuBarExtra(
