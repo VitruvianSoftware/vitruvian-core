@@ -13,17 +13,23 @@ import (
 	"testing"
 
 	"maunium.net/go/mautrix/bridgev2"
+	"maunium.net/go/mautrix/bridgev2/simplevent"
 )
 
 var (
-	recordedEventsMu     sync.Mutex
-	recordedEventsByClim = make(map[*Client][]bridgev2.RemoteEvent)
+	recordedEventsMu        sync.Mutex
+	recordedEventsByClim    = make(map[*Client][]bridgev2.RemoteEvent)
+	recordedResyncsByClient = make(map[*Client][]*simplevent.ChatResync)
 )
 
 func init() {
 	onRemoteEventQueued = func(c *Client, evt bridgev2.RemoteEvent) {
 		recordedEventsMu.Lock()
-		recordedEventsByClim[c] = append(recordedEventsByClim[c], evt)
+		if resync, ok := evt.(*simplevent.ChatResync); ok {
+			recordedResyncsByClient[c] = append(recordedResyncsByClient[c], resync)
+		} else {
+			recordedEventsByClim[c] = append(recordedEventsByClim[c], evt)
+		}
 		recordedEventsMu.Unlock()
 	}
 }
@@ -33,6 +39,15 @@ func (c *Client) recordedRemoteEvents() []bridgev2.RemoteEvent {
 	defer recordedEventsMu.Unlock()
 	src := recordedEventsByClim[c]
 	out := make([]bridgev2.RemoteEvent, len(src))
+	copy(out, src)
+	return out
+}
+
+func (c *Client) recordedChatResyncs() []*simplevent.ChatResync {
+	recordedEventsMu.Lock()
+	defer recordedEventsMu.Unlock()
+	src := recordedResyncsByClient[c]
+	out := make([]*simplevent.ChatResync, len(src))
 	copy(out, src)
 	return out
 }

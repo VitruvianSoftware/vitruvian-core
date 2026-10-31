@@ -275,6 +275,9 @@ func (c *Client) syncWorld(ctx context.Context) error {
 		}
 		meta.TopicThreaded = item.topicThreaded
 		meta.ThreadsEnabled = item.topicThreaded || item.flatThreadsEnabled
+		if len(item.memberUserIDs) > 0 {
+			meta.MemberUserIDs = slices.Clone(item.memberUserIDs)
+		}
 		if item.groupRevision > meta.GroupRevision {
 			meta.GroupRevision = item.groupRevision
 			meta.Revision = item.groupRevision
@@ -284,6 +287,26 @@ func (c *Client) syncWorld(ctx context.Context) error {
 		if saveErr != nil {
 			return fmt.Errorf("save portal %q: %w", portalID, saveErr)
 		}
+
+		roomType := portal.RoomType
+		chatInfo := &bridgev2.ChatInfo{
+			Type:        &roomType,
+			CanBackfill: true,
+			Members:     c.buildChatMemberList(own, item.isDM, portal.OtherUserID, item.memberUserIDs, false),
+		}
+		if item.hasRoomName {
+			roomName := item.roomName
+			chatInfo.Name = &roomName
+		}
+		c.queueRemoteEvent(ctx, &simplevent.ChatResync{
+			EventMeta: simplevent.EventMeta{
+				Type:         bridgev2.RemoteEventChatResync,
+				PortalKey:    portal.PortalKey,
+				CreatePortal: true,
+			},
+			ChatInfo:        chatInfo,
+			LatestMessageTS: time.UnixMicro(item.sortTimestamp),
+		})
 	}
 	return nil
 }

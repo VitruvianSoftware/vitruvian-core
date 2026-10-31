@@ -31,10 +31,11 @@ type UserLoginMetadata struct {
 
 // PortalMetadata stores per-portal Google Chat revision and threading state.
 type PortalMetadata struct {
-	Revision       int64 `json:"revision,omitempty"`
-	GroupRevision  int64 `json:"group_revision,omitempty"`
-	TopicThreaded  bool  `json:"topic_threaded,omitempty"`
-	ThreadsEnabled bool  `json:"threads_enabled,omitempty"`
+	Revision       int64    `json:"revision,omitempty"`
+	GroupRevision  int64    `json:"group_revision,omitempty"`
+	TopicThreaded  bool     `json:"topic_threaded,omitempty"`
+	ThreadsEnabled bool     `json:"threads_enabled,omitempty"`
+	MemberUserIDs  []string `json:"member_user_ids,omitempty"`
 }
 
 // GhostMetadata stores per-ghost Google Chat metadata.

@@ -4488,6 +4488,82 @@ func TestBoundedDedupMapsAndNoProductionEmittedEventsSlice(t *testing.T) {
 	require.True(t, newestPresent, "newest dispatchedMsgIDs entry must be retained")
 }
 
+func TestSyncWorldQueuesChatResyncAndGetChatInfoIncludesSpaceMembers(t *testing.T) {
+	enableTestLoopback(t)
+	ctx := context.Background()
+
+	var getGroupCalled atomic.Int64
+	h, ul, client := setupLoggedInGChatTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/u/0/api/paginated_world":
+			w.Header().Set("Content-Type", "application/x-protobuf")
+			_, _ = w.Write(buildSendTestPaginatedWorldResponse())
+		case "/u/0/api/get_group":
+			getGroupCalled.Add(1)
+			w.Header().Set("Content-Type", "application/x-protobuf")
+			_, _ = w.Write(pb.MustMarshal(&pb.GetGroupResponse{
+				Group: &pb.Group{
+					GroupId: pb.SpaceGroupID("space_threaded"),
+					Name:    pb.String("Threaded Eng"),
+					GroupDetails: &pb.GroupDetails{
+						Description: pb.String("Engineering discussions"),
+					},
+				},
+				Memberships: []*pb.Membership{
+					{
+						Id:              &pb.MembershipId{MemberId: pb.UserMemberID("112233445566778899001")},
+						MembershipState: pb.MembershipState_MEMBER_JOINED.Enum(),
+					},
+					{
+						Id:              &pb.MembershipId{MemberId: pb.UserMemberID("112233445566778899002")},
+						MembershipState: pb.MembershipState_MEMBER_JOINED.Enum(),
+					},
+					{
+						Id:              &pb.MembershipId{MemberId: pb.UserMemberID("112233445566778899003")},
+						MembershipState: pb.MembershipState_MEMBER_JOINED.Enum(),
+					},
+					{
+						Id:              &pb.MembershipId{MemberId: pb.UserMemberID("112233445566778899999")},
+						MembershipState: pb.MembershipState_MEMBER_INVITED.Enum(),
+					},
+				},
+			}))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	require.NoError(t, client.syncWorld(ctx))
+
+	resyncs := client.recordedChatResyncs()
+	require.Len(t, resyncs, 4, "syncWorld must queue a ChatResync event for every synced conversation")
+	byPortal := make(map[networkid.PortalID]*simplevent.ChatResync, len(resyncs))
+	for _, rs := range resyncs {
+		require.True(t, rs.CreatePortal, "ChatResync must set CreatePortal=true")
+		require.NotNil(t, rs.ChatInfo)
+		require.True(t, rs.ChatInfo.CanBackfill, "ChatResync.ChatInfo.CanBackfill must be true")
+		byPortal[rs.GetPortalKey().ID] = rs
+	}
+	require.Contains(t, byPortal, MakeDMPortalID("dm_alpha"))
+	require.Contains(t, byPortal, MakeSpacePortalID("space_threaded"))
+
+	spacePortal, err := h.Bridge.GetExistingPortalByKey(ctx, networkid.PortalKey{
+		ID:       MakeSpacePortalID("space_threaded"),
+		Receiver: ul.ID,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, spacePortal)
+
+	chatInfo, err := client.GetChatInfo(ctx, spacePortal)
+	require.NoError(t, err)
+	require.NotNil(t, chatInfo)
+	require.NotNil(t, chatInfo.Members)
+	require.GreaterOrEqual(t, getGroupCalled.Load(), int64(1), "GetChatInfo on Space must fetch space members via get_group")
+	require.Contains(t, chatInfo.Members.MemberMap, MakeUserID("112233445566778899002"), "GetChatInfo must include joined space member 2")
+	require.Contains(t, chatInfo.Members.MemberMap, MakeUserID("112233445566778899003"), "GetChatInfo must include joined space member 3")
+	require.NotContains(t, chatInfo.Members.MemberMap, MakeUserID("112233445566778899999"), "GetChatInfo must exclude non-joined invited member")
+}
+
 func TestServeGChatEngineHelperForAppE2E(t *testing.T) {
 	sockPath := os.Getenv("COURIER_GCHAT_E2E_SOCKET")
 	if sockPath == "" {

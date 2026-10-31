@@ -412,8 +412,62 @@ func (c *Client) IsThisUser(_ context.Context, userID networkid.UserID) bool {
 	return c.UserLogin != nil && string(userID) == string(c.UserLogin.ID)
 }
 
-func (c *Client) GetChatInfo(_ context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
-	isDM, _, err := ParsePortalID(portal.ID)
+func (c *Client) buildChatMemberList(
+	own networkid.UserID,
+	isDM bool,
+	otherUserID networkid.UserID,
+	memberGaiaIDs []string,
+	fetchedGroupMembers bool,
+) *bridgev2.ChatMemberList {
+	level := 50
+	var senderLogin networkid.UserLoginID
+	if c.UserLogin != nil {
+		senderLogin = c.UserLogin.ID
+	}
+	memberMap := bridgev2.ChatMemberMap{
+		"": {
+			EventSender: bridgev2.EventSender{
+				IsFromMe:    true,
+				SenderLogin: senderLogin,
+				Sender:      own,
+			},
+			Membership: event.MembershipJoin,
+			PowerLevel: &level,
+		},
+	}
+	if otherUserID != "" {
+		memberMap[otherUserID] = bridgev2.ChatMember{
+			EventSender: bridgev2.EventSender{Sender: otherUserID},
+			Membership:  event.MembershipJoin,
+			PowerLevel:  &level,
+		}
+	}
+	for _, rawID := range memberGaiaIDs {
+		uid := MakeUserID(strings.TrimSpace(rawID))
+		if uid == "" || uid == own {
+			continue
+		}
+		memberMap[uid] = bridgev2.ChatMember{
+			EventSender: bridgev2.EventSender{Sender: uid},
+			Membership:  event.MembershipJoin,
+			PowerLevel:  &level,
+		}
+	}
+	isFull := (isDM && otherUserID != "") || fetchedGroupMembers || len(memberMap) > 1
+	return &bridgev2.ChatMemberList{
+		IsFull:      isFull,
+		OtherUserID: otherUserID,
+		MemberMap:   memberMap,
+		PowerLevels: &bridgev2.PowerLevelOverrides{
+			Invite:       &level,
+			Kick:         &level,
+			StateDefault: &level,
+		},
+	}
+}
+
+func (c *Client) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
+	isDM, rawID, err := ParsePortalID(portal.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -425,39 +479,57 @@ func (c *Client) GetChatInfo(_ context.Context, portal *bridgev2.Portal) (*bridg
 	if portal.Name != "" {
 		name = portal.Name
 	}
-	level := 50
-	memberMap := bridgev2.ChatMemberMap{
-		"": {
-			EventSender: bridgev2.EventSender{
-				IsFromMe:    true,
-				SenderLogin: c.UserLogin.ID,
-				Sender:      c.ownUserID(),
-			},
-			Membership: event.MembershipJoin,
-			PowerLevel: &level,
-		},
+	var topic *string
+	var memberGaiaIDs []string
+	c.metaMu.Lock()
+	if meta, ok := portal.Metadata.(*PortalMetadata); ok && meta != nil && len(meta.MemberUserIDs) > 0 {
+		memberGaiaIDs = append(memberGaiaIDs, meta.MemberUserIDs...)
 	}
-	if portal.OtherUserID != "" {
-		memberMap[portal.OtherUserID] = bridgev2.ChatMember{
-			EventSender: bridgev2.EventSender{Sender: portal.OtherUserID},
-			Membership:  event.MembershipJoin,
-			PowerLevel:  &level,
+	c.metaMu.Unlock()
+
+	fetchedGroupMembers := false
+	if !isDM && rawID != "" {
+		reqBytes, mErr := pb.Marshal(&pb.GetGroupRequest{
+			GroupId: pb.SpaceGroupID(rawID),
+			FetchOptions: []pb.GetGroupRequest_FetchOptions{
+				pb.GetGroupRequest_MEMBERS,
+				pb.GetGroupRequest_INCLUDE_DYNAMIC_GROUP_NAME,
+			},
+			IncludeInviteDms: pb.Bool(true),
+		})
+		if mErr == nil {
+			if respBytes, rpcErr := c.rpcCall(ctx, "get_group", reqBytes); rpcErr == nil && len(respBytes) > 0 {
+				var resp pb.GetGroupResponse
+				if pb.Unmarshal(respBytes, &resp) == nil {
+					if g := resp.GetGroup(); g != nil {
+						if gName := strings.TrimSpace(g.GetName()); gName != "" && portal.Name == "" {
+							name = gName
+						}
+						if desc := strings.TrimSpace(g.GetGroupDetails().GetDescription()); desc != "" {
+							topic = &desc
+						}
+					}
+					for _, m := range resp.GetMemberships() {
+						state := m.GetMembershipState()
+						if m.MembershipState != nil && state != pb.MembershipState_MEMBER_JOINED {
+							continue
+						}
+						if uid := strings.TrimSpace(m.GetId().GetMemberId().GetUserId().GetId()); uid != "" {
+							memberGaiaIDs = append(memberGaiaIDs, uid)
+							fetchedGroupMembers = true
+						}
+					}
+				}
+			}
 		}
 	}
+
 	return &bridgev2.ChatInfo{
 		Name:        &name,
+		Topic:       topic,
 		Type:        &roomType,
 		CanBackfill: true,
-		Members: &bridgev2.ChatMemberList{
-			IsFull:      isDM && portal.OtherUserID != "",
-			OtherUserID: portal.OtherUserID,
-			MemberMap:   memberMap,
-			PowerLevels: &bridgev2.PowerLevelOverrides{
-				Invite:       &level,
-				Kick:         &level,
-				StateDefault: &level,
-			},
-		},
+		Members:     c.buildChatMemberList(c.ownUserID(), isDM, portal.OtherUserID, memberGaiaIDs, fetchedGroupMembers),
 	}, nil
 }
 
