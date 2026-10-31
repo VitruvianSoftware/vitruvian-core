@@ -47,18 +47,6 @@ rust_binary(
     ],
 )
 
-alias(
-    name = "gcp-token-rs",
-    actual = ":gcp-token",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "gcp_token_rs",
-    actual = ":gcp-token",
-    visibility = ["//visibility:public"],
-)
-
 rust_test(
     name = "gcp_token_lib_test",
     size = "small",
@@ -69,11 +57,6 @@ rust_test(
 
 test_suite(
     name = "gcp-token_test",
-    tests = [":gcp_token_lib_test"],
-)
-
-test_suite(
-    name = "gcp-token-rs_test",
     tests = [":gcp_token_lib_test"],
 )
 

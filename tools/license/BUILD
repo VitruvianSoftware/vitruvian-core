@@ -160,18 +160,6 @@ rust_binary(
     deps = [":license_verify_lib"],
 )
 
-alias(
-    name = "verify-rs",
-    actual = ":verify",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "verify_rs",
-    actual = ":verify",
-    visibility = ["//visibility:public"],
-)
-
 rust_test(
     name = "license_verify_lib_test",
     size = "small",
@@ -182,11 +170,6 @@ rust_test(
 
 test_suite(
     name = "verify_test",
-    tests = [":license_verify_lib_test"],
-)
-
-test_suite(
-    name = "verify-rs_test",
     tests = [":license_verify_lib_test"],
 )
 

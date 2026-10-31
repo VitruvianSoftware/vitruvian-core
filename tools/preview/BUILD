@@ -74,22 +74,6 @@ rust_binary(
     ],
 )
 
-[
-    alias(
-        name = name,
-        actual = ":" + tool,
-    )
-    for tool in [
-        "neon-branch",
-        "pr-comment",
-        "provision-preview",
-    ]
-    for name in [
-        tool + "-rs",
-        tool.replace("-", "_") + "_rs",
-    ]
-]
-
 rust_test(
     name = "preview_lib_test",
     size = "small",
@@ -104,26 +88,11 @@ test_suite(
 )
 
 test_suite(
-    name = "neon-branch-rs_test",
-    tests = [":preview_lib_test"],
-)
-
-test_suite(
     name = "provision-preview_test",
     tests = [":preview_lib_test"],
 )
 
 test_suite(
-    name = "provision-preview-rs_test",
-    tests = [":preview_lib_test"],
-)
-
-test_suite(
     name = "pr-comment_test",
-    tests = [":preview_lib_test"],
-)
-
-test_suite(
-    name = "pr-comment-rs_test",
     tests = [":preview_lib_test"],
 )

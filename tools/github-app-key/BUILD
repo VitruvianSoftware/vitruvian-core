@@ -43,18 +43,6 @@ rust_binary(
     ],
 )
 
-alias(
-    name = "github-app-key-rs",
-    actual = ":github-app-key",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "github_app_key_rs",
-    actual = ":github-app-key",
-    visibility = ["//visibility:public"],
-)
-
 rust_test(
     name = "github_app_key_lib_test",
     size = "small",
@@ -65,11 +53,6 @@ rust_test(
 
 test_suite(
     name = "set-key_test",
-    tests = [":github_app_key_lib_test"],
-)
-
-test_suite(
-    name = "set-key-rs_test",
     tests = [":github_app_key_lib_test"],
 )
 

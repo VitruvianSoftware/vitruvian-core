@@ -26,12 +26,6 @@ rust_binary(
     deps = [":scripts_lib"],
 )
 
-alias(
-    name = "kind-cluster-rs",
-    actual = ":kind-cluster",
-    visibility = ["//visibility:public"],
-)
-
 rust_binary(
     name = "agy-bin",
     srcs = ["src/bin/agy.rs"],
@@ -47,12 +41,6 @@ alias(
     visibility = ["//visibility:public"],
 )
 
-alias(
-    name = "agy-rs",
-    actual = ":agy-bin",
-    visibility = ["//visibility:public"],
-)
-
 rust_binary(
     name = "copilot-bin",
     srcs = ["src/bin/copilot.rs"],
@@ -64,12 +52,6 @@ rust_binary(
 
 alias(
     name = "copilot",
-    actual = ":copilot-bin",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "copilot-rs",
     actual = ":copilot-bin",
     visibility = ["//visibility:public"],
 )

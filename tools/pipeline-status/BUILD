@@ -47,18 +47,6 @@ rust_binary(
     deps = [":pipeline_status_lib"],
 )
 
-alias(
-    name = "pipeline-status-rs",
-    actual = ":pipeline-status",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "pipeline_status_rs",
-    actual = ":pipeline-status",
-    visibility = ["//visibility:public"],
-)
-
 # `manual` because data includes the macOS-only gravastar-mouse binary.
 rust_binary(
     name = "pipeline-mouse-daemon",
@@ -69,20 +57,6 @@ rust_binary(
     tags = ["manual"],
     visibility = ["//visibility:public"],
     deps = [":pipeline_status_lib"],
-)
-
-alias(
-    name = "pipeline-mouse-daemon-rs",
-    actual = ":pipeline-mouse-daemon",
-    tags = ["manual"],
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "pipeline_mouse_daemon_rs",
-    actual = ":pipeline-mouse-daemon",
-    tags = ["manual"],
-    visibility = ["//visibility:public"],
 )
 
 # The #[cfg(test)] unit tests in src/.
@@ -96,11 +70,6 @@ rust_test(
 
 test_suite(
     name = "pipeline-status_test",
-    tests = [":pipeline_status_lib_test"],
-)
-
-test_suite(
-    name = "pipeline-status-rs_test",
     tests = [":pipeline_status_lib_test"],
 )
 

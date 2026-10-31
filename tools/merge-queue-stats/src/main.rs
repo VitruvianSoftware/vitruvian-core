@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! merge-queue-stats-rs: the command line of merge_queue_stats.py.
+//! merge-queue-stats: the command line of merge_queue_stats.py.
 
 use std::io::Write;
 

@@ -38,18 +38,6 @@ alias(
     visibility = ["//visibility:public"],
 )
 
-alias(
-    name = "check-version-maps-rs",
-    actual = ":check-version-maps",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "check_version_maps_rs",
-    actual = ":check-version-maps",
-    visibility = ["//visibility:public"],
-)
-
 # The #[cfg(test)] unit tests in src/.
 rust_test(
     name = "check_version_maps_lib_test",
@@ -61,11 +49,6 @@ rust_test(
 
 test_suite(
     name = "check_version_maps_test",
-    tests = [":check_version_maps_lib_test"],
-)
-
-test_suite(
-    name = "check-version-maps-rs_test",
     tests = [":check_version_maps_lib_test"],
 )
 

@@ -31,8 +31,3 @@ rust_test(
     data = ["applicationset.yaml"],
     edition = "2021",
 )
-
-alias(
-    name = "prometheus_values_rs_test",
-    actual = ":prometheus_values_test",
-)

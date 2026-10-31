@@ -64,11 +64,6 @@ rust_test(
 )
 
 test_suite(
-    name = "boundaries_test_rs",
-    tests = [":boundaries_test"],
-)
-
-test_suite(
     name = "check_test",
     tests = [":boundaries_test"],
 )

@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! `bazel run //tools/ci/actionpins:actionpins-rs -- check`: do the generated
+//! `bazel run //tools/ci/actionpins:actionpins -- check`: do the generated
 //! workflows use only the pins in .github/actions/pins/action.yml? See cli.rs
 //! for the other subcommands.
 

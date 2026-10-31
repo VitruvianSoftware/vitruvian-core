@@ -60,18 +60,6 @@ rust_binary(
     ],
 )
 
-[
-    alias(
-        name = name,
-        actual = ":publish",
-        visibility = ["//visibility:public"],
-    )
-    for name in [
-        "publish-rs",
-        "publish_rs",
-    ]
-]
-
 # The #[cfg(test)] unit tests in src/.
 rust_test(
     name = "charts_lib_test",

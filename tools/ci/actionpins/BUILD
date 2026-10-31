@@ -35,32 +35,14 @@ rust_library(
     visibility = ["//visibility:public"],
 )
 
-alias(
-    name = "actionpins_rs_lib",
-    actual = ":actionpins_lib",
-    visibility = ["//visibility:public"],
-)
-
-#   bazel run //tools/ci/actionpins:actionpins-rs -- check
+#   bazel run //tools/ci/actionpins:actionpins -- check
 rust_binary(
-    name = "actionpins-rs",
+    name = "actionpins",
     srcs = ["src/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//visibility:public"],
     deps = [":actionpins_lib"],
-)
-
-alias(
-    name = "actionpins",
-    actual = ":actionpins-rs",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "actionpins_rs",
-    actual = ":actionpins-rs",
-    visibility = ["//visibility:public"],
 )
 
 # The #[cfg(test)] unit tests in src/.
@@ -74,10 +56,5 @@ rust_test(
 
 test_suite(
     name = "actionpins_lib_test",
-    tests = [":actionpins_test"],
-)
-
-test_suite(
-    name = "actionpins_rs_lib_test",
     tests = [":actionpins_test"],
 )

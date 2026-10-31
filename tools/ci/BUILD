@@ -321,18 +321,6 @@ rust_binary(
     ],
 )
 
-[
-    alias(
-        name = name,
-        actual = ":actionlint",
-        visibility = ["//visibility:public"],
-    )
-    for name in [
-        "actionlint-rs",
-        "actionlint_rs",
-    ]
-]
-
 # Throwaway repos and the real pinned binaries; also fails when the workflow's
 # ACTIONLINT_VERSION and the lockfile drift apart.
 sh_test(
@@ -352,28 +340,6 @@ sh_test(
         "@multitool//tools/actionlint",
         "@multitool//tools/shellcheck",
     ],
-    deps = ["@bazel_tools//tools/bash/runfiles"],
-)
-
-# The same suite against the Rust binary (ACTIONLINT_UNDER_TEST).
-sh_test(
-    name = "actionlint-rs_test",
-    size = "small",
-    srcs = ["actionlint_test.sh"],
-    args = [
-        "$(location :actionlint)",
-        "$(location //:.github/workflows/actionlint.yaml)",
-        "$(location //tools:tools.lock.json)",
-    ],
-    data = [
-        "require-pinned-actions.sh",
-        ":actionlint",
-        "//:.github/workflows/actionlint.yaml",
-        "//tools:tools.lock.json",
-        "@multitool//tools/actionlint",
-        "@multitool//tools/shellcheck",
-    ],
-    env = {"ACTIONLINT_UNDER_TEST": "$(rootpath :actionlint)"},
     deps = ["@bazel_tools//tools/bash/runfiles"],
 )
 
@@ -411,23 +377,6 @@ rust_binary(
     ],
 )
 
-[alias(
-    name = n,
-    actual = ":gate_evaluator",
-    visibility = ["//visibility:public"],
-) for n in [
-    "gate-evaluator-rs",
-    "gate_evaluator_rs",
-]]
-
-sh_test(
-    name = "gate_evaluator_rs_test",
-    size = "small",
-    srcs = ["gate-evaluator_test.sh"],
-    args = ["$(location :gate_evaluator)"],
-    data = [":gate_evaluator"],
-)
-
 # llvm-cache-key
 rust_library(
     name = "llvm_cache_key_lib",
@@ -450,15 +399,6 @@ rust_binary(
         "//tools/shell-compat:shell_compat",
     ],
 )
-
-[alias(
-    name = n,
-    actual = ":llvm_cache_key",
-    visibility = ["//visibility:public"],
-) for n in [
-    "llvm-cache-key-rs",
-    "llvm_cache_key_rs",
-]]
 
 sh_binary(
     name = "llvm-cache-key-sh",
@@ -500,15 +440,6 @@ rust_binary(
     ],
 )
 
-[alias(
-    name = n,
-    actual = ":llvm_cache_stage",
-    visibility = ["//visibility:public"],
-) for n in [
-    "llvm-cache-stage-rs",
-    "llvm_cache_stage_rs",
-]]
-
 sh_binary(
     name = "llvm-cache-stage-sh",
     srcs = ["llvm-cache-stage.sh"],
@@ -548,15 +479,6 @@ rust_binary(
         "//tools/shell-compat:shell_compat",
     ],
 )
-
-[alias(
-    name = n,
-    actual = ":queue_runner_routing",
-    visibility = ["//visibility:public"],
-) for n in [
-    "queue-runner-routing-rs",
-    "queue_runner_routing_rs",
-]]
 
 sh_binary(
     name = "queue-runner-routing-sh",
@@ -602,15 +524,6 @@ rust_binary(
     ],
 )
 
-[alias(
-    name = n,
-    actual = ":queue_runner_watch",
-    visibility = ["//visibility:public"],
-) for n in [
-    "queue-runner-watch-rs",
-    "queue_runner_watch_rs",
-]]
-
 sh_binary(
     name = "queue-runner-watch-sh",
     srcs = ["queue-runner-watch.sh"],
@@ -650,15 +563,6 @@ rust_binary(
         "//tools/shell-compat:shell_compat",
     ],
 )
-
-[alias(
-    name = n,
-    actual = ":bisect_culprit",
-    visibility = ["//visibility:public"],
-) for n in [
-    "bisect-culprit-rs",
-    "bisect_culprit_rs",
-]]
 
 sh_binary(
     name = "bisect-culprit-sh",
@@ -703,15 +607,6 @@ rust_binary(
     ],
 )
 
-[alias(
-    name = n,
-    actual = ":site_pr_automerge",
-    visibility = ["//visibility:public"],
-) for n in [
-    "site-pr-automerge-rs",
-    "site_pr_automerge_rs",
-]]
-
 sh_binary(
     name = "site-pr-automerge-sh",
     srcs = ["site-pr-automerge.sh"],
@@ -751,15 +646,6 @@ rust_binary(
         "//tools/shell-compat:shell_compat",
     ],
 )
-
-[alias(
-    name = n,
-    actual = ":deploy_affected",
-    visibility = ["//visibility:public"],
-) for n in [
-    "deploy-affected-rs",
-    "deploy_affected_rs",
-]]
 
 sh_binary(
     name = "deploy-affected-sh",
@@ -803,15 +689,6 @@ rust_binary(
     ],
 )
 
-[alias(
-    name = n,
-    actual = ":resolve_unit_bases",
-    visibility = ["//visibility:public"],
-) for n in [
-    "resolve-unit-bases-rs",
-    "resolve_unit_bases_rs",
-]]
-
 sh_binary(
     name = "resolve-unit-bases-sh",
     srcs = ["resolve-unit-bases.sh"],
@@ -852,15 +729,6 @@ rust_binary(
     ],
 )
 
-[alias(
-    name = n,
-    actual = ":prune_pr_caches",
-    visibility = ["//visibility:public"],
-) for n in [
-    "prune-pr-caches-rs",
-    "prune_pr_caches_rs",
-]]
-
 sh_binary(
     name = "prune-pr-caches-sh",
     srcs = ["prune-pr-caches.sh"],
@@ -900,15 +768,6 @@ rust_binary(
         "//tools/shell-compat:shell_compat",
     ],
 )
-
-[alias(
-    name = n,
-    actual = ":delivery_drift",
-    visibility = ["//visibility:public"],
-) for n in [
-    "delivery-drift-rs",
-    "delivery_drift_rs",
-]]
 
 sh_binary(
     name = "delivery-drift-sh",
@@ -958,15 +817,6 @@ rust_binary(
         "//tools/shell-compat:shell_compat",
     ],
 )
-
-[alias(
-    name = n,
-    actual = ":preview_reaper",
-    visibility = ["//visibility:public"],
-) for n in [
-    "preview-reaper-rs",
-    "preview_reaper_rs",
-]]
 
 sh_binary(
     name = "preview-reaper-sh",
@@ -1030,15 +880,6 @@ rust_binary(
     ],
 )
 
-[alias(
-    name = n,
-    actual = ":ensure_site_verification",
-    visibility = ["//visibility:public"],
-) for n in [
-    "ensure-site-verification-rs",
-    "ensure_site_verification_rs",
-]]
-
 sh_test(
     name = "ensure_site_verification_test",
     size = "small",
@@ -1090,15 +931,6 @@ rust_binary(
         "//tools/shell-compat:shell_compat",
     ],
 )
-
-[alias(
-    name = n,
-    actual = ":affected_targets",
-    visibility = ["//visibility:public"],
-) for n in [
-    "affected-targets-rs",
-    "affected_targets_rs",
-]]
 
 sh_test(
     name = "affected_targets_test",
@@ -1152,15 +984,6 @@ rust_binary(
     ],
 )
 
-[alias(
-    name = n,
-    actual = ":pulumi_summary",
-    visibility = ["//visibility:public"],
-) for n in [
-    "pulumi-summary-rs",
-    "pulumi_summary_rs",
-]]
-
 sh_test(
     name = "pulumi_summary_test",
     size = "small",
@@ -1191,7 +1014,7 @@ rust_library(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [
-        "//tools/gitops/appset-render:appset_render_rs_lib",
+        "//tools/gitops/appset-render:appset_render_lib",
         "//tools/shell-compat:shell_compat",
     ],
 )
@@ -1207,15 +1030,6 @@ rust_binary(
         "//tools/shell-compat:shell_compat",
     ],
 )
-
-[alias(
-    name = n,
-    actual = ":gitops_validate",
-    visibility = ["//visibility:public"],
-) for n in [
-    "gitops-validate-rs",
-    "gitops_validate_rs",
-]]
 
 rust_test(
     name = "gitops_validate_lib_test",
@@ -1249,15 +1063,6 @@ rust_binary(
         "//tools/shell-compat:shell_compat",
     ],
 )
-
-[alias(
-    name = n,
-    actual = ":release_beta_gate",
-    visibility = ["//visibility:public"],
-) for n in [
-    "release-beta-gate-rs",
-    "release_beta_gate_rs",
-]]
 
 sh_test(
     name = "release_beta_gate_test",
@@ -1305,15 +1110,6 @@ rust_binary(
     ],
 )
 
-[alias(
-    name = n,
-    actual = ":gitops_values_render",
-    visibility = ["//visibility:public"],
-) for n in [
-    "gitops-values-render-rs",
-    "gitops_values_render_rs",
-]]
-
 rust_test(
     name = "gitops_values_render_lib_test",
     size = "small",
@@ -1346,15 +1142,6 @@ rust_binary(
         "//tools/shell-compat:shell_compat",
     ],
 )
-
-[alias(
-    name = n,
-    actual = ":image_sbom_scan",
-    visibility = ["//visibility:public"],
-) for n in [
-    "image-sbom-scan-rs",
-    "image_sbom_scan_rs",
-]]
 
 rust_test(
     name = "image_sbom_scan_lib_test",
@@ -1389,15 +1176,6 @@ rust_binary(
     ],
 )
 
-[alias(
-    name = n,
-    actual = ":chart_render",
-    visibility = ["//visibility:public"],
-) for n in [
-    "chart-render-rs",
-    "chart_render_rs",
-]]
-
 rust_test(
     name = "chart_render_lib_test",
     size = "small",
@@ -1430,15 +1208,6 @@ rust_binary(
         "//tools/shell-compat:shell_compat",
     ],
 )
-
-[alias(
-    name = n,
-    actual = ":require_dev_soak",
-    visibility = ["//visibility:public"],
-) for n in [
-    "require-dev-soak-rs",
-    "require_dev_soak_rs",
-]]
 
 sh_test(
     name = "require_dev_soak_test",
@@ -1486,15 +1255,6 @@ rust_binary(
     ],
 )
 
-[alias(
-    name = n,
-    actual = ":backstage_boot_smoke",
-    visibility = ["//visibility:public"],
-) for n in [
-    "backstage-boot-smoke-rs",
-    "backstage_boot_smoke_rs",
-]]
-
 rust_test(
     name = "backstage_boot_smoke_lib_test",
     size = "small",
@@ -1527,15 +1287,6 @@ rust_binary(
         "//tools/shell-compat:shell_compat",
     ],
 )
-
-[alias(
-    name = n,
-    actual = ":notify_ci_issues",
-    visibility = ["//visibility:public"],
-) for n in [
-    "notify-ci-issues-rs",
-    "notify_ci_issues_rs",
-]]
 
 rust_test(
     name = "notify_ci_issues_lib_test",
@@ -1597,15 +1348,6 @@ rust_binary(
     ],
 )
 
-[alias(
-    name = n,
-    actual = ":queue_fast_pass",
-    visibility = ["//visibility:public"],
-) for n in [
-    "queue-fast-pass-rs",
-    "queue_fast_pass_rs",
-]]
-
 sh_test(
     name = "queue_fast_pass_test",
     size = "small",
@@ -1660,15 +1402,6 @@ rust_binary(
     ],
 )
 
-[alias(
-    name = n,
-    actual = ":migration_safety",
-    visibility = ["//visibility:public"],
-) for n in [
-    "migration-safety-rs",
-    "migration_safety_rs",
-]]
-
 rust_test(
     name = "migration_safety_lib_test",
     size = "small",
@@ -1701,15 +1434,6 @@ rust_binary(
         "//tools/shell-compat:shell_compat",
     ],
 )
-
-[alias(
-    name = n,
-    actual = ":dependabot_lock_rebase",
-    visibility = ["//visibility:public"],
-) for n in [
-    "dependabot-lock-rebase-rs",
-    "dependabot_lock_rebase_rs",
-]]
 
 sh_test(
     name = "dependabot_lock_rebase_test",
@@ -1757,15 +1481,6 @@ rust_binary(
     ],
 )
 
-[alias(
-    name = n,
-    actual = ":release_hold",
-    visibility = ["//visibility:public"],
-) for n in [
-    "release-hold-rs",
-    "release_hold_rs",
-]]
-
 sh_test(
     name = "release_hold_test",
     size = "small",
@@ -1812,15 +1527,6 @@ rust_binary(
     ],
 )
 
-[alias(
-    name = n,
-    actual = ":secret_scan",
-    visibility = ["//visibility:public"],
-) for n in [
-    "secret-scan-rs",
-    "secret_scan_rs",
-]]
-
 sh_test(
     name = "secret_scan_test",
     size = "small",
@@ -1866,15 +1572,6 @@ rust_binary(
         "//tools/shell-compat:shell_compat",
     ],
 )
-
-[alias(
-    name = n,
-    actual = ":rdeps_map_ref",
-    visibility = ["//visibility:public"],
-) for n in [
-    "rdeps-map-ref-rs",
-    "rdeps_map_ref_rs",
-]]
 
 sh_test(
     name = "rdeps_map_ref_test",
@@ -1928,15 +1625,6 @@ rust_binary(
     ],
 )
 
-[alias(
-    name = n,
-    actual = ":resolve_deploy_base",
-    visibility = ["//visibility:public"],
-) for n in [
-    "resolve-deploy-base-rs",
-    "resolve_deploy_base_rs",
-]]
-
 sh_test(
     name = "resolve_deploy_base_test",
     size = "small",
@@ -1983,15 +1671,6 @@ rust_binary(
     ],
 )
 
-[alias(
-    name = n,
-    actual = ":install_pinned_tool",
-    visibility = ["//visibility:public"],
-) for n in [
-    "install-pinned-tool-rs",
-    "install_pinned_tool_rs",
-]]
-
 sh_test(
     name = "install_pinned_tool_rs_test",
     size = "small",
@@ -2028,15 +1707,6 @@ rust_binary(
         "//tools/shell-compat:shell_compat",
     ],
 )
-
-[alias(
-    name = n,
-    actual = ":changelog_summary",
-    visibility = ["//visibility:public"],
-) for n in [
-    "changelog-summary-rs",
-    "changelog_summary_rs",
-]]
 
 sh_test(
     name = "changelog_summary_test",
@@ -2083,15 +1753,6 @@ rust_binary(
         "//tools/shell-compat:shell_compat",
     ],
 )
-
-[alias(
-    name = n,
-    actual = ":relevant_paths",
-    visibility = ["//visibility:public"],
-) for n in [
-    "relevant-paths-rs",
-    "relevant_paths_rs",
-]]
 
 sh_test(
     name = "relevant_paths_test",
@@ -2143,15 +1804,6 @@ rust_binary(
     ],
 )
 
-[alias(
-    name = n,
-    actual = ":go_test_with_retry",
-    visibility = ["//visibility:public"],
-) for n in [
-    "go-test-with-retry-rs",
-    "go_test_with_retry_rs",
-]]
-
 sh_test(
     name = "go_test_with_retry_test",
     size = "small",
@@ -2201,15 +1853,6 @@ rust_binary(
     ],
 )
 
-[alias(
-    name = n,
-    actual = ":tabula_deploy_preflight",
-    visibility = ["//visibility:public"],
-) for n in [
-    "tabula-deploy-preflight-rs",
-    "tabula_deploy_preflight_rs",
-]]
-
 sh_test(
     name = "tabula_deploy_preflight_test",
     size = "small",
@@ -2255,15 +1898,6 @@ rust_binary(
         "//tools/shell-compat:shell_compat",
     ],
 )
-
-[alias(
-    name = n,
-    actual = ":release_pr_dequeue",
-    visibility = ["//visibility:public"],
-) for n in [
-    "release-pr-dequeue-rs",
-    "release_pr_dequeue_rs",
-]]
 
 sh_test(
     name = "release_pr_dequeue_test",
@@ -2312,15 +1946,6 @@ rust_binary(
         "//tools/shell-compat:shell_compat",
     ],
 )
-
-[alias(
-    name = n,
-    actual = ":foundation_app_digest_guard",
-    visibility = ["//visibility:public"],
-) for n in [
-    "foundation-app-digest-guard-rs",
-    "foundation_app_digest_guard_rs",
-]]
 
 rust_test(
     name = "foundation_app_digest_guard_lib_test",
@@ -2376,15 +2001,6 @@ rust_binary(
     ],
 )
 
-[alias(
-    name = n,
-    actual = ":fast_lane_report",
-    visibility = ["//visibility:public"],
-) for n in [
-    "fast-lane-report-rs",
-    "fast_lane_report_rs",
-]]
-
 rust_test(
     name = "fast_lane_report_lib_test",
     size = "small",
@@ -2417,15 +2033,6 @@ rust_binary(
         "//tools/shell-compat:shell_compat",
     ],
 )
-
-[alias(
-    name = n,
-    actual = ":agent_fast_lane",
-    visibility = ["//visibility:public"],
-) for n in [
-    "agent-fast-lane-rs",
-    "agent_fast_lane_rs",
-]]
 
 rust_test(
     name = "agent_fast_lane_lib_test",
@@ -2490,15 +2097,6 @@ rust_binary(
         "//tools/shell-compat:shell_compat",
     ],
 )
-
-[alias(
-    name = n,
-    actual = ":gcp_secret_or_fail",
-    visibility = ["//visibility:public"],
-) for n in [
-    "gcp-secret-or-fail-rs",
-    "gcp_secret_or_fail_rs",
-]]
 
 rust_test(
     name = "gcp_secret_or_fail_lib_test",

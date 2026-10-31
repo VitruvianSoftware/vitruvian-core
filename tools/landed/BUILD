@@ -69,18 +69,6 @@ genrule(
     visibility = ["//visibility:public"],
 )
 
-alias(
-    name = "landed-rs",
-    actual = ":landed",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "landed_rs",
-    actual = ":landed",
-    visibility = ["//visibility:public"],
-)
-
 rust_test(
     name = "landed_lib_test",
     size = "small",
@@ -91,10 +79,5 @@ rust_test(
 
 test_suite(
     name = "landed_test",
-    tests = [":landed_lib_test"],
-)
-
-test_suite(
-    name = "landed-rs_test",
     tests = [":landed_lib_test"],
 )

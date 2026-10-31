@@ -26,12 +26,6 @@ rust_binary(
     deps = [":parity_lib"],
 )
 
-alias(
-    name = "parity-rs",
-    actual = ":parity",
-    visibility = ["//visibility:public"],
-)
-
 rust_test(
     name = "parity_lib_test",
     size = "small",

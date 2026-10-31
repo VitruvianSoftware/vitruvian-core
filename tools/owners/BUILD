@@ -40,11 +40,6 @@ rust_library(
     deps = ["@crates//:serde"],
 )
 
-alias(
-    name = "owners_rs_lib",
-    actual = ":owners_lib",
-)
-
 rust_binary(
     name = "owners",
     srcs = ["src/main.rs"],
@@ -52,18 +47,6 @@ rust_binary(
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//visibility:public"],
     deps = [":owners_lib"],
-)
-
-alias(
-    name = "owners-rs",
-    actual = ":owners",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "owners_rs",
-    actual = ":owners",
-    visibility = ["//visibility:public"],
 )
 
 rust_test(
@@ -76,10 +59,5 @@ rust_test(
 
 test_suite(
     name = "owners_lib_test",
-    tests = [":owners_test"],
-)
-
-test_suite(
-    name = "owners_rs_lib_test",
     tests = [":owners_test"],
 )

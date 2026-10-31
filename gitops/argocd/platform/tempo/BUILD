@@ -31,8 +31,3 @@ rust_test(
     data = ["applicationset.yaml"],
     edition = "2021",
 )
-
-alias(
-    name = "tempo_values_rs_test",
-    actual = ":tempo_values_test",
-)

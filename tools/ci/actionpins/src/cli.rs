@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! `actionpins-rs`, with the same subcommands and output as the Go package's
+//! `actionpins`, with the same subcommands and output as the Go package's
 //! command-line probe (//tools/ci/actionpins/goprobe):
 //!
 //!   check [--manifest PATH] [WORKFLOW_FILE_OR_DIR...]

@@ -85,7 +85,7 @@ output, JSON and exit codes. It uses only the Rust standard library.
 `//tools/adb-connect` still runs the Python version; the Rust one runs alongside it:
 
 ```bash
-bazel run //tools/adb-connect:adb_connect_rs -- --status
+bazel run //tools/adb-connect:adb-connect -- --status
 ```
 
 The parity test (`:adb_connect_rs_parity_test`) runs both versions against

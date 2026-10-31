@@ -56,30 +56,6 @@ rust_binary(
     deps = [":gomod_lib"],
 )
 
-alias(
-    name = "tidy-rs",
-    actual = ":tidy",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "tidy_rs",
-    actual = ":tidy",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "check-rs",
-    actual = ":check",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "check_rs",
-    actual = ":check",
-    visibility = ["//visibility:public"],
-)
-
 rust_test(
     name = "gomod_lib_test",
     size = "small",
@@ -90,10 +66,5 @@ rust_test(
 
 test_suite(
     name = "tidy_test",
-    tests = [":gomod_lib_test"],
-)
-
-test_suite(
-    name = "tidy-rs_test",
     tests = [":gomod_lib_test"],
 )

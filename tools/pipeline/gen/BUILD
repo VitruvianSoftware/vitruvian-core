@@ -45,11 +45,6 @@ rust_library(
     ],
 )
 
-alias(
-    name = "gen_rs_lib",
-    actual = ":pipeline_gen_lib",
-)
-
 rust_binary(
     name = "gen",
     srcs = ["src/main.rs"],
@@ -58,18 +53,6 @@ rust_binary(
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//visibility:public"],
     deps = [":pipeline_gen_lib"],
-)
-
-alias(
-    name = "gen-rs",
-    actual = ":gen",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "gen_rs",
-    actual = ":gen",
-    visibility = ["//visibility:public"],
 )
 
 rust_test(
@@ -82,10 +65,5 @@ rust_test(
 
 test_suite(
     name = "pipeline_gen_lib_test",
-    tests = [":gen_test"],
-)
-
-test_suite(
-    name = "gen_rs_lib_test",
     tests = [":gen_test"],
 )

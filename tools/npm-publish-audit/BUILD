@@ -33,12 +33,6 @@ rust_binary(
     deps = [":npm_publish_audit_lib"],
 )
 
-alias(
-    name = "check-rs",
-    actual = ":check",
-    visibility = ["//visibility:public"],
-)
-
 rust_test(
     name = "npm_publish_audit_lib_test",
     size = "small",
@@ -48,11 +42,6 @@ rust_test(
 
 test_suite(
     name = "check_test",
-    tests = [":npm_publish_audit_lib_test"],
-)
-
-test_suite(
-    name = "check-rs_test",
     tests = [":npm_publish_audit_lib_test"],
 )
 

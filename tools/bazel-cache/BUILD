@@ -22,18 +22,6 @@ rust_binary(
     deps = [":bazel_cache_lib"],
 )
 
-alias(
-    name = "gc-rs",
-    actual = ":gc",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "gc_rs",
-    actual = ":gc",
-    visibility = ["//visibility:public"],
-)
-
 rust_test(
     name = "bazel_cache_lib_test",
     size = "small",
