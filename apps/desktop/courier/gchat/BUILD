@@ -95,6 +95,10 @@ genrule(
     outs = ["libgchat_ffi_scoped.a"],
     cmd = """
         set -eu
+        if /usr/bin/nm -g $(location :gchat_static) 2>/dev/null | /usr/bin/grep -q gchat_test_only; then
+            echo "ERROR: test-loopback feature leaked into production gchat_static" >&2
+            exit 1
+        fi
         REL_OBJ="$$(mktemp -t gchat_ffi_reloc).o"
         trap 'rm -f "$$REL_OBJ"' EXIT
         /usr/bin/clang -nostdlib -r -Wl,-exported_symbol,'_gchat_*' -Wl,-all_load $(location :gchat_static) -o "$$REL_OBJ"
@@ -106,6 +110,50 @@ genrule(
 cc_library(
     name = "gchat_ffi",
     srcs = [":gchat_scoped_archive"],
+    hdrs = ["include/gchat.h"],
+    includes = ["include"],
+    linkopts = [
+        "-framework",
+        "Security",
+        "-framework",
+        "CoreFoundation",
+        "-framework",
+        "SystemConfiguration",
+    ],
+    target_compatible_with = ["@platforms//os:macos"],
+)
+
+rust_static_library(
+    name = "gchat_static_test_loopback",
+    testonly = True,
+    srcs = _SRCS,
+    crate_features = ["test-loopback"],
+    crate_name = "gchat_ffi_test_loopback",
+    edition = "2021",
+    proc_macro_deps = _PROC_MACRO_DEPS,
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = _DEPS + [":gchat_build_script"],
+)
+
+genrule(
+    name = "gchat_scoped_archive_test_loopback",
+    testonly = True,
+    srcs = [":gchat_static_test_loopback"],
+    outs = ["libgchat_ffi_test_loopback_scoped.a"],
+    cmd = """
+        set -eu
+        REL_OBJ="$$(mktemp -t gchat_ffi_test_reloc).o"
+        trap 'rm -f "$$REL_OBJ"' EXIT
+        /usr/bin/clang -nostdlib -r -Wl,-exported_symbol,'_gchat_*' -Wl,-all_load $(location :gchat_static_test_loopback) -o "$$REL_OBJ"
+        /usr/bin/ar rcs $@ "$$REL_OBJ"
+    """,
+    target_compatible_with = ["@platforms//os:macos"],
+)
+
+cc_library(
+    name = "gchat_ffi_test_loopback",
+    testonly = True,
+    srcs = [":gchat_scoped_archive_test_loopback"],
     hdrs = ["include/gchat.h"],
     includes = ["include"],
     linkopts = [

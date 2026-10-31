@@ -51,6 +51,8 @@ fn has_invalid_cookie_chars(s: &str) -> bool {
 #[derive(Clone, Debug)]
 pub struct DomainCookieJar {
     cookies: Vec<ScopedCookie>,
+    #[cfg(any(test, feature = "test-loopback"))]
+    allow_loopback_for_test: bool,
 }
 
 impl DomainCookieJar {
@@ -118,6 +120,8 @@ impl DomainCookieJar {
 
         Ok(Self {
             cookies: normalized,
+            #[cfg(any(test, feature = "test-loopback"))]
+            allow_loopback_for_test: false,
         })
     }
 
@@ -139,7 +143,16 @@ impl DomainCookieJar {
         Self::from_scoped_cookies(scoped)
     }
 
+    #[cfg(any(test, feature = "test-loopback"))]
+    pub fn with_loopback_for_test(mut self, allow: bool) -> Self {
+        self.allow_loopback_for_test = allow;
+        self
+    }
+
     pub fn cookie_header_for_url(&self, url: &Url) -> Option<String> {
+        if url.scheme() != "https" {
+            return None;
+        }
         let host = url.host_str()?.to_ascii_lowercase();
         if host == "googleusercontent.com" || host.ends_with(".googleusercontent.com") {
             return None;
@@ -165,15 +178,12 @@ impl DomainCookieJar {
         }
     }
 
-    pub(crate) fn cookie_header_for_request(
-        &self,
-        url: &Url,
-        allow_loopback: bool,
-    ) -> Option<String> {
+    pub(crate) fn cookie_header_for_request(&self, url: &Url) -> Option<String> {
         if let Some(h) = self.cookie_header_for_url(url) {
             return Some(h);
         }
-        if allow_loopback {
+        #[cfg(any(test, feature = "test-loopback"))]
+        if self.allow_loopback_for_test {
             if let Some(host) = url.host_str() {
                 if host == "127.0.0.1" || host == "localhost" || host == "::1" {
                     let chat_url = Url::parse("https://chat.google.com/").ok()?;
@@ -214,19 +224,19 @@ mod tests {
         vec![
             ScopedCookie {
                 name: "COMPASS".to_string(),
-                value: "dynamite-ui=compass_val".to_string(),
+                value: "dynamite-ui=compass+val%2B/=".to_string(),
                 domain: "chat.google.com".to_string(),
                 path: "/".to_string(),
             },
             ScopedCookie {
                 name: "OSID".to_string(),
-                value: "osid_val".to_string(),
+                value: "osid+val%2B/=".to_string(),
                 domain: "chat.google.com".to_string(),
                 path: "/".to_string(),
             },
             ScopedCookie {
                 name: "SID".to_string(),
-                value: "sid_val".to_string(),
+                value: "sid+val%2B/=".to_string(),
                 domain: ".google.com".to_string(),
                 path: "/".to_string(),
             },
@@ -281,9 +291,9 @@ mod tests {
             .cookie_header_for_url(&chat_url)
             .expect("chat.google.com must receive cookies");
         for expected in [
-            "COMPASS=dynamite-ui=compass_val",
-            "OSID=osid_val",
-            "SID=sid_val",
+            "COMPASS=dynamite-ui=compass+val%2B/=",
+            "OSID=osid+val%2B/=",
+            "SID=sid+val%2B/=",
             "HSID=hsid_val",
             "SSID=ssid_val",
             "APISID=APISID_val",
@@ -303,10 +313,17 @@ mod tests {
             .expect("*.google.com must receive google.com cookies");
         assert!(!google_header.contains("COMPASS="));
         assert!(!google_header.contains("OSID="));
-        assert!(google_header.contains("SID=sid_val"));
+        assert!(google_header.contains("SID=sid+val%2B/="));
 
         let guc_url = Url::parse("https://lh3.googleusercontent.com/a/avatar").unwrap();
         assert_eq!(jar.cookie_header_for_url(&guc_url), None);
+
+        let loopback_url = Url::parse("http://127.0.0.1:8080/u/0/mole/world").unwrap();
+        assert_eq!(
+            jar.cookie_header_for_request(&loopback_url),
+            None,
+            "default DomainCookieJar must never attach cookies to loopback"
+        );
     }
 
     #[test]

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 
 	"github.com/rs/zerolog"
@@ -64,7 +65,11 @@ func buildSyntheticGetMembersResponse(gaiaID, name, email, avatarURL string) []b
 }
 
 func TestGChatCookieLoginFlowCreatesUserLogin(t *testing.T) {
+	enableTestLoopback(t)
+
+	var lastCookieHeader atomic.Value
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		lastCookieHeader.Store(r.Header.Get("Cookie"))
 		switch r.URL.Path {
 		case "/u/0/mole/world":
 			w.Header().Set("Content-Type", "text/html")
@@ -96,8 +101,7 @@ func TestGChatCookieLoginFlowCreatesUserLogin(t *testing.T) {
 	t.Cleanup(func() { _ = st.Close() })
 
 	conn := &Connector{
-		baseURL:              srv.URL,
-		allowLoopbackForTest: true,
+		baseURL: srv.URL,
 	}
 	h, err := host.Start(ctx, dir, NetworkID, st, &media.Store{Dir: filepath.Join(dir, "media")}, conn, zerolog.Nop())
 	require.NoError(t, err)
@@ -152,9 +156,9 @@ func TestGChatCookieLoginFlowCreatesUserLogin(t *testing.T) {
 	require.Empty(t, loginsBefore, "refused cookie submission must leave nothing on disk")
 
 	doneStep, err := cookieLogin.SubmitCookies(ctx, map[string]string{
-		"COMPASS":    "dynamite-ui=synthetic_compass",
-		"OSID":       "synthetic_osid",
-		"SID":        "synthetic_sid",
+		"COMPASS":    "dynamite-ui=synthetic_compass+plus%2Bpct/slash=eq",
+		"OSID":       "synthetic_osid+plus%2Bpct/slash=eq",
+		"SID":        "synthetic_sid+plus%2Bpct/slash=eq",
 		"HSID":       "synthetic_hsid",
 		"SSID":       "synthetic_ssid",
 		"user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15",
@@ -165,4 +169,14 @@ func TestGChatCookieLoginFlowCreatesUserLogin(t *testing.T) {
 	require.Equal(t, networkid.UserLoginID("112233445566778899001"), doneStep.CompleteParams.UserLoginID)
 	require.NotNil(t, doneStep.CompleteParams.UserLogin)
 	require.Equal(t, "Ada Lovelace (ada@example.com)", doneStep.CompleteParams.UserLogin.RemoteName)
+	meta, ok := doneStep.CompleteParams.UserLogin.Metadata.(*UserLoginMetadata)
+	require.True(t, ok)
+	require.Equal(t, "dynamite-ui=synthetic_compass+plus%2Bpct/slash=eq", meta.Cookies["COMPASS"])
+	require.Equal(t, "synthetic_osid+plus%2Bpct/slash=eq", meta.Cookies["OSID"])
+	require.Equal(t, "synthetic_sid+plus%2Bpct/slash=eq", meta.Cookies["SID"])
+
+	gotCookieHdr, _ := lastCookieHeader.Load().(string)
+	require.Contains(t, gotCookieHdr, "COMPASS=dynamite-ui=synthetic_compass+plus%2Bpct/slash=eq")
+	require.Contains(t, gotCookieHdr, "OSID=synthetic_osid+plus%2Bpct/slash=eq")
+	require.Contains(t, gotCookieHdr, "SID=synthetic_sid+plus%2Bpct/slash=eq")
 }

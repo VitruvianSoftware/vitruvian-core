@@ -10,10 +10,10 @@ package gchat
 import "C"
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"unsafe"
 )
 
@@ -25,13 +25,12 @@ type ScopedCookie struct {
 	Path   string `json:"path"`
 }
 
-// SessionConfig is serialized to JSON for gchat_validate_session and gchat_client_new.
+// SessionConfig is serialized to JSON for gchat_client_new and gchat_validate_session.
 type SessionConfig struct {
-	Cookies              []ScopedCookie    `json:"cookies,omitempty"`
-	CookieMap            map[string]string `json:"cookie_map,omitempty"`
-	UserAgent            string            `json:"user_agent,omitempty"`
-	BaseURL              string            `json:"base_url,omitempty"`
-	AllowLoopbackForTest bool              `json:"allow_loopback_for_test,omitempty"`
+	Cookies   []ScopedCookie    `json:"cookies,omitempty"`
+	CookieMap map[string]string `json:"cookie_map,omitempty"`
+	UserAgent string            `json:"user_agent,omitempty"`
+	BaseURL   string            `json:"base_url,omitempty"`
 }
 
 // ValidatedSession is returned by gchat_validate_session.
@@ -42,24 +41,75 @@ type ValidatedSession struct {
 	AvatarURL string `json:"avatar_url"`
 }
 
-// LinkCheck verifies that libgchat_ffi.a is linked and callable via cgo.
-func LinkCheck() error {
-	emptyCfg := C.CString("{}")
-	defer C.free(unsafe.Pointer(emptyCfg))
+func takeByteSlice(slice C.GChatByteSlice) []byte {
+	if slice.ptr == nil || slice.len == 0 {
+		return nil
+	}
+	defer C.gchat_bytes_free(slice)
+	return C.GoBytes(unsafe.Pointer(slice.ptr), C.int(slice.len))
+}
 
-	var errPtr *C.char
-	resPtr := C.gchat_validate_session(emptyCfg, &errPtr)
-	if resPtr != nil {
-		C.gchat_string_free(resPtr)
-		return errors.New("expected gchat_validate_session(\"{}\") to return an error")
+func statusError(status C.GChatStatus, errSlice C.GChatByteSlice) error {
+	errBytes := takeByteSlice(errSlice)
+	if len(errBytes) > 0 {
+		return errors.New(string(errBytes))
 	}
-	if errPtr == nil {
-		return errors.New("expected gchat_validate_session(\"{}\") to populate err_out")
+	return fmt.Errorf("gchat ffi error status %d", int(status))
+}
+
+// LinkCheck verifies that libgchat_ffi.a is linked and callable via cgo by
+// round-tripping a synthetic Annotation conversion (HTML <-> Message proto).
+func LinkCheck() error {
+	inputJSON := []byte(`{"html":"<b>Hello</b> World"}`)
+	var htmlOut C.GChatByteSlice
+	var errOut C.GChatByteSlice
+	st := C.gchat_html_to_annotations(
+		(*C.uint8_t)(unsafe.Pointer(&inputJSON[0])),
+		C.size_t(len(inputJSON)),
+		&htmlOut,
+		&errOut,
+	)
+	if st != C.GCHAT_OK {
+		return statusError(st, errOut)
 	}
-	errMsg := C.GoString(errPtr)
-	C.gchat_string_free(errPtr)
-	if !strings.Contains(errMsg, "no cookies provided") {
-		return fmt.Errorf("unexpected error from gchat_validate_session: %s", errMsg)
+	encodedJSON := takeByteSlice(htmlOut)
+	var step1 struct {
+		Text               string `json:"text"`
+		MessageProtoBase64 string `json:"message_proto_base64"`
+	}
+	if err := json.Unmarshal(encodedJSON, &step1); err != nil {
+		return fmt.Errorf("unmarshal html_to_annotations output: %w", err)
+	}
+	if step1.Text != "Hello World" {
+		return fmt.Errorf("unexpected plain text %q", step1.Text)
+	}
+	protoBytes, err := base64.StdEncoding.DecodeString(step1.MessageProtoBase64)
+	if err != nil || len(protoBytes) == 0 {
+		return fmt.Errorf("decode message_proto_base64: %w", err)
+	}
+
+	var renderOut C.GChatByteSlice
+	var renderErr C.GChatByteSlice
+	st = C.gchat_annotations_to_html(
+		(*C.uint8_t)(unsafe.Pointer(&protoBytes[0])),
+		C.size_t(len(protoBytes)),
+		&renderOut,
+		&renderErr,
+	)
+	if st != C.GCHAT_OK {
+		return statusError(st, renderErr)
+	}
+	renderedJSON := takeByteSlice(renderOut)
+	var step2 struct {
+		Text             string `json:"text"`
+		HTML             string `json:"html"`
+		AnnotationsCount int    `json:"annotations_count"`
+	}
+	if err := json.Unmarshal(renderedJSON, &step2); err != nil {
+		return fmt.Errorf("unmarshal annotations_to_html output: %w", err)
+	}
+	if step2.HTML != "<b>Hello</b> World" || step2.AnnotationsCount != 1 {
+		return fmt.Errorf("unexpected round-trip annotation output: %+v", step2)
 	}
 	return nil
 }
@@ -70,27 +120,36 @@ func ValidateSession(cfg SessionConfig) (*ValidatedSession, error) {
 	if err != nil {
 		return nil, fmt.Errorf("marshal session config: %w", err)
 	}
-	cJSON := C.CString(string(raw))
-	defer C.free(unsafe.Pointer(cJSON))
+	if len(raw) == 0 {
+		return nil, errors.New("empty session config")
+	}
 
-	var errPtr *C.char
-	resPtr := C.gchat_validate_session(cJSON, &errPtr)
-	if errPtr != nil {
-		errMsg := C.GoString(errPtr)
-		C.gchat_string_free(errPtr)
-		if resPtr != nil {
-			C.gchat_string_free(resPtr)
-		}
-		return nil, errors.New(errMsg)
+	var client *C.GChatClient
+	var newErr C.GChatByteSlice
+	st := C.gchat_client_new(
+		(*C.uint8_t)(unsafe.Pointer(&raw[0])),
+		C.size_t(len(raw)),
+		&client,
+		&newErr,
+	)
+	if st != C.GCHAT_OK {
+		return nil, statusError(st, newErr)
 	}
-	if resPtr == nil {
-		return nil, errors.New("gchat_validate_session returned nil without error")
+	defer C.gchat_client_free(client)
+
+	var selfJSON C.GChatByteSlice
+	var valErr C.GChatByteSlice
+	st = C.gchat_validate_session(client, &selfJSON, &valErr)
+	if st != C.GCHAT_OK {
+		return nil, statusError(st, valErr)
 	}
-	resJSON := C.GoString(resPtr)
-	C.gchat_string_free(resPtr)
+	resBytes := takeByteSlice(selfJSON)
+	if len(resBytes) == 0 {
+		return nil, errors.New("gchat_validate_session returned empty output")
+	}
 
 	var out ValidatedSession
-	if err := json.Unmarshal([]byte(resJSON), &out); err != nil {
+	if err := json.Unmarshal(resBytes, &out); err != nil {
 		return nil, fmt.Errorf("unmarshal validated session: %w", err)
 	}
 	return &out, nil

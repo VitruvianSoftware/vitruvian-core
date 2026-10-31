@@ -1,5 +1,17 @@
 load("@rules_go//go:def.bzl", "go_library", "go_test")
 
+# keep
+go_test(
+    name = "gchat_link_test",
+    srcs = ["gchat_link_test.go"],
+    embed = [":networks"],
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [
+        "//apps/desktop/courier/engine/internal/gchat",
+        "@com_github_stretchr_testify//require",
+    ],
+)
+
 go_test(
     name = "networks_test",
     srcs = [

@@ -1,6 +1,13 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-only
 
+#[macro_export]
+macro_rules! edition2021 {
+    ($($item:tt)*) => {
+        $($item)*
+    };
+}
+
 pub mod auth;
 pub mod cookies;
 pub mod ffi;
@@ -77,6 +84,19 @@ mod tests {
         assert!(DESCRIPTOR_POOL
             .get_message_by_name("googlechat.Event")
             .is_some());
+        assert!(DESCRIPTOR_POOL
+            .get_message_by_name("googlechat.Message")
+            .is_some());
+        assert!(DESCRIPTOR_POOL
+            .get_message_by_name("googlechat.Annotation")
+            .is_some());
+        let attachment_desc = DESCRIPTOR_POOL
+            .get_message_by_name("googlechat.Attachment")
+            .expect("Attachment descriptor must exist");
+        let field_15 = attachment_desc
+            .get_field(15)
+            .expect("Attachment field 15 (app_card_data) must exist");
+        assert_eq!(field_15.name(), "app_card_data");
         assert!(DESCRIPTOR_POOL
             .get_message_by_name("googlechat.WebChannelEvent")
             .is_some());

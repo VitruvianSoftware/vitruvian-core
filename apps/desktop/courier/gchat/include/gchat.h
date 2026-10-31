@@ -1,6 +1,5 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-only
-
 #ifndef COURIER_GCHAT_H
 #define COURIER_GCHAT_H
 
@@ -13,65 +12,89 @@ extern "C" {
 
 typedef struct GChatClient GChatClient;
 
+typedef enum GChatStatus {
+  GCHAT_OK = 0,
+  GCHAT_ERR_INVALID_ARG = 1,
+  GCHAT_ERR_AUTH_EXPIRED = 2,
+  GCHAT_ERR_RATE_LIMITED = 3,
+  GCHAT_ERR_TRANSIENT = 4,
+  GCHAT_ERR_SSRF_BLOCKED = 5,
+  GCHAT_ERR_PROTOCOL = 6,
+  GCHAT_ERR_INTERNAL = 7,
+} GChatStatus;
+
+typedef struct GChatByteSlice {
+  uint8_t *ptr;
+  size_t len;
+} GChatByteSlice;
+
 typedef void (*GChatEventCallback)(
     uintptr_t userdata,
-    const char *event_json_ptr,
-    size_t event_json_len
-);
+    int32_t event_kind,
+    const uint8_t *payload_ptr,
+    size_t payload_len);
 
-void gchat_string_free(char *ptr);
-
-char *gchat_validate_session(
-    const char *config_json,
-    char **err_out
-);
-
-GChatClient *gchat_client_new(
-    const char *config_json,
-    GChatEventCallback cb,
-    uintptr_t userdata,
-    char **err_out
-);
-
-int gchat_client_connect(
-    GChatClient *client,
-    char **err_out
-);
-
-void gchat_client_disconnect(GChatClient *client);
+GChatStatus gchat_client_new(
+    const uint8_t *config_json_ptr,
+    size_t config_json_len,
+    GChatClient **out_client,
+    GChatByteSlice *out_err);
 
 void gchat_client_free(GChatClient *client);
+void gchat_bytes_free(GChatByteSlice slice);
 
-char *gchat_client_call_json(
+GChatStatus gchat_validate_session(
     GChatClient *client,
-    const char *method,
-    const char *req_json,
-    char **err_out
-);
+    GChatByteSlice *out_self_json,
+    GChatByteSlice *out_err);
 
-char *gchat_client_upload_media(
+GChatStatus gchat_start_stream(
     GChatClient *client,
-    const char *group_id,
-    const char *filename,
-    const char *mime_type,
-    const uint8_t *bytes_ptr,
-    size_t bytes_len,
-    char **err_out
-);
+    GChatEventCallback cb,
+    uintptr_t userdata,
+    GChatByteSlice *out_err);
 
-int gchat_client_download_media(
+void gchat_stop_stream(GChatClient *client);
+
+GChatStatus gchat_rpc_call(
     GChatClient *client,
-    const char *url,
-    uint8_t **bytes_out,
-    size_t *len_out,
-    char **mime_out,
-    char **err_out
-);
+    const char *endpoint_ptr,
+    size_t endpoint_len,
+    const uint8_t *req_proto_ptr,
+    size_t req_proto_len,
+    GChatByteSlice *out_resp_proto,
+    GChatByteSlice *out_err);
 
-void gchat_bytes_free(uint8_t *ptr, size_t len);
+GChatStatus gchat_html_to_annotations(
+    const uint8_t *input_json_ptr,
+    size_t input_json_len,
+    GChatByteSlice *out_result_json,
+    GChatByteSlice *out_err);
+
+GChatStatus gchat_annotations_to_html(
+    const uint8_t *input_proto_ptr,
+    size_t input_proto_len,
+    GChatByteSlice *out_result_json,
+    GChatByteSlice *out_err);
+
+GChatStatus gchat_upload_media(
+    GChatClient *client,
+    const uint8_t *req_json_ptr,
+    size_t req_json_len,
+    const uint8_t *data_ptr,
+    size_t data_len,
+    GChatByteSlice *out_upload_proto,
+    GChatByteSlice *out_err);
+
+GChatStatus gchat_download_media(
+    GChatClient *client,
+    const uint8_t *req_json_ptr,
+    size_t req_json_len,
+    GChatByteSlice *out_bytes,
+    GChatByteSlice *out_err);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif // COURIER_GCHAT_H
+#endif  // COURIER_GCHAT_H

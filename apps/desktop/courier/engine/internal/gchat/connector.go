@@ -6,7 +6,6 @@ package gchat
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"strings"
 
 	"go.mau.fi/util/configupgrade"
@@ -43,9 +42,8 @@ type MessageMetadata struct {
 
 // Connector implements bridgev2.NetworkConnector for Google Chat.
 type Connector struct {
-	Bridge               *bridgev2.Bridge
-	baseURL              string
-	allowLoopbackForTest bool
+	Bridge  *bridgev2.Bridge
+	baseURL string
 }
 
 var _ bridgev2.NetworkConnector = (*Connector)(nil)
@@ -164,10 +162,6 @@ func (cl *CookieLogin) SubmitCookies(ctx context.Context, cookies map[string]str
 	cleaned := make(map[string]string, len(cookies))
 	var userAgent string
 	for k, v := range cookies {
-		decoded, err := url.QueryUnescape(v)
-		if err == nil {
-			v = decoded
-		}
 		if k == "user_agent" {
 			userAgent = strings.TrimSpace(v)
 			continue
@@ -178,10 +172,9 @@ func (cl *CookieLogin) SubmitCookies(ctx context.Context, cookies map[string]str
 	}
 
 	validated, err := ValidateSession(SessionConfig{
-		CookieMap:            cleaned,
-		UserAgent:            userAgent,
-		BaseURL:              cl.Main.baseURL,
-		AllowLoopbackForTest: cl.Main.allowLoopbackForTest,
+		CookieMap: cleaned,
+		UserAgent: userAgent,
+		BaseURL:   cl.Main.baseURL,
 	})
 	if err != nil {
 		return nil, err
