@@ -287,7 +287,11 @@ pub fn still_registering(json: &str, now_epoch: i64, settle_secs: i64) -> bool {
         .and_then(|r| r.as_array())
         .into_iter()
         .flatten()
-        .filter_map(|r| r.get("created_at").and_then(|v| v.as_str()).and_then(parse_utc))
+        .filter_map(|r| {
+            r.get("created_at")
+                .and_then(|v| v.as_str())
+                .and_then(parse_utc)
+        })
         .min();
     matches!(earliest, Some(t) if now_epoch - t < settle_secs)
 }
@@ -400,9 +404,23 @@ mod tests {
         assert_eq!(list_in_flight(runs).0, "  - D (queued): null\n");
     }
 
-    fn run(id: u64, name: &str, event: &str, branch: &str, status: &str, concl: &str, at: &str) -> String {
-        let c = if concl.is_empty() { "null".to_string() } else { format!("\"{concl}\"") };
-        format!(r#"{{"id":{id},"workflow_id":{id},"name":"{name}","event":"{event}","head_branch":"{branch}","head_sha":"abc","status":"{status}","conclusion":{c},"created_at":"{at}"}}"#)
+    fn run(
+        id: u64,
+        name: &str,
+        event: &str,
+        branch: &str,
+        status: &str,
+        concl: &str,
+        at: &str,
+    ) -> String {
+        let c = if concl.is_empty() {
+            "null".to_string()
+        } else {
+            format!("\"{concl}\"")
+        };
+        format!(
+            r#"{{"id":{id},"workflow_id":{id},"name":"{name}","event":"{event}","head_branch":"{branch}","head_sha":"abc","status":"{status}","conclusion":{c},"created_at":"{at}"}}"#
+        )
     }
 
     /// PR 4087: eleven finished merge_group runs share the squash SHA; the
@@ -410,15 +428,36 @@ mod tests {
     #[test]
     fn merge_group_runs_are_not_the_post_merge_pipeline() {
         let mq: Vec<String> = (1..=11)
-            .map(|i| run(i, &format!("w{i}"), "merge_group", "gh-readonly-queue/main/pr-1-x", "completed", "success", "2026-10-31T06:26:44Z"))
+            .map(|i| {
+                run(
+                    i,
+                    &format!("w{i}"),
+                    "merge_group",
+                    "gh-readonly-queue/main/pr-1-x",
+                    "completed",
+                    "success",
+                    "2026-10-31T06:26:44Z",
+                )
+            })
             .collect();
         let json = format!(r#"{{"workflow_runs":[{}]}}"#, mq.join(","));
         // Unfiltered (the old behaviour): a false green.
         assert_eq!(eval(&json).1, 0);
         // Filtered: nothing has run for the push yet.
-        assert_eq!(eval(&restrict_to_push(&json, "abc", "main")), ("NO_RUNS\n".into(), 3));
+        assert_eq!(
+            eval(&restrict_to_push(&json, "abc", "main")),
+            ("NO_RUNS\n".into(), 3)
+        );
         // Push runs registered and in flight alongside: not green.
-        let push = run(50, "Presubmit", "push", "main", "in_progress", "", "2026-10-31T06:54:06Z");
+        let push = run(
+            50,
+            "Presubmit",
+            "push",
+            "main",
+            "in_progress",
+            "",
+            "2026-10-31T06:54:06Z",
+        );
         let json = format!(r#"{{"workflow_runs":[{},{}]}}"#, mq.join(","), push);
         assert_eq!(eval(&restrict_to_push(&json, "abc", "main")).1, 2);
     }
@@ -426,20 +465,67 @@ mod tests {
     #[test]
     fn restrict_is_strict_on_sha_branch_and_event() {
         let rs = [
-            run(1, "a", "push", "main", "completed", "success", "2026-10-31T06:54:06Z"),
-            run(2, "b", "push", "feature", "completed", "failure", "2026-10-31T06:54:06Z"),
-            run(3, "c", "pull_request", "main", "completed", "failure", "2026-10-31T06:54:06Z"),
-            run(4, "d", "push", "main", "completed", "failure", "2026-10-31T06:54:06Z").replace("\"abc\"", "\"other\""),
+            run(
+                1,
+                "a",
+                "push",
+                "main",
+                "completed",
+                "success",
+                "2026-10-31T06:54:06Z",
+            ),
+            run(
+                2,
+                "b",
+                "push",
+                "feature",
+                "completed",
+                "failure",
+                "2026-10-31T06:54:06Z",
+            ),
+            run(
+                3,
+                "c",
+                "pull_request",
+                "main",
+                "completed",
+                "failure",
+                "2026-10-31T06:54:06Z",
+            ),
+            run(
+                4,
+                "d",
+                "push",
+                "main",
+                "completed",
+                "failure",
+                "2026-10-31T06:54:06Z",
+            )
+            .replace("\"abc\"", "\"other\""),
         ];
         let json = format!(r#"{{"workflow_runs":[{}]}}"#, rs.join(","));
-        assert_eq!(eval(&restrict_to_push(&json, "abc", "main")), ("ALL_PASSED: 1 passed out of 1 total\n".into(), 0));
+        assert_eq!(
+            eval(&restrict_to_push(&json, "abc", "main")),
+            ("ALL_PASSED: 1 passed out of 1 total\n".into(), 0)
+        );
     }
 
     #[test]
     fn utc_parsing_and_settle_window() {
         assert_eq!(parse_utc("1970-01-01T00:00:00Z"), Some(0));
         assert_eq!(parse_utc("2026-10-31T06:54:06Z"), Some(1793429646));
-        let json = format!(r#"{{"workflow_runs":[{}]}}"#, run(1, "a", "push", "main", "completed", "success", "2026-10-31T06:54:06Z"));
+        let json = format!(
+            r#"{{"workflow_runs":[{}]}}"#,
+            run(
+                1,
+                "a",
+                "push",
+                "main",
+                "completed",
+                "success",
+                "2026-10-31T06:54:06Z"
+            )
+        );
         let t = 1793429646;
         assert!(still_registering(&json, t + 3, 60));
         assert!(!still_registering(&json, t + 60, 60));
