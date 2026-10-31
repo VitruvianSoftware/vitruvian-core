@@ -450,7 +450,7 @@ Stack configurations format keys as `<namespace>:<property>`.
 │ ts_project           │ snake_case /         │ :lib, :tests_lib, :tools_lib, :mcp-slack               │
 │                      │ kebab-case           │                                                        │
 ├──────────────────────┼──────────────────────┼────────────────────────────────────────────────────────┤
-│ js_binary            │ snake_case           │ :tabcli, :api_bin, :migrate_deploy_bin                 │
+│ js_binary            │ snake_case           │ :tabcli, :api_bin, :prisma_cli                         │
 ├──────────────────────┼──────────────────────┼────────────────────────────────────────────────────────┤
 │ jest_test            │ snake_case           │ :unit_tests, :jest_suite                               │
 ├──────────────────────┼──────────────────────┼────────────────────────────────────────────────────────┤
