@@ -20,13 +20,13 @@
 
 //! pipeline-status.sh's `main`, step for step.
 
+use crate::batch::{resolve, Outcome};
 use crate::evaluate::{
-    assess, list_failed, list_in_flight, runs_query, settle_secs_from_env, EMPTY_RETURN_STATUS,
+    list_failed, list_in_flight, runs_query, settle_secs_from_env, EMPTY_RETURN_STATUS,
 };
 use crate::sh::{self, capture, capture_or_echo, die, env_or, info, ok, on_path, prefix, warn};
 
 const DEFAULT_REPO: &str = "VitruvianSoftware/vitruvian-core";
-const NO_RUNS_JSON: &str = r#"{"total_count":0,"workflow_runs":[]}"#;
 
 /// `^#?[0-9]+$`.
 fn is_pr_number(target: &str) -> bool {
@@ -126,22 +126,52 @@ pub fn run(script: &str, args: &[String]) -> i32 {
         "Checking GitHub Actions pipeline status for commit {short} in {repo}..."
     ));
 
-    let runs_json = capture_or_echo(
-        "gh",
-        &[
-            "api",
-            &runs_query(&repo, &sha, &env_or("PIPELINE_BRANCH", "main")),
-        ],
-        NO_RUNS_JSON,
-    );
-
     // Only the push to the branch counts, and only once it has settled.
     let branch = env_or("PIPELINE_BRANCH", "main");
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
-    let (evaluation, runs_json) = assess(&runs_json, &sha, &branch, now, settle_secs_from_env());
+    let gh_api = |path: &str| -> Result<String, String> {
+        let got = capture("gh", &["api", path]);
+        if got.status == 0 {
+            Ok(got.out)
+        } else {
+            Err(format!("gh api {path} failed (exit {})", got.status))
+        }
+    };
+    let activity = || {
+        gh_api(&format!(
+            "repos/{repo}/activity?ref=refs/heads/{branch}&per_page=100"
+        ))
+    };
+    let range = |before: &str, after: &str| {
+        gh_api(&format!(
+            "repos/{repo}/compare/{before}...{after}?per_page=100"
+        ))
+    };
+    let runs_for = |commit: &str| gh_api(&runs_query(&repo, commit, &branch));
+    let resolved = match resolve(
+        &sha,
+        &branch,
+        now,
+        settle_secs_from_env(),
+        &activity,
+        &range,
+        &runs_for,
+    ) {
+        Outcome::Judged(r) => r,
+        Outcome::Waiting(why) => {
+            // No verdict, and never green: the caller keeps waiting.
+            warn(&format!("No verdict yet for commit {short}: {why}"));
+            return 3;
+        }
+    };
+    if let Some(note) = &resolved.note {
+        info(note);
+    }
+    let evaluation = resolved.evaluation;
+    let runs_json = resolved.runs_json;
     sh::err_text(&evaluation.stderr);
     if evaluation.status == EMPTY_RETURN_STATUS {
         // What bash 3.2 says as `return ""` fails.
