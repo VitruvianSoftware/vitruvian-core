@@ -280,7 +280,7 @@ pub fn render_presubmit_workflow(
     // first; the planner (--rdeps-map-max-behind) decides whether an older map
     // is safe and plans against its commit. actions/cache allows 10 keys in
     // all: the exact one plus 9 here.
-    // First choice: the map kept under a git ref (tools/ci/rdeps-map-ref.sh).
+    // First choice: the map kept under a git ref (//tools/ci:rdeps_map_ref).
     // The Actions cache below evicts maps within the hour while the repo is
     // over its 10 GiB budget (#2841); a ref is never evicted. The cache steps
     // stay as the fallback, so nothing is lost if the ref is not there.
@@ -293,7 +293,15 @@ pub fn render_presubmit_workflow(
     b.push_str("        env:\n");
     b.push_str("          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}\n");
     b.push_str("          GH_TOKEN: ${{ github.token }}\n");
-    b.push_str("        run: bash tools/ci/rdeps-map-ref.sh fetch \"$RUNNER_TEMP/pipeline-rdeps-map.json\" \"$BASE_SHA\"\n\n");
+    b.push_str("        run: |\n");
+    b.push_str("          cache_flags=()\n");
+    b.push_str("          if [ -n \"${BUILDBUDDY_API_KEY:-}\" ]; then\n");
+    b.push_str("            cache_flags=(--config=remotecache-ci \"--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}\")\n");
+    b.push_str("          fi\n");
+    b.push_str("          bazel build \"${cache_flags[@]}\" //tools/ci:rdeps_map_ref\n");
+    b.push_str("          cp -f bazel-bin/tools/ci/rdeps_map_ref \"$RUNNER_TEMP/rdeps-map-ref\"\n");
+    b.push_str("          chmod +x \"$RUNNER_TEMP/rdeps-map-ref\"\n");
+    b.push_str("          \"$RUNNER_TEMP/rdeps-map-ref\" fetch \"$RUNNER_TEMP/pipeline-rdeps-map.json\" \"$BASE_SHA\"\n\n");
     b.push_str("      - name: List recent ancestors of the diff base\n");
     b.push_str("        id: mapkeys\n");
     b.push_str("        if: ");
@@ -686,11 +694,14 @@ pub fn render_presubmit_workflow(
     b.push_str("          if [ -n \"${BUILDBUDDY_API_KEY:-}\" ]; then\n");
     b.push_str("            cache_flags=(--config=remotecache-ci \"--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}\")\n");
     b.push_str("          fi\n");
-    b.push_str("          bazel build \"${cache_flags[@]}\" //tools/pipeline/plan\n");
+    b.push_str("          bazel build \"${cache_flags[@]}\" //tools/pipeline/plan //tools/ci:rdeps_map_ref\n");
     b.push_str(
         "          cp -f bazel-bin/tools/pipeline/plan/plan \"$RUNNER_TEMP/pipeline-plan\"\n",
     );
-    b.push_str("          chmod +x \"$RUNNER_TEMP/pipeline-plan\"\n");
+    b.push_str("          cp -f bazel-bin/tools/ci/rdeps_map_ref \"$RUNNER_TEMP/rdeps-map-ref\"\n");
+    b.push_str(
+        "          chmod +x \"$RUNNER_TEMP/pipeline-plan\" \"$RUNNER_TEMP/rdeps-map-ref\"\n",
+    );
     b.push_str("          \"$RUNNER_TEMP/pipeline-plan\" --emit-rdeps-map=\"$RUNNER_TEMP/pipeline-rdeps-map.json\" --repo-root=\"$PWD\" --timeout-sec=2100\n\n");
     // The copy that is never evicted (#2841). continue-on-error: the cache
     // save below still happens, so a failed push only costs the speed-up.
@@ -699,8 +710,8 @@ pub fn render_presubmit_workflow(
     b.push_str("        env:\n");
     b.push_str("          GH_TOKEN: ${{ github.token }}\n");
     b.push_str("        run: |\n");
-    b.push_str("          bash tools/ci/rdeps-map-ref.sh save \"$RUNNER_TEMP/pipeline-rdeps-map.json\" \"$GITHUB_SHA\"\n");
-    b.push_str("          bash tools/ci/rdeps-map-ref.sh prune\n\n");
+    b.push_str("          \"$RUNNER_TEMP/rdeps-map-ref\" save \"$RUNNER_TEMP/pipeline-rdeps-map.json\" \"$GITHUB_SHA\"\n");
+    b.push_str("          \"$RUNNER_TEMP/rdeps-map-ref\" prune\n\n");
     b.push_str("      - name: Save it for PRs based on this commit\n");
     b.push_str("        uses: ");
     b.push_str(&pin("actions/cache/save")?);

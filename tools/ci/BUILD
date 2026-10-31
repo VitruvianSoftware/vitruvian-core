@@ -87,8 +87,6 @@ exports_files([
     "queue-runner-routing_test.sh",
     "queue-runner-watch.sh",
     "queue-runner-watch_test.sh",
-    "rdeps-map-ref.sh",
-    "rdeps-map-ref_test.sh",
     "release-beta-gate.sh",
     "release-beta-gate_test.sh",
     "release-hold.sh",
@@ -1573,30 +1571,21 @@ rust_binary(
     ],
 )
 
-sh_test(
+# A bare repository stands in for GitHub; the binary runs the same git commands
+# it runs in CI. jq is the hermetic toolchain one.
+rust_test(
     name = "rdeps_map_ref_test",
     size = "small",
-    srcs = ["rdeps-map-ref_test.sh"],
-    args = ["$(location rdeps-map-ref.sh)"],
+    srcs = ["src/rdeps_map_ref/cli_test.rs"],
     data = [
-        "rdeps-map-ref.sh",
-        "@jq_toolchains//:resolved_toolchain",
-    ],
-    env = {"JQ_BIN": "$(JQ_BIN)"},
-    toolchains = ["@jq_toolchains//:resolved_toolchain"],
-)
-
-sh_test(
-    name = "rdeps_map_ref_rs_test",
-    size = "small",
-    srcs = ["rdeps-map-ref_test.sh"],
-    args = ["$(location :rdeps_map_ref)"],
-    data = [
-        "rdeps-map-ref.sh",
         ":rdeps_map_ref",
         "@jq_toolchains//:resolved_toolchain",
     ],
-    env = {"JQ_BIN": "$(JQ_BIN)"},
+    edition = "2021",
+    env = {
+        "JQ_BIN": "$(JQ_BIN)",
+        "RDEPS_MAP_REF_BIN": "$(rootpath :rdeps_map_ref)",
+    },
     toolchains = ["@jq_toolchains//:resolved_toolchain"],
 )
 
