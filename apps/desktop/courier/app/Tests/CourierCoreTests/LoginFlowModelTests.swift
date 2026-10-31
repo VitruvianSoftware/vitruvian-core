@@ -731,6 +731,15 @@ final class LoginFlowModelTests: XCTestCase {
         await harness.model.settle()
         XCTAssertEqual(harness.caller.calls.first, .start(network: "whatsapp", flow: "qr"))
     }
+
+    func testGoogleChatPreferredFlowIsCookiesAndDisplaysGoogleAccount() {
+        XCTAssertEqual(LoginFlowModel.offeredFlows(network: "gchat", reported: ["cookies"]), ["cookies"])
+        XCTAssertEqual(LoginFlowModel.flowName("cookies", network: "gchat"), "Google account")
+        XCTAssertEqual(
+            NetworkAppearance.of("gchat"),
+            NetworkAppearance(symbol: "bubble.left.and.bubble.right.fill", red: 0.00, green: 0.67, blue: 0.28)
+        )
+    }
 }
 
 /// The engine's sign-in calls, scripted. `start`, `submit` and `wait` take their answers in order; a `wait` with

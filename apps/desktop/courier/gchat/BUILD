@@ -89,9 +89,23 @@ rust_static_library(
     deps = _DEPS + [":gchat_build_script"],
 )
 
+genrule(
+    name = "gchat_scoped_archive",
+    srcs = [":gchat_static"],
+    outs = ["libgchat_ffi_scoped.a"],
+    cmd = """
+        set -eu
+        REL_OBJ="$$(mktemp -t gchat_ffi_reloc).o"
+        trap 'rm -f "$$REL_OBJ"' EXIT
+        /usr/bin/clang -nostdlib -r -Wl,-exported_symbol,'_gchat_*' -Wl,-all_load $(location :gchat_static) -o "$$REL_OBJ"
+        /usr/bin/ar rcs $@ "$$REL_OBJ"
+    """,
+    target_compatible_with = ["@platforms//os:macos"],
+)
+
 cc_library(
     name = "gchat_ffi",
-    srcs = [":gchat_static"],
+    srcs = [":gchat_scoped_archive"],
     hdrs = ["include/gchat.h"],
     includes = ["include"],
     linkopts = [

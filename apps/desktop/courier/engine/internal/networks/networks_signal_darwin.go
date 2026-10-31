@@ -17,18 +17,36 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/engine"
+	"github.com/VitruvianSoftware/courier/engine/internal/gchat"
 )
 
 // platformNetworks lists the networks that exist only on this platform, after the portable ones in All.
 func platformNetworks() []Network {
-	return []Network{{
-		Name: "signal", DisplayName: "Signal",
-		ModulePath: "go.mau.fi/mautrix-signal",
-		// qr is the only flow mautrix-signal has (GetLoginFlows): Courier shows a QR code and the user scans it
-		// from Signal on their phone under Settings, Linked devices.
-		Flows: []string{"qr"},
-		Spec:  signalSpec,
-	}}
+	return []Network{
+		{
+			Name: "signal", DisplayName: "Signal",
+			ModulePath: "go.mau.fi/mautrix-signal",
+			// qr is the only flow mautrix-signal has (GetLoginFlows): Courier shows a QR code and the user scans it
+			// from Signal on their phone under Settings, Linked devices.
+			Flows: []string{"qr"},
+			Spec:  signalSpec,
+		},
+		{
+			Name: "gchat", DisplayName: "Google Chat",
+			ModulePath: "maunium.net/go/mautrix",
+			Flows:      []string{"cookies"},
+			Spec:       gchatSpec,
+		},
+	}
+}
+
+func gchatSpec() (engine.Spec, error) {
+	return engine.Spec{
+		Name:        "gchat",
+		DisplayName: "Google Chat",
+		ModulePath:  "maunium.net/go/mautrix",
+		Connector:   func() (bridgev2.NetworkConnector, error) { return gchat.NewConnector(), nil },
+	}, nil
 }
 
 // signalSpec is Signal's example config with one change: polls arrive as polls (extev_polls), not as text asking

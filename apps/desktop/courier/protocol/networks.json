@@ -5,6 +5,7 @@
     { "name": "telegram", "display_name": "Telegram" },
     { "name": "gmessages", "display_name": "Google Messages" },
     { "name": "slack", "display_name": "Slack" },
-    { "name": "signal", "display_name": "Signal", "macos_only": true }
+    { "name": "signal", "display_name": "Signal", "macos_only": true },
+    { "name": "gchat", "display_name": "Google Chat", "macos_only": true }
   ]
 }

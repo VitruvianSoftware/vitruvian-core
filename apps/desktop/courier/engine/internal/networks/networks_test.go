@@ -744,6 +744,7 @@ func TestGroupAndChatManagementTableMatchesTheBridges(t *testing.T) {
 			SetName: true, SetTopic: true, SetAvatar: false,
 			Membership: true, PowerLevels: false, DeleteChat: false,
 		},
+		"gchat": {},
 	}
 
 	clients := map[string]bridgev2.NetworkAPI{
