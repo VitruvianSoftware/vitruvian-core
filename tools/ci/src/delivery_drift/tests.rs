@@ -753,6 +753,61 @@ fn a_delivery_newer_than_the_checkout_is_current() {
     assert_has(&r.err, "UNKNOWN", "unknown");
 }
 
+/// A judged run whose commit is not in this checkout can only be judged at
+/// the checkout when GitHub says that commit CONTAINS it (ahead/identical).
+/// "behind" means the run is older than the checkout and "diverged" means it
+/// is on another line: judging either at the checkout would credit it with
+/// commits it never saw, so both must stay UNKNOWN.
+#[test]
+fn a_finished_run_behind_or_diverged_from_this_checkout_is_unknown() {
+    let fx = Fx::new();
+    let recent = format!("800 completed {NEWER_SHA} success");
+    for relation in ["behind", "diverged"] {
+        let r = fx.run(
+            "0",
+            &fx.head,
+            &[("STUB_RECENT", &recent), ("STUB_COMPARE", relation)],
+        );
+        r.verdict(1, "DRIFT", relation);
+        assert!(r.conclusion_is("failure"), "{relation}");
+        assert_lacks(&r.err, "judged at the checkout", relation);
+        assert_has(
+            &r.err,
+            &format!("(GitHub compare: {relation})"),
+            "names GitHub's answer",
+        );
+    }
+}
+
+/// A last-delivered commit missing from this checkout counts as up to date
+/// only when GitHub says it is ahead of the judged commit. A "behind" answer
+/// is a stale delivery and "diverged" is one off main: reporting either as
+/// up to date would fail open, a skipped delivery showing healthy.
+#[test]
+fn a_delivery_behind_or_diverged_from_the_judged_commit_is_unknown() {
+    let fx = Fx::new();
+    let runs = format!("700 {NEWER_SHA}");
+    for relation in ["behind", "diverged"] {
+        let r = fx.run(
+            "0",
+            "",
+            &[
+                ("STUB_RUNS", &runs),
+                ("STUB_HIT_RUNS", "700"),
+                ("STUB_COMPARE", relation),
+            ],
+        );
+        r.verdict(1, "DRIFT", relation);
+        assert!(r.conclusion_is("failure"), "{relation}");
+        assert_lacks(&r.err, "up to date", relation);
+        assert_has(
+            &r.err,
+            &format!("GitHub's compare says '{relation}' -- UNKNOWN"),
+            "names GitHub's answer",
+        );
+    }
+}
+
 // --- which history ----------------------------------------------------------------------------
 
 #[test]

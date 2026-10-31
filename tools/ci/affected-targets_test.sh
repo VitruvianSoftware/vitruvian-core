@@ -19,7 +19,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# Hermetic guard for tools/ci/deploy-affected.sh. Uses a REAL temp git repo
 # Hermetic guard for the planning half of tools/ci/affected-targets.sh (#2841).
 # Uses a REAL temp git repo (the script diffs it) and a fake `bazel` on PATH
 # that replays a canned plan and records every invocation. Pins:
