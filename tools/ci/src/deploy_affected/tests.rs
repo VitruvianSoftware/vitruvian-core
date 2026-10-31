@@ -694,24 +694,39 @@ fn bazel_run_acts_in_the_callers_directory() {
 }
 
 // --- large input ----------------------------------------------------------
+//
+// The gate pipes the range's commit subjects and changed paths through grep.
+// Writing all of grep's stdin before reading its stdout deadlocks once grep's
+// output fills the pipe (64 KiB): a ~3,000-commit range hung for minutes
+// where the shell script answered in 0.28 s. Each test below pushes one of
+// the four grep call sites past 256 KiB and times ONLY the gate's own run
+// (the fixture is built first, untimed) against a 2 s budget.
 
-/// `n` commits on top of HEAD in one `git fast-import`, each with a `msg_len`
-/// byte message and its own file under `dir`. Returns the base sha.
-fn bulk_commits(fx: &Fx, n: usize, msg_len: usize, dir: &str) -> String {
+/// The gate's time budget on 3,000 commits.
+const BUDGET: std::time::Duration = std::time::Duration::from_secs(2);
+/// A hang is killed here, so a deadlock fails the test instead of wedging it.
+const HANG: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// `n` commits on top of HEAD in one `git fast-import`. Commit i has the
+/// subject `subject(i)` and adds `{dir}/<long dir>/file-{i:05}.txt`, so the
+/// changed-path list is about 100 bytes per commit. Returns the base sha.
+fn bulk_commits(fx: &Fx, n: usize, dir: &str, subject: impl Fn(usize) -> String) -> String {
     use std::io::Write;
+    let start = std::time::Instant::now();
     let base = fx.head();
-    let body = "a".repeat(msg_len);
+    // Whatever the default branch is called, HEAD moves with it.
+    let branch = git(&fx.repo, &["symbolic-ref", "HEAD"]);
     let mut s = String::new();
     for i in 0..n {
-        let msg = format!("feat(app): change {i}\n\n{body}\n");
-        s.push_str("commit refs/heads/main\n");
+        let msg = format!("{}\n", subject(i));
+        s.push_str(&format!("commit {branch}\n"));
         s.push_str("committer t <t@t> 1700000000 +0000\n");
         s.push_str(&format!("data {}\n{msg}", msg.len()));
         if i == 0 {
             s.push_str(&format!("from {base}\n"));
         }
         s.push_str(&format!(
-            "M 100644 inline {dir}/a-fairly-long-directory-name-to-fatten-the-diff/file-{i:05}.txt\ndata 2\nx\n\n"
+            "M 100644 inline {dir}/a-fairly-long-directory-name-to-fatten-the-changed-path-list/file-{i:05}.txt\ndata 2\nx\n\n"
         ));
     }
     let mut child = std::process::Command::new("git")
@@ -723,31 +738,114 @@ fn bulk_commits(fx: &Fx, n: usize, msg_len: usize, dir: &str) -> String {
         .unwrap();
     child.stdin.take().unwrap().write_all(s.as_bytes()).unwrap();
     assert!(child.wait().unwrap().success(), "git fast-import failed");
+    assert_eq!(
+        git(&fx.repo, &["rev-list", "--count", &format!("{base}..HEAD")]),
+        n.to_string(),
+        "the fixture range"
+    );
+    eprintln!("fixture: {n} commits in {:?} (untimed)", start.elapsed());
     base
 }
 
-/// Several MB of commit messages and changed paths go through `grep -E`.
-/// Writing all of grep's stdin before reading its stdout deadlocks once grep's
-/// output fills the pipe (64 KiB), so this must finish, and quickly: the
-/// script took 0.28 s on 3,000 commits.
-#[test]
-fn a_huge_range_does_not_hang_the_grep_pipes() {
-    let fx = Fx::new();
-    let base = bulk_commits(&fx, 3000, 2000, "bigapp");
+/// Runs the gate once over `base..HEAD` and times only that run. Returns the
+/// run, its wall time, and what it wrote to GITHUB_OUTPUT.
+fn timed_gate(fx: &Fx, base: &str, env: &[(&str, &str)]) -> (Output, std::time::Duration, String) {
     let out = fx.work.join("out-big");
     std::fs::write(&out, "").unwrap();
-    let o = Run::new(&bin("BIN"))
+    let mut r = Run::new(&bin("BIN"))
         .cwd(&fx.repo)
         .env("GITHUB_OUTPUT", &out)
-        .env("BEFORE_REV", &base)
-        .env("EXTRA_PATH_REGEX", "bigapp/")
-        .env("EXCLUDE_PATH_REGEX", "bigapp/never-matches/")
+        .env("BEFORE_REV", base)
         .env("TD_BIN", &fx.td)
-        .env_remove("DEPLOY_TARGETS")
-        .go_within(std::time::Duration::from_secs(30))
-        .expect("deploy-affected hung on a large range (grep pipe deadlock)");
-    assert_eq!(o.code, 0, "{}", o.stderr);
-    assert_has(&read(&out), "affected=true", "a matching path deploys");
-    assert_has(&o.stdout, "path matched bigapp/", "reason");
+        .env("BUILDBUDDY_API_KEY", "unused");
+    for k in [
+        "DEPLOY_TARGETS",
+        "EXTRA_PATH_REGEX",
+        "EXCLUDE_PATH_REGEX",
+        "FORCED_PUSH",
+        "AFTER_REV",
+        "FAKE_TD_OUT",
+        "FAKE_TD_RC",
+    ] {
+        r = r.env_remove(k);
+    }
+    for (k, v) in env {
+        r = r.env(k, v);
+    }
+    let start = std::time::Instant::now();
+    let o = r.go_within(HANG).unwrap_or_else(|| {
+        panic!("deploy-affected did not finish within {HANG:?} on a 3,000-commit range (grep pipe deadlock)")
+    });
+    let took = start.elapsed();
+    eprintln!("deploy-affected on 3,000 commits: {took:?}");
+    assert!(
+        took < BUDGET,
+        "deploy-affected took {took:?} on 3,000 commits; the budget is {BUDGET:?}\n{}",
+        o.all()
+    );
+    (o, took, read(&out))
+}
+
+/// The release-please guard: about 300 KiB of subjects through `grep -Ev`.
+/// No path matches, so the path greps print nothing and only the guard can
+/// fill a pipe.
+#[test]
+fn a_huge_range_of_subjects_does_not_hang_the_release_guard() {
+    let fx = Fx::new();
+    let pad = "x".repeat(80);
+    let base = bulk_commits(&fx, 3000, "bigapp", |i| format!("feat(app): change {i:05} {pad}"));
+    let (o, _, out) = timed_gate(&fx, &base, &[("EXTRA_PATH_REGEX", "elsewhere/")]);
+    assert_eq!(o.code, 0, "{}", o.all());
+    assert_has(&out, "affected=false", "no path matched");
+    assert_has(&o.stdout, "affected=false (no path matched", "reason");
+}
+
+/// The release guard still sees every subject of a huge range: 2,999 release
+/// bumps and one real commit at the very bottom is not a release-only range.
+#[test]
+fn a_huge_range_of_release_bumps_still_finds_the_one_real_commit() {
+    let fx = Fx::new();
+    let base = bulk_commits(&fx, 3000, "bigapp", |i| {
+        if i == 0 {
+            "fix(app): the one real change".to_string()
+        } else {
+            format!("chore(main): release app {i}.0.0 with a long enough subject to fill the pipe")
+        }
+    });
+    let (o, _, out) = timed_gate(&fx, &base, &[("EXTRA_PATH_REGEX", "bigapp/")]);
+    assert_eq!(o.code, 0, "{}", o.all());
+    assert_has(&out, "affected=true", "the real commit deploys");
+    assert_lacks(&o.stdout, "release-please version bump", "not a release-only range");
+}
+
+/// Path-only mode: about 300 KiB of changed paths through `grep -E` and then
+/// the exclude's `grep -Ev`, with short subjects so the guard is not the cause.
+#[test]
+fn a_huge_changed_path_list_does_not_hang_the_path_match() {
+    let fx = Fx::new();
+    let base = bulk_commits(&fx, 3000, "bigapp", |i| format!("c{i}"));
+    let (o, _, out) = timed_gate(
+        &fx,
+        &base,
+        &[
+            ("EXTRA_PATH_REGEX", "bigapp/"),
+            ("EXCLUDE_PATH_REGEX", "bigapp/never-matches/"),
+        ],
+    );
+    assert_eq!(o.code, 0, "{}", o.all());
+    assert_has(&out, "affected=true", "a matching path deploys");
+    assert_has(&o.stdout, "path matched bigapp/ (excluding bigapp/never-matches/)", "reason");
     assert_has(&o.stdout, "file-02999.txt", "every changed file is listed");
+}
+
+/// Graph mode: about 300 KiB of tools/ paths through the global-impact
+/// guard's `grep -E ^tools/` and its allowlist `grep -Ev`.
+#[test]
+fn a_huge_tools_change_does_not_hang_the_global_impact_guard() {
+    let fx = Fx::new();
+    let base = bulk_commits(&fx, 3000, "tools/bigtool", |i| format!("c{i}"));
+    let (o, _, out) = timed_gate(&fx, &base, &[("DEPLOY_TARGETS", "//apps/x:image")]);
+    assert_eq!(o.code, 0, "{}", o.all());
+    assert_has(&out, "affected=true", "an unlisted tools/ dir is global impact");
+    assert_has(&o.stdout, "global-impact file changed", "reason");
 }
