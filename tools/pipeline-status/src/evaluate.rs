@@ -270,17 +270,43 @@ fn parse_utc(ts: &str) -> Option<i64> {
     Some(days * 86400 + hh * 3600 + mm * 60 + ss)
 }
 
-/// True while the push runs may still be registering: the earliest run was
-/// created less than `settle_secs` ago. GitHub creates a push's workflows over
-/// a few seconds and quick ones (path-filter skips, tiny jobs) finish before
-/// the slow ones appear, so "everything listed is done" is not yet "everything
-/// is done". Applies only to the filtered (push-only) listing.
-pub fn still_registering(json: &str, now_epoch: i64, settle_secs: i64) -> bool {
+/// How long the earliest push run must have existed before an all-done set
+/// counts as green.
+pub const DEFAULT_SETTLE_SECS: i64 = 60;
+
+/// `PIPELINE_SETTLE_SECS` as set (`None` when unset). Unset, empty or
+/// unparsable all mean the default; only an explicit number overrides it, and
+/// a negative one is read as 0 (no settle window).
+pub fn parse_settle(raw: Option<&str>) -> i64 {
+    match raw.and_then(|r| r.trim().parse::<i64>().ok()) {
+        Some(n) => n.max(0),
+        None => DEFAULT_SETTLE_SECS,
+    }
+}
+
+/// The settle window from the environment.
+pub fn settle_secs_from_env() -> i64 {
+    parse_settle(std::env::var("PIPELINE_SETTLE_SECS").ok().as_deref())
+}
+
+/// The runs query: server-side narrowed to pushes on `branch`, so a tip commit
+/// with many merge_group / pull_request runs cannot push the push runs off the
+/// first page. The client-side filter still applies on top.
+pub fn runs_query(repo: &str, sha: &str, branch: &str) -> String {
+    format!("repos/{repo}/actions/runs?head_sha={sha}&event=push&branch={branch}&per_page=100")
+}
+
+/// Seconds the push runs still have to age before green may be reported: the
+/// earliest run must be `settle_secs` old. GitHub creates a push's workflows
+/// over a few seconds and quick ones (path-filter skips, tiny jobs) finish
+/// before the slow ones appear, so "everything listed is done" is not yet
+/// "everything is done". 0 means settled (or nothing to wait on).
+pub fn settle_remaining(json: &str, now_epoch: i64, settle_secs: i64) -> i64 {
     if settle_secs <= 0 {
-        return false;
+        return 0;
     }
     let Ok(doc) = serde_json::from_str::<serde_json::Value>(json) else {
-        return false;
+        return 0;
     };
     let earliest = doc
         .get("workflow_runs")
@@ -293,7 +319,36 @@ pub fn still_registering(json: &str, now_epoch: i64, settle_secs: i64) -> bool {
                 .and_then(parse_utc)
         })
         .min();
-    matches!(earliest, Some(t) if now_epoch - t < settle_secs)
+    match earliest {
+        Some(t) => (settle_secs - (now_epoch - t)).max(0),
+        None => 0,
+    }
+}
+
+/// The whole verdict for one commit's raw runs listing: keep only the push to
+/// `branch` for `sha`, evaluate, and hold green back while the settle window
+/// is open. Returns the verdict and the filtered listing (for the failed /
+/// in-flight listings).
+pub fn assess(
+    raw_json: &str,
+    sha: &str,
+    branch: &str,
+    now_epoch: i64,
+    settle_secs: i64,
+) -> (Evaluation, String) {
+    let json = restrict_to_push(raw_json, sha, branch);
+    let mut evaluation = evaluate_runs_json(&json);
+    if evaluation.status == 0 {
+        let left = settle_remaining(&json, now_epoch, settle_secs);
+        if left > 0 {
+            evaluation.stdout = format!(
+                "settling: {left}s left before green; {} (more push workflows may still register)\n",
+                evaluation.stdout.trim_end()
+            );
+            evaluation.status = 2;
+        }
+    }
+    (evaluation, json)
 }
 
 #[cfg(test)]
@@ -527,9 +582,76 @@ mod tests {
             )
         );
         let t = 1793429646;
-        assert!(still_registering(&json, t + 3, 60));
-        assert!(!still_registering(&json, t + 60, 60));
-        assert!(!still_registering(&json, t + 3, 0));
-        assert!(!still_registering(r#"{"workflow_runs":[]}"#, t, 60));
+        assert_eq!(settle_remaining(&json, t + 3, 60), 57);
+        assert_eq!(settle_remaining(&json, t + 60, 60), 0);
+        assert_eq!(settle_remaining(&json, t + 3, 0), 0);
+        assert_eq!(settle_remaining(r#"{"workflow_runs":[]}"#, t, 60), 0);
+    }
+
+    const T: i64 = 1793429646; // 2026-10-31T06:54:06Z
+
+    fn done_push_json() -> String {
+        format!(
+            r#"{{"workflow_runs":[{}]}}"#,
+            run(
+                1,
+                "a",
+                "push",
+                "main",
+                "completed",
+                "success",
+                "2026-10-31T06:54:06Z"
+            )
+        )
+    }
+
+    #[test]
+    fn unset_or_garbage_settle_means_the_default_not_zero() {
+        assert_eq!(DEFAULT_SETTLE_SECS, 60);
+        assert_eq!(parse_settle(None), 60);
+        assert_eq!(parse_settle(Some("")), 60);
+        assert_eq!(parse_settle(Some("soon")), 60);
+        assert_eq!(parse_settle(Some("15")), 15);
+        assert_eq!(parse_settle(Some("0")), 0);
+        assert_eq!(parse_settle(Some("-5")), 0);
+    }
+
+    #[test]
+    fn green_is_held_back_by_the_default_settle_window() {
+        let default = parse_settle(None);
+        let (e, _) = assess(&done_push_json(), "abc", "main", T + 3, default);
+        assert_eq!(e.status, 2, "all-done set 3s old must not be green");
+        assert!(e.stdout.starts_with("settling: 57s left"), "{}", e.stdout);
+        let (e, _) = assess(&done_push_json(), "abc", "main", T + 60, default);
+        assert_eq!(
+            (e.status, e.stdout.as_str()),
+            (0, "ALL_PASSED: 1 passed out of 1 total\n")
+        );
+    }
+
+    #[test]
+    fn settle_never_masks_a_failure() {
+        let json = format!(
+            r#"{{"workflow_runs":[{}]}}"#,
+            run(
+                1,
+                "a",
+                "push",
+                "main",
+                "completed",
+                "failure",
+                "2026-10-31T06:54:06Z"
+            )
+        );
+        assert_eq!(assess(&json, "abc", "main", T + 1, 60).0.status, 1);
+    }
+
+    #[test]
+    fn the_runs_query_asks_github_for_pushes_on_the_branch() {
+        let q = runs_query("o/r", "abc", "main");
+        assert!(
+            q.contains("head_sha=abc&event=push&branch=main&per_page=100"),
+            "{q}"
+        );
     }
 }

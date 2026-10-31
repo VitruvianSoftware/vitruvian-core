@@ -28,6 +28,7 @@
 pub mod arith;
 pub mod checks;
 pub mod cli;
+pub mod post_merge;
 pub mod pyjson;
 pub mod pyprint;
 pub mod sh;

@@ -27,7 +27,7 @@
 //!   - Solid Red:      pipeline completed with at least one failure.
 //!   - Solid Green:    pipeline completed, all checks passed.
 
-use crate::evaluate::evaluate_runs_json;
+use crate::evaluate::{assess, runs_query, settle_secs_from_env};
 use crate::sh;
 
 use std::io::Write;
@@ -278,17 +278,29 @@ fn poll_external(repo: &str, sha: &str, cmd: &str) -> PollResult {
     }
 }
 
-fn poll_internal(repo: &str, sha: &str) -> PollResult {
+fn poll_internal(repo: &str, sha: &str, branch: &str) -> PollResult {
     let short = sh::prefix(sha, 8);
-    let runs_json = sh::capture_or_echo(
-        "gh",
-        &[
-            "api",
-            &format!("repos/{repo}/actions/runs?head_sha={sha}&per_page=100"),
-        ],
-        NO_RUNS_JSON,
+    let runs_json =
+        sh::capture_or_echo("gh", &["api", &runs_query(repo, sha, branch)], NO_RUNS_JSON);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let result = result_from_runs(&runs_json, sha, branch, now, settle_secs_from_env());
+
+    let info_line = format!(
+        "\x1b[36m\u{2192}\x1b[0m Checking GitHub Actions pipeline status for commit {short} in {repo}...\n"
     );
-    let evaluation = evaluate_runs_json(&runs_json);
+    let full_output = format!("{info_line}{}\n", result.summary);
+    let _ = std::fs::write(STATUS_OUT_PATH, full_output.as_bytes());
+    result
+}
+
+/// The verdict for a raw runs listing: push runs on `branch` for `sha` only,
+/// green only once settled (the same rule as `pipeline-status`).
+fn result_from_runs(runs_json: &str, sha: &str, branch: &str, now: i64, settle: i64) -> PollResult {
+    let short = sh::prefix(sha, 8);
+    let (evaluation, _) = assess(runs_json, sha, branch, now, settle);
     let eval_output = sh::subst_text(evaluation.stdout.as_bytes());
     let failed_count = parse_count(&eval_output, "failed");
     let in_flight_count = parse_count(&eval_output, "in-flight");
@@ -307,13 +319,6 @@ fn poll_internal(repo: &str, sha: &str) -> PollResult {
             "\x1b[33m\u{231b}\x1b[0m No workflow runs found yet for commit {short}"
         ),
     };
-
-    let info_line = format!(
-        "\x1b[36m\u{2192}\x1b[0m Checking GitHub Actions pipeline status for commit {short} in {repo}...\n"
-    );
-    let full_output = format!("{info_line}{summary}\n");
-    let _ = std::fs::write(STATUS_OUT_PATH, full_output.as_bytes());
-
     PollResult {
         rc: evaluation.status,
         failed_count,
@@ -325,7 +330,7 @@ fn poll_internal(repo: &str, sha: &str) -> PollResult {
 fn poll(config: &DaemonConfig, sha: &str) -> PollResult {
     match &config.pipeline_cmd {
         Some(cmd) => poll_external(&config.repo, sha, cmd),
-        None => poll_internal(&config.repo, sha),
+        None => poll_internal(&config.repo, sha, &config.branch),
     }
 }
 
@@ -530,5 +535,50 @@ mod tests {
         let output = "line one no counts\nFAILED: 3 failed, 2 in-flight, 1 passed out of 6 total\n";
         assert_eq!(parse_count(output, "failed"), 3);
         assert_eq!(parse_count(output, "in-flight"), 2);
+    }
+}
+
+#[cfg(test)]
+mod merge_group_tests {
+    use super::*;
+
+    fn run(event: &str, branch: &str, status: &str, concl: &str) -> String {
+        let c = if concl.is_empty() {
+            "null".into()
+        } else {
+            format!("\"{concl}\"")
+        };
+        format!(
+            r#"{{"id":1,"workflow_id":1,"name":"w","event":"{event}","head_branch":"{branch}","head_sha":"abc","status":"{status}","conclusion":{c},"created_at":"2026-10-31T06:26:44Z"}}"#
+        )
+    }
+
+    /// The false green: finished merge_group runs on the squash SHA, no push
+    /// runs yet. The mouse must not go solid green.
+    #[test]
+    fn finished_merge_group_runs_are_not_green() {
+        let json = format!(
+            r#"{{"workflow_runs":[{}]}}"#,
+            run(
+                "merge_group",
+                "gh-readonly-queue/main/pr-1-x",
+                "completed",
+                "success"
+            )
+        );
+        let r = result_from_runs(&json, "abc", "main", 1793429646 + 3600, 0);
+        assert_eq!(r.rc, 3, "{}", r.summary);
+    }
+
+    #[test]
+    fn settled_push_runs_are_green() {
+        let json = format!(
+            r#"{{"workflow_runs":[{}]}}"#,
+            run("push", "main", "completed", "success")
+        );
+        assert_eq!(
+            result_from_runs(&json, "abc", "main", 1793429646 + 3600, 60).rc,
+            0
+        );
     }
 }
