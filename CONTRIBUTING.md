@@ -260,7 +260,7 @@ go test ./...              # inside apps/cli/devx/ or apps/cli/homelab/ (gazelle
 
 ### How CI decides what to run
 
-**Every lane is graph-selective.** PRs, the merge queue, and postsubmit all build/test only the **affected targets** (`tools/ci/affected-targets.sh` via target-determinator). The whole-graph correctness backstop is the **nightly full sweep** (`periodic-full-sweep.yaml`, 06:00 UTC — files a P0 issue on red, and `culprit-finder.yaml` can bisect the range to the first bad commit). Every optimization **fails safe**: a global-impact file (`MODULE.bazel`, `.bazelrc`, `tools/**`, root `BUILD`) or *any* uncertainty inside the selection script forces the full `//...` sweep. Remote cache/RBE is **BuildBuddy** (`--config=remote` for CI builds; fork PRs degrade to local).
+**Every lane is graph-selective.** PRs, the merge queue, and postsubmit all build/test only the **affected targets** (`//tools/ci:affected_targets` via target-determinator). The whole-graph correctness backstop is the **nightly full sweep** (`periodic-full-sweep.yaml`, 06:00 UTC — files a P0 issue on red, and `culprit-finder.yaml` can bisect the range to the first bad commit). Every optimization **fails safe**: a global-impact file (`MODULE.bazel`, `.bazelrc`, `tools/**`, root `BUILD`) or *any* uncertainty inside the selection script forces the full `//...` sweep. Remote cache/RBE is **BuildBuddy** (`--config=remote` for CI builds; fork PRs degrade to local).
 
 ```mermaid
 flowchart TD
@@ -367,13 +367,13 @@ Deploy mechanics are determined by **app type** (see the Applications & Categori
 
 ### Cloud Run deploy (the two SaaS apps)
 
-**When does a deploy fire?** On push to `main`, a **graph gate** (`tools/ci/deploy-affected.sh`) decides: it deploys iff the app's *deployable Bazel targets* are affected by the diff, or a non-graph input changed (the app's Pulumi program, the workflow files) — and it **fails open** (any uncertainty deploys; blue-green re-deploys are idempotent). No directory path-glob triggers: a shared-library change outside the app's dir correctly redeploys it; a docs-only change inside it correctly doesn't.
+**When does a deploy fire?** On push to `main`, a **graph gate** (`//tools/ci:deploy_affected`) decides: it deploys iff the app's *deployable Bazel targets* are affected by the diff, or a non-graph input changed (the app's Pulumi program, the workflow files) — and it **fails open** (any uncertainty deploys; blue-green re-deploys are idempotent). No directory path-glob triggers: a shared-library change outside the app's dir correctly redeploys it; a docs-only change inside it correctly doesn't.
 
 **How does it deploy?** Through the **reusable pipeline** `.github/workflows/_deploy-cloud-run.yaml` — extracted from tabula's production flow, parameterized per app via a thin caller. Deploy-time inputs (`imageTag`/`promote`/`stableRevision`) pass as **per-invocation env vars** (`TABULA_*`), never `pulumi config set` — so a local run interleaving with CI can't clobber a rollout mid-flight.
 
 ```mermaid
 flowchart TD
-    P["push to main"] --> GATE{"deploy gate: tools/ci/deploy-affected.sh"}
+    P["push to main"] --> GATE{"deploy gate: //tools/ci:deploy_affected"}
     GATE -->|"deploy targets affected in the Bazel graph, or pulumi program / workflow file changed, or ANY uncertainty (fail-open)"| RW["reusable _deploy-cloud-run.yaml"]
     GATE -->|confidently unaffected| SKIP["skip deploy"]
     WD["workflow_dispatch promotion: nonproduction / production"] --> RW

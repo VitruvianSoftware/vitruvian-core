@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! affected-targets.sh — build + test the repo against the BuildBuddy remote,
+//! affected-targets — build + test the repo against the BuildBuddy remote,
 //! skipping only the diffs that provably need no Bazel work at all.
 
 use shell_compat::{
@@ -26,13 +26,47 @@ use shell_compat::{
 };
 use std::process::Command;
 
+/// `[ -x "$f" ]` for a regular file: executable by someone (the original's test).
+fn is_executable_file(p: &[u8]) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::metadata(shell_compat::path(p))
+        .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+        .unwrap_or(false)
+}
+
+/// Set whenever a `grep` could not run or exited with an error (status 2+, as
+/// opposed to 0 = matched, 1 = no match). Classification that depends on grep
+/// must then treat the answer as unknown, which means "sweep everything".
+static GREP_FAILED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+fn note_grep_status(code: i32) {
+    if code != 0 && code != 1 {
+        GREP_FAILED.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+/// The planner's stderr capture; removed before the process ends, however it ends.
+static PLAN_ERR: std::sync::Mutex<Option<Vec<u8>>> = std::sync::Mutex::new(None);
+
+fn remove_plan_err() {
+    if let Some(p) = PLAN_ERR.lock().unwrap().take() {
+        let _ = std::fs::remove_file(shell_compat::path(&p));
+    }
+}
+
+fn grep_failed() -> bool {
+    GREP_FAILED.load(std::sync::atomic::Ordering::SeqCst)
+}
+
 fn grep_ere(text: &[u8], pattern: &[u8]) -> bool {
     if pattern.is_empty() || text.is_empty() {
         return false;
     }
     let mut cmd = Command::new("grep");
     cmd.arg("-E").arg(os(pattern));
-    shell_compat::status_with_input(0, &mut cmd, text, true) == 0
+    let code = shell_compat::status_with_input(0, &mut cmd, text, true);
+    note_grep_status(code);
+    code == 0
 }
 
 fn grep_ere_invert(text: &[u8], pattern: &[u8]) -> Vec<u8> {
@@ -52,11 +86,20 @@ fn grep_ere_invert(text: &[u8], pattern: &[u8]) -> Vec<u8> {
                 let _ = stdin.write_all(text);
             }
             match child.wait_with_output() {
-                Ok(o) => subst(o.stdout),
-                Err(_) => Vec::new(),
+                Ok(o) => {
+                    note_grep_status(o.status.code().unwrap_or(2));
+                    subst(o.stdout)
+                }
+                Err(_) => {
+                    note_grep_status(2);
+                    Vec::new()
+                }
             }
         }
-        Err(_) => Vec::new(),
+        Err(_) => {
+            note_grep_status(2);
+            Vec::new()
+        }
     }
 }
 
@@ -79,11 +122,20 @@ fn grep_evc(text: &[u8], pattern: &[u8]) -> Vec<u8> {
                 let _ = stdin.write_all(text);
             }
             match child.wait_with_output() {
-                Ok(o) => subst(o.stdout),
-                Err(_) => b"0".to_vec(),
+                Ok(o) => {
+                    note_grep_status(o.status.code().unwrap_or(2));
+                    subst(o.stdout)
+                }
+                Err(_) => {
+                    note_grep_status(2);
+                    Vec::new()
+                }
             }
         }
-        Err(_) => b"0".to_vec(),
+        Err(_) => {
+            note_grep_status(2);
+            Vec::new()
+        }
     }
 }
 
@@ -104,11 +156,24 @@ fn grep_ere_output(text: &[u8], pattern: &[u8]) -> Vec<u8> {
                 let _ = stdin.write_all(text);
             }
             match child.wait_with_output() {
-                Ok(o) if o.status.success() => subst(o.stdout),
-                _ => Vec::new(),
+                Ok(o) => {
+                    note_grep_status(o.status.code().unwrap_or(2));
+                    if o.status.success() {
+                        subst(o.stdout)
+                    } else {
+                        Vec::new()
+                    }
+                }
+                Err(_) => {
+                    note_grep_status(2);
+                    Vec::new()
+                }
             }
         }
-        Err(_) => Vec::new(),
+        Err(_) => {
+            note_grep_status(2);
+            Vec::new()
+        }
     }
 }
 
@@ -146,6 +211,13 @@ fn is_global_impact(changed_files: &[u8]) -> bool {
     if changed_files.is_empty() {
         return false;
     }
+    GREP_FAILED.store(false, std::sync::atomic::Ordering::SeqCst);
+    let r = is_global_impact_inner(changed_files);
+    // A grep that could not answer is not an answer of "no": sweep everything.
+    r || grep_failed()
+}
+
+fn is_global_impact_inner(changed_files: &[u8]) -> bool {
     let gi_1 = grep_ere(
         changed_files,
         b"^(MODULE\\.bazel|MODULE\\.bazel\\.lock|\\.bazelrc|\\.bazelversion|BUILD$|gazelle_python\\.yaml$)",
@@ -187,7 +259,7 @@ fn run_full_sweep(reason: &[u8], class: &[u8], bb_key: &[u8]) -> ! {
                     reason,
                     b"\n",
                     b"- consequence: this run paid a full `//...` sweep instead of affected targets\n",
-                    b"- if this recurs across runs, the fast path is broken (see #503): check the TD pin in `tools/ci/td-lib.sh` and the runner platform\n",
+                    b"- if this recurs across runs, the fast path is broken (see #503): check the TD pin (TD_VERSION in `tools/ci/src/deploy_affected/lib.rs`) and the runner platform\n",
                 ]);
                 let _ = std::fs::OpenOptions::new()
                     .create(true)
@@ -202,29 +274,42 @@ fn run_full_sweep(reason: &[u8], class: &[u8], bb_key: &[u8]) -> ! {
     }
     let remote_config = cat(&[b"--config=remote"]);
     let remote_header = cat(&[b"--remote_header=x-buildbuddy-api-key=", bb_key]);
-    status(
-        0,
-        Command::new("bazel")
-            .arg("build")
-            .arg(os(&remote_config))
-            .arg(os(&remote_header))
-            .arg("//..."),
-        false,
-    );
-    status(
-        0,
-        Command::new("bazel")
-            .arg("test")
-            .arg(os(&remote_config))
-            .arg(os(&remote_header))
-            .arg("//..."),
-        false,
-    );
+    remove_plan_err();
+    // `set -e` in the original: a red build ends the run with its status and the
+    // tests are never started; a red test run is the run's status.
+    for verb in ["build", "test"] {
+        let rc = status(
+            0,
+            Command::new("bazel")
+                .arg(verb)
+                .arg(os(&remote_config))
+                .arg(os(&remote_header))
+                .arg("//..."),
+            false,
+        );
+        if rc != 0 {
+            std::process::exit(rc);
+        }
+    }
     std::process::exit(0);
 }
 
-pub fn run(_args: &[Vec<u8>]) -> i32 {
-    let bb_key = env_or_empty("BUILDBUDDY_API_KEY");
+pub fn run(args: &[Vec<u8>]) -> i32 {
+    let rc = run_inner(args);
+    remove_plan_err();
+    rc
+}
+
+fn run_inner(_args: &[Vec<u8>]) -> i32 {
+    // The original read ${BUILDBUDDY_API_KEY} under `set -u`: unset is an error
+    // (set but empty, as on a fork's pull request, is not).
+    let bb_key = match env("BUILDBUDDY_API_KEY") {
+        Some(k) => k,
+        None => {
+            shell_compat::err(b"affected-targets: BUILDBUDDY_API_KEY: unbound variable\n");
+            return 1;
+        }
+    };
     let base_ref = env_or_empty("BASE_REF");
     let mut before_rev = env_or_empty("BEFORE_REV");
     let forced_push = env_or("FORCED_PUSH", b"false");
@@ -301,6 +386,20 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
             .arg(os(&before_rev))
             .arg("--"),
     );
+    // A diff that failed is not "no changes": with nothing to compare there is
+    // nothing safe to skip, so sweep everything. (The shell original exited 0
+    // here and tested nothing.)
+    if !diff_r.ok() {
+        run_full_sweep(
+            &cat(&[
+                b"git diff against ",
+                &before_rev,
+                b" failed -- cannot tell what changed",
+            ]),
+            b"degraded",
+            &bb_key,
+        );
+    }
     let changed_files = subst(diff_r.stdout);
     if changed_files.is_empty() {
         out(&cat(&[
@@ -315,18 +414,32 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
     out(b"\n");
 
     // --- docs/metadata-only fast path ---
+    GREP_FAILED.store(false, std::sync::atomic::Ordering::SeqCst);
     let non_doc = grep_evc(
         &changed_files,
         b"^(gitops/|docs/|\\.agents/(agents|skills|rules)/|apps/web/vitruviansoftware-dev/)|\\.(\
 md|png|jpg|jpeg|svg|txt)$|(^|/)(catalog-info\\.yaml|OWNERS|CODEOWNERS)$",
     );
-    let non_doc_count: i64 = std::str::from_utf8(&non_doc)
-        .ok()
-        .and_then(|s| s.trim().parse().ok())
-        .unwrap_or(0);
-    if non_doc_count == 0 {
-        out(b"::notice::affected-targets: all changed files are docs/gitops/markdown/metadata-only \xe2\x86\x92 nothing to build or test.\n");
-        return 0;
+    // Docs-only needs a positive, parsed count of zero. A grep that failed or
+    // printed something else is "don't know", never "nothing to test".
+    let non_doc_count: Option<i64> = if grep_failed() {
+        None
+    } else {
+        std::str::from_utf8(&non_doc)
+            .ok()
+            .and_then(|s| s.trim().parse().ok())
+    };
+    match non_doc_count {
+        Some(0) => {
+            out(b"::notice::affected-targets: all changed files are docs/gitops/markdown/metadata-only \xe2\x86\x92 nothing to build or test.\n");
+            return 0;
+        }
+        Some(_) => {}
+        None => run_full_sweep(
+            b"could not classify the changed files (grep failed)",
+            b"degraded",
+            &bb_key,
+        ),
     }
 
     if is_global_impact(&changed_files) {
@@ -413,8 +526,17 @@ md|png|jpg|jpeg|svg|txt)$|(^|/)(catalog-info\\.yaml|OWNERS|CODEOWNERS)$",
                             .arg(os(&base_sha))
                             .arg("--"),
                     );
+                    let gi_ok = gi_diff_r.ok();
                     let gi_files = subst(gi_diff_r.stdout);
-                    if is_global_impact(&gi_files) {
+                    // An unreadable diff means we cannot show nothing global
+                    // changed since the map: do not use the map.
+                    if !gi_ok {
+                        out(&cat(&[
+                            b"affected-targets: could not diff the dependency map at ",
+                            &map_commit[..12.min(map_commit.len())],
+                            b" against the diff base (git diff failed) -- not used\n",
+                        ]));
+                    } else if is_global_impact(&gi_files) {
                         out(&cat(&[
                             b"affected-targets: a global-impact file changed since the dependency map at ",
                             &map_commit[..12.min(map_commit.len())],
@@ -435,7 +557,14 @@ md|png|jpg|jpeg|svg|txt)$|(^|/)(catalog-info\\.yaml|OWNERS|CODEOWNERS)$",
         }
     }
 
-    let plan_err_file = shell_compat::mktemp_file(b"plan-err.XXXXXX").unwrap_or_default();
+    // In the temp dir (the original used mktemp), never the checkout; removed on
+    // every exit path (see `run` and `run_full_sweep`).
+    let plan_err_file =
+        shell_compat::mktemp_file(&cat(&[&shell_compat::tmpdir(), b"/plan-err.XXXXXX"]))
+            .unwrap_or_default();
+    if !plan_err_file.is_empty() {
+        *PLAN_ERR.lock().unwrap() = Some(plan_err_file.clone());
+    }
 
     let mut plan_args: Vec<Vec<u8>> = Vec::new();
     plan_args.push(cat(&[b"--base=", &plan_base]));
@@ -449,7 +578,7 @@ md|png|jpg|jpeg|svg|txt)$|(^|/)(catalog-info\\.yaml|OWNERS|CODEOWNERS)$",
     let plan_start = std::time::Instant::now();
     let plan_output;
 
-    if !plan_bin.is_empty() && is_file(&plan_bin) {
+    if !plan_bin.is_empty() && is_executable_file(&plan_bin) {
         let mut cmd = Command::new(os(&plan_bin));
         for a in &plan_args {
             cmd.arg(os(a));
@@ -571,11 +700,7 @@ md|png|jpg|jpeg|svg|txt)$|(^|/)(catalog-info\\.yaml|OWNERS|CODEOWNERS)$",
 
         let mut pkg_set: Vec<Vec<u8>> = Vec::new();
         for p in &affected_packages {
-            let mut entry = p.clone();
-            if !entry.ends_with(b":all") {
-                entry.extend_from_slice(b":all");
-            }
-            pkg_set.push(entry);
+            pkg_set.push(p.clone());
         }
 
         let mut kept: Vec<Vec<u8>> = Vec::new();

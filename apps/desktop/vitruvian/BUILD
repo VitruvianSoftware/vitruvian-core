@@ -31,7 +31,6 @@ load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
 load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("//tools/delivery:defs.bzl", "delivery")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 load(
@@ -949,6 +948,25 @@ test_suite(
     tests = [":pin_nexus_agent_shared_test"],
 )
 
+# --- Release tools ----------------------------------------------------------
+# The DMG release, in Rust: publish -> package_release -> make_dmg (with
+# dmg_image_devices) and notarize, plus the signing setups. Every command they
+# run goes through release_exec's Runner, so their tests pin the release's
+# commands without codesign, hdiutil, gh or Apple's notary service.
+
+rust_library(
+    name = "release_exec_lib",
+    srcs = ["bazel/src/release_exec/lib.rs"],
+    crate_name = "release_exec",
+    edition = "2021",
+)
+
+rust_test(
+    name = "release_exec_test",
+    size = "small",
+    crate = ":release_exec_lib",
+)
+
 rust_library(
     name = "dmg_image_devices_lib",
     srcs = ["bazel/src/dmg_image_devices/lib.rs"],
@@ -963,7 +981,7 @@ rust_binary(
     deps = [":dmg_image_devices_lib"],
 )
 
-# make-dmg.sh finds a disk image's attachments in what `hdiutil info` prints.
+# make_dmg finds a disk image's attachments in what `hdiutil info` prints.
 # Held to the output a macOS runner printed when a failed create left an image
 # attached that the script could not find.
 rust_test(
@@ -971,6 +989,7 @@ rust_test(
     size = "small",
     crate = ":dmg_image_devices_lib",
     data = ["bazel/testdata/hdiutil-info-stale-image.txt"],
+    env = {"HDIUTIL_INFO_FIXTURE": "$(rootpath bazel/testdata/hdiutil-info-stale-image.txt)"},
 )
 
 rust_library(
@@ -1020,10 +1039,19 @@ rust_library(
     srcs = ["bazel/src/publish/lib.rs"],
     crate_name = "publish",
     edition = "2021",
+    deps = [
+        ":beta_publish_guard_lib",
+        ":package_release_lib",
+        ":release_exec_lib",
+    ],
 )
 
+# Build + package + upload: what the generated delivery workflow runs for the
+# `vitruvian` unit (delivery() below names it as `run`), and the break-glass
+# path the README points at. It builds the app itself with --config=macos-app,
+# so it only does anything useful on a Mac.
 rust_binary(
-    name = "publish_rs",
+    name = "publish",
     srcs = ["bazel/src/publish/main.rs"],
     edition = "2021",
     deps = [":publish_lib"],
@@ -1060,6 +1088,10 @@ rust_library(
     srcs = ["bazel/src/make_dmg/lib.rs"],
     crate_name = "make_dmg",
     edition = "2021",
+    deps = [
+        ":dmg_image_devices_lib",
+        ":release_exec_lib",
+    ],
 )
 
 rust_binary(
@@ -1080,6 +1112,11 @@ rust_library(
     srcs = ["bazel/src/package_release/lib.rs"],
     crate_name = "package_release",
     edition = "2021",
+    deps = [
+        ":make_dmg_lib",
+        ":notarize_lib",
+        ":release_exec_lib",
+    ],
 )
 
 rust_binary(
@@ -1100,6 +1137,7 @@ rust_library(
     srcs = ["bazel/src/setup_signing/lib.rs"],
     crate_name = "setup_signing",
     edition = "2021",
+    deps = [":release_exec_lib"],
 )
 
 rust_binary(
@@ -1120,6 +1158,7 @@ rust_library(
     srcs = ["bazel/src/notarize/lib.rs"],
     crate_name = "notarize",
     edition = "2021",
+    deps = [":release_exec_lib"],
 )
 
 rust_binary(
@@ -1140,6 +1179,7 @@ rust_library(
     srcs = ["bazel/src/ci_setup_signing/lib.rs"],
     crate_name = "ci_setup_signing",
     edition = "2021",
+    deps = [":release_exec_lib"],
 )
 
 rust_binary(
@@ -1178,15 +1218,16 @@ rust_test(
     size = "small",
     crate = ":source_lints_lib",
     data = [
-        "Tools/beta-publish-guard.sh",
-        "Tools/dmg-image-devices.sh",
-        "Tools/make-dmg.sh",
-        "Tools/notarize.sh",
-        "Tools/package-release.sh",
         "Tools/uninstall.sh",
         "UPSTREAM.md",
+        "bazel/src/beta_publish_guard/lib.rs",
+        "bazel/src/dmg_image_devices/lib.rs",
+        "bazel/src/make_dmg/lib.rs",
+        "bazel/src/notarize/lib.rs",
+        "bazel/src/package_release/lib.rs",
+        "bazel/src/publish/lib.rs",
+        "bazel/src/release_exec/lib.rs",
         "build.sh",
-        "publish.sh",
     ] + glob([
         "Resources/**",
         "Sources/**/*.swift",
@@ -1239,6 +1280,9 @@ pipeline_unit(
         ":fan_helper_selftest",
         ":mutation_fixtures_test",
         ":selftest",
+        # Its end-to-end check runs the stock LibreSSL /usr/bin/openssl, so
+        # it only runs on a Mac.
+        ":setup_signing_test",
         ":source_lints_test",
         ":sources_in_sync_test",
         ":tool_protocol_pin_test",
@@ -1247,15 +1291,6 @@ pipeline_unit(
     tier = "L1",
     timeout_minutes = 60,
 )
-
-# Build + package + upload. The generated delivery workflow runs the script
-# directly (bash apps/desktop/vitruvian/publish.sh); this binary is the
-# break-glass path the README points at, and what the delivery() below names
-# as `run`. macOS only, like everything that builds the app.
-exports_files([
-    "Tools/ci-setup-signing.sh",
-    "publish.sh",
-])
 
 # The catalog's public key, as the app is built with it. //catalog:catalog_test
 # holds it equal to catalog/public-key.txt.
@@ -1269,12 +1304,6 @@ exports_files(
 exports_files(
     ["Resources/Info.plist"],
     visibility = ["//catalog:__pkg__"],
-)
-
-sh_binary(
-    name = "publish",
-    srcs = ["publish.sh"],
-    tags = ["manual"],
 )
 
 # Delivery unit: the DMG release ladder.
@@ -1295,7 +1324,7 @@ delivery(
         "production",
     ],
     # Path-only mode: this regex IS the unit's complete trigger set
-    # (tools/ci/deploy-affected.sh step 2), so it names the whole package.
+    # (//tools/ci:deploy_affected, step 2), so it names the whole package.
     # The app carries the GravaStar mouse command (Contents/Helpers), so a
     # change to packages/peripherals is a change to the app too.
     extra_paths = [

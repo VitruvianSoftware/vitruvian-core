@@ -518,6 +518,9 @@ pipeline_unit(
         ":cesium_assets_test",
         ":upstream_test",
         ":scripts_rs_test",
+        # The architecture gates on the live tree (`npm run check:boundaries`).
+        ":check_import_directions_rs_test",
+        ":check_package_boundaries_rs_test",
         ":build",
     ],
     tier = "L1",

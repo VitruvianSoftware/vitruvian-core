@@ -44,14 +44,16 @@ See [application construction](APPLICATION.md) and the
 
 `npm run check:boundaries` runs two complementary checks:
 
-1. `scripts/check-import-directions.mjs` parses every runtime JS/MJS/CJS file in
+1. `//apps/web/gods-eye-view:check_import_directions_rs`
+   (`scripts/src/check_import_directions.rs`) parses every runtime JS/MJS/CJS file in
    `src/` and `server/`, including files unused by the current bundle. Static,
    literal dynamic and re-export edges are checked; computed module imports and
    CommonJS `require` are rejected. Browser graphs cannot reach Node, server or
    test modules through helpers. Reusable modules cannot select standalone setup,
    and provider modules cannot import application/rendering modules.
-2. `scripts/check-package-boundaries.mjs` builds every declared export without
-   app Vite configuration or environment files. `scripts/package-boundaries.json`
+2. `//apps/web/gods-eye-view:check_package_boundaries_rs`
+   (`scripts/src/check_package_boundaries.rs`) walks the import graph of every
+   declared export without app Vite configuration or environment files. `scripts/package-boundaries.json`
    assigns each export exactly once and lists its owned modules and external
    dependencies. Unused imports still count. Node exports have only a `node`
    condition; browser groups cannot use build-only dependency exceptions.
@@ -62,8 +64,9 @@ flight/military/vessel record and ingestion exports, action schemas, the session
 interface, lifecycle and feed state. The browser-global rule reserves platform
 names such as `document` and `window` in these modules; it is an architectural
 check, not a JavaScript sandbox. Common voice controls cannot depend on a
-Realtime protocol implementation. Negative fixtures cover indirect helpers,
-self-package imports, symlinks and unreachable files.
+Realtime protocol implementation. Negative fixtures (the Rust tests in those
+files) cover indirect helpers, self-package imports, symlinks and unreachable
+files.
 
 Source-only factories use dedicated `layers/<family>/source` exports where
 available, preserving the same factory implementation without loading rendering.

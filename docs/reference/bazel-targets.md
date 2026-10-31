@@ -196,7 +196,7 @@ after changing its `build.sh` source lists: `bazel run //apps/desktop/vitruvian:
 
 ## CI helper scripts (context, not targets)
 
-`tools/ci/` holds the scripts the pipeline calls: `affected-targets.sh` (what to
-test), `deploy-affected.sh` (whether to deploy — fail-open), `migration-safety.sh`,
+`tools/ci/` holds the scripts the pipeline calls: `//tools/ci:affected_targets` (what to
+test), `//tools/ci:deploy_affected` (whether to deploy — fail-open), `migration-safety.sh`,
 `gitops-validate.sh`, `//tools/ci:bisect_culprit`, and friends. You rarely run these by hand;
 read [CI/CD approach](../engineering/ci-cd-approach.md) for how they fit together.

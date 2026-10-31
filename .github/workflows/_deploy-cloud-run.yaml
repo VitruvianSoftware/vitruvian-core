@@ -184,7 +184,7 @@ on:
           stores ONE token, in its dev floating project; the app's identity
           stack grants each env's deploy SA secretAccessor on that single
           secret). Setting this ALSO enables the per-env domain-ownership
-          self-verification step (tools/ci/ensure-site-verification.sh) that
+          self-verification step (//tools/ci:ensure_site_verification) that
           must precede a customDomain DomainMapping deploy — see that step.
           Empty (the default) skips both entirely.
         required: false
@@ -259,7 +259,7 @@ jobs:
       # package) against the live serving revision. Equal -> the running service
       # already IS the desired state, so migrate + blue-green + smoke are
       # redundant and every step below is skipped. FAIL-OPEN: the script emits
-      # unchanged=false on any doubt (see tools/ci/tabula-deploy-preflight.sh),
+      # unchanged=false on any doubt (see tools/ci/src/tabula_deploy_preflight),
       # so a bug can only ever REDEPLOY needlessly, never skip a real change.
       - name: Preflight — skip if live already serves the desired revision
         id: preflight
@@ -270,7 +270,7 @@ jobs:
           PULUMI_DIR: ${{ inputs.pulumi-dir }}
           CONFIG_FILE: Pulumi.${{ inputs.environment }}.yaml
           GOWORK: off
-        run: ./tools/ci/tabula-deploy-preflight.sh
+        run: bazel run //tools/ci:tabula_deploy_preflight
 
       - name: Configure docker for Artifact Registry
         if: ${{ inputs.image-digest == '' }}
@@ -378,14 +378,14 @@ jobs:
         # (SITEVERIFY_QUOTA_PROJECT/x-goog-user-project), where the foundation
         # project factory declares siteverification.googleapis.com — NOTE the
         # API itself is console-only and needs a one-time manual enable per
-        # project (see tools/ci/ensure-site-verification.sh). CLOUDFLARE_API_TOKEN
+        # project (see tools/ci/src/ensure_site_verification). CLOUDFLARE_API_TOKEN
         # is job-wide env from the fetch step above.
         if: ${{ inputs.cloudflare-token-secret-project != '' && steps.preflight.outputs.unchanged != 'true' }}
         env:
           SITEVERIFY_ACCESS_TOKEN: ${{ steps.auth.outputs['access-token'] || steps.auth.outputs.access_token }}
           SITEVERIFY_QUOTA_PROJECT: ${{ vars.GCP_PROJECT_ID }}
           APP_DIR: ${{ inputs.pulumi-dir }}
-        run: ./tools/ci/ensure-site-verification.sh
+        run: bazel run //tools/ci:ensure_site_verification
 
       - name: Install Pulumi
         uses: pulumi/actions@8e5e406f4007fca908480587cb9893c07090f58d # v7.0.0

@@ -73,7 +73,7 @@ bazel run //apps/web/oauth-user-inspector/infra/app:deploy -- --env development 
 
 The `:deploy` target fails closed if a non-first deploy's candidate URL can't be resolved (never false-greens; #808), and promotes only after the smoke passes.
 
-> **Preflight parity.** CI's `tools/ci/tabula-deploy-preflight.sh` skips the whole rollout when the live service already serves this exact digest+config (fail-open). By hand, a re-run just deploys an identical candidate + no-op promote — harmless.
+> **Preflight parity.** CI's `//tools/ci:tabula_deploy_preflight` skips the whole rollout when the live service already serves this exact digest+config (fail-open). By hand, a re-run just deploys an identical candidate + no-op promote — harmless.
 
 ## Step 2 — Foundation stage (`gcp-projects` / `gcp-networks`)
 

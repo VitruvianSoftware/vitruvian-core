@@ -18,70 +18,76 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-use std::collections::BTreeMap;
-use std::process::Command;
+//! `migrate_deploy_bin`: hermetic `prisma migrate deploy` with the
+//! expand/contract phase guard (issue #819). The logic lives in
+//! `tabula_api_tools_rs_lib::run_migrate_deploy`; this binary only finds the
+//! Prisma CLI in its Bazel runfiles and hands over the process environment.
+//!
+//! The Prisma CLI is `//apps/suites/tabula/api:prisma_cli`, a `js_binary` on the
+//! hermetic Node toolchain, so nothing is fetched at run time (no `npx`).
+//! `PRISMA_SCHEMA_ENGINE_BINARY` / `PRISMA_QUERY_ENGINE_LIBRARY` are made
+//! absolute against the working directory, because the CLI resolves them
+//! against its own.
 
-use tabula_api_tools_rs_lib::{
-    contract_dirs_on_disk, parse_migrate_deploy_args, prepare_migrate_env,
-    prisma_config_path_for_schema, verify_expand_phase_status, MigrationPhase,
-};
+use std::collections::BTreeMap;
+use std::path::PathBuf;
+
+use tabula_api_tools_rs_lib::run_migrate_deploy;
+
+/// Runfiles path of the Prisma CLI launcher, baked in at build time.
+const PRISMA_CLI_RLOCATION: &str = env!("PRISMA_CLI_RLOCATION");
+
+/// The runfiles directory of this binary: `RUNFILES_DIR` / `TEST_SRCDIR` when
+/// the caller exported one (itest tasks, tests), else `<exe>.runfiles` next to
+/// the executable (`bazel run`, or a direct `bazel-bin/...` invocation).
+fn runfiles_dir() -> Option<PathBuf> {
+    for var in ["RUNFILES_DIR", "TEST_SRCDIR"] {
+        if let Some(dir) = std::env::var_os(var).map(PathBuf::from) {
+            if dir.is_dir() {
+                return Some(dir);
+            }
+        }
+    }
+    let exe = std::env::current_exe().ok()?;
+    let mut sibling = exe.clone().into_os_string();
+    sibling.push(".runfiles");
+    let sibling = PathBuf::from(sibling);
+    if sibling.is_dir() {
+        return Some(sibling);
+    }
+    // Invoked from inside another binary's runfiles tree.
+    let s = exe.to_str()?;
+    let idx = s.find(".runfiles/")?;
+    Some(PathBuf::from(&s[..idx + ".runfiles".len()]))
+}
+
+/// Locate the Prisma CLI launcher inside the runfiles TREE (not through the
+/// manifest). It is a `js_binary` launcher, which finds its own runfiles from
+/// the path it was started by (`*.runfiles/...`) and refuses to start
+/// otherwise; a manifest lookup would hand back the bare `bazel-out` file.
+fn prisma_cli() -> Result<PathBuf, String> {
+    let dir = runfiles_dir()
+        .ok_or_else(|| "migrate-deploy: cannot locate this binary's Bazel runfiles".to_string())?;
+    let path = dir.join(PRISMA_CLI_RLOCATION);
+    if !path.exists() {
+        return Err(format!(
+            "migrate-deploy: the Prisma CLI is missing at {}",
+            path.display()
+        ));
+    }
+    Ok(path)
+}
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let cfg = match parse_migrate_deploy_args(&args) {
-        Ok(c) => c,
-        Err((code, msg)) => {
+    let cli = match prisma_cli() {
+        Ok(p) => p,
+        Err(msg) => {
             eprintln!("{msg}");
-            std::process::exit(code);
-        }
-    };
-
-    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-    let ambient: BTreeMap<String, String> = std::env::vars().collect();
-    let env = prepare_migrate_env(&ambient, &cwd);
-    let prisma_config = prisma_config_path_for_schema(&cfg.schema);
-
-    if cfg.phase == MigrationPhase::Expand && !contract_dirs_on_disk(&cfg.schema).is_empty() {
-        let out = Command::new("npx")
-            .args([
-                "prisma",
-                "migrate",
-                "status",
-                &format!("--schema={}", cfg.schema),
-                &format!("--config={}", prisma_config.display()),
-            ])
-            .envs(&env)
-            .output();
-        let combined = match out {
-            Ok(o) => format!(
-                "{}{}",
-                String::from_utf8_lossy(&o.stdout),
-                String::from_utf8_lossy(&o.stderr)
-            ),
-            Err(e) => e.to_string(),
-        };
-        if let Err((code, msg)) = verify_expand_phase_status(&combined) {
-            eprintln!("{msg}");
-            std::process::exit(code);
-        }
-    }
-
-    let status = Command::new("npx")
-        .args([
-            "prisma",
-            "migrate",
-            "deploy",
-            &format!("--schema={}", cfg.schema),
-            &format!("--config={}", prisma_config.display()),
-        ])
-        .envs(&env)
-        .status();
-
-    match status {
-        Ok(s) => std::process::exit(s.code().unwrap_or(1)),
-        Err(e) => {
-            eprintln!("Failed to run prisma migrate deploy: {e}");
             std::process::exit(1);
         }
-    }
+    };
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let ambient: BTreeMap<String, String> = std::env::vars().collect();
+    std::process::exit(run_migrate_deploy(&args, &ambient, &cwd, &cli));
 }

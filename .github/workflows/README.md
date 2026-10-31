@@ -120,7 +120,7 @@ that PR, as the App, at the commit it just pushed (`--match-head-commit`), so
 the queue merges it on green CI. Before 2026-10-18 nothing armed them, and they
 sat open for hours with green checks.
 
-`tools/ci/site-pr-automerge.sh` does the arming, tested by
+`//tools/ci:site_pr_automerge` does the arming, tested by
 `//tools/ci:site_pr_automerge_test`. It turns auto-merge off before each push
 and arms again only at the new commit. It does not arm a PR labelled
 `do-not-automerge` or `needs-human`, or a draft; it never adds or removes those
@@ -131,7 +131,7 @@ labels. A failed arm fails the step, with a warning in the job summary.
 ### `delivery-drift.yaml` — did every app ship what is on `main`?
 
 Hourly, it asks each delivery unit whether the last commit it delivered still
-covers everything on `main` that affects it (`tools/ci/delivery-drift.sh`). A
+covers everything on `main` that affects it (`//tools/ci:delivery_drift`). A
 skipped delivery looks green in the runs list, so this is the check that can
 see one.
 

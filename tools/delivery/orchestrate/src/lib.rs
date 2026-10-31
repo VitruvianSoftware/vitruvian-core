@@ -27,8 +27,9 @@
 //!
 //!  1. DISCOVER — `bazel query` the "delivery" tag, `bazel build` the units,
 //!     read their metadata JSON out of bazel-bin.
-//!  2. DECIDE — run tools/ci/deploy-affected.sh once per unit. That script
-//!     is the decision engine and is deliberately NOT reimplemented here.
+//!  2. DECIDE — run the deploy-affected engine (//tools/ci:deploy_affected)
+//!     once per unit. It is the decision engine and is deliberately NOT
+//!     reimplemented here.
 //!  3. EMIT — the manifest, the job outputs and a summary table.
 //!
 //! FAIL-OPEN: every uncertainty marks every unit affected with
@@ -60,7 +61,8 @@ pub const COMPUTED_BY_GRAPH: &str = "graph";
 pub const COMPUTED_BY_PATHS: &str = "paths";
 pub const COMPUTED_BY_FAIL_OPEN: &str = "fail-open";
 pub const DEFAULT_MANIFEST_NAME: &str = "delivery-manifest.json";
-pub const DEPLOY_AFFECTED_REL: &str = "tools/ci/deploy-affected.sh";
+/// Where the decision engine sits in the orchestrator's runfiles.
+pub const ENGINE_RLOCATION: &str = "_main/tools/ci/deploy_affected";
 pub const DELIVERY_QUERY: &str =
     r#"attr(tags, "\bdelivery\b", (//... except //apps/desktop/nexus-agent/macos/...))"#;
 const UNIT_TARGET_SUFFIX: &str = ".delivery_unit";
@@ -422,7 +424,7 @@ pub fn decide(cfg: &mut Config, base: &str, u: &UnitMeta) -> Result<Verdict, (Ve
 
     let _ = writeln!(
         cfg.stdout,
-        "---- deploy-affected.sh: {} ({} mode) ----",
+        "---- deploy-affected: {} ({} mode) ----",
         u.name, mode
     );
     let trimmed = {
@@ -443,7 +445,7 @@ pub fn decide(cfg: &mut Config, base: &str, u: &UnitMeta) -> Result<Verdict, (Ve
         return fail(
             reason,
             format!(
-                "deploy-affected.sh for unit {} exited non-zero: {}",
+                "deploy-affected for unit {} exited non-zero: {}",
                 quote(&u.name),
                 e
             ),
@@ -483,21 +485,21 @@ pub fn decide(cfg: &mut Config, base: &str, u: &UnitMeta) -> Result<Verdict, (Ve
         _ => fail(
             reason,
             format!(
-                "deploy-affected.sh for unit {} emitted no affected= line",
+                "deploy-affected for unit {} emitted no affected= line",
                 quote(&u.name)
             ),
         ),
     }
 }
 
-/// `bash <script>` in the repo root; returns the combined output and, when
-/// it did not exit 0, Go's text for why.
+/// The engine binary, run in the repo root; returns the combined output and,
+/// when it did not exit 0, Go's text for why.
 fn run_engine(
     cfg: &Config,
     env: &[(OsString, OsString)],
     combined_path: &str,
 ) -> (Vec<u8>, Option<String>) {
-    let mut gc = match GoCmd::new("bash", &[cfg.script.clone()], &cfg.repo_root, env) {
+    let mut gc = match GoCmd::new(&cfg.script, &[], &cfg.repo_root, env) {
         Ok(c) => c,
         Err(e) => return (Vec::new(), Some(e)),
     };

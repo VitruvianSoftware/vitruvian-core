@@ -130,41 +130,6 @@ fn selftest(config: &[u8], tmp: &[u8]) -> i32 {
     0
 }
 
-fn phase_guard_selftest(root: &[u8]) -> i32 {
-    let cjs_path = cat(&[root, b"/apps/suites/tabula/api/prisma/migrate-deploy.cjs"]);
-    let script = concat!(
-        "const { contractsInStatus } = require(process.argv[1]);\n",
-        "const eq = (n, g, w) => {\n",
-        "  if (JSON.stringify(g) !== JSON.stringify(w)) {\n",
-        "    console.error(`phase-guard parse FAILED: ${n} -> ${JSON.stringify(g)}`);\n",
-        "    process.exit(1);\n",
-        "  }\n",
-        "};\n",
-        "eq(\"contract-pending\", contractsInStatus(\n",
-        "  \"Following migration have not yet been applied:\\n20260701000000_add_col\\n20260702000000_drop_ws_id_contract\"),\n",
-        "  [\"20260702000000_drop_ws_id_contract\"]);\n",
-        "eq(\"expand-only\", contractsInStatus(\n",
-        "  \"Following migration have not yet been applied:\\n20260701000000_add_col\"), []);\n",
-        "eq(\"up-to-date\", contractsInStatus(\"Database schema is up to date!\"), []);\n",
-        "eq(\"substring-not-suffix\", contractsInStatus(\n",
-        "  \"Following migration have not yet been applied:\\n20260701000000_contract_terms\"), []);\n",
-    );
-    let rc = status(
-        0,
-        Command::new("node")
-            .arg("-e")
-            .arg(script)
-            .arg(shell_compat::os(&cjs_path)),
-        false,
-    );
-    if rc == 0 {
-        note(b"phase-guard parser self-test OK.");
-        0
-    } else {
-        fail(b"phase-guard parser self-test FAILED -- migrate-deploy.cjs contractsInStatus() regressed; the expand phase may no longer refuse pending *_contract migrations.")
-    }
-}
-
 fn is_contract_migration(path: &[u8]) -> bool {
     let s = match std::str::from_utf8(path) {
         Ok(s) => s,
@@ -282,10 +247,8 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
         return rc;
     }
 
-    let rc = phase_guard_selftest(&root);
-    if rc != 0 {
-        return rc;
-    }
+    // The expand-phase status parser is guarded by
+    // //apps/suites/tabula/api:tabula_api_tools_rs_test (it is Rust now), not here.
 
     if !args.is_empty() && !args[0].is_empty() {
         if lint_changed(&root, &config, &args[0]) != 0 {

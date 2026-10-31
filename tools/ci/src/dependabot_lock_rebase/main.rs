@@ -21,5 +21,11 @@
 //! //tools/ci:dependabot-lock-rebase: the Rust port.
 
 fn main() {
+    // `bazel run` starts us in the runfiles tree; act from the caller's
+    // directory, as the script did.
+    let rc = shell_compat::enter_bazel_run_cwd("dependabot-lock-rebase");
+    if rc != 0 {
+        std::process::exit(rc);
+    }
     std::process::exit(dependabot_lock_rebase::run(&shell_compat::args()));
 }

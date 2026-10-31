@@ -18,12 +18,290 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! delivery-drift.sh — report delivery units whose last successful delivery is
-//! behind main.
+//! delivery-drift — report delivery units whose last successful delivery is
+//! BEHIND main, i.e. work that should have shipped and did not (#1842).
+//! `bazel run //tools/ci:delivery_drift`.
+//!
+//! Affectedness is not reimplemented here: each unit is judged by the SAME
+//! decision engine the delivery orchestrator runs (//tools/ci:deploy_affected,
+//! found in this binary's runfiles; DEPLOY_AFFECTED_BIN overrides it), with
+//! the same per-unit metadata. The base is the unit's last-delivered commit,
+//! read from its app's delivery-<app>.yaml run history, and it is judged at the
+//! head of that workflow's newest FINISHED push run (see find_judged_commit).
+//!
+//! Verdict: OK (exit 0), NOTHING_CHECKED (exit 0; every unit skipped -- not a
+//! pass), DRIFT (exit 1; a unit is behind or UNKNOWN). Exit 2 is a setup error
+//! and writes no verdict. Env: REPO, WORKFLOW_FILE, LEGACY_WORKFLOW_FILE
+//! (default delivery.yaml; empty disables), BRANCH (main), RUN_SCAN_LIMIT
+//! (5000), DRIFT_PAGE_SIZE (100), DRIFT_RECENT_RUNS (50), DRIFT_RESULT_FILE
+//! (appends conclusion=/title=/checked=/skipped=), DRIFT_SUMMARY_FILE
+//! (Markdown summary), DRIFT_IGNORE_IN_FLIGHT, BAZEL, GH.
 
 use shell_compat::{capture, cat, env, env_or, env_or_empty, err, mktemp_dir, out, status, subst};
 use std::collections::HashMap;
 use std::process::Command;
+
+mod json {
+    //! A small strict JSON reader: enough for the GraphQL run pages and the
+    //! `.delivery.json` metadata, so the checker needs no python3 at runtime.
+    //! Anything malformed is an error, which callers treat as a failed read.
+
+    #[derive(Debug, Clone, PartialEq)]
+    pub enum Value {
+        Null,
+        Bool(bool),
+        /// The number's literal text (printed as-is, as Python prints an int).
+        Num(String),
+        Str(String),
+        Arr(Vec<Value>),
+        Obj(Vec<(String, Value)>),
+    }
+
+    impl Value {
+        /// `d.get(key)` on an object; None for a missing key or a non-object.
+        pub fn get(&self, key: &str) -> Option<&Value> {
+            match self {
+                Value::Obj(kv) => kv.iter().rev().find(|(k, _)| k == key).map(|(_, v)| v),
+                _ => None,
+            }
+        }
+
+        /// Python truthiness.
+        pub fn truthy(&self) -> bool {
+            match self {
+                Value::Null => false,
+                Value::Bool(b) => *b,
+                Value::Num(n) => n
+                    .trim_start_matches('-')
+                    .chars()
+                    .any(|c| ('1'..='9').contains(&c)),
+                Value::Str(s) => !s.is_empty(),
+                Value::Arr(a) => !a.is_empty(),
+                Value::Obj(o) => !o.is_empty(),
+            }
+        }
+
+        /// What Python's `"%s" % v` prints for a scalar.
+        pub fn py_str(&self) -> String {
+            match self {
+                Value::Null => "None".into(),
+                Value::Bool(true) => "True".into(),
+                Value::Bool(false) => "False".into(),
+                Value::Num(n) => n.clone(),
+                Value::Str(s) => s.clone(),
+                other => format!("{other:?}"),
+            }
+        }
+    }
+
+    pub fn parse(text: &[u8]) -> Result<Value, String> {
+        let s = std::str::from_utf8(text).map_err(|e| e.to_string())?;
+        let mut p = Parser {
+            b: s.as_bytes(),
+            i: 0,
+        };
+        p.ws();
+        let v = p.value(0)?;
+        p.ws();
+        if p.i != p.b.len() {
+            return Err(format!("trailing data at byte {}", p.i));
+        }
+        Ok(v)
+    }
+
+    struct Parser<'a> {
+        b: &'a [u8],
+        i: usize,
+    }
+
+    impl Parser<'_> {
+        fn ws(&mut self) {
+            while self.i < self.b.len() && matches!(self.b[self.i], b' ' | b'\t' | b'\n' | b'\r') {
+                self.i += 1;
+            }
+        }
+
+        fn eat(&mut self, lit: &str) -> Result<(), String> {
+            if self.b[self.i..].starts_with(lit.as_bytes()) {
+                self.i += lit.len();
+                Ok(())
+            } else {
+                Err(format!("expected {lit} at byte {}", self.i))
+            }
+        }
+
+        fn value(&mut self, depth: usize) -> Result<Value, String> {
+            if depth > 256 {
+                return Err("nested too deeply".into());
+            }
+            match self.b.get(self.i) {
+                None => Err("unexpected end".into()),
+                Some(b'n') => self.eat("null").map(|_| Value::Null),
+                Some(b't') => self.eat("true").map(|_| Value::Bool(true)),
+                Some(b'f') => self.eat("false").map(|_| Value::Bool(false)),
+                Some(b'"') => self.string().map(Value::Str),
+                Some(b'[') => {
+                    self.i += 1;
+                    let mut out = Vec::new();
+                    self.ws();
+                    if self.b.get(self.i) == Some(&b']') {
+                        self.i += 1;
+                        return Ok(Value::Arr(out));
+                    }
+                    loop {
+                        self.ws();
+                        out.push(self.value(depth + 1)?);
+                        self.ws();
+                        match self.b.get(self.i) {
+                            Some(b',') => self.i += 1,
+                            Some(b']') => {
+                                self.i += 1;
+                                return Ok(Value::Arr(out));
+                            }
+                            _ => return Err(format!("bad array at byte {}", self.i)),
+                        }
+                    }
+                }
+                Some(b'{') => {
+                    self.i += 1;
+                    let mut out = Vec::new();
+                    self.ws();
+                    if self.b.get(self.i) == Some(&b'}') {
+                        self.i += 1;
+                        return Ok(Value::Obj(out));
+                    }
+                    loop {
+                        self.ws();
+                        if self.b.get(self.i) != Some(&b'"') {
+                            return Err(format!("expected a key at byte {}", self.i));
+                        }
+                        let k = self.string()?;
+                        self.ws();
+                        self.eat(":")?;
+                        self.ws();
+                        let v = self.value(depth + 1)?;
+                        out.push((k, v));
+                        self.ws();
+                        match self.b.get(self.i) {
+                            Some(b',') => self.i += 1,
+                            Some(b'}') => {
+                                self.i += 1;
+                                return Ok(Value::Obj(out));
+                            }
+                            _ => return Err(format!("bad object at byte {}", self.i)),
+                        }
+                    }
+                }
+                Some(c) if *c == b'-' || c.is_ascii_digit() => self.number(),
+                Some(_) => Err(format!("unexpected byte at {}", self.i)),
+            }
+        }
+
+        fn number(&mut self) -> Result<Value, String> {
+            let start = self.i;
+            if self.b.get(self.i) == Some(&b'-') {
+                self.i += 1;
+            }
+            let digits = |p: &mut Self| {
+                let s = p.i;
+                while p.i < p.b.len() && p.b[p.i].is_ascii_digit() {
+                    p.i += 1;
+                }
+                p.i > s
+            };
+            if !digits(self) {
+                return Err(format!("bad number at byte {start}"));
+            }
+            if self.b.get(self.i) == Some(&b'.') {
+                self.i += 1;
+                if !digits(self) {
+                    return Err(format!("bad number at byte {start}"));
+                }
+            }
+            if matches!(self.b.get(self.i), Some(b'e' | b'E')) {
+                self.i += 1;
+                if matches!(self.b.get(self.i), Some(b'+' | b'-')) {
+                    self.i += 1;
+                }
+                if !digits(self) {
+                    return Err(format!("bad number at byte {start}"));
+                }
+            }
+            Ok(Value::Num(
+                String::from_utf8_lossy(&self.b[start..self.i]).into_owned(),
+            ))
+        }
+
+        fn hex4(&mut self) -> Result<u32, String> {
+            let h = self
+                .b
+                .get(self.i..self.i + 4)
+                .and_then(|h| std::str::from_utf8(h).ok())
+                .and_then(|h| u32::from_str_radix(h, 16).ok())
+                .ok_or_else(|| format!("bad \\u escape at byte {}", self.i))?;
+            self.i += 4;
+            Ok(h)
+        }
+
+        fn string(&mut self) -> Result<String, String> {
+            self.i += 1; // opening quote
+            let mut out = String::new();
+            loop {
+                let start = self.i;
+                while self.i < self.b.len() && self.b[self.i] != b'"' && self.b[self.i] != b'\\' {
+                    if self.b[self.i] < 0x20 {
+                        return Err(format!("control character in string at byte {}", self.i));
+                    }
+                    self.i += 1;
+                }
+                out.push_str(
+                    std::str::from_utf8(&self.b[start..self.i]).map_err(|e| e.to_string())?,
+                );
+                match self.b.get(self.i) {
+                    None => return Err("unterminated string".into()),
+                    Some(b'"') => {
+                        self.i += 1;
+                        return Ok(out);
+                    }
+                    _ => {
+                        self.i += 1;
+                        let c = *self.b.get(self.i).ok_or("unterminated escape")?;
+                        self.i += 1;
+                        match c {
+                            b'"' => out.push('"'),
+                            b'\\' => out.push('\\'),
+                            b'/' => out.push('/'),
+                            b'b' => out.push('\u{8}'),
+                            b'f' => out.push('\u{c}'),
+                            b'n' => out.push('\n'),
+                            b'r' => out.push('\r'),
+                            b't' => out.push('\t'),
+                            b'u' => {
+                                let hi = self.hex4()?;
+                                let cp = if (0xD800..0xDC00).contains(&hi)
+                                    && self.b[self.i..].starts_with(b"\\u")
+                                {
+                                    self.i += 2;
+                                    let lo = self.hex4()?;
+                                    if !(0xDC00..0xE000).contains(&lo) {
+                                        return Err("bad surrogate pair".into());
+                                    }
+                                    0x10000 + ((hi - 0xD800) << 10) + (lo - 0xDC00)
+                                } else {
+                                    hi
+                                };
+                                // A lone surrogate: Python keeps it; we cannot in a
+                                // String, so it becomes U+FFFD.
+                                out.push(char::from_u32(cp).unwrap_or('\u{FFFD}'));
+                            }
+                            _ => return Err(format!("bad escape at byte {}", self.i - 1)),
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 fn log(msg: &[u8]) {
     err(&cat(&[b"delivery-drift: ", msg, b"\n"]));
@@ -136,37 +414,167 @@ impl PageCache {
             return false;
         }
         let raw = subst(r.stdout);
-
-        let py_script = r#"
-import json, sys
-d = json.loads(sys.argv[1])
-if d.get("errors"):
-    sys.exit(1)
-runs = d["data"]["node"]["runs"]
-for r in runs["nodes"]:
-    cs = r.get("checkSuite") or {}
-    jobs = [c["name"] for c in ((cs.get("checkRuns") or {}).get("nodes") or [])]
-    print("run\t%s\t%s\t%s\t%s" % (r["databaseId"], (cs.get("commit") or {}).get("oid") or "",
-                                   (cs.get("branch") or {}).get("name") or "", "\037".join(jobs)))
-print("next\t%s" % (runs["pageInfo"]["endCursor"] if runs["pageInfo"]["hasNextPage"] else ""))
-"#;
-        let r2 = capture(
-            199,
-            Command::new("python3")
-                .arg("-c")
-                .arg(py_script)
-                .arg(shell_compat::os(&raw)),
-        );
-        if !r2.ok() {
-            return false;
-        }
-        let parsed = subst(r2.stdout);
+        let parsed = match page_lines(&raw) {
+            Some(p) => p,
+            None => return false,
+        };
         let part = cat(&[p.to_string_lossy().as_bytes(), b".part"]);
         if shell_compat::write_file(&part, &parsed, 0o644).is_err() {
             return false;
         }
         std::fs::rename(shell_compat::path(&part), &p).is_ok()
     }
+}
+
+/// One GraphQL page of runs as
+///   run<TAB><id><TAB><head sha><TAB><branch><TAB><job>\x1f<job>...
+///   next<TAB><cursor of the next page, empty on the last page>
+/// None on an API error, a malformed answer or a missing field.
+fn page_lines(raw: &[u8]) -> Option<Vec<u8>> {
+    use json::Value;
+    let d = json::parse(raw).ok()?;
+    if d.get("errors").map_or(false, Value::truthy) {
+        return None;
+    }
+    let runs = d.get("data")?.get("node")?.get("runs")?;
+    let Value::Arr(nodes) = runs.get("nodes")? else {
+        return None;
+    };
+    // `x or {}`: a falsy value reads as absent.
+    let or_none = |v: Option<&Value>| v.filter(|v| v.truthy()).cloned();
+    let mut out = Vec::new();
+    for r in nodes {
+        if !matches!(r, Value::Obj(_)) {
+            return None;
+        }
+        let cs = or_none(r.get("checkSuite"));
+        if let Some(c) = &cs {
+            if !matches!(c, Value::Obj(_)) {
+                return None;
+            }
+        }
+        let field = |outer: &str, inner: &str| -> String {
+            cs.as_ref()
+                .and_then(|c| or_none(c.get(outer)))
+                .and_then(|o| or_none(o.get(inner)))
+                .map(|v| v.py_str())
+                .unwrap_or_default()
+        };
+        let mut jobs: Vec<String> = Vec::new();
+        if let Some(cr) = cs.as_ref().and_then(|c| or_none(c.get("checkRuns"))) {
+            match or_none(cr.get("nodes")) {
+                None => {}
+                Some(Value::Arr(items)) => {
+                    for c in &items {
+                        match c.get("name") {
+                            Some(Value::Str(n)) => jobs.push(n.clone()),
+                            _ => return None,
+                        }
+                    }
+                }
+                Some(_) => return None,
+            }
+        }
+        let id = r.get("databaseId")?.py_str();
+        out.extend_from_slice(
+            format!(
+                "run\t{}\t{}\t{}\t{}\n",
+                id,
+                field("commit", "oid"),
+                field("branch", "name"),
+                jobs.join("\x1f")
+            )
+            .as_bytes(),
+        );
+    }
+    let info = runs.get("pageInfo")?;
+    let next = if info.get("hasNextPage")?.truthy() {
+        info.get("endCursor")?.py_str()
+    } else {
+        String::new()
+    };
+    out.extend_from_slice(format!("next\t{next}\n").as_bytes());
+    Some(out)
+}
+
+/// A unit's `.delivery.json`, as the checker reads it.
+struct Meta {
+    name: String,
+    first_env: String,
+    app: String,
+    extra: String,
+    exclude: String,
+    targets: String,
+}
+
+fn read_meta(path: &[u8]) -> Option<Meta> {
+    use json::Value;
+    let d = json::parse(&std::fs::read(shell_compat::path(path)).ok()?).ok()?;
+    if !matches!(d, Value::Obj(_)) {
+        return None;
+    }
+    let s = |v: Option<&Value>| {
+        v.filter(|v| v.truthy())
+            .map(|v| v.py_str())
+            .unwrap_or_default()
+    };
+    let list = |key: &str, sep: &str| -> Option<String> {
+        match d.get(key).filter(|v| v.truthy()) {
+            None => Some(String::new()),
+            Some(Value::Arr(items)) => {
+                let mut parts = Vec::new();
+                for i in items {
+                    match i {
+                        Value::Str(x) => parts.push(x.clone()),
+                        _ => return None,
+                    }
+                }
+                Some(parts.join(sep))
+            }
+            Some(_) => None,
+        }
+    };
+    let first_env = match d.get("environments").filter(|v| v.truthy()) {
+        None => String::new(),
+        Some(Value::Arr(e)) => e[0].py_str(),
+        Some(_) => return None,
+    };
+    Some(Meta {
+        name: d.get("name")?.py_str(),
+        first_env,
+        app: s(d.get("app")),
+        extra: list("extra_paths", "|")?,
+        exclude: list("exclude_paths", "|")?,
+        targets: list("graph_targets", " ")?,
+    })
+}
+
+/// Where the decision engine is when DEPLOY_AFFECTED_BIN does not say: the
+/// //tools/ci:deploy_affected binary in this program's runfiles. Call it
+/// before anything changes the working directory (argv[0] may be relative).
+/// Returns an absolute path.
+pub fn default_engine() -> Option<Vec<u8>> {
+    use std::os::unix::ffi::OsStrExt;
+    let set = |n: &str| env(n).map_or(false, |v| !v.is_empty());
+    let prog = std::env::current_exe()
+        .ok()
+        .map(|p| p.as_os_str().as_bytes().to_vec())
+        .unwrap_or_default();
+    if !set("RUNFILES_DIR") && !set("RUNFILES_MANIFEST_FILE") {
+        let dir = cat(&[&prog, b".runfiles"]);
+        let manifest = cat(&[&prog, b".runfiles_manifest"]);
+        if shell_compat::is_dir(&dir) {
+            std::env::set_var("RUNFILES_DIR", shell_compat::os(&dir));
+        } else if shell_compat::is_file(&manifest) {
+            std::env::set_var("RUNFILES_MANIFEST_FILE", shell_compat::os(&manifest));
+        } else {
+            return None;
+        }
+    }
+    let rf = runfiles::Runfiles::create().ok()?;
+    let p = runfiles::rlocation!(rf, "_main/tools/ci/deploy_affected")?;
+    let p = std::fs::canonicalize(p).ok()?;
+    Some(p.as_os_str().as_bytes().to_vec())
 }
 
 #[derive(Clone)]
@@ -193,7 +601,9 @@ fn last_delivered(
     let max_pages = (run_scan_limit + ps - 1) / ps;
     let mut total_runs: usize = 0;
 
-    for page in 1..=max_pages {
+    let mut page = 0usize;
+    loop {
+        page += 1;
         if !cache.fetch_page(wf, page, gh, repo, page_size) {
             return LastDelivered {
                 sha: Vec::new(),
@@ -214,6 +624,7 @@ fn last_delivered(
         };
         let mut page_runs = 0usize;
         let mut next_cursor = Vec::new();
+        let mut hit: Option<Vec<u8>> = None;
         for line in content.split(|&c| c == b'\n') {
             if line.is_empty() {
                 continue;
@@ -237,17 +648,22 @@ fn last_delivered(
             }
             let sha = fields[2];
             let jobs_raw = fields[4];
-            for job in jobs_raw.split(|&c| c == 0x1f) {
-                if job.len() >= prefix.len() && &job[..prefix.len()] == prefix {
-                    return LastDelivered {
-                        sha: sha.to_vec(),
-                        state: b"found".to_vec(),
-                        runs: total_runs + page_runs,
-                    };
-                }
+            if hit.is_none()
+                && jobs_raw
+                    .split(|&c| c == 0x1f)
+                    .any(|j| j.starts_with(prefix))
+            {
+                hit = Some(sha.to_vec());
             }
         }
         total_runs += page_runs;
+        if let Some(sha) = hit {
+            return LastDelivered {
+                sha,
+                state: b"found".to_vec(),
+                runs: total_runs,
+            };
+        }
         if next_cursor.is_empty() {
             return LastDelivered {
                 sha: Vec::new(),
@@ -255,11 +671,13 @@ fn last_delivered(
                 runs: total_runs,
             };
         }
-    }
-    LastDelivered {
-        sha: Vec::new(),
-        state: b"capped".to_vec(),
-        runs: total_runs,
+        if page >= max_pages {
+            return LastDelivered {
+                sha: Vec::new(),
+                state: b"capped".to_vec(),
+                runs: total_runs,
+            };
+        }
     }
 }
 
@@ -294,6 +712,31 @@ fn why_unknown(name: &[u8], env_name: &[u8], wf: &[u8], ld: &LastDelivered, run_
             b" runs) -- UNKNOWN",
         ])),
     }
+}
+
+/// `read -r a b c d` with the default IFS: whitespace-separated, leading and
+/// trailing whitespace dropped, the last variable taking the rest.
+fn read4(line: &[u8]) -> [Vec<u8>; 4] {
+    let ws = |c: &u8| *c == b' ' || *c == b'\t' || *c == b'\n';
+    let mut out: [Vec<u8>; 4] = Default::default();
+    let mut rest = line;
+    for (i, slot) in out.iter_mut().enumerate() {
+        while rest.first().map_or(false, ws) {
+            rest = &rest[1..];
+        }
+        if i == 3 {
+            let mut end = rest.len();
+            while end > 0 && ws(&rest[end - 1]) {
+                end -= 1;
+            }
+            *slot = rest[..end].to_vec();
+            break;
+        }
+        let n = rest.iter().position(ws).unwrap_or(rest.len());
+        *slot = rest[..n].to_vec();
+        rest = &rest[n..];
+    }
+    out
 }
 
 struct JudgedCommit {
@@ -336,7 +779,8 @@ fn find_judged_commit(
             .arg("--json")
             .arg("databaseId,status,headSha,conclusion")
             .arg("--jq")
-            .arg(r#".[] | "\(.databaseId) \(.status) \(.headSha) \(.conclusion)"#),
+            // r##: the filter itself ends in `"`, which would close an r#"..."#.
+            .arg(r##".[] | "\(.databaseId) \(.status) \(.headSha) \(.conclusion)""##),
     );
     if !r.ok() {
         return JudgedCommit {
@@ -349,15 +793,8 @@ fn find_judged_commit(
 
     // Check for waiting runs (approval gate)
     for line in shell_compat::lines(&raw) {
-        if line.is_empty() {
-            continue;
-        }
-        let fields: Vec<&[u8]> = line.splitn(4, |&c| c == b' ').collect();
-        if fields.len() < 3 {
-            continue;
-        }
-        let id = fields[0];
-        let run_status = fields[1];
+        let [id, run_status, _, _] = read4(&line);
+        let (id, run_status) = (id.as_slice(), run_status.as_slice());
         if run_status == b"waiting" {
             return JudgedCommit {
                 state: b"skip".to_vec(),
@@ -380,17 +817,16 @@ fn find_judged_commit(
     let mut found_id = Vec::new();
     let mut found_conclusion = Vec::new();
     for line in shell_compat::lines(&raw) {
-        if line.is_empty() {
+        let [id, run_status, sha, conclusion] = read4(&line);
+        if id.is_empty() {
             continue;
         }
-        let fields: Vec<&[u8]> = line.splitn(4, |&c| c == b' ').collect();
-        if fields.len() < 3 {
-            continue;
-        }
-        let id = fields[0];
-        let run_status = fields[1];
-        let sha = fields[2];
-        let conclusion = if fields.len() > 3 { fields[3] } else { b"" };
+        let (id, run_status, sha, conclusion) = (
+            id.as_slice(),
+            run_status.as_slice(),
+            sha.as_slice(),
+            conclusion.as_slice(),
+        );
 
         if run_status != b"completed" {
             in_flight += 1;
@@ -524,22 +960,19 @@ fn find_judged_commit(
     }
 }
 
+/// The engine's stdout+stderr for one range. Its exit status is ignored, as
+/// the script's `|| true` did: the verdict is read from what it printed. An
+/// engine that cannot be started reads as a degraded gate (not checked),
+/// never as "nothing affects it".
 fn ask_engine(
     engine: &[u8],
-    engine_is_binary: bool,
     extra: &[u8],
     exclude: &[u8],
     targets: &[u8],
     before: &[u8],
     after: &[u8],
 ) -> Vec<u8> {
-    let mut cmd;
-    if engine_is_binary {
-        cmd = Command::new(shell_compat::os(engine));
-    } else {
-        cmd = Command::new("bash");
-        cmd.arg(shell_compat::os(engine));
-    }
+    let mut cmd = Command::new(shell_compat::os(engine));
     cmd.env("EXTRA_PATH_REGEX", shell_compat::os(extra))
         .env("EXCLUDE_PATH_REGEX", shell_compat::os(exclude))
         .env("DEPLOY_TARGETS", shell_compat::os(targets))
@@ -555,26 +988,31 @@ fn ask_engine(
             out.extend_from_slice(&o.stderr);
             subst(out)
         }
-        Err(_) => Vec::new(),
+        Err(e) => cat(&[
+            b"deploy gate degraded: could not start the engine ",
+            engine,
+            b": ",
+            shell_compat::strerror(&e).as_bytes(),
+        ]),
     }
 }
 
-fn json_field_str(meta_path: &[u8], expr: &str) -> Vec<u8> {
-    let r = capture(
-        302,
-        Command::new("python3")
-            .arg("-c")
-            .arg(expr)
-            .arg(shell_compat::os(meta_path)),
-    );
-    if r.ok() {
-        subst(r.stdout)
-    } else {
-        Vec::new()
+/// Removes the page cache however the run ends (the script's EXIT trap).
+struct RemoveOnDrop(Vec<u8>);
+
+impl Drop for RemoveOnDrop {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(shell_compat::path(&self.0));
     }
 }
 
-pub fn run(_args: &[Vec<u8>]) -> i32 {
+/// `bazel run` entry: the engine defaults to the one in our runfiles.
+pub fn run(args: &[Vec<u8>]) -> i32 {
+    run_with_engine(args, default_engine())
+}
+
+/// `default_engine` is used when DEPLOY_AFFECTED_BIN is unset or empty.
+pub fn run_with_engine(_args: &[Vec<u8>], default_engine: Option<Vec<u8>>) -> i32 {
     let repo = env_or("REPO", b"VitruvianSoftware/vitruvian-core");
     let workflow_file = env_or_empty("WORKFLOW_FILE");
     // LEGACY_WORKFLOW_FILE: default "delivery.yaml", empty disables
@@ -595,14 +1033,29 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
     let drift_summary_file = env_or_empty("DRIFT_SUMMARY_FILE");
     let ignore_in_flight = shell_compat::env_set_nonempty("DRIFT_IGNORE_IN_FLIGHT");
 
-    let engine = match env("DEPLOY_AFFECTED_BIN") {
-        Some(v) if !v.is_empty() => v,
-        _ => b"tools/ci/deploy-affected.sh".to_vec(),
-    };
-    let engine_is_binary = !engine.ends_with(b".sh");
-
     if shell_compat::which(&gh).is_none() {
         log(b"gh not found on PATH");
+        return 2;
+    }
+
+    // Without the engine every unit would read as "nothing affects it", a
+    // pass built on nothing: a setup error instead.
+    let engine = match env("DEPLOY_AFFECTED_BIN")
+        .filter(|v| !v.is_empty())
+        .or(default_engine)
+    {
+        Some(e) => e,
+        None => {
+            log(b"cannot find the deploy-affected engine (//tools/ci:deploy_affected) in the runfiles; run me with bazel run //tools/ci:delivery_drift, or set DEPLOY_AFFECTED_BIN");
+            return 2;
+        }
+    };
+    if shell_compat::which(&engine).is_none() {
+        log(&cat(&[
+            b"the deploy-affected engine ",
+            &engine,
+            b" is not an executable",
+        ]));
         return 2;
     }
 
@@ -647,6 +1100,10 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
             .arg("bazel-bin")
             .stderr(std::process::Stdio::null()),
     );
+    if !r.ok() {
+        log(b"bazel info bazel-bin failed -- cannot locate the delivery metadata");
+        return 2;
+    }
     let bin_dir = subst(r.stdout);
 
     let page_dir = match mktemp_dir() {
@@ -656,9 +1113,15 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
             return 2;
         }
     };
+    let _cleanup = RemoveOnDrop(page_dir.clone());
     let mut page_cache = PageCache::new(page_dir.clone());
 
-    let head_r = capture(259, Command::new("git").arg("rev-parse").arg("HEAD"));
+    let head_r =
+        shell_compat::capture_stdout(259, Command::new("git").arg("rev-parse").arg("HEAD"));
+    if !head_r.ok() {
+        // The script's `set -e` ended it here, with git's status.
+        return head_r.status;
+    }
     let head_sha = subst(head_r.stdout);
 
     // Tracking
@@ -675,23 +1138,19 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
         name: Vec<u8>,
         first_env: Vec<u8>,
         wf: Vec<u8>,
-        meta: Vec<u8>,
+        meta: Meta,
     }
     let mut units: Vec<Unit> = Vec::new();
 
     for label in &labels {
         // //pkg/sub:x.delivery_unit -> pkg/sub/x.delivery.json
-        let mut rel = label.clone();
-        while rel.starts_with(b"@") {
-            rel = rel[1..].to_vec();
-        }
-        if rel.starts_with(b"//") {
-            rel = rel[2..].to_vec();
-        }
-        let (pkg, tgt) = if let Some(colon) = rel.iter().position(|&c| c == b':') {
-            (rel[..colon].to_vec(), rel[colon + 1..].to_vec())
-        } else {
-            continue;
+        let mut rel: &[u8] = label;
+        rel = rel.strip_prefix(b"@@").unwrap_or(rel);
+        rel = rel.strip_prefix(b"@").unwrap_or(rel);
+        rel = rel.strip_prefix(b"//").unwrap_or(rel);
+        let (pkg, tgt) = match rel.iter().position(|&c| c == b':') {
+            Some(colon) => (rel[..colon].to_vec(), rel[colon + 1..].to_vec()),
+            None => (rel.to_vec(), rel.to_vec()),
         };
         let tgt_base = if tgt.ends_with(b".delivery_unit") {
             &tgt[..tgt.len() - 14]
@@ -716,18 +1175,27 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
             continue;
         }
 
-        let name = json_field_str(
-            &meta,
-            "import json,sys; print(json.load(open(sys.argv[1]))['name'])",
-        );
-        let first_env = json_field_str(
-            &meta,
-            "import json,sys; e=json.load(open(sys.argv[1])).get('environments') or ['']; print(e[0])",
-        );
-        let app = json_field_str(
-            &meta,
-            "import json,sys; print(json.load(open(sys.argv[1])).get('app') or '')",
-        );
+        // A file that cannot be read as metadata is UNKNOWN (the script died
+        // here under set -e, with no verdict at all).
+        let Some(m) = read_meta(&meta) else {
+            log(&cat(&[
+                b"metadata for ",
+                label,
+                b" cannot be read -- cannot check, treating as UNKNOWN",
+            ]));
+            bad += 1;
+            drift_found = true;
+            checked += 1;
+            checked_md.extend_from_slice(&cat(&[
+                b"- `",
+                label,
+                b"`: **UNKNOWN: its metadata cannot be read**\n",
+            ]));
+            continue;
+        };
+        let name = m.name.clone().into_bytes();
+        let first_env = m.first_env.clone().into_bytes();
+        let app = m.app.clone().into_bytes();
         if name.is_empty() {
             continue;
         }
@@ -759,7 +1227,7 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
             name,
             first_env,
             wf,
-            meta,
+            meta: m,
         });
     }
 
@@ -827,10 +1295,12 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
             run_scan_limit,
         );
 
+        let mut fell_back = false;
         if ld.state == b"absent"
             && !legacy_workflow_file.is_empty()
             && legacy_workflow_file != unit.wf
         {
+            fell_back = true;
             ld = last_delivered(
                 &mut page_cache,
                 &legacy_workflow_file,
@@ -852,10 +1322,8 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
             }
         }
 
-        let wf_display = if ld.state != b"found"
-            && !legacy_workflow_file.is_empty()
-            && legacy_workflow_file != unit.wf
-        {
+        // Only a unit that WAS looked up in the legacy history names it.
+        let wf_display = if fell_back && ld.state != b"found" {
             cat(&[&unit.wf, b" or ", &legacy_workflow_file])
         } else {
             unit.wf.clone()
@@ -1019,29 +1487,12 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
         }
 
         // Read per-unit metadata for the engine
-        let extra = json_field_str(
-            &unit.meta,
-            "import json,sys; print('|'.join(json.load(open(sys.argv[1])).get('extra_paths') or []))",
-        );
-        let exclude = json_field_str(
-            &unit.meta,
-            "import json,sys; print('|'.join(json.load(open(sys.argv[1])).get('exclude_paths') or []))",
-        );
-        let targets = json_field_str(
-            &unit.meta,
-            "import json,sys; print(' '.join(json.load(open(sys.argv[1])).get('graph_targets') or []))",
-        );
+        let extra = unit.meta.extra.as_bytes();
+        let exclude = unit.meta.exclude.as_bytes();
+        let targets = unit.meta.targets.as_bytes();
 
         // PHASE 1 — range pre-filter
-        let phase1 = ask_engine(
-            &engine,
-            engine_is_binary,
-            &extra,
-            &exclude,
-            &targets,
-            &last_sha,
-            &judge_sha,
-        );
+        let phase1 = ask_engine(&engine, extra, exclude, targets, &last_sha, &judge_sha);
         if shell_compat::contains(&phase1, b"deploy-gate-fallback")
             || shell_compat::contains(&phase1, b"gate degraded")
         {
@@ -1099,15 +1550,7 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
             if c.is_empty() {
                 continue;
             }
-            let v = ask_engine(
-                &engine,
-                engine_is_binary,
-                &extra,
-                &exclude,
-                &targets,
-                &cat(&[&c, b"^"]),
-                &c,
-            );
+            let v = ask_engine(&engine, extra, exclude, targets, &cat(&[&c, b"^"]), &c);
             if shell_compat::contains(&v, b"deploy-gate-fallback")
                 || shell_compat::contains(&v, b"gate degraded")
             {
@@ -1162,7 +1605,11 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
             b" ('",
             subj_short,
             b"') should have delivered and did not -- ",
-            &culprit_why,
+            if culprit_why.is_empty() {
+                b"no reason reported"
+            } else {
+                &culprit_why
+            },
             b" -- judged at the ",
             &jc.why,
         ]));
@@ -1287,9 +1734,6 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
 
     out(&cat(&[&verdict, b"\n"]));
 
-    // Clean up temp dir
-    let _ = std::fs::remove_dir_all(shell_compat::path(&page_dir));
-
     if verdict == b"DRIFT" {
         1
     } else {
@@ -1297,13 +1741,17 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
     }
 }
 
+/// `grep -o '<marker>.*)' | head -1`: on the first line holding the marker
+/// AND a later ')', from the marker to that line's last ')'.
 fn extract_reason(text: &[u8], marker: &[u8]) -> Vec<u8> {
-    if let Some(pos) = text.windows(marker.len()).position(|w| w == marker) {
-        let rest = &text[pos..];
-        if let Some(end) = rest.iter().position(|&c| c == b'\n') {
-            return rest[..end].to_vec();
+    for line in text.split(|&c| c == b'\n') {
+        let Some(pos) = line.windows(marker.len()).position(|w| w == marker) else {
+            continue;
+        };
+        let rest = &line[pos..];
+        if let Some(end) = rest[marker.len()..].iter().rposition(|&c| c == b')') {
+            return rest[..marker.len() + end + 1].to_vec();
         }
-        return rest.to_vec();
     }
     Vec::new()
 }

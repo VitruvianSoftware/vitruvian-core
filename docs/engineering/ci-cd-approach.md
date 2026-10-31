@@ -27,7 +27,7 @@ To calculate affected targets, we use **[`target-determinator`](https://github.c
 
 Our CI/CD pipelines do not invoke `target-determinator` directly. Instead, they call custom Bash scripts that enforce our safety invariants and global-impact guards. These scripts live in `tools/ci/`:
 
-### `affected-targets.sh`
+### `//tools/ci:affected_targets`
 *   **Purpose:** Determines which tests to run on PRs (`pull_request`) and merge queues (`merge_group`).
 *   **How it works:**
     1. Computes the merge-base of the PR.
@@ -36,7 +36,7 @@ Our CI/CD pipelines do not invoke `target-determinator` directly. Instead, they 
     4. If `target-determinator` errors, it logs a degraded warning and falls back to a full `//...` sweep.
     5. Builds the affected targets and tests them using `--build_tests_only`.
 
-### `deploy-affected.sh`
+### `//tools/ci:deploy_affected`
 *   **Purpose:** Determines whether to deploy an application (e.g., Tabula) when a commit lands on `main`.
 *   **How it works:**
     1. Takes a list of the application's deployable artifacts (e.g., `//apps/suites/tabula/api:image_push`) via the `DEPLOY_TARGETS` environment variable.
@@ -46,8 +46,8 @@ Our CI/CD pipelines do not invoke `target-determinator` directly. Instead, they 
     5. If `target-determinator` errors, it logs a degraded warning and returns `affected=true` (Fail-Open).
     6. If the deploy targets are in the affected list, the application deploys.
 
-### `td-lib.sh`
-*   **Purpose:** A shared utility script that pins the exact version and checksum of `target-determinator` and handles downloading it for both `affected-targets.sh` and `deploy-affected.sh`. This ensures version consistency across all CI lanes.
+### The `target-determinator` pin
+*   **Purpose:** The exact version and checksum of `target-determinator`, and its checksum-verified download, live in the deploy gate (`TD_VERSION`/`TD_SHA256` in `tools/ci/src/deploy_affected/lib.rs`), its only user.
 
 ## 4. CI/CD Terminology
 

@@ -1,14 +1,22 @@
-// Copyright (c) 2026 VitruvianSoftware
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Vorssaint
+// Copyright (C) 2026 VitruvianSoftware
 
-//! Native Rust implementation of `Tools/ci-setup-signing.sh`.
-//! Imports the stable signing certificate into a dedicated keychain on CI.
+//! Imports the stable signing certificate into a keychain on CI so the
+//! release signs with the same identity used locally. This keeps the
+//! bundle's designated requirement constant, so users keep their granted
+//! permissions across updates. No-op (and an ad-hoc build) when the secret
+//! isn't configured, unless REQUIRE_SIGNING=1. Ported from upstream's
+//! `Tools/ci-setup-signing.sh`.
+//!
+//!   SIGNING_CERT_P12       base64 of the .p12
+//!   SIGNING_CERT_PASSWORD  its password
+//!   RUNNER_TEMP            where the keychain goes (/tmp otherwise)
 
+use release_exec::{capture, run, write_private, Cmd, Runner};
 use std::collections::BTreeMap;
-use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 pub const KEYCHAIN_PASSWORD: &str = "ci-signing";
 pub const KEYCHAIN_FILENAME: &str = "vitruvian-signing.keychain-db";
@@ -20,387 +28,245 @@ pub struct CiSigningConfig {
     pub signing_cert_password: String,
     pub require_signing: bool,
     pub runner_temp: PathBuf,
-    pub dry_run: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CiSigningDecision {
-    SkipAdHoc,
-    MissingRequiredCredentials,
-    Import(CiSigningPlan),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CiSigningPlan {
-    pub keychain_path: PathBuf,
-    pub p12_path: PathBuf,
-    pub keychain_password: String,
-    pub cert_password: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CommandSpec {
-    pub program: String,
-    pub args: Vec<String>,
-    pub suppress_output: bool,
-}
-
-pub fn parse_cli_args(
-    args: &[String],
-    env_map: &BTreeMap<String, String>,
-) -> Result<CiSigningConfig, String> {
-    let mut dry_run = false;
-    for arg in args {
-        match arg.as_str() {
-            "--dry-run" => dry_run = true,
-            "-h" | "--help" => {
-                return Err("usage: ci-setup-signing [--dry-run]".to_string());
-            }
-            other => {
-                return Err(format!("ci-setup-signing: unknown argument '{}'", other));
-            }
+impl CiSigningConfig {
+    pub fn from_env(env_map: &BTreeMap<String, String>) -> CiSigningConfig {
+        let get = |k: &str| env_map.get(k).cloned().unwrap_or_default();
+        CiSigningConfig {
+            signing_cert_p12: get("SIGNING_CERT_P12"),
+            signing_cert_password: get("SIGNING_CERT_PASSWORD"),
+            require_signing: get("REQUIRE_SIGNING") == "1",
+            runner_temp: env_map
+                .get("RUNNER_TEMP")
+                .filter(|s| !s.is_empty())
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from("/tmp")),
         }
     }
 
-    let signing_cert_p12 = env_map.get("SIGNING_CERT_P12").cloned().unwrap_or_default();
-    let signing_cert_password = env_map
-        .get("SIGNING_CERT_PASSWORD")
-        .cloned()
-        .unwrap_or_default();
-    let require_signing = env_map
-        .get("REQUIRE_SIGNING")
-        .map(|v| v == "1")
-        .unwrap_or(false);
-    let runner_temp = env_map
-        .get("RUNNER_TEMP")
-        .filter(|s| !s.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/tmp"));
-
-    Ok(CiSigningConfig {
-        signing_cert_p12,
-        signing_cert_password,
-        require_signing,
-        runner_temp,
-        dry_run,
-    })
-}
-
-pub fn evaluate_config(cfg: &CiSigningConfig) -> CiSigningDecision {
-    if cfg.signing_cert_p12.is_empty() || cfg.signing_cert_password.is_empty() {
-        if cfg.require_signing {
-            return CiSigningDecision::MissingRequiredCredentials;
-        }
-        return CiSigningDecision::SkipAdHoc;
+    pub fn keychain(&self) -> PathBuf {
+        self.runner_temp.join(KEYCHAIN_FILENAME)
     }
 
-    CiSigningDecision::Import(CiSigningPlan {
-        keychain_path: cfg.runner_temp.join(KEYCHAIN_FILENAME),
-        p12_path: cfg.runner_temp.join(P12_FILENAME),
-        keychain_password: KEYCHAIN_PASSWORD.to_string(),
-        cert_password: cfg.signing_cert_password.clone(),
-    })
+    pub fn p12(&self) -> PathBuf {
+        self.runner_temp.join(P12_FILENAME)
+    }
 }
 
+/// The search list `security list-keychains -d user` prints, as
+/// `sed 's/"//g' | xargs` turns it into words.
 pub fn parse_keychain_list_output(output: &str) -> Vec<String> {
     output
-        .lines()
-        .flat_map(|line| {
-            line.replace('"', "")
-                .split_whitespace()
-                .map(String::from)
-                .collect::<Vec<_>>()
-        })
-        .filter(|s| !s.is_empty())
+        .replace('"', "")
+        .split_whitespace()
+        .map(String::from)
         .collect()
 }
 
-pub fn build_security_commands(
-    plan: &CiSigningPlan,
-    existing_keychains: &[String],
-) -> Vec<CommandSpec> {
-    let kc = plan.keychain_path.to_string_lossy().to_string();
-    let p12 = plan.p12_path.to_string_lossy().to_string();
-    let kcpass = plan.keychain_password.clone();
-
-    let mut search_list_args = vec![
-        "list-keychains".to_string(),
-        "-d".to_string(),
-        "user".to_string(),
-        "-s".to_string(),
-        kc.clone(),
-    ];
-    for existing in existing_keychains {
-        search_list_args.push(existing.clone());
-    }
-
-    vec![
-        CommandSpec {
-            program: "security".to_string(),
-            args: vec![
-                "create-keychain".to_string(),
-                "-p".to_string(),
-                kcpass.clone(),
-                kc.clone(),
-            ],
-            suppress_output: false,
-        },
-        CommandSpec {
-            program: "security".to_string(),
-            args: vec!["set-keychain-settings".to_string(), kc.clone()],
-            suppress_output: false,
-        },
-        CommandSpec {
-            program: "security".to_string(),
-            args: vec![
-                "unlock-keychain".to_string(),
-                "-p".to_string(),
-                kcpass.clone(),
-                kc.clone(),
-            ],
-            suppress_output: false,
-        },
-        CommandSpec {
-            program: "security".to_string(),
-            args: vec![
-                "import".to_string(),
-                p12,
-                "-k".to_string(),
-                kc.clone(),
-                "-P".to_string(),
-                plan.cert_password.clone(),
-                "-T".to_string(),
-                "/usr/bin/codesign".to_string(),
-            ],
-            suppress_output: false,
-        },
-        CommandSpec {
-            program: "security".to_string(),
-            args: vec![
-                "set-key-partition-list".to_string(),
-                "-S".to_string(),
-                "apple-tool:,apple:,codesign:".to_string(),
-                "-s".to_string(),
-                "-k".to_string(),
-                kcpass,
-                kc,
-            ],
-            suppress_output: true,
-        },
-        CommandSpec {
-            program: "security".to_string(),
-            args: search_list_args,
-            suppress_output: false,
-        },
-    ]
+fn security(args: &[&str]) -> Cmd {
+    Cmd::new("security").args(args)
 }
 
-pub fn decode_base64_to_file(encoded: &str, dest: &Path) -> Result<(), String> {
-    let bytes = decode_base64(encoded)?;
-    fs::write(dest, &bytes).map_err(|e| format!("failed to write {}: {}", dest.display(), e))?;
+fn restrict(path: &Path) {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let _ = fs::set_permissions(dest, fs::Permissions::from_mode(0o600));
+        let _ = fs::set_permissions(path, fs::Permissions::from_mode(0o600));
     }
+}
+
+pub fn ci_setup_signing(r: &mut dyn Runner, cfg: &CiSigningConfig) -> Result<(), i32> {
+    if cfg.signing_cert_p12.is_empty() || cfg.signing_cert_password.is_empty() {
+        if cfg.require_signing {
+            eprintln!("Release signing credentials are incomplete.");
+            return Err(1);
+        }
+        println!("No release signing credentials — building ad-hoc.");
+        return Ok(());
+    }
+
+    let kc = cfg.keychain().to_string_lossy().to_string();
+    let p12 = cfg.p12();
+    let bytes = release_exec::decode_base64(&cfg.signing_cert_p12).map_err(|e| {
+        eprintln!("SIGNING_CERT_P12 is not base64: {}", e);
+        1
+    })?;
+    write_private(&p12, &bytes).map_err(|e| {
+        eprintln!("could not write {}: {}", p12.display(), e);
+        1
+    })?;
+
+    let result = (|| {
+        run(
+            r,
+            &security(&["create-keychain", "-p", KEYCHAIN_PASSWORD, &kc]),
+        )?;
+        restrict(&cfg.keychain());
+        run(r, &security(&["set-keychain-settings", &kc]))?;
+        run(
+            r,
+            &security(&["unlock-keychain", "-p", KEYCHAIN_PASSWORD, &kc]),
+        )?;
+        run(
+            r,
+            &security(&["import"]).path(&p12).args([
+                "-k",
+                &kc,
+                "-P",
+                &cfg.signing_cert_password,
+                "-T",
+                "/usr/bin/codesign",
+            ]),
+        )?;
+        capture(
+            r,
+            &security(&[
+                "set-key-partition-list",
+                "-S",
+                "apple-tool:,apple:,codesign:",
+                "-s",
+                "-k",
+                KEYCHAIN_PASSWORD,
+                &kc,
+            ]),
+        )?;
+        let existing =
+            parse_keychain_list_output(&capture(r, &security(&["list-keychains", "-d", "user"]))?);
+        run(
+            r,
+            &security(&["list-keychains", "-d", "user", "-s", &kc]).args(&existing),
+        )
+    })();
+    let _ = fs::remove_file(&p12);
+    result?;
+    println!("Signing certificate imported.");
     Ok(())
 }
 
-pub fn decode_base64(input: &str) -> Result<Vec<u8>, String> {
-    let mut out = Vec::new();
-    let mut buf: u32 = 0;
-    let mut bits: u8 = 0;
-
-    for b in input.bytes() {
-        if b.is_ascii_whitespace() || b == b'=' {
-            continue;
-        }
-        let val = match b {
-            b'A'..=b'Z' => b - b'A',
-            b'a'..=b'z' => b - b'a' + 26,
-            b'0'..=b'9' => b - b'0' + 52,
-            b'+' => 62,
-            b'/' => 63,
-            _ => return Err(format!("invalid base64 byte: 0x{:02x}", b)),
-        };
-        buf = (buf << 6) | (val as u32);
-        bits += 6;
-        if bits >= 8 {
-            bits -= 8;
-            out.push(((buf >> bits) & 0xff) as u8);
-        }
-    }
-    Ok(out)
-}
-
 pub fn run_cli(args: &[String]) -> i32 {
-    let env_map: BTreeMap<String, String> = env::vars().collect();
-    let cfg = match parse_cli_args(args, &env_map) {
-        Ok(c) => c,
-        Err(msg) => {
-            if msg.starts_with("usage:") {
-                println!("{}", msg);
-                return 0;
-            }
-            eprintln!("{}", msg);
-            return 2;
-        }
-    };
-
-    match evaluate_config(&cfg) {
-        CiSigningDecision::MissingRequiredCredentials => {
-            eprintln!("Release signing credentials are incomplete.");
-            1
-        }
-        CiSigningDecision::SkipAdHoc => {
-            println!("No release signing credentials — building ad-hoc.");
-            0
-        }
-        CiSigningDecision::Import(plan) => {
-            if cfg.dry_run {
-                let cmds = build_security_commands(&plan, &["login.keychain-db".to_string()]);
-                for cmd in cmds {
-                    println!("dry-run: {} {}", cmd.program, cmd.args.join(" "));
-                }
-                return 0;
-            }
-
-            if let Err(e) = decode_base64_to_file(&cfg.signing_cert_p12, &plan.p12_path) {
-                eprintln!("{}", e);
-                return 1;
-            }
-
-            let existing_output = Command::new("security")
-                .args(["list-keychains", "-d", "user"])
-                .output()
-                .ok()
-                .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
-                .unwrap_or_default();
-            let existing = parse_keychain_list_output(&existing_output);
-
-            let cmds = build_security_commands(&plan, &existing);
-            for cmd in cmds {
-                let status = if cmd.suppress_output {
-                    Command::new(&cmd.program)
-                        .args(&cmd.args)
-                        .output()
-                        .map(|o| o.status.success())
-                        .unwrap_or(false)
-                } else {
-                    Command::new(&cmd.program)
-                        .args(&cmd.args)
-                        .status()
-                        .map(|s| s.success())
-                        .unwrap_or(false)
-                };
-                if !status {
-                    let _ = fs::remove_file(&plan.p12_path);
-                    return 1;
-                }
-            }
-
-            let _ = fs::remove_file(&plan.p12_path);
-            println!("Signing certificate imported.");
-            0
-        }
+    if !args.is_empty() {
+        eprintln!("usage: ci_setup_signing (env: SIGNING_CERT_P12, SIGNING_CERT_PASSWORD, REQUIRE_SIGNING, RUNNER_TEMP)");
+        return 2;
+    }
+    let env_map: BTreeMap<String, String> = std::env::vars().collect();
+    match ci_setup_signing(
+        &mut release_exec::SystemRunner::new(),
+        &CiSigningConfig::from_env(&env_map),
+    ) {
+        Ok(()) => 0,
+        Err(code) => code,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use release_exec::{make_temp_dir, FakeRunner, Out, TempDir};
 
-    #[test]
-    fn test_skip_when_no_credentials_and_not_required() {
-        let env_map = BTreeMap::new();
-        let cfg = parse_cli_args(&[], &env_map).unwrap();
-        assert_eq!(evaluate_config(&cfg), CiSigningDecision::SkipAdHoc);
+    fn env(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
     }
 
     #[test]
-    fn test_fail_when_no_credentials_and_required() {
-        let mut env_map = BTreeMap::new();
-        env_map.insert("REQUIRE_SIGNING".to_string(), "1".to_string());
-        let cfg = parse_cli_args(&[], &env_map).unwrap();
-        assert_eq!(
-            evaluate_config(&cfg),
-            CiSigningDecision::MissingRequiredCredentials
-        );
+    fn without_credentials_it_builds_ad_hoc_unless_signing_is_required() {
+        let mut r = FakeRunner::succeeding();
+        let cfg = CiSigningConfig::from_env(&env(&[("SIGNING_CERT_P12", "eA==")]));
+        assert_eq!(ci_setup_signing(&mut r, &cfg), Ok(()));
+        let required = CiSigningConfig::from_env(&env(&[
+            ("SIGNING_CERT_PASSWORD", "pw"),
+            ("REQUIRE_SIGNING", "1"),
+        ]));
+        assert_eq!(ci_setup_signing(&mut r, &required), Err(1));
+        assert!(r.calls.is_empty());
     }
 
     #[test]
-    fn test_import_plan_and_security_commands() {
-        let mut env_map = BTreeMap::new();
-        env_map.insert("SIGNING_CERT_P12".to_string(), "aGVsbG8=".to_string());
-        env_map.insert("SIGNING_CERT_PASSWORD".to_string(), "s3cret".to_string());
-        env_map.insert("RUNNER_TEMP".to_string(), "/tmp/runner".to_string());
-
-        let cfg = parse_cli_args(&["--dry-run".to_string()], &env_map).unwrap();
-        assert!(cfg.dry_run);
-        let CiSigningDecision::Import(plan) = evaluate_config(&cfg) else {
-            panic!("expected Import decision");
-        };
+    fn the_keychain_goes_in_runner_temp_or_tmp() {
         assert_eq!(
-            plan.keychain_path,
-            PathBuf::from("/tmp/runner/vitruvian-signing.keychain-db")
+            CiSigningConfig::from_env(&env(&[])).keychain(),
+            PathBuf::from("/tmp/vitruvian-signing.keychain-db")
         );
         assert_eq!(
-            plan.p12_path,
-            PathBuf::from("/tmp/runner/vitruvian-signing.p12")
-        );
-
-        let existing = parse_keychain_list_output(
-            "    \"/Users/runner/Library/Keychains/login.keychain-db\"\n    \"/Library/Keychains/System.keychain\"\n",
-        );
-        assert_eq!(
-            existing,
-            vec![
-                "/Users/runner/Library/Keychains/login.keychain-db".to_string(),
-                "/Library/Keychains/System.keychain".to_string(),
-            ]
-        );
-
-        let cmds = build_security_commands(&plan, &existing);
-        assert_eq!(cmds.len(), 6);
-        assert_eq!(
-            cmds[0].args,
-            vec![
-                "create-keychain",
-                "-p",
-                "ci-signing",
-                "/tmp/runner/vitruvian-signing.keychain-db"
-            ]
-        );
-        assert_eq!(
-            cmds[3].args,
-            vec![
-                "import",
-                "/tmp/runner/vitruvian-signing.p12",
-                "-k",
-                "/tmp/runner/vitruvian-signing.keychain-db",
-                "-P",
-                "s3cret",
-                "-T",
-                "/usr/bin/codesign"
-            ]
-        );
-        assert_eq!(
-            cmds[5].args,
-            vec![
-                "list-keychains",
-                "-d",
-                "user",
-                "-s",
-                "/tmp/runner/vitruvian-signing.keychain-db",
-                "/Users/runner/Library/Keychains/login.keychain-db",
-                "/Library/Keychains/System.keychain",
-            ]
+            CiSigningConfig::from_env(&env(&[("RUNNER_TEMP", "/r")])).p12(),
+            PathBuf::from("/r/vitruvian-signing.p12")
         );
     }
 
     #[test]
-    fn test_base64_decode() {
-        let decoded = decode_base64("SGVsbG8gVml0cnV2aWFuIQ==\n").unwrap();
-        assert_eq!(decoded, b"Hello Vitruvian!");
+    fn keychain_list_drops_quotes() {
+        assert_eq!(
+            parse_keychain_list_output("    \"/Users/runner/Library/Keychains/login.keychain-db\"\n    \"/Library/Keychains/System.keychain\"\n"),
+            vec!["/Users/runner/Library/Keychains/login.keychain-db", "/Library/Keychains/System.keychain"]
+        );
+    }
+
+    #[test]
+    fn it_imports_into_its_own_keychain_and_puts_it_first_in_the_search_list() {
+        let tmp = make_temp_dir(&std::env::temp_dir(), "ci_setup_signing").unwrap();
+        let _g = TempDir(tmp.clone());
+        let cfg = CiSigningConfig::from_env(&env(&[
+            ("SIGNING_CERT_P12", "aGVsbG8="),
+            ("SIGNING_CERT_PASSWORD", "pw"),
+            ("RUNNER_TEMP", &tmp.to_string_lossy()),
+        ]));
+        let p12 = cfg.p12();
+        let p12_seen = p12.clone();
+        let mut r = FakeRunner::new(move |c| {
+            if c.args.first().map(String::as_str) == Some("import") {
+                assert_eq!(fs::read(&p12_seen).unwrap(), b"hello");
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    assert_eq!(
+                        fs::metadata(&p12_seen).unwrap().permissions().mode() & 0o777,
+                        0o600
+                    );
+                }
+            }
+            if c.args == ["list-keychains", "-d", "user"] {
+                return Out::ok("    \"/Users/runner/Library/Keychains/login.keychain-db\"\n");
+            }
+            Out::ok("")
+        });
+        assert_eq!(ci_setup_signing(&mut r, &cfg), Ok(()));
+        let kc = cfg.keychain().to_string_lossy().to_string();
+        assert_eq!(
+            r.calls,
+            vec![
+                format!("security create-keychain -p ci-signing {}", kc),
+                format!("security set-keychain-settings {}", kc),
+                format!("security unlock-keychain -p ci-signing {}", kc),
+                format!("security import {} -k {} -P pw -T /usr/bin/codesign", p12.display(), kc),
+                format!("security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k ci-signing {}", kc),
+                "security list-keychains -d user".to_string(),
+                format!("security list-keychains -d user -s {} /Users/runner/Library/Keychains/login.keychain-db", kc),
+            ]
+        );
+        assert!(!p12.exists(), "the p12 is removed");
+    }
+
+    #[test]
+    fn a_failed_import_fails_with_its_code_and_still_removes_the_p12() {
+        let tmp = make_temp_dir(&std::env::temp_dir(), "ci_setup_signing_fail").unwrap();
+        let _g = TempDir(tmp.clone());
+        let cfg = CiSigningConfig::from_env(&env(&[
+            ("SIGNING_CERT_P12", "aGVsbG8="),
+            ("SIGNING_CERT_PASSWORD", "wrong"),
+            ("RUNNER_TEMP", &tmp.to_string_lossy()),
+        ]));
+        let mut r = FakeRunner::new(|c| {
+            if c.args.first().map(String::as_str) == Some("import") {
+                Out::fail(35, "MAC verification failed")
+            } else {
+                Out::ok("")
+            }
+        });
+        assert_eq!(ci_setup_signing(&mut r, &cfg), Err(35));
+        assert_eq!(r.count("security list-keychains"), 0);
+        assert!(!cfg.p12().exists());
     }
 }

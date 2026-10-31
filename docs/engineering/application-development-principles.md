@@ -151,7 +151,7 @@ Database schema is the sharpest instance of §2.15, because the blue-green rollo
 
 - **Expand migrations are the default and must be backward-compatible** — add a nullable/defaulted column, add a table, add an index. The `migration-safety` required check (`tools/ci/migration-safety.sh`, tuned by `apps/suites/tabula/api/prisma/.squawk.toml`, Squawk under the hood) **fails the PR** if an added/modified migration is backward-incompatible: drop/rename a column, narrow a type, add a validated (`NOT VALID`-less) constraint, add a `NOT NULL` column without a default. The gate self-tests on every run, so a mis-tuning surfaces in CI, not on a deploy.
 - **Contract migrations are deliberate and separated** — a genuinely destructive change (drop the now-unused column after the new code stopped reading it) is committed as a migration whose directory name **ends in `_contract`** (e.g. `20260701120000_drop_legacy_workspace_id_contract`). That suffix exempts it from the safety gate (it is knowingly backward-incompatible) **and** tells the deploy wrapper not to auto-apply it.
-- **The deploy applies only expand; contract is a later, explicit run.** The migrate step runs `migrate-deploy.cjs --phase expand`, which **refuses** if any pending migration is a `*_contract` one (it would be swept in by `migrate deploy`, which always applies *all* pending). You apply the contract deliberately, **after** the new revision has fully replaced the old and soaked, via `--phase contract`. Never contract ahead of the rollover.
+- **The deploy applies only expand; contract is a later, explicit run.** The migrate step runs `//apps/suites/tabula/api:migrate_deploy_bin --phase expand`, which **refuses** if any pending migration is a `*_contract` one (it would be swept in by `migrate deploy`, which always applies *all* pending). You apply the contract deliberately, **after** the new revision has fully replaced the old and soaked, via `--phase contract`. Never contract ahead of the rollover.
 
 The rename-a-column case is two migrations across two deploys: **expand** (add the new column, backfill, write both) → cut over the code → **contract** (drop the old column) in a later run. The gate makes the unsafe single-step rename impossible to merge unmarked.
 
@@ -326,7 +326,7 @@ Pick the category that matches the artifact you are shipping. Each section is se
 | Aspect | Standard |
 |---|---|
 | **Tech stack & build** | Bash + Starlark (Bazel) + Go. Lives in `tools/` and `.github/workflows/`. |
-| **Local dev** | `bazel run //:tidy` is the single hygiene/format gate; affected-target logic via `tools/ci/affected-targets.sh`. |
+| **Local dev** | `bazel run //:tidy` is the single hygiene/format gate; affected-target logic via `//tools/ci:affected_targets`. |
 | **Hosting & runtime** | Runs *in CI* and *in the build graph* — no managed runtime. |
 | **Deploy / CI** | This category *is* CI. The merge queue is the single enforcement authority; required checks are `license-check`, `tidy-check`, `build-test`, `build-macos`, `conformance-check`, `actionlint`, `migration-safety`, `go-race`, `osv-scan`, and `secret-scan`. The generated `delivery-charts.yaml`'s `charts-publish` job ships OCI Helm charts to GHCR. |
 | **Environments & promotion** | N/A — changes ship by merge. |

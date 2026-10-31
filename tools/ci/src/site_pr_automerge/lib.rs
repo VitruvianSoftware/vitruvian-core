@@ -18,9 +18,9 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! site-pr-automerge.sh — arm/disarm auto-merge on website PRs.
+//! //tools/ci:site_pr_automerge — arm/disarm auto-merge on website PRs.
 
-use shell_compat::{capture, cat, env, err, out, status, subst};
+use shell_compat::{capture_stdout as capture, cat, env, err, out, status, subst};
 use std::process::Command;
 
 fn say(summary: &[u8], msg: &[u8]) {
@@ -124,7 +124,40 @@ fn disarm_pr(repo: &[u8], summary: &[u8], number: &[u8], why: &[u8]) -> i32 {
     }
 }
 
+const USAGE: &[u8] =
+    b"usage: site-pr-automerge disarm --branch <branch> | arm --branch <branch> --sha <sha>\n";
+
+/// The script's `usage`: one message, exit 2.
+fn usage() -> i32 {
+    err(USAGE);
+    2
+}
+
 pub fn run(args: &[Vec<u8>]) -> i32 {
+    // As the script: the arguments are checked first, then REPO.
+    let mode: Vec<u8> = args.first().cloned().unwrap_or_default();
+    let mut branch = Vec::new();
+    let mut sha = Vec::new();
+    let mut i = 1;
+    while i < args.len() {
+        let slot = match args[i].as_slice() {
+            b"--branch" => &mut branch,
+            b"--sha" => &mut sha,
+            _ => return usage(),
+        };
+        // `shift 2` fails when the value is missing: usage.
+        if i + 1 >= args.len() {
+            return usage();
+        }
+        *slot = args[i + 1].clone();
+        i += 2;
+    }
+    match mode.as_slice() {
+        b"disarm" if !branch.is_empty() => {}
+        b"arm" if !branch.is_empty() && !sha.is_empty() => {}
+        _ => return usage(),
+    }
+
     let repo = match env("REPO") {
         Some(v) if !v.is_empty() => v,
         _ => {
@@ -133,49 +166,6 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
         }
     };
     let summary = env("GITHUB_STEP_SUMMARY").unwrap_or_default();
-
-    if args.is_empty() {
-        err(b"usage: site-pr-automerge disarm --branch <branch> | arm --branch <branch> --sha <sha>\n");
-        return 2;
-    }
-
-    let mode = &args[0];
-    let mut branch = Vec::new();
-    let mut sha = Vec::new();
-    let mut i = 1;
-    while i < args.len() {
-        if args[i] == b"--branch" {
-            i += 1;
-            if i < args.len() {
-                branch = args[i].clone();
-            }
-        } else if args[i] == b"--sha" {
-            i += 1;
-            if i < args.len() {
-                sha = args[i].clone();
-            }
-        }
-        i += 1;
-    }
-
-    match mode.as_slice() {
-        b"disarm" => {
-            if branch.is_empty() {
-                err(b"usage: site-pr-automerge disarm --branch <branch>\n");
-                return 2;
-            }
-        }
-        b"arm" => {
-            if branch.is_empty() || sha.is_empty() {
-                err(b"usage: site-pr-automerge arm --branch <branch> --sha <sha>\n");
-                return 2;
-            }
-        }
-        _ => {
-            err(b"usage: site-pr-automerge disarm --branch <branch> | arm --branch <branch> --sha <sha>\n");
-            return 2;
-        }
-    }
 
     if mode == b"disarm" {
         let number = match open_pr(&repo, &branch) {
