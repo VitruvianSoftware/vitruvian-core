@@ -543,4 +543,26 @@ extension MessageActionsModelTests {
         focus.paneSelection = "$t"
         XCTAssertEqual(focus.target(chatSelection: "$1")?.source, .thread)
     }
+
+    func testCopyMessageDetailsAndReportProblem() async throws {
+        let (_, actions, pasteboard, toasts) = try await start()
+
+        actions.copyMessageDetails("$1")
+        let copied = try XCTUnwrap(pasteboard.strings.last)
+        let data = try XCTUnwrap(copied.data(using: .utf8))
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(json["event_id"] as? String, "$1")
+        XCTAssertEqual(json["room_id"] as? String, "!a")
+        XCTAssertEqual(json["network"] as? String, "whatsapp")
+        XCTAssertEqual(json["type"] as? String, "m.room.message")
+        XCTAssertEqual(json["status"] as? String, "sent")
+        XCTAssertNotNil(json["ts"])
+        XCTAssertNotNil(json["status_reason"])
+        XCTAssertFalse(copied.contains("Message 1"), "message body must never be included in copied details")
+        XCTAssertFalse(copied.contains("Ann"), "sender display name must never be included in copied details")
+        XCTAssertEqual(toasts.all.last, "Message details copied")
+
+        actions.reportProblem(for: "$1")
+        XCTAssertEqual(actions.request, .reportProblem(roomID: "!a", eventID: "$1"))
+    }
 }

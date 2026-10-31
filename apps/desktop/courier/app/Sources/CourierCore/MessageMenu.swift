@@ -38,6 +38,10 @@ public struct MessageMenuItem: Equatable, Sendable, Identifiable {
         case action(MessageAction)
         /// Show Replies, on a thread's root: opens the thread pane.
         case showReplies
+        /// Copies a scrubbed JSON summary of the message's metadata to the clipboard.
+        case copyMessageDetails
+        /// Opens the Report a Problem sheet pre-filled with this message's room and event ID.
+        case reportProblem
         /// A line that only says something ("Sent at 14:02"), always greyed.
         case info
     }
@@ -72,7 +76,8 @@ public enum MessageMenu {
     public static func sections(for message: TimelineMessage,
                                 available: (actions: [MessageAction], unavailable: [Unavailable]),
                                 features: ChatFeatures, disappearsIn: String?,
-                                time: (Date) -> String) -> [[MessageMenuItem]] {
+                                time: (Date) -> String,
+                                includeDiagnostics: Bool = false) -> [[MessageMenuItem]] {
         let offered = Set(available.actions)
         let greyed = Dictionary(available.unavailable.map { ($0.action, $0.reason) }, uniquingKeysWith: { a, _ in a })
 
@@ -103,6 +108,14 @@ public enum MessageMenu {
             [item(.forward)].compactMap { $0 },
             [item(.showHistory)].compactMap { $0 },
         ]
+        if includeDiagnostics, !message.isNote, message.statusLine != .queued, !(message.statusLine?.isWaiting ?? false) {
+            sections.append([
+                MessageMenuItem(command: .copyMessageDetails, title: String(localized: "Copy Message Details"),
+                                key: nil, isEnabled: true, help: nil),
+                MessageMenuItem(command: .reportProblem, title: String(localized: "Report a Problem…"),
+                                key: nil, isEnabled: true, help: nil),
+            ])
+        }
         var info: [MessageMenuItem] = []
         // A message not yet sent has no time it was sent at.
         if message.statusLine?.hasGone ?? true {

@@ -137,13 +137,16 @@ enum MessageRowActions {
                 guard dispatcher?.lifecycle.isLocked != true else { return [] }
                 return MessageMenu.sections(for: message, available: conversation.availableActions(for: message),
                                             features: conversation.features, disappearsIn: conversation.disappearsIn(message),
-                                            time: { $0.formatted(date: .abbreviated, time: .shortened) })
+                                            time: { $0.formatted(date: .abbreviated, time: .shortened) },
+                                            includeDiagnostics: true)
             },
             perform: { command, id in
                 guard dispatcher?.lifecycle.isLocked != true else { return }
                 switch command {
                 case let .action(action): perform(action, id)
                 case .showReplies: conversation.openThread(id)
+                case .copyMessageDetails: messageActions.copyMessageDetails(id, from: source)
+                case .reportProblem: messageActions.reportProblem(for: id, from: source)
                 case .info: break
                 }
             },

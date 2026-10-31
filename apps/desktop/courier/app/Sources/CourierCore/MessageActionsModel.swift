@@ -36,6 +36,8 @@ public enum MessageActionRequest: Equatable, Sendable {
     case sendLater
     /// "Create quick reply from draft": a title, then `createQuickReply(title:)`.
     case quickReplyTitle
+    /// "Report a Problem", pre-filled with the active chat and/or message ID.
+    case reportProblem(roomID: String?, eventID: String?)
 }
 
 /// Where a message was acted on: the chat's timeline, or the thread pane (a thread's root is in both).
@@ -237,6 +239,63 @@ public final class MessageActionsModel: ObservableObject {
             await conversation.markMediaPlayed(eventID: messageID, roomID: message.roomID)
         case .replyPrivately:
             await conversation.replyPrivately(to: messageID)
+        }
+    }
+
+    /// Copies a scrubbed JSON summary (`event_id`, `room_id`, `network`, `type`, `ts`, `status`, `status_reason`,
+    /// `has_media`, `is_redacted`) of `messageID` to the clipboard and announces `"Message details copied"`.
+    public func copyMessageDetails(_ messageID: String, from source: MessageSource = .chat) {
+        guard !isLocked else { return }
+        guard let message = conversation.message(messageID, from: source) else { return }
+        let roomID = message.roomID.isEmpty ? (conversation.roomID ?? "") : message.roomID
+        let network = conversation.activeReplyNetwork ?? conversation.network
+        let type: String = switch message.kind {
+        case .poll: "org.matrix.msc3381.poll.start"
+        case .sticker: "m.sticker"
+        default: "m.room.message"
+        }
+        let status: String = switch message.statusLine {
+        case .queued: "queued"
+        case .waiting, .noAccount: "waiting"
+        case .sending: "pending"
+        case .failed, .mayHaveBeenSent, .notSent: "failed"
+        case .sent, .delivered, .seen, nil: "sent"
+        }
+        let rawReason: String = switch message.statusLine {
+        case let .failed(reason): reason
+        case .mayHaveBeenSent: StatusLine.mayHaveBeenSentReason
+        case .notSent(.appClosed): StatusLine.notSentReason
+        case .notSent(.notConnected): StatusLine.notConnectedReason
+        case .noAccount: StatusLine.noAccountReason
+        default: ""
+        }
+        let diagnostic = MessageDiagnostic(
+            eventID: message.id,
+            roomID: roomID,
+            network: network,
+            type: type,
+            ts: message.ts,
+            status: status,
+            statusReason: StderrExportFilter.scrubPath(rawReason),
+            hasMedia: message.kind.isMedia || !message.mediaPath.isEmpty,
+            isRedacted: message.kind == .deleted
+        )
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        guard let data = try? encoder.encode(diagnostic),
+              let json = String(data: data, encoding: .utf8) else { return }
+        pasteboard.setString(json)
+        onToast(String(localized: "Message details copied"))
+    }
+
+    /// Opens the Report a Problem sheet pre-filled with `contextRoomID` and `contextEventID`.
+    public func reportProblem(for messageID: String? = nil, from source: MessageSource = .chat) {
+        guard !isLocked else { return }
+        if let messageID, let message = conversation.message(messageID, from: source) {
+            let room = message.roomID.isEmpty ? conversation.roomID : message.roomID
+            request = .reportProblem(roomID: room, eventID: message.id)
+        } else {
+            request = .reportProblem(roomID: conversation.roomID, eventID: messageID)
         }
     }
 
