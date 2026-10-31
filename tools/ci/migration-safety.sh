@@ -33,7 +33,7 @@
 # Deliberate, post-soak destructive changes are done as *_contract migrations
 # (docs/engineering/application-development-principles.md#expandcontract-
 # migrations) and are EXEMPT here -- they're applied only via the explicit
-# contract phase (migrate-deploy.cjs --phase contract), never auto-applied
+# contract phase (migrate_deploy_bin --phase contract), never auto-applied
 # during a rollout, so gating them would be wrong.
 #
 # Usage:
@@ -106,32 +106,10 @@ SQL
 }
 
 # Layer-2 guard: the deploy wrapper's expand phase refuses to sweep in a pending
-# *_contract migration, keyed off the `contractsInStatus` parser in
-# migrate-deploy.cjs. Guard that parser here so a regression is caught in CI,
-# not on a live deploy (the parser is pure, so no database is needed).
-phase_guard_selftest() {
-  if node -e '
-    const { contractsInStatus } = require(process.argv[1]);
-    const eq = (n, g, w) => {
-      if (JSON.stringify(g) !== JSON.stringify(w)) {
-        console.error(`phase-guard parse FAILED: ${n} -> ${JSON.stringify(g)}`);
-        process.exit(1);
-      }
-    };
-    eq("contract-pending", contractsInStatus(
-      "Following migration have not yet been applied:\n20260701000000_add_col\n20260702000000_drop_ws_id_contract"),
-      ["20260702000000_drop_ws_id_contract"]);
-    eq("expand-only", contractsInStatus(
-      "Following migration have not yet been applied:\n20260701000000_add_col"), []);
-    eq("up-to-date", contractsInStatus("Database schema is up to date!"), []);
-    eq("substring-not-suffix", contractsInStatus(
-      "Following migration have not yet been applied:\n20260701000000_contract_terms"), []);
-  ' "$ROOT/apps/suites/tabula/api/prisma/migrate-deploy.cjs"; then
-    note "phase-guard parser self-test OK."
-  else
-    fail "phase-guard parser self-test FAILED -- migrate-deploy.cjs contractsInStatus() regressed; the expand phase may no longer refuse pending *_contract migrations."
-  fi
-}
+# *_contract migration. Its status parser is Rust now
+# (apps/suites/tabula/api/rs/src/lib.rs, contracts_in_status) and is guarded
+# by the cases in //apps/suites/tabula/api:tabula_api_tools_rs_test, which runs
+# whenever that code changes; this gate no longer needs Node to check it.
 
 # 2) Lint the migrations this branch adds/modifies, skipping deliberate contracts.
 lint_changed() {
@@ -167,7 +145,6 @@ EOF
 }
 
 selftest
-phase_guard_selftest
 if [ "$#" -ge 1 ] && [ -n "${1:-}" ]; then
   lint_changed "$1" || exit 1
 fi

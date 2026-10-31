@@ -134,7 +134,7 @@ pub fn run_generate_client(schema_path: &str, generated_dir: &Path) -> Result<us
 }
 
 // ============================================================================
-// 2. Migration Deployment & Expand/Contract Phase Guard (`migrate-deploy.cjs`)
+// 2. Migration Deployment & Expand/Contract Phase Guard (`migrate_deploy_bin`)
 // ============================================================================
 
 pub const DEFAULT_DEPLOY_SCHEMA: &str = "apps/suites/tabula/api/prisma/schema.prisma";
@@ -170,37 +170,50 @@ pub struct MigrateDeployConfig {
     pub phase: MigrationPhase,
 }
 
+/// Parse `--schema <path>` and `--phase <expand|contract>` (also `--flag=value`).
+///
+/// Mirrors the Node wrapper this replaced: the FIRST occurrence of a flag
+/// wins (it used `process.argv.indexOf`), unknown arguments are ignored, and a
+/// bad phase exits 2. A flag with no value is also exit 2 -- the old wrapper
+/// rejected a bare `--phase` the same way (it read `undefined`), and a bare
+/// `--schema` crashed it; failing fast with a message is the safe equivalent.
 pub fn parse_migrate_deploy_args(args: &[String]) -> Result<MigrateDeployConfig, (i32, String)> {
-    let mut schema = DEFAULT_DEPLOY_SCHEMA.to_string();
-    let mut phase_str = "expand".to_string();
+    let mut schema: Option<String> = None;
+    let mut phase_str: Option<String> = None;
 
     let mut i = 0;
     while i < args.len() {
-        match args[i].as_str() {
-            "--schema" => {
-                if let Some(val) = args.get(i + 1) {
-                    schema = val.clone();
+        let arg = args[i].as_str();
+        let (flag, inline) = match arg.split_once('=') {
+            Some((f, v)) if f == "--schema" || f == "--phase" => (f, Some(v.to_string())),
+            _ => (arg, None),
+        };
+        if flag == "--schema" || flag == "--phase" {
+            let value = match inline {
+                Some(v) => v,
+                None => {
                     i += 1;
+                    match args.get(i) {
+                        Some(v) => v.clone(),
+                        None => return Err((2, format!("migrate-deploy: {flag} needs a value"))),
+                    }
                 }
-            }
-            "--phase" => {
-                if let Some(val) = args.get(i + 1) {
-                    phase_str = val.clone();
-                    i += 1;
-                }
-            }
-            other => {
-                if let Some(v) = other.strip_prefix("--schema=") {
-                    schema = v.to_string();
-                } else if let Some(v) = other.strip_prefix("--phase=") {
-                    phase_str = v.to_string();
-                }
+            };
+            let slot = if flag == "--schema" {
+                &mut schema
+            } else {
+                &mut phase_str
+            };
+            if slot.is_none() {
+                *slot = Some(value);
             }
         }
         i += 1;
     }
 
-    let phase = MigrationPhase::parse(&phase_str).map_err(|msg| (2, msg))?;
+    let schema = schema.unwrap_or_else(|| DEFAULT_DEPLOY_SCHEMA.to_string());
+    let phase =
+        MigrationPhase::parse(phase_str.as_deref().unwrap_or("expand")).map_err(|msg| (2, msg))?;
     Ok(MigrateDeployConfig { schema, phase })
 }
 
@@ -330,6 +343,78 @@ docs/engineering/application-development-principles.md#expandcontract-migrations
     }
 
     Ok(())
+}
+
+/// The whole `migrate_deploy_bin` flow, with the Prisma CLI injected so tests
+/// can stand in a fake one. Returns the process exit code:
+///   2  bad arguments;
+///   3  EXPAND phase refused (a pending `*_contract` migration, or a contract
+///      exists on disk and `migrate status` could not be read: fail closed);
+///   otherwise `prisma migrate deploy`'s own exit code (1 if it was killed or
+///   could not be started).
+///
+/// `migrate status` is consulted only in the expand phase AND only when a
+/// `*_contract` directory exists on disk, so a normal deploy pays nothing extra.
+/// Concurrency and retries are Prisma's: `migrate deploy` takes its own
+/// Postgres advisory lock, and this wrapper adds no retry (a failed migration
+/// must stop the rollout, not be re-attempted).
+pub fn run_migrate_deploy(
+    args: &[String],
+    ambient: &BTreeMap<String, String>,
+    cwd: &Path,
+    prisma_cli: &Path,
+) -> i32 {
+    let cfg = match parse_migrate_deploy_args(args) {
+        Ok(c) => c,
+        Err((code, msg)) => {
+            eprintln!("{msg}");
+            return code;
+        }
+    };
+
+    let env = prepare_migrate_env(ambient, cwd);
+    let schema_arg = format!("--schema={}", cfg.schema);
+    let config_arg = format!(
+        "--config={}",
+        prisma_config_path_for_schema(&cfg.schema).display()
+    );
+
+    if cfg.phase == MigrationPhase::Expand && !contract_dirs_on_disk(&cfg.schema).is_empty() {
+        let combined = match Command::new(prisma_cli)
+            .args(["migrate", "status", &schema_arg, &config_arg])
+            .env_clear()
+            .envs(&env)
+            .output()
+        {
+            Ok(o) => format!(
+                "{}{}",
+                String::from_utf8_lossy(&o.stdout),
+                String::from_utf8_lossy(&o.stderr)
+            ),
+            // Unreadable status: verify_expand_phase_status fails closed on it.
+            Err(e) => format!("could not start {}: {e}", prisma_cli.display()),
+        };
+        if let Err((code, msg)) = verify_expand_phase_status(&combined) {
+            eprintln!("{msg}");
+            return code;
+        }
+    }
+
+    match Command::new(prisma_cli)
+        .args(["migrate", "deploy", &schema_arg, &config_arg])
+        .env_clear()
+        .envs(&env)
+        .status()
+    {
+        Ok(s) => s.code().unwrap_or(1),
+        Err(e) => {
+            eprintln!(
+                "migrate-deploy: could not start the Prisma CLI at {}: {e}",
+                prisma_cli.display()
+            );
+            1
+        }
+    }
 }
 
 // ============================================================================
@@ -735,6 +820,239 @@ Following migration have not yet been applied:
             env.get("PRISMA_SCHEMA_ENGINE_BINARY").map(String::as_str),
             Some("/workspace/api/prisma/schema-engine")
         );
+    }
+
+    #[test]
+    fn contracts_in_status_matches_the_migration_safety_cases() {
+        // The four cases tools/ci/migration-safety.sh used to run against the
+        // Node wrapper's parser, kept here next to the parser they guard.
+        assert_eq!(
+            contracts_in_status(
+                "Following migration have not yet been applied:\n20260701000000_add_col\n20260702000000_drop_ws_id_contract"
+            ),
+            vec!["20260702000000_drop_ws_id_contract".to_string()]
+        );
+        assert!(contracts_in_status(
+            "Following migration have not yet been applied:\n20260701000000_add_col"
+        )
+        .is_empty());
+        assert!(contracts_in_status("Database schema is up to date!").is_empty());
+        assert!(contracts_in_status(
+            "Following migration have not yet been applied:\n20260701000000_contract_terms"
+        )
+        .is_empty());
+        // Applied contracts listed BEFORE the marker are not pending.
+        assert!(contracts_in_status(
+            "Following migrations have already been applied:\n20260601000000_drop_contract\nFollowing migration have NOT YET BEEN APPLIED:\n20260701000000_add_col"
+        )
+        .is_empty());
+    }
+
+    #[test]
+    fn parse_migrate_deploy_args_matches_the_node_wrapper() {
+        let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        // Defaults.
+        let cfg = parse_migrate_deploy_args(&[]).unwrap();
+        assert_eq!(cfg.schema, DEFAULT_DEPLOY_SCHEMA);
+        assert_eq!(cfg.phase, MigrationPhase::Expand);
+        // First occurrence wins (the wrapper used argv.indexOf).
+        let cfg = parse_migrate_deploy_args(&s(&[
+            "--phase",
+            "contract",
+            "--phase",
+            "expand",
+            "--schema",
+            "a/s.prisma",
+            "--schema",
+            "b/s.prisma",
+        ]))
+        .unwrap();
+        assert_eq!(cfg.phase, MigrationPhase::Contract);
+        assert_eq!(cfg.schema, "a/s.prisma");
+        // `--flag=value` and unknown arguments.
+        let cfg = parse_migrate_deploy_args(&s(&[
+            "--verbose",
+            "--phase=contract",
+            "--schema=x/y.prisma",
+        ]))
+        .unwrap();
+        assert_eq!(cfg.phase, MigrationPhase::Contract);
+        assert_eq!(cfg.schema, "x/y.prisma");
+        // A flag with no value, or a bad phase, is a usage error (exit 2).
+        assert_eq!(
+            parse_migrate_deploy_args(&s(&["--phase"])).unwrap_err().0,
+            2
+        );
+        assert_eq!(
+            parse_migrate_deploy_args(&s(&["--schema"])).unwrap_err().0,
+            2
+        );
+        let bad = parse_migrate_deploy_args(&s(&["--phase", "Expand"])).unwrap_err();
+        assert_eq!(bad.0, 2);
+        assert_eq!(
+            bad.1,
+            "migrate-deploy: --phase must be \"expand\" or \"contract\" (got \"Expand\")"
+        );
+    }
+
+    /// A stand-in Prisma CLI: records each invocation (args + two env vars) to
+    /// `calls.log`, prints `status.txt` for `migrate status`, and exits with
+    /// the code in `deploy_exit` for `migrate deploy`.
+    struct FakePrisma {
+        root: PathBuf,
+        cli: PathBuf,
+        schema: String,
+    }
+
+    impl FakePrisma {
+        fn new(contract_on_disk: bool, status: Option<&str>, deploy_exit: i32) -> Self {
+            use std::os::unix::fs::PermissionsExt;
+            let root = mk_tmp();
+            let migrations = root.join("prisma").join("migrations");
+            fs::create_dir_all(migrations.join("20260101000000_init")).unwrap();
+            if contract_on_disk {
+                fs::create_dir_all(migrations.join("20260701000000_drop_col_contract")).unwrap();
+            }
+            if let Some(st) = status {
+                fs::write(root.join("status.txt"), st).unwrap();
+            }
+            fs::write(root.join("deploy_exit"), deploy_exit.to_string()).unwrap();
+            let cli = root.join("prisma-cli");
+            fs::write(
+                &cli,
+                format!(
+                    "#!/bin/sh\n\
+                     d='{}'\n\
+                     echo \"$* | hide=$PRISMA_HIDE_UPDATE_MESSAGE | engine=$PRISMA_SCHEMA_ENGINE_BINARY\" >> \"$d/calls.log\"\n\
+                     if [ \"$2\" = status ]; then\n\
+                       [ -f \"$d/status.txt\" ] || {{ echo 'Error: P1001 unreachable' >&2; exit 1; }}\n\
+                       cat \"$d/status.txt\"; exit 1\n\
+                     fi\n\
+                     exit \"$(cat \"$d/deploy_exit\")\"\n",
+                    root.display()
+                ),
+            )
+            .unwrap();
+            fs::set_permissions(&cli, fs::Permissions::from_mode(0o755)).unwrap();
+            let schema = root
+                .join("prisma")
+                .join("schema.prisma")
+                .display()
+                .to_string();
+            Self { root, cli, schema }
+        }
+
+        fn run(&self, phase: &str) -> i32 {
+            let mut ambient = BTreeMap::new();
+            ambient.insert("PATH".to_string(), "/usr/bin:/bin".to_string());
+            ambient.insert(
+                "PRISMA_SCHEMA_ENGINE_BINARY".to_string(),
+                "engines/schema-engine".to_string(),
+            );
+            let args = vec![
+                "--schema".to_string(),
+                self.schema.clone(),
+                "--phase".to_string(),
+                phase.to_string(),
+            ];
+            run_migrate_deploy(&args, &ambient, Path::new("/ws"), &self.cli)
+        }
+
+        fn calls(&self) -> Vec<String> {
+            fs::read_to_string(self.root.join("calls.log"))
+                .unwrap_or_default()
+                .lines()
+                .map(str::to_string)
+                .collect()
+        }
+    }
+
+    impl Drop for FakePrisma {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.root);
+        }
+    }
+
+    #[test]
+    fn run_migrate_deploy_without_contracts_skips_status_and_passes_the_exit_code_through() {
+        let f = FakePrisma::new(false, None, 7);
+        assert_eq!(f.run("expand"), 7);
+        let calls = f.calls();
+        assert_eq!(calls.len(), 1, "{calls:?}");
+        let config = Path::new(&f.schema)
+            .parent()
+            .unwrap()
+            .join("..")
+            .join("prisma.config.ts");
+        assert_eq!(
+            calls[0],
+            format!(
+                "migrate deploy --schema={} --config={} | hide=1 | engine=/ws/engines/schema-engine",
+                f.schema,
+                config.display()
+            )
+        );
+    }
+
+    #[test]
+    fn run_migrate_deploy_expand_refuses_a_pending_contract() {
+        let f = FakePrisma::new(
+            true,
+            Some("Following migration have not yet been applied:\n20260701000000_drop_col_contract\n"),
+            0,
+        );
+        assert_eq!(f.run("expand"), 3);
+        let calls = f.calls();
+        assert_eq!(calls.len(), 1, "deploy must not run: {calls:?}");
+        assert!(calls[0].starts_with("migrate status "), "{calls:?}");
+    }
+
+    #[test]
+    fn run_migrate_deploy_expand_proceeds_when_the_contract_is_already_applied() {
+        let f = FakePrisma::new(true, Some("Database schema is up to date!\n"), 0);
+        assert_eq!(f.run("expand"), 0);
+        let calls = f.calls();
+        assert_eq!(calls.len(), 2, "{calls:?}");
+        assert!(calls[0].starts_with("migrate status "));
+        assert!(calls[1].starts_with("migrate deploy "));
+    }
+
+    #[test]
+    fn run_migrate_deploy_expand_fails_closed_when_status_is_unreadable() {
+        let f = FakePrisma::new(true, None, 0);
+        assert_eq!(f.run("expand"), 3);
+        assert_eq!(f.calls().len(), 1, "deploy must not run");
+    }
+
+    #[test]
+    fn run_migrate_deploy_contract_phase_applies_everything_without_status() {
+        let f = FakePrisma::new(
+            true,
+            Some("Following migration have not yet been applied:\n20260701000000_drop_col_contract\n"),
+            0,
+        );
+        assert_eq!(f.run("contract"), 0);
+        let calls = f.calls();
+        assert_eq!(calls.len(), 1, "{calls:?}");
+        assert!(calls[0].starts_with("migrate deploy "));
+    }
+
+    #[test]
+    fn run_migrate_deploy_reports_a_missing_cli_and_bad_args() {
+        let f = FakePrisma::new(false, None, 0);
+        let gone = f.root.join("no-such-cli");
+        let ambient = BTreeMap::new();
+        let args = vec!["--schema".to_string(), f.schema.clone()];
+        assert_eq!(
+            run_migrate_deploy(&args, &ambient, Path::new("/ws"), &gone),
+            1
+        );
+        let bad = vec!["--phase".to_string(), "nope".to_string()];
+        assert_eq!(
+            run_migrate_deploy(&bad, &ambient, Path::new("/ws"), &f.cli),
+            2
+        );
+        assert!(f.calls().is_empty());
     }
 
     #[test]
