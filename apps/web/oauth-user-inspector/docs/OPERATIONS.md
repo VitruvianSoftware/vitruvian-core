@@ -182,7 +182,7 @@ Zone is pinned by `cloudflareZoneId: a346c14c429c7356c0e4e3a9b623a104`
 the table at the [top](#environments--projects).
 
 **Domain ownership** is self-verified per environment in CI
-(`tools/ci/ensure-site-verification.sh`, invoked from `_deploy-cloud-run.yaml`),
+(`//tools/ci:ensure_site_verification`, invoked from `_deploy-cloud-run.yaml`),
 because Site Verification ownership is per-caller — each env's deploy SA verifies
 its own domain. The IAM anchor that lets each deploy SA read the shared
 `CLOUDFLARE_API_TOKEN` is the dev-only block in the identity stack
@@ -337,5 +337,5 @@ app stack accepts an `imageDigest` config key and a real `CLOUDFLARE_API_TOKEN`.
 | Reusable blue-green deploy | `.github/workflows/_deploy-cloud-run.yaml` |
 | Reusable Zitadel apply | `.github/workflows/_zitadel-apps-apply.yaml` |
 | CI secret sync tool | `tools/sync-env-secrets/` |
-| Site-verification helper | `tools/ci/ensure-site-verification.sh` |
+| Site-verification helper | `//tools/ci:ensure_site_verification` |
 | Design spec (stage 5) | `docs/superpowers/specs/2026-07-10-oss-application-stage-design.md` |

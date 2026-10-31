@@ -18,10 +18,11 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! dependabot-lock-rebase.sh — rebase every open Dependabot npm PR onto the
+//! //tools/ci:dependabot_lock_rebase — rebase every open Dependabot npm PR onto the
 //! just-merged root lock file, re-resolving it hermetically.
 
-use shell_compat::{capture, cat, env_or, env_or_empty, err, out, status, subst};
+// Every capture here is a `$(...)`: stdout captured, stderr to the log.
+use shell_compat::{capture_stdout as capture, cat, env_or, env_or_empty, err, out, status, subst};
 use std::process::Command;
 
 pub fn run(_args: &[Vec<u8>]) -> i32 {
@@ -102,12 +103,10 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
         if line.is_empty() {
             continue;
         }
-        let fields: Vec<&[u8]> = line.splitn(2, |&c| c == b'\t').collect();
-        if fields.len() < 2 {
-            continue;
-        }
-        let num = fields[0];
-        let branch = fields[1];
+        // `IFS=$'\t' read -r num branch`
+        let fields = shell_compat::read_fields(&line, b"\t", 2);
+        let num: &[u8] = &fields[0];
+        let branch: &[u8] = &fields[1];
         if num.is_empty() {
             continue;
         }

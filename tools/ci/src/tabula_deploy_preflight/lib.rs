@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! tabula-deploy-preflight.sh — decide whether an env's deploy can be SKIPPED
+//! //tools/ci:tabula_deploy_preflight — decide whether an env's deploy can be SKIPPED
 //! because the live service already serves the exact desired state.
 
 use shell_compat::{capture, cat, env, env_or, grep_q_line_start, indent, out, subst};
@@ -128,14 +128,13 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
     let r = capture(77, &mut cmd);
     let desired = subst(r.stdout);
     if r.status != 0 || desired.is_empty() {
-        if !r.stderr.is_empty() {
-            shell_compat::err(&cat(&[
-                b"preflight[",
-                &deploy_env,
-                b"]: could not compute the desired revision name:\n",
-            ]));
-            shell_compat::err(&indent(&r.stderr));
-        }
+        // The script prints the header even when the tool said nothing.
+        shell_compat::err(&cat(&[
+            b"preflight[",
+            &deploy_env,
+            b"]: could not compute the desired revision name:\n",
+        ]));
+        shell_compat::err(&indent(&r.stderr));
         return deploy(
             &deploy_env,
             &cat(&[
@@ -147,15 +146,9 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
     }
 
     // --- live: what is serving now ---
-    let gcloud_parts = shell_compat::ifs_split(&gcloud_bin);
-    if gcloud_parts.is_empty() {
-        return deploy(&deploy_env, b"GCLOUD_BIN is empty");
-    }
+    // "${GCLOUD_BIN}" is quoted in the script: one program, never split.
     let svc = cat(&[&service_name, b"-", &deploy_env]);
-    let mut gcmd = Command::new(shell_compat::os(&gcloud_parts[0]));
-    for p in &gcloud_parts[1..] {
-        gcmd.arg(shell_compat::os(p));
-    }
+    let mut gcmd = Command::new(shell_compat::os(&gcloud_bin));
     gcmd.arg("run")
         .arg("services")
         .arg("describe")
@@ -168,14 +161,12 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
     let gr = capture(91, &mut gcmd);
 
     if gr.status != 0 || grep_q_line_start(&gr.stderr, b"ERROR:") {
-        if !gr.stderr.is_empty() {
-            shell_compat::err(&cat(&[
-                b"preflight[",
-                &deploy_env,
-                b"]: could not read the live revision:\n",
-            ]));
-            shell_compat::err(&indent(&gr.stderr));
-        }
+        shell_compat::err(&cat(&[
+            b"preflight[",
+            &deploy_env,
+            b"]: could not read the live revision:\n",
+        ]));
+        shell_compat::err(&indent(&gr.stderr));
         return deploy(
             &deploy_env,
             &cat(&[
