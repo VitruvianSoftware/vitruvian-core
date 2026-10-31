@@ -37,15 +37,16 @@ fn die(msg: &[u8]) -> Exit {
     Exit(1)
 }
 
-/// `IFS=$'\t' read -r ACCOUNT PROJECT < <(bash resolver map dir) || true`.
-fn resolve_identity(resolver: &[u8], map: &[u8], dir: &[u8]) -> (Vec<u8>, Vec<u8>) {
-    let mut c = Command::new("bash");
-    c.arg(sh::os(resolver)).arg(sh::os(map)).arg(sh::os(dir));
-    let ran = sh::capture_stdout(79, &mut c);
-    let mut f = sh::read_fields(&sh::first_line(&ran.stdout), b"\t", 2);
-    let project = f.pop().unwrap_or_default();
-    let account = f.pop().unwrap_or_default();
-    (account, project)
+/// The (account, project) the identity map lists for `dir`, exactly as
+/// //tools/pulumi:resolve-identity prints them; both empty when it is not
+/// listed (or the map cannot be read).
+fn resolve_identity(map: &[u8], dir: &[u8]) -> (Vec<u8>, Vec<u8>) {
+    pulumi_tools::resolve_identity::resolve(
+        &String::from_utf8_lossy(map),
+        &String::from_utf8_lossy(dir),
+    )
+    .map(|(a, p)| (a.into_bytes(), p.into_bytes()))
+    .unwrap_or_default()
 }
 
 fn workspace() -> Vec<u8> {
@@ -248,20 +249,10 @@ fn body(args: &[Vec<u8>]) -> Result<(), Exit> {
         "GCP_IDENTITY_MAP",
         &sh::cat(&[&ws, b"/infrastructure/gcp-identities.tsv"]),
     );
-    let resolver = sh::env_or(
-        "GCP_IDENTITY_RESOLVER",
-        &sh::cat(&[&ws, b"/tools/pulumi/resolve_identity.sh"]),
-    );
     if !sh::is_file(&id_map) {
         return Err(die(&sh::cat(&[b"identity map not found: ", &id_map])));
     }
-    if !sh::is_file(&resolver) {
-        return Err(die(&sh::cat(&[
-            b"identity resolver not found: ",
-            &resolver,
-        ])));
-    }
-    let (account, project) = resolve_identity(&resolver, &id_map, &cred_dir);
+    let (account, project) = resolve_identity(&id_map, &cred_dir);
     let map_name = sh::basename(&id_map);
     if account.is_empty() {
         return Err(die(&sh::cat(&[
@@ -364,6 +355,27 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn resolve_identity_reads_the_map_in_process() {
+        let base = std::env::var("TEST_TMPDIR").unwrap_or_else(|_| "/tmp".into());
+        let map = format!("{}/ids-{}.tsv", base, std::process::id());
+        std::fs::write(
+            &map,
+            "# comment\ntabula/infra/build  sa@p.iam.gserviceaccount.com  prj-p  purpose text\n-  x@y  -  ref\n",
+        )
+        .unwrap();
+        assert_eq!(
+            resolve_identity(map.as_bytes(), b"tabula/infra/build"),
+            (b"sa@p.iam.gserviceaccount.com".to_vec(), b"prj-p".to_vec())
+        );
+        assert_eq!(resolve_identity(map.as_bytes(), b"other"), (vec![], vec![]));
+        assert_eq!(resolve_identity(map.as_bytes(), b"-"), (vec![], vec![]));
+        assert_eq!(
+            resolve_identity(b"/nonexistent/ids.tsv", b"x"),
+            (vec![], vec![])
+        );
+    }
 
     #[test]
     fn indents_across_chunks() {

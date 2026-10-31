@@ -207,7 +207,7 @@ short to be a credential loses to the profile's secret instead. Otherwise the
 real token is never fetched and every call 401s against a credential the report
 called fine.
 
-`CLOUDSDK_AUTH_ACCESS_TOKEN` gets cleared outright: `tools/pulumi/pulumi_cmd.sh`
+`CLOUDSDK_AUTH_ACCESS_TOKEN` gets cleared outright: `//tools/pulumi:pulumi-cmd`
 treats a non-empty one as *"ambient credentials present"* and deliberately skips
 its `gcp-identities.tsv` pin, so a leftover dummy would send every
 `bazel run //…:preview` at GCP with a token that cannot work.
@@ -293,7 +293,7 @@ whole session.
 `GOOGLE_APPLICATION_CREDENTIALS` points at the key file rather than exporting a
 minted access token: a token expires in an hour and a Claude session outlives
 that, whereas the key file lets every Google client refresh on its own — and it
-is exactly the "ambient credentials present" case `pulumi_cmd.sh` already
+is exactly the "ambient credentials present" case `pulumi-cmd` already
 documents, so `bazel run //…:preview` works unchanged.
 
 `~/.bashrc` is the carrier because every Bash tool call starts a fresh shell from

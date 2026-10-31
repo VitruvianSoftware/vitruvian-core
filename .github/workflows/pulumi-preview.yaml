@@ -35,7 +35,7 @@ name: Pulumi Preview
 #     repository-scoped (assertion.repository == this repo), so pull_request
 #     refs authenticate fine; fork PRs never see the vars/secrets at all.
 #   * The bazel-run wrappers (//infrastructure/pulumi/<p>:preview) are NOT used
-#     here: tools/pulumi/pulumi_cmd.sh pins those projects to a HUMAN gcloud
+#     here: //tools/pulumi:pulumi-cmd pins those projects to a HUMAN gcloud
 #     identity (infrastructure/gcp-identities.tsv) and hard-errors without it.
 #     Raw `pulumi` CLI + WIF is the established CI convention (both deploy
 #     workflows already do exactly this).

@@ -45,20 +45,20 @@ pub fn resolve(map_path: &str, dir: &str) -> Option<(String, String)> {
     None
 }
 
-/// Entry point matching resolve_identity.sh: exit 0 on all normal paths;
+/// Entry point (`resolve-identity <map> <infra-dir>`): exit 0 on all normal paths;
 /// non-zero only for missing/empty arguments.
 pub fn run(args: &[String]) -> i32 {
     let map = match args.first().filter(|s| !s.is_empty()) {
         Some(s) => s.as_str(),
         None => {
-            eprintln!("usage: resolve_identity.sh <map_file> <infra_dir>");
+            eprintln!("usage: resolve-identity <map_file> <infra_dir>");
             return 1;
         }
     };
     let dir = match args.get(1).filter(|s| !s.is_empty()) {
         Some(s) => s.as_str(),
         None => {
-            eprintln!("usage: resolve_identity.sh <map_file> <infra_dir>");
+            eprintln!("usage: resolve-identity <map_file> <infra_dir>");
             return 1;
         }
     };

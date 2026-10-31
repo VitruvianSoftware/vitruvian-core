@@ -18,37 +18,32 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! pulumi_setup.sh in Rust: guided Pulumi bootstrap for a project directory.
+//! pulumi-setup: guided Pulumi bootstrap for a project directory.
 
 use std::io::Write;
 use std::process::{Command, Stdio};
 
-fn command_on_path(name: &str) -> bool {
-    let path_var = std::env::var("PATH").unwrap_or_default();
-    for dir in path_var.split(':') {
-        let p = std::path::PathBuf::from(dir).join(name);
-        if let Ok(meta) = std::fs::metadata(&p) {
-            use std::os::unix::fs::PermissionsExt;
-            if meta.is_file() && meta.permissions().mode() & 0o111 != 0 {
-                return true;
-            }
-        }
-    }
-    false
-}
+use crate::tools::{command_on_path, exit_code};
 
-fn capture_stdout_ok(program: &str, args: &[&str]) -> Option<String> {
+/// `$(program args 2>/dev/null)`: stdout whatever the exit status, trailing
+/// newlines stripped (the shell adds `|| true` where a failure must not stop
+/// it; `$(...)` keeps what was printed either way).
+fn capture(program: &str, args: &[&str]) -> String {
     Command::new(program)
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim_end().to_string())
+        .map(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .trim_end_matches('\n')
+                .to_string()
+        })
+        .unwrap_or_default()
 }
 
+/// `program args >/dev/null 2>&1` as a condition.
 fn run_ok(program: &str, args: &[&str]) -> bool {
     Command::new(program)
         .args(args)
@@ -59,15 +54,15 @@ fn run_ok(program: &str, args: &[&str]) -> bool {
         .unwrap_or(false)
 }
 
-fn run_inherit(program: &str, args: &[&str]) -> bool {
-    Command::new(program)
-        .args(args)
-        .stdin(Stdio::inherit())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+/// `program args` with output shown: its exit status as `$?` reports it
+/// (127 when it cannot be started). Under the shell's `set -e` a non-zero
+/// status from a bare command ends the script with that same status.
+fn run_status(program: &str, args: &[&str], stderr: Stdio) -> i32 {
+    match Command::new(program).args(args).stderr(stderr).status() {
+        Ok(st) => exit_code(st),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => 127,
+        Err(_) => 126,
+    }
 }
 
 fn stdin_is_tty() -> bool {
@@ -142,32 +137,35 @@ pub fn run(args: &[String]) -> i32 {
     // --- Make the standalone module build-ready ------------------------------
     std::env::set_var("GOWORK", "off");
     println!("Resolving Go dependencies (go mod tidy)\u{2026}");
-    if !run_inherit("go", &["mod", "tidy"]) {
-        return 1;
+    let rc = run_status("go", &["mod", "tidy"], Stdio::inherit());
+    if rc != 0 {
+        return rc;
     }
     println!("\u{2713} go.sum is up to date.");
 
     // --- Login (idempotent) --------------------------------------------------
     if run_ok("pulumi", &["whoami"]) {
-        let who = capture_stdout_ok("pulumi", &["whoami"]).unwrap_or_default();
+        let who = capture("pulumi", &["whoami"]);
         println!("\u{2713} Already logged in to Pulumi as '{}'.", who);
     } else {
         println!(
             "Logging in to Pulumi (opens a browser, or use a PULUMI_ACCESS_TOKEN / 'pulumi login --local')\u{2026}"
         );
-        if !run_inherit("pulumi", &["login"]) {
-            return 1;
+        let rc = run_status("pulumi", &["login"], Stdio::inherit());
+        if rc != 0 {
+            return rc;
         }
     }
 
     // --- Stack select / create -----------------------------------------------
     if run_ok("pulumi", &["stack", "--show-name"]) {
-        let name = capture_stdout_ok("pulumi", &["stack", "--show-name"]).unwrap_or_default();
+        let name = capture("pulumi", &["stack", "--show-name"]);
         println!("\u{2713} Stack already selected: {}.", name);
     } else {
         println!();
         println!("Available stacks:");
-        if !run_inherit("pulumi", &["stack", "ls"]) {
+        // `pulumi stack ls 2>/dev/null || echo "  (none yet)"`
+        if run_status("pulumi", &["stack", "ls"], Stdio::null()) != 0 {
             println!("  (none yet)");
         }
         let stack = prompt_read("Stack to select or create (e.g. dev): ").unwrap_or_default();
@@ -179,8 +177,9 @@ pub fn run(args: &[String]) -> i32 {
         if run_ok("pulumi", &["stack", "select", &stack]) {
             println!("\u{2713} Selected existing stack '{}'.", stack);
         } else {
-            if !run_inherit("pulumi", &["stack", "init", &stack]) {
-                return 1;
+            let rc = run_status("pulumi", &["stack", "init", &stack], Stdio::inherit());
+            if rc != 0 {
+                return rc;
             }
             println!("\u{2713} Created and selected stack '{}'.", stack);
         }
@@ -230,7 +229,7 @@ pub fn run(args: &[String]) -> i32 {
             } else {
                 "false"
             };
-            if run_ok(
+            if run_status(
                 "gh",
                 &[
                     "variable",
@@ -239,7 +238,9 @@ pub fn run(args: &[String]) -> i32 {
                     "--body",
                     preview_val,
                 ],
-            ) {
+                Stdio::inherit(),
+            ) == 0
+            {
                 println!(
                     "\u{2713} REPO_CONFIG_PREVIEW_ENABLED={} ({}).",
                     preview_val,
@@ -263,7 +264,7 @@ pub fn run(args: &[String]) -> i32 {
             } else {
                 "false"
             };
-            if run_ok(
+            if run_status(
                 "gh",
                 &[
                     "variable",
@@ -272,7 +273,9 @@ pub fn run(args: &[String]) -> i32 {
                     "--body",
                     apply_val,
                 ],
-            ) {
+                Stdio::inherit(),
+            ) == 0
+            {
                 println!(
                     "\u{2713} REPO_CONFIG_AUTO_APPLY={} ({}).",
                     apply_val,
@@ -287,15 +290,15 @@ pub fn run(args: &[String]) -> i32 {
             }
 
             // Org-cred check (best-effort)
-            let org_owner = capture_stdout_ok(
+            // OWNER="$(gh repo view ... 2>/dev/null || true)"; [ -n "$OWNER" ]
+            let owner = capture(
                 "gh",
                 &["repo", "view", "--json", "owner", "--jq", ".owner.login"],
             );
-            if let Some(ref o) = org_owner {
-                let org_vars =
-                    capture_stdout_ok("gh", &["variable", "list", "--org", o]).unwrap_or_default();
-                let org_secrets =
-                    capture_stdout_ok("gh", &["secret", "list", "--org", o]).unwrap_or_default();
+            if !owner.is_empty() {
+                let o = owner.as_str();
+                let org_vars = capture("gh", &["variable", "list", "--org", o]);
+                let org_secrets = capture("gh", &["secret", "list", "--org", o]);
                 if !org_vars.contains("PULUMI_APP_ID")
                     || !org_secrets.contains("APP_PRIVATE_KEY")
                     || !org_secrets.contains("PULUMI_ACCESS_TOKEN")

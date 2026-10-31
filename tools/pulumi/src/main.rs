@@ -26,7 +26,7 @@ fn main() {
     let argv: Vec<String> = std::env::args_os()
         .map(|a| a.to_string_lossy().into_owned())
         .collect();
-    let code = rotate_access_token::run(&argv);
+    let code = pulumi_tools::run(&argv);
     let _ = std::io::stdout().flush();
     std::process::exit(code);
 }
