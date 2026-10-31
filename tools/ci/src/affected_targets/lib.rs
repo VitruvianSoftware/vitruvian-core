@@ -34,13 +34,39 @@ fn is_executable_file(p: &[u8]) -> bool {
         .unwrap_or(false)
 }
 
+/// Set whenever a `grep` could not run or exited with an error (status 2+, as
+/// opposed to 0 = matched, 1 = no match). Classification that depends on grep
+/// must then treat the answer as unknown, which means "sweep everything".
+static GREP_FAILED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+fn note_grep_status(code: i32) {
+    if code != 0 && code != 1 {
+        GREP_FAILED.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+/// The planner's stderr capture; removed before the process ends, however it ends.
+static PLAN_ERR: std::sync::Mutex<Option<Vec<u8>>> = std::sync::Mutex::new(None);
+
+fn remove_plan_err() {
+    if let Some(p) = PLAN_ERR.lock().unwrap().take() {
+        let _ = std::fs::remove_file(shell_compat::path(&p));
+    }
+}
+
+fn grep_failed() -> bool {
+    GREP_FAILED.load(std::sync::atomic::Ordering::SeqCst)
+}
+
 fn grep_ere(text: &[u8], pattern: &[u8]) -> bool {
     if pattern.is_empty() || text.is_empty() {
         return false;
     }
     let mut cmd = Command::new("grep");
     cmd.arg("-E").arg(os(pattern));
-    shell_compat::status_with_input(0, &mut cmd, text, true) == 0
+    let code = shell_compat::status_with_input(0, &mut cmd, text, true);
+    note_grep_status(code);
+    code == 0
 }
 
 fn grep_ere_invert(text: &[u8], pattern: &[u8]) -> Vec<u8> {
@@ -60,11 +86,20 @@ fn grep_ere_invert(text: &[u8], pattern: &[u8]) -> Vec<u8> {
                 let _ = stdin.write_all(text);
             }
             match child.wait_with_output() {
-                Ok(o) => subst(o.stdout),
-                Err(_) => Vec::new(),
+                Ok(o) => {
+                    note_grep_status(o.status.code().unwrap_or(2));
+                    subst(o.stdout)
+                }
+                Err(_) => {
+                    note_grep_status(2);
+                    Vec::new()
+                }
             }
         }
-        Err(_) => Vec::new(),
+        Err(_) => {
+            note_grep_status(2);
+            Vec::new()
+        }
     }
 }
 
@@ -87,11 +122,20 @@ fn grep_evc(text: &[u8], pattern: &[u8]) -> Vec<u8> {
                 let _ = stdin.write_all(text);
             }
             match child.wait_with_output() {
-                Ok(o) => subst(o.stdout),
-                Err(_) => b"0".to_vec(),
+                Ok(o) => {
+                    note_grep_status(o.status.code().unwrap_or(2));
+                    subst(o.stdout)
+                }
+                Err(_) => {
+                    note_grep_status(2);
+                    Vec::new()
+                }
             }
         }
-        Err(_) => b"0".to_vec(),
+        Err(_) => {
+            note_grep_status(2);
+            Vec::new()
+        }
     }
 }
 
@@ -112,11 +156,24 @@ fn grep_ere_output(text: &[u8], pattern: &[u8]) -> Vec<u8> {
                 let _ = stdin.write_all(text);
             }
             match child.wait_with_output() {
-                Ok(o) if o.status.success() => subst(o.stdout),
-                _ => Vec::new(),
+                Ok(o) => {
+                    note_grep_status(o.status.code().unwrap_or(2));
+                    if o.status.success() {
+                        subst(o.stdout)
+                    } else {
+                        Vec::new()
+                    }
+                }
+                Err(_) => {
+                    note_grep_status(2);
+                    Vec::new()
+                }
             }
         }
-        Err(_) => Vec::new(),
+        Err(_) => {
+            note_grep_status(2);
+            Vec::new()
+        }
     }
 }
 
@@ -154,6 +211,13 @@ fn is_global_impact(changed_files: &[u8]) -> bool {
     if changed_files.is_empty() {
         return false;
     }
+    GREP_FAILED.store(false, std::sync::atomic::Ordering::SeqCst);
+    let r = is_global_impact_inner(changed_files);
+    // A grep that could not answer is not an answer of "no": sweep everything.
+    r || grep_failed()
+}
+
+fn is_global_impact_inner(changed_files: &[u8]) -> bool {
     let gi_1 = grep_ere(
         changed_files,
         b"^(MODULE\\.bazel|MODULE\\.bazel\\.lock|\\.bazelrc|\\.bazelversion|BUILD$|gazelle_python\\.yaml$)",
@@ -210,6 +274,7 @@ fn run_full_sweep(reason: &[u8], class: &[u8], bb_key: &[u8]) -> ! {
     }
     let remote_config = cat(&[b"--config=remote"]);
     let remote_header = cat(&[b"--remote_header=x-buildbuddy-api-key=", bb_key]);
+    remove_plan_err();
     // `set -e` in the original: a red build ends the run with its status and the
     // tests are never started; a red test run is the run's status.
     for verb in ["build", "test"] {
@@ -229,7 +294,13 @@ fn run_full_sweep(reason: &[u8], class: &[u8], bb_key: &[u8]) -> ! {
     std::process::exit(0);
 }
 
-pub fn run(_args: &[Vec<u8>]) -> i32 {
+pub fn run(args: &[Vec<u8>]) -> i32 {
+    let rc = run_inner(args);
+    remove_plan_err();
+    rc
+}
+
+fn run_inner(_args: &[Vec<u8>]) -> i32 {
     // The original read ${BUILDBUDDY_API_KEY} under `set -u`: unset is an error
     // (set but empty, as on a fork's pull request, is not).
     let bb_key = match env("BUILDBUDDY_API_KEY") {
@@ -329,18 +400,32 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
     out(b"\n");
 
     // --- docs/metadata-only fast path ---
+    GREP_FAILED.store(false, std::sync::atomic::Ordering::SeqCst);
     let non_doc = grep_evc(
         &changed_files,
         b"^(gitops/|docs/|\\.agents/(agents|skills|rules)/|apps/web/vitruviansoftware-dev/)|\\.(\
 md|png|jpg|jpeg|svg|txt)$|(^|/)(catalog-info\\.yaml|OWNERS|CODEOWNERS)$",
     );
-    let non_doc_count: i64 = std::str::from_utf8(&non_doc)
-        .ok()
-        .and_then(|s| s.trim().parse().ok())
-        .unwrap_or(0);
-    if non_doc_count == 0 {
-        out(b"::notice::affected-targets: all changed files are docs/gitops/markdown/metadata-only \xe2\x86\x92 nothing to build or test.\n");
-        return 0;
+    // Docs-only needs a positive, parsed count of zero. A grep that failed or
+    // printed something else is "don't know", never "nothing to test".
+    let non_doc_count: Option<i64> = if grep_failed() {
+        None
+    } else {
+        std::str::from_utf8(&non_doc)
+            .ok()
+            .and_then(|s| s.trim().parse().ok())
+    };
+    match non_doc_count {
+        Some(0) => {
+            out(b"::notice::affected-targets: all changed files are docs/gitops/markdown/metadata-only \xe2\x86\x92 nothing to build or test.\n");
+            return 0;
+        }
+        Some(_) => {}
+        None => run_full_sweep(
+            b"could not classify the changed files (grep failed)",
+            b"degraded",
+            &bb_key,
+        ),
     }
 
     if is_global_impact(&changed_files) {
@@ -449,7 +534,14 @@ md|png|jpg|jpeg|svg|txt)$|(^|/)(catalog-info\\.yaml|OWNERS|CODEOWNERS)$",
         }
     }
 
-    let plan_err_file = shell_compat::mktemp_file(b"plan-err.XXXXXX").unwrap_or_default();
+    // In the temp dir (the original used mktemp), never the checkout; removed on
+    // every exit path (see `run` and `run_full_sweep`).
+    let plan_err_file =
+        shell_compat::mktemp_file(&cat(&[&shell_compat::tmpdir(), b"/plan-err.XXXXXX"]))
+            .unwrap_or_default();
+    if !plan_err_file.is_empty() {
+        *PLAN_ERR.lock().unwrap() = Some(plan_err_file.clone());
+    }
 
     let mut plan_args: Vec<Vec<u8>> = Vec::new();
     plan_args.push(cat(&[b"--base=", &plan_base]));

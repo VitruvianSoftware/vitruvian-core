@@ -50,71 +50,119 @@ fn is_protected(name: &[u8]) -> bool {
     )
 }
 
-fn iso_to_epoch(iso: &[u8]) -> i64 {
-    let s = match std::str::from_utf8(iso) {
-        Ok(s) => s.trim(),
-        Err(_) => return 0,
+/// Strict ISO 8601 parse: `YYYY-MM-DD[T ]HH:MM[:SS[.frac]][Z|+HH[:MM]|-HH[:MM]]`.
+/// Anything else, and any out-of-range field, is `None`: a timestamp that cannot
+/// be read must never be turned into a plausible old date.
+fn parse_iso(iso: &[u8]) -> Option<i64> {
+    let s = std::str::from_utf8(iso).ok()?.trim();
+    let b = s.as_bytes();
+    let num = |r: std::ops::Range<usize>| -> Option<i64> {
+        let part = b.get(r)?;
+        if part.is_empty() || !part.iter().all(|c| c.is_ascii_digit()) {
+            return None;
+        }
+        std::str::from_utf8(part).ok()?.parse().ok()
     };
-    if s.is_empty() {
-        return 0;
+    if b.len() < 16
+        || b[4] != b'-'
+        || b[7] != b'-'
+        || !(b[10] == b'T' || b[10] == b' ')
+        || b[13] != b':'
+    {
+        return None;
     }
-    // Parse ISO 8601: 2026-01-02T15:04:05Z or 2026-01-02T15:04:05+00:00
-    let s = s.replace('Z', "+00:00");
-    // Split at T
-    let (date_part, time_tz) = match s.find('T') {
-        Some(i) => (&s[..i], &s[i + 1..]),
-        None => return 0,
+    let (year, month, day) = (num(0..4)?, num(5..7)?, num(8..10)?);
+    let (hour, minute) = (num(11..13)?, num(14..16)?);
+    let mut i = 16;
+    let mut second = 0;
+    if b.get(i) == Some(&b':') {
+        second = num(i + 1..i + 3)?;
+        i += 3;
+        if b.get(i) == Some(&b'.') {
+            let start = i + 1;
+            let mut j = start;
+            while b.get(j).is_some_and(|c| c.is_ascii_digit()) {
+                j += 1;
+            }
+            if j == start {
+                return None;
+            }
+            i = j;
+        }
+    }
+    let tz = match b.get(i) {
+        None => 0,
+        Some(b'Z') if i + 1 == b.len() => 0,
+        Some(&sign) if sign == b'+' || sign == b'-' => {
+            let h = num(i + 1..i + 3)?;
+            let rest = &b[i + 3..];
+            let m = match rest {
+                [] => 0,
+                [b':', ..] if rest.len() == 3 => num(i + 4..i + 6)?,
+                [_, _] => num(i + 3..i + 5)?,
+                _ => return None,
+            };
+            if h > 23 || m > 59 {
+                return None;
+            }
+            let off = h * 3600 + m * 60;
+            if sign == b'+' {
+                off
+            } else {
+                -off
+            }
+        }
+        _ => return None,
     };
-    let date_parts: Vec<&str> = date_part.split('-').collect();
-    if date_parts.len() != 3 {
-        return 0;
-    }
-    let year: i64 = date_parts[0].parse().unwrap_or(0);
-    let month: i64 = date_parts[1].parse().unwrap_or(0);
-    let day: i64 = date_parts[2].parse().unwrap_or(0);
-
-    // Split time from tz offset
-    let (time_str, tz_offset_secs) = if let Some(plus) = time_tz[1..].find('+') {
-        let p = plus + 1;
-        let time_s = &time_tz[..p];
-        let tz_s = &time_tz[p + 1..];
-        let tz_parts: Vec<&str> = tz_s.split(':').collect();
-        let h: i64 = tz_parts.first().and_then(|s| s.parse().ok()).unwrap_or(0);
-        let m: i64 = tz_parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
-        (time_s, h * 3600 + m * 60)
-    } else if let Some(minus) = time_tz[1..].find('-') {
-        let p = minus + 1;
-        let time_s = &time_tz[..p];
-        let tz_s = &time_tz[p + 1..];
-        let tz_parts: Vec<&str> = tz_s.split(':').collect();
-        let h: i64 = tz_parts.first().and_then(|s| s.parse().ok()).unwrap_or(0);
-        let m: i64 = tz_parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
-        (time_s, -(h * 3600 + m * 60))
-    } else {
-        (time_tz, 0i64)
+    let leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+    let dim = match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if leap => 29,
+        2 => 28,
+        _ => return None,
     };
-
-    let time_parts: Vec<&str> = time_str.split(':').collect();
-    if time_parts.len() < 2 {
-        return 0;
+    if year < 1970 || day < 1 || day > dim || hour > 23 || minute > 59 || second > 59 {
+        return None;
     }
-    let hour: i64 = time_parts[0].parse().unwrap_or(0);
-    let minute: i64 = time_parts[1].parse().unwrap_or(0);
-    let second: i64 = time_parts
-        .get(2)
-        .and_then(|s| s.split('.').next())
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(0);
-
-    // days since epoch
-    let mut y = year;
-    let mut m = month;
+    let (mut y, mut m) = (year, month);
     if m <= 2 {
         y -= 1;
         m += 12;
     }
     let days = 365 * y + y / 4 - y / 100 + y / 400 + (153 * (m - 3) + 2) / 5 + day - 719469;
-    days * 86400 + hour * 3600 + minute * 60 + second - tz_offset_secs
+    Some(days * 86400 + hour * 3600 + minute * 60 + second - tz)
+}
+
+/// A PR's own timestamp: unreadable means "age unknown", and the caller preserves.
+fn iso_to_epoch(iso: &[u8]) -> i64 {
+    parse_iso(iso).unwrap_or(0)
+}
+
+/// A resource's creation timestamp. Absent is fine (the PR's age is used);
+/// present but unreadable is `Err`, and the resource is skipped, never reaped.
+fn resource_epoch(kind: &str, name: &[u8], ts: &[u8]) -> Result<i64, ()> {
+    if std::str::from_utf8(ts)
+        .map(|t| t.trim().is_empty())
+        .unwrap_or(false)
+    {
+        return Ok(0);
+    }
+    match parse_iso(ts) {
+        Some(v) => Ok(v),
+        None => {
+            log(&cat(&[
+                b"WARNING: ",
+                kind.as_bytes(),
+                b" '",
+                name,
+                b"' has an unreadable creation timestamp '",
+                ts,
+                b"' \xe2\x80\x94 skipping it (never reaped on an unreadable age)",
+            ]));
+            Err(())
+        }
+    }
 }
 
 fn extract_pr_num_suffix(name: &[u8]) -> Option<Vec<u8>> {
@@ -338,7 +386,10 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
                 if !only_pr.is_empty() && pr_num != only_pr {
                     continue;
                 }
-                let svc_epoch = iso_to_epoch(creation_ts);
+                let svc_epoch = match resource_epoch("Cloud Run service", svc_name, creation_ts) {
+                    Ok(v) => v,
+                    Err(()) => continue,
+                };
                 if should_reap(&pr_num, svc_epoch, &mut pr_cache) {
                     if !dry_run.is_empty() {
                         log(&cat(&[
@@ -414,7 +465,10 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
                 if !only_pr.is_empty() && pr_num != only_pr {
                     continue;
                 }
-                let ns_epoch = iso_to_epoch(creation_ts);
+                let ns_epoch = match resource_epoch("K8s namespace", ns, creation_ts) {
+                    Ok(v) => v,
+                    Err(()) => continue,
+                };
                 if should_reap(&pr_num, ns_epoch, &mut pr_cache) {
                     if !dry_run.is_empty() {
                         log(&cat(&[
@@ -519,7 +573,10 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
                 if !only_pr.is_empty() && pr_num != only_pr {
                     continue;
                 }
-                let branch_epoch = iso_to_epoch(created_at);
+                let branch_epoch = match resource_epoch("Neon branch", branch_name, created_at) {
+                    Ok(v) => v,
+                    Err(()) => continue,
+                };
                 if should_reap(&pr_num, branch_epoch, &mut pr_cache) {
                     if !dry_run.is_empty() {
                         log(&cat(&[
@@ -543,7 +600,7 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
                         let rc = status(
                             334,
                             Command::new(shell_compat::os(&curl_bin))
-                                .arg("-s")
+                                .arg("-sf")
                                 .arg("-X")
                                 .arg("DELETE")
                                 .arg("-H")

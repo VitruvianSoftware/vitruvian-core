@@ -89,6 +89,7 @@ exit 0
             &stubs.join("gcloud"),
             r#"#!/usr/bin/env bash
 if [ "${1:-}" = "run" ] && [ "${2:-}" = "services" ] && [ "${3:-}" = "list" ]; then
+  [ -n "${STUB_CR_LIST:-}" ] && { printf '%b' "$STUB_CR_LIST"; exit 0; }
   printf 'tabula-api-pr-101\t2023-11-14T10:00:00Z\n'
   printf 'tabula-api-pr-102\t2023-11-14T10:00:00Z\n'
   printf 'tabula-api-pr-103\t2023-11-14T20:00:00Z\n'
@@ -109,6 +110,7 @@ exit 0
             &stubs.join("kubectl"),
             r#"#!/usr/bin/env bash
 if [ "${1:-}" = "get" ] && [ "${2:-}" = "namespaces" ]; then
+  [ -n "${STUB_K8S_LIST:-}" ] && { printf '%b' "$STUB_K8S_LIST"; exit 0; }
   printf 'pr-101\t2023-11-14T10:00:00Z\n'
   printf 'pr-102\t2023-11-14T10:00:00Z\n'
   printf 'pr-103\t2023-11-14T20:00:00Z\n'
@@ -121,7 +123,7 @@ if [ "${1:-}" = "get" ] && [ "${2:-}" = "namespaces" ]; then
 fi
 if [ "${1:-}" = "delete" ] && [ "${2:-}" = "namespace" ]; then
   echo "${3:-}" >> "$K8S_DELETED"
-  exit 0
+  exit "${STUB_K8S_DELETE_RC:-0}"
 fi
 exit 0
 "#,
@@ -131,9 +133,14 @@ exit 0
             r#"#!/usr/bin/env bash
 if [[ "$*" == *"-X DELETE"* ]]; then
   echo "$*" | sed 's|.*/branches/||' | awk '{print $1}' >> "$NEON_DELETED"
+  # A real curl only reports an HTTP error status when asked to (-f / --fail).
+  if [ -n "${STUB_NEON_HTTP_ERROR:-}" ]; then
+    case " $* " in *" -f "*|*" -sf "*|*" --fail "*) exit 22 ;; esac
+  fi
   exit "${STUB_NEON_DELETE_RC:-0}"
 fi
 if [[ "$*" == *"api/v2/projects/test-proj/branches"* ]]; then
+  [ -n "${STUB_NEON_JSON:-}" ] && { printf '%s' "$STUB_NEON_JSON"; exit 0; }
   cat <<'JSON'
 {
   "branches": [
@@ -464,4 +471,104 @@ echo '{"branches":[{"id":"br-x","name":"xpr-abc-pr-200","created_at":"2023-11-14
     };
     assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
     assert_eq!(f.deleted("neon_deleted"), ["br-x"]);
+}
+
+#[test]
+fn a_neon_delete_the_api_rejects_is_not_counted_as_reaped() {
+    // curl exits 0 on an HTTP 4xx/5xx unless told to fail; the stub models that.
+    let f = Fixture::new();
+    let o = f.run(&["200"], &[("STUB_NEON_HTTP_ERROR", "1")]);
+    assert_eq!(o.status.code(), Some(0));
+    assert_eq!(
+        stdout(&o),
+        "reaped_cloudrun=1\nreaped_k8s=1\nreaped_neon=0\ntotal_reaped=2\n"
+    );
+    assert!(
+        stderr(&o).contains("WARNING: Failed to delete Neon branch 'tabula-pr-200'"),
+        "{}",
+        stderr(&o)
+    );
+}
+
+#[test]
+fn a_failed_namespace_delete_is_not_counted_as_reaped() {
+    let f = Fixture::new();
+    let o = f.run(&["200"], &[("STUB_K8S_DELETE_RC", "1")]);
+    assert_eq!(
+        stdout(&o),
+        "reaped_cloudrun=1\nreaped_k8s=0\nreaped_neon=1\ntotal_reaped=2\n"
+    );
+    assert!(
+        stderr(&o).contains("WARNING: Failed to delete K8s namespace 'pr-200'"),
+        "{}",
+        stderr(&o)
+    );
+}
+
+#[test]
+fn unreadable_creation_timestamps_are_never_reaped_and_never_panic() {
+    // pr-101 is MERGED, so a readable timestamp would be reaped. Each of these
+    // must be skipped with a warning instead: a truncated one (which used to
+    // panic), junk, impossible fields, and the year-1 date a lenient parser
+    // would have produced.
+    for bad in [
+        "2026-10-31T",
+        "garbage",
+        "2023-13-45T99:99:99Z",
+        "2023-02-30T10:00:00Z",
+        "0001-01-01T00:00:00Z",
+        "2023-11-14T10:00Z+99",
+        "2023-11-14",
+        "2023-11-14T10:00:00.Z",
+    ] {
+        let f = Fixture::new();
+        let cr = format!("tabula-api-pr-101\\t{bad}\\n");
+        let k8s = format!("pr-101\\t{bad}\\n");
+        let neon = format!(
+            r#"{{"branches":[{{"id":"br-101","name":"tabula-pr-101","created_at":"{bad}","primary":false}}]}}"#
+        );
+        let o = f.run(
+            &[],
+            &[
+                ("STUB_CR_LIST", &cr),
+                ("STUB_K8S_LIST", &k8s),
+                ("STUB_NEON_JSON", &neon),
+            ],
+        );
+        assert_eq!(o.status.code(), Some(0), "{bad}: {}", stderr(&o));
+        assert!(!f.work.join("cr_deleted").exists(), "{bad}");
+        assert!(!f.work.join("k8s_deleted").exists(), "{bad}");
+        assert!(!f.work.join("neon_deleted").exists(), "{bad}");
+        assert_eq!(
+            stdout(&o),
+            "reaped_cloudrun=0\nreaped_k8s=0\nreaped_neon=0\ntotal_reaped=0\n",
+            "{bad}"
+        );
+        let e = stderr(&o);
+        assert!(e.contains("unreadable creation timestamp"), "{bad}: {e}");
+        assert!(!e.contains("panicked"), "{bad}: {e}");
+    }
+}
+
+#[test]
+fn readable_timestamp_shapes_still_reap() {
+    // Fractional seconds, an explicit offset and a space separator all parse.
+    let f = Fixture::new();
+    let cr = "tabula-api-pr-101\\t2023-11-14T10:00:00.123456Z\\n";
+    let k8s = "pr-101\\t2023-11-14T12:00:00+02:00\\n";
+    let neon = r#"{"branches":[{"id":"br-101","name":"tabula-pr-101","created_at":"2023-11-14 10:00:00","primary":false}]}"#;
+    let o = f.run(
+        &[],
+        &[
+            ("STUB_CR_LIST", cr),
+            ("STUB_K8S_LIST", k8s),
+            ("STUB_NEON_JSON", neon),
+        ],
+    );
+    assert_eq!(
+        stdout(&o),
+        "reaped_cloudrun=1\nreaped_k8s=1\nreaped_neon=1\ntotal_reaped=3\n",
+        "{}",
+        stderr(&o)
+    );
 }

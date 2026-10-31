@@ -144,6 +144,7 @@ impl Case {
         // any other test exits $FAKE_TEST_RC. Every call is appended to $CALLS.
         let bin = work.join("bin");
         std::fs::create_dir_all(&bin).unwrap();
+        std::fs::create_dir_all(work.join("tmp")).unwrap();
         write_exec(
             &bin.join("bazel"),
             r#"#!/usr/bin/env bash
@@ -207,6 +208,7 @@ printf '%s' "${FAKE_PLAN:-}"
             .env_clear()
             .env("PATH", path)
             .env("HOME", &self.work)
+            .env("TMPDIR", self.work.join("tmp"))
             .env("CALLS", &calls)
             .env("BUILDBUDDY_API_KEY", "k")
             .env("BEFORE_REV", &self.base)
@@ -830,4 +832,92 @@ fn an_unreadable_map_leaves_the_base_alone() {
         &[],
     );
     assert_eq!(r.planned_base(), h.x2, "{}", r.out);
+}
+
+// --- no litter, and grep failures never mean "docs only" -------------------
+
+/// Everything in the checkout's top level plus whatever is in TMPDIR.
+fn footprint(c: &Case) -> (Vec<String>, Vec<String>) {
+    let ls = |d: &Path| {
+        let mut v: Vec<String> = std::fs::read_dir(d)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        v.sort();
+        v
+    };
+    (ls(&c.repo), ls(&c.work.join("tmp")))
+}
+
+#[test]
+fn no_run_leaves_files_in_the_checkout_or_the_temp_dir() {
+    let cases: Vec<(&str, Vec<(&str, &str)>, &str)> = vec![
+        ("live plan", vec![], LIVE_PLAN),
+        ("map plan", vec![], MAP_PLAN),
+        ("no plan -> sweep", vec![], ""),
+        ("planner docs-only", vec![], r#"{"is_docs_only":true}"#),
+        ("forced push", vec![("FORCED_PUSH", "true")], LIVE_PLAN),
+    ];
+    for (label, envs, plan) in cases {
+        let c = Case::new();
+        let before = footprint(&c);
+        let r = c.run(plan, &envs, &[]);
+        let after = footprint(&c);
+        assert_eq!(after.0, before.0, "{label}: checkout litter\n{}", r.out);
+        assert_eq!(after.1, before.1, "{label}: temp litter\n{}", r.out);
+        assert!(after.1.is_empty());
+    }
+}
+
+fn fake_grep(c: &Case, body: &str) {
+    write_exec(&c.work.join("bin/grep"), body);
+}
+
+fn docs_only_diff(c: &Case) -> String {
+    let before = c.head();
+    c.commit("docs/guide.md", "x");
+    before
+}
+
+#[test]
+fn a_grep_that_errors_is_never_docs_only() {
+    let c = Case::new();
+    fake_grep(&c, "#!/bin/sh\nexit 2\n");
+    let before = docs_only_diff(&c);
+    let r = c.run(LIVE_PLAN, &[("BEFORE_REV", &before)], &[]);
+    assert_eq!(r.rc, 0, "{}", r.out);
+    assert!(swept(&r), "{}{}", r.out, r.calls);
+    assert!(!r.out.contains("nothing to build or test"), "{}", r.out);
+    assert!(
+        r.out.contains("could not classify the changed files"),
+        "{}",
+        r.out
+    );
+}
+
+#[test]
+fn a_grep_count_that_is_not_a_number_is_never_docs_only() {
+    let c = Case::new();
+    fake_grep(
+        &c,
+        "#!/bin/sh\ncase \" $* \" in *\" -c \"*) echo junk; exit 0 ;; esac\nexec /usr/bin/grep \"$@\"\n",
+    );
+    let before = docs_only_diff(&c);
+    let r = c.run(LIVE_PLAN, &[("BEFORE_REV", &before)], &[]);
+    assert!(swept(&r), "{}{}", r.out, r.calls);
+    assert!(!r.out.contains("nothing to build or test"), "{}", r.out);
+}
+
+#[test]
+fn a_grep_that_cannot_classify_global_impact_means_a_sweep() {
+    let c = Case::new();
+    // The docs-only count works; the global-impact patterns hit an error.
+    fake_grep(
+        &c,
+        "#!/bin/sh\ncase \" $* \" in *\" -c \"*) exec /usr/bin/grep \"$@\" ;; esac\nexit 2\n",
+    );
+    let r = c.run(LIVE_PLAN, &[], &[]);
+    assert!(swept(&r), "{}{}", r.out, r.calls);
+    assert!(r.out.contains("global-impact file changed"), "{}", r.out);
+    assert!(!r.called("pipeline:plan"), "{}", r.calls);
 }
