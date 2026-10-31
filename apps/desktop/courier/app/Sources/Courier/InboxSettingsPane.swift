@@ -18,7 +18,7 @@ struct SettingsView: View {
     var hotkeys: HotkeyRegistry = HotkeyRegistry()
     var lifecycle: SystemLifecycleModel = SystemLifecycleModel()
     var navigation: SettingsNavigationModel = SettingsNavigationModel()
-    var notificationPreferences: NotificationPreferences = NotificationPreferences()
+    var notificationPreferences: NotificationPreferences? = nil
     var dockPreferences: DockAndTrayPreferences = DockAndTrayPreferences()
     var accountsAndBridges: AccountsAndBridgesModel? = nil
     var loginFlow: LoginFlowModel? = nil
@@ -51,7 +51,7 @@ struct SettingsView: View {
             conversation: conversation,
             inboxPreferences: inbox.preferences,
             composerPreferences: composerPreferences,
-            notificationPreferences: notificationPreferences,
+            notificationPreferences: notificationPreferences ?? inbox.preferences.notifications,
             quickReplies: quickReplies,
             hotkeys: hotkeys,
             lifecycle: lifecycle,

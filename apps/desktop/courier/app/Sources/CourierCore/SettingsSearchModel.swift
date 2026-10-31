@@ -101,8 +101,17 @@ public final class SettingsNavigationModel: ObservableObject {
     @Published public var selectedAccountKey: String?
     @Published public var isPresentingProblemReport: Bool = false
 
+    private weak var boundAccountsAndBridges: AccountsAndBridgesModel?
+
     public init(selectedPane: SettingsPaneID = .general) {
         self.selectedPane = selectedPane
+    }
+
+    public func bind(accountsAndBridges: AccountsAndBridgesModel) {
+        boundAccountsAndBridges = accountsAndBridges
+        if let selectedAccountKey {
+            accountsAndBridges.selectedAccountKey = selectedAccountKey
+        }
     }
 
     /// Every visible setting across all 8 Settings panes. Panes read titles and anchor IDs from this catalog so search and UI stay in lockstep.
@@ -690,6 +699,98 @@ public final class SettingsNavigationModel: ObservableObject {
         uniqueKeysWithValues: allSettings.map { ($0.id, $0) }
     )
 
+    /// Every `.settingAnchor(...)` identifier attached to a view across the 8 Settings panes.
+    public static let anchoredSettingIDs: Set<String> = [
+        // GeneralSettingsPane
+        "general.incognito",
+        "general.showTyping",
+        "general.showIncognitoMark",
+        "general.remindDefault",
+        "general.archiveAfterReminder",
+        "general.timeSuggestions",
+        "general.markReadOnArchive",
+        "general.afterArchive",
+        "general.afterToggleRead",
+        "general.autoArchive",
+        "general.bulkArchive",
+        "general.doubleClickMessage",
+        "general.undoSend",
+        "general.clickPendingToUndo",
+        "general.sendLaterDefault",
+        "general.upArrow",
+        "general.copyWithTimestamps",
+        "general.enableEmojiAutocomplete",
+        "general.disableEmoticonReplacement",
+        "general.autoSendGIFs",
+        "general.autoPlayNextVoiceNote",
+        "general.preferredMicrophone",
+        "general.autoCopyOTP",
+        "general.downloadsLocation",
+        "general.alwaysAskWhereToSave",
+        "general.openAtLogin",
+        "general.keepMinimizedOnLaunch",
+        "general.quitOnClose",
+        "general.requireTouchID",
+        "general.lockTimeout",
+        "general.timeFormat",
+        // AppearanceSettingsPane
+        "appearance.showSpaceBar",
+        "appearance.regularPinnedRows",
+        "appearance.showUnreadCounts",
+        "appearance.showPreviews",
+        "appearance.compactList",
+        "appearance.showNetworkIcons",
+        "appearance.colorNetworkIcons",
+        "appearance.hoverAction",
+        "appearance.doubleClickChat",
+        "appearance.showMessageTimestamps",
+        "appearance.hideDeletedMessages",
+        "appearance.showMembershipEvents",
+        "appearance.loadExternalEmbeds",
+        "appearance.quickReaction",
+        "appearance.enableSpellcheck",
+        "appearance.showFormattingMenu",
+        "appearance.disableOutgoingLinkPreviews",
+        "appearance.primaryComposerButton",
+        "appearance.secondaryComposerButton",
+        "appearance.showMenuBarIcon",
+        "appearance.dockBadgeCount",
+        // NotificationsSettingsPane
+        "notifications.messages",
+        "notifications.groups",
+        "notifications.requests",
+        "notifications.reactions",
+        "notifications.typing",
+        "notifications.inFocus",
+        "notifications.delay",
+        "notifications.repeatUnread",
+        "notifications.autoCopyOTP",
+        "notifications.soundEffectsMode",
+        "notifications.soundEffectsVolume",
+        "notifications.accountOverrides",
+        "notifications.systemSettings",
+        "notifications.restartCenter",
+        // AccountsSettingsPane
+        "accounts.connectedNetworks",
+        "accounts.subAccounts",
+        "accounts.dockCleanup",
+        // HotkeysSettingsPane
+        "hotkeys.shortcuts",
+        "hotkeys.textsPreset",
+        // QuickRepliesSettingsPane
+        "quickReplies.savedReplies",
+        "quickReplies.variables",
+        // BridgesSettingsPane
+        "bridges.status",
+        // AboutSettingsPane
+        "about.version",
+        "about.changelog",
+        "about.reportProblem",
+        "about.keyboardShortcuts",
+        "about.privacy",
+        "about.legalNotices",
+    ]
+
     public static func title(for id: String) -> String {
         definitionsByID[id]?.title ?? id
     }
@@ -730,6 +831,7 @@ public final class SettingsNavigationModel: ObservableObject {
         selectedPane = pane
         if let accountKey {
             selectedAccountKey = accountKey
+            boundAccountsAndBridges?.selectedAccountKey = accountKey
         }
     }
 

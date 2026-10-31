@@ -17,6 +17,7 @@ struct AccountsSettingsPane: View {
     let onAddAccount: () -> Void
     let onReconnect: (_ network: String, _ accountID: String) -> Void
     var onOpenAutoArchive: ((String) -> Void)? = nil
+    var highlightedSettingID: String? = nil
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -168,44 +169,65 @@ struct AccountsSettingsPane: View {
     private var accountDetail: some View {
         if let selectedKey = model.selectedAccountKey,
            let entry = entries.first(where: { $0.key == selectedKey }) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    headerCard(entry)
-                    spaceAndInboxCard(entry)
-                    notificationOverrideCard(entry)
-                    if entry.network == "telegram" || !(model.subAccountsByKey[entry.key] ?? []).isEmpty {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        headerCard(entry)
+                            .settingAnchor("accounts.connectedNetworks", highlighted: highlightedSettingID)
+                        spaceAndInboxCard(entry)
+                        notificationOverrideCard(entry)
                         subAccountsCard(entry)
-                    }
-                    if model.canOfferRemoveFromDock(network: entry.network) {
+                            .settingAnchor("accounts.subAccounts", highlighted: highlightedSettingID)
                         dockCleanupCard(entry)
+                            .settingAnchor("accounts.dockCleanup", highlighted: highlightedSettingID)
+                        developerActionsCard(entry)
+                        if let toast = model.lastToast {
+                            Text(toast)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
-                    developerActionsCard(entry)
-                    if let toast = model.lastToast {
-                        Text(toast)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                    .padding(20)
+                }
+                .onAppear {
+                    if let id = highlightedSettingID {
+                        proxy.scrollTo(id, anchor: .center)
                     }
                 }
-                .padding(20)
+                .onChange(of: highlightedSettingID) { _, id in
+                    if let id {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            proxy.scrollTo(id, anchor: .center)
+                        }
+                    }
+                }
             }
             .task(id: entry.key) {
-                if entry.network == "telegram", model.subAccountsByKey[entry.key] == nil {
+                if model.subAccountsByKey[entry.key] == nil {
                     await model.loadSubAccounts(network: entry.network, accountID: entry.accountID, forceRefresh: false)
                 }
             }
         } else {
-            VStack(spacing: 10) {
-                Image(systemName: "person.2.circle")
-                    .font(.system(size: 36))
-                    .foregroundStyle(.secondary)
-                Text(String(localized: "Select an account to view its settings"))
-                    .foregroundStyle(.secondary)
-                Button(String(localized: "Add Account…")) {
-                    onAddAccount()
+            ScrollViewReader { proxy in
+                VStack(spacing: 10) {
+                    Image(systemName: "person.2.circle")
+                        .font(.system(size: 36))
+                        .foregroundStyle(.secondary)
+                    Text(String(localized: "Select an account to view its settings"))
+                        .foregroundStyle(.secondary)
+                    Button(String(localized: "Add Account…")) {
+                        onAddAccount()
+                    }
+                    .disabled(model.isLocked)
                 }
-                .disabled(model.isLocked)
+                .settingAnchor("accounts.connectedNetworks", highlighted: highlightedSettingID)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .onAppear {
+                    if let id = highlightedSettingID {
+                        proxy.scrollTo(id, anchor: .center)
+                    }
+                }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
@@ -418,14 +440,14 @@ struct AccountsSettingsPane: View {
         let items = model.subAccountsByKey[entry.key] ?? []
         let spacesItems = items.filter { $0.kind == "space" }
         let botItems = items.filter { $0.kind == "bot" }
-        return GroupBox(String(localized: "Telegram Folders & Bots")) {
+        return GroupBox(String(localized: "Sub-Accounts")) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
-                    Text(String(localized: "Expose Telegram folders or bot chats as dedicated spaces"))
+                    Text(String(localized: "Expose spaces, folders, communities, or bots as dedicated views"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Button(String(localized: "Refresh")) {
+                    Button(String(localized: "Refresh List")) {
                         Task {
                             await model.loadSubAccounts(
                                 network: entry.network,
@@ -439,12 +461,12 @@ struct AccountsSettingsPane: View {
                 }
 
                 if items.isEmpty {
-                    Text(String(localized: "No Telegram folders or bot chats found for this account."))
+                    Text(String(localized: "No spaces or bots found for this account."))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
                     if !spacesItems.isEmpty {
-                        Text(String(localized: "Folders"))
+                        Text(String(localized: "Spaces"))
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
                         ForEach(spacesItems) { item in
@@ -520,13 +542,20 @@ struct AccountsSettingsPane: View {
     private func dockCleanupCard(_ entry: AccountEntry) -> some View {
         GroupBox(String(localized: "macOS Dock")) {
             HStack {
-                Text(String(localized: "The official \(entry.displayName) app is currently pinned in your macOS Dock."))
-                    .font(.subheadline)
-                Spacer()
-                Button(String(localized: "Remove \(entry.displayName) from macOS Dock")) {
-                    _ = model.removeOfficialAppFromDock(network: entry.network)
+                if model.canOfferRemoveFromDock(network: entry.network) {
+                    Text(String(localized: "The official \(entry.displayName) app is currently pinned in your macOS Dock."))
+                        .font(.subheadline)
+                    Spacer()
+                    Button(String(localized: "Remove \(entry.displayName) from macOS Dock")) {
+                        _ = model.removeOfficialAppFromDock(network: entry.network)
+                    }
+                    .disabled(model.isLocked)
+                } else {
+                    Text(String(localized: "No duplicate \(entry.displayName) icon is pinned in your macOS Dock."))
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Spacer()
                 }
-                .disabled(model.isLocked)
             }
             .padding(8)
         }
@@ -573,20 +602,7 @@ struct AccountsSettingsPane: View {
     }
 
     private func stateLabel(_ state: AccountState) -> String {
-        switch state {
-        case .connected, .running: return String(localized: "Connected")
-        case .connecting: return String(localized: "Connecting…")
-        case .backfilling: return String(localized: "Syncing…")
-        case .transientDisconnect: return String(localized: "Reconnecting…")
-        case .bridgeUnreachable: return String(localized: "Unreachable")
-        case .loggedOut: return String(localized: "Signed Out")
-        case .badCredentials: return String(localized: "Needs Sign-In")
-        case .unknownError: return String(localized: "Error")
-        case .starting: return String(localized: "Starting…")
-        case .unconfigured: return String(localized: "Not Linked")
-        case .notStarted: return String(localized: "Stopped")
-        default: return state.rawValue
-        }
+        AccountsAndBridgesModel.statusLabel(for: state)
     }
 }
 

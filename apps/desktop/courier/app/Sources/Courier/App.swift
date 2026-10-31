@@ -119,7 +119,7 @@ struct CourierApp: App {
                     loginFlow: delegate.login,
                     problemReport: delegate.problemReport,
                     onRestartNotificationCenter: {
-                        delegate.notifier.clearAll()
+                        delegate.notifier.restartNotificationCenter()
                     }
                 )
             }

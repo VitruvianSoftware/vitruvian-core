@@ -13,6 +13,7 @@ struct RowStyle: Equatable {
     var showNetworkIcons = true
     var colorNetworkIcons = true
     var hoverAction = HoverAction.archive
+    var timeFormat = TimeFormatPreference.current()
 
     init(_ preferences: InboxPreferences) {
         showPreviews = preferences.showPreviews
@@ -21,6 +22,7 @@ struct RowStyle: Equatable {
         showNetworkIcons = preferences.showNetworkIcons
         colorNetworkIcons = preferences.colorNetworkIcons
         hoverAction = preferences.hoverAction
+        timeFormat = TimeFormatPreference.current()
     }
 }
 
@@ -67,7 +69,7 @@ struct InboxRowView<HoverMenu: View>: View {
                         hoverButton
                     } else {
                         HStack(spacing: 3) {
-                            Text(RelativeTime.text(forMillis: row.lastTS, now: now))
+                            Text(RelativeTime.text(forMillis: row.lastTS, now: now, timeFormat: style.timeFormat))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                             if let tick = row.previewTick { PreviewTickMark(tick: tick) }

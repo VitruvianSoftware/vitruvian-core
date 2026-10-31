@@ -137,6 +137,9 @@ public final class MessageActionsModel: ObservableObject {
         self.appModel = appModel
         self.preferences = preferences
         self.pasteboard = pasteboard
+        self.formatTime = { [weak preferences] date in
+            (preferences?.timeFormat ?? .system).formatDateTime(date, dateStyle: .short)
+        }
         appModel.onChange { [weak self] change in self?.handle(change) }
         // @Published hands over the new value before it is stored: it is the one looked at.
         subscriptions.append(conversation.$items.sink { [weak self] items in self?.timelineChanged(items) })

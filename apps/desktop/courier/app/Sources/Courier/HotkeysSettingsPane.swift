@@ -63,21 +63,37 @@ struct ChordBadgesView: View {
 struct HotkeysSettingsPane: View {
     @ObservedObject var registry: HotkeyRegistry
     @ObservedObject var lifecycle: SystemLifecycleModel
+    var highlightedSettingID: String? = nil
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            headerBar
-            Divider()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    ForEach(HotkeyRegistry.categories, id: \.self) { category in
-                        let items = registry.filteredDefinitions.filter { $0.category == category }
-                        if !items.isEmpty {
-                            categorySection(title: category, items: items)
+        ScrollViewReader { proxy in
+            VStack(alignment: .leading, spacing: 0) {
+                headerBar
+                Divider()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        ForEach(HotkeyRegistry.categories, id: \.self) { category in
+                            let items = registry.filteredDefinitions.filter { $0.category == category }
+                            if !items.isEmpty {
+                                categorySection(title: category, items: items)
+                            }
                         }
                     }
+                    .padding(16)
+                    .settingAnchor("hotkeys.shortcuts", highlighted: highlightedSettingID)
                 }
-                .padding(16)
+            }
+            .onAppear {
+                if let id = highlightedSettingID {
+                    proxy.scrollTo(id, anchor: .center)
+                }
+            }
+            .onChange(of: highlightedSettingID) { _, id in
+                if let id {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        proxy.scrollTo(id, anchor: .center)
+                    }
+                }
             }
         }
         .background(
@@ -140,6 +156,7 @@ struct HotkeysSettingsPane: View {
             }
             .controlSize(.small)
             .disabled(lifecycle.isLocked)
+            .settingAnchor("hotkeys.textsPreset", highlighted: highlightedSettingID)
 
             Button(String(localized: "Revert all")) {
                 registry.revertAll()

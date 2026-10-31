@@ -158,16 +158,7 @@ final class AccountsAndBridgesModelTests: XCTestCase {
                 if let params {
                     subAccountUpdates.append(params)
                 }
-                return .result([
-                    "network": "telegram",
-                    "account_id": "tg1",
-                    "sub_id": "!folder:courier.local",
-                    "title": "Work Folder",
-                    "avatar_uri": "",
-                    "kind": "space",
-                    "enabled": (params?["enabled"] as? Bool) ?? true,
-                    "show_in_inbox": (params?["show_in_inbox"] as? String) ?? "dms",
-                ])
+                return .result([String: Any]())
             default:
                 return .result([String: Any]())
             }
@@ -349,5 +340,81 @@ final class AccountsAndBridgesModelTests: XCTestCase {
         XCTAssertNil(model.pendingRestartNetwork)
         XCTAssertTrue(dock.removedBundles.isEmpty)
         XCTAssertTrue(rpcMethods.isEmpty, "Locked app must refuse all AccountsAndBridgesModel RPC mutations")
+    }
+
+    func testPlainEnglishStatusLabelsAndSubAccountsAcrossNetworks() async throws {
+        var listedNetworks: [String] = []
+        let server = try TestEngineServer { method, params in
+            switch method {
+            case "hello":
+                return TestEngineServer.helloOK
+            case "accounts.subAccounts":
+                let network = (params?["network"] as? String) ?? ""
+                let accountID = (params?["account_id"] as? String) ?? ""
+                listedNetworks.append("\(network):\(accountID)")
+                return .result([
+                    "sub_accounts": [
+                        [
+                            "network": network,
+                            "account_id": accountID,
+                            "sub_id": "sub-\(network)-1",
+                            "title": "\(network.capitalized) Space",
+                            "avatar_uri": "",
+                            "kind": "space",
+                            "enabled": true,
+                            "show_in_inbox": "all",
+                        ],
+                    ],
+                ])
+            case "accounts.setSubAccount":
+                return .result([String: Any]())
+            default:
+                return .result([String: Any]())
+            }
+        }
+        defer { server.stop() }
+
+        let (app, process) = try await makeConnectedApp(server: server)
+        defer {
+            process.exit(0)
+            app.supervisor.stop()
+        }
+
+        let model = AccountsAndBridgesModel(appModel: app, dockTileService: FakeDockTileService())
+        await model.loadSubAccounts(network: "slack", accountID: "T1-U1", forceRefresh: false)
+        XCTAssertEqual(listedNetworks, ["slack:T1-U1"])
+        XCTAssertEqual(model.subAccountsByKey["slack:T1-U1"]?.first?.title, "Slack Space")
+        await model.updateSubAccount(
+            network: "slack",
+            accountID: "T1-U1",
+            subID: "sub-slack-1",
+            enabled: false,
+            showInInbox: .dms
+        )
+        XCTAssertEqual(model.subAccountsByKey["slack:T1-U1"]?.first?.enabled, false)
+        XCTAssertEqual(model.subAccountsByKey["slack:T1-U1"]?.first?.showInInbox, .dms)
+
+        let rawStates: [AccountState] = [
+            .connected,
+            .connecting,
+            .backfilling,
+            .transientDisconnect,
+            .badCredentials,
+            .loggedOut,
+            .unknownError,
+            .unconfigured,
+            .notStarted,
+        ]
+        for state in rawStates {
+            let label = AccountsAndBridgesModel.statusLabel(for: state)
+            XCTAssertFalse(label.isEmpty)
+            XCTAssertNotEqual(label, state.rawValue, "Status label must be plain English, never raw state code \(state.rawValue)")
+            XCTAssertFalse(label.contains("_"), "Status label must not contain raw underscore code: \(label)")
+        }
+        XCTAssertEqual(AccountsAndBridgesModel.statusLabel(for: .connected), "Connected")
+        XCTAssertEqual(AccountsAndBridgesModel.statusLabel(for: .badCredentials), "Signed out — reconnect")
+        XCTAssertEqual(AccountsAndBridgesModel.statusLabel(for: .transientDisconnect), "Reconnecting…")
+        XCTAssertEqual(AccountsAndBridgesModel.statusLabel(for: .notStarted), "Not started")
+        XCTAssertEqual(AccountsAndBridgesModel.statusLabel(for: "STOPPED"), "Not started")
     }
 }

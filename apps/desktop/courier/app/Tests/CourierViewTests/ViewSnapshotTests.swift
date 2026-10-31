@@ -3603,10 +3603,10 @@ final class ViewSnapshotTests: XCTestCase {
             ProblemReportSheet(model: reportModel, pasteboard: StubPasteboard(), onDismiss: {})
         })
 
-        // 5. Two-column Settings shell with active search results ("delay" / "dock" matching suggestions) and General pane
-        let nav = SettingsNavigationModel(selectedPane: .general)
+        // 5. Two-column Settings shell with active search results ("delay" matching suggestions) and highlighted target
+        let nav = SettingsNavigationModel(selectedPane: .notifications)
         nav.searchQuery = "delay"
-        nav.highlightedSettingID = "general.timeSuggestions"
+        nav.highlightedSettingID = "notifications.delay"
         check(try Snapshot.render("settings-window-search", width: 840, height: 640) {
             SettingsWindow(
                 navigation: nav,

@@ -132,7 +132,7 @@ private struct MessageResultRow: View {
                     .lineLimit(1)
                 if let tag = hit.place.tag { PlaceTag(text: tag) }
                 Spacer(minLength: 6)
-                Text(SearchDate.text(forMillis: hit.ts))
+                Text(SearchDate.text(forMillis: hit.ts, timeFormat: TimeFormatPreference.current()))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize()
@@ -176,7 +176,7 @@ struct MediaCell: View {
         .overlay(RoundedRectangle(cornerRadius: 6)
             .strokeBorder(isSelected ? Color.accentColor : .clear, lineWidth: 3))
         .contentShape(Rectangle())
-        .help(Text(verbatim: "\(hit.senderLine) · \(hit.roomName) · \(SearchDate.text(forMillis: hit.ts))"))
+        .help(Text(verbatim: "\(hit.senderLine) · \(hit.roomName) · \(SearchDate.text(forMillis: hit.ts, timeFormat: TimeFormatPreference.current()))"))
         .accessibilityElement()
         .accessibilityLabel(hit.kind == .video ? String(localized: "Video from \(hit.senderLine)")
             : String(localized: "Photo from \(hit.senderLine)"))

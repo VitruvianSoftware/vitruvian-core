@@ -62,6 +62,10 @@ struct MessageActions {
     var voiceNoteQueue: (String) -> [AudioPlayerModel.Track] = { _ in [] }
     /// Whether external media embeds load automatically without click-to-load consent.
     var loadExternalEmbedsAutomatically = false
+    /// Preferred time format (`ComposerPreferences.timeFormat`).
+    var timeFormat: TimeFormatPreference = .system
+    /// Whether message timestamps are shown in the timeline header (`ComposerPreferences.showMessageTimestamps`).
+    var showMessageTimestamps = true
     /// Pops a video message out into the floating Picture-in-Picture window.
     var popOutPiP: @MainActor (TimelineMessage) -> Void = { message in
         PictureInPictureController.shared.show(
@@ -348,7 +352,7 @@ struct MessageRowView: View {
                 }
                 if message.editFailed != nil { editNotSent }
                 if ui.historyOpen.contains(message.id) {
-                    EditHistoryView(versions: ui.versions[message.id], mine: message.mine)
+                    EditHistoryView(versions: ui.versions[message.id], mine: message.mine, timeFormat: actions.timeFormat)
                 }
                 if let thread = message.thread, thread.replies > 0, let open = actions.openThread {
                     ThreadSummaryLine(summary: thread) { open(message.id) }
@@ -506,9 +510,11 @@ struct MessageRowView: View {
                         actions.hoverSender(hovering, message)
                     }
             }
-            Text(Date(timeIntervalSince1970: Double(message.ts) / 1000), style: .time)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+            if actions.showMessageTimestamps {
+                Text(actions.timeFormat.formatTime(Date(timeIntervalSince1970: Double(message.ts) / 1000)))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
         }
         .padding(.horizontal, 4)
     }
@@ -834,7 +840,7 @@ struct MessageRowView: View {
             // pane shows none, as it shows no Sent).
             if showsSent {
                 Text(message.statusLine.flatMap { line in
-                    StatusLine.seenText(line, time: { $0.formatted(date: .omitted, time: .shortened) })
+                    StatusLine.seenText(line, time: { actions.timeFormat.formatTime($0) })
                 } ?? StatusLine.deliveredLabel)
                     .font(.caption2)
                     .foregroundStyle(.secondary)

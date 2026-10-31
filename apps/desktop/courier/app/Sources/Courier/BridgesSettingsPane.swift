@@ -10,55 +10,55 @@ public struct BridgesSettingsPane: View {
     @ObservedObject var model: AccountsAndBridgesModel
     var onOpenAccountSettings: ((_ network: String, _ accountID: String) -> Void)?
     var onAddAccount: ((_ network: String?) -> Void)?
+    var highlightedSettingID: String? = nil
 
     public init(
         model: AccountsAndBridgesModel,
         onOpenAccountSettings: ((_ network: String, _ accountID: String) -> Void)? = nil,
-        onAddAccount: ((_ network: String?) -> Void)? = nil
+        onAddAccount: ((_ network: String?) -> Void)? = nil,
+        highlightedSettingID: String? = nil
     ) {
         self.model = model
         self.onOpenAccountSettings = onOpenAccountSettings
         self.onAddAccount = onAddAccount
+        self.highlightedSettingID = highlightedSettingID
     }
 
     public var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                header
-                if model.bridges.isEmpty {
-                    Text(String(localized: "No on-device bridges reported."))
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .padding(.vertical, 20)
-                } else {
-                    VStack(spacing: 8) {
-                        ForEach(model.bridges) { bridge in
-                            bridgeCard(bridge)
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    header
+                    if model.bridges.isEmpty {
+                        Text(String(localized: "No on-device bridges reported."))
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .padding(.vertical, 20)
+                            .settingAnchor("bridges.status", highlighted: highlightedSettingID)
+                    } else {
+                        VStack(spacing: 8) {
+                            ForEach(model.bridges) { bridge in
+                                bridgeCard(bridge)
+                            }
                         }
+                        .settingAnchor("bridges.status", highlighted: highlightedSettingID)
+                    }
+                }
+                .padding(20)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .onAppear {
+                if let id = highlightedSettingID {
+                    proxy.scrollTo(id, anchor: .center)
+                }
+            }
+            .onChange(of: highlightedSettingID) { _, id in
+                if let id {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        proxy.scrollTo(id, anchor: .center)
                     }
                 }
             }
-            .padding(20)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .confirmationDialog(
-            String(localized: "Restart Bridge?"),
-            isPresented: Binding(
-                get: { model.pendingRestartNetwork != nil },
-                set: { if !$0 { model.cancelRestartBridge() } }
-            ),
-            presenting: model.pendingRestartNetwork
-        ) { network in
-            let title = model.bridges.first(where: { $0.network == network })?.displayName ?? network
-            Button(String(localized: "Restart \(title) Bridge")) {
-                Task { await model.confirmRestartBridge() }
-            }
-            Button(String(localized: "Cancel"), role: .cancel) {
-                model.cancelRestartBridge()
-            }
-        } message: { network in
-            let title = model.bridges.first(where: { $0.network == network })?.displayName ?? network
-            Text(String(localized: "Courier will disconnect and reconnect your \(title) accounts on this Mac."))
         }
     }
 
@@ -108,11 +108,11 @@ public struct BridgesSettingsPane: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(String(localized: "\(bridge.displayName) bridge, \(bridge.state)"))
+                .accessibilityLabel(String(localized: "\(bridge.displayName) bridge, \(AccountsAndBridgesModel.statusLabel(for: bridge.state))"))
 
                 Menu {
                     Button(String(localized: "Restart Bridge")) {
-                        model.requestRestartBridge(network: bridge.network)
+                        Task { await model.restartBridge(network: bridge.network) }
                     }
                     .disabled(isBusy || model.isLocked)
                     Divider()
@@ -164,7 +164,7 @@ public struct BridgesSettingsPane: View {
                             Text(String(localized: "Info:"))
                                 .font(.caption.weight(.medium))
                                 .foregroundStyle(.secondary)
-                            Text(bridge.message ?? bridge.error ?? bridge.state)
+                            Text(bridge.message ?? bridge.error ?? AccountsAndBridgesModel.statusLabel(for: bridge.state))
                                 .font(.caption)
                         }
                     }
@@ -214,8 +214,8 @@ public struct BridgesSettingsPane: View {
                 }
             }
             Spacer()
-            Text(login.state.rawValue)
-                .font(.caption2.monospaced())
+            Text(AccountsAndBridgesModel.statusLabel(for: login.state))
+                .font(.caption2)
                 .foregroundStyle(.secondary)
             Menu {
                 Button(String(localized: "Account Settings…")) {
@@ -248,7 +248,7 @@ public struct BridgesSettingsPane: View {
             Circle()
                 .fill(statusColor(state))
                 .frame(width: 6, height: 6)
-            Text(state)
+            Text(AccountsAndBridgesModel.statusLabel(for: state))
                 .font(.caption2.weight(.semibold))
         }
         .padding(.horizontal, 6)

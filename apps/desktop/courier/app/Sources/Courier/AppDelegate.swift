@@ -31,8 +31,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let dockPreferences = DockAndTrayPreferences()
     /// Shared Settings navigation and search model (`⌘,`).
     let settingsNavigation = SettingsNavigationModel()
-    /// Shared per-account and global notification preferences.
-    let notificationPreferences = NotificationPreferences()
+    /// Shared per-account and global notification preferences (the single instance owned by `inbox.preferences`).
+    var notificationPreferences: NotificationPreferences { inbox.preferences.notifications }
     /// Accounts and Bridges settings model (`AccountsAndBridgesModel`).
     let accountsAndBridges: AccountsAndBridgesModel
     /// Local problem report bundle model (`ProblemReportModel`).
@@ -46,6 +46,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) lazy var menuCoordinator = AppMenuCoordinator(
         inbox: inbox,
         lifecycle: lifecycle,
+        settingsNavigation: settingsNavigation,
         showMainWindow: { [weak self] in self?.windowOpener.show() },
         showSettingsWindow: {
             NSApp.activate()
@@ -177,7 +178,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.scheduled = scheduled
         let login = LoginFlowModel(appModel: model)
         self.login = login
-        accountsAndBridges = AccountsAndBridgesModel(appModel: model, lifecycle: lifecycle)
+        let accountsAndBridges = AccountsAndBridgesModel(appModel: model, lifecycle: lifecycle)
+        self.accountsAndBridges = accountsAndBridges
+        settingsNavigation.bind(accountsAndBridges: accountsAndBridges)
         problemReport = ProblemReportModel(appModel: model)
         spaces = SpacesModel(appModel: model, inbox: inbox, lifecycle: lifecycle)
         labels = LabelsModel(appModel: model, lifecycle: lifecycle)

@@ -275,6 +275,17 @@ public final class NotificationPreferences: ObservableObject {
         isInitializing = false
     }
 
+    public func setAccountOverride(key: String, enabled: Bool) {
+        var current = accountOverrides[key] ?? AccountNotificationOverride()
+        current.enabled = enabled
+        accountOverrides[key] = current
+    }
+
+    public func isAccountNotificationEnabled(network: String, accountID: String) -> Bool {
+        let key = AccountsAndBridgesModel.accountKey(network: network, accountID: accountID)
+        return accountOverrides[key]?.enabled ?? true
+    }
+
     private func set(_ value: Any?, _ name: String) {
         if let value {
             defaults.set(value, forKey: Self.key(name))

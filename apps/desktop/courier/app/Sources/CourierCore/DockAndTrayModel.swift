@@ -160,7 +160,7 @@ public final class AppMenuCoordinator: ObservableObject {
     @Published public private(set) var detachedChatRoomIDs: [String] = []
     @Published public private(set) var focusCount: Int = 0
     @Published public private(set) var quitRequestedCount: Int = 0
-    public let settingsNavigation: SettingsNavigationModel = SettingsNavigationModel()
+    public let settingsNavigation: SettingsNavigationModel
 
     public let inbox: InboxModel
     public let lifecycle: SystemLifecycleModel
@@ -175,6 +175,7 @@ public final class AppMenuCoordinator: ObservableObject {
     public init(
         inbox: InboxModel,
         lifecycle: SystemLifecycleModel,
+        settingsNavigation: SettingsNavigationModel? = nil,
         showMainWindow: @escaping @MainActor () -> Void = {},
         showSettingsWindow: @escaping @MainActor () -> Void = {},
         hideApp: @escaping @MainActor () -> Void = {},
@@ -185,6 +186,7 @@ public final class AppMenuCoordinator: ObservableObject {
     ) {
         self.inbox = inbox
         self.lifecycle = lifecycle
+        self.settingsNavigation = settingsNavigation ?? SettingsNavigationModel()
         self.showMainWindow = showMainWindow
         self.showSettingsWindow = showSettingsWindow
         self.hideApp = hideApp
@@ -247,6 +249,12 @@ public final class AppMenuCoordinator: ObservableObject {
             settingsNavigation.openPane(.about)
             settingsNavigation.isPresentingProblemReport = true
         }
+        showSettingsWindow()
+    }
+
+    public func openSettings(pane: SettingsPaneID, accountKey: String? = nil) {
+        guard !lifecycle.isLocked else { return }
+        settingsNavigation.openPane(pane, accountKey: accountKey)
         showSettingsWindow()
     }
 

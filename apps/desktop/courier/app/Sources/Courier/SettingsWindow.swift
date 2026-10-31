@@ -82,6 +82,17 @@ struct SettingsWindow: View {
                 accountsAndBridges.cancelRemoveAccount()
             }
         }
+        .onAppear {
+            navigation.bind(accountsAndBridges: accountsAndBridges)
+            if let key = navigation.selectedAccountKey {
+                accountsAndBridges.selectedAccountKey = key
+            }
+        }
+        .onChange(of: navigation.selectedAccountKey) { _, key in
+            if let key {
+                accountsAndBridges.selectedAccountKey = key
+            }
+        }
         .sheet(isPresented: $navigation.isPresentingProblemReport) {
             ProblemReportSheet(
                 model: problemReport,
@@ -290,12 +301,14 @@ struct SettingsWindow: View {
                 spaces: spaces,
                 notifications: notificationPreferences,
                 onAddAccount: { loginFlow.showPicker() },
-                onReconnect: { network, accountID in loginFlow.begin(network: network, accountID: accountID) }
+                onReconnect: { network, accountID in loginFlow.begin(network: network, accountID: accountID) },
+                highlightedSettingID: navigation.highlightedSettingID
             )
         case .hotkeys:
             HotkeysSettingsPane(
                 registry: hotkeys,
-                lifecycle: lifecycle
+                lifecycle: lifecycle,
+                highlightedSettingID: navigation.highlightedSettingID
             )
         case .quickReplies:
             QuickRepliesSettingsPane(
@@ -316,7 +329,8 @@ struct SettingsWindow: View {
                     } else {
                         loginFlow.showPicker()
                     }
-                }
+                },
+                highlightedSettingID: navigation.highlightedSettingID
             )
         case .about:
             AboutSettingsPane(

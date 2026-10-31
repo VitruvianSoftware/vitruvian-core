@@ -86,4 +86,185 @@ final class SettingsSearchModelTests: XCTestCase {
             }
         }
     }
+
+    func testSharedSettingsNavigationModelSelectsAccountAndEverySettingHasMatchingHighlightTarget() async throws {
+        let server = try TestEngineServer { method, _ in
+            if method == "hello" { return TestEngineServer.helloOK }
+            return .result([String: Any]())
+        }
+        defer { server.stop() }
+
+        let launcher = FakeLauncher { _, process in process.printReady(socket: server.path) }
+        let supervisor = EngineSupervisor(
+            enginePath: "/Applications/Courier.app/Contents/Helpers/courier-engine",
+            dataDir: URL(fileURLWithPath: "/tmp/courier-settings-nav-\(UUID().uuidString)"),
+            environment: [:],
+            launcher: launcher,
+            credentials: InMemoryCredentialStore(),
+            clientName: "Courier/test",
+            timing: FakeTime().timing()
+        )
+        let app = AppModel(supervisor: supervisor)
+        defer { supervisor.stop() }
+
+        let suiteName = "courier.settings.nav.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { UserDefaults.standard.removePersistentDomain(forName: suiteName) }
+
+        let inbox = InboxModel(appModel: app, preferences: InboxPreferences(defaults: defaults))
+        let lifecycle = SystemLifecycleModel(defaults: defaults)
+        let nav = SettingsNavigationModel()
+        let accounts = AccountsAndBridgesModel(appModel: app, dockTileService: NoopDockTileService(), lifecycle: lifecycle)
+        nav.bind(accountsAndBridges: accounts)
+
+        var openedWindowCount = 0
+        let menuCoordinator = AppMenuCoordinator(
+            inbox: inbox,
+            lifecycle: lifecycle,
+            settingsNavigation: nav,
+            showSettingsWindow: { openedWindowCount += 1 }
+        )
+
+        XCTAssertTrue(menuCoordinator.settingsNavigation === nav)
+        menuCoordinator.openSettings(pane: .accounts, accountKey: "slack:T1-U1")
+        XCTAssertEqual(openedWindowCount, 1)
+        XCTAssertEqual(nav.selectedPane, .accounts)
+        XCTAssertEqual(nav.selectedAccountKey, "slack:T1-U1")
+        XCTAssertEqual(accounts.selectedAccountKey, "slack:T1-U1")
+
+        let allIDs = Set(SettingsNavigationModel.allSettings.map(\.id))
+        XCTAssertEqual(
+            SettingsNavigationModel.anchoredSettingIDs,
+            allIDs,
+            "Every SettingDefinition in SettingsNavigationModel.allSettings must have a matching .settingAnchor ID"
+        )
+
+        for setting in SettingsNavigationModel.allSettings {
+            nav.searchQuery = setting.title
+            nav.jump(to: setting)
+            XCTAssertEqual(nav.selectedPane, setting.pane)
+            XCTAssertEqual(nav.highlightedSettingID, setting.id)
+            XCTAssertTrue(
+                SettingsNavigationModel.anchoredSettingIDs.contains(setting.id),
+                "Missing view anchor for \(setting.id)"
+            )
+        }
+    }
+
+    func testSharedNotificationPreferencesInstanceReachesNotificationCoordinator() {
+        let suiteName = "courier.settings.notif.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { UserDefaults.standard.removePersistentDomain(forName: suiteName) }
+
+        let launcher = FakeLauncher { _, _ in }
+        let supervisor = EngineSupervisor(
+            enginePath: "/Applications/Courier.app/Contents/Helpers/courier-engine",
+            dataDir: URL(fileURLWithPath: "/tmp/courier-settings-notif-\(UUID().uuidString)"),
+            environment: [:],
+            launcher: launcher,
+            credentials: InMemoryCredentialStore(),
+            clientName: "Courier/test",
+            timing: FakeTime().timing()
+        )
+        let app = AppModel(supervisor: supervisor)
+        let inboxPreferences = InboxPreferences(defaults: defaults)
+        let coordinator = NotificationCoordinator(
+            appModel: app,
+            delivery: NoopNotificationDelivery(),
+            row: { _ in nil },
+            isLooking: { false },
+            restoreDraft: { _, _, _ in },
+            showWindow: {},
+            preferences: inboxPreferences,
+            defaults: defaults
+        )
+
+        XCTAssertTrue(coordinator.notificationPreferences === inboxPreferences.notifications)
+        inboxPreferences.notifications.delaySeconds = 10
+        inboxPreferences.notifications.autoCopyOTP = true
+        inboxPreferences.notifications.setAccountOverride(key: "slack:T1-U1", enabled: false)
+
+        XCTAssertEqual(coordinator.notificationPreferences.delaySeconds, 10)
+        XCTAssertTrue(coordinator.notificationPreferences.autoCopyOTP)
+        XCTAssertFalse(coordinator.notificationPreferences.isAccountNotificationEnabled(network: "slack", accountID: "T1-U1"))
+    }
+
+    func testTimeFormatPreferenceFormatsTimestampsAcrossSystem12HourAnd24Hour() {
+        let suiteName = "courier.settings.timeformat.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { UserDefaults.standard.removePersistentDomain(forName: suiteName) }
+
+        let prefs = ComposerPreferences(defaults: defaults)
+        let utc = TimeZone(secondsFromGMT: 0)!
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = utc
+        let afternoon = Date(timeIntervalSince1970: 1_700_055_000) // 2023-11-15 13:30:00 UTC
+        let afternoonMillis = Int64(1_700_055_000_000)
+        let sameDayNow = Date(timeIntervalSince1970: 1_700_060_000)
+
+        prefs.timeFormat = .twelveHour
+        XCTAssertEqual(prefs.formatTime(afternoon, timeZone: utc), "1:30 PM")
+        XCTAssertEqual(
+            RelativeTime.text(
+                forMillis: afternoonMillis,
+                now: sameDayNow,
+                calendar: calendar,
+                locale: Locale(identifier: "en_GB"),
+                timeFormat: .twelveHour
+            ),
+            "1:30 PM"
+        )
+        XCTAssertEqual(
+            SearchDate.text(
+                forMillis: afternoonMillis,
+                now: sameDayNow,
+                calendar: calendar,
+                locale: Locale(identifier: "en_GB"),
+                timeFormat: .twelveHour
+            ),
+            "1:30 PM"
+        )
+
+        prefs.timeFormat = .twentyFourHour
+        XCTAssertEqual(prefs.formatTime(afternoon, timeZone: utc), "13:30")
+        XCTAssertEqual(
+            RelativeTime.text(
+                forMillis: afternoonMillis,
+                now: sameDayNow,
+                calendar: calendar,
+                locale: Locale(identifier: "en_US"),
+                timeFormat: .twentyFourHour
+            ),
+            "13:30"
+        )
+        XCTAssertEqual(
+            SearchDate.text(
+                forMillis: afternoonMillis,
+                now: sameDayNow,
+                calendar: calendar,
+                locale: Locale(identifier: "en_US"),
+                timeFormat: .twentyFourHour
+            ),
+            "13:30"
+        )
+
+        prefs.timeFormat = .system
+        let systemUS = prefs.formatTime(afternoon, locale: Locale(identifier: "en_US"), timeZone: utc)
+        let systemGB = prefs.formatTime(afternoon, locale: Locale(identifier: "en_GB"), timeZone: utc)
+        XCTAssertTrue(systemUS.contains("1:30"))
+        XCTAssertTrue(systemGB.contains("13:30"))
+    }
+}
+
+@MainActor
+private final class NoopNotificationDelivery: NotificationDelivering {
+    func requestPermission() {}
+    func deliver(_: NotificationContent) {}
+    func clear(roomID _: String) {}
+    func remove(notificationID _: String) {}
+}
+
+private struct NoopDockTileService: DockTileService {
+    func isAppInDock(bundleIdentifier _: String) -> Bool { false }
+    func removeAppFromDock(bundleIdentifier _: String) -> Bool { false }
 }

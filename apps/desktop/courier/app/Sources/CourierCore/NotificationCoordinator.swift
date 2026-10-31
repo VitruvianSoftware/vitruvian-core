@@ -148,6 +148,11 @@ public final class NotificationCoordinator {
     private let appModel: AppModel
     private let delivery: any NotificationDelivering
     private let preferences: InboxPreferences
+
+    /// The shared `NotificationPreferences` instance owned by `InboxPreferences` and edited in Settings.
+    public var notificationPreferences: NotificationPreferences {
+        preferences.notifications
+    }
     private let entitlement: any EntitlementProvider
     private let row: @MainActor (String) -> InboxRow?
     private let isLooking: @MainActor () -> Bool

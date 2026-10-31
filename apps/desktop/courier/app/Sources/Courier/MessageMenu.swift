@@ -137,7 +137,7 @@ enum MessageRowActions {
                 guard dispatcher?.lifecycle.isLocked != true else { return [] }
                 return MessageMenu.sections(for: message, available: conversation.availableActions(for: message),
                                             features: conversation.features, disappearsIn: conversation.disappearsIn(message),
-                                            time: { $0.formatted(date: .abbreviated, time: .shortened) },
+                                            time: { preferences.formatDateTime($0, dateStyle: .medium) },
                                             includeDiagnostics: true)
             },
             perform: { command, id in
@@ -185,6 +185,8 @@ enum MessageRowActions {
                     in: source == .thread ? conversation.thread.items : conversation.items
                 )
             },
-            loadExternalEmbedsAutomatically: preferences.loadExternalEmbedsAutomatically)
+            loadExternalEmbedsAutomatically: preferences.loadExternalEmbedsAutomatically,
+            timeFormat: preferences.timeFormat,
+            showMessageTimestamps: preferences.showMessageTimestamps)
     }
 }

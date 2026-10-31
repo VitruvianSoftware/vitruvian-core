@@ -80,6 +80,57 @@ public enum TimeFormatPreference: String, CaseIterable, Codable, Sendable {
         case .twentyFourHour: String(localized: "24-hour (13:30)")
         }
     }
+
+    public static func current(from defaults: UserDefaults = .standard) -> TimeFormatPreference {
+        defaults.string(forKey: ComposerPreferences.key("timeFormat"))
+            .flatMap(TimeFormatPreference.init(rawValue:)) ?? .system
+    }
+
+    public func formatTime(
+        _ date: Date,
+        locale: Locale = .current,
+        timeZone: TimeZone = .current
+    ) -> String {
+        let formatter = DateFormatter()
+        formatter.timeZone = timeZone
+        switch self {
+        case .system:
+            formatter.locale = locale
+            formatter.dateStyle = .none
+            formatter.timeStyle = .short
+        case .twelveHour:
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.dateFormat = "h:mm a"
+        case .twentyFourHour:
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.dateFormat = "HH:mm"
+        }
+        return formatter.string(from: date)
+    }
+
+    public func formatDateTime(
+        _ date: Date,
+        dateStyle: DateFormatter.Style = .medium,
+        locale: Locale = .current,
+        timeZone: TimeZone = .current
+    ) -> String {
+        if self == .system {
+            let formatter = DateFormatter()
+            formatter.locale = locale
+            formatter.timeZone = timeZone
+            formatter.dateStyle = dateStyle
+            formatter.timeStyle = .short
+            return formatter.string(from: date)
+        }
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = locale
+        dateFormatter.timeZone = timeZone
+        dateFormatter.dateStyle = dateStyle
+        dateFormatter.timeStyle = .none
+        let datePart = dateFormatter.string(from: date)
+        let timePart = formatTime(date, locale: locale, timeZone: timeZone)
+        return "\(datePart), \(timePart)"
+    }
 }
 
 /// The composer's settings, kept in UserDefaults under "courier.composer.<name>" (inventory 02 §1.2). They are the
@@ -357,5 +408,22 @@ public final class ComposerPreferences: ObservableObject {
 
     private func set(_ value: Any, _ name: String) {
         defaults.set(value, forKey: Self.key(name))
+    }
+
+    public func formatTime(
+        _ date: Date,
+        locale: Locale = .current,
+        timeZone: TimeZone = .current
+    ) -> String {
+        timeFormat.formatTime(date, locale: locale, timeZone: timeZone)
+    }
+
+    public func formatDateTime(
+        _ date: Date,
+        dateStyle: DateFormatter.Style = .medium,
+        locale: Locale = .current,
+        timeZone: TimeZone = .current
+    ) -> String {
+        timeFormat.formatDateTime(date, dateStyle: dateStyle, locale: locale, timeZone: timeZone)
     }
 }

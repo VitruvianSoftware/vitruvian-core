@@ -183,8 +183,50 @@ public final class AccountsAndBridgesModel: ObservableObject {
         !AppLockGate.shared.canPerform(.settingsChange, lifecycle: resolvedLifecycle)
     }
 
-    public static func accountKey(network: String, accountID: String) -> String {
+    nonisolated public static func accountKey(network: String, accountID: String) -> String {
         "\(network):\(accountID)"
+    }
+
+    /// Plain-English status words for a bridge or account connection state (`02` §1.4).
+    /// Never returns raw uppercase protocol codes (`CONNECTED`, `BAD_CREDENTIALS`, etc.).
+    nonisolated public static func statusLabel(for state: AccountState) -> String {
+        statusLabel(for: state.rawValue)
+    }
+
+    nonisolated public static func statusLabel(for rawState: String) -> String {
+        switch rawState {
+        case "CONNECTED", "RUNNING", "OK":
+            return String(localized: "Connected")
+        case "STARTING":
+            return String(localized: "Starting…")
+        case "CONNECTING":
+            return String(localized: "Connecting…")
+        case "BACKFILLING":
+            return String(localized: "Syncing…")
+        case "TRANSIENT_DISCONNECT":
+            return String(localized: "Reconnecting…")
+        case "BRIDGE_UNREACHABLE":
+            return String(localized: "Unreachable")
+        case "BAD_CREDENTIALS":
+            return String(localized: "Signed out — reconnect")
+        case "LOGGED_OUT":
+            return String(localized: "Signed out")
+        case "UNKNOWN_ERROR", "DISCONNECTED":
+            return String(localized: "Connection error")
+        case "UNCONFIGURED":
+            return String(localized: "Not linked")
+        case "NOT_STARTED", "STOPPED":
+            return String(localized: "Not started")
+        default:
+            let cleaned = rawState
+                .replacingOccurrences(of: "_", with: " ")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            guard let first = cleaned.first else {
+                return String(localized: "Disconnected")
+            }
+            return first.uppercased() + cleaned.dropFirst()
+        }
     }
 
     /// Per-network default for `logout_remote`: Slack defaults to `false` because `SlackClient.LogoutRemote`
@@ -398,7 +440,7 @@ public final class AccountsAndBridgesModel: ObservableObject {
         }
         guard let client = appModel.client else { return }
         do {
-            let item: SubAccountItem = try await client.call(
+            let _: Empty = try await client.call(
                 "accounts.setSubAccount",
                 SetSubAccountParams(
                     network: network,
@@ -409,13 +451,22 @@ public final class AccountsAndBridgesModel: ObservableObject {
                 )
             )
             let key = Self.accountKey(network: network, accountID: accountID)
-            var current = subAccountsByKey[key] ?? []
-            if let idx = current.firstIndex(where: { $0.subID == subID }) {
-                current[idx] = item
-            } else {
-                current.append(item)
+            if var current = subAccountsByKey[key],
+               let idx = current.firstIndex(where: { $0.subID == subID }) {
+                var updated = current[idx]
+                updated = SubAccountItem(
+                    network: updated.network,
+                    accountID: updated.accountID,
+                    subID: updated.subID,
+                    title: updated.title,
+                    avatarURI: updated.avatarURI,
+                    kind: updated.kind,
+                    enabled: enabled ?? updated.enabled,
+                    showInInbox: showInInbox ?? updated.showInInbox
+                )
+                current[idx] = updated
+                subAccountsByKey[key] = current
             }
-            subAccountsByKey[key] = current
         } catch {
             lastError = error.localizedDescription
         }
