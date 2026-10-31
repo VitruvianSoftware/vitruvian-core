@@ -4528,6 +4528,67 @@ final class ViewSnapshotTests: XCTestCase {
             AppLockOverlay(model: f.lifecycle)
         }
     }
+
+    func testAccountsAndBridgesSettingsPanesRenderLastError() throws {
+        let f = try makeMilestone46SnapshotFixture()
+        f.accountsModel.selectedAccountKey = "telegram:tg-1"
+        f.lifecycle.lockNow()
+        XCTAssertNil(f.accountsModel.lastError)
+
+        _ = try Snapshot.render("accounts-error-check-clean", width: 780, height: 960) {
+            AccountsSettingsPane(
+                model: f.accountsModel,
+                spaces: f.spaces,
+                notifications: f.notificationPrefs,
+                onAddAccount: {},
+                onReconnect: { _, _ in }
+            )
+        }
+        let cleanAccountsData = try Data(contentsOf: Snapshot.directory.appendingPathComponent("accounts-error-check-clean-light.png"))
+
+        _ = try Snapshot.render("bridges-error-check-clean", width: 760, height: 720) {
+            BridgesSettingsPane(
+                model: f.accountsModel,
+                onOpenAccountSettings: { _, _ in },
+                onAddAccount: { _ in }
+            )
+        }
+        let cleanBridgesData = try Data(contentsOf: Snapshot.directory.appendingPathComponent("bridges-error-check-clean-light.png"))
+
+        f.accountsModel.requestRestartBridge(network: "telegram")
+        XCTAssertNotNil(f.accountsModel.lastError)
+
+        _ = try Snapshot.render("accounts-error-check-shown", width: 780, height: 960) {
+            AccountsSettingsPane(
+                model: f.accountsModel,
+                spaces: f.spaces,
+                notifications: f.notificationPrefs,
+                onAddAccount: {},
+                onReconnect: { _, _ in }
+            )
+        }
+        let errorAccountsData = try Data(contentsOf: Snapshot.directory.appendingPathComponent("accounts-error-check-shown-light.png"))
+
+        _ = try Snapshot.render("bridges-error-check-shown", width: 760, height: 720) {
+            BridgesSettingsPane(
+                model: f.accountsModel,
+                onOpenAccountSettings: { _, _ in },
+                onAddAccount: { _ in }
+            )
+        }
+        let errorBridgesData = try Data(contentsOf: Snapshot.directory.appendingPathComponent("bridges-error-check-shown-light.png"))
+
+        XCTAssertNotEqual(
+            cleanAccountsData,
+            errorAccountsData,
+            "AccountsSettingsPane must visibly render model.lastError when non-nil"
+        )
+        XCTAssertNotEqual(
+            cleanBridgesData,
+            errorBridgesData,
+            "BridgesSettingsPane must visibly render model.lastError when non-nil"
+        )
+    }
 }
 
 private struct SnapshotLoginItemService: LoginItemService {

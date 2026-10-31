@@ -916,3 +916,88 @@ func TestStartupFailureScrubsHomeDirAndSecrets(t *testing.T) {
 	require.NotContains(t, out, "14155550199")
 	require.NotContains(t, out, "xoxc-123-456")
 }
+
+type panicNet struct {
+	*fakenet.Network
+}
+
+func (n *panicNet) Start(ctx context.Context) error {
+	go func() {
+		panic("unhandled crash for +15550100101 at /Users/alice/secret with token xoxc-123-456")
+	}()
+	return n.Network.Start(ctx)
+}
+
+func TestHelperPanicEngine(t *testing.T) {
+	data := os.Getenv("COURIER_TEST_PANIC_DATA_DIR")
+	if data == "" {
+		return
+	}
+	cfg := config{
+		data: data,
+		nets: []networks.Network{{
+			Name: "fake", DisplayName: "Fake", Flows: []string{"qr"},
+			Spec: func() (engine.Spec, error) {
+				return engine.Spec{
+					Name:      "fake",
+					Connector: func() (bridgev2.NetworkConnector, error) { return &panicNet{Network: fakenet.New()}, nil },
+				}, nil
+			},
+		}},
+	}
+	_ = run(cfg, os.Stdout, os.Stderr)
+}
+
+func TestGoPanicWrittenToFd2IsCapturedAndScrubbedInStderrLog(t *testing.T) {
+	data := filepath.Join(shortDir(t), "data")
+	require.NoError(t, os.Mkdir(data, 0o700))
+
+	cmd := exec.Command(os.Args[0], "-test.run=^TestHelperPanicEngine$")
+	cmd.Env = append(cleanEnv(), "COURIER_TEST_PANIC_DATA_DIR="+data)
+	var childOut, childErr bytes.Buffer
+	cmd.Stdout = &childOut
+	cmd.Stderr = &childErr
+	err := cmd.Run()
+	require.Error(t, err, "child process must crash from the unhandled goroutine panic")
+	require.Contains(t, childErr.String(), "panic: unhandled crash", "Go runtime must write panic to fd 2")
+
+	// Start a fresh engine on the same data directory and call diagnostics.export:
+	// the crash written to fd 2 must have been captured into engine-stderr.log and scrubbed.
+	parentR, parentW, err := os.Pipe()
+	require.NoError(t, err)
+	defer parentW.Close()
+	cfg := config{data: data, parent: parentR, nets: []networks.Network{{
+		Name: "fake", DisplayName: "Fake", Flows: []string{"qr"},
+		Spec: func() (engine.Spec, error) {
+			return engine.Spec{Name: "fake", Connector: func() (bridgev2.NetworkConnector, error) { return fakenet.New(), nil }}, nil
+		},
+	}}}
+	stdoutR, stdoutW := io.Pipe()
+	stderr := &syncBuf{}
+	ran := make(chan error, 1)
+	go func() {
+		ran <- run(cfg, stdoutW, stderr)
+		stdoutW.Close()
+	}()
+	line, err := bufio.NewReader(stdoutR).ReadBytes('\n')
+	require.NoError(t, err, "no ready line; stderr:\n%s", stderr.String())
+	var ready gotReady
+	require.NoError(t, json.Unmarshal(line, &ready))
+
+	c := dial(t, ready.Socket)
+	c.hello()
+	var diag struct {
+		ScrubbedStderr []string `json:"scrubbed_stderr"`
+	}
+	require.NoError(t, json.Unmarshal(c.call("diagnostics.export", map[string]any{}), &diag))
+	require.NoError(t, parentW.Close())
+	require.NoError(t, <-ran)
+
+	joined := strings.Join(diag.ScrubbedStderr, "\n")
+	require.Contains(t, diag.ScrubbedStderr, "panic: [redacted]", "panic written to fd 2 must be captured and scrubbed in engine-stderr.log")
+	require.Contains(t, joined, "goroutine ", "goroutine stack written to fd 2 must be captured in engine-stderr.log")
+	for _, forbidden := range []string{"+15550100101", "15550100101", "/Users/alice", "alice", "xoxc-123-456", "unhandled crash"} {
+		require.NotContains(t, joined, forbidden)
+	}
+}
+

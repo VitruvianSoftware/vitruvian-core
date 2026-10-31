@@ -17,6 +17,7 @@ go_test(
         "logscrub_test.go",
         "stack_test.go",
     ],
+    data = ["//apps/desktop/courier/protocol:logscrub_cases"],  # keep
     embed = [":logscrub"],
     deps = [
         "//apps/desktop/courier/engine/internal/actions",

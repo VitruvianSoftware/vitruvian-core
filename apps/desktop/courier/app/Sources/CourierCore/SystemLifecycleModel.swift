@@ -259,6 +259,11 @@ public final class AppLockGate {
         boundLifecycle = lifecycle
     }
 
+    public func bindIfUnbound(_ lifecycle: SystemLifecycleModel) {
+        guard boundLifecycle == nil else { return }
+        boundLifecycle = lifecycle
+    }
+
     nonisolated public static var isCurrentActionAllowedForSettings: Bool {
         if Thread.isMainThread {
             return MainActor.assumeIsolated {
@@ -560,7 +565,7 @@ public final class SystemLifecycleModel: ObservableObject {
         isApplyingLockState = false
 
         if bindToSharedGate {
-            AppLockGate.shared.bind(self)
+            AppLockGate.shared.bindIfUnbound(self)
         }
 
         if storedAutoLock {

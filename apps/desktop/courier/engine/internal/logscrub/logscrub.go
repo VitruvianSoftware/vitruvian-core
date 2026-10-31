@@ -216,7 +216,7 @@ func value(key string, raw json.RawMessage) (_ []byte, keep bool) {
 		case "stack":
 			return encode(cut(Redact(s), maxStack)), true
 		}
-		return encode(cut(Redact(s), maxValue)), true
+		return encode(cut(ScrubPath(s), maxValue)), true
 	case 't', 'f':
 		return raw, true // a boolean: Decode has checked it
 	case '-', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':

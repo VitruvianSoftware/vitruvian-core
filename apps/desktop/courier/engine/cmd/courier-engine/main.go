@@ -29,6 +29,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"syscall"
 	"time"
 
@@ -207,6 +208,10 @@ func run(cfg config, stdout, stderr io.Writer) error {
 		return err
 	}
 	defer rollingStderr.Close()
+	if f := rollingStderr.File(); f != nil {
+		_ = debug.SetCrashOutput(f, debug.CrashOptions{})
+		defer func() { _ = debug.SetCrashOutput(nil, debug.CrashOptions{}) }()
+	}
 	log := zerolog.New(logscrub.New(io.MultiWriter(stderr, rollingStderr))).Level(zerolog.WarnLevel).With().Timestamp().Logger()
 	s, err := store.Open(filepath.Join(cfg.data, "courier.db"))
 	if err != nil {

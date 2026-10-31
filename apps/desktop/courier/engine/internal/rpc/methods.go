@@ -1925,7 +1925,7 @@ func bridgesRestart(ctx context.Context, d *Deps, raw json.RawMessage) (any, err
 		return nil, errMissing
 	}
 	if err := d.Engine.RestartNetwork(ctx, *p.Network); err != nil {
-		return nil, newError(CodeNotRunning)
+		return nil, toError(err)
 	}
 	return nil, nil
 }
@@ -1960,6 +1960,20 @@ func accountsRemove(ctx context.Context, d *Deps, raw json.RawMessage) (any, err
 			return nil, err
 		}
 		return nil, nil
+	}
+	states, err := d.Store.LoginStates(ctx, *p.Network)
+	if err != nil {
+		return nil, err
+	}
+	found := false
+	for _, st := range states {
+		if st.LoginID == *p.AccountID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return nil, store.ErrNotFound
 	}
 	return nil, d.Store.RemoveAccountData(ctx, *p.Network, *p.AccountID, *p.DeleteChats)
 }

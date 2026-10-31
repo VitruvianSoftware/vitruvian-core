@@ -22,7 +22,7 @@ struct InboxCommands: Commands {
     @ObservedObject var lifecycle: SystemLifecycleModel
     @ObservedObject var menuCoordinator: AppMenuCoordinator
     let minimizeToMenuBar: @MainActor () -> Void
-    @ObservedObject var hotkeys: HotkeyRegistry = HotkeyRegistry()
+    @ObservedObject var hotkeys: HotkeyRegistry
     @ObservedObject var hotkeyDispatcher: HotkeyDispatcher
     @Environment(\.openWindow) private var openWindow
 

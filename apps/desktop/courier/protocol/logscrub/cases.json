@@ -1,0 +1,46 @@
+{
+  "about": "Shared crash and stderr scrubbing fixture run by both Go (engine/internal/logscrub) and Swift (CourierCoreTests/ProblemReportModelTests) so the two scrubbers cannot drift.",
+  "input": [
+    "{\"level\":\"warn\",\"message\":\"syncing /Users/alice/Library/Application Support/Courier/courier.db for \\\"Alice Example\\\" (+15550100101) with token xoxc-123-456\",\"bridge\":\"whatsapp\",\"pn\":\"+15550100101\",\"token\":\"xoxc-123-456\",\"time\":\"2026-10-25T12:00:00Z\"}",
+    "{\"level\":\"warn\",\"broken_json\":",
+    "arbitrary third-party stderr line with +15550100101 and /Users/alice/secret and token xoxc-123-456",
+    "courier-engine: open /Users/alice/Library/Application Support/Courier/courier.db: permission denied (token xoxc-123-456, phone +15550100101, user \"Alice Example\")",
+    "panic: failed to parse \"+15550100101: Alice Example\" at /Users/alice/secret with token xoxc-123-456",
+    "fatal error: concurrent map writes for +15550100101",
+    "",
+    "goroutine 42 [running]:",
+    "panic({0x104c92a00?, 0x14000180000?})",
+    "\t/Users/alice/sdk/go1.23.2/src/runtime/panic.go:785 +0x124",
+    "maunium.net/go/mautrix/bridgev2.(*Portal).handleRemoteEvent(0x1400012a000, {0x104c92a00, 0x14000180000})",
+    "\t/Users/alice/go/pkg/mod/maunium.net/go/mautrix@v0.31.0/bridgev2/portal.go:2690 +0x1c4",
+    "github.com/VitruvianSoftware/courier/engine/internal/host.(*Host).Start(0x1400012a000, 0x14000999000)",
+    "\t/Users/alice/Workspace/vitruvian-core/apps/desktop/courier/engine/internal/host/host.go:200 +0x88",
+    "created by maunium.net/go/mautrix/bridgev2.(*Bridge).StartLogins in goroutine 1",
+    "\t/Users/alice/go/pkg/mod/maunium.net/go/mautrix@v0.31.0/bridgev2/bridge.go:366 +0x40"
+  ],
+  "expected": [
+    "{\"level\":\"warn\",\"message\":\"syncing ~/Library/Application Support/Courier/courier.db for [quoted] ([id]) with token [id]\",\"bridge\":\"whatsapp\",\"time\":\"2026-10-25T12:00:00Z\"}",
+    "courier-engine: open ~/Library/Application Support/Courier/courier.db: permission denied (token [id], phone [id], user [quoted])",
+    "panic: [redacted]",
+    "fatal error: [redacted]",
+    "goroutine 42 [running]:",
+    "panic(...)",
+    "\tpanic.go:785 +0x124",
+    "maunium.net/go/mautrix/bridgev2.(*Portal).handleRemoteEvent(...)",
+    "\tmaunium.net/go/mautrix@v0.31.0/bridgev2/portal.go:2690 +0x1c4",
+    "github.com/VitruvianSoftware/courier/engine/internal/host.(*Host).Start(...)",
+    "\tgithub.com/VitruvianSoftware/courier/engine/internal/host/host.go:200 +0x88",
+    "created by maunium.net/go/mautrix/bridgev2.(*Bridge).StartLogins in goroutine 1",
+    "\tmaunium.net/go/mautrix@v0.31.0/bridgev2/bridge.go:366 +0x40"
+  ],
+  "forbidden": [
+    "/Users/alice",
+    "alice",
+    "+15550100101",
+    "15550100101",
+    "xoxc-123-456",
+    "Alice Example",
+    "0x1400012a000",
+    "arbitrary third-party"
+  ]
+}

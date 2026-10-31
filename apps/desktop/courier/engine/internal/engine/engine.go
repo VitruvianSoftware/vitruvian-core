@@ -625,7 +625,7 @@ func (e *Engine) RestartNetwork(ctx context.Context, name string) error {
 	e.hostsMu.RLock()
 	if e.stopped {
 		e.hostsMu.RUnlock()
-		return errStopped
+		return fmt.Errorf("%w: %w", errStopped, ErrNotRunning)
 	}
 	spec, ok := e.specs[name]
 	dataDir := e.dataDir
@@ -635,7 +635,7 @@ func (e *Engine) RestartNetwork(ctx context.Context, name string) error {
 	prevStarted := e.startedAt[name]
 	e.hostsMu.RUnlock()
 	if !ok {
-		return fmt.Errorf("unknown network %q", name)
+		return fmt.Errorf("unknown network %q: %w", name, ErrNotRunning)
 	}
 
 	if loginHook != nil {
@@ -694,42 +694,51 @@ func (e *Engine) RemoveAccount(ctx context.Context, network, accountID string, l
 	if accountID == "" {
 		return errors.New("account_id is required")
 	}
+	e.restartMu.Lock()
+	defer e.restartMu.Unlock()
+
 	h, ok := e.Host(network)
-	if !ok {
-		return fmt.Errorf("network %s %w", network, ErrNotRunning)
-	}
-	loginID := networkid.UserLoginID(accountID)
-	if ul := h.Bridge.GetCachedUserLoginByID(loginID); ul != nil {
-		ul.Delete(ctx, status.BridgeState{StateEvent: status.StateLoggedOut}, bridgev2.DeleteOpts{
-			LogoutRemote:     logoutRemote,
-			DontCleanupRooms: !deleteChats,
-			BlockingCleanup:  true,
-		})
-	} else {
-		dbUL, err := h.Bridge.DB.UserLogin.GetByID(ctx, loginID)
-		if err != nil {
-			return err
-		}
-		if dbUL != nil {
-			if err := h.Bridge.DB.UserLogin.Delete(ctx, loginID); err != nil {
-				return err
-			}
+	if ok && h != nil && h.Bridge != nil {
+		loginID := networkid.UserLoginID(accountID)
+		if ul := h.Bridge.GetCachedUserLoginByID(loginID); ul != nil {
+			ul.Delete(ctx, status.BridgeState{StateEvent: status.StateLoggedOut}, bridgev2.DeleteOpts{
+				LogoutRemote:     logoutRemote,
+				DontCleanupRooms: !deleteChats,
+				BlockingCleanup:  true,
+			})
 		} else {
-			// Check if login_state has the account; if neither bridge DB nor store knows it, return store.ErrNotFound.
-			states, err := e.store.LoginStates(ctx, network)
+			dbUL, err := h.Bridge.DB.UserLogin.GetByID(ctx, loginID)
 			if err != nil {
 				return err
 			}
-			found := false
-			for _, st := range states {
-				if st.LoginID == accountID {
-					found = true
-					break
+			if dbUL != nil {
+				if err := h.Bridge.DB.UserLogin.Delete(ctx, loginID); err != nil {
+					return err
+				}
+			} else {
+				found, err := e.hasLoginState(ctx, network, accountID)
+				if err != nil {
+					return err
+				}
+				if !found {
+					return store.ErrNotFound
 				}
 			}
-			if !found {
-				return store.ErrNotFound
-			}
+		}
+	} else {
+		e.hostsMu.RLock()
+		dataDir := e.dataDir
+		e.hostsMu.RUnlock()
+		deletedOffline, err := host.DeleteOfflineUserLogin(ctx, dataDir, network, accountID)
+		if err != nil {
+			return err
+		}
+		found, err := e.hasLoginState(ctx, network, accountID)
+		if err != nil {
+			return err
+		}
+		if !deletedOffline && !found {
+			return store.ErrNotFound
 		}
 	}
 	if err := e.store.RemoveAccountData(ctx, network, accountID, deleteChats); err != nil {
@@ -738,6 +747,19 @@ func (e *Engine) RemoveAccount(ctx context.Context, network, accountID string, l
 	e.store.NetworkChanged(network)
 	e.store.SpacesChanged()
 	return nil
+}
+
+func (e *Engine) hasLoginState(ctx context.Context, network, accountID string) (bool, error) {
+	states, err := e.store.LoginStates(ctx, network)
+	if err != nil {
+		return false, err
+	}
+	for _, st := range states {
+		if st.LoginID == accountID {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // RefreshSubAccounts scans the bridge DB's portal (room_type = 'space') and ghost (is_bot = 1) tables

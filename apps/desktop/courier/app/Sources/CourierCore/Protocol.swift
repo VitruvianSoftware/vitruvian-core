@@ -17,6 +17,7 @@ import Foundation
 /// The protocol this app speaks, and the framing limit both sides keep.
 public enum CourierProtocol {
     public static let version = 9
+    public static let schemaVersion = 10
     /// The longest line either side may send, not counting the newline.
     public static let maxFrameBytes = 4_194_304
     /// protocol.json's `conventions.typing_repeat_ms`: while the text keeps changing, room.setTyping true goes again

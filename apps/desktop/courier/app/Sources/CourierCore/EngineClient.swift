@@ -5,7 +5,7 @@ import Foundation
 import Network
 
 /// What went wrong talking to the engine.
-public enum EngineError: Error, Equatable, Sendable {
+public enum EngineError: LocalizedError, Equatable, Sendable {
     /// hello was refused: the engine speaks another protocol. The app says "update needed".
     case protocolMismatch(engine: Int)
     /// The engine answered with an error. `reason` is invalid_params' data.reason, which names the parameter.
@@ -28,6 +28,81 @@ public enum EngineError: Error, Equatable, Sendable {
     public var isUpdateNeeded: Bool {
         if case .protocolMismatch = self { return true }
         return false
+    }
+
+    public var errorDescription: String? {
+        switch self {
+        case .protocolMismatch:
+            return String(localized: "Courier needs an update to talk to its engine.")
+        case .notConnected:
+            return String(localized: "Courier’s engine is not connected.")
+        case .disconnected:
+            return String(localized: "Lost connection to Courier’s engine.")
+        case .frameTooLarge:
+            return String(localized: "That request is too large.")
+        case .badResponse:
+            return String(localized: "Courier’s engine returned an unexpected answer.")
+        case .timedOut:
+            return String(localized: "Courier’s engine did not answer in time.")
+        case let .rpc(code, _, reason):
+            if code == .badValue, reason == "locked" {
+                return String(localized: "Courier is locked.")
+            }
+            return Self.describe(code: code)
+        }
+    }
+
+    private static func describe(code: RPCErrorCode) -> String {
+        switch code {
+        case .parseError, .invalidRequest, .methodNotFound, .invalidParams:
+            return String(localized: "Courier’s engine couldn’t understand that request.")
+        case .internalError:
+            return String(localized: "Courier’s engine ran into a problem. Try again.")
+        case .protocolMismatch:
+            return String(localized: "Courier needs an update to talk to its engine.")
+        case .helloRequired:
+            return String(localized: "Courier’s engine is still starting up.")
+        case .notLinked:
+            return String(localized: "This network isn’t linked.")
+        case .bridgeCommand:
+            return String(localized: "The network would take this as a command, so it was not sent.")
+        case .tooLarge:
+            return String(localized: "This file is larger than the network allows.")
+        case .alreadyLinked:
+            return String(localized: "That account is already connected.")
+        case .badValue:
+            return String(localized: "That isn’t accepted. Check it and try again.")
+        case .unknownLogin:
+            return String(localized: "The sign-in ended before it was finished. Try again.")
+        case .notRunning:
+            return String(localized: "This network isn’t running.")
+        case .loginInProgress:
+            return String(localized: "A sign-in is already in progress for this network.")
+        case .notConnected:
+            return String(localized: "The network isn’t connected yet.")
+        case .notFailed:
+            return String(localized: "Only a message that was not sent can be sent again or deleted.")
+        case .notFound:
+            return String(localized: "That account or chat is no longer there.")
+        case .pinned:
+            return String(localized: "Unpin a chat to archive it.")
+        case .notEntitled:
+            return String(localized: "Available with a plan")
+        case .notSupported:
+            return String(localized: "This network can’t do that.")
+        case .tooOld:
+            return String(localized: "That message can’t be changed any more.")
+        case .alreadySent:
+            return String(localized: "Too late to undo. Check the message in the chat.")
+        case .notYours:
+            return String(localized: "You can only change your own messages.")
+        case .networkRefused:
+            return String(localized: "The network didn’t accept that change.")
+        case .needsFFmpeg:
+            return String(localized: "Sending voice notes on this network needs ffmpeg. Install it with Homebrew (brew install ffmpeg), then try again.")
+        case .other:
+            return String(localized: "Courier’s engine could not do that.")
+        }
     }
 }
 
@@ -107,7 +182,9 @@ public actor EngineClient {
     public func call<P: Encodable, R: Decodable>(_ method: String, _ params: P,
                                                  timeout: TimeInterval? = nil) async throws -> R {
         guard greeted, !closed else { throw EngineError.notConnected }
-        if ProtocolMethods.classification(for: method) != .readOnlyOrBackground {
+        let isRoomlessQuitFlush = method == "message.sendHeld"
+            && (params as? RoomOptionalParams).map { $0.roomID == nil } == true
+        if !isRoomlessQuitFlush && ProtocolMethods.classification(for: method) != .readOnlyOrBackground {
             let locked = await MainActor.run { AppLockGate.shared.isLocked }
             if locked {
                 throw EngineError.appLocked

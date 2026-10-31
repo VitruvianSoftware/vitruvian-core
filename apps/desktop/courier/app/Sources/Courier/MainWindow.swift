@@ -62,7 +62,7 @@ struct MainWindow: View {
     @ObservedObject var composerPreferences: ComposerPreferences
     let focus: MessageFocus
     var detachedWindows: DetachedWindowRegistry? = nil
-    @ObservedObject var hotkeys: HotkeyRegistry = HotkeyRegistry()
+    @ObservedObject var hotkeys: HotkeyRegistry
     var hotkeyDispatcher: HotkeyDispatcher? = nil
     var onOpenShortcutsSettings: () -> Void = {}
     @Environment(\.openWindow) private var openWindow

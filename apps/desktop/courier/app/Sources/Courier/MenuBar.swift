@@ -33,7 +33,7 @@ struct MenuBarMenu: View {
     @ObservedObject var lifecycle: SystemLifecycleModel
     @ObservedObject var dockPreferences: DockAndTrayPreferences
     let menuCoordinator: AppMenuCoordinator
-    @ObservedObject var hotkeys: HotkeyRegistry = HotkeyRegistry()
+    @ObservedObject var hotkeys: HotkeyRegistry
     var hotkeyDispatcher: HotkeyDispatcher? = nil
     let openCourier: () -> Void
 

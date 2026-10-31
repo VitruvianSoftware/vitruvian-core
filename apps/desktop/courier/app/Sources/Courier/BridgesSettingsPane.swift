@@ -29,6 +29,16 @@ public struct BridgesSettingsPane: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     header
+                    if let error = model.lastError {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                    if let toast = model.lastToast {
+                        Text(toast)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                     if model.bridges.isEmpty {
                         Text(String(localized: "No on-device bridges reported."))
                             .font(.callout)

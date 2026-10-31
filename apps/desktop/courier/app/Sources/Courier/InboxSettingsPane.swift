@@ -15,11 +15,11 @@ struct SettingsView: View {
     /// The one object the composers read, and the quick replies they offer.
     let composerPreferences: ComposerPreferences
     let quickReplies: QuickReplies
-    var hotkeys: HotkeyRegistry = HotkeyRegistry()
-    var lifecycle: SystemLifecycleModel = SystemLifecycleModel()
-    var navigation: SettingsNavigationModel = SettingsNavigationModel()
+    let hotkeys: HotkeyRegistry
+    let lifecycle: SystemLifecycleModel
+    let navigation: SettingsNavigationModel
     var notificationPreferences: NotificationPreferences? = nil
-    var dockPreferences: DockAndTrayPreferences = DockAndTrayPreferences()
+    let dockPreferences: DockAndTrayPreferences
     var accountsAndBridges: AccountsAndBridgesModel? = nil
     var loginFlow: LoginFlowModel? = nil
     var problemReport: ProblemReportModel? = nil

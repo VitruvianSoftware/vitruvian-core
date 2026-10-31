@@ -930,3 +930,69 @@ func TestRefreshSubAccountsFallbackRoomMetadataAndSurfaceStoreErrors(t *testing.
 	require.Error(t, err, "RefreshSubAccounts must surface store errors from the portal loop")
 	require.Contains(t, err.Error(), "sub_accounts write failed")
 }
+
+func TestRemoveAccountSerialisedWithRestartNetwork(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	s := openStore(t, dir)
+	m := &media.Store{Dir: filepath.Join(dir, "media")}
+
+	var callCount atomic.Int32
+	inRestart := make(chan struct{})
+	releaseRestart := make(chan struct{})
+	var releaseOnce sync.Once
+
+	spec := Spec{
+		Name:        "whatsapp",
+		DisplayName: "WhatsApp",
+		Connector: func() (bridgev2.NetworkConnector, error) {
+			if callCount.Add(1) == 2 {
+				close(inRestart)
+				<-releaseRestart
+			}
+			return fakenet.New(), nil
+		},
+	}
+
+	e, errs := Start(ctx, dir, s, m, []Spec{spec}, quiet)
+	require.Empty(t, errs)
+	t.Cleanup(func() {
+		releaseOnce.Do(func() { close(releaseRestart) })
+		e.Stop()
+	})
+
+	h, ok := e.Host("whatsapp")
+	require.True(t, ok)
+	_, err := fakenet.New().LoginAs(ctx, h.Bridge, "wa-1", "Alice")
+	require.NoError(t, err)
+	require.NoError(t, s.SetLoginState(ctx, "whatsapp", "wa-1", json.RawMessage(`{"state_event":"CONNECTED","remote_id":"wa-1"}`)))
+
+	restartDone := make(chan error, 1)
+	go func() {
+		restartDone <- e.RestartNetwork(ctx, "whatsapp")
+	}()
+
+	<-inRestart
+
+	var removeFinishedWhileRestartInFlight atomic.Bool
+	removeDone := make(chan error, 1)
+	go func() {
+		err := e.RemoveAccount(ctx, "whatsapp", "wa-1", false, true)
+		select {
+		case <-releaseRestart:
+		default:
+			removeFinishedWhileRestartInFlight.Store(true)
+		}
+		removeDone <- err
+	}()
+
+	for range 1000 {
+		runtime.Gosched()
+	}
+	time.Sleep(30 * time.Millisecond)
+	require.False(t, removeFinishedWhileRestartInFlight.Load(), "RemoveAccount must block on restartMu while RestartNetwork is in flight")
+
+	releaseOnce.Do(func() { close(releaseRestart) })
+	require.NoError(t, <-restartDone)
+	require.NoError(t, <-removeDone)
+}
+

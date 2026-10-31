@@ -202,7 +202,7 @@ func OpenRollingFile(path string, maxBytes int) (*RollingFile, error) {
 	} else if !os.IsNotExist(err) {
 		return nil, err
 	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o600)
 	if err != nil {
 		return nil, err
 	}
@@ -218,11 +218,16 @@ func OpenRollingFile(path string, maxBytes int) (*RollingFile, error) {
 			_ = f.Close()
 			return nil, err
 		}
-	} else if _, err := f.Seek(0, io.SeekEnd); err != nil {
-		_ = f.Close()
-		return nil, err
 	}
 	return rf, nil
+}
+
+// File returns the underlying open file descriptor so runtime/debug.SetCrashOutput can direct
+// unhandled Go runtime panics to the same rolling stderr file (single writer).
+func (r *RollingFile) File() *os.File {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.f
 }
 
 func trimLeadingLine(b []byte, maxBytes int) []byte {
@@ -266,15 +271,11 @@ func (r *RollingFile) ensureOpenLocked() error {
 	if r.f != nil {
 		return nil
 	}
-	f, err := os.OpenFile(r.path, os.O_CREATE|os.O_RDWR, 0o600)
+	f, err := os.OpenFile(r.path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o600)
 	if err != nil {
 		return err
 	}
 	_ = f.Chmod(0o600)
-	if _, err := f.Seek(0, io.SeekEnd); err != nil {
-		_ = f.Close()
-		return err
-	}
 	r.f = f
 	return nil
 }

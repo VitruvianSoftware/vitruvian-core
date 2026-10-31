@@ -417,4 +417,72 @@ final class AccountsAndBridgesModelTests: XCTestCase {
         XCTAssertEqual(AccountsAndBridgesModel.statusLabel(for: .notStarted), "Not started")
         XCTAssertEqual(AccountsAndBridgesModel.statusLabel(for: "STOPPED"), "Not started")
     }
+
+    func testFailedRemoveAccountRestartBridgeAndSubAccountToggleProducePlainEnglishErrors() async throws {
+        var allErrors: [EngineError] = [
+            .protocolMismatch(engine: 8),
+            .notConnected,
+            .disconnected,
+            .frameTooLarge,
+            .badResponse,
+            .timedOut,
+            .appLocked,
+        ]
+        for entry in RPCErrorCode.known {
+            allErrors.append(.rpc(entry.code, message: "wire log message", reason: nil))
+        }
+        allErrors.append(.rpc(.other(-32099), message: "unknown wire error", reason: nil))
+
+        for err in allErrors {
+            let text = err.localizedDescription
+            XCTAssertFalse(text.isEmpty, "EngineError \(err) must have a non-empty localizedDescription")
+            XCTAssertFalse(
+                text.contains("CourierCore.EngineError"),
+                "EngineError \(err) localizedDescription must be plain English, got: \(text)"
+            )
+            XCTAssertFalse(
+                text.contains("The operation couldn"),
+                "EngineError \(err) must conform to LocalizedError, got: \(text)"
+            )
+        }
+
+        let server = try TestEngineServer { method, _ in
+            switch method {
+            case "hello":
+                return TestEngineServer.helloOK
+            case "accounts.remove":
+                return .error(code: -32020, message: "no such chat or label")
+            case "bridges.restart":
+                return .error(code: -32016, message: "this network isn't running")
+            case "accounts.setSubAccount":
+                return .error(code: -32014, message: "invalid sub-account value")
+            default:
+                return .result([String: Any]())
+            }
+        }
+        defer { server.stop() }
+
+        let (app, process) = try await makeConnectedApp(server: server)
+        defer {
+            process.exit(0)
+            app.supervisor.stop()
+        }
+
+        let model = AccountsAndBridgesModel(appModel: app, dockTileService: FakeDockTileService())
+
+        await model.removeAccount(network: "telegram", accountID: "tg-missing", logoutRemote: false, deleteChats: false)
+        let removeError: String = try XCTUnwrap(model.lastError)
+        XCTAssertFalse(removeError.contains("CourierCore.EngineError"), "Failed Remove Account must show plain English: \(removeError)")
+        XCTAssertEqual(removeError, "That account or chat is no longer there.")
+
+        await model.restartBridge(network: "telegram")
+        let restartError: String = try XCTUnwrap(model.lastError)
+        XCTAssertFalse(restartError.contains("CourierCore.EngineError"), "Failed Restart Bridge must show plain English: \(restartError)")
+        XCTAssertEqual(restartError, "This network isn’t running.")
+
+        await model.updateSubAccount(network: "telegram", accountID: "tg1", subID: "!folder:courier.local", enabled: true)
+        let subAccountError: String = try XCTUnwrap(model.lastError)
+        XCTAssertFalse(subAccountError.contains("CourierCore.EngineError"), "Failed sub-account toggle must show plain English: \(subAccountError)")
+        XCTAssertEqual(subAccountError, "That isn’t accepted. Check it and try again.")
+    }
 }

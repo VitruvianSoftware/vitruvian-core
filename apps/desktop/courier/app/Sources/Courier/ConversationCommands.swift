@@ -17,7 +17,7 @@ struct ConversationCommands: Commands {
     @ObservedObject var paneComposer: ComposerModel
     let messageActions: MessageActionsModel
     @ObservedObject var focus: MessageFocus
-    @ObservedObject var hotkeys: HotkeyRegistry = HotkeyRegistry()
+    @ObservedObject var hotkeys: HotkeyRegistry
     @ObservedObject var hotkeyDispatcher: HotkeyDispatcher
     @ObservedObject var lifecycle: SystemLifecycleModel
 

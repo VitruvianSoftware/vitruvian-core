@@ -64,6 +64,7 @@ swift_test(
     srcs = glob(["Tests/CourierCoreTests/**/*.swift"]),
     data = [
         "//apps/desktop/courier/protocol",
+        "//apps/desktop/courier/protocol:logscrub_cases",
         "//apps/desktop/courier/protocol:richtext_cases",
     ] + glob(["Sources/**/*.swift"]),
     tags = ["manual"],

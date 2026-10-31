@@ -4,6 +4,7 @@
 package logscrub
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -244,3 +245,42 @@ func TestScrubStderrExportPreservesRealPanicAndGenericFrames(t *testing.T) {
 	require.NotContains(t, joined, "+14155550199")
 	require.NotContains(t, joined, "secret panic payload")
 }
+
+func sharedCasesPath(t testing.TB) string {
+	t.Helper()
+	const rel = "apps/desktop/courier/protocol/logscrub/cases.json"
+	var tried []string
+	if srcdir := os.Getenv("TEST_SRCDIR"); srcdir != "" {
+		ws := os.Getenv("TEST_WORKSPACE")
+		if ws == "" {
+			ws = "_main"
+		}
+		tried = append(tried, filepath.Join(srcdir, ws, rel), filepath.Join(srcdir, rel))
+	}
+	tried = append(tried, filepath.Join("..", "..", "..", "protocol", "logscrub", "cases.json"))
+	for _, p := range tried {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	t.Fatalf("logscrub/cases.json not found; tried %v", tried)
+	return ""
+}
+
+func TestSharedCrashScrubFixture(t *testing.T) {
+	raw, err := os.ReadFile(sharedCasesPath(t))
+	require.NoError(t, err)
+	var fixture struct {
+		Input     []string `json:"input"`
+		Expected  []string `json:"expected"`
+		Forbidden []string `json:"forbidden"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &fixture))
+	got := ScrubStderrExport(strings.Join(fixture.Input, "\n"))
+	require.Equal(t, fixture.Expected, got)
+	joined := strings.Join(got, "\n")
+	for _, f := range fixture.Forbidden {
+		require.NotContains(t, joined, f)
+	}
+}
+

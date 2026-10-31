@@ -223,25 +223,13 @@ public enum StderrExportFilter {
 
     private static func scrubJSONObjectLine(_ line: String) -> String? {
         guard let data = line.data(using: .utf8),
-              let rawObj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+              let rawObj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let inputKeys = extractTopLevelJSONKeys(line) else {
             return nil
-        }
-        let preferredOrder = [
-            "level", "bridge", "network", "component", "sublogger", "action", "subaction",
-            "event_type", "bridge_evt_type", "method", "status", "change",
-            "waited", "retry_in", "batches", "took_ms", "messages", "chats", "people",
-            "per_millisecond", "open_connections", "time", "caller", "error", "panic", "stack", "message",
-        ]
-        var orderedKeys: [String] = []
-        for k in preferredOrder where rawObj[k] != nil {
-            orderedKeys.append(k)
-        }
-        for k in rawObj.keys.sorted() where allowedKeys.contains(k) && !orderedKeys.contains(k) {
-            orderedKeys.append(k)
         }
 
         var parts: [String] = []
-        for key in orderedKeys {
+        for key in inputKeys {
             guard allowedKeys.contains(key), let val = rawObj[key] else { continue }
             if let str = val as? String {
                 if key == "level" {
@@ -268,6 +256,67 @@ public enum StderrExportFilter {
         }
         guard !parts.isEmpty else { return nil }
         return "{\(parts.joined(separator: ","))}"
+    }
+
+    /// Extracts top-level JSON object keys in their original wire order so Swift and Go scrubbers emit identical JSON.
+    private static func extractTopLevelJSONKeys(_ line: String) -> [String]? {
+        let chars = Array(line)
+        var i = 0
+        while i < chars.count, chars[i].isWhitespace { i += 1 }
+        guard i < chars.count, chars[i] == "{" else { return nil }
+        var depth = 0
+        var expectingKey = false
+        var keys: [String] = []
+
+        while i < chars.count {
+            let ch = chars[i]
+            if ch == "\"" {
+                let start = i
+                i += 1
+                var escaped = false
+                while i < chars.count {
+                    let c = chars[i]
+                    if escaped {
+                        escaped = false
+                    } else if c == "\\" {
+                        escaped = true
+                    } else if c == "\"" {
+                        break
+                    }
+                    i += 1
+                }
+                guard i < chars.count else { return nil }
+                if depth == 1 && expectingKey {
+                    let rawLiteral = String(chars[start...i])
+                    if let data = rawLiteral.data(using: .utf8),
+                       let decoded = try? JSONDecoder().decode(String.self, from: data) {
+                        keys.append(decoded)
+                    }
+                    expectingKey = false
+                }
+                i += 1
+                continue
+            }
+            switch ch {
+            case "{":
+                depth += 1
+                if depth == 1 { expectingKey = true }
+            case "}":
+                depth -= 1
+            case "[":
+                depth += 1
+            case "]":
+                depth -= 1
+            case ",":
+                if depth == 1 { expectingKey = true }
+            case ":":
+                if depth == 1 { expectingKey = false }
+            default:
+                break
+            }
+            i += 1
+        }
+        return depth == 0 ? keys : nil
     }
 
     private static func encodeJSONString(_ s: String) -> String {
@@ -578,7 +627,7 @@ public final class ProblemReportModel: ObservableObject {
             appVersion: appVersion,
             macOSVersion: macOSVersion,
             protocolVersion: diagnostics?.protocolVersion ?? CourierProtocol.version,
-            schemaVersion: diagnostics?.schemaVersion ?? 10,
+            schemaVersion: diagnostics?.schemaVersion ?? CourierProtocol.schemaVersion,
             goVersion: diagnostics?.goVersion ?? "",
             bridges: scrubbedBridges,
             roomDetails: includeMessageDetails ? diagnostics?.roomDetails : nil,

@@ -426,6 +426,126 @@ final class EngineClientTests: XCTestCase {
         await client.close()
     }
 
+    @MainActor
+    func testQuitWhileLockedFlushesHeldMessagesWhileRoomSpecificSendHeldRemainsRefused() async throws {
+        var sendHeldPayloads: [[String: Any]] = []
+        server.setHandler { method, params in
+            if method == "hello" { return TestEngineServer.helloOK }
+            if method == "message.sendHeld" {
+                sendHeldPayloads.append(params ?? [:])
+            }
+            return .result([:])
+        }
+
+        let suiteName = "courier.test.quitlock.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        struct AlwaysBiometric: BiometricAuthService {
+            func canEvaluateBiometricsOrWatch() -> Bool { true }
+            func authenticate(reason _: String) async throws -> Bool { true }
+        }
+        struct NoopLoginItem: LoginItemService {
+            func status() -> LoginItemRegistrationStatus { .notRegistered }
+            func register() throws {}
+            func unregister() throws {}
+        }
+
+        AppLockGate.shared.resetForTesting()
+        let lifecycle = SystemLifecycleModel(
+            defaults: defaults,
+            loginItem: NoopLoginItem(),
+            biometrics: AlwaysBiometric()
+        )
+        let socket = server.path
+        let launcher = FakeLauncher { _, process in process.printReady(socket: socket) }
+        let supervisor = EngineSupervisor(
+            enginePath: "/bin/true",
+            dataDir: URL(fileURLWithPath: "/tmp"),
+            environment: [:],
+            launcher: launcher
+        )
+        let app = AppModel(supervisor: supervisor, lifecycle: lifecycle)
+        let conv = ConversationModel(appModel: app)
+        app.start()
+        try await waitUntil { app.client != nil }
+        let process: FakeProcess = try XCTUnwrap(launcher.processes.first)
+        defer {
+            process.exit(0)
+            app.supervisor.stop()
+        }
+
+        lifecycle.lockNow()
+        XCTAssertTrue(AppLockGate.shared.isLocked)
+
+        // Room-specific 'send now' (⌘⇧Z) is a user-initiated mutation and must remain refused while locked.
+        let client: EngineClient = try XCTUnwrap(app.client)
+        do {
+            let _: Empty = try await client.call("message.sendHeld", RoomOptionalParams(roomID: "!r1:courier.local"))
+            XCTFail("Room-specific message.sendHeld must be refused while locked")
+        } catch let error as EngineError {
+            XCTAssertEqual(error, .appLocked)
+        }
+        XCTAssertTrue(sendHeldPayloads.isEmpty, "Refused room-specific sendHeld must not reach the engine")
+
+        // Quitting while locked must still flush held messages via the room-less message.sendHeld call.
+        Task {
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            process.exit(0)
+        }
+        await app.quit(conv)
+        XCTAssertEqual(sendHeldPayloads.count, 1, "Quitting while locked must send room-less message.sendHeld to the engine")
+        XCTAssertNil(sendHeldPayloads.first?["room_id"], "Quit flush message.sendHeld must be room-less")
+    }
+
+    @MainActor
+    func testAppLockGateSharedIsNeverRepointedByStraySystemLifecycleModelInit() throws {
+        struct AlwaysBiometric: BiometricAuthService {
+            func canEvaluateBiometricsOrWatch() -> Bool { true }
+            func authenticate(reason _: String) async throws -> Bool { true }
+        }
+        struct NoopLoginItem: LoginItemService {
+            func status() -> LoginItemRegistrationStatus { .notRegistered }
+            func register() throws {}
+            func unregister() throws {}
+        }
+
+        let primarySuite = "courier.test.lockgate.primary.\(UUID().uuidString)"
+        let primaryDefaults = try XCTUnwrap(UserDefaults(suiteName: primarySuite))
+        defer { primaryDefaults.removePersistentDomain(forName: primarySuite) }
+
+        let straySuite = "courier.test.lockgate.stray.\(UUID().uuidString)"
+        let strayDefaults = try XCTUnwrap(UserDefaults(suiteName: straySuite))
+        defer { strayDefaults.removePersistentDomain(forName: straySuite) }
+
+        AppLockGate.shared.resetForTesting()
+        let primary = SystemLifecycleModel(
+            defaults: primaryDefaults,
+            loginItem: NoopLoginItem(),
+            biometrics: AlwaysBiometric()
+        )
+        primary.lockNow()
+        XCTAssertTrue(primary.isLocked)
+        XCTAssertTrue(AppLockGate.shared.lifecycle === primary)
+        XCTAssertTrue(AppLockGate.shared.isLocked)
+
+        // Creating a stray unlocked SystemLifecycleModel while primary is bound must NOT re-point AppLockGate.shared.
+        let stray = SystemLifecycleModel(
+            defaults: strayDefaults,
+            loginItem: NoopLoginItem(),
+            biometrics: AlwaysBiometric()
+        )
+        XCTAssertFalse(stray.isLocked)
+        XCTAssertTrue(
+            AppLockGate.shared.lifecycle === primary,
+            "AppLockGate.shared.lifecycle must remain bound to the primary SystemLifecycleModel when a stray instance is initialized"
+        )
+        XCTAssertTrue(
+            AppLockGate.shared.isLocked,
+            "AppLockGate.shared.isLocked must remain true when a stray unlocked SystemLifecycleModel is initialized"
+        )
+    }
+
     // MARK: -
 
     private func assertThrows(_ expected: EngineError, file: StaticString = #filePath, line: UInt = #line,

@@ -1582,3 +1582,50 @@ func TestBridgesAndAccountsAndDiagnosticsRPCs(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, ok, "deleted account's room must be removed when delete_chats is true")
 }
+
+func TestAccountsRemoveWhenBridgeHostNotRunning(t *testing.T) {
+	ctx := context.Background()
+	w := newWorld(t)
+	c := dial(t, w.path)
+	c.hello()
+
+	// telegram's bridge host is NOT_STARTED in newWorld (no host running).
+	_, running := w.eng.Host("telegram")
+	require.False(t, running, "precondition: telegram bridge host must not be running")
+
+	const tgAccID = "tg-offline-1"
+	const tgRoom = "!tg-offline:courier.local"
+	require.NoError(t, w.s.SetLoginState(ctx, "telegram", tgAccID, loginState("CONNECTED", tgAccID, "Offline Telegram", "")))
+	require.NoError(t, w.s.UpsertRoom(ctx, store.Room{ID: tgRoom, Network: "telegram", LoginID: tgAccID, Name: "Offline Chat"}))
+
+	// Removing a NOT_STARTED account must fall through to RemoveAccountData and succeed.
+	c.ok("accounts.remove", map[string]any{
+		"network": "telegram", "account_id": tgAccID, "logout_remote": false, "delete_chats": true,
+	}, nil)
+
+	_, roomExists, err := w.s.GetRoom(ctx, tgRoom)
+	require.NoError(t, err)
+	require.False(t, roomExists, "offline account's room must be deleted when delete_chats is true")
+
+	states, err := w.s.LoginStates(ctx, "telegram")
+	require.NoError(t, err)
+	for _, st := range states {
+		require.NotEqual(t, tgAccID, st.LoginID, "offline account login_state must be removed")
+	}
+
+	// Removing an account that does not exist on a non-running bridge must return -32020 (not_found), never undeclared -32016.
+	c.fails(CodeNotFound, "accounts.remove", map[string]any{
+		"network": "telegram", "account_id": tgAccID, "logout_remote": false, "delete_chats": false,
+	})
+}
+
+func TestBridgesRestartPassesErrorsThroughToError(t *testing.T) {
+	w := newWorld(t)
+	c := dial(t, w.path)
+	c.hello()
+
+	// telegram has a spec whose startOne fails with a non-sentinel error; toError maps that to CodeInternal (-32603),
+	// not a blanket CodeNotRunning (-32016).
+	c.fails(CodeInternal, "bridges.restart", map[string]any{"network": "telegram"})
+}
+

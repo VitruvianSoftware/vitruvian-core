@@ -315,6 +315,7 @@ public final class AccountsAndBridgesModel: ObservableObject {
         defer { busyNetworks.remove(network) }
         do {
             let _: Empty = try await client.call("bridges.restart", BridgeRestartParams(network: network))
+            lastError = nil
             lastToast = String(localized: "Bridge restarted")
             await refresh()
             await appModel.refreshAccounts()
@@ -402,6 +403,7 @@ public final class AccountsAndBridgesModel: ObservableObject {
             if selectedAccountKey == key {
                 selectedAccountKey = nil
             }
+            lastError = nil
             lastToast = String(localized: "Account removed")
             await refresh()
             await appModel.refreshAccounts()
@@ -467,6 +469,7 @@ public final class AccountsAndBridgesModel: ObservableObject {
                 current[idx] = updated
                 subAccountsByKey[key] = current
             }
+            lastError = nil
         } catch {
             lastError = error.localizedDescription
         }

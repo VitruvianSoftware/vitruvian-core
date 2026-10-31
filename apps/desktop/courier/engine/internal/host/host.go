@@ -6,8 +6,11 @@ package host
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -180,3 +183,36 @@ var stopTimeout = 10 * time.Second
 func (h *Host) Me(ctx context.Context) (*bridgev2.User, error) {
 	return h.Bridge.GetUserByMXID(ctx, ids.Me)
 }
+
+// DeleteOfflineUserLogin deletes accountID from <dataDir>/bridges/<network>.db when the network's host is not running.
+// It returns (false, nil) if the bridge database file does not exist or has no user_login table/row for accountID.
+func DeleteOfflineUserLogin(ctx context.Context, dataDir, network, accountID string) (bool, error) {
+	if dataDir == "" {
+		return false, nil
+	}
+	path := filepath.Join(dataDir, "bridges", network+".db")
+	if _, err := os.Stat(path); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return false, nil
+		}
+		return false, err
+	}
+	db, err := sqlite.Open(path)
+	if err != nil {
+		return false, err
+	}
+	defer db.Close()
+	res, err := db.Exec(ctx, `DELETE FROM user_login WHERE id = $1`, accountID)
+	if err != nil {
+		if strings.Contains(err.Error(), "no such table") {
+			return false, nil
+		}
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+

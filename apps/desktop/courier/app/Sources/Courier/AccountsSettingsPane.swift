@@ -181,6 +181,11 @@ struct AccountsSettingsPane: View {
                         dockCleanupCard(entry)
                             .settingAnchor("accounts.dockCleanup", highlighted: highlightedSettingID)
                         developerActionsCard(entry)
+                        if let error = model.lastError {
+                            Text(error)
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        }
                         if let toast = model.lastToast {
                             Text(toast)
                                 .font(.caption)
@@ -245,6 +250,17 @@ struct AccountsSettingsPane: View {
                                 .padding(8)
                         }
                         .settingAnchor("accounts.dockCleanup", highlighted: highlightedSettingID)
+
+                        if let error = model.lastError {
+                            Text(error)
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        }
+                        if let toast = model.lastToast {
+                            Text(toast)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     .padding(20)
                 }

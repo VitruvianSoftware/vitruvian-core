@@ -273,4 +273,23 @@ final class ProblemReportModelTests: XCTestCase {
             XCTAssertEqual(error as? EngineError, .appLocked)
         }
     }
+
+    func testSharedCrashScrubFixtureMatchesEngineScrubber() throws {
+        let dir = try XCTUnwrap(ProtocolConformanceTests.protocolDirectory(), "protocol directory not found")
+        let fixtureURL = dir.appendingPathComponent("logscrub/cases.json")
+        let data = try Data(contentsOf: fixtureURL)
+        struct Fixture: Decodable {
+            let input: [String]
+            let expected: [String]
+            let forbidden: [String]
+        }
+        let fixture = try JSONDecoder().decode(Fixture.self, from: data)
+        let got = StderrExportFilter.scrub(fixture.input)
+        XCTAssertEqual(got, fixture.expected)
+        let joined = got.joined(separator: "\n")
+        for forbidden in fixture.forbidden {
+            XCTAssertFalse(joined.contains(forbidden), "Swift scrubber leaked \(forbidden)")
+        }
+    }
 }
+
