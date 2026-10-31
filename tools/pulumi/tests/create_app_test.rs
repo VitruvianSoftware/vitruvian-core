@@ -475,17 +475,15 @@ mod pty {
     }
 }
 
-// Ctrl-C at the hidden token prompt must not leave the terminal without
-// echo: the terminal settings are put back, then the process still dies
-// of the SIGINT (so callers see an interrupt, not a clean exit).
-#[test]
-fn interrupt_at_token_prompt_restores_terminal_echo() {
-    use std::os::unix::process::{CommandExt, ExitStatusExt};
-    let fx = Fx::new(Some("GET /cb?code=abc HTTP/1.1"));
+/// create-app with stdin on the pty's slave side, run until its token
+/// prompt has turned echo off (the slave's settings differ from `before`).
+fn spawn_at_token_prompt(
+    fx: &Fx,
+    slave: &std::fs::File,
+    before: &pty::Termios,
+) -> std::process::Child {
+    use std::os::unix::process::CommandExt;
     std::os::unix::fs::symlink(find_tool("stty"), fx.sys.join("stty")).unwrap();
-    let (_master, slave) = pty::open();
-    let before = pty::termios(&slave);
-
     let mut c = cmd(
         &bin("CREATE_APP_BIN"),
         &format!("{}:{}", fx.stubs.display(), fx.sys.display()),
@@ -508,16 +506,27 @@ fn interrupt_at_token_prompt_restores_terminal_echo() {
         });
     }
     let child = c.spawn().unwrap();
-
-    // Wait until the prompt has turned echo off.
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
-    while pty::termios(&slave) == before {
+    while pty::termios(slave) == *before {
         assert!(
             std::time::Instant::now() < deadline,
             "echo was never turned off at the token prompt"
         );
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
+    child
+}
+
+// Ctrl-C at the hidden token prompt must not leave the terminal without
+// echo: the terminal settings are put back, then the process still dies
+// of the SIGINT (so callers see an interrupt, not a clean exit).
+#[test]
+fn interrupt_at_token_prompt_restores_terminal_echo() {
+    use std::os::unix::process::ExitStatusExt;
+    let fx = Fx::new(Some("GET /cb?code=abc HTTP/1.1"));
+    let (_master, slave) = pty::open();
+    let before = pty::termios(&slave);
+    let child = spawn_at_token_prompt(&fx, &slave, &before);
     // SAFETY: plain kill(2) on our own child.
     assert_eq!(unsafe { pty::kill(child.id() as i32, 2) }, 0);
     let o = child.wait_with_output().unwrap();
@@ -530,6 +539,30 @@ fn interrupt_at_token_prompt_restores_terminal_echo() {
     assert!(read(&fx.d.join("secrets.log"))
         .lines()
         .all(|l| !l.starts_with("PULUMI_ACCESS_TOKEN")));
+}
+
+// The normal path: a token typed at the hidden prompt is stored, and the
+// terminal is left exactly as it was found (echo back on).
+#[test]
+fn typed_token_restores_terminal_echo() {
+    use std::io::Write;
+    let fx = Fx::new(Some("GET /cb?code=abc HTTP/1.1"));
+    let (mut master, slave) = pty::open();
+    let before = pty::termios(&slave);
+    let child = spawn_at_token_prompt(&fx, &slave, &before);
+    master.write_all(b"pul-tok\n").unwrap();
+    let o = child.wait_with_output().unwrap();
+
+    assert_eq!(code(&o), 0, "{}", stderr(&o));
+    assert!(
+        read(&fx.d.join("secrets.log")).contains("PULUMI_ACCESS_TOKEN=pul-tok\n"),
+        "{}",
+        read(&fx.d.join("secrets.log"))
+    );
+    assert!(
+        pty::termios(&slave) == before,
+        "terminal settings (echo) were not restored after the token was read"
+    );
 }
 
 // gap: the shell's temp file comes from mktemp (random, created exclusively),
