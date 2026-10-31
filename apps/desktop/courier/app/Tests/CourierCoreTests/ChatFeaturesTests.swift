@@ -367,7 +367,7 @@ final class ChatFeaturesTests: XCTestCase {
     }
 
     func testMediaCapabilityAndProtocolV7TypesRoundTrip() throws {
-        XCTAssertEqual(CourierProtocol.version, 9)
+        XCTAssertEqual(CourierProtocol.version, 10)
 
         let voiceCap = FileKindFeatures(
             supported: true,
@@ -533,5 +533,100 @@ final class ChatFeaturesTests: XCTestCase {
         XCTAssertEqual(recovered.gif, gifCap, "gif must be derived from gif_features when gif disagrees")
         XCTAssertTrue(recovered.supportsStickers)
         XCTAssertTrue(recovered.supportsGIFs)
+    }
+
+    func testGoogleChatRoomFeaturesToggleThreadAndMentionRoomByRoomType() throws {
+        // 1. Verify ChatFeatures.swift never gates capabilities by network name ("case \"gchat\":") or fabricates a local forRoom factory.
+        let protoDir = try XCTUnwrap(ProtocolConformanceTests.protocolDirectory())
+        let chatFeaturesFile = protoDir
+            .deletingLastPathComponent()
+            .appendingPathComponent("app/Sources/CourierCore/ChatFeatures.swift")
+        let chatFeaturesSource = try String(contentsOf: chatFeaturesFile, encoding: .utf8)
+        XCTAssertFalse(chatFeaturesSource.contains("case \"gchat\":"), "ChatFeatures.swift must not gate capabilities by network name")
+        XCTAssertFalse(chatFeaturesSource.contains("func forRoom("), "ChatFeatures must come from the engine's room.features wire shape, not a local forRoom factory")
+
+        // 2. Verify decoding from the Go engine's real actions.Features wire shape for threaded Space, unthreaded Space, and DM.
+        func makeWireJSON(thread: Bool, mentionRoom: Bool) -> Data {
+            Data("""
+            {
+              "reply": true,
+              "thread": \(thread),
+              "reply_is_thread": false,
+              "edit": true,
+              "edit_max_age_ms": 0,
+              "edit_max_count": 0,
+              "unsend": true,
+              "unsend_max_age_ms": 0,
+              "delete_reaches_phone": false,
+              "hide_deleted_placeholder": false,
+              "poll": null,
+              "disappearing": null,
+              "current_timer": null,
+              "formatting": ["bold", "italic", "strikethrough", "code", "pre", "blockquote", "bullet_list", "ordered_list", "link", "mention"],
+              "mention_room": \(mentionRoom),
+              "max_text_length": 4096,
+              "source": "network",
+              "can_set_name": false,
+              "can_set_topic": false,
+              "can_set_avatar": false,
+              "can_invite": false,
+              "can_kick": false,
+              "can_set_admin": false,
+              "can_leave": false,
+              "can_delete": false,
+              "delete_leaves_group": false,
+              "image_features": {"supported": true, "mime_types": ["image/*"], "caption": true, "max_caption_length": 4096, "max_size": 209715200},
+              "video_features": {"supported": true, "mime_types": ["video/*"], "caption": true, "max_caption_length": 4096, "max_size": 209715200},
+              "audio_features": {"supported": true, "mime_types": ["audio/*"], "caption": true, "max_caption_length": 4096, "max_size": 209715200},
+              "voice_features": {"supported": true, "mime_types": ["audio/*"], "caption": true, "max_caption_length": 4096, "max_size": 209715200},
+              "file_features": {"supported": true, "mime_types": ["*/*"], "caption": true, "max_caption_length": 4096, "max_size": 209715200},
+              "gif_features": {"supported": true, "mime_types": ["image/gif"], "caption": true, "max_caption_length": 4096, "max_size": 209715200},
+              "sticker_features": null,
+              "sticker": {"supported": false, "mime_types": [], "captions": false},
+              "gif": {"supported": true, "mime_types": ["image/gif"], "captions": true, "max_caption_length": 4096, "max_size": 209715200},
+              "location_supported": false,
+              "link_previews_supported": true
+            }
+            """.utf8)
+        }
+
+        let threadedSpace = try JSONDecoder().decode(ChatFeatures.self, from: makeWireJSON(thread: true, mentionRoom: true))
+        XCTAssertTrue(threadedSpace.thread)
+        XCTAssertTrue(threadedSpace.reply)
+        XCTAssertFalse(threadedSpace.replyIsThread)
+        XCTAssertTrue(threadedSpace.mentionRoom)
+        XCTAssertTrue(threadedSpace.edit)
+        XCTAssertTrue(threadedSpace.unsend)
+        XCTAssertEqual(threadedSpace.maxTextLength, 4096)
+        XCTAssertEqual(threadedSpace.maxSizeBytes(for: "m.file"), 200 * 1024 * 1024)
+        XCTAssertEqual(threadedSpace.maxSizeBytes(for: "m.image"), 200 * 1024 * 1024)
+        XCTAssertEqual(threadedSpace.maxSizeBytes(for: "m.video"), 200 * 1024 * 1024)
+        XCTAssertEqual(threadedSpace.maxSizeBytes(for: "m.audio"), 200 * 1024 * 1024)
+        XCTAssertTrue(threadedSpace.supportsGIFs)
+        XCTAssertFalse(threadedSpace.supportsStickers)
+        XCTAssertFalse(threadedSpace.supportsLocationSend)
+
+        let unthreadedSpace = try JSONDecoder().decode(ChatFeatures.self, from: makeWireJSON(thread: false, mentionRoom: true))
+        XCTAssertFalse(unthreadedSpace.thread)
+        XCTAssertTrue(unthreadedSpace.reply)
+        XCTAssertTrue(unthreadedSpace.mentionRoom)
+        XCTAssertEqual(unthreadedSpace.maxTextLength, 4096)
+
+        let dm = try JSONDecoder().decode(ChatFeatures.self, from: makeWireJSON(thread: false, mentionRoom: false))
+        XCTAssertFalse(dm.thread)
+        XCTAssertTrue(dm.reply)
+        XCTAssertFalse(dm.mentionRoom)
+        XCTAssertEqual(dm.maxTextLength, 4096)
+
+        let msg = message(mine: true)
+        let threadedActions = available(msg, threadedSpace, network: "gchat", isDirect: false, networkRunning: true)
+        XCTAssertTrue(threadedActions.actions.contains(.reply))
+        XCTAssertTrue(threadedActions.actions.contains(.replyInThread))
+        XCTAssertTrue(threadedActions.actions.contains(.edit))
+        XCTAssertTrue(threadedActions.actions.contains(.unsend))
+
+        let dmActions = available(msg, dm, network: "gchat", isDirect: true, networkRunning: true)
+        XCTAssertTrue(dmActions.actions.contains(.reply))
+        XCTAssertFalse(dmActions.actions.contains(.replyInThread))
     }
 }

@@ -277,6 +277,14 @@ var (
 		{re: regexp.MustCompile(`\b[UuWwTtCcDdGgBbEe][A-Za-z0-9]{8,10}\b`), is: isSlackID},
 		// A Slack token (xoxb-..., xoxp-..., xoxc-..., xoxd-..., xoxa-...).
 		{re: regexp.MustCompile(`\bxox[a-zA-Z]-[A-Za-z0-9-]+\b`)},
+		// Google Chat session cookies (COMPASS, SSID, SID, OSID, HSID, __Secure-1PSID, __Secure-3PSID, SAPISID, APISID).
+		{re: regexp.MustCompile(`\b(?:OSID|COMPASS|__Secure-[13]PSID|SAPISID|APISID|HSID|SSID|SID)=[^\s;,"']+`)},
+		// Google Chat XSRF token header or value (AF1Qip...:<ts>).
+		{re: regexp.MustCompile(`(?:X-Framework-Xsrf-Token\s*[:=]\s*[^\s,;]+|\bAF1Qip[A-Za-z0-9_-]+(?::\d+)?)`)},
+		// Google Chat WebChannel query tokens (gsessionid, AID, SID, RID).
+		{re: regexp.MustCompile(`\b(?:gsessionid|AID|SID|RID)=[A-Za-z0-9_-]+`)},
+		// Google Chat 20-21 digit Gaia IDs (bare or prefixed with gchat_ or user/).
+		{re: regexp.MustCompile(`(?:gchat_|user/)?\b\d{20,21}\b`)},
 		// An international phone number, however it is written: +15551234567, +1 555-123-4567, +44 (20) 7946 0958.
 		{re: regexp.MustCompile(`\+\d(?:[ ().-]{0,2}\d){5,14}`)},
 		// A North American number written for people: (555) 123-4567, 555-123-4567, 555.123.4567.
@@ -316,6 +324,11 @@ func isID(w string) bool {
 		}
 	}
 	return letters > 0 && (digits >= 2 || (len(w) >= 16 && digits >= 1))
+}
+
+// Scrub replaces os.UserHomeDir() and identifier/secret tokens in s.
+func Scrub(s string) string {
+	return ScrubPath(s)
 }
 
 // Redact returns s with everything that could name someone replaced by a fixed token: text in double quotes becomes

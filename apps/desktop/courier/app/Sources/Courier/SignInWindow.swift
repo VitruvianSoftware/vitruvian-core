@@ -293,7 +293,7 @@ private final class Flag {
 }
 
 /// The window's content: a bar with where the page is and "I've signed in", then the page.
-private struct SignInWindowContent: View {
+struct SignInWindowContent: View {
     @ObservedObject var state: SignInWindowState
     let webView: WKWebView
     let networkName: String

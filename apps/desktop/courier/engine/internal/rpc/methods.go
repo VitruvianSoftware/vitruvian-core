@@ -418,6 +418,7 @@ type account struct {
 	NotStarted     string      `json:"not_started"`
 	Syncs          []string    `json:"syncs"`
 	CanCreateGroup bool        `json:"can_create_group"`
+	CanLookupEmail bool        `json:"can_lookup_email"`
 	Logins         []loginJSON `json:"logins"`
 }
 
@@ -429,6 +430,7 @@ type loginJSON struct {
 	State          string `json:"state"`
 	Error          string `json:"error"`
 	CanCreateGroup bool   `json:"can_create_group"`
+	CanLookupEmail bool   `json:"can_lookup_email"`
 }
 
 // bridgeState is the part of a bridge state (status.BridgeState) the protocol shows.
@@ -481,6 +483,7 @@ func (d *Deps) buildAccounts(ctx context.Context) ([]account, error) {
 		if d.Actions != nil {
 			a.Syncs = d.Actions.Syncs(n.Name) // never nil; empty for a network that isn't running or has no account
 			a.CanCreateGroup = d.Actions.CanCreateGroup(n.Name, "")
+			a.CanLookupEmail = d.Actions.CanLookupEmail(n.Name, "")
 		}
 		states, err := d.Store.LoginStates(ctx, n.Name) // read once: the logins and the summary both come from it
 		if err != nil {
@@ -491,9 +494,10 @@ func (d *Deps) buildAccounts(ctx context.Context) ([]account, error) {
 		a.Logins = make([]loginJSON, 0, len(logins))
 		for _, l := range logins {
 			st := readState(l.State)
-			var canGroup bool
+			var canGroup, canEmail bool
 			if d.Actions != nil {
 				canGroup = d.Actions.CanCreateGroup(n.Name, l.LoginID)
+				canEmail = d.Actions.CanLookupEmail(n.Name, l.LoginID)
 			}
 			a.Logins = append(a.Logins, loginJSON{
 				AccountID:      l.LoginID,
@@ -501,6 +505,7 @@ func (d *Deps) buildAccounts(ctx context.Context) ([]account, error) {
 				State:          st.state(),
 				Error:          st.errorText(),
 				CanCreateGroup: canGroup,
+				CanLookupEmail: canEmail,
 			})
 		}
 		if len(a.Logins) > 0 {
@@ -1877,6 +1882,7 @@ func (d *Deps) bridgeInfos(ctx context.Context) ([]bridgeInfoJSON, error) {
 				NotStarted:     a.NotStarted,
 				Syncs:          a.Syncs,
 				CanCreateGroup: l.CanCreateGroup,
+				CanLookupEmail: l.CanLookupEmail,
 				Logins:         []loginJSON{l},
 			})
 		}

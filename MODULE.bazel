@@ -564,6 +564,37 @@ crate.annotation(
 )
 use_repo(crate, "libsignal_crates")
 
+# --- gchat_ffi (Courier's Google Chat Rust engine) -------------------------
+crate.from_cargo(
+    name = "gchat_crates",
+    cargo_lock = "//apps/desktop/courier/gchat:Cargo.lock",
+    cargo_toml = "//apps/desktop/courier/gchat:Cargo.toml",
+    platform_triples = [
+        "aarch64-apple-darwin",
+        "x86_64-apple-darwin",
+    ],
+)
+crate.annotation(
+    build_script_env = {
+        "PATH": "$(execpath @@//apps/desktop/courier/gchat:protoc)/bin:/usr/bin:/bin",
+        "PROTOC": "$(execpath @@//apps/desktop/courier/gchat:protoc)/bin/protoc",
+    },
+    build_script_tools = ["@@//apps/desktop/courier/gchat:protoc"],
+    crate = "prost-build",
+    repositories = ["gchat_crates"],
+)
+crate.annotation(
+    build_script_env = {
+        "CC_aarch64_apple_darwin": "$(execpath @@//apps/desktop/courier/libsignal:cc_in_execroot)",
+        "CC_x86_64_apple_darwin": "$(execpath @@//apps/desktop/courier/libsignal:cc_in_execroot)",
+        "COURIER_BAZEL_EXECROOT": "$${pwd}",
+    },
+    build_script_tools = ["@@//apps/desktop/courier/libsignal:cc_in_execroot"],
+    crate = "ring",
+    repositories = ["gchat_crates"],
+)
+use_repo(crate, "gchat_crates")
+
 #########################
 # Support for Ruby, see https://github.com/bazel-contrib/rules_ruby
 bazel_dep(name = "rules_ruby", version = "0.27.0")

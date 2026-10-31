@@ -16,7 +16,7 @@ import Foundation
 
 /// The protocol this app speaks, and the framing limit both sides keep.
 public enum CourierProtocol {
-    public static let version = 9
+    public static let version = 10
     public static let schemaVersion = 10
     /// The longest line either side may send, not counting the newline.
     public static let maxFrameBytes = 4_194_304
@@ -188,13 +188,15 @@ public struct Account: ProtocolType, Equatable {
     public var syncs: [AccountSync]
     /// Whether any linked account on this network can create group chats (`GroupCreatingNetworkAPI`).
     public var canCreateGroup: Bool
+    /// Whether any linked account on this network can resolve email addresses (`LookupEmail`).
+    public var canLookupEmail: Bool
     /// Each account signed in on the network (a second phone number, a second workspace), first the one a plain
     /// sign-in signs in again. `state` sums them up. [] when none is linked.
     public var logins: [Login]
 
     public init(network: String, displayName: String, flows: [String], state: AccountState, error: String = "",
                 remoteName: String = "", notStarted: String = "", syncs: [AccountSync] = [],
-                logins: [Login] = [], canCreateGroup: Bool = true) {
+                logins: [Login] = [], canCreateGroup: Bool = true, canLookupEmail: Bool = false) {
         self.network = network
         self.displayName = displayName
         self.flows = flows
@@ -204,6 +206,7 @@ public struct Account: ProtocolType, Equatable {
         self.notStarted = notStarted
         self.syncs = syncs
         self.canCreateGroup = canCreateGroup
+        self.canLookupEmail = canLookupEmail
         self.logins = logins
     }
 
@@ -217,6 +220,7 @@ public struct Account: ProtocolType, Equatable {
         case notStarted = "not_started"
         case syncs
         case canCreateGroup = "can_create_group"
+        case canLookupEmail = "can_lookup_email"
         case logins
     }
 
@@ -231,6 +235,7 @@ public struct Account: ProtocolType, Equatable {
         notStarted = try container.decode(String.self, forKey: .notStarted)
         syncs = try container.decode([AccountSync].self, forKey: .syncs)
         canCreateGroup = try container.decodeIfPresent(Bool.self, forKey: .canCreateGroup) ?? true
+        canLookupEmail = try container.decodeIfPresent(Bool.self, forKey: .canLookupEmail) ?? false
         logins = try container.decode([Login].self, forKey: .logins)
     }
 
@@ -245,6 +250,7 @@ public struct Account: ProtocolType, Equatable {
         try container.encode(notStarted, forKey: .notStarted)
         try container.encode(syncs, forKey: .syncs)
         try container.encode(canCreateGroup, forKey: .canCreateGroup)
+        try container.encode(canLookupEmail, forKey: .canLookupEmail)
         try container.encode(logins, forKey: .logins)
     }
 }
@@ -263,14 +269,17 @@ public struct Login: ProtocolType, Equatable, Hashable {
     public var error: String
     /// Whether this account's bridge client implements `GroupCreatingNetworkAPI` and can create group chats.
     public var canCreateGroup: Bool
+    /// Whether this account's bridge client can resolve email addresses (`LookupEmail`).
+    public var canLookupEmail: Bool
 
     public init(accountID: String, remoteName: String = "", state: AccountState, error: String = "",
-                canCreateGroup: Bool = true) {
+                canCreateGroup: Bool = true, canLookupEmail: Bool = false) {
         self.accountID = accountID
         self.remoteName = remoteName
         self.state = state
         self.error = error
         self.canCreateGroup = canCreateGroup
+        self.canLookupEmail = canLookupEmail
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
@@ -279,6 +288,7 @@ public struct Login: ProtocolType, Equatable, Hashable {
         case state
         case error
         case canCreateGroup = "can_create_group"
+        case canLookupEmail = "can_lookup_email"
     }
 
     public init(from decoder: Decoder) throws {
@@ -288,6 +298,7 @@ public struct Login: ProtocolType, Equatable, Hashable {
         state = try container.decode(AccountState.self, forKey: .state)
         error = try container.decode(String.self, forKey: .error)
         canCreateGroup = try container.decodeIfPresent(Bool.self, forKey: .canCreateGroup) ?? true
+        canLookupEmail = try container.decodeIfPresent(Bool.self, forKey: .canLookupEmail) ?? false
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -297,6 +308,7 @@ public struct Login: ProtocolType, Equatable, Hashable {
         try container.encode(state, forKey: .state)
         try container.encode(error, forKey: .error)
         try container.encode(canCreateGroup, forKey: .canCreateGroup)
+        try container.encode(canLookupEmail, forKey: .canLookupEmail)
     }
 }
 

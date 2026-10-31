@@ -2145,26 +2145,46 @@ public struct StartNewChatDraft: Equatable, Sendable {
         blastOutcomes = outcomes
     }
 
-    /// Whether `query` looks like a phone number (`+...` or >= 7 digits) or `@username` for `people.resolve`.
+    /// Whether `raw` is a plausible email address (`local@domain.tld`, no whitespace).
+    public static func isEmailAddress(_ raw: String) -> Bool {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !trimmed.hasPrefix("@"), !trimmed.contains(where: \.isWhitespace) else {
+            return false
+        }
+        let parts = trimmed.split(separator: "@", omittingEmptySubsequences: false)
+        guard parts.count == 2, !parts[0].isEmpty else { return false }
+        let domain = parts[1]
+        guard domain.contains("."), !domain.hasPrefix("."), !domain.hasSuffix(".") else { return false }
+        let labels = domain.split(separator: ".", omittingEmptySubsequences: false)
+        return labels.count >= 2 && labels.allSatisfy { !$0.isEmpty }
+    }
+
+    /// Whether `query` looks like a phone number (`+...` or >= 7 digits), `@username`, or email address for `people.resolve`.
     public var isLookupQuery: Bool {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
         if trimmed.hasPrefix("@") && trimmed.count >= 2 { return true }
+        if Self.isEmailAddress(trimmed) { return true }
         let digits = trimmed.filter(\.isNumber).count
         if trimmed.hasPrefix("+") && digits >= 5 { return true }
         return digits >= 7
     }
 
     /// Ruling 5: offers `"Look up <query> on <Network>"` on every connected account (filtered by `selectedAccountFilter`
-    /// when set) without hard-coding per-network phone/username rules.
+    /// when set) without hard-coding per-network phone/username rules. For email addresses, only accounts/logins whose
+    /// engine features advertise `canLookupEmail` are offered (never checking network names).
     public var lookupActions: [StartNewChatLookupAction] {
         guard isLookupQuery else { return [] }
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let isEmail = Self.isEmailAddress(trimmed)
         var actions: [StartNewChatLookupAction] = []
         for account in accounts {
             let matchingLogins = account.logins.filter { $0.state == .connected }
             let multipleLogins = matchingLogins.count > 1
             for login in matchingLogins {
+                if isEmail && !(login.canLookupEmail || account.canLookupEmail) {
+                    continue
+                }
                 if let filter = selectedAccountFilter {
                     let filterKey = "\(account.network):\(login.accountID)"
                     if filter != filterKey && filter != account.network && filter != login.accountID {

@@ -116,6 +116,29 @@ func (a *Actions) CanCreateGroup(network, accountID string) bool {
 	return false
 }
 
+// CanLookupEmail reports whether a login on network (or any login on network when accountID is "") can look up
+// email addresses via people.resolve: its connector advertises Provisioning.ResolveIdentifier.LookupEmail and its
+// bridge client implements bridgev2.IdentifierResolvingNetworkAPI.
+func (a *Actions) CanLookupEmail(network, accountID string) bool {
+	h, ok := a.eng.Host(network)
+	if !ok || h.Bridge == nil || h.Bridge.Network == nil {
+		return false
+	}
+	caps := h.Bridge.Network.GetCapabilities()
+	if caps == nil || !caps.Provisioning.ResolveIdentifier.LookupEmail {
+		return false
+	}
+	for _, l := range myLogins(h) {
+		if accountID != "" && string(l.ID) != accountID {
+			continue
+		}
+		if _, ok := l.Client.(bridgev2.IdentifierResolvingNetworkAPI); ok {
+			return true
+		}
+	}
+	return false
+}
+
 // chatHost is a chat and the running host of its network, nil when that network isn't running: then a change to the
 // chat stays in Courier (and is kept for the network while it starts: tellChange). An unknown chat is
 // store.ErrNotFound.

@@ -130,10 +130,10 @@ public struct StartNewChatView: View {
             case .blast:
                 return String(localized: "Send an individual 1:1 message to each person.")
             case .directChat:
-                return String(localized: "Search contacts or enter a phone number or @username.")
+                return String(localized: "Search contacts or enter a phone number, email, or @username.")
             }
         }
-        return String(localized: "Search contacts or enter a phone number or @username.")
+        return String(localized: "Search contacts or enter a phone number, email, or @username.")
     }
 
     // MARK: - Account Filter Bar
@@ -263,7 +263,7 @@ public struct StartNewChatView: View {
                 Image(systemName: "magnifyingglass")
                     .foregroundStyle(.secondary)
                 TextField(
-                    String(localized: "Search name, phone number (+1…), or @username…"),
+                    String(localized: "Search name, phone number (+1…), email, or @username…"),
                     text: Binding(
                         get: { draft.query },
                         set: { newValue in

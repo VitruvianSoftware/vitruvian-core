@@ -300,6 +300,19 @@ func TestCanCreateGroupFollowsTheClient(t *testing.T) {
 	require.False(t, unlinked.a.CanCreateGroup("telegram", ""), "a network that isn't running")
 }
 
+func TestCanLookupEmailFollowsConnectorAndClient(t *testing.T) {
+	fn := fakenet.New()
+	fn.StartChats = fakenet.ViaIdentifier
+	w := startWorldOn(t, "fake", fn, true, zerolog.Nop())
+	require.False(t, w.a.CanLookupEmail("fake", ""), "default fakenet connector does not advertise LookupEmail")
+	w.n.GeneralCaps.Provisioning.ResolveIdentifier.LookupEmail = true
+	require.True(t, w.a.CanLookupEmail("fake", ""), "connector advertising LookupEmail with IdentifierResolvingNetworkAPI client returns true")
+	require.True(t, w.a.CanLookupEmail("fake", string(w.login.ID)))
+	require.False(t, w.a.CanLookupEmail("fake", "other-account"))
+	w.login.Client = struct{ bridgev2.NetworkAPI }{w.login.Client}
+	require.False(t, w.a.CanLookupEmail("fake", ""), "client without IdentifierResolvingNetworkAPI returns false")
+}
+
 // A change to a chat on a network that isn't running stays here, without an error.
 func TestChatStateOnANetworkThatIsNotRunning(t *testing.T) {
 	ctx := context.Background()

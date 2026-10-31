@@ -19,6 +19,7 @@ public enum NetworkNames {
         "telegram": "Telegram",
         "gmessages": "Google Messages",
         "slack": "Slack",
+        "gchat": "Google Chat",
     ]
 
     /// The network's name, or nil for an id this app doesn't know.

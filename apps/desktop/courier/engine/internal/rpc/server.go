@@ -57,7 +57,8 @@ import (
 // (message.sendSticker, message.sendGIF), and sticker/emoji catalog listing and import (stickers.list, stickers.import).
 // Protocol 9 adds bridge management (bridges.list, bridges.restart), account removal and sub-accounts
 // (accounts.remove, accounts.subAccounts, accounts.setSubAccount), and scrubbed diagnostics export (diagnostics.export).
-const Protocol = 9
+// Protocol 10 adds can_lookup_email on Account and Login so starting a DM by email follows engine capabilities.
+const Protocol = 10
 
 // MaxFrameBytes is the longest line the engine reads, not counting its newline. A longer one closes the connection.
 const MaxFrameBytes = 4 << 20

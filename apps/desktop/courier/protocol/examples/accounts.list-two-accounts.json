@@ -19,20 +19,23 @@
           "not_started": "",
           "syncs": ["pin", "mute", "accept_request"],
           "can_create_group": true,
+          "can_lookup_email": false,
           "logins": [
             {
               "account_id": "whatsapp-login",
               "remote_name": "Test Account",
               "state": "CONNECTED",
               "error": "",
-              "can_create_group": true
+              "can_create_group": true,
+              "can_lookup_email": false
             },
             {
               "account_id": "whatsapp-second",
               "remote_name": "Second Account",
               "state": "LOGGED_OUT",
               "error": "You were signed out on your phone.",
-              "can_create_group": true
+              "can_create_group": true,
+              "can_lookup_email": false
             }
           ]
         },
@@ -46,6 +49,7 @@
           "not_started": "",
           "syncs": [],
           "can_create_group": false,
+          "can_lookup_email": false,
           "logins": []
         },
         {
@@ -58,6 +62,7 @@
           "not_started": "Telegram needs an api_id and api_hash",
           "syncs": [],
           "can_create_group": false,
+          "can_lookup_email": false,
           "logins": []
         }
       ]

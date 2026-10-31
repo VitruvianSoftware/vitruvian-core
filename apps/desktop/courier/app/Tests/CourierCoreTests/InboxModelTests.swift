@@ -1268,6 +1268,126 @@ final class InboxModelTests: XCTestCase {
         draft.query = "+1 555-010-0199"
         let lookupTargets = draft.lookupActions
         XCTAssertEqual(lookupTargets.map(\.accountID), ["wa-1", "wa-2", "sig-1", "tg-1"])
+
+        // 7. Email lookup is accepted only for accounts/logins whose engine features advertise canLookupEmail (no network-name check).
+        let emailAccounts = accounts + [
+            Account(
+                network: "custom-net",
+                displayName: "Custom Mail Chat",
+                flows: ["cookies"],
+                state: .connected,
+                logins: [
+                    Login(accountID: "cm-1", remoteName: "Ada (ada@example.com)", state: .connected, canCreateGroup: false, canLookupEmail: true),
+                ],
+                canCreateGroup: false,
+                canLookupEmail: true
+            ),
+            Account(
+                network: "gchat",
+                displayName: "Google Chat",
+                flows: ["cookies"],
+                state: .connected,
+                logins: [
+                    Login(accountID: "gchat-disabled", remoteName: "No Email", state: .connected, canCreateGroup: false, canLookupEmail: false),
+                ],
+                canCreateGroup: false,
+                canLookupEmail: false
+            ),
+        ]
+        let emailDraft = StartNewChatDraft(accounts: emailAccounts, query: "grace@example.com")
+        XCTAssertTrue(emailDraft.isLookupQuery, "StartNewChatDraft.isLookupQuery must accept email addresses")
+        XCTAssertEqual(emailDraft.lookupActions.map(\.accountID), ["cm-1"], "email lookup must follow canLookupEmail, never network names")
+    }
+
+    private static func gchatTestBinary() -> URL? {
+        let env = ProcessInfo.processInfo.environment
+        guard let runfiles = env["TEST_SRCDIR"] else { return nil }
+        for workspace in [env["TEST_WORKSPACE"], "_main"].compactMap({ $0 }) {
+            let candidate = URL(fileURLWithPath: "\(runfiles)/\(workspace)/apps/desktop/courier/engine/internal/gchat/gchat_test_/gchat_test")
+            if FileManager.default.isExecutableFile(atPath: candidate.path) {
+                return candidate
+            }
+        }
+        return nil
+    }
+
+    func testStartNewChatByEmailEndToEndFromAppModelThroughEngineToFakeServerAndInbox() async throws {
+        let bin = try XCTUnwrap(Self.gchatTestBinary(), "gchat_test helper binary must be present in runfiles")
+        let sockDir = URL(fileURLWithPath: "/tmp/gchat-app-e2e-\(UUID().uuidString.prefix(8))")
+        try FileManager.default.createDirectory(at: sockDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: sockDir) }
+
+        let sockPath = sockDir.appendingPathComponent("s").path
+        let readyPath = sockPath + ".ready"
+        let stopPath = sockPath + ".stop"
+        let inviteeEmailPath = sockPath + ".invitee_email"
+
+        let proc = Process()
+        proc.executableURL = bin
+        proc.arguments = ["-test.run=^TestServeGChatEngineHelperForAppE2E$"]
+        var env = ProcessInfo.processInfo.environment
+        env["COURIER_GCHAT_E2E_SOCKET"] = sockPath
+        proc.environment = env
+        try proc.run()
+        defer {
+            try? "stop".write(toFile: stopPath, atomically: true, encoding: .utf8)
+            proc.terminate()
+        }
+
+        try await waitUntil { FileManager.default.fileExists(atPath: readyPath) }
+
+        let launcher = FakeLauncher { _, process in process.printReady(socket: sockPath) }
+        let supervisor = EngineSupervisor(
+            enginePath: "/Applications/Courier.app/Contents/Helpers/courier-engine",
+            dataDir: sockDir,
+            environment: [:],
+            launcher: launcher,
+            credentials: InMemoryCredentialStore(),
+            clientName: "Courier/test",
+            timing: FakeTime().timing()
+        )
+        let app = AppModel(supervisor: supervisor)
+        let sleeps = SleepControl()
+        await sleeps.releaseAlways()
+        let store = TestDefaults()
+        defer { store.remove() }
+        let preferences = InboxPreferences(defaults: store.defaults)
+        let inbox = InboxModel(
+            appModel: app,
+            hasTelegramCredentials: { true },
+            preferences: preferences,
+            entitlement: AlwaysEntitled(),
+            window: 0.05,
+            retryDelay: 2,
+            sleep: { await sleeps.sleep($0) },
+            toastSleep: { await sleeps.sleep($0) }
+        )
+
+        app.start()
+        try await waitUntil { inbox.isLoaded && !app.accounts.isEmpty }
+
+        XCTAssertEqual(app.accounts.first?.network, "gchat")
+        XCTAssertEqual(app.accounts.first?.canLookupEmail, true, "engine must advertise can_lookup_email = true for Google Chat")
+
+        inbox.openStartNewChat()
+        inbox.updateStartNewChatQuery("bob@example.com")
+        let draft = try XCTUnwrap(inbox.startNewChatDraft)
+        XCTAssertTrue(draft.isLookupQuery, "StartNewChatDraft must accept an email address")
+        let action = try XCTUnwrap(draft.lookupActions.first, "StartNewChatDraft must produce a lookup action when engine advertises can_lookup_email")
+        XCTAssertEqual(action.network, "gchat")
+        XCTAssertEqual(action.accountID, "112233445566778899001")
+
+        await inbox.performStartNewChatLookup(action)
+        XCTAssertNil(inbox.startNewChatDraft, "successful email lookup must close StartNewChat sheet")
+
+        try await waitUntil { inbox.rows.contains(where: { $0.name == "Bob Example" }) }
+        let dmRow = try XCTUnwrap(inbox.rows.first(where: { $0.name == "Bob Example" }))
+        XCTAssertEqual(inbox.selectedRoomID, dmRow.roomID, "new DM must be selected in the inbox")
+        XCTAssertTrue(dmRow.isDirect, "created room must be a direct message")
+
+        let recordedEmail = try String(contentsOfFile: inviteeEmailPath, encoding: .utf8)
+        XCTAssertEqual(recordedEmail, "bob@example.com", "fake server create_dm must receive Invitees email from app model")
+        await app.stop()
     }
 
     func testSelectingMergedRowOpensMergedChatAndCollapsesDuplicateMemberRows() async throws {
@@ -1992,15 +2112,21 @@ func room(_ id: String, ts: Int64, unread: Int = 0, muted: Bool = false, network
 
 /// An Account as the engine writes it.
 func account(_ network: String, _ state: String, error: String = "", notStarted: String = "",
+             canCreateGroup: Bool = true, canLookupEmail: Bool = false,
              logins: [[String: Any]] = []) -> [String: Any] {
     [
         "network": network, "display_name": "\(network) display", "flows": ["qr"], "state": state, "error": error,
         "remote_name": logins.first?["remote_name"] as? String ?? "", "not_started": notStarted,
-        "syncs": [String](), "logins": logins,
+        "syncs": [String](), "can_create_group": canCreateGroup, "can_lookup_email": canLookupEmail,
+        "logins": logins,
     ]
 }
 
 /// A Login (one account on a network) as the engine writes it.
-func login(_ accountID: String, _ remoteName: String, _ state: String, error: String = "") -> [String: Any] {
-    ["account_id": accountID, "remote_name": remoteName, "state": state, "error": error]
+func login(_ accountID: String, _ remoteName: String, _ state: String, error: String = "",
+           canCreateGroup: Bool = true, canLookupEmail: Bool = false) -> [String: Any] {
+    [
+        "account_id": accountID, "remote_name": remoteName, "state": state, "error": error,
+        "can_create_group": canCreateGroup, "can_lookup_email": canLookupEmail,
+    ]
 }

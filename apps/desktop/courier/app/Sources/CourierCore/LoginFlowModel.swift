@@ -272,6 +272,7 @@ public final class LoginFlowModel: ObservableObject {
     static let preferredFlows: [String: [String]] = [
         "slack": ["token", "email"],
         "gmessages": ["google"],
+        "gchat": ["cookies"],
         "whatsapp": ["qr"],
         "signal": ["qr"],
         "telegram": ["qr", "phone"],
@@ -315,6 +316,7 @@ public final class LoginFlowModel: ObservableObject {
         case ("slack", "email"): String(localized: "Sign in with an emailed code")
         case ("slack", "app"): String(localized: "Slack app tokens")
         case ("gmessages", "google"): String(localized: "Google account")
+        case ("gchat", "cookies"): String(localized: "Google account")
         case (_, "qr"): String(localized: "QR code")
         case (_, "phone"): String(localized: "Phone number")
         default: flow

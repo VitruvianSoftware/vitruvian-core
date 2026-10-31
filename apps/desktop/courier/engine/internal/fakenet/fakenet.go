@@ -231,6 +231,8 @@ type Network struct {
 	OmitPortalInfo bool
 	// Contacts are the entries returned by GetContactList.
 	Contacts []Contact
+	// GeneralCaps is the connector's general capabilities returned by GetCapabilities().
+	GeneralCaps bridgev2.NetworkGeneralCapabilities
 	// SearchResults are the entries returned by SearchUsers.
 	SearchResults []Contact
 	// ImagePacks are the sticker/emoji pack headers returned by ListImagePacks on StickerImportingNetworkAPI.
@@ -410,7 +412,7 @@ func (n *Network) GetName() bridgev2.BridgeName {
 }
 func (n *Network) GetDBMetaTypes() database.MetaTypes { return database.MetaTypes{} }
 func (n *Network) GetCapabilities() *bridgev2.NetworkGeneralCapabilities {
-	return &bridgev2.NetworkGeneralCapabilities{}
+	return &n.GeneralCaps
 }
 
 func (n *Network) GetConfig() (string, any, configupgrade.Upgrader) {

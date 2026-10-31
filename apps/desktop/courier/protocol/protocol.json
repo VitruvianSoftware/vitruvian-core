@@ -1,6 +1,6 @@
 {
   "name": "Courier engine protocol",
-  "protocol": 9,
+  "protocol": 10,
   "doc": "How Courier.app talks to its courier-engine helper. This file is the single definition: the engine's Go tests and the app's Swift tests both check the examples in examples/ against it, and the Swift Codable types are named exactly as the entries in types. Copyright 2026 VitruvianSoftware, SPDX-License-Identifier: AGPL-3.0-or-later.",
 
   "transport": {
@@ -123,6 +123,10 @@
           "type": "bool",
           "doc": "Whether any linked account on this network can create group chats (its bridge client implements GroupCreatingNetworkAPI). False when the network isn't running or has no account."
         },
+        "can_lookup_email": {
+          "type": "bool",
+          "doc": "Whether any linked account on this network can resolve email addresses into chats (its connector advertises ProvisioningCapabilities.ResolveIdentifier.LookupEmail and its bridge client implements IdentifierResolvingNetworkAPI). False when the network isn't running or has no account."
+        },
         "logins": {
           "type": "Login[]",
           "doc": "Each account signed in on the network (a network can hold more than one: a second phone number, a second workspace), in account_id order, the first being the one login.start signs in again when it is given neither another nor account_id. An account the bridge no longer has is left out. [] when none is linked. While the network isn't running (STARTING, NOT_STARTED) each is listed as the engine last knew it, with the account's state and no error."
@@ -165,6 +169,10 @@
         "can_create_group": {
           "type": "bool",
           "doc": "Whether this account's bridge client implements GroupCreatingNetworkAPI and can create group chats. False while the network isn't running."
+        },
+        "can_lookup_email": {
+          "type": "bool",
+          "doc": "Whether this account's connector advertises ProvisioningCapabilities.ResolveIdentifier.LookupEmail and its bridge client implements IdentifierResolvingNetworkAPI. False while the network isn't running."
         }
       }
     },

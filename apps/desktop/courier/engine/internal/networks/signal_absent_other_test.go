@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Off macOS there is no libsignal_ffi.a, so Signal must not be registered (and its package not even compiled).
+// Off macOS there is no libsignal_ffi.a or libgchat_ffi.a, so Signal and Google Chat must not be registered.
 func TestSignalIsAbsentOffDarwin(t *testing.T) {
 	var names []string
 	for _, n := range All() {
@@ -19,6 +19,8 @@ func TestSignalIsAbsentOffDarwin(t *testing.T) {
 	}
 	require.Equal(t, []string{"whatsapp", "telegram", "gmessages", "slack"}, names)
 	_, ok := Get("signal")
+	require.False(t, ok)
+	_, ok = Get("gchat")
 	require.False(t, ok)
 }
 

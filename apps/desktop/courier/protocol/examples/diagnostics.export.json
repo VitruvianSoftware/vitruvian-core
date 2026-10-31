@@ -12,7 +12,7 @@
     "jsonrpc": "2.0",
     "id": 1,
     "result": {
-      "protocol_version": 9,
+      "protocol_version": 10,
       "schema_version": 10,
       "go_version": "go1.26.2",
       "bridges": [
@@ -36,13 +36,15 @@
               "not_started": "",
               "syncs": ["pin", "mute", "accept_request"],
               "can_create_group": true,
+              "can_lookup_email": false,
               "logins": [
                 {
                   "account_id": "whatsapp-login",
                   "remote_name": "Test Account",
                   "state": "CONNECTED",
                   "error": "",
-                  "can_create_group": true
+                  "can_create_group": true,
+                  "can_lookup_email": false
                 }
               ]
             }

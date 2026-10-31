@@ -600,6 +600,7 @@ var readReceiptsByRow = map[string]bool{
 	"slack channel": false, "slack dm": false, "slack workspace with edit limit": false,
 	"slack workspace without edits": false, "slack workspace without deletes": false,
 	"signal dm": true, "signal group": true, "signal note to self": true,
+	"gchat dm": true, "gchat space": true, "gchat threaded space": true,
 }
 
 // pinnedBridges are the module versions the plan's receipts, typing and accounts table was read at (go.mod).
@@ -743,6 +744,10 @@ func TestGroupAndChatManagementTableMatchesTheBridges(t *testing.T) {
 		"slack": {
 			SetName: true, SetTopic: true, SetAvatar: false,
 			Membership: true, PowerLevels: false, DeleteChat: false,
+		},
+		"gchat": {
+			SetName: true, SetTopic: true, SetAvatar: false,
+			Membership: true, PowerLevels: false, DeleteChat: true,
 		},
 	}
 
@@ -903,6 +908,27 @@ func TestMediaCapabilitiesTableMatchesTheBridges(t *testing.T) {
 			require.Equal(t, 40000, f.VoiceFeatures.MaxCaptionLength, name)
 			require.Equal(t, slackMax, f.VoiceFeatures.MaxSize, name)
 			require.Equal(t, 300, f.VoiceFeatures.MaxDurationSec, name)
+			require.Nil(t, f.StickerFeatures, name)
+			require.False(t, f.LocationSupported, name)
+			require.True(t, f.LinkPreviewsSupported, name)
+
+		case "gchat":
+			const gchatMax = int64(200 * 1024 * 1024)
+			require.NotNil(t, f.ImageFeatures, name)
+			require.Equal(t, gchatMax, f.ImageFeatures.MaxSize, name)
+			require.True(t, f.ImageFeatures.Caption, name)
+			require.Equal(t, 4096, f.ImageFeatures.MaxCaptionLength, name)
+			require.NotNil(t, f.VideoFeatures, name)
+			require.Equal(t, gchatMax, f.VideoFeatures.MaxSize, name)
+			require.NotNil(t, f.AudioFeatures, name)
+			require.Equal(t, gchatMax, f.AudioFeatures.MaxSize, name)
+			require.NotNil(t, f.VoiceFeatures, name)
+			require.Equal(t, gchatMax, f.VoiceFeatures.MaxSize, name)
+			require.NotNil(t, f.FileFeatures, name)
+			require.Equal(t, gchatMax, f.FileFeatures.MaxSize, name)
+			require.True(t, f.FileFeatures.Caption, name)
+			require.NotNil(t, f.GIFFeatures, name)
+			require.Equal(t, gchatMax, f.GIFFeatures.MaxSize, name)
 			require.Nil(t, f.StickerFeatures, name)
 			require.False(t, f.LocationSupported, name)
 			require.True(t, f.LinkPreviewsSupported, name)

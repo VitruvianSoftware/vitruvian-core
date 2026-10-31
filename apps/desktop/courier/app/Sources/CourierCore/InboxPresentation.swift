@@ -142,6 +142,7 @@ public struct NetworkAppearance: Equatable, Sendable {
         case "telegram": NetworkAppearance(symbol: "paperplane.circle.fill", red: 0.14, green: 0.60, blue: 0.85)
         case "slack": NetworkAppearance(symbol: "number.circle.fill", red: 0.55, green: 0.27, blue: 0.62)
         case "gmessages": NetworkAppearance(symbol: "message.circle.fill", red: 0.08, green: 0.50, blue: 0.62)
+        case "gchat": NetworkAppearance(symbol: "bubble.left.and.bubble.right.fill", red: 0.00, green: 0.67, blue: 0.28)
         default: fallback
         }
     }

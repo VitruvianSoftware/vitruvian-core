@@ -15,27 +15,38 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/actions"
+	"github.com/VitruvianSoftware/courier/engine/internal/gchat"
 )
 
-// On macOS Signal is the last network, after the portable four.
+// On macOS Signal and Google Chat are registered after the portable four.
 func TestSignalIsRegisteredLastOnDarwin(t *testing.T) {
 	var names []string
 	for _, n := range All() {
 		names = append(names, n.Name)
 	}
-	require.Equal(t, []string{"whatsapp", "telegram", "gmessages", "slack", "signal"}, names)
+	require.Equal(t, []string{"whatsapp", "telegram", "gmessages", "slack", "signal", "gchat"}, names)
 
 	signal, ok := Get("signal")
 	require.True(t, ok)
 	require.Equal(t, "Signal", signal.DisplayName)
 	require.Equal(t, []string{"qr"}, signal.Flows)
+
+	gchatNet, ok := Get("gchat")
+	require.True(t, ok)
+	require.Equal(t, "Google Chat", gchatNet.DisplayName)
+	require.Equal(t, []string{"cookies"}, gchatNet.Flows)
 }
 
-// platformClients adds Signal's row of the sync table: it takes message-request accepts and nothing else.
+// platformClients adds Signal's and Google Chat's rows of the sync table.
 func platformClients() map[string]platformClient {
-	return map[string]platformClient{"signal": {
-		client: (*signal.SignalClient)(nil), sent: []string{"accept_request"}, implements: []string{"accept_request"},
-	}}
+	return map[string]platformClient{
+		"signal": {
+			client: (*signal.SignalClient)(nil), sent: []string{"accept_request"}, implements: []string{"accept_request"},
+		},
+		"gchat": {
+			client: (*gchat.Client)(nil), sent: []string{"mute"}, implements: []string{"mute"},
+		},
+	}
 }
 
 // platformActionRows adds Signal's rows of the message action table: a DM and a group, plus a note to self (my own
@@ -53,12 +64,25 @@ func platformActionRows() (map[string]actionRow, map[string]handlerRow) {
 	self.EditMaxAge, self.UnsendMaxAge = 0, 0
 	noteToSelf := portalOf(database.RoomTypeDM, "my-uuid", nil)
 	noteToSelf.Receiver = "my-uuid"
+	gcClient := (*gchat.Client)(nil)
+	gcDM := actions.Features{
+		Reply: true, Edit: true, Unsend: true,
+		Formatting: noSpoiler, MentionRoom: false, MaxTextLength: 4096,
+	}
+	gcSpace := gcDM
+	gcSpace.MentionRoom = true
+	gcThreadedSpace := gcSpace
+	gcThreadedSpace.Thread = true
 	return map[string]actionRow{
-			"signal dm":           {client, portalOf(database.RoomTypeDM, "their-uuid", nil), sig},
-			"signal group":        {client, portalOf(database.RoomTypeDefault, "group-id", nil), sig},
-			"signal note to self": {client, noteToSelf, self},
+			"signal dm":            {client, portalOf(database.RoomTypeDM, "their-uuid", nil), sig},
+			"signal group":         {client, portalOf(database.RoomTypeDefault, "group-id", nil), sig},
+			"signal note to self":  {client, noteToSelf, self},
+			"gchat dm":             {gcClient, portalOf(database.RoomTypeDM, gchat.MakeDMPortalID("111"), &gchat.PortalMetadata{TopicThreaded: false}), gcDM},
+			"gchat space":          {gcClient, portalOf(database.RoomTypeDefault, gchat.MakeSpacePortalID("222"), &gchat.PortalMetadata{TopicThreaded: false}), gcSpace},
+			"gchat threaded space": {gcClient, portalOf(database.RoomTypeDefault, gchat.MakeSpacePortalID("333"), &gchat.PortalMetadata{TopicThreaded: true}), gcThreadedSpace},
 		}, map[string]handlerRow{
 			"signal": {client, []string{"edit", "remove", "poll", "timer"}},
+			"gchat":  {gcClient, []string{"edit", "remove"}},
 		}
 }
 
@@ -69,11 +93,18 @@ func platformPollChecks() map[string]func(data any) bool {
 	}
 }
 
-// platformReceiptColumns adds Signal's column of the receipts, typing and accounts table.
+// platformReceiptColumns adds Signal's and Google Chat's columns of the receipts, typing and accounts table.
 func platformReceiptColumns() map[string]receiptNetwork {
-	return map[string]receiptNetwork{"signal": {
-		connector: &signal.SignalConnector{}, client: (*signal.SignalClient)(nil),
-		sends: []string{"read_receipts", "typing"}, replyPrivately: []string{"resolve_identifier", "create_chat_with_ghost"},
-		implicitReads: true,
-	}}
+	return map[string]receiptNetwork{
+		"signal": {
+			connector: &signal.SignalConnector{}, client: (*signal.SignalClient)(nil),
+			sends: []string{"read_receipts", "typing"}, replyPrivately: []string{"resolve_identifier", "create_chat_with_ghost"},
+			implicitReads: true,
+		},
+		"gchat": {
+			connector: gchat.NewConnector(), client: (*gchat.Client)(nil),
+			sends: []string{"read_receipts", "typing"}, replyPrivately: []string{"resolve_identifier", "create_chat_with_ghost"},
+			implicitReads: false,
+		},
+	}
 }

@@ -345,7 +345,7 @@ func (p *protocolSpec) checkExample(ex example) error {
 
 func TestEveryExampleFitsTheProtocol(t *testing.T) {
 	p, exs := loadProtocol(t)
-	require.Equal(t, 9, Protocol, "engine speaks protocol 9")
+	require.Equal(t, 10, Protocol, "engine speaks protocol 10")
 	require.Equal(t, Protocol, p.Protocol, "protocol.json and the engine speak the same protocol")
 	require.Equal(t, MaxFrameBytes, p.Transport.MaxFrameBytes)
 	for _, ex := range exs {

@@ -63,6 +63,7 @@ swift_test(
     size = "medium",
     srcs = glob(["Tests/CourierCoreTests/**/*.swift"]),
     data = [
+        "//apps/desktop/courier/engine/internal/gchat:gchat_test",
         "//apps/desktop/courier/protocol",
         "//apps/desktop/courier/protocol:logscrub_cases",
         "//apps/desktop/courier/protocol:richtext_cases",

@@ -1,8 +1,21 @@
 load("@rules_go//go:def.bzl", "go_library", "go_test")
 
+# keep
+go_test(
+    name = "gchat_link_test",
+    srcs = ["gchat_link_test.go"],
+    embed = [":networks"],
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [
+        "//apps/desktop/courier/engine/internal/gchat",
+        "@com_github_stretchr_testify//require",
+    ],
+)
+
 go_test(
     name = "networks_test",
     srcs = [
+        "gchat_link_test.go",
         "networks_test.go",
         "offline_test.go",
         "signal_absent_other_test.go",
@@ -40,10 +53,12 @@ go_test(
         "@net_maunium_go_mautrix//event",
     ] + select({
         "@rules_go//go/platform:darwin": [
+            "//apps/desktop/courier/engine/internal/gchat",
             "@fi_mau_go_mautrix_signal//pkg/connector",
             "@fi_mau_go_mautrix_signal//pkg/libsignalgo",
         ],
         "@rules_go//go/platform:ios": [
+            "//apps/desktop/courier/engine/internal/gchat",
             "@fi_mau_go_mautrix_signal//pkg/connector",
             "@fi_mau_go_mautrix_signal//pkg/libsignalgo",
         ],
@@ -74,9 +89,11 @@ go_library(
         "@net_maunium_go_mautrix//event",
     ] + select({
         "@rules_go//go/platform:darwin": [
+            "//apps/desktop/courier/engine/internal/gchat",
             "@fi_mau_go_mautrix_signal//pkg/connector",
         ],
         "@rules_go//go/platform:ios": [
+            "//apps/desktop/courier/engine/internal/gchat",
             "@fi_mau_go_mautrix_signal//pkg/connector",
         ],
         "//conditions:default": [],

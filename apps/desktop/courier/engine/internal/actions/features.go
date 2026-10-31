@@ -179,6 +179,7 @@ var deleteLeavesGroup = map[string]bool{
 //     PeerTypeChannel when !msg.Content.DeleteForEveryone.
 var groupDeleteNeedsEveryone = map[string]bool{
 	"telegram": true,
+	"gchat":    true,
 }
 
 // SignalTimers are the disappearing-message lengths Courier offers where the bridge advertises a timer type but no
@@ -309,6 +310,9 @@ func convertFileFeatures(ff *event.FileFeatures) *FileKindFeatures {
 func networkFileCeiling(network string) int64 {
 	if network == "telegram" {
 		return MaxFileCeiling
+	}
+	if network == "gchat" {
+		return 200 * 1024 * 1024
 	}
 	return MaxInMemoryFileCeiling
 }

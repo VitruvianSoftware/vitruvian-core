@@ -179,4 +179,45 @@ final class CookieCollectorTests: XCTestCase {
         let bad = step([field("SID", [source(.cookie, "SID")])], waitForURL: "(")
         XCTAssertFalse(CookieCollector.isReady(bad, url: "https://example.com/", collected: complete))
     }
+
+    func testCollectsGoogleChatDomainScopedCookies() {
+        let params = LoginCookies(
+            url: "https://chat.google.com/",
+            userAgent: nil,
+            waitForURL: #"^https://chat\.google\.com/"#,
+            extractJS: nil,
+            fields: [
+                field("COMPASS", [source(.cookie, "COMPASS", domain: "chat.google.com")]),
+                field("OSID", [source(.cookie, "OSID", domain: "chat.google.com")]),
+                field("SID", [source(.cookie, "SID", domain: "google.com")]),
+                field("HSID", [source(.cookie, "HSID", domain: "google.com")]),
+                field("SSID", [source(.cookie, "SSID", domain: "google.com")]),
+                field("APISID", required: false, [source(.cookie, "APISID", domain: "google.com")]),
+                field("SAPISID", required: false, [source(.cookie, "SAPISID", domain: "google.com")]),
+                field("__Secure-1PSID", required: false, [source(.cookie, "__Secure-1PSID", domain: "google.com")]),
+                field("__Secure-3PSID", required: false, [source(.cookie, "__Secure-3PSID", domain: "google.com")]),
+                field("user_agent", required: false, [source(.special, "user_agent")]),
+            ]
+        )
+        XCTAssertEqual(CookieCollector.uncapturableFields(params), [])
+        XCTAssertEqual(NetworkNames.displayName(of: "gchat"), "Google Chat")
+
+        let cookies = [
+            BrowserCookie(name: "COMPASS", domain: "chat.google.com", value: "dynamite-ui=synthetic"),
+            BrowserCookie(name: "OSID", domain: "chat.google.com", value: "osid-chat"),
+            BrowserCookie(name: "OSID", domain: "mail.google.com", value: "osid-wrong"),
+            BrowserCookie(name: "SID", domain: ".google.com", value: "sid-google"),
+            BrowserCookie(name: "HSID", domain: ".google.com", value: "hsid-google"),
+            BrowserCookie(name: "SSID", domain: ".google.com", value: "ssid-google"),
+        ]
+        let collected = CookieCollector.collect(params, cookies: cookies, localStorage: [:], extracted: [:])
+        XCTAssertTrue(collected.isComplete)
+        XCTAssertEqual(collected.values["COMPASS"], "dynamite-ui=synthetic")
+        XCTAssertEqual(collected.values["OSID"], "osid-chat")
+        XCTAssertEqual(collected.values["SID"], "sid-google")
+        XCTAssertEqual(collected.values["HSID"], "hsid-google")
+        XCTAssertEqual(collected.values["SSID"], "ssid-google")
+        XCTAssertFalse(CookieCollector.isReady(params, url: "https://accounts.google.com/ServiceLogin", collected: collected))
+        XCTAssertTrue(CookieCollector.isReady(params, url: "https://chat.google.com/u/0/", collected: collected))
+    }
 }
