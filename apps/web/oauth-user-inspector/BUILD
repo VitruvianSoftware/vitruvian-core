@@ -154,17 +154,24 @@ alias(
     actual = ":check-sensitive-rs",
 )
 
+# The candidate smoke //tools/deploy runs against each new revision
+# (infra/app/BUILD's :deploy and the delivery workflow both call it).
 rust_binary(
-    name = "smoke-rs",
+    name = "smoke",
     srcs = ["scripts/src/bin/smoke.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [":oauth_scripts_lib"],
 )
 
-alias(
-    name = "smoke_rs",
-    actual = ":smoke-rs",
+# :smoke end to end against stub curl/Chrome (expectations: the replaced smoke.sh).
+rust_test(
+    name = "smoke_test",
+    size = "small",
+    srcs = ["scripts/tests/smoke_test.rs"],
+    data = [":smoke"],
+    edition = "2021",
+    env = {"SMOKE_BIN": "$(rootpath :smoke)"},
 )
 
 rust_binary(
@@ -241,16 +248,15 @@ alias(
     actual = ":check-sensitive_test",
 )
 
-test_suite(
-    name = "smoke_test",
-    tests = [":oauth_scripts_lib_test"],
-)
-
 pipeline_unit(
     name = "oauth-user-inspector",
     persona = "all",
     runner = "ubuntu-26.04",
-    test_targets = [":unit_tests"],
+    test_targets = [
+        ":oauth_scripts_lib_test",
+        ":smoke_test",
+        ":unit_tests",
+    ],
     tier = "L1",
     timeout_minutes = 15,
 )
