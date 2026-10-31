@@ -14,7 +14,7 @@
     "maunium.net/go/mautrix/bridgev2.(*Portal).handleRemoteEvent(0x1400012a000, {0x104c92a00, 0x14000180000})",
     "\t/Users/alice/go/pkg/mod/maunium.net/go/mautrix@v0.31.0/bridgev2/portal.go:2690 +0x1c4",
     "github.com/VitruvianSoftware/courier/engine/internal/host.(*Host).Start(0x1400012a000, 0x14000999000)",
-    "\t/Users/alice/Workspace/vitruvian-core/apps/desktop/courier/engine/internal/host/host.go:200 +0x88",
+    "\t/Users/alice/Workspace/project/apps/desktop/courier/engine/internal/host/host.go:200 +0x88",
     "created by maunium.net/go/mautrix/bridgev2.(*Bridge).StartLogins in goroutine 1",
     "\t/Users/alice/go/pkg/mod/maunium.net/go/mautrix@v0.31.0/bridgev2/bridge.go:366 +0x40"
   ],

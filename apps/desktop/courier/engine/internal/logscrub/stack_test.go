@@ -30,12 +30,12 @@ func TestScrubStderrExport(t *testing.T) {
 		`maunium.net/go/mautrix/bridgev2.(*Portal).handleRemoteEvent(0x1400012a000, {0x104c92a00, 0x14000180000})`,
 		"\t/Users/alice/go/pkg/mod/maunium.net/go/mautrix@v0.31.0/bridgev2/portal.go:2690 +0x1c4",
 		`github.com/VitruvianSoftware/courier/engine/internal/host.(*Host).Start(0x1400012a000, 0x14000999000)`,
-		"\t/Users/alice/Workspace/vitruvian-core/apps/desktop/courier/engine/internal/host/host.go:200 +0x88",
+		"\t/Users/alice/Workspace/project/apps/desktop/courier/engine/internal/host/host.go:200 +0x88",
 		`created by maunium.net/go/mautrix/bridgev2.(*Bridge).StartLogins in goroutine 1`,
 		"\t/Users/alice/go/pkg/mod/maunium.net/go/mautrix@v0.31.0/bridgev2/bridge.go:366 +0x40",
 		`goroutine 1 [chan receive]:`,
 		`main.run({0x1400012a000, 0x24}, {0x104c8a2e0, 0x14000010018})`,
-		"\t/Users/alice/Workspace/vitruvian-core/apps/desktop/courier/engine/cmd/courier-engine/main.go:205",
+		"\t/Users/alice/Workspace/project/apps/desktop/courier/engine/cmd/courier-engine/main.go:205",
 		`random trailing line with secret +14155550199`,
 	}, "\n")
 
@@ -232,7 +232,7 @@ func TestScrubStderrExportPreservesRealPanicAndGenericFrames(t *testing.T) {
 
 	dump := "panic: +14155550199 secret panic payload\n\n" + realStack +
 		"\ngithub.com/VitruvianSoftware/courier/engine/internal/logscrub.instantiated[go.shape.int,int](0x14000123456)\n" +
-		"\t/Users/alice/Workspace/vitruvian-core/apps/desktop/courier/engine/internal/logscrub/stack_test.go:180 +0x20\n"
+		"\t/Users/alice/Workspace/project/apps/desktop/courier/engine/internal/logscrub/stack_test.go:180 +0x20\n"
 
 	scrubbed := ScrubStderrExport(dump)
 	joined := strings.Join(scrubbed, "\n")

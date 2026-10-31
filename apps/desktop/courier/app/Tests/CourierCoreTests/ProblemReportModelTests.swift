@@ -172,7 +172,7 @@ final class ProblemReportModelTests: XCTestCase {
             #"panic: token xoxc-123-456 for "Alice Example" at /Users/alice/secret (+15550100101)"#,
             "goroutine 7 [running]:",
             "github.com/VitruvianSoftware/courier/engine/internal/host.(*Host).Start(0x1400012a000)",
-            "\t/Users/alice/Workspace/vitruvian-core/apps/desktop/courier/engine/internal/host/host.go:200 +0x88",
+            "\t/Users/alice/Workspace/project/apps/desktop/courier/engine/internal/host/host.go:200 +0x88",
         ]
 
         let server = try TestEngineServer { method, params in
