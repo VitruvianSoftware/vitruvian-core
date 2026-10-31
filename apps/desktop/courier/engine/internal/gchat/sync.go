@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
@@ -961,11 +962,11 @@ func (c *Client) translateSingleEventBody(
 					},
 				})
 			} else {
-				cm, err := c.convertParsedMessage(ctx, pm)
-				if err != nil {
-					return nil, err
-				}
-				out = append(out, &simplevent.PreConvertedMessage{
+				pmCopy := pm
+				var convOnce sync.Once
+				var convMsg *bridgev2.ConvertedMessage
+				var convErr error
+				out = append(out, &simplevent.Message[parsedMessage]{
 					EventMeta: simplevent.EventMeta{
 						Type:         bridgev2.RemoteEventMessage,
 						PortalKey:    portalKey,
@@ -976,7 +977,13 @@ func (c *Client) translateSingleEventBody(
 					},
 					ID:            targetID,
 					TransactionID: networkid.TransactionID(pm.localID),
-					Data:          cm,
+					Data:          pmCopy,
+					ConvertMessageFunc: func(convCtx context.Context, _ *bridgev2.Portal, _ bridgev2.MatrixAPI, data parsedMessage) (*bridgev2.ConvertedMessage, error) {
+						convOnce.Do(func() {
+							convMsg, convErr = c.convertParsedMessage(convCtx, data)
+						})
+						return convMsg, convErr
+					},
 				})
 			}
 		}

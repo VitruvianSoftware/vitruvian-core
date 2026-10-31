@@ -740,17 +740,19 @@ func TestLiveWebChannelEventsMapMessagesReactionsEditsUnsendsReceiptsAndTyping(t
 	require.Len(t, remoteEvts, 8)
 
 	// 1. MESSAGE_POSTED
-	msgEvt, ok := remoteEvts[0].(*simplevent.PreConvertedMessage)
+	msgEvt, ok := remoteEvts[0].(*simplevent.Message[parsedMessage])
 	require.True(t, ok)
 	require.Equal(t, bridgev2.RemoteEventMessage, msgEvt.GetType())
 	require.Equal(t, MakeSpacePortalID("space_xyz"), msgEvt.GetPortalKey().ID)
 	require.Equal(t, MakeMessageID("topic_77", "msg_100"), msgEvt.ID)
-	require.NotNil(t, msgEvt.Data.ThreadRoot)
-	require.Equal(t, MakeThreadRootID("topic_77"), *msgEvt.Data.ThreadRoot)
-	require.NotNil(t, msgEvt.Data.ReplyTo)
-	require.Equal(t, MakeMessageID("topic_77", "msg_99"), msgEvt.Data.ReplyTo.MessageID)
-	require.Len(t, msgEvt.Data.Parts, 1)
-	require.Equal(t, "Hello <strong>bold</strong> world", msgEvt.Data.Parts[0].Content.FormattedBody)
+	convData, err := msgEvt.ConvertMessage(ctx, nil, nil)
+	require.NoError(t, err)
+	require.NotNil(t, convData.ThreadRoot)
+	require.Equal(t, MakeThreadRootID("topic_77"), *convData.ThreadRoot)
+	require.NotNil(t, convData.ReplyTo)
+	require.Equal(t, MakeMessageID("topic_77", "msg_99"), convData.ReplyTo.MessageID)
+	require.Len(t, convData.Parts, 1)
+	require.Equal(t, "Hello <strong>bold</strong> world", convData.Parts[0].Content.FormattedBody)
 
 	// 2. MESSAGE_UPDATED
 	editEvt, ok := remoteEvts[1].(bridgev2.RemoteEdit)
@@ -1028,12 +1030,14 @@ func TestEndToEndConnectSyncStreamReconnectCatchUpAndBadCredentials(t *testing.T
 	require.Equal(t, "dynamite-ui=gsession_1", rotatedCompass, "rotated COMPASS from /u/0/webchannel/register must be persisted into UserLoginMetadata")
 	recorded := client.recordedRemoteEvents()
 	require.Len(t, recorded, 1)
-	liveEvt, ok := recorded[0].(*simplevent.PreConvertedMessage)
+	liveEvt, ok := recorded[0].(*simplevent.Message[parsedMessage])
 	require.True(t, ok)
 	require.Equal(t, MakeSpacePortalID("space_xyz"), liveEvt.GetPortalKey().ID)
 	require.Equal(t, MakeUserID("112233445566778899002"), liveEvt.GetSender().Sender)
-	require.Len(t, liveEvt.Data.Parts, 1)
-	require.Equal(t, "Live hello from WebChannel", liveEvt.Data.Parts[0].Content.Body)
+	liveConv, err := liveEvt.ConvertMessage(ctx, nil, nil)
+	require.NoError(t, err)
+	require.Len(t, liveConv.Parts, 1)
+	require.Equal(t, "Live hello from WebChannel", liveConv.Parts[0].Content.Body)
 
 	// Case 2: Stream dropped on step 2 -> client is waiting in backoff on injected clock; catch_up_user has not run yet.
 	require.Eventually(t, func() bool {
@@ -1057,11 +1061,13 @@ func TestEndToEndConnectSyncStreamReconnectCatchUpAndBadCredentials(t *testing.T
 	recordedAfterCatchUp := client.recordedRemoteEvents()
 	var missedDeliveries int
 	for _, ev := range recordedAfterCatchUp {
-		if m, ok := ev.(*simplevent.PreConvertedMessage); ok && m.ID == MakeMessageID("topic_1", "msg_missed_1") {
+		if m, ok := ev.(*simplevent.Message[parsedMessage]); ok && m.ID == MakeMessageID("topic_1", "msg_missed_1") {
 			missedDeliveries++
 			require.Equal(t, MakeSpacePortalID("space_xyz"), m.GetPortalKey().ID)
 			require.Equal(t, MakeUserID("112233445566778899002"), m.GetSender().Sender)
-			require.Equal(t, "Missed while stream was down", m.Data.Parts[0].Content.Body)
+			missedConv, err := m.ConvertMessage(ctx, nil, nil)
+			require.NoError(t, err)
+			require.Equal(t, "Missed while stream was down", missedConv.Parts[0].Content.Body)
 		}
 	}
 	require.Equal(t, 1, missedDeliveries, "missed message must be delivered exactly once")
@@ -3094,25 +3100,27 @@ func TestMultiAttachmentInboundUsesZeroPaddedPartIDsAndOutboundUploadsViaScotty(
 	afterRecorded := client.recordedRemoteEvents()
 	require.Len(t, afterRecorded, beforeRecorded+1)
 
-	preConv, ok := afterRecorded[len(afterRecorded)-1].(*simplevent.PreConvertedMessage)
+	preConv, ok := afterRecorded[len(afterRecorded)-1].(*simplevent.Message[parsedMessage])
 	require.True(t, ok)
-	require.Len(t, preConv.Data.Parts, 3, "text part + 2 attachment parts")
-	require.Equal(t, networkid.PartID(""), preConv.Data.Parts[0].ID)
-	require.Equal(t, "Here are two files", preConv.Data.Parts[0].Content.Body)
+	convData, err := preConv.ConvertMessage(ctx, nil, nil)
+	require.NoError(t, err)
+	require.Len(t, convData.Parts, 3, "text part + 2 attachment parts")
+	require.Equal(t, networkid.PartID(""), convData.Parts[0].ID)
+	require.Equal(t, "Here are two files", convData.Parts[0].Content.Body)
 
-	require.Equal(t, networkid.PartID("att_0000"), preConv.Data.Parts[1].ID)
-	require.Equal(t, event.MsgImage, preConv.Data.Parts[1].Content.MsgType)
-	require.Equal(t, "chart.png", preConv.Data.Parts[1].Content.FileName)
-	require.NotEmpty(t, preConv.Data.Parts[1].Content.URL)
-	gotBytes0, err := spacePortal.Bridge.Bot.DownloadMedia(ctx, preConv.Data.Parts[1].Content.URL, nil)
+	require.Equal(t, networkid.PartID("att_0000"), convData.Parts[1].ID)
+	require.Equal(t, event.MsgImage, convData.Parts[1].Content.MsgType)
+	require.Equal(t, "chart.png", convData.Parts[1].Content.FileName)
+	require.NotEmpty(t, convData.Parts[1].Content.URL)
+	gotBytes0, err := spacePortal.Bridge.Bot.DownloadMedia(ctx, convData.Parts[1].Content.URL, nil)
 	require.NoError(t, err)
 	require.Equal(t, attBytes0, gotBytes0)
 
-	require.Equal(t, networkid.PartID("att_0001"), preConv.Data.Parts[2].ID)
-	require.Equal(t, event.MsgFile, preConv.Data.Parts[2].Content.MsgType)
-	require.Equal(t, "report.pdf", preConv.Data.Parts[2].Content.FileName)
-	require.NotEmpty(t, preConv.Data.Parts[2].Content.URL)
-	gotBytes1, err := spacePortal.Bridge.Bot.DownloadMedia(ctx, preConv.Data.Parts[2].Content.URL, nil)
+	require.Equal(t, networkid.PartID("att_0001"), convData.Parts[2].ID)
+	require.Equal(t, event.MsgFile, convData.Parts[2].Content.MsgType)
+	require.Equal(t, "report.pdf", convData.Parts[2].Content.FileName)
+	require.NotEmpty(t, convData.Parts[2].Content.URL)
+	gotBytes1, err := spacePortal.Bridge.Bot.DownloadMedia(ctx, convData.Parts[2].Content.URL, nil)
 	require.NoError(t, err)
 	require.Equal(t, attBytes1, gotBytes1)
 
@@ -3313,11 +3321,13 @@ func TestInboundAttachmentFailureAndHTMLBecomePlaceholdersWithoutAbortingBatchAn
 	remoteEvts, err := client.translateWebChannelEvent(ctx, evt)
 	require.NoError(t, err, "event translation must not abort when an attachment fails")
 	require.Len(t, remoteEvts, 2, "both event bodies in the batch must be translated")
-	preConv0, ok := remoteEvts[0].(*simplevent.PreConvertedMessage)
+	preConv0, ok := remoteEvts[0].(*simplevent.Message[parsedMessage])
 	require.True(t, ok)
-	require.Len(t, preConv0.Data.Parts, 2)
-	require.Equal(t, networkid.PartID("att_0000"), preConv0.Data.Parts[1].ID)
-	require.Equal(t, event.MsgNotice, preConv0.Data.Parts[1].Content.MsgType)
+	conv0, err := preConv0.ConvertMessage(ctx, nil, nil)
+	require.NoError(t, err)
+	require.Len(t, conv0.Parts, 2)
+	require.Equal(t, networkid.PartID("att_0000"), conv0.Parts[1].ID)
+	require.Equal(t, event.MsgNotice, conv0.Parts[1].Content.MsgType)
 }
 
 func TestResolveIdentifierAndCreateDMByGaiaIDOrEmail(t *testing.T) {
@@ -4450,7 +4460,7 @@ func TestCatchUpPaginatedFollowsMultiplePagesForUserAndGroup(t *testing.T) {
 	evts := client.recordedRemoteEvents()
 	seenMsgs := make(map[networkid.MessageID]bool)
 	for _, ev := range evts {
-		if m, ok := ev.(*simplevent.PreConvertedMessage); ok {
+		if m, ok := ev.(*simplevent.Message[parsedMessage]); ok {
 			seenMsgs[m.ID] = true
 		}
 	}
@@ -4570,6 +4580,13 @@ func TestInboundMediaDownloadDoesNotBlockLiveStreamDrainer(t *testing.T) {
 	mediaDownloadStarted := make(chan struct{})
 	releaseMediaDownload := make(chan struct{})
 	var startOnce sync.Once
+	var releaseOnce sync.Once
+	releaseDownload := func() {
+		releaseOnce.Do(func() {
+			close(releaseMediaDownload)
+		})
+	}
+	t.Cleanup(releaseDownload)
 	var pingDone atomic.Bool
 
 	_, _, client := setupLoggedInGChatTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
@@ -4642,6 +4659,7 @@ func TestInboundMediaDownloadDoesNotBlockLiveStreamDrainer(t *testing.T) {
 	// WebChannel text event ("msg_fast_after_media") is drained and queued without waiting for the download!
 	client.Connect(ctx)
 	t.Cleanup(client.Disconnect)
+	t.Cleanup(releaseDownload)
 
 	client.mu.Lock()
 	ch := client.streamCh
@@ -4653,17 +4671,17 @@ func TestInboundMediaDownloadDoesNotBlockLiveStreamDrainer(t *testing.T) {
 
 	require.Eventually(t, func() bool {
 		for _, ev := range client.recordedRemoteEvents() {
-			if m, ok := ev.(*simplevent.PreConvertedMessage); ok && m.ID == MakeMessageID("topic_m", "msg_fast_after_media") {
+			if m, ok := ev.(*simplevent.Message[parsedMessage]); ok && m.ID == MakeMessageID("topic_m", "msg_fast_after_media") {
 				return true
 			}
 		}
 		return false
 	}, 2*time.Second, 20*time.Millisecond, "live stream drainer must deliver subsequent text messages while media download is blocked")
 
-	close(releaseMediaDownload)
+	releaseDownload()
 	require.Eventually(t, func() bool {
 		for _, ev := range client.recordedRemoteEvents() {
-			if m, ok := ev.(*simplevent.PreConvertedMessage); ok && m.ID == MakeMessageID("topic_m", "msg_slow_att") {
+			if m, ok := ev.(*simplevent.Message[parsedMessage]); ok && m.ID == MakeMessageID("topic_m", "msg_slow_att") {
 				return true
 			}
 		}
@@ -4843,6 +4861,153 @@ func TestFFIClientCloseWaitsForInFlightRPCCall(t *testing.T) {
 
 	_, afterErr := ffi.RPCCall("get_self_user_status", nil)
 	require.ErrorContains(t, afterErr, "closed gchat ffi client")
+}
+
+func TestAttachmentEventFollowedByReactionPreservesOrderWithoutBlockingDrainer(t *testing.T) {
+	enableTestLoopback(t)
+	ctx := context.Background()
+
+	mediaDownloadStarted := make(chan struct{})
+	releaseMediaDownload := make(chan struct{})
+	var startOnce sync.Once
+	var releaseOnce sync.Once
+	releaseDownload := func() {
+		releaseOnce.Do(func() {
+			close(releaseMediaDownload)
+		})
+	}
+	t.Cleanup(releaseDownload)
+	var pingDone atomic.Bool
+
+	h, ul, client := setupLoggedInGChatTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/u/0/api/paginated_world":
+			w.Header().Set("Content-Type", "application/x-protobuf")
+			_, _ = w.Write(buildSendTestPaginatedWorldResponse())
+		case "/u/0/webchannel/register":
+			w.Header().Add("Set-Cookie", "COMPASS=dynamite-ui=csess_order; Path=/; Domain=chat.google.com")
+			w.WriteHeader(http.StatusOK)
+		case "/u/0/webchannel/events":
+			if r.Method == http.MethodPost {
+				pingDone.Store(true)
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			if r.URL.Query().Get("SID") == "null" {
+				w.Header().Set("X-HTTP-Initial-Response", `[[0,["c","sid_order","",8,12]]]`)
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			if !pingDone.Load() {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			<-r.Context().Done()
+		case "/u/0/api/get_attachment_url":
+			startOnce.Do(func() {
+				close(mediaDownloadStarted)
+			})
+			<-releaseMediaDownload
+			w.Header().Set("Content-Type", "application/pdf")
+			_, _ = w.Write([]byte("%PDF-1.4\nsynthetic-ordered-attachment\n"))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	client.Connect(ctx)
+	t.Cleanup(client.Disconnect)
+	t.Cleanup(releaseDownload)
+
+	require.Eventually(t, func() bool {
+		return len(client.recordedChatResyncs()) >= 4
+	}, 2*time.Second, 20*time.Millisecond, "initial world sync must complete")
+
+	spaceGID := pb.SpaceGroupID("space_threaded")
+	dmGID := pb.DMGroupID("dm_alpha")
+	targetMsgID := MakeMessageID("topic_order", "msg_att_order_1")
+
+	attMsg := buildSyntheticMessageProto(spaceGID, "topic_order", "msg_att_order_1", "112233445566778899002", "Attachment needing order", 1710000910000000, "", 0, 0)
+	attMsg.Annotations = []*pb.Annotation{{
+		Type: pb.AnnotationType_UPLOAD_METADATA.Enum(),
+		Metadata: &pb.Annotation_UploadMetadata{
+			UploadMetadata: buildUploadMetadataProto("tok_order_1", "ordered.pdf", "application/pdf"),
+		},
+	}}
+	attEvtBytes := pb.MustMarshal(&pb.Event{
+		GroupId: spaceGID,
+		Type:    pb.Event_MESSAGE_POSTED.Enum(),
+		Body: &pb.Event_EventBody{
+			EventType: pb.Event_MESSAGE_POSTED.Enum(),
+			Type: &pb.Event_EventBody_MessagePosted{
+				MessagePosted: &pb.MessageEvent{Message: attMsg},
+			},
+		},
+	})
+
+	reactEvtBytes := pb.MustMarshal(&pb.Event{
+		GroupId: spaceGID,
+		Type:    pb.Event_MESSAGE_REACTED.Enum(),
+		Body: &pb.Event_EventBody{
+			EventType: pb.Event_MESSAGE_REACTED.Enum(),
+			Type: &pb.Event_EventBody_MessageReaction{
+				MessageReaction: &pb.MessageReactionEvent{
+					MessageId: buildMessageID(spaceGID, "topic_order", "msg_att_order_1"),
+					UserId:    pb.HumanUserID("112233445566778899003"),
+					Type:      pb.MessageReactionEvent_ADD.Enum(),
+					Emoji:     &pb.Emoji{Content: &pb.Emoji_Unicode{Unicode: "👍"}},
+					Timestamp: pb.Int64(1710000911000000),
+				},
+			},
+		},
+	})
+
+	dmMsg := buildSyntheticMessageProto(dmGID, "topic_dm_order", "msg_dm_while_blocked", "112233445566778899002", "DM text while attachment downloads", 1710000912000000, "", 0, 0)
+	dmEvtBytes := pb.MustMarshal(&pb.Event{
+		GroupId: dmGID,
+		Type:    pb.Event_MESSAGE_POSTED.Enum(),
+		Body: &pb.Event_EventBody{
+			EventType: pb.Event_MESSAGE_POSTED.Enum(),
+			Type: &pb.Event_EventBody_MessagePosted{
+				MessagePosted: &pb.MessageEvent{Message: dmMsg},
+			},
+		},
+	})
+
+	client.mu.Lock()
+	ch := client.streamCh
+	client.mu.Unlock()
+	require.NotNil(t, ch)
+
+	ch <- streamNotification{kind: EventKindEventProto, payload: attEvtBytes}
+	ch <- streamNotification{kind: EventKindEventProto, payload: reactEvtBytes}
+	ch <- streamNotification{kind: EventKindEventProto, payload: dmEvtBytes}
+
+	<-mediaDownloadStarted
+
+	// While the attachment download is blocked, the stream drainer must NOT be blocked:
+	// all 3 events must be drained and recorded in strict arrival order, and the unrelated DM message must land in DB.
+	require.Eventually(t, func() bool {
+		msg, err := h.Bridge.DB.Message.GetFirstPartByID(ctx, ul.ID, MakeMessageID("topic_dm_order", "msg_dm_while_blocked"))
+		return err == nil && msg != nil
+	}, 2*time.Second, 20*time.Millisecond, "stream drainer must not be blocked by slow attachment download")
+
+	recordedWhileBlocked := client.recordedRemoteEvents()
+	releaseDownload()
+
+	require.Len(t, recordedWhileBlocked, 3, "all three events must be queued in arrival order without blocking the drainer")
+	require.Equal(t, bridgev2.RemoteEventMessage, recordedWhileBlocked[0].GetType(), "attachment message must be queued before reaction")
+	require.Equal(t, bridgev2.RemoteEventReaction, recordedWhileBlocked[1].GetType(), "reaction must be queued second")
+	require.Equal(t, bridgev2.RemoteEventMessage, recordedWhileBlocked[2].GetType(), "subsequent DM message must be queued third")
+
+	require.Eventually(t, func() bool {
+		dbMsg, err := h.Bridge.DB.Message.GetFirstPartByID(ctx, ul.ID, targetMsgID)
+		if err != nil || dbMsg == nil {
+			return false
+		}
+		rxn, err := h.Bridge.DB.Reaction.GetByID(ctx, ul.ID, targetMsgID, "", MakeUserID("112233445566778899003"), "👍")
+		return err == nil && rxn != nil
+	}, 2*time.Second, 20*time.Millisecond, "bridgev2 must receive and persist attachment message before reaction so reaction is not dropped")
 }
 
 func TestServeGChatEngineHelperForAppE2E(t *testing.T) {

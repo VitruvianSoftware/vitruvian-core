@@ -46,9 +46,13 @@ type Client struct {
 	loggedOut          bool
 	syncMu             sync.Mutex
 	ffiClient          *FFIClient
+	streamCtx          context.Context
 	cancelStream       context.CancelFunc
 	streamDone         chan struct{}
 	streamCh           chan streamNotification
+	portalQueues       map[networkid.PortalKey]chan bridgev2.RemoteEvent
+	portalWG           sync.WaitGroup
+	mediaSem           chan struct{}
 	initialSyncDone    bool
 	dispatchedMsgIDs   map[string]struct{}
 	dispatchedMsgOrder []string
@@ -105,10 +109,23 @@ func (c *Client) Connect(ctx context.Context) {
 	}
 
 	c.mu.Lock()
-	if c.cancelStream != nil {
-		c.cancelStream()
-		c.cancelStream = nil
+	prevCancel := c.cancelStream
+	prevDone := c.streamDone
+	prevFFI := c.ffiClient
+	c.cancelStream = nil
+	c.streamDone = nil
+	c.mu.Unlock()
+	if prevCancel != nil {
+		prevCancel()
 	}
+	if prevFFI != nil {
+		prevFFI.StopStream()
+	}
+	if prevDone != nil {
+		<-prevDone
+	}
+
+	c.mu.Lock()
 	streamCtx, cancel := context.WithCancel(context.Background())
 	doneCh := make(chan struct{})
 	c.cancelStream = cancel
@@ -134,13 +151,23 @@ func (c *Client) Connect(ctx context.Context) {
 
 	streamCh := make(chan streamNotification, 256)
 	c.mu.Lock()
+	c.streamCtx = streamCtx
 	c.streamCh = streamCh
+	c.portalQueues = make(map[networkid.PortalKey]chan bridgev2.RemoteEvent)
 	c.mu.Unlock()
-	mediaSem := make(chan struct{}, 4)
-	var mediaWG sync.WaitGroup
 	go func() {
 		defer close(doneCh)
-		defer mediaWG.Wait()
+		defer func() {
+			c.mu.Lock()
+			for pk, q := range c.portalQueues {
+				close(q)
+				delete(c.portalQueues, pk)
+			}
+			c.portalQueues = nil
+			c.streamCtx = nil
+			c.mu.Unlock()
+			c.portalWG.Wait()
+		}()
 		for {
 			select {
 			case <-streamCtx.Done():
@@ -148,20 +175,6 @@ func (c *Client) Connect(ctx context.Context) {
 			case item, ok := <-streamCh:
 				if !ok {
 					return
-				}
-				if item.kind == EventKindEventProto && eventHasAttachmentDownload(item.payload) {
-					mediaWG.Add(1)
-					go func(it streamNotification) {
-						defer mediaWG.Done()
-						select {
-						case <-streamCtx.Done():
-							return
-						case mediaSem <- struct{}{}:
-							defer func() { <-mediaSem }()
-						}
-						c.processStreamNotification(streamCtx, it)
-					}(item)
-					continue
 				}
 				c.processStreamNotification(streamCtx, item)
 			}
@@ -239,36 +252,85 @@ func (c *Client) queueRemoteEvent(ctx context.Context, evt bridgev2.RemoteEvent)
 	if evt == nil || c.UserLogin == nil {
 		return
 	}
-	if msgEvt, ok := evt.(*simplevent.PreConvertedMessage); ok && msgEvt.ID != "" {
-		dedupKey := string(msgEvt.GetPortalKey().ID) + "|" + string(msgEvt.ID)
-		c.mu.Lock()
-		if msgEvt.TransactionID != "" && c.pendingLocalIDs != nil {
-			if _, pending := c.pendingLocalIDs[string(msgEvt.TransactionID)]; pending {
-				delete(c.pendingLocalIDs, string(msgEvt.TransactionID))
-				c.recordDispatchedLocked(dedupKey)
+	if evt.GetType() == bridgev2.RemoteEventMessage {
+		if msgEvt, ok := evt.(bridgev2.RemoteMessage); ok && msgEvt.GetID() != "" {
+			msgID := msgEvt.GetID()
+			var txnID networkid.TransactionID
+			if txnEvt, ok := evt.(bridgev2.RemoteMessageWithTransactionID); ok {
+				txnID = txnEvt.GetTransactionID()
+			}
+			dedupKey := string(evt.GetPortalKey().ID) + "|" + string(msgID)
+			c.mu.Lock()
+			if txnID != "" && c.pendingLocalIDs != nil {
+				if _, pending := c.pendingLocalIDs[string(txnID)]; pending {
+					delete(c.pendingLocalIDs, string(txnID))
+					c.recordDispatchedLocked(dedupKey)
+					c.mu.Unlock()
+					return
+				}
+			}
+			if _, exists := c.dispatchedMsgIDs[dedupKey]; exists {
 				c.mu.Unlock()
 				return
 			}
-		}
-		if _, exists := c.dispatchedMsgIDs[dedupKey]; exists {
+			if c.UserLogin.Bridge != nil && c.UserLogin.Bridge.DB != nil && c.UserLogin.Bridge.DB.Message != nil {
+				if existing, err := c.UserLogin.Bridge.DB.Message.GetFirstPartByID(ctx, c.UserLogin.ID, msgID); err == nil && existing != nil {
+					c.recordDispatchedLocked(dedupKey)
+					c.mu.Unlock()
+					return
+				}
+			}
+			c.recordDispatchedLocked(dedupKey)
 			c.mu.Unlock()
-			return
 		}
-		if c.UserLogin.Bridge != nil && c.UserLogin.Bridge.DB != nil && c.UserLogin.Bridge.DB.Message != nil {
-			if existing, err := c.UserLogin.Bridge.DB.Message.GetFirstPartByID(ctx, c.UserLogin.ID, msgEvt.ID); err == nil && existing != nil {
-				c.recordDispatchedLocked(dedupKey)
-				c.mu.Unlock()
-				return
-			}
-		}
-		c.recordDispatchedLocked(dedupKey)
-		c.mu.Unlock()
 	}
 	if onRemoteEventQueued != nil {
 		onRemoteEventQueued(c, evt)
 	}
-	c.prewarmEventGhosts(ctx, evt)
-	c.UserLogin.QueueRemoteEvent(evt)
+	c.dispatchRemoteEvent(ctx, evt)
+}
+
+func (c *Client) dispatchRemoteEvent(ctx context.Context, evt bridgev2.RemoteEvent) {
+	c.mu.Lock()
+	streamCtx := c.streamCtx
+	queues := c.portalQueues
+	if streamCtx == nil || streamCtx.Err() != nil || queues == nil || ctx != streamCtx {
+		c.mu.Unlock()
+		c.prewarmEventGhosts(ctx, evt)
+		c.UserLogin.QueueRemoteEvent(evt)
+		return
+	}
+	pk := evt.GetPortalKey()
+	q, ok := queues[pk]
+	if !ok {
+		q = make(chan bridgev2.RemoteEvent, 256)
+		queues[pk] = q
+		c.portalWG.Add(1)
+		go func(ch chan bridgev2.RemoteEvent) {
+			defer c.portalWG.Done()
+			for {
+				select {
+				case <-streamCtx.Done():
+					return
+				case re, ok := <-ch:
+					if !ok {
+						return
+					}
+					if streamCtx.Err() != nil {
+						return
+					}
+					c.prewarmEventGhosts(streamCtx, re)
+					c.UserLogin.QueueRemoteEvent(re)
+				}
+			}
+		}(q)
+	}
+	c.mu.Unlock()
+	select {
+	case <-streamCtx.Done():
+	case <-ctx.Done():
+	case q <- evt:
+	}
 }
 
 func (c *Client) ensureGhostInitialized(ctx context.Context, uid networkid.UserID) {
@@ -306,16 +368,23 @@ func (c *Client) Disconnect() {
 	c.cancelStream = nil
 	c.streamDone = nil
 	ffi := c.ffiClient
-	c.ffiClient = nil
 	c.mu.Unlock()
 	if cancel != nil {
 		cancel()
 	}
 	if ffi != nil {
-		ffi.Close()
+		ffi.StopStream()
 	}
 	if doneCh != nil {
 		<-doneCh
+	}
+	c.mu.Lock()
+	if c.ffiClient == ffi {
+		c.ffiClient = nil
+	}
+	c.mu.Unlock()
+	if ffi != nil {
+		ffi.Close()
 	}
 }
 

@@ -53,7 +53,30 @@ func (c *Client) uploadMedia(_ context.Context, rawGroupID, filename, contentTyp
 	return ffi.UploadMedia(rawGroupID, filename, contentType, data)
 }
 
-func (c *Client) downloadAttachment(_ context.Context, attachmentToken, contentType string) ([]byte, error) {
+func (c *Client) acquireMediaSlot(ctx context.Context) (func(), error) {
+	if c == nil {
+		return func() {}, nil
+	}
+	c.mu.Lock()
+	if c.mediaSem == nil {
+		c.mediaSem = make(chan struct{}, 4)
+	}
+	sem := c.mediaSem
+	c.mu.Unlock()
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case sem <- struct{}{}:
+		return func() { <-sem }, nil
+	}
+}
+
+func (c *Client) downloadAttachment(ctx context.Context, attachmentToken, contentType string) ([]byte, error) {
+	release, err := c.acquireMediaSlot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	ffi, err := c.ensureFFIClient()
 	if err != nil {
 		return nil, err
