@@ -215,4 +215,3 @@ func DeleteOfflineUserLogin(ctx context.Context, dataDir, network, accountID str
 	}
 	return n > 0, nil
 }
-

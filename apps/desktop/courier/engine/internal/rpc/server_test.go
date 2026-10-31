@@ -1628,4 +1628,3 @@ func TestBridgesRestartPassesErrorsThroughToError(t *testing.T) {
 	// not a blanket CodeNotRunning (-32016).
 	c.fails(CodeInternal, "bridges.restart", map[string]any{"network": "telegram"})
 }
-

@@ -995,4 +995,3 @@ func TestRemoveAccountSerialisedWithRestartNetwork(t *testing.T) {
 	require.NoError(t, <-restartDone)
 	require.NoError(t, <-removeDone)
 }
-

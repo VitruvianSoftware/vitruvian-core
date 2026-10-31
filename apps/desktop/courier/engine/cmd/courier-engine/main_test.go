@@ -1000,4 +1000,3 @@ func TestGoPanicWrittenToFd2IsCapturedAndScrubbedInStderrLog(t *testing.T) {
 		require.NotContains(t, joined, forbidden)
 	}
 }
-

@@ -34,4 +34,3 @@ filegroup(
         "//apps/desktop/courier/engine:__subpackages__",
     ],
 )
-

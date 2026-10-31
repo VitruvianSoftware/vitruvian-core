@@ -283,4 +283,3 @@ func TestSharedCrashScrubFixture(t *testing.T) {
 		require.NotContains(t, joined, f)
 	}
 }
-
