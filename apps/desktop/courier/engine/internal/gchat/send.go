@@ -83,7 +83,7 @@ func convertOutgoingText(content *event.MessageEventContent, allowMentionAll boo
 	if content == nil {
 		return "", nil, errors.New("Google Chat message content is empty.")
 	}
-	if len(content.Body) > maxOutboundTextLength || utf8.RuneCountInString(content.Body) > maxOutboundTextLength {
+	if utf8.RuneCountInString(content.Body) > maxOutboundTextLength {
 		return "", nil, fmt.Errorf("Google Chat messages can't be longer than 4,096 characters.")
 	}
 	hasHTML := content.Format == event.FormatHTML && content.FormattedBody != ""
@@ -100,7 +100,7 @@ func convertOutgoingText(content *event.MessageEventContent, allowMentionAll boo
 	} else {
 		plainText = content.Body
 	}
-	if len(plainText) > maxOutboundTextLength || utf8.RuneCountInString(plainText) > maxOutboundTextLength {
+	if utf8.RuneCountInString(plainText) > maxOutboundTextLength {
 		return "", nil, fmt.Errorf("Google Chat messages can't be longer than 4,096 characters.")
 	}
 	return plainText, annotations, nil

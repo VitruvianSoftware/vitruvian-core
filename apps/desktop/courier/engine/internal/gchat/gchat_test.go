@@ -4672,6 +4672,24 @@ func TestInboundMediaDownloadDoesNotBlockLiveStreamDrainer(t *testing.T) {
 	}, 2*time.Second, 20*time.Millisecond, "attachment message must complete and be delivered once download finishes")
 }
 
+func TestMultiByteUTF8MessageUpTo4096RunesAccepted(t *testing.T) {
+	cjk1500 := strings.Repeat("語", 1500) // 1,500 runes, 4,500 UTF-8 bytes
+	require.Equal(t, 4500, len(cjk1500))
+	plain, _, err := convertOutgoingText(&event.MessageEventContent{
+		MsgType: event.MsgText,
+		Body:    cjk1500,
+	}, true)
+	require.NoError(t, err, "1,500-rune CJK message (4,500 UTF-8 bytes) must be accepted")
+	require.Equal(t, cjk1500, plain)
+
+	cjk4097 := strings.Repeat("語", 4097)
+	_, _, err = convertOutgoingText(&event.MessageEventContent{
+		MsgType: event.MsgText,
+		Body:    cjk4097,
+	}, true)
+	require.Error(t, err, "4,097-rune CJK message must be rejected")
+}
+
 func TestServeGChatEngineHelperForAppE2E(t *testing.T) {
 	sockPath := os.Getenv("COURIER_GCHAT_E2E_SOCKET")
 	if sockPath == "" {
