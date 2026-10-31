@@ -54,6 +54,7 @@ type Client struct {
 	portalWG           sync.WaitGroup
 	prewarmCh          chan networkid.UserID
 	prewarmedUsers     map[networkid.UserID]struct{}
+	seededGhosts       map[networkid.UserID]struct{}
 	prewarmWG          sync.WaitGroup
 	mediaSem           chan struct{}
 	initialSyncDone    bool
@@ -366,12 +367,18 @@ func (c *Client) seedAndEnqueueGhostPrewarm(ctx context.Context, uid networkid.U
 		return
 	}
 	c.ghostMu.Lock()
-	if ghost, err := c.UserLogin.Bridge.GetGhostByID(ctx, uid); err == nil && ghost != nil {
-		if ghost.Name == "" {
-			ghost.Name = string(uid)
+	if c.seededGhosts == nil {
+		c.seededGhosts = make(map[networkid.UserID]struct{})
+	}
+	if _, seeded := c.seededGhosts[uid]; !seeded {
+		if ghost, err := c.UserLogin.Bridge.GetGhostByID(ctx, uid); err == nil && ghost != nil {
+			if ghost.Name == "" {
+				ghost.Name = string(uid)
+			}
+			ghost.NameSet = true
+			ghost.AvatarSet = true
+			c.seededGhosts[uid] = struct{}{}
 		}
-		ghost.NameSet = true
-		ghost.AvatarSet = true
 	}
 	c.ghostMu.Unlock()
 
@@ -434,19 +441,7 @@ func (c *Client) runGhostPrewarmWorker(streamCtx context.Context, ch <-chan netw
 			if streamCtx.Err() != nil || c.UserLogin == nil || c.UserLogin.Bridge == nil {
 				return
 			}
-			c.ghostMu.Lock()
-			ghost, err := c.UserLogin.Bridge.GetGhostByID(streamCtx, uid)
-			c.ghostMu.Unlock()
-			if err != nil || ghost == nil {
-				continue
-			}
-			info, err := c.GetUserInfo(streamCtx, ghost)
-			if err != nil || info == nil || streamCtx.Err() != nil {
-				continue
-			}
-			c.ghostMu.Lock()
-			ghost.UpdateInfo(streamCtx, info)
-			c.ghostMu.Unlock()
+			_, _ = c.fetchUserInfoByID(streamCtx, uid)
 		}
 	}
 }
@@ -731,12 +726,13 @@ func (c *Client) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*bridg
 	if ghost == nil {
 		return &bridgev2.UserInfo{}, nil
 	}
-	name := string(ghost.ID)
-	if ghost.Name != "" {
-		name = ghost.Name
-	}
+	return c.fetchUserInfoByID(ctx, ghost.ID)
+}
+
+func (c *Client) fetchUserInfoByID(ctx context.Context, uid networkid.UserID) (*bridgev2.UserInfo, error) {
+	name := string(uid)
 	var avatarURL string
-	if gaiaID := strings.TrimSpace(string(ghost.ID)); gaiaID != "" {
+	if gaiaID := strings.TrimSpace(string(uid)); gaiaID != "" {
 		reqBytes, err := pb.Marshal(&pb.GetMembersRequest{
 			MemberIds: []*pb.MemberId{pb.UserMemberID(gaiaID)},
 		})
