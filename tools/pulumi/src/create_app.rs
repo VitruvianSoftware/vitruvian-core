@@ -70,7 +70,11 @@ fn prompt_read(prompt: &str) -> Option<String> {
 }
 
 fn prompt_read_secret(prompt: &str) -> Option<String> {
-    if stdin_is_tty() {
+    let tty = stdin_is_tty();
+    // Saved BEFORE echo goes off, so Ctrl-C (or a kill) at the prompt can
+    // put the terminal back as it was instead of leaving it silent.
+    let guard = if tty { term::EchoGuard::save() } else { None };
+    if tty {
         let _ = std::io::stderr().write_all(prompt.as_bytes());
         let _ = std::io::stderr().flush();
         let _ = Command::new("stty")
@@ -81,7 +85,9 @@ fn prompt_read_secret(prompt: &str) -> Option<String> {
     }
     let mut line = String::new();
     let result = std::io::stdin().read_line(&mut line);
-    if stdin_is_tty() {
+    if guard.is_some() {
+        drop(guard);
+    } else if tty {
         let _ = Command::new("stty")
             .arg("echo")
             .stdin(Stdio::inherit())
@@ -99,6 +105,84 @@ fn prompt_read_secret(prompt: &str) -> Option<String> {
                 .to_string(),
         ),
         Err(_) => None,
+    }
+}
+
+/// Terminal settings saved and put back around the hidden token prompt,
+/// with the C library std already links (no crate).
+mod term {
+    use std::os::raw::c_int;
+    use std::ptr::{addr_of, addr_of_mut};
+
+    extern "C" {
+        fn tcgetattr(fd: c_int, t: *mut u8) -> c_int;
+        fn tcsetattr(fd: c_int, action: c_int, t: *const u8) -> c_int;
+        fn signal(sig: c_int, handler: usize) -> usize;
+        fn raise(sig: c_int) -> c_int;
+    }
+
+    const TCSANOW: c_int = 0;
+    const SIG_DFL: usize = 0;
+    const SIG_IGN: usize = 1;
+    const SIG_ERR: usize = usize::MAX;
+    /// SIGHUP, SIGINT, SIGQUIT, SIGTERM: the same numbers on macOS and Linux.
+    const SIGNALS: [c_int; 4] = [1, 2, 3, 15];
+
+    /// stdin's `struct termios`, as opaque bytes (72 on macOS, 60 on glibc;
+    /// this is larger and 8-aligned), so no field layout is assumed. Written
+    /// once before any handler is installed, then only read.
+    static mut SAVED: [u64; 32] = [0; 32];
+
+    /// Put stdin's terminal back, then die of the same signal with its
+    /// default action, so the exit still reads as an interrupt. tcsetattr,
+    /// signal and raise are all async-signal-safe.
+    extern "C" fn on_signal(sig: c_int) {
+        // SAFETY: SAVED was fully written before this handler was installed.
+        unsafe {
+            tcsetattr(0, TCSANOW, addr_of!(SAVED) as *const u8);
+            signal(sig, SIG_DFL);
+            raise(sig);
+        }
+    }
+
+    pub struct EchoGuard {
+        prev: [Option<usize>; 4],
+    }
+
+    impl EchoGuard {
+        /// None when stdin's settings cannot be read (not a terminal).
+        pub fn save() -> Option<EchoGuard> {
+            // SAFETY: SAVED is larger than struct termios; nothing reads it
+            // until a handler is installed below.
+            if unsafe { tcgetattr(0, addr_of_mut!(SAVED) as *mut u8) } != 0 {
+                return None;
+            }
+            let mut prev = [None; 4];
+            for (slot, &sig) in prev.iter_mut().zip(SIGNALS.iter()) {
+                // SAFETY: installing a handler that only calls
+                // async-signal-safe functions.
+                let p = unsafe { signal(sig, on_signal as usize) };
+                if p == SIG_IGN {
+                    // An ignored signal (e.g. run in the background) stays ignored.
+                    unsafe { signal(sig, SIG_IGN) };
+                } else if p != SIG_ERR {
+                    *slot = Some(p);
+                }
+            }
+            Some(EchoGuard { prev })
+        }
+    }
+
+    impl Drop for EchoGuard {
+        fn drop(&mut self) {
+            // SAFETY: SAVED holds what tcgetattr returned in save().
+            unsafe { tcsetattr(0, TCSANOW, addr_of!(SAVED) as *const u8) };
+            for (p, &sig) in self.prev.iter().zip(SIGNALS.iter()) {
+                if let Some(h) = p {
+                    unsafe { signal(sig, *h) };
+                }
+            }
+        }
     }
 }
 
@@ -154,6 +238,20 @@ pub fn extract_code(request_line: &str) -> String {
         }
         None => String::new(),
     }
+}
+
+/// The longest manifest code accepted. GitHub's are about 20 characters.
+pub const MAX_CODE_LEN: usize = 128;
+
+/// The code is spliced into the `gh api` request path, so only
+/// `[A-Za-z0-9_-]`, 1 to MAX_CODE_LEN long, is allowed: no `/`, `..`, `?`,
+/// `%`, spaces or control characters that could change the request.
+pub fn is_valid_code(code: &str) -> bool {
+    !code.is_empty()
+        && code.len() <= MAX_CODE_LEN
+        && code
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
 }
 
 /// `mktemp "${TMPDIR:-/tmp}/pulumi-create-app.XXXXXX"` + `.html`: a random
@@ -370,6 +468,15 @@ pub fn run(args: &[String]) -> i32 {
         eprintln!("! No code captured; cannot complete App creation. Re-run and paste the code.");
         return 1;
     }
+    if !is_valid_code(&code) {
+        // Not echoed back: it may hold terminal control characters.
+        eprintln!(
+            "! That is not a GitHub App manifest code: it must be 1-{} letters, digits, '_' or '-'.",
+            MAX_CODE_LEN
+        );
+        eprintln!("  Nothing was sent to GitHub. Re-run and paste the 'code=' value from the address bar.");
+        return 1;
+    }
 
     // --- Exchange the code for App credentials -------------------------------
     println!();
@@ -552,6 +659,19 @@ mod tests {
         assert_eq!(extract_code("GET /cb?xcode=bad HTTP/1.1"), "");
         assert_eq!(extract_code("GET /cb HTTP/1.1"), "");
         assert_eq!(extract_code("GET /cb?code= HTTP/1.1"), "");
+    }
+
+    #[test]
+    fn code_validation() {
+        assert!(is_valid_code("abc123"));
+        assert!(is_valid_code("A-b_9"));
+        assert!(is_valid_code(&"a".repeat(MAX_CODE_LEN)));
+        assert!(!is_valid_code(&"a".repeat(MAX_CODE_LEN + 1)));
+        for bad in [
+            "", "../x", "a/b", "a?b", "a b", "a%2Fb", "a.b", "a\nb", "\u{e9}",
+        ] {
+            assert!(!is_valid_code(bad), "{bad:?}");
+        }
     }
 
     #[test]

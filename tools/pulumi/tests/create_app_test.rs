@@ -359,6 +359,179 @@ fn gap_code_is_the_last_query_code_param() {
     assert!(r.gh.contains("/app-manifests/good/conversions"), "{}", r.gh);
 }
 
+// Same rule end to end when `code=` itself repeats: the last one wins.
+#[test]
+fn gap_code_is_the_last_of_repeated_code_params() {
+    let fx = Fx::new(Some("GET /cb?code=one&code=two HTTP/1.1"));
+    let r = fx.run(&["acme"], "\n", &[]);
+    assert!(r.gh.contains("/app-manifests/two/conversions"), "{}", r.gh);
+    assert!(!r.gh.contains("/app-manifests/one/"), "{}", r.gh);
+}
+
+fn assert_code_rejected(r: &Res) {
+    assert_eq!(r.rc, 1, "out: {}\nerr: {}", r.out, r.err);
+    assert!(
+        r.err.contains("! That is not a GitHub App manifest code"),
+        "{}",
+        r.err
+    );
+    assert!(
+        !r.gh.contains("app-manifests"),
+        "gh was called with the bad code: {}",
+        r.gh
+    );
+    assert!(!r.gh.contains("variable set") && r.secrets.is_empty());
+}
+
+// The code goes into the `gh api` request path, so anything but
+// [A-Za-z0-9_-] (a path step, a query, a slash) is refused before gh runs.
+#[test]
+fn malicious_code_from_listener_is_rejected_before_gh() {
+    for req in [
+        "GET /cb?code=../../user HTTP/1.1",
+        "GET /cb?code=abc/../../orgs/acme HTTP/1.1",
+        "GET /cb?code=abc?x=1 HTTP/1.1",
+        "GET /cb?code=..%2F..%2Fuser HTTP/1.1",
+    ] {
+        let fx = Fx::new(Some(req));
+        let r = fx.run(&["acme"], "\n", &[]);
+        assert_code_rejected(&r);
+    }
+}
+
+#[test]
+fn malicious_or_oversized_pasted_code_is_rejected_before_gh() {
+    let long = "a".repeat(129);
+    for code in ["../user", "a b", "a/b", "a?b", "a\u{1b}[2Jb", long.as_str()] {
+        let fx = Fx::new(None);
+        let r = fx.run(&["acme"], &format!("{code}\n\n"), &[]);
+        assert_code_rejected(&r);
+    }
+    // The longest code accepted is 128 characters.
+    let fx = Fx::new(None);
+    let ok = "A-_9".repeat(32);
+    let r = fx.run(&["acme"], &format!("{ok}\n\n"), &[]);
+    assert_eq!(r.rc, 0, "{}", r.err);
+    assert!(r.gh.contains(&format!("/app-manifests/{ok}/conversions")));
+}
+
+/// A pseudo-terminal pair, so the token prompt really runs `stty -echo`.
+mod pty {
+    use std::os::raw::{c_char, c_int};
+    extern "C" {
+        fn grantpt(fd: c_int) -> c_int;
+        fn unlockpt(fd: c_int) -> c_int;
+        fn ptsname(fd: c_int) -> *mut c_char;
+        fn tcgetattr(fd: c_int, t: *mut u8) -> c_int;
+        pub fn kill(pid: c_int, sig: c_int) -> c_int;
+        pub fn signal(sig: c_int, handler: usize) -> usize;
+    }
+
+    #[cfg(target_os = "macos")]
+    const O_NOCTTY: i32 = 0x20000;
+    #[cfg(not(target_os = "macos"))]
+    const O_NOCTTY: i32 = 0o400;
+
+    /// Opaque, over-sized storage for `struct termios` (72 bytes on macOS,
+    /// 60 on glibc): compared whole, so no field layout is assumed.
+    pub type Termios = [u64; 32];
+
+    pub fn termios(f: &std::fs::File) -> Termios {
+        use std::os::fd::AsRawFd;
+        let mut t: Termios = [0; 32];
+        // SAFETY: t is larger than any platform's struct termios.
+        let rc = unsafe { tcgetattr(f.as_raw_fd(), t.as_mut_ptr() as *mut u8) };
+        assert_eq!(rc, 0, "tcgetattr: {}", std::io::Error::last_os_error());
+        t
+    }
+
+    /// (master, slave)
+    pub fn open() -> (std::fs::File, std::fs::File) {
+        use std::os::fd::AsRawFd;
+        use std::os::unix::fs::OpenOptionsExt;
+        let master = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .custom_flags(O_NOCTTY)
+            .open("/dev/ptmx")
+            .expect("open /dev/ptmx");
+        let fd = master.as_raw_fd();
+        // SAFETY: plain libc calls on a descriptor we own; ptsname's buffer
+        // is copied out before anything else can call it.
+        let name = unsafe {
+            assert_eq!(grantpt(fd), 0, "grantpt");
+            assert_eq!(unlockpt(fd), 0, "unlockpt");
+            let p = ptsname(fd);
+            assert!(!p.is_null(), "ptsname");
+            std::ffi::CStr::from_ptr(p).to_string_lossy().into_owned()
+        };
+        let slave = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .custom_flags(O_NOCTTY)
+            .open(&name)
+            .unwrap_or_else(|e| panic!("open {name}: {e}"));
+        (master, slave)
+    }
+}
+
+// Ctrl-C at the hidden token prompt must not leave the terminal without
+// echo: the terminal settings are put back, then the process still dies
+// of the SIGINT (so callers see an interrupt, not a clean exit).
+#[test]
+fn interrupt_at_token_prompt_restores_terminal_echo() {
+    use std::os::unix::process::{CommandExt, ExitStatusExt};
+    let fx = Fx::new(Some("GET /cb?code=abc HTTP/1.1"));
+    std::os::unix::fs::symlink(find_tool("stty"), fx.sys.join("stty")).unwrap();
+    let (_master, slave) = pty::open();
+    let before = pty::termios(&slave);
+
+    let mut c = cmd(
+        &bin("CREATE_APP_BIN"),
+        &format!("{}:{}", fx.stubs.display(), fx.sys.display()),
+    );
+    c.env("GH_LOG", fx.d.join("gh.log"))
+        .env("SECRETS_LOG", fx.d.join("secrets.log"))
+        .env("OPEN_LOG", fx.d.join("open.log"))
+        .env("CONVERSION", CONVERSION)
+        .env("TMPDIR", fx.d.join("tmp"))
+        .arg("acme")
+        .stdin(slave.try_clone().unwrap())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped());
+    // SAFETY: signal() is async-signal-safe. A test runner that ignores
+    // SIGINT would otherwise hand that on and the child would never die.
+    unsafe {
+        c.pre_exec(|| {
+            pty::signal(2, 0);
+            Ok(())
+        });
+    }
+    let child = c.spawn().unwrap();
+
+    // Wait until the prompt has turned echo off.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    while pty::termios(&slave) == before {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "echo was never turned off at the token prompt"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    // SAFETY: plain kill(2) on our own child.
+    assert_eq!(unsafe { pty::kill(child.id() as i32, 2) }, 0);
+    let o = child.wait_with_output().unwrap();
+
+    assert_eq!(o.status.signal(), Some(2), "{:?} {}", o.status, stderr(&o));
+    assert!(
+        pty::termios(&slave) == before,
+        "terminal settings (echo) were not restored after Ctrl-C"
+    );
+    assert!(read(&fx.d.join("secrets.log"))
+        .lines()
+        .all(|l| !l.starts_with("PULUMI_ACCESS_TOKEN")));
+}
+
 // gap: the shell's temp file comes from mktemp (random, created exclusively),
 // not a guessable pid-based name another user could pre-create as a symlink.
 #[test]
