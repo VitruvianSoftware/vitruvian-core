@@ -170,8 +170,8 @@ names the target ([tools/agent-guard](tools/agent-guard/README.md)). It reads co
 so it stops habits, not determined workarounds: do not route around it. It runs from the repo, so
 every checkout and worktree is guarded with nothing to install: `.claude/settings.json` and
 `.agents/hooks.json` run `tools/agent-guard/hook.sh`, which runs the guard **as it is on
-`origin/main`**. You may change `agent_guard.py` and `policy.json` like any code (your edit takes
-effect once merged); you may not change those two hook files or `hook.sh`, which take effect
+`origin/main`**. You may change the guard's source (`tools/agent-guard/src/`) and `policy.json` like
+any code (your edit takes effect once merged); you may not change those two hook files or `hook.sh`, which take effect
 before review: that is James's call. **A pull request that changes agent-guard's rules cannot
 merge until James approves it on GitHub:** anything under `tools/agent-guard/`, the hook wiring
 (`.claude/settings.json`, `.claude/settings.local.json`, `.claude/*.sh`, `.agents/hooks.json`), or

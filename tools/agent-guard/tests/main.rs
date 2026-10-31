@@ -18,10 +18,10 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! Rust integration tests for agent-guard: agent_guard_test.py and the wiring
-//! half of hook_test.py, ported to call the library directly, so the Rust
-//! suite stands on its own once the Python files go. The decision table is
-//! testdata/decision_table.json, which the Python tests read too.
+//! agent-guard's integration tests (:agent_guard_test), calling the library
+//! directly: the decision table (testdata/decision_table.json), scope, modes,
+//! redaction, hook I/O, the hook files' protection, and the repo's wiring.
+//! The launcher's own tests are install/launcher_test.rs (:hook_test).
 
 mod common;
 
