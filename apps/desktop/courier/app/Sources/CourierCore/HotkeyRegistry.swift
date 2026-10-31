@@ -1,6 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import AppKit
 import Combine
 import Foundation
 
@@ -534,14 +535,13 @@ public final class HotkeyRegistry: ObservableObject {
             category: "Message",
             defaultChords: [KeyChord(key: "s", command: true, shift: true, option: true)]
         ),
+        // Composer
         HotkeyDefinition(
             id: "Undo Pending Send",
             title: "Undo Pending Send",
-            category: "Message",
+            category: "Composer",
             defaultChords: [KeyChord(key: "z", command: true)]
         ),
-
-        // Composer
         HotkeyDefinition(
             id: "Send Message",
             title: "Send Message",
@@ -615,6 +615,11 @@ public final class HotkeyRegistry: ObservableObject {
 
     public func definition(for id: String) -> HotkeyDefinition? {
         Self.allDefinitions.first { $0.id == id }
+    }
+
+    /// True when the app lock is active (`SystemLifecycleModel.isLocked`).
+    public var isLocked: Bool {
+        isAppLocked()
     }
 
     public func isEnabled(_ id: String) -> Bool {
@@ -878,6 +883,939 @@ public final class HotkeyRegistry: ObservableObject {
             defaults.removeObject(forKey: Self.globalKey)
         } else {
             defaults.set(Array(globalIDs).sorted(), forKey: Self.globalKey)
+        }
+    }
+}
+
+/// Identifies a single window-level keyboard shortcut binding in `MainWindow.alternateShortcuts`.
+public struct WindowShortcutBinding: Identifiable, Equatable, Sendable {
+    public let id: String
+    public let hotkeyID: String
+    public let chordIndex: Int
+    public let reversesCycle: Bool
+
+    public init(
+        hotkeyID: String,
+        chordIndex: Int = 0,
+        reversesCycle: Bool = false
+    ) {
+        self.hotkeyID = hotkeyID
+        self.chordIndex = chordIndex
+        self.reversesCycle = reversesCycle
+        self.id = "\(hotkeyID)#\(chordIndex)#\(reversesCycle ? "rev" : "fwd")"
+    }
+}
+
+/// Single live dispatcher for every shortcut in `HotkeyRegistry.allDefinitions`.
+/// All menu commands (`InboxCommands`, `ConversationCommands`), window-level alternate shortcuts
+/// (`MainWindow.alternateShortcuts`), composer Return handling (`ComposerModel.handleReturn`), and
+/// global hotkeys (`GlobalHotkeyMonitor`) route through this dispatcher so lock and entitlement
+/// checks (`!lifecycle.isLocked`, `.incognito`, `.reminders`) are enforced in one place.
+@MainActor
+public final class HotkeyDispatcher: ObservableObject {
+    public let inbox: InboxModel
+    public let spaces: SpacesModel
+    public let conversation: ConversationModel
+    public let messageActions: MessageActionsModel
+    public let search: SearchModel
+    public let lifecycle: SystemLifecycleModel
+    public let menuCoordinator: AppMenuCoordinator
+    public let focus: MessageFocus
+    public let hotkeys: HotkeyRegistry
+
+    /// Brings the main window forward when a shortcut needs it; returns true when it was already key.
+    public var bringMainWindowForward: @MainActor () -> Bool
+    /// Opens the Filter by Account popover (`⌘⌥A`).
+    public var onFilterByAccount: @MainActor () -> Void
+    /// Opens the Remind Me popover (`⌘L`).
+    public var onRemindLater: @MainActor () -> Void
+    /// Opens the file attachment picker (`⌘O`) for the active composer.
+    public var onAttachFiles: @MainActor (ComposerModel) -> Void
+    /// Runs the Archive All Read Chats confirmation flow (`⌘⇧E`).
+    public var onArchiveAllRead: @MainActor () async -> Void
+    /// Performs the responder-chain undo when neither a held send nor an undoable toast is active (`⌘Z`).
+    public var onFallbackUndo: @MainActor () -> Void
+
+    @Published public private(set) var attachFilesInvocationCount: Int = 0
+    @Published public private(set) var remindLaterInvocationCount: Int = 0
+    @Published public private(set) var filterByAccountInvocationCount: Int = 0
+    @Published public private(set) var archiveAllReadInvocationCount: Int = 0
+    @Published public private(set) var fallbackUndoInvocationCount: Int = 0
+
+    /// Shortcut IDs bound in `InboxCommands`.
+    public static let inboxMenuShortcutIDs: [String] = [
+        "Focus App",
+        "Focus App and Command Bar",
+        "Settings",
+        "Search",
+        "Minimize To Menu Bar",
+        "Quit App",
+        "Chat: Start New",
+        "Chat: Create New Group",
+        "Undo Pending Send",
+        "Toggle Space Bar",
+        "Toggle Sidebar",
+        "Toggle Incognito Mode",
+        "Select Next Chat",
+        "Select Previous Chat",
+        "Select Next Unread Chat",
+        "History: Previous Chat",
+        "History: Next Chat",
+        "Switch First 9 Chats Modifier",
+        "Search: Room",
+        "Chat: Toggle Archive",
+        "Chat: Toggle Mark As Read",
+        "Chat: Toggle Mute",
+        "Chat: Toggle Pin",
+        "Remind Later",
+        "Chat: Archive All Read",
+        "Cycle Filters",
+        "Filter: All",
+        "Filter: Unread",
+        "Filter: Drafts",
+        "Filter: Unanswered",
+        "Filter: DMs",
+        "Filter: Groups",
+        "Filter By Account",
+        "Select Next Account",
+        "Select Previous Account",
+        "Switch First 9 Spaces Modifier",
+        "Report a Problem",
+        "Keyboard Shortcuts",
+    ]
+
+    /// Shortcut IDs bound in `ConversationCommands`.
+    public static let conversationMenuShortcutIDs: [String] = [
+        "Message: Edit",
+        "Message: Quote & Reply",
+        "Scroll to the bottom of a chat",
+        "Show Replies",
+        "Message: Quick React",
+        "Message: Forward",
+        "Message: Open First Link",
+        "Message: Send Later",
+        "Message: Send Message and Archive",
+        "Chat: Send File",
+        "Download Attachments",
+        "Message: Record Audio",
+        "Message: Send GIF",
+        "Message: Send Sticker",
+        "Toggle Chat Info",
+        "Open User Profile",
+        "Chat: Delete",
+    ]
+
+    /// Window-level shortcut bindings rendered in `MainWindow.alternateShortcuts`.
+    public static let windowShortcutBindings: [WindowShortcutBinding] = [
+        WindowShortcutBinding(hotkeyID: "Select Next Chat", chordIndex: 1),
+        WindowShortcutBinding(hotkeyID: "Select Next Chat", chordIndex: 2),
+        WindowShortcutBinding(hotkeyID: "Select Previous Chat", chordIndex: 1),
+        WindowShortcutBinding(hotkeyID: "Select Previous Chat", chordIndex: 2),
+        WindowShortcutBinding(hotkeyID: "Chat: Toggle Archive", chordIndex: 1),
+        WindowShortcutBinding(hotkeyID: "Cycle Chats (hold shift to reverse)", chordIndex: 0, reversesCycle: false),
+        WindowShortcutBinding(hotkeyID: "Cycle Chats (hold shift to reverse)", chordIndex: 0, reversesCycle: true),
+        WindowShortcutBinding(hotkeyID: "Search: Room", chordIndex: 0),
+        WindowShortcutBinding(hotkeyID: "Focus App", chordIndex: 0),
+        WindowShortcutBinding(hotkeyID: "Focus App and Command Bar", chordIndex: 0),
+        WindowShortcutBinding(hotkeyID: "Toggle Incognito Mode", chordIndex: 0),
+        WindowShortcutBinding(hotkeyID: "Filter: All", chordIndex: 0),
+        WindowShortcutBinding(hotkeyID: "Filter: Drafts", chordIndex: 0),
+        WindowShortcutBinding(hotkeyID: "Filter: Unanswered", chordIndex: 0),
+        WindowShortcutBinding(hotkeyID: "Filter: DMs", chordIndex: 0),
+        WindowShortcutBinding(hotkeyID: "Filter: Groups", chordIndex: 0),
+        WindowShortcutBinding(hotkeyID: "Chat: Delete", chordIndex: 0),
+    ]
+
+    /// Shortcut IDs consulted directly by `ComposerModel.handleReturn(modifiers:)`.
+    public static let composerShortcutIDs: [String] = [
+        "Send Message",
+        "Insert New Line",
+        "Message: Quote or Edit Selected Message",
+    ]
+
+    /// Union of every shortcut ID wired into the live menus, window shortcuts, and composer Return handler.
+    public static var allLiveWiredShortcutIDs: Set<String> {
+        var ids = Set(inboxMenuShortcutIDs)
+        ids.formUnion(conversationMenuShortcutIDs)
+        ids.formUnion(windowShortcutBindings.map(\.hotkeyID))
+        ids.formUnion(composerShortcutIDs)
+        return ids
+    }
+
+    public init(
+        inbox: InboxModel,
+        spaces: SpacesModel,
+        conversation: ConversationModel,
+        messageActions: MessageActionsModel,
+        search: SearchModel,
+        lifecycle: SystemLifecycleModel,
+        menuCoordinator: AppMenuCoordinator,
+        focus: MessageFocus? = nil,
+        hotkeys: HotkeyRegistry,
+        bringMainWindowForward: @escaping @MainActor () -> Bool = { true },
+        onFilterByAccount: @escaping @MainActor () -> Void = {},
+        onRemindLater: @escaping @MainActor () -> Void = {},
+        onAttachFiles: @escaping @MainActor (ComposerModel) -> Void = { _ in },
+        onArchiveAllRead: (@MainActor () async -> Void)? = nil,
+        onFallbackUndo: @escaping @MainActor () -> Void = {
+            NSApp?.sendAction(Selector(("undo:")), to: nil, from: nil)
+        }
+    ) {
+        self.inbox = inbox
+        self.spaces = spaces
+        self.conversation = conversation
+        self.messageActions = messageActions
+        self.search = search
+        self.lifecycle = lifecycle
+        self.menuCoordinator = menuCoordinator
+        self.focus = focus ?? MessageFocus()
+        self.hotkeys = hotkeys
+        self.bringMainWindowForward = bringMainWindowForward
+        self.onFilterByAccount = onFilterByAccount
+        self.onRemindLater = onRemindLater
+        self.onAttachFiles = onAttachFiles
+        self.onArchiveAllRead = onArchiveAllRead ?? { [weak inbox] in
+            _ = await inbox?.archiveAllRead()
+        }
+        self.onFallbackUndo = onFallbackUndo
+
+        conversation.composer.hotkeyDispatcher = self
+        conversation.composer.hotkeys = hotkeys
+        conversation.thread.composer.hotkeyDispatcher = self
+        conversation.thread.composer.hotkeys = hotkeys
+    }
+
+    /// Active composer that keyboard shortcuts target (thread pane when focused, otherwise main chat).
+    public var activeComposer: ComposerModel {
+        focus.inPane && conversation.thread.roomID != nil ? conversation.thread.composer : conversation.composer
+    }
+
+    /// Composer holding pending undo-send messages in the open room, if any.
+    public var heldComposer: ComposerModel? {
+        [conversation.composer, conversation.thread.composer].first {
+            !$0.heldIDs.isEmpty && $0.roomID != nil && $0.roomID == conversation.roomID
+        }
+    }
+
+    /// Selected message and its source (`.chat` or `.thread`).
+    public var selectedMessage: (id: String, source: MessageSource)? {
+        focus.target(chatSelection: conversation.selectedMessageID)
+    }
+
+    /// Thread root message ID when the selected chat message has replies (`Show Replies` target).
+    public var showRepliesTarget: String? {
+        guard let selectedMessage,
+              selectedMessage.source == .chat,
+              conversation.message(selectedMessage.id, from: .chat)?.thread != nil
+        else { return nil }
+        return selectedMessage.id
+    }
+
+    /// Whether the selected message (or active lightbox item) has local media attachments that can be downloaded.
+    public var canDownloadAttachments: Bool {
+        if let lightboxID = conversation.activeLightboxMessageID {
+            return hasDownloadableAttachment(forLightboxID: lightboxID)
+        }
+        guard let selectedMessage,
+              let message = conversation.message(selectedMessage.id, from: selectedMessage.source),
+              !message.viewOnce
+        else {
+            return false
+        }
+        if !message.galleryItems.isEmpty {
+            return message.galleryItems.contains { isLocalMediaStorePath($0.mediaPath) }
+        }
+        return isLocalMediaStorePath(message.mediaPath)
+    }
+
+    /// Returns true only when the app is unlocked, the shortcut is enabled in `HotkeyRegistry`,
+    /// any required entitlement (`.incognito`, `.reminders`) is granted, and the action's state precondition holds.
+    public func canPerform(_ id: String) -> Bool {
+        guard !lifecycle.isLocked,
+              hotkeys.isEnabled(id),
+              hotkeys.definition(for: id) != nil
+        else {
+            return false
+        }
+
+        switch id {
+        case "Focus App",
+             "Focus App and Command Bar",
+             "Search",
+             "Search: Room",
+             "Keyboard Shortcuts",
+             "Settings",
+             "Minimize To Menu Bar",
+             "Quit App",
+             "Report a Problem",
+             "Toggle Sidebar",
+             "Toggle Space Bar",
+             "Cycle Filters",
+             "Filter: All",
+             "Filter: Unread",
+             "Filter: Drafts",
+             "Filter: Unanswered",
+             "Filter: DMs",
+             "Filter: Groups",
+             "Undo Pending Send":
+            return true
+
+        case "Toggle Incognito Mode":
+            return inbox.isEntitled(.incognito)
+
+        case "Filter By Account":
+            return spaces.spaces.contains { $0.kind == .account }
+
+        case "Select Next Account", "Select Previous Account":
+            return spaces.spaces.filter { $0.kind == .account }.count > 1
+
+        case "Switch First 9 Spaces Modifier":
+            return !spaces.visible.isEmpty
+
+        case "Switch First 9 Chats Modifier",
+             "Select Next Chat",
+             "Select Previous Chat",
+             "Cycle Chats (hold shift to reverse)":
+            return !inbox.rows.isEmpty
+
+        case "Select Next Unread Chat":
+            return inbox.rows.contains { $0.unread > 0 }
+
+        case "History: Next Chat", "History: Previous Chat":
+            return inbox.recentlyViewedRoomIDs.count > 1
+
+        case "Scroll to the bottom of a chat",
+             "Chat: Send File",
+             "Toggle Chat Info",
+             "Open User Profile",
+             "Message: Edit",
+             "Message: Forward",
+             "Message: Send Later",
+             "Message: Send Message and Archive",
+             "Insert New Line":
+            return conversation.roomID != nil
+
+        case "Chat: Start New", "Chat: Create New Group":
+            return !inbox.accounts.isEmpty
+
+        case "Chat: Toggle Archive":
+            let rows = inbox.targetRows()
+            let allArchived = !rows.isEmpty && rows.allSatisfy(\.archived)
+            let allPinned = !rows.isEmpty && rows.allSatisfy(\.pinned)
+            return !inbox.targets.isEmpty && (allArchived || !allPinned)
+
+        case "Chat: Archive All Read":
+            return inbox.canArchiveAll
+
+        case "Chat: Toggle Mark As Read":
+            return inbox.canToggleRead
+
+        case "Chat: Toggle Mute", "Chat: Toggle Pin":
+            return !inbox.targets.isEmpty
+
+        case "Remind Later":
+            return !inbox.targets.isEmpty && inbox.isEntitled(.reminders)
+
+        case "Chat: Delete":
+            return conversation.roomID != nil
+
+        case "Message: Quote & Reply",
+             "Message: Quick React",
+             "Message: Open First Link":
+            return selectedMessage != nil
+
+        case "Message: Quote or Edit Selected Message":
+            return selectedMessage != nil || conversation.roomID != nil
+
+        case "Download Attachments":
+            return canDownloadAttachments
+
+        case "Show Replies":
+            return showRepliesTarget != nil
+
+        case "Message: Record Audio":
+            return conversation.roomID != nil && (
+                activeComposer.voiceRecorder.isRecordingOrReviewing || activeComposer.features.supportsVoiceSend
+            )
+
+        case "Message: Send GIF":
+            return activeComposer.canSendGIF
+
+        case "Message: Send Sticker":
+            return activeComposer.canSendSticker
+
+        case "Send Message":
+            return conversation.roomID != nil
+                && !activeComposer.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
+        default:
+            return false
+        }
+    }
+
+    /// Executes a window-level shortcut binding if `canPerform(binding.hotkeyID)` is true.
+    @discardableResult
+    public func perform(_ binding: WindowShortcutBinding) -> Bool {
+        perform(binding.hotkeyID, reverse: binding.reversesCycle)
+    }
+
+    /// Executes the Switch First 9 Spaces action for `number` (`1...9`) if unlocked and enabled.
+    @discardableResult
+    public func performSwitchSpace(number: Int) -> Bool {
+        guard canPerform("Switch First 9 Spaces Modifier"), (1...9).contains(number) else { return false }
+        spaces.selectNumber(number)
+        return true
+    }
+
+    /// Executes the Switch First 9 Chats action for `number` (`1...9`) if unlocked and enabled.
+    @discardableResult
+    public func performSwitchChat(number: Int) -> Bool {
+        guard canPerform("Switch First 9 Chats Modifier"), (1...9).contains(number) else { return false }
+        inbox.selectChat(number: number)
+        return true
+    }
+
+    /// Executes the shortcut `id` (with optional `reverse` for `Cycle Chats (hold shift to reverse)`).
+    /// Returns `true` when the shortcut was allowed and dispatched, or `false` when blocked by lock,
+    /// entitlement, disabled state, or unsatisfied precondition.
+    @discardableResult
+    public func perform(_ id: String, reverse: Bool = false) -> Bool {
+        guard canPerform(id) else { return false }
+
+        switch id {
+        case "Focus App":
+            menuCoordinator.focusApp()
+            return true
+
+        case "Focus App and Command Bar":
+            menuCoordinator.focusApp()
+            let visible = bringMainWindowForward()
+            search.toggle(visible: visible)
+            return true
+
+        case "Search":
+            let visible = bringMainWindowForward()
+            search.toggle(visible: visible)
+            return true
+
+        case "Search: Room":
+            _ = bringMainWindowForward()
+            search.show(in: inbox.selectedRoomID)
+            return true
+
+        case "Keyboard Shortcuts":
+            _ = bringMainWindowForward()
+            hotkeys.isShortcutsSheetPresented.toggle()
+            return true
+
+        case "Settings":
+            menuCoordinator.openSettings(.inbox)
+            return true
+
+        case "Minimize To Menu Bar":
+            menuCoordinator.minimizeToMenuBar()
+            return true
+
+        case "Quit App":
+            menuCoordinator.quitApp()
+            return true
+
+        case "Report a Problem":
+            menuCoordinator.openSettings(.reportProblem)
+            return true
+
+        case "Toggle Incognito Mode":
+            conversation.setIncognito(!conversation.incognitoIsOn)
+            return true
+
+        case "Toggle Sidebar":
+            menuCoordinator.toggleSidebar()
+            return true
+
+        case "Toggle Space Bar":
+            menuCoordinator.toggleSpaceBar()
+            return true
+
+        case "Cycle Filters":
+            inbox.cycleFilter()
+            return true
+
+        case "Filter By Account":
+            filterByAccountInvocationCount += 1
+            onFilterByAccount()
+            return true
+
+        case "Filter: All":
+            inbox.query.filters.removeAll()
+            return true
+
+        case "Filter: Unread":
+            inbox.toggleUnreadFilter()
+            return true
+
+        case "Filter: Drafts":
+            var filters = inbox.query.filters
+            if filters.remove(.drafts) == nil { filters.insert(.drafts) }
+            inbox.query.filters = filters
+            return true
+
+        case "Filter: Unanswered":
+            var filters = inbox.query.filters
+            if filters.remove(.unanswered) == nil { filters.insert(.unanswered) }
+            inbox.query.filters = filters
+            return true
+
+        case "Filter: DMs":
+            var filters = inbox.query.filters
+            if filters.remove(.dms) == nil {
+                filters.remove(.groups)
+                filters.insert(.dms)
+            }
+            inbox.query.filters = filters
+            return true
+
+        case "Filter: Groups":
+            var filters = inbox.query.filters
+            if filters.remove(.groups) == nil {
+                filters.remove(.dms)
+                filters.insert(.groups)
+            }
+            inbox.query.filters = filters
+            return true
+
+        case "Select Next Account":
+            spaces.selectNextAccount()
+            return true
+
+        case "Select Previous Account":
+            spaces.selectPreviousAccount()
+            return true
+
+        case "Switch First 9 Spaces Modifier":
+            spaces.selectNumber(1)
+            return true
+
+        case "Switch First 9 Chats Modifier":
+            inbox.selectChat(number: 1)
+            return true
+
+        case "Select Next Chat":
+            inbox.selectNext()
+            return true
+
+        case "Select Previous Chat":
+            inbox.selectPrevious()
+            return true
+
+        case "Select Next Unread Chat":
+            inbox.selectNextUnread()
+            return true
+
+        case "History: Next Chat":
+            inbox.selectNextRecentChat()
+            return true
+
+        case "History: Previous Chat":
+            inbox.selectPreviousRecentChat()
+            return true
+
+        case "Cycle Chats (hold shift to reverse)":
+            inbox.cycleChat(reverse: reverse)
+            return true
+
+        case "Scroll to the bottom of a chat":
+            conversation.jumpToBottom()
+            return true
+
+        case "Chat: Start New":
+            _ = bringMainWindowForward()
+            menuCoordinator.newChat()
+            return true
+
+        case "Chat: Create New Group":
+            _ = bringMainWindowForward()
+            inbox.openStartNewChat(multiSelect: true)
+            return true
+
+        case "Chat: Toggle Archive":
+            let rows = inbox.targetRows()
+            let allArchived = !rows.isEmpty && rows.allSatisfy(\.archived)
+            Task { await inbox.archive(!allArchived) }
+            return true
+
+        case "Chat: Archive All Read":
+            archiveAllReadInvocationCount += 1
+            Task { await onArchiveAllRead() }
+            return true
+
+        case "Chat: Toggle Mark As Read":
+            Task { await inbox.toggleRead() }
+            return true
+
+        case "Chat: Toggle Mute":
+            Task { await inbox.toggleMute() }
+            return true
+
+        case "Chat: Toggle Pin":
+            Task { await inbox.togglePin() }
+            return true
+
+        case "Remind Later":
+            remindLaterInvocationCount += 1
+            onRemindLater()
+            return true
+
+        case "Chat: Send File":
+            attachFilesInvocationCount += 1
+            onAttachFiles(activeComposer)
+            return true
+
+        case "Toggle Chat Info":
+            conversation.toggleChatInfo()
+            return true
+
+        case "Open User Profile":
+            Task { await conversation.showSenderCardForSelectedMessage() }
+            return true
+
+        case "Chat: Delete":
+            guard conversation.roomID != nil else { return false }
+            conversation.requestDeleteChat(info: conversation.chatInfo)
+            return true
+
+        case "Message: Quote & Reply":
+            guard let selectedMessage,
+                  let message = conversation.message(selectedMessage.id, from: selectedMessage.source),
+                  let action = conversation.replyAction(for: message)
+            else { return false }
+            Task { await messageActions.perform(action, on: selectedMessage.id, from: selectedMessage.source) }
+            return true
+
+        case "Message: Quote or Edit Selected Message":
+            if let selectedMessage,
+               let message = conversation.message(selectedMessage.id, from: selectedMessage.source) {
+                if message.mine, conversation.availableActions(for: message).actions.contains(.edit) {
+                    Task { await messageActions.perform(.edit, on: selectedMessage.id, from: selectedMessage.source) }
+                    return true
+                }
+                if let action = conversation.replyAction(for: message) {
+                    Task { await messageActions.perform(action, on: selectedMessage.id, from: selectedMessage.source) }
+                    return true
+                }
+            }
+            conversation.editSelectedOrLast()
+            return true
+
+        case "Message: Edit":
+            if let selectedMessage, selectedMessage.source == .thread {
+                Task { await messageActions.perform(.edit, on: selectedMessage.id, from: .thread) }
+            } else {
+                conversation.editSelectedOrLast()
+            }
+            return true
+
+        case "Message: Quick React":
+            guard let selectedMessage else { return false }
+            if selectedMessage.source == .chat {
+                Task { await conversation.quickReactToSelected() }
+            } else if let message = conversation.message(selectedMessage.id, from: selectedMessage.source),
+                      conversation.availableActions(for: message).actions.contains(.react) {
+                let key = conversation.preferences?.quickReaction ?? "❤️"
+                Task { await conversation.react(to: selectedMessage.id, key: key) }
+            }
+            return true
+
+        case "Message: Forward":
+            if let selectedMessage, selectedMessage.source == .thread {
+                Task { await messageActions.perform(.forward, on: selectedMessage.id, from: .thread) }
+            } else {
+                messageActions.forwardSelected()
+            }
+            return true
+
+        case "Message: Open First Link":
+            guard let selectedMessage else { return false }
+            Task { await messageActions.perform(.openFirstLink, on: selectedMessage.id, from: selectedMessage.source) }
+            return true
+
+        case "Download Attachments":
+            return downloadSelectedAttachments()
+
+        case "Show Replies":
+            guard let root = showRepliesTarget else { return false }
+            conversation.openThread(root)
+            return true
+
+        case "Message: Send Later":
+            messageActions.requestSendLater()
+            return true
+
+        case "Message: Send Message and Archive":
+            activeComposer.submit(archive: true)
+            return true
+
+        case "Message: Record Audio":
+            Task { await activeComposer.startVoiceRecording() }
+            return true
+
+        case "Message: Send GIF":
+            return activeComposer.openGIFPicker()
+
+        case "Message: Send Sticker":
+            return activeComposer.openStickerPicker()
+
+        case "Undo Pending Send":
+            if let composer = heldComposer {
+                Task { await composer.undoNewestHeld() }
+            } else if inbox.toast?.canUndo == true {
+                Task { await inbox.undo() }
+            } else {
+                fallbackUndoInvocationCount += 1
+                onFallbackUndo()
+            }
+            return true
+
+        case "Send Message":
+            activeComposer.submit()
+            return true
+
+        case "Insert New Line":
+            activeComposer.text.append("\n")
+            return true
+
+        default:
+            return false
+        }
+    }
+
+    @discardableResult
+    public func downloadSelectedAttachments() -> Bool {
+        let prefs = conversation.preferences ?? ComposerPreferences()
+        let downloader = AttachmentDownloader(preferences: prefs)
+
+        func downloadMessageAttachments(_ message: TimelineMessage) -> Bool {
+            guard !message.viewOnce else { return false }
+            var savedCount = 0
+            var lastSavedName: String?
+            if !message.galleryItems.isEmpty {
+                for item in message.galleryItems where isLocalMediaStorePath(item.mediaPath) {
+                    if let saved = try? downloader.download(
+                        sourcePath: item.mediaPath,
+                        suggestedName: item.fileName.isEmpty ? "attachment" : item.fileName,
+                        mimeType: item.mimeType
+                    ) {
+                        savedCount += 1
+                        lastSavedName = saved.lastPathComponent
+                    }
+                }
+            } else if isLocalMediaStorePath(message.mediaPath) {
+                if let saved = try? downloader.download(
+                    sourcePath: message.mediaPath,
+                    suggestedName: message.fileName.isEmpty ? "attachment" : message.fileName,
+                    mimeType: message.mimeType
+                ) {
+                    savedCount += 1
+                    lastSavedName = saved.lastPathComponent
+                }
+            }
+            if savedCount == 1, let lastSavedName {
+                conversation.onToast(String(localized: "Saved \(lastSavedName)"))
+            } else if savedCount > 1 {
+                conversation.onToast(String(localized: "Saved \(savedCount) files"))
+            }
+            return savedCount > 0
+        }
+
+        if let lightboxID = conversation.activeLightboxMessageID {
+            for case let .message(msg) in conversation.items {
+                if msg.id == lightboxID {
+                    return downloadMessageAttachments(msg)
+                }
+                if let item = msg.galleryItems.first(where: { $0.id == lightboxID }),
+                   !msg.viewOnce,
+                   isLocalMediaStorePath(item.mediaPath),
+                   let saved = try? downloader.download(
+                       sourcePath: item.mediaPath,
+                       suggestedName: item.fileName.isEmpty ? "attachment" : item.fileName,
+                       mimeType: item.mimeType
+                   ) {
+                    conversation.onToast(String(localized: "Saved \(saved.lastPathComponent)"))
+                    return true
+                }
+            }
+        }
+        guard let selectedMessage,
+              let message = conversation.message(selectedMessage.id, from: selectedMessage.source)
+        else {
+            return false
+        }
+        return downloadMessageAttachments(message)
+    }
+
+    private func hasDownloadableAttachment(forLightboxID lightboxID: String) -> Bool {
+        for case let .message(msg) in conversation.items where !msg.viewOnce {
+            if msg.id == lightboxID {
+                if !msg.galleryItems.isEmpty {
+                    return msg.galleryItems.contains { isLocalMediaStorePath($0.mediaPath) }
+                }
+                return isLocalMediaStorePath(msg.mediaPath)
+            }
+            if let item = msg.galleryItems.first(where: { $0.id == lightboxID }) {
+                return isLocalMediaStorePath(item.mediaPath)
+            }
+        }
+        return false
+    }
+}
+
+/// Injectable global key-down event monitor so tests can verify global shortcut registration without OS permissions.
+@MainActor
+public protocol GlobalKeyEventMonitoring: AnyObject {
+    func start(handler: @escaping @MainActor (KeyChord) -> Void)
+    func stop()
+}
+
+/// Production `NSEvent.addGlobalMonitorForEvents(matching: .keyDown)` adapter for `GlobalHotkeyMonitor`.
+@MainActor
+public final class AppKitGlobalKeyEventMonitor: GlobalKeyEventMonitoring {
+    private var monitor: Any?
+
+    public init() {}
+
+    public func start(handler: @escaping @MainActor (KeyChord) -> Void) {
+        guard monitor == nil else { return }
+        monitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { event in
+            guard let chord = Self.chord(from: event) else { return }
+            Task { @MainActor in
+                handler(chord)
+            }
+        }
+    }
+
+    public func stop() {
+        if let monitor {
+            NSEvent.removeMonitor(monitor)
+            self.monitor = nil
+        }
+    }
+
+    public static func chord(from event: NSEvent) -> KeyChord? {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let keyName: String
+        switch event.keyCode {
+        case 36, 76: keyName = "enter"
+        case 48: keyName = "tab"
+        case 49: keyName = "space"
+        case 51, 117: keyName = "backspace"
+        case 53: keyName = "escape"
+        case 123: keyName = "left"
+        case 124: keyName = "right"
+        case 125: keyName = "down"
+        case 126: keyName = "up"
+        default:
+            if let fnKey = KeyChord.functionKeyName(
+                forKeyCode: event.keyCode,
+                charactersIgnoringModifiers: event.charactersIgnoringModifiers
+            ) {
+                keyName = fnKey
+            } else {
+                guard let chars = event.charactersIgnoringModifiers?.lowercased(), !chars.isEmpty else {
+                    return nil
+                }
+                keyName = chars
+            }
+        }
+        return KeyChord(
+            key: keyName,
+            command: flags.contains(.command),
+            shift: flags.contains(.shift),
+            option: flags.contains(.option),
+            control: flags.contains(.control)
+        )
+    }
+}
+
+/// Watches `HotkeyRegistry.globalIDs` (`"Focus App"` and `"Focus App and Command Bar"`) and dispatches matching
+/// global key chords through `HotkeyDispatcher` when enabled and unlocked (`02` §2.2).
+@MainActor
+public final class GlobalHotkeyMonitor {
+    private let registry: HotkeyRegistry
+    private let dispatcher: HotkeyDispatcher
+    private let eventMonitor: any GlobalKeyEventMonitoring
+    private var cancellables: Set<AnyCancellable> = []
+    public private(set) var isMonitoring: Bool = false
+
+    public init(
+        registry: HotkeyRegistry,
+        dispatcher: HotkeyDispatcher,
+        eventMonitor: (any GlobalKeyEventMonitoring)? = nil
+    ) {
+        self.registry = registry
+        self.dispatcher = dispatcher
+        self.eventMonitor = eventMonitor ?? AppKitGlobalKeyEventMonitor()
+
+        Publishers.CombineLatest3(
+            registry.$globalIDs,
+            registry.$overrides,
+            registry.$disabledIDs
+        )
+        .sink { [weak self] globalIDs, overrides, disabledIDs in
+            self?.refreshMonitoringState(
+                globalIDs: globalIDs,
+                overrides: overrides,
+                disabledIDs: disabledIDs
+            )
+        }
+        .store(in: &cancellables)
+
+        refreshMonitoringState(
+            globalIDs: registry.globalIDs,
+            overrides: registry.overrides,
+            disabledIDs: registry.disabledIDs
+        )
+    }
+
+    public func stop() {
+        if isMonitoring {
+            eventMonitor.stop()
+            isMonitoring = false
+        }
+    }
+
+    @discardableResult
+    public func handleKeyChord(_ chord: KeyChord) -> Bool {
+        guard !registry.isLocked else { return false }
+        for id in registry.globalIDs.sorted() {
+            guard let def = registry.definition(for: id),
+                  def.supportsGlobal,
+                  registry.isEnabled(id),
+                  registry.chords(for: id).contains(chord)
+            else { continue }
+            return dispatcher.perform(id)
+        }
+        return false
+    }
+
+    private func refreshMonitoringState(
+        globalIDs: Set<String>,
+        overrides: [String: [KeyChord]],
+        disabledIDs: Set<String>
+    ) {
+        let hasActiveGlobal = globalIDs.contains { id in
+            guard !disabledIDs.contains(id),
+                  let def = registry.definition(for: id),
+                  def.supportsGlobal
+            else { return false }
+            let chords = overrides[id] ?? def.defaultChords
+            return !chords.isEmpty
+        }
+        if hasActiveGlobal && !isMonitoring {
+            isMonitoring = true
+            eventMonitor.start { [weak self] chord in
+                _ = self?.handleKeyChord(chord)
+            }
+        } else if !hasActiveGlobal && isMonitoring {
+            stop()
         }
     }
 }

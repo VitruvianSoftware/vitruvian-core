@@ -44,7 +44,8 @@ public final class DetachedWindowSession: ObservableObject {
         quickReplies: QuickReplies? = nil,
         entitlement: (any EntitlementProvider)? = nil,
         pasteboard: TextPasteboard? = nil,
-        openURL: (@MainActor (URL) -> Void)? = nil
+        openURL: (@MainActor (URL) -> Void)? = nil,
+        hotkeys: HotkeyRegistry? = nil
     ) {
         self.target = target
         self.appModel = appModel
@@ -168,6 +169,7 @@ public final class DetachedWindowSession: ObservableObject {
         for composer in [conv.composer, conv.thread.composer] {
             composer.entitlement = resolvedEntitlement
             composer.quickReplies = resolvedQuickReplies
+            composer.hotkeys = hotkeys
             composer.onArchive = { [weak host] room in await host?.archive(true, ids: [room]) }
             composer.onToast = { [weak host] message in host?.announce(message) }
         }
@@ -199,6 +201,7 @@ public final class DetachedWindowRegistry: ObservableObject {
     private let entitlement: (any EntitlementProvider)?
     private let makePasteboard: (@MainActor () -> TextPasteboard)?
     private let openURL: (@MainActor (URL) -> Void)?
+    private weak var hotkeys: HotkeyRegistry?
     private var lifecycleSubscription: AnyCancellable?
 
     public var onOpen: ((DetachedWindowTarget) -> Void)?
@@ -219,6 +222,7 @@ public final class DetachedWindowRegistry: ObservableObject {
         entitlement: (any EntitlementProvider)? = nil,
         makePasteboard: (@MainActor () -> TextPasteboard)? = nil,
         openURL: (@MainActor (URL) -> Void)? = nil,
+        hotkeys: HotkeyRegistry? = nil,
         onOpen: ((DetachedWindowTarget) -> Void)? = nil,
         onFocus: ((DetachedWindowTarget) -> Void)? = nil,
         onClose: ((DetachedWindowTarget) -> Void)? = nil
@@ -232,6 +236,7 @@ public final class DetachedWindowRegistry: ObservableObject {
         self.entitlement = entitlement
         self.makePasteboard = makePasteboard
         self.openURL = openURL
+        self.hotkeys = hotkeys
         self.onOpen = onOpen
         self.onFocus = onFocus
         self.onClose = onClose
@@ -259,7 +264,8 @@ public final class DetachedWindowRegistry: ObservableObject {
                 quickReplies: quickReplies,
                 entitlement: entitlement,
                 pasteboard: makePasteboard?(),
-                openURL: openURL
+                openURL: openURL,
+                hotkeys: hotkeys
             )
         }
         openTargets.append(target)

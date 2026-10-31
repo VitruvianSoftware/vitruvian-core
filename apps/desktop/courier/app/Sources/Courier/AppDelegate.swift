@@ -52,6 +52,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         openDetachedChat: { [weak self] roomID in self?.detachedWindows.open(.chat(roomID: roomID)) },
         quitApplication: { NSApp.terminate(nil) }
     )
+    /// Single live dispatcher for all menu commands, window-scoped shortcuts, composer Return handling, and global hotkeys.
+    private(set) lazy var hotkeyDispatcher = HotkeyDispatcher(
+        inbox: inbox,
+        spaces: spaces,
+        conversation: conversation,
+        messageActions: messageActions,
+        search: search,
+        lifecycle: lifecycle,
+        menuCoordinator: menuCoordinator,
+        focus: messageFocus,
+        hotkeys: hotkeys,
+        bringMainWindowForward: { [weak self] in
+            guard let self else { return true }
+            guard !self.inboxUI.isMainWindowKey else { return true }
+            self.windowOpener.show()
+            return false
+        },
+        onFilterByAccount: { [weak self] in self?.inboxUI.accountPopover = true },
+        onRemindLater: { [weak self] in self?.inboxUI.remindPopover = true },
+        onAttachFiles: { composer in AttachmentPicker.run(into: composer) },
+        onArchiveAllRead: { [weak self] in
+            guard let self else { return }
+            await Confirm.archiveAllRead(self.inbox)
+        }
+    )
+    private var globalHotkeyMonitor: GlobalHotkeyMonitor?
     /// The sheets and popovers the inbox's menus and keys open.
     let inboxUI = InboxUI()
     /// Whether the message keys act on the chat's selected message or the thread pane's.
@@ -156,7 +182,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             quickReplies: quickReplies,
             entitlement: entitlement,
             makePasteboard: { SystemPasteboard() },
-            openURL: { url in NSWorkspace.shared.open(url) }
+            openURL: { url in NSWorkspace.shared.open(url) },
+            hotkeys: hotkeys
         )
         search = SearchModel(appModel: model, recents: RecentSearches(), open: { [model] in model.open($0) })
         // The inbox's buttons: Reconnect signs that account in again (the banner's account, or with none the network's
@@ -177,6 +204,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             model.open(.message(roomID: roomID, eventID: messageID))
         }
         signInWindows = SignInWindowPresenter(login: login)
+        globalHotkeyMonitor = GlobalHotkeyMonitor(registry: hotkeys, dispatcher: hotkeyDispatcher)
         detachedWindowManager = DetachedWindowManager(
             registry: detachedWindows,
             appModel: model,

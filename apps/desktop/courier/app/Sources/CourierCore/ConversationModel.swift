@@ -581,6 +581,8 @@ public final class ConversationModel: ObservableObject {
         composer.open(roomID)
         if let row {
             learnChat(row, of: roomID)
+        } else {
+            handOnChat()
         }
     }
 

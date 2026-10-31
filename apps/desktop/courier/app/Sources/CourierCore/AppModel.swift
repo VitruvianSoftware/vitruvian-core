@@ -205,6 +205,11 @@ public final class AppModel: ObservableObject {
         await reloadAccounts(client)
     }
 
+    /// Populates `accounts` directly for deterministic tests without an engine.
+    public func setAccountsForTesting(_ accounts: [Account]) {
+        self.accounts = accounts
+    }
+
     private func reloadAccounts(_ client: EngineClient) async {
         guard let result: AccountsResult = try? await client.call("accounts.list", Empty()),
               client === self.client else { return }

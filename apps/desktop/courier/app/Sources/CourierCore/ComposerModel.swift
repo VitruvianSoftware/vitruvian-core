@@ -336,6 +336,10 @@ public final class ComposerModel: ObservableObject {
         didSet { observePreferences() }
     }
     public var quickReplies: QuickReplies?
+    /// Shared hotkey registry for checking "Send Message", "Insert New Line", and "Message: Quote or Edit Selected Message".
+    public weak var hotkeys: HotkeyRegistry?
+    /// Shared live shortcut dispatcher for composer return-key shortcuts.
+    public weak var hotkeyDispatcher: HotkeyDispatcher?
     /// The composer's voice-note recorder.
     public let voiceRecorder: VoiceRecorderModel
     /// Called when a send is done, whether it worked or not, so the chat can read what the engine has.
@@ -534,6 +538,44 @@ public final class ComposerModel: ObservableObject {
     /// replies to it (02 §2.2 "Quote or Edit Selected Message").
     @discardableResult
     public func handleReturn(modifiers: KeyModifiers) -> ReturnKeyAction {
+        if let dispatcher = hotkeyDispatcher, dispatcher.lifecycle.isLocked {
+            return .send
+        }
+        let resolvedHotkeys = hotkeyDispatcher?.hotkeys ?? hotkeys
+        if let resolvedHotkeys {
+            guard !resolvedHotkeys.isLocked else { return .send }
+            let chord = KeyChord(
+                key: "enter",
+                command: modifiers.contains(.command),
+                shift: modifiers.contains(.shift),
+                option: modifiers.contains(.option),
+                control: modifiers.contains(.control)
+            )
+            if resolvedHotkeys.chords(for: "Insert New Line").contains(chord) {
+                return .newline
+            }
+            if voiceRecorder.isRecordingOrReviewing {
+                guard resolvedHotkeys.chords(for: "Send Message").contains(chord) else { return .send }
+                Task { [weak self] in
+                    guard let self else { return }
+                    await self.voiceRecorder.stopAndSend(using: self)
+                }
+                return .send
+            }
+            if mode == .new, trimmedText.isEmpty, attachments.isEmpty, pendingGIF == nil, let selected = selectedMessage() {
+                if resolvedHotkeys.chords(for: "Message: Quote or Edit Selected Message").contains(chord) {
+                    act(on: selected)
+                } else if resolvedHotkeys.chords(for: "Send Message").contains(chord) {
+                    submit()
+                }
+                return .send
+            }
+            if resolvedHotkeys.chords(for: "Send Message").contains(chord) {
+                submit()
+            }
+            return .send
+        }
+
         let action = Self.action(forReturn: modifiers)
         guard action == .send else { return action }
         if voiceRecorder.isRecordingOrReviewing {

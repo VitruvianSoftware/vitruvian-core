@@ -23,6 +23,7 @@ struct InboxCommands: Commands {
     @ObservedObject var menuCoordinator: AppMenuCoordinator
     let minimizeToMenuBar: @MainActor () -> Void
     @ObservedObject var hotkeys: HotkeyRegistry = HotkeyRegistry()
+    @ObservedObject var hotkeyDispatcher: HotkeyDispatcher
     @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
@@ -34,10 +35,10 @@ struct InboxCommands: Commands {
         }
         CommandGroup(replacing: .appSettings) {
             Button(String(localized: "Settings…")) {
-                menuCoordinator.openSettings(.inbox)
+                dispatch("Settings")
             }
             .registryShortcut("Settings", in: hotkeys)
-            .disabled(lifecycle.isLocked)
+            .disabled(!hotkeyDispatcher.canPerform("Settings"))
         }
         // 02 §3.1's Accounts…, Search…, and Lock App, after Settings.
         CommandGroup(after: .appSettings) {
@@ -47,11 +48,22 @@ struct InboxCommands: Commands {
             .disabled(lifecycle.isLocked)
 
             Button(String(localized: "Search…")) {
-                let visible = bringMainWindowForward()
-                search.toggle(visible: visible)
+                dispatch("Search")
             }
             .registryShortcut("Search", in: hotkeys)
-            .disabled(lifecycle.isLocked)
+            .disabled(!hotkeyDispatcher.canPerform("Search"))
+
+            Button(String(localized: "Focus Courier")) {
+                dispatch("Focus App")
+            }
+            .registryShortcut("Focus App", in: hotkeys)
+            .disabled(!hotkeyDispatcher.canPerform("Focus App"))
+
+            Button(String(localized: "Focus Courier and Command Bar")) {
+                dispatch("Focus App and Command Bar")
+            }
+            .registryShortcut("Focus App and Command Bar", in: hotkeys)
+            .disabled(!hotkeyDispatcher.canPerform("Focus App and Command Bar"))
 
             Divider()
 
@@ -63,28 +75,32 @@ struct InboxCommands: Commands {
             }
         }
         CommandGroup(before: .appTermination) {
-            Button(String(localized: "Minimize to Menu Bar"), action: menuCoordinator.minimizeToMenuBar)
-                .registryShortcut("Minimize To Menu Bar", in: hotkeys)
+            Button(String(localized: "Minimize to Menu Bar")) {
+                dispatch("Minimize To Menu Bar")
+            }
+            .registryShortcut("Minimize To Menu Bar", in: hotkeys)
+            .disabled(!hotkeyDispatcher.canPerform("Minimize To Menu Bar"))
         }
         CommandGroup(replacing: .appTermination) {
-            Button(String(localized: "Quit Courier"), action: menuCoordinator.quitApp)
-                .registryShortcut("Quit App", in: hotkeys)
+            Button(String(localized: "Quit Courier")) {
+                dispatch("Quit App")
+            }
+            .registryShortcut("Quit App", in: hotkeys)
+            .disabled(!hotkeyDispatcher.canPerform("Quit App"))
         }
         // The first-run window has its own button; once a network is linked, this is the way to add another.
         CommandGroup(replacing: .newItem) {
             Button(String(localized: "New Chat")) {
-                _ = bringMainWindowForward()
-                menuCoordinator.newChat()
+                dispatch("Chat: Start New")
             }
             .registryShortcut("Chat: Start New", in: hotkeys)
-            .disabled(inbox.accounts.isEmpty || lifecycle.isLocked)
+            .disabled(!hotkeyDispatcher.canPerform("Chat: Start New"))
 
             Button(String(localized: "New Group or Blast…")) {
-                _ = bringMainWindowForward()
-                inbox.openStartNewChat(multiSelect: true)
+                dispatch("Chat: Create New Group")
             }
             .registryShortcut("Chat: Create New Group", in: hotkeys)
-            .disabled(inbox.accounts.isEmpty || lifecycle.isLocked)
+            .disabled(!hotkeyDispatcher.canPerform("Chat: Create New Group"))
 
             Button(String(localized: "Open Chat in New Window"), action: menuCoordinator.openChatInNewWindow)
                 .disabled(conversation.roomID == nil || lifecycle.isLocked)
@@ -98,26 +114,22 @@ struct InboxCommands: Commands {
             Divider()
             Button(String(localized: "Close Window"), action: menuCoordinator.closeWindow)
                 .keyboardShortcut("w", modifiers: .command)
+                .disabled(lifecycle.isLocked)
             Button(String(localized: "Close All"), action: menuCoordinator.closeAllWindows)
                 .keyboardShortcut("w", modifiers: [.command, .option])
+                .disabled(lifecycle.isLocked)
         }
         // ⌘Z takes back my newest held message while the open chat has one (undo send); otherwise it undoes what
         // the toast says was just done, and otherwise it is the text's own undo. ⌘⇧Z sends the held messages now,
         // or else is the text's redo.
         CommandGroup(replacing: .undoRedo) {
             Button(String(localized: "Undo")) {
-                if let composer = heldComposer {
-                    Task { await composer.undoNewestHeld() }
-                } else if inbox.toast?.canUndo == true {
-                    Task { await inbox.undo() }
-                } else {
-                    NSApp.sendAction(Selector(("undo:")), to: nil, from: nil)
-                }
+                dispatch("Undo Pending Send")
             }
             .registryShortcut("Undo Pending Send", in: hotkeys)
-            .disabled(lifecycle.isLocked)
+            .disabled(!hotkeyDispatcher.canPerform("Undo Pending Send"))
             Button(String(localized: "Redo")) {
-                if let composer = heldComposer {
+                if let composer = hotkeyDispatcher.heldComposer {
                     Task { await composer.sendHeldNow() }
                 } else {
                     NSApp.sendAction(Selector(("redo:")), to: nil, from: nil)
@@ -127,14 +139,21 @@ struct InboxCommands: Commands {
             .disabled(lifecycle.isLocked)
         }
         CommandGroup(before: .sidebar) {
-            Button(preferences.showSpaceBar ? String(localized: "Hide Space Bar") : String(localized: "Show Space Bar"),
-                   action: menuCoordinator.toggleSpaceBar)
-                .registryShortcut("Toggle Space Bar", in: hotkeys)
-                .disabled(lifecycle.isLocked)
-            Button(menuCoordinator.isSidebarVisible ? String(localized: "Hide Sidebar") : String(localized: "Show Sidebar"),
-                   action: menuCoordinator.toggleSidebar)
-                .registryShortcut("Toggle Sidebar", in: hotkeys)
-                .disabled(lifecycle.isLocked)
+            Button(preferences.showSpaceBar ? String(localized: "Hide Space Bar") : String(localized: "Show Space Bar")) {
+                dispatch("Toggle Space Bar")
+            }
+            .registryShortcut("Toggle Space Bar", in: hotkeys)
+            .disabled(!hotkeyDispatcher.canPerform("Toggle Space Bar"))
+            Button(menuCoordinator.isSidebarVisible ? String(localized: "Hide Sidebar") : String(localized: "Show Sidebar")) {
+                dispatch("Toggle Sidebar")
+            }
+            .registryShortcut("Toggle Sidebar", in: hotkeys)
+            .disabled(!hotkeyDispatcher.canPerform("Toggle Sidebar"))
+            Button(conversation.incognitoIsOn ? String(localized: "Turn Off Incognito Mode") : String(localized: "Turn On Incognito Mode")) {
+                dispatch("Toggle Incognito Mode")
+            }
+            .registryShortcut("Toggle Incognito Mode", in: hotkeys)
+            .disabled(!hotkeyDispatcher.canPerform("Toggle Incognito Mode"))
             Button(String(localized: "Edit Spaces…")) {
                 spaces.isEditing = true
                 openWindow(id: WindowID.editSpaces)
@@ -149,41 +168,40 @@ struct InboxCommands: Commands {
             Divider()
         }
         CommandMenu(String(localized: "Chat")) {
-            Button(String(localized: "Next Chat"), action: inbox.selectNext)
+            Button(String(localized: "Next Chat")) { dispatch("Select Next Chat") }
                 .registryShortcut("Select Next Chat", in: hotkeys)
-                .disabled(lifecycle.isLocked)
-            Button(String(localized: "Previous Chat"), action: inbox.selectPrevious)
+                .disabled(!hotkeyDispatcher.canPerform("Select Next Chat"))
+            Button(String(localized: "Previous Chat")) { dispatch("Select Previous Chat") }
                 .registryShortcut("Select Previous Chat", in: hotkeys)
-                .disabled(lifecycle.isLocked)
-            Button(String(localized: "Next Unread Chat"), action: inbox.selectNextUnread)
+                .disabled(!hotkeyDispatcher.canPerform("Select Previous Chat"))
+            Button(String(localized: "Next Unread Chat")) { dispatch("Select Next Unread Chat") }
                 .registryShortcut("Select Next Unread Chat", in: hotkeys)
-                .disabled(lifecycle.isLocked)
-            Button(String(localized: "Previous Viewed Chat"), action: inbox.selectPreviousRecentChat)
+                .disabled(!hotkeyDispatcher.canPerform("Select Next Unread Chat"))
+            Button(String(localized: "Previous Viewed Chat")) { dispatch("History: Previous Chat") }
                 .registryShortcut("History: Previous Chat", in: hotkeys)
-                .disabled(lifecycle.isLocked)
-            Button(String(localized: "Next Viewed Chat"), action: inbox.selectNextRecentChat)
+                .disabled(!hotkeyDispatcher.canPerform("History: Previous Chat"))
+            Button(String(localized: "Next Viewed Chat")) { dispatch("History: Next Chat") }
                 .registryShortcut("History: Next Chat", in: hotkeys)
-                .disabled(lifecycle.isLocked)
+                .disabled(!hotkeyDispatcher.canPerform("History: Next Chat"))
             Menu(String(localized: "Go to Chat")) {
-                if !lifecycle.isLocked {
+                if hotkeyDispatcher.canPerform("Switch First 9 Chats Modifier") {
                     let chatMod = modifierFlags(for: "Switch First 9 Chats Modifier", fallback: .control)
                     ForEach(Array(inbox.rows.prefix(9).enumerated()), id: \.element.id) { index, row in
                         Button(row.name.isEmpty ? String(localized: "Unnamed chat") : row.name) {
-                            inbox.selectChat(number: index + 1)
+                            _ = hotkeyDispatcher.performSwitchChat(number: index + 1)
                         }
                         .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: chatMod)
                     }
                 }
             }
-            .disabled(lifecycle.isLocked)
+            .disabled(!hotkeyDispatcher.canPerform("Switch First 9 Chats Modifier"))
             // The open chat's messages; with none open, every chat (as ⌘K). MainWindow also takes ⌘F, so that it
             // wins over the Edit menu's Find while typing.
             Button(String(localized: "Search in Chat…")) {
-                _ = bringMainWindowForward()
-                search.show(in: inbox.selectedRoomID)
+                dispatch("Search: Room")
             }
             .registryShortcut("Search: Room", in: hotkeys)
-            .disabled(lifecycle.isLocked)
+            .disabled(!hotkeyDispatcher.canPerform("Search: Room"))
             Divider()
             actions
                 .disabled(lifecycle.isLocked)
@@ -202,17 +220,16 @@ struct InboxCommands: Commands {
         }
         CommandGroup(after: .help) {
             Button(String(localized: "Report a Problem…")) {
-                menuCoordinator.openSettings(.reportProblem)
+                dispatch("Report a Problem")
             }
             .registryShortcut("Report a Problem", in: hotkeys)
-            .disabled(lifecycle.isLocked)
+            .disabled(!hotkeyDispatcher.canPerform("Report a Problem"))
 
             Button(String(localized: "Keyboard Shortcuts")) {
-                _ = bringMainWindowForward()
-                hotkeys.isShortcutsSheetPresented.toggle()
+                dispatch("Keyboard Shortcuts")
             }
             .registryShortcut("Keyboard Shortcuts", in: hotkeys)
-            .disabled(lifecycle.isLocked)
+            .disabled(!hotkeyDispatcher.canPerform("Keyboard Shortcuts"))
 
             Button(String(localized: "Privacy & Security")) {
                 menuCoordinator.openSettings(.privacy)
@@ -226,6 +243,16 @@ struct InboxCommands: Commands {
         }
     }
 
+    private func dispatch(_ id: String) {
+        hotkeyDispatcher.bringMainWindowForward = { [ui, openWindow] in
+            guard !ui.isMainWindowKey else { return true }
+            NSApp.activate()
+            openWindow(id: "main")
+            return false
+        }
+        _ = hotkeyDispatcher.perform(id)
+    }
+
     private func modifierFlags(for id: String, fallback: EventModifiers) -> EventModifiers {
         guard let chord = hotkeys.primaryChord(for: id) else { return fallback }
         var mods: EventModifiers = []
@@ -234,13 +261,6 @@ struct InboxCommands: Commands {
         if chord.option { mods.insert(.option) }
         if chord.control { mods.insert(.control) }
         return mods.isEmpty ? fallback : mods
-    }
-
-    /// The composer with held messages in the open chat: the chat's, else the thread pane's; nil when none.
-    private var heldComposer: ComposerModel? {
-        [conversation.composer, conversation.thread.composer].first {
-            !$0.heldIDs.isEmpty && $0.roomID != nil && $0.roomID == conversation.roomID
-        }
     }
 
     /// The panel is drawn over the main window, so search first brings it forward (making it again if it was
@@ -259,28 +279,30 @@ struct InboxCommands: Commands {
         let rows = inbox.targetRows()
         let all = { (test: (InboxRow) -> Bool) in !rows.isEmpty && rows.allSatisfy(test) }
         Button(all(\.archived) ? String(localized: "Unarchive") : String(localized: "Archive")) {
-            Task { await inbox.archive(!all(\.archived)) }
+            dispatch("Chat: Toggle Archive")
         }
         .registryShortcut("Chat: Toggle Archive", in: hotkeys)
-        .disabled(inbox.targets.isEmpty || (!all(\.archived) && all(\.pinned)))
+        .disabled(!hotkeyDispatcher.canPerform("Chat: Toggle Archive"))
         Button(inbox.toggleReadMarksRead ? String(localized: "Mark as Read") : String(localized: "Mark as Unread")) {
-            Task { await inbox.toggleRead() }
+            dispatch("Chat: Toggle Mark As Read")
         }
         .registryShortcut("Chat: Toggle Mark As Read", in: hotkeys)
-        .disabled(!inbox.canToggleRead)
+        .disabled(!hotkeyDispatcher.canPerform("Chat: Toggle Mark As Read"))
         Button(all(\.muted) ? String(localized: "Unmute Chat") : String(localized: "Mute Chat")) {
-            Task { await inbox.toggleMute() }
+            dispatch("Chat: Toggle Mute")
         }
         .registryShortcut("Chat: Toggle Mute", in: hotkeys)
-        .disabled(inbox.targets.isEmpty)
+        .disabled(!hotkeyDispatcher.canPerform("Chat: Toggle Mute"))
         Button(all(\.pinned) ? String(localized: "Unpin") : String(localized: "Pin")) {
-            Task { await inbox.togglePin() }
+            dispatch("Chat: Toggle Pin")
         }
         .registryShortcut("Chat: Toggle Pin", in: hotkeys)
-        .disabled(inbox.targets.isEmpty)
-        Button(String(localized: "Remind Me…")) { ui.remindPopover = true }
-            .registryShortcut("Remind Later", in: hotkeys)
-            .disabled(inbox.targets.isEmpty)
+        .disabled(!hotkeyDispatcher.canPerform("Chat: Toggle Pin"))
+        Button(String(localized: "Remind Me…")) {
+            dispatch("Remind Later")
+        }
+        .registryShortcut("Remind Later", in: hotkeys)
+        .disabled(!hotkeyDispatcher.canPerform("Remind Later"))
     }
 
     @ViewBuilder
@@ -299,42 +321,66 @@ struct InboxCommands: Commands {
         let commands = CommandSet.inbox(inbox, spaces)
         let byID = Dictionary(commands.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         Button(String(localized: "Archive All Read Chats…")) {
-            Task { await Confirm.archiveAllRead(inbox) }
+            dispatch("Chat: Archive All Read")
         }
         .registryShortcut("Chat: Archive All Read", in: hotkeys)
-        .disabled(!(byID["Archive all read chats"]?.isEnabled() ?? false))
+        .disabled(!hotkeyDispatcher.canPerform("Chat: Archive All Read"))
         ForEach(["Archive all chats", "Archive all chats older than a week", "Mark all chats as read"], id: \.self) { id in
             if let command = byID[id] {
                 Button(command.title + "…") { Confirm.run(command) }
-                    .disabled(!command.isEnabled())
+                    .disabled(!command.isEnabled() || lifecycle.isLocked)
             }
         }
     }
 
     @ViewBuilder
     private var filters: some View {
-        Button(String(localized: "Cycle Filters"), action: inbox.cycleFilter)
+        Button(String(localized: "Cycle Filters")) { dispatch("Cycle Filters") }
             .registryShortcut("Cycle Filters", in: hotkeys)
+            .disabled(!hotkeyDispatcher.canPerform("Cycle Filters"))
+        Button(String(localized: "Filter: All")) { dispatch("Filter: All") }
+            .registryShortcut("Filter: All", in: hotkeys)
+            .disabled(!hotkeyDispatcher.canPerform("Filter: All"))
         Button(inbox.query.filters.contains(.unread) ? String(localized: "Show All Chats")
-            : String(localized: "Show Only Unread Chats"), action: inbox.toggleUnreadFilter)
+            : String(localized: "Show Only Unread Chats")) { dispatch("Filter: Unread") }
             .registryShortcut("Filter: Unread", in: hotkeys)
-        Button(String(localized: "Filter by Account…")) { ui.accountPopover = true }
+            .disabled(!hotkeyDispatcher.canPerform("Filter: Unread"))
+        Button(String(localized: "Filter: Drafts")) { dispatch("Filter: Drafts") }
+            .registryShortcut("Filter: Drafts", in: hotkeys)
+            .disabled(!hotkeyDispatcher.canPerform("Filter: Drafts"))
+        Button(String(localized: "Filter: Unanswered")) { dispatch("Filter: Unanswered") }
+            .registryShortcut("Filter: Unanswered", in: hotkeys)
+            .disabled(!hotkeyDispatcher.canPerform("Filter: Unanswered"))
+        Button(String(localized: "Filter: DMs")) { dispatch("Filter: DMs") }
+            .registryShortcut("Filter: DMs", in: hotkeys)
+            .disabled(!hotkeyDispatcher.canPerform("Filter: DMs"))
+        Button(String(localized: "Filter: Groups")) { dispatch("Filter: Groups") }
+            .registryShortcut("Filter: Groups", in: hotkeys)
+            .disabled(!hotkeyDispatcher.canPerform("Filter: Groups"))
+        Button(String(localized: "Filter by Account…")) { dispatch("Filter By Account") }
             .registryShortcut("Filter By Account", in: hotkeys)
-            .disabled(!spaces.spaces.contains { $0.kind == .account })
+            .disabled(!hotkeyDispatcher.canPerform("Filter By Account"))
     }
 
     @ViewBuilder
     private var spaceKeys: some View {
-        Button(String(localized: "Next Account"), action: spaces.selectNextAccount)
+        Button(String(localized: "Next Account")) { dispatch("Select Next Account") }
             .registryShortcut("Select Next Account", in: hotkeys)
-        Button(String(localized: "Previous Account"), action: spaces.selectPreviousAccount)
+            .disabled(!hotkeyDispatcher.canPerform("Select Next Account"))
+        Button(String(localized: "Previous Account")) { dispatch("Select Previous Account") }
             .registryShortcut("Select Previous Account", in: hotkeys)
+            .disabled(!hotkeyDispatcher.canPerform("Select Previous Account"))
         Menu(String(localized: "Go to Space")) {
-            let spaceMod = modifierFlags(for: "Switch First 9 Spaces Modifier", fallback: .command)
-            ForEach(Array(spaces.visible.prefix(9).enumerated()), id: \.element.spaceID) { index, space in
-                Button(SpaceLook.title(space)) { spaces.selectNumber(index + 1) }
+            if hotkeyDispatcher.canPerform("Switch First 9 Spaces Modifier") {
+                let spaceMod = modifierFlags(for: "Switch First 9 Spaces Modifier", fallback: .command)
+                ForEach(Array(spaces.visible.prefix(9).enumerated()), id: \.element.spaceID) { index, space in
+                    Button(SpaceLook.title(space)) {
+                        _ = hotkeyDispatcher.performSwitchSpace(number: index + 1)
+                    }
                     .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: spaceMod)
+                }
             }
         }
+        .disabled(!hotkeyDispatcher.canPerform("Switch First 9 Spaces Modifier"))
     }
 }

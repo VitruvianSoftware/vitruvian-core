@@ -38,6 +38,7 @@ struct MainWindow: View {
     let focus: MessageFocus
     var detachedWindows: DetachedWindowRegistry? = nil
     @ObservedObject var hotkeys: HotkeyRegistry = HotkeyRegistry()
+    var hotkeyDispatcher: HotkeyDispatcher? = nil
     var onOpenShortcutsSettings: () -> Void = {}
     @Environment(\.openWindow) private var openWindow
     @Environment(\.controlActiveState) private var controlActiveState
@@ -275,82 +276,46 @@ struct MainWindow: View {
         .background { alternateShortcuts }
     }
 
-    /// The second keys for next and previous chat (⌘⌥↓, ⌘⌥↑). The menu shows ⌘] and ⌘[, and a menu item has only
-    /// one key, so these are buttons nobody sees.
-    ///
-    /// ⌘F is here too, as well as on the Chat menu's Search in Chat…: the window reads its own keys before the menu
-    /// bar's, so ⌘F is search's even where the Edit menu's Find would take it (the composer, say).
+    private var resolvedHotkeyDispatcher: HotkeyDispatcher {
+        if let hotkeyDispatcher {
+            return hotkeyDispatcher
+        }
+        return HotkeyDispatcher(
+            inbox: inbox,
+            spaces: spaces,
+            conversation: conversation,
+            messageActions: messageActions,
+            search: search,
+            lifecycle: lifecycle,
+            menuCoordinator: AppMenuCoordinator(inbox: inbox, lifecycle: lifecycle),
+            focus: focus,
+            hotkeys: hotkeys
+        )
+    }
+
+    /// The second keys for next and previous chat (⌘⌥↓, ⌘⌥↑) and window-scoped shortcuts.
+    /// Every binding routes through `HotkeyDispatcher` so lock (`!lifecycle.isLocked`) and entitlements
+    /// (`.incognito`, `.reminders`) are enforced in one place.
     private var alternateShortcuts: some View {
-        Group {
-            Button("", action: inbox.selectNext)
-                .registryShortcut("Select Next Chat", in: hotkeys, chordIndex: 1)
-            Button("", action: inbox.selectNext)
-                .registryShortcut("Select Next Chat", in: hotkeys, chordIndex: 2)
-            Button("", action: inbox.selectPrevious)
-                .registryShortcut("Select Previous Chat", in: hotkeys, chordIndex: 1)
-            Button("", action: inbox.selectPrevious)
-                .registryShortcut("Select Previous Chat", in: hotkeys, chordIndex: 2)
-            Button("") {
-                let rows = inbox.targetRows()
-                let allArchived = !rows.isEmpty && rows.allSatisfy(\.archived)
-                Task { await inbox.archive(!allArchived) }
-            }
-            .registryShortcut("Chat: Toggle Archive", in: hotkeys, chordIndex: 1)
-            Button("") { inbox.cycleChat(reverse: false) }
-                .registryShortcut("Cycle Chats (hold shift to reverse)", in: hotkeys)
-            Button("") { search.show(in: model.selectedRoomID) }
-                .registryShortcut("Search: Room", in: hotkeys)
-            Button("") { NSApp.activate() }
-                .registryShortcut("Focus App", in: hotkeys)
-            Button("") {
-                NSApp.activate()
-                search.toggle(visible: true)
-            }
-            .registryShortcut("Focus App and Command Bar", in: hotkeys)
-            Button("") { conversation.setIncognito(!conversation.incognitoIsOn) }
-                .registryShortcut("Toggle Incognito Mode", in: hotkeys)
-            Button("") { inbox.query.filters.removeAll() }
-                .registryShortcut("Filter: All", in: hotkeys)
-            Button("") {
-                var filters = inbox.query.filters
-                if filters.remove(.drafts) == nil { filters.insert(.drafts) }
-                inbox.query.filters = filters
-            }
-            .registryShortcut("Filter: Drafts", in: hotkeys)
-            Button("") {
-                var filters = inbox.query.filters
-                if filters.remove(.unanswered) == nil { filters.insert(.unanswered) }
-                inbox.query.filters = filters
-            }
-            .registryShortcut("Filter: Unanswered", in: hotkeys)
-            Button("") {
-                var filters = inbox.query.filters
-                if filters.remove(.dms) == nil {
-                    filters.remove(.groups)
-                    filters.insert(.dms)
+        let dispatcher = resolvedHotkeyDispatcher
+        return Group {
+            ForEach(HotkeyDispatcher.windowShortcutBindings) { binding in
+                Button("") {
+                    _ = dispatcher.perform(binding)
                 }
-                inbox.query.filters = filters
+                .registryShortcut(
+                    binding.hotkeyID,
+                    in: hotkeys,
+                    chordIndex: binding.chordIndex,
+                    extraModifiers: binding.reversesCycle ? .shift : []
+                )
+                .disabled(!dispatcher.canPerform(binding.hotkeyID))
             }
-            .registryShortcut("Filter: DMs", in: hotkeys)
-            Button("") {
-                var filters = inbox.query.filters
-                if filters.remove(.groups) == nil {
-                    filters.remove(.dms)
-                    filters.insert(.groups)
-                }
-                inbox.query.filters = filters
-            }
-            .registryShortcut("Filter: Groups", in: hotkeys)
-            Button("") {
-                if let info = conversation.chatInfo {
-                    conversation.requestDeleteChat(info: info)
-                }
-            }
-            .registryShortcut("Chat: Delete", in: hotkeys)
             // ⌘C, here before the Edit menu's: whatever can copy (selected text anywhere, a code block's too)
             // copies; only when nothing can, with the keyboard in the open chat, the selected message is copied.
             Button("", action: copy)
                 .keyboardShortcut("c", modifiers: .command)
+                .disabled(lifecycle.isLocked)
         }
         .opacity(0)
         .frame(width: 0, height: 0)
@@ -358,6 +323,7 @@ struct MainWindow: View {
     }
 
     private func copy() {
+        guard !lifecycle.isLocked else { return }
         let canCopy = CopyResponder.canCopy()
         // Not the search panel, a sheet over the window, or a window without a chat open.
         let inConversation = ui.isMainWindowKey && search.phase == .closed && model.selectedRoomID != nil

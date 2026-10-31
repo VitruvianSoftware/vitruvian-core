@@ -286,26 +286,297 @@ final class HotkeyRegistryTests: XCTestCase {
             loginItem: FakeLoginItemService(currentStatus: .notRegistered),
             biometrics: FakeBiometricAuthService(available: true, result: .success(true))
         )
-        let coordinator = AppMenuCoordinator(inbox: inbox, lifecycle: lifecycle)
-        let registry = HotkeyRegistry(defaults: defaults)
+        var hideAppCount = 0
+        let coordinator = AppMenuCoordinator(
+            inbox: inbox,
+            lifecycle: lifecycle,
+            hideApp: { hideAppCount += 1 }
+        )
+        let registry = HotkeyRegistry(defaults: defaults, isAppLocked: { lifecycle.isLocked })
+        let dispatcher = HotkeyDispatcher(
+            inbox: inbox,
+            spaces: spaces,
+            conversation: conversation,
+            messageActions: messageActions,
+            search: search,
+            lifecycle: lifecycle,
+            menuCoordinator: coordinator,
+            hotkeys: registry
+        )
 
-        XCTAssertFalse(HotkeyRegistry.allDefinitions.isEmpty)
+        let definedIDs = Set(HotkeyRegistry.allDefinitions.map(\.id))
+        XCTAssertFalse(definedIDs.isEmpty)
+        XCTAssertEqual(
+            HotkeyDispatcher.allLiveWiredShortcutIDs,
+            definedIDs,
+            "Every HotkeyDefinition in HotkeyRegistry.allDefinitions must be wired in the live menu/window/composer bindings"
+        )
+
+        // Verify wired command handlers execute their real model actions via HotkeyDispatcher.
+        appModel.setAccountsForTesting([
+            Account(network: "signal", displayName: "Signal", flows: ["qr"], state: .connected),
+            Account(network: "whatsapp", displayName: "WhatsApp", flows: ["qr"], state: .connected),
+        ])
+        spaces.setSpacesForTesting([
+            Space(spaceID: "inbox", kind: .builtin, title: "Inbox"),
+            Space(spaceID: "account:signal", kind: .account, title: "Signal", network: "signal"),
+            Space(spaceID: "account:whatsapp", kind: .account, title: "WhatsApp", network: "whatsapp"),
+        ])
+        let aliceRow = InboxRow(
+            roomID: "!r1",
+            network: "signal",
+            name: "Alice",
+            avatarPath: "",
+            isDirect: true,
+            lastTS: 100,
+            preview: "Hi",
+            previewKind: .text,
+            previewMine: false,
+            unread: 1,
+            muted: false
+        )
+        let bobRow = InboxRow(
+            roomID: "!r2",
+            network: "signal",
+            name: "Bob",
+            avatarPath: "",
+            isDirect: true,
+            lastTS: 90,
+            preview: "Yo",
+            previewKind: .text,
+            previewMine: false,
+            unread: 0,
+            muted: false
+        )
+        inbox.setSnapshotRowsForTesting([aliceRow, bobRow])
+        inbox.select("!r1")
+        inbox.select("!r2")
+        XCTAssertEqual(inbox.selectedRoomID, "!r2")
+
+        XCTAssertTrue(dispatcher.perform("History: Previous Chat"))
+        XCTAssertEqual(inbox.selectedRoomID, "!r1")
+
+        XCTAssertTrue(dispatcher.perform("History: Next Chat"))
+        XCTAssertEqual(inbox.selectedRoomID, "!r2")
+
+        let forwardCycleBinding = WindowShortcutBinding(
+            hotkeyID: "Cycle Chats (hold shift to reverse)",
+            chordIndex: 0,
+            reversesCycle: false
+        )
+        let reverseCycleBinding = WindowShortcutBinding(
+            hotkeyID: "Cycle Chats (hold shift to reverse)",
+            chordIndex: 0,
+            reversesCycle: true
+        )
+        XCTAssertTrue(dispatcher.perform(forwardCycleBinding))
+        XCTAssertEqual(inbox.selectedRoomID, "!r1")
+        XCTAssertTrue(dispatcher.perform(reverseCycleBinding))
+        XCTAssertEqual(inbox.selectedRoomID, "!r2")
+
+        XCTAssertTrue(dispatcher.perform("Focus App"))
+        XCTAssertEqual(coordinator.focusCount, 1)
+
+        XCTAssertTrue(dispatcher.perform("Minimize To Menu Bar"))
+        XCTAssertEqual(hideAppCount, 1)
+
+        XCTAssertTrue(dispatcher.perform("Quit App"))
+        XCTAssertEqual(coordinator.quitRequestedCount, 1)
+
+        XCTAssertTrue(dispatcher.perform("Chat: Create New Group"))
+        XCTAssertNotNil(inbox.startNewChatDraft)
+
+        // Verify "Chat: Send File" invokes the attachment picker callback on the active composer.
+        appModel.selectedRoomID = nil
+        conversation.openDetachedRoom(nil)
+        XCTAssertFalse(dispatcher.canPerform("Chat: Send File")) // No room open yet
+
+        // Verify "Download Attachments" actually downloads the selected message's attachment (no empty {} closure).
+        let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent("courier-hotkey-dl-\(UUID().uuidString)")
+        let sourceDir = tempRoot.appendingPathComponent("store", isDirectory: true)
+        let downloadsDir = tempRoot.appendingPathComponent("downloads", isDirectory: true)
+        try? FileManager.default.createDirectory(at: sourceDir, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(at: downloadsDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempRoot) }
+        let sourceFile = sourceDir.appendingPathComponent("blob123")
+        try? Data("attachment-bytes".utf8).write(to: sourceFile)
+        composerPrefs.downloadsDirectoryPath = downloadsDir.path
+        composerPrefs.alwaysAskWhereToSaveFiles = false
+
+        let attachmentEvent = Event(
+            eventID: "$att1",
+            roomID: "!r2",
+            sender: "@alice:courier.local",
+            senderName: "Alice Example",
+            mine: false,
+            type: "m.room.message",
+            content: .object([
+                "msgtype": .string("m.file"),
+                "body": .string("report.txt"),
+                "filename": .string("report.txt"),
+                "url": .string(sourceFile.path),
+                "info": .object([
+                    "mimetype": .string("text/plain"),
+                ]),
+            ]),
+            ts: 1_761_400_000_000,
+            seq: 1,
+            status: .sent,
+            mediaPath: sourceFile.path,
+            thread: ThreadSummary(replies: 2, lastTS: 1_761_400_000_000, lastSenders: ["Alice Example"])
+        )
+        let items = Timeline.build(
+            events: [attachmentEvent],
+            me: "@me:courier.local",
+            now: Date(timeIntervalSince1970: 1_761_400_100)
+        )
+        let fullFeatures = ChatFeatures(
+            reply: true,
+            thread: true,
+            edit: true,
+            unsend: true,
+            source: .stored,
+            canDelete: true,
+            voiceFeatures: FileKindFeatures(supported: true),
+            gifFeatures: FileKindFeatures(supported: true),
+            stickerFeatures: FileKindFeatures(supported: true)
+        )
+        conversation.setSnapshotStateForTesting(roomID: "!r2", items: items, row: bobRow, features: fullFeatures)
+        conversation.selectedMessageID = "$att1"
+
+        XCTAssertTrue(dispatcher.perform("Chat: Send File"))
+        XCTAssertEqual(dispatcher.attachFilesInvocationCount, 1)
+
+        XCTAssertTrue(dispatcher.perform("Download Attachments"))
+        let downloadedFile = downloadsDir.appendingPathComponent("report.txt")
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: downloadedFile.path),
+            "Expected 'Download Attachments' shortcut handler to save report.txt to downloads directory"
+        )
+
+        // Verify every single HotkeyDefinition in allDefinitions can be performed through HotkeyDispatcher when its state is ready.
         for definition in HotkeyRegistry.allDefinitions {
-            let cmd = CommandSet.hotkeyCommand(
-                for: definition.id,
-                hotkeys: registry,
-                inbox: inbox,
-                spaces: spaces,
-                search: search,
-                conversation: conversation,
-                messageActions: messageActions,
-                menuCoordinator: coordinator
+            inbox.setSnapshotRowsForTesting([aliceRow, bobRow])
+            inbox.select("!r1")
+            inbox.select("!r2")
+            conversation.setSnapshotStateForTesting(roomID: "!r2", items: items, row: bobRow, features: fullFeatures)
+            conversation.selectedMessageID = "$att1"
+            conversation.composer.text = "Draft for \(definition.id)"
+            XCTAssertTrue(
+                dispatcher.canPerform(definition.id),
+                "HotkeyDefinition '\(definition.id)' must be enabled in HotkeyDispatcher when state is ready"
             )
-            XCTAssertNotNil(cmd, "HotkeyDefinition '\(definition.id)' must resolve to a wired CourierCommand handler")
-            XCTAssertEqual(cmd?.id, definition.id)
+            XCTAssertTrue(
+                dispatcher.perform(definition.id),
+                "HotkeyDefinition '\(definition.id)' must execute a real handler in HotkeyDispatcher"
+            )
         }
 
-        // Verify wired command handlers execute their model actions.
+        // Verify ComposerModel.handleReturn consults HotkeyRegistry for "Send Message".
+        registry.setEnabled(false, for: "Send Message")
+        conversation.setSnapshotStateForTesting(roomID: "!r2", items: items, row: bobRow, features: fullFeatures)
+        conversation.composer.text = "Keep draft when Send Message is disabled"
+        _ = conversation.composer.handleReturn(modifiers: [])
+        XCTAssertEqual(
+            conversation.composer.text,
+            "Keep draft when Send Message is disabled",
+            "Disabling 'Send Message' in HotkeyRegistry must prevent Return from submitting the composer draft"
+        )
+        registry.setEnabled(true, for: "Send Message")
+
+        // Verify GlobalHotkeyMonitor starts monitoring when a global shortcut is enabled and dispatches through HotkeyDispatcher.
+        final class FakeGlobalEventMonitor: GlobalKeyEventMonitoring {
+            var isStarted = false
+            var handler: (@MainActor (KeyChord) -> Void)?
+            func start(handler: @escaping @MainActor (KeyChord) -> Void) {
+                isStarted = true
+                self.handler = handler
+            }
+            func stop() {
+                isStarted = false
+                handler = nil
+            }
+        }
+        let fakeGlobalMonitor = FakeGlobalEventMonitor()
+        let globalMonitor = GlobalHotkeyMonitor(
+            registry: registry,
+            dispatcher: dispatcher,
+            eventMonitor: fakeGlobalMonitor
+        )
+        XCTAssertFalse(fakeGlobalMonitor.isStarted)
+        let focusChord = KeyChord(key: "space", command: true, shift: true, option: true)
+        if case let .failure(error) = registry.record(focusChord, for: "Focus App") {
+            XCTFail("Unexpected error recording Focus App chord: \(error)")
+        }
+        registry.setGlobal(true, for: "Focus App")
+        XCTAssertTrue(fakeGlobalMonitor.isStarted)
+        let focusBefore = coordinator.focusCount
+        XCTAssertTrue(globalMonitor.handleKeyChord(focusChord))
+        XCTAssertEqual(coordinator.focusCount, focusBefore + 1)
+    }
+
+    func testEveryHotkeyShortcutIsNoOpWhileLockedAndRespectsEntitlements() async {
+        final class MutableEntitlements: EntitlementProvider, @unchecked Sendable {
+            var allowed: Set<Feature> = [.incognito, .reminders]
+            func isEntitled(_ feature: Feature) -> Bool {
+                allowed.contains(feature)
+            }
+        }
+        let entitlements = MutableEntitlements()
+        let supervisor = EngineSupervisor(
+            enginePath: "/Applications/Courier.app/Contents/Helpers/courier-engine",
+            dataDir: URL(fileURLWithPath: "/tmp/courier-test-hotkeys-locked"),
+            environment: [:],
+            launcher: FakeLauncher { _, _ in }
+        )
+        let appModel = AppModel(supervisor: supervisor)
+        let inboxPrefs = InboxPreferences(defaults: defaults)
+        let composerPrefs = ComposerPreferences(defaults: defaults)
+        let inbox = InboxModel(appModel: appModel, preferences: inboxPrefs, entitlement: entitlements)
+        let spaces = SpacesModel(appModel: appModel, inbox: inbox)
+        let search = SearchModel(appModel: appModel, recents: RecentSearches(defaults: defaults), open: { _ in })
+        let conversation = ConversationModel(appModel: appModel, preferences: composerPrefs)
+        conversation.isEntitled = { [weak inbox] feature in inbox?.isEntitled(feature) ?? false }
+        for composer in [conversation.composer, conversation.thread.composer] {
+            composer.entitlement = entitlements
+        }
+        final class NoopPasteboard: TextPasteboard {
+            func setString(_ text: String) {}
+        }
+        let messageActions = MessageActionsModel(
+            conversation: conversation,
+            appModel: appModel,
+            preferences: composerPrefs,
+            pasteboard: NoopPasteboard()
+        )
+        let lifecycle = SystemLifecycleModel(
+            defaults: defaults,
+            loginItem: FakeLoginItemService(currentStatus: .notRegistered),
+            biometrics: FakeBiometricAuthService(available: true, result: .success(true))
+        )
+        lifecycle.lockApp()
+        XCTAssertTrue(lifecycle.isLocked)
+
+        var hideAppCount = 0
+        let coordinator = AppMenuCoordinator(
+            inbox: inbox,
+            lifecycle: lifecycle,
+            hideApp: { hideAppCount += 1 }
+        )
+        let registry = HotkeyRegistry(defaults: defaults, isAppLocked: { lifecycle.isLocked })
+        let dispatcher = HotkeyDispatcher(
+            inbox: inbox,
+            spaces: spaces,
+            conversation: conversation,
+            messageActions: messageActions,
+            search: search,
+            lifecycle: lifecycle,
+            menuCoordinator: coordinator,
+            hotkeys: registry
+        )
+        appModel.setAccountsForTesting([
+            Account(network: "signal", displayName: "Signal", flows: ["qr"], state: .connected),
+        ])
         inbox.setSnapshotRowsForTesting([
             InboxRow(
                 roomID: "!r1",
@@ -317,97 +588,70 @@ final class HotkeyRegistryTests: XCTestCase {
                 preview: "Hi",
                 previewKind: .text,
                 previewMine: false,
-                unread: 0,
-                muted: false
-            ),
-            InboxRow(
-                roomID: "!r2",
-                network: "signal",
-                name: "Bob",
-                avatarPath: "",
-                isDirect: true,
-                lastTS: 90,
-                preview: "Yo",
-                previewKind: .text,
-                previewMine: false,
-                unread: 0,
+                unread: 1,
                 muted: false
             ),
         ])
         inbox.select("!r1")
-        inbox.select("!r2")
-        XCTAssertEqual(inbox.selectedRoomID, "!r2")
+        conversation.setSnapshotStateForTesting(roomID: "!r1", items: [])
+        conversation.composer.text = "Locked draft"
 
-        CommandSet.hotkeyCommand(
-            for: "History: Previous Chat",
-            hotkeys: registry,
-            inbox: inbox,
-            spaces: spaces,
-            search: search,
-            conversation: conversation,
-            messageActions: messageActions,
-            menuCoordinator: coordinator
-        )?.run()
-        XCTAssertEqual(inbox.selectedRoomID, "!r1")
+        for definition in HotkeyRegistry.allDefinitions {
+            XCTAssertFalse(
+                dispatcher.canPerform(definition.id),
+                "Shortcut '\(definition.id)' must be disabled while app is locked"
+            )
+            XCTAssertFalse(
+                dispatcher.perform(definition.id),
+                "Shortcut '\(definition.id)' must be a no-op while app is locked"
+            )
+        }
+        for binding in HotkeyDispatcher.windowShortcutBindings {
+            XCTAssertFalse(
+                dispatcher.canPerform(binding.hotkeyID),
+                "Window shortcut '\(binding.id)' must be disabled while app is locked"
+            )
+            XCTAssertFalse(
+                dispatcher.perform(binding),
+                "Window shortcut '\(binding.id)' must be a no-op while app is locked"
+            )
+        }
+        XCTAssertFalse(dispatcher.performSwitchSpace(number: 1))
+        XCTAssertFalse(dispatcher.performSwitchChat(number: 1))
+        _ = conversation.composer.handleReturn(modifiers: [])
+        _ = conversation.composer.handleReturn(modifiers: [.shift])
 
-        CommandSet.hotkeyCommand(
-            for: "History: Next Chat",
-            hotkeys: registry,
-            inbox: inbox,
-            spaces: spaces,
-            search: search,
-            conversation: conversation,
-            messageActions: messageActions,
-            menuCoordinator: coordinator
-        )?.run()
-        XCTAssertEqual(inbox.selectedRoomID, "!r2")
+        XCTAssertEqual(coordinator.focusCount, 0)
+        XCTAssertEqual(hideAppCount, 0)
+        XCTAssertEqual(coordinator.quitRequestedCount, 0)
+        XCTAssertFalse(conversation.isShowingChatInfo)
+        XCTAssertFalse(conversation.incognitoIsOn)
+        XCTAssertEqual(dispatcher.attachFilesInvocationCount, 0)
+        XCTAssertEqual(dispatcher.remindLaterInvocationCount, 0)
+        XCTAssertEqual(conversation.composer.text, "Locked draft")
 
-        CommandSet.hotkeyCommand(
-            for: "Cycle Chats (hold shift to reverse)",
-            hotkeys: registry,
-            inbox: inbox,
-            spaces: spaces,
-            search: search,
-            conversation: conversation,
-            messageActions: messageActions,
-            menuCoordinator: coordinator
-        )?.run()
-        XCTAssertEqual(inbox.selectedRoomID, "!r1")
+        // Unlock and verify entitlement gates (.incognito and .reminders) are enforced by HotkeyDispatcher.
+        _ = await lifecycle.unlockWithTouchID()
+        XCTAssertFalse(lifecycle.isLocked)
 
-        CommandSet.hotkeyCommand(
-            for: "Focus App",
-            hotkeys: registry,
-            inbox: inbox,
-            spaces: spaces,
-            search: search,
-            conversation: conversation,
-            messageActions: messageActions,
-            menuCoordinator: coordinator
-        )?.run()
-        XCTAssertEqual(coordinator.focusCount, 1)
+        entitlements.allowed.remove(.incognito)
+        entitlements.allowed.remove(.reminders)
+        XCTAssertFalse(dispatcher.canPerform("Toggle Incognito Mode"))
+        XCTAssertFalse(dispatcher.perform("Toggle Incognito Mode"))
+        XCTAssertFalse(conversation.incognitoIsOn)
 
-        CommandSet.hotkeyCommand(
-            for: "Quit App",
-            hotkeys: registry,
-            inbox: inbox,
-            spaces: spaces,
-            search: search,
-            conversation: conversation,
-            messageActions: messageActions,
-            menuCoordinator: coordinator
-        )?.run()
-        XCTAssertEqual(coordinator.quitRequestedCount, 1)
+        XCTAssertFalse(dispatcher.canPerform("Remind Later"))
+        XCTAssertFalse(dispatcher.perform("Remind Later"))
+        XCTAssertEqual(dispatcher.remindLaterInvocationCount, 0)
 
-        CommandSet.hotkeyCommand(
-            for: "Chat: Create New Group",
-            hotkeys: registry,
-            inbox: inbox,
-            spaces: spaces,
-            search: search,
-            conversation: conversation,
-            messageActions: messageActions,
-            menuCoordinator: coordinator
-        )?.run()
-        XCTAssertNotNil(inbox.startNewChatDraft)
+        entitlements.allowed.insert(.incognito)
+        entitlements.allowed.insert(.reminders)
+        XCTAssertTrue(dispatcher.canPerform("Toggle Incognito Mode"))
+        XCTAssertTrue(dispatcher.perform("Toggle Incognito Mode"))
+        XCTAssertTrue(conversation.incognitoIsOn)
+
+        XCTAssertTrue(dispatcher.canPerform("Remind Later"))
+        XCTAssertTrue(dispatcher.perform("Remind Later"))
+        XCTAssertEqual(dispatcher.remindLaterInvocationCount, 1)
     }
 }

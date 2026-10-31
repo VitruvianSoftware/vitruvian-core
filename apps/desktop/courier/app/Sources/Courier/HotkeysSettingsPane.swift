@@ -451,12 +451,13 @@ struct RegistryKeyboardShortcutModifier: ViewModifier {
     let id: String
     @ObservedObject var registry: HotkeyRegistry
     var chordIndex: Int = 0
+    var extraModifiers: EventModifiers = []
 
     func body(content: Content) -> some View {
         let active = registry.chords(for: id)
         if chordIndex < active.count,
            let shortcut = Self.keyboardShortcut(from: active[chordIndex]) {
-            content.keyboardShortcut(shortcut.key, modifiers: shortcut.modifiers)
+            content.keyboardShortcut(shortcut.key, modifiers: shortcut.modifiers.union(extraModifiers))
         } else {
             content
         }
@@ -490,7 +491,19 @@ struct RegistryKeyboardShortcutModifier: ViewModifier {
 }
 
 extension View {
-    func registryShortcut(_ id: String, in registry: HotkeyRegistry, chordIndex: Int = 0) -> some View {
-        modifier(RegistryKeyboardShortcutModifier(id: id, registry: registry, chordIndex: chordIndex))
+    func registryShortcut(
+        _ id: String,
+        in registry: HotkeyRegistry,
+        chordIndex: Int = 0,
+        extraModifiers: EventModifiers = []
+    ) -> some View {
+        modifier(
+            RegistryKeyboardShortcutModifier(
+                id: id,
+                registry: registry,
+                chordIndex: chordIndex,
+                extraModifiers: extraModifiers
+            )
+        )
     }
 }

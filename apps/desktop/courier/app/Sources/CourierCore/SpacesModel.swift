@@ -203,6 +203,11 @@ public final class SpacesModel: ObservableObject {
             select("inbox")
         }
     }
+
+    /// Populates `spaces` directly for deterministic tests without an engine.
+    public func setSpacesForTesting(_ spaces: [Space]) {
+        self.spaces = spaces
+    }
 }
 
 /// The Edit Spaces list while the person drags it: the spaces in the bar's order, then the "Hidden" divider, then

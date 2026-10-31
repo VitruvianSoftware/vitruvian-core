@@ -17,6 +17,7 @@ struct CourierApp: App {
                        scheduled: delegate.scheduled, composerPreferences: delegate.composerPreferences,
                        focus: delegate.messageFocus, detachedWindows: delegate.detachedWindows,
                        hotkeys: delegate.hotkeys,
+                       hotkeyDispatcher: delegate.hotkeyDispatcher,
                        onOpenShortcutsSettings: { delegate.menuCoordinator.openSettings(.shortcuts) })
                 .background(OpenWindowRegistrar(opener: delegate.windowOpener))
         }
@@ -27,11 +28,14 @@ struct CourierApp: App {
                           conversation: delegate.conversation, lifecycle: delegate.lifecycle,
                           menuCoordinator: delegate.menuCoordinator,
                           minimizeToMenuBar: delegate.minimizeToMenuBar,
-                          hotkeys: delegate.hotkeys)
+                          hotkeys: delegate.hotkeys,
+                          hotkeyDispatcher: delegate.hotkeyDispatcher)
             ConversationCommands(conversation: delegate.conversation, chatComposer: delegate.conversation.composer,
                                  paneComposer: delegate.conversation.thread.composer,
                                  messageActions: delegate.messageActions, focus: delegate.messageFocus,
-                                 hotkeys: delegate.hotkeys)
+                                 hotkeys: delegate.hotkeys,
+                                 hotkeyDispatcher: delegate.hotkeyDispatcher,
+                                 lifecycle: delegate.lifecycle)
         }
 
         // The windows the space bar, the menus and the chat menu open.
