@@ -92,10 +92,18 @@ jobs:
           # Build the bisector once, at the tip, and copy it out: the bisect
           # checks older commits out underneath it, and `bazel run` would
           # start it in the runfiles tree rather than the checkout.
-          # shellcheck disable=SC2086
-          bazel build ${BAZEL_ARGS} //tools/ci:bisect_culprit
+          #
+          # Cache-only flags, as ci.yaml uses for the planner: BAZEL_ARGS
+          # selects --config=remote, whose --remote_download_outputs=minimal
+          # (tools/remote.bazelrc) never downloads the binary to bazel-bin.
+          cache_flags=()
+          if [ -n "${BUILDBUDDY_API_KEY:-}" ]; then
+            cache_flags=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
+          fi
+          bazel build "${cache_flags[@]}" //tools/ci:bisect_culprit
           cp -f bazel-bin/tools/ci/bisect_culprit "$RUNNER_TEMP/bisect-culprit"
           chmod +x "$RUNNER_TEMP/bisect-culprit"
+          test -x "$RUNNER_TEMP/bisect-culprit" || { echo "::error::the bisect binary was not built"; exit 1; }
           # A build can rewrite the lockfile; a dirty tree would stop the first
           # `git bisect` checkout.
           git checkout -- MODULE.bazel.lock 2>/dev/null || true

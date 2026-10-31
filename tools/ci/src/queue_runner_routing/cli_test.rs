@@ -165,6 +165,15 @@ fn only_the_canary_workflow_is_exempt() {
     assert!(ok, "queue-runner-watch.yaml may name the runner: {t}");
     let (ok, t) = verdict("copy", "other.yaml", body);
     assert!(!ok, "the same text under another name is refused: {t}");
+    // The exemption is the exact file name, not a pattern.
+    for name in [
+        "other-queue-runner-watch.yaml",
+        "queue-runner-watch2.yaml",
+        "my-watch.yaml",
+    ] {
+        let (ok, t) = verdict("near", name, body);
+        assert!(!ok, "{name} must not share the canary's exemption: {t}");
+    }
 }
 
 #[test]
