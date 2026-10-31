@@ -21,6 +21,8 @@ struct MessageActions {
     var menu: (TimelineMessage) -> [[MessageMenuItem]] = { _ in [] }
     /// A menu item chosen, for the message.
     var perform: (MessageMenuItem.Command, String) -> Void = { _, _ in }
+    var hotkeys: HotkeyRegistry? = nil
+    var hotkeyDispatcher: HotkeyDispatcher? = nil
     /// A held ("Queued") message clicked: undoes it, when the preference says so.
     var undoHeld: ((String) -> Void)?
     /// A poll's options chosen ([] takes my vote back).
@@ -259,7 +261,13 @@ private struct TimerNoteRow: View {
         .padding(.vertical, 6)
         .contentShape(Rectangle())
         .onTapGesture { actions.select(message.id) }
-        .contextMenu { MessageMenuItems(sections: actions.menu(message)) { actions.perform($0, message.id) } }
+        .contextMenu {
+            MessageMenuItems(
+                sections: actions.menu(message),
+                hotkeys: actions.hotkeys ?? HotkeyRegistry(),
+                hotkeyDispatcher: actions.hotkeyDispatcher
+            ) { actions.perform($0, message.id) }
+        }
         .accessibilityElement(children: .combine)
     }
 }
@@ -294,7 +302,13 @@ private struct CallNoteRow: View {
         .padding(.vertical, 6)
         .contentShape(Rectangle())
         .onTapGesture { actions.select(message.id) }
-        .contextMenu { MessageMenuItems(sections: actions.menu(message)) { actions.perform($0, message.id) } }
+        .contextMenu {
+            MessageMenuItems(
+                sections: actions.menu(message),
+                hotkeys: actions.hotkeys ?? HotkeyRegistry(),
+                hotkeyDispatcher: actions.hotkeyDispatcher
+            ) { actions.perform($0, message.id) }
+        }
         .accessibilityElement(children: .combine)
     }
 }
@@ -404,7 +418,17 @@ struct MessageRowView: View {
                 )
             }
         }
-        .contextMenu { MessageMenuItems(sections: actions.menu(message)) { actions.perform($0, message.id) } }
+        .contextMenu {
+            MessageMenuItems(
+                sections: actions.menu(message),
+                hotkeys: actions.hotkeys ?? HotkeyRegistry(),
+                hotkeyDispatcher: actions.hotkeyDispatcher
+            ) { actions.perform($0, message.id) }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: SystemLifecycleModel.didLockNotification)) { _ in
+            showsMenu = false
+            activeDetectedDate = nil
+        }
         .accessibilityElement(children: .contain)
     }
 

@@ -184,9 +184,18 @@ public final class SystemLifecycleModel: ObservableObject {
             defaults.set(lockTimeout.rawValue, forKey: Self.key("lockTimeout"))
         }
     }
-    @Published public private(set) var isLocked: Bool
+    @Published public private(set) var isLocked: Bool {
+        didSet {
+            if isLocked {
+                notifyLocked()
+            }
+        }
+    }
     @Published public private(set) var loginItemStatus: LoginItemRegistrationStatus
     @Published public private(set) var lastErrorMessage: String?
+
+    /// Posted synchronously on `@MainActor` whenever `SystemLifecycleModel` enters the locked state.
+    public nonisolated static let didLockNotification = Notification.Name("CourierSystemLifecycleDidLock")
 
     public static func key(_ name: String) -> String { "courier.lifecycle." + name }
 
@@ -198,6 +207,7 @@ public final class SystemLifecycleModel: ObservableObject {
     private var isApplyingLoginState = true
     private var isApplyingLockState = true
     private var pendingLockTimerID: UUID?
+    private var lockHandlers: [@MainActor () -> Void] = []
     public private(set) var launchUnlockTask: Task<Bool, Never>?
     public private(set) var disableLockAuthTask: Task<Bool, Never>?
 
@@ -388,6 +398,21 @@ public final class SystemLifecycleModel: ObservableObject {
     public func lockNow() {
         cancelPendingLockTimer()
         isLocked = true
+    }
+
+    /// Registers a callback invoked synchronously on `@MainActor` whenever Courier locks.
+    public func onLock(_ handler: @escaping @MainActor () -> Void) {
+        lockHandlers.append(handler)
+        if isLocked {
+            handler()
+        }
+    }
+
+    private func notifyLocked() {
+        for handler in lockHandlers {
+            handler()
+        }
+        NotificationCenter.default.post(name: Self.didLockNotification, object: self)
     }
 
     public func noteWindowResignedKey() {

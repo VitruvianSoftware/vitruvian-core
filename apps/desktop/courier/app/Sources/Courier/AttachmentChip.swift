@@ -495,7 +495,6 @@ public struct FileAttachmentChip: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .disabled(url == nil)
-                .keyboardShortcut(.space, modifiers: [])
                 .help(String(localized: "Quick Look (Space)"))
                 .accessibilityLabel(String(localized: "Quick Look \(name)"))
 

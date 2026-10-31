@@ -206,6 +206,8 @@ public final class SearchModel: ObservableObject {
     private var cursors: [SearchSection.Kind: String] = [:]
     private var showingMore: Set<SearchSection.Kind> = []
     private var openedChats: AnyCancellable?
+    private weak var observedLifecycle: SystemLifecycleModel?
+    private var lockObserver: AnyCancellable?
     private let sleep: @Sendable (Duration) async throws -> Void
     /// The generation the rows on screen were found for. Older than `generation` while a newer query is pending.
     private var shownGeneration = 0
@@ -231,6 +233,12 @@ public final class SearchModel: ObservableObject {
         self.recents = recents
         self.open = open
         self.now = now
+        self.lockObserver = NotificationCenter.default
+            .publisher(for: SystemLifecycleModel.didLockNotification)
+            .sink { [weak self] notification in
+                self?.observedLifecycle = notification.object as? SystemLifecycleModel
+                self?.dismissAllPresentations()
+            }
         openedChats = appModel.$selectedRoomID.compactMap { $0 }.removeDuplicates()
             .sink { [weak appModel, recents] id in
                 for roomID in appModel?.scopeRoomIDs(for: id) ?? [id] where !roomID.hasPrefix("merge:") {
@@ -239,10 +247,21 @@ public final class SearchModel: ObservableObject {
             }
     }
 
+    public func dismissAllPresentations() {
+        if phase != .closed {
+            close()
+        }
+    }
+
+    private var isLocked: Bool {
+        observedLifecycle?.isLocked == true
+    }
+
     // MARK: - Opening and closing
 
     /// ⌘K with no chat; ⌘F with the open chat, to search in it (nil is like ⌘K).
     public func show(in roomID: String? = nil) {
+        guard !isLocked else { return }
         if phase == .closed { phase = .home }
         scopeRoomID = roomID
         scope = nil
@@ -254,6 +273,7 @@ public final class SearchModel: ObservableObject {
     /// Over a window that is closed or behind another, a panel left open is never closed unseen: it opens, and
     /// the caller brings the window forward.
     public func toggle(visible: Bool) {
+        guard !isLocked else { return }
         if phase != .closed, visible {
             close()
         } else {
@@ -382,6 +402,7 @@ public final class SearchModel: ObservableObject {
     /// opened: the search runs now, and the first row of its answer opens when it lands. An empty answer or a
     /// failure opens nothing and keeps nothing; a keystroke before the answer cancels the open.
     public func activate() {
+        guard !isLocked else { return }
         guard phase != .closed else { return }
         if shownGeneration != generation {
             if requestedGeneration == generation, phase == .failed { return } // this query failed: Try Again

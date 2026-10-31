@@ -15,12 +15,18 @@ import Foundation
 public final class ScheduledModel: ObservableObject {
     /// The open chat's, soonest first (by due time, then as scheduled).
     @Published public private(set) var scheduled: [ScheduledMessage] = []
+    /// Active scheduled message being edited in `ScheduledEditSheet`.
+    @Published public var editingMessage: ScheduledMessage?
+    /// Active scheduled message being rescheduled in `ScheduledRescheduleSheet`.
+    @Published public var reschedulingMessage: ScheduledMessage?
     /// Where toasts go: the inbox's, the one place they show.
     public var onToast: @MainActor (String) -> Void = { _ in }
 
     private let appModel: AppModel
     public private(set) var roomID: String?
     private var subscription: AnyCancellable?
+    private weak var observedLifecycle: SystemLifecycleModel?
+    private var lockObserver: AnyCancellable?
     /// Goes up with each read: an answer older than the newest one shown, or for another chat, is dropped.
     private var serial = 0
     private var shownSerial = 0
@@ -32,6 +38,12 @@ public final class ScheduledModel: ObservableObject {
                 self?.open(room)
             }
         }
+        self.lockObserver = NotificationCenter.default
+            .publisher(for: SystemLifecycleModel.didLockNotification)
+            .sink { [weak self] notification in
+                self?.observedLifecycle = notification.object as? SystemLifecycleModel
+                self?.dismissAllPresentations()
+            }
         appModel.onConnect { [weak self] _ in self?.read() }
         appModel.onChange { [weak self] change in
             guard let self, case let .scheduled(room) = change else { return }
@@ -43,6 +55,16 @@ public final class ScheduledModel: ObservableObject {
             }
             self.read()
         }
+    }
+
+    /// Clears any presented scheduled message editor or reschedule sheets.
+    public func dismissAllPresentations() {
+        editingMessage = nil
+        reschedulingMessage = nil
+    }
+
+    private var isLocked: Bool {
+        observedLifecycle?.isLocked == true
     }
 
     /// Opens a room explicitly for a detached window (`followsAppSelection == false`).
@@ -114,6 +136,7 @@ public final class ScheduledModel: ObservableObject {
     }
 
     private func act(_ call: (EngineClient) async throws -> Void) async {
+        guard !isLocked else { return }
         guard let client = appModel.client else {
             onToast(EngineErrorText.text(for: EngineError.notConnected, fallback: ""))
             return

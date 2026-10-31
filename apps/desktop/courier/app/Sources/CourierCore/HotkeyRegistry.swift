@@ -584,6 +584,7 @@ public final class HotkeyRegistry: ObservableObject {
 
     private let defaults: UserDefaults
     private let isAppLocked: @MainActor () -> Bool
+    private var lockObserver: AnyCancellable?
 
     private static let overridesKey = "courier.hotkeys.overrides"
     private static let disabledKey = "courier.hotkeys.disabled"
@@ -611,6 +612,16 @@ public final class HotkeyRegistry: ObservableObject {
         } else {
             self.globalIDs = []
         }
+        self.lockObserver = NotificationCenter.default
+            .publisher(for: SystemLifecycleModel.didLockNotification)
+            .sink { [weak self] _ in
+                self?.dismissAllPresentations()
+            }
+    }
+
+    public func dismissAllPresentations() {
+        isShortcutsSheetPresented = false
+        cancelRecording()
     }
 
     public func definition(for id: String) -> HotkeyDefinition? {
@@ -1190,10 +1201,15 @@ public final class HotkeyDispatcher: ObservableObject {
              "Open User Profile",
              "Message: Edit",
              "Message: Forward",
-             "Message: Send Later",
              "Message: Send Message and Archive",
              "Insert New Line":
             return conversation.roomID != nil
+
+        case "Message: Send Later":
+            return conversation.roomID != nil
+                && inbox.isEntitled(.sendLater)
+                && activeComposer.entitlement.isEntitled(.sendLater)
+                && activeComposer.canSchedule
 
         case "Chat: Start New", "Chat: Create New Group":
             return !inbox.accounts.isEmpty

@@ -2934,6 +2934,9 @@ final class ViewSnapshotTests: XCTestCase {
         XCTAssertFalse(registry.showsLockOverlay(for: target))
         lifecycle.lockApp()
         XCTAssertTrue(registry.showsLockOverlay(for: target))
+        check(try Snapshot.render("detached-chat-window-locked", width: 640, height: 480) {
+            DetachedChatWindowView(session: session, lifecycle: lifecycle)
+        })
     }
 
     // MARK: - Part 4.6 Task 9: Shortcuts Sheet (`⌘/`) and Recorder Recording & Conflict Snapshots

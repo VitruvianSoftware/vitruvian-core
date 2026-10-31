@@ -9,11 +9,17 @@ struct ScheduledStrip: View {
     @ObservedObject var scheduled: ScheduledModel
 
     var body: some View {
-        ScheduledList(messages: scheduled.scheduled, actions: ScheduledActions(
-            sendNow: { id in Task { await scheduled.sendNow(id) } },
-            delete: { id in Task { await scheduled.delete(id) } },
-            edit: { id, text in Task { await scheduled.edit(id, text: text) } },
-            reschedule: { id, due in Task { await scheduled.reschedule(id, to: due) } }))
+        ScheduledList(
+            messages: scheduled.scheduled,
+            actions: ScheduledActions(
+                sendNow: { id in Task { await scheduled.sendNow(id) } },
+                delete: { id in Task { await scheduled.delete(id) } },
+                edit: { id, text in Task { await scheduled.edit(id, text: text) } },
+                reschedule: { id, due in Task { await scheduled.reschedule(id, to: due) } }
+            ),
+            editing: $scheduled.editingMessage,
+            rescheduling: $scheduled.reschedulingMessage
+        )
     }
 }
 
@@ -30,9 +36,19 @@ struct ScheduledActions {
 struct ScheduledList: View {
     let messages: [ScheduledMessage]
     let actions: ScheduledActions
+    var editing: Binding<ScheduledMessage?>? = nil
+    var rescheduling: Binding<ScheduledMessage?>? = nil
     @State var isOpen = false
-    @State private var editing: ScheduledMessage?
-    @State private var rescheduling: ScheduledMessage?
+    @State private var localEditing: ScheduledMessage?
+    @State private var localRescheduling: ScheduledMessage?
+
+    private var editingBinding: Binding<ScheduledMessage?> {
+        editing ?? $localEditing
+    }
+
+    private var reschedulingBinding: Binding<ScheduledMessage?> {
+        rescheduling ?? $localRescheduling
+    }
 
     var body: some View {
         if !messages.isEmpty {
@@ -57,16 +73,20 @@ struct ScheduledList: View {
                 .buttonStyle(.plain)
                 if isOpen {
                     ForEach(messages) { message in
-                        ScheduledRow(message: message, actions: actions, edit: { editing = message },
-                                     reschedule: { rescheduling = message })
+                        ScheduledRow(message: message, actions: actions, edit: { editingBinding.wrappedValue = message },
+                                     reschedule: { reschedulingBinding.wrappedValue = message })
                     }
                 }
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
             .background(Color.accentColor.opacity(0.06))
-            .sheet(item: $editing) { message in ScheduledEditSheet(message: message, actions: actions) }
-            .sheet(item: $rescheduling) { message in ScheduledRescheduleSheet(message: message, actions: actions) }
+            .sheet(item: editingBinding) { message in ScheduledEditSheet(message: message, actions: actions) }
+            .sheet(item: reschedulingBinding) { message in ScheduledRescheduleSheet(message: message, actions: actions) }
+            .onReceive(NotificationCenter.default.publisher(for: SystemLifecycleModel.didLockNotification)) { _ in
+                localEditing = nil
+                localRescheduling = nil
+            }
         }
     }
 

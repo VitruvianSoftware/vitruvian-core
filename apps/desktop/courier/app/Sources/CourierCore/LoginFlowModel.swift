@@ -206,6 +206,8 @@ public final class LoginFlowModel: ObservableObject {
     private let telegramWait: TelegramStartWait
     private let restartEngine: @MainActor () -> Void
     private var subscription: AnyCancellable?
+    private weak var observedLifecycle: SystemLifecycleModel?
+    private var lockObserver: AnyCancellable?
 
     /// Bumped by every new sign-in and every ending: an answer for an older one is not this one's.
     private var session = 0
@@ -229,6 +231,22 @@ public final class LoginFlowModel: ObservableObject {
         self.telegramCredentials = TelegramCredentialSource(store: credentials, builtIn: builtInCredentials)
         self.telegramWait = telegramWait
         self.restartEngine = restartEngine
+        self.lockObserver = NotificationCenter.default
+            .publisher(for: SystemLifecycleModel.didLockNotification)
+            .sink { [weak self] notification in
+                self?.observedLifecycle = notification.object as? SystemLifecycleModel
+                self?.dismissAllPresentations()
+            }
+    }
+
+    public func dismissAllPresentations() {
+        if screen != .closed {
+            close()
+        }
+    }
+
+    private var isLocked: Bool {
+        observedLifecycle?.isLocked == true
     }
 
     /// The app's: the engine that is up, its accounts, the Keychain and the supervisor.
@@ -303,6 +321,7 @@ public final class LoginFlowModel: ObservableObject {
 
     /// "Add a network".
     public func showPicker() {
+        guard !isLocked else { return }
         endSignIn()
         screen = .picker
     }
@@ -313,6 +332,7 @@ public final class LoginFlowModel: ObservableObject {
     /// app has none. A network still starting can't be signed in to yet, and says so. Any sign-in already open here
     /// is cancelled.
     public func begin(network: String, flow: String? = nil, another: Bool = false, accountID: String? = nil) {
+        guard !isLocked else { return }
         endSignIn()
         self.another = another && accountID == nil
         self.accountID = accountID
@@ -339,6 +359,7 @@ public final class LoginFlowModel: ObservableObject {
 
     /// Continue on Google Messages' warning.
     public func continueAfterWarning() {
+        guard !isLocked else { return }
         guard case let .googleWarning(network, flow) = screen else { return }
         start(network: network, flow: flow)
     }
@@ -454,6 +475,7 @@ public final class LoginFlowModel: ObservableObject {
 
     /// Sends the input step's values: its own fields only.
     public func submitInput() {
+        guard !isLocked else { return }
         guard let (network, step) = inputStep, canSubmitInput, let loginID else { return }
         var values: [String: String] = [:]
         for field in step.fields ?? [] { values[field.id] = inputValues[field.id] }
@@ -462,6 +484,7 @@ public final class LoginFlowModel: ObservableObject {
 
     /// The sign-in window collected the cookies step's values.
     public func signInCollected(loginID: String, stepID: String, values: [String: String]) {
+        guard !isLocked else { return }
         guard case let .signIn(network, step) = screen, step.loginID == loginID, step.stepID == stepID,
               self.loginID == loginID else { return }
         submit(values, loginID: loginID, network: network, refusedStep: nil)
@@ -555,6 +578,7 @@ public final class LoginFlowModel: ObservableObject {
     /// refused them; nothing is saved then, and the keys screen stays.
     @discardableResult
     public func saveTelegram(apiID: String, apiHash: String) -> Bool {
+        guard !isLocked else { return false }
         guard case let .telegramSetup(flow) = screen else { return false }
         guard TelegramSetup.problems(apiID: apiID, apiHash: apiHash).isEmpty else {
             notice = String(localized: "Check both values: api_id is a whole number and api_hash is 32 letters and digits, as shown at my.telegram.org.")

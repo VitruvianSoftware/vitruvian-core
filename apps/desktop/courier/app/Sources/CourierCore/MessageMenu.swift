@@ -4,7 +4,7 @@
 import Foundation
 
 /// A key a menu item shows, which the view turns into the system's shortcut.
-public enum MenuKey: Equatable, Sendable {
+public enum MenuKey: Equatable, Sendable, CaseIterable {
     case commandT, commandR, commandDown, commandC, commandShiftH, commandShiftF
 
     /// As the menu writes it.
@@ -16,6 +16,18 @@ public enum MenuKey: Equatable, Sendable {
         case .commandC: "⌘C"
         case .commandShiftH: "⌘⇧H"
         case .commandShiftF: "⌘⇧F"
+        }
+    }
+
+    /// Corresponding `HotkeyRegistry` ID when the menu key maps to a customizable shortcut.
+    public var hotkeyID: String? {
+        switch self {
+        case .commandT: "Message: Edit"
+        case .commandR: "Message: Quote & Reply"
+        case .commandDown: "Show Replies"
+        case .commandC: nil
+        case .commandShiftH: "Message: Open First Link"
+        case .commandShiftF: "Message: Forward"
         }
     }
 }

@@ -52,6 +52,17 @@ public struct QuickReplyContext: Sendable, Equatable {
     }
 }
 
+/// A quick reply being added (`reply == nil`) or changed (`reply != nil`).
+public struct QuickReplyEdit: Identifiable, Equatable, Sendable {
+    public let id: UUID
+    public let reply: QuickReply?
+
+    public init(id: UUID = UUID(), reply: QuickReply?) {
+        self.id = id
+        self.reply = reply
+    }
+}
+
 /// The person's quick replies, kept on this Mac only (UserDefaults "courier.composer.quickReplies", as JSON), in the
 /// order they were made.
 public final class QuickReplies: ObservableObject {
@@ -67,8 +78,12 @@ public final class QuickReplies: ObservableObject {
     public static let maxMatches = 8
 
     @Published public private(set) var all: [QuickReply]
+    /// Active quick reply editor sheet state in `MessagesSettingsPane`.
+    @Published public var editing: QuickReplyEdit?
 
     private let defaults: UserDefaults
+    private weak var observedLifecycle: SystemLifecycleModel?
+    private var lockObserver: AnyCancellable?
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -82,9 +97,25 @@ public final class QuickReplies: ObservableObject {
                 defaults.set(stored, forKey: Self.unreadableKey)
             }
         }
+        self.lockObserver = NotificationCenter.default
+            .publisher(for: SystemLifecycleModel.didLockNotification)
+            .sink { [weak self] notification in
+                self?.observedLifecycle = notification.object as? SystemLifecycleModel
+                self?.dismissAllPresentations()
+            }
+    }
+
+    public func dismissAllPresentations() {
+        editing = nil
+    }
+
+    private var isLocked: Bool {
+        guard let lifecycle = observedLifecycle, Thread.isMainThread else { return false }
+        return MainActor.assumeIsolated { lifecycle.isLocked }
     }
 
     public func add(title: String, text: String) throws {
+        guard !isLocked else { return }
         guard all.count < Self.maxCount else { throw QuickReplyError.full }
         let reply = try checked(QuickReply(title: title, text: text), replacing: nil)
         all.append(reply)
@@ -92,12 +123,14 @@ public final class QuickReplies: ObservableObject {
     }
 
     public func update(_ reply: QuickReply) throws {
+        guard !isLocked else { return }
         guard let index = all.firstIndex(where: { $0.id == reply.id }) else { throw QuickReplyError.notFound }
         all[index] = try checked(reply, replacing: reply.id)
         save()
     }
 
     public func remove(_ id: UUID) {
+        guard !isLocked else { return }
         all.removeAll { $0.id == id }
         save()
     }

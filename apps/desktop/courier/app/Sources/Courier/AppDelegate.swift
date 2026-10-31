@@ -170,7 +170,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let login = LoginFlowModel(appModel: model)
         self.login = login
         spaces = SpacesModel(appModel: model, inbox: inbox)
-        labels = LabelsModel(appModel: model)
+        labels = LabelsModel(appModel: model, lifecycle: lifecycle)
         let lifecycleRef = lifecycle
         hotkeys = HotkeyRegistry(isAppLocked: { lifecycleRef.isLocked })
         detachedWindows = DetachedWindowRegistry(
@@ -365,10 +365,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         openItem.isEnabled = true
         menu.addItem(openItem)
 
-        let minItem = NSMenuItem(title: String(localized: "Minimize to Menu Bar"), action: #selector(minimizeFromMenu(_:)), keyEquivalent: "q")
-        minItem.keyEquivalentModifierMask = [.command, .option]
+        let minItem = NSMenuItem(title: String(localized: "Minimize to Menu Bar"), action: #selector(minimizeFromMenu(_:)), keyEquivalent: "")
+        applyMenuChord(hotkeys.primaryChord(for: "Minimize To Menu Bar"), to: minItem, enabled: !lifecycle.isLocked)
         minItem.target = self
-        minItem.isEnabled = true
+        minItem.isEnabled = !lifecycle.isLocked
         menu.addItem(minItem)
 
         let lockTitle = lifecycle.isLocked ? String(localized: "Unlock Courier…") : String(localized: "Lock App")
@@ -378,11 +378,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(lockItem)
 
         menu.addItem(.separator())
-        let quitItem = NSMenuItem(title: String(localized: "Quit Courier"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
-        quitItem.keyEquivalentModifierMask = [.command]
-        quitItem.isEnabled = true
+        let quitItem = NSMenuItem(title: String(localized: "Quit Courier"), action: #selector(quitFromMenu(_:)), keyEquivalent: "")
+        applyMenuChord(hotkeys.primaryChord(for: "Quit App"), to: quitItem, enabled: !lifecycle.isLocked)
+        quitItem.target = self
+        quitItem.isEnabled = !lifecycle.isLocked
         menu.addItem(quitItem)
         return menu
+    }
+
+    private func applyMenuChord(_ chord: KeyChord?, to item: NSMenuItem, enabled: Bool) {
+        guard enabled, let chord else {
+            item.keyEquivalent = ""
+            item.keyEquivalentModifierMask = []
+            return
+        }
+        item.keyEquivalent = chord.key
+        var mask: NSEvent.ModifierFlags = []
+        if chord.command { mask.insert(.command) }
+        if chord.shift { mask.insert(.shift) }
+        if chord.option { mask.insert(.option) }
+        if chord.control { mask.insert(.control) }
+        item.keyEquivalentModifierMask = mask
     }
 
     @objc private func openCourierFromMenu(_ sender: NSMenuItem) {
@@ -391,6 +407,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func minimizeFromMenu(_ sender: NSMenuItem) {
         menuCoordinator.minimizeToMenuBar()
+    }
+
+    @objc private func quitFromMenu(_ sender: NSMenuItem) {
+        menuCoordinator.quitApp()
     }
 
     @objc private func lockOrUnlockFromMenu(_ sender: NSMenuItem) {
@@ -474,22 +494,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.addButton(withTitle: ConversationModel.hideTypingButton)
         alert.addButton(withTitle: ConversationModel.keepShowingTypingButton).keyEquivalent = "\u{1b}"
         if let window = NSApp.keyWindow {
+            var lockObserver: NSObjectProtocol?
+            lockObserver = NotificationCenter.default.addObserver(
+                forName: SystemLifecycleModel.didLockNotification,
+                object: nil,
+                queue: .main
+            ) { [weak window] _ in
+                MainActor.assumeIsolated {
+                    guard let window, window.attachedSheet === alert.window else { return }
+                    window.endSheet(alert.window, returnCode: .abort)
+                }
+            }
             alert.beginSheetModal(for: window) { response in
+                if let lockObserver { NotificationCenter.default.removeObserver(lockObserver) }
                 let hide = response == .alertFirstButtonReturn
                 Task { @MainActor in answer(hide) }
             }
             return { [weak window] in
+                if let lockObserver { NotificationCenter.default.removeObserver(lockObserver) }
                 guard let window, window.attachedSheet === alert.window else { return }
                 window.endSheet(alert.window, returnCode: .abort)
+            }
+        }
+        var lockObserver: NSObjectProtocol?
+        lockObserver = NotificationCenter.default.addObserver(
+            forName: SystemLifecycleModel.didLockNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            MainActor.assumeIsolated {
+                if NSApp.modalWindow === alert.window { NSApp.abortModal() }
             }
         }
         // Run on the next turn, so the way to take it down is handed back first: runModal doesn't return until the
         // alert is answered or stopped.
         DispatchQueue.main.async {
             let response = alert.runModal()
+            if let lockObserver { NotificationCenter.default.removeObserver(lockObserver) }
             Task { @MainActor in answer(response == .alertFirstButtonReturn) }
         }
         return {
+            if let lockObserver { NotificationCenter.default.removeObserver(lockObserver) }
             if NSApp.modalWindow === alert.window { NSApp.abortModal() }
         }
     }

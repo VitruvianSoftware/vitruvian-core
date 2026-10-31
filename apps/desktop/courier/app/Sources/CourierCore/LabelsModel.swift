@@ -1,6 +1,7 @@
 // Copyright 2026 VitruvianSoftware
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import Combine
 import Foundation
 
 /// Making, changing and deleting labels, and the auto-archive rules that go with spaces.
@@ -27,19 +28,41 @@ public final class LabelsModel: ObservableObject {
 
     private let appModel: AppModel
     private let entitlement: any EntitlementProvider
+    private weak var observedLifecycle: SystemLifecycleModel?
+    private var lockObserver: AnyCancellable?
     /// Goes up with each read: an answer older than the newest read is dropped.
     private var readGeneration = 0
 
     /// - Parameter entitlement: what the person's plan includes. A rule is never asked of the engine without it.
-    public init(appModel: AppModel, entitlement: any EntitlementProvider = AlwaysEntitled()) {
+    public init(
+        appModel: AppModel,
+        entitlement: any EntitlementProvider = AlwaysEntitled(),
+        lifecycle: SystemLifecycleModel? = nil
+    ) {
         self.appModel = appModel
         self.entitlement = entitlement
+        self.observedLifecycle = lifecycle
+        self.lockObserver = NotificationCenter.default
+            .publisher(for: SystemLifecycleModel.didLockNotification)
+            .sink { [weak self] notification in
+                self?.observedLifecycle = notification.object as? SystemLifecycleModel
+            }
         appModel.onConnect { [weak self] _ in self?.readRules() }
         appModel.onChange { [weak self] change in
             // Deleting a label takes its rule with it.
             if change == .spaces { self?.readRules() }
         }
         if appModel.client != nil { readRules() }
+    }
+
+    private var isLocked: Bool {
+        observedLifecycle?.isLocked == true
+    }
+
+    private func ensureUnlocked() throws {
+        guard !isLocked else {
+            throw EngineError.rpc(.badValue, message: "Courier is locked", reason: "locked")
+        }
     }
 
     /// Rules are part of a plan: the view shows "Available with a plan" in place of the controls when this is false.
@@ -64,6 +87,7 @@ public final class LabelsModel: ObservableObject {
 
     /// Makes a label and answers its id. Its space joins the bar at the end.
     public func create(title: String, color: Int, icon: String) async throws -> Int64 {
+        try ensureUnlocked()
         let title = try Self.checkedTitle(title)
         try Self.check(color: color)
         try Self.check(icon: icon)
@@ -73,6 +97,7 @@ public final class LabelsModel: ObservableObject {
 
     /// Changes what is given; what is nil stays. With nothing to change, nothing is asked.
     public func update(_ id: Int64, title: String?, color: Int?, icon: String?) async throws {
+        try ensureUnlocked()
         let title = try title.map(Self.checkedTitle)
         if let color { try Self.check(color: color) }
         if let icon { try Self.check(icon: icon) }
@@ -82,6 +107,7 @@ public final class LabelsModel: ObservableObject {
 
     /// Deletes a label: it comes off every chat, and its space and rule go with it. The view confirms first.
     public func delete(_ id: Int64) async throws {
+        try ensureUnlocked()
         let _: Empty = try await call("labels.delete", LabelIDParams(labelID: id))
     }
 
@@ -152,6 +178,7 @@ public final class LabelsModel: ObservableObject {
 
     /// Saves a rule, new (rule id 0) or changed, and keeps it as the engine stored it. Part of a plan.
     public func setRule(_ rule: AutoArchiveRule) async throws {
+        try ensureUnlocked()
         guard entitlement.isEntitled(.autoArchive) else {
             throw EngineError.rpc(.notEntitled, message: "auto-archive is not part of the plan", reason: nil)
         }
@@ -165,6 +192,7 @@ public final class LabelsModel: ObservableObject {
 
     /// Deletes a rule, and the archives it had scheduled.
     public func deleteRule(_ ruleID: Int64) async throws {
+        try ensureUnlocked()
         let _: Empty = try await call("autoArchive.delete", RuleIDParams(ruleID: ruleID))
         autoArchiveRules.removeAll { $0.ruleID == ruleID }
     }

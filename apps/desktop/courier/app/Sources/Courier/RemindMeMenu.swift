@@ -4,12 +4,6 @@
 import CourierCore
 import SwiftUI
 
-/// The chats a Custom… reminder is for, fixed when Custom… was chosen.
-struct ReminderRequest: Identifiable {
-    let id = UUID()
-    let ids: [String]
-}
-
 /// Remind Me ▸: Last Used, the suggested times, Custom…, and Dismiss Reminder when there is one.
 struct RemindMeMenu: View {
     @ObservedObject var inbox: InboxModel
@@ -42,7 +36,9 @@ struct RemindMeItems: View {
             }
             Divider()
             Button(String(localized: "Custom…")) {
-                ui.customReminder = ReminderRequest(ids: ids ?? inbox.targets)
+                let request = ReminderRequest(ids: ids ?? inbox.targets)
+                inbox.customReminder = request
+                ui.customReminder = request
                 done()
             }
         } else {

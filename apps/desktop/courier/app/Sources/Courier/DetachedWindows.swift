@@ -36,25 +36,22 @@ struct DetachedChatWindowView: View {
     }
 
     var body: some View {
-        ConversationView(
-            conversation: conversation,
-            composer: conversation.composer,
-            inbox: session.hostInbox,
-            messageActions: session.messageActions,
-            scheduled: session.scheduled,
-            preferences: session.composerPreferences,
-            thread: session.thread,
-            focus: session.focus,
-            appModel: session.appModel
-        )
-        .environment(\.openDetachedWindow, onOpenDetached)
-        .frame(minWidth: 520, minHeight: 420)
-        .overlay(alignment: .bottom) {
-            ToastView(inbox: session.hostInbox)
-        }
-        .overlay {
-            if lifecycle.isLocked {
-                AppLockOverlay(model: lifecycle)
+        LockableWindowContent(lifecycle: lifecycle) {
+            ConversationView(
+                conversation: conversation,
+                composer: conversation.composer,
+                inbox: session.hostInbox,
+                messageActions: session.messageActions,
+                scheduled: session.scheduled,
+                preferences: session.composerPreferences,
+                thread: session.thread,
+                focus: session.focus,
+                appModel: session.appModel
+            )
+            .environment(\.openDetachedWindow, onOpenDetached)
+            .frame(minWidth: 520, minHeight: 420)
+            .overlay(alignment: .bottom) {
+                ToastView(inbox: session.hostInbox)
             }
         }
     }
@@ -90,96 +87,101 @@ struct DetachedSpaceWindowView: View {
     }
 
     var body: some View {
-        HSplitView {
-            InboxList(
-                inbox: inbox,
-                spaces: spaces,
-                preferences: inbox.preferences,
-                ui: ui
-            )
-            .frame(minWidth: 260, idealWidth: 320, maxWidth: 440)
-            if conversation.roomID != nil {
-                ConversationView(
-                    conversation: conversation,
-                    composer: conversation.composer,
+        LockableWindowContent(lifecycle: lifecycle) {
+            HSplitView {
+                InboxList(
                     inbox: inbox,
-                    messageActions: session.messageActions,
-                    scheduled: session.scheduled,
-                    preferences: session.composerPreferences,
-                    thread: session.thread,
-                    focus: session.focus,
-                    appModel: session.appModel
+                    spaces: spaces,
+                    preferences: inbox.preferences,
+                    ui: ui
                 )
-                .frame(minWidth: 420, maxWidth: .infinity)
-            } else {
-                Text(String(localized: "Select a chat"))
-                    .foregroundStyle(.secondary)
-                    .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
+                .frame(minWidth: 260, idealWidth: 320, maxWidth: 440)
+                if conversation.roomID != nil {
+                    ConversationView(
+                        conversation: conversation,
+                        composer: conversation.composer,
+                        inbox: inbox,
+                        messageActions: session.messageActions,
+                        scheduled: session.scheduled,
+                        preferences: session.composerPreferences,
+                        thread: session.thread,
+                        focus: session.focus,
+                        appModel: session.appModel
+                    )
+                    .frame(minWidth: 420, maxWidth: .infinity)
+                } else {
+                    Text(String(localized: "Select a chat"))
+                        .foregroundStyle(.secondary)
+                        .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
+                }
             }
-        }
-        .environment(\.openDetachedWindow, onOpenDetached)
-        .environment(\.searchInChat, onSearchInChat)
-        .frame(minWidth: 740, minHeight: 460)
-        .sheet(item: $ui.customReminder) { request in
-            CustomReminderSheet(request: request, inbox: inbox)
-        }
-        .sheet(
-            isPresented: Binding(
-                get: { inbox.startNewChatDraft != nil },
-                set: { shown in if !shown { inbox.startNewChatDraft = nil } }
-            )
-        ) {
-            if let draft = inbox.startNewChatDraft {
-                StartNewChatView(
-                    draft: draft,
-                    onQueryChanged: { updated in
-                        inbox.updateStartNewChatDraft(updated)
-                    },
-                    onOpenDirectChat: { candidate in
-                        Task { await inbox.openDirectChat(with: candidate) }
-                    },
-                    onLookup: { action in
-                        Task { await inbox.performStartNewChatLookup(action) }
-                    },
-                    onCreateGroup: { updated in
-                        inbox.startNewChatDraft = updated
-                        Task { await inbox.submitNewGroupChat() }
-                    },
-                    onSendBlast: { updated in
-                        inbox.startNewChatDraft = updated
-                        Task { await inbox.submitBlast() }
-                    },
-                    onCancel: {
-                        inbox.startNewChatDraft = nil
+            .environment(\.openDetachedWindow, onOpenDetached)
+            .environment(\.searchInChat, onSearchInChat)
+            .frame(minWidth: 740, minHeight: 460)
+            .sheet(
+                item: Binding(
+                    get: { ui.customReminder ?? inbox.customReminder },
+                    set: { value in
+                        ui.customReminder = value
+                        inbox.customReminder = value
                     }
                 )
+            ) { request in
+                CustomReminderSheet(request: request, inbox: inbox)
             }
-        }
-        .sheet(
-            isPresented: Binding(
-                get: { inbox.mergedChatEditorDraft != nil },
-                set: { shown in if !shown { inbox.mergedChatEditorDraft = nil } }
-            )
-        ) {
-            if let draft = inbox.mergedChatEditorDraft {
-                MergedChatEditorSheet(
-                    draft: draft,
-                    onSave: { updated in
-                        inbox.mergedChatEditorDraft = updated
-                        Task { await inbox.saveMergedChatEditor() }
-                    },
-                    onUnmerge: { mergeID in
-                        Task { await inbox.unmergeChat(mergeID) }
-                    },
-                    onCancel: {
-                        inbox.mergedChatEditorDraft = nil
-                    }
+            .sheet(
+                isPresented: Binding(
+                    get: { inbox.startNewChatDraft != nil },
+                    set: { shown in if !shown { inbox.startNewChatDraft = nil } }
                 )
+            ) {
+                if let draft = inbox.startNewChatDraft {
+                    StartNewChatView(
+                        draft: draft,
+                        onQueryChanged: { updated in
+                            inbox.updateStartNewChatDraft(updated)
+                        },
+                        onOpenDirectChat: { candidate in
+                            Task { await inbox.openDirectChat(with: candidate) }
+                        },
+                        onLookup: { action in
+                            Task { await inbox.performStartNewChatLookup(action) }
+                        },
+                        onCreateGroup: { updated in
+                            inbox.startNewChatDraft = updated
+                            Task { await inbox.submitNewGroupChat() }
+                        },
+                        onSendBlast: { updated in
+                            inbox.startNewChatDraft = updated
+                            Task { await inbox.submitBlast() }
+                        },
+                        onCancel: {
+                            inbox.startNewChatDraft = nil
+                        }
+                    )
+                }
             }
-        }
-        .overlay {
-            if lifecycle.isLocked {
-                AppLockOverlay(model: lifecycle)
+            .sheet(
+                isPresented: Binding(
+                    get: { inbox.mergedChatEditorDraft != nil },
+                    set: { shown in if !shown { inbox.mergedChatEditorDraft = nil } }
+                )
+            ) {
+                if let draft = inbox.mergedChatEditorDraft {
+                    MergedChatEditorSheet(
+                        draft: draft,
+                        onSave: { updated in
+                            inbox.mergedChatEditorDraft = updated
+                            Task { await inbox.saveMergedChatEditor() }
+                        },
+                        onUnmerge: { mergeID in
+                            Task { await inbox.unmergeChat(mergeID) }
+                        },
+                        onCancel: {
+                            inbox.mergedChatEditorDraft = nil
+                        }
+                    )
+                }
             }
         }
     }
@@ -219,33 +221,30 @@ struct DetachedThreadWindowView: View {
     }
 
     var body: some View {
-        ThreadPane(
-            thread: thread,
-            conversation: conversation,
-            composer: thread.composer,
-            messageActions: messageActions,
-            preferences: session.composerPreferences,
-            focus: session.focus,
-            showsOpenInNewWindowButton: false
-        )
-        .frame(minWidth: 380, minHeight: 440)
-        .sheet(item: sheetRequest) { sheet in
-            requestSheet(sheet)
-        }
-        .alert(confirmPrompt, isPresented: confirming) {
-            Button(confirmTitle, role: .destructive) {
-                Task { await messageActions.confirm() }
+        LockableWindowContent(lifecycle: lifecycle) {
+            ThreadPane(
+                thread: thread,
+                conversation: conversation,
+                composer: thread.composer,
+                messageActions: messageActions,
+                preferences: session.composerPreferences,
+                focus: session.focus,
+                showsOpenInNewWindowButton: false
+            )
+            .frame(minWidth: 380, minHeight: 440)
+            .sheet(item: sheetRequest) { sheet in
+                requestSheet(sheet)
             }
-            Button(String(localized: "Cancel"), role: .cancel) {
-                messageActions.dismissRequest()
+            .alert(confirmPrompt, isPresented: confirming) {
+                Button(confirmTitle, role: .destructive) {
+                    Task { await messageActions.confirm() }
+                }
+                Button(String(localized: "Cancel"), role: .cancel) {
+                    messageActions.dismissRequest()
+                }
             }
-        }
-        .overlay(alignment: .bottom) {
-            ToastView(inbox: session.hostInbox)
-        }
-        .overlay {
-            if lifecycle.isLocked {
-                AppLockOverlay(model: lifecycle)
+            .overlay(alignment: .bottom) {
+                ToastView(inbox: session.hostInbox)
             }
         }
     }

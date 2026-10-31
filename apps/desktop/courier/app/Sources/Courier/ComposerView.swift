@@ -40,6 +40,25 @@ final class ComposerUI: ObservableObject {
     /// A picker closed with Esc stays closed until what is typed after "@" or ";" changes.
     @Published var dismissedQuery: NSRange?
     @Published var link: LinkRequest?
+    private var lockObserver: NSObjectProtocol?
+
+    init() {
+        lockObserver = NotificationCenter.default.addObserver(
+            forName: SystemLifecycleModel.didLockNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.link = nil
+            }
+        }
+    }
+
+    deinit {
+        if let lockObserver {
+            NotificationCenter.default.removeObserver(lockObserver)
+        }
+    }
 }
 
 /// The bottom of a chat (01 §6's ComposeMessage): what is being replied to or edited, files waiting to go, the
@@ -219,7 +238,11 @@ struct ComposerView: View {
         .onChange(of: composer.mentionQuery?.text) { _, _ in findMembers() }
         // ⌘⇧K, the bar's Link, or the Message menu's Link…: the dialog, over the range asked for.
         .onChange(of: composer.linkRequest) { _, request in
-            if let request { ui.link = LinkRequest(composer: composer, range: request.range) }
+            if let request {
+                ui.link = LinkRequest(composer: composer, range: request.range)
+            } else {
+                ui.link = nil
+            }
         }
         .onChange(of: pickerToken) { _, _ in ui.pickerIndex = 0 }
     }
@@ -300,16 +323,24 @@ struct ComposerView: View {
             }
             .disabled(composer.roomID == nil)
             Button(composer.addGIFMenuTitle) {
-                _ = composer.openGIFPicker()
+                if let dispatcher = composer.hotkeyDispatcher {
+                    _ = dispatcher.perform("Message: Send GIF")
+                } else {
+                    _ = composer.openGIFPicker()
+                }
             }
-            .keyboardShortcut("g", modifiers: [.command, .shift])
-            .disabled(!composer.canSendGIF)
+            .registryShortcut("Message: Send GIF", in: composer.hotkeyDispatcher?.hotkeys ?? HotkeyRegistry())
+            .disabled(!composer.canSendGIF || composer.hotkeyDispatcher?.lifecycle.isLocked == true)
             .help(composer.canSendGIF ? "" : composer.sendGIFMenuTitle)
             Button(composer.addStickerMenuTitle) {
-                _ = composer.openStickerPicker()
+                if let dispatcher = composer.hotkeyDispatcher {
+                    _ = dispatcher.perform("Message: Send Sticker")
+                } else {
+                    _ = composer.openStickerPicker()
+                }
             }
-            .keyboardShortcut("s", modifiers: [.command, .option, .shift])
-            .disabled(!composer.canSendSticker)
+            .registryShortcut("Message: Send Sticker", in: composer.hotkeyDispatcher?.hotkeys ?? HotkeyRegistry())
+            .disabled(!composer.canSendSticker || composer.hotkeyDispatcher?.lifecycle.isLocked == true)
             .help(composer.canSendSticker ? "" : composer.sendStickerMenuTitle)
             Divider()
             Button(String(localized: "Add Attachment…")) { AttachmentPicker.run(into: composer) }
@@ -776,6 +807,7 @@ struct ComposerTextView: NSViewRepresentable {
         /// A formatting key on the text view's selection. A kind the chat doesn't keep says why (a toast); the link
         /// key asks for the dialog. ` is a key only where code is kept: elsewhere it types `.
         func format(_ kind: TextEntity.Kind, typed: Bool) -> Bool {
+            guard composer.hotkeyDispatcher?.lifecycle.isLocked != true else { return false }
             guard let textView else { return false }
             if typed, !composer.features.keeps(kind) { return false }
             composer.formattingKey(kind, in: textView.selectedRange())
@@ -802,6 +834,7 @@ struct ComposerTextView: NSViewRepresentable {
         }
 
         func textView(_ textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+            guard composer.hotkeyDispatcher?.lifecycle.isLocked != true else { return true }
             if composer.emojiQuery != nil {
                 switch selector {
                 case #selector(NSResponder.moveUp(_:)):

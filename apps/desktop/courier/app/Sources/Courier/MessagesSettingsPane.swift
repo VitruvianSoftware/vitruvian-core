@@ -19,7 +19,6 @@ struct MessagesSettingsPane: View {
     let conversation: ConversationModel
     var voiceRecorder: VoiceRecorderModel? = nil
     @State private var selectedReply: QuickReply.ID?
-    @State private var editing: QuickReplyEdit?
 
     private var activeVoiceRecorder: VoiceRecorderModel {
         voiceRecorder ?? conversation.composer.voiceRecorder
@@ -73,7 +72,7 @@ struct MessagesSettingsPane: View {
         }
         .formStyle(.grouped)
         .frame(minHeight: 560)
-        .sheet(item: $editing) { edit in QuickReplyEditor(edit: edit, quickReplies: quickReplies) }
+        .sheet(item: $quickReplies.editing) { edit in QuickReplyEditor(edit: edit, quickReplies: quickReplies) }
     }
 
     // MARK: Downloads
@@ -220,11 +219,11 @@ struct MessagesSettingsPane: View {
                 .frame(minHeight: 110)
             }
             HStack {
-                Button(String(localized: "Add…")) { editing = QuickReplyEdit(reply: nil) }
+                Button(String(localized: "Add…")) { quickReplies.editing = QuickReplyEdit(reply: nil) }
                     .disabled(quickReplies.all.count >= QuickReplies.maxCount)
                 Button(String(localized: "Edit…")) {
                     if let reply = quickReplies.all.first(where: { $0.id == selectedReply }) {
-                        editing = QuickReplyEdit(reply: reply)
+                        quickReplies.editing = QuickReplyEdit(reply: reply)
                     }
                 }
                 .disabled(selectedReply == nil)
@@ -240,12 +239,6 @@ struct MessagesSettingsPane: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
-}
-
-/// A quick reply being added (nil) or changed.
-struct QuickReplyEdit: Identifiable {
-    let id = UUID()
-    let reply: QuickReply?
 }
 
 /// Adds or changes a quick reply: its title (what follows ";") and its text.

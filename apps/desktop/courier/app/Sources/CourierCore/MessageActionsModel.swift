@@ -118,6 +118,7 @@ public final class MessageActionsModel: ObservableObject {
     private let appModel: AppModel
     private let preferences: ComposerPreferences
     private let pasteboard: TextPasteboard
+    private weak var observedLifecycle: SystemLifecycleModel?
     private var subscriptions: [AnyCancellable] = []
     /// Unsends the engine took, by their redaction's event ID, with the chat's network for the toast: the network
     /// may still refuse them.
@@ -142,6 +143,23 @@ public final class MessageActionsModel: ObservableObject {
             self?.changedStatuses = []
             self?.request = nil
         })
+        subscriptions.append(
+            NotificationCenter.default
+                .publisher(for: SystemLifecycleModel.didLockNotification)
+                .sink { [weak self] notification in
+                    self?.observedLifecycle = notification.object as? SystemLifecycleModel
+                    self?.dismissAllPresentations()
+                }
+        )
+    }
+
+    public func dismissAllPresentations() {
+        request = nil
+    }
+
+    private var isLocked: Bool {
+        observedLifecycle?.isLocked == true
+            || conversation.composer.hotkeyDispatcher?.lifecycle.isLocked == true
     }
 
     // MARK: - The menu
@@ -151,6 +169,7 @@ public final class MessageActionsModel: ObservableObject {
     /// looked for where it was acted on first, then in the other (a reply is only in the pane; the root is in both).
     /// What goes into a composer (Edit, Reply, Insert as Draft) goes into the one of the place it is found in.
     public func perform(_ action: MessageAction, on messageID: String, from source: MessageSource = .chat) async {
+        guard !isLocked else { return }
         let thread = conversation.thread
         let paneOpen = thread.roomID != nil && thread.roomID == conversation.roomID
         let inChat = conversation.message(messageID)
@@ -218,6 +237,7 @@ public final class MessageActionsModel: ObservableObject {
     /// "Don't Send" on a message waiting for its network: takes it back as Undo does (message.undo), and what was
     /// typed goes back into the composer of the place it was acted on. Only a message of mine that waits.
     public func dontSend(_ messageID: String, from source: MessageSource = .chat) async {
+        guard !isLocked else { return }
         guard let message = conversation.message(messageID, from: source), message.mine,
               message.statusLine?.isWaiting == true else { return }
         let inPane = conversation.thread.roomID == conversation.roomID && conversation.thread.message(messageID) != nil
@@ -231,6 +251,10 @@ public final class MessageActionsModel: ObservableObject {
 
     /// The person said yes to the question asked (`request` is `.confirm`): it is done now.
     public func confirm() async {
+        guard !isLocked else {
+            request = nil
+            return
+        }
         guard case let .confirm(action, messageID, _)? = request else { return }
         request = nil
         switch action {
@@ -249,6 +273,7 @@ public final class MessageActionsModel: ObservableObject {
 
     /// ⌘⇧F: the forward picker for the selected message, or a toast saying to select one.
     public func forwardSelected() {
+        guard !isLocked else { return }
         guard let selected = conversation.selectedMessage,
               conversation.availableActions(for: selected).actions.contains(.forward) else {
             onToast(String(localized: "Select a message to forward"))
@@ -276,6 +301,7 @@ public final class MessageActionsModel: ObservableObject {
     /// the view sends the system's Copy.
     @discardableResult
     public func copySelected(responderCanCopy: Bool, inConversation: Bool, focus: MessageFocus) async -> CopyChoice {
+        guard !isLocked else { return .nothing }
         let choice = Self.copyChoice(responderCanCopy: responderCanCopy, place: focus.copyPlace(inConversation: inConversation),
                                      chatSelection: conversation.selectedMessageID, paneSelection: focus.paneSelection)
         guard case let .message(id, source) = choice, let message = conversation.message(id, from: source),
@@ -288,12 +314,14 @@ public final class MessageActionsModel: ObservableObject {
 
     /// ⌘⇧L and "Send later": the Send Later picker, when the composer has text that can be scheduled.
     public func requestSendLater() {
+        guard !isLocked else { return }
         guard conversation.composer.canSchedule else { return }
         request = .sendLater
     }
 
     /// "Create quick reply from draft": asks for a title for the composer's text.
     public func requestQuickReplyFromDraft() {
+        guard !isLocked else { return }
         guard canCreateQuickReply else { return }
         request = .quickReplyTitle
     }
@@ -306,6 +334,7 @@ public final class MessageActionsModel: ObservableObject {
     /// Saves the composer's text as a quick reply called `title`. False, with a toast saying why, when it can't be.
     @discardableResult
     public func createQuickReply(title: String) -> Bool {
+        guard !isLocked else { return false }
         guard let quickReplies else { return false }
         do {
             try quickReplies.add(title: title, text: conversation.composer.text)
@@ -327,6 +356,7 @@ public final class MessageActionsModel: ObservableObject {
     @discardableResult
     public func forward(_ messageID: String, to roomIDs: [String]) async
         -> (sent: Int, failed: [String], unanswered: [String]) {
+        guard !isLocked else { return (0, [], []) }
         var unique: [String] = []
         for id in roomIDs where !unique.contains(id) { unique.append(id) }
         guard !unique.isEmpty else { return (0, [], []) }
@@ -370,6 +400,7 @@ public final class MessageActionsModel: ObservableObject {
 
     /// Votes in a poll with these options ([] takes my vote back). The chat is read again for the tally.
     public func vote(_ pollID: String, options: [String]) async {
+        guard !isLocked else { return }
         await call(fallback: String(localized: "Your vote wasn’t counted. Try again.")) { client in
             let _: Sent = try await client.call("poll.vote", VoteParams(eventID: pollID, optionIDs: options))
         }
@@ -392,6 +423,7 @@ public final class MessageActionsModel: ObservableObject {
     /// draft has problems (the window shows them), or the engine refused it (a toast).
     @discardableResult
     public func createPoll(_ draft: PollDraft) async -> Bool {
+        guard !isLocked else { return false }
         guard let room = conversation.roomID else { return false }
         guard let polls = conversation.features.poll else {
             if let reason = conversation.features.pollsUnavailableReason(network: conversation.network) {

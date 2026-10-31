@@ -272,6 +272,9 @@ final class HotkeyRegistryTests: XCTestCase {
         let spaces = SpacesModel(appModel: appModel, inbox: inbox)
         let search = SearchModel(appModel: appModel, recents: RecentSearches(defaults: defaults), open: { _ in })
         let conversation = ConversationModel(appModel: appModel, preferences: composerPrefs)
+        for composer in [conversation.composer, conversation.thread.composer] {
+            composer.entitlement = AlwaysEntitled()
+        }
         final class NoopPasteboard: TextPasteboard {
             func setString(_ text: String) {}
         }
@@ -517,7 +520,7 @@ final class HotkeyRegistryTests: XCTestCase {
 
     func testEveryHotkeyShortcutIsNoOpWhileLockedAndRespectsEntitlements() async {
         final class MutableEntitlements: EntitlementProvider, @unchecked Sendable {
-            var allowed: Set<Feature> = [.incognito, .reminders]
+            var allowed: Set<Feature> = [.incognito, .reminders, .sendLater]
             func isEntitled(_ feature: Feature) -> Bool {
                 allowed.contains(feature)
             }
@@ -636,6 +639,7 @@ final class HotkeyRegistryTests: XCTestCase {
 
         entitlements.allowed.remove(.incognito)
         entitlements.allowed.remove(.reminders)
+        entitlements.allowed.remove(.sendLater)
         XCTAssertFalse(dispatcher.canPerform("Toggle Incognito Mode"))
         XCTAssertFalse(dispatcher.perform("Toggle Incognito Mode"))
         XCTAssertFalse(conversation.incognitoIsOn)
@@ -644,8 +648,13 @@ final class HotkeyRegistryTests: XCTestCase {
         XCTAssertFalse(dispatcher.perform("Remind Later"))
         XCTAssertEqual(dispatcher.remindLaterInvocationCount, 0)
 
+        XCTAssertFalse(dispatcher.canPerform("Message: Send Later"))
+        XCTAssertFalse(dispatcher.perform("Message: Send Later"))
+        XCTAssertNil(messageActions.request)
+
         entitlements.allowed.insert(.incognito)
         entitlements.allowed.insert(.reminders)
+        entitlements.allowed.insert(.sendLater)
         XCTAssertTrue(dispatcher.canPerform("Toggle Incognito Mode"))
         XCTAssertTrue(dispatcher.perform("Toggle Incognito Mode"))
         XCTAssertTrue(conversation.incognitoIsOn)
@@ -653,5 +662,573 @@ final class HotkeyRegistryTests: XCTestCase {
         XCTAssertTrue(dispatcher.canPerform("Remind Later"))
         XCTAssertTrue(dispatcher.perform("Remind Later"))
         XCTAssertEqual(dispatcher.remindLaterInvocationCount, 1)
+
+        XCTAssertTrue(dispatcher.canPerform("Message: Send Later"))
+        XCTAssertTrue(dispatcher.perform("Message: Send Later"))
+        XCTAssertEqual(messageActions.request, .sendLater)
+    }
+
+    func testLockingAppDismissesAllOpenSheetsPopoversAndAlertsAndBlocksActions() async throws {
+        let suiteName = "courier.test.hotkeys.lockdismiss.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        final class RecordingSender: MessageSending, @unchecked Sendable {
+            var scheduledCount = 0
+            func sendText(roomID _: String, text _: String, replyTo _: String?) async throws {}
+            func sendFile(roomID _: String, url _: URL, size _: Int64, replyTo _: String?) async throws {}
+            func send(
+                roomID _: String,
+                rich _: RichText,
+                replyTo _: String?,
+                threadRoot _: String?,
+                holdMillis _: Int
+            ) async throws -> String { "$sent" }
+            func sendFile(
+                roomID _: String,
+                url _: URL,
+                size _: Int64,
+                replyTo _: String?,
+                threadRoot _: String?,
+                holdMillis _: Int
+            ) async throws -> String { "$file" }
+            func edit(eventID _: String, rich _: RichText) async throws {}
+            func schedule(
+                roomID _: String,
+                rich _: RichText,
+                replyTo _: String?,
+                threadRoot _: String?,
+                due _: Date,
+                condition _: SendLaterCondition
+            ) async throws {
+                scheduledCount += 1
+            }
+            func undo(eventID _: String) async throws -> Draft {
+                Draft(text: "", entities: [], replyTo: nil, threadRoot: nil)
+            }
+            func sendHeld(roomID _: String?) async throws {}
+            func members(roomID _: String, query _: String) async throws -> [Member] { [] }
+            func status(of _: String, in _: String, thread _: String?) async throws -> StatusLine? { nil }
+            func setTyping(roomID _: String, typing _: Bool) async throws {}
+            func setUnreadFrom(eventID _: String) async throws {}
+            func directChat(roomID _: String, userID _: String) async throws -> String { "!dm" }
+        }
+
+        final class FakeLoginCaller: LoginCalling, @unchecked Sendable {
+            var startCount = 0
+            func start(network _: String, flow _: String, another _: Bool, accountID _: String?) async throws -> LoginStep {
+                startCount += 1
+                throw EngineError.notConnected
+            }
+            func submit(loginID _: String, values _: [String: String]) async throws -> LoginStep {
+                throw EngineError.notConnected
+            }
+            func wait(loginID _: String) async throws -> LoginStep {
+                throw EngineError.notConnected
+            }
+            func cancel(loginID _: String) async throws {}
+        }
+
+        final class MemoryCredentials: CredentialStore, @unchecked Sendable {
+            var data: [String: String] = [:]
+            func read(account: String) throws -> String? { data[account] }
+            func write(_ value: String, account: String) throws { data[account] = value }
+            func delete(account: String) throws { data.removeValue(forKey: account) }
+        }
+
+        final class NoopPasteboard: TextPasteboard {
+            func setString(_ text: String) {}
+        }
+
+        let supervisor = EngineSupervisor(
+            enginePath: "/Applications/Courier.app/Contents/Helpers/courier-engine",
+            dataDir: URL(fileURLWithPath: "/tmp/courier-test-hotkeys-dismiss"),
+            environment: [:],
+            launcher: FakeLauncher { _, _ in }
+        )
+        let appModel = AppModel(supervisor: supervisor)
+        let inboxPrefs = InboxPreferences(defaults: defaults)
+        let composerPrefs = ComposerPreferences(defaults: defaults)
+        let quickReplies = QuickReplies(defaults: defaults)
+        let inbox = InboxModel(appModel: appModel, preferences: inboxPrefs)
+        let spaces = SpacesModel(appModel: appModel, inbox: inbox)
+        let conversation = ConversationModel(
+            appModel: appModel,
+            unreadCount: { _ in 0 },
+            chat: { _ in nil }
+        )
+        let sender = RecordingSender()
+        conversation.composer.sender = sender
+        conversation.composer.entitlement = AlwaysEntitled()
+        conversation.composer.quickReplies = quickReplies
+        conversation.preferences = composerPrefs
+        let scheduled = ScheduledModel(appModel: appModel)
+        let messageActions = MessageActionsModel(
+            conversation: conversation,
+            appModel: appModel,
+            preferences: composerPrefs,
+            pasteboard: NoopPasteboard()
+        )
+        messageActions.quickReplies = quickReplies
+        let search = SearchModel(
+            appModel: appModel,
+            recents: RecentSearches(defaults: defaults),
+            open: { _ in }
+        )
+        let loginCaller = FakeLoginCaller()
+        let login = LoginFlowModel(
+            caller: loginCaller,
+            accounts: { appModel.accounts },
+            reloadAccounts: {},
+            credentials: MemoryCredentials(),
+            builtInCredentials: { nil },
+            restartEngine: {}
+        )
+        let lifecycle = SystemLifecycleModel(
+            defaults: defaults,
+            loginItem: FakeLoginItemService(currentStatus: .notRegistered),
+            biometrics: FakeBiometricAuthService(available: true, result: .success(true))
+        )
+        let coordinator = AppMenuCoordinator(inbox: inbox, lifecycle: lifecycle)
+        let registry = HotkeyRegistry(defaults: defaults, isAppLocked: { lifecycle.isLocked })
+        let detachedWindows = DetachedWindowRegistry(
+            appModel: appModel,
+            mainInbox: inbox,
+            lifecycle: lifecycle,
+            inboxPreferences: inboxPrefs,
+            composerPreferences: composerPrefs,
+            quickReplies: quickReplies
+        )
+        _ = HotkeyDispatcher(
+            inbox: inbox,
+            spaces: spaces,
+            conversation: conversation,
+            messageActions: messageActions,
+            search: search,
+            lifecycle: lifecycle,
+            menuCoordinator: coordinator,
+            hotkeys: registry
+        )
+
+        appModel.setAccountsForTesting([
+            Account(network: "gmessages", displayName: "Google Messages", flows: ["google"], state: .connected),
+        ])
+        let items = Timeline.build(
+            events: [
+                Event(
+                    eventID: "$m1",
+                    roomID: "!r1",
+                    sender: "@me:courier.local",
+                    senderName: "Me",
+                    mine: true,
+                    type: "m.room.message",
+                    content: .object([
+                        "msgtype": .string("m.text"),
+                        "body": .string("Hello https://example.com"),
+                    ]),
+                    ts: 1_761_400_000_000,
+                    seq: 1,
+                    status: .sent
+                ),
+                Event(
+                    eventID: "$vo1",
+                    roomID: "!r1",
+                    sender: "@alice:courier.local",
+                    senderName: "Alice",
+                    mine: false,
+                    type: "m.room.message",
+                    content: .object([
+                        "msgtype": .string("m.image"),
+                        "body": .string("photo.jpg"),
+                    ]),
+                    ts: 1_761_400_001_000,
+                    seq: 2,
+                    status: .sent,
+                    mediaPath: "/tmp/photo.jpg",
+                    viewOnce: true
+                ),
+            ],
+            me: "@me:courier.local",
+            now: Date(timeIntervalSince1970: 1_761_400_100)
+        )
+        let fullFeatures = ChatFeatures(
+            reply: true,
+            thread: true,
+            edit: true,
+            unsend: true,
+            formatting: [.link],
+            source: .stored,
+            canDelete: true
+        )
+        conversation.setSnapshotStateForTesting(roomID: "!r1", items: items, features: fullFeatures)
+        conversation.composer.open("!r1")
+        conversation.composer.features = fullFeatures
+        conversation.composer.text = "Draft to schedule"
+
+        // 1. SendLaterPicker sheet
+        messageActions.requestSendLater()
+        XCTAssertEqual(messageActions.request, MessageActionRequest.sendLater)
+        lifecycle.lockApp()
+        XCTAssertNil(messageActions.request, "SendLaterPicker must be dismissed when app locks")
+        try await conversation.composer.schedule(at: Date().addingTimeInterval(3600), condition: .always)
+        XCTAssertEqual(sender.scheduledCount, 0, "SendLaterPicker schedule must be a no-op while locked")
+
+        // 2. ForwardPicker sheet
+        _ = await lifecycle.unlockWithTouchID()
+        await messageActions.perform(.forward, on: "$m1", from: .chat)
+        XCTAssertEqual(messageActions.request, MessageActionRequest.forward(messageID: "$m1"))
+        lifecycle.lockApp()
+        XCTAssertNil(messageActions.request, "ForwardPicker must be dismissed when app locks")
+
+        // 3. ReactionPicker sheet
+        _ = await lifecycle.unlockWithTouchID()
+        await messageActions.perform(.react, on: "$m1", from: .chat)
+        XCTAssertEqual(messageActions.request, MessageActionRequest.reactionPicker(messageID: "$m1"))
+        lifecycle.lockApp()
+        XCTAssertNil(messageActions.request, "ReactionPicker must be dismissed when app locks")
+
+        // 4. QuickReplyTitleSheet
+        _ = await lifecycle.unlockWithTouchID()
+        conversation.composer.text = "Draft for quick reply"
+        messageActions.requestQuickReplyFromDraft()
+        XCTAssertEqual(messageActions.request, MessageActionRequest.quickReplyTitle)
+        lifecycle.lockApp()
+        XCTAssertNil(messageActions.request, "QuickReplyTitleSheet must be dismissed when app locks")
+        XCTAssertFalse(messageActions.createQuickReply(title: "locked"), "QuickReplyTitleSheet cannot save while locked")
+        XCTAssertTrue(quickReplies.all.isEmpty)
+
+        // 5. MessageActionRequest.confirm alert
+        _ = await lifecycle.unlockWithTouchID()
+        await messageActions.perform(.deleteForMe, on: "$m1", from: .chat)
+        XCTAssertNotNil(messageActions.request)
+        lifecycle.lockApp()
+        XCTAssertNil(messageActions.request, "Message confirm alert must be dismissed when app locks")
+
+        // 6. All remaining sheets, popovers, alerts, and detached window presentations
+        _ = await lifecycle.unlockWithTouchID()
+        let c1 = ContactCandidate(userID: "@u1:local", name: "Bob", network: "gmessages", accountID: "a1")
+        let c2 = ContactCandidate(userID: "@u2:local", name: "Carol", network: "gmessages", accountID: "a1")
+        inbox.startNewChatDraft = StartNewChatDraft(
+            accounts: appModel.accounts,
+            candidates: [c1, c2],
+            selectedRecipients: [c1, c2],
+            mode: .blast,
+            blastText: "Blast while locked",
+            isConfirmingBlast: true
+        )
+        let row1 = InboxRow(
+            roomID: "!r1",
+            network: "gmessages",
+            name: "Alice",
+            avatarPath: "",
+            isDirect: true,
+            lastTS: 100,
+            preview: "Hi",
+            previewKind: .text,
+            previewMine: false,
+            unread: 0,
+            muted: false
+        )
+        let row2 = InboxRow(
+            roomID: "!r2",
+            network: "gmessages",
+            name: "Bob",
+            avatarPath: "",
+            isDirect: true,
+            lastTS: 90,
+            preview: "Yo",
+            previewKind: .text,
+            previewMine: false,
+            unread: 0,
+            muted: false
+        )
+        inbox.mergedChatEditorDraft = MergedChatEditorDraft(initialRows: [row1, row2])
+        inbox.customReminder = ReminderRequest(ids: ["!r1"])
+        inbox.isRemindPopoverPresented = true
+        inbox.isAccountPopoverPresented = true
+        inbox.beginSelecting()
+        login.begin(network: "gmessages")
+        XCTAssertEqual(login.screen, .googleWarning(network: "gmessages", flow: "google"))
+
+        let viewOnceMsg = try XCTUnwrap(conversation.message("$vo1", from: .chat))
+        conversation.openViewOnce(viewOnceMsg)
+        XCTAssertNotNil(conversation.activeViewOnceMessage)
+        let roomInfo = RoomInfoResult(
+            roomID: "!r1",
+            name: "Team",
+            remoteName: "Team",
+            network: "gmessages",
+            isDirect: false,
+            features: .noFeatures
+        )
+        conversation.activeEditGroupDraft = EditGroupDraft(info: roomInfo)
+        conversation.activeAddParticipantsRoom = roomInfo
+        conversation.activeReportSpamDraft = ReportSpamDraft(roomID: "!r1", canLeave: true, canDelete: true)
+        conversation.pendingRoomConfirmation = .leaveGroup(roomID: "!r1", groupName: "Team", network: "gmessages")
+        conversation.isCreatingPoll = true
+        conversation.carousel.open(
+            items: [
+                CarouselItem(
+                    eventID: "$m1",
+                    roomID: "!r1",
+                    kind: .image,
+                    mediaPath: "/tmp/img.png",
+                    fileName: "img.png",
+                    senderName: "Me"
+                ),
+            ],
+            selectedEventID: "$m1"
+        )
+        XCTAssertTrue(conversation.carousel.isPresented)
+        conversation.composer.isGIFPickerPresented = true
+        conversation.composer.isStickerPickerPresented = true
+        _ = conversation.composer.formattingKey(.link, in: NSRange(location: 0, length: 5))
+        XCTAssertNotNil(conversation.composer.linkRequest)
+
+        let scheduledMsg = ScheduledMessage(
+            outboxID: 1,
+            roomID: "!r1",
+            text: "Later",
+            dueAt: 1_761_500_000_000,
+            condition: .always,
+            state: .waiting,
+            setAt: 1_761_400_000_000
+        )
+        scheduled.editingMessage = scheduledMsg
+        scheduled.reschedulingMessage = scheduledMsg
+        quickReplies.editing = QuickReplyEdit(reply: nil)
+        registry.isShortcutsSheetPresented = true
+        registry.beginRecording(for: "Search")
+        search.toggle(visible: true)
+        XCTAssertNotEqual(search.phase, .closed)
+
+        detachedWindows.open(.chat(roomID: "!r1"))
+        let detachedSession = try XCTUnwrap(detachedWindows.session(for: DetachedWindowTarget.chat(roomID: "!r1")))
+        detachedSession.conversation.setSnapshotStateForTesting(roomID: "!r1", items: items, features: fullFeatures)
+        detachedSession.conversation.composer.open("!r1")
+        detachedSession.conversation.composer.sender = sender
+        detachedSession.conversation.composer.text = "Detached draft"
+        detachedSession.messageActions.requestSendLater()
+        detachedSession.conversation.openViewOnce(viewOnceMsg)
+        detachedSession.scheduled.editingMessage = scheduledMsg
+        XCTAssertEqual(detachedSession.messageActions.request, MessageActionRequest.sendLater)
+        XCTAssertNotNil(detachedSession.conversation.activeViewOnceMessage)
+        XCTAssertNotNil(detachedSession.scheduled.editingMessage)
+
+        lifecycle.lockApp()
+
+        XCTAssertNil(inbox.startNewChatDraft, "StartNewChatView (including blast) must be dismissed on lock")
+        XCTAssertNil(inbox.mergedChatEditorDraft, "MergedChatEditorSheet must be dismissed on lock")
+        XCTAssertNil(inbox.customReminder, "CustomReminderSheet must be dismissed on lock")
+        XCTAssertFalse(inbox.isRemindPopoverPresented, "Remind Me popover must be dismissed on lock")
+        XCTAssertFalse(inbox.isAccountPopoverPresented, "Account filter popover must be dismissed on lock")
+        XCTAssertFalse(inbox.isSelecting, "Inbox selection mode must end on lock")
+        XCTAssertEqual(login.screen, .closed, "AddNetworkView must be closed on lock")
+        XCTAssertNil(conversation.activeViewOnceMessage, "ViewOnceSheet must be dismissed on lock")
+        XCTAssertNil(conversation.activeEditGroupDraft, "EditGroupSheet must be dismissed on lock")
+        XCTAssertNil(conversation.activeAddParticipantsRoom, "AddParticipantsSheet must be dismissed on lock")
+        XCTAssertNil(conversation.activeReportSpamDraft, "ReportSpamSheet must be dismissed on lock")
+        XCTAssertNil(conversation.pendingRoomConfirmation, "Room confirmation alert must be dismissed on lock")
+        XCTAssertFalse(conversation.isCreatingPoll, "PollCreatorWindow must be dismissed on lock")
+        XCTAssertFalse(conversation.carousel.isPresented, "AttachmentCarouselOverlay must be dismissed on lock")
+        XCTAssertFalse(conversation.composer.isGIFPickerPresented, "GIFPickerPopover must be dismissed on lock")
+        XCTAssertFalse(conversation.composer.isStickerPickerPresented, "StickerPickerPopover must be dismissed on lock")
+        XCTAssertNil(conversation.composer.linkRequest, "LinkDialog must be dismissed on lock")
+        XCTAssertNil(scheduled.editingMessage, "ScheduledEditSheet must be dismissed on lock")
+        XCTAssertNil(scheduled.reschedulingMessage, "ScheduledRescheduleSheet must be dismissed on lock")
+        XCTAssertNil(quickReplies.editing, "QuickReplyEditor must be dismissed on lock")
+        XCTAssertFalse(registry.isShortcutsSheetPresented, "KeyboardShortcutsSheet must be dismissed on lock")
+        XCTAssertNil(registry.recordingHotkeyID, "Hotkey recorder must cancel on lock")
+        XCTAssertEqual(search.phase, .closed, "SearchOverlay must close on lock")
+
+        XCTAssertNil(detachedSession.messageActions.request, "Detached window sheet must be dismissed on lock")
+        XCTAssertNil(detachedSession.conversation.activeViewOnceMessage, "Detached ViewOnceSheet must be dismissed on lock")
+        XCTAssertNil(detachedSession.scheduled.editingMessage, "Detached ScheduledEditSheet must be dismissed on lock")
+
+        // Attempting sheet actions while locked must not invoke their side effects.
+        login.continueAfterWarning()
+        XCTAssertEqual(loginCaller.startCount, 0, "AddNetworkView continueAfterWarning must not start login while locked")
+        await conversation.markPlayed("$vo1", roomID: "!r1")
+        XCTAssertEqual(conversation.message("$vo1", from: .chat)?.played, false, "ViewOnceSheet markPlayed must be a no-op while locked")
+        try? quickReplies.add(title: "locked", text: "locked")
+        XCTAssertTrue(quickReplies.all.isEmpty, "QuickReplyEditor cannot add replies while locked")
+    }
+
+    func testLabelEditorCannotSaveWhileLocked() async throws {
+        let suiteName = "courier.test.hotkeys.labels.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let supervisor = EngineSupervisor(
+            enginePath: "/Applications/Courier.app/Contents/Helpers/courier-engine",
+            dataDir: URL(fileURLWithPath: "/tmp/courier-test-hotkeys-labels"),
+            environment: [:],
+            launcher: FakeLauncher { _, _ in }
+        )
+        let appModel = AppModel(supervisor: supervisor)
+        let lifecycle = SystemLifecycleModel(
+            defaults: defaults,
+            loginItem: FakeLoginItemService(currentStatus: .notRegistered),
+            biometrics: FakeBiometricAuthService(available: true, result: .success(true))
+        )
+        let labels = LabelsModel(appModel: appModel)
+        lifecycle.lockApp()
+        XCTAssertTrue(lifecycle.isLocked)
+
+        do {
+            _ = try await labels.create(title: "Work", color: 1, icon: "tag")
+            XCTFail("LabelsModel.create must throw while app is locked")
+        } catch let error as EngineError {
+            XCTAssertEqual(error, .rpc(.badValue, message: "Courier is locked", reason: "locked"))
+        }
+
+        do {
+            try await labels.update(1, title: "Personal", color: 2, icon: "star")
+            XCTFail("LabelsModel.update must throw while app is locked")
+        } catch let error as EngineError {
+            XCTAssertEqual(error, .rpc(.badValue, message: "Courier is locked", reason: "locked"))
+        }
+
+        do {
+            try await labels.delete(1)
+            XCTFail("LabelsModel.delete must throw while app is locked")
+        } catch let error as EngineError {
+            XCTAssertEqual(error, .rpc(.badValue, message: "Courier is locked", reason: "locked"))
+        }
+    }
+
+    func testMessageMenuShortcutsRouteThroughHotkeyDispatcherAndAreNoOpWhileLocked() async throws {
+        let suiteName = "courier.test.hotkeys.messagemenu.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        final class SpyPasteboard: TextPasteboard {
+            var copied: String?
+            func setString(_ text: String) { copied = text }
+        }
+        final class MutableEntitlements: EntitlementProvider, @unchecked Sendable {
+            var allowed: Set<Feature> = Set(Feature.allCases)
+            func isEntitled(_ feature: Feature) -> Bool { allowed.contains(feature) }
+        }
+
+        let pasteboard = SpyPasteboard()
+        let entitlements = MutableEntitlements()
+        var openedURLs: [URL] = []
+
+        let supervisor = EngineSupervisor(
+            enginePath: "/Applications/Courier.app/Contents/Helpers/courier-engine",
+            dataDir: URL(fileURLWithPath: "/tmp/courier-test-hotkeys-msgmenu"),
+            environment: [:],
+            launcher: FakeLauncher { _, _ in }
+        )
+        let appModel = AppModel(supervisor: supervisor)
+        let inbox = InboxModel(
+            appModel: appModel,
+            preferences: InboxPreferences(defaults: defaults),
+            entitlement: entitlements
+        )
+        let spaces = SpacesModel(appModel: appModel, inbox: inbox)
+        let conversation = ConversationModel(
+            appModel: appModel,
+            unreadCount: { _ in 0 },
+            chat: { _ in nil }
+        )
+        conversation.composer.entitlement = entitlements
+        let messageActions = MessageActionsModel(
+            conversation: conversation,
+            appModel: appModel,
+            preferences: ComposerPreferences(defaults: defaults),
+            pasteboard: pasteboard
+        )
+        messageActions.openURL = { openedURLs.append($0) }
+        let search = SearchModel(
+            appModel: appModel,
+            recents: RecentSearches(defaults: defaults),
+            open: { _ in }
+        )
+        let lifecycle = SystemLifecycleModel(
+            defaults: defaults,
+            loginItem: FakeLoginItemService(currentStatus: .notRegistered),
+            biometrics: FakeBiometricAuthService(available: true, result: .success(true))
+        )
+        let coordinator = AppMenuCoordinator(inbox: inbox, lifecycle: lifecycle)
+        let registry = HotkeyRegistry(defaults: defaults, isAppLocked: { lifecycle.isLocked })
+        let dispatcher = HotkeyDispatcher(
+            inbox: inbox,
+            spaces: spaces,
+            conversation: conversation,
+            messageActions: messageActions,
+            search: search,
+            lifecycle: lifecycle,
+            menuCoordinator: coordinator,
+            hotkeys: registry
+        )
+
+        XCTAssertEqual(MenuKey.commandT.hotkeyID, "Message: Edit")
+        XCTAssertEqual(MenuKey.commandR.hotkeyID, "Message: Quote & Reply")
+        XCTAssertEqual(MenuKey.commandDown.hotkeyID, "Show Replies")
+        XCTAssertNil(MenuKey.commandC.hotkeyID)
+        XCTAssertEqual(MenuKey.commandShiftH.hotkeyID, "Message: Open First Link")
+        XCTAssertEqual(MenuKey.commandShiftF.hotkeyID, "Message: Forward")
+
+        let items = Timeline.build(
+            events: [
+                Event(
+                    eventID: "$m1",
+                    roomID: "!r1",
+                    sender: "@me:courier.local",
+                    senderName: "Me",
+                    mine: true,
+                    type: "m.room.message",
+                    content: .object([
+                        "msgtype": .string("m.text"),
+                        "body": .string("Visit https://example.com"),
+                        "format": .string("org.matrix.custom.html"),
+                        "formatted_body": .string("<a href=\"https://example.com\">Visit https://example.com</a>"),
+                    ]),
+                    ts: 1_761_400_000_000,
+                    seq: 1,
+                    status: .sent,
+                    thread: ThreadSummary(replies: 2, lastTS: 1_761_400_005_000, lastSenders: ["Alice"])
+                ),
+            ],
+            me: "@me:courier.local",
+            now: Date(timeIntervalSince1970: 1_761_400_100)
+        )
+        let fullFeatures = ChatFeatures(
+            reply: true,
+            thread: true,
+            edit: true,
+            unsend: true,
+            source: .stored,
+            canDelete: true
+        )
+        conversation.setSnapshotStateForTesting(roomID: "!r1", items: items, features: fullFeatures)
+        conversation.selectedMessageID = "$m1"
+
+        lifecycle.lockApp()
+        XCTAssertTrue(lifecycle.isLocked)
+
+        await messageActions.perform(.edit, on: "$m1", from: .chat)
+        XCTAssertEqual(conversation.composer.mode, .new, "MessageMenu .commandT (Edit) must be a no-op while locked")
+        await messageActions.perform(.reply, on: "$m1", from: .chat)
+        XCTAssertNil(conversation.composer.replyTarget, "MessageMenu .commandR (Reply) must be a no-op while locked")
+        conversation.openThread("$m1")
+        XCTAssertNil(conversation.thread.rootID, "MessageMenu .commandDown (Show Replies) must be a no-op while locked")
+        await messageActions.perform(.copy, on: "$m1", from: .chat)
+        XCTAssertNil(pasteboard.copied, "MessageMenu .commandC (Copy) must be a no-op while locked")
+        await messageActions.perform(.openFirstLink, on: "$m1", from: .chat)
+        XCTAssertTrue(openedURLs.isEmpty, "MessageMenu .commandShiftH (Open Link) must be a no-op while locked")
+        await messageActions.perform(.forward, on: "$m1", from: .chat)
+        XCTAssertNil(messageActions.request, "MessageMenu .commandShiftF (Forward) must be a no-op while locked")
+
+        // Also verify Message: Send Later (⌘⇧L) checks .sendLater entitlement when unlocked.
+        _ = await lifecycle.unlockWithTouchID()
+        conversation.composer.open("!r1")
+        conversation.composer.text = "Scheduled text"
+        entitlements.allowed.remove(.sendLater)
+        XCTAssertFalse(dispatcher.canPerform("Message: Send Later"))
+        XCTAssertFalse(dispatcher.perform("Message: Send Later"))
+        XCTAssertNil(messageActions.request)
     }
 }

@@ -26,7 +26,9 @@ struct ConversationCommands: Commands {
             Divider()
             FileOpenCommandItem(
                 composer: composer,
-                isDisabled: conversation.roomID == nil || lifecycle.isLocked
+                hotkeys: hotkeys,
+                hotkeyDispatcher: hotkeyDispatcher,
+                isDisabled: !hotkeyDispatcher.canPerform("Chat: Send File")
             )
         }
         CommandMenu(String(localized: "Message")) {

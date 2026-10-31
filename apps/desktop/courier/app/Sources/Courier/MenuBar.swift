@@ -33,6 +33,8 @@ struct MenuBarMenu: View {
     @ObservedObject var lifecycle: SystemLifecycleModel
     @ObservedObject var dockPreferences: DockAndTrayPreferences
     let menuCoordinator: AppMenuCoordinator
+    @ObservedObject var hotkeys: HotkeyRegistry = HotkeyRegistry()
+    var hotkeyDispatcher: HotkeyDispatcher? = nil
     let openCourier: () -> Void
 
     private var dockMenu: DockMenuModel {
@@ -68,8 +70,15 @@ struct MenuBarMenu: View {
         }
         Divider()
         Button(String(localized: "Open Courier"), action: openCourier)
-        Button(String(localized: "Minimize to Menu Bar"), action: menuCoordinator.minimizeToMenuBar)
-            .keyboardShortcut("q", modifiers: [.command, .option])
+        Button(String(localized: "Minimize to Menu Bar")) {
+            if let hotkeyDispatcher {
+                _ = hotkeyDispatcher.perform("Minimize To Menu Bar")
+            } else {
+                menuCoordinator.minimizeToMenuBar()
+            }
+        }
+        .registryShortcut("Minimize To Menu Bar", in: hotkeys)
+        .disabled(lifecycle.isLocked || (hotkeyDispatcher.map { !$0.canPerform("Minimize To Menu Bar") } ?? false))
         Button(lifecycle.isLocked ? String(localized: "Unlock Courier…") : String(localized: "Lock App")) {
             if lifecycle.isLocked {
                 openCourier()
@@ -78,8 +87,15 @@ struct MenuBarMenu: View {
         }
         Divider()
         // Quit goes through the app's quit path, which stops the engine and then exits.
-        Button(String(localized: "Quit Courier")) { NSApp.terminate(nil) }
-            .keyboardShortcut("q", modifiers: .command)
+        Button(String(localized: "Quit Courier")) {
+            if let hotkeyDispatcher {
+                _ = hotkeyDispatcher.perform("Quit App")
+            } else {
+                menuCoordinator.quitApp()
+            }
+        }
+        .registryShortcut("Quit App", in: hotkeys)
+        .disabled(lifecycle.isLocked || (hotkeyDispatcher.map { !$0.canPerform("Quit App") } ?? false))
     }
 
     private func openChat(_ roomID: String) {
@@ -175,13 +191,19 @@ final class DockBadge {
 /// `File ▸ Open…` (`menu:File Open…`, `⌘O`) command item opening the file picker to attach files to the active composer.
 struct FileOpenCommandItem: View {
     let composer: ComposerModel
+    var hotkeys: HotkeyRegistry = HotkeyRegistry()
+    var hotkeyDispatcher: HotkeyDispatcher? = nil
     let isDisabled: Bool
 
     var body: some View {
         Button(String(localized: "Open…")) {
-            AttachmentPicker.run(into: composer)
+            if let hotkeyDispatcher {
+                _ = hotkeyDispatcher.perform("Chat: Send File")
+            } else {
+                AttachmentPicker.run(into: composer)
+            }
         }
-        .keyboardShortcut("o", modifiers: .command)
-        .disabled(isDisabled)
+        .registryShortcut("Chat: Send File", in: hotkeys)
+        .disabled(isDisabled || (hotkeyDispatcher.map { !$0.canPerform("Chat: Send File") } ?? false))
     }
 }

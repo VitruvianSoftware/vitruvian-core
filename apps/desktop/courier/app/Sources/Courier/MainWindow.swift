@@ -15,6 +15,31 @@ final class InboxUI: ObservableObject {
     /// The main window is open and in front (key). ⌘K closes a panel only then; otherwise it brings the window
     /// forward and opens it.
     var isMainWindowKey = false
+    private var lockObserver: NSObjectProtocol?
+
+    init() {
+        lockObserver = NotificationCenter.default.addObserver(
+            forName: SystemLifecycleModel.didLockNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.dismissAllPresentations()
+            }
+        }
+    }
+
+    deinit {
+        if let lockObserver {
+            NotificationCenter.default.removeObserver(lockObserver)
+        }
+    }
+
+    func dismissAllPresentations() {
+        if customReminder != nil { customReminder = nil }
+        if remindPopover { remindPopover = false }
+        if accountPopover { accountPopover = false }
+    }
 }
 
 /// The main window: how the engine is doing until it is up, then the space bar, the chat list and the
@@ -44,158 +69,165 @@ struct MainWindow: View {
     @Environment(\.controlActiveState) private var controlActiveState
 
     var body: some View {
-        content
-            .frame(minWidth: 480, maxWidth: .infinity, minHeight: 320, maxHeight: .infinity)
-            .overlay {
-                if search.phase != .closed {
-                    SearchOverlay(search: search, inbox: inbox)
+        LockableWindowContent(lifecycle: lifecycle) {
+            content
+                .frame(minWidth: 480, maxWidth: .infinity, minHeight: 320, maxHeight: .infinity)
+                .overlay {
+                    if search.phase != .closed {
+                        SearchOverlay(search: search, inbox: inbox)
+                    }
                 }
-            }
-            .overlay {
-                if conversation.carousel.isPresented {
-                    AttachmentCarouselOverlay(
-                        model: conversation.carousel,
-                        onGoToMessage: { item in
-                            conversation.closeLightbox()
-                            model.open(.message(roomID: item.roomID, eventID: item.eventID))
-                        },
-                        onReact: { item, emoji in
-                            Task { await conversation.react(to: item.eventID, key: emoji) }
-                        },
-                        onReply: { item in
-                            conversation.closeLightbox()
-                            if let msg = conversation.message(item.eventID, from: .chat),
-                               let action = conversation.replyAction(for: msg) {
-                                Task { await messageActions.perform(action, on: item.eventID, from: .chat) }
+                .overlay {
+                    if conversation.carousel.isPresented {
+                        AttachmentCarouselOverlay(
+                            model: conversation.carousel,
+                            onGoToMessage: { item in
+                                conversation.closeLightbox()
+                                model.open(.message(roomID: item.roomID, eventID: item.eventID))
+                            },
+                            onReact: { item, emoji in
+                                Task { await conversation.react(to: item.eventID, key: emoji) }
+                            },
+                            onReply: { item in
+                                conversation.closeLightbox()
+                                if let msg = conversation.message(item.eventID, from: .chat),
+                                   let action = conversation.replyAction(for: msg) {
+                                    Task { await messageActions.perform(action, on: item.eventID, from: .chat) }
+                                }
+                            },
+                            onCopyImage: { item in
+                                guard !item.viewOnce,
+                                      isLocalMediaStorePath(item.mediaPath),
+                                      let nsImage = NSImage(contentsOfFile: item.mediaPath)
+                                else { return }
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.writeObjects([nsImage])
+                                conversation.onToast(String(localized: "Copied image"))
+                            },
+                            onQuickLook: { item in
+                                guard !item.viewOnce, isLocalMediaStorePath(item.mediaPath) else { return }
+                                QuickLookPreviewCoordinator.shared.preview(
+                                    fileAtPath: item.mediaPath,
+                                    suggestedName: item.fileName
+                                )
+                            },
+                            onDownload: { item in
+                                guard !item.viewOnce, isLocalMediaStorePath(item.mediaPath) else { return }
+                                let downloader = AttachmentDownloader(preferences: composerPreferences)
+                                if let saved = try? downloader.download(
+                                    sourcePath: item.mediaPath,
+                                    suggestedName: item.fileName
+                                ) {
+                                    conversation.onToast(String(localized: "Saved \(saved.lastPathComponent)"))
+                                }
+                            },
+                            onClose: {
+                                conversation.closeLightbox()
                             }
-                        },
-                        onCopyImage: { item in
-                            guard !item.viewOnce,
-                                  isLocalMediaStorePath(item.mediaPath),
-                                  let nsImage = NSImage(contentsOfFile: item.mediaPath)
-                            else { return }
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.writeObjects([nsImage])
-                            conversation.onToast(String(localized: "Copied image"))
-                        },
-                        onQuickLook: { item in
-                            guard !item.viewOnce, isLocalMediaStorePath(item.mediaPath) else { return }
-                            QuickLookPreviewCoordinator.shared.preview(
-                                fileAtPath: item.mediaPath,
-                                suggestedName: item.fileName
-                            )
-                        },
-                        onDownload: { item in
-                            guard !item.viewOnce, isLocalMediaStorePath(item.mediaPath) else { return }
-                            let downloader = AttachmentDownloader(preferences: composerPreferences)
-                            if let saved = try? downloader.download(
-                                sourcePath: item.mediaPath,
-                                suggestedName: item.fileName
-                            ) {
-                                conversation.onToast(String(localized: "Saved \(saved.lastPathComponent)"))
+                        )
+                    }
+                }
+                // A chat's right-click menu opens search in that chat.
+                .environment(\.searchInChat, { search.show(in: $0) })
+                .environment(\.openDetachedWindow, { target in detachedWindows?.open(target) })
+                .onChange(of: controlActiveState, initial: true) { _, state in
+                    ui.isMainWindowKey = state == .key
+                }
+                // A closed window takes its panel with it: the next ⌘K opens a fresh one, in view.
+                .onDisappear {
+                    ui.isMainWindowKey = false
+                    search.close()
+                    conversation.composer.voiceRecorder.cancelImmediately()
+                    conversation.thread.composer.voiceRecorder.cancelImmediately()
+                    conversation.composer.isStickerPickerPresented = false
+                    conversation.composer.isGIFPickerPresented = false
+                    conversation.thread.composer.isStickerPickerPresented = false
+                    conversation.thread.composer.isGIFPickerPresented = false
+                }
+                .sheet(isPresented: addingNetwork) {
+                    AddNetworkView(login: login)
+                }
+                .sheet(item: customReminderBinding) { request in
+                    CustomReminderSheet(request: request, inbox: inbox)
+                }
+                .sheet(
+                    isPresented: Binding(
+                        get: { inbox.startNewChatDraft != nil },
+                        set: { shown in if !shown { inbox.startNewChatDraft = nil } }
+                    )
+                ) {
+                    if let draft = inbox.startNewChatDraft {
+                        StartNewChatView(
+                            draft: draft,
+                            onQueryChanged: { updated in
+                                inbox.updateStartNewChatDraft(updated)
+                            },
+                            onOpenDirectChat: { candidate in
+                                Task { await inbox.openDirectChat(with: candidate) }
+                            },
+                            onLookup: { action in
+                                Task { await inbox.performStartNewChatLookup(action) }
+                            },
+                            onCreateGroup: { updated in
+                                inbox.startNewChatDraft = updated
+                                Task { await inbox.submitNewGroupChat() }
+                            },
+                            onSendBlast: { updated in
+                                inbox.startNewChatDraft = updated
+                                Task { await inbox.submitBlast() }
+                            },
+                            onCancel: {
+                                inbox.startNewChatDraft = nil
                             }
-                        },
-                        onClose: {
-                            conversation.closeLightbox()
-                        }
+                        )
+                    }
+                }
+                .sheet(
+                    isPresented: Binding(
+                        get: { inbox.mergedChatEditorDraft != nil },
+                        set: { shown in if !shown { inbox.mergedChatEditorDraft = nil } }
+                    )
+                ) {
+                    if let draft = inbox.mergedChatEditorDraft {
+                        MergedChatEditorSheet(
+                            draft: draft,
+                            onSave: { updated in
+                                inbox.mergedChatEditorDraft = updated
+                                Task { await inbox.saveMergedChatEditor() }
+                            },
+                            onUnmerge: { mergeID in
+                                Task { await inbox.unmergeChat(mergeID) }
+                            },
+                            onCancel: {
+                                inbox.mergedChatEditorDraft = nil
+                            }
+                        )
+                    }
+                }
+                // The Edit spaces command (and the bar's menus) ask for the window this way.
+                .onChange(of: spaces.isEditing) { _, editing in
+                    if editing { openWindow(id: WindowID.editSpaces) }
+                }
+                .sheet(isPresented: $hotkeys.isShortcutsSheetPresented) {
+                    KeyboardShortcutsSheet(
+                        registry: hotkeys,
+                        onCustomize: onOpenShortcutsSettings,
+                        onClose: { hotkeys.isShortcutsSheetPresented = false }
                     )
                 }
+                .navigationTitle("Courier")
+                .navigationSubtitle(StatusText.subtitle(for: model.engineState))
+        }
+    }
+
+    private var customReminderBinding: Binding<ReminderRequest?> {
+        Binding(
+            get: { ui.customReminder ?? inbox.customReminder },
+            set: { value in
+                ui.customReminder = value
+                inbox.customReminder = value
             }
-            .overlay {
-                if lifecycle.isLocked {
-                    AppLockOverlay(model: lifecycle)
-                }
-            }
-            // A chat's right-click menu opens search in that chat.
-            .environment(\.searchInChat, { search.show(in: $0) })
-            .environment(\.openDetachedWindow, { target in detachedWindows?.open(target) })
-            .onChange(of: controlActiveState, initial: true) { _, state in
-                ui.isMainWindowKey = state == .key
-            }
-            // A closed window takes its panel with it: the next ⌘K opens a fresh one, in view.
-            .onDisappear {
-                ui.isMainWindowKey = false
-                search.close()
-                conversation.composer.voiceRecorder.cancelImmediately()
-                conversation.thread.composer.voiceRecorder.cancelImmediately()
-                conversation.composer.isStickerPickerPresented = false
-                conversation.composer.isGIFPickerPresented = false
-                conversation.thread.composer.isStickerPickerPresented = false
-                conversation.thread.composer.isGIFPickerPresented = false
-            }
-            .sheet(isPresented: addingNetwork) {
-                AddNetworkView(login: login)
-            }
-            .sheet(item: $ui.customReminder) { request in
-                CustomReminderSheet(request: request, inbox: inbox)
-            }
-            .sheet(
-                isPresented: Binding(
-                    get: { inbox.startNewChatDraft != nil },
-                    set: { shown in if !shown { inbox.startNewChatDraft = nil } }
-                )
-            ) {
-                if let draft = inbox.startNewChatDraft {
-                    StartNewChatView(
-                        draft: draft,
-                        onQueryChanged: { updated in
-                            inbox.updateStartNewChatDraft(updated)
-                        },
-                        onOpenDirectChat: { candidate in
-                            Task { await inbox.openDirectChat(with: candidate) }
-                        },
-                        onLookup: { action in
-                            Task { await inbox.performStartNewChatLookup(action) }
-                        },
-                        onCreateGroup: { updated in
-                            inbox.startNewChatDraft = updated
-                            Task { await inbox.submitNewGroupChat() }
-                        },
-                        onSendBlast: { updated in
-                            inbox.startNewChatDraft = updated
-                            Task { await inbox.submitBlast() }
-                        },
-                        onCancel: {
-                            inbox.startNewChatDraft = nil
-                        }
-                    )
-                }
-            }
-            .sheet(
-                isPresented: Binding(
-                    get: { inbox.mergedChatEditorDraft != nil },
-                    set: { shown in if !shown { inbox.mergedChatEditorDraft = nil } }
-                )
-            ) {
-                if let draft = inbox.mergedChatEditorDraft {
-                    MergedChatEditorSheet(
-                        draft: draft,
-                        onSave: { updated in
-                            inbox.mergedChatEditorDraft = updated
-                            Task { await inbox.saveMergedChatEditor() }
-                        },
-                        onUnmerge: { mergeID in
-                            Task { await inbox.unmergeChat(mergeID) }
-                        },
-                        onCancel: {
-                            inbox.mergedChatEditorDraft = nil
-                        }
-                    )
-                }
-            }
-            // The Edit spaces command (and the bar's menus) ask for the window this way.
-            .onChange(of: spaces.isEditing) { _, editing in
-                if editing { openWindow(id: WindowID.editSpaces) }
-            }
-            .sheet(isPresented: $hotkeys.isShortcutsSheetPresented) {
-                KeyboardShortcutsSheet(
-                    registry: hotkeys,
-                    onCustomize: onOpenShortcutsSettings,
-                    onClose: { hotkeys.isShortcutsSheetPresented = false }
-                )
-            }
-            .navigationTitle("Courier")
-            .navigationSubtitle(StatusText.subtitle(for: model.engineState))
+        )
     }
 
     @ViewBuilder
