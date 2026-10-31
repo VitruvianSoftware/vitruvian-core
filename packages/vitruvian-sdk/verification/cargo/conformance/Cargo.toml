@@ -20,7 +20,7 @@
 
 # The conformance validator, a member of verification/Cargo.toml. Its
 # sources are conformance/src, which the package's BUILD builds as
-# :conformance_rs_lib and :conformance. The manifest sits here, not in
+# :conformance_lib and :conformance. The manifest sits here, not in
 # conformance/, so that every Cargo file of the checks is under one folder.
 
 [package]

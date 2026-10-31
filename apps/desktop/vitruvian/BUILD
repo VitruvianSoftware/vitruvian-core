@@ -422,7 +422,7 @@ swift_binary(
 )
 
 rust_library(
-    name = "make_icons_rs_lib",
+    name = "make_icons_lib",
     srcs = ["bazel/src/make_icons/lib.rs"],
     crate_name = "make_icons",
     edition = "2021",
@@ -432,13 +432,13 @@ rust_binary(
     name = "make_icons_tool",
     srcs = ["bazel/src/make_icons/main.rs"],
     edition = "2021",
-    deps = [":make_icons_rs_lib"],
+    deps = [":make_icons_lib"],
 )
 
 rust_test(
-    name = "make_icons_rs_test",
+    name = "make_icons_test",
     size = "small",
-    crate = ":make_icons_rs_lib",
+    crate = ":make_icons_lib",
 )
 
 genrule(
@@ -460,7 +460,7 @@ genrule(
 )
 
 rust_library(
-    name = "helper_version_plist_rs_lib",
+    name = "helper_version_plist_lib",
     srcs = ["bazel/src/helper_version_plist/lib.rs"],
     crate_name = "helper_version_plist",
     edition = "2021",
@@ -470,13 +470,13 @@ rust_binary(
     name = "helper_version_plist_tool",
     srcs = ["bazel/src/helper_version_plist/main.rs"],
     edition = "2021",
-    deps = [":helper_version_plist_rs_lib"],
+    deps = [":helper_version_plist_lib"],
 )
 
 rust_test(
-    name = "helper_version_plist_rs_test",
+    name = "helper_version_plist_test",
     size = "small",
-    crate = ":helper_version_plist_rs_lib",
+    crate = ":helper_version_plist_lib",
 )
 
 genrule(
@@ -493,7 +493,7 @@ genrule(
 )
 
 rust_library(
-    name = "bundle_info_plist_rs_lib",
+    name = "bundle_info_plist_lib",
     srcs = ["bazel/src/bundle_info_plist/lib.rs"],
     crate_name = "bundle_info_plist",
     edition = "2021",
@@ -503,18 +503,13 @@ rust_binary(
     name = "bundle_info_plist_tool",
     srcs = ["bazel/src/bundle_info_plist/main.rs"],
     edition = "2021",
-    deps = [":bundle_info_plist_rs_lib"],
-)
-
-alias(
-    name = "bundle_info_plist_rs",
-    actual = ":bundle_info_plist_tool",
+    deps = [":bundle_info_plist_lib"],
 )
 
 rust_test(
-    name = "bundle_info_plist_rs_test",
+    name = "bundle_info_plist_test",
     size = "small",
-    crate = ":bundle_info_plist_rs_lib",
+    crate = ":bundle_info_plist_lib",
     data = ["Resources/Info.plist"],
 )
 
@@ -568,29 +563,24 @@ macos_application(
 # --- Tests --------------------------------------------------------------------
 
 rust_library(
-    name = "sync_sources_rs_lib",
+    name = "sync_sources_lib",
     srcs = ["bazel/src/sync_sources/lib.rs"],
     crate_name = "sync_sources",
     edition = "2021",
-    deps = [":generate_sources_rs_lib"],
+    deps = [":generate_sources_lib"],
 )
 
 rust_binary(
     name = "sync_sources",
     srcs = ["bazel/src/sync_sources/main.rs"],
     edition = "2021",
-    deps = [":sync_sources_rs_lib"],
-)
-
-alias(
-    name = "sync_sources_rs",
-    actual = ":sync_sources",
+    deps = [":sync_sources_lib"],
 )
 
 rust_test(
-    name = "sync_sources_rs_test",
+    name = "sync_sources_test",
     size = "small",
-    crate = ":sync_sources_rs_lib",
+    crate = ":sync_sources_lib",
     data = [
         "bazel/sources.bzl",
         "build.sh",
@@ -599,28 +589,8 @@ rust_test(
     ]),
 )
 
-# Upstream's mutation checks: each listed regression must fail the
-# test meant to catch it. It edits the checkout in place and drives
-# `bazel test` itself, so it is run rather than tested, on macOS:
-#   bazel run --config=macos-app //apps/desktop/vitruvian:mutation_checks
-# .github/workflows/vitruvian-mutation-checks.yaml runs it weekly.
-alias(
-    name = "mutation_checks",
-    actual = ":mutation_checks_rs",
-)
-
-# The same file, reading only: every mutation still quotes its source exactly.
-# A change that moves or rewords a quoted line fails here, in its own pull
-# request, instead of stopping the weekly run. Not `manual` and not macOS-only,
-# so it also runs wherever `bazel test //...` does. A few mutations are planted
-# in the tool protocol's sources, hence that package's files in `data`.
-test_suite(
-    name = "mutation_fixtures_test",
-    tests = [":mutation_fixtures_rs_test"],
-)
-
 rust_library(
-    name = "mutation_checks_rs_lib",
+    name = "mutation_checks_lib",
     srcs = [
         "bazel/src/mutation_checks/lib.rs",
         "bazel/src/mutation_checks/mutations.rs",
@@ -629,21 +599,31 @@ rust_library(
     edition = "2021",
 )
 
+# Upstream's mutation checks: each listed regression must fail the
+# test meant to catch it. It edits the checkout in place and drives
+# `bazel test` itself, so it is run rather than tested, on macOS:
+#   bazel run --config=macos-app //apps/desktop/vitruvian:mutation_checks
+# .github/workflows/vitruvian-mutation-checks.yaml runs it weekly.
 rust_binary(
-    name = "mutation_checks_rs",
+    name = "mutation_checks",
     srcs = ["bazel/src/mutation_checks/main.rs"],
     edition = "2021",
-    deps = [":mutation_checks_rs_lib"],
+    deps = [":mutation_checks_lib"],
 )
 
 rust_test(
-    name = "mutation_checks_rs_test",
+    name = "mutation_checks_test",
     size = "small",
-    crate = ":mutation_checks_rs_lib",
+    crate = ":mutation_checks_lib",
 )
 
+# The same file, reading only: every mutation still quotes its source exactly.
+# A change that moves or rewords a quoted line fails here, in its own pull
+# request, instead of stopping the weekly run. Not `manual` and not macOS-only,
+# so it also runs wherever `bazel test //...` does. A few mutations are planted
+# in the tool protocol's sources, hence that package's files in `data`.
 rust_test(
-    name = "mutation_fixtures_rs_test",
+    name = "mutation_fixtures_test",
     size = "small",
     srcs = ["bazel/src/mutation_checks/fixtures_test.rs"],
     data = [
@@ -654,91 +634,91 @@ rust_test(
         "Tests/**/*.swift",
     ]),
     edition = "2021",
-    deps = [":mutation_checks_rs_lib"],
+    deps = [":mutation_checks_lib"],
 )
 
 rust_library(
-    name = "generate_sources_rs_lib",
+    name = "generate_sources_lib",
     srcs = ["bazel/src/generate_sources/lib.rs"],
     crate_name = "generate_sources",
     edition = "2021",
 )
 
 rust_binary(
-    name = "generate_sources_rs",
+    name = "generate_sources",
     srcs = ["bazel/src/generate_sources/main.rs"],
     edition = "2021",
-    deps = [":generate_sources_rs_lib"],
+    deps = [":generate_sources_lib"],
 )
 
 rust_test(
-    name = "generate_sources_rs_test",
+    name = "generate_sources_test",
     size = "small",
-    crate = ":generate_sources_rs_lib",
+    crate = ":generate_sources_lib",
     data = glob([
         "Sources/**/*.swift",
     ]),
 )
 
 rust_library(
-    name = "make_placeholder_brand_rs_lib",
+    name = "make_placeholder_brand_lib",
     srcs = ["bazel/src/make_placeholder_brand/lib.rs"],
     crate_name = "make_placeholder_brand",
     edition = "2021",
 )
 
 rust_binary(
-    name = "make_placeholder_brand_rs",
+    name = "make_placeholder_brand",
     srcs = ["bazel/src/make_placeholder_brand/main.rs"],
     edition = "2021",
-    deps = [":make_placeholder_brand_rs_lib"],
+    deps = [":make_placeholder_brand_lib"],
 )
 
 rust_test(
-    name = "make_placeholder_brand_rs_test",
+    name = "make_placeholder_brand_test",
     size = "small",
-    crate = ":make_placeholder_brand_rs_lib",
+    crate = ":make_placeholder_brand_lib",
     data = glob(["Resources/Brand/**"]),
 )
 
 rust_library(
-    name = "preference_cleanup_tests_rs_lib",
+    name = "preference_cleanup_tests_lib",
     srcs = ["bazel/src/preference_cleanup_tests/lib.rs"],
     crate_name = "preference_cleanup_tests",
     edition = "2021",
 )
 
 rust_binary(
-    name = "preference_cleanup_tests_rs",
+    name = "preference_cleanup_tests",
     srcs = ["bazel/src/preference_cleanup_tests/main.rs"],
     edition = "2021",
-    deps = [":preference_cleanup_tests_rs_lib"],
+    deps = [":preference_cleanup_tests_lib"],
 )
 
 rust_test(
-    name = "preference_cleanup_tests_rs_test",
+    name = "preference_cleanup_tests_test",
     size = "small",
-    crate = ":preference_cleanup_tests_rs_lib",
+    crate = ":preference_cleanup_tests_lib",
 )
 
 rust_library(
-    name = "uninstall_spaces_tests_rs_lib",
+    name = "uninstall_spaces_tests_lib",
     srcs = ["bazel/src/uninstall_spaces_tests/lib.rs"],
     crate_name = "uninstall_spaces_tests",
     edition = "2021",
 )
 
 rust_binary(
-    name = "uninstall_spaces_tests_rs",
+    name = "uninstall_spaces_tests",
     srcs = ["bazel/src/uninstall_spaces_tests/main.rs"],
     edition = "2021",
-    deps = [":uninstall_spaces_tests_rs_lib"],
+    deps = [":uninstall_spaces_tests_lib"],
 )
 
 rust_test(
-    name = "uninstall_spaces_tests_rs_test",
+    name = "uninstall_spaces_tests_test",
     size = "small",
-    crate = ":uninstall_spaces_tests_rs_lib",
+    crate = ":uninstall_spaces_tests_lib",
 )
 
 # Emits generated test sources (see sync_sources).
@@ -798,20 +778,20 @@ swift_test(
 )
 
 rust_library(
-    name = "run_unit_tests_rs_lib",
+    name = "run_unit_tests_lib",
     srcs = ["bazel/src/run_unit_tests/lib.rs"],
     crate_name = "run_unit_tests",
     edition = "2021",
     deps = [
-        ":preference_cleanup_tests_rs_lib",
-        ":uninstall_spaces_tests_rs_lib",
+        ":preference_cleanup_tests_lib",
+        ":uninstall_spaces_tests_lib",
     ],
 )
 
 rust_test(
-    name = "run_unit_tests_rs_test",
+    name = "run_unit_tests_test",
     size = "small",
-    crate = ":run_unit_tests_rs_lib",
+    crate = ":run_unit_tests_lib",
 )
 
 rust_test(
@@ -853,20 +833,20 @@ rust_test(
     ],
     target_compatible_with = MACOS_ONLY,
     use_libtest_harness = False,
-    deps = [":run_unit_tests_rs_lib"],
+    deps = [":run_unit_tests_lib"],
 )
 
 rust_library(
-    name = "run_selftest_rs_lib",
+    name = "run_selftest_lib",
     srcs = ["bazel/src/run_selftest/lib.rs"],
     crate_name = "run_selftest",
     edition = "2021",
 )
 
 rust_test(
-    name = "run_selftest_rs_test",
+    name = "run_selftest_test",
     size = "small",
-    crate = ":run_selftest_rs_lib",
+    crate = ":run_selftest_lib",
 )
 
 rust_test(
@@ -886,20 +866,20 @@ rust_test(
     ],
     target_compatible_with = MACOS_ONLY,
     use_libtest_harness = False,
-    deps = [":run_selftest_rs_lib"],
+    deps = [":run_selftest_lib"],
 )
 
 rust_library(
-    name = "run_binary_rs_lib",
+    name = "run_binary_lib",
     srcs = ["bazel/src/run_binary/lib.rs"],
     crate_name = "run_binary",
     edition = "2021",
 )
 
 rust_test(
-    name = "run_binary_rs_test",
+    name = "run_binary_test",
     size = "small",
-    crate = ":run_binary_rs_lib",
+    crate = ":run_binary_lib",
 )
 
 rust_test(
@@ -915,12 +895,12 @@ rust_test(
     tags = ["manual"],
     target_compatible_with = MACOS_ONLY,
     use_libtest_harness = False,
-    deps = [":run_binary_rs_lib"],
+    deps = [":run_binary_lib"],
 )
 
 test_suite(
     name = "sources_in_sync_test",
-    tests = [":sync_sources_rs_test"],
+    tests = [":sync_sources_test"],
 )
 
 # The same guard for the tool protocol's Swift sources (packages/vitruvian-sdk),
@@ -938,7 +918,7 @@ TOOL_PROTOCOL_ARGS = [
 ] + ["$(rootpaths %s)" % group for group in TOOL_PROTOCOL]
 
 rust_library(
-    name = "pin_nexus_agent_shared_rs_lib",
+    name = "pin_nexus_agent_shared_lib",
     srcs = ["bazel/src/pin_nexus_agent_shared/lib.rs"],
     crate_name = "pin_nexus_agent_shared",
     edition = "2021",
@@ -950,18 +930,13 @@ rust_binary(
     args = TOOL_PROTOCOL_ARGS,
     data = TOOL_PROTOCOL,
     edition = "2021",
-    deps = [":pin_nexus_agent_shared_rs_lib"],
-)
-
-alias(
-    name = "pin_tool_protocol_rs",
-    actual = ":pin_tool_protocol",
+    deps = [":pin_nexus_agent_shared_lib"],
 )
 
 rust_test(
-    name = "pin_nexus_agent_shared_rs_test",
+    name = "pin_nexus_agent_shared_test",
     size = "small",
-    crate = ":pin_nexus_agent_shared_rs_lib",
+    crate = ":pin_nexus_agent_shared_lib",
     data = ["bazel/tool_protocol.sha256"] + TOOL_PROTOCOL,
     env = {
         "TOOL_PROTOCOL_PIN_FILE": "$(rootpath bazel/tool_protocol.sha256)",
@@ -971,72 +946,77 @@ rust_test(
 
 test_suite(
     name = "tool_protocol_pin_test",
-    tests = [":pin_nexus_agent_shared_rs_test"],
+    tests = [":pin_nexus_agent_shared_test"],
 )
 
 rust_library(
-    name = "dmg_image_devices_rs_lib",
+    name = "dmg_image_devices_lib",
     srcs = ["bazel/src/dmg_image_devices/lib.rs"],
     crate_name = "dmg_image_devices",
     edition = "2021",
 )
 
 rust_binary(
-    name = "dmg_image_devices_rs",
+    name = "dmg_image_devices",
     srcs = ["bazel/src/dmg_image_devices/main.rs"],
     edition = "2021",
-    deps = [":dmg_image_devices_rs_lib"],
+    deps = [":dmg_image_devices_lib"],
 )
 
+# make-dmg.sh finds a disk image's attachments in what `hdiutil info` prints.
+# Held to the output a macOS runner printed when a failed create left an image
+# attached that the script could not find.
 rust_test(
-    name = "dmg_image_devices_rs_test",
+    name = "dmg_image_devices_test",
     size = "small",
-    crate = ":dmg_image_devices_rs_lib",
+    crate = ":dmg_image_devices_lib",
     data = ["bazel/testdata/hdiutil-info-stale-image.txt"],
 )
 
 rust_library(
-    name = "beta_publish_guard_rs_lib",
+    name = "beta_publish_guard_lib",
     srcs = ["bazel/src/beta_publish_guard/lib.rs"],
     crate_name = "beta_publish_guard",
     edition = "2021",
 )
 
 rust_binary(
-    name = "beta_publish_guard_rs",
+    name = "beta_publish_guard",
     srcs = ["bazel/src/beta_publish_guard/main.rs"],
     edition = "2021",
-    deps = [":beta_publish_guard_rs_lib"],
+    deps = [":beta_publish_guard_lib"],
 )
 
+# Whether a beta publish goes ahead, skips (a newer build is already on the
+# release) or refuses, from how its commit relates to the rolling tag's.
 rust_test(
-    name = "beta_publish_guard_rs_test",
+    name = "beta_publish_guard_test",
     size = "small",
-    crate = ":beta_publish_guard_rs_lib",
+    crate = ":beta_publish_guard_lib",
 )
 
 rust_library(
-    name = "build_app_rs_lib",
+    name = "build_app_lib",
     srcs = ["bazel/src/build_app/lib.rs"],
     crate_name = "build_app",
     edition = "2021",
 )
 
 rust_binary(
-    name = "build_app_rs",
+    name = "build_app",
     srcs = ["bazel/src/build_app/main.rs"],
     edition = "2021",
-    deps = [":build_app_rs_lib"],
+    deps = [":build_app_lib"],
 )
 
 rust_test(
-    name = "build_app_rs_test",
+    name = "build_app_test",
     size = "small",
-    crate = ":build_app_rs_lib",
+    crate = ":build_app_lib",
 )
 
 rust_library(
-    name = "publish_rs_lib",
+    name = "publish_lib",
     srcs = ["bazel/src/publish/lib.rs"],
     crate_name = "publish",
     edition = "2021",
@@ -1046,177 +1026,157 @@ rust_binary(
     name = "publish_rs",
     srcs = ["bazel/src/publish/main.rs"],
     edition = "2021",
-    deps = [":publish_rs_lib"],
+    deps = [":publish_lib"],
 )
 
 rust_test(
-    name = "publish_rs_test",
+    name = "publish_test",
     size = "small",
-    crate = ":publish_rs_lib",
+    crate = ":publish_lib",
 )
 
 rust_library(
-    name = "uninstall_rs_lib",
+    name = "uninstall_lib",
     srcs = ["bazel/src/uninstall/lib.rs"],
     crate_name = "uninstall",
     edition = "2021",
 )
 
 rust_binary(
-    name = "uninstall_rs",
+    name = "uninstall",
     srcs = ["bazel/src/uninstall/main.rs"],
     edition = "2021",
-    deps = [":uninstall_rs_lib"],
+    deps = [":uninstall_lib"],
 )
 
 rust_test(
-    name = "uninstall_rs_test",
+    name = "uninstall_test",
     size = "small",
-    crate = ":uninstall_rs_lib",
+    crate = ":uninstall_lib",
 )
 
 rust_library(
-    name = "make_dmg_rs_lib",
+    name = "make_dmg_lib",
     srcs = ["bazel/src/make_dmg/lib.rs"],
     crate_name = "make_dmg",
     edition = "2021",
 )
 
 rust_binary(
-    name = "make_dmg_rs",
+    name = "make_dmg",
     srcs = ["bazel/src/make_dmg/main.rs"],
     edition = "2021",
-    deps = [":make_dmg_rs_lib"],
+    deps = [":make_dmg_lib"],
 )
 
 rust_test(
-    name = "make_dmg_rs_test",
+    name = "make_dmg_test",
     size = "small",
-    crate = ":make_dmg_rs_lib",
+    crate = ":make_dmg_lib",
 )
 
 rust_library(
-    name = "package_release_rs_lib",
+    name = "package_release_lib",
     srcs = ["bazel/src/package_release/lib.rs"],
     crate_name = "package_release",
     edition = "2021",
 )
 
 rust_binary(
-    name = "package_release_rs",
+    name = "package_release",
     srcs = ["bazel/src/package_release/main.rs"],
     edition = "2021",
-    deps = [":package_release_rs_lib"],
+    deps = [":package_release_lib"],
 )
 
 rust_test(
-    name = "package_release_rs_test",
+    name = "package_release_test",
     size = "small",
-    crate = ":package_release_rs_lib",
+    crate = ":package_release_lib",
 )
 
 rust_library(
-    name = "setup_signing_rs_lib",
+    name = "setup_signing_lib",
     srcs = ["bazel/src/setup_signing/lib.rs"],
     crate_name = "setup_signing",
     edition = "2021",
 )
 
 rust_binary(
-    name = "setup_signing_rs",
+    name = "setup_signing",
     srcs = ["bazel/src/setup_signing/main.rs"],
     edition = "2021",
-    deps = [":setup_signing_rs_lib"],
+    deps = [":setup_signing_lib"],
 )
 
 rust_test(
-    name = "setup_signing_rs_test",
+    name = "setup_signing_test",
     size = "small",
-    crate = ":setup_signing_rs_lib",
+    crate = ":setup_signing_lib",
 )
 
 rust_library(
-    name = "notarize_rs_lib",
+    name = "notarize_lib",
     srcs = ["bazel/src/notarize/lib.rs"],
     crate_name = "notarize",
     edition = "2021",
 )
 
 rust_binary(
-    name = "notarize_rs",
+    name = "notarize",
     srcs = ["bazel/src/notarize/main.rs"],
     edition = "2021",
-    deps = [":notarize_rs_lib"],
+    deps = [":notarize_lib"],
 )
 
 rust_test(
-    name = "notarize_rs_test",
+    name = "notarize_test",
     size = "small",
-    crate = ":notarize_rs_lib",
+    crate = ":notarize_lib",
 )
 
 rust_library(
-    name = "ci_setup_signing_rs_lib",
+    name = "ci_setup_signing_lib",
     srcs = ["bazel/src/ci_setup_signing/lib.rs"],
     crate_name = "ci_setup_signing",
     edition = "2021",
 )
 
 rust_binary(
-    name = "ci_setup_signing_rs",
+    name = "ci_setup_signing",
     srcs = ["bazel/src/ci_setup_signing/main.rs"],
     edition = "2021",
-    deps = [":ci_setup_signing_rs_lib"],
+    deps = [":ci_setup_signing_lib"],
 )
 
 rust_test(
-    name = "ci_setup_signing_rs_test",
+    name = "ci_setup_signing_test",
     size = "small",
-    crate = ":ci_setup_signing_rs_lib",
-)
-
-# make-dmg.sh finds a disk image's attachments in what `hdiutil info` prints.
-# Held to the output a macOS runner printed when a failed create left an image
-# attached that the script could not find.
-test_suite(
-    name = "dmg_image_devices_test",
-    tests = [":dmg_image_devices_rs_test"],
-)
-
-# Whether a beta publish goes ahead, skips (a newer build is already on the
-# release) or refuses, from how its commit relates to the rolling tag's.
-test_suite(
-    name = "beta_publish_guard_test",
-    tests = [":beta_publish_guard_rs_test"],
-)
-
-# Rules over how all of the code is written, not what one piece of it does: an
-# API that never appears, every SF Symbol and system tool named, the build
-# script's temp-dir sweep, and the rest. They read the sources as text, so they
-# run here rather than in the unit tests.
-test_suite(
-    name = "source_lints_test",
-    tests = [":source_lints_rs_test"],
+    crate = ":ci_setup_signing_lib",
 )
 
 rust_library(
-    name = "source_lints_rs_lib",
+    name = "source_lints_lib",
     srcs = ["bazel/src/source_lints/lib.rs"],
     crate_name = "source_lints",
     edition = "2021",
 )
 
 rust_binary(
-    name = "source_lints_rs",
+    name = "source_lints",
     srcs = ["bazel/src/source_lints/main.rs"],
     edition = "2021",
-    deps = [":source_lints_rs_lib"],
+    deps = [":source_lints_lib"],
 )
 
+# Rules over how all of the code is written, not what one piece of it does: an
+# API that never appears, every SF Symbol and system tool named, the build
+# script's temp-dir sweep, and the rest. They read the sources as text, so they
+# run here rather than in the unit tests.
 rust_test(
-    name = "source_lints_rs_test",
+    name = "source_lints_test",
     size = "small",
-    crate = ":source_lints_rs_lib",
+    crate = ":source_lints_lib",
     data = [
         "Tools/beta-publish-guard.sh",
         "Tools/dmg-image-devices.sh",
@@ -1240,7 +1200,7 @@ rust_test(
 # .github/workflows/vitruvian-upstream-watch.yaml runs `status` daily.
 
 rust_library(
-    name = "upstream_rs_lib",
+    name = "upstream_lib",
     srcs = ["upstream/src/lib.rs"],
     crate_name = "vitruvian_upstream_rs",
     edition = "2021",
@@ -1250,25 +1210,15 @@ rust_binary(
     name = "track_upstream",
     srcs = ["upstream/src/main.rs"],
     edition = "2021",
-    deps = [":upstream_rs_lib"],
-)
-
-alias(
-    name = "track_upstream_rs",
-    actual = ":track_upstream",
+    deps = [":upstream_lib"],
 )
 
 rust_test(
-    name = "upstream_rs_test",
+    name = "upstream_test",
     size = "small",
-    crate = ":upstream_rs_lib",
+    crate = ":upstream_lib",
     data = ["upstream/ledger.tsv"],
     env = {"UPSTREAM_LEDGER": "$(rootpath upstream/ledger.tsv)"},
-)
-
-test_suite(
-    name = "upstream_test",
-    tests = [":upstream_rs_test"],
 )
 
 # --- Pipeline -----------------------------------------------------------------

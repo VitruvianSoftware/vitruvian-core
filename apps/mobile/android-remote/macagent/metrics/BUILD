@@ -23,7 +23,7 @@
 load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
 
 rust_library(
-    name = "metrics_rs",
+    name = "metrics",
     srcs = glob(["src/**/*.rs"]),
     crate_name = "vitruvian_remote_macagent_metrics",
     crate_root = "src/lib.rs",
@@ -31,20 +31,9 @@ rust_library(
     visibility = ["//apps/mobile/android-remote:__subpackages__"],
 )
 
-alias(
-    name = "metrics",
-    actual = ":metrics_rs",
-    visibility = ["//apps/mobile/android-remote:__subpackages__"],
-)
-
 rust_test(
-    name = "metrics_rs_test",
-    crate = ":metrics_rs",
+    name = "metrics_test",
+    crate = ":metrics",
     data = glob(["testdata/**"]),
     edition = "2021",
-)
-
-test_suite(
-    name = "metrics_test",
-    tests = [":metrics_rs_test"],
 )

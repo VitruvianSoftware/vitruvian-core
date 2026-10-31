@@ -19,7 +19,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! Native Rust binary (`bot-engine-rs`) for the Antigravity Telegram Bot.
+//! Native Rust binary (`bot-engine`) for the Antigravity Telegram Bot.
 
 use nexus_agent_src_lib::bot::{BotEngine, TelegramHttpClient, BOT_COMMANDS};
 use nexus_agent_src_lib::JsonValue;

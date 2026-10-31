@@ -169,11 +169,6 @@ test_suite(
     tests = [":note_pr_create_lib_test"],
 )
 
-test_suite(
-    name = "note-pr-create_rs_test",
-    tests = [":note_pr_create_lib_test"],
-)
-
 rust_library(
     name = "sidecar_lib",
     srcs = [
@@ -191,7 +186,7 @@ rust_library(
 )
 
 rust_binary(
-    name = "sidecar-rs",
+    name = "sidecar",
     srcs = ["sidecars/panel/src/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
@@ -233,7 +228,7 @@ pipeline_unit(
         ":flakes_test",
         ":landing_test",
         ":logs_test",
-        ":note-pr-create_rs_test",
+        ":note_pr_create_lib_test",
         ":note-pr-create_test",
         ":note_pr_create_lib_test",
         ":notices_test",

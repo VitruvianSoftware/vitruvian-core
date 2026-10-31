@@ -111,7 +111,7 @@ Each app type has its own inner loop. The table below is the practical per-type 
 | **Containerized SaaS web app** | `oauth-user-inspector` | `pnpm dev` (concurrently Vite + nodemon/tsc backend on `:8080) | `bazel test //apps/web/oauth-user-inspector/...` (jest server suite) |
 | **Go CLI** | `devx` | `bazel run //apps/cli/devx:devx -- <args>` (developer build of record); release builds via goreleaser only | `bazel test //apps/cli/devx/...` |
 | **Go CLI (infra/ops)** | `homelab` | `bazel run //apps/cli/homelab/cmd/homelab -- <args>` | `bazel test //apps/cli/homelab/...` |
-| **Agent / MCP (Rust)** | `mcp-slack` | `bazel run //apps/mcp/slack:mcp-slack-rs` (the MCP host injects the Slack tokens as env) | `bazel test //apps/mcp/slack/...` |
+| **Agent / MCP (Rust)** | `mcp-slack` | `bazel run //apps/mcp/slack:mcp-slack` (the MCP host injects the Slack tokens as env) | `bazel test //apps/mcp/slack/...` |
 | **Agent / MCP + macOS** | `nexus-agent` | `pnpm start` / `pnpm dev` for the bot; `bazel build --config=macos-app //apps/desktop/nexus-agent/macos:NexusAgent` for the menu-bar app | — (no tests yet) |
 
 > **Known divergences you will hit (all tracked in the Alignment Gaps doc):**

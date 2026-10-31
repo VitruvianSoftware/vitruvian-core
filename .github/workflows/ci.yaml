@@ -560,8 +560,8 @@ jobs:
           # fail here if they ever stop finding a bash 3.
           bazel test "${cache[@]}" --config=macos-app --test_env=REQUIRE_BASH32=1 //tools/desktop-package:package-desktop_test //apps/desktop/home-speaker:publish_test
           # The whole of it for real (SwiftPM build, codesign, hdiutil), short
-          # of uploading. publish-rs fails unless every artifact is in dist.
-          bazel run "${cache[@]}" //apps/desktop/home-speaker:publish-rs -- --dry-run
+          # of uploading. publish fails unless every artifact is in dist.
+          bazel run "${cache[@]}" //apps/desktop/home-speaker:publish -- --dry-run
 
           # Vitruvian Remote menu bar app: the .app bundle is `manual`, so build
           # it by label. Its tests run in the generated remote-mac-menu unit.
@@ -571,7 +571,7 @@ jobs:
           # zipped, as android-remote-release.yaml does. Otherwise the Intel
           # build would first run on release day. Uses the job's BuildBuddy
           # key itself, like the release.
-          bazel run "${cache[@]}" //apps/mobile/android-remote/macmenu:publish-tool-rs -- --dry-run
+          bazel run "${cache[@]}" //apps/mobile/android-remote/macmenu:publish-tool -- --dry-run
 
           # Vitruvian desktop app (GPL fork, apps/desktop/vitruvian): build only.
           # Changes to the app itself are built AND tested by the generated

@@ -11,14 +11,9 @@ load("//tools/pipeline:defs.bzl", "pipeline_unit")
 # the published target needs no wider scope.
 package(default_visibility = ["//apps/mcp/slack:__subpackages__"])
 
-alias(
-    name = "mcp-slack",
-    actual = ":mcp-slack-rs",
-)
-
 test_suite(
     name = "unit_tests",
-    tests = [":mcp_slack_rs_test"],
+    tests = [":mcp_slack_test"],
 )
 
 _CRATES = [
@@ -37,7 +32,7 @@ _CRATES = [
 
 # The Slack MCP server (rs/Cargo.toml, locked in rs/Cargo.lock).
 rust_library(
-    name = "mcp_slack_rs_lib",
+    name = "mcp_slack_lib",
     srcs = [
         "rs/src/auth.rs",
         "rs/src/channel_allowlist.rs",
@@ -49,28 +44,24 @@ rust_library(
         "rs/src/slack_client.rs",
         "rs/src/tools.rs",
     ],
+    crate_name = "mcp_slack_rs_lib",
     crate_root = "rs/src/lib.rs",
     edition = "2021",
     deps = _CRATES,
 )
 
 rust_binary(
-    name = "mcp-slack-rs",
+    name = "mcp-slack",
     srcs = ["rs/src/main.rs"],
     crate_root = "rs/src/main.rs",
     edition = "2021",
-    deps = [":mcp_slack_rs_lib"],
-)
-
-alias(
-    name = "mcp_slack_rs",
-    actual = ":mcp-slack-rs",
+    deps = [":mcp_slack_lib"],
 )
 
 rust_test(
-    name = "mcp_slack_rs_test",
+    name = "mcp_slack_test",
     size = "small",
-    crate = ":mcp_slack_rs_lib",
+    crate = ":mcp_slack_lib",
     data = [
         "README.md",
     ],
@@ -92,7 +83,7 @@ pipeline_unit(
     runner = "ubuntu-26.04",
     test_targets = [
         ":unit_tests",
-        ":mcp_slack_rs_test",
+        ":mcp_slack_test",
     ],
     tier = "L1",
     timeout_minutes = 15,

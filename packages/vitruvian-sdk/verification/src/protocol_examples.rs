@@ -360,12 +360,12 @@ pub fn message_problems(protocol_dir: &Path) -> Vec<String> {
 fn find_default_reference_2(protocol_dir: &Path) -> (String, Vec<String>) {
     // Prefer the native Rust binary when present in runfiles or package dir.
     for cand in [
-        resolve_runfile("packages/vitruvian-sdk/reference-tool-2-rs"),
-        resolve_runfile("reference-tool-2-rs"),
+        resolve_runfile("packages/vitruvian-sdk/reference-tool-2"),
+        resolve_runfile("reference-tool-2"),
         protocol_dir
             .parent()
             .unwrap_or(protocol_dir)
-            .join("reference-tool-2-rs"),
+            .join("reference-tool-2"),
     ] {
         if is_executable(&cand) {
             return (cand.to_string_lossy().into_owned(), Vec::new());

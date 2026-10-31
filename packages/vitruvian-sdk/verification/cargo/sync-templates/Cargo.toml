@@ -19,7 +19,7 @@
 # SOFTWARE.
 
 # The template writer, a member of verification/Cargo.toml. Its sources are
-# samples/src, which the package's BUILD builds as :sync_templates_rs_lib and
+# samples/src, which the package's BUILD builds as :sync_templates_lib and
 # :sync-templates; its unit tests are :templates_in_sync_test. No Cargo.toml
 # may sit in samples/ itself: Cargo would take it for the workspace of the
 # Rust samples in the folders below it, and refuse to build them.

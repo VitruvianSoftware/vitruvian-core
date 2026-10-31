@@ -59,7 +59,7 @@ rust_library(
 )
 
 rust_binary(
-    name = "sidecar-rs",
+    name = "sidecar",
     srcs = ["sidecars/panel/src/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
@@ -92,11 +92,6 @@ rust_test(
 
 test_suite(
     name = "ralph-stop_test",
-    tests = [":ralph_stop_lib_test"],
-)
-
-test_suite(
-    name = "ralph-stop_rs_test",
     tests = [":ralph_stop_lib_test"],
 )
 
@@ -147,7 +142,7 @@ pipeline_unit(
     test_targets = [
         ":core_test",
         ":openui_test",
-        ":ralph-stop_rs_test",
+        ":ralph_stop_lib_test",
         ":ralph-stop_test",
         ":ralph_stop_lib_test",
         ":sidecar_lib_test",

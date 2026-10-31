@@ -295,7 +295,7 @@ something to hand-type.
 
 ```bash
 # In the monorepo
-bazel run //apps/mcp/slack:mcp-slack-rs
+bazel run //apps/mcp/slack:mcp-slack
 
 # Or build the image from this directory (the same build CI publishes)
 docker build -t mcp-slack .

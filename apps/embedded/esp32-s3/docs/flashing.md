@@ -120,7 +120,7 @@ esptool.py -p /dev/cu.usbmodemXXXX -b 460800 --before default_reset --after hard
 
 ### Interactive Execution:
 ```bash
-bazel run //apps/embedded/esp32-s3:mac_stats_daemon_rs
+bazel run //apps/embedded/esp32-s3:mac_stats_daemon
 ```
 
 ### Expected Startup Output:
@@ -161,7 +161,7 @@ To run the daemon automatically in the background whenever you log into macOS, c
     <string>com.vitruvian.mac-controller</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/YOUR_USERNAME/Workspace/gh/application/vitruvian/vitruvian-core/bazel-bin/apps/embedded/esp32-s3/mac_stats_daemon_rs</string>
+        <string>/Users/YOUR_USERNAME/Workspace/gh/application/vitruvian/vitruvian-core/bazel-bin/apps/embedded/esp32-s3/mac_stats_daemon</string>
     </array>
     <key>RunAtLoad</key>
     <true/>

@@ -37,11 +37,6 @@ py_binary(
     deps = [":vitruvian_roborock"],
 )
 
-test_suite(
-    name = "roborock_test",
-    tests = [":roborock_rs_test"],
-)
-
 # The plugin manifests, for anything that packages or validates them.
 filegroup(
     name = "plugin",
@@ -54,12 +49,13 @@ filegroup(
 # --- Rust ports ---------------------------------------------------------------
 
 rust_library(
-    name = "roborock_rs_lib",
+    name = "roborock_lib",
     srcs = glob(
         ["rust_src/*.rs"],
         exclude = ["rust_src/main.rs"],
     ),
     compile_data = ["src/vitruvian_roborock/dashboard/dashboard.html"],
+    crate_name = "roborock_rs_lib",
     crate_root = "rust_src/lib.rs",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
@@ -74,18 +70,13 @@ rust_binary(
     srcs = ["rust_src/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-    deps = [":roborock_rs_lib"],
-)
-
-alias(
-    name = "rrctl_rs",
-    actual = ":rrctl-rs",
+    deps = [":roborock_lib"],
 )
 
 rust_test(
-    name = "roborock_rs_test",
+    name = "roborock_test",
     size = "small",
-    crate = ":roborock_rs_lib",
+    crate = ":roborock_lib",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
 )

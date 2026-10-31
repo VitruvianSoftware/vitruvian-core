@@ -66,7 +66,7 @@ rust_library(
 )
 
 rust_binary(
-    name = "sidecar-rs",
+    name = "sidecar",
     srcs = ["sidecars/panel/src/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
@@ -99,11 +99,6 @@ rust_test(
 
 test_suite(
     name = "security-check_test",
-    tests = [":security_check_lib_test"],
-)
-
-test_suite(
-    name = "security-check_rs_test",
     tests = [":security_check_lib_test"],
 )
 
@@ -154,7 +149,7 @@ pipeline_unit(
     test_targets = [
         ":core_test",
         ":openui_test",
-        ":security-check_rs_test",
+        ":security_check_lib_test",
         ":security-check_test",
         ":security_check_lib_test",
         ":sidecar_lib_test",
