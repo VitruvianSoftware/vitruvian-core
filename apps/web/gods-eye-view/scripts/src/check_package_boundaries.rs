@@ -22,8 +22,8 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use crate::check_import_directions::{
-    analyze_module, cached_canonicalize, is_code_file, is_node_builtin, resolve_app_root,
-    seed_non_symlink_files,
+    analyze_module, cached_canonicalize, is_code_file, is_node_builtin, json_object_keys_in_order,
+    resolve_app_root, seed_non_symlink_files,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,7 +40,9 @@ fn is_external_allowed(id: &str, group_external: &[String]) -> bool {
 }
 
 /// Build each browser or Node export group and reject imports outside its declared ownership.
-/// Port of `checkPackageBoundaries(root)` in `scripts/check-package-boundaries.mjs`.
+/// Port of upstream's `checkPackageBoundaries(root)` (`scripts/check-package-boundaries.mjs`,
+/// not in this copy), which ran a Vite build per group; this walks the same
+/// import graph with `analyze_module`.
 pub fn check_package_boundaries(root_in: &Path) -> Result<Vec<BoundaryReport>, String> {
     let root = std::fs::canonicalize(root_in)
         .map_err(|e| format!("Failed to resolve root {}: {}", root_in.display(), e))?;
@@ -89,7 +91,11 @@ pub fn check_package_boundaries(root_in: &Path) -> Result<Vec<BoundaryReport>, S
     seed_non_symlink_files(&root, &["src", "server", "build"], &mut canon_cache);
     let mut reports = Vec::new();
 
-    for (name, group) in groups_obj {
+    // Groups in file order, as the Node check walked them.
+    for name in json_object_keys_in_order(&groups_raw, &[]) {
+        let Some(group) = groups_obj.get(&name) else {
+            continue;
+        };
         let runtime_opt = group.get("runtime").and_then(|v| v.as_str());
         if let Some(rt) = runtime_opt {
             if rt != "browser" && rt != "node" {
@@ -296,4 +302,157 @@ pub fn run(args: &[String]) -> Result<String, String> {
         })
         .collect();
     Ok(lines.join("\n"))
+}
+
+/// The cases of upstream's `src/tooling/packageBoundaries.test.mjs` (not in
+/// this copy), against the Rust port.
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+
+    struct Fixture {
+        root: PathBuf,
+    }
+
+    impl Fixture {
+        fn new(entry: &str, extra_exports: &str) -> Self {
+            let root = std::env::temp_dir().join(format!(
+                "gev-boundaries-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::SeqCst)
+            ));
+            let _ = std::fs::remove_dir_all(&root);
+            std::fs::create_dir_all(root.join("scripts")).unwrap();
+            let f = Fixture { root };
+            f.write(
+                "package.json",
+                &format!(
+                    r#"{{"name":"boundary-fixture","type":"module","exports":{{"./feature":"./entry.js"{extra_exports}}}}}"#
+                ),
+            );
+            f.write(
+                "scripts/package-boundaries.json",
+                r#"{"feature":{"exports":["./feature"],"modules":["entry.js"],"external":[]}}"#,
+            );
+            f.write("entry.js", entry);
+            f
+        }
+
+        fn write(&self, name: &str, body: &str) {
+            std::fs::write(self.root.join(name), body).unwrap();
+        }
+
+        fn check(&self) -> Result<Vec<BoundaryReport>, String> {
+            check_package_boundaries(&self.root)
+        }
+
+        fn rejects(&self, pattern: &[&str]) {
+            match self.check() {
+                Ok(r) => panic!("expected a failure matching {pattern:?}, got Ok({r:?})"),
+                Err(e) => assert!(
+                    pattern.iter().all(|p| e.contains(p)),
+                    "{pattern:?} not all in: {e}"
+                ),
+            }
+        }
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.root);
+        }
+    }
+
+    fn one(name: &str) -> Vec<BoundaryReport> {
+        vec![BoundaryReport {
+            name: name.into(),
+            exports: 1,
+            modules: 1,
+        }]
+    }
+
+    const VALUE: &str = "export const value = 1;";
+
+    #[test]
+    fn a_declared_browser_export_builds_without_running_app_setup() {
+        let f = Fixture::new(VALUE, "");
+        f.write("vite.config.js", "throw new Error('must not load app config');");
+        assert_eq!(f.check().unwrap(), one("feature"));
+    }
+
+    #[test]
+    fn an_unclassified_package_export_fails_the_boundary_gate() {
+        let f = Fixture::new(VALUE, r#","./another":"./another.js""#);
+        f.rejects(&["exactly one boundary group"]);
+    }
+
+    #[test]
+    fn even_an_unused_import_of_application_code_violates_ownership() {
+        let f = Fixture::new("import { app } from './startup.js'; export const value = 1;", "");
+        f.write("startup.js", "export const app = 2;");
+        f.rejects(&["unowned module", "startup"]);
+    }
+
+    #[test]
+    fn node_builtins_cannot_enter_a_browser_export() {
+        let f = Fixture::new("import fs from 'node:fs'; export const value = fs;", "");
+        f.rejects(&["unowned module"]);
+    }
+
+    #[test]
+    fn dynamic_imports_obey_the_same_component_ownership_rule() {
+        let f = Fixture::new("export const load = () => import('./startup.js');", "");
+        f.write("startup.js", "export const app = 2;");
+        f.rejects(&["unowned module", "startup"]);
+    }
+
+    #[test]
+    fn a_node_build_export_must_be_explicitly_classified_and_scoped() {
+        let f = Fixture::new(VALUE, "");
+        f.write(
+            "package.json",
+            r#"{"name":"boundary-fixture","type":"module","exports":{"./feature":{"node":"./entry.js"}}}"#,
+        );
+        f.write(
+            "scripts/package-boundaries.json",
+            r#"{"feature":{"runtime":"node","exports":["./feature"],"modules":["entry.js"],"external":[]}}"#,
+        );
+        assert_eq!(f.check().unwrap(), one("feature"));
+        f.write("entry.js", "import './startup.js'; export const value = 1;");
+        f.write("startup.js", "export const app = 2;");
+        f.rejects(&["unowned module", "startup"]);
+    }
+
+    #[test]
+    fn a_lifecycle_owner_cannot_acquire_a_layer_panel_even_through_an_unused_import() {
+        let f = Fixture::new("import './panel.js'; export class LayerLifecycle {}", "");
+        f.write("panel.js", "export class LayerPanel {}");
+        f.write(
+            "scripts/package-boundaries.json",
+            r#"{"layer-lifecycle":{"exports":["./feature"],"modules":["entry.js"],"external":[]}}"#,
+        );
+        f.rejects(&["unowned module", "panel"]);
+    }
+
+    #[test]
+    fn groups_are_checked_and_reported_in_file_order() {
+        let f = Fixture::new(VALUE, r#","./b":"./b.js""#);
+        f.write("b.js", VALUE);
+        f.write(
+            "scripts/package-boundaries.json",
+            r#"{"zeta":{"exports":["./feature"],"modules":["entry.js"],"external":[]},
+                "alpha":{"exports":["./b"],"modules":["b.js"],"external":[]}}"#,
+        );
+        let names: Vec<String> = f.check().unwrap().into_iter().map(|r| r.name).collect();
+        assert_eq!(names, vec!["zeta", "alpha"]);
+        // The first failing group in file order is the one reported.
+        f.write("entry.js", "import './x.js';");
+        f.write("b.js", "import './y.js';");
+        f.write("x.js", "");
+        f.write("y.js", "");
+        f.rejects(&["Package boundary zeta imports an unowned module: x.js"]);
+    }
 }

@@ -27,8 +27,9 @@ const ROUTED: &[u8] = b"runs-on: ${{ (github.event_name == 'merge_group' || (git
 
 pub fn run(args: &[Vec<u8>]) -> i32 {
     if args.is_empty() {
-        err(b"usage: queue-runner-routing <workflows-dir-or-files...>\n");
-        return 2;
+        // The script's `${1:?usage: ...}`: message, status 1.
+        err(b"queue-runner-routing: usage: queue-runner-routing <workflows-dir-or-files...>\n");
+        return 1;
     }
 
     let mut files: Vec<Vec<u8>> = Vec::new();

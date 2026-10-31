@@ -271,7 +271,7 @@ jobs:
             echo "FALLBACK_KEYS_EOF"
           } >> "$GITHUB_OUTPUT"
 
-      # First choice: the map kept under a git ref (tools/ci/rdeps-map-ref.sh).
+      # First choice: the map kept under a git ref (//tools/ci:rdeps_map_ref).
       # The Actions cache below evicts maps within the hour while the repo is
       # over its 10 GiB budget (#2841); a ref is never evicted. The cache step
       # stays as the fallback, so nothing is lost if the ref is not there.
@@ -282,7 +282,16 @@ jobs:
         env:
           BASE_SHA: ${{ steps.base.outputs.sha }}
           GH_TOKEN: ${{ github.token }}
-        run: bash tools/ci/rdeps-map-ref.sh fetch "$RUNNER_TEMP/pipeline-rdeps-map.json" "$BASE_SHA"
+        run: |
+          cache_flags=()
+          if [ -n "${BUILDBUDDY_API_KEY:-}" ]; then
+            cache_flags=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
+          fi
+          bazel build "${cache_flags[@]}" //tools/ci:rdeps_map_ref
+          cp -f bazel-bin/tools/ci/rdeps_map_ref "$RUNNER_TEMP/rdeps-map-ref"
+          chmod +x "$RUNNER_TEMP/rdeps-map-ref"
+          git checkout -- MODULE.bazel.lock 2>/dev/null || true
+          "$RUNNER_TEMP/rdeps-map-ref" fetch "$RUNNER_TEMP/pipeline-rdeps-map.json" "$BASE_SHA"
 
       # continue-on-error: the map is only ever a speed-up, so a cache problem
       # here must not fail a required check; the script copes with no map.

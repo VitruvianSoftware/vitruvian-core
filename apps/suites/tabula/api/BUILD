@@ -18,8 +18,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-load("@aspect_rules_js//js:defs.bzl", "js_binary")
 load("@npm//:defs.bzl", "npm_link_all_packages")
+load("@npm//apps/suites/tabula/api:prisma/package_json.bzl", prisma = "bin")
 load("@rules_itest//:itest.bzl", "itest_service", "itest_task", "port", "service_test")
 load("@rules_oci//oci:defs.bzl", "oci_image", "oci_load", "oci_push")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
@@ -91,15 +91,6 @@ rust_binary(
 )
 
 rust_binary(
-    name = "migrate-deploy-rs",
-    srcs = ["rs/src/bin/migrate_deploy.rs"],
-    edition = "2021",
-    rustc_flags = ["-Copt-level=3"],
-    visibility = ["//apps/suites/tabula:__subpackages__"],
-    deps = [":tabula_api_tools_rs_lib"],
-)
-
-rust_binary(
     name = "seed-test-user-rs",
     srcs = ["rs/src/bin/seed_test_user.rs"],
     edition = "2021",
@@ -153,16 +144,36 @@ genrule(
     executable = True,
 )
 
-js_binary(
+# The Prisma CLI on the hermetic Node toolchain. Only migrate_deploy_bin runs
+# it; prisma.config.ts imports `prisma/config`, so the linked package rides along.
+prisma.prisma_binary(
+    name = "prisma_cli",
+    data = [
+        "prisma.config.ts",
+        ":node_modules/prisma",
+    ],
+)
+
+# Hermetic `prisma migrate deploy` with the expand/contract phase guard
+# (`--phase expand` by default, `--phase contract` post-soak; issue #819).
+# Run by the deploy workflow (_deploy-cloud-run.yaml) and by the :migrate
+# itest task. Not part of the API image: migrations run from CI before the new
+# revision takes traffic.
+rust_binary(
     name = "migrate_deploy_bin",
+    srcs = ["rs/src/bin/migrate_deploy.rs"],
     data = [
         "prisma.config.ts",
         "prisma/engine-placeholder",
         "prisma/schema.prisma",
         ":node_modules/prisma",
+        ":prisma_cli",
     ] + glob(["prisma/migrations/**"]),
-    entry_point = "prisma/migrate-deploy.cjs",
+    edition = "2021",
+    rustc_env = {"PRISMA_CLI_RLOCATION": "$(rlocationpath :prisma_cli)"},
+    rustc_flags = ["-Copt-level=3"],
     visibility = ["//apps/suites/tabula:__subpackages__"],
+    deps = [":tabula_api_tools_rs_lib"],
 )
 
 itest_service(
@@ -241,6 +252,35 @@ itest_task(
     ],
     visibility = ["//apps/suites/tabula:__subpackages__"],
     deps = [":postgres"],
+)
+
+# Proves :migrate (the Rust migrate_deploy_bin) really migrates a database:
+# every migration directory is recorded as applied and the API's required
+# columns exist.
+rust_test(
+    name = "migrate_deploy_itest_bin",
+    size = "small",
+    srcs = ["rs/tests/migrate_deploy_itest.rs"],
+    data = ["prisma/schema.prisma"] + glob(["prisma/migrations/**"]),
+    edition = "2021",
+    rustc_env = {"SCHEMA_RLOCATION": "$(rlocationpath prisma/schema.prisma)"},
+    tags = ["manual"],
+    deps = [
+        ":tabula_api_tools_rs_lib",
+        "@crates//:serde_json",
+        "@rules_rust//rust/runfiles",
+    ],
+)
+
+service_test(
+    name = "migrate_deploy_itest",
+    size = "medium",
+    services = [":migrate"],
+    tags = [
+        "exclusive-if-local",
+        "no-remote-exec",
+    ],
+    test = ":migrate_deploy_itest_bin",
 )
 
 itest_task(
@@ -323,6 +363,8 @@ pipeline_unit(
     runner = "ubuntu-26.04",
     test_targets = [
         ":integration_tests",
+        # migrate_deploy_bin against a real (hermetic) Postgres.
+        ":migrate_deploy_itest",
         ":tabula_api_tools_rs_test",
         # cloud_run_deploy's launcher check: the real :deploy reaches the sequencer.
         "//apps/suites/tabula/infra/app:deploy_launcher_test",

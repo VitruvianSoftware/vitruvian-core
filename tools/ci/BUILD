@@ -38,8 +38,6 @@ exports_files([
     "agent-fast-lane.sh",
     "agent-fast-lane_test.sh",
     "backstage-boot-smoke.sh",
-    "bisect-culprit.sh",
-    "bisect-culprit_test.sh",
     "block-queue-bypass_test.sh",
     "changelog-summary.sh",
     "changelog-summary_test.sh",
@@ -76,12 +74,8 @@ exports_files([
     "pulumi-summary_test.sh",
     "queue-fast-pass.sh",
     "queue-fast-pass_test.sh",
-    "queue-runner-routing.sh",
-    "queue-runner-routing_test.sh",
     "queue-runner-watch.sh",
     "queue-runner-watch_test.sh",
-    "rdeps-map-ref.sh",
-    "rdeps-map-ref_test.sh",
     "release-beta-gate.sh",
     "release-beta-gate_test.sh",
     "release-hold.sh",
@@ -144,25 +138,6 @@ sh_test(
     data = [":gate_evaluator"],
 )
 
-# Safety tests for the cache pruner. It DELETES, so the suite is mostly
-# negative: an open PR's cache, a branch cache, and an undeterminable PR state
-# must all survive.
-# A workflow may name the homelab runner only through one exact rule, so a pull
-# request (a fork's, too) can never choose it. Scans every workflow.
-sh_test(
-    name = "queue_runner_routing_test",
-    size = "small",
-    srcs = ["queue-runner-routing_test.sh"],
-    args = [
-        "$(location queue-runner-routing.sh)",
-        "$(rootpaths //:workflow_files)",
-    ],
-    data = [
-        "queue-runner-routing.sh",
-        "//:workflow_files",
-    ],
-)
-
 sh_test(
     name = "queue_runner_watch_test",
     size = "small",
@@ -171,6 +146,9 @@ sh_test(
     data = ["queue-runner-watch.sh"],
 )
 
+# Safety tests for the cache pruner. It DELETES, so the suite is mostly
+# negative: an open PR's cache, a branch cache, and an undeterminable PR state
+# must all survive.
 sh_test(
     name = "prune_pr_caches_test",
     size = "small",
@@ -200,17 +178,6 @@ sh_test(
     args = ["$(location install-pinned-tool.sh)"],
     data = ["install-pinned-tool.sh"],
     target_compatible_with = ["@platforms//os:linux"],
-)
-
-# The culprit-finder workflow bisects a red main to the commit that broke it.
-# Guards the GOOD_SHA == BAD_SHA rejection (#1518) and that a real range still
-# converges. Hermetic: throwaway git repos, no network, no bazel-in-bazel.
-sh_test(
-    name = "bisect_culprit_test",
-    size = "small",
-    srcs = ["bisect-culprit_test.sh"],
-    args = ["$(location bisect-culprit.sh)"],
-    data = ["bisect-culprit.sh"],
 )
 
 # The mirror's release workflow for the standalone Nexus Agent never runs here;
@@ -440,25 +407,21 @@ rust_binary(
     ],
 )
 
-sh_binary(
-    name = "queue-runner-routing-sh",
-    srcs = ["queue-runner-routing.sh"],
-    visibility = ["//visibility:public"],
-)
-
-sh_test(
-    name = "queue_runner_routing_rs_test",
+# A workflow may name the homelab runner only through one exact rule, so a pull
+# request (a fork's, too) can never choose it. Scans every workflow.
+rust_test(
+    name = "queue_runner_routing_test",
     size = "small",
-    srcs = ["queue-runner-routing_test.sh"],
-    args = [
-        "$(location :queue_runner_routing)",
-        "$(rootpaths //:workflow_files)",
-    ],
+    srcs = ["src/queue_runner_routing/cli_test.rs"],
     data = [
-        "queue-runner-routing.sh",
         ":queue_runner_routing",
         "//:workflow_files",
     ],
+    edition = "2021",
+    env = {
+        "QUEUE_RUNNER_ROUTING_BIN": "$(rootpath :queue_runner_routing)",
+        "WORKFLOW_FILES": "$(rootpaths //:workflow_files)",
+    },
 )
 
 # queue-runner-watch
@@ -524,24 +487,16 @@ rust_binary(
     ],
 )
 
-sh_binary(
-    name = "bisect-culprit-sh",
-    srcs = ["bisect-culprit.sh"],
-    visibility = ["//visibility:public"],
-)
-
-sh_test(
-    name = "bisect_culprit_rs_test",
+# The culprit-finder workflow bisects a red main to the commit that broke it.
+# Guards the GOOD_SHA == BAD_SHA rejection (#1518) and that a real range still
+# converges. Hermetic: throwaway git repos, no network, no bazel-in-bazel.
+rust_test(
+    name = "bisect_culprit_test",
     size = "small",
-    srcs = ["bisect-culprit_test.sh"],
-    args = [
-        "$(location :bisect_culprit)",
-        "$(location bisect-culprit.sh)",
-    ],
-    data = [
-        "bisect-culprit.sh",
-        ":bisect_culprit",
-    ],
+    srcs = ["src/bisect_culprit/cli_test.rs"],
+    data = [":bisect_culprit"],
+    edition = "2021",
+    env = {"BISECT_CULPRIT_BIN": "$(rootpath :bisect_culprit)"},
 )
 
 # site-pr-automerge
@@ -1527,30 +1482,21 @@ rust_binary(
     ],
 )
 
-sh_test(
+# A bare repository stands in for GitHub; the binary runs the same git commands
+# it runs in CI. jq is the hermetic toolchain one.
+rust_test(
     name = "rdeps_map_ref_test",
     size = "small",
-    srcs = ["rdeps-map-ref_test.sh"],
-    args = ["$(location rdeps-map-ref.sh)"],
+    srcs = ["src/rdeps_map_ref/cli_test.rs"],
     data = [
-        "rdeps-map-ref.sh",
-        "@jq_toolchains//:resolved_toolchain",
-    ],
-    env = {"JQ_BIN": "$(JQ_BIN)"},
-    toolchains = ["@jq_toolchains//:resolved_toolchain"],
-)
-
-sh_test(
-    name = "rdeps_map_ref_rs_test",
-    size = "small",
-    srcs = ["rdeps-map-ref_test.sh"],
-    args = ["$(location :rdeps_map_ref)"],
-    data = [
-        "rdeps-map-ref.sh",
         ":rdeps_map_ref",
         "@jq_toolchains//:resolved_toolchain",
     ],
-    env = {"JQ_BIN": "$(JQ_BIN)"},
+    edition = "2021",
+    env = {
+        "JQ_BIN": "$(JQ_BIN)",
+        "RDEPS_MAP_REF_BIN": "$(rootpath :rdeps_map_ref)",
+    },
     toolchains = ["@jq_toolchains//:resolved_toolchain"],
 )
 
