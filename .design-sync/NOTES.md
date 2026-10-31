@@ -56,7 +56,7 @@ cost real debugging to find.
   → Latin + latin-ext subsets vendored to `.design-sync/fonts/` (12 faces,
   336 KB, both families are OFL 1.1) with `.design-sync/fonts.css`, wired via
   `cfg.extraFonts`. The **same** faces are injected into the reference by
-  `.design-sync/inject-reference-fonts.sh`, so the oracle verifies against
+  `bazel run //tools/design-sync:inject-reference-fonts`, so the oracle verifies against
   the real type on both sides.
   **Correction (2026-09-26 re-sync): until then it did NOT.** The script wrote
   `url('./ds-fonts/x.woff2')` into a stylesheet that itself lives in
@@ -89,7 +89,7 @@ cost real debugging to find.
   → `.design-sync/tailwind-entry.css` re-compiles `vitruvian.css` with
   `@source inline(...)` safelists for the colour families, the Fibonacci
   spacing ramp on every axis, the grid/type utilities, fonts and shadows.
-  `.design-sync/prepare.sh` (wired as `cfg.buildCmd`) emits it to
+  `bazel run //tools/design-sync:prepare` (wired as `cfg.buildCmd`) emits it to
   `packages/design-system/dist/vitruvian.built.css`, and `cfg.cssEntry` points
   there. Shipped CSS went **260 → 783 class selectors, 122 → 241 tokens**, and
   the `[CSS_FROM_STORYBOOK]` fallback no longer fires.
@@ -100,15 +100,15 @@ cost real debugging to find.
   lands in the package's gitignored `dist/` rather than under `.design-sync/`.
 
 - **[GENERAL] The stylesheet carried ~270 utilities from OTHER monorepo apps
-  (found 2026-09-26 via Claude Design's own stylesheet check).** `prepare.sh`
-  ran the Tailwind CLI from the repo root, and Tailwind v4 auto-scans the
+  (found 2026-09-26 via Claude Design's own stylesheet check).** The prepare
+  step ran the Tailwind CLI from the repo root, and Tailwind v4 auto-scans the
   working directory, so stock `bg-slate-800`/`bg-blue-600` (56 palette
   tokens), `rounded-xl`, `pr-9999` etc. shipped — contradicting
   conventions.md ("stock colours are not in this build") and bloating the
   design project's token/theme lists with Tailwind internals. → the CLI now
   runs from `packages/design-system` (what the package's own Vite build scans),
   neutral layout helpers (`hidden`, `text-center`, `md:grid-cols-*`...) are
-  safelisted explicitly in `tailwind-entry.css`, and `prepare.sh` fails if a
+  safelisted explicitly in `tailwind-entry.css`, and `:prepare` fails if a
   stock palette token appears. 813 → 597 classes, 64 → 39 `--tw-*` vars.
   Previews unchanged (Shell/Status/Nav re-captured to confirm).
   **Deliberately NOT done:** stripping all Tailwind utilities, which that
@@ -220,7 +220,7 @@ is what would bring them under the oracle for good.
 - **Fresh worktree / clone setup (learned 2026-09-26).** Use Node 22 (`.nvmrc`;
   Node 26 is the machine default). `pnpm i --frozen-lockfile --filter
   "@vitruviansoftware/design-system..."` creates the package's own
-  `node_modules`. `prepare.sh` calls `.ds-sync/node_modules/.bin/tailwindcss`,
+  `node_modules`. `:prepare` calls `.ds-sync/node_modules/.bin/tailwindcss`,
   so the converter-deps install must include `@tailwindcss/cli` and
   `tailwindcss` at the package's version (4.3.3). `--entry` is resolved from
   the repo root: `packages/design-system/dist/index.js`, not `dist/index.js`.
@@ -231,7 +231,7 @@ is what would bring them under the oracle for good.
   session; headless/desktop sessions can't run it, and without it the anchor
   (`_ds_sync.json`) can't be fetched, so no upload can be planned.
 
-- **The full-vocabulary CSS depends on `prepare.sh` running.** If
+- **The full-vocabulary CSS depends on `:prepare` running.** If
   `dist/vitruvian.built.css` is absent the build prints
   `! cssEntry: ... not found — skipped`, falls back to `[CSS_FROM_STORYBOOK]`,
   and silently ships the impoverished 260-selector stylesheet again — every
@@ -248,7 +248,8 @@ is what would bring them under the oracle for good.
 
 - **The reference-font injection is the fragile one.** Rebuild the reference
   and `[FONT_MISSING]` silently comes back on the oracle side only, where no
-  screenshot can show it. Always run `inject-reference-fonts.sh` after a
+  screenshot can show it. Always run
+  `bazel run //tools/design-sync:inject-reference-fonts` after a
   storybook build, and treat a clean `package-validate.mjs` **without** a
   `fonts: N @font-face rule(s)` line in the build log as a red flag.
 - **The vendored fonts are pinned copies** of Google Fonts v23 subsets. They
