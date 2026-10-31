@@ -20,6 +20,6 @@
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let code = rotate_access_token::retry_concurrent_update::run(&args);
+    let code = pulumi_tools::retry_concurrent_update::run(&args);
     std::process::exit(code);
 }

@@ -22,23 +22,9 @@ use std::process::{Command, Stdio};
 
 use crate::resolve_identity;
 use crate::retry_concurrent_update;
+use crate::tools::command_on_path;
 
 const DEV_LOCAL: &str = "infrastructure/pulumi/platform/dev-local";
-
-pub fn command_on_path(name: &str) -> bool {
-    let path_var = std::env::var("PATH").unwrap_or_default();
-    for dir in path_var.split(':') {
-        let d = if dir.is_empty() { "." } else { dir };
-        let p = std::path::PathBuf::from(d).join(name);
-        if let Ok(meta) = std::fs::metadata(&p) {
-            use std::os::unix::fs::PermissionsExt;
-            if meta.is_file() && meta.permissions().mode() & 0o111 != 0 {
-                return true;
-            }
-        }
-    }
-    false
-}
 
 fn env_set_nonempty(name: &str) -> bool {
     std::env::var(name).map_or(false, |v| !v.is_empty())
@@ -126,7 +112,7 @@ fn inject_gcp_identity(workspace: &str, project_dir: &str, minter: &str) {
     // with no credentials of its own) a token minted over the tailnet. Without
     // the minter this is plain local gcloud. See tools/gcp-token/README.md.
     let token = if minter.starts_with('/') && is_executable(minter) {
-        // stderr shown, as in pulumi-cmd.sh: the broker reports progress there.
+        // stderr shown: the broker reports progress there.
         capture_stdout(minter, &[&account], Stdio::inherit())
     } else {
         capture_stdout_lossy(
@@ -304,8 +290,10 @@ pub fn run(args: &[String]) -> i32 {
         if env_set_nonempty("PULUMI_ACCESS_TOKEN") {
             std::env::set_var("PULUMI_BACKEND_URL", "https://api.pulumi.com");
         } else {
-            let proj = std::env::var("GOOGLE_CLOUD_PROJECT")
-                .or_else(|_| std::env::var("GCP_PROJECT_ID"))
+            // ${GOOGLE_CLOUD_PROJECT:-${GCP_PROJECT_ID:-}}: an EMPTY
+            // GOOGLE_CLOUD_PROJECT falls through to GCP_PROJECT_ID too.
+            let proj = crate::tools::env_nonempty("GOOGLE_CLOUD_PROJECT")
+                .or_else(|| crate::tools::env_nonempty("GCP_PROJECT_ID"))
                 .unwrap_or_default();
             if !proj.is_empty() && proj != "-" {
                 std::env::set_var("PULUMI_BACKEND_URL", format!("gs://{}-pulumi-state", proj));
@@ -319,7 +307,9 @@ pub fn run(args: &[String]) -> i32 {
     qualify_stack_args(&mut extra_args);
 
     // --- Non-interactive injection ---
-    if !has_flag(&extra_args, &["--non-interactive"]) {
+    // Only the exact token counts (as in the shell): `--non-interactive=false`
+    // in CI still gets the flag appended, and cobra's last-wins makes it true.
+    if !extra_args.iter().any(|a| a == "--non-interactive") {
         let ci = env_set_nonempty("CI");
         let not_tty = !atty_stdin();
         if ci || not_tty {

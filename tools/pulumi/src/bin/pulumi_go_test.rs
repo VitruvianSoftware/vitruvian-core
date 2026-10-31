@@ -20,6 +20,6 @@
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let code = rotate_access_token::pulumi_go_test::run(&args);
+    let code = pulumi_tools::pulumi_go_test::run(&args);
     std::process::exit(code);
 }

@@ -27,9 +27,12 @@
 # The 409 is raised when the update is CREATED, before the engine touches a
 # single resource, so retrying it is safe: nothing was applied.
 #
-# One implementation for every path that runs pulumi: the Bazel wrapper
-# (tools/pulumi/pulumi-cmd.sh, which //tools/deploy:cloud-run uses), the
-# pulumi-run-captured composite action, and the inline applies in workflows.
+# The CI applies that run without Bazel use this script: the
+# pulumi-run-captured composite action and the inline zitadel-apps applies.
+# Everything Bazel-driven (//tools/pulumi:pulumi-cmd, and so
+# //tools/deploy:cloud-run) uses the Rust port, //tools/pulumi:retry-concurrent-update.
+# Both are held to one suite: tools/pulumi/tests/retry_concurrent_update_test.rs
+# runs against each (:retry_concurrent_update_test, :retry_concurrent_update_sh_test).
 #
 # Env (all optional):
 #   PULUMI_CONFLICT_MAX_ATTEMPTS  total attempts, default 8

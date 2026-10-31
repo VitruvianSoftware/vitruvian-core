@@ -27,13 +27,18 @@ Developers should never need to memorize the `pulumi` CLI. Instead of running
     bazel run //infrastructure/pulumi/platform/repo-config:config -- set repoOwner my-org
     bazel run //infrastructure/pulumi/platform/repo-config:setup        # guided bootstrap
 
-Each target is a thin `sh_binary` whose wrapper (`//tools/pulumi:pulumi-cmd.sh`
-or `:pulumi_setup.sh`) cd's to the project dir under $BUILD_WORKSPACE_DIRECTORY
-and execs the real `pulumi` CLI (Pulumi compiles/runs the Go program itself —
-Bazel only launches it). Extra args after `--` are forwarded to pulumi verbatim.
+Each target runs a Rust wrapper (`//tools/pulumi:pulumi-cmd`, or
+`:pulumi-setup` for `:setup`) that cd's to the project dir under
+$BUILD_WORKSPACE_DIRECTORY and runs the real `pulumi` CLI (Pulumi compiles/runs
+the Go program itself — Bazel only launches it). Extra args after `--` are
+forwarded to pulumi verbatim.
+
+The targets are `sh_binary`/`sh_test` whose single `srcs` entry is the Rust
+binary: rules_shell symlinks it as the executable (no shell is involved) and,
+unlike skylib's `native_binary`, expands `$(rootpath ...)` in `env`, which is
+how the wrapper is handed //tools/gcp-token.
 """
 
-load("@rules_rust//rust:defs.bzl", "rust_binary")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
@@ -87,7 +92,7 @@ def pulumi_project(name, dir, backend_url = None, visibility = ["//visibility:pu
     for subcmd in _SUBCOMMANDS:
         sh_binary(
             name = subcmd,
-            srcs = ["//tools/pulumi:pulumi-cmd.sh"],
+            srcs = ["//tools/pulumi:pulumi-cmd"],
             args = [dir, subcmd],
             data = ["//tools/gcp-token"],
             env = cmd_env,
@@ -97,7 +102,7 @@ def pulumi_project(name, dir, backend_url = None, visibility = ["//visibility:pu
     # Guided bootstrap helper (prereq checks, login, stack select, hints).
     sh_binary(
         name = "setup",
-        srcs = ["//tools/pulumi:pulumi_setup.sh"],
+        srcs = ["//tools/pulumi:pulumi-setup"],
         args = [dir],
         env = env,
         visibility = visibility,
@@ -108,9 +113,9 @@ def pulumi_go_test(name = "test", extra_data = [], visibility = ["//visibility:p
     Go project.
 
     These projects are standalone Go modules (their own `go.mod`), deliberately
-    kept out of the repo's `go.work` (see `pulumi-cmd.sh`) — so they aren't
-    covered by the ordinary rules_go + gazelle graph, and this shells out to the
-    ambient `go` toolchain the same way `pulumi-cmd.sh` shells out to the
+    kept out of the repo's `go.work` (see `//tools/pulumi:pulumi-cmd`) — so they
+    aren't covered by the ordinary rules_go + gazelle graph, and this runs the
+    ambient `go` toolchain the same way `pulumi-cmd` runs the
     ambient `pulumi` CLI. It exercises the SAME `go test ./...` CI already runs
     (`.github/workflows/ci.yaml`, job "go test (IaC modules with tests)") —
     this target gives local `bazel test` / `bazel query` visibility into that
@@ -140,7 +145,7 @@ def pulumi_go_test(name = "test", extra_data = [], visibility = ["//visibility:p
     """
     sh_test(
         name = name,
-        srcs = ["//tools/pulumi:pulumi_go_test.sh"],
+        srcs = ["//tools/pulumi:pulumi-go-test"],
         args = [native.package_name()],
         data = native.glob(["**/*.go", "go.mod", "go.sum"]) + extra_data,
         # Bazel sanitizes the test environment to PATH=/bin:/usr/bin:/usr/local/bin,
@@ -161,31 +166,5 @@ def pulumi_go_test(name = "test", extra_data = [], visibility = ["//visibility:p
             "no-remote-exec",
             "requires-network",
         ],
-        visibility = visibility,
-    )
-
-def pulumi_create_app(name = "create-app", visibility = ["//visibility:public"]):
-    """Declare the one-time GitHub App Manifest-flow bootstrap target.
-
-    Unlike `pulumi_project`, this is NOT per Pulumi project — it is a single
-    repo-level helper run ONCE per GitHub org to create a shared App and set
-    org-level credentials (`bazel run //tools/pulumi:create-app`). Call it from
-    the `//tools/pulumi` package's BUILD file.
-
-    Args:
-      name: target name (the developer-facing label is `create-app`).
-      visibility: visibility for the generated target.
-    """
-    rust_binary(
-        name = name,
-        srcs = ["src/bin/create_app.rs"],
-        edition = "2021",
-        rustc_flags = ["-Copt-level=3"],
-        visibility = visibility,
-        deps = [":rotate_access_token_lib"],
-    )
-    sh_binary(
-        name = name + "-sh",
-        srcs = ["create-app.sh"],
         visibility = visibility,
     )

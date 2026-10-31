@@ -64,7 +64,8 @@ reference-only row (not resolved).
 | `gcp_project` | default project → `GOOGLE_CLOUD_PROJECT` / `CLOUDSDK_CORE_PROJECT`; `-` if N/A |
 | `purpose` | free text (last column) |
 
-Resolver: [`tools/pulumi/resolve_identity.sh`](../../tools/pulumi/resolve_identity.sh)
+Resolver: `//tools/pulumi:resolve-identity`
+([`tools/pulumi/src/resolve_identity.rs`](../../tools/pulumi/src/resolve_identity.rs))
 · test: `bazel test //tools/pulumi:resolve_identity_test`.
 
 ## Environment variables
@@ -88,7 +89,7 @@ Resolver: [`tools/pulumi/resolve_identity.sh`](../../tools/pulumi/resolve_identi
 | Stack config (real, local) | `Pulumi.local.yaml`, `.env` | **no — git-ignored** |
 | Encrypted secrets | `secure:` blobs in committed `Pulumi.<stack>.yaml` (cloud-backed) | yes (encrypted) |
 | Identity map | `infrastructure/gcp-identities.tsv` | yes |
-| Wrappers | `tools/pulumi/pulumi_cmd.sh`, `pulumi_setup.sh`, `defs.bzl` | yes |
+| Wrappers | `//tools/pulumi:pulumi-cmd`, `:pulumi-setup` (`tools/pulumi/src/`), `defs.bzl` | yes |
 
 ## Related CI workflows
 

@@ -415,7 +415,7 @@ bazel run //tools/pulumi:<target> -- <pulumi args>
 bazel run //tools/gitops:<target> -- <args>
 ```
 
-- **GCP identity** is pinned per Pulumi project in `infrastructure/gcp-identities.tsv`; the `//tools/pulumi` wrapper injects `GOOGLE_OAUTH_ACCESS_TOKEN` for the right account via `tools/pulumi/resolve_identity.sh`. Do not depend on whatever `gcloud` happens to be logged in.
+- **GCP identity** is pinned per Pulumi project in `infrastructure/gcp-identities.tsv`; the `//tools/pulumi` wrapper injects `GOOGLE_OAUTH_ACCESS_TOKEN` for the right account via `//tools/pulumi:resolve-identity`. Do not depend on whatever `gcloud` happens to be logged in.
 - **GitOps closed-loop is mandatory.** The dev-local cluster reconciles **entirely** from git via the ArgoCD app-of-apps (`gitops/argocd/root-applications.yaml` → `projects`/`platform`/`applications`). **Out-of-band cluster changes** (manual `kubectl` writes, click-ops, manual AppSet applies) require **explicit per-instance approval** — the fix is always to the git source, not the live cluster. Removing an AppSet **orphans** (does not prune) its resources.
 - Editing platform/AppSet inline Helm values: platform AppSets use `goTemplate: true`, so literal `{{ }}` in inline values breaks rendering — wrap such blocks in a raw-string passthrough and simulate-render before merge.
 

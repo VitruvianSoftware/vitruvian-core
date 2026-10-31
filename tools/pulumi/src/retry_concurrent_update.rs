@@ -38,7 +38,9 @@ fn is_concurrent_conflict(stderr: &[u8]) -> bool {
 /// account-wide concurrent-update 409. Every other failure exits at once with
 /// the command's own status, unchanged.
 pub fn retry_command(cmd_args: &[String]) -> i32 {
-    let max: u32 = std::env::var("PULUMI_CONFLICT_MAX_ATTEMPTS")
+    // Signed, like the shell's integer tests: a budget below 1 means "no
+    // retry", not "fall back to the default".
+    let max: i64 = std::env::var("PULUMI_CONFLICT_MAX_ATTEMPTS")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(8);
@@ -51,7 +53,7 @@ pub fn retry_command(cmd_args: &[String]) -> i32 {
         .and_then(|s| s.parse().ok())
         .unwrap_or(60);
 
-    let mut attempt: u32 = 1;
+    let mut attempt: i64 = 1;
     let mut delay = initial_delay;
 
     loop {
@@ -138,10 +140,10 @@ pub fn retry_command(cmd_args: &[String]) -> i32 {
     }
 }
 
-/// Entry point matching retry-concurrent-update.sh.
+/// Entry point: `retry-concurrent-update <command> [args...]`.
 pub fn run(args: &[String]) -> i32 {
     if args.is_empty() {
-        eprintln!("usage: retry-concurrent-update.sh pulumi <subcommand> [args...]");
+        eprintln!("usage: retry-concurrent-update pulumi <subcommand> [args...]");
         return 2;
     }
     retry_command(args)

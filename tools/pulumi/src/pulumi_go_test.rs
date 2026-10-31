@@ -20,13 +20,13 @@
 
 use crate::tools;
 
-/// Entry point matching pulumi_go_test.sh: cd to the project directory, check
+/// Entry point (`pulumi-go-test <project_dir>`): cd to the project directory, check
 /// for `go`, disable workspace mode and exec `go test ./...`.
 pub fn run(args: &[String]) -> i32 {
     let project_dir = match args.first() {
         Some(d) if !d.is_empty() => d.as_str(),
         _ => {
-            eprintln!("usage: pulumi_go_test.sh <project_dir>");
+            eprintln!("usage: pulumi-go-test <project_dir>");
             return 1;
         }
     };
@@ -39,7 +39,7 @@ pub fn run(args: &[String]) -> i32 {
     if !tools::command_on_path("go") {
         eprintln!("go toolchain not found on PATH. This target runs locally only");
         eprintln!("(tagged no-remote-exec) and needs a real 'go' install, same as");
-        eprintln!("pulumi_cmd.sh needs 'pulumi' on PATH.");
+        eprintln!("pulumi-cmd needs 'pulumi' on PATH.");
         return 1;
     }
 

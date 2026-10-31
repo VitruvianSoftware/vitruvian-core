@@ -26,7 +26,7 @@ The design optimizes for a few things:
 
 ```mermaid
 flowchart TB
-    dev["Developer / CI"] --> wrap["//tools/pulumi wrappers<br/>pulumi_cmd.sh · pulumi_setup.sh"]
+    dev["Developer / CI"] --> wrap["//tools/pulumi wrappers<br/>pulumi-cmd · pulumi-setup (Rust)"]
     wrap --> pulumi["pulumi CLI"]
     pulumi --> prog["each project's Go program<br/>(compiled by pulumi)"]
     prog --> providers["Pulumi providers"]
@@ -47,8 +47,8 @@ wrapper.
 
 ```mermaid
 flowchart TB
-    A["bazel run //infrastructure/pulumi/&lt;project&gt;:&lt;verb&gt; -- &lt;args&gt;"] --> B["generated sh_binary<br/>(from pulumi_project in defs.bzl)"]
-    B --> C["pulumi_cmd.sh"]
+    A["bazel run //infrastructure/pulumi/&lt;project&gt;:&lt;verb&gt; -- &lt;args&gt;"] --> B["generated target<br/>(from pulumi_project in defs.bzl)"]
+    B --> C["//tools/pulumi:pulumi-cmd"]
     C --> D["cd $BUILD_WORKSPACE_DIRECTORY/&lt;project&gt;"]
     D --> E["export GOWORK=off"]
     E --> F{"project mapped in<br/>gcp-identities.tsv?"}
@@ -81,19 +81,20 @@ This machine has several Google accounts (personal, nocentre, Vitruvian sandbox)
 GCP auth must **never** depend on whichever account `gcloud` happens to be set
 to. The mapping of infrastructure directory → Google account → default project
 lives in [`infrastructure/gcp-identities.tsv`](../../infrastructure/gcp-identities.tsv);
-the resolver is [`tools/pulumi/resolve_identity.sh`](../../tools/pulumi/resolve_identity.sh)
-(unit-tested via `//tools/pulumi:resolve_identity_test`).
+the resolver is `//tools/pulumi:resolve-identity`
+([`tools/pulumi/src/resolve_identity.rs`](../../tools/pulumi/src/resolve_identity.rs),
+tested via `//tools/pulumi:resolve_identity_test`); the wrapper calls it in-process.
 
 ```mermaid
 sequenceDiagram
     participant U as bazel run
-    participant W as pulumi_cmd.sh
-    participant R as resolve_identity.sh
+    participant W as pulumi-cmd
+    participant R as resolve_identity
     participant M as gcp-identities.tsv
     participant G as gcloud
     participant P as pulumi to GCP
     U->>W: invoke wrapper (project dir, verb)
-    W->>R: resolve_identity.sh (map file, infra dir)
+    W->>R: resolve (map file, infra dir)
     R->>M: look up row for the infra dir
     M-->>R: account and gcp_project (or nothing)
     alt directory is mapped

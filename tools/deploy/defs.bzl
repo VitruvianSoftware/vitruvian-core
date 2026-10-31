@@ -93,6 +93,16 @@ def cloud_run_deploy(
         name = name,
         srcs = ["//tools/deploy:cloud-run.sh"],
         args = args,
-        data = ["//tools/deploy:cloud-run"],
+        data = [
+            "//tools/deploy:cloud-run",
+            "//tools/gcp-token",
+            "//tools/pulumi:pulumi-cmd",
+        ],
+        # What //tools/deploy:cloud-run sets for itself: an `env` on a data
+        # dependency does not reach a binary run through this target.
+        env = {
+            "VITRUVIAN_GCP_TOKEN_BIN": "$(rootpath //tools/gcp-token)",
+            "VITRUVIAN_PULUMI_CMD_BIN": "$(rootpath //tools/pulumi:pulumi-cmd)",
+        },
         visibility = visibility,
     )

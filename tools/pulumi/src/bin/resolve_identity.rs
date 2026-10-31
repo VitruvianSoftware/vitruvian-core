@@ -22,7 +22,7 @@ use std::io::Write;
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let code = rotate_access_token::resolve_identity::run(&args);
+    let code = pulumi_tools::resolve_identity::run(&args);
     let _ = std::io::stdout().flush();
     std::process::exit(code);
 }

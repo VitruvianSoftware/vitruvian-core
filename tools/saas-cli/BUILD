@@ -40,7 +40,10 @@ rust_library(
     crate_root = "src/lib.rs",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-    deps = ["//tools/shell-compat:shell_compat"],
+    deps = [
+        "//tools/pulumi:pulumi_tools",
+        "//tools/shell-compat:shell_compat",
+    ],
 )
 
 [
@@ -48,7 +51,6 @@ rust_library(
         name = sub,
         srcs = ["src/main.rs"],
         args = [sub],
-        data = ["//tools/pulumi:resolve_identity.sh"],
         edition = "2021",
         rustc_flags = ["-Copt-level=3"],
         visibility = ["//visibility:public"],

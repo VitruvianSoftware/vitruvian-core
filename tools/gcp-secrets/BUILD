@@ -31,14 +31,16 @@ rust_library(
     crate_root = "src/lib.rs",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-    deps = ["//tools/shell-compat:shell_compat"],
+    deps = [
+        "//tools/pulumi:pulumi_tools",
+        "//tools/shell-compat:shell_compat",
+    ],
 )
 
 rust_binary(
     name = "status",
     srcs = ["src/main.rs"],
     args = ["status"],
-    data = ["//tools/pulumi:resolve_identity.sh"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//visibility:public"],
@@ -52,7 +54,6 @@ rust_binary(
     name = "seed",
     srcs = ["src/main.rs"],
     args = ["seed"],
-    data = ["//tools/pulumi:resolve_identity.sh"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//visibility:public"],

@@ -18,24 +18,12 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! create-app.sh in Rust: one-time GitHub App Manifest-flow bootstrap.
+//! create-app: one-time GitHub App Manifest-flow bootstrap.
 
 use std::io::Write;
 use std::process::{Command, Stdio};
 
-fn command_on_path(name: &str) -> bool {
-    let path_var = std::env::var("PATH").unwrap_or_default();
-    for dir in path_var.split(':') {
-        let p = std::path::PathBuf::from(dir).join(name);
-        if let Ok(meta) = std::fs::metadata(&p) {
-            use std::os::unix::fs::PermissionsExt;
-            if meta.is_file() && meta.permissions().mode() & 0o111 != 0 {
-                return true;
-            }
-        }
-    }
-    false
-}
+use crate::tools::{command_on_path, exit_code};
 
 fn capture_stdout_ok(program: &str, args: &[&str]) -> Option<String> {
     Command::new(program)
@@ -103,9 +91,11 @@ fn prompt_read_secret(prompt: &str) -> Option<String> {
     println!();
     match result {
         Ok(0) => None,
+        // `read -rs` with the default IFS strips surrounding blanks.
         Ok(_) => Some(
             line.trim_end_matches('\n')
                 .trim_end_matches('\r')
+                .trim_matches(|c: char| c == ' ' || c == '\t')
                 .to_string(),
         ),
         Err(_) => None,
@@ -131,20 +121,111 @@ fn json_field(obj: &crate::json::Value, key: &str) -> String {
 
 fn open_browser(path: &str) {
     if command_on_path("open") {
-        let _ = Command::new("open")
-            .arg(path)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
+        let _ = Command::new("open").arg(path).status();
     } else if command_on_path("xdg-open") {
-        let _ = Command::new("xdg-open")
-            .arg(path)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
+        let _ = Command::new("xdg-open").arg(path).status();
     } else {
         eprintln!("! Could not find 'open' or 'xdg-open'. Open this file in a browser manually:");
         eprintln!("    {}", path);
+    }
+}
+
+/// The manifest `code` from the redirect's request line, as
+/// `sed -n 's/.*[?&]code=\([^ &]*\).*/\1/p'` extracts it: the LAST `code=`
+/// that follows a `?` or `&`, up to the next space or `&`. Empty when absent.
+pub fn extract_code(request_line: &str) -> String {
+    let b = request_line.as_bytes();
+    let mut found = None;
+    let mut i = 0;
+    while let Some(off) = request_line[i..].find("code=") {
+        let at = i + off;
+        if at > 0 && (b[at - 1] == b'?' || b[at - 1] == b'&') {
+            found = Some(at + 5);
+        }
+        i = at + 1;
+    }
+    match found {
+        Some(start) => {
+            let rest = &request_line[start..];
+            let end = rest
+                .find(|c: char| c == ' ' || c == '&')
+                .unwrap_or(rest.len());
+            rest[..end].to_string()
+        }
+        None => String::new(),
+    }
+}
+
+/// `mktemp "${TMPDIR:-/tmp}/pulumi-create-app.XXXXXX"` + `.html`: a random
+/// name, created exclusively (an existing file or symlink at the path is
+/// never written through), mode 0600.
+pub fn create_html_file(content: &str) -> std::io::Result<String> {
+    use std::os::unix::fs::OpenOptionsExt;
+    let dir = crate::tools::env_nonempty("TMPDIR").unwrap_or_else(|| "/tmp".to_string());
+    let dir = dir.trim_end_matches('/');
+    let mut last_err = None;
+    for _ in 0..100 {
+        let path = format!("{}/pulumi-create-app.{}.html", dir, random_suffix());
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(&path)
+        {
+            Ok(mut f) => {
+                f.write_all(content.as_bytes())?;
+                return Ok(path);
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => last_err = Some(e),
+            Err(e) => return Err(e),
+        }
+    }
+    Err(last_err.unwrap_or_else(|| std::io::Error::other("no free temp name")))
+}
+
+/// Six characters from [A-Za-z0-9], seeded from /dev/urandom (falling back to
+/// the clock and pid when it cannot be read).
+fn random_suffix() -> String {
+    const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    let mut bytes = [0u8; 6];
+    let ok = std::fs::File::open("/dev/urandom")
+        .and_then(|mut f| std::io::Read::read_exact(&mut f, &mut bytes))
+        .is_ok();
+    if !ok {
+        let t = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+            ^ ((std::process::id() as u128) << 32);
+        for (k, b) in bytes.iter_mut().enumerate() {
+            *b = (t >> (k * 8)) as u8;
+        }
+    }
+    bytes
+        .iter()
+        .map(|b| CHARS[(*b as usize) % CHARS.len()] as char)
+        .collect()
+}
+
+/// A gh write the shell runs bare under `set -euo pipefail`: its exit status
+/// (127 when gh cannot be started), with `input` on stdin when given.
+fn gh_write(args: &[&str], input: Option<&str>) -> i32 {
+    let mut c = Command::new("gh");
+    c.args(args);
+    if input.is_some() {
+        c.stdin(Stdio::piped());
+    }
+    let mut child = match c.spawn() {
+        Ok(ch) => ch,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return 127,
+        Err(_) => return 126,
+    };
+    if let (Some(text), Some(mut stdin)) = (input, child.stdin.take()) {
+        let _ = stdin.write_all(text.as_bytes());
+    }
+    match child.wait() {
+        Ok(st) => exit_code(st),
+        Err(_) => 1,
     }
 }
 
@@ -156,10 +237,8 @@ pub fn run(args: &[String]) -> i32 {
         );
         return 1;
     }
-    if !command_on_path("jq") {
-        eprintln!("! jq not found. Install it: https://jqlang.github.io/jq/ — then re-run.");
-        return 1;
-    }
+    // No jq check: the shell needed jq to read the conversion response; this
+    // parses the JSON itself.
     if !run_ok("gh", &["auth", "status"]) {
         eprintln!("! gh is not authenticated. Run 'gh auth login' (needs admin:org / repo scope) and retry.");
         return 1;
@@ -228,8 +307,6 @@ pub fn run(args: &[String]) -> i32 {
     );
 
     // --- Write an auto-submitting browser form -------------------------------
-    let tmpdir = std::env::var("TMPDIR").unwrap_or_else(|_| "/tmp".to_string());
-    let html_path = format!("{}/pulumi-create-app.{}.html", tmpdir, std::process::id());
     let html_content = format!(
         r#"<!doctype html>
 <html>
@@ -249,10 +326,13 @@ pub fn run(args: &[String]) -> i32 {
         manifest = manifest,
     );
 
-    if let Err(e) = std::fs::write(&html_path, &html_content) {
-        eprintln!("! Could not write HTML file: {}", e);
-        return 1;
-    }
+    let html_path = match create_html_file(&html_content) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("! Could not write HTML file: {}", e);
+            return 1;
+        }
+    };
 
     struct HtmlCleanup<'a>(&'a str);
     impl<'a> Drop for HtmlCleanup<'a> {
@@ -274,13 +354,7 @@ pub fn run(args: &[String]) -> i32 {
         println!("Listening on localhost:8723 for the redirect (best-effort)\u{2026}");
         if let Some(raw) = capture_stdout_raw("timeout", &["60", "nc", "-l", "8723"]) {
             if let Some(first_line) = raw.lines().next() {
-                if let Some(start) = first_line.find("code=") {
-                    let rest = &first_line[start + 5..];
-                    let end = rest
-                        .find(|c: char| c == ' ' || c == '&')
-                        .unwrap_or(rest.len());
-                    code = rest[..end].to_string();
-                }
+                code = extract_code(first_line);
             }
         }
     }
@@ -308,7 +382,8 @@ pub fn run(args: &[String]) -> i32 {
             &format!("/app-manifests/{}/conversions", code),
         ])
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+        // `CONVERSION="$(gh api ...)"`: gh's own error stays on stderr.
+        .stderr(Stdio::inherit())
         .output();
     let conversion_output = match conversion_output {
         Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).to_string(),
@@ -353,8 +428,8 @@ pub fn run(args: &[String]) -> i32 {
         owner
     );
 
-    if !Command::new("gh")
-        .args([
+    let rc = gh_write(
+        &[
             "variable",
             "set",
             "PULUMI_APP_ID",
@@ -364,16 +439,15 @@ pub fn run(args: &[String]) -> i32 {
             "all",
             "--body",
             &app_id,
-        ])
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
-    {
-        return 1;
+        ],
+        None,
+    );
+    if rc != 0 {
+        return rc;
     }
-
-    let status = Command::new("gh")
-        .args([
+    // printf '%s' "$APP_PEM" | gh secret set ...: under pipefail, gh's status.
+    let rc = gh_write(
+        &[
             "secret",
             "set",
             "APP_PRIVATE_KEY",
@@ -381,25 +455,18 @@ pub fn run(args: &[String]) -> i32 {
             &owner,
             "--visibility",
             "all",
-        ])
-        .stdin(Stdio::piped())
-        .stderr(Stdio::inherit())
-        .spawn()
-        .and_then(|mut child| {
-            if let Some(mut stdin) = child.stdin.take() {
-                let _ = stdin.write_all(app_pem.as_bytes());
-            }
-            child.wait()
-        });
-    if !status.map(|s| s.success()).unwrap_or(false) {
-        return 1;
+        ],
+        Some(&app_pem),
+    );
+    if rc != 0 {
+        return rc;
     }
 
     println!("\u{2713} Set PULUMI_APP_ID (variable) and APP_PRIVATE_KEY (secret).");
 
     if !app_client_id.is_empty() {
-        if !Command::new("gh")
-            .args([
+        let rc = gh_write(
+            &[
                 "variable",
                 "set",
                 "PULUMI_APP_CLIENT_ID",
@@ -409,12 +476,11 @@ pub fn run(args: &[String]) -> i32 {
                 "all",
                 "--body",
                 &app_client_id,
-            ])
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false)
-        {
-            return 1;
+            ],
+            None,
+        );
+        if rc != 0 {
+            return rc;
         }
         println!("\u{2713} Set PULUMI_APP_CLIENT_ID (variable).");
     } else {
@@ -433,8 +499,8 @@ pub fn run(args: &[String]) -> i32 {
     let pulumi_token = prompt_read_secret("Pulumi Cloud access token (leave empty to set later): ")
         .unwrap_or_default();
     if !pulumi_token.is_empty() {
-        let status = Command::new("gh")
-            .args([
+        let rc = gh_write(
+            &[
                 "secret",
                 "set",
                 "PULUMI_ACCESS_TOKEN",
@@ -442,18 +508,11 @@ pub fn run(args: &[String]) -> i32 {
                 &owner,
                 "--visibility",
                 "all",
-            ])
-            .stdin(Stdio::piped())
-            .stderr(Stdio::inherit())
-            .spawn()
-            .and_then(|mut child| {
-                if let Some(mut stdin) = child.stdin.take() {
-                    let _ = stdin.write_all(pulumi_token.as_bytes());
-                }
-                child.wait()
-            });
-        if !status.map(|s| s.success()).unwrap_or(false) {
-            return 1;
+            ],
+            Some(&pulumi_token),
+        );
+        if rc != 0 {
+            return rc;
         }
         println!("\u{2713} Set PULUMI_ACCESS_TOKEN (secret).");
     } else {
@@ -476,4 +535,51 @@ pub fn run(args: &[String]) -> i32 {
     );
     println!("enable preview-on-PR / apply-on-merge.");
     0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_code_matches_sed() {
+        assert_eq!(extract_code("GET /cb?code=abc123 HTTP/1.1"), "abc123");
+        assert_eq!(extract_code("GET /cb?state=x&code=abc HTTP/1.1"), "abc");
+        assert_eq!(extract_code("GET /cb?code=abc&state=x HTTP/1.1"), "abc");
+        // sed's greedy `.*` takes the LAST [?&]code=, and only after ? or &.
+        assert_eq!(extract_code("GET /cb?xcode=bad&code=good HTTP/1.1"), "good");
+        assert_eq!(extract_code("GET /cb?code=one&code=two HTTP/1.1"), "two");
+        assert_eq!(extract_code("GET /cb?xcode=bad HTTP/1.1"), "");
+        assert_eq!(extract_code("GET /cb HTTP/1.1"), "");
+        assert_eq!(extract_code("GET /cb?code= HTTP/1.1"), "");
+    }
+
+    #[test]
+    fn html_file_is_created_exclusively() {
+        let dir = std::env::var("TEST_TMPDIR").unwrap_or_else(|_| "/tmp".into());
+        let dir = format!("{}/create-app-excl-{}", dir, std::process::id());
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::env::set_var("TMPDIR", &dir);
+        let a = create_html_file("<a>").unwrap();
+        let b = create_html_file("<b>").unwrap();
+        assert_ne!(a, b);
+        assert_eq!(std::fs::read_to_string(&a).unwrap(), "<a>");
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            std::fs::metadata(&a).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        // create_new never opens an existing path, symlink or not.
+        let victim = format!("{dir}/victim");
+        std::fs::write(&victim, "keep").unwrap();
+        let link = format!("{dir}/link.html");
+        std::os::unix::fs::symlink(&victim, &link).unwrap();
+        let err = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&link);
+        assert!(err.is_err());
+        assert_eq!(std::fs::read_to_string(&victim).unwrap(), "keep");
+    }
 }
