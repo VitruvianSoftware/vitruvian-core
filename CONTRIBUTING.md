@@ -260,7 +260,7 @@ go test ./...              # inside apps/cli/devx/ or apps/cli/homelab/ (gazelle
 
 ### How CI decides what to run
 
-**Every lane is graph-selective.** PRs, the merge queue, and postsubmit all build/test only the **affected targets** (`tools/ci/affected-targets.sh` via target-determinator). The whole-graph correctness backstop is the **nightly full sweep** (`periodic-full-sweep.yaml`, 06:00 UTC — files a P0 issue on red, and `culprit-finder.yaml` can bisect the range to the first bad commit). Every optimization **fails safe**: a global-impact file (`MODULE.bazel`, `.bazelrc`, `tools/**`, root `BUILD`) or *any* uncertainty inside the selection script forces the full `//...` sweep. Remote cache/RBE is **BuildBuddy** (`--config=remote` for CI builds; fork PRs degrade to local).
+**Every lane is graph-selective.** PRs, the merge queue, and postsubmit all build/test only the **affected targets** (`//tools/ci:affected_targets` via target-determinator). The whole-graph correctness backstop is the **nightly full sweep** (`periodic-full-sweep.yaml`, 06:00 UTC — files a P0 issue on red, and `culprit-finder.yaml` can bisect the range to the first bad commit). Every optimization **fails safe**: a global-impact file (`MODULE.bazel`, `.bazelrc`, `tools/**`, root `BUILD`) or *any* uncertainty inside the selection script forces the full `//...` sweep. Remote cache/RBE is **BuildBuddy** (`--config=remote` for CI builds; fork PRs degrade to local).
 
 ```mermaid
 flowchart TD
