@@ -204,7 +204,7 @@ func (c *FFIClient) UploadMedia(groupID, filename, contentType string, data []by
 }
 
 // DownloadMedia invokes gchat_download_media on the Rust FFI client.
-func (c *FFIClient) DownloadMedia(kind, attachmentToken, rawURL string, externalEnabled bool) ([]byte, error) {
+func (c *FFIClient) DownloadMedia(kind, attachmentToken, contentType, rawURL string, externalEnabled bool) ([]byte, error) {
 	if c == nil {
 		return nil, errors.New("nil gchat ffi client")
 	}
@@ -217,11 +217,13 @@ func (c *FFIClient) DownloadMedia(kind, attachmentToken, rawURL string, external
 	reqObj := struct {
 		Kind            string `json:"kind"`
 		AttachmentToken string `json:"attachment_token,omitempty"`
+		ContentType     string `json:"content_type,omitempty"`
 		URL             string `json:"url,omitempty"`
 		ExternalEnabled bool   `json:"external_enabled,omitempty"`
 	}{
 		Kind:            kind,
 		AttachmentToken: attachmentToken,
+		ContentType:     contentType,
 		URL:             rawURL,
 		ExternalEnabled: externalEnabled,
 	}

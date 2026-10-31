@@ -14,8 +14,9 @@ pub const MAX_MEDIA_BYTES: usize = 200 * 1024 * 1024;
 pub const MAX_AVATAR_OR_EXTERNAL_BYTES: usize = 20 * 1024 * 1024;
 pub const MAX_AVATAR_BYTES: usize = 10 * 1024 * 1024;
 pub const MAX_EXTERNAL_IMAGE_BYTES: usize = MAX_AVATAR_OR_EXTERNAL_BYTES;
-pub const MAX_REDIRECT_HOPS: usize = 10;
+pub const MAX_REDIRECT_HOPS: usize = 3;
 
+const FIFE_IMAGE_SIZE: &str = "w10000-h10000";
 const MAX_UPLOAD_METADATA_RESPONSE_BYTES: usize = 1024 * 1024;
 
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -60,22 +61,8 @@ fn decode_upload_metadata(raw: &[u8]) -> Result<pb::UploadMetadata, GChatError> 
     Ok(direct)
 }
 
-fn cookie_header_for_download_hop(jar: &DomainCookieJar, url: &Url, hop: usize) -> Option<String> {
-    let host = url.host_str()?.to_ascii_lowercase();
-    if host == "googleusercontent.com"
-        || host.ends_with(".googleusercontent.com")
-        || host == "ggpht.com"
-        || host.ends_with(".ggpht.com")
-    {
-        return None;
-    }
-    if host == "127.0.0.1" || host == "localhost" || host == "::1" {
-        if hop == 0 || url.path().contains("/api/") {
-            return jar.cookie_header_for_request(url);
-        }
-        return None;
-    }
-    jar.cookie_header_for_url(url)
+fn cookie_header_for_download_hop(jar: &DomainCookieJar, url: &Url) -> Option<String> {
+    jar.cookie_header_for_request(url)
 }
 
 crate::edition2021! {
@@ -138,7 +125,7 @@ crate::edition2021! {
 
             if role == EndpointRole::AuthenticatedAttachment {
                 if let Some(jar) = cookies {
-                    if let Some(cookie_hdr) = cookie_header_for_download_hop(jar, &current_url, hop) {
+                    if let Some(cookie_hdr) = cookie_header_for_download_hop(jar, &current_url) {
                         req = req.header("Cookie", cookie_hdr);
                     }
                 }
@@ -150,7 +137,7 @@ crate::edition2021! {
                 .map_err(|e| map_reqwest_error(&format!("{label} GET failed"), e))?;
 
             let status = resp.status();
-            if status.is_redirection() {
+            if matches!(status.as_u16(), 301 | 302 | 303 | 307 | 308) {
                 if hop >= MAX_REDIRECT_HOPS {
                     return Err(GChatError::SsrfBlocked(format!(
                         "{label} exceeded maximum redirect hops ({MAX_REDIRECT_HOPS})"
@@ -263,12 +250,12 @@ crate::edition2021! {
             .timeout(Duration::from_secs(30))
             .header("User-Agent", &client.user_agent)
             .header("x-framework-xsrf-token", &xsrf_token)
-            .header(
-                "Content-Type",
-                "application/x-www-form-urlencoded;charset=UTF-8",
-            )
+            .header("Content-Type", "application/json; charset=UTF-8")
             .header("x-goog-upload-command", "start")
             .header("x-goog-upload-protocol", "resumable")
+            .header("x-goog-upload-content-length", data.len().to_string())
+            .header("x-goog-upload-content-type", safe_content_type)
+            .header("x-goog-upload-file-name", safe_filename)
             .header(
                 "x-goog-upload-header-content-length",
                 data.len().to_string(),
@@ -340,6 +327,13 @@ crate::edition2021! {
             .header("x-goog-upload-offset", "0")
             .body(data.to_vec());
 
+        if !xsrf_token.is_empty()
+            && client
+                .guard
+                .is_host_allowed(upload_url.host_str().unwrap_or_default(), false)
+        {
+            put_req = put_req.header("x-framework-xsrf-token", &xsrf_token);
+        }
         if let Some(cookie_hdr) = client.jar.cookie_header_for_request(&upload_url) {
             put_req = put_req.header("Cookie", cookie_hdr);
         }
@@ -386,6 +380,14 @@ crate::edition2021! {
         client: &GChatClient,
         attachment_token: &str,
     ) -> Result<(Vec<u8>, String), GChatError> {
+        download_attachment_with_content_type(client, attachment_token, "").await
+    }
+
+    pub async fn download_attachment_with_content_type(
+        client: &GChatClient,
+        attachment_token: &str,
+        content_type: &str,
+    ) -> Result<(Vec<u8>, String), GChatError> {
         let token = attachment_token.trim();
         if token.is_empty() {
             return Err(GChatError::Protocol(
@@ -396,11 +398,21 @@ crate::edition2021! {
             .base_url
             .join("/u/0/api/get_attachment_url")
             .map_err(|e| GChatError::Internal(format!("invalid get_attachment_url: {e}")))?;
-        url.query_pairs_mut()
-            .append_pair("alt", "proto")
-            .append_pair("attachment_token", token);
+        {
+            let mut qp = url.query_pairs_mut();
+            qp.append_pair("alt", "proto")
+                .append_pair("attachment_token", token);
+            let trimmed_ct = content_type.trim();
+            if trimmed_ct.to_ascii_lowercase().starts_with("image/") {
+                qp.append_pair("url_type", "FIFE_URL")
+                    .append_pair("sz", FIFE_IMAGE_SIZE)
+                    .append_pair("content_type", trimmed_ct);
+            } else {
+                qp.append_pair("url_type", "DOWNLOAD_URL");
+            }
+        }
 
-        download_with_redirects(
+        let (bytes, resp_ct) = download_with_redirects(
             &client.http,
             &client.guard,
             url,
@@ -410,7 +422,13 @@ crate::edition2021! {
             MAX_MEDIA_BYTES,
             "attachment download",
         )
-        .await
+        .await?;
+        if resp_ct.to_ascii_lowercase().starts_with("text/html") {
+            return Err(GChatError::Protocol(
+                "attachment download returned unexpected text/html response".to_string(),
+            ));
+        }
+        Ok((bytes, resp_ct))
     }
 
     pub async fn download_avatar(
@@ -419,9 +437,9 @@ crate::edition2021! {
     ) -> Result<(Vec<u8>, String), GChatError> {
         let url = Url::parse(avatar_url.trim())
             .map_err(|e| GChatError::SsrfBlocked(format!("invalid avatar URL: {e}")))?;
-        let http = guard.build_http_client()?;
+        let http = guard.http_client()?;
         download_with_redirects(
-            &http,
+            http,
             guard,
             url,
             EndpointRole::AvatarHost,
@@ -443,9 +461,9 @@ crate::edition2021! {
         }
         let url = Url::parse(url_str.trim())
             .map_err(|e| GChatError::SsrfBlocked(format!("invalid external image URL: {e}")))?;
-        let http = guard.build_http_client()?;
+        let http = guard.http_client()?;
         let res = download_with_redirects(
-            &http,
+            http,
             guard,
             url,
             EndpointRole::ExternalPublicImage,
@@ -517,7 +535,6 @@ mod tests {
     }
 
     fn build_loopback_client(base_url: &str) -> GChatClient {
-        crate::netguard::set_global_test_loopback_override(true);
         let cfg = serde_json::json!({
             "cookie_map": {
                 "COMPASS": "dynamite-ui=synthetic_compass",
@@ -528,7 +545,8 @@ mod tests {
             },
             "base_url": base_url
         });
-        GChatClient::from_config_json(&cfg.to_string()).expect("loopback GChatClient")
+        GChatClient::from_config_json_with_guard(&cfg.to_string(), NetGuard::allow_loopback_for_test())
+            .expect("loopback GChatClient")
     }
 
     #[test]
@@ -625,7 +643,7 @@ mod tests {
                         } else if req_line.starts_with("GET /u/0/api/get_attachment_url?alt=proto&attachment_token=tok_1")
                             || req_line.starts_with("GET /api/get_attachment_url?alt=proto&attachment_token=tok_1")
                         {
-                            let cdn_url = format!("http://{addr}/cdn/blob_tok_1");
+                            let cdn_url = format!("http://lh3.googleusercontent.com:{}/cdn/blob_tok_1", addr.port());
                             let resp = format!(
                                 "HTTP/1.1 302 Found\r\nLocation: {cdn_url}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
                             );
@@ -788,6 +806,300 @@ mod tests {
         });
         drop(rt);
         drop(client_holder);
+    }
+
+    #[test]
+    fn test_scotty_upload_and_get_attachment_url_include_all_protocol_fields() {
+        let client_holder: Arc<Mutex<Option<GChatClient>>> = Arc::new(Mutex::new(None));
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        rt.block_on(async {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let base_url = format!("http://{addr}/");
+
+            let start_headers_recorded: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+            let put_headers_recorded: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+            let get_att_req_lines: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+
+            let sh_clone = Arc::clone(&start_headers_recorded);
+            let ph_clone = Arc::clone(&put_headers_recorded);
+            let ga_clone = Arc::clone(&get_att_req_lines);
+
+            let server_task = tokio::spawn(async move {
+                loop {
+                    let Ok((mut stream, _)) = listener.accept().await else {
+                        break;
+                    };
+                    let sh = Arc::clone(&sh_clone);
+                    let ph = Arc::clone(&ph_clone);
+                    let ga = Arc::clone(&ga_clone);
+                    tokio::spawn(async move {
+                        let (req_line, headers, _) = read_http_request(&mut stream).await;
+                        if req_line.contains("/u/0/mole/world") {
+                            let html = r#"<!DOCTYPE html><script>window.WIZ_global_data = {"xsrf_token":"AF1QipP_scotty_token:1710000000000"};</script>"#;
+                            let resp = format!(
+                                "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                                html.len(),
+                                html
+                            );
+                            let _ = stream.write_all(resp.as_bytes()).await;
+                        } else if req_line.starts_with("POST /u/0/uploads?") {
+                            *sh.lock().unwrap() = headers;
+                            let up_url = format!("http://{addr}/u/0/upload_put?upload_id=up_f4");
+                            let resp = format!(
+                                "HTTP/1.1 200 OK\r\nx-goog-upload-url: {up_url}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                            );
+                            let _ = stream.write_all(resp.as_bytes()).await;
+                        } else if req_line.starts_with("PUT /u/0/upload_put?upload_id=up_f4") {
+                            *ph.lock().unwrap() = headers;
+                            let upload_meta = pb::UploadMetadata {
+                                payload: Some(pb::upload_metadata::Payload::AttachmentToken(
+                                    "tok_f4".to_string(),
+                                )),
+                                content_name: Some("photo.png".to_string()),
+                                content_type: Some("image/png".to_string()),
+                                local_id: None,
+                                cloned_drive_id: None,
+                            };
+                            let b64 = base64::engine::general_purpose::STANDARD
+                                .encode(upload_meta.encode_to_vec());
+                            let resp = format!(
+                                "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                                b64.len(),
+                                b64
+                            );
+                            let _ = stream.write_all(resp.as_bytes()).await;
+                        } else if req_line.starts_with("GET /u/0/api/get_attachment_url?") {
+                            ga.lock().unwrap().push(req_line);
+                            let payload = b"ok-bytes";
+                            let resp = format!(
+                                "HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                                payload.len()
+                            );
+                            let _ = stream.write_all(resp.as_bytes()).await;
+                            let _ = stream.write_all(payload).await;
+                        }
+                    });
+                }
+            });
+
+            let client = build_loopback_client(&base_url);
+            let file_bytes = b"\x89PNG\r\n\x1a\nsynthetic-png-payload";
+            let _ = scotty_upload(&client, "space_xyz", "photo.png", "image/png", file_bytes)
+                .await
+                .expect("scotty_upload should succeed");
+
+            let start_hdrs = start_headers_recorded.lock().unwrap().join("\n").to_ascii_lowercase();
+            assert!(
+                start_hdrs.contains("x-goog-upload-content-length: 29"),
+                "Scotty Step 1 must include x-goog-upload-content-length header, got:\n{start_hdrs}"
+            );
+            assert!(
+                start_hdrs.contains("x-goog-upload-content-type: image/png"),
+                "Scotty Step 1 must include x-goog-upload-content-type header, got:\n{start_hdrs}"
+            );
+            assert!(
+                start_hdrs.contains("x-goog-upload-file-name: photo.png"),
+                "Scotty Step 1 must include x-goog-upload-file-name header, got:\n{start_hdrs}"
+            );
+
+            let put_hdrs = put_headers_recorded.lock().unwrap().join("\n").to_ascii_lowercase();
+            assert!(
+                put_hdrs.contains("x-framework-xsrf-token: af1qipp_scotty_token:1710000000000"),
+                "Scotty Step 2 PUT must include x-framework-xsrf-token on allowlisted host, got:\n{put_hdrs}"
+            );
+
+            let _ = download_attachment(&client, "tok_f4").await.unwrap();
+            let req_lines = get_att_req_lines.lock().unwrap().clone();
+            assert!(
+                req_lines.iter().any(|l| l.contains("url_type=")),
+                "get_attachment_url must include url_type query param, got: {req_lines:?}"
+            );
+
+            *client_holder.lock().unwrap() = Some(client);
+            server_task.abort();
+        });
+        drop(rt);
+        drop(client_holder);
+    }
+
+    #[test]
+    fn test_cookie_stripping_depends_purely_on_hostname_via_test_dns() {
+        let client_holder: Arc<Mutex<Option<GChatClient>>> = Arc::new(Mutex::new(None));
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        rt.block_on(async {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let port = addr.port();
+            let base_url = format!("http://chat.google.com:{port}/");
+
+            let guc_headers_recorded: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+            let chat_hop2_headers_recorded: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+            let guc_clone = Arc::clone(&guc_headers_recorded);
+            let chat_clone = Arc::clone(&chat_hop2_headers_recorded);
+
+            let server_task = tokio::spawn(async move {
+                loop {
+                    let Ok((mut stream, _)) = listener.accept().await else {
+                        break;
+                    };
+                    let guc = Arc::clone(&guc_clone);
+                    let chat2 = Arc::clone(&chat_clone);
+                    tokio::spawn(async move {
+                        let (req_line, headers, _) = read_http_request(&mut stream).await;
+                        if req_line.starts_with("GET /u/0/api/get_attachment_url") {
+                            let loc = format!("http://lh3.googleusercontent.com:{port}/cdn/reauth");
+                            let resp = format!(
+                                "HTTP/1.1 302 Found\r\nLocation: {loc}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                            );
+                            let _ = stream.write_all(resp.as_bytes()).await;
+                        } else if req_line.starts_with("GET /cdn/reauth") {
+                            *guc.lock().unwrap() = headers;
+                            let loc = format!("http://chat.google.com:{port}/u/0/api/final_blob");
+                            let resp = format!(
+                                "HTTP/1.1 302 Found\r\nLocation: {loc}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                            );
+                            let _ = stream.write_all(resp.as_bytes()).await;
+                        } else if req_line.starts_with("GET /u/0/api/final_blob") {
+                            *chat2.lock().unwrap() = headers;
+                            let payload = b"reauth-blob";
+                            let resp = format!(
+                                "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                                payload.len()
+                            );
+                            let _ = stream.write_all(resp.as_bytes()).await;
+                            let _ = stream.write_all(payload).await;
+                        }
+                    });
+                }
+            });
+
+            let client = build_loopback_client(&base_url);
+            let (bytes, _) = download_attachment(&client, "tok_dns")
+                .await
+                .expect("download_attachment across hostname hops via test DNS should succeed");
+            assert_eq!(bytes, b"reauth-blob");
+
+            let guc_hdrs = guc_headers_recorded.lock().unwrap().join("\n").to_ascii_lowercase();
+            assert!(
+                !guc_hdrs.contains("cookie:"),
+                "lh3.googleusercontent.com hop must NEVER receive cookies, got:\n{guc_hdrs}"
+            );
+
+            let chat2_hdrs = chat_hop2_headers_recorded.lock().unwrap().join("\n").to_ascii_lowercase();
+            assert!(
+                chat2_hdrs.contains("cookie:") && chat2_hdrs.contains("compass="),
+                "redirect hop back to chat.google.com must retain Google cookies, got:\n{chat2_hdrs}"
+            );
+
+            *client_holder.lock().unwrap() = Some(client);
+            server_task.abort();
+        });
+        drop(rt);
+        drop(client_holder);
+    }
+
+    #[test]
+    fn test_redirect_status_codes_and_three_hop_cap_across_downloads() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        rt.block_on(async {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let port = addr.port();
+            let guard = NetGuard::allow_loopback_for_test();
+
+            let server_task = tokio::spawn(async move {
+                loop {
+                    let Ok((mut stream, _)) = listener.accept().await else {
+                        break;
+                    };
+                    tokio::spawn(async move {
+                        let (req_line, _, _) = read_http_request(&mut stream).await;
+                        if req_line.starts_with("GET /a/hop0") {
+                            let loc = format!("http://127.0.0.1:{port}/a/hop1");
+                            let resp = format!("HTTP/1.1 301 Moved Permanently\r\nLocation: {loc}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                            let _ = stream.write_all(resp.as_bytes()).await;
+                        } else if req_line.starts_with("GET /a/hop1") {
+                            let loc = format!("http://127.0.0.1:{port}/a/hop2");
+                            let resp = format!("HTTP/1.1 302 Found\r\nLocation: {loc}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                            let _ = stream.write_all(resp.as_bytes()).await;
+                        } else if req_line.starts_with("GET /a/hop2") {
+                            let loc = format!("http://127.0.0.1:{port}/a/hop3");
+                            let resp = format!("HTTP/1.1 307 Temporary Redirect\r\nLocation: {loc}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                            let _ = stream.write_all(resp.as_bytes()).await;
+                        } else if req_line.starts_with("GET /a/hop3") {
+                            let loc = format!("http://127.0.0.1:{port}/a/hop4");
+                            let resp = format!("HTTP/1.1 308 Permanent Redirect\r\nLocation: {loc}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                            let _ = stream.write_all(resp.as_bytes()).await;
+                        } else if req_line.starts_with("GET /a/hop4") {
+                            let _ = stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok").await;
+                        } else if req_line.starts_with("GET /a/hostile_chain") {
+                            let loc = "https://evil.example.com/steal";
+                            let resp = format!("HTTP/1.1 302 Found\r\nLocation: {loc}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                            let _ = stream.write_all(resp.as_bytes()).await;
+                        } else if req_line.starts_with("GET /a/status304") {
+                            let loc = format!("http://127.0.0.1:{port}/a/hop4");
+                            let resp = format!("HTTP/1.1 304 Not Modified\r\nLocation: {loc}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                            let _ = stream.write_all(resp.as_bytes()).await;
+                        }
+                    });
+                }
+            });
+
+            // 3-hop avatar redirect chain (hop1 -> hop2 -> hop3 -> hop4) must succeed
+            let three_hop_url = format!("http://127.0.0.1:{port}/a/hop1");
+            let three_hop_res = download_avatar(&guard, &three_hop_url).await.expect("3-hop chain should succeed");
+            assert_eq!(three_hop_res.0, b"ok");
+
+            // Hostile redirect chain to non-allowlisted host must be rejected by NetGuard
+            let hostile_url = format!("http://127.0.0.1:{port}/a/hostile_chain");
+            let hostile_res = download_avatar(&guard, &hostile_url).await;
+            assert!(
+                matches!(hostile_res, Err(GChatError::SsrfBlocked(_))),
+                "hostile redirect chain must be blocked by NetGuard, got: {hostile_res:?}"
+            );
+
+            // 4-hop avatar redirect chain must fail because max redirect hops is 3
+            let four_hop_url = format!("http://127.0.0.1:{port}/a/hop0");
+            let four_hop_res = download_avatar(&guard, &four_hop_url).await;
+            assert!(
+                matches!(four_hop_res, Err(GChatError::SsrfBlocked(_))),
+                "avatar redirect chain of 4 hops must be rejected by 3-hop cap, got: {four_hop_res:?}"
+            );
+
+            // Non-redirect 3xx status (304 Not Modified with Location) must not be followed
+            let status_304_url = format!("http://127.0.0.1:{port}/a/status304");
+            let status_304_res = download_avatar(&guard, &status_304_url).await;
+            assert!(
+                status_304_res.is_err(),
+                "HTTP 304 must not be followed as a redirect, got: {status_304_res:?}"
+            );
+
+            server_task.abort();
+        });
+    }
+
+    #[test]
+    fn test_build_loopback_client_does_not_mutate_global_test_override() {
+        crate::netguard::set_global_test_loopback_override(false);
+        let client = build_loopback_client("http://127.0.0.1:8080/");
+        assert!(
+            !NetGuard::from_ambient().is_loopback_test_allowed(),
+            "build_loopback_client must not leave global TEST_LOOPBACK_OVERRIDE set to true"
+        );
+        drop(client);
     }
     }
 }

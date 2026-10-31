@@ -70,7 +70,8 @@ pub fn validate_url_for_role(
         }
         return Ok(());
     }
-    if scheme != "https" {
+    let allow_test_http_with_port = allow_loopback_test && url.port().is_some();
+    if scheme != "https" && !(allow_test_http_with_port && scheme == "http") {
         return Err(GChatError::SsrfBlocked(format!(
             "disallowed non-HTTPS URL scheme: {scheme}"
         )));
@@ -133,20 +134,16 @@ pub fn validate_url_for_role(
             Ok(())
         }
         EndpointRole::ExternalPublicImage => {
-            if let Ok(ip) = host.parse::<IpAddr>() {
-                if !is_globally_routable_ip(ip) {
-                    return Err(GChatError::SsrfBlocked(format!(
-                        "external image IP is not globally routable: {ip}"
-                    )));
-                }
-            }
-            if host == "localhost"
-                || host.ends_with(".local")
-                || host.ends_with(".internal")
-                || host.ends_with(".invalid")
-            {
+            if is_ip_literal || host.contains("xn--") {
                 return Err(GChatError::SsrfBlocked(format!(
                     "disallowed external image host: {host}"
+                )));
+            }
+            let allowed = has_valid_subdomain_suffix(&host, ".googleusercontent.com")
+                || has_valid_subdomain_suffix(&host, ".ggpht.com");
+            if !allowed {
+                return Err(GChatError::SsrfBlocked(format!(
+                    "external image host not in allowlist: {host}"
                 )));
             }
             Ok(())
@@ -169,6 +166,7 @@ pub struct NetGuard {
     allow_loopback_for_test: bool,
     #[cfg(not(any(test, feature = "test-loopback")))]
     _production_only: (),
+    client: Arc<std::sync::OnceLock<Client>>,
 }
 
 impl NetGuard {
@@ -178,6 +176,7 @@ impl NetGuard {
             allow_loopback_for_test: false,
             #[cfg(not(any(test, feature = "test-loopback")))]
             _production_only: (),
+            client: Arc::new(std::sync::OnceLock::new()),
         }
     }
 
@@ -188,6 +187,7 @@ impl NetGuard {
                 .load(std::sync::atomic::Ordering::SeqCst),
             #[cfg(not(any(test, feature = "test-loopback")))]
             _production_only: (),
+            client: Arc::new(std::sync::OnceLock::new()),
         }
     }
 
@@ -195,6 +195,17 @@ impl NetGuard {
     pub fn allow_loopback_for_test() -> Self {
         Self {
             allow_loopback_for_test: true,
+            client: Arc::new(std::sync::OnceLock::new()),
+        }
+    }
+
+    fn resolver_clone(&self) -> Self {
+        Self {
+            #[cfg(any(test, feature = "test-loopback"))]
+            allow_loopback_for_test: self.allow_loopback_for_test,
+            #[cfg(not(any(test, feature = "test-loopback")))]
+            _production_only: (),
+            client: Arc::new(std::sync::OnceLock::new()),
         }
     }
 
@@ -214,9 +225,20 @@ impl NetGuard {
         Client::builder()
             .no_proxy()
             .redirect(reqwest::redirect::Policy::none())
-            .dns_resolver(Arc::new(self.clone()))
+            .dns_resolver(Arc::new(self.resolver_clone()))
             .build()
             .map_err(|e| GChatError::Internal(format!("failed to build HTTP client: {e}")))
+    }
+
+    pub fn http_client(&self) -> Result<&Client, GChatError> {
+        if let Some(c) = self.client.get() {
+            return Ok(c);
+        }
+        let built = self.build_http_client()?;
+        let _ = self.client.set(built);
+        self.client
+            .get()
+            .ok_or_else(|| GChatError::Internal("failed to initialize HTTP client".to_string()))
     }
 
     pub fn validate_ip(&self, ip: IpAddr) -> Result<(), GChatError> {
@@ -372,6 +394,13 @@ crate::edition2021! {
             if let Ok(ip) = clean_host.parse::<IpAddr>() {
                 self.validate_ip(ip)?;
                 return Ok(vec![SocketAddr::new(ip, port)]);
+            }
+            #[cfg(any(test, feature = "test-loopback"))]
+            if self.is_loopback_test_allowed()
+                && !clean_host.eq_ignore_ascii_case("localhost")
+                && self.is_host_allowed(&clean_host.to_ascii_lowercase(), true)
+            {
+                return Ok(vec![SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port)]);
             }
             let addrs = tokio::net::lookup_host((clean_host, port))
                 .await
@@ -633,15 +662,30 @@ mod tests {
         )
         .is_err());
 
-        // Role validation: ExternalPublicImage
+        // Role validation: ExternalPublicImage (must restrict to Google media hosts, rejecting arbitrary third-party domains)
         assert!(validate_url_for_role(
-            &Url::parse("https://images.example.com/pic.png").unwrap(),
+            &Url::parse("https://lh3.googleusercontent.com/pic.png").unwrap(),
             EndpointRole::ExternalPublicImage,
             false
         )
         .is_ok());
         assert!(validate_url_for_role(
-            &Url::parse("http://images.example.com/pic.png").unwrap(),
+            &Url::parse("https://yt3.ggpht.com/pic.png").unwrap(),
+            EndpointRole::ExternalPublicImage,
+            false
+        )
+        .is_ok());
+        assert!(
+            validate_url_for_role(
+                &Url::parse("https://images.example.com/pic.png").unwrap(),
+                EndpointRole::ExternalPublicImage,
+                false
+            )
+            .is_err(),
+            "ExternalPublicImage must reject non-Google third-party host images.example.com"
+        );
+        assert!(validate_url_for_role(
+            &Url::parse("http://lh3.googleusercontent.com/pic.png").unwrap(),
             EndpointRole::ExternalPublicImage,
             false
         )
@@ -653,7 +697,7 @@ mod tests {
         )
         .is_err());
         assert!(validate_url_for_role(
-            &Url::parse("https://user@images.example.com/pic.png").unwrap(),
+            &Url::parse("https://user@lh3.googleusercontent.com/pic.png").unwrap(),
             EndpointRole::ExternalPublicImage,
             false
         )

@@ -177,11 +177,16 @@ fn decode_proto_or_base64<M: Message + Default>(bytes: &[u8]) -> Result<M, GChat
 
 impl GChatClient {
     pub(crate) fn from_config_json(config_json: &str) -> Result<Self, GChatError> {
+        Self::from_config_json_with_guard(config_json, NetGuard::from_ambient())
+    }
+
+    pub(crate) fn from_config_json_with_guard(
+        config_json: &str,
+        guard: NetGuard,
+    ) -> Result<Self, GChatError> {
         let cfg: SessionConfigInput = serde_json::from_str(config_json).map_err(|e| {
             GChatError::CookieValidation(format!("invalid session config JSON: {e}"))
         })?;
-
-        let guard = NetGuard::from_ambient();
 
         #[allow(unused_mut)]
         let mut jar = if !cfg.cookies.is_empty() {
@@ -720,6 +725,8 @@ struct DownloadMediaReqInput {
     #[serde(default)]
     attachment_token: String,
     #[serde(default)]
+    content_type: String,
+    #[serde(default)]
     url: String,
     #[serde(default)]
     external_enabled: bool,
@@ -814,12 +821,15 @@ pub unsafe extern "C" fn gchat_download_media(
         req.kind.trim()
     };
     let res: Result<(Vec<u8>, String), GChatError> = match kind {
-        "attachment" => client_ref
-            .runtime
-            .block_on(crate::media::download_attachment(
-                client_ref,
-                &req.attachment_token,
-            )),
+        "attachment" => {
+            client_ref
+                .runtime
+                .block_on(crate::media::download_attachment_with_content_type(
+                    client_ref,
+                    &req.attachment_token,
+                    &req.content_type,
+                ))
+        }
         "avatar" => client_ref
             .runtime
             .block_on(crate::media::download_avatar(&client_ref.guard, &req.url)),

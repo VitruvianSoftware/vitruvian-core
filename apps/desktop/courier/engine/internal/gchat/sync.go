@@ -593,7 +593,7 @@ func parseMessageProto(raw []byte) parsedMessage {
 	return pm
 }
 
-func (c *Client) convertParsedMessage(pm parsedMessage) (*bridgev2.ConvertedMessage, error) {
+func (c *Client) convertParsedMessage(ctx context.Context, pm parsedMessage) (*bridgev2.ConvertedMessage, error) {
 	conv, err := AnnotationsToHTML(pm.rawProto)
 	if err != nil {
 		return nil, err
@@ -614,7 +614,7 @@ func (c *Client) convertParsedMessage(pm parsedMessage) (*bridgev2.ConvertedMess
 		content.Mentions = mentions
 	}
 
-	mediaParts, err := c.extractInboundMediaParts(context.Background(), pm)
+	mediaParts, err := c.extractInboundMediaParts(ctx, pm)
 	if err != nil {
 		return nil, err
 	}
@@ -700,7 +700,7 @@ func (c *Client) FetchMessages(ctx context.Context, fetchParams bridgev2.FetchMe
 			if pm.messageID == "" {
 				continue
 			}
-			cm, err := c.convertParsedMessage(pm)
+			cm, err := c.convertParsedMessage(ctx, pm)
 			if err != nil {
 				return nil, err
 			}
@@ -773,7 +773,7 @@ func (c *Client) FetchMessages(ctx context.Context, fetchParams bridgev2.FetchMe
 		if pm.messageID == "" {
 			continue
 		}
-		cm, err := c.convertParsedMessage(pm)
+		cm, err := c.convertParsedMessage(ctx, pm)
 		if err != nil {
 			return nil, err
 		}
@@ -1165,7 +1165,7 @@ func (c *Client) translateSingleEventBody(
 						ID:            targetID,
 						TargetMessage: targetID,
 						Data:          pmCopy,
-						ConvertEditFunc: func(_ context.Context, _ *bridgev2.Portal, _ bridgev2.MatrixAPI, existing []*database.Message, data parsedMessage) (*bridgev2.ConvertedEdit, error) {
+						ConvertEditFunc: func(editCtx context.Context, _ *bridgev2.Portal, _ bridgev2.MatrixAPI, existing []*database.Message, data parsedMessage) (*bridgev2.ConvertedEdit, error) {
 							if len(existing) > 0 && existing[0] != nil {
 								meta, ok := existing[0].Metadata.(*MessageMetadata)
 								if !ok || meta == nil {
@@ -1177,7 +1177,7 @@ func (c *Client) translateSingleEventBody(
 								}
 								meta.LastEditTime = editTS
 							}
-							cm, err := c.convertParsedMessage(data)
+							cm, err := c.convertParsedMessage(editCtx, data)
 							if err != nil {
 								return nil, err
 							}
@@ -1192,7 +1192,7 @@ func (c *Client) translateSingleEventBody(
 						},
 					})
 				} else {
-					cm, err := c.convertParsedMessage(pm)
+					cm, err := c.convertParsedMessage(ctx, pm)
 					if err != nil {
 						return nil, err
 					}

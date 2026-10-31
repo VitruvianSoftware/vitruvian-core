@@ -2551,7 +2551,6 @@ func TestMultiAttachmentInboundUsesZeroPaddedPartIDsAndOutboundUploadsViaScotty(
 		createMsgReqs   [][]byte
 		cdnGotCookie    atomic.Bool
 		cdnGotXSRF      atomic.Bool
-		srvURL          string
 	)
 
 	attBytes0 := []byte("\x89PNG\r\n\x1a\ninbound-image-zero")
@@ -2582,7 +2581,7 @@ func TestMultiAttachmentInboundUsesZeroPaddedPartIDsAndOutboundUploadsViaScotty(
 			idx := len(uploadStartReqs) + 1
 			uploadStartReqs = append(uploadStartReqs, fmt.Sprintf("%s?%s|%s|%s", r.URL.Path, r.URL.RawQuery, r.Header.Get("X-Goog-Upload-Command"), string(body)))
 			mu.Unlock()
-			w.Header().Set("x-goog-upload-url", fmt.Sprintf("%s/u/0/upload_put?id=%d", srvURL, idx))
+			w.Header().Set("x-goog-upload-url", fmt.Sprintf("http://%s/u/0/upload_put?id=%d", r.Host, idx))
 			w.WriteHeader(http.StatusOK)
 		case "/u/0/upload_put":
 			mu.Lock()
@@ -2618,7 +2617,8 @@ func TestMultiAttachmentInboundUsesZeroPaddedPartIDsAndOutboundUploadsViaScotty(
 			_, _ = w.Write(encodeBytesField(1, msgBytes))
 		case "/u/0/api/get_attachment_url", "/api/get_attachment_url":
 			tok := r.URL.Query().Get("attachment_token")
-			http.Redirect(w, r, fmt.Sprintf("%s/cdn/%s", srvURL, tok), http.StatusFound)
+			port := r.Host[strings.LastIndex(r.Host, ":")+1:]
+			http.Redirect(w, r, fmt.Sprintf("http://lh3.googleusercontent.com:%s/cdn/%s", port, tok), http.StatusFound)
 		case "/cdn/in_tok_0":
 			if r.Header.Get("Cookie") != "" {
 				cdnGotCookie.Store(true)
@@ -2642,7 +2642,6 @@ func TestMultiAttachmentInboundUsesZeroPaddedPartIDsAndOutboundUploadsViaScotty(
 		}
 	}))
 	t.Cleanup(srv.Close)
-	srvURL = srv.URL
 
 	dir := t.TempDir()
 	st, err := store.Open(filepath.Join(dir, "courier.db"))
@@ -2854,4 +2853,186 @@ func TestMultiAttachmentInboundUsesZeroPaddedPartIDsAndOutboundUploadsViaScotty(
 
 	require.False(t, cdnGotCookie.Load(), "CDN redirect hop must never receive Google cookies")
 	require.False(t, cdnGotXSRF.Load(), "CDN redirect hop must never receive XSRF header")
+}
+
+func TestInboundAttachmentFailureAndHTMLBecomePlaceholdersWithoutAbortingBatchAndExtractsField15AndAvatar(t *testing.T) {
+	enableTestLoopback(t)
+	ctx := context.Background()
+
+	field15Bytes := []byte("\x89PNG\r\n\x1a\nfield15-attachment-png")
+	avatarBytes := []byte("\x89PNG\r\n\x1a\nada-avatar-png")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/u/0/mole/world":
+			w.Header().Set("Content-Type", "text/html")
+			_, _ = fmt.Fprint(w, `<!DOCTYPE html><html><script>window.WIZ_global_data = {"xsrf_token":"AF1QipP_batch_token:1710000000000"};</script></html>`)
+		case "/u/0/api/get_self_user_status":
+			payload := buildSyntheticSelfUserStatusResponse("112233445566778899001")
+			w.Header().Set("Content-Type", "application/x-protobuf")
+			_, _ = w.Write(payload)
+		case "/u/0/api/get_members":
+			port := r.Host[strings.LastIndex(r.Host, ":")+1:]
+			payload := buildSyntheticGetMembersResponse(
+				"112233445566778899002",
+				"Grace Example",
+				"grace@example.invalid",
+				fmt.Sprintf("http://lh3.googleusercontent.com:%s/a/grace_avatar.png", port),
+			)
+			w.Header().Set("Content-Type", "application/x-protobuf")
+			_, _ = w.Write(payload)
+		case "/u/0/api/paginated_world":
+			w.Header().Set("Content-Type", "application/x-protobuf")
+			_, _ = w.Write(buildSendTestPaginatedWorldResponse())
+		case "/u/0/api/list_topics":
+			spaceGID := encodeSpaceGroupID("space_threaded")
+			// Message 1: text + failed attachment (att_0000) + text/html attachment (att_0001) + Message.attachments field 15 (att_0002)
+			msg1 := encodeSyntheticMessage(spaceGID, "topic_b1", "msg_b1", "112233445566778899002", "First message in batch", 1710000910000000, "", 0, 0)
+			msg1 = append(msg1, encodeBytesField(11, encodeUploadMetadataAnnotationProto(0, 0, "tok_fail_500", "broken.bin", "application/octet-stream"))...)
+			msg1 = append(msg1, encodeBytesField(11, encodeUploadMetadataAnnotationProto(0, 0, "tok_html_page", "login.html", "application/octet-stream"))...)
+			// Message.attachments (field 15) -> Attachment { upload_metadata (field 14): UploadMetadata }
+			attField15 := encodeBytesField(14, encodeUploadMetadataProto("tok_field15_ok", "inline_card.png", "image/png"))
+			msg1 = append(msg1, encodeBytesField(15, attField15)...)
+
+			var topic1 []byte
+			topic1 = append(topic1, encodeBytesField(1, encodeTopicID(spaceGID, "topic_b1"))...)
+			topic1 = append(topic1, encodeBytesField(7, msg1)...)
+
+			// Message 2 in the same backfill batch must still arrive!
+			msg2 := encodeSyntheticMessage(spaceGID, "topic_b2", "msg_b2", "112233445566778899002", "Second message in batch", 1710000920000000, "", 0, 0)
+			var topic2 []byte
+			topic2 = append(topic2, encodeBytesField(1, encodeTopicID(spaceGID, "topic_b2"))...)
+			topic2 = append(topic2, encodeBytesField(7, msg2)...)
+
+			var resp []byte
+			resp = append(resp, encodeBytesField(1, topic1)...)
+			resp = append(resp, encodeBytesField(1, topic2)...)
+			w.Header().Set("Content-Type", "application/x-protobuf")
+			_, _ = w.Write(resp)
+		case "/u/0/api/get_attachment_url", "/api/get_attachment_url":
+			tok := r.URL.Query().Get("attachment_token")
+			port := r.Host[strings.LastIndex(r.Host, ":")+1:]
+			http.Redirect(w, r, fmt.Sprintf("http://lh3.googleusercontent.com:%s/cdn/%s", port, tok), http.StatusFound)
+		case "/cdn/tok_fail_500":
+			w.WriteHeader(http.StatusInternalServerError)
+		case "/cdn/tok_html_page":
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write([]byte("<!DOCTYPE html><html><body>Google Sign-In Error</body></html>"))
+		case "/cdn/tok_field15_ok":
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write(field15Bytes)
+		case "/a/grace_avatar.png":
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write(avatarBytes)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	dir := t.TempDir()
+	st, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = st.Close() })
+
+	mediaStore := &media.Store{Dir: filepath.Join(dir, "media")}
+	conn := &Connector{baseURL: srv.URL}
+	h, err := host.Start(ctx, dir, NetworkID, st, mediaStore, conn, zerolog.Nop())
+	require.NoError(t, err)
+	t.Cleanup(h.Stop)
+
+	user, err := h.Bridge.GetUserByMXID(ctx, "@me:courier.local")
+	require.NoError(t, err)
+	proc, err := conn.CreateLogin(ctx, user, FlowCookies)
+	require.NoError(t, err)
+	doneStep, err := proc.(bridgev2.LoginProcessCookies).SubmitCookies(ctx, map[string]string{
+		"COMPASS": "dynamite-ui=synthetic_compass",
+		"OSID":    "synthetic_osid",
+		"SID":     "synthetic_sid",
+		"HSID":    "synthetic_hsid",
+		"SSID":    "synthetic_ssid",
+	})
+	require.NoError(t, err)
+	ul := doneStep.CompleteParams.UserLogin
+	client := ul.Client.(*Client)
+	t.Cleanup(client.Disconnect)
+
+	require.NoError(t, client.syncWorld(ctx))
+	spacePortal, err := h.Bridge.GetExistingPortalByKey(ctx, networkid.PortalKey{
+		ID:       MakeSpacePortalID("space_threaded"),
+		Receiver: ul.ID,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, spacePortal)
+
+	// 1. Backfill batch with failed + text/html + field-15 attachments must not abort Message 1 or Message 2.
+	fetchResp, err := client.FetchMessages(ctx, bridgev2.FetchMessagesParams{
+		Portal: spacePortal,
+		Count:  10,
+	})
+	require.NoError(t, err, "per-attachment failures or text/html responses must not abort FetchMessages batch")
+	require.Len(t, fetchResp.Messages, 2, "both messages in the backfill batch must arrive")
+
+	m1Parts := fetchResp.Messages[0].ConvertedMessage.Parts
+	require.Len(t, m1Parts, 4, "text part + 2 placeholder parts (att_0000, att_0001) + 1 valid field-15 attachment (att_0002)")
+	require.Equal(t, networkid.PartID(""), m1Parts[0].ID)
+	require.Equal(t, "First message in batch", m1Parts[0].Content.Body)
+
+	require.Equal(t, networkid.PartID("att_0000"), m1Parts[1].ID)
+	require.Equal(t, event.MsgNotice, m1Parts[1].Content.MsgType, "failed attachment must become a MsgNotice placeholder")
+	require.Empty(t, m1Parts[1].Content.URL, "failed attachment placeholder must not store a media blob")
+
+	require.Equal(t, networkid.PartID("att_0001"), m1Parts[2].ID)
+	require.Equal(t, event.MsgNotice, m1Parts[2].Content.MsgType, "text/html attachment must become a MsgNotice placeholder")
+	require.Empty(t, m1Parts[2].Content.URL, "text/html attachment must not store a media blob")
+
+	require.Equal(t, networkid.PartID("att_0002"), m1Parts[3].ID)
+	require.Equal(t, event.MsgImage, m1Parts[3].Content.MsgType)
+	require.Equal(t, "inline_card.png", m1Parts[3].Content.FileName)
+	require.NotEmpty(t, m1Parts[3].Content.URL)
+	gotField15, err := spacePortal.Bridge.Bot.DownloadMedia(ctx, m1Parts[3].Content.URL, nil)
+	require.NoError(t, err)
+	require.Equal(t, field15Bytes, gotField15)
+
+	require.Equal(t, "Second message in batch", fetchResp.Messages[1].ConvertedMessage.Parts[0].Content.Body)
+
+	// 2. GetUserInfo wires downloadAvatar for ghost profile avatars.
+	ghost, err := h.Bridge.GetGhostByID(ctx, MakeUserID("112233445566778899002"))
+	require.NoError(t, err)
+	uinfo, err := client.GetUserInfo(ctx, ghost)
+	require.NoError(t, err)
+	require.NotNil(t, uinfo.Avatar, "GetUserInfo must populate Avatar when get_members returns avatar_url")
+	require.NotNil(t, uinfo.Avatar.Get)
+	gotAvatar, err := uinfo.Avatar.Get(ctx)
+	require.NoError(t, err)
+	require.Equal(t, avatarBytes, gotAvatar)
+
+	// 3. Verify catch-up / WebChannel event batch also converts failed/text-html attachments into placeholders without aborting the batch.
+	var evt []byte
+	spaceGID := encodeSpaceGroupID("space_threaded")
+	evt = append(evt, encodeBytesField(1, spaceGID)...)
+	evt = append(evt, encodeVarintField(3, 6)...) // MESSAGE_POSTED
+
+	liveMsg1 := encodeSyntheticMessage(spaceGID, "topic_b1", "msg_live_1", "112233445566778899002", "Live msg with broken attachment", 1710000930000000, "", 0, 0)
+	liveMsg1 = append(liveMsg1, encodeBytesField(11, encodeUploadMetadataAnnotationProto(0, 0, "tok_fail_500", "live_broken.bin", "application/octet-stream"))...)
+	var body1 []byte
+	body1 = append(body1, encodeBytesField(6, encodeBytesField(1, liveMsg1))...)
+	body1 = append(body1, encodeVarintField(12, 6)...)
+
+	liveMsg2 := encodeSyntheticMessage(spaceGID, "topic_b1", "msg_live_2", "112233445566778899002", "Live msg after broken attachment", 1710000940000000, "", 0, 0)
+	var body2 []byte
+	body2 = append(body2, encodeBytesField(6, encodeBytesField(1, liveMsg2))...)
+	body2 = append(body2, encodeVarintField(12, 6)...)
+
+	evt = append(evt, encodeBytesField(4, body1)...)
+	evt = append(evt, encodeBytesField(8, body2)...)
+
+	remoteEvts, err := client.translateWebChannelEvent(ctx, evt)
+	require.NoError(t, err, "event translation must not abort when an attachment fails")
+	require.Len(t, remoteEvts, 2, "both event bodies in the batch must be translated")
+	preConv0, ok := remoteEvts[0].(*simplevent.PreConvertedMessage)
+	require.True(t, ok)
+	require.Len(t, preConv0.Data.Parts, 2)
+	require.Equal(t, networkid.PartID("att_0000"), preConv0.Data.Parts[1].ID)
+	require.Equal(t, event.MsgNotice, preConv0.Data.Parts[1].Content.MsgType)
 }

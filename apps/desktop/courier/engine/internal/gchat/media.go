@@ -78,12 +78,12 @@ func (c *Client) uploadMedia(_ context.Context, rawGroupID, filename, contentTyp
 	return ffi.UploadMedia(rawGroupID, filename, contentType, data)
 }
 
-func (c *Client) downloadAttachment(_ context.Context, attachmentToken string) ([]byte, error) {
+func (c *Client) downloadAttachment(_ context.Context, attachmentToken, contentType string) ([]byte, error) {
 	ffi, err := c.ensureFFIClient()
 	if err != nil {
 		return nil, err
 	}
-	data, err := ffi.DownloadMedia("attachment", attachmentToken, "", false)
+	data, err := ffi.DownloadMedia("attachment", attachmentToken, contentType, "", false)
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +98,7 @@ func (c *Client) downloadAvatar(_ context.Context, avatarURL string) ([]byte, er
 	if err != nil {
 		return nil, err
 	}
-	return ffi.DownloadMedia("avatar", "", avatarURL, false)
+	return ffi.DownloadMedia("avatar", "", "", avatarURL, false)
 }
 
 func (c *Client) prepareOutgoingMessageContent(
@@ -216,27 +216,43 @@ func (c *Client) prepareOutgoingMessageContent(
 func extractMessageUploadMetadataList(rawMessageProto []byte) []parsedUploadMetadata {
 	var uploads []parsedUploadMetadata
 	protoIterFields(rawMessageProto, func(f protoField) {
-		if f.num != 11 || f.wireType != 2 { // annotations (repeated Annotation, field 11 of Message)
+		if f.wireType != 2 {
 			return
 		}
-		var annType uint64
-		var uploadBytes []byte
-		protoIterFields(f.bytes, func(af protoField) {
-			switch af.num {
-			case 1:
-				if af.wireType == 0 {
-					annType = af.varint
+		switch f.num {
+		case 11: // annotations (repeated Annotation, field 11 of Message)
+			var annType uint64
+			var uploadBytes []byte
+			protoIterFields(f.bytes, func(af protoField) {
+				switch af.num {
+				case 1:
+					if af.wireType == 0 {
+						annType = af.varint
+					}
+				case 10: // upload_metadata (UploadMetadata)
+					if af.wireType == 2 {
+						uploadBytes = af.bytes
+					}
 				}
-			case 10: // upload_metadata (UploadMetadata)
-				if af.wireType == 2 {
-					uploadBytes = af.bytes
+			})
+			if (annType == annotationTypeUploadMetadata || len(uploadBytes) > 0) && len(uploadBytes) > 0 {
+				up := parseUploadMetadataProto(uploadBytes)
+				if up.attachmentToken != "" || up.clonedDriveID != "" {
+					uploads = append(uploads, up)
 				}
 			}
-		})
-		if (annType == annotationTypeUploadMetadata || len(uploadBytes) > 0) && len(uploadBytes) > 0 {
-			up := parseUploadMetadataProto(uploadBytes)
-			if up.attachmentToken != "" || up.clonedDriveID != "" {
-				uploads = append(uploads, up)
+		case 15: // attachments (repeated Attachment, field 15 of Message)
+			var uploadBytes []byte
+			protoIterFields(f.bytes, func(atf protoField) {
+				if atf.num == 14 && atf.wireType == 2 { // Attachment.upload_metadata (field 14)
+					uploadBytes = atf.bytes
+				}
+			})
+			if len(uploadBytes) > 0 {
+				up := parseUploadMetadataProto(uploadBytes)
+				if up.attachmentToken != "" || up.clonedDriveID != "" {
+					uploads = append(uploads, up)
+				}
 			}
 		}
 	})
@@ -296,28 +312,53 @@ func (c *Client) extractInboundMediaParts(ctx context.Context, pm parsedMessage)
 			continue
 		}
 
-		data, err := c.downloadAttachment(ctx, up.attachmentToken)
-		if err != nil {
-			return nil, fmt.Errorf("download attachment %d: %w", idx, err)
-		}
-		if len(data) == 0 || len(data) > MaxMediaBytes {
-			return nil, fmt.Errorf("invalid attachment %d size (%d bytes)", idx, len(data))
-		}
-
-		mimeType := strings.TrimSpace(up.contentType)
-		if mimeType == "" {
-			mimeType = http.DetectContentType(data)
-		}
 		filename := strings.TrimSpace(up.contentName)
 		if filename == "" {
 			filename = fmt.Sprintf("attachment_%04d", idx)
+		}
+
+		placeholderPart := func() *bridgev2.ConvertedMessagePart {
+			return &bridgev2.ConvertedMessagePart{
+				ID:   partID,
+				Type: event.EventMessage,
+				Content: &event.MessageEventContent{
+					MsgType: event.MsgNotice,
+					Body:    fmt.Sprintf("Attachment unavailable (%s)", filename),
+				},
+				DBMetadata: &MessageMetadata{
+					TopicID:          pm.topicID,
+					CreateTimeMicros: pm.createTimeUsec,
+					LastEditTime:     pm.lastEditUsec,
+				},
+			}
+		}
+
+		data, err := c.downloadAttachment(ctx, up.attachmentToken, up.contentType)
+		if err != nil || len(data) == 0 || len(data) > MaxMediaBytes {
+			parts = append(parts, placeholderPart())
+			continue
+		}
+
+		snifferMime := http.DetectContentType(data)
+		if strings.HasPrefix(strings.ToLower(snifferMime), "text/html") {
+			parts = append(parts, placeholderPart())
+			continue
+		}
+		mimeType := strings.TrimSpace(up.contentType)
+		if mimeType == "" {
+			mimeType = snifferMime
+		}
+		if strings.HasPrefix(strings.ToLower(mimeType), "text/html") {
+			parts = append(parts, placeholderPart())
+			continue
 		}
 
 		var mxcURI id.ContentURIString
 		if c != nil && c.UserLogin != nil && c.UserLogin.Bridge != nil && c.UserLogin.Bridge.Bot != nil {
 			uploadedURI, _, upErr := c.UserLogin.Bridge.Bot.UploadMedia(ctx, roomID, data, filename, mimeType)
 			if upErr != nil {
-				return nil, fmt.Errorf("store attachment %d in media store: %w", idx, upErr)
+				parts = append(parts, placeholderPart())
+				continue
 			}
 			mxcURI = uploadedURI
 		}

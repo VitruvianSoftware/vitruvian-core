@@ -149,12 +149,15 @@ impl DomainCookieJar {
         self
     }
 
-    pub fn cookie_header_for_url(&self, url: &Url) -> Option<String> {
-        if url.scheme() != "https" {
-            return None;
-        }
-        let host = url.host_str()?.to_ascii_lowercase();
-        if host == "googleusercontent.com" || host.ends_with(".googleusercontent.com") {
+    pub fn cookie_header_for_host(&self, raw_host: &str) -> Option<String> {
+        let host = raw_host
+            .trim_matches(|c| c == '[' || c == ']')
+            .to_ascii_lowercase();
+        if host == "googleusercontent.com"
+            || host.ends_with(".googleusercontent.com")
+            || host == "ggpht.com"
+            || host.ends_with(".ggpht.com")
+        {
             return None;
         }
         let is_chat_host = host == "chat.google.com";
@@ -178,18 +181,24 @@ impl DomainCookieJar {
         }
     }
 
+    pub fn cookie_header_for_url(&self, url: &Url) -> Option<String> {
+        if url.scheme() != "https" {
+            return None;
+        }
+        self.cookie_header_for_host(url.host_str()?)
+    }
+
     pub(crate) fn cookie_header_for_request(&self, url: &Url) -> Option<String> {
         if let Some(h) = self.cookie_header_for_url(url) {
             return Some(h);
         }
         #[cfg(any(test, feature = "test-loopback"))]
-        if self.allow_loopback_for_test {
-            if let Some(host) = url.host_str() {
-                if host == "127.0.0.1" || host == "localhost" || host == "::1" {
-                    let chat_url = Url::parse("https://chat.google.com/").ok()?;
-                    return self.cookie_header_for_url(&chat_url);
-                }
+        if self.allow_loopback_for_test && (url.scheme() == "https" || url.scheme() == "http") {
+            let host = url.host_str()?;
+            if host == "127.0.0.1" || host == "localhost" || host == "::1" {
+                return self.cookie_header_for_host("chat.google.com");
             }
+            return self.cookie_header_for_host(host);
         }
         None
     }

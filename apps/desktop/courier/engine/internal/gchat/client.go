@@ -384,14 +384,71 @@ func (c *Client) GetChatInfo(_ context.Context, portal *bridgev2.Portal) (*bridg
 	}, nil
 }
 
-func (c *Client) GetUserInfo(_ context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
+func (c *Client) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*bridgev2.UserInfo, error) {
+	if ghost == nil {
+		return &bridgev2.UserInfo{}, nil
+	}
 	name := string(ghost.ID)
 	if ghost.Name != "" {
 		name = ghost.Name
 	}
-	return &bridgev2.UserInfo{
+	var avatarURL string
+	if gaiaID := strings.TrimSpace(string(ghost.ID)); gaiaID != "" {
+		userIDProto := protoEncodeBytesField(1, []byte(gaiaID))
+		userIDProto = append(userIDProto, protoEncodeVarintField(2, 0)...)
+		memberIDProto := protoEncodeBytesField(1, userIDProto)
+		req := protoEncodeBytesField(2, memberIDProto)
+		if respBytes, rpcErr := c.rpcCall(ctx, "get_members", req); rpcErr == nil && len(respBytes) > 0 {
+			extractUser := func(memberBytes []byte) {
+				protoIterFields(memberBytes, func(mf protoField) {
+					if mf.num == 1 && mf.wireType == 2 { // Member.user (User)
+						protoIterFields(mf.bytes, func(uf protoField) {
+							if uf.wireType != 2 {
+								return
+							}
+							switch uf.num {
+							case 2: // User.name
+								if s := strings.TrimSpace(string(uf.bytes)); s != "" {
+									name = s
+								}
+							case 3: // User.avatar_url
+								if s := strings.TrimSpace(string(uf.bytes)); s != "" {
+									avatarURL = s
+								}
+							}
+						})
+					}
+				})
+			}
+			protoIterFields(respBytes, func(f protoField) {
+				if f.wireType != 2 {
+					return
+				}
+				switch f.num {
+				case 1: // GetMembersResponse.members
+					extractUser(f.bytes)
+				case 2: // GetMembersResponse.member_profiles
+					protoIterFields(f.bytes, func(mpf protoField) {
+						if mpf.num == 2 && mpf.wireType == 2 { // MemberProfile.member
+							extractUser(mpf.bytes)
+						}
+					})
+				}
+			})
+		}
+	}
+	info := &bridgev2.UserInfo{
 		Name: &name,
-	}, nil
+	}
+	if avatarURL != "" {
+		info.Avatar = &bridgev2.Avatar{
+			ID: networkid.AvatarID(avatarURL),
+			Get: func(ctx context.Context) ([]byte, error) {
+				return c.downloadAvatar(ctx, avatarURL)
+			},
+		}
+	}
+	return info, nil
 }
 
 func (c *Client) GetCapabilities(_ context.Context, portal *bridgev2.Portal) *event.RoomFeatures {
