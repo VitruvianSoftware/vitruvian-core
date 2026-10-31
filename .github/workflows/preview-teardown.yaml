@@ -67,6 +67,21 @@ jobs:
         with:
           persist-credentials: false
 
+      # Build the reaper BEFORE any credential exists on the runner, in a step
+      # that has none, and run the copy below. `bazel run` would execute it in
+      # the same step as the Neon key, the GitHub token and the GCP credentials,
+      # with a Bazel client and every repository rule it triggers in that
+      # environment. This is ci.yaml's pattern: build, copy out of bazel-bin.
+      - name: Install Bazel
+        uses: ./.github/actions/setup-bazel
+
+      - name: Build the reaper
+        run: |
+          bazel build //tools/ci:preview_reaper
+          cp -f bazel-bin/tools/ci/preview_reaper "$RUNNER_TEMP/preview-reaper"
+          chmod +x "$RUNNER_TEMP/preview-reaper"
+          test -x "$RUNNER_TEMP/preview-reaper" || { echo "::error::the preview-reaper binary was not built"; exit 1; }
+
       - name: Authenticate to Google Cloud
         uses: ./.github/actions/gcp-auth
         with:
@@ -75,11 +90,6 @@ jobs:
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
-
-      # The reaper is a Rust binary (//tools/ci:preview_reaper), so Bazel is
-      # needed on every run, manual ones included.
-      - name: Install Bazel
-        uses: ./.github/actions/setup-bazel
 
       - name: Run Ephemeral Preview Reaper
         id: reaper
@@ -91,9 +101,15 @@ jobs:
           NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
           PREVIEW_TTL_HOURS: 24
           DRY_RUN: ${{ (github.event.inputs.dry_run == 'true' || github.event.inputs.dry_run == true) && '1' || '' }}
+          # Passed through the environment, never spliced into the script text:
+          # a workflow_dispatch input is free text.
+          PR_TARGET: ${{ github.event.pull_request.number || github.event.inputs.pr || '' }}
         run: |
-          PR_TARGET="${{ github.event.pull_request.number || github.event.inputs.pr || '' }}"
-          bazel run //tools/ci:preview_reaper -- ${PR_TARGET} >> "$GITHUB_OUTPUT"
+          if [ -n "${PR_TARGET}" ] && ! [[ "${PR_TARGET}" =~ ^[0-9]+$ ]]; then
+            echo "::error::the pr input must be a PR number, got '${PR_TARGET}'"
+            exit 2
+          fi
+          "$RUNNER_TEMP/preview-reaper" ${PR_TARGET:+"${PR_TARGET}"} >> "$GITHUB_OUTPUT"
 
       # Only the (paused) pull_request trigger reaches the step below.
       - name: Update PR Sticky Comment on Targeted Event

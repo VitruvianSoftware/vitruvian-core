@@ -921,3 +921,75 @@ fn a_grep_that_cannot_classify_global_impact_means_a_sweep() {
     assert!(r.out.contains("global-impact file changed"), "{}", r.out);
     assert!(!r.called("pipeline:plan"), "{}", r.calls);
 }
+
+// --- a git that cannot diff ---------------------------------------------------
+
+/// A `git` first on PATH that fails `diff` when `$FAIL_DIFF_ARGS` matches the
+/// argument count (any count if "any"), and otherwise runs the real one.
+fn fake_git(c: &Case, min_args: usize) {
+    write_exec(
+        &c.work.join("bin/git"),
+        &format!(
+            "#!/bin/sh\nif [ \"$1\" = diff ] && [ \"$#\" -ge {min_args} ]; then echo 'fatal: simulated failure' >&2; exit 128; fi\nexec /usr/bin/git \"$@\"\n"
+        ),
+    );
+}
+
+#[test]
+fn a_git_diff_that_fails_full_sweeps_instead_of_testing_nothing() {
+    let c = Case::new();
+    fake_git(&c, 0);
+    let r = c.run(LIVE_PLAN, &[], &[]);
+    assert_eq!(r.rc, 0, "{}", r.out);
+    assert!(swept(&r), "{}{}", r.out, r.calls);
+    assert!(!r.called("pipeline:plan"), "{}", r.calls);
+    assert!(
+        r.out
+            .contains("::warning title=affected-selection-fallback::")
+            && r.out.contains("failed -- cannot tell what changed"),
+        "{}",
+        r.out
+    );
+}
+
+#[test]
+fn a_failed_diff_since_the_map_means_the_map_is_not_used() {
+    let h = history();
+    // Only the two-revision diff (map commit vs base) fails.
+    fake_git(&h.c, 5);
+    let r = run_with_map(&h, &h.g, &[]);
+    assert_eq!(r.planned_base(), h.x2, "{}", r.out);
+    assert!(
+        r.out
+            .contains("a global-impact file changed since the dependency map"),
+        "{}",
+        r.out
+    );
+}
+
+#[test]
+fn the_planner_error_capture_exists_in_tmpdir_while_the_planner_runs_and_never_in_the_checkout() {
+    let c = Case::new();
+    let plan = c.work.join("bin/plan_spy");
+    write_exec(
+        &plan,
+        "#!/bin/sh\necho \"TMP:$(ls \"$TMPDIR\" | tr '\\n' ' ')\" >> \"$CALLS\"\necho \"CWD:$(ls -A | tr '\\n' ' ')\" >> \"$CALLS\"\nprintf '%s' \"$FAKE_PLAN\"\n",
+    );
+    let r = c.run(LIVE_PLAN, &[("PLAN_BIN", plan.to_str().unwrap())], &[]);
+    assert_eq!(r.rc, 0, "{}", r.out);
+    let tmp = r
+        .calls
+        .lines()
+        .find(|l| l.starts_with("TMP:"))
+        .unwrap_or("");
+    let cwd = r
+        .calls
+        .lines()
+        .find(|l| l.starts_with("CWD:"))
+        .unwrap_or("");
+    assert!(
+        tmp.contains("plan-err."),
+        "no capture in TMPDIR while planning: {tmp}"
+    );
+    assert!(!cwd.contains("plan-err"), "capture in the checkout: {cwd}");
+}

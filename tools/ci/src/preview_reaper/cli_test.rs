@@ -572,3 +572,45 @@ fn readable_timestamp_shapes_still_reap() {
         stderr(&o)
     );
 }
+
+#[test]
+fn an_open_prs_age_is_computed_from_its_utc_instant_not_its_local_clock() {
+    // Clock: 2023-11-14T22:13:20Z. The services carry no timestamp of their own,
+    // so each PR's createdAt decides, and both are written with a +14:00 offset.
+    //   PR 400: 2023-11-14T21:13:20+14:00 = 2023-11-14T07:13:20Z -> 15h old, kept.
+    //   PR 401: 2023-11-14T09:13:20+14:00 = 2023-11-13T19:13:20Z -> 27h old, reaped.
+    // Reading the offset with the wrong sign puts both in the future, so 401 would
+    // be kept and 400 would report a negative age.
+    let f = Fixture::new();
+    let o = f.run(
+        &[],
+        &[
+            (
+                "STUB_CR_LIST",
+                "tabula-api-pr-400\\t\\ntabula-api-pr-401\\t\\n",
+            ),
+            ("STUB_K8S_LIST", "default\\t\\n"),
+            ("STUB_NEON_JSON", r#"{"branches":[]}"#),
+            (
+                "STUB_PRS",
+                "400|OPEN|2023-11-14T21:13:20+14:00;401|OPEN|2023-11-14T09:13:20+14:00",
+            ),
+        ],
+    );
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    assert_eq!(
+        f.deleted("cr_deleted"),
+        ["tabula-api-pr-401"],
+        "{}",
+        stderr(&o)
+    );
+    let e = stderr(&o);
+    assert!(
+        e.contains("PR #400 is OPEN and active (15h / 24h) \u{2014} preserving"),
+        "{e}"
+    );
+    assert!(
+        e.contains("PR #401 is OPEN but age (27h) exceeds TTL (24h) \u{2014} marked for reap"),
+        "{e}"
+    );
+}

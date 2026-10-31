@@ -386,6 +386,20 @@ fn run_inner(_args: &[Vec<u8>]) -> i32 {
             .arg(os(&before_rev))
             .arg("--"),
     );
+    // A diff that failed is not "no changes": with nothing to compare there is
+    // nothing safe to skip, so sweep everything. (The shell original exited 0
+    // here and tested nothing.)
+    if !diff_r.ok() {
+        run_full_sweep(
+            &cat(&[
+                b"git diff against ",
+                &before_rev,
+                b" failed -- cannot tell what changed",
+            ]),
+            b"degraded",
+            &bb_key,
+        );
+    }
     let changed_files = subst(diff_r.stdout);
     if changed_files.is_empty() {
         out(&cat(&[
@@ -512,8 +526,11 @@ md|png|jpg|jpeg|svg|txt)$|(^|/)(catalog-info\\.yaml|OWNERS|CODEOWNERS)$",
                             .arg(os(&base_sha))
                             .arg("--"),
                     );
+                    let gi_ok = gi_diff_r.ok();
                     let gi_files = subst(gi_diff_r.stdout);
-                    if is_global_impact(&gi_files) {
+                    // An unreadable diff means we cannot show nothing global
+                    // changed since the map: do not use the map.
+                    if !gi_ok || is_global_impact(&gi_files) {
                         out(&cat(&[
                             b"affected-targets: a global-impact file changed since the dependency map at ",
                             &map_commit[..12.min(map_commit.len())],
