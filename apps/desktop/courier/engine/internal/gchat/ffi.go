@@ -158,6 +158,92 @@ func (c *FFIClient) RPCCall(endpoint string, reqProto []byte) ([]byte, error) {
 	return takeByteSlice(respOut), nil
 }
 
+// UploadMedia invokes gchat_upload_media on the Rust FFI client and returns the serialized googlechat.UploadMetadata protobuf.
+func (c *FFIClient) UploadMedia(groupID, filename, contentType string, data []byte) ([]byte, error) {
+	if c == nil {
+		return nil, errors.New("nil gchat ffi client")
+	}
+	c.mu.Lock()
+	ptr := c.ptr
+	c.mu.Unlock()
+	if ptr == nil {
+		return nil, errors.New("closed gchat ffi client")
+	}
+	reqObj := struct {
+		GroupID     string `json:"group_id"`
+		Filename    string `json:"filename"`
+		ContentType string `json:"content_type"`
+	}{
+		GroupID:     groupID,
+		Filename:    filename,
+		ContentType: contentType,
+	}
+	reqJSON, err := json.Marshal(reqObj)
+	if err != nil {
+		return nil, fmt.Errorf("marshal upload_media request: %w", err)
+	}
+	var dataPtr *C.uint8_t
+	if len(data) > 0 {
+		dataPtr = (*C.uint8_t)(unsafe.Pointer(&data[0]))
+	}
+	var protoOut C.GChatByteSlice
+	var errOut C.GChatByteSlice
+	st := C.gchat_upload_media(
+		ptr,
+		(*C.uint8_t)(unsafe.Pointer(&reqJSON[0])),
+		C.size_t(len(reqJSON)),
+		dataPtr,
+		C.size_t(len(data)),
+		&protoOut,
+		&errOut,
+	)
+	if st != C.GCHAT_OK {
+		return nil, statusError(st, errOut)
+	}
+	return takeByteSlice(protoOut), nil
+}
+
+// DownloadMedia invokes gchat_download_media on the Rust FFI client.
+func (c *FFIClient) DownloadMedia(kind, attachmentToken, rawURL string, externalEnabled bool) ([]byte, error) {
+	if c == nil {
+		return nil, errors.New("nil gchat ffi client")
+	}
+	c.mu.Lock()
+	ptr := c.ptr
+	c.mu.Unlock()
+	if ptr == nil {
+		return nil, errors.New("closed gchat ffi client")
+	}
+	reqObj := struct {
+		Kind            string `json:"kind"`
+		AttachmentToken string `json:"attachment_token,omitempty"`
+		URL             string `json:"url,omitempty"`
+		ExternalEnabled bool   `json:"external_enabled,omitempty"`
+	}{
+		Kind:            kind,
+		AttachmentToken: attachmentToken,
+		URL:             rawURL,
+		ExternalEnabled: externalEnabled,
+	}
+	reqJSON, err := json.Marshal(reqObj)
+	if err != nil {
+		return nil, fmt.Errorf("marshal download_media request: %w", err)
+	}
+	var bytesOut C.GChatByteSlice
+	var errOut C.GChatByteSlice
+	st := C.gchat_download_media(
+		ptr,
+		(*C.uint8_t)(unsafe.Pointer(&reqJSON[0])),
+		C.size_t(len(reqJSON)),
+		&bytesOut,
+		&errOut,
+	)
+	if st != C.GCHAT_OK {
+		return nil, statusError(st, errOut)
+	}
+	return takeByteSlice(bytesOut), nil
+}
+
 //export goGChatEventCallback
 func goGChatEventCallback(userdata C.uintptr_t, eventKind C.int32_t, payloadPtr *C.uint8_t, payloadLen C.size_t) {
 	if userdata == 0 {

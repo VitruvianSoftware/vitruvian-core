@@ -16,6 +16,144 @@ const ALLOWED_API_HOSTS: &[&str] = &[
     "upload.video.google.com",
 ];
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EndpointRole {
+    ChatRpcAndUpload,        // chat.google.com, mail.google.com/chat
+    AuthenticatedAttachment, // chat.google.com, mail.google.com, *.googleusercontent.com, *.ggpht.com, docs.google.com, drive.google.com
+    AvatarHost,              // *.googleusercontent.com, *.ggpht.com
+    ExternalPublicImage,     // HTTPS-only, non-private IP, no cookies
+}
+
+pub fn is_globally_routable_ip(ip: IpAddr) -> bool {
+    NetGuard::production().validate_ip(ip).is_ok()
+}
+
+fn has_valid_subdomain_suffix(host: &str, suffix: &str) -> bool {
+    let Some(prefix) = host.strip_suffix(suffix) else {
+        return false;
+    };
+    if prefix.is_empty() || prefix.contains("..") {
+        return false;
+    }
+    prefix.split('.').all(|label| {
+        !label.is_empty()
+            && !label.starts_with('-')
+            && !label.ends_with('-')
+            && !label.starts_with("xn--")
+            && label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+    })
+}
+
+pub fn validate_url_for_role(
+    url: &Url,
+    role: EndpointRole,
+    allow_loopback_test: bool,
+) -> Result<(), GChatError> {
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err(GChatError::SsrfBlocked(
+            "URL must not contain userinfo credentials".to_string(),
+        ));
+    }
+    let raw_host = url
+        .host_str()
+        .ok_or_else(|| GChatError::SsrfBlocked("URL missing host".to_string()))?;
+    let host = raw_host
+        .trim_matches(|c| c == '[' || c == ']')
+        .to_ascii_lowercase();
+    let is_loopback_host = host == "127.0.0.1" || host == "localhost" || host == "::1";
+    let scheme = url.scheme();
+    if allow_loopback_test && is_loopback_host {
+        if scheme != "https" && scheme != "http" {
+            return Err(GChatError::SsrfBlocked(format!(
+                "disallowed URL scheme: {scheme}"
+            )));
+        }
+        return Ok(());
+    }
+    if scheme != "https" {
+        return Err(GChatError::SsrfBlocked(format!(
+            "disallowed non-HTTPS URL scheme: {scheme}"
+        )));
+    }
+
+    let is_ip_literal = matches!(
+        url.host(),
+        Some(url::Host::Ipv4(_)) | Some(url::Host::Ipv6(_))
+    ) || host.parse::<IpAddr>().is_ok();
+
+    match role {
+        EndpointRole::ChatRpcAndUpload => {
+            if is_ip_literal || host.contains("xn--") {
+                return Err(GChatError::SsrfBlocked(format!(
+                    "disallowed upload/RPC host: {host}"
+                )));
+            }
+            let allowed = host == "chat.google.com"
+                || host == "upload.video.google.com"
+                || (host == "mail.google.com"
+                    && (url.path() == "/chat" || url.path().starts_with("/chat/")));
+            if !allowed {
+                return Err(GChatError::SsrfBlocked(format!(
+                    "upload/RPC URL not in allowlist: {url}"
+                )));
+            }
+            Ok(())
+        }
+        EndpointRole::AuthenticatedAttachment => {
+            if is_ip_literal || host.contains("xn--") {
+                return Err(GChatError::SsrfBlocked(format!(
+                    "disallowed attachment host: {host}"
+                )));
+            }
+            let allowed = matches!(
+                host.as_str(),
+                "chat.google.com" | "mail.google.com" | "docs.google.com" | "drive.google.com"
+            ) || has_valid_subdomain_suffix(&host, ".googleusercontent.com")
+                || has_valid_subdomain_suffix(&host, ".ggpht.com");
+            if !allowed {
+                return Err(GChatError::SsrfBlocked(format!(
+                    "attachment host not in allowlist: {host}"
+                )));
+            }
+            Ok(())
+        }
+        EndpointRole::AvatarHost => {
+            if is_ip_literal || host.contains("xn--") {
+                return Err(GChatError::SsrfBlocked(format!(
+                    "disallowed avatar host: {host}"
+                )));
+            }
+            let allowed = has_valid_subdomain_suffix(&host, ".googleusercontent.com")
+                || has_valid_subdomain_suffix(&host, ".ggpht.com");
+            if !allowed {
+                return Err(GChatError::SsrfBlocked(format!(
+                    "avatar host not in allowlist: {host}"
+                )));
+            }
+            Ok(())
+        }
+        EndpointRole::ExternalPublicImage => {
+            if let Ok(ip) = host.parse::<IpAddr>() {
+                if !is_globally_routable_ip(ip) {
+                    return Err(GChatError::SsrfBlocked(format!(
+                        "external image IP is not globally routable: {ip}"
+                    )));
+                }
+            }
+            if host == "localhost"
+                || host.ends_with(".local")
+                || host.ends_with(".internal")
+                || host.ends_with(".invalid")
+            {
+                return Err(GChatError::SsrfBlocked(format!(
+                    "disallowed external image host: {host}"
+                )));
+            }
+            Ok(())
+        }
+    }
+}
+
 #[cfg(any(test, feature = "test-loopback"))]
 static TEST_LOOPBACK_OVERRIDE: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
@@ -256,6 +394,22 @@ crate::edition2021! {
             self.resolve_and_validate_host(&host, port).await?;
             Ok(())
         }
+
+        pub async fn validate_url_with_role(
+            &self,
+            url: &Url,
+            role: EndpointRole,
+        ) -> Result<Vec<SocketAddr>, GChatError> {
+            validate_url_for_role(url, role, self.is_loopback_test_allowed())?;
+            let raw_host = url
+                .host_str()
+                .ok_or_else(|| GChatError::SsrfBlocked("URL missing host".to_string()))?;
+            let host = raw_host
+                .trim_matches(|c| c == '[' || c == ']')
+                .to_ascii_lowercase();
+            let port = url.port_or_known_default().unwrap_or(443);
+            self.resolve_and_validate_host(&host, port).await
+        }
     }
 
     impl Resolve for NetGuard {
@@ -368,6 +522,145 @@ mod tests {
     }
 
     #[test]
+    fn test_ssrf_guard_rejects_private_and_embedded_ipv6_addresses() {
+        let non_routable_ips = [
+            "127.0.0.1",
+            "10.0.0.1",
+            "172.16.0.1",
+            "192.168.1.1",
+            "100.64.0.1",
+            "169.254.169.254",
+            "0.0.0.0",
+            "::1",
+            "fe80::1",
+            "fc00::1",
+            "fd12:3456::1",
+            "::ffff:127.0.0.1",
+            "::ffff:169.254.169.254",
+            "::10.0.0.1",
+            "2002:7f00:0001::1",
+            "64:ff9b::a00:1",
+            "64:ff9b:1::c0a8:101",
+            "2001:0000:4136:e378:8000:63bf:f5ff:fefe",
+            "fe80::200:5efe:10.0.0.1",
+            "2607:f8b0:4005:800:200:5efe:10.0.0.1",
+        ];
+        for raw in non_routable_ips {
+            let ip: IpAddr = raw.parse().expect("valid IP");
+            assert!(
+                !is_globally_routable_ip(ip),
+                "expected {raw} to be rejected by is_globally_routable_ip"
+            );
+        }
+
+        assert!(is_globally_routable_ip("8.8.8.8".parse().unwrap()));
+        assert!(is_globally_routable_ip("142.250.190.46".parse().unwrap()));
+        assert!(is_globally_routable_ip(
+            "2607:f8b0:4005:800::200e".parse().unwrap()
+        ));
+
+        // Role validation: ChatRpcAndUpload
+        let ok_chat = Url::parse("https://chat.google.com/u/0/uploads?group_id=space_1").unwrap();
+        assert!(validate_url_for_role(&ok_chat, EndpointRole::ChatRpcAndUpload, false).is_ok());
+        let ok_mail =
+            Url::parse("https://mail.google.com/chat/u/0/uploads?group_id=space_1").unwrap();
+        assert!(validate_url_for_role(&ok_mail, EndpointRole::ChatRpcAndUpload, false).is_ok());
+
+        let hostile_upload_urls = [
+            "https://evil.example.com/upload",
+            "https://142.250.190.46/upload",
+            "https://127.0.0.1/upload",
+            "http://chat.google.com/u/0/uploads",
+            "https://chat.google.com@evil.example.com/upload",
+            "https://user:pass@chat.google.com/u/0/uploads",
+            "https://ch\u{0430}t.google.com/u/0/uploads", // Cyrillic 'а' IDN lookalike
+            "https://mail.google.com/mail/u/0/",
+            "https://lh3.googleusercontent.com/upload",
+        ];
+        for raw in hostile_upload_urls {
+            let url = Url::parse(raw).expect("parse URL");
+            assert!(
+                validate_url_for_role(&url, EndpointRole::ChatRpcAndUpload, false).is_err(),
+                "expected hostile upload URL {raw} to be rejected"
+            );
+        }
+
+        // Role validation: AuthenticatedAttachment
+        for allowed in [
+            "https://chat.google.com/u/0/api/get_attachment_url?alt=proto&attachment_token=t",
+            "https://mail.google.com/chat/u/0/api/get_attachment_url",
+            "https://lh3.googleusercontent.com/attachment/blob1",
+            "https://yt3.ggpht.com/attachment/blob2",
+            "https://docs.google.com/document/d/1",
+            "https://drive.google.com/file/d/1",
+        ] {
+            let url = Url::parse(allowed).unwrap();
+            assert!(
+                validate_url_for_role(&url, EndpointRole::AuthenticatedAttachment, false).is_ok(),
+                "expected attachment URL {allowed} to be allowed"
+            );
+        }
+        for rejected in [
+            "https://evil.googleusercontent.com.attacker.invalid/blob",
+            "http://lh3.googleusercontent.com/blob",
+            "https://user@lh3.googleusercontent.com/blob",
+            "https://142.250.190.46/blob",
+        ] {
+            let url = Url::parse(rejected).unwrap();
+            assert!(
+                validate_url_for_role(&url, EndpointRole::AuthenticatedAttachment, false).is_err(),
+                "expected attachment URL {rejected} to be rejected"
+            );
+        }
+
+        // Role validation: AvatarHost
+        assert!(validate_url_for_role(
+            &Url::parse("https://lh3.googleusercontent.com/a/avatar").unwrap(),
+            EndpointRole::AvatarHost,
+            false
+        )
+        .is_ok());
+        assert!(validate_url_for_role(
+            &Url::parse("https://yt3.ggpht.com/a/avatar").unwrap(),
+            EndpointRole::AvatarHost,
+            false
+        )
+        .is_ok());
+        assert!(validate_url_for_role(
+            &Url::parse("https://chat.google.com/a/avatar").unwrap(),
+            EndpointRole::AvatarHost,
+            false
+        )
+        .is_err());
+
+        // Role validation: ExternalPublicImage
+        assert!(validate_url_for_role(
+            &Url::parse("https://images.example.com/pic.png").unwrap(),
+            EndpointRole::ExternalPublicImage,
+            false
+        )
+        .is_ok());
+        assert!(validate_url_for_role(
+            &Url::parse("http://images.example.com/pic.png").unwrap(),
+            EndpointRole::ExternalPublicImage,
+            false
+        )
+        .is_err());
+        assert!(validate_url_for_role(
+            &Url::parse("https://127.0.0.1/pic.png").unwrap(),
+            EndpointRole::ExternalPublicImage,
+            false
+        )
+        .is_err());
+        assert!(validate_url_for_role(
+            &Url::parse("https://user@images.example.com/pic.png").unwrap(),
+            EndpointRole::ExternalPublicImage,
+            false
+        )
+        .is_err());
+    }
+
+    #[test]
     fn test_only_netguard_constructs_reqwest_client() {
         let non_netguard_sources = [
             ("lib.rs", include_str!("lib.rs")),
@@ -375,10 +668,12 @@ mod tests {
             ("channel.rs", include_str!("channel.rs")),
             ("cookies.rs", include_str!("cookies.rs")),
             ("ffi.rs", include_str!("ffi.rs")),
+            ("media.rs", include_str!("media.rs")),
             ("pblite.rs", include_str!("pblite.rs")),
             ("rpc.rs", include_str!("rpc.rs")),
             ("fmt/mod.rs", include_str!("fmt/mod.rs")),
             ("fmt/inbound.rs", include_str!("fmt/inbound.rs")),
+            ("fmt/outbound.rs", include_str!("fmt/outbound.rs")),
         ];
         for (name, src) in non_netguard_sources {
             assert!(

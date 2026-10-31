@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -1486,6 +1487,14 @@ func TestSendEditUnsendReactionReceiptAndTyping(t *testing.T) {
 			typingReqs = append(typingReqs, body)
 			mu.Unlock()
 			_, _ = w.Write(encodeVarintField(1, 1710000570000000))
+		case "/u/0/uploads", "/uploads":
+			w.Header().Set("x-goog-upload-url", fmt.Sprintf("http://%s/u/0/upload_put", r.Host))
+			w.WriteHeader(http.StatusOK)
+		case "/u/0/upload_put":
+			upMeta := encodeUploadMetadataProto("cap_tok", "cap.bin", "application/octet-stream")
+			wrapped := encodeBytesField(1, upMeta)
+			w.Header().Set("Content-Type", "text/plain")
+			_, _ = fmt.Fprint(w, base64.StdEncoding.EncodeToString(wrapped))
 		default:
 			http.NotFound(w, r)
 		}
@@ -2213,6 +2222,14 @@ func TestAdvertisedCapabilitiesAllHaveWorkingHandlers(t *testing.T) {
 			typingReqs = append(typingReqs, body)
 			mu.Unlock()
 			_, _ = w.Write(encodeVarintField(1, 1710000570000000))
+		case "/u/0/uploads", "/uploads":
+			w.Header().Set("x-goog-upload-url", fmt.Sprintf("http://%s/u/0/upload_put", r.Host))
+			w.WriteHeader(http.StatusOK)
+		case "/u/0/upload_put":
+			upMeta := encodeUploadMetadataProto("cap_tok", "cap.bin", "application/octet-stream")
+			wrapped := encodeBytesField(1, upMeta)
+			w.Header().Set("Content-Type", "text/plain")
+			_, _ = fmt.Fprint(w, base64.StdEncoding.EncodeToString(wrapped))
 		default:
 			http.NotFound(w, r)
 		}
@@ -2307,6 +2324,8 @@ func TestAdvertisedCapabilitiesAllHaveWorkingHandlers(t *testing.T) {
 	require.NotNil(t, lastMsg)
 
 	// Walk every advertised File capability -> verify MaxSize and caption support reach the fake server via HandleMatrixMessage.
+	capMediaURI, _, err := threadedSpace.Bridge.Bot.UploadMedia(ctx, threadedSpace.MXID, []byte("cap-media"), "cap.bin", "application/octet-stream")
+	require.NoError(t, err)
 	for msgType, fileCaps := range caps.File {
 		if fileCaps == nil {
 			continue
@@ -2319,8 +2338,10 @@ func TestAdvertisedCapabilitiesAllHaveWorkingHandlers(t *testing.T) {
 			MatrixEventBase: bridgev2.MatrixEventBase[*event.MessageEventContent]{
 				Portal: threadedSpace,
 				Content: &event.MessageEventContent{
-					MsgType: msgType,
-					Body:    fmt.Sprintf("file-%s", msgType),
+					MsgType:  msgType,
+					Body:     fmt.Sprintf("file-%s", msgType),
+					FileName: fmt.Sprintf("file-%s.bin", msgType),
+					URL:      capMediaURI,
 				},
 			},
 		})
@@ -2498,4 +2519,339 @@ func firstFieldVarint(fields map[int][]protoField, num int) uint64 {
 		return fs[0].varint
 	}
 	return 0
+}
+
+func encodeUploadMetadataProto(token, contentName, contentType string) []byte {
+	var out []byte
+	out = append(out, encodeStringField(1, token)...)
+	out = append(out, encodeStringField(3, contentName)...)
+	out = append(out, encodeStringField(4, contentType)...)
+	return out
+}
+
+func encodeUploadMetadataAnnotationProto(startIdx, length int32, token, contentName, contentType string) []byte {
+	var ann []byte
+	ann = append(ann, encodeVarintField(1, 13)...) // AnnotationType.UPLOAD_METADATA = 13
+	ann = append(ann, encodeVarintField(2, uint64(startIdx))...)
+	ann = append(ann, encodeVarintField(3, uint64(length))...)
+	ann = append(ann, encodeBytesField(10, encodeUploadMetadataProto(token, contentName, contentType))...)
+	ann = append(ann, encodeVarintField(20, 1)...) // ChipRenderType.RENDER = 1
+	return ann
+}
+
+func TestMultiAttachmentInboundUsesZeroPaddedPartIDsAndOutboundUploadsViaScotty(t *testing.T) {
+	enableTestLoopback(t)
+	ctx := context.Background()
+
+	var (
+		mu              sync.Mutex
+		uploadStartReqs []string
+		uploadPutBodies [][]byte
+		createTopicReqs [][]byte
+		createMsgReqs   [][]byte
+		cdnGotCookie    atomic.Bool
+		cdnGotXSRF      atomic.Bool
+		srvURL          string
+	)
+
+	attBytes0 := []byte("\x89PNG\r\n\x1a\ninbound-image-zero")
+	attBytes1 := []byte("%PDF-1.4\ninbound-pdf-one")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		switch r.URL.Path {
+		case "/u/0/mole/world":
+			w.Header().Set("Content-Type", "text/html")
+			_, _ = fmt.Fprint(w, `<!DOCTYPE html><html><script>window.WIZ_global_data = {"xsrf_token":"AF1QipP_media_token:1710000000000"};</script></html>`)
+		case "/u/0/api/get_self_user_status":
+			w.Header().Set("Content-Type", "application/x-protobuf")
+			_, _ = w.Write(buildSyntheticSelfUserStatusResponse("112233445566778899001"))
+		case "/u/0/api/get_members":
+			w.Header().Set("Content-Type", "application/x-protobuf")
+			_, _ = w.Write(buildSyntheticGetMembersResponse(
+				"112233445566778899001",
+				"Ada Lovelace",
+				"ada@example.com",
+				"https://example.invalid/avatar/ada.png",
+			))
+		case "/u/0/api/paginated_world":
+			w.Header().Set("Content-Type", "application/x-protobuf")
+			_, _ = w.Write(buildSendTestPaginatedWorldResponse())
+		case "/u/0/uploads", "/uploads":
+			mu.Lock()
+			idx := len(uploadStartReqs) + 1
+			uploadStartReqs = append(uploadStartReqs, fmt.Sprintf("%s?%s|%s|%s", r.URL.Path, r.URL.RawQuery, r.Header.Get("X-Goog-Upload-Command"), string(body)))
+			mu.Unlock()
+			w.Header().Set("x-goog-upload-url", fmt.Sprintf("%s/u/0/upload_put?id=%d", srvURL, idx))
+			w.WriteHeader(http.StatusOK)
+		case "/u/0/upload_put":
+			mu.Lock()
+			uploadPutBodies = append(uploadPutBodies, body)
+			idx := len(uploadPutBodies)
+			mu.Unlock()
+			upMeta := encodeUploadMetadataProto(fmt.Sprintf("out_tok_%d", idx), fmt.Sprintf("file_%d.bin", idx), "application/octet-stream")
+			wrapped := encodeBytesField(1, upMeta)
+			w.Header().Set("Content-Type", "text/plain")
+			_, _ = fmt.Fprint(w, base64.StdEncoding.EncodeToString(wrapped))
+		case "/u/0/api/create_topic":
+			mu.Lock()
+			createTopicReqs = append(createTopicReqs, body)
+			idx := len(createTopicReqs)
+			mu.Unlock()
+			spaceGID := encodeSpaceGroupID("space_threaded")
+			tid := fmt.Sprintf("topic_med_%d", idx)
+			mid := fmt.Sprintf("msg_med_%d", idx)
+			msgBytes := encodeSyntheticMessage(spaceGID, tid, mid, "112233445566778899001", "uploaded", 1710000800000000+int64(idx), "", 0, 0)
+			var topic []byte
+			topic = append(topic, encodeBytesField(1, encodeTopicID(spaceGID, tid))...)
+			topic = append(topic, encodeBytesField(7, msgBytes)...)
+			w.Header().Set("Content-Type", "application/x-protobuf")
+			_, _ = w.Write(encodeBytesField(1, topic))
+		case "/u/0/api/create_message":
+			mu.Lock()
+			createMsgReqs = append(createMsgReqs, body)
+			idx := len(createMsgReqs)
+			mu.Unlock()
+			dmGID := encodeDMGroupID("dm_alpha")
+			msgBytes := encodeSyntheticMessage(dmGID, "dm_med_t", fmt.Sprintf("dm_med_m_%d", idx), "112233445566778899001", "uploaded", 1710000850000000+int64(idx), "", 0, 0)
+			w.Header().Set("Content-Type", "application/x-protobuf")
+			_, _ = w.Write(encodeBytesField(1, msgBytes))
+		case "/u/0/api/get_attachment_url", "/api/get_attachment_url":
+			tok := r.URL.Query().Get("attachment_token")
+			http.Redirect(w, r, fmt.Sprintf("%s/cdn/%s", srvURL, tok), http.StatusFound)
+		case "/cdn/in_tok_0":
+			if r.Header.Get("Cookie") != "" {
+				cdnGotCookie.Store(true)
+			}
+			if r.Header.Get("x-framework-xsrf-token") != "" {
+				cdnGotXSRF.Store(true)
+			}
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write(attBytes0)
+		case "/cdn/in_tok_1":
+			if r.Header.Get("Cookie") != "" {
+				cdnGotCookie.Store(true)
+			}
+			if r.Header.Get("x-framework-xsrf-token") != "" {
+				cdnGotXSRF.Store(true)
+			}
+			w.Header().Set("Content-Type", "application/pdf")
+			_, _ = w.Write(attBytes1)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	srvURL = srv.URL
+
+	dir := t.TempDir()
+	st, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = st.Close() })
+
+	mediaStore := &media.Store{Dir: filepath.Join(dir, "media")}
+	conn := &Connector{baseURL: srv.URL}
+	h, err := host.Start(ctx, dir, NetworkID, st, mediaStore, conn, zerolog.Nop())
+	require.NoError(t, err)
+	t.Cleanup(h.Stop)
+
+	user, err := h.Bridge.GetUserByMXID(ctx, "@me:courier.local")
+	require.NoError(t, err)
+	proc, err := conn.CreateLogin(ctx, user, FlowCookies)
+	require.NoError(t, err)
+	doneStep, err := proc.(bridgev2.LoginProcessCookies).SubmitCookies(ctx, map[string]string{
+		"COMPASS": "dynamite-ui=synthetic_compass",
+		"OSID":    "synthetic_osid",
+		"SID":     "synthetic_sid",
+		"HSID":    "synthetic_hsid",
+		"SSID":    "synthetic_ssid",
+	})
+	require.NoError(t, err)
+	ul := doneStep.CompleteParams.UserLogin
+	client := ul.Client.(*Client)
+	t.Cleanup(client.Disconnect)
+
+	// Build portals via the real syncWorld path.
+	require.NoError(t, client.syncWorld(ctx))
+	spacePortal, err := h.Bridge.GetExistingPortalByKey(ctx, networkid.PortalKey{
+		ID:       MakeSpacePortalID("space_threaded"),
+		Receiver: ul.ID,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, spacePortal)
+
+	dmPortal, err := h.Bridge.GetExistingPortalByKey(ctx, networkid.PortalKey{
+		ID:       MakeDMPortalID("dm_alpha"),
+		Receiver: ul.ID,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, dmPortal)
+
+	countBlobs := func() int {
+		var n int
+		_ = filepath.WalkDir(mediaStore.Dir, func(_ string, d os.DirEntry, err error) error {
+			if err == nil && !d.IsDir() {
+				n++
+			}
+			return nil
+		})
+		return n
+	}
+
+	// 0. Validate before storing/uploading: refused media (oversized > 200 MiB or unsupported type) leaves zero new blobs in mediaStore and sends nothing to /u/0/uploads.
+	blobsBeforeRefusal := countBlobs()
+	_, err = client.HandleMatrixMessage(ctx, &bridgev2.MatrixMessage{
+		MatrixEventBase: bridgev2.MatrixEventBase[*event.MessageEventContent]{
+			Portal: spacePortal,
+			Content: &event.MessageEventContent{
+				MsgType:  event.MsgFile,
+				Body:     "huge.bin",
+				FileName: "huge.bin",
+				URL:      "mxc://courier.local/nonexistent",
+				Info:     &event.FileInfo{MimeType: "application/octet-stream", Size: 200*1024*1024 + 1},
+			},
+		},
+	})
+	require.Error(t, err, "media exceeding 200 MiB must be refused before reading or uploading")
+	_, err = client.HandleMatrixMessage(ctx, &bridgev2.MatrixMessage{
+		MatrixEventBase: bridgev2.MatrixEventBase[*event.MessageEventContent]{
+			Portal: spacePortal,
+			Content: &event.MessageEventContent{
+				MsgType: event.CapMsgSticker,
+				Body:    "sticker.webp",
+				URL:     "mxc://courier.local/nonexistent",
+				Info:    &event.FileInfo{MimeType: "image/webp", Size: 128},
+			},
+		},
+	})
+	require.Error(t, err, "unsupported sticker message type must be refused")
+	require.Equal(t, blobsBeforeRefusal, countBlobs(), "refused media must leave zero new blobs in media.Store")
+	mu.Lock()
+	require.Empty(t, uploadStartReqs, "refused media must not send any request to /u/0/uploads")
+	mu.Unlock()
+
+	// 1. Outbound image, file, and voice note via HandleMatrixMessage on real synced portals -> Scotty 2-step upload + UPLOAD_METADATA annotation.
+	imgBytes := []byte("\x89PNG\r\n\x1a\noutbound-image-bytes")
+	imgURI, _, err := spacePortal.Bridge.Bot.UploadMedia(ctx, spacePortal.MXID, imgBytes, "screen.png", "image/png")
+	require.NoError(t, err)
+
+	_, err = client.HandleMatrixMessage(ctx, &bridgev2.MatrixMessage{
+		MatrixEventBase: bridgev2.MatrixEventBase[*event.MessageEventContent]{
+			Portal: spacePortal,
+			Content: &event.MessageEventContent{
+				MsgType:  event.MsgImage,
+				Body:     "Look at this screenshot",
+				FileName: "screen.png",
+				URL:      imgURI,
+				Info:     &event.FileInfo{MimeType: "image/png", Size: len(imgBytes)},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	docBytes := []byte("outbound-file-bytes")
+	docURI, _, err := dmPortal.Bridge.Bot.UploadMedia(ctx, dmPortal.MXID, docBytes, "notes.txt", "text/plain")
+	require.NoError(t, err)
+
+	_, err = client.HandleMatrixMessage(ctx, &bridgev2.MatrixMessage{
+		MatrixEventBase: bridgev2.MatrixEventBase[*event.MessageEventContent]{
+			Portal: dmPortal,
+			Content: &event.MessageEventContent{
+				MsgType:  event.MsgFile,
+				Body:     "notes.txt",
+				FileName: "notes.txt",
+				URL:      docURI,
+				Info:     &event.FileInfo{MimeType: "text/plain", Size: len(docBytes)},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	voiceBytes := []byte("OggS\x00\x02outbound-voice-note")
+	voiceURI, _, err := dmPortal.Bridge.Bot.UploadMedia(ctx, dmPortal.MXID, voiceBytes, "voice.ogg", "audio/ogg")
+	require.NoError(t, err)
+
+	_, err = client.HandleMatrixMessage(ctx, &bridgev2.MatrixMessage{
+		MatrixEventBase: bridgev2.MatrixEventBase[*event.MessageEventContent]{
+			Portal: dmPortal,
+			Content: &event.MessageEventContent{
+				MsgType:      event.MsgAudio,
+				Body:         "voice.ogg",
+				FileName:     "voice.ogg",
+				URL:          voiceURI,
+				Info:         &event.FileInfo{MimeType: "audio/ogg", Size: len(voiceBytes), Duration: 3000},
+				MSC3245Voice: &event.MSC3245Voice{},
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	mu.Lock()
+	require.Len(t, uploadStartReqs, 3, "image, file, and voice note must each initiate a Scotty upload")
+	require.Len(t, uploadPutBodies, 3, "image, file, and voice note must each PUT bytes to x-goog-upload-url")
+	require.Equal(t, imgBytes, uploadPutBodies[0])
+	require.Equal(t, docBytes, uploadPutBodies[1])
+	require.Equal(t, voiceBytes, uploadPutBodies[2])
+	require.Len(t, createTopicReqs, 1)
+	require.Len(t, createMsgReqs, 2)
+	topicFields := parseProtoFields(createTopicReqs[0])
+	mu.Unlock()
+
+	require.Equal(t, "Look at this screenshot", firstFieldString(topicFields, 2), "caption must be preserved in text_body")
+	var foundUploadAnn bool
+	for _, annField := range topicFields[3] {
+		af := parseProtoFields(annField.bytes)
+		if firstFieldVarint(af, 1) == 13 { // UPLOAD_METADATA = 13
+			foundUploadAnn = true
+			require.Equal(t, uint64(1), firstFieldVarint(af, 20), "ChipRenderType must be RENDER (1)")
+			um := parseProtoFields(firstFieldBytes(af, 10))
+			require.Equal(t, "out_tok_1", firstFieldString(um, 1))
+		}
+	}
+	require.True(t, foundUploadAnn, "outbound media message must attach UPLOAD_METADATA annotation")
+
+	// 2. Inbound message with 2 UploadMetadata annotations -> downloads both attachments via get_attachment_url + redirect,
+	// strips cookies on CDN hop, stores in media.Store, and emits zero-padded PartIDs "att_0000" and "att_0001".
+	spaceGID := encodeSpaceGroupID("space_threaded")
+	inMsg := encodeSyntheticMessage(spaceGID, "topic_in_med", "msg_in_med_1", "112233445566778899002", "Here are two files", 1710000900000000, "", 0, 0)
+	inMsg = append(inMsg, encodeBytesField(11, encodeUploadMetadataAnnotationProto(0, 0, "in_tok_0", "chart.png", "image/png"))...)
+	inMsg = append(inMsg, encodeBytesField(11, encodeUploadMetadataAnnotationProto(0, 0, "in_tok_1", "report.pdf", "application/pdf"))...)
+
+	var evtBody []byte
+	evtBody = append(evtBody, encodeBytesField(6, encodeBytesField(1, inMsg))...)
+	evtBody = append(evtBody, encodeVarintField(12, 6)...) // MESSAGE_POSTED
+	var evt []byte
+	evt = append(evt, encodeBytesField(1, spaceGID)...)
+	evt = append(evt, encodeVarintField(3, 6)...)
+	evt = append(evt, encodeBytesField(4, evtBody)...)
+
+	beforeRecorded := len(client.recordedRemoteEvents())
+	client.processStreamNotification(ctx, streamNotification{kind: EventKindEventProto, payload: evt})
+	afterRecorded := client.recordedRemoteEvents()
+	require.Len(t, afterRecorded, beforeRecorded+1)
+
+	preConv, ok := afterRecorded[len(afterRecorded)-1].(*simplevent.PreConvertedMessage)
+	require.True(t, ok)
+	require.Len(t, preConv.Data.Parts, 3, "text part + 2 attachment parts")
+	require.Equal(t, networkid.PartID(""), preConv.Data.Parts[0].ID)
+	require.Equal(t, "Here are two files", preConv.Data.Parts[0].Content.Body)
+
+	require.Equal(t, networkid.PartID("att_0000"), preConv.Data.Parts[1].ID)
+	require.Equal(t, event.MsgImage, preConv.Data.Parts[1].Content.MsgType)
+	require.Equal(t, "chart.png", preConv.Data.Parts[1].Content.FileName)
+	require.NotEmpty(t, preConv.Data.Parts[1].Content.URL)
+	gotBytes0, err := spacePortal.Bridge.Bot.DownloadMedia(ctx, preConv.Data.Parts[1].Content.URL, nil)
+	require.NoError(t, err)
+	require.Equal(t, attBytes0, gotBytes0)
+
+	require.Equal(t, networkid.PartID("att_0001"), preConv.Data.Parts[2].ID)
+	require.Equal(t, event.MsgFile, preConv.Data.Parts[2].Content.MsgType)
+	require.Equal(t, "report.pdf", preConv.Data.Parts[2].Content.FileName)
+	require.NotEmpty(t, preConv.Data.Parts[2].Content.URL)
+	gotBytes1, err := spacePortal.Bridge.Bot.DownloadMedia(ctx, preConv.Data.Parts[2].Content.URL, nil)
+	require.NoError(t, err)
+	require.Equal(t, attBytes1, gotBytes1)
+
+	require.False(t, cdnGotCookie.Load(), "CDN redirect hop must never receive Google cookies")
+	require.False(t, cdnGotXSRF.Load(), "CDN redirect hop must never receive XSRF header")
 }

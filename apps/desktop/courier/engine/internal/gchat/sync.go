@@ -614,8 +614,13 @@ func (c *Client) convertParsedMessage(pm parsedMessage) (*bridgev2.ConvertedMess
 		content.Mentions = mentions
 	}
 
-	cm := &bridgev2.ConvertedMessage{
-		Parts: []*bridgev2.ConvertedMessagePart{{
+	mediaParts, err := c.extractInboundMediaParts(context.Background(), pm)
+	if err != nil {
+		return nil, err
+	}
+	var parts []*bridgev2.ConvertedMessagePart
+	if conv.Body != "" || len(mediaParts) == 0 {
+		parts = append(parts, &bridgev2.ConvertedMessagePart{
 			ID:      networkid.PartID(""),
 			Type:    event.EventMessage,
 			Content: content,
@@ -624,7 +629,12 @@ func (c *Client) convertParsedMessage(pm parsedMessage) (*bridgev2.ConvertedMess
 				CreateTimeMicros: pm.createTimeUsec,
 				LastEditTime:     pm.lastEditUsec,
 			},
-		}},
+		})
+	}
+	parts = append(parts, mediaParts...)
+
+	cm := &bridgev2.ConvertedMessage{
+		Parts: parts,
 	}
 	if pm.topicID != "" {
 		threadRoot := MakeThreadRootID(pm.topicID)

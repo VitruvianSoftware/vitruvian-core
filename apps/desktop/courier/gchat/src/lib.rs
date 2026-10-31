@@ -13,9 +13,12 @@ pub mod channel;
 pub mod cookies;
 pub mod ffi;
 pub mod fmt;
+pub mod media;
 pub mod netguard;
 pub mod pblite;
 pub mod rpc;
+
+pub use ffi::GChatClient;
 
 pub mod pb {
     #![allow(clippy::all, dead_code, non_camel_case_types, non_snake_case)]

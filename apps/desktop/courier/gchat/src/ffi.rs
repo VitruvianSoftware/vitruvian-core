@@ -52,17 +52,17 @@ pub type GChatEventCallback =
     extern "C" fn(userdata: usize, event_kind: i32, payload_ptr: *const u8, payload_len: usize);
 
 pub struct GChatClient {
-    runtime: tokio::runtime::Runtime,
-    http: Client,
-    jar: DomainCookieJar,
-    xsrf: Arc<XsrfTokenManager>,
-    guard: NetGuard,
-    user_agent: String,
-    base_url: Url,
-    refresh_handle: tokio::task::JoinHandle<()>,
-    manual_clock: std::sync::Mutex<Option<Arc<crate::channel::ManualChannelClock>>>,
-    active_wc: std::sync::Mutex<Option<Arc<WebChannelClient>>>,
-    stream_state: std::sync::Mutex<
+    pub(crate) runtime: tokio::runtime::Runtime,
+    pub(crate) http: Client,
+    pub(crate) jar: DomainCookieJar,
+    pub(crate) xsrf: Arc<XsrfTokenManager>,
+    pub(crate) guard: NetGuard,
+    pub(crate) user_agent: String,
+    pub(crate) base_url: Url,
+    pub(crate) refresh_handle: tokio::task::JoinHandle<()>,
+    pub(crate) manual_clock: std::sync::Mutex<Option<Arc<crate::channel::ManualChannelClock>>>,
+    pub(crate) active_wc: std::sync::Mutex<Option<Arc<WebChannelClient>>>,
+    pub(crate) stream_state: std::sync::Mutex<
         Option<(
             tokio::sync::watch::Sender<bool>,
             tokio::task::JoinHandle<()>,
@@ -176,7 +176,7 @@ fn decode_proto_or_base64<M: Message + Default>(bytes: &[u8]) -> Result<M, GChat
 }
 
 impl GChatClient {
-    fn from_config_json(config_json: &str) -> Result<Self, GChatError> {
+    pub(crate) fn from_config_json(config_json: &str) -> Result<Self, GChatError> {
         let cfg: SessionConfigInput = serde_json::from_str(config_json).map_err(|e| {
             GChatError::CookieValidation(format!("invalid session config JSON: {e}"))
         })?;
@@ -703,13 +703,35 @@ pub unsafe extern "C" fn gchat_annotations_to_html(
     GChatStatus::GchatOk
 }
 
+#[derive(Deserialize)]
+struct UploadMediaReqInput {
+    #[serde(default)]
+    group_id: String,
+    #[serde(default)]
+    filename: String,
+    #[serde(default)]
+    content_type: String,
+}
+
+#[derive(Deserialize)]
+struct DownloadMediaReqInput {
+    #[serde(default)]
+    kind: String,
+    #[serde(default)]
+    attachment_token: String,
+    #[serde(default)]
+    url: String,
+    #[serde(default)]
+    external_enabled: bool,
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn gchat_upload_media(
     client: *mut GChatClient,
-    _req_json_ptr: *const u8,
-    _req_json_len: usize,
-    _data_ptr: *const u8,
-    _data_len: usize,
+    req_json_ptr: *const u8,
+    req_json_len: usize,
+    data_ptr: *const u8,
+    data_len: usize,
     out_upload_proto: *mut GChatByteSlice,
     out_err: *mut GChatByteSlice,
 ) -> GChatStatus {
@@ -717,15 +739,53 @@ pub unsafe extern "C" fn gchat_upload_media(
         write_err_slice(out_err, "client or out_upload_proto pointer is null");
         return GChatStatus::GchatErrInvalidArg;
     }
-    write_err_slice(out_err, "gchat_upload_media not yet implemented");
-    GChatStatus::GchatErrInternal
+    let req_json = match read_utf8(req_json_ptr, req_json_len, "req_json") {
+        Ok(s) => s,
+        Err(e) => {
+            write_err_slice(out_err, e);
+            return GChatStatus::GchatErrInvalidArg;
+        }
+    };
+    let req: UploadMediaReqInput = match serde_json::from_str(&req_json) {
+        Ok(r) => r,
+        Err(e) => {
+            write_err_slice(out_err, format!("invalid upload_media JSON: {e}"));
+            return GChatStatus::GchatErrInvalidArg;
+        }
+    };
+    let data = match read_bytes(data_ptr, data_len, "data") {
+        Ok(b) => b,
+        Err(e) => {
+            write_err_slice(out_err, e);
+            return GChatStatus::GchatErrInvalidArg;
+        }
+    };
+    let client_ref = &*client;
+    let res = client_ref.runtime.block_on(crate::media::scotty_upload(
+        client_ref,
+        &req.group_id,
+        &req.filename,
+        &req.content_type,
+        data,
+    ));
+    match res {
+        Ok(upload_meta) => {
+            write_slice_out(out_upload_proto, upload_meta.encode_to_vec());
+            GChatStatus::GchatOk
+        }
+        Err(e) => {
+            let st = status_from_error(&e);
+            write_err_slice(out_err, e.to_string());
+            st
+        }
+    }
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn gchat_download_media(
     client: *mut GChatClient,
-    _req_json_ptr: *const u8,
-    _req_json_len: usize,
+    req_json_ptr: *const u8,
+    req_json_len: usize,
     out_bytes: *mut GChatByteSlice,
     out_err: *mut GChatByteSlice,
 ) -> GChatStatus {
@@ -733,8 +793,64 @@ pub unsafe extern "C" fn gchat_download_media(
         write_err_slice(out_err, "client or out_bytes pointer is null");
         return GChatStatus::GchatErrInvalidArg;
     }
-    write_err_slice(out_err, "gchat_download_media not yet implemented");
-    GChatStatus::GchatErrInternal
+    let req_json = match read_utf8(req_json_ptr, req_json_len, "req_json") {
+        Ok(s) => s,
+        Err(e) => {
+            write_err_slice(out_err, e);
+            return GChatStatus::GchatErrInvalidArg;
+        }
+    };
+    let req: DownloadMediaReqInput = match serde_json::from_str(&req_json) {
+        Ok(r) => r,
+        Err(e) => {
+            write_err_slice(out_err, format!("invalid download_media JSON: {e}"));
+            return GChatStatus::GchatErrInvalidArg;
+        }
+    };
+    let client_ref = &*client;
+    let kind = if req.kind.trim().is_empty() {
+        "attachment"
+    } else {
+        req.kind.trim()
+    };
+    let res: Result<(Vec<u8>, String), GChatError> = match kind {
+        "attachment" => client_ref
+            .runtime
+            .block_on(crate::media::download_attachment(
+                client_ref,
+                &req.attachment_token,
+            )),
+        "avatar" => client_ref
+            .runtime
+            .block_on(crate::media::download_avatar(&client_ref.guard, &req.url)),
+        "external" => {
+            match client_ref
+                .runtime
+                .block_on(crate::media::download_external_image_if_enabled(
+                    &client_ref.guard,
+                    &req.url,
+                    req.external_enabled,
+                )) {
+                Ok(Some(pair)) => Ok(pair),
+                Ok(None) => Ok((Vec::new(), String::new())),
+                Err(e) => Err(e),
+            }
+        }
+        other => Err(GChatError::Protocol(format!(
+            "unsupported download_media kind: {other}"
+        ))),
+    };
+    match res {
+        Ok((bytes, _mime)) => {
+            write_slice_out(out_bytes, bytes);
+            GChatStatus::GchatOk
+        }
+        Err(e) => {
+            let st = status_from_error(&e);
+            write_err_slice(out_err, e.to_string());
+            st
+        }
+    }
 }
 
 #[cfg(test)]

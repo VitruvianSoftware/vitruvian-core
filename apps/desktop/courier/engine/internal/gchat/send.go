@@ -156,7 +156,7 @@ func (c *Client) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMe
 	if err != nil {
 		return nil, err
 	}
-	plainText, annotations, err := convertOutgoingText(msg.Content, !isDM)
+	plainText, annotations, err := c.prepareOutgoingMessageContent(ctx, msg, isDM, rawGroupID)
 	if err != nil {
 		return nil, err
 	}
