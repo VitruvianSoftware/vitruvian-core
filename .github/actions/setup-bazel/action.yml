@@ -85,10 +85,36 @@ runs:
           || { echo "::error::libxml2.so.2 still missing after install"; exit 1; }
         echo "installed libxml2.so.2 (noble 2.9.14) for LLVM's linker"
 
+    # Every job RESTORES the caches; only GitHub-hosted jobs on main SAVE them.
+    #
+    # An Actions cache is readable only from the ref that saved it and from the
+    # default branch. A merge-queue entry runs on a throwaway
+    # gh-readonly-queue/main/pr-<n>-<sha> branch that GitHub deletes when the
+    # entry leaves the queue, so a cache saved there can never be read again,
+    # and a pull-request cache is read only by that PR's next push. Both still
+    # count against the repo's single 10 GiB budget, and GitHub makes room by
+    # evicting the oldest entries -- main's, which is what every other ref
+    # falls back to. One queue entry held 6.2 GiB of such dead cache on
+    # 2026-10-31 (repository 3.9 + llvm 2.2 + bazelisk), more than half the
+    # budget.
+    #
+    # Self-hosted runners (the vitruvian-queue pool) are excluded even on main:
+    # their upload measured ~1.8 MB/s against ~300-365 MB/s from GitHub-hosted
+    # runners. On 2026-10-31 two merge-queue Conformance Check runs (41178618061,
+    # 41178619555) passed in 6 minutes, then spent 38 minutes in this action's
+    # post step uploading a 5.7 GB repository cache and hit the 45-minute job
+    # timeout, which cancelled a required check and dropped PRs #4085 and #4090
+    # from the queue. A post step cannot be given its own timeout, so the only
+    # safe save is one that cannot be slow. GitHub-hosted jobs on main (ci.yaml's
+    # build-test and friends) keep the entries warm for everyone.
+    #
+    # tools/conformance (CACHESAVE) fails if this guard is dropped, or if a
+    # workflow calls bazel-contrib/setup-bazel directly instead of this action.
     - uses: bazel-contrib/setup-bazel@104e3eea9447cdaa4b00d0fb46191a3985d26ab3 # 0.19.1
       with:
         bazelisk-cache: true
         repository-cache: true
+        cache-save: ${{ github.ref == 'refs/heads/main' && runner.environment == 'github-hosted' }}
         bazelrc: |
           common --announce_rc --color=yes --curses=yes
           common --show_progress_rate_limit=60 --show_timestamps
