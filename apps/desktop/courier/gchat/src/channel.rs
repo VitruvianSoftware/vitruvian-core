@@ -180,10 +180,9 @@ impl ChunkParser {
                 Err(err) => {
                     let valid_len = err.valid_up_to();
                     if valid_len > 0 {
-                        let valid_str = std::str::from_utf8(
-                            &self.utf8_Carry[consumed..consumed + valid_len],
-                        )
-                        .unwrap_or("");
+                        let valid_str =
+                            std::str::from_utf8(&self.utf8_Carry[consumed..consumed + valid_len])
+                                .unwrap_or("");
                         self.utf16_buf.extend(valid_str.encode_utf16());
                         consumed += valid_len;
                     }
@@ -210,8 +209,7 @@ impl ChunkParser {
 /// Extracts all EventBody entries in order: singular `event.body` (field 4) first,
 /// followed by all entries in repeated `event.bodies` (field 8).
 pub fn extract_event_bodies(event: &googlechat::Event) -> Vec<googlechat::event::EventBody> {
-    let mut bodies =
-        Vec::with_capacity(usize::from(event.body.is_some()) + event.bodies.len());
+    let mut bodies = Vec::with_capacity(usize::from(event.body.is_some()) + event.bodies.len());
     if let Some(first) = &event.body {
         bodies.push(first.clone());
     }
@@ -1089,7 +1087,18 @@ mod tests {
                             null,
                             null,
                             null,
-                            [[null, null, "1711234567000099", null, null, null, null, null, null, "Hello from WebChannel"]],
+                            [[
+                                null,
+                                null,
+                                "1711234567000099",
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                null,
+                                "Hello from WebChannel"
+                            ]],
                             null,
                             null,
                             null,
@@ -1162,14 +1171,7 @@ mod tests {
             "Mozilla/5.0".to_string(),
             guard.clone(),
         ));
-        let wc = WebChannelClient::new(
-            http,
-            jar,
-            xsrf,
-            guard,
-            "Mozilla/5.0".to_string(),
-            base_url,
-        );
+        let wc = WebChannelClient::new(http, jar, xsrf, guard, "Mozilla/5.0".to_string(), base_url);
 
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()

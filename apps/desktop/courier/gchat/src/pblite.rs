@@ -296,26 +296,21 @@ pub fn encode_pblite_dynamic(msg: &DynamicMessage) -> Result<Value, GChatError> 
     Ok(Value::Array(out))
 }
 
-fn encode_singular_value(
-    kind: &Kind,
-    val: &prost_reflect::Value,
-) -> Result<Value, GChatError> {
+fn encode_singular_value(kind: &Kind, val: &prost_reflect::Value) -> Result<Value, GChatError> {
     match (kind, val) {
         (Kind::Message(_), prost_reflect::Value::Message(sub)) => encode_pblite_dynamic(sub),
         (Kind::Bytes, prost_reflect::Value::Bytes(b)) => Ok(Value::String(
             base64::engine::general_purpose::STANDARD.encode(b),
         )),
-        (
-            Kind::Int64 | Kind::Sint64 | Kind::Sfixed64,
-            prost_reflect::Value::I64(n),
-        ) => Ok(Value::String(n.to_string())),
+        (Kind::Int64 | Kind::Sint64 | Kind::Sfixed64, prost_reflect::Value::I64(n)) => {
+            Ok(Value::String(n.to_string()))
+        }
         (Kind::Uint64 | Kind::Fixed64, prost_reflect::Value::U64(n)) => {
             Ok(Value::String(n.to_string()))
         }
-        (
-            Kind::Int32 | Kind::Sint32 | Kind::Sfixed32,
-            prost_reflect::Value::I32(n),
-        ) => Ok(Value::Number((*n).into())),
+        (Kind::Int32 | Kind::Sint32 | Kind::Sfixed32, prost_reflect::Value::I32(n)) => {
+            Ok(Value::Number((*n).into()))
+        }
         (Kind::Uint32 | Kind::Fixed32, prost_reflect::Value::U32(n)) => {
             Ok(Value::Number((*n).into()))
         }
@@ -381,10 +376,9 @@ mod tests {
         let ann_desc = DESCRIPTOR_POOL
             .get_message_by_name("googlechat.Annotation")
             .expect("Annotation descriptor");
-        let sparse_ann: Value = serde_json::from_str(
-            r#"[16, 0, 7, {"15": [null, null, "deploy"], "8": [1]}]"#,
-        )
-        .expect("valid json");
+        let sparse_ann: Value =
+            serde_json::from_str(r#"[16, 0, 7, {"15": [null, null, "deploy"], "8": [1]}]"#)
+                .expect("valid json");
         let ann: pb::Annotation = decode_pblite(&ann_desc, &sparse_ann).expect("decode Annotation");
         match ann.metadata {
             Some(pb::annotation::Metadata::SlashCommandMetadata(ref sc)) => {
@@ -477,7 +471,10 @@ mod tests {
             json!([{"8888": [1, 2, 3]}]),
         ] {
             let res: Result<pb::GroupId, GChatError> = decode_pblite(&desc, &sample);
-            assert!(res.is_ok(), "expected permissive decode to succeed, got {res:?}");
+            assert!(
+                res.is_ok(),
+                "expected permissive decode to succeed, got {res:?}"
+            );
         }
     }
 
@@ -489,9 +486,8 @@ mod tests {
         // Message.last_reply is field 12 (0-based index 11). Build a 65-level nested array.
         let mut nested = json!([]);
         for _ in 0..65 {
-            nested = json!([
-                null, null, null, null, null, null, null, null, null, null, null, nested
-            ]);
+            nested =
+                json!([null, null, null, null, null, null, null, null, null, null, null, nested]);
         }
         let err = decode_pblite::<pb::Message>(&desc, &nested)
             .expect_err("65-level nested pblite array must fail with max depth error");

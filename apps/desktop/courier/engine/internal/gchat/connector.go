@@ -21,23 +21,28 @@ const (
 	FlowCookies = "cookies"
 )
 
-// UserLoginMetadata persists the user's Google Chat cookies and User-Agent on the UserLogin row.
+// UserLoginMetadata persists the user's Google Chat cookies, User-Agent, and user_revision cursor on the UserLogin row.
 type UserLoginMetadata struct {
-	Cookies   map[string]string `json:"cookies,omitempty"`
-	UserAgent string            `json:"user_agent,omitempty"`
+	Cookies      map[string]string `json:"cookies,omitempty"`
+	UserAgent    string            `json:"user_agent,omitempty"`
+	UserRevision int64             `json:"user_revision,omitempty"`
 }
 
-// PortalMetadata stores per-portal Google Chat revision state.
+// PortalMetadata stores per-portal Google Chat revision and threading state.
 type PortalMetadata struct {
-	Revision int64 `json:"revision,omitempty"`
+	Revision       int64 `json:"revision,omitempty"`
+	GroupRevision  int64 `json:"group_revision,omitempty"`
+	TopicThreaded  bool  `json:"topic_threaded,omitempty"`
+	ThreadsEnabled bool  `json:"threads_enabled,omitempty"`
 }
 
 // GhostMetadata stores per-ghost Google Chat metadata.
 type GhostMetadata struct{}
 
-// MessageMetadata stores per-message Google Chat topic metadata.
+// MessageMetadata stores per-message Google Chat topic and timestamp metadata.
 type MessageMetadata struct {
-	TopicID string `json:"topic_id,omitempty"`
+	TopicID          string `json:"topic_id,omitempty"`
+	CreateTimeMicros int64  `json:"create_time_micros,omitempty"`
 }
 
 // Connector implements bridgev2.NetworkConnector for Google Chat.

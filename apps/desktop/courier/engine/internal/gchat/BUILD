@@ -11,6 +11,7 @@ go_library(
         "client.go",
         "connector.go",
         "ffi.go",
+        "sync.go",
     ],
     cdeps = ["//apps/desktop/courier/gchat:gchat_ffi"],
     cgo = True,
@@ -21,8 +22,10 @@ go_library(
         "@net_maunium_go_mautrix//bridgev2",
         "@net_maunium_go_mautrix//bridgev2/database",
         "@net_maunium_go_mautrix//bridgev2/networkid",
+        "@net_maunium_go_mautrix//bridgev2/simplevent",
         "@net_maunium_go_mautrix//bridgev2/status",
         "@net_maunium_go_mautrix//event",
+        "@net_maunium_go_mautrix//id",
     ],
 )
 
@@ -34,6 +37,7 @@ go_test(
         "ffi.go",
         "gchat_test.go",
         "loopback_test.go",
+        "sync.go",
     ],
     cdeps = ["//apps/desktop/courier/gchat:gchat_ffi_test_loopback"],
     cgo = True,
@@ -48,7 +52,9 @@ go_test(
         "@net_maunium_go_mautrix//bridgev2",
         "@net_maunium_go_mautrix//bridgev2/database",
         "@net_maunium_go_mautrix//bridgev2/networkid",
+        "@net_maunium_go_mautrix//bridgev2/simplevent",
         "@net_maunium_go_mautrix//bridgev2/status",
         "@net_maunium_go_mautrix//event",
+        "@net_maunium_go_mautrix//id",
     ],
 )

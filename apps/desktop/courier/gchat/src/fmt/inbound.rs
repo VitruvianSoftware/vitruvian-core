@@ -229,7 +229,10 @@ fn render_bot_cards(attachments: &[googlechat::Attachment]) -> Option<(String, S
                                 }
                                 if !content.is_empty() {
                                     p_parts.push(content.clone());
-                                    h_parts.push(format!("<strong>{}</strong>", escape_html(&content)));
+                                    h_parts.push(format!(
+                                        "<strong>{}</strong>",
+                                        escape_html(&content)
+                                    ));
                                 }
                                 if !bottom.is_empty() {
                                     p_parts.push(bottom.clone());
@@ -288,7 +291,10 @@ fn render_bot_cards(attachments: &[googlechat::Attachment]) -> Option<(String, S
 
                 if !plain_lines.is_empty() {
                     plain_cards.push(plain_lines.join("\n"));
-                    html_cards.push(format!("<blockquote>{}</blockquote>", html_lines.join("<br>")));
+                    html_cards.push(format!(
+                        "<blockquote>{}</blockquote>",
+                        html_lines.join("<br>")
+                    ));
                 }
             }
         }
@@ -766,7 +772,10 @@ mod tests {
         assert!(html.contains("<em>italic</em>"), "html: {html}");
         assert!(html.contains("<del>strike</del>"), "html: {html}");
         assert!(html.contains("<code>code</code>"), "html: {html}");
-        assert!(html.contains("<pre><code>block</code></pre>"), "html: {html}");
+        assert!(
+            html.contains("<pre><code>block</code></pre>"),
+            "html: {html}"
+        );
         assert!(html.contains("<u>under</u>"), "html: {html}");
         assert!(
             html.contains("<font color=\"#ff3366\">color</font>"),

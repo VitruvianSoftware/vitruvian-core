@@ -6,6 +6,16 @@ package gchat
 /*
 #include "gchat.h"
 #include <stdlib.h>
+
+extern void goGChatEventCallback(uintptr_t userdata, int32_t event_kind, uint8_t* payload_ptr, size_t payload_len);
+
+static inline void gchatEventCallbackTrampoline(uintptr_t userdata, int32_t event_kind, const uint8_t* payload_ptr, size_t payload_len) {
+	goGChatEventCallback(userdata, event_kind, (uint8_t*)payload_ptr, payload_len);
+}
+
+static inline GChatStatus call_gchat_start_stream(GChatClient* client, uintptr_t userdata, GChatByteSlice* out_err) {
+	return gchat_start_stream(client, gchatEventCallbackTrampoline, userdata, out_err);
+}
 */
 import "C"
 
@@ -14,6 +24,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"runtime/cgo"
+	"sync"
 	"unsafe"
 )
 
@@ -39,6 +51,172 @@ type ValidatedSession struct {
 	Name      string `json:"name"`
 	Email     string `json:"email"`
 	AvatarURL string `json:"avatar_url"`
+}
+
+// ConvertedInboundText is returned by gchat_annotations_to_html.
+type ConvertedInboundText struct {
+	Body             string   `json:"body"`
+	FormattedBody    string   `json:"formatted_body"`
+	Mentions         []string `json:"mentions"`
+	MentionAll       bool     `json:"mention_all"`
+	Text             string   `json:"text"`
+	HTML             string   `json:"html"`
+	AnnotationsCount int      `json:"annotations_count"`
+}
+
+// FFIClient wraps a live *C.GChatClient handle.
+type FFIClient struct {
+	mu           sync.Mutex
+	ptr          *C.GChatClient
+	streamHandle cgo.Handle
+	hasStream    bool
+}
+
+// NewFFIClient creates a new Rust GChatClient handle from cfg.
+func NewFFIClient(cfg SessionConfig) (*FFIClient, error) {
+	raw, err := json.Marshal(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("marshal session config: %w", err)
+	}
+	if len(raw) == 0 {
+		return nil, errors.New("empty session config")
+	}
+	var ptr *C.GChatClient
+	var newErr C.GChatByteSlice
+	st := C.gchat_client_new(
+		(*C.uint8_t)(unsafe.Pointer(&raw[0])),
+		C.size_t(len(raw)),
+		&ptr,
+		&newErr,
+	)
+	if st != C.GCHAT_OK {
+		return nil, statusError(st, newErr)
+	}
+	return &FFIClient{ptr: ptr}, nil
+}
+
+// Close stops any active stream and frees the underlying Rust GChatClient handle.
+func (c *FFIClient) Close() {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.ptr == nil {
+		return
+	}
+	if c.hasStream {
+		C.gchat_stop_stream(c.ptr)
+		c.streamHandle.Delete()
+		c.hasStream = false
+	}
+	C.gchat_client_free(c.ptr)
+	c.ptr = nil
+}
+
+// RPCCall invokes /u/0/api/<endpoint>?alt=proto through the Rust FFI client.
+func (c *FFIClient) RPCCall(endpoint string, reqProto []byte) ([]byte, error) {
+	if c == nil {
+		return nil, errors.New("nil gchat ffi client")
+	}
+	c.mu.Lock()
+	ptr := c.ptr
+	c.mu.Unlock()
+	if ptr == nil {
+		return nil, errors.New("closed gchat ffi client")
+	}
+
+	cEndpoint := C.CString(endpoint)
+	defer C.free(unsafe.Pointer(cEndpoint))
+
+	var reqPtr *C.uint8_t
+	if len(reqProto) > 0 {
+		reqPtr = (*C.uint8_t)(unsafe.Pointer(&reqProto[0]))
+	}
+	var respOut C.GChatByteSlice
+	var errOut C.GChatByteSlice
+	st := C.gchat_rpc_call(
+		ptr,
+		cEndpoint,
+		C.size_t(len(endpoint)),
+		reqPtr,
+		C.size_t(len(reqProto)),
+		&respOut,
+		&errOut,
+	)
+	if st != C.GCHAT_OK {
+		return nil, statusError(st, errOut)
+	}
+	return takeByteSlice(respOut), nil
+}
+
+//export goGChatEventCallback
+func goGChatEventCallback(userdata C.uintptr_t, eventKind C.int32_t, payloadPtr *C.uint8_t, payloadLen C.size_t) {
+	if userdata == 0 {
+		return
+	}
+	h := cgo.Handle(userdata)
+	cb, ok := h.Value().(func(int32, []byte))
+	if !ok || cb == nil {
+		return
+	}
+	var data []byte
+	if payloadPtr != nil && payloadLen > 0 {
+		data = C.GoBytes(unsafe.Pointer(payloadPtr), C.int(payloadLen))
+	}
+	cb(int32(eventKind), data)
+}
+
+// StartStream starts the WebChannel stream on the Rust FFI client.
+func (c *FFIClient) StartStream(cb func(eventKind int32, payload []byte)) error {
+	if c == nil {
+		return errors.New("nil gchat ffi client")
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.ptr == nil {
+		return errors.New("closed gchat ffi client")
+	}
+	if c.hasStream {
+		C.gchat_stop_stream(c.ptr)
+		c.streamHandle.Delete()
+		c.hasStream = false
+	}
+	h := cgo.NewHandle(cb)
+	var errOut C.GChatByteSlice
+	st := C.call_gchat_start_stream(c.ptr, C.uintptr_t(h), &errOut)
+	if st != C.GCHAT_OK {
+		h.Delete()
+		return statusError(st, errOut)
+	}
+	c.streamHandle = h
+	c.hasStream = true
+	return nil
+}
+
+// AnnotationsToHTML converts a serialized googlechat.Message protobuf into Matrix plain text + HTML.
+func AnnotationsToHTML(messageProto []byte) (*ConvertedInboundText, error) {
+	var ptr *C.uint8_t
+	if len(messageProto) > 0 {
+		ptr = (*C.uint8_t)(unsafe.Pointer(&messageProto[0]))
+	}
+	var renderOut C.GChatByteSlice
+	var renderErr C.GChatByteSlice
+	st := C.gchat_annotations_to_html(
+		ptr,
+		C.size_t(len(messageProto)),
+		&renderOut,
+		&renderErr,
+	)
+	if st != C.GCHAT_OK {
+		return nil, statusError(st, renderErr)
+	}
+	renderedJSON := takeByteSlice(renderOut)
+	var out ConvertedInboundText
+	if err := json.Unmarshal(renderedJSON, &out); err != nil {
+		return nil, fmt.Errorf("unmarshal annotations_to_html output: %w", err)
+	}
+	return &out, nil
 }
 
 func takeByteSlice(slice C.GChatByteSlice) []byte {
@@ -88,25 +266,9 @@ func LinkCheck() error {
 		return fmt.Errorf("decode message_proto_base64: %w", err)
 	}
 
-	var renderOut C.GChatByteSlice
-	var renderErr C.GChatByteSlice
-	st = C.gchat_annotations_to_html(
-		(*C.uint8_t)(unsafe.Pointer(&protoBytes[0])),
-		C.size_t(len(protoBytes)),
-		&renderOut,
-		&renderErr,
-	)
-	if st != C.GCHAT_OK {
-		return statusError(st, renderErr)
-	}
-	renderedJSON := takeByteSlice(renderOut)
-	var step2 struct {
-		Text             string `json:"text"`
-		HTML             string `json:"html"`
-		AnnotationsCount int    `json:"annotations_count"`
-	}
-	if err := json.Unmarshal(renderedJSON, &step2); err != nil {
-		return fmt.Errorf("unmarshal annotations_to_html output: %w", err)
+	step2, err := AnnotationsToHTML(protoBytes)
+	if err != nil {
+		return err
 	}
 	if step2.HTML != "<b>Hello</b> World" || step2.AnnotationsCount != 1 {
 		return fmt.Errorf("unexpected round-trip annotation output: %+v", step2)
@@ -116,30 +278,15 @@ func LinkCheck() error {
 
 // ValidateSession validates cookies against /u/0/mole/world and /u/0/api/get_self_user_status.
 func ValidateSession(cfg SessionConfig) (*ValidatedSession, error) {
-	raw, err := json.Marshal(cfg)
+	c, err := NewFFIClient(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("marshal session config: %w", err)
+		return nil, err
 	}
-	if len(raw) == 0 {
-		return nil, errors.New("empty session config")
-	}
-
-	var client *C.GChatClient
-	var newErr C.GChatByteSlice
-	st := C.gchat_client_new(
-		(*C.uint8_t)(unsafe.Pointer(&raw[0])),
-		C.size_t(len(raw)),
-		&client,
-		&newErr,
-	)
-	if st != C.GCHAT_OK {
-		return nil, statusError(st, newErr)
-	}
-	defer C.gchat_client_free(client)
+	defer c.Close()
 
 	var selfJSON C.GChatByteSlice
 	var valErr C.GChatByteSlice
-	st = C.gchat_validate_session(client, &selfJSON, &valErr)
+	st := C.gchat_validate_session(c.ptr, &selfJSON, &valErr)
 	if st != C.GCHAT_OK {
 		return nil, statusError(st, valErr)
 	}

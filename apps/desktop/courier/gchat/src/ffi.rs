@@ -60,7 +60,12 @@ pub struct GChatClient {
     user_agent: String,
     base_url: Url,
     refresh_handle: tokio::task::JoinHandle<()>,
-    stream_state: std::sync::Mutex<Option<(tokio::sync::watch::Sender<bool>, tokio::task::JoinHandle<()>)>>,
+    stream_state: std::sync::Mutex<
+        Option<(
+            tokio::sync::watch::Sender<bool>,
+            tokio::task::JoinHandle<()>,
+        )>,
+    >,
 }
 
 impl Drop for GChatClient {
@@ -415,49 +420,51 @@ pub unsafe extern "C" fn gchat_validate_session(
     }
 }
 
-#[no_mangle]
-pub unsafe extern "C" fn gchat_start_stream(
-    client: *mut GChatClient,
-    cb: GChatEventCallback,
-    userdata: usize,
-    out_err: *mut GChatByteSlice,
-) -> GChatStatus {
-    if client.is_null() {
-        write_err_slice(out_err, "client pointer is null");
-        return GChatStatus::GchatErrInvalidArg;
-    }
-    let client_ref = &*client;
-    let Ok(mut state_guard) = client_ref.stream_state.lock() else {
-        write_err_slice(out_err, "stream_state mutex poisoned");
-        return GChatStatus::GchatErrInternal;
-    };
-    if let Some((prev_tx, prev_handle)) = state_guard.take() {
-        let _ = prev_tx.send(true);
-        prev_handle.abort();
-    }
+crate::edition2021! {
+    #[no_mangle]
+    pub unsafe extern "C" fn gchat_start_stream(
+        client: *mut GChatClient,
+        cb: GChatEventCallback,
+        userdata: usize,
+        out_err: *mut GChatByteSlice,
+    ) -> GChatStatus {
+        if client.is_null() {
+            write_err_slice(out_err, "client pointer is null");
+            return GChatStatus::GchatErrInvalidArg;
+        }
+        let client_ref = &*client;
+        let Ok(mut state_guard) = client_ref.stream_state.lock() else {
+            write_err_slice(out_err, "stream_state mutex poisoned");
+            return GChatStatus::GchatErrInternal;
+        };
+        if let Some((prev_tx, prev_handle)) = state_guard.take() {
+            let _ = prev_tx.send(true);
+            prev_handle.abort();
+        }
 
-    let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
-    let wc = Arc::new(WebChannelClient::new(
-        client_ref.http.clone(),
-        client_ref.jar.clone(),
-        client_ref.xsrf.clone(),
-        client_ref.guard.clone(),
-        client_ref.user_agent.clone(),
-        client_ref.base_url.clone(),
-    ));
-    let handle = client_ref.runtime.spawn(async move {
-        wc.run_forever(cancel_rx, move |event_kind, payload| {
-            let ptr = if payload.is_empty() {
-                ptr::null()
-            } else {
-                payload.as_ptr()
-            };
-            cb(userdata, event_kind, ptr, payload.len());
-        })
-        .await;
-    });
-    *state_guard = Some((cancel_tx, handle));
-    GChatStatus::GchatOk
+        let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
+        let wc = Arc::new(WebChannelClient::new(
+            client_ref.http.clone(),
+            client_ref.jar.clone(),
+            client_ref.xsrf.clone(),
+            client_ref.guard.clone(),
+            client_ref.user_agent.clone(),
+            client_ref.base_url.clone(),
+        ));
+        let handle = client_ref.runtime.spawn(async move {
+            wc.run_forever(cancel_rx, move |event_kind, payload| {
+                let ptr = if payload.is_empty() {
+                    ptr::null()
+                } else {
+                    payload.as_ptr()
+                };
+                cb(userdata, event_kind, ptr, payload.len());
+            })
+            .await;
+        });
+        *state_guard = Some((cancel_tx, handle));
+        GChatStatus::GchatOk
+    }
 }
 
 #[no_mangle]
