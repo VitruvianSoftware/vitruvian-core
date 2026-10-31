@@ -5010,6 +5010,189 @@ func TestAttachmentEventFollowedByReactionPreservesOrderWithoutBlockingDrainer(t
 	}, 2*time.Second, 20*time.Millisecond, "bridgev2 must receive and persist attachment message before reaction so reaction is not dropped")
 }
 
+func TestSyncWorldWith300MembersAndSlowGetMembersDoesNotDelayStreamEvents(t *testing.T) {
+	enableTestLoopback(t)
+	ctx := context.Background()
+
+	const memberCount = 300
+	joinedUsers := make([]*pb.UserId, 0, memberCount+1)
+	joinedUsers = append(joinedUsers, pb.HumanUserID("112233445566778899001"))
+	for i := 1; i <= memberCount; i++ {
+		joinedUsers = append(joinedUsers, pb.HumanUserID(fmt.Sprintf("1122334455667788%05d", i)))
+	}
+	worldBytes := pb.MustMarshal(&pb.PaginatedWorldResponse{
+		UserRevision: &pb.ReadRevision{Timestamp: pb.Int64(900)},
+		WorldItems: []*pb.WorldItemLite{
+			{
+				GroupId:       pb.SpaceGroupID("space_big_300"),
+				GroupRevision: &pb.ReadRevision{Timestamp: pb.Int64(300)},
+				SortTimestamp: pb.Int64(1710000500000000),
+				RoomName:      pb.String("Big 300-Member Space"),
+				ThreadedGroup: &pb.WorldItemLite_ThreadedGroup{},
+				ReadState: &pb.GroupReadState{
+					MembershipState: pb.MembershipState_MEMBER_JOINED.Enum(),
+					JoinedUsers:     joinedUsers,
+				},
+			},
+			{
+				GroupId:       pb.SpaceGroupID("space_fast"),
+				GroupRevision: &pb.ReadRevision{Timestamp: pb.Int64(301)},
+				SortTimestamp: pb.Int64(1710000400000000),
+				RoomName:      pb.String("Fast Space"),
+				ThreadedGroup: &pb.WorldItemLite_ThreadedGroup{},
+				ReadState: &pb.GroupReadState{
+					MembershipState: pb.MembershipState_MEMBER_JOINED.Enum(),
+					JoinedUsers: []*pb.UserId{
+						pb.HumanUserID("112233445566778899001"),
+					},
+				},
+			},
+		},
+	})
+
+	worldFetched := make(chan struct{})
+	var worldOnce sync.Once
+	var slowGetMembers atomic.Bool
+	var inFlightGetMembers atomic.Int64
+	var maxConcurrentGetMembers atomic.Int64
+	var pingDone atomic.Bool
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/u/0/mole/world":
+			w.Header().Set("Content-Type", "text/html")
+			_, _ = fmt.Fprint(w, `<!DOCTYPE html><html><script>window.WIZ_global_data = {"xsrf_token":"AF1QipP_n2_token:1710000000000"};</script></html>`)
+		case "/u/0/api/get_self_user_status":
+			w.Header().Set("Content-Type", "application/x-protobuf")
+			_, _ = w.Write(buildSyntheticSelfUserStatusResponse("112233445566778899001"))
+		case "/u/0/api/paginated_world":
+			slowGetMembers.Store(true)
+			worldOnce.Do(func() {
+				close(worldFetched)
+			})
+			w.Header().Set("Content-Type", "application/x-protobuf")
+			_, _ = w.Write(worldBytes)
+		case "/u/0/api/get_members":
+			cur := inFlightGetMembers.Add(1)
+			for {
+				prev := maxConcurrentGetMembers.Load()
+				if cur <= prev || maxConcurrentGetMembers.CompareAndSwap(prev, cur) {
+					break
+				}
+			}
+			defer inFlightGetMembers.Add(-1)
+			if slowGetMembers.Load() {
+				select {
+				case <-time.After(40 * time.Millisecond):
+				case <-r.Context().Done():
+					return
+				}
+			}
+			w.Header().Set("Content-Type", "application/x-protobuf")
+			_, _ = w.Write(buildSyntheticGetMembersResponse(
+				"112233445566778800001",
+				"Member User",
+				"member@example.com",
+				"",
+			))
+		case "/u/0/webchannel/register":
+			w.Header().Add("Set-Cookie", "COMPASS=dynamite-ui=csess_n2; Path=/; Domain=chat.google.com")
+			w.WriteHeader(http.StatusOK)
+		case "/u/0/webchannel/events":
+			if r.Method == http.MethodPost {
+				pingDone.Store(true)
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			if r.URL.Query().Get("SID") == "null" {
+				w.Header().Set("X-HTTP-Initial-Response", `[[0,["c","sid_n2","",8,12]]]`)
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			if !pingDone.Load() {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			<-r.Context().Done()
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	dir := t.TempDir()
+	st, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = st.Close() })
+
+	conn := &Connector{baseURL: srv.URL}
+	h, err := host.Start(ctx, dir, NetworkID, st, &media.Store{Dir: filepath.Join(dir, "media")}, conn, zerolog.Nop())
+	require.NoError(t, err)
+	t.Cleanup(h.Stop)
+
+	user, err := h.Bridge.GetUserByMXID(ctx, "@me:courier.local")
+	require.NoError(t, err)
+	proc, err := conn.CreateLogin(ctx, user, FlowCookies)
+	require.NoError(t, err)
+	cookieLogin := proc.(bridgev2.LoginProcessCookies)
+	doneStep, err := cookieLogin.SubmitCookies(ctx, map[string]string{
+		"COMPASS": "dynamite-ui=synthetic_compass",
+		"OSID":    "synthetic_osid",
+		"SID":     "synthetic_sid",
+		"HSID":    "synthetic_hsid",
+		"SSID":    "synthetic_ssid",
+	})
+	require.NoError(t, err)
+	ul := doneStep.CompleteParams.UserLogin
+	client := ul.Client.(*Client)
+	t.Cleanup(client.Disconnect)
+
+	<-worldFetched
+
+	// Immediately push a live stream message event while the 300-member world sync is running.
+	fastGID := pb.SpaceGroupID("space_fast")
+	liveMsg := buildSyntheticMessageProto(fastGID, "topic_n2", "msg_after_300_sync", "112233445566778800001", "Urgent stream message after 300-member sync", 1710000950000000, "", 0, 0)
+	liveEvtBytes := pb.MustMarshal(&pb.Event{
+		GroupId: fastGID,
+		Type:    pb.Event_MESSAGE_POSTED.Enum(),
+		Body: &pb.Event_EventBody{
+			EventType: pb.Event_MESSAGE_POSTED.Enum(),
+			Type: &pb.Event_EventBody_MessagePosted{
+				MessagePosted: &pb.MessageEvent{Message: liveMsg},
+			},
+		},
+	})
+
+	start := time.Now()
+	client.mu.Lock()
+	ch := client.streamCh
+	client.mu.Unlock()
+	require.NotNil(t, ch)
+	ch <- streamNotification{kind: EventKindEventProto, payload: liveEvtBytes}
+
+	require.Eventually(t, func() bool {
+		msg, err := h.Bridge.DB.Message.GetFirstPartByID(ctx, ul.ID, MakeMessageID("topic_n2", "msg_after_300_sync"))
+		return err == nil && msg != nil
+	}, 900*time.Millisecond, 15*time.Millisecond, "world sync with 300 members and slow get_members must not delay subsequent stream event beyond ~1s")
+	elapsed := time.Since(start)
+	require.Less(t, elapsed, time.Second, "subsequent stream event must be delivered in under 1s")
+	require.LessOrEqual(t, maxConcurrentGetMembers.Load(), int64(4), "background ghost prewarm worker concurrency must be capped at 4")
+
+	// Verify I6 behaviour remains intact: synced 300-member space ChatResync includes all 300 members.
+	resyncs := client.recordedChatResyncs()
+	var bigResync *simplevent.ChatResync
+	for _, rs := range resyncs {
+		if rs.GetPortalKey().ID == MakeSpacePortalID("space_big_300") {
+			bigResync = rs
+			break
+		}
+	}
+	require.NotNil(t, bigResync, "space_big_300 must have a ChatResync queued")
+	require.NotNil(t, bigResync.ChatInfo)
+	require.NotNil(t, bigResync.ChatInfo.Members)
+	require.GreaterOrEqual(t, len(bigResync.ChatInfo.Members.MemberMap), memberCount, "I6: synced space must include all 300 members")
+}
+
 func TestServeGChatEngineHelperForAppE2E(t *testing.T) {
 	sockPath := os.Getenv("COURIER_GCHAT_E2E_SOCKET")
 	if sockPath == "" {

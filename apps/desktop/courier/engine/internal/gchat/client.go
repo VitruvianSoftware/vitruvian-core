@@ -52,6 +52,9 @@ type Client struct {
 	streamCh           chan streamNotification
 	portalQueues       map[networkid.PortalKey]chan bridgev2.RemoteEvent
 	portalWG           sync.WaitGroup
+	prewarmCh          chan networkid.UserID
+	prewarmedUsers     map[networkid.UserID]struct{}
+	prewarmWG          sync.WaitGroup
 	mediaSem           chan struct{}
 	initialSyncDone    bool
 	dispatchedMsgIDs   map[string]struct{}
@@ -150,11 +153,18 @@ func (c *Client) Connect(ctx context.Context) {
 	}
 
 	streamCh := make(chan streamNotification, 256)
+	prewarmCh := make(chan networkid.UserID, 1024)
 	c.mu.Lock()
 	c.streamCtx = streamCtx
 	c.streamCh = streamCh
 	c.portalQueues = make(map[networkid.PortalKey]chan bridgev2.RemoteEvent)
+	c.prewarmCh = prewarmCh
+	c.prewarmedUsers = make(map[networkid.UserID]struct{})
 	c.mu.Unlock()
+	for i := 0; i < 4; i++ {
+		c.prewarmWG.Add(1)
+		go c.runGhostPrewarmWorker(streamCtx, prewarmCh)
+	}
 	go func() {
 		defer close(doneCh)
 		defer func() {
@@ -163,10 +173,15 @@ func (c *Client) Connect(ctx context.Context) {
 				close(q)
 				delete(c.portalQueues, pk)
 			}
+			if c.prewarmCh != nil {
+				close(c.prewarmCh)
+				c.prewarmCh = nil
+			}
 			c.portalQueues = nil
 			c.streamCtx = nil
 			c.mu.Unlock()
 			c.portalWG.Wait()
+			c.prewarmWG.Wait()
 		}()
 		for {
 			select {
@@ -296,8 +311,7 @@ func (c *Client) dispatchRemoteEvent(ctx context.Context, evt bridgev2.RemoteEve
 	queues := c.portalQueues
 	if streamCtx == nil || streamCtx.Err() != nil || queues == nil || ctx != streamCtx {
 		c.mu.Unlock()
-		c.prewarmEventGhosts(ctx, evt)
-		c.UserLogin.QueueRemoteEvent(evt)
+		c.executeRemoteEvent(ctx, evt)
 		return
 	}
 	pk := evt.GetPortalKey()
@@ -319,8 +333,7 @@ func (c *Client) dispatchRemoteEvent(ctx context.Context, evt bridgev2.RemoteEve
 					if streamCtx.Err() != nil {
 						return
 					}
-					c.prewarmEventGhosts(streamCtx, re)
-					c.UserLogin.QueueRemoteEvent(re)
+					c.executeRemoteEvent(streamCtx, re)
 				}
 			}
 		}(q)
@@ -333,30 +346,107 @@ func (c *Client) dispatchRemoteEvent(ctx context.Context, evt bridgev2.RemoteEve
 	}
 }
 
-func (c *Client) ensureGhostInitialized(ctx context.Context, uid networkid.UserID) {
+func (c *Client) executeRemoteEvent(ctx context.Context, evt bridgev2.RemoteEvent) {
+	if evt == nil || c.UserLogin == nil {
+		return
+	}
+	if evt.GetType() == bridgev2.RemoteEventMessage {
+		if msgEvt, ok := evt.(bridgev2.RemoteMessage); ok {
+			_, _ = msgEvt.ConvertMessage(ctx, nil, nil)
+		}
+	}
+	c.seedEventGhosts(ctx, evt)
+	c.ghostMu.Lock()
+	c.UserLogin.QueueRemoteEvent(evt)
+	c.ghostMu.Unlock()
+}
+
+func (c *Client) seedAndEnqueueGhostPrewarm(ctx context.Context, uid networkid.UserID) {
 	if uid == "" || uid == c.ownUserID() || c.UserLogin == nil || c.UserLogin.Bridge == nil {
 		return
 	}
 	c.ghostMu.Lock()
-	defer c.ghostMu.Unlock()
 	if ghost, err := c.UserLogin.Bridge.GetGhostByID(ctx, uid); err == nil && ghost != nil {
-		ghost.UpdateInfoIfNecessary(ctx, c.UserLogin, bridgev2.RemoteEventUnknown)
+		if ghost.Name == "" {
+			ghost.Name = string(uid)
+		}
+		ghost.NameSet = true
+		ghost.AvatarSet = true
+	}
+	c.ghostMu.Unlock()
+
+	c.mu.Lock()
+	streamCtx := c.streamCtx
+	ch := c.prewarmCh
+	if streamCtx == nil || streamCtx.Err() != nil || ch == nil {
+		c.mu.Unlock()
+		return
+	}
+	if c.prewarmedUsers == nil {
+		c.prewarmedUsers = make(map[networkid.UserID]struct{})
+	}
+	if _, seen := c.prewarmedUsers[uid]; seen {
+		c.mu.Unlock()
+		return
+	}
+	c.prewarmedUsers[uid] = struct{}{}
+	c.mu.Unlock()
+
+	select {
+	case <-streamCtx.Done():
+	case ch <- uid:
+	default:
 	}
 }
 
-func (c *Client) prewarmEventGhosts(ctx context.Context, evt bridgev2.RemoteEvent) {
+func (c *Client) seedEventGhosts(ctx context.Context, evt bridgev2.RemoteEvent) {
 	if evt == nil || c.UserLogin == nil || c.UserLogin.Bridge == nil {
 		return
 	}
 	if sender := evt.GetSender().Sender; sender != "" {
-		c.ensureGhostInitialized(ctx, sender)
+		c.seedAndEnqueueGhostPrewarm(ctx, sender)
 	}
 	if resync, ok := evt.(*simplevent.ChatResync); ok && resync != nil && resync.ChatInfo != nil && resync.ChatInfo.Members != nil {
 		if resync.ChatInfo.Members.OtherUserID != "" {
-			c.ensureGhostInitialized(ctx, resync.ChatInfo.Members.OtherUserID)
+			c.seedAndEnqueueGhostPrewarm(ctx, resync.ChatInfo.Members.OtherUserID)
 		}
 		for uid := range resync.ChatInfo.Members.MemberMap {
-			c.ensureGhostInitialized(ctx, uid)
+			c.seedAndEnqueueGhostPrewarm(ctx, uid)
+		}
+	}
+	if cic, ok := evt.(*simplevent.ChatInfoChange); ok && cic != nil && cic.ChatInfoChange != nil && cic.ChatInfoChange.MemberChanges != nil {
+		for uid := range cic.ChatInfoChange.MemberChanges.MemberMap {
+			c.seedAndEnqueueGhostPrewarm(ctx, uid)
+		}
+	}
+}
+
+func (c *Client) runGhostPrewarmWorker(streamCtx context.Context, ch <-chan networkid.UserID) {
+	defer c.prewarmWG.Done()
+	for {
+		select {
+		case <-streamCtx.Done():
+			return
+		case uid, ok := <-ch:
+			if !ok {
+				return
+			}
+			if streamCtx.Err() != nil || c.UserLogin == nil || c.UserLogin.Bridge == nil {
+				return
+			}
+			c.ghostMu.Lock()
+			ghost, err := c.UserLogin.Bridge.GetGhostByID(streamCtx, uid)
+			c.ghostMu.Unlock()
+			if err != nil || ghost == nil {
+				continue
+			}
+			info, err := c.GetUserInfo(streamCtx, ghost)
+			if err != nil || info == nil || streamCtx.Err() != nil {
+				continue
+			}
+			c.ghostMu.Lock()
+			ghost.UpdateInfo(streamCtx, info)
+			c.ghostMu.Unlock()
 		}
 	}
 }

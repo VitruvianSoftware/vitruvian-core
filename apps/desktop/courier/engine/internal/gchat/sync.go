@@ -243,14 +243,6 @@ func (c *Client) syncWorld(ctx context.Context) error {
 
 	own := c.ownUserID()
 	for _, item := range filtered {
-		for _, rawUID := range item.memberUserIDs {
-			uid := MakeUserID(strings.TrimSpace(rawUID))
-			if uid != "" && uid != own {
-				c.ensureGhostInitialized(ctx, uid)
-			}
-		}
-	}
-	for _, item := range filtered {
 		var portalID networkid.PortalID
 		if item.isDM {
 			portalID = MakeDMPortalID(item.rawID)
