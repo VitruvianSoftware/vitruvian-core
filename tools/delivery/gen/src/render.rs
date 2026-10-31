@@ -547,7 +547,8 @@ fn render_gravastar_mouse_publish_steps(b: &mut String, _u: &Unit, env: &str, op
     if env == "production" {
         b.push_str("          HOMEBREW_TAP_TOKEN: ${{ steps.tap-token.outputs.token }}\n");
     }
-    b.push_str("        run: bash packages/peripherals/publish.sh\n");
+    b.push_str("        # replaces packages/peripherals/publish.sh\n");
+    b.push_str("        run: bazel run //packages/peripherals:publish\n");
     Ok(())
 }
 

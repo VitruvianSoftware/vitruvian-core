@@ -513,7 +513,8 @@ jobs:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
-        run: bash packages/peripherals/publish.sh
+        # replaces packages/peripherals/publish.sh
+        run: bazel run //packages/peripherals:publish
 
   # PROMOTION rung 1/1 — release-gated on a gravastar-mouse-v* release, never reached by a push.
   gravastar-mouse-publish-production:
@@ -554,7 +555,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
           HOMEBREW_TAP_TOKEN: ${{ steps.tap-token.outputs.token }}
-        run: bash packages/peripherals/publish.sh
+        # replaces packages/peripherals/publish.sh
+        run: bazel run //packages/peripherals:publish
 
   # ======== unit: oauth-user-inspector → development → nonproduction → production ========
   # Declared in apps/web/oauth-user-inspector/infra/app/BUILD; break-glass target: //apps/web/oauth-user-inspector/infra/app:deploy
