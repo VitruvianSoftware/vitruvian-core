@@ -262,6 +262,7 @@ impl Context {
             ("CONCUR", "Postsubmit concurrency (main-gating lanes must key non-PR runs per commit)"),
             ("TIMEOUT", "Job timeouts (#209: every job bounded — no 6h default-timeout runners)"),
             ("SWEEP", "Full-sweep backstop (affected-scoped lanes → scheduled //... sweep)"),
+            ("CACHESAVE", "Actions cache saves (only GitHub-hosted jobs on main save; queue/PR refs and self-hosted runners restore only)"),
             ("IAC", "IaC destructive-import guard (zitadel-apps must create, never import)"),
             ("PULUMI", "Pulumi program identity (unique project names · customDomain under its zone)"),
             ("COPYBARA", "Copybara infra-leak guard (<app>/infra/ is monorepo-only, never mirrored)"),

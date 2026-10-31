@@ -873,6 +873,122 @@ pub fn check_sweep_backstop(ctx: &Context) {
 }
 
 // ---------------------------------------------------------------------------
+// CHECK: Actions cache saves only from GitHub-hosted jobs on main
+// ---------------------------------------------------------------------------
+//
+// On 2026-10-31 two merge-queue Conformance Check runs passed in 6 minutes,
+// then spent 38 minutes in setup-bazel's post step uploading a 5.7 GB
+// repository cache from a self-hosted queue runner (~1.8 MB/s) and hit the
+// job timeout, cancelling a required check. A cache saved on a merge-queue ref
+// is unreadable by any other ref, and every save evicts main's entries from
+// the shared 10 GiB budget. The fix restricts saving to GitHub-hosted jobs on
+// main in the two shared composites; this check keeps it that way.
+
+/// The guard every cache save must carry: main only, GitHub-hosted only.
+pub(crate) fn cache_save_expr_guarded(expr: &str) -> bool {
+    let e: String = expr.split_whitespace().collect::<Vec<_>>().join(" ");
+    e.contains("github.ref == 'refs/heads/main'")
+        && e.contains("runner.environment == 'github-hosted'")
+        && !e.contains("||")
+}
+
+/// The value of the first non-comment line starting with `key:` (e.g.
+/// `cache-save:` or `MAY_SAVE:`), or None when there is none.
+pub(crate) fn yaml_value_of(content: &str, key: &str) -> Option<String> {
+    let prefix = format!("{}:", key);
+    content
+        .lines()
+        .map(strip)
+        .filter(|l| !l.starts_with('#'))
+        .find(|l| l.starts_with(&prefix))
+        .map(|l| l[prefix.len()..].trim().to_string())
+}
+
+/// True when a non-comment line in `content` uses setup-bazel directly.
+pub(crate) fn uses_setup_bazel_directly(content: &str) -> bool {
+    content
+        .lines()
+        .map(strip)
+        .any(|l| !l.starts_with('#') && l.contains("bazel-contrib/setup-bazel@"))
+}
+
+pub fn check_cache_save(ctx: &Context) {
+    let actions_dir = format!("{}/.github/actions", ctx.root);
+    let mut ok = true;
+
+    // 1. The two shared composites carry the guard.
+    let guarded: &[(&str, &str)] = &[
+        ("setup-bazel/action.yml", "cache-save"),
+        ("llvm-cache-restore/action.yml", "MAY_SAVE"),
+    ];
+    for (file, key) in guarded {
+        let rel = format!(".github/actions/{}", file);
+        let content = match fs::read_to_string(format!("{}/{}", actions_dir, file)) {
+            Ok(c) => c,
+            Err(_) => {
+                ctx.emit_fail(
+                    "cachesave", &rel, "missing", "guarded save",
+                    "the shared cache composite is gone, so nothing bounds where its caches are saved",
+                    "restore the composite, or move this check to wherever the caches are now set up",
+                );
+                ok = false;
+                continue;
+            }
+        };
+        match yaml_value_of(&content, key) {
+            Some(v) if cache_save_expr_guarded(&v) => {}
+            found => {
+                ctx.emit_fail(
+                    "cachesave", &rel, found.as_deref().unwrap_or("unset"),
+                    "main && github-hosted",
+                    "caches would be saved from merge-queue/PR refs or self-hosted runners: unreadable elsewhere, evicts main's entries, and a slow upload can time out a required check (2026-10-31 queue incident)",
+                    &format!("set '{}: ${{{{ github.ref == 'refs/heads/main' && runner.environment == 'github-hosted' }}}}'", key),
+                );
+                ok = false;
+            }
+        }
+    }
+
+    // 2. Nobody bypasses the shared setup action.
+    let mut files = list_workflows(&ctx.workflows_dir);
+    if let Ok(rd) = fs::read_dir(&actions_dir) {
+        for entry in rd.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name == "setup-bazel" {
+                continue;
+            }
+            for f in ["action.yml", "action.yaml"] {
+                let p = entry.path().join(f);
+                if p.is_file() {
+                    files.push(p.to_string_lossy().to_string());
+                }
+            }
+        }
+    }
+    for f in &files {
+        let content = match fs::read_to_string(f) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        if uses_setup_bazel_directly(&content) {
+            ctx.emit_fail(
+                "cachesave", &ctx.rel(f), "bazel-contrib/setup-bazel", "./.github/actions/setup-bazel",
+                "calls setup-bazel directly, which saves its caches from every ref and runner by default",
+                "use './.github/actions/setup-bazel' instead, which carries the save guard",
+            );
+            ok = false;
+        }
+    }
+
+    if ok {
+        ctx.emit_ok(
+            "cachesave", ".github/actions", "guarded", "main && github-hosted",
+            "setup-bazel and the LLVM cache save only from GitHub-hosted jobs on main; no workflow bypasses them",
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
 // CHECK: CI gate list consistency
 // ---------------------------------------------------------------------------
 
@@ -1023,6 +1139,59 @@ jobs:
         assert!(jobs[0].has_timeout);
         assert_eq!(jobs[1].id, "nobounds");
         assert!(!jobs[1].has_timeout);
+    }
+
+    #[test]
+    fn cache_save_guard_accepts_main_and_github_hosted() {
+        assert!(cache_save_expr_guarded(
+            "${{ github.ref == 'refs/heads/main' && runner.environment == 'github-hosted' }}"
+        ));
+        assert!(cache_save_expr_guarded(
+            "${{ runner.environment == 'github-hosted'  &&  github.ref == 'refs/heads/main' }}"
+        ));
+    }
+
+    #[test]
+    fn cache_save_guard_rejects_the_incident_shapes() {
+        // setup-bazel's default, which saved 5.7 GB from a merge-queue runner.
+        assert!(!cache_save_expr_guarded("true"));
+        // Main only is not enough: main pushes also run on the slow queue runners.
+        assert!(!cache_save_expr_guarded(
+            "${{ github.ref == 'refs/heads/main' }}"
+        ));
+        // Excluding merge_group alone still saves from PR refs and self-hosted runners.
+        assert!(!cache_save_expr_guarded(
+            "${{ github.event_name != 'merge_group' }}"
+        ));
+        // An `||` escape hatch re-opens every ref.
+        assert!(!cache_save_expr_guarded(
+            "${{ github.ref == 'refs/heads/main' && runner.environment == 'github-hosted' || github.event_name == 'merge_group' }}"
+        ));
+    }
+
+    #[test]
+    fn yaml_value_of_skips_comments() {
+        let content = "\
+    # cache-save: true
+    - uses: bazel-contrib/setup-bazel@abc # 0.19.1
+      with:
+        cache-save: ${{ github.ref == 'refs/heads/main' }}
+";
+        assert_eq!(
+            yaml_value_of(content, "cache-save").as_deref(),
+            Some("${{ github.ref == 'refs/heads/main' }}")
+        );
+        assert_eq!(yaml_value_of(content, "repository-cache"), None);
+    }
+
+    #[test]
+    fn direct_setup_bazel_use_is_detected() {
+        assert!(uses_setup_bazel_directly(
+            "      - uses: bazel-contrib/setup-bazel@104e3eea # 0.19.1\n"
+        ));
+        assert!(!uses_setup_bazel_directly(
+            "      # bazel-contrib/setup-bazel@x is wrapped by ./.github/actions/setup-bazel\n      - uses: ./.github/actions/setup-bazel\n"
+        ));
     }
 
     #[test]
