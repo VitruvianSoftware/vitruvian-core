@@ -61,18 +61,6 @@ alias(
     visibility = ["//visibility:public"],
 )
 
-alias(
-    name = "antigravity-telemetry-rs",
-    actual = ":antigravity-telemetry",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "antigravity_telemetry_rs",
-    actual = ":antigravity-telemetry",
-    visibility = ["//visibility:public"],
-)
-
 rust_binary(
     name = "session-exporter",
     srcs = ["src/main.rs"],
@@ -126,11 +114,6 @@ rust_test(
     size = "small",
     crate = ":antigravity_telemetry_lib",
     rustc_flags = ["-Copt-level=3"],
-)
-
-test_suite(
-    name = "telemetry_rs_test",
-    tests = [":antigravity_telemetry_lib_test"],
 )
 
 test_suite(

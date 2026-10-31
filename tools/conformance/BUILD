@@ -58,18 +58,6 @@ rust_binary(
     ],
 )
 
-alias(
-    name = "check-rs",
-    actual = ":check",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "check_rs",
-    actual = ":check",
-    visibility = ["//visibility:public"],
-)
-
 rust_test(
     name = "conformance_check_test",
     size = "small",
@@ -87,9 +75,5 @@ rust_test(
         "check_test",
         "conformance-delivery_test",
         "conformance-owners_test",
-        "check-rs_test",
-        "conformance-delivery-rs_test",
-        "conformance-owners-rs_test",
-        "conformance-rs-parity_test",
     ]
 ]

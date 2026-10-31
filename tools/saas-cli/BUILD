@@ -60,19 +60,6 @@ rust_library(
     for sub in SUBCOMMANDS
 ]
 
-[
-    alias(
-        name = name,
-        actual = ":" + sub,
-        visibility = ["//visibility:public"],
-    )
-    for sub in SUBCOMMANDS
-    for name in [
-        sub + "-rs",
-        sub + "_rs",
-    ]
-]
-
 rust_test(
     name = "saas_cli_lib_test",
     size = "small",
@@ -83,11 +70,6 @@ rust_test(
 
 test_suite(
     name = "saas-cli_test",
-    tests = [":saas_cli_lib_test"],
-)
-
-test_suite(
-    name = "saas-cli-rs_test",
     tests = [":saas_cli_lib_test"],
 )
 

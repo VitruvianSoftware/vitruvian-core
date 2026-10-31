@@ -14,11 +14,6 @@ rust_library(
     rustc_flags = ["-Copt-level=3"],
 )
 
-alias(
-    name = "conflict_precheck_rs_lib",
-    actual = ":conflict_precheck_lib",
-)
-
 # `bazel run //tools/copybara/conflict-precheck` — what the export workflow runs.
 rust_binary(
     name = "conflict-precheck",
@@ -31,18 +26,6 @@ rust_binary(
 
 alias(
     name = "conflict_precheck",
-    actual = ":conflict-precheck",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "conflict-precheck-rs",
-    actual = ":conflict-precheck",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "conflict_precheck_rs",
     actual = ":conflict-precheck",
     visibility = ["//visibility:public"],
 )
@@ -62,10 +45,5 @@ test_suite(
 
 test_suite(
     name = "conflict_precheck_lib_test",
-    tests = [":conflict-precheck_test"],
-)
-
-test_suite(
-    name = "conflict_precheck_rs_lib_test",
     tests = [":conflict-precheck_test"],
 )

@@ -14,11 +14,6 @@ rust_library(
     rustc_flags = ["-Copt-level=3"],
 )
 
-alias(
-    name = "sync_rs_lib",
-    actual = ":copybara_sync_lib",
-)
-
 # `bazel run //tools/copybara/sync -- <export|import> <component>` and
 # `... -- import_pr <component> <pr-number>`: what the Copybara workflows run.
 rust_binary(
@@ -28,18 +23,6 @@ rust_binary(
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//visibility:public"],
     deps = [":copybara_sync_lib"],
-)
-
-alias(
-    name = "sync-rs",
-    actual = ":sync",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "sync_rs",
-    actual = ":sync",
-    visibility = ["//visibility:public"],
 )
 
 rust_test(
@@ -52,10 +35,5 @@ rust_test(
 
 test_suite(
     name = "copybara_sync_lib_test",
-    tests = [":sync_test"],
-)
-
-test_suite(
-    name = "sync_rs_lib_test",
     tests = [":sync_test"],
 )

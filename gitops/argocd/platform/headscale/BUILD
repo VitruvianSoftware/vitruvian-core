@@ -76,8 +76,3 @@ rust_test(
     data = DATA_FILES,
     edition = "2021",
 )
-
-alias(
-    name = "headscale_values_rs_test",
-    actual = ":headscale_values_test",
-)

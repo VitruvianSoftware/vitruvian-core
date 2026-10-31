@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! `adb_connect_rs`: the Rust build of `bazel run //tools/adb-connect`.
+//! `adb-connect`: the Rust build of `bazel run //tools/adb-connect`.
 //! Same flags, output and exit codes as adb_connect.py; see lib.rs.
 
 use adb_connect_lib::py::PyExc;

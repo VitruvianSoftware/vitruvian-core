@@ -32,18 +32,6 @@ rust_binary(
     deps = [":worktree_lib"],
 )
 
-alias(
-    name = "worktree-rs",
-    actual = ":worktree",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "worktree_rs",
-    actual = ":worktree",
-    visibility = ["//visibility:public"],
-)
-
 rust_test(
     name = "worktree_lib_test",
     size = "small",
@@ -54,10 +42,5 @@ rust_test(
 
 test_suite(
     name = "worktree_test",
-    tests = [":worktree_lib_test"],
-)
-
-test_suite(
-    name = "worktree-rs_test",
     tests = [":worktree_lib_test"],
 )

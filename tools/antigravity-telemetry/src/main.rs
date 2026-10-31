@@ -18,8 +18,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! `antigravity_telemetry_rs`: one binary for every entry point of the Python
-//! tool. `antigravity_telemetry_rs status`, `… session-exporter --once`,
+//! `antigravity-telemetry`: one binary for every entry point of the Python
+//! tool. `antigravity-telemetry status`, `… session-exporter --once`,
 //! `… telemetry-hook < event.json`; or install it under an entry point's name
 //! (`telemetry-hook`) and argv[0] picks it.
 

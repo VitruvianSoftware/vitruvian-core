@@ -23,7 +23,7 @@
 load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
 
 rust_library(
-    name = "unitfile_rs_lib",
+    name = "unitfile_lib",
     srcs = glob(["src/**/*.rs"]),
     crate_name = "unitfile",
     crate_root = "src/lib.rs",
@@ -36,16 +36,10 @@ rust_library(
     ],
 )
 
-alias(
-    name = "unitfile_lib",
-    actual = ":unitfile_rs_lib",
-    visibility = ["//tools/pipeline:__subpackages__"],
-)
-
 rust_test(
     name = "unitfile_test",
     size = "small",
-    crate = ":unitfile_rs_lib",
+    crate = ":unitfile_lib",
     data = [":real_units"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
@@ -53,11 +47,6 @@ rust_test(
 
 test_suite(
     name = "unitfile_lib_test",
-    tests = [":unitfile_test"],
-)
-
-test_suite(
-    name = "unitfile_rs_lib_test",
     tests = [":unitfile_test"],
 )
 

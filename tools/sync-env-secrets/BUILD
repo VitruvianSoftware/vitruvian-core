@@ -63,19 +63,6 @@ rust_library(
     for sub in SUBCOMMANDS
 ]
 
-[
-    alias(
-        name = name,
-        actual = ":" + sub,
-        visibility = ["//visibility:public"],
-    )
-    for sub in SUBCOMMANDS
-    for name in [
-        sub + "-rs",
-        sub.replace("-", "_") + "_rs",
-    ]
-]
-
 rust_test(
     name = "sync_env_secrets_lib_test",
     size = "small",
@@ -86,10 +73,5 @@ rust_test(
 
 test_suite(
     name = "sync-env-secrets_test",
-    tests = [":sync_env_secrets_lib_test"],
-)
-
-test_suite(
-    name = "sync-env-secrets-rs_test",
     tests = [":sync_env_secrets_lib_test"],
 )

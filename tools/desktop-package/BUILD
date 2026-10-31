@@ -71,18 +71,6 @@ alias(
     visibility = ["//visibility:public"],
 )
 
-alias(
-    name = "package-desktop-rs",
-    actual = ":package-desktop",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "package_desktop_rs",
-    actual = ":package-desktop",
-    visibility = ["//visibility:public"],
-)
-
 rust_test(
     name = "package_desktop_lib_test",
     size = "small",
@@ -93,10 +81,5 @@ rust_test(
 
 test_suite(
     name = "package-desktop_test",
-    tests = [":package_desktop_lib_test"],
-)
-
-test_suite(
-    name = "package-desktop-rs_test",
     tests = [":package_desktop_lib_test"],
 )

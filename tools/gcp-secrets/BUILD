@@ -62,22 +62,6 @@ rust_binary(
     ],
 )
 
-[
-    alias(
-        name = name,
-        actual = ":" + sub,
-        visibility = ["//visibility:public"],
-    )
-    for sub in [
-        "status",
-        "seed",
-    ]
-    for name in [
-        sub + "-rs",
-        sub + "_rs",
-    ]
-]
-
 # The #[cfg(test)] unit tests in src/.
 rust_test(
     name = "gcp_secrets_lib_test",

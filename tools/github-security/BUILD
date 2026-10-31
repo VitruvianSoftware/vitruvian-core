@@ -46,18 +46,6 @@ rust_binary(
     ],
 )
 
-alias(
-    name = "enable-dependency-graph-rs",
-    actual = ":enable-dependency-graph",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "enable_dependency_graph_rs",
-    actual = ":enable-dependency-graph",
-    visibility = ["//visibility:public"],
-)
-
 rust_test(
     name = "github_security_lib_test",
     size = "small",
@@ -68,11 +56,6 @@ rust_test(
 
 test_suite(
     name = "enable-dependency-graph_test",
-    tests = [":github_security_lib_test"],
-)
-
-test_suite(
-    name = "enable-dependency-graph-rs_test",
     tests = [":github_security_lib_test"],
 )
 

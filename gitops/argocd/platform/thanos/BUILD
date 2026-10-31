@@ -31,8 +31,3 @@ rust_test(
     data = ["applicationset.yaml"],
     edition = "2021",
 )
-
-alias(
-    name = "thanos_values_rs_test",
-    actual = ":thanos_values_test",
-)

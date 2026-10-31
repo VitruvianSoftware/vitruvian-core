@@ -51,12 +51,6 @@ alias(
     visibility = ["//visibility:public"],
 )
 
-alias(
-    name = "adb_connect_rs",
-    actual = ":adb-connect",
-    visibility = ["//visibility:public"],
-)
-
 rust_test(
     name = "adb_connect_lib_test",
     size = "small",

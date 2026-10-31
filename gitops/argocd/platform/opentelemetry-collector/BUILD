@@ -31,8 +31,3 @@ rust_test(
     data = ["applicationset.yaml"],
     edition = "2021",
 )
-
-alias(
-    name = "component_names_rs_test",
-    actual = ":component_names_test",
-)

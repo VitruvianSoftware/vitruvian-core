@@ -60,20 +60,15 @@ rust_library(
 )
 
 rust_binary(
-    name = "prettier-wrapper-rs",
+    name = "prettier-wrapper",
     srcs = ["src/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [":prettier_wrapper_lib"],
 )
 
-alias(
-    name = "prettier_wrapper_rs",
-    actual = ":prettier-wrapper-rs",
-)
-
 rust_test(
-    name = "prettier_wrapper_rs_test",
+    name = "prettier_wrapper_test",
     size = "small",
     crate = ":prettier_wrapper_lib",
     edition = "2021",
