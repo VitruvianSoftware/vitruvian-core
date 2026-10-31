@@ -497,7 +497,7 @@ fn render_vitruvian_publish_steps(b: &mut String, _u: &Unit, env: &str, opts: &O
     b.push_str("        env:\n");
     b.push_str("          SIGNING_CERT_P12: ${{ secrets.VITRUVIAN_SIGNING_CERT_P12 }}\n");
     b.push_str("          SIGNING_CERT_PASSWORD: ${{ secrets.VITRUVIAN_SIGNING_CERT_PASSWORD }}\n");
-    b.push_str("        run: ./apps/desktop/vitruvian/Tools/ci-setup-signing.sh\n");
+    b.push_str("        run: bazel run //apps/desktop/vitruvian:ci_setup_signing\n");
     b.push('\n');
     if env == "production" {
         render_tap_token_step(b);
@@ -518,7 +518,7 @@ fn render_vitruvian_publish_steps(b: &mut String, _u: &Unit, env: &str, opts: &O
         b.push_str("          NOTARY_KEY_ID: ${{ secrets.VITRUVIAN_NOTARY_KEY_ID }}\n");
         b.push_str("          NOTARY_ISSUER_ID: ${{ secrets.VITRUVIAN_NOTARY_ISSUER_ID }}\n");
     }
-    b.push_str("        run: bash apps/desktop/vitruvian/publish.sh\n");
+    b.push_str("        run: bazel run //apps/desktop/vitruvian:publish\n");
     Ok(())
 }
 
@@ -991,7 +991,7 @@ pub fn render(units: &[Unit], phase: i64, workflow_file: &str, pins: &Pins) -> R
     b.push_str("# `github.event.before` is fixed at the EVICTED run's push — a range no\n");
     b.push_str("# successor re-diffs, i.e. a silent permanent skip. The orchestrate job\n");
     b.push_str("# therefore resolves a DURABLE base from this workflow's last successful\n");
-    b.push_str("# push run (tools/ci/resolve-deploy-base.sh) and only falls back to\n");
+    b.push_str("# push run (//tools/ci:resolve_deploy_base) and only falls back to\n");
     b.push_str("# github.event.before when that cannot be determined: the NEXT push run\n");
     b.push_str("# re-diffs the evicted one's range, so eviction costs latency, not a\n");
     b.push_str("# delivery. Observed live and working on the Phase-2 merge burst.\n");
@@ -1083,7 +1083,7 @@ fn render_orchestrate_job(b: &mut String, units: &[Unit], opts: &Opts) -> R {
     b.push_str("        # delivered it before the per-app split). Always exits 0: an empty\n");
     b.push_str("        # base_sha means \"could not determine\", and the step below falls\n");
     b.push_str("        # back.\n");
-    b.push_str("        run: bash tools/ci/resolve-deploy-base.sh\n");
+    b.push_str("        run: bazel run //tools/ci:resolve_deploy_base\n");
     b.push_str("      - name: Resolve per-unit durable bases (#1842)\n");
     b.push_str("        id: unit-bases\n");
     b.push_str("        env:\n");
@@ -1097,7 +1097,7 @@ fn render_orchestrate_job(b: &mut String, units: &[Unit], opts: &Opts) -> R {
     b.push_str("        # This resolves each unit's own laggiest last delivery instead.\n");
     b.push_str("        # Always exits 0; an empty object means every unit keeps the single\n");
     b.push_str("        # base, which is exactly the previous behaviour.\n");
-    b.push_str("        run: bash tools/ci/resolve-unit-bases.sh\n");
+    b.push_str("        run: bazel run //tools/ci:resolve_unit_bases\n");
     b.push_str("      - name: Compute the delivery manifest\n");
     b.push_str("        id: manifest\n");
     b.push_str("        env:\n");

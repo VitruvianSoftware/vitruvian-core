@@ -193,6 +193,56 @@ impl Run {
         self
     }
 
+    /// Like `go`, but kills the binary and returns None when it has not
+    /// finished within `limit`: a hang becomes a test failure, not a stuck test.
+    pub fn go_within(mut self, limit: std::time::Duration) -> Option<Output> {
+        use std::io::{Read, Write};
+        self.cmd
+            .stdin(if self.input.is_some() {
+                Stdio::piped()
+            } else {
+                Stdio::null()
+            })
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        let mut child = self.cmd.spawn().expect("spawn the binary under test");
+        if let Some(input) = self.input.take() {
+            let mut si = child.stdin.take().unwrap();
+            std::thread::spawn(move || {
+                let _ = si.write_all(&input);
+            });
+        }
+        let mut so = child.stdout.take().unwrap();
+        let mut se = child.stderr.take().unwrap();
+        let out_t = std::thread::spawn(move || {
+            let mut b = Vec::new();
+            let _ = so.read_to_end(&mut b);
+            b
+        });
+        let err_t = std::thread::spawn(move || {
+            let mut b = Vec::new();
+            let _ = se.read_to_end(&mut b);
+            b
+        });
+        let start = std::time::Instant::now();
+        let status = loop {
+            if let Some(st) = child.try_wait().unwrap() {
+                break st;
+            }
+            if start.elapsed() > limit {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        };
+        Some(Output {
+            code: status.code().unwrap_or(128),
+            stdout: String::from_utf8_lossy(&out_t.join().unwrap()).into_owned(),
+            stderr: String::from_utf8_lossy(&err_t.join().unwrap()).into_owned(),
+        })
+    }
+
     pub fn go(mut self) -> Output {
         use std::io::Write;
         self.cmd

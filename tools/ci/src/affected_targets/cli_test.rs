@@ -562,7 +562,7 @@ fn neither_before_rev_nor_base_ref_full_sweeps_degraded_with_a_summary() {
     );
     assert_eq!(
         std::fs::read_to_string(&summary).unwrap(),
-        "### \u{26a0} affected-selection fallback (degraded)\n\n- reason: neither BEFORE_REV nor BASE_REF is set\n- consequence: this run paid a full `//...` sweep instead of affected targets\n- if this recurs across runs, the fast path is broken (see #503): check the TD pin in `tools/ci/td-lib.sh` and the runner platform\n"
+        "### \u{26a0} affected-selection fallback (degraded)\n\n- reason: neither BEFORE_REV nor BASE_REF is set\n- consequence: this run paid a full `//...` sweep instead of affected targets\n- if this recurs across runs, the fast path is broken (see #503): check the TD pin (TD_VERSION in `tools/ci/src/deploy_affected/lib.rs`) and the runner platform\n"
     );
 }
 

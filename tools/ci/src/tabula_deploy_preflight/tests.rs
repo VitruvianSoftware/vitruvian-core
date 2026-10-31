@@ -23,7 +23,7 @@
 //! match; every error path deploys. A regression that failed CLOSED would skip
 //! a real deploy, an outage-class bug, so each error path is pinned.
 
-use ci_testkit::{assert_has, bin, read, write, write_exe, Output, Run, TempDir};
+use ci_testkit::{assert_has, assert_lacks, bin, read, write, write_exe, Output, Run, TempDir};
 use std::path::PathBuf;
 
 // Serves `gcloud run services describe --format=json` from FAKE_JSON (a file),
@@ -40,12 +40,13 @@ fi
 cat "$FAKE_JSON"
 "#;
 
-// Prints FAKE_DESIRED, or fails when FAKE_REVNAME_RC is set. Logs its argv,
+// Prints FAKE_DESIRED, then fails when FAKE_REVNAME_RC is set (so a failed
+// run can still print a name). Logs its argv,
 // cwd and GOWORK.
 const FAKE_REVNAME: &str = r#"#!/usr/bin/env bash
 echo "$* | cwd=$(pwd -P) | GOWORK=${GOWORK:-}" >> "${FAKE_ARGV:-/dev/null}"
-if [ "${FAKE_REVNAME_RC:-0}" != "0" ]; then echo "revname: boom" >&2; exit "${FAKE_REVNAME_RC}"; fi
 printf '%s\n' "${FAKE_DESIRED:-}"
+if [ "${FAKE_REVNAME_RC:-0}" != "0" ]; then echo "revname: boom" >&2; exit "${FAKE_REVNAME_RC}"; fi
 "#;
 
 const DESIRED: &str = "tabula-api-development-de662165-1b062f";
@@ -409,4 +410,25 @@ fn bazel_run_acts_from_the_callers_directory() {
         .env("FAKE_DESIRED", DESIRED)
         .go();
     assert_eq!(unchanged(&read(fx.out())), "true", "{o:?}");
+}
+
+/// revname's exit status is the verdict, not its stdout: a revname that
+/// fails yet still prints the live name must deploy, never skip. (Ignoring
+/// the status and trusting stdout would skip here; revname_failure_deploys
+/// cannot tell, because its stdout is empty and emptiness alone deploys.)
+#[test]
+fn a_failed_revname_that_prints_the_live_name_still_deploys() {
+    let fx = Fx::new();
+    let (o, got) = fx.run(
+        &live(DESIRED),
+        &[("FAKE_DESIRED", DESIRED), ("FAKE_REVNAME_RC", "1")],
+    );
+    assert_eq!(got, "false", "{o:?}");
+    assert_eq!(o.code, 0);
+    assert_has(
+        &o.stdout,
+        "desired-name computation failed (rc=1)",
+        "reason",
+    );
+    assert_lacks(&o.stdout, "unchanged=true", "never a skip");
 }

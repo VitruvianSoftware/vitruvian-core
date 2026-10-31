@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! resolve-deploy-base.sh — find the durable diff base for a push-triggered
+//! //tools/ci:resolve_deploy_base — find the durable diff base for a push-triggered
 //! deploy lane whose concurrency group intentionally coalesces queued pushes.
 
 use shell_compat::{capture, cat, env, env_or, env_or_empty, err, os, out, subst};
@@ -93,9 +93,7 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
     let branch = env_or("BRANCH", b"main");
     let workflow_file = env_or_empty("WORKFLOW_FILE");
     if workflow_file.is_empty() {
-        err(
-            b"resolve-deploy-base.sh: WORKFLOW_FILE must be set to the calling workflow filename\n",
-        );
+        err(b"resolve-deploy-base: WORKFLOW_FILE must be set to the calling workflow filename\n");
         return 1;
     }
 
