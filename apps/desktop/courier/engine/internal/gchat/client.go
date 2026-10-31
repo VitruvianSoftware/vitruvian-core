@@ -42,6 +42,7 @@ type Client struct {
 
 	mu                 sync.Mutex
 	metaMu             sync.Mutex
+	ghostMu            sync.Mutex
 	loggedOut          bool
 	syncMu             sync.Mutex
 	ffiClient          *FFIClient
@@ -266,7 +267,36 @@ func (c *Client) queueRemoteEvent(ctx context.Context, evt bridgev2.RemoteEvent)
 	if onRemoteEventQueued != nil {
 		onRemoteEventQueued(c, evt)
 	}
+	c.prewarmEventGhosts(ctx, evt)
 	c.UserLogin.QueueRemoteEvent(evt)
+}
+
+func (c *Client) ensureGhostInitialized(ctx context.Context, uid networkid.UserID) {
+	if uid == "" || uid == c.ownUserID() || c.UserLogin == nil || c.UserLogin.Bridge == nil {
+		return
+	}
+	c.ghostMu.Lock()
+	defer c.ghostMu.Unlock()
+	if ghost, err := c.UserLogin.Bridge.GetGhostByID(ctx, uid); err == nil && ghost != nil {
+		ghost.UpdateInfoIfNecessary(ctx, c.UserLogin, bridgev2.RemoteEventUnknown)
+	}
+}
+
+func (c *Client) prewarmEventGhosts(ctx context.Context, evt bridgev2.RemoteEvent) {
+	if evt == nil || c.UserLogin == nil || c.UserLogin.Bridge == nil {
+		return
+	}
+	if sender := evt.GetSender().Sender; sender != "" {
+		c.ensureGhostInitialized(ctx, sender)
+	}
+	if resync, ok := evt.(*simplevent.ChatResync); ok && resync != nil && resync.ChatInfo != nil && resync.ChatInfo.Members != nil {
+		if resync.ChatInfo.Members.OtherUserID != "" {
+			c.ensureGhostInitialized(ctx, resync.ChatInfo.Members.OtherUserID)
+		}
+		for uid := range resync.ChatInfo.Members.MemberMap {
+			c.ensureGhostInitialized(ctx, uid)
+		}
+	}
 }
 
 func (c *Client) Disconnect() {
