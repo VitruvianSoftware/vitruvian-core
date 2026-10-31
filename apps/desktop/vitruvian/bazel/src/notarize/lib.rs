@@ -1,31 +1,48 @@
-// Copyright (c) 2026 VitruvianSoftware
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Vorssaint
+// Copyright (C) 2026 VitruvianSoftware
 
-//! Native Rust implementation of `Tools/notarize.sh`.
-//! Notarizes and staples a built `.app` or `.dmg` artifact with Apple's notary service.
+//! Notarizes and staples a built artifact (the .app or the .dmg) with Apple's
+//! notary service, so Gatekeeper opens it without the "unverified developer"
+//! warning. The release runs it once on each app (before packaging) and once
+//! on each DMG. Ported from upstream's `Tools/notarize.sh`.
+//!
+//! Credentials come from the environment (CI secrets):
+//!   NOTARY_API_KEY_P8   base64 of the App Store Connect API key (.p8)
+//!   NOTARY_KEY_ID       the key's ID
+//!   NOTARY_ISSUER_ID    the issuer UUID
+//!
+//! When the credentials are absent it skips quietly (success), so a plain
+//! build without notarization still succeeds, unless REQUIRE_NOTARIZATION=1.
 
+use release_exec::{make_temp_dir, run, write_private, Cmd, Runner, TempDir};
 use std::collections::BTreeMap;
-use std::env;
-use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NotarizeConfig {
-    pub target: PathBuf,
+pub const USAGE: &str = "usage: notarize <app-or-dmg>";
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct NotaryEnv {
     pub api_key_p8: String,
     pub key_id: String,
     pub issuer_id: String,
     pub require_notarization: bool,
-    pub dry_run: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum NotarizeDecision {
-    SkipNoCredentials { target: PathBuf },
-    MissingRequiredCredentials,
-    Execute(NotarizePlan),
+impl NotaryEnv {
+    pub fn from_env(env_map: &BTreeMap<String, String>) -> NotaryEnv {
+        let get = |k: &str| env_map.get(k).cloned().unwrap_or_default();
+        NotaryEnv {
+            api_key_p8: get("NOTARY_API_KEY_P8"),
+            key_id: get("NOTARY_KEY_ID"),
+            issuer_id: get("NOTARY_ISSUER_ID"),
+            require_notarization: get("REQUIRE_NOTARIZATION") == "1",
+        }
+    }
+
+    pub fn complete(&self) -> bool {
+        !self.api_key_p8.is_empty() && !self.key_id.is_empty() && !self.issuer_id.is_empty()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,378 +55,313 @@ pub struct NotarizePlan {
     pub issuer_id: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CommandSpec {
-    pub program: String,
-    pub args: Vec<String>,
+/// The one target the command line names, or the usage line.
+pub fn parse_cli_args(args: &[String]) -> Result<String, String> {
+    match args {
+        [one] if !one.is_empty() => Ok(one.clone()),
+        _ => Err(USAGE.to_string()),
+    }
 }
 
-pub fn parse_cli_args(
-    args: &[String],
-    env_map: &BTreeMap<String, String>,
-) -> Result<NotarizeConfig, String> {
-    let mut dry_run = false;
-    let mut target: Option<PathBuf> = None;
-
-    for arg in args {
-        match arg.as_str() {
-            "--dry-run" => dry_run = true,
-            "-h" | "--help" => {
-                return Err("usage: notarize.sh <app-or-dmg>".to_string());
-            }
-            s if s.starts_with('-') => {
-                return Err(format!("notarize.sh: unknown option '{}'", s));
-            }
-            s => {
-                if target.is_some() {
-                    return Err("usage: notarize.sh <app-or-dmg>".to_string());
-                }
-                target = Some(PathBuf::from(s));
-            }
-        }
-    }
-
-    let Some(target) = target else {
-        return Err("usage: notarize.sh <app-or-dmg>".to_string());
-    };
-
-    let api_key_p8 = env_map
-        .get("NOTARY_API_KEY_P8")
-        .cloned()
-        .unwrap_or_default();
-    let key_id = env_map.get("NOTARY_KEY_ID").cloned().unwrap_or_default();
-    let issuer_id = env_map.get("NOTARY_ISSUER_ID").cloned().unwrap_or_default();
-    let require_notarization = env_map
-        .get("REQUIRE_NOTARIZATION")
-        .map(|v| v == "1")
-        .unwrap_or(false);
-
-    Ok(NotarizeConfig {
-        target,
-        api_key_p8,
-        key_id,
-        issuer_id,
-        require_notarization,
-        dry_run,
-    })
-}
-
-pub fn evaluate_notarize(cfg: &NotarizeConfig, work_dir: &Path) -> NotarizeDecision {
-    if cfg.api_key_p8.is_empty() || cfg.key_id.is_empty() || cfg.issuer_id.is_empty() {
-        if cfg.require_notarization {
-            return NotarizeDecision::MissingRequiredCredentials;
-        }
-        return NotarizeDecision::SkipNoCredentials {
-            target: cfg.target.clone(),
-        };
-    }
-
-    let is_app_bundle = cfg.target.to_string_lossy().ends_with(".app");
-    let basename = cfg
-        .target
+/// What a submission of `target` runs, with the key written to `work_dir`.
+pub fn plan(target: &Path, creds: &NotaryEnv, work_dir: &Path) -> NotarizePlan {
+    let is_app_bundle = target.to_string_lossy().ends_with(".app");
+    let basename = target
         .file_name()
         .map(|f| f.to_string_lossy().to_string())
-        .unwrap_or_else(|| "artifact".to_string());
-    let submit_path = if is_app_bundle {
-        work_dir.join(format!("{}.zip", basename))
-    } else {
-        cfg.target.clone()
-    };
-
-    NotarizeDecision::Execute(NotarizePlan {
-        target: cfg.target.clone(),
+        .unwrap_or_default();
+    NotarizePlan {
+        target: target.to_path_buf(),
         is_app_bundle,
-        submit_path,
+        submit_path: if is_app_bundle {
+            work_dir.join(format!("{}.zip", basename))
+        } else {
+            target.to_path_buf()
+        },
         p8_path: work_dir.join("AuthKey.p8"),
-        key_id: cfg.key_id.clone(),
-        issuer_id: cfg.issuer_id.clone(),
-    })
+        key_id: creds.key_id.clone(),
+        issuer_id: creds.issuer_id.clone(),
+    }
 }
 
-pub fn build_notarize_commands(plan: &NotarizePlan) -> Vec<CommandSpec> {
-    let target_str = plan.target.to_string_lossy().to_string();
-    let submit_str = plan.submit_path.to_string_lossy().to_string();
-    let p8_str = plan.p8_path.to_string_lossy().to_string();
-
+/// notarytool needs a zip/dmg/pkg. A .app is zipped first; a .dmg is
+/// submitted as-is. Stapling always targets the original artifact.
+pub fn build_notarize_commands(plan: &NotarizePlan) -> Vec<Cmd> {
     let mut cmds = Vec::new();
     if plan.is_app_bundle {
-        cmds.push(CommandSpec {
-            program: "xattr".to_string(),
-            args: vec!["-cr".to_string(), target_str.clone()],
-        });
-        cmds.push(CommandSpec {
-            program: "codesign".to_string(),
-            args: vec![
-                "--verify".to_string(),
-                "--deep".to_string(),
-                "--strict".to_string(),
-                target_str.clone(),
-            ],
-        });
-        cmds.push(CommandSpec {
-            program: "/usr/bin/ditto".to_string(),
-            args: vec![
-                "-c".to_string(),
-                "-k".to_string(),
-                "--keepParent".to_string(),
-                target_str.clone(),
-                submit_str.clone(),
-            ],
-        });
+        cmds.push(Cmd::new("xattr").arg("-cr").path(&plan.target));
+        cmds.push(
+            Cmd::new("codesign")
+                .args(["--verify", "--deep", "--strict"])
+                .path(&plan.target),
+        );
+        cmds.push(
+            Cmd::new("/usr/bin/ditto")
+                .args(["-c", "-k", "--keepParent"])
+                .path(&plan.target)
+                .path(&plan.submit_path),
+        );
     }
-
-    cmds.push(CommandSpec {
-        program: "xcrun".to_string(),
-        args: vec![
-            "notarytool".to_string(),
-            "submit".to_string(),
-            submit_str,
-            "--key".to_string(),
-            p8_str,
-            "--key-id".to_string(),
-            plan.key_id.clone(),
-            "--issuer".to_string(),
-            plan.issuer_id.clone(),
-            "--wait".to_string(),
-        ],
-    });
-
-    cmds.push(CommandSpec {
-        program: "xcrun".to_string(),
-        args: vec!["stapler".to_string(), "staple".to_string(), target_str],
-    });
-
+    cmds.push(
+        Cmd::new("xcrun")
+            .args(["notarytool", "submit"])
+            .path(&plan.submit_path)
+            .arg("--key")
+            .path(&plan.p8_path)
+            .args([
+                "--key-id",
+                &plan.key_id,
+                "--issuer",
+                &plan.issuer_id,
+                "--wait",
+            ]),
+    );
+    cmds.push(
+        Cmd::new("xcrun")
+            .args(["stapler", "staple"])
+            .path(&plan.target),
+    );
     cmds
 }
 
-pub fn decode_base64(input: &str) -> Result<Vec<u8>, String> {
-    let mut out = Vec::new();
-    let mut buf: u32 = 0;
-    let mut bits: u8 = 0;
-
-    for b in input.bytes() {
-        if b.is_ascii_whitespace() || b == b'=' {
-            continue;
+/// Notarizes and staples `target`. Its work folder (the key, the app's zip)
+/// is made under `tmp_root` and removed whatever happens.
+pub fn notarize(
+    r: &mut dyn Runner,
+    target: &Path,
+    creds: &NotaryEnv,
+    tmp_root: &Path,
+) -> Result<(), i32> {
+    if !creds.complete() {
+        if creds.require_notarization {
+            eprintln!("Release notarization credentials are incomplete.");
+            return Err(1);
         }
-        let val = match b {
-            b'A'..=b'Z' => b - b'A',
-            b'a'..=b'z' => b - b'a' + 26,
-            b'0'..=b'9' => b - b'0' + 52,
-            b'+' => 62,
-            b'/' => 63,
-            _ => return Err(format!("invalid base64 byte: 0x{:02x}", b)),
-        };
-        buf = (buf << 6) | (val as u32);
-        bits += 6;
-        if bits >= 8 {
-            bits -= 8;
-            out.push(((buf >> bits) & 0xff) as u8);
-        }
+        println!(
+            "No notarization credentials in the environment — skipping ({}).",
+            target.display()
+        );
+        return Ok(());
     }
-    Ok(out)
+    if !target.exists() {
+        eprintln!("✗ {} not found", target.display());
+        return Err(1);
+    }
+
+    let work = make_temp_dir(tmp_root, "vitruvian-notarize").map_err(|e| {
+        eprintln!("✗ could not make a work folder: {}", e);
+        1
+    })?;
+    let _cleanup = TempDir(work.clone());
+    let p = plan(target, creds, &work);
+
+    let key = release_exec::decode_base64(&creds.api_key_p8).map_err(|e| {
+        eprintln!("✗ NOTARY_API_KEY_P8 is not base64: {}", e);
+        1
+    })?;
+    write_private(&p.p8_path, &key).map_err(|e| {
+        eprintln!("✗ could not write AuthKey.p8: {}", e);
+        1
+    })?;
+
+    let name = target
+        .file_name()
+        .map(|f| f.to_string_lossy().to_string())
+        .unwrap_or_default();
+    for cmd in build_notarize_commands(&p) {
+        match cmd.args.first().map(String::as_str) {
+            Some("notarytool") => println!(
+                "▸ Submitting {} to the notary service (can take a few minutes)…",
+                name
+            ),
+            // Staple the ticket so it is recognized even offline. Fails (and
+            // fails the release) if notarization did not actually succeed,
+            // so a bad result never ships.
+            Some("stapler") => println!("▸ Stapling {}…", name),
+            _ => {}
+        }
+        run(r, &cmd)?;
+    }
+    println!("✓ Notarized and stapled: {}", name);
+    Ok(())
 }
 
 pub fn run_cli(args: &[String]) -> i32 {
-    let env_map: BTreeMap<String, String> = env::vars().collect();
-    let cfg = match parse_cli_args(args, &env_map) {
-        Ok(c) => c,
+    let target = match parse_cli_args(args) {
+        Ok(t) => t,
         Err(msg) => {
             eprintln!("{}", msg);
             return 1;
         }
     };
-
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let work_dir = env::temp_dir().join(format!(
-        "vitruvian_notarize_{}_{}",
-        std::process::id(),
-        nanos
-    ));
-
-    match evaluate_notarize(&cfg, &work_dir) {
-        NotarizeDecision::MissingRequiredCredentials => {
-            eprintln!("Release notarization credentials are incomplete.");
-            1
-        }
-        NotarizeDecision::SkipNoCredentials { target } => {
-            println!(
-                "No notarization credentials in the environment — skipping ({}).",
-                target.display()
-            );
-            0
-        }
-        NotarizeDecision::Execute(plan) => {
-            if !cfg.dry_run && !plan.target.exists() {
-                eprintln!("✗ {} not found", plan.target.display());
-                return 1;
-            }
-
-            if cfg.dry_run {
-                for cmd in build_notarize_commands(&plan) {
-                    println!("dry-run: {} {}", cmd.program, cmd.args.join(" "));
-                }
-                return 0;
-            }
-
-            if let Err(e) = fs::create_dir_all(&work_dir) {
-                eprintln!("✗ could not create temp dir: {}", e);
-                return 1;
-            }
-
-            let decoded = match decode_base64(&cfg.api_key_p8) {
-                Ok(b) => b,
-                Err(e) => {
-                    let _ = fs::remove_dir_all(&work_dir);
-                    eprintln!("✗ invalid NOTARY_API_KEY_P8: {}", e);
-                    return 1;
-                }
-            };
-            if let Err(e) = fs::write(&plan.p8_path, &decoded) {
-                let _ = fs::remove_dir_all(&work_dir);
-                eprintln!("✗ failed to write AuthKey.p8: {}", e);
-                return 1;
-            }
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                let _ = fs::set_permissions(&plan.p8_path, fs::Permissions::from_mode(0o600));
-            }
-
-            let basename = plan
-                .target
-                .file_name()
-                .map(|f| f.to_string_lossy().to_string())
-                .unwrap_or_else(|| plan.target.to_string_lossy().to_string());
-
-            let cmds = build_notarize_commands(&plan);
-            for cmd in cmds {
-                if cmd.program == "xcrun"
-                    && cmd.args.first().map(|s| s.as_str()) == Some("notarytool")
-                {
-                    println!(
-                        "▸ Submitting {} to the notary service (can take a few minutes)…",
-                        basename
-                    );
-                } else if cmd.program == "xcrun"
-                    && cmd.args.first().map(|s| s.as_str()) == Some("stapler")
-                {
-                    println!("▸ Stapling {}…", basename);
-                }
-                let ok = Command::new(&cmd.program)
-                    .args(&cmd.args)
-                    .status()
-                    .map(|s| s.success())
-                    .unwrap_or(false);
-                if !ok {
-                    let _ = fs::remove_dir_all(&work_dir);
-                    return 1;
-                }
-            }
-
-            let _ = fs::remove_dir_all(&work_dir);
-            println!("✓ Notarized and stapled: {}", basename);
-            0
-        }
+    let env_map: BTreeMap<String, String> = std::env::vars().collect();
+    let creds = NotaryEnv::from_env(&env_map);
+    let mut r = release_exec::SystemRunner::new();
+    match notarize(
+        &mut r,
+        &release_exec::user_path(&target),
+        &creds,
+        &release_exec::temp_root(),
+    ) {
+        Ok(()) => 0,
+        Err(code) => code,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use release_exec::{FakeRunner, Out};
+    use std::fs;
 
-    #[test]
-    fn test_missing_target_fails() {
-        let env_map = BTreeMap::new();
-        assert!(parse_cli_args(&[], &env_map).is_err());
+    fn creds() -> NotaryEnv {
+        NotaryEnv {
+            api_key_p8: "aGVsbG8=".into(),
+            key_id: "KEY123".into(),
+            issuer_id: "ISSUER456".into(),
+            require_notarization: false,
+        }
+    }
+
+    fn scratch(name: &str) -> PathBuf {
+        let d = make_temp_dir(&std::env::temp_dir(), name).unwrap();
+        fs::create_dir_all(d.join("tmp")).unwrap();
+        d
     }
 
     #[test]
-    fn test_skip_when_credentials_missing_and_not_required() {
-        let env_map = BTreeMap::new();
-        let cfg = parse_cli_args(&["dist/Vitruvian.dmg".to_string()], &env_map).unwrap();
+    fn usage_needs_exactly_one_target() {
+        assert_eq!(parse_cli_args(&[]), Err(USAGE.to_string()));
+        assert_eq!(parse_cli_args(&["".into()]), Err(USAGE.to_string()));
+        assert_eq!(parse_cli_args(&["a.dmg".into()]), Ok("a.dmg".to_string()));
+    }
+
+    #[test]
+    fn credentials_come_from_the_three_variables() {
+        let mut env_map = BTreeMap::new();
+        env_map.insert("NOTARY_API_KEY_P8".into(), "x".into());
+        env_map.insert("NOTARY_KEY_ID".into(), "k".into());
+        assert!(!NotaryEnv::from_env(&env_map).complete());
+        env_map.insert("NOTARY_ISSUER_ID".into(), "i".into());
+        env_map.insert("REQUIRE_NOTARIZATION".into(), "1".into());
+        let c = NotaryEnv::from_env(&env_map);
+        assert!(c.complete() && c.require_notarization);
+    }
+
+    #[test]
+    fn skips_quietly_without_credentials_and_runs_nothing() {
+        let mut r = FakeRunner::succeeding();
+        let none = NotaryEnv::default();
         assert_eq!(
-            evaluate_notarize(&cfg, Path::new("/tmp/work")),
-            NotarizeDecision::SkipNoCredentials {
-                target: PathBuf::from("dist/Vitruvian.dmg")
+            notarize(
+                &mut r,
+                Path::new("/nowhere/x.dmg"),
+                &none,
+                Path::new("/tmp")
+            ),
+            Ok(())
+        );
+        assert!(r.calls.is_empty());
+    }
+
+    #[test]
+    fn fails_without_credentials_when_they_are_required() {
+        let mut r = FakeRunner::succeeding();
+        let required = NotaryEnv {
+            require_notarization: true,
+            ..NotaryEnv::default()
+        };
+        assert_eq!(
+            notarize(
+                &mut r,
+                Path::new("/nowhere/x.dmg"),
+                &required,
+                Path::new("/tmp")
+            ),
+            Err(1)
+        );
+        assert!(r.calls.is_empty());
+    }
+
+    #[test]
+    fn a_missing_target_fails_before_any_command() {
+        let mut r = FakeRunner::succeeding();
+        assert_eq!(
+            notarize(
+                &mut r,
+                Path::new("/nowhere/x.dmg"),
+                &creds(),
+                Path::new("/tmp")
+            ),
+            Err(1)
+        );
+        assert!(r.calls.is_empty());
+    }
+
+    #[test]
+    fn an_app_is_verified_zipped_submitted_and_stapled_with_a_private_key() {
+        let d = scratch("notarize_app");
+        let _g = TempDir(d.clone());
+        let app = d.join("Vitruvian.app");
+        fs::create_dir_all(&app).unwrap();
+        let tmp = d.join("tmp");
+        let seen_key = std::rc::Rc::new(std::cell::RefCell::new(None));
+        let seen = seen_key.clone();
+        let mut r = FakeRunner::new(move |c| {
+            if c.args.first().map(String::as_str) == Some("notarytool") {
+                let key = PathBuf::from(&c.args[4]);
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let mode = fs::metadata(&key).unwrap().permissions().mode() & 0o777;
+                    *seen.borrow_mut() = Some((fs::read(&key).unwrap(), mode));
+                }
             }
+            Out::ok("")
+        });
+        assert_eq!(notarize(&mut r, &app, &creds(), &tmp), Ok(()));
+        let app_s = app.to_string_lossy().to_string();
+        assert_eq!(r.calls.len(), 5);
+        assert_eq!(r.calls[0], format!("xattr -cr {}", app_s));
+        assert_eq!(
+            r.calls[1],
+            format!("codesign --verify --deep --strict {}", app_s)
         );
+        assert!(r.calls[2].starts_with(&format!("/usr/bin/ditto -c -k --keepParent {} ", app_s)));
+        assert!(r.calls[2].ends_with("/Vitruvian.app.zip"));
+        assert!(r.calls[3].starts_with("xcrun notarytool submit "));
+        assert!(r.calls[3].contains("/Vitruvian.app.zip --key "));
+        assert!(r.calls[3].ends_with("/AuthKey.p8 --key-id KEY123 --issuer ISSUER456 --wait"));
+        assert_eq!(r.calls[4], format!("xcrun stapler staple {}", app_s));
+        #[cfg(unix)]
+        assert_eq!(*seen_key.borrow(), Some((b"hello".to_vec(), 0o600)));
+        // The work folder, key included, is gone afterwards.
+        assert_eq!(fs::read_dir(&tmp).unwrap().count(), 0);
     }
 
     #[test]
-    fn test_fail_when_credentials_missing_and_required() {
-        let mut env_map = BTreeMap::new();
-        env_map.insert("REQUIRE_NOTARIZATION".to_string(), "1".to_string());
-        let cfg = parse_cli_args(&["dist/Vitruvian.dmg".to_string()], &env_map).unwrap();
-        assert_eq!(
-            evaluate_notarize(&cfg, Path::new("/tmp/work")),
-            NotarizeDecision::MissingRequiredCredentials
-        );
-    }
+    fn a_dmg_is_submitted_as_is_and_a_failed_submission_fails_with_its_code() {
+        let d = scratch("notarize_dmg");
+        let _g = TempDir(d.clone());
+        let dmg = d.join("Vitruvian-1.2.3.dmg");
+        fs::write(&dmg, b"dmg").unwrap();
+        let tmp = d.join("tmp");
+        let mut r = FakeRunner::succeeding();
+        assert_eq!(notarize(&mut r, &dmg, &creds(), &tmp), Ok(()));
+        let dmg_s = dmg.to_string_lossy().to_string();
+        assert_eq!(r.calls.len(), 2);
+        assert!(r.calls[0].starts_with(&format!("xcrun notarytool submit {} --key ", dmg_s)));
+        assert_eq!(r.calls[1], format!("xcrun stapler staple {}", dmg_s));
 
-    #[test]
-    fn test_app_bundle_zips_before_submitting() {
-        let mut env_map = BTreeMap::new();
-        env_map.insert("NOTARY_API_KEY_P8".to_string(), "aGVsbG8=".to_string());
-        env_map.insert("NOTARY_KEY_ID".to_string(), "KEY123".to_string());
-        env_map.insert("NOTARY_ISSUER_ID".to_string(), "ISSUER456".to_string());
-
-        let cfg = parse_cli_args(&["/tmp/stage/Vitruvian.app".to_string()], &env_map).unwrap();
-        let NotarizeDecision::Execute(plan) = evaluate_notarize(&cfg, Path::new("/tmp/work"))
-        else {
-            panic!("expected Execute");
-        };
-        assert!(plan.is_app_bundle);
-        assert_eq!(
-            plan.submit_path,
-            PathBuf::from("/tmp/work/Vitruvian.app.zip")
-        );
-
-        let cmds = build_notarize_commands(&plan);
-        assert_eq!(cmds.len(), 5);
-        assert_eq!(cmds[0].program, "xattr");
-        assert_eq!(cmds[1].program, "codesign");
-        assert_eq!(cmds[2].program, "/usr/bin/ditto");
-        assert_eq!(
-            cmds[3].args,
-            vec![
-                "notarytool",
-                "submit",
-                "/tmp/work/Vitruvian.app.zip",
-                "--key",
-                "/tmp/work/AuthKey.p8",
-                "--key-id",
-                "KEY123",
-                "--issuer",
-                "ISSUER456",
-                "--wait",
-            ]
-        );
-        assert_eq!(
-            cmds[4].args,
-            vec!["stapler", "staple", "/tmp/stage/Vitruvian.app"]
-        );
-    }
-
-    #[test]
-    fn test_dmg_submits_directly_without_ditto() {
-        let mut env_map = BTreeMap::new();
-        env_map.insert("NOTARY_API_KEY_P8".to_string(), "aGVsbG8=".to_string());
-        env_map.insert("NOTARY_KEY_ID".to_string(), "KEY123".to_string());
-        env_map.insert("NOTARY_ISSUER_ID".to_string(), "ISSUER456".to_string());
-
-        let cfg = parse_cli_args(&["dist/Vitruvian-1.2.3.dmg".to_string()], &env_map).unwrap();
-        let NotarizeDecision::Execute(plan) = evaluate_notarize(&cfg, Path::new("/tmp/work"))
-        else {
-            panic!("expected Execute");
-        };
-        assert!(!plan.is_app_bundle);
-        assert_eq!(plan.submit_path, PathBuf::from("dist/Vitruvian-1.2.3.dmg"));
-        let cmds = build_notarize_commands(&plan);
-        assert_eq!(cmds.len(), 2);
-        assert_eq!(cmds[0].args[2], "dist/Vitruvian-1.2.3.dmg");
-        assert_eq!(cmds[1].args[2], "dist/Vitruvian-1.2.3.dmg");
+        let mut failing = FakeRunner::new(|c| {
+            if c.args.first().map(String::as_str) == Some("notarytool") {
+                Out::fail(69, "Invalid")
+            } else {
+                Out::ok("")
+            }
+        });
+        assert_eq!(notarize(&mut failing, &dmg, &creds(), &tmp), Err(69));
+        assert_eq!(failing.count("xcrun stapler"), 0);
+        assert_eq!(fs::read_dir(&tmp).unwrap().count(), 0);
     }
 }

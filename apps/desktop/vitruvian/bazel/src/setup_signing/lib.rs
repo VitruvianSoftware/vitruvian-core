@@ -1,423 +1,470 @@
-// Copyright (c) 2026 VitruvianSoftware
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 Vorssaint
+// Copyright (C) 2026 VitruvianSoftware
 
-//! Native Rust implementation of `Tools/setup-signing.sh`.
-//! Creates a stable, self-signed code-signing identity named `"Vitruvian Signing"`
-//! in a dedicated user keychain (`~/Library/Keychains/vitruvian-signing.keychain-db`).
+//! Creates a stable, self-signed code-signing identity named "Vitruvian
+//! Signing" in a dedicated keychain. build.sh runs it (through
+//! `bazel run //apps/desktop/vitruvian:setup_signing`) for a build that
+//! installs, giving every build the same code signature, so macOS keeps
+//! granted permissions (Accessibility, Screen Recording) across updates
+//! instead of re-prompting. Ported from upstream's `Tools/setup-signing.sh`.
+//!
+//! The identity name keeps its original "Vitruvian Signing" on purpose: it is
+//! the lookup key build.sh matches, and the released app's designated
+//! requirement is pinned to this exact certificate. Renaming it would change
+//! that requirement and drop every user's granted permissions. The name lives
+//! only in the keychain and codesign output, never in anything the app shows.
+//!
+//! Free, offline, and idempotent (re-running is a no-op once a working
+//! identity exists). It does NOT replace Apple notarization. Official
+//! releases use the protected release-signing environment (ci_setup_signing).
 
-use std::env;
+use release_exec::{capture, make_temp_dir, run, Cmd, Runner, TempDir};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 pub const IDENTITY_NAME: &str = "Vitruvian Signing";
 pub const KEYCHAIN_REL_PATH: &str = "Library/Keychains/vitruvian-signing.keychain-db";
 pub const KEYCHAIN_PASS: &str = "vitruvian-signing";
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SetupSigningConfig {
-    pub home_dir: PathBuf,
-    pub identity: String,
-    pub keychain_path: PathBuf,
-    pub keychain_password: String,
-    pub dry_run: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CommandSpec {
-    pub program: String,
-    pub args: Vec<String>,
-    pub ignore_failure: bool,
-    pub suppress_output: bool,
-}
-
-pub fn parse_cli_args(args: &[String], home_dir: &Path) -> Result<SetupSigningConfig, String> {
-    let mut dry_run = false;
-    for arg in args {
-        match arg.as_str() {
-            "--dry-run" => dry_run = true,
-            "-h" | "--help" => {
-                return Err("usage: setup-signing [--dry-run]".to_string());
-            }
-            other => {
-                return Err(format!("setup-signing: unknown argument '{}'", other));
-            }
-        }
-    }
-
-    Ok(SetupSigningConfig {
-        home_dir: home_dir.to_path_buf(),
-        identity: IDENTITY_NAME.to_string(),
-        keychain_path: home_dir.join(KEYCHAIN_REL_PATH),
-        keychain_password: KEYCHAIN_PASS.to_string(),
-        dry_run,
-    })
+pub fn keychain_path(home: &Path) -> PathBuf {
+    home.join(KEYCHAIN_REL_PATH)
 }
 
 pub fn parse_keychain_list_output(output: &str) -> Vec<String> {
     output
-        .lines()
-        .flat_map(|line| {
-            line.replace('"', "")
-                .split_whitespace()
-                .map(String::from)
-                .collect::<Vec<_>>()
-        })
-        .filter(|s| !s.is_empty())
+        .replace('"', "")
+        .split_whitespace()
+        .map(String::from)
         .collect()
 }
 
-pub fn build_openssl_commands(cfg: &SetupSigningConfig, work_dir: &Path) -> Vec<CommandSpec> {
-    let key_pem = work_dir.join("key.pem").to_string_lossy().to_string();
-    let cert_pem = work_dir.join("cert.pem").to_string_lossy().to_string();
-    let id_p12 = work_dir.join("id.p12").to_string_lossy().to_string();
-
-    vec![
-        CommandSpec {
-            program: "openssl".to_string(),
-            args: vec![
-                "req".to_string(),
-                "-x509".to_string(),
-                "-newkey".to_string(),
-                "rsa:2048".to_string(),
-                "-keyout".to_string(),
-                key_pem.clone(),
-                "-out".to_string(),
-                cert_pem.clone(),
-                "-days".to_string(),
-                "3650".to_string(),
-                "-nodes".to_string(),
-                "-subj".to_string(),
-                format!("/CN={}/O=Vitruvian", cfg.identity),
-                "-addext".to_string(),
-                "keyUsage=critical,digitalSignature".to_string(),
-                "-addext".to_string(),
-                "extendedKeyUsage=critical,codeSigning".to_string(),
-                "-addext".to_string(),
-                "basicConstraints=critical,CA:false".to_string(),
-            ],
-            ignore_failure: false,
-            suppress_output: true,
-        },
-        CommandSpec {
-            program: "openssl".to_string(),
-            args: vec![
-                "pkcs12".to_string(),
-                "-export".to_string(),
-                "-inkey".to_string(),
-                key_pem,
-                "-in".to_string(),
-                cert_pem,
-                "-out".to_string(),
-                id_p12,
-                "-passout".to_string(),
-                format!("pass:{}", cfg.keychain_password),
-                "-name".to_string(),
-                cfg.identity.clone(),
-                "-keypbe".to_string(),
-                "PBE-SHA1-3DES".to_string(),
-                "-certpbe".to_string(),
-                "PBE-SHA1-3DES".to_string(),
-                "-macalg".to_string(),
-                "sha1".to_string(),
-            ],
-            ignore_failure: false,
-            suppress_output: false,
-        },
-    ]
-}
-
-pub fn build_keychain_setup_commands(
-    cfg: &SetupSigningConfig,
-    work_dir: &Path,
-    existing_keychains: &[String],
-) -> Vec<CommandSpec> {
-    let kc = cfg.keychain_path.to_string_lossy().to_string();
-    let kcpass = cfg.keychain_password.clone();
-    let id_p12 = work_dir.join("id.p12").to_string_lossy().to_string();
-
-    let mut search_args = vec![
-        "list-keychains".to_string(),
-        "-d".to_string(),
-        "user".to_string(),
-        "-s".to_string(),
-        kc.clone(),
-    ];
-    for k in existing_keychains {
-        if k != &kc {
-            search_args.push(k.clone());
-        }
-    }
-
-    vec![
-        CommandSpec {
-            program: "security".to_string(),
-            args: vec!["delete-keychain".to_string(), kc.clone()],
-            ignore_failure: true,
-            suppress_output: true,
-        },
-        CommandSpec {
-            program: "security".to_string(),
-            args: vec![
-                "create-keychain".to_string(),
-                "-p".to_string(),
-                kcpass.clone(),
-                kc.clone(),
-            ],
-            ignore_failure: false,
-            suppress_output: false,
-        },
-        CommandSpec {
-            program: "security".to_string(),
-            args: vec!["set-keychain-settings".to_string(), kc.clone()],
-            ignore_failure: false,
-            suppress_output: false,
-        },
-        CommandSpec {
-            program: "security".to_string(),
-            args: vec![
-                "unlock-keychain".to_string(),
-                "-p".to_string(),
-                kcpass.clone(),
-                kc.clone(),
-            ],
-            ignore_failure: false,
-            suppress_output: false,
-        },
-        CommandSpec {
-            program: "security".to_string(),
-            args: vec![
-                "import".to_string(),
-                id_p12,
-                "-k".to_string(),
-                kc.clone(),
-                "-P".to_string(),
-                kcpass.clone(),
-                "-T".to_string(),
-                "/usr/bin/codesign".to_string(),
-            ],
-            ignore_failure: false,
-            suppress_output: false,
-        },
-        CommandSpec {
-            program: "security".to_string(),
-            args: vec![
-                "set-key-partition-list".to_string(),
-                "-S".to_string(),
-                "apple-tool:,apple:,codesign:".to_string(),
-                "-s".to_string(),
-                "-k".to_string(),
-                kcpass,
-                kc,
-            ],
-            ignore_failure: false,
-            suppress_output: true,
-        },
-        CommandSpec {
-            program: "security".to_string(),
-            args: search_args,
-            ignore_failure: false,
-            suppress_output: false,
-        },
-    ]
-}
-
-pub fn identity_can_sign(cfg: &SetupSigningConfig) -> bool {
-    let _ = Command::new("security")
-        .args([
-            "unlock-keychain",
-            "-p",
-            &cfg.keychain_password,
-            &cfg.keychain_path.to_string_lossy(),
-        ])
-        .output();
-
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let probe = env::temp_dir().join(format!(
-        "vitruvian_sign_probe_{}_{}",
-        std::process::id(),
-        nanos
-    ));
+/// Whether codesign can sign with the identity. A find-identity listing also
+/// names certificates codesign then rejects, and -v excludes every
+/// self-signed one; ask codesign itself, with a throwaway copy of /bin/echo.
+pub fn identity_can_sign(r: &mut dyn Runner, keychain: &Path, tmp_root: &Path) -> bool {
+    // Locked after every reboot; a locked keychain cannot sign, and a false
+    // answer here would delete it and reissue the identity.
+    let _ = r.output(
+        &Cmd::new("security")
+            .args(["unlock-keychain", "-p", KEYCHAIN_PASS])
+            .path(keychain),
+    );
+    let Ok(dir) = make_temp_dir(tmp_root, "vitruvian-sign-probe") else {
+        return false;
+    };
+    let _cleanup = TempDir(dir.clone());
+    let probe = dir.join("probe");
     if fs::copy("/bin/echo", &probe).is_err() {
         return false;
     }
-
-    let ok = Command::new("codesign")
-        .args([
-            "--force",
-            "--strip-disallowed-xattrs",
-            "--sign",
-            &cfg.identity,
-            &probe.to_string_lossy(),
-        ])
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
-
-    let _ = fs::remove_file(&probe);
-    ok
+    r.output(
+        &Cmd::new("codesign")
+            .args([
+                "--force",
+                "--strip-disallowed-xattrs",
+                "--sign",
+                IDENTITY_NAME,
+            ])
+            .path(&probe),
+    )
+    .success()
 }
 
-fn run_command_spec(spec: &CommandSpec) -> bool {
-    if spec.suppress_output {
-        Command::new(&spec.program)
-            .args(&spec.args)
-            .output()
-            .map(|o| o.status.success() || spec.ignore_failure)
-            .unwrap_or(spec.ignore_failure)
-    } else {
-        Command::new(&spec.program)
-            .args(&spec.args)
-            .status()
-            .map(|s| s.success() || spec.ignore_failure)
-            .unwrap_or(spec.ignore_failure)
+pub fn openssl_commands(work: &Path) -> (Cmd, Cmd) {
+    let key = work.join("key.pem");
+    let cert = work.join("cert.pem");
+    let req = Cmd::new("openssl")
+        .args(["req", "-x509", "-newkey", "rsa:2048", "-keyout"])
+        .path(&key)
+        .arg("-out")
+        .path(&cert)
+        .args(["-days", "3650", "-nodes", "-subj"])
+        .arg(format!("/CN={}/O=Vitruvian", IDENTITY_NAME))
+        .args([
+            "-addext",
+            "keyUsage=critical,digitalSignature",
+            "-addext",
+            "extendedKeyUsage=critical,codeSigning",
+            "-addext",
+            "basicConstraints=critical,CA:false",
+        ]);
+    // The PBE and MAC algorithms are named explicitly: the stock
+    // /usr/bin/openssl is LibreSSL, which rejects OpenSSL 3's -legacy flag,
+    // while OpenSSL 3's defaults (AES-256, PBKDF2) are newer than what
+    // security(1) imports reliably. These three are accepted by both and
+    // produce the same portable file.
+    let export = Cmd::new("openssl")
+        .args(["pkcs12", "-export", "-inkey"])
+        .path(&key)
+        .arg("-in")
+        .path(&cert)
+        .arg("-out")
+        .path(&work.join("id.p12"))
+        .args([
+            "-passout",
+            &format!("pass:{}", KEYCHAIN_PASS),
+            "-name",
+            IDENTITY_NAME,
+        ])
+        .args([
+            "-keypbe",
+            "PBE-SHA1-3DES",
+            "-certpbe",
+            "PBE-SHA1-3DES",
+            "-macalg",
+            "sha1",
+        ]);
+    (req, export)
+}
+
+pub fn setup_signing(r: &mut dyn Runner, home: &Path, tmp_root: &Path) -> Result<(), i32> {
+    let kc_path = keychain_path(home);
+    let kc = kc_path.to_string_lossy().to_string();
+    if identity_can_sign(r, &kc_path, tmp_root) {
+        println!("✓ Signing identity already installed.");
+        return Ok(());
     }
+
+    let work = make_temp_dir(tmp_root, "vitruvian-setup-signing").map_err(|e| {
+        eprintln!("✗ mktemp: {}", e);
+        1
+    })?;
+    let _cleanup = TempDir(work.clone());
+
+    let (req, export) = openssl_commands(&work);
+    let made = r.output(&req);
+    if !made.success() {
+        print!("{}", made.stdout);
+        return Err(made.code);
+    }
+    if r.status(&export) != 0 {
+        eprintln!("✗ openssl pkcs12 could not export the identity.");
+        return Err(1);
+    }
+
+    let security = |args: &[&str]| Cmd::new("security").args(args);
+    let _ = r.output(&security(&["delete-keychain", &kc]));
+    run(r, &security(&["create-keychain", "-p", KEYCHAIN_PASS, &kc]))?;
+    run(r, &security(&["set-keychain-settings", &kc]))?; // no auto-lock
+    run(r, &security(&["unlock-keychain", "-p", KEYCHAIN_PASS, &kc]))?;
+    run(
+        r,
+        &security(&["import"]).path(&work.join("id.p12")).args([
+            "-k",
+            &kc,
+            "-P",
+            KEYCHAIN_PASS,
+            "-T",
+            "/usr/bin/codesign",
+        ]),
+    )?;
+    capture(
+        r,
+        &security(&[
+            "set-key-partition-list",
+            "-S",
+            "apple-tool:,apple:,codesign:",
+            "-s",
+            "-k",
+            KEYCHAIN_PASS,
+            &kc,
+        ]),
+    )?;
+    let existing =
+        parse_keychain_list_output(&capture(r, &security(&["list-keychains", "-d", "user"]))?);
+    run(
+        r,
+        &security(&["list-keychains", "-d", "user", "-s", &kc]).args(&existing),
+    )?;
+
+    // Import succeeding is not evidence codesign can sign with it: read it
+    // back the same way build.sh looks it up, so a broken search list fails
+    // here and not as a silent ad-hoc fallback three builds later.
+    if !identity_can_sign(r, &kc_path, tmp_root) {
+        eprintln!("✗ Identity imported but codesign cannot sign with it; keychain search list may be off.");
+        return Err(1);
+    }
+    println!(
+        "✓ Created signing identity '{}'. Future ./build.sh runs use it automatically.",
+        IDENTITY_NAME
+    );
+    Ok(())
 }
 
 pub fn run_cli(args: &[String]) -> i32 {
-    let home = env::var("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("/tmp"));
-    let cfg = match parse_cli_args(args, &home) {
-        Ok(c) => c,
-        Err(msg) => {
-            if msg.starts_with("usage:") {
-                println!("{}", msg);
-                return 0;
-            }
-            eprintln!("{}", msg);
-            return 2;
-        }
+    if !args.is_empty() {
+        eprintln!("usage: setup_signing");
+        return 2;
+    }
+    let Some(home) = std::env::var_os("HOME").filter(|h| !h.is_empty()) else {
+        eprintln!("✗ HOME is not set");
+        return 1;
     };
-
-    if cfg.dry_run {
-        let work_dir = PathBuf::from("/tmp/vitruvian-setup-signing-work");
-        for spec in build_openssl_commands(&cfg, &work_dir) {
-            println!("dry-run: {} {}", spec.program, spec.args.join(" "));
-        }
-        for spec in
-            build_keychain_setup_commands(&cfg, &work_dir, &["login.keychain-db".to_string()])
-        {
-            println!("dry-run: {} {}", spec.program, spec.args.join(" "));
-        }
-        return 0;
+    match setup_signing(
+        &mut release_exec::SystemRunner::new(),
+        Path::new(&home),
+        &release_exec::temp_root(),
+    ) {
+        Ok(()) => 0,
+        Err(code) => code,
     }
-
-    if identity_can_sign(&cfg) {
-        println!("✓ Signing identity already installed.");
-        return 0;
-    }
-
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let work_dir = env::temp_dir().join(format!(
-        "vitruvian_setup_signing_{}_{}",
-        std::process::id(),
-        nanos
-    ));
-    if let Err(e) = fs::create_dir_all(&work_dir) {
-        eprintln!("✗ failed to create temp work directory: {}", e);
-        return 1;
-    }
-
-    let openssl_cmds = build_openssl_commands(&cfg, &work_dir);
-    if !run_command_spec(&openssl_cmds[0]) {
-        let _ = fs::remove_dir_all(&work_dir);
-        eprintln!("✗ openssl req failed.");
-        return 1;
-    }
-    if !run_command_spec(&openssl_cmds[1]) {
-        let _ = fs::remove_dir_all(&work_dir);
-        eprintln!("✗ openssl pkcs12 could not export the identity.");
-        return 1;
-    }
-
-    let existing_output = Command::new("security")
-        .args(["list-keychains", "-d", "user"])
-        .output()
-        .ok()
-        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
-        .unwrap_or_default();
-    let existing = parse_keychain_list_output(&existing_output);
-
-    let kc_cmds = build_keychain_setup_commands(&cfg, &work_dir, &existing);
-    for spec in &kc_cmds {
-        if !run_command_spec(spec) {
-            let _ = fs::remove_dir_all(&work_dir);
-            return 1;
-        }
-    }
-
-    let _ = fs::remove_dir_all(&work_dir);
-
-    if !identity_can_sign(&cfg) {
-        eprintln!("✗ Identity imported but codesign cannot sign with it; keychain search list may be off.");
-        return 1;
-    }
-
-    println!(
-        "✓ Created signing identity '{}'. Future ./build.sh runs use it automatically.",
-        cfg.identity
-    );
-    0
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use release_exec::{FakeRunner, Out};
+    use std::cell::Cell;
+    use std::rc::Rc;
 
-    #[test]
-    fn test_parse_cli_args() {
-        let cfg = parse_cli_args(&["--dry-run".to_string()], Path::new("/Users/tester")).unwrap();
-        assert!(cfg.dry_run);
-        assert_eq!(cfg.identity, "Vitruvian Signing");
-        assert_eq!(
-            cfg.keychain_path,
-            PathBuf::from("/Users/tester/Library/Keychains/vitruvian-signing.keychain-db")
-        );
-        assert_eq!(cfg.keychain_password, "vitruvian-signing");
+    fn scratch(name: &str) -> (TempDir, PathBuf, PathBuf) {
+        let root = make_temp_dir(&std::env::temp_dir(), name).unwrap();
+        let home = root.join("home");
+        let tmp = root.join("tmp");
+        fs::create_dir_all(&home).unwrap();
+        fs::create_dir_all(&tmp).unwrap();
+        (TempDir(root), home, tmp)
     }
 
     #[test]
-    fn test_openssl_and_keychain_commands_preserve_pbe_and_extensions() {
-        let cfg = parse_cli_args(&[], Path::new("/Users/tester")).unwrap();
-        let work = Path::new("/tmp/work");
-        let openssl_cmds = build_openssl_commands(&cfg, work);
-        assert_eq!(openssl_cmds.len(), 2);
-        assert!(openssl_cmds[0]
-            .args
-            .contains(&"/CN=Vitruvian Signing/O=Vitruvian".to_string()));
-        assert!(openssl_cmds[0]
-            .args
-            .contains(&"extendedKeyUsage=critical,codeSigning".to_string()));
-        assert!(openssl_cmds[1].args.contains(&"PBE-SHA1-3DES".to_string()));
-        assert!(openssl_cmds[1].args.contains(&"sha1".to_string()));
-
-        let kc_cmds = build_keychain_setup_commands(
-            &cfg,
-            work,
-            &["/Users/tester/Library/Keychains/login.keychain-db".to_string()],
-        );
-        assert_eq!(kc_cmds.len(), 7);
-        assert_eq!(kc_cmds[0].args[0], "delete-keychain");
-        assert!(kc_cmds[0].ignore_failure);
-        assert_eq!(kc_cmds[4].args[0], "import");
+    fn a_working_identity_is_left_alone() {
+        let (_g, home, tmp) = scratch("setup_signing_noop");
+        let mut r = FakeRunner::succeeding();
+        assert_eq!(setup_signing(&mut r, &home, &tmp), Ok(()));
+        assert_eq!(r.calls.len(), 2);
+        assert!(r.calls[0].starts_with("security unlock-keychain -p vitruvian-signing "));
+        assert!(r.calls[1]
+            .starts_with("codesign --force --strip-disallowed-xattrs --sign Vitruvian Signing "));
         assert_eq!(
-            kc_cmds[6].args,
+            fs::read_dir(&tmp).unwrap().count(),
+            0,
+            "the probe is removed"
+        );
+    }
+
+    #[test]
+    fn it_never_asks_for_legacy_or_a_find_identity_listing() {
+        let (req, export) = openssl_commands(Path::new("/w"));
+        assert!(!req.args.contains(&"-legacy".to_string()));
+        assert!(!export.args.contains(&"-legacy".to_string()));
+        assert_eq!(
+            export.line(),
+            "openssl pkcs12 -export -inkey /w/key.pem -in /w/cert.pem -out /w/id.p12 -passout pass:vitruvian-signing -name Vitruvian Signing -keypbe PBE-SHA1-3DES -certpbe PBE-SHA1-3DES -macalg sha1"
+        );
+    }
+
+    #[test]
+    fn a_new_identity_is_made_imported_and_read_back() {
+        let (_g, home, tmp) = scratch("setup_signing_fake");
+        let imported = Rc::new(Cell::new(false));
+        let i2 = imported.clone();
+        let mut r = FakeRunner::new(move |c| {
+            match (c.program.as_str(), c.args.first().map(String::as_str)) {
+                ("codesign", _) => {
+                    if i2.get() {
+                        Out::ok("")
+                    } else {
+                        Out::fail(1, "no identity found")
+                    }
+                }
+                ("security", Some("import")) => {
+                    i2.set(true);
+                    Out::ok("")
+                }
+                ("security", Some("list-keychains")) if c.args.len() == 3 => {
+                    Out::ok("    \"/stub/login.keychain-db\"\n")
+                }
+                _ => Out::ok(""),
+            }
+        });
+        assert_eq!(setup_signing(&mut r, &home, &tmp), Ok(()));
+        let kc = keychain_path(&home).to_string_lossy().to_string();
+        let order: Vec<String> = r
+            .calls
+            .iter()
+            .map(|c| c.split(' ').take(2).collect::<Vec<_>>().join(" "))
+            .collect();
+        assert_eq!(
+            order,
             vec![
-                "list-keychains",
-                "-d",
-                "user",
-                "-s",
-                "/Users/tester/Library/Keychains/vitruvian-signing.keychain-db",
-                "/Users/tester/Library/Keychains/login.keychain-db",
+                "security unlock-keychain",
+                "codesign --force",
+                "openssl req",
+                "openssl pkcs12",
+                "security delete-keychain",
+                "security create-keychain",
+                "security set-keychain-settings",
+                "security unlock-keychain",
+                "security import",
+                "security set-key-partition-list",
+                "security list-keychains",
+                "security list-keychains",
+                "security unlock-keychain",
+                "codesign --force",
             ]
         );
+        assert_eq!(
+            r.calls[11],
+            format!(
+                "security list-keychains -d user -s {} /stub/login.keychain-db",
+                kc
+            )
+        );
+        assert_eq!(
+            fs::read_dir(&tmp).unwrap().count(),
+            0,
+            "work folder and probes are removed"
+        );
+    }
+
+    #[test]
+    fn an_identity_codesign_still_cannot_use_fails() {
+        let (_g, home, tmp) = scratch("setup_signing_unusable");
+        let mut r = FakeRunner::new(|c| {
+            if c.program == "codesign" {
+                Out::fail(1, "")
+            } else {
+                Out::ok("")
+            }
+        });
+        assert_eq!(setup_signing(&mut r, &home, &tmp), Err(1));
+        assert_eq!(r.count("codesign"), 2);
+    }
+
+    #[test]
+    fn a_failed_export_says_so() {
+        let (_g, home, tmp) = scratch("setup_signing_export");
+        let mut r = FakeRunner::new(|c| {
+            if c.program == "codesign" || c.args.first().map(String::as_str) == Some("pkcs12") {
+                Out::fail(1, "")
+            } else {
+                Out::ok("")
+            }
+        });
+        assert_eq!(setup_signing(&mut r, &home, &tmp), Err(1));
+        assert_eq!(r.count("security"), 1, "no keychain is touched");
+    }
+
+    /// Runs against the Mac's stock /usr/bin/openssl, which is LibreSSL: it
+    /// rejects OpenSSL 3's -legacy flag outright, and the script once died on
+    /// exactly that with its stderr discarded. security(1) and codesign are
+    /// stand-ins that log what they are asked and touch no keychain; the
+    /// codesign stand-in refuses until the identity has been imported, as
+    /// codesign does before one has been made. (Moved here from the app's
+    /// RepositoryFeatureTests, which ran Tools/setup-signing.sh the same way.)
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn it_runs_end_to_end_against_the_stock_openssl() {
+        use std::os::unix::fs::PermissionsExt;
+        let (_g, home, tmp) = scratch("setup_signing_e2e");
+        let root = home.parent().unwrap().to_path_buf();
+        let stubs = root.join("bin");
+        fs::create_dir_all(&stubs).unwrap();
+        let log = root.join("calls.log");
+        let log_call =
+            r#"{ printf '%s' "${0##*/}"; printf '|%s' "$@"; printf '\n'; } >> "$STUB_LOG""#;
+        for (name, body) in [
+            (
+                "security",
+                "[ \"$1\" = import ] && : > \"$STUB_STATE/imported\"\n[ \"$1\" = list-keychains ] && [ \"$#\" -eq 3 ] && echo '    \"/stub/login.keychain-db\"'\nexit 0\n",
+            ),
+            (
+                "codesign",
+                "for last; do :; done\ncmp -s \"$last\" /bin/echo && echo \"probe is a copy of /bin/echo\" >> \"$STUB_LOG\"\n[ -e \"$STUB_STATE/imported\" ]\n",
+            ),
+            ("openssl", "exec /usr/bin/openssl \"$@\"\n"),
+        ] {
+            let p = stubs.join(name);
+            fs::write(&p, format!("#!/bin/sh\n{}\n{}", log_call, body)).unwrap();
+            fs::set_permissions(&p, fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let mut r = release_exec::SystemRunner::new();
+        r.envs
+            .insert("PATH".into(), format!("{}:/usr/bin:/bin", stubs.display()));
+        r.envs
+            .insert("HOME".into(), home.to_string_lossy().to_string());
+        r.envs
+            .insert("TMPDIR".into(), tmp.to_string_lossy().to_string());
+        r.envs
+            .insert("STUB_LOG".into(), log.to_string_lossy().to_string());
+        r.envs
+            .insert("STUB_STATE".into(), root.to_string_lossy().to_string());
+        let mut resolving = Resolving {
+            inner: r,
+            bin: stubs.clone(),
+        };
+        assert_eq!(setup_signing(&mut resolving, &home, &tmp), Ok(()));
+
+        let calls: Vec<String> = fs::read_to_string(&log)
+            .unwrap()
+            .lines()
+            .map(String::from)
+            .collect();
+        assert!(
+            calls
+                .iter()
+                .any(|c| c.starts_with("openssl|pkcs12|-export|")),
+            "{:#?}",
+            calls
+        );
+        assert!(
+            calls.iter().any(|c| c.starts_with("openssl|"))
+                && !calls
+                    .iter()
+                    .any(|c| c.starts_with("openssl|") && c.contains("|-legacy"))
+        );
+        assert!(
+            calls.iter().any(|c| c.starts_with("security|import|"))
+                && !calls.iter().any(|c| c.contains("find-identity"))
+        );
+        assert!(calls
+            .iter()
+            .any(|c| c.starts_with("codesign|") && c.contains("|--sign|Vitruvian Signing|")));
+        assert!(calls.iter().any(|c| c == "probe is a copy of /bin/echo"));
+        assert_eq!(
+            fs::read_dir(&tmp).unwrap().count(),
+            0,
+            "it removes its probe and its work folder"
+        );
+    }
+
+    /// std's Command resolves a bare program name with the parent's PATH, not
+    /// the child's, so the test points each stand-in's name at its file.
+    #[cfg(target_os = "macos")]
+    struct Resolving {
+        inner: release_exec::SystemRunner,
+        bin: PathBuf,
+    }
+
+    #[cfg(target_os = "macos")]
+    impl Resolving {
+        fn resolve(&self, cmd: &Cmd) -> Cmd {
+            let mut c = cmd.clone();
+            let stub = self.bin.join(&c.program);
+            if !c.program.contains('/') && stub.exists() {
+                c.program = stub.to_string_lossy().to_string();
+            }
+            c
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    impl Runner for Resolving {
+        fn status(&mut self, cmd: &Cmd) -> i32 {
+            let c = self.resolve(cmd);
+            self.inner.status(&c)
+        }
+        fn output(&mut self, cmd: &Cmd) -> Out {
+            let c = self.resolve(cmd);
+            self.inner.output(&c)
+        }
+        fn status_within(&mut self, cmd: &Cmd, limit: std::time::Duration) -> Option<i32> {
+            let c = self.resolve(cmd);
+            self.inner.status_within(&c, limit)
+        }
+        fn sleep(&mut self, d: std::time::Duration) {
+            self.inner.sleep(d)
+        }
     }
 }

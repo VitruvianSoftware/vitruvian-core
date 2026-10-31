@@ -497,7 +497,7 @@ fn render_vitruvian_publish_steps(b: &mut String, _u: &Unit, env: &str, opts: &O
     b.push_str("        env:\n");
     b.push_str("          SIGNING_CERT_P12: ${{ secrets.VITRUVIAN_SIGNING_CERT_P12 }}\n");
     b.push_str("          SIGNING_CERT_PASSWORD: ${{ secrets.VITRUVIAN_SIGNING_CERT_PASSWORD }}\n");
-    b.push_str("        run: ./apps/desktop/vitruvian/Tools/ci-setup-signing.sh\n");
+    b.push_str("        run: bazel run //apps/desktop/vitruvian:ci_setup_signing\n");
     b.push('\n');
     if env == "production" {
         render_tap_token_step(b);
@@ -518,7 +518,7 @@ fn render_vitruvian_publish_steps(b: &mut String, _u: &Unit, env: &str, opts: &O
         b.push_str("          NOTARY_KEY_ID: ${{ secrets.VITRUVIAN_NOTARY_KEY_ID }}\n");
         b.push_str("          NOTARY_ISSUER_ID: ${{ secrets.VITRUVIAN_NOTARY_ISSUER_ID }}\n");
     }
-    b.push_str("        run: bash apps/desktop/vitruvian/publish.sh\n");
+    b.push_str("        run: bazel run //apps/desktop/vitruvian:publish\n");
     Ok(())
 }
 

@@ -1519,7 +1519,7 @@ jobs:
         env:
           SIGNING_CERT_P12: ${{ secrets.VITRUVIAN_SIGNING_CERT_P12 }}
           SIGNING_CERT_PASSWORD: ${{ secrets.VITRUVIAN_SIGNING_CERT_PASSWORD }}
-        run: ./apps/desktop/vitruvian/Tools/ci-setup-signing.sh
+        run: bazel run //apps/desktop/vitruvian:ci_setup_signing
 
       - name: Build, package and publish the DMG
         env:
@@ -1529,7 +1529,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Cache-only: reuse the build the macOS pipeline unit cached.
           BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
-        run: bash apps/desktop/vitruvian/publish.sh
+        run: bazel run //apps/desktop/vitruvian:publish
 
   # PROMOTION rung 1/1 — release-gated on a vitruvian-v* release, never reached by a push.
   vitruvian-production:
@@ -1558,7 +1558,7 @@ jobs:
         env:
           SIGNING_CERT_P12: ${{ secrets.VITRUVIAN_SIGNING_CERT_P12 }}
           SIGNING_CERT_PASSWORD: ${{ secrets.VITRUVIAN_SIGNING_CERT_PASSWORD }}
-        run: ./apps/desktop/vitruvian/Tools/ci-setup-signing.sh
+        run: bazel run //apps/desktop/vitruvian:ci_setup_signing
 
       - name: Mint App token for the Homebrew tap
         id: tap-token
@@ -1580,4 +1580,4 @@ jobs:
           NOTARY_API_KEY_P8: ${{ secrets.VITRUVIAN_NOTARY_API_KEY_P8 }}
           NOTARY_KEY_ID: ${{ secrets.VITRUVIAN_NOTARY_KEY_ID }}
           NOTARY_ISSUER_ID: ${{ secrets.VITRUVIAN_NOTARY_ISSUER_ID }}
-        run: bash apps/desktop/vitruvian/publish.sh
+        run: bazel run //apps/desktop/vitruvian:publish
