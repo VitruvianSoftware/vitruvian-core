@@ -38,6 +38,7 @@ type Client struct {
 	useManualClock   bool
 	manualJitter     float64
 	dispatchedMsgIDs map[string]struct{}
+	pendingLocalIDs  map[string]struct{}
 	emittedEvents    []bridgev2.RemoteEvent
 	lastState        status.BridgeStateEvent
 }
@@ -188,6 +189,14 @@ func (c *Client) queueRemoteEvent(ctx context.Context, evt bridgev2.RemoteEvent)
 		c.mu.Lock()
 		if c.dispatchedMsgIDs == nil {
 			c.dispatchedMsgIDs = make(map[string]struct{})
+		}
+		if msgEvt.TransactionID != "" && c.pendingLocalIDs != nil {
+			if _, pending := c.pendingLocalIDs[string(msgEvt.TransactionID)]; pending {
+				delete(c.pendingLocalIDs, string(msgEvt.TransactionID))
+				c.dispatchedMsgIDs[dedupKey] = struct{}{}
+				c.mu.Unlock()
+				return
+			}
 		}
 		if _, exists := c.dispatchedMsgIDs[dedupKey]; exists {
 			c.mu.Unlock()
@@ -385,12 +394,8 @@ func (c *Client) GetUserInfo(_ context.Context, ghost *bridgev2.Ghost) (*bridgev
 	}, nil
 }
 
-func (c *Client) GetCapabilities(_ context.Context, _ *bridgev2.Portal) *event.RoomFeatures {
-	return &event.RoomFeatures{}
-}
-
-func (c *Client) HandleMatrixMessage(_ context.Context, _ *bridgev2.MatrixMessage) (*bridgev2.MatrixMessageResponse, error) {
-	return nil, errors.New("not implemented")
+func (c *Client) GetCapabilities(_ context.Context, portal *bridgev2.Portal) *event.RoomFeatures {
+	return defaultRoomCapabilities(portal)
 }
 
 func (c *Client) FillBridgeState(state status.BridgeState) status.BridgeState {

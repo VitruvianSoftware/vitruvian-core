@@ -270,6 +270,45 @@ func statusError(status C.GChatStatus, errSlice C.GChatByteSlice) error {
 	return fmt.Errorf("gchat ffi error status %d", int(status))
 }
 
+// HTMLToAnnotations converts Matrix HTML (or plain text if html is empty) into Google Chat plain text and serialized Annotation protobuf slices.
+func HTMLToAnnotations(html string) (plainText string, annotations [][]byte, err error) {
+	reqObj := struct {
+		HTML string `json:"html"`
+	}{HTML: html}
+	inputJSON, err := json.Marshal(reqObj)
+	if err != nil {
+		return "", nil, fmt.Errorf("marshal html_to_annotations input: %w", err)
+	}
+	var htmlOut C.GChatByteSlice
+	var errOut C.GChatByteSlice
+	st := C.gchat_html_to_annotations(
+		(*C.uint8_t)(unsafe.Pointer(&inputJSON[0])),
+		C.size_t(len(inputJSON)),
+		&htmlOut,
+		&errOut,
+	)
+	if st != C.GCHAT_OK {
+		return "", nil, statusError(st, errOut)
+	}
+	encodedJSON := takeByteSlice(htmlOut)
+	var parsed struct {
+		Text                   string   `json:"text"`
+		MessageProtoBase64     string   `json:"message_proto_base64"`
+		AnnotationsProtoBase64 []string `json:"annotations_proto_base64"`
+	}
+	if err := json.Unmarshal(encodedJSON, &parsed); err != nil {
+		return "", nil, fmt.Errorf("unmarshal html_to_annotations output: %w", err)
+	}
+	for _, b64 := range parsed.AnnotationsProtoBase64 {
+		raw, err := base64.StdEncoding.DecodeString(b64)
+		if err != nil {
+			return "", nil, fmt.Errorf("decode annotation base64: %w", err)
+		}
+		annotations = append(annotations, raw)
+	}
+	return parsed.Text, annotations, nil
+}
+
 // LinkCheck verifies that libgchat_ffi.a is linked and callable via cgo by
 // round-tripping a synthetic Annotation conversion (HTML <-> Message proto).
 func LinkCheck() error {

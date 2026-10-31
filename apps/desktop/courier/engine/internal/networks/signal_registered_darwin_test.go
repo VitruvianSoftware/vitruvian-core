@@ -64,13 +64,25 @@ func platformActionRows() (map[string]actionRow, map[string]handlerRow) {
 	self.EditMaxAge, self.UnsendMaxAge = 0, 0
 	noteToSelf := portalOf(database.RoomTypeDM, "my-uuid", nil)
 	noteToSelf.Receiver = "my-uuid"
+	gcClient := (*gchat.Client)(nil)
+	gcDM := actions.Features{
+		Reply: true, Edit: true, Unsend: true,
+		Formatting: noSpoiler, MentionRoom: false, MaxTextLength: 4096,
+	}
+	gcSpace := gcDM
+	gcSpace.MentionRoom = true
+	gcThreadedSpace := gcSpace
+	gcThreadedSpace.Thread = true
 	return map[string]actionRow{
-			"signal dm":           {client, portalOf(database.RoomTypeDM, "their-uuid", nil), sig},
-			"signal group":        {client, portalOf(database.RoomTypeDefault, "group-id", nil), sig},
-			"signal note to self": {client, noteToSelf, self},
+			"signal dm":            {client, portalOf(database.RoomTypeDM, "their-uuid", nil), sig},
+			"signal group":         {client, portalOf(database.RoomTypeDefault, "group-id", nil), sig},
+			"signal note to self":  {client, noteToSelf, self},
+			"gchat dm":             {gcClient, portalOf(database.RoomTypeDM, gchat.MakeDMPortalID("111"), &gchat.PortalMetadata{TopicThreaded: false}), gcDM},
+			"gchat space":          {gcClient, portalOf(database.RoomTypeDefault, gchat.MakeSpacePortalID("222"), &gchat.PortalMetadata{TopicThreaded: false}), gcSpace},
+			"gchat threaded space": {gcClient, portalOf(database.RoomTypeDefault, gchat.MakeSpacePortalID("333"), &gchat.PortalMetadata{TopicThreaded: true}), gcThreadedSpace},
 		}, map[string]handlerRow{
 			"signal": {client, []string{"edit", "remove", "poll", "timer"}},
-			"gchat":  {(*gchat.Client)(nil), []string{}},
+			"gchat":  {gcClient, []string{"edit", "remove"}},
 		}
 }
 
@@ -91,7 +103,7 @@ func platformReceiptColumns() map[string]receiptNetwork {
 		},
 		"gchat": {
 			connector: gchat.NewConnector(), client: (*gchat.Client)(nil),
-			sends: []string{}, replyPrivately: []string{},
+			sends: []string{"read_receipts", "typing"}, replyPrivately: []string{},
 			implicitReads: false,
 		},
 	}

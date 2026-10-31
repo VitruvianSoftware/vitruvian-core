@@ -13,6 +13,7 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/bridgev2/status"
+	"maunium.net/go/mautrix/event"
 )
 
 const (
@@ -43,6 +44,12 @@ type GhostMetadata struct{}
 type MessageMetadata struct {
 	TopicID          string `json:"topic_id,omitempty"`
 	CreateTimeMicros int64  `json:"create_time_micros,omitempty"`
+	LastEditTime     int64  `json:"last_edit_time,omitempty"`
+}
+
+// ReactionMetadata stores per-reaction Google Chat topic metadata.
+type ReactionMetadata struct {
+	TopicID string `json:"topic_id,omitempty"`
 }
 
 // Connector implements bridgev2.NetworkConnector for Google Chat.
@@ -85,7 +92,112 @@ func (c *Connector) GetDBMetaTypes() database.MetaTypes {
 		Portal:    func() any { return &PortalMetadata{} },
 		Ghost:     func() any { return &GhostMetadata{} },
 		Message:   func() any { return &MessageMetadata{} },
+		Reaction:  func() any { return &ReactionMetadata{} },
 		UserLogin: func() any { return &UserLoginMetadata{} },
+	}
+}
+
+func defaultRoomCapabilities(portal *bridgev2.Portal) *event.RoomFeatures {
+	isDM := portal != nil && portal.RoomType == database.RoomTypeDM
+	if portal != nil {
+		if parsedDM, _, err := ParsePortalID(portal.ID); err == nil {
+			isDM = parsedDM
+		}
+	}
+	var topicThreaded bool
+	if portal != nil {
+		if meta, ok := portal.Metadata.(*PortalMetadata); ok && meta != nil {
+			topicThreaded = meta.TopicThreaded
+		}
+	}
+
+	atRoomLevel := event.CapLevelFullySupported
+	if isDM {
+		atRoomLevel = event.CapLevelUnsupported
+	}
+	threadLevel := event.CapLevelUnsupported
+	if !isDM && topicThreaded {
+		threadLevel = event.CapLevelFullySupported
+	}
+
+	const maxUploadSize = 200 * 1024 * 1024
+	const maxTextLen = 4096
+
+	return &event.RoomFeatures{
+		MaxTextLength: maxTextLen,
+		Formatting: event.FormattingFeatureMap{
+			event.FmtBold:                event.CapLevelFullySupported,
+			event.FmtItalic:              event.CapLevelFullySupported,
+			event.FmtStrikethrough:       event.CapLevelFullySupported,
+			event.FmtUnderline:           event.CapLevelFullySupported,
+			event.FmtInlineCode:          event.CapLevelFullySupported,
+			event.FmtCodeBlock:           event.CapLevelFullySupported,
+			event.FmtTextForegroundColor: event.CapLevelFullySupported,
+			event.FmtUnorderedList:       event.CapLevelPartialSupport,
+			event.FmtOrderedList:         event.CapLevelPartialSupport,
+			event.FmtBlockquote:          event.CapLevelPartialSupport,
+			event.FmtInlineLink:          event.CapLevelFullySupported,
+			event.FmtUserLink:            event.CapLevelFullySupported,
+			event.FmtAtRoomMention:       atRoomLevel,
+			event.FmtHeaders:             event.CapLevelPartialSupport,
+		},
+		File: event.FileFeatureMap{
+			event.MsgImage: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"image/*": event.CapLevelFullySupported,
+				},
+				Caption:          event.CapLevelFullySupported,
+				MaxCaptionLength: maxTextLen,
+				MaxSize:          maxUploadSize,
+			},
+			event.MsgVideo: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"video/*": event.CapLevelFullySupported,
+				},
+				Caption:          event.CapLevelFullySupported,
+				MaxCaptionLength: maxTextLen,
+				MaxSize:          maxUploadSize,
+			},
+			event.MsgAudio: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"audio/*": event.CapLevelFullySupported,
+				},
+				Caption:          event.CapLevelFullySupported,
+				MaxCaptionLength: maxTextLen,
+				MaxSize:          maxUploadSize,
+			},
+			event.CapMsgVoice: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"audio/*": event.CapLevelFullySupported,
+				},
+				Caption:          event.CapLevelFullySupported,
+				MaxCaptionLength: maxTextLen,
+				MaxSize:          maxUploadSize,
+			},
+			event.MsgFile: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"*/*": event.CapLevelFullySupported,
+				},
+				Caption:          event.CapLevelFullySupported,
+				MaxCaptionLength: maxTextLen,
+				MaxSize:          maxUploadSize,
+			},
+			event.CapMsgGIF: {
+				MimeTypes: map[string]event.CapabilitySupportLevel{
+					"image/gif": event.CapLevelFullySupported,
+				},
+				Caption:          event.CapLevelFullySupported,
+				MaxCaptionLength: maxTextLen,
+				MaxSize:          maxUploadSize,
+			},
+		},
+		Thread:              threadLevel,
+		Reply:               event.CapLevelFullySupported,
+		Edit:                event.CapLevelFullySupported,
+		Delete:              event.CapLevelFullySupported,
+		Reaction:            event.CapLevelFullySupported,
+		ReadReceipts:        true,
+		TypingNotifications: true,
 	}
 }
 

@@ -70,6 +70,15 @@ func MakeThreadRootID(topicID string) networkid.MessageID {
 	return networkid.MessageID(topicID + "/" + topicID)
 }
 
+// ParseMessageID splits a networkid.MessageID ("topicID/msgID" or "msgID") into topicID and msgID.
+func ParseMessageID(id networkid.MessageID) (topicID, msgID string) {
+	s := string(id)
+	if before, after, ok := strings.Cut(s, "/"); ok {
+		return before, after
+	}
+	return "", s
+}
+
 // MakeUserID encodes a Gaia ID into networkid.UserID(gaiaID).
 func MakeUserID(gaiaID string) networkid.UserID {
 	return networkid.UserID(gaiaID)
