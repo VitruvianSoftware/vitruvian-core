@@ -74,8 +74,11 @@ inputs:
       When 'true', restore without ever saving (actions/cache/restore) -- for
       a lane that reuses another job's cache entry without owning writes to
       it (tidy-check.yaml loads the same 64k-target graph as ci.yaml's
-      build-test and relies on THAT job to save; a second writer would just
-      waste upload budget on a redundant save). When 'false' (the default),
+      build-test; a second writer would just waste upload budget on a
+      redundant save). On main the writers are the read+write GitHub-hosted
+      jobs that actually run there: tabula-e2e.yaml (tabula pushes and its
+      daily schedule), and ci.yaml's build-test and go-race on the pushes
+      the merge queue did not already pass. When 'false' (the default),
       use full read+write actions/cache, which also saves a fresh extraction
       in its post step on a cache miss -- but only in a GitHub-hosted job on
       main; everywhere else (merge queue, pull requests, self-hosted runners)
@@ -153,11 +156,16 @@ runs:
         RESTORE_ONLY: ${{ inputs.restore-only }}
         MAY_SAVE: ${{ github.ref == 'refs/heads/main' && runner.environment == 'github-hosted' }}
       run: |
+        # LLVM_CACHE_SAVES tells the llvm-cache-tripwire composite whether
+        # this job's post step saves, so its cache-miss notice says what
+        # actually happens to the fresh extraction.
         if [ "$RESTORE_ONLY" = "true" ] || [ "$MAY_SAVE" != "true" ]; then
           echo "readonly=true" >> "$GITHUB_OUTPUT"
+          echo "LLVM_CACHE_SAVES=false" >> "$GITHUB_ENV"
           echo "LLVM contents cache: restore only (saves happen on GitHub-hosted main jobs)"
         else
           echo "readonly=false" >> "$GITHUB_OUTPUT"
+          echo "LLVM_CACHE_SAVES=true" >> "$GITHUB_ENV"
         fi
 
     - name: Restore the extracted LLVM toolchain

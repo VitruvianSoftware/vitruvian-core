@@ -26,6 +26,7 @@ mod ci;
 mod delivery;
 mod governance;
 mod iac;
+mod labels;
 mod security;
 mod versions;
 
@@ -56,6 +57,7 @@ pub fn run_all(ctx: &Context) {
     ci::check_job_timeouts(ctx);
     ci::check_sweep_backstop(ctx);
     ci::check_cache_save(ctx);
+    labels::check_workflow_labels(ctx);
 
     iac::check_zitadel_import(ctx);
     iac::check_pulumi_project_names(ctx);

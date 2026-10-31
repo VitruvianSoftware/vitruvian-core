@@ -251,14 +251,15 @@ swift_test(
 # The examples, judged by the schemas, and every line the reference tool of
 # protocol 2 writes in a short session. Not `manual` and not tied to macOS:
 # plain Rust, so the Linux lane runs it too. verification/Cargo.toml runs the
-# same program in the mirror.
+# same program in the mirror. The session runs the Rust :reference-tool-2
+# and nothing else: a missing binary fails the test rather than quietly
+# testing the Python reference tool instead.
 rust_test(
     name = "protocol_examples_test",
     size = "small",
     srcs = ["verification/src/bin/protocol_examples_test.rs"],
     crate_root = "verification/src/bin/protocol_examples_test.rs",
     data = PROTOCOL_FILES + REFERENCE_MANIFESTS + [
-        "conformance/reference-tool-2/bin/reference_tool_2.py",
         ":reference-tool-2",
     ],
     edition = "2021",

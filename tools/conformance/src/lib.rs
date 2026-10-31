@@ -263,6 +263,7 @@ impl Context {
             ("TIMEOUT", "Job timeouts (#209: every job bounded — no 6h default-timeout runners)"),
             ("SWEEP", "Full-sweep backstop (affected-scoped lanes → scheduled //... sweep)"),
             ("CACHESAVE", "Actions cache saves (only GitHub-hosted jobs on main save; queue/PR refs and self-hosted runners restore only)"),
+            ("LABELS", "Workflow Bazel labels (every //pkg:target a workflow or action runs resolves)"),
             ("IAC", "IaC destructive-import guard (zitadel-apps must create, never import)"),
             ("PULUMI", "Pulumi program identity (unique project names · customDomain under its zone)"),
             ("COPYBARA", "Copybara infra-leak guard (<app>/infra/ is monorepo-only, never mirrored)"),

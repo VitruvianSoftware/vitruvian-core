@@ -27,7 +27,7 @@
 use std::collections::{BTreeSet, HashMap};
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::thread;
@@ -357,8 +357,36 @@ pub fn message_problems(protocol_dir: &Path) -> Vec<String> {
     problems
 }
 
-fn find_default_reference_2(protocol_dir: &Path) -> (String, Vec<String>) {
-    // Prefer the native Rust binary when present in runfiles or package dir.
+/// The Rust `reference-tool-2` the session runs against.
+///
+/// Both builds hand it over, as `CARGO_BIN_EXE_reference-tool-2`, which the
+/// test binary passes in as `cargo_bin`: Cargo sets it for the bin it builds
+/// for its integration tests, and rules_rust sets it (a runfiles-relative
+/// path) for a `rust_binary` in the test's `data`. The runfiles lookups below
+/// are the second way in under Bazel. So a missing binary is always a broken
+/// path, never a reason to test something else: this used to fall back to the
+/// Python reference tool, and a path that pointed nowhere still passed,
+/// testing the wrong program.
+fn find_default_reference_2(
+    protocol_dir: &Path,
+    cargo_bin: Option<&Path>,
+) -> Result<String, String> {
+    let mut looked: Vec<PathBuf> = Vec::new();
+    if let Some(bin) = cargo_bin {
+        // The session runs the tool from a temporary folder, so a relative
+        // path (rules_rust's) must be made absolute against ours first.
+        let bin = if bin.is_relative() {
+            std::env::current_dir()
+                .map(|d| d.join(bin))
+                .unwrap_or_else(|_| bin.to_path_buf())
+        } else {
+            bin.to_path_buf()
+        };
+        if is_executable(&bin) {
+            return Ok(bin.to_string_lossy().into_owned());
+        }
+        looked.push(bin);
+    }
     for cand in [
         resolve_runfile("packages/vitruvian-sdk/reference-tool-2"),
         resolve_runfile("reference-tool-2"),
@@ -368,17 +396,30 @@ fn find_default_reference_2(protocol_dir: &Path) -> (String, Vec<String>) {
             .join("reference-tool-2"),
     ] {
         if is_executable(&cand) {
-            return (cand.to_string_lossy().into_owned(), Vec::new());
+            let abs = std::env::current_dir()
+                .map(|d| d.join(&cand))
+                .unwrap_or(cand);
+            return Ok(abs.to_string_lossy().into_owned());
         }
+        looked.push(cand);
     }
-    let py_script = protocol_dir.join("../conformance/reference-tool-2/bin/reference_tool_2.py");
-    (
-        find_python3(),
-        vec![py_script.to_string_lossy().into_owned()],
-    )
+    let looked: Vec<String> = looked.iter().map(|p| p.display().to_string()).collect();
+    Err(format!(
+        "the Rust reference-tool-2 binary is missing (looked at: {}). Under Bazel it is a data dependency of this test; under Cargo the test passes CARGO_BIN_EXE_reference-tool-2. Fix the path rather than testing another program.",
+        looked.join(", ")
+    ))
 }
 
 pub fn session_problems(protocol_dir: &Path, custom_program: Option<&Path>) -> Vec<String> {
+    session_problems_with(protocol_dir, custom_program, None)
+}
+
+/// `session_problems`, with the Rust reference tool Cargo built (if any).
+pub fn session_problems_with(
+    protocol_dir: &Path,
+    custom_program: Option<&Path>,
+    cargo_bin: Option<&Path>,
+) -> Vec<String> {
     let schema_val = load_json(protocol_dir, "messages.schema.json").expect("messages.schema.json");
     let methods_file = load_json(protocol_dir, "methods.json").expect("methods.json");
     let mut table: HashMap<String, Value> = HashMap::new();
@@ -399,7 +440,10 @@ pub fn session_problems(protocol_dir: &Path, custom_program: Option<&Path>) -> V
                 (p_str, Vec::new())
             }
         }
-        None => find_default_reference_2(protocol_dir),
+        None => match find_default_reference_2(protocol_dir, cargo_bin) {
+            Ok(p) => (p, Vec::new()),
+            Err(e) => return vec![format!("reference-tool-2: {e}")],
+        },
     };
 
     let mut problems: Vec<String> = Vec::new();
@@ -665,10 +709,23 @@ pub fn session_problems(protocol_dir: &Path, custom_program: Option<&Path>) -> V
 }
 
 pub fn run_in(package_dir: &Path, custom_program: Option<&Path>) -> (i32, Vec<String>, String) {
+    run_in_with(package_dir, custom_program, None)
+}
+
+/// `run_in`, with the Rust reference tool Cargo built (if any).
+pub fn run_in_with(
+    package_dir: &Path,
+    custom_program: Option<&Path>,
+    cargo_bin: Option<&Path>,
+) -> (i32, Vec<String>, String) {
     let protocol_dir = package_dir.join("protocol");
     let mut problems = manifest_problems(&protocol_dir);
     problems.extend(message_problems(&protocol_dir));
-    problems.extend(session_problems(&protocol_dir, custom_program));
+    problems.extend(session_problems_with(
+        &protocol_dir,
+        custom_program,
+        cargo_bin,
+    ));
     let status_word = if problems.is_empty() { "OK" } else { "FAILED" };
     let stdout_text = format!("protocol examples: {status_word}\n");
     let code = if problems.is_empty() { 0 } else { 1 };
@@ -676,6 +733,12 @@ pub fn run_in(package_dir: &Path, custom_program: Option<&Path>) -> (i32, Vec<St
 }
 
 pub fn main_with_args(args: &[String]) -> i32 {
+    main_with_reference(args, None)
+}
+
+/// The test's entry point. `cargo_bin` is `CARGO_BIN_EXE_reference-tool-2`
+/// when Cargo built the test, and None under Bazel (runfiles carry it).
+pub fn main_with_reference(args: &[String], cargo_bin: Option<&Path>) -> i32 {
     let package_dir = match find_package_dir() {
         Ok(d) => d,
         Err(e) => {
@@ -684,7 +747,8 @@ pub fn main_with_args(args: &[String]) -> i32 {
         }
     };
     let custom_prog = args.first().map(|s| resolve_runfile(s));
-    let (code, problems, stdout_text) = run_in(&package_dir, custom_prog.as_deref());
+    let (code, problems, stdout_text) =
+        run_in_with(&package_dir, custom_prog.as_deref(), cargo_bin);
     for problem in problems {
         eprintln!("{problem}");
     }
