@@ -18,7 +18,15 @@ static TRACE_COUNTER: AtomicI64 = AtomicI64::new(1);
 
 pub const CLIENT_VERSION: i64 = 2440378181258;
 pub const MAX_RPC_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
+pub const MAX_RETRY_AFTER_SECS: u64 = 60;
 const MAX_ERR_BODY_BYTES: usize = 256;
+
+pub fn parse_retry_after_clamped(raw: &str) -> Option<Duration> {
+    raw.trim()
+        .parse::<u64>()
+        .ok()
+        .map(|secs| Duration::from_secs(secs.min(MAX_RETRY_AFTER_SECS)))
+}
 
 pub fn build_request_header() -> pb::RequestHeader {
     let trace_id = TRACE_COUNTER.fetch_add(1, Ordering::Relaxed);
@@ -137,6 +145,7 @@ crate::edition2021! {
         let payload = prepend_request_header(endpoint, req_bytes);
         let mut refreshed_xsrf = false;
         let mut rate_limit_attempt = 0u32;
+        let mut server_err_attempt = 0u32;
 
         loop {
             let (xsrf_token, xsrf_gen) = xsrf.get_token().await?;
@@ -174,24 +183,37 @@ crate::edition2021! {
                 )));
             }
 
-            if status.as_u16() == 429 || (idempotent && matches!(status.as_u16(), 502 | 503 | 504)) {
+            if status.as_u16() == 429 {
                 rate_limit_attempt += 1;
                 if rate_limit_attempt >= 3 {
-                    if status.as_u16() == 429 {
-                        return Err(GChatError::RateLimited);
-                    }
+                    return Err(GChatError::RateLimited);
+                }
+                let delay = resp
+                    .headers()
+                    .get(reqwest::header::RETRY_AFTER)
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(parse_retry_after_clamped)
+                    .unwrap_or_else(|| compute_backoff_delay(rate_limit_attempt));
+                if !delay.is_zero() {
+                    tokio::time::sleep(delay).await;
+                }
+                continue;
+            }
+
+            if idempotent && matches!(status.as_u16(), 502 | 503 | 504) {
+                server_err_attempt += 1;
+                if server_err_attempt >= 3 {
                     return Err(GChatError::HttpStatus(
                         status.as_u16(),
-                        format!("RPC {endpoint} failed after {rate_limit_attempt} attempts"),
+                        format!("RPC {endpoint} failed after {server_err_attempt} attempts"),
                     ));
                 }
                 let delay = resp
                     .headers()
                     .get(reqwest::header::RETRY_AFTER)
                     .and_then(|v| v.to_str().ok())
-                    .and_then(|s| s.trim().parse::<u64>().ok())
-                    .map(|secs| Duration::from_secs(secs.min(30)))
-                    .unwrap_or_else(|| compute_backoff_delay(rate_limit_attempt));
+                    .and_then(parse_retry_after_clamped)
+                    .unwrap_or_else(|| compute_backoff_delay(server_err_attempt));
                 if !delay.is_zero() {
                     tokio::time::sleep(delay).await;
                 }
@@ -665,6 +687,14 @@ mod tests {
             out, existing,
             "prepend_request_header must not prepend a second RequestHeader when field 100 is already present"
         );
+    }
+
+    #[test]
+    fn test_retry_after_clamped_to_60_seconds_per_spec() {
+        assert_eq!(parse_retry_after_clamped("0"), Some(Duration::from_secs(0)));
+        assert_eq!(parse_retry_after_clamped("45"), Some(Duration::from_secs(45)));
+        assert_eq!(parse_retry_after_clamped("60"), Some(Duration::from_secs(60)));
+        assert_eq!(parse_retry_after_clamped("120"), Some(Duration::from_secs(60)));
     }
 
     #[test]
