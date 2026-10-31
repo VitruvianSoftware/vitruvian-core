@@ -27,7 +27,7 @@ To calculate affected targets, we use **[`target-determinator`](https://github.c
 
 Our CI/CD pipelines do not invoke `target-determinator` directly. Instead, they call custom Bash scripts that enforce our safety invariants and global-impact guards. These scripts live in `tools/ci/`:
 
-### `affected-targets.sh`
+### `//tools/ci:affected_targets`
 *   **Purpose:** Determines which tests to run on PRs (`pull_request`) and merge queues (`merge_group`).
 *   **How it works:**
     1. Computes the merge-base of the PR.
@@ -47,7 +47,7 @@ Our CI/CD pipelines do not invoke `target-determinator` directly. Instead, they 
     6. If the deploy targets are in the affected list, the application deploys.
 
 ### `td-lib.sh`
-*   **Purpose:** A shared utility script that pins the exact version and checksum of `target-determinator` and handles downloading it for both `affected-targets.sh` and `deploy-affected.sh`. This ensures version consistency across all CI lanes.
+*   **Purpose:** A shared utility script that pins the exact version and checksum of `target-determinator` and handles downloading it for `deploy-affected.sh`. This ensures version consistency across all CI lanes.
 
 ## 4. CI/CD Terminology
 

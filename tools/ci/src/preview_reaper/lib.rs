@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! preview-reaper.sh — purge closed, merged, and TTL-expired ephemeral
+//! preview-reaper — purge closed, merged, and TTL-expired ephemeral
 //! preview environments across Cloud Run, Kubernetes, and Neon branches.
 
 use shell_compat::{capture, cat, env, env_or, env_or_empty, err, out, status, subst, which};
@@ -141,16 +141,19 @@ fn extract_pr_num_prefix(name: &[u8]) -> Option<Vec<u8>> {
 }
 
 fn extract_pr_num_anywhere(name: &[u8]) -> Option<Vec<u8>> {
-    // Match: pr-<digits> anywhere
+    // Match `pr-([0-9]+)` anywhere, leftmost occurrence that is followed by a
+    // digit (an earlier "pr-" with no digits after it does not stop the search).
     let s = std::str::from_utf8(name).ok()?;
-    let idx = s.find("pr-")?;
-    let rest = &s[idx + 3..];
-    let num: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
-    if num.is_empty() {
-        None
-    } else {
-        Some(num.into_bytes())
+    let mut from = 0;
+    while let Some(i) = s[from..].find("pr-") {
+        let rest = &s[from + i + 3..];
+        let num: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+        if !num.is_empty() {
+            return Some(num.into_bytes());
+        }
+        from += i + 3;
     }
+    None
 }
 
 pub fn run(args: &[Vec<u8>]) -> i32 {
@@ -460,7 +463,6 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
     }
 
     // 3. Neon
-    let mut neon_error = false;
     if which(&curl_bin).is_none() {
         log(&cat(&[
             b"ERROR: curl binary '",
@@ -474,7 +476,9 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
                 b"' not found\n",
             ]));
         }
-        neon_error = true;
+        // The original script aborted here (`set -e`): no summary and none of
+        // the four output lines, alongside a failed step.
+        return 1;
     } else if neon_api_key.is_empty() || neon_project_id.is_empty() {
         log(b"WARNING: Neon credentials missing (NEON_API_KEY and/or NEON_PROJECT_ID empty) \xe2\x80\x94 skipping Neon branch reap");
         if shell_compat::env_set_nonempty("GITHUB_ACTIONS") {
@@ -606,11 +610,7 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
         b"\n",
     ]));
 
-    if neon_error {
-        1
-    } else {
-        0
-    }
+    0
 }
 
 fn json_string_field(json: &[u8], field: &[u8]) -> Vec<u8> {

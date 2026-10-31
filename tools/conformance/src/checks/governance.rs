@@ -1389,8 +1389,8 @@ pub fn check_root_directories(ctx: &Context) {
 pub fn check_preview_governance(ctx: &Context) {
     let workflow = format!("{}/preview-teardown.yaml", ctx.workflows_dir);
     let workflow_rel = ".github/workflows/preview-teardown.yaml";
-    let reaper = format!("{}/tools/ci/preview-reaper.sh", ctx.root);
-    let reaper_rel = "tools/ci/preview-reaper.sh";
+    let reaper = format!("{}/tools/ci/src/preview_reaper/main.rs", ctx.root);
+    let reaper_rel = "tools/ci/src/preview_reaper/main.rs";
 
     if !Path::new(&workflow).is_file() {
         ctx.emit_fail(
@@ -1547,24 +1547,24 @@ pub fn check_preview_governance(ctx: &Context) {
         );
     }
 
-    // 4. Reaper script executable.
-    let reaper_path = Path::new(&reaper);
-    if reaper_path.is_file() && is_executable(&reaper) {
+    // 4. The workflow runs the reaper (the //tools/ci:preview_reaper binary) and
+    // its source is there to build.
+    if Path::new(&reaper).is_file() && active.contains("//tools/ci:preview_reaper") {
         ctx.emit_ok(
             "preview",
             reaper_rel,
-            "executable",
-            "executable",
-            "preview reaper script is present and executable",
+            "wired",
+            "wired",
+            "preview teardown runs the //tools/ci:preview_reaper binary",
         );
     } else {
         ctx.emit_fail(
             "preview",
             reaper_rel,
-            "missing/non-exec",
-            "executable",
-            "preview reaper script must exist and be executable",
-            "ensure tools/ci/preview-reaper.sh exists and is executable",
+            "missing/unwired",
+            "wired",
+            "preview teardown must run the //tools/ci:preview_reaper binary, whose source must exist",
+            "keep tools/ci/src/preview_reaper and run `bazel run //tools/ci:preview_reaper` from preview-teardown.yaml",
         );
     }
 }

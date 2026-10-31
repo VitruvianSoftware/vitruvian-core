@@ -29,7 +29,7 @@
 # silently keeps the stale dependency. And they OVER-trigger — docs/cli-only
 # changes under the app dir rebuild + redeploy the image needlessly.
 #
-# FAIL-OPEN INVARIANT (the mirror image of affected-targets.sh's fail-closed
+# FAIL-OPEN INVARIANT (the mirror image of the affected-targets binary's fail-closed
 # full sweep): every uncertain or error path yields affected=true. A redundant
 # deploy is an idempotent blue-green no-op; a silently SKIPPED deploy is the
 # #498 bug this script exists to fix. The only way to get affected=false is a
@@ -145,7 +145,7 @@ echo "${CHANGED_FILES}" | sed 's/^/  /'
 # PERMANENTLY, which is the exact failure mode the durable base exists to
 # prevent. Observed live: run 32363502989 dismissed afc7e5c1..c0639105 (9
 # commits, including Phase 3 and a delivery fix that touched
-# tools/ci/affected-targets.sh) because HEAD happened to be a version bump.
+# tools/ci/src/affected_targets/lib.rs) because HEAD happened to be a version bump.
 RANGE_MSGS="$(git log --pretty=%s "${BEFORE_REV}..${AFTER_REV}" 2>/dev/null || true)"
 NON_RELEASE_MSGS="$(grep -Ev '^chore\((main|release)\): release' <<<"${RANGE_MSGS}" || true)"
 if [ -n "${RANGE_MSGS}" ] && [ -z "${NON_RELEASE_MSGS}" ]; then
@@ -172,11 +172,11 @@ if [ -z "${DEPLOY_TARGETS}" ]; then
   emit false "no path matched (path-only mode -- DEPLOY_TARGETS unset, no graph universe to attribute against)"
 fi
 
-# --- 3. global-impact guard (same set as affected-targets.sh). ----------------
+# --- 3. global-impact guard (same set as tools/ci/src/affected_targets/lib.rs). ----------------
 # A build-config change can affect any target in ways a graph diff may
 # misattribute; fail open.
 #
-# This allowlist MUST stay byte-identical to the one in affected-targets.sh
+# This allowlist MUST stay byte-identical to the one in tools/ci/src/affected_targets/lib.rs
 # (`//tools/conformance:check` check_ci_gate_lists_match asserts it). NOTE that
 # `deploy/` is allowlisted here too, but this gate's TD universe is
 # DEPLOY_TARGETS (the image/zip artifacts) -- it does NOT graph-track

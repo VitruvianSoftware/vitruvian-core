@@ -31,8 +31,6 @@ name: Deploy Affected Test
 on:
   pull_request:
     paths:
-      - "tools/ci/affected-targets.sh"
-      - "tools/ci/affected-targets_test.sh"
       - "tools/ci/queue-fast-pass.sh"
       - "tools/ci/queue-fast-pass_test.sh"
       - "tools/ci/agent-fast-lane.sh"
@@ -47,8 +45,6 @@ on:
   push:
     branches: [main]
     paths:
-      - "tools/ci/affected-targets.sh"
-      - "tools/ci/affected-targets_test.sh"
       - "tools/ci/queue-fast-pass.sh"
       - "tools/ci/queue-fast-pass_test.sh"
       - "tools/ci/agent-fast-lane.sh"
@@ -77,9 +73,6 @@ jobs:
         run: bash tools/ci/deploy-affected_test.sh
 
       # The test half of the same pair (#2841): how build-test picks its targets.
-      - name: Run the affected-targets script tests
-        run: bash tools/ci/affected-targets_test.sh
-
       - name: Run the queue-fast-pass script tests
         run: bash tools/ci/queue-fast-pass_test.sh
 

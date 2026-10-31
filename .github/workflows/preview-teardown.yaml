@@ -76,6 +76,11 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
 
+      # The reaper is a Rust binary (//tools/ci:preview_reaper), so Bazel is
+      # needed on every run, manual ones included.
+      - name: Install Bazel
+        uses: ./.github/actions/setup-bazel
+
       - name: Run Ephemeral Preview Reaper
         id: reaper
         env:
@@ -88,14 +93,9 @@ jobs:
           DRY_RUN: ${{ (github.event.inputs.dry_run == 'true' || github.event.inputs.dry_run == true) && '1' || '' }}
         run: |
           PR_TARGET="${{ github.event.pull_request.number || github.event.inputs.pr || '' }}"
-          ./tools/ci/preview-reaper.sh ${PR_TARGET} >> "$GITHUB_OUTPUT"
+          bazel run //tools/ci:preview_reaper -- ${PR_TARGET} >> "$GITHUB_OUTPUT"
 
-      # Only the (paused) pull_request trigger reaches the two steps below, so
-      # manual runs never pay for a Bazel install.
-      - name: Install Bazel
-        if: github.event_name == 'pull_request' && github.event.action == 'closed'
-        uses: ./.github/actions/setup-bazel
-
+      # Only the (paused) pull_request trigger reaches the step below.
       - name: Update PR Sticky Comment on Targeted Event
         if: github.event_name == 'pull_request' && github.event.action == 'closed'
         env:

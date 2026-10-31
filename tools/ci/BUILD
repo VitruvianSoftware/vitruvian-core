@@ -36,8 +36,6 @@ alias(
 
 exports_files([
     "actionlint_test.sh",
-    "affected-targets.sh",
-    "affected-targets_test.sh",
     "agent-fast-lane.sh",
     "agent-fast-lane_test.sh",
     "backstage-boot-smoke.sh",
@@ -69,8 +67,6 @@ exports_files([
     "migration-safety.sh",
     "notify-ci-issues.sh",
     "notify-ci-issues_test.sh",
-    "preview-reaper.sh",
-    "preview-reaper_test.sh",
     "prune-pr-caches.sh",
     "prune-pr-caches_test.sh",
     "pulumi-summary.sh",
@@ -178,14 +174,6 @@ sh_test(
         "deploy-affected.sh",
         "td-lib.sh",
     ],
-)
-
-sh_test(
-    name = "preview_reaper_test",
-    size = "small",
-    srcs = ["preview-reaper_test.sh"],
-    args = ["$(location preview-reaper.sh)"],
-    data = ["preview-reaper.sh"],
 )
 
 # Downloads a pinned CI tool (actionlint, kubeconform, osv-scanner, promtool)
@@ -763,21 +751,14 @@ rust_binary(
     ],
 )
 
-sh_binary(
-    name = "preview-reaper-sh",
-    srcs = ["preview-reaper.sh"],
-    visibility = ["//visibility:public"],
-)
-
-sh_test(
-    name = "preview_reaper_rs_test",
+# Stubs gh, gcloud, kubectl and curl on PATH: no cloud, no network.
+rust_test(
+    name = "preview_reaper_test",
     size = "small",
-    srcs = ["preview-reaper_test.sh"],
-    args = ["$(location :preview_reaper)"],
-    data = [
-        "preview-reaper.sh",
-        ":preview_reaper",
-    ],
+    srcs = ["src/preview_reaper/cli_test.rs"],
+    data = [":preview_reaper"],
+    edition = "2021",
+    env = {"PREVIEW_REAPER_BIN": "$(rootpath :preview_reaper)"},
 )
 
 # transient-lib
@@ -871,30 +852,20 @@ rust_binary(
     ],
 )
 
-sh_test(
+# A real temp git repository and a fake bazel on PATH; jq is the hermetic toolchain one.
+rust_test(
     name = "affected_targets_test",
     size = "small",
-    srcs = ["affected-targets_test.sh"],
-    args = ["$(location affected-targets.sh)"],
+    srcs = ["src/affected_targets/cli_test.rs"],
     data = [
-        "affected-targets.sh",
-        "@jq_toolchains//:resolved_toolchain",
-    ],
-    env = {"JQ_BIN": "$(JQ_BIN)"},
-    toolchains = ["@jq_toolchains//:resolved_toolchain"],
-)
-
-sh_test(
-    name = "affected_targets_rs_test",
-    size = "small",
-    srcs = ["affected-targets_test.sh"],
-    args = ["$(location :affected_targets)"],
-    data = [
-        "affected-targets.sh",
         ":affected_targets",
         "@jq_toolchains//:resolved_toolchain",
     ],
-    env = {"JQ_BIN": "$(JQ_BIN)"},
+    edition = "2021",
+    env = {
+        "AFFECTED_TARGETS_BIN": "$(rootpath :affected_targets)",
+        "JQ_BIN": "$(JQ_BIN)",
+    },
     toolchains = ["@jq_toolchains//:resolved_toolchain"],
 )
 

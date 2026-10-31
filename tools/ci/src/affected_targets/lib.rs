@@ -18,13 +18,21 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! affected-targets.sh — build + test the repo against the BuildBuddy remote,
+//! affected-targets — build + test the repo against the BuildBuddy remote,
 //! skipping only the diffs that provably need no Bazel work at all.
 
 use shell_compat::{
     capture, cat, env, env_or, env_or_empty, indent, is_file, os, out, status, subst,
 };
 use std::process::Command;
+
+/// `[ -x "$f" ]` for a regular file: executable by someone (the original's test).
+fn is_executable_file(p: &[u8]) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::metadata(shell_compat::path(p))
+        .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+        .unwrap_or(false)
+}
 
 fn grep_ere(text: &[u8], pattern: &[u8]) -> bool {
     if pattern.is_empty() || text.is_empty() {
@@ -202,29 +210,35 @@ fn run_full_sweep(reason: &[u8], class: &[u8], bb_key: &[u8]) -> ! {
     }
     let remote_config = cat(&[b"--config=remote"]);
     let remote_header = cat(&[b"--remote_header=x-buildbuddy-api-key=", bb_key]);
-    status(
-        0,
-        Command::new("bazel")
-            .arg("build")
-            .arg(os(&remote_config))
-            .arg(os(&remote_header))
-            .arg("//..."),
-        false,
-    );
-    status(
-        0,
-        Command::new("bazel")
-            .arg("test")
-            .arg(os(&remote_config))
-            .arg(os(&remote_header))
-            .arg("//..."),
-        false,
-    );
+    // `set -e` in the original: a red build ends the run with its status and the
+    // tests are never started; a red test run is the run's status.
+    for verb in ["build", "test"] {
+        let rc = status(
+            0,
+            Command::new("bazel")
+                .arg(verb)
+                .arg(os(&remote_config))
+                .arg(os(&remote_header))
+                .arg("//..."),
+            false,
+        );
+        if rc != 0 {
+            std::process::exit(rc);
+        }
+    }
     std::process::exit(0);
 }
 
 pub fn run(_args: &[Vec<u8>]) -> i32 {
-    let bb_key = env_or_empty("BUILDBUDDY_API_KEY");
+    // The original read ${BUILDBUDDY_API_KEY} under `set -u`: unset is an error
+    // (set but empty, as on a fork's pull request, is not).
+    let bb_key = match env("BUILDBUDDY_API_KEY") {
+        Some(k) => k,
+        None => {
+            shell_compat::err(b"affected-targets: BUILDBUDDY_API_KEY: unbound variable\n");
+            return 1;
+        }
+    };
     let base_ref = env_or_empty("BASE_REF");
     let mut before_rev = env_or_empty("BEFORE_REV");
     let forced_push = env_or("FORCED_PUSH", b"false");
@@ -449,7 +463,7 @@ md|png|jpg|jpeg|svg|txt)$|(^|/)(catalog-info\\.yaml|OWNERS|CODEOWNERS)$",
     let plan_start = std::time::Instant::now();
     let plan_output;
 
-    if !plan_bin.is_empty() && is_file(&plan_bin) {
+    if !plan_bin.is_empty() && is_executable_file(&plan_bin) {
         let mut cmd = Command::new(os(&plan_bin));
         for a in &plan_args {
             cmd.arg(os(a));
@@ -571,11 +585,7 @@ md|png|jpg|jpeg|svg|txt)$|(^|/)(catalog-info\\.yaml|OWNERS|CODEOWNERS)$",
 
         let mut pkg_set: Vec<Vec<u8>> = Vec::new();
         for p in &affected_packages {
-            let mut entry = p.clone();
-            if !entry.ends_with(b":all") {
-                entry.extend_from_slice(b":all");
-            }
-            pkg_set.push(entry);
+            pkg_set.push(p.clone());
         }
 
         let mut kept: Vec<Vec<u8>> = Vec::new();

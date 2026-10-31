@@ -21,7 +21,7 @@
 //! The bazel wrapper ("shim"), shim.go.
 //!
 //! The tests CI runs on a pull request are chosen in two places: the
-//! planner (which presubmit units) and tools/ci/affected-targets.sh (which
+//! planner (which presubmit units) and //tools/ci:affected_targets (which
 //! targets build-test runs). Both call `bazel` themselves, so the verified
 //! run runs them unchanged with a `bazel` first on PATH that is this binary.
 //! For build and test it appends the flags that make the run remote-only,

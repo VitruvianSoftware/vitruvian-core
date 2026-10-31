@@ -24,7 +24,7 @@ either way.
    `origin/main`:
    - **presubmit units**: the planner (`//tools/pipeline/plan`), with the same
      flags and dependency map as the presubmit `plan` job;
-   - **build-test**: `tools/ci/affected-targets.sh`, unchanged, as on a PR.
+   - **build-test**: `//tools/ci:affected_targets`, unchanged, as on a PR.
 4. Runs them through a `bazel` wrapper that forces every build and test onto the
    remote machines (see "Remote only" below) and logs each run's BuildBuddy link
    and Bazel's count of where each process ran.

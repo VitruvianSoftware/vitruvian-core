@@ -811,8 +811,8 @@ pub fn check_no_local_paths(ctx: &Context) {
 // ---------------------------------------------------------------------------
 
 pub fn check_deploy_sequencer_gate(ctx: &Context) {
-    // Check if tools/deploy/ is allowlisted in affected-targets.sh.
-    let at_path = format!("{}/tools/ci/affected-targets.sh", ctx.root);
+    // Check if tools/deploy/ is allowlisted in the affected-targets source.
+    let at_path = format!("{}/tools/ci/src/affected_targets/lib.rs", ctx.root);
     let at_text = fs::read_to_string(&at_path).unwrap_or_default();
     // grep -o "\^tools/([^']*)" then check for |deploy/|
     let allow = {

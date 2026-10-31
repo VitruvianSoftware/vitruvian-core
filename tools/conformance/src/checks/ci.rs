@@ -1114,7 +1114,7 @@ pub fn check_cache_save(ctx: &Context) {
 
 pub fn check_ci_gate_lists_match(ctx: &Context) {
     let deploy_affected = format!("{}/tools/ci/deploy-affected.sh", ctx.root);
-    let affected_targets = format!("{}/tools/ci/affected-targets.sh", ctx.root);
+    let affected_targets = format!("{}/tools/ci/src/affected_targets/lib.rs", ctx.root);
 
     let extract_pattern = |path: &str| -> Option<String> {
         let content = fs::read_to_string(path).ok()?;
@@ -1139,7 +1139,7 @@ pub fn check_ci_gate_lists_match(ctx: &Context) {
             if a_val == b_val {
                 ctx.emit_ok_uncounted(
                     "gate",
-                    "tools/ci/*-affected*.sh",
+                    "tools/ci/*affected*",
                     "identical",
                     "identical",
                     "the deploy gate and the test gate agree on global-impact paths",
@@ -1147,10 +1147,10 @@ pub fn check_ci_gate_lists_match(ctx: &Context) {
             } else {
                 ctx.emit_fail(
                     "gate",
-                    "tools/ci/*-affected*.sh",
+                    "tools/ci/*affected*",
                     "diverged",
                     "identical",
-                    "deploy-affected.sh and affected-targets.sh disagree on the global-impact allowlist, so CI and deploy disagree about what a change can affect",
+                    "deploy-affected.sh and the affected_targets source disagree on the global-impact allowlist, so CI and deploy disagree about what a change can affect",
                     "make the '^tools/(...)' patterns identical in both files",
                 );
             }
@@ -1158,11 +1158,11 @@ pub fn check_ci_gate_lists_match(ctx: &Context) {
         _ => {
             ctx.emit_fail(
                 "gate",
-                "tools/ci/*-affected*.sh",
+                "tools/ci/*affected*",
                 "pattern not found",
                 "one per file",
                 "could not locate the global-impact allowlist in one of the gate scripts - the guard cannot verify them",
-                "check the '^tools/(...)' pattern still exists in both deploy-affected.sh and affected-targets.sh",
+                "check the '^tools/(...)' pattern still exists in both deploy-affected.sh and tools/ci/src/affected_targets/lib.rs",
             );
         }
     }
