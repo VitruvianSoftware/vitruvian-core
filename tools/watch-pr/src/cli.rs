@@ -630,13 +630,14 @@ pub fn run(script: &str, args: &[String]) -> i32 {
                     ));
                     sh::sleep(&interval);
                 } else {
-                    ok(&format!(
-                        "No further workflow runs pending for commit {short}."
+                    // Never green on zero runs: a push to main always starts
+                    // workflows, so none after the grace period means they have
+                    // not registered (or the API is lagging). Keep waiting; the
+                    // deadline above ends the loop with a timeout, not a pass.
+                    warn(&format!(
+                        "No push workflow runs registered for {short} after {post_elapsed}s; still waiting ({elapsed}s elapsed)..."
                     ));
-                    ok(&format!(
-                        "PR #{pr} successfully verified and landed on main! (Total time: {elapsed}s)"
-                    ));
-                    return 0;
+                    sh::sleep(&interval);
                 }
             }
             rc => {
