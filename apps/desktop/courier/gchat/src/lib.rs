@@ -12,6 +12,7 @@ pub mod auth;
 pub mod channel;
 pub mod cookies;
 pub mod ffi;
+pub mod fmt;
 pub mod netguard;
 pub mod pblite;
 pub mod rpc;

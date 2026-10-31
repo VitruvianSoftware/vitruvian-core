@@ -366,4 +366,27 @@ mod tests {
         let public_v6: IpAddr = "2607:f8b0:4005:800::200e".parse().unwrap();
         assert!(guard.validate_ip(public_v6).is_ok());
     }
+
+    #[test]
+    fn test_only_netguard_constructs_reqwest_client() {
+        let non_netguard_sources = [
+            ("lib.rs", include_str!("lib.rs")),
+            ("auth.rs", include_str!("auth.rs")),
+            ("channel.rs", include_str!("channel.rs")),
+            ("cookies.rs", include_str!("cookies.rs")),
+            ("ffi.rs", include_str!("ffi.rs")),
+            ("pblite.rs", include_str!("pblite.rs")),
+            ("rpc.rs", include_str!("rpc.rs")),
+            ("fmt/mod.rs", include_str!("fmt/mod.rs")),
+            ("fmt/inbound.rs", include_str!("fmt/inbound.rs")),
+        ];
+        for (name, src) in non_netguard_sources {
+            assert!(
+                !src.contains("Client::builder(")
+                    && !src.contains("reqwest::Client::new(")
+                    && !src.contains("reqwest::Client::builder("),
+                "{name} must not construct a reqwest::Client; all HTTP requests must go through NetGuard::build_http_client"
+            );
+        }
+    }
 }

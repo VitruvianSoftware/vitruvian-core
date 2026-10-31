@@ -707,10 +707,19 @@ pub unsafe extern "C" fn gchat_annotations_to_html(
             return GChatStatus::GchatErrProtocol;
         }
     };
-    let html = render_message_annotations_to_html(&msg);
+    let converted = crate::fmt::inbound::annotations_to_matrix_html(
+        msg.text_body.as_deref().unwrap_or_default(),
+        &msg.annotations,
+        &msg.attachments,
+    );
+    let legacy_html = render_message_annotations_to_html(&msg);
     let out_json = serde_json::json!({
-        "text": msg.text_body.unwrap_or_default(),
-        "html": html,
+        "body": converted.body,
+        "formatted_body": converted.formatted_body,
+        "mentions": converted.mentions,
+        "mention_all": converted.mention_all,
+        "text": converted.body,
+        "html": legacy_html,
         "annotations_count": msg.annotations.len(),
     });
     write_slice_out(out_result_json, out_json.to_string().into_bytes());
