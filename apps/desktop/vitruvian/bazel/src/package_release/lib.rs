@@ -234,8 +234,11 @@ fn thinned_copy(r: &mut dyn Runner, app: &Path, stage: &Path, arch: &str) -> Res
     run(r, &Cmd::new("ditto").path(app).path(&thin))?;
     let l = bundle_layout(&thin);
     for bin in [&l.main_executable, &l.helper, &l.adapter, &l.mouse_tool] {
-        let info = r.output(&Cmd::new("lipo").arg("-info").path(bin));
-        if info.success() && info.stdout.contains(arch) {
+        // `-archs` prints the archs alone. The script grepped `-info`, whose
+        // output names the file, and its path holds this arch's folder, so
+        // that check always matched.
+        let archs = r.output(&Cmd::new("lipo").arg("-archs").path(bin));
+        if archs.success() && archs.stdout.split_whitespace().any(|a| a == arch) {
             run(
                 r,
                 &Cmd::new("lipo")
@@ -461,6 +464,7 @@ mod tests {
                     "Architectures in the fat file: {} are: x86_64 arm64\n",
                     bin
                 )),
+                ("lipo", ["-archs", _]) => Out::ok("x86_64 arm64\n"),
                 _ => Out::ok(""),
             }
         })
@@ -681,11 +685,21 @@ mod tests {
         let mut r = FakeRunner::new({
             let mut inner = mac(None, None);
             move |c| {
-                if c.program == "lipo"
-                    && c.args[0] == "-info"
-                    && c.args[1].contains("gravastar-mouse")
-                {
-                    return Out::ok("Non-fat file: x is architecture: arm64\n");
+                // As lipo answers for an arm64-only program: `-info` names
+                // the file, whose path holds the arch folder (…/x86_64/…),
+                // so only `-archs` says which archs the program holds.
+                let bin = c.args.last().cloned().unwrap_or_default();
+                if c.program == "lipo" && bin.contains("gravastar-mouse") {
+                    match c.args[0].as_str() {
+                        "-info" => {
+                            return Out::ok(&format!(
+                                "Non-fat file: {} is architecture: arm64\n",
+                                bin
+                            ))
+                        }
+                        "-archs" => return Out::ok("arm64\n"),
+                        _ => {}
+                    }
                 }
                 inner.output(c)
             }

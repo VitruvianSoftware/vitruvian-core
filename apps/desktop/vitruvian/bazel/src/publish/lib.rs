@@ -23,7 +23,7 @@
 //! Break-glass for production, on a Mac: check out the release tag, then
 //!   GRADE=production RELEASE_TAG=vitruvian-vX.Y.Z bazel run //apps/desktop/vitruvian:publish
 
-use release_exec::{capture, make_temp_dir, run, Cmd, Runner, PKG_REL};
+use release_exec::{capture, make_temp_dir, redact, run, Cmd, Runner, PKG_REL};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -289,11 +289,10 @@ fn beta_compare_status(r: &mut dyn Runner, plan: &PublishPlan) -> Result<(String
     } else if tag_ref.stderr.contains("HTTP 404") {
         Ok(("absent".to_string(), String::new()))
     } else {
-        eprintln!(
-            "publish: could not read the tag {}; refusing to publish blind:",
-            plan.tag
-        );
-        eprint!("{}", tag_ref.stderr);
+        r.report(&format!(
+            "publish: could not read the tag {}; refusing to publish blind:\n{}",
+            plan.tag, tag_ref.stderr
+        ));
         Err(1)
     }
 }
@@ -468,8 +467,13 @@ pub fn publish(
             "force=true",
         ]));
         if !moved.success() {
-            eprint!("{}", moved.stderr);
-            return Err(moved.code);
+            // The DMGs are up but the tag still names the old commit; notes
+            // naming this commit would then lie, so stop here and say so.
+            r.report(&format!(
+                "publish: could not move {} to {}; the release notes are left as they were:\n{}",
+                plan.tag, plan.sha, moved.stderr
+            ));
+            return Err(if moved.code == 0 { 1 } else { moved.code });
         }
         let built = capture(r, &Cmd::new("date").args(["-u", "+%Y-%m-%dT%H:%M:%SZ"]))?;
         run(
@@ -551,6 +555,28 @@ fn update_tap(r: &mut dyn Runner, work: &Path, version: &str, token: &str) -> Re
     Ok(())
 }
 
+/// What `--dry-run` prints: the plan, never a secret in it.
+pub fn dry_run_lines(plan: &PublishPlan) -> Vec<String> {
+    let mut lines = vec![
+        format!(
+            "=== vitruvian publish (dry run): grade={} version={} tag={} commit={} ===",
+            plan.grade.as_str(),
+            plan.version,
+            plan.tag,
+            plan.sha
+        ),
+        format!(
+            "dry-run: bazel build {} //{}:Vitruvian",
+            redact(&plan.bazel_flags.join(" ")),
+            PKG_REL
+        ),
+    ];
+    for (src, dst) in &plan.staged_assets {
+        lines.push(format!("dry-run: upload dist/{} as {}", src, dst));
+    }
+    lines
+}
+
 pub fn run_cli(args: &[String]) -> i32 {
     let root = release_exec::workspace_root();
     if let Err(e) = std::env::set_current_dir(&root) {
@@ -587,20 +613,8 @@ pub fn run_cli(args: &[String]) -> i32 {
     };
 
     if plan.dry_run {
-        println!(
-            "=== vitruvian publish (dry run): grade={} version={} tag={} commit={} ===",
-            plan.grade.as_str(),
-            plan.version,
-            plan.tag,
-            plan.sha
-        );
-        println!(
-            "dry-run: bazel build {} //{}:Vitruvian",
-            plan.bazel_flags.join(" "),
-            PKG_REL
-        );
-        for (src, dst) in &plan.staged_assets {
-            println!("dry-run: upload dist/{} as {}", src, dst);
+        for line in dry_run_lines(&plan) {
+            println!("{}", line);
         }
         return 0;
     }
@@ -836,6 +850,10 @@ mod tests {
         tag: Result<String, String>,
         annotated_commit: String,
         compare: String,
+        /// The compare call fails with this stderr.
+        compare_error: Option<String>,
+        /// The rolling tag's PATCH fails with this code and stderr.
+        patch_error: Option<(i32, String)>,
         release_exists: bool,
         tap_has_it: bool,
     }
@@ -852,8 +870,15 @@ mod tests {
                     Out::ok(&format!("{}\n", w.annotated_commit))
                 }
                 ("gh", ["api", path, "--jq", ".status"]) if path.contains("/compare/") => {
-                    Out::ok(&format!("{}\n", w.compare))
+                    match &w.compare_error {
+                        Some(e) => Out::fail(1, e),
+                        None => Out::ok(&format!("{}\n", w.compare)),
+                    }
                 }
+                ("gh", ["api", "-X", "PATCH", ..]) => match &w.patch_error {
+                    Some((code, e)) => Out::fail(*code, e),
+                    None => Out::ok(""),
+                },
                 ("gh", ["release", "view", _]) => {
                     if w.release_exists {
                         Out::ok("")
@@ -888,6 +913,8 @@ mod tests {
             tag: tag.map(String::from).map_err(String::from),
             annotated_commit: String::new(),
             compare: compare.into(),
+            compare_error: None,
+            patch_error: None,
             release_exists: true,
             tap_has_it: false,
         }
@@ -1058,6 +1085,72 @@ mod tests {
         let mut r = world_runner(beta_world(Err("gh: Bad credentials (HTTP 401)"), ""));
         assert_eq!(go(&s, &mut r, &beta_plan()), Err(1));
         assert_eq!(r.calls.len(), 1);
+        assert!(
+            r.stderr.contains("gh: Bad credentials (HTTP 401)"),
+            "{:?}",
+            r.stderr
+        );
+    }
+
+    #[test]
+    fn a_compare_that_fails_says_why_and_refuses_before_any_write() {
+        let s = scene("publish_beta_compare_fails");
+        let mut w = beta_world(Ok(&format!("commit {}", TAG_SHA)), "");
+        w.compare_error = Some("gh: API rate limit exceeded for installation (HTTP 403)\n".into());
+        let mut r = world_runner(w);
+        assert_eq!(go(&s, &mut r, &beta_plan()), Err(1));
+        assert_eq!(first_write(&r), None);
+        assert!(
+            r.stderr
+                .contains("gh: API rate limit exceeded for installation (HTTP 403)"),
+            "gh's own error reaches the log: {:?}",
+            r.stderr
+        );
+        assert!(
+            r.stderr.contains("/compare/"),
+            "and names the call: {:?}",
+            r.stderr
+        );
+    }
+
+    #[test]
+    fn a_rolling_tag_that_will_not_move_fails_the_run_before_the_notes() {
+        let s = scene("publish_beta_patch_fails");
+        let mut w = beta_world(Ok(&format!("commit {}", TAG_SHA)), "ahead");
+        w.patch_error = Some((22, "gh: Reference update failed (HTTP 422)\n".into()));
+        let mut r = world_runner(w);
+        assert_eq!(go(&s, &mut r, &beta_plan()), Err(22));
+        assert_eq!(r.count("gh api -X PATCH"), 1);
+        assert_eq!(r.count("date"), 0);
+        assert_eq!(
+            r.count("gh release edit"),
+            0,
+            "no notes naming a commit the tag does not point at"
+        );
+        assert!(
+            r.stderr.contains("Reference update failed"),
+            "{:?}",
+            r.stderr
+        );
+    }
+
+    #[test]
+    fn dry_run_never_prints_the_buildbuddy_key() {
+        let plan = resolve_publish_plan(
+            &["--dry-run".to_string()],
+            &env(&[("BUILDBUDDY_API_KEY", "bb_SECRET_value")]),
+            "3.86.0",
+            SHA,
+        )
+        .unwrap();
+        let out = dry_run_lines(&plan).join("\n");
+        assert!(!out.contains("bb_SECRET_value"), "{}", out);
+        assert!(
+            out.contains("--config=remotecache-ci --remote_header=x-buildbuddy-api-key=<redacted> //apps/desktop/vitruvian:Vitruvian"),
+            "{}",
+            out
+        );
+        assert!(out.contains("dry-run: upload dist/Vitruvian-3.86.0.dmg as Vitruvian-beta.dmg"));
     }
 
     #[test]

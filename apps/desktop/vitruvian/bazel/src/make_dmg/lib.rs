@@ -909,6 +909,40 @@ mod tests {
     }
 
     #[test]
+    fn finder_gets_25_seconds_to_style_the_window() {
+        let s = scene("make_dmg_style_limit");
+        let (mut r, _) = mac_runner(&s, Mac::default());
+        make_dmg(&mut r, &s.req).unwrap();
+        assert_eq!(
+            r.limits,
+            vec![("osascript".to_string(), Duration::from_secs(25))]
+        );
+    }
+
+    #[test]
+    fn a_failed_attach_says_why() {
+        let s = scene("make_dmg_attach_fails");
+        let (inner, _) = mac_runner(&s, Mac::default());
+        let inner = Rc::new(RefCell::new(inner));
+        let inner_dirs = inner.clone();
+        let r = FakeRunner::new(move |c| {
+            if c.program == "hdiutil" && c.args.first().map(String::as_str) == Some("attach") {
+                return Out::fail(1, "hdiutil: attach failed - no mountable file systems\n");
+            }
+            inner.borrow_mut().output(c)
+        });
+        let mut r = r.with_dirs(move |p| inner_dirs.borrow_mut().is_dir(p));
+        assert_eq!(make_dmg(&mut r, &s.req), Err(1));
+        assert!(
+            r.stderr
+                .contains("hdiutil: attach failed - no mountable file systems"),
+            "hdiutil's own error reaches the log: {:?}",
+            r.stderr
+        );
+        assert!(r.stderr.contains("hdiutil attach "), "{:?}", r.stderr);
+    }
+
+    #[test]
     fn without_an_identity_the_image_stays_unsigned_and_developer_id_overrides_the_keychain() {
         let s = scene("make_dmg_unsigned");
         let (mut r, _) = mac_runner(&s, Mac::default());

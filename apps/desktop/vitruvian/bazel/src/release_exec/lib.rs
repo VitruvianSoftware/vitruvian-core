@@ -108,8 +108,8 @@ impl Out {
 
 pub trait Runner {
     /// Runs with the terminal's output, as a shell script's plain command
-    /// does, and returns its exit code (127 when it cannot start, 1 when a
-    /// signal ended it).
+    /// does, and returns its exit code (127 when it cannot start, 128+N
+    /// when signal N ended it).
     fn status(&mut self, cmd: &Cmd) -> i32;
     /// Runs and captures what it prints.
     fn output(&mut self, cmd: &Cmd) -> Out;
@@ -120,6 +120,11 @@ pub trait Runner {
     /// Whether `path` is a folder (a mount point, for make_dmg).
     fn is_dir(&mut self, path: &Path) -> bool {
         path.is_dir()
+    }
+    /// Writes `text` to the tool's stderr: where a captured command's own
+    /// error goes when it fails, as a script let it through to the log.
+    fn report(&mut self, text: &str) {
+        eprint!("{}", text);
     }
 }
 
@@ -148,8 +153,20 @@ impl SystemRunner {
     }
 }
 
+/// The exit code a shell would report: the program's own, or 128+N when
+/// signal N ended it.
 fn exit_code(status: std::process::ExitStatus) -> i32 {
-    status.code().unwrap_or(1)
+    if let Some(code) = status.code() {
+        return code;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        if let Some(sig) = status.signal() {
+            return 128 + sig;
+        }
+    }
+    1
 }
 
 fn feed(child: &mut std::process::Child, input: &Option<Vec<u8>>) {
@@ -247,6 +264,10 @@ pub struct FakeRunner {
     pub calls: Vec<String>,
     pub cmds: Vec<Cmd>,
     pub slept: Duration,
+    /// Each command run with a time limit, and the limit it was given.
+    pub limits: Vec<(String, Duration)>,
+    /// What the tool wrote through [`Runner::report`].
+    pub stderr: String,
     respond: Responder,
     dir_check: Option<DirCheck>,
 }
@@ -259,6 +280,8 @@ impl FakeRunner {
             calls: Vec::new(),
             cmds: Vec::new(),
             slept: Duration::ZERO,
+            limits: Vec::new(),
+            stderr: String::new(),
             respond: Box::new(respond),
             dir_check: None,
         }
@@ -300,7 +323,8 @@ impl Runner for FakeRunner {
         self.answer(cmd)
     }
 
-    fn status_within(&mut self, cmd: &Cmd, _limit: Duration) -> Option<i32> {
+    fn status_within(&mut self, cmd: &Cmd, limit: Duration) -> Option<i32> {
+        self.limits.push((cmd.line(), limit));
         let code = self.answer(cmd).code;
         if code == FakeRunner::TIMED_OUT {
             None
@@ -319,6 +343,10 @@ impl Runner for FakeRunner {
             None => path.is_dir(),
         }
     }
+
+    fn report(&mut self, text: &str) {
+        self.stderr.push_str(text);
+    }
 }
 
 /// Runs `cmd` with the terminal's output; a failure is its exit code, as
@@ -330,14 +358,82 @@ pub fn run(r: &mut dyn Runner, cmd: &Cmd) -> Result<(), i32> {
     }
 }
 
-/// Runs `cmd` captured; a failure is its exit code.
+/// Runs `cmd` captured; a failure is its exit code. A failure also writes
+/// which command failed and what it printed to stderr, so the log says why
+/// (a script's `$(…)` let that stderr through).
 pub fn capture(r: &mut dyn Runner, cmd: &Cmd) -> Result<String, i32> {
     let out = r.output(cmd);
     if out.success() {
-        Ok(out.stdout)
-    } else {
-        Err(if out.code == 0 { 1 } else { out.code })
+        return Ok(out.stdout);
     }
+    let code = if out.code == 0 { 1 } else { out.code };
+    let mut text = format!("✗ `{}` failed (exit {})\n", redact(&cmd.line()), code);
+    text.push_str(&out.stderr);
+    if !out.stderr.is_empty() && !out.stderr.ends_with('\n') {
+        text.push('\n');
+    }
+    r.report(&text);
+    Err(code)
+}
+
+/// Words that make a `NAME=value` look like a secret.
+const SECRET_WORDS: [&str; 6] = ["key", "token", "secret", "password", "passwd", "credential"];
+
+/// Flags whose next argument is a secret, for any program.
+const SECRET_FLAGS: [&str; 4] = ["--password", "--token", "--secret", "--api-key"];
+/// `security`'s password flags (`-p` keychain, `-k` keychain, `-P` p12).
+/// Only for `security`: `ditto -k` means something else.
+const SECURITY_SECRET_FLAGS: [&str; 3] = ["-p", "-k", "-P"];
+
+/// `line` with anything that looks like a secret replaced by `<redacted>`:
+/// the value of any `NAME=value` whose name holds a secret word (the first
+/// such `=` wins, so `--remote_header=x-buildbuddy-api-key=V` hides `V`),
+/// the password in a URL's `user:password@`, and the argument after a
+/// password flag.
+pub fn redact(line: &str) -> String {
+    let words: Vec<&str> = line.split(' ').collect();
+    let is_security = words
+        .first()
+        .map(|p| *p == "security" || p.ends_with("/security"))
+        .unwrap_or(false);
+    let mut out = Vec::with_capacity(words.len());
+    let mut hide_next = false;
+    for w in words {
+        if hide_next {
+            out.push("<redacted>".to_string());
+            hide_next = false;
+            continue;
+        }
+        hide_next =
+            SECRET_FLAGS.contains(&w) || (is_security && SECURITY_SECRET_FLAGS.contains(&w));
+        out.push(redact_word(w));
+    }
+    out.join(" ")
+}
+
+fn redact_word(word: &str) -> String {
+    if let Some(scheme_end) = word.find("://") {
+        let rest = &word[scheme_end + 3..];
+        let host_end = rest.find('/').unwrap_or(rest.len());
+        if let Some(at) = rest[..host_end].rfind('@') {
+            if let Some(colon) = rest[..at].find(':') {
+                return format!(
+                    "{}{}:<redacted>{}",
+                    &word[..scheme_end + 3],
+                    &rest[..colon],
+                    &rest[at..]
+                );
+            }
+        }
+        return word.to_string();
+    }
+    for (i, _) in word.match_indices('=') {
+        let name = word[..i].to_ascii_lowercase();
+        if SECRET_WORDS.iter().any(|w| name.contains(w)) {
+            return format!("{}=<redacted>", &word[..i]);
+        }
+    }
+    word.to_string()
 }
 
 /// A new private (0700) folder under `parent`, like `mktemp -d`.
@@ -547,6 +643,155 @@ mod tests {
         assert_eq!(capture(&mut r, &Cmd::new("good")).unwrap(), "yes\n");
         assert_eq!(capture(&mut r, &Cmd::new("bad")), Err(3));
         assert_eq!(r.calls, vec!["good", "bad"]);
+    }
+
+    #[test]
+    fn a_failed_capture_reports_which_command_and_its_stderr() {
+        let mut r = FakeRunner::new(|_| Out::fail(1, "gh: API rate limit exceeded (HTTP 403)\n"));
+        assert_eq!(
+            capture(
+                &mut r,
+                &Cmd::new("gh").args(["api", "repos/x/y/compare/a...b"])
+            ),
+            Err(1)
+        );
+        assert!(
+            r.stderr.contains("gh api repos/x/y/compare/a...b"),
+            "names the command: {:?}",
+            r.stderr
+        );
+        assert!(
+            r.stderr.contains("gh: API rate limit exceeded (HTTP 403)"),
+            "passes its stderr through: {:?}",
+            r.stderr
+        );
+        // A success prints nothing of its own.
+        let mut ok = FakeRunner::succeeding();
+        capture(&mut ok, &Cmd::new("true")).unwrap();
+        assert_eq!(ok.stderr, "");
+    }
+
+    #[test]
+    fn a_failed_capture_never_reports_a_secret_on_its_command_line() {
+        let mut r = FakeRunner::new(|_| Out::fail(2, "boom\n"));
+        let _ = capture(
+            &mut r,
+            &Cmd::new("bazel").args([
+                "cquery",
+                "--remote_header=x-buildbuddy-api-key=bb_SECRET",
+                "//a:b",
+            ]),
+        );
+        assert!(!r.stderr.contains("bb_SECRET"), "{:?}", r.stderr);
+        assert!(
+            r.stderr.contains("x-buildbuddy-api-key=<redacted>"),
+            "{:?}",
+            r.stderr
+        );
+    }
+
+    #[test]
+    fn redact_hides_keys_tokens_passwords_and_url_credentials() {
+        assert_eq!(
+            redact("bazel build --remote_header=x-buildbuddy-api-key=abc= //x"),
+            "bazel build --remote_header=x-buildbuddy-api-key=<redacted> //x"
+        );
+        assert_eq!(
+            redact("git clone https://x-access-token:ghs_abc@github.com/o/r.git dir"),
+            "git clone https://x-access-token:<redacted>@github.com/o/r.git dir"
+        );
+        assert_eq!(
+            redact("TOKEN=t1 PASSWORD=p2 SECRET=s3"),
+            "TOKEN=<redacted> PASSWORD=<redacted> SECRET=<redacted>"
+        );
+        assert_eq!(
+            redact("security set-key-partition-list -S apple: -s -k kcpass /tmp/k.keychain"),
+            "security set-key-partition-list -S apple: -s -k <redacted> /tmp/k.keychain"
+        );
+        assert_eq!(
+            redact("security import c.p12 -k k -P p12pass -T /usr/bin/codesign"),
+            "security import c.p12 -k <redacted> -P <redacted> -T /usr/bin/codesign"
+        );
+        assert_eq!(
+            redact("tool --password hunter2 x"),
+            "tool --password <redacted> x"
+        );
+        // Ordinary flags and assignments are left alone.
+        assert_eq!(
+            redact("ditto -c -k --keepParent a b"),
+            "ditto -c -k --keepParent a b"
+        );
+        assert_eq!(
+            redact("gh api -X PATCH repos/o/r/git/refs/tags/t -f sha=abc -F force=true --config=macos-app"),
+            "gh api -X PATCH repos/o/r/git/refs/tags/t -f sha=abc -F force=true --config=macos-app"
+        );
+    }
+
+    #[test]
+    fn a_command_killed_by_a_signal_reports_128_plus_the_signal_as_a_shell_does() {
+        let mut r = SystemRunner::new();
+        let killed = Cmd::new("sh").args(["-c", "kill -TERM $$"]);
+        assert_eq!(r.status(&killed), 128 + 15);
+        assert_eq!(r.output(&killed).code, 128 + 15);
+        assert_eq!(
+            r.status_within(&killed, Duration::from_secs(10)),
+            Some(128 + 15)
+        );
+    }
+
+    #[test]
+    fn a_timed_out_command_that_ignores_term_is_killed_and_reaped() {
+        let root = make_temp_dir(&std::env::temp_dir(), "release_exec_hung").unwrap();
+        let _guard = TempDir(root.clone());
+        let pidfile = root.join("pid");
+        // A child that shrugs off TERM, as a hung osascript can.
+        let script = format!(
+            "trap '' TERM; echo $$ > '{}'; while :; do sleep 1; done",
+            pidfile.display()
+        );
+        let (tx, rx) = std::sync::mpsc::channel();
+        thread::spawn(move || {
+            let mut r = SystemRunner::new();
+            let _ = tx.send(r.status_within(
+                &Cmd::new("sh").args(["-c", &script]),
+                Duration::from_secs(1),
+            ));
+        });
+        let result = rx.recv_timeout(Duration::from_secs(15));
+        let pid = fs::read_to_string(&pidfile).expect("the child wrote its pid");
+        let pid = pid.trim().to_string();
+        if result.is_err() {
+            // Don't leave the loop running after a failed test.
+            let _ = Command::new("sh")
+                .args(["-c", &format!("kill -KILL {}", pid)])
+                .status();
+            panic!("status_within never returned: the child that ignores TERM was not killed");
+        }
+        assert_eq!(result.unwrap(), None, "reported as timed out");
+        let pid = pid.as_str();
+        // `kill -0` succeeds for a live process and for an unreaped zombie
+        // alike, so it fails only once the child is dead and waited for.
+        let alive = Command::new("sh")
+            .args(["-c", &format!("kill -0 {} 2>/dev/null", pid)])
+            .status()
+            .unwrap()
+            .success();
+        if alive {
+            let _ = Command::new("sh")
+                .args(["-c", &format!("kill -KILL {}", pid)])
+                .status();
+            panic!("pid {} is still there after the timeout", pid);
+        }
+    }
+
+    #[test]
+    fn the_fake_runner_records_each_time_limit() {
+        let mut r = FakeRunner::succeeding();
+        r.status_within(&Cmd::new("osascript"), Duration::from_secs(25));
+        assert_eq!(
+            r.limits,
+            vec![("osascript".to_string(), Duration::from_secs(25))]
+        );
     }
 
     #[test]
