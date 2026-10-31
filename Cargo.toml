@@ -20,9 +20,11 @@
 
 [workspace]
 resolver = "2"
-# The Rust in this repository: the Vitruvian SDK's Rust kit and its sample.
+# The Rust in this repository: the Vitruvian SDK's Rust kit and its samples,
+# and the crates gods-eye-view's Rust tools use.
 # The crate universe in MODULE.bazel (@crates) is read from this workspace.
 members = [
+    "apps/web/gods-eye-view/scripts",
     "packages/vitruvian-sdk/kits/rust",
     "packages/vitruvian-sdk/samples/hello-panel-rust",
     "packages/vitruvian-sdk/samples/hello-rust",
