@@ -143,6 +143,30 @@ pub fn curl_config(req: &HttpRequest) -> Result<String, String> {
     Ok(cfg)
 }
 
+/// The arguments [`CurlFetcher`] runs curl with; the request itself goes in on
+/// stdin as a config file (`-K -`), so the API key never reaches the process
+/// list. `-q` has to be the first argument: it stops curl reading the user's
+/// ~/.curlrc, where a `verbose` line would print the request, key included,
+/// into the error we surface. `--proto`/`--proto-redir` keep every request and
+/// redirect on HTTPS.
+pub const CURL_ARGS: &[&str] = &[
+    "-q",
+    "--proto",
+    "=https",
+    "--proto-redir",
+    "=https",
+    "-sS",
+    "-L",
+    "--max-time",
+    "120",
+    "-o",
+    "-",
+    "-w",
+    "\n%{http_code}",
+    "-K",
+    "-",
+];
+
 /// Split curl's `--write-out "\n%{http_code}"` trailer off a binary body.
 pub fn split_curl_output(stdout: &[u8]) -> Result<HttpResponse, String> {
     let nl = stdout
@@ -166,18 +190,7 @@ impl Fetcher for CurlFetcher {
     fn fetch(&self, req: &HttpRequest) -> Result<HttpResponse, String> {
         let cfg = curl_config(req)?;
         let mut child = Command::new("curl")
-            .args([
-                "-sS",
-                "-L",
-                "--max-time",
-                "120",
-                "-o",
-                "-",
-                "-w",
-                "\n%{http_code}",
-                "-K",
-                "-",
-            ])
+            .args(CURL_ARGS)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -678,6 +691,19 @@ mod tests {
         assert_eq!(res.status, 404);
         assert_eq!(res.body, vec![0xFF, b'\n', 0x00, 0x10]);
         assert!(split_curl_output(b"\n000").is_err());
+    }
+
+    /// `-q` must come first or curl reads the user's ~/.curlrc, where a
+    /// `verbose` line would print the request, API key included, into the
+    /// error we surface. Every fetch is HTTPS, redirects included.
+    #[test]
+    fn curl_ignores_curlrc_and_stays_on_https() {
+        assert_eq!(CURL_ARGS[0], "-q");
+        assert_eq!(CURL_ARGS.iter().filter(|a| **a == "-q").count(), 1);
+        let pair = |flag: &str| CURL_ARGS.windows(2).any(|w| w[0] == flag && w[1] == "=https");
+        assert!(pair("--proto"), "{:?}", CURL_ARGS);
+        assert!(pair("--proto-redir"), "{:?}", CURL_ARGS);
+        assert!(CURL_ARGS.ends_with(&["-K", "-"]));
     }
 
     #[test]

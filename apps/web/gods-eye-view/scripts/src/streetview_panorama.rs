@@ -699,6 +699,22 @@ mod tests {
     }
 
     #[test]
+    fn a_non_default_radius_reaches_every_pano_search() {
+        let ctx = test_context("streetview_panorama_radius", &[("GOOGLE_MAPS_API_KEY", "K")]);
+        let fetcher = google_fetcher();
+        let opts = parse_args(&args(&["--lat", "30.268066", "--lon", "-97.742813", "--zoom", "0", "--radius", "120"])).unwrap();
+        assert_eq!(opts.radius, 120);
+        execute(&opts, &ctx, &fetcher).unwrap();
+        let radii: Vec<serde_json::Value> = fetcher
+            .calls()
+            .iter()
+            .filter(|c| c.url.contains("/panoIds"))
+            .map(|c| serde_json::from_slice::<serde_json::Value>(c.body.as_ref().unwrap()).unwrap()["radius"].clone())
+            .collect();
+        assert_eq!(radii, [serde_json::json!(120), serde_json::json!(120)]);
+    }
+
+    #[test]
     fn falls_back_to_a_contributor_pano_and_fails_without_any() {
         let ctx = test_context("streetview_panorama_fallback", &[]);
         let contributor = MockFetcher::new(|req: &HttpRequest| {

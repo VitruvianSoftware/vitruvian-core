@@ -337,10 +337,14 @@ pub fn parse_neighbor_locations(jsonp_text: &str, max_dist_m: f64) -> Result<Vec
 }
 
 /// Deduplicates candidate neighbor panoramas against the origin and previously seen `pano_id`s.
+/// Keeps the first neighbour per panorama, at its snapped location. A new
+/// panorama whose metadata has no location is an error, as it was in the JS
+/// tool (which threw reading `meta.location.lat`); duplicates are skipped
+/// before their location is read.
 pub fn deduplicate_neighbors(
     origin_pano_id: Option<&str>,
     candidates: &[(NeighborLocation, StreetViewMetadata)],
-) -> Vec<NeighborLocation> {
+) -> Result<Vec<NeighborLocation>, String> {
     let mut seen_panos: HashSet<String> = HashSet::new();
     if let Some(origin_id) = origin_pano_id {
         if !origin_id.is_empty() {
@@ -357,6 +361,9 @@ pub fn deduplicate_neighbors(
         if seen_panos.contains(pid) {
             continue;
         }
+        if !meta.lat.is_finite() || !meta.lng.is_finite() {
+            return Err(format!("Street View metadata for pano {} has no location", pid));
+        }
         seen_panos.insert(pid.to_string());
         unique.push(NeighborLocation {
             lat: meta.lat,
@@ -365,7 +372,7 @@ pub fn deduplicate_neighbors(
             dist: neighbor.dist,
         });
     }
-    unique
+    Ok(unique)
 }
 
 pub fn streetview_static_url(
@@ -514,7 +521,7 @@ pub fn execute(
                 };
                 candidates.push((n.clone(), snapped));
             }
-            let unique = deduplicate_neighbors(origin_pano.as_deref(), &candidates);
+            let unique = deduplicate_neighbors(origin_pano.as_deref(), &candidates)?;
 
             println!("  Unique neighbors: {}", unique.len());
             for n in &unique {
@@ -682,6 +689,55 @@ mod tests {
                 "https://maps.googleapis.com/maps/api/streetview/metadata?location=30.26799,-97.742813&source=outdoor&key=srv",
             ]
         );
+    }
+
+    /// The JS tool stopped with an error when a new neighbour's metadata had a
+    /// pano id but no location; it must not go on to request `location=NaN,NaN`.
+    /// A duplicate pano is skipped before its location is read, as in the JS.
+    #[test]
+    fn a_new_neighbour_pano_without_a_location_is_an_error() {
+        let ctx = test_context("streetview_headings_no_location", &[("GOOGLE_MAPS_SERVER_API_KEY", "srv")]);
+        let fetcher = MockFetcher::new(|req: &HttpRequest| {
+            let u = &req.url;
+            if u.contains("GeoPhotoService.SingleImageSearch") {
+                return ok_response(jsonp());
+            }
+            if u.contains("/streetview/metadata?location=30.268066,-97.742813&") {
+                return ok_response(r#"{"status":"OK","pano_id":"P0","location":{"lat":30.268066,"lng":-97.742813}}"#);
+            }
+            if u.contains("/streetview/metadata?location=30.26814,-97.742813&") {
+                return ok_response(r#"{"status":"OK","pano_id":"P1"}"#);
+            }
+            if u.contains("/streetview/metadata?location=30.26799,-97.742813&") {
+                return ok_response(r#"{"status":"OK","pano_id":"P0"}"#);
+            }
+            ok_response("JPEG")
+        });
+        let opts = parse_args(
+            &["--lat", "30.268066", "--lon", "-97.742813", "--step", "90", "--neighbors"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+        )
+        .unwrap();
+        let err = execute(&opts, &ctx, &fetcher).unwrap_err();
+        assert!(err.contains("P1") && err.contains("no location"), "{}", err);
+        assert!(fetcher.calls().iter().all(|c| !c.url.contains("NaN")));
+
+        // Only the duplicate lacks a location: it is skipped, not an error.
+        let candidates = vec![
+            (
+                NeighborLocation { lat: 1.0, lon: 2.0, street: None, dist: 8.0 },
+                StreetViewMetadata { pano_id: Some("P0".into()), lat: f64::NAN, lng: f64::NAN },
+            ),
+            (
+                NeighborLocation { lat: 3.0, lon: 4.0, street: None, dist: 8.0 },
+                StreetViewMetadata { pano_id: Some("P2".into()), lat: 3.5, lng: 4.5 },
+            ),
+        ];
+        let unique = deduplicate_neighbors(Some("P0"), &candidates).unwrap();
+        assert_eq!(unique.len(), 1);
+        assert_eq!((unique[0].lat, unique[0].lon), (3.5, 4.5));
     }
 
     #[test]

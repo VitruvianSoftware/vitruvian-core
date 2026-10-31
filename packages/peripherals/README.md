@@ -27,7 +27,8 @@ Pick one; each gives you the same `gravastar-mouse` command.
   `xattr -d com.apple.quarantine gravastar-mouse` before macOS runs it.
 - **From source:** see "Wiring a notification source" below.
 
-`publish.sh` builds and uploads these: the generated
+`bazel run //packages/peripherals:publish` builds and uploads these (a Rust
+program in `scripts/src/`): the generated
 `.github/workflows/delivery-gravastar-mouse.yaml` runs it for every push to
 `main` (beta) and every release (production), and a release also updates
 `Formula/gravastar-mouse.rb` in `VitruvianSoftware/homebrew-tap`, pushed with a
