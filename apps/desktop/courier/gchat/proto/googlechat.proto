@@ -1439,14 +1439,16 @@ message StreamEventsRequest {
 }
 
 message WebChannelEvent {
+	optional Event event = 1;
+	optional string sample_id = 2;
+	optional ClockSyncResponse clock_sync_response = 3;
 	optional Platform platform = 4;
 	optional ClientInfo client_info = 5;
 	optional int64 client_session_id = 6;
-	optional string sample_id = 1;
 	repeated string sample_ids = 7;
-	optional PingEvent ping_event = 2;
-	optional ClockSyncRequest clock_sync_request = 3;
 	optional GroupSubscriptionEvent group_subscription_event = 8;
+	optional PingEvent ping_event = 9;
+	optional ClockSyncRequest clock_sync_request = 10;
 	optional int64 test_user_gaia_id = 100;
 }
 

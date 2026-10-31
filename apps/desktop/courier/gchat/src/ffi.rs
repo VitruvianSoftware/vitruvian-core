@@ -120,7 +120,7 @@ fn status_from_error(err: &GChatError) -> GChatStatus {
         }
         GChatError::HttpStatus(_, _) | GChatError::Network(_) => GChatStatus::GchatErrTransient,
         GChatError::SsrfBlocked(_) => GChatStatus::GchatErrSsrfBlocked,
-        GChatError::Proto(_) => GChatStatus::GchatErrProtocol,
+        GChatError::Proto(_) | GChatError::Protocol(_) => GChatStatus::GchatErrProtocol,
         GChatError::Internal(_) => GChatStatus::GchatErrInternal,
     }
 }

@@ -12,12 +12,15 @@ pub mod auth;
 pub mod cookies;
 pub mod ffi;
 pub mod netguard;
+pub mod pblite;
 pub mod rpc;
 
 pub mod pb {
     #![allow(clippy::all, dead_code, non_camel_case_types, non_snake_case)]
     include!(concat!(env!("OUT_DIR"), "/googlechat.rs"));
 }
+
+pub use pb as googlechat;
 
 use once_cell::sync::Lazy as LazyLock;
 use prost_reflect::DescriptorPool;
@@ -46,6 +49,8 @@ pub enum GChatError {
     Network(String),
     #[error("protobuf error: {0}")]
     Proto(String),
+    #[error("protocol error: {0}")]
+    Protocol(String),
     #[error("internal error: {0}")]
     Internal(String),
 }
