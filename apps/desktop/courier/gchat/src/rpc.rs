@@ -20,25 +20,6 @@ pub const CLIENT_VERSION: i64 = 2440378181258;
 pub const MAX_RPC_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
 const MAX_ERR_BODY_BYTES: usize = 256;
 
-pub const SUPPORTED_CAPABILITIES: &[(i32, i32)] = &[
-    (
-        4,
-        pb::client_feature_capabilities::CapabilityLevel::FullySupported as i32,
-    ),
-    (
-        5,
-        pb::client_feature_capabilities::CapabilityLevel::FullySupported as i32,
-    ),
-    (
-        6,
-        pb::client_feature_capabilities::CapabilityLevel::FullySupported as i32,
-    ),
-    (
-        7,
-        pb::client_feature_capabilities::CapabilityLevel::FullySupported as i32,
-    ),
-];
-
 pub fn build_request_header() -> pb::RequestHeader {
     let trace_id = TRACE_COUNTER.fetch_add(1, Ordering::Relaxed);
     let full = pb::client_feature_capabilities::CapabilityLevel::FullySupported as i32;

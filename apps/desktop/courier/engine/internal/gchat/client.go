@@ -16,6 +16,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2/simplevent"
 	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/event"
+
+	"github.com/VitruvianSoftware/courier/engine/internal/gchat/pb"
 )
 
 type streamNotification struct {
@@ -394,47 +396,32 @@ func (c *Client) GetUserInfo(ctx context.Context, ghost *bridgev2.Ghost) (*bridg
 	}
 	var avatarURL string
 	if gaiaID := strings.TrimSpace(string(ghost.ID)); gaiaID != "" {
-		userIDProto := protoEncodeBytesField(1, []byte(gaiaID))
-		userIDProto = append(userIDProto, protoEncodeVarintField(2, 0)...)
-		memberIDProto := protoEncodeBytesField(1, userIDProto)
-		req := protoEncodeBytesField(2, memberIDProto)
-		if respBytes, rpcErr := c.rpcCall(ctx, "get_members", req); rpcErr == nil && len(respBytes) > 0 {
-			extractUser := func(memberBytes []byte) {
-				protoIterFields(memberBytes, func(mf protoField) {
-					if mf.num == 1 && mf.wireType == 2 { // Member.user (User)
-						protoIterFields(mf.bytes, func(uf protoField) {
-							if uf.wireType != 2 {
-								return
-							}
-							switch uf.num {
-							case 2: // User.name
-								if s := strings.TrimSpace(string(uf.bytes)); s != "" {
-									name = s
-								}
-							case 3: // User.avatar_url
-								if s := strings.TrimSpace(string(uf.bytes)); s != "" {
-									avatarURL = s
-								}
-							}
-						})
-					}
-				})
-			}
-			protoIterFields(respBytes, func(f protoField) {
-				if f.wireType != 2 {
-					return
-				}
-				switch f.num {
-				case 1: // GetMembersResponse.members
-					extractUser(f.bytes)
-				case 2: // GetMembersResponse.member_profiles
-					protoIterFields(f.bytes, func(mpf protoField) {
-						if mpf.num == 2 && mpf.wireType == 2 { // MemberProfile.member
-							extractUser(mpf.bytes)
+		reqBytes, err := pb.Marshal(&pb.GetMembersRequest{
+			MemberIds: []*pb.MemberId{pb.UserMemberID(gaiaID)},
+		})
+		if err == nil {
+			if respBytes, rpcErr := c.rpcCall(ctx, "get_members", reqBytes); rpcErr == nil && len(respBytes) > 0 {
+				var resp pb.GetMembersResponse
+				if pb.Unmarshal(respBytes, &resp) == nil {
+					applyUser := func(u *pb.User) {
+						if u == nil {
+							return
 						}
-					})
+						if s := strings.TrimSpace(u.GetName()); s != "" {
+							name = s
+						}
+						if s := strings.TrimSpace(u.GetAvatarUrl()); s != "" {
+							avatarURL = s
+						}
+					}
+					for _, m := range resp.GetMembers() {
+						applyUser(m.GetUser())
+					}
+					for _, mp := range resp.GetMemberProfiles() {
+						applyUser(mp.GetMember().GetUser())
+					}
 				}
-			})
+			}
 		}
 	}
 	info := &bridgev2.UserInfo{

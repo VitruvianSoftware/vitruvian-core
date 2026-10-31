@@ -4,10 +4,13 @@
 package gchat
 
 import (
+	"bufio"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -28,57 +31,38 @@ import (
 	"maunium.net/go/mautrix/bridgev2/status"
 	"maunium.net/go/mautrix/event"
 
+	"github.com/VitruvianSoftware/courier/engine/internal/actions"
+	"github.com/VitruvianSoftware/courier/engine/internal/engine"
+	"github.com/VitruvianSoftware/courier/engine/internal/gchat/pb"
 	"github.com/VitruvianSoftware/courier/engine/internal/host"
 	"github.com/VitruvianSoftware/courier/engine/internal/media"
+	"github.com/VitruvianSoftware/courier/engine/internal/rpc"
 	"github.com/VitruvianSoftware/courier/engine/internal/store"
 )
 
-func encodeVarint(v uint64) []byte {
-	var out []byte
-	for v >= 0x80 {
-		out = append(out, byte(v)|0x80)
-		v >>= 7
-	}
-	out = append(out, byte(v))
-	return out
-}
-
-func encodeVarintField(fieldNum int, v uint64) []byte {
-	tag := uint64((fieldNum << 3) | 0)
-	out := encodeVarint(tag)
-	out = append(out, encodeVarint(v)...)
-	return out
-}
-
-func encodeBytesField(fieldNum int, data []byte) []byte {
-	tag := uint64((fieldNum << 3) | 2)
-	out := encodeVarint(tag)
-	out = append(out, encodeVarint(uint64(len(data)))...)
-	out = append(out, data...)
-	return out
-}
-
-func encodeStringField(fieldNum int, s string) []byte {
-	return encodeBytesField(fieldNum, []byte(s))
-}
-
 // buildSyntheticSelfUserStatusResponse encodes GetSelfUserStatusResponse { user_status: UserStatus { user_id: UserId { id: gaiaID } } }.
 func buildSyntheticSelfUserStatusResponse(gaiaID string) []byte {
-	userID := encodeStringField(1, gaiaID)
-	userStatus := encodeBytesField(1, userID)
-	return encodeBytesField(1, userStatus)
+	return pb.MustMarshal(&pb.GetSelfUserStatusResponse{
+		UserStatus: &pb.UserStatus{
+			UserId: pb.HumanUserID(gaiaID),
+		},
+	})
 }
 
 // buildSyntheticGetMembersResponse encodes GetMembersResponse { members: [Member { user: User { user_id: UserId { id }, name, avatar_url, email } }] }.
 func buildSyntheticGetMembersResponse(gaiaID, name, email, avatarURL string) []byte {
-	userID := encodeStringField(1, gaiaID)
-	var user []byte
-	user = append(user, encodeBytesField(1, userID)...)
-	user = append(user, encodeStringField(2, name)...)
-	user = append(user, encodeStringField(3, avatarURL)...)
-	user = append(user, encodeStringField(4, email)...)
-	member := encodeBytesField(1, user)
-	return encodeBytesField(1, member)
+	return pb.MustMarshal(&pb.GetMembersResponse{
+		Members: []*pb.Member{{
+			Profile: &pb.Member_User{
+				User: &pb.User{
+					UserId:    pb.HumanUserID(gaiaID),
+					Name:      pb.String(name),
+					AvatarUrl: pb.String(avatarURL),
+					Email:     pb.String(email),
+				},
+			},
+		}},
+	})
 }
 
 func TestGChatCookieLoginFlowCreatesUserLogin(t *testing.T) {
@@ -198,50 +182,33 @@ func TestGChatCookieLoginFlowCreatesUserLogin(t *testing.T) {
 	require.Contains(t, gotCookieHdr, "SID=synthetic_sid+plus%2Bpct/slash=eq")
 }
 
-func encodeDMGroupID(dmID string) []byte {
-	return encodeBytesField(3, encodeStringField(1, dmID))
-}
-
-func encodeSpaceGroupID(spaceID string) []byte {
-	return encodeBytesField(1, encodeStringField(1, spaceID))
-}
-
-func encodeTopicID(groupIDBytes []byte, topicID string) []byte {
-	var out []byte
-	out = append(out, encodeStringField(2, topicID)...)
-	out = append(out, encodeBytesField(3, groupIDBytes)...)
-	return out
-}
-
-func encodeMessageID(groupIDBytes []byte, topicID, msgID string) []byte {
-	parent := encodeBytesField(4, encodeTopicID(groupIDBytes, topicID))
-	var out []byte
-	out = append(out, encodeBytesField(1, parent)...)
-	out = append(out, encodeStringField(2, msgID)...)
-	return out
-}
-
-func encodeSyntheticMessage(groupIDBytes []byte, topicID, msgID, senderGaiaID, text string, createTimeMicros int64, replyToMsgID string, boldStart, boldLen int) []byte {
-	var msg []byte
-	msg = append(msg, encodeBytesField(1, encodeMessageID(groupIDBytes, topicID, msgID))...)
-	creator := encodeBytesField(1, encodeStringField(1, senderGaiaID))
-	creator = append(creator, encodeStringField(2, "Grace Hopper")...)
-	msg = append(msg, encodeBytesField(2, creator)...)
-	msg = append(msg, encodeVarintField(3, uint64(createTimeMicros))...)
-	msg = append(msg, encodeStringField(10, text)...)
+func buildSyntheticMessageProto(groupID *pb.GroupId, topicID, msgID, senderGaiaID, text string, createTimeMicros int64, replyToMsgID string, boldStart, boldLen int) *pb.Message {
+	msg := &pb.Message{
+		Id: buildMessageID(groupID, topicID, msgID),
+		Creator: &pb.User{
+			UserId: pb.HumanUserID(senderGaiaID),
+			Name:   pb.String("Grace Hopper"),
+		},
+		CreateTime: pb.Int64(createTimeMicros),
+		TextBody:   pb.String(text),
+	}
 	if boldLen > 0 {
-		var ann []byte
-		ann = append(ann, encodeVarintField(1, 8)...) // FORMAT_DATA
-		ann = append(ann, encodeVarintField(2, uint64(boldStart))...)
-		ann = append(ann, encodeVarintField(3, uint64(boldLen))...)
-		fmtMeta := encodeVarintField(1, 1) // BOLD
-		ann = append(ann, encodeBytesField(8, fmtMeta)...)
-		msg = append(msg, encodeBytesField(11, ann)...)
+		msg.Annotations = append(msg.Annotations, &pb.Annotation{
+			Type:       pb.AnnotationType_FORMAT_DATA.Enum(),
+			StartIndex: pb.Int32(int32(boldStart)),
+			Length:     pb.Int32(int32(boldLen)),
+			Metadata: &pb.Annotation_FormatMetadata{
+				FormatMetadata: &pb.FormatMetadata{
+					FormatType: pb.FormatMetadata_BOLD.Enum(),
+				},
+			},
+		})
 	}
 	if replyToMsgID != "" {
-		replyTarget := encodeBytesField(1, encodeMessageID(groupIDBytes, topicID, replyToMsgID))
-		replyTarget = append(replyTarget, encodeVarintField(2, uint64(createTimeMicros-1000))...)
-		msg = append(msg, encodeBytesField(37, replyTarget)...)
+		msg.ReplyTo = &pb.ReplyToMessage{
+			Id:         buildMessageID(groupID, topicID, replyToMsgID),
+			CreateTime: pb.Int64(createTimeMicros - 1000),
+		}
 	}
 	return msg
 }
@@ -313,82 +280,92 @@ func TestPaginatedWorldSyncsDMsAndSpacesWithThreadedMetadata(t *testing.T) {
 	h, ul, client := setupLoggedInGChatTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/u/0/api/paginated_world":
-			// Build 1 DM (dm_abc, peer 112233445566778899002) and 1 Space (space_xyz, name "Engineering", topic_threaded=true, group_revision=120)
-			var dmItem []byte
-			dmItem = append(dmItem, encodeBytesField(1, encodeDMGroupID("dm_abc"))...)
-			dmItem = append(dmItem, encodeBytesField(2, encodeVarintField(1, 90))...)
-			dmItem = append(dmItem, encodeVarintField(3, 1710000001000000)...)
-			var dmReadState []byte
-			dmReadState = append(dmReadState, encodeVarintField(16, 2)...) // MEMBER_JOINED
-			dmReadState = append(dmReadState, encodeBytesField(23, encodeStringField(1, "112233445566778899001"))...)
-			dmReadState = append(dmReadState, encodeBytesField(23, encodeStringField(1, "112233445566778899002"))...)
-			dmItem = append(dmItem, encodeBytesField(4, dmReadState)...)
-			var dmMembers []byte
-			dmMembers = append(dmMembers, encodeBytesField(1, encodeStringField(1, "112233445566778899001"))...)
-			dmMembers = append(dmMembers, encodeBytesField(1, encodeStringField(1, "112233445566778899002"))...)
-			var membershipLite []byte
-			membershipLite = append(membershipLite, encodeBytesField(1, encodeStringField(1, "112233445566778899002"))...)
-			membershipLite = append(membershipLite, encodeVarintField(2, 2)...)
-			dmMembers = append(dmMembers, encodeBytesField(2, membershipLite)...)
-			dmItem = append(dmItem, encodeBytesField(6, dmMembers)...)
-
-			var spaceItem []byte
-			spaceItem = append(spaceItem, encodeBytesField(1, encodeSpaceGroupID("space_xyz"))...)
-			spaceItem = append(spaceItem, encodeBytesField(2, encodeVarintField(1, 120))...)
-			spaceItem = append(spaceItem, encodeVarintField(3, 1710000002000000)...)
-			spaceReadState := encodeVarintField(16, 2) // MEMBER_JOINED
-			spaceItem = append(spaceItem, encodeBytesField(4, spaceReadState)...)
-			spaceItem = append(spaceItem, encodeStringField(5, "Engineering")...)
-			spaceItem = append(spaceItem, encodeBytesField(15, nil)...) // threaded_group = ThreadedGroup{}
-
-			// Blocked DM (field 15 = 1 in GroupReadState): must be skipped
-			var blockedDM []byte
-			blockedDM = append(blockedDM, encodeBytesField(1, encodeDMGroupID("dm_blocked"))...)
-			blockedDM = append(blockedDM, encodeVarintField(3, 1710000009000000)...)
-			var blockedRS []byte
-			blockedRS = append(blockedRS, encodeVarintField(15, 1)...) // blocked = true
-			blockedRS = append(blockedRS, encodeVarintField(16, 2)...) // MEMBER_JOINED
-			blockedDM = append(blockedDM, encodeBytesField(4, blockedRS)...)
-
-			// Hidden DM (field 9 > 0 in GroupReadState): must be skipped
-			var hiddenDM []byte
-			hiddenDM = append(hiddenDM, encodeBytesField(1, encodeDMGroupID("dm_hidden"))...)
-			hiddenDM = append(hiddenDM, encodeVarintField(3, 1710000008000000)...)
-			var hiddenRS []byte
-			hiddenRS = append(hiddenRS, encodeVarintField(9, 1710000000000000)...) // hide_timestamp > 0
-			hiddenRS = append(hiddenRS, encodeVarintField(16, 2)...)               // MEMBER_JOINED
-			hiddenDM = append(hiddenDM, encodeBytesField(4, hiddenRS)...)
-
-			// Non-joined Space (field 16 = 1 MEMBER_INVITED in GroupReadState): must be skipped
-			var invitedSpace []byte
-			invitedSpace = append(invitedSpace, encodeBytesField(1, encodeSpaceGroupID("space_invited"))...)
-			invitedSpace = append(invitedSpace, encodeVarintField(3, 1710000007000000)...)
-			invitedSpace = append(invitedSpace, encodeBytesField(4, encodeVarintField(16, 1))...) // MEMBER_INVITED != 2
-
-			// Old joined space placed FIRST on the wire with low sort_timestamp (100), plus 29 filler joined spaces
-			// with higher sort_timestamps so total joined rooms = 31 (> 30 cap).
-			var oldSpace []byte
-			oldSpace = append(oldSpace, encodeBytesField(1, encodeSpaceGroupID("space_old_31"))...)
-			oldSpace = append(oldSpace, encodeVarintField(3, 100)...)
-			oldSpace = append(oldSpace, encodeBytesField(4, encodeVarintField(16, 2))...)
-			oldSpace = append(oldSpace, encodeStringField(5, "Old Archive")...)
-
-			var worldResp []byte
-			worldResp = append(worldResp, encodeBytesField(3, encodeVarintField(1, 500))...) // user_revision = 500
-			worldResp = append(worldResp, encodeBytesField(4, blockedDM)...)
-			worldResp = append(worldResp, encodeBytesField(4, hiddenDM)...)
-			worldResp = append(worldResp, encodeBytesField(4, invitedSpace)...)
-			worldResp = append(worldResp, encodeBytesField(4, oldSpace)...)
-			for i := 1; i <= 28; i++ {
-				var filler []byte
-				filler = append(filler, encodeBytesField(1, encodeSpaceGroupID(fmt.Sprintf("space_filler_%02d", i)))...)
-				filler = append(filler, encodeVarintField(3, uint64(1710000000000000+i*1000))...)
-				filler = append(filler, encodeBytesField(4, encodeVarintField(16, 2))...)
-				filler = append(filler, encodeStringField(5, fmt.Sprintf("Filler %02d", i))...)
-				worldResp = append(worldResp, encodeBytesField(4, filler)...)
+			dmItem := &pb.WorldItemLite{
+				GroupId:       pb.DMGroupID("dm_abc"),
+				GroupRevision: &pb.ReadRevision{Timestamp: pb.Int64(90)},
+				SortTimestamp: pb.Int64(1710000001000000),
+				ReadState: &pb.GroupReadState{
+					MembershipState: pb.MembershipState_MEMBER_JOINED.Enum(),
+					JoinedUsers: []*pb.UserId{
+						pb.HumanUserID("112233445566778899001"),
+						pb.HumanUserID("112233445566778899002"),
+					},
+				},
+				DmMembers: &pb.WorldItemLite_DmMembers{
+					Members: []*pb.UserId{
+						pb.HumanUserID("112233445566778899001"),
+						pb.HumanUserID("112233445566778899002"),
+					},
+					Memberships: []*pb.WorldItemLite_MembershipLite{{
+						UserId:          pb.HumanUserID("112233445566778899002"),
+						MembershipState: pb.MembershipState_MEMBER_JOINED.Enum(),
+					}},
+				},
 			}
-			worldResp = append(worldResp, encodeBytesField(4, dmItem)...)
-			worldResp = append(worldResp, encodeBytesField(4, spaceItem)...)
+
+			spaceItem := &pb.WorldItemLite{
+				GroupId:       pb.SpaceGroupID("space_xyz"),
+				GroupRevision: &pb.ReadRevision{Timestamp: pb.Int64(120)},
+				SortTimestamp: pb.Int64(1710000002000000),
+				ReadState: &pb.GroupReadState{
+					MembershipState: pb.MembershipState_MEMBER_JOINED.Enum(),
+				},
+				RoomName:      pb.String("Engineering"),
+				ThreadedGroup: &pb.WorldItemLite_ThreadedGroup{},
+			}
+
+			blockedDM := &pb.WorldItemLite{
+				GroupId:       pb.DMGroupID("dm_blocked"),
+				SortTimestamp: pb.Int64(1710000009000000),
+				ReadState: &pb.GroupReadState{
+					Blocked:         pb.Bool(true),
+					MembershipState: pb.MembershipState_MEMBER_JOINED.Enum(),
+				},
+			}
+
+			hiddenDM := &pb.WorldItemLite{
+				GroupId:       pb.DMGroupID("dm_hidden"),
+				SortTimestamp: pb.Int64(1710000008000000),
+				ReadState: &pb.GroupReadState{
+					HideTimestamp:   pb.Int64(1710000000000000),
+					MembershipState: pb.MembershipState_MEMBER_JOINED.Enum(),
+				},
+			}
+
+			invitedSpace := &pb.WorldItemLite{
+				GroupId:       pb.SpaceGroupID("space_invited"),
+				SortTimestamp: pb.Int64(1710000007000000),
+				ReadState: &pb.GroupReadState{
+					MembershipState: pb.MembershipState_MEMBER_INVITED.Enum(),
+				},
+			}
+
+			oldSpace := &pb.WorldItemLite{
+				GroupId:       pb.SpaceGroupID("space_old_31"),
+				SortTimestamp: pb.Int64(100),
+				ReadState: &pb.GroupReadState{
+					MembershipState: pb.MembershipState_MEMBER_JOINED.Enum(),
+				},
+				RoomName: pb.String("Old Archive"),
+			}
+
+			items := []*pb.WorldItemLite{blockedDM, hiddenDM, invitedSpace, oldSpace}
+			for i := 1; i <= 28; i++ {
+				items = append(items, &pb.WorldItemLite{
+					GroupId:       pb.SpaceGroupID(fmt.Sprintf("space_filler_%02d", i)),
+					SortTimestamp: pb.Int64(int64(1710000000000000 + i*1000)),
+					ReadState: &pb.GroupReadState{
+						MembershipState: pb.MembershipState_MEMBER_JOINED.Enum(),
+					},
+					RoomName: pb.String(fmt.Sprintf("Filler %02d", i)),
+				})
+			}
+			items = append(items, dmItem, spaceItem)
+
+			worldResp := pb.MustMarshal(&pb.PaginatedWorldResponse{
+				UserRevision: &pb.ReadRevision{Timestamp: pb.Int64(500)},
+				WorldItems:   items,
+			})
 
 			w.Header().Set("Content-Type", "application/x-protobuf")
 			_, _ = w.Write(worldResp)
@@ -452,22 +429,26 @@ func TestBackfillUsesListTopicsForSpacesAndListMessagesForDMs(t *testing.T) {
 			mu.Lock()
 			listTopicsReqs = append(listTopicsReqs, body)
 			mu.Unlock()
-			spaceGID := encodeSpaceGroupID("space_xyz")
-			msgBytes := encodeSyntheticMessage(spaceGID, "topic_1", "msg_1", "112233445566778899002", "Space topic head", 1710000010000000, "", 0, 0)
-			var topic []byte
-			topic = append(topic, encodeBytesField(1, encodeTopicID(spaceGID, "topic_1"))...)
-			topic = append(topic, encodeVarintField(2, 1710000010000000)...)
-			topic = append(topic, encodeBytesField(7, msgBytes)...)
-			resp := encodeBytesField(1, topic)
+			spaceGID := pb.SpaceGroupID("space_xyz")
+			msgProto := buildSyntheticMessageProto(spaceGID, "topic_1", "msg_1", "112233445566778899002", "Space topic head", 1710000010000000, "", 0, 0)
+			resp := pb.MustMarshal(&pb.ListTopicsResponse{
+				Topics: []*pb.Topic{{
+					Id:       buildTopicID(spaceGID, "topic_1"),
+					SortTime: pb.Int64(1710000010000000),
+					Replies:  []*pb.Message{msgProto},
+				}},
+			})
 			w.Header().Set("Content-Type", "application/x-protobuf")
 			_, _ = w.Write(resp)
 		case "/u/0/api/list_messages":
 			mu.Lock()
 			listMessagesReqs = append(listMessagesReqs, body)
 			mu.Unlock()
-			dmGID := encodeDMGroupID("dm_abc")
-			msgBytes := encodeSyntheticMessage(dmGID, "dm_topic_1", "dm_msg_1", "112233445566778899002", "Hello in DM", 1710000020000000, "", 0, 0)
-			resp := encodeBytesField(1, msgBytes)
+			dmGID := pb.DMGroupID("dm_abc")
+			msgProto := buildSyntheticMessageProto(dmGID, "dm_topic_1", "dm_msg_1", "112233445566778899002", "Hello in DM", 1710000020000000, "", 0, 0)
+			resp := pb.MustMarshal(&pb.ListMessagesResponse{
+				Messages: []*pb.Message{msgProto},
+			})
 			w.Header().Set("Content-Type", "application/x-protobuf")
 			_, _ = w.Write(resp)
 		default:
@@ -527,53 +508,65 @@ func TestCatchUpUserAdvancesUserRevisionWithoutOverwritingGroupRevision(t *testi
 
 	h, ul, client := setupLoggedInGChatTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
-		spaceGID := encodeSpaceGroupID("space_xyz")
+		spaceGID := pb.SpaceGroupID("space_xyz")
 		switch r.URL.Path {
 		case "/u/0/api/catch_up_user":
 			gotCatchUpUserFromRev.Store(decodeCatchUpUserFromRevision(body))
 			if abortCatchUpUser.Load() {
-				var resp []byte
-				resp = append(resp, encodeVarintField(2, 3)...) // ABORTED_CUTOFF_EXCEEDED
+				resp := pb.MustMarshal(&pb.CatchUpResponse{
+					Status: pb.CatchUpResponse_ABORTED_CUTOFF_EXCEEDED.Enum(),
+				})
 				w.Header().Set("Content-Type", "application/x-protobuf")
 				_, _ = w.Write(resp)
 				return
 			}
-			msgBytes := encodeSyntheticMessage(spaceGID, "topic_cu", "msg_cu_user_1", "112233445566778899002", "Caught up user message", 1710000050000000, "", 0, 0)
-			var evtBody []byte
-			evtBody = append(evtBody, encodeBytesField(6, encodeBytesField(1, msgBytes))...)
-			evtBody = append(evtBody, encodeVarintField(12, 6)...) // MESSAGE_POSTED
-			var evt []byte
-			evt = append(evt, encodeBytesField(1, spaceGID)...)
-			evt = append(evt, encodeVarintField(3, 6)...)
-			evt = append(evt, encodeBytesField(4, evtBody)...)
-			evt = append(evt, encodeBytesField(6, encodeVarintField(1, 650))...) // user_revision = 650
-			var resp []byte
-			resp = append(resp, encodeBytesField(1, evt)...)
-			resp = append(resp, encodeVarintField(2, 1)...)                        // COMPLETED
-			resp = append(resp, encodeBytesField(4, encodeVarintField(1, 650))...) // read_revision = 650
+			msgProto := buildSyntheticMessageProto(spaceGID, "topic_cu", "msg_cu_user_1", "112233445566778899002", "Caught up user message", 1710000050000000, "", 0, 0)
+			resp := pb.MustMarshal(&pb.CatchUpResponse{
+				Events: []*pb.Event{{
+					GroupId: spaceGID,
+					Type:    pb.Event_MESSAGE_POSTED.Enum(),
+					Body: &pb.Event_EventBody{
+						Type: &pb.Event_EventBody_MessagePosted{
+							MessagePosted: &pb.MessageEvent{Message: msgProto},
+						},
+						EventType: pb.Event_MESSAGE_POSTED.Enum(),
+					},
+					RevisionType: &pb.Event_UserRevision{
+						UserRevision: &pb.WriteRevision{Timestamp: pb.Int64(650)},
+					},
+				}},
+				Status:       pb.CatchUpResponse_COMPLETED.Enum(),
+				ReadRevision: &pb.ReadRevision{Timestamp: pb.Int64(650)},
+			})
 			w.Header().Set("Content-Type", "application/x-protobuf")
 			_, _ = w.Write(resp)
 		case "/u/0/api/catch_up_group":
 			gotCatchUpGroupFromRev.Store(decodeCatchUpGroupFromRevision(body))
-			msgBytes := encodeSyntheticMessage(spaceGID, "topic_cu", "msg_cu_group_1", "112233445566778899002", "Caught up group message", 1710000060000000, "", 0, 0)
-			var evtBody []byte
-			evtBody = append(evtBody, encodeBytesField(6, encodeBytesField(1, msgBytes))...)
-			evtBody = append(evtBody, encodeVarintField(12, 6)...) // MESSAGE_POSTED
-			var evt []byte
-			evt = append(evt, encodeBytesField(1, spaceGID)...)
-			evt = append(evt, encodeVarintField(3, 6)...)
-			evt = append(evt, encodeBytesField(4, evtBody)...)
-			evt = append(evt, encodeBytesField(7, encodeVarintField(1, 180))...) // group_revision = 180
-			var resp []byte
-			resp = append(resp, encodeBytesField(1, evt)...)
-			resp = append(resp, encodeVarintField(2, 1)...)                        // COMPLETED
-			resp = append(resp, encodeBytesField(4, encodeVarintField(1, 180))...) // read_revision = 180
+			msgProto := buildSyntheticMessageProto(spaceGID, "topic_cu", "msg_cu_group_1", "112233445566778899002", "Caught up group message", 1710000060000000, "", 0, 0)
+			resp := pb.MustMarshal(&pb.CatchUpResponse{
+				Events: []*pb.Event{{
+					GroupId: spaceGID,
+					Type:    pb.Event_MESSAGE_POSTED.Enum(),
+					Body: &pb.Event_EventBody{
+						Type: &pb.Event_EventBody_MessagePosted{
+							MessagePosted: &pb.MessageEvent{Message: msgProto},
+						},
+						EventType: pb.Event_MESSAGE_POSTED.Enum(),
+					},
+					RevisionType: &pb.Event_GroupRevision{
+						GroupRevision: &pb.WriteRevision{Timestamp: pb.Int64(180)},
+					},
+				}},
+				Status:       pb.CatchUpResponse_COMPLETED.Enum(),
+				ReadRevision: &pb.ReadRevision{Timestamp: pb.Int64(180)},
+			})
 			w.Header().Set("Content-Type", "application/x-protobuf")
 			_, _ = w.Write(resp)
 		case "/u/0/api/paginated_world":
 			worldSyncFallbackCalls.Add(1)
-			var worldResp []byte
-			worldResp = append(worldResp, encodeBytesField(3, encodeVarintField(1, 900))...)
+			worldResp := pb.MustMarshal(&pb.PaginatedWorldResponse{
+				UserRevision: &pb.ReadRevision{Timestamp: pb.Int64(900)},
+			})
 			w.Header().Set("Content-Type", "application/x-protobuf")
 			_, _ = w.Write(worldResp)
 		case "/u/0/api/list_topics", "/u/0/api/list_messages":
@@ -629,93 +622,118 @@ func TestLiveWebChannelEventsMapMessagesReactionsEditsUnsendsReceiptsAndTyping(t
 	ctx := context.Background()
 	_, _, client := setupLoggedInGChatTestEnv(t, nil)
 
-	spaceGID := encodeSpaceGroupID("space_xyz")
+	spaceGID := pb.SpaceGroupID("space_xyz")
 
-	// 1. MESSAGE_POSTED (with TopicId, SendReplyTarget quote reply, and Annotations)
-	postedMsg := encodeSyntheticMessage(spaceGID, "topic_77", "msg_100", "112233445566778899002", "Hello bold world", 1710000100000000, "msg_99", 6, 4)
-	var body1 []byte
-	body1 = append(body1, encodeBytesField(6, encodeBytesField(1, postedMsg))...)
-	body1 = append(body1, encodeVarintField(12, 6)...) // MESSAGE_POSTED
+	// 1. MESSAGE_POSTED (with TopicId, ReplyToMessage quote reply, and Annotations)
+	postedMsg := buildSyntheticMessageProto(spaceGID, "topic_77", "msg_100", "112233445566778899002", "Hello bold world", 1710000100000000, "msg_99", 6, 4)
+	body1 := &pb.Event_EventBody{
+		Type: &pb.Event_EventBody_MessagePosted{
+			MessagePosted: &pb.MessageEvent{Message: postedMsg},
+		},
+		EventType: pb.Event_MESSAGE_POSTED.Enum(),
+	}
 
 	// 2. MESSAGE_UPDATED (edit)
-	editedMsg := encodeSyntheticMessage(spaceGID, "topic_77", "msg_100", "112233445566778899002", "Hello edited world", 1710000100000000, "", 6, 6)
-	editedMsg = append(editedMsg, encodeVarintField(17, 1710000105000000)...) // last_edit_time
-	var body2 []byte
-	body2 = append(body2, encodeBytesField(6, encodeBytesField(1, editedMsg))...)
-	body2 = append(body2, encodeVarintField(12, 7)...) // MESSAGE_UPDATED
+	editedMsg := buildSyntheticMessageProto(spaceGID, "topic_77", "msg_100", "112233445566778899002", "Hello edited world", 1710000100000000, "", 6, 6)
+	editedMsg.LastEditTime = pb.Int64(1710000105000000)
+	body2 := &pb.Event_EventBody{
+		Type: &pb.Event_EventBody_MessagePosted{
+			MessagePosted: &pb.MessageEvent{Message: editedMsg},
+		},
+		EventType: pb.Event_MESSAGE_UPDATED.Enum(),
+	}
 
 	// 3. MESSAGE_DELETED (unsend)
-	var delEvt []byte
-	delEvt = append(delEvt, encodeBytesField(1, encodeMessageID(spaceGID, "topic_77", "msg_100"))...)
-	delEvt = append(delEvt, encodeVarintField(2, 1710000110000000)...)
-	var body3 []byte
-	body3 = append(body3, encodeBytesField(18, delEvt)...)
-	body3 = append(body3, encodeVarintField(12, 8)...) // MESSAGE_DELETED
+	body3 := &pb.Event_EventBody{
+		Type: &pb.Event_EventBody_MessageDeleted{
+			MessageDeleted: &pb.MessageDeletedEvent{
+				MessageId: buildMessageID(spaceGID, "topic_77", "msg_100"),
+				Timestamp: pb.Int64(1710000110000000),
+			},
+		},
+		EventType: pb.Event_MESSAGE_DELETED.Enum(),
+	}
 
 	// 4a. REACTION_CREATED (ADD = 1) with bare "❤" (U+2764 without U+FE0F)
-	var reactAdd []byte
-	reactAdd = append(reactAdd, encodeBytesField(1, encodeMessageID(spaceGID, "topic_77", "msg_100"))...)
-	reactAdd = append(reactAdd, encodeBytesField(2, encodeStringField(1, "\u2764"))...)
-	reactAdd = append(reactAdd, encodeBytesField(3, encodeStringField(1, "112233445566778899002"))...)
-	reactAdd = append(reactAdd, encodeVarintField(4, 1710000115000000)...)
-	reactAdd = append(reactAdd, encodeVarintField(5, 1)...) // ADD
-	var body4a []byte
-	body4a = append(body4a, encodeBytesField(22, reactAdd)...)
-	body4a = append(body4a, encodeVarintField(12, 24)...) // MESSAGE_REACTED
+	body4a := &pb.Event_EventBody{
+		Type: &pb.Event_EventBody_MessageReaction{
+			MessageReaction: &pb.MessageReactionEvent{
+				MessageId: buildMessageID(spaceGID, "topic_77", "msg_100"),
+				Emoji: &pb.Emoji{
+					Content: &pb.Emoji_Unicode{Unicode: "\u2764"},
+				},
+				UserId:    pb.HumanUserID("112233445566778899002"),
+				Timestamp: pb.Int64(1710000115000000),
+				Type:      pb.MessageReactionEvent_ADD.Enum(),
+			},
+		},
+		EventType: pb.Event_MESSAGE_REACTED.Enum(),
+	}
 
 	// 4b. REACTION_DELETED (REMOVE = 2)
-	var reactRem []byte
-	reactRem = append(reactRem, encodeBytesField(1, encodeMessageID(spaceGID, "topic_77", "msg_100"))...)
-	reactRem = append(reactRem, encodeBytesField(2, encodeStringField(1, "\u2764"))...)
-	reactRem = append(reactRem, encodeBytesField(3, encodeStringField(1, "112233445566778899002"))...)
-	reactRem = append(reactRem, encodeVarintField(4, 1710000116000000)...)
-	reactRem = append(reactRem, encodeVarintField(5, 2)...) // REMOVE
-	var body4b []byte
-	body4b = append(body4b, encodeBytesField(22, reactRem)...)
-	body4b = append(body4b, encodeVarintField(12, 24)...) // MESSAGE_REACTED
+	body4b := &pb.Event_EventBody{
+		Type: &pb.Event_EventBody_MessageReaction{
+			MessageReaction: &pb.MessageReactionEvent{
+				MessageId: buildMessageID(spaceGID, "topic_77", "msg_100"),
+				Emoji: &pb.Emoji{
+					Content: &pb.Emoji_Unicode{Unicode: "\u2764"},
+				},
+				UserId:    pb.HumanUserID("112233445566778899002"),
+				Timestamp: pb.Int64(1710000116000000),
+				Type:      pb.MessageReactionEvent_REMOVE.Enum(),
+			},
+		},
+		EventType: pb.Event_MESSAGE_REACTED.Enum(),
+	}
 
-	// 5. GROUP_READ_STATE_UPDATED (field 65, event_type = 83)
-	var readStateUpdated []byte
-	readStateUpdated = append(readStateUpdated, encodeBytesField(1, spaceGID)...)
-	readStateUpdated = append(readStateUpdated, encodeVarintField(3, 1710000120000000)...) // most_recent_read_time
-	var body5 []byte
-	body5 = append(body5, encodeBytesField(65, readStateUpdated)...)
-	body5 = append(body5, encodeVarintField(12, 83)...) // GROUP_READ_STATE_UPDATED
+	// 5. GROUP_READ_STATE_UPDATED
+	body5 := &pb.Event_EventBody{
+		Type: &pb.Event_EventBody_GroupReadStateUpdatedEvent{
+			GroupReadStateUpdatedEvent: &pb.GroupReadStateUpdatedEvent{
+				GroupId:            spaceGID,
+				MostRecentReadTime: pb.Int64(1710000120000000),
+			},
+		},
+		EventType: pb.Event_GROUP_READ_STATE_UPDATED.Enum(),
+	}
 
 	// 6. TYPING_STATE_CHANGED (STATE_TYPING = 1 -> 6s typing notification)
-	var typingEvt []byte
-	typingEvt = append(typingEvt, encodeVarintField(1, 1)...) // TYPING
-	typingEvt = append(typingEvt, encodeBytesField(2, encodeStringField(1, "112233445566778899002"))...)
-	typingEvt = append(typingEvt, encodeBytesField(3, encodeBytesField(1, spaceGID))...) // context.group_id
-	typingEvt = append(typingEvt, encodeVarintField(4, 1710000125000000)...)
-	var body6 []byte
-	body6 = append(body6, encodeBytesField(26, typingEvt)...)
-	body6 = append(body6, encodeVarintField(12, 29)...) // TYPING_STATE_CHANGED
+	body6 := &pb.Event_EventBody{
+		Type: &pb.Event_EventBody_TypingStateChanged{
+			TypingStateChanged: &pb.TypingStateChangedEvent{
+				State:  pb.TypingState_TYPING.Enum(),
+				UserId: pb.HumanUserID("112233445566778899002"),
+				Context: &pb.TypingContext{
+					Context: &pb.TypingContext_GroupId{GroupId: spaceGID},
+				},
+				StartTimestampUsec: pb.Int64(1710000125000000),
+			},
+		},
+		EventType: pb.Event_TYPING_STATE_CHANGED.Enum(),
+	}
 
-	// 7. MEMBERSHIP_CHANGED (field 14, event_type = 15)
-	var memID []byte
-	memID = append(memID, encodeBytesField(1, encodeBytesField(1, encodeStringField(1, "112233445566778899003")))...)
-	memID = append(memID, encodeBytesField(2, spaceGID)...)
-	var membership []byte
-	membership = append(membership, encodeBytesField(1, memID)...)
-	membership = append(membership, encodeVarintField(3, 2)...) // MEMBER_JOINED
-	var memChanged []byte
-	memChanged = append(memChanged, encodeBytesField(1, membership)...)
-	var body7 []byte
-	body7 = append(body7, encodeBytesField(14, memChanged)...)
-	body7 = append(body7, encodeVarintField(12, 15)...) // MEMBERSHIP_CHANGED
+	// 7. MEMBERSHIP_CHANGED
+	body7 := &pb.Event_EventBody{
+		Type: &pb.Event_EventBody_MembershipChanged{
+			MembershipChanged: &pb.MembershipChangedEvent{
+				NewMembership: &pb.Membership{
+					Id: &pb.MembershipId{
+						MemberId: pb.UserMemberID("112233445566778899003"),
+						GroupId:  spaceGID,
+					},
+					MembershipState: pb.MembershipState_MEMBER_JOINED.Enum(),
+				},
+			},
+		},
+		EventType: pb.Event_MEMBERSHIP_CHANGED.Enum(),
+	}
 
-	var evt []byte
-	evt = append(evt, encodeBytesField(1, spaceGID)...)
-	evt = append(evt, encodeVarintField(3, 6)...)
-	evt = append(evt, encodeBytesField(4, body1)...)
-	evt = append(evt, encodeBytesField(8, body2)...)
-	evt = append(evt, encodeBytesField(8, body3)...)
-	evt = append(evt, encodeBytesField(8, body4a)...)
-	evt = append(evt, encodeBytesField(8, body4b)...)
-	evt = append(evt, encodeBytesField(8, body5)...)
-	evt = append(evt, encodeBytesField(8, body6)...)
-	evt = append(evt, encodeBytesField(8, body7)...)
+	evt := pb.MustMarshal(&pb.Event{
+		GroupId: spaceGID,
+		Type:    pb.Event_MESSAGE_POSTED.Enum(),
+		Body:    body1,
+		Bodies:  []*pb.Event_EventBody{body2, body3, body4a, body4b, body5, body6, body7},
+	})
 
 	remoteEvts, err := client.translateWebChannelEvent(ctx, evt)
 	require.NoError(t, err)
@@ -823,17 +841,19 @@ func TestEndToEndConnectSyncStreamReconnectCatchUpAndBadCredentials(t *testing.T
 			))
 		case "/u/0/api/paginated_world":
 			worldSyncCalls.Add(1)
-			var spaceItem []byte
-			spaceItem = append(spaceItem, encodeBytesField(1, encodeSpaceGroupID("space_xyz"))...)
-			spaceItem = append(spaceItem, encodeBytesField(2, encodeVarintField(1, 120))...)
-			spaceItem = append(spaceItem, encodeVarintField(3, 1710000002000000)...)
-			spaceItem = append(spaceItem, encodeBytesField(4, encodeVarintField(16, 2))...) // MEMBER_JOINED
-			spaceItem = append(spaceItem, encodeStringField(5, "Engineering")...)
-			spaceItem = append(spaceItem, encodeBytesField(15, nil)...)
-
-			var worldResp []byte
-			worldResp = append(worldResp, encodeBytesField(3, encodeVarintField(1, 500))...) // user_revision = 500
-			worldResp = append(worldResp, encodeBytesField(4, spaceItem)...)
+			worldResp := pb.MustMarshal(&pb.PaginatedWorldResponse{
+				UserRevision: &pb.ReadRevision{Timestamp: pb.Int64(500)},
+				WorldItems: []*pb.WorldItemLite{{
+					GroupId:       pb.SpaceGroupID("space_xyz"),
+					GroupRevision: &pb.ReadRevision{Timestamp: pb.Int64(120)},
+					SortTimestamp: pb.Int64(1710000002000000),
+					ReadState: &pb.GroupReadState{
+						MembershipState: pb.MembershipState_MEMBER_JOINED.Enum(),
+					},
+					RoomName:      pb.String("Engineering"),
+					ThreadedGroup: &pb.WorldItemLite_ThreadedGroup{},
+				}},
+			})
 			w.Header().Set("Content-Type", "application/x-protobuf")
 			_, _ = w.Write(worldResp)
 		case "/u/0/api/list_topics", "/u/0/api/list_messages":
@@ -878,61 +898,72 @@ func TestEndToEndConnectSyncStreamReconnectCatchUpAndBadCredentials(t *testing.T
 			}
 		case "/u/0/api/catch_up_user":
 			catchUpUserCalls.Add(1)
-			spaceGID := encodeSpaceGroupID("space_xyz")
-			msgBytes := encodeSyntheticMessage(spaceGID, "topic_1", "msg_missed_1", "112233445566778899002", "Missed while stream was down", 1710000300000000, "", 0, 0)
-			var evtBody []byte
-			evtBody = append(evtBody, encodeBytesField(6, encodeBytesField(1, msgBytes))...)
-			evtBody = append(evtBody, encodeVarintField(12, 6)...) // MESSAGE_POSTED
-			var evt []byte
-			evt = append(evt, encodeBytesField(1, spaceGID)...)
-			evt = append(evt, encodeVarintField(3, 6)...)
-			evt = append(evt, encodeBytesField(4, evtBody)...)
-			// Include the same missed message a second time in bodies (field 8) to prove at-most-once deduplication!
-			evt = append(evt, encodeBytesField(8, evtBody)...)
-			evt = append(evt, encodeBytesField(6, encodeVarintField(1, 700))...)
-			var resp []byte
-			resp = append(resp, encodeBytesField(1, evt)...)
-			resp = append(resp, encodeVarintField(2, 1)...) // COMPLETED
-			resp = append(resp, encodeBytesField(4, encodeVarintField(1, 700))...)
+			spaceGID := pb.SpaceGroupID("space_xyz")
+			msgProto := buildSyntheticMessageProto(spaceGID, "topic_1", "msg_missed_1", "112233445566778899002", "Missed while stream was down", 1710000300000000, "", 0, 0)
+			evtBody := &pb.Event_EventBody{
+				Type: &pb.Event_EventBody_MessagePosted{
+					MessagePosted: &pb.MessageEvent{Message: msgProto},
+				},
+				EventType: pb.Event_MESSAGE_POSTED.Enum(),
+			}
+			resp := pb.MustMarshal(&pb.CatchUpResponse{
+				Events: []*pb.Event{{
+					GroupId: spaceGID,
+					Type:    pb.Event_MESSAGE_POSTED.Enum(),
+					Body:    evtBody,
+					Bodies:  []*pb.Event_EventBody{evtBody},
+					RevisionType: &pb.Event_UserRevision{
+						UserRevision: &pb.WriteRevision{Timestamp: pb.Int64(700)},
+					},
+				}},
+				Status:       pb.CatchUpResponse_COMPLETED.Enum(),
+				ReadRevision: &pb.ReadRevision{Timestamp: pb.Int64(700)},
+			})
 			w.Header().Set("Content-Type", "application/x-protobuf")
 			_, _ = w.Write(resp)
 		case "/u/0/api/create_topic":
 			e2eCreateTopicCalls.Add(1)
-			spaceGID := encodeSpaceGroupID("space_xyz")
-			msgBytes := encodeSyntheticMessage(spaceGID, "topic_e2e", "msg_e2e_1", "112233445566778899001", "E2E top", 1710000400000000, "", 0, 0)
-			var topic []byte
-			topic = append(topic, encodeBytesField(1, encodeTopicID(spaceGID, "topic_e2e"))...)
-			topic = append(topic, encodeBytesField(7, msgBytes)...)
+			spaceGID := pb.SpaceGroupID("space_xyz")
+			msgProto := buildSyntheticMessageProto(spaceGID, "topic_e2e", "msg_e2e_1", "112233445566778899001", "E2E top", 1710000400000000, "", 0, 0)
 			w.Header().Set("Content-Type", "application/x-protobuf")
-			_, _ = w.Write(encodeBytesField(1, topic))
+			_, _ = w.Write(pb.MustMarshal(&pb.CreateTopicResponse{
+				Topic: &pb.Topic{
+					Id:      buildTopicID(spaceGID, "topic_e2e"),
+					Replies: []*pb.Message{msgProto},
+				},
+			}))
 		case "/u/0/api/create_message":
 			e2eCreateMsgCalls.Add(1)
-			spaceGID := encodeSpaceGroupID("space_xyz")
-			msgBytes := encodeSyntheticMessage(spaceGID, "topic_e2e", "msg_e2e_2", "112233445566778899001", "E2E reply", 1710000410000000, "msg_e2e_1", 0, 0)
+			spaceGID := pb.SpaceGroupID("space_xyz")
+			msgProto := buildSyntheticMessageProto(spaceGID, "topic_e2e", "msg_e2e_2", "112233445566778899001", "E2E reply", 1710000410000000, "msg_e2e_1", 0, 0)
 			w.Header().Set("Content-Type", "application/x-protobuf")
-			_, _ = w.Write(encodeBytesField(1, msgBytes))
+			_, _ = w.Write(pb.MustMarshal(&pb.CreateMessageResponse{Message: msgProto}))
 		case "/u/0/api/edit_message":
 			e2eEditCalls.Add(1)
-			spaceGID := encodeSpaceGroupID("space_xyz")
-			msgBytes := encodeSyntheticMessage(spaceGID, "topic_e2e", "msg_e2e_1", "112233445566778899001", "E2E edited", 1710000400000000, "", 0, 0)
+			spaceGID := pb.SpaceGroupID("space_xyz")
+			msgProto := buildSyntheticMessageProto(spaceGID, "topic_e2e", "msg_e2e_1", "112233445566778899001", "E2E edited", 1710000400000000, "", 0, 0)
 			w.Header().Set("Content-Type", "application/x-protobuf")
-			_, _ = w.Write(encodeBytesField(1, msgBytes))
+			_, _ = w.Write(pb.MustMarshal(&pb.EditMessageResponse{Message: msgProto}))
 		case "/u/0/api/delete_message":
 			e2eDeleteCalls.Add(1)
 			w.Header().Set("Content-Type", "application/x-protobuf")
-			_, _ = w.Write(encodeVarintField(4, 1710000420000000))
+			_, _ = w.Write(pb.MustMarshal(&pb.DeleteMessageResponse{TopicSortTime: pb.Int64(1710000420000000)}))
 		case "/u/0/api/update_reaction":
 			e2eReactionCalls.Add(1)
 			w.Header().Set("Content-Type", "application/x-protobuf")
-			_, _ = w.Write(encodeBytesField(1, encodeVarintField(1, 710)))
+			_, _ = w.Write(pb.MustMarshal(&pb.UpdateReactionResponse{
+				GroupRevision: &pb.WriteRevision{Timestamp: pb.Int64(710)},
+			}))
 		case "/u/0/api/mark_group_readstate":
 			e2eReadStateCalls.Add(1)
 			w.Header().Set("Content-Type", "application/x-protobuf")
-			_, _ = w.Write(encodeBytesField(2, encodeVarintField(1, 711)))
+			_, _ = w.Write(pb.MustMarshal(&pb.MarkGroupReadstateResponse{
+				UserRevision: &pb.WriteRevision{Timestamp: pb.Int64(711)},
+			}))
 		case "/u/0/api/set_typing_state":
 			e2eTypingCalls.Add(1)
 			w.Header().Set("Content-Type", "application/x-protobuf")
-			_, _ = w.Write(encodeVarintField(1, 1710000430000000))
+			_, _ = w.Write(pb.MustMarshal(&pb.SetTypingStateResponse{StartTimestampUsec: pb.Int64(1710000430000000)}))
 		default:
 			http.NotFound(w, r)
 		}
@@ -1099,46 +1130,51 @@ func TestEndToEndConnectSyncStreamReconnectCatchUpAndBadCredentials(t *testing.T
 }
 
 func buildSendTestPaginatedWorldResponse() []byte {
-	var dmItem []byte
-	dmItem = append(dmItem, encodeBytesField(1, encodeDMGroupID("dm_alpha"))...)
-	dmItem = append(dmItem, encodeBytesField(2, encodeVarintField(1, 90))...)
-	dmItem = append(dmItem, encodeVarintField(3, 1710000001000000)...)
-	var dmRS []byte
-	dmRS = append(dmRS, encodeVarintField(16, 2)...) // MEMBER_JOINED
-	dmRS = append(dmRS, encodeBytesField(23, encodeStringField(1, "112233445566778899001"))...)
-	dmRS = append(dmRS, encodeBytesField(23, encodeStringField(1, "112233445566778899002"))...)
-	dmItem = append(dmItem, encodeBytesField(4, dmRS)...)
+	dmItem := &pb.WorldItemLite{
+		GroupId:       pb.DMGroupID("dm_alpha"),
+		GroupRevision: &pb.ReadRevision{Timestamp: pb.Int64(90)},
+		SortTimestamp: pb.Int64(1710000001000000),
+		ReadState: &pb.GroupReadState{
+			MembershipState: pb.MembershipState_MEMBER_JOINED.Enum(),
+			JoinedUsers: []*pb.UserId{
+				pb.HumanUserID("112233445566778899001"),
+				pb.HumanUserID("112233445566778899002"),
+			},
+		},
+	}
 
-	var unthreadedSpace []byte
-	unthreadedSpace = append(unthreadedSpace, encodeBytesField(1, encodeSpaceGroupID("space_unthreaded"))...)
-	unthreadedSpace = append(unthreadedSpace, encodeBytesField(2, encodeVarintField(1, 110))...)
-	unthreadedSpace = append(unthreadedSpace, encodeVarintField(3, 1710000002000000)...)
-	unthreadedSpace = append(unthreadedSpace, encodeBytesField(4, encodeVarintField(16, 2))...)
-	unthreadedSpace = append(unthreadedSpace, encodeStringField(5, "Unthreaded General")...)
+	unthreadedSpace := &pb.WorldItemLite{
+		GroupId:       pb.SpaceGroupID("space_unthreaded"),
+		GroupRevision: &pb.ReadRevision{Timestamp: pb.Int64(110)},
+		SortTimestamp: pb.Int64(1710000002000000),
+		ReadState: &pb.GroupReadState{
+			MembershipState: pb.MembershipState_MEMBER_JOINED.Enum(),
+		},
+		RoomName: pb.String("Unthreaded General"),
+	}
 
-	var flatThreadsSpace []byte
-	flatThreadsSpace = append(flatThreadsSpace, encodeBytesField(1, encodeSpaceGroupID("space_flat_threads"))...)
-	flatThreadsSpace = append(flatThreadsSpace, encodeBytesField(2, encodeVarintField(1, 115))...)
-	flatThreadsSpace = append(flatThreadsSpace, encodeVarintField(3, 1710000002500000)...)
-	flatThreadsSpace = append(flatThreadsSpace, encodeBytesField(4, encodeVarintField(16, 2))...)
-	flatThreadsSpace = append(flatThreadsSpace, encodeStringField(5, "Flat Threads Eng")...)
-	flatThreadsSpace = append(flatThreadsSpace, encodeVarintField(27, 1)...) // flat_threads_enabled = true
+	flatThreadsSpace := &pb.WorldItemLite{
+		GroupId:            pb.SpaceGroupID("space_flat_threads"),
+		GroupRevision:      &pb.ReadRevision{Timestamp: pb.Int64(115)},
+		SortTimestamp:      pb.Int64(1710000002500000),
+		ReadState:          &pb.GroupReadState{MembershipState: pb.MembershipState_MEMBER_JOINED.Enum()},
+		RoomName:           pb.String("Flat Threads Eng"),
+		FlatThreadsEnabled: pb.Bool(true),
+	}
 
-	var threadedSpace []byte
-	threadedSpace = append(threadedSpace, encodeBytesField(1, encodeSpaceGroupID("space_threaded"))...)
-	threadedSpace = append(threadedSpace, encodeBytesField(2, encodeVarintField(1, 120))...)
-	threadedSpace = append(threadedSpace, encodeVarintField(3, 1710000003000000)...)
-	threadedSpace = append(threadedSpace, encodeBytesField(4, encodeVarintField(16, 2))...)
-	threadedSpace = append(threadedSpace, encodeStringField(5, "Threaded Eng")...)
-	threadedSpace = append(threadedSpace, encodeBytesField(15, nil)...) // threaded_group = ThreadedGroup{}
+	threadedSpace := &pb.WorldItemLite{
+		GroupId:       pb.SpaceGroupID("space_threaded"),
+		GroupRevision: &pb.ReadRevision{Timestamp: pb.Int64(120)},
+		SortTimestamp: pb.Int64(1710000003000000),
+		ReadState:     &pb.GroupReadState{MembershipState: pb.MembershipState_MEMBER_JOINED.Enum()},
+		RoomName:      pb.String("Threaded Eng"),
+		ThreadedGroup: &pb.WorldItemLite_ThreadedGroup{},
+	}
 
-	var worldResp []byte
-	worldResp = append(worldResp, encodeBytesField(3, encodeVarintField(1, 500))...)
-	worldResp = append(worldResp, encodeBytesField(4, dmItem)...)
-	worldResp = append(worldResp, encodeBytesField(4, unthreadedSpace)...)
-	worldResp = append(worldResp, encodeBytesField(4, flatThreadsSpace)...)
-	worldResp = append(worldResp, encodeBytesField(4, threadedSpace)...)
-	return worldResp
+	return pb.MustMarshal(&pb.PaginatedWorldResponse{
+		UserRevision: &pb.ReadRevision{Timestamp: pb.Int64(500)},
+		WorldItems:   []*pb.WorldItemLite{dmItem, unthreadedSpace, flatThreadsSpace, threadedSpace},
+	})
 }
 
 func TestSendNewTopicInThreadedSpaceAndCreateMessageInThreadOrDM(t *testing.T) {
@@ -1177,19 +1213,19 @@ func TestSendNewTopicInThreadedSpaceAndCreateMessageInThreadOrDM(t *testing.T) {
 			createTopicReqs = append(createTopicReqs, body)
 			mu.Unlock()
 
-			spaceGID := encodeSpaceGroupID("space_threaded")
+			spaceGID := pb.SpaceGroupID("space_threaded")
 			topicIDStr := fmt.Sprintf("topic_new_%d", idx)
 			msgIDStr := fmt.Sprintf("msg_new_%d", idx)
-			msgBytes := encodeSyntheticMessage(spaceGID, topicIDStr, msgIDStr, "112233445566778899001", "Hello 🚀", 1710000500000000+int64(idx), "", 0, 0)
-			var topicIDProto []byte
-			topicIDProto = append(topicIDProto, encodeStringField(2, topicIDStr)...)
-			topicIDProto = append(topicIDProto, encodeBytesField(3, spaceGID)...)
-			var topicProto []byte
-			topicProto = append(topicProto, encodeBytesField(1, topicIDProto)...)
-			topicProto = append(topicProto, encodeVarintField(2, uint64(1710000500000000+idx))...)
-			topicProto = append(topicProto, encodeBytesField(7, msgBytes)...)
-			topicProto = append(topicProto, encodeVarintField(15, uint64(1710000500000000+idx))...)
-			resp := encodeBytesField(1, topicProto)
+			ts := int64(1710000500000000 + idx)
+			msgProto := buildSyntheticMessageProto(spaceGID, topicIDStr, msgIDStr, "112233445566778899001", "Hello 🚀", ts, "", 0, 0)
+			resp := pb.MustMarshal(&pb.CreateTopicResponse{
+				Topic: &pb.Topic{
+					Id:             buildTopicID(spaceGID, topicIDStr),
+					SortTime:       pb.Int64(ts),
+					Replies:        []*pb.Message{msgProto},
+					CreateTimeUsec: pb.Int64(ts),
+				},
+			})
 			w.Header().Set("Content-Type", "application/x-protobuf")
 			_, _ = w.Write(resp)
 		case "/u/0/api/create_message":
@@ -1199,10 +1235,10 @@ func TestSendNewTopicInThreadedSpaceAndCreateMessageInThreadOrDM(t *testing.T) {
 			createMsgReqs = append(createMsgReqs, body)
 			mu.Unlock()
 
-			spaceGID := encodeSpaceGroupID("space_threaded")
+			spaceGID := pb.SpaceGroupID("space_threaded")
 			msgIDStr := fmt.Sprintf("msg_reply_%d", idx)
-			msgBytes := encodeSyntheticMessage(spaceGID, "topic_new_1", msgIDStr, "112233445566778899001", "Reply body", 1710000600000000+int64(idx), "", 0, 0)
-			resp := encodeBytesField(1, msgBytes)
+			msgProto := buildSyntheticMessageProto(spaceGID, "topic_new_1", msgIDStr, "112233445566778899001", "Reply body", 1710000600000000+int64(idx), "", 0, 0)
+			resp := pb.MustMarshal(&pb.CreateMessageResponse{Message: msgProto})
 			w.Header().Set("Content-Type", "application/x-protobuf")
 			_, _ = w.Write(resp)
 		default:
@@ -1298,31 +1334,31 @@ func TestSendNewTopicInThreadedSpaceAndCreateMessageInThreadOrDM(t *testing.T) {
 	topicReqBytes := createTopicReqs[0]
 	mu.Unlock()
 
-	topicFields := parseProtoFields(topicReqBytes)
-	require.Equal(t, "Hello 🚀", firstFieldString(topicFields, 2), "CreateTopicRequest.text_body")
-	require.NotEmpty(t, topicFields[3], "CreateTopicRequest.annotations must carry BOLD annotation")
-	localID := firstFieldString(topicFields, 4)
+	var topicReq pb.CreateTopicRequest
+	require.NoError(t, pb.Unmarshal(topicReqBytes, &topicReq))
+	require.Equal(t, "Hello 🚀", topicReq.GetTextBody(), "CreateTopicRequest.text_body")
+	require.NotEmpty(t, topicReq.GetAnnotations(), "CreateTopicRequest.annotations must carry BOLD annotation")
+	localID := topicReq.GetLocalId()
 	require.True(t, strings.HasPrefix(localID, "mautrix-googlechat%"), "local_id must have mautrix-googlechat%% prefix, got %q", localID)
-	groupIDFields := parseProtoFields(firstFieldBytes(topicFields, 5))
-	spaceIDFields := parseProtoFields(firstFieldBytes(groupIDFields, 1))
-	require.Equal(t, "space_threaded", firstFieldString(spaceIDFields, 1))
-	retentionFields := parseProtoFields(firstFieldBytes(topicFields, 6))
-	require.Equal(t, uint64(1), firstFieldVarint(retentionFields, 1), "retention_settings.state must be DEFAULT_AWAKE (1)")
-	require.Equal(t, uint64(1), firstFieldVarint(topicFields, 8), "history_v2 must be true")
-	msgInfoFields := parseProtoFields(firstFieldBytes(topicFields, 9))
-	require.Equal(t, uint64(1), firstFieldVarint(msgInfoFields, 1), "accept_format_annotations must be true")
+	require.Equal(t, "space_threaded", topicReq.GetGroupId().GetSpaceId().GetSpaceId())
+	require.Equal(t, pb.RetentionSettings_PERMANENT, topicReq.GetRetentionSettings().GetState(), "retention_settings.state must be PERMANENT (1)")
+	require.True(t, topicReq.GetHistoryV2(), "history_v2 must be true")
+	require.True(t, topicReq.GetMessageInfo().GetAcceptFormatAnnotations(), "accept_format_annotations must be true")
 
 	// Echo deduplication: incoming WebChannel MESSAGE_POSTED carrying the same local_id must be ignored.
 	beforeEvents := len(client.recordedRemoteEvents())
-	echoMsg := encodeSyntheticMessage(encodeSpaceGroupID("space_threaded"), "topic_new_1", "msg_new_1", "112233445566778899001", "Hello 🚀", 1710000500000001, "", 0, 0)
-	echoMsg = append(echoMsg, encodeStringField(14, localID)...)
-	var echoBody []byte
-	echoBody = append(echoBody, encodeBytesField(6, encodeBytesField(1, echoMsg))...)
-	echoBody = append(echoBody, encodeVarintField(12, 6)...)
-	var echoEvt []byte
-	echoEvt = append(echoEvt, encodeBytesField(1, encodeSpaceGroupID("space_threaded"))...)
-	echoEvt = append(echoEvt, encodeVarintField(3, 6)...)
-	echoEvt = append(echoEvt, encodeBytesField(4, echoBody)...)
+	echoMsg := buildSyntheticMessageProto(pb.SpaceGroupID("space_threaded"), "topic_new_1", "msg_new_1", "112233445566778899001", "Hello 🚀", 1710000500000001, "", 0, 0)
+	echoMsg.LocalId = pb.String(localID)
+	echoEvt := pb.MustMarshal(&pb.Event{
+		GroupId: pb.SpaceGroupID("space_threaded"),
+		Type:    pb.Event_MESSAGE_POSTED.Enum(),
+		Body: &pb.Event_EventBody{
+			Type: &pb.Event_EventBody_MessagePosted{
+				MessagePosted: &pb.MessageEvent{Message: echoMsg},
+			},
+			EventType: pb.Event_MESSAGE_POSTED.Enum(),
+		},
+	})
 	client.processStreamNotification(ctx, streamNotification{kind: 1, payload: echoEvt})
 	require.Len(t, client.recordedRemoteEvents(), beforeEvents, "outbound local_id echo must be deduplicated")
 
@@ -1355,19 +1391,14 @@ func TestSendNewTopicInThreadedSpaceAndCreateMessageInThreadOrDM(t *testing.T) {
 	createMsgBytes := createMsgReqs[0]
 	mu.Unlock()
 
-	cmFields := parseProtoFields(createMsgBytes)
-	parentFields := parseProtoFields(firstFieldBytes(cmFields, 1))
-	topicIDFields := parseProtoFields(firstFieldBytes(parentFields, 4))
-	require.Equal(t, "topic_new_1", firstFieldString(topicIDFields, 2), "MessageParentId.topic_id.topic_id")
-	require.Equal(t, "Reply body", firstFieldString(cmFields, 2), "CreateMessageRequest.text_body")
-	require.True(t, strings.HasPrefix(firstFieldString(cmFields, 4), "mautrix-googlechat%"))
-	cmInfoFields := parseProtoFields(firstFieldBytes(cmFields, 7))
-	replyTargetBytes := firstFieldBytes(cmInfoFields, 3)
-	require.NotEmpty(t, replyTargetBytes, "SendReplyTarget must be populated when create_time > 0")
-	rtFields := parseProtoFields(replyTargetBytes)
-	require.Equal(t, uint64(1710000500000000), firstFieldVarint(rtFields, 2), "SendReplyTarget.create_time must be microsecond timestamp")
-	rtMsgIDFields := parseProtoFields(firstFieldBytes(rtFields, 1))
-	require.Equal(t, "msg_new_1", firstFieldString(rtMsgIDFields, 2), "SendReplyTarget.id.message_id")
+	var cmReq pb.CreateMessageRequest
+	require.NoError(t, pb.Unmarshal(createMsgBytes, &cmReq))
+	require.Equal(t, "topic_new_1", cmReq.GetParentId().GetTopicId().GetTopicId(), "MessageParentId.topic_id.topic_id")
+	require.Equal(t, "Reply body", cmReq.GetTextBody(), "CreateMessageRequest.text_body")
+	require.True(t, strings.HasPrefix(cmReq.GetLocalId(), "mautrix-googlechat%"))
+	require.NotNil(t, cmReq.GetMessageInfo().GetReplyTo(), "SendReplyTarget must be populated when create_time > 0")
+	require.Equal(t, int64(1710000500000000), cmReq.GetMessageInfo().GetReplyTo().GetCreateTime(), "SendReplyTarget.create_time must be microsecond timestamp")
+	require.Equal(t, "msg_new_1", cmReq.GetMessageInfo().GetReplyTo().GetId().GetMessageId(), "SendReplyTarget.id.message_id")
 
 	// 3. Quote-reply with zero create_time must NEVER send SendReplyTarget (create_time == 0 omitted).
 	zeroReplyTargetDB := &database.Message{
@@ -1388,10 +1419,10 @@ func TestSendNewTopicInThreadedSpaceAndCreateMessageInThreadOrDM(t *testing.T) {
 	require.NoError(t, err)
 	mu.Lock()
 	require.Len(t, createMsgReqs, 2)
-	zeroReqFields := parseProtoFields(createMsgReqs[1])
+	var zeroReq pb.CreateMessageRequest
+	require.NoError(t, pb.Unmarshal(createMsgReqs[1], &zeroReq))
 	mu.Unlock()
-	zeroInfoFields := parseProtoFields(firstFieldBytes(zeroReqFields, 7))
-	require.Empty(t, firstFieldBytes(zeroInfoFields, 3), "SendReplyTarget must not be sent when target create_time is 0")
+	require.Nil(t, zeroReq.GetMessageInfo().GetReplyTo(), "SendReplyTarget must not be sent when target create_time is 0")
 
 	// 4. Message in synced DM -> POST /u/0/api/create_message
 	_, err = client.HandleMatrixMessage(ctx, &bridgev2.MatrixMessage{
@@ -1406,13 +1437,10 @@ func TestSendNewTopicInThreadedSpaceAndCreateMessageInThreadOrDM(t *testing.T) {
 	require.NoError(t, err)
 	mu.Lock()
 	require.Len(t, createMsgReqs, 3)
-	dmReqFields := parseProtoFields(createMsgReqs[2])
+	var dmReq pb.CreateMessageRequest
+	require.NoError(t, pb.Unmarshal(createMsgReqs[2], &dmReq))
 	mu.Unlock()
-	dmParentFields := parseProtoFields(firstFieldBytes(dmReqFields, 1))
-	dmTopicFields := parseProtoFields(firstFieldBytes(dmParentFields, 4))
-	dmGIDFields := parseProtoFields(firstFieldBytes(dmTopicFields, 3))
-	dmIDFields := parseProtoFields(firstFieldBytes(dmGIDFields, 3))
-	require.Equal(t, "dm_alpha", firstFieldString(dmIDFields, 1))
+	require.Equal(t, "dm_alpha", dmReq.GetParentId().GetTopicId().GetGroupId().GetDmId().GetDmId())
 
 	// 5. Text exceeding 4,096 characters is refused with a plain message.
 	_, err = client.HandleMatrixMessage(ctx, &bridgev2.MatrixMessage{
@@ -1463,36 +1491,41 @@ func TestSendEditUnsendReactionReceiptAndTyping(t *testing.T) {
 			mu.Lock()
 			editReqs = append(editReqs, body)
 			mu.Unlock()
-			spaceGID := encodeSpaceGroupID("space_threaded")
-			msgBytes := encodeSyntheticMessage(spaceGID, "topic_1", "msg_1", "112233445566778899001", "Edited text", 1710000500000000, "", 0, 0)
-			msgBytes = append(msgBytes, encodeVarintField(17, 1710000550000000)...)
-			_, _ = w.Write(encodeBytesField(1, msgBytes))
+			spaceGID := pb.SpaceGroupID("space_threaded")
+			msgProto := buildSyntheticMessageProto(spaceGID, "topic_1", "msg_1", "112233445566778899001", "Edited text", 1710000500000000, "", 0, 0)
+			msgProto.LastEditTime = pb.Int64(1710000550000000)
+			_, _ = w.Write(pb.MustMarshal(&pb.EditMessageResponse{Message: msgProto}))
 		case "/u/0/api/delete_message":
 			mu.Lock()
 			deleteReqs = append(deleteReqs, body)
 			mu.Unlock()
-			_, _ = w.Write(encodeVarintField(4, 1710000560000000))
+			_, _ = w.Write(pb.MustMarshal(&pb.DeleteMessageResponse{TopicSortTime: pb.Int64(1710000560000000)}))
 		case "/u/0/api/update_reaction":
 			mu.Lock()
 			reactionReqs = append(reactionReqs, body)
 			mu.Unlock()
-			_, _ = w.Write(encodeBytesField(1, encodeVarintField(1, 600)))
+			_, _ = w.Write(pb.MustMarshal(&pb.UpdateReactionResponse{
+				GroupRevision: &pb.WriteRevision{Timestamp: pb.Int64(600)},
+			}))
 		case "/u/0/api/mark_group_readstate":
 			mu.Lock()
 			readStateReqs = append(readStateReqs, body)
 			mu.Unlock()
-			_, _ = w.Write(encodeBytesField(2, encodeVarintField(1, 601)))
+			_, _ = w.Write(pb.MustMarshal(&pb.MarkGroupReadstateResponse{
+				UserRevision: &pb.WriteRevision{Timestamp: pb.Int64(601)},
+			}))
 		case "/u/0/api/set_typing_state":
 			mu.Lock()
 			typingReqs = append(typingReqs, body)
 			mu.Unlock()
-			_, _ = w.Write(encodeVarintField(1, 1710000570000000))
+			_, _ = w.Write(pb.MustMarshal(&pb.SetTypingStateResponse{StartTimestampUsec: pb.Int64(1710000570000000)}))
 		case "/u/0/uploads", "/uploads":
 			w.Header().Set("x-goog-upload-url", fmt.Sprintf("http://%s/u/0/upload_put", r.Host))
 			w.WriteHeader(http.StatusOK)
 		case "/u/0/upload_put":
-			upMeta := encodeUploadMetadataProto("cap_tok", "cap.bin", "application/octet-stream")
-			wrapped := encodeBytesField(1, upMeta)
+			wrapped := pb.MustMarshal(&pb.ComGoogleRtcMeetingsV1UploadMetadata{
+				UploadMetadata: buildUploadMetadataProto("cap_tok", "cap.bin", "application/octet-stream"),
+			})
 			w.Header().Set("Content-Type", "text/plain")
 			_, _ = fmt.Fprint(w, base64.StdEncoding.EncodeToString(wrapped))
 		default:
@@ -1572,12 +1605,12 @@ func TestSendEditUnsendReactionReceiptAndTyping(t *testing.T) {
 	require.NoError(t, err)
 	mu.Lock()
 	require.Len(t, editReqs, 1)
-	editFields := parseProtoFields(editReqs[0])
+	var editReq pb.EditMessageRequest
+	require.NoError(t, pb.Unmarshal(editReqs[0], &editReq))
 	mu.Unlock()
-	editMsgIDFields := parseProtoFields(firstFieldBytes(editFields, 1))
-	require.Equal(t, "msg_1", firstFieldString(editMsgIDFields, 2))
-	require.Equal(t, "Edited text", firstFieldString(editFields, 2))
-	require.NotEmpty(t, editFields[3], "EditMessageRequest.annotations must be populated")
+	require.Equal(t, "msg_1", editReq.GetMessageId().GetMessageId())
+	require.Equal(t, "Edited text", editReq.GetTextBody())
+	require.NotEmpty(t, editReq.GetAnnotations(), "EditMessageRequest.annotations must be populated")
 
 	// 2. Delete message -> POST /u/0/api/delete_message
 	err = client.HandleMatrixMessageRemove(ctx, &bridgev2.MatrixMessageRemove{
@@ -1589,10 +1622,10 @@ func TestSendEditUnsendReactionReceiptAndTyping(t *testing.T) {
 	require.NoError(t, err)
 	mu.Lock()
 	require.Len(t, deleteReqs, 1)
-	delFields := parseProtoFields(deleteReqs[0])
+	var delReq pb.DeleteMessageRequest
+	require.NoError(t, pb.Unmarshal(deleteReqs[0], &delReq))
 	mu.Unlock()
-	delMsgIDFields := parseProtoFields(firstFieldBytes(delFields, 1))
-	require.Equal(t, "msg_1", firstFieldString(delMsgIDFields, 2))
+	require.Equal(t, "msg_1", delReq.GetMessageId().GetMessageId())
 
 	// 3. Reaction add & remove -> POST /u/0/api/update_reaction (strips U+FE0F)
 	rxnInput := &bridgev2.MatrixReaction{
@@ -1629,17 +1662,16 @@ func TestSendEditUnsendReactionReceiptAndTyping(t *testing.T) {
 
 	mu.Lock()
 	require.Len(t, reactionReqs, 2)
-	addRxnFields := parseProtoFields(reactionReqs[0])
-	remRxnFields := parseProtoFields(reactionReqs[1])
+	var addRxnReq, remRxnReq pb.UpdateReactionRequest
+	require.NoError(t, pb.Unmarshal(reactionReqs[0], &addRxnReq))
+	require.NoError(t, pb.Unmarshal(reactionReqs[1], &remRxnReq))
 	mu.Unlock()
 
-	addEmojiFields := parseProtoFields(firstFieldBytes(addRxnFields, 2))
-	require.Equal(t, "❤", firstFieldString(addEmojiFields, 1), "UpdateReactionRequest ADD must strip U+FE0F")
-	require.Equal(t, uint64(1), firstFieldVarint(addRxnFields, 3), "UpdateReactionRequest.type must be ADD (1)")
+	require.Equal(t, "❤", addRxnReq.GetEmoji().GetUnicode(), "UpdateReactionRequest ADD must strip U+FE0F")
+	require.Equal(t, pb.UpdateReactionRequest_ADD, addRxnReq.GetType(), "UpdateReactionRequest.type must be ADD (1)")
 
-	remEmojiFields := parseProtoFields(firstFieldBytes(remRxnFields, 2))
-	require.Equal(t, "❤", firstFieldString(remEmojiFields, 1), "UpdateReactionRequest REMOVE must strip U+FE0F")
-	require.Equal(t, uint64(2), firstFieldVarint(remRxnFields, 3), "UpdateReactionRequest.type must be REMOVE (2)")
+	require.Equal(t, "❤", remRxnReq.GetEmoji().GetUnicode(), "UpdateReactionRequest REMOVE must strip U+FE0F")
+	require.Equal(t, pb.UpdateReactionRequest_REMOVE, remRxnReq.GetType(), "UpdateReactionRequest.type must be REMOVE (2)")
 
 	// 4. Read receipt -> POST /u/0/api/mark_group_readstate with microsecond timestamp
 	readTime := time.UnixMicro(1710000599123456)
@@ -1650,9 +1682,10 @@ func TestSendEditUnsendReactionReceiptAndTyping(t *testing.T) {
 	require.NoError(t, err)
 	mu.Lock()
 	require.Len(t, readStateReqs, 1)
-	rsFields := parseProtoFields(readStateReqs[0])
+	var rsReq pb.MarkGroupReadstateRequest
+	require.NoError(t, pb.Unmarshal(readStateReqs[0], &rsReq))
 	mu.Unlock()
-	require.Equal(t, uint64(1710000599123456), firstFieldVarint(rsFields, 2), "MarkGroupReadstateRequest.last_read_time must be in microseconds")
+	require.Equal(t, int64(1710000599123456), rsReq.GetLastReadTime(), "MarkGroupReadstateRequest.last_read_time must be in microseconds")
 
 	// 5. Typing start & stop -> POST /u/0/api/set_typing_state
 	err = client.HandleMatrixTyping(ctx, &bridgev2.MatrixTyping{
@@ -1667,11 +1700,12 @@ func TestSendEditUnsendReactionReceiptAndTyping(t *testing.T) {
 	require.NoError(t, err)
 	mu.Lock()
 	require.Len(t, typingReqs, 2)
-	typingStartFields := parseProtoFields(typingReqs[0])
-	typingStopFields := parseProtoFields(typingReqs[1])
+	var typingStartReq, typingStopReq pb.SetTypingStateRequest
+	require.NoError(t, pb.Unmarshal(typingReqs[0], &typingStartReq))
+	require.NoError(t, pb.Unmarshal(typingReqs[1], &typingStopReq))
 	mu.Unlock()
-	require.Equal(t, uint64(1), firstFieldVarint(typingStartFields, 1), "SetTypingStateRequest.state TYPING (1)")
-	require.Equal(t, uint64(2), firstFieldVarint(typingStopFields, 1), "SetTypingStateRequest.state STOPPED (2)")
+	require.Equal(t, pb.TypingState_TYPING, typingStartReq.GetState(), "SetTypingStateRequest.state TYPING (1)")
+	require.Equal(t, pb.TypingState_STOPPED, typingStopReq.GetState(), "SetTypingStateRequest.state STOPPED (2)")
 
 	require.Equal(t, event.CapLevelUnsupported, client.GetCapabilities(ctx, dmPortal).Thread)
 	require.Equal(t, event.CapLevelUnsupported, client.GetCapabilities(ctx, dmPortal).Formatting[event.FmtAtRoomMention])
@@ -1681,14 +1715,9 @@ func TestSendEditUnsendReactionReceiptAndTyping(t *testing.T) {
 	require.Equal(t, event.CapLevelFullySupported, client.GetCapabilities(ctx, portal).Formatting[event.FmtAtRoomMention])
 }
 
-func hasMentionAllAnnotation(annSlices []protoField) bool {
-	for _, f := range annSlices {
-		af := parseProtoFields(f.bytes)
-		if firstFieldVarint(af, 1) != 6 { // AnnotationType.USER_MENTION = 6 (googlechat.proto:1778)
-			continue
-		}
-		um := parseProtoFields(firstFieldBytes(af, 5)) // user_mention_metadata = field 5
-		if firstFieldVarint(um, 2) == 4 {              // UserMentionMetadata.type (field 2) == MENTION_ALL (4)
+func hasMentionAllAnnotation(anns []*pb.Annotation) bool {
+	for _, a := range anns {
+		if a.GetType() == pb.AnnotationType_USER_MENTION && a.GetUserMentionMetadata().GetType() == pb.UserMentionMetadata_MENTION_ALL {
 			return true
 		}
 	}
@@ -1715,29 +1744,31 @@ func TestOutboundMentionsAtRoomAndAtAllInSpaceAndDM(t *testing.T) {
 			createTopicReqs = append(createTopicReqs, body)
 			idx := len(createTopicReqs)
 			mu.Unlock()
-			spaceGID := encodeSpaceGroupID("space_threaded")
+			spaceGID := pb.SpaceGroupID("space_threaded")
 			tid := fmt.Sprintf("topic_m_%d", idx)
 			mid := fmt.Sprintf("msg_m_%d", idx)
-			msgBytes := encodeSyntheticMessage(spaceGID, tid, mid, "112233445566778899001", "ok", 1710000500000000+int64(idx), "", 0, 0)
-			var topic []byte
-			topic = append(topic, encodeBytesField(1, encodeTopicID(spaceGID, tid))...)
-			topic = append(topic, encodeBytesField(7, msgBytes)...)
-			_, _ = w.Write(encodeBytesField(1, topic))
+			msgProto := buildSyntheticMessageProto(spaceGID, tid, mid, "112233445566778899001", "ok", 1710000500000000+int64(idx), "", 0, 0)
+			_, _ = w.Write(pb.MustMarshal(&pb.CreateTopicResponse{
+				Topic: &pb.Topic{
+					Id:      buildTopicID(spaceGID, tid),
+					Replies: []*pb.Message{msgProto},
+				},
+			}))
 		case "/u/0/api/create_message":
 			mu.Lock()
 			createMsgReqs = append(createMsgReqs, body)
 			idx := len(createMsgReqs)
 			mu.Unlock()
-			dmGID := encodeDMGroupID("dm_alpha")
-			msgBytes := encodeSyntheticMessage(dmGID, "dm_t", fmt.Sprintf("dm_m_%d", idx), "112233445566778899001", "ok", 1710000500000000+int64(idx), "", 0, 0)
-			_, _ = w.Write(encodeBytesField(1, msgBytes))
+			dmGID := pb.DMGroupID("dm_alpha")
+			msgProto := buildSyntheticMessageProto(dmGID, "dm_t", fmt.Sprintf("dm_m_%d", idx), "112233445566778899001", "ok", 1710000500000000+int64(idx), "", 0, 0)
+			_, _ = w.Write(pb.MustMarshal(&pb.CreateMessageResponse{Message: msgProto}))
 		case "/u/0/api/edit_message":
 			mu.Lock()
 			editReqs = append(editReqs, body)
 			mu.Unlock()
-			spaceGID := encodeSpaceGroupID("space_threaded")
-			msgBytes := encodeSyntheticMessage(spaceGID, "topic_m_1", "msg_m_1", "112233445566778899001", "ok", 1710000500000000, "", 0, 0)
-			_, _ = w.Write(encodeBytesField(1, msgBytes))
+			spaceGID := pb.SpaceGroupID("space_threaded")
+			msgProto := buildSyntheticMessageProto(spaceGID, "topic_m_1", "msg_m_1", "112233445566778899001", "ok", 1710000500000000, "", 0, 0)
+			_, _ = w.Write(pb.MustMarshal(&pb.EditMessageResponse{Message: msgProto}))
 		default:
 			http.NotFound(w, r)
 		}
@@ -1829,25 +1860,28 @@ func TestOutboundMentionsAtRoomAndAtAllInSpaceAndDM(t *testing.T) {
 	require.Len(t, editReqs, 1)
 	require.Len(t, createMsgReqs, 2)
 
-	plainSpaceFields := parseProtoFields(createTopicReqs[0])
-	require.Equal(t, "Heads up @all and @all", firstFieldString(plainSpaceFields, 2), "plain-text @room in Space must rewrite to @all")
-	require.True(t, hasMentionAllAnnotation(plainSpaceFields[3]), "plain-text @room/@all in Space must emit MENTION_ALL annotation")
+	var plainSpaceReq, htmlSpaceReq pb.CreateTopicRequest
+	require.NoError(t, pb.Unmarshal(createTopicReqs[0], &plainSpaceReq))
+	require.Equal(t, "Heads up @all and @all", plainSpaceReq.GetTextBody(), "plain-text @room in Space must rewrite to @all")
+	require.True(t, hasMentionAllAnnotation(plainSpaceReq.GetAnnotations()), "plain-text @room/@all in Space must emit MENTION_ALL annotation")
 
-	htmlSpaceFields := parseProtoFields(createTopicReqs[1])
-	require.Equal(t, "Alert @all", firstFieldString(htmlSpaceFields, 2), "HTML @room in Space must rewrite to @all")
-	require.True(t, hasMentionAllAnnotation(htmlSpaceFields[3]), "HTML @room in Space must emit MENTION_ALL annotation")
+	require.NoError(t, pb.Unmarshal(createTopicReqs[1], &htmlSpaceReq))
+	require.Equal(t, "Alert @all", htmlSpaceReq.GetTextBody(), "HTML @room in Space must rewrite to @all")
+	require.True(t, hasMentionAllAnnotation(htmlSpaceReq.GetAnnotations()), "HTML @room in Space must emit MENTION_ALL annotation")
 
-	editSpaceFields := parseProtoFields(editReqs[0])
-	require.Equal(t, "Edited @all notice", firstFieldString(editSpaceFields, 2), "Edit @room in Space must rewrite to @all")
-	require.True(t, hasMentionAllAnnotation(editSpaceFields[3]), "Edit @room in Space must emit MENTION_ALL annotation")
+	var editSpaceReq pb.EditMessageRequest
+	require.NoError(t, pb.Unmarshal(editReqs[0], &editSpaceReq))
+	require.Equal(t, "Edited @all notice", editSpaceReq.GetTextBody(), "Edit @room in Space must rewrite to @all")
+	require.True(t, hasMentionAllAnnotation(editSpaceReq.GetAnnotations()), "Edit @room in Space must emit MENTION_ALL annotation")
 
-	plainDMFields := parseProtoFields(createMsgReqs[0])
-	require.Equal(t, "Hello @room and @all in DM", firstFieldString(plainDMFields, 2), "DM must not rewrite @room")
-	require.False(t, hasMentionAllAnnotation(plainDMFields[3]), "DM plain text must not emit MENTION_ALL")
+	var plainDMReq, htmlDMReq pb.CreateMessageRequest
+	require.NoError(t, pb.Unmarshal(createMsgReqs[0], &plainDMReq))
+	require.Equal(t, "Hello @room and @all in DM", plainDMReq.GetTextBody(), "DM must not rewrite @room")
+	require.False(t, hasMentionAllAnnotation(plainDMReq.GetAnnotations()), "DM plain text must not emit MENTION_ALL")
 
-	htmlDMFields := parseProtoFields(createMsgReqs[1])
-	require.Equal(t, "Hello @room and @all in DM", firstFieldString(htmlDMFields, 2), "DM HTML must not rewrite @room")
-	require.False(t, hasMentionAllAnnotation(htmlDMFields[3]), "DM HTML must not emit MENTION_ALL")
+	require.NoError(t, pb.Unmarshal(createMsgReqs[1], &htmlDMReq))
+	require.Equal(t, "Hello @room and @all in DM", htmlDMReq.GetTextBody(), "DM HTML must not rewrite @room")
+	require.False(t, hasMentionAllAnnotation(htmlDMReq.GetAnnotations()), "DM HTML must not emit MENTION_ALL")
 }
 
 func TestOutboundMessageAndEditEchoDeduplication(t *testing.T) {
@@ -1868,34 +1902,40 @@ func TestOutboundMessageAndEditEchoDeduplication(t *testing.T) {
 				http.Error(w, "Server Error", http.StatusInternalServerError)
 				return
 			}
-			reqFields := parseProtoFields(body)
-			localID := firstFieldString(reqFields, 4)
-			spaceGID := encodeSpaceGroupID("space_threaded")
-			msgBytes := encodeSyntheticMessage(spaceGID, "topic_dedup", "msg_dedup_1", "112233445566778899001", "Dedup test", 1710000500000000, "", 0, 0)
-			msgBytes = append(msgBytes, encodeStringField(14, localID)...)
+			var req pb.CreateTopicRequest
+			_ = pb.Unmarshal(body, &req)
+			localID := req.GetLocalId()
+			spaceGID := pb.SpaceGroupID("space_threaded")
+			msgProto := buildSyntheticMessageProto(spaceGID, "topic_dedup", "msg_dedup_1", "112233445566778899001", "Dedup test", 1710000500000000, "", 0, 0)
+			msgProto.LocalId = pb.String(localID)
 
 			// Deliver the WebChannel MESSAGE_POSTED echo WHILE create_topic is still in flight!
 			if c := clientRef.Load(); c != nil {
-				var echoBody []byte
-				echoBody = append(echoBody, encodeBytesField(6, encodeBytesField(1, msgBytes))...)
-				echoBody = append(echoBody, encodeVarintField(12, 6)...)
-				var echoEvt []byte
-				echoEvt = append(echoEvt, encodeBytesField(1, spaceGID)...)
-				echoEvt = append(echoEvt, encodeVarintField(3, 6)...)
-				echoEvt = append(echoEvt, encodeBytesField(4, echoBody)...)
+				echoEvt := pb.MustMarshal(&pb.Event{
+					GroupId: spaceGID,
+					Type:    pb.Event_MESSAGE_POSTED.Enum(),
+					Body: &pb.Event_EventBody{
+						Type: &pb.Event_EventBody_MessagePosted{
+							MessagePosted: &pb.MessageEvent{Message: msgProto},
+						},
+						EventType: pb.Event_MESSAGE_POSTED.Enum(),
+					},
+				})
 				c.processStreamNotification(ctx, streamNotification{kind: 1, payload: echoEvt})
 				inFlightEchoDispatched.Store(true)
 			}
 
-			var topic []byte
-			topic = append(topic, encodeBytesField(1, encodeTopicID(spaceGID, "topic_dedup"))...)
-			topic = append(topic, encodeBytesField(7, msgBytes)...)
-			_, _ = w.Write(encodeBytesField(1, topic))
+			_, _ = w.Write(pb.MustMarshal(&pb.CreateTopicResponse{
+				Topic: &pb.Topic{
+					Id:      buildTopicID(spaceGID, "topic_dedup"),
+					Replies: []*pb.Message{msgProto},
+				},
+			}))
 		case "/u/0/api/edit_message":
-			spaceGID := encodeSpaceGroupID("space_threaded")
-			msgBytes := encodeSyntheticMessage(spaceGID, "topic_dedup", "msg_dedup_1", "112233445566778899001", "Dedup edited", 1710000500000000, "", 0, 0)
-			msgBytes = append(msgBytes, encodeVarintField(17, 1710000550000000)...) // last_edit_time
-			_, _ = w.Write(encodeBytesField(1, msgBytes))
+			spaceGID := pb.SpaceGroupID("space_threaded")
+			msgProto := buildSyntheticMessageProto(spaceGID, "topic_dedup", "msg_dedup_1", "112233445566778899001", "Dedup edited", 1710000500000000, "", 0, 0)
+			msgProto.LastEditTime = pb.Int64(1710000550000000)
+			_, _ = w.Write(pb.MustMarshal(&pb.EditMessageResponse{Message: msgProto}))
 		default:
 			http.NotFound(w, r)
 		}
@@ -1953,16 +1993,19 @@ func TestOutboundMessageAndEditEchoDeduplication(t *testing.T) {
 	}))
 	require.Equal(t, int64(1710000550000000), resp.DB.Metadata.(*MessageMetadata).LastEditTime)
 
-	spaceGID := encodeSpaceGroupID("space_threaded")
-	editedEcho := encodeSyntheticMessage(spaceGID, "topic_dedup", "msg_dedup_1", "112233445566778899001", "Dedup edited", 1710000500000000, "", 0, 0)
-	editedEcho = append(editedEcho, encodeVarintField(17, 1710000550000000)...)
-	var editBody []byte
-	editBody = append(editBody, encodeBytesField(6, encodeBytesField(1, editedEcho))...)
-	editBody = append(editBody, encodeVarintField(12, 7)...) // MESSAGE_UPDATED
-	var editEvtBytes []byte
-	editEvtBytes = append(editEvtBytes, encodeBytesField(1, spaceGID)...)
-	editEvtBytes = append(editEvtBytes, encodeVarintField(3, 7)...)
-	editEvtBytes = append(editEvtBytes, encodeBytesField(4, editBody)...)
+	spaceGID := pb.SpaceGroupID("space_threaded")
+	editedEcho := buildSyntheticMessageProto(spaceGID, "topic_dedup", "msg_dedup_1", "112233445566778899001", "Dedup edited", 1710000500000000, "", 0, 0)
+	editedEcho.LastEditTime = pb.Int64(1710000550000000)
+	editEvtBytes := pb.MustMarshal(&pb.Event{
+		GroupId: spaceGID,
+		Type:    pb.Event_MESSAGE_UPDATED.Enum(),
+		Body: &pb.Event_EventBody{
+			Type: &pb.Event_EventBody_MessagePosted{
+				MessagePosted: &pb.MessageEvent{Message: editedEcho},
+			},
+			EventType: pb.Event_MESSAGE_UPDATED.Enum(),
+		},
+	})
 
 	remoteEvts, err := client.translateWebChannelEvent(ctx, editEvtBytes)
 	require.NoError(t, err)
@@ -1974,15 +2017,18 @@ func TestOutboundMessageAndEditEchoDeduplication(t *testing.T) {
 	require.ErrorIs(t, convErr, bridgev2.ErrIgnoringRemoteEvent, "ConvertEdit must return ErrIgnoringRemoteEvent for outbound edit echo with same last_edit_time")
 
 	// Newer edit from remote (1710000560000000 > 1710000550000000) is NOT ignored
-	newerEditMsg := encodeSyntheticMessage(spaceGID, "topic_dedup", "msg_dedup_1", "112233445566778899001", "Newer edit", 1710000500000000, "", 0, 0)
-	newerEditMsg = append(newerEditMsg, encodeVarintField(17, 1710000560000000)...)
-	var newerBody []byte
-	newerBody = append(newerBody, encodeBytesField(6, encodeBytesField(1, newerEditMsg))...)
-	newerBody = append(newerBody, encodeVarintField(12, 7)...)
-	var newerEvtBytes []byte
-	newerEvtBytes = append(newerEvtBytes, encodeBytesField(1, spaceGID)...)
-	newerEvtBytes = append(newerEvtBytes, encodeVarintField(3, 7)...)
-	newerEvtBytes = append(newerEvtBytes, encodeBytesField(4, newerBody)...)
+	newerEditMsg := buildSyntheticMessageProto(spaceGID, "topic_dedup", "msg_dedup_1", "112233445566778899001", "Newer edit", 1710000500000000, "", 0, 0)
+	newerEditMsg.LastEditTime = pb.Int64(1710000560000000)
+	newerEvtBytes := pb.MustMarshal(&pb.Event{
+		GroupId: spaceGID,
+		Type:    pb.Event_MESSAGE_UPDATED.Enum(),
+		Body: &pb.Event_EventBody{
+			Type: &pb.Event_EventBody_MessagePosted{
+				MessagePosted: &pb.MessageEvent{Message: newerEditMsg},
+			},
+			EventType: pb.Event_MESSAGE_UPDATED.Enum(),
+		},
+	})
 
 	newerRemoteEvts, err := client.translateWebChannelEvent(ctx, newerEvtBytes)
 	require.NoError(t, err)
@@ -2011,19 +2057,21 @@ func TestQuoteReplyUsesStoredMicrosecondCreateTimeAndTopicIDFallback(t *testing.
 			mu.Lock()
 			createTopicReqs = append(createTopicReqs, body)
 			mu.Unlock()
-			spaceGID := encodeSpaceGroupID("space_unthreaded")
-			msgBytes := encodeSyntheticMessage(spaceGID, "topic_qt_1", "msg_qt_1", "112233445566778899001", "Quote in unthreaded space", 1710000510000000, "", 0, 0)
-			var topic []byte
-			topic = append(topic, encodeBytesField(1, encodeTopicID(spaceGID, "topic_qt_1"))...)
-			topic = append(topic, encodeBytesField(7, msgBytes)...)
-			_, _ = w.Write(encodeBytesField(1, topic))
+			spaceGID := pb.SpaceGroupID("space_unthreaded")
+			msgProto := buildSyntheticMessageProto(spaceGID, "topic_qt_1", "msg_qt_1", "112233445566778899001", "Quote in unthreaded space", 1710000510000000, "", 0, 0)
+			_, _ = w.Write(pb.MustMarshal(&pb.CreateTopicResponse{
+				Topic: &pb.Topic{
+					Id:      buildTopicID(spaceGID, "topic_qt_1"),
+					Replies: []*pb.Message{msgProto},
+				},
+			}))
 		case "/u/0/api/create_message":
 			mu.Lock()
 			createMsgReqs = append(createMsgReqs, body)
 			mu.Unlock()
-			spaceGID := encodeSpaceGroupID("space_threaded")
-			msgBytes := encodeSyntheticMessage(spaceGID, "msg_root_single", "msg_qt_2", "112233445566778899001", "Quote in threaded space", 1710000520000000, "", 0, 0)
-			_, _ = w.Write(encodeBytesField(1, msgBytes))
+			spaceGID := pb.SpaceGroupID("space_threaded")
+			msgProto := buildSyntheticMessageProto(spaceGID, "msg_root_single", "msg_qt_2", "112233445566778899001", "Quote in threaded space", 1710000520000000, "", 0, 0)
+			_, _ = w.Write(pb.MustMarshal(&pb.CreateMessageResponse{Message: msgProto}))
 		default:
 			http.NotFound(w, r)
 		}
@@ -2074,23 +2122,15 @@ func TestQuoteReplyUsesStoredMicrosecondCreateTimeAndTopicIDFallback(t *testing.
 	require.Len(t, createTopicReqs, 1, "quote-reply in unthreaded space must use create_topic")
 	require.Len(t, createMsgReqs, 1, "quote-reply in threaded space must use create_message")
 
-	ctFields := parseProtoFields(createTopicReqs[0])
-	ctMsgInfo := parseProtoFields(firstFieldBytes(ctFields, 9))
-	ctReplyTarget := parseProtoFields(firstFieldBytes(ctMsgInfo, 3))
-	require.Equal(t, uint64(1710000500123456), firstFieldVarint(ctReplyTarget, 2), "create_topic SendReplyTarget must use stored microsecond CreateTimeMicros")
-	ctReplyMsgID := parseProtoFields(firstFieldBytes(ctReplyTarget, 1))
-	ctReplyParent := parseProtoFields(firstFieldBytes(ctReplyMsgID, 1))
-	ctReplyTopic := parseProtoFields(firstFieldBytes(ctReplyParent, 4))
-	require.Equal(t, "msg_root_single", firstFieldString(ctReplyTopic, 2), "create_topic SendReplyTarget topic_id must fall back to target message ID, never empty")
+	var ctReq pb.CreateTopicRequest
+	require.NoError(t, pb.Unmarshal(createTopicReqs[0], &ctReq))
+	require.Equal(t, int64(1710000500123456), ctReq.GetMessageInfo().GetReplyTo().GetCreateTime(), "create_topic SendReplyTarget must use stored microsecond CreateTimeMicros")
+	require.Equal(t, "msg_root_single", ctReq.GetMessageInfo().GetReplyTo().GetId().GetParentId().GetTopicId().GetTopicId(), "create_topic SendReplyTarget topic_id must fall back to target message ID, never empty")
 
-	cmFields := parseProtoFields(createMsgReqs[0])
-	cmMsgInfo := parseProtoFields(firstFieldBytes(cmFields, 7))
-	cmReplyTarget := parseProtoFields(firstFieldBytes(cmMsgInfo, 3))
-	require.Equal(t, uint64(1710000500123456), firstFieldVarint(cmReplyTarget, 2), "create_message SendReplyTarget must use stored microsecond CreateTimeMicros")
-	cmReplyMsgID := parseProtoFields(firstFieldBytes(cmReplyTarget, 1))
-	cmReplyParent := parseProtoFields(firstFieldBytes(cmReplyMsgID, 1))
-	cmReplyTopic := parseProtoFields(firstFieldBytes(cmReplyParent, 4))
-	require.Equal(t, "msg_root_single", firstFieldString(cmReplyTopic, 2), "create_message SendReplyTarget topic_id must never be empty")
+	var cmReq pb.CreateMessageRequest
+	require.NoError(t, pb.Unmarshal(createMsgReqs[0], &cmReq))
+	require.Equal(t, int64(1710000500123456), cmReq.GetMessageInfo().GetReplyTo().GetCreateTime(), "create_message SendReplyTarget must use stored microsecond CreateTimeMicros")
+	require.Equal(t, "msg_root_single", cmReq.GetMessageInfo().GetReplyTo().GetId().GetParentId().GetTopicId().GetTopicId(), "create_message SendReplyTarget topic_id must never be empty")
 }
 
 func TestPortalMetadataConcurrentStreamAndSendRace(t *testing.T) {
@@ -2101,20 +2141,20 @@ func TestPortalMetadataConcurrentStreamAndSendRace(t *testing.T) {
 		case "/u/0/api/paginated_world":
 			_, _ = w.Write(buildSendTestPaginatedWorldResponse())
 		case "/u/0/api/create_topic":
-			spaceGID := encodeSpaceGroupID("space_threaded")
-			msgBytes := encodeSyntheticMessage(spaceGID, "topic_race", "msg_race", "112233445566778899001", "Race", 1710000500000000, "", 0, 0)
-			var topic []byte
-			topic = append(topic, encodeBytesField(1, encodeTopicID(spaceGID, "topic_race"))...)
-			topic = append(topic, encodeBytesField(7, msgBytes)...)
-			var resp []byte
-			resp = append(resp, encodeBytesField(1, topic)...)
-			resp = append(resp, encodeBytesField(2, encodeVarintField(1, 300))...)
-			_, _ = w.Write(resp)
+			spaceGID := pb.SpaceGroupID("space_threaded")
+			msgProto := buildSyntheticMessageProto(spaceGID, "topic_race", "msg_race", "112233445566778899001", "Race", 1710000500000000, "", 0, 0)
+			_, _ = w.Write(pb.MustMarshal(&pb.CreateTopicResponse{
+				Topic: &pb.Topic{
+					Id:      buildTopicID(spaceGID, "topic_race"),
+					Replies: []*pb.Message{msgProto},
+				},
+				GroupRevision: &pb.WriteRevision{Timestamp: pb.Int64(300)},
+			}))
 		case "/u/0/api/catch_up_group":
-			var resp []byte
-			resp = append(resp, encodeVarintField(2, 1)...)
-			resp = append(resp, encodeBytesField(4, encodeVarintField(1, 350))...)
-			_, _ = w.Write(resp)
+			_, _ = w.Write(pb.MustMarshal(&pb.CatchUpResponse{
+				Status:       pb.CatchUpResponse_COMPLETED.Enum(),
+				ReadRevision: &pb.ReadRevision{Timestamp: pb.Int64(350)},
+			}))
 		default:
 			http.NotFound(w, r)
 		}
@@ -2186,102 +2226,124 @@ func TestAdvertisedCapabilitiesAllHaveWorkingHandlers(t *testing.T) {
 			mu.Lock()
 			createDMReqs = append(createDMReqs, body)
 			mu.Unlock()
-			var dmGroup []byte
-			dmGroup = append(dmGroup, encodeBytesField(1, encodeDMGroupID("dm_cap_created"))...)
-			var mem []byte
-			var memID []byte
-			memID = append(memID, encodeBytesField(1, encodeBytesField(1, encodeStringField(1, "112233445566778899002")))...)
-			mem = append(mem, encodeBytesField(1, memID)...)
-			var resp []byte
-			resp = append(resp, encodeBytesField(1, dmGroup)...)
-			resp = append(resp, encodeBytesField(4, mem)...)
-			_, _ = w.Write(resp)
+			_, _ = w.Write(pb.MustMarshal(&pb.CreateDmResponse{
+				Dm: &pb.Group{
+					GroupId: pb.DMGroupID("dm_cap_created"),
+					Name:    pb.String("Bob Example"),
+				},
+				Memberships: []*pb.Membership{
+					{
+						Id: &pb.MembershipId{
+							MemberId: pb.UserMemberID("112233445566778899002"),
+						},
+					},
+				},
+			}))
 		case "/u/0/api/get_group":
 			mu.Lock()
 			getGroupReqs = append(getGroupReqs, body)
 			mu.Unlock()
-			var details []byte
-			details = append(details, encodeStringField(1, "Old description")...)
-			details = append(details, encodeStringField(2, "Keep guidelines intact")...)
-			var grp []byte
-			grp = append(grp, encodeBytesField(1, encodeSpaceGroupID("space_threaded"))...)
-			grp = append(grp, encodeStringField(4, "Threaded Eng")...)
-			grp = append(grp, encodeBytesField(37, details)...)
-			_, _ = w.Write(encodeBytesField(1, grp))
+			_, _ = w.Write(pb.MustMarshal(&pb.GetGroupResponse{
+				Group: &pb.Group{
+					GroupId: pb.SpaceGroupID("space_threaded"),
+					Name:    pb.String("Threaded Eng"),
+					GroupDetails: &pb.GroupDetails{
+						Description: pb.String("Old description"),
+						Guidelines:  pb.String("Keep guidelines intact"),
+					},
+				},
+			}))
 		case "/u/0/api/update_group":
 			mu.Lock()
 			updateGroupReqs = append(updateGroupReqs, body)
 			mu.Unlock()
-			_, _ = w.Write(encodeBytesField(2, encodeVarintField(1, 610)))
+			_, _ = w.Write(pb.MustMarshal(&pb.UpdateGroupResponse{
+				GroupRevision: &pb.WriteRevision{Timestamp: pb.Int64(610)},
+			}))
 		case "/u/0/api/create_membership":
 			mu.Lock()
 			createMemReqs = append(createMemReqs, body)
 			mu.Unlock()
-			_, _ = w.Write(encodeBytesField(2, encodeVarintField(1, 611)))
+			_, _ = w.Write(pb.MustMarshal(&pb.CreateMembershipResponse{
+				GroupRevision: []*pb.WriteRevision{{Timestamp: pb.Int64(611)}},
+			}))
 		case "/u/0/api/remove_memberships":
 			mu.Lock()
 			removeMemReqs = append(removeMemReqs, body)
 			mu.Unlock()
-			_, _ = w.Write(encodeBytesField(3, encodeVarintField(1, 612)))
+			_, _ = w.Write(pb.MustMarshal(&pb.RemoveMembershipsResponse{
+				RetentionSettingsGroupRevision: &pb.WriteRevision{Timestamp: pb.Int64(612)},
+			}))
 		case "/u/0/api/hide_group":
 			mu.Lock()
 			hideGroupReqs = append(hideGroupReqs, body)
 			mu.Unlock()
-			_, _ = w.Write(encodeBytesField(2, encodeVarintField(1, 613)))
+			_, _ = w.Write(pb.MustMarshal(&pb.HideGroupResponse{
+				UserRevision: &pb.WriteRevision{Timestamp: pb.Int64(613)},
+			}))
 		case "/u/0/api/create_topic":
 			mu.Lock()
 			createTopicReqs = append(createTopicReqs, body)
 			idx := len(createTopicReqs)
 			mu.Unlock()
-			spaceGID := encodeSpaceGroupID("space_threaded")
+			spaceGID := pb.SpaceGroupID("space_threaded")
 			tid := fmt.Sprintf("topic_cap_%d", idx)
 			mid := fmt.Sprintf("msg_cap_%d", idx)
-			msgBytes := encodeSyntheticMessage(spaceGID, tid, mid, "112233445566778899001", "cap", 1710000500000000+int64(idx), "", 0, 0)
-			var topic []byte
-			topic = append(topic, encodeBytesField(1, encodeTopicID(spaceGID, tid))...)
-			topic = append(topic, encodeBytesField(7, msgBytes)...)
-			_, _ = w.Write(encodeBytesField(1, topic))
+			msgProto := buildSyntheticMessageProto(spaceGID, tid, mid, "112233445566778899001", "cap", 1710000500000000+int64(idx), "", 0, 0)
+			_, _ = w.Write(pb.MustMarshal(&pb.CreateTopicResponse{
+				Topic: &pb.Topic{
+					Id: &pb.TopicId{
+						TopicId: pb.String(tid),
+						GroupId: spaceGID,
+					},
+					Replies: []*pb.Message{msgProto},
+				},
+			}))
 		case "/u/0/api/create_message":
 			mu.Lock()
 			createMsgReqs = append(createMsgReqs, body)
 			idx := len(createMsgReqs)
 			mu.Unlock()
-			spaceGID := encodeSpaceGroupID("space_threaded")
-			msgBytes := encodeSyntheticMessage(spaceGID, "topic_cap_1", fmt.Sprintf("msg_reply_cap_%d", idx), "112233445566778899001", "cap reply", 1710000600000000+int64(idx), "", 0, 0)
-			_, _ = w.Write(encodeBytesField(1, msgBytes))
+			spaceGID := pb.SpaceGroupID("space_threaded")
+			msgProto := buildSyntheticMessageProto(spaceGID, "topic_cap_1", fmt.Sprintf("msg_reply_cap_%d", idx), "112233445566778899001", "cap reply", 1710000600000000+int64(idx), "", 0, 0)
+			_, _ = w.Write(pb.MustMarshal(&pb.CreateMessageResponse{Message: msgProto}))
 		case "/u/0/api/edit_message":
 			mu.Lock()
 			editReqs = append(editReqs, body)
 			mu.Unlock()
-			spaceGID := encodeSpaceGroupID("space_threaded")
-			msgBytes := encodeSyntheticMessage(spaceGID, "topic_cap_1", "msg_cap_1", "112233445566778899001", "edited", 1710000500000000, "", 0, 0)
-			_, _ = w.Write(encodeBytesField(1, msgBytes))
+			spaceGID := pb.SpaceGroupID("space_threaded")
+			msgProto := buildSyntheticMessageProto(spaceGID, "topic_cap_1", "msg_cap_1", "112233445566778899001", "edited", 1710000500000000, "", 0, 0)
+			_, _ = w.Write(pb.MustMarshal(&pb.EditMessageResponse{Message: msgProto}))
 		case "/u/0/api/delete_message":
 			mu.Lock()
 			deleteReqs = append(deleteReqs, body)
 			mu.Unlock()
-			_, _ = w.Write(encodeVarintField(4, 1710000560000000))
+			_, _ = w.Write(pb.MustMarshal(&pb.DeleteMessageResponse{TopicSortTime: pb.Int64(1710000560000000)}))
 		case "/u/0/api/update_reaction":
 			mu.Lock()
 			reactionReqs = append(reactionReqs, body)
 			mu.Unlock()
-			_, _ = w.Write(encodeBytesField(1, encodeVarintField(1, 600)))
+			_, _ = w.Write(pb.MustMarshal(&pb.UpdateReactionResponse{
+				GroupRevision: &pb.WriteRevision{Timestamp: pb.Int64(600)},
+			}))
 		case "/u/0/api/mark_group_readstate":
 			mu.Lock()
 			readStateReqs = append(readStateReqs, body)
 			mu.Unlock()
-			_, _ = w.Write(encodeBytesField(2, encodeVarintField(1, 601)))
+			_, _ = w.Write(pb.MustMarshal(&pb.MarkGroupReadstateResponse{
+				UserRevision: &pb.WriteRevision{Timestamp: pb.Int64(601)},
+			}))
 		case "/u/0/api/set_typing_state":
 			mu.Lock()
 			typingReqs = append(typingReqs, body)
 			mu.Unlock()
-			_, _ = w.Write(encodeVarintField(1, 1710000570000000))
+			_, _ = w.Write(pb.MustMarshal(&pb.SetTypingStateResponse{StartTimestampUsec: pb.Int64(1710000570000000)}))
 		case "/u/0/uploads", "/uploads":
 			w.Header().Set("x-goog-upload-url", fmt.Sprintf("http://%s/u/0/upload_put", r.Host))
 			w.WriteHeader(http.StatusOK)
 		case "/u/0/upload_put":
-			upMeta := encodeUploadMetadataProto("cap_tok", "cap.bin", "application/octet-stream")
-			wrapped := encodeBytesField(1, upMeta)
+			upMeta := buildUploadMetadataProto("cap_tok", "cap.bin", "application/octet-stream")
+			wrapped := pb.MustMarshal(&pb.ComGoogleRtcMeetingsV1UploadMetadata{UploadMetadata: upMeta})
 			w.Header().Set("Content-Type", "text/plain")
 			_, _ = fmt.Fprint(w, base64.StdEncoding.EncodeToString(wrapped))
 		default:
@@ -2508,9 +2570,10 @@ func TestAdvertisedCapabilitiesAllHaveWorkingHandlers(t *testing.T) {
 		mu.Unlock()
 		require.Equal(t, beforeTopics+1, afterTopics, "formatting feature %v must reach fake server", fmtFeat)
 		if fmtFeat == event.FmtAtRoomMention {
-			fields := parseProtoFields(lastTopicReq)
-			require.Equal(t, "Hello @all", firstFieldString(fields, 2), "FmtAtRoomMention must rewrite @room to @all on wire")
-			require.True(t, hasMentionAllAnnotation(fields[3]), "FmtAtRoomMention must emit MENTION_ALL annotation on wire")
+			var topicReq pb.CreateTopicRequest
+			require.NoError(t, pb.Unmarshal(lastTopicReq, &topicReq))
+			require.Equal(t, "Hello @all", topicReq.GetTextBody(), "FmtAtRoomMention must rewrite @room to @all on wire")
+			require.True(t, hasMentionAllAnnotation(topicReq.GetAnnotations()), "FmtAtRoomMention must emit MENTION_ALL annotation on wire")
 		}
 	}
 	require.NotNil(t, lastMsg)
@@ -2578,10 +2641,11 @@ func TestAdvertisedCapabilitiesAllHaveWorkingHandlers(t *testing.T) {
 		require.NoError(t, err)
 		mu.Lock()
 		require.Equal(t, beforeMsgs+1, len(createMsgReqs), "Reply capability must reach create_message on fake server")
-		lastCreateMsg := parseProtoFields(createMsgReqs[len(createMsgReqs)-1])
+		lastCreateMsgBytes := createMsgReqs[len(createMsgReqs)-1]
 		mu.Unlock()
-		msgInfo := parseProtoFields(firstFieldBytes(lastCreateMsg, 7))
-		require.NotEmpty(t, firstFieldBytes(msgInfo, 3), "Reply capability must populate SendReplyTarget on fake server")
+		var lastCreateMsg pb.CreateMessageRequest
+		require.NoError(t, pb.Unmarshal(lastCreateMsgBytes, &lastCreateMsg))
+		require.NotNil(t, lastCreateMsg.GetMessageInfo().GetReplyTo(), "Reply capability must populate SendReplyTarget on fake server")
 	}
 
 	// Walk Edit capability -> reaches /u/0/api/edit_message
@@ -2687,48 +2751,24 @@ func TestAdvertisedCapabilitiesAllHaveWorkingHandlers(t *testing.T) {
 	}
 }
 
-func parseProtoFields(buf []byte) map[int][]protoField {
-	res := make(map[int][]protoField)
-	protoIterFields(buf, func(f protoField) {
-		res[f.num] = append(res[f.num], f)
-	})
-	return res
-}
-
-func firstFieldBytes(fields map[int][]protoField, num int) []byte {
-	if fs := fields[num]; len(fs) > 0 {
-		return fs[0].bytes
+func buildUploadMetadataProto(token, contentName, contentType string) *pb.UploadMetadata {
+	return &pb.UploadMetadata{
+		Payload:     &pb.UploadMetadata_AttachmentToken{AttachmentToken: token},
+		ContentName: pb.String(contentName),
+		ContentType: pb.String(contentType),
 	}
-	return nil
 }
 
-func firstFieldString(fields map[int][]protoField, num int) string {
-	return string(firstFieldBytes(fields, num))
-}
-
-func firstFieldVarint(fields map[int][]protoField, num int) uint64 {
-	if fs := fields[num]; len(fs) > 0 {
-		return fs[0].varint
+func buildUploadMetadataAnnotationProto(startIdx, length int32, token, contentName, contentType string) *pb.Annotation {
+	return &pb.Annotation{
+		Type:           pb.AnnotationType_UPLOAD_METADATA.Enum(),
+		StartIndex:     pb.Int32(startIdx),
+		Length:         pb.Int32(length),
+		ChipRenderType: pb.Annotation_RENDER.Enum(),
+		Metadata: &pb.Annotation_UploadMetadata{
+			UploadMetadata: buildUploadMetadataProto(token, contentName, contentType),
+		},
 	}
-	return 0
-}
-
-func encodeUploadMetadataProto(token, contentName, contentType string) []byte {
-	var out []byte
-	out = append(out, encodeStringField(1, token)...)
-	out = append(out, encodeStringField(3, contentName)...)
-	out = append(out, encodeStringField(4, contentType)...)
-	return out
-}
-
-func encodeUploadMetadataAnnotationProto(startIdx, length int32, token, contentName, contentType string) []byte {
-	var ann []byte
-	ann = append(ann, encodeVarintField(1, 13)...) // AnnotationType.UPLOAD_METADATA = 13
-	ann = append(ann, encodeVarintField(2, uint64(startIdx))...)
-	ann = append(ann, encodeVarintField(3, uint64(length))...)
-	ann = append(ann, encodeBytesField(10, encodeUploadMetadataProto(token, contentName, contentType))...)
-	ann = append(ann, encodeVarintField(20, 1)...) // ChipRenderType.RENDER = 1
-	return ann
 }
 
 func TestMultiAttachmentInboundUsesZeroPaddedPartIDsAndOutboundUploadsViaScotty(t *testing.T) {
@@ -2780,8 +2820,8 @@ func TestMultiAttachmentInboundUsesZeroPaddedPartIDsAndOutboundUploadsViaScotty(
 			uploadPutBodies = append(uploadPutBodies, body)
 			idx := len(uploadPutBodies)
 			mu.Unlock()
-			upMeta := encodeUploadMetadataProto(fmt.Sprintf("out_tok_%d", idx), fmt.Sprintf("file_%d.bin", idx), "application/octet-stream")
-			wrapped := encodeBytesField(1, upMeta)
+			upMeta := buildUploadMetadataProto(fmt.Sprintf("out_tok_%d", idx), fmt.Sprintf("file_%d.bin", idx), "application/octet-stream")
+			wrapped := pb.MustMarshal(&pb.ComGoogleRtcMeetingsV1UploadMetadata{UploadMetadata: upMeta})
 			w.Header().Set("Content-Type", "text/plain")
 			_, _ = fmt.Fprint(w, base64.StdEncoding.EncodeToString(wrapped))
 		case "/u/0/api/create_topic":
@@ -2789,24 +2829,29 @@ func TestMultiAttachmentInboundUsesZeroPaddedPartIDsAndOutboundUploadsViaScotty(
 			createTopicReqs = append(createTopicReqs, body)
 			idx := len(createTopicReqs)
 			mu.Unlock()
-			spaceGID := encodeSpaceGroupID("space_threaded")
+			spaceGID := pb.SpaceGroupID("space_threaded")
 			tid := fmt.Sprintf("topic_med_%d", idx)
 			mid := fmt.Sprintf("msg_med_%d", idx)
-			msgBytes := encodeSyntheticMessage(spaceGID, tid, mid, "112233445566778899001", "uploaded", 1710000800000000+int64(idx), "", 0, 0)
-			var topic []byte
-			topic = append(topic, encodeBytesField(1, encodeTopicID(spaceGID, tid))...)
-			topic = append(topic, encodeBytesField(7, msgBytes)...)
+			msgProto := buildSyntheticMessageProto(spaceGID, tid, mid, "112233445566778899001", "uploaded", 1710000800000000+int64(idx), "", 0, 0)
 			w.Header().Set("Content-Type", "application/x-protobuf")
-			_, _ = w.Write(encodeBytesField(1, topic))
+			_, _ = w.Write(pb.MustMarshal(&pb.CreateTopicResponse{
+				Topic: &pb.Topic{
+					Id: &pb.TopicId{
+						TopicId: pb.String(tid),
+						GroupId: spaceGID,
+					},
+					Replies: []*pb.Message{msgProto},
+				},
+			}))
 		case "/u/0/api/create_message":
 			mu.Lock()
 			createMsgReqs = append(createMsgReqs, body)
 			idx := len(createMsgReqs)
 			mu.Unlock()
-			dmGID := encodeDMGroupID("dm_alpha")
-			msgBytes := encodeSyntheticMessage(dmGID, "dm_med_t", fmt.Sprintf("dm_med_m_%d", idx), "112233445566778899001", "uploaded", 1710000850000000+int64(idx), "", 0, 0)
+			dmGID := pb.DMGroupID("dm_alpha")
+			msgProto := buildSyntheticMessageProto(dmGID, "dm_med_t", fmt.Sprintf("dm_med_m_%d", idx), "112233445566778899001", "uploaded", 1710000850000000+int64(idx), "", 0, 0)
 			w.Header().Set("Content-Type", "application/x-protobuf")
-			_, _ = w.Write(encodeBytesField(1, msgBytes))
+			_, _ = w.Write(pb.MustMarshal(&pb.CreateMessageResponse{Message: msgProto}))
 		case "/u/0/api/get_attachment_url", "/api/get_attachment_url":
 			tok := r.URL.Query().Get("attachment_token")
 			port := r.Host[strings.LastIndex(r.Host, ":")+1:]
@@ -2987,36 +3032,41 @@ func TestMultiAttachmentInboundUsesZeroPaddedPartIDsAndOutboundUploadsViaScotty(
 	require.Equal(t, voiceBytes, uploadPutBodies[2])
 	require.Len(t, createTopicReqs, 1)
 	require.Len(t, createMsgReqs, 2)
-	topicFields := parseProtoFields(createTopicReqs[0])
+	topicReqBytes := createTopicReqs[0]
 	mu.Unlock()
 
-	require.Equal(t, "Look at this screenshot", firstFieldString(topicFields, 2), "caption must be preserved in text_body")
+	var topicReq pb.CreateTopicRequest
+	require.NoError(t, pb.Unmarshal(topicReqBytes, &topicReq))
+	require.Equal(t, "Look at this screenshot", topicReq.GetTextBody(), "caption must be preserved in text_body")
 	var foundUploadAnn bool
-	for _, annField := range topicFields[3] {
-		af := parseProtoFields(annField.bytes)
-		if firstFieldVarint(af, 1) == 13 { // UPLOAD_METADATA = 13
+	for _, ann := range topicReq.GetAnnotations() {
+		if ann.GetType() == pb.AnnotationType_UPLOAD_METADATA {
 			foundUploadAnn = true
-			require.Equal(t, uint64(1), firstFieldVarint(af, 20), "ChipRenderType must be RENDER (1)")
-			um := parseProtoFields(firstFieldBytes(af, 10))
-			require.Equal(t, "out_tok_1", firstFieldString(um, 1))
+			require.Equal(t, pb.Annotation_RENDER, ann.GetChipRenderType(), "ChipRenderType must be RENDER (1)")
+			require.Equal(t, "out_tok_1", ann.GetUploadMetadata().GetAttachmentToken())
 		}
 	}
 	require.True(t, foundUploadAnn, "outbound media message must attach UPLOAD_METADATA annotation")
 
 	// 2. Inbound message with 2 UploadMetadata annotations -> downloads both attachments via get_attachment_url + redirect,
 	// strips cookies on CDN hop, stores in media.Store, and emits zero-padded PartIDs "att_0000" and "att_0001".
-	spaceGID := encodeSpaceGroupID("space_threaded")
-	inMsg := encodeSyntheticMessage(spaceGID, "topic_in_med", "msg_in_med_1", "112233445566778899002", "Here are two files", 1710000900000000, "", 0, 0)
-	inMsg = append(inMsg, encodeBytesField(11, encodeUploadMetadataAnnotationProto(0, 0, "in_tok_0", "chart.png", "image/png"))...)
-	inMsg = append(inMsg, encodeBytesField(11, encodeUploadMetadataAnnotationProto(0, 0, "in_tok_1", "report.pdf", "application/pdf"))...)
+	spaceGID := pb.SpaceGroupID("space_threaded")
+	inMsg := buildSyntheticMessageProto(spaceGID, "topic_in_med", "msg_in_med_1", "112233445566778899002", "Here are two files", 1710000900000000, "", 0, 0)
+	inMsg.Annotations = append(inMsg.Annotations,
+		buildUploadMetadataAnnotationProto(0, 0, "in_tok_0", "chart.png", "image/png"),
+		buildUploadMetadataAnnotationProto(0, 0, "in_tok_1", "report.pdf", "application/pdf"),
+	)
 
-	var evtBody []byte
-	evtBody = append(evtBody, encodeBytesField(6, encodeBytesField(1, inMsg))...)
-	evtBody = append(evtBody, encodeVarintField(12, 6)...) // MESSAGE_POSTED
-	var evt []byte
-	evt = append(evt, encodeBytesField(1, spaceGID)...)
-	evt = append(evt, encodeVarintField(3, 6)...)
-	evt = append(evt, encodeBytesField(4, evtBody)...)
+	evt := pb.MustMarshal(&pb.Event{
+		GroupId: spaceGID,
+		Type:    pb.Event_MESSAGE_POSTED.Enum(),
+		Body: &pb.Event_EventBody{
+			Type: &pb.Event_EventBody_MessagePosted{
+				MessagePosted: &pb.MessageEvent{Message: inMsg},
+			},
+			EventType: pb.Event_MESSAGE_POSTED.Enum(),
+		},
+	})
 
 	beforeRecorded := len(client.recordedRemoteEvents())
 	client.processStreamNotification(ctx, streamNotification{kind: EventKindEventProto, payload: evt})
@@ -3079,28 +3129,40 @@ func TestInboundAttachmentFailureAndHTMLBecomePlaceholdersWithoutAbortingBatchAn
 			w.Header().Set("Content-Type", "application/x-protobuf")
 			_, _ = w.Write(buildSendTestPaginatedWorldResponse())
 		case "/u/0/api/list_topics":
-			spaceGID := encodeSpaceGroupID("space_threaded")
+			spaceGID := pb.SpaceGroupID("space_threaded")
 			// Message 1: text + failed attachment (att_0000) + text/html attachment (att_0001) + Message.attachments field 15 (att_0002)
-			msg1 := encodeSyntheticMessage(spaceGID, "topic_b1", "msg_b1", "112233445566778899002", "First message in batch", 1710000910000000, "", 0, 0)
-			msg1 = append(msg1, encodeBytesField(11, encodeUploadMetadataAnnotationProto(0, 0, "tok_fail_500", "broken.bin", "application/octet-stream"))...)
-			msg1 = append(msg1, encodeBytesField(11, encodeUploadMetadataAnnotationProto(0, 0, "tok_html_page", "login.html", "application/octet-stream"))...)
-			// Message.attachments (field 15) -> Attachment { upload_metadata (field 14): UploadMetadata }
-			attField15 := encodeBytesField(14, encodeUploadMetadataProto("tok_field15_ok", "inline_card.png", "image/png"))
-			msg1 = append(msg1, encodeBytesField(15, attField15)...)
-
-			var topic1 []byte
-			topic1 = append(topic1, encodeBytesField(1, encodeTopicID(spaceGID, "topic_b1"))...)
-			topic1 = append(topic1, encodeBytesField(7, msg1)...)
+			msg1 := buildSyntheticMessageProto(spaceGID, "topic_b1", "msg_b1", "112233445566778899002", "First message in batch", 1710000910000000, "", 0, 0)
+			msg1.Annotations = append(msg1.Annotations,
+				buildUploadMetadataAnnotationProto(0, 0, "tok_fail_500", "broken.bin", "application/octet-stream"),
+				buildUploadMetadataAnnotationProto(0, 0, "tok_html_page", "login.html", "application/octet-stream"),
+			)
+			msg1.Attachments = []*pb.Attachment{
+				{
+					UploadMetadata: buildUploadMetadataProto("tok_field15_ok", "inline_card.png", "image/png"),
+				},
+			}
 
 			// Message 2 in the same backfill batch must still arrive!
-			msg2 := encodeSyntheticMessage(spaceGID, "topic_b2", "msg_b2", "112233445566778899002", "Second message in batch", 1710000920000000, "", 0, 0)
-			var topic2 []byte
-			topic2 = append(topic2, encodeBytesField(1, encodeTopicID(spaceGID, "topic_b2"))...)
-			topic2 = append(topic2, encodeBytesField(7, msg2)...)
+			msg2 := buildSyntheticMessageProto(spaceGID, "topic_b2", "msg_b2", "112233445566778899002", "Second message in batch", 1710000920000000, "", 0, 0)
 
-			var resp []byte
-			resp = append(resp, encodeBytesField(1, topic1)...)
-			resp = append(resp, encodeBytesField(1, topic2)...)
+			resp := pb.MustMarshal(&pb.ListTopicsResponse{
+				Topics: []*pb.Topic{
+					{
+						Id: &pb.TopicId{
+							TopicId: pb.String("topic_b1"),
+							GroupId: spaceGID,
+						},
+						Replies: []*pb.Message{msg1},
+					},
+					{
+						Id: &pb.TopicId{
+							TopicId: pb.String("topic_b2"),
+							GroupId: spaceGID,
+						},
+						Replies: []*pb.Message{msg2},
+					},
+				},
+			})
 			w.Header().Set("Content-Type", "application/x-protobuf")
 			_, _ = w.Write(resp)
 		case "/u/0/api/get_attachment_url", "/api/get_attachment_url":
@@ -3202,24 +3264,30 @@ func TestInboundAttachmentFailureAndHTMLBecomePlaceholdersWithoutAbortingBatchAn
 	require.Equal(t, avatarBytes, gotAvatar)
 
 	// 3. Verify catch-up / WebChannel event batch also converts failed/text-html attachments into placeholders without aborting the batch.
-	var evt []byte
-	spaceGID := encodeSpaceGroupID("space_threaded")
-	evt = append(evt, encodeBytesField(1, spaceGID)...)
-	evt = append(evt, encodeVarintField(3, 6)...) // MESSAGE_POSTED
+	spaceGID := pb.SpaceGroupID("space_threaded")
+	liveMsg1 := buildSyntheticMessageProto(spaceGID, "topic_b1", "msg_live_1", "112233445566778899002", "Live msg with broken attachment", 1710000930000000, "", 0, 0)
+	liveMsg1.Annotations = append(liveMsg1.Annotations, buildUploadMetadataAnnotationProto(0, 0, "tok_fail_500", "live_broken.bin", "application/octet-stream"))
 
-	liveMsg1 := encodeSyntheticMessage(spaceGID, "topic_b1", "msg_live_1", "112233445566778899002", "Live msg with broken attachment", 1710000930000000, "", 0, 0)
-	liveMsg1 = append(liveMsg1, encodeBytesField(11, encodeUploadMetadataAnnotationProto(0, 0, "tok_fail_500", "live_broken.bin", "application/octet-stream"))...)
-	var body1 []byte
-	body1 = append(body1, encodeBytesField(6, encodeBytesField(1, liveMsg1))...)
-	body1 = append(body1, encodeVarintField(12, 6)...)
+	liveMsg2 := buildSyntheticMessageProto(spaceGID, "topic_b1", "msg_live_2", "112233445566778899002", "Live msg after broken attachment", 1710000940000000, "", 0, 0)
 
-	liveMsg2 := encodeSyntheticMessage(spaceGID, "topic_b1", "msg_live_2", "112233445566778899002", "Live msg after broken attachment", 1710000940000000, "", 0, 0)
-	var body2 []byte
-	body2 = append(body2, encodeBytesField(6, encodeBytesField(1, liveMsg2))...)
-	body2 = append(body2, encodeVarintField(12, 6)...)
-
-	evt = append(evt, encodeBytesField(4, body1)...)
-	evt = append(evt, encodeBytesField(8, body2)...)
+	evt := pb.MustMarshal(&pb.Event{
+		GroupId: spaceGID,
+		Type:    pb.Event_MESSAGE_POSTED.Enum(),
+		Body: &pb.Event_EventBody{
+			Type: &pb.Event_EventBody_MessagePosted{
+				MessagePosted: &pb.MessageEvent{Message: liveMsg1},
+			},
+			EventType: pb.Event_MESSAGE_POSTED.Enum(),
+		},
+		Bodies: []*pb.Event_EventBody{
+			{
+				Type: &pb.Event_EventBody_MessagePosted{
+					MessagePosted: &pb.MessageEvent{Message: liveMsg2},
+				},
+				EventType: pb.Event_MESSAGE_POSTED.Enum(),
+			},
+		},
+	})
 
 	remoteEvts, err := client.translateWebChannelEvent(ctx, evt)
 	require.NoError(t, err, "event translation must not abort when an attachment fails")
@@ -3271,18 +3339,35 @@ func TestResolveIdentifierAndCreateDMByGaiaIDOrEmail(t *testing.T) {
 			mu.Unlock()
 
 			dmID := fmt.Sprintf("dm_created_%d", idx)
-			var dmGroup []byte
-			dmGroup = append(dmGroup, encodeBytesField(1, encodeDMGroupID(dmID))...)
-
-			var memSelf, memOther []byte
-			memSelf = append(memSelf, encodeBytesField(1, encodeBytesField(1, encodeBytesField(1, encodeStringField(1, "112233445566778899001"))))...)
-			memOther = append(memOther, encodeBytesField(1, encodeBytesField(1, encodeBytesField(1, encodeStringField(1, "112233445566778899002"))))...)
-
-			var resp []byte
-			resp = append(resp, encodeBytesField(1, dmGroup)...)
-			resp = append(resp, encodeBytesField(4, memSelf)...)
-			resp = append(resp, encodeBytesField(4, memOther)...)
-			_, _ = w.Write(resp)
+			respProto := &pb.CreateDmResponse{
+				Dm: &pb.Group{
+					GroupId: pb.DMGroupID(dmID),
+					Name:    pb.String("Bob Example"),
+					Creator: &pb.User{
+						UserId: pb.HumanUserID("112233445566778899001"),
+						Name:   pb.String("Ada Lovelace"),
+					},
+					InteropEnabled: pb.Bool(false),
+				},
+				GroupRevision: &pb.WriteRevision{
+					Timestamp: pb.Int64(1710000500000000),
+				},
+				Memberships: []*pb.Membership{
+					{
+						Id: &pb.MembershipId{
+							MemberId: pb.UserMemberID("112233445566778899001"),
+						},
+					},
+					{
+						Id: &pb.MembershipId{
+							MemberId: pb.UserMemberID("112233445566778899002"),
+						},
+					},
+				},
+			}
+			respBytes, err := pb.Marshal(respProto)
+			require.NoError(t, err)
+			_, _ = w.Write(respBytes)
 		default:
 			http.NotFound(w, r)
 		}
@@ -3306,16 +3391,22 @@ func TestResolveIdentifierAndCreateDMByGaiaIDOrEmail(t *testing.T) {
 	require.Equal(t, ul.ID, emailResp.Chat.PortalKey.Receiver)
 	require.NotNil(t, emailResp.Chat.PortalInfo)
 	require.Equal(t, database.RoomTypeDM, *emailResp.Chat.PortalInfo.Type)
+	require.NotNil(t, emailResp.Chat.PortalInfo.Name)
+	require.Equal(t, "Bob Example", *emailResp.Chat.PortalInfo.Name, "createDM must decode Group.name (field 2), not Group.creator (field 4)")
+	require.NotNil(t, emailResp.Chat.Portal)
+	require.Equal(t, int64(1710000500000000), emailResp.Chat.Portal.Metadata.(*PortalMetadata).GroupRevision, "createDM must decode CreateDmResponse.group_revision (field 3), not Group.interop_enabled (field 18)")
 
 	mu.Lock()
 	require.Len(t, createDMReqs, 1)
-	emailDMFields := parseProtoFields(createDMReqs[0])
+	emailDMReqBytes := createDMReqs[0]
 	mu.Unlock()
-	inviteeFields := parseProtoFields(firstFieldBytes(emailDMFields, 7)) // CreateDmRequest.invitees = 7
-	require.Equal(t, "bob@example.com", firstFieldString(inviteeFields, 2), "CreateDmRequest.invitees[0].email must match target email")
-	require.Empty(t, emailDMFields[1], "email create_dm must use invitees (field 7), not members (field 1)")
+	var emailDMReq pb.CreateDmRequest
+	require.NoError(t, pb.Unmarshal(emailDMReqBytes, &emailDMReq))
+	require.Len(t, emailDMReq.GetInvitees(), 1)
+	require.Equal(t, "bob@example.com", emailDMReq.GetInvitees()[0].GetEmail(), "CreateDmRequest.invitees[0].email must match target email")
+	require.Empty(t, emailDMReq.GetMembers(), "email create_dm must use invitees, not members")
 
-	// 2. Start a DM by Gaia ID -> POST /u/0/api/create_dm with Members (field 1 -> UserId { id (field 1): "112233445566778899002", type (field 2): 0 })
+	// 2. Start a DM by Gaia ID -> POST /u/0/api/create_dm with Members
 	gaiaResp, err := resAPI.ResolveIdentifier(ctx, "112233445566778899002", true)
 	require.NoError(t, err)
 	require.NotNil(t, gaiaResp)
@@ -3325,11 +3416,13 @@ func TestResolveIdentifierAndCreateDMByGaiaIDOrEmail(t *testing.T) {
 
 	mu.Lock()
 	require.Len(t, createDMReqs, 2)
-	gaiaDMFields := parseProtoFields(createDMReqs[1])
+	gaiaDMReqBytes := createDMReqs[1]
 	mu.Unlock()
-	memberUserFields := parseProtoFields(firstFieldBytes(gaiaDMFields, 1)) // CreateDmRequest.members = 1
-	require.Equal(t, "112233445566778899002", firstFieldString(memberUserFields, 1), "CreateDmRequest.members[0].id must match Gaia ID")
-	require.Empty(t, gaiaDMFields[7], "Gaia ID create_dm must use members (field 1), not invitees (field 7)")
+	var gaiaDMReq pb.CreateDmRequest
+	require.NoError(t, pb.Unmarshal(gaiaDMReqBytes, &gaiaDMReq))
+	require.Len(t, gaiaDMReq.GetMembers(), 1)
+	require.Equal(t, "112233445566778899002", gaiaDMReq.GetMembers()[0].GetId(), "CreateDmRequest.members[0].id must match Gaia ID")
+	require.Empty(t, gaiaDMReq.GetInvitees(), "Gaia ID create_dm must use members, not invitees")
 
 	// 3. CreateChatWithGhost (Reply Privately) -> POST /u/0/api/create_dm with Members
 	ghost, err := h.Bridge.GetGhostByID(ctx, MakeUserID("112233445566778899002"))
@@ -3376,20 +3469,24 @@ func TestSetChatNameAndSetChatTopicPreservesSpaceGuidelines(t *testing.T) {
 				http.Error(w, "upstream get_group failure", http.StatusInternalServerError)
 				return
 			}
-			var details []byte
-			details = append(details, encodeStringField(1, "Initial space description")...)
-			details = append(details, encodeStringField(2, "Be respectful and keep threads focused.")...)
-			var grp []byte
-			grp = append(grp, encodeBytesField(1, encodeSpaceGroupID("space_threaded"))...)
-			grp = append(grp, encodeStringField(4, "Threaded Eng")...)
-			grp = append(grp, encodeBytesField(37, details)...) // Group.group_details = 37
-			_, _ = w.Write(encodeBytesField(1, grp))
+			_, _ = w.Write(pb.MustMarshal(&pb.GetGroupResponse{
+				Group: &pb.Group{
+					GroupId: pb.SpaceGroupID("space_threaded"),
+					Name:    pb.String("Threaded Eng"),
+					GroupDetails: &pb.GroupDetails{
+						Description: pb.String("Initial space description"),
+						Guidelines:  pb.String("Be respectful and keep threads focused."),
+					},
+				},
+			}))
 		case "/u/0/api/update_group":
 			mu.Lock()
 			updateGroupReqs = append(updateGroupReqs, body)
 			idx := len(updateGroupReqs)
 			mu.Unlock()
-			_, _ = w.Write(encodeBytesField(2, encodeVarintField(1, uint64(800+idx)))) // UpdateGroupResponse.group_revision = 2
+			_, _ = w.Write(pb.MustMarshal(&pb.UpdateGroupResponse{
+				GroupRevision: &pb.WriteRevision{Timestamp: pb.Int64(int64(800 + idx))},
+			}))
 		default:
 			http.NotFound(w, r)
 		}
@@ -3430,12 +3527,13 @@ func TestSetChatNameAndSetChatTopicPreservesSpaceGuidelines(t *testing.T) {
 
 	mu.Lock()
 	require.Len(t, updateGroupReqs, 1)
-	renameFields := parseProtoFields(updateGroupReqs[0])
+	renameReqBytes := updateGroupReqs[0]
 	mu.Unlock()
-	spaceIDFields := parseProtoFields(firstFieldBytes(renameFields, 1)) // UpdateGroupRequest.space_id = 1
-	require.Equal(t, "space_threaded", firstFieldString(spaceIDFields, 1))
-	require.Equal(t, "Core Platform Space", firstFieldString(renameFields, 2), "UpdateGroupRequest.name = 2")
-	require.Equal(t, uint64(1), firstFieldVarint(renameFields, 4), "UpdateGroupRequest.update_masks = UpdateMask_NAME (1)")
+	var renameReq pb.UpdateGroupRequest
+	require.NoError(t, pb.Unmarshal(renameReqBytes, &renameReq))
+	require.Equal(t, "space_threaded", renameReq.GetSpaceId().GetSpaceId())
+	require.Equal(t, "Core Platform Space", renameReq.GetName())
+	require.Equal(t, []pb.UpdateGroupRequest_UpdateMask{pb.UpdateGroupRequest_NAME}, renameReq.GetUpdateMasks())
 
 	// 2. End-to-end change Space topic through bridgev2 QueueMatrixEvent -> calls get_group first, preserves guidelines, then calls update_group
 	topicRes := spacePortal.Bridge.QueueMatrixEvent(ctx, &event.Event{
@@ -3454,20 +3552,20 @@ func TestSetChatNameAndSetChatTopicPreservesSpaceGuidelines(t *testing.T) {
 	mu.Lock()
 	require.Len(t, getGroupReqs, 1, "changing topic must fetch existing group via get_group first")
 	require.Len(t, updateGroupReqs, 2)
-	getGrpFields := parseProtoFields(getGroupReqs[0])
-	topicUpdFields := parseProtoFields(updateGroupReqs[1])
+	getGrpReqBytes := getGroupReqs[0]
+	topicUpdReqBytes := updateGroupReqs[1]
 	mu.Unlock()
 
-	getGrpID := parseProtoFields(firstFieldBytes(getGrpFields, 1))
-	getSpaceID := parseProtoFields(firstFieldBytes(getGrpID, 1))
-	require.Equal(t, "space_threaded", firstFieldString(getSpaceID, 1))
+	var getGrpReq pb.GetGroupRequest
+	require.NoError(t, pb.Unmarshal(getGrpReqBytes, &getGrpReq))
+	require.Equal(t, "space_threaded", getGrpReq.GetGroupId().GetSpaceId().GetSpaceId())
 
-	updSpaceID := parseProtoFields(firstFieldBytes(topicUpdFields, 1))
-	require.Equal(t, "space_threaded", firstFieldString(updSpaceID, 1))
-	require.Equal(t, uint64(4), firstFieldVarint(topicUpdFields, 4), "UpdateGroupRequest.update_masks = UpdateMask_SPACE_DETAILS (4)")
-	detailsFields := parseProtoFields(firstFieldBytes(topicUpdFields, 7)) // UpdateGroupRequest.space_details = 7
-	require.Equal(t, "Updated platform description", firstFieldString(detailsFields, 1), "GroupDetails.description = 1")
-	require.Equal(t, "Be respectful and keep threads focused.", firstFieldString(detailsFields, 2), "GroupDetails.guidelines = 2 must be preserved from get_group")
+	var topicUpdReq pb.UpdateGroupRequest
+	require.NoError(t, pb.Unmarshal(topicUpdReqBytes, &topicUpdReq))
+	require.Equal(t, "space_threaded", topicUpdReq.GetSpaceId().GetSpaceId())
+	require.Equal(t, []pb.UpdateGroupRequest_UpdateMask{pb.UpdateGroupRequest_SPACE_DETAILS}, topicUpdReq.GetUpdateMasks())
+	require.Equal(t, "Updated platform description", topicUpdReq.GetSpaceDetails().GetDescription())
+	require.Equal(t, "Be respectful and keep threads focused.", topicUpdReq.GetSpaceDetails().GetGuidelines(), "GroupDetails.guidelines must be preserved from get_group")
 
 	// 3. If get_group fails, topic change must be refused and update_group must NOT be called (never wipe guidelines)
 	failGetGroup.Store(true)
@@ -3523,22 +3621,28 @@ func TestMuteSyncAndMembershipAndHideGroup(t *testing.T) {
 			mu.Lock()
 			notifReqs = append(notifReqs, body)
 			mu.Unlock()
-			_, _ = w.Write(encodeBytesField(2, encodeVarintField(1, 901)))
+			_, _ = w.Write(pb.MustMarshal(&pb.UpdateGroupNotificationSettingsResponse{}))
 		case "/u/0/api/create_membership":
 			mu.Lock()
 			createMemReqs = append(createMemReqs, body)
 			mu.Unlock()
-			_, _ = w.Write(encodeBytesField(2, encodeVarintField(1, 902)))
+			_, _ = w.Write(pb.MustMarshal(&pb.CreateMembershipResponse{
+				GroupRevision: []*pb.WriteRevision{{Timestamp: pb.Int64(902)}},
+			}))
 		case "/u/0/api/remove_memberships":
 			mu.Lock()
 			removeMemReqs = append(removeMemReqs, body)
 			mu.Unlock()
-			_, _ = w.Write(encodeBytesField(3, encodeVarintField(1, 903)))
+			_, _ = w.Write(pb.MustMarshal(&pb.RemoveMembershipsResponse{
+				RetentionSettingsGroupRevision: &pb.WriteRevision{Timestamp: pb.Int64(903)},
+			}))
 		case "/u/0/api/hide_group":
 			mu.Lock()
 			hideGroupReqs = append(hideGroupReqs, body)
 			mu.Unlock()
-			_, _ = w.Write(encodeBytesField(2, encodeVarintField(1, 904)))
+			_, _ = w.Write(pb.MustMarshal(&pb.HideGroupResponse{
+				UserRevision: &pb.WriteRevision{Timestamp: pb.Int64(904)},
+			}))
 		default:
 			http.NotFound(w, r)
 		}
@@ -3570,7 +3674,7 @@ func TestMuteSyncAndMembershipAndHideGroup(t *testing.T) {
 	require.NotNil(t, dmPortal)
 	require.NoError(t, dmPortal.CreateMatrixRoom(ctx, ul, nil))
 
-	// 1. Permanent mute on Space -> POST /u/0/api/update_group_notification_settings (setting_type = 5, mute.state = 2)
+	// 1. Permanent mute on Space -> POST /u/0/api/update_group_notification_settings
 	muteSpaceRes := spacePortal.Bridge.QueueMatrixEvent(ctx, &event.Event{
 		ID:        "$mute_space",
 		RoomID:    spacePortal.MXID,
@@ -3583,7 +3687,7 @@ func TestMuteSyncAndMembershipAndHideGroup(t *testing.T) {
 	})
 	require.True(t, muteSpaceRes.Success, "permanent mute on Space must succeed: %v", muteSpaceRes.Error)
 
-	// 2. Unmute on Space -> POST /u/0/api/update_group_notification_settings (setting_type = 5, mute.state = 1)
+	// 2. Unmute on Space -> POST /u/0/api/update_group_notification_settings
 	unmuteSpaceRes := spacePortal.Bridge.QueueMatrixEvent(ctx, &event.Event{
 		ID:        "$unmute_space",
 		RoomID:    spacePortal.MXID,
@@ -3596,7 +3700,7 @@ func TestMuteSyncAndMembershipAndHideGroup(t *testing.T) {
 	})
 	require.True(t, unmuteSpaceRes.Success, "unmute on Space must succeed: %v", unmuteSpaceRes.Error)
 
-	// 3. Permanent mute on DM -> POST /u/0/api/update_group_notification_settings (setting_type = 4, mute.state = 2)
+	// 3. Permanent mute on DM -> POST /u/0/api/update_group_notification_settings
 	muteDMRes := dmPortal.Bridge.QueueMatrixEvent(ctx, &event.Event{
 		ID:        "$mute_dm",
 		RoomID:    dmPortal.MXID,
@@ -3626,22 +3730,23 @@ func TestMuteSyncAndMembershipAndHideGroup(t *testing.T) {
 
 	mu.Lock()
 	require.Len(t, notifReqs, 3, "only the 3 permanent mute/unmute events may reach fake server")
-	muteSpaceFields := parseProtoFields(notifReqs[0])
-	unmuteSpaceFields := parseProtoFields(notifReqs[1])
-	muteDMFields := parseProtoFields(notifReqs[2])
+	muteSpaceBytes := notifReqs[0]
+	unmuteSpaceBytes := notifReqs[1]
+	muteDMBytes := notifReqs[2]
 	mu.Unlock()
 
-	muteSpaceUpd := parseProtoFields(firstFieldBytes(muteSpaceFields, 2))
-	require.Equal(t, uint64(5), firstFieldVarint(muteSpaceUpd, 2), "Space setting_type = MUTE_STATE_CHANGE (5)")
-	require.Equal(t, uint64(2), firstFieldVarint(parseProtoFields(firstFieldBytes(muteSpaceUpd, 3)), 1), "Mute.state = MUTED (2)")
+	var muteSpaceReq, unmuteSpaceReq, muteDMReq pb.UpdateGroupNotificationSettingsRequest
+	require.NoError(t, pb.Unmarshal(muteSpaceBytes, &muteSpaceReq))
+	require.Equal(t, int32(5), muteSpaceReq.GetUpdate().GetSettingType())
+	require.Equal(t, pb.GroupNotificationSettingsUpdate_Mute_MUTED, muteSpaceReq.GetUpdate().GetMute().GetState())
 
-	unmuteSpaceUpd := parseProtoFields(firstFieldBytes(unmuteSpaceFields, 2))
-	require.Equal(t, uint64(5), firstFieldVarint(unmuteSpaceUpd, 2))
-	require.Equal(t, uint64(1), firstFieldVarint(parseProtoFields(firstFieldBytes(unmuteSpaceUpd, 3)), 1), "Mute.state = UNMUTED (1)")
+	require.NoError(t, pb.Unmarshal(unmuteSpaceBytes, &unmuteSpaceReq))
+	require.Equal(t, int32(5), unmuteSpaceReq.GetUpdate().GetSettingType())
+	require.Equal(t, pb.GroupNotificationSettingsUpdate_Mute_UNMUTED, unmuteSpaceReq.GetUpdate().GetMute().GetState())
 
-	muteDMUpd := parseProtoFields(firstFieldBytes(muteDMFields, 2))
-	require.Equal(t, uint64(4), firstFieldVarint(muteDMUpd, 2), "DM setting_type = NOTIFICATION_LEVEL_OR_MUTE_STATE_CHANGED (4)")
-	require.Equal(t, uint64(2), firstFieldVarint(parseProtoFields(firstFieldBytes(muteDMUpd, 3)), 1), "Mute.state = MUTED (2)")
+	require.NoError(t, pb.Unmarshal(muteDMBytes, &muteDMReq))
+	require.Equal(t, int32(4), muteDMReq.GetUpdate().GetSettingType())
+	require.Equal(t, pb.GroupNotificationSettingsUpdate_Mute_MUTED, muteDMReq.GetUpdate().GetMute().GetState())
 
 	// 5. Invite user to Space -> POST /u/0/api/create_membership
 	_, err = h.Bridge.GetGhostByID(ctx, MakeUserID("112233445566778899002"))
@@ -3689,17 +3794,19 @@ func TestMuteSyncAndMembershipAndHideGroup(t *testing.T) {
 
 	mu.Lock()
 	require.Len(t, createMemReqs, 2)
-	inviteFields := parseProtoFields(createMemReqs[0])
-	acceptFields := parseProtoFields(createMemReqs[1])
+	inviteBytes := createMemReqs[0]
+	acceptBytes := createMemReqs[1]
 	mu.Unlock()
 
-	inviteGrp := parseProtoFields(firstFieldBytes(inviteFields, 4)) // CreateMembershipRequest.group_id = 4
-	require.Equal(t, "space_threaded", firstFieldString(parseProtoFields(firstFieldBytes(inviteGrp, 1)), 1))
-	inviteeInfo := parseProtoFields(firstFieldBytes(parseProtoFields(firstFieldBytes(inviteFields, 8)), 1)) // invitee_member_infos (8) -> invitee_info (1)
-	require.Equal(t, "112233445566778899002", firstFieldString(parseProtoFields(firstFieldBytes(inviteeInfo, 1)), 1))
+	var inviteReq, acceptReq pb.CreateMembershipRequest
+	require.NoError(t, pb.Unmarshal(inviteBytes, &inviteReq))
+	require.Equal(t, "space_threaded", inviteReq.GetGroupId().GetSpaceId().GetSpaceId())
+	require.Len(t, inviteReq.GetInviteeMemberInfos(), 1)
+	require.Equal(t, "112233445566778899002", inviteReq.GetInviteeMemberInfos()[0].GetInviteeInfo().GetUserId().GetId())
 
-	acceptMemID := parseProtoFields(firstFieldBytes(acceptFields, 2)) // CreateMembershipRequest.member_ids = 2
-	require.Equal(t, "112233445566778899001", firstFieldString(parseProtoFields(firstFieldBytes(acceptMemID, 1)), 1))
+	require.NoError(t, pb.Unmarshal(acceptBytes, &acceptReq))
+	require.Len(t, acceptReq.GetMemberIds(), 1)
+	require.Equal(t, "112233445566778899001", acceptReq.GetMemberIds()[0].GetUserId().GetId())
 
 	// 7. Kick member from Space -> POST /u/0/api/remove_memberships
 	kickRes := spacePortal.Bridge.QueueMatrixEvent(ctx, &event.Event{
@@ -3763,19 +3870,26 @@ func TestMuteSyncAndMembershipAndHideGroup(t *testing.T) {
 
 	mu.Lock()
 	require.Len(t, removeMemReqs, 3, "kick, decline invite, and leave Space must each call remove_memberships")
-	kickFields := parseProtoFields(removeMemReqs[0])
-	declineFields := parseProtoFields(removeMemReqs[1])
-	leaveFields := parseProtoFields(removeMemReqs[2])
+	kickBytes := removeMemReqs[0]
+	declineBytes := removeMemReqs[1]
+	leaveBytes := removeMemReqs[2]
 	mu.Unlock()
 
-	require.Equal(t, "112233445566778899002", firstFieldString(parseProtoFields(firstFieldBytes(parseProtoFields(firstFieldBytes(kickFields, 1)), 1)), 1))
-	require.Equal(t, "space_threaded", firstFieldString(parseProtoFields(firstFieldBytes(parseProtoFields(firstFieldBytes(kickFields, 2)), 1)), 1))
+	var kickReq, declineReq, leaveReq pb.RemoveMembershipsRequest
+	require.NoError(t, pb.Unmarshal(kickBytes, &kickReq))
+	require.Len(t, kickReq.GetMemberIds(), 1)
+	require.Equal(t, "112233445566778899002", kickReq.GetMemberIds()[0].GetUserId().GetId())
+	require.Equal(t, "space_threaded", kickReq.GetGroupId().GetSpaceId().GetSpaceId())
 
-	require.Equal(t, "112233445566778899001", firstFieldString(parseProtoFields(firstFieldBytes(parseProtoFields(firstFieldBytes(declineFields, 1)), 1)), 1))
-	require.Equal(t, "space_unthreaded", firstFieldString(parseProtoFields(firstFieldBytes(parseProtoFields(firstFieldBytes(declineFields, 2)), 1)), 1))
+	require.NoError(t, pb.Unmarshal(declineBytes, &declineReq))
+	require.Len(t, declineReq.GetMemberIds(), 1)
+	require.Equal(t, "112233445566778899001", declineReq.GetMemberIds()[0].GetUserId().GetId())
+	require.Equal(t, "space_unthreaded", declineReq.GetGroupId().GetSpaceId().GetSpaceId())
 
-	require.Equal(t, "112233445566778899001", firstFieldString(parseProtoFields(firstFieldBytes(parseProtoFields(firstFieldBytes(leaveFields, 1)), 1)), 1))
-	require.Equal(t, "space_threaded", firstFieldString(parseProtoFields(firstFieldBytes(parseProtoFields(firstFieldBytes(leaveFields, 2)), 1)), 1))
+	require.NoError(t, pb.Unmarshal(leaveBytes, &leaveReq))
+	require.Len(t, leaveReq.GetMemberIds(), 1)
+	require.Equal(t, "112233445566778899001", leaveReq.GetMemberIds()[0].GetUserId().GetId())
+	require.Equal(t, "space_threaded", leaveReq.GetGroupId().GetSpaceId().GetSpaceId())
 
 	// 10. Hide DM: leaving a DM via StateMember (Leave) or deleting a DM via BeeperDeleteChat calls hide_group with hide=true; DeleteForEveryone=true is refused
 	leaveDMRes := dmPortal.Bridge.QueueMatrixEvent(ctx, &event.Event{
@@ -3823,9 +3937,238 @@ func TestMuteSyncAndMembershipAndHideGroup(t *testing.T) {
 
 	mu.Lock()
 	require.Len(t, hideGroupReqs, 2, "both leaving DM and deleting DM must call hide_group")
-	hideFields := parseProtoFields(hideGroupReqs[1])
+	hideBytes := hideGroupReqs[1]
 	mu.Unlock()
-	hideGrpID := parseProtoFields(firstFieldBytes(hideFields, 1)) // HideGroupRequest.id = 1
-	require.Equal(t, "dm_alpha", firstFieldString(parseProtoFields(firstFieldBytes(hideGrpID, 3)), 1))
-	require.Equal(t, uint64(1), firstFieldVarint(hideFields, 2), "HideGroupRequest.hide = true (1)")
+	var hideReq pb.HideGroupRequest
+	require.NoError(t, pb.Unmarshal(hideBytes, &hideReq))
+	require.Equal(t, "dm_alpha", hideReq.GetId().GetDmId().GetDmId())
+	require.True(t, hideReq.GetHide(), "HideGroupRequest.hide = true")
+}
+
+func startGChatRPCTestServer(t *testing.T, sockPath string, inviteeEmailFile string) *atomic.Value {
+	t.Helper()
+	enableTestLoopback(t)
+
+	var lastCreateDMEmail atomic.Value
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rawBody, _ := io.ReadAll(r.Body)
+		switch r.URL.Path {
+		case "/u/0/mole/world":
+			w.Header().Set("Content-Type", "text/html")
+			_, _ = fmt.Fprint(w, `<!DOCTYPE html><html><script>window.WIZ_global_data = {"xsrf_token":"AF1QipP_e2e_token:1710000900000"};</script></html>`)
+		case "/u/0/api/get_self_user_status":
+			payload := buildSyntheticSelfUserStatusResponse("112233445566778899001")
+			w.Header().Set("Content-Type", "text/plain")
+			w.Header().Set("X-Goog-Safety-Encoding", "base64")
+			_, _ = w.Write([]byte(base64.StdEncoding.EncodeToString(payload)))
+		case "/u/0/api/get_members":
+			var req pb.GetMembersRequest
+			_ = pb.Unmarshal(rawBody, &req)
+			var members []*pb.Member
+			for _, mid := range req.GetMemberIds() {
+				uid := mid.GetUserId().GetId()
+				if uid == "112233445566778899001" {
+					members = append(members, &pb.Member{
+						Profile: &pb.Member_User{
+							User: &pb.User{
+								UserId: pb.HumanUserID("112233445566778899001"),
+								Name:   pb.String("Ada Lovelace"),
+								Email:  pb.String("ada@example.com"),
+							},
+						},
+					})
+				}
+			}
+			w.Header().Set("Content-Type", "application/x-protobuf")
+			_, _ = w.Write(pb.MustMarshal(&pb.GetMembersResponse{Members: members}))
+		case "/u/0/api/create_dm":
+			var req pb.CreateDmRequest
+			if err := pb.Unmarshal(rawBody, &req); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			var email string
+			if len(req.GetInvitees()) > 0 {
+				email = req.GetInvitees()[0].GetEmail()
+			}
+			lastCreateDMEmail.Store(email)
+			if inviteeEmailFile != "" && email != "" {
+				_ = os.WriteFile(inviteeEmailFile, []byte(email), 0o600)
+			}
+			resp := pb.MustMarshal(&pb.CreateDmResponse{
+				Dm: &pb.Group{
+					GroupId: pb.DMGroupID("dm_email_e2e_1"),
+					Name:    pb.String("Bob Example"),
+					Creator: &pb.User{
+						UserId: pb.HumanUserID("112233445566778899001"),
+						Name:   pb.String("Ada Lovelace"),
+					},
+					InteropEnabled: pb.Bool(true),
+				},
+				GroupRevision: &pb.WriteRevision{
+					Timestamp: pb.Int64(1710000500000000),
+				},
+				Memberships: []*pb.Membership{
+					{
+						Id: &pb.MembershipId{
+							MemberId: pb.UserMemberID("112233445566778899001"),
+						},
+					},
+					{
+						Id: &pb.MembershipId{
+							MemberId: pb.UserMemberID("223344556677889900112"),
+						},
+					},
+				},
+			})
+			w.Header().Set("Content-Type", "application/x-protobuf")
+			_, _ = w.Write(resp)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	ctx := context.Background()
+	dir := t.TempDir()
+	st, err := store.Open(filepath.Join(dir, "courier.db"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = st.Close() })
+	m := &media.Store{Dir: filepath.Join(dir, "media")}
+	st.SetMediaStore(m)
+
+	conn := &Connector{baseURL: srv.URL}
+	eng, errs := engine.Start(ctx, dir, st, m, []engine.Spec{
+		{Name: NetworkID, Connector: func() (bridgev2.NetworkConnector, error) { return conn, nil }},
+	}, zerolog.Nop())
+	require.Empty(t, errs)
+	t.Cleanup(eng.Stop)
+
+	h, ok := eng.Host(NetworkID)
+	require.True(t, ok)
+	user, err := h.Bridge.GetUserByMXID(ctx, "@me:courier.local")
+	require.NoError(t, err)
+
+	ul, err := user.NewLogin(ctx, &database.UserLogin{
+		ID:         MakeUserLoginID("112233445566778899001"),
+		RemoteName: "Ada Lovelace (ada@example.com)",
+		RemoteProfile: status.RemoteProfile{
+			Name:  "Ada Lovelace",
+			Email: "ada@example.com",
+		},
+		Metadata: &UserLoginMetadata{
+			Cookies: map[string]string{
+				"COMPASS": "compass-e2e",
+				"OSID":    "osid-e2e",
+				"SID":     "sid-e2e",
+				"HSID":    "hsid-e2e",
+				"SSID":    "ssid-e2e",
+			},
+		},
+	}, &bridgev2.NewLoginParams{DeleteOnConflict: true})
+	require.NoError(t, err)
+	require.NoError(t, conn.LoadUserLogin(ctx, ul))
+	client := ul.Client.(*Client)
+	client.sendBridgeState(status.BridgeState{StateEvent: status.StateConnected})
+
+	st.SetNetworkNames(map[string]string{NetworkID: DisplayName})
+	act := actions.New(eng, st, m)
+	deps := rpc.Deps{
+		Store:   st,
+		Engine:  eng,
+		Actions: act,
+		Media:   m,
+		Networks: []rpc.NetworkInfo{
+			{Name: NetworkID, DisplayName: DisplayName, Flows: []string{FlowCookies}},
+		},
+		Version: "0.6.0-test",
+		DataDir: dir,
+	}
+
+	ln, err := net.Listen("unix", sockPath)
+	require.NoError(t, err)
+	serveCtx, cancel := context.WithCancel(ctx)
+	done := make(chan error, 1)
+	go func() { done <- rpc.Serve(serveCtx, ln, deps) }()
+	t.Cleanup(func() {
+		cancel()
+		<-done
+	})
+	return &lastCreateDMEmail
+}
+
+func TestStartDMByEmailEndToEndThroughRPCActionsAndFakeServer(t *testing.T) {
+	sockDir, err := os.MkdirTemp("/tmp", "gce2e")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.RemoveAll(sockDir) })
+	sockPath := filepath.Join(sockDir, "s")
+
+	lastEmail := startGChatRPCTestServer(t, sockPath, "")
+
+	c, err := net.Dial("unix", sockPath)
+	require.NoError(t, err)
+	defer c.Close()
+	r := bufio.NewReader(c)
+
+	rpcCall := func(id int, method string, params any) map[string]any {
+		req := map[string]any{"jsonrpc": "2.0", "id": id, "method": method}
+		if params != nil {
+			req["params"] = params
+		}
+		b, err := json.Marshal(req)
+		require.NoError(t, err)
+		_, err = c.Write(append(b, '\n'))
+		require.NoError(t, err)
+		for {
+			line, err := r.ReadBytes('\n')
+			require.NoError(t, err)
+			var msg map[string]any
+			require.NoError(t, json.Unmarshal(line, &msg))
+			if msg["id"] != nil {
+				require.Nil(t, msg["error"], "RPC %s failed: %s", method, string(line))
+				res, _ := msg["result"].(map[string]any)
+				return res
+			}
+		}
+	}
+
+	rpcCall(1, "hello", map[string]any{"protocol": rpc.Protocol, "client": "Courier/0.6.0"})
+	accRes := rpcCall(2, "accounts.list", nil)
+	accounts, _ := accRes["accounts"].([]any)
+	require.Len(t, accounts, 1)
+	gchatAcc, _ := accounts[0].(map[string]any)
+	require.Equal(t, true, gchatAcc["can_lookup_email"], "gchat account must advertise can_lookup_email = true")
+
+	resolveRes := rpcCall(3, "people.resolve", map[string]any{
+		"network":    NetworkID,
+		"account_id": "112233445566778899001",
+		"identifier": "bob@example.com",
+		"start_chat": true,
+	})
+	roomID, _ := resolveRes["room_id"].(string)
+	require.NotEmpty(t, roomID, "people.resolve(start_chat=true) must return created room_id")
+	require.Equal(t, "bob@example.com", lastEmail.Load(), "fake server create_dm must receive Invitees email")
+
+	inboxRes := rpcCall(4, "inbox.list", nil)
+	rooms, _ := inboxRes["rooms"].([]any)
+	require.Len(t, rooms, 1, "new DM must appear in inbox.list")
+	row, _ := rooms[0].(map[string]any)
+	require.Equal(t, roomID, row["room_id"])
+	require.Equal(t, "Bob Example", row["name"], "new DM in inbox must have name decoded from Group.name")
+}
+
+func TestServeGChatEngineHelperForAppE2E(t *testing.T) {
+	sockPath := os.Getenv("COURIER_GCHAT_E2E_SOCKET")
+	if sockPath == "" {
+		return
+	}
+	_ = startGChatRPCTestServer(t, sockPath, sockPath+".invitee_email")
+	require.NoError(t, os.WriteFile(sockPath+".ready", []byte("ready\n"), 0o600))
+	deadline := time.Now().Add(25 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(sockPath + ".stop"); err == nil {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }

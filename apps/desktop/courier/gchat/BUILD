@@ -8,6 +8,7 @@
 # gazelle:exclude src
 
 load("@gchat_crates//:defs.bzl", "all_crate_deps")
+load("@protobuf//bazel:proto_library.bzl", "proto_library")
 load("@rules_cc//cc:defs.bzl", "cc_library")
 load("@rules_rust//cargo:defs.bzl", "cargo_build_script")
 load("@rules_rust//rust:defs.bzl", "rust_library", "rust_static_library", "rust_test")
@@ -20,7 +21,13 @@ exports_files([
     "Cargo.toml",
     "NOTICE",
     "include/gchat.h",
+    "proto/googlechat.proto",
 ])
+
+proto_library(
+    name = "googlechat_proto",
+    srcs = ["proto/googlechat.proto"],
+)
 
 protoc_dist(
     name = "protoc",

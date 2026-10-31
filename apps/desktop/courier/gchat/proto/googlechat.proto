@@ -8,6 +8,8 @@ syntax = "proto2";
 
 package googlechat;
 
+option go_package = "github.com/VitruvianSoftware/courier/engine/internal/gchat/pb";
+
 enum UserType {
 	HUMAN = 0;
 	BOT = 1;
@@ -2144,6 +2146,7 @@ message CatchUpResponse {
 	}
 	optional ResponseStatus status = 2;
 	optional GroupData group_data = 3;
+	optional ReadRevision read_revision = 4;
 }
 
 message GetGroupRequest {
@@ -2536,4 +2539,8 @@ message GroupNotificationSettingsUpdate {
 }
 
 message UpdateGroupNotificationSettingsResponse {
+}
+
+message ComGoogleRtcMeetingsV1UploadMetadata {
+	optional UploadMetadata upload_metadata = 1;
 }

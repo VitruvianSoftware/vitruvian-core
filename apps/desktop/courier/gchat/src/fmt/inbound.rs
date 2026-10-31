@@ -322,9 +322,7 @@ pub fn annotations_to_matrix_html(
     for (order, ann) in annotations.iter().enumerate() {
         // Record mention metadata even before checking span bounds if MENTION_ALL.
         if let Some(pb::annotation::Metadata::UserMentionMetadata(um)) = &ann.metadata {
-            if um.r#type == Some(pb::user_mention_metadata::Type::MentionAll as i32)
-                || um.r#type == Some(2)
-            {
+            if um.r#type == Some(pb::user_mention_metadata::Type::MentionAll as i32) {
                 mention_all = true;
             }
             if let Some(gaia_id) = um
@@ -1028,6 +1026,34 @@ mod tests {
         assert_eq!(
             res.formatted_body.as_deref(),
             Some("Hi <strong>👋<em>🔥</em></strong><em> world</em>")
+        );
+    }
+
+    #[test]
+    fn test_inbound_uninvite_mention_does_not_set_mention_all() {
+        let text = "@Bob Example";
+        let annotations = vec![pb::Annotation {
+            r#type: Some(pb::AnnotationType::UserMention as i32),
+            start_index: Some(0),
+            length: Some(12),
+            metadata: Some(pb::annotation::Metadata::UserMentionMetadata(
+                pb::UserMentionMetadata {
+                    id: Some(pb::UserId {
+                        id: Some("112233445566778899002".to_string()),
+                        r#type: Some(pb::UserType::Human as i32),
+                    }),
+                    r#type: Some(pb::user_mention_metadata::Type::Uninvite as i32),
+                    display_name: Some("Bob Example".to_string()),
+                    ..Default::default()
+                },
+            )),
+            ..Default::default()
+        }];
+
+        let res = annotations_to_matrix_html(text, &annotations, &[]);
+        assert!(
+            !res.mention_all,
+            "UserMentionMetadata::Type::Uninvite (2) must not set mention_all"
         );
     }
 }

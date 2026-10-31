@@ -12,6 +12,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
+
+	"github.com/VitruvianSoftware/courier/engine/internal/gchat/pb"
 )
 
 var (
@@ -22,6 +24,11 @@ var (
 	_ bridgev2.MuteHandlingNetworkAPI        = (*Client)(nil)
 	_ bridgev2.MembershipHandlingNetworkAPI  = (*Client)(nil)
 	_ bridgev2.DeleteChatHandlingNetworkAPI  = (*Client)(nil)
+)
+
+const (
+	notificationSettingTypeDM    int32 = 4
+	notificationSettingTypeSpace int32 = 5
 )
 
 // ParseUserID returns the raw Gaia ID from a networkid.UserID (stripping an optional "gchat_" or "user_" prefix).
@@ -35,13 +42,6 @@ func ParseUserID(id networkid.UserID) string {
 // ParseUserLoginID returns the raw Gaia ID from a networkid.UserLoginID.
 func ParseUserLoginID(id networkid.UserLoginID) string {
 	return strings.TrimSpace(string(id))
-}
-
-func protoEncodeUserID(gaiaID string) []byte {
-	var out []byte
-	out = append(out, protoEncodeStringField(1, gaiaID)...)
-	out = append(out, protoEncodeVarintField(2, 0)...) // UserType.HUMAN = 0
-	return out
 }
 
 // ResolveIdentifier resolves a Google Chat user by Gaia ID or email address and optionally creates or fetches a DM.
@@ -106,30 +106,46 @@ func (c *Client) createDM(ctx context.Context, targetGaiaID, targetEmail string)
 		return nil, errors.New("not logged in")
 	}
 
-	// CreateDmRequest (googlechat.proto:1217-1228):
-	// - members (field 1): repeated UserId { id (field 1): gaiaID, type (field 2): HUMAN (0) }
-	// - invitees (field 7): repeated InviteeInfo { email (field 2): email }
-	var req []byte
+	reqProto := &pb.CreateDmRequest{}
 	if targetEmail != "" {
-		invitee := protoEncodeStringField(2, targetEmail)
-		req = append(req, protoEncodeBytesField(7, invitee)...)
+		reqProto.Invitees = []*pb.InviteeInfo{
+			{Email: pb.String(targetEmail)},
+		}
 	} else {
-		req = append(req, protoEncodeBytesField(1, protoEncodeUserID(targetGaiaID))...)
+		reqProto.Members = []*pb.UserId{
+			pb.HumanUserID(targetGaiaID),
+		}
 	}
 
-	respBytes, err := c.rpcCall(ctx, "create_dm", req)
+	reqBytes, err := pb.Marshal(reqProto)
+	if err != nil {
+		return nil, fmt.Errorf("marshal create_dm request: %w", err)
+	}
+	respBytes, err := c.rpcCall(ctx, "create_dm", reqBytes)
 	if err != nil {
 		return nil, fmt.Errorf("Could not start Google Chat direct message: %w", err)
 	}
 
-	// CreateDmResponse (googlechat.proto:1230-1236):
-	// - dm (field 1): Group { group_id (field 1): GroupId, name (field 4): string, group_read_state (field 12): GroupReadState }
-	// - memberships (field 4): repeated Membership { id (field 1): MembershipId { member_id (field 1): MemberId { user_id (field 1): UserId } } }
-	var dmID string
-	var dmName string
-	var memberGaiaIDs []string
-	var groupRev int64
+	var resp pb.CreateDmResponse
+	if err := pb.Unmarshal(respBytes, &resp); err != nil {
+		return nil, fmt.Errorf("decode create_dm response: %w", err)
+	}
 
+	var dmID string
+	if rawID, _, ok := pb.GroupIDToParts(resp.GetDm().GetGroupId()); ok && rawID != "" {
+		dmID = rawID
+	}
+	if dmID == "" {
+		return nil, errors.New("Google Chat did not return a direct message ID.")
+	}
+
+	dmName := resp.GetDm().GetName()
+	groupRev := resp.GetGroupRevision().GetTimestamp()
+	if groupRev == 0 {
+		groupRev = resp.GetDm().GetRevisionTime()
+	}
+
+	var memberGaiaIDs []string
 	addMember := func(id string) {
 		if id == "" {
 			return
@@ -141,49 +157,11 @@ func (c *Client) createDM(ctx context.Context, targetGaiaID, targetEmail string)
 		}
 		memberGaiaIDs = append(memberGaiaIDs, id)
 	}
-
-	protoIterFields(respBytes, func(f protoField) {
-		switch f.num {
-		case 1: // dm (Group)
-			protoIterFields(f.bytes, func(gf protoField) {
-				switch gf.num {
-				case 1: // group_id (GroupId)
-					if _, rawID, ok := protoDecodeGroupID(gf.bytes); ok && rawID != "" {
-						dmID = rawID
-					}
-				case 4: // name
-					if gf.wireType == 2 {
-						dmName = string(gf.bytes)
-					}
-				case 12: // group_read_state (GroupReadState)
-					protoIterFields(gf.bytes, func(rsf protoField) {
-						if rsf.num == 23 && rsf.wireType == 2 { // joined_users (repeated UserId)
-							addMember(protoDecodeUserID(rsf.bytes))
-						}
-					})
-				case 18: // group_revision (RevisionTimestamp)
-					groupRev = protoDecodeRevisionTimestamp(gf.bytes)
-				}
-			})
-		case 4: // memberships (repeated Membership)
-			protoIterFields(f.bytes, func(mf protoField) {
-				if mf.num == 1 && mf.wireType == 2 { // id (MembershipId)
-					protoIterFields(mf.bytes, func(midf protoField) {
-						if midf.num == 1 && midf.wireType == 2 { // member_id (MemberId)
-							protoIterFields(midf.bytes, func(uidf protoField) {
-								if uidf.num == 1 && uidf.wireType == 2 { // user_id (UserId)
-									addMember(protoDecodeUserID(uidf.bytes))
-								}
-							})
-						}
-					})
-				}
-			})
-		}
-	})
-
-	if dmID == "" {
-		return nil, errors.New("Google Chat did not return a direct message ID.")
+	for _, u := range resp.GetDm().GetGroupReadState().GetJoinedUsers() {
+		addMember(u.GetId())
+	}
+	for _, m := range resp.GetMemberships() {
+		addMember(m.GetId().GetMemberId().GetUserId().GetId())
 	}
 
 	ownGaia := ParseUserLoginID(c.UserLogin.ID)
@@ -223,7 +201,7 @@ func (c *Client) createDM(ctx context.Context, targetGaiaID, targetEmail string)
 		}
 		if dmName != "" {
 			portal.Name = dmName
-			portal.NameSet = true
+			portal.NameSet = portal.MXID != ""
 		}
 		c.metaMu.Lock()
 		meta, ok := portal.Metadata.(*PortalMetadata)
@@ -293,7 +271,7 @@ func (c *Client) createDM(ctx context.Context, targetGaiaID, targetEmail string)
 	}, nil
 }
 
-// HandleMatrixRoomName renames a Google Chat Space via update_group (UpdateMask_NAME = 1).
+// HandleMatrixRoomName renames a Google Chat Space via update_group.
 func (c *Client) HandleMatrixRoomName(ctx context.Context, msg *bridgev2.MatrixRoomName) (bool, error) {
 	if msg == nil || msg.Portal == nil || msg.Content == nil {
 		return false, errors.New("missing room name event")
@@ -306,16 +284,16 @@ func (c *Client) HandleMatrixRoomName(ctx context.Context, msg *bridgev2.MatrixR
 		return false, errors.New("Google Chat direct messages cannot be renamed.")
 	}
 
-	// UpdateGroupRequest (googlechat.proto:2444-2459):
-	// - space_id (field 1): SpaceId { space_id (field 1): rawGroupID }
-	// - name (field 2): newName
-	// - update_masks (field 4): UpdateMask_NAME (1)
-	var req []byte
-	req = append(req, protoEncodeBytesField(1, protoEncodeStringField(1, rawGroupID))...)
-	req = append(req, protoEncodeStringField(2, msg.Content.Name)...)
-	req = append(req, protoEncodeVarintField(4, 1)...)
+	reqBytes, err := pb.Marshal(&pb.UpdateGroupRequest{
+		SpaceId:     &pb.SpaceId{SpaceId: pb.String(rawGroupID)},
+		Name:        pb.String(msg.Content.Name),
+		UpdateMasks: []pb.UpdateGroupRequest_UpdateMask{pb.UpdateGroupRequest_NAME},
+	})
+	if err != nil {
+		return false, fmt.Errorf("marshal update_group request: %w", err)
+	}
 
-	respBytes, err := c.rpcCall(ctx, "update_group", req)
+	respBytes, err := c.rpcCall(ctx, "update_group", reqBytes)
 	if err != nil {
 		return false, fmt.Errorf("Could not rename Google Chat space: %w", err)
 	}
@@ -325,7 +303,7 @@ func (c *Client) HandleMatrixRoomName(ctx context.Context, msg *bridgev2.MatrixR
 	return true, nil
 }
 
-// HandleMatrixRoomTopic updates a Google Chat Space description via update_group (UpdateMask_SPACE_DETAILS = 4),
+// HandleMatrixRoomTopic updates a Google Chat Space description via update_group (UpdateMask_SPACE_DETAILS),
 // first reading the current Space via get_group so existing guidelines are preserved and never wiped.
 func (c *Client) HandleMatrixRoomTopic(ctx context.Context, msg *bridgev2.MatrixRoomTopic) (bool, error) {
 	if msg == nil || msg.Portal == nil || msg.Content == nil {
@@ -339,46 +317,45 @@ func (c *Client) HandleMatrixRoomTopic(ctx context.Context, msg *bridgev2.Matrix
 		return false, errors.New("Google Chat direct messages do not have a topic.")
 	}
 
-	// Step 1: Fetch existing Group via get_group (googlechat.proto:2149-2167) to preserve GroupDetails.guidelines.
-	var getReq []byte
-	getReq = append(getReq, protoEncodeBytesField(1, protoEncodeGroupID(false, rawGroupID))...)
-	getReq = append(getReq, protoEncodeVarintField(4, 0)...) // FetchOptions_MEMBERS = 0
-	getReq = append(getReq, protoEncodeVarintField(4, 5)...) // FetchOptions_INCLUDE_DYNAMIC_GROUP_NAME = 5
-	getReq = append(getReq, protoEncodeVarintField(5, 1)...) // include_invite_dms = true
+	getReqBytes, err := pb.Marshal(&pb.GetGroupRequest{
+		GroupId: pb.SpaceGroupID(rawGroupID),
+		FetchOptions: []pb.GetGroupRequest_FetchOptions{
+			pb.GetGroupRequest_MEMBERS,
+			pb.GetGroupRequest_INCLUDE_DYNAMIC_GROUP_NAME,
+		},
+		IncludeInviteDms: pb.Bool(true),
+	})
+	if err != nil {
+		return false, fmt.Errorf("marshal get_group request: %w", err)
+	}
 
-	getResp, err := c.rpcCall(ctx, "get_group", getReq)
+	getRespBytes, err := c.rpcCall(ctx, "get_group", getReqBytes)
 	if err != nil {
 		return false, fmt.Errorf("Could not read current space details before changing topic: %w", err)
 	}
 
-	var existingGuidelines string
-	protoIterFields(getResp, func(f protoField) {
-		if f.num == 1 && f.wireType == 2 { // group (Group)
-			protoIterFields(f.bytes, func(gf protoField) {
-				if gf.num == 37 && gf.wireType == 2 { // group_details (GroupDetails, googlechat.proto:980)
-					protoIterFields(gf.bytes, func(df protoField) {
-						if df.num == 2 && df.wireType == 2 { // guidelines (field 2, googlechat.proto:942)
-							existingGuidelines = string(df.bytes)
-						}
-					})
-				}
-			})
-		}
-	})
-
-	// Step 2: UpdateGroupRequest (googlechat.proto:2444-2459) with UpdateMask_SPACE_DETAILS (4) and preserved guidelines.
-	var details []byte
-	details = append(details, protoEncodeStringField(1, msg.Content.Topic)...)
-	if existingGuidelines != "" {
-		details = append(details, protoEncodeStringField(2, existingGuidelines)...)
+	var getResp pb.GetGroupResponse
+	if err := pb.Unmarshal(getRespBytes, &getResp); err != nil {
+		return false, fmt.Errorf("decode get_group response: %w", err)
 	}
 
-	var updReq []byte
-	updReq = append(updReq, protoEncodeBytesField(1, protoEncodeStringField(1, rawGroupID))...)
-	updReq = append(updReq, protoEncodeVarintField(4, 4)...) // UpdateMask_SPACE_DETAILS = 4
-	updReq = append(updReq, protoEncodeBytesField(7, details)...)
+	details := &pb.GroupDetails{
+		Description: pb.String(msg.Content.Topic),
+	}
+	if existingGuidelines := getResp.GetGroup().GetGroupDetails().GetGuidelines(); existingGuidelines != "" {
+		details.Guidelines = pb.String(existingGuidelines)
+	}
 
-	respBytes, err := c.rpcCall(ctx, "update_group", updReq)
+	updReqBytes, err := pb.Marshal(&pb.UpdateGroupRequest{
+		SpaceId:      &pb.SpaceId{SpaceId: pb.String(rawGroupID)},
+		UpdateMasks:  []pb.UpdateGroupRequest_UpdateMask{pb.UpdateGroupRequest_SPACE_DETAILS},
+		SpaceDetails: details,
+	})
+	if err != nil {
+		return false, fmt.Errorf("marshal update_group request: %w", err)
+	}
+
+	respBytes, err := c.rpcCall(ctx, "update_group", updReqBytes)
 	if err != nil {
 		return false, fmt.Errorf("Could not update Google Chat space topic: %w", err)
 	}
@@ -389,13 +366,11 @@ func (c *Client) HandleMatrixRoomTopic(ctx context.Context, msg *bridgev2.Matrix
 }
 
 func (c *Client) advanceRevisionFromUpdateGroup(ctx context.Context, portal *bridgev2.Portal, respBytes []byte) {
-	var groupRev int64
-	protoIterFields(respBytes, func(f protoField) {
-		if f.num == 2 && f.wireType == 2 { // group_revision (WriteRevision)
-			groupRev = protoDecodeRevisionTimestamp(f.bytes)
-		}
-	})
-	if groupRev > 0 && portal != nil {
+	var resp pb.UpdateGroupResponse
+	if err := pb.Unmarshal(respBytes, &resp); err != nil {
+		return
+	}
+	if groupRev := resp.GetGroupRevision().GetTimestamp(); groupRev > 0 && portal != nil {
 		_ = c.advancePortalGroupRevision(ctx, portal.PortalKey, groupRev)
 	}
 }
@@ -415,30 +390,29 @@ func (c *Client) HandleMute(ctx context.Context, msg *bridgev2.MatrixMute) error
 		return err
 	}
 
-	// GroupNotificationSettingsUpdate.Type (googlechat.proto:2482-2490):
-	// - NOTIFICATION_LEVEL_OR_MUTE_STATE_CHANGED = 4 (for DMs)
-	// - MUTE_STATE_CHANGE = 5 (for Spaces)
-	settingType := uint64(5)
+	settingType := notificationSettingTypeSpace
 	if isDM {
-		settingType = 4
+		settingType = notificationSettingTypeDM
 	}
-	// Mute.State (googlechat.proto:2492-2498):
-	// - UNMUTED = 1
-	// - MUTED = 2
-	muteState := uint64(1)
+	muteState := pb.GroupNotificationSettingsUpdate_Mute_UNMUTED
 	if msg.Content.IsMuted() {
-		muteState = 2
+		muteState = pb.GroupNotificationSettingsUpdate_Mute_MUTED
 	}
 
-	var update []byte
-	update = append(update, protoEncodeVarintField(2, settingType)...)
-	update = append(update, protoEncodeBytesField(3, protoEncodeVarintField(1, muteState))...)
+	reqBytes, err := pb.Marshal(&pb.UpdateGroupNotificationSettingsRequest{
+		GroupId: pb.PartsToGroupID(rawGroupID, isDM),
+		Update: &pb.GroupNotificationSettingsUpdate{
+			SettingType: pb.Int32(settingType),
+			Mute: &pb.GroupNotificationSettingsUpdate_Mute{
+				State: muteState.Enum(),
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("marshal update_group_notification_settings request: %w", err)
+	}
 
-	var req []byte
-	req = append(req, protoEncodeBytesField(1, protoEncodeGroupID(isDM, rawGroupID))...)
-	req = append(req, protoEncodeBytesField(2, update)...)
-
-	if _, err := c.rpcCall(ctx, "update_group_notification_settings", req); err != nil {
+	if _, err := c.rpcCall(ctx, "update_group_notification_settings", reqBytes); err != nil {
 		return fmt.Errorf("Could not update Google Chat mute setting: %w", err)
 	}
 	return nil
@@ -477,22 +451,25 @@ func (c *Client) HandleMatrixMembership(ctx context.Context, msg *bridgev2.Matri
 		if isDM {
 			return nil, errors.New("Cannot invite additional members to a Google Chat direct message.")
 		}
-		// CreateMembershipRequest (googlechat.proto:2386-2394):
-		// - member_ids (field 2): MemberId { user_id (field 1): UserId }
-		// - membership_state (field 3): MEMBER_INVITED (1)
-		// - group_id (field 4): GroupId
-		// - invitee_member_infos (field 8): InviteeMemberInfo { invitee_info (field 1): InviteeInfo { user_id (field 1): UserId } }
-		userIDProto := protoEncodeUserID(targetGaia)
-		memberIDProto := protoEncodeBytesField(1, userIDProto)
-		inviteeMemberInfoProto := protoEncodeBytesField(1, protoEncodeBytesField(1, userIDProto))
+		reqBytes, err := pb.Marshal(&pb.CreateMembershipRequest{
+			MemberIds:       []*pb.MemberId{pb.UserMemberID(targetGaia)},
+			MembershipState: pb.MembershipState_MEMBER_INVITED.Enum(),
+			GroupId:         pb.SpaceGroupID(rawGroupID),
+			InviteeMemberInfos: []*pb.InviteeMemberInfo{
+				{
+					Id: &pb.InviteeMemberInfo_InviteeInfo{
+						InviteeInfo: &pb.InviteeInfo{
+							UserId: pb.HumanUserID(targetGaia),
+						},
+					},
+				},
+			},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("marshal create_membership request: %w", err)
+		}
 
-		var req []byte
-		req = append(req, protoEncodeBytesField(2, memberIDProto)...)
-		req = append(req, protoEncodeVarintField(3, 1)...) // MembershipState_MEMBER_INVITED = 1
-		req = append(req, protoEncodeBytesField(4, protoEncodeGroupID(false, rawGroupID))...)
-		req = append(req, protoEncodeBytesField(8, inviteeMemberInfoProto)...)
-
-		if _, err := c.rpcCall(ctx, "create_membership", req); err != nil {
+		if _, err := c.rpcCall(ctx, "create_membership", reqBytes); err != nil {
 			return nil, fmt.Errorf("Could not invite member to Google Chat space: %w", err)
 		}
 		return &bridgev2.MatrixMembershipResult{}, nil
@@ -501,12 +478,15 @@ func (c *Client) HandleMatrixMembership(ctx context.Context, msg *bridgev2.Matri
 		if isDM {
 			return &bridgev2.MatrixMembershipResult{}, nil
 		}
-		memberIDProto := protoEncodeBytesField(1, protoEncodeUserID(targetGaia))
-		var req []byte
-		req = append(req, protoEncodeBytesField(2, memberIDProto)...)
-		req = append(req, protoEncodeBytesField(4, protoEncodeGroupID(false, rawGroupID))...)
+		reqBytes, err := pb.Marshal(&pb.CreateMembershipRequest{
+			MemberIds: []*pb.MemberId{pb.UserMemberID(targetGaia)},
+			GroupId:   pb.SpaceGroupID(rawGroupID),
+		})
+		if err != nil {
+			return nil, fmt.Errorf("marshal create_membership request: %w", err)
+		}
 
-		if _, err := c.rpcCall(ctx, "create_membership", req); err != nil {
+		if _, err := c.rpcCall(ctx, "create_membership", reqBytes); err != nil {
 			return nil, fmt.Errorf("Could not join Google Chat space: %w", err)
 		}
 		return &bridgev2.MatrixMembershipResult{}, nil
@@ -559,26 +539,26 @@ func (c *Client) HandleMatrixDeleteChat(ctx context.Context, msg *bridgev2.Matri
 }
 
 func (c *Client) removeMembership(ctx context.Context, rawSpaceID, gaiaID string) error {
-	// RemoveMembershipsRequest (googlechat.proto:2349-2355):
-	// - member_ids (field 1): repeated MemberId { user_id (field 1): UserId }
-	// - group_id (field 2): GroupId
-	// - membership_state (field 3): MembershipState_MEMBER_INVITED (1)
-	memberIDProto := protoEncodeBytesField(1, protoEncodeUserID(gaiaID))
-	var req []byte
-	req = append(req, protoEncodeBytesField(1, memberIDProto)...)
-	req = append(req, protoEncodeBytesField(2, protoEncodeGroupID(false, rawSpaceID))...)
-	req = append(req, protoEncodeVarintField(3, 1)...)
-	_, err := c.rpcCall(ctx, "remove_memberships", req)
+	reqBytes, err := pb.Marshal(&pb.RemoveMembershipsRequest{
+		MemberIds:       []*pb.MemberId{pb.UserMemberID(gaiaID)},
+		GroupId:         pb.SpaceGroupID(rawSpaceID),
+		MembershipState: pb.MembershipState_MEMBER_INVITED.Enum(),
+	})
+	if err != nil {
+		return fmt.Errorf("marshal remove_memberships request: %w", err)
+	}
+	_, err = c.rpcCall(ctx, "remove_memberships", reqBytes)
 	return err
 }
 
 func (c *Client) hideGroup(ctx context.Context, isDM bool, rawGroupID string) error {
-	// HideGroupRequest (googlechat.proto:2368-2372):
-	// - id (field 1): GroupId
-	// - hide (field 2): bool (true = 1)
-	var req []byte
-	req = append(req, protoEncodeBytesField(1, protoEncodeGroupID(isDM, rawGroupID))...)
-	req = append(req, protoEncodeVarintField(2, 1)...)
-	_, err := c.rpcCall(ctx, "hide_group", req)
+	reqBytes, err := pb.Marshal(&pb.HideGroupRequest{
+		Id:   pb.PartsToGroupID(rawGroupID, isDM),
+		Hide: pb.Bool(true),
+	})
+	if err != nil {
+		return fmt.Errorf("marshal hide_group request: %w", err)
+	}
+	_, err = c.rpcCall(ctx, "hide_group", reqBytes)
 	return err
 }

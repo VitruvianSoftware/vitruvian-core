@@ -245,8 +245,8 @@ final class ProtocolConformanceTests: XCTestCase {
     }
 
     func testProtocol6TypesDecodeAndRoundTrip() throws {
-        XCTAssertEqual(protocolVersion, 9)
-        XCTAssertEqual(CourierProtocol.version, 9)
+        XCTAssertEqual(protocolVersion, 10)
+        XCTAssertEqual(CourierProtocol.version, 10)
         XCTAssertEqual(RPCErrorCode(number: -32027), .networkRefused)
 
         let infoJSON = """
@@ -405,7 +405,7 @@ final class ProtocolConformanceTests: XCTestCase {
     }
 
     func testProtocol9BridgesSubAccountsAndDiagnosticsDecodeAndRoundTrip() throws {
-        XCTAssertEqual(CourierProtocol.version, 9)
+        XCTAssertEqual(CourierProtocol.version, 10)
         XCTAssertNotNil(ProtocolMethods.all["bridges.list"])
         XCTAssertNotNil(ProtocolMethods.all["bridges.restart"])
         XCTAssertNotNil(ProtocolMethods.all["accounts.remove"])
@@ -452,7 +452,7 @@ final class ProtocolConformanceTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(SubAccountsResult.self, from: subData), subRes)
 
         let diag = DiagnosticsExportResult(
-            protocolVersion: 9,
+            protocolVersion: 10,
             schemaVersion: 10,
             goVersion: "go1.26.2",
             bridges: [bridge],

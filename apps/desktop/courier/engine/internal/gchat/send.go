@@ -16,6 +16,8 @@ import (
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
+
+	"github.com/VitruvianSoftware/courier/engine/internal/gchat/pb"
 )
 
 var (
@@ -92,24 +94,44 @@ func convertOutgoingText(content *event.MessageEventContent, allowMentionAll boo
 	return plainText, annotations, nil
 }
 
-func encodeTopicIDProto(groupIDProto []byte, topicID string) []byte {
-	var out []byte
-	if topicID != "" {
-		out = append(out, protoEncodeStringField(2, topicID)...)
+func unmarshalAnnotations(raw [][]byte) ([]*pb.Annotation, error) {
+	if len(raw) == 0 {
+		return nil, nil
 	}
-	out = append(out, protoEncodeBytesField(3, groupIDProto)...)
-	return out
+	out := make([]*pb.Annotation, 0, len(raw))
+	for _, b := range raw {
+		var ann pb.Annotation
+		if err := pb.Unmarshal(b, &ann); err != nil {
+			return nil, fmt.Errorf("decode annotation: %w", err)
+		}
+		out = append(out, &ann)
+	}
+	return out, nil
 }
 
-func encodeMessageParentIDProto(groupIDProto []byte, topicID string) []byte {
-	return protoEncodeBytesField(4, encodeTopicIDProto(groupIDProto, topicID))
+func buildTopicID(groupID *pb.GroupId, topicID string) *pb.TopicId {
+	tid := &pb.TopicId{
+		GroupId: groupID,
+	}
+	if topicID != "" {
+		tid.TopicId = pb.String(topicID)
+	}
+	return tid
 }
 
-func encodeMessageIDProto(groupIDProto []byte, topicID, msgID string) []byte {
-	var out []byte
-	out = append(out, protoEncodeBytesField(1, encodeMessageParentIDProto(groupIDProto, topicID))...)
-	out = append(out, protoEncodeStringField(2, msgID)...)
-	return out
+func buildMessageParentID(groupID *pb.GroupId, topicID string) *pb.MessageParentId {
+	return &pb.MessageParentId{
+		Parent: &pb.MessageParentId_TopicId{
+			TopicId: buildTopicID(groupID, topicID),
+		},
+	}
+}
+
+func buildMessageID(groupID *pb.GroupId, topicID, msgID string) *pb.MessageId {
+	return &pb.MessageId{
+		ParentId:  buildMessageParentID(groupID, topicID),
+		MessageId: pb.String(msgID),
+	}
 }
 
 func resolveMessageTopicAndID(dbMsg *database.Message) (topicID, msgID string, createTimeMicros int64) {
@@ -126,7 +148,7 @@ func resolveMessageTopicAndID(dbMsg *database.Message) (topicID, msgID string, c
 	return topicID, msgID, createTimeMicros
 }
 
-func buildSendReplyTargetProto(groupIDProto []byte, replyTo *database.Message, fallbackTopicID string) []byte {
+func buildSendReplyTarget(groupID *pb.GroupId, replyTo *database.Message, fallbackTopicID string) *pb.SendReplyTarget {
 	if replyTo == nil {
 		return nil
 	}
@@ -141,10 +163,10 @@ func buildSendReplyTargetProto(groupIDProto []byte, replyTo *database.Message, f
 	if rTopicID == "" {
 		rTopicID = rMsgID
 	}
-	var out []byte
-	out = append(out, protoEncodeBytesField(1, encodeMessageIDProto(groupIDProto, rTopicID, rMsgID))...)
-	out = append(out, protoEncodeVarintField(2, uint64(createTimeMicros))...)
-	return out
+	return &pb.SendReplyTarget{
+		Id:         buildMessageID(groupID, rTopicID, rMsgID),
+		CreateTime: pb.Int64(createTimeMicros),
+	}
 }
 
 // HandleMatrixMessage sends an outbound message to Google Chat via create_topic or create_message.
@@ -168,7 +190,7 @@ func (c *Client) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMe
 	}
 	c.metaMu.Unlock()
 
-	groupIDProto := protoEncodeGroupID(isDM, rawGroupID)
+	groupID := pb.PartsToGroupID(rawGroupID, isDM)
 	localID := c.registerPendingLocalID()
 	txnID := networkid.TransactionID(localID)
 	c.addPendingToIgnore(msg, txnID)
@@ -193,78 +215,63 @@ func (c *Client) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMe
 	// Top-level message in a Space (including a quote-reply in an unthreaded Space) creates a new Topic via POST /u/0/api/create_topic.
 	// Thread replies in a Space or messages in a DM call POST /u/0/api/create_message.
 	if !isDM && topicID == "" {
-		return c.sendCreateTopic(ctx, msg, groupIDProto, plainText, annotations, localID, txnID)
+		return c.sendCreateTopic(ctx, msg, groupID, plainText, annotations, localID, txnID)
 	}
-	return c.sendCreateMessage(ctx, msg, groupIDProto, topicID, plainText, annotations, localID, txnID)
+	return c.sendCreateMessage(ctx, msg, groupID, topicID, plainText, annotations, localID, txnID)
 }
 
 func (c *Client) sendCreateTopic(
 	ctx context.Context,
 	msg *bridgev2.MatrixMessage,
-	groupIDProto []byte,
+	groupID *pb.GroupId,
 	plainText string,
 	annotations [][]byte,
 	localID string,
 	txnID networkid.TransactionID,
 ) (*bridgev2.MatrixMessageResponse, error) {
-	// CreateTopicRequest (googlechat.proto:1503):
-	// - text_body (field 2): plainText
-	// - annotations (field 3): repeated Annotation
-	// - local_id (field 4): "mautrix-googlechat%<uuid>"
-	// - group_id (field 5): GroupId
-	// - retention_settings (field 6): RetentionSettings { state (field 1) = DEFAULT_AWAKE / PERMANENT (1) }
-	// - history_v2 (field 8): true (1)
-	// - message_info (field 9): MessageInfo { accept_format_annotations (field 1) = true (1), reply_to (field 3): SendReplyTarget }
-	var msgInfo []byte
-	msgInfo = append(msgInfo, protoEncodeVarintField(1, 1)...)
-	if replyTargetProto := buildSendReplyTargetProto(groupIDProto, msg.ReplyTo, ""); len(replyTargetProto) > 0 {
-		msgInfo = append(msgInfo, protoEncodeBytesField(3, replyTargetProto)...)
+	anns, err := unmarshalAnnotations(annotations)
+	if err != nil {
+		c.removePending(msg, localID, txnID)
+		return nil, err
 	}
 
-	var req []byte
-	req = append(req, protoEncodeStringField(2, plainText)...)
-	for _, ann := range annotations {
-		req = append(req, protoEncodeBytesField(3, ann)...)
+	reqBytes, err := pb.Marshal(&pb.CreateTopicRequest{
+		GroupId:     groupID,
+		TextBody:    pb.String(plainText),
+		Annotations: anns,
+		LocalId:     pb.String(localID),
+		RetentionSettings: &pb.RetentionSettings{
+			State: pb.RetentionSettings_PERMANENT.Enum(),
+		},
+		HistoryV2: pb.Bool(true),
+		MessageInfo: &pb.MessageInfo{
+			AcceptFormatAnnotations: pb.Bool(true),
+			ReplyTo:                 buildSendReplyTarget(groupID, msg.ReplyTo, ""),
+		},
+	})
+	if err != nil {
+		c.removePending(msg, localID, txnID)
+		return nil, fmt.Errorf("marshal create_topic request: %w", err)
 	}
-	req = append(req, protoEncodeStringField(4, localID)...)
-	req = append(req, protoEncodeBytesField(5, groupIDProto)...)
-	req = append(req, protoEncodeBytesField(6, protoEncodeVarintField(1, 1))...)
-	req = append(req, protoEncodeVarintField(8, 1)...)
-	req = append(req, protoEncodeBytesField(9, msgInfo)...)
 
-	respBytes, err := c.rpcCall(ctx, "create_topic", req)
+	respBytes, err := c.rpcCall(ctx, "create_topic", reqBytes)
 	if err != nil {
 		c.removePending(msg, localID, txnID)
 		return nil, fmt.Errorf("create_topic failed: %w", err)
 	}
 
-	// CreateTopicResponse (googlechat.proto:1514):
-	// - topic (field 1): Topic { id (field 1): TopicId, replies (field 7): repeated Message }
-	// - group_revision (field 2): RevisionTimestamp
-	var topicID string
+	var resp pb.CreateTopicResponse
+	if err := pb.Unmarshal(respBytes, &resp); err != nil {
+		c.removePending(msg, localID, txnID)
+		return nil, fmt.Errorf("decode create_topic response: %w", err)
+	}
+
+	topicID := resp.GetTopic().GetId().GetTopicId()
 	var pm parsedMessage
-	var groupRev int64
-	protoIterFields(respBytes, func(f protoField) {
-		switch f.num {
-		case 1: // topic (Topic)
-			protoIterFields(f.bytes, func(tf protoField) {
-				switch tf.num {
-				case 1: // id (TopicId)
-					protoIterFields(tf.bytes, func(tidf protoField) {
-						if tidf.num == 2 && tidf.wireType == 2 {
-							topicID = string(tidf.bytes)
-						}
-					})
-				case 7: // replies (Message)
-					if pm.messageID == "" {
-						pm = parseMessageProto(tf.bytes)
-					}
-				}
-			})
-		case 2: // group_revision
-			groupRev = protoDecodeRevisionTimestamp(f.bytes)
-		}
-	})
+	if replies := resp.GetTopic().GetReplies(); len(replies) > 0 {
+		pm = parseMessageFromProto(replies[0])
+	}
+	groupRev := resp.GetGroupRevision().GetTimestamp()
 	if topicID == "" {
 		topicID = pm.topicID
 	}
@@ -318,53 +325,51 @@ func (c *Client) sendCreateTopic(
 func (c *Client) sendCreateMessage(
 	ctx context.Context,
 	msg *bridgev2.MatrixMessage,
-	groupIDProto []byte,
+	groupID *pb.GroupId,
 	topicID string,
 	plainText string,
 	annotations [][]byte,
 	localID string,
 	txnID networkid.TransactionID,
 ) (*bridgev2.MatrixMessageResponse, error) {
-	// CreateMessageRequest (googlechat.proto:1525):
-	// - parent_id (field 1): MessageParentId { topic_id (field 4): TopicId }
-	// - text_body (field 2): plainText
-	// - annotations (field 3): repeated Annotation
-	// - local_id (field 4): "mautrix-googlechat%<uuid>"
-	// - message_info (field 7): MessageInfo { accept_format_annotations (field 1) = true (1), reply_to (field 3): SendReplyTarget }
-	var msgInfo []byte
-	msgInfo = append(msgInfo, protoEncodeVarintField(1, 1)...)
-	if replyTargetProto := buildSendReplyTargetProto(groupIDProto, msg.ReplyTo, topicID); len(replyTargetProto) > 0 {
-		msgInfo = append(msgInfo, protoEncodeBytesField(3, replyTargetProto)...)
+	anns, err := unmarshalAnnotations(annotations)
+	if err != nil {
+		c.removePending(msg, localID, txnID)
+		return nil, err
 	}
 
-	var req []byte
-	req = append(req, protoEncodeBytesField(1, encodeMessageParentIDProto(groupIDProto, topicID))...)
-	req = append(req, protoEncodeStringField(2, plainText)...)
-	for _, ann := range annotations {
-		req = append(req, protoEncodeBytesField(3, ann)...)
+	reqBytes, err := pb.Marshal(&pb.CreateMessageRequest{
+		ParentId:    buildMessageParentID(groupID, topicID),
+		TextBody:    pb.String(plainText),
+		Annotations: anns,
+		LocalId:     pb.String(localID),
+		MessageInfo: &pb.MessageInfo{
+			AcceptFormatAnnotations: pb.Bool(true),
+			ReplyTo:                 buildSendReplyTarget(groupID, msg.ReplyTo, topicID),
+		},
+	})
+	if err != nil {
+		c.removePending(msg, localID, txnID)
+		return nil, fmt.Errorf("marshal create_message request: %w", err)
 	}
-	req = append(req, protoEncodeStringField(4, localID)...)
-	req = append(req, protoEncodeBytesField(7, msgInfo)...)
 
-	respBytes, err := c.rpcCall(ctx, "create_message", req)
+	respBytes, err := c.rpcCall(ctx, "create_message", reqBytes)
 	if err != nil {
 		c.removePending(msg, localID, txnID)
 		return nil, fmt.Errorf("create_message failed: %w", err)
 	}
 
-	// CreateMessageResponse (googlechat.proto:1535):
-	// - message (field 1): Message
-	// - group_revision (field 3): RevisionTimestamp
+	var resp pb.CreateMessageResponse
+	if err := pb.Unmarshal(respBytes, &resp); err != nil {
+		c.removePending(msg, localID, txnID)
+		return nil, fmt.Errorf("decode create_message response: %w", err)
+	}
+
 	var pm parsedMessage
-	var groupRev int64
-	protoIterFields(respBytes, func(f protoField) {
-		switch f.num {
-		case 1: // message
-			pm = parseMessageProto(f.bytes)
-		case 3: // group_revision
-			groupRev = protoDecodeRevisionTimestamp(f.bytes)
-		}
-	})
+	if resp.GetMessage() != nil {
+		pm = parseMessageFromProto(resp.GetMessage())
+	}
+	groupRev := resp.GetGroupRevision().GetTimestamp()
 	if pm.topicID != "" {
 		topicID = pm.topicID
 	}
@@ -442,39 +447,36 @@ func (c *Client) HandleMatrixEdit(ctx context.Context, msg *bridgev2.MatrixEdit)
 	if msgID == "" {
 		return errors.New("empty Google Chat message ID for edit")
 	}
-	groupIDProto := protoEncodeGroupID(isDM, rawGroupID)
-
-	// EditMessageRequest (googlechat.proto:1541):
-	// - id (field 1): MessageId
-	// - text_body (field 2): plainText
-	// - annotations (field 3): repeated Annotation
-	// - message_info (field 5): MessageInfo { accept_format_annotations (field 1) = true (1) }
-	var req []byte
-	req = append(req, protoEncodeBytesField(1, encodeMessageIDProto(groupIDProto, topicID, msgID))...)
-	req = append(req, protoEncodeStringField(2, plainText)...)
-	for _, ann := range annotations {
-		req = append(req, protoEncodeBytesField(3, ann)...)
+	groupID := pb.PartsToGroupID(rawGroupID, isDM)
+	anns, err := unmarshalAnnotations(annotations)
+	if err != nil {
+		return err
 	}
-	req = append(req, protoEncodeBytesField(5, protoEncodeVarintField(1, 1))...)
 
-	respBytes, err := c.rpcCall(ctx, "edit_message", req)
+	reqBytes, err := pb.Marshal(&pb.EditMessageRequest{
+		MessageId:   buildMessageID(groupID, topicID, msgID),
+		TextBody:    pb.String(plainText),
+		Annotations: anns,
+		MessageInfo: &pb.MessageInfo{
+			AcceptFormatAnnotations: pb.Bool(true),
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("marshal edit_message request: %w", err)
+	}
+
+	respBytes, err := c.rpcCall(ctx, "edit_message", reqBytes)
 	if err != nil {
 		return fmt.Errorf("edit_message failed: %w", err)
 	}
 
-	// EditMessageResponse (googlechat.proto:1549):
-	// - message (field 1): Message
-	// - group_revision (field 3): RevisionTimestamp
+	var resp pb.EditMessageResponse
+	_ = pb.Unmarshal(respBytes, &resp)
 	var pm parsedMessage
-	var groupRev int64
-	protoIterFields(respBytes, func(f protoField) {
-		switch f.num {
-		case 1:
-			pm = parseMessageProto(f.bytes)
-		case 3:
-			groupRev = protoDecodeRevisionTimestamp(f.bytes)
-		}
-	})
+	if resp.GetMessage() != nil {
+		pm = parseMessageFromProto(resp.GetMessage())
+	}
+	groupRev := resp.GetGroupRevision().GetTimestamp()
 	editTS := pm.lastEditUsec
 	if editTS <= 0 {
 		editTS = pm.lastUpdateUsec
@@ -510,25 +512,22 @@ func (c *Client) HandleMatrixMessageRemove(ctx context.Context, msg *bridgev2.Ma
 	if msgID == "" {
 		return errors.New("empty Google Chat message ID for delete")
 	}
-	groupIDProto := protoEncodeGroupID(isDM, rawGroupID)
+	groupID := pb.PartsToGroupID(rawGroupID, isDM)
 
-	// DeleteMessageRequest (googlechat.proto:1555):
-	// - id (field 1): MessageId
-	req := protoEncodeBytesField(1, encodeMessageIDProto(groupIDProto, topicID, msgID))
-	respBytes, err := c.rpcCall(ctx, "delete_message", req)
+	reqBytes, err := pb.Marshal(&pb.DeleteMessageRequest{
+		MessageId: buildMessageID(groupID, topicID, msgID),
+	})
+	if err != nil {
+		return fmt.Errorf("marshal delete_message request: %w", err)
+	}
+	respBytes, err := c.rpcCall(ctx, "delete_message", reqBytes)
 	if err != nil {
 		return fmt.Errorf("delete_message failed: %w", err)
 	}
 
-	// DeleteMessageResponse (googlechat.proto:1559):
-	// - group_revision (field 3): RevisionTimestamp
-	var groupRev int64
-	protoIterFields(respBytes, func(f protoField) {
-		if f.num == 3 && f.wireType == 2 {
-			groupRev = protoDecodeRevisionTimestamp(f.bytes)
-		}
-	})
-	if groupRev > 0 {
+	var resp pb.DeleteMessageResponse
+	_ = pb.Unmarshal(respBytes, &resp)
+	if groupRev := resp.GetGroupRevision().GetTimestamp(); groupRev > 0 {
 		_ = c.advancePortalGroupRevision(ctx, msg.Portal.PortalKey, groupRev)
 	}
 	return nil
@@ -551,7 +550,7 @@ func (c *Client) PreHandleMatrixReaction(_ context.Context, msg *bridgev2.Matrix
 	}, nil
 }
 
-// HandleMatrixReaction adds a reaction on Google Chat via POST /u/0/api/update_reaction (ReactionAction = ADD (1)).
+// HandleMatrixReaction adds a reaction on Google Chat via POST /u/0/api/update_reaction (ReactionAction = ADD).
 func (c *Client) HandleMatrixReaction(ctx context.Context, msg *bridgev2.MatrixReaction) (*database.Reaction, error) {
 	if msg == nil || msg.Portal == nil || msg.TargetMessage == nil {
 		return nil, errors.New("missing target message for Google Chat reaction")
@@ -574,27 +573,25 @@ func (c *Client) HandleMatrixReaction(ctx context.Context, msg *bridgev2.MatrixR
 		return nil, errors.New("empty reaction emoji")
 	}
 
-	groupIDProto := protoEncodeGroupID(isDM, rawGroupID)
-	// UpdateReactionRequest (googlechat.proto:1564):
-	// - message_id (field 1): MessageId
-	// - emoji (field 2): Emoji { unicode (field 1) = emoji }
-	// - type (field 3): ReactionAction ADD (1)
-	var req []byte
-	req = append(req, protoEncodeBytesField(1, encodeMessageIDProto(groupIDProto, topicID, msgID))...)
-	req = append(req, protoEncodeBytesField(2, protoEncodeStringField(1, emoji))...)
-	req = append(req, protoEncodeVarintField(3, 1)...)
+	groupID := pb.PartsToGroupID(rawGroupID, isDM)
+	reqBytes, err := pb.Marshal(&pb.UpdateReactionRequest{
+		MessageId: buildMessageID(groupID, topicID, msgID),
+		Emoji: &pb.Emoji{
+			Content: &pb.Emoji_Unicode{Unicode: emoji},
+		},
+		Type: pb.UpdateReactionRequest_ADD.Enum(),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("marshal update_reaction request: %w", err)
+	}
 
-	respBytes, err := c.rpcCall(ctx, "update_reaction", req)
+	respBytes, err := c.rpcCall(ctx, "update_reaction", reqBytes)
 	if err != nil {
 		return nil, fmt.Errorf("update_reaction (ADD) failed: %w", err)
 	}
-	var groupRev int64
-	protoIterFields(respBytes, func(f protoField) {
-		if f.num == 1 && f.wireType == 2 {
-			groupRev = protoDecodeRevisionTimestamp(f.bytes)
-		}
-	})
-	if groupRev > 0 {
+	var resp pb.UpdateReactionResponse
+	_ = pb.Unmarshal(respBytes, &resp)
+	if groupRev := resp.GetGroupRevision().GetTimestamp(); groupRev > 0 {
 		_ = c.advancePortalGroupRevision(ctx, msg.Portal.PortalKey, groupRev)
 	}
 
@@ -607,7 +604,7 @@ func (c *Client) HandleMatrixReaction(ctx context.Context, msg *bridgev2.MatrixR
 	}, nil
 }
 
-// HandleMatrixReactionRemove removes a reaction on Google Chat via POST /u/0/api/update_reaction (ReactionAction = REMOVE (2)).
+// HandleMatrixReactionRemove removes a reaction on Google Chat via POST /u/0/api/update_reaction (ReactionAction = REMOVE).
 func (c *Client) HandleMatrixReactionRemove(ctx context.Context, msg *bridgev2.MatrixReactionRemove) error {
 	if msg == nil || msg.Portal == nil || msg.TargetReaction == nil {
 		return errors.New("missing target reaction for Google Chat reaction removal")
@@ -631,23 +628,25 @@ func (c *Client) HandleMatrixReactionRemove(ctx context.Context, msg *bridgev2.M
 		return errors.New("empty emoji for reaction removal")
 	}
 
-	groupIDProto := protoEncodeGroupID(isDM, rawGroupID)
-	var req []byte
-	req = append(req, protoEncodeBytesField(1, encodeMessageIDProto(groupIDProto, topicID, msgID))...)
-	req = append(req, protoEncodeBytesField(2, protoEncodeStringField(1, emoji))...)
-	req = append(req, protoEncodeVarintField(3, 2)...)
+	groupID := pb.PartsToGroupID(rawGroupID, isDM)
+	reqBytes, err := pb.Marshal(&pb.UpdateReactionRequest{
+		MessageId: buildMessageID(groupID, topicID, msgID),
+		Emoji: &pb.Emoji{
+			Content: &pb.Emoji_Unicode{Unicode: emoji},
+		},
+		Type: pb.UpdateReactionRequest_REMOVE.Enum(),
+	})
+	if err != nil {
+		return fmt.Errorf("marshal update_reaction request: %w", err)
+	}
 
-	respBytes, err := c.rpcCall(ctx, "update_reaction", req)
+	respBytes, err := c.rpcCall(ctx, "update_reaction", reqBytes)
 	if err != nil {
 		return fmt.Errorf("update_reaction (REMOVE) failed: %w", err)
 	}
-	var groupRev int64
-	protoIterFields(respBytes, func(f protoField) {
-		if f.num == 1 && f.wireType == 2 {
-			groupRev = protoDecodeRevisionTimestamp(f.bytes)
-		}
-	})
-	if groupRev > 0 {
+	var resp pb.UpdateReactionResponse
+	_ = pb.Unmarshal(respBytes, &resp)
+	if groupRev := resp.GetGroupRevision().GetTimestamp(); groupRev > 0 {
 		_ = c.advancePortalGroupRevision(ctx, msg.Portal.PortalKey, groupRev)
 	}
 	return nil
@@ -669,16 +668,17 @@ func (c *Client) HandleMatrixReadReceipt(ctx context.Context, receipt *bridgev2.
 	if err != nil {
 		return err
 	}
-	groupIDProto := protoEncodeGroupID(isDM, rawGroupID)
+	groupID := pb.PartsToGroupID(rawGroupID, isDM)
 
-	// MarkGroupReadstateRequest (googlechat.proto:1580):
-	// - id (field 1): GroupId
-	// - last_read_time (field 2): int64 microsecond timestamp
-	var req []byte
-	req = append(req, protoEncodeBytesField(1, groupIDProto)...)
-	req = append(req, protoEncodeVarintField(2, uint64(lastReadMicros))...)
+	reqBytes, err := pb.Marshal(&pb.MarkGroupReadstateRequest{
+		Id:           groupID,
+		LastReadTime: pb.Int64(lastReadMicros),
+	})
+	if err != nil {
+		return fmt.Errorf("marshal mark_group_readstate request: %w", err)
+	}
 
-	_, err = c.rpcCall(ctx, "mark_group_readstate", req)
+	_, err = c.rpcCall(ctx, "mark_group_readstate", reqBytes)
 	if err != nil {
 		return fmt.Errorf("mark_group_readstate failed: %w", err)
 	}
@@ -697,20 +697,23 @@ func (c *Client) HandleMatrixTyping(ctx context.Context, typing *bridgev2.Matrix
 	if err != nil {
 		return err
 	}
-	groupIDProto := protoEncodeGroupID(isDM, rawGroupID)
+	groupID := pb.PartsToGroupID(rawGroupID, isDM)
 
-	// SetTypingStateRequest (googlechat.proto:1591):
-	// - state (field 1): TypingState TYPING (1) or STOPPED (2)
-	// - context (field 2): TypingContext { group_id (field 1): GroupId }
-	var state uint64 = 2
+	state := pb.TypingState_STOPPED
 	if typing.IsTyping {
-		state = 1
+		state = pb.TypingState_TYPING
 	}
-	var req []byte
-	req = append(req, protoEncodeVarintField(1, state)...)
-	req = append(req, protoEncodeBytesField(2, protoEncodeBytesField(1, groupIDProto))...)
+	reqBytes, err := pb.Marshal(&pb.SetTypingStateRequest{
+		State: state.Enum(),
+		Context: &pb.TypingContext{
+			Context: &pb.TypingContext_GroupId{GroupId: groupID},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("marshal set_typing_state request: %w", err)
+	}
 
-	_, err = c.rpcCall(ctx, "set_typing_state", req)
+	_, err = c.rpcCall(ctx, "set_typing_state", reqBytes)
 	if err != nil {
 		return fmt.Errorf("set_typing_state failed: %w", err)
 	}

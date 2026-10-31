@@ -19,12 +19,6 @@ pub const MAX_REDIRECT_HOPS: usize = 3;
 const FIFE_IMAGE_SIZE: &str = "w10000-h10000";
 const MAX_UPLOAD_METADATA_RESPONSE_BYTES: usize = 1024 * 1024;
 
-#[derive(Clone, PartialEq, ::prost::Message)]
-struct ComGoogleRtcMeetingsV1UploadMetadata {
-    #[prost(message, optional, tag = "1")]
-    pub upload_metadata: Option<pb::UploadMetadata>,
-}
-
 fn decode_upload_metadata(raw: &[u8]) -> Result<pb::UploadMetadata, GChatError> {
     let cleaned: Vec<u8> = raw
         .iter()
@@ -36,7 +30,7 @@ fn decode_upload_metadata(raw: &[u8]) -> Result<pb::UploadMetadata, GChatError> 
         .or_else(|_| base64::engine::general_purpose::STANDARD_NO_PAD.decode(&cleaned))
         .unwrap_or_else(|_| raw.to_vec());
 
-    if let Ok(wrapped) = ComGoogleRtcMeetingsV1UploadMetadata::decode(decoded_bytes.as_slice()) {
+    if let Ok(wrapped) = pb::ComGoogleRtcMeetingsV1UploadMetadata::decode(decoded_bytes.as_slice()) {
         if let Some(inner) = wrapped.upload_metadata {
             if inner.payload.is_some()
                 || inner.content_name.is_some()
@@ -623,11 +617,10 @@ mod tests {
                                 local_id: None,
                                 cloned_drive_id: None,
                             };
-                            let inner_bytes = upload_meta.encode_to_vec();
-                            // Wrap in ComGoogleRtcMeetingsV1UploadMetadata field 1 (tag 0x0a + length + inner_bytes)
-                            let mut wrapped = vec![0x0a];
-                            prost::encoding::encode_varint(inner_bytes.len() as u64, &mut wrapped);
-                            wrapped.extend_from_slice(&inner_bytes);
+                            let wrapped = pb::ComGoogleRtcMeetingsV1UploadMetadata {
+                                upload_metadata: Some(upload_meta),
+                            }
+                            .encode_to_vec();
                             let b64 = base64::engine::general_purpose::STANDARD.encode(&wrapped);
                             let resp = format!(
                                 "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",

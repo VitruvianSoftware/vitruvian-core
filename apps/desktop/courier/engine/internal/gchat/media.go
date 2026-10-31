@@ -14,54 +14,29 @@ import (
 	"maunium.net/go/mautrix/bridgev2/networkid"
 	"maunium.net/go/mautrix/event"
 	"maunium.net/go/mautrix/id"
+
+	"github.com/VitruvianSoftware/courier/engine/internal/gchat/pb"
 )
 
 const (
 	// MaxMediaBytes is the 200 MiB attachment size limit enforced for Google Chat uploads and downloads.
 	MaxMediaBytes = 200 * 1024 * 1024
-
-	annotationTypeUploadMetadata = 13
-	chipRenderTypeRender         = 1
 )
 
-type parsedUploadMetadata struct {
-	attachmentToken string
-	contentName     string
-	contentType     string
-	localID         string
-	clonedDriveID   string
-}
-
-func parseUploadMetadataProto(buf []byte) parsedUploadMetadata {
-	var out parsedUploadMetadata
-	protoIterFields(buf, func(f protoField) {
-		if f.wireType != 2 {
-			return
-		}
-		switch f.num {
-		case 1:
-			out.attachmentToken = string(f.bytes)
-		case 3:
-			out.contentName = string(f.bytes)
-		case 4:
-			out.contentType = string(f.bytes)
-		case 6:
-			out.localID = string(f.bytes)
-		case 9:
-			out.clonedDriveID = string(f.bytes)
-		}
+func encodeUploadMetadataAnnotation(uploadMetaProto []byte) ([]byte, error) {
+	var meta pb.UploadMetadata
+	if err := pb.Unmarshal(uploadMetaProto, &meta); err != nil {
+		return nil, fmt.Errorf("decode upload metadata: %w", err)
+	}
+	return pb.Marshal(&pb.Annotation{
+		Type:           pb.AnnotationType_UPLOAD_METADATA.Enum(),
+		StartIndex:     pb.Int32(0),
+		Length:         pb.Int32(0),
+		ChipRenderType: pb.Annotation_RENDER.Enum(),
+		Metadata: &pb.Annotation_UploadMetadata{
+			UploadMetadata: &meta,
+		},
 	})
-	return out
-}
-
-func encodeUploadMetadataAnnotation(uploadMetaProto []byte) []byte {
-	var ann []byte
-	ann = append(ann, protoEncodeVarintField(1, annotationTypeUploadMetadata)...)
-	ann = append(ann, protoEncodeVarintField(2, 0)...)
-	ann = append(ann, protoEncodeVarintField(3, 0)...)
-	ann = append(ann, protoEncodeBytesField(10, uploadMetaProto)...)
-	ann = append(ann, protoEncodeVarintField(20, chipRenderTypeRender)...)
-	return ann
 }
 
 func (c *Client) uploadMedia(_ context.Context, rawGroupID, filename, contentType string, data []byte) ([]byte, error) {
@@ -209,53 +184,38 @@ func (c *Client) prepareOutgoingMessageContent(
 		return "", nil, fmt.Errorf("upload attachment to Google Chat: %w", err)
 	}
 
-	annotations = append(annotations, encodeUploadMetadataAnnotation(uploadMetaProto))
+	annBytes, err := encodeUploadMetadataAnnotation(uploadMetaProto)
+	if err != nil {
+		return "", nil, err
+	}
+	annotations = append(annotations, annBytes)
 	return plainText, annotations, nil
 }
 
-func extractMessageUploadMetadataList(rawMessageProto []byte) []parsedUploadMetadata {
-	var uploads []parsedUploadMetadata
-	protoIterFields(rawMessageProto, func(f protoField) {
-		if f.wireType != 2 {
-			return
+func extractMessageUploadMetadataList(rawMessageProto []byte) []*pb.UploadMetadata {
+	var msg pb.Message
+	if err := pb.Unmarshal(rawMessageProto, &msg); err != nil {
+		return nil
+	}
+	var uploads []*pb.UploadMetadata
+	for _, ann := range msg.GetAnnotations() {
+		up := ann.GetUploadMetadata()
+		if up == nil {
+			continue
 		}
-		switch f.num {
-		case 11: // annotations (repeated Annotation, field 11 of Message)
-			var annType uint64
-			var uploadBytes []byte
-			protoIterFields(f.bytes, func(af protoField) {
-				switch af.num {
-				case 1:
-					if af.wireType == 0 {
-						annType = af.varint
-					}
-				case 10: // upload_metadata (UploadMetadata)
-					if af.wireType == 2 {
-						uploadBytes = af.bytes
-					}
-				}
-			})
-			if (annType == annotationTypeUploadMetadata || len(uploadBytes) > 0) && len(uploadBytes) > 0 {
-				up := parseUploadMetadataProto(uploadBytes)
-				if up.attachmentToken != "" || up.clonedDriveID != "" {
-					uploads = append(uploads, up)
-				}
-			}
-		case 15: // attachments (repeated Attachment, field 15 of Message)
-			var uploadBytes []byte
-			protoIterFields(f.bytes, func(atf protoField) {
-				if atf.num == 14 && atf.wireType == 2 { // Attachment.upload_metadata (field 14)
-					uploadBytes = atf.bytes
-				}
-			})
-			if len(uploadBytes) > 0 {
-				up := parseUploadMetadataProto(uploadBytes)
-				if up.attachmentToken != "" || up.clonedDriveID != "" {
-					uploads = append(uploads, up)
-				}
-			}
+		if up.GetAttachmentToken() != "" || up.GetClonedDriveId() != "" {
+			uploads = append(uploads, up)
 		}
-	})
+	}
+	for _, att := range msg.GetAttachments() {
+		up := att.GetUploadMetadata()
+		if up == nil {
+			continue
+		}
+		if up.GetAttachmentToken() != "" || up.GetClonedDriveId() != "" {
+			uploads = append(uploads, up)
+		}
+	}
 	return uploads
 }
 
@@ -294,8 +254,10 @@ func (c *Client) extractInboundMediaParts(ctx context.Context, pm parsedMessage)
 	parts := make([]*bridgev2.ConvertedMessagePart, 0, len(uploads))
 	for idx, up := range uploads {
 		partID := networkid.PartID(fmt.Sprintf("att_%04d", idx))
-		if up.attachmentToken == "" && up.clonedDriveID != "" {
-			driveLink := fmt.Sprintf("https://drive.google.com/file/d/%s/view", up.clonedDriveID)
+		token := up.GetAttachmentToken()
+		driveID := up.GetClonedDriveId()
+		if token == "" && driveID != "" {
+			driveLink := fmt.Sprintf("https://drive.google.com/file/d/%s/view", driveID)
 			parts = append(parts, &bridgev2.ConvertedMessagePart{
 				ID:   partID,
 				Type: event.EventMessage,
@@ -312,7 +274,7 @@ func (c *Client) extractInboundMediaParts(ctx context.Context, pm parsedMessage)
 			continue
 		}
 
-		filename := strings.TrimSpace(up.contentName)
+		filename := strings.TrimSpace(up.GetContentName())
 		if filename == "" {
 			filename = fmt.Sprintf("attachment_%04d", idx)
 		}
@@ -333,7 +295,7 @@ func (c *Client) extractInboundMediaParts(ctx context.Context, pm parsedMessage)
 			}
 		}
 
-		data, err := c.downloadAttachment(ctx, up.attachmentToken, up.contentType)
+		data, err := c.downloadAttachment(ctx, token, up.GetContentType())
 		if err != nil || len(data) == 0 || len(data) > MaxMediaBytes {
 			parts = append(parts, placeholderPart())
 			continue
@@ -344,7 +306,7 @@ func (c *Client) extractInboundMediaParts(ctx context.Context, pm parsedMessage)
 			parts = append(parts, placeholderPart())
 			continue
 		}
-		mimeType := strings.TrimSpace(up.contentType)
+		mimeType := strings.TrimSpace(up.GetContentType())
 		if mimeType == "" {
 			mimeType = snifferMime
 		}

@@ -29,13 +29,15 @@
               "not_started": "",
               "syncs": ["pin", "mute", "accept_request"],
               "can_create_group": true,
+              "can_lookup_email": false,
               "logins": [
                 {
                   "account_id": "whatsapp-login",
                   "remote_name": "Test Account",
                   "state": "CONNECTED",
                   "error": "",
-                  "can_create_group": true
+                  "can_create_group": true,
+                  "can_lookup_email": false
                 }
               ]
             }

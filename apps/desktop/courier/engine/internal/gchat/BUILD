@@ -21,6 +21,7 @@ go_library(
     importpath = "github.com/VitruvianSoftware/courier/engine/internal/gchat",
     visibility = ["//apps/desktop/courier/engine:__subpackages__"],
     deps = [
+        "//apps/desktop/courier/engine/internal/gchat/pb",
         "@fi_mau_go_util//configupgrade",
         "@net_maunium_go_mautrix//bridgev2",
         "@net_maunium_go_mautrix//bridgev2/database",
@@ -48,9 +49,14 @@ go_test(
     cdeps = ["//apps/desktop/courier/gchat:gchat_ffi_test_loopback"],
     cgo = True,
     importpath = "github.com/VitruvianSoftware/courier/engine/internal/gchat",
+    visibility = ["//apps/desktop/courier:__subpackages__"],
     deps = [
+        "//apps/desktop/courier/engine/internal/actions",
+        "//apps/desktop/courier/engine/internal/engine",
+        "//apps/desktop/courier/engine/internal/gchat/pb",
         "//apps/desktop/courier/engine/internal/host",
         "//apps/desktop/courier/engine/internal/media",
+        "//apps/desktop/courier/engine/internal/rpc",
         "//apps/desktop/courier/engine/internal/store",
         "@com_github_rs_zerolog//:zerolog",
         "@com_github_stretchr_testify//require",
