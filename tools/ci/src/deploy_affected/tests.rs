@@ -497,6 +497,38 @@ fn path_only_no_match_skips_without_td() {
     assert_has(&o.stdout, "no path matched (path-only mode", "reason");
 }
 
+/// The include regex is anchored at the start of the path: an app's
+/// directory name appearing deeper in another tree is not that app.
+#[test]
+fn path_only_include_is_anchored_at_the_repo_root() {
+    let fx = Fx::new();
+    let sha = fx.file("docs/oauth-user-inspector/notes.md");
+    let o = fx.expect(
+        "nested include",
+        &sha,
+        "false",
+        &[("EXTRA_PATH_REGEX", "oauth-user-inspector/")],
+    );
+    assert_has(&o.stdout, "no path matched (path-only mode", "reason");
+}
+
+/// The exclude regex is anchored too: a path that merely contains the
+/// excluded directory deeper down still matches the include.
+#[test]
+fn path_only_exclude_is_anchored_at_the_repo_root() {
+    let fx = Fx::new();
+    let sha = fx.file("oauth-user-inspector/docs/oauth-user-inspector/infra/identity/y.md");
+    fx.expect(
+        "nested exclude",
+        &sha,
+        "true",
+        &[
+            ("EXTRA_PATH_REGEX", "oauth-user-inspector/"),
+            ("EXCLUDE_PATH_REGEX", "oauth-user-inspector/infra/identity/"),
+        ],
+    );
+}
+
 #[test]
 fn path_only_excluded_only_match_skips() {
     let fx = Fx::new();

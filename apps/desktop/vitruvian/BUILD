@@ -1324,7 +1324,7 @@ delivery(
         "production",
     ],
     # Path-only mode: this regex IS the unit's complete trigger set
-    # (tools/ci/deploy-affected.sh step 2), so it names the whole package.
+    # (//tools/ci:deploy_affected, step 2), so it names the whole package.
     # The app carries the GravaStar mouse command (Contents/Helpers), so a
     # change to packages/peripherals is a change to the app too.
     extra_paths = [
