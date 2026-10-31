@@ -15,7 +15,7 @@
 //! When the credentials are absent it skips quietly (success), so a plain
 //! build without notarization still succeeds, unless REQUIRE_NOTARIZATION=1.
 
-use release_exec::{make_temp_dir, run, write_private, Cmd, Runner, TempDir};
+use release_exec::{private_work_dir, run, write_private, Cmd, Runner};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -148,11 +148,14 @@ pub fn notarize(
         return Err(1);
     }
 
-    let work = make_temp_dir(tmp_root, "vitruvian-notarize").map_err(|e| {
-        eprintln!("✗ could not make a work folder: {}", e);
-        1
-    })?;
-    let _cleanup = TempDir(work.clone());
+    // Removed on the way out, and with the key in it if a signal ends the
+    // run first; see PrivateWorkDir.
+    let work_dir =
+        private_work_dir(tmp_root, "vitruvian-notarize", &["AuthKey.p8"]).map_err(|e| {
+            eprintln!("✗ could not make a work folder: {}", e);
+            1
+        })?;
+    let work = work_dir.path().to_path_buf();
     let p = plan(target, creds, &work);
 
     let key = release_exec::decode_base64(&creds.api_key_p8).map_err(|e| {
@@ -196,7 +199,7 @@ pub fn run_cli(args: &[String]) -> i32 {
     };
     let env_map: BTreeMap<String, String> = std::env::vars().collect();
     let creds = NotaryEnv::from_env(&env_map);
-    let mut r = release_exec::SystemRunner::new();
+    let mut r = release_exec::SystemRunner::from_env();
     match notarize(
         &mut r,
         &release_exec::user_path(&target),
@@ -211,7 +214,7 @@ pub fn run_cli(args: &[String]) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use release_exec::{FakeRunner, Out};
+    use release_exec::{make_temp_dir, FakeRunner, Out, TempDir};
     use std::fs;
 
     fn creds() -> NotaryEnv {

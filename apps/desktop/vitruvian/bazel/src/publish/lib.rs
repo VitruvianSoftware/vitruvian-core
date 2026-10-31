@@ -23,7 +23,9 @@
 //! Break-glass for production, on a Mac: check out the release tag, then
 //!   GRADE=production RELEASE_TAG=vitruvian-vX.Y.Z bazel run //apps/desktop/vitruvian:publish
 
-use release_exec::{capture, make_temp_dir, redact, run, Cmd, Runner, PKG_REL};
+use release_exec::{
+    capture, make_temp_dir, redact_args, report_redacted, run, Cmd, Runner, PKG_REL,
+};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -289,10 +291,13 @@ fn beta_compare_status(r: &mut dyn Runner, plan: &PublishPlan) -> Result<(String
     } else if tag_ref.stderr.contains("HTTP 404") {
         Ok(("absent".to_string(), String::new()))
     } else {
-        r.report(&format!(
-            "publish: could not read the tag {}; refusing to publish blind:\n{}",
-            plan.tag, tag_ref.stderr
-        ));
+        report_redacted(
+            r,
+            &format!(
+                "publish: could not read the tag {}; refusing to publish blind:\n{}",
+                plan.tag, tag_ref.stderr
+            ),
+        );
         Err(1)
     }
 }
@@ -469,10 +474,13 @@ pub fn publish(
         if !moved.success() {
             // The DMGs are up but the tag still names the old commit; notes
             // naming this commit would then lie, so stop here and say so.
-            r.report(&format!(
+            report_redacted(
+                r,
+                &format!(
                 "publish: could not move {} to {}; the release notes are left as they were:\n{}",
                 plan.tag, plan.sha, moved.stderr
-            ));
+            ),
+            );
             return Err(if moved.code == 0 { 1 } else { moved.code });
         }
         let built = capture(r, &Cmd::new("date").args(["-u", "+%Y-%m-%dT%H:%M:%SZ"]))?;
@@ -567,7 +575,7 @@ pub fn dry_run_lines(plan: &PublishPlan) -> Vec<String> {
         ),
         format!(
             "dry-run: bazel build {} //{}:Vitruvian",
-            redact(&plan.bazel_flags.join(" ")),
+            redact_args("bazel", &plan.bazel_flags).join(" "),
             PKG_REL
         ),
     ];
@@ -584,7 +592,7 @@ pub fn run_cli(args: &[String]) -> i32 {
         return 1;
     }
     let env_map: BTreeMap<String, String> = std::env::vars().collect();
-    let mut r = release_exec::SystemRunner::new();
+    let mut r = release_exec::SystemRunner::from_env();
 
     let sha = match non_empty(&env_map, "GITHUB_SHA") {
         Some(s) => s.clone(),

@@ -13,7 +13,7 @@
 //!   SIGNING_CERT_PASSWORD  its password
 //!   RUNNER_TEMP            where the keychain goes (/tmp otherwise)
 
-use release_exec::{capture, run, write_private, Cmd, Runner};
+use release_exec::{capture, remove_on_signal, run, write_private, Cmd, Runner};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -92,6 +92,7 @@ pub fn ci_setup_signing(r: &mut dyn Runner, cfg: &CiSigningConfig) -> Result<(),
         eprintln!("SIGNING_CERT_P12 is not base64: {}", e);
         1
     })?;
+    let _on_signal = remove_on_signal(&p12);
     write_private(&p12, &bytes).map_err(|e| {
         eprintln!("could not write {}: {}", p12.display(), e);
         1
@@ -151,7 +152,7 @@ pub fn run_cli(args: &[String]) -> i32 {
     }
     let env_map: BTreeMap<String, String> = std::env::vars().collect();
     match ci_setup_signing(
-        &mut release_exec::SystemRunner::new(),
+        &mut release_exec::SystemRunner::from_env(),
         &CiSigningConfig::from_env(&env_map),
     ) {
         Ok(()) => 0,
