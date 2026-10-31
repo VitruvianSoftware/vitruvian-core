@@ -20,18 +20,39 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! Rust port of `.design-sync/prepare.sh`.
+//! `bazel run //tools/design-sync:prepare` -- everything that must be fresh
+//! BEFORE package-build.mjs runs. `.design-sync/config.json`'s `buildCmd`
+//! runs it, so the re-sync driver does too.
+//!
+//! 1. The design system's own `dist/` (plain `tsc -p tsconfig.json`, run from
+//!    the package, per its "build" script). The converter bundles it into
+//!    `window.Vitruvian`.
+//! 2. The full-vocabulary stylesheet `dist/vitruvian.built.css`. See
+//!    `.design-sync/tailwind-entry.css` for why it exists: a rendered design
+//!    gets static CSS with no Tailwind compiler, so the utility language has to
+//!    be force-generated rather than scraped. Tailwind runs from the PACKAGE,
+//!    not the repo root: v4 auto-scans the working directory for class names,
+//!    and a root run pulled ~270 utilities from unrelated monorepo apps into the
+//!    design system's stylesheet.
+//! 3. Guard: stock Tailwind palettes are not part of the design language
+//!    (conventions.md says so). If one appears, something is scanning too wide.
+//!
+//! Replaced `.design-sync/prepare.sh`; exit codes and messages are that
+//! script's (127/126 for a tool that cannot start, the tool's own status when
+//! it fails, 1 on a leaked palette).
 
-use shell_compat::{err, out, status_code};
+use crate::design_sync_dir;
+use shell_compat::{err, out, path_bytes, status_code};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::io;
+use std::path::Path;
 use std::process::{Command, Stdio};
 
 const FORBIDDEN_PALETTES: &[&str] = &[
     "red", "amber", "yellow", "green", "emerald", "blue", "purple", "rose", "slate", "gray",
 ];
 
-/// Matches `--color-(red|amber|yellow|green|emerald|blue|purple|rose|slate|gray)-[0-9]+`.
+/// `grep -qE -- '--color-(red|amber|yellow|green|emerald|blue|purple|rose|slate|gray)-[0-9]+'`.
 pub fn has_leaked_tailwind_color(css: &str) -> bool {
     let prefix = "--color-";
     let mut rest = css;
@@ -40,7 +61,7 @@ pub fn has_leaked_tailwind_color(css: &str) -> bool {
         for pal in FORBIDDEN_PALETTES {
             if let Some(after_pal) = after.strip_prefix(pal) {
                 if let Some(digits) = after_pal.strip_prefix('-') {
-                    if digits.bytes().next().map_or(false, |b| b.is_ascii_digit()) {
+                    if digits.bytes().next().is_some_and(|b| b.is_ascii_digit()) {
                         return true;
                     }
                 }
@@ -51,87 +72,90 @@ pub fn has_leaked_tailwind_color(css: &str) -> bool {
     false
 }
 
-fn resolve_here(argv0: Option<&Path>) -> PathBuf {
-    if let Some(p) = argv0 {
-        let parent = p
-            .parent()
-            .filter(|d| !d.as_os_str().is_empty())
-            .unwrap_or_else(|| Path::new("."));
-        if let Ok(canon) = fs::canonicalize(parent) {
-            if canon
-                .parent()
-                .map_or(false, |r| r.join("packages/design-system").exists())
-            {
-                return canon;
-            }
-            let ds = PathBuf::from(".design-sync");
-            if let Ok(ds_canon) = fs::canonicalize(&ds) {
-                return ds_canon;
-            }
-            return canon;
+/// `(cd "$pkg" && "$bin" args...)`: the tool's own status, or what bash
+/// reports when it cannot start it.
+fn run_in(pkg: &Path, bin: &Path, args: &[&std::ffi::OsStr]) -> i32 {
+    let st = Command::new(bin)
+        .args(args)
+        .current_dir(pkg)
+        .stdin(Stdio::inherit())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .status();
+    match st {
+        Ok(s) => status_code(s),
+        Err(e) => {
+            let (why, code) = if e.kind() == io::ErrorKind::NotFound {
+                ("No such file or directory", 127)
+            } else {
+                ("Permission denied", 126)
+            };
+            err(&[&path_bytes(bin)[..], b": ", why.as_bytes(), b"\n"].concat());
+            code
         }
     }
-    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
 }
 
 pub fn run(_args: &[Vec<u8>]) -> i32 {
-    let argv0 = std::env::args_os().next().map(PathBuf::from);
-    let here = resolve_here(argv0.as_deref());
-    let root = match fs::canonicalize(here.join("..")) {
-        Ok(r) => r,
-        Err(_) => here.parent().unwrap_or(&here).to_path_buf(),
-    };
+    let here = design_sync_dir();
+    let root = here.parent().unwrap_or(&here).to_path_buf();
     let pkg = root.join("packages/design-system");
 
     if !pkg.is_dir() {
-        let st = Command::new("bash")
-            .arg("-c")
-            .arg("cd \"$1\"")
-            .arg("_")
-            .arg(&pkg)
-            .status();
-        return st.map(status_code).unwrap_or(1);
+        err(&[
+            b"cd: ",
+            &path_bytes(&pkg)[..],
+            b": No such file or directory\n",
+        ]
+        .concat());
+        return 1;
     }
 
-    let tsc_bin = root.join("node_modules/.bin/tsc");
-    let tsc_st = Command::new(&tsc_bin)
-        .arg("-p")
-        .arg("tsconfig.json")
-        .current_dir(&pkg)
-        .stdin(Stdio::inherit())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .status();
-    match tsc_st {
-        Ok(s) if s.success() => {}
-        Ok(s) => return status_code(s),
-        Err(_) => return 127,
+    // 1. dist/
+    let rc = run_in(
+        &pkg,
+        &root.join("node_modules/.bin/tsc"),
+        &["-p".as_ref(), "tsconfig.json".as_ref()],
+    );
+    if rc != 0 {
+        return rc;
     }
 
-    let tailwind_bin = root.join(".ds-sync/node_modules/.bin/tailwindcss");
+    // 2. dist/vitruvian.built.css
     let built_css = pkg.join("dist/vitruvian.built.css");
-    let tw_st = Command::new(&tailwind_bin)
-        .arg("-i")
-        .arg(here.join("tailwind-entry.css"))
-        .arg("-o")
-        .arg(&built_css)
-        .current_dir(&pkg)
-        .stdin(Stdio::inherit())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .status();
-    match tw_st {
-        Ok(s) if s.success() => {}
-        Ok(s) => return status_code(s),
-        Err(_) => return 127,
+    let entry = here.join("tailwind-entry.css");
+    let rc = run_in(
+        &pkg,
+        &root.join(".ds-sync/node_modules/.bin/tailwindcss"),
+        &[
+            "-i".as_ref(),
+            entry.as_os_str(),
+            "-o".as_ref(),
+            built_css.as_os_str(),
+        ],
+    );
+    if rc != 0 {
+        return rc;
     }
 
-    let css_content = match fs::read_to_string(&built_css) {
+    // 3. the palette guard. The script ran it as `if grep -qE ...`, where an
+    // unreadable stylesheet (grep exit 2) is just "no match": grep complains,
+    // and the run still reports ready. Kept as it was; the converter then logs
+    // `! cssEntry: ... not found — skipped`, which NOTES.md says to treat as a
+    // failure.
+    let css = match fs::read(&built_css) {
         Ok(c) => c,
-        Err(_) => return 2,
+        Err(_) => {
+            err(&[
+                b"grep: ",
+                &path_bytes(&built_css)[..],
+                b": No such file or directory\n",
+            ]
+            .concat());
+            Vec::new()
+        }
     };
-
-    if has_leaked_tailwind_color(&css_content) {
+    if has_leaked_tailwind_color(&String::from_utf8_lossy(&css)) {
         err(b"prepare: stock Tailwind colours leaked into vitruvian.built.css\n");
         return 1;
     }
@@ -153,5 +177,6 @@ mod tests {
         assert!(!has_leaked_tailwind_color(
             ":root { --color-surface-primary: #111; --color-blue-sky: #00f; }"
         ));
+        assert!(!has_leaked_tailwind_color("--color-reds-1: #f00"));
     }
 }

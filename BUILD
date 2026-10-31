@@ -75,14 +75,6 @@ exports_files(
     visibility = ["//tools/sync-site-tools:__pkg__"],
 )
 
-exports_files(
-    [
-        ".design-sync/inject-reference-fonts.sh",
-        ".design-sync/prepare.sh",
-    ],
-    visibility = ["//tools/design-sync:__pkg__"],
-)
-
 # .github/ has no BUILD file, so its workflows belong to THIS package and must
 # be exported to be reachable as a `data` dep.
 #

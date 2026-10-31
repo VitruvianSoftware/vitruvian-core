@@ -20,9 +20,27 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! Rust ports of `.design-sync/{inject-reference-fonts.sh,prepare.sh}` and
-//! `tools/test-mcp-slack-e2e.sh`.
+//! The design-sync tools (`:prepare`, `:inject-reference-fonts`) and the
+//! Rust port of `tools/test-mcp-slack-e2e.sh`.
 
 pub mod inject_reference_fonts;
 pub mod mcp_slack_e2e;
 pub mod prepare;
+
+use std::path::PathBuf;
+
+/// The repo's `.design-sync/` directory, which both tools work on.
+///
+/// `bazel run` starts the binary in its runfiles tree, so the checkout comes
+/// from `BUILD_WORKSPACE_DIRECTORY`. A binary started directly (outside
+/// Bazel) finds it from the working directory or one of its parents.
+pub fn design_sync_dir() -> PathBuf {
+    if let Some(ws) = std::env::var_os("BUILD_WORKSPACE_DIRECTORY").filter(|v| !v.is_empty()) {
+        return PathBuf::from(ws).join(".design-sync");
+    }
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    cwd.ancestors()
+        .map(|d| d.join(".design-sync"))
+        .find(|d| d.is_dir())
+        .unwrap_or_else(|| cwd.join(".design-sync"))
+}
