@@ -171,6 +171,7 @@ public final class ContactsBridge: ObservableObject {
     /// Requests Contacts access on demand if `.notDetermined`, or immediately resolves a match if `.authorized`.
     /// Never prompts if `.denied` or `.restricted`.
     public func loadMatch(identifiers: [String], fallbackName: String) async {
+        guard AppLockGate.shared.canPerform(.other) else { return }
         lastError = nil
         status = store.authorizationStatus()
         switch status {
@@ -198,6 +199,7 @@ public final class ContactsBridge: ObservableObject {
         phone: String?,
         email: String?
     ) async throws -> MatchedContact {
+        try AppLockGate.shared.ensureUnlocked(.other)
         lastError = nil
         status = store.authorizationStatus()
         if status == .notDetermined {

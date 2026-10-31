@@ -684,6 +684,7 @@ public final class ConversationModel: ObservableObject {
 
     /// Cycles the active reply room across the rooms of the open merged chat and persists `last_room_id` via `merge.update`.
     public func cycleMergedReplyNetwork() {
+        guard !isLocked else { return }
         guard var merged = mergedChat, !merged.roomIDs.isEmpty else { return }
         let current = activeReplyRoomID ?? merged.lastRoomID
         let nextIndex: Int
@@ -1635,6 +1636,7 @@ public final class ConversationModel: ObservableObject {
 
     /// The person is looking again: what waited for them is read now.
     private func personReturned() {
+        guard !isLocked else { return }
         if needsRead, isLoaded { markRead() }
     }
 
@@ -1642,6 +1644,7 @@ public final class ConversationModel: ObservableObject {
     /// Unread from a message that stayed on the chat, until it is reopened, a new message comes or I reply; and not
     /// while Incognito is on, unless I replied (`reply`).
     private func markRead(reply: Bool = false) {
+        guard !isLocked else { return }
         needsRead = false
         guard !holdsRead, reply || !incognitoIsOn, let room = roomID, let client = appModel.client else { return }
         let rooms = appModel.scopeRoomIDs(for: room).filter { !$0.hasPrefix("merge:") }
@@ -1677,6 +1680,7 @@ public final class ConversationModel: ObservableObject {
 
     /// Starts a reply to the message in the composer.
     public func reply(to eventID: String) {
+        guard !isLocked else { return }
         for case let .message(message) in items where message.id == eventID && message.kind != .deleted {
             composer.startReply(to: message.quoted)
             return
@@ -1685,6 +1689,7 @@ public final class ConversationModel: ObservableObject {
 
     /// ⌘R: replies to the selected message.
     public func replyToSelected() {
+        guard !isLocked else { return }
         guard let id = selectedMessageID else { return }
         reply(to: id)
     }
@@ -1715,6 +1720,7 @@ public final class ConversationModel: ObservableObject {
     /// the newest, so ↑↑↑ walks up the chat. False with no message to select.
     @discardableResult
     public func selectOlderMessage() -> Bool {
+        guard !isLocked else { return false }
         let ids = items.compactMap { item -> String? in if case let .message(message) = item { message.id } else { nil } }
         guard let newest = ids.last else { return false }
         guard let selected = selectedMessageID, let index = ids.firstIndex(of: selected) else {
@@ -1742,6 +1748,7 @@ public final class ConversationModel: ObservableObject {
     /// message the chat still lets me edit. False when there is none.
     @discardableResult
     public func editSelectedOrLast() -> Bool {
+        guard !isLocked else { return false }
         if let selected = selectedMessage, availableActions(for: selected).actions.contains(.edit) {
             composer.startEditing(selected)
             return true
@@ -1757,6 +1764,7 @@ public final class ConversationModel: ObservableObject {
 
     /// ⌘⇧H: the selected message's first link, for the view to open; nil when it has none.
     public func firstLinkOfSelected() -> URL? {
+        guard !isLocked else { return nil }
         guard let selected = selectedMessage, availableActions(for: selected).actions.contains(.openFirstLink) else {
             return nil
         }
@@ -1765,12 +1773,14 @@ public final class ConversationModel: ObservableObject {
 
     /// ⌘⇧R: reacts to the selected message with the quick reaction (Settings ▸ Messages).
     public func quickReactToSelected() async {
+        guard !isLocked else { return }
         guard let selected = selectedMessage, availableActions(for: selected).actions.contains(.react) else { return }
         await react(to: selected.id, key: preferences?.quickReaction ?? "❤️")
     }
 
     /// ⌘↓ ("Show Replies"): on a selected thread root, opens its thread; otherwise scrolls to the newest message.
     public func showRepliesOrJumpToBottom() {
+        guard !isLocked else { return }
         if let selected = selectedMessage, selected.thread != nil {
             openThread(selected.id)
         } else {
@@ -1792,6 +1802,7 @@ public final class ConversationModel: ObservableObject {
 
     /// Shows or hides the Chat Info right pane (⌘⇧I), loading `room.info` and bookmarks when opened.
     public func toggleChatInfo() {
+        guard !isLocked else { return }
         isShowingChatInfo.toggle()
         if isShowingChatInfo {
             Task { [weak self] in await self?.refreshChatInfo() }
@@ -1800,6 +1811,7 @@ public final class ConversationModel: ObservableObject {
 
     /// Shows or hides the Calendar right pane (`⌘⌥K`), loading the selected day's agenda on demand when opened.
     public func toggleCalendar() {
+        guard !isLocked else { return }
         isShowingCalendar.toggle()
         if isShowingCalendar {
             Task { [weak self] in await self?.calendarBridge.loadSelectedDay() }
@@ -1808,6 +1820,7 @@ public final class ConversationModel: ObservableObject {
 
     /// Opens the Chat Info pane if closed and asks its filter field to take focus.
     public func focusChatInfoSearch() {
+        guard !isLocked else { return }
         if !isShowingChatInfo {
             isShowingChatInfo = true
             Task { [weak self] in await self?.refreshChatInfo() }
@@ -2316,6 +2329,7 @@ public final class ConversationModel: ObservableObject {
 
     /// Stages a confirmation alert to leave a group.
     public func requestLeaveGroup(info: RoomInfoResult? = nil, roomID targetRoomID: String? = nil) {
+        guard !isLocked else { return }
         let resolvedRoom = info?.roomID ?? targetRoomID ?? activeReplyRoomID ?? roomID ?? ""
         guard !resolvedRoom.isEmpty else { return }
         let name = info?.name ?? chat(resolvedRoom)?.name ?? chatInfo?.name ?? ""
@@ -2325,6 +2339,7 @@ public final class ConversationModel: ObservableObject {
 
     /// Stages a confirmation alert to delete a chat.
     public func requestDeleteChat(info: RoomInfoResult? = nil, roomID targetRoomID: String? = nil) {
+        guard !isLocked else { return }
         let resolvedRoom = info?.roomID ?? targetRoomID ?? activeReplyRoomID ?? roomID ?? ""
         guard !resolvedRoom.isEmpty else { return }
         let name = info?.name ?? chat(resolvedRoom)?.name ?? chatInfo?.name ?? ""
@@ -2342,6 +2357,7 @@ public final class ConversationModel: ObservableObject {
 
     /// Stages a confirmation alert to remove `member` from a group.
     public func requestRemoveParticipant(_ member: Member, info: RoomInfoResult? = nil) {
+        guard !isLocked else { return }
         let resolvedRoom = info?.roomID ?? activeReplyRoomID ?? roomID ?? ""
         guard !resolvedRoom.isEmpty else { return }
         let groupName = info?.name ?? chat(resolvedRoom)?.name ?? chatInfo?.name ?? ""
@@ -2382,6 +2398,7 @@ public final class ConversationModel: ObservableObject {
     /// leaves both the trigger and the card.
     public func setTriggerHovered(_ hovering: Bool, for message: TimelineMessage) {
         guard !message.mine else { return }
+        if hovering, isLocked { return }
         isHoveringSenderTrigger = hovering
         if hovering {
             if activeSenderCard?.messageID == message.id { return }
@@ -2430,6 +2447,7 @@ public final class ConversationModel: ObservableObject {
 
     /// Opens the sender hover card for `message`, loading on-demand Contacts match and shared groups.
     public func openSenderCard(for message: TimelineMessage) async {
+        guard !isLocked else { return }
         let targetRoom = !message.roomID.isEmpty ? message.roomID : (activeReplyRoomID ?? roomID ?? "")
         if chatInfo == nil, !targetRoom.isEmpty, let fetched = await fetchChatInfo(for: targetRoom, force: false).info {
             if targetRoom == roomID || targetRoom == activeReplyRoomID {
@@ -2478,6 +2496,7 @@ public final class ConversationModel: ObservableObject {
     /// If the selected message is outgoing (`mine`), falls back to the other person in a 1:1 chat or the latest
     /// incoming message in the timeline.
     public func showSenderCardForSelectedMessage() async {
+        guard !isLocked else { return }
         if let id = selectedMessageID, let msg = message(id, from: .chat), !msg.mine {
             await openSenderCard(for: msg)
             return
@@ -2686,7 +2705,7 @@ public final class ConversationModel: ObservableObject {
     /// Staying on the chat, it isn't marked read again until it is reopened or a new message comes (Inferred
     /// (inventory 02 §3.4.2 item 8)). A refusal is a toast, and nothing moves.
     public func markUnread(from messageID: String) async {
-        guard let room = roomID, let sender = composer.sender, let message = message(messageID, from: .chat),
+        guard !isLocked, let room = roomID, let sender = composer.sender, let message = message(messageID, from: .chat),
               availableActions(for: message).actions.contains(.markUnread) else { return }
         let owner = generation
         let after = planAfterToggleRead()
@@ -2707,7 +2726,7 @@ public final class ConversationModel: ObservableObject {
     /// or one the network makes) opens, with the message quoted in its composer (`ComposerModel.startPrivateReply`)
     /// once that chat's features are read. A refusal is a toast in Courier's words, and the group stays open.
     public func replyPrivately(to messageID: String) async {
-        guard let room = roomID, let sender = composer.sender, let message = message(messageID, from: .chat),
+        guard !isLocked, let room = roomID, let sender = composer.sender, let message = message(messageID, from: .chat),
               availableActions(for: message).actions.contains(.replyPrivately) else { return }
         let owner = generation
         let network = self.network

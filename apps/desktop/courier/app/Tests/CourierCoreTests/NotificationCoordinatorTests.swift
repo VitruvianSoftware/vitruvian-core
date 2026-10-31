@@ -1344,6 +1344,106 @@ final class NotificationCoordinatorTests: XCTestCase {
 
         await finish(h)
     }
+
+    func testLockedOpenChatDoesNotMarkReadDoesNotClearReminderAndPostsRedactedNotification() async throws {
+        let h = try await start()
+        let lifecycle = SystemLifecycleModel(
+            defaults: h.defaults,
+            loginItem: FakeLoginItemService(currentStatus: .notRegistered),
+            biometrics: FakeBiometricAuthService(available: true, result: .success(true))
+        )
+        let presence = StaticPresence()
+        let attention = Attention(source: presence, pollInterval: nil)
+        attention.setWindowKey(true)
+        XCTAssertTrue(attention.isLooking, "Attention.isLooking must be true when window is key and app is unlocked")
+
+        let conversation = ConversationModel(
+            appModel: h.app,
+            unreadCount: { h.window.rows[$0]?.unread ?? 0 },
+            attention: attention
+        )
+        conversation.setWindowKey(true)
+
+        // Open !a while unlocked with an initial message so the chat is loaded in front.
+        h.window.isKey = true
+        let initialMsg = message("$init-1", ts: connectedMillis - 1000, text: "Initial message")
+        h.script.events["!a"] = [initialMsg]
+        h.app.selectedRoomID = "!a"
+        try await waitUntil { !conversation.items.isEmpty }
+        h.clock.advance(seconds: 5)
+
+        // Lock the app with !a still open and key.
+        lifecycle.lockNow()
+        h.window.isLocked = true
+        XCTAssertFalse(
+            attention.isLooking,
+            "Attention.isLooking must be false while the app is locked even when the window is key"
+        )
+
+        let markReadBefore = h.server.receivedMethods().filter { $0 == "room.markRead" }.count
+        let reminderClearBefore = h.server.receivedMethods().filter { $0 == "reminder.clear" }.count
+        let fetchesBefore = h.server.receivedMethods().filter { $0 == "room.events" }.count
+
+        // Deliver a new message into the open chat !a while locked.
+        var unreadRow = inboxRow("!a", name: "Chat A")
+        unreadRow.unread = 1
+        h.window.rows["!a"] = unreadRow
+        let tsLocked = Int64(h.clock.date.timeIntervalSince1970 * 1000)
+        let lockedMsg = message("$locked-open-1", ts: tsLocked, text: "Secret while chat open and locked")
+        h.script.events["!a"] = [lockedMsg, initialMsg]
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$locked-open-1"])
+
+        try await settle(h, fetches: fetchesBefore + 1)
+
+        XCTAssertEqual(
+            h.window.rows["!a"]?.unread,
+            1,
+            "New message in open chat while locked must stay unread"
+        )
+        XCTAssertEqual(
+            h.server.receivedMethods().filter { $0 == "room.markRead" }.count,
+            markReadBefore,
+            "No room.markRead request may reach the engine while the app is locked"
+        )
+        XCTAssertEqual(
+            h.delivery.delivered.count,
+            1,
+            "Locked open chat must still post a content-hidden notification when a new message arrives"
+        )
+        if let msgNote = h.delivery.delivered.first {
+            XCTAssertEqual(msgNote.title, "Courier", "Locked open chat must still post a content-hidden notification")
+            XCTAssertNil(msgNote.subtitle)
+            XCTAssertEqual(msgNote.body, "New message")
+            XCTAssertEqual(msgNote.category, .scheduled)
+        }
+
+        // Deliver a due reminder in the open chat !a while locked: must NOT call room.markRead or reminder.clear, and must post a redacted banner.
+        let markReadBeforeReminder = h.server.receivedMethods().filter { $0 == "room.markRead" }.count
+        h.server.notify(["kind": "reminder", "room_id": "!a"])
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(
+            h.server.receivedMethods().filter { $0 == "room.markRead" }.count,
+            markReadBeforeReminder,
+            "Due reminder in open chat while locked must not call room.markRead"
+        )
+        XCTAssertEqual(
+            h.server.receivedMethods().filter { $0 == "reminder.clear" }.count,
+            reminderClearBefore,
+            "Due reminder in open chat while locked must not call reminder.clear"
+        )
+        XCTAssertEqual(
+            h.delivery.delivered.count,
+            2,
+            "Due reminder in open chat while locked must post a content-hidden reminder notification"
+        )
+        if h.delivery.delivered.count >= 2, let remNote = h.delivery.delivered.last {
+            XCTAssertEqual(remNote.title, "Courier")
+            XCTAssertEqual(remNote.body, "Reminder due")
+            XCTAssertEqual(remNote.category, .scheduled)
+        }
+
+        await finish(h)
+    }
 }
 
 // MARK: - Fixtures

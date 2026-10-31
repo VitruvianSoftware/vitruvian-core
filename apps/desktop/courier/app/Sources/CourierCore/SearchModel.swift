@@ -363,12 +363,14 @@ public final class SearchModel: ObservableObject {
 
     /// Try Again, after a failure.
     public func retry() {
+        guard !isLocked else { return }
         guard phase == .failed else { return }
         queryChanged(debounced: false)
     }
 
     /// "Clear Recent Searches".
     public func clearRecentSearches() {
+        guard !isLocked else { return }
         recents.clearSearches()
         sections.removeAll { $0.kind == .recentSearches }
         if let selection, !allItems.contains(where: { $0.id == selection }) { self.selection = allItems.first?.id }
@@ -445,6 +447,7 @@ public final class SearchModel: ObservableObject {
 
     /// "Show more" under a section: up to 100 chats or people, or the next page of media or messages.
     public func showMore(_ kind: SearchSection.Kind) async {
+        guard !isLocked else { return }
         guard phase == .results, let base = firstPage, let client = appModel.client,
               sections.first(where: { $0.kind == kind })?.canShowMore == true,
               !showingMore.contains(kind) else { return }

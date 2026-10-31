@@ -14,7 +14,10 @@ final class EngineClientTests: XCTestCase {
         server = try TestEngineServer()
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
+        await MainActor.run {
+            AppLockGate.shared.resetForTesting()
+        }
         server.stop()
     }
 
@@ -229,6 +232,112 @@ final class EngineClientTests: XCTestCase {
             _ = try await client.connect()
             XCTFail("connected to a socket that does not exist")
         } catch {}
+    }
+
+    @MainActor
+    func testEveryProtocolMethodIsClassifiedAndMutatingMethodsAreRefusedWhileLocked() async throws {
+        let dir = try XCTUnwrap(ProtocolConformanceTests.protocolDirectory(), "protocol.json not found")
+        let specData = try Data(contentsOf: dir.appendingPathComponent("protocol.json"))
+        let spec = try XCTUnwrap(JSONSerialization.jsonObject(with: specData) as? [String: Any])
+        let specMethods = try XCTUnwrap(spec["methods"] as? [String: [String: Any]])
+        let allMethodNames = specMethods.keys.sorted()
+        XCTAssertGreaterThanOrEqual(allMethodNames.count, 58)
+
+        // 1. Every method in protocol.json must have an explicit classification (and no extra unknown keys).
+        XCTAssertEqual(
+            Set(ProtocolMethods.classifications.keys),
+            Set(allMethodNames),
+            "Every method in protocol.json must be classified as readOnlyOrBackground or userInitiatedMutation"
+        )
+
+        let expectedReadOnly: Set<String> = [
+            "hello",
+            "accounts.list",
+            "inbox.list",
+            "spaces.list",
+            "autoArchive.list",
+            "search.query",
+            "room.events",
+            "room.features",
+            "room.members",
+            "room.info",
+            "message.history",
+            "scheduled.list",
+            "people.contacts",
+            "merge.list",
+            "merge.suggest",
+            "stickers.list",
+            "bridges.list",
+            "accounts.subAccounts",
+        ]
+        let expectedMutating = Set(allMethodNames).subtracting(expectedReadOnly).sorted()
+
+        for method in allMethodNames {
+            let expected: ProtocolMethods.AccessClassification = expectedReadOnly.contains(method)
+                ? .readOnlyOrBackground
+                : .userInitiatedMutation
+            XCTAssertEqual(
+                ProtocolMethods.classification(for: method),
+                expected,
+                "Method '\(method)' must be classified as \(expected)"
+            )
+        }
+
+        // 2. While locked, EngineClient centrally refuses every mutating method with EngineError.appLocked
+        //    without sending the request over the socket.
+        let suiteName = "courier.test.engineclient.lock.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        struct AlwaysBiometric: BiometricAuthService {
+            func canEvaluateBiometricsOrWatch() -> Bool { true }
+            func authenticate(reason _: String) async throws -> Bool { true }
+        }
+        struct NoopLoginItem: LoginItemService {
+            func status() -> LoginItemRegistrationStatus { .notRegistered }
+            func register() throws {}
+            func unregister() throws {}
+        }
+
+        let lifecycle = SystemLifecycleModel(
+            defaults: defaults,
+            loginItem: NoopLoginItem(),
+            biometrics: AlwaysBiometric()
+        )
+        server.setHandler { method, _ in
+            method == "hello" ? TestEngineServer.helloOK : .result([:])
+        }
+        let client = EngineClient(socketPath: server.path)
+        _ = try await client.connect()
+
+        lifecycle.lockNow()
+        XCTAssertTrue(lifecycle.isLocked)
+
+        for method in expectedMutating {
+            do {
+                let _: JSONValue = try await client.call(method, Empty())
+                XCTFail("Mutating method '\(method)' must be refused by EngineClient while locked")
+            } catch let error as EngineError {
+                XCTAssertEqual(
+                    error,
+                    .appLocked,
+                    "Mutating method '\(method)' must throw EngineError.appLocked while locked"
+                )
+            }
+        }
+
+        // None of the mutating calls may have reached the engine server while locked.
+        let sentMutating = server.receivedMethods().filter { !expectedReadOnly.contains($0) }
+        XCTAssertEqual(
+            sentMutating,
+            [],
+            "Zero mutating RPC requests may reach the engine socket while locked"
+        )
+
+        // Read-only background sync calls (e.g. accounts.list) still succeed while locked.
+        let _: JSONValue = try await client.call("accounts.list", Empty())
+        XCTAssertTrue(server.receivedMethods().contains("accounts.list"))
+        await client.close()
     }
 
     // MARK: -

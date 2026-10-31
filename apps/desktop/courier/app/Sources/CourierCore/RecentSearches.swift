@@ -32,6 +32,7 @@ public final class RecentSearches {
     /// Puts `text` first, without the spaces around it. The same words in another case are the same search (the
     /// index folds case), so the older spelling goes.
     public func addSearch(_ text: String) {
+        guard AppLockGate.isCurrentActionAllowedForSettings else { return }
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         let folded = text.lowercased()
@@ -42,6 +43,7 @@ public final class RecentSearches {
     }
 
     public func addChat(_ roomID: String) {
+        guard AppLockGate.isCurrentActionAllowedForSettings else { return }
         chats.removeAll { $0 == roomID }
         chats.insert(roomID, at: 0)
         chats = Array(chats.prefix(Self.maxChats))
@@ -50,6 +52,7 @@ public final class RecentSearches {
 
     /// "Clear Recent Searches". The recent chats stay.
     public func clearSearches() {
+        guard AppLockGate.isCurrentActionAllowedForSettings else { return }
         searches = []
         defaults.removeObject(forKey: Self.searchesKey)
     }

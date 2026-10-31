@@ -29,39 +29,114 @@ public enum RemindCondition: String, CaseIterable, Sendable {
 /// The inbox's settings, kept in UserDefaults under "courier.inbox.<name>". These are the Mac's own settings, not
 /// chat state: nothing here reaches the engine or a network.
 public final class InboxPreferences: ObservableObject {
-    @Published public var showSpaceBar: Bool { didSet { set(showSpaceBar, "showSpaceBar") } }
-    @Published public var regularPinnedRows: Bool { didSet { set(regularPinnedRows, "regularPinnedRows") } }
-    @Published public var showUnreadCounts: Bool { didSet { set(showUnreadCounts, "showUnreadCounts") } }
-    @Published public var showPreviews: Bool { didSet { set(showPreviews, "showPreviews") } }
-    @Published public var compactList: Bool { didSet { set(compactList, "compactList") } }
-    @Published public var showNetworkIcons: Bool { didSet { set(showNetworkIcons, "showNetworkIcons") } }
-    @Published public var colorNetworkIcons: Bool { didSet { set(colorNetworkIcons, "colorNetworkIcons") } }
-    @Published public var hoverAction: HoverAction { didSet { set(hoverAction.rawValue, "hoverAction") } }
+    @Published public var showSpaceBar: Bool {
+        didSet {
+            guard canMutate({ showSpaceBar = oldValue }) else { return }
+            set(showSpaceBar, "showSpaceBar")
+        }
+    }
+    @Published public var regularPinnedRows: Bool {
+        didSet {
+            guard canMutate({ regularPinnedRows = oldValue }) else { return }
+            set(regularPinnedRows, "regularPinnedRows")
+        }
+    }
+    @Published public var showUnreadCounts: Bool {
+        didSet {
+            guard canMutate({ showUnreadCounts = oldValue }) else { return }
+            set(showUnreadCounts, "showUnreadCounts")
+        }
+    }
+    @Published public var showPreviews: Bool {
+        didSet {
+            guard canMutate({ showPreviews = oldValue }) else { return }
+            set(showPreviews, "showPreviews")
+        }
+    }
+    @Published public var compactList: Bool {
+        didSet {
+            guard canMutate({ compactList = oldValue }) else { return }
+            set(compactList, "compactList")
+        }
+    }
+    @Published public var showNetworkIcons: Bool {
+        didSet {
+            guard canMutate({ showNetworkIcons = oldValue }) else { return }
+            set(showNetworkIcons, "showNetworkIcons")
+        }
+    }
+    @Published public var colorNetworkIcons: Bool {
+        didSet {
+            guard canMutate({ colorNetworkIcons = oldValue }) else { return }
+            set(colorNetworkIcons, "colorNetworkIcons")
+        }
+    }
+    @Published public var hoverAction: HoverAction {
+        didSet {
+            guard canMutate({ hoverAction = oldValue }) else { return }
+            set(hoverAction.rawValue, "hoverAction")
+        }
+    }
     @Published public var doubleClickAction: DoubleClickAction {
-        didSet { set(doubleClickAction.rawValue, "doubleClickAction") }
+        didSet {
+            guard canMutate({ doubleClickAction = oldValue }) else { return }
+            set(doubleClickAction.rawValue, "doubleClickAction")
+        }
     }
     public var doubleClickChat: DoubleClickAction {
         get { doubleClickAction }
         set { doubleClickAction = newValue }
     }
-    @Published public var remindDefault: RemindCondition { didSet { set(remindDefault.rawValue, "remindDefault") } }
-    @Published public var archiveAfterReminder: Bool { didSet { set(archiveAfterReminder, "archiveAfterReminder") } }
-    @Published public var markReadOnArchive: Bool { didSet { set(markReadOnArchive, "markReadOnArchive") } }
-    @Published public var afterArchive: AfterAction { didSet { set(afterArchive.rawValue, "afterArchive") } }
-    @Published public var afterToggleRead: AfterAction { didSet { set(afterToggleRead.rawValue, "afterToggleRead") } }
+    @Published public var remindDefault: RemindCondition {
+        didSet {
+            guard canMutate({ remindDefault = oldValue }) else { return }
+            set(remindDefault.rawValue, "remindDefault")
+        }
+    }
+    @Published public var archiveAfterReminder: Bool {
+        didSet {
+            guard canMutate({ archiveAfterReminder = oldValue }) else { return }
+            set(archiveAfterReminder, "archiveAfterReminder")
+        }
+    }
+    @Published public var markReadOnArchive: Bool {
+        didSet {
+            guard canMutate({ markReadOnArchive = oldValue }) else { return }
+            set(markReadOnArchive, "markReadOnArchive")
+        }
+    }
+    @Published public var afterArchive: AfterAction {
+        didSet {
+            guard canMutate({ afterArchive = oldValue }) else { return }
+            set(afterArchive.rawValue, "afterArchive")
+        }
+    }
+    @Published public var afterToggleRead: AfterAction {
+        didSet {
+            guard canMutate({ afterToggleRead = oldValue }) else { return }
+            set(afterToggleRead.rawValue, "afterToggleRead")
+        }
+    }
     @Published public var requestNotifications: Bool {
         didSet {
+            guard canMutate({ requestNotifications = oldValue }) else { return }
             set(requestNotifications, "requestNotifications")
             if notifications.requestNotificationsEnabled != requestNotifications {
                 notifications.requestNotificationsEnabled = requestNotifications
             }
         }
     }
-    @Published public var lastUsedReminder: Date? { didSet { set(lastUsedReminder, "lastUsedReminder") } }
+    @Published public var lastUsedReminder: Date? {
+        didSet {
+            guard canMutate({ lastUsedReminder = oldValue }) else { return }
+            set(lastUsedReminder, "lastUsedReminder")
+        }
+    }
     /// "Notify when someone starts typing (supported platforms only)" (02 §1.5, off): one notification per burst of
     /// typing in a chat that would notify for a message (`NotificationPolicy.shouldNotifyTyping`).
     @Published public var typingNotifications: Bool {
         didSet {
+            guard canMutate({ typingNotifications = oldValue }) else { return }
             set(typingNotifications, "typingNotifications")
             if notifications.typingNotificationsEnabled != typingNotifications {
                 notifications.typingNotificationsEnabled = typingNotifications
@@ -74,6 +149,19 @@ public final class InboxPreferences: ObservableObject {
     public static func key(_ name: String) -> String { "courier.inbox." + name }
 
     private let defaults: UserDefaults
+    private var isInitializing = true
+    private var isRevertingLockedSetting = false
+
+    private func canMutate(_ revert: () -> Void) -> Bool {
+        guard !isInitializing, !isRevertingLockedSetting else { return false }
+        guard AppLockGate.isCurrentActionAllowedForSettings else {
+            isRevertingLockedSetting = true
+            revert()
+            isRevertingLockedSetting = false
+            return false
+        }
+        return true
+    }
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -111,6 +199,7 @@ public final class InboxPreferences: ObservableObject {
             guard let self, self.typingNotifications != enabled else { return }
             self.typingNotifications = enabled
         }
+        isInitializing = false
     }
 
     private func set(_ value: Any?, _ name: String) {

@@ -21,6 +21,9 @@ public enum EngineError: Error, Equatable, Sendable {
     /// No answer within the call's time limit. The engine may still do what was asked.
     case timedOut
 
+    /// Typed error thrown when a user-initiated mutation is refused because Courier is locked.
+    public static let appLocked = EngineError.rpc(.badValue, message: "Courier is locked", reason: "locked")
+
     /// Only a refused handshake means the app and engine are of different versions.
     public var isUpdateNeeded: Bool {
         if case .protocolMismatch = self { return true }
@@ -104,6 +107,12 @@ public actor EngineClient {
     public func call<P: Encodable, R: Decodable>(_ method: String, _ params: P,
                                                  timeout: TimeInterval? = nil) async throws -> R {
         guard greeted, !closed else { throw EngineError.notConnected }
+        if ProtocolMethods.classification(for: method) != .readOnlyOrBackground {
+            let locked = await MainActor.run { AppLockGate.shared.isLocked }
+            if locked {
+                throw EngineError.appLocked
+            }
+        }
         let limit = timeout ?? (Self.untimedMethods.contains(method) ? nil : callTimeout)
         return try await send(method, params, timeout: limit)
     }

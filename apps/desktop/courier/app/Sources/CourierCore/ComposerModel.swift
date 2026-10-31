@@ -818,13 +818,13 @@ public final class ComposerModel: ObservableObject {
 
     /// Typing (or a send that emptied the box): the draft is saved once the text has rested for `draftDelay`.
     private func draftTextChanged() {
-        guard !openingChat, let room = roomID, !unknownDrafts.contains(room) else { return }
+        guard !isLocked, !openingChat, let room = roomID, !unknownDrafts.contains(room) else { return }
         draftToken += 1
         guard draftBody != (savedTexts[room] ?? "") else { return } // back to what the engine has: nothing to save
         let token = draftToken
         Task { [weak self, sleep, draftDelay] in
             await sleep(draftDelay)
-            guard let self, self.draftToken == token, self.roomID == room else { return }
+            guard let self, !self.isLocked, self.draftToken == token, self.roomID == room else { return }
             self.saveDraft(self.draftBody, in: room)
         }
     }
@@ -848,6 +848,7 @@ public final class ComposerModel: ObservableObject {
     /// follow it (EntityEditing.replacing); typed where a formatting key was pressed with no selection, it takes that
     /// formatting; and "@" or ";" with letters at the caret is looked up.
     public func textChanged(to text: String, replacing range: NSRange, with length: Int) {
+        guard !isLocked else { return }
         settingContents = true
         self.text = text
         settingContents = false
@@ -967,7 +968,7 @@ public final class ComposerModel: ObservableObject {
     /// "Insert as Draft" on someone else's message: its text and formatting go into the composer, below what is
     /// typed (after a blank line), so nothing typed is lost. While editing, it waits with what was there before.
     public func insertAsDraft(_ rich: RichText) {
-        guard roomID != nil, !rich.text.isEmpty else { return }
+        guard !isLocked, roomID != nil, !rich.text.isEmpty else { return }
         var open = openContents
         (open.text, open.entities) = Self.join((open.text, open.entities), (rich.text, rich.entities))
         openContents = open
@@ -1092,6 +1093,12 @@ public final class ComposerModel: ObservableObject {
     /// Text set as a whole (the view's binding, a paste it reports as a whole): what changed is worked out from the
     /// two texts, the shortest change that turns one into the other, and the ranges follow it.
     private func textDidChange(from old: String) {
+        if !settingContents, !openingChat, isLocked {
+            settingContents = true
+            text = old
+            settingContents = false
+            return
+        }
         if !settingContents {
             let before = Array(old.utf16)
             let after = Array(text.utf16)
@@ -1322,7 +1329,7 @@ public final class ComposerModel: ObservableObject {
     /// back, an undone message or a quote put in is not typing.
     private func typingChanged() {
         guard !openingChat, let room = roomID else { return }
-        guard !text.isEmpty, sendsTyping() else {
+        guard !isLocked, !text.isEmpty, sendsTyping() else {
             stopTyping()
             return
         }
@@ -1401,6 +1408,7 @@ public final class ComposerModel: ObservableObject {
     // MARK: - Reply, edit, thread
 
     public func startReply(to message: QuotedMessage) {
+        guard !isLocked else { return }
         if isEditing { leaveEditing() }
         replyTarget = message
     }
@@ -1412,7 +1420,7 @@ public final class ComposerModel: ObservableObject {
     /// Loads a message of mine to edit: its text and formatting replace the composer's, which come back on Escape
     /// or once the edit is sent.
     public func startEditing(_ message: TimelineMessage) {
-        guard message.mine, roomID != nil else { return }
+        guard !isLocked, message.mine, roomID != nil else { return }
         if isEditing { leaveEditing() }
         isStickerPickerPresented = false
         isGIFPickerPresented = false
@@ -1434,7 +1442,8 @@ public final class ComposerModel: ObservableObject {
     /// none; ↑ then does what it otherwise does.
     @discardableResult
     public func editLast(in items: [TimelineItem]) -> Bool {
-        guard preferences?.upArrow == .editLast, !isEditing, trimmedText.isEmpty, attachments.isEmpty,
+        guard !isLocked,
+              preferences?.upArrow == .editLast, !isEditing, trimmedText.isEmpty, attachments.isEmpty,
               pendingGIF == nil, roomID != nil
         else { return false }
         let time = now()
@@ -1449,6 +1458,7 @@ public final class ComposerModel: ObservableObject {
 
     /// Writes in a thread: what is sent goes in it, until `endThread`.
     public func startThread(_ rootID: String) {
+        guard !isLocked else { return }
         if isEditing { leaveEditing() }
         mode = .thread(rootID: rootID)
     }
@@ -1474,6 +1484,7 @@ public final class ComposerModel: ObservableObject {
     /// Adds files to what will be sent. A folder, an unreadable file, or a file that would take the total past
     /// 90 MB is left out, and `notices` says which. While editing, they wait with what was in the composer.
     public func attach(_ urls: [URL]) {
+        guard !isLocked else { return }
         notices = []
         var list = isEditing ? stash.attachments : attachments
         for url in urls where url.isFileURL {
@@ -2014,7 +2025,7 @@ public final class ComposerModel: ObservableObject {
 
     /// Validates a local image file and imports it into the engine's sticker/emoji catalog (`stickers.import`).
     public func importSticker(from url: URL, shortcode: String? = nil) async {
-        guard let sender, url.isFileURL else { return }
+        guard !isLocked, let sender, url.isFileURL else { return }
         let fileName = url.lastPathComponent
         guard let info = fileInfo(url) else {
             notices = [.cannotRead(fileName: fileName)]

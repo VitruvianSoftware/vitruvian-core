@@ -1419,4 +1419,122 @@ final class HotkeyRegistryTests: XCTestCase {
             XCTAssertEqual(error, .rpc(.badValue, message: "Courier is locked", reason: "locked"))
         }
     }
+
+    func testLocalSettingsWritesAndRemainingActionEntrypointsAreRefusedWhileLocked() async throws {
+        let suiteName = "courier.test.hotkeys.localsettings.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let loginItem = FakeLoginItemService(currentStatus: .notRegistered)
+        let lifecycle = SystemLifecycleModel(
+            defaults: defaults,
+            loginItem: loginItem,
+            biometrics: FakeBiometricAuthService(available: true, result: .success(true))
+        )
+        let inboxPrefs = InboxPreferences(defaults: defaults)
+        let composerPrefs = ComposerPreferences(defaults: defaults)
+        let dockPrefs = DockAndTrayPreferences(defaults: defaults)
+
+        // Lock the app and verify every UserDefaults-backed setting write is refused by the gate.
+        lifecycle.lockNow()
+        XCTAssertTrue(lifecycle.isLocked)
+
+        lifecycle.lockTimeout = .fifteenMinutes
+        XCTAssertEqual(lifecycle.lockTimeout, .fiveMinutes, "SystemLifecycleModel.lockTimeout write while locked must be refused")
+        lifecycle.launchAtLogin = true
+        XCTAssertFalse(lifecycle.launchAtLogin, "SystemLifecycleModel.launchAtLogin write while locked must be refused")
+        lifecycle.startMinimized = true
+        XCTAssertFalse(lifecycle.startMinimized, "SystemLifecycleModel.startMinimized write while locked must be refused")
+        lifecycle.minimizeToTrayOnClose = false
+        XCTAssertTrue(lifecycle.minimizeToTrayOnClose, "SystemLifecycleModel.minimizeToTrayOnClose write while locked must be refused")
+
+        inboxPrefs.compactList = true
+        XCTAssertFalse(inboxPrefs.compactList, "InboxPreferences.compactList write while locked must be refused")
+        inboxPrefs.showSpaceBar = false
+        XCTAssertTrue(inboxPrefs.showSpaceBar, "InboxPreferences.showSpaceBar write while locked must be refused")
+        inboxPrefs.typingNotifications = true
+        XCTAssertFalse(inboxPrefs.typingNotifications, "InboxPreferences.typingNotifications write while locked must be refused")
+        inboxPrefs.notifications.delaySeconds = 30
+        XCTAssertEqual(inboxPrefs.notifications.delaySeconds, 0, "InboxPreferences.notifications write while locked must be refused")
+        inboxPrefs.notifications.autoCopyOTP = true
+        XCTAssertFalse(inboxPrefs.notifications.autoCopyOTP, "NotificationPreferences.autoCopyOTP write while locked must be refused")
+
+        composerPrefs.undoSendMillis = 5000
+        XCTAssertEqual(composerPrefs.undoSendMillis, 0, "ComposerPreferences.undoSendMillis write while locked must be refused")
+        composerPrefs.showFormattingMenu = false
+        XCTAssertTrue(composerPrefs.showFormattingMenu, "ComposerPreferences.showFormattingMenu write while locked must be refused")
+        composerPrefs.copyWithTimestamps = true
+        XCTAssertFalse(composerPrefs.copyWithTimestamps, "ComposerPreferences.copyWithTimestamps write while locked must be refused")
+        composerPrefs.alwaysAskWhereToSaveFiles = true
+        XCTAssertFalse(composerPrefs.alwaysAskWhereToSaveFiles, "ComposerPreferences.alwaysAskWhereToSaveFiles write while locked must be refused")
+
+        dockPrefs.showMenuBarIcon = false
+        XCTAssertTrue(dockPrefs.showMenuBarIcon, "DockAndTrayPreferences.showMenuBarIcon write while locked must be refused")
+        dockPrefs.badgeMode = .none
+        XCTAssertEqual(dockPrefs.badgeMode, .unreadChats, "DockAndTrayPreferences.badgeMode write while locked must be refused")
+
+        // Verify remaining action entrypoints (CalendarBridge, ContactsBridge, MediaViewerModel, SearchModel, ConversationModel, ComposerModel) are refused while locked.
+        final class SpyCalendarStore: CalendarStoreProtocol, @unchecked Sendable {
+            var requestAccessCount = 0
+            func authorizationStatus() -> CalendarAuthStatus { .notDetermined }
+            func requestFullAccess() async -> Bool {
+                requestAccessCount += 1
+                return true
+            }
+            func events(forDay _: Date) async -> [CalendarEventItem] { [] }
+            func createEvent(title _: String, startDate: Date, endDate: Date, notes _: String?) async throws -> CalendarEventItem {
+                CalendarEventItem(id: "1", title: "T", startDate: startDate, endDate: endDate)
+            }
+        }
+        let calStore = SpyCalendarStore()
+        let calBridge = CalendarBridge(store: calStore)
+        await calBridge.loadSelectedDay()
+        XCTAssertEqual(calStore.requestAccessCount, 0, "CalendarBridge.loadSelectedDay must be refused while locked")
+
+        final class SpyContactsStore: ContactsStoreProtocol, @unchecked Sendable {
+            var requestAccessCount = 0
+            func authorizationStatus() -> ContactsAuthStatus { .notDetermined }
+            func requestAccess() async -> Bool {
+                requestAccessCount += 1
+                return true
+            }
+            func match(identifiers _: [String], fallbackName _: String) async -> MatchedContact? { nil }
+            func saveNewContact(givenName: String, familyName: String, phone _: String?, email _: String?) async throws -> MatchedContact {
+                MatchedContact(contactIdentifier: "1", fullName: "\(givenName) \(familyName)")
+            }
+        }
+        let contactsStore = SpyContactsStore()
+        let contactsBridge = ContactsBridge(store: contactsStore)
+        await contactsBridge.loadMatch(identifiers: ["+15550100101"], fallbackName: "Alice")
+        XCTAssertEqual(contactsStore.requestAccessCount, 0, "ContactsBridge.loadMatch must be refused while locked")
+
+        let supervisor = EngineSupervisor(
+            enginePath: "/Applications/Courier.app/Contents/Helpers/courier-engine",
+            dataDir: URL(fileURLWithPath: "/tmp/courier-test-localsettings"),
+            environment: [:],
+            launcher: FakeLauncher { _, _ in }
+        )
+        let appModel = AppModel(supervisor: supervisor)
+        let mediaViewer = MediaViewerModel(appModel: appModel)
+        mediaViewer.toggleSelected("$m1")
+        XCTAssertTrue(mediaViewer.selectedEventIDs.isEmpty, "MediaViewerModel.toggleSelected must be refused while locked")
+
+        let recents = RecentSearches(defaults: defaults)
+        _ = await lifecycle.unlock()
+        recents.addSearch("alice")
+        XCTAssertEqual(recents.searches, ["alice"])
+        lifecycle.lockNow()
+
+        let search = SearchModel(appModel: appModel, recents: recents, open: { _ in })
+        search.clearRecentSearches()
+        XCTAssertEqual(recents.searches, ["alice"], "SearchModel.clearRecentSearches must be refused while locked")
+
+        let conversation = ConversationModel(appModel: appModel, preferences: composerPrefs)
+        conversation.toggleChatInfo()
+        XCTAssertFalse(conversation.isShowingChatInfo, "ConversationModel.toggleChatInfo must be refused while locked")
+        conversation.toggleCalendar()
+        XCTAssertFalse(conversation.isShowingCalendar, "ConversationModel.toggleCalendar must be refused while locked")
+        conversation.composer.insertAsDraft(RichText(text: "locked draft", entities: []))
+        XCTAssertEqual(conversation.composer.text, "", "ComposerModel.insertAsDraft must be refused while locked")
+    }
 }

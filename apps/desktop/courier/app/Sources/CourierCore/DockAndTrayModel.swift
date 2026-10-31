@@ -98,13 +98,25 @@ public struct DockMenuModel: Equatable, Sendable {
 public final class DockAndTrayPreferences: ObservableObject {
     @Published public var badgeMode: DockBadgeMode {
         didSet {
-            guard !isInitializing else { return }
+            guard !isInitializing, !isRevertingLockedSetting else { return }
+            guard AppLockGate.shared.canPerform(.settingsChange) else {
+                isRevertingLockedSetting = true
+                badgeMode = oldValue
+                isRevertingLockedSetting = false
+                return
+            }
             defaults.set(badgeMode.rawValue, forKey: Self.key("badgeMode"))
         }
     }
     @Published public var showMenuBarIcon: Bool {
         didSet {
-            guard !isInitializing else { return }
+            guard !isInitializing, !isRevertingLockedSetting else { return }
+            guard AppLockGate.shared.canPerform(.settingsChange) else {
+                isRevertingLockedSetting = true
+                showMenuBarIcon = oldValue
+                isRevertingLockedSetting = false
+                return
+            }
             defaults.set(showMenuBarIcon, forKey: Self.key("showMenuBarIcon"))
         }
     }
@@ -113,6 +125,7 @@ public final class DockAndTrayPreferences: ObservableObject {
 
     private let defaults: UserDefaults
     private var isInitializing = true
+    private var isRevertingLockedSetting = false
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults

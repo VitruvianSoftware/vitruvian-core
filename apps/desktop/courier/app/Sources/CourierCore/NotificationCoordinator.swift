@@ -406,12 +406,16 @@ public final class NotificationCoordinator {
     }
 
     /// What the decision depends on now; nil before the app is connected.
+    private var effectiveIsLooking: Bool {
+        !isCurrentlyLocked && isLooking()
+    }
+
     private func context() -> NotificationPolicy.Context? {
         guard let connectedAt = appModel.connectedAt else { return nil }
         return NotificationPolicy.Context(
             me: Timeline.meUserID, connectedAt: Self.millis(connectedAt), now: Self.millis(clock()),
             openRoomID: appModel.selectedRoomID, openMemberRoomIDs: Set(appModel.openRoomIDs),
-            isLooking: isLooking(), requestNotifications: preferences.requestNotifications,
+            isLooking: effectiveIsLooking, requestNotifications: preferences.requestNotifications,
             notifyWhenInFocus: preferences.notifications.notifyWhenInFocus,
             notifyOnReaction: preferences.notifications.notifyOnReaction,
             isAppLocked: isCurrentlyLocked)
@@ -444,7 +448,7 @@ public final class NotificationCoordinator {
         for message in news {
             // The chat in front shows it in the strip above its composer: told (kept above), with no banner, as a
             // reminder for the chat in front isn't one.
-            if isLooking(), appModel.isOpen(roomID: message.roomID) { continue }
+            if effectiveIsLooking, appModel.isOpen(roomID: message.roomID) { continue }
             var chat = row(message.roomID)
             if chat == nil {
                 chat = await lookUp(message.roomID, with: client)
@@ -472,7 +476,7 @@ public final class NotificationCoordinator {
         // marked read, as reading it would, which ends the fired reminder and its unread mark. But when the chat
         // shows an older part of its history (opened at a search result), its newest messages haven't been read:
         // only the reminder is ended, and they stay unread until the person reaches them.
-        if isLooking(), appModel.isOpen(roomID: roomID) {
+        if effectiveIsLooking, appModel.isOpen(roomID: roomID) {
             // Incognito reads nothing either: its promise holds until I reply or mark the chat read by hand.
             if isAwayFromLatest() || isIncognito() {
                 await clearReminder(roomID: roomID)
@@ -493,7 +497,7 @@ public final class NotificationCoordinator {
 
     /// Ends a chat's fired reminder without reading it. A failure is ignored, as Mark as Read's is.
     private func clearReminder(roomID: String) async {
-        guard let client = appModel.client else { return }
+        guard !isCurrentlyLocked, let client = appModel.client else { return }
         let _: Empty? = try? await client.call("reminder.clear", RoomsParams(roomIDs: [roomID]))
     }
 
@@ -607,7 +611,7 @@ public final class NotificationCoordinator {
             if let timerID {
                 self.pendingTimerIDsByRoom[roomID]?.remove(timerID)
             }
-            if self.isLooking(), self.appModel.isOpen(roomID: roomID), !self.preferences.notifications.notifyWhenInFocus {
+            if self.effectiveIsLooking, self.appModel.isOpen(roomID: roomID), !self.preferences.notifications.notifyWhenInFocus {
                 return
             }
             if hadUnreadMarkWhenScheduled,
@@ -638,7 +642,7 @@ public final class NotificationCoordinator {
             if let timerID {
                 self.pendingTimerIDsByRoom[roomID]?.remove(timerID)
             }
-            if self.isLooking(), self.appModel.isOpen(roomID: roomID), !self.preferences.notifications.notifyWhenInFocus {
+            if self.effectiveIsLooking, self.appModel.isOpen(roomID: roomID), !self.preferences.notifications.notifyWhenInFocus {
                 return
             }
             if let currentRow = self.row(roomID), currentRow.unread == 0 && !currentRow.markedUnread {

@@ -259,6 +259,15 @@ public final class AppLockGate {
         boundLifecycle = lifecycle
     }
 
+    nonisolated public static var isCurrentActionAllowedForSettings: Bool {
+        if Thread.isMainThread {
+            return MainActor.assumeIsolated {
+                AppLockGate.shared.canPerform(.settingsChange)
+            }
+        }
+        return true
+    }
+
     public func resetForTesting() {
         boundLifecycle = nil
         activeModals.removeAll()
@@ -397,18 +406,36 @@ public final class SystemLifecycleModel: ObservableObject {
     @Published public var launchAtLogin: Bool {
         didSet {
             guard !isApplyingLoginState else { return }
+            guard canPerformUserAction(.settingsChange) else {
+                isApplyingLoginState = true
+                launchAtLogin = oldValue
+                isApplyingLoginState = false
+                return
+            }
             applyLaunchAtLogin(launchAtLogin, previousValue: oldValue)
         }
     }
     @Published public var startMinimized: Bool {
         didSet {
-            guard !isInitializing else { return }
+            guard !isInitializing, !isRevertingLockedSetting else { return }
+            guard canPerformUserAction(.settingsChange) else {
+                isRevertingLockedSetting = true
+                startMinimized = oldValue
+                isRevertingLockedSetting = false
+                return
+            }
             defaults.set(startMinimized, forKey: Self.key("startMinimized"))
         }
     }
     @Published public var minimizeToTrayOnClose: Bool {
         didSet {
-            guard !isInitializing else { return }
+            guard !isInitializing, !isRevertingLockedSetting else { return }
+            guard canPerformUserAction(.settingsChange) else {
+                isRevertingLockedSetting = true
+                minimizeToTrayOnClose = oldValue
+                isRevertingLockedSetting = false
+                return
+            }
             defaults.set(minimizeToTrayOnClose, forKey: Self.key("minimizeToTrayOnClose"))
         }
     }
@@ -443,7 +470,13 @@ public final class SystemLifecycleModel: ObservableObject {
     }
     @Published public var lockTimeout: LockTimeoutChoice {
         didSet {
-            guard !isInitializing else { return }
+            guard !isInitializing, !isRevertingLockedSetting else { return }
+            guard canPerformUserAction(.settingsChange) else {
+                isRevertingLockedSetting = true
+                lockTimeout = oldValue
+                isRevertingLockedSetting = false
+                return
+            }
             defaults.set(lockTimeout.rawValue, forKey: Self.key("lockTimeout"))
         }
     }
@@ -451,6 +484,8 @@ public final class SystemLifecycleModel: ObservableObject {
         didSet {
             if isLocked {
                 notifyLocked()
+            } else if oldValue {
+                NotificationCenter.default.post(name: Self.didUnlockNotification, object: self)
             }
         }
     }
@@ -459,6 +494,8 @@ public final class SystemLifecycleModel: ObservableObject {
 
     /// Posted synchronously on `@MainActor` whenever `SystemLifecycleModel` enters the locked state.
     public nonisolated static let didLockNotification = Notification.Name("CourierSystemLifecycleDidLock")
+    /// Posted synchronously on `@MainActor` whenever `SystemLifecycleModel` transitions from locked to unlocked.
+    public nonisolated static let didUnlockNotification = Notification.Name("CourierSystemLifecycleDidUnlock")
 
     public static func key(_ name: String) -> String { "courier.lifecycle." + name }
 
@@ -469,6 +506,7 @@ public final class SystemLifecycleModel: ObservableObject {
     private var isInitializing = true
     private var isApplyingLoginState = true
     private var isApplyingLockState = true
+    private var isRevertingLockedSetting = false
     private var pendingLockTimerID: UUID?
     private var lockHandlers: [@MainActor () -> Void] = []
     public private(set) var launchUnlockTask: Task<Bool, Never>?
@@ -553,6 +591,7 @@ public final class SystemLifecycleModel: ObservableObject {
     public var keepMinimizedOnLaunch: Bool {
         get { startMinimized }
         set {
+            guard canPerformUserAction(.settingsChange) else { return }
             startMinimized = newValue
             defaults.set(newValue, forKey: Self.key("keepMinimizedOnLaunch"))
         }
@@ -561,6 +600,7 @@ public final class SystemLifecycleModel: ObservableObject {
     public var quitOnMainWindowClose: Bool {
         get { !minimizeToTrayOnClose }
         set {
+            guard canPerformUserAction(.settingsChange) else { return }
             minimizeToTrayOnClose = !newValue
             defaults.set(newValue, forKey: Self.key("quitOnMainWindowClose"))
         }

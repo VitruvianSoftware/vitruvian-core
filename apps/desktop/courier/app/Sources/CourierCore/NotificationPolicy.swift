@@ -115,48 +115,48 @@ public final class NotificationPreferences: ObservableObject {
 
     @Published public var soundEffectsMode: SoundEffectsMode {
         didSet {
-            guard !isInitializing else { return }
+            guard canMutate({ soundEffectsMode = oldValue }) else { return }
             set(soundEffectsMode.rawValue, "soundEffectsMode")
         }
     }
     @Published public var soundEffectsVolume: Double {
         didSet {
+            guard canMutate({ soundEffectsVolume = oldValue }) else { return }
             let clamped = min(1.0, max(0.0, soundEffectsVolume))
             if soundEffectsVolume != clamped {
                 soundEffectsVolume = clamped
                 return
             }
-            guard !isInitializing else { return }
             set(soundEffectsVolume, "soundEffectsVolume")
         }
     }
     @Published public var messageNotificationsEnabled: Bool {
         didSet {
-            guard !isInitializing else { return }
+            guard canMutate({ messageNotificationsEnabled = oldValue }) else { return }
             set(messageNotificationsEnabled, "messageNotificationsEnabled")
         }
     }
     @Published public var messageSound: NotificationSoundChoice {
         didSet {
-            guard !isInitializing else { return }
+            guard canMutate({ messageSound = oldValue }) else { return }
             set(messageSound.rawValue, "messageSound")
         }
     }
     @Published public var groupNotificationsEnabled: Bool {
         didSet {
-            guard !isInitializing else { return }
+            guard canMutate({ groupNotificationsEnabled = oldValue }) else { return }
             set(groupNotificationsEnabled, "groupNotificationsEnabled")
         }
     }
     @Published public var groupSound: NotificationSoundChoice {
         didSet {
-            guard !isInitializing else { return }
+            guard canMutate({ groupSound = oldValue }) else { return }
             set(groupSound.rawValue, "groupSound")
         }
     }
     @Published public var requestNotificationsEnabled: Bool {
         didSet {
-            guard !isInitializing else { return }
+            guard canMutate({ requestNotificationsEnabled = oldValue }) else { return }
             set(requestNotificationsEnabled, "requestNotificationsEnabled")
             defaults.set(requestNotificationsEnabled, forKey: InboxPreferences.key("requestNotifications"))
             onRequestNotificationsChanged?(requestNotificationsEnabled)
@@ -164,19 +164,19 @@ public final class NotificationPreferences: ObservableObject {
     }
     @Published public var notifyWhenInFocus: Bool {
         didSet {
-            guard !isInitializing else { return }
+            guard canMutate({ notifyWhenInFocus = oldValue }) else { return }
             set(notifyWhenInFocus, "notifyWhenInFocus")
         }
     }
     @Published public var notifyOnReaction: Bool {
         didSet {
-            guard !isInitializing else { return }
+            guard canMutate({ notifyOnReaction = oldValue }) else { return }
             set(notifyOnReaction, "notifyOnReaction")
         }
     }
     @Published public var typingNotificationsEnabled: Bool {
         didSet {
-            guard !isInitializing else { return }
+            guard canMutate({ typingNotificationsEnabled = oldValue }) else { return }
             set(typingNotificationsEnabled, "typingNotificationsEnabled")
             defaults.set(typingNotificationsEnabled, forKey: InboxPreferences.key("typingNotifications"))
             onTypingNotificationsChanged?(typingNotificationsEnabled)
@@ -184,33 +184,33 @@ public final class NotificationPreferences: ObservableObject {
     }
     @Published public var delaySeconds: Int {
         didSet {
+            guard canMutate({ delaySeconds = oldValue }) else { return }
             guard Self.allowedDelaySeconds.contains(delaySeconds) else {
                 delaySeconds = oldValue
                 return
             }
-            guard !isInitializing else { return }
             set(delaySeconds, "delaySeconds")
         }
     }
     @Published public var repeatUnreadMinutes: Int {
         didSet {
+            guard canMutate({ repeatUnreadMinutes = oldValue }) else { return }
             guard Self.allowedRepeatUnreadMinutes.contains(repeatUnreadMinutes) else {
                 repeatUnreadMinutes = oldValue
                 return
             }
-            guard !isInitializing else { return }
             set(repeatUnreadMinutes, "repeatUnreadMinutes")
         }
     }
     @Published public var autoCopyOTP: Bool {
         didSet {
-            guard !isInitializing else { return }
+            guard canMutate({ autoCopyOTP = oldValue }) else { return }
             set(autoCopyOTP, "autoCopyOTP")
         }
     }
     @Published public var accountOverrides: [String: AccountNotificationOverride] {
         didSet {
-            guard !isInitializing else { return }
+            guard canMutate({ accountOverrides = oldValue }) else { return }
             if let data = try? JSONEncoder().encode(accountOverrides) {
                 defaults.set(data, forKey: Self.key("accountOverrides"))
             }
@@ -221,8 +221,20 @@ public final class NotificationPreferences: ObservableObject {
 
     private let defaults: UserDefaults
     private var isInitializing = true
+    private var isRevertingLockedSetting = false
     var onRequestNotificationsChanged: ((Bool) -> Void)?
     var onTypingNotificationsChanged: ((Bool) -> Void)?
+
+    private func canMutate(_ revert: () -> Void) -> Bool {
+        guard !isInitializing, !isRevertingLockedSetting else { return false }
+        guard AppLockGate.isCurrentActionAllowedForSettings else {
+            isRevertingLockedSetting = true
+            revert()
+            isRevertingLockedSetting = false
+            return false
+        }
+        return true
+    }
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults

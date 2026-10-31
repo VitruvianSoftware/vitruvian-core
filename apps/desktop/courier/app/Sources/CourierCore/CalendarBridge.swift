@@ -293,6 +293,7 @@ public final class CalendarBridge: ObservableObject {
     /// Requests Calendar access on demand if `.notDetermined` or `.writeOnly`, or immediately loads events for `selectedDay`
     /// if `.fullAccess`. Never prompts if `.denied` or `.restricted`.
     public func loadSelectedDay() async {
+        guard AppLockGate.shared.canPerform(.other) else { return }
         lastError = nil
         status = store.authorizationStatus()
         switch status {
@@ -318,6 +319,7 @@ public final class CalendarBridge: ObservableObject {
     }
 
     public func selectPreviousDay() async {
+        guard AppLockGate.shared.canPerform(.other) else { return }
         if let prev = calendar.date(byAdding: .day, value: -1, to: selectedDay) {
             selectedDay = prev
         }
@@ -325,11 +327,13 @@ public final class CalendarBridge: ObservableObject {
     }
 
     public func selectToday() async {
+        guard AppLockGate.shared.canPerform(.other) else { return }
         selectedDay = now()
         await loadSelectedDay()
     }
 
     public func selectNextDay() async {
+        guard AppLockGate.shared.canPerform(.other) else { return }
         if let next = calendar.date(byAdding: .day, value: 1, to: selectedDay) {
             selectedDay = next
         }
@@ -337,6 +341,7 @@ public final class CalendarBridge: ObservableObject {
     }
 
     public func selectDay(_ day: Date) async {
+        guard AppLockGate.shared.canPerform(.other) else { return }
         selectedDay = day
         await loadSelectedDay()
     }
@@ -349,6 +354,7 @@ public final class CalendarBridge: ObservableObject {
         endDate: Date,
         notes: String? = nil
     ) async throws -> CalendarEventItem {
+        try AppLockGate.shared.ensureUnlocked(.other)
         lastError = nil
         status = store.authorizationStatus()
         if status == .notDetermined || status == .writeOnly {

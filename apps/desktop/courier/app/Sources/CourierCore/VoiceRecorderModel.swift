@@ -442,6 +442,7 @@ public final class VoiceRecorderModel: ObservableObject {
     }
 
     public func start(preferredDeviceUID: String = "") async {
+        guard AppLockGate.shared.canPerform(.send) else { return }
         if hasBeenDenied {
             state = .permissionDenied
             return

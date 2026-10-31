@@ -415,7 +415,7 @@ public final class MessageActionsModel: ObservableObject {
 
     /// A message's versions, first as sent and then each edit, oldest first; [] (and a toast) when they can't be read.
     public func history(of messageID: String) async -> [Version] {
-        guard let client = appModel.client else { return [] }
+        guard !isLocked, let client = appModel.client else { return [] }
         do {
             let result: HistoryResult = try await client.call("message.history", EventParams(eventID: messageID))
             return result.versions
