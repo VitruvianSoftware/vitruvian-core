@@ -50,22 +50,73 @@ concurrency:
   group: preview-teardown-${{ github.event.pull_request.number || github.event.inputs.pr || 'cron' }}
   cancel-in-progress: false
 
+# Nothing is granted workflow-wide; each job asks for what it needs.
 permissions:
   contents: read
-  id-token: write
-  pull-requests: write
 
 jobs:
-  teardown:
-    name: Reap Ephemeral Previews
+  # Builds the two binaries the teardown runs. No secrets, no OIDC token
+  # (id-token is not granted), and the job never sees a cloud credential, so
+  # nothing a Bazel build or one of its repository rules executes can reach
+  # GCP, Neon or a write-scoped GitHub token. The binaries leave as an artifact.
+  build:
+    name: Build the reaper
     runs-on: ubuntu-26.04
-    environment: tabula-development
     timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Install Bazel
+        uses: ./.github/actions/setup-bazel
+
+      - name: Build the reaper and the PR-comment tool
+        run: |
+          bazel build //tools/ci:preview_reaper //tools/preview:pr-comment
+          mkdir -p "$RUNNER_TEMP/teardown-bin"
+          cp -f bazel-bin/tools/ci/preview_reaper "$RUNNER_TEMP/teardown-bin/preview-reaper"
+          cp -f bazel-bin/tools/preview/pr-comment "$RUNNER_TEMP/teardown-bin/pr-comment"
+          chmod +x "$RUNNER_TEMP"/teardown-bin/*
+          test -x "$RUNNER_TEMP/teardown-bin/preview-reaper" || { echo "::error::the preview-reaper binary was not built"; exit 1; }
+          test -x "$RUNNER_TEMP/teardown-bin/pr-comment" || { echo "::error::the pr-comment binary was not built"; exit 1; }
+
+      - name: Hand the binaries to the reap job
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: teardown-bin
+          path: ${{ runner.temp }}/teardown-bin
+          if-no-files-found: error
+          retention-days: 1
+
+  # Holds the credentials and runs no Bazel: it runs the binaries built above.
+  reap:
+    name: Reap Ephemeral Previews
+    needs: build
+    runs-on: ubuntu-26.04
+    environment: tabula-development
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Fetch the binaries
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: teardown-bin
+          path: ${{ runner.temp }}/teardown-bin
+
+      - name: Make them executable
+        run: chmod +x "$RUNNER_TEMP"/teardown-bin/*
 
       - name: Authenticate to Google Cloud
         uses: ./.github/actions/gcp-auth
@@ -75,11 +126,6 @@ jobs:
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
-
-      # The reaper is a Rust binary (//tools/ci:preview_reaper), so Bazel is
-      # needed on every run, manual ones included.
-      - name: Install Bazel
-        uses: ./.github/actions/setup-bazel
 
       - name: Run Ephemeral Preview Reaper
         id: reaper
@@ -91,9 +137,15 @@ jobs:
           NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
           PREVIEW_TTL_HOURS: 24
           DRY_RUN: ${{ (github.event.inputs.dry_run == 'true' || github.event.inputs.dry_run == true) && '1' || '' }}
+          # Passed through the environment, never spliced into the script text:
+          # a workflow_dispatch input is free text.
+          PR_TARGET: ${{ github.event.pull_request.number || github.event.inputs.pr || '' }}
         run: |
-          PR_TARGET="${{ github.event.pull_request.number || github.event.inputs.pr || '' }}"
-          bazel run //tools/ci:preview_reaper -- ${PR_TARGET} >> "$GITHUB_OUTPUT"
+          if [ -n "${PR_TARGET}" ] && ! [[ "${PR_TARGET}" =~ ^[0-9]+$ ]]; then
+            echo "::error::the pr input must be a PR number, got '${PR_TARGET}'"
+            exit 2
+          fi
+          "$RUNNER_TEMP/teardown-bin/preview-reaper" ${PR_TARGET:+"${PR_TARGET}"} >> "$GITHUB_OUTPUT"
 
       # Only the (paused) pull_request trigger reaches the step below.
       - name: Update PR Sticky Comment on Targeted Event
@@ -102,22 +154,29 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          bazel run //tools/preview:pr-comment -- \
+          "$RUNNER_TEMP/teardown-bin/pr-comment" \
             --pr "${PR_NUMBER}" \
             --app "tabula" \
             --status "teardown"
 
       - name: Publish Teardown Summary
+        env:
+          REAPED_CLOUDRUN: ${{ steps.reaper.outputs.reaped_cloudrun }}
+          REAPED_K8S: ${{ steps.reaper.outputs.reaped_k8s }}
+          REAPED_NEON: ${{ steps.reaper.outputs.reaped_neon }}
+          TOTAL_REAPED: ${{ steps.reaper.outputs.total_reaped }}
+          EVENT_NAME: ${{ github.event_name }}
+          TARGET: ${{ github.event.pull_request.number || github.event.inputs.pr || 'monorepo sweep' }}
         run: |
           cat <<EOF >> "$GITHUB_STEP_SUMMARY"
           ## 🧹 Ephemeral Preview Teardown & Reaper Report
 
           | Metric | Count |
           |---|---|
-          | **Cloud Run Services Reaped** | \`${{ steps.reaper.outputs.reaped_cloudrun }}\` |
-          | **Kubernetes Namespaces Reaped** | \`${{ steps.reaper.outputs.reaped_k8s }}\` |
-          | **Neon DB Branches Reaped** | \`${{ steps.reaper.outputs.reaped_neon }}\` |
-          | **Total Resources Reclaimed** | \`${{ steps.reaper.outputs.total_reaped }}\` |
+          | **Cloud Run Services Reaped** | \`${REAPED_CLOUDRUN}\` |
+          | **Kubernetes Namespaces Reaped** | \`${REAPED_K8S}\` |
+          | **Neon DB Branches Reaped** | \`${REAPED_NEON}\` |
+          | **Total Resources Reclaimed** | \`${TOTAL_REAPED}\` |
 
-          *Execution Mode:* \`${{ github.event_name }}\` (Target: \`${{ github.event.pull_request.number || github.event.inputs.pr || 'monorepo sweep' }}\`)
+          *Execution Mode:* \`${EVENT_NAME}\` (Target: \`${TARGET}\`)
           EOF
