@@ -36,6 +36,7 @@
 # gazelle:exclude infra
 
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+load("//apps/web/oauth-user-inspector/infra/app:smoke.bzl", "OAUTH_SMOKE")
 load("//tools/doctor:defs.bzl", "doctor")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
@@ -174,6 +175,25 @@ rust_test(
     env = {"SMOKE_BIN": "$(rootpath :smoke)"},
 )
 
+# :smoke the way a deploy runs it: through the real //tools/deploy:cloud-run
+# --phase smoke, with the command :deploy and the delivery unit share.
+rust_test(
+    name = "deploy_smoke_test",
+    size = "small",
+    srcs = ["scripts/tests/deploy_smoke_test.rs"],
+    data = [
+        ":smoke",
+        "//tools/deploy:cloud-run",
+    ],
+    edition = "2021",
+    env = {
+        "CLOUD_RUN_BIN": "$(rootpath //tools/deploy:cloud-run)",
+        # `$$`: Bazel expands make variables in env values.
+        "OAUTH_SMOKE": OAUTH_SMOKE.replace("$", "$$"),
+        "SMOKE_BIN": "$(rootpath :smoke)",
+    },
+)
+
 rust_binary(
     name = "start-rs",
     srcs = ["scripts/src/bin/start.rs"],
@@ -254,6 +274,7 @@ pipeline_unit(
     runner = "ubuntu-26.04",
     test_targets = [
         ":oauth_scripts_lib_test",
+        ":deploy_smoke_test",
         ":smoke_test",
         ":unit_tests",
     ],

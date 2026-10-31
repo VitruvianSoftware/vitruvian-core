@@ -400,8 +400,12 @@ jobs:
       # candidate); otherwise the tool runs candidate -> smoke -> promote (--phase
       # all), including the #808 fail-closed smoke and the candidate-only --refresh.
       # Auth is ambient (WIF) here and the pinned identity locally -- the pulumi
-      # wrapper chooses (ambient-first, #1119). Runs from the repo root (bazel);
-      # the tool cd's into --pulumi-dir itself.
+      # wrapper chooses (ambient-first, #1119). Launched from the repo root, but
+      # `bazel run` starts the tool in its runfiles tree and the tool never
+      # changes directory: only its pulumi child runs in --pulumi-dir. A
+      # custom-smoke-script therefore runs OUTSIDE the checkout; one that calls
+      # Bazel must `cd "$BUILD_WORKSPACE_DIRECTORY"` first (see
+      # apps/web/oauth-user-inspector/infra/app/smoke.bzl).
       - name: Blue-green rollout (candidate → smoke → promote)
         if: ${{ steps.preflight.outputs.unchanged != 'true' }}
         env:

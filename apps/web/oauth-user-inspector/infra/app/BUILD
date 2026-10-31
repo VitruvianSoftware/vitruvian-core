@@ -21,6 +21,7 @@
 load("//tools/delivery:defs.bzl", "delivery")
 load("//tools/deploy:defs.bzl", "cloud_run_deploy")
 load("//tools/pulumi:defs.bzl", "pulumi_project")
+load(":smoke.bzl", "OAUTH_SMOKE")
 
 pulumi_project(
     name = "oauth-user-inspector",
@@ -36,9 +37,9 @@ pulumi_project(
 #     --env development --project prj-d-bu1-oss-floating-648a --image-digest <ref@sha256:..>
 cloud_run_deploy(
     name = "deploy",
-    # Reachable AND the React SPA actually mounts (//apps/web/oauth-user-inspector:smoke)
-    # -- the same command the delivery() below passes as custom-smoke-script.
-    custom_smoke_script = "bazel run //apps/web/oauth-user-inspector:smoke",
+    # Reachable AND the React SPA actually mounts (//apps/web/oauth-user-inspector:smoke).
+    # One command for here and the delivery() below: see smoke.bzl.
+    custom_smoke_script = OAUTH_SMOKE,
     env_prefix = "OAUTH_USER_INSPECTOR",
     pulumi_dir = "apps/web/oauth-user-inspector/infra/app",
     region = "us-central1",
@@ -133,7 +134,7 @@ delivery(
     workflow_inputs = {
         "app-name": "oauth-user-inspector",
         "cloudflare-token-secret-project": "prj-d-bu1-oss-floating-648a",
-        "custom-smoke-script": "bazel run //apps/web/oauth-user-inspector:smoke",
+        "custom-smoke-script": OAUTH_SMOKE,
         "default-region": "us-central1",
         "env-prefix": "OAUTH_USER_INSPECTOR",
         "pulumi-dir": "apps/web/oauth-user-inspector/infra/app",
