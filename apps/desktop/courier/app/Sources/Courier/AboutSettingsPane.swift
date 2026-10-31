@@ -19,6 +19,28 @@ struct AboutSettingsPane: View {
     @State private var showPrivacyDetails: Bool = true
     @State private var showLegalNotices: Bool = false
 
+    init(
+        lifecycle: SystemLifecycleModel,
+        appVersion: String = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.4.6",
+        buildNumber: String = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "9",
+        onReportProblem: @escaping () -> Void = {},
+        onShowKeyboardShortcuts: @escaping () -> Void = {},
+        highlightedSettingID: String? = nil,
+        showChangelog: Bool = false,
+        showPrivacyDetails: Bool = true,
+        showLegalNotices: Bool = false
+    ) {
+        self.lifecycle = lifecycle
+        self.appVersion = appVersion
+        self.buildNumber = buildNumber
+        self.onReportProblem = onReportProblem
+        self.onShowKeyboardShortcuts = onShowKeyboardShortcuts
+        self.highlightedSettingID = highlightedSettingID
+        _showChangelog = State(initialValue: showChangelog || highlightedSettingID == "about.changelog")
+        _showPrivacyDetails = State(initialValue: showPrivacyDetails || highlightedSettingID == "about.privacy")
+        _showLegalNotices = State(initialValue: showLegalNotices || highlightedSettingID == "about.legalNotices")
+    }
+
     public static let embeddedBridgeNotices: [(component: String, license: String, summary: String)] = [
         ("Courier Desktop & Engine", "AGPL-3.0-or-later", "On-device unified messaging application and local Matrix store."),
         ("mautrix-go (bridgev2)", "MPL-2.0", "Matrix bridge framework and local bridge database layer (maunium.net/go/mautrix v0.31.0)."),
