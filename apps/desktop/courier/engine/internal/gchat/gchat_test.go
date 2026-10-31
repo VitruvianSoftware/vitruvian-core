@@ -4461,6 +4461,33 @@ func TestCatchUpPaginatedFollowsMultiplePagesForUserAndGroup(t *testing.T) {
 	require.True(t, seenMsgs[MakeMessageID("topic_cug", "msg_cu_g2")])
 }
 
+func TestBoundedDedupMapsAndNoProductionEmittedEventsSlice(t *testing.T) {
+	// 1. Production Client struct must not retain an unbounded emittedEvents slice.
+	_, hasEmitted := reflect.TypeOf(Client{}).FieldByName("emittedEvents")
+	require.False(t, hasEmitted, "production Client struct must not retain an unbounded emittedEvents slice")
+
+	// 2. pendingLocalIDs must be bounded at maxPendingLocalIDs and cleared after successful send even without an echo.
+	c := &Client{}
+	for i := 0; i < maxPendingLocalIDs+100; i++ {
+		_ = c.registerPendingLocalID()
+	}
+	c.mu.Lock()
+	require.LessOrEqual(t, len(c.pendingLocalIDs), maxPendingLocalIDs, "pendingLocalIDs must be bounded")
+	c.mu.Unlock()
+
+	// 3. dispatchedMsgIDs must be bounded at maxDispatchedMsgIDs with FIFO eviction.
+	for i := 0; i < maxDispatchedMsgIDs+200; i++ {
+		c.markDispatched("space:s1", MakeMessageID("t1", fmt.Sprintf("m_%d", i)))
+	}
+	c.mu.Lock()
+	require.Equal(t, maxDispatchedMsgIDs, len(c.dispatchedMsgIDs), "dispatchedMsgIDs must be bounded at maxDispatchedMsgIDs")
+	_, oldestStillPresent := c.dispatchedMsgIDs["space:s1|"+string(MakeMessageID("t1", "m_0"))]
+	_, newestPresent := c.dispatchedMsgIDs["space:s1|"+string(MakeMessageID("t1", fmt.Sprintf("m_%d", maxDispatchedMsgIDs+199)))]
+	c.mu.Unlock()
+	require.False(t, oldestStillPresent, "oldest dispatchedMsgIDs entry must be evicted when cap is exceeded")
+	require.True(t, newestPresent, "newest dispatchedMsgIDs entry must be retained")
+}
+
 func TestServeGChatEngineHelperForAppE2E(t *testing.T) {
 	sockPath := os.Getenv("COURIER_GCHAT_E2E_SOCKET")
 	if sockPath == "" {

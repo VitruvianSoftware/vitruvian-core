@@ -47,9 +47,21 @@ func (c *Client) registerPendingLocalID() string {
 	if c.pendingLocalIDs == nil {
 		c.pendingLocalIDs = make(map[string]struct{})
 	}
+	for len(c.pendingLocalIDs) >= maxPendingLocalIDs && len(c.pendingLocalOrder) > 0 {
+		oldest := c.pendingLocalOrder[0]
+		c.pendingLocalOrder = c.pendingLocalOrder[1:]
+		delete(c.pendingLocalIDs, oldest)
+	}
 	c.pendingLocalIDs[localID] = struct{}{}
+	c.pendingLocalOrder = append(c.pendingLocalOrder, localID)
 	c.mu.Unlock()
 	return localID
+}
+
+func (c *Client) clearPendingLocalID(localID string) {
+	c.mu.Lock()
+	delete(c.pendingLocalIDs, localID)
+	c.mu.Unlock()
 }
 
 func (c *Client) addPendingToIgnore(msg *bridgev2.MatrixMessage, txnID networkid.TransactionID) {
@@ -289,6 +301,7 @@ func (c *Client) sendCreateTopic(
 
 	dbID := MakeMessageID(topicID, msgID)
 	c.markDispatched(msg.Portal.ID, dbID)
+	c.clearPendingLocalID(localID)
 
 	dbMsg := &database.Message{
 		ID:        dbID,
@@ -384,6 +397,7 @@ func (c *Client) sendCreateMessage(
 
 	dbID := MakeMessageID(topicID, msgID)
 	c.markDispatched(msg.Portal.ID, dbID)
+	c.clearPendingLocalID(localID)
 
 	dbMsg := &database.Message{
 		ID:        dbID,
@@ -423,10 +437,7 @@ func (c *Client) markDispatched(portalID networkid.PortalID, msgID networkid.Mes
 	}
 	dedupKey := string(portalID) + "|" + string(msgID)
 	c.mu.Lock()
-	if c.dispatchedMsgIDs == nil {
-		c.dispatchedMsgIDs = make(map[string]struct{})
-	}
-	c.dispatchedMsgIDs[dedupKey] = struct{}{}
+	c.recordDispatchedLocked(dedupKey)
 	c.mu.Unlock()
 }
 

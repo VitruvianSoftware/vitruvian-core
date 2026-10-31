@@ -27,24 +27,32 @@ type streamNotification struct {
 }
 
 // Client implements bridgev2.NetworkAPI for a Google Chat UserLogin.
+const (
+	maxDispatchedMsgIDs = 2048
+	maxPendingLocalIDs  = 256
+)
+
+var onRemoteEventQueued func(*Client, bridgev2.RemoteEvent)
+
 type Client struct {
 	Main      *Connector
 	UserLogin *bridgev2.UserLogin
 
-	mu               sync.Mutex
-	metaMu           sync.Mutex
-	loggedOut        bool
-	syncMu           sync.Mutex
-	ffiClient        *FFIClient
-	cancelStream     context.CancelFunc
-	streamDone       chan struct{}
-	initialSyncDone  bool
-	useManualClock   bool
-	manualJitter     float64
-	dispatchedMsgIDs map[string]struct{}
-	pendingLocalIDs  map[string]struct{}
-	emittedEvents    []bridgev2.RemoteEvent
-	lastState        status.BridgeStateEvent
+	mu                 sync.Mutex
+	metaMu             sync.Mutex
+	loggedOut          bool
+	syncMu             sync.Mutex
+	ffiClient          *FFIClient
+	cancelStream       context.CancelFunc
+	streamDone         chan struct{}
+	initialSyncDone    bool
+	useManualClock     bool
+	manualJitter       float64
+	dispatchedMsgIDs   map[string]struct{}
+	dispatchedMsgOrder []string
+	pendingLocalIDs    map[string]struct{}
+	pendingLocalOrder  []string
+	lastState          status.BridgeStateEvent
 }
 
 var _ bridgev2.NetworkAPI = (*Client)(nil)
@@ -189,6 +197,22 @@ func (c *Client) processStreamNotification(ctx context.Context, item streamNotif
 	}
 }
 
+func (c *Client) recordDispatchedLocked(dedupKey string) {
+	if c.dispatchedMsgIDs == nil {
+		c.dispatchedMsgIDs = make(map[string]struct{})
+	}
+	if _, exists := c.dispatchedMsgIDs[dedupKey]; exists {
+		return
+	}
+	for len(c.dispatchedMsgIDs) >= maxDispatchedMsgIDs && len(c.dispatchedMsgOrder) > 0 {
+		oldest := c.dispatchedMsgOrder[0]
+		c.dispatchedMsgOrder = c.dispatchedMsgOrder[1:]
+		delete(c.dispatchedMsgIDs, oldest)
+	}
+	c.dispatchedMsgIDs[dedupKey] = struct{}{}
+	c.dispatchedMsgOrder = append(c.dispatchedMsgOrder, dedupKey)
+}
+
 func (c *Client) queueRemoteEvent(ctx context.Context, evt bridgev2.RemoteEvent) {
 	if evt == nil || c.UserLogin == nil {
 		return
@@ -196,13 +220,10 @@ func (c *Client) queueRemoteEvent(ctx context.Context, evt bridgev2.RemoteEvent)
 	if msgEvt, ok := evt.(*simplevent.PreConvertedMessage); ok && msgEvt.ID != "" {
 		dedupKey := string(msgEvt.GetPortalKey().ID) + "|" + string(msgEvt.ID)
 		c.mu.Lock()
-		if c.dispatchedMsgIDs == nil {
-			c.dispatchedMsgIDs = make(map[string]struct{})
-		}
 		if msgEvt.TransactionID != "" && c.pendingLocalIDs != nil {
 			if _, pending := c.pendingLocalIDs[string(msgEvt.TransactionID)]; pending {
 				delete(c.pendingLocalIDs, string(msgEvt.TransactionID))
-				c.dispatchedMsgIDs[dedupKey] = struct{}{}
+				c.recordDispatchedLocked(dedupKey)
 				c.mu.Unlock()
 				return
 			}
@@ -213,28 +234,18 @@ func (c *Client) queueRemoteEvent(ctx context.Context, evt bridgev2.RemoteEvent)
 		}
 		if c.UserLogin.Bridge != nil && c.UserLogin.Bridge.DB != nil && c.UserLogin.Bridge.DB.Message != nil {
 			if existing, err := c.UserLogin.Bridge.DB.Message.GetFirstPartByID(ctx, c.UserLogin.ID, msgEvt.ID); err == nil && existing != nil {
-				c.dispatchedMsgIDs[dedupKey] = struct{}{}
+				c.recordDispatchedLocked(dedupKey)
 				c.mu.Unlock()
 				return
 			}
 		}
-		c.dispatchedMsgIDs[dedupKey] = struct{}{}
-		c.emittedEvents = append(c.emittedEvents, evt)
-		c.mu.Unlock()
-	} else {
-		c.mu.Lock()
-		c.emittedEvents = append(c.emittedEvents, evt)
+		c.recordDispatchedLocked(dedupKey)
 		c.mu.Unlock()
 	}
+	if onRemoteEventQueued != nil {
+		onRemoteEventQueued(c, evt)
+	}
 	c.UserLogin.QueueRemoteEvent(evt)
-}
-
-func (c *Client) recordedRemoteEvents() []bridgev2.RemoteEvent {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	out := make([]bridgev2.RemoteEvent, len(c.emittedEvents))
-	copy(out, c.emittedEvents)
-	return out
 }
 
 func (c *Client) advanceManualClock(delta time.Duration) int {
