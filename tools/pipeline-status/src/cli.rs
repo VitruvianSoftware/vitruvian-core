@@ -20,14 +20,13 @@
 
 //! pipeline-status.sh's `main`, step for step.
 
-use crate::batch::{resolve, Commit};
+use crate::batch::{resolve, Outcome};
 use crate::evaluate::{
     list_failed, list_in_flight, runs_query, settle_secs_from_env, EMPTY_RETURN_STATUS,
 };
 use crate::sh::{self, capture, capture_or_echo, die, env_or, info, ok, on_path, prefix, warn};
 
 const DEFAULT_REPO: &str = "VitruvianSoftware/vitruvian-core";
-const NO_RUNS_JSON: &str = r#"{"total_count":0,"workflow_runs":[]}"#;
 
 /// `^#?[0-9]+$`.
 fn is_pr_number(target: &str) -> bool {
@@ -133,52 +132,41 @@ pub fn run(script: &str, args: &[String]) -> i32 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
-    let runs_for = |commit: &str| {
-        capture_or_echo(
-            "gh",
-            &["api", &runs_query(&repo, commit, &branch)],
-            NO_RUNS_JSON,
-        )
+    let gh_api = |path: &str| -> Result<String, String> {
+        let got = capture("gh", &["api", path]);
+        if got.status == 0 {
+            Ok(got.out)
+        } else {
+            Err(format!("gh api {path} failed (exit {})", got.status))
+        }
     };
-    // When the commit's age is unknown, assume it is new: never go looking
-    // through later commits on a guess.
-    let commit_epoch = capture("git", &["show", "-s", "--format=%ct", &sha])
-        .out
-        .trim()
-        .parse::<i64>()
-        .unwrap_or(now);
-    let later_commits = || {
-        sh::run_quiet("git", &["fetch", "origin", &branch, "-q"]);
-        capture(
-            "git",
-            &[
-                "log",
-                "--ancestry-path",
-                "--reverse",
-                "--format=%H%x09%s",
-                &format!("{sha}..origin/{branch}"),
-            ],
-        )
-        .out
-        .lines()
-        .filter_map(|l| {
-            let (h, subject) = l.split_once('\t')?;
-            Some(Commit {
-                sha: h.to_string(),
-                subject: subject.to_string(),
-            })
-        })
-        .collect()
+    let activity = || {
+        gh_api(&format!(
+            "repos/{repo}/activity?ref=refs/heads/{branch}&per_page=100"
+        ))
     };
-    let resolved = resolve(
+    let range = |before: &str, after: &str| {
+        gh_api(&format!(
+            "repos/{repo}/compare/{before}...{after}?per_page=100"
+        ))
+    };
+    let runs_for = |commit: &str| gh_api(&runs_query(&repo, commit, &branch));
+    let resolved = match resolve(
         &sha,
         &branch,
-        commit_epoch,
         now,
         settle_secs_from_env(),
+        &activity,
+        &range,
         &runs_for,
-        &later_commits,
-    );
+    ) {
+        Outcome::Judged(r) => r,
+        Outcome::Waiting(why) => {
+            // No verdict, and never green: the caller keeps waiting.
+            warn(&format!("No verdict yet for commit {short}: {why}"));
+            return 3;
+        }
+    };
     if let Some(note) = &resolved.note {
         info(note);
     }

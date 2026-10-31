@@ -609,14 +609,12 @@ pub fn run(script: &str, args: &[String]) -> i32 {
                 ok(&format!(
                     "PR #{pr} successfully watched from submission to green post-merge pipeline on main! (Total time: {elapsed}s)"
                 ));
-                return decision.exit_code().unwrap_or(0);
             }
             Decision::Failed => {
                 die(&format!(
                     "Post-merge pipeline FAILED on main for commit {short}!"
                 ));
                 sh::err_text(&format!("{}\n", status.out));
-                return decision.exit_code().unwrap_or(1);
             }
             Decision::InProgress => {
                 warn(&format!(
@@ -646,6 +644,11 @@ pub fn run(script: &str, args: &[String]) -> i32 {
                 ));
                 sh::sleep(&interval);
             }
+        }
+        // The exit code comes from the decision alone: only Green is 0, Failed
+        // is 1, and every waiting state keeps polling.
+        if let Some(code) = decision.exit_code() {
+            return code;
         }
     }
 }
