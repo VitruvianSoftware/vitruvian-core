@@ -91,7 +91,7 @@ Creating a DomainMapping requires the **deploying principal** to be a verified
 owner of the domain in Google's Site Verification service, and ownership there is
 **per-caller** — no service account can verify on another's behalf. Each
 environment's deploy SA self-verifies its zone via DNS-TXT before its own
-`pulumi up` (`tools/ci/ensure-site-verification.sh`).
+`pulumi up` (`//tools/ci:ensure_site_verification`).
 
 The steady state is therefore **one `google-site-verification` TXT per env deploy
 SA** on the zone apex, alongside any pre-existing one. For a three-environment
@@ -109,7 +109,7 @@ records here must declare named records, never "the zone".
 | --- | --- |
 | apex CNAME, `www` CNAME, and the `_github-pages-challenge-vitruviansoftware` TXT | `repo-config`, `internal/site_domain` (protected; the apex and TXT were hand-made before 2026-10-12, `www` was created by it) |
 | `tabula`, `tabula.dev`, `tabula.staging`, `tabula-api`, `tabula-api.dev`, `tabula-api.staging` | the tabula Pulumi stacks (`apps/suites/tabula/infra`) |
-| three apex `google-site-verification` TXT, marked "do not delete" | `tools/ci/ensure-site-verification.sh` |
+| three apex `google-site-verification` TXT, marked "do not delete" | `//tools/ci:ensure_site_verification` |
 | `backstage`, `storybook` (with their `heritage=external-dns` ownership TXT) | external-dns in the cluster |
 | 5 MX, SPF, DKIM, `mail`, `calendar`, `drive`, `groups`, the other `google-site-verification` TXT | Google Workspace, by hand |
 | `devx` | `devx sites init`, by hand |
@@ -142,7 +142,7 @@ describe actually happened:
   config copied from an app on the other zone carries the source app's zone —
   which is precisely the copy-paste this check catches.
 - **A `customDomain` with no `cloudflareZone` is a hard error**
-  (`tools/ci/ensure-site-verification.sh`). It used to default to `ipv1337.dev`,
+  (`//tools/ci:ensure_site_verification`). It used to default to `ipv1337.dev`,
   which for a `vitruviansoftware.dev` app placed the verification TXT on the
   wrong domain entirely.
 

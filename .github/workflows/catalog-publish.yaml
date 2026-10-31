@@ -35,7 +35,7 @@
 #
 # Who merges it: this workflow arms auto-merge on the pull request, at the
 # commit it pushed, so the queue merges it once those checks pass
-# (tools/ci/site-pr-automerge.sh). Not when a person holds it with
+# (//tools/ci:site_pr_automerge). Not when a person holds it with
 # do-not-automerge or needs-human, or leaves it a draft.
 name: catalog-publish
 
@@ -107,7 +107,7 @@ jobs:
 
           # Off before the push: an arming made for an earlier commit must not
           # carry this one. It is armed again below, at this commit only.
-          bash tools/ci/site-pr-automerge.sh disarm --branch "$branch"
+          bazel run //tools/ci:site_pr_automerge -- disarm --branch "$branch"
 
           git checkout -B "$branch"
           git commit -m "chore(site): publish the signed tool catalog"
@@ -125,4 +125,4 @@ jobs:
             gh pr create --title "chore(site): publish the signed tool catalog" --body "$body" --base main --head "$branch"
           fi
 
-          bash tools/ci/site-pr-automerge.sh arm --branch "$branch" --sha "$sha"
+          bazel run //tools/ci:site_pr_automerge -- arm --branch "$branch" --sha "$sha"
