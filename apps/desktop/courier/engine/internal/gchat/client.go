@@ -395,6 +395,10 @@ func (c *Client) GetUserInfo(_ context.Context, ghost *bridgev2.Ghost) (*bridgev
 }
 
 func (c *Client) GetCapabilities(_ context.Context, portal *bridgev2.Portal) *event.RoomFeatures {
+	if c != nil {
+		c.metaMu.Lock()
+		defer c.metaMu.Unlock()
+	}
 	return defaultRoomCapabilities(portal)
 }
 

@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1096,6 +1097,49 @@ func TestEndToEndConnectSyncStreamReconnectCatchUpAndBadCredentials(t *testing.T
 	}, 3*time.Second, 20*time.Millisecond, "401 response must transition login to BAD_CREDENTIALS")
 }
 
+func buildSendTestPaginatedWorldResponse() []byte {
+	var dmItem []byte
+	dmItem = append(dmItem, encodeBytesField(1, encodeDMGroupID("dm_alpha"))...)
+	dmItem = append(dmItem, encodeBytesField(2, encodeVarintField(1, 90))...)
+	dmItem = append(dmItem, encodeVarintField(3, 1710000001000000)...)
+	var dmRS []byte
+	dmRS = append(dmRS, encodeVarintField(16, 2)...) // MEMBER_JOINED
+	dmRS = append(dmRS, encodeBytesField(23, encodeStringField(1, "112233445566778899001"))...)
+	dmRS = append(dmRS, encodeBytesField(23, encodeStringField(1, "112233445566778899002"))...)
+	dmItem = append(dmItem, encodeBytesField(4, dmRS)...)
+
+	var unthreadedSpace []byte
+	unthreadedSpace = append(unthreadedSpace, encodeBytesField(1, encodeSpaceGroupID("space_unthreaded"))...)
+	unthreadedSpace = append(unthreadedSpace, encodeBytesField(2, encodeVarintField(1, 110))...)
+	unthreadedSpace = append(unthreadedSpace, encodeVarintField(3, 1710000002000000)...)
+	unthreadedSpace = append(unthreadedSpace, encodeBytesField(4, encodeVarintField(16, 2))...)
+	unthreadedSpace = append(unthreadedSpace, encodeStringField(5, "Unthreaded General")...)
+
+	var flatThreadsSpace []byte
+	flatThreadsSpace = append(flatThreadsSpace, encodeBytesField(1, encodeSpaceGroupID("space_flat_threads"))...)
+	flatThreadsSpace = append(flatThreadsSpace, encodeBytesField(2, encodeVarintField(1, 115))...)
+	flatThreadsSpace = append(flatThreadsSpace, encodeVarintField(3, 1710000002500000)...)
+	flatThreadsSpace = append(flatThreadsSpace, encodeBytesField(4, encodeVarintField(16, 2))...)
+	flatThreadsSpace = append(flatThreadsSpace, encodeStringField(5, "Flat Threads Eng")...)
+	flatThreadsSpace = append(flatThreadsSpace, encodeVarintField(27, 1)...) // flat_threads_enabled = true
+
+	var threadedSpace []byte
+	threadedSpace = append(threadedSpace, encodeBytesField(1, encodeSpaceGroupID("space_threaded"))...)
+	threadedSpace = append(threadedSpace, encodeBytesField(2, encodeVarintField(1, 120))...)
+	threadedSpace = append(threadedSpace, encodeVarintField(3, 1710000003000000)...)
+	threadedSpace = append(threadedSpace, encodeBytesField(4, encodeVarintField(16, 2))...)
+	threadedSpace = append(threadedSpace, encodeStringField(5, "Threaded Eng")...)
+	threadedSpace = append(threadedSpace, encodeBytesField(15, nil)...) // threaded_group = ThreadedGroup{}
+
+	var worldResp []byte
+	worldResp = append(worldResp, encodeBytesField(3, encodeVarintField(1, 500))...)
+	worldResp = append(worldResp, encodeBytesField(4, dmItem)...)
+	worldResp = append(worldResp, encodeBytesField(4, unthreadedSpace)...)
+	worldResp = append(worldResp, encodeBytesField(4, flatThreadsSpace)...)
+	worldResp = append(worldResp, encodeBytesField(4, threadedSpace)...)
+	return worldResp
+}
+
 func TestSendNewTopicInThreadedSpaceAndCreateMessageInThreadOrDM(t *testing.T) {
 	enableTestLoopback(t)
 	ctx := context.Background()
@@ -1122,22 +1166,28 @@ func TestSendNewTopicInThreadedSpaceAndCreateMessageInThreadOrDM(t *testing.T) {
 				"ada@example.com",
 				"https://example.invalid/avatar/ada.png",
 			))
+		case "/u/0/api/paginated_world":
+			w.Header().Set("Content-Type", "application/x-protobuf")
+			_, _ = w.Write(buildSendTestPaginatedWorldResponse())
 		case "/u/0/api/create_topic":
 			body, _ := io.ReadAll(r.Body)
 			mu.Lock()
+			idx := len(createTopicReqs) + 1
 			createTopicReqs = append(createTopicReqs, body)
 			mu.Unlock()
 
 			spaceGID := encodeSpaceGroupID("space_threaded")
-			msgBytes := encodeSyntheticMessage(spaceGID, "topic_new_1", "msg_new_1", "112233445566778899001", "Hello 🚀", 1710000500000000, "", 0, 0)
+			topicIDStr := fmt.Sprintf("topic_new_%d", idx)
+			msgIDStr := fmt.Sprintf("msg_new_%d", idx)
+			msgBytes := encodeSyntheticMessage(spaceGID, topicIDStr, msgIDStr, "112233445566778899001", "Hello 🚀", 1710000500000000+int64(idx), "", 0, 0)
 			var topicIDProto []byte
-			topicIDProto = append(topicIDProto, encodeStringField(2, "topic_new_1")...)
+			topicIDProto = append(topicIDProto, encodeStringField(2, topicIDStr)...)
 			topicIDProto = append(topicIDProto, encodeBytesField(3, spaceGID)...)
 			var topicProto []byte
 			topicProto = append(topicProto, encodeBytesField(1, topicIDProto)...)
-			topicProto = append(topicProto, encodeVarintField(2, 1710000500000000)...)
+			topicProto = append(topicProto, encodeVarintField(2, uint64(1710000500000000+idx))...)
 			topicProto = append(topicProto, encodeBytesField(7, msgBytes)...)
-			topicProto = append(topicProto, encodeVarintField(15, 1710000500000000)...)
+			topicProto = append(topicProto, encodeVarintField(15, uint64(1710000500000000+idx))...)
 			resp := encodeBytesField(1, topicProto)
 			w.Header().Set("Content-Type", "application/x-protobuf")
 			_, _ = w.Write(resp)
@@ -1186,17 +1236,32 @@ func TestSendNewTopicInThreadedSpaceAndCreateMessageInThreadOrDM(t *testing.T) {
 	client := ul.Client.(*Client)
 	t.Cleanup(client.Disconnect)
 
-	_, err = client.ensureFFIClient()
-	require.NoError(t, err)
+	// Build portals by running the real syncWorld path against paginated_world on the fake server.
+	require.NoError(t, client.syncWorld(ctx))
 
-	// 1. Top-level message in threaded space -> POST /u/0/api/create_topic
-	spacePortal, err := h.Bridge.GetPortalByKey(ctx, networkid.PortalKey{
+	spacePortal, err := h.Bridge.GetExistingPortalByKey(ctx, networkid.PortalKey{
 		ID:       MakeSpacePortalID("space_threaded"),
 		Receiver: ul.ID,
 	})
 	require.NoError(t, err)
-	spacePortal.Metadata = &PortalMetadata{TopicThreaded: true}
+	require.NotNil(t, spacePortal)
 
+	flatThreadsPortal, err := h.Bridge.GetExistingPortalByKey(ctx, networkid.PortalKey{
+		ID:       MakeSpacePortalID("space_flat_threads"),
+		Receiver: ul.ID,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, flatThreadsPortal)
+	require.Equal(t, event.CapLevelFullySupported, client.GetCapabilities(ctx, flatThreadsPortal).Thread, "synced flat_threads_enabled space must advertise Thread capability")
+
+	dmPortal, err := h.Bridge.GetExistingPortalByKey(ctx, networkid.PortalKey{
+		ID:       MakeDMPortalID("dm_alpha"),
+		Receiver: ul.ID,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, dmPortal)
+
+	// 1. Top-level message in synced threaded space -> POST /u/0/api/create_topic
 	topResp, err := client.HandleMatrixMessage(ctx, &bridgev2.MatrixMessage{
 		MatrixEventBase: bridgev2.MatrixEventBase[*event.MessageEventContent]{
 			Portal: spacePortal,
@@ -1214,8 +1279,21 @@ func TestSendNewTopicInThreadedSpaceAndCreateMessageInThreadOrDM(t *testing.T) {
 	require.Equal(t, MakeMessageID("topic_new_1", "msg_new_1"), topResp.DB.ID)
 	require.Equal(t, MakeThreadRootID("topic_new_1"), topResp.DB.ThreadRoot)
 
+	// 1b. Top-level message and thread reply in synced flat_threads_enabled space (TopicThreaded == false, ThreadsEnabled == true)
+	flatTopResp, err := client.HandleMatrixMessage(ctx, &bridgev2.MatrixMessage{
+		MatrixEventBase: bridgev2.MatrixEventBase[*event.MessageEventContent]{
+			Portal: flatThreadsPortal,
+			Content: &event.MessageEventContent{
+				MsgType: event.MsgText,
+				Body:    "Flat thread starter",
+			},
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, MakeThreadRootID("topic_new_2"), flatTopResp.DB.ThreadRoot, "flat_threads_enabled space must set ThreadRoot on created topic")
+
 	mu.Lock()
-	require.Len(t, createTopicReqs, 1)
+	require.Len(t, createTopicReqs, 2)
 	topicReqBytes := createTopicReqs[0]
 	mu.Unlock()
 
@@ -1235,7 +1313,7 @@ func TestSendNewTopicInThreadedSpaceAndCreateMessageInThreadOrDM(t *testing.T) {
 
 	// Echo deduplication: incoming WebChannel MESSAGE_POSTED carrying the same local_id must be ignored.
 	beforeEvents := len(client.recordedRemoteEvents())
-	echoMsg := encodeSyntheticMessage(encodeSpaceGroupID("space_threaded"), "topic_new_1", "msg_new_1", "112233445566778899001", "Hello 🚀", 1710000500000000, "", 0, 0)
+	echoMsg := encodeSyntheticMessage(encodeSpaceGroupID("space_threaded"), "topic_new_1", "msg_new_1", "112233445566778899001", "Hello 🚀", 1710000500000001, "", 0, 0)
 	echoMsg = append(echoMsg, encodeStringField(14, localID)...)
 	var echoBody []byte
 	echoBody = append(echoBody, encodeBytesField(6, encodeBytesField(1, echoMsg))...)
@@ -1314,13 +1392,7 @@ func TestSendNewTopicInThreadedSpaceAndCreateMessageInThreadOrDM(t *testing.T) {
 	zeroInfoFields := parseProtoFields(firstFieldBytes(zeroReqFields, 7))
 	require.Empty(t, firstFieldBytes(zeroInfoFields, 3), "SendReplyTarget must not be sent when target create_time is 0")
 
-	// 4. Message in DM -> POST /u/0/api/create_message
-	dmPortal, err := h.Bridge.GetPortalByKey(ctx, networkid.PortalKey{
-		ID:       MakeDMPortalID("dm_alpha"),
-		Receiver: ul.ID,
-	})
-	require.NoError(t, err)
-	dmPortal.Metadata = &PortalMetadata{TopicThreaded: false}
+	// 4. Message in synced DM -> POST /u/0/api/create_message
 	_, err = client.HandleMatrixMessage(ctx, &bridgev2.MatrixMessage{
 		MatrixEventBase: bridgev2.MatrixEventBase[*event.MessageEventContent]{
 			Portal: dmPortal,
@@ -1384,12 +1456,15 @@ func TestSendEditUnsendReactionReceiptAndTyping(t *testing.T) {
 				"ada@example.com",
 				"https://example.invalid/avatar/ada.png",
 			))
+		case "/u/0/api/paginated_world":
+			_, _ = w.Write(buildSendTestPaginatedWorldResponse())
 		case "/u/0/api/edit_message":
 			mu.Lock()
 			editReqs = append(editReqs, body)
 			mu.Unlock()
 			spaceGID := encodeSpaceGroupID("space_threaded")
-			msgBytes := encodeSyntheticMessage(spaceGID, "topic_1", "msg_1", "112233445566778899001", "Edited text", 1710000500000000, "", 1710000550000000, 0)
+			msgBytes := encodeSyntheticMessage(spaceGID, "topic_1", "msg_1", "112233445566778899001", "Edited text", 1710000500000000, "", 0, 0)
+			msgBytes = append(msgBytes, encodeVarintField(17, 1710000550000000)...)
 			_, _ = w.Write(encodeBytesField(1, msgBytes))
 		case "/u/0/api/delete_message":
 			mu.Lock()
@@ -1443,15 +1518,29 @@ func TestSendEditUnsendReactionReceiptAndTyping(t *testing.T) {
 	client := ul.Client.(*Client)
 	t.Cleanup(client.Disconnect)
 
-	_, err = client.ensureFFIClient()
-	require.NoError(t, err)
+	// Build portals via real syncWorld against paginated_world.
+	require.NoError(t, client.syncWorld(ctx))
 
-	portal, err := h.Bridge.GetPortalByKey(ctx, networkid.PortalKey{
+	portal, err := h.Bridge.GetExistingPortalByKey(ctx, networkid.PortalKey{
 		ID:       MakeSpacePortalID("space_threaded"),
 		Receiver: ul.ID,
 	})
 	require.NoError(t, err)
-	portal.Metadata = &PortalMetadata{TopicThreaded: true}
+	require.NotNil(t, portal)
+
+	unthreadedSpace, err := h.Bridge.GetExistingPortalByKey(ctx, networkid.PortalKey{
+		ID:       MakeSpacePortalID("space_unthreaded"),
+		Receiver: ul.ID,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, unthreadedSpace)
+
+	dmPortal, err := h.Bridge.GetExistingPortalByKey(ctx, networkid.PortalKey{
+		ID:       MakeDMPortalID("dm_alpha"),
+		Receiver: ul.ID,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, dmPortal)
 
 	targetMsg := &database.Message{
 		ID:       MakeMessageID("topic_1", "msg_1"),
@@ -1575,73 +1664,814 @@ func TestSendEditUnsendReactionReceiptAndTyping(t *testing.T) {
 	require.Equal(t, uint64(1), firstFieldVarint(typingStartFields, 1), "SetTypingStateRequest.state TYPING (1)")
 	require.Equal(t, uint64(2), firstFieldVarint(typingStopFields, 1), "SetTypingStateRequest.state STOPPED (2)")
 
-	// 6. Walk advertised capabilities in GetCapabilities and assert every capability has a wired handler (no decorative capabilities).
-	var api bridgev2.NetworkAPI = client
-	dmPortal := &bridgev2.Portal{
-		Portal: &database.Portal{
-			PortalKey: networkid.PortalKey{ID: MakeDMPortalID("dm_1"), Receiver: ul.ID},
-			RoomType:  database.RoomTypeDM,
-			Metadata:  &PortalMetadata{TopicThreaded: false},
-		},
-	}
-	unthreadedSpace := &bridgev2.Portal{
-		Portal: &database.Portal{
-			PortalKey: networkid.PortalKey{ID: MakeSpacePortalID("space_flat"), Receiver: ul.ID},
-			RoomType:  database.RoomTypeDefault,
-			Metadata:  &PortalMetadata{TopicThreaded: false},
-		},
-	}
-	threadedSpace := portal
-
-	for name, p := range map[string]*bridgev2.Portal{
-		"dm":               dmPortal,
-		"unthreaded_space": unthreadedSpace,
-		"threaded_space":   threadedSpace,
-	} {
-		caps := client.GetCapabilities(ctx, p)
-		require.NotNil(t, caps, name)
-		require.Equal(t, 4096, caps.MaxTextLength, name)
-		require.True(t, caps.Reply.Partial(), name)
-		if caps.Edit.Partial() {
-			_, ok := api.(bridgev2.EditHandlingNetworkAPI)
-			require.True(t, ok, "%s advertises Edit without EditHandlingNetworkAPI", name)
-		}
-		if caps.Delete.Partial() {
-			_, ok := api.(bridgev2.RedactionHandlingNetworkAPI)
-			require.True(t, ok, "%s advertises Delete without RedactionHandlingNetworkAPI", name)
-		}
-		if caps.Reaction.Partial() {
-			_, ok := api.(bridgev2.ReactionHandlingNetworkAPI)
-			require.True(t, ok, "%s advertises Reaction without ReactionHandlingNetworkAPI", name)
-		}
-		if caps.ReadReceipts {
-			_, ok := api.(bridgev2.ReadReceiptHandlingNetworkAPI)
-			require.True(t, ok, "%s advertises ReadReceipts without ReadReceiptHandlingNetworkAPI", name)
-		}
-		if caps.TypingNotifications {
-			_, ok := api.(bridgev2.TypingHandlingNetworkAPI)
-			require.True(t, ok, "%s advertises TypingNotifications without TypingHandlingNetworkAPI", name)
-		}
-		if caps.Poll.Partial() {
-			_, ok := api.(bridgev2.PollHandlingNetworkAPI)
-			require.True(t, ok, "%s advertises Poll without PollHandlingNetworkAPI", name)
-		}
-		if caps.DisappearingTimer != nil {
-			_, ok := api.(bridgev2.DisappearTimerChangingNetworkAPI)
-			require.True(t, ok, "%s advertises DisappearingTimer without DisappearTimerChangingNetworkAPI", name)
-		}
-		if caps.DeleteChat {
-			_, ok := api.(bridgev2.DeleteChatHandlingNetworkAPI)
-			require.True(t, ok, "%s advertises DeleteChat without DeleteChatHandlingNetworkAPI", name)
-		}
-	}
-
 	require.Equal(t, event.CapLevelUnsupported, client.GetCapabilities(ctx, dmPortal).Thread)
 	require.Equal(t, event.CapLevelUnsupported, client.GetCapabilities(ctx, dmPortal).Formatting[event.FmtAtRoomMention])
 	require.Equal(t, event.CapLevelUnsupported, client.GetCapabilities(ctx, unthreadedSpace).Thread)
 	require.Equal(t, event.CapLevelFullySupported, client.GetCapabilities(ctx, unthreadedSpace).Formatting[event.FmtAtRoomMention])
-	require.Equal(t, event.CapLevelFullySupported, client.GetCapabilities(ctx, threadedSpace).Thread)
-	require.Equal(t, event.CapLevelFullySupported, client.GetCapabilities(ctx, threadedSpace).Formatting[event.FmtAtRoomMention])
+	require.Equal(t, event.CapLevelFullySupported, client.GetCapabilities(ctx, portal).Thread)
+	require.Equal(t, event.CapLevelFullySupported, client.GetCapabilities(ctx, portal).Formatting[event.FmtAtRoomMention])
+}
+
+func hasMentionAllAnnotation(annSlices []protoField) bool {
+	for _, f := range annSlices {
+		af := parseProtoFields(f.bytes)
+		if firstFieldVarint(af, 1) != 6 { // AnnotationType.USER_MENTION = 6 (googlechat.proto:1778)
+			continue
+		}
+		um := parseProtoFields(firstFieldBytes(af, 5)) // user_mention_metadata = field 5
+		if firstFieldVarint(um, 2) == 4 {              // UserMentionMetadata.type (field 2) == MENTION_ALL (4)
+			return true
+		}
+	}
+	return false
+}
+
+func TestOutboundMentionsAtRoomAndAtAllInSpaceAndDM(t *testing.T) {
+	ctx := context.Background()
+	var (
+		mu              sync.Mutex
+		createTopicReqs [][]byte
+		createMsgReqs   [][]byte
+		editReqs        [][]byte
+	)
+
+	h, ul, client := setupLoggedInGChatTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/x-protobuf")
+		switch r.URL.Path {
+		case "/u/0/api/paginated_world":
+			_, _ = w.Write(buildSendTestPaginatedWorldResponse())
+		case "/u/0/api/create_topic":
+			mu.Lock()
+			createTopicReqs = append(createTopicReqs, body)
+			idx := len(createTopicReqs)
+			mu.Unlock()
+			spaceGID := encodeSpaceGroupID("space_threaded")
+			tid := fmt.Sprintf("topic_m_%d", idx)
+			mid := fmt.Sprintf("msg_m_%d", idx)
+			msgBytes := encodeSyntheticMessage(spaceGID, tid, mid, "112233445566778899001", "ok", 1710000500000000+int64(idx), "", 0, 0)
+			var topic []byte
+			topic = append(topic, encodeBytesField(1, encodeTopicID(spaceGID, tid))...)
+			topic = append(topic, encodeBytesField(7, msgBytes)...)
+			_, _ = w.Write(encodeBytesField(1, topic))
+		case "/u/0/api/create_message":
+			mu.Lock()
+			createMsgReqs = append(createMsgReqs, body)
+			idx := len(createMsgReqs)
+			mu.Unlock()
+			dmGID := encodeDMGroupID("dm_alpha")
+			msgBytes := encodeSyntheticMessage(dmGID, "dm_t", fmt.Sprintf("dm_m_%d", idx), "112233445566778899001", "ok", 1710000500000000+int64(idx), "", 0, 0)
+			_, _ = w.Write(encodeBytesField(1, msgBytes))
+		case "/u/0/api/edit_message":
+			mu.Lock()
+			editReqs = append(editReqs, body)
+			mu.Unlock()
+			spaceGID := encodeSpaceGroupID("space_threaded")
+			msgBytes := encodeSyntheticMessage(spaceGID, "topic_m_1", "msg_m_1", "112233445566778899001", "ok", 1710000500000000, "", 0, 0)
+			_, _ = w.Write(encodeBytesField(1, msgBytes))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	require.NoError(t, client.syncWorld(ctx))
+
+	spacePortal, err := h.Bridge.GetExistingPortalByKey(ctx, networkid.PortalKey{
+		ID:       MakeSpacePortalID("space_threaded"),
+		Receiver: ul.ID,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, spacePortal)
+
+	dmPortal, err := h.Bridge.GetExistingPortalByKey(ctx, networkid.PortalKey{
+		ID:       MakeDMPortalID("dm_alpha"),
+		Receiver: ul.ID,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, dmPortal)
+
+	// 1. Plain-text @room and @all in a Space -> rewritten to @all with USER_MENTION (MENTION_ALL = 4) annotations
+	plainSpaceResp, err := client.HandleMatrixMessage(ctx, &bridgev2.MatrixMessage{
+		MatrixEventBase: bridgev2.MatrixEventBase[*event.MessageEventContent]{
+			Portal: spacePortal,
+			Content: &event.MessageEventContent{
+				MsgType: event.MsgText,
+				Body:    "Heads up @room and @all",
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	// 2. HTML @room in a Space -> rewritten to @all with USER_MENTION (MENTION_ALL = 4) annotation
+	_, err = client.HandleMatrixMessage(ctx, &bridgev2.MatrixMessage{
+		MatrixEventBase: bridgev2.MatrixEventBase[*event.MessageEventContent]{
+			Portal: spacePortal,
+			Content: &event.MessageEventContent{
+				MsgType:       event.MsgText,
+				Body:          "Alert @room",
+				Format:        event.FormatHTML,
+				FormattedBody: "<b>Alert</b> @room",
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	// 3. Edit with plain-text @room in a Space -> rewritten to @all with USER_MENTION (MENTION_ALL = 4) annotation
+	require.NoError(t, client.HandleMatrixEdit(ctx, &bridgev2.MatrixEdit{
+		MatrixEventBase: bridgev2.MatrixEventBase[*event.MessageEventContent]{
+			Portal: spacePortal,
+			Content: &event.MessageEventContent{
+				MsgType: event.MsgText,
+				Body:    "Edited @room notice",
+			},
+		},
+		EditTarget: plainSpaceResp.DB,
+	}))
+
+	// 4. Plain-text and HTML @room / @all in a DM -> left as plain text, NO MENTION_ALL annotation
+	_, err = client.HandleMatrixMessage(ctx, &bridgev2.MatrixMessage{
+		MatrixEventBase: bridgev2.MatrixEventBase[*event.MessageEventContent]{
+			Portal: dmPortal,
+			Content: &event.MessageEventContent{
+				MsgType: event.MsgText,
+				Body:    "Hello @room and @all in DM",
+			},
+		},
+	})
+	require.NoError(t, err)
+	_, err = client.HandleMatrixMessage(ctx, &bridgev2.MatrixMessage{
+		MatrixEventBase: bridgev2.MatrixEventBase[*event.MessageEventContent]{
+			Portal: dmPortal,
+			Content: &event.MessageEventContent{
+				MsgType:       event.MsgText,
+				Body:          "Hello @room and @all in DM",
+				Format:        event.FormatHTML,
+				FormattedBody: "<b>Hello</b> @room and @all in DM",
+			},
+		},
+	})
+	require.NoError(t, err)
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, createTopicReqs, 2)
+	require.Len(t, editReqs, 1)
+	require.Len(t, createMsgReqs, 2)
+
+	plainSpaceFields := parseProtoFields(createTopicReqs[0])
+	require.Equal(t, "Heads up @all and @all", firstFieldString(plainSpaceFields, 2), "plain-text @room in Space must rewrite to @all")
+	require.True(t, hasMentionAllAnnotation(plainSpaceFields[3]), "plain-text @room/@all in Space must emit MENTION_ALL annotation")
+
+	htmlSpaceFields := parseProtoFields(createTopicReqs[1])
+	require.Equal(t, "Alert @all", firstFieldString(htmlSpaceFields, 2), "HTML @room in Space must rewrite to @all")
+	require.True(t, hasMentionAllAnnotation(htmlSpaceFields[3]), "HTML @room in Space must emit MENTION_ALL annotation")
+
+	editSpaceFields := parseProtoFields(editReqs[0])
+	require.Equal(t, "Edited @all notice", firstFieldString(editSpaceFields, 2), "Edit @room in Space must rewrite to @all")
+	require.True(t, hasMentionAllAnnotation(editSpaceFields[3]), "Edit @room in Space must emit MENTION_ALL annotation")
+
+	plainDMFields := parseProtoFields(createMsgReqs[0])
+	require.Equal(t, "Hello @room and @all in DM", firstFieldString(plainDMFields, 2), "DM must not rewrite @room")
+	require.False(t, hasMentionAllAnnotation(plainDMFields[3]), "DM plain text must not emit MENTION_ALL")
+
+	htmlDMFields := parseProtoFields(createMsgReqs[1])
+	require.Equal(t, "Hello @room and @all in DM", firstFieldString(htmlDMFields, 2), "DM HTML must not rewrite @room")
+	require.False(t, hasMentionAllAnnotation(htmlDMFields[3]), "DM HTML must not emit MENTION_ALL")
+}
+
+func TestOutboundMessageAndEditEchoDeduplication(t *testing.T) {
+	ctx := context.Background()
+	var failCreateTopic atomic.Bool
+	var inFlightEchoDispatched atomic.Bool
+
+	var clientRef atomic.Pointer[Client]
+
+	h, ul, client := setupLoggedInGChatTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/x-protobuf")
+		switch r.URL.Path {
+		case "/u/0/api/paginated_world":
+			_, _ = w.Write(buildSendTestPaginatedWorldResponse())
+		case "/u/0/api/create_topic":
+			if failCreateTopic.Load() {
+				http.Error(w, "Server Error", http.StatusInternalServerError)
+				return
+			}
+			reqFields := parseProtoFields(body)
+			localID := firstFieldString(reqFields, 4)
+			spaceGID := encodeSpaceGroupID("space_threaded")
+			msgBytes := encodeSyntheticMessage(spaceGID, "topic_dedup", "msg_dedup_1", "112233445566778899001", "Dedup test", 1710000500000000, "", 0, 0)
+			msgBytes = append(msgBytes, encodeStringField(14, localID)...)
+
+			// Deliver the WebChannel MESSAGE_POSTED echo WHILE create_topic is still in flight!
+			if c := clientRef.Load(); c != nil {
+				var echoBody []byte
+				echoBody = append(echoBody, encodeBytesField(6, encodeBytesField(1, msgBytes))...)
+				echoBody = append(echoBody, encodeVarintField(12, 6)...)
+				var echoEvt []byte
+				echoEvt = append(echoEvt, encodeBytesField(1, spaceGID)...)
+				echoEvt = append(echoEvt, encodeVarintField(3, 6)...)
+				echoEvt = append(echoEvt, encodeBytesField(4, echoBody)...)
+				c.processStreamNotification(ctx, streamNotification{kind: 1, payload: echoEvt})
+				inFlightEchoDispatched.Store(true)
+			}
+
+			var topic []byte
+			topic = append(topic, encodeBytesField(1, encodeTopicID(spaceGID, "topic_dedup"))...)
+			topic = append(topic, encodeBytesField(7, msgBytes)...)
+			_, _ = w.Write(encodeBytesField(1, topic))
+		case "/u/0/api/edit_message":
+			spaceGID := encodeSpaceGroupID("space_threaded")
+			msgBytes := encodeSyntheticMessage(spaceGID, "topic_dedup", "msg_dedup_1", "112233445566778899001", "Dedup edited", 1710000500000000, "", 0, 0)
+			msgBytes = append(msgBytes, encodeVarintField(17, 1710000550000000)...) // last_edit_time
+			_, _ = w.Write(encodeBytesField(1, msgBytes))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	clientRef.Store(client)
+
+	require.NoError(t, client.syncWorld(ctx))
+	spacePortal, err := h.Bridge.GetExistingPortalByKey(ctx, networkid.PortalKey{
+		ID:       MakeSpacePortalID("space_threaded"),
+		Receiver: ul.ID,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, spacePortal)
+
+	// 1. Send message while server delivers in-flight echo -> must be registered in bridgev2 pending map before RPC and deduplicated
+	beforeCount := len(client.recordedRemoteEvents())
+	resp, err := client.HandleMatrixMessage(ctx, &bridgev2.MatrixMessage{
+		MatrixEventBase: bridgev2.MatrixEventBase[*event.MessageEventContent]{
+			Portal:  spacePortal,
+			Content: &event.MessageEventContent{MsgType: event.MsgText, Body: "Dedup test"},
+		},
+	})
+	require.NoError(t, err)
+	require.True(t, inFlightEchoDispatched.Load())
+	require.NotEmpty(t, resp.RemovePending, "MatrixMessageResponse.RemovePending must carry txnID")
+	require.Len(t, client.recordedRemoteEvents(), beforeCount, "outbound MESSAGE_POSTED echo must be suppressed so only one message exists")
+
+	// Also verify bridgev2 portal's outgoingMessages map has txnID registered via msg.AddPendingToIgnore(txnID):
+	outgoingMap := reflect.ValueOf(spacePortal).Elem().FieldByName("outgoingMessages")
+	require.True(t, outgoingMap.MapIndex(reflect.ValueOf(resp.RemovePending)).IsValid(),
+		"msg.AddPendingToIgnore(txnID) must register txnID in portal.outgoingMessages before sending")
+
+	// 2. Failed send must clean up pendingLocalIDs and portal pending map
+	failCreateTopic.Store(true)
+	_, err = client.HandleMatrixMessage(ctx, &bridgev2.MatrixMessage{
+		MatrixEventBase: bridgev2.MatrixEventBase[*event.MessageEventContent]{
+			Portal:  spacePortal,
+			Content: &event.MessageEventContent{MsgType: event.MsgText, Body: "Should fail"},
+		},
+	})
+	require.Error(t, err)
+	client.mu.Lock()
+	pendingCount := len(client.pendingLocalIDs)
+	client.mu.Unlock()
+	require.Zero(t, pendingCount, "failed send must remove local_id from pendingLocalIDs")
+	require.Equal(t, 1, outgoingMap.Len(), "failed send must call msg.RemovePending(txnID) so portal.outgoingMessages does not leak")
+
+	// 3. Edit message via HandleMatrixEdit -> sets LastEditTime = 1710000550000000; subsequent MESSAGE_UPDATED echo with <= LastEditTime returns ErrIgnoringRemoteEvent
+	require.NoError(t, client.HandleMatrixEdit(ctx, &bridgev2.MatrixEdit{
+		MatrixEventBase: bridgev2.MatrixEventBase[*event.MessageEventContent]{
+			Portal:  spacePortal,
+			Content: &event.MessageEventContent{MsgType: event.MsgText, Body: "Dedup edited"},
+		},
+		EditTarget: resp.DB,
+	}))
+	require.Equal(t, int64(1710000550000000), resp.DB.Metadata.(*MessageMetadata).LastEditTime)
+
+	spaceGID := encodeSpaceGroupID("space_threaded")
+	editedEcho := encodeSyntheticMessage(spaceGID, "topic_dedup", "msg_dedup_1", "112233445566778899001", "Dedup edited", 1710000500000000, "", 0, 0)
+	editedEcho = append(editedEcho, encodeVarintField(17, 1710000550000000)...)
+	var editBody []byte
+	editBody = append(editBody, encodeBytesField(6, encodeBytesField(1, editedEcho))...)
+	editBody = append(editBody, encodeVarintField(12, 7)...) // MESSAGE_UPDATED
+	var editEvtBytes []byte
+	editEvtBytes = append(editEvtBytes, encodeBytesField(1, spaceGID)...)
+	editEvtBytes = append(editEvtBytes, encodeVarintField(3, 7)...)
+	editEvtBytes = append(editEvtBytes, encodeBytesField(4, editBody)...)
+
+	remoteEvts, err := client.translateWebChannelEvent(ctx, editEvtBytes)
+	require.NoError(t, err)
+	require.Len(t, remoteEvts, 1)
+	remoteEdit, ok := remoteEvts[0].(bridgev2.RemoteEdit)
+	require.True(t, ok)
+
+	_, convErr := remoteEdit.ConvertEdit(ctx, spacePortal, nil, []*database.Message{resp.DB})
+	require.ErrorIs(t, convErr, bridgev2.ErrIgnoringRemoteEvent, "ConvertEdit must return ErrIgnoringRemoteEvent for outbound edit echo with same last_edit_time")
+
+	// Newer edit from remote (1710000560000000 > 1710000550000000) is NOT ignored
+	newerEditMsg := encodeSyntheticMessage(spaceGID, "topic_dedup", "msg_dedup_1", "112233445566778899001", "Newer edit", 1710000500000000, "", 0, 0)
+	newerEditMsg = append(newerEditMsg, encodeVarintField(17, 1710000560000000)...)
+	var newerBody []byte
+	newerBody = append(newerBody, encodeBytesField(6, encodeBytesField(1, newerEditMsg))...)
+	newerBody = append(newerBody, encodeVarintField(12, 7)...)
+	var newerEvtBytes []byte
+	newerEvtBytes = append(newerEvtBytes, encodeBytesField(1, spaceGID)...)
+	newerEvtBytes = append(newerEvtBytes, encodeVarintField(3, 7)...)
+	newerEvtBytes = append(newerEvtBytes, encodeBytesField(4, newerBody)...)
+
+	newerRemoteEvts, err := client.translateWebChannelEvent(ctx, newerEvtBytes)
+	require.NoError(t, err)
+	require.Len(t, newerRemoteEvts, 1)
+	convEdit, convErr := newerRemoteEvts[0].(bridgev2.RemoteEdit).ConvertEdit(ctx, spacePortal, nil, []*database.Message{resp.DB})
+	require.NoError(t, convErr)
+	require.NotNil(t, convEdit)
+	require.Equal(t, int64(1710000560000000), resp.DB.Metadata.(*MessageMetadata).LastEditTime)
+}
+
+func TestQuoteReplyUsesStoredMicrosecondCreateTimeAndTopicIDFallback(t *testing.T) {
+	ctx := context.Background()
+	var (
+		mu              sync.Mutex
+		createTopicReqs [][]byte
+		createMsgReqs   [][]byte
+	)
+
+	h, ul, client := setupLoggedInGChatTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/x-protobuf")
+		switch r.URL.Path {
+		case "/u/0/api/paginated_world":
+			_, _ = w.Write(buildSendTestPaginatedWorldResponse())
+		case "/u/0/api/create_topic":
+			mu.Lock()
+			createTopicReqs = append(createTopicReqs, body)
+			mu.Unlock()
+			spaceGID := encodeSpaceGroupID("space_unthreaded")
+			msgBytes := encodeSyntheticMessage(spaceGID, "topic_qt_1", "msg_qt_1", "112233445566778899001", "Quote in unthreaded space", 1710000510000000, "", 0, 0)
+			var topic []byte
+			topic = append(topic, encodeBytesField(1, encodeTopicID(spaceGID, "topic_qt_1"))...)
+			topic = append(topic, encodeBytesField(7, msgBytes)...)
+			_, _ = w.Write(encodeBytesField(1, topic))
+		case "/u/0/api/create_message":
+			mu.Lock()
+			createMsgReqs = append(createMsgReqs, body)
+			mu.Unlock()
+			spaceGID := encodeSpaceGroupID("space_threaded")
+			msgBytes := encodeSyntheticMessage(spaceGID, "msg_root_single", "msg_qt_2", "112233445566778899001", "Quote in threaded space", 1710000520000000, "", 0, 0)
+			_, _ = w.Write(encodeBytesField(1, msgBytes))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	require.NoError(t, client.syncWorld(ctx))
+	unthreadedSpace, err := h.Bridge.GetExistingPortalByKey(ctx, networkid.PortalKey{
+		ID:       MakeSpacePortalID("space_unthreaded"),
+		Receiver: ul.ID,
+	})
+	require.NoError(t, err)
+	threadedSpace, err := h.Bridge.GetExistingPortalByKey(ctx, networkid.PortalKey{
+		ID:       MakeSpacePortalID("space_threaded"),
+		Receiver: ul.ID,
+	})
+	require.NoError(t, err)
+
+	// Target message with single-segment ID ("msg_root_single", no "/" separator), empty TopicID in metadata,
+	// millisecond-truncated Timestamp, and exact microsecond CreateTimeMicros = 1710000500123456.
+	singleSegTarget := &database.Message{
+		ID:        networkid.MessageID("msg_root_single"),
+		Timestamp: time.UnixMilli(1710000500123), // 1710000500123000 us if misused
+		Metadata:  &MessageMetadata{TopicID: "", CreateTimeMicros: 1710000500123456},
+	}
+
+	// 1. Quote-reply in unthreaded space -> calls create_topic with SendReplyTarget carrying exact CreateTimeMicros and non-empty topic_id fallback ("msg_root_single")
+	_, err = client.HandleMatrixMessage(ctx, &bridgev2.MatrixMessage{
+		MatrixEventBase: bridgev2.MatrixEventBase[*event.MessageEventContent]{
+			Portal:  unthreadedSpace,
+			Content: &event.MessageEventContent{MsgType: event.MsgText, Body: "Quote in unthreaded space"},
+		},
+		ReplyTo: singleSegTarget,
+	})
+	require.NoError(t, err)
+
+	// 2. Quote-reply in threaded space -> calls create_message with SendReplyTarget carrying exact CreateTimeMicros and non-empty topic_id fallback ("msg_root_single")
+	_, err = client.HandleMatrixMessage(ctx, &bridgev2.MatrixMessage{
+		MatrixEventBase: bridgev2.MatrixEventBase[*event.MessageEventContent]{
+			Portal:  threadedSpace,
+			Content: &event.MessageEventContent{MsgType: event.MsgText, Body: "Quote in threaded space"},
+		},
+		ReplyTo: singleSegTarget,
+	})
+	require.NoError(t, err)
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, createTopicReqs, 1, "quote-reply in unthreaded space must use create_topic")
+	require.Len(t, createMsgReqs, 1, "quote-reply in threaded space must use create_message")
+
+	ctFields := parseProtoFields(createTopicReqs[0])
+	ctMsgInfo := parseProtoFields(firstFieldBytes(ctFields, 9))
+	ctReplyTarget := parseProtoFields(firstFieldBytes(ctMsgInfo, 3))
+	require.Equal(t, uint64(1710000500123456), firstFieldVarint(ctReplyTarget, 2), "create_topic SendReplyTarget must use stored microsecond CreateTimeMicros")
+	ctReplyMsgID := parseProtoFields(firstFieldBytes(ctReplyTarget, 1))
+	ctReplyParent := parseProtoFields(firstFieldBytes(ctReplyMsgID, 1))
+	ctReplyTopic := parseProtoFields(firstFieldBytes(ctReplyParent, 4))
+	require.Equal(t, "msg_root_single", firstFieldString(ctReplyTopic, 2), "create_topic SendReplyTarget topic_id must fall back to target message ID, never empty")
+
+	cmFields := parseProtoFields(createMsgReqs[0])
+	cmMsgInfo := parseProtoFields(firstFieldBytes(cmFields, 7))
+	cmReplyTarget := parseProtoFields(firstFieldBytes(cmMsgInfo, 3))
+	require.Equal(t, uint64(1710000500123456), firstFieldVarint(cmReplyTarget, 2), "create_message SendReplyTarget must use stored microsecond CreateTimeMicros")
+	cmReplyMsgID := parseProtoFields(firstFieldBytes(cmReplyTarget, 1))
+	cmReplyParent := parseProtoFields(firstFieldBytes(cmReplyMsgID, 1))
+	cmReplyTopic := parseProtoFields(firstFieldBytes(cmReplyParent, 4))
+	require.Equal(t, "msg_root_single", firstFieldString(cmReplyTopic, 2), "create_message SendReplyTarget topic_id must never be empty")
+}
+
+func TestPortalMetadataConcurrentStreamAndSendRace(t *testing.T) {
+	ctx := context.Background()
+	h, ul, client := setupLoggedInGChatTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/x-protobuf")
+		switch r.URL.Path {
+		case "/u/0/api/paginated_world":
+			_, _ = w.Write(buildSendTestPaginatedWorldResponse())
+		case "/u/0/api/create_topic":
+			spaceGID := encodeSpaceGroupID("space_threaded")
+			msgBytes := encodeSyntheticMessage(spaceGID, "topic_race", "msg_race", "112233445566778899001", "Race", 1710000500000000, "", 0, 0)
+			var topic []byte
+			topic = append(topic, encodeBytesField(1, encodeTopicID(spaceGID, "topic_race"))...)
+			topic = append(topic, encodeBytesField(7, msgBytes)...)
+			var resp []byte
+			resp = append(resp, encodeBytesField(1, topic)...)
+			resp = append(resp, encodeBytesField(2, encodeVarintField(1, 300))...)
+			_, _ = w.Write(resp)
+		case "/u/0/api/catch_up_group":
+			var resp []byte
+			resp = append(resp, encodeVarintField(2, 1)...)
+			resp = append(resp, encodeBytesField(4, encodeVarintField(1, 350))...)
+			_, _ = w.Write(resp)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	require.NoError(t, client.syncWorld(ctx))
+	spacePortal, err := h.Bridge.GetExistingPortalByKey(ctx, networkid.PortalKey{
+		ID:       MakeSpacePortalID("space_threaded"),
+		Receiver: ul.ID,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, spacePortal)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		rev := int64(200 + i)
+		wg.Add(4)
+		go func(r int64) {
+			defer wg.Done()
+			_ = client.advancePortalGroupRevision(ctx, spacePortal.PortalKey, r)
+		}(rev)
+		go func() {
+			defer wg.Done()
+			_ = client.GetCapabilities(ctx, spacePortal)
+		}()
+		go func() {
+			defer wg.Done()
+			_ = client.catchUpGroup(ctx, spacePortal)
+		}()
+		go func() {
+			defer wg.Done()
+			_, _ = client.HandleMatrixMessage(ctx, &bridgev2.MatrixMessage{
+				MatrixEventBase: bridgev2.MatrixEventBase[*event.MessageEventContent]{
+					Portal:  spacePortal,
+					Content: &event.MessageEventContent{MsgType: event.MsgText, Body: "Race"},
+				},
+			})
+		}()
+	}
+	wg.Wait()
+}
+
+func TestAdvertisedCapabilitiesAllHaveWorkingHandlers(t *testing.T) {
+	ctx := context.Background()
+	var (
+		mu              sync.Mutex
+		createTopicReqs [][]byte
+		createMsgReqs   [][]byte
+		editReqs        [][]byte
+		deleteReqs      [][]byte
+		reactionReqs    [][]byte
+		readStateReqs   [][]byte
+		typingReqs      [][]byte
+	)
+
+	h, ul, client := setupLoggedInGChatTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/x-protobuf")
+		switch r.URL.Path {
+		case "/u/0/api/paginated_world":
+			_, _ = w.Write(buildSendTestPaginatedWorldResponse())
+		case "/u/0/api/create_topic":
+			mu.Lock()
+			createTopicReqs = append(createTopicReqs, body)
+			idx := len(createTopicReqs)
+			mu.Unlock()
+			spaceGID := encodeSpaceGroupID("space_threaded")
+			tid := fmt.Sprintf("topic_cap_%d", idx)
+			mid := fmt.Sprintf("msg_cap_%d", idx)
+			msgBytes := encodeSyntheticMessage(spaceGID, tid, mid, "112233445566778899001", "cap", 1710000500000000+int64(idx), "", 0, 0)
+			var topic []byte
+			topic = append(topic, encodeBytesField(1, encodeTopicID(spaceGID, tid))...)
+			topic = append(topic, encodeBytesField(7, msgBytes)...)
+			_, _ = w.Write(encodeBytesField(1, topic))
+		case "/u/0/api/create_message":
+			mu.Lock()
+			createMsgReqs = append(createMsgReqs, body)
+			idx := len(createMsgReqs)
+			mu.Unlock()
+			spaceGID := encodeSpaceGroupID("space_threaded")
+			msgBytes := encodeSyntheticMessage(spaceGID, "topic_cap_1", fmt.Sprintf("msg_reply_cap_%d", idx), "112233445566778899001", "cap reply", 1710000600000000+int64(idx), "", 0, 0)
+			_, _ = w.Write(encodeBytesField(1, msgBytes))
+		case "/u/0/api/edit_message":
+			mu.Lock()
+			editReqs = append(editReqs, body)
+			mu.Unlock()
+			spaceGID := encodeSpaceGroupID("space_threaded")
+			msgBytes := encodeSyntheticMessage(spaceGID, "topic_cap_1", "msg_cap_1", "112233445566778899001", "edited", 1710000500000000, "", 0, 0)
+			_, _ = w.Write(encodeBytesField(1, msgBytes))
+		case "/u/0/api/delete_message":
+			mu.Lock()
+			deleteReqs = append(deleteReqs, body)
+			mu.Unlock()
+			_, _ = w.Write(encodeVarintField(4, 1710000560000000))
+		case "/u/0/api/update_reaction":
+			mu.Lock()
+			reactionReqs = append(reactionReqs, body)
+			mu.Unlock()
+			_, _ = w.Write(encodeBytesField(1, encodeVarintField(1, 600)))
+		case "/u/0/api/mark_group_readstate":
+			mu.Lock()
+			readStateReqs = append(readStateReqs, body)
+			mu.Unlock()
+			_, _ = w.Write(encodeBytesField(2, encodeVarintField(1, 601)))
+		case "/u/0/api/set_typing_state":
+			mu.Lock()
+			typingReqs = append(typingReqs, body)
+			mu.Unlock()
+			_, _ = w.Write(encodeVarintField(1, 1710000570000000))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	require.NoError(t, client.syncWorld(ctx))
+	threadedSpace, err := h.Bridge.GetExistingPortalByKey(ctx, networkid.PortalKey{
+		ID:       MakeSpacePortalID("space_threaded"),
+		Receiver: ul.ID,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, threadedSpace)
+
+	var api bridgev2.NetworkAPI = client
+
+	// 1. Walk NetworkGeneralCapabilities: no unimplemented provisioning or group-creation capabilities may be advertised.
+	genCaps := client.Main.GetCapabilities()
+	require.NotNil(t, genCaps)
+	if genCaps.Provisioning.ResolveIdentifier.CreateDM || genCaps.Provisioning.ResolveIdentifier.LookupEmail || genCaps.Provisioning.ResolveIdentifier.LookupPhone || genCaps.Provisioning.ResolveIdentifier.LookupUsername {
+		_, ok := api.(bridgev2.IdentifierResolvingNetworkAPI)
+		require.True(t, ok, "ResolveIdentifier advertised without IdentifierResolvingNetworkAPI")
+	}
+	if len(genCaps.Provisioning.GroupCreation) > 0 {
+		_, ok := api.(bridgev2.GroupCreatingNetworkAPI)
+		require.True(t, ok, "GroupCreation advertised without GroupCreatingNetworkAPI")
+	}
+
+	// 2. Walk every capability in RoomFeatures on the synced threaded space and invoke its handler against the fake server.
+	caps := client.GetCapabilities(ctx, threadedSpace)
+	require.NotNil(t, caps)
+
+	// Unimplemented capabilities must NOT be advertised.
+	require.False(t, caps.Poll.Partial(), "Poll must not be advertised without PollHandlingNetworkAPI")
+	require.Nil(t, caps.DisappearingTimer, "DisappearingTimer must not be advertised without DisappearTimerChangingNetworkAPI")
+	require.False(t, caps.LocationMessage.Partial(), "LocationMessage must not be advertised without location handler")
+	require.False(t, caps.DeleteChat, "DeleteChat must not be advertised without DeleteChatHandlingNetworkAPI")
+	require.Empty(t, caps.MemberActions, "MemberActions must not be advertised without MembershipHandlingNetworkAPI")
+	require.Empty(t, caps.State, "State capabilities must not be advertised without RoomName/RoomTopic/RoomAvatar handlers")
+
+	// Walk every advertised Formatting capability and verify it reaches the fake server via HandleMatrixMessage.
+	formattingSamples := map[event.FormattingFeature]string{
+		event.FmtBold:                "<b>bold</b>",
+		event.FmtItalic:              "<i>italic</i>",
+		event.FmtStrikethrough:       "<s>strike</s>",
+		event.FmtUnderline:           "<u>underline</u>",
+		event.FmtInlineCode:          "<code>code</code>",
+		event.FmtCodeBlock:           "<pre><code>block</code></pre>",
+		event.FmtTextForegroundColor: `<span data-mx-color="#ff00aa">color</span>`,
+		event.FmtUnorderedList:       "<ul><li>item</li></ul>",
+		event.FmtOrderedList:         "<ol><li>step</li></ol>",
+		event.FmtBlockquote:          "<blockquote>quote</blockquote>",
+		event.FmtInlineLink:          `<a href="https://example.com">link</a>`,
+		event.FmtUserLink:            `<a href="https://matrix.to/#/@gchat_112233445566778899002:courier.local">Alice</a>`,
+		event.FmtAtRoomMention:       "Hello @room",
+		event.FmtHeaders:             "<h1>Header</h1>",
+	}
+	var lastMsg *database.Message
+	for fmtFeat, level := range caps.Formatting {
+		if !level.Partial() {
+			continue
+		}
+		sampleHTML, ok := formattingSamples[fmtFeat]
+		require.True(t, ok, "missing test sample for advertised formatting feature %v", fmtFeat)
+		mu.Lock()
+		beforeTopics := len(createTopicReqs)
+		mu.Unlock()
+		resp, err := api.HandleMatrixMessage(ctx, &bridgev2.MatrixMessage{
+			MatrixEventBase: bridgev2.MatrixEventBase[*event.MessageEventContent]{
+				Portal: threadedSpace,
+				Content: &event.MessageEventContent{
+					MsgType:       event.MsgText,
+					Body:          sampleHTML,
+					Format:        event.FormatHTML,
+					FormattedBody: sampleHTML,
+				},
+			},
+		})
+		require.NoError(t, err, "formatting feature %v failed", fmtFeat)
+		require.NotNil(t, resp.DB)
+		lastMsg = resp.DB
+		mu.Lock()
+		afterTopics := len(createTopicReqs)
+		lastTopicReq := createTopicReqs[len(createTopicReqs)-1]
+		mu.Unlock()
+		require.Equal(t, beforeTopics+1, afterTopics, "formatting feature %v must reach fake server", fmtFeat)
+		if fmtFeat == event.FmtAtRoomMention {
+			fields := parseProtoFields(lastTopicReq)
+			require.Equal(t, "Hello @all", firstFieldString(fields, 2), "FmtAtRoomMention must rewrite @room to @all on wire")
+			require.True(t, hasMentionAllAnnotation(fields[3]), "FmtAtRoomMention must emit MENTION_ALL annotation on wire")
+		}
+	}
+	require.NotNil(t, lastMsg)
+
+	// Walk every advertised File capability -> verify MaxSize and caption support reach the fake server via HandleMatrixMessage.
+	for msgType, fileCaps := range caps.File {
+		if fileCaps == nil {
+			continue
+		}
+		require.Equal(t, int64(200*1024*1024), fileCaps.MaxSize, "file capability %v must enforce 200 MiB MaxSize", msgType)
+		mu.Lock()
+		beforeTopics := len(createTopicReqs)
+		mu.Unlock()
+		resp, err := api.HandleMatrixMessage(ctx, &bridgev2.MatrixMessage{
+			MatrixEventBase: bridgev2.MatrixEventBase[*event.MessageEventContent]{
+				Portal: threadedSpace,
+				Content: &event.MessageEventContent{
+					MsgType: msgType,
+					Body:    fmt.Sprintf("file-%s", msgType),
+				},
+			},
+		})
+		require.NoError(t, err, "file capability %v failed", msgType)
+		require.NotNil(t, resp.DB)
+		mu.Lock()
+		require.Equal(t, beforeTopics+1, len(createTopicReqs), "file capability %v must reach fake server", msgType)
+		mu.Unlock()
+	}
+
+	// Walk Thread capability -> reaches /u/0/api/create_message
+	if caps.Thread.Partial() {
+		mu.Lock()
+		beforeMsgs := len(createMsgReqs)
+		mu.Unlock()
+		_, err := api.HandleMatrixMessage(ctx, &bridgev2.MatrixMessage{
+			MatrixEventBase: bridgev2.MatrixEventBase[*event.MessageEventContent]{
+				Portal:  threadedSpace,
+				Content: &event.MessageEventContent{MsgType: event.MsgText, Body: "Thread walk"},
+			},
+			ThreadRoot: lastMsg,
+		})
+		require.NoError(t, err)
+		mu.Lock()
+		require.Equal(t, beforeMsgs+1, len(createMsgReqs), "Thread capability must reach create_message on fake server")
+		mu.Unlock()
+	}
+
+	// Walk Reply capability -> reaches fake server with SendReplyTarget
+	if caps.Reply.Partial() {
+		mu.Lock()
+		beforeMsgs := len(createMsgReqs)
+		mu.Unlock()
+		_, err := api.HandleMatrixMessage(ctx, &bridgev2.MatrixMessage{
+			MatrixEventBase: bridgev2.MatrixEventBase[*event.MessageEventContent]{
+				Portal:  threadedSpace,
+				Content: &event.MessageEventContent{MsgType: event.MsgText, Body: "Reply walk"},
+			},
+			ThreadRoot: lastMsg,
+			ReplyTo:    lastMsg,
+		})
+		require.NoError(t, err)
+		mu.Lock()
+		require.Equal(t, beforeMsgs+1, len(createMsgReqs), "Reply capability must reach create_message on fake server")
+		lastCreateMsg := parseProtoFields(createMsgReqs[len(createMsgReqs)-1])
+		mu.Unlock()
+		msgInfo := parseProtoFields(firstFieldBytes(lastCreateMsg, 7))
+		require.NotEmpty(t, firstFieldBytes(msgInfo, 3), "Reply capability must populate SendReplyTarget on fake server")
+	}
+
+	// Walk Edit capability -> reaches /u/0/api/edit_message
+	if caps.Edit.Partial() {
+		editAPI, ok := api.(bridgev2.EditHandlingNetworkAPI)
+		require.True(t, ok, "Edit advertised without EditHandlingNetworkAPI")
+		mu.Lock()
+		before := len(editReqs)
+		mu.Unlock()
+		require.NoError(t, editAPI.HandleMatrixEdit(ctx, &bridgev2.MatrixEdit{
+			MatrixEventBase: bridgev2.MatrixEventBase[*event.MessageEventContent]{
+				Portal:  threadedSpace,
+				Content: &event.MessageEventContent{MsgType: event.MsgText, Body: "Edit walk"},
+			},
+			EditTarget: lastMsg,
+		}))
+		mu.Lock()
+		require.Equal(t, before+1, len(editReqs), "Edit capability must reach edit_message on fake server")
+		mu.Unlock()
+	}
+
+	// Walk Reaction capability -> reaches /u/0/api/update_reaction (ADD and REMOVE)
+	if caps.Reaction.Partial() {
+		rxnAPI, ok := api.(bridgev2.ReactionHandlingNetworkAPI)
+		require.True(t, ok, "Reaction advertised without ReactionHandlingNetworkAPI")
+		mu.Lock()
+		before := len(reactionReqs)
+		mu.Unlock()
+		rxnEvt := &bridgev2.MatrixReaction{
+			MatrixEventBase: bridgev2.MatrixEventBase[*event.ReactionEventContent]{
+				Portal:  threadedSpace,
+				Content: &event.ReactionEventContent{RelatesTo: event.RelatesTo{Key: "👍"}},
+			},
+			TargetMessage: lastMsg,
+		}
+		pre, err := rxnAPI.PreHandleMatrixReaction(ctx, rxnEvt)
+		require.NoError(t, err)
+		rxnEvt.PreHandleResp = &pre
+		dbRxn, err := rxnAPI.HandleMatrixReaction(ctx, rxnEvt)
+		require.NoError(t, err)
+		require.NoError(t, rxnAPI.HandleMatrixReactionRemove(ctx, &bridgev2.MatrixReactionRemove{
+			MatrixEventBase: bridgev2.MatrixEventBase[*event.RedactionEventContent]{Portal: threadedSpace},
+			TargetReaction: &database.Reaction{
+				Room:      threadedSpace.PortalKey,
+				MessageID: lastMsg.ID,
+				EmojiID:   dbRxn.EmojiID,
+				Emoji:     dbRxn.Emoji,
+				Metadata:  dbRxn.Metadata,
+			},
+		}))
+		mu.Lock()
+		require.Equal(t, before+2, len(reactionReqs), "Reaction capability must reach update_reaction (ADD and REMOVE) on fake server")
+		mu.Unlock()
+	}
+
+	// Walk Delete capability -> reaches /u/0/api/delete_message
+	if caps.Delete.Partial() {
+		delAPI, ok := api.(bridgev2.RedactionHandlingNetworkAPI)
+		require.True(t, ok, "Delete advertised without RedactionHandlingNetworkAPI")
+		mu.Lock()
+		before := len(deleteReqs)
+		mu.Unlock()
+		require.NoError(t, delAPI.HandleMatrixMessageRemove(ctx, &bridgev2.MatrixMessageRemove{
+			MatrixEventBase: bridgev2.MatrixEventBase[*event.RedactionEventContent]{Portal: threadedSpace},
+			TargetMessage:   lastMsg,
+		}))
+		mu.Lock()
+		require.Equal(t, before+1, len(deleteReqs), "Delete capability must reach delete_message on fake server")
+		mu.Unlock()
+	}
+
+	// Walk ReadReceipts capability -> reaches /u/0/api/mark_group_readstate
+	if caps.ReadReceipts {
+		rrAPI, ok := api.(bridgev2.ReadReceiptHandlingNetworkAPI)
+		require.True(t, ok, "ReadReceipts advertised without ReadReceiptHandlingNetworkAPI")
+		mu.Lock()
+		before := len(readStateReqs)
+		mu.Unlock()
+		require.NoError(t, rrAPI.HandleMatrixReadReceipt(ctx, &bridgev2.MatrixReadReceipt{
+			Portal:   threadedSpace,
+			ReadUpTo: time.UnixMicro(1710000700000000),
+		}))
+		mu.Lock()
+		require.Equal(t, before+1, len(readStateReqs), "ReadReceipts capability must reach mark_group_readstate on fake server")
+		mu.Unlock()
+	}
+
+	// Walk TypingNotifications capability -> reaches /u/0/api/set_typing_state
+	if caps.TypingNotifications {
+		typAPI, ok := api.(bridgev2.TypingHandlingNetworkAPI)
+		require.True(t, ok, "TypingNotifications advertised without TypingHandlingNetworkAPI")
+		mu.Lock()
+		before := len(typingReqs)
+		mu.Unlock()
+		require.NoError(t, typAPI.HandleMatrixTyping(ctx, &bridgev2.MatrixTyping{
+			Portal:   threadedSpace,
+			IsTyping: true,
+			Type:     bridgev2.TypingTypeText,
+		}))
+		mu.Lock()
+		require.Equal(t, before+1, len(typingReqs), "TypingNotifications capability must reach set_typing_state on fake server")
+		mu.Unlock()
+	}
 }
 
 func parseProtoFields(buf []byte) map[int][]protoField {

@@ -104,10 +104,10 @@ func defaultRoomCapabilities(portal *bridgev2.Portal) *event.RoomFeatures {
 			isDM = parsedDM
 		}
 	}
-	var topicThreaded bool
+	var isThreaded bool
 	if portal != nil {
 		if meta, ok := portal.Metadata.(*PortalMetadata); ok && meta != nil {
-			topicThreaded = meta.TopicThreaded
+			isThreaded = meta.TopicThreaded || meta.ThreadsEnabled
 		}
 	}
 
@@ -116,7 +116,7 @@ func defaultRoomCapabilities(portal *bridgev2.Portal) *event.RoomFeatures {
 		atRoomLevel = event.CapLevelUnsupported
 	}
 	threadLevel := event.CapLevelUnsupported
-	if !isDM && topicThreaded {
+	if !isDM && isThreaded {
 		threadLevel = event.CapLevelFullySupported
 	}
 

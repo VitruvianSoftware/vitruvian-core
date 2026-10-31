@@ -50,15 +50,36 @@ func (c *Client) registerPendingLocalID() string {
 	return localID
 }
 
-func convertOutgoingText(content *event.MessageEventContent) (plainText string, annotations [][]byte, err error) {
+func (c *Client) addPendingToIgnore(msg *bridgev2.MatrixMessage, txnID networkid.TransactionID) {
+	if msg != nil && msg.Portal != nil && msg.Portal.Bridge != nil && txnID != "" {
+		msg.AddPendingToIgnore(txnID)
+	}
+}
+
+func (c *Client) removePending(msg *bridgev2.MatrixMessage, localID string, txnID networkid.TransactionID) {
+	c.mu.Lock()
+	delete(c.pendingLocalIDs, localID)
+	c.mu.Unlock()
+	if msg != nil && msg.Portal != nil && msg.Portal.Bridge != nil && txnID != "" {
+		msg.RemovePending(txnID)
+	}
+}
+
+func convertOutgoingText(content *event.MessageEventContent, allowMentionAll bool) (plainText string, annotations [][]byte, err error) {
 	if content == nil {
 		return "", nil, errors.New("Google Chat message content is empty.")
 	}
 	if len(content.Body) > maxOutboundTextLength || utf8.RuneCountInString(content.Body) > maxOutboundTextLength {
 		return "", nil, fmt.Errorf("Google Chat messages can't be longer than 4,096 characters.")
 	}
-	if content.Format == event.FormatHTML && content.FormattedBody != "" {
-		plainText, annotations, err = HTMLToAnnotations(content.FormattedBody)
+	hasHTML := content.Format == event.FormatHTML && content.FormattedBody != ""
+	hasPlainRoomMention := allowMentionAll && (strings.Contains(content.Body, "@room") || strings.Contains(content.Body, "@all"))
+	if hasHTML || hasPlainRoomMention {
+		var formatted string
+		if hasHTML {
+			formatted = content.FormattedBody
+		}
+		plainText, annotations, err = HTMLToAnnotations(content.Body, formatted, allowMentionAll)
 		if err != nil {
 			return "", nil, err
 		}
@@ -135,14 +156,22 @@ func (c *Client) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMe
 	if err != nil {
 		return nil, err
 	}
-	plainText, annotations, err := convertOutgoingText(msg.Content)
+	plainText, annotations, err := convertOutgoingText(msg.Content, !isDM)
 	if err != nil {
 		return nil, err
 	}
 
+	var isThreaded bool
+	c.metaMu.Lock()
+	if meta, ok := msg.Portal.Metadata.(*PortalMetadata); ok && meta != nil {
+		isThreaded = meta.TopicThreaded || meta.ThreadsEnabled
+	}
+	c.metaMu.Unlock()
+
 	groupIDProto := protoEncodeGroupID(isDM, rawGroupID)
 	localID := c.registerPendingLocalID()
 	txnID := networkid.TransactionID(localID)
+	c.addPendingToIgnore(msg, txnID)
 
 	var topicID string
 	if msg.ThreadRoot != nil {
@@ -152,7 +181,7 @@ func (c *Client) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMe
 		} else {
 			topicID = tMsg
 		}
-	} else if msg.ReplyTo != nil {
+	} else if msg.ReplyTo != nil && (isDM || isThreaded) {
 		rTopic, rMsg, _ := resolveMessageTopicAndID(msg.ReplyTo)
 		if rTopic != "" {
 			topicID = rTopic
@@ -161,7 +190,7 @@ func (c *Client) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMe
 		}
 	}
 
-	// Top-level message in a Space creates a new Topic via POST /u/0/api/create_topic.
+	// Top-level message in a Space (including a quote-reply in an unthreaded Space) creates a new Topic via POST /u/0/api/create_topic.
 	// Thread replies in a Space or messages in a DM call POST /u/0/api/create_message.
 	if !isDM && topicID == "" {
 		return c.sendCreateTopic(ctx, msg, groupIDProto, plainText, annotations, localID, txnID)
@@ -185,7 +214,13 @@ func (c *Client) sendCreateTopic(
 	// - group_id (field 5): GroupId
 	// - retention_settings (field 6): RetentionSettings { state (field 1) = DEFAULT_AWAKE / PERMANENT (1) }
 	// - history_v2 (field 8): true (1)
-	// - message_info (field 9): MessageInfo { accept_format_annotations (field 1) = true (1) }
+	// - message_info (field 9): MessageInfo { accept_format_annotations (field 1) = true (1), reply_to (field 3): SendReplyTarget }
+	var msgInfo []byte
+	msgInfo = append(msgInfo, protoEncodeVarintField(1, 1)...)
+	if replyTargetProto := buildSendReplyTargetProto(groupIDProto, msg.ReplyTo, ""); len(replyTargetProto) > 0 {
+		msgInfo = append(msgInfo, protoEncodeBytesField(3, replyTargetProto)...)
+	}
+
 	var req []byte
 	req = append(req, protoEncodeStringField(2, plainText)...)
 	for _, ann := range annotations {
@@ -195,10 +230,11 @@ func (c *Client) sendCreateTopic(
 	req = append(req, protoEncodeBytesField(5, groupIDProto)...)
 	req = append(req, protoEncodeBytesField(6, protoEncodeVarintField(1, 1))...)
 	req = append(req, protoEncodeVarintField(8, 1)...)
-	req = append(req, protoEncodeBytesField(9, protoEncodeVarintField(1, 1))...)
+	req = append(req, protoEncodeBytesField(9, msgInfo)...)
 
 	respBytes, err := c.rpcCall(ctx, "create_topic", req)
 	if err != nil {
+		c.removePending(msg, localID, txnID)
 		return nil, fmt.Errorf("create_topic failed: %w", err)
 	}
 
@@ -256,8 +292,20 @@ func (c *Client) sendCreateTopic(
 			CreateTimeMicros: createUsec,
 		},
 	}
-	if meta, ok := msg.Portal.Metadata.(*PortalMetadata); ok && meta != nil && meta.TopicThreaded && topicID != "" {
+	c.metaMu.Lock()
+	isThreaded := false
+	if meta, ok := msg.Portal.Metadata.(*PortalMetadata); ok && meta != nil {
+		isThreaded = meta.TopicThreaded || meta.ThreadsEnabled
+	}
+	c.metaMu.Unlock()
+	if isThreaded && topicID != "" {
 		dbMsg.ThreadRoot = MakeThreadRootID(topicID)
+	}
+	if msg.ReplyTo != nil {
+		dbMsg.ReplyTo = networkid.MessageOptionalPartID{
+			MessageID: msg.ReplyTo.ID,
+			PartID:    &msg.ReplyTo.PartID,
+		}
 	}
 
 	return &bridgev2.MatrixMessageResponse{
@@ -300,6 +348,7 @@ func (c *Client) sendCreateMessage(
 
 	respBytes, err := c.rpcCall(ctx, "create_message", req)
 	if err != nil {
+		c.removePending(msg, localID, txnID)
 		return nil, fmt.Errorf("create_message failed: %w", err)
 	}
 
@@ -340,7 +389,13 @@ func (c *Client) sendCreateMessage(
 			CreateTimeMicros: createUsec,
 		},
 	}
-	if meta, ok := msg.Portal.Metadata.(*PortalMetadata); ok && meta != nil && meta.TopicThreaded && topicID != "" {
+	c.metaMu.Lock()
+	isThreaded := false
+	if meta, ok := msg.Portal.Metadata.(*PortalMetadata); ok && meta != nil {
+		isThreaded = meta.TopicThreaded || meta.ThreadsEnabled
+	}
+	c.metaMu.Unlock()
+	if isThreaded && topicID != "" {
 		dbMsg.ThreadRoot = MakeThreadRootID(topicID)
 	}
 	if msg.ReplyTo != nil {
@@ -379,7 +434,7 @@ func (c *Client) HandleMatrixEdit(ctx context.Context, msg *bridgev2.MatrixEdit)
 	if err != nil {
 		return err
 	}
-	plainText, annotations, err := convertOutgoingText(msg.Content)
+	plainText, annotations, err := convertOutgoingText(msg.Content, !isDM)
 	if err != nil {
 		return err
 	}
@@ -420,8 +475,21 @@ func (c *Client) HandleMatrixEdit(ctx context.Context, msg *bridgev2.MatrixEdit)
 			groupRev = protoDecodeRevisionTimestamp(f.bytes)
 		}
 	})
-	if meta, ok := msg.EditTarget.Metadata.(*MessageMetadata); ok && meta != nil && pm.lastEditUsec > 0 {
-		meta.LastEditTime = pm.lastEditUsec
+	editTS := pm.lastEditUsec
+	if editTS <= 0 {
+		editTS = pm.lastUpdateUsec
+	}
+	if editTS <= 0 {
+		editTS = time.Now().UnixMicro()
+	}
+	meta, ok := msg.EditTarget.Metadata.(*MessageMetadata)
+	if !ok || meta == nil {
+		meta = &MessageMetadata{TopicID: topicID}
+		msg.EditTarget.Metadata = meta
+	}
+	meta.LastEditTime = editTS
+	if msg.Portal.Bridge != nil && msg.Portal.Bridge.DB != nil && msg.EditTarget.RowID != 0 {
+		_ = msg.Portal.Bridge.DB.Message.Update(ctx, msg.EditTarget)
 	}
 	if groupRev > 0 {
 		_ = c.advancePortalGroupRevision(ctx, msg.Portal.PortalKey, groupRev)

@@ -6,6 +6,9 @@ use crate::GChatError;
 
 pub const MAX_OUTBOUND_TEXT_CHARS: usize = 4096;
 
+/// Holds the converted outbound plain text and its prost-encoded `googlechat::Annotation`
+/// entries. Note: `pb::Annotation` is prost-generated without `serde` derives; across the C FFI
+/// boundary (`ffi.rs`), each annotation is serialized as standard base64-encoded protobuf wire bytes.
 #[derive(Debug, Clone, PartialEq)]
 pub struct OutboundFormattedMessage {
     pub text: String,
@@ -727,6 +730,10 @@ impl OutboundBuilder {
     }
 }
 
+/// Converts Matrix HTML (or plain text when `formatted_body` is `None`/empty) into Google Chat
+/// plain text and UTF-16 `Annotation` spans. User mentions are extracted directly from Matrix
+/// `https://matrix.to/#/@gchat_<gaia_id>:...` anchor `href` attributes rather than a separate
+/// `mention_map` parameter, and returns `Result<OutboundFormattedMessage, GChatError>`.
 pub fn matrix_html_to_annotations(
     plain_body: &str,
     formatted_body: Option<&str>,

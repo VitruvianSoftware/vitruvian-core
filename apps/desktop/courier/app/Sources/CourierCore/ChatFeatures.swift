@@ -274,43 +274,6 @@ public enum MessageActions {
 }
 
 extension ChatFeatures {
-    public static func forRoom(network: String, isDirect: Bool = false, isThreaded: Bool = false) -> ChatFeatures {
-        switch network {
-        case "gchat":
-            let maxSize: Int64 = 200 * 1024 * 1024
-            return ChatFeatures(
-                reply: true,
-                thread: !isDirect && isThreaded,
-                replyIsThread: false,
-                edit: true,
-                editMaxAgeMS: 0,
-                editMaxCount: 0,
-                unsend: true,
-                unsendMaxAgeMS: 0,
-                deleteReachesPhone: false,
-                hideDeletedPlaceholder: false,
-                poll: nil,
-                disappearing: nil,
-                currentTimer: nil,
-                formatting: [.bold, .italic, .strikethrough, .code, .pre, .blockquote, .bulletList, .orderedList, .link, .mention],
-                mentionRoom: !isDirect,
-                maxTextLength: 4096,
-                source: .network,
-                imageFeatures: FileKindFeatures(supported: true, mimeTypes: ["image/*"], caption: true, maxCaptionLength: 4096, maxSize: maxSize),
-                videoFeatures: FileKindFeatures(supported: true, mimeTypes: ["video/*"], caption: true, maxCaptionLength: 4096, maxSize: maxSize),
-                audioFeatures: FileKindFeatures(supported: true, mimeTypes: ["audio/*"], caption: true, maxCaptionLength: 4096, maxSize: maxSize),
-                voiceFeatures: FileKindFeatures(supported: true, mimeTypes: ["audio/*"], caption: true, maxCaptionLength: 4096, maxSize: maxSize),
-                fileFeatures: FileKindFeatures(supported: true, mimeTypes: ["*/*"], caption: true, maxCaptionLength: 4096, maxSize: maxSize),
-                gifFeatures: FileKindFeatures(supported: true, mimeTypes: ["image/gif"], caption: true, maxCaptionLength: 4096, maxSize: maxSize),
-                stickerFeatures: nil,
-                locationSupported: false,
-                linkPreviewsSupported: true
-            )
-        default:
-            return .noFeatures
-        }
-    }
-
     /// Whether the chat keeps formatting of `kind`; a kind it doesn't keep goes as plain text.
     public func keeps(_ kind: TextEntity.Kind) -> Bool {
         formatting.contains(kind)

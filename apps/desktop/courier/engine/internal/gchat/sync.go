@@ -444,6 +444,7 @@ func (c *Client) syncWorld(ctx context.Context) error {
 				portal.NameSet = true
 			}
 		}
+		c.metaMu.Lock()
 		meta, ok := portal.Metadata.(*PortalMetadata)
 		if !ok || meta == nil {
 			meta = &PortalMetadata{}
@@ -455,8 +456,10 @@ func (c *Client) syncWorld(ctx context.Context) error {
 			meta.GroupRevision = item.groupRevision
 			meta.Revision = item.groupRevision
 		}
-		if err := portal.Save(ctx); err != nil {
-			return fmt.Errorf("save portal %q: %w", portalID, err)
+		saveErr := portal.Save(ctx)
+		c.metaMu.Unlock()
+		if saveErr != nil {
+			return fmt.Errorf("save portal %q: %w", portalID, saveErr)
 		}
 	}
 	return nil
@@ -487,6 +490,8 @@ func (c *Client) advancePortalGroupRevision(ctx context.Context, portalKey netwo
 	if err != nil || portal == nil {
 		return err
 	}
+	c.metaMu.Lock()
+	defer c.metaMu.Unlock()
 	meta, ok := portal.Metadata.(*PortalMetadata)
 	if !ok || meta == nil {
 		meta = &PortalMetadata{}
@@ -617,6 +622,7 @@ func (c *Client) convertParsedMessage(pm parsedMessage) (*bridgev2.ConvertedMess
 			DBMetadata: &MessageMetadata{
 				TopicID:          pm.topicID,
 				CreateTimeMicros: pm.createTimeUsec,
+				LastEditTime:     pm.lastEditUsec,
 			},
 		}},
 	}
@@ -870,9 +876,11 @@ func (c *Client) catchUpGroup(ctx context.Context, portal *bridgev2.Portal) erro
 		return err
 	}
 	var fromRev int64
+	c.metaMu.Lock()
 	if meta, ok := portal.Metadata.(*PortalMetadata); ok && meta != nil {
 		fromRev = meta.GroupRevision
 	}
+	c.metaMu.Unlock()
 	if fromRev <= 0 {
 		return c.syncWorld(ctx)
 	}
@@ -946,14 +954,19 @@ func (c *Client) catchUpGroup(ctx context.Context, portal *bridgev2.Portal) erro
 	}
 
 	if maxGroupRev > fromRev {
+		c.metaMu.Lock()
 		meta, ok := portal.Metadata.(*PortalMetadata)
 		if !ok || meta == nil {
 			meta = &PortalMetadata{}
 			portal.Metadata = meta
 		}
-		meta.GroupRevision = maxGroupRev
-		meta.Revision = maxGroupRev
-		return portal.Save(ctx)
+		if maxGroupRev > meta.GroupRevision {
+			meta.GroupRevision = maxGroupRev
+			meta.Revision = maxGroupRev
+		}
+		saveErr := portal.Save(ctx)
+		c.metaMu.Unlock()
+		return saveErr
 	}
 	return nil
 }
@@ -1143,12 +1156,26 @@ func (c *Client) translateSingleEventBody(
 						TargetMessage: targetID,
 						Data:          pmCopy,
 						ConvertEditFunc: func(_ context.Context, _ *bridgev2.Portal, _ bridgev2.MatrixAPI, existing []*database.Message, data parsedMessage) (*bridgev2.ConvertedEdit, error) {
+							if len(existing) > 0 && existing[0] != nil {
+								meta, ok := existing[0].Metadata.(*MessageMetadata)
+								if !ok || meta == nil {
+									meta = &MessageMetadata{}
+									existing[0].Metadata = meta
+								}
+								if meta.LastEditTime > 0 && editTS <= meta.LastEditTime {
+									return nil, bridgev2.ErrIgnoringRemoteEvent
+								}
+								meta.LastEditTime = editTS
+							}
 							cm, err := c.convertParsedMessage(data)
 							if err != nil {
 								return nil, err
 							}
 							var editedParts []*bridgev2.ConvertedEditPart
 							if len(existing) > 0 && len(cm.Parts) > 0 {
+								if partMeta, ok := cm.Parts[0].DBMetadata.(*MessageMetadata); ok && partMeta != nil {
+									partMeta.LastEditTime = editTS
+								}
 								editedParts = append(editedParts, cm.Parts[0].ToEditPart(existing[0]))
 							}
 							return &bridgev2.ConvertedEdit{ModifiedParts: editedParts}, nil

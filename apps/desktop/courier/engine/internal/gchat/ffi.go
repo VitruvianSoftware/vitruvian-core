@@ -270,11 +270,17 @@ func statusError(status C.GChatStatus, errSlice C.GChatByteSlice) error {
 	return fmt.Errorf("gchat ffi error status %d", int(status))
 }
 
-// HTMLToAnnotations converts Matrix HTML (or plain text if html is empty) into Google Chat plain text and serialized Annotation protobuf slices.
-func HTMLToAnnotations(html string) (plainText string, annotations [][]byte, err error) {
+// HTMLToAnnotations converts Matrix HTML (or plain text if formattedBody is empty) into Google Chat plain text and serialized Annotation protobuf slices.
+func HTMLToAnnotations(plainBody, formattedBody string, allowMentionAll bool) (plainText string, annotations [][]byte, err error) {
 	reqObj := struct {
-		HTML string `json:"html"`
-	}{HTML: html}
+		PlainBody       string `json:"plain_body,omitempty"`
+		FormattedBody   string `json:"formatted_body,omitempty"`
+		AllowMentionAll bool   `json:"allow_mention_all"`
+	}{
+		PlainBody:       plainBody,
+		FormattedBody:   formattedBody,
+		AllowMentionAll: allowMentionAll,
+	}
 	inputJSON, err := json.Marshal(reqObj)
 	if err != nil {
 		return "", nil, fmt.Errorf("marshal html_to_annotations input: %w", err)
