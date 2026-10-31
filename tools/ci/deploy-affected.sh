@@ -180,7 +180,7 @@ fi
 # (`//tools/conformance:check` check_ci_gate_lists_match asserts it). NOTE that
 # `deploy/` is allowlisted here too, but this gate's TD universe is
 # DEPLOY_TARGETS (the image/zip artifacts) -- it does NOT graph-track
-# tools/deploy/cloud-run.sh. Callers that run a Cloud Run rollout therefore
+# //tools/deploy:cloud-run. Callers that run a Cloud Run rollout therefore
 # carry `tools/deploy/` in EXTRA_PATH_REGEX (section 2 above, which is evaluated
 # BEFORE this guard) so a rollout-sequencer change still forces a deploy.
 if echo "${CHANGED_FILES}" | grep -E '^(MODULE\.bazel|MODULE\.bazel\.lock|\.bazelrc|\.bazelversion|BUILD$|gazelle_python\.yaml$)' >/dev/null 2>&1 || \

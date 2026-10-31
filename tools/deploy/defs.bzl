@@ -34,6 +34,11 @@ CI, the pinned human identity locally), not here.
 """
 
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+def _bourne_quote(s):
+    """One argument for Bazel's Bourne-shell tokenization of `args`."""
+    return "'" + s.replace("'", "'\\''") + "'"
 
 def cloud_run_deploy(
         name = "deploy",
@@ -81,28 +86,57 @@ def cloud_run_deploy(
     if custom_smoke_script and custom_smoke_script_file:
         fail("cloud_run_deploy: set at most one of custom_smoke_script / custom_smoke_script_file")
     if custom_smoke_script:
-        # sh_binary `args` undergo Bazel "Make variable" expansion, so a shell
-        # `$` (e.g. ${CAND}) must be escaped to `$$` to reach the shell literally.
-        # NB: a MULTI-line inline script is word-split by the bazel-run launcher --
-        # use custom_smoke_script_file for anything beyond a one-liner.
-        args += ["--custom-smoke-script", custom_smoke_script.replace("$", "$$")]
+        # `args` get Bazel "Make variable" expansion, so a shell `$` (e.g.
+        # ${CAND}) is escaped to `$$` to reach the shell literally; then Bourne
+        # shell tokenization, so the script is single-quoted to arrive as ONE
+        # argument. Unquoted, a script with spaces or quotes (oauth's
+        # `cd "${BUILD_WORKSPACE_DIRECTORY...}" && bazel run ...`) was split
+        # and cloud-run refused the pieces (`unknown argument`, exit 2).
+        args += ["--custom-smoke-script", _bourne_quote(custom_smoke_script.replace("$", "$$"))]
     if custom_smoke_script_file:
         # A workspace-relative path; the tool reads it from the source tree.
         args += ["--custom-smoke-script-file", custom_smoke_script_file]
+
+    # The single `srcs` entry is the Rust sequencer itself: rules_shell
+    # symlinks it as the executable (no shell), as pulumi_project() does with
+    # //tools/pulumi:pulumi-cmd. A shell launcher here once looked for
+    # `cloud-run` beside itself, in the app's package, and every :deploy
+    # exited 126.
+    # What //tools/deploy:cloud-run sets for itself: an `env` on a data
+    # dependency does not reach a binary run through this target. Shared with
+    # the launcher test below, so it checks the paths `bazel run` really gets.
+    data = [
+        "//tools/gcp-token",
+        "//tools/pulumi:pulumi-cmd",
+    ]
+    env = {
+        "VITRUVIAN_GCP_TOKEN_BIN": "$(rootpath //tools/gcp-token)",
+        "VITRUVIAN_PULUMI_CMD_BIN": "$(rootpath //tools/pulumi:pulumi-cmd)",
+    }
     sh_binary(
         name = name,
-        srcs = ["//tools/deploy:cloud-run.sh"],
+        srcs = ["//tools/deploy:cloud-run"],
         args = args,
-        data = [
-            "//tools/deploy:cloud-run",
-            "//tools/gcp-token",
-            "//tools/pulumi:pulumi-cmd",
-        ],
-        # What //tools/deploy:cloud-run sets for itself: an `env` on a data
-        # dependency does not reach a binary run through this target.
-        env = {
-            "VITRUVIAN_GCP_TOKEN_BIN": "$(rootpath //tools/gcp-token)",
-            "VITRUVIAN_PULUMI_CMD_BIN": "$(rootpath //tools/pulumi:pulumi-cmd)",
-        },
+        data = data,
+        env = env,
         visibility = visibility,
+    )
+
+    # Runs this very target the way `bazel run :<name>` does: the same args
+    # and the same env, so the pulumi-cmd path it is configured with is the
+    # one checked (a stub is put at that path; see src/launcher_check.rs).
+    # Every :deploy once exited 126 when its launcher looked for cloud-run in
+    # the app's directory. The smoke file is data so the runfiles tree, which
+    # stands in for the workspace, holds it.
+    smoke_data = []
+    if custom_smoke_script_file:
+        pkg, _, base = custom_smoke_script_file.rpartition("/")
+        smoke_data.append("//%s:%s" % (pkg, base))
+    sh_test(
+        name = name + "_launcher_test",
+        size = "small",
+        srcs = ["//tools/deploy:launcher-check"],
+        args = ["$(rootpath :%s)" % name] + args,
+        data = [":" + name] + data + smoke_data,
+        env = env,
     )
