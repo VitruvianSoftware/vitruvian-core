@@ -92,7 +92,7 @@ jobs:
         run: |
           set +e -u -o pipefail
           DRIFT_RESULT_FILE="$GITHUB_OUTPUT" DRIFT_SUMMARY_FILE="$RUNNER_TEMP/drift-summary.md" \
-            bash tools/ci/delivery-drift.sh | tee "$RUNNER_TEMP/drift.out"
+            bazel run //tools/ci:delivery_drift | tee "$RUNNER_TEMP/drift.out"
           echo "rc=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
 
       # Always, so a crash or a failed setup still leaves a verdict (failure),

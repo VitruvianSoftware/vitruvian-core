@@ -19,7 +19,7 @@
 // SOFTWARE.
 
 //! main_test.go, ported. bazel is FAKED (a stub printing canned query output
-//! over a canned bazel-bin); deploy-affected.sh is REAL, run over scratch git
+//! over a canned bazel-bin); the deploy-affected engine is REAL, run over scratch git
 //! repos built once per test binary.
 
 use super::*;
@@ -113,7 +113,7 @@ fn repos() -> &'static Repos {
     static R: OnceLock<Repos> = OnceLock::new();
     R.get_or_init(|| {
         let rel = std::env::var("DEPLOY_AFFECTED")
-            .unwrap_or_else(|_| "../../ci/deploy-affected.sh".into());
+            .expect("DEPLOY_AFFECTED: the rust_test passes $(rootpath //tools/ci:deploy_affected)");
         let script = fs::canonicalize(&rel)
             .unwrap_or_else(|e| panic!("the real decision engine is missing at {}: {}", rel, e))
             .to_string_lossy()
@@ -437,7 +437,7 @@ fn path_match_affected() {
     );
     assert!(r
         .stdout
-        .contains("---- deploy-affected.sh: oauth-user-inspector (paths mode) ----"));
+        .contains("---- deploy-affected: oauth-user-inspector (paths mode) ----"));
 }
 
 #[test]
@@ -518,6 +518,11 @@ fn decide_exports_the_declared_graph_universe() {
         "#!/usr/bin/env bash\necho \"stub-engine: DEPLOY_TARGETS=[${DEPLOY_TARGETS-<unset>}]\"\necho \"deploy-affected: affected=false (stub)\"\necho \"affected=false\" >> \"$GITHUB_OUTPUT\"\n",
     )
     .unwrap();
+    // The engine is executed directly, so the stub must be executable.
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&stub, fs::Permissions::from_mode(0o755)).unwrap();
+    }
     let v = |s: &[&str]| Some(s.iter().map(|x| x.to_string()).collect::<Vec<_>>());
     let cases = [
         (

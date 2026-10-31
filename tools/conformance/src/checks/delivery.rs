@@ -985,7 +985,7 @@ pub fn check_deploy_durable_base(ctx: &Context) {
     for wf_path in &list_workflow_files(&ctx.workflows_dir) {
         let content = fs::read_to_string(wf_path).unwrap_or_default();
 
-        // Match: `run: bash tools/ci/deploy-affected.sh` or
+        // Match: `run: bazel run //tools/ci:deploy_affected` or
         //        `run: bazel run //tools/delivery/orchestrate`
         let has_engine = content.lines().any(|l| {
             let trimmed = l.trim_start();
@@ -993,7 +993,7 @@ pub fn check_deploy_durable_base(ctx: &Context) {
                 return false;
             }
             let after_run = trimmed[4..].trim_start();
-            after_run.starts_with("bash tools/ci/deploy-affected.sh")
+            after_run.starts_with("bazel run //tools/ci:deploy_affected")
                 || after_run.starts_with("bazel run //tools/delivery/orchestrate")
         });
         if !has_engine {
@@ -1007,13 +1007,13 @@ pub fn check_deploy_durable_base(ctx: &Context) {
             .unwrap_or("");
         let wf_rel = format!(".github/workflows/{}", basename);
 
-        // resolve-deploy-base.sh presence
+        // resolve_deploy_base presence
         let has_resolver = content.lines().any(|l| {
             let trimmed = l.trim_start();
             trimmed.starts_with("run:")
                 && trimmed[4..]
                     .trim_start()
-                    .starts_with("bash tools/ci/resolve-deploy-base.sh")
+                    .starts_with("bazel run //tools/ci:resolve_deploy_base")
         });
 
         // Parse concurrency groups (awk port).
@@ -1112,7 +1112,7 @@ pub fn check_deploy_durable_base(ctx: &Context) {
                 "durable base",
                 "coalescing, unmasked",
                 &format!(
-                    "diffs from resolve-deploy-base.sh's durable base; {} concurrency group(s) found, all coalescing (non-sha); no continue-on-error in the deploy chain to fake a success verdict",
+                    "diffs from resolve_deploy_base's durable base; {} concurrency group(s) found, all coalescing (non-sha); no continue-on-error in the deploy chain to fake a success verdict",
                     group_count
                 ),
             );
@@ -1124,9 +1124,9 @@ pub fn check_deploy_durable_base(ctx: &Context) {
                 "durable",
                 &wf_rel,
                 "event.before",
-                "resolve-deploy-base.sh",
-                "runs deploy-affected.sh but never resolve-deploy-base.sh \u{2014} BEFORE_REV traces back to github.event.before, which a run dropped by a coalescing concurrency group (#1311/#1335 eviction) can skip forever (#1351)",
-                "add a step running tools/ci/resolve-deploy-base.sh before the gate step and feed BEFORE_REV: ${{ steps.<id>.outputs.base_sha || github.event.before }}",
+                "resolve_deploy_base",
+                "runs the deploy-affected engine but never resolve_deploy_base \u{2014} BEFORE_REV traces back to github.event.before, which a run dropped by a coalescing concurrency group (#1311/#1335 eviction) can skip forever (#1351)",
+                "add a step running //tools/ci:resolve_deploy_base before the gate step and feed BEFORE_REV: ${{ steps.<id>.outputs.base_sha || github.event.before }}",
             );
         }
         if unserialized {
@@ -1148,7 +1148,7 @@ pub fn check_deploy_durable_base(ctx: &Context) {
                     "a concurrency group in this file keys on github.sha ('{}') \u{2014} that lets two commits deploy against the SAME live env + build Artifact Registry concurrently; sha-keying is the #1335 fix for GATING lanes (which CAN run in parallel), not this DEPLOY lane shape, which must serialize",
                     sha_keyed_group
                 ),
-                "key the group on a constant string instead (e.g. group: deploy-${{ inputs.app-name }}-${{ inputs.environment }}-${{ inputs.service-name }} on the calling job), and rely on tools/ci/resolve-deploy-base.sh for eviction-safety instead of per-commit isolation",
+                "key the group on a constant string instead (e.g. group: deploy-${{ inputs.app-name }}-${{ inputs.environment }}-${{ inputs.service-name }} on the calling job), and rely on //tools/ci:resolve_deploy_base for eviction-safety instead of per-commit isolation",
             );
         }
         if masked {
@@ -1158,7 +1158,7 @@ pub fn check_deploy_durable_base(ctx: &Context) {
                 "continue-on-error",
                 "no masking",
                 &format!(
-                    "continue-on-error in {} lets a failed deploy step still conclude the run success \u{2014} resolve-deploy-base.sh would then adopt that FAILED commit as the durable base, silently skipping every real change since (a subtler #1351 that conformance would otherwise never catch)",
+                    "continue-on-error in {} lets a failed deploy step still conclude the run success \u{2014} resolve_deploy_base would then adopt that FAILED commit as the durable base, silently skipping every real change since (a subtler #1351 that conformance would otherwise never catch)",
                     mask_where
                 ),
                 "remove continue-on-error from the push-triggered deploy chain (gate -> build -> deploy), including inside _deploy-cloud-run.yaml \u{2014} a masked failure there breaks the invariant the durable base depends on",

@@ -5,10 +5,10 @@
 #
 # Unit tests for require-dev-soak.sh. Drives the real script against a STUBBED
 # `gh` (GH_BIN), so every branch is exercised with no network, no token and no
-# GitHub state — the same hermetic bar as resolve-deploy-base_test.sh.
+# GitHub state — the same hermetic bar as //tools/ci:resolve_deploy_base_test.
 #
-# Locates the script beside itself (matching resolve-deploy-base_test.sh, which
-# CI invokes with no arguments); an explicit path may still be passed as $1.
+# Locates the script beside itself, so CI can invoke it with no arguments; an
+# explicit path may still be passed as $1.
 
 set -uo pipefail
 

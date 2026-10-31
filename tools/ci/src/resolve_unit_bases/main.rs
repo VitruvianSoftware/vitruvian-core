@@ -21,5 +21,11 @@
 //! //tools/ci:resolve-unit-bases: the Rust port.
 
 fn main() {
+    // `bazel run` starts us in the runfiles tree; act from the caller's
+    // directory, as the script did.
+    let rc = shell_compat::enter_bazel_run_cwd("resolve-unit-bases");
+    if rc != 0 {
+        std::process::exit(rc);
+    }
     std::process::exit(resolve_unit_bases::run(&shell_compat::args()));
 }

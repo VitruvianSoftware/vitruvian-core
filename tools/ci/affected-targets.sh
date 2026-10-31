@@ -68,7 +68,7 @@
 # The global-impact allowlist below no longer changes WHAT runs (everything
 # runs); it is retained because it classifies the sweep reason in the run UI and
 # because //tools/conformance:check asserts it stays byte-identical to the one
-# in deploy-affected.sh, which DOES still use it to gate live deploys.
+# in //tools/ci:deploy_affected, which DOES still use it to gate live deploys.
 
 set -euo pipefail
 
@@ -99,7 +99,7 @@ run_full_sweep() {
         echo ""
         echo "- reason: ${reason}"
         echo "- consequence: this run paid a full \`//...\` sweep instead of affected targets"
-        echo "- if this recurs across runs, the fast path is broken (see #503): check the TD pin in \`tools/ci/td-lib.sh\` and the runner platform"
+        echo "- if this recurs across runs, the fast path is broken (see #503): check the TD pin (TD_VERSION) in \`tools/ci/src/deploy_affected/lib.rs\` and the runner platform"
       } >> "${GITHUB_STEP_SUMMARY}"
     fi
   fi
@@ -188,7 +188,7 @@ fi
 # For `tools/`, we explicitly exclude administrative subdirectories that do not
 # alter the Bazel build graph (e.g. ci, copybara, scripts) to prevent unnecessary sweeps.
 #
-# The allowlist below MUST stay byte-identical to the one in deploy-affected.sh
+# The allowlist below MUST stay byte-identical to the one in //tools/ci:deploy_affected
 # (`//tools/conformance:check` check_ci_gate_lists_match asserts it), so the
 # deploy gate and the test gate can never disagree about what a change affects.
 #
