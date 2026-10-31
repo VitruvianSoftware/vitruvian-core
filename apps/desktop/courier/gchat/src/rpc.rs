@@ -78,6 +78,20 @@ fn strip_ascii_whitespace(bytes: &[u8]) -> Vec<u8> {
         .collect()
 }
 
+pub fn is_idempotent_rpc_endpoint(endpoint: &str) -> bool {
+    matches!(
+        endpoint,
+        "get_self_user_status"
+            | "paginated_world"
+            | "list_topics"
+            | "list_messages"
+            | "catch_up_user"
+            | "catch_up_group"
+            | "get_members"
+            | "get_group"
+    )
+}
+
 crate::edition2021! {
     pub async fn invoke_proto_rpc(
         http: &Client,
@@ -88,6 +102,31 @@ crate::edition2021! {
         base_url: &Url,
         endpoint: &str,
         req_bytes: &[u8],
+    ) -> Result<Vec<u8>, GChatError> {
+        invoke_proto_rpc_with_idempotency(
+            http,
+            jar,
+            xsrf,
+            guard,
+            user_agent,
+            base_url,
+            endpoint,
+            req_bytes,
+            is_idempotent_rpc_endpoint(endpoint),
+        )
+        .await
+    }
+
+    pub async fn invoke_proto_rpc_with_idempotency(
+        http: &Client,
+        jar: &DomainCookieJar,
+        xsrf: &XsrfTokenManager,
+        guard: &NetGuard,
+        user_agent: &str,
+        base_url: &Url,
+        endpoint: &str,
+        req_bytes: &[u8],
+        idempotent: bool,
     ) -> Result<Vec<u8>, GChatError> {
         let rel_path = format!("/u/0/api/{endpoint}?alt=proto");
         let url = base_url
@@ -135,7 +174,7 @@ crate::edition2021! {
                 )));
             }
 
-            if status.as_u16() == 429 || matches!(status.as_u16(), 502 | 503 | 504) {
+            if status.as_u16() == 429 || (idempotent && matches!(status.as_u16(), 502 | 503 | 504)) {
                 rate_limit_attempt += 1;
                 if rate_limit_attempt >= 3 {
                     if status.as_u16() == 429 {
@@ -468,6 +507,142 @@ mod tests {
                 "expected AuthExpired after repeated 401, got: {third_res:?}"
             );
             assert_eq!(mole_world_hits.load(Ordering::SeqCst), 4);
+
+            server_handle.abort();
+        }
+
+        #[tokio::test]
+        async fn test_non_idempotent_rpcs_never_retry_on_5xx_while_idempotent_reads_retry() {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let base_url = Url::parse(&format!("http://127.0.0.1:{}/", addr.port())).unwrap();
+
+            let create_topic_hits = Arc::new(AtomicUsize::new(0));
+            let create_message_hits = Arc::new(AtomicUsize::new(0));
+            let create_dm_hits = Arc::new(AtomicUsize::new(0));
+            let paginated_world_hits = Arc::new(AtomicUsize::new(0));
+
+            let ct_srv = Arc::clone(&create_topic_hits);
+            let cm_srv = Arc::clone(&create_message_hits);
+            let cd_srv = Arc::clone(&create_dm_hits);
+            let pw_srv = Arc::clone(&paginated_world_hits);
+
+            let server_handle = tokio::spawn(async move {
+                loop {
+                    let Ok((mut stream, _)) = listener.accept().await else {
+                        break;
+                    };
+                    let ct = Arc::clone(&ct_srv);
+                    let cm = Arc::clone(&cm_srv);
+                    let cd = Arc::clone(&cd_srv);
+                    let pw = Arc::clone(&pw_srv);
+                    tokio::spawn(async move {
+                        let mut buf = vec![0u8; 8192];
+                        let mut total = 0usize;
+                        loop {
+                            let n = stream.read(&mut buf[total..]).await.unwrap_or(0);
+                            if n == 0 {
+                                return;
+                            }
+                            total += n;
+                            if buf[..total].windows(4).any(|w| w == b"\r\n\r\n") {
+                                break;
+                            }
+                        }
+                        let headers_str = String::from_utf8_lossy(&buf[..total]).to_string();
+                        let first_line = headers_str.lines().next().unwrap_or("");
+                        if first_line.starts_with("GET /u/0/mole/world") {
+                            let html = r#"<html><script>{"xsrf_token":"AF1QipP_tok:1710000000000"}</script></html>"#;
+                            let resp = format!(
+                                "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                                html.len(),
+                                html
+                            );
+                            let _ = stream.write_all(resp.as_bytes()).await;
+                            return;
+                        }
+                        if first_line.starts_with("POST /u/0/api/create_topic?alt=proto") {
+                            ct.fetch_add(1, Ordering::SeqCst);
+                            let _ = stream
+                                .write_all(b"HTTP/1.1 503 Service Unavailable\r\nRetry-After: 0\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                                .await;
+                            return;
+                        }
+                        if first_line.starts_with("POST /u/0/api/create_message?alt=proto") {
+                            cm.fetch_add(1, Ordering::SeqCst);
+                            let _ = stream
+                                .write_all(b"HTTP/1.1 502 Bad Gateway\r\nRetry-After: 0\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                                .await;
+                            return;
+                        }
+                        if first_line.starts_with("POST /u/0/api/create_dm?alt=proto") {
+                            cd.fetch_add(1, Ordering::SeqCst);
+                            let _ = stream
+                                .write_all(b"HTTP/1.1 504 Gateway Timeout\r\nRetry-After: 0\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                                .await;
+                            return;
+                        }
+                        if first_line.starts_with("POST /u/0/api/paginated_world?alt=proto") {
+                            let n = pw.fetch_add(1, Ordering::SeqCst) + 1;
+                            if n == 1 {
+                                let _ = stream
+                                    .write_all(b"HTTP/1.1 503 Service Unavailable\r\nRetry-After: 0\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                                    .await;
+                            } else {
+                                let _ = stream
+                                    .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/x-protobuf\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                                    .await;
+                            }
+                        }
+                    });
+                }
+            });
+
+            let jar = test_cookie_jar();
+            let guard = NetGuard::allow_loopback_for_test();
+            let http = guard.build_http_client().unwrap();
+            let xsrf = Arc::new(XsrfTokenManager::new(
+                http.clone(),
+                jar.clone(),
+                base_url.clone(),
+                DEFAULT_MACOS_SAFARI_UA.to_string(),
+                guard.clone(),
+            ));
+
+            for ep in ["create_topic", "create_message", "create_dm"] {
+                let res = invoke_proto_rpc(
+                    &http,
+                    &jar,
+                    &xsrf,
+                    &guard,
+                    DEFAULT_MACOS_SAFARI_UA,
+                    &base_url,
+                    ep,
+                    &[],
+                )
+                .await;
+                assert!(
+                    matches!(res, Err(GChatError::HttpStatus(502..=504, _))),
+                    "non-idempotent {ep} must fail immediately on 5xx, got: {res:?}"
+                );
+            }
+            assert_eq!(create_topic_hits.load(Ordering::SeqCst), 1, "create_topic must not retry on 503");
+            assert_eq!(create_message_hits.load(Ordering::SeqCst), 1, "create_message must not retry on 502");
+            assert_eq!(create_dm_hits.load(Ordering::SeqCst), 1, "create_dm must not retry on 504");
+
+            let pw_res = invoke_proto_rpc(
+                &http,
+                &jar,
+                &xsrf,
+                &guard,
+                DEFAULT_MACOS_SAFARI_UA,
+                &base_url,
+                "paginated_world",
+                &[],
+            )
+            .await;
+            assert!(pw_res.is_ok(), "idempotent paginated_world must retry on 503 and succeed");
+            assert_eq!(paginated_world_hits.load(Ordering::SeqCst), 2);
 
             server_handle.abort();
         }
