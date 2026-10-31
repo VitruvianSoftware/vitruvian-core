@@ -65,6 +65,16 @@ impl Cmd {
         self
     }
 
+    /// [`Cmd::line`] with secrets hidden; see [`redact_args`].
+    pub fn redacted_line(&self) -> String {
+        let mut s = self.program.clone();
+        for a in redact_args(&self.program, &self.args) {
+            s.push(' ');
+            s.push_str(&a);
+        }
+        s
+    }
+
     /// The command as one line, program and arguments joined by spaces.
     pub fn line(&self) -> String {
         let mut s = self.program.clone();
@@ -126,6 +136,11 @@ pub trait Runner {
     fn report(&mut self, text: &str) {
         eprint!("{}", text);
     }
+    /// The secret values in play (from the environment), hidden wherever
+    /// they turn up in what the tools report.
+    fn secrets(&self) -> Vec<String> {
+        Vec::new()
+    }
 }
 
 /// Runs the commands for real.
@@ -133,11 +148,22 @@ pub trait Runner {
 pub struct SystemRunner {
     /// Variables set on every command, over the inherited environment.
     pub envs: BTreeMap<String, String>,
+    /// Secret values hidden from what the tools report; see [`env_secrets`].
+    pub secrets: Vec<String>,
 }
 
 impl SystemRunner {
     pub fn new() -> SystemRunner {
         SystemRunner::default()
+    }
+
+    /// A runner that hides the secrets this process's environment holds.
+    pub fn from_env() -> SystemRunner {
+        let env: BTreeMap<String, String> = std::env::vars().collect();
+        SystemRunner {
+            secrets: env_secrets(&env),
+            ..SystemRunner::default()
+        }
     }
 
     fn command(&self, cmd: &Cmd) -> Command {
@@ -252,6 +278,10 @@ impl Runner for SystemRunner {
     fn sleep(&mut self, d: Duration) {
         thread::sleep(d);
     }
+
+    fn secrets(&self) -> Vec<String> {
+        self.secrets.clone()
+    }
 }
 
 type Responder = Box<dyn FnMut(&Cmd) -> Out>;
@@ -268,6 +298,8 @@ pub struct FakeRunner {
     pub limits: Vec<(String, Duration)>,
     /// What the tool wrote through [`Runner::report`].
     pub stderr: String,
+    /// What [`Runner::secrets`] answers.
+    pub secrets: Vec<String>,
     respond: Responder,
     dir_check: Option<DirCheck>,
 }
@@ -282,6 +314,7 @@ impl FakeRunner {
             slept: Duration::ZERO,
             limits: Vec::new(),
             stderr: String::new(),
+            secrets: Vec::new(),
             respond: Box::new(respond),
             dir_check: None,
         }
@@ -347,6 +380,10 @@ impl Runner for FakeRunner {
     fn report(&mut self, text: &str) {
         self.stderr.push_str(text);
     }
+
+    fn secrets(&self) -> Vec<String> {
+        self.secrets.clone()
+    }
 }
 
 /// Runs `cmd` with the terminal's output; a failure is its exit code, as
@@ -367,73 +404,170 @@ pub fn capture(r: &mut dyn Runner, cmd: &Cmd) -> Result<String, i32> {
         return Ok(out.stdout);
     }
     let code = if out.code == 0 { 1 } else { out.code };
-    let mut text = format!("✗ `{}` failed (exit {})\n", redact(&cmd.line()), code);
+    let mut text = format!("✗ `{}` failed (exit {})\n", cmd.redacted_line(), code);
     text.push_str(&out.stderr);
     if !out.stderr.is_empty() && !out.stderr.ends_with('\n') {
         text.push('\n');
     }
-    r.report(&text);
+    report_redacted(r, &text);
     Err(code)
 }
 
-/// Words that make a `NAME=value` look like a secret.
-const SECRET_WORDS: [&str; 6] = ["key", "token", "secret", "password", "passwd", "credential"];
+/// Reports `text` with every secret the runner knows of hidden, so a
+/// command's own error output cannot echo one into the log.
+pub fn report_redacted(r: &mut dyn Runner, text: &str) {
+    let secrets = r.secrets();
+    r.report(&redact_known(text, &secrets));
+}
+
+pub const REDACTED: &str = "<redacted>";
 
 /// Flags whose next argument is a secret, for any program.
-const SECRET_FLAGS: [&str; 4] = ["--password", "--token", "--secret", "--api-key"];
-/// `security`'s password flags (`-p` keychain, `-k` keychain, `-P` p12).
-/// Only for `security`: `ditto -k` means something else.
-const SECURITY_SECRET_FLAGS: [&str; 3] = ["-p", "-k", "-P"];
+const SECRET_FLAGS: [&str; 6] = [
+    "--password",
+    "--passphrase",
+    "--token",
+    "--secret",
+    "--api-key",
+    "--client-secret",
+];
 
-/// `line` with anything that looks like a secret replaced by `<redacted>`:
-/// the value of any `NAME=value` whose name holds a secret word (the first
-/// such `=` wins, so `--remote_header=x-buildbuddy-api-key=V` hides `V`),
-/// the password in a URL's `user:password@`, and the argument after a
-/// password flag.
-pub fn redact(line: &str) -> String {
-    let words: Vec<&str> = line.split(' ').collect();
-    let is_security = words
-        .first()
-        .map(|p| *p == "security" || p.ends_with("/security"))
-        .unwrap_or(false);
-    let mut out = Vec::with_capacity(words.len());
+/// `security`'s flags that carry a password, by subcommand. Elsewhere the
+/// same letters are not secrets: `import -k` is the keychain path and
+/// `find-identity -p` a policy name.
+const SECURITY_SECRET_FLAGS: [(&str, &str); 6] = [
+    ("create-keychain", "-p"),
+    ("unlock-keychain", "-p"),
+    ("set-key-partition-list", "-k"),
+    ("import", "-P"),
+    ("export", "-P"),
+    ("set-keychain-password", "-p"),
+];
+
+/// Whether a variable, flag or header name names a secret. Precise on
+/// purpose: a name holding a secret word as a whole word (`token`,
+/// `password`, …), or `api`/`access`/`private`/`secret` followed by `key`.
+/// `key` alone is not one: `keychain`, `key-id` and `cache_key` stay.
+pub fn is_secret_name(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    let words: Vec<&str> = lower
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .collect();
+    const WHOLE: [&str; 9] = [
+        "token",
+        "secret",
+        "password",
+        "passwd",
+        "passphrase",
+        "authorization",
+        "credential",
+        "credentials",
+        "apikey",
+    ];
+    if words.iter().any(|w| WHOLE.contains(w)) {
+        return true;
+    }
+    words
+        .windows(2)
+        .any(|p| p[1] == "key" && matches!(p[0], "api" | "access" | "private" | "secret"))
+}
+
+/// The values of the environment's secrets: every variable whose name
+/// [`is_secret_name`], plus the base64 p12 and its password.
+pub fn env_secrets(env: &BTreeMap<String, String>) -> Vec<String> {
+    let mut v: Vec<String> = env
+        .iter()
+        .filter(|(k, val)| {
+            !val.is_empty()
+                && (is_secret_name(k)
+                    || matches!(k.as_str(), "SIGNING_CERT_P12" | "NOTARY_API_KEY_P8"))
+        })
+        .map(|(_, val)| val.clone())
+        .collect();
+    v.sort();
+    v.dedup();
+    v
+}
+
+/// `text` with every exact occurrence of a known secret hidden, longest
+/// first. Values under 4 characters are skipped: hiding them would shred
+/// ordinary words and they are not real secrets.
+pub fn redact_known(text: &str, secrets: &[String]) -> String {
+    let mut sorted: Vec<&String> = secrets.iter().filter(|s| s.len() >= 4).collect();
+    sorted.sort_by_key(|s| std::cmp::Reverse(s.len()));
+    let mut out = text.to_string();
+    for s in sorted {
+        out = out.replace(s.as_str(), REDACTED);
+    }
+    out
+}
+
+/// The arguments of `program` with secrets replaced by `<redacted>`, one
+/// argument at a time (so a secret holding a space is hidden whole): the
+/// argument after a secret flag, the value of a `NAME=value` whose name
+/// [`is_secret_name`], an `Authorization:` header's value, a URL's
+/// credentials and an openssl `pass:` value.
+pub fn redact_args(program: &str, args: &[String]) -> Vec<String> {
+    let base = Path::new(program)
+        .file_name()
+        .map(|f| f.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let sub = args.first().map(String::as_str).unwrap_or("");
+    let security_flag: Option<&str> = if base == "security" {
+        SECURITY_SECRET_FLAGS
+            .iter()
+            .find(|(s, _)| *s == sub)
+            .map(|(_, f)| *f)
+    } else {
+        None
+    };
+    let mut out = Vec::with_capacity(args.len());
     let mut hide_next = false;
-    for w in words {
+    for a in args {
         if hide_next {
-            out.push("<redacted>".to_string());
+            out.push(REDACTED.to_string());
             hide_next = false;
             continue;
         }
-        hide_next =
-            SECRET_FLAGS.contains(&w) || (is_security && SECURITY_SECRET_FLAGS.contains(&w));
-        out.push(redact_word(w));
+        hide_next = SECRET_FLAGS.contains(&a.as_str()) || security_flag == Some(a.as_str());
+        out.push(redact_arg(a));
     }
-    out.join(" ")
+    out
 }
 
-fn redact_word(word: &str) -> String {
-    if let Some(scheme_end) = word.find("://") {
-        let rest = &word[scheme_end + 3..];
+fn redact_arg(arg: &str) -> String {
+    let lower = arg.to_ascii_lowercase();
+    if let Some(i) = lower.find("authorization:") {
+        return format!("{} {}", &arg[..i + "authorization:".len()], REDACTED);
+    }
+    if lower.starts_with("pass:") {
+        return format!("pass:{}", REDACTED);
+    }
+    if let Some(scheme_end) = arg.find("://") {
+        let rest = &arg[scheme_end + 3..];
         let host_end = rest.find('/').unwrap_or(rest.len());
         if let Some(at) = rest[..host_end].rfind('@') {
-            if let Some(colon) = rest[..at].find(':') {
-                return format!(
-                    "{}{}:<redacted>{}",
-                    &word[..scheme_end + 3],
-                    &rest[..colon],
-                    &rest[at..]
-                );
-            }
+            let user = match rest[..at].find(':') {
+                Some(colon) => format!("{}:{}", &rest[..colon], REDACTED),
+                // `https://TOKEN@host`: the whole userinfo is the secret.
+                None => REDACTED.to_string(),
+            };
+            return format!("{}{}{}", &arg[..scheme_end + 3], user, &rest[at..]);
         }
-        return word.to_string();
+        return arg.to_string();
     }
-    for (i, _) in word.match_indices('=') {
-        let name = word[..i].to_ascii_lowercase();
-        if SECRET_WORDS.iter().any(|w| name.contains(w)) {
-            return format!("{}=<redacted>", &word[..i]);
+    // The name before each `=` is what follows the previous one, so
+    // `--remote_header=x-buildbuddy-api-key=V` is judged by
+    // `x-buildbuddy-api-key`.
+    let mut start = 0;
+    for (i, _) in arg.match_indices('=') {
+        if is_secret_name(&arg[start..i]) {
+            return format!("{}={}", &arg[..i], REDACTED);
         }
+        start = i + 1;
     }
-    word.to_string()
+    arg.to_string()
 }
 
 /// A new private (0700) folder under `parent`, like `mktemp -d`.
@@ -477,6 +611,104 @@ pub fn write_private(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     }
     let mut f = o.open(path)?;
     f.write_all(bytes)
+}
+
+/// Paths removed if SIGHUP, SIGINT or SIGTERM ends the process: the
+/// notary key and the signing certificates, which a script's `trap … EXIT`
+/// removed on Ctrl-C or a cancelled CI job and a `Drop` never sees.
+#[cfg(unix)]
+mod on_signal {
+    use std::ffi::CString;
+    use std::os::raw::{c_char, c_int};
+    use std::os::unix::ffi::OsStrExt;
+    use std::path::Path;
+    use std::ptr;
+    use std::sync::atomic::{AtomicPtr, Ordering};
+    use std::sync::Once;
+
+    const SLOTS: usize = 16;
+    const SIGNALS: [c_int; 3] = [1, 2, 15]; // SIGHUP, SIGINT, SIGTERM
+    const SIG_DFL: usize = 0;
+
+    #[allow(clippy::declare_interior_mutable_const)]
+    const EMPTY: AtomicPtr<c_char> = AtomicPtr::new(ptr::null_mut());
+    static PATHS: [AtomicPtr<c_char>; SLOTS] = [EMPTY; SLOTS];
+    static INSTALL: Once = Once::new();
+
+    extern "C" {
+        fn signal(sig: c_int, handler: usize) -> usize;
+        fn raise(sig: c_int) -> c_int;
+        fn unlink(path: *const c_char) -> c_int;
+        fn rmdir(path: *const c_char) -> c_int;
+    }
+
+    // Only async-signal-safe calls: unlink, rmdir, signal, raise.
+    extern "C" fn handle(sig: c_int) {
+        // Files first, so the folders that held them are empty for rmdir.
+        for slot in PATHS.iter().rev() {
+            let p = slot.load(Ordering::SeqCst);
+            if !p.is_null() {
+                unsafe {
+                    if unlink(p) != 0 {
+                        rmdir(p);
+                    }
+                }
+            }
+        }
+        // Then die of the same signal, so the exit status says so (128+N).
+        unsafe {
+            signal(sig, SIG_DFL);
+            raise(sig);
+        }
+    }
+
+    /// Removes `path` if a signal ends the process, until dropped.
+    pub struct Guard(usize);
+
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            let p = PATHS[self.0].swap(ptr::null_mut(), Ordering::SeqCst);
+            if !p.is_null() {
+                drop(unsafe { CString::from_raw(p) });
+            }
+        }
+    }
+
+    pub fn remove(path: &Path) -> Option<Guard> {
+        INSTALL.call_once(|| {
+            for sig in SIGNALS {
+                unsafe {
+                    signal(sig, handle as extern "C" fn(c_int) as usize);
+                }
+            }
+        });
+        let c = CString::new(path.as_os_str().as_bytes()).ok()?.into_raw();
+        for (i, slot) in PATHS.iter().enumerate() {
+            if slot
+                .compare_exchange(ptr::null_mut(), c, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok()
+            {
+                return Some(Guard(i));
+            }
+        }
+        drop(unsafe { CString::from_raw(c) });
+        None
+    }
+}
+
+/// Removes `path` (a file, or an empty folder) if SIGHUP, SIGINT or
+/// SIGTERM ends the process before the returned guard is dropped. Register
+/// a folder before the files in it.
+pub struct SignalCleanup {
+    #[cfg(unix)]
+    _guard: Option<on_signal::Guard>,
+}
+
+pub fn remove_on_signal(path: &Path) -> SignalCleanup {
+    SignalCleanup {
+        #[cfg(unix)]
+        _guard: on_signal::remove(path),
+    }
 }
 
 /// Removes a folder when dropped, as a script's `trap … EXIT` does.
@@ -690,41 +922,234 @@ mod tests {
         );
     }
 
+    fn red(program: &str, args: &[&str]) -> String {
+        Cmd::new(program).args(args).redacted_line()
+    }
+
     #[test]
-    fn redact_hides_keys_tokens_passwords_and_url_credentials() {
+    fn the_redactions_from_the_first_review_still_hold() {
         assert_eq!(
-            redact("bazel build --remote_header=x-buildbuddy-api-key=abc= //x"),
+            red(
+                "bazel",
+                &["build", "--remote_header=x-buildbuddy-api-key=abc=", "//x"]
+            ),
             "bazel build --remote_header=x-buildbuddy-api-key=<redacted> //x"
         );
         assert_eq!(
-            redact("git clone https://x-access-token:ghs_abc@github.com/o/r.git dir"),
+            red(
+                "git",
+                &[
+                    "clone",
+                    "https://x-access-token:ghs_abc@github.com/o/r.git",
+                    "dir"
+                ]
+            ),
             "git clone https://x-access-token:<redacted>@github.com/o/r.git dir"
         );
         assert_eq!(
-            redact("TOKEN=t1 PASSWORD=p2 SECRET=s3"),
-            "TOKEN=<redacted> PASSWORD=<redacted> SECRET=<redacted>"
+            red("env", &["TOKEN=t1", "PASSWORD=p2", "SECRET=s3"]),
+            "env TOKEN=<redacted> PASSWORD=<redacted> SECRET=<redacted>"
         );
         assert_eq!(
-            redact("security set-key-partition-list -S apple: -s -k kcpass /tmp/k.keychain"),
+            red(
+                "security",
+                &[
+                    "set-key-partition-list",
+                    "-S",
+                    "apple:",
+                    "-s",
+                    "-k",
+                    "kcpass",
+                    "/tmp/k.keychain"
+                ]
+            ),
             "security set-key-partition-list -S apple: -s -k <redacted> /tmp/k.keychain"
         );
         assert_eq!(
-            redact("security import c.p12 -k k -P p12pass -T /usr/bin/codesign"),
-            "security import c.p12 -k <redacted> -P <redacted> -T /usr/bin/codesign"
-        );
-        assert_eq!(
-            redact("tool --password hunter2 x"),
+            red("tool", &["--password", "hunter2", "x"]),
             "tool --password <redacted> x"
         );
-        // Ordinary flags and assignments are left alone.
-        assert_eq!(
-            redact("ditto -c -k --keepParent a b"),
-            "ditto -c -k --keepParent a b"
+    }
+
+    #[test]
+    fn a_secret_holding_a_space_is_hidden_whole() {
+        let mut r = FakeRunner::new(|_| Out::fail(1, "nope\n"));
+        let _ = capture(
+            &mut r,
+            &Cmd::new("tool").args(["--password", "correct horse battery", "--token=staple two"]),
         );
-        assert_eq!(
-            redact("gh api -X PATCH repos/o/r/git/refs/tags/t -f sha=abc -F force=true --config=macos-app"),
-            "gh api -X PATCH repos/o/r/git/refs/tags/t -f sha=abc -F force=true --config=macos-app"
+        assert!(!r.stderr.contains("horse"), "{:?}", r.stderr);
+        assert!(!r.stderr.contains("battery"), "{:?}", r.stderr);
+        assert!(!r.stderr.contains("two"), "{:?}", r.stderr);
+        assert!(
+            r.stderr
+                .contains("tool --password <redacted> --token=<redacted>"),
+            "{:?}",
+            r.stderr
         );
+    }
+
+    #[test]
+    fn headers_bare_url_tokens_openssl_pass_and_client_secret_are_hidden() {
+        let mut r = FakeRunner::new(|_| Out::fail(1, "nope\n"));
+        let _ = capture(
+            &mut r,
+            &Cmd::new("curl").args([
+                "-H",
+                "Authorization: Bearer abc123def",
+                "https://ghp_TOKENVALUE@github.com/o/r.git",
+            ]),
+        );
+        let _ = capture(
+            &mut r,
+            &Cmd::new("openssl").args(["pkcs12", "-passout", "pass:p12-PASS", "-out", "id.p12"]),
+        );
+        let _ = capture(
+            &mut r,
+            &Cmd::new("tool").args(["--client-secret", "cs-VALUE", "--client-secret=cs-OTHER"]),
+        );
+        for leaked in [
+            "abc123def",
+            "ghp_TOKENVALUE",
+            "p12-PASS",
+            "cs-VALUE",
+            "cs-OTHER",
+        ] {
+            assert!(
+                !r.stderr.contains(leaked),
+                "{} leaked: {:?}",
+                leaked,
+                r.stderr
+            );
+        }
+        assert!(
+            r.stderr
+                .contains("-H Authorization: <redacted> https://<redacted>@github.com/o/r.git"),
+            "{:?}",
+            r.stderr
+        );
+        assert!(
+            r.stderr.contains("-passout pass:<redacted> -out id.p12"),
+            "{:?}",
+            r.stderr
+        );
+        assert!(
+            r.stderr
+                .contains("--client-secret <redacted> --client-secret=<redacted>"),
+            "{:?}",
+            r.stderr
+        );
+    }
+
+    #[test]
+    fn a_failed_commands_stderr_hides_the_secrets_in_play() {
+        let mut r = FakeRunner::new(|_| {
+            Out::fail(
+                1,
+                "fatal: could not read from https://x-access-token:tok-SECRET-123@github.com\nbad key bb_KEY_VALUE\n",
+            )
+        });
+        r.secrets = env_secrets(
+            &[
+                ("HOMEBREW_TAP_TOKEN", "tok-SECRET-123"), // gitleaks:allow (made-up test value)
+                ("BUILDBUDDY_API_KEY", "bb_KEY_VALUE"),
+                ("GRADE", "beta"),
+            ]
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect(),
+        );
+        // A positional secret no flag rule knows about is still hidden.
+        let _ = capture(&mut r, &Cmd::new("tool").args(["bb_KEY_VALUE"]));
+        assert!(!r.stderr.contains("tok-SECRET-123"), "{:?}", r.stderr);
+        assert!(!r.stderr.contains("bb_KEY_VALUE"), "{:?}", r.stderr);
+        assert!(
+            r.stderr.contains("✗ `tool <redacted>` failed"),
+            "{:?}",
+            r.stderr
+        );
+        assert!(r.stderr.contains("bad key <redacted>"), "{:?}", r.stderr);
+    }
+
+    #[test]
+    fn env_secrets_are_the_secret_variables_values_only() {
+        let env: BTreeMap<String, String> = [
+            ("BUILDBUDDY_API_KEY", "bb"),
+            ("HOMEBREW_TAP_TOKEN", "tok"),
+            ("SIGNING_CERT_P12", "p12b64"),
+            ("SIGNING_CERT_PASSWORD", "pw"),
+            ("NOTARY_API_KEY_P8", "p8b64"),
+            ("NOTARY_KEY_ID", "KEYID"),
+            ("NOTARY_ISSUER_ID", "issuer"),
+            ("GH_TOKEN", "ghs"),
+            ("GRADE", "beta"),
+            ("RUNNER_TEMP", "/tmp/r"),
+            ("EMPTY_TOKEN", ""),
+        ]
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+        assert_eq!(
+            env_secrets(&env),
+            vec!["bb", "ghs", "p12b64", "p8b64", "pw", "tok"]
+        );
+        // Short values are left in text; long ones are hidden everywhere.
+        assert_eq!(
+            redact_known("pw tok p12b64 p12b64", &env_secrets(&env)),
+            "pw tok <redacted> <redacted>"
+        );
+    }
+
+    #[test]
+    fn non_secrets_are_left_alone() {
+        let mut r = FakeRunner::new(|_| Out::fail(1, "nope\n"));
+        let cmds = [
+            Cmd::new("security").args([
+                "import",
+                "/r/c.p12",
+                "-k",
+                "/r/ci.keychain",
+                "-P",
+                "p12pass",
+                "-T",
+                "/usr/bin/codesign",
+            ]),
+            Cmd::new("security").args(["find-identity", "-v", "-p", "codesigning"]),
+            Cmd::new("tool").args([
+                "cache_key=abc",
+                "--keychain=/r/k.keychain",
+                "--key-id=KEYID",
+                "keyfile=/x/AuthKey.p8",
+            ]),
+            Cmd::new("ditto").args(["-c", "-k", "--keepParent", "a", "b"]),
+            Cmd::new("gh").args([
+                "api",
+                "-X",
+                "PATCH",
+                "repos/o/r/git/refs/tags/t",
+                "-f",
+                "sha=abc",
+                "-F",
+                "force=true",
+            ]),
+        ];
+        for c in &cmds {
+            let _ = capture(&mut r, c);
+        }
+        for kept in [
+            "security import /r/c.p12 -k /r/ci.keychain -P <redacted> -T /usr/bin/codesign",
+            "security find-identity -v -p codesigning",
+            "tool cache_key=abc --keychain=/r/k.keychain --key-id=KEYID keyfile=/x/AuthKey.p8",
+            "ditto -c -k --keepParent a b",
+            "gh api -X PATCH repos/o/r/git/refs/tags/t -f sha=abc -F force=true",
+        ] {
+            assert!(
+                r.stderr.contains(kept),
+                "expected `{}` in {:?}",
+                kept,
+                r.stderr
+            );
+        }
     }
 
     #[test]
@@ -792,6 +1217,90 @@ mod tests {
             r.limits,
             vec![("osascript".to_string(), Duration::from_secs(25))]
         );
+    }
+
+    /// Run in a child process by the test below: writes a secret, asks for
+    /// it to be removed on a signal, says it is ready, and waits.
+    #[test]
+    #[ignore]
+    fn signal_cleanup_child() {
+        let Some(dir) = std::env::var_os("SIGNAL_CLEANUP_DIR") else {
+            return;
+        };
+        let dir = PathBuf::from(dir);
+        let work = dir.join("work");
+        fs::create_dir(&work).unwrap();
+        let _d = remove_on_signal(&work);
+        let key = work.join("AuthKey.p8");
+        write_private(&key, b"secret").unwrap();
+        let _k = remove_on_signal(&key);
+        fs::write(dir.join("ready"), b"").unwrap();
+        thread::sleep(Duration::from_secs(30));
+    }
+
+    #[test]
+    fn a_signal_removes_the_secret_files_and_ends_with_that_signal() {
+        use std::os::unix::process::ExitStatusExt;
+        for (sig, name) in [(15, "TERM"), (2, "INT")] {
+            let dir = make_temp_dir(&std::env::temp_dir(), "release_exec_signal").unwrap();
+            let _guard = TempDir(dir.clone());
+            let mut child = Command::new(std::env::current_exe().unwrap())
+                .args([
+                    "--exact",
+                    "tests::signal_cleanup_child",
+                    "--ignored",
+                    "--nocapture",
+                ])
+                .env("SIGNAL_CLEANUP_DIR", &dir)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .unwrap();
+            let started = Instant::now();
+            while !dir.join("ready").exists() {
+                if started.elapsed() > Duration::from_secs(20) {
+                    let _ = child.kill();
+                    panic!("the child never got ready");
+                }
+                thread::sleep(Duration::from_millis(20));
+            }
+            assert!(dir.join("work/AuthKey.p8").exists());
+            Command::new("sh")
+                .args(["-c", &format!("kill -{} {}", name, child.id())])
+                .status()
+                .unwrap();
+            let status = child.wait().unwrap();
+            assert_eq!(
+                status.signal(),
+                Some(sig),
+                "SIG{} ends it: {:?}",
+                name,
+                status
+            );
+            assert!(
+                !dir.join("work/AuthKey.p8").exists(),
+                "SIG{} left the key behind",
+                name
+            );
+            assert!(
+                !dir.join("work").exists(),
+                "SIG{} left the key's folder behind",
+                name
+            );
+        }
+    }
+
+    #[test]
+    fn a_dropped_cleanup_forgets_its_path() {
+        let dir = make_temp_dir(&std::env::temp_dir(), "release_exec_forget").unwrap();
+        let _guard = TempDir(dir.clone());
+        // Every slot is free again once its guard is gone.
+        for _ in 0..64 {
+            let g = remove_on_signal(&dir.join("x"));
+            #[cfg(unix)]
+            assert!(g._guard.is_some());
+            drop(g);
+        }
     }
 
     #[test]

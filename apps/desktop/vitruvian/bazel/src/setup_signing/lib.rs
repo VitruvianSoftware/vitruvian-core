@@ -131,6 +131,16 @@ pub fn setup_signing(r: &mut dyn Runner, home: &Path, tmp_root: &Path) -> Result
         1
     })?;
     let _cleanup = TempDir(work.clone());
+    // The private key and the p12 go too if a signal ends the run.
+    let _on_signal: Vec<_> = [
+        work.clone(),
+        work.join("key.pem"),
+        work.join("cert.pem"),
+        work.join("id.p12"),
+    ]
+    .iter()
+    .map(|p| release_exec::remove_on_signal(p))
+    .collect();
 
     let (req, export) = openssl_commands(&work);
     let made = r.output(&req);
@@ -202,7 +212,7 @@ pub fn run_cli(args: &[String]) -> i32 {
         return 1;
     };
     match setup_signing(
-        &mut release_exec::SystemRunner::new(),
+        &mut release_exec::SystemRunner::from_env(),
         Path::new(&home),
         &release_exec::temp_root(),
     ) {

@@ -379,7 +379,7 @@ pub fn run_cli(args: &[String]) -> i32 {
     let tmp_root = release_exec::temp_root();
     let mut tools = ReleaseTools::from_env(&pkg_dir, &tmp_root);
     match package_release(
-        &mut release_exec::SystemRunner::new(),
+        &mut release_exec::SystemRunner::from_env(),
         &mut tools,
         &pkg_dir,
         &archive,

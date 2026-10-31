@@ -420,7 +420,7 @@ pub fn run_cli(args: &[String]) -> i32 {
         developer_id: std::env::var("DEVELOPER_ID").ok(),
         tmp_root: release_exec::temp_root(),
     };
-    match make_dmg(&mut release_exec::SystemRunner::new(), &req) {
+    match make_dmg(&mut release_exec::SystemRunner::from_env(), &req) {
         Ok(_) => 0,
         Err(code) => code,
     }

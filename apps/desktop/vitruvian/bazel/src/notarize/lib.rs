@@ -15,7 +15,7 @@
 //! When the credentials are absent it skips quietly (success), so a plain
 //! build without notarization still succeeds, unless REQUIRE_NOTARIZATION=1.
 
-use release_exec::{make_temp_dir, run, write_private, Cmd, Runner, TempDir};
+use release_exec::{make_temp_dir, remove_on_signal, run, write_private, Cmd, Runner, TempDir};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -153,12 +153,14 @@ pub fn notarize(
         1
     })?;
     let _cleanup = TempDir(work.clone());
+    let _on_signal_dir = remove_on_signal(&work);
     let p = plan(target, creds, &work);
 
     let key = release_exec::decode_base64(&creds.api_key_p8).map_err(|e| {
         eprintln!("✗ NOTARY_API_KEY_P8 is not base64: {}", e);
         1
     })?;
+    let _on_signal_key = remove_on_signal(&p.p8_path);
     write_private(&p.p8_path, &key).map_err(|e| {
         eprintln!("✗ could not write AuthKey.p8: {}", e);
         1
@@ -196,7 +198,7 @@ pub fn run_cli(args: &[String]) -> i32 {
     };
     let env_map: BTreeMap<String, String> = std::env::vars().collect();
     let creds = NotaryEnv::from_env(&env_map);
-    let mut r = release_exec::SystemRunner::new();
+    let mut r = release_exec::SystemRunner::from_env();
     match notarize(
         &mut r,
         &release_exec::user_path(&target),
