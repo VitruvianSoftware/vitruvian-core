@@ -230,6 +230,13 @@ final class Notifier: NSObject, NotificationDelivering, UNUserNotificationCenter
         center.removeDeliveredNotifications(withIdentifiers: [notificationID])
     }
 
+    func clearAll() {
+        removeAllDeliveredHandler()
+        if let center = start() {
+            center.removeAllPendingNotificationRequests()
+        }
+    }
+
     // MARK: - UNUserNotificationCenterDelegate
 
     /// A message for another chat shows even while Courier is in front.

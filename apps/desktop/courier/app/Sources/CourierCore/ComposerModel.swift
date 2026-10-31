@@ -1763,7 +1763,7 @@ public final class ComposerModel: ObservableObject {
 
     /// Title for the Message menu's "Send Sticker…" item, including `"%1$@ (Unavailable for %2$@)"` when unsupported.
     public var sendStickerMenuTitle: String {
-        guard roomID != nil, !isEditing else { return String(localized: "Send Sticker…") }
+        guard !isLocked, roomID != nil, !isEditing else { return String(localized: "Send Sticker…") }
         guard canSendSticker else {
             return FormattingBar.unavailable(String(localized: "Send Sticker"), features: features, network: network)
         }
@@ -1772,7 +1772,7 @@ public final class ComposerModel: ObservableObject {
 
     /// Title for the Message menu's "Send GIF…" item, including `"%1$@ (Unavailable for %2$@)"` when unsupported.
     public var sendGIFMenuTitle: String {
-        guard roomID != nil, !isEditing else { return String(localized: "Send GIF…") }
+        guard !isLocked, roomID != nil, !isEditing else { return String(localized: "Send GIF…") }
         guard canSendGIF else {
             return FormattingBar.unavailable(String(localized: "Send GIF"), features: features, network: network)
         }
@@ -1978,11 +1978,11 @@ public final class ComposerModel: ObservableObject {
 
     /// Loads installed and bridge sticker packs plus recent GIFs from the engine (`stickers.list`).
     public func loadStickers(refresh: Bool = false) async {
-        guard let sender else { return }
+        guard !isLocked, let sender else { return }
         stickerLoadGeneration += 1
         let generation = stickerLoadGeneration
         guard let result = try? await sender.listStickers(refreshBridgePacks: refresh) else { return }
-        guard stickerLoadGeneration == generation else { return }
+        guard !isLocked, stickerLoadGeneration == generation else { return }
         applyStickerCatalog(result)
     }
 

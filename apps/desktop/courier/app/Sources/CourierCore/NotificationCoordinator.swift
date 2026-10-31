@@ -16,6 +16,8 @@ public protocol NotificationDelivering: AnyObject {
     func clear(roomID: String)
     /// Takes down one notification, by its id (`NotificationContent.eventID`), if it is shown.
     func remove(notificationID: String)
+    /// Takes down all delivered and pending notifications (e.g. when Courier locks).
+    func clearAll()
     /// Opens the macOS System Settings Notifications pane.
     func openSystemNotificationSettings()
     /// Removes delivered notifications, restarts the macOS NotificationCenter daemon, and re-requests settings.
@@ -23,6 +25,7 @@ public protocol NotificationDelivering: AnyObject {
 }
 
 extension NotificationDelivering {
+    public func clearAll() {}
     public func openSystemNotificationSettings() {}
     public func restartNotificationCenter() {}
 }
@@ -255,7 +258,11 @@ public final class NotificationCoordinator {
         ) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.latestOTPByRoom.removeAll()
+                self?.delivery.clearAll()
             }
+        }
+        if isCurrentlyLocked {
+            delivery.clearAll()
         }
     }
 

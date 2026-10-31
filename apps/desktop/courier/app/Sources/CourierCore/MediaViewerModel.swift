@@ -244,6 +244,7 @@ public final class MediaViewerModel: ObservableObject {
 
     /// Resets paging and loads the first page for the current `tab`, `sentBy`, `query`, and `roomID`.
     public func refresh() async {
+        guard AppLockGate.shared.canPerform(.other, lifecycle: appModel.lifecycle) else { return }
         nextCursor = nil
         hasMore = false
         rawItems = []
@@ -254,6 +255,7 @@ public final class MediaViewerModel: ObservableObject {
 
     /// Loads the next page using `nextCursor` when `hasMore` is true.
     public func loadNextPage() async {
+        guard AppLockGate.shared.canPerform(.other, lifecycle: appModel.lifecycle) else { return }
         guard hasMore, !isLoading, let cursor = nextCursor, !cursor.isEmpty else { return }
         await fetchPage(cursor: cursor, append: true)
     }

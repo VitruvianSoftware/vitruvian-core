@@ -139,17 +139,17 @@ struct InboxCommands: Commands {
             .disabled(lifecycle.isLocked)
         }
         CommandGroup(before: .sidebar) {
-            Button(preferences.showSpaceBar ? String(localized: "Hide Space Bar") : String(localized: "Show Space Bar")) {
+            Button(spaceBarMenuTitle) {
                 dispatch("Toggle Space Bar")
             }
             .registryShortcut("Toggle Space Bar", in: hotkeys)
             .disabled(!hotkeyDispatcher.canPerform("Toggle Space Bar"))
-            Button(menuCoordinator.isSidebarVisible ? String(localized: "Hide Sidebar") : String(localized: "Show Sidebar")) {
+            Button(sidebarMenuTitle) {
                 dispatch("Toggle Sidebar")
             }
             .registryShortcut("Toggle Sidebar", in: hotkeys)
             .disabled(!hotkeyDispatcher.canPerform("Toggle Sidebar"))
-            Button(conversation.incognitoIsOn ? String(localized: "Turn Off Incognito Mode") : String(localized: "Turn On Incognito Mode")) {
+            Button(incognitoMenuTitle) {
                 dispatch("Toggle Incognito Mode")
             }
             .registryShortcut("Toggle Incognito Mode", in: hotkeys)
@@ -274,26 +274,75 @@ struct InboxCommands: Commands {
 
     // MARK: The open chat (or the chats selected)
 
+    var spaceBarMenuTitle: String {
+        guard !lifecycle.isLocked else { return String(localized: "Show Space Bar") }
+        return preferences.showSpaceBar ? String(localized: "Hide Space Bar") : String(localized: "Show Space Bar")
+    }
+
+    var sidebarMenuTitle: String {
+        guard !lifecycle.isLocked else { return String(localized: "Show Sidebar") }
+        return menuCoordinator.isSidebarVisible ? String(localized: "Hide Sidebar") : String(localized: "Show Sidebar")
+    }
+
+    var incognitoMenuTitle: String {
+        guard !lifecycle.isLocked else { return String(localized: "Turn On Incognito Mode") }
+        return conversation.incognitoIsOn ? String(localized: "Turn Off Incognito Mode") : String(localized: "Turn On Incognito Mode")
+    }
+
+    var archiveMenuTitle: String {
+        guard !lifecycle.isLocked else { return String(localized: "Archive") }
+        let rows = inbox.targetRows()
+        let allArchived = !rows.isEmpty && rows.allSatisfy(\.archived)
+        return allArchived ? String(localized: "Unarchive") : String(localized: "Archive")
+    }
+
+    var markReadMenuTitle: String {
+        guard !lifecycle.isLocked else { return String(localized: "Mark as Read") }
+        return inbox.toggleReadMarksRead ? String(localized: "Mark as Read") : String(localized: "Mark as Unread")
+    }
+
+    var muteMenuTitle: String {
+        guard !lifecycle.isLocked else { return String(localized: "Mute Chat") }
+        let rows = inbox.targetRows()
+        let allMuted = !rows.isEmpty && rows.allSatisfy(\.muted)
+        return allMuted ? String(localized: "Unmute Chat") : String(localized: "Mute Chat")
+    }
+
+    var pinMenuTitle: String {
+        guard !lifecycle.isLocked else { return String(localized: "Pin") }
+        let rows = inbox.targetRows()
+        let allPinned = !rows.isEmpty && rows.allSatisfy(\.pinned)
+        return allPinned ? String(localized: "Unpin") : String(localized: "Pin")
+    }
+
+    var selectingMenuTitle: String {
+        guard !lifecycle.isLocked else { return String(localized: "Begin Selecting") }
+        return inbox.isSelecting ? String(localized: "End Selecting") : String(localized: "Begin Selecting")
+    }
+
+    var unreadFilterMenuTitle: String {
+        guard !lifecycle.isLocked else { return String(localized: "Show Only Unread Chats") }
+        return inbox.query.filters.contains(.unread) ? String(localized: "Show All Chats") : String(localized: "Show Only Unread Chats")
+    }
+
     @ViewBuilder
     private var actions: some View {
-        let rows = inbox.targetRows()
-        let all = { (test: (InboxRow) -> Bool) in !rows.isEmpty && rows.allSatisfy(test) }
-        Button(all(\.archived) ? String(localized: "Unarchive") : String(localized: "Archive")) {
+        Button(archiveMenuTitle) {
             dispatch("Chat: Toggle Archive")
         }
         .registryShortcut("Chat: Toggle Archive", in: hotkeys)
         .disabled(!hotkeyDispatcher.canPerform("Chat: Toggle Archive"))
-        Button(inbox.toggleReadMarksRead ? String(localized: "Mark as Read") : String(localized: "Mark as Unread")) {
+        Button(markReadMenuTitle) {
             dispatch("Chat: Toggle Mark As Read")
         }
         .registryShortcut("Chat: Toggle Mark As Read", in: hotkeys)
         .disabled(!hotkeyDispatcher.canPerform("Chat: Toggle Mark As Read"))
-        Button(all(\.muted) ? String(localized: "Unmute Chat") : String(localized: "Mute Chat")) {
+        Button(muteMenuTitle) {
             dispatch("Chat: Toggle Mute")
         }
         .registryShortcut("Chat: Toggle Mute", in: hotkeys)
         .disabled(!hotkeyDispatcher.canPerform("Chat: Toggle Mute"))
-        Button(all(\.pinned) ? String(localized: "Unpin") : String(localized: "Pin")) {
+        Button(pinMenuTitle) {
             dispatch("Chat: Toggle Pin")
         }
         .registryShortcut("Chat: Toggle Pin", in: hotkeys)
@@ -307,7 +356,7 @@ struct InboxCommands: Commands {
 
     @ViewBuilder
     private var selecting: some View {
-        Button(inbox.isSelecting ? String(localized: "End Selecting") : String(localized: "Begin Selecting")) {
+        Button(selectingMenuTitle) {
             if inbox.isSelecting { inbox.endSelecting() } else { inbox.beginSelecting() }
         }
         .disabled(!inbox.isSelecting && inbox.rows.isEmpty)
@@ -341,8 +390,7 @@ struct InboxCommands: Commands {
         Button(String(localized: "Filter: All")) { dispatch("Filter: All") }
             .registryShortcut("Filter: All", in: hotkeys)
             .disabled(!hotkeyDispatcher.canPerform("Filter: All"))
-        Button(inbox.query.filters.contains(.unread) ? String(localized: "Show All Chats")
-            : String(localized: "Show Only Unread Chats")) { dispatch("Filter: Unread") }
+        Button(unreadFilterMenuTitle) { dispatch("Filter: Unread") }
             .registryShortcut("Filter: Unread", in: hotkeys)
             .disabled(!hotkeyDispatcher.canPerform("Filter: Unread"))
         Button(String(localized: "Filter: Drafts")) { dispatch("Filter: Drafts") }

@@ -3035,6 +3035,300 @@ final class ViewSnapshotTests: XCTestCase {
         XCTAssertEqual(spyQLPanel.closeCount, 1, "QuickLookPreviewCoordinator must invoke closePreview() on app lock")
         XCTAssertEqual(quickLook.numberOfPreviewItems(in: nil), 0, "QuickLookPreviewCoordinator must clear previewURL on app lock")
     }
+
+    func testWindowTitlesMenuItemTitlesAndNotifierClearAllWhileLocked() async throws {
+        final class AlwaysPassBiometrics: BiometricAuthService {
+            func canEvaluateBiometricsOrWatch() -> Bool { true }
+            func authenticate(reason _: String) async throws -> Bool { true }
+        }
+        final class FakeLoginCaller: LoginCalling, @unchecked Sendable {
+            func start(network _: String, flow _: String, another _: Bool, accountID _: String?) async throws -> LoginStep {
+                throw EngineError.notConnected
+            }
+            func submit(loginID _: String, values _: [String: String]) async throws -> LoginStep {
+                throw EngineError.notConnected
+            }
+            func wait(loginID _: String) async throws -> LoginStep {
+                throw EngineError.notConnected
+            }
+            func cancel(loginID _: String) async throws {}
+        }
+        final class MemoryCredentials: CredentialStore, @unchecked Sendable {
+            var data: [String: String] = [:]
+            func read(account: String) throws -> String? { data[account] }
+            func write(_ value: String, account: String) throws { data[account] = value }
+            func delete(account: String) throws { data.removeValue(forKey: account) }
+        }
+
+        let testDefaults = defaults()
+        let lifecycle = SystemLifecycleModel(
+            defaults: testDefaults,
+            loginItem: SnapshotLoginItemService(),
+            biometrics: AlwaysPassBiometrics()
+        )
+        let appModel = offlineApp()
+        let inboxPrefs = InboxPreferences(defaults: testDefaults)
+        let composerPrefs = ComposerPreferences(defaults: testDefaults)
+        let inbox = InboxModel(appModel: appModel, preferences: inboxPrefs)
+        var row = Fixture.row(
+            "!r1",
+            "Alice Secret",
+            network: "signal",
+            direct: true,
+            ts: 5,
+            preview: "Confidential",
+            mine: false
+        )
+        row.pinned = true
+        row.muted = true
+        row.archived = true
+        row.unread = 0
+        inbox.setSnapshotRowsForTesting([row])
+
+        let spaces = SpacesModel(appModel: appModel, inbox: inbox, lifecycle: lifecycle)
+        spaces.setSpacesForTesting([
+            Space(spaceID: "inbox", kind: .builtin, title: "Inbox"),
+            Space(spaceID: "work", kind: .account, title: "Secret Work Space", network: "signal"),
+        ])
+
+        final class NoopPasteboard: TextPasteboard {
+            func setString(_: String) {}
+        }
+        let labels = LabelsModel(appModel: appModel, lifecycle: lifecycle)
+        let conversation = ConversationModel(appModel: appModel, preferences: composerPrefs)
+        let messageActions = MessageActionsModel(
+            conversation: conversation,
+            appModel: appModel,
+            preferences: composerPrefs,
+            pasteboard: NoopPasteboard()
+        )
+        let focus = MessageFocus()
+        let ui = InboxUI()
+        let search = SearchModel(
+            appModel: appModel,
+            recents: RecentSearches(defaults: testDefaults),
+            open: { _ in }
+        )
+        let login = LoginFlowModel(
+            caller: FakeLoginCaller(),
+            accounts: { appModel.accounts },
+            reloadAccounts: {},
+            credentials: MemoryCredentials(),
+            builtInCredentials: { nil },
+            restartEngine: {}
+        )
+        let hotkeys = HotkeyRegistry(defaults: testDefaults, isAppLocked: { lifecycle.isLocked })
+        let menuCoordinator = AppMenuCoordinator(inbox: inbox, lifecycle: lifecycle)
+
+        let detachedRegistry = DetachedWindowRegistry(
+            appModel: appModel,
+            mainInbox: inbox,
+            lifecycle: lifecycle,
+            inboxPreferences: inboxPrefs,
+            composerPreferences: composerPrefs
+        )
+        let detachedManager = DetachedWindowManager(
+            registry: detachedRegistry,
+            appModel: appModel,
+            mainInbox: inbox,
+            spaces: spaces,
+            lifecycle: lifecycle
+        )
+        detachedRegistry.open(.chat(roomID: "!r1"))
+        detachedRegistry.open(.space(spaceID: "work"))
+        detachedRegistry.open(.thread(roomID: "!r1", rootEventID: "$root1"))
+
+        guard let chatWindow = detachedManager.windows[.chat(roomID: "!r1")] else {
+            return XCTFail("Missing detached chat window")
+        }
+        guard let spaceWindow = detachedManager.windows[.space(spaceID: "work")] else {
+            return XCTFail("Missing detached space window")
+        }
+        guard let threadWindow = detachedManager.windows[.thread(roomID: "!r1", rootEventID: "$root1")] else {
+            return XCTFail("Missing detached thread window")
+        }
+
+        XCTAssertEqual(chatWindow.title, "Alice Secret")
+        XCTAssertEqual(spaceWindow.title, "Secret Work Space")
+        XCTAssertEqual(threadWindow.title, "Thread — Alice Secret")
+
+        // Create auxiliary NSWindows hosting LockableWindowContent for MainWindow, ChatInfoWindow, and LabelEditorWindow.
+        let mainNSWindow = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        mainNSWindow.isReleasedWhenClosed = false
+        mainNSWindow.contentViewController = NSHostingController(
+            rootView: LockableWindowContent(lifecycle: lifecycle) {
+                Text("Main")
+            }
+        )
+        mainNSWindow.contentView?.layoutSubtreeIfNeeded()
+        mainNSWindow.title = "Courier"
+        mainNSWindow.subtitle = "Connected"
+
+        let chatInfoNSWindow = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 340, height: 620),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        chatInfoNSWindow.isReleasedWhenClosed = false
+        chatInfoNSWindow.contentViewController = NSHostingController(
+            rootView: LockableWindowContent(lifecycle: lifecycle) {
+                ChatInfoWindow(roomID: "!r1", conversation: conversation)
+            }
+        )
+        chatInfoNSWindow.contentView?.layoutSubtreeIfNeeded()
+        chatInfoNSWindow.title = "Chat Info — Alice Secret"
+
+        let labelEditorNSWindow = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 320),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        labelEditorNSWindow.isReleasedWhenClosed = false
+        labelEditorNSWindow.contentViewController = NSHostingController(
+            rootView: LockableWindowContent(lifecycle: lifecycle) {
+                LabelEditorWindow(target: .new(applyTo: []), labels: labels, spaces: spaces, inbox: inbox)
+            }
+        )
+        labelEditorNSWindow.contentView?.layoutSubtreeIfNeeded()
+        defer {
+            detachedRegistry.closeAll()
+            mainNSWindow.close()
+            chatInfoNSWindow.close()
+            labelEditorNSWindow.close()
+        }
+
+        // Configure active chat/inbox state before locking to test LEAK-3 menu item titles.
+        inbox.select("!r1")
+        inbox.beginSelecting()
+        inbox.toggleUnreadFilter()
+        inboxPrefs.showSpaceBar = true
+        menuCoordinator.isSidebarVisible = true
+        conversation.isEntitled = { _ in true }
+        conversation.isShowingChatInfo = true
+        conversation.isShowingCalendar = true
+        let rootEvent = Fixture.text(
+            "$root1",
+            "Thread root",
+            mine: false,
+            ts: 60,
+            thread: ThreadSummary(replies: 2, lastTS: Fixture.millis(5), lastSenders: ["Bob"])
+        )
+        let restrictedFeatures = ChatFeatures(
+            reply: true,
+            thread: true,
+            edit: true,
+            unsend: true,
+            source: .stored,
+            canDelete: true,
+            gifFeatures: FileKindFeatures(supported: false),
+            stickerFeatures: FileKindFeatures(supported: false)
+        )
+        conversation.setSnapshotStateForTesting(
+            roomID: "!r1",
+            items: Fixture.items([rootEvent], isDirect: true),
+            row: row,
+            features: restrictedFeatures
+        )
+        conversation.composer.open("!r1")
+        conversation.composer.network = "signal"
+        conversation.composer.features = restrictedFeatures
+        conversation.selectedMessageID = "$root1"
+
+        let dispatcher = HotkeyDispatcher(
+            inbox: inbox,
+            spaces: spaces,
+            conversation: conversation,
+            messageActions: messageActions,
+            search: search,
+            lifecycle: lifecycle,
+            menuCoordinator: menuCoordinator,
+            focus: focus,
+            hotkeys: hotkeys
+        )
+        _ = dispatcher.perform("Toggle Incognito Mode")
+        let inboxCommands = InboxCommands(
+            inbox: inbox,
+            login: login,
+            spaces: spaces,
+            preferences: inboxPrefs,
+            ui: ui,
+            search: search,
+            conversation: conversation,
+            lifecycle: lifecycle,
+            menuCoordinator: menuCoordinator,
+            minimizeToMenuBar: {},
+            hotkeys: hotkeys,
+            hotkeyDispatcher: dispatcher
+        )
+        let conversationCommands = ConversationCommands(
+            conversation: conversation,
+            chatComposer: conversation.composer,
+            paneComposer: conversation.thread.composer,
+            messageActions: messageActions,
+            focus: focus,
+            hotkeys: hotkeys,
+            hotkeyDispatcher: dispatcher,
+            lifecycle: lifecycle
+        )
+
+        // LEAK-2: Verify Notifier.clearAll() invokes removeAllDeliveredHandler.
+        let notifier = Notifier()
+        var removeAllDeliveredCalled = 0
+        notifier.removeAllDeliveredHandler = {
+            removeAllDeliveredCalled += 1
+        }
+        notifier.clearAll()
+        XCTAssertEqual(
+            removeAllDeliveredCalled,
+            1,
+            "Notifier.clearAll() must invoke removeAllDeliveredHandler (UNUserNotificationCenter.removeAllDeliveredNotifications)"
+        )
+
+        // Lock the app and verify LEAK-1 (window titles) and LEAK-3 (menu item titles).
+        lifecycle.lockNow()
+        try await Task.sleep(nanoseconds: 20_000_000)
+
+        // LEAK-1 assertions: every window title while locked must be plain "Courier" with empty subtitle.
+        XCTAssertEqual(mainNSWindow.title, "Courier", "Main window title must be 'Courier' while locked")
+        XCTAssertEqual(mainNSWindow.subtitle, "", "Main window subtitle must be empty while locked")
+        XCTAssertEqual(chatWindow.title, "Courier", "Detached chat window title must be 'Courier' while locked")
+        XCTAssertEqual(spaceWindow.title, "Courier", "Detached space window title must be 'Courier' while locked")
+        XCTAssertEqual(threadWindow.title, "Courier", "Detached thread window title must be 'Courier' while locked")
+        XCTAssertEqual(chatInfoNSWindow.title, "Courier", "Chat Info window title must be 'Courier' while locked")
+        XCTAssertEqual(labelEditorNSWindow.title, "Courier", "Label Editor window title must be 'Courier' while locked")
+
+        // LEAK-3 assertions: menu item titles while locked must not reveal chat or inbox state.
+        XCTAssertEqual(inboxCommands.spaceBarMenuTitle, "Show Space Bar", "Space Bar menu item title must not leak state while locked")
+        XCTAssertEqual(inboxCommands.sidebarMenuTitle, "Show Sidebar", "Sidebar menu item title must not leak state while locked")
+        XCTAssertEqual(inboxCommands.incognitoMenuTitle, "Turn On Incognito Mode", "Incognito menu item title must not leak state while locked")
+        XCTAssertEqual(inboxCommands.archiveMenuTitle, "Archive", "Archive menu item title must not leak chat archived state while locked")
+        XCTAssertEqual(inboxCommands.markReadMenuTitle, "Mark as Read", "Mark as Read menu item title must not leak chat read state while locked")
+        XCTAssertEqual(inboxCommands.muteMenuTitle, "Mute Chat", "Mute menu item title must not leak chat muted state while locked")
+        XCTAssertEqual(inboxCommands.pinMenuTitle, "Pin", "Pin menu item title must not leak chat pinned state while locked")
+        XCTAssertEqual(inboxCommands.selectingMenuTitle, "Begin Selecting", "Selecting menu item title must not leak selection state while locked")
+        XCTAssertEqual(inboxCommands.unreadFilterMenuTitle, "Show Only Unread Chats", "Unread filter menu item title must not leak filter state while locked")
+        XCTAssertEqual(conversationCommands.showRepliesOrJumpMenuTitle, "Jump to Newest Message", "Show Replies menu item title must not leak thread selection while locked")
+        XCTAssertEqual(conversationCommands.sendGIFMenuTitle, "Send GIF…", "Send GIF menu item title must not leak chat network while locked")
+        XCTAssertEqual(conversationCommands.sendStickerMenuTitle, "Send Sticker…", "Send Sticker menu item title must not leak chat network while locked")
+        XCTAssertEqual(conversationCommands.chatInfoMenuTitle, "Show Chat Info", "Chat Info menu item title must not leak pane state while locked")
+        XCTAssertEqual(conversationCommands.calendarMenuTitle, "Show Calendar", "Calendar menu item title must not leak pane state while locked")
+
+        // Unlock and verify LEAK-1 window titles come back.
+        _ = await lifecycle.unlockWithTouchID()
+        try await Task.sleep(nanoseconds: 20_000_000)
+        XCTAssertEqual(chatWindow.title, "Alice Secret", "Detached chat window title must be restored on unlock")
+        XCTAssertEqual(spaceWindow.title, "Secret Work Space", "Detached space window title must be restored on unlock")
+        XCTAssertEqual(threadWindow.title, "Thread — Alice Secret", "Detached thread window title must be restored on unlock")
+        XCTAssertEqual(chatInfoNSWindow.title, "Chat Info — Alice Secret", "Chat Info window title must be restored on unlock")
+        XCTAssertEqual(labelEditorNSWindow.title, "New Label", "Label Editor window title must be restored on unlock")
+    }
 }
 
 private struct SnapshotLoginItemService: LoginItemService {

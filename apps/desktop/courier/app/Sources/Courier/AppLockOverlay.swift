@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
+import Combine
 import CourierCore
 import SwiftUI
 
@@ -41,9 +42,12 @@ private struct WindowLockEnforcer: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: LockEnforcerNSView, context _: Context) {
+        let wasLocked = nsView.isLocked
         nsView.isLocked = isLocked
         if isLocked {
             nsView.enforceLockOnWindow()
+        } else if wasLocked {
+            nsView.restoreUnlockedWindowTitle()
         }
     }
 }
@@ -51,9 +55,92 @@ private struct WindowLockEnforcer: NSViewRepresentable {
 @MainActor
 private final class LockEnforcerNSView: NSView {
     var isLocked = false
+    private var savedTitle: String?
+    private var savedSubtitle: String?
+    private var isUpdatingWindowTitle = false
+    private var lockObserver: Any?
+    private var unlockObserver: Any?
+    private var titleCancellable: AnyCancellable?
+    private var subtitleCancellable: AnyCancellable?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        installLockObservers()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        installLockObservers()
+    }
+
+    deinit {
+        if let lockObserver {
+            NotificationCenter.default.removeObserver(lockObserver)
+        }
+        if let unlockObserver {
+            NotificationCenter.default.removeObserver(unlockObserver)
+        }
+    }
+
+    private func installLockObservers() {
+        lockObserver = NotificationCenter.default.addObserver(
+            forName: SystemLifecycleModel.didLockNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.isLocked = true
+                self.enforceLockOnWindow()
+            }
+        }
+        unlockObserver = NotificationCenter.default.addObserver(
+            forName: SystemLifecycleModel.didUnlockNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.isLocked = false
+                self.restoreUnlockedWindowTitle()
+            }
+        }
+    }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        titleCancellable = nil
+        subtitleCancellable = nil
+        guard let window else { return }
+        let lockedTitle = String(localized: "Courier")
+        if window.title != lockedTitle, !window.title.isEmpty {
+            savedTitle = window.title
+        }
+        if !window.subtitle.isEmpty {
+            savedSubtitle = window.subtitle
+        }
+        titleCancellable = window.publisher(for: \.title).sink { [weak self, weak window] newTitle in
+            guard let self, let window, !self.isUpdatingWindowTitle else { return }
+            if newTitle != lockedTitle, !newTitle.isEmpty {
+                self.savedTitle = newTitle
+            }
+            if self.isLocked, window.title != lockedTitle {
+                self.isUpdatingWindowTitle = true
+                window.title = lockedTitle
+                self.isUpdatingWindowTitle = false
+            }
+        }
+        subtitleCancellable = window.publisher(for: \.subtitle).sink { [weak self, weak window] newSubtitle in
+            guard let self, let window, !self.isUpdatingWindowTitle else { return }
+            if !newSubtitle.isEmpty {
+                self.savedSubtitle = newSubtitle
+            }
+            if self.isLocked, !window.subtitle.isEmpty {
+                self.isUpdatingWindowTitle = true
+                window.subtitle = ""
+                self.isUpdatingWindowTitle = false
+            }
+        }
         if isLocked {
             enforceLockOnWindow()
         }
@@ -61,6 +148,17 @@ private final class LockEnforcerNSView: NSView {
 
     func enforceLockOnWindow() {
         guard let window else { return }
+        let lockedTitle = String(localized: "Courier")
+        if window.title != lockedTitle, !window.title.isEmpty {
+            savedTitle = window.title
+        }
+        if !window.subtitle.isEmpty {
+            savedSubtitle = window.subtitle
+        }
+        isUpdatingWindowTitle = true
+        window.title = lockedTitle
+        window.subtitle = ""
+        isUpdatingWindowTitle = false
         for sheet in window.sheets {
             window.endSheet(sheet, returnCode: .cancel)
         }
@@ -70,6 +168,18 @@ private final class LockEnforcerNSView: NSView {
         if let responder = window.firstResponder, responder !== window {
             window.makeFirstResponder(nil)
         }
+    }
+
+    func restoreUnlockedWindowTitle() {
+        guard let window else { return }
+        isUpdatingWindowTitle = true
+        if let savedTitle, !savedTitle.isEmpty {
+            window.title = savedTitle
+        }
+        if let savedSubtitle {
+            window.subtitle = savedSubtitle
+        }
+        isUpdatingWindowTitle = false
     }
 }
 

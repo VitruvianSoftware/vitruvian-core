@@ -44,10 +44,8 @@ struct ConversationCommands: Commands {
             .disabled(!hotkeyDispatcher.canPerform("Message: Quote & Reply"))
             // The title and the action follow the same selection: Show Replies on a thread root selected in the
             // chat, otherwise the newest message.
-            let showRepliesOrScrollID = hotkeyDispatcher.showRepliesTarget == nil
-                ? "Scroll to the bottom of a chat"
-                : "Show Replies"
-            Button(hotkeyDispatcher.showRepliesTarget == nil ? String(localized: "Jump to Newest Message") : String(localized: "Show Replies")) {
+            let showRepliesOrScrollID = showRepliesOrScrollCommandID
+            Button(showRepliesOrJumpMenuTitle) {
                 _ = hotkeyDispatcher.perform(showRepliesOrScrollID)
             }
             .registryShortcut(showRepliesOrScrollID, in: hotkeys)
@@ -99,23 +97,23 @@ struct ConversationCommands: Commands {
             }
             .registryShortcut("Message: Record Audio", in: hotkeys)
             .disabled(!hotkeyDispatcher.canPerform("Message: Record Audio"))
-            Button(composer.sendGIFMenuTitle) {
+            Button(sendGIFMenuTitle) {
                 _ = hotkeyDispatcher.perform("Message: Send GIF")
             }
             .registryShortcut("Message: Send GIF", in: hotkeys)
             .disabled(!hotkeyDispatcher.canPerform("Message: Send GIF"))
-            Button(composer.sendStickerMenuTitle) {
+            Button(sendStickerMenuTitle) {
                 _ = hotkeyDispatcher.perform("Message: Send Sticker")
             }
             .registryShortcut("Message: Send Sticker", in: hotkeys)
             .disabled(!hotkeyDispatcher.canPerform("Message: Send Sticker"))
             Divider()
-            Button(conversation.isShowingChatInfo ? String(localized: "Hide Chat Info") : String(localized: "Show Chat Info")) {
+            Button(chatInfoMenuTitle) {
                 _ = hotkeyDispatcher.perform("Toggle Chat Info")
             }
             .registryShortcut("Toggle Chat Info", in: hotkeys)
             .disabled(!hotkeyDispatcher.canPerform("Toggle Chat Info"))
-            Button(conversation.isShowingCalendar ? String(localized: "Hide Calendar") : String(localized: "Show Calendar"),
+            Button(calendarMenuTitle,
                    action: conversation.toggleCalendar)
                 .keyboardShortcut("k", modifiers: [.command, .option])
                 .disabled(lifecycle.isLocked)
@@ -130,6 +128,40 @@ struct ConversationCommands: Commands {
             .registryShortcut("Chat: Delete", in: hotkeys)
             .disabled(!hotkeyDispatcher.canPerform("Chat: Delete"))
         }
+    }
+
+    var showRepliesOrScrollCommandID: String {
+        guard !lifecycle.isLocked else { return "Scroll to the bottom of a chat" }
+        return hotkeyDispatcher.showRepliesTarget == nil
+            ? "Scroll to the bottom of a chat"
+            : "Show Replies"
+    }
+
+    var showRepliesOrJumpMenuTitle: String {
+        guard !lifecycle.isLocked else { return String(localized: "Jump to Newest Message") }
+        return hotkeyDispatcher.showRepliesTarget == nil
+            ? String(localized: "Jump to Newest Message")
+            : String(localized: "Show Replies")
+    }
+
+    var sendGIFMenuTitle: String {
+        guard !lifecycle.isLocked else { return String(localized: "Send GIF…") }
+        return composer.sendGIFMenuTitle
+    }
+
+    var sendStickerMenuTitle: String {
+        guard !lifecycle.isLocked else { return String(localized: "Send Sticker…") }
+        return composer.sendStickerMenuTitle
+    }
+
+    var chatInfoMenuTitle: String {
+        guard !lifecycle.isLocked else { return String(localized: "Show Chat Info") }
+        return conversation.isShowingChatInfo ? String(localized: "Hide Chat Info") : String(localized: "Show Chat Info")
+    }
+
+    var calendarMenuTitle: String {
+        guard !lifecycle.isLocked else { return String(localized: "Show Calendar") }
+        return conversation.isShowingCalendar ? String(localized: "Hide Calendar") : String(localized: "Show Calendar")
     }
 
     /// The composer the keys type into: the thread pane's after a click there, else the chat's.

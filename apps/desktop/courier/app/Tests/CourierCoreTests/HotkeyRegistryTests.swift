@@ -1515,9 +1515,47 @@ final class HotkeyRegistryTests: XCTestCase {
             launcher: FakeLauncher { _, _ in }
         )
         let appModel = AppModel(supervisor: supervisor)
-        let mediaViewer = MediaViewerModel(appModel: appModel)
-        mediaViewer.toggleSelected("$m1")
+        let initialHit = MediaHit(
+            eventID: "$initial-media",
+            roomID: "!r1",
+            sender: "@alice",
+            senderName: "Alice",
+            mine: false,
+            ts: 1000,
+            seq: 1
+        )
+        let mediaViewer = MediaViewerModel(appModel: appModel, initialItems: [initialHit])
+        mediaViewer.toggleSelected("$initial-media")
         XCTAssertTrue(mediaViewer.selectedEventIDs.isEmpty, "MediaViewerModel.toggleSelected must be refused while locked")
+        await mediaViewer.refresh()
+        XCTAssertEqual(
+            mediaViewer.items.map(\.eventID),
+            ["$initial-media"],
+            "MediaViewerModel.refresh must be refused by AppLockGate while locked"
+        )
+        await mediaViewer.loadNextPage()
+        XCTAssertEqual(
+            mediaViewer.items.map(\.eventID),
+            ["$initial-media"],
+            "MediaViewerModel.loadNextPage must be refused by AppLockGate while locked"
+        )
+
+        let inbox = InboxModel(appModel: appModel, preferences: inboxPrefs)
+        _ = await lifecycle.unlock()
+        inbox.startNewChatDraft = StartNewChatDraft(query: "initial")
+        lifecycle.lockNow()
+        inbox.updateStartNewChatQuery("mutated-while-locked")
+        XCTAssertNotEqual(
+            inbox.startNewChatDraft?.query,
+            "mutated-while-locked",
+            "InboxModel.updateStartNewChatQuery must be refused while locked"
+        )
+        inbox.updateStartNewChatDraft(StartNewChatDraft(query: "draft-while-locked"))
+        XCTAssertNotEqual(
+            inbox.startNewChatDraft?.query,
+            "draft-while-locked",
+            "InboxModel.updateStartNewChatDraft must be refused while locked"
+        )
 
         let recents = RecentSearches(defaults: defaults)
         _ = await lifecycle.unlock()

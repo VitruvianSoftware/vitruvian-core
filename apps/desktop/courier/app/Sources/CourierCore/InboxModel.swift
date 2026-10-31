@@ -1572,7 +1572,7 @@ public final class InboxModel: ObservableObject {
 
     /// Updates the Start New Chat search query and/or account filter, debounced by 300 ms.
     public func updateStartNewChatQuery(_ query: String, accountFilter: String? = nil) {
-        guard startNewChatDraft != nil else { return }
+        guard !isLocked, startNewChatDraft != nil else { return }
         startNewChatDraft?.query = query
         if let accountFilter {
             startNewChatDraft?.selectedAccountFilter = accountFilter
@@ -1582,6 +1582,7 @@ public final class InboxModel: ObservableObject {
 
     /// Updates the Start New Chat draft, debouncing contact search by 300 ms when the query or account filter changed.
     public func updateStartNewChatDraft(_ updated: StartNewChatDraft) {
+        guard !isLocked else { return }
         let queryChanged = startNewChatDraft?.query != updated.query
             || startNewChatDraft?.selectedAccountFilter != updated.selectedAccountFilter
         startNewChatDraft = updated
@@ -1602,7 +1603,7 @@ public final class InboxModel: ObservableObject {
 
     /// Queries `people.contacts` for the current `startNewChatDraft` query and optional account filter.
     public func refreshStartNewChatCandidates() async {
-        guard let draft = startNewChatDraft, let client = appModel.client else { return }
+        guard !isLocked, let draft = startNewChatDraft, let client = appModel.client else { return }
         let query = draft.query
         let filter = draft.selectedAccountFilter
         let params: PeopleContactsParams

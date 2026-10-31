@@ -1444,6 +1444,49 @@ final class NotificationCoordinatorTests: XCTestCase {
 
         await finish(h)
     }
+
+    func testDeliveredNotificationsAreRemovedFromNotificationCenterOnLock() async throws {
+        let h = try await start()
+        let lifecycle = SystemLifecycleModel(
+            defaults: h.defaults,
+            loginItem: FakeLoginItemService(currentStatus: .notRegistered),
+            biometrics: FakeBiometricAuthService(available: true, result: .success(true))
+        )
+        let tsUnlocked = Int64(h.clock.date.timeIntervalSince1970 * 1000) + 1000
+        let unlockedMsg = message("$before-lock", ts: tsUnlocked, text: "Unredacted secret before lock")
+        h.script.events["!a"] = [unlockedMsg]
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$before-lock"])
+        try await settle(h, fetches: 1)
+
+        XCTAssertEqual(h.delivery.delivered.count, 1)
+        XCTAssertEqual(h.delivery.delivered.first?.body, "Unredacted secret before lock")
+
+        // Locking Courier must remove all delivered notifications from Notification Center.
+        lifecycle.lockNow()
+        h.window.isLocked = true
+        XCTAssertEqual(
+            h.delivery.clearAllCount,
+            1,
+            "Locking Courier must call clearAll() on NotificationDelivering to remove delivered notifications"
+        )
+        XCTAssertTrue(
+            h.delivery.delivered.isEmpty,
+            "Previously delivered notifications must be removed from Notification Center on lock"
+        )
+
+        // New notifications arriving while locked are still delivered content-hidden.
+        let tsLocked = tsUnlocked + 1000
+        let lockedMsg = message("$during-lock", ts: tsLocked, text: "Secret while locked")
+        h.script.events["!a"] = [lockedMsg, unlockedMsg]
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$during-lock"])
+        try await settle(h, fetches: 2)
+
+        XCTAssertEqual(h.delivery.delivered.count, 1)
+        XCTAssertEqual(h.delivery.delivered.first?.title, "Courier")
+        XCTAssertEqual(h.delivery.delivered.first?.body, "New message")
+
+        await finish(h)
+    }
 }
 
 // MARK: - Fixtures
@@ -1452,6 +1495,7 @@ final class NotificationCoordinatorTests: XCTestCase {
 final class FakeDelivery: NotificationDelivering {
     private(set) var delivered: [NotificationContent] = []
     private(set) var cleared: [String] = []
+    private(set) var clearAllCount = 0
     /// The notifications taken down one by one, by id.
     private(set) var removed: [String] = []
     /// Everything done, in order: "deliver <id>", "remove <id>", "clear <room>".
@@ -1471,6 +1515,12 @@ final class FakeDelivery: NotificationDelivering {
     func clear(roomID: String) {
         cleared.append(roomID)
         log.append("clear " + roomID)
+    }
+
+    func clearAll() {
+        clearAllCount += 1
+        delivered.removeAll()
+        log.append("clearAll")
     }
 
     func remove(notificationID: String) {

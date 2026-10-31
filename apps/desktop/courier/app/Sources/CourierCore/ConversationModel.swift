@@ -1831,12 +1831,12 @@ public final class ConversationModel: ObservableObject {
     /// Reads `room.info` and the chat's bookmarked messages (`search.query` with `sections: [.bookmarks]`) for the
     /// open chat. When `force` is true, passes `refresh: true` so the bridge refreshes live participant/room info.
     public func refreshChatInfo(force: Bool = false) async {
-        guard let room = roomID else { return }
+        guard !isLocked, let room = roomID else { return }
         let targetRoom = activeReplyRoomID ?? room
         isRefreshingChatInfo = true
         defer { isRefreshingChatInfo = false }
         let (info, bookmarks) = await fetchChatInfo(for: targetRoom, force: force)
-        guard room == roomID else { return }
+        guard !isLocked, room == roomID else { return }
         if let info {
             chatInfo = info
         }
@@ -1846,7 +1846,7 @@ public final class ConversationModel: ObservableObject {
     /// Reads `room.info` and bookmarked messages for a specific `roomID` (used by both the right pane and standalone
     /// Chat Info windows).
     public func fetchChatInfo(for targetRoom: String, force: Bool = false) async -> (info: RoomInfoResult?, bookmarks: [MessageHit]) {
-        guard let client = appModel.client else { return (nil, []) }
+        guard !isLocked, let client = appModel.client else { return (nil, []) }
         async let infoCall: RoomInfoResult? = try? client.call(
             "room.info",
             RoomInfoParams(roomID: targetRoom, refresh: force ? true : nil)
@@ -2157,7 +2157,7 @@ public final class ConversationModel: ObservableObject {
 
     /// Queries `people.contacts` + `search.query(sections: [.inGroups])` for `AddParticipantsSheet`.
     public func searchInviteCandidates(query: String, network targetNetwork: String, existingMemberIDs: Set<String> = []) async -> [ContactCandidate] {
-        guard let client = appModel.client else { return [] }
+        guard !isLocked, let client = appModel.client else { return [] }
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         async let contactsCall: PeopleContactsResult? = try? client.call(
             "people.contacts",

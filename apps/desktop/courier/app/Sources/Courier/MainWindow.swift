@@ -216,7 +216,7 @@ struct MainWindow: View {
                     )
                 }
                 .navigationTitle("Courier")
-                .navigationSubtitle(StatusText.subtitle(for: model.engineState))
+                .navigationSubtitle(lifecycle.isLocked ? "" : StatusText.subtitle(for: model.engineState))
         }
     }
 

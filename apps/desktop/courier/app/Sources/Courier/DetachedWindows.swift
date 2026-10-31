@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import AppKit
+import Combine
 import CourierCore
 import SwiftUI
 
@@ -334,8 +335,12 @@ final class DetachedWindowManager: NSObject, NSWindowDelegate {
     private weak var spaces: SpacesModel?
     private let lifecycle: SystemLifecycleModel
     private let onSearchInChat: (@MainActor (String) -> Void)?
-    private var windows: [DetachedWindowTarget: NSWindow] = [:]
+    private(set) var windows: [DetachedWindowTarget: NSWindow] = [:]
+    private var unlockedTitles: [DetachedWindowTarget: String] = [:]
     private var closingFromRegistry = Set<DetachedWindowTarget>()
+    private var lockStateCancellable: AnyCancellable?
+    private var lockObserver: Any?
+    private var unlockObserver: Any?
 
     init(
         registry: DetachedWindowRegistry,
@@ -361,6 +366,51 @@ final class DetachedWindowManager: NSObject, NSWindowDelegate {
         }
         registry.onClose = { [weak self] target in
             self?.closeWindowFromRegistry(for: target)
+        }
+        lockStateCancellable = lifecycle.$isLocked.sink { [weak self] locked in
+            self?.applyLockTitleState(isLocked: locked)
+        }
+        lockObserver = NotificationCenter.default.addObserver(
+            forName: SystemLifecycleModel.didLockNotification,
+            object: lifecycle,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.applyLockTitleState(isLocked: true)
+            }
+        }
+        unlockObserver = NotificationCenter.default.addObserver(
+            forName: SystemLifecycleModel.didUnlockNotification,
+            object: lifecycle,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.applyLockTitleState(isLocked: false)
+            }
+        }
+    }
+
+    deinit {
+        if let lockObserver {
+            NotificationCenter.default.removeObserver(lockObserver)
+        }
+        if let unlockObserver {
+            NotificationCenter.default.removeObserver(unlockObserver)
+        }
+    }
+
+    private func applyLockTitleState(isLocked: Bool) {
+        let lockedTitle = String(localized: "Courier")
+        for (target, window) in windows {
+            if isLocked {
+                if window.title != lockedTitle {
+                    unlockedTitles[target] = window.title
+                }
+                window.title = lockedTitle
+                window.subtitle = ""
+            } else if let restored = unlockedTitles[target] {
+                window.title = restored
+            }
         }
     }
 
@@ -425,7 +475,9 @@ final class DetachedWindowManager: NSObject, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
-        window.title = title
+        unlockedTitles[target] = title
+        window.title = lifecycle.isLocked ? String(localized: "Courier") : title
+        window.subtitle = ""
         window.identifier = NSUserInterfaceItemIdentifier("courier.detached.\(target.id)")
         window.isReleasedWhenClosed = false
         window.delegate = self
@@ -442,6 +494,7 @@ final class DetachedWindowManager: NSObject, NSWindowDelegate {
     }
 
     private func closeWindowFromRegistry(for target: DetachedWindowTarget) {
+        unlockedTitles.removeValue(forKey: target)
         guard let window = windows.removeValue(forKey: target) else { return }
         closingFromRegistry.insert(target)
         window.close()
@@ -452,6 +505,7 @@ final class DetachedWindowManager: NSObject, NSWindowDelegate {
         guard let closingWindow = notification.object as? NSWindow else { return }
         guard let entry = windows.first(where: { $0.value === closingWindow }) else { return }
         let target = entry.key
+        unlockedTitles.removeValue(forKey: target)
         windows.removeValue(forKey: target)
         if !closingFromRegistry.contains(target) {
             registry.close(target)
