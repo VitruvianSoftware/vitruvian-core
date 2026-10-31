@@ -349,7 +349,32 @@ crate::edition2021! {
 #[cfg(any(test, feature = "test-loopback"))]
 #[no_mangle]
 pub extern "C" fn gchat_test_only_set_allow_loopback(allow: std::os::raw::c_int) {
-    crate::netguard::set_global_test_loopback_override(allow != 0);
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        crate::netguard::set_global_test_loopback_override(allow != 0);
+    }));
+}
+
+fn panic_payload_to_string(payload: Box<dyn std::any::Any + Send>) -> String {
+    if let Some(s) = payload.downcast_ref::<&str>() {
+        format!("ffi panic: {s}")
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        format!("ffi panic: {s}")
+    } else {
+        "ffi panic: unknown panic payload".to_string()
+    }
+}
+
+unsafe fn catch_ffi_status<F>(out_err: *mut GChatByteSlice, f: F) -> GChatStatus
+where
+    F: FnOnce() -> GChatStatus,
+{
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+        Ok(status) => status,
+        Err(payload) => {
+            write_err_slice(out_err, panic_payload_to_string(payload));
+            GChatStatus::GchatErrInternal
+        }
+    }
 }
 
 #[no_mangle]
@@ -359,47 +384,53 @@ pub unsafe extern "C" fn gchat_client_new(
     out_client: *mut *mut GChatClient,
     out_err: *mut GChatByteSlice,
 ) -> GChatStatus {
-    if out_client.is_null() {
-        write_err_slice(out_err, "out_client pointer is null");
-        return GChatStatus::GchatErrInvalidArg;
-    }
-    *out_client = ptr::null_mut();
-
-    let config_json = match read_utf8(config_json_ptr, config_json_len, "config_json") {
-        Ok(s) => s,
-        Err(e) => {
-            write_err_slice(out_err, e);
+    catch_ffi_status(out_err, || {
+        if out_client.is_null() {
+            write_err_slice(out_err, "out_client pointer is null");
             return GChatStatus::GchatErrInvalidArg;
         }
-    };
+        *out_client = ptr::null_mut();
 
-    match GChatClient::from_config_json(&config_json) {
-        Ok(client) => {
-            *out_client = Box::into_raw(Box::new(client));
-            GChatStatus::GchatOk
+        let config_json = match read_utf8(config_json_ptr, config_json_len, "config_json") {
+            Ok(s) => s,
+            Err(e) => {
+                write_err_slice(out_err, e);
+                return GChatStatus::GchatErrInvalidArg;
+            }
+        };
+
+        match GChatClient::from_config_json(&config_json) {
+            Ok(client) => {
+                *out_client = Box::into_raw(Box::new(client));
+                GChatStatus::GchatOk
+            }
+            Err(e) => {
+                let st = status_from_error(&e);
+                write_err_slice(out_err, e.to_string());
+                st
+            }
         }
-        Err(e) => {
-            let st = status_from_error(&e);
-            write_err_slice(out_err, e.to_string());
-            st
-        }
-    }
+    })
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn gchat_client_free(client: *mut GChatClient) {
-    if !client.is_null() {
-        drop(Box::from_raw(client));
-    }
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if !client.is_null() {
+            drop(Box::from_raw(client));
+        }
+    }));
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn gchat_bytes_free(slice: GChatByteSlice) {
-    if !slice.ptr.is_null() && slice.len > 0 {
-        drop(Box::from_raw(ptr::slice_from_raw_parts_mut(
-            slice.ptr, slice.len,
-        )));
-    }
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if !slice.ptr.is_null() && slice.len > 0 {
+            drop(Box::from_raw(ptr::slice_from_raw_parts_mut(
+                slice.ptr, slice.len,
+            )));
+        }
+    }));
 }
 
 #[no_mangle]
@@ -408,31 +439,33 @@ pub unsafe extern "C" fn gchat_validate_session(
     out_self_json: *mut GChatByteSlice,
     out_err: *mut GChatByteSlice,
 ) -> GChatStatus {
-    if client.is_null() || out_self_json.is_null() {
-        write_err_slice(out_err, "client or out_self_json pointer is null");
-        return GChatStatus::GchatErrInvalidArg;
-    }
-    let client_ref = &*client;
-    match client_ref
-        .runtime
-        .block_on(client_ref.validate_session_async())
-    {
-        Ok(out) => match serde_json::to_vec(&out) {
-            Ok(bytes) => {
-                write_slice_out(out_self_json, bytes);
-                GChatStatus::GchatOk
-            }
-            Err(e) => {
-                write_err_slice(out_err, format!("failed to serialize session output: {e}"));
-                GChatStatus::GchatErrInternal
-            }
-        },
-        Err(e) => {
-            let st = status_from_error(&e);
-            write_err_slice(out_err, e.to_string());
-            st
+    catch_ffi_status(out_err, || {
+        if client.is_null() || out_self_json.is_null() {
+            write_err_slice(out_err, "client or out_self_json pointer is null");
+            return GChatStatus::GchatErrInvalidArg;
         }
-    }
+        let client_ref = &*client;
+        match client_ref
+            .runtime
+            .block_on(client_ref.validate_session_async())
+        {
+            Ok(out) => match serde_json::to_vec(&out) {
+                Ok(bytes) => {
+                    write_slice_out(out_self_json, bytes);
+                    GChatStatus::GchatOk
+                }
+                Err(e) => {
+                    write_err_slice(out_err, format!("failed to serialize session output: {e}"));
+                    GChatStatus::GchatErrInternal
+                }
+            },
+            Err(e) => {
+                let st = status_from_error(&e);
+                write_err_slice(out_err, e.to_string());
+                st
+            }
+        }
+    })
 }
 
 crate::edition2021! {
@@ -443,76 +476,82 @@ crate::edition2021! {
         userdata: usize,
         out_err: *mut GChatByteSlice,
     ) -> GChatStatus {
-        if client.is_null() {
-            write_err_slice(out_err, "client pointer is null");
-            return GChatStatus::GchatErrInvalidArg;
-        }
-        let client_ref = &*client;
-        client_ref.stop_stream_and_wait();
+        catch_ffi_status(out_err, || {
+            if client.is_null() {
+                write_err_slice(out_err, "client pointer is null");
+                return GChatStatus::GchatErrInvalidArg;
+            }
+            let client_ref = &*client;
+            client_ref.stop_stream_and_wait();
 
-        let Ok(mut state_guard) = client_ref.stream_state.lock() else {
-            write_err_slice(out_err, "stream_state mutex poisoned");
-            return GChatStatus::GchatErrInternal;
-        };
+            let Ok(mut state_guard) = client_ref.stream_state.lock() else {
+                write_err_slice(out_err, "stream_state mutex poisoned");
+                return GChatStatus::GchatErrInternal;
+            };
 
-        let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
-        let clock: Arc<dyn crate::channel::ChannelClock> = client_ref
-            .manual_clock
-            .lock()
-            .ok()
-            .and_then(|g| g.clone())
-            .map(|c| c as Arc<dyn crate::channel::ChannelClock>)
-            .unwrap_or_else(|| Arc::new(crate::channel::SystemChannelClock));
-        let wc = Arc::new(WebChannelClient::with_clock(
-            client_ref.http.clone(),
-            client_ref.jar.clone(),
-            client_ref.xsrf.clone(),
-            client_ref.guard.clone(),
-            client_ref.user_agent.clone(),
-            client_ref.base_url.clone(),
-            clock,
-        ));
-        if let Ok(mut wc_guard) = client_ref.active_wc.lock() {
-            *wc_guard = Some(wc.clone());
-        }
-        let handle = client_ref.runtime.spawn(async move {
-            wc.run_forever(cancel_rx, move |event_kind, payload| {
-                let ptr = if payload.is_empty() {
-                    ptr::null()
-                } else {
-                    payload.as_ptr()
-                };
-                cb(userdata, event_kind, ptr, payload.len());
-            })
-            .await;
-        });
-        *state_guard = Some((cancel_tx, handle));
-        GChatStatus::GchatOk
+            let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
+            let clock: Arc<dyn crate::channel::ChannelClock> = client_ref
+                .manual_clock
+                .lock()
+                .ok()
+                .and_then(|g| g.clone())
+                .map(|c| c as Arc<dyn crate::channel::ChannelClock>)
+                .unwrap_or_else(|| Arc::new(crate::channel::SystemChannelClock));
+            let wc = Arc::new(WebChannelClient::with_clock(
+                client_ref.http.clone(),
+                client_ref.jar.clone(),
+                client_ref.xsrf.clone(),
+                client_ref.guard.clone(),
+                client_ref.user_agent.clone(),
+                client_ref.base_url.clone(),
+                clock,
+            ));
+            if let Ok(mut wc_guard) = client_ref.active_wc.lock() {
+                *wc_guard = Some(wc.clone());
+            }
+            let handle = client_ref.runtime.spawn(async move {
+                wc.run_forever(cancel_rx, move |event_kind, payload| {
+                    let ptr = if payload.is_empty() {
+                        ptr::null()
+                    } else {
+                        payload.as_ptr()
+                    };
+                    cb(userdata, event_kind, ptr, payload.len());
+                })
+                .await;
+            });
+            *state_guard = Some((cancel_tx, handle));
+            GChatStatus::GchatOk
+        })
     }
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn gchat_stop_stream(client: *mut GChatClient) {
-    if !client.is_null() {
-        let client_ref = &*client;
-        client_ref.stop_stream_and_wait();
-    }
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if !client.is_null() {
+            let client_ref = &*client;
+            client_ref.stop_stream_and_wait();
+        }
+    }));
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn gchat_use_manual_clock(client: *mut GChatClient, fixed_jitter: f64) {
-    if !client.is_null() {
-        let client_ref = &*client;
-        let clock = Arc::new(crate::channel::ManualChannelClock::new(fixed_jitter));
-        if let Ok(mut guard) = client_ref.manual_clock.lock() {
-            *guard = Some(clock.clone());
-        }
-        if let Ok(wc_guard) = client_ref.active_wc.lock() {
-            if let Some(wc) = wc_guard.as_ref() {
-                wc.set_clock(clock);
+    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if !client.is_null() {
+            let client_ref = &*client;
+            let clock = Arc::new(crate::channel::ManualChannelClock::new(fixed_jitter));
+            if let Ok(mut guard) = client_ref.manual_clock.lock() {
+                *guard = Some(clock.clone());
+            }
+            if let Ok(wc_guard) = client_ref.active_wc.lock() {
+                if let Some(wc) = wc_guard.as_ref() {
+                    wc.set_clock(clock);
+                }
             }
         }
-    }
+    }));
 }
 
 #[no_mangle]
@@ -520,18 +559,21 @@ pub unsafe extern "C" fn gchat_advance_manual_clock(
     client: *mut GChatClient,
     delta_ms: u64,
 ) -> usize {
-    if client.is_null() {
-        return 0;
-    }
-    let client_ref = &*client;
-    let clock_opt = client_ref.manual_clock.lock().ok().and_then(|g| g.clone());
-    let Some(clock) = clock_opt else {
-        return 0;
-    };
-    if delta_ms > 0 {
-        clock.advance(std::time::Duration::from_millis(delta_ms));
-    }
-    clock.sleeper_count()
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        if client.is_null() {
+            return 0;
+        }
+        let client_ref = &*client;
+        let clock_opt = client_ref.manual_clock.lock().ok().and_then(|g| g.clone());
+        let Some(clock) = clock_opt else {
+            return 0;
+        };
+        if delta_ms > 0 {
+            clock.advance(std::time::Duration::from_millis(delta_ms));
+        }
+        clock.sleeper_count()
+    }))
+    .unwrap_or(0)
 }
 
 #[no_mangle]
@@ -544,46 +586,48 @@ pub unsafe extern "C" fn gchat_rpc_call(
     out_resp_proto: *mut GChatByteSlice,
     out_err: *mut GChatByteSlice,
 ) -> GChatStatus {
-    if client.is_null() || out_resp_proto.is_null() {
-        write_err_slice(out_err, "client or out_resp_proto pointer is null");
-        return GChatStatus::GchatErrInvalidArg;
-    }
-    let endpoint = match read_utf8(endpoint_ptr as *const u8, endpoint_len, "endpoint") {
-        Ok(s) => s,
-        Err(e) => {
-            write_err_slice(out_err, e);
+    catch_ffi_status(out_err, || {
+        if client.is_null() || out_resp_proto.is_null() {
+            write_err_slice(out_err, "client or out_resp_proto pointer is null");
             return GChatStatus::GchatErrInvalidArg;
         }
-    };
-    let req_bytes = match read_bytes(req_proto_ptr, req_proto_len, "req_proto") {
-        Ok(b) => b,
-        Err(e) => {
-            write_err_slice(out_err, e);
-            return GChatStatus::GchatErrInvalidArg;
+        let endpoint = match read_utf8(endpoint_ptr as *const u8, endpoint_len, "endpoint") {
+            Ok(s) => s,
+            Err(e) => {
+                write_err_slice(out_err, e);
+                return GChatStatus::GchatErrInvalidArg;
+            }
+        };
+        let req_bytes = match read_bytes(req_proto_ptr, req_proto_len, "req_proto") {
+            Ok(b) => b,
+            Err(e) => {
+                write_err_slice(out_err, e);
+                return GChatStatus::GchatErrInvalidArg;
+            }
+        };
+        let client_ref = &*client;
+        let res = client_ref.runtime.block_on(invoke_proto_rpc(
+            &client_ref.http,
+            &client_ref.jar,
+            &client_ref.xsrf,
+            &client_ref.guard,
+            &client_ref.user_agent,
+            &client_ref.base_url,
+            &endpoint,
+            req_bytes,
+        ));
+        match res {
+            Ok(bytes) => {
+                write_slice_out(out_resp_proto, bytes);
+                GChatStatus::GchatOk
+            }
+            Err(e) => {
+                let st = status_from_error(&e);
+                write_err_slice(out_err, e.to_string());
+                st
+            }
         }
-    };
-    let client_ref = &*client;
-    let res = client_ref.runtime.block_on(invoke_proto_rpc(
-        &client_ref.http,
-        &client_ref.jar,
-        &client_ref.xsrf,
-        &client_ref.guard,
-        &client_ref.user_agent,
-        &client_ref.base_url,
-        &endpoint,
-        req_bytes,
-    ));
-    match res {
-        Ok(bytes) => {
-            write_slice_out(out_resp_proto, bytes);
-            GChatStatus::GchatOk
-        }
-        Err(e) => {
-            let st = status_from_error(&e);
-            write_err_slice(out_err, e.to_string());
-            st
-        }
-    }
+    })
 }
 
 #[no_mangle]
@@ -593,70 +637,72 @@ pub unsafe extern "C" fn gchat_html_to_annotations(
     out_result_json: *mut GChatByteSlice,
     out_err: *mut GChatByteSlice,
 ) -> GChatStatus {
-    if out_result_json.is_null() {
-        write_err_slice(out_err, "out_result_json pointer is null");
-        return GChatStatus::GchatErrInvalidArg;
-    }
-    let input_str = match read_utf8(input_json_ptr, input_json_len, "input_json") {
-        Ok(s) => s,
-        Err(e) => {
-            write_err_slice(out_err, e);
+    catch_ffi_status(out_err, || {
+        if out_result_json.is_null() {
+            write_err_slice(out_err, "out_result_json pointer is null");
             return GChatStatus::GchatErrInvalidArg;
         }
-    };
-    let val: serde_json::Value = match serde_json::from_str(&input_str) {
-        Ok(v) => v,
-        Err(e) => {
-            write_err_slice(out_err, format!("invalid input JSON: {e}"));
-            return GChatStatus::GchatErrInvalidArg;
-        }
-    };
-    let plain_body = val
-        .get("plain_body")
-        .or_else(|| val.get("text"))
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
-    let formatted_body = val
-        .get("formatted_body")
-        .or_else(|| val.get("html"))
-        .and_then(|v| v.as_str())
-        .filter(|s| !s.is_empty());
-    let allow_mention_all = val
-        .get("allow_mention_all")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
+        let input_str = match read_utf8(input_json_ptr, input_json_len, "input_json") {
+            Ok(s) => s,
+            Err(e) => {
+                write_err_slice(out_err, e);
+                return GChatStatus::GchatErrInvalidArg;
+            }
+        };
+        let val: serde_json::Value = match serde_json::from_str(&input_str) {
+            Ok(v) => v,
+            Err(e) => {
+                write_err_slice(out_err, format!("invalid input JSON: {e}"));
+                return GChatStatus::GchatErrInvalidArg;
+            }
+        };
+        let plain_body = val
+            .get("plain_body")
+            .or_else(|| val.get("text"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let formatted_body = val
+            .get("formatted_body")
+            .or_else(|| val.get("html"))
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty());
+        let allow_mention_all = val
+            .get("allow_mention_all")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
 
-    let converted = match crate::fmt::outbound::matrix_html_to_annotations(
-        plain_body,
-        formatted_body,
-        allow_mention_all,
-    ) {
-        Ok(c) => c,
-        Err(e) => {
-            let st = status_from_error(&e);
-            write_err_slice(out_err, e.to_string());
-            return st;
-        }
-    };
+        let converted = match crate::fmt::outbound::matrix_html_to_annotations(
+            plain_body,
+            formatted_body,
+            allow_mention_all,
+        ) {
+            Ok(c) => c,
+            Err(e) => {
+                let st = status_from_error(&e);
+                write_err_slice(out_err, e.to_string());
+                return st;
+            }
+        };
 
-    let annotations_b64: Vec<String> = converted
-        .annotations
-        .iter()
-        .map(|a| base64::engine::general_purpose::STANDARD.encode(a.encode_to_vec()))
-        .collect();
-    let msg = pb::Message {
-        text_body: Some(converted.text.clone()),
-        annotations: converted.annotations,
-        ..Default::default()
-    };
-    let proto_b64 = base64::engine::general_purpose::STANDARD.encode(msg.encode_to_vec());
-    let out_json = serde_json::json!({
-        "text": converted.text,
-        "message_proto_base64": proto_b64,
-        "annotations_proto_base64": annotations_b64,
-    });
-    write_slice_out(out_result_json, out_json.to_string().into_bytes());
-    GChatStatus::GchatOk
+        let annotations_b64: Vec<String> = converted
+            .annotations
+            .iter()
+            .map(|a| base64::engine::general_purpose::STANDARD.encode(a.encode_to_vec()))
+            .collect();
+        let msg = pb::Message {
+            text_body: Some(converted.text.clone()),
+            annotations: converted.annotations,
+            ..Default::default()
+        };
+        let proto_b64 = base64::engine::general_purpose::STANDARD.encode(msg.encode_to_vec());
+        let out_json = serde_json::json!({
+            "text": converted.text,
+            "message_proto_base64": proto_b64,
+            "annotations_proto_base64": annotations_b64,
+        });
+        write_slice_out(out_result_json, out_json.to_string().into_bytes());
+        GChatStatus::GchatOk
+    })
 }
 
 #[no_mangle]
@@ -666,44 +712,46 @@ pub unsafe extern "C" fn gchat_annotations_to_html(
     out_result_json: *mut GChatByteSlice,
     out_err: *mut GChatByteSlice,
 ) -> GChatStatus {
-    if out_result_json.is_null() {
-        write_err_slice(out_err, "out_result_json pointer is null");
-        return GChatStatus::GchatErrInvalidArg;
-    }
-    let bytes = match read_bytes(input_proto_ptr, input_proto_len, "input_proto") {
-        Ok(b) => b,
-        Err(e) => {
-            write_err_slice(out_err, e);
+    catch_ffi_status(out_err, || {
+        if out_result_json.is_null() {
+            write_err_slice(out_err, "out_result_json pointer is null");
             return GChatStatus::GchatErrInvalidArg;
         }
-    };
-    let msg = match pb::Message::decode(bytes) {
-        Ok(m) => m,
-        Err(e) => {
-            write_err_slice(out_err, format!("failed to decode Message proto: {e}"));
-            return GChatStatus::GchatErrProtocol;
-        }
-    };
-    let converted = crate::fmt::inbound::annotations_to_matrix_html(
-        msg.text_body.as_deref().unwrap_or_default(),
-        &msg.annotations,
-        &msg.attachments,
-    );
-    let html = converted
-        .formatted_body
-        .clone()
-        .unwrap_or_else(|| crate::fmt::inbound::escape_html(&converted.body));
-    let out_json = serde_json::json!({
-        "body": converted.body,
-        "formatted_body": converted.formatted_body,
-        "mentions": converted.mentions,
-        "mention_all": converted.mention_all,
-        "text": converted.body,
-        "html": html,
-        "annotations_count": msg.annotations.len(),
-    });
-    write_slice_out(out_result_json, out_json.to_string().into_bytes());
-    GChatStatus::GchatOk
+        let bytes = match read_bytes(input_proto_ptr, input_proto_len, "input_proto") {
+            Ok(b) => b,
+            Err(e) => {
+                write_err_slice(out_err, e);
+                return GChatStatus::GchatErrInvalidArg;
+            }
+        };
+        let msg = match pb::Message::decode(bytes) {
+            Ok(m) => m,
+            Err(e) => {
+                write_err_slice(out_err, format!("failed to decode Message proto: {e}"));
+                return GChatStatus::GchatErrProtocol;
+            }
+        };
+        let converted = crate::fmt::inbound::annotations_to_matrix_html(
+            msg.text_body.as_deref().unwrap_or_default(),
+            &msg.annotations,
+            &msg.attachments,
+        );
+        let html = converted
+            .formatted_body
+            .clone()
+            .unwrap_or_else(|| crate::fmt::inbound::escape_html(&converted.body));
+        let out_json = serde_json::json!({
+            "body": converted.body,
+            "formatted_body": converted.formatted_body,
+            "mentions": converted.mentions,
+            "mention_all": converted.mention_all,
+            "text": converted.body,
+            "html": html,
+            "annotations_count": msg.annotations.len(),
+        });
+        write_slice_out(out_result_json, out_json.to_string().into_bytes());
+        GChatStatus::GchatOk
+    })
 }
 
 #[derive(Deserialize)]
@@ -740,50 +788,52 @@ pub unsafe extern "C" fn gchat_upload_media(
     out_upload_proto: *mut GChatByteSlice,
     out_err: *mut GChatByteSlice,
 ) -> GChatStatus {
-    if client.is_null() || out_upload_proto.is_null() {
-        write_err_slice(out_err, "client or out_upload_proto pointer is null");
-        return GChatStatus::GchatErrInvalidArg;
-    }
-    let req_json = match read_utf8(req_json_ptr, req_json_len, "req_json") {
-        Ok(s) => s,
-        Err(e) => {
-            write_err_slice(out_err, e);
+    catch_ffi_status(out_err, || {
+        if client.is_null() || out_upload_proto.is_null() {
+            write_err_slice(out_err, "client or out_upload_proto pointer is null");
             return GChatStatus::GchatErrInvalidArg;
         }
-    };
-    let req: UploadMediaReqInput = match serde_json::from_str(&req_json) {
-        Ok(r) => r,
-        Err(e) => {
-            write_err_slice(out_err, format!("invalid upload_media JSON: {e}"));
-            return GChatStatus::GchatErrInvalidArg;
+        let req_json = match read_utf8(req_json_ptr, req_json_len, "req_json") {
+            Ok(s) => s,
+            Err(e) => {
+                write_err_slice(out_err, e);
+                return GChatStatus::GchatErrInvalidArg;
+            }
+        };
+        let req: UploadMediaReqInput = match serde_json::from_str(&req_json) {
+            Ok(r) => r,
+            Err(e) => {
+                write_err_slice(out_err, format!("invalid upload_media JSON: {e}"));
+                return GChatStatus::GchatErrInvalidArg;
+            }
+        };
+        let data = match read_bytes(data_ptr, data_len, "data") {
+            Ok(b) => b,
+            Err(e) => {
+                write_err_slice(out_err, e);
+                return GChatStatus::GchatErrInvalidArg;
+            }
+        };
+        let client_ref = &*client;
+        let res = client_ref.runtime.block_on(crate::media::scotty_upload(
+            client_ref,
+            &req.group_id,
+            &req.filename,
+            &req.content_type,
+            data,
+        ));
+        match res {
+            Ok(upload_meta) => {
+                write_slice_out(out_upload_proto, upload_meta.encode_to_vec());
+                GChatStatus::GchatOk
+            }
+            Err(e) => {
+                let st = status_from_error(&e);
+                write_err_slice(out_err, e.to_string());
+                st
+            }
         }
-    };
-    let data = match read_bytes(data_ptr, data_len, "data") {
-        Ok(b) => b,
-        Err(e) => {
-            write_err_slice(out_err, e);
-            return GChatStatus::GchatErrInvalidArg;
-        }
-    };
-    let client_ref = &*client;
-    let res = client_ref.runtime.block_on(crate::media::scotty_upload(
-        client_ref,
-        &req.group_id,
-        &req.filename,
-        &req.content_type,
-        data,
-    ));
-    match res {
-        Ok(upload_meta) => {
-            write_slice_out(out_upload_proto, upload_meta.encode_to_vec());
-            GChatStatus::GchatOk
-        }
-        Err(e) => {
-            let st = status_from_error(&e);
-            write_err_slice(out_err, e.to_string());
-            st
-        }
-    }
+    })
 }
 
 #[no_mangle]
@@ -794,71 +844,73 @@ pub unsafe extern "C" fn gchat_download_media(
     out_bytes: *mut GChatByteSlice,
     out_err: *mut GChatByteSlice,
 ) -> GChatStatus {
-    if client.is_null() || out_bytes.is_null() {
-        write_err_slice(out_err, "client or out_bytes pointer is null");
-        return GChatStatus::GchatErrInvalidArg;
-    }
-    let req_json = match read_utf8(req_json_ptr, req_json_len, "req_json") {
-        Ok(s) => s,
-        Err(e) => {
-            write_err_slice(out_err, e);
+    catch_ffi_status(out_err, || {
+        if client.is_null() || out_bytes.is_null() {
+            write_err_slice(out_err, "client or out_bytes pointer is null");
             return GChatStatus::GchatErrInvalidArg;
         }
-    };
-    let req: DownloadMediaReqInput = match serde_json::from_str(&req_json) {
-        Ok(r) => r,
-        Err(e) => {
-            write_err_slice(out_err, format!("invalid download_media JSON: {e}"));
-            return GChatStatus::GchatErrInvalidArg;
-        }
-    };
-    let client_ref = &*client;
-    let kind = if req.kind.trim().is_empty() {
-        "attachment"
-    } else {
-        req.kind.trim()
-    };
-    let res: Result<(Vec<u8>, String), GChatError> = match kind {
-        "attachment" => {
-            client_ref
+        let req_json = match read_utf8(req_json_ptr, req_json_len, "req_json") {
+            Ok(s) => s,
+            Err(e) => {
+                write_err_slice(out_err, e);
+                return GChatStatus::GchatErrInvalidArg;
+            }
+        };
+        let req: DownloadMediaReqInput = match serde_json::from_str(&req_json) {
+            Ok(r) => r,
+            Err(e) => {
+                write_err_slice(out_err, format!("invalid download_media JSON: {e}"));
+                return GChatStatus::GchatErrInvalidArg;
+            }
+        };
+        let client_ref = &*client;
+        let kind = if req.kind.trim().is_empty() {
+            "attachment"
+        } else {
+            req.kind.trim()
+        };
+        let res: Result<(Vec<u8>, String), GChatError> = match kind {
+            "attachment" => {
+                client_ref
+                    .runtime
+                    .block_on(crate::media::download_attachment_with_content_type(
+                        client_ref,
+                        &req.attachment_token,
+                        &req.content_type,
+                    ))
+            }
+            "avatar" => client_ref
                 .runtime
-                .block_on(crate::media::download_attachment_with_content_type(
-                    client_ref,
-                    &req.attachment_token,
-                    &req.content_type,
-                ))
-        }
-        "avatar" => client_ref
-            .runtime
-            .block_on(crate::media::download_avatar(&client_ref.guard, &req.url)),
-        "external" => {
-            match client_ref
-                .runtime
-                .block_on(crate::media::download_external_image_if_enabled(
-                    &client_ref.guard,
-                    &req.url,
-                    req.external_enabled,
-                )) {
-                Ok(Some(pair)) => Ok(pair),
-                Ok(None) => Ok((Vec::new(), String::new())),
-                Err(e) => Err(e),
+                .block_on(crate::media::download_avatar(&client_ref.guard, &req.url)),
+            "external" => {
+                match client_ref
+                    .runtime
+                    .block_on(crate::media::download_external_image_if_enabled(
+                        &client_ref.guard,
+                        &req.url,
+                        req.external_enabled,
+                    )) {
+                    Ok(Some(pair)) => Ok(pair),
+                    Ok(None) => Ok((Vec::new(), String::new())),
+                    Err(e) => Err(e),
+                }
+            }
+            other => Err(GChatError::Protocol(format!(
+                "unsupported download_media kind: {other}"
+            ))),
+        };
+        match res {
+            Ok((bytes, _mime)) => {
+                write_slice_out(out_bytes, bytes);
+                GChatStatus::GchatOk
+            }
+            Err(e) => {
+                let st = status_from_error(&e);
+                write_err_slice(out_err, e.to_string());
+                st
             }
         }
-        other => Err(GChatError::Protocol(format!(
-            "unsupported download_media kind: {other}"
-        ))),
-    };
-    match res {
-        Ok((bytes, _mime)) => {
-            write_slice_out(out_bytes, bytes);
-            GChatStatus::GchatOk
-        }
-        Err(e) => {
-            let st = status_from_error(&e);
-            write_err_slice(out_err, e.to_string());
-            st
-        }
-    }
+    })
 }
 
 #[cfg(test)]
@@ -946,5 +998,21 @@ mod tests {
             );
             gchat_client_free(client);
         }
+    }
+
+    #[test]
+    fn test_catch_ffi_status_catches_panic_and_returns_err_internal() {
+        let mut err = GChatByteSlice::default();
+        let st = unsafe {
+            catch_ffi_status(&mut err, || -> GChatStatus {
+                panic!("synthetic panic inside extern C boundary");
+            })
+        };
+        let err_msg = slice_to_string(err);
+        assert_eq!(st, GChatStatus::GchatErrInternal);
+        assert!(
+            err_msg.contains("ffi panic: synthetic panic inside extern C boundary"),
+            "expected panic message in out_err, got: {err_msg}"
+        );
     }
 }
