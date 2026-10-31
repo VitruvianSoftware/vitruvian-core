@@ -398,10 +398,11 @@ func (c *Client) seedAndEnqueueGhostPrewarm(ctx context.Context, uid networkid.U
 		c.mu.Unlock()
 		return
 	}
-	c.prewarmedUsers[uid] = struct{}{}
+	// Mark the user only once it is queued, so a full queue leaves it eligible
+	// for the next sync instead of silently never warming it.
 	select {
-	case <-streamCtx.Done():
 	case ch <- uid:
+		c.prewarmedUsers[uid] = struct{}{}
 	default:
 	}
 	c.mu.Unlock()
