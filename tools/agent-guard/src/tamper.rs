@@ -637,10 +637,14 @@ fn written_words(argv: &[String]) -> Vec<String> {
     out
 }
 
-/// `_INSTALLER_RE.search(w)`.
+/// `_INSTALLER_RE.search(w)`: agent-guard/install, install.py or install_rs.
 fn is_installer_path(w: &str) -> bool {
     let core = w.strip_suffix('\n').unwrap_or(w);
-    for tail in ["agent-guard/install", "agent-guard/install.py"] {
+    for tail in [
+        "agent-guard/install",
+        "agent-guard/install.py",
+        "agent-guard/install_rs",
+    ] {
         if let Some(head) = core.strip_suffix(tail) {
             if head.is_empty() || head.ends_with('/') {
                 return true;

@@ -646,3 +646,17 @@ the old copy is installed, or to move the backstop; `--uninstall` and `--mode`
 are refused), and `--check`
 passing and failing (no backstop, the old copy, a moved main checkout, an
 unwired repo file, a broken launcher, a category switched off).
+
+**The Rust port.** `src/` is a compiled port of the guard, and
+`install/` of the installer (`bazel run //tools/agent-guard:install_rs`;
+`install.py` stays the one documented above until the cutover). The guard
+treats `:install_rs` exactly like `:install`, and an agent may run either only
+from a checkout where `install.py`, `agent_guard.py`, `BUILD` and every file
+under `src/` and `install/` are `origin/main`'s (a file added there counts as
+an edit). `agent_guard_rs_test` holds the same cases as the Python tests,
+reading the one decision table in `testdata/decision_table.json`;
+`install_rs_test` those of `install_test`; `agent_guard_rs_parity_test` still
+runs both guards on every row. Both guards also check that every file a
+refusal's "pending" target names exists and holds the target
+(`:pending_target_files`), so deleting a tool cannot again leave refusals
+saying its replacement "is not in this checkout yet".

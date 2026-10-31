@@ -68,6 +68,21 @@ py_binary(
     main = "install.py",
 )
 
+# The files the guard's "pending" targets name (classify.rs / agent_guard.py
+# T_*): the refusal advice checks them to say whether a target exists yet. The
+# tests fail if one is missing or no longer holds its target, so a deleted or
+# renamed tool cannot leave every refusal claiming its replacement "is not in
+# this checkout yet" (it did, for //tools/agent-app and //tools/worktree, after
+# their scripts were removed in #3973 and #3987).
+filegroup(
+    name = "pending_target_files",
+    srcs = [
+        "//tools/ci:BUILD",
+        "//tools/git:BUILD",
+        "//tools/secret-scan:BUILD",
+    ],
+)
+
 # The repo's hook files and the launcher, for the tests.
 filegroup(
     name = "wiring",
@@ -100,7 +115,11 @@ py_test(
         "agent_guard.py",
         "agent_guard_test.py",
     ],
-    data = ["policy.json"],
+    data = [
+        "policy.json",
+        "testdata/decision_table.json",
+        ":pending_target_files",
+    ],
     imports = ["."],
     main = "agent_guard_test.py",
 )
@@ -173,6 +192,7 @@ rust_test(
     name = "agent_guard_lib_test",
     size = "small",
     crate = ":agent_guard_lib",
+    data = [":pending_target_files"],
     edition = "2021",
 )
 
@@ -192,9 +212,54 @@ py_test(
     ],
     data = [
         "policy.json",
+        "testdata/decision_table.json",
         ":agent_guard_rs",
     ],
     env = {"AGENT_GUARD_RS": "$(rootpath :agent_guard_rs)"},
     imports = ["."],
     main = "agent_guard_rs_parity_test.py",
+)
+
+# --- Rust tests and installer (the cutover's groundwork) ----------------------
+# Ported from agent_guard_test.py, hook_test.py and install_test.py so the Rust
+# suite stands on its own once the Python files go. The decision table lives in
+# testdata/decision_table.json, read by both the Python and the Rust tests.
+rust_test(
+    name = "agent_guard_rs_test",
+    size = "small",
+    srcs = glob(["tests/**/*.rs"]),
+    crate_root = "tests/main.rs",
+    data = [
+        "policy.json",
+        "testdata/decision_table.json",
+        ":wiring",
+    ],
+    edition = "2021",
+    deps = [":agent_guard_lib"],
+)
+
+# The per-user backstop installer, in Rust (install.py stays the live one
+# until the cutover). Standard library only, like the guard.
+#   bazel run //tools/agent-guard:install_rs -- --check
+rust_binary(
+    name = "install_rs",
+    srcs = glob(["install/**/*.rs"]),
+    crate_root = "install/main.rs",
+    data = ["policy.json"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":agent_guard_lib"],
+)
+
+# The backstop against a temporary HOME (install, migration, rollback,
+# uninstall, the agent checks) and --check against a throwaway checkout.
+rust_test(
+    name = "install_rs_test",
+    size = "small",
+    crate = ":install_rs",
+    data = [
+        "policy.json",
+        ":wiring",
+    ],
+    edition = "2021",
 )

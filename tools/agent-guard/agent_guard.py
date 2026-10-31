@@ -210,46 +210,42 @@ def _target_present(
 
 
 # Replacement targets. The (file, needle) pairs say where each target will
-# live; while it is missing the refusal says so and points to James.
+# live; while it is missing the refusal says so and points to James. Every
+# file named here must exist on main (PendingTargetsTest checks), or every
+# refusal naming that target wrongly says it is not built yet.
 T_COMMIT = ("bazel run //tools/git:commit", ("tools/git/BUILD", "commit"))
 T_PUSH = ("bazel run //tools/git:push", ("tools/git/BUILD", "push"))
 T_SYNC = ("bazel run //tools/git:sync", ("tools/git/BUILD", "sync"))
 T_WT_NEW = ("bazel run //tools/worktree -- <branch> [base-ref]", None)
-T_WT_DETACH = (
-    "bazel run //tools/worktree -- --detach <ref>",
-    ("tools/worktree/worktree.sh", "--detach"),
-)
+T_WT_DETACH = ("bazel run //tools/worktree -- --detach <ref>", None)
 T_WT_REMOVE = ("bazel run //tools/worktree -- --remove <branch>", None)
 T_WT_PRUNE = ("bazel run //tools/worktree -- --prune (then --prune --execute)", None)
-T_WT_LOCK = (
-    "bazel run //tools/worktree -- --lock / --unlock",
-    ("tools/worktree/worktree.sh", "--lock"),
-)
+T_WT_LOCK = ("bazel run //tools/worktree -- --lock / --unlock", None)
 T_WT_DELETE_BRANCH = (
     "bazel run //tools/worktree -- --remove <branch> --delete-branch (or --prune --execute)",
     None,
 )
 T_PR_CREATE = (
     "bazel run //tools/agent-app -- pr-create",
-    ("tools/agent-app/agent-app.sh", "pr-create"),
+    None,
 )
 T_PR_ENQUEUE = (
     "bazel run //tools/agent-app -- pr-enqueue <pr>",
-    ("tools/agent-app/agent-app.sh", "pr-enqueue"),
+    None,
 )
 # Actions writes: wren's App is the only one with Actions write
 # (tools/agent-app/permissions.tsv), so the other agents' Apps are refused.
 T_RUN_RERUN = (
     "bazel run //tools/agent-app -- run-rerun <run-id> [--failed] [--job <id>]",
-    ("tools/agent-app/agent-app.sh", "run-rerun"),
+    None,
 )
 T_RUN_CANCEL = (
     "bazel run //tools/agent-app -- run-cancel <run-id>",
-    ("tools/agent-app/agent-app.sh", "run-cancel"),
+    None,
 )
 T_WORKFLOW_RUN = (
     "bazel run //tools/agent-app -- workflow-run <file.yaml> [-f k=v ...] [--ref main]",
-    ("tools/agent-app/agent-app.sh", "workflow-run"),
+    None,
 )
 RUN_NOTE = "Only wren's App has Actions write; any other agent: tell James."
 RUN_NO_TARGET_NOTE = (
@@ -2657,14 +2653,14 @@ def classify_bazel(args: List[str], cwd: str = "", home: str = "") -> Optional[V
 # refresh the backstop, which install.py then checks itself), or only these.
 # `--uninstall` only with `--dry-run`, to show James the change.
 AGENT_INSTALL_FLAGS = ("--check", "--dry-run", "--help", "-h")
-_INSTALL_LABEL_RE = re.compile(r"(^|/)tools/agent-guard:install$")
+_INSTALL_LABEL_RE = re.compile(r"(^|/)tools/agent-guard:install(_rs)?$")
 
 
 def _is_install_label(word: str, cwd: str) -> bool:
     if _INSTALL_LABEL_RE.search(word):
         return True
     # A label relative to the package, run from tools/agent-guard itself.
-    return word in (":install", "install") and bool(
+    return word in (":install", "install", ":install_rs", "install_rs") and bool(
         re.search(r"/tools/agent-guard/?$", cwd or "")
     )
 
@@ -2685,6 +2681,10 @@ INSTALLER_SOURCES = (
     "tools/agent-guard/agent_guard.py",
     "tools/agent-guard/BUILD",
 )
+# The Rust installer (:install_rs) is built from every file in these folders,
+# by glob: each file on origin/main and each file in the checkout must match,
+# so an added file counts as an edit too.
+INSTALLER_SOURCE_DIRS = ("tools/agent-guard/src", "tools/agent-guard/install")
 _RC_RUN_UNDER = re.compile(r"(run_under|script_path)")
 _RC_IMPORT = re.compile(r"^\s*(try-)?import\s+(\S+)")
 
@@ -2766,15 +2766,50 @@ def _bazelrc_files(root: str, home: str) -> List[str]:
     return out
 
 
+def installer_sources(root: str) -> Optional[List[str]]:
+    """INSTALLER_SOURCES plus every file under INSTALLER_SOURCE_DIRS on origin/main
+    or in root's checkout, sorted; None if git cannot list origin/main's."""
+    try:
+        r = subprocess.run(
+            [
+                "git",
+                "-C",
+                root,
+                "ls-tree",
+                "-r",
+                "-z",
+                "--name-only",
+                "origin/main",
+                "--",
+            ]
+            + list(INSTALLER_SOURCE_DIRS),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=_git_env(),
+            timeout=5,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if r.returncode != 0:
+        return None
+    found = {p.decode("utf-8", "surrogateescape") for p in r.stdout.split(b"\0") if p}
+    for rel_dir in INSTALLER_SOURCE_DIRS:
+        for dirpath, _dirs, files in os.walk(os.path.join(root, rel_dir)):
+            for name in files:
+                found.add(os.path.relpath(os.path.join(dirpath, name), root))
+    return list(INSTALLER_SOURCES) + sorted(found - set(INSTALLER_SOURCES))
+
+
 def installer_problem(cwd: str, home: str) -> str:
     """Why an agent may not run the installer from cwd's checkout ("" if it may)."""
     root = repo_root_of(cwd)
     if root is None:
         return "it is not run from inside a vitruvian-core checkout"
-    main = origin_main_files(root, INSTALLER_SOURCES)
+    sources = installer_sources(root)
+    main = origin_main_files(root, sources) if sources is not None else None
     if main is None or all(v is None for v in main.values()):
         return "origin/main or its installer cannot be read in %s (fetch first)" % root
-    for rel in INSTALLER_SOURCES:
+    for rel in sources:
         try:
             with open(os.path.join(root, rel), "rb") as fh:
                 have: Optional[bytes] = fh.read()
@@ -3199,7 +3234,7 @@ HOOK_FILES_NOTE = (
 
 
 _INSTALLER_RE = re.compile(
-    r"(^|/)(tools/)?agent-guard/install(\.py)?$|(^|/)agent-guard/install(\.py)?$"
+    r"(^|/)(tools/)?agent-guard/install(\.py|_rs)?$|(^|/)agent-guard/install(\.py|_rs)?$"
 )
 
 

@@ -47,936 +47,14 @@ A, D = "allow", "deny"
 # (command, decision, category or None, git-state key). {repo} is a fake
 # vitruvian-core checkout, {wt} a linked worktree of it, {out} a directory
 # outside it, {home} the fake HOME.
-TABLE = [
-    # --- read-only git: allowed ------------------------------------------------
-    ("git status", A, None, ""),
-    ("git status --porcelain", A, None, ""),
-    ("git log --oneline -20", A, None, ""),
-    ("git log origin/main..HEAD --format=%H", A, None, ""),
-    ("git diff", A, None, ""),
-    ("git diff --stat origin/main...HEAD", A, None, ""),
-    ("git show HEAD:tools/ci/agent-fast-lane.sh", A, None, ""),
-    ("git fetch origin main", A, None, ""),
-    ("git fetch --prune", A, None, ""),
-    ("git rev-parse --show-toplevel", A, None, ""),
-    ("git rev-parse --abbrev-ref HEAD", A, None, ""),
-    ("git ls-files -m", A, None, ""),
-    ("git grep -n TODO -- '*.go'", A, None, ""),
-    ("git blame -L 10,20 README.md", A, None, ""),
-    ("git branch", A, None, ""),
-    ("git branch --list 'feat/*'", A, None, ""),
-    ("git branch -a --contains abc123", A, None, ""),
-    ("git branch --show-current", A, None, ""),
-    ("git branch -vv", A, None, ""),
-    ("git worktree list", A, None, ""),
-    ("git worktree list --porcelain", A, None, ""),
-    ("git merge-base --is-ancestor abc origin/main", A, None, ""),
-    ("git cat-file -p HEAD", A, None, ""),
-    ("git config --get user.email", A, None, ""),
-    ("git config user.name", A, None, ""),
-    ("git config --list --show-origin", A, None, ""),
-    ("git remote -v", A, None, ""),
-    ("git remote get-url origin", A, None, ""),
-    ("git stash list", A, None, ""),
-    ("git stash show -p stash@{0}", A, None, ""),
-    ("git tag -l 'vitruvian-v*'", A, None, ""),
-    ("git tag", A, None, ""),
-    ("git describe --tags", A, None, ""),
-    ("git rev-list --count HEAD", A, None, ""),
-    ("git for-each-ref refs/heads", A, None, ""),
-    ("git pull --ff-only", A, None, "primary"),
-    ("git apply --check fix.patch", A, None, ""),
-    ("git checkout -- README.md", A, None, ""),
-    ("git checkout README.md", A, None, ""),
-    ("git checkout HEAD~1 -- src/main.go", A, None, ""),
-    ("git restore src/main.go", A, None, ""),
-    ("git --no-pager log -1", A, None, ""),
-    ("git -C {repo} status", A, None, ""),
-    ("/usr/bin/git log -3", A, None, ""),
-    ("git commit --help", A, None, ""),
-    ("git --version", A, None, ""),
-    ("git reflog -10", A, None, ""),
-    ("git shortlog -sn", A, None, ""),
-    ("git ls-remote origin", A, None, ""),
-    ("git range-diff a...b", A, None, ""),
-    # --- read-only gh: allowed -------------------------------------------------
-    ("gh pr view 3427 --json state", A, None, ""),
-    ("gh pr list --author @me", A, None, ""),
-    ("gh pr checks 3427", A, None, ""),
-    ("gh pr diff 3427", A, None, ""),
-    ("gh pr status", A, None, ""),
-    ("gh run list --workflow ci.yaml", A, None, ""),
-    ("gh run view 123 --log-failed", A, None, ""),
-    ("gh run watch 123", A, None, ""),
-    ("gh workflow list", A, None, ""),
-    ("gh issue view 3418", A, None, ""),
-    ("gh issue comment 3418 --body 'step 2 live'", A, None, ""),
-    ("gh issue create --title x --body y", A, None, ""),
-    ("gh api repos/VitruvianSoftware/vitruvian-core/pulls/3427", A, None, ""),
-    ("gh api -X GET search/issues -f q=repo:x", A, None, ""),
-    (
-        "gh api --paginate repos/o/r/actions/runs --jq '.workflow_runs[].id'",
-        A,
-        None,
-        "",
-    ),
-    ("gh api graphql -f query='query { viewer { login } }'", A, None, ""),
-    (
-        "gh api graphql -F owner=x -f query='{ repository(owner:$owner,name:\"r\"){ id } }'",
-        A,
-        None,
-        "",
-    ),
-    ("gh auth status", A, None, ""),
-    ("gh search prs --author @me", A, None, ""),
-    ("gh release list", A, None, ""),
-    ("gh repo view --json name", A, None, ""),
-    ("gh --version", A, None, ""),
-    # --- Bazel and ungoverned programs: allowed --------------------------------
-    ("bazel test //...", A, None, ""),
-    ("bazel run //tools/worktree -- feat/x", A, None, ""),
-    ("bazel run //tools/git:commit -- -m 'feat: x' a.go", A, None, ""),
-    ("bazel run //tools/agent-app -- pr-create --title x", A, None, ""),
-    ("bazelisk build //apps/cli/devx/...", A, None, ""),
-    ("aspect lint //tools/...", A, None, ""),
-    ("bazel clean", A, None, ""),
-    ("bazel run //tools/agent-guard:install -- --dry-run", A, None, ""),
-    ("bazel run //tools/agent-guard:install -- --check", A, None, ""),
-    ("cat README.md", A, None, ""),
-    ("ls -la tools/", A, None, ""),
-    ("jq .name package.json", A, None, ""),
-    ("python3 -c 'import json; print(json.load(open(\"a.json\")))'", A, None, ""),
-    ("rg -n agent-guard docs/", A, None, ""),
-    ("docker ps", A, None, ""),
-    ("rm -rf node_modules", A, None, ""),
-    ("rm -rf {repo}/bazel-out/tmp", A, None, ""),
-    ("rm -f /tmp/x.log", A, None, ""),
-    ("cat <<EOF > notes.txt\ngit push\ngit commit -m x\nEOF", A, None, ""),
-    ("echo 'git push is blocked'", A, None, ""),
-    ("npm view react version", A, None, ""),
-    ("pnpm why typescript", A, None, ""),
-    ("npm outdated", A, None, ""),
-    ("go version", A, None, ""),
-    ("go env GOPATH", A, None, ""),
-    ("go list -m -u all", A, None, ""),
-    ("swift --version", A, None, ""),
-    ("xcodebuild -version", A, None, ""),
-    ("xcrun simctl list devices", A, None, ""),
-    ("cargo metadata --format-version 1", A, None, ""),
-    ("kubectl get pods -n backstage", A, None, ""),
-    ("kubectl -n argocd describe app tabula", A, None, ""),
-    ("kubectl logs -n backstage deploy/backstage --tail 50", A, None, ""),
-    ("kubectl rollout status deploy/x -n y", A, None, ""),
-    ("helm template ./chart", A, None, ""),
-    ("helm list -A", A, None, ""),
-    ("pulumi version", A, None, ""),
-    ("pulumi stack ls", A, None, ""),
-    ("command -v git", A, None, ""),
-    ("gofmt --version", A, None, ""),
-    ("cat ~/.local/state/agent-guard/log.jsonl | jq -c .", A, None, ""),
-    ("tail -5 ~/.local/state/agent-guard/log.jsonl", A, None, ""),
-    # --- git writes: blocked ---------------------------------------------------
-    ("git add .", D, "git-commit", ""),
-    ("git add -A && git commit -m 'feat: x'", D, "git-commit", ""),
-    ("git commit -m 'fix: y'", D, "git-commit", ""),
-    ("git commit --amend --no-edit", D, "git-commit", ""),
-    ("git rm -r old/", D, "git-commit", ""),
-    ("git mv a.go b.go", D, "git-commit", ""),
-    ("git push -u origin feat/agent-guard", D, "git-push", ""),
-    ("git push --force-with-lease", D, "git-push", ""),
-    ("git rebase -q origin/main", D, "git-history", ""),
-    ("git rebase -i HEAD~3", D, "git-history", ""),
-    ("git reset --hard origin/main", D, "git-history", ""),
-    ("git reset HEAD~1", D, "git-history", ""),
-    ("git merge origin/main", D, "git-history", ""),
-    ("git cherry-pick abc123", D, "git-history", ""),
-    ("git revert HEAD", D, "git-history", ""),
-    ("git pull", D, "git-history", "primary"),
-    ("git pull --rebase", D, "git-history", "primary"),
-    ("git pull --ff-only", D, "git-history", "worktree"),
-    ("git tag v1.2.3", D, "git-history", ""),
-    ("git tag -d v1.2.3", D, "git-history", ""),
-    ("git stash", D, "git-stash", ""),
-    ("git stash push -m wip", D, "git-stash", ""),
-    ("git stash pop", D, "git-stash", ""),
-    ("git checkout -b feat/x", D, "git-branch", ""),
-    ("git checkout main", D, "git-branch", ""),
-    ("git checkout --detach origin/main", D, "git-branch", ""),
-    ("git switch -c feat/x", D, "git-branch", ""),
-    ("git switch main", D, "git-branch", ""),
-    ("git branch -D feat/old", D, "git-branch", ""),
-    ("git branch -d feat/old", D, "git-branch", ""),
-    ("git branch feat/new", D, "git-branch", ""),
-    ("git branch -m old new", D, "git-branch", ""),
-    ("git worktree add ../wt -b feat/x origin/main", D, "git-worktree", ""),
-    ("git worktree add --detach $SP/rv abc123", D, "git-worktree", ""),
-    ("git worktree remove --force ../wt", D, "git-worktree", ""),
-    ("git worktree prune", D, "git-worktree", ""),
-    ("git worktree lock ../wt --reason wip", D, "git-worktree", ""),
-    ("git worktree unlock ../wt", D, "git-worktree", ""),
-    ("git config user.email bot@example.com", D, "git-other", ""),
-    ("git config --unset core.hooksPath", D, "git-other", ""),
-    ("git remote add fork https://github.com/x/y", D, "git-other", ""),
-    ("git apply fix.patch", A, None, ""),
-    ("git clean -fdx", D, "git-other", ""),
-    ("git gc --prune=now", D, "git-other", ""),
-    ("git update-ref refs/heads/main abc", D, "git-other", ""),
-    ("git am < 0001.patch", D, "git-history", ""),
-    ("git bisect start", D, "git-history", ""),
-    # --- escape hatches: still seen -------------------------------------------
-    ("/usr/bin/git commit -m x", D, "git-commit", ""),
-    ("git -C {repo} push", D, "git-push", ""),
-    ("cd {out} && git -C {repo} push origin HEAD", D, "git-push", ""),
-    ("cd {repo} && git push", D, "git-push", "out"),
-    ("git -c user.name=x commit -m y", D, "git-commit", ""),
-    ("git --no-pager -C . commit -m y", D, "git-commit", ""),
-    ("git status; git push", D, "git-push", ""),
-    ("git status || git push", D, "git-push", ""),
-    ("git diff | git apply --index", D, "git-commit", ""),
-    ("(git add . && git commit -m x)", D, "git-commit", ""),
-    ("{ git add .; git commit -m x; }", D, "git-commit", ""),
-    ("echo $(git push 2>&1)", D, "git-push", ""),
-    ("echo `git push`", D, "git-push", ""),
-    ('x="$(git commit -m y)"', D, "git-commit", ""),
-    ("diff <(git push) /dev/null", D, "git-push", ""),
-    ("bash -c 'git push origin HEAD'", D, "git-push", ""),
-    ("sh -c \"git commit -m 'x'\"", D, "git-commit", ""),
-    ("zsh -lc 'git stash'", D, "git-stash", ""),
-    ("bash <<'EOF'\ngit push\nEOF", D, "git-push", ""),
-    ("bash <<< 'git push'", D, "git-push", ""),
-    ('eval "git push origin HEAD"', D, "git-push", ""),
-    ("env GIT_AUTHOR_NAME=x git commit -m y", D, "git-commit", ""),
-    ("GIT_EDITOR=true git rebase --continue", D, "git-history", ""),
-    ("env -i PATH=/usr/bin git push", D, "git-push", ""),
-    ("env -S 'git push'", D, "git-push", ""),
-    ("nice -n 10 go test ./...", D, "go", ""),
-    ("time go test ./...", D, "go", ""),
-    ("timeout 300 go test ./...", D, "go", ""),
-    ("timeout -s KILL 5m swift test", D, "swift", ""),
-    ("nohup pnpm install &", D, "node", ""),
-    ("command git push", D, "git-push", ""),
-    ("exec git push", D, "git-push", ""),
-    ("sudo -u james git push", D, "git-push", ""),
-    ("caffeinate -i go test ./...", D, "go", ""),
-    ("echo feat/old | xargs git branch -D", D, "git-branch", ""),
-    ("ls | xargs -I{} git add {}", D, "git-commit", ""),
-    ("find . -name '*.go' -exec gofmt -w {} \\;", D, "lint", ""),
-    ("watch -n 30 gh run rerun 123", D, "gh-run", ""),
-    ("if git diff --quiet; then :; else git commit -am x; fi", D, "git-commit", ""),
-    ('for b in a b; do git branch -D "$b"; done', D, "git-branch", ""),
-    ('while read b; do git push origin "$b"; done < branches.txt', D, "git-push", ""),
-    ("git status &&\ngit push", D, "git-push", ""),
-    ("git status \\\n && git push", D, "git-push", ""),
-    ("uv run pytest tools/x", D, "pytest", ""),
-    ("python3 -m pytest -q", D, "pytest", ""),
-    ("python -m ruff check .", D, "lint", ""),
-    ("direnv exec . go test ./...", D, "go", ""),
-    ('git commit -m "unterminated', D, "git-commit", ""),
-    # --- gh writes: blocked ----------------------------------------------------
-    ("gh pr create --base main --title x --body-file b.md", D, "gh-pr", ""),
-    ("gh pr edit 3345 --body-file b.md", D, "gh-pr", ""),
-    ("gh pr comment 3345 --body ok", D, "gh-pr", ""),
-    ("gh pr merge 84 --squash --auto", D, "gh-pr", ""),
-    ("gh pr merge 84 --admin", D, "gh-pr", ""),
-    ("gh pr ready 84", D, "gh-pr", ""),
-    ("gh pr close 84", D, "gh-pr", ""),
-    ("gh pr review 84 --approve", D, "gh-pr", ""),
-    ("gh pr checkout 84", D, "git-branch", ""),
-    ("gh -R VitruvianSoftware/vitruvian-core pr merge 9 --auto", D, "gh-pr", "out"),
-    ("gh workflow run ci.yaml --ref main", D, "gh-run", ""),
-    ("gh run rerun 123 --failed", D, "gh-run", ""),
-    ("gh run cancel 123", D, "gh-run", ""),
-    ("gh run delete 123", D, "gh-run", ""),
-    ("gh workflow enable ci.yaml", D, "gh-run", ""),
-    ("gh workflow disable ci.yaml", D, "gh-run", ""),
-    ("gh run rerun 123 --job 456", D, "gh-run", ""),
-    (
-        "gh api -X PUT repos/VitruvianSoftware/vitruvian-core/pulls/1/merge",
-        D,
-        "gh-api",
-        "",
-    ),
-    (
-        "gh api --method=POST repos/{owner}/{repo}/issues/1/labels -f labels[]=x",
-        D,
-        "gh-api",
-        "",
-    ),
-    ("gh api repos/:owner/:repo/issues/1/comments -f body=hi", D, "gh-api", ""),
-    (
-        "gh api -XDELETE repos/VitruvianSoftware/vitruvian-core/git/refs/heads/x",
-        D,
-        "gh-api",
-        "",
-    ),
-    (
-        "gh api graphql -f query='mutation { enablePullRequestAutoMerge(input:{}) { clientMutationId } }'",
-        D,
-        "gh-api",
-        "",
-    ),
-    ("gh api graphql -f query=@-", D, "gh-api", ""),
-    ("gh release create v1 --notes x", D, "gh-other", ""),
-    ("gh secret set FOO --body bar", D, "gh-other", ""),
-    ("gh label create x", D, "gh-other", ""),
-    # --- dev toolchains: blocked -----------------------------------------------
-    ("go test ./...", D, "go", ""),
-    ("go vet ./...", D, "go", ""),
-    ("go build -o /tmp/x ./cmd/x", D, "go", ""),
-    ("go run ./tools/pipeline/plan", D, "go", ""),
-    ("go mod tidy", D, "go", ""),
-    ("go fmt ./...", D, "go", ""),
-    ("swift build --build-tests", D, "swift", ""),
-    ("swift test --filter Foo", D, "swift", ""),
-    ("swift run nexus-agent", D, "swift", ""),
-    ("xcodebuild -scheme X test", D, "xcode", ""),
-    ("xcrun notarytool submit x.zip --wait", D, "xcode", ""),
-    ("npm install", D, "node", ""),
-    ("npm ci", D, "node", ""),
-    ("npm test", D, "node", ""),
-    ("npm run build", D, "node", ""),
-    ("pnpm install --frozen-lockfile", D, "node", ""),
-    ("pnpm add -D jest", D, "node", ""),
-    ("pnpm --filter tabula-web test", D, "node", ""),
-    ("pnpm dlx create-x", D, "node", ""),
-    ("npx -y @anthropic-ai/foo", D, "node", ""),
-    ("yarn", D, "node", ""),
-    ("yarn add react", D, "node", ""),
-    ("cargo test", D, "cargo", ""),
-    ("cargo build --release", D, "cargo", ""),
-    ("cargo publish", D, "cargo", ""),
-    ("./gradlew assembleDebug", D, "gradle", ""),
-    ("gradle build", D, "gradle", ""),
-    ("pytest -q tools/", D, "pytest", ""),
-    ("gofmt -l .", D, "lint", ""),
-    ("gofmt -w x.go", D, "lint", ""),
-    ("golangci-lint run ./...", D, "lint", ""),
-    ("ruff check .", D, "lint", ""),
-    ("eslint src", D, "lint", ""),
-    ("prettier --write .", D, "lint", ""),
-    ("shellcheck tools/x.sh", D, "lint", ""),
-    ("actionlint", D, "actionlint", ""),
-    ("actionlint .github/workflows/ci.yaml", D, "actionlint", ""),
-    ("gitleaks git --log-opts=origin/main..HEAD", D, "secret-scan", ""),
-    ("gitleaks detect --no-git", D, "secret-scan", ""),
-    # --- infra and clusters: blocked -------------------------------------------
-    ("pulumi up --yes", D, "iac", ""),
-    ("pulumi destroy", D, "iac", ""),
-    ("pulumi import gcp:x y z", D, "iac", ""),
-    ("pulumi refresh -s dev", D, "iac", ""),
-    ("pulumi preview -s dev-local", D, "iac", ""),
-    ("terraform apply", D, "iac", ""),
-    ("kubectl apply -f x.yaml", D, "kubectl", ""),
-    ("kubectl delete pod x -n y", D, "kubectl", ""),
-    ("kubectl patch deploy x -p '{}'", D, "kubectl", ""),
-    ("kubectl edit cm x", D, "kubectl", ""),
-    ("kubectl -n backstage exec -it deploy/backstage -- sh", D, "kubectl", ""),
-    ("kubectl rollout restart deploy/x -n y", D, "kubectl", ""),
-    ("kubectl scale deploy x --replicas=0", D, "kubectl", ""),
-    ("helm install x ./chart", D, "helm", ""),
-    ("helm upgrade --install x ./chart", D, "helm", ""),
-    ("helm uninstall x", D, "helm", ""),
-    # --- Bazel caches (blocked from anywhere) ----------------------------------
-    ("rm -rf ~/Library/Caches/bazel", D, "bazel-cache", "out"),
-    ("rm -rf ~/.cache/bazel", D, "bazel-cache", "out"),
-    ("rm -rf $HOME/.cache/bazel/worktrees/feat-x", D, "bazel-cache", "out"),
-    ("rm -fr /private/var/tmp/_bazel_james/abc", D, "bazel-cache", "out"),
-    ("chmod -R u+w ~/.cache/bazel && rm -rf ~/.cache/bazel", D, "bazel-cache", "out"),
-    ("find ~/.cache/bazel -mindepth 1 -delete", D, "bazel-cache", "out"),
-    ("bazel clean --expunge", D, "bazel-cache", ""),
-    ("bazel --output_user_root=/tmp/x build //...", D, "bazel-cache", ""),
-    ("rm -rf {wt}", D, "git-worktree", "out"),
-    # --- the guard itself (blocked from anywhere) ------------------------------
-    ("bazel run //tools/agent-guard:install -- --uninstall", D, "guard-config", ""),
-    ("bazel run //tools/agent-guard:install -- --mode all=off", D, "guard-config", ""),
-    # Agents may install (install.py then checks the main checkout), check and
-    # dry-run; anything else on the installer is James's.
-    ("bazel run //tools/agent-guard:install", A, None, ""),
-    ("bazel run //tools/agent-guard:install --", A, None, ""),
-    ("bazel run @//tools/agent-guard:install", A, None, ""),
-    ("bazelisk run //tools/agent-guard:install", A, None, ""),
-    ("bazel run //tools/agent-guard:install -- --dry-run --check", A, None, ""),
-    ("cd {repo}/tools/agent-guard && bazel run :install", A, None, ""),
-    (
-        "cd {repo}/tools/agent-guard && bazel run :install -- --uninstall",
-        D,
-        "guard-config",
-        "",
-    ),
-    ("bazel run //tools/agent-guard:install -- --uninstall --dry-run", A, None, ""),
-    ("bazel run //tools/agent-guard:install -- --dry-run --uninstall", A, None, ""),
-    ("bazel run //tools/agent-guard:install -- --mode=all=off", D, "guard-config", ""),
-    ("bazel run //tools/agent-guard:install -- --home /tmp/h", D, "guard-config", ""),
-    (
-        "bazel run //tools/agent-guard:install -- --workspace /tmp/w",
-        D,
-        "guard-config",
-        "",
-    ),
-    ("bazel run //tools/agent-guard:install -- --check --force", D, "guard-config", ""),
-    ("bazel run //tools/agent-guard:install extra", D, "guard-config", ""),
-    ("bazel run //tools/agent-guard:install --config=ci", D, "guard-config", ""),
-    (
-        "bazel run --run_under='env -u CLAUDECODE' //tools/agent-guard:install",
-        D,
-        "guard-config",
-        "",
-    ),
-    (
-        "bazel run --script_path=/tmp/i.sh //tools/agent-guard:install",
-        D,
-        "guard-config",
-        "",
-    ),
-    ("bazel --bazelrc=/tmp/rc run //tools/agent-guard:install", D, "guard-config", ""),
-    ("env -u CLAUDECODE bazel run //tools/agent-guard:install", D, "guard-config", ""),
-    ("bazel-bin/tools/agent-guard/install", D, "guard-config", ""),
-    ("python3 tools/agent-guard/install.py --uninstall --dry-run", A, None, ""),
-    # --- the backstop's user files: read freely, written only by the Edit tools
-    ("echo '{}' > ~/.claude/settings.json", D, "guard-config", "out"),
-    (
-        "jq '.a=1' ~/.claude/settings.json > /tmp/s && mv /tmp/s ~/.claude/settings.json",
-        D,
-        "guard-config",
-        "out",
-    ),
-    ("sed -i '' 's/agent-guard/x/' ~/.claude/settings.json", D, "guard-config", "out"),
-    ("cp /tmp/h.json ~/.gemini/config/hooks.json", D, "guard-config", "out"),
-    ("cp /tmp/hooks.json ~/.gemini/config/", D, "guard-config", "out"),
-    ("tee ~/.gemini/config/hooks.json < /tmp/h.json", D, "guard-config", "out"),
-    ("rm ~/.claude/settings.json", D, "guard-config", "out"),
-    ("rm -rf ~/.gemini", D, "guard-config", "out"),
-    ("mv ~/.claude/settings.json /tmp/s.json", D, "guard-config", "out"),
-    ("perl -pi -e 's/x/y/' ~/.claude/settings.json", D, "guard-config", "out"),
-    ("ln -sf /tmp/s.json ~/.claude/settings.json", D, "guard-config", "out"),
-    (
-        "python3 -c \"open('{home}/.claude/settings.json', 'w').write('{}')\"",
-        D,
-        "guard-config",
-        "out",
-    ),
-    ("cat ~/.claude/settings.json", A, None, "out"),
-    ("jq .hooks ~/.claude/settings.json", A, None, "out"),
-    ("grep -n agent-guard ~/.gemini/config/hooks.json", A, None, "out"),
-    ("cp ~/.claude/settings.json /tmp/backup.json", A, None, "out"),
-    ("perl -ne 'print if /hook/' ~/.claude/settings.json", A, None, "out"),
-    ("ls -la ~/.claude ~/.gemini/config", A, None, "out"),
-    ("echo note > ~/.claude/notes.md", A, None, "out"),
-    (
-        "python3 -c \"print(open('{home}/.claude/settings.json').read())\"",
-        A,
-        None,
-        "out",
-    ),
-    ("bazel run //tools/git:commit -- -m 'tools/agent-guard:install'", A, None, ""),
-    (
-        "sed -i '' s/enforce/off/ ~/.local/share/agent-guard/policy.json",
-        D,
-        "guard-config",
-        "out",
-    ),
-    ("echo '{}' > ~/.local/share/agent-guard/policy.json", D, "guard-config", "out"),
-    ("rm ~/.local/state/agent-guard/log.jsonl", D, "guard-config", "out"),
-    (
-        "cp /tmp/p.json $HOME/.local/share/agent-guard/policy.json",
-        D,
-        "guard-config",
-        "out",
-    ),
-    # --- the guard's folders in HOME: a read or copy SOURCE is fine ------------
-    ("cp -R ~/.local/share/agent-guard /tmp/scratch-ag", A, None, "out"),
-    ("cp ~/.local/state/agent-guard/log.jsonl /tmp/log.jsonl", A, None, "out"),
-    ("rsync -a ~/.local/share/agent-guard/ /tmp/ag/", A, None, "out"),
-    ("cp /tmp/p.json ~/.local/share/agent-guard/", D, "guard-config", "out"),
-    ("cp -t ~/.local/state/agent-guard /tmp/log.jsonl", D, "guard-config", "out"),
-    ("mv ~/.local/share/agent-guard /tmp/ag", D, "guard-config", "out"),
-    (
-        "python3 -c \"import shutil; shutil.copytree('{home}/.local/share/agent-guard', '/tmp/ag')\"",
-        A,
-        None,
-        "out",
-    ),
-    (
-        "python3 -c \"print(open('{home}/.local/state/agent-guard/log.jsonl').read()[-200:])\"",
-        A,
-        None,
-        "out",
-    ),
-    (
-        "python3.15 -c \"import json; json.load(open('{home}/.local/share/agent-guard/policy.json'))\"",
-        A,
-        None,
-        "out",
-    ),
-    (
-        "python3 -c \"open('/tmp/x', 'w').write(open('{home}/.local/share/agent-guard/policy.json').read())\"",
-        A,
-        None,
-        "out",
-    ),
-    (
-        "python3 -c \"open('{home}/.local/share/agent-guard/policy.json', 'w').write('{}')\"",
-        D,
-        "guard-config",
-        "out",
-    ),
-    (
-        "python3 -c \"import shutil; shutil.rmtree('{home}/.local/share/agent-guard')\"",
-        D,
-        "guard-config",
-        "out",
-    ),
-    (
-        "python3 -c \"import shutil; shutil.copy('/tmp/p.json', '{home}/.local/share/agent-guard/policy.json')\"",
-        D,
-        "guard-config",
-        "out",
-    ),
-    (
-        "python3.15 -c \"import os; os.remove('{home}/.local/state/agent-guard/log.jsonl')\"",
-        D,
-        "guard-config",
-        "out",
-    ),
-    (
-        "python3 -c \"from pathlib import Path; Path('{home}/.local/share/agent-guard/policy.json').write_text('{}')\"",
-        D,
-        "guard-config",
-        "out",
-    ),
-    (
-        "python3 -c \"import shutil; shutil.copy('.claude/settings.json', '/tmp/s.json')\"",
-        A,
-        None,
-        "",
-    ),
-    (
-        "python3 -c \"import shutil; shutil.copy('/tmp/s.json', '.claude/settings.json')\"",
-        D,
-        "guard-config",
-        "",
-    ),
-    # --- the checkout's hook files: they take effect before review -------------
-    ("sed -i '' /agent-guard/d .claude/settings.json", D, "guard-config", ""),
-    (
-        "jq 'del(.hooks)' .claude/settings.json > /tmp/s && mv /tmp/s .claude/settings.json",
-        D,
-        "guard-config",
-        "",
-    ),
-    ("echo '{}' > .agents/hooks.json", D, "guard-config", ""),
-    ("echo '{}' >| .agents/hooks.json", D, "guard-config", ""),
-    ("cat /tmp/x | tee .agents/hooks.json", D, "guard-config", ""),
-    ("cp /tmp/hooks.json .agents/hooks.json", D, "guard-config", ""),
-    ("cp /tmp/hooks.json .agents/", D, "guard-config", ""),
-    ("cp -t .claude /tmp/settings.json", D, "guard-config", ""),
-    ("rm .agents/hooks.json", D, "guard-config", ""),
-    ("rm -rf .claude", D, "guard-config", ""),
-    ("mv .agents /tmp/agents", D, "guard-config", ""),
-    ("mv tools/agent-guard /tmp/ag", D, "guard-config", ""),
-    ("chmod -R a-w tools", D, "guard-config", ""),
-    ("echo 'exit 0' > tools/agent-guard/hook.sh", D, "guard-config", ""),
-    ("perl -pi -e s/block/continue/ .claude/settings.json", D, "guard-config", ""),
-    (
-        "python3 -c \"open('.claude/settings.json', 'w').write('{}')\"",
-        D,
-        "guard-config",
-        "",
-    ),
-    (
-        "echo '{\"disableAllHooks\": true}' > .claude/settings.local.json",
-        D,
-        "guard-config",
-        "",
-    ),
-    ("cd .claude && echo '{}' > settings.json", D, "guard-config", ""),
-    ("echo '{}' > {wt}/.claude/settings.json", D, "guard-config", "out"),
-    ("rm {repo}/.agents/hooks.json", D, "guard-config", "out"),
-    ("echo 'exit 0' > .claude/block-queue-bypass.sh", D, "guard-config", ""),
-    (
-        "sed -i '' 's/exit 2/exit 0/' .claude/block-queue-bypass.sh",
-        D,
-        "guard-config",
-        "",
-    ),
-    ("rm .claude/session-start.sh", D, "guard-config", ""),
-    ("cp /tmp/x.sh .claude/kube-setup.sh", D, "guard-config", ""),
-    ("chmod -x .claude/tailscale-up.sh", D, "guard-config", ""),
-    ("echo x > .claude/new-hook.sh", D, "guard-config", ""),
-    ("bash .claude/session-start.sh", A, None, ""),
-    # The repo script session-start.sh runs that is still protected: the
-    # build-cache configurator. (cloud-bootstrap.sh and profiles.tsv were
-    # unprotected so an agent can change them in a PR the guard owner approves:
-    # they stay behind the agent-guard-review ruleset.)
-    ("echo 'exit 0' > tools/cloud-bootstrap/cloud-bootstrap.sh", A, None, ""),
-    (
-        "sed -i '' 's/exit 1/exit 0/' tools/cloud-bootstrap/cloud-bootstrap.sh",
-        A,
-        None,
-        "",
-    ),
-    ("cp /tmp/x.sh tools/remote/setup.sh", D, "guard-config", ""),
-    ("cat /tmp/x | tee tools/remote/setup.sh", D, "guard-config", ""),
-    ("rm tools/remote/setup.sh", D, "guard-config", ""),
-    ("rm -rf tools/cloud-bootstrap", A, None, ""),
-    ("mv tools/remote /tmp/remote", D, "guard-config", ""),
-    ("chmod -x tools/cloud-bootstrap/cloud-bootstrap.sh", A, None, ""),
-    (
-        "python3 -c \"open('tools/remote/setup.sh', 'w').write('')\"",
-        D,
-        "guard-config",
-        "",
-    ),
-    (
-        "echo x > {wt}/tools/cloud-bootstrap/cloud-bootstrap.sh",
-        A,
-        None,
-        "out",
-    ),
-    ("cat tools/cloud-bootstrap/cloud-bootstrap.sh", A, None, ""),
-    ("sed -n 1,40p tools/remote/setup.sh", A, None, ""),
-    ("cp tools/remote/setup.sh /tmp/setup.sh", A, None, ""),
-    ("bash tools/cloud-bootstrap/cloud-bootstrap.sh whoami", A, None, ""),
-    ("bazel run //tools/cloud-bootstrap:whoami", A, None, ""),
-    ("echo x >> tools/cloud-bootstrap/cloud-bootstrap_test.sh", A, None, ""),
-    ("echo x > tools/remote/setup_test.sh", A, None, ""),
-    # profiles.tsv decides which secrets session start fetches; changing it is
-    # gated by the agent-guard-review ruleset, not by this local guard.
-    ("echo x >> tools/cloud-bootstrap/profiles.tsv", A, None, ""),
-    ("cp /tmp/p.tsv tools/cloud-bootstrap/profiles.tsv", A, None, ""),
-    ("sed -i '' s/core/all/ tools/cloud-bootstrap/profiles.tsv", A, None, ""),
-    ("mv tools/cloud-bootstrap/profiles.tsv /tmp/p.tsv", A, None, ""),
-    ("rm tools/cloud-bootstrap/profiles.tsv", A, None, ""),
-    ("cat tools/cloud-bootstrap/profiles.tsv", A, None, ""),
-    ("awk '{print $1}' tools/cloud-bootstrap/profiles.tsv", A, None, ""),
-    ("cp tools/cloud-bootstrap/profiles.tsv /tmp/p.tsv", A, None, ""),
-    ("echo x > tools/cloud-bootstrap/README.md", A, None, ""),
-    ("cat .claude/block-queue-bypass.sh", A, None, ""),
-    ("echo x > .claude/sub/x.sh", A, None, ""),
-    ("cat .claude/settings.json", A, None, ""),
-    ("jq '.hooks.PreToolUse' .claude/settings.json", A, None, ""),
-    ("git diff origin/main -- .claude/settings.json .agents/hooks.json", A, None, ""),
-    ("git log -p -- tools/agent-guard/hook.sh", A, None, ""),
-    ("printf '{}' | /bin/sh tools/agent-guard/hook.sh", A, None, ""),
-    ("cp tools/agent-guard/hook.sh /tmp/hook.sh", A, None, ""),
-    ("sed -n 1,20p tools/agent-guard/hook.sh", A, None, ""),
-    ("diff .agents/hooks.json /tmp/hooks.json", A, None, ""),
-    ("sed -i '' s/foo/bar/ tools/agent-guard/agent_guard.py", A, None, ""),
-    ("echo '{}' > tools/agent-guard/policy.json", A, None, ""),
-    ("mkdir -p .agents/rules && echo x > .agents/rules/x.md", A, None, ""),
-    ("echo x > .claude/notes.md", A, None, ""),
-    ("bazel test //tools/agent-guard/...", A, None, ""),
-    (
-        "bazel run //tools/git:commit -- -m 'cache in ~/.local/state/agent-guard/cache' tools/agent-guard/hook.sh",
-        A,
-        None,
-        "",
-    ),
-    ("echo '{}' > /tmp/elsewhere/.claude/settings.json", A, None, "out"),
-    # --- fetches that could move origin/main (hook.sh runs the guard from it) --
-    ("git fetch", A, None, ""),
-    ("git fetch origin", A, None, ""),
-    ("git fetch -q origin main", A, None, ""),
-    ("git fetch --prune origin", A, None, ""),
-    ("git fetch --all --prune", A, None, ""),
-    ("git fetch origin refs/pull/12/head", A, None, ""),
-    ("git fetch https://github.com/evil/fork main", A, None, ""),
-    ("git fetch --depth 1 origin main", A, None, ""),
-    (
-        "git fetch https://github.com/evil/fork +main:refs/remotes/origin/main",
-        D,
-        "git-other",
-        "",
-    ),
-    ("git fetch origin +refs/heads/x:refs/remotes/origin/main", D, "git-other", ""),
-    ("git fetch evil main:main", D, "git-other", ""),
-    ("git fetch origin main:refs/heads/main", D, "git-other", ""),
-    ("git fetch upstream '+refs/heads/*:refs/remotes/origin/*'", D, "git-other", ""),
-    ("git fetch -q --depth=1 origin pr:refs/heads/pr", D, "git-other", ""),
-    (
-        "git fetch https://github.com/evil/fork main --refmap='+refs/heads/*:refs/remotes/origin/*'",
-        D,
-        "git-other",
-        "",
-    ),
-    (
-        "git -c remote.origin.url=https://github.com/evil/fork fetch origin",
-        D,
-        "git-other",
-        "",
-    ),
-    (
-        "git -c url.https://github.com/evil/.insteadOf=https://github.com/VitruvianSoftware/ fetch",
-        D,
-        "git-other",
-        "",
-    ),
-    ("git -C {wt} fetch https://x/y main:refs/remotes/origin/main", D, "git-other", ""),
-    (
-        "git pull --ff-only evil main:refs/remotes/origin/main",
-        D,
-        "git-other",
-        "primary",
-    ),
-    (
-        "git pull --ff-only --log evil main:refs/remotes/origin/main",
-        D,
-        "git-other",
-        "primary",
-    ),
-    ("git fetch -- evil main:refs/remotes/origin/main", D, "git-other", ""),
-    # --- in-progress merge / rebase / cherry-pick ------------------------------
-    ("git merge --continue", A, None, "merging"),
-    ("git merge --abort", A, None, "merging"),
-    ("git merge --continue", D, "git-history", ""),
-    ("git merge --abort", D, "git-history", ""),
-    ("git rebase --continue", A, None, "rebasing"),
-    ("git rebase --abort", A, None, "rebasing"),
-    ("git rebase --skip", A, None, "rebasing"),
-    ("GIT_EDITOR=true git rebase --continue", A, None, "rebasing"),
-    ("git rebase --continue", D, "git-history", ""),
-    ("git rebase --abort", D, "git-history", ""),
-    ("git rebase --skip", D, "git-history", ""),
-    ("git rebase --continue", D, "git-history", "merging"),
-    ("git cherry-pick --continue", A, None, "picking"),
-    ("git cherry-pick --abort", A, None, "picking"),
-    ("git cherry-pick --continue", D, "git-history", ""),
-    ("git cherry-pick --abort", D, "git-history", ""),
-    ("git add src/conflicted.go", A, None, "merging"),
-    ("git add src/conflicted.go", A, None, "rebasing"),
-    ("git add src/conflicted.go", A, None, "picking"),
-    ("git add src/conflicted.go", D, "git-commit", ""),
-    ("git add src/other.go", D, "git-commit", "merging"),
-    ("git add .", D, "git-commit", "merging"),
-    ("git add -A", D, "git-commit", "rebasing"),
-    ("git commit --no-edit", D, "git-commit", "merging"),
-    ("git commit", D, "git-commit", "merging"),
-    # --- heredoc bodies are data, even with apostrophes (fix round 1) ---------
-    (
-        "gh issue comment 3418 --body \"$(cat <<'EOF'\nIt didn't break.\nRan `go test ./...`\nEOF\n)\"",
-        A,
-        None,
-        "",
-    ),
-    (
-        "speaker-broadcast \"$(cat <<'EOF'\nPR's merged; git push done\nEOF\n)\"",
-        A,
-        None,
-        "",
-    ),
-    (
-        "bazel run //tools/git:commit -- -m \"$(cat <<'EOF'\nfix: don't git push from scripts\n\nIt's npm test's job.\nEOF\n)\"",
-        A,
-        None,
-        "",
-    ),
-    (
-        'bazel run //tools/git:commit -- -m "$(cat <<EOF\nfeat: it\'s done\nRan \\`go test\\` and \\$(npm test)\nEOF\n)"',
-        A,
-        None,
-        "",
-    ),
-    (
-        "gh pr view 1 --json body -q \"$(cat <<-'EOF'\n\tquote \" and ' and `git push` and $(git commit)\n\tEOF\n)\"",
-        A,
-        None,
-        "",
-    ),
-    (
-        'speaker-broadcast "$(cat <<"END"\nwe\'ll npm test then go test; git push\nEND\n)"',
-        A,
-        None,
-        "",
-    ),
-    ("x=$(cat <<'EOF'\nit's `git push` time\nEOF\n); echo \"$x\"", A, None, ""),
-    (
-        "gh issue comment 1 --body \"$(cat <<'EOF'\ndidn't\nEOF\n)\" && git push",
-        D,
-        "git-push",
-        "",
-    ),
-    ("echo \"$(cat <<'EOF'\nwon't\nEOF\n)\"; go test ./...", D, "go", ""),
-    ("bash <<'EOF'\nit's\ngit push\nEOF", D, "git-push", ""),
-    ('cat <<EOF | sh\ngit commit -m "don\'t"\nEOF', A, None, ""),
-    ("echo $((1 << 2)) && git status", A, None, ""),
-    # --- gh aimed at another repository is out of scope ----------------------
-    ("gh -R VitruvianSoftware/devx pr merge 3 --squash --auto", A, None, ""),
-    ("gh --repo x/y pr create --title t --body b", A, None, ""),
-    (
-        "gh pr comment https://github.com/VitruvianSoftware/devx/pull/12 --body ok",
-        A,
-        None,
-        "",
-    ),
-    (
-        "gh api repos/VitruvianSoftware/homelab/issues/5/comments -f body=hi",
-        A,
-        None,
-        "",
-    ),
-    ("gh api -X PUT /repos/someone/else/pulls/1/merge", A, None, ""),
-    ("gh workflow run ci.yaml -R VitruvianSoftware/nexus-agent", A, None, ""),
-    ("gh -R VitruvianSoftware/vitruvian-core pr merge 9 --auto", D, "gh-pr", ""),
-    (
-        "gh api repos/VitruvianSoftware/vitruvian-core/issues/1/labels -f labels[]=x",
-        D,
-        "gh-api",
-        "out",
-    ),
-    ("gh api repos/{owner}/{repo}/pulls/1/merge -X PUT", D, "gh-api", ""),
-    (
-        "gh pr merge https://github.com/VitruvianSoftware/vitruvian-core/pull/3 --auto",
-        D,
-        "gh-pr",
-        "out",
-    ),
-    # --- only :install is the installer ---------------------------------------
-    ("bazel run //tools/agent-guard -- --version", A, None, ""),
-    ("bazel run //tools/agent-guard < payload.json", A, None, ""),
-    ("bazel run //tools/agent-guard:install -- --help", A, None, ""),
-    # --- git apply and git clean -n -------------------------------------------
-    ("git apply --3way fix.patch", D, "git-commit", ""),
-    ("git apply -p1 < fix.patch", A, None, ""),
-    ("git clean -n", A, None, ""),
-    ("git clean -nd", A, None, ""),
-    ("git clean --dry-run -x", A, None, ""),
-    ("git clean -f", D, "git-other", ""),
-    # --- running the installer around the guard -------------------------------
-    ("python3 tools/agent-guard/install.py", D, "guard-config", ""),
-    ("python3 tools/agent-guard/install.py --uninstall", D, "guard-config", ""),
-    ("env -u CLAUDECODE python3 tools/agent-guard/install.py", D, "guard-config", ""),
-    ("bazel-bin/tools/agent-guard/install --mode all=off", D, "guard-config", ""),
-    ("unset CLAUDECODE; bazel run //tools/agent-guard:install", D, "guard-config", ""),
-    (
-        "env -u ANTIGRAVITY_AGENT bazel run //tools/agent-guard:install -- --dry-run",
-        D,
-        "guard-config",
-        "",
-    ),
-    ("python3 tools/agent-guard/install.py --dry-run", A, None, ""),
-    ("bazel-bin/tools/agent-guard/install --check", A, None, ""),
-    ("cat tools/agent-guard/install.py", A, None, ""),
-    ("env -u CLAUDECODE go version", A, None, ""),
-    # --- fix round 2: the reviewer's cases5, marker hiding, unquoted heredocs ---
-    ("grep -n 'unset CLAUDECODE' tools/agent-guard/install.py", A, None, ""),
-    ("rg -n 'CLAUDECODE=' tools/agent-guard/", A, None, ""),
-    ("bazel test //tools/agent-guard/... --test_env=CLAUDECODE= ", A, None, ""),
-    (
-        "git diff origin/main -- tools/agent-guard/ | grep -n 'env -u CLAUDECODE'",
-        A,
-        None,
-        "",
-    ),
-    ("sed -n '1,40p' tools/agent-guard/README.md", A, None, ""),
-    ("python3 -m py_compile tools/agent-guard/install.py", A, None, ""),
-    ("python3 -I tools/agent-guard/install.py --dry-run", A, None, ""),
-    ("python3 tools/agent-guard/install.py --check", A, None, ""),
-    ("bazel test //tools/agent-guard:install_test", A, None, ""),
-    ("CLAUDECODE= bazel run //tools/agent-guard:install", D, "guard-config", ""),
-    ("gh pr merge 1 --auto -R VitruvianSoftware/vitruvian-core", D, "gh-pr", ""),
-    (
-        "gh pr merge https://github.com/VitruvianSoftware/vitruvian-core/pull/1 --auto",
-        D,
-        "gh-pr",
-        "",
-    ),
-    (
-        "gh api -X POST repos/VitruvianSoftware/vitruvian-core/issues/1/comments -f body=x",
-        D,
-        "gh-api",
-        "",
-    ),
-    (
-        "gh api -X POST repos/{owner}/{repo}/issues/1/comments -f body=x",
-        D,
-        "gh-api",
-        "",
-    ),
-    ("gh pr merge 5 --auto --repo=VitruvianSoftware/devx", A, None, ""),
-    (
-        "gh pr merge https://github.com/VitruvianSoftware/devx/pull/5 --auto",
-        A,
-        None,
-        "",
-    ),
-    ("echo $((1 << 2))", A, None, ""),
-    ('x=$(cat <<EOF\nit\'s $(date)\nEOF\n); echo "$x"', A, None, ""),
-    (
-        "echo \"$(cat <<'A'\nfirst it's\nA\n)\" \"$(cat <<'B'\nsecond (unbalanced\nB\n)\"",
-        A,
-        None,
-        "",
-    ),
-    (
-        "bazel run //tools/git:commit -- -m \"$(cat <<'EOF'\nfix: it's done\n\ngit push and go test both pass; `npm test` too\nEOF\n)\"",
-        A,
-        None,
-        "",
-    ),
-    ("echo \"$(cat <<'EOF'\nhi\nEOF\n)\" && git push", D, "git-push", ""),
-    ('gh issue comment 1 --body "$(cat <<EOF\n$(git push)\nEOF\n)"', D, "git-push", ""),
-    ("rg -n 'ANTIGRAVITY_AGENT=' tools/agent-guard/", A, None, ""),
-    ("echo 'env -i bazel run //tools/agent-guard:install' >> notes.txt", A, None, ""),
-    (
-        "env -u CLAUDECODE bazel run //tools/agent-guard:install -- --dry-run",
-        D,
-        "guard-config",
-        "",
-    ),
-    (
-        "env --unset=CLAUDECODE bazel run //tools/agent-guard:install -- --check",
-        D,
-        "guard-config",
-        "",
-    ),
-    (
-        "env -uCLAUDECODE python3 tools/agent-guard/install.py --dry-run",
-        D,
-        "guard-config",
-        "",
-    ),
-    (
-        "env -i bazel run //tools/agent-guard:install -- --dry-run",
-        D,
-        "guard-config",
-        "",
-    ),
-    (
-        "unset CLAUDECODE; bazel run //tools/agent-guard:install -- --check",
-        D,
-        "guard-config",
-        "",
-    ),
-    (
-        "export -n CLAUDECODE && python3 tools/agent-guard/install.py --dry-run",
-        D,
-        "guard-config",
-        "",
-    ),
-    (
-        "ANTIGRAVITY_AGENT= bazel run //tools/agent-guard:install -- --dry-run",
-        D,
-        "guard-config",
-        "",
-    ),
-    ("GEMINI_CLI= python3 tools/agent-guard/install.py --check", D, "guard-config", ""),
-    (
-        "bash -c 'unset CLAUDECODE; bazel run //tools/agent-guard:install -- --dry-run'",
-        D,
-        "guard-config",
-        "",
-    ),
-    ("cat <<EOF\nRan `git push` for you\nEOF", D, "git-push", ""),
-    ("cat <<EOF\nRan \\`git push\\` and \\$(go test)\nEOF", A, None, ""),
-    ("cat <<'EOF'\nRan `git push` and $(go test)\nEOF", A, None, ""),
-    ("cat <<\\EOF\n$(git push)\nEOF", A, None, ""),
-    (
-        'gh pr create --body "$(cat <<EOF\nSummary: $(git log --oneline -1)\nEOF\n)"',
-        D,
-        "gh-pr",
-        "",
-    ),
-]
+# The rows live in testdata/decision_table.json, which the Rust tests
+# (tests/table.rs) read too: one table for both guards. A bare string in it is
+# a comment (the section headings and their reasons).
+TABLE_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "testdata", "decision_table.json"
+)
+with open(TABLE_PATH, encoding="utf-8") as _fh:
+    TABLE = [tuple(_row) for _row in json.load(_fh) if not isinstance(_row, str)]
 
 
 # Too many commands to check in time: refused inside the repo (generated here
@@ -1128,7 +206,8 @@ class DecisionTableTest(unittest.TestCase):
     def test_merges_point_at_pr_enqueue(self):
         msg = self.fx.run("gh pr merge 3 --squash --auto").message
         self.assertIn("bazel run //tools/agent-app -- pr-enqueue", msg)
-        self.assertIn("not in this checkout yet", msg)
+        # pr-enqueue exists: the advice must not call it unbuilt.
+        self.assertNotIn("not in this checkout yet", msg)
 
     def test_message_says_when_there_is_no_target(self):
         msg = self.fx.run("git reset --hard HEAD~1").message
@@ -1175,6 +254,59 @@ class DecisionTableTest(unittest.TestCase):
         self.assertIn("concludes", msg)
 
 
+class PendingTargetsTest(unittest.TestCase):
+    """Every file a replacement target's `pending` names is in the repo and
+    still holds the target. Otherwise every refusal naming it says the target
+    "is not in this checkout yet" (it did for //tools/agent-app and
+    //tools/worktree once their scripts were deleted). The files come from
+    //tools/agent-guard:pending_target_files, so a deleted one fails the build."""
+
+    def targets(self):
+        return {
+            name: value
+            for name, value in vars(g).items()
+            if name.startswith("T_") and isinstance(value, tuple) and len(value) == 2
+        }
+
+    def test_every_pending_file_exists_and_holds_its_target(self):
+        problems = []
+        targets = self.targets()
+        self.assertGreater(len(targets), 10)
+        for name, (use, pending) in sorted(targets.items()):
+            if pending is None:
+                continue
+            rel, needle = pending
+            if not os.path.isfile(rel):
+                problems.append(
+                    "%s names %s, which is missing (or not in :pending_target_files)"
+                    % (name, rel)
+                )
+            elif needle is not None:
+                with open(rel, encoding="utf-8") as fh:
+                    if needle not in fh.read():
+                        problems.append("%s: %s no longer has %r" % (name, rel, needle))
+        self.assertEqual(problems, [])
+
+    def test_existing_targets_are_not_called_pending(self):
+        fx = Fixture()
+        try:
+            for command in (
+                "gh pr create --title x",
+                "gh pr merge 1 --auto",
+                "gh run rerun 1",
+                "gh run cancel 1",
+                "gh workflow run ci.yaml",
+                "git worktree add --detach /tmp/x HEAD",
+                "git worktree lock ../x",
+            ):
+                with mock.patch.object(g, "installer_problem", return_value=""):
+                    msg = fx.run(command).message
+                self.assertNotIn("not in this checkout yet", msg, command)
+                self.assertIn("//tools/", msg, command)
+        finally:
+            fx.close()
+
+
 GIT_TEST_ENV = {
     "GIT_AUTHOR_NAME": "t",
     "GIT_AUTHOR_EMAIL": "t@e",
@@ -1207,6 +339,8 @@ class InstallerSourceTest(unittest.TestCase):
             "tools/agent-guard/install.py": "print('installer')\n",
             "tools/agent-guard/agent_guard.py": "# guard\n",
             "tools/agent-guard/BUILD": 'py_binary(name = "install", main = "install.py")\n',
+            "tools/agent-guard/src/lib.rs": "// guard\n",
+            "tools/agent-guard/install/main.rs": "// installer\n",
         }
         for rel, text in files.items():
             self.write(rel, text)
@@ -1253,9 +387,16 @@ class InstallerSourceTest(unittest.TestCase):
         "python3 tools/agent-guard/install.py --check",
         "bazel-bin/tools/agent-guard/install --dry-run",
     )
+    # The Rust installer, which must be held to the same rule.
+    RS_COMMANDS = (
+        "bazel run //tools/agent-guard:install_rs",
+        "bazel run //tools/agent-guard:install_rs -- --check",
+        "bazel run //tools/agent-guard:install_rs -- --uninstall --dry-run",
+        "bazel-bin/tools/agent-guard/install_rs --dry-run",
+    )
 
-    def assert_all(self, want, cwd=None, needle=""):
-        for command in self.COMMANDS:
+    def assert_all(self, want, cwd=None, needle="", commands=None):
+        for command in commands or self.COMMANDS:
             d = self.decide(command, cwd)
             self.assertEqual(d.decision, want, "%s: %s" % (command, d.message))
             if want == D:
@@ -1304,6 +445,39 @@ class InstallerSourceTest(unittest.TestCase):
 
     def test_outside_a_checkout_is_refused(self):
         d = self.decide("bazel run //tools/agent-guard:install", cwd=self.home)
+        self.assertEqual(d.decision, D, d.message)
+        self.assertIn("not run from inside a vitruvian-core checkout", d.message)
+
+    # The Rust installer is built from every file under src/ and install/, so
+    # each of those is held to origin/main too, and :install_rs is an installer.
+
+    def test_an_edited_file_under_src_is_refused(self):
+        rel = "tools/agent-guard/src/lib.rs"
+        self.write(rel, "// anything I like\n")
+        needle = "%s in %s differs" % (rel, self.repo)
+        self.assert_all(D, needle=needle)
+        self.assert_all(D, needle=needle, commands=self.RS_COMMANDS)
+        self.git("checkout", "--", rel)
+        self.assert_all(A)
+
+    def test_an_added_file_under_install_is_refused(self):
+        rel = "tools/agent-guard/install/extra.rs"
+        self.write(rel, "// mine\n")
+        needle = "%s in %s differs" % (rel, self.repo)
+        self.assert_all(D, needle=needle)
+        self.assert_all(D, needle=needle, commands=self.RS_COMMANDS)
+        os.remove(os.path.join(self.repo, rel))
+        self.assert_all(A)
+
+    def test_install_rs_is_treated_like_install(self):
+        self.assert_all(A, commands=self.RS_COMMANDS)
+        self.write("tools/agent-guard/install.py", "print('mine')\n")
+        self.assert_all(
+            D,
+            needle="tools/agent-guard/install.py in %s differs" % self.repo,
+            commands=self.RS_COMMANDS,
+        )
+        d = self.decide("bazel run //tools/agent-guard:install_rs", cwd=self.home)
         self.assertEqual(d.decision, D, d.message)
         self.assertIn("not run from inside a vitruvian-core checkout", d.message)
 
