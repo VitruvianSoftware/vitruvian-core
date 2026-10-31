@@ -107,7 +107,9 @@ fn target_present(repo_root: Option<&str>, pending: &(String, Option<String>)) -
     }
 }
 
-/// A replacement target: what to run, and where it will live.
+/// A replacement target: what to run, and where it will live. Every file a
+/// `pending` names must exist on main (the pending-targets test checks), or
+/// every refusal naming that target wrongly says it is not built yet.
 #[derive(Clone, Copy)]
 pub struct Target {
     pub use_: &'static str,
@@ -131,42 +133,27 @@ pub const T_SYNC: Target = t(
     Some(("tools/git/BUILD", Some("sync"))),
 );
 pub const T_WT_NEW: Target = t("bazel run //tools/worktree -- <branch> [base-ref]", None);
-pub const T_WT_DETACH: Target = t(
-    "bazel run //tools/worktree -- --detach <ref>",
-    Some(("tools/worktree/worktree.sh", Some("--detach"))),
-);
+pub const T_WT_DETACH: Target = t("bazel run //tools/worktree -- --detach <ref>", None);
 pub const T_WT_REMOVE: Target = t("bazel run //tools/worktree -- --remove <branch>", None);
 pub const T_WT_PRUNE: Target = t(
     "bazel run //tools/worktree -- --prune (then --prune --execute)",
     None,
 );
-pub const T_WT_LOCK: Target = t(
-    "bazel run //tools/worktree -- --lock / --unlock",
-    Some(("tools/worktree/worktree.sh", Some("--lock"))),
-);
+pub const T_WT_LOCK: Target = t("bazel run //tools/worktree -- --lock / --unlock", None);
 pub const T_WT_DELETE_BRANCH: Target = t(
     "bazel run //tools/worktree -- --remove <branch> --delete-branch (or --prune --execute)",
     None,
 );
-pub const T_PR_CREATE: Target = t(
-    "bazel run //tools/agent-app -- pr-create",
-    Some(("tools/agent-app/agent-app.sh", Some("pr-create"))),
-);
-pub const T_PR_ENQUEUE: Target = t(
-    "bazel run //tools/agent-app -- pr-enqueue <pr>",
-    Some(("tools/agent-app/agent-app.sh", Some("pr-enqueue"))),
-);
+pub const T_PR_CREATE: Target = t("bazel run //tools/agent-app -- pr-create", None);
+pub const T_PR_ENQUEUE: Target = t("bazel run //tools/agent-app -- pr-enqueue <pr>", None);
 pub const T_RUN_RERUN: Target = t(
     "bazel run //tools/agent-app -- run-rerun <run-id> [--failed] [--job <id>]",
-    Some(("tools/agent-app/agent-app.sh", Some("run-rerun"))),
+    None,
 );
-pub const T_RUN_CANCEL: Target = t(
-    "bazel run //tools/agent-app -- run-cancel <run-id>",
-    Some(("tools/agent-app/agent-app.sh", Some("run-cancel"))),
-);
+pub const T_RUN_CANCEL: Target = t("bazel run //tools/agent-app -- run-cancel <run-id>", None);
 pub const T_WORKFLOW_RUN: Target = t(
     "bazel run //tools/agent-app -- workflow-run <file.yaml> [-f k=v ...] [--ref main]",
-    Some(("tools/agent-app/agent-app.sh", Some("workflow-run"))),
+    None,
 );
 pub const RUN_NOTE: &str = "Only wren's App has Actions write; any other agent: tell James.";
 pub const RUN_NO_TARGET_NOTE: &str =
@@ -1959,16 +1946,18 @@ pub fn classify_bazel(args: &[String], cwd: &str, home: &str) -> Option<Verdict>
 const AGENT_INSTALL_FLAGS: &[&str] = &["--check", "--dry-run", "--help", "-h"];
 
 fn is_install_label(word: &str, cwd: &str) -> bool {
-    // _INSTALL_LABEL_RE: (^|/)tools/agent-guard:install$
+    // _INSTALL_LABEL_RE: (^|/)tools/agent-guard:install(_rs)?$
     let core = word.strip_suffix('\n').unwrap_or(word);
-    if let Some(head) = core.strip_suffix("tools/agent-guard:install") {
-        if head.is_empty() || head.ends_with('/') {
-            return true;
+    for label in ["tools/agent-guard:install", "tools/agent-guard:install_rs"] {
+        if let Some(head) = core.strip_suffix(label) {
+            if head.is_empty() || head.ends_with('/') {
+                return true;
+            }
         }
     }
     // A label relative to the package, run from tools/agent-guard itself:
     // re.search(r"/tools/agent-guard/?$", cwd).
-    (word == ":install" || word == "install") && {
+    [":install", "install", ":install_rs", "install_rs"].contains(&word) && {
         let c = cwd.strip_suffix('\n').unwrap_or(cwd);
         let c = c.strip_suffix('/').unwrap_or(c);
         c.ends_with("/tools/agent-guard")
@@ -1991,6 +1980,55 @@ const INSTALLER_SOURCES: &[&str] = &[
     "tools/agent-guard/agent_guard.py",
     "tools/agent-guard/BUILD",
 ];
+/// The Rust installer (:install_rs) is built from every file in these
+/// folders, by glob: each file on origin/main and each file in the checkout
+/// must match, so an added file counts as an edit too.
+const INSTALLER_SOURCE_DIRS: &[&str] = &["tools/agent-guard/src", "tools/agent-guard/install"];
+
+fn walk_files(root: &str, rel: &str, out: &mut Vec<String>) {
+    let Ok(entries) = std::fs::read_dir(join(root, rel)) else {
+        return;
+    };
+    for e in entries.flatten() {
+        let name = e.file_name().to_string_lossy().into_owned();
+        let child = format!("{}/{}", rel, name);
+        // os.walk: symlinks to folders are listed, not followed.
+        match e.file_type() {
+            Ok(ft) if ft.is_dir() => walk_files(root, &child, out),
+            Ok(_) => out.push(child),
+            Err(_) => {}
+        }
+    }
+}
+
+/// INSTALLER_SOURCES plus every file under INSTALLER_SOURCE_DIRS on
+/// origin/main or in root's checkout, sorted; None if git cannot list main's.
+pub fn installer_sources(root: &str) -> Option<Vec<String>> {
+    nul_check(root);
+    let mut cmd = git_env_cmd();
+    cmd.arg("-C")
+        .arg(root)
+        .args(["ls-tree", "-r", "-z", "--name-only", "origin/main", "--"])
+        .args(INSTALLER_SOURCE_DIRS);
+    let (ok, out) = run_with_timeout(cmd, None, Duration::from_secs(5))?;
+    if !ok {
+        return None;
+    }
+    let mut found: Vec<String> = out
+        .split(|b| *b == 0)
+        .filter(|p| !p.is_empty())
+        .map(|p| String::from_utf8_lossy(p).into_owned())
+        .collect();
+    for d in INSTALLER_SOURCE_DIRS {
+        walk_files(root, d, &mut found);
+    }
+    found.retain(|f| !INSTALLER_SOURCES.contains(&f.as_str()));
+    found.sort();
+    found.dedup();
+    let mut all: Vec<String> = INSTALLER_SOURCES.iter().map(|s| s.to_string()).collect();
+    all.extend(found);
+    Some(all)
+}
 
 fn git_env_cmd() -> Command {
     let mut cmd = Command::new("git");
@@ -2004,7 +2042,7 @@ fn git_env_cmd() -> Command {
 }
 
 /// {rel: origin/main's bytes, or None if main has no such file}, or None if git cannot say.
-fn origin_main_files(root: &str, rels: &[&str]) -> Option<Vec<Option<Vec<u8>>>> {
+fn origin_main_files(root: &str, rels: &[String]) -> Option<Vec<Option<Vec<u8>>>> {
     nul_check(root);
     let mut request = String::new();
     for r in rels {
@@ -2112,14 +2150,16 @@ pub fn installer_problem(cwd: &str, home: &str) -> String {
     let Some(root) = repo_root_of(cwd) else {
         return "it is not run from inside a vitruvian-core checkout".into();
     };
-    let main = origin_main_files(&root, INSTALLER_SOURCES);
-    let Some(main) = main.filter(|m| m.iter().any(|v| v.is_some())) else {
+    let sources = installer_sources(&root);
+    let main = sources.as_ref().and_then(|s| origin_main_files(&root, s));
+    let (Some(sources), Some(main)) = (sources, main.filter(|m| m.iter().any(|v| v.is_some())))
+    else {
         return format!(
             "origin/main or its installer cannot be read in {} (fetch first)",
             root
         );
     };
-    for (rel, want) in INSTALLER_SOURCES.iter().zip(main.iter()) {
+    for (rel, want) in sources.iter().zip(main.iter()) {
         let have = std::fs::read(join(&root, rel)).ok();
         if &have != want {
             return format!(
@@ -2319,6 +2359,102 @@ pub fn classify_rm(inv: &Invocation, ctx: &Context) -> (Option<Verdict>, String)
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every replacement target, by name (the test below checks none is missing).
+    const ALL_TARGETS: &[(&str, Target)] = &[
+        ("T_COMMIT", T_COMMIT),
+        ("T_PUSH", T_PUSH),
+        ("T_SYNC", T_SYNC),
+        ("T_WT_NEW", T_WT_NEW),
+        ("T_WT_DETACH", T_WT_DETACH),
+        ("T_WT_REMOVE", T_WT_REMOVE),
+        ("T_WT_PRUNE", T_WT_PRUNE),
+        ("T_WT_LOCK", T_WT_LOCK),
+        ("T_WT_DELETE_BRANCH", T_WT_DELETE_BRANCH),
+        ("T_PR_CREATE", T_PR_CREATE),
+        ("T_PR_ENQUEUE", T_PR_ENQUEUE),
+        ("T_RUN_RERUN", T_RUN_RERUN),
+        ("T_RUN_CANCEL", T_RUN_CANCEL),
+        ("T_WORKFLOW_RUN", T_WORKFLOW_RUN),
+        ("T_SECRET_SCAN", T_SECRET_SCAN),
+        ("T_ACTIONLINT", T_ACTIONLINT),
+        ("T_CACHE_GC", T_CACHE_GC),
+        ("T_FORMAT", T_FORMAT),
+        ("T_LINT", T_LINT),
+        ("T_BAZEL_TEST", T_BAZEL_TEST),
+        ("T_BAZEL_BUILD", T_BAZEL_BUILD),
+        ("T_PULUMI", T_PULUMI),
+        ("T_GITOPS", T_GITOPS),
+        ("T_HELM", T_HELM),
+    ];
+
+    #[test]
+    fn target_list_is_complete() {
+        let src = include_str!("classify.rs");
+        let declared: Vec<&str> = src
+            .lines()
+            .filter_map(|l| l.strip_prefix("pub const T_"))
+            .map(|rest| rest.split(':').next().unwrap_or(""))
+            .collect();
+        let listed: Vec<String> = ALL_TARGETS
+            .iter()
+            .map(|(n, _)| n[2..].to_string())
+            .collect();
+        for d in &declared {
+            assert!(
+                listed.iter().any(|l| l == d),
+                "T_{} is not in ALL_TARGETS",
+                d
+            );
+        }
+        assert_eq!(declared.len(), ALL_TARGETS.len());
+    }
+
+    /// Every file a target's `pending` names is in the repo and still holds
+    /// the target; otherwise every refusal naming it says it "is not in this
+    /// checkout yet" (it did for //tools/agent-app and //tools/worktree once
+    /// their scripts were deleted). The files come from
+    /// //tools/agent-guard:pending_target_files, so a deleted one fails the build.
+    #[test]
+    fn every_pending_file_exists_and_holds_its_target() {
+        let mut problems = Vec::new();
+        for (name, t) in ALL_TARGETS {
+            let Some((rel, needle)) = t.pending else {
+                continue;
+            };
+            match std::fs::read_to_string(rel) {
+                Err(_) => problems.push(format!(
+                    "{} names {}, which is missing (or not in :pending_target_files)",
+                    name, rel
+                )),
+                Ok(text) => {
+                    if let Some(n) = needle {
+                        if !text.contains(n) {
+                            problems.push(format!("{}: {} no longer has {:?}", name, rel, n));
+                        }
+                    }
+                }
+            }
+        }
+        assert!(problems.is_empty(), "{:#?}", problems);
+    }
+
+    #[test]
+    fn existing_targets_are_not_called_pending() {
+        for t in [
+            T_PR_CREATE,
+            T_PR_ENQUEUE,
+            T_RUN_RERUN,
+            T_RUN_CANCEL,
+            T_WORKFLOW_RUN,
+            T_WT_DETACH,
+            T_WT_LOCK,
+        ] {
+            let verdict = v("gh-pr", "x", Some(t), "");
+            let msg = verdict.message(Some("/nonexistent/agent-guard-test-root"));
+            assert!(!msg.contains("not in this checkout yet"), "{}", msg);
+        }
+    }
 
     #[test]
     fn regex_ports() {

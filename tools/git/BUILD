@@ -139,3 +139,10 @@ test_suite(
     name = "git_test",
     tests = [":git_lib_test"],
 )
+
+# agent-guard reads this file to check its refusal advice names a real target
+# (//tools/agent-guard:pending_target_files).
+exports_files(
+    ["BUILD"],
+    visibility = ["//tools/agent-guard:__pkg__"],
+)
