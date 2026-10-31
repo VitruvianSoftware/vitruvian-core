@@ -46,11 +46,6 @@ test_suite(
     tests = [":session_worktree_lib_test"],
 )
 
-test_suite(
-    name = "session-worktree_rs_test",
-    tests = [":session_worktree_lib_test"],
-)
-
 js_library(
     name = "lib",
     srcs = [
@@ -108,7 +103,7 @@ rust_library(
 )
 
 rust_binary(
-    name = "sidecar-rs",
+    name = "sidecar",
     srcs = ["sidecars/panel/src/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
@@ -147,7 +142,7 @@ pipeline_unit(
     test_targets = [
         ":core_test",
         ":openui_test",
-        ":session-worktree_rs_test",
+        ":session_worktree_lib_test",
         ":session-worktree_test",
         ":session_worktree_lib_test",
         ":sidecar_lib_test",

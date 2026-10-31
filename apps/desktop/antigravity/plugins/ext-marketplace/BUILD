@@ -98,7 +98,7 @@ rust_library(
 )
 
 rust_binary(
-    name = "sidecar-rs",
+    name = "sidecar",
     srcs = ["sidecars/panel/src/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
@@ -134,18 +134,13 @@ test_suite(
     tests = [":note_plugin_cmd_lib_test"],
 )
 
-test_suite(
-    name = "note-plugin-cmd_rs_test",
-    tests = [":note_plugin_cmd_lib_test"],
-)
-
 pipeline_unit(
     name = "antigravity-ext-marketplace",
     persona = "backend",
     runner = "ubuntu-26.04",
     test_targets = [
         ":core_test",
-        ":note-plugin-cmd_rs_test",
+        ":note_plugin_cmd_lib_test",
         ":note-plugin-cmd_test",
         ":note_plugin_cmd_lib_test",
         ":openui_test",

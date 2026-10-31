@@ -19,7 +19,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! Rust test runner for `//apps/mobile/android-remote/macmenu:tool_conformance_rs_test`.
+//! Rust test runner for `//apps/mobile/android-remote/macmenu:tool_conformance_test`.
 
 use std::path::PathBuf;
 
@@ -48,11 +48,7 @@ fn resolve_env(key: &str) -> String {
 fn remote_tool_conformance_end_to_end() {
     let manifest_path = resolve_env("MANIFEST_PATH");
     let validate_bin = resolve_env("VALIDATE_BIN");
-    let args = vec![
-        "tool-conformance-rs".to_string(),
-        manifest_path,
-        validate_bin,
-    ];
+    let args = vec!["tool-conformance".to_string(), manifest_path, validate_bin];
     let code = tool_conformance_lib::run(&args);
     assert_eq!(code, 0, "tool_conformance_lib::run exited with {code}");
 }

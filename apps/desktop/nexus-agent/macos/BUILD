@@ -169,13 +169,13 @@ rust_test(
     data = [
         "built/nexus-agent/vitruvian-tool.json",
         ":tool-folder",
-        "//packages/vitruvian-sdk:conformance_rs",
+        "//packages/vitruvian-sdk:conformance",
         "//packages/vitruvian-sdk:vitruvian-tool",
     ],
     edition = "2021",
     env = {
         "MANIFEST_PATH": "$(rootpath built/nexus-agent/vitruvian-tool.json)",
-        "CONFORMANCE_BIN": "$(rootpath //packages/vitruvian-sdk:conformance_rs)",
+        "CONFORMANCE_BIN": "$(rootpath //packages/vitruvian-sdk:conformance)",
         "VALIDATE_BIN": "$(rootpath //packages/vitruvian-sdk:vitruvian-tool)",
     },
     tags = [

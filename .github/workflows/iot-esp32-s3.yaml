@@ -72,6 +72,6 @@ jobs:
       # The host-companion + firmware-model Rust test suite runs here so protocol
       # regressions block the PR.
       - name: Run host companion test suite
-        run: bazel test //apps/embedded/esp32-s3:firmware_tests_rs_test
+        run: bazel test //apps/embedded/esp32-s3:firmware_tests_test
       - name: Build ESP32-S3 firmware via Bazel
         run: bazel build //apps/embedded/esp32-s3:firmware

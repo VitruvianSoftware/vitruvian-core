@@ -81,12 +81,12 @@ rust_test(
     data = [
         "built/vitruvian-tv/vitruvian-tool.json",
         ":tool-folder",
-        "//packages/vitruvian-sdk:conformance_rs",
+        "//packages/vitruvian-sdk:conformance",
     ],
     edition = "2021",
     env = {
         "MANIFEST_PATH": "$(rootpath built/vitruvian-tv/vitruvian-tool.json)",
-        "CONFORMANCE_BIN": "$(rootpath //packages/vitruvian-sdk:conformance_rs)",
+        "CONFORMANCE_BIN": "$(rootpath //packages/vitruvian-sdk:conformance)",
     },
 )
 
@@ -103,11 +103,6 @@ rust_binary(
     srcs = ["scripts/src/publish_tool/main.rs"],
     edition = "2021",
     deps = [":publish_tool_lib"],
-)
-
-alias(
-    name = "publish-tool-rs",
-    actual = ":publish-tool",
 )
 
 rust_test(

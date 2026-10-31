@@ -77,7 +77,7 @@ rust_library(
 )
 
 rust_binary(
-    name = "sidecar-rs",
+    name = "sidecar",
     srcs = ["sidecars/panel/src/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
@@ -114,17 +114,7 @@ test_suite(
 )
 
 test_suite(
-    name = "inject-live-context_rs_test",
-    tests = [":live_context_hooks_lib_test"],
-)
-
-test_suite(
     name = "verify-response-shape_test",
-    tests = [":live_context_hooks_lib_test"],
-)
-
-test_suite(
-    name = "verify-response-shape_rs_test",
     tests = [":live_context_hooks_lib_test"],
 )
 
@@ -174,12 +164,12 @@ pipeline_unit(
     runner = "ubuntu-26.04",
     test_targets = [
         ":core_test",
-        ":inject-live-context_rs_test",
+        ":live_context_hooks_lib_test",
         ":inject-live-context_test",
         ":live_context_hooks_lib_test",
         ":openui_test",
         ":sidecar_lib_test",
-        ":verify-response-shape_rs_test",
+        ":live_context_hooks_lib_test",
         ":verify-response-shape_test",
         ":version_rs_test",
         ":version_test",

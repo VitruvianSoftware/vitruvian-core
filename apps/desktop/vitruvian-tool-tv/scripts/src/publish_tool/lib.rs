@@ -377,19 +377,19 @@ mod tests {
 
     #[test]
     fn test_parse_args_dry_run() {
-        let args = vec!["publish-tool-rs".into(), "--dry-run".into()];
+        let args = vec!["publish-tool".into(), "--dry-run".into()];
         assert_eq!(parse_args(&args).unwrap(), true);
     }
 
     #[test]
     fn test_parse_args_no_flags() {
-        let args = vec!["publish-tool-rs".into()];
+        let args = vec!["publish-tool".into()];
         assert_eq!(parse_args(&args).unwrap(), false);
     }
 
     #[test]
     fn test_parse_args_unknown() {
-        let args = vec!["publish-tool-rs".into(), "--foo".into()];
+        let args = vec!["publish-tool".into(), "--foo".into()];
         let err = parse_args(&args).unwrap_err();
         assert!(err.contains("unknown argument --foo"));
     }

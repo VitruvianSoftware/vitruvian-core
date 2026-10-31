@@ -54,11 +54,6 @@ rust_binary(
     deps = [":generate_assets_lib"],
 )
 
-alias(
-    name = "generate_assets_rs",
-    actual = ":generate_assets",
-)
-
 # The #[cfg(test)] unit tests in src/lib.rs.
 rust_test(
     name = "generate_assets_lib_test",
@@ -89,21 +84,6 @@ rust_test(
     edition = "2021",
 )
 
-alias(
-    name = "build_apk",
-    actual = ":build-apk-rs",
-)
-
-alias(
-    name = "install",
-    actual = ":install-rs",
-)
-
-alias(
-    name = "publish",
-    actual = ":publish-rs",
-)
-
 rust_library(
     name = "daytona_scripts_lib",
     srcs = [
@@ -118,7 +98,7 @@ rust_library(
 )
 
 rust_binary(
-    name = "build-apk-rs",
+    name = "build_apk",
     srcs = ["scripts/src/build_wff_apk_main.rs"],
     data = [":wff_sources"],
     edition = "2021",
@@ -127,7 +107,7 @@ rust_binary(
 )
 
 rust_binary(
-    name = "install-rs",
+    name = "install",
     srcs = ["scripts/src/install_main.rs"],
     data = [":wff_sources"],
     edition = "2021",
@@ -136,7 +116,7 @@ rust_binary(
 )
 
 rust_binary(
-    name = "publish-rs",
+    name = "publish",
     srcs = ["scripts/src/publish_main.rs"],
     data = [
         ".release-please-manifest.json",

@@ -40,18 +40,6 @@ rust_binary(
     deps = [":gen_tokens_lib"],
 )
 
-alias(
-    name = "gen_tokens-rs",
-    actual = ":gen_tokens",
-    visibility = ["//visibility:public"],
-)
-
-alias(
-    name = "gen_tokens_rs",
-    actual = ":gen_tokens",
-    visibility = ["//visibility:public"],
-)
-
 # It reads JSON with its own copy of CPython's scanner
 # rather than serde_json, which accepts a different language (no NaN, a
 # 128-deep limit, integers past 64 bits rounded) and words its errors
@@ -108,7 +96,7 @@ test_suite(
 )
 
 rust_binary(
-    name = "parity_test_rs",
+    name = "parity_test",
     srcs = ["src/parity_test.rs"],
     data = [
         "//packages/design-system:src/Icons.tsx",
@@ -120,7 +108,7 @@ rust_binary(
 )
 
 rust_test(
-    name = "parity_test_rs_test",
+    name = "parity_test_test",
     size = "small",
     srcs = ["src/parity_test.rs"],
     data = [
@@ -133,7 +121,7 @@ rust_test(
 )
 
 rust_binary(
-    name = "tokens_are_current_rs",
+    name = "tokens_are_current",
     srcs = ["src/tokens_are_current.rs"],
     data = [
         "kt_license_header.txt",
@@ -148,7 +136,7 @@ rust_binary(
 )
 
 rust_test(
-    name = "tokens_are_current_rs_test",
+    name = "tokens_are_current_test",
     size = "small",
     srcs = ["src/tokens_are_current.rs"],
     data = [

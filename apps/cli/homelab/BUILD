@@ -31,12 +31,6 @@ doctor(
     ],
 )
 
-alias(
-    name = "homelab",
-    actual = ":homelab-rs",
-    visibility = ["//apps/cli/homelab:__subpackages__"],
-)
-
 pipeline_unit(
     name = "homelab",
     persona = "infra",
@@ -47,7 +41,7 @@ pipeline_unit(
 )
 
 rust_library(
-    name = "homelab_rs_lib",
+    name = "homelab_lib",
     srcs = [
         "rs/src/cluster.rs",
         "rs/src/cmd.rs",
@@ -68,24 +62,18 @@ rust_library(
 )
 
 rust_binary(
-    name = "homelab-rs",
+    name = "homelab",
     srcs = ["rs/src/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//apps/cli/homelab:__subpackages__"],
-    deps = [":homelab_rs_lib"],
-)
-
-alias(
-    name = "homelab_rs",
-    actual = ":homelab-rs",
-    visibility = ["//apps/cli/homelab:__subpackages__"],
+    deps = [":homelab_lib"],
 )
 
 rust_test(
-    name = "homelab_rs_test",
+    name = "homelab_test",
     size = "small",
-    crate = ":homelab_rs_lib",
+    crate = ":homelab_lib",
     data = [
         ".release-please-manifest.json",
         "CHANGELOG.md",

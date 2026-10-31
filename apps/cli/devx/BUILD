@@ -74,18 +74,12 @@ rust_library(
 )
 
 rust_binary(
-    name = "migrate-to-docker-rs",
+    name = "migrate-to-docker",
     srcs = ["scripts/src/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//apps/cli/devx:__subpackages__"],
     deps = [":migrate_to_docker_lib"],
-)
-
-alias(
-    name = "migrate_to_docker_rs",
-    actual = ":migrate-to-docker-rs",
-    visibility = ["//apps/cli/devx:__subpackages__"],
 )
 
 rust_test(

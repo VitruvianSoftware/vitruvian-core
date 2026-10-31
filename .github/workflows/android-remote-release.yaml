@@ -140,7 +140,7 @@ jobs:
           TAG: ${{ inputs.tag || needs.release-please.outputs.tag_name }}
           VERSION: ${{ needs.release-please.outputs.version || '' }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bazel run //apps/mobile/android-remote/macmenu:publish-tool-rs
+        run: bazel run //apps/mobile/android-remote/macmenu:publish-tool
 
   # The release's last word, and not the publishing scripts': ask GitHub what
   # the release holds. HomeSpeaker 1.12.0 and 1.13.0 were published with no

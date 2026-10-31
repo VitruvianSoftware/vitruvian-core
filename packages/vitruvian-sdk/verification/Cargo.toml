@@ -67,11 +67,11 @@ vitruvian-sdk-conformance = { path = "cargo/conformance" }
 
 # The reference tools, in Rust.
 [[bin]]
-name = "reference-tool-rs"
+name = "reference-tool"
 path = "src/bin/reference_tool.rs"
 
 [[bin]]
-name = "reference-tool-2-rs"
+name = "reference-tool-2"
 path = "src/bin/reference_tool_2.rs"
 
 # Each suite is a program that exits 1 on a problem, as under Bazel

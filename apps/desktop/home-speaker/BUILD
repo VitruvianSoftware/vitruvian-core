@@ -138,13 +138,13 @@ rust_test(
     data = [
         "built/homespeaker/vitruvian-tool.json",
         ":tool-folder",
-        "//packages/vitruvian-sdk:conformance_rs",
+        "//packages/vitruvian-sdk:conformance",
         "//packages/vitruvian-sdk:vitruvian-tool",
     ],
     edition = "2021",
     env = {
         "MANIFEST_PATH": "$(rootpath built/homespeaker/vitruvian-tool.json)",
-        "CONFORMANCE_BIN": "$(rootpath //packages/vitruvian-sdk:conformance_rs)",
+        "CONFORMANCE_BIN": "$(rootpath //packages/vitruvian-sdk:conformance)",
         "VALIDATE_BIN": "$(rootpath //packages/vitruvian-sdk:vitruvian-tool)",
     },
     tags = [
@@ -153,7 +153,7 @@ rust_test(
     ],
     target_compatible_with = ["@platforms//os:macos"],
     deps = [
-        "//packages/vitruvian-sdk:conformance_rs_lib",
+        "//packages/vitruvian-sdk:conformance_lib",
         "@crates//:serde_json",
     ],
 )
@@ -173,7 +173,7 @@ rust_test(
     ],
     edition = "2021",
     deps = [
-        "//packages/vitruvian-sdk:conformance_rs_lib",
+        "//packages/vitruvian-sdk:conformance_lib",
         "@crates//:serde_json",
     ],
 )
@@ -211,7 +211,7 @@ rust_library(
 )
 
 rust_binary(
-    name = "zip-tool-rs",
+    name = "zip-tool",
     srcs = ["scripts/src/zip_tool/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
@@ -239,11 +239,6 @@ rust_library(
     rustc_flags = ["-Copt-level=3"],
 )
 
-alias(
-    name = "sync-secrets-rs",
-    actual = ":sync-secrets",
-)
-
 rust_test(
     name = "sync_secrets_lib_test",
     size = "small",
@@ -266,7 +261,7 @@ rust_library(
 )
 
 rust_binary(
-    name = "publish-rs",
+    name = "publish",
     srcs = ["scripts/src/publish/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
