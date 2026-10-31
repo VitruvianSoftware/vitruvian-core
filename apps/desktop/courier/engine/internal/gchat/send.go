@@ -291,6 +291,10 @@ func (c *Client) sendCreateTopic(
 	if msgID == "" {
 		msgID = topicID
 	}
+	if topicID == "" || msgID == "" {
+		c.removePending(msg, localID, txnID)
+		return nil, errors.New("create_topic returned empty topic_id or message_id")
+	}
 	createUsec := pm.createTimeUsec
 	if createUsec <= 0 {
 		createUsec = time.Now().UnixMicro()
@@ -387,6 +391,10 @@ func (c *Client) sendCreateMessage(
 		topicID = pm.topicID
 	}
 	msgID := pm.messageID
+	if msgID == "" {
+		c.removePending(msg, localID, txnID)
+		return nil, errors.New("create_message returned empty message_id")
+	}
 	createUsec := pm.createTimeUsec
 	if createUsec <= 0 {
 		createUsec = time.Now().UnixMicro()

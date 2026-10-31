@@ -4690,6 +4690,53 @@ func TestMultiByteUTF8MessageUpTo4096RunesAccepted(t *testing.T) {
 	require.Error(t, err, "4,097-rune CJK message must be rejected")
 }
 
+func TestCreateTopicAndCreateMessageRejectEmptyResponseIDs(t *testing.T) {
+	enableTestLoopback(t)
+	ctx := context.Background()
+
+	h, ul, client := setupLoggedInGChatTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/u/0/api/paginated_world":
+			w.Header().Set("Content-Type", "application/x-protobuf")
+			_, _ = w.Write(buildSendTestPaginatedWorldResponse())
+		case "/u/0/api/create_topic", "/u/0/api/create_message":
+			w.Header().Set("Content-Type", "application/x-protobuf")
+			// Empty 200 OK protobuf response without topic_id or message_id
+			_, _ = w.Write(nil)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	require.NoError(t, client.syncWorld(ctx))
+	spacePortal, err := h.Bridge.GetExistingPortalByKey(ctx, networkid.PortalKey{
+		ID:       MakeSpacePortalID("space_threaded"),
+		Receiver: ul.ID,
+	})
+	require.NoError(t, err)
+	dmPortal, err := h.Bridge.GetExistingPortalByKey(ctx, networkid.PortalKey{
+		ID:       MakeDMPortalID("dm_alpha"),
+		Receiver: ul.ID,
+	})
+	require.NoError(t, err)
+
+	_, err = client.HandleMatrixMessage(ctx, &bridgev2.MatrixMessage{
+		MatrixEventBase: bridgev2.MatrixEventBase[*event.MessageEventContent]{
+			Portal:  spacePortal,
+			Content: &event.MessageEventContent{MsgType: event.MsgText, Body: "Empty create_topic response"},
+		},
+	})
+	require.Error(t, err, "create_topic with empty topic_id/message_id must return an error")
+
+	_, err = client.HandleMatrixMessage(ctx, &bridgev2.MatrixMessage{
+		MatrixEventBase: bridgev2.MatrixEventBase[*event.MessageEventContent]{
+			Portal:  dmPortal,
+			Content: &event.MessageEventContent{MsgType: event.MsgText, Body: "Empty create_message response"},
+		},
+	})
+	require.Error(t, err, "create_message with empty message_id must return an error")
+}
+
 func TestServeGChatEngineHelperForAppE2E(t *testing.T) {
 	sockPath := os.Getenv("COURIER_GCHAT_E2E_SOCKET")
 	if sockPath == "" {
