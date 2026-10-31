@@ -36,6 +36,10 @@ CI, the pinned human identity locally), not here.
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
+def _bourne_quote(s):
+    """One argument for Bazel's Bourne-shell tokenization of `args`."""
+    return "'" + s.replace("'", "'\\''") + "'"
+
 def cloud_run_deploy(
         name = "deploy",
         service = None,
@@ -82,11 +86,13 @@ def cloud_run_deploy(
     if custom_smoke_script and custom_smoke_script_file:
         fail("cloud_run_deploy: set at most one of custom_smoke_script / custom_smoke_script_file")
     if custom_smoke_script:
-        # sh_binary `args` undergo Bazel "Make variable" expansion, so a shell
-        # `$` (e.g. ${CAND}) must be escaped to `$$` to reach the shell literally.
-        # NB: a MULTI-line inline script is word-split by the bazel-run launcher --
-        # use custom_smoke_script_file for anything beyond a one-liner.
-        args += ["--custom-smoke-script", custom_smoke_script.replace("$", "$$")]
+        # `args` get Bazel "Make variable" expansion, so a shell `$` (e.g.
+        # ${CAND}) is escaped to `$$` to reach the shell literally; then Bourne
+        # shell tokenization, so the script is single-quoted to arrive as ONE
+        # argument. Unquoted, a script with spaces or quotes (oauth's
+        # `cd "${BUILD_WORKSPACE_DIRECTORY...}" && bazel run ...`) was split
+        # and cloud-run refused the pieces (`unknown argument`, exit 2).
+        args += ["--custom-smoke-script", _bourne_quote(custom_smoke_script.replace("$", "$$"))]
     if custom_smoke_script_file:
         # A workspace-relative path; the tool reads it from the source tree.
         args += ["--custom-smoke-script-file", custom_smoke_script_file]
