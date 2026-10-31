@@ -226,12 +226,24 @@ func protoDecodeUserID(buf []byte) string {
 	return uid
 }
 
+const (
+	initialChatSyncCap               = 30
+	membershipStateJoined      int32 = 2
+	catchUpStatusAbortedCutoff int32 = 3
+	catchUpStatusAbortedCache  int32 = 4
+	catchUpStatusAbortedTooOld int32 = 5
+)
+
 type parsedWorldItem struct {
 	isDM               bool
 	rawID              string
 	hasGroupID         bool
 	groupRevision      int64
 	sortTimestamp      int64
+	hideTimestamp      int64
+	blocked            bool
+	membershipState    int32
+	hasMembershipState bool
 	roomName           string
 	hasRoomName        bool
 	topicThreaded      bool
@@ -265,8 +277,24 @@ func parseWorldItemLite(buf []byte) parsedWorldItem {
 			}
 		case 4: // read_state (GroupReadState)
 			protoIterFields(f.bytes, func(rf protoField) {
-				if rf.num == 23 && rf.wireType == 2 { // joined_users (UserId)
-					addMember(protoDecodeUserID(rf.bytes))
+				switch rf.num {
+				case 9: // hide_timestamp
+					if rf.wireType == 0 {
+						item.hideTimestamp = int64(rf.varint)
+					}
+				case 15: // blocked
+					if rf.wireType == 0 && rf.varint != 0 {
+						item.blocked = true
+					}
+				case 16: // membership_state (MembershipState: 2 = MEMBER_JOINED)
+					if rf.wireType == 0 {
+						item.membershipState = int32(rf.varint)
+						item.hasMembershipState = true
+					}
+				case 23: // joined_users (UserId)
+					if rf.wireType == 2 {
+						addMember(protoDecodeUserID(rf.bytes))
+					}
 				}
 			})
 		case 5: // room_name
@@ -313,9 +341,13 @@ func derivePeerUserID(memberIDs []string, ownUserID networkid.UserID) networkid.
 }
 
 // syncWorld fetches the user's conversation list via POST /u/0/api/paginated_world,
-// creating/updating DM and Space portals and storing user_revision on UserLoginMetadata
+// filtering out blocked, hidden, and non-joined conversations, sorting by sort_timestamp
+// descending, capping at 30 conversations, and storing user_revision on UserLoginMetadata
 // separately from each portal's group_revision.
 func (c *Client) syncWorld(ctx context.Context) error {
+	c.syncMu.Lock()
+	defer c.syncMu.Unlock()
+
 	// PaginatedWorldRequest:
 	// - world_section_requests (field 2): WorldSectionRequest { page_size (field 1) = 999 }
 	// - fetch_options (field 4): EXCLUDE_GROUP_LITE (1), INCLUDE_SNIPPET (3), PARTICIPANT_NAMES (4)
@@ -357,11 +389,27 @@ func (c *Client) syncWorld(ctx context.Context) error {
 		}
 	}
 
-	own := c.ownUserID()
+	// Filter out blocked, hidden, and non-joined conversations, then sort by sort_timestamp descending
+	// and apply the 30-room initial sync cap (matching planChatSync in ref/pkg/connector/sync.go:35-51).
+	filtered := make([]parsedWorldItem, 0, len(items))
 	for _, item := range items {
 		if !item.hasGroupID || item.rawID == "" {
 			continue
 		}
+		if item.blocked || item.hideTimestamp > 0 || item.membershipState != membershipStateJoined {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	slices.SortStableFunc(filtered, func(a, b parsedWorldItem) int {
+		return cmp.Compare(b.sortTimestamp, a.sortTimestamp)
+	})
+	if len(filtered) > initialChatSyncCap {
+		filtered = filtered[:initialChatSyncCap]
+	}
+
+	own := c.ownUserID()
+	for _, item := range filtered {
 		var portalID networkid.PortalID
 		if item.isDM {
 			portalID = MakeDMPortalID(item.rawID)
@@ -723,15 +771,28 @@ func (c *Client) FetchMessages(ctx context.Context, fetchParams bridgev2.FetchMe
 	}, nil
 }
 
-// catchUpAfterReconnect calls POST /u/0/api/catch_up_user with from_revision = UserLoginMetadata.UserRevision
-// and advances user_revision without overwriting any portal's group_revision.
+func isCatchUpAborted(status int32) bool {
+	return status == catchUpStatusAbortedCutoff ||
+		status == catchUpStatusAbortedCache ||
+		status == catchUpStatusAbortedTooOld
+}
+
+// catchUpAfterReconnect calls POST /u/0/api/catch_up_user with from_revision = UserLoginMetadata.UserRevision,
+// translates and dispatches every returned Event, falls back to syncWorld when from_revision == 0 or
+// CatchUpResponse.status is ABORTED_*, and advances user_revision without overwriting any portal's group_revision.
 func (c *Client) catchUpAfterReconnect(ctx context.Context) error {
 	var fromRev int64
 	if c.UserLogin != nil {
+		c.metaMu.Lock()
 		if meta, ok := c.UserLogin.Metadata.(*UserLoginMetadata); ok && meta != nil {
 			fromRev = meta.UserRevision
 		}
+		c.metaMu.Unlock()
 	}
+	if fromRev <= 0 {
+		return c.syncWorld(ctx)
+	}
+
 	// CatchUpUserRequest: range (field 1) -> CatchUpRange { from_revision_timestamp (field 1) = fromRev }
 	req := protoEncodeBytesField(1, protoEncodeVarintField(1, uint64(fromRev)))
 	respBytes, err := c.rpcCall(ctx, "catch_up_user", req)
@@ -739,11 +800,14 @@ func (c *Client) catchUpAfterReconnect(ctx context.Context) error {
 		return fmt.Errorf("catch_up_user failed: %w", err)
 	}
 
+	var respStatus int32
+	var eventPayloads [][]byte
 	maxUserRev := fromRev
 	protoIterFields(respBytes, func(f protoField) {
 		switch f.num {
 		case 1: // events (Event)
 			if f.wireType == 2 {
+				eventPayloads = append(eventPayloads, f.bytes)
 				protoIterFields(f.bytes, func(ef protoField) {
 					if ef.num == 6 && ef.wireType == 2 { // user_revision
 						if r := protoDecodeRevisionTimestamp(ef.bytes); r > maxUserRev {
@@ -751,6 +815,10 @@ func (c *Client) catchUpAfterReconnect(ctx context.Context) error {
 						}
 					}
 				})
+			}
+		case 2: // status (CatchUpResponse.ResponseStatus)
+			if f.wireType == 0 {
+				respStatus = int32(f.varint)
 			}
 		case 4: // read_revision (if present)
 			if f.wireType == 2 {
@@ -761,14 +829,29 @@ func (c *Client) catchUpAfterReconnect(ctx context.Context) error {
 		}
 	})
 
+	if isCatchUpAborted(respStatus) {
+		return c.syncWorld(ctx)
+	}
+
+	for _, evtBytes := range eventPayloads {
+		remoteEvts, err := c.translateEventProto(ctx, evtBytes, false, false)
+		if err != nil {
+			return err
+		}
+		for _, re := range remoteEvts {
+			c.queueRemoteEvent(ctx, re)
+		}
+	}
+
 	if maxUserRev > fromRev {
 		return c.advanceUserRevision(ctx, maxUserRev)
 	}
 	return nil
 }
 
-// catchUpGroup calls POST /u/0/api/catch_up_group for a single portal with from_revision = PortalMetadata.GroupRevision
-// and advances only that portal's group_revision.
+// catchUpGroup calls POST /u/0/api/catch_up_group for a single portal with from_revision = PortalMetadata.GroupRevision,
+// translates and dispatches every returned Event, falls back to syncWorld when from_revision == 0 or
+// CatchUpResponse.status is ABORTED_*, and advances only that portal's group_revision.
 func (c *Client) catchUpGroup(ctx context.Context, portal *bridgev2.Portal) error {
 	if portal == nil {
 		return fmt.Errorf("catchUpGroup called with nil portal")
@@ -781,12 +864,16 @@ func (c *Client) catchUpGroup(ctx context.Context, portal *bridgev2.Portal) erro
 	if meta, ok := portal.Metadata.(*PortalMetadata); ok && meta != nil {
 		fromRev = meta.GroupRevision
 	}
+	if fromRev <= 0 {
+		return c.syncWorld(ctx)
+	}
 
+	groupIDProto := protoEncodeGroupID(isDM, rawID)
 	// CatchUpGroupRequest:
 	// - group_id (field 1): GroupId
 	// - range (field 2): CatchUpRange { from_revision_timestamp (field 1) = fromRev }
 	var req []byte
-	req = append(req, protoEncodeBytesField(1, protoEncodeGroupID(isDM, rawID))...)
+	req = append(req, protoEncodeBytesField(1, groupIDProto)...)
 	req = append(req, protoEncodeBytesField(2, protoEncodeVarintField(1, uint64(fromRev)))...)
 
 	respBytes, err := c.rpcCall(ctx, "catch_up_group", req)
@@ -794,11 +881,14 @@ func (c *Client) catchUpGroup(ctx context.Context, portal *bridgev2.Portal) erro
 		return fmt.Errorf("catch_up_group failed: %w", err)
 	}
 
+	var respStatus int32
+	var eventPayloads [][]byte
 	maxGroupRev := fromRev
 	protoIterFields(respBytes, func(f protoField) {
 		switch f.num {
 		case 1: // events (Event)
 			if f.wireType == 2 {
+				eventPayloads = append(eventPayloads, f.bytes)
 				protoIterFields(f.bytes, func(ef protoField) {
 					if ef.num == 7 && ef.wireType == 2 { // group_revision
 						if r := protoDecodeRevisionTimestamp(ef.bytes); r > maxGroupRev {
@@ -806,6 +896,10 @@ func (c *Client) catchUpGroup(ctx context.Context, portal *bridgev2.Portal) erro
 						}
 					}
 				})
+			}
+		case 2: // status (CatchUpResponse.ResponseStatus)
+			if f.wireType == 0 {
+				respStatus = int32(f.varint)
 			}
 		case 4: // read_revision (if present)
 			if f.wireType == 2 {
@@ -815,6 +909,32 @@ func (c *Client) catchUpGroup(ctx context.Context, portal *bridgev2.Portal) erro
 			}
 		}
 	})
+
+	if isCatchUpAborted(respStatus) {
+		return c.syncWorld(ctx)
+	}
+
+	for _, evtBytes := range eventPayloads {
+		var hasGroup bool
+		protoIterFields(evtBytes, func(ef protoField) {
+			if ef.num == 1 && ef.wireType == 2 {
+				hasGroup = true
+			}
+		})
+		if !hasGroup {
+			withGroup := make([]byte, 0, len(groupIDProto)+4+len(evtBytes))
+			withGroup = append(withGroup, protoEncodeBytesField(1, groupIDProto)...)
+			withGroup = append(withGroup, evtBytes...)
+			evtBytes = withGroup
+		}
+		remoteEvts, err := c.translateEventProto(ctx, evtBytes, false, false)
+		if err != nil {
+			return err
+		}
+		for _, re := range remoteEvts {
+			c.queueRemoteEvent(ctx, re)
+		}
+	}
 
 	if maxGroupRev > fromRev {
 		meta, ok := portal.Metadata.(*PortalMetadata)
@@ -842,6 +962,15 @@ func normalizeEmojiForDisplay(raw string) (bareEmoji string, displayEmoji string
 // translateWebChannelEvent splits a Google Chat Event (singular body field 4 + repeated bodies field 8)
 // and translates each EventBody into the corresponding bridgev2.RemoteEvent.
 func (c *Client) translateWebChannelEvent(ctx context.Context, eventProto []byte) ([]bridgev2.RemoteEvent, error) {
+	return c.translateEventProto(ctx, eventProto, true, true)
+}
+
+func (c *Client) translateEventProto(
+	ctx context.Context,
+	eventProto []byte,
+	advanceUserRev bool,
+	advanceGroupRev bool,
+) ([]bridgev2.RemoteEvent, error) {
 	var outerIsDM bool
 	var outerRawGroupID string
 	var hasOuterGroupID bool
@@ -890,10 +1019,10 @@ func (c *Client) translateWebChannelEvent(ctx context.Context, eventProto []byte
 		out = append(out, evts...)
 	}
 
-	if userRev > 0 {
+	if advanceUserRev && userRev > 0 {
 		_ = c.advanceUserRevision(ctx, userRev)
 	}
-	if groupRev > 0 && hasOuterGroupID {
+	if advanceGroupRev && groupRev > 0 && hasOuterGroupID {
 		var pid networkid.PortalID
 		if outerIsDM {
 			pid = MakeDMPortalID(outerRawGroupID)

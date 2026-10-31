@@ -60,6 +60,8 @@ pub struct GChatClient {
     user_agent: String,
     base_url: Url,
     refresh_handle: tokio::task::JoinHandle<()>,
+    manual_clock: std::sync::Mutex<Option<Arc<crate::channel::ManualChannelClock>>>,
+    active_wc: std::sync::Mutex<Option<Arc<WebChannelClient>>>,
     stream_state: std::sync::Mutex<
         Option<(
             tokio::sync::watch::Sender<bool>,
@@ -237,6 +239,8 @@ impl GChatClient {
             user_agent,
             base_url,
             refresh_handle,
+            manual_clock: std::sync::Mutex::new(None),
+            active_wc: std::sync::Mutex::new(None),
             stream_state: std::sync::Mutex::new(None),
         })
     }
@@ -443,14 +447,25 @@ crate::edition2021! {
         }
 
         let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
-        let wc = Arc::new(WebChannelClient::new(
+        let clock: Arc<dyn crate::channel::ChannelClock> = client_ref
+            .manual_clock
+            .lock()
+            .ok()
+            .and_then(|g| g.clone())
+            .map(|c| c as Arc<dyn crate::channel::ChannelClock>)
+            .unwrap_or_else(|| Arc::new(crate::channel::SystemChannelClock));
+        let wc = Arc::new(WebChannelClient::with_clock(
             client_ref.http.clone(),
             client_ref.jar.clone(),
             client_ref.xsrf.clone(),
             client_ref.guard.clone(),
             client_ref.user_agent.clone(),
             client_ref.base_url.clone(),
+            clock,
         ));
+        if let Ok(mut wc_guard) = client_ref.active_wc.lock() {
+            *wc_guard = Some(wc.clone());
+        }
         let handle = client_ref.runtime.spawn(async move {
             wc.run_forever(cancel_rx, move |event_kind, payload| {
                 let ptr = if payload.is_empty() {
@@ -479,6 +494,41 @@ pub unsafe extern "C" fn gchat_stop_stream(client: *mut GChatClient) {
         }
         client_ref.refresh_handle.abort();
     }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn gchat_use_manual_clock(client: *mut GChatClient, fixed_jitter: f64) {
+    if !client.is_null() {
+        let client_ref = &*client;
+        let clock = Arc::new(crate::channel::ManualChannelClock::new(fixed_jitter));
+        if let Ok(mut guard) = client_ref.manual_clock.lock() {
+            *guard = Some(clock.clone());
+        }
+        if let Ok(wc_guard) = client_ref.active_wc.lock() {
+            if let Some(wc) = wc_guard.as_ref() {
+                wc.set_clock(clock);
+            }
+        }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn gchat_advance_manual_clock(
+    client: *mut GChatClient,
+    delta_ms: u64,
+) -> usize {
+    if client.is_null() {
+        return 0;
+    }
+    let client_ref = &*client;
+    let clock_opt = client_ref.manual_clock.lock().ok().and_then(|g| g.clone());
+    let Some(clock) = clock_opt else {
+        return 0;
+    };
+    if delta_ms > 0 {
+        clock.advance(std::time::Duration::from_millis(delta_ms));
+    }
+    clock.sleeper_count()
 }
 
 #[no_mangle]
@@ -531,86 +581,6 @@ pub unsafe extern "C" fn gchat_rpc_call(
             st
         }
     }
-}
-
-fn escape_html(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for ch in s.chars() {
-        match ch {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&#39;"),
-            c => out.push(c),
-        }
-    }
-    out
-}
-
-fn render_message_annotations_to_html(msg: &pb::Message) -> String {
-    let text = msg.text_body.as_deref().unwrap_or("");
-    if msg.annotations.is_empty() {
-        return escape_html(text);
-    }
-    let chars: Vec<char> = text.chars().collect();
-    let mut out = String::new();
-    let mut idx = 0usize;
-    let mut sorted = msg.annotations.clone();
-    sorted.sort_by_key(|a| a.start_index.unwrap_or(0).max(0) as usize);
-
-    for ann in &sorted {
-        let start = (ann.start_index.unwrap_or(0).max(0) as usize).min(chars.len());
-        let len = ann.length.unwrap_or(0).max(0) as usize;
-        let end = (start + len).min(chars.len());
-        if start < idx || start >= end {
-            continue;
-        }
-        if start > idx {
-            let prefix: String = chars[idx..start].iter().collect();
-            out.push_str(&escape_html(&prefix));
-        }
-        let segment: String = chars[start..end].iter().collect();
-        let escaped = escape_html(&segment);
-        let fmt_type = match &ann.metadata {
-            Some(pb::annotation::Metadata::FormatMetadata(fm)) => fm.format_type.unwrap_or(0),
-            _ => 0,
-        };
-        match fmt_type {
-            1 => {
-                out.push_str("<b>");
-                out.push_str(&escaped);
-                out.push_str("</b>");
-            }
-            2 => {
-                out.push_str("<i>");
-                out.push_str(&escaped);
-                out.push_str("</i>");
-            }
-            3 => {
-                out.push_str("<s>");
-                out.push_str(&escaped);
-                out.push_str("</s>");
-            }
-            4 => {
-                out.push_str("<code>");
-                out.push_str(&escaped);
-                out.push_str("</code>");
-            }
-            5 => {
-                out.push_str("<pre><code>");
-                out.push_str(&escaped);
-                out.push_str("</code></pre>");
-            }
-            _ => out.push_str(&escaped),
-        }
-        idx = end;
-    }
-    if idx < chars.len() {
-        let suffix: String = chars[idx..].iter().collect();
-        out.push_str(&escape_html(&suffix));
-    }
-    out
 }
 
 #[no_mangle]
@@ -719,14 +689,17 @@ pub unsafe extern "C" fn gchat_annotations_to_html(
         &msg.annotations,
         &msg.attachments,
     );
-    let legacy_html = render_message_annotations_to_html(&msg);
+    let html = converted
+        .formatted_body
+        .clone()
+        .unwrap_or_else(|| crate::fmt::inbound::escape_html(&converted.body));
     let out_json = serde_json::json!({
         "body": converted.body,
         "formatted_body": converted.formatted_body,
         "mentions": converted.mentions,
         "mention_all": converted.mention_all,
         "text": converted.body,
-        "html": legacy_html,
+        "html": html,
         "annotations_count": msg.annotations.len(),
     });
     write_slice_out(out_result_json, out_json.to_string().into_bytes());

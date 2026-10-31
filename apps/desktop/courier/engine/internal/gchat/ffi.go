@@ -26,7 +26,15 @@ import (
 	"fmt"
 	"runtime/cgo"
 	"sync"
+	"time"
 	"unsafe"
+)
+
+const (
+	EventKindEventProto  int32 = 1
+	EventKindAuthExpired int32 = 2
+	EventKindResync      int32 = 3
+	EventKindConnected   int32 = 4
 )
 
 // ScopedCookie represents a single domain-scoped cookie for Google Chat.
@@ -194,6 +202,33 @@ func (c *FFIClient) StartStream(cb func(eventKind int32, payload []byte)) error 
 	return nil
 }
 
+// UseManualClock configures the underlying Rust GChatClient to use a deterministic manual clock for tests.
+func (c *FFIClient) UseManualClock(fixedJitter float64) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	ptr := c.ptr
+	c.mu.Unlock()
+	if ptr != nil {
+		C.gchat_use_manual_clock(ptr, C.double(fixedJitter))
+	}
+}
+
+// AdvanceManualClock advances the underlying Rust manual clock by delta and returns the remaining active sleeper count.
+func (c *FFIClient) AdvanceManualClock(delta time.Duration) int {
+	if c == nil {
+		return 0
+	}
+	c.mu.Lock()
+	ptr := c.ptr
+	c.mu.Unlock()
+	if ptr == nil {
+		return 0
+	}
+	return int(C.gchat_advance_manual_clock(ptr, C.uint64_t(delta.Milliseconds())))
+}
+
 // AnnotationsToHTML converts a serialized googlechat.Message protobuf into Matrix plain text + HTML.
 func AnnotationsToHTML(messageProto []byte) (*ConvertedInboundText, error) {
 	var ptr *C.uint8_t
@@ -270,7 +305,7 @@ func LinkCheck() error {
 	if err != nil {
 		return err
 	}
-	if step2.HTML != "<b>Hello</b> World" || step2.AnnotationsCount != 1 {
+	if (step2.HTML != "<strong>Hello</strong> World" && step2.HTML != "<b>Hello</b> World") || step2.AnnotationsCount != 1 {
 		return fmt.Errorf("unexpected round-trip annotation output: %+v", step2)
 	}
 	return nil

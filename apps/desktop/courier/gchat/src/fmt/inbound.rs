@@ -522,12 +522,46 @@ pub fn annotations_to_matrix_html(
         }
     }
 
-    spans.sort_by(|a, b| {
-        a.start
-            .cmp(&b.start)
-            .then_with(|| b.end.cmp(&a.end))
-            .then_with(|| a.order.cmp(&b.order))
-    });
+    let sort_spans = |list: &mut Vec<HtmlSpan>| {
+        list.sort_by(|a, b| {
+            a.start
+                .cmp(&b.start)
+                .then_with(|| b.end.cmp(&a.end))
+                .then_with(|| a.order.cmp(&b.order))
+        });
+    };
+    sort_spans(&mut spans);
+
+    // Split any partially overlapping span that starts inside an earlier span and extends past its end,
+    // matching `normalizeAnnotations` in `ref/pkg/msgconv/gchatfmt/convert.go:141-198`.
+    loop {
+        let mut split_pair: Option<(usize, usize)> = None;
+        'outer: for i in 0..spans.len() {
+            for j in (i + 1)..spans.len() {
+                if spans[j].start >= spans[i].end {
+                    break;
+                }
+                if spans[j].end > spans[i].end {
+                    split_pair = Some((j, spans[i].end));
+                    break 'outer;
+                }
+            }
+        }
+        let Some((idx, split_at)) = split_pair else {
+            break;
+        };
+        let orig = spans[idx].clone();
+        spans[idx].end = split_at;
+        spans.push(HtmlSpan {
+            start: split_at,
+            end: orig.end,
+            open_tag: orig.open_tag,
+            close_tag: orig.close_tag,
+            hidden: orig.hidden,
+            order: orig.order,
+        });
+        sort_spans(&mut spans);
+    }
 
     let mut body = text.to_string();
     let mut formatted_body = if spans.is_empty() {
@@ -561,10 +595,10 @@ pub fn annotations_to_matrix_html(
                 break;
             }
 
-            // Advance to next boundary (either next active span end or next span start).
+            // Advance to next boundary across all active spans and the next unopened span.
             let mut next_pos = utf16_len;
-            if let Some(last) = active.last() {
-                next_pos = next_pos.min(last.end);
+            for a in &active {
+                next_pos = next_pos.min(a.end);
             }
             if span_idx < spans.len() {
                 next_pos = next_pos.min(spans[span_idx].start);
@@ -948,6 +982,52 @@ mod tests {
         assert!(
             html.contains("<a href=\"https://example.com/inc/42\">"),
             "html: {html}"
+        );
+    }
+
+    #[test]
+    fn test_inbound_annotations_split_partially_overlapping_spans_with_emojis() {
+        // Text: "Hi 👋🔥 world"
+        // "Hi " = 0..3 (3 UTF-16 units)
+        // "👋" = 3..5 (2 UTF-16 units)
+        // "🔥" = 5..7 (2 UTF-16 units)
+        // " world" = 7..13 (6 UTF-16 units)
+        // Span A (BOLD): start=3, length=4 -> covers "👋🔥" (3..7)
+        // Span B (ITALIC): start=5, length=8 -> covers "🔥 world" (5..13)
+        // Because Span B starts inside Span A (5 < 7) and extends past Span A (13 > 7),
+        // Span B must be split at 7 so BOLD closes at 7 and ITALIC wraps both "🔥" and " world".
+        let text = "Hi 👋🔥 world";
+        let annotations = vec![
+            pb::Annotation {
+                r#type: Some(pb::AnnotationType::FormatData as i32),
+                start_index: Some(3),
+                length: Some(4),
+                metadata: Some(pb::annotation::Metadata::FormatMetadata(
+                    pb::FormatMetadata {
+                        format_type: Some(pb::format_metadata::FormatType::Bold as i32),
+                        font_color: None,
+                    },
+                )),
+                ..Default::default()
+            },
+            pb::Annotation {
+                r#type: Some(pb::AnnotationType::FormatData as i32),
+                start_index: Some(5),
+                length: Some(8),
+                metadata: Some(pb::annotation::Metadata::FormatMetadata(
+                    pb::FormatMetadata {
+                        format_type: Some(pb::format_metadata::FormatType::Italic as i32),
+                        font_color: None,
+                    },
+                )),
+                ..Default::default()
+            },
+        ];
+
+        let res = annotations_to_matrix_html(text, &annotations, &[]);
+        assert_eq!(
+            res.formatted_body.as_deref(),
+            Some("Hi <strong>👋<em>🔥</em></strong><em> world</em>")
         );
     }
 }

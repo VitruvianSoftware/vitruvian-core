@@ -56,6 +56,9 @@ GChatStatus gchat_start_stream(
 
 void gchat_stop_stream(GChatClient *client);
 
+void gchat_use_manual_clock(GChatClient *client, double fixed_jitter);
+size_t gchat_advance_manual_clock(GChatClient *client, uint64_t delta_ms);
+
 GChatStatus gchat_rpc_call(
     GChatClient *client,
     const char *endpoint_ptr,

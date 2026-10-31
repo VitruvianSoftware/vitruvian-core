@@ -10,10 +10,142 @@ use prost::Message;
 use reqwest::header::{CONTENT_TYPE, COOKIE, USER_AGENT};
 use reqwest::Client;
 use serde_json::Value;
-use std::sync::atomic::{AtomicI64, Ordering};
-use std::sync::Arc;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::{Duration, Instant};
 use url::Url;
+
+pub trait ChannelClock: Send + Sync {
+    fn now_ms(&self) -> u64;
+    fn jitter_unit(&self, attempt: usize) -> f64;
+    fn sleep(&self, dur: Duration) -> Pin<Box<dyn Future<Output = ()> + Send>>;
+}
+
+pub struct SystemChannelClock;
+
+impl ChannelClock for SystemChannelClock {
+    fn now_ms(&self) -> u64 {
+        static EPOCH: OnceLock<Instant> = OnceLock::new();
+        let start = EPOCH.get_or_init(Instant::now);
+        start.elapsed().as_millis() as u64
+    }
+
+    fn jitter_unit(&self, attempt: usize) -> f64 {
+        let mut x = self
+            .now_ms()
+            .wrapping_add((attempt as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15));
+        x = (x ^ (x >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        x = (x ^ (x >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        x ^= x >> 31;
+        ((x >> 11) as f64) / ((1u64 << 53) as f64)
+    }
+
+    fn sleep(&self, dur: Duration) -> Pin<Box<dyn Future<Output = ()> + Send>> {
+        Box::pin(tokio::time::sleep(dur))
+    }
+}
+
+pub struct ManualChannelClock {
+    now_ms: AtomicU64,
+    fixed_jitter: f64,
+    sleepers: Mutex<Vec<(u64, tokio::sync::oneshot::Sender<()>)>>,
+    recorded_sleeps: Mutex<Vec<Duration>>,
+    sleeper_registered: tokio::sync::Notify,
+}
+
+impl ManualChannelClock {
+    pub fn new(fixed_jitter: f64) -> Self {
+        Self {
+            now_ms: AtomicU64::new(0),
+            fixed_jitter: fixed_jitter.clamp(0.0, 1.0),
+            sleepers: Mutex::new(Vec::new()),
+            recorded_sleeps: Mutex::new(Vec::new()),
+            sleeper_registered: tokio::sync::Notify::new(),
+        }
+    }
+
+    pub fn advance(&self, dur: Duration) {
+        let delta = dur.as_millis() as u64;
+        let new_now = self.now_ms.fetch_add(delta, Ordering::SeqCst) + delta;
+        let mut sleepers = self.sleepers.lock().unwrap();
+        let mut remaining = Vec::with_capacity(sleepers.len());
+        for (deadline, tx) in sleepers.drain(..) {
+            if deadline <= new_now {
+                let _ = tx.send(());
+            } else {
+                remaining.push((deadline, tx));
+            }
+        }
+        *sleepers = remaining;
+    }
+
+    pub fn sleeper_count(&self) -> usize {
+        let mut sleepers = self.sleepers.lock().unwrap();
+        sleepers.retain(|(_, tx)| !tx.is_closed());
+        sleepers.len()
+    }
+
+    pub fn recorded_sleeps(&self) -> Vec<Duration> {
+        self.recorded_sleeps.lock().unwrap().clone()
+    }
+}
+
+crate::edition2021! {
+    impl ManualChannelClock {
+        pub async fn wait_for_sleeper(&self) {
+            self.wait_for_sleep_count(1).await;
+        }
+
+        pub async fn wait_for_sleep_count(&self, count: usize) {
+            loop {
+                let notified = self.sleeper_registered.notified();
+                if self.recorded_sleeps.lock().unwrap().len() >= count && self.sleeper_count() > 0 {
+                    return;
+                }
+                notified.await;
+            }
+        }
+
+        pub async fn wait_for_sleep_duration(&self, target: Duration) {
+            loop {
+                let notified = self.sleeper_registered.notified();
+                if self.recorded_sleeps.lock().unwrap().contains(&target) && self.sleeper_count() > 0 {
+                    return;
+                }
+                notified.await;
+            }
+        }
+    }
+
+    impl ChannelClock for ManualChannelClock {
+        fn now_ms(&self) -> u64 {
+            self.now_ms.load(Ordering::SeqCst)
+        }
+
+        fn jitter_unit(&self, _attempt: usize) -> f64 {
+            self.fixed_jitter
+        }
+
+        fn sleep(&self, dur: Duration) -> Pin<Box<dyn Future<Output = ()> + Send>> {
+            self.recorded_sleeps.lock().unwrap().push(dur);
+            let deadline = self
+                .now_ms
+                .load(Ordering::SeqCst)
+                .saturating_add(dur.as_millis() as u64);
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            {
+                let mut sleepers = self.sleepers.lock().unwrap();
+                sleepers.push((deadline, tx));
+            }
+            self.sleeper_registered.notify_waiters();
+            Box::pin(async move {
+                let _ = rx.await;
+            })
+        }
+    }
+}
 
 pub const MAX_CHUNK_UTF16_UNITS: usize = 16 * 1024 * 1024; // 16 MiB cap
 pub const PING_INTERVAL: Duration = Duration::from_secs(60);
@@ -275,6 +407,7 @@ pub struct WebChannelClient {
     guard: NetGuard,
     user_agent: String,
     base_url: Url,
+    clock: RwLock<Arc<dyn ChannelClock>>,
     aid: AtomicI64,
     rid: AtomicI64,
     ofs: AtomicI64,
@@ -290,6 +423,26 @@ crate::edition2021! {
             user_agent: String,
             base_url: Url,
         ) -> Self {
+            Self::with_clock(
+                http,
+                jar,
+                xsrf,
+                guard,
+                user_agent,
+                base_url,
+                Arc::new(SystemChannelClock),
+            )
+        }
+
+        pub fn with_clock(
+            http: Client,
+            jar: DomainCookieJar,
+            xsrf: Arc<XsrfTokenManager>,
+            guard: NetGuard,
+            user_agent: String,
+            base_url: Url,
+            clock: Arc<dyn ChannelClock>,
+        ) -> Self {
             Self {
                 http,
                 jar,
@@ -297,10 +450,23 @@ crate::edition2021! {
                 guard,
                 user_agent,
                 base_url,
+                clock: RwLock::new(clock),
                 aid: AtomicI64::new(0),
                 rid: AtomicI64::new(42000),
                 ofs: AtomicI64::new(0),
             }
+        }
+
+        pub fn set_clock(&self, clock: Arc<dyn ChannelClock>) {
+            *self.clock.write().unwrap() = clock;
+        }
+
+        fn clock(&self) -> Arc<dyn ChannelClock> {
+            self.clock.read().unwrap().clone()
+        }
+
+        pub fn ofs(&self) -> i64 {
+            self.ofs.load(Ordering::SeqCst)
         }
 
         pub fn aid(&self) -> i64 {
@@ -346,6 +512,10 @@ crate::edition2021! {
         }
 
         pub async fn step1_register(&self) -> Result<String, GChatError> {
+            // Reset AID and ofs on every fresh session registration (matching ref/pkg/gchatmeow/channel.go:205-210).
+            self.aid.store(0, Ordering::SeqCst);
+            self.ofs.store(0, Ordering::SeqCst);
+
             let url = self
                 .base_url
                 .join("/u/0/webchannel/register")
@@ -616,41 +786,48 @@ crate::edition2021! {
 
             let mut parser = ChunkParser::new();
             let mut emitted = Vec::new();
-            let mut last_event_at = Instant::now();
-            let mut ping_ticker = tokio::time::interval_at(
-                tokio::time::Instant::now() + PING_INTERVAL,
-                PING_INTERVAL,
-            );
+            let clock = self.clock();
+            let mut last_event_at = clock.now_ms();
+            let server_timeout_ms = SERVER_EVENT_TIMEOUT.as_millis() as u64;
 
             loop {
-                if last_event_at.elapsed() > SERVER_EVENT_TIMEOUT {
+                let now = clock.now_ms();
+                let elapsed_since_event = now.saturating_sub(last_event_at);
+                if elapsed_since_event >= server_timeout_ms {
                     return Err(GChatError::Network(
                         "webchannel server-event 90s watchdog expired".to_string(),
                     ));
                 }
+
+                let rem_server = Duration::from_millis(server_timeout_ms - elapsed_since_event);
+                let wait_dur = READ_INACTIVITY_TIMEOUT.min(rem_server);
+
                 let next_chunk = tokio::select! {
-                    _ = ping_ticker.tick() => {
-                        self.step4_send_ping(gsessionid, sid).await?;
-                        continue;
+                    _ = clock.sleep(wait_dur) => {
+                        if clock.now_ms().saturating_sub(last_event_at) >= server_timeout_ms {
+                            return Err(GChatError::Network(
+                                "webchannel server-event 90s watchdog expired".to_string(),
+                            ));
+                        }
+                        return Err(GChatError::Network(
+                            "webchannel read-inactivity 35s watchdog expired".to_string(),
+                        ));
                     }
-                    res = tokio::time::timeout(READ_INACTIVITY_TIMEOUT, resp.chunk()) => {
-                        res.map_err(|_| {
-                            GChatError::Network(
-                                "webchannel read-inactivity 35s watchdog expired".to_string(),
-                            )
-                        })?
-                        .map_err(|e| GChatError::Network(format!("webchannel stream read error: {e}")))?
+                    res = resp.chunk() => {
+                        res.map_err(|e| GChatError::Network(format!("webchannel stream read error: {e}")))?
                     }
                 };
 
                 let Some(chunk) = next_chunk else {
                     break;
                 };
-                last_event_at = Instant::now();
 
                 let frames = parser.push_bytes(&chunk)?;
                 for frame in frames {
-                    let parsed_events = self.process_chunk_frame(&frame)?;
+                    let (parsed_events, saw_valid_frame) = self.process_chunk_frame(&frame)?;
+                    if saw_valid_frame {
+                        last_event_at = clock.now_ms();
+                    }
                     for ev in parsed_events {
                         on_event(&ev);
                         emitted.push(ev);
@@ -661,12 +838,12 @@ crate::edition2021! {
             Ok(emitted)
         }
 
-        fn process_chunk_frame(&self, frame: &str) -> Result<Vec<pb::Event>, GChatError> {
+        fn process_chunk_frame(&self, frame: &str) -> Result<(Vec<pb::Event>, bool), GChatError> {
             let outer: Value = serde_json::from_str(frame).map_err(|e| {
                 GChatError::Protocol(format!("invalid WebChannel chunk JSON: {e}"))
             })?;
             let Some(entries) = outer.as_array() else {
-                return Ok(Vec::new());
+                return Ok((Vec::new(), false));
             };
 
             let wc_desc = DESCRIPTOR_POOL
@@ -676,6 +853,7 @@ crate::edition2021! {
                 })?;
 
             let mut out = Vec::new();
+            let mut saw_valid_frame = false;
             for entry in entries {
                 let Some(pair) = entry.as_array() else {
                     continue;
@@ -689,8 +867,9 @@ crate::edition2021! {
                 if let Some(data_arr) = pair[1].as_array() {
                     if let Some(first) = data_arr.first() {
                         if first.as_str() == Some("noop") || first.as_str() == Some("c") {
-                            // Heartbeat or control frame.
+                            saw_valid_frame = true;
                         } else if first.is_array() {
+                            saw_valid_frame = true;
                             if let Ok(wc) = decode_pblite::<pb::WebChannelEvent>(&wc_desc, first) {
                                 if let Some(ev) = wc.event {
                                     let split = split_event_into_events(&ev);
@@ -708,7 +887,7 @@ crate::edition2021! {
                     self.aid.store(aid, Ordering::SeqCst);
                 }
             }
-            Ok(out)
+            Ok((out, saw_valid_frame))
         }
 
         pub async fn run_forever<F>(
@@ -812,11 +991,12 @@ crate::edition2021! {
                     return false;
                 }
             }
-            let delay = reconnect_backoff_delay(*attempt, 0.1);
+            let clock = self.clock();
+            let delay = reconnect_backoff_delay(*attempt, clock.jitter_unit(*attempt));
             *attempt = attempt.saturating_add(1);
             tokio::select! {
                 _ = cancel_rx.changed() => false,
-                _ = tokio::time::sleep(delay) => true,
+                _ = clock.sleep(delay) => true,
             }
         }
     }
@@ -1184,5 +1364,252 @@ mod tests {
         server_thread.join().expect("server thread finished");
         assert_eq!(wc.aid(), 2, "AID must update to 2 after chunk [[2,[...]]]");
         assert_eq!(events.len(), 1);
+    }
+
+    crate::edition2021! {
+    #[test]
+    fn test_webchannel_reconnect_resets_aid_and_ofs() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback");
+        let addr = listener.local_addr().expect("local addr");
+        let clock = Arc::new(ManualChannelClock::new(0.2));
+        let (c2_done_tx, c2_done_rx) = tokio::sync::oneshot::channel::<()>();
+
+        let server_thread = std::thread::spawn(move || {
+            // Connection 1: register -> bind SID -> ping (ofs=0, AID=0) -> GET (AID=0) -> emit AID=5, then 400 Unknown SID on rotation
+            {
+                let (mut s, _) = listener.accept().expect("c1 step1");
+                let _ = read_http_request(&mut s);
+                s.write_all(b"HTTP/1.1 200 OK\r\nX-HTTP-Session-Id: gs1\r\nContent-Length: 3\r\nConnection: close\r\n\r\ngs1").unwrap();
+            }
+            {
+                let (mut s, _) = listener.accept().expect("c1 step2");
+                let _ = read_http_request(&mut s);
+                let sid_frame = "[[0,[\"c\",\"sid_c1\",\"\",8]]]";
+                let body = format!("{}\n{}", sid_frame.encode_utf16().count(), sid_frame);
+                let resp = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body);
+                s.write_all(resp.as_bytes()).unwrap();
+            }
+            {
+                let (mut s, _) = listener.accept().expect("c1 step4 ping");
+                let (first_line, _, body) = read_http_request(&mut s);
+                assert!(first_line.contains("AID=0"), "c1 ping expected AID=0, got {first_line}");
+                assert!(body.starts_with("count=1&ofs=0&"), "c1 ping expected ofs=0, got {body}");
+                s.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
+            }
+            {
+                let (mut s, _) = listener.accept().expect("c1 step3 GET #1");
+                let (first_line, _, _) = read_http_request(&mut s);
+                assert!(first_line.contains("AID=0"), "c1 GET #1 expected AID=0, got {first_line}");
+                let chunk = "[[5,[\"noop\"]]]";
+                let body = format!("{}\n{}", chunk.encode_utf16().count(), chunk);
+                let resp = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body);
+                s.write_all(resp.as_bytes()).unwrap();
+            }
+            {
+                let (mut s, _) = listener.accept().expect("c1 step3 GET #2 drops with 400");
+                let (first_line, _, _) = read_http_request(&mut s);
+                assert!(first_line.contains("AID=5"), "c1 GET #2 rotation expected AID=5, got {first_line}");
+                s.write_all(b"HTTP/1.1 400 Bad Request\r\nContent-Length: 11\r\nConnection: close\r\n\r\nUnknown SID").unwrap();
+            }
+
+            // Connection 2 (after reconnect): register -> bind SID -> ping MUST have AID=0 & ofs=0 -> GET MUST have AID=0
+            {
+                let (mut s, _) = listener.accept().expect("c2 step1");
+                let _ = read_http_request(&mut s);
+                s.write_all(b"HTTP/1.1 200 OK\r\nX-HTTP-Session-Id: gs2\r\nContent-Length: 3\r\nConnection: close\r\n\r\ngs2").unwrap();
+            }
+            {
+                let (mut s, _) = listener.accept().expect("c2 step2");
+                let _ = read_http_request(&mut s);
+                let sid_frame = "[[0,[\"c\",\"sid_c2\",\"\",8]]]";
+                let body = format!("{}\n{}", sid_frame.encode_utf16().count(), sid_frame);
+                let resp = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body);
+                s.write_all(resp.as_bytes()).unwrap();
+            }
+            let (c2_ping_line, _, c2_ping_body) = {
+                let (mut s, _) = listener.accept().expect("c2 step4 ping");
+                let req = read_http_request(&mut s);
+                s.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
+                req
+            };
+            let (c2_get_line, _, _) = {
+                let (mut s, _) = listener.accept().expect("c2 step3 GET");
+                let req = read_http_request(&mut s);
+                let _ = c2_done_tx.send(());
+                let chunk = "[[1,[\"noop\"]]]";
+                let body = format!("{}\n{}", chunk.encode_utf16().count(), chunk);
+                let resp = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body);
+                s.write_all(resp.as_bytes()).unwrap();
+                req
+            };
+            (c2_ping_line, c2_ping_body, c2_get_line)
+        });
+
+        let guard = NetGuard::allow_loopback_for_test();
+        let http = guard.build_http_client().expect("build http client");
+        let jar = DomainCookieJar::from_scoped_cookies(vec![
+            ScopedCookie { name: "COMPASS".into(), value: "c1".into(), domain: "chat.google.com".into(), path: "/".into() },
+            ScopedCookie { name: "OSID".into(), value: "o1".into(), domain: "chat.google.com".into(), path: "/".into() },
+            ScopedCookie { name: "SID".into(), value: "s1".into(), domain: ".google.com".into(), path: "/".into() },
+            ScopedCookie { name: "HSID".into(), value: "h1".into(), domain: ".google.com".into(), path: "/".into() },
+            ScopedCookie { name: "SSID".into(), value: "ss1".into(), domain: ".google.com".into(), path: "/".into() },
+        ])
+        .expect("valid cookies")
+        .with_loopback_for_test(true);
+
+        let base_url = Url::parse(&format!("http://{addr}/")).expect("base url");
+        let xsrf = Arc::new(XsrfTokenManager::new(
+            http.clone(),
+            jar.clone(),
+            base_url.clone(),
+            "Mozilla/5.0".to_string(),
+            guard.clone(),
+        ));
+        let wc = Arc::new(WebChannelClient::with_clock(
+            http,
+            jar,
+            xsrf,
+            guard,
+            "Mozilla/5.0".to_string(),
+            base_url,
+            clock.clone(),
+        ));
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("tokio runtime");
+
+        let (c2_ping_line, c2_ping_body, c2_get_line) = rt.block_on(async {
+            let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
+            let (resync_tx, mut resync_rx) = tokio::sync::mpsc::unbounded_channel();
+            let wc_task = tokio::spawn(wc.clone().run_forever(cancel_rx, move |kind, _| {
+                if kind == GCHAT_EVENT_KIND_RESYNC {
+                    let _ = resync_tx.send(());
+                }
+            }));
+
+            // Wait until connection 1 drops and enters backoff sleep (1s + 5% jitter = 1050ms) on our injected clock.
+            clock.wait_for_sleep_duration(Duration::from_millis(1050)).await;
+
+            // Advance the injected clock past the 1050ms backoff so connection 2 proceeds.
+            clock.advance(Duration::from_millis(1050));
+
+            resync_rx.recv().await.expect("expected GCHAT_EVENT_KIND_RESYNC on reconnect");
+            c2_done_rx.await.expect("expected c2 step3 GET request");
+            let _ = cancel_tx.send(true);
+            let _ = wc_task.await;
+            server_thread.join().expect("server thread finished")
+        });
+
+        assert!(
+            c2_ping_line.contains("AID=0"),
+            "reconnect step4 ping must reset AID=0, got: {c2_ping_line}"
+        );
+        assert!(
+            c2_ping_body.starts_with("count=1&ofs=0&"),
+            "reconnect step4 ping must reset ofs=0, got: {c2_ping_body}"
+        );
+        assert!(
+            c2_get_line.contains("AID=0"),
+            "reconnect step3 GET must reset AID=0, got: {c2_get_line}"
+        );
+    }
+
+    #[test]
+    fn test_webchannel_server_event_90s_watchdog_fires_on_non_frame_trickle() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback");
+        let addr = listener.local_addr().expect("local addr");
+        let clock = Arc::new(ManualChannelClock::new(0.0));
+        let (trickle_tx, trickle_rx) = std::sync::mpsc::channel::<()>();
+
+        let server_thread = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept GET");
+            let _ = read_http_request(&mut stream);
+            // Send chunked HTTP response headers, then trickle non-frame whitespace every time the test signals.
+            let hdrs = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n";
+            stream.write_all(hdrs.as_bytes()).expect("write headers");
+            stream.flush().unwrap();
+
+            for _ in 0..3 {
+                if trickle_rx.recv().is_err() {
+                    return;
+                }
+                // Send a 1-byte HTTP chunk containing "\n" (not a valid WebChannel frame).
+                let _ = stream.write_all(b"1\r\n\n\r\n");
+                let _ = stream.flush();
+            }
+            let _ = trickle_rx.recv();
+        });
+
+        let guard = NetGuard::allow_loopback_for_test();
+        let http = guard.build_http_client().expect("build http client");
+        let jar = DomainCookieJar::from_scoped_cookies(vec![
+            ScopedCookie { name: "COMPASS".into(), value: "c1".into(), domain: "chat.google.com".into(), path: "/".into() },
+            ScopedCookie { name: "OSID".into(), value: "o1".into(), domain: "chat.google.com".into(), path: "/".into() },
+            ScopedCookie { name: "SID".into(), value: "s1".into(), domain: ".google.com".into(), path: "/".into() },
+            ScopedCookie { name: "HSID".into(), value: "h1".into(), domain: ".google.com".into(), path: "/".into() },
+            ScopedCookie { name: "SSID".into(), value: "ss1".into(), domain: ".google.com".into(), path: "/".into() },
+        ])
+        .expect("valid cookies")
+        .with_loopback_for_test(true);
+
+        let base_url = Url::parse(&format!("http://{addr}/")).expect("base url");
+        let xsrf = Arc::new(XsrfTokenManager::new(
+            http.clone(),
+            jar.clone(),
+            base_url.clone(),
+            "Mozilla/5.0".to_string(),
+            guard.clone(),
+        ));
+        let wc = Arc::new(WebChannelClient::with_clock(
+            http,
+            jar,
+            xsrf,
+            guard,
+            "Mozilla/5.0".to_string(),
+            base_url,
+            clock.clone(),
+        ));
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("tokio runtime");
+
+        let err = rt.block_on(async {
+            let wc_clone = wc.clone();
+            let poll_task = tokio::spawn(async move {
+                let mut noop = |_: &pb::Event| {};
+                wc_clone.step3_poll_events("gs1", "sid1", &mut noop).await
+            });
+
+            // 3 trickles at 25s intervals (25s, 50s, 75s) keep read inactivity < 35s,
+            // then advancing to 95s must trigger the 90s server-event watchdog!
+            for i in 1..=3 {
+                clock.wait_for_sleep_count(i).await;
+                clock.advance(Duration::from_secs(25));
+                let _ = trickle_tx.send(());
+            }
+            clock.wait_for_sleep_count(4).await;
+            clock.advance(Duration::from_secs(20)); // total elapsed = 95s > 90s SERVER_EVENT_TIMEOUT
+            for _ in 0..10 {
+                tokio::task::yield_now().await;
+            }
+            drop(trickle_tx);
+            if !poll_task.is_finished() {
+                poll_task.abort();
+                panic!("90s server-event watchdog failed to fire at 95s when non-frame bytes trickled in");
+            }
+            let res = poll_task.await.expect("poll_task join");
+            res.expect_err("expected 90s server-event watchdog error")
+        });
+
+        server_thread.join().expect("server thread finished");
+        assert!(
+            err.to_string().contains("90s watchdog"),
+            "expected 90s server-event watchdog error, got: {err}"
+        );
+    }
     }
 }
