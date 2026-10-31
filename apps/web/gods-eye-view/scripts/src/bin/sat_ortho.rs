@@ -20,11 +20,5 @@
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    match gev_scripts_lib::sat_ortho::run(&args) {
-        Ok(msg) => println!("{}", msg),
-        Err(e) => {
-            eprintln!("{}", e);
-            std::process::exit(1);
-        }
-    }
+    gev_scripts_lib::tool_io::exit_with(gev_scripts_lib::sat_ortho::run(&args));
 }

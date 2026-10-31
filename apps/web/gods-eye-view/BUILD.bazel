@@ -142,6 +142,7 @@ rust_library(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [
+        "@crates//:image",
         "@crates//:serde",
         "@crates//:serde_json",
     ],
@@ -204,8 +205,9 @@ rust_binary(
     deps = [":scripts_rs_lib"],
 )
 
+# The imagery CLI tools (tools/README.md): `bazel run :<name> -- --help`.
 rust_binary(
-    name = "pano_pinhole_rs",
+    name = "pano_pinhole",
     srcs = ["scripts/src/bin/pano_pinhole.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
@@ -214,7 +216,7 @@ rust_binary(
 )
 
 rust_binary(
-    name = "sat_ortho_rs",
+    name = "sat_ortho",
     srcs = ["scripts/src/bin/sat_ortho.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
@@ -223,7 +225,7 @@ rust_binary(
 )
 
 rust_binary(
-    name = "streetview_headings_rs",
+    name = "streetview_headings",
     srcs = ["scripts/src/bin/streetview_headings.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
@@ -232,7 +234,7 @@ rust_binary(
 )
 
 rust_binary(
-    name = "streetview_panorama_rs",
+    name = "streetview_panorama",
     srcs = ["scripts/src/bin/streetview_panorama.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
@@ -306,6 +308,7 @@ rust_test(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [
+        "@crates//:image",
         "@crates//:serde",
         "@crates//:serde_json",
     ],
@@ -514,6 +517,7 @@ pipeline_unit(
         ":tle_mirror_test",
         ":cesium_assets_test",
         ":upstream_test",
+        ":scripts_rs_test",
         ":build",
     ],
     tier = "L1",
