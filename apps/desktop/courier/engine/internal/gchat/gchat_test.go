@@ -990,10 +990,9 @@ func TestEndToEndConnectSyncStreamReconnectCatchUpAndBadCredentials(t *testing.T
 	t.Cleanup(func() { _ = st.Close() })
 
 	conn := &Connector{
-		baseURL:        srv.URL,
-		useManualClock: true,
-		manualJitter:   0.2,
+		baseURL: srv.URL,
 	}
+	enableManualClockForConnector(conn, 0.2)
 	h, err := host.Start(ctx, dir, NetworkID, st, &media.Store{Dir: filepath.Join(dir, "media")}, conn, zerolog.Nop())
 	require.NoError(t, err)
 	t.Cleanup(h.Stop)
@@ -4735,6 +4734,13 @@ func TestCreateTopicAndCreateMessageRejectEmptyResponseIDs(t *testing.T) {
 		},
 	})
 	require.Error(t, err, "create_message with empty message_id must return an error")
+}
+
+func TestManualClockNotOnProductionConnectorOrClientStructs(t *testing.T) {
+	_, hasConnManual := reflect.TypeOf(Connector{}).FieldByName("useManualClock")
+	require.False(t, hasConnManual, "production Connector must not carry useManualClock")
+	_, hasClientManual := reflect.TypeOf(Client{}).FieldByName("useManualClock")
+	require.False(t, hasClientManual, "production Client must not carry useManualClock")
 }
 
 func TestServeGChatEngineHelperForAppE2E(t *testing.T) {

@@ -55,10 +55,8 @@ type ReactionMetadata struct {
 
 // Connector implements bridgev2.NetworkConnector for Google Chat.
 type Connector struct {
-	Bridge         *bridgev2.Bridge
-	baseURL        string
-	useManualClock bool
-	manualJitter   float64
+	Bridge  *bridgev2.Bridge
+	baseURL string
 }
 
 var _ bridgev2.NetworkConnector = (*Connector)(nil)
@@ -240,10 +238,8 @@ func (c *Connector) GetConfig() (example string, data any, upgrader configupgrad
 
 func (c *Connector) LoadUserLogin(_ context.Context, login *bridgev2.UserLogin) error {
 	login.Client = &Client{
-		Main:           c,
-		UserLogin:      login,
-		useManualClock: c.useManualClock,
-		manualJitter:   c.manualJitter,
+		Main:      c,
+		UserLogin: login,
 	}
 	return nil
 }

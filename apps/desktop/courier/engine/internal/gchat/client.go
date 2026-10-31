@@ -9,7 +9,6 @@ import (
 	"errors"
 	"strings"
 	"sync"
-	"time"
 
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
@@ -32,7 +31,10 @@ const (
 	maxPendingLocalIDs  = 256
 )
 
-var onRemoteEventQueued func(*Client, bridgev2.RemoteEvent)
+var (
+	onRemoteEventQueued func(*Client, bridgev2.RemoteEvent)
+	onFFIClientCreated  func(*Client, *FFIClient)
+)
 
 type Client struct {
 	Main      *Connector
@@ -47,8 +49,6 @@ type Client struct {
 	streamDone         chan struct{}
 	streamCh           chan streamNotification
 	initialSyncDone    bool
-	useManualClock     bool
-	manualJitter       float64
 	dispatchedMsgIDs   map[string]struct{}
 	dispatchedMsgOrder []string
 	pendingLocalIDs    map[string]struct{}
@@ -269,16 +269,6 @@ func (c *Client) queueRemoteEvent(ctx context.Context, evt bridgev2.RemoteEvent)
 	c.UserLogin.QueueRemoteEvent(evt)
 }
 
-func (c *Client) advanceManualClock(delta time.Duration) int {
-	c.mu.Lock()
-	ffi := c.ffiClient
-	c.mu.Unlock()
-	if ffi == nil {
-		return 0
-	}
-	return ffi.AdvanceManualClock(delta)
-}
-
 func (c *Client) Disconnect() {
 	c.mu.Lock()
 	cancel := c.cancelStream
@@ -324,14 +314,8 @@ func (c *Client) ensureFFIClient() (*FFIClient, error) {
 		return nil, errors.New("gchat UserLogin has no stored cookies")
 	}
 	var baseURL string
-	useManual := c.useManualClock
-	jitter := c.manualJitter
 	if c.Main != nil {
 		baseURL = c.Main.baseURL
-		if c.Main.useManualClock {
-			useManual = true
-			jitter = c.Main.manualJitter
-		}
 	}
 	ffi, err := NewFFIClient(SessionConfig{
 		CookieMap: cookiesCopy,
@@ -341,8 +325,8 @@ func (c *Client) ensureFFIClient() (*FFIClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	if useManual {
-		ffi.UseManualClock(jitter)
+	if onFFIClientCreated != nil {
+		onFFIClientCreated(c, ffi)
 	}
 	c.ffiClient = ffi
 	return ffi, nil

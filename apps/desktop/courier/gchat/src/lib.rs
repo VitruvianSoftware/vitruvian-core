@@ -13,6 +13,7 @@ pub mod channel;
 pub mod cookies;
 pub mod ffi;
 pub mod fmt;
+#[cfg(any(test, feature = "test-loopback"))]
 pub mod fuzz_tests;
 pub mod media;
 pub mod netguard;

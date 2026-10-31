@@ -60,6 +60,7 @@ pub struct GChatClient {
     pub(crate) user_agent: String,
     pub(crate) base_url: Url,
     pub(crate) refresh_handle: tokio::task::JoinHandle<()>,
+    #[cfg(any(test, feature = "test-loopback"))]
     pub(crate) manual_clock: std::sync::Mutex<Option<Arc<crate::channel::ManualChannelClock>>>,
     pub(crate) active_wc: std::sync::Mutex<Option<Arc<WebChannelClient>>>,
     pub(crate) stream_state: std::sync::Mutex<
@@ -250,6 +251,7 @@ impl GChatClient {
             user_agent,
             base_url,
             refresh_handle,
+            #[cfg(any(test, feature = "test-loopback"))]
             manual_clock: std::sync::Mutex::new(None),
             active_wc: std::sync::Mutex::new(None),
             stream_state: std::sync::Mutex::new(None),
@@ -490,6 +492,7 @@ crate::edition2021! {
             };
 
             let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
+            #[cfg(any(test, feature = "test-loopback"))]
             let clock: Arc<dyn crate::channel::ChannelClock> = client_ref
                 .manual_clock
                 .lock()
@@ -497,6 +500,9 @@ crate::edition2021! {
                 .and_then(|g| g.clone())
                 .map(|c| c as Arc<dyn crate::channel::ChannelClock>)
                 .unwrap_or_else(|| Arc::new(crate::channel::SystemChannelClock));
+            #[cfg(not(any(test, feature = "test-loopback")))]
+            let clock: Arc<dyn crate::channel::ChannelClock> =
+                Arc::new(crate::channel::SystemChannelClock);
             let wc = Arc::new(WebChannelClient::with_clock(
                 client_ref.http.clone(),
                 client_ref.jar.clone(),
@@ -536,6 +542,7 @@ pub unsafe extern "C" fn gchat_stop_stream(client: *mut GChatClient) {
     }));
 }
 
+#[cfg(any(test, feature = "test-loopback"))]
 #[no_mangle]
 pub unsafe extern "C" fn gchat_use_manual_clock(client: *mut GChatClient, fixed_jitter: f64) {
     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -554,6 +561,7 @@ pub unsafe extern "C" fn gchat_use_manual_clock(client: *mut GChatClient, fixed_
     }));
 }
 
+#[cfg(any(test, feature = "test-loopback"))]
 #[no_mangle]
 pub unsafe extern "C" fn gchat_advance_manual_clock(
     client: *mut GChatClient,

@@ -103,8 +103,8 @@ genrule(
     outs = ["libgchat_ffi_scoped.a"],
     cmd = """
         set -eu
-        if /usr/bin/nm -g $(location :gchat_static) 2>/dev/null | /usr/bin/grep -q gchat_test_only; then
-            echo "ERROR: test-loopback feature leaked into production gchat_static" >&2
+        if /usr/bin/nm -g $(location :gchat_static) 2>/dev/null | /usr/bin/grep -Eq 'gchat_test_only|manual_clock|fuzz_'; then
+            echo "ERROR: test-loopback, manual_clock, or fuzz symbol leaked into production gchat_static" >&2
             exit 1
         fi
         REL_OBJ="$$(mktemp -t gchat_ffi_reloc).o"
@@ -175,6 +175,17 @@ cc_library(
     target_compatible_with = ["@platforms//os:macos"],
 )
 
+rust_library(
+    name = "gchat_rlib_test_loopback",
+    testonly = True,
+    srcs = _SRCS,
+    crate_features = ["test-loopback"],
+    crate_name = "gchat_ffi",
+    edition = "2021",
+    proc_macro_deps = _PROC_MACRO_DEPS,
+    deps = _DEPS + [":gchat_build_script"],
+)
+
 rust_test(
     name = "gchat_ffi_test",
     crate = ":gchat_rlib",
@@ -187,26 +198,26 @@ rust_test(
     name = "fuzz_chunk_parser_test",
     srcs = ["fuzz/fuzz_targets/fuzz_chunk_parser.rs"],
     edition = "2021",
-    deps = [":gchat_rlib"],
+    deps = [":gchat_rlib_test_loopback"],
 )
 
 rust_test(
     name = "fuzz_pblite_event_test",
     srcs = ["fuzz/fuzz_targets/fuzz_pblite_event.rs"],
     edition = "2021",
-    deps = [":gchat_rlib"],
+    deps = [":gchat_rlib_test_loopback"],
 )
 
 rust_test(
     name = "fuzz_fmt_annotations_test",
     srcs = ["fuzz/fuzz_targets/fuzz_fmt_annotations.rs"],
     edition = "2021",
-    deps = [":gchat_rlib"],
+    deps = [":gchat_rlib_test_loopback"],
 )
 
 rust_test(
     name = "fuzz_cookies_test",
     srcs = ["fuzz/fuzz_targets/fuzz_cookies.rs"],
     edition = "2021",
-    deps = [":gchat_rlib"],
+    deps = [":gchat_rlib_test_loopback"],
 )

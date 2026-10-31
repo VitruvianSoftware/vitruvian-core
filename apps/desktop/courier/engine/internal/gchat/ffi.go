@@ -26,7 +26,6 @@ import (
 	"fmt"
 	"runtime/cgo"
 	"sync"
-	"time"
 	"unsafe"
 )
 
@@ -302,33 +301,6 @@ func (c *FFIClient) StartStream(cb func(eventKind int32, payload []byte)) error 
 	c.streamHandle = h
 	c.hasStream = true
 	return nil
-}
-
-// UseManualClock configures the underlying Rust GChatClient to use a deterministic manual clock for tests.
-func (c *FFIClient) UseManualClock(fixedJitter float64) {
-	if c == nil {
-		return
-	}
-	c.mu.Lock()
-	ptr := c.ptr
-	c.mu.Unlock()
-	if ptr != nil {
-		C.gchat_use_manual_clock(ptr, C.double(fixedJitter))
-	}
-}
-
-// AdvanceManualClock advances the underlying Rust manual clock by delta and returns the remaining active sleeper count.
-func (c *FFIClient) AdvanceManualClock(delta time.Duration) int {
-	if c == nil {
-		return 0
-	}
-	c.mu.Lock()
-	ptr := c.ptr
-	c.mu.Unlock()
-	if ptr == nil {
-		return 0
-	}
-	return int(C.gchat_advance_manual_clock(ptr, C.uint64_t(delta.Milliseconds())))
 }
 
 // AnnotationsToHTML converts a serialized googlechat.Message protobuf into Matrix plain text + HTML.
