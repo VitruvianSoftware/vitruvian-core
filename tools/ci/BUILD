@@ -18,9 +18,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# The orchestrator's hermetic tests drive the REAL decision engine (spec §4.2:
-# deploy-affected.sh is shelled, never rewritten), so the scripts must be
-# visible as runfiles to //tools/delivery/orchestrate:orchestrate_test.
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
@@ -47,12 +44,8 @@ exports_files([
     "changelog-summary.sh",
     "changelog-summary_test.sh",
     "chart-render.sh",
-    "delivery-drift.sh",
-    "delivery-drift_test.sh",
     "dependabot-lock-rebase.sh",
     "dependabot-lock-rebase_test.sh",
-    "deploy-affected.sh",
-    "deploy-affected_test.sh",
     "ensure-site-verification.sh",
     "ensure-site-verification_test.sh",
     "foundation-app-digest-guard.sh",
@@ -100,10 +93,6 @@ exports_files([
     "require-dev-soak.sh",
     "require-dev-soak_test.sh",
     "require-pinned-actions.sh",
-    "resolve-deploy-base.sh",
-    "resolve-deploy-base_test.sh",
-    "resolve-unit-bases.sh",
-    "resolve-unit-bases_test.sh",
     "secret-scan.sh",
     "secret-scan_test.sh",
     "session-start_test.sh",
@@ -111,7 +100,6 @@ exports_files([
     "site-pr-automerge_test.sh",
     "tabula-deploy-preflight.sh",
     "tabula-deploy-preflight_test.sh",
-    "td-lib.sh",
     "transient-lib.sh",
     "workflow-git-push-credentials_test.sh",
 ])
@@ -156,23 +144,9 @@ sh_test(
     data = [":gate_evaluator"],
 )
 
-# The drift detector shells the SAME decision engine the orchestrator does, so
-# the detector can never disagree with the decider about "affected". Its test
-# therefore needs both scripts as runfiles and drives the real engine (only gh
-# and bazel are stubbed).
 # Safety tests for the cache pruner. It DELETES, so the suite is mostly
 # negative: an open PR's cache, a branch cache, and an undeterminable PR state
 # must all survive.
-# Per-unit durable bases (#1842). Hermetic: stubs only `gh`, and drives the real
-# script against a fixture workflow, so it needs no network and no credentials.
-sh_test(
-    name = "resolve_unit_bases_test",
-    size = "small",
-    srcs = ["resolve-unit-bases_test.sh"],
-    args = ["$(location resolve-unit-bases.sh)"],
-    data = ["resolve-unit-bases.sh"],
-)
-
 # A workflow may name the homelab runner only through one exact rule, so a pull
 # request (a fork's, too) can never choose it. Scans every workflow.
 sh_test(
@@ -203,21 +177,6 @@ sh_test(
     srcs = ["prune-pr-caches_test.sh"],
     args = ["$(location prune-pr-caches.sh)"],
     data = ["prune-pr-caches.sh"],
-)
-
-sh_test(
-    name = "delivery_drift_test",
-    size = "small",
-    srcs = ["delivery-drift_test.sh"],
-    args = [
-        "$(location delivery-drift.sh)",
-        "$(location deploy-affected.sh)",
-    ],
-    data = [
-        "delivery-drift.sh",
-        "deploy-affected.sh",
-        "td-lib.sh",
-    ],
 )
 
 sh_test(
@@ -252,17 +211,6 @@ sh_test(
     srcs = ["bisect-culprit_test.sh"],
     args = ["$(location bisect-culprit.sh)"],
     data = ["bisect-culprit.sh"],
-)
-
-sh_test(
-    name = "deploy_affected_test",
-    size = "small",
-    srcs = ["deploy-affected_test.sh"],
-    args = ["$(location deploy-affected.sh)"],
-    data = [
-        "deploy-affected.sh",
-        "td-lib.sh",
-    ],
 )
 
 # The mirror's release workflow for the standalone Nexus Agent never runs here;
@@ -353,6 +301,18 @@ rust_test(
 )
 
 # ---------- Rust ports of CI / delivery helper scripts ----------
+
+# Shared by the black-box rust_tests below: temp dirs, fake executables on
+# PATH, throwaway git repos, and a runner for the binary under test.
+rust_library(
+    name = "ci_testkit",
+    testonly = True,
+    srcs = ["src/testkit/lib.rs"],
+    crate_name = "ci_testkit",
+    crate_root = "src/testkit/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
 
 # gate-evaluator
 rust_library(
@@ -647,23 +607,17 @@ rust_binary(
     ],
 )
 
-sh_binary(
-    name = "deploy-affected-sh",
-    srcs = ["deploy-affected.sh"],
-    data = ["td-lib.sh"],
-    visibility = ["//visibility:public"],
-)
-
-sh_test(
-    name = "deploy_affected_rs_test",
+# Black-box: runs the REAL binary as CI does, with fake gh/gcloud/curl on
+# PATH and throwaway git repos. Ported case for case from the shell suite.
+rust_test(
+    name = "deploy_affected_test",
     size = "small",
-    srcs = ["deploy-affected_test.sh"],
-    args = ["$(location :deploy_affected)"],
-    data = [
-        "deploy-affected.sh",
-        "td-lib.sh",
-        ":deploy_affected",
-    ],
+    srcs = ["src/deploy_affected/tests.rs"],
+    data = [":deploy_affected"],
+    edition = "2021",
+    env = {"BIN": "$(rootpath :deploy_affected)"},
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":ci_testkit"],
 )
 
 # resolve-unit-bases
@@ -689,21 +643,17 @@ rust_binary(
     ],
 )
 
-sh_binary(
-    name = "resolve-unit-bases-sh",
-    srcs = ["resolve-unit-bases.sh"],
-    visibility = ["//visibility:public"],
-)
-
-sh_test(
-    name = "resolve_unit_bases_rs_test",
+# Black-box: runs the REAL binary as CI does, with fake gh/gcloud/curl on
+# PATH and throwaway git repos. Ported case for case from the shell suite.
+rust_test(
+    name = "resolve_unit_bases_test",
     size = "small",
-    srcs = ["resolve-unit-bases_test.sh"],
-    args = ["$(location :resolve_unit_bases)"],
-    data = [
-        "resolve-unit-bases.sh",
-        ":resolve_unit_bases",
-    ],
+    srcs = ["src/resolve_unit_bases/tests.rs"],
+    data = [":resolve_unit_bases"],
+    edition = "2021",
+    env = {"BIN": "$(rootpath :resolve_unit_bases)"},
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":ci_testkit"],
 )
 
 # prune-pr-caches
@@ -754,12 +704,18 @@ rust_library(
     crate_root = "src/delivery_drift/lib.rs",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-    deps = ["//tools/shell-compat:shell_compat"],
+    deps = [
+        "//tools/shell-compat:shell_compat",
+        "@rules_rust//rust/runfiles",
+    ],
 )
 
+# Judges each unit with the SAME decision engine the orchestrator runs, found
+# in its runfiles (DEPLOY_AFFECTED_BIN overrides it).
 rust_binary(
     name = "delivery_drift",
     srcs = ["src/delivery_drift/main.rs"],
+    data = [":deploy_affected"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//visibility:public"],
@@ -769,30 +725,23 @@ rust_binary(
     ],
 )
 
-sh_binary(
-    name = "delivery-drift-sh",
-    srcs = ["delivery-drift.sh"],
-    data = [
-        "deploy-affected.sh",
-        "td-lib.sh",
-    ],
-    visibility = ["//visibility:public"],
-)
-
-sh_test(
-    name = "delivery_drift_rs_test",
+# Black-box: runs the REAL binary as CI does, with fake gh/gcloud/curl on
+# PATH and throwaway git repos. Ported case for case from the shell suite.
+rust_test(
+    name = "delivery_drift_test",
     size = "small",
-    srcs = ["delivery-drift_test.sh"],
-    args = [
-        "$(location :delivery_drift)",
-        "$(location deploy-affected.sh)",
-    ],
+    srcs = ["src/delivery_drift/tests.rs"],
     data = [
-        "delivery-drift.sh",
-        "deploy-affected.sh",
-        "td-lib.sh",
         ":delivery_drift",
+        ":deploy_affected",
     ],
+    edition = "2021",
+    env = {
+        "BIN": "$(rootpath :delivery_drift)",
+        "ENGINE": "$(rootpath :deploy_affected)",
+    },
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":ci_testkit"],
 )
 
 # preview-reaper
@@ -1625,25 +1574,17 @@ rust_binary(
     ],
 )
 
-sh_test(
+# Black-box: runs the REAL binary as CI does, with fake gh/gcloud/curl on
+# PATH and throwaway git repos. Ported case for case from the shell suite.
+rust_test(
     name = "resolve_deploy_base_test",
     size = "small",
-    srcs = ["resolve-deploy-base_test.sh"],
-    args = ["$(location resolve-deploy-base.sh)"],
-    data = [
-        "resolve-deploy-base.sh",
-    ],
-)
-
-sh_test(
-    name = "resolve_deploy_base_rs_test",
-    size = "small",
-    srcs = ["resolve-deploy-base_test.sh"],
-    args = ["$(location :resolve_deploy_base)"],
-    data = [
-        "resolve-deploy-base.sh",
-        ":resolve_deploy_base",
-    ],
+    srcs = ["src/resolve_deploy_base/tests.rs"],
+    data = [":resolve_deploy_base"],
+    edition = "2021",
+    env = {"BIN": "$(rootpath :resolve_deploy_base)"},
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":ci_testkit"],
 )
 
 # install-pinned-tool

@@ -129,7 +129,7 @@ permissions:
 # `github.event.before` is fixed at the EVICTED run's push — a range no
 # successor re-diffs, i.e. a silent permanent skip. The orchestrate job
 # therefore resolves a DURABLE base from this workflow's last successful
-# push run (tools/ci/resolve-deploy-base.sh) and only falls back to
+# push run (//tools/ci:resolve_deploy_base) and only falls back to
 # github.event.before when that cannot be determined: the NEXT push run
 # re-diffs the evicted one's range, so eviction costs latency, not a
 # delivery. Observed live and working on the Phase-2 merge burst.
@@ -214,7 +214,7 @@ jobs:
         # delivered it before the per-app split). Always exits 0: an empty
         # base_sha means "could not determine", and the step below falls
         # back.
-        run: bash tools/ci/resolve-deploy-base.sh
+        run: bazel run //tools/ci:resolve_deploy_base
       - name: Resolve per-unit durable bases (#1842)
         id: unit-bases
         env:
@@ -228,7 +228,7 @@ jobs:
         # This resolves each unit's own laggiest last delivery instead.
         # Always exits 0; an empty object means every unit keeps the single
         # base, which is exactly the previous behaviour.
-        run: bash tools/ci/resolve-unit-bases.sh
+        run: bazel run //tools/ci:resolve_unit_bases
       - name: Compute the delivery manifest
         id: manifest
         env:

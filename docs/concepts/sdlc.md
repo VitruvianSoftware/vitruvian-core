@@ -103,7 +103,7 @@ flowchart LR
 ```
 
 - **Merge to `main` deploys development only.** The deploy gate
-  (`tools/ci/deploy-affected.sh`) decides from the Bazel graph whether the app is
+  (`//tools/ci:deploy_affected`) decides from the Bazel graph whether the app is
   affected — and *fails open*, because a redundant blue-green deploy is an idempotent
   no-op while a silently skipped deploy is an incident.
 - **Promotion is release-gated.** Merging a component's release-please PR (version
@@ -122,7 +122,7 @@ flowchart TD
     end
 
     subgraph Orchestrator["Delivery Orchestrator (.github/workflows/delivery-APP.yaml, one per app)"]
-        EVAL{"Path match & graph evaluation<br/>(tools/ci/deploy-affected.sh)"}
+        EVAL{"Path match & graph evaluation<br/>(//tools/ci:deploy_affected)"}
     end
 
     subgraph Units["Affected Cloud Run Units (development)"]

@@ -18,15 +18,39 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! deploy-affected.sh — decide whether a push to main affects an app's
+//! deploy-affected — decide whether a push to main affects an app's
 //! deployable artifacts, using the Bazel graph (target-determinator) instead
-//! of directory path globs.
+//! of directory path globs (#498). `bazel run //tools/ci:deploy_affected`;
+//! the delivery orchestrator and delivery-drift run this binary directly.
+//!
+//! FAIL-OPEN INVARIANT: every uncertain or error path yields affected=true. A
+//! redundant deploy is an idempotent blue-green no-op; a silently skipped one
+//! is the bug this exists to prevent. The only way to get affected=false is a
+//! successfully computed diff whose graph attribution says none of the deploy
+//! targets changed AND no declared non-graph input changed.
+//!
+//! Environment: BUILDBUDDY_API_KEY (remote-cache auth for target-determinator;
+//! unused in path-only mode), BEFORE_REV (the durable diff base from
+//! resolve-deploy-base), AFTER_REV (default HEAD; delivery-drift judges one
+//! commit at a time with it), FORCED_PUSH ("true" -> affected=true),
+//! DEPLOY_TARGETS (space-separated deploy labels; unset = PATH-ONLY MODE, where
+//! EXTRA_PATH_REGEX is the sole signal), EXTRA_PATH_REGEX / EXCLUDE_PATH_REGEX
+//! (EREs anchored at path start), TD_BIN (an executable target-determinator to
+//! use instead of downloading the pinned one; the test hook).
+//!
+//! Output: `affected=true|false` to $GITHUB_OUTPUT, and a
+//! `deploy-affected: affected=<v> (<reason>)` line on stdout either way.
 
 use shell_compat::{
-    capture, cat, env, env_or_empty, err, indent, is_file, mktemp_dir, os, out, status, subst,
+    capture, capture_stdout, cat, env, env_or_empty, err, indent, mktemp_dir, os, out, status,
+    subst,
 };
 use std::process::Command;
 
+// The pinned target-determinator: the prebuilt release binary, because the
+// published Go module ships empty proto stubs and `go install` always fails.
+// Bump TD_VERSION and TD_SHA256 together; TD_SHA256 is the sha256 of the
+// `target-determinator.linux.amd64` asset for TD_VERSION.
 const TD_VERSION: &str = "v0.34.0";
 const TD_SHA256: &str = "115e1c63d39e2cd0d0b011c9fadc80f059f021176a4ae0de2232cdd83b1f8011";
 
@@ -50,7 +74,7 @@ fn emit(value: &[u8], reason: &[u8], class: &[u8]) -> i32 {
                     b"### \xe2\x9a\xa0 deploy-gate fallback (degraded)\n\n",
                     b"- reason: ", reason, b"\n",
                     b"- consequence: deployed without graph attribution (fail-open, idempotent blue-green)\n",
-                    b"- if this recurs, the gate fast path is broken (see #503): check tools/ci/td-lib.sh\n",
+                    b"- if this recurs, the gate fast path is broken (see #503): check the target-determinator pin in tools/ci/src/deploy_affected/lib.rs\n",
                 ]);
                 let _ = std::fs::OpenOptions::new()
                     .create(true)
@@ -87,7 +111,10 @@ fn grep_ere(text: &[u8], pattern: &[u8]) -> bool {
         return false;
     }
     let mut cmd = Command::new("grep");
-    cmd.arg("-E").arg(os(pattern));
+    cmd.arg("-E")
+        .arg(os(pattern))
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
     shell_compat::status_with_input(0, &mut cmd, text, true) == 0
 }
 
@@ -141,10 +168,19 @@ fn grep_ere_invert(text: &[u8], pattern: &[u8]) -> Vec<u8> {
     }
 }
 
+/// `[ -x path ]`: exists and has an execute bit (a directory counts, as in
+/// test(1); running it then fails, which the caller treats as degraded).
+fn is_executable(p: &[u8]) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::metadata(shell_compat::path(p))
+        .map(|m| m.permissions().mode() & 0o111 != 0)
+        .unwrap_or(false)
+}
+
 fn fetch_td() -> Result<Vec<u8>, Vec<u8>> {
     if let Some(bin) = env("TD_BIN") {
         if !bin.is_empty() {
-            if is_file(&bin) {
+            if is_executable(&bin) {
                 out(&cat(&[b"td-lib: using TD_BIN override at ", &bin, b"\n"]));
                 return Ok(bin);
             }
@@ -277,7 +313,7 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
         );
     }
 
-    let diff_r = capture(
+    let diff_r = capture_stdout(
         127,
         Command::new("git")
             .arg("diff")
@@ -413,6 +449,21 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
         b")...\n",
     ]));
 
+    let td_out = match std::fs::File::create("deploy-affected.txt") {
+        Ok(f) => f,
+        Err(e) => {
+            err(&cat(&[
+                b"deploy-affected: deploy-affected.txt: ",
+                shell_compat::strerror(&e).as_bytes(),
+                b"\n",
+            ]));
+            return emit(
+                b"true",
+                b"target-determinator returned non-zero",
+                b"degraded",
+            );
+        }
+    };
     let rc = status(
         208,
         Command::new(os(&td))
@@ -427,10 +478,7 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
             ])))
             .arg("--before-query-error-behavior=ignore-and-build-all")
             .arg(os(&before_rev))
-            .stdout({
-                let f = std::fs::File::create("deploy-affected.txt").unwrap();
-                std::process::Stdio::from(f)
-            }),
+            .stdout(std::process::Stdio::from(td_out)),
         false,
     );
     if rc != 0 {
@@ -442,7 +490,7 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
     }
 
     let content = std::fs::read("deploy-affected.txt").unwrap_or_default();
-    if !content.is_empty() && content != b"\n" {
+    if !content.is_empty() {
         out(b"deploy-affected: affected deploy target(s):\n");
         out(&indent(&content));
         return emit(

@@ -20,7 +20,7 @@
 # SOFTWARE.
 
 # Hermetic guard for tools/ci/release-hold.sh. Fake `gh` (no network, no
-# credentials — mirrors resolve-deploy-base_test.sh's fake-gh pattern) that
+# credentials — mirrors the fake-gh pattern of //tools/ci:resolve_deploy_base_test) that
 # dispatches on the gh subcommand and logs every invocation for assertion.
 #
 # Specifically pins the bug fix: a failed `gh pr list` (the open-release-PR

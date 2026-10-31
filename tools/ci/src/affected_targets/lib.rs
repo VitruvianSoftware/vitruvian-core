@@ -187,7 +187,7 @@ fn run_full_sweep(reason: &[u8], class: &[u8], bb_key: &[u8]) -> ! {
                     reason,
                     b"\n",
                     b"- consequence: this run paid a full `//...` sweep instead of affected targets\n",
-                    b"- if this recurs across runs, the fast path is broken (see #503): check the TD pin in `tools/ci/td-lib.sh` and the runner platform\n",
+                    b"- if this recurs across runs, the fast path is broken (see #503): check the TD pin (TD_VERSION in `tools/ci/src/deploy_affected/lib.rs`) and the runner platform\n",
                 ]);
                 let _ = std::fs::OpenOptions::new()
                     .create(true)
