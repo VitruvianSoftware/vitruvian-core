@@ -530,7 +530,13 @@ md|png|jpg|jpeg|svg|txt)$|(^|/)(catalog-info\\.yaml|OWNERS|CODEOWNERS)$",
                     let gi_files = subst(gi_diff_r.stdout);
                     // An unreadable diff means we cannot show nothing global
                     // changed since the map: do not use the map.
-                    if !gi_ok || is_global_impact(&gi_files) {
+                    if !gi_ok {
+                        out(&cat(&[
+                            b"affected-targets: could not diff the dependency map at ",
+                            &map_commit[..12.min(map_commit.len())],
+                            b" against the diff base (git diff failed) -- not used\n",
+                        ]));
+                    } else if is_global_impact(&gi_files) {
                         out(&cat(&[
                             b"affected-targets: a global-impact file changed since the dependency map at ",
                             &map_commit[..12.min(map_commit.len())],
