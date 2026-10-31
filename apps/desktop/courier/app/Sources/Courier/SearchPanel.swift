@@ -9,6 +9,7 @@ import SwiftUI
 struct SearchOverlay: View {
     @ObservedObject var search: SearchModel
     @ObservedObject var inbox: InboxModel
+    @ObservedObject var composerPreferences: ComposerPreferences = ComposerPreferences()
 
     var body: some View {
         GeometryReader { proxy in
@@ -17,7 +18,12 @@ struct SearchOverlay: View {
                     .contentShape(Rectangle())
                     .onTapGesture { search.close() }
                     .accessibilityHidden(true)
-                SearchPanel(search: search, inbox: inbox, maxHeight: proxy.size.height * 0.7)
+                SearchPanel(
+                    search: search,
+                    inbox: inbox,
+                    composerPreferences: composerPreferences,
+                    maxHeight: proxy.size.height * 0.7
+                )
                     .padding(.top, max(16, proxy.size.height * 0.06))
             }
         }
@@ -28,6 +34,7 @@ struct SearchOverlay: View {
 struct SearchPanel: View {
     @ObservedObject var search: SearchModel
     @ObservedObject var inbox: InboxModel
+    @ObservedObject var composerPreferences: ComposerPreferences = ComposerPreferences()
     /// 70% of the window's height: the panel grows with its rows up to this.
     let maxHeight: CGFloat
     @State private var rowsHeight: CGFloat = 0
@@ -118,6 +125,7 @@ struct SearchPanel: View {
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(search.sections) { section in
                         SearchSectionView(search: search, section: section, inbox: inbox,
+                                          composerPreferences: composerPreferences,
                                           linesAfter: linesAfter(section))
                     }
                 }
@@ -188,6 +196,7 @@ private struct SearchSectionView: View {
     @ObservedObject var search: SearchModel
     let section: SearchSection
     let inbox: InboxModel
+    @ObservedObject var composerPreferences: ComposerPreferences = ComposerPreferences()
     let linesAfter: [String]
 
     var body: some View {
@@ -197,7 +206,11 @@ private struct SearchSectionView: View {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 4), spacing: 6) {
                     ForEach(section.items) { item in
                         if case let .message(hit) = item {
-                            MediaCell(hit: hit, isSelected: search.selection == item.id)
+                            MediaCell(
+                                hit: hit,
+                                isSelected: search.selection == item.id,
+                                composerPreferences: composerPreferences
+                            )
                                 .id(item.id)
                                 .onTapGesture { open(item) }
                         }
@@ -210,7 +223,8 @@ private struct SearchSectionView: View {
                         PartialMatchesDivider()
                     }
                     SearchRowView(item: item, isSelected: search.selection == item.id,
-                                  networkName: inbox.networkName, isBookmark: section.kind == .bookmarks)
+                                  networkName: inbox.networkName, isBookmark: section.kind == .bookmarks,
+                                  composerPreferences: composerPreferences)
                         .id(item.id)
                         .contentShape(Rectangle())
                         .onTapGesture { open(item) }

@@ -13,16 +13,20 @@ struct RowStyle: Equatable {
     var showNetworkIcons = true
     var colorNetworkIcons = true
     var hoverAction = HoverAction.archive
-    var timeFormat = TimeFormatPreference.current()
+    var timeFormat = TimeFormatPreference.system
 
-    init(_ preferences: InboxPreferences) {
+    init(_ preferences: InboxPreferences, timeFormat: TimeFormatPreference = .system) {
         showPreviews = preferences.showPreviews
         showUnreadCounts = preferences.showUnreadCounts
         compact = preferences.compactList
         showNetworkIcons = preferences.showNetworkIcons
         colorNetworkIcons = preferences.colorNetworkIcons
         hoverAction = preferences.hoverAction
-        timeFormat = TimeFormatPreference.current()
+        self.timeFormat = timeFormat
+    }
+
+    init(_ preferences: InboxPreferences, composerPreferences: ComposerPreferences) {
+        self.init(preferences, timeFormat: composerPreferences.timeFormat)
     }
 }
 

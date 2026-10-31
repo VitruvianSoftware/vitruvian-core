@@ -3717,6 +3717,227 @@ final class ViewSnapshotTests: XCTestCase {
             )
         })
     }
+
+    func testInboxListAndSearchRowsObserveComposerPreferencesTimeFormat() throws {
+        let testDefaults = defaults()
+        let app = offlineApp()
+        let lifecycle = SystemLifecycleModel(
+            loginItemService: SnapshotLoginItemService(),
+            biometricService: SnapshotBiometricService(),
+            defaults: testDefaults
+        )
+        let inboxPrefs = InboxPreferences(defaults: testDefaults)
+        let composerPrefs = ComposerPreferences(defaults: testDefaults)
+        let inbox = InboxModel(appModel: app, preferences: inboxPrefs, lifecycle: lifecycle)
+        let spaces = SpacesModel(appModel: app, inbox: inbox, lifecycle: lifecycle)
+        let ui = InboxUI()
+
+        let utc = TimeZone(secondsFromGMT: 0)!
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = utc
+        let ukLocale = Locale(identifier: "en_GB")
+        let afternoonMillis = Int64(1_700_055_000_000) // 2023-11-15 13:30:00 UTC
+        let sameDayNow = Date(timeIntervalSince1970: 1_700_060_000)
+
+        let row = Fixture.row("!r1", "Alice Example", ts: 5, preview: "Hello", mine: false)
+        var timedRow = row
+        timedRow.lastTS = afternoonMillis
+
+        let hit = MessageHit(
+            eventID: "$hit1",
+            roomID: "!r1",
+            roomName: "Alice Example",
+            network: "whatsapp",
+            isDirect: true,
+            place: .inbox,
+            sender: "@alice:courier.local",
+            senderName: "Alice Example",
+            mine: false,
+            ts: afternoonMillis,
+            seq: 1,
+            kind: .video,
+            snippet: "Hello there"
+        )
+
+        composerPrefs.timeFormat = .twelveHour
+        let inboxList = InboxList(
+            inbox: inbox,
+            spaces: spaces,
+            preferences: inboxPrefs,
+            composerPreferences: composerPrefs,
+            ui: ui
+        )
+        let searchRow = SearchRowView(
+            item: .message(hit),
+            isSelected: false,
+            networkName: { $0 },
+            composerPreferences: composerPrefs
+        )
+        let mediaCell = MediaCell(
+            hit: hit,
+            isSelected: false,
+            composerPreferences: composerPrefs
+        )
+
+        XCTAssertTrue(inboxList.composerPreferences === composerPrefs)
+        XCTAssertTrue(searchRow.composerPreferences === composerPrefs)
+        XCTAssertTrue(mediaCell.composerPreferences === composerPrefs)
+
+        XCTAssertEqual(inboxList.rowStyle.timeFormat, .twelveHour)
+        XCTAssertEqual(
+            inboxList.formattedRowTimestamp(timedRow, now: sameDayNow, calendar: calendar, locale: ukLocale),
+            "1:30 PM"
+        )
+        XCTAssertEqual(
+            searchRow.formattedTimestamp(now: sameDayNow, calendar: calendar, locale: ukLocale),
+            "1:30 PM"
+        )
+        XCTAssertTrue(
+            mediaCell.helpText(now: sameDayNow, calendar: calendar, locale: ukLocale).hasSuffix("· 1:30 PM")
+        )
+
+        // Changing composerPrefs.timeFormat immediately updates InboxList, SearchRowView, and MediaCell timestamps
+        // without touching UserDefaults.standard.
+        composerPrefs.timeFormat = .twentyFourHour
+        XCTAssertEqual(inboxList.rowStyle.timeFormat, .twentyFourHour)
+        XCTAssertEqual(
+            inboxList.formattedRowTimestamp(timedRow, now: sameDayNow, calendar: calendar, locale: ukLocale),
+            "13:30"
+        )
+        XCTAssertEqual(
+            searchRow.formattedTimestamp(now: sameDayNow, calendar: calendar, locale: ukLocale),
+            "13:30"
+        )
+        XCTAssertTrue(
+            mediaCell.helpText(now: sameDayNow, calendar: calendar, locale: ukLocale).hasSuffix("· 13:30")
+        )
+    }
+
+    func testEverySearchResultHighlightsItsOwnControlIncludingAccountsEmptyState() throws {
+        let testDefaults = defaults()
+        let app = offlineApp()
+        let lifecycle = SystemLifecycleModel(
+            loginItemService: SnapshotLoginItemService(),
+            biometricService: SnapshotBiometricService(),
+            defaults: testDefaults
+        )
+        let inboxPrefs = InboxPreferences(defaults: testDefaults)
+        let composerPrefs = ComposerPreferences(defaults: testDefaults)
+        let notificationPrefs = inboxPrefs.notifications
+        let dockPrefs = DockAndTrayPreferences(defaults: testDefaults)
+        let quickReplies = QuickReplies(defaults: testDefaults)
+        let hotkeys = HotkeyRegistry(defaults: testDefaults, isAppLocked: { lifecycle.isLocked })
+        let inbox = InboxModel(appModel: app, preferences: inboxPrefs, lifecycle: lifecycle)
+        let spaces = SpacesModel(appModel: app, inbox: inbox, lifecycle: lifecycle)
+        let labels = LabelsModel(appModel: app, lifecycle: lifecycle)
+        let conv = conversation(composerPrefs, entitled: true)
+        let login = LoginFlowModel(
+            caller: SnapshotLoginCaller(),
+            accounts: { app.accounts },
+            reloadAccounts: {},
+            credentials: SnapshotCredentials(),
+            builtInCredentials: { nil },
+            restartEngine: {}
+        )
+
+        let populatedBridgesJSON = """
+        [
+          {
+            "network": "telegram",
+            "display_name": "Telegram",
+            "bridge_id": "telegram",
+            "module_path": "go.mau.fi/mautrix-telegram",
+            "version": "v0.2609.2",
+            "mautrix_version": "v0.31.0",
+            "state": "CONNECTED",
+            "error": "",
+            "message": "Connected",
+            "started_at": 1761400000000,
+            "supports_sub_accounts": true,
+            "accounts": [
+              {
+                "network": "telegram",
+                "display_name": "Telegram",
+                "flows": ["phone"],
+                "state": "CONNECTED",
+                "error": "",
+                "message": "Connected",
+                "remote_name": "@alice_tg (Alice Example)",
+                "not_started": "",
+                "syncs": ["messages", "spaces"],
+                "supports_sub_accounts": true,
+                "logins": [
+                  {
+                    "account_id": "tg-1",
+                    "remote_name": "@alice_tg (Alice Example)",
+                    "state": "CONNECTED",
+                    "error": "",
+                    "message": "Connected"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+        """
+        let populatedBridges = try JSONDecoder().decode([BridgeInfo].self, from: Data(populatedBridgesJSON.utf8))
+        let populatedAccountsModel = AccountsAndBridgesModel(appModel: app, lifecycle: lifecycle)
+        populatedAccountsModel.setSnapshotStateForTesting(
+            bridges: populatedBridges,
+            subAccountsByKey: [:],
+            selectedAccountKey: "telegram:tg-1"
+        )
+        let emptyAccountsModel = AccountsAndBridgesModel(appModel: app, lifecycle: lifecycle)
+        emptyAccountsModel.setSnapshotStateForTesting(bridges: [], subAccountsByKey: [:], selectedAccountKey: nil)
+        let reportModel = ProblemReportModel(appModel: app)
+        let nav = SettingsNavigationModel()
+
+        SettingAnchorTracker.isTracking = true
+        defer {
+            SettingAnchorTracker.isTracking = false
+            SettingAnchorTracker.reset()
+        }
+
+        for (stateLabel, accountsModel) in [("populated accounts state", populatedAccountsModel), ("empty accounts state", emptyAccountsModel)] {
+            nav.bind(accountsAndBridges: accountsModel)
+            for setting in SettingsNavigationModel.allSettings {
+                SettingAnchorTracker.reset()
+                nav.jump(to: setting)
+                let windowView = SettingsWindow(
+                    navigation: nav,
+                    app: app,
+                    inbox: inbox,
+                    spaces: spaces,
+                    labels: labels,
+                    conversation: conv,
+                    inboxPreferences: inboxPrefs,
+                    composerPreferences: composerPrefs,
+                    notificationPreferences: notificationPrefs,
+                    quickReplies: quickReplies,
+                    hotkeys: hotkeys,
+                    lifecycle: lifecycle,
+                    dockPreferences: dockPrefs,
+                    accountsAndBridges: accountsModel,
+                    loginFlow: login,
+                    problemReport: reportModel
+                )
+                let host = NSHostingView(rootView: windowView)
+                host.frame = NSRect(x: 0, y: 0, width: 840, height: 2600)
+                host.layoutSubtreeIfNeeded()
+                _ = host.fittingSize
+
+                XCTAssertTrue(
+                    SettingAnchorTracker.renderedIDs.contains(setting.id),
+                    "Expected settingAnchor \(setting.id) to be rendered in pane \(setting.pane.rawValue) (\(stateLabel))"
+                )
+                XCTAssertEqual(
+                    SettingAnchorTracker.highlightedIDs,
+                    [setting.id],
+                    "Expected settingAnchor \(setting.id) to be highlighted in pane \(setting.pane.rawValue) (\(stateLabel))"
+                )
+            }
+        }
+    }
 }
 
 private struct SnapshotLoginItemService: LoginItemService {

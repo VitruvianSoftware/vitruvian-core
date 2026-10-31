@@ -94,6 +94,7 @@ struct DetachedSpaceWindowView: View {
                     inbox: inbox,
                     spaces: spaces,
                     preferences: inbox.preferences,
+                    composerPreferences: session.composerPreferences,
                     ui: ui
                 )
                 .frame(minWidth: 260, idealWidth: 320, maxWidth: 440)

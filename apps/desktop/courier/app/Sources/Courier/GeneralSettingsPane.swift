@@ -5,6 +5,27 @@ import AppKit
 import CourierCore
 import SwiftUI
 
+/// Tracks rendered and highlighted setting anchors during layout for test verification.
+@MainActor
+enum SettingAnchorTracker {
+    static var isTracking = false
+    static var renderedIDs: Set<String> = []
+    static var highlightedIDs: Set<String> = []
+
+    static func reset() {
+        renderedIDs.removeAll()
+        highlightedIDs.removeAll()
+    }
+
+    static func record(id: String, isHighlighted: Bool) {
+        guard isTracking else { return }
+        renderedIDs.insert(id)
+        if isHighlighted {
+            highlightedIDs.insert(id)
+        }
+    }
+}
+
 /// Highlights and anchors a setting row so `SettingsNavigationModel.jump(to:)` scrolls to and highlights the real control.
 struct SettingAnchorModifier: ViewModifier {
     let settingID: String
@@ -15,6 +36,9 @@ struct SettingAnchorModifier: ViewModifier {
     }
 
     func body(content: Content) -> some View {
+        let _ = MainActor.assumeIsolated {
+            SettingAnchorTracker.record(id: settingID, isHighlighted: isHighlighted)
+        }
         content
             .id(settingID)
             .accessibilityIdentifier(settingID)

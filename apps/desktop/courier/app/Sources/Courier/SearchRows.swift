@@ -12,6 +12,22 @@ struct SearchRowView: View {
     let networkName: (String) -> String
     /// A row of the Bookmarks section: the message, with a bookmark beside it.
     var isBookmark = false
+    @ObservedObject var composerPreferences: ComposerPreferences = ComposerPreferences()
+
+    func formattedTimestamp(
+        now: Date = Date(),
+        calendar: Calendar = .current,
+        locale: Locale = .current
+    ) -> String? {
+        guard case let .message(hit) = item else { return nil }
+        return SearchDate.text(
+            forMillis: hit.ts,
+            now: now,
+            calendar: calendar,
+            locale: locale,
+            timeFormat: composerPreferences.timeFormat
+        )
+    }
 
     var body: some View {
         content
@@ -33,7 +49,7 @@ struct SearchRowView: View {
         case let .person(person):
             PersonResultRow(person: person, networkName: networkName(person.network))
         case let .message(hit):
-            MessageResultRow(hit: hit, isBookmark: isBookmark)
+            MessageResultRow(hit: hit, isBookmark: isBookmark, timeFormat: composerPreferences.timeFormat)
         case let .recentSearch(text):
             HStack(spacing: 10) {
                 Image(systemName: "clock")
@@ -113,6 +129,7 @@ private struct PersonResultRow: View {
 private struct MessageResultRow: View {
     let hit: MessageHit
     var isBookmark = false
+    var timeFormat: TimeFormatPreference = .system
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -132,7 +149,7 @@ private struct MessageResultRow: View {
                     .lineLimit(1)
                 if let tag = hit.place.tag { PlaceTag(text: tag) }
                 Spacer(minLength: 6)
-                Text(SearchDate.text(forMillis: hit.ts, timeFormat: TimeFormatPreference.current()))
+                Text(SearchDate.text(forMillis: hit.ts, timeFormat: timeFormat))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize()
@@ -151,7 +168,23 @@ private struct MessageResultRow: View {
 struct MediaCell: View {
     let hit: MessageHit
     let isSelected: Bool
+    @ObservedObject var composerPreferences: ComposerPreferences = ComposerPreferences()
     @State private var image: CGImage?
+
+    func helpText(
+        now: Date = Date(),
+        calendar: Calendar = .current,
+        locale: Locale = .current
+    ) -> String {
+        let dateText = SearchDate.text(
+            forMillis: hit.ts,
+            now: now,
+            calendar: calendar,
+            locale: locale,
+            timeFormat: composerPreferences.timeFormat
+        )
+        return "\(hit.senderLine) · \(hit.roomName) · \(dateText)"
+    }
 
     var body: some View {
         ZStack {
@@ -176,7 +209,7 @@ struct MediaCell: View {
         .overlay(RoundedRectangle(cornerRadius: 6)
             .strokeBorder(isSelected ? Color.accentColor : .clear, lineWidth: 3))
         .contentShape(Rectangle())
-        .help(Text(verbatim: "\(hit.senderLine) · \(hit.roomName) · \(SearchDate.text(forMillis: hit.ts, timeFormat: TimeFormatPreference.current()))"))
+        .help(Text(verbatim: helpText()))
         .accessibilityElement()
         .accessibilityLabel(hit.kind == .video ? String(localized: "Video from \(hit.senderLine)")
             : String(localized: "Photo from \(hit.senderLine)"))

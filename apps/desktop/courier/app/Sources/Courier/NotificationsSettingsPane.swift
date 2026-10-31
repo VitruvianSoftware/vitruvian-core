@@ -21,9 +21,7 @@ struct NotificationsSettingsPane: View {
                 alertTypesSection
                 timingAndCodesSection
                 soundEffectsSection
-                if !accounts.isEmpty {
-                    accountOverridesSection
-                }
+                accountOverridesSection
                 systemNotificationCenterSection
             }
             .formStyle(.grouped)
@@ -204,6 +202,11 @@ struct NotificationsSettingsPane: View {
     private var accountOverridesSection: some View {
         Section(String(localized: "Per-Account Overrides")) {
             VStack(alignment: .leading, spacing: 10) {
+                if accountOverrideItems.isEmpty {
+                    Text(String(localized: "Connect an account to configure per-account notification alerts and previews."))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 ForEach(accountOverrideItems) { item in
                     let key = item.id
                     HStack(spacing: 12) {

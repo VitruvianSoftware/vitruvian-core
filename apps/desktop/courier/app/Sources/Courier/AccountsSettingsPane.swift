@@ -209,22 +209,55 @@ struct AccountsSettingsPane: View {
             }
         } else {
             ScrollViewReader { proxy in
-                VStack(spacing: 10) {
-                    Image(systemName: "person.2.circle")
-                        .font(.system(size: 36))
-                        .foregroundStyle(.secondary)
-                    Text(String(localized: "Select an account to view its settings"))
-                        .foregroundStyle(.secondary)
-                    Button(String(localized: "Add Account…")) {
-                        onAddAccount()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
+                        GroupBox {
+                            VStack(spacing: 10) {
+                                Image(systemName: "person.2.circle")
+                                    .font(.system(size: 36))
+                                    .foregroundStyle(.secondary)
+                                Text(String(localized: "Select an account to view its settings"))
+                                    .foregroundStyle(.secondary)
+                                Button(String(localized: "Add Account…")) {
+                                    onAddAccount()
+                                }
+                                .disabled(model.isLocked)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(16)
+                        }
+                        .settingAnchor("accounts.connectedNetworks", highlighted: highlightedSettingID)
+
+                        GroupBox(String(localized: "Sub-Accounts")) {
+                            Text(String(localized: "Connect or select an account to expose spaces, folders, communities, or bots as dedicated views."))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(8)
+                        }
+                        .settingAnchor("accounts.subAccounts", highlighted: highlightedSettingID)
+
+                        GroupBox(String(localized: "macOS Dock")) {
+                            Text(String(localized: "Connect or select an account to remove duplicate official app icons from your macOS Dock."))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(8)
+                        }
+                        .settingAnchor("accounts.dockCleanup", highlighted: highlightedSettingID)
                     }
-                    .disabled(model.isLocked)
+                    .padding(20)
                 }
-                .settingAnchor("accounts.connectedNetworks", highlighted: highlightedSettingID)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .onAppear {
                     if let id = highlightedSettingID {
                         proxy.scrollTo(id, anchor: .center)
+                    }
+                }
+                .onChange(of: highlightedSettingID) { _, id in
+                    if let id {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            proxy.scrollTo(id, anchor: .center)
+                        }
                     }
                 }
             }

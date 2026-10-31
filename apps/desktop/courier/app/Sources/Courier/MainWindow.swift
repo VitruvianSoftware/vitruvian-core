@@ -59,7 +59,7 @@ struct MainWindow: View {
     /// the keys act on.
     let messageActions: MessageActionsModel
     let scheduled: ScheduledModel
-    let composerPreferences: ComposerPreferences
+    @ObservedObject var composerPreferences: ComposerPreferences
     let focus: MessageFocus
     var detachedWindows: DetachedWindowRegistry? = nil
     @ObservedObject var hotkeys: HotkeyRegistry = HotkeyRegistry()
@@ -74,7 +74,7 @@ struct MainWindow: View {
                 .frame(minWidth: 480, maxWidth: .infinity, minHeight: 320, maxHeight: .infinity)
                 .overlay {
                     if search.phase != .closed {
-                        SearchOverlay(search: search, inbox: inbox)
+                        SearchOverlay(search: search, inbox: inbox, composerPreferences: composerPreferences)
                     }
                 }
                 .overlay {
@@ -279,7 +279,13 @@ struct MainWindow: View {
                         SpaceBar(spaces: spaces, inbox: inbox, labels: labels)
                         Divider()
                     }
-                    InboxList(inbox: inbox, spaces: spaces, preferences: preferences, ui: ui)
+                    InboxList(
+                        inbox: inbox,
+                        spaces: spaces,
+                        preferences: preferences,
+                        composerPreferences: composerPreferences,
+                        ui: ui
+                    )
                 }
                 .navigationSplitViewColumnWidth(min: preferences.showSpaceBar ? 260 + SpaceBar.width : 260,
                                                 ideal: preferences.showSpaceBar ? 340 + SpaceBar.width : 340,

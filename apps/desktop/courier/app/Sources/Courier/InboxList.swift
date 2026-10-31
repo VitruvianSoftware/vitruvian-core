@@ -12,10 +12,30 @@ struct InboxList: View {
     @ObservedObject var inbox: InboxModel
     @ObservedObject var spaces: SpacesModel
     @ObservedObject var preferences: InboxPreferences
+    @ObservedObject var composerPreferences: ComposerPreferences = ComposerPreferences()
     @ObservedObject var ui: InboxUI
     @Environment(\.openDetachedWindow) private var openDetachedWindow
     /// The chat the pointer is over: `x` selects it, and it shows the hover button.
     @State private var hovered: String?
+
+    var rowStyle: RowStyle {
+        RowStyle(preferences, composerPreferences: composerPreferences)
+    }
+
+    func formattedRowTimestamp(
+        _ row: InboxRow,
+        now: Date = Date(),
+        calendar: Calendar = .current,
+        locale: Locale = .current
+    ) -> String {
+        RelativeTime.text(
+            forMillis: row.lastTS,
+            now: now,
+            calendar: calendar,
+            locale: locale,
+            timeFormat: rowStyle.timeFormat
+        )
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -111,7 +131,7 @@ struct InboxList: View {
     private var list: some View {
         let offset = preferences.regularPinnedRows ? 0 : pinned.count
         let rows = Array(inbox.rows.dropFirst(offset))
-        let style = RowStyle(preferences)
+        let style = rowStyle
         return ScrollViewReader { scroll in
             // The times are read against "now", which moves on: draw again every minute.
             TimelineView(.everyMinute) { timeline in
