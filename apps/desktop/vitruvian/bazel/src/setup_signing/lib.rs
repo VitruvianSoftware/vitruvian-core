@@ -126,21 +126,18 @@ pub fn setup_signing(r: &mut dyn Runner, home: &Path, tmp_root: &Path) -> Result
         return Ok(());
     }
 
-    let work = make_temp_dir(tmp_root, "vitruvian-setup-signing").map_err(|e| {
+    // Removed on the way out, and with the private key and the p12 in it
+    // if a signal ends the run first; see PrivateWorkDir.
+    let work_dir = release_exec::private_work_dir(
+        tmp_root,
+        "vitruvian-setup-signing",
+        &["key.pem", "cert.pem", "id.p12"],
+    )
+    .map_err(|e| {
         eprintln!("✗ mktemp: {}", e);
         1
     })?;
-    let _cleanup = TempDir(work.clone());
-    // The private key and the p12 go too if a signal ends the run.
-    let _on_signal: Vec<_> = [
-        work.clone(),
-        work.join("key.pem"),
-        work.join("cert.pem"),
-        work.join("id.p12"),
-    ]
-    .iter()
-    .map(|p| release_exec::remove_on_signal(p))
-    .collect();
+    let work = work_dir.path().to_path_buf();
 
     let (req, export) = openssl_commands(&work);
     let made = r.output(&req);

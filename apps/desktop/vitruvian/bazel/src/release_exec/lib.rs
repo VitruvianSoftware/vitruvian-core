@@ -629,6 +629,7 @@ mod on_signal {
     const SLOTS: usize = 16;
     const SIGNALS: [c_int; 3] = [1, 2, 15]; // SIGHUP, SIGINT, SIGTERM
     const SIG_DFL: usize = 0;
+    const SIG_IGN: usize = 1;
 
     #[allow(clippy::declare_interior_mutable_const)]
     const EMPTY: AtomicPtr<c_char> = AtomicPtr::new(ptr::null_mut());
@@ -674,11 +675,26 @@ mod on_signal {
         }
     }
 
+    /// Whether a signal now would remove `path`.
+    pub fn covers(path: &Path) -> bool {
+        let want = path.as_os_str().as_bytes();
+        PATHS.iter().any(|slot| {
+            let p = slot.load(Ordering::SeqCst);
+            !p.is_null() && unsafe { std::ffi::CStr::from_ptr(p) }.to_bytes() == want
+        })
+    }
+
     pub fn remove(path: &Path) -> Option<Guard> {
         INSTALL.call_once(|| {
             for sig in SIGNALS {
+                // Ignore first, which returns what was there. A signal the
+                // parent ignored (`nohup` ignores SIGHUP) stays ignored, as a
+                // shell's `trap` cannot override an inherited ignore either;
+                // anything else gets the handler.
                 unsafe {
-                    signal(sig, handle as extern "C" fn(c_int) as usize);
+                    if signal(sig, SIG_IGN) != SIG_IGN {
+                        signal(sig, handle as extern "C" fn(c_int) as usize);
+                    }
                 }
             }
         });
@@ -708,6 +724,67 @@ pub fn remove_on_signal(path: &Path) -> SignalCleanup {
     SignalCleanup {
         #[cfg(unix)]
         _guard: on_signal::remove(path),
+    }
+}
+
+/// Whether a signal now would remove `path`.
+pub fn signal_cleanup_covers(path: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        on_signal::covers(path)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        false
+    }
+}
+
+/// A private (0700) work folder for secrets: removed when dropped, and
+/// removed with the named files in it if a signal ends the run first. The
+/// folder is removed before the signal cover is dropped, so there is no
+/// moment where it exists uncovered.
+pub struct PrivateWorkDir {
+    path: PathBuf,
+    covers: Vec<SignalCleanup>,
+}
+
+impl PrivateWorkDir {
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+/// [`make_temp_dir`] under `parent`, covered with `files` (names in it)
+/// against a signal; see [`PrivateWorkDir`].
+pub fn private_work_dir(
+    parent: &Path,
+    prefix: &str,
+    files: &[&str],
+) -> std::io::Result<PrivateWorkDir> {
+    let path = make_temp_dir(parent, prefix)?;
+    // The folder first, so the handler removes the files before it.
+    let mut covers = vec![remove_on_signal(&path)];
+    covers.extend(files.iter().map(|f| remove_on_signal(&path.join(f))));
+    Ok(PrivateWorkDir { path, covers })
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Called between removing a work folder and dropping its cover.
+    static AFTER_WORK_DIR_REMOVED: RefCell<Option<Box<dyn FnMut()>>> = RefCell::new(None);
+}
+
+impl Drop for PrivateWorkDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.path);
+        #[cfg(test)]
+        AFTER_WORK_DIR_REMOVED.with(|h| {
+            if let Some(f) = h.borrow_mut().as_mut() {
+                f();
+            }
+        });
+        self.covers.clear();
     }
 }
 
@@ -1235,7 +1312,125 @@ mod tests {
         write_private(&key, b"secret").unwrap();
         let _k = remove_on_signal(&key);
         fs::write(dir.join("ready"), b"").unwrap();
-        thread::sleep(Duration::from_secs(30));
+        let hold_ms = std::env::var("SIGNAL_CLEANUP_HOLD_MS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(30_000);
+        thread::sleep(Duration::from_millis(hold_ms));
+    }
+
+    /// Run in a child process by the test below, with secrets in its
+    /// environment: the real runner must know them.
+    #[test]
+    #[ignore]
+    fn from_env_child() {
+        if std::env::var_os("FROM_ENV_CHILD").is_none() {
+            return;
+        }
+        let r = SystemRunner::from_env();
+        assert!(
+            r.secrets.contains(&"bb-from-env-1234".to_string()),
+            "{:?}",
+            r.secrets
+        );
+        assert!(
+            r.secrets.contains(&"p12-pass-from-env".to_string()),
+            "{:?}",
+            r.secrets
+        );
+        assert!(!r.secrets.contains(&"beta".to_string()), "{:?}", r.secrets);
+        assert_eq!(r.secrets(), r.secrets);
+    }
+
+    #[test]
+    fn the_real_runner_takes_its_secrets_from_the_environment() {
+        let status = Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "tests::from_env_child", "--ignored"])
+            .env("FROM_ENV_CHILD", "1")
+            .env("BUILDBUDDY_API_KEY", "bb-from-env-1234") // gitleaks:allow (made-up test value)
+            .env("SIGNING_CERT_PASSWORD", "p12-pass-from-env") // gitleaks:allow (made-up test value)
+            .env("GRADE", "beta")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .unwrap();
+        assert!(
+            status.success(),
+            "SystemRunner::from_env() missed a secret: {:?}",
+            status
+        );
+    }
+
+    #[test]
+    fn an_inherited_sighup_ignore_is_kept_as_nohup_expects() {
+        let dir = make_temp_dir(&std::env::temp_dir(), "release_exec_nohup").unwrap();
+        let _guard = TempDir(dir.clone());
+        // As `nohup` starts it: SIGHUP ignored, which exec keeps.
+        let mut child = Command::new("sh")
+            .args([
+                "-c",
+                "trap '' HUP; exec \"$0\" \"$@\"",
+                &std::env::current_exe().unwrap().to_string_lossy(),
+                "--exact",
+                "tests::signal_cleanup_child",
+                "--ignored",
+            ])
+            .env("SIGNAL_CLEANUP_DIR", &dir)
+            .env("SIGNAL_CLEANUP_HOLD_MS", "1500")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let started = Instant::now();
+        while !dir.join("ready").exists() {
+            if started.elapsed() > Duration::from_secs(20) {
+                let _ = child.kill();
+                panic!("the child never got ready");
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+        Command::new("sh")
+            .args(["-c", &format!("kill -HUP {}", child.id())])
+            .status()
+            .unwrap();
+        let status = child.wait().unwrap();
+        assert!(
+            status.success(),
+            "a HUP the parent ignored ended it: {:?}",
+            status
+        );
+        assert!(dir.join("work/AuthKey.p8").exists(), "and removed nothing");
+    }
+
+    #[test]
+    fn a_private_work_dir_stays_covered_until_it_is_gone() {
+        let dir = make_temp_dir(&std::env::temp_dir(), "release_exec_workdir").unwrap();
+        let _guard = TempDir(dir.clone());
+        let w = private_work_dir(&dir, "w", &["AuthKey.p8"]).unwrap();
+        let path = w.path().to_path_buf();
+        let key = path.join("AuthKey.p8");
+        write_private(&key, b"k").unwrap();
+        assert!(signal_cleanup_covers(&path) && signal_cleanup_covers(&key));
+        let seen = std::rc::Rc::new(RefCell::new(None));
+        let s2 = seen.clone();
+        let (p2, k2) = (path.clone(), key.clone());
+        AFTER_WORK_DIR_REMOVED.with(|h| {
+            *h.borrow_mut() = Some(Box::new(move || {
+                *s2.borrow_mut() = Some((
+                    p2.exists(),
+                    signal_cleanup_covers(&p2),
+                    signal_cleanup_covers(&k2),
+                ));
+            }))
+        });
+        drop(w);
+        AFTER_WORK_DIR_REMOVED.with(|h| *h.borrow_mut() = None);
+        assert_eq!(
+            *seen.borrow(),
+            Some((false, true, true)),
+            "(folder still there, folder covered, key covered) right after the folder was removed"
+        );
+        assert!(!signal_cleanup_covers(&path) && !signal_cleanup_covers(&key));
     }
 
     #[test]

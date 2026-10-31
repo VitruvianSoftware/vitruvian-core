@@ -27,6 +27,18 @@ pub const RELEASE_SOURCES: &[&str] = &[
     "bazel/src/release_exec/lib.rs",
 ];
 
+/// The release tools that run commands for real. Each must build its runner
+/// with `SystemRunner::from_env()`, which knows the environment's secrets
+/// and hides them in what a failed command prints.
+pub const RUNNER_SOURCES: &[&str] = &[
+    "bazel/src/publish/lib.rs",
+    "bazel/src/package_release/lib.rs",
+    "bazel/src/make_dmg/lib.rs",
+    "bazel/src/notarize/lib.rs",
+    "bazel/src/ci_setup_signing/lib.rs",
+    "bazel/src/setup_signing/lib.rs",
+];
+
 pub const SESSION_TAP_OWNERS: &[&str] = &[
     "Sources/Vitruvian/Services/ScrollInverter.swift",
     "Sources/Vitruvian/Services/SmoothScrollService.swift",
@@ -607,7 +619,7 @@ pub fn adds_that_wait(text: &str) -> (usize, usize) {
     (adds, told)
 }
 
-// --- The 56 Rules in exact RULES order ------------------------------------------
+// --- The 57 Rules in exact RULES order ------------------------------------------
 
 type RuleFn = fn(&Repository) -> Vec<String>;
 
@@ -737,6 +749,10 @@ pub const RULES: &[(&str, RuleFn)] = &[
     (
         "release_scripts_have_no_case_twins",
         release_scripts_have_no_case_twins,
+    ),
+    (
+        "release_tools_run_with_their_secrets",
+        release_tools_run_with_their_secrets,
     ),
     (
         "about_box_credits_both_authors",
@@ -1970,6 +1986,30 @@ fn release_scripts_have_no_case_twins(repo: &Repository) -> Vec<String> {
     problems
 }
 
+/// The code of a Rust source above its `#[cfg(test)]` module.
+pub fn code_before_tests(text: &str) -> &str {
+    text.split("#[cfg(test)]").next().unwrap_or("")
+}
+
+fn release_tools_run_with_their_secrets(repo: &Repository) -> Vec<String> {
+    let mut problems = Vec::new();
+    for path in RUNNER_SOURCES {
+        let text = repo.read_text(path);
+        if text.is_empty() {
+            problems.push(format!("{} is readable for the runner check", path));
+            continue;
+        }
+        let code = code_before_tests(&text);
+        if code.contains("SystemRunner::new()") {
+            problems.push(format!(
+                "{} builds its runner with SystemRunner::new(), which does not know the environment's secrets; use SystemRunner::from_env()",
+                path
+            ));
+        }
+    }
+    problems
+}
+
 fn about_box_credits_both_authors(repo: &Repository) -> Vec<String> {
     let text = repo.read_text("Resources/Info.plist");
     if text.is_empty() {
@@ -2762,12 +2802,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_56_rules_registered() {
-        assert_eq!(RULES.len(), 56);
+    fn test_57_rules_registered() {
+        assert_eq!(RULES.len(), 57);
     }
 
     #[test]
     fn test_helpers_and_scanners() {
+        assert_eq!(
+            code_before_tests("fn run_cli() {}\n#[cfg(test)]\nmod tests { SystemRunner::new() }"),
+            "fn run_cli() {}\n"
+        );
         let sample = [
             "mkdir -p build/stage",
             "cp \"${PKG}/build/x\" dist/",
@@ -2786,7 +2830,7 @@ mod tests {
     }
 
     #[test]
-    fn test_live_vitruvian_repository_passes_all_56_rules() {
+    fn test_live_vitruvian_repository_passes_all_57_rules() {
         let candidate = Path::new("apps/desktop/vitruvian");
         let app_dir = if candidate.join("Sources").is_dir() {
             candidate.to_path_buf()
