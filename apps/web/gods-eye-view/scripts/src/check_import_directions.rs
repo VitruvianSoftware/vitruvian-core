@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -411,7 +411,7 @@ fn mark_params_in_parens(
 }
 
 /// Inspect literal module dependencies and browser-platform references without executing code.
-/// Port of `analyzeModule(source)` in `scripts/module-analysis.mjs`.
+/// Port of upstream's `analyzeModule(source)` (`scripts/module-analysis.mjs`, not in this copy).
 pub fn analyze_module(source: &str) -> Result<ModuleAnalysis, String> {
     let tokens = tokenize_js(source);
     let len = tokens.len();
@@ -801,6 +801,83 @@ pub fn is_portable_export(key: &str) -> bool {
     false
 }
 
+/// The keys of the JSON object at `path` inside `raw`, in document order.
+///
+/// `serde_json::Map` sorts its keys (this crate does not enable
+/// `preserve_order`), but the Node checks these ports replace walked
+/// `package.json#exports` and `scripts/package-boundaries.json` in file
+/// order: that order decides the order of reports and which failure is named
+/// first. Returns an empty list when `path` is not an object.
+pub fn json_object_keys_in_order(raw: &str, path: &[&str]) -> Vec<String> {
+    use serde::de::{DeserializeSeed, Deserializer, IgnoredAny, MapAccess, SeqAccess, Visitor};
+    use std::fmt;
+
+    struct Seek<'a> {
+        path: &'a [&'a str],
+    }
+
+    impl<'de, 'a> DeserializeSeed<'de> for Seek<'a> {
+        type Value = Option<Vec<String>>;
+        fn deserialize<D: Deserializer<'de>>(self, d: D) -> Result<Self::Value, D::Error> {
+            d.deserialize_any(self)
+        }
+    }
+
+    impl<'de, 'a> Visitor<'de> for Seek<'a> {
+        type Value = Option<Vec<String>>;
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            f.write_str("any JSON value")
+        }
+        fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+            let mut found = None;
+            let mut keys = Vec::new();
+            while let Some(key) = map.next_key::<String>()? {
+                match self.path.split_first() {
+                    Some((head, rest)) if found.is_none() && *head == key => {
+                        found = map.next_value_seed(Seek { path: rest })?;
+                    }
+                    _ => {
+                        map.next_value::<IgnoredAny>()?;
+                    }
+                }
+                if self.path.is_empty() && !keys.contains(&key) {
+                    keys.push(key);
+                }
+            }
+            Ok(if self.path.is_empty() { Some(keys) } else { found })
+        }
+        fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+            while seq.next_element::<IgnoredAny>()?.is_some() {}
+            Ok(None)
+        }
+        fn visit_bool<E>(self, _: bool) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+        fn visit_i64<E>(self, _: i64) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+        fn visit_u64<E>(self, _: u64) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+        fn visit_f64<E>(self, _: f64) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+        fn visit_str<E>(self, _: &str) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+        fn visit_unit<E>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+    }
+
+    let mut de = serde_json::Deserializer::from_str(raw);
+    Seek { path }
+        .deserialize(&mut de)
+        .ok()
+        .flatten()
+        .unwrap_or_default()
+}
+
 fn walk_dir_rel_files(root: &Path, dir: &Path, out: &mut BTreeSet<String>) {
     let entries = match std::fs::read_dir(dir) {
         Ok(rd) => rd,
@@ -818,7 +895,11 @@ fn walk_dir_rel_files(root: &Path, dir: &Path, out: &mut BTreeSet<String>) {
 }
 
 pub fn discover_repo_files(root: &Path, subdirs: &[&str]) -> Vec<String> {
-    if root.join(".git").exists() {
+    // `git ls-files` whenever `root` is inside a work tree (the app sits in the
+    // monorepo, whose .git is at the repository root, not here), as the Node
+    // check did; a directory walk only when git cannot answer (no repository,
+    // e.g. a fixture or a sandbox outside the checkout).
+    {
         let mut cmd = Command::new("git");
         cmd.arg("ls-files")
             .arg("-z")
@@ -938,7 +1019,7 @@ pub fn seed_non_symlink_files(
 }
 
 /// Check every runtime file, plus transitive portable/source graphs, independently of bundler reachability.
-/// Port of `checkImportDirections(root)` in `scripts/check-import-directions.mjs`.
+/// Port of upstream's `checkImportDirections(root)` (`scripts/check-import-directions.mjs`, not in this copy).
 pub fn check_import_directions(root_in: &Path) -> Result<DirectionSummary, String> {
     let root = std::fs::canonicalize(root_in)
         .map_err(|e| format!("Failed to resolve root {}: {}", root_in.display(), e))?;
@@ -1212,21 +1293,35 @@ pub fn check_import_directions(root_in: &Path) -> Result<DirectionSummary, Strin
     }
 
     // Portable/source roots
-    let mut roots: BTreeMap<String, String> = BTreeMap::new();
+    // A JS Map: insertion order, and setting an existing key keeps its place.
+    let mut roots: Vec<(String, String)> = Vec::new();
+    let set_root = |roots: &mut Vec<(String, String)>, start: String, label: String| {
+        match roots.iter_mut().find(|(k, _)| *k == start) {
+            Some(slot) => slot.1 = label,
+            None => roots.push((start, label)),
+        }
+    };
     for file in files.iter().filter(|f| is_source_file(f)) {
-        roots.insert(file.clone(), "source".to_string());
+        set_root(&mut roots, file.clone(), "source".to_string());
     }
     if let Some(exports_map) = pkg_exports {
-        for (key, value) in exports_map {
-            if is_portable_export(key) {
+        for key in json_object_keys_in_order(&pkg_raw, &["exports"]) {
+            let Some(value) = exports_map.get(&key) else {
+                continue;
+            };
+            if is_portable_export(&key) {
                 if let Some(val_str) = value.as_str() {
                     let clean = val_str.strip_prefix("./").unwrap_or(val_str).to_string();
-                    roots.insert(clean, key.clone());
+                    set_root(&mut roots, clean, key.clone());
                 }
             }
         }
     }
-    roots.insert("src/data/feedState.js".to_string(), "feed state".to_string());
+    set_root(
+        &mut roots,
+        "src/data/feedState.js".to_string(),
+        "feed state".to_string(),
+    );
 
     for (start, label) in &roots {
         if !root.join(start).exists() {
@@ -1383,6 +1478,12 @@ pub fn resolve_app_root(explicit: Option<&str>) -> Result<PathBuf, String> {
     }
 
     let candidates: Vec<Option<String>> = vec![
+        // `bazel run`: check the working tree it was started from, as
+        // `node scripts/check-*.mjs` did.
+        std::env::var("BUILD_WORKSPACE_DIRECTORY")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .map(|r| format!("{}/apps/web/gods-eye-view", r)),
         std::env::var("RUNFILES_DIR")
             .ok()
             .filter(|s| !s.is_empty())
@@ -1420,4 +1521,227 @@ pub fn run(args: &[String]) -> Result<String, String> {
         "{{\"modules\":{},\"portableEntries\":{}}}",
         summary.modules, summary.portable_entries
     ))
+}
+
+/// The cases of upstream's `src/tooling/importDirections.test.mjs` (not in this
+/// copy), against the Rust port. `analyze_module`'s cases are in `lib.rs`.
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static NEXT: AtomicUsize = AtomicUsize::new(0);
+
+    struct Fixture {
+        root: PathBuf,
+    }
+
+    impl Fixture {
+        fn new(exports: &str) -> Self {
+            let root = std::env::temp_dir().join(format!(
+                "gev-directions-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::SeqCst)
+            ));
+            let _ = std::fs::remove_dir_all(&root);
+            std::fs::create_dir_all(&root).unwrap();
+            let f = Fixture { root };
+            f.write(
+                "package.json",
+                &format!(r#"{{"name":"@gods-eye-view/core","exports":{exports}}}"#),
+            );
+            f.write("src/data/feedState.js", "");
+            f
+        }
+
+        fn write(&self, name: &str, body: &str) {
+            let p = self.root.join(name);
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(p, body).unwrap();
+        }
+
+        fn check(&self) -> Result<DirectionSummary, String> {
+            check_import_directions(&self.root)
+        }
+
+        fn rejects(&self, pattern: &str) {
+            match self.check() {
+                Ok(s) => panic!("expected a failure matching {pattern:?}, got Ok({s:?})"),
+                Err(e) => assert!(e.contains(pattern), "{pattern:?} not in:\n{e}"),
+            }
+        }
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.root);
+        }
+    }
+
+    #[test]
+    fn portable_sources_share_records_and_standalone_assembles_rendering() {
+        let f = Fixture::new(r#"{"./layers/demo/source":"./src/layers/demo/source.js"}"#);
+        f.write("src/layers/demo/source.js", "export { read } from './records.js';");
+        f.write("src/layers/demo/records.js", "export const read = (value) => value;");
+        f.write("src/standalone/catalog.js", "import '../layers/demo/index.js';");
+        f.write("src/layers/demo/index.js", "import * as Cesium from 'cesium';");
+        assert_eq!(f.check().unwrap().modules, 5);
+    }
+
+    #[test]
+    fn rejects_each_direction_violation() {
+        let cases: &[(&str, &[(&str, &str)], &str)] = &[
+            (
+                "unreachable source imports rendering",
+                &[
+                    ("src/layers/demo/source.js", "import './rendering.js';"),
+                    ("src/layers/demo/rendering.js", ""),
+                ],
+                "Source imports rendering",
+            ),
+            (
+                "source reaches a platform through a record helper",
+                &[
+                    ("src/layers/demo/source.js", "import './records.js';"),
+                    ("src/layers/demo/records.js", "import 'cesium';"),
+                ],
+                "reaches platform/rendering",
+            ),
+            (
+                "source reaches a DOM helper",
+                &[
+                    ("src/sources/demo.js", "import '../data/helper.js';"),
+                    ("src/data/helper.js", "export const view = () => globalThis.document;"),
+                ],
+                "reaches browser globals",
+            ),
+            (
+                "browser imports Node without prefix",
+                &[("src/unused.mjs", "import 'fs/promises';")],
+                "Node builtin",
+            ),
+            (
+                "browser hides Node outside src",
+                &[
+                    ("src/unused.js", "import '../shared/helper.js';"),
+                    ("shared/helper.js", "export * from 'node:fs';"),
+                ],
+                "Browser graph reaches Node",
+            ),
+            (
+                "browser imports server",
+                &[
+                    ("src/data/demo.js", "import '../../server/helper.js';"),
+                    ("server/helper.js", ""),
+                ],
+                "Browser imports server",
+            ),
+            (
+                "reusable module selects standalone",
+                &[
+                    ("src/app/demo.js", "import '../standalone/catalog.js';"),
+                    ("src/standalone/catalog.js", ""),
+                ],
+                "Reusable module imports standalone",
+            ),
+            (
+                "provider selects application setup",
+                &[
+                    ("server/providers/demo.js", "import '../standalone/key-setup.js';"),
+                    ("server/standalone/key-setup.js", ""),
+                ],
+                "Provider imports application",
+            ),
+            (
+                "voice controls reach protocol indirectly",
+                &[
+                    ("src/voice/sessionCommands.js", "import './helper.js';"),
+                    ("src/voice/helper.js", "import './realtimeSession.js';"),
+                    ("src/voice/realtimeSession.js", ""),
+                ],
+                "Common voice controls import protocol",
+            ),
+            (
+                "dynamic import cannot evade direction",
+                &[("src/app/demo.js", "const target = './module.js'; import(target);")],
+                "Computed",
+            ),
+            (
+                "browser imports test helper",
+                &[
+                    ("src/app/demo.js", "import '../testSupport/helper.js';"),
+                    ("src/testSupport/helper.js", ""),
+                ],
+                "non-runtime owner",
+            ),
+        ];
+        for (name, files, pattern) in cases {
+            let f = Fixture::new("{}");
+            for (file, body) in *files {
+                f.write(file, body);
+            }
+            match f.check() {
+                Ok(s) => panic!("{name}: expected {pattern:?}, got Ok({s:?})"),
+                Err(e) => assert!(e.contains(pattern), "{name}: {pattern:?} not in:\n{e}"),
+            }
+        }
+    }
+
+    #[test]
+    fn self_package_imports_cannot_evade_portable_ownership() {
+        let f = Fixture::new(r#"{"./view":"./src/ui/view.js"}"#);
+        f.write("src/sources/demo.js", "import '@gods-eye-view/core/view';");
+        f.write("src/ui/view.js", "");
+        f.rejects("Source imports rendering");
+    }
+
+    #[test]
+    fn the_compatibility_exception_is_limited_to_the_existing_composition_entry() {
+        let f = Fixture::new("{}");
+        f.write("src/standalone/catalog.js", "");
+        f.write("server/providers/local.js", "import '../standalone/key-setup.js';");
+        f.write("server/standalone/key-setup.js", "");
+        f.check().unwrap();
+        f.write("src/ui.js", "import './standalone/catalog.js';");
+        f.rejects("Reusable module imports standalone");
+        f.write("src/ui.js", "");
+        f.write("src/ui/new.js", "import '../standalone/catalog.js';");
+        f.rejects("Reusable module imports standalone");
+    }
+
+    #[test]
+    fn symlink_aliases_do_not_hide_renderer_ownership() {
+        let f = Fixture::new("{}");
+        f.write("src/sources/demo.js", "import './helper/view.js';");
+        f.write("src/ui/view.js", "");
+        std::os::unix::fs::symlink(f.root.join("src/ui"), f.root.join("src/sources/helper"))
+            .unwrap();
+        let e = f.check().unwrap_err();
+        assert!(e.contains("rendering") || e.contains("symlinks"), "{e}");
+    }
+
+    #[test]
+    fn portable_roots_follow_package_json_order_and_last_label_wins() {
+        // Both exports name one file: the Node Map kept the first key's place
+        // and the last key's label, so the report names `./view`.
+        let f = Fixture::new(
+            r#"{"./tools":"./src/data/shared.js","./view":"./src/data/shared.js"}"#,
+        );
+        f.write("src/data/shared.js", "globalThis.document;");
+        f.rejects("src/data/shared.js: ./view reaches browser globals: document");
+        assert!(!f.check().unwrap_err().contains("./tools reaches"));
+    }
+
+    #[test]
+    fn json_object_keys_in_order_keeps_document_order() {
+        let raw = r#"{"z":1,"exports":{"./b":"x","./a":{"node":"y"},"./c":[1,{"q":2}]},"a":{"k":3}}"#;
+        assert_eq!(json_object_keys_in_order(raw, &[]), vec!["z", "exports", "a"]);
+        assert_eq!(
+            json_object_keys_in_order(raw, &["exports"]),
+            vec!["./b", "./a", "./c"]
+        );
+        assert_eq!(json_object_keys_in_order(raw, &["exports", "./a"]), vec!["node"]);
+        assert!(json_object_keys_in_order(raw, &["missing"]).is_empty());
+        assert!(json_object_keys_in_order("not json", &[]).is_empty());
+    }
 }
