@@ -4801,6 +4801,7 @@ final class ViewSnapshotTests: XCTestCase {
     }
 
     func testCommandBarOverlaySnapshotsLightAndDark() throws {
+        XCTAssertEqual(CommandBarFooterView.closeKeyLabel, "esc", "Footer Close key must show 'esc' like macOS, not '⎋'")
         let suite = defaults()
         let app = offlineApp()
         let inbox = InboxModel(appModel: app, preferences: InboxPreferences(defaults: suite))

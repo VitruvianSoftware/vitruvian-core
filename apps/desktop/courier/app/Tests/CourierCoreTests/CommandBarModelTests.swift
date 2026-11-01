@@ -234,4 +234,75 @@ final class CommandBarModelTests: XCTestCase {
         model.executeSelected()
         XCTAssertFalse(ran, "CommandBarModel.executeSelected must be a no-op while locked")
     }
+
+    func testSearchPlaceholderForEveryDrillableCommandHasNoDoubledVerbOrEllipsis() async throws {
+        let h = try await startInbox(rooms: [room("!a", ts: 100)], autoRelease: true)
+        defer {
+            Task { await h.app.stop() }
+            h.cleanUp()
+        }
+        let spaces = SpacesModel(appModel: h.app, inbox: h.inbox, sleep: { _ in })
+        let appearance = AppearancePreferences(defaults: defaults)
+        let all = CommandSet.all(inbox: h.inbox, spaces: spaces, appearance: appearance)
+
+        let drillable = all.filter { !$0.children.isEmpty }
+        let drillableIDs = Set(drillable.map { $0.id })
+        let expectedDrillableIDs: Set<String> = [
+            "Filter Chats",
+            "chat.remindLater",
+            "chat.label",
+            "chat.disappearingMessages",
+            "nav.goToSpace",
+            "appearance.setTheme",
+        ]
+        XCTAssertEqual(
+            drillableIDs,
+            expectedDrillableIDs,
+            "All 6 multi-step commands must be drillable"
+        )
+
+        let model = CommandBarModel(defaults: defaults, commandsProvider: { all })
+        model.open()
+        XCTAssertEqual(model.searchPlaceholder, "Type a command or search…")
+
+        model.openInRecentChatsMode()
+        XCTAssertEqual(model.searchPlaceholder, "Filter recent chats…")
+
+        let expectedPlaceholders: [String: String] = [
+            "Filter Chats": "Filter Chats…",
+            "chat.remindLater": "Remind Later…",
+            "chat.label": "Label…",
+            "chat.disappearingMessages": "Disappearing Messages…",
+            "nav.goToSpace": "Go to Space…",
+            "appearance.setTheme": "Set Theme…",
+        ]
+
+        for cmd in drillable {
+            model.open()
+            let runnable = CourierCommand(
+                id: cmd.id,
+                title: cmd.title,
+                category: cmd.category,
+                icon: cmd.icon,
+                shortcut: cmd.shortcut,
+                children: cmd.children,
+                isEnabled: { true },
+                run: cmd.run
+            )
+            model.execute(runnable)
+            XCTAssertEqual(model.breadcrumb.last?.id, Optional(cmd.id))
+            let placeholder = model.searchPlaceholder
+            XCTAssertEqual(
+                placeholder,
+                expectedPlaceholders[cmd.id],
+                "Unexpected placeholder for drillable command '\(cmd.title)'"
+            )
+            XCTAssertFalse(placeholder.contains("Filter Filter"), "Doubled verb in '\(placeholder)'")
+            XCTAssertFalse(placeholder.contains("Filter Remind"), "Doubled verb in '\(placeholder)'")
+            XCTAssertFalse(placeholder.contains("Filter Set"), "Doubled verb in '\(placeholder)'")
+            XCTAssertFalse(placeholder.contains("Filter Go"), "Doubled verb in '\(placeholder)'")
+            XCTAssertFalse(placeholder.contains("Filter Label"), "Doubled verb in '\(placeholder)'")
+            XCTAssertFalse(placeholder.contains("……"), "Doubled ellipsis in '\(placeholder)'")
+        }
+    }
 }

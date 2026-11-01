@@ -754,6 +754,109 @@ final class CommandSetTests: XCTestCase {
         let deleteChatCmd = try XCTUnwrap(all.first { $0.id == "chat.deleteChat" })
         XCTAssertNotNil(deleteChatCmd.confirmation)
     }
+
+    func testEveryCommandChipMatchesItsCommandSetGroup() async throws {
+        let (h, spaces, inboxGroup) = try await start()
+        let searchH = try await startSearch(rooms: [room("!a", ts: 1, name: "Picnic planning")])
+        searchHarnesses.append(searchH)
+        let convH = try await startConversation(
+            ["!a": [textEvent(id: "$1", room: "!a", at: 1, body: "Theirs"),
+                    textEvent(id: "$2", room: "!a", at: 2, body: "Mine", mine: true)]],
+            features: ["!a": featuresJSON()],
+            rows: ["!a": chatRow("!a", name: "Ann")]
+        )
+        conversations.append(convH)
+        try await convH.open("!a")
+        let actions = MessageActionsModel(
+            conversation: convH.conversation,
+            appModel: convH.app,
+            preferences: convH.preferences,
+            pasteboard: FakePasteboard()
+        )
+        let login = LoginFlowModel(
+            caller: ScriptedLoginCaller(),
+            accounts: { [] },
+            reloadAccounts: {},
+            credentials: InMemoryCredentialStore(),
+            builtInCredentials: { nil },
+            restartEngine: {}
+        )
+        let testStore = TestDefaults()
+        defer { testStore.remove() }
+        let appearance = AppearancePreferences(defaults: testStore.defaults)
+        let navigation = SettingsNavigationModel()
+        let hotkeys = HotkeyRegistry(defaults: testStore.defaults)
+
+        let searchGroup = CommandSet.search(searchH.search, openRoomID: { convH.conversation.roomID })
+        let messageGroup = CommandSet.message(actions, convH.conversation)
+            + [CommandSet.recordAudio(convH.conversation.composer)]
+            + CommandSet.composerMedia(convH.conversation.composer)
+        let accountsGroup = CommandSet.accounts(login, convH.conversation)
+        let chatInfoGroup = CommandSet.chatInfo(conversation: convH.conversation, inbox: h.inbox)
+        let settingsGroup = CommandSet.settingsAndSystem(
+            navigation: navigation,
+            inbox: h.inbox,
+            hotkeys: hotkeys
+        )
+
+        for cmd in inboxGroup {
+            XCTAssertEqual(cmd.category, .inbox, "CommandSet.inbox command '\(cmd.id)' must have chip 'Inbox', got '\(cmd.category.title)'")
+            XCTAssertEqual(cmd.category.title, "Inbox", "CommandSet.inbox command '\(cmd.id)' chip mismatch")
+        }
+        for cmd in searchGroup {
+            XCTAssertEqual(cmd.category, .search, "CommandSet.search command '\(cmd.id)' must have chip 'Search', got '\(cmd.category.title)'")
+            XCTAssertEqual(cmd.category.title, "Search", "CommandSet.search command '\(cmd.id)' chip mismatch")
+        }
+        for cmd in messageGroup {
+            XCTAssertEqual(cmd.category, .message, "CommandSet.message command '\(cmd.id)' must have chip 'Message', got '\(cmd.category.title)'")
+            XCTAssertEqual(cmd.category.title, "Message", "CommandSet.message command '\(cmd.id)' chip mismatch")
+        }
+        for cmd in accountsGroup {
+            XCTAssertEqual(cmd.category, .accounts, "CommandSet.accounts command '\(cmd.id)' must have chip 'Accounts', got '\(cmd.category.title)'")
+            XCTAssertEqual(cmd.category.title, "Accounts", "CommandSet.accounts command '\(cmd.id)' chip mismatch")
+        }
+        for cmd in chatInfoGroup {
+            XCTAssertEqual(cmd.category, .chatInfo, "CommandSet.chatInfo command '\(cmd.id)' must have chip 'Chat Info', got '\(cmd.category.title)'")
+            XCTAssertEqual(cmd.category.title, "Chat Info", "CommandSet.chatInfo command '\(cmd.id)' chip mismatch")
+        }
+        for cmd in settingsGroup {
+            XCTAssertEqual(cmd.category, .settings, "CommandSet.settingsAndSystem command '\(cmd.id)' must have chip 'Settings', got '\(cmd.category.title)'")
+            XCTAssertEqual(cmd.category.title, "Settings", "CommandSet.settingsAndSystem command '\(cmd.id)' chip mismatch")
+        }
+
+        let all = CommandSet.all(
+            inbox: h.inbox,
+            spaces: spaces,
+            search: searchH.search,
+            actions: actions,
+            conversation: convH.conversation,
+            composer: convH.conversation.composer,
+            login: login,
+            appearance: appearance,
+            navigation: navigation,
+            hotkeys: hotkeys
+        )
+
+        var expectedByID: [String: CourierCommand.Category] = [:]
+        // Order matches CommandSet.all deduplication order:
+        for cmd in inboxGroup { expectedByID[cmd.id] = .inbox }
+        for cmd in searchGroup { expectedByID[cmd.id] = .search }
+        for cmd in messageGroup { expectedByID[cmd.id] = .message }
+        for cmd in accountsGroup { expectedByID[cmd.id] = .accounts }
+        for cmd in chatInfoGroup { expectedByID[cmd.id] = .chatInfo }
+        for cmd in settingsGroup where expectedByID[cmd.id] == nil {
+            expectedByID[cmd.id] = .settings
+        }
+
+        for cmd in all {
+            if let expected = expectedByID[cmd.id] {
+                XCTAssertEqual(cmd.category, expected, "Unified command '\(cmd.id)' chip must match its group (\(expected.title))")
+            }
+            for child in cmd.children {
+                XCTAssertEqual(child.category, cmd.category, "Sub-command '\(child.id)' chip must match parent '\(cmd.id)'")
+            }
+        }
+    }
 }
 
 /// The open chat, as the commands read it when they run.

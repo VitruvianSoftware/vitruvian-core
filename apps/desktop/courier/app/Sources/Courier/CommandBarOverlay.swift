@@ -145,8 +145,7 @@ public struct CommandBarOverlay: View {
             }
 
             TextField(
-                model.breadcrumb.last.map { "Filter \($0.title)…" }
-                    ?? (model.mode == .recentChats ? "Filter recent chats…" : "Type a command or search…"),
+                model.searchPlaceholder,
                 text: $model.query
             )
             .textFieldStyle(.plain)
@@ -461,6 +460,8 @@ public struct CommandBarOverlay: View {
 }
 
 public struct CommandBarFooterView: View {
+    public static let closeKeyLabel = "esc"
+
     public init() {}
 
     public var body: some View {
@@ -468,7 +469,7 @@ public struct CommandBarFooterView: View {
             footerHint(key: "↑↓", label: "Navigate")
             footerHint(key: "↵", label: "Run")
             footerHint(key: "⌫", label: "Back")
-            footerHint(key: "⎋", label: "Close")
+            footerHint(key: Self.closeKeyLabel, label: "Close")
             Spacer()
         }
         .padding(.horizontal, 14)

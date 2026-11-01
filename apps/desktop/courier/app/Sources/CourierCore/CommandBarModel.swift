@@ -159,6 +159,23 @@ public final class CommandBarModel: ObservableObject {
         return commandsProvider()
     }
 
+    public var searchPlaceholder: String {
+        if let currentParent = breadcrumb.last {
+            var base = currentParent.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            while base.hasSuffix("…") {
+                base.removeLast()
+            }
+            while base.hasSuffix("...") {
+                base.removeLast(3)
+            }
+            return "\(base)…"
+        }
+        if mode == .recentChats {
+            return String(localized: "Filter recent chats…")
+        }
+        return String(localized: "Type a command or search…")
+    }
+
     public var displayedCommands: [CourierCommand] {
         let pool = activeCommandPool
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()

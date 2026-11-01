@@ -171,41 +171,48 @@ public enum CommandSet {
         let sweepable: @MainActor () -> Bool = { inbox.isLoaded && inbox.canArchiveAll }
         return [
             CourierCommand(id: "Archive all chats", title: String(localized: "Archive all chats"), keys: nil,
+                           category: .inbox, icon: "archivebox",
                            confirmation: String(localized: "Archive every chat in this space? Pinned chats stay where they are. You can undo this."),
                            isEnabled: sweepable) {
                 Task { _ = await inbox.archiveAll(readOnly: false) }
             },
             CourierCommand(id: "Archive all chats older than a week",
                            title: String(localized: "Archive all chats older than a week"), keys: nil,
+                           category: .inbox, icon: "archivebox",
                            confirmation: String(localized: "Archive every chat in this space whose last message is over a week old? Pinned chats stay where they are. You can undo this."),
                            isEnabled: sweepable) {
                 Task { _ = await inbox.archiveAll(readOnly: false, olderThanDays: 7) }
             },
             CourierCommand(id: "Archive all read chats", title: String(localized: "Archive all read chats"),
                            keys: "⌘⇧E",
+                           category: .inbox, icon: "archivebox",
                            confirmation: String(localized: "Archive every chat in this space that has nothing unread? Pinned chats stay where they are. You can undo this."),
                            isEnabled: sweepable) {
                 Task { _ = await inbox.archiveAllRead() }
             },
             CourierCommand(id: "Mark all chats as read", title: String(localized: "Mark all chats as read"),
                            keys: nil,
+                           category: .inbox, icon: "envelope.open",
                            confirmation: String(localized: "Mark every unread chat in this space as read? Your networks are told too, so this can’t be undone."),
                            isEnabled: { hasUnread(inbox, spaces) }) {
                 Task { await inbox.markAllRead() }
             },
-            CourierCommand(id: "Next Chat", title: String(localized: "Next Chat"), keys: "⌘]", confirmation: nil,
+            CourierCommand(id: "Next Chat", title: String(localized: "Next Chat"), keys: "⌘]",
+                           category: .inbox, icon: "arrow.down", confirmation: nil,
                            isEnabled: { !inbox.rows.isEmpty }) {
                 inbox.selectNext()
             },
             CourierCommand(id: "Show message requests", title: String(localized: "Show message requests"),
-                           keys: nil, confirmation: nil, isEnabled: { true }) {
+                           keys: nil, category: .inbox, icon: "tray.and.arrow.down", confirmation: nil, isEnabled: { true }) {
                 spaces.select("requests")
             },
-            CourierCommand(id: "Toggle space bar", title: String(localized: "Toggle space bar"), keys: "⌘S", confirmation: nil,
+            CourierCommand(id: "Toggle space bar", title: String(localized: "Toggle space bar"), keys: "⌘S",
+                           category: .inbox, icon: "sidebar.left", confirmation: nil,
                            isEnabled: { true }) {
                 inbox.preferences.showSpaceBar.toggle()
             },
-            CourierCommand(id: "Edit spaces", title: String(localized: "Edit spaces"), keys: nil, confirmation: nil,
+            CourierCommand(id: "Edit spaces", title: String(localized: "Edit spaces"), keys: nil,
+                           category: .inbox, icon: "slider.horizontal.3", confirmation: nil,
                            isEnabled: { true }) {
                 spaces.isEditing = true
             },
@@ -223,19 +230,21 @@ public enum CommandSet {
                 inbox.cycleFilter()
             },
             CourierCommand(id: "Filter by folder type", title: String(localized: "Filter by folder type"),
-                           keys: nil, confirmation: nil, isEnabled: { true }) {
+                           keys: nil, category: .inbox, icon: "line.3.horizontal.decrease.circle", confirmation: nil, isEnabled: { true }) {
                 step(inbox, through: SpacesModel.placeFilters)
             },
-            CourierCommand(id: "Filter by type", title: String(localized: "Filter by type"), keys: nil, confirmation: nil,
+            CourierCommand(id: "Filter by type", title: String(localized: "Filter by type"), keys: nil,
+                           category: .inbox, icon: "line.3.horizontal.decrease.circle", confirmation: nil,
                            isEnabled: { true }) {
                 step(inbox, through: [.dms, .groups])
             },
-            CourierCommand(id: "Filter by account", title: String(localized: "Filter by account"), keys: "⌘⌥A", confirmation: nil,
+            CourierCommand(id: "Filter by account", title: String(localized: "Filter by account"), keys: "⌘⌥A",
+                           category: .inbox, icon: "line.3.horizontal.decrease.circle", confirmation: nil,
                            isEnabled: { nextAccount(inbox, spaces) != nil }) {
                 if let next = nextAccount(inbox, spaces) { spaces.select(next.spaceID) }
             },
             CourierCommand(id: "Toggle chat selection mode", title: String(localized: "Toggle chat selection mode"),
-                           keys: nil, confirmation: nil, isEnabled: { inbox.isSelecting || !inbox.rows.isEmpty }) {
+                           keys: nil, category: .inbox, icon: "checkmark.circle", confirmation: nil, isEnabled: { inbox.isSelecting || !inbox.rows.isEmpty }) {
                 if inbox.isSelecting { inbox.endSelecting() } else { inbox.beginSelecting() }
             },
         ]
@@ -249,15 +258,17 @@ public enum CommandSet {
                               openRoomID: @escaping @MainActor () -> String?) -> [CourierCommand] {
         [
             CourierCommand(id: "Search chats", title: String(localized: "Search chats"), keys: "⌘K",
+                           category: .search, icon: "magnifyingglass",
                            confirmation: nil, isEnabled: { true }) {
                 search.show()
             },
             CourierCommand(id: "Search messages in all chats", title: String(localized: "Search messages in all chats"),
-                           keys: "⌘K", confirmation: nil, isEnabled: { true }) {
+                           keys: "⌘K", category: .search, icon: "magnifyingglass", confirmation: nil, isEnabled: { true }) {
                 search.show()
             },
             CourierCommand(id: "Search messages in current chat",
                            title: String(localized: "Search messages in current chat"), keys: "⌘F",
+                           category: .search, icon: "text.magnifyingglass",
                            confirmation: nil, isEnabled: { openRoomID() != nil }) {
                 guard let roomID = openRoomID() else { return }
                 search.show(in: roomID)
@@ -331,19 +342,22 @@ public enum CommandSet {
     public static func accounts(_ login: LoginFlowModel, _ conversation: ConversationModel) -> [CourierCommand] {
         [
             CourierCommand(id: "Turn on incognito mode", title: String(localized: "Turn on incognito mode"), keys: nil,
+                           category: .accounts, icon: "eyeglasses",
                            confirmation: nil,
                            isEnabled: { !conversation.incognitoIsOn && conversation.isEntitled(.incognito) }) {
                 conversation.setIncognito(true)
             },
             CourierCommand(id: "Turn off incognito mode", title: String(localized: "Turn off incognito mode"),
-                           keys: nil, confirmation: nil, isEnabled: { conversation.incognitoIsOn }) {
+                           keys: nil, category: .accounts, icon: "eyeglasses", confirmation: nil, isEnabled: { conversation.incognitoIsOn }) {
                 conversation.setIncognito(false)
             },
-            CourierCommand(id: "Add Account", title: String(localized: "Add Account"), keys: nil, confirmation: nil,
+            CourierCommand(id: "Add Account", title: String(localized: "Add Account"), keys: nil,
+                           category: .accounts, icon: "person.badge.plus", confirmation: nil,
                            isEnabled: { true }) {
                 login.showPicker()
             },
-            CourierCommand(id: "Accounts", title: String(localized: "Accounts"), keys: nil, confirmation: nil,
+            CourierCommand(id: "Accounts", title: String(localized: "Accounts"), keys: nil,
+                           category: .accounts, icon: "person.2", confirmation: nil,
                            isEnabled: { true }) {
                 login.showPicker()
             },
@@ -369,6 +383,8 @@ public enum CommandSet {
                 id: "conversation.toggleChatInfo",
                 title: String(localized: "Toggle chat info"),
                 keys: "⌘⇧I",
+                category: .chatInfo,
+                icon: "sidebar.right",
                 confirmation: nil,
                 isEnabled: hasOpenChat,
                 run: toggleChatInfo
@@ -377,6 +393,8 @@ public enum CommandSet {
                 id: "conversation.searchChatInfo",
                 title: String(localized: "Search in chat info"),
                 keys: nil,
+                category: .chatInfo,
+                icon: "magnifyingglass",
                 confirmation: nil,
                 isEnabled: hasOpenChat,
                 run: searchChatInfo
@@ -385,6 +403,8 @@ public enum CommandSet {
                 id: "conversation.toggleCalendar",
                 title: String(localized: "Jump to date in chat"),
                 keys: "⌘⌥K",
+                category: .chatInfo,
+                icon: "calendar",
                 confirmation: nil,
                 isEnabled: hasOpenChat,
                 run: toggleCalendar
@@ -393,6 +413,8 @@ public enum CommandSet {
                 id: "conversation.showSenderCard",
                 title: String(localized: "Show sender profile"),
                 keys: "⌘⇧O",
+                category: .chatInfo,
+                icon: "person.crop.rectangle",
                 confirmation: nil,
                 isEnabled: hasSelectedMessage,
                 run: showSenderCard
@@ -401,6 +423,8 @@ public enum CommandSet {
                 id: "inbox.newGroupOrBlast",
                 title: String(localized: "New group or blast chat"),
                 keys: "⌘⇧N",
+                category: .chatInfo,
+                icon: "person.3",
                 confirmation: nil,
                 isEnabled: { true },
                 run: newGroupOrBlast
@@ -436,6 +460,8 @@ public enum CommandSet {
             id: "media.viewer",
             title: String(localized: "Media viewer"),
             keys: nil,
+            category: .chatInfo,
+            icon: "photo.on.rectangle",
             confirmation: nil,
             isEnabled: { true },
             run: openMediaViewer
@@ -449,6 +475,8 @@ public enum CommandSet {
             id: "hotkey Message: Record Audio",
             title: String(localized: "Record Voice Note"),
             keys: "⌘⇧A",
+            category: .message,
+            icon: "mic",
             confirmation: nil,
             isEnabled: {
                 composer.roomID != nil && (
@@ -476,6 +504,7 @@ public enum CommandSet {
             key: "g",
             modifiers: [.command, .shift],
             category: .message,
+            icon: "sparkles.rectangle.stack",
             confirmation: nil,
             isEnabled: { composer.canSendGIF },
             run: { _ = composer.openGIFPicker() }
@@ -492,6 +521,7 @@ public enum CommandSet {
             key: "s",
             modifiers: [.command, .option, .shift],
             category: .message,
+            icon: "face.smiling",
             confirmation: nil,
             isEnabled: { composer.canSendSticker },
             run: { _ = composer.openStickerPicker() }
@@ -514,7 +544,8 @@ public enum CommandSet {
             id: "Open space in new window",
             title: String(localized: "Open space in new window"),
             keys: nil,
-            category: .inbox,
+            category: .settings,
+            icon: "macwindow.badge.plus",
             confirmation: nil,
             isEnabled: { !inbox.lifecycle.isLocked && AppLockGate.shared.canPerform(.openChat) },
             run: {
@@ -532,7 +563,8 @@ public enum CommandSet {
             id: "Show keyboard shortcuts",
             title: String(localized: "Show keyboard shortcuts"),
             keys: primary,
-            category: .inbox,
+            category: .settings,
+            icon: "keyboard",
             confirmation: nil,
             isEnabled: { AppLockGate.shared.canPerform(.other) },
             run: {
@@ -549,7 +581,8 @@ public enum CommandSet {
             id: "Hotkeys",
             title: String(localized: "Hotkeys"),
             keys: nil,
-            category: .inbox,
+            category: .settings,
+            icon: "keyboard",
             confirmation: nil,
             isEnabled: { !coordinator.lifecycle.isLocked },
             run: { coordinator.openSettings(.shortcuts) }
@@ -608,7 +641,8 @@ public enum CommandSet {
             id: "Account",
             title: String(localized: "Account"),
             keys: nil,
-            category: .accounts,
+            category: .settings,
+            icon: "person.crop.circle",
             confirmation: nil,
             isEnabled: { AppLockGate.shared.canPerform(.settingsChange) },
             run: {
@@ -665,7 +699,8 @@ public enum CommandSet {
             id: "Lock app",
             title: String(localized: "Lock app"),
             keys: nil,
-            category: .inbox,
+            category: .settings,
+            icon: "lock",
             confirmation: nil,
             isEnabled: { !lifecycle.isLocked },
             run: { lifecycle.lockApp() }
@@ -680,7 +715,8 @@ public enum CommandSet {
             id: "Report a problem",
             title: String(localized: "Report a problem"),
             keys: "⌘⇧P",
-            category: .inbox,
+            category: .settings,
+            icon: "ladybug",
             confirmation: nil,
             isEnabled: { AppLockGate.shared.canPerform(.export) },
             run: {
@@ -698,7 +734,8 @@ public enum CommandSet {
             id: "Restart Notification Center",
             title: String(localized: "Restart Notification Center"),
             keys: nil,
-            category: .inbox,
+            category: .settings,
+            icon: "bell.badge",
             confirmation: nil,
             isEnabled: { AppLockGate.shared.canPerform(.settingsChange) },
             run: {
@@ -735,7 +772,8 @@ public enum CommandSet {
             id: "Delete Media…",
             title: deleteMediaTitle,
             keys: nil,
-            category: .inbox,
+            category: .settings,
+            icon: "trash",
             confirmation: deleteMediaConfirmation,
             isEnabled: { AppLockGate.shared.canPerform(.settingsChange) },
             run: {
@@ -769,7 +807,8 @@ public enum CommandSet {
                 id: "Open space in new window",
                 title: String(localized: "Open space in new window"),
                 keys: nil,
-                category: .inbox,
+                category: .settings,
+                icon: "macwindow.badge.plus",
                 confirmation: nil,
                 isEnabled: { !inbox.lifecycle.isLocked && AppLockGate.shared.canPerform(.openChat) },
                 run: {}
@@ -853,12 +892,36 @@ public enum CommandSet {
             ),
         ])
 
-        // 2. Existing CommandSet.inbox group (13 ledger commands, including Filter Chats with nested children)
+        // 2. Existing CommandSet.inbox group (13 ledger commands, including Filter Chats with nested children) + inbox-level actions
         if let inbox, let spaces {
             appendAll(Self.inbox(inbox, spaces))
         }
+        appendAll([
+            CourierCommand(
+                id: "inbox.createNewChat",
+                title: String(localized: "Create new chat"),
+                category: .inbox,
+                keywords: ["new chat", "compose", "start", "direct message"],
+                icon: "square.and.pencil",
+                shortcut: "⌘N"
+            ) {
+                inbox?.openStartNewChat(multiSelect: false)
+            },
+            CourierCommand(
+                id: "inbox.mergeChats",
+                title: String(localized: "Merge chats"),
+                category: .inbox,
+                keywords: ["merge", "combine", "unify", "person"],
+                icon: "arrow.triangle.merge",
+                shortcut: nil,
+                isEnabled: { (inbox?.selectedRow ?? inbox?.rows.first) != nil }
+            ) {
+                guard let inbox, let target = inbox.selectedRow ?? inbox.rows.first else { return }
+                inbox.openMergeEditor(for: target)
+            },
+        ])
 
-        // 3. Direct chat & inbox actions
+        // 3. Direct chat actions
         let hasTargets: @MainActor () -> Bool = { !(inbox?.targets.isEmpty ?? true) }
         let hasOpenRoom: @MainActor () -> Bool = { (conversation?.roomID ?? inbox?.selectedRoomID) != nil }
         appendAll([
@@ -1024,28 +1087,6 @@ public enum CommandSet {
             ) {
                 guard let conversation else { return }
                 Task { _ = await conversation.resetLocalOverride() }
-            },
-            CourierCommand(
-                id: "inbox.createNewChat",
-                title: String(localized: "Create new chat"),
-                category: .inbox,
-                keywords: ["new chat", "compose", "start", "direct message"],
-                icon: "square.and.pencil",
-                shortcut: "⌘N"
-            ) {
-                inbox?.openStartNewChat(multiSelect: false)
-            },
-            CourierCommand(
-                id: "inbox.mergeChats",
-                title: String(localized: "Merge chats"),
-                category: .inbox,
-                keywords: ["merge", "combine", "unify", "person"],
-                icon: "arrow.triangle.merge",
-                shortcut: nil,
-                isEnabled: { (inbox?.selectedRow ?? inbox?.rows.first) != nil }
-            ) {
-                guard let inbox, let target = inbox.selectedRow ?? inbox.rows.first else { return }
-                inbox.openMergeEditor(for: target)
             },
         ])
 
@@ -1772,7 +1813,8 @@ public enum CommandSet {
             id: id,
             title: title,
             keys: keys,
-            category: .inbox,
+            category: .settings,
+            icon: "gearshape",
             confirmation: nil,
             isEnabled: { AppLockGate.shared.canPerform(.settingsChange) },
             run: {
