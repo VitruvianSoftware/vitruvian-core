@@ -18,7 +18,23 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! queue-runner-watch — is the homelab runner pool taking jobs?
+//! queue-runner-watch — is the homelab runner pool taking jobs? If not, send the
+//! merge queue's jobs back to GitHub-hosted runners until it is.
+//!
+//! Runs in the queue-runner-watch workflow, which starts a one-step "canary" job
+//! on the homelab runners and this tool on a hosted runner. After WAIT seconds
+//! the canary must be running or done: a canary still queued means no homelab
+//! runner took it (cluster down, power, network, controller), and a failed one
+//! means runners start but cannot run a job. Either way the repository variable
+//! QUEUE_RUNNER_FALLBACK is set to "on", which every routed workflow reads
+//! (spec §4): jobs then run on GitHub-hosted runners. A canary that runs flips
+//! it back to "off". The variable only changes when the answer does.
+//!
+//! Spec: docs/superpowers/specs/2026-10-19-queue-runners-on-homelab-design.md
+//!
+//! Env: REPO, RUN_ID (this workflow run), CANARY_JOB (job name, default
+//! "canary"), WAIT_SECONDS (default 240), GH_TOKEN (can write variables and
+//! cancel runs), GH_BIN (tests).
 
 use shell_compat::{capture, cat, env, env_or, err, out, status, subst};
 use std::process::Command;

@@ -334,3 +334,102 @@ pub fn assert_lacks(hay: &str, needle: &str, what: &str) {
         "{what}: unexpected {needle:?}\n--- got ---\n{hay}"
     );
 }
+
+/// One job of a workflow file, as the fast-lane and fast-pass guards read it:
+/// its id, its `needs:` line, and its `if:` condition folded onto one line.
+#[derive(Debug)]
+pub struct WorkflowJob {
+    pub id: String,
+    pub needs: String,
+    pub cond: String,
+}
+
+/// The jobs under `jobs:` in a workflow, read line by line: a job starts at a
+/// two-space `id:` line, `needs:` and `if:` are four-space keys, and an `if:`
+/// carries on through its six-space continuation lines.
+pub fn workflow_jobs(yaml: &str) -> Vec<WorkflowJob> {
+    let mut jobs = Vec::new();
+    let mut in_jobs = false;
+    let mut in_if = false;
+    let mut cur: Option<WorkflowJob> = None;
+    for line in yaml.lines() {
+        if line.starts_with("jobs:") {
+            in_jobs = true;
+            continue;
+        }
+        if !in_jobs {
+            continue;
+        }
+        let two = line.strip_prefix("  ").unwrap_or("");
+        if !two.starts_with(' ')
+            && two.ends_with(':')
+            && two.len() > 1
+            && two[..two.len() - 1]
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        {
+            jobs.extend(cur.take());
+            cur = Some(WorkflowJob {
+                id: two[..two.len() - 1].to_string(),
+                needs: String::new(),
+                cond: String::new(),
+            });
+            in_if = false;
+            continue;
+        }
+        let Some(job) = cur.as_mut() else { continue };
+        if line.starts_with("    needs:") {
+            job.needs = line.to_string();
+            in_if = false;
+        } else if line.starts_with("    if:") {
+            job.cond = line.to_string();
+            in_if = true;
+        } else if in_if && line.starts_with("      ") {
+            job.cond.push(' ');
+            job.cond.push_str(line);
+        } else if line.starts_with("    ")
+            && line[4..].starts_with(|c: char| c.is_ascii_lowercase())
+        {
+            in_if = false;
+        }
+    }
+    jobs.extend(cur);
+    jobs
+}
+
+/// The text of one job (its id line up to the next job's), or "" when absent.
+pub fn workflow_job_text(yaml: &str, id: &str) -> String {
+    let header = format!("  {id}:");
+    let mut out = String::new();
+    let mut on = false;
+    for line in yaml.lines() {
+        if on {
+            let two = line.strip_prefix("  ").unwrap_or("");
+            if !two.is_empty() && !two.starts_with(' ') && two.ends_with(':') {
+                break;
+            }
+            out.push_str(line);
+            out.push('\n');
+        } else if line == header {
+            on = true;
+        }
+    }
+    out
+}
+
+/// True when `name` appears in `hay` as a whole job id: not part of a longer
+/// id made of letters and dashes (the shell suites' `(^|[^a-z-])name([^a-z-]|$)`).
+pub fn names_job(hay: &str, name: &str) -> bool {
+    let b = hay.as_bytes();
+    let edge = |c: u8| !(c.is_ascii_lowercase() || c == b'-');
+    let mut from = 0;
+    while let Some(i) = hay[from..].find(name) {
+        let s = from + i;
+        let e = s + name.len();
+        if (s == 0 || edge(b[s - 1])) && (e == b.len() || edge(b[e])) {
+            return true;
+        }
+        from = s + 1;
+    }
+    false
+}

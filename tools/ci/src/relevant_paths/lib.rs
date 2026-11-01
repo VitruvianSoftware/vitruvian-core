@@ -18,9 +18,43 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! relevant-paths.sh — decide whether a commit's diff warrants running the
-//! heavy CI work, or whether it is docs/gitops-only and the heavy steps can
-//! be skipped.
+//! relevant_paths — decide whether a commit's diff warrants running the heavy
+//! CI work, or whether it is docs/gitops-only and the heavy steps can be skipped.
+//!
+//! Emits `relevant=true|false` to $GITHUB_OUTPUT (and stdout). This is a CI
+//! *lead-time* optimisation ONLY; it is never the safety floor:
+//!
+//!   * It FAILS SAFE. Any uncertainty -- missing diff base, a diff we cannot
+//!     compute -- yields relevant=true (run the heavy work). The only way to
+//!     get relevant=false is a successfully-computed, non-empty diff in which
+//!     EVERY changed file is docs/gitops/markdown.
+//!
+//! A required status check (build-test / tidy-check) calls this from its first
+//! step and then gates the heavy steps on the output, so the check ALWAYS
+//! reports a status (it just finishes green in seconds when relevant=false) and
+//! never leaves a merge-queue PR stuck "pending".
+//!
+//! Workflows call this through the ./.github/actions/changed-paths-gate action,
+//! which fills these in for the event at hand; do not call the tool directly
+//! from a workflow.
+//!
+//! Environment (at least one of the first two must be provided):
+//!   BASE_REF     github.base_ref, e.g. "main" (PR lane). Diff base is computed
+//!                as the merge-base of origin/$BASE_REF and HEAD.
+//!   BEFORE_REV   explicit before-revision (push/merge_group lanes). Used
+//!                directly as the diff base when set.
+//!   IGNORE_REGEX (optional) ERE matching paths that cannot affect the CALLING
+//!                lane's work. Defaults to the docs/gitops/markdown set that
+//!                suits the Bazel build lanes.
+//!
+//!                A caller MUST narrow this when the default set is not inert for
+//!                it. license-check is the worked example: addlicense does NOT
+//!                ignore gitops/ (gitops manifests carry MIT headers today) and
+//!                //tools/license:check is a `bazel run` sh_binary with no
+//!                sh_test, so `bazel test //...` -- and therefore the nightly
+//!                periodic-full-sweep -- never covers it. Skipping license-check
+//!                on a gitops-only diff would let an unlicensed gitops file dodge
+//!                a REQUIRED check permanently, with no backstop to catch it.
 
 use shell_compat::{capture, cat, env, env_or, env_or_empty, indent, out, subst};
 use std::process::Command;

@@ -22,8 +22,9 @@ name: Gate on changed paths
 description: >-
   Decides whether this commit's diff can affect the calling job, so a required
   check can report green in seconds on a docs-only change instead of doing its
-  heavy work. Runs tools/ci/relevant-paths.sh (see its header for the rules and
-  the fail-safe: any doubt means "run"). This action exists so the "which commit
+  heavy work. Runs //tools/ci:relevant_paths, built here with the runner's
+  rustc (see tools/ci/src/relevant_paths/lib.rs for the rules and the
+  fail-safe: any doubt means "run"). This action exists so the "which commit
   do I diff against on a PR, a push, or the merge queue" expressions live in one
   place instead of being copied into every workflow. Needs the repo checked out
   with enough history to reach the base commit. A caller that wants the gate on
@@ -35,7 +36,7 @@ inputs:
       ERE matching paths that cannot affect the calling job. Empty uses the
       script's default docs/gitops/markdown set, which suits the Bazel build
       lanes. A caller MUST narrow it when that default is not inert for it (see
-      the license-check note in tools/ci/relevant-paths.sh).
+      the license-check note in tools/ci/src/relevant_paths/lib.rs).
     required: false
     default: ""
 outputs:
@@ -45,7 +46,15 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Run tools/ci/relevant-paths.sh
+    # Before Bazel on purpose: this gate decides whether the job sets Bazel
+    # up at all, so the tool is built with rustc instead (about a second).
+    - name: Build the changed-paths rule
+      id: build
+      uses: ./.github/actions/build-ci-tool
+      with:
+        tool: relevant_paths
+
+    - name: Run the changed-paths rule
       id: gate
       shell: bash
       env:
@@ -55,4 +64,5 @@ runs:
         BASE_REF: ${{ github.event_name == 'pull_request' && github.base_ref || '' }}
         BEFORE_REV: ${{ github.event_name == 'push' && github.event.before || github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
         IGNORE_REGEX: ${{ inputs.ignore-regex }}
-      run: bash tools/ci/relevant-paths.sh
+        RELEVANT_PATHS: ${{ steps.build.outputs.bin }}
+      run: '"$RELEVANT_PATHS"'

@@ -72,8 +72,8 @@ jobs:
   # and notify-ci-issues has nothing to announce. Any doubt is a miss and the
   # run is the full run it always was: a direct push, a red or missing queue
   # run, a lookup error, or a change to a file the main-only Actions caches
-  # are keyed on (see tools/ci/queue-fast-pass.sh). If this job itself fails,
-  # `hit` is empty and everything runs.
+  # are keyed on (see tools/ci/src/queue_fast_pass/lib.rs). If this job itself
+  # fails, `hit` is empty and everything runs.
   #
   # On a pull request or in the queue this job is skipped without taking a
   # runner, and the `!cancelled()` on every job below lets them start at once.
@@ -91,8 +91,20 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          # Only the script is needed; HEAD's tree hash comes with any checkout.
-          sparse-checkout: tools/ci
+          # Only the tool's sources and the action that builds them are
+          # needed; HEAD's tree hash comes with any checkout.
+          sparse-checkout: |
+            .github/actions/build-ci-tool
+            tools/ci/src/queue_fast_pass
+            tools/shell-compat
+      # Built with the runner's rustc: this job sets up no Bazel. A failed
+      # build leaves the lookup below with no binary, which is a miss.
+      - name: Build the merge-queue lookup
+        id: tool
+        continue-on-error: true
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: queue_fast_pass
       - name: Did the merge queue already pass this exact code?
         id: lookup
         continue-on-error: true
@@ -101,8 +113,9 @@ jobs:
           WORKFLOW_PATH: .github/workflows/ci.yaml
           PUSH_BEFORE: ${{ github.event.before }}
           FORCED_PUSH: ${{ github.event.forced }}
+          QUEUE_FAST_PASS: ${{ steps.tool.outputs.bin }}
         run: |
-          bash tools/ci/queue-fast-pass.sh queued | tee "$RUNNER_TEMP/queued.out"
+          "$QUEUE_FAST_PASS" queued | tee "$RUNNER_TEMP/queued.out"
           {
             echo "### Already passed in the merge queue?"
             echo ""
@@ -114,16 +127,17 @@ jobs:
   # label (#3418, Step 2b): may this PR skip the heavy test and build jobs?
   # Yes only for a PR from a branch in this repository, opened by one of our
   # agent apps (checked by bot user id), with the label; see
-  # tools/ci/agent-fast-lane.sh. The merge queue still runs everything on the
+  # tools/ci/src/agent_fast_lane/lib.rs. The merge queue still runs everything on the
   # exact code that lands, so main stays protected; the cost is measured as
   # queue failures on #3418. The fast checks (license-check, lint-naming here,
   # and the separate secret-scan, osv-scan, conformance, tidy and actionlint
   # workflows) never read this.
   #
-  # It checks out the PR's BASE commit, so the rule and the agent roster come
-  # from main and a PR cannot rewrite what lets it skip. Unlabelled PRs, the
-  # merge queue and pushes skip this job without taking a runner. If it fails,
-  # `skip` is empty and everything runs.
+  # It builds the rule from a checkout of the PR's BASE commit and reads the
+  # agent roster from there too, so both come from main and a PR cannot
+  # rewrite what lets it skip. Only the build action comes from the PR. Unlabelled
+  # PRs, the merge queue and pushes skip this job without taking a runner. If
+  # it fails, `skip` is empty and everything runs.
   fast-lane:
     name: agent-fast-lane
     if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'agent-fast-lane')
@@ -135,10 +149,23 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          sparse-checkout: .github/actions/build-ci-tool
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
           ref: ${{ github.event.pull_request.base.sha }}
+          path: base
           sparse-checkout: |
-            tools/ci
+            tools/ci/src/agent_fast_lane
+            tools/shell-compat
             tools/agent-app
+      - name: Build the base commit's fast-lane rule
+        id: rule
+        continue-on-error: true
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: agent_fast_lane
+          source-root: base
       - name: May this PR skip the heavy jobs?
         id: decide
         continue-on-error: true
@@ -148,9 +175,10 @@ jobs:
           PR_AUTHOR_ID: ${{ github.event.pull_request.user.id }}
           PR_AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
           PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
-          AGENTS_TSV: tools/agent-app/agents.tsv
+          AGENTS_TSV: base/tools/agent-app/agents.tsv
+          FAST_LANE: ${{ steps.rule.outputs.bin }}
         run: |
-          bash tools/ci/agent-fast-lane.sh | tee "$RUNNER_TEMP/fast-lane.out"
+          "$FAST_LANE" | tee "$RUNNER_TEMP/fast-lane.out"
           {
             echo "### Agent fast lane?"
             echo ""
@@ -442,7 +470,7 @@ jobs:
       # one-line gitops digest bump claimed a macOS runner and built the app:
       # 156s on 69436a56. Decide it HERE, on the cheap ubuntu gatekeeper, rather
       # than after the macOS runner is already claimed. Fails safe -- see
-      # tools/ci/relevant-paths.sh; the nightly full sweep is unchanged.
+      # tools/ci/src/relevant_paths/lib.rs; the nightly full sweep is unchanged.
       - name: Gate on changed paths (push lane)
         id: gate
         if: github.event_name == 'push'

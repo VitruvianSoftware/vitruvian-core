@@ -11,6 +11,14 @@ Used by packages across //tools/...
 
 load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
 
+# CI steps that run before Bazel compile tools/ci's tools from this file with
+# a bare rustc (.github/actions/build-ci-tool); //tools/ci:build_ci_tool_test
+# does the same.
+exports_files(
+    ["src/lib.rs"],
+    visibility = ["//tools/ci:__pkg__"],
+)
+
 rust_library(
     name = "shell_compat",
     srcs = ["src/lib.rs"],

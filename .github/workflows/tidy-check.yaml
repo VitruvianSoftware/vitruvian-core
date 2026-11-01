@@ -90,7 +90,7 @@ jobs:
       # every later change the same way. Inside those folders only the file
       # types no formatter here touches are ignored (measured: YAML, Markdown,
       # HTML and CSS are left alone); anything else runs the check.
-      # tools/ci/relevant-paths_test.sh reads this value and pins it.
+      # //tools/ci:relevant_paths_test reads this value and pins it.
       - name: Gate on changed paths
         id: gate
         uses: ./.github/actions/changed-paths-gate
@@ -172,15 +172,16 @@ jobs:
       # input that moved -- and this lane is quietly ~150s slower again. The
       # folder name is never pinned any more (#2456), so compare what was
       # restored with what Bazel actually used. Warn, never fail -- being slow
-      # is not a reason to redden a required check.
+      # is not a reason to redden a required check. LLVM_CACHE_STAGE_BIN is
+      # //tools/ci:llvm_cache_stage, built by the llvm-cache-restore composite.
       - name: Check the restored LLVM toolchain was the one Bazel used
         if: steps.gate.outputs.relevant != 'false' && steps.llvm-contents.outputs.cache-hit == 'true'
         env:
           PIN: ${{ steps.llvm-contents.outputs.pin-path }}
         run: |
-          live=$(bash tools/ci/llvm-cache-stage.sh live "$LLVM_CACHE_CONTENTS")
+          live=$("$LLVM_CACHE_STAGE_BIN" live "$LLVM_CACHE_CONTENTS")
           if [ -n "$live" ] && [ "$live" != "$PIN" ]; then
-            echo "::warning title=llvm-contents cache unused::restored ${PIN:-nothing} but Bazel extracted LLVM under $live; add the input that moved to tools/ci/llvm-cache-key.sh (this lane is back to uncached LLVM extraction, ~150s)"
+            echo "::warning title=llvm-contents cache unused::restored ${PIN:-nothing} but Bazel extracted LLVM under $live; add the input that moved to tools/ci/src/llvm_cache_key/lib.rs (this lane is back to uncached LLVM extraction, ~150s)"
           fi
 
       # Generated delivery workflows freshness (delivery-orchestrator spec §4.3).

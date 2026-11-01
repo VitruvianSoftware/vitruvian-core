@@ -166,6 +166,17 @@ pub fn render_presubmit_workflow(
     // and a miss plans as before. continue-on-error: a broken lookup must never
     // cost a plan. The rdeps-map job does not read this and still runs on
     // every push, so planning for later PRs keeps its dependency map.
+    //
+    // //tools/ci:queue_fast_pass answers it, and the fast-pass step below.
+    // Both run before Bazel is set up (they decide whether it is), so the
+    // runner's rustc builds the tool, in about a second. A failed build
+    // leaves both steps with no binary: a miss, and a plan as before.
+    b.push_str("      - name: Build the merge-queue lookup\n");
+    b.push_str("        id: queue-fast-pass\n");
+    b.push_str("        continue-on-error: true\n");
+    b.push_str("        uses: ./.github/actions/build-ci-tool\n");
+    b.push_str("        with:\n");
+    b.push_str("          tool: queue_fast_pass\n\n");
     b.push_str("      - name: Did the merge queue already pass this exact code?\n");
     b.push_str("        id: queued\n");
     b.push_str("        if: github.event_name == 'push' && github.ref == 'refs/heads/main'\n");
@@ -175,10 +186,9 @@ pub fn render_presubmit_workflow(
     b.push_str("          WORKFLOW_PATH: .github/workflows/presubmit.yaml\n");
     b.push_str("          PUSH_BEFORE: ${{ github.event.before }}\n");
     b.push_str("          FORCED_PUSH: ${{ github.event.forced }}\n");
+    b.push_str("          QUEUE_FAST_PASS: ${{ steps.queue-fast-pass.outputs.bin }}\n");
     b.push_str("        run: |\n");
-    b.push_str(
-        "          bash tools/ci/queue-fast-pass.sh queued | tee \"$RUNNER_TEMP/queued.out\"\n",
-    );
+    b.push_str("          \"$QUEUE_FAST_PASS\" queued | tee \"$RUNNER_TEMP/queued.out\"\n");
     b.push_str("          {\n");
     b.push_str("            echo \"### Already passed in the merge queue?\"\n");
     b.push_str("            echo \"\"\n");
@@ -199,31 +209,58 @@ pub fn render_presubmit_workflow(
     // Step 2b): a PR from a branch in this repository, opened by one of our
     // agent apps (by bot user id), with the agent-fast-lane label. The merge
     // queue still plans and runs every unit on the exact code that lands. The
-    // fast checks are other workflows and never see this. The script and the
-    // agent roster are read from the BASE commit, so a PR cannot rewrite the
-    // rule that lets it skip; on a base that has no script yet, nothing is
-    // decided and every unit runs. An unlabelled PR skips the step, so it
+    // fast checks are other workflows and never see this. The rule's sources
+    // (//tools/ci:agent_fast_lane and //tools/shell-compat) and the agent
+    // roster are read from the BASE commit and built there with the runner's
+    // rustc, so a PR cannot rewrite the rule that lets it skip; on a base that
+    // has no Rust rule yet, nothing is decided and every unit runs. A failed
+    // build decides nothing either. An unlabelled PR skips the step, so it
     // costs nothing there. Skipping the fast-pass step with the planner keeps
     // the gate from recording "this exact code passed" for a run that tested
     // nothing.
+    const FAST_LANE_IF: &str = "github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'agent-fast-lane')";
+    b.push_str("      - name: Read the base commit's fast-lane rule\n");
+    b.push_str("        id: fastlane-src\n");
+    b.push_str("        if: ");
+    b.push_str(FAST_LANE_IF);
+    b.push('\n');
+    b.push_str("        continue-on-error: true\n");
+    b.push_str("        env:\n");
+    b.push_str("          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}\n");
+    b.push_str("        run: |\n");
+    b.push_str("          src=\"$RUNNER_TEMP/fast-lane-base\"\n");
+    b.push_str("          for f in tools/ci/src/agent_fast_lane/lib.rs tools/ci/src/agent_fast_lane/main.rs tools/shell-compat/src/lib.rs tools/agent-app/agents.tsv; do\n");
+    b.push_str("            mkdir -p \"$src/$(dirname \"$f\")\"\n");
+    b.push_str("            if ! git show \"$PR_BASE_SHA:$f\" > \"$src/$f\"; then\n");
+    b.push_str("              echo \"::notice::The base commit has no fast-lane rule yet; every unit runs.\"\n");
+    b.push_str("              exit 0\n");
+    b.push_str("            fi\n");
+    b.push_str("          done\n");
+    b.push_str("          echo \"root=$src\" >> \"$GITHUB_OUTPUT\"\n\n");
+    b.push_str("      - name: Build the base commit's fast-lane rule\n");
+    b.push_str("        id: fastlane-bin\n");
+    b.push_str("        if: steps.fastlane-src.outputs.root != ''\n");
+    b.push_str("        continue-on-error: true\n");
+    b.push_str("        uses: ./.github/actions/build-ci-tool\n");
+    b.push_str("        with:\n");
+    b.push_str("          tool: agent_fast_lane\n");
+    b.push_str("          source-root: ${{ steps.fastlane-src.outputs.root }}\n\n");
     b.push_str("      - name: Is this an agent PR in the fast lane?\n");
     b.push_str("        id: fastlane\n");
-    b.push_str("        if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'agent-fast-lane')\n");
+    b.push_str("        if: steps.fastlane-bin.outputs.bin != ''\n");
     b.push_str("        continue-on-error: true\n");
     b.push_str("        env:\n");
     b.push_str("          EVENT_NAME: ${{ github.event_name }}\n");
-    b.push_str("          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}\n");
     b.push_str("          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}\n");
     b.push_str("          PR_AUTHOR_ID: ${{ github.event.pull_request.user.id }}\n");
     b.push_str("          PR_AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}\n");
     b.push_str("          PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}\n");
+    b.push_str(
+        "          AGENTS_TSV: ${{ steps.fastlane-src.outputs.root }}/tools/agent-app/agents.tsv\n",
+    );
+    b.push_str("          FAST_LANE: ${{ steps.fastlane-bin.outputs.bin }}\n");
     b.push_str("        run: |\n");
-    b.push_str("          if ! git show \"$PR_BASE_SHA:tools/ci/agent-fast-lane.sh\" > \"$RUNNER_TEMP/agent-fast-lane.sh\" ||\n");
-    b.push_str("             ! git show \"$PR_BASE_SHA:tools/agent-app/agents.tsv\" > \"$RUNNER_TEMP/agents.tsv\"; then\n");
-    b.push_str("            echo \"::notice::The base commit has no fast-lane rule yet; every unit runs.\"\n");
-    b.push_str("            exit 0\n");
-    b.push_str("          fi\n");
-    b.push_str("          AGENTS_TSV=\"$RUNNER_TEMP/agents.tsv\" bash \"$RUNNER_TEMP/agent-fast-lane.sh\" | tee \"$RUNNER_TEMP/fast-lane.out\"\n");
+    b.push_str("          \"$FAST_LANE\" | tee \"$RUNNER_TEMP/fast-lane.out\"\n");
     b.push_str("          {\n");
     b.push_str("            echo \"### Agent fast lane?\"\n");
     b.push_str("            echo \"\"\n");
@@ -242,12 +279,15 @@ pub fn render_presubmit_workflow(
     b.push_str("          GH_TOKEN: ${{ github.token }}\n");
     b.push_str("          EVENT_NAME: ${{ github.event_name }}\n");
     b.push_str("          WORKFLOW_PATH: .github/workflows/presubmit.yaml\n");
+    b.push_str("          QUEUE_FAST_PASS: ${{ steps.queue-fast-pass.outputs.bin }}\n");
     b.push_str("        run: |\n");
     b.push_str("          if [ \"$EVENT_NAME\" != merge_group ]; then\n");
-    b.push_str("            bash tools/ci/queue-fast-pass.sh tree\n");
+    b.push_str("            \"$QUEUE_FAST_PASS\" tree\n");
     b.push_str("            exit 0\n");
     b.push_str("          fi\n");
-    b.push_str("          bash tools/ci/queue-fast-pass.sh lookup presubmit | tee \"$RUNNER_TEMP/fastpass.out\"\n");
+    b.push_str(
+        "          \"$QUEUE_FAST_PASS\" lookup presubmit | tee \"$RUNNER_TEMP/fastpass.out\"\n",
+    );
     b.push_str("          {\n");
     b.push_str("            echo \"### Already tested? (log only, nothing is skipped)\"\n");
     b.push_str("            echo \"\"\n");
@@ -755,7 +795,7 @@ pub fn render_presubmit_workflow(
     b.push_str("            exit 1\n");
     b.push_str("          fi\n");
     b.push_str("          echo \"✓ All $count pipeline units in DAG completed successfully.\"\n\n");
-    // The marker queue-fast-pass.sh looks for (#2841): "a pull-request run of
+    // The marker //tools/ci:queue_fast_pass looks for (#2841): "a pull-request run of
     // this workflow passed on exactly these files". Written only after the
     // verdict above succeeded, and only on pull requests. The name carries
     // the tree hash, so the lookup is a single query. A failed upload costs
