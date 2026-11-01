@@ -265,5 +265,5 @@ configured by `release-please-config.json` and `.release-please-manifest.json`:
 2. Once that release pull request merges and is exported to the public
    repository, a workflow there (`.github/workflows/release.yml`) sees a
    version with no tag, tags the commit `v<version>` and creates a GitHub
-   release with that changelog section as its notes. A test (`version_test`)
+   release with that changelog section as its notes. A test (`version_rs_test`)
    fails if the version files disagree.

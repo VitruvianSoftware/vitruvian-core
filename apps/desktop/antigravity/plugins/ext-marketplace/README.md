@@ -61,7 +61,7 @@ git -C ~/.gemini/config/plugins/ext-marketplace pull
 Run the unit test suite with Node's built-in test runner:
 
 ```bash
-node --test sidecars/panel/lib/core.test.mjs sidecars/panel/lib/openui.test.mjs sidecars/panel/lib/version.test.mjs
+node --test sidecars/panel/lib/core.test.mjs sidecars/panel/lib/openui.test.mjs
 rustc --edition 2021 --test hooks/src/lib.rs -o /tmp/ext-marketplace-hook-test && /tmp/ext-marketplace-hook-test
 ```
 

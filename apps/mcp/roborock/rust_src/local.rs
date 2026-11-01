@@ -280,7 +280,16 @@ impl LocalChannel {
             Ok(Err(e)) => format!("Failed to send message: {e}"),
             Err(_) => "Failed to send message: the device stopped reading".to_string(),
         };
-        // Half a frame may be on the wire; the link can't be trusted.
+        // The link can't be trusted now: part of the frame may be on the wire.
+        // The whole frame may also still arrive, if the writer hands its last
+        // bytes to the kernel just after the deadline; the shutdown below
+        // doesn't take back bytes the kernel already holds. The caller then
+        // re-sends the command over MQTT, so the vacuum can get it twice.
+        // That is acceptable for every command we send: reads are harmless,
+        // start/pause/stop/dock, wash start/stop and the resumes set the same
+        // state again, `find_me` beeps twice, and `app_segment_clean`
+        // restarts the same room run. It is no worse than a command that runs
+        // but whose reply is lost.
         self.inner.mark_down();
         if let Ok(stream) = self.inner.stream.lock() {
             let _ = stream.shutdown(Shutdown::Both);
@@ -641,7 +650,7 @@ mod tests {
         let failed =
             every_send_is_bounded(ch.clone(), Duration::from_secs(1), Duration::from_secs(14));
         assert!(failed, "the buffers never filled");
-        // A send that timed out leaves half a frame on the wire: the link is down.
+        // A send that timed out may have left part of a frame on the wire: the link is down.
         assert!(!ch.is_connected());
     }
 
@@ -650,16 +659,19 @@ mod tests {
         // The device reads a trickle: enough that writes make progress, never
         // enough to keep up.
         let addr = scripted_device(|sock| {
-            let mut buf = [0u8; 256];
-            for _ in 0..400 {
+            let mut buf = [0u8; 512];
+            for _ in 0..60 {
                 if sock.read(&mut buf).is_err() {
                     return;
                 }
-                thread::sleep(Duration::from_millis(50));
+                thread::sleep(Duration::from_millis(500));
             }
         });
         let ch = Arc::new(LocalChannel::connect_addr(&addr, KEY, Arc::new(|_| {})).unwrap());
-        every_send_is_bounded(ch, Duration::from_secs(1), Duration::from_secs(8));
+        let failed =
+            every_send_is_bounded(ch.clone(), Duration::from_secs(1), Duration::from_secs(14));
+        assert!(failed, "no send ever hit its deadline");
+        assert!(!ch.is_connected());
     }
 
     #[test]
@@ -691,9 +703,12 @@ mod tests {
     }
 
     #[test]
-    fn requests_fail_before_cleanup_waits_on_a_stuck_send() {
-        // The device stops reading, so a send holds the socket lock for its
-        // whole deadline; then it pushes a message that kills the reader.
+    fn requests_fail_before_cleanup_waits_on_the_socket() {
+        // Cleanup shuts the socket down, which means taking its lock. Sends
+        // no longer hold that lock (the writer thread has its own handle), so
+        // a real stuck send can't block it; this test holds the lock itself,
+        // for the whole of cleanup, which is the worst a holder could do.
+        // Requests must still fail at once.
         let (kill_tx, kill_rx) = mpsc::channel::<()>();
         let addr = scripted_device(move |sock| {
             let _ = kill_rx.recv_timeout(Duration::from_secs(10));
@@ -704,31 +719,36 @@ mod tests {
             sock.write_all(&protocol::encode(&push, KEY, true, None).unwrap())
                 .unwrap();
         });
+        // A subscriber that panics takes the reader down when the push lands.
         let ch = Arc::new(
             LocalChannel::connect_addr(&addr, KEY, Arc::new(|_| panic!("subscriber bug"))).unwrap(),
         );
-        let fired = Arc::new(Mutex::new(None::<Instant>));
+        let fired = Arc::new(Mutex::new(false));
         let f = fired.clone();
-        ch.set_on_down(Arc::new(move || *f.lock().unwrap() = Some(Instant::now())));
-        // Fill the buffers until a send is blocked, holding the socket lock.
-        let sender = ch.clone();
+        ch.set_on_down(Arc::new(move || *f.lock().unwrap() = true));
+        // A request of the channel's own, waiting on a reply that never comes.
+        let (ping_tx, ping_rx) = mpsc::channel();
+        let pinger = ch.clone();
         thread::spawn(move || {
-            let big = Message::new(protocol::GENERAL_REQUEST, Some(vec![b'x'; 60_000]));
-            while sender.publish(&big).is_ok() {}
+            let ping = Message {
+                version: pinger.version(),
+                ..Message::new(protocol::PING_REQUEST, None)
+            };
+            let _ = ping_tx.send(pinger.exchange(ping, protocol::PING_RESPONSE));
         });
-        thread::sleep(Duration::from_millis(1500));
-        let killed = Instant::now();
+        thread::sleep(Duration::from_millis(200));
+
+        let held = ch.inner.stream.lock().unwrap();
         kill_tx.send(()).unwrap();
-        let deadline = killed + Duration::from_secs(8);
-        while fired.lock().unwrap().is_none() && Instant::now() < deadline {
-            thread::sleep(Duration::from_millis(20));
-        }
-        let at = fired.lock().unwrap().expect("the hook never fired");
-        assert!(
-            at.duration_since(killed) < Duration::from_secs(2),
-            "requests waited {:?} behind the stuck send",
-            at.duration_since(killed)
-        );
+        let ping = ping_rx.recv_timeout(Duration::from_secs(3));
+        let hook_fired = *fired.lock().unwrap();
+        drop(held);
+
+        let err = ping
+            .expect("the request waited behind the socket lock")
+            .unwrap_err();
+        assert!(err.0.contains("connection to the vacuum was lost"), "{err}");
+        assert!(hook_fired, "the down hook waited behind the socket lock");
     }
 
     #[test]
