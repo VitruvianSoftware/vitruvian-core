@@ -11,8 +11,10 @@
 # few seconds' timeout, and a plugin is installed by copying that folder, so
 # there is no build step to lean on. The hook is compiled with `rustc -O` into
 # ~/.cache/antigravity-plugins/<plugin>-<hook>-<sha256>, where the hash covers
-# this launcher, the rustc flags and every file in hooks/src. Editing any of
-# them gives a new hash and so a rebuild.
+# this launcher, the rustc flags and every *.rs file under hooks/src. Editing
+# any of them gives a new hash and so a rebuild. Binaries built from other
+# sources (say an installed copy and a development copy of the plugin) are
+# kept, and removed only once unused for RUST_HOOK_GC_DAYS days (default 7).
 #
 # The build never runs inside the hook's timeout. On a cache miss this starts
 # it in its own session (so the host killing the hook's process group does
@@ -27,7 +29,8 @@
 # build is retried after RUST_HOOK_RETRY_MIN minutes (default 10), so
 # installing a compiler recovers without a source change.
 #
-# RUST_HOOK_RUSTC, if set, is the only rustc tried (tests use it).
+# For tests: RUST_HOOK_RUSTC, if set, is the only rustc tried, and
+# RUST_HOOK_WHICH=1 prints the binary path and stops.
 #
 # This file is identical in every plugin under apps/desktop/antigravity/plugins
 # (//apps/desktop/antigravity:shared_files_test checks it).
@@ -39,6 +42,7 @@ main=${2:-}
 fallback=${3:-'{}'}
 flags="--edition 2021 -O"
 retry_min=${RUST_HOOK_RETRY_MIN:-10}
+gc_days=${RUST_HOOK_GC_DAYS:-7}
 self=$0
 
 answer_fallback() {
@@ -53,9 +57,10 @@ src="$hooks_dir/src"
 plugin=$(basename "$(dirname "$hooks_dir")")
 name=$(basename "$main" .rs)
 
-# Every rustc worth trying, one per line, best first: PATH's, then rustup's
-# toolchains newest first (their own binaries, not the proxy, which can stop
-# to download), then Homebrew's.
+# Every rustc worth trying, one per line, best first: PATH's (often rustup's
+# proxy, which may download a toolchain first; fine, as the build runs in the
+# background), then rustup's toolchains' own binaries newest first, then
+# Homebrew's.
 rustcs() {
 	if [ -n "${RUST_HOOK_RUSTC+set}" ]; then
 		[ -x "$RUST_HOOK_RUSTC" ] && printf '%s\n' "$RUST_HOOK_RUSTC"
@@ -94,7 +99,9 @@ if [ "${RUST_HOOK_BUILD:-}" = 1 ]; then
 	tmp=
 	trap 'rm -rf "$tmp" "$bin.lock"' EXIT
 	trap 'exit 1' HUP INT TERM
-	# Tell the launcher this process is out of the hook's process group.
+	# Tell the launcher this process is out of the hook's process group, and
+	# who holds the lock.
+	echo "$$" >"$bin.lock/pid"
 	: >"$bin.lock/detached"
 	# Leftovers of builds that were killed.
 	find "$cache" -maxdepth 1 -name '.build.*' -mmin +60 -exec rm -rf {} + 2>/dev/null
@@ -126,9 +133,10 @@ $found
 EOF
 	if [ -n "$ok" ]; then
 		echo "built" >>"$log"
-		for old in "$cache/$plugin-$name-"*; do
-			case "$old" in "$bin" | "$bin.lock") ;; *) rm -rf "$old" ;; esac
-		done
+		# Other sources' binaries (another copy of the plugin may still use
+		# them) go only once unused for $gc_days days.
+		find "$cache" -maxdepth 1 -name "$plugin-$name-*" ! -name "$(basename "$bin")*" \
+			-mtime "+$gc_days" -exec rm -rf {} + 2>/dev/null
 	else
 		date +%s >"$bin.failed"
 	fi
@@ -162,6 +170,11 @@ fi
 
 bin="$cache/$plugin-$name-$hash"
 log="$cache/$plugin-$name.log"
+# RUST_HOOK_WHICH=1 prints the binary this would run, and stops (tests).
+if [ -n "${RUST_HOOK_WHICH:-}" ]; then
+	printf '%s\n' "$bin"
+	exit 0
+fi
 
 if [ -f "$bin" ]; then
 	# Read the payload exactly (keeping trailing newlines), then run the hook
@@ -182,6 +195,8 @@ if [ -f "$bin" ]; then
 	else
 		[ "$status" -eq 0 ] || printf '%s hook (%s): exited %s\n' "$plugin" "$name" "$status" >&2
 		printf '%s' "$out"
+		# Mark it used, so other copies' builds do not collect it.
+		touch "$bin" 2>/dev/null
 		exit 0
 	fi
 fi
@@ -192,11 +207,26 @@ if [ -f "$bin.failed" ] && recent "$bin.failed" "$retry_min"; then
 fi
 [ -n "$(rustcs)" ] ||
 	answer_fallback "rustc not found, so the hook cannot be built. Install Rust from https://rustup.rs"
-if [ -d "$bin.lock" ] && recent "$bin.lock" 10; then
-	answer_fallback "being built in the background; see $log"
+# A lock is live while its builder runs (for at most 2 minutes), or for the
+# few seconds before a just-started builder records itself. A lock left by a
+# hook killed in that window, or by a builder that died, is taken over.
+if [ -d "$bin.lock" ]; then
+	now=$(date +%s)
+	since=$(cat "$bin.lock/since" 2>/dev/null || echo 0)
+	pid=$(cat "$bin.lock/pid" 2>/dev/null)
+	age=$((now - since))
+	if [ -n "$pid" ]; then
+		if kill -0 "$pid" 2>/dev/null && [ "$age" -lt 120 ]; then
+			answer_fallback "being built in the background; see $log"
+		fi
+	elif [ "$age" -lt 5 ]; then
+		answer_fallback "being built in the background; see $log"
+	fi
+	rm -rf "$bin.lock"
 fi
-rm -rf "$bin.lock" "$bin.failed"
+rm -f "$bin.failed"
 mkdir "$bin.lock" 2>/dev/null || answer_fallback "being built in the background; see $log"
+date +%s >"$bin.lock/since"
 
 # Its own session where possible (setsid, or Perl's), else its own process
 # group (job control); stdio detached so the host is not kept waiting.

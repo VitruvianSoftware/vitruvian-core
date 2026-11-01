@@ -103,29 +103,27 @@ run_hook() { # run_hook <hook script> <stdin>; sets $status $out $err
 	err=$(cat "$tmp/err")
 }
 
-# The cached binary for a hook (empty if none).
-bin_of() {
+# A hook's cached binaries, one per line.
+bins_of() {
 	for f in "$cache/$plugin_name-$(name_of "$1")-"*; do
 		h=${f##*-}
 		[ "${#h}" -eq 64 ] && [ -f "$f" ] && case $h in *[!0-9a-f]*) ;; *) echo "$f" ;; esac
 	done
 }
-count_bins() {
-	n=0
-	for h in $hooks; do [ -n "$(bin_of "$h")" ] && n=$((n + 1)); done
-	echo "$n"
+# The binary the launcher would run for a hook now (empty if not built).
+bin_of() {
+	b=$(cd "${2:-$plugin}" && RUST_HOOK_WHICH=1 sh "./$1" </dev/null 2>/dev/null)
+	[ -f "$b" ] && echo "$b"
 }
 
-# Waits for a hook's background build to end (binary, or failure marker).
+# Waits for a hook's background build to end. The launcher takes the lock
+# before it answers, and the builder drops it when done (built or failed).
 wait_build() {
 	i=0
 	while [ "$i" -lt 600 ]; do
-		b=$(bin_of "$1")
 		locks=
 		for l in "$cache/$plugin_name-$(name_of "$1")-"*.lock; do [ -d "$l" ] && locks=1; done
-		if [ -z "$locks" ] && { [ -n "$b" ] || ls "$cache"/*.failed >/dev/null 2>&1; }; then
-			return 0
-		fi
+		[ -z "$locks" ] && return 0
 		sleep 0.2
 		i=$((i + 1))
 	done
@@ -189,6 +187,10 @@ hook_pid=$!
 set +m
 wait "$hook_pid"
 check "a cache miss answers with the fallback" "$(cat "$tmp/out")" "$(fallback_of "$first")"
+# The stub takes 2 s (two calls of 1 s), so a binary now means the hook
+# waited for the build: it must answer first (aegis's check).
+[ -z "$(bin_of "$first")" ] && ok=0 || ok=1
+check "a cache miss answers before the build finishes" "$ok" "0"
 kill -KILL -- "-$hook_pid" 2>/dev/null
 wait_build "$first"
 unset STUB_SLEEP
@@ -216,8 +218,10 @@ rebuilds_after() { # rebuilds_after <what> <command>
 	run_hook "$first" '{}'
 	wait_build "$first"
 	after=$(bin_of "$first")
-	[ -n "$after" ] && [ "$after" != "$before" ] && [ ! -e "$before" ] && ok=0 || ok=1
-	check "$1 rebuilds, replacing the old binary" "$ok" "0"
+	[ -n "$after" ] && [ "$after" != "$before" ] && ok=0 || ok=1
+	check "$1 rebuilds" "$ok" "0"
+	[ -e "$before" ] && ok=0 || ok=1
+	check "$1 keeps the old binary (another copy may use it)" "$ok" "0"
 }
 # shellcheck disable=SC2016 # expanded by eval in rebuilds_after
 rebuilds_after "editing src/lib.rs" 'echo "// edited" >>"$plugin/hooks/src/lib.rs"'
@@ -226,6 +230,37 @@ mkdir -p "$plugin/hooks/src/bin"
 rebuilds_after "adding a file under src/bin" 'echo "// new" >"$plugin/hooks/src/bin/zz_extra.rs"'
 # shellcheck disable=SC2016
 rebuilds_after "editing the launcher" 'echo "# edited" >>"$plugin/hooks/rust-hook.sh"'
+
+# Two copies of the plugin (installed and development) with different
+# sources share the cache: switching between them must not rebuild.
+dev="$tmp/dev/$plugin_name"
+rm -rf "${tmp:?}/dev"
+mkdir -p "$tmp/dev"
+cp -R "$plugin" "$dev"
+echo "// the development copy" >>"$dev/hooks/src/lib.rs"
+printf '{}' | (cd "$dev" && sh -c "./$first") >/dev/null 2>&1
+wait_build "$first"
+: >"$STUB_LOG"
+for _ in 1 2 3; do
+	run_hook "$first" '{}'
+	check "switching copies: the installed copy answers" "$out" "stub-hook:{}"
+	printf '{}' | (cd "$dev" && sh -c "./$first") >"$tmp/out" 2>/dev/null
+	check "switching copies: the development copy answers" "$(cat "$tmp/out")" "stub-hook:{}"
+done
+check "switching copies rebuilds nothing" "$(calls)" "0"
+
+# Binaries unused for RUST_HOOK_GC_DAYS days are collected by the next build.
+current=$(bin_of "$first")
+for f in $(bins_of "$first"); do
+	[ "$f" = "$current" ] || touch -t 202001010000 "$f"
+done
+old_count=$(bins_of "$first" | wc -l | tr -d ' ')
+# shellcheck disable=SC2016
+rebuilds_after "editing src/lib.rs once more" 'echo "// edited for gc" >>"$plugin/hooks/src/lib.rs"'
+check "binaries unused for a week are removed, used ones kept" \
+	"$(bins_of "$first" | wc -l | tr -d ' ')" "2"
+[ "$old_count" -gt 1 ] && ok=0 || ok=1
+check "(there were old binaries to collect)" "$ok" "0"
 
 # --- 3. A broken cached binary -----------------------------------------------
 b=$(bin_of "$first")
@@ -253,6 +288,56 @@ check "a deleted binary: exits 0" "$status" "0"
 wait_build "$first"
 run_hook "$first" '{}'
 check "a deleted binary is rebuilt" "$out" "stub-hook:{}"
+
+# --- 3b. Locks ------------------------------------------------------------
+echo "// lock tests" >>"$plugin/hooks/src/lib.rs"
+export STUB_SLEEP=30
+run_hook "$first" '{}'
+lock=$(find "$cache" -maxdepth 1 -type d -name "$plugin_name-$(name_of "$first")-*.lock" | head -n 1)
+[ -n "$lock" ] && [ -f "$lock/pid" ] && ok=0 || ok=1
+check "the lock records its builder" "$ok" "0"
+run_hook "$first" '{}'
+contains "a live builder's lock is respected" "$err" "being built in the background"
+# The builder dies without cleaning up (as on SIGKILL): its lock is stale.
+builder=$(cat "$lock/pid")
+pkill -KILL -P "$builder" 2>/dev/null
+kill -KILL "$builder" 2>/dev/null
+sleep 0.3
+[ -d "$lock" ] && ok=0 || ok=1
+check "(a killed builder leaves its lock behind)" "$ok" "0"
+unset STUB_SLEEP
+run_hook "$first" '{}'
+contains "a dead builder's lock is taken over" "$err" "building in the background (first run"
+wait_build "$first"
+# A hook killed between taking the lock and starting the builder leaves a
+# lock with no builder: taken over once a few seconds old.
+echo "// lock tests 2" >>"$plugin/hooks/src/lib.rs"
+export STUB_SLEEP=30
+run_hook "$first" '{}'
+lock=$(find "$cache" -maxdepth 1 -type d -name "$plugin_name-$(name_of "$first")-*.lock" | head -n 1)
+builder=$(cat "$lock/pid")
+pkill -KILL -P "$builder" 2>/dev/null
+kill -KILL "$builder" 2>/dev/null
+unset STUB_SLEEP
+rm -f "$lock/pid" "$lock/detached"
+date +%s >"$lock/since"
+run_hook "$first" '{}'
+contains "a just-taken lock with no builder yet is respected" "$err" "being built in the background"
+echo $(($(date +%s) - 10)) >"$lock/since"
+run_hook "$first" '{}'
+contains "an orphaned lock is taken over after a few seconds" "$err" "building in the background (first run"
+wait_build "$first"
+run_hook "$first" '{}'
+check "and the hook then builds and runs" "$out" "stub-hook:{}"
+# The builders killed above left their build folders: the next build
+# removes those over an hour old.
+for d in "$cache"/.build.*; do [ -d "$d" ] && touch -t 202001010000 "$d"; done
+echo "// lock tests 3" >>"$plugin/hooks/src/lib.rs"
+run_hook "$first" '{}'
+wait_build "$first"
+leftover=no
+for f in "$cache"/.build.*; do [ -e "$f" ] && leftover=yes; done
+check "build folders of killed builds are cleaned up" "$leftover" "no"
 
 # --- 4. A build that fails ------------------------------------------------------
 echo "// edited again" >>"$plugin/hooks/src/lib.rs"
@@ -297,6 +382,10 @@ chmod 777 "$cache"
 run_hook "$first" '{}'
 check "a world-writable cache: fallback" "$out" "$(fallback_of "$first")"
 contains "a world-writable cache: refused" "$err" "refusing"
+chmod 770 "$cache"
+run_hook "$first" '{}'
+check "a group-writable cache: fallback" "$out" "$(fallback_of "$first")"
+contains "a group-writable cache: refused" "$err" "refusing"
 chmod 700 "$cache"
 mv "$cache" "$cache.real"
 ln -s "$cache.real" "$cache"
