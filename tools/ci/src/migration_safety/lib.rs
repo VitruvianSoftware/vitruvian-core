@@ -18,10 +18,10 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! migration-safety.sh — Squawk migration-safety gate for Tabula's Prisma
+//! //tools/ci:migration_safety — Squawk migration-safety gate for Tabula's Prisma
 //! migrations (issue #819).
 
-use shell_compat::{capture, cat, env_or, err, mktemp_dir, out, status, subst, write_file};
+use shell_compat::{capture, cat, err, mktemp_dir, out, status, subst, write_file};
 use std::process::Command;
 
 const SQUAWK_VERSION: &str = "2.67.0";
@@ -179,7 +179,10 @@ fn parse_changed_migrations(diff_output: &[u8], mig_dir: &str) -> Vec<Vec<u8>> {
 }
 
 fn lint_changed(root: &[u8], config: &[u8], base: &[u8]) -> i32 {
-    let r = capture(
+    // git's stderr passes through, as in the script: a base that does not
+    // resolve still reads as "nothing to lint" (the script's `|| true`), but
+    // git's `fatal:` line is in the log beside it.
+    let r = shell_compat::capture_stdout(
         0,
         Command::new("git")
             .arg("-C")

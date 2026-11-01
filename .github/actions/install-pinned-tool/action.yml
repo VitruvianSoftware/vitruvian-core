@@ -1,0 +1,96 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+name: Install a pinned CI tool
+description: >-
+  Download a pinned release asset, verify it against the release's checksum
+  listing, and install it to ~/.local/bin (added to $GITHUB_PATH) for the rest
+  of the job. Runs //tools/ci:install_pinned_tool, built here from the checkout
+  with the runner's rustc, because the callers (actionlint, gitops-validate,
+  chart-render, supply-chain, mcp-slack-image) set up no Bazel. Every fetch
+  retries 6 times with curl's exponential backoff under a 180s cap; a
+  checksum mismatch, a missing checksum line or a failed download fails the
+  step and installs nothing. See tools/ci/src/install_pinned_tool/lib.rs.
+
+inputs:
+  base-url:
+    description: Release base URL, e.g. https://github.com/rhysd/actionlint/releases/download/v1.7.12
+    required: true
+  asset:
+    description: Release asset filename under base-url.
+    required: true
+  checksum-file:
+    description: Checksum-listing asset filename under base-url.
+    required: true
+  checksum-pattern:
+    description: >-
+      grep basic regex selecting the asset's line from checksum-file, for
+      `sha256sum -c`. Anchor it yourself when a shorter name could match a
+      longer one.
+    required: true
+  bin-name:
+    description: >-
+      Installed binary name in ~/.local/bin. In tar mode also the archive
+      member, unless member-path is set.
+    required: true
+  mode:
+    description: "`tar` (asset is a .tar.gz) or `raw` (asset is the binary)."
+    required: true
+  member-path:
+    description: >-
+      tar mode only: the binary's path inside the archive when it is not a
+      top-level member named bin-name. Leading directories are stripped.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Install ${{ inputs.bin-name }} (pinned + checksum-verified)
+      shell: bash
+      env:
+        IPT_BASE_URL: ${{ inputs.base-url }}
+        IPT_ASSET: ${{ inputs.asset }}
+        IPT_CHECKSUM_FILE: ${{ inputs.checksum-file }}
+        IPT_CHECKSUM_PATTERN: ${{ inputs.checksum-pattern }}
+        IPT_BIN_NAME: ${{ inputs.bin-name }}
+        IPT_MODE: ${{ inputs.mode }}
+        IPT_MEMBER_PATH: ${{ inputs.member-path }}
+      run: |
+        set -euo pipefail
+        cd "${GITHUB_WORKSPACE}"
+        # The homelab queue runner's image carries no Rust toolchain; GitHub's
+        # ubuntu images do. Same fallback as queue-runner-watch.yaml.
+        # Fails here, by name, when apt cannot supply it (a failed install must not
+        # surface later as "rustc: command not found"). //tools/ci:workflow_rustc_test
+        # runs this block with apt failing.
+        if ! command -v rustc >/dev/null 2>&1; then
+          { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends rustc; } \
+            || { echo "::error::apt install rustc failed"; exit 1; }
+          command -v rustc >/dev/null 2>&1 \
+            || { echo "::error::rustc is still not on PATH after apt install"; exit 1; }
+        fi
+        # These three lines are run verbatim by //tools/ci:workflow_rustc_test.
+        rustc --edition 2021 -O --crate-type lib --crate-name shell_compat tools/shell-compat/src/lib.rs -o "$RUNNER_TEMP/libshell_compat.rlib"
+        rustc --edition 2021 -O --crate-type lib --crate-name install_pinned_tool tools/ci/src/install_pinned_tool/lib.rs -L "$RUNNER_TEMP" --extern shell_compat="$RUNNER_TEMP/libshell_compat.rlib" -o "$RUNNER_TEMP/libinstall_pinned_tool.rlib"
+        rustc --edition 2021 -O tools/ci/src/install_pinned_tool/main.rs -L "$RUNNER_TEMP" --extern shell_compat="$RUNNER_TEMP/libshell_compat.rlib" --extern install_pinned_tool="$RUNNER_TEMP/libinstall_pinned_tool.rlib" -o "$RUNNER_TEMP/install-pinned-tool"
+        args=("${IPT_BASE_URL}" "${IPT_ASSET}" "${IPT_CHECKSUM_FILE}" "${IPT_CHECKSUM_PATTERN}" "${IPT_BIN_NAME}" "--${IPT_MODE}")
+        if [ -n "${IPT_MEMBER_PATH}" ]; then args+=("${IPT_MEMBER_PATH}"); fi
+        "$RUNNER_TEMP/install-pinned-tool" "${args[@]}"

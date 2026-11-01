@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! go-test-with-retry.sh — `go test ./...` over every IaC Go module that
+//! //tools/ci:go_test_with_retry — `go test ./...` over every IaC Go module that
 //! actually carries tests, retrying a module ONLY on a recognizable transient
 //! module-proxy/network signature.
 
@@ -45,6 +45,10 @@ fn find_go_mods() -> Vec<Vec<u8>> {
         for entry in entries.flatten() {
             let name = entry.file_name();
             let name_bytes = std::os::unix::ffi::OsStrExt::as_bytes(name.as_os_str());
+            // The shell glob `*/infra` skips dot-directories.
+            if name_bytes.first() == Some(&b'.') {
+                continue;
+            }
             let infra = cat(&[name_bytes, b"/infra"]);
             if shell_compat::is_dir(&infra) {
                 search_paths.push(infra);
@@ -137,7 +141,11 @@ fn go_test_with_retry(dir: &[u8]) -> i32 {
                 delay.to_string().as_bytes(),
                 b"s\n",
             ]));
-            std::thread::sleep(std::time::Duration::from_secs(delay as u64));
+            // `sleep N`, the command, as the script ran it (a test stubs it).
+            let slept = Command::new("sleep").arg(delay.to_string()).status();
+            if slept.is_err() {
+                std::thread::sleep(std::time::Duration::from_secs(delay as u64));
+            }
             continue;
         }
         return last_status;

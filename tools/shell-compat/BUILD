@@ -11,6 +11,13 @@ Used by packages across //tools/...
 
 load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
 
+# CI jobs without Bazel build their tools/ci binary with a bare rustc, this
+# file first (//tools/ci:workflow_rustc_test runs those lines).
+exports_files(
+    ["src/lib.rs"],
+    visibility = ["//tools/ci:__pkg__"],
+)
+
 rust_library(
     name = "shell_compat",
     srcs = ["src/lib.rs"],

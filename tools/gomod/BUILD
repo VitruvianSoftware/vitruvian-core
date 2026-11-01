@@ -22,6 +22,14 @@ a flaky one in tidy-check. The gate lives next to the build it protects instead.
 
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
+# What ci.yaml compiles with a bare rustc (//tools/ci:workflow_rustc_test runs
+# those lines).
+filegroup(
+    name = "srcs",
+    srcs = glob(["src/**/*.rs"]),
+    visibility = ["//tools/ci:__pkg__"],
+)
+
 rust_library(
     name = "gomod_lib",
     srcs = glob(
@@ -31,12 +39,12 @@ rust_library(
     crate_root = "src/lib.rs",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
+    deps = ["//tools/ci:transient_lib"],
 )
 
 rust_binary(
     name = "tidy",
     srcs = ["src/main.rs"],
-    data = ["//tools/ci:transient-lib.sh"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//visibility:public"],
@@ -49,7 +57,6 @@ rust_binary(
     name = "check",
     srcs = ["src/main.rs"],
     args = ["--check"],
-    data = ["//tools/ci:transient-lib.sh"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//visibility:public"],

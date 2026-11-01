@@ -20,7 +20,7 @@
 
 # gitleaks configuration for vitruvian-core.
 #
-# The CI gate (tools/ci/secret-scan.sh) scans ONLY the commits a change adds,
+# The CI gate (//tools/ci:secret_scan) scans ONLY the commits a change adds,
 # never full history: this repo carries known historical findings -- most
 # notably a BuildBuddy key that was committed, then de-committed and ROTATED
 # (docs/repo-assessment.md §7.1 item C) -- so a full-history scan would be

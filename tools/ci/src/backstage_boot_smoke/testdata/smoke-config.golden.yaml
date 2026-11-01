@@ -1,0 +1,48 @@
+backend:
+  baseUrl: http://localhost:7007
+  listen: { host: 0.0.0.0, port: 7007 }
+  database:
+    client: pg
+    connection:
+      host: pg-x
+      port: 5432
+      user: postgres
+      password: smoke
+  auth:
+    keys:
+      - secret: a2V5
+app:
+  baseUrl: http://localhost:7007
+auth:
+  environment: development
+  providers:
+    github:
+      development:
+        clientId: smoke-client-id
+        clientSecret: smoke-client-secret
+permission:
+  enabled: true
+kubernetes:
+  serviceLocatorMethod: { type: multiTenant }
+  clusterLocatorMethods:
+    - type: config
+      clusters:
+        - name: smoke
+          url: https://kubernetes.default.svc
+          authProvider: serviceAccount
+          skipTLSVerify: true
+          serviceAccountToken: smoke-token
+catalog:
+  locations: []
+techdocs:
+  builder: local
+  generator: { runIn: local }
+  publisher: { type: local }
+# REQUIRED, not decorative: @backstage-community/plugin-grafana declares
+# "required": ["grafana"] at the root of its config.schema.json, and the app
+# bundle's frontend schema is validated against whatever config the backend
+# boots with. Since this file is passed as the ONLY --config, omitting this key
+# fails app-backend startup with "Invalid app bundle schema" -- which is exactly
+# how this smoke test caught the plugin landing without it.
+grafana:
+  domain: https://grafana.invalid

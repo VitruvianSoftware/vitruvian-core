@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! //tools/ci:install-pinned-tool: the Rust port.
+//! //tools/ci:install_pinned_tool (see lib.rs).
 
 fn main() {
     std::process::exit(install_pinned_tool::run(&shell_compat::args()));

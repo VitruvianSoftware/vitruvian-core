@@ -65,7 +65,7 @@ const SCRIPT: &str = "#!/usr/bin/env bash
 #   bazel run //tools/secret-scan -- --unpushed       # the commits no branch on origin has yet
 #
 # gitleaks is pinned in tools/tools.lock.json (the version CI's
-# tools/ci/secret-scan.sh downloads) and the rules are the repo's .gitleaks.toml.
+# //tools/ci:secret_scan downloads) and the rules are the repo's .gitleaks.toml.
 # A finding names the file, the line and the rule. It never prints the secret.
 #
 # Exit codes: 0 nothing found, 1 something found, 2 the scan could not run.

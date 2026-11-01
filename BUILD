@@ -140,7 +140,10 @@ filegroup(
     # Only action.yml: every composite in this repo uses that spelling, and an
     # empty glob arm is a hard error under --incompatible_disallow_empty_glob.
     srcs = glob([".github/actions/*/action.yml"]),
-    visibility = ["//tools/delivery/gen:__pkg__"],
+    visibility = [
+        "//tools/ci:__pkg__",
+        "//tools/delivery/gen:__pkg__",
+    ],
 )
 
 filegroup(
