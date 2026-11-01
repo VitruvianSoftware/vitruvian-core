@@ -146,6 +146,7 @@ struct CourierApp: App {
                     problemReport: delegate.problemReport,
                     appearance: delegate.appearance,
                     storage: delegate.storage,
+                    integrations: delegate.integrations,
                     onRestartNotificationCenter: {
                         delegate.notifier.restartNotificationCenter()
                     }

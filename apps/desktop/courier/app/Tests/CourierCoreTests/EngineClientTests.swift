@@ -350,6 +350,13 @@ final class EngineClientTests: XCTestCase {
             "diagnostics.export",
             "storage.usage",
             "storage.cleanup",
+            "integrations.status",
+            "integrations.tokens",
+            "integrations.update",
+            "integrations.createToken",
+            "integrations.revokeToken",
+            "integrations.setCanSend",
+            "integrations.answerPairing",
         ]
         for method in goHandlersThatFetchOrWrite.sorted() {
             XCTAssertEqual(

@@ -77,6 +77,7 @@ public final class AppModel: ObservableObject {
     }
     private var hooks: [@MainActor (EngineClient) async -> Void] = []
     private var changeHooks: [@MainActor (Change) -> Void] = []
+    private var noticeHooks: [@MainActor (EngineNotice) -> Void] = []
     private let clock: @Sendable () -> Date
     private var watcher: Task<Void, Never>?
     /// Reads and follows the connected engine: subscribes to its changes, reads everything, then re-reads as they
@@ -104,6 +105,17 @@ public final class AppModel: ObservableObject {
     /// The hook runs on the main actor and must be quick: it should note what to read, not read it.
     public func onChange(_ hook: @escaping @MainActor (Change) -> Void) {
         changeHooks.append(hook)
+    }
+
+    /// Runs `hook` for each of the engine's other notifications (a pairing request, focus_app), from whichever
+    /// engine is up. Quick, on the main actor, like `onChange`.
+    public func onNotice(_ hook: @escaping @MainActor (EngineNotice) -> Void) {
+        noticeHooks.append(hook)
+    }
+
+    /// Hands `notice` to the hooks as if the engine had sent it: tests, and nothing else.
+    public func deliverNoticeForTesting(_ notice: EngineNotice) {
+        for hook in noticeHooks { hook(notice) }
     }
 
     public func start() {
@@ -168,7 +180,15 @@ public final class AppModel: ObservableObject {
         connection = Task { [weak self] in
             // Subscribe before reading, so nothing that changes in between is missed.
             let changes = await client.changes
+            let notices = await client.notices
             guard !Task.isCancelled else { return }
+            // Notices never wait on a read: a pairing request has 120 s to be answered.
+            let noticeTask = Task { [weak self] in
+                for await notice in notices {
+                    self?.handle(notice, from: client)
+                }
+            }
+            defer { noticeTask.cancel() }
             await self?.reload(client)
             for await change in changes {
                 await self?.handle(change, from: client)
@@ -188,6 +208,11 @@ public final class AppModel: ObservableObject {
         default:
             for hook in changeHooks { hook(change) }
         }
+    }
+
+    private func handle(_ notice: EngineNotice, from client: EngineClient) {
+        guard client === self.client else { return }
+        for hook in noticeHooks { hook(notice) }
     }
 
     private func reload(_ client: EngineClient) async {

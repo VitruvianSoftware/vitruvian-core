@@ -13,6 +13,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
@@ -30,6 +31,7 @@ import (
 	"github.com/VitruvianSoftware/courier/engine/internal/engine"
 	"github.com/VitruvianSoftware/courier/engine/internal/fakenet"
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
+	"github.com/VitruvianSoftware/courier/engine/internal/localapi"
 	"github.com/VitruvianSoftware/courier/engine/internal/login"
 	"github.com/VitruvianSoftware/courier/engine/internal/media"
 	"github.com/VitruvianSoftware/courier/engine/internal/richtext"
@@ -345,7 +347,7 @@ func (p *protocolSpec) checkExample(ex example) error {
 
 func TestEveryExampleFitsTheProtocol(t *testing.T) {
 	p, exs := loadProtocol(t)
-	require.Equal(t, 11, Protocol, "engine speaks protocol 11")
+	require.Equal(t, 12, Protocol, "engine speaks protocol 12")
 	require.Equal(t, Protocol, p.Protocol, "protocol.json and the engine speak the same protocol")
 	require.Equal(t, MaxFrameBytes, p.Transport.MaxFrameBytes)
 	for _, ex := range exs {
@@ -365,7 +367,9 @@ func TestEveryExampleFitsTheProtocol(t *testing.T) {
 	for _, ex := range exs {
 		if ex.Notification != nil {
 			seen[ex.Notification["method"].(string)] = true
-			kinds[ex.Notification["params"].(map[string]any)["kind"].(string)] = true
+			if ex.Notification["method"] == "changed" {
+				kinds[ex.Notification["params"].(map[string]any)["kind"].(string)] = true
+			}
 			continue
 		}
 		if _, ok := ex.Response["result"]; ok {
@@ -428,6 +432,11 @@ func TestGoStructJSONKeysMatchProtocol(t *testing.T) {
 		{"StorageUsageResult", store.StorageUsage{Rooms: []store.RoomStorageUsage{}}},
 		{"StorageCleanupParams", store.StorageCleanupFilter{RoomIDs: []string{"!r:courier.local"}, OlderThanMS: 1, IncludeStickers: true}},
 		{"StorageCleanupResult", store.StorageCleanupReport{}},
+		{"IntegrationsStatus", localapi.Status{}},
+		{"APIToken", apiTokenJSON{}},
+		{"PairRequest", localapi.PairRequest{}},
+		{"PairEnded", localapi.PairEnded{}},
+		{"FocusParams", localapi.FocusParams{ChatID: "!r:courier.local", MessageID: "$e", DraftText: "t", DraftAttachmentPath: "/f"}},
 	}
 	for _, tc := range cases {
 		spec, ok := p.Types[tc.typeName]
@@ -679,6 +688,16 @@ func TestEveryExampleRoundTrips(t *testing.T) {
 			t.Parallel()
 			w := worldFor(t, ex.name)
 			c := dial(t, w.path)
+			if method, _ := ex.Notification["method"].(string); ex.Notification != nil && method != "changed" {
+				// The engine's own notifications (protocol 12), which aren't store changes.
+				c.hello()
+				spec := p.Notifications[method]
+				want := ex.Notification["params"].(map[string]any)
+				got := triggerNotice(t, w, c, ex.name, method)
+				require.NoError(t, p.check(got, spec.Params, nil, method+".params"), "the live notification fits protocol.json: %v", got)
+				require.NoError(t, p.sameShape(want, got, spec.Params, method+".params"))
+				return
+			}
 			if ex.Notification != nil {
 				c.hello()
 				want := ex.Notification["params"].(map[string]any)
@@ -1260,6 +1279,16 @@ func prepare(t *testing.T, w *world, name string, params map[string]any) {
 		if name == "storage-cleanup" {
 			params["room_ids"] = one
 		}
+	case "integrations.status", "integrations.update", "integrations.createToken", "integrations.revokeToken-not-found":
+	case "integrations.tokens":
+		_, _, err := w.s.CreateAPIToken(ctx, "Claude Code", false)
+		require.NoError(t, err)
+	case "integrations.revokeToken", "integrations.setCanSend":
+		tok, _, err := w.s.CreateAPIToken(ctx, "Claude Code", false)
+		require.NoError(t, err)
+		params["id"] = tok.ID
+	case "integrations.answerPairing":
+		params["requestID"] = pairRequest(t, w).RequestID
 	default:
 		t.Fatalf("example %s has no setup in prepare: add one", name)
 	}
@@ -1283,6 +1312,50 @@ func picnic(t *testing.T, w *world) {
 		Content: json.RawMessage(`{"msgtype":"m.image","body":"picnic.jpg","url":"mxc://courier.test/picnic"}`), Status: "sent",
 	})
 	require.NoError(t, err)
+}
+
+// pairRequest has a client ask the world's local API to pair, and returns the request the app was told of. It
+// listens on a free port for this, and a connection of its own hears the notification.
+func pairRequest(t *testing.T, w *world) localapi.PairRequest {
+	t.Helper()
+	st := w.deps.LocalAPI.Apply(context.Background(), localapi.Config{Enabled: true})
+	require.True(t, st.Listening, st.Error)
+	listener := dial(t, w.path)
+	listener.hello()
+	go func() {
+		resp, err := http.Post(fmt.Sprintf("http://127.0.0.1:%d%s", st.Port, localapi.PairPath), "application/json",
+			strings.NewReader(`{"clientName":"Claude Desktop"}`))
+		if err == nil {
+			resp.Body.Close()
+		}
+	}()
+	var req localapi.PairRequest
+	require.NoError(t, json.Unmarshal(listener.notice(localapi.NoticePairRequest), &req))
+	return req
+}
+
+// triggerNotice makes the engine send one of its own notifications (protocol 12) and returns its params.
+func triggerNotice(t *testing.T, w *world, c *client, name, method string) map[string]any {
+	t.Helper()
+	switch name {
+	case "integrations-pairRequest":
+		req := pairRequest(t, w)
+		require.NoError(t, w.deps.LocalAPI.AnswerPairing(req.RequestID, false, false))
+	case "integrations-pairEnded":
+		req := pairRequest(t, w)
+		require.NoError(t, w.deps.LocalAPI.AnswerPairing(req.RequestID, false, false))
+	case "app-focus":
+		path := filepath.Join(t.TempDir(), "agenda.pdf")
+		require.NoError(t, os.WriteFile(path, []byte("%PDF"), 0o600))
+		require.Equal(t, 1, w.deps.Notices.Publish("app.focus", localapi.FocusParams{
+			ChatID: w.room, MessageID: w.events[0], DraftText: "Running late", DraftAttachmentPath: path,
+		}))
+	default:
+		t.Fatalf("notification example %s has no trigger: add one", name)
+	}
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(c.notice(method), &got))
+	return got
 }
 
 // triggerNotification makes the change one notification example shows and returns the engine's notification.

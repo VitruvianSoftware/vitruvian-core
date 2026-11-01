@@ -35,7 +35,6 @@ exports_files([
     "agent-fast-lane.sh",
     "agent-fast-lane_test.sh",
     "backstage-boot-smoke.sh",
-    "block-queue-bypass_test.sh",
     "chart-render.sh",
     "gitops-validate.sh",
     "gitops-values-render.sh",
@@ -44,7 +43,6 @@ exports_files([
     "image-sbom-scan.sh",
     "install-pinned-tool.sh",
     "install-pinned-tool_test.sh",
-    "kube-setup_test.sh",
     "llvm-cache-key.sh",
     "llvm-cache-key_test.sh",
     "llvm-cache-stage.sh",
@@ -56,12 +54,9 @@ exports_files([
     "queue-runner-watch_test.sh",
     "relevant-paths.sh",
     "relevant-paths_test.sh",
-    "require-pinned-actions.sh",
     "secret-scan.sh",
     "secret-scan_test.sh",
-    "session-start_test.sh",
     "transient-lib.sh",
-    "workflow-git-push-credentials_test.sh",
 ])
 
 # The extracted-LLVM cache key. Keyed on every recorded input of the
@@ -197,7 +192,7 @@ rust_test(
 # `bazel run //tools/ci:actionlint` -- the required `actionlint` check, locally:
 # the pinned actionlint (tools/tools.lock.json, at the workflow's
 # ACTIONLINT_VERSION) with shellcheck over the `run:` blocks, then the
-# commit-SHA pin check the workflow runs from require-pinned-actions.sh.
+# commit-SHA pin check, //tools/ci:require_pinned_actions, as the workflow does.
 rust_library(
     name = "actionlint_lib",
     srcs = ["src/actionlint/lib.rs"],
@@ -215,7 +210,7 @@ rust_binary(
     name = "actionlint",
     srcs = ["src/actionlint/main.rs"],
     data = [
-        "require-pinned-actions.sh",
+        ":require_pinned_actions",
         "@multitool//tools/actionlint",
         "@multitool//tools/shellcheck",
     ],
@@ -235,8 +230,8 @@ rust_test(
     size = "small",
     srcs = ["src/actionlint/tests.rs"],
     data = [
-        "require-pinned-actions.sh",
         ":actionlint",
+        ":require_pinned_actions",
         "//:.github/workflows/actionlint.yaml",
         "//tools:tools.lock.json",
         "@multitool//tools/actionlint",
@@ -251,6 +246,144 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
     deps = [":ci_testkit"],
 )
+
+# The commit-SHA pin check: every outside action pinned to a full commit SHA.
+# One std-only file with no crate deps ON PURPOSE: actionlint.yaml has no Bazel
+# and builds it with a bare
+#   rustc --edition 2021 -O tools/ci/src/require_pinned_actions/main.rs
+# Adding a dependency would break that job, not this build.
+rust_binary(
+    name = "require_pinned_actions",
+    srcs = ["src/require_pinned_actions/main.rs"],
+    crate_root = "src/require_pinned_actions/main.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+)
+
+# Throwaway repo trees for the pin rules, plus the rustc line from
+# actionlint.yaml run as written with the toolchain's rustc, so the job that
+# builds the check without Bazel cannot drift from what is tested here.
+rust_test(
+    name = "require_pinned_actions_test",
+    size = "small",
+    srcs = ["src/require_pinned_actions/tests.rs"],
+    data = [
+        "src/require_pinned_actions/main.rs",
+        ":require_pinned_actions",
+        "//:.github/workflows/actionlint.yaml",
+        "@rules_rust//rust/toolchain:current_rust_stdlib_files",
+        "@rules_rust//rust/toolchain:current_rustc_files",
+        "@rules_rust//rust/toolchain:current_rustc_lib_files",
+    ],
+    edition = "2021",
+    env = {
+        "BIN": "$(rootpath :require_pinned_actions)",
+        "RUSTC": "$(RUSTC)",
+        "WORKFLOW": "$(rootpath //:.github/workflows/actionlint.yaml)",
+    },
+    rustc_flags = ["-Copt-level=3"],
+    toolchains = ["@rules_rust//rust/toolchain:current_rust_toolchain"],
+    deps = [":ci_testkit"],
+)
+
+# Every workflow that checks out with persist-credentials: false and pushes to
+# origin gives git a credential first. Reads the real workflows.
+rust_test(
+    name = "workflow_git_push_credentials_test",
+    size = "small",
+    srcs = ["src/workflow_git_push_credentials/tests.rs"],
+    data = ["//:workflow_files"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
+# The Claude Code hooks in .claude/: each runs the REAL hook (bash) against
+# fakes, and checks .claude/settings.json wires it. jq is the hermetic one:
+# the hooks need it and the RBE image has none. Run by
+# .github/workflows/repo-guards-test.yaml on the hook paths, because the
+# presubmit planner maps a file outside every package (.claude/ has no BUILD)
+# to no tests at all.
+#
+# kube_setup_join_test is the one kube-setup case that needs pgrep to see a
+# sibling process: on the remote executor it did not, and the homelab queue
+# runner's image has no procps. So it is manual and local-only, and
+# repo-guards-test.yaml runs it on the hosted runner, where the shell suite
+# always ran it; kube_setup_test runs every other case anywhere.
+_KUBE_JOIN = "waits_for_a_tailscale_up_that_is_still_joining"
+
+[
+    rust_test(
+        name = name,
+        size = "small",
+        srcs = [
+            "src/hook_tests/common.rs",
+            "src/hook_tests/" + src + ".rs",
+        ],
+        args = args,
+        crate_root = "src/hook_tests/" + src + ".rs",
+        data = hook_data + [
+            "//:.claude/settings.json",
+            "@jq_toolchains//:resolved_toolchain",
+        ],
+        edition = "2021",
+        env = {"JQ_BIN": "$(JQ_BIN)"},
+        rustc_flags = ["-Copt-level=3"],
+        tags = tags,
+        toolchains = ["@jq_toolchains//:resolved_toolchain"],
+        deps = [":ci_testkit"],
+    )
+    for name, src, args, tags, hook_data in [
+        (
+            "block_queue_bypass_test",
+            "block_queue_bypass",
+            [],
+            [],
+            ["//:.claude/block-queue-bypass.sh"],
+        ),
+        (
+            "kube_setup_test",
+            "kube_setup",
+            [
+                "--skip",
+                _KUBE_JOIN,
+            ],
+            [],
+            [
+                "//:.claude/kube-setup.sh",
+                "//:.claude/session-start.sh",
+            ],
+        ),
+        (
+            "kube_setup_join_test",
+            "kube_setup",
+            [
+                "--exact",
+                _KUBE_JOIN,
+            ],
+            [
+                "manual",
+                "no-remote-exec",
+            ],
+            [
+                "//:.claude/kube-setup.sh",
+                "//:.claude/session-start.sh",
+            ],
+        ),
+        (
+            "session_start_test",
+            "session_start",
+            [],
+            [],
+            [
+                "//:.claude/kube-setup.sh",
+                "//:.claude/session-start.sh",
+                "//:.claude/tailscale-up.sh",
+                "//tools/cloud-bootstrap:cloud-bootstrap.sh",
+            ],
+        ),
+    ]
+]
 
 # The #[cfg(test)] unit tests in src/actionlint/.
 rust_test(

@@ -20,7 +20,7 @@
 
 //! //tools/ci:actionlint, in Rust: actionlint.sh's two steps -- the pinned
 //! actionlint (with the pinned shellcheck, at warning level, over the `run:`
-//! blocks) and require-pinned-actions.sh -- the same messages and the same
+//! blocks) and //tools/ci:require_pinned_actions -- the same messages and the same
 //! exit codes: 0 clean, 1 something to fix, 2 the check could not run.
 //!
 //! The pinned tools come from $ACTIONLINT, $SHELLCHECK and $PIN_CHECK when
@@ -44,7 +44,7 @@ pub const SCRIPT: &str = "\
 # The same two steps as .github/workflows/actionlint.yaml: actionlint (pinned in
 # tools/tools.lock.json at the workflow's ACTIONLINT_VERSION) with shellcheck at
 # warning level over the `run:` blocks, then the check that every outside
-# action is pinned to a commit SHA (tools/ci/require-pinned-actions.sh).
+# action is pinned to a commit SHA (//tools/ci:require_pinned_actions).
 #
 # One difference: CI uses the shellcheck preinstalled on its runner; this uses
 # the pinned one from aspect_rules_lint, so a finding new to one shellcheck
@@ -57,7 +57,7 @@ set -euo pipefail
 
 pub const RUNFILES_ACTIONLINT: &str = "multitool/tools/actionlint/actionlint";
 pub const RUNFILES_SHELLCHECK: &str = "multitool/tools/shellcheck/shellcheck";
-pub const RUNFILES_PIN_CHECK: &str = "_main/tools/ci/require-pinned-actions.sh";
+pub const RUNFILES_PIN_CHECK: &str = "_main/tools/ci/require_pinned_actions";
 
 /// `sed -n '/^# actionlint.sh/,/^set -euo/p' | sed '$d' | sed 's/^# \{0,1\}//'`
 /// over `script`.
@@ -246,7 +246,7 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
             return 2;
         }
     }
-    let pin_rc = status(99, Command::new("bash").arg(os(&pin_check)), false);
+    let pin_rc = status(99, &mut Command::new(os(&pin_check)), false);
     if pin_rc != 0 {
         rc = 1;
     }

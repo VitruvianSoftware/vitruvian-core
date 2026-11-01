@@ -381,8 +381,8 @@ metadata:
   title: MCP Slack Tool Protocol
   description: Model Context Protocol (MCP) JSON-RPC schema for Slack channels, messaging, and canvas tools
   links:
-    - url: https://www.npmjs.com/package/@vitruviansoftware/mcp-slack
-      title: npm Package
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/pkgs/container/mcp-slack
+      title: Container Image
       icon: web
 spec:
   type: mcp-jsonrpc

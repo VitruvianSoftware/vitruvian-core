@@ -1,0 +1,298 @@
+{
+  "_comment": "Tool names and input schemas of the reference MCP server, captured 2026-11-01 from the running reference app (descriptions dropped). Courier's MCP must match these exactly; see engine/internal/localapi.",
+  "tools": [
+    {
+      "inputSchema": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "name": "get_accounts"
+    },
+    {
+      "inputSchema": {
+        "properties": {
+          "query": {
+            "type": "string"
+          }
+        },
+        "required": ["query"],
+        "type": "object"
+      },
+      "name": "search"
+    },
+    {
+      "inputSchema": {
+        "properties": {
+          "accountIDs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "cursor": {
+            "type": "string"
+          },
+          "direction": {
+            "enum": ["after", "before"],
+            "type": "string"
+          },
+          "inbox": {
+            "enum": ["primary", "low-priority", "archive"],
+            "type": "string"
+          },
+          "includeMuted": {
+            "type": "boolean"
+          },
+          "lastActivityAfter": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "lastActivityBefore": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "query": {
+            "type": "string"
+          },
+          "scope": {
+            "enum": ["titles", "participants"],
+            "type": "string"
+          },
+          "type": {
+            "enum": ["single", "group", "any"],
+            "type": "string"
+          },
+          "unreadOnly": {
+            "type": "boolean"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "search_chats"
+    },
+    {
+      "inputSchema": {
+        "properties": {
+          "accountIDs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "chatIDs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "chatType": {
+            "enum": ["group", "single"],
+            "type": "string"
+          },
+          "cursor": {
+            "type": "string"
+          },
+          "dateAfter": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "dateBefore": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "direction": {
+            "enum": ["after", "before"],
+            "type": "string"
+          },
+          "excludeLowPriority": {
+            "type": "boolean"
+          },
+          "includeMuted": {
+            "type": "boolean"
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "mediaTypes": {
+            "items": {
+              "enum": ["any", "video", "image", "link", "file"],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "query": {
+            "type": "string"
+          },
+          "sender": {
+            "anyOf": [
+              {
+                "enum": ["me", "others"],
+                "type": "string"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "search_messages"
+    },
+    {
+      "inputSchema": {
+        "properties": {
+          "chatID": {
+            "type": "string"
+          },
+          "maxParticipantCount": {
+            "type": "integer"
+          }
+        },
+        "required": ["chatID"],
+        "type": "object"
+      },
+      "name": "get_chat"
+    },
+    {
+      "inputSchema": {
+        "properties": {
+          "chatID": {
+            "type": "string"
+          },
+          "cursor": {
+            "type": "string"
+          },
+          "direction": {
+            "enum": ["after", "before"],
+            "type": "string"
+          }
+        },
+        "required": ["chatID"],
+        "type": "object"
+      },
+      "name": "list_messages"
+    },
+    {
+      "inputSchema": {
+        "properties": {
+          "chatID": {
+            "type": "string"
+          },
+          "replyToMessageID": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": ["chatID"],
+        "type": "object"
+      },
+      "name": "send_message"
+    },
+    {
+      "inputSchema": {
+        "properties": {
+          "archived": {
+            "type": "boolean"
+          },
+          "chatID": {
+            "type": "string"
+          }
+        },
+        "required": ["chatID"],
+        "type": "object"
+      },
+      "name": "archive_chat"
+    },
+    {
+      "inputSchema": {
+        "properties": {
+          "chatID": {
+            "type": "string"
+          },
+          "reminder": {
+            "properties": {
+              "dismissOnIncomingMessage": {
+                "type": "boolean"
+              },
+              "remindAtMs": {
+                "type": "number"
+              }
+            },
+            "required": ["remindAtMs"],
+            "type": "object"
+          }
+        },
+        "required": ["chatID", "reminder"],
+        "type": "object"
+      },
+      "name": "set_chat_reminder"
+    },
+    {
+      "inputSchema": {
+        "properties": {
+          "chatID": {
+            "type": "string"
+          }
+        },
+        "required": ["chatID"],
+        "type": "object"
+      },
+      "name": "clear_chat_reminder"
+    },
+    {
+      "inputSchema": {
+        "properties": {
+          "chatID": {
+            "type": "string"
+          },
+          "draftAttachmentPath": {
+            "type": "string"
+          },
+          "draftText": {
+            "type": "string"
+          },
+          "messageID": {
+            "type": "string"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "name": "focus_app"
+    },
+    {
+      "inputSchema": {
+        "properties": {
+          "language": {
+            "enum": [
+              "http",
+              "python",
+              "go",
+              "typescript",
+              "terraform",
+              "ruby",
+              "java",
+              "kotlin"
+            ],
+            "type": "string"
+          },
+          "query": {
+            "type": "string"
+          }
+        },
+        "required": ["query", "language"],
+        "type": "object"
+      },
+      "name": "search_docs"
+    }
+  ]
+}

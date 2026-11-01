@@ -4,9 +4,9 @@
 import CourierCore
 import SwiftUI
 
-/// `Settings ▸ Courier Plan` & `Settings ▸ Integrations`: covers `setting:beeper-plus Go Unlimited`,
-/// `PlusPill.tsx`, `FreebieNudge.tsx`, `SubscriptionExpiryBanners.tsx`, `BrowserExtPrefsSubView.tsx`,
-/// `MobileAppsPrefsSubView.tsx`, `SecretPrefsSubView.tsx`, `DebugPreferencesIndex.tsx`, and `setting:integrations *`.
+/// `Settings ▸ Courier Plan`: covers `setting:beeper-plus Go Unlimited`, `PlusPill.tsx`, `FreebieNudge.tsx`,
+/// `SubscriptionExpiryBanners.tsx` and `SecretPrefsSubView.tsx`. Settings ▸ Integrations is
+/// IntegrationsSettingsPane.swift.
 public struct PlusSettingsPane: View {
     public let entitlement: any EntitlementProvider
     public var highlightedSettingID: String? = nil
@@ -199,72 +199,5 @@ public struct SubscriptionExpiryBannerView: View {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(Color.primary.opacity(0.04))
         )
-    }
-}
-
-public struct IntegrationsSettingsPane: View {
-    public var highlightedSettingID: String? = nil
-
-    public init(highlightedSettingID: String? = nil) {
-        self.highlightedSettingID = highlightedSettingID
-    }
-
-    public var body: some View {
-        ScrollViewReader { proxy in
-            Form {
-                Section(String(localized: "Browser Extension")) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Text(String(localized: "Browser Companion Extension"))
-                                .font(.subheadline.weight(.medium))
-                            Spacer()
-                            Text(String(localized: "Not available yet"))
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                        }
-                        Text(String(localized: "Browser extension pairing isn’t available yet in Courier. Links and attachments open directly on this Mac."))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .settingAnchor("integrations.browserExtension", highlighted: highlightedSettingID)
-                }
-
-                Section(String(localized: "Mobile Companion Apps")) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Text(String(localized: "Mobile Companion Sync"))
-                                .font(.subheadline.weight(.medium))
-                            Spacer()
-                            Text(String(localized: "Not available yet"))
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                        }
-                        Text(String(localized: "Courier connects directly to your chat networks on this Mac without a cloud relay or mobile companion app."))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .settingAnchor("integrations.mobileApps", highlighted: highlightedSettingID)
-                }
-
-                Section(String(localized: "Advanced & Local Diagnostics")) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(String(localized: "Local-First Diagnostics"))
-                            .font(.subheadline.weight(.medium))
-                        Text(String(localized: "Use View ▸ Toggle Bridge Logs or Help ▸ Report a Problem… (⌘⇧P) to inspect local bridge activity and save scrubbed diagnostic bundles on this Mac."))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .settingAnchor("integrations.developer", highlighted: highlightedSettingID)
-                }
-            }
-            .formStyle(.grouped)
-            .onChange(of: highlightedSettingID, initial: true) { _, targetID in
-                if let targetID {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        proxy.scrollTo(targetID, anchor: .center)
-                    }
-                }
-            }
-        }
     }
 }

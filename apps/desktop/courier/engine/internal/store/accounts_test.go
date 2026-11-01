@@ -15,7 +15,7 @@ import (
 func TestMigration10SubAccountsAndRoomSpaces(t *testing.T) {
 	s, _ := openFixture(t, "m10.sql")
 	ctx := context.Background()
-	require.Equal(t, 10, SchemaVersion)
+	require.GreaterOrEqual(t, SchemaVersion, 10)
 	require.Equal(t, SchemaVersion, userVersion(t, s))
 	require.Equal(t, len(migrations), userVersion(t, s))
 
