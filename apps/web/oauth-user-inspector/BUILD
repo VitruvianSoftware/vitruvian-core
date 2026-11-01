@@ -189,6 +189,23 @@ rust_binary(
     deps = [":oauth_scripts_lib"],
 )
 
+# The container entrypoint end to end: `start` in the runtime image's /app
+# layout must exec the native server and answer on $PORT (#4041).
+rust_test(
+    name = "start_test",
+    size = "small",
+    srcs = ["scripts/tests/start_test.rs"],
+    data = [
+        ":oauth-user-inspector-server",
+        ":start",
+    ],
+    edition = "2021",
+    env = {
+        "SERVER_BIN": "$(rootpath :oauth-user-inspector-server)",
+        "START_BIN": "$(rootpath :start)",
+    },
+)
+
 rust_binary(
     name = "deploy-cloudbuild",
     srcs = ["scripts/src/bin/deploy.rs"],
@@ -233,6 +250,7 @@ pipeline_unit(
         ":oauth_scripts_lib_test",
         ":deploy_smoke_test",
         ":smoke_test",
+        ":start_test",
         ":unit_tests",
         # cloud_run_deploy's launcher check: the real :deploy reaches the sequencer.
         "//apps/web/oauth-user-inspector/infra/app:deploy_launcher_test",
