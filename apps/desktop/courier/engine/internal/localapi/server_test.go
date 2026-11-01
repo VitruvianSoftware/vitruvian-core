@@ -4,6 +4,7 @@
 package localapi_test
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"fmt"
@@ -11,11 +12,16 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/localapi"
+	"github.com/VitruvianSoftware/courier/engine/internal/sqlite"
 )
 
 // initialize is an MCP initialize request, the first thing a client sends.
@@ -212,3 +218,121 @@ func TestLogsCarryNoTokensOrText(t *testing.T) {
 		require.NotContains(t, out, secretish)
 	}
 }
+
+// A "last used" stamp that fails must not refuse a good token: the request goes on, and the failure is logged.
+func TestAFailedLastUsedStampKeepsTheRequest(t *testing.T) {
+	var logs syncBuffer
+	w := storeOnlyLog(t, zerolog.New(&logs))
+	_, secret := w.token(t, false)
+	db, err := sqlite.Open(w.dbPath)
+	require.NoError(t, err)
+	defer db.Close()
+	_, err = db.Exec(context.Background(), `CREATE TRIGGER busy BEFORE UPDATE ON api_tokens BEGIN SELECT RAISE(ABORT, 'database is locked'); END`)
+	require.NoError(t, err)
+
+	code, _ := post(t, w.url, initialize, map[string]string{"Authorization": "Bearer " + secret})
+	require.Equal(t, http.StatusOK, code)
+	require.Contains(t, logs.String(), "couldn't save a token's last use")
+	require.NotContains(t, logs.String(), secret)
+}
+
+// A connection that sits with no request is closed after the idle timeout.
+func TestIdleConnectionsAreClosed(t *testing.T) {
+	w := storeOnly(t)
+	w.api.SetIdleTimeout(200 * time.Millisecond)
+	st := w.listen(t, localapi.Config{Enabled: true})
+	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", st.Port))
+	require.NoError(t, err)
+	defer conn.Close()
+	fmt.Fprintf(conn, "POST %s HTTP/1.1\r\nHost: 127.0.0.1:%d\r\nContent-Length: 0\r\n\r\n", localapi.MCPPath, st.Port)
+	r := bufio.NewReader(conn)
+	resp, err := http.ReadResponse(r, nil)
+	require.NoError(t, err)
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+	require.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+
+	require.NoError(t, conn.SetReadDeadline(time.Now().Add(3*time.Second)))
+	_, err = r.ReadByte()
+	require.ErrorIs(t, err, io.EOF, "the server closed the idle connection (not the read deadline)")
+}
+
+// The SDK's long-lived GET stream is a response still being written, not an idle connection: the idle timeout
+// leaves it open.
+func TestStreamOutlivesTheIdleTimeout(t *testing.T) {
+	w := storeOnly(t)
+	w.api.SetIdleTimeout(100 * time.Millisecond)
+	w.listen(t, localapi.Config{Enabled: true})
+	_, secret := w.token(t, false)
+
+	// No kept-alive connections for the posts: with a 100 ms idle timeout, one could be closed by the server just as
+	// the client reuses it, which is a race of the test's tiny timeout, not what is tested here.
+	watch := &streamWatch{base: bearer{secret, &http.Transport{DisableKeepAlives: true}}}
+	c := mcp.NewClient(&mcp.Implementation{Name: "stream-test", Version: "1"}, nil)
+	sess, err := c.Connect(context.Background(), &mcp.StreamableClientTransport{
+		Endpoint: w.url, HTTPClient: &http.Client{Transport: watch}, MaxRetries: -1,
+	}, nil)
+	require.NoError(t, err)
+	defer sess.Close()
+	require.Eventually(t, watch.open, 5*time.Second, 10*time.Millisecond, "the client opens its GET stream")
+	time.Sleep(500 * time.Millisecond) // five idle timeouts
+	require.False(t, watch.ended(), "the stream is still open")
+	require.Equal(t, 1, watch.gets(), "and was never re-opened")
+	ok(t, sess, "search_docs", map[string]any{"query": "x", "language": "go"}, nil)
+}
+
+// streamWatch notes when a GET (the event stream) is answered and when its body ends.
+type streamWatch struct {
+	base http.RoundTripper
+	mu   sync.Mutex
+	n    int
+	done bool
+}
+
+func (s *streamWatch) RoundTrip(r *http.Request) (*http.Response, error) {
+	resp, err := s.base.RoundTrip(r)
+	if err != nil || r.Method != http.MethodGet || resp.StatusCode != http.StatusOK {
+		return resp, err
+	}
+	s.mu.Lock()
+	s.n++
+	s.mu.Unlock()
+	resp.Body = &watchedBody{ReadCloser: resp.Body, w: s}
+	return resp, nil
+}
+
+func (s *streamWatch) open() bool { s.mu.Lock(); defer s.mu.Unlock(); return s.n > 0 }
+func (s *streamWatch) gets() int  { s.mu.Lock(); defer s.mu.Unlock(); return s.n }
+func (s *streamWatch) ended() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.done
+}
+
+type watchedBody struct {
+	io.ReadCloser
+	w *streamWatch
+}
+
+func (b *watchedBody) Read(p []byte) (int, error) {
+	n, err := b.ReadCloser.Read(p)
+	if err != nil {
+		b.w.mu.Lock()
+		b.w.done = true
+		b.w.mu.Unlock()
+	}
+	return n, err
+}
+
+type syncBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuffer) String() string { s.mu.Lock(); defer s.mu.Unlock(); return s.b.String() }

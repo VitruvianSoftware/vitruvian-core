@@ -2513,6 +2513,15 @@
         }
       }
     },
+    "PairEnded": {
+      "doc": "A pairing request is over: answered, timed out after 120 s, or its client gone. Take its prompt down if it is still up; answering it now is -32020 (or, once its client has gone, makes no token).",
+      "fields": {
+        "requestID": {
+          "type": "string",
+          "doc": "integrations.pairRequest's requestID."
+        }
+      }
+    },
     "FocusParams": {
       "doc": "An MCP client's focus_app: bring Courier to the front, open the chat (if given) at the message (if given), and put draftText and the file at draftAttachmentPath in that chat's composer, unsent. The engine has checked that the chat and message exist and that the file is a readable regular file. A chat the app can't open leaves it on the inbox.",
       "fields": {
@@ -3148,8 +3157,12 @@
       "params": "Changed"
     },
     "integrations.pairRequest": {
-      "doc": "A client asks to connect to the local API (protocol 12). Sent to every connection that has said hello; answer with integrations.answerPairing within 120 s. One is waiting at a time.",
+      "doc": "A client asks to connect to the local API (protocol 12). Sent to every connection that has said hello; answer with integrations.answerPairing within 120 s. One is waiting at a time; integrations.pairEnded says when it is over.",
       "params": "PairRequest"
+    },
+    "integrations.pairEnded": {
+      "doc": "A pairing request is over, for any reason (protocol 12). Sent to every connection that has said hello. After one that ended without an Allow, new requests are refused (429) for 10 s, doubling with each such request in a row up to 5 minutes, until an Allow; a client that hangs up keeps the slot until its request is answered or times out.",
+      "params": "PairEnded"
     },
     "app.focus": {
       "doc": "An MCP client's focus_app (protocol 12). Sent to every connection that has said hello.",

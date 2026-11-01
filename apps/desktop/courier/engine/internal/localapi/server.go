@@ -41,6 +41,8 @@ const (
 	MCPPath = "/v0/mcp"
 	// MaxBodyBytes is the largest request body accepted; a larger one is 413.
 	MaxBodyBytes = 1 << 20
+	// IdleTimeout is how long a connection may sit between requests before it is closed.
+	IdleTimeout = 120 * time.Second
 )
 
 // Dispatcher calls one of the engine's protocol methods and returns its result as JSON. *rpc.Dispatcher is one.
@@ -49,10 +51,11 @@ type Dispatcher interface {
 	Dispatch(ctx context.Context, method string, params any) (json.RawMessage, error)
 }
 
-// Publisher sends a notification to the app and says how many app connections it was handed to. *rpc.Notifier is
-// one.
+// Publisher sends a notification to the app and says how many app connections it was handed to; Listeners is how
+// many there are now. *rpc.Notifier is one.
 type Publisher interface {
 	Publish(method string, params any) int
+	Listeners() int
 }
 
 // Config is how the local API should be running.
@@ -91,6 +94,15 @@ type Server struct {
 	port   atomic.Int64 // the port listened on: the Host guard's
 
 	pairs pairing // the pairing request waiting for the person, if any (pair.go)
+
+	idleTimeout time.Duration // IdleTimeout unless a test sets it (SetIdleTimeout)
+}
+
+// SetIdleTimeout changes IdleTimeout for listeners opened after it, for tests.
+func (s *Server) SetIdleTimeout(d time.Duration) {
+	s.mu.Lock()
+	s.idleTimeout = d
+	s.mu.Unlock()
 }
 
 // New is a local API serving from s, calling the engine through d and telling the app through p. It listens only
@@ -170,7 +182,13 @@ func (s *Server) Apply(ctx context.Context, cfg Config) Status {
 	s.remote.Store(cfg.Remote)
 	s.port.Store(int64(port))
 	s.ln = ln
-	s.srv = &http.Server{Handler: s.http, ReadHeaderTimeout: 10 * time.Second, ErrorLog: nil}
+	idle := s.idleTimeout
+	if idle <= 0 {
+		idle = IdleTimeout
+	}
+	// IdleTimeout closes a kept-alive connection that has sat with no request; a response still being written (the
+	// MCP SDK's long-lived GET stream) is not idle, so it isn't cut.
+	s.srv = &http.Server{Handler: s.http, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: idle}
 	s.served = make(chan struct{})
 	go func(srv *http.Server, done chan struct{}) {
 		defer close(done)
@@ -259,6 +277,11 @@ func (s *Server) requireToken(next http.Handler) http.Handler {
 			return
 		}
 		tok, err := s.store.LookupAPIToken(r.Context(), strings.TrimSpace(secret))
+		if errors.Is(err, store.ErrLastUsedNotSaved) {
+			// A good token whose last use couldn't be written down: only "last used" in Settings is behind.
+			s.log.Warn().Msg("the local API couldn't save a token's last use")
+			err = nil
+		}
 		if err != nil {
 			if !errors.Is(err, store.ErrNotFound) {
 				s.log.Warn().Msg("the local API couldn't look a token up")

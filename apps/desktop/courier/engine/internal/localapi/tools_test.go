@@ -430,26 +430,20 @@ func TestChatReminders(t *testing.T) {
 }
 
 // focus_app tells the app what to open; a bad attachment is refused before the app hears anything, so it never
-// opens a half-filled composer (Review Focus 4).
+// opens a half-filled composer (Review Focus 4). Every way a file can be wrong reads the same, so the tool can't be
+// used to learn what is on this Mac.
 func TestFocusApp(t *testing.T) {
 	w := newWorld(t, 2)
-	sess := w.session(t, false)
+	sess := w.session(t, true)
 	dir := t.TempDir()
 	file := filepath.Join(dir, "notes.txt")
 	require.NoError(t, os.WriteFile(file, []byte("x"), 0o600))
 	locked := filepath.Join(dir, "locked.txt")
 	require.NoError(t, os.WriteFile(locked, []byte("x"), 0o000))
 
-	for _, c := range []struct {
-		path, want string
-	}{
-		{filepath.Join(dir, "missing.txt"), "doesn't name a file"},
-		{dir, "not a folder"},
-		{locked, "can't read"},
-		{"notes.txt", "absolute path"},
-	} {
-		msg := fails(t, sess, "focus_app", map[string]any{"chatID": w.room, "draftText": "hi", "draftAttachmentPath": c.path})
-		require.Contains(t, msg, c.want, c.path)
+	for _, path := range []string{filepath.Join(dir, "missing.txt"), dir, locked, "notes.txt", "/dev/null"} {
+		msg := fails(t, sess, "focus_app", map[string]any{"chatID": w.room, "draftText": "hi", "draftAttachmentPath": path})
+		require.Equal(t, "Courier can't attach that file.", msg, path)
 	}
 	require.Contains(t, fails(t, sess, "focus_app", map[string]any{"draftText": "hi"}), "need a chatID")
 	require.Empty(t, w.pub.all(), "nothing reached the app")
@@ -464,8 +458,38 @@ func TestFocusApp(t *testing.T) {
 	require.Equal(t, localapi.FocusParams{ChatID: w.room, MessageID: w.events[1]}, sent[1].params, "a message's chat is found for it")
 	require.Equal(t, localapi.FocusParams{}, sent[2].params)
 
-	w.pub.nobody = true
+	w.pub.setNobody(true)
 	require.Contains(t, fails(t, sess, "focus_app", nil), "isn't open")
+}
+
+// The checks that need no file come first: a call that fails on them says so whatever the path, so it learns
+// nothing about the disk.
+func TestFocusAppChecksEverythingElseBeforeTheFile(t *testing.T) {
+	w := newWorld(t, 1)
+	sess := w.session(t, true)
+	missing := filepath.Join(t.TempDir(), "missing.txt")
+
+	// No chat for the draft: the chat error, not the file's.
+	require.Contains(t, fails(t, sess, "focus_app", map[string]any{"draftAttachmentPath": missing}), "need a chatID")
+	// No app to bring forward: that, not the file's.
+	w.pub.setNobody(true)
+	require.Contains(t, fails(t, sess, "focus_app", map[string]any{"chatID": w.room, "draftAttachmentPath": missing}), "isn't open")
+	w.pub.setNobody(false)
+	require.Equal(t, "Courier can't attach that file.", fails(t, sess, "focus_app", map[string]any{"chatID": w.room, "draftAttachmentPath": missing}))
+}
+
+// An attachment goes out with the message it drafts, so it needs a token that may send.
+func TestFocusAppAttachmentNeedsSendPermission(t *testing.T) {
+	w := newWorld(t, 1)
+	readOnly := w.session(t, false)
+	file := filepath.Join(t.TempDir(), "notes.txt")
+	require.NoError(t, os.WriteFile(file, []byte("x"), 0o600))
+	for _, path := range []string{file, filepath.Join(t.TempDir(), "missing.txt")} {
+		msg := fails(t, readOnly, "focus_app", map[string]any{"chatID": w.room, "draftAttachmentPath": path})
+		require.Contains(t, msg, "needs permission to send messages", "the same answer, file or not")
+	}
+	ok(t, readOnly, "focus_app", map[string]any{"chatID": w.room, "draftText": "hi"}, nil) // a text draft is fine
+	require.Len(t, w.pub.all(), 1)
 }
 
 func TestSearchDocsIsAStub(t *testing.T) {

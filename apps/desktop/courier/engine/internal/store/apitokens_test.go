@@ -172,3 +172,17 @@ func TestLocalAPISettingsSurviveReopening(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "Kept", tok.Name)
 }
+
+// A token whose last use can't be written (the database busy, say) is still a good token: the lookup returns it,
+// with ErrLastUsedNotSaved for the caller to log.
+func TestAPITokenLookupSurvivesAFailedStamp(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	tok, secret, err := s.CreateAPIToken(ctx, "Test client", true)
+	require.NoError(t, err)
+	_, err = s.db.Exec(ctx, `CREATE TRIGGER busy BEFORE UPDATE ON api_tokens BEGIN SELECT RAISE(ABORT, 'database is locked'); END`)
+	require.NoError(t, err)
+	got, err := s.LookupAPIToken(ctx, secret)
+	require.ErrorIs(t, err, ErrLastUsedNotSaved)
+	require.Equal(t, tok.ID, got.ID)
+	require.True(t, got.CanSend)
+}

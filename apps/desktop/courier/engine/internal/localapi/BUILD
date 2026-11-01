@@ -42,6 +42,7 @@ go_test(
         "//apps/desktop/courier/engine/internal/richtext",
         "//apps/desktop/courier/engine/internal/rpc",
         "//apps/desktop/courier/engine/internal/search",
+        "//apps/desktop/courier/engine/internal/sqlite",
         "//apps/desktop/courier/engine/internal/store",
         "@com_github_modelcontextprotocol_go_sdk//mcp",
         "@com_github_rs_zerolog//:zerolog",

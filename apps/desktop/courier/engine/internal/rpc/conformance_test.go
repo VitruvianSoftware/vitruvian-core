@@ -435,6 +435,7 @@ func TestGoStructJSONKeysMatchProtocol(t *testing.T) {
 		{"IntegrationsStatus", localapi.Status{}},
 		{"APIToken", apiTokenJSON{}},
 		{"PairRequest", localapi.PairRequest{}},
+		{"PairEnded", localapi.PairEnded{}},
 		{"FocusParams", localapi.FocusParams{ChatID: "!r:courier.local", MessageID: "$e", DraftText: "t", DraftAttachmentPath: "/f"}},
 	}
 	for _, tc := range cases {
@@ -1338,6 +1339,9 @@ func triggerNotice(t *testing.T, w *world, c *client, name, method string) map[s
 	t.Helper()
 	switch name {
 	case "integrations-pairRequest":
+		req := pairRequest(t, w)
+		require.NoError(t, w.deps.LocalAPI.AnswerPairing(req.RequestID, false, false))
+	case "integrations-pairEnded":
 		req := pairRequest(t, w)
 		require.NoError(t, w.deps.LocalAPI.AnswerPairing(req.RequestID, false, false))
 	case "app-focus":

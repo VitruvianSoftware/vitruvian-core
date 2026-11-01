@@ -52,6 +52,21 @@ func (r *recorder) Publish(method string, params any) int {
 	return 1
 }
 
+func (r *recorder) Listeners() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.nobody {
+		return 0
+	}
+	return 1
+}
+
+func (r *recorder) setNobody(v bool) {
+	r.mu.Lock()
+	r.nobody = v
+	r.mu.Unlock()
+}
+
 func (r *recorder) all() []published {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -69,16 +84,23 @@ type world struct {
 	room    string
 	events  []string // the chat's messages, oldest first
 	url     string   // the MCP endpoint
+	dbPath  string   // courier.db (storeOnly)
 }
 
 // storeOnly is a store and the local API over it, with no networks: enough for the HTTP guards.
 func storeOnly(t *testing.T) *world {
 	t.Helper()
-	s, err := store.Open(filepath.Join(t.TempDir(), "courier.db"))
+	return storeOnlyLog(t, zerolog.Nop())
+}
+
+func storeOnlyLog(t *testing.T, log zerolog.Logger) *world {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "courier.db")
+	s, err := store.Open(path)
 	require.NoError(t, err)
 	t.Cleanup(func() { s.Close() })
-	w := &world{s: s, pub: &recorder{}}
-	w.api = localapi.New(s, rpc.NewDispatcher(rpc.Deps{Store: s, Search: search.New(s)}), w.pub, zerolog.Nop())
+	w := &world{s: s, pub: &recorder{}, dbPath: path}
+	w.api = localapi.New(s, rpc.NewDispatcher(rpc.Deps{Store: s, Search: search.New(s)}), w.pub, log)
 	w.listen(t, localapi.Config{Enabled: true})
 	return w
 }

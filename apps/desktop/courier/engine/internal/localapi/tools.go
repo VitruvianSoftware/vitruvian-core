@@ -1403,7 +1403,7 @@ type FocusParams struct {
 	DraftAttachmentPath string `json:"draftAttachmentPath,omitempty"`
 }
 
-func (s *Server) focusApp(ctx context.Context, _ *mcp.CallToolRequest, raw json.RawMessage) (any, error) {
+func (s *Server) focusApp(ctx context.Context, req *mcp.CallToolRequest, raw json.RawMessage) (any, error) {
 	var a struct {
 		ChatID              *string `json:"chatID"`
 		DraftAttachmentPath *string `json:"draftAttachmentPath"`
@@ -1435,42 +1435,51 @@ func (s *Server) focusApp(ctx context.Context, _ *mcp.CallToolRequest, raw json.
 	if a.DraftText != nil && *a.DraftText != "" {
 		p.DraftText = *a.DraftText
 	}
-	if a.DraftAttachmentPath != nil && *a.DraftAttachmentPath != "" {
-		path, err := readableFile(*a.DraftAttachmentPath)
-		if err != nil {
-			return nil, err
+	attach := a.DraftAttachmentPath != nil && *a.DraftAttachmentPath != ""
+	// Everything that needs no file is checked first, so a call that would fail anyway never looks at the disk:
+	// the file is the last thing checked, and every way it can be wrong reads the same (fileError), so the tool
+	// can't be used to learn what exists on this Mac.
+	if (p.DraftText != "" || attach) && p.ChatID == "" {
+		return nil, fail("draftText and draftAttachmentPath need a chatID: a draft belongs to a chat.")
+	}
+	if s.pub == nil || s.pub.Listeners() == 0 {
+		return nil, fail("Courier's window isn't open to bring forward.")
+	}
+	if attach {
+		if !canSend(req) {
+			return nil, fail("Attaching a file needs permission to send messages. Turn on \"Can send messages\" for this connection in Courier's Settings → Integrations.")
+		}
+		path, ok := readableFile(*a.DraftAttachmentPath)
+		if !ok {
+			return nil, fail(fileError)
 		}
 		p.DraftAttachmentPath = path
 	}
-	if (p.DraftText != "" || p.DraftAttachmentPath != "") && p.ChatID == "" {
-		return nil, fail("draftText and draftAttachmentPath need a chatID: a draft belongs to a chat.")
-	}
-	if s.pub == nil || s.pub.Publish("app.focus", p) == 0 {
+	if s.pub.Publish("app.focus", p) == 0 {
 		return nil, fail("Courier's window isn't open to bring forward.")
 	}
 	return map[string]any{"focused": true, "chatID": p.ChatID, "messageID": p.MessageID}, nil
 }
 
-// readableFile is path, made absolute, if it names a regular file this engine can read; otherwise a tool error that
-// says which of those it isn't.
-func readableFile(path string) (string, error) {
+// fileError is focus_app's one answer for an attachment it won't take, whatever is wrong with it.
+const fileError = "Courier can't attach that file."
+
+// readableFile is path, cleaned, and whether it is an absolute path to a regular file this engine can read.
+func readableFile(path string) (string, bool) {
 	if !filepath.IsAbs(path) {
-		return "", fail("draftAttachmentPath must be an absolute path.")
+		return "", false
 	}
 	path = filepath.Clean(path)
 	fi, err := os.Stat(path)
-	if err != nil {
-		return "", fail("draftAttachmentPath doesn't name a file that exists.")
-	}
-	if !fi.Mode().IsRegular() {
-		return "", fail("draftAttachmentPath must be a file, not a folder or anything else.")
+	if err != nil || !fi.Mode().IsRegular() {
+		return "", false
 	}
 	f, err := os.Open(path)
 	if err != nil {
-		return "", fail("Courier can't read the file draftAttachmentPath names.")
+		return "", false
 	}
 	f.Close()
-	return path, nil
+	return path, true
 }
 
 func (s *Server) searchDocs(context.Context, *mcp.CallToolRequest, json.RawMessage) (any, error) {

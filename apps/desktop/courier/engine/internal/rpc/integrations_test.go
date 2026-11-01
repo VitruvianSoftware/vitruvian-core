@@ -151,21 +151,30 @@ func TestIntegrationsUpdateAppliesAndSaves(t *testing.T) {
 type pairResult struct {
 	status int
 	body   string
+	header http.Header
 }
 
 func pair(t *testing.T, port int, clientName string) <-chan pairResult {
 	t.Helper()
+	return pairCtx(t, context.Background(), port, clientName)
+}
+
+// pairCtx is pair with a context: cancelling it hangs the client up.
+func pairCtx(t *testing.T, ctx context.Context, port int, clientName string) <-chan pairResult {
+	t.Helper()
 	out := make(chan pairResult, 1)
 	go func() {
 		b, _ := json.Marshal(map[string]string{"clientName": clientName})
-		resp, err := http.Post(fmt.Sprintf("http://127.0.0.1:%d%s", port, localapi.PairPath), "application/json", strings.NewReader(string(b)))
+		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, fmt.Sprintf("http://127.0.0.1:%d%s", port, localapi.PairPath), strings.NewReader(string(b)))
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := (&http.Client{Transport: &http.Transport{DisableKeepAlives: true}}).Do(req)
 		if err != nil {
 			out <- pairResult{status: -1, body: err.Error()}
 			return
 		}
 		defer resp.Body.Close()
 		body, _ := io.ReadAll(resp.Body)
-		out <- pairResult{status: resp.StatusCode, body: string(body)}
+		out <- pairResult{status: resp.StatusCode, body: string(body), header: resp.Header}
 	}()
 	return out
 }
@@ -181,24 +190,47 @@ func waitPair(t *testing.T, ch <-chan pairResult) pairResult {
 	}
 }
 
-func TestPairingAllowDenyTimeoutAndOneAtATime(t *testing.T) {
-	s, api, c := integrationsWorld(t)
-	st := api.Apply(context.Background(), localapi.Config{Enabled: true})
-	require.True(t, st.Listening, st.Error)
-
-	// Allow and Send Messages: the client gets a working token named as it asked, cleaned.
-	res := pair(t, st.Port, "Claude‮ Desktop\n")
+// pairRequestNotice waits for the app to be asked, and returns the request.
+func pairRequestNotice(t *testing.T, c *client) localapi.PairRequest {
+	t.Helper()
 	var req localapi.PairRequest
 	require.NoError(t, json.Unmarshal(c.notice(localapi.NoticePairRequest), &req))
+	return req
+}
+
+// pairEndedNotice waits for the app to be told a request is over, and returns its ID.
+func pairEndedNotice(t *testing.T, c *client) string {
+	t.Helper()
+	var ended localapi.PairEnded
+	require.NoError(t, json.Unmarshal(c.notice(localapi.NoticePairEnded), &ended))
+	return ended.RequestID
+}
+
+func pairingWorld(t *testing.T, cooldown time.Duration) (*store.Store, *localapi.Server, *client, int) {
+	t.Helper()
+	s, api, c := integrationsWorld(t)
+	api.SetPairCooldown(cooldown)
+	st := api.Apply(context.Background(), localapi.Config{Enabled: true})
+	require.True(t, st.Listening, st.Error)
+	return s, api, c, st.Port
+}
+
+func TestPairingAllowDenyTimeoutAndOneAtATime(t *testing.T) {
+	s, api, c, port := pairingWorld(t, time.Millisecond)
+
+	// Allow and Send Messages: the client gets a working token named as it asked, cleaned.
+	res := pair(t, port, "Claude\u202e Desktop\n")
+	req := pairRequestNotice(t, c)
 	require.Equal(t, "Claude Desktop", req.ClientName)
 
 	// Another while that one waits: 429.
-	second := waitPair(t, pair(t, st.Port, "Second"))
+	second := waitPair(t, pair(t, port, "Second"))
 	require.Equal(t, http.StatusTooManyRequests, second.status)
 
 	c.ok("integrations.answerPairing", map[string]any{"requestID": req.RequestID, "allow": true, "canSend": true}, nil)
 	got := waitPair(t, res)
 	require.Equal(t, http.StatusOK, got.status, got.body)
+	require.Equal(t, req.RequestID, pairEndedNotice(t, c), "the app hears it is over")
 	var body struct {
 		Token string `json:"token"`
 	}
@@ -209,20 +241,23 @@ func TestPairingAllowDenyTimeoutAndOneAtATime(t *testing.T) {
 	require.True(t, tok.CanSend)
 	c.fails(CodeNotFound, "integrations.answerPairing", map[string]any{"requestID": req.RequestID, "allow": true})
 
-	// Don't Allow: 403, and no token.
-	res = pair(t, st.Port, "Denied client")
-	require.NoError(t, json.Unmarshal(c.notice(localapi.NoticePairRequest), &req))
+	// Don't Allow: 403, no token, and the app hears it is over.
+	res = pair(t, port, "Denied client")
+	req = pairRequestNotice(t, c)
 	c.ok("integrations.answerPairing", map[string]any{"requestID": req.RequestID, "allow": false}, nil)
 	got = waitPair(t, res)
 	require.Equal(t, http.StatusForbidden, got.status)
 	require.JSONEq(t, `{"error":"denied"}`, got.body)
+	require.Equal(t, req.RequestID, pairEndedNotice(t, c))
 
-	// No answer in time: 403, and the request is gone.
+	// No answer in time: 403, the app hears it is over, and the request is gone.
+	time.Sleep(20 * time.Millisecond) // past the (shortened) cooldown
 	api.SetPairTimeout(100 * time.Millisecond)
-	res = pair(t, st.Port, "Slow")
-	require.NoError(t, json.Unmarshal(c.notice(localapi.NoticePairRequest), &req))
+	res = pair(t, port, "Slow")
+	req = pairRequestNotice(t, c)
 	got = waitPair(t, res)
 	require.Equal(t, http.StatusForbidden, got.status)
+	require.Equal(t, req.RequestID, pairEndedNotice(t, c))
 	c.fails(CodeNotFound, "integrations.answerPairing", map[string]any{"requestID": req.RequestID, "allow": true})
 
 	toks, err := s.ListAPITokens(context.Background())
@@ -231,7 +266,7 @@ func TestPairingAllowDenyTimeoutAndOneAtATime(t *testing.T) {
 
 	// The guards apply: a browser can't ask, nor can a Host other than loopback with Remote Access off.
 	for _, h := range []map[string]string{{"Origin": "https://evil.example"}, {"Host": "evil.example"}} {
-		r, err := http.NewRequest(http.MethodPost, fmt.Sprintf("http://127.0.0.1:%d%s", st.Port, localapi.PairPath), strings.NewReader(`{"clientName":"x"}`))
+		r, err := http.NewRequest(http.MethodPost, fmt.Sprintf("http://127.0.0.1:%d%s", port, localapi.PairPath), strings.NewReader(`{"clientName":"x"}`))
 		require.NoError(t, err)
 		for k, v := range h {
 			if k == "Host" {
@@ -245,6 +280,75 @@ func TestPairingAllowDenyTimeoutAndOneAtATime(t *testing.T) {
 		resp.Body.Close()
 		require.Equal(t, http.StatusForbidden, resp.StatusCode, "%v", h)
 	}
+}
+
+// A client that asks and hangs up can't put up prompt after prompt: its request keeps the slot until the person
+// answers or the time is up, the app is told to take the prompt down, and an Allow for it makes no token.
+func TestPairingDisconnectThenRetryIs429(t *testing.T) {
+	s, _, c, port := pairingWorld(t, time.Hour)
+	ctx, hangUp := context.WithCancel(context.Background())
+	res := pairCtx(t, ctx, port, "Flooder")
+	req := pairRequestNotice(t, c)
+	hangUp()
+	require.Equal(t, -1, waitPair(t, res).status)
+	require.Equal(t, req.RequestID, pairEndedNotice(t, c), "the prompt comes down")
+
+	for range 3 {
+		again := waitPair(t, pair(t, port, "Flooder"))
+		require.Equal(t, http.StatusTooManyRequests, again.status, "the slot is still taken")
+	}
+
+	// The person answers the request whose client left: no token, and the cooldown starts.
+	c.ok("integrations.answerPairing", map[string]any{"requestID": req.RequestID, "allow": true, "canSend": true}, nil)
+	require.Eventually(t, func() bool {
+		r := waitPair(t, pair(t, port, "Flooder"))
+		return r.status == http.StatusTooManyRequests && r.header.Get("Retry-After") != ""
+	}, 5*time.Second, 20*time.Millisecond, "in the cooldown now, which says when to retry")
+	toks, err := s.ListAPITokens(context.Background())
+	require.NoError(t, err)
+	require.Empty(t, toks, "nobody to give a token to: none made")
+	select {
+	case m := <-c.notes:
+		require.NotEqual(t, localapi.NoticePairRequest, m.Method, "no new prompt went up")
+	default:
+	}
+}
+
+// After each request that ends without an Allow, new requests wait longer; an Allow resets it.
+func TestPairingCooldownGrows(t *testing.T) {
+	const base = 300 * time.Millisecond
+	_, _, c, port := pairingWorld(t, base)
+	deny := func() {
+		t.Helper()
+		res := pair(t, port, "Client")
+		req := pairRequestNotice(t, c)
+		c.ok("integrations.answerPairing", map[string]any{"requestID": req.RequestID, "allow": false}, nil)
+		require.Equal(t, http.StatusForbidden, waitPair(t, res).status)
+		pairEndedNotice(t, c)
+	}
+	refused := func() bool {
+		t.Helper()
+		return waitPair(t, pair(t, port, "Client")).status == http.StatusTooManyRequests
+	}
+
+	deny()
+	require.True(t, refused(), "in the first cooldown")
+	time.Sleep(base + 100*time.Millisecond)
+	deny() // the first cooldown is over: asked again, and denied again
+	time.Sleep(base + 100*time.Millisecond)
+	require.True(t, refused(), "the second cooldown is twice as long")
+	time.Sleep(base + 100*time.Millisecond)
+
+	// An Allow resets it: the next request is asked at once.
+	res := pair(t, port, "Client")
+	req := pairRequestNotice(t, c)
+	c.ok("integrations.answerPairing", map[string]any{"requestID": req.RequestID, "allow": true}, nil)
+	require.Equal(t, http.StatusOK, waitPair(t, res).status)
+	pairEndedNotice(t, c)
+	res = pair(t, port, "Client")
+	req = pairRequestNotice(t, c)
+	c.ok("integrations.answerPairing", map[string]any{"requestID": req.RequestID, "allow": false}, nil)
+	waitPair(t, res)
 }
 
 // With no app connected there is no one to ask: refused at once.

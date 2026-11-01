@@ -108,6 +108,13 @@ func (n *Notifier) Publish(method string, params any) int {
 	return sent
 }
 
+// Listeners is how many connections would be handed a notification now.
+func (n *Notifier) Listeners() int {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return len(n.subs)
+}
+
 func (n *Notifier) subscribe() (chan []byte, func()) {
 	ch := make(chan []byte, noticeQueue)
 	n.mu.Lock()

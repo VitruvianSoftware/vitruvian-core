@@ -102,8 +102,13 @@ func (s *Store) CreateAPIToken(ctx context.Context, name string, canSend bool) (
 	return tok, secret, nil
 }
 
+// ErrLastUsedNotSaved is LookupAPIToken's error when the token is good but its last use couldn't be written (the
+// database busy, say). The token it returns with it is valid: the request goes on.
+var ErrLastUsedNotSaved = errors.New("the token's last use couldn't be saved")
+
 // LookupAPIToken is the token whose secret is secret: ErrNotFound when there is none or it was revoked. It stamps
-// the token's last use, at most once a minute.
+// the token's last use, at most once a minute; when that write fails it returns the token all the same, with
+// ErrLastUsedNotSaved.
 func (s *Store) LookupAPIToken(ctx context.Context, secret string) (APIToken, error) {
 	if !strings.HasPrefix(secret, TokenPrefix) {
 		return APIToken{}, ErrNotFound
@@ -137,7 +142,7 @@ WHERE hash = $1 AND revoked_ms IS NULL`, want).Scan(&tok.ID, &tok.Name, &hash, &
 	}
 	if !lastUsed.Valid || now.Sub(tok.LastUsed) >= lastUsedEvery {
 		if _, err = s.db.Exec(ctx, `UPDATE api_tokens SET last_used_ms = $2 WHERE id = $1`, tok.ID, now.UnixMilli()); err != nil {
-			return APIToken{}, err
+			return tok, ErrLastUsedNotSaved
 		}
 		tok.LastUsed = time.UnixMilli(now.UnixMilli())
 	}
