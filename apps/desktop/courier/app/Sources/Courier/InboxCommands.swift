@@ -53,6 +53,12 @@ struct InboxCommands: Commands {
             .registryShortcut("Search", in: hotkeys)
             .disabled(!hotkeyDispatcher.canPerform("Search"))
 
+            Button(String(localized: "Command Bar…")) {
+                dispatch(HotkeyID.commandBar)
+            }
+            .registryShortcut(HotkeyID.commandBar, in: hotkeys)
+            .disabled(!hotkeyDispatcher.canPerform(HotkeyID.commandBar))
+
             Button(String(localized: "Focus Courier")) {
                 dispatch("Focus App")
             }
@@ -165,6 +171,22 @@ struct InboxCommands: Commands {
                 openWindow(id: WindowID.label, value: LabelWindowTarget.new(applyTo: []))
             }
             .disabled(lifecycle.isLocked)
+            Divider()
+            Button(String(localized: "Zoom In")) {
+                dispatch(HotkeyID.zoomIn)
+            }
+            .registryShortcut(HotkeyID.zoomIn, in: hotkeys)
+            .disabled(!hotkeyDispatcher.canPerform(HotkeyID.zoomIn))
+            Button(String(localized: "Zoom Out")) {
+                dispatch(HotkeyID.zoomOut)
+            }
+            .registryShortcut(HotkeyID.zoomOut, in: hotkeys)
+            .disabled(!hotkeyDispatcher.canPerform(HotkeyID.zoomOut))
+            Button(String(localized: "Actual Size")) {
+                dispatch(HotkeyID.resetZoom)
+            }
+            .registryShortcut(HotkeyID.resetZoom, in: hotkeys)
+            .disabled(!hotkeyDispatcher.canPerform(HotkeyID.resetZoom))
             Divider()
         }
         CommandMenu(String(localized: "Chat")) {

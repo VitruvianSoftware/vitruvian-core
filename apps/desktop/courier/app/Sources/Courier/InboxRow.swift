@@ -14,6 +14,8 @@ struct RowStyle: Equatable {
     var colorNetworkIcons = true
     var hoverAction = HoverAction.archive
     var timeFormat = TimeFormatPreference.system
+    var redactNamesAndPictures = false
+    var fontSizeScale = FontSizeScale.default
 
     init(_ preferences: InboxPreferences, timeFormat: TimeFormatPreference = .system) {
         showPreviews = preferences.showPreviews
@@ -49,6 +51,29 @@ struct InboxRowView<HoverMenu: View>: View {
     let decline: () -> Void
     /// The hover button's menu, when the setting is Menu.
     @ViewBuilder let hoverMenu: () -> HoverMenu
+    @Environment(\.appearancePreferences) private var appearanceEnv
+
+    @Environment(\.courierZoomMultiplier) private var zoom
+
+    /// The chat's name: the body or headline style (13 pt), at the zoom level.
+    private var titleFont: Font {
+        guard zoom != 1 else { return style.compact ? .body : .headline }
+        return .system(size: round(13 * zoom * 2) / 2, weight: style.compact ? .regular : .bold)
+    }
+
+    /// The preview line: the font size setting, at the zoom level.
+    private var previewPointSize: CGFloat {
+        round((appearanceEnv?.fontSizeScale ?? style.fontSizeScale).inboxPreviewPointSize * zoom * 2) / 2
+    }
+
+    private var isRedacted: Bool {
+        style.redactNamesAndPictures || (appearanceEnv?.redactNamesAndPictures ?? false)
+    }
+
+    private var displayTitle: String {
+        let raw = row.name.isEmpty ? String(localized: "Unnamed chat") : row.name
+        return isRedacted ? AppearancePreferences.redactedText(raw, kind: .chatTitle) : raw
+    }
 
     var body: some View {
         HStack(spacing: style.compact ? 8 : 10) {
@@ -61,8 +86,8 @@ struct InboxRowView<HoverMenu: View>: View {
             avatar
             VStack(alignment: .leading, spacing: style.compact ? 1 : 3) {
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text(row.name.isEmpty ? String(localized: "Unnamed chat") : row.name)
-                        .font(style.compact ? .body : .headline)
+                    Text(displayTitle)
+                        .font(titleFont)
                         .fontWeight(row.isUnread ? .semibold : .regular)
                         .lineLimit(1)
                         // The name keeps its room first; the account tag gives way before it.
@@ -83,7 +108,7 @@ struct InboxRowView<HoverMenu: View>: View {
                 }
                 HStack(alignment: .top, spacing: 6) {
                     secondLine
-                        .font(.subheadline)
+                        .font(.system(size: previewPointSize))
                         .foregroundStyle(.secondary)
                         .lineLimit(style.compact ? 1 : 2)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -119,6 +144,8 @@ struct InboxRowView<HoverMenu: View>: View {
         let size: CGFloat = style.compact ? 28 : 40
         let badgeSize: CGFloat = style.compact ? 11 : 14
         return ChatAvatar(row: row)
+            .blur(radius: isRedacted ? 6 : 0)
+            .clipShape(Circle())
             .frame(width: size, height: size)
             .overlay(alignment: .bottomTrailing) {
                 if style.showNetworkIcons {

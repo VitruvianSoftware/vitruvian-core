@@ -147,6 +147,9 @@ enum MessageRowActions {
                 case .showReplies: conversation.openThread(id)
                 case .copyMessageDetails: messageActions.copyMessageDetails(id, from: source)
                 case .reportProblem: messageActions.reportProblem(for: id, from: source)
+                case .translate:
+                    let lang = composer.aiPreferences.translationLanguages.first ?? "English"
+                    messageActions.translateMessage(eventID: id, targetLanguage: lang)
                 case .info: break
                 }
             },
@@ -187,6 +190,14 @@ enum MessageRowActions {
             },
             loadExternalEmbedsAutomatically: preferences.loadExternalEmbedsAutomatically,
             timeFormat: preferences.timeFormat,
-            showMessageTimestamps: preferences.showMessageTimestamps)
+            showMessageTimestamps: preferences.showMessageTimestamps,
+            translation: { id in
+                guard let disp = messageActions.translations[id] else { return nil }
+                let lang = messageActions.translationTargetLanguages[id] ?? "English"
+                return (lang, disp)
+            },
+            dismissTranslation: { id in
+                messageActions.dismissTranslation(eventID: id)
+            })
     }
 }

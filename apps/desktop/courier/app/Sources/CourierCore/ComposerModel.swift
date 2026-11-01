@@ -67,6 +67,8 @@ public enum ComposerNotice: Equatable, Sendable {
     /// The text is longer than the chat's network takes (`ChatFeatures.maxTextLength`, counted in bytes of UTF-8,
     /// so an emoji counts four). Nothing was sent, and the text stays to be shortened.
     case textTooLong
+    /// Calm stub notice for features not available yet in Courier (`AIProvider` Talk to Type, Draft with AI, slash commands).
+    case calmStub(reason: String)
 
     /// User-facing text shown in the notice banner under the composer.
     public var displayText: String {
@@ -91,8 +93,47 @@ public enum ComposerNotice: Equatable, Sendable {
                 : String(localized: "Could not import sticker: \(reason)")
         case .textTooLong:
             String(localized: "This message is too long for this chat. Shorten it, or send it in parts.")
+        case let .calmStub(reason):
+            reason
         }
     }
+}
+
+/// Slash command trigger surfaced in the composer when `aiPreferences.enableSlashCommands` is enabled.
+public struct ComposerSlashCommand: Equatable, Sendable, Identifiable {
+    public let trigger: String
+    public let title: String
+    public let summary: String
+    public var id: String { trigger }
+
+    public init(trigger: String, title: String, summary: String) {
+        self.trigger = trigger
+        self.title = title
+        self.summary = summary
+    }
+
+    public static let allCommands: [ComposerSlashCommand] = [
+        ComposerSlashCommand(
+            trigger: "/ai",
+            title: String(localized: "Ask AI"),
+            summary: String(localized: "Ask contextual AI about the current conversation (Not available yet)")
+        ),
+        ComposerSlashCommand(
+            trigger: "/draft",
+            title: String(localized: "Draft with AI"),
+            summary: String(localized: "Rewrite or draft a reply in this chat (Not available yet)")
+        ),
+        ComposerSlashCommand(
+            trigger: "/summarize",
+            title: String(localized: "Summarize Chat"),
+            summary: String(localized: "Summarize recent messages in this chat (Not available yet)")
+        ),
+        ComposerSlashCommand(
+            trigger: "/translate",
+            title: String(localized: "Translate Draft"),
+            summary: String(localized: "Translate your message draft before sending (Not available yet)")
+        ),
+    ]
 }
 
 /// Where the composer asks the text view to put the caret, in UTF-16 units. A new request has a higher serial.
@@ -290,6 +331,10 @@ public final class ComposerModel: ObservableObject {
     public var thumbnailLoader: ThumbnailLoader?
     /// Offline GIF provider (StubGIFProvider in Iteration 1; zero network calls).
     public var gifProvider: any GIFProvider = StubGIFProvider()
+    /// Offline AI provider (UnavailableAIProvider in Iteration 1; zero network calls).
+    public var aiProvider: any AIProvider = UnavailableAIProvider()
+    /// Local AI preferences (`AIPreferences`).
+    public var aiPreferences: AIPreferences = AIPreferences()
     @Published public var isEmojiPickerPresented: Bool = false
     @Published public var isStickerPickerPresented: Bool = false
     @Published public var isGIFPickerPresented: Bool = false
@@ -2586,6 +2631,49 @@ public final class ComposerModel: ObservableObject {
     public func sendHeldNow() async {
         guard !isLocked, let room = roomID else { return }
         await held.sendNow(in: room)
+    }
+
+    // MARK: - AI & Slash Command Stubs (Milestone 4.7)
+
+    /// Matching `/` slash commands when `aiPreferences.enableSlashCommands` is enabled and `text` begins with `/`.
+    public var slashCommandSuggestions: [ComposerSlashCommand] {
+        guard aiPreferences.enableSlashCommands else { return [] }
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        guard trimmed.hasPrefix("/") else { return [] }
+        let token = String(trimmed.prefix(while: { !$0.isWhitespace })).lowercased()
+        return ComposerSlashCommand.allCommands.filter { cmd in
+            cmd.trigger.lowercased().hasPrefix(token)
+        }
+    }
+
+    /// Triggers Talk to Type (`⌘⇧D` / `Message: Talk to Type`). Preserves `text` and shows a calm notice.
+    public func triggerTalkToType() {
+        guard !isLocked else { return }
+        notices = [.calmStub(reason: String(localized: "Talk to Type isn’t available yet in Courier."))]
+    }
+
+    /// Triggers Draft with AI (`AIRewriteTone`). Preserves `text` and shows a calm notice.
+    public func draftWithAI(tone _: AIRewriteTone? = nil) {
+        guard !isLocked else { return }
+        notices = [.calmStub(reason: String(localized: "Drafting with AI isn’t available yet in Courier."))]
+    }
+
+    /// Runs a slash command (`/ai`, `/translate`, `/summarize`, `/draft`) without clearing or sending `text`.
+    public func executeSlashCommand(_ command: String) {
+        guard !isLocked else { return }
+        let normalized = command.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let reason: String
+        switch normalized {
+        case let cmd where cmd.hasPrefix("/translate"):
+            reason = String(localized: "Message translation isn’t available yet in Courier.")
+        case let cmd where cmd.hasPrefix("/summarize"):
+            reason = String(localized: "AI chat summaries aren’t available yet in Courier.")
+        case let cmd where cmd.hasPrefix("/draft"):
+            reason = String(localized: "Drafting with AI isn’t available yet in Courier.")
+        default:
+            reason = aiProvider.unavailableReason
+        }
+        notices = [.calmStub(reason: reason)]
     }
 }
 

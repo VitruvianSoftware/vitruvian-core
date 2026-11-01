@@ -598,10 +598,57 @@ public struct FileAttachmentChip: View {
         }
         if isDownloading {
             parts.append(String(localized: "Downloading…"))
+        } else if message.showsMediaRemovedPlaceholder {
+            parts.append(TimelineMessage.mediaRemovedPlaceholderText)
         } else if url == nil {
             parts.append(String(localized: "Not downloaded yet"))
         }
         return parts.joined(separator: " · ")
+    }
+}
+
+/// Calm placeholder shown when an image, video, file, sticker, or voice note had its local media file deleted on this Mac (`com.courier.media_removed == true`).
+public struct RemovedMediaPlaceholderView: View {
+    public let message: TimelineMessage
+
+    public init(message: TimelineMessage) {
+        self.message = message
+    }
+
+    private var symbol: String {
+        switch message.kind {
+        case .image: "photo"
+        case .video: "film"
+        case .voiceNote: "waveform"
+        case .sticker: "face.smiling"
+        default: "doc"
+        }
+    }
+
+    public var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: symbol)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(TimelineMessage.mediaRemovedPlaceholderText)
+                    .font(.callout.italic().weight(.medium))
+                    .foregroundStyle(.secondary)
+                if !message.fileName.isEmpty {
+                    Text(message.fileName)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(RoundedRectangle(cornerRadius: 10).fill(.quaternary.opacity(0.5)))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.quaternary))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(TimelineMessage.mediaRemovedPlaceholderText)
     }
 }
 
@@ -800,7 +847,9 @@ public struct EnhancedImageView: View {
             if message.mediaPath.isEmpty && !forceBlurHashPlaceholder {
                 VStack(spacing: 4) {
                     Image(systemName: "photo")
-                    Text(String(localized: "Not downloaded yet"))
+                    Text(message.showsMediaRemovedPlaceholder
+                        ? TimelineMessage.mediaRemovedPlaceholderText
+                        : String(localized: "Not downloaded yet"))
                         .font(.caption)
                 }
                 .padding(8)

@@ -11,6 +11,12 @@ enum LabelWindowTarget: Codable, Hashable {
     case edit(labelID: Int64)
 }
 
+/// Target chat when opening the per-chat theme customisation window (`ChatThemeModal`).
+struct ChatThemeWindowTarget: Codable, Hashable {
+    let roomID: String
+    let chatTitle: String
+}
+
 /// The scene ids of the windows these views open.
 enum WindowID {
     static let editSpaces = "edit-spaces"
@@ -19,6 +25,8 @@ enum WindowID {
     static let autoArchive = "auto-archive"
     static let chatInfo = "chat-info"
     static let mediaViewer = "media-viewer"
+    static let chatTheme = "chat-theme"
+    static let chatThemeBrowser = "chat-theme-browser"
 }
 
 /// Making or changing a label: its title, a colour and an icon, and for a label that exists, its auto-archive
@@ -94,7 +102,7 @@ struct LabelEditorWindow: View {
         guard let existing, title.isEmpty else { return }
         title = existing.title
         color = existing.color
-        icon = LabelsModel.icons.contains(existing.icon) ? existing.icon : LabelsModel.icons[0]
+        icon = CourierIconCatalog.allowedLabelSFSymbols.contains(existing.icon) ? existing.icon : LabelsModel.icons[0]
     }
 
     /// The field takes no more than the engine does: 40 letters (counted as the engine counts them).
@@ -142,6 +150,23 @@ struct LabelIcon: View {
     }
 }
 
+/// Nudge badge shown in `EditLabelsWindow`'s empty state (`CreateLabelNudgeIcon.tsx`).
+public struct CreateLabelNudgeIcon: View {
+    public init() {}
+
+    public var body: some View {
+        ZStack {
+            Circle()
+                .fill(Color.accentColor.opacity(0.14))
+                .frame(width: 48, height: 48)
+            Image(systemName: "tag.circle.fill")
+                .font(.system(size: 26, weight: .semibold))
+                .foregroundStyle(Color.accentColor)
+        }
+        .accessibilityHidden(true)
+    }
+}
+
 /// Every label, to change or delete, and a button for a new one.
 struct EditLabelsWindow: View {
     @ObservedObject var spaces: SpacesModel
@@ -154,9 +179,7 @@ struct EditLabelsWindow: View {
         VStack(spacing: 0) {
             if labelSpaces.isEmpty {
                 VStack(spacing: 8) {
-                    Image(systemName: "tag")
-                        .font(.largeTitle)
-                        .foregroundStyle(.secondary)
+                    CreateLabelNudgeIcon()
                     Text(String(localized: "No labels yet"))
                         .font(.headline)
                     Text(String(localized: "A label groups chats from any network into a space of its own."))

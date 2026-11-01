@@ -348,6 +348,8 @@ final class EngineClientTests: XCTestCase {
             "accounts.remove",
             "accounts.setSubAccount",
             "diagnostics.export",
+            "storage.usage",
+            "storage.cleanup",
         ]
         for method in goHandlersThatFetchOrWrite.sorted() {
             XCTAssertEqual(

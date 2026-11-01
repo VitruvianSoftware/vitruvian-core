@@ -30,3 +30,12 @@ type Always struct{}
 
 // Allowed is always true.
 func (Always) Allowed(Feature) bool { return true }
+
+// UnavailableMessage is the calm message returned when a feature requires a plan.
+const UnavailableMessage = "Available with a plan"
+
+// NoPlan denies every feature so unconfigured or free-tier callers fail closed.
+type NoPlan struct{}
+
+// Allowed is always false.
+func (NoPlan) Allowed(Feature) bool { return false }

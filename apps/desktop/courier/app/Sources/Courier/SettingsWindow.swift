@@ -24,6 +24,9 @@ struct SettingsWindow: View {
     @ObservedObject var accountsAndBridges: AccountsAndBridgesModel
     @ObservedObject var loginFlow: LoginFlowModel
     @ObservedObject var problemReport: ProblemReportModel
+    @ObservedObject var appearance: AppearancePreferences = AppearancePreferences()
+    @ObservedObject var aiPreferences: AIPreferences = AIPreferences()
+    var storage: StorageModel? = nil
     var onOpenSystemNotificationSettings: () -> Void = {
         if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") {
             NSWorkspace.shared.open(url)
@@ -284,6 +287,7 @@ struct SettingsWindow: View {
                 composerPreferences: composerPreferences,
                 dockPreferences: dockPreferences,
                 lifecycle: lifecycle,
+                appearance: appearance,
                 highlightedSettingID: navigation.highlightedSettingID
             )
         case .notifications:
@@ -330,6 +334,27 @@ struct SettingsWindow: View {
                         loginFlow.showPicker()
                     }
                 },
+                highlightedSettingID: navigation.highlightedSettingID
+            )
+        case .storage:
+            StorageSettingsPane(
+                model: storage ?? StorageModel(appModel: app, lifecycle: lifecycle),
+                lifecycle: lifecycle,
+                highlightedSettingID: navigation.highlightedSettingID
+            )
+        case .ai:
+            AISettingsPane(
+                preferences: aiPreferences,
+                lifecycle: lifecycle,
+                highlightedSettingID: navigation.highlightedSettingID
+            )
+        case .plan:
+            PlusSettingsPane(
+                entitlement: AlwaysEntitled(),
+                highlightedSettingID: navigation.highlightedSettingID
+            )
+        case .integrations:
+            IntegrationsSettingsPane(
                 highlightedSettingID: navigation.highlightedSettingID
             )
         case .about:

@@ -3955,7 +3955,7 @@ final class ViewSnapshotTests: XCTestCase {
                     problemReport: reportModel
                 )
                 let host = NSHostingView(rootView: windowView)
-                host.frame = NSRect(x: 0, y: 0, width: 840, height: 2600)
+                host.frame = NSRect(x: 0, y: 0, width: 840, height: 4200)
                 host.layoutSubtreeIfNeeded()
                 _ = host.fittingSize
 
@@ -4741,6 +4741,428 @@ final class ViewSnapshotTests: XCTestCase {
                     menus: ComposerMenus(sendLater: {}, createPoll: {}, pollsUnavailable: "Google Chat doesn’t support polls.")
                 )
             }
+        }
+    }
+
+    func testSection22IconCatalogPickerAndRemovedMediaSnapshotsLightAndDark() throws {
+        try assertLightAndDarkSnapshot("m47-icon-color-picker-catalog", width: 500) {
+            VStack(alignment: .leading, spacing: 16) {
+                IconColorPicker(
+                    color: .constant(5),
+                    icon: .constant("snowflake"),
+                    showsAllIconsInitially: true,
+                    initialSearchQuery: "",
+                    initialCategory: .all
+                )
+                Divider()
+                HStack(spacing: 12) {
+                    CreateLabelNudgeIcon()
+                    RemovedMediaPlaceholderView(
+                        message: TimelineMessage(
+                            id: "$removed",
+                            roomID: Fixture.room,
+                            sender: "@alice:courier.local",
+                            senderName: "Alice Example",
+                            senderAvatarPath: "",
+                            mine: false,
+                            ts: Fixture.millis(5),
+                            kind: .image,
+                            body: "Photo from trip",
+                            rich: RichText(text: "Photo from trip"),
+                            isEdited: false,
+                            editCount: 0,
+                            editFailed: nil,
+                            failedEditID: nil,
+                            fileName: "vacation.jpg",
+                            mimeType: "image/jpeg",
+                            byteSize: 42_000,
+                            width: 640,
+                            height: 480,
+                            mediaPath: "",
+                            statusLine: nil,
+                            countsAsUnread: false,
+                            poll: nil,
+                            thread: nil,
+                            bookmarked: false,
+                            expiresAt: nil,
+                            timerChange: nil,
+                            call: nil,
+                            reply: nil,
+                            reactions: [],
+                            startsGroup: true,
+                            mediaRemoved: true
+                        )
+                    )
+                }
+            }
+            .padding(16)
+            .background(Color(nsColor: .windowBackgroundColor))
+        }
+    }
+
+    func testCommandBarOverlaySnapshotsLightAndDark() throws {
+        XCTAssertEqual(CommandBarFooterView.closeKeyLabel, "esc", "Footer Close key must show 'esc' like macOS, not '⎋'")
+        let suite = defaults()
+        let app = offlineApp()
+        let inbox = InboxModel(appModel: app, preferences: InboxPreferences(defaults: suite))
+        inbox.select(Fixture.room)
+        let spaces = SpacesModel(appModel: app, inbox: inbox)
+        let appearance = AppearancePreferences(defaults: suite)
+
+        let makeModel = { () -> CommandBarModel in
+            let model = CommandBarModel(defaults: suite)
+            model.commandsProvider = {
+                CommandSet.all(inbox: inbox, spaces: spaces, appearance: appearance)
+            }
+            model.recentChatsProvider = {
+                [
+                    Fixture.row("!dm-alice:courier.local", "Alice Example", network: "signal", ts: 5, preview: "See you at 8 AM"),
+                    Fixture.row("!grp-trail:courier.local", "Weekend Trail Crew", network: "whatsapp", direct: false, ts: 15, preview: "Bob: Packing snacks"),
+                    Fixture.row("!dm-carol:courier.local", "Carol Chen", network: "telegram", ts: 30, preview: "Sent a photo"),
+                ]
+            }
+            return model
+        }
+
+        // 1. Empty query with recent commands & categories
+        let emptyModel = makeModel()
+        emptyModel.open()
+        if let sidebarCmd = emptyModel.displayedCommands.first(where: { $0.id == "nav.toggleSidebar" }) {
+            emptyModel.execute(sidebarCmd)
+        }
+        emptyModel.open()
+        try assertLightAndDarkSnapshot("m47-command-bar-empty", width: 640, height: 480) {
+            CommandBarOverlay(model: emptyModel)
+                .frame(width: 640, height: 480)
+                .background(Color(nsColor: .windowBackgroundColor))
+        }
+
+        // 2. Filtered query ("archive")
+        let filteredModel = makeModel()
+        filteredModel.open(initialQuery: "archive")
+        try assertLightAndDarkSnapshot("m47-command-bar-filtered", width: 640, height: 420) {
+            CommandBarOverlay(model: filteredModel)
+                .frame(width: 640, height: 420)
+                .background(Color(nsColor: .windowBackgroundColor))
+        }
+
+        // 3. Drilled into sub-commands ("Filter Chats")
+        let drilledModel = makeModel()
+        drilledModel.open()
+        guard let filterCmd = drilledModel.displayedCommands.first(where: { $0.id == "Filter Chats" }) else {
+            XCTFail("Missing Filter Chats")
+            return
+        }
+        drilledModel.execute(filterCmd)
+        XCTAssertEqual(drilledModel.breadcrumb.map(\.title), ["Filter Chats"])
+        try assertLightAndDarkSnapshot("m47-command-bar-drilled-subcommands", width: 640, height: 420) {
+            CommandBarOverlay(model: drilledModel)
+                .frame(width: 640, height: 420)
+                .background(Color(nsColor: .windowBackgroundColor))
+        }
+
+        // 4. Recently viewed chats mode + destructive confirmation banner
+        let recentChatsModel = makeModel()
+        recentChatsModel.open()
+        guard let deleteMedia = recentChatsModel.displayedCommands.first(where: { $0.id == "Delete Media…" }),
+              let recentChatsCmd = recentChatsModel.displayedCommands.first(where: { $0.id == "recent.openRecentlyViewedChats" }) else {
+            XCTFail("Missing Delete Media… or recent.openRecentlyViewedChats")
+            return
+        }
+        recentChatsModel.execute(recentChatsCmd)
+        recentChatsModel.pendingConfirmation = deleteMedia
+        try assertLightAndDarkSnapshot("m47-command-bar-recent-chats", width: 640, height: 440) {
+            CommandBarOverlay(model: recentChatsModel)
+                .frame(width: 640, height: 440)
+                .background(Color(nsColor: .windowBackgroundColor))
+        }
+
+        // 5. SearchPanel with "Commands ⌘J" switch button
+        let searchModel = SearchModel(appModel: app, recents: RecentSearches(defaults: suite), open: { _ in })
+        searchModel.show()
+        searchModel.text = "mountain"
+        var switchedQuery: String?
+        try assertLightAndDarkSnapshot("m47-search-panel-commands-switch", width: 680, height: 260) {
+            SearchPanel(
+                search: searchModel,
+                inbox: inbox,
+                maxHeight: 220,
+                onOpenCommandBar: { query in switchedQuery = query }
+            )
+            .padding(16)
+            .background(Color(nsColor: .windowBackgroundColor))
+        }
+        XCTAssertNil(switchedQuery)
+    }
+
+    func testAppearanceSettingsAndAppIconPickerSnapshotsLightAndDark() throws {
+        let suite = defaults()
+        let inboxPrefs = InboxPreferences(defaults: suite)
+        let composerPrefs = ComposerPreferences(defaults: suite)
+        let dockPrefs = DockAndTrayPreferences(defaults: suite)
+        let lifecycle = SystemLifecycleModel(
+            loginItemService: SnapshotLoginItemService(),
+            biometricService: SnapshotBiometricService(),
+            defaults: suite
+        )
+        let appearance = AppearancePreferences(defaults: suite)
+        appearance.themePreset = .midnightIndigo
+        appearance.defaultWallpaper = .topographicLines
+        appearance.fontSizeScale = .large
+        appearance.zoomPercent = 110
+
+        try assertLightAndDarkSnapshot("m47-appearance-settings-pane", width: 680, height: 860) {
+            AppearanceSettingsPane(
+                inboxPreferences: inboxPrefs,
+                composerPreferences: composerPrefs,
+                dockPreferences: dockPrefs,
+                lifecycle: lifecycle,
+                appearance: appearance
+            )
+            .frame(width: 680, height: 860)
+            .background(Color(nsColor: .windowBackgroundColor))
+        }
+
+        try assertLightAndDarkSnapshot("m47-app-icon-picker", width: 560, height: 340) {
+            AppIconPickerView(appearance: appearance)
+                .padding(16)
+                .frame(width: 560, height: 340)
+                .background(Color(nsColor: .windowBackgroundColor))
+        }
+    }
+
+    func testChatThemeWindowAndBrowserSnapshotsLightAndDark() throws {
+        let suite = defaults()
+        let appearance = AppearancePreferences(defaults: suite)
+        appearance.themePreset = .midnightIndigo
+        appearance.defaultWallpaper = .topographicLines
+        appearance.setChatTheme(
+            ChatThemeOverride(
+                preset: .evergreen,
+                outgoingBubbleColorHex: "#059669",
+                wallpaper: .subtleGrid,
+                wallpaperOpacity: 0.45,
+                wallpaperBlur: false
+            ),
+            for: Fixture.room
+        )
+
+        try assertLightAndDarkSnapshot("m47-chat-theme-window", width: 540, height: 640) {
+            ChatThemeWindow(
+                roomID: Fixture.room,
+                chatTitle: "Weekend Trail Crew",
+                appearance: appearance
+            )
+            .frame(width: 540, height: 640)
+            .background(Color(nsColor: .windowBackgroundColor))
+        }
+
+        try assertLightAndDarkSnapshot("m47-chat-theme-browser", width: 780, height: 580) {
+            ChatThemeBrowserWindow(
+                appearance: appearance,
+                activeRoomID: Fixture.room,
+                activeChatTitle: "Weekend Trail Crew"
+            )
+            .frame(width: 780, height: 580)
+            .background(Color(nsColor: .windowBackgroundColor))
+        }
+
+        // Conversation bubbles with Topographic Lines wallpaper, Midnight Indigo preset, Extra Large font size, and Redact mode enabled
+        let redactedAppearance = AppearancePreferences(defaults: suite)
+        redactedAppearance.themePreset = .midnightIndigo
+        redactedAppearance.defaultWallpaper = .topographicLines
+        redactedAppearance.fontSizeScale = .extraLarge
+        redactedAppearance.redactNamesAndPictures = true
+
+        let ui = MessageUI()
+        var actions = MessageActions()
+        actions.appearance = redactedAppearance
+        let messages = [
+            Fixture.text("$m1", "Are we meeting at the trailhead at 8 AM?", mine: false, ts: 5, sender: "@alice:courier.local", name: "Alice Example"),
+            Fixture.text("$m2", "Yes! Bringing coffee and trail mix for everyone.", mine: true, ts: 6),
+        ]
+        try assertLightAndDarkSnapshot("m47-themed-redacted-conversation", width: 580, height: 320) {
+            ZStack {
+                ChatWallpaperCanvasView(
+                    preset: .topographicLines,
+                    customImagePath: nil,
+                    opacity: 0.45,
+                    blur: false,
+                    reduceTransparency: false
+                )
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(Fixture.items(messages, isDirect: false)) { item in
+                        TimelineItemView(item: item, isSelected: false, showsSent: true, actions: actions, ui: ui)
+                    }
+                }
+                .padding(16)
+            }
+            .environment(\.appearancePreferences, redactedAppearance)
+            .frame(width: 580, height: 320)
+            .background(Color(nsColor: .windowBackgroundColor))
+        }
+    }
+
+    /// Zoom (⌘= / ⌘- / ⌘0, or the Settings stepper) makes the conversation's text larger: at 125% the same messages
+    /// render taller than at 100%. Look at m47-zoom-100-conversation and m47-zoom-125-conversation side by side.
+    func testZoomEnlargesConversationTextSnapshots() throws {
+        let suite = defaults()
+        let ui = MessageUI()
+        let messages = [
+            Fixture.text("$z1", "Are we still on for the walk on Saturday?", mine: false, ts: 5,
+                         sender: "@someone:courier.local", name: "Sample Person"),
+            Fixture.text("$z2", "Yes, see you at the trailhead at nine.", mine: true, ts: 6),
+        ]
+        func render(_ percent: Int) throws -> [NSSize] {
+            let appearance = AppearancePreferences(defaults: suite)
+            appearance.zoomPercent = percent
+            var actions = MessageActions()
+            actions.appearance = appearance
+            return try Snapshot.render("m47-zoom-\(percent)-conversation", width: 480) {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(Fixture.items(messages, isDirect: false)) { item in
+                        TimelineItemView(item: item, isSelected: false, showsSent: true, actions: actions, ui: ui)
+                    }
+                }
+                .padding(16)
+                .environment(\.appearancePreferences, appearance)
+                .courierTextZoom(appearance)
+            }
+        }
+        let normal = try render(100)
+        let zoomed = try render(125)
+        // Only the message text grows (captions and times keep their size): two lines, each about 3.5 pt taller.
+        XCTAssertGreaterThanOrEqual(zoomed[0].height, normal[0].height + 6, "125% must render visibly larger text")
+    }
+
+    func testStorageSettingsPaneSnapshotsLightAndDark() throws {
+        let suite = defaults()
+        let app = offlineApp()
+        let lifecycle = SystemLifecycleModel(
+            loginItemService: SnapshotLoginItemService(),
+            biometricService: SnapshotBiometricService(),
+            defaults: suite
+        )
+        let model = StorageModel(appModel: app, lifecycle: lifecycle)
+        model.setUsageForTesting(
+            StorageUsageResult(
+                totalBytes: 245_366_784,
+                databaseBytes: 18_874_368,
+                photosAndVideosBytes: 174_063_616,
+                audioBytes: 14_680_064,
+                filesBytes: 31_457_280,
+                stickersBytes: 6_291_456,
+                otherMediaBytes: 0,
+                rooms: [
+                    RoomStorageUsage(
+                        roomID: "!wa:1",
+                        name: "Weekend Trail Crew",
+                        network: "whatsapp",
+                        mediaBytes: 142_606_336,
+                        itemCount: 84
+                    ),
+                    RoomStorageUsage(
+                        roomID: "!sig:2",
+                        name: "Alice Example",
+                        network: "signal",
+                        mediaBytes: 52_428_800,
+                        itemCount: 31
+                    ),
+                    RoomStorageUsage(
+                        roomID: "!tg:3",
+                        name: "Design Systems Guild",
+                        network: "telegram",
+                        mediaBytes: 31_457_280,
+                        itemCount: 19
+                    ),
+                ]
+            )
+        )
+
+        try assertLightAndDarkSnapshot("m47-storage-settings-pane", width: 660, height: 640) {
+            StorageSettingsPane(model: model, lifecycle: lifecycle)
+                .frame(width: 660, height: 640)
+                .background(Color(nsColor: .windowBackgroundColor))
+        }
+    }
+
+    func testAISettingsAIPaneTranslationAndPlusSettingsSnapshotsLightAndDark() throws {
+        let suite = defaults()
+        let lifecycle = SystemLifecycleModel(
+            loginItemService: SnapshotLoginItemService(),
+            biometricService: SnapshotBiometricService(),
+            defaults: suite
+        )
+        let aiPrefs = AIPreferences(defaults: suite)
+        aiPrefs.translationLanguages = ["English", "Arabic", "Spanish"]
+
+        try assertLightAndDarkSnapshot("m47-ai-settings-pane", width: 660, height: 720) {
+            AISettingsPane(preferences: aiPrefs, lifecycle: lifecycle)
+                .frame(width: 660, height: 720)
+                .background(Color(nsColor: .windowBackgroundColor))
+        }
+
+        try assertLightAndDarkSnapshot("m47-ai-pane-and-translation-row", width: 640, height: 480) {
+            HStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Inline Message Translation Stub")
+                        .font(.headline)
+                    MessageTranslationRowView(
+                        targetLanguage: "Spanish",
+                        disposition: .unavailable(reason: "Message translation isn’t available yet in Courier.")
+                    )
+                    Spacer()
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                Divider()
+                AIPane(chatTitle: "Weekend Trail Crew", preferences: aiPrefs)
+            }
+            .frame(width: 640, height: 480)
+            .background(Color(nsColor: .windowBackgroundColor))
+        }
+
+        try assertLightAndDarkSnapshot("m47-plus-settings-included-and-noplan", width: 680, height: 760) {
+            VStack(spacing: 0) {
+                PlusSettingsPane(entitlement: AlwaysEntitled())
+                    .frame(height: 380)
+                Divider()
+                PlusSettingsPane(entitlement: NoPlan())
+                    .frame(height: 380)
+            }
+            .frame(width: 680, height: 760)
+            .background(Color(nsColor: .windowBackgroundColor))
+        }
+
+        try assertLightAndDarkSnapshot("m47-integrations-settings-pane", width: 640, height: 440) {
+            IntegrationsSettingsPane()
+                .frame(width: 640, height: 440)
+                .background(Color(nsColor: .windowBackgroundColor))
+        }
+    }
+
+    func testSection22IconCatalogPickerAndEmptyStateCardsSnapshotsLightAndDark() throws {
+        XCTAssertEqual(EmptyStateUnreadCardsView.featuredHeaderTitle, "Unread Highlights")
+        let unreadRows = [
+            Fixture.row("!dm-alice:courier.local", "Alice Example", network: "signal", ts: 5, preview: "Can you review the trail map before tomorrow?", unread: 3),
+            Fixture.row("!grp-trail:courier.local", "Weekend Trail Crew", network: "whatsapp", direct: false, ts: 12, preview: "Bob: Bringing extra headlamps", unread: 7),
+            Fixture.row("!dm-carol:courier.local", "Carol Chen", network: "telegram", ts: 25, preview: "Shared 4 photos from Half Dome", unread: 1),
+        ]
+
+        try assertLightAndDarkSnapshot("m47-empty-state-unread-cards", width: 640, height: 440) {
+            ZStack {
+                ChatWallpaperCanvasView(
+                    preset: .auroraGlow,
+                    customImagePath: nil,
+                    opacity: 0.45,
+                    blur: false,
+                    reduceTransparency: false
+                )
+                EmptyStateUnreadCardsView(unreadRows: unreadRows) { _ in }
+                    .padding(24)
+            }
+            .frame(width: 640, height: 440)
+            .background(Color(nsColor: .windowBackgroundColor))
         }
     }
 }

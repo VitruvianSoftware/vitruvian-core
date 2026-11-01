@@ -213,7 +213,20 @@ private struct GalleryTileView: View {
 
     var body: some View {
         Group {
-            if item.kind == .video {
+            if item.showsMediaRemovedPlaceholder {
+                VStack(spacing: 4) {
+                    Image(systemName: item.kind == .video ? "film" : "photo")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    Text(TimelineMessage.mediaRemovedPlaceholderText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 8)
+                }
+                .frame(width: size.width, height: size.height)
+                .background(Rectangle().fill(.quaternary.opacity(0.6)))
+            } else if item.kind == .video {
                 GalleryVideoPoster(item: item, size: size, preloadedImage: preloadedImage)
             } else {
                 ZStack {

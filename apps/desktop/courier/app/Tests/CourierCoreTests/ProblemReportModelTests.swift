@@ -291,5 +291,23 @@ final class ProblemReportModelTests: XCTestCase {
             XCTAssertFalse(joined.contains(forbidden), "Swift scrubber leaked \(forbidden)")
         }
     }
+
+    func testAttemptUploadUsesReportUploaderStubAndSetsUploadNotice() async {
+        let uploader = UnavailableReportUploader()
+        let model = ProblemReportModel(
+            appModel: nil,
+            contextRoomID: "!r1:courier.local",
+            contextEventID: "$ev1",
+            reportUploader: uploader
+        )
+        XCTAssertNil(model.uploadNotice)
+        XCTAssertFalse(model.isUploading)
+
+        await model.attemptUpload()
+        XCTAssertFalse(model.isUploading)
+        XCTAssertEqual(model.uploadNotice, uploader.unavailableReason)
+        XCTAssertTrue(model.uploadNotice?.contains("Courier") == true)
+        XCTAssertFalse(model.uploadNotice?.localizedCaseInsensitiveContains("Beeper") == true)
+    }
 }
 

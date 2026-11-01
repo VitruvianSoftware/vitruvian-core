@@ -145,6 +145,10 @@ public enum SettingsSection: String, CaseIterable, Sendable {
     case messages
     case notifications
     case shortcuts
+    case storage
+    case ai
+    case plan
+    case integrations
     case privacy
     case changelog
     case reportProblem
@@ -161,6 +165,7 @@ public final class AppMenuCoordinator: ObservableObject {
     @Published public private(set) var focusCount: Int = 0
     @Published public private(set) var quitRequestedCount: Int = 0
     public let settingsNavigation: SettingsNavigationModel
+    public var onOpenCommandBar: @MainActor () -> Void = {}
 
     public let inbox: InboxModel
     public let lifecycle: SystemLifecycleModel
@@ -243,6 +248,14 @@ public final class AppMenuCoordinator: ObservableObject {
             settingsNavigation.openPane(.accounts)
         case .shortcuts:
             settingsNavigation.openPane(.hotkeys)
+        case .storage:
+            settingsNavigation.openPane(.storage)
+        case .ai:
+            settingsNavigation.openPane(.ai)
+        case .plan:
+            settingsNavigation.openPane(.plan)
+        case .integrations:
+            settingsNavigation.openPane(.integrations)
         case .privacy, .changelog, .about:
             settingsNavigation.openPane(.about)
         case .reportProblem:
@@ -262,6 +275,12 @@ public final class AppMenuCoordinator: ObservableObject {
         guard !lifecycle.isLocked else { return }
         showMainWindow()
         inbox.openStartNewChat()
+    }
+
+    public func openCommandBar() {
+        guard !lifecycle.isLocked else { return }
+        showMainWindow()
+        onOpenCommandBar()
     }
 
     public func openChatInNewWindow() {

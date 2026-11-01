@@ -343,6 +343,22 @@ final class CommandSetTests: XCTestCase {
     /// Incognito's and the accounts' commands, by their ledger names (02 §2.6 "Turn on incognito mode", "Add
     /// Account", "Accounts"). "Turn off incognito mode" is the same row's other state: only the one that applies is
     /// on. The ledger's "Account" (its pane is 4.6's) is not registered here, so Task 11's list must not claim it.
+    /// "Focus Courier" shows its keys only when the Focus App hotkey has some: it has no default.
+    func testFocusCourierShowsItsShortcutOnlyWhenOneIsSet() throws {
+        let testStore = TestDefaults()
+        defer { testStore.remove() }
+        let hotkeys = HotkeyRegistry(defaults: testStore.defaults)
+        func focusKeys() throws -> String? {
+            try XCTUnwrap(CommandSet.all(hotkeys: hotkeys).first { $0.id == "nav.focusCourier" }).shortcut
+        }
+        XCTAssertNil(try focusKeys(), "no hotkey is set, so no keys are shown")
+        let chord = KeyChord(key: "space", command: true, shift: true)
+        if case let .failure(error) = hotkeys.record(chord, for: "Focus App") {
+            XCTFail("recording the hotkey failed: \(error)")
+        }
+        XCTAssertEqual(try focusKeys(), chord.symbols)
+    }
+
     func testNewCommandsHaveLedgerNames() async throws {
         let h = try await startConversation(
             ["!g": [textEvent(id: "$1", room: "!g", at: 1, body: "Theirs"),
@@ -357,20 +373,20 @@ final class CommandSetTests: XCTestCase {
                                    restartEngine: {})
         let commands = CommandSet.accounts(login, h.conversation)
         XCTAssertEqual(commands.map(\.id), ["Turn on incognito mode", "Turn off incognito mode", "Add Account",
-                                            "Accounts"])
+                                            "accounts.manage"])
         XCTAssertEqual(commands.map(\.title), ["Turn on incognito mode", "Turn off incognito mode", "Add Account",
                                                "Accounts"])
         XCTAssertTrue(commands.allSatisfy { $0.confirmation == nil && $0.keys == nil })
         func enabled() -> [String] { commands.filter { $0.isEnabled() }.map(\.id) }
 
         // Without the plan, Incognito can't be turned on.
-        XCTAssertEqual(enabled(), ["Add Account", "Accounts"])
+        XCTAssertEqual(enabled(), ["Add Account", "accounts.manage"])
         h.conversation.isEntitled = { _ in true }
-        XCTAssertEqual(enabled(), ["Turn on incognito mode", "Add Account", "Accounts"])
+        XCTAssertEqual(enabled(), ["Turn on incognito mode", "Add Account", "accounts.manage"])
         try XCTUnwrap(commands.first { $0.id == "Turn on incognito mode" }).run()
         XCTAssertTrue(h.preferences.incognito)
         XCTAssertTrue(h.conversation.asksToHideTyping, "turning it on asks about typing, as Settings does")
-        XCTAssertEqual(enabled(), ["Turn off incognito mode", "Add Account", "Accounts"])
+        XCTAssertEqual(enabled(), ["Turn off incognito mode", "Add Account", "accounts.manage"])
         try XCTUnwrap(commands.first { $0.id == "Turn off incognito mode" }).run()
         XCTAssertFalse(h.preferences.incognito)
 
@@ -378,7 +394,7 @@ final class CommandSetTests: XCTestCase {
         try XCTUnwrap(commands.first { $0.id == "Add Account" }).run()
         XCTAssertEqual(login.screen, .picker)
         login.close()
-        try XCTUnwrap(commands.first { $0.id == "Accounts" }).run()
+        try XCTUnwrap(commands.first { $0.id == "accounts.manage" }).run()
         XCTAssertEqual(login.screen, .picker)
 
     }
@@ -564,7 +580,7 @@ final class CommandSetTests: XCTestCase {
             ("General", .general),
             ("Appearance", .appearance),
             ("Notifications", .notifications),
-            ("Accounts", .accounts),
+            ("settings.accounts", .accounts),
             ("Account", .accounts),
             ("Hotkeys", .hotkeys),
             ("Quick Replies", .quickReplies),
@@ -601,6 +617,287 @@ final class CommandSetTests: XCTestCase {
         lockCmd.run()
         XCTAssertTrue(lifecycle.isLocked)
         XCTAssertFalse(try XCTUnwrap(byID["Settings"]).isEnabled(), "commands are disabled while locked")
+    }
+
+    func testDeleteMediaCommandAndCopyAvoidCacheWording() {
+        XCTAssertEqual(CommandSet.deleteMediaTitle, "Delete Media…")
+        XCTAssertEqual(CommandSet.deleteMediaOlderThanTitle("1 month"), "Delete media older than 1 month")
+        XCTAssertEqual(CommandSet.deleteMediaInThisChatTitle, "Delete media in this chat")
+        XCTAssertEqual(
+            CommandSet.deleteMediaConfirmation,
+            "This deletes photos, videos and files from this Mac. Messages stay, but the media can't be brought back."
+        )
+
+        var didDelete = false
+        let cmd = CommandSet.deleteMedia(performDelete: { didDelete = true })
+        XCTAssertEqual(cmd.id, "Delete Media…")
+        XCTAssertEqual(cmd.title, "Delete Media…")
+        XCTAssertEqual(
+            cmd.confirmation,
+            "This deletes photos, videos and files from this Mac. Messages stay, but the media can't be brought back."
+        )
+        XCTAssertFalse(cmd.title.localizedCaseInsensitiveContains("cache"))
+        XCTAssertFalse((cmd.confirmation ?? "").localizedCaseInsensitiveContains("cache"))
+        XCTAssertTrue(cmd.isEnabled())
+        cmd.run()
+        XCTAssertTrue(didDelete)
+    }
+
+    func testUnifiedCommandSetCoversEveryAcceptanceAndLedgerCommand() async throws {
+        let (h, spaces, inboxCommands) = try await start()
+        let searchH = try await startSearch(rooms: [room("!a", ts: 1, name: "Picnic planning")])
+        searchHarnesses.append(searchH)
+        let convH = try await startConversation(
+            ["!a": [textEvent(id: "$1", room: "!a", at: 1, body: "Theirs"),
+                    textEvent(id: "$2", room: "!a", at: 2, body: "Mine", mine: true)]],
+            features: ["!a": featuresJSON()],
+            rows: ["!a": chatRow("!a", name: "Ann")]
+        )
+        conversations.append(convH)
+        try await convH.open("!a")
+        let actions = MessageActionsModel(
+            conversation: convH.conversation,
+            appModel: convH.app,
+            preferences: convH.preferences,
+            pasteboard: FakePasteboard()
+        )
+        let login = LoginFlowModel(
+            caller: ScriptedLoginCaller(),
+            accounts: { [] },
+            reloadAccounts: {},
+            credentials: InMemoryCredentialStore(),
+            builtInCredentials: { nil },
+            restartEngine: {}
+        )
+        let testStore = TestDefaults()
+        defer { testStore.remove() }
+        let appearance = AppearancePreferences(defaults: testStore.defaults)
+        let navigation = SettingsNavigationModel()
+        let hotkeys = HotkeyRegistry(defaults: testStore.defaults)
+
+        let all = CommandSet.all(
+            inbox: h.inbox,
+            spaces: spaces,
+            search: searchH.search,
+            actions: actions,
+            conversation: convH.conversation,
+            composer: convH.conversation.composer,
+            login: login,
+            appearance: appearance,
+            navigation: navigation,
+            hotkeys: hotkeys
+        )
+        let ids = Set(all.map(\.id))
+        let titles = Set(all.map(\.title))
+
+        // 1. Every existing CommandSet group must be reachable in CommandSet.all (no second independent registry).
+        for cmd in inboxCommands {
+            XCTAssertTrue(ids.contains(cmd.id), "Missing CommandSet.inbox command: \(cmd.id)")
+        }
+        for cmd in CommandSet.search(searchH.search, openRoomID: { convH.conversation.roomID }) {
+            XCTAssertTrue(ids.contains(cmd.id), "Missing CommandSet.search command: \(cmd.id)")
+        }
+        for cmd in CommandSet.message(actions, convH.conversation) {
+            XCTAssertTrue(ids.contains(cmd.id), "Missing CommandSet.message command: \(cmd.id)")
+        }
+        for cmd in CommandSet.accounts(login, convH.conversation) {
+            XCTAssertTrue(ids.contains(cmd.id), "Missing CommandSet.accounts command: \(cmd.id)")
+        }
+        for cmd in CommandSet.chatInfo(conversation: convH.conversation, inbox: h.inbox) {
+            XCTAssertTrue(ids.contains(cmd.id), "Missing CommandSet.chatInfo command: \(cmd.id)")
+        }
+        XCTAssertTrue(ids.contains(CommandSet.recordAudio(convH.conversation.composer).id))
+        for cmd in CommandSet.composerMedia(convH.conversation.composer) {
+            XCTAssertTrue(ids.contains(cmd.id), "Missing CommandSet.composerMedia command: \(cmd.id)")
+        }
+        for cmd in CommandSet.settingsAndSystem(navigation: navigation, inbox: h.inbox, hotkeys: hotkeys) {
+            XCTAssertTrue(ids.contains(cmd.id), "Missing CommandSet.settingsAndSystem command: \(cmd.id)")
+        }
+
+        // 1b. No two commands share an ID. all() keeps the first of a pair and drops the other without a word (it once
+        // dropped Settings ▸ Accounts for the accounts list's "Accounts"), so every group's command must be the one
+        // all() kept: same title, same category.
+        let byID = Dictionary(all.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        XCTAssertEqual(byID.count, all.count, "CommandSet.all has duplicate IDs")
+        let groups: [[CourierCommand]] = [
+            inboxCommands,
+            CommandSet.search(searchH.search, openRoomID: { convH.conversation.roomID }),
+            CommandSet.message(actions, convH.conversation),
+            CommandSet.accounts(login, convH.conversation),
+            CommandSet.chatInfo(conversation: convH.conversation, inbox: h.inbox),
+            CommandSet.composerMedia(convH.conversation.composer),
+            CommandSet.settingsAndSystem(navigation: navigation, inbox: h.inbox, hotkeys: hotkeys),
+        ]
+        for cmd in groups.joined() {
+            guard let kept = byID[cmd.id] else { continue }
+            XCTAssertEqual(kept.title, cmd.title, "two commands share the ID '\(cmd.id)'")
+            XCTAssertEqual(kept.category, cmd.category, "two commands share the ID '\(cmd.id)'")
+        }
+        XCTAssertEqual(byID["accounts.manage"]?.category, .accounts)
+        XCTAssertEqual(byID["settings.accounts"]?.category, .settings)
+
+        // 1c. Media is deleted one way only (Delete Media…); there is no separate cache to clear.
+        XCTAssertNil(byID["storage.clearCache"])
+        XCTAssertFalse(titles.contains("Clear Cache"))
+        XCTAssertFalse(all.contains { $0.title.localizedCaseInsensitiveContains("Beeper") }, "no command may say Beeper")
+
+        // 2. Every required 4.1–4.7 command bar title/id must be present.
+        let requiredTitles: [String] = [
+            "Open recently viewed chats",
+            "Archive all chats",
+            "Archive all chats older than a week",
+            "Archive all read chats",
+            "Mark all chats as read",
+            "Filter Chats",
+            "Create new chat",
+            "Merge chats",
+            "Attach file",
+            "Download attachments",
+            "Toggle sidebar",
+            "Focus Courier",
+            "Load Custom Theme",
+            "Reload Custom Theme",
+            "Zoom In",
+            "Zoom Out",
+            "Reset Zoom",
+            "Fire Confetti 🎉",
+            "Delete Media…",
+            "AI: Summarize Thread",
+            "AI: Draft Reply",
+            "AI: Translate Message",
+            "Message: Talk to Type",
+            "Manage Subscription / Plan",
+            "Import from Matrix",
+        ]
+        for required in requiredTitles {
+            XCTAssertTrue(
+                titles.contains(required),
+                "Unified CommandSet is missing required command '\(required)'"
+            )
+        }
+
+        // 3. Nested sub-command trees must be populated.
+        let filterCmd = try XCTUnwrap(all.first { $0.title == "Filter Chats" })
+        XCTAssertFalse(filterCmd.children.isEmpty, "Filter Chats must have nested sub-commands")
+        let remindCmd = try XCTUnwrap(all.first { $0.id == "chat.remindLater" })
+        XCTAssertFalse(remindCmd.children.isEmpty, "Remind Later must have nested preset sub-commands")
+        let goToSpaceCmd = try XCTUnwrap(all.first { $0.id == "nav.goToSpace" })
+        XCTAssertFalse(goToSpaceCmd.children.isEmpty, "Go to Space must have nested space sub-commands")
+        let setThemeCmd = try XCTUnwrap(all.first { $0.id == "appearance.setTheme" })
+        XCTAssertFalse(setThemeCmd.children.isEmpty, "Set Theme must have nested theme preset sub-commands")
+        let disappearingCmd = try XCTUnwrap(all.first { $0.id == "chat.disappearingMessages" })
+        XCTAssertFalse(disappearingCmd.children.isEmpty, "Disappearing Messages must have nested timer sub-commands")
+
+        // 4. Destructive commands must require confirmation, and Delete Media… must use CommandSet.deleteMediaConfirmation.
+        let deleteMediaCmd = try XCTUnwrap(all.first { $0.id == "Delete Media…" })
+        XCTAssertEqual(deleteMediaCmd.confirmation, CommandSet.deleteMediaConfirmation)
+        let leaveGroupCmd = try XCTUnwrap(all.first { $0.id == "chat.leaveGroup" })
+        XCTAssertNotNil(leaveGroupCmd.confirmation)
+        let deleteChatCmd = try XCTUnwrap(all.first { $0.id == "chat.deleteChat" })
+        XCTAssertNotNil(deleteChatCmd.confirmation)
+    }
+
+    func testEveryCommandChipMatchesItsCommandSetGroup() async throws {
+        let (h, spaces, inboxGroup) = try await start()
+        let searchH = try await startSearch(rooms: [room("!a", ts: 1, name: "Picnic planning")])
+        searchHarnesses.append(searchH)
+        let convH = try await startConversation(
+            ["!a": [textEvent(id: "$1", room: "!a", at: 1, body: "Theirs"),
+                    textEvent(id: "$2", room: "!a", at: 2, body: "Mine", mine: true)]],
+            features: ["!a": featuresJSON()],
+            rows: ["!a": chatRow("!a", name: "Ann")]
+        )
+        conversations.append(convH)
+        try await convH.open("!a")
+        let actions = MessageActionsModel(
+            conversation: convH.conversation,
+            appModel: convH.app,
+            preferences: convH.preferences,
+            pasteboard: FakePasteboard()
+        )
+        let login = LoginFlowModel(
+            caller: ScriptedLoginCaller(),
+            accounts: { [] },
+            reloadAccounts: {},
+            credentials: InMemoryCredentialStore(),
+            builtInCredentials: { nil },
+            restartEngine: {}
+        )
+        let testStore = TestDefaults()
+        defer { testStore.remove() }
+        let appearance = AppearancePreferences(defaults: testStore.defaults)
+        let navigation = SettingsNavigationModel()
+        let hotkeys = HotkeyRegistry(defaults: testStore.defaults)
+
+        let searchGroup = CommandSet.search(searchH.search, openRoomID: { convH.conversation.roomID })
+        let messageGroup = CommandSet.message(actions, convH.conversation)
+            + [CommandSet.recordAudio(convH.conversation.composer)]
+            + CommandSet.composerMedia(convH.conversation.composer)
+        let accountsGroup = CommandSet.accounts(login, convH.conversation)
+        let chatInfoGroup = CommandSet.chatInfo(conversation: convH.conversation, inbox: h.inbox)
+        let settingsGroup = CommandSet.settingsAndSystem(
+            navigation: navigation,
+            inbox: h.inbox,
+            hotkeys: hotkeys
+        )
+
+        for cmd in inboxGroup {
+            XCTAssertEqual(cmd.category, .inbox, "CommandSet.inbox command '\(cmd.id)' must have chip 'Inbox', got '\(cmd.category.title)'")
+            XCTAssertEqual(cmd.category.title, "Inbox", "CommandSet.inbox command '\(cmd.id)' chip mismatch")
+        }
+        for cmd in searchGroup {
+            XCTAssertEqual(cmd.category, .search, "CommandSet.search command '\(cmd.id)' must have chip 'Search', got '\(cmd.category.title)'")
+            XCTAssertEqual(cmd.category.title, "Search", "CommandSet.search command '\(cmd.id)' chip mismatch")
+        }
+        for cmd in messageGroup {
+            XCTAssertEqual(cmd.category, .message, "CommandSet.message command '\(cmd.id)' must have chip 'Message', got '\(cmd.category.title)'")
+            XCTAssertEqual(cmd.category.title, "Message", "CommandSet.message command '\(cmd.id)' chip mismatch")
+        }
+        for cmd in accountsGroup {
+            XCTAssertEqual(cmd.category, .accounts, "CommandSet.accounts command '\(cmd.id)' must have chip 'Accounts', got '\(cmd.category.title)'")
+            XCTAssertEqual(cmd.category.title, "Accounts", "CommandSet.accounts command '\(cmd.id)' chip mismatch")
+        }
+        for cmd in chatInfoGroup {
+            XCTAssertEqual(cmd.category, .chatInfo, "CommandSet.chatInfo command '\(cmd.id)' must have chip 'Chat Info', got '\(cmd.category.title)'")
+            XCTAssertEqual(cmd.category.title, "Chat Info", "CommandSet.chatInfo command '\(cmd.id)' chip mismatch")
+        }
+        for cmd in settingsGroup {
+            XCTAssertEqual(cmd.category, .settings, "CommandSet.settingsAndSystem command '\(cmd.id)' must have chip 'Settings', got '\(cmd.category.title)'")
+            XCTAssertEqual(cmd.category.title, "Settings", "CommandSet.settingsAndSystem command '\(cmd.id)' chip mismatch")
+        }
+
+        let all = CommandSet.all(
+            inbox: h.inbox,
+            spaces: spaces,
+            search: searchH.search,
+            actions: actions,
+            conversation: convH.conversation,
+            composer: convH.conversation.composer,
+            login: login,
+            appearance: appearance,
+            navigation: navigation,
+            hotkeys: hotkeys
+        )
+
+        var expectedByID: [String: CourierCommand.Category] = [:]
+        // Order matches CommandSet.all deduplication order:
+        for cmd in inboxGroup { expectedByID[cmd.id] = .inbox }
+        for cmd in searchGroup { expectedByID[cmd.id] = .search }
+        for cmd in messageGroup { expectedByID[cmd.id] = .message }
+        for cmd in accountsGroup { expectedByID[cmd.id] = .accounts }
+        for cmd in chatInfoGroup { expectedByID[cmd.id] = .chatInfo }
+        for cmd in settingsGroup where expectedByID[cmd.id] == nil {
+            expectedByID[cmd.id] = .settings
+        }
+
+        for cmd in all {
+            if let expected = expectedByID[cmd.id] {
+                XCTAssertEqual(cmd.category, expected, "Unified command '\(cmd.id)' chip must match its group (\(expected.title))")
+            }
+            for child in cmd.children {
+                XCTAssertEqual(child.category, cmd.category, "Sub-command '\(child.id)' chip must match parent '\(cmd.id)'")
+            }
+        }
     }
 }
 

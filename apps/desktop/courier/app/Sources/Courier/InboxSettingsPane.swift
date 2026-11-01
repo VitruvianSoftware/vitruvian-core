@@ -23,6 +23,9 @@ struct SettingsView: View {
     var accountsAndBridges: AccountsAndBridgesModel? = nil
     var loginFlow: LoginFlowModel? = nil
     var problemReport: ProblemReportModel? = nil
+    var appearance: AppearancePreferences = AppearancePreferences()
+    var aiPreferences: AIPreferences = AIPreferences()
+    var storage: StorageModel? = nil
     var onRestartNotificationCenter: () -> Void = {}
 
     private var resolvedAppModel: AppModel {
@@ -59,6 +62,9 @@ struct SettingsView: View {
             accountsAndBridges: accountsAndBridges ?? AccountsAndBridgesModel(appModel: resolvedApp, lifecycle: lifecycle),
             loginFlow: loginFlow ?? LoginFlowModel(appModel: resolvedApp),
             problemReport: problemReport ?? ProblemReportModel(appModel: resolvedApp),
+            appearance: appearance,
+            aiPreferences: aiPreferences,
+            storage: storage ?? StorageModel(appModel: resolvedApp, lifecycle: lifecycle),
             onRestartNotificationCenter: onRestartNotificationCenter
         )
     }

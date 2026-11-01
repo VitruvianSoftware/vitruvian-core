@@ -1130,4 +1130,102 @@ final class TimelineTests: XCTestCase {
         XCTAssertEqual(shown[1].mediaPath, "", "Opened view-once media path must be cleared on this Mac")
         XCTAssertNil(shown[1].thumbnailPath, "Opened view-once thumbnail path must be nil on this Mac")
     }
+
+    func testMediaRemovedFlagProducesRemovedToFreeUpSpacePlaceholderDecision() {
+        let baseTS = at(14, 25, 0)
+        let removedImage = Event(
+            eventID: "$rem-img",
+            roomID: "!room:courier.local",
+            sender: "@alice:courier.local",
+            senderName: "Alice Example",
+            mine: false,
+            type: "m.room.message",
+            content: json(#"{"msgtype":"m.image","body":"photo.jpg","url":"","com.courier.media_removed":true}"#),
+            ts: baseTS,
+            seq: 1,
+            status: .sent,
+            mediaPath: ""
+        )
+        let removedVideo = Event(
+            eventID: "$rem-vid",
+            roomID: "!room:courier.local",
+            sender: "@alice:courier.local",
+            senderName: "Alice Example",
+            mine: false,
+            type: "m.room.message",
+            content: json(#"{"msgtype":"m.video","body":"clip.mp4","url":"","com.courier.media_removed":true}"#),
+            ts: baseTS + 1_000,
+            seq: 2,
+            status: .sent,
+            mediaPath: ""
+        )
+        let removedVoice = Event(
+            eventID: "$rem-voice",
+            roomID: "!room:courier.local",
+            sender: "@alice:courier.local",
+            senderName: "Alice Example",
+            mine: false,
+            type: "m.room.message",
+            content: json(#"{"msgtype":"m.audio","body":"voice.ogg","url":"","org.matrix.msc3245.voice":{},"com.courier.media_removed":true}"#),
+            ts: baseTS + 2_000,
+            seq: 3,
+            status: .sent,
+            mediaPath: ""
+        )
+        let removedFile = Event(
+            eventID: "$rem-file",
+            roomID: "!room:courier.local",
+            sender: "@alice:courier.local",
+            senderName: "Alice Example",
+            mine: false,
+            type: "m.room.message",
+            content: json(#"{"msgtype":"m.file","body":"Quarterly Report","filename":"report.pdf","url":"","com.courier.media_removed":true}"#),
+            ts: baseTS + 3_000,
+            seq: 4,
+            status: .sent,
+            mediaPath: ""
+        )
+        let removedSticker = Event(
+            eventID: "$rem-stk",
+            roomID: "!room:courier.local",
+            sender: "@alice:courier.local",
+            senderName: "Alice Example",
+            mine: false,
+            type: "m.sticker",
+            content: json(#"{"body":"Wave","url":"","com.courier.media_removed":true}"#),
+            ts: baseTS + 4_000,
+            seq: 5,
+            status: .sent,
+            mediaPath: ""
+        )
+        let notRemovedImage = Event(
+            eventID: "$not-rem-img",
+            roomID: "!room:courier.local",
+            sender: "@alice:courier.local",
+            senderName: "Alice Example",
+            mine: false,
+            type: "m.room.message",
+            content: json(#"{"msgtype":"m.image","body":"pending.jpg","url":""}"#),
+            ts: baseTS + 5_000,
+            seq: 6,
+            status: .sent,
+            mediaPath: ""
+        )
+
+        let shown = messages(build([
+            removedImage, removedVideo, removedVoice, removedFile, removedSticker, notRemovedImage,
+        ]))
+        XCTAssertEqual(shown.count, 6, "Removed media items must not collapse into a gallery")
+        XCTAssertEqual(TimelineMessage.mediaRemovedPlaceholderText, "Removed to free up space")
+
+        for idx in 0 ..< 5 {
+            XCTAssertTrue(shown[idx].mediaRemoved, "Expected mediaRemoved true at \(idx)")
+            XCTAssertTrue(shown[idx].showsMediaRemovedPlaceholder, "Expected showsMediaRemovedPlaceholder true at \(idx)")
+        }
+        XCTAssertEqual(shown[3].body, "Quarterly Report", "Caption text stays intact when file media is removed")
+        XCTAssertEqual(shown[3].fileName, "report.pdf")
+
+        XCTAssertFalse(shown[5].mediaRemoved)
+        XCTAssertFalse(shown[5].showsMediaRemovedPlaceholder)
+    }
 }

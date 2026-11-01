@@ -22,8 +22,10 @@ struct ChatContextMenu: View {
     var onDeleteChat: ((String) -> Void)? = nil
     var onReportSpam: ((String) -> Void)? = nil
     var onOpenInNewWindow: ((String) -> Void)? = nil
+    var onCustomizeChatTheme: ((String) -> Void)? = nil
     @Environment(\.searchInChat) private var searchInChat
     @Environment(\.openDetachedWindow) private var openDetachedWindow
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         let rows = inbox.targetRows(ids)
@@ -113,14 +115,22 @@ struct ChatContextMenu: View {
         // 9. Reminders.
         RemindMeMenu(inbox: inbox, ui: ui, ids: ids)
 
-        // 18 of 02 §3.4.1: Open in New Window (single chat).
+        // 18 of 02 §3.4.1: Open in New Window (single chat) and Chat Theme…
         if rows.count == 1 {
             let roomID = rows[0].roomID
+            let chatTitle = rows[0].name
             Button(String(localized: "Open in New Window")) {
                 if let onOpenInNewWindow {
                     onOpenInNewWindow(roomID)
                 } else {
                     openDetachedWindow?(.chat(roomID: roomID))
+                }
+            }
+            Button(String(localized: "Chat Theme…")) {
+                if let onCustomizeChatTheme {
+                    onCustomizeChatTheme(roomID)
+                } else {
+                    openWindow(id: WindowID.chatTheme, value: ChatThemeWindowTarget(roomID: roomID, chatTitle: chatTitle))
                 }
             }
         }

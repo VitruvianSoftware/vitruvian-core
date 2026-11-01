@@ -693,6 +693,23 @@ public struct ChatInfoPane: View {
                 .buttonStyle(.plain)
             }
 
+            Button(action: {
+                openWindow(
+                    id: WindowID.chatTheme,
+                    value: ChatThemeWindowTarget(roomID: info.roomID, chatTitle: info.name)
+                )
+            }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "paintpalette")
+                        .frame(width: 16)
+                    Text(String(localized: "Chat Theme…"))
+                        .font(.callout)
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
             Button(action: promptExportChat) {
                 HStack(spacing: 8) {
                     Image(systemName: "square.and.arrow.up")

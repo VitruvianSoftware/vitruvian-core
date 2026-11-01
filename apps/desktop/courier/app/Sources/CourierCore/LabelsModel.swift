@@ -15,9 +15,9 @@ public final class LabelsModel: ObservableObject {
     public static let maxTitle = 40
     /// Indexes into the system colours: red, orange, yellow, green, mint, teal, cyan, blue, indigo, purple, pink,
     /// brown.
-    public static let colors = 0 ..< 12
-    /// The SF Symbols a label can wear, in the order the picker shows them.
-    public static let icons: [String] = [
+    nonisolated public static let colors = 0 ..< 12
+    /// The default quick-pick SF Symbols a label can wear, in the order the picker shows them first.
+    nonisolated public static let icons: [String] = [
         "tag", "star", "heart", "bolt", "flag", "bookmark", "briefcase", "house", "person.2", "cart", "airplane",
         "car", "book", "graduationcap", "gamecontroller", "music.note", "camera", "leaf", "pawprint",
         "cup.and.saucer", "fork.knife", "gift", "bell", "moon",
@@ -126,7 +126,7 @@ public final class LabelsModel: ObservableObject {
     }
 
     private static func check(icon: String) throws {
-        guard icons.contains(icon) else { throw invalid("icon") }
+        guard CourierIconCatalog.allowedLabelSFSymbols.contains(icon) else { throw invalid("icon") }
     }
 
     /// The error the engine itself would answer, so a view has one kind of refusal to show.
