@@ -229,6 +229,73 @@ fn check_diff_uses_no_temp_file() {
     assert_eq!(fs::read_to_string(&not_a_dir).unwrap(), "not a directory\n");
 }
 
+/// The diff is fed the expected hook on its stdin and given no file but
+/// the target: whatever the temp directory, a fixed path (`/tmp/…`) or any
+/// other file written for diff to read shows up in diff's arguments. A fake
+/// `diff` first on PATH records what it was given.
+#[test]
+fn check_diff_reads_the_expected_hook_from_stdin_not_a_file() {
+    let t = Tmp::new();
+    let hook = stub(&t);
+    let bin = t.join("bin");
+    fs::create_dir(&bin).unwrap();
+    write_exe(
+        &bin.join("diff"),
+        "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$DIFF_ARGV\"\ncat > \"$DIFF_STDIN\"\nexit 1\n",
+    );
+    let path = format!(
+        "{}:{}",
+        bin.display(),
+        std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin".into())
+    );
+    let o = Command::new(tool())
+        .args(["--check", "--file", hook.to_str().unwrap()])
+        .env_remove("BUILD_WORKSPACE_DIRECTORY")
+        .env("PATH", path)
+        .env("DIFF_ARGV", t.join("diff-argv"))
+        .env("DIFF_STDIN", t.join("diff-stdin"))
+        .output()
+        .expect("run configure-tailscale");
+    assert_eq!(o.status.code(), Some(1), "stale file passed --check");
+    let argv = fs::read_to_string(t.join("diff-argv")).expect("diff was run");
+    assert_eq!(
+        argv.lines().collect::<Vec<_>>(),
+        ["-u", hook.to_str().unwrap(), "-"],
+        "diff must compare the target with stdin, not with a file written for it"
+    );
+    assert_eq!(
+        fs::read(t.join("diff-stdin")).unwrap(),
+        fs::read(checked_in_hook()).unwrap(),
+        "diff's stdin is not the expected hook"
+    );
+}
+
+/// `show_diff` writes no file at all, used by diff or not. A source check,
+/// because a write that nothing reads leaves no trace a run can see.
+#[test]
+fn show_diff_writes_no_file() {
+    let src = include_str!("lib.rs");
+    let start = src.find("fn show_diff(").expect("show_diff is in lib.rs");
+    let body = &src[start..];
+    let body = &body[..body.find("\n}\n").expect("show_diff ends")];
+    for writes in [
+        "fs::write",
+        "File::create",
+        "OpenOptions",
+        "create_new",
+        "temp_dir",
+        "TMPDIR",
+        "/tmp",
+        "tempfile",
+        "mktemp",
+    ] {
+        assert!(
+            !body.contains(writes),
+            "show_diff uses `{writes}`; feed diff the expected text on stdin instead:\n{body}"
+        );
+    }
+}
+
 #[test]
 fn unknown_argument_is_exit_2() {
     let c = configure(&["--bogus"], None);
