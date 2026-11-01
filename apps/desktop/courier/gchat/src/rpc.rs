@@ -15,11 +15,28 @@ use std::time::Duration;
 use url::Url;
 
 static TRACE_COUNTER: AtomicI64 = AtomicI64::new(1);
+static RPC_COUNTER: AtomicI64 = AtomicI64::new(1);
+
+const API_KEY: &str = "AIzaSyD7InnYR3VKdb4j2rMUEbTCIr2VyEazl6k"; // gitleaks:allow (public Google Chat web-client key, not a secret)
 
 pub const CLIENT_VERSION: i64 = 2440378181258;
 pub const MAX_RPC_RESPONSE_BYTES: usize = 16 * 1024 * 1024;
 pub const MAX_RETRY_AFTER_SECS: u64 = 60;
 const MAX_ERR_BODY_BYTES: usize = 256;
+
+/// `/u/0/api/{endpoint}` with the query parameters the web client sends (spec §4).
+fn rpc_url(base_url: &Url, endpoint: &str, counter: i64) -> Result<Url, GChatError> {
+    let rel_path = format!("/u/0/api/{endpoint}");
+    let mut url = base_url
+        .join(&rel_path)
+        .map_err(|e| GChatError::Internal(format!("invalid RPC URL for {endpoint}: {e}")))?;
+    url.query_pairs_mut()
+        .append_pair("c", &counter.to_string())
+        .append_pair("rt", "b")
+        .append_pair("alt", "proto")
+        .append_pair("key", API_KEY);
+    Ok(url)
+}
 
 pub fn parse_retry_after_clamped(raw: &str) -> Option<Duration> {
     raw.trim()
@@ -136,11 +153,8 @@ crate::edition2021! {
         req_bytes: &[u8],
         idempotent: bool,
     ) -> Result<Vec<u8>, GChatError> {
-        let rel_path = format!("/u/0/api/{endpoint}?alt=proto");
-        let url = base_url
-            .join(&rel_path)
-            .map_err(|e| GChatError::Internal(format!("invalid RPC URL for {endpoint}: {e}")))?;
-        guard.validate_host_and_scheme(&url, false)?;
+        let initial_url = rpc_url(base_url, endpoint, 1)?;
+        guard.validate_host_and_scheme(&initial_url, false)?;
 
         let payload = prepend_request_header(endpoint, req_bytes);
         let mut refreshed_xsrf = false;
@@ -149,6 +163,8 @@ crate::edition2021! {
 
         loop {
             let (xsrf_token, xsrf_gen) = xsrf.get_token().await?;
+            let counter = RPC_COUNTER.fetch_add(1, Ordering::Relaxed);
+            let url = rpc_url(base_url, endpoint, counter)?;
 
             let mut req = http
                 .post(url.clone())
@@ -171,15 +187,14 @@ crate::edition2021! {
                 .map_err(|e| map_reqwest_error(&format!("RPC {endpoint} failed"), e))?;
 
             let status = resp.status();
-            if status.as_u16() == 401 || status.as_u16() == 403 {
+            if status.as_u16() == 401 {
                 if !refreshed_xsrf {
                     refreshed_xsrf = true;
                     xsrf.refresh_if_generation(xsrf_gen).await?;
                     continue;
                 }
                 return Err(GChatError::AuthExpired(format!(
-                    "RPC {endpoint} returned HTTP {} after XSRF refresh",
-                    status.as_u16()
+                    "RPC {endpoint} returned HTTP 401 after XSRF refresh"
                 )));
             }
 
@@ -373,7 +388,14 @@ mod tests {
                             return;
                         }
 
-                        if first_line.starts_with("POST /u/0/api/get_self_user_status?alt=proto") {
+                        if first_line.starts_with("POST /u/0/api/get_self_user_status?") {
+                            assert!(
+                                first_line.contains("rt=b")
+                                    && first_line.contains("alt=proto")
+                                    && first_line.contains(&format!("key={API_KEY}"))
+                                    && first_line.contains("c="),
+                                "missing expected query params in {first_line}"
+                            );
                             let lower_headers = headers_str.to_ascii_lowercase();
                             assert!(
                                 lower_headers.contains("x-goog-encode-response-if-executable: base64")
@@ -442,6 +464,10 @@ mod tests {
                                 }
                                 5 | 6 => {
                                     let resp = "HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+                                    let _ = stream.write_all(resp.as_bytes()).await;
+                                }
+                                7 => {
+                                    let resp = "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
                                     let _ = stream.write_all(resp.as_bytes()).await;
                                 }
                                 _ => {}
@@ -529,6 +555,33 @@ mod tests {
                 "expected AuthExpired after repeated 401, got: {third_res:?}"
             );
             assert_eq!(mole_world_hits.load(Ordering::SeqCst), 4);
+            assert_eq!(rpc_hits.load(Ordering::SeqCst), 6);
+
+            let fourth_res = invoke_proto_rpc(
+                &http,
+                &jar,
+                &xsrf,
+                &guard,
+                DEFAULT_MACOS_SAFARI_UA,
+                &base_url,
+                "get_self_user_status",
+                &empty_req,
+            )
+            .await;
+            assert!(
+                matches!(fourth_res, Err(GChatError::HttpStatus(403, _))),
+                "HTTP 403 must return HttpStatus(403, _) without XSRF refresh, got: {fourth_res:?}"
+            );
+            assert_eq!(
+                mole_world_hits.load(Ordering::SeqCst),
+                4,
+                "HTTP 403 must not refresh XSRF token"
+            );
+            assert_eq!(
+                rpc_hits.load(Ordering::SeqCst),
+                7,
+                "HTTP 403 must not retry RPC"
+            );
 
             server_handle.abort();
         }
@@ -583,28 +636,28 @@ mod tests {
                             let _ = stream.write_all(resp.as_bytes()).await;
                             return;
                         }
-                        if first_line.starts_with("POST /u/0/api/create_topic?alt=proto") {
+                        if first_line.starts_with("POST /u/0/api/create_topic?") {
                             ct.fetch_add(1, Ordering::SeqCst);
                             let _ = stream
                                 .write_all(b"HTTP/1.1 503 Service Unavailable\r\nRetry-After: 0\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
                                 .await;
                             return;
                         }
-                        if first_line.starts_with("POST /u/0/api/create_message?alt=proto") {
+                        if first_line.starts_with("POST /u/0/api/create_message?") {
                             cm.fetch_add(1, Ordering::SeqCst);
                             let _ = stream
                                 .write_all(b"HTTP/1.1 502 Bad Gateway\r\nRetry-After: 0\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
                                 .await;
                             return;
                         }
-                        if first_line.starts_with("POST /u/0/api/create_dm?alt=proto") {
+                        if first_line.starts_with("POST /u/0/api/create_dm?") {
                             cd.fetch_add(1, Ordering::SeqCst);
                             let _ = stream
                                 .write_all(b"HTTP/1.1 504 Gateway Timeout\r\nRetry-After: 0\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
                                 .await;
                             return;
                         }
-                        if first_line.starts_with("POST /u/0/api/paginated_world?alt=proto") {
+                        if first_line.starts_with("POST /u/0/api/paginated_world?") {
                             let n = pw.fetch_add(1, Ordering::SeqCst) + 1;
                             if n == 1 {
                                 let _ = stream
@@ -720,5 +773,20 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn test_rpc_url_carries_counter_rt_alt_and_key() {
+        let base = Url::parse("https://chat.google.com/").unwrap();
+        let url = rpc_url(&base, "get_self_user_status", 1).unwrap();
+
+        assert_eq!(url.path(), "/u/0/api/get_self_user_status");
+        let query: std::collections::HashMap<String, String> =
+            url.query_pairs().into_owned().collect();
+        assert_eq!(query.get("c").map(String::as_str), Some("1"));
+        assert_eq!(query.get("rt").map(String::as_str), Some("b"));
+        assert_eq!(query.get("alt").map(String::as_str), Some("proto"));
+        assert_eq!(query.get("key").map(String::as_str), Some(API_KEY));
+        assert_eq!(query.len(), 4);
     }
 }

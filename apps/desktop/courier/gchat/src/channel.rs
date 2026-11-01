@@ -400,6 +400,15 @@ pub fn build_active_ping_request() -> pb::StreamEventsRequest {
     }
 }
 
+/// Encodes a WebChannel forward-channel payload as `count=1&ofs=<ofs>&req0_data=<urlencoded JSON>`.
+fn encode_req0_form_body(ofs: i64, req0_json: &str) -> String {
+    url::form_urlencoded::Serializer::new(String::new())
+        .append_pair("count", "1")
+        .append_pair("ofs", &ofs.to_string())
+        .append_pair("req0_data", req0_json)
+        .finish()
+}
+
 pub struct WebChannelClient {
     http: Client,
     jar: DomainCookieJar,
@@ -766,7 +775,7 @@ crate::edition2021! {
             }
             self.guard.validate_url(&url, false).await?;
 
-            let form_body = format!("count=1&ofs={ofs}&req0_data={json_str}");
+            let form_body = encode_req0_form_body(ofs, &json_str);
             let mut req = self
                 .http
                 .post(url.clone())
@@ -1323,10 +1332,16 @@ mod tests {
                     );
                 }
                 assert!(
-                    body.starts_with("count=1&ofs=0&req0_data="),
-                    "Step 3b unexpected form body: {body}"
+                    body.starts_with("count=1&ofs=0&req0_data=%5B"),
+                    "Step 3b form body req0_data must be URL-encoded: {body}"
                 );
-                let json_part = body.trim_start_matches("count=1&ofs=0&req0_data=");
+                let form_pairs: std::collections::HashMap<String, String> =
+                    url::form_urlencoded::parse(body.as_bytes())
+                        .into_owned()
+                        .collect();
+                assert_eq!(form_pairs.get("count").map(String::as_str), Some("1"));
+                assert_eq!(form_pairs.get("ofs").map(String::as_str), Some("0"));
+                let json_part = form_pairs.get("req0_data").expect("req0_data present");
                 let val: Value = serde_json::from_str(json_part).expect("valid PingEvent pblite");
                 let desc = DESCRIPTOR_POOL
                     .get_message_by_name("googlechat.StreamEventsRequest")
@@ -1830,5 +1845,11 @@ mod tests {
             "expected 90s server-event watchdog error, got: {err}"
         );
     }
+    }
+
+    #[test]
+    fn test_encode_req0_form_body_url_encodes_pblite_json() {
+        let body = encode_req0_form_body(3, r#"[1,"a&b=c"]"#);
+        assert_eq!(body, "count=1&ofs=3&req0_data=%5B1%2C%22a%26b%3Dc%22%5D");
     }
 }
