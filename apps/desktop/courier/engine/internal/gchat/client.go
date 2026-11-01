@@ -65,6 +65,7 @@ type Client struct {
 	pendingLocalIDs    map[string]struct{}
 	pendingLocalOrder  []string
 	lastState          status.BridgeStateEvent
+	lastBridgeStateObj status.BridgeState
 }
 
 var _ bridgev2.NetworkAPI = (*Client)(nil)
@@ -84,6 +85,7 @@ func hasRequiredCookies(cookies map[string]string) bool {
 func (c *Client) sendBridgeState(st status.BridgeState) {
 	c.mu.Lock()
 	c.lastState = st.StateEvent
+	c.lastBridgeStateObj = st
 	c.mu.Unlock()
 	if c.UserLogin != nil {
 		c.UserLogin.BridgeState.Send(st)
@@ -94,6 +96,12 @@ func (c *Client) lastBridgeState() status.BridgeStateEvent {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.lastState
+}
+
+func (c *Client) lastBridgeStateFull() status.BridgeState {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.lastBridgeStateObj
 }
 
 func (c *Client) Connect(ctx context.Context) {
@@ -230,10 +238,14 @@ func (c *Client) processStreamNotification(ctx context.Context, item streamNotif
 		}
 		c.mu.Unlock()
 		if needInitial {
-			_ = c.syncWorld(ctx)
+			if err := c.syncWorld(ctx); err != nil && c.UserLogin != nil {
+				c.UserLogin.Log.Warn().Err(err).Msg("gchat initial world sync failed")
+			}
 		}
 	case EventKindResync:
-		_ = c.catchUpAfterReconnect(ctx)
+		if err := c.catchUpAfterReconnect(ctx); err != nil && c.UserLogin != nil {
+			c.UserLogin.Log.Warn().Err(err).Msg("gchat reconnect catch-up failed")
+		}
 	case EventKindEventProto:
 		evts, err := c.translateWebChannelEvent(ctx, item.payload)
 		if err != nil {
@@ -249,6 +261,21 @@ func (c *Client) processStreamNotification(ctx context.Context, item streamNotif
 			Message:    string(item.payload),
 			UserAction: status.UserActionRelogin,
 		})
+	case EventKindStreamError:
+		msg := string(item.payload)
+		if c.UserLogin != nil {
+			c.UserLogin.Log.Warn().Str("message", msg).Msg("gchat stream error")
+		}
+		c.mu.Lock()
+		connectedSinceConnect := c.initialSyncDone
+		c.mu.Unlock()
+		if !connectedSinceConnect {
+			c.sendBridgeState(status.BridgeState{
+				StateEvent: status.StateTransientDisconnect,
+				Error:      "gchat-stream-error",
+				Message:    msg,
+			})
+		}
 	}
 }
 

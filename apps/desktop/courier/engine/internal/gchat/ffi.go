@@ -34,6 +34,7 @@ const (
 	EventKindAuthExpired int32 = 2
 	EventKindResync      int32 = 3
 	EventKindConnected   int32 = 4
+	EventKindStreamError int32 = 5
 )
 
 // ScopedCookie represents a single domain-scoped cookie for Google Chat.

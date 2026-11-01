@@ -157,6 +157,33 @@ pub const GCHAT_EVENT_KIND_EVENT_PROTO: i32 = 1;
 pub const GCHAT_EVENT_KIND_AUTH_EXPIRED: i32 = 2;
 pub const GCHAT_EVENT_KIND_RESYNC: i32 = 3;
 pub const GCHAT_EVENT_KIND_CONNECTED: i32 = 4;
+pub const GCHAT_EVENT_KIND_STREAM_ERROR: i32 = 5;
+
+/// Formats a sanitized stream error summary containing only the step name and
+/// error kind (plus HTTP status code when applicable). Never includes URLs,
+/// query strings, SIDs, cookies, tokens, or response bodies.
+pub fn format_stream_error_message(step: &str, err: &GChatError) -> String {
+    let safe_step = match step {
+        "step1_register"
+        | "step2_bind_sid"
+        | "step3_ack_and_ping"
+        | "step2_bind_poll"
+        | "step4_poll_events" => step,
+        _ => "stream",
+    };
+    let kind = match err {
+        GChatError::CookieValidation(_) => "cookie_validation".to_string(),
+        GChatError::AuthExpired(_) => "auth_expired".to_string(),
+        GChatError::SsrfBlocked(_) => "ssrf_blocked".to_string(),
+        GChatError::RateLimited => "rate_limited".to_string(),
+        GChatError::HttpStatus(status, _) => format!("http_status:{status}"),
+        GChatError::Network(_) => "network".to_string(),
+        GChatError::Proto(_) => "proto".to_string(),
+        GChatError::Protocol(_) => "protocol".to_string(),
+        GChatError::Internal(_) => "internal".to_string(),
+    };
+    format!("{safe_step}: {kind}")
+}
 
 const POISONED_LINE_SENTINEL: u16 = 0xFFFF;
 
@@ -999,7 +1026,7 @@ crate::edition2021! {
                     r = self.step1_register() => r,
                 };
                 if let Err(e) = reg_res {
-                    if !self.handle_stream_error(e, &mut attempt, &mut cancel_rx, &mut emit).await {
+                    if !self.handle_stream_error("step1_register", e, &mut attempt, &mut cancel_rx, &mut emit).await {
                         break;
                     }
                     continue;
@@ -1012,7 +1039,7 @@ crate::edition2021! {
                 let (sid, bind_resp) = match sid_res {
                     Ok(pair) => pair,
                     Err(e) => {
-                        if !self.handle_stream_error(e, &mut attempt, &mut cancel_rx, &mut emit).await {
+                        if !self.handle_stream_error("step2_bind_sid", e, &mut attempt, &mut cancel_rx, &mut emit).await {
                             break;
                         }
                         continue;
@@ -1025,7 +1052,7 @@ crate::edition2021! {
                 };
                 if let Err(e) = ack_ping_res {
                     drop(bind_resp);
-                    if !self.handle_stream_error(e, &mut attempt, &mut cancel_rx, &mut emit).await {
+                    if !self.handle_stream_error("step3_ack_and_ping", e, &mut attempt, &mut cancel_rx, &mut emit).await {
                         break;
                     }
                     continue;
@@ -1050,7 +1077,7 @@ crate::edition2021! {
                     };
                     drop(on_ev);
                     if let Err(e) = bind_poll_res {
-                        if !self.handle_stream_error(e, &mut attempt, &mut cancel_rx, &mut emit).await {
+                        if !self.handle_stream_error("step2_bind_poll", e, &mut attempt, &mut cancel_rx, &mut emit).await {
                             return;
                         }
                         continue;
@@ -1077,7 +1104,7 @@ crate::edition2021! {
                             continue;
                         }
                         Err(e) => {
-                            if !self.handle_stream_error(e, &mut attempt, &mut cancel_rx, &mut emit).await {
+                            if !self.handle_stream_error("step4_poll_events", e, &mut attempt, &mut cancel_rx, &mut emit).await {
                                 return;
                             }
                             break;
@@ -1089,6 +1116,7 @@ crate::edition2021! {
 
         async fn handle_stream_error<F>(
             &self,
+            step: &'static str,
             err: GChatError,
             attempt: &mut usize,
             cancel_rx: &mut tokio::sync::watch::Receiver<bool>,
@@ -1104,6 +1132,8 @@ crate::edition2021! {
                     return false;
                 }
             }
+            let summary = format_stream_error_message(step, &err);
+            emit(GCHAT_EVENT_KIND_STREAM_ERROR, summary.as_bytes());
             let clock = self.clock();
             let delay = reconnect_backoff_delay(*attempt, clock.jitter_unit(*attempt));
             *attempt = attempt.saturating_add(1);
@@ -2080,5 +2110,64 @@ mod tests {
     fn test_encode_req0_form_body_url_encodes_pblite_json() {
         let body = encode_req0_form_body(3, r#"[1,"a&b=c"]"#);
         assert_eq!(body, "count=1&ofs=3&req0_data=%5B1%2C%22a%26b%3Dc%22%5D");
+    }
+
+    #[test]
+    fn test_format_stream_error_message_never_echoes_sid_cookie_token_url_or_body() {
+        let sensitive_payload = "https://chat.google.com/u/0/webchannel/events?SID=sid_val_999&zx=abc Cookie: COMPASS=dynamite-ui=compass_val; OSID=osid_val xsrf=xsrf_val body=resp_body_val"; // gitleaks:allow
+        let cases = [
+            (
+                "step1_register",
+                GChatError::HttpStatus(503, sensitive_payload.to_string()),
+                "step1_register: http_status:503",
+            ),
+            (
+                "step2_bind_sid",
+                GChatError::Network(sensitive_payload.to_string()),
+                "step2_bind_sid: network",
+            ),
+            (
+                "step3_ack_and_ping",
+                GChatError::Protocol(sensitive_payload.to_string()),
+                "step3_ack_and_ping: protocol",
+            ),
+            (
+                "step2_bind_poll",
+                GChatError::AuthExpired(sensitive_payload.to_string()),
+                "step2_bind_poll: auth_expired",
+            ),
+            (
+                "step4_poll_events",
+                GChatError::HttpStatus(400, sensitive_payload.to_string()),
+                "step4_poll_events: http_status:400",
+            ),
+            (
+                sensitive_payload,
+                GChatError::Internal(sensitive_payload.to_string()),
+                "stream: internal",
+            ),
+        ];
+
+        for (step, err, expected) in cases {
+            let formatted = format_stream_error_message(step, &err);
+            assert_eq!(formatted, expected);
+            for forbidden in [
+                "https://",
+                "chat.google.com",
+                "SID=",
+                "sid_val_999",
+                "COMPASS",
+                "compass_val",
+                "OSID",
+                "osid_val",
+                "xsrf_val",
+                "resp_body_val",
+            ] {
+                assert!(
+                    !formatted.contains(forbidden),
+                    "stream error summary leaked `{forbidden}` in `{formatted}`"
+                );
+            }
+        }
     }
 }
