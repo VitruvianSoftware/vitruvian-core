@@ -713,6 +713,7 @@ public struct ChatWallpaperCanvasView: View {
 /// Optional empty-state unread summary cards (`FeaturedHoneycombCard.tsx`, `UnreadThreadCard.tsx`) shown in `NoChatSelected`
 /// when `appearance.showHoneycombCards` is enabled.
 public struct EmptyStateUnreadCardsView: View {
+    public static let featuredHeaderTitle = String(localized: "Unread Highlights")
     public let unreadRows: [CourierCore.InboxRow]
     public var redactNamesAndPictures: Bool = false
     public let onSelectRoom: (String) -> Void

@@ -4894,6 +4894,245 @@ final class ViewSnapshotTests: XCTestCase {
         }
         XCTAssertNil(switchedQuery)
     }
+
+    func testAppearanceSettingsAndAppIconPickerSnapshotsLightAndDark() throws {
+        let suite = defaults()
+        let inboxPrefs = InboxPreferences(defaults: suite)
+        let composerPrefs = ComposerPreferences(defaults: suite)
+        let dockPrefs = DockAndTrayPreferences(defaults: suite)
+        let lifecycle = SystemLifecycleModel(
+            loginItemService: SnapshotLoginItemService(),
+            biometricService: SnapshotBiometricService(),
+            defaults: suite
+        )
+        let appearance = AppearancePreferences(defaults: suite)
+        appearance.themePreset = .midnightIndigo
+        appearance.defaultWallpaper = .topographicLines
+        appearance.fontSizeScale = .large
+        appearance.zoomPercent = 110
+
+        try assertLightAndDarkSnapshot("m47-appearance-settings-pane", width: 680, height: 860) {
+            AppearanceSettingsPane(
+                inboxPreferences: inboxPrefs,
+                composerPreferences: composerPrefs,
+                dockPreferences: dockPrefs,
+                lifecycle: lifecycle,
+                appearance: appearance
+            )
+            .frame(width: 680, height: 860)
+            .background(Color(nsColor: .windowBackgroundColor))
+        }
+
+        try assertLightAndDarkSnapshot("m47-app-icon-picker", width: 560, height: 340) {
+            AppIconPickerView(appearance: appearance)
+                .padding(16)
+                .frame(width: 560, height: 340)
+                .background(Color(nsColor: .windowBackgroundColor))
+        }
+    }
+
+    func testChatThemeWindowAndBrowserSnapshotsLightAndDark() throws {
+        let suite = defaults()
+        let appearance = AppearancePreferences(defaults: suite)
+        appearance.themePreset = .midnightIndigo
+        appearance.defaultWallpaper = .topographicLines
+        appearance.setChatTheme(
+            ChatThemeOverride(
+                preset: .evergreen,
+                outgoingBubbleColorHex: "#059669",
+                wallpaper: .subtleGrid,
+                wallpaperOpacity: 0.45,
+                wallpaperBlur: false
+            ),
+            for: Fixture.room
+        )
+
+        try assertLightAndDarkSnapshot("m47-chat-theme-window", width: 540, height: 640) {
+            ChatThemeWindow(
+                roomID: Fixture.room,
+                chatTitle: "Weekend Trail Crew",
+                appearance: appearance
+            )
+            .frame(width: 540, height: 640)
+            .background(Color(nsColor: .windowBackgroundColor))
+        }
+
+        try assertLightAndDarkSnapshot("m47-chat-theme-browser", width: 780, height: 580) {
+            ChatThemeBrowserWindow(
+                appearance: appearance,
+                activeRoomID: Fixture.room,
+                activeChatTitle: "Weekend Trail Crew"
+            )
+            .frame(width: 780, height: 580)
+            .background(Color(nsColor: .windowBackgroundColor))
+        }
+
+        // Conversation bubbles with Topographic Lines wallpaper, Midnight Indigo preset, Extra Large font size, and Redact mode enabled
+        let redactedAppearance = AppearancePreferences(defaults: suite)
+        redactedAppearance.themePreset = .midnightIndigo
+        redactedAppearance.defaultWallpaper = .topographicLines
+        redactedAppearance.fontSizeScale = .extraLarge
+        redactedAppearance.redactNamesAndPictures = true
+
+        let ui = MessageUI()
+        var actions = MessageActions()
+        actions.appearance = redactedAppearance
+        let messages = [
+            Fixture.text("$m1", "Are we meeting at the trailhead at 8 AM?", mine: false, ts: 5, sender: "@alice:courier.local", name: "Alice Example"),
+            Fixture.text("$m2", "Yes! Bringing coffee and trail mix for everyone.", mine: true, ts: 6),
+        ]
+        try assertLightAndDarkSnapshot("m47-themed-redacted-conversation", width: 580, height: 320) {
+            ZStack {
+                ChatWallpaperCanvasView(
+                    preset: .topographicLines,
+                    customImagePath: nil,
+                    opacity: 0.45,
+                    blur: false,
+                    reduceTransparency: false
+                )
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(Fixture.items(messages, isDirect: false)) { item in
+                        TimelineItemView(item: item, isSelected: false, showsSent: true, actions: actions, ui: ui)
+                    }
+                }
+                .padding(16)
+            }
+            .environment(\.appearancePreferences, redactedAppearance)
+            .frame(width: 580, height: 320)
+            .background(Color(nsColor: .windowBackgroundColor))
+        }
+    }
+
+    func testStorageSettingsPaneSnapshotsLightAndDark() throws {
+        let suite = defaults()
+        let app = offlineApp()
+        let lifecycle = SystemLifecycleModel(
+            loginItemService: SnapshotLoginItemService(),
+            biometricService: SnapshotBiometricService(),
+            defaults: suite
+        )
+        let model = StorageModel(appModel: app, lifecycle: lifecycle)
+        model.setUsageForTesting(
+            StorageUsageResult(
+                totalBytes: 245_366_784,
+                databaseBytes: 18_874_368,
+                photosAndVideosBytes: 174_063_616,
+                audioBytes: 14_680_064,
+                filesBytes: 31_457_280,
+                stickersBytes: 6_291_456,
+                otherMediaBytes: 0,
+                rooms: [
+                    RoomStorageUsage(
+                        roomID: "!wa:1",
+                        name: "Weekend Trail Crew",
+                        network: "whatsapp",
+                        mediaBytes: 142_606_336,
+                        itemCount: 84
+                    ),
+                    RoomStorageUsage(
+                        roomID: "!sig:2",
+                        name: "Alice Example",
+                        network: "signal",
+                        mediaBytes: 52_428_800,
+                        itemCount: 31
+                    ),
+                    RoomStorageUsage(
+                        roomID: "!tg:3",
+                        name: "Design Systems Guild",
+                        network: "telegram",
+                        mediaBytes: 31_457_280,
+                        itemCount: 19
+                    ),
+                ]
+            )
+        )
+
+        try assertLightAndDarkSnapshot("m47-storage-settings-pane", width: 660, height: 640) {
+            StorageSettingsPane(model: model, lifecycle: lifecycle)
+                .frame(width: 660, height: 640)
+                .background(Color(nsColor: .windowBackgroundColor))
+        }
+    }
+
+    func testAISettingsAIPaneTranslationAndPlusSettingsSnapshotsLightAndDark() throws {
+        let suite = defaults()
+        let lifecycle = SystemLifecycleModel(
+            loginItemService: SnapshotLoginItemService(),
+            biometricService: SnapshotBiometricService(),
+            defaults: suite
+        )
+        let aiPrefs = AIPreferences(defaults: suite)
+        aiPrefs.translationLanguages = ["English", "Arabic", "Spanish"]
+
+        try assertLightAndDarkSnapshot("m47-ai-settings-pane", width: 660, height: 720) {
+            AISettingsPane(preferences: aiPrefs, lifecycle: lifecycle)
+                .frame(width: 660, height: 720)
+                .background(Color(nsColor: .windowBackgroundColor))
+        }
+
+        try assertLightAndDarkSnapshot("m47-ai-pane-and-translation-row", width: 640, height: 480) {
+            HStack(spacing: 0) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Inline Message Translation Stub")
+                        .font(.headline)
+                    MessageTranslationRowView(
+                        targetLanguage: "Spanish",
+                        disposition: .unavailable(reason: "Message translation isn’t available yet in Courier.")
+                    )
+                    Spacer()
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                Divider()
+                AIPane(chatTitle: "Weekend Trail Crew", preferences: aiPrefs)
+            }
+            .frame(width: 640, height: 480)
+            .background(Color(nsColor: .windowBackgroundColor))
+        }
+
+        try assertLightAndDarkSnapshot("m47-plus-settings-included-and-noplan", width: 680, height: 760) {
+            VStack(spacing: 0) {
+                PlusSettingsPane(entitlement: AlwaysEntitled())
+                    .frame(height: 380)
+                Divider()
+                PlusSettingsPane(entitlement: NoPlan())
+                    .frame(height: 380)
+            }
+            .frame(width: 680, height: 760)
+            .background(Color(nsColor: .windowBackgroundColor))
+        }
+
+        try assertLightAndDarkSnapshot("m47-integrations-settings-pane", width: 640, height: 440) {
+            IntegrationsSettingsPane()
+                .frame(width: 640, height: 440)
+                .background(Color(nsColor: .windowBackgroundColor))
+        }
+    }
+
+    func testSection22IconCatalogPickerAndEmptyStateCardsSnapshotsLightAndDark() throws {
+        XCTAssertEqual(EmptyStateUnreadCardsView.featuredHeaderTitle, "Unread Highlights")
+        let unreadRows = [
+            Fixture.row("!dm-alice:courier.local", "Alice Example", network: "signal", ts: 5, preview: "Can you review the trail map before tomorrow?", unread: 3),
+            Fixture.row("!grp-trail:courier.local", "Weekend Trail Crew", network: "whatsapp", direct: false, ts: 12, preview: "Bob: Bringing extra headlamps", unread: 7),
+            Fixture.row("!dm-carol:courier.local", "Carol Chen", network: "telegram", ts: 25, preview: "Shared 4 photos from Half Dome", unread: 1),
+        ]
+
+        try assertLightAndDarkSnapshot("m47-empty-state-unread-cards", width: 640, height: 440) {
+            ZStack {
+                ChatWallpaperCanvasView(
+                    preset: .auroraGlow,
+                    customImagePath: nil,
+                    opacity: 0.45,
+                    blur: false,
+                    reduceTransparency: false
+                )
+                EmptyStateUnreadCardsView(unreadRows: unreadRows) { _ in }
+                    .padding(24)
+            }
+            .frame(width: 640, height: 440)
+            .background(Color(nsColor: .windowBackgroundColor))
+        }
+    }
 }
 
 private struct SnapshotLoginItemService: LoginItemService {
