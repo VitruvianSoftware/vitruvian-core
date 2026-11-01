@@ -117,16 +117,28 @@ fn run_ls_la(target: Option<&str>) {
     let _ = cmd.status();
 }
 
+/// One "<label>: <version>" banner line. A missing tool is reported, not
+/// fatal: the server is the native binary and needs neither `node` nor `npm`.
+/// `start.sh` behaved the same way (a failed `$(node --version)` inside `echo`
+/// does not trip `set -e`); exiting here instead would stop the container
+/// before it listens on PORT, with nothing in the log to say why.
+pub fn version_line(label: &str, version: Option<String>) -> String {
+    match version {
+        Some(v) => format!("{label}: {v}"),
+        None => format!("{label}: not found"),
+    }
+}
+
 pub fn run(_args: &[String]) -> i32 {
     println!("🚀 Starting OAuth User Inspector");
-    let Some(node_ver) = capture_trimmed("node", &["--version"]) else {
-        return 1;
-    };
-    println!("Node version: {node_ver}");
-    let Some(npm_ver) = capture_trimmed("npm", &["--version"]) else {
-        return 1;
-    };
-    println!("NPM version: {npm_ver}");
+    println!(
+        "{}",
+        version_line("Node version", capture_trimmed("node", &["--version"]))
+    );
+    println!(
+        "{}",
+        version_line("NPM version", capture_trimmed("npm", &["--version"]))
+    );
     let cwd = env::current_dir().unwrap_or_default();
     println!("Working directory: {}", cwd.display());
 
@@ -188,6 +200,15 @@ mod tests {
             ServerCommand::Native("dist-server/oauth-user-inspector-server")
         );
         let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn missing_node_or_npm_is_reported_not_fatal() {
+        assert_eq!(
+            version_line("Node version", Some("v22.1.0".into())),
+            "Node version: v22.1.0"
+        );
+        assert_eq!(version_line("NPM version", None), "NPM version: not found");
     }
 
     #[test]
