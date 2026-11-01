@@ -677,7 +677,7 @@ fn additional() -> Vec<Ext> {
             hooks: vec![],
             rules: vec![],
             keywords: list_of_str(&["roborock", "vacuum", "home-automation", "mcp"]),
-            needs: s("rrctl on your PATH (build it with cargo install or Bazel; see the README), and a Roborock account (the plugin walks you through logging in)"),
+            needs: s("rrctl on your PATH (download it from a 0.2.0+ release, or cargo install), and a Roborock account (the plugin walks you through logging in)"),
             note: s(""),
             installs: vec![
                 install("Claude Code", "claude-code", "Claude Code, step 1: add the marketplace", "claude plugin marketplace add VitruvianSoftware/mcp-roborock"),

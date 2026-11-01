@@ -45,7 +45,7 @@ use crate::local::LocalChannel;
 use crate::mqtt;
 use crate::protocol::{self, Message, Request, Rriot, SecurityData};
 use serde_json::{json, Map, Value};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
@@ -224,21 +224,29 @@ struct Router {
     security: SecurityData,
     rpc: Mutex<HashMap<u64, RpcWaiter>>,
     maps: Mutex<HashMap<u16, MapWaiter>>,
-    /// Requests sent over the local channel and not yet answered.
-    local_ids: Mutex<HashSet<u64>>,
+    /// Requests sent over a local channel and not yet answered, with the
+    /// generation of the channel each went out on.
+    local_ids: Mutex<HashMap<u64, u64>>,
     on_push: PushHandler,
 }
 
 impl Router {
-    /// The local channel went down: fail its requests now, so callers fall
-    /// back to MQTT instead of waiting out their timeout.
-    fn local_down(&self) {
-        let ids: Vec<u64> = self
-            .local_ids
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .drain()
-            .collect();
+    /// Local channel `generation` went down: fail the requests sent over
+    /// it now, so callers fall back to MQTT instead of waiting out their
+    /// timeout. Requests on any other channel (a newer one) are left alone.
+    fn local_down(&self, generation: u64) {
+        let ids: Vec<u64> = {
+            let mut local = self.local_ids.lock().unwrap_or_else(|e| e.into_inner());
+            let ids: Vec<u64> = local
+                .iter()
+                .filter(|(_, g)| **g == generation)
+                .map(|(id, _)| *id)
+                .collect();
+            for id in &ids {
+                local.remove(id);
+            }
+            ids
+        };
         let mut rpc = self.rpc.lock().unwrap_or_else(|e| e.into_inner());
         for id in ids {
             if let Some(tx) = rpc.remove(&id) {
@@ -335,6 +343,12 @@ fn ensure_local_with(
             None => false,
         }
     };
+    // However `connect` ends (an error, or a panic), the attempt is over:
+    // clear `connecting` and back off, or no caller would ever retry.
+    let mut attempt = Attempt {
+        state,
+        finished: false,
+    };
     let result = connect(had_channel);
     let mut local = state.lock().unwrap_or_else(|e| e.into_inner());
     local.connecting = false;
@@ -345,10 +359,29 @@ fn ensure_local_with(
             }
             local.backoff = LOCAL_BACKOFF_MIN;
         }
-        Err(_) => {
-            local.next_attempt = Instant::now() + local.backoff;
-            local.backoff = (local.backoff.mul_f32(1.5)).min(LOCAL_BACKOFF_MAX);
+        Err(_) => back_off(&mut local),
+    }
+    attempt.finished = true;
+}
+
+fn back_off(local: &mut LocalState) {
+    local.next_attempt = Instant::now() + local.backoff;
+    local.backoff = (local.backoff.mul_f32(1.5)).min(LOCAL_BACKOFF_MAX);
+}
+
+struct Attempt<'a> {
+    state: &'a Mutex<LocalState>,
+    finished: bool,
+}
+
+impl Drop for Attempt<'_> {
+    fn drop(&mut self) {
+        if self.finished {
+            return;
         }
+        let mut local = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        local.connecting = false;
+        back_off(&mut local);
     }
 }
 
@@ -361,6 +394,8 @@ pub struct Link {
     sub_id: u64,
     router: Arc<Router>,
     local: Mutex<LocalState>,
+    /// The vacuum's local TCP port (58867; tests point it elsewhere).
+    local_port: u16,
     cache: Mutex<Cache>,
     cache_path: PathBuf,
     last_map: Mutex<Option<(Vec<u8>, Vec<u8>)>>,
@@ -427,7 +462,7 @@ impl Link {
             security: SecurityData::new(&rriot.k),
             rpc: Mutex::new(HashMap::new()),
             maps: Mutex::new(HashMap::new()),
-            local_ids: Mutex::new(HashSet::new()),
+            local_ids: Mutex::new(HashMap::new()),
             on_push: opts.on_push,
         });
         let sub_topic = format!("rr/m/o/{}/{}/{}", rriot.u, params.username, device.duid);
@@ -454,6 +489,7 @@ impl Link {
             sub_id,
             router,
             local: Mutex::new(LocalState::new()),
+            local_port: crate::local::PORT,
             cache: Mutex::new(cache),
             cache_path: opts.cache_path,
             last_map: Mutex::new(None),
@@ -524,14 +560,15 @@ impl Link {
             // After a drop, ask for the IP again in case DHCP moved the vacuum.
             let ip = self.network_ip(!refresh_ip)?;
             let router = self.router.clone();
-            let channel = LocalChannel::connect(
-                &ip,
+            let channel = LocalChannel::connect_addr(
+                &format!("{ip}:{}", self.local_port),
                 &self.device.local_key,
                 Arc::new(move |m| router.dispatch(m)),
             )
             .map_err(|e| e.0)?;
             let router = self.router.clone();
-            channel.set_on_down(Arc::new(move || router.local_down()));
+            let generation = channel.generation();
+            channel.set_on_down(Arc::new(move || router.local_down(generation)));
             Ok(channel)
         });
     }
@@ -617,7 +654,7 @@ impl Link {
             .local_ids
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .insert(req.id as u64);
+            .insert(req.id as u64, channel.generation());
         let sent = channel.publish(&msg);
         drop(local);
         let forget = || {
@@ -815,7 +852,7 @@ mod tests {
             security: SecurityData::new("k"),
             rpc: Mutex::new(HashMap::new()),
             maps: Mutex::new(HashMap::new()),
-            local_ids: Mutex::new(HashSet::new()),
+            local_ids: Mutex::new(HashMap::new()),
             on_push: Arc::new(move |p| sink.lock().unwrap().push(p)),
         };
         let (tx, rx) = mpsc::channel();
@@ -847,22 +884,65 @@ mod tests {
             security: SecurityData::new("k"),
             rpc: Mutex::new(HashMap::new()),
             maps: Mutex::new(HashMap::new()),
-            local_ids: Mutex::new(HashSet::new()),
+            local_ids: Mutex::new(HashMap::new()),
             on_push: Arc::new(|_| {}),
         };
         let (local_tx, local_rx) = mpsc::channel();
+        let (newer_tx, newer_rx) = mpsc::channel();
         let (mqtt_tx, mqtt_rx) = mpsc::channel();
         router.rpc.lock().unwrap().insert(7, local_tx);
-        router.local_ids.lock().unwrap().insert(7);
+        router.local_ids.lock().unwrap().insert(7, 1);
+        // Sent on a newer channel (generation 2) that is still up.
+        router.rpc.lock().unwrap().insert(9, newer_tx);
+        router.local_ids.lock().unwrap().insert(9, 2);
         router.rpc.lock().unwrap().insert(8, mqtt_tx);
-        router.local_down();
+        // A late signal from the old channel (generation 1).
+        router.local_down(1);
         assert_eq!(
             local_rx.try_recv().unwrap(),
             Err("The local connection to the vacuum was lost".to_string())
         );
-        // A request that went over MQTT keeps waiting.
+        // The newer channel's request and an MQTT request keep waiting.
+        assert!(newer_rx.try_recv().is_err());
+        assert!(router.rpc.lock().unwrap().contains_key(&9));
         assert!(mqtt_rx.try_recv().is_err());
         assert!(router.rpc.lock().unwrap().contains_key(&8));
+    }
+
+    #[test]
+    fn a_failed_or_panicking_connect_never_leaves_reconnects_blocked() {
+        let state = Mutex::new(LocalState::new());
+        // A connect that fails: the attempt ends and a later one runs.
+        ensure_local_with(&state, |_| Err("unreachable".into()));
+        {
+            let local = state.lock().unwrap();
+            assert!(!local.connecting);
+            assert!(
+                local.next_attempt > Instant::now(),
+                "no backoff after a failure"
+            );
+        }
+        // A connect that panics: same, the guard clears it.
+        state.lock().unwrap().next_attempt = Instant::now();
+        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            ensure_local_with(&state, |_| panic!("connect blew up"))
+        }));
+        assert!(r.is_err());
+        let local = state.lock().unwrap();
+        assert!(
+            !local.connecting,
+            "a panicking connect left `connecting` set"
+        );
+        assert!(local.next_attempt > Instant::now());
+        drop(local);
+        // And the next retry really happens.
+        state.lock().unwrap().next_attempt = Instant::now();
+        let mut ran = false;
+        ensure_local_with(&state, |_| {
+            ran = true;
+            Err("still down".into())
+        });
+        assert!(ran);
     }
 
     /// A fake vacuum that takes any number of connections, answers hello on
@@ -938,5 +1018,176 @@ mod tests {
         let local = state.lock().unwrap();
         assert!(local.channel.as_ref().unwrap().is_connected());
         local.channel.as_ref().unwrap().close();
+    }
+
+    /// A fake Roborock MQTT broker (plain TCP): accepts the session, and
+    /// answers every RPC published to `rr/m/i/...` with `["ok"]` on the
+    /// matching `rr/m/o/...` topic. Returns its port and how many RPCs it saw.
+    fn fake_broker() -> (u16, Arc<Mutex<usize>>) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let seen = Arc::new(Mutex::new(0usize));
+        let s2 = seen.clone();
+        std::thread::spawn(move || {
+            let (mut sock, _) = listener.accept().unwrap();
+            let mut buf = Vec::new();
+            let mut chunk = [0u8; 8192];
+            loop {
+                let n = match sock.read(&mut chunk) {
+                    Ok(0) | Err(_) => return,
+                    Ok(n) => n,
+                };
+                buf.extend_from_slice(&chunk[..n]);
+                while let Ok(Some((header, body, used))) = mqtt::split_packet(&buf) {
+                    buf.drain(..used);
+                    match header >> 4 {
+                        1 => sock.write_all(&[0x20, 0x03, 0x00, 0x00, 0x00]).unwrap(),
+                        8 => {
+                            let (a, b) = (body[0], body[1]);
+                            sock.write_all(&[0x90, 0x04, a, b, 0x00, 0x00]).unwrap();
+                        }
+                        3 => {
+                            let (topic, payload, _) = mqtt::parse_publish(header, &body).unwrap();
+                            let msg = protocol::decode_frame(payload, KEY, None).unwrap();
+                            let doc: Value =
+                                serde_json::from_slice(msg.payload.as_ref().unwrap()).unwrap();
+                            let inner: Value =
+                                serde_json::from_str(doc["dps"]["101"].as_str().unwrap()).unwrap();
+                            *s2.lock().unwrap() += 1;
+                            let point = json!({"id": inner["id"], "result": ["ok"]}).to_string();
+                            let reply = Message::new(
+                                protocol::RPC_RESPONSE,
+                                Some(json!({"dps": {"102": point}}).to_string().into_bytes()),
+                            );
+                            let wire = protocol::encode(&reply, KEY, false, None).unwrap();
+                            let out = topic.replacen("rr/m/i/", "rr/m/o/", 1);
+                            sock.write_all(&mqtt::publish_packet(&out, &wire)).unwrap();
+                        }
+                        12 => sock.write_all(&[0xD0, 0x00]).unwrap(),
+                        _ => {}
+                    }
+                }
+            }
+        });
+        (port, seen)
+    }
+
+    /// A fake vacuum on the local port: answers hello, then drops the
+    /// connection the moment a command arrives, never answering it.
+    fn vacuum_that_dies_mid_command() -> u16 {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            let (mut sock, _) = listener.accept().unwrap();
+            let mut frames = protocol::FrameBuffer::default();
+            let mut chunk = [0u8; 4096];
+            loop {
+                let n = match sock.read(&mut chunk) {
+                    Ok(0) | Err(_) => return,
+                    Ok(n) => n,
+                };
+                frames.push(&chunk[..n]);
+                while let Some(frame) = frames.next_frame() {
+                    let msg = protocol::decode_frame(&frame, KEY, None).unwrap();
+                    match msg.protocol {
+                        protocol::HELLO_REQUEST => {
+                            let reply = Message {
+                                seq: msg.seq,
+                                random: 7,
+                                ..Message::new(protocol::HELLO_RESPONSE, None)
+                            };
+                            sock.write_all(&protocol::encode(&reply, KEY, true, None).unwrap())
+                                .unwrap();
+                        }
+                        protocol::GENERAL_REQUEST => {
+                            let _ = sock.shutdown(std::net::Shutdown::Both);
+                            return;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        });
+        port
+    }
+
+    #[test]
+    fn a_command_whose_local_link_dies_falls_back_to_mqtt_at_once() {
+        let (broker_port, seen) = fake_broker();
+        let local_port = vacuum_that_dies_mid_command();
+        let session = mqtt::Session::connect(
+            mqtt::Options {
+                host: "127.0.0.1".into(),
+                port: broker_port,
+                tls: false,
+                username: "user".into(),
+                password: "pw".into(),
+                client_id: "test".into(),
+            },
+            None,
+        )
+        .unwrap();
+        let device = HomeDevice {
+            duid: "d1".into(),
+            name: "Rocky".into(),
+            local_key: KEY.into(),
+            pv: "1.0".into(),
+            model: "roborock.vacuum.a70".into(),
+            category: "robot.vacuum.cleaner".into(),
+        };
+        let router = Arc::new(Router {
+            local_key: KEY.into(),
+            security: SecurityData::new("k"),
+            rpc: Mutex::new(HashMap::new()),
+            maps: Mutex::new(HashMap::new()),
+            local_ids: Mutex::new(HashMap::new()),
+            on_push: Arc::new(|_| {}),
+        });
+        let r = router.clone();
+        let sub_topic = "rr/m/o/u/user/d1".to_string();
+        let sub_id = session
+            .subscribe(&sub_topic, Arc::new(move |p: &[u8]| r.mqtt_payload(p)))
+            .unwrap();
+        let mut cache = Cache::default();
+        cache.set_device_value("d1", "network_info", json!({"ip": "127.0.0.1"}));
+        let dir =
+            std::env::temp_dir().join(format!("rr-e2e-{}", crypto::hex(&crypto::random_bytes(4))));
+        let link = Link {
+            device,
+            region: "us".into(),
+            mqtt: session,
+            pub_topic: "rr/m/i/u/user/d1".into(),
+            sub_topic,
+            sub_id,
+            router,
+            local: Mutex::new(LocalState::new()),
+            local_port,
+            cache: Mutex::new(cache),
+            cache_path: dir.join("home.json"),
+            last_map: Mutex::new(None),
+        };
+        link.ensure_local();
+        assert!(
+            link.is_local_connected(),
+            "the local link should be up first"
+        );
+        let started = Instant::now();
+        let result = link.rpc("app_pause", None);
+        let took = started.elapsed();
+        assert_eq!(
+            result,
+            Ok(json!(["ok"])),
+            "the command must succeed over MQTT"
+        );
+        assert!(
+            took < Duration::from_secs(3),
+            "the command waited {took:?} on the dead local link"
+        );
+        assert_eq!(*seen.lock().unwrap(), 1, "MQTT carried the command");
+        assert!(!link.is_local_connected());
+        link.close();
+        let _ = std::fs::remove_dir_all(dir);
     }
 }
