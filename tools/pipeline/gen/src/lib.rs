@@ -312,6 +312,10 @@ mod tests {
             "{lane}"
         );
         assert!(lane.contains("          AGENTS_TSV: ${{ steps.fastlane-src.outputs.root }}/tools/agent-app/agents.tsv\n"), "{lane}");
+        assert!(
+            lane.contains("          for f in tools/ci/src/agent_fast_lane/lib.rs tools/ci/src/agent_fast_lane/main.rs tools/shell-compat/src/lib.rs tools/agent-app/agents.tsv; do\n"),
+            "the base commit must supply the rule's sources AND the roster:\n{lane}"
+        );
         assert_eq!(
             lane.matches("git show").count(),
             1,
