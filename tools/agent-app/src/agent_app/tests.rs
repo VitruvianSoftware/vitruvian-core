@@ -383,3 +383,95 @@ fn jq_line_numbers_and_parse_errors() {
         assert_eq!(st, 5);
     }
 }
+
+// --- branch-delete's landed gate --------------------------------------------
+
+fn gate_scratch(name: &str) -> std::path::PathBuf {
+    let d = std::path::PathBuf::from(std::env::var("TEST_TMPDIR").unwrap()).join(name);
+    let _ = std::fs::remove_dir_all(&d);
+    std::fs::create_dir_all(&d).unwrap();
+    d
+}
+
+fn put(p: &std::path::Path, mode: u32) {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+    std::fs::write(p, b"#!/bin/sh\n").unwrap();
+    std::fs::set_permissions(p, std::fs::Permissions::from_mode(mode)).unwrap();
+}
+
+fn b(p: &std::path::Path) -> Vec<u8> {
+    p.as_os_str().as_bytes().to_vec()
+}
+
+#[test]
+fn landed_is_found_beside_the_program_not_in_the_checkout() {
+    let d = gate_scratch("landed-sibling");
+    let here = d.join("bin/tools/agent-app");
+    std::fs::create_dir_all(&here).unwrap();
+    let argv0 = here.join("agent-app");
+    // A checkout-shaped landed.sh must never be what is picked.
+    put(&d.join("checkout/tools/landed/landed.sh"), 0o755);
+    assert_eq!(
+        find_landed(&landed_candidates(&b(&here), &b(&argv0), b"")),
+        None
+    );
+
+    // Not executable: not a gate.
+    let sib = d.join("bin/tools/landed/landed");
+    put(&sib, 0o644);
+    assert_eq!(
+        find_landed(&landed_candidates(&b(&here), &b(&argv0), b"")),
+        None
+    );
+    put(&sib, 0o755);
+    let got = find_landed(&landed_candidates(&b(&here), &b(&argv0), b"")).unwrap();
+    assert_eq!(
+        std::fs::canonicalize(sh::path(&got)).unwrap(),
+        std::fs::canonicalize(&sib).unwrap()
+    );
+}
+
+#[test]
+fn landed_falls_back_to_runfiles() {
+    let d = gate_scratch("landed-runfiles");
+    let here = d.join("elsewhere");
+    let argv0 = d.join("bin/agent-app");
+    let rf = d.join("rf");
+    put(&rf.join("_main/tools/landed/landed"), 0o755);
+    assert_eq!(
+        find_landed(&landed_candidates(&b(&here), &b(&argv0), &b(&rf))),
+        Some(b(&rf.join("_main/tools/landed/landed")))
+    );
+    let own = d.join("bin/agent-app.runfiles/_main/tools/landed/landed");
+    put(&own, 0o755);
+    assert_eq!(
+        find_landed(&landed_candidates(&b(&here), &b(&argv0), b"")),
+        Some(b(&own))
+    );
+}
+
+/// The gate is the Rust binary: it must be run directly. `bash <binary>`
+/// answers "cannot execute binary file" for every branch.
+#[test]
+fn landed_gate_runs_the_binary_itself() {
+    let bin = std::env::current_dir()
+        .unwrap()
+        .join(std::env::var("LANDED_BIN").expect("LANDED_BIN is set by the BUILD rule"));
+    let d = gate_scratch("landed-run");
+    let mut c = landed_gate(&b(&bin), b"no-such-branch-for-a-test", b"");
+    c.current_dir(&d)
+        .env_remove("BUILD_WORKSPACE_DIRECTORY")
+        .env_remove("BUILD_WORKING_DIRECTORY")
+        .env("GIT_CEILING_DIRECTORIES", &d);
+    let o = c.output().expect("landed starts");
+    let all = format!(
+        "{}{}",
+        String::from_utf8_lossy(&o.stdout),
+        String::from_utf8_lossy(&o.stderr)
+    );
+    assert!(!all.contains("cannot execute"), "{all}");
+    assert_ne!(o.status.code(), Some(126), "{all}");
+    // Outside a repository it cannot prove anything, so it says no.
+    assert_ne!(o.status.code(), Some(0), "{all}");
+}
