@@ -145,6 +145,7 @@ public enum SettingsSection: String, CaseIterable, Sendable {
     case messages
     case notifications
     case shortcuts
+    case storage
     case privacy
     case changelog
     case reportProblem
@@ -244,6 +245,8 @@ public final class AppMenuCoordinator: ObservableObject {
             settingsNavigation.openPane(.accounts)
         case .shortcuts:
             settingsNavigation.openPane(.hotkeys)
+        case .storage:
+            settingsNavigation.openPane(.storage)
         case .privacy, .changelog, .about:
             settingsNavigation.openPane(.about)
         case .reportProblem:

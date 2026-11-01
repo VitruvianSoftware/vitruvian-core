@@ -24,6 +24,7 @@ struct SettingsView: View {
     var loginFlow: LoginFlowModel? = nil
     var problemReport: ProblemReportModel? = nil
     var appearance: AppearancePreferences = AppearancePreferences()
+    var storage: StorageModel? = nil
     var onRestartNotificationCenter: () -> Void = {}
 
     private var resolvedAppModel: AppModel {
@@ -61,6 +62,7 @@ struct SettingsView: View {
             loginFlow: loginFlow ?? LoginFlowModel(appModel: resolvedApp),
             problemReport: problemReport ?? ProblemReportModel(appModel: resolvedApp),
             appearance: appearance,
+            storage: storage ?? StorageModel(appModel: resolvedApp, lifecycle: lifecycle),
             onRestartNotificationCenter: onRestartNotificationCenter
         )
     }

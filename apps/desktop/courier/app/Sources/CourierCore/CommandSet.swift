@@ -1462,6 +1462,17 @@ public enum CommandSet {
                 openAISettings("settings")
             },
             CourierCommand(
+                id: "Storage",
+                title: String(localized: "Storage"),
+                category: .settings,
+                keywords: ["storage", "disk", "media", "cleanup", "cache"],
+                icon: "internaldrive",
+                shortcut: nil
+            ) {
+                resolvedNavigation.openPane(.storage)
+                openSettingsWindow()
+            },
+            CourierCommand(
                 id: "storage.clearCache",
                 title: String(localized: "Clear Cache"),
                 subtitle: String(localized: "Clear temporary thumbnails and web caches"),

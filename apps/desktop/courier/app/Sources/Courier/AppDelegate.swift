@@ -39,6 +39,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var notificationPreferences: NotificationPreferences { inbox.preferences.notifications }
     /// Accounts and Bridges settings model (`AccountsAndBridgesModel`).
     let accountsAndBridges: AccountsAndBridgesModel
+    /// Local storage breakdown and media cleanup model (`StorageModel`).
+    let storage: StorageModel
     /// Local problem report bundle model (`ProblemReportModel`).
     let problemReport: ProblemReportModel
     /// Shared keyboard shortcut registry read by menus, the ⌘/ sheet, and the Settings ▸ Shortcuts recorder.
@@ -187,6 +189,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let accountsAndBridges = AccountsAndBridgesModel(appModel: model, lifecycle: lifecycle)
         self.accountsAndBridges = accountsAndBridges
         settingsNavigation.bind(accountsAndBridges: accountsAndBridges)
+        storage = StorageModel(appModel: model, lifecycle: lifecycle)
         problemReport = ProblemReportModel(appModel: model)
         spaces = SpacesModel(appModel: model, inbox: inbox, lifecycle: lifecycle)
         labels = LabelsModel(appModel: model, lifecycle: lifecycle)
@@ -244,6 +247,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 openSettingsWindow: { [weak self] in self?.menuCoordinator.openSettings(.general) },
                 presentReportProblem: { [weak self] in self?.menuCoordinator.openSettings(.reportProblem) },
                 restartNotificationCenter: { [weak self] in self?.notifier.restartNotificationCenter() },
+                performDeleteMedia: { [weak self] in
+                    guard let self else { return }
+                    self.menuCoordinator.openSettings(.storage)
+                    Task { await self.storage.clearMedia(olderThan: .allTime) }
+                },
+                performClearCache: { [weak self] in
+                    guard let self else { return }
+                    Task { await self.storage.clearAllCache() }
+                },
                 openRecentlyViewedChats: { [weak self] in self?.commandBar.openInRecentChatsMode() },
                 toggleSidebar: { [weak self] in self?.menuCoordinator.toggleSidebar() },
                 focusApp: { [weak self] in self?.menuCoordinator.focusApp() }

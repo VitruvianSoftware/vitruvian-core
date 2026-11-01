@@ -303,6 +303,18 @@ final class SettingsSearchModelTests: XCTestCase {
             )
         }
     }
+
+    func testStorageSettingsCatalogCoversEveryMilestone47StorageSetting() {
+        XCTAssertTrue(SettingsPaneID.allCases.contains { $0.rawValue == "storage" })
+        let ids = Set(SettingsNavigationModel.allSettings.map(\.id))
+        for expectedID in ["storage.overview", "storage.cleanupByAge", "storage.byRoom"] {
+            XCTAssertTrue(ids.contains(expectedID), "Missing SettingDefinition \(expectedID)")
+            XCTAssertTrue(
+                SettingsNavigationModel.anchoredSettingIDs.contains(expectedID),
+                "Missing highlight anchor \(expectedID)"
+            )
+        }
+    }
 }
 
 @MainActor

@@ -13,6 +13,7 @@ public enum SettingsPaneID: String, CaseIterable, Codable, Sendable, Identifiabl
     case hotkeys
     case quickReplies
     case bridges
+    case storage
     case about
 
     public var id: String { rawValue }
@@ -26,6 +27,7 @@ public enum SettingsPaneID: String, CaseIterable, Codable, Sendable, Identifiabl
         case .hotkeys: String(localized: "Hotkeys")
         case .quickReplies: String(localized: "Quick Replies")
         case .bridges: String(localized: "Bridges")
+        case .storage: String(localized: "Storage")
         case .about: String(localized: "About")
         }
     }
@@ -39,6 +41,7 @@ public enum SettingsPaneID: String, CaseIterable, Codable, Sendable, Identifiabl
         case .hotkeys: "command"
         case .quickReplies: "text.bubble"
         case .bridges: "point.3.connected.trianglepath.dotted"
+        case .storage: "internaldrive"
         case .about: "info.circle"
         }
     }
@@ -741,6 +744,29 @@ public final class SettingsNavigationModel: ObservableObject {
             keywords: ["bridges", "mautrix", "restart bridge", "copy info as json", "version", "state"]
         ),
 
+        // MARK: Storage
+        SettingDefinition(
+            id: "storage.overview",
+            pane: .storage,
+            section: "Disk Usage on This Mac",
+            title: "Local disk usage",
+            keywords: ["storage", "disk", "space", "usage", "bytes", "database", "photos", "videos", "audio", "files"]
+        ),
+        SettingDefinition(
+            id: "storage.cleanupByAge",
+            pane: .storage,
+            section: "Free Up Space",
+            title: "Delete media older than",
+            keywords: ["delete media", "cleanup", "clear cache", "older than", "free up space", "1 week", "1 month", "3 months", "1 year"]
+        ),
+        SettingDefinition(
+            id: "storage.byRoom",
+            pane: .storage,
+            section: "Storage by Chat",
+            title: "Storage by chat",
+            keywords: ["storage by chat", "delete media in this chat", "per chat", "room storage"]
+        ),
+
         // MARK: About
         SettingDefinition(
             id: "about.version",
@@ -886,6 +912,10 @@ public final class SettingsNavigationModel: ObservableObject {
         "quickReplies.variables",
         // BridgesSettingsPane
         "bridges.status",
+        // StorageSettingsPane
+        "storage.overview",
+        "storage.cleanupByAge",
+        "storage.byRoom",
         // AboutSettingsPane
         "about.version",
         "about.changelog",

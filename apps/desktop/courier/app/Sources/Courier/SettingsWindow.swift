@@ -25,6 +25,7 @@ struct SettingsWindow: View {
     @ObservedObject var loginFlow: LoginFlowModel
     @ObservedObject var problemReport: ProblemReportModel
     @ObservedObject var appearance: AppearancePreferences = AppearancePreferences()
+    var storage: StorageModel? = nil
     var onOpenSystemNotificationSettings: () -> Void = {
         if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") {
             NSWorkspace.shared.open(url)
@@ -332,6 +333,12 @@ struct SettingsWindow: View {
                         loginFlow.showPicker()
                     }
                 },
+                highlightedSettingID: navigation.highlightedSettingID
+            )
+        case .storage:
+            StorageSettingsPane(
+                model: storage ?? StorageModel(appModel: app, lifecycle: lifecycle),
+                lifecycle: lifecycle,
                 highlightedSettingID: navigation.highlightedSettingID
             )
         case .about:
