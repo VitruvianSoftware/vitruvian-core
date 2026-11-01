@@ -329,6 +329,8 @@
   ["cargo update", "deny", "cargo", ""],
   ["cargo generate-lockfile", "deny", "cargo", ""],
   ["cargo add serde", "deny", "cargo", ""],
+  ["cargo remove serde", "deny", "cargo", ""],
+  ["cargo rm serde", "deny", "cargo", ""],
   ["./gradlew assembleDebug", "deny", "gradle", ""],
   ["gradle build", "deny", "gradle", ""],
   ["pytest -q tools/", "deny", "pytest", ""],
