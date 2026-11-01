@@ -40,8 +40,10 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 src="${here}/src/cloud_bootstrap"
 sub="${1:-up}"
 
+# On stderr and stdout: the hook's stdout is what the agent sees.
 give_up() {
 	printf 'cloud-bootstrap: %s\n' "$1" >&2
+	printf 'cloud-bootstrap: %s\n' "$1"
 	case "${sub}" in
 	up | install | auth) exit 0 ;;
 	*) exit 1 ;;
@@ -53,16 +55,48 @@ give_up() {
 CLOUD_BOOTSTRAP_WORKSPACE="${CLOUD_BOOTSTRAP_WORKSPACE:-$(cd "${here}/../.." && pwd)}"
 export CLOUD_BOOTSTRAP_WORKSPACE
 
+# rustc runs from / and without RUSTUP_TOOLCHAIN: rustup picks the compiler
+# from a rust-toolchain(.toml) in the working directory or any parent, so from
+# the checkout a file in the repo (or a branch being reviewed) could swap in a
+# compiler that then runs with the session's credentials. From /, only the
+# user's own rustup default decides. (RUSTC is read by cargo, not by rustc or
+# rustup's rustc proxy; this calls rustc directly.)
+trusted_rustc() { (cd / && env -u RUSTUP_TOOLCHAIN rustc "$@"); }
+
+# Refuse anything not this user's, or writable by group or others: the cache
+# holds a binary that is about to run with the session's credentials.
+private_to_me() {
+	[ -O "$1" ] && [ -z "$(find "$1" -maxdepth 0 \( -perm -020 -o -perm -002 \) 2>/dev/null)" ]
+}
+
 if command -v rustc >/dev/null 2>&1; then
-	cache="${CLOUD_BOOTSTRAP_BUILD_DIR:-${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/vitruvian-core/cloud-bootstrap}"
-	key="$({ rustc --version && cat "${src}"/*.rs; } | cksum | tr ' ' '-')"
+	if [ -n "${CLOUD_BOOTSTRAP_BUILD_DIR:-}" ]; then
+		cache="${CLOUD_BOOTSTRAP_BUILD_DIR}"
+	elif [ -n "${XDG_CACHE_HOME:-}" ]; then
+		cache="${XDG_CACHE_HOME}/vitruvian-core/cloud-bootstrap"
+	elif [ -n "${HOME:-}" ]; then
+		cache="${HOME}/.cache/vitruvian-core/cloud-bootstrap"
+	else
+		# Not /tmp: a shared directory is where someone else plants a binary.
+		give_up "HOME is not set, so there is no private place to build the tool; nothing bootstrapped"
+	fi
+	case "${cache}" in
+	/*) ;;
+	*) give_up "the build cache must be an absolute path (got '${cache}'); nothing bootstrapped" ;;
+	esac
+	key="$({ trusted_rustc --version && cat "${src}"/*.rs; } | cksum | tr ' ' '-')"
 	bin="${cache}/cloud-bootstrap-${key}"
+	(umask 077 && mkdir -p "${cache}") || give_up "cannot create ${cache}; nothing bootstrapped"
+	chmod 700 "${cache}" 2>/dev/null
+	private_to_me "${cache}" || give_up "refusing to use ${cache}: it is not yours, or others can write to it; nothing bootstrapped"
+	if [ -e "${bin}" ] && ! private_to_me "${bin}"; then
+		rm -f "${bin}" || give_up "refusing to run ${bin}: it is not yours, or others can write to it; nothing bootstrapped"
+	fi
 	if [ ! -x "${bin}" ]; then
-		mkdir -p "${cache}" || give_up "cannot create ${cache}; nothing bootstrapped"
 		log="${cache}/build.log"
 		# Built beside the final name and moved into place, so a run that is
 		# interrupted, or races another, never leaves a half-written binary.
-		if ! rustc --edition 2021 -o "${bin}.$$" "${src}/main.rs" >"${log}" 2>&1; then
+		if ! trusted_rustc --edition 2021 -o "${bin}.$$" "${src}/main.rs" >"${log}" 2>&1; then
 			rm -f "${bin}.$$"
 			tail -n 20 "${log}" >&2
 			give_up "rustc could not build ${src}/main.rs (full log: ${log}); nothing bootstrapped"

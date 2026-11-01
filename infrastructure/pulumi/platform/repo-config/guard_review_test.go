@@ -21,6 +21,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -310,5 +312,61 @@ func TestAgentGuardReviewResources(t *testing.T) {
 	}
 	if got := len(rr[0].ObjectValue()["filePatterns"].ArrayValue()); got != len(guardReviewPaths) {
 		t.Errorf("filePatterns has %d entries, want %d", got, len(guardReviewPaths))
+	}
+}
+
+// Every file the session-start launcher compiles must need James's approval:
+// cloud-bootstrap.sh builds src/cloud_bootstrap/main.rs with rustc, and rustc
+// reads main.rs plus every `mod x;` it declares. Enumerated from the real
+// crate, so narrowing the pattern, or adding a module it misses, fails here.
+func TestGuardReviewCoversEverySessionStartSource(t *testing.T) {
+	const crate = "tools/cloud-bootstrap/src/cloud_bootstrap"
+	root, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(root, crate, "main.rs")); err == nil {
+			break
+		}
+		parent := filepath.Dir(root)
+		if parent == root {
+			t.Fatalf("could not find %s/main.rs above the working directory; this test must see the crate to check it", crate)
+		}
+		root = parent
+	}
+	main, err := os.ReadFile(filepath.Join(root, crate, "main.rs"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := []string{"tools/cloud-bootstrap/cloud-bootstrap.sh", crate + "/main.rs"}
+	for _, line := range strings.Split(string(main), "\n") {
+		l := strings.TrimSpace(line)
+		l = strings.TrimPrefix(l, "pub ")
+		if strings.HasPrefix(l, "mod ") && strings.HasSuffix(l, ";") {
+			name := strings.TrimSuffix(strings.TrimPrefix(l, "mod "), ";")
+			files = append(files, crate+"/"+strings.TrimSpace(name)+".rs")
+		}
+	}
+	if len(files) < 4 {
+		t.Fatalf("found only %v; the module scan is broken", files)
+	}
+	for _, f := range files {
+		if _, err := os.Stat(filepath.Join(root, f)); err != nil {
+			t.Errorf("%s is compiled by the launcher but missing: %v", f, err)
+		}
+		if !guardCovers(f) {
+			t.Errorf("%s is compiled and run at session start but is not covered by guardReviewPaths", f)
+		}
+	}
+	// Any .rs a later change adds beside them is covered too.
+	entries, err := os.ReadDir(filepath.Join(root, crate))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".rs") && !guardCovers(crate+"/"+e.Name()) {
+			t.Errorf("%s/%s is not covered by guardReviewPaths", crate, e.Name())
+		}
 	}
 }

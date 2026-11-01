@@ -191,6 +191,14 @@ rust_test(
     },
 )
 
+# Everything session start compiles and runs from the working copy, for the
+# guard-review test that checks each one needs James's approval to change.
+filegroup(
+    name = "session_start_sources",
+    srcs = CLOUD_BOOTSTRAP_SRCS + ["cloud-bootstrap.sh"],
+    visibility = ["//infrastructure/pulumi/platform/repo-config:__pkg__"],
+)
+
 # cloud-bootstrap.sh, the launcher session start runs before Bazel exists: it
 # builds src/cloud_bootstrap with the VM's rustc, caches it, and runs it.
 rust_test(

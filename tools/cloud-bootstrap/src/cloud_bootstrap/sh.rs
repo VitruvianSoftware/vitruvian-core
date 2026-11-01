@@ -281,7 +281,8 @@ pub fn private_dir(dir: &Path) -> io::Result<()> {
 }
 
 /// Write `data` to `p`, mode 0600 whether or not it existed (`(umask 077;
-/// printf ... >p); chmod 600 p`).
+/// printf ... >p); chmod 600 p`). An existing file is emptied and made 0600
+/// BEFORE the secret is written, so it is never readable with a wider mode.
 pub fn write_private(p: &Path, data: &[u8]) -> io::Result<()> {
     let mut f = fs::OpenOptions::new()
         .write(true)
@@ -289,8 +290,8 @@ pub fn write_private(p: &Path, data: &[u8]) -> io::Result<()> {
         .truncate(true)
         .mode(0o600)
         .open(p)?;
-    f.write_all(data)?;
-    fs::set_permissions(p, fs::Permissions::from_mode(0o600))
+    f.set_permissions(fs::Permissions::from_mode(0o600))?;
+    f.write_all(data)
 }
 
 /// `printf ... >>p`: create (mode from the umask, as the shell did) and append.

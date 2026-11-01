@@ -23,7 +23,11 @@ pulumi_project(
 # `bazel test //infrastructure/pulumi/platform/repo-config:test` — local
 # `bazel test` visibility into the same `go test ./...` CI already runs (see
 # pulumi_go_test() in defs.bzl for why this doesn't run on RBE).
-pulumi_go_test()
+pulumi_go_test(
+    # guard_review_test.go checks every file the session-start launcher
+    # compiles is covered by guardReviewPaths, so it needs to see them.
+    extra_data = ["//tools/cloud-bootstrap:session_start_sources"],
+)
 
 pipeline_unit(
     name = "pulumi-repo-config",

@@ -101,6 +101,7 @@ impl Tree {
         let path = std::env::var_os("PATH").unwrap_or_default();
         for tool in [
             "bash", "cat", "cksum", "tr", "mkdir", "mv", "rm", "tail", "dirname", "cp", "env",
+            "find", "chmod", "touch",
         ] {
             let found = std::env::split_paths(&path)
                 .map(|d| d.join(tool))
@@ -133,6 +134,18 @@ impl Tree {
             &self.dir.join("bin/rustc"),
             &format!(
                 r#"#!/usr/bin/env bash
+# Like rustup's proxy: RUSTUP_TOOLCHAIN, or a rust-toolchain(.toml) in the
+# working directory or any parent, picks a different (here: planted) compiler.
+d="$PWD"
+while :; do
+  if [ -f "$d/rust-toolchain.toml" ] || [ -f "$d/rust-toolchain" ]; then planted=1; fi
+  [ "$d" = / ] && break
+  d="$(dirname "$d")"
+done
+if [ -n "${{RUSTUP_TOOLCHAIN:-}}" ] || [ -n "${{planted:-}}" ]; then
+  touch "{pwned}"; echo "planted compiler ran" >&2; exit 1
+fi
+printf 'cwd=%s\n' "$PWD" >>"{cwdlog}"
 if [ "$1" = --version ]; then echo "rustc 1.75.0 (fake)"; exit 0; fi
 printf '%s\n' "$*" >>"{log}"
 if [ "{fail}" = true ]; then echo "error[E0425]: cannot find value" >&2; exit 1; fi
@@ -140,7 +153,9 @@ while [ "$#" -gt 0 ]; do [ "$1" = -o ] && out="$2"; shift; done
 cp "{tool}" "$out"
 "#,
                 log = log.display(),
-                tool = tool.display()
+                tool = tool.display(),
+                pwned = self.dir.join("PWNED").display(),
+                cwdlog = self.dir.join("rustc.cwd").display()
             ),
         );
     }
@@ -163,23 +178,49 @@ cp "{tool}" "$out"
     /// Run the launcher the way the hook does: a clean environment, HOME and
     /// the cache pinned, no CLAUDE_PROJECT_DIR. stdout+stderr as one stream.
     fn run(&self, args: &[&str]) -> (String, i32) {
+        let (out, _, rc) = self.run_with(args, &[], &[], true);
+        (out, rc)
+    }
+
+    /// `run` with extra env, env vars removed, and (unless `merged`) stdout
+    /// alone in the first slot, stderr in the second. Runs from the checkout,
+    /// as the hook does.
+    fn run_with(
+        &self,
+        args: &[&str],
+        env: &[(&str, &str)],
+        remove: &[&str],
+        merged: bool,
+    ) -> (String, String, i32) {
         let out_path = self.dir.join("run.out");
+        let err_path = self.dir.join("run.err");
         let out = fs::File::create(&out_path).unwrap();
-        let st = Command::new(self.dir.join("bin/bash"))
-            .arg(self.launcher())
+        let err = if merged {
+            out.try_clone().unwrap()
+        } else {
+            fs::File::create(&err_path).unwrap()
+        };
+        let mut c = Command::new(self.dir.join("bin/bash"));
+        c.arg(self.launcher())
             .args(args)
-            .current_dir("/")
+            .current_dir(self.dir.join("repo"))
             .env_clear()
             .env("PATH", self.dir.join("bin"))
             .env("HOME", self.dir.join("home"))
             .env("CLOUD_BOOTSTRAP_BUILD_DIR", self.cache())
             .stdin(Stdio::null())
-            .stdout(out.try_clone().unwrap())
-            .stderr(out)
-            .status()
-            .unwrap();
+            .stdout(out)
+            .stderr(err);
+        for (k, v) in env {
+            c.env(k, v);
+        }
+        for k in remove {
+            c.env_remove(k);
+        }
+        let st = c.status().unwrap();
         (
             fs::read_to_string(&out_path).unwrap(),
+            fs::read_to_string(&err_path).unwrap_or_default(),
             st.code().unwrap_or(-1),
         )
     }
@@ -282,6 +323,10 @@ fn a_failed_build_never_blocks_a_session() {
         assert_contains(&out, "rustc could not build");
         assert_contains(&out, "error[E0425]");
     }
+    // The hook's stdout is what the agent sees, so the notice is there too.
+    let (stdout, _, rc) = t.run_with(&["up"], &[], &[], false);
+    assert_eq!(rc, 0);
+    assert_contains(&stdout, "nothing bootstrapped");
     let (_, rc) = t.run(&["whoami"]);
     assert_eq!(
         rc, 1,
@@ -338,4 +383,102 @@ fn with_neither_the_session_still_starts_and_says_why() {
 #[track_caller]
 fn assert_contains(hay: &str, needle: &str) {
     assert!(hay.contains(needle), "{needle:?} not found in:\n{hay}");
+}
+
+#[test]
+fn a_planted_rust_toolchain_or_rustup_toolchain_cannot_pick_the_compiler() {
+    // rustup picks the compiler from a rust-toolchain(.toml) in the working
+    // directory or any parent, or from RUSTUP_TOOLCHAIN. Session start runs
+    // from the checkout, so a file in a branch could otherwise choose the
+    // compiler that builds a binary which then holds the session's credentials.
+    let t = Tree::new();
+    t.fake_rustc(false);
+    fs::write(
+        t.dir.join("repo/rust-toolchain.toml"),
+        "[toolchain]\nchannel = \"planted\"\n",
+    )
+    .unwrap();
+    fs::write(
+        t.dir.join("repo/tools/cloud-bootstrap/rust-toolchain"),
+        "planted\n",
+    )
+    .unwrap();
+    let (out, _, rc) = t.run_with(&["profiles"], &[("RUSTUP_TOOLCHAIN", "planted")], &[], true);
+    assert_eq!(rc, 0, "{out}");
+    assert!(
+        !t.dir.join("PWNED").exists(),
+        "the planted compiler ran:\n{out}"
+    );
+    assert_contains(&out, "launcherprof");
+    let cwds = t.log("rustc.cwd");
+    assert_eq!(
+        cwds.lines().count(),
+        2,
+        "both rustc calls (--version and the build) must be seen: {cwds}"
+    );
+    assert!(
+        cwds.lines().all(|l| l == "cwd=/"),
+        "rustc ran outside /: {cwds}"
+    );
+}
+
+#[test]
+fn a_cached_binary_others_can_write_is_rebuilt_not_run() {
+    let t = Tree::new();
+    t.fake_rustc(false);
+    t.run(&["profiles"]);
+    let bin = t.cache().join(&t.cached_binaries()[0]);
+    // Someone with group write swaps in their own binary. (Made writable
+    // first: the fake copies Bazel's read-only output; rustc's would not be.)
+    fs::set_permissions(&bin, fs::Permissions::from_mode(0o755)).unwrap();
+    fs::write(&bin, "#!/bin/sh\necho PLANTED-BINARY-RAN\n").unwrap();
+    fs::set_permissions(&bin, fs::Permissions::from_mode(0o775)).unwrap();
+    let (out, rc) = t.run(&["profiles"]);
+    assert_eq!(rc, 0, "{out}");
+    assert!(
+        !out.contains("PLANTED-BINARY-RAN"),
+        "a group-writable cached binary was run:\n{out}"
+    );
+    assert_eq!(t.builds(), 2, "it must be rebuilt");
+    assert_eq!(fs::metadata(&bin).unwrap().permissions().mode() & 0o022, 0);
+}
+
+#[test]
+fn the_cache_dir_is_private() {
+    let t = Tree::new();
+    t.fake_rustc(false);
+    t.run(&["profiles"]);
+    assert_eq!(
+        fs::metadata(t.cache()).unwrap().permissions().mode() & 0o777,
+        0o700
+    );
+    // A cache dir others could write is made private before it is trusted.
+    fs::set_permissions(t.cache(), fs::Permissions::from_mode(0o777)).unwrap();
+    let (out, rc) = t.run(&["profiles"]);
+    assert_eq!(rc, 0, "{out}");
+    assert_eq!(
+        fs::metadata(t.cache()).unwrap().permissions().mode() & 0o777,
+        0o700
+    );
+}
+
+#[test]
+fn without_home_it_refuses_rather_than_using_a_shared_dir() {
+    let t = Tree::new();
+    t.fake_rustc(false);
+    let unset = ["HOME", "CLOUD_BOOTSTRAP_BUILD_DIR"];
+    let (out, _, rc) = t.run_with(&["up"], &[], &unset, true);
+    assert_eq!(rc, 0, "up must not block the session:\n{out}");
+    assert_contains(&out, "HOME is not set");
+    assert_eq!(t.builds(), 0, "it built somewhere anyway");
+    let (_, _, rc) = t.run_with(&["whoami"], &[], &unset, true);
+    assert_eq!(rc, 1);
+    // A relative cache path is refused too (it would resolve against the cwd).
+    let (out, _, _) = t.run_with(
+        &["up"],
+        &[("CLOUD_BOOTSTRAP_BUILD_DIR", "rel/cache")],
+        &[],
+        true,
+    );
+    assert_contains(&out, "must be an absolute path");
 }
