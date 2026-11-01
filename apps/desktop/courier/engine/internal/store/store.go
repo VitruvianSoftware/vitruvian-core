@@ -95,10 +95,11 @@ type Change struct {
 const ChangeResync = "resync"
 
 type Store struct {
-	db   *dbutil.Database
-	seq  int64
-	mu   sync.Mutex // guards seq and subs
-	subs map[chan Change]*subscriber
+	db     *dbutil.Database
+	dbPath string
+	seq    int64
+	mu     sync.Mutex // guards seq and subs
+	subs   map[chan Change]*subscriber
 
 	cfgMu        sync.RWMutex      // guards clock and networkNames
 	clock        func() time.Time  // SetClock; time.Now by default
@@ -133,7 +134,7 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	s := &Store{
-		db: db, subs: map[chan Change]*subscriber{}, clock: time.Now, typing: map[string]map[string]*typingEntry{},
+		db: db, dbPath: path, subs: map[chan Change]*subscriber{}, clock: time.Now, typing: map[string]map[string]*typingEntry{},
 		afterFunc:   func(d time.Duration, f func()) func() bool { return time.AfterFunc(d, f).Stop },
 		backfillNow: time.Now, backfillBudget: BackfillTimeBudget,
 	}
