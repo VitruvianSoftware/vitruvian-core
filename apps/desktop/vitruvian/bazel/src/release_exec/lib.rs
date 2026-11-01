@@ -419,8 +419,8 @@ pub fn capture(r: &mut dyn Runner, cmd: &Cmd) -> Result<String, i32> {
 /// that no environment variable holds.
 pub fn report_redacted(r: &mut dyn Runner, text: &str) {
     let secrets = r.secrets();
-    r.report(&redact_github_tokens(&redact_credentials_in_text(
-        &redact_urls_in_text(&redact_known(text, &secrets)),
+    r.report(&redact_github_tokens(&redact_json_secrets(
+        &redact_credentials_in_text(&redact_urls_in_text(&redact_known(text, &secrets))),
     )));
 }
 
@@ -621,8 +621,9 @@ pub fn redact_args(program: &str, args: &[String]) -> Vec<String> {
 #[derive(Clone, Copy)]
 enum CurlValue {
     /// A credential whole: `-u`/`--user` and `-U`/`--proxy-user`
-    /// (`user:password`), `--oauth2-bearer`, and `--pass`/`--proxy-pass`
-    /// (the private key's passphrase).
+    /// (`user:password`), `--oauth2-bearer`, `--pass`/`--proxy-pass` (the
+    /// private key's passphrase) and `--tlspassword`/`--proxy-tlspassword`
+    /// (the TLS-SRP password).
     Whole,
     /// `certificate[:password]` (`-E`/`--cert`, `--proxy-cert`): the
     /// password is hidden, the path kept.
@@ -637,9 +638,15 @@ enum CurlValue {
 
 fn curl_value_kind(flag: &str) -> CurlValue {
     match flag {
-        "-u" | "--user" | "-U" | "--proxy-user" | "--oauth2-bearer" | "--pass" | "--proxy-pass" => {
-            CurlValue::Whole
-        }
+        "-u"
+        | "--user"
+        | "-U"
+        | "--proxy-user"
+        | "--oauth2-bearer"
+        | "--pass"
+        | "--proxy-pass"
+        | "--tlspassword"
+        | "--proxy-tlspassword" => CurlValue::Whole,
         "-E" | "--cert" | "--proxy-cert" => CurlValue::Cert,
         "-b" | "--cookie" => CurlValue::Cookie,
         _ => CurlValue::Other,
@@ -657,12 +664,14 @@ fn redact_curl_value(kind: CurlValue, value: &str) -> String {
 }
 
 /// `certificate[:password]` with the password hidden. As curl reads it, a
-/// `\:` is a colon in the path, and so is a Windows drive letter's
-/// (`C:\certs\c.pem:pw`). A PKCS#11 URI (`pkcs11:…;pin-value=…`) is hidden
-/// after its scheme, the PIN with it.
+/// `\:` is a colon in the path. Only curl built for Windows also reads a
+/// drive letter's colon as part of the path (`C:\certs\c.pem:pw`); on macOS,
+/// where these tools run, curl takes `C` as the file and everything after
+/// the first colon as the password, so that is what is hidden. A PKCS#11 URI
+/// (`pkcs11:…;pin-value=…`) is hidden after its scheme, the PIN with it.
 fn redact_cert_password(value: &str) -> String {
     let b = value.as_bytes();
-    let drive = b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':';
+    let drive = cfg!(windows) && b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':';
     let mut i = if drive && (b[2] == b'\\' || b[2] == b'/') {
         2
     } else {
@@ -731,10 +740,127 @@ fn curl_option(arg: &str) -> CurlOption<'_> {
     CurlOption::Plain
 }
 
-/// One argument with its secrets hidden (see [`redact_args`]), GitHub
-/// tokens included wherever they sit in it ([`redact_github_tokens`]).
+/// One argument with its secrets hidden (see [`redact_args`]), secret
+/// members of a JSON body ([`redact_json_secrets`]) and GitHub tokens
+/// ([`redact_github_tokens`]) included wherever they sit in it.
 fn redact_arg(arg: &str) -> String {
-    redact_github_tokens(&redact_arg_by_shape(arg))
+    redact_github_tokens(&redact_json_secrets(&redact_arg_by_shape(arg)))
+}
+
+/// `text` with the value of every JSON member whose key [`is_secret_name`]
+/// hidden, wherever the JSON sits (a curl `--data`/`--json` body, a line of
+/// a tool's output): `{"token":"X"}` becomes `{"token":"<redacted>"}`, an
+/// object or array value becomes `"<redacted>"` and a number `<redacted>`.
+/// `true`, `false`, `null` and a value already (partly) `<redacted>` are
+/// kept, so `"Basic <redacted>"` keeps its scheme. A value cut off before
+/// its end is hidden to the end of its line.
+pub fn redact_json_secrets(text: &str) -> String {
+    let b = text.as_bytes();
+    let skip_ws = |j: usize| {
+        j + b[j..]
+            .iter()
+            .take_while(|c| c.is_ascii_whitespace())
+            .count()
+    };
+    let line_end = |j: usize| {
+        j + b[j..]
+            .iter()
+            .take_while(|c| **c != b'\n' && **c != b'\r')
+            .count()
+    };
+    // The closing quote of the string opening at `open`, past `\` escapes.
+    // A JSON string never spans lines, so a stray quote in prose throws off
+    // the pairing of quotes on its own line only.
+    let string_close = |open: usize| {
+        let mut k = open + 1;
+        while k < b.len() {
+            match b[k] {
+                b'\\' => k += 2,
+                b'"' => return Some(k),
+                b'\n' | b'\r' => return None,
+                _ => k += 1,
+            }
+        }
+        None
+    };
+    // Just past the bracket closing the object or array opening at `open`.
+    let container_end = |open: usize| {
+        let mut depth = 0usize;
+        let mut k = open;
+        while k < b.len() {
+            match b[k] {
+                b'"' => match string_close(k) {
+                    Some(c) => k = c,
+                    None => return b.len(),
+                },
+                b'{' | b'[' => depth += 1,
+                b'}' | b']' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return k + 1;
+                    }
+                }
+                _ => {}
+            }
+            k += 1;
+        }
+        b.len()
+    };
+    let mut spans: Vec<(usize, usize, &str)> = Vec::new();
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] != b'"' {
+            i += 1;
+            continue;
+        }
+        let Some(close) = string_close(i) else {
+            i = line_end(i);
+            continue;
+        };
+        let key = &text[i + 1..close];
+        i = close + 1;
+        let colon = skip_ws(i);
+        if colon >= b.len() || b[colon] != b':' || !is_secret_name(key) {
+            continue;
+        }
+        let v = skip_ws(colon + 1);
+        if v >= b.len() || text[v..].starts_with(REDACTED) {
+            continue;
+        }
+        match b[v] {
+            b'"' => {
+                let end = string_close(v).unwrap_or_else(|| line_end(v));
+                if end > v + 1 && !text[v + 1..end].contains(REDACTED) {
+                    spans.push((v + 1, end, REDACTED));
+                }
+                i = end;
+            }
+            b'{' | b'[' => {
+                let end = container_end(v);
+                spans.push((v, end, "\"<redacted>\""));
+                i = end;
+            }
+            _ => {
+                let end = v + b[v..]
+                    .iter()
+                    .take_while(|c| !c.is_ascii_whitespace() && !b",}]".contains(c))
+                    .count();
+                if end > v && !matches!(&text[v..end], "true" | "false" | "null") {
+                    spans.push((v, end, REDACTED));
+                }
+                i = end;
+            }
+        }
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut copied = 0;
+    for (start, end, with) in spans {
+        out.push_str(&text[copied..start]);
+        out.push_str(with);
+        copied = end;
+    }
+    out.push_str(&text[copied..]);
+    out
 }
 
 fn redact_arg_by_shape(arg: &str) -> String {
@@ -858,7 +984,9 @@ pub const MIN_BEARER_TOKEN: usize = 8;
 /// `text` with the credentials that announce themselves hidden, though no
 /// environment variable holds them (a token minted at run time): the value
 /// of an `Authorization:` header after its scheme (`token`, `Bearer`,
-/// `Basic`, …), also as a JSON key; a token of at least
+/// `Basic`, …), also as a JSON key or as `authorization=`; the value of any
+/// other secret-named header (`X-Auth-Token: …`) or `name=value` pair
+/// (`password=…`); a token of at least
 /// [`MIN_BEARER_TOKEN`] characters after a bare `Bearer`; and the rest of
 /// the line after `Cookie:` or `Set-Cookie:`, unless already `<redacted>`.
 /// A credential runs to a blank, quote, `,`, `;` or closing bracket, which
@@ -876,34 +1004,72 @@ pub fn redact_credentials_in_text(text: &str) -> String {
             .count()
     };
     let is_quote = |j: usize| j < b.len() && (b[j] == b'"' || b[j] == b'\'');
+    let is_name = |c: u8| c.is_ascii_alphanumeric() || c == b'-' || c == b'_';
     let mut spans: Vec<(usize, usize)> = Vec::new();
-    for (i, _) in lower.match_indices("authorization") {
-        let mut j = i + "authorization".len();
-        if !word_start(i) {
+    // A secret-named `Name: value` header or `name=value` pair. A header
+    // name must look like one (`X-Auth-Token`, `api_key`, `Authorization`),
+    // so prose such as `token: expired` is kept; any secret name before `=`
+    // counts (`password=…`, `authorization=token …`).
+    let mut i = 0;
+    while i < b.len() {
+        if !is_name(b[i]) || (i > 0 && is_name(b[i - 1])) {
+            i += 1;
             continue;
         }
+        let name_end = i + b[i..].iter().take_while(|c| is_name(**c)).count();
+        let name = &text[i..name_end];
+        i = name_end;
+        // A JSON key's closing quote may sit between the name and its `:`.
+        let mut j = name_end;
         if is_quote(j) {
             j += 1;
         }
-        if j >= b.len() || b[j] != b':' {
+        if j >= b.len() || !is_secret_name(name) {
             continue;
         }
-        j = skip_blank(j + 1);
-        if is_quote(j) {
+        let header_like = name.eq_ignore_ascii_case("authorization") || name.contains(['-', '_']);
+        j = match b[j] {
+            b':' if header_like => skip_blank(j + 1),
+            b'=' => j + 1,
+            _ => continue,
+        };
+        let quote = if is_quote(j) {
             j += 1;
+            Some(b[j - 1])
+        } else {
+            None
+        };
+        if text[j..].starts_with(REDACTED) {
+            continue;
         }
-        // A scheme, then a blank: the credential is what follows.
-        let w = j + b[j..]
-            .iter()
-            .take_while(|c| c.is_ascii_alphabetic())
-            .count();
-        if w > j && w < b.len() && (b[w] == b' ' || b[w] == b'\t') {
-            let k = skip_blank(w);
-            if k < b.len() && is_cred(b[k]) {
-                j = k;
+        // An authorization's scheme, then a blank: the credential is what
+        // follows. Other values have no scheme: `password=abc def` hides
+        // `abc`.
+        if name.to_ascii_lowercase().contains("authorization") {
+            let w = j + b[j..]
+                .iter()
+                .take_while(|c| c.is_ascii_alphabetic())
+                .count();
+            if w > j && w < b.len() && (b[w] == b' ' || b[w] == b'\t') {
+                let k = skip_blank(w);
+                if text[k..].starts_with(REDACTED) {
+                    continue;
+                }
+                if k < b.len() && is_cred(b[k]) {
+                    j = k;
+                }
             }
         }
-        let e = cred_end(j);
+        // A quoted value runs to its closing quote, blanks and all.
+        let e = match quote {
+            Some(q) => {
+                j + b[j..]
+                    .iter()
+                    .take_while(|c| **c != q && **c != b'\n' && **c != b'\r')
+                    .count()
+            }
+            None => cred_end(j),
+        };
         if e > j {
             spans.push((j, e));
         }
@@ -1976,13 +2142,13 @@ mod tests {
             ),
             "curl --pass <redacted> --pass=<redacted> --proxy-pass <redacted>"
         );
-        // No password: the path is kept. An escaped colon and a Windows
-        // drive letter are part of the path; a PKCS#11 URI is hidden after
-        // its scheme (it can carry `pin-value=`).
+        // No password: the path is kept. An escaped colon is part of the
+        // path; a PKCS#11 URI is hidden after its scheme (it can carry
+        // `pin-value=`). A Windows path is in
+        // `a_windows_style_cert_path_is_read_as_curl_on_macos_reads_it`.
         for (cert, want) in [
             ("cert.pem", "cert.pem"),
             ("a\\:b.pem:pw-ESC", "a\\:b.pem:<redacted>"),
-            ("C:\\certs\\c.pem:pw-WIN", "C:\\certs\\c.pem:<redacted>"),
             ("pkcs11:token=t;pin-value=1234", "pkcs11:<redacted>"),
         ] {
             assert_eq!(
@@ -2091,6 +2257,163 @@ mod tests {
         assert!(
             r.stderr.contains(
                 "> Authorization: token <redacted>\nsent authorization: Bearer <redacted>\nretrying with Bearer <redacted>, then gave up\n{\"Authorization\": \"Basic <redacted>\", \"x\": 1}\nproxy-authorization:<redacted>\nthe bearer of bad news\n"
+            ),
+            "{:?}",
+            r.stderr
+        );
+    }
+
+    #[test]
+    fn secrets_inside_a_json_body_are_hidden_and_other_members_kept() {
+        assert_eq!(
+            red(
+                "curl",
+                &[
+                    "--data",
+                    r#"{"token":"SECRET-DATA","page":2}"#,
+                    "--json",
+                    r#"{ "user": "me", "password" : "SECRET JSON" }"#,
+                    r#"-d{"api_key":"SECRET-JOINED"}"#,
+                    r#"--data-raw={"client_secret":"SECRET-ESC\"APED","ok":true}"#,
+                    "--json",
+                    r#"{"credentials":{"user":"u","pass":"SECRET-NESTED"},"pin":1}"#,
+                    "--json",
+                    r#"{"access_token":123456789,"refresh_token":null}"#,
+                    "--json",
+                    r#"{"note":"token","a":1}"#,
+                ]
+            ),
+            concat!(
+                r#"curl --data {"token":"<redacted>","page":2}"#,
+                r#" --json { "user": "me", "password" : "<redacted>" }"#,
+                r#" -d{"api_key":"<redacted>"}"#,
+                r#" --data-raw={"client_secret":"<redacted>","ok":true}"#,
+                r#" --json {"credentials":"<redacted>","pin":1}"#,
+                r#" --json {"access_token":<redacted>,"refresh_token":null}"#,
+                r#" --json {"note":"token","a":1}"#,
+            )
+        );
+        // And in what a failed command prints, even cut off mid-value.
+        let mut r = FakeRunner::new(|_| {
+            Out::fail(
+                1,
+                "response: {\"id\": 7, \"token\": \"SECRET-OUT\"}\n{\"password\": \"SECRET-CUT\n",
+            )
+        });
+        let _ = capture(&mut r, &Cmd::new("tool"));
+        assert!(!r.stderr.contains("SECRET"), "{:?}", r.stderr);
+        assert!(
+            r.stderr.contains(
+                "response: {\"id\": 7, \"token\": \"<redacted>\"}\n{\"password\": \"<redacted>\n"
+            ),
+            "{:?}",
+            r.stderr
+        );
+    }
+
+    #[test]
+    fn curl_tls_srp_passwords_are_hidden() {
+        assert_eq!(
+            red(
+                "curl",
+                &[
+                    "--tlsuser",
+                    "me",
+                    "--tlspassword",
+                    "SECRET-TLS",
+                    "--tlspassword=SECRET-TLSEQ",
+                    "--proxy-tlspassword",
+                    "SECRET-PXTLS",
+                    "--proxy-tlspassword=SECRET-PXTLSEQ",
+                    "https://h/",
+                ]
+            ),
+            "curl --tlsuser me --tlspassword <redacted> --tlspassword=<redacted> --proxy-tlspassword <redacted> --proxy-tlspassword=<redacted> https://h/"
+        );
+    }
+
+    #[test]
+    fn other_secret_headers_and_pairs_in_output_are_hidden_without_a_known_secret() {
+        // Minted at run time, so in no environment variable.
+        let mut r = FakeRunner::new(|_| {
+            Out::fail(
+                1,
+                concat!(
+                    "> X-Auth-Token: SECRET-XAUTH\n",
+                    "> PRIVATE-TOKEN:SECRET-PRIV\n",
+                    "x-api-key: \"SECRET QUOTED\"\n",
+                    "sent authorization=token SECRET-AUTHEQ\n",
+                    "retry password=SECRET-PW, api_key='SECRET-SQ'\n",
+                    "--remote_header=x-buildbuddy-api-key=SECRET-BB\n",
+                    "token: expired; page=2 sha=abc123 key-id: K1\n",
+                ),
+            )
+        });
+        let _ = capture(&mut r, &Cmd::new("tool"));
+        assert!(!r.stderr.contains("SECRET"), "{:?}", r.stderr);
+        assert!(
+            r.stderr.contains(concat!(
+                "> X-Auth-Token: <redacted>\n",
+                "> PRIVATE-TOKEN:<redacted>\n",
+                "x-api-key: \"<redacted>\"\n",
+                "sent authorization=token <redacted>\n",
+                "retry password=<redacted>, api_key='<redacted>'\n",
+                "--remote_header=x-buildbuddy-api-key=<redacted>\n",
+                // Prose and harmless pairs are kept.
+                "token: expired; page=2 sha=abc123 key-id: K1\n",
+            )),
+            "{:?}",
+            r.stderr
+        );
+    }
+
+    #[test]
+    fn a_windows_style_cert_path_is_read_as_curl_on_macos_reads_it() {
+        // curl reads a drive letter's colon as part of the path only when
+        // built for Windows. Elsewhere `C` is the file and the rest the
+        // password, so the rest is hidden.
+        let want = if cfg!(windows) {
+            "curl --cert C:\\certs\\c.pem:<redacted> -EC:/c.pem:<redacted>"
+        } else {
+            "curl --cert C:<redacted> -EC:<redacted>"
+        };
+        assert_eq!(
+            red(
+                "curl",
+                &[
+                    "--cert",
+                    "C:\\certs\\c.pem:SECRET-WIN",
+                    "-EC:/c.pem:SECRET-FWD"
+                ]
+            ),
+            want
+        );
+    }
+
+    #[test]
+    fn known_secret_values_are_hidden_whatever_carries_them() {
+        // The value-based layer: a secret the environment holds is hidden
+        // even where no rule about names or shapes would see it.
+        let mut r = FakeRunner::new(|_| {
+            Out::fail(1, "echo: {\"note\":\"KNOWN-VALUE-1\"}\nid: KNOWN-VALUE-2\n")
+        });
+        r.secrets = env_secrets(
+            &[
+                ("RELEASE_TOKEN", "KNOWN-VALUE-1"),
+                ("SIGNING_CERT_PASSWORD", "KNOWN-VALUE-2"),
+            ]
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect(),
+        );
+        let _ = capture(
+            &mut r,
+            &Cmd::new("curl").args(["-d", "payload=KNOWN-VALUE-1", "https://h/"]),
+        );
+        assert!(!r.stderr.contains("KNOWN-VALUE"), "{:?}", r.stderr);
+        assert!(
+            r.stderr.contains(
+                "`curl -d payload=<redacted> https://h/` failed (exit 1)\necho: {\"note\":\"<redacted>\"}\nid: <redacted>\n"
             ),
             "{:?}",
             r.stderr
