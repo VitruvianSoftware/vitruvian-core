@@ -1,0 +1,25 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "integrations.createToken",
+    "params": {
+      "name": "Claude Code",
+      "canSend": true
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "result": {
+      "token": {
+        "id": "tok_5f2a9c0d1e3b4a6f7c8d9e0f",
+        "name": "Claude Code",
+        "canSend": true,
+        "createdMs": 1793500000000,
+        "lastUsedMs": null
+      },
+      "secret": "courier_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    }
+  }
+}

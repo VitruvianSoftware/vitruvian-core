@@ -136,6 +136,7 @@ public actor EngineClient {
     private var nextID = 1
     private var pending: [Int: CheckedContinuation<Data, Error>] = [:]
     private var subscribers: [UUID: AsyncStream<Change>.Continuation] = [:]
+    private var noticeSubscribers: [UUID: AsyncStream<EngineNotice>.Continuation] = [:]
     private var closeWaiters: [CheckedContinuation<Void, Never>] = []
     private var timers: [Int: Task<Void, Never>] = [:]
     private let callTimeout: TimeInterval
@@ -210,6 +211,23 @@ public actor EngineClient {
         return stream
     }
 
+    /// The engine's other notifications (protocol 12: a pairing request, focus_app), from now on. Like `changes`,
+    /// each access is a stream of its own, and it finishes when the connection ends. One the app can't read is
+    /// dropped: unlike a change, there is nothing to re-read in its place.
+    public var notices: AsyncStream<EngineNotice> {
+        let (stream, continuation) = AsyncStream.makeStream(of: EngineNotice.self)
+        if closed {
+            continuation.finish()
+            return stream
+        }
+        let id = UUID()
+        noticeSubscribers[id] = continuation
+        continuation.onTermination = { [weak self] _ in
+            Task { await self?.unsubscribeNotice(id) }
+        }
+        return stream
+    }
+
     /// Ends the connection. Calls in flight throw `.disconnected`.
     public func close() {
         guard !closed else { return }
@@ -223,6 +241,8 @@ public actor EngineClient {
         for call in calls.values { call.resume(throwing: EngineError.disconnected) }
         for subscriber in subscribers.values { subscriber.finish() }
         subscribers = [:]
+        for subscriber in noticeSubscribers.values { subscriber.finish() }
+        noticeSubscribers = [:]
         let waiters = closeWaiters
         closeWaiters = []
         for waiter in waiters { waiter.resume() }
@@ -314,6 +334,10 @@ public actor EngineClient {
         let params: Changed
     }
 
+    private struct Params<P: Decodable>: Decodable {
+        let params: P
+    }
+
     private func receiveLoop(_ connection: NWConnection) async {
         var buffer = Data()
         while !closed {
@@ -342,11 +366,31 @@ public actor EngineClient {
             let notification = try? JSONDecoder().decode(Notification.self, from: line)
             let change = notification.map { Change($0.params) } ?? .resync
             for subscriber in subscribers.values { subscriber.yield(change) }
+        } else if let notice = Self.notice(header.method, line) {
+            for subscriber in noticeSubscribers.values { subscriber.yield(notice) }
+        }
+    }
+
+    private static func notice(_ method: String?, _ line: Data) -> EngineNotice? {
+        let decoder = JSONDecoder()
+        switch method {
+        case ProtocolMethods.pairRequestNotification:
+            return (try? decoder.decode(Params<PairRequest>.self, from: line)).map { .pairRequest($0.params) }
+        case ProtocolMethods.pairEndedNotification:
+            return (try? decoder.decode(Params<PairEnded>.self, from: line)).map { .pairEnded($0.params) }
+        case ProtocolMethods.focusNotification:
+            return (try? decoder.decode(Params<FocusParams>.self, from: line)).map { .focus($0.params) }
+        default:
+            return nil
         }
     }
 
     private func unsubscribe(_ id: UUID) {
         subscribers[id] = nil
+    }
+
+    private func unsubscribeNotice(_ id: UUID) {
+        noticeSubscribers[id] = nil
     }
 
     // MARK: - Network.framework, as async
