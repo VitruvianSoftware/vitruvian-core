@@ -340,6 +340,22 @@ fn a_map_sourced_plan_retests_whole_changed_packages() {
     );
 }
 
+#[test]
+fn affected_tests_skip_named_targets_this_runner_cannot_build() {
+    for (plan, env) in [(MAP_PLAN, true), (LIVE_PLAN, false)] {
+        let c = Case::new();
+        let map = c.work.join("map.json");
+        let extra: Vec<(&str, &str)> = if env {
+            vec![("RDEPS_MAP", map.to_str().unwrap())]
+        } else {
+            vec![]
+        };
+        let r = c.run(plan, &extra, &[]);
+        let t = r.lines_starting("test ").join("\n");
+        assert!(t.contains(" --skip_incompatible_explicit_targets "), "{t}");
+    }
+}
+
 // --- live-query plan --------------------------------------------------------
 
 #[test]
