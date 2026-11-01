@@ -30,6 +30,8 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+pub mod fresh;
+
 /// The version in `rust.toolchain(... versions = ["X"] ...)` in MODULE.bazel.
 pub fn toolchain_version(module_bazel: &str) -> Option<String> {
     let block = &module_bazel[module_bazel.find("rust.toolchain(")?..];
