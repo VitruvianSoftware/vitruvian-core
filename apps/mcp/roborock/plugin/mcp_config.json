@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "roborock": {
-      "command": "uvx",
-      "args": ["vitruvian-roborock", "mcp"]
+      "command": "rrctl",
+      "args": ["mcp"]
     }
   }
 }

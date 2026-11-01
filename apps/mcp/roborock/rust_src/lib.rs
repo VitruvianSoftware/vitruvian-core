@@ -23,15 +23,23 @@
 
 pub mod auth;
 pub mod cli;
+pub mod cloud;
+pub mod codes;
 pub mod config;
+pub mod crypto;
 pub mod daemon;
 pub mod device;
+pub mod link;
+pub mod local;
+pub mod mapimg;
 pub mod mcp;
+pub mod mqtt;
+pub mod protocol;
 pub mod state;
 
-pub const VERSION: &str = "0.1.1";
+pub const VERSION: &str = "0.2.0";
 
-const DASHBOARD_HTML: &str = include_str!("../src/vitruvian_roborock/dashboard/dashboard.html");
+const DASHBOARD_HTML: &str = include_str!("../assets/dashboard.html");
 
 pub fn dashboard_html() -> &'static str {
     DASHBOARD_HTML
@@ -2456,5 +2464,70 @@ mod tests {
         let stop = run_cli(fake, &["daemon", "stop"]);
         assert_eq!(stop.exit_code, 0);
         assert!(stop.stdout.contains("not running"));
+    }
+
+    // =========================================================================
+    // Release metadata: the release workflow reads Cargo.toml's version, so
+    // every manifest a user installs from must say the same, and every MCP
+    // config must start the Rust binary.
+    // =========================================================================
+
+    const MANIFESTS: &[(&str, &str)] = &[
+        ("plugin/plugin.json", include_str!("../plugin/plugin.json")),
+        (
+            "plugin/.claude-plugin/plugin.json",
+            include_str!("../plugin/.claude-plugin/plugin.json"),
+        ),
+        (
+            "plugin/gemini-extension.json",
+            include_str!("../plugin/gemini-extension.json"),
+        ),
+        (
+            ".claude-plugin/marketplace.json",
+            include_str!("../.claude-plugin/marketplace.json"),
+        ),
+    ];
+
+    const MCP_CONFIGS: &[(&str, &str)] = &[
+        ("plugin/.mcp.json", include_str!("../plugin/.mcp.json")),
+        (
+            "plugin/mcp_config.json",
+            include_str!("../plugin/mcp_config.json"),
+        ),
+        (
+            "plugin/gemini-extension.json",
+            include_str!("../plugin/gemini-extension.json"),
+        ),
+    ];
+
+    #[test]
+    fn test_every_manifest_carries_the_cargo_version() {
+        let cargo = include_str!("../Cargo.toml");
+        let cargo_version = cargo
+            .lines()
+            .skip_while(|l| l.trim() != "[package]")
+            .find_map(|l| l.strip_prefix("version = "))
+            .map(|v| v.trim_matches('"'))
+            .expect("Cargo.toml [package] has a version");
+        assert_eq!(VERSION, cargo_version, "lib.rs VERSION vs Cargo.toml");
+        for (name, text) in MANIFESTS {
+            let doc: Value = serde_json::from_str(text).unwrap();
+            let version = doc
+                .get("version")
+                .or_else(|| doc["plugins"][0].get("version"))
+                .and_then(Value::as_str)
+                .unwrap_or_else(|| panic!("{name} has no version"));
+            assert_eq!(version, cargo_version, "{name}");
+        }
+    }
+
+    #[test]
+    fn test_every_mcp_config_starts_rrctl_mcp() {
+        for (name, text) in MCP_CONFIGS {
+            let doc: Value = serde_json::from_str(text).unwrap();
+            let server = &doc["mcpServers"]["roborock"];
+            assert_eq!(server["command"], "rrctl", "{name}");
+            assert_eq!(server["args"], json!(["mcp"]), "{name}");
+        }
     }
 }

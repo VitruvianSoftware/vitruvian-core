@@ -29,12 +29,7 @@ version = "0"
 # which will ensure the resolved versions of both direct and indirect dependencies are pinned.
 # Therefore we only need to constrain versions when some ranges 
 # of dependency versions are not compatible.
-dependencies = [
-    # apps/mcp/roborock (vitruvian-roborock). Bounds mirror apps/mcp/roborock/pyproject.toml.
-    "aiohttp>=3.11",
-    "mcp>=2.3,<3",
-    "python-roborock>=7.12,<8",
-]
+dependencies = []
 
 # See https://docs.astral.sh/ruff/configuration/
 [tool.ruff]

@@ -6,19 +6,25 @@ Welcome to the **Vitruvian Roborock** integration! This guide walks you through 
 
 ## 1. Prerequisites
 
-- Python 3.11+ and [`uv`](https://docs.astral.sh/uv/) installed:
-  ```bash
-  curl -LsSf https://astral.sh/uv/install.sh | sh
-  ```
+- macOS or Linux. Nothing else: `rrctl` is a single binary with no runtime to install.
 - A Roborock vacuum cleaner (S-series or Q-series V1 protocol, e.g. S8, S7, Q7, Q8, etc.) associated with your Roborock mobile app.
 
 ---
 
 ## 2. Installation
 
-The package is published on [PyPI](https://pypi.org/project/vitruvian-roborock/).
-The plugins fetch and run it themselves with `uvx vitruvian-roborock mcp`, so
-with `uv` installed there is nothing else to set up first.
+`rrctl` is one self-contained binary: the daemon, the CLI and the MCP server.
+The plugins start it as `rrctl mcp`, so put `rrctl` on your `PATH` first, one of
+these ways:
+
+- **Download it** from the
+  [latest release](https://github.com/VitruvianSoftware/mcp-roborock/releases/latest)
+  (macOS universal, Linux x86_64), check it against its `.sha256`, and put
+  `rrctl` in a directory on your `PATH`, such as `~/.local/bin`.
+- **Build it** with Rust installed:
+  `cargo install --locked --git https://github.com/VitruvianSoftware/mcp-roborock`
+- **In the vitruvian-core monorepo:** `bazel build //apps/mcp/roborock:rrctl`,
+  then copy `bazel-bin/apps/mcp/roborock/rrctl` onto your `PATH`.
 
 ### Option A: Claude Code
 
@@ -34,7 +40,7 @@ claude plugin install vitruvian-roborock
 
 Once installed, Claude Code has access to:
 - **Skills**: `/roborock-control` (clean rooms, dock, wash mop) and `/roborock-setup` (first-time login).
-- **FastMCP Tools**: `get_status`, `start_clean`, `control`, `return_to_dock`, `wash_mop`, `get_map`, `setup_login`.
+- **MCP Tools**: `get_status`, `start_clean`, `control`, `return_to_dock`, `wash_mop`, `get_map`, `setup_login`.
 
 ---
 
@@ -51,7 +57,7 @@ To verify the installation:
 ```bash
 agy plugin list
 ```
-You will see `vitruvian-roborock` listed with its skills and FastMCP server.
+You will see `vitruvian-roborock` listed with its skills and MCP server.
 
 ---
 
@@ -59,10 +65,7 @@ You will see `vitruvian-roborock` listed with its skills and FastMCP server.
 
 If you want the terminal CLI and local web dashboard without an AI agent:
 
-```bash
-# Installs rrctl and vitruvian-roborock into ~/.local/bin
-uv tool install vitruvian-roborock
-```
+Install `rrctl` as described at the top of this section; the plugins are optional.
 
 Verify it:
 
@@ -129,7 +132,7 @@ To clean specific rooms:
 # Via agent:
 "Clean the Kitchen and Dining room twice."
 
-# Or via FastMCP / API:
+# Or via the MCP tools / API:
 # action: clean_rooms, params: {"rooms": ["Kitchen", "Dining room"], "repeat": 2}
 ```
 
