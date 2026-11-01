@@ -60,7 +60,7 @@ Each gap below consolidates the dimension surveys and the explicitly-named sessi
 | oauth-user-inspector | `npm run dev` (concurrently vite + nodemon) — plain npm, bypasses pnpm/Bazel |
 | devx | `mage` (magefile.go) |
 | homelab | `mise run {build,test,lint}` (.mise.toml) |
-| mcp-slack | `npm install && npm run build && npm start` |
+| mcp-slack | `bazel run //apps/mcp/slack:mcp-slack` (Rust; the npm build is retired, #4025) |
 | nexus-agent | `npm start` / `./bot.sh` / `node --watch` / DMG — four documented modes |
 
 The worst offender was **tabula**, which shipped **two contradictory narratives**. The root README describes the real pnpm+Bazel+Pulumi monorepo flow; but `apps/suites/tabula/docs/getting-started/{setup,development}.md` (formerly under `docs/tabula/`) and `reference/infrastructure.md` described a stale pre-monorepo world: `git clone github.com/BlueCentre/tabula`, npm workspaces, `docker-compose up -d` (Postgres 16 / Redis 7), Terraform, `tabcli dev start`, and **Node 18**. None of that is true: there is **no `docker-compose.yml` anywhere in the repo**, the build is Bazel+Pulumi (not npm+Terraform), and Node is pinned to 22. **(Update: those getting-started and infrastructure-reference pages have since been rewritten to the real flow and the tree relocated to `apps/suites/tabula/docs/` so it mirrors with the app. The broader local-dev gaps below — no `devx.yaml`, no uniform index — still stand.)**
@@ -123,7 +123,7 @@ There is **no rule** saying which a containerized app should use, and tabula add
 |---|---|---|
 | GCP Cloud Run | tabula, oauth-user-inspector | image → Artifact Registry → Pulumi `cloudrunv2`, WIF, per-app GitHub Environment |
 | Standalone repo + Homebrew/Releases | devx, homelab | goreleaser binaries + tap |
-| Standalone repo + npm / DMG | mcp-slack, nexus-agent | `npx` / macOS DMG |
+| Standalone repo + GHCR image / DMG | mcp-slack, nexus-agent | `docker run ghcr.io/vitruviansoftware/mcp-slack:main` / macOS DMG |
 | dev-local k3s (ArgoCD GitOps) | *platform infra only* | app-of-apps; the one app wired for it (tabula) is checked in **disabled** |
 
 A new app has nothing authoritative to follow. tabula even straddles two targets: it has a live-but-**disabled** k8s path (`gitops/argocd/applications/tabula.yaml.disabled` + `apps/suites/tabula/deploy/chart`, published OCI to GHCR) whose status — supported self-host option vs abandoned scaffolding — is undocumented.
@@ -208,7 +208,7 @@ There are **zero `nonproduction`/`production` stacks**. So even the reference ap
 |---|---|---|---|---|---|
 | devx | setup-go + golangci-lint + `go test -race` | ubuntu | yes | yes | Butane validation job; hand-rolled |
 | homelab | **`mise run`** on **macos-latest** | macOS | yes | yes | biggest outlier; older action pins (checkout@v4) |
-| mcp-slack | `npm ci` + `npm run build` | ubuntu | **no** | no | no test/lint job at all |
+| mcp-slack | none (the mirror ships only `cla.yml`) | — | — | — | the Rust server's tests run in the monorepo pipeline unit (`:unit_tests`, `:mcp_slack_test`) |
 | nexus-agent | `node --check` (syntax only) + `swift build` | mixed | **no** | no | weakest test story in the repo |
 
 Pins (checkout v4 vs v6), runners, and which checks run all differ. `homelab` and `nexus-agent` are the worst.
