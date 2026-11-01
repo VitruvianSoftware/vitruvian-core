@@ -68,6 +68,13 @@ exports_files(
     visibility = ["//tools/agent-guard:__pkg__"],
 )
 
+# The cloud-session tailnet hook that //tools/cloud-bootstrap:configure-tailscale
+# writes; its test checks this file is what the tool writes.
+exports_files(
+    [".claude/tailscale-up.sh"],
+    visibility = ["//tools/cloud-bootstrap:__pkg__"],
+)
+
 exports_files(
     [
         ".claude-plugin/marketplace.json",
