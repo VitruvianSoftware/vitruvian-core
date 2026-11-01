@@ -210,9 +210,11 @@ struct GeneralSettingsPane: View {
 
                 HStack(spacing: 8) {
                     TextField(
-                        String(localized: "Try “7am Tomorrow” or “In 3 weeks”"),
-                        text: $newSuggestionText
+                        "",
+                        text: $newSuggestionText,
+                        prompt: Text(String(localized: "Try “7am Tomorrow” or “In 3 weeks”"))
                     )
+                    .labelsHidden()
                     .textFieldStyle(.roundedBorder)
                     .onSubmit {
                         addSuggestion()
@@ -657,7 +659,7 @@ struct AppearanceSettingsPane: View {
                     .controlSize(.small)
                 }
 
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 118), spacing: 8)], spacing: 8) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 155), spacing: 8)], spacing: 8) {
                     ForEach(CourierThemePreset.allCases) { preset in
                         let selected = appearance.themePreset == preset
                         let outgoingHex = colorScheme == .dark ? preset.defaultOutgoingBubbleHexDark : preset.defaultOutgoingBubbleHexLight

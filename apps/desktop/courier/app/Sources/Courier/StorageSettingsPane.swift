@@ -147,15 +147,19 @@ public struct StorageSettingsPane: View {
     private var cleanupSection: some View {
         Section(String(localized: "Free Up Space")) {
             VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 10) {
-                    Picker(
-                        SettingsNavigationModel.title(for: "storage.cleanupByAge"),
-                        selection: $model.selectedAgeChoice
-                    ) {
-                        ForEach(StorageCleanupAgeChoice.allCases) { choice in
-                            Text(choice.shortDurationLabel).tag(choice)
-                        }
+                Picker(
+                    selection: $model.selectedAgeChoice
+                ) {
+                    ForEach(StorageCleanupAgeChoice.allCases) { choice in
+                        Text(choice.shortDurationLabel).tag(choice)
                     }
+                } label: {
+                    Text(SettingsNavigationModel.title(for: "storage.cleanupByAge"))
+                        .lineLimit(1)
+                }
+
+                HStack(spacing: 10) {
+                    Spacer(minLength: 0)
 
                     Button(model.selectedAgeChoice.label) {
                         isConfirmingBulkCleanup = true
@@ -186,9 +190,11 @@ public struct StorageSettingsPane: View {
                         .foregroundStyle(.secondary)
                         .font(.caption)
                     TextField(
-                        String(localized: "Filter chats by name or network…"),
-                        text: $model.roomFilterQuery
+                        "",
+                        text: $model.roomFilterQuery,
+                        prompt: Text(String(localized: "Filter chats by name or network…"))
                     )
+                    .labelsHidden()
                     .textFieldStyle(.roundedBorder)
                 }
 

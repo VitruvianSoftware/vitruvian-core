@@ -96,16 +96,12 @@ public struct AISettingsPane: View {
                     String(localized: "Mention an AI to get answers and help in chat"),
                     isOn: $preferences.mentionAIInChats
                 )
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(String(localized: "Custom instructions for AI mentions"))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    TextField(
-                        String(localized: "Keep answers brief and factual…"),
-                        text: $preferences.aiMentionsSystemPrompt
-                    )
-                    .textFieldStyle(.roundedBorder)
-                }
+                TextField(
+                    String(localized: "Custom instructions"),
+                    text: $preferences.aiMentionsSystemPrompt,
+                    prompt: Text(String(localized: "Keep answers brief and factual…"))
+                )
+                .textFieldStyle(.roundedBorder)
             }
             .settingAnchor("ai.contextual", highlighted: highlightedSettingID)
         }

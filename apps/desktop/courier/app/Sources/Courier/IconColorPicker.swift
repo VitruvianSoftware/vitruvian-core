@@ -106,9 +106,14 @@ public struct IconColorPicker: View {
                         Image(systemName: "magnifyingglass")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        TextField(String(localized: "Search icons…"), text: $searchQuery)
-                            .textFieldStyle(.plain)
-                            .font(.callout)
+                        TextField(
+                            "",
+                            text: $searchQuery,
+                            prompt: Text(String(localized: "Search icons…"))
+                        )
+                        .labelsHidden()
+                        .textFieldStyle(.plain)
+                        .font(.callout)
                         if !searchQuery.isEmpty {
                             Button {
                                 searchQuery = ""

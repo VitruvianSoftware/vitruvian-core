@@ -145,9 +145,11 @@ public struct CommandBarOverlay: View {
             }
 
             TextField(
-                model.searchPlaceholder,
-                text: $model.query
+                "",
+                text: $model.query,
+                prompt: Text(model.searchPlaceholder)
             )
+            .labelsHidden()
             .textFieldStyle(.plain)
             .font(.system(size: 15))
             .focused($isSearchFocused)

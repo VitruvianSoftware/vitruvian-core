@@ -63,7 +63,9 @@ public struct PlusSettingsPane: View {
                     Spacer(minLength: 0)
                 }
 
-                SubscriptionExpiryBannerView(state: summary.bannerState)
+                if summary.bannerState != .expired {
+                    SubscriptionExpiryBannerView(state: summary.bannerState)
+                }
 
                 HStack(spacing: 12) {
                     limitMetricCard(
@@ -78,10 +80,6 @@ public struct PlusSettingsPane: View {
                         title: String(localized: "Merged Chats"),
                         value: summary.mergedChatsLimit
                     )
-                }
-
-                if let nudge = entitlement.freebieNudgeText(for: .sendLater) {
-                    FreebieNudgeView(text: nudge)
                 }
             }
             .settingAnchor("plan.overview", highlighted: highlightedSettingID)
@@ -154,34 +152,6 @@ public struct PlusPillView: View {
                     .fill(isUnlimited ? Color.accentColor.opacity(0.16) : Color.orange.opacity(0.16))
             )
             .foregroundStyle(isUnlimited ? Color.accentColor : Color.orange)
-    }
-}
-
-public struct FreebieNudgeView: View {
-    public let text: String
-    public var onLearnMore: () -> Void = {}
-
-    public init(text: String, onLearnMore: @escaping () -> Void = {}) {
-        self.text = text
-        self.onLearnMore = onLearnMore
-    }
-
-    public var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "sparkles")
-                .foregroundStyle(.orange)
-            Text(text)
-                .font(.caption.weight(.medium))
-            Spacer(minLength: 0)
-            Text(String(localized: "Plan management isn’t available yet in Courier."))
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        }
-        .padding(10)
-        .background(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color.orange.opacity(0.1))
-        )
     }
 }
 

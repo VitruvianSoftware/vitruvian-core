@@ -98,7 +98,7 @@ public struct AIPane: View {
             HStack(spacing: 6) {
                 Image(systemName: "lock.shield")
                     .foregroundStyle(Color.accentColor)
-                Text(String(localized: "Local-Only Stub"))
+                Text(String(localized: "On this Mac only"))
                     .font(.caption.weight(.semibold))
             }
             Text(provider.unavailableReason)
@@ -139,7 +139,7 @@ public struct AIPane: View {
                         Text(title)
                             .font(.caption.weight(.medium))
                         Spacer(minLength: 0)
-                        Text(String(localized: "Stub"))
+                        Text(String(localized: "Not available yet"))
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(.secondary)
                     }

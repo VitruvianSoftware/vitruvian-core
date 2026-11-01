@@ -85,7 +85,7 @@ public struct ChatThemeWindow: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(String(localized: "Colour Preset"))
                             .font(.subheadline.weight(.semibold))
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 118, maximum: 150), spacing: 8)], spacing: 8) {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 220), spacing: 8)], spacing: 8) {
                             ForEach(CourierThemePreset.allCases) { preset in
                                 presetButton(preset)
                             }
@@ -116,7 +116,7 @@ public struct ChatThemeWindow: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(String(localized: "Wallpaper"))
                             .font(.subheadline.weight(.semibold))
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 118, maximum: 150), spacing: 8)], spacing: 8) {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150, maximum: 260), spacing: 8)], spacing: 8) {
                             ForEach(CourierWallpaperPreset.allCases) { wp in
                                 wallpaperButton(wp)
                             }
@@ -280,8 +280,10 @@ public struct ChatThemeWindow: View {
                 Text(wp.subtitle)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .background(
