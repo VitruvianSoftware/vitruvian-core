@@ -230,7 +230,11 @@ fn on_path(name: &str) -> bool {
 /// The lines of a file, each without its newline (a missing final newline
 /// still ends a line, as awk and grep read it).
 fn read_lines(p: &str) -> Vec<Vec<u8>> {
-    let data = fs::read(p).unwrap_or_default();
+    let data = if p == "user.bazelrc" {
+        read_user_bazelrc()
+    } else {
+        fs::read(p).unwrap_or_default()
+    };
     let mut lines: Vec<Vec<u8>> = data.split(|&c| c == b'\n').map(|l| l.to_vec()).collect();
     if data.is_empty() || data.ends_with(b"\n") {
         lines.pop();
@@ -238,37 +242,48 @@ fn read_lines(p: &str) -> Vec<Vec<u8>> {
     lines
 }
 
-/// user.bazelrc holds the API key, so it (and its temp file) is written
-/// 0600, or kept stricter if the user made it so. setup.sh left it at the
-/// umask default (usually 0644), and its temp-file-and-rename undid a user's
-/// own `chmod 600` on every run. The mode is read once, before this run
-/// changes the file.
-fn private_mode() -> u32 {
-    use std::os::unix::fs::PermissionsExt;
-    static MODE: std::sync::OnceLock<u32> = std::sync::OnceLock::new();
-    *MODE.get_or_init(|| match fs::metadata("user.bazelrc") {
-        Ok(m) if m.permissions().mode() & 0o600 != 0 => m.permissions().mode() & 0o600,
-        _ => 0o600,
-    })
+/// user.bazelrc as it stands: empty only when it does not exist. Any other
+/// failure to read it (an unreadable 0000 or 0200 file) stops the run before
+/// anything is written, exit 2 as setup.sh's awk did, so the user's lines are
+/// never replaced by a rewrite of "nothing".
+fn read_user_bazelrc() -> Vec<u8> {
+    match fs::read("user.bazelrc") {
+        Ok(d) => d,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Vec::new(),
+        Err(e) => {
+            eprintln!("{}: user.bazelrc: cannot read it: {}", prog(), strerror(&e));
+            eprintln!("  Nothing was changed. Make it readable (chmod 600 user.bazelrc) and run this again.");
+            process::exit(2);
+        }
+    }
 }
 
 fn is_private(p: &str) -> bool {
     p == "user.bazelrc" || p == "user.bazelrc.tmp"
 }
 
-/// Open for writing; a private file is created 0600 and set to private_mode.
+/// Open for writing. user.bazelrc holds the API key, so it (and its temp
+/// file) is always written 0600: setup.sh left it at the umask default
+/// (usually 0644) and its temp-file-and-rename undid a user's own
+/// `chmod 600`. An existing user.bazelrc is read-checked first (see
+/// read_user_bazelrc) and made 0600 before it is opened, so a read-only 0400
+/// file is still updated, as setup.sh's rename did.
 fn open_for_write(p: &str, append: bool) -> io::Result<fs::File> {
     use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+    if is_private(p) {
+        if p == "user.bazelrc" {
+            read_user_bazelrc();
+        }
+        if Path::new(p).exists() {
+            fs::set_permissions(p, fs::Permissions::from_mode(0o600))?;
+        }
+    }
     let mut o = fs::OpenOptions::new();
     o.create(true).write(true).append(append).truncate(!append);
     if is_private(p) {
         o.mode(0o600);
     }
-    let f = o.open(p)?;
-    if is_private(p) {
-        f.set_permissions(fs::Permissions::from_mode(private_mode()))?;
-    }
-    Ok(f)
+    o.open(p)
 }
 
 fn write_lines(p: &str, lines: &[Vec<u8>]) -> io::Result<()> {

@@ -1173,12 +1173,8 @@ fn user_bazelrc_holding_the_key_is_private() {
         "a 0644 user.bazelrc was not tightened"
     );
 
-    // A stricter mode the user chose is kept.
-    fs::set_permissions(
-        ws.join("user.bazelrc"),
-        fs::Permissions::from_mode(0o400 | 0o200),
-    )
-    .unwrap();
+    // Always 0600: one the user had set 0600 stays so.
+    fs::set_permissions(ws.join("user.bazelrc"), fs::Permissions::from_mode(0o600)).unwrap();
     bb(&r, "ROTATED", &[]);
     assert_eq!(mode(&ws.join("user.bazelrc")), 0o600);
     assert!(
@@ -1233,4 +1229,104 @@ fn parity_with_setup_sh() {
         bad.len(),
         bad.join("\n\n")
     );
+}
+
+#[test]
+fn an_unreadable_user_bazelrc_stops_the_run_and_is_left_untouched() {
+    // setup.sh's awk failed to open it and the run stopped. Reading it as
+    // empty and rewriting would destroy the user's lines.
+    for m in [0o000, 0o200] {
+        for args in [
+            &[
+                "--cache",
+                "buildbuddy",
+                "--provider",
+                "buildbuddy",
+                "--key",
+                "K1",
+                "--no-ci",
+            ][..],
+            &["--cache", "local"][..],
+            &["--cache", "none"][..],
+        ] {
+            let r = scratch();
+            let f = r.join("ws/user.bazelrc");
+            fs::write(&f, "common --jobs=8\n").unwrap();
+            fs::set_permissions(&f, fs::Permissions::from_mode(m)).unwrap();
+            if fs::read(&f).is_ok() {
+                // Running as root: permissions do not stop reads, so the
+                // case this test is about cannot happen.
+                eprintln!("skipping: mode {m:o} is readable here (root?)");
+                return;
+            }
+            let o = run(&r, false, args, &[], "");
+            assert_ne!(
+                o.code, 0,
+                "mode {m:o} {args:?}: an unreadable user.bazelrc did not stop the run:\n{}",
+                o.stdout
+            );
+            assert!(o.stderr.contains("user.bazelrc"), "{}", o.stderr);
+            assert_eq!(
+                mode(&f),
+                m,
+                "mode {m:o} {args:?}: the file's mode was changed"
+            );
+            fs::set_permissions(&f, fs::Permissions::from_mode(0o600)).unwrap();
+            assert_eq!(
+                read(f),
+                "common --jobs=8\n",
+                "mode {m:o} {args:?}: the user's lines were lost"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_read_only_user_bazelrc_is_updated_and_made_0600() {
+    // setup.sh updated a 0400 file (by rename); the port must too, on every
+    // path (local and shared open the existing file before replacing it).
+    for (args, want) in [
+        (
+            &[
+                "--cache",
+                "buildbuddy",
+                "--provider",
+                "buildbuddy",
+                "--key",
+                "TESTKEY",
+                "--no-ci",
+            ][..],
+            "common --remote_header=x-buildbuddy-api-key=TESTKEY\n",
+        ),
+        (&["--cache", "local"][..], "common --disk_cache="),
+        (
+            &[
+                "--cache",
+                "shared",
+                "--url",
+                "grpcs://c.example",
+                "--key",
+                "K1",
+            ][..],
+            "common --remote_cache=grpcs://c.example\n",
+        ),
+    ] {
+        let r = scratch();
+        let f = r.join("ws/user.bazelrc");
+        fs::write(&f, "common --jobs=8\n").unwrap();
+        fs::set_permissions(&f, fs::Permissions::from_mode(0o400)).unwrap();
+        let o = run(&r, false, args, &[], "");
+        assert_eq!(
+            o.code, 0,
+            "{args:?}: a 0400 user.bazelrc failed the run:\n{}",
+            o.stderr
+        );
+        assert_eq!(mode(&f), 0o600, "{args:?}");
+        let rc = read(f);
+        assert!(
+            rc.starts_with("common --jobs=8\n"),
+            "{args:?}: the user's line was lost:\n{rc}"
+        );
+        assert!(rc.contains(want), "{args:?}:\n{rc}");
+    }
 }
