@@ -171,6 +171,15 @@ public struct HotkeyDefinition: Equatable, Sendable, Identifiable {
     }
 }
 
+/// Canonical ledger IDs for M4.7 Command Bar, Talk to Type, and Zoom shortcuts.
+public enum HotkeyID {
+    public static let commandBar = "Command Bar"
+    public static let talkToType = "Message: Talk to Type"
+    public static let zoomIn = "Zoom In"
+    public static let zoomOut = "Zoom Out"
+    public static let resetZoom = "Reset Zoom"
+}
+
 /// Single source of truth for Courier's keyboard shortcuts, read by the macOS menu bar, the `⌘/` Keyboard
 /// Shortcuts sheet, and the Settings ▸ Shortcuts recorder (`01` §17, `02` §1.6, §2.1–2.2).
 @MainActor
@@ -381,6 +390,30 @@ public final class HotkeyRegistry: ObservableObject {
             category: "Navigation",
             defaultChords: [KeyChord(key: "down", command: true)]
         ),
+        HotkeyDefinition(
+            id: HotkeyID.commandBar,
+            title: "Command Bar",
+            category: "Navigation",
+            defaultChords: [KeyChord(key: "j", command: true)]
+        ),
+        HotkeyDefinition(
+            id: HotkeyID.zoomIn,
+            title: "Zoom In",
+            category: "Navigation",
+            defaultChords: [KeyChord(key: "=", command: true)]
+        ),
+        HotkeyDefinition(
+            id: HotkeyID.zoomOut,
+            title: "Zoom Out",
+            category: "Navigation",
+            defaultChords: [KeyChord(key: "-", command: true)]
+        ),
+        HotkeyDefinition(
+            id: HotkeyID.resetZoom,
+            title: "Actual Size",
+            category: "Navigation",
+            defaultChords: [KeyChord(key: "0", command: true)]
+        ),
 
         // Chat
         HotkeyDefinition(
@@ -534,6 +567,12 @@ public final class HotkeyRegistry: ObservableObject {
             title: "Send Sticker",
             category: "Message",
             defaultChords: [KeyChord(key: "s", command: true, shift: true, option: true)]
+        ),
+        HotkeyDefinition(
+            id: HotkeyID.talkToType,
+            title: "Talk to Type",
+            category: "Message",
+            defaultChords: [KeyChord(key: "d", command: true, shift: true)]
         ),
         // Composer
         HotkeyDefinition(
@@ -933,6 +972,8 @@ public final class HotkeyDispatcher: ObservableObject {
     public let menuCoordinator: AppMenuCoordinator
     public let focus: MessageFocus
     public let hotkeys: HotkeyRegistry
+    public var commandBar: CommandBarModel?
+    public var appearance: AppearancePreferences?
 
     /// Brings the main window forward when a shortcut needs it; returns true when it was already key.
     public var bringMainWindowForward: @MainActor () -> Bool
@@ -993,6 +1034,10 @@ public final class HotkeyDispatcher: ObservableObject {
         "Switch First 9 Spaces Modifier",
         "Report a Problem",
         "Keyboard Shortcuts",
+        HotkeyID.commandBar,
+        HotkeyID.zoomIn,
+        HotkeyID.zoomOut,
+        HotkeyID.resetZoom,
     ]
 
     /// Shortcut IDs bound in `ConversationCommands`.
@@ -1011,6 +1056,7 @@ public final class HotkeyDispatcher: ObservableObject {
         "Message: Record Audio",
         "Message: Send GIF",
         "Message: Send Sticker",
+        HotkeyID.talkToType,
         "Toggle Chat Info",
         "Open User Profile",
         "Chat: Delete",
@@ -1063,6 +1109,8 @@ public final class HotkeyDispatcher: ObservableObject {
         menuCoordinator: AppMenuCoordinator,
         focus: MessageFocus? = nil,
         hotkeys: HotkeyRegistry,
+        commandBar: CommandBarModel? = nil,
+        appearance: AppearancePreferences? = nil,
         bringMainWindowForward: @escaping @MainActor () -> Bool = { true },
         onFilterByAccount: @escaping @MainActor () -> Void = {},
         onRemindLater: @escaping @MainActor () -> Void = {},
@@ -1081,6 +1129,8 @@ public final class HotkeyDispatcher: ObservableObject {
         self.menuCoordinator = menuCoordinator
         self.focus = focus ?? MessageFocus()
         self.hotkeys = hotkeys
+        self.commandBar = commandBar
+        self.appearance = appearance
         self.bringMainWindowForward = bringMainWindowForward
         self.onFilterByAccount = onFilterByAccount
         self.onRemindLater = onRemindLater
@@ -1152,6 +1202,11 @@ public final class HotkeyDispatcher: ObservableObject {
         switch id {
         case "Focus App",
              "Focus App and Command Bar",
+             HotkeyID.commandBar,
+             HotkeyID.talkToType,
+             HotkeyID.zoomIn,
+             HotkeyID.zoomOut,
+             HotkeyID.resetZoom,
              "Search",
              "Search: Room",
              "Keyboard Shortcuts",
@@ -1306,7 +1361,36 @@ public final class HotkeyDispatcher: ObservableObject {
         case "Focus App and Command Bar":
             menuCoordinator.focusApp()
             let visible = bringMainWindowForward()
-            search.toggle(visible: visible)
+            if let commandBar {
+                commandBar.open()
+            } else {
+                search.toggle(visible: visible)
+            }
+            return true
+
+        case HotkeyID.commandBar:
+            _ = bringMainWindowForward()
+            if let commandBar {
+                commandBar.toggle()
+            } else {
+                search.toggle(visible: true)
+            }
+            return true
+
+        case HotkeyID.talkToType:
+            inbox.announce(String(localized: "Talk to Type isn’t available in this build."))
+            return true
+
+        case HotkeyID.zoomIn:
+            appearance?.zoomIn()
+            return true
+
+        case HotkeyID.zoomOut:
+            appearance?.zoomOut()
+            return true
+
+        case HotkeyID.resetZoom:
+            appearance?.resetZoom()
             return true
 
         case "Search":

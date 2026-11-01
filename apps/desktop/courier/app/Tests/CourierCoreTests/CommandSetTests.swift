@@ -626,6 +626,134 @@ final class CommandSetTests: XCTestCase {
         cmd.run()
         XCTAssertTrue(didDelete)
     }
+
+    func testUnifiedCommandSetCoversEveryAcceptanceAndLedgerCommand() async throws {
+        let (h, spaces, inboxCommands) = try await start()
+        let searchH = try await startSearch(rooms: [room("!a", ts: 1, name: "Picnic planning")])
+        searchHarnesses.append(searchH)
+        let convH = try await startConversation(
+            ["!a": [textEvent(id: "$1", room: "!a", at: 1, body: "Theirs"),
+                    textEvent(id: "$2", room: "!a", at: 2, body: "Mine", mine: true)]],
+            features: ["!a": featuresJSON()],
+            rows: ["!a": chatRow("!a", name: "Ann")]
+        )
+        conversations.append(convH)
+        try await convH.open("!a")
+        let actions = MessageActionsModel(
+            conversation: convH.conversation,
+            appModel: convH.app,
+            preferences: convH.preferences,
+            pasteboard: FakePasteboard()
+        )
+        let login = LoginFlowModel(
+            caller: ScriptedLoginCaller(),
+            accounts: { [] },
+            reloadAccounts: {},
+            credentials: InMemoryCredentialStore(),
+            builtInCredentials: { nil },
+            restartEngine: {}
+        )
+        let testStore = TestDefaults()
+        defer { testStore.remove() }
+        let appearance = AppearancePreferences(defaults: testStore.defaults)
+        let navigation = SettingsNavigationModel()
+        let hotkeys = HotkeyRegistry(defaults: testStore.defaults)
+
+        let all = CommandSet.all(
+            inbox: h.inbox,
+            spaces: spaces,
+            search: searchH.search,
+            actions: actions,
+            conversation: convH.conversation,
+            composer: convH.conversation.composer,
+            login: login,
+            appearance: appearance,
+            navigation: navigation,
+            hotkeys: hotkeys
+        )
+        let ids = Set(all.map(\.id))
+        let titles = Set(all.map(\.title))
+
+        // 1. Every existing CommandSet group must be reachable in CommandSet.all (no second independent registry).
+        for cmd in inboxCommands {
+            XCTAssertTrue(ids.contains(cmd.id), "Missing CommandSet.inbox command: \(cmd.id)")
+        }
+        for cmd in CommandSet.search(searchH.search, openRoomID: { convH.conversation.roomID }) {
+            XCTAssertTrue(ids.contains(cmd.id), "Missing CommandSet.search command: \(cmd.id)")
+        }
+        for cmd in CommandSet.message(actions, convH.conversation) {
+            XCTAssertTrue(ids.contains(cmd.id), "Missing CommandSet.message command: \(cmd.id)")
+        }
+        for cmd in CommandSet.accounts(login, convH.conversation) {
+            XCTAssertTrue(ids.contains(cmd.id), "Missing CommandSet.accounts command: \(cmd.id)")
+        }
+        for cmd in CommandSet.chatInfo(conversation: convH.conversation, inbox: h.inbox) {
+            XCTAssertTrue(ids.contains(cmd.id), "Missing CommandSet.chatInfo command: \(cmd.id)")
+        }
+        XCTAssertTrue(ids.contains(CommandSet.recordAudio(convH.conversation.composer).id))
+        for cmd in CommandSet.composerMedia(convH.conversation.composer) {
+            XCTAssertTrue(ids.contains(cmd.id), "Missing CommandSet.composerMedia command: \(cmd.id)")
+        }
+        for cmd in CommandSet.settingsAndSystem(navigation: navigation, inbox: h.inbox, hotkeys: hotkeys) {
+            XCTAssertTrue(ids.contains(cmd.id), "Missing CommandSet.settingsAndSystem command: \(cmd.id)")
+        }
+
+        // 2. Every required 4.1–4.7 command bar title/id must be present.
+        let requiredTitles: [String] = [
+            "Open recently viewed chats",
+            "Archive all chats",
+            "Archive all chats older than a week",
+            "Archive all read chats",
+            "Mark all chats as read",
+            "Filter Chats",
+            "Create new chat",
+            "Merge chats",
+            "Attach file",
+            "Download attachments",
+            "Toggle sidebar",
+            "Focus Courier",
+            "Load Custom Theme",
+            "Reload Custom Theme",
+            "Zoom In",
+            "Zoom Out",
+            "Reset Zoom",
+            "Fire Confetti 🎉",
+            "Delete Media…",
+            "Clear Cache",
+            "AI: Summarize Thread",
+            "AI: Draft Reply",
+            "AI: Translate Message",
+            "Message: Talk to Type",
+            "Manage Subscription / Plan",
+            "Import from Beeper / Matrix",
+        ]
+        for required in requiredTitles {
+            XCTAssertTrue(
+                titles.contains(required),
+                "Unified CommandSet is missing required command '\(required)'"
+            )
+        }
+
+        // 3. Nested sub-command trees must be populated.
+        let filterCmd = try XCTUnwrap(all.first { $0.title == "Filter Chats" })
+        XCTAssertFalse(filterCmd.children.isEmpty, "Filter Chats must have nested sub-commands")
+        let remindCmd = try XCTUnwrap(all.first { $0.id == "chat.remindLater" })
+        XCTAssertFalse(remindCmd.children.isEmpty, "Remind Later must have nested preset sub-commands")
+        let goToSpaceCmd = try XCTUnwrap(all.first { $0.id == "nav.goToSpace" })
+        XCTAssertFalse(goToSpaceCmd.children.isEmpty, "Go to Space must have nested space sub-commands")
+        let setThemeCmd = try XCTUnwrap(all.first { $0.id == "appearance.setTheme" })
+        XCTAssertFalse(setThemeCmd.children.isEmpty, "Set Theme must have nested theme preset sub-commands")
+        let disappearingCmd = try XCTUnwrap(all.first { $0.id == "chat.disappearingMessages" })
+        XCTAssertFalse(disappearingCmd.children.isEmpty, "Disappearing Messages must have nested timer sub-commands")
+
+        // 4. Destructive commands must require confirmation, and Delete Media… must use CommandSet.deleteMediaConfirmation.
+        let deleteMediaCmd = try XCTUnwrap(all.first { $0.id == "Delete Media…" })
+        XCTAssertEqual(deleteMediaCmd.confirmation, CommandSet.deleteMediaConfirmation)
+        let leaveGroupCmd = try XCTUnwrap(all.first { $0.id == "chat.leaveGroup" })
+        XCTAssertNotNil(leaveGroupCmd.confirmation)
+        let deleteChatCmd = try XCTUnwrap(all.first { $0.id == "chat.deleteChat" })
+        XCTAssertNotNil(deleteChatCmd.confirmation)
+    }
 }
 
 /// The open chat, as the commands read it when they run.
