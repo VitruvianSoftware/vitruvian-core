@@ -18,8 +18,16 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! gcp-secret-or-fail.sh — fetch a GCP Secret Manager secret's latest
-//! version, or fail loudly with actionable context.
+//! //tools/ci:gcp_secret_or_fail — fetch a GCP Secret Manager secret's latest
+//! version, or fail loudly with actionable context. Prints only the value on
+//! stdout, so workflows capture it with `VALUE="$(bazel-bin/.../gcp_secret_or_fail
+//! <secret-id> <project> [context])"` (_deploy-cloud-run.yaml,
+//! tabula-data-stack.yaml). Replaces gcp-secret-or-fail.sh.
+//!
+//! WHY an explicit exit-code check, not just an empty-string check: gcloud can
+//! exit 0 while still printing ERROR to stderr, and a genuinely missing secret
+//! returns PERMISSION_DENIED, not NOT_FOUND, so reading the WRONG secret id is
+//! indistinguishable from an IAM gap unless the raw gcloud stderr is surfaced.
 
 use shell_compat::{capture, cat, err, out, subst};
 use std::process::Command;

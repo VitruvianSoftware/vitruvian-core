@@ -71,6 +71,10 @@ jobs:
         with:
           persist-credentials: false
 
+      # For //tools/ci:gcp_secret_or_fail, built in the credentials step below.
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
       - name: Authenticate to GCP (WIF, keyless)
         uses: ./.github/actions/gcp-auth
         with:
@@ -90,13 +94,23 @@ jobs:
       - name: Fetch provider credentials from Secret Manager
         env:
           CRED_PROJECT: prj-c-bu2-infra-pipeline-3d09
+          # Cache-only BuildBuddy access when the key is available; a plain
+          # local build otherwise (the helper is small).
+          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
         run: |
           set -euo pipefail
+          cache_flags=()
+          if [ -n "${BUILDBUDDY_API_KEY}" ]; then
+            cache_flags=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
+          fi
+          # Built, then called from bazel-bin rather than `bazel run`, so each
+          # `$(...)` below captures only the secret value.
+          bazel build "${cache_flags[@]}" //tools/ci:gcp_secret_or_fail
           for pair in "NEON_API_KEY:NEON_API_KEY" \
                       "UPSTASH_API_KEY:UPSTASH_API_KEY" \
                       "UPSTASH_EMAIL:UPSTASH_EMAIL"; do
             secret="${pair%%:*}"; var="${pair##*:}"
-            value="$(bash "${GITHUB_WORKSPACE}/tools/ci/gcp-secret-or-fail.sh" \
+            value="$("$PWD/bazel-bin/tools/ci/gcp_secret_or_fail" \
               "${secret}" "${CRED_PROJECT}" \
               "seed it with: bazel run //tools/gcp-secrets:seed -- apps/suites/tabula/infra/build")"
             echo "::add-mask::${value}"
