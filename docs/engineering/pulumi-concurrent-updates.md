@@ -58,17 +58,20 @@ applies.
 
 ## What we do about it: wait and retry
 
-Every path that runs a Pulumi update retries the same way, through one of two
-implementations held to one test suite:
+Every path that runs a Pulumi update retries the same way, with one piece of
+code, [`tools/pulumi/src/retry_concurrent_update.rs`](../../tools/pulumi/src/retry_concurrent_update.rs):
 
 - the Bazel wrapper, `//tools/pulumi:pulumi-cmd` (and so
-  `//tools/deploy:cloud-run`, the Cloud Run blue-green rollout), which retries
-  in-process with the code behind `//tools/pulumi:retry-concurrent-update`;
-- [`tools/pulumi/retry-concurrent-update.sh`](../../tools/pulumi/retry-concurrent-update.sh),
-  for the CI applies that run without Bazel: the
-  `.github/actions/pulumi-run-captured` composite action (the identity
-  applies, tabula's build stack, the foundation workflows) and the inline
-  `pulumi up` / `pulumi refresh` in the zitadel-apps workflows.
+  `//tools/deploy:cloud-run`, the Cloud Run blue-green rollout), retries
+  in-process with it;
+- the CI applies that run without Bazel (the
+  `.github/actions/pulumi-run-captured` composite action, used by the identity
+  applies, tabula's build stack and the foundation workflows, and the inline
+  `pulumi up` / `pulumi refresh` in the zitadel-apps workflows) build
+  `//tools/pulumi:retry-concurrent-update` with the runner's own `rustc`
+  (`rustc --edition 2021 -O tools/pulumi/src/bin/retry_concurrent_update.rs`)
+  and run the command through it. That only works while the file stays
+  standard-library only, with no other crate.
 
 It retries **only** this error: a `[409]` that also says "concurrent update".
 The 409 is raised when the update is created, before any resource is touched,
@@ -77,9 +80,8 @@ seconds, for 8 attempts: about 6 minutes in all, enough for a few other applies
 to finish first. Any other failure exits at once with Pulumi's own exit code.
 `PULUMI_CONFLICT_MAX_ATTEMPTS`, `PULUMI_CONFLICT_RETRY_DELAY` and
 `PULUMI_CONFLICT_MAX_DELAY` override the budget. Tests:
-`//tools/pulumi:retry_concurrent_update_test` (the binary),
-`//tools/pulumi:retry_concurrent_update_sh_test` (the same cases against the
-script) and `//tools/pulumi:pulumi_cmd_test`.
+`//tools/pulumi:retry_concurrent_update_test` (the binary) and
+`//tools/pulumi:pulumi_cmd_test`.
 
 The retry turns most collisions into a delay. It does not remove the limit:
 Pulumi updates still run one at a time across the account, and an update that

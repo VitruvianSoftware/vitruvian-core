@@ -34,12 +34,6 @@ No `pulumi` CLI is vendored here: the wrappers exec the developer's installed
 
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
-# The one shell script left: CI applies that run on runners WITHOUT Bazel
-# (.github/actions/pulumi-run-captured, the zitadel-apps apply workflows) run
-# it from the checkout. Everything Bazel-driven uses :retry-concurrent-update.
-# The Rust suite below runs against both (retry_concurrent_update_sh_test).
-exports_files(["retry-concurrent-update.sh"])
-
 # Every tool's code, plus what it needs of Python carried by hand for
 # rotate-access-token: src/json.rs (json.loads/dumps), src/argparse.rs,
 # src/http.rs (urlopen: http:// over a socket, https:// through curl, since
@@ -108,10 +102,26 @@ rust_binary(
         "pulumi-setup",
         "pulumi-go-test",
         "resolve-identity",
-        "retry-concurrent-update",
         "create-app",
     ]
 ]
+
+# Built from its own file plus src/retry_concurrent_update.rs, with no crate
+# deps, because CI jobs without Bazel (.github/actions/pulumi-run-captured,
+# the zitadel-apps applies) build the same binary with a bare
+#   rustc --edition 2021 -O tools/pulumi/src/bin/retry_concurrent_update.rs
+# Adding a dependency here would break those jobs, not this build.
+rust_binary(
+    name = "retry-concurrent-update",
+    srcs = [
+        "src/bin/retry_concurrent_update.rs",
+        "src/retry_concurrent_update.rs",
+    ],
+    crate_root = "src/bin/retry_concurrent_update.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+)
 
 # Behaviour suites: each runs its binary as a subprocess with stub programs
 # (pulumi, gcloud, gh, go, sleep, ...) on a private PATH. tests/common holds
@@ -138,17 +148,3 @@ rust_binary(
         "create-app",
     ]
 ]
-
-# The same retry suite against the shell script CI still runs without Bazel.
-rust_test(
-    name = "retry_concurrent_update_sh_test",
-    size = "small",
-    srcs = [
-        "tests/common/mod.rs",
-        "tests/retry_concurrent_update_test.rs",
-    ],
-    crate_root = "tests/retry_concurrent_update_test.rs",
-    data = ["retry-concurrent-update.sh"],
-    edition = "2021",
-    env = {"RETRY_CONCURRENT_UPDATE_BIN": "$(rootpath retry-concurrent-update.sh)"},
-)

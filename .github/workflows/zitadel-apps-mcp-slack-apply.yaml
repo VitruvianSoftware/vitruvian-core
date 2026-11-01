@@ -129,6 +129,11 @@ jobs:
         working-directory: infrastructure/pulumi/platform/zitadel-apps-mcp-slack
         run: |
           set -euo pipefail
+          # The 409 retry helper, //tools/pulumi:retry-concurrent-update. This job
+          # sets up no Bazel and the helper is one std-only file, so the runner's
+          # rustc builds it from the checkout (about a second), before the tunnel.
+          retry="${RUNNER_TEMP}/retry-concurrent-update"
+          rustc --edition 2021 -O "$GITHUB_WORKSPACE/tools/pulumi/src/bin/retry_concurrent_update.rs" -o "$retry"
           # The terminator must live inside THIS step — a backgrounded process does
           # not survive across steps.
           #
@@ -162,8 +167,8 @@ jobs:
           if [ "$ACTION" = "up" ]; then
             # Both are Pulumi Cloud updates, so both wait out the account-wide
             # concurrent-update 409; any other failure is immediate.
-            bash "$GITHUB_WORKSPACE/tools/pulumi/retry-concurrent-update.sh" pulumi refresh --yes
-            bash "$GITHUB_WORKSPACE/tools/pulumi/retry-concurrent-update.sh" pulumi up --yes
+            "$retry" pulumi refresh --yes
+            "$retry" pulumi up --yes
           else
             pulumi preview --diff
           fi
@@ -205,7 +210,7 @@ jobs:
           # without it the output reports what Pulumi last WROTE, not what Zitadel
           # currently HOLDS. A server-side flip to BEARER would read as JWT forever
           # while every request is rejected.
-          bash "$GITHUB_WORKSPACE/tools/pulumi/retry-concurrent-update.sh" pulumi refresh --yes
+          "$retry" pulumi refresh --yes
 
           # --show-secrets is REQUIRED here: the provider marks clientId secret, so
           # the named call alone prints `[secret]`. clientId is a public OIDC

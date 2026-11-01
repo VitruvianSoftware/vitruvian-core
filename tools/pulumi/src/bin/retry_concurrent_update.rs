@@ -18,8 +18,14 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+//! //tools/pulumi:retry-concurrent-update. Includes its module by path rather
+//! than depending on the pulumi_tools crate, so it also builds with a bare
+//! `rustc` on CI runners that have no Bazel (see the module's header).
+
+#[path = "../retry_concurrent_update.rs"]
+mod retry_concurrent_update;
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let code = pulumi_tools::retry_concurrent_update::run(&args);
-    std::process::exit(code);
+    std::process::exit(retry_concurrent_update::run(&args));
 }
