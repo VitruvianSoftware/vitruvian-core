@@ -322,7 +322,8 @@ mod tests {
             Err(GChatError::AuthExpired(_))
         ));
 
-        let sign_in_ui_html = r#"<script>window.WIZ_global_data = {"qwAQke":"AccountsSignInUi"};</script>"#;
+        let sign_in_ui_html =
+            r#"<script>window.WIZ_global_data = {"qwAQke":"AccountsSignInUi"};</script>"#;
         assert!(matches!(
             extract_xsrf_token_from_mole_world_html(sign_in_ui_html),
             Err(GChatError::AuthExpired(_))
@@ -408,10 +409,16 @@ mod tests {
         assert_eq!(req.url().path(), "/u/0/mole/world");
         let query: std::collections::HashMap<String, String> =
             req.url().query_pairs().into_owned().collect();
-        assert_eq!(query.get("origin").map(String::as_str), Some("https://mail.google.com"));
+        assert_eq!(
+            query.get("origin").map(String::as_str),
+            Some("https://mail.google.com")
+        );
         assert_eq!(query.get("shell").map(String::as_str), Some("9"));
         assert_eq!(query.get("hl").map(String::as_str), Some("en"));
-        assert_eq!(query.get("wfi").map(String::as_str), Some("gtn-roster-iframe-id"));
+        assert_eq!(
+            query.get("wfi").map(String::as_str),
+            Some("gtn-roster-iframe-id")
+        );
         assert_eq!(query.get("hs").map(String::as_str), Some(MOLE_WORLD_HS));
         assert_eq!(query.len(), 5);
 
