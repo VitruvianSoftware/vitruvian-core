@@ -25,6 +25,7 @@ what the session actually holds without printing a single secret value.
 See tools/cloud-bootstrap/README.md and docs/admin/claude-code-cloud-sessions.md.
 """
 
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
@@ -75,17 +76,40 @@ sh_binary(
     visibility = ["//visibility:public"],
 )
 
-sh_binary(
-    name = "configure-tailscale",
-    srcs = ["configure-tailscale.sh"],
-    visibility = ["//visibility:public"],
+# `bazel run //tools/cloud-bootstrap:configure-tailscale [-- --check | --file <path>]`
+# writes .claude/tailscale-up.sh (Headscale login server, --accept-routes=true).
+rust_library(
+    name = "configure_tailscale_lib",
+    srcs = ["src/configure_tailscale/lib.rs"],
+    crate_name = "configure_tailscale",
+    crate_root = "src/configure_tailscale/lib.rs",
+    edition = "2021",
 )
 
-sh_test(
+rust_binary(
+    name = "configure-tailscale",
+    srcs = ["src/configure_tailscale/main.rs"],
+    edition = "2021",
+    visibility = ["//visibility:public"],
+    deps = [":configure_tailscale_lib"],
+)
+
+# Hermetic: --check and the CLI's error paths, plus the written hook AND the
+# checked-in .claude/tailscale-up.sh executed against fake tailscale/tailscaled/
+# sudo. Fails when the checked-in hook drifts from what the tool writes.
+rust_test(
     name = "configure-tailscale_test",
     size = "small",
-    srcs = ["configure-tailscale_test.sh"],
-    data = ["configure-tailscale.sh"],
+    srcs = ["src/configure_tailscale/tests.rs"],
+    data = [
+        ":configure-tailscale",
+        "//:.claude/tailscale-up.sh",
+    ],
+    edition = "2021",
+    env = {
+        "BIN": "$(rootpath :configure-tailscale)",
+        "HOOK_FILE": "$(rootpath //:.claude/tailscale-up.sh)",
+    },
 )
 
 # Hermetic guard for the properties whose failure would be a PRIVILEGE ESCALATION

@@ -354,6 +354,7 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
     let mut reaped_cloudrun: u64 = 0;
     let mut reaped_k8s: u64 = 0;
     let mut reaped_neon: u64 = 0;
+    let mut neon_list_failed = false;
 
     // 1. Cloud Run
     if which(&gcloud).is_some() && !gcp_project.is_empty() {
@@ -544,10 +545,14 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
             &neon_project_id,
             b"...",
         ]));
+        // -sS: quiet, but say why if curl itself fails. --fail-with-body:
+        // an HTTP error status (a bad key, an outage) is a failure, not an
+        // error body that parses as an empty branch list.
         let r = capture(
             292,
             Command::new(shell_compat::os(&curl_bin))
-                .arg("-s")
+                .arg("-sS")
+                .arg("--fail-with-body")
                 .arg("-H")
                 .arg(shell_compat::os(&cat(&[
                     b"Authorization: Bearer ",
@@ -559,9 +564,27 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
                     b"/branches",
                 ]))),
         );
-        let response = subst(r.stdout);
-        // Parse branches from JSON using simple extraction
-        let branches = parse_neon_branches(&response);
+        let branches = if r.ok() {
+            parse_neon_branches(&subst(r.stdout))
+        } else {
+            let code = r.status.to_string();
+            log(&cat(&[
+                b"ERROR: could not list Neon branches (curl exit ",
+                code.as_bytes(),
+                b"): ",
+                &failure_detail(&r.stderr, &r.stdout, &neon_api_key),
+                b" \xe2\x80\x94 no Neon branch was reaped",
+            ]));
+            if shell_compat::env_set_nonempty("GITHUB_ACTIONS") {
+                err(&cat(&[
+                    b"::error title=Neon Reaper Error::could not list Neon branches (curl exit ",
+                    code.as_bytes(),
+                    b")\n",
+                ]));
+            }
+            neon_list_failed = true;
+            Vec::new()
+        };
         for (branch_id, branch_name, created_at, is_primary) in &branches {
             if branch_id.is_empty() {
                 continue;
@@ -667,7 +690,54 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
         b"\n",
     ]));
 
+    // Reported above, after the counts of what was reaped: the step fails so
+    // a broken Neon listing is not mistaken for nothing to reap.
+    if neon_list_failed {
+        return 1;
+    }
     0
+}
+
+/// What a failed command said, for one log line: its stderr, else its
+/// output (the error body `--fail-with-body` keeps), on one line, at most
+/// 500 bytes, with `secret` hidden should either echo it.
+fn failure_detail(stderr: &[u8], stdout: &[u8], secret: &[u8]) -> Vec<u8> {
+    let said = if stderr.iter().any(|c| !c.is_ascii_whitespace()) {
+        stderr
+    } else {
+        stdout
+    };
+    let mut one_line: Vec<u8> = said
+        .iter()
+        .map(|&c| if c == b'\n' || c == b'\r' { b' ' } else { c })
+        .collect();
+    if !secret.is_empty() {
+        let mut hidden = Vec::with_capacity(one_line.len());
+        let mut i = 0;
+        while i < one_line.len() {
+            if one_line[i..].starts_with(secret) {
+                hidden.extend_from_slice(b"<redacted>");
+                i += secret.len();
+            } else {
+                hidden.push(one_line[i]);
+                i += 1;
+            }
+        }
+        one_line = hidden;
+    }
+    let start = one_line
+        .iter()
+        .position(|c| !c.is_ascii_whitespace())
+        .unwrap_or(one_line.len());
+    let end = one_line
+        .iter()
+        .rposition(|c| !c.is_ascii_whitespace())
+        .map_or(start, |i| i + 1);
+    let trimmed = &one_line[start..end];
+    if trimmed.is_empty() {
+        return b"(no output)".to_vec();
+    }
+    trimmed[..trimmed.len().min(500)].to_vec()
 }
 
 fn json_string_field(json: &[u8], field: &[u8]) -> Vec<u8> {

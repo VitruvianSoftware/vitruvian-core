@@ -414,10 +414,12 @@ pub fn capture(r: &mut dyn Runner, cmd: &Cmd) -> Result<String, i32> {
 }
 
 /// Reports `text` with every secret the runner knows of hidden, so a
-/// command's own error output cannot echo one into the log.
+/// command's own error output cannot echo one into the log. URLs in it
+/// also lose their credentials, which catches a token minted at run time
+/// that no environment variable holds.
 pub fn report_redacted(r: &mut dyn Runner, text: &str) {
     let secrets = r.secrets();
-    r.report(&redact_known(text, &secrets));
+    r.report(&redact_urls_in_text(&redact_known(text, &secrets)));
 }
 
 pub const REDACTED: &str = "<redacted>";
@@ -493,14 +495,69 @@ pub fn env_secrets(env: &BTreeMap<String, String>) -> Vec<String> {
 /// `text` with every exact occurrence of a known secret hidden, longest
 /// first. Values under 4 characters are skipped: hiding them would shred
 /// ordinary words and they are not real secrets.
+///
+/// A secret of several lines (a PEM key, wrapped base64) is also hidden
+/// line by line, so a tool that echoes it re-indented or with other line
+/// endings, or prints only some of its lines, still cannot show it. A line
+/// counts when it is at least [`MIN_SECRET_LINE`] characters once trimmed
+/// and is not PEM armour (`-----BEGIN …-----`), which is not secret.
+///
+/// Not covered: a secret re-wrapped at another width (base64 at 76
+/// columns instead of 64) has lines that match none of the original's,
+/// and a one-line secret a tool wraps over several lines matches nothing.
 pub fn redact_known(text: &str, secrets: &[String]) -> String {
-    let mut sorted: Vec<&String> = secrets.iter().filter(|s| s.len() >= 4).collect();
-    sorted.sort_by_key(|s| std::cmp::Reverse(s.len()));
+    let mut all: Vec<&str> = Vec::new();
+    for s in secrets {
+        all.push(s.as_str());
+        if s.contains('\n') || s.contains('\r') {
+            all.extend(
+                s.lines()
+                    .map(str::trim)
+                    .filter(|l| l.len() >= MIN_SECRET_LINE && !l.starts_with("-----")),
+            );
+        }
+    }
+    all.retain(|s| s.len() >= 4);
+    all.sort_by(|a, b| b.len().cmp(&a.len()).then(a.cmp(b)));
+    all.dedup();
     let mut out = text.to_string();
-    for s in sorted {
-        out = out.replace(s.as_str(), REDACTED);
+    for s in all {
+        out = out.replace(s, REDACTED);
     }
     out
+}
+
+/// The shortest line of a multi-line secret that [`redact_known`] hides on
+/// its own; a shorter one (a base64 tail like `AB==`) could match ordinary
+/// text.
+pub const MIN_SECRET_LINE: usize = 8;
+
+/// `text` with the credentials of every URL in it hidden (see
+/// [`redact_url`]), word by word, keeping the whitespace between words.
+pub fn redact_urls_in_text(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut word_start: Option<usize> = None;
+    for (i, c) in text.char_indices() {
+        if c.is_whitespace() {
+            if let Some(s) = word_start.take() {
+                push_url_redacted(&mut out, &text[s..i]);
+            }
+            out.push(c);
+        } else if word_start.is_none() {
+            word_start = Some(i);
+        }
+    }
+    if let Some(s) = word_start {
+        push_url_redacted(&mut out, &text[s..]);
+    }
+    out
+}
+
+fn push_url_redacted(out: &mut String, word: &str) {
+    match redact_url(word) {
+        Some(w) => out.push_str(&w),
+        None => out.push_str(word),
+    }
 }
 
 /// The arguments of `program` with secrets replaced by `<redacted>`, one
@@ -522,6 +579,7 @@ pub fn redact_args(program: &str, args: &[String]) -> Vec<String> {
     } else {
         None
     };
+    let is_curl = base == "curl";
     let mut out = Vec::with_capacity(args.len());
     let mut hide_next = false;
     for a in args {
@@ -530,10 +588,71 @@ pub fn redact_args(program: &str, args: &[String]) -> Vec<String> {
             hide_next = false;
             continue;
         }
+        if is_curl {
+            match curl_credential(a) {
+                CurlCredential::Next => {
+                    hide_next = true;
+                    out.push(a.clone());
+                    continue;
+                }
+                CurlCredential::Inline(kept) => {
+                    out.push(format!("{}{}", kept, REDACTED));
+                    continue;
+                }
+                CurlCredential::None => {}
+            }
+        }
         hide_next = SECRET_FLAGS.contains(&a.as_str()) || security_flag == Some(a.as_str());
         out.push(redact_arg(a));
     }
     out
+}
+
+/// curl's flags whose value is a credential: `-u`/`--user` and
+/// `-U`/`--proxy-user` (`user:password`) and `--oauth2-bearer`. Only for
+/// curl: elsewhere `-u` and `--user` mean other things (`git add -u`,
+/// `pip install --user`).
+const CURL_SECRET_FLAGS: [&str; 5] = ["-u", "--user", "-U", "--proxy-user", "--oauth2-bearer"];
+
+enum CurlCredential {
+    /// Not a credential flag.
+    None,
+    /// A credential flag whose value is the next argument.
+    Next,
+    /// A credential flag with its value attached: keep this prefix.
+    Inline(String),
+}
+
+fn curl_credential(arg: &str) -> CurlCredential {
+    if CURL_SECRET_FLAGS.contains(&arg) {
+        return CurlCredential::Next;
+    }
+    if let Some((flag, _)) = arg.split_once('=') {
+        if flag.starts_with("--") && CURL_SECRET_FLAGS.contains(&flag) {
+            return CurlCredential::Inline(format!("{}=", flag));
+        }
+    }
+    // Short options cluster (`-sSu user:pw`) and take their value joined
+    // (`-uuser:pw`): the first `u`/`U` among the leading letters is the flag.
+    if let Some(cluster) = arg.strip_prefix('-') {
+        if cluster.starts_with('-') {
+            return CurlCredential::None;
+        }
+        for (i, c) in cluster.char_indices() {
+            if !c.is_ascii_alphabetic() {
+                break;
+            }
+            if c == 'u' || c == 'U' {
+                let end = 1 + i + 1;
+                return if end == arg.len() {
+                    CurlCredential::Next
+                } else {
+                    CurlCredential::Inline(arg[..end].to_string())
+                };
+            }
+        }
+    }
+    CurlCredential::None
 }
 
 fn redact_arg(arg: &str) -> String {
@@ -544,30 +663,141 @@ fn redact_arg(arg: &str) -> String {
     if lower.starts_with("pass:") {
         return format!("pass:{}", REDACTED);
     }
-    if let Some(scheme_end) = arg.find("://") {
-        let rest = &arg[scheme_end + 3..];
-        let host_end = rest.find('/').unwrap_or(rest.len());
-        if let Some(at) = rest[..host_end].rfind('@') {
-            let user = match rest[..at].find(':') {
-                Some(colon) => format!("{}:{}", &rest[..colon], REDACTED),
-                // `https://TOKEN@host`: the whole userinfo is the secret.
-                None => REDACTED.to_string(),
-            };
-            return format!("{}{}{}", &arg[..scheme_end + 3], user, &rest[at..]);
-        }
-        return arg.to_string();
-    }
     // The name before each `=` is what follows the previous one, so
     // `--remote_header=x-buildbuddy-api-key=V` is judged by
     // `x-buildbuddy-api-key`.
     let mut start = 0;
+    let mut secret_eq = None;
     for (i, _) in arg.match_indices('=') {
         if is_secret_name(&arg[start..i]) {
-            return format!("{}={}", &arg[..i], REDACTED);
+            secret_eq = Some(i);
+            break;
         }
         start = i + 1;
     }
-    arg.to_string()
+    let url_at = arg.find("://");
+    let header = redact_secret_header(arg);
+    // A secret-named `NAME=` that comes before a URL or a header hides the
+    // whole value, whatever it holds: `MY_PASSWORD=db-password:hunter2`
+    // and `TOKEN=https://hooks.slack.com/…` are one secret each, not a
+    // header or a URL with a little hidden.
+    if let Some(i) = secret_eq {
+        if url_at.map_or(true, |u| i < u) && header.as_ref().map_or(true, |(c, _)| i < *c) {
+            return format!("{}={}", &arg[..i], REDACTED);
+        }
+    }
+    if let Some(url) = redact_url(arg) {
+        return url;
+    }
+    if let Some((_, header)) = header {
+        return header;
+    }
+    match secret_eq {
+        Some(i) => format!("{}={}", &arg[..i], REDACTED),
+        None => arg.to_string(),
+    }
+}
+
+/// A `Name: value` header (as `-H` or `--header=` passes it) whose name
+/// [`is_secret_name`], any case: `X-Api-Key`, `PRIVATE-TOKEN`,
+/// `X-Auth-Token`. The name must look like a header name, so a path or a
+/// time holding a colon is left alone. Also answers where the colon is.
+fn redact_secret_header(arg: &str) -> Option<(usize, String)> {
+    let colon = arg.find(':')?;
+    let before = &arg[..colon];
+    let name = before.rsplit('=').next().unwrap_or(before);
+    if name.is_empty()
+        || !name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        || !is_secret_name(name)
+    {
+        return None;
+    }
+    let value = &arg[colon + 1..];
+    let space = &value[..value.len() - value.trim_start().len()];
+    Some((colon, format!("{}{}{}", &arg[..colon + 1], space, REDACTED)))
+}
+
+/// `arg` with the credentials of the URL in it hidden, or `None` when it
+/// holds no URL: the password of `user:password@` (or the whole userinfo
+/// when it is a bare token), whatever follows the host and even when the
+/// password itself holds `/`, `?` or `#` (as base64 does); and the value of
+/// each query or fragment parameter that names a secret
+/// ([`is_secret_url_param`]), as `?access_token=` does.
+pub fn redact_url(arg: &str) -> Option<String> {
+    let scheme_end = arg.find("://")? + 3;
+    let rest = &arg[scheme_end..];
+    let sep = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let at = match rest[..sep].rfind('@') {
+        Some(at) => Some(at),
+        // No `@` before the first separator, but `user:pa/ss@host`: a
+        // password holding a separator. A port (`host:8080/@scope`,
+        // `[::1]:8080/@scope`) is not.
+        None => rest[..sep].rfind(':').and_then(|colon| {
+            let port = &rest[colon + 1..sep];
+            let is_port = !port.is_empty() && port.bytes().all(|b| b.is_ascii_digit());
+            if is_port {
+                None
+            } else {
+                rest[sep..].find('@').map(|i| sep + i)
+            }
+        }),
+    };
+    let mut out = String::with_capacity(arg.len());
+    out.push_str(&arg[..scheme_end]);
+    let after_userinfo = match at {
+        Some(at) => {
+            match rest[..at].find(':') {
+                Some(colon) => {
+                    out.push_str(&rest[..colon + 1]);
+                    out.push_str(REDACTED);
+                }
+                // `https://TOKEN@host`: the whole userinfo is the secret.
+                None => out.push_str(REDACTED),
+            }
+            &rest[at..]
+        }
+        None => rest,
+    };
+    // The query and fragment: hide each secret parameter's value.
+    let params_start = after_userinfo
+        .find(['?', '#'])
+        .unwrap_or(after_userinfo.len());
+    out.push_str(&after_userinfo[..params_start]);
+    let params = &after_userinfo[params_start..];
+    let mut piece_start = 0;
+    for (i, c) in params.char_indices().chain([(params.len(), '\0')]) {
+        if i == params.len() || (i > 0 && matches!(c, '&' | '?' | '#' | ';')) {
+            let piece = &params[piece_start..i];
+            // Each piece is a separator followed by `name=value`.
+            let (lead, body) = piece.split_at(piece.len().min(1));
+            match body.split_once('=') {
+                Some((name, _)) if is_secret_url_param(name) => {
+                    out.push_str(lead);
+                    out.push_str(name);
+                    out.push('=');
+                    out.push_str(REDACTED);
+                }
+                _ => out.push_str(piece),
+            }
+            piece_start = i;
+        }
+    }
+    Some(out)
+}
+
+/// Whether a URL query or fragment parameter carries a secret: any name
+/// [`is_secret_name`] (`access_token`, `client_secret`, `api_key`), a
+/// signed URL's signature (`sig`, `X-Goog-Signature`, `X-Amz-Signature`),
+/// and a bare `key`, which in a URL is an API key (`?key=AIza…`).
+pub fn is_secret_url_param(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    is_secret_name(&lower)
+        || matches!(lower.as_str(), "key" | "sig")
+        || lower
+            .split(|c: char| !c.is_ascii_alphanumeric())
+            .any(|w| w == "signature")
 }
 
 /// A new private (0700) folder under `parent`, like `mktemp -d`.
@@ -1227,6 +1457,239 @@ mod tests {
                 r.stderr
             );
         }
+    }
+
+    #[test]
+    fn secret_query_parameters_are_hidden_and_others_kept() {
+        assert_eq!(
+            red(
+                "curl",
+                &["https://api.example.com/v1/x?access_token=tok-QUERY&page=2"]
+            ),
+            "curl https://api.example.com/v1/x?access_token=<redacted>&page=2"
+        );
+        assert_eq!(
+            red(
+                "curl",
+                &["https://h/p?page=2&ACCESS_TOKEN=tok-AMP&client_secret=cs-Q#frag"]
+            ),
+            "curl https://h/p?page=2&ACCESS_TOKEN=<redacted>&client_secret=<redacted>#frag"
+        );
+        // OAuth's implicit flow puts the token in the fragment.
+        assert_eq!(
+            red("open", &["https://h/cb#access_token=tok-FRAG&state=s1"]),
+            "open https://h/cb#access_token=<redacted>&state=s1"
+        );
+        // Signed-URL signatures and a bare `key=` API key, in a URL only.
+        assert_eq!(
+            red(
+                "curl",
+                &["https://h/o?X-Goog-Signature=abcd&sig=efgh&key=AIzaKEY"]
+            ),
+            "curl https://h/o?X-Goog-Signature=<redacted>&sig=<redacted>&key=<redacted>"
+        );
+        assert_eq!(
+            red("curl", &["--url=https://h/p?access_token=tok-INLINE"]),
+            "curl --url=https://h/p?access_token=<redacted>"
+        );
+        // Ordinary query parameters stay readable.
+        assert_eq!(
+            red(
+                "curl",
+                &["https://h/p?page=2&per_page=100&ref=main&state=open"]
+            ),
+            "curl https://h/p?page=2&per_page=100&ref=main&state=open"
+        );
+    }
+
+    #[test]
+    fn a_url_password_is_hidden_whatever_follows_the_host() {
+        assert_eq!(
+            red("git", &["clone", "https://u:SECRET@host/path/repo.git"]),
+            "git clone https://u:<redacted>@host/path/repo.git"
+        );
+        // A base64 password holds `/`, `+` and `=`: still one password.
+        assert_eq!(
+            red("git", &["clone", "https://u:ab/cd+ef==@host/path"]),
+            "git clone https://u:<redacted>@host/path"
+        );
+        assert_eq!(
+            red("curl", &["https://u:pa?ss#word@host/p?q=1"]),
+            "curl https://u:<redacted>@host/p?q=1"
+        );
+        // An `@` in the path and a port are not credentials.
+        assert_eq!(
+            red("curl", &["https://registry.npmjs.org/@types/node"]),
+            "curl https://registry.npmjs.org/@types/node"
+        );
+        assert_eq!(
+            red("curl", &["http://localhost:8080/@scope/pkg"]),
+            "curl http://localhost:8080/@scope/pkg"
+        );
+        assert_eq!(
+            red("curl", &["http://[::1]:8080/@scope/pkg"]),
+            "curl http://[::1]:8080/@scope/pkg"
+        );
+    }
+
+    #[test]
+    fn a_secret_named_variable_hides_its_whole_value_whatever_it_holds() {
+        // Review finding on #4123: the header rule ran first and showed
+        // `db-password:` of a password's value.
+        assert_eq!(
+            red("env", &["MY_PASSWORD=db-password:hunter2"]),
+            "env MY_PASSWORD=<redacted>"
+        );
+        // A webhook URL held in a secret variable is the secret itself.
+        assert_eq!(
+            red(
+                "env",
+                &["SLACK_TOKEN=https://hooks.slack.com/services/T0/B0/xyz"]
+            ),
+            "env SLACK_TOKEN=<redacted>"
+        );
+        // The other way round: a header's value holding `=` is all hidden.
+        assert_eq!(
+            red("curl", &["-H", "X-Api-Key: ab=cd"]),
+            "curl -H X-Api-Key: <redacted>"
+        );
+        // A non-secret name before the URL leaves it to the URL rule.
+        assert_eq!(
+            red("curl", &["--url=https://u:pw@h/p?page=2"]),
+            "curl --url=https://u:<redacted>@h/p?page=2"
+        );
+    }
+
+    #[test]
+    fn secret_headers_are_hidden_whatever_their_case() {
+        for (header, want) in [
+            ("x-api-key: k-LOWER", "x-api-key: <redacted>"),
+            ("X-API-Key: k-MIXED", "X-API-Key: <redacted>"),
+            ("X-Api-Key:k-NOSPACE", "X-Api-Key:<redacted>"),
+            ("PRIVATE-TOKEN: glpat-x", "PRIVATE-TOKEN: <redacted>"),
+            ("X-Auth-Token: t-H", "X-Auth-Token: <redacted>"),
+        ] {
+            assert_eq!(
+                red("curl", &["-H", header, "https://h/"]),
+                format!("curl -H {} https://h/", want)
+            );
+        }
+        assert_eq!(
+            red("curl", &["--header=x-api-key: k-INLINE"]),
+            "curl --header=x-api-key: <redacted>"
+        );
+        // Other headers, and colons that are not headers, stay.
+        assert_eq!(
+            red(
+                "curl",
+                &[
+                    "-H",
+                    "Accept: application/vnd.github+json",
+                    "-H",
+                    "X-GitHub-Api-Version: 2022-11-28",
+                    "-H",
+                    "Content-Type: application/json"
+                ]
+            ),
+            "curl -H Accept: application/vnd.github+json -H X-GitHub-Api-Version: 2022-11-28 -H Content-Type: application/json"
+        );
+        assert_eq!(
+            red("tool", &["--at=10:00:00", "/x/AuthKey.p8:1", "apple:"]),
+            "tool --at=10:00:00 /x/AuthKey.p8:1 apple:"
+        );
+    }
+
+    #[test]
+    fn curl_user_credentials_are_hidden_in_every_spelling() {
+        assert_eq!(
+            red("curl", &["-u", "bob:pw-SPACE", "https://h/"]),
+            "curl -u <redacted> https://h/"
+        );
+        assert_eq!(
+            red("/usr/bin/curl", &["--user", "bob:pw-LONG", "https://h/"]),
+            "/usr/bin/curl --user <redacted> https://h/"
+        );
+        assert_eq!(
+            red("curl", &["--user=bob:pw-EQ", "https://h/"]),
+            "curl --user=<redacted> https://h/"
+        );
+        assert_eq!(
+            red("curl", &["-ubob:pw-JOINED", "https://h/"]),
+            "curl -u<redacted> https://h/"
+        );
+        assert_eq!(
+            red("curl", &["-sSu", "bob:pw-CLUSTER", "https://h/"]),
+            "curl -sSu <redacted> https://h/"
+        );
+        assert_eq!(
+            red("curl", &["-U", "p:pw-PROXY", "--proxy-user=p:pw-PEQ"]),
+            "curl -U <redacted> --proxy-user=<redacted>"
+        );
+        assert_eq!(
+            red("curl", &["--oauth2-bearer", "tok-BEARER", "https://h/"]),
+            "curl --oauth2-bearer <redacted> https://h/"
+        );
+        // `-u` / `--user` mean something else to other programs.
+        assert_eq!(
+            red("pip", &["install", "--user", "requests"]),
+            "pip install --user requests"
+        );
+        assert_eq!(red("git", &["add", "-u", "src"]), "git add -u src");
+        assert_eq!(
+            red("curl", &["-sS", "-o", "out.json", "https://h/"]),
+            "curl -sS -o out.json https://h/"
+        );
+    }
+
+    #[test]
+    fn each_line_of_a_multi_line_secret_is_hidden_in_stderr() {
+        let key = "-----BEGIN PRIVATE KEY-----\nMIGTAgEAMBMGByqGSM49AgEGCCqGSM49\nAwEHBHkwdwIBAQQgLINE2-of-the-key\n-----END PRIVATE KEY-----\n"; // gitleaks:allow (made-up test value)
+        let mut r = FakeRunner::new(move |_| {
+            // The tool re-wraps the key with CRLF and indents it: the value
+            // as a whole never appears, each of its lines does.
+            Out::fail(
+                1,
+                "error: bad key\r\n    MIGTAgEAMBMGByqGSM49AgEGCCqGSM49\r\n    AwEHBHkwdwIBAQQgLINE2-of-the-key\r\n-----END PRIVATE KEY-----\n",
+            )
+        });
+        r.secrets = env_secrets(
+            &[("NOTARY_API_KEY_P8", key)]
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
+        );
+        let _ = capture(&mut r, &Cmd::new("xcrun").args(["notarytool", "submit"]));
+        assert!(!r.stderr.contains("MIGTAgEA"), "{:?}", r.stderr);
+        assert!(!r.stderr.contains("LINE2-of"), "{:?}", r.stderr);
+        // The armour lines are not secret and the rest of stderr is kept.
+        assert!(
+            r.stderr.contains(
+                "error: bad key\r\n    <redacted>\r\n    <redacted>\r\n-----END PRIVATE KEY-----"
+            ),
+            "{:?}",
+            r.stderr
+        );
+    }
+
+    #[test]
+    fn urls_in_stderr_lose_their_credentials_even_when_not_a_known_secret() {
+        // A token minted at run time is in no environment variable.
+        let mut r = FakeRunner::new(|_| {
+            Out::fail(
+                128,
+                "fatal: could not read from 'https://x-access-token:ghs_MINTED@github.com/o/r.git/': denied\nGET https://h/p?access_token=tok-LOG&page=2 401\nsee https://docs.github.com/en/rest for help\n",
+            )
+        });
+        let _ = capture(&mut r, &Cmd::new("git").args(["fetch"]));
+        assert!(!r.stderr.contains("ghs_MINTED"), "{:?}", r.stderr);
+        assert!(!r.stderr.contains("tok-LOG"), "{:?}", r.stderr);
+        assert!(
+            r.stderr.contains(
+                "fatal: could not read from 'https://x-access-token:<redacted>@github.com/o/r.git/': denied\nGET https://h/p?access_token=<redacted>&page=2 401\nsee https://docs.github.com/en/rest for help\n"
+            ),
+            "{:?}",
+            r.stderr
+        );
     }
 
     #[test]

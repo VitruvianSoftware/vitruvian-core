@@ -32,7 +32,6 @@ alias(
 )
 
 exports_files([
-    "actionlint_test.sh",
     "agent-fast-lane.sh",
     "agent-fast-lane_test.sh",
     "backstage-boot-smoke.sh",
@@ -42,7 +41,6 @@ exports_files([
     "chart-render.sh",
     "foundation-app-digest-guard.sh",
     "foundation-app-digest-guard_test.sh",
-    "gate-evaluator_test.sh",
     "gitops-validate.sh",
     "gitops-values-render.sh",
     "go-test-with-retry.sh",
@@ -104,14 +102,6 @@ sh_test(
     srcs = ["llvm-cache-stage_test.sh"],
     args = ["$(location llvm-cache-stage.sh)"],
     data = ["llvm-cache-stage.sh"],
-)
-
-sh_test(
-    name = "gate_evaluator_test",
-    size = "small",
-    srcs = ["gate-evaluator_test.sh"],
-    args = ["$(location :gate_evaluator)"],
-    data = [":gate_evaluator"],
 )
 
 sh_test(
@@ -206,15 +196,10 @@ rust_binary(
 
 # Throwaway repos and the real pinned binaries; also fails when the workflow's
 # ACTIONLINT_VERSION and the lockfile drift apart.
-sh_test(
+rust_test(
     name = "actionlint_test",
     size = "small",
-    srcs = ["actionlint_test.sh"],
-    args = [
-        "$(location :actionlint)",
-        "$(location //:.github/workflows/actionlint.yaml)",
-        "$(location //tools:tools.lock.json)",
-    ],
+    srcs = ["src/actionlint/tests.rs"],
     data = [
         "require-pinned-actions.sh",
         ":actionlint",
@@ -223,7 +208,14 @@ sh_test(
         "@multitool//tools/actionlint",
         "@multitool//tools/shellcheck",
     ],
-    deps = ["@bazel_tools//tools/bash/runfiles"],
+    edition = "2021",
+    env = {
+        "BIN": "$(rootpath :actionlint)",
+        "LOCK": "$(rootpath //tools:tools.lock.json)",
+        "WORKFLOW": "$(rootpath //:.github/workflows/actionlint.yaml)",
+    },
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":ci_testkit"],
 )
 
 # The #[cfg(test)] unit tests in src/actionlint/.
@@ -270,6 +262,19 @@ rust_binary(
         ":gate_evaluator_lib",
         "//tools/shell-compat:shell_compat",
     ],
+)
+
+# Black-box: runs the REAL binary with only the result variables each case
+# names. Ported case for case from the former gate-evaluator_test.sh.
+rust_test(
+    name = "gate_evaluator_test",
+    size = "small",
+    srcs = ["src/gate_evaluator/tests.rs"],
+    data = [":gate_evaluator"],
+    edition = "2021",
+    env = {"BIN": "$(rootpath :gate_evaluator)"},
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":ci_testkit"],
 )
 
 # llvm-cache-key
