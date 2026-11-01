@@ -4,6 +4,8 @@
 
 "Accounted for" doesn't mean "seen working". The confidence of each item is in the spec text (Observed or Inferred), and the known gaps are listed in the [README](README.md#known-gaps-not-yet-covered).
 
+**Courier Milestone 4 implementation status:** Parts 4.1 through 4.7 are complete in Courier (`apps/desktop/courier/docs/m4-acceptance.md`). Every row in [ledger.tsv](ledger.tsv) is either shipped natively on this Mac or documented with its explicit iteration-1 stub / non-applicable rationale in `m4-acceptance.md`.
+
 ## The checklists
 
 The app ships two lists that work as checklists, and the live walk-through gave us four more. Every item on every list was checked against the spec.

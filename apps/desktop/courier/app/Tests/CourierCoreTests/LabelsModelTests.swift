@@ -106,7 +106,7 @@ final class LabelsModelTests: XCTestCase {
             XCTAssertEqual(code(of: error), .badValue)
         }
         do {
-            try await labels.update(3, title: nil, color: nil, icon: "moon.stars")
+            try await labels.update(3, title: nil, color: nil, icon: "not.a.courier.symbol")
             XCTFail("accepted a symbol that is not in the list")
         } catch {
             XCTAssertEqual(code(of: error), .badValue)
@@ -117,6 +117,37 @@ final class LabelsModelTests: XCTestCase {
         _ = try await labels.create(title: "Work", color: 0, icon: "tag")
         _ = try await labels.create(title: "Work", color: 11, icon: "moon")
         XCTAssertEqual(h.count("labels.create"), 2)
+    }
+
+    func testLabelsModelAcceptsAllCatalogIconsWhilePreservingDefault30Order() async throws {
+        let (h, labels) = try await start()
+        XCTAssertEqual(LabelsModel.icons.first, "tag")
+        XCTAssertEqual(LabelsModel.icons, [
+            "tag", "star", "heart", "bolt", "flag", "bookmark", "briefcase", "house", "person.2", "cart", "airplane",
+            "car", "book", "graduationcap", "gamecontroller", "music.note", "camera", "leaf", "pawprint",
+            "cup.and.saucer", "fork.knife", "gift", "bell", "moon",
+        ])
+
+        // Any icon in CourierIconCatalog.allowedLabelSFSymbols succeeds in create and update
+        _ = try await labels.create(title: "Winter", color: 6, icon: "snowflake")
+        try await labels.update(7, title: nil, color: nil, icon: "wineglass")
+        try await labels.update(7, title: nil, color: nil, icon: "moon.stars")
+        XCTAssertEqual(h.server.receivedParams("labels.create").last?["icon"] as? String, "snowflake")
+        XCTAssertEqual(h.server.receivedParams("labels.update").last?["icon"] as? String, "moon.stars")
+
+        // Empty or unknown icon strings are still rejected with .badValue
+        do {
+            _ = try await labels.create(title: "Invalid", color: 1, icon: "")
+            XCTFail("Expected empty icon to be rejected")
+        } catch {
+            XCTAssertEqual(code(of: error), .badValue)
+        }
+        do {
+            try await labels.update(7, title: nil, color: nil, icon: "nonexistent.sf.symbol.xyz")
+            XCTFail("Expected unknown icon to be rejected")
+        } catch {
+            XCTAssertEqual(code(of: error), .badValue)
+        }
     }
 
     func testUpdateSendsOnlyWhatChanged() async throws {

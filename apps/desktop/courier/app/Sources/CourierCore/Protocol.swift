@@ -16,7 +16,7 @@ import Foundation
 
 /// The protocol this app speaks, and the framing limit both sides keep.
 public enum CourierProtocol {
-    public static let version = 10
+    public static let version = 11
     public static let schemaVersion = 10
     /// The longest line either side may send, not counting the newline.
     public static let maxFrameBytes = 4_194_304
@@ -4848,6 +4848,116 @@ public struct DiagnosticsExportResult: ProtocolType, Equatable {
     }
 }
 
+// MARK: - Storage usage & media cache cleanup (protocol 11)
+
+public struct RoomStorageUsage: ProtocolType, Equatable, Identifiable, Sendable {
+    public static let protocolName = "RoomStorageUsage"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var id: String { roomID }
+    public var roomID: String
+    public var name: String
+    public var network: String
+    public var mediaBytes: Int64
+    public var itemCount: Int
+
+    public init(roomID: String, name: String, network: String, mediaBytes: Int64, itemCount: Int) {
+        self.roomID = roomID
+        self.name = name
+        self.network = network
+        self.mediaBytes = mediaBytes
+        self.itemCount = itemCount
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomID = "room_id"
+        case name
+        case network
+        case mediaBytes = "media_bytes"
+        case itemCount = "item_count"
+    }
+}
+
+public struct StorageUsageResult: ProtocolType, Equatable, Sendable {
+    public static let protocolName = "StorageUsageResult"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var totalBytes: Int64
+    public var databaseBytes: Int64
+    public var photosAndVideosBytes: Int64
+    public var audioBytes: Int64
+    public var filesBytes: Int64
+    public var stickersBytes: Int64
+    public var otherMediaBytes: Int64
+    public var rooms: [RoomStorageUsage]
+
+    public init(
+        totalBytes: Int64,
+        databaseBytes: Int64,
+        photosAndVideosBytes: Int64,
+        audioBytes: Int64,
+        filesBytes: Int64,
+        stickersBytes: Int64,
+        otherMediaBytes: Int64,
+        rooms: [RoomStorageUsage]
+    ) {
+        self.totalBytes = totalBytes
+        self.databaseBytes = databaseBytes
+        self.photosAndVideosBytes = photosAndVideosBytes
+        self.audioBytes = audioBytes
+        self.filesBytes = filesBytes
+        self.stickersBytes = stickersBytes
+        self.otherMediaBytes = otherMediaBytes
+        self.rooms = rooms
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case totalBytes = "total_bytes"
+        case databaseBytes = "database_bytes"
+        case photosAndVideosBytes = "photos_and_videos_bytes"
+        case audioBytes = "audio_bytes"
+        case filesBytes = "files_bytes"
+        case stickersBytes = "stickers_bytes"
+        case otherMediaBytes = "other_media_bytes"
+        case rooms
+    }
+}
+
+public struct StorageCleanupParams: ProtocolType, Equatable, Sendable {
+    public static let protocolName = "StorageCleanupParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomIDs: [String]?
+    public var olderThanMS: Int64?
+    public var includeStickers: Bool?
+
+    public init(roomIDs: [String]? = nil, olderThanMS: Int64? = nil, includeStickers: Bool? = nil) {
+        self.roomIDs = roomIDs
+        self.olderThanMS = olderThanMS
+        self.includeStickers = includeStickers
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomIDs = "room_ids"
+        case olderThanMS = "older_than_ms"
+        case includeStickers = "include_stickers"
+    }
+}
+
+public struct StorageCleanupResult: ProtocolType, Equatable, Sendable {
+    public static let protocolName = "StorageCleanupResult"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var freedBytes: Int64
+    public var removedBlobs: Int
+
+    public init(freedBytes: Int64, removedBlobs: Int) {
+        self.freedBytes = freedBytes
+        self.removedBlobs = removedBlobs
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case freedBytes = "freed_bytes"
+        case removedBlobs = "removed_blobs"
+    }
+}
+
 // MARK: - Changes
 
 /// Something the app shows has changed: re-query it. A `Changed` notification, read.
@@ -5023,6 +5133,8 @@ public enum ProtocolMethods {
         "accounts.subAccounts": .userInitiatedMutation,
         "accounts.setSubAccount": .userInitiatedMutation,
         "diagnostics.export": .userInitiatedMutation,
+        "storage.usage": .userInitiatedMutation,
+        "storage.cleanup": .userInitiatedMutation,
     ]
 
     public static func classification(for method: String) -> AccessClassification? {
@@ -5123,6 +5235,8 @@ public enum ProtocolMethods {
         "accounts.subAccounts": (SubAccountsParams.self, SubAccountsResult.self),
         "accounts.setSubAccount": (SetSubAccountParams.self, Empty.self),
         "diagnostics.export": (DiagnosticsExportParams.self, DiagnosticsExportResult.self),
+        "storage.usage": (Empty.self, StorageUsageResult.self),
+        "storage.cleanup": (StorageCleanupParams.self, StorageCleanupResult.self),
     ]
 
     /// Every type of protocol.json's "types".
@@ -5159,6 +5273,7 @@ public enum ProtocolMethods {
         BridgeInfo.self, BridgesResult.self, BridgeRestartParams.self, AccountRemoveParams.self, SubAccountItem.self,
         SubAccountsParams.self, SubAccountsResult.self, SetSubAccountParams.self, DiagnosticsExportParams.self,
         RoomDiagnostic.self, MessageDiagnostic.self, DiagnosticsExportResult.self,
+        RoomStorageUsage.self, StorageUsageResult.self, StorageCleanupParams.self, StorageCleanupResult.self,
     ]
 
     /// The open-valued fields, by "Type.field", with the values this app knows.

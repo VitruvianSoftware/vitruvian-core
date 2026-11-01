@@ -63,4 +63,27 @@ final class EntitlementTests: XCTestCase {
         XCTAssertEqual(h.count("reminder.set"), 1)
         XCTAssertEqual(h.inbox.toast?.message, "Available with a plan")
     }
+
+    func testPlanSummaryAndFreebieNudgeForAlwaysEntitledAndNoPlan() {
+        let entitled = AlwaysEntitled()
+        let entitledSummary = entitled.planSummary
+        XCTAssertEqual(entitledSummary.badgeTitle, "Included")
+        XCTAssertEqual(entitledSummary.bannerState, .activeIncluded)
+        XCTAssertEqual(entitledSummary.featureRows.count, 6)
+        XCTAssertTrue(entitledSummary.featureRows.allSatisfy(\.isAllowedNow))
+        for feature in Feature.allCases {
+            XCTAssertNil(entitled.freebieNudgeText(for: feature))
+        }
+
+        let noPlan = NoPlan()
+        let noPlanSummary = noPlan.planSummary
+        XCTAssertEqual(noPlanSummary.badgeTitle, "Free")
+        XCTAssertEqual(noPlanSummary.headline, "Available with a plan")
+        XCTAssertEqual(noPlanSummary.featureRows.count, 6)
+        XCTAssertTrue(noPlanSummary.featureRows.allSatisfy { !$0.isAllowedNow })
+        XCTAssertEqual(noPlan.freebieNudgeText(for: .incognito), "Available with a plan")
+        for feature in Feature.allCases {
+            XCTAssertEqual(noPlan.freebieNudgeText(for: feature), "Available with a plan")
+        }
+    }
 }

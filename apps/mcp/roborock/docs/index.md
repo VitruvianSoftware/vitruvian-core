@@ -22,7 +22,7 @@ flowchart LR
     web -- "SSE, polling fallback" --> http
     http --> store
     service --> store
-    service -- "python-roborock: MQTT or local" --> vacuum["Vacuum"]
+    service -- "MQTT (TLS) or local TCP" --> vacuum["Vacuum"]
     creds[("credentials.json")] --> service
 ```
 
@@ -31,17 +31,43 @@ often an account may log in and list devices, and the vacuum accepts few session
 so three tools each opening their own would get in each other's way. The CLI and
 the MCP server are deliberately thin: they make one HTTP request and print the answer.
 
-| Package | Job |
+It is one Rust binary, `rrctl`. The modules under `rust_src/`:
+
+| Module | Job |
 |---|---|
-| `core/config.py` | Paths, the credentials file, migration from `~/.roborock`, the daemon token |
-| `core/auth.py` | The emailed-code login |
-| `core/device.py` | The vacuum: status snapshot, map, commands |
-| `daemon/state.py` | Latest status and map; the connect, poll and reconnect loop |
-| `daemon/server.py` | The HTTP endpoints and their access checks |
-| `daemon/client.py` | The HTTP client the CLI and MCP server share |
-| `cli/` | `rrctl` |
-| `mcp/` | MCP tools and resources |
-| `dashboard/` | The single-file web page |
+| `config.rs` | Paths, the credentials file, migration from `~/.roborock`, the daemon token |
+| `auth.rs` | The emailed-code login flow |
+| `cloud.rs` | The Roborock cloud HTTP API: region lookup, code login, home data, rooms |
+| `device.rs` | The vacuum: status snapshot, map, commands, room names |
+| `link.rs` | The live connection: discovery, MQTT, local TCP, RPC routing, the cache |
+| `mqtt.rs` | A small MQTT 5 client over TLS |
+| `local.rs` | The local TCP channel (port 58867) |
+| `protocol.rs` | Roborock's message framing and encryption, and the V1 RPC envelope |
+| `crypto.rs` | AES (ECB, CBC, GCM), MD5, SHA-256, HMAC, CRC32 and gzip, from vetted crates |
+| `codes.rs` | State and error names, and the per-model fan, water and mop names |
+| `mapimg.rs` | Map parsing and the PNG rendering |
+| `state.rs` | Latest status and map; the connect, poll and reconnect loop |
+| `daemon.rs` | The HTTP endpoints and their access checks, and the client the CLI and MCP server share |
+| `cli.rs` | `rrctl` |
+| `mcp.rs` | MCP tools and resources |
+
+The dashboard is the single-file page `assets/dashboard.html`, compiled into the binary.
+
+### Talking to the vacuum
+
+The protocol is a port of [python-roborock](https://github.com/Python-roborock/python-roborock)
+7.12.1, which this project used before it moved to Rust:
+
+- **Login** asks the Roborock cloud which region serves the email address, then
+  trades an emailed code for the account's IoT credentials.
+- **Discovery** fetches the account's home data (devices, models, rooms) once and
+  caches it in `~/.config/vitruvian/roborock/cache/home.json`.
+- **Commands and status** go over the local network when the vacuum's address is
+  known (asked once over MQTT, then cached), and over Roborock's MQTT broker
+  otherwise. Both carry the same AES-encrypted V1 messages.
+- **The map** only ever comes over MQTT, encrypted with a key sent with the request,
+  and is drawn into a PNG here: rooms in their colours, walls, carpets, the
+  cleaning path, the dock and the vacuum.
 
 ## The daemon's API
 
@@ -111,7 +137,8 @@ read the token file, and the credentials file beside it.
 
 Stored at `~/.config/vitruvian/roborock/credentials.json`, written `0600` through a
 temp file and an atomic rename so they are never briefly world-readable. The format
-wraps python-roborock's own `UserData`.
+wraps the login data the Roborock cloud returns (python-roborock's `UserData`), so
+logins made by the earlier Python version keep working.
 
 If that file is absent and `~/.roborock` (written by the upstream `roborock` CLI)
 holds a login, the login is copied across on first use. Only the login is copied,

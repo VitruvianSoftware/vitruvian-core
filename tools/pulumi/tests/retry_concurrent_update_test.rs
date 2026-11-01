@@ -20,7 +20,9 @@
 
 //! //tools/pulumi:retry-concurrent-update with a stub command and a stub
 //! `sleep` that records each wait. Ported 1:1 from the former
-//! retry_concurrent_update_test.sh (9 checks), plus the negative-budget case.
+//! retry_concurrent_update_test.sh (9 checks), plus the negative-budget case,
+//! plus the parity checks that held the binary to the shell
+//! retry-concurrent-update.sh it replaced in CI (exit codes, streams, args).
 
 mod common;
 use common::*;
@@ -180,4 +182,130 @@ fn no_args_is_usage_exit_2() {
     let o = run(cmd(&bin("RETRY_CONCURRENT_UPDATE_BIN"), "/usr/bin:/bin"));
     assert_eq!(code(&o), 2);
     assert!(stderr(&o).contains("usage: retry-concurrent-update"));
+}
+
+// --- parity with the retired retry-concurrent-update.sh ---------------------
+
+/// Run the binary over `stub` (a bash script installed as `cmd`) with `args`.
+/// `$STUB_DIR` is the script's scratch directory.
+fn run_stub(stub: &str, args: &[&str], env: &[(&str, &str)]) -> (std::process::Output, PathBuf) {
+    let d = tempdir("retry-stub");
+    let stubs = d.join("stubs");
+    write_exec(&stubs.join("cmd"), stub);
+    write_exec(
+        &stubs.join("sleep"),
+        "#!/usr/bin/env bash\necho \"$1\" >>\"$STUB_DIR/sleeps\"\n",
+    );
+    let mut c = cmd(
+        &bin("RETRY_CONCURRENT_UPDATE_BIN"),
+        &format!("{}:/usr/bin:/bin", stubs.display()),
+    );
+    c.env("STUB_DIR", &d).arg("cmd").args(args);
+    for (k, v) in env {
+        c.env(k, v);
+    }
+    (run(c), d)
+}
+
+#[test]
+fn marker_is_case_insensitive() {
+    let r = run_retry(1, "error: [409] Conflict: CONCURRENT UPDATE refused", &[]);
+    assert_eq!((r.rc, r.n), (0, 2), "the shell's grep -i matched any case");
+}
+
+#[test]
+fn announces_each_retry_on_stderr() {
+    let r = run_retry(1, CONFLICT, &[]);
+    assert!(
+        r.err.contains(
+            "retry-concurrent-update: attempt 1/8 hit Pulumi's account-wide \
+             concurrent-update 409; retrying in 15s"
+        ),
+        "err: {}",
+        r.err
+    );
+}
+
+#[test]
+fn stdout_and_stderr_stay_separate() {
+    let r = run_retry(1, CONFLICT, &[]);
+    assert!(
+        !r.out.contains("[409]"),
+        "stderr leaked into stdout: {}",
+        r.out
+    );
+    assert!(
+        !r.err.contains("stdout from attempt"),
+        "stdout leaked into stderr: {}",
+        r.err
+    );
+}
+
+#[test]
+fn args_pass_through_verbatim() {
+    let (o, d) = run_stub(
+        "#!/usr/bin/env bash\nprintf '%s|' \"$#\" \"$@\" >\"$STUB_DIR/argv\"\n",
+        &["up", "--message", "two words", ""],
+        &[],
+    );
+    assert_eq!(code(&o), 0);
+    assert_eq!(read(&d.join("argv")), "4|up|--message|two words||");
+}
+
+#[test]
+fn missing_command_exits_127() {
+    let mut c = cmd(&bin("RETRY_CONCURRENT_UPDATE_BIN"), "/usr/bin:/bin");
+    c.arg("no-such-command-xyz");
+    let o = run(c);
+    assert_eq!(code(&o), 127, "bash's status for a command it cannot find");
+}
+
+#[test]
+fn killed_by_signal_is_128_plus_signal() {
+    let (o, d) = run_stub(
+        "#!/usr/bin/env bash\necho x >>\"$STUB_DIR/count\"\nkill -TERM $$\n",
+        &[],
+        &[],
+    );
+    assert_eq!(
+        code(&o),
+        143,
+        "SIGTERM is 128 + 15, as PIPESTATUS reported it"
+    );
+    assert_eq!(read(&d.join("count")).lines().count(), 1, "not retried");
+}
+
+#[test]
+fn conflict_then_other_error_returns_that_error() {
+    let (o, d) = run_stub(
+        r#"#!/usr/bin/env bash
+n=$(cat "$STUB_DIR/n" 2>/dev/null || echo 0); n=$((n + 1)); echo "$n" >"$STUB_DIR/n"
+if [ "$n" -eq 1 ]; then echo "error: [409] Conflict: concurrent update" >&2; exit 23; fi
+echo "error: provider mis-configured" >&2
+exit 5
+"#,
+        &[],
+        &[],
+    );
+    assert_eq!(code(&o), 5);
+    assert_eq!(read(&d.join("n")).trim(), "2");
+    assert_eq!(read(&d.join("sleeps")), "15\n");
+    assert!(
+        !stderr(&o).contains("giving up"),
+        "only a 409 at the budget gives up"
+    );
+}
+
+#[test]
+fn large_stderr_is_streamed_without_deadlock() {
+    // Well past a pipe buffer on both streams; a reader that waited for the
+    // child before draining stderr would hang here until the test timeout.
+    let (o, _d) = run_stub(
+        "#!/usr/bin/env bash\nhead -c 1048576 /dev/zero | tr '\\0' e >&2\nhead -c 1048576 /dev/zero | tr '\\0' o\n",
+        &[],
+        &[],
+    );
+    assert_eq!(code(&o), 0);
+    assert_eq!(o.stderr.len(), 1 << 20);
+    assert_eq!(o.stdout.len(), 1 << 20);
 }

@@ -18,23 +18,22 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# Publish-on-version-bump, to PyPI.
+# Publish-on-version-bump: rrctl binaries on a GitHub release.
 #
 # This file is developed in the vitruvian-core monorepo and exported to the
 # VitruvianSoftware/mcp-roborock mirror, which is where it runs. It never runs
 # in the monorepo: a workflow only runs from a repository's root .github/.
 #
-# On every push to the mirror's main it reads the package version from
-# src/vitruvian_roborock/__init__.py and asks PyPI whether that version
-# exists. If it does not, this is a new release: build, publish, tag. If it
-# does, there is nothing to do. So a release is cut by bumping __version__ in
-# the monorepo, and nothing else.
+# On every push to the mirror's main it reads the version from Cargo.toml's
+# [package] and checks for a v<version> tag. If there is none, this is a new
+# release: build rrctl for macOS (one universal binary, Apple silicon and
+# Intel) and Linux (x86_64), and publish them with their SHA-256 sums on a
+# GitHub release tagged v<version>. So a release is cut by bumping the version
+# in Cargo.toml (and the plugin manifests, which a test keeps in step), and
+# nothing else.
 #
-# Publishing uses PyPI TRUSTED PUBLISHING: no token is stored anywhere. PyPI is
-# told once, by hand, to trust this repository + this workflow file + the
-# `pypi` environment, and exchanges the runner's OIDC identity for a
-# short-lived upload credential. If any of those three is renamed, publishing
-# fails until PyPI is updated to match.
+# The build is `cargo build --release --locked` against the Cargo.lock that
+# Bazel also builds from, so the release has the same dependency set as CI.
 name: release
 
 on:
@@ -52,72 +51,111 @@ concurrency:
 
 jobs:
   detect:
-    name: Detect an unpublished version
+    name: Detect an unreleased version
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       version: ${{ steps.detect.outputs.version }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
       - id: detect
         run: |
-          V="$(sed -n 's/^__version__ = "\(.*\)"$/\1/p' src/vitruvian_roborock/__init__.py)"
-          if [ -z "$V" ]; then
-            echo "::error::could not read __version__ from src/vitruvian_roborock/__init__.py"
+          V="$(awk '/^\[package\]/{p=1;next} /^\[/{p=0} p && /^version = /{gsub(/"/,"",$3); print $3; exit}' Cargo.toml)"
+          if ! [[ "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::could not read an X.Y.Z version from Cargo.toml's [package] (got '${V}')"
             exit 1
           fi
-          CODE="$(curl -sS -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/vitruvian-roborock/${V}/json")"
-          case "$CODE" in
-            200)
-              echo "vitruvian-roborock ${V} is already on PyPI -- nothing to do."
-              ;;
-            404)
-              echo "version=${V}" >> "$GITHUB_OUTPUT"
-              echo "Detected UNPUBLISHED release ${V}."
-              ;;
-            *)
-              echo "::error::PyPI returned HTTP ${CODE} for vitruvian-roborock ${V}; refusing to guess whether it is published."
-              exit 1
-              ;;
-          esac
+          if git rev-parse -q --verify "refs/tags/v${V}" >/dev/null; then
+            echo "v${V} is already released -- nothing to do."
+            exit 0
+          fi
+          echo "version=${V}" >> "$GITHUB_OUTPUT"
+          echo "Detected UNRELEASED version ${V}."
 
-  publish:
-    name: Build and publish to PyPI
+  build:
+    name: Build rrctl (${{ matrix.name }})
     needs: detect
     if: needs.detect.outputs.version
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - name: macos-universal
+            runner: macos-15
+          - name: linux-x86_64
+            runner: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    env:
+      V: ${{ needs.detect.outputs.version }}
+      NAME: ${{ matrix.name }}
+      # The Rust that Cargo.lock was resolved for (Cargo.toml's rust-version,
+      # and the toolchain Bazel builds with in the monorepo).
+      RUST_VERSION: 1.75.0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build
+        run: |
+          rustup toolchain install "$RUST_VERSION" --profile minimal
+          rustup override set "$RUST_VERSION"
+          rustc --version | grep -q "^rustc ${RUST_VERSION} " || { echo "::error::not on Rust ${RUST_VERSION}"; exit 1; }
+          if [ "$NAME" = macos-universal ]; then
+            rustup target add --toolchain "$RUST_VERSION" aarch64-apple-darwin x86_64-apple-darwin
+            cargo build --release --locked --bin rrctl --target aarch64-apple-darwin
+            cargo build --release --locked --bin rrctl --target x86_64-apple-darwin
+            mkdir -p out
+            lipo -create -output out/rrctl \
+              target/aarch64-apple-darwin/release/rrctl \
+              target/x86_64-apple-darwin/release/rrctl
+            lipo -archs out/rrctl
+          else
+            cargo build --release --locked --bin rrctl
+            mkdir -p out
+            cp target/release/rrctl out/rrctl
+          fi
+          out/rrctl --version | grep -qx "rrctl ${V} (rust)" || { echo "::error::the binary does not say rrctl ${V} (rust)"; exit 1; }
+      - name: Package
+        run: |
+          asset="rrctl-${V}-${NAME}.tar.gz"
+          tar -C out -czf "$asset" rrctl
+          shasum -a 256 "$asset" > "$asset.sha256"
+          cat "$asset.sha256"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: rrctl-${{ matrix.name }}
+          path: rrctl-*.tar.gz*
+          if-no-files-found: error
+
+  release:
+    name: Publish the GitHub release
+    needs: [detect, build]
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    # Must match the environment named in the PyPI trusted publisher.
-    environment:
-      name: pypi
-      url: https://pypi.org/project/vitruvian-roborock/${{ needs.detect.outputs.version }}/
+    timeout-minutes: 10
     permissions:
-      # OIDC for PyPI trusted publishing. Without it the runner cannot mint
-      # the identity token PyPI exchanges for an upload credential.
-      id-token: write
-      # To create the release tag once the upload has succeeded.
+      # To create the release and its tag.
       contents: write
     env:
-      VERSION: ${{ needs.detect.outputs.version }}
+      V: ${{ needs.detect.outputs.version }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884
-      - name: Build
-        run: uv build
-      - name: Check the built files are the version we detected
-        run: |
-          ls -l dist
-          test -f "dist/vitruvian_roborock-${VERSION}-py3-none-any.whl"
-          test -f "dist/vitruvian_roborock-${VERSION}.tar.gz"
-          uvx twine check dist/*
-      - name: Publish
-        run: uv publish --trusted-publishing always
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: dist
+          merge-multiple: true
       - name: Tag the release
         env:
           GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
         run: |
-          gh release create "v${VERSION}" \
+          ls -l dist
+          (cd dist && shasum -a 256 -c ./*.sha256)
+          gh release create "v${V}" \
+            --repo "$REPO" \
             --target "$GITHUB_SHA" \
-            --title "v${VERSION}" \
-            --notes "Published to PyPI: https://pypi.org/project/vitruvian-roborock/${VERSION}/" \
+            --title "v${V}" \
+            --notes "rrctl ${V}: the Roborock daemon, CLI and MCP server. Download the archive for your platform, check it against its .sha256, and put rrctl on your PATH. Or build it: cargo install --locked --git https://github.com/${REPO} --tag v${V}" \
             dist/*

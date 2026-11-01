@@ -297,6 +297,20 @@ struct ComposerView: View {
                     .disabled(menus.pollsUnavailable != nil || composer.roomID == nil)
                     .help(menus.pollsUnavailable ?? "")
             }
+            Divider()
+            Button(String(localized: "Talk to Type")) {
+                composer.triggerTalkToType()
+            }
+            .registryShortcut("Message: Talk to Type", in: composer.hotkeyDispatcher?.hotkeys ?? HotkeyRegistry())
+            .disabled(composer.roomID == nil || composer.hotkeyDispatcher?.lifecycle.isLocked == true)
+            Menu(String(localized: "Draft with AI")) {
+                ForEach(AIRewriteTone.allCases, id: \.self) { tone in
+                    Button(tone.label) {
+                        composer.draftWithAI(tone: tone)
+                    }
+                }
+            }
+            .disabled(composer.roomID == nil || composer.hotkeyDispatcher?.lifecycle.isLocked == true)
         } label: {
             Image(systemName: "plus.circle")
                 .font(.title3)
@@ -496,6 +510,32 @@ struct ComposerView: View {
                 composer.dismissEmojiAutocomplete()
                 presentCustomEmojiImportPanel(shortcode: shortcode)
             }
+        } else if !composer.slashCommandSuggestions.isEmpty {
+            HStack(spacing: 8) {
+                ForEach(composer.slashCommandSuggestions) { cmd in
+                    Button {
+                        composer.executeSlashCommand(cmd.trigger)
+                    } label: {
+                        HStack(spacing: 5) {
+                            Text(cmd.trigger)
+                                .font(.system(.caption, design: .monospaced).weight(.semibold))
+                            Text(cmd.title)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            Capsule()
+                                .fill(Color.secondary.opacity(0.12))
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .help(cmd.summary)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 4)
         }
     }
 

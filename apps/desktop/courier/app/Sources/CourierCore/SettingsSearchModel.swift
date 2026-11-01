@@ -13,6 +13,10 @@ public enum SettingsPaneID: String, CaseIterable, Codable, Sendable, Identifiabl
     case hotkeys
     case quickReplies
     case bridges
+    case storage
+    case ai
+    case plan
+    case integrations
     case about
 
     public var id: String { rawValue }
@@ -26,6 +30,10 @@ public enum SettingsPaneID: String, CaseIterable, Codable, Sendable, Identifiabl
         case .hotkeys: String(localized: "Hotkeys")
         case .quickReplies: String(localized: "Quick Replies")
         case .bridges: String(localized: "Bridges")
+        case .storage: String(localized: "Storage")
+        case .ai: String(localized: "AI")
+        case .plan: String(localized: "Courier Plan")
+        case .integrations: String(localized: "Integrations")
         case .about: String(localized: "About")
         }
     }
@@ -39,6 +47,10 @@ public enum SettingsPaneID: String, CaseIterable, Codable, Sendable, Identifiabl
         case .hotkeys: "command"
         case .quickReplies: "text.bubble"
         case .bridges: "point.3.connected.trianglepath.dotted"
+        case .storage: "internaldrive"
+        case .ai: "sparkles"
+        case .plan: "checkmark.seal"
+        case .integrations: "puzzlepiece.extension"
         case .about: "info.circle"
         }
     }
@@ -336,6 +348,97 @@ public final class SettingsNavigationModel: ObservableObject {
         ),
 
         // MARK: Appearance
+        SettingDefinition(
+            id: "appearance.themeMode",
+            pane: .appearance,
+            section: "Theme & Wallpaper",
+            title: "Theme",
+            keywords: ["theme", "dark mode", "light mode", "system", "auto", "colour scheme"]
+        ),
+        SettingDefinition(
+            id: "appearance.themePreset",
+            pane: .appearance,
+            section: "Theme & Wallpaper",
+            title: "Chat colour theme",
+            keywords: ["chat theme", "theme", "preset", "colour", "color", "bubbles", "accent", "browse"]
+        ),
+        SettingDefinition(
+            id: "appearance.wallpaper",
+            pane: .appearance,
+            section: "Theme & Wallpaper",
+            title: "Chat wallpaper",
+            keywords: ["wallpaper", "chat background", "background", "pattern", "opacity", "blur", "honeycomb"]
+        ),
+        SettingDefinition(
+            id: "appearance.appIcon",
+            pane: .appearance,
+            section: "App Icon",
+            title: "App icon",
+            keywords: ["app icon", "dock icon", "icon", "badge", "classic", "midnight", "pride", "oled"]
+        ),
+        SettingDefinition(
+            id: "appearance.fontSize",
+            pane: .appearance,
+            section: "Display & Typography",
+            title: "Font size",
+            keywords: ["font size", "text size", "typography", "small", "default", "large", "extra large"]
+        ),
+        SettingDefinition(
+            id: "appearance.zoomLevel",
+            pane: .appearance,
+            section: "Display & Typography",
+            title: "Zoom level",
+            keywords: ["zoom", "scale", "zoom in", "zoom out", "actual size"]
+        ),
+        SettingDefinition(
+            id: "appearance.reduceTransparency",
+            pane: .appearance,
+            section: "Display & Typography",
+            title: "Reduce transparency",
+            keywords: ["reduce transparency", "transparency", "blur", "vibrancy", "contrast"]
+        ),
+        SettingDefinition(
+            id: "appearance.enableMessageAnimations",
+            pane: .appearance,
+            section: "Display & Typography",
+            title: "Enable message animations",
+            keywords: ["message animations", "animations", "effects", "motion"]
+        ),
+        SettingDefinition(
+            id: "appearance.balanceMessageText",
+            pane: .appearance,
+            section: "Display & Typography",
+            title: "Balance message text",
+            keywords: ["balance message text", "text wrap", "balanced", "widows"]
+        ),
+        SettingDefinition(
+            id: "appearance.usePointerCursor",
+            pane: .appearance,
+            section: "Display & Typography",
+            title: "Use pointer cursor on interactive elements",
+            keywords: ["pointer cursor", "cursor", "hand", "hover"]
+        ),
+        SettingDefinition(
+            id: "appearance.showFeedbackWidget",
+            pane: .appearance,
+            section: "Display & Typography",
+            title: "Show feedback button in sidebar",
+            keywords: ["feedback widget", "feedback", "button", "report"]
+        ),
+        SettingDefinition(
+            id: "appearance.redactNamesAndPictures",
+            pane: .appearance,
+            section: "Privacy & Screenshots",
+            title: "Redact names and pictures",
+            keywords: ["redact", "privacy", "blur avatars", "screenshots", "demo mode", "hide names"]
+        ),
+        SettingDefinition(
+            id: "appearance.customCSS",
+            pane: .appearance,
+            section: "Custom CSS",
+            title: "Custom CSS",
+            keywords: ["custom css", "stylesheet", "css", "theme file"]
+        ),
         SettingDefinition(
             id: "appearance.showSpaceBar",
             pane: .appearance,
@@ -650,6 +753,29 @@ public final class SettingsNavigationModel: ObservableObject {
             keywords: ["bridges", "mautrix", "restart bridge", "copy info as json", "version", "state"]
         ),
 
+        // MARK: Storage
+        SettingDefinition(
+            id: "storage.overview",
+            pane: .storage,
+            section: "Disk Usage on This Mac",
+            title: "Local disk usage",
+            keywords: ["storage", "disk", "space", "usage", "bytes", "database", "photos", "videos", "audio", "files"]
+        ),
+        SettingDefinition(
+            id: "storage.cleanupByAge",
+            pane: .storage,
+            section: "Free Up Space",
+            title: "Delete media older than",
+            keywords: ["delete media", "cleanup", "clear cache", "older than", "free up space", "1 week", "1 month", "3 months", "1 year"]
+        ),
+        SettingDefinition(
+            id: "storage.byRoom",
+            pane: .storage,
+            section: "Storage by Chat",
+            title: "Storage by chat",
+            keywords: ["storage by chat", "delete media in this chat", "per chat", "room storage"]
+        ),
+
         // MARK: About
         SettingDefinition(
             id: "about.version",
@@ -693,6 +819,75 @@ public final class SettingsNavigationModel: ObservableObject {
             title: "Legal Notices",
             keywords: ["legal", "licenses", "open source", "mit", "mpl", "agpl"]
         ),
+
+        // MARK: - AI (4)
+        SettingDefinition(
+            id: "ai.contextual",
+            pane: .ai,
+            section: "Contextual AI & Chat Assistant",
+            title: "Mention an AI to get answers and help in chat",
+            keywords: ["ai", "contextual", "mention", "assistant", "model", "apple intelligence", "openai"]
+        ),
+        SettingDefinition(
+            id: "ai.translation",
+            pane: .ai,
+            section: "Translation Languages",
+            title: "Translation Languages",
+            keywords: ["translate", "translation", "arabic", "spanish", "french", "languages"]
+        ),
+        SettingDefinition(
+            id: "ai.talkToType",
+            pane: .ai,
+            section: "Talk to Type & Voice Transcription",
+            title: "Use OpenAI's Whisper model for Talk to Type and transcribing",
+            keywords: ["whisper", "talk to type", "dictation", "transcribe", "voice note"]
+        ),
+        SettingDefinition(
+            id: "ai.slashCommands",
+            pane: .ai,
+            section: "Slash Command Triggers",
+            title: "Slash Command Triggers",
+            keywords: ["slash commands", "/ai", "/translate", "/summarize", "/draft"]
+        ),
+
+        // MARK: - Courier Plan (2)
+        SettingDefinition(
+            id: "plan.overview",
+            pane: .plan,
+            section: "Courier Plan",
+            title: "Go Unlimited",
+            keywords: ["plan", "subscription", "unlimited", "plus", "available with a plan", "accounts limit"]
+        ),
+        SettingDefinition(
+            id: "plan.features",
+            pane: .plan,
+            section: "Included Features",
+            title: "Included Features",
+            keywords: ["send later", "reminders", "undo send", "incognito", "low priority", "auto-archive"]
+        ),
+
+        // MARK: - Integrations (3)
+        SettingDefinition(
+            id: "integrations.browserExtension",
+            pane: .integrations,
+            section: "Browser Extension",
+            title: "Browser Companion Extension",
+            keywords: ["browser", "extension", "chrome", "safari", "companion"]
+        ),
+        SettingDefinition(
+            id: "integrations.mobileApps",
+            pane: .integrations,
+            section: "Mobile Companion Apps",
+            title: "Mobile Companion Sync",
+            keywords: ["mobile", "ios", "android", "companion", "phone"]
+        ),
+        SettingDefinition(
+            id: "integrations.developer",
+            pane: .integrations,
+            section: "Advanced & Local Diagnostics",
+            title: "Local-First Diagnostics",
+            keywords: ["developer", "debug", "diagnostics", "bridge logs", "report a problem"]
+        ),
     ]
 
     public static let definitionsByID: [String: SettingDefinition] = Dictionary(
@@ -734,6 +929,19 @@ public final class SettingsNavigationModel: ObservableObject {
         "general.lockTimeout",
         "general.timeFormat",
         // AppearanceSettingsPane
+        "appearance.themeMode",
+        "appearance.themePreset",
+        "appearance.wallpaper",
+        "appearance.appIcon",
+        "appearance.fontSize",
+        "appearance.zoomLevel",
+        "appearance.reduceTransparency",
+        "appearance.enableMessageAnimations",
+        "appearance.balanceMessageText",
+        "appearance.usePointerCursor",
+        "appearance.showFeedbackWidget",
+        "appearance.redactNamesAndPictures",
+        "appearance.customCSS",
         "appearance.showSpaceBar",
         "appearance.regularPinnedRows",
         "appearance.showUnreadCounts",
@@ -782,6 +990,22 @@ public final class SettingsNavigationModel: ObservableObject {
         "quickReplies.variables",
         // BridgesSettingsPane
         "bridges.status",
+        // StorageSettingsPane
+        "storage.overview",
+        "storage.cleanupByAge",
+        "storage.byRoom",
+        // AISettingsPane
+        "ai.contextual",
+        "ai.translation",
+        "ai.talkToType",
+        "ai.slashCommands",
+        // PlusSettingsPane
+        "plan.overview",
+        "plan.features",
+        // IntegrationsSettingsPane
+        "integrations.browserExtension",
+        "integrations.mobileApps",
+        "integrations.developer",
         // AboutSettingsPane
         "about.version",
         "about.changelog",

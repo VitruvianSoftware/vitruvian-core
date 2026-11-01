@@ -42,6 +42,8 @@ public struct MessageMenuItem: Equatable, Sendable, Identifiable {
         case copyMessageDetails
         /// Opens the Report a Problem sheet pre-filled with this message's room and event ID.
         case reportProblem
+        /// Translates the message inline (`MessageTranslations.tsx`).
+        case translate
         /// A line that only says something ("Sent at 14:02"), always greyed.
         case info
     }
@@ -109,6 +111,17 @@ public enum MessageMenu {
             [item(.showHistory)].compactMap { $0 },
         ]
         if includeDiagnostics, !message.isNote, message.statusLine != .queued, !(message.statusLine?.isWaiting ?? false) {
+            if !message.rich.text.isEmpty, message.kind != .deleted {
+                sections.append([
+                    MessageMenuItem(
+                        command: .translate,
+                        title: String(localized: "Translate"),
+                        key: nil,
+                        isEnabled: true,
+                        help: String(localized: "Message translation isn’t available yet in Courier.")
+                    ),
+                ])
+            }
             sections.append([
                 MessageMenuItem(command: .copyMessageDetails, title: String(localized: "Copy Message Details"),
                                 key: nil, isEnabled: true, help: nil),

@@ -103,6 +103,12 @@ public enum CopyChoice: Equatable, Sendable {
 public final class MessageActionsModel: ObservableObject {
     /// What the views are to ask or show; nil when nothing is waiting.
     @Published public private(set) var request: MessageActionRequest?
+    /// Per-event inline translation dispositions (`MessageTranslations.tsx` / `MessageTranslationRow.tsx`).
+    @Published public private(set) var translations: [String: AIProviderDisposition] = [:]
+    /// Per-event requested translation target language names.
+    @Published public private(set) var translationTargetLanguages: [String: String] = [:]
+    /// Offline AI provider used for message translation stubs.
+    public var aiProvider: any AIProvider = UnavailableAIProvider()
     /// Where toasts go: the inbox's (`InboxModel.announce`).
     public var onToast: @MainActor (String) -> Void = { _ in }
     /// Opens a link in the browser (NSWorkspace in the app).
@@ -160,6 +166,21 @@ public final class MessageActionsModel: ObservableObject {
 
     public func dismissAllPresentations() {
         request = nil
+    }
+
+    /// Requests inline translation for `eventID` into `targetLanguage` using `aiProvider`.
+    public func translateMessage(eventID: String, targetLanguage: String = "English") {
+        guard !isLocked else { return }
+        translationTargetLanguages[eventID] = targetLanguage
+        translations[eventID] = .unavailable(
+            reason: String(localized: "Message translation isn’t available yet in Courier.")
+        )
+    }
+
+    /// Dismisses the inline translation row for `eventID`.
+    public func dismissTranslation(eventID: String) {
+        translations.removeValue(forKey: eventID)
+        translationTargetLanguages.removeValue(forKey: eventID)
     }
 
     public var lifecycle: SystemLifecycleModel {

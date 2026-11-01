@@ -245,8 +245,8 @@ final class ProtocolConformanceTests: XCTestCase {
     }
 
     func testProtocol6TypesDecodeAndRoundTrip() throws {
-        XCTAssertEqual(protocolVersion, 10)
-        XCTAssertEqual(CourierProtocol.version, 10)
+        XCTAssertEqual(protocolVersion, 11)
+        XCTAssertEqual(CourierProtocol.version, 11)
         XCTAssertEqual(RPCErrorCode(number: -32027), .networkRefused)
 
         let infoJSON = """
@@ -405,7 +405,7 @@ final class ProtocolConformanceTests: XCTestCase {
     }
 
     func testProtocol9BridgesSubAccountsAndDiagnosticsDecodeAndRoundTrip() throws {
-        XCTAssertEqual(CourierProtocol.version, 10)
+        XCTAssertEqual(CourierProtocol.version, 11)
         XCTAssertNotNil(ProtocolMethods.all["bridges.list"])
         XCTAssertNotNil(ProtocolMethods.all["bridges.restart"])
         XCTAssertNotNil(ProtocolMethods.all["accounts.remove"])
@@ -472,5 +472,45 @@ final class ProtocolConformanceTests: XCTestCase {
         )
         let diagData = try JSONEncoder().encode(diag)
         XCTAssertEqual(try JSONDecoder().decode(DiagnosticsExportResult.self, from: diagData), diag)
+    }
+
+    func testProtocol11StorageUsageAndCleanupDecodeAndRoundTrip() throws {
+        XCTAssertEqual(CourierProtocol.version, 11)
+        XCTAssertNotNil(ProtocolMethods.all["storage.usage"])
+        XCTAssertNotNil(ProtocolMethods.all["storage.cleanup"])
+        XCTAssertEqual(ProtocolMethods.classification(for: "storage.usage"), .userInitiatedMutation)
+        XCTAssertEqual(ProtocolMethods.classification(for: "storage.cleanup"), .userInitiatedMutation)
+
+        let roomUsage = RoomStorageUsage(
+            roomID: "!wa1:courier.local",
+            name: "Design Team",
+            network: "whatsapp",
+            mediaBytes: 5_376,
+            itemCount: 2
+        )
+        let usage = StorageUsageResult(
+            totalBytes: 24_900,
+            databaseBytes: 16_384,
+            photosAndVideosBytes: 5_376,
+            audioBytes: 512,
+            filesBytes: 2_048,
+            stickersBytes: 280,
+            otherMediaBytes: 300,
+            rooms: [roomUsage]
+        )
+        let usageData = try JSONEncoder().encode(usage)
+        XCTAssertEqual(try JSONDecoder().decode(StorageUsageResult.self, from: usageData), usage)
+
+        let cleanupParams = StorageCleanupParams(
+            roomIDs: ["!wa1:courier.local"],
+            olderThanMS: 86_400_000,
+            includeStickers: false
+        )
+        let paramsData = try JSONEncoder().encode(cleanupParams)
+        XCTAssertEqual(try JSONDecoder().decode(StorageCleanupParams.self, from: paramsData), cleanupParams)
+
+        let cleanupResult = StorageCleanupResult(freedBytes: 5_376, removedBlobs: 2)
+        let resultData = try JSONEncoder().encode(cleanupResult)
+        XCTAssertEqual(try JSONDecoder().decode(StorageCleanupResult.self, from: resultData), cleanupResult)
     }
 }

@@ -40,7 +40,7 @@
 1. **Command Bar (`⌘J`) over the unified command registry (`CommandBarOverlay`, `CommandBarModel`, `CommandSet`):**
    - Pressing `⌘J` (or choosing `Courier ▸ Command Bar…`, or pressing the global shortcut `⌘⇧Space`, or clicking `"Commands ⌘J"` inside the `⌘K` search panel) opens the floating Command Bar over the main window.
    - Every command registered across Milestones 4.1–4.7 appears in one searchable list with category headers, right-aligned shortcut keycaps, and contextual subtitles (for example, `"Pin “Design Review”"` or `"Turn off Incognito mode"`).
-   - Multi-step commands (`Filter Chats`, `Remind Later`, `Label…`, `Go to Space…`, `Set Theme…`, `Disappearing Messages…`) drill into nested sub-commands with a breadcrumb pill (`Filter Chats ▸`) and `⌫` to pop back; `"Open recently viewed chats"` lists your recent chats right inside the Command Bar; and destructive or bulk commands (`Archive all chats`, `Clear All Cached Media…`, `Leave Group`, `Delete Chat`) ask for confirmation first.
+   - Multi-step commands (`Filter Chats`, `Remind Later`, `Label…`, `Go to Space…`, `Set Theme…`, `Disappearing Messages…`) drill into nested sub-commands with a breadcrumb pill (`Filter Chats ▸`) and `⌫` to pop back; `"Open recently viewed chats"` lists your recent chats right inside the Command Bar; and destructive or bulk commands (`Archive all chats`, `Delete Media…`, `Leave Group`, `Delete Chat`) ask for confirmation first.
 2. **Themes, Colours, Wallpapers, Per-Chat Themes, App Icons, Font Size, Zoom & Redact Mode (`AppearancePreferences`, `ChatThemeWindow`, `ChatThemeBrowserWindow`, `AppIconPickerView`):**
    - `Settings ▸ Appearance` (`⌘,`) adds 8 clean-room Courier theme presets (`Classic Teal`, `Slate`, `Midnight Indigo`, `Warm Paper`, `Evergreen`, `Sunset Coral`, `Rose Quartz`, `Ocean Deep`) on top of `System` / `Light` / `Dark`, custom accent and outgoing/incoming message bubble colour pickers, per-participant group sender colours, and 8 procedural vector wallpapers (`None`, `Subtle Grid`, `Topographic Lines`, `Soft Waves`, `Starfield`, `Aurora Glow`, `Dot Matrix`, `Paper Grain`) plus custom local image wallpapers with opacity and blur controls.
    - Any individual chat can override the default theme, bubble colour, and wallpaper via `Chat Theme…` in the chat's right-click menu, `Chat Info`, or `⌘J` (`ChatThemeWindow`), and `"Browse Chat Themes…"` opens a live preview gallery (`ChatThemeBrowserWindow`).
@@ -50,7 +50,7 @@
    - Creating or editing a label opens a searchable, categorized icon picker covering all 151 §22 icon-library rows mapped to native macOS SF Symbols while keeping the 30 default icons at the top.
 4. **Storage Management (`Settings ▸ Storage`, `storage.usage`, `storage.cleanup`):**
    - `Settings ▸ Storage` displays a segmented breakdown chart (`Images`, `Videos`, `Audio`, `Other Files`, `Stickers`, `Messages & Database`) and a per-chat media list sorted by size.
-   - You can clear cached media for a single chat, clear media older than `1 week`, `1 month`, `3 months`, or `1 year`, or clear all cached media on this Mac without deleting any message text or chat history.
+   - You can delete media in a single chat (`"Delete media in this chat"`), delete media older than `1 week`, `1 month`, `3 months`, or `1 year` (`"Delete media older than …"`), or delete all media on this Mac (`"Delete Media…"` with confirmation `"This deletes photos, videos and files from this Mac. Messages stay, but the media can't be brought back."`) without deleting any message text or chat history.
 5. **The Five Provider Stubs & Calm "Not Available Yet" Screens (`AIProvider`, `GIFProvider`, `EntitlementProvider`, `ReportUploader`, `ThemeFileLoader`):**
    - Every stubbed capability (`Settings ▸ AI`, the right-hand `AIPane`, `Message: Talk to Type` `⌘⇧D`, `Draft with AI`, message `Translate`, composer `/` slash commands, online GIF search in `GIFPickerPopover`, `Settings ▸ Courier Plan` / `"Available with a plan"`, direct problem-report upload in `ProblemReportSheet`, Custom CSS in `Settings ▸ Appearance`, and `Settings ▸ Integrations`) renders a complete, calm macOS interface backed by its protocol in `CourierCore` and makes **zero** network calls.
 
@@ -1118,11 +1118,11 @@ public enum StorageCleanupAgeChoice: Int, CaseIterable, Codable, Sendable, Ident
     public var id: Int { rawValue }
     public var label: String {
         switch self {
-        case .oneWeek: String(localized: "Older than 1 week")
-        case .oneMonth: String(localized: "Older than 1 month")
-        case .threeMonths: String(localized: "Older than 3 months")
-        case .oneYear: String(localized: "Older than 1 year")
-        case .allTime: String(localized: "All cached media")
+        case .oneWeek: String(localized: "Delete media older than 1 week")
+        case .oneMonth: String(localized: "Delete media older than 1 month")
+        case .threeMonths: String(localized: "Delete media older than 3 months")
+        case .oneYear: String(localized: "Delete media older than 1 year")
+        case .allTime: String(localized: "Delete Media…")
         }
     }
     public var olderThanMS: Int64? {
@@ -1355,7 +1355,7 @@ bazel test //apps/desktop/courier/engine/... //apps/desktop/courier/gchat/... //
 4. **§22 Label & Space Icon Picker:**
    - Open `Edit Labels…` ▸ `New Label…`, search in `"Search icons…"` for `"snowflake"`, `"kayak"`, `"coffee"`, or `"wine"`, pick an icon and colour, and save.
 5. **Storage Management (`Settings ▸ Storage`):**
-   - Open `Settings ▸ Storage` (or run `Storage` / `Cleanup` from `⌘J`): inspect the category bar chart (`Images`, `Videos`, `Audio`, `Other Files`, `Stickers`, `Messages & Database`) and the per-chat storage list; clear cached media for one test chat and verify message text and history stay intact.
+   - Open `Settings ▸ Storage` (or run `Storage` / `Delete Media…` from `⌘J`): inspect the category bar chart (`Images`, `Videos`, `Audio`, `Other Files`, `Stickers`, `Messages & Database`) and the per-chat storage list; run `"Delete media in this chat"` for one test chat and verify message text and history stay intact while media tiles show `"Removed to free up space"`.
 6. **The Five Provider Stubs (`AIProvider`, `GIFProvider`, `EntitlementProvider`, `ReportUploader`, `ThemeFileLoader`):**
    - Open `Settings ▸ AI`, the right-hand `AIPane`, `Settings ▸ Courier Plan`, `Settings ▸ Integrations`, `Custom CSS` in `Settings ▸ Appearance`, `"Report a Problem…"` (`⌘⇧P`), `⌘⇧D` (`Message: Talk to Type`), and `Translate` on a message: verify every screen shows a calm `"not available yet"` explanation in Courier's words with zero errors and zero network activity.
 

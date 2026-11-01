@@ -1,6 +1,6 @@
 {
   "name": "Courier engine protocol",
-  "protocol": 10,
+  "protocol": 11,
   "doc": "How Courier.app talks to its courier-engine helper. This file is the single definition: the engine's Go tests and the app's Swift tests both check the examples in examples/ against it, and the Swift Codable types are named exactly as the entries in types. Copyright 2026 VitruvianSoftware, SPDX-License-Identifier: AGPL-3.0-or-later.",
 
   "transport": {
@@ -2377,6 +2377,40 @@
         "room_details": { "type": "RoomDiagnostic?" },
         "message_details": { "type": "MessageDiagnostic?" }
       }
+    },
+    "RoomStorageUsage": {
+      "fields": {
+        "room_id": { "type": "string" },
+        "name": { "type": "string" },
+        "network": { "type": "string" },
+        "media_bytes": { "type": "int" },
+        "item_count": { "type": "int" }
+      }
+    },
+    "StorageUsageResult": {
+      "fields": {
+        "total_bytes": { "type": "int" },
+        "database_bytes": { "type": "int" },
+        "photos_and_videos_bytes": { "type": "int" },
+        "audio_bytes": { "type": "int" },
+        "files_bytes": { "type": "int" },
+        "stickers_bytes": { "type": "int" },
+        "other_media_bytes": { "type": "int" },
+        "rooms": { "type": "RoomStorageUsage[]" }
+      }
+    },
+    "StorageCleanupParams": {
+      "fields": {
+        "room_ids": { "type": "string[]?" },
+        "older_than_ms": { "type": "int?" },
+        "include_stickers": { "type": "bool?" }
+      }
+    },
+    "StorageCleanupResult": {
+      "fields": {
+        "freed_bytes": { "type": "int" },
+        "removed_blobs": { "type": "int" }
+      }
     }
   },
 
@@ -2938,6 +2972,18 @@
       "params": "DiagnosticsExportParams",
       "result": "DiagnosticsExportResult",
       "errors": [-32020]
+    },
+    "storage.usage": {
+      "doc": "Inspect local SQLite database size, media categories, and per-chat media usage on this Mac.",
+      "params": "Empty",
+      "result": "StorageUsageResult",
+      "errors": []
+    },
+    "storage.cleanup": {
+      "doc": "Delete local media files by chat and/or age while keeping message text, history, remote URLs, and user-imported stickers intact.",
+      "params": "StorageCleanupParams",
+      "result": "StorageCleanupResult",
+      "errors": []
     }
   },
 

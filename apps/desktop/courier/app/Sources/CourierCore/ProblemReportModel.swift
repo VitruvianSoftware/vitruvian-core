@@ -486,6 +486,30 @@ public struct ProblemReportDocument: Codable, Equatable, Sendable {
     }
 }
 
+public enum ReportUploadDisposition: Equatable, Sendable {
+    case unavailable(reason: String)
+    case uploaded(referenceID: String)
+}
+
+/// Spec §3 seam for uploading scrubbed problem reports. Iteration 1's `UnavailableReportUploader`
+/// is offline-only and directs the person to save the scrubbed bundle locally on this Mac.
+public protocol ReportUploader: Sendable {
+    var isAvailable: Bool { get }
+    var unavailableReason: String { get }
+    func upload(bundleURL: URL, description: String) async -> ReportUploadDisposition
+}
+
+public struct UnavailableReportUploader: ReportUploader {
+    public init() {}
+    public var isAvailable: Bool { false }
+    public var unavailableReason: String {
+        String(localized: "Direct report upload isn’t available yet in Courier. Save a scrubbed problem report on this Mac instead.")
+    }
+    public func upload(bundleURL _: URL, description _: String) async -> ReportUploadDisposition {
+        .unavailable(reason: unavailableReason)
+    }
+}
+
 /// Model for the local-only **Report a Problem** sheet (`⌘⇧P`).
 ///
 /// Builds a local diagnostic bundle containing `report.json`, `bridges.json`, `stderr-scrubbed.log`, and any
@@ -506,24 +530,47 @@ public final class ProblemReportModel: ObservableObject {
         didSet { rebuildPreviewText() }
     }
     @Published public private(set) var isSaving: Bool = false
+    @Published public private(set) var isUploading: Bool = false
     @Published public private(set) var savedBundleURL: URL?
+    @Published public private(set) var uploadNotice: String?
     @Published public private(set) var errorText: String?
     @Published public private(set) var previewJSONText: String = "{}"
     @Published public private(set) var previewStderrText: String = ""
 
     public let contextRoomID: String?
     public let contextEventID: String?
+    public let reportUploader: any ReportUploader
     private weak var appModel: AppModel?
 
     public init(
         appModel: AppModel? = nil,
         contextRoomID: String? = nil,
-        contextEventID: String? = nil
+        contextEventID: String? = nil,
+        reportUploader: any ReportUploader = UnavailableReportUploader()
     ) {
         self.appModel = appModel
         self.contextRoomID = contextRoomID
         self.contextEventID = contextEventID
+        self.reportUploader = reportUploader
         rebuildPreviewText()
+    }
+
+    /// Invokes the `ReportUploader` seam and populates `uploadNotice` with the disposition message.
+    public func attemptUpload() async {
+        guard !AppLockGate.shared.isLocked else {
+            errorText = EngineError.appLocked.localizedDescription
+            return
+        }
+        isUploading = true
+        defer { isUploading = false }
+        let bundleURL = savedBundleURL ?? FileManager.default.temporaryDirectory
+        let disposition = await reportUploader.upload(bundleURL: bundleURL, description: descriptionText)
+        switch disposition {
+        case .unavailable(let reason):
+            uploadNotice = reason
+        case .uploaded(let referenceID):
+            uploadNotice = referenceID
+        }
     }
 
     public var hasContextDetails: Bool {

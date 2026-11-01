@@ -293,6 +293,10 @@ var methods = map[string]handler{
 	"accounts.subAccounts":   accountsSubAccounts,
 	"accounts.setSubAccount": accountsSetSubAccount,
 	"diagnostics.export":     diagnosticsExport,
+
+	// Storage usage & media cache cleanup (protocol 11).
+	"storage.usage":   storageUsage,
+	"storage.cleanup": storageCleanup,
 }
 
 var errMissing = errors.New("a dependency this method needs is missing")
@@ -2131,4 +2135,44 @@ func diagnosticsExport(ctx context.Context, d *Deps, raw json.RawMessage) (any, 
 		}
 	}
 	return res, nil
+}
+
+func storageUsage(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
+	if err := decode(raw, &struct{}{}); err != nil {
+		return nil, err
+	}
+	if d.Media != nil {
+		d.Store.SetMediaStore(d.Media)
+	}
+	var dbPath string
+	if d.DataDir != "" {
+		dbPath = filepath.Join(d.DataDir, "courier.db")
+	}
+	return d.Store.StorageUsage(ctx, dbPath)
+}
+
+func storageCleanup(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
+	var p struct {
+		RoomIDs         []string `json:"room_ids"`
+		OlderThanMS     *int64   `json:"older_than_ms"`
+		IncludeStickers *bool    `json:"include_stickers"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	if d.Media != nil {
+		d.Store.SetMediaStore(d.Media)
+	}
+	var filter store.StorageCleanupFilter
+	filter.RoomIDs = p.RoomIDs
+	if p.OlderThanMS != nil {
+		if *p.OlderThanMS < 0 {
+			return nil, invalidParams("older_than_ms")
+		}
+		filter.OlderThanMS = *p.OlderThanMS
+	}
+	if p.IncludeStickers != nil {
+		filter.IncludeStickers = *p.IncludeStickers
+	}
+	return d.Store.CleanupStorage(ctx, filter)
 }

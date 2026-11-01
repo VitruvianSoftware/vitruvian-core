@@ -54,9 +54,8 @@ rust_binary(
         "agents.tsv",
         "permissions.tsv",
         "workflow-allowlist.txt",
-        # branch-delete's gate.
+        # branch-delete's gate, found beside this binary or in its runfiles.
         "//tools/landed",
-        "//tools/landed:landed.sh",
     ],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
@@ -84,14 +83,37 @@ alias(
     visibility = ["//visibility:public"],
 )
 
+# branch-delete run end to end, as `bazel run` and from runfiles: it must find
+# the //tools/landed gate either way. No key, so it stops before GitHub.
+rust_test(
+    name = "branch_delete_gate_test",
+    size = "small",
+    srcs = ["tests/branch_delete_gate.rs"],
+    data = [
+        "agents.tsv",
+        ":agent-app",
+    ],
+    edition = "2021",
+    env = {
+        "AGENT_APP_BIN": "$(rootpath :agent-app)",
+        "AGENT_REGISTRY_TSV": "$(rootpath agents.tsv)",
+    },
+)
+
 test_suite(
     name = "agent-app_test",
-    tests = [":permission_drift_lib_test"],
+    tests = [
+        ":branch_delete_gate_test",
+        ":permission_drift_lib_test",
+    ],
 )
 
 test_suite(
     name = "agent_app_test",
-    tests = [":permission_drift_lib_test"],
+    tests = [
+        ":branch_delete_gate_test",
+        ":permission_drift_lib_test",
+    ],
 )
 
 test_suite(
@@ -151,7 +173,9 @@ rust_test(
     data = [
         "agents.tsv",
         "permissions.tsv",
+        "//tools/landed",
     ],
     edition = "2021",
+    env = {"LANDED_BIN": "$(rootpath //tools/landed)"},
     rustc_flags = ["-Copt-level=3"],
 )

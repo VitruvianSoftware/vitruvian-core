@@ -67,8 +67,10 @@ passes it on any one of four proofs: its tip is on `main`; merging it into
 PR merged and every commit after the head is empty, a merge with no hand-made
 resolution, or a patch `main` already has. Everything else is kept, including
 work that looks abandoned: deleting that is a person's call, on GitHub. The
-gate is the committed `//tools/landed` binary; `AGENT_APP_LANDED` replaces it
-only under `bazel test`, so an agent cannot name a gate of its own.
+gate is the `//tools/landed` binary built with agent-app, found beside it (in
+`bazel-bin`) or in its runfiles, never in the source checkout, which has no
+copy. `AGENT_APP_LANDED` replaces it only under `bazel test`, so an agent
+cannot name a gate of its own.
 
 **Actions write is wren's only** ([`permissions.tsv`](permissions.tsv)). The
 three run commands check that file first and refuse for any other agent,

@@ -58,6 +58,7 @@ go_test(
         "privacy_test.go",
         "send_test.go",
         "stickers_test.go",
+        "storage_catalog_test.go",
         "typing_test.go",
     ],
     embed = [":actions"],

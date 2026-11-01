@@ -29,12 +29,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let lifecycle = SystemLifecycleModel()
     /// Dock badge mode and menu-bar status item settings.
     let dockPreferences = DockAndTrayPreferences()
+    /// Shared Appearance preferences (`AppearancePreferences`: themes, zoom, fonts, confetti).
+    let appearance = AppearancePreferences()
+    /// Shared ⌘J Command Bar model (`CommandBarModel`).
+    let commandBar: CommandBarModel
     /// Shared Settings navigation and search model (`⌘,`).
     let settingsNavigation = SettingsNavigationModel()
     /// Shared per-account and global notification preferences (the single instance owned by `inbox.preferences`).
     var notificationPreferences: NotificationPreferences { inbox.preferences.notifications }
     /// Accounts and Bridges settings model (`AccountsAndBridgesModel`).
     let accountsAndBridges: AccountsAndBridgesModel
+    /// Local storage breakdown and media cleanup model (`StorageModel`).
+    let storage: StorageModel
     /// Local problem report bundle model (`ProblemReportModel`).
     let problemReport: ProblemReportModel
     /// Shared keyboard shortcut registry read by menus, the ⌘/ sheet, and the Settings ▸ Shortcuts recorder.
@@ -72,6 +78,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menuCoordinator: menuCoordinator,
         focus: messageFocus,
         hotkeys: hotkeys,
+        commandBar: commandBar,
+        appearance: appearance,
         bringMainWindowForward: { [weak self] in
             guard let self else { return true }
             guard !self.inboxUI.isMainWindowKey else { return true }
@@ -181,6 +189,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let accountsAndBridges = AccountsAndBridgesModel(appModel: model, lifecycle: lifecycle)
         self.accountsAndBridges = accountsAndBridges
         settingsNavigation.bind(accountsAndBridges: accountsAndBridges)
+        storage = StorageModel(appModel: model, lifecycle: lifecycle)
         problemReport = ProblemReportModel(appModel: model)
         spaces = SpacesModel(appModel: model, inbox: inbox, lifecycle: lifecycle)
         labels = LabelsModel(appModel: model, lifecycle: lifecycle)
@@ -202,17 +211,63 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             hotkeys: hotkeys
         )
         search = SearchModel(appModel: model, recents: RecentSearches(), open: { [model] in model.open($0) })
+        let commandBar = CommandBarModel(
+            lifecycle: lifecycle,
+            recentChatsProvider: { [weak inbox] in
+                guard let inbox else { return [] }
+                let byID = Dictionary(uniqueKeysWithValues: inbox.rows.map { ($0.roomID, $0) })
+                let recents = inbox.recentlyViewedRoomIDs.compactMap { byID[$0] }
+                return recents.isEmpty ? Array(inbox.rows.prefix(15)) : recents
+            },
+            onSelectRecentChat: { [weak inbox] roomID in
+                inbox?.select(roomID)
+            }
+        )
+        self.commandBar = commandBar
         // The inbox's buttons: Reconnect signs that account in again (the banner's account, or with none the network's
         // own sign-in), as Add does (Google Messages warns first).
         inbox.onAddNetwork = { login.showPicker() }
         inbox.onReconnect = { network, accountID in login.begin(network: network, accountID: accountID) }
         super.init()
+        commandBar.commandsProvider = { [weak self] in
+            guard let self else { return [] }
+            return CommandSet.all(
+                inbox: self.inbox,
+                spaces: self.spaces,
+                search: self.search,
+                actions: self.messageActions,
+                conversation: self.conversation,
+                composer: self.conversation.composer,
+                login: self.login,
+                appearance: self.appearance,
+                navigation: self.settingsNavigation,
+                lifecycle: self.lifecycle,
+                hotkeys: self.hotkeys,
+                detachedRegistry: self.detachedWindows,
+                openSettingsWindow: { [weak self] in self?.menuCoordinator.openSettings(.general) },
+                presentReportProblem: { [weak self] in self?.menuCoordinator.openSettings(.reportProblem) },
+                restartNotificationCenter: { [weak self] in self?.notifier.restartNotificationCenter() },
+                performDeleteMedia: { [weak self] in
+                    guard let self else { return }
+                    self.menuCoordinator.openSettings(.storage)
+                    Task { await self.storage.deleteMedia(olderThan: .allTime) }
+                },
+                openRecentlyViewedChats: { [weak self] in self?.commandBar.openInRecentChatsMode() },
+                toggleSidebar: { [weak self] in self?.menuCoordinator.toggleSidebar() },
+                focusApp: { [weak self] in self?.menuCoordinator.focusApp() }
+            )
+        }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        menuCoordinator.onOpenCommandBar = { [weak self] in
+            self?.commandBar.toggle()
+        }
         appNapActivity = ProcessInfo.processInfo.beginActivity(
             options: .userInitiatedAllowingIdleSystemSleep,
             reason: "Courier receives messages and shows notifications while its window is closed")
+        // The Dock shows the bundle's icon until the one chosen in Settings ▸ Appearance is put back.
+        appearance.applySavedAppIcon()
         // Copies made to open received files last until the next launch.
         OpenFileCache.shared.clear()
         PictureInPictureController.shared.onReturnToChat = { [windowOpener, model] roomID, messageID in

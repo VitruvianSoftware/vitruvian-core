@@ -17,4 +17,10 @@ func TestEveryFeatureIsAllowedByDefault(t *testing.T) {
 		require.True(t, p.Allowed(f), f)
 	}
 	require.True(t, p.Allowed("a_feature_added_later"), "Always says yes to anything")
+
+	var denied Provider = NoPlan{}
+	for _, f := range Features {
+		require.False(t, denied.Allowed(f), f)
+	}
+	require.Equal(t, "Available with a plan", UnavailableMessage)
 }

@@ -1,6 +1,6 @@
 {
   "name": "vitruvian-roborock",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Check on and control a Roborock vacuum: status, live map, start, pause, dock and mop wash.",
   "author": {
     "name": "VitruvianSoftware",

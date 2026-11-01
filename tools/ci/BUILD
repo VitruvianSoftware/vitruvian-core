@@ -72,8 +72,6 @@ exports_files([
     "release-pr-dequeue_test.sh",
     "relevant-paths.sh",
     "relevant-paths_test.sh",
-    "require-dev-soak.sh",
-    "require-dev-soak_test.sh",
     "require-pinned-actions.sh",
     "secret-scan.sh",
     "secret-scan_test.sh",
@@ -1064,25 +1062,18 @@ rust_binary(
     ],
 )
 
-sh_test(
+# Black-box: runs the REAL binary with a fake gh on PATH, the way the
+# generated *-require-dev-soak jobs call it. Ported case for case from the
+# former require-dev-soak_test.sh.
+rust_test(
     name = "require_dev_soak_test",
     size = "small",
-    srcs = ["require-dev-soak_test.sh"],
-    args = ["$(location require-dev-soak.sh)"],
-    data = [
-        "require-dev-soak.sh",
-    ],
-)
-
-sh_test(
-    name = "require_dev_soak_rs_test",
-    size = "small",
-    srcs = ["require-dev-soak_test.sh"],
-    args = ["$(location :require_dev_soak)"],
-    data = [
-        "require-dev-soak.sh",
-        ":require_dev_soak",
-    ],
+    srcs = ["src/require_dev_soak/tests.rs"],
+    data = [":require_dev_soak"],
+    edition = "2021",
+    env = {"BIN": "$(rootpath :require_dev_soak)"},
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":ci_testkit"],
 )
 
 # backstage-boot-smoke

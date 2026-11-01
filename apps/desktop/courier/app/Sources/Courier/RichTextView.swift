@@ -17,6 +17,8 @@ struct RichTextView: View {
     var italic = false
     var now: Date = Date()
     var detectDates = true
+    /// The size of message text (the body style's 13 pt, times the font size setting and the zoom level).
+    @Environment(\.courierMessagePointSize) private var pointSize
 
     var body: some View {
         let blocks = RichTextLayout.blocks(of: rich)
@@ -68,7 +70,7 @@ struct RichTextView: View {
         case .code:
             ScrollView(.horizontal, showsIndicators: true) {
                 Text(block.lines.map { $0.map(\.text).joined() }.joined(separator: "\n"))
-                    .font(.system(.callout, design: .monospaced))
+                    .font(.system(size: round(pointSize * 12 / 13 * 2) / 2, design: .monospaced)) // the callout style
                     .textSelection(.enabled)
                     .fixedSize()
                     .padding(.horizontal, 8)
@@ -99,7 +101,7 @@ struct RichTextView: View {
             } else {
                 piece = AttributedString(run.text)
             }
-            var font = run.code ? Font.system(.body, design: .monospaced) : Font.body
+            var font = Font.system(size: pointSize, design: run.code ? .monospaced : .default)
             if run.bold || run.mention != nil { font = font.bold() }
             if run.italic { font = font.italic() }
             piece.font = font

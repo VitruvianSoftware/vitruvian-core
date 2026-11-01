@@ -1575,4 +1575,28 @@ final class HotkeyRegistryTests: XCTestCase {
         conversation.composer.insertAsDraft(RichText(text: "locked draft", entities: []))
         XCTAssertEqual(conversation.composer.text, "", "ComposerModel.insertAsDraft must be refused while locked")
     }
+
+    func testCommandBarTalkToTypeAndZoomHotkeysRegisteredAndLockedGated() {
+        let registry = HotkeyRegistry(defaults: defaults)
+        XCTAssertEqual(
+            registry.chords(for: HotkeyID.commandBar),
+            [KeyChord(key: "j", command: true)]
+        )
+        XCTAssertEqual(
+            registry.chords(for: HotkeyID.talkToType),
+            [KeyChord(key: "d", command: true, shift: true)]
+        )
+        XCTAssertEqual(
+            registry.chords(for: HotkeyID.zoomIn),
+            [KeyChord(key: "=", command: true)]
+        )
+        XCTAssertEqual(
+            registry.chords(for: HotkeyID.zoomOut),
+            [KeyChord(key: "-", command: true)]
+        )
+        XCTAssertEqual(
+            registry.chords(for: HotkeyID.resetZoom),
+            [KeyChord(key: "0", command: true)]
+        )
+    }
 }

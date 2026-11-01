@@ -12,7 +12,7 @@
     "jsonrpc": "2.0",
     "id": 1,
     "result": {
-      "protocol_version": 10,
+      "protocol_version": 11,
       "schema_version": 10,
       "go_version": "go1.26.2",
       "bridges": [

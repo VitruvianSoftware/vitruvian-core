@@ -76,6 +76,15 @@ struct VoiceNoteView: View {
     }
 
     var body: some View {
+        if message.showsMediaRemovedPlaceholder {
+            RemovedMediaPlaceholderView(message: message)
+        } else {
+            playerContent
+        }
+    }
+
+    @ViewBuilder
+    private var playerContent: some View {
         HStack(spacing: 10) {
             playPauseButton
 

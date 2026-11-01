@@ -64,72 +64,106 @@ struct MainWindow: View {
     var detachedWindows: DetachedWindowRegistry? = nil
     @ObservedObject var hotkeys: HotkeyRegistry
     var hotkeyDispatcher: HotkeyDispatcher? = nil
+    var commandBar: CommandBarModel? = nil
+    var appearance: AppearancePreferences? = nil
     var onOpenShortcutsSettings: () -> Void = {}
     @Environment(\.openWindow) private var openWindow
     @Environment(\.controlActiveState) private var controlActiveState
 
+    private var preferredColorScheme: ColorScheme? {
+        switch appearance?.themeMode {
+        case .light: .light
+        case .dark: .dark
+        case .system, .none: nil
+        }
+    }
+
+    private var overlaidContent: some View {
+        content
+            .frame(minWidth: 480, maxWidth: .infinity, minHeight: 320, maxHeight: .infinity)
+            .overlay {
+                if search.phase != .closed {
+                    SearchOverlay(
+                        search: search,
+                        inbox: inbox,
+                        composerPreferences: composerPreferences,
+                        onOpenCommandBar: { initialQuery in
+                            commandBar?.open(initialQuery: initialQuery)
+                        }
+                    )
+                }
+            }
+            .overlay {
+                if let commandBar, commandBar.isPresented {
+                    CommandBarOverlay(model: commandBar)
+                }
+            }
+            .overlay {
+                if let appearance {
+                    ConfettiOverlayView(triggerCount: appearance.confettiTriggerCount)
+                }
+            }
+            .overlay {
+                if conversation.carousel.isPresented {
+                    AttachmentCarouselOverlay(
+                        model: conversation.carousel,
+                        onGoToMessage: { item in
+                            conversation.closeLightbox()
+                            model.open(.message(roomID: item.roomID, eventID: item.eventID))
+                        },
+                        onReact: { item, emoji in
+                            Task { await conversation.react(to: item.eventID, key: emoji) }
+                        },
+                        onReply: { item in
+                            conversation.closeLightbox()
+                            if let msg = conversation.message(item.eventID, from: .chat),
+                               let action = conversation.replyAction(for: msg) {
+                                Task { await messageActions.perform(action, on: item.eventID, from: .chat) }
+                            }
+                        },
+                        onCopyImage: { item in
+                            guard !item.viewOnce,
+                                  isLocalMediaStorePath(item.mediaPath),
+                                  let nsImage = NSImage(contentsOfFile: item.mediaPath)
+                            else { return }
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.writeObjects([nsImage])
+                            conversation.onToast(String(localized: "Copied image"))
+                        },
+                        onQuickLook: { item in
+                            guard !item.viewOnce, isLocalMediaStorePath(item.mediaPath) else { return }
+                            QuickLookPreviewCoordinator.shared.preview(
+                                fileAtPath: item.mediaPath,
+                                suggestedName: item.fileName
+                            )
+                        },
+                        onDownload: { item in
+                            guard !item.viewOnce, isLocalMediaStorePath(item.mediaPath) else { return }
+                            let downloader = AttachmentDownloader(preferences: composerPreferences)
+                            if let saved = try? downloader.download(
+                                sourcePath: item.mediaPath,
+                                suggestedName: item.fileName
+                            ) {
+                                conversation.onToast(String(localized: "Saved \(saved.lastPathComponent)"))
+                            }
+                        },
+                        onClose: {
+                            conversation.closeLightbox()
+                        }
+                    )
+                }
+            }
+            // A chat's right-click menu opens search in that chat.
+            .environment(\.searchInChat, { search.show(in: $0) })
+            .environment(\.openDetachedWindow, { target in detachedWindows?.open(target) })
+            .environment(\.appearancePreferences, appearance)
+            .courierTextZoom(appearance)
+            .preferredColorScheme(preferredColorScheme)
+    }
+
     var body: some View {
         LockableWindowContent(lifecycle: lifecycle) {
-            content
-                .frame(minWidth: 480, maxWidth: .infinity, minHeight: 320, maxHeight: .infinity)
-                .overlay {
-                    if search.phase != .closed {
-                        SearchOverlay(search: search, inbox: inbox, composerPreferences: composerPreferences)
-                    }
-                }
-                .overlay {
-                    if conversation.carousel.isPresented {
-                        AttachmentCarouselOverlay(
-                            model: conversation.carousel,
-                            onGoToMessage: { item in
-                                conversation.closeLightbox()
-                                model.open(.message(roomID: item.roomID, eventID: item.eventID))
-                            },
-                            onReact: { item, emoji in
-                                Task { await conversation.react(to: item.eventID, key: emoji) }
-                            },
-                            onReply: { item in
-                                conversation.closeLightbox()
-                                if let msg = conversation.message(item.eventID, from: .chat),
-                                   let action = conversation.replyAction(for: msg) {
-                                    Task { await messageActions.perform(action, on: item.eventID, from: .chat) }
-                                }
-                            },
-                            onCopyImage: { item in
-                                guard !item.viewOnce,
-                                      isLocalMediaStorePath(item.mediaPath),
-                                      let nsImage = NSImage(contentsOfFile: item.mediaPath)
-                                else { return }
-                                NSPasteboard.general.clearContents()
-                                NSPasteboard.general.writeObjects([nsImage])
-                                conversation.onToast(String(localized: "Copied image"))
-                            },
-                            onQuickLook: { item in
-                                guard !item.viewOnce, isLocalMediaStorePath(item.mediaPath) else { return }
-                                QuickLookPreviewCoordinator.shared.preview(
-                                    fileAtPath: item.mediaPath,
-                                    suggestedName: item.fileName
-                                )
-                            },
-                            onDownload: { item in
-                                guard !item.viewOnce, isLocalMediaStorePath(item.mediaPath) else { return }
-                                let downloader = AttachmentDownloader(preferences: composerPreferences)
-                                if let saved = try? downloader.download(
-                                    sourcePath: item.mediaPath,
-                                    suggestedName: item.fileName
-                                ) {
-                                    conversation.onToast(String(localized: "Saved \(saved.lastPathComponent)"))
-                                }
-                            },
-                            onClose: {
-                                conversation.closeLightbox()
-                            }
-                        )
-                    }
-                }
-                // A chat's right-click menu opens search in that chat.
-                .environment(\.searchInChat, { search.show(in: $0) })
-                .environment(\.openDetachedWindow, { target in detachedWindows?.open(target) })
+            overlaidContent
                 .onChange(of: controlActiveState, initial: true) { _, state in
                     ui.isMainWindowKey = state == .key
                 }
@@ -137,6 +171,7 @@ struct MainWindow: View {
                 .onDisappear {
                     ui.isMainWindowKey = false
                     search.close()
+                    commandBar?.close()
                     conversation.composer.voiceRecorder.cancelImmediately()
                     conversation.thread.composer.voiceRecorder.cancelImmediately()
                     conversation.composer.isStickerPickerPresented = false
@@ -299,9 +334,14 @@ struct MainWindow: View {
                         } else if model.selectedRoomID != nil {
                             ConversationView(conversation: conversation, composer: conversation.composer, inbox: inbox,
                                              messageActions: messageActions, scheduled: scheduled, preferences: composerPreferences,
-                                             thread: conversation.thread, focus: focus, appModel: model)
+                                             thread: conversation.thread, focus: focus, appModel: model,
+                                             appearance: appearance)
                         } else {
-                            NoChatSelected()
+                            NoChatSelected(
+                                appearance: appearance,
+                                rows: inbox.rows,
+                                onSelectRoom: { roomID in inbox.select(roomID) }
+                            )
                         }
                     }
                     if conversation.isShowingCalendar {
@@ -388,11 +428,45 @@ struct MainWindow: View {
 }
 
 /// The right-hand pane while no chat is open.
-private struct NoChatSelected: View {
+struct NoChatSelected: View {
+    var appearance: AppearancePreferences? = nil
+    var rows: [InboxRow] = []
+    var onSelectRoom: (String) -> Void = { _ in }
+
     var body: some View {
-        Text(String(localized: "Select a chat"))
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        ZStack {
+            if let appearance, appearance.showEmptyStateBackground, appearance.defaultWallpaper != .none {
+                ChatWallpaperCanvasView(
+                    preset: appearance.defaultWallpaper,
+                    customImagePath: appearance.customWallpaperPath,
+                    opacity: appearance.wallpaperOpacity,
+                    blur: appearance.wallpaperBlur,
+                    reduceTransparency: appearance.reduceTransparency
+                )
+            }
+            if let appearance, appearance.showHoneycombCards {
+                EmptyStateUnreadCardsView(
+                    unreadRows: rows,
+                    redactNamesAndPictures: appearance.redactNamesAndPictures,
+                    onSelectRoom: onSelectRoom
+                )
+            } else {
+                Text(String(localized: "Select a chat"))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+private struct AppearancePreferencesEnvironmentKey: EnvironmentKey {
+    static let defaultValue: AppearancePreferences? = nil
+}
+
+extension EnvironmentValues {
+    var appearancePreferences: AppearancePreferences? {
+        get { self[AppearancePreferencesEnvironmentKey.self] }
+        set { self[AppearancePreferencesEnvironmentKey.self] = newValue }
     }
 }
 

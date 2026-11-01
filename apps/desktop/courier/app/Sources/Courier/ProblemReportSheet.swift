@@ -14,15 +14,19 @@ import UniformTypeIdentifiers
 public struct ProblemReportSheet: View {
     @ObservedObject var model: ProblemReportModel
     var pasteboard: TextPasteboard = SystemPasteboard()
+    public var reportUploader: any ReportUploader = UnavailableReportUploader()
     var onDismiss: () -> Void = {}
+    @State private var uploadStubNotice: String?
 
     public init(
         model: ProblemReportModel,
         pasteboard: TextPasteboard = SystemPasteboard(),
+        reportUploader: any ReportUploader = UnavailableReportUploader(),
         onDismiss: @escaping () -> Void = {}
     ) {
         self.model = model
         self.pasteboard = pasteboard
+        self.reportUploader = reportUploader
         self.onDismiss = onDismiss
     }
 
@@ -189,6 +193,16 @@ public struct ProblemReportSheet: View {
                 }
             }
 
+            if let uploadStubNotice {
+                HStack(spacing: 6) {
+                    Image(systemName: "info.circle.fill")
+                        .foregroundStyle(.secondary)
+                    Text(uploadStubNotice)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             HStack {
                 Button(String(localized: "Cancel")) {
                     onDismiss()
@@ -196,6 +210,11 @@ public struct ProblemReportSheet: View {
                 .keyboardShortcut(.cancelAction)
 
                 Spacer()
+
+                Button(String(localized: "Upload Report (Not available yet)")) {
+                    uploadStubNotice = reportUploader.unavailableReason
+                }
+                .help(reportUploader.unavailableReason)
 
                 Button(String(localized: "Save Problem Report…")) {
                     chooseSaveDestination()

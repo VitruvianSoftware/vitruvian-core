@@ -66,6 +66,12 @@ struct MessageActions {
     var timeFormat: TimeFormatPreference = .system
     /// Whether message timestamps are shown in the timeline header (`ComposerPreferences.showMessageTimestamps`).
     var showMessageTimestamps = true
+    /// Optional appearance preferences for theme bubble colours, font scaling, and name/avatar redaction.
+    var appearance: AppearancePreferences? = nil
+    /// Per-message inline translation disposition (`MessageTranslationRowView`).
+    var translation: (String) -> (targetLanguage: String, disposition: AIProviderDisposition)? = { _ in nil }
+    /// Dismisses an inline translation row for a message ID.
+    var dismissTranslation: (String) -> Void = { _ in }
     /// Pops a video message out into the floating Picture-in-Picture window.
     var popOutPiP: @MainActor (TimelineMessage) -> Void = { message in
         PictureInPictureController.shared.show(
@@ -326,6 +332,8 @@ struct MessageRowView: View {
     let showsSent: Bool
     let actions: MessageActions
     @ObservedObject var ui: MessageUI
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.appearancePreferences) private var appearanceEnv
     @State private var isHovering = false
     /// The highlight's tint, from 1 to 0.
     @State private var highlight: Double = 0
@@ -349,6 +357,13 @@ struct MessageRowView: View {
                     if message.mine { bookmarkMark }
                     bubble
                     if !message.mine { bookmarkMark }
+                }
+                if let translated = actions.translation(message.id) {
+                    MessageTranslationRowView(
+                        targetLanguage: translated.targetLanguage,
+                        disposition: translated.disposition,
+                        onDismiss: { actions.dismissTranslation(message.id) }
+                    )
                 }
                 if message.editFailed != nil { editNotSent }
                 if ui.historyOpen.contains(message.id) {
@@ -477,11 +492,18 @@ struct MessageRowView: View {
 
     // MARK: Parts
 
+    private var resolvedAppearance: AppearancePreferences? {
+        actions.appearance ?? appearanceEnv
+    }
+
     @ViewBuilder
     private var avatarColumn: some View {
+        let isRedacted = resolvedAppearance?.redactNamesAndPictures ?? false
         if message.startsGroup {
             AvatarView(path: message.senderAvatarPath, initials: InboxRow.initials(of: message.senderName),
                        seed: message.senderName)
+                .blur(radius: isRedacted ? 6 : 0)
+                .clipShape(Circle())
                 .frame(width: Self.avatarSize, height: Self.avatarSize)
                 .onHover { hovering in
                     if !message.mine {
@@ -494,7 +516,14 @@ struct MessageRowView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 6) {
+        let isRedacted = resolvedAppearance?.redactNamesAndPictures ?? false
+        let displaySenderName = isRedacted
+            ? AppearancePreferences.redactedText(message.senderName, kind: .name)
+            : message.senderName
+        let senderColor: Color = (resolvedAppearance?.perParticipantBubbleColors ?? false)
+            ? (Color(hex: AppearancePreferences.participantBubbleColorHex(for: message.sender, isDark: colorScheme == .dark)) ?? AvatarView.color(for: message.senderName))
+            : AvatarView.color(for: message.senderName)
+        return HStack(spacing: 6) {
             if let net = actions.messageNetwork(message), !net.isEmpty {
                 NetworkBadge(
                     network: net,
@@ -503,9 +532,9 @@ struct MessageRowView: View {
                 )
             }
             if !message.mine {
-                Text(message.senderName)
+                Text(displaySenderName)
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(AvatarView.color(for: message.senderName))
+                    .foregroundStyle(senderColor)
                     .onHover { hovering in
                         actions.hoverSender(hovering, message)
                     }
@@ -603,6 +632,9 @@ struct MessageRowView: View {
             ViewOnceChip(message: message) {
                 actions.openViewOnce(message)
             }
+            caption
+        } else if message.showsMediaRemovedPlaceholder {
+            RemovedMediaPlaceholderView(message: message)
             caption
         } else if !message.galleryItems.isEmpty {
             GalleryGridView(message: message, onOpenLightbox: actions.openLightbox)
@@ -719,6 +751,19 @@ struct MessageRowView: View {
     private var fill: Color {
         if message.suppressesBubbleBackground { return .clear }
         if message.kind == .deleted || message.kind == .undecryptable { return Color.primary.opacity(0.06) }
+        if let appearance = resolvedAppearance {
+            let effective = appearance.effectiveTheme(for: message.roomID)
+            let isDark = colorScheme == .dark
+            if message.mine {
+                return Color(hex: isDark ? effective.outgoingBubbleHexDark : effective.outgoingBubbleHexLight) ?? Color.accentColor
+            }
+            if appearance.perParticipantBubbleColors {
+                return Color(hex: AppearancePreferences.participantBubbleColorHex(for: message.sender, isDark: isDark)) ?? Color.primary.opacity(0.09)
+            }
+            if effective.preset != .classicTeal || effective.isOverriddenForRoom || appearance.incomingBubbleColorHex != nil {
+                return Color(hex: isDark ? effective.incomingBubbleHexDark : effective.incomingBubbleHexLight) ?? Color.primary.opacity(0.09)
+            }
+        }
         return message.mine ? Color.accentColor : Color.primary.opacity(0.09)
     }
 
@@ -1110,6 +1155,15 @@ public struct StickerAttachmentView: View {
     }
 
     public var body: some View {
+        if message.showsMediaRemovedPlaceholder {
+            RemovedMediaPlaceholderView(message: message)
+        } else {
+            stickerContent
+        }
+    }
+
+    @ViewBuilder
+    private var stickerContent: some View {
         let size = frameSize
         let animate = Self.shouldAnimate(reduceMotion: reduceMotionEnabled)
         ZStack {
@@ -1244,6 +1298,15 @@ public struct GIFAttachmentView: View {
     }
 
     public var body: some View {
+        if message.showsMediaRemovedPlaceholder {
+            RemovedMediaPlaceholderView(message: message)
+        } else {
+            gifContent
+        }
+    }
+
+    @ViewBuilder
+    private var gifContent: some View {
         let size = frameSize(for: loadedNSImage)
         let animate = Self.shouldAnimate(
             reduceMotion: accessibilityReduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion

@@ -254,6 +254,95 @@ final class SettingsSearchModelTests: XCTestCase {
         XCTAssertTrue(systemUS.contains("1:30"))
         XCTAssertTrue(systemGB.contains("13:30"))
     }
+
+    func testAppearanceSettingsCatalogCoversEveryMilestone47AppearanceSetting() {
+        let ids = Set(SettingsNavigationModel.allSettings.map(\.id))
+        let expectedAppearanceIDs = [
+            "appearance.themeMode",
+            "appearance.themePreset",
+            "appearance.wallpaper",
+            "appearance.appIcon",
+            "appearance.fontSize",
+            "appearance.zoomLevel",
+            "appearance.reduceTransparency",
+            "appearance.enableMessageAnimations",
+            "appearance.balanceMessageText",
+            "appearance.usePointerCursor",
+            "appearance.showFeedbackWidget",
+            "appearance.redactNamesAndPictures",
+            "appearance.customCSS",
+        ]
+        for expectedID in expectedAppearanceIDs {
+            XCTAssertTrue(ids.contains(expectedID), "Missing SettingDefinition \(expectedID) in SettingsNavigationModel.allSettings")
+            XCTAssertTrue(
+                SettingsNavigationModel.anchoredSettingIDs.contains(expectedID),
+                "Missing highlight anchor \(expectedID) in SettingsNavigationModel.anchoredSettingIDs"
+            )
+        }
+
+        let nav = SettingsNavigationModel()
+        for (query, expectedID) in [
+            ("Theme", "appearance.themeMode"),
+            ("Colour theme", "appearance.themePreset"),
+            ("Chat wallpaper", "appearance.wallpaper"),
+            ("App Icon", "appearance.appIcon"),
+            ("Font size", "appearance.fontSize"),
+            ("Zoom level", "appearance.zoomLevel"),
+            ("Reduce transparency", "appearance.reduceTransparency"),
+            ("Enable message animations", "appearance.enableMessageAnimations"),
+            ("Balance message text", "appearance.balanceMessageText"),
+            ("Use pointer cursor", "appearance.usePointerCursor"),
+            ("Show feedback widget", "appearance.showFeedbackWidget"),
+            ("Redact names and pictures", "appearance.redactNamesAndPictures"),
+            ("Custom CSS", "appearance.customCSS"),
+        ] {
+            nav.searchQuery = query
+            XCTAssertTrue(
+                nav.suggestions.contains(where: { $0.id == expectedID && $0.pane == .appearance }),
+                "Expected search query '\(query)' to match \(expectedID) in .appearance pane"
+            )
+        }
+    }
+
+    func testStorageSettingsCatalogCoversEveryMilestone47StorageSetting() {
+        XCTAssertTrue(SettingsPaneID.allCases.contains { $0.rawValue == "storage" })
+        let ids = Set(SettingsNavigationModel.allSettings.map(\.id))
+        for expectedID in ["storage.overview", "storage.cleanupByAge", "storage.byRoom"] {
+            XCTAssertTrue(ids.contains(expectedID), "Missing SettingDefinition \(expectedID)")
+            XCTAssertTrue(
+                SettingsNavigationModel.anchoredSettingIDs.contains(expectedID),
+                "Missing highlight anchor \(expectedID)"
+            )
+        }
+    }
+
+    func testAIPlanAndIntegrationsSettingsCatalogCoversEveryMilestone47Setting() {
+        for rawPane in ["ai", "plan", "integrations"] {
+            XCTAssertTrue(
+                SettingsPaneID.allCases.contains { $0.rawValue == rawPane },
+                "Missing SettingsPaneID.\(rawPane)"
+            )
+        }
+        let ids = Set(SettingsNavigationModel.allSettings.map(\.id))
+        let expectedIDs = [
+            "ai.contextual",
+            "ai.translation",
+            "ai.talkToType",
+            "ai.slashCommands",
+            "plan.overview",
+            "plan.features",
+            "integrations.browserExtension",
+            "integrations.mobileApps",
+            "integrations.developer",
+        ]
+        for expectedID in expectedIDs {
+            XCTAssertTrue(ids.contains(expectedID), "Missing SettingDefinition \(expectedID)")
+            XCTAssertTrue(
+                SettingsNavigationModel.anchoredSettingIDs.contains(expectedID),
+                "Missing highlight anchor \(expectedID)"
+            )
+        }
+    }
 }
 
 @MainActor
