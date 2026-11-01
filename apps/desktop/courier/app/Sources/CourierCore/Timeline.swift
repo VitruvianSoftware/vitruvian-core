@@ -65,6 +65,11 @@ public struct GalleryItem: Equatable, Identifiable, Sendable {
     public let isAnimated: Bool
     public let isTranscoded: Bool
     public let caption: String
+    public let mediaRemoved: Bool
+
+    public var showsMediaRemovedPlaceholder: Bool {
+        kind.isMedia && mediaRemoved && mediaPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
     public init(
         id: String,
@@ -81,7 +86,8 @@ public struct GalleryItem: Equatable, Identifiable, Sendable {
         isGIF: Bool = false,
         isAnimated: Bool = false,
         isTranscoded: Bool = false,
-        caption: String = ""
+        caption: String = "",
+        mediaRemoved: Bool = false
     ) {
         self.id = id
         self.kind = kind
@@ -98,6 +104,7 @@ public struct GalleryItem: Equatable, Identifiable, Sendable {
         self.isAnimated = isAnimated
         self.isTranscoded = isTranscoded
         self.caption = caption
+        self.mediaRemoved = mediaRemoved
     }
 }
 
@@ -402,6 +409,16 @@ public struct TimelineMessage: Equatable, Identifiable, Sendable {
     public internal(set) var reactions: [ReactionChip]
     /// The first message of a run from one sender: it shows the name and the picture, and the others do not.
     public internal(set) var startsGroup: Bool
+    /// Whether this event's local media was removed via storage cleanup (`com.courier.media_removed == true`).
+    public let mediaRemoved: Bool
+
+    public static var mediaRemovedPlaceholderText: String {
+        String(localized: "Removed to free up space")
+    }
+
+    public var showsMediaRemovedPlaceholder: Bool {
+        kind.isMedia && mediaRemoved && mediaPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
     public init(
         id: String,
@@ -448,7 +465,8 @@ public struct TimelineMessage: Equatable, Identifiable, Sendable {
         call: CallNote?,
         reply: ReplyPreview?,
         reactions: [ReactionChip],
-        startsGroup: Bool
+        startsGroup: Bool,
+        mediaRemoved: Bool = false
     ) {
         self.id = id
         self.roomID = roomID
@@ -495,11 +513,12 @@ public struct TimelineMessage: Equatable, Identifiable, Sendable {
         self.reply = reply
         self.reactions = reactions
         self.startsGroup = startsGroup
+        self.mediaRemoved = mediaRemoved
     }
 
     /// Stickers render in a borderless container without the coloured text bubble background tint.
     public var suppressesBubbleBackground: Bool {
-        kind == .sticker && !viewOnce && sticker != nil
+        kind == .sticker && !viewOnce && !showsMediaRemovedPlaceholder && sticker != nil
     }
 
     /// A note of something that happened (a timer change, a call), not anyone's words: drawn as a line across the
@@ -727,6 +746,7 @@ public enum Timeline {
             && !message.isGIF
             && message.gif == nil
             && !message.viewOnce
+            && !message.showsMediaRemovedPlaceholder
             && message.reply == nil
             && message.thread == nil
             && !message.isEdited
@@ -776,7 +796,8 @@ public enum Timeline {
             isGIF: message.isGIF,
             isAnimated: message.isAnimated,
             isTranscoded: message.isTranscoded,
-            caption: message.body
+            caption: message.body,
+            mediaRemoved: message.mediaRemoved
         )
     }
 
@@ -956,6 +977,7 @@ public enum Timeline {
             let played = base.played ?? false
             let viewOnce = !isDeleted && shown.viewOnce
             let hideViewOnceMedia = isDeleted || (viewOnce && played)
+            let mediaRemoved = !isDeleted && shown.mediaRemoved
             built.append(TimelineMessage(
                 id: base.eventID, roomID: base.roomID, sender: base.sender, senderName: base.senderName,
                 senderAvatarPath: base.senderAvatarPath, mine: isMine(base), ts: base.ts,
@@ -990,7 +1012,7 @@ public enum Timeline {
                 expiresAt: base.expiresAt > 0 ? base.expiresAt : nil,
                 timerChange: base.type == "m.room.message" && !isDeleted ? TimerChange.of(base.content) : nil,
                 call: base.type == "m.room.message" && !isDeleted ? CallNote.of(base.content) : nil,
-                reply: nil, reactions: chips, startsGroup: false))
+                reply: nil, reactions: chips, startsGroup: false, mediaRemoved: mediaRemoved))
         }
 
         // Replies are resolved last, so a quote shows the text the quoted message has now.
@@ -1056,6 +1078,7 @@ public enum Timeline {
         var viewOnce = false
         var geoURI: String?
         var isTranscoded = false
+        var mediaRemoved = false
         var sticker: StickerAttachment?
         var gif: GIFAttachment?
     }
@@ -1098,8 +1121,10 @@ public enum Timeline {
             return Shown(kind: .undecryptable, body: "", rich: RichText(text: ""))
         case "m.sticker":
             let name = content["body"]?.stringValue ?? ""
-            let urlString = content["url"]?.stringValue ?? ""
-            let mediaURL = urlString.isEmpty ? event.mediaPath : urlString
+            let urlString = (content["url"]?.stringValue ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let mediaPath = event.mediaPath.trimmingCharacters(in: .whitespacesAndNewlines)
+            let mediaURL = urlString.isEmpty ? mediaPath : urlString
+            let mediaRemoved = (content["com.courier.media_removed"] == .bool(true)) && urlString.isEmpty && mediaPath.isEmpty
             let emoji = info?["fi.mau.bridged_sticker"]?["emoji"]?.stringValue
             let width = number("w").map(Int.init)
             let height = number("h").map(Int.init)
@@ -1117,7 +1142,7 @@ public enum Timeline {
                          width: width, height: height,
                          thumbnailPath: event.thumbnailPath, blurhash: blurhash,
                          isGIF: isGIF, isAnimated: isAnimated, viewOnce: viewOnce,
-                         isTranscoded: isTranscoded, sticker: sticker)
+                         isTranscoded: isTranscoded, mediaRemoved: mediaRemoved, sticker: sticker)
         case pollStartType:
             let start = content["org.matrix.msc3381.poll.start"]
             let question = event.poll?.question
@@ -1167,8 +1192,10 @@ public enum Timeline {
             let viewOnce = event.viewOnce ?? false
             let width = number("w").map(Int.init)
             let height = number("h").map(Int.init)
-            let urlString = content["url"]?.stringValue ?? ""
-            let mediaURL = urlString.isEmpty ? event.mediaPath : urlString
+            let urlString = (content["url"]?.stringValue ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let mediaPath = event.mediaPath.trimmingCharacters(in: .whitespacesAndNewlines)
+            let mediaURL = urlString.isEmpty ? mediaPath : urlString
+            let mediaRemoved = (content["com.courier.media_removed"] == .bool(true)) && urlString.isEmpty && mediaPath.isEmpty
             let gif: GIFAttachment? = isGIF && (kind == .image || kind == .video)
                 ? GIFAttachment(
                     mediaURL: mediaURL,
@@ -1184,7 +1211,7 @@ public enum Timeline {
                          thumbnailPath: event.thumbnailPath, blurhash: blurhash,
                          durationMS: durationMS, waveform: waveform,
                          isGIF: isGIF, isAnimated: isAnimated, viewOnce: viewOnce,
-                         isTranscoded: isTranscoded, gif: gif)
+                         isTranscoded: isTranscoded, mediaRemoved: mediaRemoved, gif: gif)
         }
 
         var body = original

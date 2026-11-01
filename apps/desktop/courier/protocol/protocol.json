@@ -2974,13 +2974,13 @@
       "errors": [-32020]
     },
     "storage.usage": {
-      "doc": "Inspect local SQLite database size, media cache categories, and per-chat cached media usage on this Mac.",
+      "doc": "Inspect local SQLite database size, media categories, and per-chat media usage on this Mac.",
       "params": "Empty",
       "result": "StorageUsageResult",
       "errors": []
     },
     "storage.cleanup": {
-      "doc": "Clear cached media files by chat and/or age while keeping message text, history, and user-imported stickers intact.",
+      "doc": "Delete local media files by chat and/or age while keeping message text, history, remote URLs, and user-imported stickers intact.",
       "params": "StorageCleanupParams",
       "result": "StorageCleanupResult",
       "errors": []

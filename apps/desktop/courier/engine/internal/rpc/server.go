@@ -58,7 +58,7 @@ import (
 // Protocol 9 adds bridge management (bridges.list, bridges.restart), account removal and sub-accounts
 // (accounts.remove, accounts.subAccounts, accounts.setSubAccount), and scrubbed diagnostics export (diagnostics.export).
 // Protocol 10 adds can_lookup_email on Account and Login so starting a DM by email follows engine capabilities.
-// Protocol 11 adds local storage inspection and media cache cleanup (storage.usage, storage.cleanup).
+// Protocol 11 adds local storage inspection and media deletion (storage.usage, storage.cleanup).
 const Protocol = 11
 
 // MaxFrameBytes is the longest line the engine reads, not counting its newline. A longer one closes the connection.

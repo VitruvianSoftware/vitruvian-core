@@ -604,6 +604,9 @@ struct MessageRowView: View {
                 actions.openViewOnce(message)
             }
             caption
+        } else if message.showsMediaRemovedPlaceholder {
+            RemovedMediaPlaceholderView(message: message)
+            caption
         } else if !message.galleryItems.isEmpty {
             GalleryGridView(message: message, onOpenLightbox: actions.openLightbox)
             caption
@@ -1110,6 +1113,15 @@ public struct StickerAttachmentView: View {
     }
 
     public var body: some View {
+        if message.showsMediaRemovedPlaceholder {
+            RemovedMediaPlaceholderView(message: message)
+        } else {
+            stickerContent
+        }
+    }
+
+    @ViewBuilder
+    private var stickerContent: some View {
         let size = frameSize
         let animate = Self.shouldAnimate(reduceMotion: reduceMotionEnabled)
         ZStack {
@@ -1244,6 +1256,15 @@ public struct GIFAttachmentView: View {
     }
 
     public var body: some View {
+        if message.showsMediaRemovedPlaceholder {
+            RemovedMediaPlaceholderView(message: message)
+        } else {
+            gifContent
+        }
+    }
+
+    @ViewBuilder
+    private var gifContent: some View {
         let size = frameSize(for: loadedNSImage)
         let animate = Self.shouldAnimate(
             reduceMotion: accessibilityReduceMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion

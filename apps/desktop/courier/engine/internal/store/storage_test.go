@@ -325,3 +325,111 @@ func TestCleanupStorageByAgeAndRoomPreservesEventsAndSharedOrUserStickerBlobs(t 
 	_, err = os.Stat(userStkPath)
 	require.NoError(t, err, "user-imported sticker (pack_id = 'user') must still be preserved when IncludeStickers is true")
 }
+
+func TestCleanupStoragePreservesRemoteURLsAndMarksRemovedMediaOnEvents(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "courier.db")
+	s, err := Open(dbPath)
+	require.NoError(t, err)
+	t.Cleanup(func() { s.Close() })
+
+	ms := &media.Store{Dir: filepath.Join(dir, "media")}
+	s.SetMediaStore(ms)
+
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!wa1", Network: "whatsapp", Name: "WhatsApp Room", CreatedAt: time.Unix(10, 0)}))
+
+	_, localImgURI, localImgPath := putTestBlob(t, ms, 0x31, 1024)
+	_, localOGURI, localOGPath := putTestBlob(t, ms, 0x32, 512)
+
+	// Event 1: image message with local url, remote thumbnail_url, and two link previews (one remote https og:image, one local blob og:image).
+	_, err = s.InsertEvent(ctx, Event{
+		RoomID:  "!wa1",
+		EventID: "$ev-mixed",
+		Sender:  "@alice:courier.local",
+		Type:    "m.room.message",
+		Content: json.RawMessage(`{
+			"msgtype":"m.image",
+			"body":"Look at https://example.com",
+			"url":"` + localImgURI + `",
+			"info":{"mimetype":"image/jpeg","thumbnail_url":"https://example.com/remote-thumb.png"},
+			"com.beeper.linkpreviews":[
+				{"matched_url":"https://example.com","og:title":"Example","og:image":"https://example.com/a.png"},
+				{"matched_url":"https://example.org","og:title":"Org","og:image":"` + localOGURI + `"}
+			]
+		}`),
+		TS:     time.UnixMilli(1000),
+		Status: "sent",
+	})
+	require.NoError(t, err)
+
+	// Event 2: text message with only a remote https og:image in link preview.
+	_, err = s.InsertEvent(ctx, Event{
+		RoomID:  "!wa1",
+		EventID: "$ev-remote-only",
+		Sender:  "@bob:courier.local",
+		Type:    "m.room.message",
+		Content: json.RawMessage(`{
+			"msgtype":"m.text",
+			"body":"Check https://example.com",
+			"com.beeper.linkpreviews":[
+				{"matched_url":"https://example.com","og:title":"Example","og:image":"https://example.com/a.png"}
+			]
+		}`),
+		TS:     time.UnixMilli(1500),
+		Status: "sent",
+	})
+	require.NoError(t, err)
+
+	report, err := s.CleanupStorage(ctx, StorageCleanupFilter{
+		RoomIDs: []string{"!wa1"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 2, report.RemovedBlobs)
+	require.Equal(t, int64(1024+512), report.FreedBytes)
+
+	_, err = os.Stat(localImgPath)
+	require.ErrorIs(t, err, os.ErrNotExist)
+	_, err = os.Stat(localOGPath)
+	require.ErrorIs(t, err, os.ErrNotExist)
+
+	// Verify $ev-mixed: local url and local og:image blanked, remote thumbnail_url and remote og:image preserved,
+	// and "com.courier.media_removed": true added while keeping body and msgtype.
+	mixedEv, ok, err := s.GetEvent(ctx, "$ev-mixed")
+	require.NoError(t, err)
+	require.True(t, ok)
+	var mixedContent map[string]any
+	require.NoError(t, json.Unmarshal(mixedEv.Content, &mixedContent))
+	require.Equal(t, "m.image", mixedContent["msgtype"])
+	require.Equal(t, "Look at https://example.com", mixedContent["body"])
+	require.Equal(t, "", mixedContent["url"])
+	require.Equal(t, true, mixedContent["com.courier.media_removed"])
+
+	mixedInfo, ok := mixedContent["info"].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "https://example.com/remote-thumb.png", mixedInfo["thumbnail_url"])
+
+	mixedPreviews, ok := mixedContent["com.beeper.linkpreviews"].([]any)
+	require.True(t, ok)
+	require.Len(t, mixedPreviews, 2)
+	lp0 := mixedPreviews[0].(map[string]any)
+	lp1 := mixedPreviews[1].(map[string]any)
+	require.Equal(t, "https://example.com/a.png", lp0["og:image"], "remote https og:image must be preserved")
+	require.Equal(t, "", lp1["og:image"], "local blob og:image must be blanked")
+
+	// Verify $ev-remote-only: completely untouched, keeps og:image and does not get com.courier.media_removed.
+	remoteEv, ok, err := s.GetEvent(ctx, "$ev-remote-only")
+	require.NoError(t, err)
+	require.True(t, ok)
+	var remoteContent map[string]any
+	require.NoError(t, json.Unmarshal(remoteEv.Content, &remoteContent))
+	_, hasRemovedFlag := remoteContent["com.courier.media_removed"]
+	require.False(t, hasRemovedFlag)
+	remotePreviews := remoteContent["com.beeper.linkpreviews"].([]any)
+	require.Equal(t, "https://example.com/a.png", remotePreviews[0].(map[string]any)["og:image"])
+
+	// Also verify clearEventMediaFields directly on an event with only remote URLs returns changed == false.
+	unchangedRaw, changed := clearEventMediaFields(string(remoteEv.Content))
+	require.False(t, changed)
+	require.Equal(t, string(remoteEv.Content), unchangedRaw)
+}

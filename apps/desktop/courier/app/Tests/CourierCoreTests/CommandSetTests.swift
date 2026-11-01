@@ -602,6 +602,30 @@ final class CommandSetTests: XCTestCase {
         XCTAssertTrue(lifecycle.isLocked)
         XCTAssertFalse(try XCTUnwrap(byID["Settings"]).isEnabled(), "commands are disabled while locked")
     }
+
+    func testDeleteMediaCommandAndCopyAvoidCacheWording() {
+        XCTAssertEqual(CommandSet.deleteMediaTitle, "Delete Media…")
+        XCTAssertEqual(CommandSet.deleteMediaOlderThanTitle("1 month"), "Delete media older than 1 month")
+        XCTAssertEqual(CommandSet.deleteMediaInThisChatTitle, "Delete media in this chat")
+        XCTAssertEqual(
+            CommandSet.deleteMediaConfirmation,
+            "This deletes photos, videos and files from this Mac. Messages stay, but the media can't be brought back."
+        )
+
+        var didDelete = false
+        let cmd = CommandSet.deleteMedia(performDelete: { didDelete = true })
+        XCTAssertEqual(cmd.id, "Delete Media…")
+        XCTAssertEqual(cmd.title, "Delete Media…")
+        XCTAssertEqual(
+            cmd.confirmation,
+            "This deletes photos, videos and files from this Mac. Messages stay, but the media can't be brought back."
+        )
+        XCTAssertFalse(cmd.title.localizedCaseInsensitiveContains("cache"))
+        XCTAssertFalse((cmd.confirmation ?? "").localizedCaseInsensitiveContains("cache"))
+        XCTAssertTrue(cmd.isEnabled())
+        cmd.run()
+        XCTAssertTrue(didDelete)
+    }
 }
 
 /// The open chat, as the commands read it when they run.

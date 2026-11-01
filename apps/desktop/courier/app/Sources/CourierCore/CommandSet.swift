@@ -582,6 +582,43 @@ public enum CommandSet {
         )
     }
 
+    // MARK: - Media Deletion Copy & Command
+
+    /// User-facing action title for deleting local media on this Mac.
+    public static let deleteMediaTitle = String(localized: "Delete Media…")
+
+    /// User-facing action title for age-scoped media deletion.
+    public static func deleteMediaOlderThanTitle(_ age: String) -> String {
+        String(localized: "Delete media older than \(age)")
+    }
+
+    /// User-facing action title for room-scoped media deletion.
+    public static let deleteMediaInThisChatTitle = String(localized: "Delete media in this chat")
+
+    /// User-facing confirmation copy explaining that deleting media removes local files permanently while keeping messages.
+    public static let deleteMediaConfirmation = String(
+        localized: "This deletes photos, videos and files from this Mac. Messages stay, but the media can't be brought back."
+    )
+
+    /// Command bar entry for deleting media from this Mac (`storage.cleanup`).
+    @MainActor
+    public static func deleteMedia(
+        performDelete: @escaping @MainActor () -> Void = {}
+    ) -> CourierCommand {
+        CourierCommand(
+            id: "Delete Media…",
+            title: deleteMediaTitle,
+            keys: nil,
+            category: .inbox,
+            confirmation: deleteMediaConfirmation,
+            isEnabled: { AppLockGate.shared.canPerform(.settingsChange) },
+            run: {
+                guard AppLockGate.shared.canPerform(.settingsChange) else { return }
+                performDelete()
+            }
+        )
+    }
+
     /// All Milestone 4.6 Settings, Help, and System commands for the command bar.
     @MainActor
     public static func settingsAndSystem(
@@ -592,7 +629,8 @@ public enum CommandSet {
         detachedRegistry: DetachedWindowRegistry,
         openSettingsWindow: @escaping @MainActor () -> Void = {},
         presentReportProblem: @escaping @MainActor () -> Void = {},
-        restartNotificationCenter: @escaping @MainActor () -> Void = {}
+        restartNotificationCenter: @escaping @MainActor () -> Void = {},
+        performDeleteMedia: @escaping @MainActor () -> Void = {}
     ) -> [CourierCommand] {
         [
             settings(navigation, openWindow: openSettingsWindow),
@@ -611,6 +649,7 @@ public enum CommandSet {
             Self.restartNotificationCenter(restartNotificationCenter),
             openSpaceInNewWindow(inbox, registry: detachedRegistry),
             showKeyboardShortcuts(hotkeys),
+            deleteMedia(performDelete: performDeleteMedia),
         ]
     }
 

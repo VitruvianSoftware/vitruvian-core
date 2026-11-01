@@ -359,22 +359,28 @@ func clearEventMediaFields(rawContent string) (string, bool) {
 		return rawContent, false
 	}
 	changed := false
-	if u, ok := m["url"].(string); ok && u != "" {
-		m["url"] = ""
-		changed = true
+	if u, ok := m["url"].(string); ok {
+		if _, isLocal := parseStorageMediaHash(u); isLocal {
+			m["url"] = ""
+			changed = true
+		}
 	}
 	if info, ok := m["info"].(map[string]any); ok {
-		if tu, ok := info["thumbnail_url"].(string); ok && tu != "" {
-			info["thumbnail_url"] = ""
-			changed = true
+		if tu, ok := info["thumbnail_url"].(string); ok {
+			if _, isLocal := parseStorageMediaHash(tu); isLocal {
+				info["thumbnail_url"] = ""
+				changed = true
+			}
 		}
 	}
 	if lps, ok := m["com.beeper.linkpreviews"].([]any); ok {
 		for _, item := range lps {
 			if lp, ok := item.(map[string]any); ok {
-				if img, ok := lp["og:image"].(string); ok && img != "" {
-					lp["og:image"] = ""
-					changed = true
+				if img, ok := lp["og:image"].(string); ok {
+					if _, isLocal := parseStorageMediaHash(img); isLocal {
+						lp["og:image"] = ""
+						changed = true
+					}
 				}
 			}
 		}
@@ -382,6 +388,7 @@ func clearEventMediaFields(rawContent string) (string, bool) {
 	if !changed {
 		return rawContent, false
 	}
+	m["com.courier.media_removed"] = true
 	encoded, err := json.Marshal(m)
 	if err != nil {
 		return rawContent, false
@@ -389,9 +396,9 @@ func clearEventMediaFields(rawContent string) (string, bool) {
 	return string(encoded), true
 }
 
-// CleanupStorage clears media_path and thumbnail_path references on matching events (keeping message rows
-// and text intact) and deletes unreferenced blob files from media.Store while preserving blobs still
-// referenced by other events or user-imported stickers (pack_id = 'user').
+// CleanupStorage deletes local media references on matching events (keeping message rows and text intact,
+// leaving remote URLs untouched, and stamping com.courier.media_removed = true) and deletes unreferenced blob
+// files from media.Store while preserving blobs still referenced by other events or user-imported stickers (pack_id = 'user').
 func (s *Store) CleanupStorage(ctx context.Context, filter StorageCleanupFilter) (StorageCleanupReport, error) {
 	var report StorageCleanupReport
 	ms := s.getMediaStore()
