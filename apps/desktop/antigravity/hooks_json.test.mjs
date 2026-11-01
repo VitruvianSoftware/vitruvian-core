@@ -169,6 +169,90 @@ export function preToolUseFallbackProblems(doc, readScript) {
   return out;
 }
 
+// What each plugin's hooks must be wired to, and what each hook answers
+// when it cannot run. Pinned exactly: dropping a tool from a guard's matcher,
+// or softening a guard's fallback, must fail here and be a deliberate change.
+// Tool names are those Antigravity sends (captured from `agy -p` and desktop
+// transcripts): write_file and edit_file (Path/Content/Target/Replacement);
+// write_to_file, replace_file_content and multi_replace_file_content
+// (TargetFile/...); run_command (CommandLine); manage_task (CLI) and
+// send_command_input (desktop), which type Input into a running shell.
+export const EXPECTED = {
+  "ext-marketplace": {
+    events: { PostToolUse: "run_command" },
+    fallbacks: { "./hooks/note-plugin-cmd.sh": {} },
+  },
+  "gh-watch": {
+    events: { PostToolUse: "run_command" },
+    fallbacks: { "./hooks/note-pr-create.sh": {} },
+  },
+  hookify: {
+    events: { PreToolUse: "*", Stop: null },
+    fallbacks: { "./hooks/evaluate-rules.sh": { decision: "ask" } },
+  },
+  "live-context": {
+    events: { PreInvocation: null, Stop: null },
+    fallbacks: {
+      "./hooks/inject-live-context.sh": { injectSteps: "ephemeralMessage" },
+      "./hooks/verify-response-shape.sh": { decision: "allow" },
+    },
+  },
+  "ralph-loop": {
+    events: { Stop: null },
+    fallbacks: { "./hooks/ralph-stop.sh": { decision: "allow" } },
+  },
+  "receipts-report": {
+    events: { PostInvocation: null },
+    fallbacks: { "./hooks/record-turn.sh": {} },
+  },
+  "savvy-fleet": {
+    events: { PostToolUse: "invoke_subagent|send_message" },
+    fallbacks: { "./hooks/track-subagent.sh": {} },
+  },
+  "security-guidance": {
+    events: {
+      PreToolUse:
+        "write_file|edit_file|write_to_file|replace_file_content|multi_replace_file_content|run_command|manage_task|send_command_input",
+      Stop: null,
+    },
+    fallbacks: { "./hooks/security-check.sh": { decision: "ask" } },
+  },
+  "worktree-band": {
+    events: { SessionStart: null },
+    fallbacks: {
+      "./hooks/session-worktree.sh": { injectSteps: "ephemeralMessage" },
+    },
+  },
+};
+
+/** The events (with tool matcher) and per-script fallback summary of a plugin. */
+export function wiring(doc, readScript) {
+  const events = {};
+  const fallbacks = {};
+  for (const set of Object.values(doc ?? {})) {
+    for (const [event, list] of Object.entries(set ?? {})) {
+      if (typeof list !== "object" || !Array.isArray(list)) continue;
+      for (const entry of list) {
+        const handlers = Array.isArray(entry?.hooks) ? entry.hooks : [entry];
+        events[event] = Array.isArray(entry?.hooks)
+          ? (entry.matcher ?? "*")
+          : null;
+        for (const h of handlers) {
+          const script = String(h?.command ?? "").split(/\s+/)[0];
+          const fb = launcherFallback(readScript(script));
+          fallbacks[script] =
+            fb && Array.isArray(fb.injectSteps)
+              ? { injectSteps: Object.keys(fb.injectSteps[0] ?? {})[0] }
+              : fb && "decision" in fb
+                ? { decision: fb.decision }
+                : fb;
+        }
+      }
+    }
+  }
+  return { events, fallbacks };
+}
+
 const files = process.argv.slice(2).filter((f) => f.endsWith("/hooks.json"));
 
 test("every plugin's hooks.json was given", () => {
@@ -191,6 +275,19 @@ for (const file of files) {
     );
   });
 }
+
+test("every plugin is wired as pinned in EXPECTED", () => {
+  const seen = files.map((f) => dirname(f).split("/").pop()).sort();
+  assert.deepEqual(seen, Object.keys(EXPECTED).sort());
+  for (const file of files) {
+    const plugin = dirname(file).split("/").pop();
+    const doc = JSON.parse(readFileSync(file, "utf8"));
+    const got = wiring(doc, (script) =>
+      readFileSync(join(dirname(file), script), "utf8"),
+    );
+    assert.deepEqual(got, EXPECTED[plugin], plugin);
+  }
+});
 
 test("a PreToolUse fallback without a decision is rejected", () => {
   const doc = {

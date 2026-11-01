@@ -6,6 +6,7 @@
 
 load("@aspect_rules_js//js:defs.bzl", "js_test")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
+load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 PLUGINS = [
     "ext-marketplace",
@@ -39,4 +40,17 @@ sh_test(
     srcs = ["shared_files_test.sh"],
     args = ["$(rootpaths %s)" % c for c in CONFORMANCE],
     data = CONFORMANCE,
+)
+
+# Run on every PR that touches a plugin, not only in the nightly full sweep.
+pipeline_unit(
+    name = "antigravity-plugins-conformance",
+    persona = "backend",
+    runner = "ubuntu-26.04",
+    test_targets = [
+        ":hooks_json_test",
+        ":shared_files_test",
+    ],
+    tier = "L1",
+    timeout_minutes = 15,
 )

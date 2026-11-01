@@ -90,17 +90,53 @@ fn js_number(v: Option<&Value>) -> f64 {
         Some(Value::Null) => 0.0,
         Some(Value::Bool(b)) => f64::from(u8::from(*b)),
         Some(Value::Number(n)) => *n,
-        Some(Value::String(s)) => {
-            let t = js_trim(s);
-            if t.is_empty() {
-                0.0
-            } else {
-                t.parse::<f64>().unwrap_or(f64::NAN)
-            }
-        }
+        Some(Value::String(s)) => js_string_to_number(s),
         Some(Value::Array(a)) if a.is_empty() => 0.0,
         Some(Value::Array(a)) if a.len() == 1 => js_number(Some(&a[0])),
         Some(_) => f64::NAN,
+    }
+}
+
+/// JavaScript's StringToNumber: trimmed; empty is 0; `0x`/`0o`/`0b`
+/// prefixes (unsigned) read in base 16/8/2; `Infinity` with an optional
+/// sign; otherwise a plain decimal literal. Rust's own parser also takes
+/// "inf", "nan" and "infinity", which JavaScript reads as NaN.
+fn js_string_to_number(s: &str) -> f64 {
+    let t = js_trim(s);
+    if t.is_empty() {
+        return 0.0;
+    }
+    let lower = t.get(..2).map(str::to_ascii_lowercase);
+    let radix = match lower.as_deref() {
+        Some("0x") => 16,
+        Some("0o") => 8,
+        Some("0b") => 2,
+        _ => 0,
+    };
+    if radix != 0 {
+        let digits = &t[2..];
+        if digits.is_empty() || !digits.chars().all(|c| c.is_digit(radix)) {
+            return f64::NAN;
+        }
+        return digits.chars().fold(0.0, |n, c| {
+            n * f64::from(radix) + f64::from(c.to_digit(radix).unwrap())
+        });
+    }
+    match t {
+        "Infinity" | "+Infinity" => return f64::INFINITY,
+        "-Infinity" => return f64::NEG_INFINITY,
+        _ => {}
+    }
+    let body = t.strip_prefix(['+', '-']).unwrap_or(t);
+    let decimal = !body.is_empty()
+        && body
+            .chars()
+            .all(|c| c.is_ascii_digit() || matches!(c, '.' | 'e' | 'E' | '+' | '-'))
+        && body.starts_with(|c: char| c.is_ascii_digit() || c == '.');
+    if decimal {
+        t.parse::<f64>().unwrap_or(f64::NAN)
+    } else {
+        f64::NAN
     }
 }
 
@@ -491,6 +527,37 @@ mod tests {
     }
 
     // ---- Parity with the Node.js script the hook replaced -------------------
+
+    #[test]
+    fn strings_become_numbers_as_javascript_number_reads_them() {
+        let cases = [
+            ("0x10", 16.0),
+            ("0X1f", 31.0),
+            ("0b11", 3.0),
+            ("0o17", 15.0),
+            ("  12  ", 12.0),
+            ("", 0.0),
+            ("1e3", 1000.0),
+            (".5", 0.5),
+            ("5.", 5.0),
+            ("+7", 7.0),
+            ("-Infinity", f64::NEG_INFINITY),
+        ];
+        for (s, want) in cases {
+            assert_eq!(js_string_to_number(s), want, "{s:?}");
+        }
+        for s in [
+            "inf", "nan", "infinity", "0x", "-0x10", "0b2", "1_000", "12px", "e5", "0x1g",
+        ] {
+            assert!(js_string_to_number(s).is_nan(), "{s:?}");
+        }
+        // Through the hook: a hex maximum is read as JavaScript reads it.
+        let (out, _) = stop(
+            r#"{"active":true,"iteration":3,"maxIterations":"0x10"}"#,
+            r#"{"conversationId":"c"}"#,
+        );
+        assert!(out.contains("(iteration 4/16)"), "{out}");
+    }
 
     #[test]
     fn numbers_are_read_the_way_javascript_does() {

@@ -249,16 +249,21 @@ for _ in 1 2 3; do
 done
 check "switching copies rebuilds nothing" "$(calls)" "0"
 
-# Binaries unused for RUST_HOOK_GC_DAYS days are collected by the next build.
+# Binaries unused for RUST_HOOK_GC_DAYS days are collected by the next build;
+# running one marks it used. Age them all, then use the current one.
 current=$(bin_of "$first")
 for f in $(bins_of "$first"); do
-	[ "$f" = "$current" ] || touch -t 202001010000 "$f"
+	touch -t 202001010000 "$f"
 done
+run_hook "$first" '{}'
+check "(the current binary answers)" "$out" "stub-hook:{}"
 old_count=$(bins_of "$first" | wc -l | tr -d ' ')
 # shellcheck disable=SC2016
 rebuilds_after "editing src/lib.rs once more" 'echo "// edited for gc" >>"$plugin/hooks/src/lib.rs"'
 check "binaries unused for a week are removed, used ones kept" \
 	"$(bins_of "$first" | wc -l | tr -d ' ')" "2"
+[ -f "$current" ] && ok=0 || ok=1
+check "a binary run this week is kept, however old the file" "$ok" "0"
 [ "$old_count" -gt 1 ] && ok=0 || ok=1
 check "(there were old binaries to collect)" "$ok" "0"
 
@@ -281,6 +286,17 @@ run_hook "$first" '{}'
 check "a binary that dies without answering: fallback" "$out" "$(fallback_of "$first")"
 wait_build "$first"
 
+# Exit 0 with no answer is not a verdict either (on PreToolUse it would
+# let the call through).
+b=$(bin_of "$first")
+printf '#!/bin/sh\nexit 0\n' >"$b"
+run_hook "$first" '{}'
+check "a binary that exits 0 without answering: fallback" "$out" "$(fallback_of "$first")"
+check "a binary that exits 0 without answering: exit 0" "$status" "0"
+wait_build "$first"
+run_hook "$first" '{}'
+check "and it is rebuilt" "$out" "stub-hook:{}"
+
 rm -f "$(bin_of "$first")"
 run_hook "$first" '{}'
 check "a deleted binary: answers with the fallback" "$out" "$(fallback_of "$first")"
@@ -298,10 +314,33 @@ lock=$(find "$cache" -maxdepth 1 -type d -name "$plugin_name-$(name_of "$first")
 check "the lock records its builder" "$ok" "0"
 run_hook "$first" '{}'
 contains "a live builder's lock is respected" "$err" "being built in the background"
+echo $(($(date +%s) - 600)) >"$lock/since"
+run_hook "$first" '{}'
+contains "a live builder's lock is respected 10 minutes in" "$err" "being built in the background"
+echo $(($(date +%s) - 3600)) >"$lock/since"
+cp -R "$lock" "$tmp/lock.saved"
+run_hook "$first" '{}'
+contains "a live builder's lock over 30 minutes old is taken over" "$err" "building in the background (first run"
+# Stop the builder that took over, and put the first builder's lock back for
+# the dead-builder case below.
+i=0
+while [ ! -f "$lock/pid" ] && [ "$i" -lt 50 ]; do
+	sleep 0.1
+	i=$((i + 1))
+done
+second=$(cat "$lock/pid")
+kill -KILL "$second" 2>/dev/null
+kill -KILL -- "-$second" 2>/dev/null
+rm -rf "$lock"
+cp -R "$tmp/lock.saved" "$lock"
+date +%s >"$lock/since"
 # The builder dies without cleaning up (as on SIGKILL): its lock is stale.
 builder=$(cat "$lock/pid")
-pkill -KILL -P "$builder" 2>/dev/null
+# Kill the builder first (a builder that outlives its rustc records a
+# failed build), then the rest of its process group: it leads its own
+# session, so its pid is the group.
 kill -KILL "$builder" 2>/dev/null
+kill -KILL -- "-$builder" 2>/dev/null
 sleep 0.3
 [ -d "$lock" ] && ok=0 || ok=1
 check "(a killed builder leaves its lock behind)" "$ok" "0"
@@ -316,8 +355,11 @@ export STUB_SLEEP=30
 run_hook "$first" '{}'
 lock=$(find "$cache" -maxdepth 1 -type d -name "$plugin_name-$(name_of "$first")-*.lock" | head -n 1)
 builder=$(cat "$lock/pid")
-pkill -KILL -P "$builder" 2>/dev/null
+# Kill the builder first (a builder that outlives its rustc records a
+# failed build), then the rest of its process group: it leads its own
+# session, so its pid is the group.
 kill -KILL "$builder" 2>/dev/null
+kill -KILL -- "-$builder" 2>/dev/null
 unset STUB_SLEEP
 rm -f "$lock/pid" "$lock/detached"
 date +%s >"$lock/since"

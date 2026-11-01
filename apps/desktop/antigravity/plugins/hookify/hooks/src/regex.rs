@@ -13,8 +13,10 @@
 //! backreferences, lookahead and lookbehind, and greedy and lazy quantifiers.
 //!
 //! One deliberate difference: a match that backtracks for more than
-//! [`STEP_LIMIT`] steps is abandoned and reported as no match, where
-//! JavaScript would hang until the hook's timeout.
+//! [`STEP_LIMIT`] steps is abandoned, where JavaScript would find the match
+//! or hang until the hook's timeout. [`Regex::test`] then says no match;
+//! [`Regex::test_checked`] says it could not decide, so a guard can fail
+//! closed instead of letting a long input through.
 
 pub const STEP_LIMIT: usize = 5_000_000;
 
@@ -654,8 +656,18 @@ impl Regex {
 
     /// `re.test(text)`.
     pub fn test(&self, text: &str) -> bool {
+        self.test_checked(text).unwrap_or(false)
+    }
+
+    /// `re.test(text)`, or `None` when the search ran out of steps before it
+    /// could decide.
+    pub fn test_checked(&self, text: &str) -> Option<bool> {
         let t = units(text);
-        self.find_at(&t, 0).is_some()
+        match self.search(&t, 0) {
+            (Some(_), _) => Some(true),
+            (None, true) => None,
+            (None, false) => Some(false),
+        }
     }
 
     /// The first match starting at or after `from`: `(start, end, captures)`.
@@ -664,6 +676,16 @@ impl Regex {
         t: &[u16],
         from: usize,
     ) -> Option<(usize, usize, Vec<Option<(usize, usize)>>)> {
+        self.search(t, from).0
+    }
+
+    /// [`Regex::find_at`], and whether it gave up at [`STEP_LIMIT`].
+    #[allow(clippy::type_complexity)]
+    fn search(
+        &self,
+        t: &[u16],
+        from: usize,
+    ) -> (Option<(usize, usize, Vec<Option<(usize, usize)>>)>, bool) {
         let mut m = Matcher {
             re: self,
             t,
@@ -677,13 +699,13 @@ impl Regex {
                 end = Some(j);
                 true
             }) {
-                return Some((start, end.unwrap(), m.caps.clone()));
+                return (Some((start, end.unwrap(), m.caps.clone())), false);
             }
             if m.steps > STEP_LIMIT {
-                return None;
+                return (None, true);
             }
         }
-        None
+        (None, false)
     }
 
     /// `text.replace(new RegExp(pattern, "g"), replacement)`: every match,
