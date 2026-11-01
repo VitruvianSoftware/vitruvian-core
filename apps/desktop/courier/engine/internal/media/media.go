@@ -14,6 +14,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sync"
+	"time"
 )
 
 var ErrMissing = errors.New("media file missing")
@@ -31,7 +33,13 @@ type Store struct {
 	// MaxMemoryBytes bounds whole-file in-memory reads via Read (defaults to DefaultMaxMemoryBytes when 0).
 	// Streaming writes (PutStream) and file-backed downloads (DownloadMediaToFile) are unaffected.
 	MaxMemoryBytes int64
+
+	putMu sync.Mutex           // guards putAt, and makes a write and DeleteUnlessPutSince one step each
+	putAt map[string]time.Time // when each blob was last written, for the last putMemory
 }
+
+// putMemory is how long Store remembers that a blob was written, for DeleteUnlessPutSince.
+const putMemory = time.Hour
 
 // Path returns where a blob lives on disk. Anything that is not a real hash is
 // refused, so a hostile name can neither panic nor escape Dir.
@@ -78,9 +86,21 @@ func (m *Store) PutStream(write func(io.Writer) error) (string, error) {
 	if err = os.MkdirAll(filepath.Dir(final), 0o700); err != nil {
 		return "", err
 	}
+	m.putMu.Lock()
+	defer m.putMu.Unlock()
 	if err = os.Rename(tmp.Name(), final); err != nil {
 		return "", err
 	}
+	now := time.Now()
+	if m.putAt == nil {
+		m.putAt = map[string]time.Time{}
+	}
+	for h, at := range m.putAt {
+		if now.Sub(at) > putMemory {
+			delete(m.putAt, h)
+		}
+	}
+	m.putAt[hash] = now
 	return hash, nil
 }
 
@@ -111,6 +131,24 @@ func (m *Store) Read(hash string) ([]byte, error) {
 }
 
 // Delete removes the blob for hash from disk, ignoring fs.ErrNotExist if it is already gone.
+// DeleteUnlessPutSince deletes a blob unless it was written at or after since, and says whether it deleted it. A
+// write of the same blob waits for it, so a file written during a clean-up is never lost to it: either the write
+// comes after the delete and puts the file back, or it came first and the delete leaves the file.
+func (m *Store) DeleteUnlessPutSince(hash string, since time.Time) (bool, error) {
+	if m == nil {
+		return false, nil
+	}
+	m.putMu.Lock()
+	defer m.putMu.Unlock()
+	if at, ok := m.putAt[hash]; ok && !at.Before(since) {
+		return false, nil
+	}
+	if err := m.Delete(hash); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func (m *Store) Delete(hash string) error {
 	if m == nil {
 		return nil

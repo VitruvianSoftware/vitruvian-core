@@ -11,10 +11,12 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"maunium.net/go/mautrix/id"
 
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
+	"github.com/VitruvianSoftware/courier/engine/internal/media"
 )
 
 type RoomStorageUsage struct {
@@ -42,35 +44,46 @@ type StorageCleanupFilter struct {
 	IncludeStickers bool     `json:"include_stickers,omitempty"`
 }
 
+// DefaultMediaPutGrace is how long before a storage clean-up a blob must have been written for the clean-up to
+// delete it. A message that arrives during a clean-up writes its file first and its row a moment later, possibly
+// after the clean-up's transaction; the grace keeps that file.
+const DefaultMediaPutGrace = time.Minute
+
+// SetMediaPutGrace sets the grace (DefaultMediaPutGrace). Tests that write blobs just before a clean-up set 0.
+func (s *Store) SetMediaPutGrace(d time.Duration) {
+	s.cfgMu.Lock()
+	s.mediaPutGrace = d
+	s.cfgMu.Unlock()
+}
+
 type StorageCleanupReport struct {
 	FreedBytes   int64 `json:"freed_bytes"`
 	RemovedBlobs int   `json:"removed_blobs"`
 }
 
-type storageCatalogEntry struct {
-	ID        string `json:"id"`
-	PackID    string `json:"pack_id"`
-	Name      string `json:"name"`
-	Shortcode string `json:"shortcode,omitempty"`
-	Emoji     string `json:"emoji,omitempty"`
-	MediaURL  string `json:"media_url"`
-	MimeType  string `json:"mime_type"`
-	Width     int    `json:"width"`
-	Height    int    `json:"height"`
-	Usage     any    `json:"usage,omitempty"`
-	AddedTS   int64  `json:"added_ts"`
+// The sticker catalog (media/stickers.json) as package actions writes it (stickersCatalogFile, StickerPack and
+// StickerItem in actions/stickers.go); only the fields the storage pages need, with the same JSON names. actions
+// imports store, so store can't use those types directly; TestStorageCleanupReadsTheStickerCatalogTheActionsWrite
+// keeps the two in step.
+type storageCatalogItem struct {
+	MediaURL string `json:"media_url"`
 }
 
 type storageCatalogPack struct {
-	ID       string                `json:"id"`
-	Name     string                `json:"name"`
-	Network  string                `json:"network"`
-	Stickers []storageCatalogEntry `json:"stickers"`
+	Items []storageCatalogItem `json:"items"`
 }
 
 type storageCatalogFile struct {
-	Imported    []storageCatalogEntry `json:"imported"`
-	BridgePacks []storageCatalogPack  `json:"bridge_packs"`
+	Imported            []storageCatalogItem `json:"imported"`
+	BridgePacks         []storageCatalogPack `json:"bridge_packs"`
+	BridgePacksSyncedAt int64                `json:"bridge_packs_synced_at"` // Unix ms
+}
+
+// storageStickers is what the catalog says about blobs: the imported stickers' (never deleted), the synced packs'
+// (cache), and when the packs were synced (Unix ms; 0 = unknown).
+type storageStickers struct {
+	imported, bridge map[string]bool
+	syncedAtMS       int64
 }
 
 func isHex64(s string) bool {
@@ -150,39 +163,38 @@ func parseEventStorageMedia(evtType string, rawContent string) (category string,
 	return category, hashes
 }
 
-func loadStickerCatalogHashes(mediaDir string) (userHashes map[string]bool, bridgeHashes map[string]int64) {
-	userHashes = map[string]bool{}
-	bridgeHashes = map[string]int64{}
-	if mediaDir == "" {
-		return userHashes, bridgeHashes
+func loadStickerCatalog(ms *media.Store) storageStickers {
+	out := storageStickers{imported: map[string]bool{}, bridge: map[string]bool{}}
+	if ms == nil || ms.Dir == "" {
+		return out
 	}
-	raw, err := os.ReadFile(filepath.Join(mediaDir, "stickers.json"))
+	raw, err := os.ReadFile(filepath.Join(ms.Dir, "stickers.json"))
 	if err != nil {
-		return userHashes, bridgeHashes
+		return out
 	}
 	var cat storageCatalogFile
 	if json.Unmarshal(raw, &cat) != nil {
-		return userHashes, bridgeHashes
+		// The oldest catalog was a bare list of imported stickers (actions.loadStickersCatalog reads it the same way).
+		var items []storageCatalogItem
+		if json.Unmarshal(raw, &items) != nil {
+			return out
+		}
+		cat = storageCatalogFile{Imported: items}
 	}
 	for _, item := range cat.Imported {
 		if h, ok := parseStorageMediaHash(item.MediaURL); ok {
-			userHashes[h] = true
+			out.imported[h] = true
 		}
 	}
 	for _, pack := range cat.BridgePacks {
-		for _, item := range pack.Stickers {
-			h, ok := parseStorageMediaHash(item.MediaURL)
-			if !ok {
-				continue
-			}
-			if item.PackID == "user" || item.PackID == "imported" || pack.ID == "user" || pack.ID == "imported" {
-				userHashes[h] = true
-			} else {
-				bridgeHashes[h] = item.AddedTS
+		for _, item := range pack.Items {
+			if h, ok := parseStorageMediaHash(item.MediaURL); ok && !out.imported[h] {
+				out.bridge[h] = true
 			}
 		}
 	}
-	return userHashes, bridgeHashes
+	out.syncedAtMS = cat.BridgePacksSyncedAt
+	return out
 }
 
 // StorageUsage walks events, stickers, the media blob store, and the SQLite database files to compute
@@ -229,15 +241,12 @@ func (s *Store) StorageUsage(ctx context.Context, dbPath string) (StorageUsage, 
 
 	blobCategory := map[string]string{}
 	if ms != nil && ms.Dir != "" {
-		userHashes, bridgeHashes := loadStickerCatalogHashes(ms.Dir)
-		for h := range userHashes {
-			if _, exists := blobSizes[h]; exists {
-				blobCategory[h] = "sticker"
-			}
-		}
-		for h := range bridgeHashes {
-			if _, exists := blobSizes[h]; exists {
-				blobCategory[h] = "sticker"
+		stickers := loadStickerCatalog(ms)
+		for _, hashes := range []map[string]bool{stickers.imported, stickers.bridge} {
+			for h := range hashes {
+				if _, exists := blobSizes[h]; exists {
+					blobCategory[h] = "sticker"
+				}
 			}
 		}
 	}
@@ -397,20 +406,22 @@ func clearEventMediaFields(rawContent string) (string, bool) {
 }
 
 // CleanupStorage deletes local media references on matching events (keeping message rows and text intact,
-// leaving remote URLs untouched, and stamping com.courier.media_removed = true) and deletes unreferenced blob
-// files from media.Store while preserving blobs still referenced by other events or user-imported stickers (pack_id = 'user').
+// leaving remote URLs untouched, and stamping com.courier.media_removed = true) and deletes the blob files nothing
+// else uses. filter.OlderThanMS is a duration: only messages older than that, back from now, lose their media. A blob
+// stays while another message, a message waiting to be sent later, or an imported sticker uses it, and so does one
+// written within the media put grace before the clean-up (a message arriving during it). Synced pack stickers go
+// only with IncludeStickers. A room ID that isn't a chat (a merged chat's ID included) is ErrNotFound, and nothing
+// changes. Reading, rewriting and checking what is still used happen in one write transaction, and the files are
+// deleted inside it, so no message can start using a blob between the check and the delete. When messages were
+// rewritten the change feed gets a ChangeResync, so open chats re-read them.
 func (s *Store) CleanupStorage(ctx context.Context, filter StorageCleanupFilter) (StorageCleanupReport, error) {
 	var report StorageCleanupReport
 	ms := s.getMediaStore()
-
-	var userStickerHashes map[string]bool
-	var bridgeStickerHashes map[string]int64
-	if ms != nil && ms.Dir != "" {
-		userStickerHashes, bridgeStickerHashes = loadStickerCatalogHashes(ms.Dir)
-	} else {
-		userStickerHashes = map[string]bool{}
-		bridgeStickerHashes = map[string]int64{}
-	}
+	stickers := loadStickerCatalog(ms)
+	s.cfgMu.RLock()
+	grace, beforeDelete := s.mediaPutGrace, s.storageCleanupBeforeDelete
+	s.cfgMu.RUnlock()
+	putSince := time.Now().Add(-grace)
 
 	roomAllowed := map[string]bool{}
 	for _, r := range filter.RoomIDs {
@@ -418,133 +429,145 @@ func (s *Store) CleanupStorage(ctx context.Context, filter StorageCleanupFilter)
 			roomAllowed[r] = true
 		}
 	}
-
-	rows, err := s.db.Query(ctx, `
-		SELECT event_id, room_id, type, content, ts
-		FROM events
-		WHERE redacted = 0 AND deleted_for_me = 0
-	`)
-	if err != nil {
-		return report, err
+	var cutoffMS int64 // messages at or after it keep their media; 0 = no age limit
+	if filter.OlderThanMS > 0 {
+		cutoffMS = s.now().UnixMilli() - filter.OlderThanMS
 	}
 
-	type eventUpdate struct {
-		eventID    string
-		newContent string
-	}
-	var updates []eventUpdate
-	candidateHashes := map[string]bool{}
+	rewrote := false
+	err := s.db.DoTxn(ctx, nil, func(ctx context.Context) error {
+		report, rewrote = StorageCleanupReport{}, false
+		for r := range roomAllowed {
+			ok, err := s.roomExists(ctx, r)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return ErrNotFound
+			}
+		}
 
-	for rows.Next() {
-		var eventID, roomID, evtType, rawContent string
-		var ts int64
-		if err := rows.Scan(&eventID, &roomID, &evtType, &rawContent, &ts); err != nil {
-			rows.Close()
-			return report, err
+		rows, err := s.db.Query(ctx, `
+			SELECT event_id, room_id, type, content, ts
+			FROM events
+			WHERE redacted = 0 AND deleted_for_me = 0
+		`)
+		if err != nil {
+			return err
 		}
-		if len(roomAllowed) > 0 && !roomAllowed[roomID] {
-			continue
+		type eventUpdate struct{ eventID, newContent string }
+		var updates []eventUpdate
+		candidateHashes := map[string]bool{}
+		for rows.Next() {
+			var eventID, roomID, evtType, rawContent string
+			var ts int64
+			if err := rows.Scan(&eventID, &roomID, &evtType, &rawContent, &ts); err != nil {
+				rows.Close()
+				return err
+			}
+			if len(roomAllowed) > 0 && !roomAllowed[roomID] {
+				continue
+			}
+			if cutoffMS != 0 && ts >= cutoffMS {
+				continue
+			}
+			cat, hashes := parseEventStorageMedia(evtType, rawContent)
+			if len(hashes) == 0 || cat == "sticker" && !filter.IncludeStickers {
+				continue
+			}
+			for _, h := range hashes {
+				candidateHashes[h] = true
+			}
+			if updatedContent, ok := clearEventMediaFields(rawContent); ok {
+				updates = append(updates, eventUpdate{eventID: eventID, newContent: updatedContent})
+			}
 		}
-		if filter.OlderThanMS > 0 && ts >= filter.OlderThanMS {
-			continue
+		if err := rows.Close(); err != nil {
+			return err
 		}
-		cat, hashes := parseEventStorageMedia(evtType, rawContent)
-		if len(hashes) == 0 {
-			continue
+		for _, u := range updates {
+			if _, err := s.db.Exec(ctx, `UPDATE events SET content = $1 WHERE event_id = $2`, u.newContent, u.eventID); err != nil {
+				return err
+			}
 		}
-		if cat == "sticker" && !filter.IncludeStickers {
-			continue
-		}
-		for _, h := range hashes {
-			candidateHashes[h] = true
-		}
-		if updatedContent, ok := clearEventMediaFields(rawContent); ok {
-			updates = append(updates, eventUpdate{
-				eventID:    eventID,
-				newContent: updatedContent,
-			})
-		}
-	}
-	if err := rows.Close(); err != nil {
-		return report, err
-	}
+		rewrote = len(updates) > 0
 
-	for _, u := range updates {
-		if _, err := s.db.Exec(ctx, `UPDATE events SET content = ? WHERE event_id = ?`, u.newContent, u.eventID); err != nil {
-			return report, err
-		}
-	}
-
-	if filter.IncludeStickers && len(roomAllowed) == 0 {
-		for h, addedTS := range bridgeStickerHashes {
-			if filter.OlderThanMS <= 0 || addedTS == 0 || addedTS < filter.OlderThanMS {
+		if filter.IncludeStickers && len(roomAllowed) == 0 &&
+			(cutoffMS == 0 || stickers.syncedAtMS == 0 || stickers.syncedAtMS < cutoffMS) {
+			for h := range stickers.bridge {
 				candidateHashes[h] = true
 			}
 		}
-	}
+		if ms == nil || ms.Dir == "" || len(candidateHashes) == 0 {
+			return nil
+		}
 
-	if ms == nil || ms.Dir == "" || len(candidateHashes) == 0 {
-		return report, nil
-	}
-
-	// Scan remaining events to find any hashes still referenced.
-	stillReferenced := map[string]bool{}
-	for h := range userStickerHashes {
-		stillReferenced[h] = true
-	}
-	if !filter.IncludeStickers {
-		for h := range bridgeStickerHashes {
+		// What is still used: imported stickers, synced pack stickers unless they are being cleaned, every message
+		// left, and every message waiting to be sent later (or canceled or missed, which can be set to wait again).
+		stillReferenced := map[string]bool{}
+		for h := range stickers.imported {
 			stillReferenced[h] = true
 		}
-	}
+		if !filter.IncludeStickers {
+			for h := range stickers.bridge {
+				stillReferenced[h] = true
+			}
+		}
+		for _, query := range []string{
+			`SELECT type, content FROM events WHERE redacted = 0 AND deleted_for_me = 0`,
+			`SELECT type, content FROM outbox WHERE kind = '` + outboxLater + `'`,
+		} {
+			remRows, err := s.db.Query(ctx, query)
+			if err != nil {
+				return err
+			}
+			for remRows.Next() {
+				var evtType, rawContent string
+				if err := remRows.Scan(&evtType, &rawContent); err != nil {
+					remRows.Close()
+					return err
+				}
+				_, hashes := parseEventStorageMedia(evtType, rawContent)
+				for _, h := range hashes {
+					stillReferenced[h] = true
+				}
+			}
+			if err := remRows.Close(); err != nil {
+				return err
+			}
+		}
 
-	remRows, err := s.db.Query(ctx, `
-		SELECT type, content
-		FROM events
-		WHERE redacted = 0 AND deleted_for_me = 0
-	`)
+		if beforeDelete != nil {
+			beforeDelete()
+		}
+		sortedCandidates := make([]string, 0, len(candidateHashes))
+		for h := range candidateHashes {
+			if !stillReferenced[h] {
+				sortedCandidates = append(sortedCandidates, h)
+			}
+		}
+		slices.Sort(sortedCandidates)
+		for _, h := range sortedCandidates {
+			path, err := ms.Path(h)
+			if err != nil {
+				continue
+			}
+			info, err := os.Stat(path)
+			if err != nil || info.IsDir() {
+				continue
+			}
+			if deleted, err := ms.DeleteUnlessPutSince(h, putSince); err == nil && deleted {
+				report.FreedBytes += info.Size()
+				report.RemovedBlobs++
+			}
+		}
+		return nil
+	})
 	if err != nil {
-		return report, err
+		return StorageCleanupReport{}, err
 	}
-	for remRows.Next() {
-		var evtType, rawContent string
-		if err := remRows.Scan(&evtType, &rawContent); err != nil {
-			remRows.Close()
-			return report, err
-		}
-		_, hashes := parseEventStorageMedia(evtType, rawContent)
-		for _, h := range hashes {
-			stillReferenced[h] = true
-		}
+	if rewrote {
+		s.publish(Change{Kind: ChangeResync})
 	}
-	if err := remRows.Close(); err != nil {
-		return report, err
-	}
-
-	sortedCandidates := make([]string, 0, len(candidateHashes))
-	for h := range candidateHashes {
-		sortedCandidates = append(sortedCandidates, h)
-	}
-	slices.Sort(sortedCandidates)
-
-	for _, h := range sortedCandidates {
-		if stillReferenced[h] {
-			continue
-		}
-		path, err := ms.Path(h)
-		if err != nil {
-			continue
-		}
-		info, err := os.Stat(path)
-		if err != nil || info.IsDir() {
-			continue
-		}
-		size := info.Size()
-		if err := ms.Delete(h); err == nil {
-			report.FreedBytes += size
-			report.RemovedBlobs++
-		}
-	}
-
 	return report, nil
 }

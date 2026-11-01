@@ -115,6 +115,12 @@ type Store struct {
 	// that a batch runs out of time without depending on how fast the machine is.
 	backfillNow    func() time.Time
 	backfillBudget time.Duration
+
+	// mediaPutGrace: a storage clean-up leaves any blob written this long before it started (SetMediaPutGrace).
+	mediaPutGrace time.Duration
+	// storageCleanupBeforeDelete, when set, runs after a storage clean-up has decided what to delete and before it
+	// deletes. Tests use it to write a blob mid-clean-up.
+	storageCleanupBeforeDelete func()
 }
 
 // subscriber is one change feed. dropped is set when a change could not be delivered to it; guarded by Store.mu.
@@ -136,7 +142,7 @@ func Open(path string) (*Store, error) {
 	s := &Store{
 		db: db, dbPath: path, subs: map[chan Change]*subscriber{}, clock: time.Now, typing: map[string]map[string]*typingEntry{},
 		afterFunc:   func(d time.Duration, f func()) func() bool { return time.AfterFunc(d, f).Stop },
-		backfillNow: time.Now, backfillBudget: BackfillTimeBudget,
+		backfillNow: time.Now, backfillBudget: BackfillTimeBudget, mediaPutGrace: DefaultMediaPutGrace,
 	}
 	if err = db.QueryRow(context.Background(), "SELECT COALESCE(MAX(seq),0) FROM events").Scan(&s.seq); err != nil {
 		db.Close()

@@ -152,178 +152,197 @@ func TestStorageUsageCategorizesMediaStickersDatabaseAndPerRoomTotals(t *testing
 	}, usage.Rooms[1])
 }
 
-func TestCleanupStorageByAgeAndRoomPreservesEventsAndSharedOrUserStickerBlobs(t *testing.T) {
-	ctx := context.Background()
+// openCleanupStore opens a store with a media store and a fixed clock, with no grace for blobs written just before a
+// clean-up (the grace is what keeps a message arriving mid-clean-up; these tests write their blobs just before).
+func openCleanupStore(t *testing.T, now time.Time) (*Store, *media.Store) {
+	t.Helper()
 	dir := t.TempDir()
-	dbPath := filepath.Join(dir, "courier.db")
-	s, err := Open(dbPath)
+	s, err := Open(filepath.Join(dir, "courier.db"))
 	require.NoError(t, err)
 	t.Cleanup(func() { s.Close() })
-
 	ms := &media.Store{Dir: filepath.Join(dir, "media")}
 	s.SetMediaStore(ms)
+	s.SetClock(func() time.Time { return now })
+	s.SetMediaPutGrace(0)
+	return s, ms
+}
 
-	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!wa1", Network: "whatsapp", Name: "WhatsApp Room", CreatedAt: time.Unix(10, 0)}))
-	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!sig1", Network: "signal", Name: "Signal Room", CreatedAt: time.Unix(10, 0)}))
+func insertImage(t *testing.T, s *Store, roomID, eventID, uri string, ts time.Time) {
+	t.Helper()
+	_, err := s.InsertEvent(context.Background(), Event{
+		RoomID:  roomID,
+		EventID: eventID,
+		Sender:  "@someone:courier.local",
+		Type:    "m.room.message",
+		Content: json.RawMessage(`{"msgtype":"m.image","body":"photo.jpg","url":"` + uri + `","info":{"mimetype":"image/jpeg"}}`),
+		TS:      ts,
+		Status:  "sent",
+	})
+	require.NoError(t, err)
+}
 
-	_, waOldURI, waOldPath := putTestBlob(t, ms, 0x21, 1000)
-	_, waOldThumbURI, waOldThumbPath := putTestBlob(t, ms, 0x22, 200)
-	_, waNewURI, waNewPath := putTestBlob(t, ms, 0x23, 1500)
+
+// older_than_ms is a duration (the app sends one week as 604800000), so "older than 30 days" is measured back from
+// now: a message 40 days old loses its media, one 2 days old keeps it.
+func TestCleanupStorageOlderThanIsADurationBackFromNow(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	s, ms := openCleanupStore(t, now)
+
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!a", Network: "whatsapp", Name: "Room A", CreatedAt: now.Add(-100 * day)}))
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!b", Network: "signal", Name: "Room B", CreatedAt: now.Add(-100 * day)}))
+
+	_, oldURI, oldPath := putTestBlob(t, ms, 0x21, 1000)
+	_, oldThumbURI, oldThumbPath := putTestBlob(t, ms, 0x22, 200)
+	_, newURI, newPath := putTestBlob(t, ms, 0x23, 1500)
 	_, sharedURI, sharedPath := putTestBlob(t, ms, 0x24, 800)
-	userStkHash, userStkURI, userStkPath := putTestBlob(t, ms, 0x25, 600)
-	bridgeStkHash, bridgeStkURI, bridgeStkPath := putTestBlob(t, ms, 0x26, 900)
 
-	// Write stickers.json with a user-imported sticker (pack_id = "user") and a cached bridge sticker (pack_id = "telegram-cats").
-	stickersJSON := `{
-		"imported": [
-			{"id":"usr-1","pack_id":"user","name":"Custom Parrot","shortcode":":parrot:","media_url":"courier://media/` + userStkHash + `","mime_type":"image/png","width":128,"height":128,"added_ts":1000}
-		],
-		"bridge_packs": [
-			{"id":"telegram-cats","name":"Cats","network":"telegram","stickers":[
-				{"id":"cat-1","pack_id":"telegram-cats","name":"Happy Cat","media_url":"courier://media/` + bridgeStkHash + `","mime_type":"image/webp","width":256,"height":256,"added_ts":1000}
-			]}
-		]
-	}`
-	require.NoError(t, os.WriteFile(filepath.Join(ms.Dir, "stickers.json"), []byte(stickersJSON), 0o600))
-
-	// Old media event in !wa1 (ts = 1000) with unique main + thumbnail blobs.
-	_, err = s.InsertEvent(ctx, Event{
-		RoomID:  "!wa1",
-		EventID: "$wa-old",
-		Sender:  "@alice:courier.local",
+	old, recent := now.Add(-40*day), now.Add(-2*day)
+	_, err := s.InsertEvent(ctx, Event{
+		RoomID:  "!a",
+		EventID: "$a-old",
+		Sender:  "@someone:courier.local",
 		Type:    "m.room.message",
-		Content: json.RawMessage(`{"msgtype":"m.image","body":"old-photo.jpg","url":"` + waOldURI + `","info":{"mimetype":"image/jpeg","thumbnail_url":"` + waOldThumbURI + `"}}`),
-		TS:      time.UnixMilli(1000),
+		Content: json.RawMessage(`{"msgtype":"m.image","body":"old-photo.jpg","url":"` + oldURI + `","info":{"mimetype":"image/jpeg","thumbnail_url":"` + oldThumbURI + `"}}`),
+		TS:      old,
 		Status:  "sent",
 	})
 	require.NoError(t, err)
+	insertImage(t, s, "!a", "$a-new", newURI, recent)
+	insertImage(t, s, "!a", "$a-shared", sharedURI, old)
+	insertImage(t, s, "!b", "$b-shared", sharedURI, old)
 
-	// New media event in !wa1 (ts = 9000).
-	_, err = s.InsertEvent(ctx, Event{
-		RoomID:  "!wa1",
-		EventID: "$wa-new",
-		Sender:  "@alice:courier.local",
-		Type:    "m.room.message",
-		Content: json.RawMessage(`{"msgtype":"m.image","body":"new-photo.jpg","url":"` + waNewURI + `","info":{"mimetype":"image/jpeg"}}`),
-		TS:      time.UnixMilli(9000),
-		Status:  "sent",
-	})
-	require.NoError(t, err)
+	thirtyDays := (30 * day).Milliseconds()
 
-	// Old media event in !wa1 sharing a blob with !sig1.
-	_, err = s.InsertEvent(ctx, Event{
-		RoomID:  "!wa1",
-		EventID: "$wa-shared",
-		Sender:  "@alice:courier.local",
-		Type:    "m.room.message",
-		Content: json.RawMessage(`{"msgtype":"m.image","body":"shared.jpg","url":"` + sharedURI + `","info":{"mimetype":"image/jpeg"}}`),
-		TS:      time.UnixMilli(1000),
-		Status:  "sent",
-	})
-	require.NoError(t, err)
-	_, err = s.InsertEvent(ctx, Event{
-		RoomID:  "!sig1",
-		EventID: "$sig-shared",
-		Sender:  "@bob:courier.local",
-		Type:    "m.room.message",
-		Content: json.RawMessage(`{"msgtype":"m.image","body":"shared.jpg","url":"` + sharedURI + `","info":{"mimetype":"image/jpeg"}}`),
-		TS:      time.UnixMilli(1000),
-		Status:  "sent",
-	})
-	require.NoError(t, err)
-
-	// Old event in !wa1 referencing the user-imported sticker blob.
-	_, err = s.InsertEvent(ctx, Event{
-		RoomID:  "!wa1",
-		EventID: "$wa-user-stk",
-		Sender:  "@alice:courier.local",
-		Type:    "m.sticker",
-		Content: json.RawMessage(`{"msgtype":"m.image","body":"Custom Parrot","url":"` + userStkURI + `","info":{"mimetype":"image/png"}}`),
-		TS:      time.UnixMilli(1000),
-		Status:  "sent",
-	})
-	require.NoError(t, err)
-
-	// Old bridge sticker event in !sig1.
-	_, err = s.InsertEvent(ctx, Event{
-		RoomID:  "!sig1",
-		EventID: "$sig-bridge-stk",
-		Sender:  "@bob:courier.local",
-		Type:    "m.sticker",
-		Content: json.RawMessage(`{"msgtype":"m.image","body":"Happy Cat","url":"` + bridgeStkURI + `","info":{"mimetype":"image/webp"}}`),
-		TS:      time.UnixMilli(1000),
-		Status:  "sent",
-	})
-	require.NoError(t, err)
-
-	// 1. Clean !wa1 older than 5000ms without stickers.
-	report, err := s.CleanupStorage(ctx, StorageCleanupFilter{
-		RoomIDs:         []string{"!wa1"},
-		OlderThanMS:     5000,
-		IncludeStickers: false,
-	})
+	// 1. Room A, older than 30 days: the old photo and its thumbnail go; the recent one and the blob room B still
+	// uses stay.
+	report, err := s.CleanupStorage(ctx, StorageCleanupFilter{RoomIDs: []string{"!a"}, OlderThanMS: thirtyDays})
 	require.NoError(t, err)
 	require.Equal(t, 2, report.RemovedBlobs)
 	require.Equal(t, int64(1000+200), report.FreedBytes)
+	require.NoFileExists(t, oldPath)
+	require.NoFileExists(t, oldThumbPath)
+	require.FileExists(t, newPath, "a 2-day-old photo is not older than 30 days")
+	require.FileExists(t, sharedPath, "room B still uses the shared blob")
 
-	// Unshared old blobs in !wa1 are removed from disk.
-	_, err = os.Stat(waOldPath)
-	require.ErrorIs(t, err, os.ErrNotExist)
-	_, err = os.Stat(waOldThumbPath)
-	require.ErrorIs(t, err, os.ErrNotExist)
-
-	// $wa-old remains in SQLite with body intact, while media_path and thumbnail_path become "".
-	cleanedEv, ok, err := s.GetEvent(ctx, "$wa-old")
+	cleaned, ok, err := s.GetEvent(ctx, "$a-old")
 	require.NoError(t, err)
 	require.True(t, ok)
-	ExtractEventMedia(&cleanedEv, ms, false)
-	require.Empty(t, cleanedEv.MediaPath)
-	require.Empty(t, cleanedEv.ThumbnailPath)
-	require.Contains(t, string(cleanedEv.Content), "old-photo.jpg")
+	ExtractEventMedia(&cleaned, ms, false)
+	require.Empty(t, cleaned.MediaPath)
+	require.Empty(t, cleaned.ThumbnailPath)
+	require.Contains(t, string(cleaned.Content), "old-photo.jpg", "the message itself stays")
 
-	// $wa-shared in !wa1 also has its media_path cleared, but sharedPath stays on disk because !sig1 still references it.
-	waSharedEv, ok, err := s.GetEvent(ctx, "$wa-shared")
+	// 2. Room B, older than 30 days: nothing uses the shared blob any more, so it goes.
+	report, err = s.CleanupStorage(ctx, StorageCleanupFilter{RoomIDs: []string{"!b"}, OlderThanMS: thirtyDays})
+	require.NoError(t, err)
+	require.Equal(t, 1, report.RemovedBlobs)
+	require.NoFileExists(t, sharedPath)
+
+	// 3. Every chat, older than 1 day: the 2-day-old photo goes too.
+	report, err = s.CleanupStorage(ctx, StorageCleanupFilter{OlderThanMS: day.Milliseconds()})
+	require.NoError(t, err)
+	require.Equal(t, 1, report.RemovedBlobs)
+	require.NoFileExists(t, newPath)
+}
+
+// After a clean-up rewrites messages, the change feed says so, so a chat that is open re-reads them.
+func TestCleanupStorageTellsSubscribersToReRead(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	s, ms := openCleanupStore(t, now)
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!a", Network: "whatsapp", Name: "Room A", CreatedAt: now.Add(-10 * day)}))
+	_, uri, _ := putTestBlob(t, ms, 0x41, 300)
+	insertImage(t, s, "!a", "$a-1", uri, now.Add(-5*day))
+
+	changes, stop := s.Subscribe()
+	defer stop()
+	_, err := s.CleanupStorage(ctx, StorageCleanupFilter{RoomIDs: []string{"!a"}})
+	require.NoError(t, err)
+
+	var kinds []string
+	for {
+		select {
+		case c := <-changes:
+			kinds = append(kinds, c.Kind)
+			continue
+		default:
+		}
+		break
+	}
+	require.Contains(t, kinds, ChangeResync)
+}
+
+// A message waiting to be sent later still needs its attachment: cleaning the chat that also showed it keeps the file.
+func TestCleanupStorageKeepsBlobsOfScheduledMessages(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	s, ms := openCleanupStore(t, now)
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!a", Network: "whatsapp", Name: "Room A", CreatedAt: now.Add(-10 * day)}))
+	_, uri, path := putTestBlob(t, ms, 0x51, 400)
+	insertImage(t, s, "!a", "$a-1", uri, now.Add(-5*day))
+	_, err := s.Schedule(ctx, Scheduled{
+		RoomID:  "!a",
+		EventID: "$later-1",
+		Type:    "m.room.message",
+		Content: json.RawMessage(`{"msgtype":"m.image","body":"photo.jpg","url":"` + uri + `"}`),
+		DueAt:   now.Add(day),
+	})
+	require.NoError(t, err)
+
+	report, err := s.CleanupStorage(ctx, StorageCleanupFilter{RoomIDs: []string{"!a"}})
+	require.NoError(t, err)
+	require.Zero(t, report.RemovedBlobs)
+	require.FileExists(t, path, "the scheduled message still sends this file")
+}
+
+// A message that arrives during a clean-up with the same file (the same content hash) keeps its file: the blob was
+// written after the clean-up started, so the clean-up leaves it.
+func TestCleanupStorageKeepsABlobWrittenDuringTheCleanup(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	s, ms := openCleanupStore(t, now)
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!a", Network: "whatsapp", Name: "Room A", CreatedAt: now.Add(-10 * day)}))
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!b", Network: "signal", Name: "Room B", CreatedAt: now.Add(-10 * day)}))
+	data := bytes.Repeat([]byte{0x61}, 500)
+	hash, err := ms.Put(data)
+	require.NoError(t, err)
+	uri := "mxc://courier.local/" + hash
+	path, err := ms.Path(hash)
+	require.NoError(t, err)
+	insertImage(t, s, "!a", "$a-1", uri, now.Add(-5*day))
+
+	// The same file arrives in room B after the clean-up has decided what nothing uses, before it deletes.
+	s.storageCleanupBeforeDelete = func() {
+		_, err := ms.Put(data)
+		require.NoError(t, err)
+	}
+	_, err = s.CleanupStorage(ctx, StorageCleanupFilter{RoomIDs: []string{"!a"}})
+	require.NoError(t, err)
+	s.storageCleanupBeforeDelete = nil
+	insertImage(t, s, "!b", "$b-1", uri, now)
+
+	require.FileExists(t, path, "the message that arrived during the clean-up keeps its file")
+}
+
+// An unknown chat, or a merged chat's ID (the app sends the chats inside it), is ErrNotFound, and nothing changes.
+func TestCleanupStorageUnknownOrMergedChatIsNotFound(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	s, ms := openCleanupStore(t, now)
+	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!a", Network: "whatsapp", Name: "Room A", CreatedAt: now.Add(-10 * day)}))
+	_, uri, path := putTestBlob(t, ms, 0x71, 300)
+	insertImage(t, s, "!a", "$a-1", uri, now.Add(-5*day))
+
+	for _, ids := range [][]string{{"!nope"}, {newMergeID()}, {"!a", "!nope"}} {
+		_, err := s.CleanupStorage(ctx, StorageCleanupFilter{RoomIDs: ids})
+		require.ErrorIs(t, err, ErrNotFound, "%v", ids)
+	}
+	require.FileExists(t, path, "a refused clean-up deletes nothing")
+	ev, ok, err := s.GetEvent(ctx, "$a-1")
 	require.NoError(t, err)
 	require.True(t, ok)
-	ExtractEventMedia(&waSharedEv, ms, false)
-	require.Empty(t, waSharedEv.MediaPath)
-	_, err = os.Stat(sharedPath)
-	require.NoError(t, err, "blob shared with !sig1 must remain on disk")
-
-	// User-imported sticker blob and newer !wa1 blob and bridge sticker blob remain on disk.
-	_, err = os.Stat(userStkPath)
-	require.NoError(t, err, "user-imported sticker blob must never be removed")
-	_, err = os.Stat(waNewPath)
-	require.NoError(t, err, "newer blob in !wa1 must remain on disk")
-	_, err = os.Stat(bridgeStkPath)
-	require.NoError(t, err, "bridge sticker blob must remain when IncludeStickers is false")
-
-	// 2. Clean !sig1 older than 5000ms with IncludeStickers: false -> sharedPath is now unreferenced and removed, bridge sticker stays.
-	report2, err := s.CleanupStorage(ctx, StorageCleanupFilter{
-		RoomIDs:         []string{"!sig1"},
-		OlderThanMS:     5000,
-		IncludeStickers: false,
-	})
-	require.NoError(t, err)
-	require.Equal(t, 1, report2.RemovedBlobs)
-	require.Equal(t, int64(800), report2.FreedBytes)
-	_, err = os.Stat(sharedPath)
-	require.ErrorIs(t, err, os.ErrNotExist, "shared blob must be removed once !sig1 no longer references it")
-	_, err = os.Stat(bridgeStkPath)
-	require.NoError(t, err, "bridge sticker blob must remain when IncludeStickers is false")
-
-	// 3. Clean with IncludeStickers: true -> cached bridge sticker is removed while user-imported sticker (pack_id = 'user') is preserved.
-	report3, err := s.CleanupStorage(ctx, StorageCleanupFilter{
-		OlderThanMS:     5000,
-		IncludeStickers: true,
-	})
-	require.NoError(t, err)
-	require.Equal(t, 1, report3.RemovedBlobs)
-	require.Equal(t, int64(900), report3.FreedBytes)
-	_, err = os.Stat(bridgeStkPath)
-	require.ErrorIs(t, err, os.ErrNotExist, "cached bridge sticker blob must be removed when IncludeStickers is true")
-	_, err = os.Stat(userStkPath)
-	require.NoError(t, err, "user-imported sticker (pack_id = 'user') must still be preserved when IncludeStickers is true")
+	require.NotContains(t, string(ev.Content), "media_removed")
 }
 
 func TestCleanupStoragePreservesRemoteURLsAndMarksRemovedMediaOnEvents(t *testing.T) {
@@ -336,6 +355,7 @@ func TestCleanupStoragePreservesRemoteURLsAndMarksRemovedMediaOnEvents(t *testin
 
 	ms := &media.Store{Dir: filepath.Join(dir, "media")}
 	s.SetMediaStore(ms)
+	s.SetMediaPutGrace(0)
 
 	require.NoError(t, s.UpsertRoom(ctx, Room{ID: "!wa1", Network: "whatsapp", Name: "WhatsApp Room", CreatedAt: time.Unix(10, 0)}))
 
