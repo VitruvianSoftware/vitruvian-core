@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 
@@ -684,6 +685,63 @@ func (c *Client) buildChatMemberList(
 	}
 }
 
+// isPlaceholderChatName is whether name is no name at all: blank, or the portal ID an older build stored when it
+// had none. A real name that merely starts with "space:" or "dm:" is a name.
+func isPlaceholderChatName(portalID networkid.PortalID, name string) bool {
+	trimmed := strings.TrimSpace(name)
+	return trimmed == "" || trimmed == string(portalID)
+}
+
+func otherMemberIDs(memberGaiaIDs []string, own networkid.UserID) []networkid.UserID {
+	seen := make(map[networkid.UserID]struct{}, len(memberGaiaIDs))
+	var out []networkid.UserID
+	for _, raw := range memberGaiaIDs {
+		trimmed := strings.TrimSpace(raw)
+		if trimmed == "" {
+			continue
+		}
+		uid := MakeUserID(trimmed)
+		if uid == own {
+			continue
+		}
+		if _, dup := seen[uid]; dup {
+			continue
+		}
+		seen[uid] = struct{}{}
+		out = append(out, uid)
+	}
+	return out
+}
+
+func (c *Client) composeGroupMemberName(ctx context.Context, otherIDs []networkid.UserID) string {
+	const maxNames = 3
+	names := make([]string, 0, min(len(otherIDs), maxNames))
+	extra := 0
+	for _, uid := range otherIDs {
+		if len(names) >= maxNames {
+			extra++
+			continue
+		}
+		info, err := c.cachedUserInfo(ctx, uid)
+		if err != nil || info == nil || info.Name == nil {
+			continue
+		}
+		n := strings.TrimSpace(*info.Name)
+		if n == "" || n == string(uid) {
+			continue
+		}
+		names = append(names, n)
+	}
+	if len(names) == 0 {
+		return ""
+	}
+	joined := strings.Join(names, ", ")
+	if extra > 0 {
+		return fmt.Sprintf("%s and %d others", joined, extra)
+	}
+	return joined
+}
+
 func (c *Client) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bridgev2.ChatInfo, error) {
 	isDM, rawID, err := ParsePortalID(portal.ID)
 	if err != nil {
@@ -693,10 +751,12 @@ func (c *Client) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bri
 	if isDM {
 		roomType = database.RoomTypeDM
 	}
-	name := string(portal.ID)
-	if portal.Name != "" {
-		name = portal.Name
+	storedName := strings.TrimSpace(portal.Name)
+	if isPlaceholderChatName(portal.ID, storedName) {
+		storedName = ""
 	}
+	name := storedName
+
 	var topic *string
 	var memberGaiaIDs []string
 	c.metaMu.Lock()
@@ -705,10 +765,13 @@ func (c *Client) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bri
 	}
 	c.metaMu.Unlock()
 
+	own := c.ownUserID()
+	otherIDs := otherMemberIDs(memberGaiaIDs, own)
+
 	fetchedGroupMembers := false
-	if !isDM && rawID != "" {
+	if rawID != "" && (!isDM || len(otherIDs) > 1) {
 		reqBytes, mErr := pb.Marshal(&pb.GetGroupRequest{
-			GroupId: pb.SpaceGroupID(rawID),
+			GroupId: pb.PartsToGroupID(rawID, isDM),
 			FetchOptions: []pb.GetGroupRequest_FetchOptions{
 				pb.GetGroupRequest_MEMBERS,
 				pb.GetGroupRequest_INCLUDE_DYNAMIC_GROUP_NAME,
@@ -720,7 +783,7 @@ func (c *Client) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bri
 				var resp pb.GetGroupResponse
 				if pb.Unmarshal(respBytes, &resp) == nil {
 					if g := resp.GetGroup(); g != nil {
-						if gName := strings.TrimSpace(g.GetName()); gName != "" && portal.Name == "" {
+						if gName := strings.TrimSpace(g.GetName()); gName != "" && !isPlaceholderChatName(portal.ID, gName) {
 							name = gName
 						}
 						if desc := strings.TrimSpace(g.GetGroupDetails().GetDescription()); desc != "" {
@@ -742,12 +805,28 @@ func (c *Client) GetChatInfo(ctx context.Context, portal *bridgev2.Portal) (*bri
 		}
 	}
 
+	otherIDs = otherMemberIDs(memberGaiaIDs, own)
+	isGroup := !isDM || len(otherIDs) > 1
+	if isGroup && name == "" {
+		name = c.composeGroupMemberName(ctx, otherIDs)
+	}
+
+	otherUserID := portal.OtherUserID
+	if isDM && len(otherIDs) > 1 {
+		otherUserID = ""
+	}
+
+	var namePtr *string
+	if name != "" {
+		namePtr = &name
+	}
+
 	return &bridgev2.ChatInfo{
-		Name:        &name,
+		Name:        namePtr,
 		Topic:       topic,
 		Type:        &roomType,
 		CanBackfill: true,
-		Members:     c.buildChatMemberList(c.ownUserID(), isDM, portal.OtherUserID, memberGaiaIDs, fetchedGroupMembers),
+		Members:     c.buildChatMemberList(own, isDM, otherUserID, memberGaiaIDs, fetchedGroupMembers),
 	}, nil
 }
 

@@ -139,8 +139,8 @@ func parseWorldItemLiteFromProto(w *pb.WorldItemLite) parsedWorldItem {
 			addMember(u.GetId())
 		}
 	}
-	if w.RoomName != nil {
-		item.roomName = w.GetRoomName()
+	if roomName := strings.TrimSpace(w.GetRoomName()); roomName != "" {
+		item.roomName = roomName
 		item.hasRoomName = true
 	}
 	if dm := w.GetDmMembers(); dm != nil {
@@ -161,13 +161,12 @@ func parseWorldItemLiteFromProto(w *pb.WorldItemLite) parsedWorldItem {
 }
 
 func derivePeerUserID(memberIDs []string, ownUserID networkid.UserID) networkid.UserID {
-	for _, id := range memberIDs {
-		if id != "" && MakeUserID(id) != ownUserID {
-			return MakeUserID(id)
-		}
+	others := otherMemberIDs(memberIDs, ownUserID)
+	if len(others) == 1 {
+		return others[0]
 	}
-	if len(memberIDs) == 1 {
-		return MakeUserID(memberIDs[0])
+	if len(others) == 0 && len(memberIDs) == 1 && strings.TrimSpace(memberIDs[0]) != "" {
+		return MakeUserID(strings.TrimSpace(memberIDs[0]))
 	}
 	return ""
 }
@@ -242,6 +241,7 @@ func (c *Client) syncWorld(ctx context.Context) error {
 	}
 
 	own := c.ownUserID()
+	syncedPortals := make([]portalRefreshCandidate, 0, len(filtered))
 	for _, item := range filtered {
 		var portalID networkid.PortalID
 		if item.isDM {
@@ -258,16 +258,19 @@ func (c *Client) syncWorld(ctx context.Context) error {
 		}
 		if item.isDM {
 			portal.RoomType = database.RoomTypeDM
-			if peer := derivePeerUserID(item.memberUserIDs, own); peer != "" {
-				portal.OtherUserID = peer
-			}
+			portal.OtherUserID = derivePeerUserID(item.memberUserIDs, own)
 		} else {
 			portal.RoomType = database.RoomTypeDefault
-			if item.hasRoomName {
+			if isPlaceholderChatName(portal.ID, portal.Name) {
+				portal.Name = ""
+				portal.NameSet = false
+			}
+			if item.hasRoomName && !isPlaceholderChatName(portal.ID, item.roomName) {
 				portal.Name = item.roomName
 				portal.NameSet = true
 			}
 		}
+		storedNameBeforeResync := portal.Name
 		c.metaMu.Lock()
 		meta, ok := portal.Metadata.(*PortalMetadata)
 		if !ok || meta == nil {
@@ -288,6 +291,10 @@ func (c *Client) syncWorld(ctx context.Context) error {
 		if saveErr != nil {
 			return fmt.Errorf("save portal %q: %w", portalID, saveErr)
 		}
+		syncedPortals = append(syncedPortals, portalRefreshCandidate{
+			portal:     portal,
+			storedName: storedNameBeforeResync,
+		})
 
 		roomType := portal.RoomType
 		chatInfo := &bridgev2.ChatInfo{
@@ -295,7 +302,7 @@ func (c *Client) syncWorld(ctx context.Context) error {
 			CanBackfill: true,
 			Members:     c.buildChatMemberList(own, item.isDM, portal.OtherUserID, item.memberUserIDs, false),
 		}
-		if item.hasRoomName {
+		if item.hasRoomName && !isPlaceholderChatName(portal.ID, item.roomName) {
 			roomName := item.roomName
 			chatInfo.Name = &roomName
 		}
@@ -309,7 +316,145 @@ func (c *Client) syncWorld(ctx context.Context) error {
 			LatestMessageTS: time.UnixMicro(item.sortTimestamp),
 		})
 	}
+	c.refreshUnnamedGroupPortals(ctx, syncedPortals)
 	return nil
+}
+
+type portalRefreshCandidate struct {
+	portal     *bridgev2.Portal
+	storedName string
+}
+
+func (c *Client) isOneToOneDMPortal(portal *bridgev2.Portal, own networkid.UserID) bool {
+	if portal == nil {
+		return false
+	}
+	isDM, _, err := ParsePortalID(portal.ID)
+	if err != nil || !isDM {
+		return false
+	}
+	c.metaMu.Lock()
+	var members []string
+	if meta, ok := portal.Metadata.(*PortalMetadata); ok && meta != nil {
+		members = slices.Clone(meta.MemberUserIDs)
+	}
+	c.metaMu.Unlock()
+	others := otherMemberIDs(members, own)
+	if len(others) > 1 {
+		return false
+	}
+	if len(others) == 1 || portal.OtherUserID != "" {
+		return true
+	}
+	if len(members) == 1 && strings.TrimSpace(members[0]) != "" {
+		return true
+	}
+	return false
+}
+
+func (c *Client) refreshUnnamedGroupPortals(ctx context.Context, syncedPortals []portalRefreshCandidate) {
+	if c.UserLogin == nil || c.UserLogin.Bridge == nil || ctx.Err() != nil {
+		return
+	}
+	own := c.ownUserID()
+	seen := make(map[networkid.PortalID]struct{}, len(syncedPortals))
+	var candidates []*bridgev2.Portal
+	addCandidate := func(p *bridgev2.Portal, storedName string) {
+		if p == nil {
+			return
+		}
+		if _, dup := seen[p.ID]; dup {
+			return
+		}
+		seen[p.ID] = struct{}{}
+		if c.isOneToOneDMPortal(p, own) {
+			return
+		}
+		stored := strings.TrimSpace(storedName)
+		if stored != "" && stored != string(p.ID) && !isPlaceholderChatName(p.ID, stored) {
+			return
+		}
+		candidates = append(candidates, p)
+	}
+
+	for _, cand := range syncedPortals {
+		addCandidate(cand.portal, cand.storedName)
+	}
+	if c.UserLogin.Bridge.DB != nil && c.UserLogin.Bridge.DB.Database != nil {
+		rows, err := c.UserLogin.Bridge.DB.Query(ctx, `SELECT id, name FROM portal WHERE bridge_id = $1 AND receiver = $2`, c.UserLogin.Bridge.ID, c.UserLogin.ID)
+		if err == nil {
+			type dbPortalRow struct {
+				id   networkid.PortalID
+				name string
+			}
+			var dbRows []dbPortalRow
+			for rows.Next() {
+				var idStr, nameStr string
+				if err := rows.Scan(&idStr, &nameStr); err == nil && idStr != "" {
+					dbRows = append(dbRows, dbPortalRow{id: networkid.PortalID(idStr), name: nameStr})
+				}
+			}
+			_ = rows.Close()
+			for _, row := range dbRows {
+				if _, dup := seen[row.id]; dup {
+					continue
+				}
+				p, err := c.UserLogin.Bridge.GetExistingPortalByKey(ctx, networkid.PortalKey{
+					ID:       row.id,
+					Receiver: c.UserLogin.ID,
+				})
+				if err == nil && p != nil {
+					addCandidate(p, row.name)
+				}
+			}
+		}
+	}
+	if len(candidates) == 0 {
+		return
+	}
+
+	sem := make(chan struct{}, cap(userInfoLookupSem))
+	var wg sync.WaitGroup
+	for _, portal := range candidates {
+		select {
+		case sem <- struct{}{}:
+		case <-ctx.Done():
+			wg.Wait()
+			return
+		}
+		wg.Add(1)
+		go func(p *bridgev2.Portal) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			c.refreshPortalChatInfo(ctx, p)
+		}(portal)
+	}
+	wg.Wait()
+}
+
+func (c *Client) refreshPortalChatInfo(ctx context.Context, portal *bridgev2.Portal) {
+	if portal == nil || c.UserLogin == nil || ctx.Err() != nil {
+		return
+	}
+	info, err := c.GetChatInfo(ctx, portal)
+	if err != nil || info == nil || ctx.Err() != nil {
+		return
+	}
+	c.ghostMu.Lock()
+	defer c.ghostMu.Unlock()
+	hadPlaceholder := portal.Name != "" && isPlaceholderChatName(portal.ID, portal.Name)
+	if hadPlaceholder {
+		portal.Name = ""
+		portal.NameSet = false
+	}
+	portal.UpdateInfo(ctx, info, c.UserLogin, nil, time.Time{})
+	if info.Name != nil && *info.Name != "" && portal.Name != *info.Name {
+		portal.Name = *info.Name
+		portal.NameSet = portal.MXID != ""
+		_ = portal.Save(ctx)
+	} else if hadPlaceholder && info.Name == nil {
+		_ = portal.Save(ctx)
+	}
 }
 
 func (c *Client) advanceUserRevision(ctx context.Context, rev int64) error {
