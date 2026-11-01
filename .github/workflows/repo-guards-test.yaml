@@ -26,6 +26,8 @@
 #
 #   //tools/ci:block_queue_bypass_test             .claude/block-queue-bypass.sh
 #   //tools/ci:kube_setup_test                     .claude/kube-setup.sh
+#   //tools/ci:kube_setup_join_test                its wait for a joining tailscale-up.sh
+#                                                  (manual, local: needs this runner's pgrep)
 #   //tools/ci:session_start_test                  .claude/session-start.sh and its steps
 #   //tools/ci:workflow_git_push_credentials_test  every workflow that pushes
 #   //tools/ci:require_pinned_actions_test         actionlint.yaml's rustc line
@@ -81,6 +83,7 @@ jobs:
           bazel test "${cache_flags[@]}" --test_output=errors \
             //tools/ci:block_queue_bypass_test \
             //tools/ci:kube_setup_test \
+            //tools/ci:kube_setup_join_test \
             //tools/ci:session_start_test \
             //tools/ci:workflow_git_push_credentials_test \
             //tools/ci:require_pinned_actions_test

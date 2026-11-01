@@ -343,6 +343,20 @@ fn waits_for_a_tailscale_up_that_is_still_joining() {
         Command::new("bash").arg(&js).status().unwrap()
     });
     std::thread::sleep(Duration::from_millis(500));
+    // The hook finds the joiner with pgrep. Where pgrep is missing or cannot
+    // see this process (the remote executor's sandbox did not show it), the
+    // hook's answer says nothing about the hook: say so instead.
+    let seen = Command::new("pgrep")
+        .args(["-f", r"^([^ ]*/)?(ba)?sh [^ ]*/tailscale-up\.sh$"])
+        .stdout(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+    assert!(
+        seen,
+        "pgrep cannot see the joining tailscale-up.sh here (no procps, or a hidden process table); \
+         run //tools/ci:kube_setup_join_test where the hook runs, as repo-guards-test.yaml does"
+    );
     let r = exec(f.command(&f.default_path(), "ok", &[]));
     joiner.join().unwrap();
     verdict(&r, "reports reachable once the join finishes", true, "");

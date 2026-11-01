@@ -268,15 +268,24 @@ rust_test(
 # .github/workflows/repo-guards-test.yaml on the hook paths, because the
 # presubmit planner maps a file outside every package (.claude/ has no BUILD)
 # to no tests at all.
+#
+# kube_setup_join_test is the one kube-setup case that needs pgrep to see a
+# sibling process: on the remote executor it did not, and the homelab queue
+# runner's image has no procps. So it is manual and local-only, and
+# repo-guards-test.yaml runs it on the hosted runner, where the shell suite
+# always ran it; kube_setup_test runs every other case anywhere.
+_KUBE_JOIN = "waits_for_a_tailscale_up_that_is_still_joining"
+
 [
     rust_test(
-        name = name + "_test",
+        name = name,
         size = "small",
         srcs = [
             "src/hook_tests/common.rs",
-            "src/hook_tests/" + name + ".rs",
+            "src/hook_tests/" + src + ".rs",
         ],
-        crate_root = "src/hook_tests/" + name + ".rs",
+        args = args,
+        crate_root = "src/hook_tests/" + src + ".rs",
         data = hook_data + [
             "//:.claude/settings.json",
             "@jq_toolchains//:resolved_toolchain",
@@ -284,23 +293,52 @@ rust_test(
         edition = "2021",
         env = {"JQ_BIN": "$(JQ_BIN)"},
         rustc_flags = ["-Copt-level=3"],
+        tags = tags,
         toolchains = ["@jq_toolchains//:resolved_toolchain"],
         deps = [":ci_testkit"],
     )
-    for name, hook_data in [
+    for name, src, args, tags, hook_data in [
         (
+            "block_queue_bypass_test",
             "block_queue_bypass",
+            [],
+            [],
             ["//:.claude/block-queue-bypass.sh"],
         ),
         (
+            "kube_setup_test",
             "kube_setup",
+            [
+                "--skip",
+                _KUBE_JOIN,
+            ],
+            [],
             [
                 "//:.claude/kube-setup.sh",
                 "//:.claude/session-start.sh",
             ],
         ),
         (
+            "kube_setup_join_test",
+            "kube_setup",
+            [
+                "--exact",
+                _KUBE_JOIN,
+            ],
+            [
+                "manual",
+                "no-remote-exec",
+            ],
+            [
+                "//:.claude/kube-setup.sh",
+                "//:.claude/session-start.sh",
+            ],
+        ),
+        (
+            "session_start_test",
             "session_start",
+            [],
+            [],
             [
                 "//:.claude/kube-setup.sh",
                 "//:.claude/session-start.sh",
