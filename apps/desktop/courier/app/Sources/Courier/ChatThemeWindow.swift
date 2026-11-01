@@ -19,6 +19,56 @@ extension Color {
 }
 
 /// `ChatThemeWindow.tsx` — per-chat theme, bubble colour, and wallpaper editor sheet/window.
+/// Applies the zoom level (⌘= / ⌘- / ⌘0, or Settings ▸ Appearance) and the font size setting to every text that takes
+/// the window's default font, message text among them: at 125% it is 25% larger. Text with a fixed style (captions,
+/// labels) keeps its size, as the system's own text does.
+struct CourierTextZoom: ViewModifier {
+    @ObservedObject var appearance: AppearancePreferences
+
+    func body(content: Content) -> some View {
+        content
+            .font(.system(size: appearance.messageBodyPointSize))
+            .environment(\.courierZoomMultiplier, appearance.zoomMultiplier)
+            .environment(\.courierMessagePointSize, appearance.messageBodyPointSize)
+    }
+}
+
+private struct CourierMessagePointSizeKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 13 // the body style's size on macOS
+}
+
+private struct CourierZoomMultiplierKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 1
+}
+
+extension EnvironmentValues {
+    /// The zoom level as a multiplier (1 at 100%), for views that size text themselves (the inbox rows).
+    var courierZoomMultiplier: CGFloat {
+        get { self[CourierZoomMultiplierKey.self] }
+        set { self[CourierZoomMultiplierKey.self] = newValue }
+    }
+
+    /// Message text size in points: the font size setting times the zoom level (13 at the defaults). Message text sets
+    /// its font run by run, so it reads this rather than the window's font.
+    var courierMessagePointSize: CGFloat {
+        get { self[CourierMessagePointSizeKey.self] }
+        set { self[CourierMessagePointSizeKey.self] = newValue }
+    }
+}
+
+extension View {
+    /// The zoom level and font size setting for this window's text (CourierTextZoom); nothing when there are no
+    /// appearance preferences.
+    @ViewBuilder
+    func courierTextZoom(_ appearance: AppearancePreferences?) -> some View {
+        if let appearance {
+            modifier(CourierTextZoom(appearance: appearance))
+        } else {
+            self
+        }
+    }
+}
+
 public struct ChatThemeWindow: View {
     public let roomID: String
     public let chatTitle: String
@@ -174,6 +224,7 @@ public struct ChatThemeWindow: View {
         }
         .padding(18)
         .frame(minWidth: 520, idealWidth: 560, minHeight: 520)
+        .courierTextZoom(appearance)
     }
 
     private var livePreviewCard: some View {
@@ -197,7 +248,7 @@ public struct ChatThemeWindow: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Text(String(localized: "Are we still on for coffee at 10?"))
-                        .font(.system(size: appearance.fontSizeScale.messageBodyPointSize))
+                        .font(.system(size: appearance.messageBodyPointSize))
                         .foregroundStyle(.primary)
                         .padding(.horizontal, 11)
                         .padding(.vertical, 7)
@@ -207,7 +258,7 @@ public struct ChatThemeWindow: View {
                 HStack {
                     Spacer(minLength: 40)
                     Text(String(localized: "Yes! Bringing the trail maps too."))
-                        .font(.system(size: appearance.fontSizeScale.messageBodyPointSize))
+                        .font(.system(size: appearance.messageBodyPointSize))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 11)
                         .padding(.vertical, 7)
@@ -418,6 +469,7 @@ public struct ChatThemeBrowserWindow: View {
         }
         .padding(18)
         .frame(minWidth: 640, idealWidth: 680, minHeight: 540)
+        .courierTextZoom(appearance)
     }
 
     private var previewBanner: some View {
@@ -441,7 +493,7 @@ public struct ChatThemeBrowserWindow: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Text(String(localized: "Morning! Here’s how \(selectedPreset.title) looks with \(selectedWallpaper.title)."))
-                        .font(.system(size: appearance.fontSizeScale.messageBodyPointSize))
+                        .font(.system(size: appearance.messageBodyPointSize))
                         .foregroundStyle(.primary)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 7)
@@ -451,7 +503,7 @@ public struct ChatThemeBrowserWindow: View {
                 HStack {
                     Spacer(minLength: 40)
                     Text(String(localized: "Clean, readable, and 100% local on this Mac."))
-                        .font(.system(size: appearance.fontSizeScale.messageBodyPointSize))
+                        .font(.system(size: appearance.messageBodyPointSize))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 7)

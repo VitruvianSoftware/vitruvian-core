@@ -269,6 +269,58 @@ final class AppearancePreferencesTests: XCTestCase {
         XCTAssertEqual(prefs.fontSizeScale, .extraSmall)
     }
 
+    /// A saved icon is put on the Dock at launch: a chosen variant, or a custom image (falling back to the variant
+    /// when the image can no longer be read). With nothing saved, the bundle's icon is left alone.
+    func testSavedAppIconIsAppliedAtLaunch() throws {
+        let suiteName = "test.courier.appearance.launchicon.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let fresh = FakeAppIconApplier()
+        AppearancePreferences(defaults: defaults, appIconApplier: fresh).applySavedAppIcon()
+        XCTAssertEqual(fresh.applyVariantCallCount + fresh.applyCustomCallCount, 0, "nothing saved, nothing applied")
+
+        AppearancePreferences(defaults: defaults, appIconApplier: FakeAppIconApplier()).selectedAppIcon = .violetPulse
+        let relaunched = FakeAppIconApplier()
+        let prefs = AppearancePreferences(defaults: defaults, appIconApplier: relaunched)
+        XCTAssertNil(relaunched.appliedVariant, "loading the preferences applies nothing by itself")
+        prefs.applySavedAppIcon()
+        XCTAssertEqual(relaunched.appliedVariant, .violetPulse)
+
+        let iconURL = FileManager.default.temporaryDirectory.appendingPathComponent("launch-icon-\(UUID().uuidString).png")
+        defer { try? FileManager.default.removeItem(at: iconURL) }
+        let image = AppIconRenderer.renderIcon(variant: .copperCraft, size: 64)
+        let tiff = try XCTUnwrap(image.tiffRepresentation)
+        let png = try XCTUnwrap(NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]))
+        try png.write(to: iconURL)
+        prefs.customAppIconPath = iconURL.path
+        let withCustom = FakeAppIconApplier()
+        AppearancePreferences(defaults: defaults, appIconApplier: withCustom).applySavedAppIcon()
+        XCTAssertEqual(withCustom.appliedCustomPath, iconURL.path)
+
+        try FileManager.default.removeItem(at: iconURL)
+        let missingCustom = FakeAppIconApplier()
+        AppearancePreferences(defaults: defaults, appIconApplier: missingCustom).applySavedAppIcon()
+        XCTAssertNil(missingCustom.appliedCustomPath)
+        XCTAssertEqual(missingCustom.appliedVariant, .violetPulse, "an unreadable custom image falls back to the variant")
+    }
+
+    /// The zoom level scales message text with the font size setting: 125% is a quarter larger.
+    func testZoomScalesMessageText() {
+        let suiteName = "test.courier.appearance.zoom.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let prefs = AppearancePreferences(defaults: defaults, appIconApplier: FakeAppIconApplier())
+        XCTAssertEqual(prefs.messageBodyPointSize, 13)
+        prefs.zoomPercent = 125
+        XCTAssertEqual(prefs.zoomMultiplier, 1.25)
+        XCTAssertEqual(prefs.messageBodyPointSize, 16.5)
+        prefs.fontSizeScale = .large
+        XCTAssertEqual(prefs.messageBodyPointSize, 18)
+        prefs.resetZoom()
+        XCTAssertEqual(prefs.messageBodyPointSize, 14.5)
+    }
+
     func testAppIconRendererProducesNonEmptyBitmapForEveryVariantAndAppliesToDock() throws {
         let suiteName = "test.courier.appearance.appicon.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!

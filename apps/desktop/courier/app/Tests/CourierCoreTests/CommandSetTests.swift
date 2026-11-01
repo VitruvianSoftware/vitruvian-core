@@ -343,6 +343,22 @@ final class CommandSetTests: XCTestCase {
     /// Incognito's and the accounts' commands, by their ledger names (02 §2.6 "Turn on incognito mode", "Add
     /// Account", "Accounts"). "Turn off incognito mode" is the same row's other state: only the one that applies is
     /// on. The ledger's "Account" (its pane is 4.6's) is not registered here, so Task 11's list must not claim it.
+    /// "Focus Courier" shows its keys only when the Focus App hotkey has some: it has no default.
+    func testFocusCourierShowsItsShortcutOnlyWhenOneIsSet() throws {
+        let testStore = TestDefaults()
+        defer { testStore.remove() }
+        let hotkeys = HotkeyRegistry(defaults: testStore.defaults)
+        func focusKeys() throws -> String? {
+            try XCTUnwrap(CommandSet.all(hotkeys: hotkeys).first { $0.id == "nav.focusCourier" }).shortcut
+        }
+        XCTAssertNil(try focusKeys(), "no hotkey is set, so no keys are shown")
+        let chord = KeyChord(key: "space", command: true, shift: true)
+        if case let .failure(error) = hotkeys.record(chord, for: "Focus App") {
+            XCTFail("recording the hotkey failed: \(error)")
+        }
+        XCTAssertEqual(try focusKeys(), chord.symbols)
+    }
+
     func testNewCommandsHaveLedgerNames() async throws {
         let h = try await startConversation(
             ["!g": [textEvent(id: "$1", room: "!g", at: 1, body: "Theirs"),
@@ -357,20 +373,20 @@ final class CommandSetTests: XCTestCase {
                                    restartEngine: {})
         let commands = CommandSet.accounts(login, h.conversation)
         XCTAssertEqual(commands.map(\.id), ["Turn on incognito mode", "Turn off incognito mode", "Add Account",
-                                            "Accounts"])
+                                            "accounts.manage"])
         XCTAssertEqual(commands.map(\.title), ["Turn on incognito mode", "Turn off incognito mode", "Add Account",
                                                "Accounts"])
         XCTAssertTrue(commands.allSatisfy { $0.confirmation == nil && $0.keys == nil })
         func enabled() -> [String] { commands.filter { $0.isEnabled() }.map(\.id) }
 
         // Without the plan, Incognito can't be turned on.
-        XCTAssertEqual(enabled(), ["Add Account", "Accounts"])
+        XCTAssertEqual(enabled(), ["Add Account", "accounts.manage"])
         h.conversation.isEntitled = { _ in true }
-        XCTAssertEqual(enabled(), ["Turn on incognito mode", "Add Account", "Accounts"])
+        XCTAssertEqual(enabled(), ["Turn on incognito mode", "Add Account", "accounts.manage"])
         try XCTUnwrap(commands.first { $0.id == "Turn on incognito mode" }).run()
         XCTAssertTrue(h.preferences.incognito)
         XCTAssertTrue(h.conversation.asksToHideTyping, "turning it on asks about typing, as Settings does")
-        XCTAssertEqual(enabled(), ["Turn off incognito mode", "Add Account", "Accounts"])
+        XCTAssertEqual(enabled(), ["Turn off incognito mode", "Add Account", "accounts.manage"])
         try XCTUnwrap(commands.first { $0.id == "Turn off incognito mode" }).run()
         XCTAssertFalse(h.preferences.incognito)
 
@@ -378,7 +394,7 @@ final class CommandSetTests: XCTestCase {
         try XCTUnwrap(commands.first { $0.id == "Add Account" }).run()
         XCTAssertEqual(login.screen, .picker)
         login.close()
-        try XCTUnwrap(commands.first { $0.id == "Accounts" }).run()
+        try XCTUnwrap(commands.first { $0.id == "accounts.manage" }).run()
         XCTAssertEqual(login.screen, .picker)
 
     }
@@ -564,7 +580,7 @@ final class CommandSetTests: XCTestCase {
             ("General", .general),
             ("Appearance", .appearance),
             ("Notifications", .notifications),
-            ("Accounts", .accounts),
+            ("settings.accounts", .accounts),
             ("Account", .accounts),
             ("Hotkeys", .hotkeys),
             ("Quick Replies", .quickReplies),
@@ -698,6 +714,33 @@ final class CommandSetTests: XCTestCase {
             XCTAssertTrue(ids.contains(cmd.id), "Missing CommandSet.settingsAndSystem command: \(cmd.id)")
         }
 
+        // 1b. No two commands share an ID. all() keeps the first of a pair and drops the other without a word (it once
+        // dropped Settings ▸ Accounts for the accounts list's "Accounts"), so every group's command must be the one
+        // all() kept: same title, same category.
+        let byID = Dictionary(all.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        XCTAssertEqual(byID.count, all.count, "CommandSet.all has duplicate IDs")
+        let groups: [[CourierCommand]] = [
+            inboxCommands,
+            CommandSet.search(searchH.search, openRoomID: { convH.conversation.roomID }),
+            CommandSet.message(actions, convH.conversation),
+            CommandSet.accounts(login, convH.conversation),
+            CommandSet.chatInfo(conversation: convH.conversation, inbox: h.inbox),
+            CommandSet.composerMedia(convH.conversation.composer),
+            CommandSet.settingsAndSystem(navigation: navigation, inbox: h.inbox, hotkeys: hotkeys),
+        ]
+        for cmd in groups.joined() {
+            guard let kept = byID[cmd.id] else { continue }
+            XCTAssertEqual(kept.title, cmd.title, "two commands share the ID '\(cmd.id)'")
+            XCTAssertEqual(kept.category, cmd.category, "two commands share the ID '\(cmd.id)'")
+        }
+        XCTAssertEqual(byID["accounts.manage"]?.category, .accounts)
+        XCTAssertEqual(byID["settings.accounts"]?.category, .settings)
+
+        // 1c. Media is deleted one way only (Delete Media…); there is no separate cache to clear.
+        XCTAssertNil(byID["storage.clearCache"])
+        XCTAssertFalse(titles.contains("Clear Cache"))
+        XCTAssertFalse(all.contains { $0.title.localizedCaseInsensitiveContains("Beeper") }, "no command may say Beeper")
+
         // 2. Every required 4.1–4.7 command bar title/id must be present.
         let requiredTitles: [String] = [
             "Open recently viewed chats",
@@ -719,13 +762,12 @@ final class CommandSetTests: XCTestCase {
             "Reset Zoom",
             "Fire Confetti 🎉",
             "Delete Media…",
-            "Clear Cache",
             "AI: Summarize Thread",
             "AI: Draft Reply",
             "AI: Translate Message",
             "Message: Talk to Type",
             "Manage Subscription / Plan",
-            "Import from Beeper / Matrix",
+            "Import from Matrix",
         ]
         for required in requiredTitles {
             XCTAssertTrue(

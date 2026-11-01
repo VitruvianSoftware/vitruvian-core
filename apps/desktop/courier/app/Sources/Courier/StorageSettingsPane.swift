@@ -11,7 +11,7 @@ public struct StorageSettingsPane: View {
     public var highlightedSettingID: String? = nil
 
     @State private var isConfirmingBulkCleanup = false
-    @State private var isConfirmingClearAllCache = false
+    @State private var isConfirmingDeleteAllMedia = false
     @State private var roomPendingCleanup: RoomStorageUsage?
 
     @MainActor
@@ -53,19 +53,19 @@ public struct StorageSettingsPane: View {
             ) {
                 Button(model.selectedAgeChoice.label, role: .destructive) {
                     let choice = model.selectedAgeChoice
-                    Task { await model.clearMedia(olderThan: choice) }
+                    Task { await model.deleteMedia(olderThan: choice) }
                 }
                 Button(String(localized: "Cancel"), role: .cancel) {}
             } message: {
                 Text(CommandSet.deleteMediaConfirmation)
             }
             .confirmationDialog(
-                CommandSet.deleteMediaTitle,
-                isPresented: $isConfirmingClearAllCache,
+                CommandSet.deleteAllMediaTitle,
+                isPresented: $isConfirmingDeleteAllMedia,
                 titleVisibility: .visible
             ) {
-                Button(CommandSet.deleteMediaTitle, role: .destructive) {
-                    Task { await model.clearAllCache() }
+                Button(CommandSet.deleteAllMediaTitle, role: .destructive) {
+                    Task { await model.deleteMedia(olderThan: .allTime) }
                 }
                 Button(String(localized: "Cancel"), role: .cancel) {}
             } message: {
@@ -167,8 +167,8 @@ public struct StorageSettingsPane: View {
                     .controlSize(.small)
                     .disabled(model.isCleaning)
 
-                    Button(String(localized: "Clear All Cached Media…")) {
-                        isConfirmingClearAllCache = true
+                    Button(CommandSet.deleteAllMediaTitle) {
+                        isConfirmingDeleteAllMedia = true
                     }
                     .controlSize(.small)
                     .disabled(model.isCleaning)

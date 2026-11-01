@@ -778,6 +778,30 @@ public final class AppearancePreferences: ObservableObject {
         }
     }
 
+    /// Puts the saved app icon on the Dock; the app delegate calls it once, at launch (until then the Dock shows the
+    /// bundle's icon). A custom image wins; one that can no longer be read falls back to the chosen variant. With no
+    /// icon ever chosen, the bundle's icon stays.
+    public func applySavedAppIcon() {
+        if let path = customAppIconPath {
+            do {
+                try appIconApplier.applyCustomImage(at: path)
+                return
+            } catch {
+                appIconApplier.apply(variant: selectedAppIcon)
+                return
+            }
+        }
+        if defaults.string(forKey: Keys.selectedAppIcon) != nil {
+            appIconApplier.apply(variant: selectedAppIcon)
+        }
+    }
+
+    /// The zoom level as a multiplier: 1.25 at 125%.
+    public var zoomMultiplier: CGFloat { CGFloat(zoomPercent) / 100 }
+
+    /// Message text size: the font size setting times the zoom level, to the half point.
+    public var messageBodyPointSize: CGFloat { round(13.0 * fontSizeScale.multiplier * zoomMultiplier * 2) / 2 }
+
     public func zoomIn() {
         guard AppLockGate.shared.canPerform(.settingsChange) else { return }
         if let next = Self.zoomSteps.first(where: { $0 > zoomPercent }) {

@@ -157,6 +157,7 @@ struct MainWindow: View {
             .environment(\.searchInChat, { search.show(in: $0) })
             .environment(\.openDetachedWindow, { target in detachedWindows?.open(target) })
             .environment(\.appearancePreferences, appearance)
+            .courierTextZoom(appearance)
             .preferredColorScheme(preferredColorScheme)
     }
 

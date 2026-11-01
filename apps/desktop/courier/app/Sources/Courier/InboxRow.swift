@@ -53,6 +53,19 @@ struct InboxRowView<HoverMenu: View>: View {
     @ViewBuilder let hoverMenu: () -> HoverMenu
     @Environment(\.appearancePreferences) private var appearanceEnv
 
+    @Environment(\.courierZoomMultiplier) private var zoom
+
+    /// The chat's name: the body or headline style (13 pt), at the zoom level.
+    private var titleFont: Font {
+        guard zoom != 1 else { return style.compact ? .body : .headline }
+        return .system(size: round(13 * zoom * 2) / 2, weight: style.compact ? .regular : .bold)
+    }
+
+    /// The preview line: the font size setting, at the zoom level.
+    private var previewPointSize: CGFloat {
+        round((appearanceEnv?.fontSizeScale ?? style.fontSizeScale).inboxPreviewPointSize * zoom * 2) / 2
+    }
+
     private var isRedacted: Bool {
         style.redactNamesAndPictures || (appearanceEnv?.redactNamesAndPictures ?? false)
     }
@@ -74,7 +87,7 @@ struct InboxRowView<HoverMenu: View>: View {
             VStack(alignment: .leading, spacing: style.compact ? 1 : 3) {
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text(displayTitle)
-                        .font(style.compact ? .body : .headline)
+                        .font(titleFont)
                         .fontWeight(row.isUnread ? .semibold : .regular)
                         .lineLimit(1)
                         // The name keeps its room first; the account tag gives way before it.
@@ -95,7 +108,7 @@ struct InboxRowView<HoverMenu: View>: View {
                 }
                 HStack(alignment: .top, spacing: 6) {
                     secondLine
-                        .font(.system(size: (appearanceEnv?.fontSizeScale ?? style.fontSizeScale).inboxPreviewPointSize))
+                        .font(.system(size: previewPointSize))
                         .foregroundStyle(.secondary)
                         .lineLimit(style.compact ? 1 : 2)
                         .frame(maxWidth: .infinity, alignment: .leading)

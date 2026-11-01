@@ -101,22 +101,26 @@ public final class StorageModel: ObservableObject {
         }
     }
 
-    public func clearMedia(olderThan choice: StorageCleanupAgeChoice) async {
+    /// Deletes media from this Mac, the one way every "Delete Media…" does it (the command bar and the Storage pane
+    /// alike): every photo, video, file and synced sticker older than `choice` (all of it for `.allTime`) goes, and
+    /// stickers the person imported stay (the engine never deletes those). Messages stay, marked as having lost their
+    /// media.
+    public func deleteMedia(olderThan choice: StorageCleanupAgeChoice = .allTime) async {
         guard canMutateOrRead else { return }
         guard let client = appModel.client else { return }
         isCleaning = true
         lastErrorMessage = nil
         defer { isCleaning = false }
         do {
-            let params = StorageCleanupParams(olderThanMS: choice.olderThanMS)
+            let params = StorageCleanupParams(olderThanMS: choice.olderThanMS, includeStickers: true)
             let result: StorageCleanupResult = try await client.call("storage.cleanup", params)
             let formatted = Self.formatBytes(result.freedBytes)
-            lastStatusMessage = String(localized: "Cleared \(formatted) of cached media")
+            lastStatusMessage = String(localized: "Deleted \(formatted) of media")
             await refresh()
         } catch {
             lastErrorMessage = EngineErrorText.text(
                 for: error,
-                fallback: String(localized: "Couldn’t delete cached media.")
+                fallback: String(localized: "Couldn’t delete media.")
             )
         }
     }
@@ -132,32 +136,12 @@ public final class StorageModel: ObservableObject {
             let params = StorageCleanupParams(roomIDs: [trimmed])
             let result: StorageCleanupResult = try await client.call("storage.cleanup", params)
             let formatted = Self.formatBytes(result.freedBytes)
-            lastStatusMessage = String(localized: "Cleared \(formatted) of cached media")
+            lastStatusMessage = String(localized: "Deleted \(formatted) of media")
             await refresh()
         } catch {
             lastErrorMessage = EngineErrorText.text(
                 for: error,
                 fallback: String(localized: "Couldn’t delete media in this chat.")
-            )
-        }
-    }
-
-    public func clearAllCache() async {
-        guard canMutateOrRead else { return }
-        guard let client = appModel.client else { return }
-        isCleaning = true
-        lastErrorMessage = nil
-        defer { isCleaning = false }
-        do {
-            let params = StorageCleanupParams(includeStickers: true)
-            let result: StorageCleanupResult = try await client.call("storage.cleanup", params)
-            let formatted = Self.formatBytes(result.freedBytes)
-            lastStatusMessage = String(localized: "Cleared \(formatted) of cached media")
-            await refresh()
-        } catch {
-            lastErrorMessage = EngineErrorText.text(
-                for: error,
-                fallback: String(localized: "Couldn’t clear media cache.")
             )
         }
     }

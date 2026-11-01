@@ -5003,6 +5003,38 @@ final class ViewSnapshotTests: XCTestCase {
         }
     }
 
+    /// Zoom (⌘= / ⌘- / ⌘0, or the Settings stepper) makes the conversation's text larger: at 125% the same messages
+    /// render taller than at 100%. Look at m47-zoom-100-conversation and m47-zoom-125-conversation side by side.
+    func testZoomEnlargesConversationTextSnapshots() throws {
+        let suite = defaults()
+        let ui = MessageUI()
+        let messages = [
+            Fixture.text("$z1", "Are we still on for the walk on Saturday?", mine: false, ts: 5,
+                         sender: "@someone:courier.local", name: "Sample Person"),
+            Fixture.text("$z2", "Yes, see you at the trailhead at nine.", mine: true, ts: 6),
+        ]
+        func render(_ percent: Int) throws -> [NSSize] {
+            let appearance = AppearancePreferences(defaults: suite)
+            appearance.zoomPercent = percent
+            var actions = MessageActions()
+            actions.appearance = appearance
+            return try Snapshot.render("m47-zoom-\(percent)-conversation", width: 480) {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(Fixture.items(messages, isDirect: false)) { item in
+                        TimelineItemView(item: item, isSelected: false, showsSent: true, actions: actions, ui: ui)
+                    }
+                }
+                .padding(16)
+                .environment(\.appearancePreferences, appearance)
+                .courierTextZoom(appearance)
+            }
+        }
+        let normal = try render(100)
+        let zoomed = try render(125)
+        // Only the message text grows (captions and times keep their size): two lines, each about 3.5 pt taller.
+        XCTAssertGreaterThanOrEqual(zoomed[0].height, normal[0].height + 6, "125% must render visibly larger text")
+    }
+
     func testStorageSettingsPaneSnapshotsLightAndDark() throws {
         let suite = defaults()
         let app = offlineApp()

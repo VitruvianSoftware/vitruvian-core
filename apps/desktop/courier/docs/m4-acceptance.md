@@ -1561,7 +1561,7 @@ Command Bar (`⌘J`), Appearance & Themes (8 Courier colour presets, 8 procedura
 
 #### Keys, Settings, Menus, Components & Commands
 
-- [x] `hotkey` Command Bar (`⌘J`), `hotkey` Focus App and Command Bar (`⌘⇧Space`), `hotkey` Zoom In (`⌘=`), `hotkey` Zoom Out (`⌘-`), `hotkey` Reset Zoom (`⌘0`), and `hotkey` Message: Talk to Type (`⌘⇧D`) (`HotkeyRegistry.swift`, `InboxCommands.swift`, `CommandSet.swift`).
+- [x] `hotkey` Command Bar (`⌘J`), `hotkey` Focus App and Command Bar (no default key; set one in Settings ▸ Hotkeys), `hotkey` Zoom In (`⌘=`), `hotkey` Zoom Out (`⌘-`), `hotkey` Reset Zoom (`⌘0`), and `hotkey` Message: Talk to Type (`⌘⇧D`) (`HotkeyRegistry.swift`, `InboxCommands.swift`, `CommandSet.swift`).
 - [x] `menu:Courier` Command Bar… (`⌘J`) and `menu:View` Zoom In (`⌘+`), Zoom Out (`⌘-`), Actual Size (`⌘0`) (`InboxCommands.swift`).
 - [x] `setting:appearance` Theme (`System` / `Light` / `Dark`), Colour theme, Chat wallpaper, App Icon (`AppIconPrefsSubView.tsx`), Font size, Zoom level, Reduce transparency, Enable message animations, Balance message text, Use pointer cursor for interactive elements, Show feedback widget, Redact names and pictures, and Custom CSS (`ThemeFileLoader`) (`GeneralSettingsPane.swift`, `SettingsSearchModel.swift`, verified by `SettingsSearchModelTests.testAppearanceSettingsCatalogCoversEveryMilestone47AppearanceSetting`).
 - [x] `setting:storage` Storage Overview (`StorageOverviewChart.tsx`), Clean Up Media by Age, and Storage by Chat (`StorageByRoomList.tsx`) (`StorageSettingsPane.swift`, `SettingsSearchModel.swift`, verified by `SettingsSearchModelTests.testStorageSettingsCatalogCoversEveryMilestone47StorageSetting`).
@@ -1572,7 +1572,7 @@ Command Bar (`⌘J`), Appearance & Themes (8 Courier colour presets, 8 procedura
 ### Owner's by-hand checklist (requires live app launch and visual inspection)
 
 - [ ] **Build and Install**: Run `bazel run --config=macos-app //apps/desktop/courier/app:install -- --allow-missing` and launch `/Applications/Courier.app`.
-- [ ] **Command Bar (`⌘J`) & `SearchPanel` Switch**: Press `⌘J` (and global `⌘⇧Space`), drill into `Filter Chats ▸`, run `Open recently viewed chats`, and switch between `⌘K` Search and `⌘J` Command Bar via `"Commands ⌘J"` or leading `>`.
+- [ ] **Command Bar (`⌘J`) & `SearchPanel` Switch**: Press `⌘J` (and the global Focus App and Command Bar hotkey, once one is set), drill into `Filter Chats ▸`, run `Open recently viewed chats`, and switch between `⌘K` Search and `⌘J` Command Bar via `"Commands ⌘J"` or leading `>`.
 - [ ] **Appearance, Wallpapers, Per-Chat Themes, App Icons, Font Size, Zoom & Redact Mode**: Try the 8 colour presets, 8 procedural wallpapers, `ChatThemeWindow` per-chat overrides, `ChatThemeBrowserWindow`, the 8 Dock icons in `Settings ▸ Appearance ▸ App Icon`, `⌘+`/`⌘-`/`⌘0` zoom, `"Redact names and pictures"`, and `"Confetti"`.
 - [ ] **§22 Label & Space Icon Picker**: Search icons (`"snowflake"`, `"kayak"`, `"coffee"`, `"wine"`) in `Edit Labels… ▸ New Label…`.
 - [ ] **Storage Management (`Settings ▸ Storage`)**: Inspect the category chart and per-chat storage list, run `"Clear Media…"` on a test chat, and confirm message text remains intact while media tiles show `"Removed to free up space"`.

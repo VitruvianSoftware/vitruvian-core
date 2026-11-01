@@ -164,24 +164,29 @@ final class StorageModelTests: XCTestCase {
         defer { supervisorStop(app) }
 
         let model = StorageModel(appModel: app)
-        await model.clearMedia(olderThan: .oneMonth)
+        await model.deleteMedia(olderThan: .oneMonth)
 
         XCTAssertEqual(cleanupCalls.count, 1)
         XCTAssertEqual(cleanupCalls.first?["older_than_ms"] as? Int64, Int64(30) * 86_400_000)
+        XCTAssertEqual(cleanupCalls.first?["include_stickers"] as? Bool, true,
+                       "every Delete Media… removes synced stickers too; the engine keeps imported ones")
         XCTAssertNil(cleanupCalls.first?["room_ids"])
-        XCTAssertEqual(usageCallCount, 1, "clearMedia(olderThan:) should automatically refresh storage.usage")
+        XCTAssertEqual(usageCallCount, 1, "deleteMedia(olderThan:) should automatically refresh storage.usage")
         XCTAssertNotNil(model.lastStatusMessage)
-        XCTAssertTrue(model.lastStatusMessage?.contains("Cleared") == true)
+        XCTAssertTrue(model.lastStatusMessage?.contains("Deleted") == true)
 
         await model.clearMedia(forRoomID: "!wa:1")
         XCTAssertEqual(cleanupCalls.count, 2)
         XCTAssertEqual(cleanupCalls[1]["room_ids"] as? [String], ["!wa:1"])
         XCTAssertEqual(usageCallCount, 2, "clearMedia(forRoomID:) should automatically refresh storage.usage")
 
-        await model.clearAllCache()
+        // Delete All Media… in the pane and Delete Media… in the command bar are the same call.
+        await model.deleteMedia()
         XCTAssertEqual(cleanupCalls.count, 3)
+        XCTAssertNil(cleanupCalls[2]["older_than_ms"], "all media, of any age")
         XCTAssertEqual(cleanupCalls[2]["include_stickers"] as? Bool, true)
-        XCTAssertEqual(usageCallCount, 3, "clearAllCache() should automatically refresh storage.usage")
+        XCTAssertNil(cleanupCalls[2]["room_ids"])
+        XCTAssertEqual(usageCallCount, 3, "deleteMedia() should automatically refresh storage.usage")
     }
 
     func testStorageActionsAreRefusedWhileAppLocked() async throws {
@@ -212,9 +217,9 @@ final class StorageModelTests: XCTestCase {
 
         let model = StorageModel(appModel: app)
         await model.refresh()
-        await model.clearMedia(olderThan: .oneWeek)
+        await model.deleteMedia(olderThan: .oneWeek)
         await model.clearMedia(forRoomID: "!wa:1")
-        await model.clearAllCache()
+        await model.deleteMedia()
 
         XCTAssertTrue(storageRPCMethods.isEmpty, "No storage.* RPC may be sent while Courier is locked")
         XCTAssertNil(model.usage)

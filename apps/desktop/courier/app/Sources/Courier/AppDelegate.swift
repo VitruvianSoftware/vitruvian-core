@@ -250,11 +250,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 performDeleteMedia: { [weak self] in
                     guard let self else { return }
                     self.menuCoordinator.openSettings(.storage)
-                    Task { await self.storage.clearMedia(olderThan: .allTime) }
-                },
-                performClearCache: { [weak self] in
-                    guard let self else { return }
-                    Task { await self.storage.clearAllCache() }
+                    Task { await self.storage.deleteMedia(olderThan: .allTime) }
                 },
                 openRecentlyViewedChats: { [weak self] in self?.commandBar.openInRecentChatsMode() },
                 toggleSidebar: { [weak self] in self?.menuCoordinator.toggleSidebar() },
@@ -270,6 +266,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appNapActivity = ProcessInfo.processInfo.beginActivity(
             options: .userInitiatedAllowingIdleSystemSleep,
             reason: "Courier receives messages and shows notifications while its window is closed")
+        // The Dock shows the bundle's icon until the one chosen in Settings ▸ Appearance is put back.
+        appearance.applySavedAppIcon()
         // Copies made to open received files last until the next launch.
         OpenFileCache.shared.clear()
         PictureInPictureController.shared.onReturnToChat = { [windowOpener, model] roomID, messageID in

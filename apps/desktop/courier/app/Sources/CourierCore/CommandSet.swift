@@ -356,7 +356,7 @@ public enum CommandSet {
                            isEnabled: { true }) {
                 login.showPicker()
             },
-            CourierCommand(id: "Accounts", title: String(localized: "Accounts"), keys: nil,
+            CourierCommand(id: "accounts.manage", title: String(localized: "Accounts"), keys: nil,
                            category: .accounts, icon: "person.2", confirmation: nil,
                            isEnabled: { true }) {
                 login.showPicker()
@@ -628,7 +628,7 @@ public enum CommandSet {
         _ navigation: SettingsNavigationModel,
         openWindow: @escaping @MainActor () -> Void = {}
     ) -> CourierCommand {
-        paneCommand(id: "Accounts", title: String(localized: "Accounts"), keys: nil, pane: .accounts, navigation: navigation, openWindow: openWindow)
+        paneCommand(id: "settings.accounts", title: String(localized: "Accounts"), keys: nil, pane: .accounts, navigation: navigation, openWindow: openWindow)
     }
 
     @MainActor
@@ -750,6 +750,9 @@ public enum CommandSet {
     /// User-facing action title for deleting local media on this Mac.
     public static let deleteMediaTitle = String(localized: "Delete Media…")
 
+    /// The Storage pane's button for deleting every photo, video and file on this Mac (imported stickers stay).
+    public static let deleteAllMediaTitle = String(localized: "Delete All Media…")
+
     /// User-facing action title for age-scoped media deletion.
     public static func deleteMediaOlderThanTitle(_ age: String) -> String {
         String(localized: "Delete media older than \(age)")
@@ -858,7 +861,6 @@ public enum CommandSet {
         presentReportProblem: @escaping @MainActor () -> Void = {},
         restartNotificationCenter: @escaping @MainActor () -> Void = {},
         performDeleteMedia: @escaping @MainActor () -> Void = {},
-        performClearCache: @escaping @MainActor () -> Void = {},
         openMediaViewer: @escaping @MainActor () -> Void = {},
         openRecentlyViewedChats: @escaping @MainActor () -> Void = {},
         toggleSidebar: @escaping @MainActor () -> Void = {},
@@ -1271,7 +1273,8 @@ public enum CommandSet {
                 category: .navigation,
                 keywords: ["focus", "bring to front", "activate", "window"],
                 icon: "macwindow",
-                shortcut: "⌘⇧Space",
+                // The Focus App hotkey has no default: show its keys only once one is set.
+                shortcut: resolvedHotkeys.primaryChord(for: "Focus App")?.symbols,
                 run: focusApp
             ),
         ])
@@ -1472,16 +1475,6 @@ public enum CommandSet {
                 resolvedNavigation.openPane(.storage)
                 openSettingsWindow()
             },
-            CourierCommand(
-                id: "storage.clearCache",
-                title: String(localized: "Clear Cache"),
-                subtitle: String(localized: "Clear temporary thumbnails and web caches"),
-                category: .settings,
-                keywords: ["clear cache", "storage", "disk", "temp"],
-                icon: "internaldrive",
-                shortcut: nil,
-                run: performClearCache
-            ),
         ])
 
         // 11. AI & Intentional Stubs (4.7)
@@ -1547,8 +1540,8 @@ public enum CommandSet {
                 openSettingsWindow()
             },
             CourierCommand(
-                id: "stub.importFromBeeper",
-                title: String(localized: "Import from Beeper / Matrix"),
+                id: "stub.importFromMatrix",
+                title: String(localized: "Import from Matrix"),
                 subtitle: String(localized: "Sign in to each network in Settings ▸ Accounts"),
                 category: .aiAndStubs,
                 keywords: ["import", "beeper", "matrix", "migration"],
