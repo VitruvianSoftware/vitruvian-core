@@ -30,6 +30,7 @@ use ci_testkit::{assert_has, bin, write, write_exe, Output, Run, TempDir};
 ///   jobs.<id>       "<name>\t<conclusion>" lines for `gh run view <id>`
 ///   list_rc         forced exit code for `gh run list`
 ///   api_workflow    what `gh api repos/...` returns; absent = the lookup fails
+///   list_argv       written BY the fake: each `gh run list` command line
 const FAKE_GH: &str = r#"#!/usr/bin/env bash
 W="$GH_STUB_DIR"
 case "$1 $2" in
@@ -37,6 +38,7 @@ case "$1 $2" in
     if [ -f "$W/api_workflow" ]; then cat "$W/api_workflow"; else exit 1; fi
     ;;
   "run list")
+    printf '%s\n' "$*" >>"$W/list_argv"
     case " $* " in
       *" -w legacy.yaml "*)
         cat "$W/runs.legacy.txt" 2>/dev/null
@@ -393,4 +395,130 @@ fn unset_repo_fails_open() {
     let o = g.run(&[("REPO", "")]);
     assert_eq!(o.code, 0, "{}", o.all());
     assert_has(&o.stdout, "REPO/GITHUB_REPOSITORY unset", "says why");
+}
+
+// --- every blocking conclusion blocks, one test each ------------------------
+
+fn assert_blocks_on(conclusion: &str) {
+    let g = Gate::new();
+    g.file("runs.txt", "900\n")
+        .file("jobs.900", &jobs(&[(JOB, conclusion)]));
+    let o = g.run(&[]);
+    assert_eq!(
+        o.code,
+        1,
+        "a dev deploy that concluded '{conclusion}' must block:\n{}",
+        o.all()
+    );
+    assert_has(
+        &o.all(),
+        &format!("concluded '{conclusion}'"),
+        "the block names the conclusion",
+    );
+}
+
+#[test]
+fn failure_blocks() {
+    assert_blocks_on("failure");
+}
+
+#[test]
+fn cancelled_blocks() {
+    assert_blocks_on("cancelled");
+}
+
+#[test]
+fn timed_out_blocks() {
+    assert_blocks_on("timed_out");
+}
+
+#[test]
+fn action_required_blocks() {
+    assert_blocks_on("action_required");
+}
+
+#[test]
+fn startup_failure_blocks() {
+    assert_blocks_on("startup_failure");
+}
+
+// --- only the exact value "true" is the break-glass override ----------------
+
+fn assert_no_bypass(value: &str) {
+    let g = Gate::new();
+    g.file("runs.txt", "900\n")
+        .file("jobs.900", &jobs(&[(JOB, "failure")]));
+    let o = g.run(&[("ALLOW_UNSOAKED", value)]);
+    assert_eq!(
+        o.code,
+        1,
+        "ALLOW_UNSOAKED={value:?} must NOT bypass a red dev deploy:\n{}",
+        o.all()
+    );
+    assert!(
+        !o.stdout.contains("bypassed"),
+        "no bypass warning for {value:?}:\n{}",
+        o.all()
+    );
+}
+
+#[test]
+fn allow_unsoaked_upper_case_true_does_not_bypass() {
+    assert_no_bypass("TRUE");
+}
+
+#[test]
+fn allow_unsoaked_one_does_not_bypass() {
+    assert_no_bypass("1");
+}
+
+#[test]
+fn allow_unsoaked_yes_does_not_bypass() {
+    assert_no_bypass("yes");
+}
+
+#[test]
+fn allow_unsoaked_empty_does_not_bypass() {
+    assert_no_bypass("");
+}
+
+// --- the run-history query keeps its filters --------------------------------
+// Only completed push runs on the branch carry the development deploy; a query
+// without these filters reads release or PR runs, or runs still in progress.
+
+fn list_argv(g: &Gate) -> String {
+    std::fs::read_to_string(g.dir.join("list_argv")).unwrap_or_default()
+}
+
+#[test]
+fn run_list_filters_completed_push_runs_on_main() {
+    let g = Gate::new();
+    g.file("runs.txt", "900\n")
+        .file("jobs.900", &jobs(&[(JOB, "success")]));
+    let o = g.run(&[]);
+    assert_eq!(o.code, 0, "{}", o.all());
+    let argv = format!(" {} ", list_argv(&g).trim());
+    for want in [
+        " -w tabula-deploy.yaml ",
+        " -b main ",
+        " -e push ",
+        " -s completed ",
+        " -L 20 ",
+    ] {
+        assert_has(&argv, want, "gh run list must pass this filter");
+    }
+}
+
+#[test]
+fn run_list_uses_the_configured_branch() {
+    let g = Gate::new();
+    g.file("runs.txt", "900\n")
+        .file("jobs.900", &jobs(&[(JOB, "success")]));
+    let o = g.run(&[("BRANCH", "release-1")]);
+    assert_eq!(o.code, 0, "{}", o.all());
+    assert_has(
+        &list_argv(&g),
+        " -b release-1 ",
+        "BRANCH reaches gh run list",
+    );
 }

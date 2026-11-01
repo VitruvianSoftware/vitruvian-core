@@ -1479,11 +1479,22 @@ fn render_soak_job(b: &mut String, job: &str, u: &Unit, opts: &Opts) -> R {
     b.push_str("          ALLOW_UNSOAKED: ${{ inputs.allow-unsoaked || vars.ALLOW_UNSOAKED_PROMOTION || 'false' }}\n");
     b.push_str("        # No Bazel on this job: it is a five-minute gate on a stock runner, so\n");
     b.push_str("        # the image's rustc builds //tools/ci:require_dev_soak (std only) from\n");
-    b.push_str("        # the checkout in seconds instead.\n");
+    b.push_str("        # the checkout in seconds instead. A failed BUILD fails closed like a\n");
+    b.push_str("        # red development, and ALLOW_UNSOAKED=true still overrides it: the\n");
+    b.push_str("        # break-glass must not depend on the gate being buildable.\n");
     b.push_str("        run: |\n");
-    b.push_str("          rustc --edition 2021 --crate-type lib --crate-name shell_compat tools/shell-compat/src/lib.rs -o \"$RUNNER_TEMP/libshell_compat.rlib\"\n");
-    b.push_str("          rustc --edition 2021 --crate-type lib --crate-name require_dev_soak tools/ci/src/require_dev_soak/lib.rs -L \"$RUNNER_TEMP\" --extern shell_compat=\"$RUNNER_TEMP/libshell_compat.rlib\" -o \"$RUNNER_TEMP/librequire_dev_soak.rlib\"\n");
-    b.push_str("          rustc --edition 2021 tools/ci/src/require_dev_soak/main.rs -L \"$RUNNER_TEMP\" --extern shell_compat=\"$RUNNER_TEMP/libshell_compat.rlib\" --extern require_dev_soak=\"$RUNNER_TEMP/librequire_dev_soak.rlib\" -o \"$RUNNER_TEMP/require-dev-soak\"\n");
+    b.push_str("          if ! {\n");
+    b.push_str("            rustc --edition 2021 --crate-type lib --crate-name shell_compat tools/shell-compat/src/lib.rs -o \"$RUNNER_TEMP/libshell_compat.rlib\" &&\n");
+    b.push_str("            rustc --edition 2021 --crate-type lib --crate-name require_dev_soak tools/ci/src/require_dev_soak/lib.rs -L \"$RUNNER_TEMP\" --extern shell_compat=\"$RUNNER_TEMP/libshell_compat.rlib\" -o \"$RUNNER_TEMP/librequire_dev_soak.rlib\" &&\n");
+    b.push_str("            rustc --edition 2021 tools/ci/src/require_dev_soak/main.rs -L \"$RUNNER_TEMP\" --extern shell_compat=\"$RUNNER_TEMP/libshell_compat.rlib\" --extern require_dev_soak=\"$RUNNER_TEMP/librequire_dev_soak.rlib\" -o \"$RUNNER_TEMP/require-dev-soak\"\n");
+    b.push_str("          }; then\n");
+    b.push_str("            if [ \"${ALLOW_UNSOAKED:-}\" = \"true\" ]; then\n");
+    b.push_str("              echo \"::warning title=dev-soak gate bypassed::rustc could not build //tools/ci:require_dev_soak and ALLOW_UNSOAKED=true \u{2014} promoting WITHOUT confirming the development deploy is green\"\n");
+    b.push_str("              exit 0\n");
+    b.push_str("            fi\n");
+    b.push_str("            echo \"::error title=dev-soak gate could not run::rustc failed to build //tools/ci:require_dev_soak (tools/ci/src/require_dev_soak), so the promotion is blocked. Fix the build, or set ALLOW_UNSOAKED=true to override deliberately.\"\n");
+    b.push_str("            exit 1\n");
+    b.push_str("          fi\n");
     b.push_str("          \"$RUNNER_TEMP/require-dev-soak\"\n");
     Ok(())
 }
