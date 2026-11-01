@@ -178,7 +178,9 @@ fn every_workflow_rustc_line_builds_its_tool() {
 /// homelab queue runner's image carries no Rust toolchain).
 const FALLBACKS: &[&str] = &[
     ".github/actions/install-pinned-tool/action.yml",
+    ".github/workflows/actionlint.yaml",
     ".github/workflows/migration-safety.yaml",
+    ".github/workflows/queue-runner-watch.yaml",
 ];
 
 /// The `if ! command -v rustc ...` block of `text`, through its `fi`.
@@ -276,4 +278,33 @@ fn a_runner_with_rustc_skips_apt() {
             "{file}: {out}"
         );
     }
+}
+
+#[test]
+fn every_rustc_fallback_is_listed() {
+    let root = std::env::current_dir().unwrap();
+    let mut found = Vec::new();
+    for dir in [".github/workflows", ".github/actions"] {
+        let mut stack = vec![root.join(dir)];
+        while let Some(d) = stack.pop() {
+            for e in std::fs::read_dir(&d).unwrap().flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    stack.push(p);
+                } else if std::fs::read_to_string(&p)
+                    .map(|t| t.contains("if ! command -v rustc >/dev/null 2>&1; then"))
+                    .unwrap_or(false)
+                {
+                    found.push(p.strip_prefix(&root).unwrap().display().to_string());
+                }
+            }
+        }
+    }
+    found.sort();
+    let mut want: Vec<String> = FALLBACKS.iter().map(|s| s.to_string()).collect();
+    want.sort();
+    assert_eq!(
+        found, want,
+        "a rustc fallback this test does not run: add it to FALLBACKS"
+    );
 }

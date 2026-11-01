@@ -121,8 +121,14 @@ jobs:
       - name: Require commit-pinned actions
         run: |
           set -euo pipefail
+          # Fails here, by name, when apt cannot supply it (a failed install must not
+          # surface later as "rustc: command not found"). //tools/ci:workflow_rustc_test
+          # runs this block with apt failing.
           if ! command -v rustc >/dev/null 2>&1; then
-            sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends rustc
+            { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends rustc; } \
+              || { echo "::error::apt install rustc failed"; exit 1; }
+            command -v rustc >/dev/null 2>&1 \
+              || { echo "::error::rustc is still not on PATH after apt install"; exit 1; }
           fi
           rustc --edition 2021 -O tools/ci/src/require_pinned_actions/main.rs -o "$RUNNER_TEMP/require-pinned-actions"
           "$RUNNER_TEMP/require-pinned-actions"
