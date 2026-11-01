@@ -24,6 +24,7 @@ struct SettingsWindow: View {
     @ObservedObject var accountsAndBridges: AccountsAndBridgesModel
     @ObservedObject var loginFlow: LoginFlowModel
     @ObservedObject var problemReport: ProblemReportModel
+    @ObservedObject var appearance: AppearancePreferences = AppearancePreferences()
     var onOpenSystemNotificationSettings: () -> Void = {
         if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") {
             NSWorkspace.shared.open(url)
@@ -284,6 +285,7 @@ struct SettingsWindow: View {
                 composerPreferences: composerPreferences,
                 dockPreferences: dockPreferences,
                 lifecycle: lifecycle,
+                appearance: appearance,
                 highlightedSettingID: navigation.highlightedSettingID
             )
         case .notifications:

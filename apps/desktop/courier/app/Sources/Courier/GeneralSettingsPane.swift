@@ -596,17 +596,26 @@ struct GeneralSettingsPane: View {
     }
 }
 
-/// Settings ▸ Appearance pane: Chat list appearance, Conversation view, Composer controls (including Primary & Secondary composer buttons), and System (Menu bar icon, Dock badge count).
+/// Settings ▸ Appearance pane: Theme & Wallpaper, App Icon, Display & Typography, Privacy & Screenshots, Custom CSS, Chat list appearance, Conversation view, Composer controls (including Primary & Secondary composer buttons), and System (Menu bar icon, Dock badge count).
 struct AppearanceSettingsPane: View {
     @ObservedObject var inboxPreferences: InboxPreferences
     @ObservedObject var composerPreferences: ComposerPreferences
     @ObservedObject var dockPreferences: DockAndTrayPreferences
     @ObservedObject var lifecycle: SystemLifecycleModel
+    @ObservedObject var appearance: AppearancePreferences = AppearancePreferences()
     var highlightedSettingID: String? = nil
+
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         ScrollViewReader { proxy in
             Form {
+                themeAndWallpaperSection
+                appIconSection
+                displayAndTypographySection
+                privacyAndScreenshotsSection
+                customCSSSection
                 chatListSection
                 conversationSection
                 composerSection
@@ -622,6 +631,310 @@ struct AppearanceSettingsPane: View {
                 }
             }
         }
+    }
+
+    private var themeAndWallpaperSection: some View {
+        Section(String(localized: "Theme & Wallpaper")) {
+            Picker(
+                SettingsNavigationModel.title(for: "appearance.themeMode"),
+                selection: $appearance.themeMode
+            ) {
+                ForEach(ThemeMode.allCases, id: \.self) { mode in
+                    Text(mode.label).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .settingAnchor("appearance.themeMode", highlighted: highlightedSettingID)
+
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text(SettingsNavigationModel.title(for: "appearance.themePreset"))
+                        .font(.subheadline.weight(.medium))
+                    Spacer()
+                    Button(String(localized: "Browse Chat Themes…")) {
+                        openWindow(id: WindowID.chatThemeBrowser)
+                    }
+                    .controlSize(.small)
+                }
+
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 118), spacing: 8)], spacing: 8) {
+                    ForEach(CourierThemePreset.allCases) { preset in
+                        let selected = appearance.themePreset == preset
+                        let outgoingHex = colorScheme == .dark ? preset.defaultOutgoingBubbleHexDark : preset.defaultOutgoingBubbleHexLight
+                        let incomingHex = colorScheme == .dark ? preset.defaultIncomingBubbleHexDark : preset.defaultIncomingBubbleHexLight
+                        Button {
+                            appearance.themePreset = preset
+                        } label: {
+                            HStack(spacing: 8) {
+                                ZStack {
+                                    Circle()
+                                        .fill(Color(hex: incomingHex) ?? Color.secondary.opacity(0.25))
+                                        .frame(width: 16, height: 16)
+                                        .offset(x: -4)
+                                    Circle()
+                                        .fill(Color(hex: outgoingHex) ?? Color.accentColor)
+                                        .frame(width: 16, height: 16)
+                                        .offset(x: 4)
+                                }
+                                .frame(width: 28, height: 20)
+                                Text(preset.title)
+                                    .font(.caption.weight(selected ? .semibold : .regular))
+                                    .foregroundStyle(.primary)
+                                    .lineLimit(1)
+                                Spacer(minLength: 2)
+                                if selected {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .font(.caption)
+                                        .foregroundStyle(Color.accentColor)
+                                }
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 6)
+                            .background(
+                                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                    .fill(selected ? Color.accentColor.opacity(0.14) : Color(nsColor: .controlBackgroundColor))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                    .strokeBorder(selected ? Color.accentColor : Color.secondary.opacity(0.22), lineWidth: selected ? 1.5 : 1)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .settingAnchor("appearance.themePreset", highlighted: highlightedSettingID)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Picker(
+                    SettingsNavigationModel.title(for: "appearance.wallpaper"),
+                    selection: $appearance.defaultWallpaper
+                ) {
+                    ForEach(CourierWallpaperPreset.allCases) { choice in
+                        Text(choice.title).tag(choice)
+                    }
+                }
+
+                HStack(spacing: 8) {
+                    Text(
+                        appearance.customWallpaperPath == nil
+                            ? String(localized: "No custom image chosen")
+                            : ((appearance.customWallpaperPath ?? "") as NSString).abbreviatingWithTildeInPath
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    Spacer()
+                    Button(String(localized: "Choose Image…")) {
+                        chooseCustomWallpaper()
+                    }
+                    .controlSize(.small)
+                    if appearance.customWallpaperPath != nil {
+                        Button(String(localized: "Clear")) {
+                            appearance.customWallpaperPath = nil
+                        }
+                        .controlSize(.small)
+                    }
+                }
+
+                if appearance.defaultWallpaper != .none || appearance.customWallpaperPath != nil {
+                    HStack(spacing: 12) {
+                        Text(String(localized: "Opacity"))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(width: 56, alignment: .leading)
+                        Slider(value: $appearance.wallpaperOpacity, in: 0.05...0.60, step: 0.05)
+                        Text("\(Int((appearance.wallpaperOpacity * 100).rounded()))%")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .frame(width: 38, alignment: .trailing)
+                    }
+                    Toggle(
+                        String(localized: "Blur wallpaper"),
+                        isOn: $appearance.wallpaperBlur
+                    )
+                    .font(.caption)
+                }
+
+                Toggle(
+                    String(localized: "Show chat background when no chat is selected"),
+                    isOn: $appearance.showEmptyStateBackground
+                )
+                .font(.caption)
+
+                Toggle(
+                    String(localized: "Show unread chat cards on empty conversation canvas"),
+                    isOn: $appearance.showHoneycombCards
+                )
+                .font(.caption)
+            }
+            .settingAnchor("appearance.wallpaper", highlighted: highlightedSettingID)
+        }
+    }
+
+    private var appIconSection: some View {
+        Section(String(localized: "App Icon")) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(SettingsNavigationModel.title(for: "appearance.appIcon"))
+                    .font(.subheadline.weight(.medium))
+                AppIconPickerView(appearance: appearance)
+            }
+            .settingAnchor("appearance.appIcon", highlighted: highlightedSettingID)
+        }
+    }
+
+    private var displayAndTypographySection: some View {
+        Section(String(localized: "Display & Typography")) {
+            HStack(spacing: 10) {
+                Picker(
+                    SettingsNavigationModel.title(for: "appearance.fontSize"),
+                    selection: $appearance.fontSizeScale
+                ) {
+                    ForEach(FontSizeScale.allCases) { scale in
+                        Text(scale.label).tag(scale)
+                    }
+                }
+                Button {
+                    appearance.decreaseFontSize()
+                } label: {
+                    Image(systemName: "textformat.size.smaller")
+                }
+                .controlSize(.small)
+                .help(String(localized: "Smaller font size"))
+
+                Button {
+                    appearance.increaseFontSize()
+                } label: {
+                    Image(systemName: "textformat.size.larger")
+                }
+                .controlSize(.small)
+                .help(String(localized: "Larger font size"))
+            }
+            .settingAnchor("appearance.fontSize", highlighted: highlightedSettingID)
+
+            HStack(spacing: 10) {
+                Picker(
+                    SettingsNavigationModel.title(for: "appearance.zoomLevel"),
+                    selection: $appearance.zoomPercent
+                ) {
+                    ForEach(AppearancePreferences.zoomSteps, id: \.self) { step in
+                        Text("\(step)%").tag(step)
+                    }
+                }
+                Button(String(localized: "−")) {
+                    appearance.zoomOut()
+                }
+                .controlSize(.small)
+                .help(String(localized: "Zoom Out (⌘-)"))
+
+                Button(String(localized: "100%")) {
+                    appearance.resetZoom()
+                }
+                .controlSize(.small)
+                .disabled(appearance.zoomPercent == 100)
+                .help(String(localized: "Actual Size (⌘0)"))
+
+                Button(String(localized: "+")) {
+                    appearance.zoomIn()
+                }
+                .controlSize(.small)
+                .help(String(localized: "Zoom In (⌘+)"))
+            }
+            .settingAnchor("appearance.zoomLevel", highlighted: highlightedSettingID)
+
+            Toggle(
+                SettingsNavigationModel.title(for: "appearance.reduceTransparency"),
+                isOn: $appearance.reduceTransparency
+            )
+            .help(String(localized: "Replaces translucent materials and blurs with solid backgrounds."))
+            .settingAnchor("appearance.reduceTransparency", highlighted: highlightedSettingID)
+
+            Toggle(
+                SettingsNavigationModel.title(for: "appearance.enableMessageAnimations"),
+                isOn: $appearance.enableMessageAnimations
+            )
+            .settingAnchor("appearance.enableMessageAnimations", highlighted: highlightedSettingID)
+
+            Toggle(
+                SettingsNavigationModel.title(for: "appearance.balanceMessageText"),
+                isOn: $appearance.balanceMessageText
+            )
+            .help(String(localized: "Wraps multi-line messages evenly to avoid single trailing words."))
+            .settingAnchor("appearance.balanceMessageText", highlighted: highlightedSettingID)
+
+            Toggle(
+                SettingsNavigationModel.title(for: "appearance.usePointerCursor"),
+                isOn: $appearance.usePointerCursor
+            )
+            .settingAnchor("appearance.usePointerCursor", highlighted: highlightedSettingID)
+
+            Toggle(
+                SettingsNavigationModel.title(for: "appearance.showFeedbackWidget"),
+                isOn: $appearance.showFeedbackWidget
+            )
+            .settingAnchor("appearance.showFeedbackWidget", highlighted: highlightedSettingID)
+        }
+    }
+
+    private var privacyAndScreenshotsSection: some View {
+        Section(String(localized: "Privacy & Screenshots")) {
+            Toggle(
+                SettingsNavigationModel.title(for: "appearance.redactNamesAndPictures"),
+                isOn: $appearance.redactNamesAndPictures
+            )
+            .help(String(localized: "Replaces chat titles and sender names with neutral placeholders and blurs avatars for screenshots or screen sharing."))
+            .settingAnchor("appearance.redactNamesAndPictures", highlighted: highlightedSettingID)
+        }
+    }
+
+    private var customCSSSection: some View {
+        Section(String(localized: "Custom CSS")) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    Text(SettingsNavigationModel.title(for: "appearance.customCSS"))
+                        .font(.subheadline.weight(.medium))
+                    Spacer()
+                    Button(String(localized: "Load Custom CSS…")) {
+                        chooseCustomCSSFile()
+                    }
+                    .controlSize(.small)
+
+                    Button(String(localized: "Reload CSS")) {
+                        _ = appearance.reloadCustomThemeFile()
+                    }
+                    .controlSize(.small)
+                }
+
+                Text(appearance.lastThemeFileNotice ?? appearance.themeFileLoader.unavailableReason)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .settingAnchor("appearance.customCSS", highlighted: highlightedSettingID)
+        }
+    }
+
+    private func chooseCustomWallpaper() {
+        guard let url = AppLockGate.shared.runOpenPanel(action: .settingsChange, configure: { panel in
+            panel.canChooseFiles = true
+            panel.canChooseDirectories = false
+            panel.allowsMultipleSelection = false
+            panel.prompt = String(localized: "Choose Wallpaper")
+            panel.message = String(localized: "Choose an image for your chat background")
+        })?.first else { return }
+        appearance.customWallpaperPath = url.path
+    }
+
+    private func chooseCustomCSSFile() {
+        guard let url = AppLockGate.shared.runOpenPanel(action: .settingsChange, configure: { panel in
+            panel.canChooseFiles = true
+            panel.canChooseDirectories = false
+            panel.allowsMultipleSelection = false
+            panel.prompt = String(localized: "Load CSS")
+            panel.message = String(localized: "Choose a .css file (CSS stylesheets do not apply to native SwiftUI views)")
+        })?.first else { return }
+        _ = appearance.attemptLoadCustomThemeFile(at: url)
     }
 
     private var chatListSection: some View {

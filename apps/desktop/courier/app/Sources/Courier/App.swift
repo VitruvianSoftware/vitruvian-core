@@ -102,6 +102,30 @@ struct CourierApp: App {
         .defaultSize(width: 780, height: 560)
         .windowResizability(.contentMinSize)
 
+        WindowGroup(String(localized: "Chat Theme"), id: WindowID.chatTheme, for: ChatThemeWindowTarget.self) { $target in
+            if let target {
+                LockableWindowContent(lifecycle: delegate.lifecycle) {
+                    ChatThemeWindow(
+                        roomID: target.roomID,
+                        chatTitle: target.chatTitle,
+                        appearance: delegate.appearance
+                    )
+                }
+            }
+        }
+        .defaultSize(width: 460, height: 520)
+        .windowResizability(.contentMinSize)
+
+        Window(String(localized: "Browse Chat Themes"), id: WindowID.chatThemeBrowser) {
+            LockableWindowContent(lifecycle: delegate.lifecycle) {
+                ChatThemeBrowserWindow(
+                    appearance: delegate.appearance
+                )
+            }
+        }
+        .defaultSize(width: 580, height: 520)
+        .windowResizability(.contentMinSize)
+
         Settings {
             LockableWindowContent(lifecycle: delegate.lifecycle) {
                 SettingsView(
@@ -120,6 +144,7 @@ struct CourierApp: App {
                     accountsAndBridges: delegate.accountsAndBridges,
                     loginFlow: delegate.login,
                     problemReport: delegate.problemReport,
+                    appearance: delegate.appearance,
                     onRestartNotificationCenter: {
                         delegate.notifier.restartNotificationCenter()
                     }

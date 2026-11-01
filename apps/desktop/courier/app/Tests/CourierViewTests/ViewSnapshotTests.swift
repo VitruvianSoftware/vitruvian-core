@@ -3955,7 +3955,7 @@ final class ViewSnapshotTests: XCTestCase {
                     problemReport: reportModel
                 )
                 let host = NSHostingView(rootView: windowView)
-                host.frame = NSRect(x: 0, y: 0, width: 840, height: 2600)
+                host.frame = NSRect(x: 0, y: 0, width: 840, height: 4200)
                 host.layoutSubtreeIfNeeded()
                 _ = host.fittingSize
 

@@ -20,7 +20,9 @@ struct ConversationView: View {
     @ObservedObject var thread: ThreadModel
     @ObservedObject var focus: MessageFocus
     let appModel: AppModel
+    var appearance: AppearancePreferences? = nil
     @Environment(\.controlActiveState) private var controlActiveState
+    @Environment(\.appearancePreferences) private var appearanceEnv
     @StateObject private var ui = MessageUI()
     @State private var isDropTargeted = false
     /// The message that was first when older ones were asked for: the view returns to it once they are in.
@@ -222,13 +224,30 @@ struct ConversationView: View {
         }
     }
 
+    private var resolvedAppearance: AppearancePreferences? {
+        appearance ?? appearanceEnv
+    }
+
     private var chat: some View {
         let headerRow = conversation.roomID.flatMap { inbox.row(of: $0) } ?? inbox.selectedRow
+        let effectiveTheme = resolvedAppearance?.effectiveTheme(for: conversation.roomID)
         return VStack(spacing: 0) {
             ConversationHeader(row: headerRow, networkName: headerRow.map { inbox.networkName($0.network) },
-                               conversation: conversation)
+                               conversation: conversation,
+                               redactNamesAndPictures: resolvedAppearance?.redactNamesAndPictures ?? false)
             Divider()
-            timeline
+            ZStack {
+                if let effectiveTheme, (effectiveTheme.wallpaper != .none || effectiveTheme.customWallpaperPath != nil) {
+                    ChatWallpaperCanvasView(
+                        preset: effectiveTheme.wallpaper,
+                        customImagePath: effectiveTheme.customWallpaperPath,
+                        opacity: effectiveTheme.wallpaperOpacity,
+                        blur: effectiveTheme.wallpaperBlur,
+                        reduceTransparency: resolvedAppearance?.reduceTransparency ?? false
+                    )
+                }
+                timeline
+            }
             if let problem = conversation.problem {
                 ProblemBar(problem: problem, retry: conversation.reload)
             }
@@ -651,6 +670,7 @@ struct ConversationView: View {
                 return inbox.row(of: msg.roomID)?.network
             }
         }
+        base.appearance = resolvedAppearance
         return base
     }
 
@@ -694,15 +714,22 @@ private struct ConversationHeader: View {
     let row: InboxRow?
     let networkName: String?
     @ObservedObject var conversation: ConversationModel
+    var redactNamesAndPictures: Bool = false
 
     var body: some View {
         HStack(spacing: 10) {
             if let row {
                 AvatarView(path: row.avatarPath, initials: row.initials, seed: row.name)
+                    .blur(radius: redactNamesAndPictures ? 6 : 0)
+                    .clipShape(Circle())
                     .frame(width: 32, height: 32)
                 VStack(alignment: .leading, spacing: 1) {
                     HStack(spacing: 6) {
-                        Text(row.name)
+                        Text(
+                            redactNamesAndPictures
+                                ? AppearancePreferences.redactedText(row.name, kind: .chatTitle)
+                                : row.name
+                        )
                             .font(.headline)
                             .lineLimit(1)
                         NetworkBadge(network: row.network, name: networkName ?? row.network, size: 14)

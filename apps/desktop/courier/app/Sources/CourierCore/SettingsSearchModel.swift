@@ -337,6 +337,97 @@ public final class SettingsNavigationModel: ObservableObject {
 
         // MARK: Appearance
         SettingDefinition(
+            id: "appearance.themeMode",
+            pane: .appearance,
+            section: "Theme & Wallpaper",
+            title: "Theme",
+            keywords: ["theme", "dark mode", "light mode", "system", "auto", "colour scheme"]
+        ),
+        SettingDefinition(
+            id: "appearance.themePreset",
+            pane: .appearance,
+            section: "Theme & Wallpaper",
+            title: "Chat colour theme",
+            keywords: ["chat theme", "theme", "preset", "colour", "color", "bubbles", "accent", "browse"]
+        ),
+        SettingDefinition(
+            id: "appearance.wallpaper",
+            pane: .appearance,
+            section: "Theme & Wallpaper",
+            title: "Chat wallpaper",
+            keywords: ["wallpaper", "chat background", "background", "pattern", "opacity", "blur", "honeycomb"]
+        ),
+        SettingDefinition(
+            id: "appearance.appIcon",
+            pane: .appearance,
+            section: "App Icon",
+            title: "App icon",
+            keywords: ["app icon", "dock icon", "icon", "badge", "classic", "midnight", "pride", "oled"]
+        ),
+        SettingDefinition(
+            id: "appearance.fontSize",
+            pane: .appearance,
+            section: "Display & Typography",
+            title: "Font size",
+            keywords: ["font size", "text size", "typography", "small", "default", "large", "extra large"]
+        ),
+        SettingDefinition(
+            id: "appearance.zoomLevel",
+            pane: .appearance,
+            section: "Display & Typography",
+            title: "Zoom level",
+            keywords: ["zoom", "scale", "zoom in", "zoom out", "actual size"]
+        ),
+        SettingDefinition(
+            id: "appearance.reduceTransparency",
+            pane: .appearance,
+            section: "Display & Typography",
+            title: "Reduce transparency",
+            keywords: ["reduce transparency", "transparency", "blur", "vibrancy", "contrast"]
+        ),
+        SettingDefinition(
+            id: "appearance.enableMessageAnimations",
+            pane: .appearance,
+            section: "Display & Typography",
+            title: "Enable message animations",
+            keywords: ["message animations", "animations", "effects", "motion"]
+        ),
+        SettingDefinition(
+            id: "appearance.balanceMessageText",
+            pane: .appearance,
+            section: "Display & Typography",
+            title: "Balance message text",
+            keywords: ["balance message text", "text wrap", "balanced", "widows"]
+        ),
+        SettingDefinition(
+            id: "appearance.usePointerCursor",
+            pane: .appearance,
+            section: "Display & Typography",
+            title: "Use pointer cursor on interactive elements",
+            keywords: ["pointer cursor", "cursor", "hand", "hover"]
+        ),
+        SettingDefinition(
+            id: "appearance.showFeedbackWidget",
+            pane: .appearance,
+            section: "Display & Typography",
+            title: "Show feedback button in sidebar",
+            keywords: ["feedback widget", "feedback", "button", "report"]
+        ),
+        SettingDefinition(
+            id: "appearance.redactNamesAndPictures",
+            pane: .appearance,
+            section: "Privacy & Screenshots",
+            title: "Redact names and pictures",
+            keywords: ["redact", "privacy", "blur avatars", "screenshots", "demo mode", "hide names"]
+        ),
+        SettingDefinition(
+            id: "appearance.customCSS",
+            pane: .appearance,
+            section: "Custom CSS",
+            title: "Custom CSS",
+            keywords: ["custom css", "stylesheet", "css", "theme file"]
+        ),
+        SettingDefinition(
             id: "appearance.showSpaceBar",
             pane: .appearance,
             section: "Chat list",
@@ -734,6 +825,19 @@ public final class SettingsNavigationModel: ObservableObject {
         "general.lockTimeout",
         "general.timeFormat",
         // AppearanceSettingsPane
+        "appearance.themeMode",
+        "appearance.themePreset",
+        "appearance.wallpaper",
+        "appearance.appIcon",
+        "appearance.fontSize",
+        "appearance.zoomLevel",
+        "appearance.reduceTransparency",
+        "appearance.enableMessageAnimations",
+        "appearance.balanceMessageText",
+        "appearance.usePointerCursor",
+        "appearance.showFeedbackWidget",
+        "appearance.redactNamesAndPictures",
+        "appearance.customCSS",
         "appearance.showSpaceBar",
         "appearance.regularPinnedRows",
         "appearance.showUnreadCounts",

@@ -11,6 +11,12 @@ enum LabelWindowTarget: Codable, Hashable {
     case edit(labelID: Int64)
 }
 
+/// Target chat when opening the per-chat theme customisation window (`ChatThemeModal`).
+struct ChatThemeWindowTarget: Codable, Hashable {
+    let roomID: String
+    let chatTitle: String
+}
+
 /// The scene ids of the windows these views open.
 enum WindowID {
     static let editSpaces = "edit-spaces"
@@ -19,6 +25,8 @@ enum WindowID {
     static let autoArchive = "auto-archive"
     static let chatInfo = "chat-info"
     static let mediaViewer = "media-viewer"
+    static let chatTheme = "chat-theme"
+    static let chatThemeBrowser = "chat-theme-browser"
 }
 
 /// Making or changing a label: its title, a colour and an icon, and for a label that exists, its auto-archive
