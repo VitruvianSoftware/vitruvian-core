@@ -77,13 +77,21 @@ runs:
         # small files, so removing them one after another is the slow part.
         # Each job reports what it freed (du runs just before the rm, in the
         # same job), so the log carries a measured size per path.
+        # GitHub runs steps under `bash -eo pipefail` and a subshell inherits
+        # that, so a failing du (an unreadable subdirectory) must not abort the
+        # job before the rm: `|| mb=""` keeps the removal going. A job that
+        # still fails is reported as a warning, never as a failed step.
+        pids=()
         for p in "${paths[@]}"; do
           (
             [ -e "$p" ] || { echo "  absent    $p"; exit 0; }
-            mb="$(du -sm "$p" 2>/dev/null | cut -f1)"
+            mb="$(du -sm "$p" 2>/dev/null | cut -f1)" || mb=""
             sudo rm -rf "$p" || true
             echo "  freed ${mb:-?} MB  $p"
           ) &
+          pids+=("$!")
         done
-        wait
+        for i in "${!pids[@]}"; do
+          wait "${pids[$i]}" || echo "::warning::cleanup of ${paths[$i]} failed"
+        done
         echo "Disk after cleanup ($((SECONDS - start))s):" && df -h /
