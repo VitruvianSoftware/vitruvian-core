@@ -6,30 +6,83 @@
 ---
 manifest:
   modules_mapping:
+    Crypto: pycryptodome
+    PIL: pillow
+    aiohappyeyeballs: aiohappyeyeballs
+    aiohttp: aiohttp
+    aiomqtt: aiomqtt
+    aiosignal: aiosignal
     annotated_types: annotated_types
+    anyio: anyio
+    attr: attrs
+    attrs: attrs
+    cffi: cffi
+    click: click
     colorama: colorama
+    construct: construct
     copier: copier
+    cryptography: cryptography
     dunamai: dunamai
+    frozenlist: frozenlist
     funcy: funcy
+    google.protobuf: protobuf
+    h11: h11
+    httpcore2: httpcore2
+    httpx2: httpx2
+    idna: idna
     iniconfig: iniconfig
     jinja2: jinja2
     jinja2_ansible_filters: jinja2_ansible_filters
+    jsonschema: jsonschema
+    jsonschema_specifications: jsonschema_specifications
+    jwt: pyjwt
     markupsafe: markupsafe
+    mcp: mcp
+    mcp_types: mcp_types
+    multidict: multidict
+    multipart: python_multipart
+    opentelemetry.attributes: opentelemetry_api
+    opentelemetry.baggage: opentelemetry_api
+    opentelemetry.context: opentelemetry_api
+    opentelemetry.environment_variables: opentelemetry_api
+    opentelemetry.metrics: opentelemetry_api
+    opentelemetry.propagate: opentelemetry_api
+    opentelemetry.propagators.composite: opentelemetry_api
+    opentelemetry.propagators.textmap: opentelemetry_api
+    opentelemetry.trace: opentelemetry_api
+    opentelemetry.util.re: opentelemetry_api
+    opentelemetry.util.types: opentelemetry_api
+    opentelemetry.version: opentelemetry_api
     packaging: packaging
+    paho: paho_mqtt
     pathspec: pathspec
     platformdirs: platformdirs
     pluggy: pluggy
     plumbum: plumbum
     prompt_toolkit: prompt_toolkit
+    propcache: propcache
     py: pytest
+    pycparser: pycparser
     pydantic: pydantic
     pydantic_core: pydantic_core
     pygments: pygments
+    pyrate_limiter: pyrate_limiter
     pytest: pytest
+    python_multipart: python_multipart
     questionary: questionary
+    referencing: referencing
+    roborock: python_roborock
+    rpds: rpds_py
+    sse_starlette: sse_starlette
+    starlette: starlette
+    truststore: truststore
     typing_extensions: typing_extensions
     typing_inspection: typing_inspection
+    uvicorn: uvicorn
+    vacuum_map_parser_base: vacuum_map_parser_base
+    vacuum_map_parser_roborock: vacuum_map_parser_roborock
     wcwidth: wcwidth
     yaml: pyyaml
+    yarl: yarl
   pip_repository:
     name: pip
