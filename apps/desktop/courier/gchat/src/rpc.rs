@@ -187,15 +187,14 @@ crate::edition2021! {
                 .map_err(|e| map_reqwest_error(&format!("RPC {endpoint} failed"), e))?;
 
             let status = resp.status();
-            if status.as_u16() == 401 || status.as_u16() == 403 {
+            if status.as_u16() == 401 {
                 if !refreshed_xsrf {
                     refreshed_xsrf = true;
                     xsrf.refresh_if_generation(xsrf_gen).await?;
                     continue;
                 }
                 return Err(GChatError::AuthExpired(format!(
-                    "RPC {endpoint} returned HTTP {} after XSRF refresh",
-                    status.as_u16()
+                    "RPC {endpoint} returned HTTP 401 after XSRF refresh"
                 )));
             }
 
@@ -467,6 +466,10 @@ mod tests {
                                     let resp = "HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
                                     let _ = stream.write_all(resp.as_bytes()).await;
                                 }
+                                7 => {
+                                    let resp = "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+                                    let _ = stream.write_all(resp.as_bytes()).await;
+                                }
                                 _ => {}
                             }
                         }
@@ -552,6 +555,33 @@ mod tests {
                 "expected AuthExpired after repeated 401, got: {third_res:?}"
             );
             assert_eq!(mole_world_hits.load(Ordering::SeqCst), 4);
+            assert_eq!(rpc_hits.load(Ordering::SeqCst), 6);
+
+            let fourth_res = invoke_proto_rpc(
+                &http,
+                &jar,
+                &xsrf,
+                &guard,
+                DEFAULT_MACOS_SAFARI_UA,
+                &base_url,
+                "get_self_user_status",
+                &empty_req,
+            )
+            .await;
+            assert!(
+                matches!(fourth_res, Err(GChatError::HttpStatus(403, _))),
+                "HTTP 403 must return HttpStatus(403, _) without XSRF refresh, got: {fourth_res:?}"
+            );
+            assert_eq!(
+                mole_world_hits.load(Ordering::SeqCst),
+                4,
+                "HTTP 403 must not refresh XSRF token"
+            );
+            assert_eq!(
+                rpc_hits.load(Ordering::SeqCst),
+                7,
+                "HTTP 403 must not retry RPC"
+            );
 
             server_handle.abort();
         }
