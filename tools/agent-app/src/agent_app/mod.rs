@@ -548,6 +548,46 @@ fn source_path(argv0: &[u8]) -> Vec<u8> {
     }
 }
 
+/// Where branch-delete's landed gate may be. It is `//tools/landed`, a build
+/// output (this binary's data dep), so it is looked for beside this program,
+/// never in the source checkout: under `bazel run` that is bazel-bin
+/// (`tools/agent-app/agent-app` -> `tools/landed/landed`), from another tool's
+/// runfiles it is the same sibling there, and failing both, this program's
+/// runfiles tree. (`$BUILD_WORKSPACE_DIRECTORY/tools/landed/landed.sh` was the
+/// shell gate's path; a checkout has had no gate since landed became Rust.)
+pub(crate) fn landed_candidates(here: &[u8], argv0: &[u8], runfiles_dir: &[u8]) -> Vec<Vec<u8>> {
+    const REL: &[u8] = b"_main/tools/landed/landed";
+    let mut c = vec![cat(&[here, b"/../landed/landed"])];
+    if !runfiles_dir.is_empty() {
+        c.push(cat(&[runfiles_dir, b"/", REL]));
+    }
+    c.push(cat(&[argv0, b".runfiles/", REL]));
+    c
+}
+
+/// The first candidate that is a file this user may run.
+pub(crate) fn find_landed(candidates: &[Vec<u8>]) -> Option<Vec<u8>> {
+    candidates.iter().find(|p| is_runnable(p)).cloned()
+}
+
+fn is_runnable(p: &[u8]) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::metadata(sh::path(p)).map_or(false, |m| {
+        m.is_file() && m.permissions().mode() & 0o111 != 0
+    })
+}
+
+/// The landed gate's command for one branch: the binary run directly (it is
+/// not a script, so `bash <it>` would refuse it), as the agent.
+pub(crate) fn landed_gate(landed: &[u8], branch: &[u8], token: &[u8]) -> Command {
+    let mut c = Command::new(sh::os(landed));
+    c.arg("--remote-branch")
+        .arg(sh::os(branch))
+        .env("GH_TOKEN", sh::os(token))
+        .env("GITHUB_TOKEN", "");
+    c
+}
+
 impl Tool {
     /// Everything the script resolves before `main`: the registry, the key
     /// folder (a worktree borrows the main checkout's), and the committed
@@ -613,7 +653,12 @@ impl Tool {
             ),
             landed: over(
                 "AGENT_APP_LANDED",
-                base(b"landed/landed.sh", b"../landed/landed.sh"),
+                find_landed(&landed_candidates(
+                    &here,
+                    argv0,
+                    &sh::env_or_empty("RUNFILES_DIR"),
+                ))
+                .unwrap_or_default(),
             ),
             gh: sh::env_or("GH_BIN", b"gh"),
         }
@@ -1488,9 +1533,14 @@ impl Tool {
         let (agent, rest) =
             take_agent(args).ok_or_else(|| die(&cat(&[b"usage: ", usage.as_bytes()])))?;
         need_target("branch", usage, arg(rest, 0))?;
-        if !sh::is_readable(&self.landed) {
+        if self.landed.is_empty() {
+            return Err(die(
+                b"cannot find the landed gate (//tools/landed) beside this program or in its runfiles; nothing was deleted",
+            ));
+        }
+        if !is_runnable(&self.landed) {
             return Err(die(&cat(&[
-                b"cannot read ",
+                b"cannot run ",
                 &self.landed,
                 b"; nothing was deleted",
             ])));
@@ -1592,12 +1642,7 @@ impl Tool {
                     }
                 }
             } else {
-                let mut c = Command::new("bash");
-                c.arg(sh::os(&self.landed))
-                    .arg("--remote-branch")
-                    .arg(sh::os(br))
-                    .env("GH_TOKEN", sh::os(&tok))
-                    .env("GITHUB_TOKEN", "");
+                let c = landed_gate(&self.landed, br, &tok);
                 let (gst, gate) = run_merged(line::LANDED, c);
                 if gst != 0 {
                     let gate = sh::subst(gate);
