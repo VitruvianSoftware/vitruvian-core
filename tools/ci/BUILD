@@ -137,6 +137,8 @@ rust_test(
         "@rules_rust//rust/toolchain:current_rust_stdlib_files",
         "@rules_rust//rust/toolchain:current_rustc_files",
         "@rules_rust//rust/toolchain:current_rustc_lib_files",
+        # The beta gate's fallback runs its real --jq through Bazel's jq.
+        "@jq_toolchains//:resolved_toolchain",
     ] + [":" + t for t in _BUILD_CI_TOOLS] + [
         "src/%s/%s.rs" % (t, f)
         for t in _BUILD_CI_TOOLS
@@ -147,10 +149,12 @@ rust_test(
     ],
     edition = "2021",
     env = {
+        "JQ_BIN": "$(JQ_BIN)",
         "REAL_RUSTC": "$(rootpath @rules_rust//rust/toolchain:current_rustc_files)",
         "TOOLS": " ".join(_BUILD_CI_TOOLS),
     },
     rustc_flags = ["-Copt-level=3"],
+    toolchains = ["@jq_toolchains//:resolved_toolchain"],
 )
 
 # Downloads a pinned CI tool (actionlint, kubeconform, osv-scanner, promtool)

@@ -46,12 +46,16 @@ pub fn missing_digest_apps(pulumi_file_contents: &[u8], app_image_digests: &[u8]
         if app.is_empty() {
             continue;
         }
-        // `app=` with nothing after it is no digest: it renders the same
-        // EMPTY image as a missing pair, so it counts as missing.
-        let needle = cat(&[b",", app, b"="]);
-        let has_digest = haystack.windows(needle.len()).enumerate().any(|(i, w)| {
-            w == needle.as_slice() && !matches!(haystack.get(i + needle.len()), None | Some(b','))
-        });
+        // `app=` with nothing after it, or only whitespace (a YAML `|` block
+        // leaves a newline), is no digest: it renders the same EMPTY image
+        // as a missing pair, so it counts as missing.
+        let has_digest =
+            haystack
+                .split(|&c| c == b',')
+                .any(|pair| match pair.iter().position(|&c| c == b'=') {
+                    Some(p) => &pair[..p] == app && !trim(&pair[p + 1..]).is_empty(),
+                    None => false,
+                });
         if has_digest {
             continue;
         }
@@ -90,6 +94,18 @@ fn app_name(line: &[u8]) -> &[u8] {
         }
     }
     line
+}
+
+fn trim(b: &[u8]) -> &[u8] {
+    let start = b
+        .iter()
+        .position(|c| !c.is_ascii_whitespace())
+        .unwrap_or(b.len());
+    let end = b
+        .iter()
+        .rposition(|c| !c.is_ascii_whitespace())
+        .map_or(start, |e| e + 1);
+    &b[start..end]
 }
 
 fn find_subslice(hay: &[u8], needle: &[u8]) -> Option<usize> {
@@ -133,7 +149,7 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
                 Some(p) => (&pair[..p], &pair[p + 1..]),
                 None => (pair, pair),
             };
-            if app.is_empty() || digest.is_empty() {
+            if app.is_empty() || trim(digest).is_empty() {
                 continue;
             }
             let var: Vec<u8> = app
@@ -273,6 +289,14 @@ mod tests {
             missing_digest_apps(pf, b"oauth-user-inspector=sha256:ab"),
             b""
         );
+        // Whitespace only is no digest either.
+        for d in [
+            &b"oauth-user-inspector=\n"[..],
+            b"oauth-user-inspector= ",
+            b"oauth-user-inspector=\t\r\n,x=1",
+        ] {
+            assert_eq!(missing_digest_apps(pf, d), b"oauth-user-inspector", "{d:?}");
+        }
     }
 
     #[test]

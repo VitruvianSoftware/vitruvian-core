@@ -116,12 +116,14 @@ jobs:
 
       # Auto-merge stays armed from the last green beta, and turning it OFF
       # while the new code's beta is unbuilt is this gate's job on every run.
-      # So a gate that could not run (its build failed, or it failed itself)
+      # So a gate that could not run (its build failed, it failed itself, or
+      # the job was cancelled or timed out)
       # must still turn it off, or the PR merges new code with no beta: the
       # vitruvian-v3.6.0 incident. Safe to over-fire: the gate re-arms the PR
       # itself on its next green-beta run, as it does after any wait.
       - name: Turn auto-merge off when the gate could not decide
-        if: ${{ failure() }}
+        # cancelled() too: a cancel or a timeout also leaves auto-merge armed.
+        if: ${{ failure() || cancelled() }}
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REPO: ${{ github.repository }}

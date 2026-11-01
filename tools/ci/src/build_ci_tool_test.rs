@@ -576,16 +576,40 @@ fn every_caller_runs_the_variable_its_build_step_sets() {
     assert!(checked >= 8, "only {checked} callers checked");
 }
 
-/// A fake gh for the beta gate's fallback: `pr list` prints $FAKE_ROW (or
-/// fails when $FAKE_LIST_RC is set), `pr merge` is recorded.
+/// Bazel's jq (from $JQ_BIN, an exec path the runfiles tree spells `../`).
+fn jq() -> PathBuf {
+    let raw = std::env::var("JQ_BIN").expect("JQ_BIN is set by BUILD");
+    let rel = match raw.strip_prefix("external/") {
+        Some(rest) => format!("../{rest}"),
+        None => raw,
+    };
+    fs::canonicalize(&rel).unwrap_or_else(|e| panic!("JQ_BIN={rel}: {e}"))
+}
+
+/// A fake gh for the beta gate's fallback. `pr list` logs each argument on
+/// its own line, then answers like gh: $FAKE_JSON (what GitHub returns)
+/// filtered through the step's OWN `--jq` expression with Bazel's jq, so the
+/// filter's logic is what is tested, not its spelling. `pr merge` is logged.
 const FALLBACK_GH: &str = r#"#!/usr/bin/env bash
 printf '%s\n' "$*" >> "$GH_LOG"
 case "$1 $2" in
-  "pr list") [ -n "${FAKE_LIST_RC:-}" ] && { echo "gh: boom (HTTP 502)" >&2; exit "$FAKE_LIST_RC"; }; printf '%s\n' "${FAKE_ROW:-}" ;;
+  "pr list")
+    for a in "$@"; do printf '%s\n' "$a"; done >> "$GH_ARGV"
+    [ -n "${FAKE_LIST_RC:-}" ] && { echo "gh: boom (HTTP 502)" >&2; exit "$FAKE_LIST_RC"; }
+    expr=""; prev=""
+    for a in "$@"; do [ "$prev" = --jq ] && expr="$a"; prev="$a"; done
+    [ -n "$expr" ] || { echo "fake gh: no --jq" >&2; exit 98; }
+    printf '%s' "$FAKE_JSON" | "$JQ" -r "$expr"
+    ;;
   "pr merge") exit "${FAKE_MERGE_RC:-0}" ;;
   *) echo "unexpected gh $*" >&2; exit 99 ;;
 esac
 "#;
+
+/// The exact `gh pr list` the fallback must run, one argument a line: the
+/// gate's own branch, open PRs only, and a filter that skips forks and reports
+/// whether auto-merge is armed.
+const FALLBACK_LIST_ARGV: &str = "pr\nlist\n--repo\no/r\n--head\nrelease-please--branches--main--components--vitruvian\n--state\nopen\n--json\nnumber,autoMergeRequest,isCrossRepository\n--jq\nmap(select(.isCrossRepository | not)) | .[0] // empty | \"\\(.number) \\(.autoMergeRequest != null)\"\n";
 
 #[test]
 fn a_beta_gate_that_cannot_run_turns_auto_merge_off() {
@@ -609,8 +633,9 @@ fn a_beta_gate_that_cannot_run_turns_auto_merge_off() {
     );
     let step = step_lines(&lines, name);
     assert!(
-        step.iter().any(|l| l.trim() == "if: ${{ failure() }}"),
-        "the fallback runs whenever the job failed, the build or the gate itself:\n{}",
+        step.iter()
+            .any(|l| l.trim() == "if: ${{ failure() || cancelled() }}"),
+        "the fallback runs whenever the job failed, was cancelled or timed out:\n{}",
         step.join("\n")
     );
     assert!(
@@ -618,12 +643,15 @@ fn a_beta_gate_that_cannot_run_turns_auto_merge_off() {
         "same component as the gate"
     );
     let script = run_block(&lines, name);
+    let jq = jq();
 
-    let run = |row: &str, extra: &[(&str, &str)]| {
+    let run = |json: &str, extra: &[(&str, &str)]| {
         let dir = tmp();
         exe(&dir.join("gh"), FALLBACK_GH);
         let log = dir.join("gh.log");
+        let argv = dir.join("gh.argv");
         fs::write(&log, "").unwrap();
+        fs::write(&argv, "").unwrap();
         let mut c = Command::new("bash");
         c.arg("-e")
             .arg("-c")
@@ -637,46 +665,121 @@ fn a_beta_gate_that_cannot_run_turns_auto_merge_off() {
                 ),
             )
             .env("GH_LOG", &log)
+            .env("GH_ARGV", &argv)
+            .env("JQ", &jq)
             .env("REPO", "o/r")
             .env("COMPONENT", "vitruvian")
-            .env("FAKE_ROW", row);
+            .env("FAKE_JSON", json);
         for (k, v) in extra {
             c.env(k, v);
         }
         let o = c.output().unwrap();
-        (o, read(&log))
+        (o, read(&log), read(&argv))
+    };
+    let pr = |n: u32, armed: bool, fork: bool| {
+        let am = if armed {
+            r#"{"enabledAt":"2026-11-01T00:00:00Z"}"#
+        } else {
+            "null"
+        };
+        format!(r#"{{"number":{n},"autoMergeRequest":{am},"isCrossRepository":{fork}}}"#)
+    };
+    let merged = |log: &str| {
+        log.lines()
+            .filter(|l| l.starts_with("pr merge"))
+            .map(String::from)
+            .collect::<Vec<_>>()
     };
 
-    // Armed: turned off, loudly.
-    let (o, log) = run("42 true", &[]);
+    // Armed: the exact lookup, then turned off, loudly.
+    let (o, log, argv) = run(&format!("[{}]", pr(42, true, false)), &[]);
     assert!(o.status.success(), "{}", text(&o.stderr));
-    assert!(
-        log.lines().next().unwrap_or("").starts_with(
-            "pr list --repo o/r --head release-please--branches--main--components--vitruvian --state open --json number,autoMergeRequest,isCrossRepository --jq"
-        ),
-        "looks the PR up by the gate's head branch:\n{log}"
+    assert_eq!(
+        argv, FALLBACK_LIST_ARGV,
+        "the gh pr list command, argument for argument"
     );
-    assert!(
-        log.lines()
-            .any(|l| l == "pr merge 42 --repo o/r --disable-auto"),
-        "disables auto-merge:\n{log}"
+    assert_eq!(
+        merged(&log),
+        ["pr merge 42 --repo o/r --disable-auto"],
+        "{log}"
     );
     assert!(text(&o.stdout)
         .contains("::error title=release-beta-gate could not run::turned auto-merge off on #42"));
 
-    // Already off, or no PR: nothing to do.
-    for row in ["42 false", ""] {
-        let (o, log) = run(row, &[]);
-        assert!(o.status.success(), "{row:?}: {}", text(&o.stderr));
-        assert!(
-            !log.contains("pr merge"),
-            "{row:?}: must not call merge:\n{log}"
-        );
-    }
+    // A fork's PR on the same branch name is never the release PR: the
+    // repository's own one is the one turned off.
+    let (o, log, _) = run(
+        &format!("[{},{}]", pr(7, true, true), pr(42, true, false)),
+        &[],
+    );
+    assert!(o.status.success(), "{}", text(&o.stderr));
+    assert_eq!(
+        merged(&log),
+        ["pr merge 42 --repo o/r --disable-auto"],
+        "fork skipped: {log}"
+    );
+    let (o, log, _) = run(&format!("[{}]", pr(7, true, true)), &[]);
+    assert!(o.status.success(), "{}", text(&o.stderr));
+    assert_eq!(
+        merged(&log),
+        Vec::<String>::new(),
+        "only a fork's PR: nothing to turn off: {log}"
+    );
+
+    // Already off, or no PR: nothing to do, and it says so.
+    let (o, log, _) = run(&format!("[{}]", pr(42, false, false)), &[]);
+    assert!(o.status.success(), "{}", text(&o.stderr));
+    assert_eq!(merged(&log), Vec::<String>::new(), "not armed: {log}");
+    assert!(
+        text(&o.stdout).contains("Auto-merge is already off on #42."),
+        "{}",
+        text(&o.stdout)
+    );
+    let (o, log, _) = run("[]", &[]);
+    assert!(o.status.success(), "{}", text(&o.stderr));
+    assert_eq!(merged(&log), Vec::<String>::new(), "no PR: {log}");
+    assert!(
+        text(&o.stdout).contains("No open release PR on"),
+        "{}",
+        text(&o.stdout)
+    );
 
     // A failed lookup or a refused disable fails the step: red, never quiet.
-    let (o, _) = run("", &[("FAKE_LIST_RC", "1")]);
+    let (o, _, _) = run("[]", &[("FAKE_LIST_RC", "1")]);
     assert!(!o.status.success(), "a failed lookup must fail the step");
-    let (o, _) = run("42 true", &[("FAKE_MERGE_RC", "1")]);
+    let (o, _, _) = run(
+        &format!("[{}]", pr(42, true, false)),
+        &[("FAKE_MERGE_RC", "1")],
+    );
     assert!(!o.status.success(), "a refused disable must fail the step");
+}
+
+#[test]
+fn a_built_file_that_is_not_executable_fails_the_step() {
+    // A rustc that writes its -o file without the execute bit: there is a
+    // file, but nothing a caller can run.
+    let script = build_script(&read(ACTION));
+    let tools: BTreeSet<String> = ["release_hold".to_string()].into_iter().collect();
+    let ws = workspace(&tools);
+    let shim = tmp();
+    exe(
+        &shim.join("rustc"),
+        "#!/bin/sh\n[ \"$1\" = --version ] && { echo 'rustc 9.9.9-fake'; exit 0; }\nprev=''\nfor a in \"$@\"; do [ \"$prev\" = -o ] && o=\"$a\"; prev=\"$a\"; done\n: > \"$o\"\nchmod 644 \"$o\"\n",
+    );
+    let runner_temp = tmp();
+    let s = run_step(&script, "release_hold", &ws, &runner_temp, &shim);
+    assert!(
+        runner_temp.join("ci-tools/release_hold").is_file(),
+        "the shim wrote the file"
+    );
+    assert_eq!(s.out.status.code(), Some(1), "{:?}", s.out);
+    assert!(
+        text(&s.out.stdout).contains("is not an executable file"),
+        "no ::error annotation:\n{}",
+        text(&s.out.stdout)
+    );
+    assert_eq!(
+        s.github_output, "",
+        "no path output for a file that cannot run"
+    );
 }

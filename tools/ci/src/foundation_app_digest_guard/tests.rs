@@ -107,6 +107,30 @@ fn an_empty_digest_is_refused_like_a_missing_one() {
 }
 
 #[test]
+fn a_whitespace_only_digest_is_refused_and_not_exported() {
+    // A YAML `|` block leaves `app=` followed by a newline; a stray space is
+    // no image either. Both are refused, and neither is exported.
+    for digests in [
+        "oauth-user-inspector=\n,mcp-slack=sha256:bbb",
+        "oauth-user-inspector= ,mcp-slack=sha256:bbb",
+    ] {
+        let l = Leaf::new(THREE);
+        let o = l.run(digests);
+        assert_eq!(o.code, 1, "{digests:?}: {o:?}");
+        assert!(
+            o.stdout.ends_with(&error_line("oauth-user-inspector")),
+            "{digests:?}: {}",
+            o.stdout
+        );
+        assert!(
+            !l.env().contains("OAUTH_USER_INSPECTOR_IMAGE_DIGEST"),
+            "{digests:?}: exported: {}",
+            l.env()
+        );
+    }
+}
+
+#[test]
 fn one_enabled_workload_missing_its_digest_is_refused() {
     let l = Leaf::new(THREE);
     let o = l.run("oauth-user-inspector=sha256:aaa");
