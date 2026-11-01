@@ -55,9 +55,15 @@ fn arch_deb() -> &'static str {
     }
 }
 
-fn arch_gnu() -> &'static str {
-    if is_arm() {
-        "arm64"
+/// Google publishes the Cloud CLI as `linux-x86_64` and `linux-arm` (there is
+/// no `linux-arm64`, which the shell version asked for and got a 404).
+fn arch_gcloud() -> &'static str {
+    gcloud_arch(std::env::consts::ARCH)
+}
+
+fn gcloud_arch(arch: &str) -> &'static str {
+    if matches!(arch, "aarch64" | "arm") {
+        "arm"
     } else {
         "x86_64"
     }
@@ -223,7 +229,7 @@ impl<'a> Installer<'a> {
         let root = sh::path(&sh::env_or("CLOUD_BOOTSTRAP_GCLOUD_ROOT", "/usr/local"));
         let url = format!(
             "https://storage.googleapis.com/cloud-sdk-release/google-cloud-cli-{v}-linux-{}.tar.gz",
-            arch_gnu()
+            arch_gcloud()
         );
         if !(self.fetch_to(&url, &t)
             && sh::run(
@@ -367,5 +373,17 @@ impl<'a> Installer<'a> {
             ));
         }
         note(&format!("installed/verified {ok} tool(s)"));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::gcloud_arch;
+
+    #[test]
+    fn gcloud_asset_names_are_the_published_ones() {
+        // google-cloud-cli-<v>-linux-{x86_64,arm}.tar.gz; `linux-arm64` is a 404.
+        assert_eq!(gcloud_arch("x86_64"), "x86_64");
+        assert_eq!(gcloud_arch("aarch64"), "arm");
     }
 }
