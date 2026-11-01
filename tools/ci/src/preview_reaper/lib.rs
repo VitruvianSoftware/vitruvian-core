@@ -215,7 +215,10 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
     let curl_bin = env_or("CURL", b"curl");
     let gcp_project = env_or_empty("GCP_PROJECT");
     let gcp_region = env_or("GCP_REGION", b"us-central1");
-    let neon_api_key = env_or_empty("NEON_API_KEY");
+    // Trimmed once, here: curl is sent this key and the redaction looks for
+    // this key, so an API echoing it back is hidden even when the secret was
+    // written with a trailing newline (`echo`).
+    let neon_api_key = trim_ascii_whitespace(&env_or_empty("NEON_API_KEY")).to_vec();
     let neon_project_id = env_or_empty("NEON_PROJECT_ID");
     let ttl_hours: i64 = std::str::from_utf8(&env_or("PREVIEW_TTL_HOURS", b"24"))
         .ok()
@@ -827,17 +830,25 @@ fn listing_failed(title: &str, what: &str, tool: &str, r: &Ran, secret: &[u8]) {
     }
 }
 
-/// The curl config (read with `--config -`) that sends `key` as the Neon
-/// bearer token: one `header = "..."` line, `"` and `\` escaped as curl's
-/// config syntax requires. Trailing whitespace (a secret written with
-/// `echo`) is dropped. `None` for a key holding any other control
-/// character: a line break would start a second curl option.
-fn neon_auth_config(key: &[u8]) -> Option<Vec<u8>> {
-    let end = key
+/// `v` without leading or trailing ASCII whitespace.
+fn trim_ascii_whitespace(v: &[u8]) -> &[u8] {
+    let start = v
+        .iter()
+        .position(|c| !c.is_ascii_whitespace())
+        .unwrap_or(v.len());
+    let end = v
         .iter()
         .rposition(|c| !c.is_ascii_whitespace())
-        .map_or(0, |i| i + 1);
-    let key = &key[..end];
+        .map_or(start, |i| i + 1);
+    &v[start..end]
+}
+
+/// The curl config (read with `--config -`) that sends `key` as the Neon
+/// bearer token: one `header = "..."` line, `"` and `\` escaped as curl's
+/// config syntax requires. `key` arrives trimmed (a secret written with
+/// `echo` ends in a newline). `None` for a key still holding a control
+/// character: a line break would start a second curl option.
+fn neon_auth_config(key: &[u8]) -> Option<Vec<u8>> {
     if key.iter().any(|c| c.is_ascii_control()) {
         return None;
     }

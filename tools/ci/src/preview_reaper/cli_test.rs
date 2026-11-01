@@ -905,3 +905,34 @@ fn kubectl_without_a_cluster_configured_is_skipped_not_failed() {
         "reaped_cloudrun=4\nreaped_k8s=0\nreaped_neon=4\ntotal_reaped=8\n"
     );
 }
+
+#[test]
+fn a_neon_api_key_with_a_trailing_newline_is_still_redacted() {
+    // A secret written with `echo` ends in a newline. The key curl sends is
+    // trimmed, so an API echoing it back shows it without the newline: the
+    // redaction must look for the same trimmed key, or it never matches.
+    for key in ["test-key\n", "test-key\r\n", " test-key \n"] {
+        let f = Fixture::new();
+        let o = f.run(
+            &["200"],
+            &[
+                ("NEON_API_KEY", key),
+                (
+                    "STUB_NEON_LIST_HTTP_ERROR",
+                    r#"{"message":"key test-key is not allowed here"}"#,
+                ),
+            ],
+        );
+        let e = stderr(&o);
+        assert_eq!(o.status.code(), Some(1), "{key:?}: {e}");
+        assert!(
+            e.contains("ERROR: could not list Neon branches (curl exit 22)"),
+            "{key:?}: {e}"
+        );
+        assert!(!e.contains("test-key"), "{key:?}: the API key leaked: {e}");
+        assert!(
+            e.contains("key <redacted> is not allowed here"),
+            "{key:?}: {e}"
+        );
+    }
+}
