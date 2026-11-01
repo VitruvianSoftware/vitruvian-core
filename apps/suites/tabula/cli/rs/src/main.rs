@@ -20,7 +20,7 @@
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    match tabcli_rs_lib::run_cli(&args) {
+    match tabcli_lib::run_cli(&args) {
         Ok(out) => {
             if !out.is_empty() {
                 println!("{out}");

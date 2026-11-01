@@ -83,11 +83,11 @@ resolve in every weekly sync. Use this table instead:
 
 | Upstream docs say | Run here |
 |---|---|
-| `./scripts/dev-fresh.sh` | `bazel run //apps/web/gods-eye-view:dev_fresh_rs` |
-| `./scripts/dev-secure.sh` | `npm run dev:secure` (runs `:dev_secure_rs`) |
-| `./scripts/dev-cctv.sh` | `bazel run //apps/web/gods-eye-view:dev_cctv_rs` |
-| `./scripts/opensky-import-client.sh` | `npm run opensky:import` (runs `:opensky_import_client_rs`) |
-| `scripts/verify-cesium-assets.sh` | `bazel run //apps/web/gods-eye-view:verify_cesium_assets_rs` |
+| `./scripts/dev-fresh.sh` | `bazel run //apps/web/gods-eye-view:dev_fresh` |
+| `./scripts/dev-secure.sh` | `npm run dev:secure` (runs `:dev_secure`) |
+| `./scripts/dev-cctv.sh` | `bazel run //apps/web/gods-eye-view:dev_cctv` |
+| `./scripts/opensky-import-client.sh` | `npm run opensky:import` (runs `:opensky_import_client`) |
+| `scripts/verify-cesium-assets.sh` | `bazel run //apps/web/gods-eye-view:verify_cesium_assets` |
 
 The files that mention them: `README.md`, `CONTRIBUTING.md`, `SECURITY.md`,
 `CHANGELOG.md`, `docs/CURRENT-STATE.md`, `docs/opensky-auth.md`, a comment in
@@ -101,7 +101,7 @@ file and not in the list. Its check A8 reads `scripts/dev-fresh.sh`, so it
 reports a crash (the other checks still run). A8 tests the launcher's
 localhost-by-default and LAN warning, which the Rust launcher in
 `scripts/src/dev_helpers.rs` now does. Skip it with `--skip A8`, and cover the
-same ground with `bazel test //apps/web/gods-eye-view:scripts_rs_test`.
+same ground with `bazel test //apps/web/gods-eye-view:scripts_test`.
 
 ## The production server
 

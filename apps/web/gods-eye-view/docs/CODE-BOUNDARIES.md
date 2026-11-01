@@ -44,14 +44,14 @@ See [application construction](APPLICATION.md) and the
 
 `npm run check:boundaries` runs two complementary checks:
 
-1. `//apps/web/gods-eye-view:check_import_directions_rs`
+1. `//apps/web/gods-eye-view:check_import_directions`
    (`scripts/src/check_import_directions.rs`) parses every runtime JS/MJS/CJS file in
    `src/` and `server/`, including files unused by the current bundle. Static,
    literal dynamic and re-export edges are checked; computed module imports and
    CommonJS `require` are rejected. Browser graphs cannot reach Node, server or
    test modules through helpers. Reusable modules cannot select standalone setup,
    and provider modules cannot import application/rendering modules.
-2. `//apps/web/gods-eye-view:check_package_boundaries_rs`
+2. `//apps/web/gods-eye-view:check_package_boundaries`
    (`scripts/src/check_package_boundaries.rs`) walks the import graph of every
    declared export without app Vite configuration or environment files. `scripts/package-boundaries.json`
    assigns each export exactly once and lists its owned modules and external

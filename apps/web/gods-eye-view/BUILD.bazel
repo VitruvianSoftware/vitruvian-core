@@ -127,15 +127,10 @@ js_test(
     entry_point = "tle-mirror/mirror.test.mjs",
 )
 
-test_suite(
-    name = "cesium_assets_rs_test",
-    tests = [":cesium_assets_test"],
-)
-
 # --- Helper scripts (Rust) ----------------------------------------------------
 
 rust_library(
-    name = "scripts_rs_lib",
+    name = "scripts_lib",
     srcs = glob(["scripts/src/*.rs"]),
     crate_name = "gev_scripts_lib",
     crate_root = "scripts/src/lib.rs",
@@ -149,60 +144,60 @@ rust_library(
 )
 
 rust_binary(
-    name = "build_military_names_rs",
+    name = "build_military_names",
     srcs = ["scripts/src/bin/build_military_names.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-    deps = [":scripts_rs_lib"],
+    deps = [":scripts_lib"],
 )
 
 rust_binary(
-    name = "verify_cesium_assets_rs",
+    name = "verify_cesium_assets",
     srcs = ["scripts/src/bin/verify_cesium_assets.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-    deps = [":scripts_rs_lib"],
+    deps = [":scripts_lib"],
 )
 
 rust_binary(
-    name = "opensky_import_client_rs",
+    name = "opensky_import_client",
     srcs = ["scripts/src/bin/opensky_import_client.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-    deps = [":scripts_rs_lib"],
+    deps = [":scripts_lib"],
 )
 
 rust_binary(
-    name = "dev_cctv_rs",
+    name = "dev_cctv",
     srcs = ["scripts/src/bin/dev_cctv.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-    deps = [":scripts_rs_lib"],
+    deps = [":scripts_lib"],
 )
 
 rust_binary(
-    name = "dev_fresh_rs",
+    name = "dev_fresh",
     srcs = ["scripts/src/bin/dev_fresh.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-    deps = [":scripts_rs_lib"],
+    deps = [":scripts_lib"],
 )
 
 rust_binary(
-    name = "dev_secure_rs",
+    name = "dev_secure",
     srcs = ["scripts/src/bin/dev_secure.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-    deps = [":scripts_rs_lib"],
+    deps = [":scripts_lib"],
 )
 
 rust_binary(
-    name = "cesium_render_rs",
+    name = "cesium_render",
     srcs = ["scripts/src/bin/cesium_render.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//apps/web/gods-eye-view:__subpackages__"],
-    deps = [":scripts_rs_lib"],
+    deps = [":scripts_lib"],
 )
 
 # The imagery CLI tools (tools/README.md): `bazel run :<name> -- --help`.
@@ -212,7 +207,7 @@ rust_binary(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//apps/web/gods-eye-view:__subpackages__"],
-    deps = [":scripts_rs_lib"],
+    deps = [":scripts_lib"],
 )
 
 rust_binary(
@@ -221,7 +216,7 @@ rust_binary(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//apps/web/gods-eye-view:__subpackages__"],
-    deps = [":scripts_rs_lib"],
+    deps = [":scripts_lib"],
 )
 
 rust_binary(
@@ -230,7 +225,7 @@ rust_binary(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//apps/web/gods-eye-view:__subpackages__"],
-    deps = [":scripts_rs_lib"],
+    deps = [":scripts_lib"],
 )
 
 rust_binary(
@@ -239,7 +234,7 @@ rust_binary(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//apps/web/gods-eye-view:__subpackages__"],
-    deps = [":scripts_rs_lib"],
+    deps = [":scripts_lib"],
 )
 
 rust_binary(
@@ -248,34 +243,34 @@ rust_binary(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//apps/web/gods-eye-view:__subpackages__"],
-    deps = [":scripts_rs_lib"],
+    deps = [":scripts_lib"],
 )
 
 rust_binary(
-    name = "check_import_directions_rs",
+    name = "check_import_directions",
     srcs = ["scripts/src/bin/check_import_directions.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//apps/web/gods-eye-view:__subpackages__"],
-    deps = [":scripts_rs_lib"],
+    deps = [":scripts_lib"],
 )
 
 rust_binary(
-    name = "check_package_boundaries_rs",
+    name = "check_package_boundaries",
     srcs = ["scripts/src/bin/check_package_boundaries.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//apps/web/gods-eye-view:__subpackages__"],
-    deps = [":scripts_rs_lib"],
+    deps = [":scripts_lib"],
 )
 
 rust_binary(
-    name = "check_format_scope_rs",
+    name = "check_format_scope",
     srcs = ["scripts/src/bin/check_format_scope.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//apps/web/gods-eye-view:__subpackages__"],
-    deps = [":scripts_rs_lib"],
+    deps = [":scripts_lib"],
 )
 
 boundary_check_data = [
@@ -302,9 +297,9 @@ boundary_check_data = [
 )
 
 rust_test(
-    name = "scripts_rs_test",
+    name = "scripts_test",
     size = "small",
-    crate = ":scripts_rs_lib",
+    crate = ":scripts_lib",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [
@@ -321,7 +316,7 @@ rust_test(
     data = [":build"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-    deps = [":scripts_rs_lib"],
+    deps = [":scripts_lib"],
 )
 
 rust_test(
@@ -332,117 +327,40 @@ rust_test(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//apps/web/gods-eye-view:__subpackages__"],
-    deps = [":scripts_rs_lib"],
+    deps = [":scripts_lib"],
 )
 
 rust_test(
-    name = "check_import_directions_rs_test",
+    name = "check_import_directions_test",
     size = "small",
     srcs = ["scripts/src/bin/check_import_directions.rs"],
     data = boundary_check_data,
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//apps/web/gods-eye-view:__subpackages__"],
-    deps = [":scripts_rs_lib"],
+    deps = [":scripts_lib"],
 )
 
 rust_test(
-    name = "check_package_boundaries_rs_test",
+    name = "check_package_boundaries_test",
     size = "small",
     srcs = ["scripts/src/bin/check_package_boundaries.rs"],
     data = boundary_check_data,
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//apps/web/gods-eye-view:__subpackages__"],
-    deps = [":scripts_rs_lib"],
+    deps = [":scripts_lib"],
 )
 
 rust_test(
-    name = "check_format_scope_rs_test",
+    name = "check_format_scope_test",
     size = "small",
     srcs = ["scripts/src/bin/check_format_scope.rs"],
     data = boundary_check_data,
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//apps/web/gods-eye-view:__subpackages__"],
-    deps = [":scripts_rs_lib"],
-)
-
-# --- E2E suite (Rust) ---------------------------------------------------------
-
-rust_library(
-    name = "e2e_rs_lib",
-    srcs = [
-        "//apps/web/gods-eye-view/tests/e2e:src/lib.rs",
-        "//apps/web/gods-eye-view/tests/e2e:src/runner.rs",
-        "//apps/web/gods-eye-view/tests/e2e:src/tier1.rs",
-        "//apps/web/gods-eye-view/tests/e2e:src/tier2.rs",
-        "//apps/web/gods-eye-view/tests/e2e:src/tier3.rs",
-        "//apps/web/gods-eye-view/tests/e2e:src/tier4.rs",
-        "//apps/web/gods-eye-view/tests/e2e:src/tier5.rs",
-    ],
-    crate_name = "gods_eye_view_e2e",
-    crate_root = "//apps/web/gods-eye-view/tests/e2e:src/lib.rs",
-    edition = "2021",
-    rustc_flags = ["-Copt-level=3"],
-)
-
-rust_binary(
-    name = "run_e2e_tests_rs",
-    srcs = ["//apps/web/gods-eye-view/tests/e2e:src/bin/run_e2e_tests.rs"],
-    edition = "2021",
-    rustc_flags = ["-Copt-level=3"],
-    deps = [":e2e_rs_lib"],
-)
-
-rust_binary(
-    name = "tier1_feature_test_rs",
-    srcs = ["//apps/web/gods-eye-view/tests/e2e:src/bin/tier1_feature_test.rs"],
-    edition = "2021",
-    rustc_flags = ["-Copt-level=3"],
-    deps = [":e2e_rs_lib"],
-)
-
-rust_binary(
-    name = "tier2_boundary_test_rs",
-    srcs = ["//apps/web/gods-eye-view/tests/e2e:src/bin/tier2_boundary_test.rs"],
-    edition = "2021",
-    rustc_flags = ["-Copt-level=3"],
-    deps = [":e2e_rs_lib"],
-)
-
-rust_binary(
-    name = "tier3_combination_test_rs",
-    srcs = ["//apps/web/gods-eye-view/tests/e2e:src/bin/tier3_combination_test.rs"],
-    edition = "2021",
-    rustc_flags = ["-Copt-level=3"],
-    deps = [":e2e_rs_lib"],
-)
-
-rust_binary(
-    name = "tier4_scenario_test_rs",
-    srcs = ["//apps/web/gods-eye-view/tests/e2e:src/bin/tier4_scenario_test.rs"],
-    edition = "2021",
-    rustc_flags = ["-Copt-level=3"],
-    deps = [":e2e_rs_lib"],
-)
-
-rust_binary(
-    name = "tier5_adversarial_test_rs",
-    srcs = ["//apps/web/gods-eye-view/tests/e2e:src/bin/tier5_adversarial_test.rs"],
-    edition = "2021",
-    rustc_flags = ["-Copt-level=3"],
-    deps = [":e2e_rs_lib"],
-)
-
-rust_test(
-    name = "e2e_rs_test",
-    size = "small",
-    crate = ":e2e_rs_lib",
-    data = ["BUILD.bazel"],
-    edition = "2021",
-    rustc_flags = ["-Copt-level=3"],
-    tags = ["local"],
+    deps = [":scripts_lib"],
 )
 
 doctor(
@@ -467,12 +385,12 @@ local_files = [
 ]
 
 rust_library(
-    name = "upstream_rs_lib",
+    name = "upstream_lib",
     srcs = glob(
         ["upstream/src/**/*.rs"],
         exclude = ["upstream/src/main.rs"],
     ),
-    crate_name = "upstream_rs",
+    crate_name = "upstream",
     crate_root = "upstream/src/lib.rs",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
@@ -483,28 +401,18 @@ rust_binary(
     srcs = ["upstream/src/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-    deps = [":upstream_rs_lib"],
-)
-
-alias(
-    name = "track_upstream_rs",
-    actual = ":track_upstream",
+    deps = [":upstream_lib"],
 )
 
 # The tool against throwaway repositories, and the committed list's format.
 rust_test(
     name = "upstream_test",
     size = "small",
-    crate = ":upstream_rs_lib",
+    crate = ":upstream_lib",
     data = local_files,
     edition = "2021",
     env = {"UPSTREAM_LOCAL_CHANGES": "$(rootpath upstream/local-changes.tsv)"},
     rustc_flags = ["-Copt-level=3"],
-)
-
-test_suite(
-    name = "upstream_rs_test",
-    tests = [":upstream_test"],
 )
 
 pipeline_unit(
@@ -517,10 +425,10 @@ pipeline_unit(
         ":tle_mirror_test",
         ":cesium_assets_test",
         ":upstream_test",
-        ":scripts_rs_test",
+        ":scripts_test",
         # The architecture gates on the live tree (`npm run check:boundaries`).
-        ":check_import_directions_rs_test",
-        ":check_package_boundaries_rs_test",
+        ":check_import_directions_test",
+        ":check_package_boundaries_test",
         ":build",
     ],
     tier = "L1",

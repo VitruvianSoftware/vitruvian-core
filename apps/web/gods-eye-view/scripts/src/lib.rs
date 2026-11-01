@@ -404,7 +404,7 @@ mod tests {
     #[test]
     fn roots_under_bazel_run_are_the_checkouts_app_folder() {
         use std::path::PathBuf;
-        let exe = PathBuf::from("/x/bazel-out/bin/apps/web/gods-eye-view/dev_secure_rs");
+        let exe = PathBuf::from("/x/bazel-out/bin/apps/web/gods-eye-view/dev_secure");
         let (source, root) = dev_helpers::roots_from(
             Some(PathBuf::from("/repo")),
             Some(exe.clone()),

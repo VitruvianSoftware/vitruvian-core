@@ -108,7 +108,7 @@ SQL
 # Layer-2 guard: the deploy wrapper's expand phase refuses to sweep in a pending
 # *_contract migration. Its status parser is Rust now
 # (apps/suites/tabula/api/rs/src/lib.rs, contracts_in_status) and is guarded
-# by the cases in //apps/suites/tabula/api:tabula_api_tools_rs_test, which runs
+# by the cases in //apps/suites/tabula/api:tabula_api_tools_test, which runs
 # whenever that code changes; this gate no longer needs Node to check it.
 
 # 2) Lint the migrations this branch adds/modifies, skipping deliberate contracts.

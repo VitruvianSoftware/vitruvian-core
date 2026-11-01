@@ -22,7 +22,7 @@ use std::process;
 
 fn usage() -> ! {
     eprintln!(
-        "Usage: track_upstream_rs [--root DIR] [--changes PATH] [--upstream-url URL] \
+        "Usage: track_upstream [--root DIR] [--changes PATH] [--upstream-url URL] \
          [--cache DIR] [--no-fetch] <command> [options]\n\
          \n\
          Commands:\n\
@@ -40,7 +40,7 @@ fn main() {
 
     let mut root_arg = None;
     let mut changes_arg = None;
-    let mut upstream_url = upstream_rs::UPSTREAM_URL;
+    let mut upstream_url = upstream::UPSTREAM_URL;
     let mut cache_arg = None;
     let mut no_fetch = false;
     let mut i = 0;
@@ -80,28 +80,28 @@ fn main() {
         usage();
     }
 
-    let root = match upstream_rs::repo_root(root_arg) {
+    let root = match upstream::repo_root(root_arg) {
         Ok(r) => r,
         Err(e) => {
             eprintln!("upstream: {}", e);
             process::exit(2);
         }
     };
-    let cp = upstream_rs::changes_path(changes_arg, &root);
-    let cache = upstream_rs::cache_dir(cache_arg);
+    let cp = upstream::changes_path(changes_arg, &root);
+    let cache = upstream::cache_dir(cache_arg);
 
     let cmd = refs[i];
     let rest = &refs[i + 1..];
 
     let code = match cmd {
         "check-changes" => {
-            match upstream_rs::cmd_check_changes(&cp) {
+            match upstream::cmd_check_changes(&cp) {
                 Ok(c) => c,
                 Err(e) => { eprintln!("upstream: {}", e); 2 }
             }
         }
         "check" => {
-            match upstream_rs::cmd_check(&root, &cp, upstream_url, &cache, no_fetch) {
+            match upstream::cmd_check(&root, &cp, upstream_url, &cache, no_fetch) {
                 Ok(c) => c,
                 Err(e) => { eprintln!("upstream: {}", e); 2 }
             }
@@ -123,7 +123,7 @@ fn main() {
                     _ => { j += 1; }
                 }
             }
-            match upstream_rs::cmd_status(&root, &cp, upstream_url, &cache, no_fetch, check, markdown, previous_body) {
+            match upstream::cmd_status(&root, &cp, upstream_url, &cache, no_fetch, check, markdown, previous_body) {
                 Ok(c) => c,
                 Err(e) => { eprintln!("upstream: {}", e); 2 }
             }
@@ -151,7 +151,7 @@ fn main() {
                     _ => { j += 1; }
                 }
             }
-            match upstream_rs::cmd_sync(&root, &cp, upstream_url, &cache, no_fetch, to, dry_run, report_path, allow_dirty) {
+            match upstream::cmd_sync(&root, &cp, upstream_url, &cache, no_fetch, to, dry_run, report_path, allow_dirty) {
                 Ok(c) => c,
                 Err(e) => { eprintln!("upstream: {}", e); 2 }
             }

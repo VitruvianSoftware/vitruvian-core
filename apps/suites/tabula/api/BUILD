@@ -40,7 +40,7 @@ package(default_visibility = ["//apps/suites/tabula:__subpackages__"])
 npm_link_all_packages(name = "node_modules")
 
 rust_library(
-    name = "tabula_api_tools_rs_lib",
+    name = "tabula_api_tools_lib",
     srcs = [
         "rs/src/auth_lib.rs",
         "rs/src/crypto.rs",
@@ -63,7 +63,7 @@ rust_library(
         "rs/src/tombstones.rs",
         "rs/src/workos.rs",
     ],
-    crate_name = "tabula_api_tools_rs_lib",
+    crate_name = "tabula_api_tools",
     crate_root = "rs/src/lib.rs",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
@@ -79,36 +79,36 @@ rust_binary(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//apps/suites/tabula:__subpackages__"],
-    deps = [":tabula_api_tools_rs_lib"],
+    deps = [":tabula_api_tools_lib"],
 )
 
 rust_binary(
-    name = "prisma-client-gen-rs",
+    name = "prisma-client-gen",
     srcs = ["rs/src/bin/generate_client.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-    deps = [":tabula_api_tools_rs_lib"],
+    deps = [":tabula_api_tools_lib"],
 )
 
 rust_binary(
-    name = "seed-test-user-rs",
+    name = "seed-test-user",
     srcs = ["rs/src/bin/seed_test_user.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//apps/suites/tabula:__subpackages__"],
-    deps = [":tabula_api_tools_rs_lib"],
+    deps = [":tabula_api_tools_lib"],
 )
 
 alias(
     name = "seed_test_user_bin",
-    actual = ":seed-test-user-rs",
+    actual = ":seed-test-user",
     visibility = ["//apps/suites/tabula:__subpackages__"],
 )
 
 rust_test(
-    name = "tabula_api_tools_rs_test",
+    name = "tabula_api_tools_test",
     size = "small",
-    crate = ":tabula_api_tools_rs_lib",
+    crate = ":tabula_api_tools_lib",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [
@@ -120,7 +120,7 @@ rust_test(
 rust_test(
     name = "integration_tests",
     size = "small",
-    crate = ":tabula_api_tools_rs_lib",
+    crate = ":tabula_api_tools_lib",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [
@@ -173,7 +173,7 @@ rust_binary(
     rustc_env = {"PRISMA_CLI_RLOCATION": "$(rlocationpath :prisma_cli)"},
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//apps/suites/tabula:__subpackages__"],
-    deps = [":tabula_api_tools_rs_lib"],
+    deps = [":tabula_api_tools_lib"],
 )
 
 itest_service(
@@ -266,7 +266,7 @@ rust_test(
     rustc_env = {"SCHEMA_RLOCATION": "$(rlocationpath prisma/schema.prisma)"},
     tags = ["manual"],
     deps = [
-        ":tabula_api_tools_rs_lib",
+        ":tabula_api_tools_lib",
         "@crates//:serde_json",
         "@rules_rust//rust/runfiles",
     ],
@@ -365,7 +365,7 @@ pipeline_unit(
         ":integration_tests",
         # migrate_deploy_bin against a real (hermetic) Postgres.
         ":migrate_deploy_itest",
-        ":tabula_api_tools_rs_test",
+        ":tabula_api_tools_test",
         # cloud_run_deploy's launcher check: the real :deploy reaches the sequencer.
         "//apps/suites/tabula/infra/app:deploy_launcher_test",
     ],

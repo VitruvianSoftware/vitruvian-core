@@ -20,7 +20,7 @@
 
 use std::path::Path;
 
-use tabula_api_tools_rs_lib::{run_generate_client, DEFAULT_PRISMA_SCHEMA, GENERATED_DIR};
+use tabula_api_tools::{run_generate_client, DEFAULT_PRISMA_SCHEMA, GENERATED_DIR};
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();

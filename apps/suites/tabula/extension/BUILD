@@ -348,15 +348,6 @@ genrule(
     cmd = "cd $(location :dist_release) && zip -qrX $$OLDPWD/$@ . -x '*.map' -x '*.d.ts'",
 )
 
-# Break-glass publisher for the rolling dev-latest bundle. CI compiles and runs
-# the SAME Rust crate with rustc; this alias is what the runbook points at when
-# Actions is unavailable, and what the delivery() declaration below names as its
-# `run`.
-alias(
-    name = "publish-dev-latest",
-    actual = ":publish-dev-latest-rs",
-)
-
 # Delivery unit (delivery-orchestrator PHASE 2, Wave B2): the rolling
 # "dev-latest" prerelease that `tabcli ext update` and the in-extension update
 # banner consume. Declared HERE, in the package that owns the artifact
@@ -433,27 +424,16 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
+# Break-glass publisher for the rolling dev-latest bundle. CI compiles and runs
+# the SAME Rust crate with rustc; this is what the runbook points at when
+# Actions is unavailable, and what the delivery() declaration above names as its
+# `run`.
 rust_binary(
-    name = "publish-dev-latest-rs",
+    name = "publish-dev-latest",
     srcs = ["scripts/src/bin/publish_dev_latest.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [":publish_dev_latest_lib"],
-)
-
-alias(
-    name = "publish_dev_latest_rs",
-    actual = ":publish-dev-latest-rs",
-)
-
-test_suite(
-    name = "publish-dev-latest-rs_test",
-    tests = [":publish_dev_latest_lib_test"],
-)
-
-alias(
-    name = "publish_dev_latest_rs_test",
-    actual = ":publish-dev-latest-rs_test",
 )
 
 pipeline_unit(

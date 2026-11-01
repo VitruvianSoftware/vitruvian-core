@@ -248,7 +248,7 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
     }
 
     // The expand-phase status parser is guarded by
-    // //apps/suites/tabula/api:tabula_api_tools_rs_test (it is Rust now), not here.
+    // //apps/suites/tabula/api:tabula_api_tools_test (it is Rust now), not here.
 
     if !args.is_empty() && !args[0].is_empty() {
         if lint_changed(&root, &config, &args[0]) != 0 {

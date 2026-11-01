@@ -19,13 +19,13 @@
 // SOFTWARE.
 
 use std::sync::Arc;
-use tabula_api_tools_rs_lib::auth_lib::resolve_jwt_secret_from_process_env;
-use tabula_api_tools_rs_lib::migration_guard::{
+use tabula_api_tools::auth_lib::resolve_jwt_secret_from_process_env;
+use tabula_api_tools::migration_guard::{
     assert_database_schema_current, MigrationLogger, ProbeOptions, RequiredColumn,
 };
-use tabula_api_tools_rs_lib::server::{serve_http, AppContext};
-use tabula_api_tools_rs_lib::store::{DataStore, PgClient, RespRedisStore};
-use tabula_api_tools_rs_lib::workos::DefaultWorkOSProvider;
+use tabula_api_tools::server::{serve_http, AppContext};
+use tabula_api_tools::store::{DataStore, PgClient, RespRedisStore};
+use tabula_api_tools::workos::DefaultWorkOSProvider;
 
 struct StdioMigrationLogger;
 

@@ -20,7 +20,7 @@
 
 //! `migrate_deploy_bin`: hermetic `prisma migrate deploy` with the
 //! expand/contract phase guard (issue #819). The logic lives in
-//! `tabula_api_tools_rs_lib::run_migrate_deploy`; this binary only finds the
+//! `tabula_api_tools::run_migrate_deploy`; this binary only finds the
 //! Prisma CLI in its Bazel runfiles and hands over the process environment.
 //!
 //! The Prisma CLI is `//apps/suites/tabula/api:prisma_cli`, a `js_binary` on the
@@ -32,7 +32,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-use tabula_api_tools_rs_lib::run_migrate_deploy;
+use tabula_api_tools::run_migrate_deploy;
 
 /// Runfiles path of the Prisma CLI launcher, baked in at build time.
 const PRISMA_CLI_RLOCATION: &str = env!("PRISMA_CLI_RLOCATION");

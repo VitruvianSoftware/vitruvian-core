@@ -26,7 +26,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 pub const PRE_COMMIT_HOOK_SCRIPT: &str =
-    "#!/usr/bin/env bash\nexec bazel run //apps/web/oauth-user-inspector:check-sensitive-rs\n";
+    "#!/usr/bin/env bash\nexec bazel run //apps/web/oauth-user-inspector:check-sensitive\n";
 
 pub fn install_pre_commit_hook(repo_root: &Path) -> Result<PathBuf, String> {
     let hooks_dir = repo_root.join(".git/hooks");
