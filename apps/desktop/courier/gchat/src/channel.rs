@@ -164,10 +164,7 @@ pub const GCHAT_EVENT_KIND_STREAM_ERROR: i32 = 5;
 /// query strings, SIDs, cookies, tokens, or response bodies.
 pub fn format_stream_error_message(step: &str, err: &GChatError) -> String {
     let safe_step = match step {
-        "step1_register"
-        | "step2_bind_sid"
-        | "step3_ack_and_ping"
-        | "step2_bind_poll"
+        "step1_register" | "step2_bind_sid" | "step3_ack_and_ping" | "step2_bind_poll"
         | "step4_poll_events" => step,
         _ => "stream",
     };
