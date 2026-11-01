@@ -787,7 +787,7 @@ spec:
                   # makes the ApplicationSet controller fail to render the whole
                   # set -- goTemplate reads it as a raw-string literal and then
                   # chokes on the next word ("unexpected \"for\" in operand").
-                  # Caught by tools/ci/gitops-validate.sh, which is the only
+                  # Caught by //tools/ci:gitops_validate, which is the only
                   # reason this comment did not silently wedge the appset.
                   - alert: McpSlackSustained5xx
                     expr: |
@@ -985,7 +985,7 @@ spec:
                       severity: warning
                     annotations:
                       summary: "ArgoCD cannot render {{ $labels.name }} -- merges are NOT deploying"
-                      description: "ArgoCD has been unable to compare {{ $labels.name }} (project {{ $labels.project }}, ns {{ $labels.dest_namespace }}) against git for >10m, so it is frozen at its last good render and every change merged since then is undeployed. The app will still report Healthy, so do not trust health here. Get the cause with: kubectl get application {{ $labels.name }} -n argocd -o yaml | grep -A5 conditions -- a ComparisonError names the offending file. The values-schema form of this is caught pre-merge by tools/ci/gitops-values-render.sh."
+                      description: "ArgoCD has been unable to compare {{ $labels.name }} (project {{ $labels.project }}, ns {{ $labels.dest_namespace }}) against git for >10m, so it is frozen at its last good render and every change merged since then is undeployed. The app will still report Healthy, so do not trust health here. Get the cause with: kubectl get application {{ $labels.name }} -n argocd -o yaml | grep -A5 conditions -- a ComparisonError names the offending file. The values-schema form of this is caught pre-merge by //tools/ci:gitops_values_render."
                   # OutOfSync IS transient during a normal rollout, so this is
                   # deliberately slower than the Unknown alert above. Sustained
                   # past 30m means selfHeal is not converging.

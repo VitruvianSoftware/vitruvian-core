@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! //tools/ci:gitops-values-render: the Rust port.
+//! //tools/ci:gitops_values_render (see lib.rs).
 
 fn main() {
     std::process::exit(gitops_values_render::run(&shell_compat::args()));

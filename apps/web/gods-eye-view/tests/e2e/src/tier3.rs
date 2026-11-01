@@ -631,14 +631,14 @@ pub fn run(ctx: &mut TestContext) {
     // C20 (F14xF18): Platform Manifests x GitOps Validation
     {
         if ctx.dir_exists("gitops/argocd/platform/gods-eye-view") {
-            let validate_path = ctx.path("tools/ci/gitops-validate.sh");
+            let validate_path = ctx.path("tools/ci/src/gitops_validate/main.rs");
             if validate_path.is_file() {
                 ctx.pass(
                     "C20",
-                    "Platform manifests and tools/ci/gitops-validate.sh are ready for strict validation",
+                    "Platform manifests and //tools/ci:gitops_validate are ready for strict validation",
                 );
             } else {
-                ctx.fail("C20", "tools/ci/gitops-validate.sh not executable");
+                ctx.fail("C20", "tools/ci/src/gitops_validate/main.rs not found");
             }
         } else {
             ctx.skip(

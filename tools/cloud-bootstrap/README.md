@@ -22,6 +22,23 @@ any reason, the script is directly runnable and takes the same subcommands:
 tools/cloud-bootstrap/cloud-bootstrap.sh whoami
 ```
 
+### Implementation (moving from shell to Rust)
+
+The `bazel run` targets are a Rust binary: `src/cloud_bootstrap/`, standard
+library only and a single crate, so it also builds with one plain `rustc` call
+on a machine where Bazel does not exist yet (the cloud image ships `rustc`;
+`bazel` is one of the things this tool installs).
+
+The `SessionStart` hook, and the cloud environment's *Setup script*, still run
+`cloud-bootstrap.sh`, the original shell implementation. A follow-up turns that
+path into a small launcher that builds and runs the Rust binary, so neither
+caller changes. That file is on the guard-review list (it runs at session start
+with the session's credentials), so the switch is its own pull request and
+needs James's approval. Until then both implementations exist; they were
+diffed scenario by scenario (stdout, stderr, exit code, every `gcloud` argv,
+`session.env` as bash reads it, `~/.bashrc`, file modes) and agree, and the
+shell's own test suite passes against the Rust binary unchanged.
+
 ## The problem
 
 A cloud session boots a bare Ubuntu box. It has `git`, `go`, `node` and `docker`
@@ -361,7 +378,7 @@ default: a session's capability is a choice, not a fallback.
 ## Tests
 
 `bazel test //tools/cloud-bootstrap:cloud-bootstrap_test` — hermetic, driving the
-real script's `auth` path against a fake `gcloud` that records argv. It pins the
+real binary's `auth` and `whoami` paths against a fake `gcloud` that records argv. It pins the
 properties whose failure would be a privilege escalation or a leak: no implicit
 privileged default; a mismatched key refused **and failing closed**; the key
 travelling as a `--key-file` path and never as argv bytes (`ps` is world
@@ -383,6 +400,20 @@ configured for a profile not entitled to it. Plus the guards that keep it from
 producing a config that only *looks* enabled — a placeholder-length key, a
 profile with no `bazel`, and a configurator that fails without costing the
 session its credentials.
+
+Added with the Rust port: `session.env` is read back by real bash with awkward
+values (quotes, `$`, backticks, newlines, a leading `~` or `#`), since every Bash
+tool call sources it; a `session.env` written by bash's own `printf %q` (left by
+the shell version in a resumed session) is read correctly by `whoami`; an
+ambient cache key that no manifest row names is still refused; and the CLI's
+subcommand, flag and exit-code contract.
+
+`:cloud-bootstrap_rustc_test` type-checks the crate with the toolchain's own
+`rustc` and nothing else, so adding a dependency fails CI instead of breaking
+session start on a machine without Bazel. `:cloud-bootstrap_unit_test` covers
+the helpers (bash quoting and unquoting, base64, the `client_email` and
+tokeninfo extraction). `:cloud-bootstrap_sh_test` is the shell suite, kept while
+the shell script is still what the hook runs.
 
 The installers are not covered — they are network downloads whose only
 interesting property is whether `curl` worked.

@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! //tools/ci:backstage-boot-smoke: the Rust port.
+//! //tools/ci:backstage_boot_smoke (see lib.rs).
 
 fn main() {
     std::process::exit(backstage_boot_smoke::run(&shell_compat::args()));

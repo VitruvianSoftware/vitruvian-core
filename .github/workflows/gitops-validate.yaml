@@ -22,8 +22,9 @@
 # change reaches main and reconciles live against the cluster (selfHeal +
 # prune). Advisory today; the intent is to add "gitops-validate" to the
 # merge-queue required set (repo-config `mergeQueueRequiredChecks`) once proven.
-# Issue #454. Logic lives in tools/ci/gitops-validate.sh so it is reviewable and
-# runnable locally (`bash tools/ci/gitops-validate.sh` with kubeconform on PATH).
+# Issue #454. Logic lives in //tools/ci:gitops_validate so it is reviewable and
+# runnable locally (`bazel run //tools/ci:gitops_validate` with kubeconform on
+# PATH).
 name: gitops-validate
 
 on:
@@ -91,19 +92,25 @@ jobs:
           go-version-file: go.mod
           cache: false
 
-      # Logic lives in tools/ci/install-pinned-tool.sh (shared with
-      # actionlint.yaml, supply-chain.yaml, mcp-slack-image.yaml — see that
-      # script's header for why this was deduped).
+      # Shared with actionlint, chart-render, supply-chain and
+      # mcp-slack-image: .github/actions/install-pinned-tool.
       - name: Install kubeconform (pinned + checksum-verified)
-        env:
-          KUBECONFORM_VERSION: v0.8.0
-        run: |
-          bash tools/ci/install-pinned-tool.sh \
-            "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}" \
-            kubeconform-linux-amd64.tar.gz \
-            CHECKSUMS \
-            kubeconform-linux-amd64.tar.gz \
-            kubeconform --tar
+        uses: ./.github/actions/install-pinned-tool
+        with:
+          base-url: https://github.com/yannh/kubeconform/releases/download/v0.8.0
+          asset: kubeconform-linux-amd64.tar.gz
+          checksum-file: CHECKSUMS
+          checksum-pattern: kubeconform-linux-amd64.tar.gz
+          bin-name: kubeconform
+          mode: tar
 
+      # //tools/ci:gitops_validate, built with the runner's rustc (this job sets
+      # up no Bazel). //tools/ci:workflow_rustc_test runs these lines.
       - name: Validate gitops manifests
-        run: bash tools/ci/gitops-validate.sh
+        run: |
+          set -euo pipefail
+          rustc --edition 2021 -O --crate-type lib --crate-name shell_compat tools/shell-compat/src/lib.rs -o "$RUNNER_TEMP/libshell_compat.rlib"
+          rustc --edition 2021 -O --crate-type lib --crate-name appset_render tools/gitops/appset-render/src/lib.rs -o "$RUNNER_TEMP/libappset_render.rlib"
+          rustc --edition 2021 -O --crate-type lib --crate-name gitops_validate tools/ci/src/gitops_validate/lib.rs -L "$RUNNER_TEMP" --extern shell_compat="$RUNNER_TEMP/libshell_compat.rlib" --extern appset_render="$RUNNER_TEMP/libappset_render.rlib" -o "$RUNNER_TEMP/libgitops_validate.rlib"
+          rustc --edition 2021 -O tools/ci/src/gitops_validate/main.rs -L "$RUNNER_TEMP" --extern shell_compat="$RUNNER_TEMP/libshell_compat.rlib" --extern gitops_validate="$RUNNER_TEMP/libgitops_validate.rlib" -o "$RUNNER_TEMP/gitops-validate"
+          "$RUNNER_TEMP/gitops-validate"
