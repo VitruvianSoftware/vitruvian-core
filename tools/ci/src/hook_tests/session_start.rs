@@ -219,3 +219,15 @@ fn the_wrapper_runs_every_step_which_exists_in_order() {
         "wrapper is not executable"
     );
 }
+
+/// The suite can fail: with cloud-bootstrap runs in the background (planted in a temp copy, never in
+/// .claude/), `runs_the_steps_in_order` must fail.
+#[test]
+fn planted_break_is_caught() {
+    planted_break_fails(
+        WRAPPER,
+        "\"${root}/tools/cloud-bootstrap/cloud-bootstrap.sh\"\n",
+        "\"${root}/tools/cloud-bootstrap/cloud-bootstrap.sh\" &\n",
+        "runs_the_steps_in_order",
+    );
+}

@@ -386,3 +386,15 @@ fn the_session_start_hook_runs_it() {
 fn hook_script_is_executable() {
     assert!(is_executable(&repo(HOOK)), "hook script is not executable");
 }
+
+/// The suite can fail: with the apiserver probe always succeeds (planted in a temp copy, never in
+/// .claude/), `token_rejected_blames_lab_sa_token` must fail.
+#[test]
+fn planted_break_is_caught() {
+    planted_break_fails(
+        HOOK,
+        r#"--request-timeout=10s get --raw=/version 2>&1)"; then"#,
+        r#"--request-timeout=10s get --raw=/version 2>&1)" || true; then"#,
+        "token_rejected_blames_lab_sa_token",
+    );
+}

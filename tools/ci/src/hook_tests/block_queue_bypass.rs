@@ -224,3 +224,15 @@ fn settings_json_runs_the_hook_before_every_bash_command() {
 fn hook_script_is_executable() {
     assert!(is_executable(&repo(HOOK)), "hook script is not executable");
 }
+
+/// The suite can fail: with the --admin refusal can never match (planted in a temp copy, never in
+/// .claude/), `refuses_ways_past_the_merge_queue` must fail.
+#[test]
+fn planted_break_is_caught() {
+    planted_break_fails(
+        HOOK,
+        r#"--admin([^[:alnum:]_-]|$)"#,
+        r#"--no-such-flag([^[:alnum:]_-]|$)"#,
+        "refuses_ways_past_the_merge_queue",
+    );
+}

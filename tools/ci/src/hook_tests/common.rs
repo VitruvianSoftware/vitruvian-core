@@ -97,3 +97,44 @@ pub fn is_executable(p: &Path) -> bool {
         .map(|m| m.permissions().mode() & 0o111 != 0)
         .unwrap_or(false)
 }
+
+/// Proves a suite can fail: copies the real hook at `rel` into a temp dir,
+/// replaces `from` (which must occur exactly once) with `to`, and re-runs this
+/// test binary's `test` against that copy through $HOOK_UNDER_TEST. The
+/// unbroken copy must pass and the broken one must fail, so the failure is the
+/// planted break's, not the copy's. Nothing in .claude/ is ever edited.
+pub fn planted_break_fails(rel: &str, from: &str, to: &str, test: &str) {
+    if std::env::var_os("HOOK_UNDER_TEST").is_some() {
+        return; // the child run of another planted-break check
+    }
+    let src = std::fs::read_to_string(repo(rel)).unwrap();
+    assert_eq!(
+        src.matches(from).count(),
+        1,
+        "{rel} no longer contains exactly one {from:?}: update the planted break"
+    );
+    let work = TempDir::new();
+    let run = |name: &str, body: &str| {
+        let copy = work.join(name);
+        std::fs::write(&copy, body).unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&copy, std::fs::Permissions::from_mode(0o755)).unwrap();
+        Command::new(std::env::current_exe().unwrap())
+            .args([test, "--exact", "--test-threads=1"])
+            .env("HOOK_UNDER_TEST", &copy)
+            .output()
+            .expect("re-run the test binary")
+    };
+    let clean = run("clean.sh", &src);
+    assert!(
+        clean.status.success(),
+        "{test} fails even on an unbroken copy of {rel}:\n{}",
+        String::from_utf8_lossy(&clean.stdout)
+    );
+    let broken = run("broken.sh", &src.replacen(from, to, 1));
+    let out = String::from_utf8_lossy(&broken.stdout);
+    assert!(
+        !broken.status.success() && out.contains(&format!("{test} ... FAILED")),
+        "{test} still passes with {from:?} -> {to:?} planted in a copy of {rel}:\n{out}"
+    );
+}
