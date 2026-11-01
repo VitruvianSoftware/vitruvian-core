@@ -5,17 +5,20 @@ pub mod openui;
 
 pub use live_context_hooks::{
     build_ephemeral_context_payload, check_response_contract, evaluate_stop_shape,
-    format_live_git_summary, resolve_state_dir, run_inject_live_context, run_verify_response_shape,
-    ContractCheckResult, StopEvaluationResult, VerdictLogRecord, DEFAULT_RESPONSE_CONTRACT,
+    format_live_git_summary, json, resolve_state_dir, run_inject_live_context,
+    run_verify_response_shape, ContractCheckResult, StopEvaluationResult, VerdictLogRecord,
+    DEFAULT_RESPONSE_CONTRACT,
 };
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::{json, Map, Value};
+    use live_context_hooks::json::Map;
+    use serde_json::{json, Value};
 
-    fn as_map(v: Value) -> Map<String, Value> {
-        v.as_object().unwrap().clone()
+    /// The hook library takes its own std-only JSON type.
+    fn as_map(v: Value) -> Map {
+        json::parse_object(&v.to_string()).unwrap()
     }
 
     #[test]
@@ -100,12 +103,12 @@ mod tests {
             "lastAssistantMessage": msg
         }));
         let log_res = evaluate_stop_shape(&log_event, Some("log"), None, None, None);
-        assert_eq!(log_res.output["decision"], json!("allow"));
+        assert_eq!(log_res.output["decision"], "allow");
         assert!(!log_res.bounced);
         assert_eq!(log_res.log_record.unwrap().verdict, "block");
 
         let enforce_res = evaluate_stop_shape(&log_event, Some("enforce"), None, None, None);
-        assert_eq!(enforce_res.output["decision"], json!("continue"));
+        assert_eq!(enforce_res.output["decision"], "continue");
         assert!(enforce_res.bounced);
         assert!(enforce_res.output["reason"]
             .as_str()

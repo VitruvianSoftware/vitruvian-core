@@ -5,12 +5,15 @@
 """live-context: an Antigravity plugin that injects live Git/GitHub state and
 response contracts on PreInvocation and verifies reply shape on Stop.
 
-The plugin is plain ESM JavaScript that Antigravity runs with its own bundled
-Node.js, so there is nothing to build; these targets only run the unit tests.
+The hooks are std-only Rust (hooks/src) that hooks/rust-hook.sh compiles with
+rustc on the user's machine; the side panel is ESM JavaScript that Antigravity
+runs with Node.js. Nothing here is shipped from Bazel: these targets test.
 """
 
 load("@aspect_rules_js//js:defs.bzl", "js_library", "js_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+load("@rules_shell//shell:sh_library.bzl", "sh_library")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # gazelle:ignore
@@ -19,20 +22,50 @@ package(default_visibility = ["//apps/desktop/antigravity/plugins/live-context:_
 
 exports_files([
     "hooks/inject-live-context.sh",
+    "hooks/rust-hook.sh",
     "hooks/verify-response-shape.sh",
 ])
 
+sh_library(
+    name = "hook_scripts",
+    srcs = glob(
+        ["hooks/*.sh"],
+        exclude = ["hooks/*_test.sh"],
+    ),
+)
+
+# The hooks Antigravity runs (hooks.json) go through hooks/rust-hook.sh, which
+# compiles hooks/src with a bare rustc on the user's machine. This builds them
+# that way with Bazel's rustc, and checks the launcher's caching and its
+# fallback when rustc is missing or the build fails.
+sh_test(
+    name = "rust_hook_test",
+    size = "medium",
+    srcs = ["hooks/rust-hook_test.sh"],
+    data = glob(["hooks/src/**/*.rs"]) + [
+        "hooks.json",
+        "@rules_rust//rust/toolchain:current_rust_stdlib_files",
+        "@rules_rust//rust/toolchain:current_rustc_files",
+        "@rules_rust//rust/toolchain:current_rustc_lib_files",
+    ],
+    env = {
+        "HOOKS_JSON": "$(rootpath hooks.json)",
+        "PLUGIN_NAME": "live-context",
+        "REAL_RUSTC": "$(rootpath @rules_rust//rust/toolchain:current_rustc_files)",
+    },
+    deps = [":hook_scripts"],
+)
+
 rust_library(
     name = "live_context_hooks_lib",
-    srcs = ["hooks/src/lib.rs"],
+    srcs = [
+        "hooks/src/json.rs",
+        "hooks/src/lib.rs",
+    ],
     crate_name = "live_context_hooks",
     crate_root = "hooks/src/lib.rs",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-    deps = [
-        "@crates//:serde",
-        "@crates//:serde_json",
-    ],
 )
 
 rust_binary(
@@ -168,6 +201,7 @@ pipeline_unit(
         ":inject-live-context_test",
         ":live_context_hooks_lib_test",
         ":openui_test",
+        ":rust_hook_test",
         ":sidecar_lib_test",
         ":live_context_hooks_lib_test",
         ":verify-response-shape_test",

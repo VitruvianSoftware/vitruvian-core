@@ -17,8 +17,11 @@ flowchart LR
         sidecar["Live Context sidecar & panel"]
         cache["~/.gemini/antigravity/live-context-state/"]
     end
+    tools["git (workspace) and gh"]
     sidecar -- "refreshes Git & GitHub snapshot + config" --> cache
-    pre -- "reads cached state & emits ephemeralMessage" --> model
+    pre -- "uses the snapshot only if under 2 min old" --> cache
+    pre -- "otherwise asks directly, refreshes the snapshot" --> tools
+    pre -- "emits ephemeralMessage (unknown if both fail)" --> model
     model -- "finishes turn" --> stop
     stop -- "checks final line & logs verdict" --> cache
     stop -- "decision: continue (once in enforce mode)" --> model
