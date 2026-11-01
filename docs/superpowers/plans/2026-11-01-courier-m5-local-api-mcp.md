@@ -8,7 +8,7 @@ status: in-progress
 
 **Goal:** Claude (and other MCP clients) can use Courier exactly as it used the reference app's MCP, with only the address and token changed.
 
-**Architecture:** A new engine package `localapi` serves MCP over streamable HTTP on `127.0.0.1:23390/v0/mcp`. Each tool calls the engine's existing RPC method implementations in-process, so no query logic is duplicated. Bearer tokens live hashed in `courier.db`; James creates or approves them in Settings → Integrations. A `courier-engine mcp-stdio` subcommand gives clients a stdio transport that forwards to the HTTP endpoint.
+**Architecture:** A new engine package `localapi` serves MCP over streamable HTTP on port 23390 at `/v0/mcp`: on 127.0.0.1 by default, or on every network address when Remote Access is on (as in the reference app). Each tool calls the engine's existing RPC method implementations in-process, so no query logic is duplicated. Bearer tokens live hashed in `courier.db`; James creates or approves them in Settings → Integrations. A `courier-engine mcp-stdio` subcommand gives clients a stdio transport that forwards to the HTTP endpoint.
 
 **Tech stack:** Go 1.26.6, `github.com/modelcontextprotocol/go-sdk` v1.8.0 (latest on 2026-11-01; official SDK, streamable HTTP and stdio), SwiftUI.
 
@@ -16,10 +16,10 @@ status: in-progress
 
 ## Global Constraints
 
-- Listen on **127.0.0.1 only**. No setting, flag or environment variable may bind any other address. Default port **23390**, changeable in Settings → Integrations (1024–65535).
+- Listen on **127.0.0.1** by default. A **Remote Access** setting (`localapi.remote`, default off, as in the reference app) makes it listen on every address (`0.0.0.0` and `::`). Turning it on needs a confirm in the app; it applies at once, without a relaunch. Default port **23390**, changeable in Settings → Integrations (1024–65535).
 - Path: **`/v0/mcp`** (same path as the reference app, so only host, port and token change).
 - Every request needs `Authorization: Bearer <token>`. Missing, unknown or revoked → HTTP 401, body `{"error":"unauthorized"}`.
-- Reject any request whose `Host` header is not `127.0.0.1:<port>` or `localhost:<port>` (DNS-rebinding guard) → 403. Reject any request carrying an `Origin` header → 403. No CORS headers, ever.
+- With Remote Access off, reject any request whose `Host` header is not `127.0.0.1:<port>`, `[::1]:<port>` or `localhost:<port>` (DNS-rebinding guard) → 403. With it on, any `Host` is accepted; the token is the guard. Reject any request carrying an `Origin` header → 403. No CORS headers, ever.
 - Tokens: 32 random bytes, shown once as `courier_` + base64url. Only the SHA-256 is stored. Compare in constant time.
 - Sending (`send_message`) is a separate per-token permission, off by default.
 - Tool names and input schemas match `protocol/mcp-tools.json` exactly (property names, types, enums, formats, `required`). Descriptions are ours and must never say "Beeper".
@@ -28,7 +28,7 @@ status: in-progress
 - Request body limit 1 MiB. `limit` arguments are clamped to 1–200 (default 50 for chats, 20 for messages).
 - Connections are **off** until James turns on "Allow connections". The setting and the port survive restarts.
 - Engine and app protocol version goes from 11 to **12**; `protocol/protocol.json` and both conformance tests are updated.
-- Out of scope, recorded in the ledger: the reference app's REST API (`/v1`), its OAuth flow, remote (non-loopback) access, the Claude Desktop `.dxt` download and the Raycast installer (Raycast's extension needs the REST API).
+- Out of scope, recorded in the ledger: the reference app's REST API (`/v1`), its OAuth flow, the Claude Desktop `.dxt` download and the Raycast installer (Raycast's extension needs the REST API).
 
 ## Review Focus
 
@@ -83,7 +83,7 @@ Chat JSON: `{id, accountID, network, title, type:"single"|"group", unreadCount, 
 - [ ] `TestToolsMatchReferenceSchemas` (`schema_test.go`): reads `protocol/mcp-tools.json` and compares every tool's name and input schema (properties, types, enums, formats, nested `reminder` object, `anyOf` for `sender`, `required`) to `tools/list` from an in-memory client. Same set of names, no extras.
 - [ ] `TestNoDescriptionMentionsReferenceApp`: no tool or property description contains "Beeper" (case-insensitive).
 - [ ] Auth tests: no header 401; wrong token 401; revoked mid-session 401 on the next call; bad `Host` 403; any `Origin` 403; body over 1 MiB 413.
-- [ ] `TestListensOnLoopbackOnly`: the bound address is `127.0.0.1`; `Apply` with a port already taken returns `Listening:false` with a plain error, and the engine keeps running.
+- [ ] `TestListensOnLoopbackByDefault`: with Remote Access off the bound address is `127.0.0.1`; `TestRemoteAccessListensOnAllAddresses`: with it on, the listener is unspecified (`0.0.0.0`/`::`) and switching it off again rebinds to loopback without a restart; `Apply` with a port already taken returns `Listening:false` with a plain error, and the engine keeps running.
 - [ ] One test per tool against a store seeded through `fakenet`, including the Review Focus cases 1, 2, 4 and 5, `send_message` refused without `can_send`, and `limit: 10000` clamped to 200.
 - [ ] Wire into `main.go`: on start, `Apply` with the saved settings. Run `bazel test //apps/desktop/courier/engine/...`, gazelle, commit.
 
@@ -100,7 +100,7 @@ Chat JSON: `{id, accountID, network, title, type:"single"|"group", unreadCount, 
 
 - Methods: `integrations.status` → `Status`; `integrations.update {enabled?, port?}` → `Status`; `integrations.tokens` → `[APIToken]` (never a hash or plaintext); `integrations.createToken {name, canSend}` → `{token: APIToken, secret}` (the only place a secret ever crosses the socket); `integrations.revokeToken {id}`; `integrations.setCanSend {id, canSend}`; `integrations.answerPairing {requestID, allow, canSend}`.
 - Notification `integrations.pairRequest {requestID, clientName}`.
-- Pairing endpoint `POST /v0/pair {"clientName": "..."}` needs no token, accepts loopback with the same Host/Origin rules, allows one pending request at a time (a second gets 429) and waits up to 120 s. Allow → 200 `{"token": "<secret>"}`; deny or timeout → 403.
+- Pairing endpoint `POST /v0/pair {"clientName": "..."}` needs no token, follows the same Host/Origin rules (so it is reachable from other machines only with Remote Access on), allows one pending request at a time (a second gets 429) and waits up to 120 s. Allow → 200 `{"token": "<secret>"}`; deny or timeout → 403.
 - Protocol version 12. Notification `app.focus` from Task 2 is added here too.
 - [ ] Tests: create/list/revoke round trip; pairing allow, deny, timeout and the 429; conformance with version 12. Commit.
 
@@ -108,7 +108,7 @@ Chat JSON: `{id, accountID, network, title, type:"single"|"group", unreadCount, 
 
 **Files:** replace the Integrations part of `app/Sources/Courier/PlusSettingsPane.swift` with `IntegrationsSettingsPane.swift`; `app/Sources/CourierCore/IntegrationsModel.swift`; the engine client's protocol types; snapshot tests.
 
-- **Allow connections** toggle; **Port** field (1024–65535; invalid input does not save); a status line ("Listening on 127.0.0.1:23390", "Off", or the engine's error); **MCP endpoint** with a Copy button.
+- **Allow connections** toggle; **Remote Access** toggle (confirm: "Other devices on your network will be able to connect to Courier with an approved token. Traffic is not encrypted."); **Port** field (1024–65535; invalid input does not save); a status line ("Listening on 127.0.0.1:23390", "Listening on all addresses, port 23390", "Off", or the engine's error); **MCP endpoint** with a Copy button, which shows this Mac's network address when Remote Access is on.
 - **Approved connections**: name, created, last used, an "Can send messages" toggle, **Revoke** (with a confirm).
 - **New connection…** sheet: name and "Can send messages". After create, it shows the secret once with copy buttons for: Claude Code over HTTP (`claude mcp add --transport http courier http://127.0.0.1:<port>/v0/mcp --header "Authorization: Bearer <secret>"`), Claude Code over stdio (`claude mcp add courier -e COURIER_TOKEN=<secret> -- <bundle>/Contents/Helpers/courier-engine mcp-stdio`), and Cursor and VS Code deep links that use the HTTP form. The text says it won't be shown again.
 - **Pairing prompt** on `integrations.pairRequest`: a window-level alert, "“<clientName>” wants to read your chats in Courier.", buttons **Allow**, **Allow and Send Messages**, **Don't Allow**. The client name is shown as untrusted text (already cleaned by the engine).
@@ -123,5 +123,5 @@ Chat JSON: `{id, accountID, network, title, type:"single"|"group", unreadCount, 
 
 ### Task 7: Docs and acceptance
 
-- [ ] `apps/desktop/courier/docs/m5-acceptance.md`: each tool, auth case and the by-hand check: "In `~/.claude.json`, point `mcpServers.beeper` (or a new `courier` entry) at `http://127.0.0.1:23390/v0/mcp` with a Courier token; `get_accounts` lists all six networks; `search_messages` finds a known word."
+- [ ] `apps/desktop/courier/docs/m5-acceptance.md`: each tool, auth case and the by-hand check: "In `~/.claude.json`, point `mcpServers.beeper` (or a new `courier` entry) at `http://<this Mac's address>:23390/v0/mcp` (Remote Access on) or `http://127.0.0.1:23390/v0/mcp` with a Courier token; `get_accounts` lists all six networks; `search_messages` finds a known word."
 - [ ] Ledger rows for the out-of-scope items listed above; this plan's status set to `completed` when the PR lands.
