@@ -77,55 +77,79 @@ fn base64_encode(input: &[u8]) -> Vec<u8> {
     out
 }
 
+/// The smoke config, exactly as the script's heredoc wrote it. One raw
+/// literal on purpose: a `\` line continuation in a Rust string also eats the
+/// next line's leading spaces, which flattened this YAML into duplicate
+/// top-level keys and Backstage refused to boot (DUPLICATE_KEY).
+const CONFIG_TEMPLATE: &str = r#"backend:
+  baseUrl: http://localhost:7007
+  listen: { host: 0.0.0.0, port: 7007 }
+  database:
+    client: pg
+    connection:
+      host: {PG}
+      port: 5432
+      user: postgres
+      password: smoke
+  auth:
+    keys:
+      - secret: {SMOKE_KEY}
+app:
+  baseUrl: http://localhost:7007
+auth:
+  environment: development
+  providers:
+    github:
+      development:
+        clientId: smoke-client-id
+        clientSecret: smoke-client-secret
+permission:
+  enabled: true
+kubernetes:
+  serviceLocatorMethod: { type: multiTenant }
+  clusterLocatorMethods:
+    - type: config
+      clusters:
+        - name: smoke
+          url: https://kubernetes.default.svc
+          authProvider: serviceAccount
+          skipTLSVerify: true
+          serviceAccountToken: smoke-token
+catalog:
+  locations: []
+techdocs:
+  builder: local
+  generator: { runIn: local }
+  publisher: { type: local }
+# REQUIRED, not decorative: @backstage-community/plugin-grafana declares
+# "required": ["grafana"] at the root of its config.schema.json, and the app
+# bundle's frontend schema is validated against whatever config the backend
+# boots with. Since this file is passed as the ONLY --config, omitting this key
+# fails app-backend startup with "Invalid app bundle schema" -- which is exactly
+# how this smoke test caught the plugin landing without it.
+grafana:
+  domain: https://grafana.invalid
+"#;
+
 fn generate_config(pg_name: &[u8], smoke_key: &[u8]) -> Vec<u8> {
-    cat(&[
-        b"backend:\n\
-  baseUrl: http://localhost:7007\n\
-  listen: { host: 0.0.0.0, port: 7007 }\n\
-  database:\n\
-    client: pg\n\
-    connection:\n\
-      host: ",
-        pg_name,
-        b"\n\
-      port: 5432\n\
-      user: postgres\n\
-      password: smoke\n\
-  auth:\n\
-    keys:\n\
-      - secret: ",
-        smoke_key,
-        b"\n\
-app:\n\
-  baseUrl: http://localhost:7007\n\
-auth:\n\
-  environment: development\n\
-  providers:\n\
-    github:\n\
-      development:\n\
-        clientId: smoke-client-id\n\
-        clientSecret: smoke-client-secret\n\
-permission:\n\
-  enabled: true\n\
-kubernetes:\n\
-  serviceLocatorMethod: { type: multiTenant }\n\
-  clusterLocatorMethods:\n\
-    - type: config\n\
-      clusters:\n\
-        - name: smoke\n\
-          url: https://kubernetes.default.svc\n\
-          authProvider: serviceAccount\n\
-          skipTLSVerify: true\n\
-          serviceAccountToken: smoke-token\n\
-catalog:\n\
-  locations: []\n\
-techdocs:\n\
-  builder: local\n\
-  generator: { runIn: local }\n\
-  publisher: { type: local }\n\
-grafana:\n\
-  domain: https://grafana.invalid\n",
-    ])
+    let mut out = Vec::new();
+    let mut rest = CONFIG_TEMPLATE.as_bytes();
+    while let Some(i) = rest.iter().position(|&c| c == b'{') {
+        out.extend_from_slice(&rest[..i]);
+        let tail = &rest[i..];
+        if let Some(t) = tail.strip_prefix(b"{PG}".as_slice()) {
+            out.extend_from_slice(pg_name);
+            rest = t;
+        } else if let Some(t) = tail.strip_prefix(b"{SMOKE_KEY}".as_slice()) {
+            out.extend_from_slice(smoke_key);
+            rest = t;
+        } else {
+            out.push(b'{');
+            rest = &tail[1..];
+        }
+    }
+    out.extend_from_slice(rest);
+    out
 }
 
 fn extract_errors(logs: &[u8]) -> Vec<u8> {
@@ -566,5 +590,33 @@ another line\n";
     fn run_with_no_args_fails() {
         let rc = run(&[]);
         assert_eq!(rc, 1);
+    }
+
+    /// The config byte for byte as the retired script's heredoc produced it
+    /// (tools/ci/src/backstage_boot_smoke/testdata/smoke-config.golden.yaml,
+    /// copied from that heredoc with $PG=pg-x and $SMOKE_KEY=a2V5).
+    #[test]
+    fn config_matches_the_scripts_heredoc_exactly() {
+        let got = generate_config(b"pg-x", b"a2V5");
+        let want = include_str!("testdata/smoke-config.golden.yaml");
+        assert_eq!(String::from_utf8_lossy(&got), want);
+    }
+
+    #[test]
+    fn config_keeps_its_indentation() {
+        let got = String::from_utf8(generate_config(b"pg", b"k")).unwrap();
+        assert!(
+            got.contains("\n  baseUrl: http://localhost:7007\n"),
+            "{got}"
+        );
+        assert!(got.contains("\n      host: pg\n"), "{got}");
+        let top: Vec<&str> = got
+            .lines()
+            .filter(|l| !l.starts_with(' ') && !l.is_empty())
+            .collect();
+        let mut uniq = top.clone();
+        uniq.sort();
+        uniq.dedup();
+        assert_eq!(top.len(), uniq.len(), "duplicate top-level keys: {top:?}");
     }
 }

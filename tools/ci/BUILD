@@ -1140,6 +1140,7 @@ rust_binary(
 rust_test(
     name = "backstage_boot_smoke_lib_test",
     size = "small",
+    compile_data = ["src/backstage_boot_smoke/testdata/smoke-config.golden.yaml"],
     crate = ":backstage_boot_smoke_lib",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
