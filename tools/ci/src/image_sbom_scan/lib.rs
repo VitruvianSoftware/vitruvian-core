@@ -48,6 +48,21 @@ fn valid_digest(digest: &[u8]) -> bool {
     digest.len() > 7 && &digest[..7] == b"sha256:"
 }
 
+/// One line of the attestation list: "<attestation sha256> <subject sha256>".
+/// None for anything else (an empty digest, a missing subject, extra fields).
+fn parse_attestation_line(line: &[u8]) -> Option<(&[u8], &[u8])> {
+    let parts: Vec<&[u8]> = line.split(|&b| b == b' ').collect();
+    match parts.as_slice() {
+        [a, s] if valid_digest(a) && valid_digest(s) => Some((*a, *s)),
+        _ => None,
+    }
+}
+
+/// A run that scanned no SBOM has verified nothing, whatever it skipped.
+fn nothing_scanned(sboms_found: i32) -> bool {
+    sboms_found == 0
+}
+
 fn fetch(
     registry: &[u8],
     repository: &[u8],
@@ -381,18 +396,24 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
 
     let att_lines = shell_compat::lines(&att_text);
     for line in &att_lines {
-        if line.is_empty() {
-            continue;
-        }
-        let parts: Vec<&[u8]> = line.splitn(2, |&b| b == b' ').collect();
-        if parts.len() < 2 {
-            continue;
-        }
-        let att_digest = parts[0];
-        let subject = parts[1];
-        if att_digest.is_empty() {
-            continue;
-        }
+        // Each line is "<attestation digest> <subject digest>", both sha256.
+        // Anything else is refused, never skipped: a skipped line is an
+        // attestation nobody scanned, and the run would still pass.
+        let (att_digest, subject) = match parse_attestation_line(line) {
+            Some(pair) => pair,
+            None => {
+                err(&cat(&[
+                    b"::error::cannot read attestation entry '",
+                    line,
+                    b"' in ",
+                    &image,
+                    b"@",
+                    &digest,
+                    b" (want '<attestation sha256> <subject sha256>'). Refusing rather than skipping it.\n",
+                ]));
+                return 1;
+            }
+        };
 
         out(&cat(&[
             b"==> attestation ",
@@ -600,6 +621,16 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
         sboms_found.to_string().as_bytes(),
         b" SBOM attestation(s) scanned\n",
     ]));
+    if nothing_scanned(sboms_found) {
+        err(&cat(&[
+            b"::error::no SBOM was scanned for ",
+            &image,
+            b"@",
+            &digest,
+            b". Refusing to report it clean.\n",
+        ]));
+        return 1;
+    }
 
     // `[ -n "${GITHUB_STEP_SUMMARY:-}" ]`: set and non-empty appends (a failed
     // append fails the step, as `>>` did under set -e); otherwise stdout.
@@ -694,5 +725,35 @@ mod tests {
         assert!(valid_digest(b"sha256:0"));
         assert!(!valid_digest(b"sha256"));
         assert!(!valid_digest(b"sha25:x"));
+    }
+
+    #[test]
+    fn attestation_lines_must_be_two_digests() {
+        let a = b"sha256:aa sha256:bb";
+        assert_eq!(
+            parse_attestation_line(a),
+            Some((&b"sha256:aa"[..], &b"sha256:bb"[..]))
+        );
+        for bad in [
+            &b" sha256:bb"[..],
+            b"sha256:aa ",
+            b"sha256:aa null",
+            b"null sha256:bb",
+            b"sha256:aa sha256:bb extra",
+            b"",
+        ] {
+            assert_eq!(
+                parse_attestation_line(bad),
+                None,
+                "{:?}",
+                String::from_utf8_lossy(bad)
+            );
+        }
+    }
+
+    #[test]
+    fn scanning_nothing_is_a_failure() {
+        assert!(nothing_scanned(0));
+        assert!(!nothing_scanned(1));
     }
 }

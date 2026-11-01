@@ -171,3 +171,109 @@ fn every_workflow_rustc_line_builds_its_tool() {
     }
     assert_eq!(checked, EXPECT.len());
 }
+
+// --- the rustc fallback on runners without one --------------------------------
+
+/// The files whose steps install rustc with apt when the runner has none (the
+/// homelab queue runner's image carries no Rust toolchain).
+const FALLBACKS: &[&str] = &[
+    ".github/actions/install-pinned-tool/action.yml",
+    ".github/workflows/migration-safety.yaml",
+];
+
+/// The `if ! command -v rustc ...` block of `text`, through its `fi`.
+fn fallback_block(file: &str, text: &str) -> String {
+    let lines: Vec<&str> = text.lines().collect();
+    let start = lines
+        .iter()
+        .position(|l| l.trim() == "if ! command -v rustc >/dev/null 2>&1; then")
+        .unwrap_or_else(|| panic!("{file}: no rustc fallback block"));
+    let end = start
+        + lines[start..]
+            .iter()
+            .position(|l| l.trim() == "fi")
+            .unwrap_or_else(|| panic!("{file}: rustc fallback block has no fi"));
+    lines[start..=end].join("\n")
+}
+
+/// Run `block` then `echo REACHED` under `bash -eo pipefail` (GitHub's step
+/// shell) with only `fakes` on PATH.
+fn run_fallback(block: &str, fakes: &Path) -> std::process::Output {
+    Command::new("/bin/bash")
+        .arg("-eo")
+        .arg("pipefail")
+        .arg("-c")
+        .arg(format!("{block}\necho REACHED"))
+        .env("PATH", fakes)
+        .output()
+        .expect("run bash")
+}
+
+fn exe(path: &Path, body: &str) {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::write(path, body).unwrap();
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+#[test]
+fn a_failed_apt_install_of_rustc_fails_the_step_by_name() {
+    let root = std::env::current_dir().unwrap();
+    for file in FALLBACKS {
+        let block = fallback_block(file, &std::fs::read_to_string(root.join(file)).unwrap());
+        let fakes = tmpdir(&format!("apt-fails-{}", file.replace('/', "_")));
+        exe(
+            &fakes.join("sudo"),
+            "#!/bin/bash\necho \"E: Unable to locate package rustc\" >&2\nexit 100\n",
+        );
+        let o = run_fallback(&block, &fakes);
+        let out = String::from_utf8_lossy(&o.stdout);
+        assert_eq!(o.status.code(), Some(1), "{file}: {out}");
+        assert!(
+            out.contains("::error::apt install rustc failed"),
+            "{file}: {out}"
+        );
+        assert!(
+            !out.contains("REACHED"),
+            "{file}: the step went on without rustc"
+        );
+    }
+}
+
+#[test]
+fn an_apt_install_that_leaves_no_rustc_fails_the_step() {
+    let root = std::env::current_dir().unwrap();
+    for file in FALLBACKS {
+        let block = fallback_block(file, &std::fs::read_to_string(root.join(file)).unwrap());
+        let fakes = tmpdir(&format!("apt-noop-{}", file.replace('/', "_")));
+        exe(&fakes.join("sudo"), "#!/bin/bash\nexit 0\n");
+        let o = run_fallback(&block, &fakes);
+        let out = String::from_utf8_lossy(&o.stdout);
+        assert_eq!(o.status.code(), Some(1), "{file}: {out}");
+        assert!(
+            out.contains("::error::rustc is still not on PATH after apt install"),
+            "{file}: {out}"
+        );
+        assert!(!out.contains("REACHED"));
+    }
+}
+
+#[test]
+fn a_runner_with_rustc_skips_apt() {
+    let root = std::env::current_dir().unwrap();
+    for file in FALLBACKS {
+        let block = fallback_block(file, &std::fs::read_to_string(root.join(file)).unwrap());
+        let fakes = tmpdir(&format!("has-rustc-{}", file.replace('/', "_")));
+        exe(&fakes.join("rustc"), "#!/bin/bash\nexit 0\n");
+        exe(
+            &fakes.join("sudo"),
+            "#!/bin/bash\necho SUDO-CALLED\nexit 0\n",
+        );
+        let o = run_fallback(&block, &fakes);
+        let out = String::from_utf8_lossy(&o.stdout);
+        assert!(o.status.success(), "{file}: {out}");
+        assert!(
+            out.contains("REACHED") && !out.contains("SUDO-CALLED"),
+            "{file}: {out}"
+        );
+    }
+}

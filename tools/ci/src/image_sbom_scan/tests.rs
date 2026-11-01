@@ -387,3 +387,55 @@ fn bad_inputs_are_refused() {
     assert_eq!(r.run(&[("DIGEST", "latest")]).code, 1);
     assert_eq!(r.run(&[("APP_TREE", "maybe")]).code, 1);
 }
+
+/// An index whose attestation entry carries `digest` and `subject` verbatim.
+fn index_with_attestation(digest: &str, subject: Option<&str>) -> String {
+    let subj = match subject {
+        Some(v) => format!(r#","vnd.docker.reference.digest":"{v}""#),
+        None => String::new(),
+    };
+    format!(
+        r#"{{"mediaType":"application/vnd.oci.image.index.v1+json","manifests":[{{"digest":"{PLATFORM}"}},{{"digest":"{digest}","annotations":{{"vnd.docker.reference.type":"attestation-manifest"{subj}}}}}]}}"#
+    )
+}
+
+#[test]
+fn an_attestation_with_an_empty_digest_is_refused_not_skipped() {
+    // The deleted script failed here (read -r shifted the subject into the
+    // digest and the fetch failed); a port that skipped the entry scanned
+    // nothing and still exited 0.
+    let r = Reg::new(
+        &index_with_attestation("", Some(PLATFORM)),
+        &attestation(true),
+        &sbom_blob(0),
+    );
+    let o = r.run(&[("APP_TREE", "absent")]);
+    assert_eq!(o.code, 1, "{}", o.all());
+    assert!(
+        o.stderr.contains("::error::cannot read attestation entry"),
+        "{}",
+        o.stderr
+    );
+    assert!(
+        !o.stdout.contains("SBOM attestation(s) scanned"),
+        "{}",
+        o.stdout
+    );
+    assert!(r.osv().is_empty());
+}
+
+#[test]
+fn an_attestation_without_a_subject_is_refused() {
+    let r = Reg::new(
+        &index_with_attestation(ATT, None),
+        &attestation(true),
+        &sbom_blob(0),
+    );
+    let o = r.run(&[("APP_TREE", "absent")]);
+    assert_eq!(o.code, 1, "{}", o.all());
+    assert!(
+        o.stderr.contains("::error::cannot read attestation entry"),
+        "{}",
+        o.stderr
+    );
+}
