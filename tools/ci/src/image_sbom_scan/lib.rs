@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! image-sbom-scan.sh — scan a published image's SBOM attestation for known
+//! //tools/ci:image_sbom_scan — scan a published image's SBOM attestation for known
 //! advisories. Two arms: BLOCKING (APP_PREFIX packages via osv-scanner) and
 //! REPORTING (whole image). Fails closed on missing attestation, missing SBOM,
 //! zero app packages, or missing osv-scanner. APP_TREE=absent declares an image
@@ -103,17 +103,35 @@ fn fetch_blob(
         b"/blobs/",
         digest,
     ]);
-    let auth = cat(&[b"Bearer ", token]);
-    let r = capture(
+    // `curl ... | jq '.predicate' > out` under pipefail: curl's own error and
+    // status, not an empty document that fails later for another reason. Two
+    // steps, so neither status is lost and the token is an argument, never
+    // shell text.
+    let blob_path = cat(&[out_path, b".blob"]);
+    let rc = status(
         0,
-        Command::new("bash").arg("-c").arg(os(&cat(&[
-            b"curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors --max-time 300 -H 'Authorization: ",
-            &auth,
-            b"' '",
-            &url,
-            b"' | jq '.predicate'",
-        ]))),
+        Command::new("curl")
+            .arg("-fsSL")
+            .arg("--retry")
+            .arg("3")
+            .arg("--retry-delay")
+            .arg("2")
+            .arg("--retry-all-errors")
+            .arg("--max-time")
+            .arg("300")
+            .arg("-H")
+            .arg(os(&cat(&[b"Authorization: Bearer ", token])))
+            .arg(os(&url))
+            .arg("-o")
+            .arg(os(&blob_path)),
+        false,
     );
+    if rc != 0 {
+        return false;
+    }
+    let r =
+        shell_compat::capture_stdout(0, Command::new("jq").arg(".predicate").arg(os(&blob_path)));
+    let _ = std::fs::remove_file(shell_compat::path(&blob_path));
     if !r.ok() {
         return false;
     }
@@ -155,24 +173,22 @@ fn app_arm(app_tree: &[u8], app_count: &[u8]) -> Option<AppArm> {
     }
 }
 
+/// `jq -r <filter> <file>`, with jq's own errors on stderr as the script
+/// showed them: a filter that does not compile must not read as "no output".
 fn jq_r(file: &[u8], filter: &[u8]) -> Vec<u8> {
-    let r = capture(
+    let r = shell_compat::capture_stdout(
         0,
         Command::new("jq").arg("-r").arg(os(filter)).arg(os(file)),
     );
     subst(r.stdout)
 }
 
-fn jq_r_arg(file: &[u8], filter: &[u8], arg_name: &[u8], arg_val: &[u8]) -> Vec<u8> {
+/// The same with stderr discarded, for the one call the script ran with
+/// `2>/dev/null` (the index's manifest count on a non-JSON answer).
+fn jq_r_quiet(file: &[u8], filter: &[u8]) -> Vec<u8> {
     let r = capture(
         0,
-        Command::new("jq")
-            .arg("-r")
-            .arg("--arg")
-            .arg(os(arg_name))
-            .arg(os(arg_val))
-            .arg(os(filter))
-            .arg(os(file)),
+        Command::new("jq").arg("-r").arg(os(filter)).arg(os(file)),
     );
     subst(r.stdout)
 }
@@ -283,7 +299,9 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
         b":pull&service=",
         &registry,
     ]);
-    let r = capture(
+    // `TOKEN="$(curl ... | jq ...)"` under pipefail and set -e: a failed
+    // fetch shows curl's error and exits with its status.
+    let r = shell_compat::capture_stdout(
         0,
         Command::new("curl")
             .arg("-fsSL")
@@ -296,6 +314,9 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
             .arg("60")
             .arg(os(&token_url)),
     );
+    if !r.ok() {
+        return r.status;
+    }
     let token_json = r.stdout;
     let token = {
         let tmp = cat(&[&work, b"/token.json"]);
@@ -320,7 +341,7 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
         return 1;
     }
 
-    let manifest_count = jq_r(&index_path, b".manifests | length? // 0");
+    let manifest_count = jq_r_quiet(&index_path, b".manifests | length? // 0");
     if manifest_count == b"0" || manifest_count.is_empty() {
         let media_type = jq_r(&index_path, b".mediaType // \"unknown\"");
         err(&cat(&[
@@ -335,7 +356,9 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
     }
 
     let att_path = cat(&[&work, b"/attestations.txt"]);
-    let att_filter = br#".manifests[]? | select(.annotations["vnd.docker.reference.type"] == "attestation-manifest") | "\(.digest) \(.annotations["vnd.docker.reference.digest"])"#;
+    // `##` delimiters: the filter itself ends in `"`, which closes a `#` raw
+    // string one character early (jq then fails to compile it).
+    let att_filter = br##".manifests[]? | select(.annotations["vnd.docker.reference.type"] == "attestation-manifest") | "\(.digest) \(.annotations["vnd.docker.reference.digest"])""##;
     let att_text = jq_r(&index_path, att_filter);
     let _ = write_file(&att_path, &att_text, 0o644);
 
@@ -578,10 +601,12 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
         b" SBOM attestation(s) scanned\n",
     ]));
 
+    // `[ -n "${GITHUB_STEP_SUMMARY:-}" ]`: set and non-empty appends (a failed
+    // append fails the step, as `>>` did under set -e); otherwise stdout.
     let summary_content = std::fs::read(path(&summary_path)).unwrap_or_default();
-    if let Some(gss) = env("GITHUB_STEP_SUMMARY") {
-        if !gss.is_empty() {
-            let _ = std::fs::OpenOptions::new()
+    match env("GITHUB_STEP_SUMMARY") {
+        Some(gss) if !gss.is_empty() => {
+            let appended = std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
                 .open(path(&gss))
@@ -589,9 +614,16 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
                     use std::io::Write;
                     f.write_all(&summary_content)
                 });
+            if let Err(e) = appended {
+                err(&cat(&[
+                    b"::error::cannot append to GITHUB_STEP_SUMMARY: ",
+                    e.to_string().as_bytes(),
+                    b"\n",
+                ]));
+                return 1;
+            }
         }
-    } else {
-        out(&summary_content);
+        _ => out(&summary_content),
     }
 
     blocking_rc

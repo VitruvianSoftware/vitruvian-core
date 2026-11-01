@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! //tools/ci:migration-safety: the Rust port.
+//! //tools/ci:migration_safety (see lib.rs).
 
 fn main() {
     std::process::exit(migration_safety::run(&shell_compat::args()));

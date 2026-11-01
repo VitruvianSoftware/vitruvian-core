@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! secret-scan.sh — gitleaks gate over the commits a change INTRODUCES.
+//! //tools/ci:secret_scan — gitleaks gate over the commits a change INTRODUCES.
 
 use shell_compat::{capture, cat, env_or_empty, err, out, status, subst};
 use std::process::Command;
@@ -28,12 +28,17 @@ const GITLEAKS_SHA256: &str = "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f
 
 pub fn run(_args: &[Vec<u8>]) -> i32 {
     // cd to git root
-    let root_r = capture(
+    // `ROOT="$(git rev-parse --show-toplevel)"` under `set -e`: git's own
+    // message, and git's status.
+    let root_r = shell_compat::capture_stdout(
         49,
         Command::new("git").arg("rev-parse").arg("--show-toplevel"),
     );
+    if root_r.status != 0 {
+        return root_r.status;
+    }
     let root = subst(root_r.stdout);
-    if root.is_empty() || root_r.status != 0 {
+    if root.is_empty() {
         err(b"secret-scan: could not determine git root\n");
         return 1;
     }
@@ -47,8 +52,11 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
     let base_ref = env_or_empty("BASE_REF");
     let mut range: Vec<u8> = Vec::new();
 
-    if !base_rev.is_empty() {
-        let r = capture(
+    // `if [ -n BASE_REV ] && <it resolves>; then ... elif [ -n BASE_REF ]`:
+    // a BASE_REV that does not resolve (a push's all-zero `before`) falls
+    // through to BASE_REF, not to the working-tree scan.
+    let base_rev_ok = !base_rev.is_empty()
+        && capture(
             59,
             Command::new("git")
                 .arg("rev-parse")
@@ -57,10 +65,11 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
                 .arg(shell_compat::os(&cat(&[&base_rev, b"^{commit}"])))
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null()),
-        );
-        if r.status == 0 {
-            range = cat(&[&base_rev, b"..HEAD"]);
-        }
+        )
+        .status
+            == 0;
+    if base_rev_ok {
+        range = cat(&[&base_rev, b"..HEAD"]);
     } else if !base_ref.is_empty() {
         let r = capture(
             62,
@@ -104,7 +113,13 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
                     .arg("version")
                     .stderr(std::process::Stdio::null()),
             );
-            let system_version = shell_compat::strip_cr_lf(&subst(ver_r.stdout));
+            // `| tr -d '[:space:]'`: every whitespace byte, not only newlines.
+            let system_version: Vec<u8> = ver_r
+                .stdout
+                .iter()
+                .copied()
+                .filter(|c| !c.is_ascii_whitespace() && *c != 0x0b)
+                .collect();
             if system_version != GITLEAKS_VERSION.as_bytes() {
                 let ver_display = if system_version.is_empty() {
                     b"<no version>".to_vec()
@@ -128,18 +143,22 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
             gitleaks = sys_bytes;
         } else {
             // gitleaks not on PATH, fall through to download
-            gitleaks = download_gitleaks(&bin_dir);
-            if gitleaks.is_empty() {
-                let _ = std::fs::remove_dir_all(shell_compat::path(&bin_dir));
-                return 1;
-            }
+            gitleaks = match download_gitleaks(&bin_dir) {
+                Ok(g) => g,
+                Err(rc) => {
+                    let _ = std::fs::remove_dir_all(shell_compat::path(&bin_dir));
+                    return rc;
+                }
+            };
         }
     } else {
-        gitleaks = download_gitleaks(&bin_dir);
-        if gitleaks.is_empty() {
-            let _ = std::fs::remove_dir_all(shell_compat::path(&bin_dir));
-            return 1;
-        }
+        gitleaks = match download_gitleaks(&bin_dir) {
+            Ok(g) => g,
+            Err(rc) => {
+                let _ = std::fs::remove_dir_all(shell_compat::path(&bin_dir));
+                return rc;
+            }
+        };
     }
 
     // Scan.
@@ -192,7 +211,10 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
     0
 }
 
-fn download_gitleaks(bin_dir: &[u8]) -> Vec<u8> {
+/// Fetch, verify and unpack the pinned gitleaks into `bin_dir`. `Err` is the
+/// exit status the script's `set -e` left with: the failing command's own, or
+/// 1 for a checksum mismatch.
+fn download_gitleaks(bin_dir: &[u8]) -> Result<Vec<u8>, i32> {
     let tarball = cat(&[bin_dir, b"/gitleaks.tar.gz"]);
     let url = cat(&[
         b"https://github.com/gitleaks/gitleaks/releases/download/v",
@@ -224,14 +246,18 @@ fn download_gitleaks(bin_dir: &[u8]) -> Vec<u8> {
     );
     if rc != 0 {
         err(b"secret-scan: failed to download gitleaks\n");
-        return Vec::new();
+        return Err(rc);
     }
 
     // Checksum verify: sha256sum <tarball> | awk '{print $1}'
-    let sha_r = capture(
+    let sha_r = shell_compat::capture_stdout(
         97,
         Command::new("sha256sum").arg(shell_compat::os(&tarball)),
     );
+    if sha_r.status != 0 {
+        // `actual="$(sha256sum ... | awk ...)"` under pipefail and set -e.
+        return Err(sha_r.status);
+    }
     let actual = {
         let out = subst(sha_r.stdout);
         let first = shell_compat::first_line(&out);
@@ -248,7 +274,7 @@ fn download_gitleaks(bin_dir: &[u8]) -> Vec<u8> {
             &actual,
             b"\n",
         ]));
-        return Vec::new();
+        return Err(1);
     }
 
     // Extract
@@ -264,8 +290,8 @@ fn download_gitleaks(bin_dir: &[u8]) -> Vec<u8> {
     );
     if rc != 0 {
         err(b"secret-scan: failed to extract gitleaks\n");
-        return Vec::new();
+        return Err(rc);
     }
 
-    cat(&[bin_dir, b"/gitleaks"])
+    Ok(cat(&[bin_dir, b"/gitleaks"]))
 }

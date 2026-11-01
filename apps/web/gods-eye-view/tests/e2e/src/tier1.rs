@@ -1695,15 +1695,15 @@ fn feature_17_secrets(ctx: &mut TestContext) {
 // ---------------------------------------------------------------------------
 fn feature_18_gitops_validation(ctx: &mut TestContext) {
     // F086
-    if ctx.file_exists("tools/ci/gitops-validate.sh") {
+    if ctx.file_exists("tools/ci/src/gitops_validate/main.rs") {
         ctx.pass(
             "F086",
-            "tools/ci/gitops-validate.sh exists with executable permissions",
+            "the gitops validator (//tools/ci:gitops_validate) exists",
         );
     } else {
         ctx.fail(
             "F086",
-            "tools/ci/gitops-validate.sh not executable or not found",
+            "tools/ci/src/gitops_validate/main.rs not found",
         );
     }
 

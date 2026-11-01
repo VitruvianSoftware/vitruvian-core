@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! gitops-validate.sh — schema + syntax validation for the ArgoCD GitOps tree
+//! //tools/ci:gitops_validate — schema + syntax validation for the ArgoCD GitOps tree
 //! before it reaches main. Runs appset-render (goTemplate simulation), then
 //! kubeconform over every manifest under gitops/argocd, including `.disabled`
 //! manifests with their suffix stripped.
@@ -218,17 +218,26 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
 
     // --- 1. goTemplate render simulation ---
     out(b"gitops-validate: simulating ApplicationSet goTemplate rendering ...\n");
-    let rc = appset_render::run(
-        &[
-            b"appset-render".to_vec(),
-            b"-root".to_vec(),
-            b"gitops/argocd".to_vec(),
-        ],
-        &mut std::io::stdout(),
-        &mut std::io::stderr(),
-    );
+    // On a 1 GiB stack, as //tools/gitops/appset-render's own main runs it
+    // (the parser recurses once per nested action, as Go's growable stacks
+    // allow), and exiting with its status, as the script's `set -e` did.
+    let rc = std::thread::Builder::new()
+        .stack_size(1 << 30)
+        .spawn(|| {
+            appset_render::run(
+                &[
+                    b"appset-render".to_vec(),
+                    b"-root".to_vec(),
+                    b"gitops/argocd".to_vec(),
+                ],
+                &mut std::io::stdout(),
+                &mut std::io::stderr(),
+            )
+        })
+        .map(|h| h.join().unwrap_or(2))
+        .unwrap_or(2);
     if rc != 0 {
-        return 1;
+        return rc;
     }
 
     // --- 2. Schema validation ---
@@ -330,8 +339,21 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
             }
             let full_dest = cat(&[&disabled_tmp, b"/", &dest]);
             let dest_dir = shell_compat::dirname(&full_dest);
-            let _ = shell_compat::mkdir_p(&dest_dir);
-            let _ = std::fs::copy(shell_compat::path(f), shell_compat::path(&full_dest));
+            // `mkdir -p` and `cp` under `set -e`: a copy that fails would
+            // otherwise leave that file unvalidated while the run passes.
+            let copied = shell_compat::mkdir_p(&dest_dir)
+                .and_then(|_| std::fs::copy(shell_compat::path(f), shell_compat::path(&full_dest)));
+            if let Err(e) = copied {
+                err(&cat(&[
+                    b"gitops-validate: cannot stage ",
+                    f,
+                    b" for validation: ",
+                    e.to_string().as_bytes(),
+                    b"\n",
+                ]));
+                let _ = std::fs::remove_dir_all(shell_compat::path(&disabled_tmp));
+                return 1;
+            }
         }
 
         let disabled_files = find_yaml_files(&disabled_tmp, true);

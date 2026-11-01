@@ -19,8 +19,8 @@
 # SOFTWARE.
 
 # Renders every co-located Helm chart and asserts its guards REFUSE, not just
-# that it parses. Logic lives in tools/ci/chart-render.sh so it is reviewable
-# and runnable locally (`bash tools/ci/chart-render.sh`, needs only helm).
+# that it parses. Logic lives in //tools/ci:chart_render so it is reviewable
+# and runnable locally (`bazel run //tools/ci:chart_render`, needs only helm).
 #
 # Until this existed, no CI job rendered a chart. Every statement about the
 # mcp-slack chart — which `required` calls fire, whether the boolean type-check
@@ -78,11 +78,18 @@ jobs:
       - name: Install Helm
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
 
+      # //tools/ci:chart_render, built with the runner's rustc (this job sets
+      # up no Bazel). //tools/ci:workflow_rustc_test runs these lines.
       - name: Render charts and assert their guards refuse
-        run: bash tools/ci/chart-render.sh
+        run: |
+          set -euo pipefail
+          rustc --edition 2021 -O --crate-type lib --crate-name shell_compat tools/shell-compat/src/lib.rs -o "$RUNNER_TEMP/libshell_compat.rlib"
+          rustc --edition 2021 -O --crate-type lib --crate-name chart_render tools/ci/src/chart_render/lib.rs -L "$RUNNER_TEMP" --extern shell_compat="$RUNNER_TEMP/libshell_compat.rlib" -o "$RUNNER_TEMP/libchart_render.rlib"
+          rustc --edition 2021 -O tools/ci/src/chart_render/main.rs -L "$RUNNER_TEMP" --extern shell_compat="$RUNNER_TEMP/libshell_compat.rlib" --extern chart_render="$RUNNER_TEMP/libchart_render.rlib" -o "$RUNNER_TEMP/chart-render"
+          "$RUNNER_TEMP/chart-render"
 
   # Separate job, not another step on chart-render: this one needs the network
-  # and a GHCR credential, and chart-render.sh is deliberately offline. Keeping
+  # and a GHCR credential, and chart-render is deliberately offline. Keeping
   # them apart means a registry outage cannot redden the offline template checks,
   # and the two contexts can be promoted to required independently.
   #
@@ -115,7 +122,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
-        run: bash tools/ci/gitops-values-render.sh
+        # //tools/ci:gitops_values_render, built with the runner's rustc.
+        # //tools/ci:workflow_rustc_test runs these lines.
+        run: |
+          set -euo pipefail
+          rustc --edition 2021 -O --crate-type lib --crate-name shell_compat tools/shell-compat/src/lib.rs -o "$RUNNER_TEMP/libshell_compat.rlib"
+          rustc --edition 2021 -O --crate-type lib --crate-name gitops_values_render tools/ci/src/gitops_values_render/lib.rs -L "$RUNNER_TEMP" --extern shell_compat="$RUNNER_TEMP/libshell_compat.rlib" -o "$RUNNER_TEMP/libgitops_values_render.rlib"
+          rustc --edition 2021 -O tools/ci/src/gitops_values_render/main.rs -L "$RUNNER_TEMP" --extern shell_compat="$RUNNER_TEMP/libshell_compat.rlib" --extern gitops_values_render="$RUNNER_TEMP/libgitops_values_render.rlib" -o "$RUNNER_TEMP/gitops-values-render"
+          "$RUNNER_TEMP/gitops-values-render"
   # Unit-tests the Prometheus ALERT RULES, not just their syntax. Offline and
   # fast; no cluster, no network.
   #
@@ -149,13 +163,15 @@ jobs:
           # rules fail to load is the failure mode this whole directory exists
           # to prevent. Bump this together with the chart's targetRevision.
           PROMETHEUS_VERSION: 2.45.0
-        run: |
-          bash tools/ci/install-pinned-tool.sh \
-            "https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}" \
-            "prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz" \
-            sha256sums.txt \
-            "prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz" \
-            promtool --tar "prometheus-${PROMETHEUS_VERSION}.linux-amd64/promtool"
+        uses: ./.github/actions/install-pinned-tool
+        with:
+          base-url: https://github.com/prometheus/prometheus/releases/download/v${{ env.PROMETHEUS_VERSION }}
+          asset: prometheus-${{ env.PROMETHEUS_VERSION }}.linux-amd64.tar.gz
+          checksum-file: sha256sums.txt
+          checksum-pattern: prometheus-${{ env.PROMETHEUS_VERSION }}.linux-amd64.tar.gz
+          bin-name: promtool
+          mode: tar
+          member-path: prometheus-${{ env.PROMETHEUS_VERSION }}.linux-amd64/promtool
 
       - name: Install PyYAML
         run: python3 -m pip install --disable-pip-version-check --quiet pyyaml

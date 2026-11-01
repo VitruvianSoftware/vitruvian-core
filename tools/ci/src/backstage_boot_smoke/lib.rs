@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! backstage-boot-smoke.sh — boots the built backstage container against a
+//! //tools/ci:backstage_boot_smoke — boots the built backstage container against a
 //! throwaway Postgres and asserts that every backend plugin initializes and
 //! the service reports READY.
 
@@ -156,20 +156,32 @@ fn extract_errors(logs: &[u8]) -> Vec<u8> {
     errors
 }
 
-fn show_errors(app: &[u8]) {
+/// `docker logs <app> 2>&1`: the container's stdout and stderr in the order
+/// it wrote them, as the script read them (the first errors and the last 50
+/// lines are only meaningful in that order).
+fn docker_logs(app: &[u8]) -> Vec<u8> {
     let r = capture(
         0,
-        Command::new("docker")
-            .arg("logs")
+        Command::new("bash")
+            .arg("-c")
+            .arg("exec docker logs \"$1\" 2>&1")
+            .arg("docker-logs")
             .arg(shell_compat::os(app)),
     );
-    let logs = cat(&[&r.stdout, &r.stderr]);
+    cat(&[&r.stdout, &r.stderr])
+}
+
+fn show_errors(app: &[u8]) {
+    let logs = docker_logs(app);
     let errs = extract_errors(&logs);
     if !errs.is_empty() {
         err(&errs);
     } else {
         err(b"  Container logs (last 50 lines):\n");
-        let all_lines: Vec<&[u8]> = logs.split(|&c| c == b'\n').collect();
+        // `tail -50`: the final newline ends the last line, it does not start
+        // an empty one.
+        let trimmed = logs.strip_suffix(b"\n").unwrap_or(&logs);
+        let all_lines: Vec<&[u8]> = trimmed.split(|&c| c == b'\n').collect();
         let start = if all_lines.len() > 50 {
             all_lines.len() - 50
         } else {
@@ -386,13 +398,7 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
         }
 
         // Get logs
-        let r = capture(
-            0,
-            Command::new("docker")
-                .arg("logs")
-                .arg(shell_compat::os(&app)),
-        );
-        let logs = cat(&[&r.stdout, &r.stderr]);
+        let logs = docker_logs(&app);
 
         // Fail fast on startup error
         if shell_compat::contains(&logs, b"threw an error during startup")

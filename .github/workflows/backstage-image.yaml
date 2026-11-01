@@ -30,14 +30,16 @@ on:
     paths:
       - 'apps/web/backstage/**'
       - '.github/workflows/backstage-image.yaml'
-      - 'tools/ci/backstage-boot-smoke.sh'
+      - 'tools/ci/src/backstage_boot_smoke/**'
+      - 'tools/shell-compat/src/**'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
   pull_request:
     paths:
       - 'apps/web/backstage/**'
       - '.github/workflows/backstage-image.yaml'
-      - 'tools/ci/backstage-boot-smoke.sh'
+      - 'tools/ci/src/backstage_boot_smoke/**'
+      - 'tools/shell-compat/src/**'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
 
@@ -163,5 +165,12 @@ jobs:
       # Boots the image and asserts every plugin initializes and readiness
       # serves 200. Unit tests cannot catch a plugin that fails to REGISTER --
       # #1709 shipped with a green suite and wedged production for hours.
+      # //tools/ci:backstage_boot_smoke, built with the runner's rustc (this
+      # job sets up no Bazel). //tools/ci:workflow_rustc_test runs these lines.
       - name: Boot smoke test
-        run: tools/ci/backstage-boot-smoke.sh backstage:smoke
+        run: |
+          set -euo pipefail
+          rustc --edition 2021 -O --crate-type lib --crate-name shell_compat tools/shell-compat/src/lib.rs -o "$RUNNER_TEMP/libshell_compat.rlib"
+          rustc --edition 2021 -O --crate-type lib --crate-name backstage_boot_smoke tools/ci/src/backstage_boot_smoke/lib.rs -L "$RUNNER_TEMP" --extern shell_compat="$RUNNER_TEMP/libshell_compat.rlib" -o "$RUNNER_TEMP/libbackstage_boot_smoke.rlib"
+          rustc --edition 2021 -O tools/ci/src/backstage_boot_smoke/main.rs -L "$RUNNER_TEMP" --extern shell_compat="$RUNNER_TEMP/libshell_compat.rlib" --extern backstage_boot_smoke="$RUNNER_TEMP/libbackstage_boot_smoke.rlib" -o "$RUNNER_TEMP/backstage-boot-smoke"
+          "$RUNNER_TEMP/backstage-boot-smoke" backstage:smoke

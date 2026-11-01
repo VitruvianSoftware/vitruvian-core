@@ -23,10 +23,10 @@ runs `--unpushed` before every push.
 ## Where the pin lives
 
 gitleaks is pinned in [`tools/tools.lock.json`](../tools.lock.json) (multitool),
-for Linux and macOS. CI's [`tools/ci/secret-scan.sh`](../ci/secret-scan.sh)
-downloads its own copy. `bazel test //tools/secret-scan:secret-scan_test` fails
-when the two versions, or the Linux checksums, disagree, so update both
-together.
+for Linux and macOS. CI's `//tools/ci:secret_scan`
+([source](../ci/src/secret_scan/lib.rs)) downloads its own copy.
+`bazel test //tools/ci:secret_scan_test` fails when the two versions, or the
+Linux checksums, disagree, so update both together.
 
 ## What to do with a finding
 

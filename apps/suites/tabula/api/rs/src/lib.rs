@@ -824,7 +824,7 @@ Following migration have not yet been applied:
 
     #[test]
     fn contracts_in_status_matches_the_migration_safety_cases() {
-        // The four cases tools/ci/migration-safety.sh used to run against the
+        // The four cases the retired tools/ci/migration-safety.sh used to run against the
         // Node wrapper's parser, kept here next to the parser they guard.
         assert_eq!(
             contracts_in_status(
