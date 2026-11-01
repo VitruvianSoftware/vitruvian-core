@@ -441,7 +441,11 @@ func TestFocusApp(t *testing.T) {
 	locked := filepath.Join(dir, "locked.txt")
 	require.NoError(t, os.WriteFile(locked, []byte("x"), 0o000))
 
-	for _, path := range []string{filepath.Join(dir, "missing.txt"), dir, locked, "notes.txt", "/dev/null"} {
+	bad := []string{filepath.Join(dir, "missing.txt"), dir, "notes.txt", "/dev/null"}
+	if os.Geteuid() != 0 { // root reads a 0o000 file, so it can't stand for "unreadable" (CI's Linux runner is root)
+		bad = append(bad, locked)
+	}
+	for _, path := range bad {
 		msg := fails(t, sess, "focus_app", map[string]any{"chatID": w.room, "draftText": "hi", "draftAttachmentPath": path})
 		require.Equal(t, "Courier can't attach that file.", msg, path)
 	}
