@@ -42,6 +42,9 @@ const PING_INTERVAL: Duration = Duration::from_secs(10);
 static CONNECT_NONCE: NextInt = NextInt::new(10_000, 32_767);
 
 pub type Subscriber = Arc<dyn Fn(Message) + Send + Sync>;
+/// Called once when the link goes down, so a caller can fail its own
+/// requests that were sent over it.
+pub type DownHook = Arc<dyn Fn() + Send + Sync>;
 
 type Waiter = (u16, u32, mpsc::Sender<Message>);
 
@@ -56,6 +59,28 @@ struct Inner {
     /// How long the link may go without one decoded frame before it is
     /// treated as dead. Pings are answered every 10 seconds.
     liveness: Duration,
+    on_down: Mutex<Option<DownHook>>,
+}
+
+impl Inner {
+    /// Mark the link down, once: fail every waiter and call the hook. Never
+    /// waits on the socket, so a stuck send can't hold it up.
+    fn mark_down(&self) {
+        self.connected.store(false, Ordering::SeqCst);
+        // Dropping the senders wakes every exchange at once.
+        self.waiters
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
+        let hook = self
+            .on_down
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take();
+        if let Some(hook) = hook {
+            hook();
+        }
+    }
 }
 
 pub struct LocalChannel {
@@ -116,6 +141,7 @@ impl LocalChannel {
             waiters: Mutex::new(Vec::new()),
             subscriber,
             liveness,
+            on_down: Mutex::new(None),
         });
         let reader_inner = inner.clone();
         thread::Builder::new()
@@ -177,6 +203,15 @@ impl LocalChannel {
         ))
     }
 
+    /// Run `hook` once when this link goes down (straight away if it already
+    /// has).
+    pub fn set_on_down(&self, hook: DownHook) {
+        *self.inner.on_down.lock().unwrap_or_else(|e| e.into_inner()) = Some(hook);
+        if !self.is_connected() {
+            self.inner.mark_down();
+        }
+    }
+
     pub fn version(&self) -> [u8; 3] {
         *self.inner.version.lock().unwrap_or_else(|e| e.into_inner())
     }
@@ -196,8 +231,11 @@ impl LocalChannel {
         let wire = protocol::encode(msg, &self.inner.local_key, true, Some(self.nonces()))
             .map_err(|e| LocalError(format!("Failed to encode message: {e}")))?;
         let mut stream = self.inner.stream.lock().unwrap_or_else(|e| e.into_inner());
-        stream.write_all(&wire).map_err(|e| {
-            self.inner.connected.store(false, Ordering::SeqCst);
+        let sent = write_within(&mut stream, &wire, TIMEOUT);
+        drop(stream);
+        sent.map_err(|e| {
+            // Half a frame may be on the wire; the link can't be trusted.
+            self.inner.mark_down();
             LocalError(format!("Failed to send message: {e}"))
         })
     }
@@ -211,8 +249,14 @@ impl LocalChannel {
             .unwrap_or_else(|e| e.into_inner())
             .push((response_protocol, msg.seq, tx));
         let result = self.publish(&msg).and_then(|_| {
-            rx.recv_timeout(TIMEOUT)
-                .map_err(|_| LocalError(format!("Command timed out after {}s", TIMEOUT.as_secs())))
+            rx.recv_timeout(TIMEOUT).map_err(|e| match e {
+                mpsc::RecvTimeoutError::Timeout => {
+                    LocalError(format!("Command timed out after {}s", TIMEOUT.as_secs()))
+                }
+                mpsc::RecvTimeoutError::Disconnected => {
+                    LocalError("The local connection to the vacuum was lost".into())
+                }
+            })
         });
         self.inner
             .waiters
@@ -223,10 +267,40 @@ impl LocalChannel {
     }
 
     pub fn close(&self) {
-        self.inner.connected.store(false, Ordering::SeqCst);
+        self.inner.mark_down();
         let stream = self.inner.stream.lock().unwrap_or_else(|e| e.into_inner());
         let _ = stream.shutdown(Shutdown::Both);
     }
+}
+
+/// `write_all` with one deadline for the whole buffer. The socket's write
+/// timeout bounds each `write`, but a peer that drains a little at a time
+/// could otherwise stretch one send out indefinitely.
+fn write_within(stream: &mut TcpStream, mut data: &[u8], limit: Duration) -> std::io::Result<()> {
+    let deadline = Instant::now() + limit;
+    while !data.is_empty() {
+        let left = deadline.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            return Err(std::io::Error::new(
+                ErrorKind::TimedOut,
+                "the device stopped reading",
+            ));
+        }
+        stream.set_write_timeout(Some(left))?;
+        match stream.write(data) {
+            Ok(0) => return Err(ErrorKind::WriteZero.into()),
+            Ok(n) => data = &data[n..],
+            Err(e) if e.kind() == ErrorKind::Interrupted => {}
+            Err(e) if matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => {
+                return Err(std::io::Error::new(
+                    ErrorKind::TimedOut,
+                    "the device stopped reading",
+                ))
+            }
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(())
 }
 
 /// Marks the link down when the reader stops, however it stops (a panic in
@@ -236,16 +310,12 @@ struct ReaderGuard(Arc<Inner>);
 
 impl Drop for ReaderGuard {
     fn drop(&mut self) {
-        self.0.connected.store(false, Ordering::SeqCst);
+        // Waiters and the hook first: the socket lock below can sit behind a
+        // send for up to the write timeout.
+        self.0.mark_down();
         if let Ok(stream) = self.0.stream.lock() {
             let _ = stream.shutdown(Shutdown::Both);
         }
-        // Wake anyone waiting on a reply that will now never come.
-        self.0
-            .waiters
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .clear();
     }
 }
 
@@ -412,7 +482,7 @@ mod tests {
             }
             then(&mut sock);
             // Hold the socket open so only the reader's own state can end the link.
-            thread::sleep(Duration::from_secs(10));
+            thread::sleep(Duration::from_secs(30));
         });
         addr
     }
@@ -442,11 +512,86 @@ mod tests {
         // A subscriber that panics takes the reader thread down with it.
         let ch =
             LocalChannel::connect_addr(&addr, KEY, Arc::new(|_| panic!("subscriber bug"))).unwrap();
+        let downs = Arc::new(Mutex::new(0usize));
+        let d = downs.clone();
+        ch.set_on_down(Arc::new(move || *d.lock().unwrap() += 1));
         assert!(ch.is_connected());
         assert!(
             becomes_disconnected(&ch, Duration::from_secs(3)),
             "the link still looks alive"
         );
+        // The owner hears about it exactly once.
+        thread::sleep(Duration::from_millis(50));
+        assert_eq!(*downs.lock().unwrap(), 1);
+    }
+
+    #[test]
+    fn a_request_in_flight_fails_at_once_when_the_reader_dies() {
+        // The device takes a ping, never answers it, and pushes a message
+        // that kills the reader.
+        let addr = scripted_device(|sock| {
+            let mut frames = FrameBuffer::default();
+            let mut chunk = [0u8; 4096];
+            loop {
+                let n = match sock.read(&mut chunk) {
+                    Ok(0) | Err(_) => return,
+                    Ok(n) => n,
+                };
+                frames.push(&chunk[..n]);
+                if frames.next_frame().is_some() {
+                    break;
+                }
+            }
+            let push = Message::new(
+                protocol::GENERAL_RESPONSE,
+                Some(br#"{"dps":{"121":5}}"#.to_vec()),
+            );
+            sock.write_all(&protocol::encode(&push, KEY, true, None).unwrap())
+                .unwrap();
+        });
+        let ch =
+            LocalChannel::connect_addr(&addr, KEY, Arc::new(|_| panic!("subscriber bug"))).unwrap();
+        let started = Instant::now();
+        let ping = Message {
+            version: ch.version(),
+            ..Message::new(protocol::PING_REQUEST, None)
+        };
+        let err = ch.exchange(ping, protocol::PING_RESPONSE).unwrap_err();
+        assert!(
+            started.elapsed() < Duration::from_secs(3),
+            "waited {:?}",
+            started.elapsed()
+        );
+        assert!(err.0.contains("connection to the vacuum was lost"), "{err}");
+    }
+
+    #[test]
+    fn a_device_that_stops_reading_cannot_block_a_send_forever() {
+        // The device answers hello and then never reads again.
+        let addr = scripted_device(|_| {});
+        let ch = Arc::new(LocalChannel::connect_addr(&addr, KEY, Arc::new(|_| {})).unwrap());
+        let sender = ch.clone();
+        let (tx, rx) = mpsc::channel();
+        thread::spawn(move || {
+            let big = Message::new(protocol::GENERAL_REQUEST, Some(vec![b'x'; 60_000]));
+            // Keep sending into the full buffers; report after every send.
+            loop {
+                let failed = sender.publish(&big).is_err();
+                if tx.send(failed).is_err() || failed {
+                    return;
+                }
+            }
+        });
+        // Every single send must come back within the write timeout (plus
+        // slack), well before the device lets go of the socket at 30 s.
+        let started = Instant::now();
+        while started.elapsed() < Duration::from_secs(12) {
+            match rx.recv_timeout(TIMEOUT + Duration::from_secs(3)) {
+                Ok(true) => break,
+                Ok(false) => {}
+                Err(_) => panic!("a send blocked past the write timeout"),
+            }
+        }
     }
 
     #[test]

@@ -45,7 +45,7 @@ use crate::local::LocalChannel;
 use crate::mqtt;
 use crate::protocol::{self, Message, Request, Rriot, SecurityData};
 use serde_json::{json, Map, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
@@ -224,10 +224,29 @@ struct Router {
     security: SecurityData,
     rpc: Mutex<HashMap<u64, RpcWaiter>>,
     maps: Mutex<HashMap<u16, MapWaiter>>,
+    /// Requests sent over the local channel and not yet answered.
+    local_ids: Mutex<HashSet<u64>>,
     on_push: PushHandler,
 }
 
 impl Router {
+    /// The local channel went down: fail its requests now, so callers fall
+    /// back to MQTT instead of waiting out their timeout.
+    fn local_down(&self) {
+        let ids: Vec<u64> = self
+            .local_ids
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .drain()
+            .collect();
+        let mut rpc = self.rpc.lock().unwrap_or_else(|e| e.into_inner());
+        for id in ids {
+            if let Some(tx) = rpc.remove(&id) {
+                let _ = tx.send(Err("The local connection to the vacuum was lost".into()));
+            }
+        }
+    }
+
     /// Every frame from the device, whichever way it came.
     fn dispatch(&self, msg: Message) {
         if msg.protocol == protocol::MAP_RESPONSE {
@@ -271,6 +290,66 @@ struct LocalState {
     channel: Option<LocalChannel>,
     next_attempt: Instant,
     backoff: Duration,
+    /// A (re)connect is under way; nobody else starts one meanwhile.
+    connecting: bool,
+}
+
+impl LocalState {
+    fn new() -> Self {
+        Self {
+            channel: None,
+            next_attempt: Instant::now(),
+            backoff: LOCAL_BACKOFF_MIN,
+            connecting: false,
+        }
+    }
+}
+
+/// Bring the local channel up if it is down and a retry is due. Only one
+/// caller connects at a time (the poll loop and a command can both get
+/// here), and a channel that is replaced is always closed, so no socket or
+/// ping thread is left behind. `connect` gets whether to refresh the IP.
+fn ensure_local_with(
+    state: &Mutex<LocalState>,
+    connect: impl FnOnce(bool) -> Result<LocalChannel, String>,
+) {
+    let had_channel = {
+        let mut local = state.lock().unwrap_or_else(|e| e.into_inner());
+        if local
+            .channel
+            .as_ref()
+            .map(LocalChannel::is_connected)
+            .unwrap_or(false)
+        {
+            return;
+        }
+        if local.connecting || Instant::now() < local.next_attempt {
+            return;
+        }
+        local.connecting = true;
+        match local.channel.take() {
+            Some(dead) => {
+                dead.close();
+                true
+            }
+            None => false,
+        }
+    };
+    let result = connect(had_channel);
+    let mut local = state.lock().unwrap_or_else(|e| e.into_inner());
+    local.connecting = false;
+    match result {
+        Ok(channel) => {
+            if let Some(old) = local.channel.replace(channel) {
+                old.close();
+            }
+            local.backoff = LOCAL_BACKOFF_MIN;
+        }
+        Err(_) => {
+            local.next_attempt = Instant::now() + local.backoff;
+            local.backoff = (local.backoff.mul_f32(1.5)).min(LOCAL_BACKOFF_MAX);
+        }
+    }
 }
 
 pub struct Link {
@@ -348,6 +427,7 @@ impl Link {
             security: SecurityData::new(&rriot.k),
             rpc: Mutex::new(HashMap::new()),
             maps: Mutex::new(HashMap::new()),
+            local_ids: Mutex::new(HashSet::new()),
             on_push: opts.on_push,
         });
         let sub_topic = format!("rr/m/o/{}/{}/{}", rriot.u, params.username, device.duid);
@@ -373,11 +453,7 @@ impl Link {
             sub_topic,
             sub_id,
             router,
-            local: Mutex::new(LocalState {
-                channel: None,
-                next_attempt: Instant::now(),
-                backoff: LOCAL_BACKOFF_MIN,
-            }),
+            local: Mutex::new(LocalState::new()),
             cache: Mutex::new(cache),
             cache_path: opts.cache_path,
             last_map: Mutex::new(None),
@@ -444,41 +520,20 @@ impl Link {
 
     /// Bring the local channel up if it is down and a retry is due.
     pub fn ensure_local(&self) {
-        let mut local = self.local.lock().unwrap_or_else(|e| e.into_inner());
-        if local
-            .channel
-            .as_ref()
-            .map(LocalChannel::is_connected)
-            .unwrap_or(false)
-        {
-            return;
-        }
-        if Instant::now() < local.next_attempt {
-            return;
-        }
-        let had_channel = local.channel.take().is_some();
-        drop(local);
-        // After a drop, ask for the IP again in case DHCP moved the vacuum.
-        let result = self.network_ip(!had_channel).and_then(|ip| {
+        ensure_local_with(&self.local, |refresh_ip| {
+            // After a drop, ask for the IP again in case DHCP moved the vacuum.
+            let ip = self.network_ip(!refresh_ip)?;
             let router = self.router.clone();
-            LocalChannel::connect(
+            let channel = LocalChannel::connect(
                 &ip,
                 &self.device.local_key,
                 Arc::new(move |m| router.dispatch(m)),
             )
-            .map_err(|e| e.0)
+            .map_err(|e| e.0)?;
+            let router = self.router.clone();
+            channel.set_on_down(Arc::new(move || router.local_down()));
+            Ok(channel)
         });
-        let mut local = self.local.lock().unwrap_or_else(|e| e.into_inner());
-        match result {
-            Ok(channel) => {
-                local.channel = Some(channel);
-                local.backoff = LOCAL_BACKOFF_MIN;
-            }
-            Err(_) => {
-                local.next_attempt = Instant::now() + local.backoff;
-                local.backoff = (local.backoff.mul_f32(1.5)).min(LOCAL_BACKOFF_MAX);
-            }
-        }
     }
 
     /// `_get_networking_info`: the cached IP, else ask over MQTT.
@@ -558,9 +613,22 @@ impl Link {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .insert(req.id as u64, tx);
+        self.router
+            .local_ids
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(req.id as u64);
         let sent = channel.publish(&msg);
         drop(local);
+        let forget = || {
+            self.router
+                .local_ids
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .remove(&(req.id as u64));
+        };
         if let Err(e) = sent {
+            forget();
             self.router
                 .rpc
                 .lock()
@@ -568,7 +636,9 @@ impl Link {
                 .remove(&(req.id as u64));
             return Some(Err(e.0));
         }
-        Some(self.wait_rpc(req.id as u64, rx))
+        let out = self.wait_rpc(req.id as u64, rx);
+        forget();
+        Some(out)
     }
 
     /// `RpcChannel.send_command`: local first, then MQTT. As in Python, any
@@ -745,6 +815,7 @@ mod tests {
             security: SecurityData::new("k"),
             rpc: Mutex::new(HashMap::new()),
             maps: Mutex::new(HashMap::new()),
+            local_ids: Mutex::new(HashSet::new()),
             on_push: Arc::new(move |p| sink.lock().unwrap().push(p)),
         };
         let (tx, rx) = mpsc::channel();
@@ -767,5 +838,105 @@ mod tests {
         );
         router.mqtt_payload(&protocol::encode(&push, KEY, false, None).unwrap());
         assert_eq!(pushed.lock().unwrap()[0]["121"], 5);
+    }
+
+    #[test]
+    fn local_requests_fail_at_once_when_the_local_link_drops() {
+        let router = Router {
+            local_key: KEY.into(),
+            security: SecurityData::new("k"),
+            rpc: Mutex::new(HashMap::new()),
+            maps: Mutex::new(HashMap::new()),
+            local_ids: Mutex::new(HashSet::new()),
+            on_push: Arc::new(|_| {}),
+        };
+        let (local_tx, local_rx) = mpsc::channel();
+        let (mqtt_tx, mqtt_rx) = mpsc::channel();
+        router.rpc.lock().unwrap().insert(7, local_tx);
+        router.local_ids.lock().unwrap().insert(7);
+        router.rpc.lock().unwrap().insert(8, mqtt_tx);
+        router.local_down();
+        assert_eq!(
+            local_rx.try_recv().unwrap(),
+            Err("The local connection to the vacuum was lost".to_string())
+        );
+        // A request that went over MQTT keeps waiting.
+        assert!(mqtt_rx.try_recv().is_err());
+        assert!(router.rpc.lock().unwrap().contains_key(&8));
+    }
+
+    /// A fake vacuum that takes any number of connections, answers hello on
+    /// each, and counts how many are still open.
+    fn counting_device() -> (String, Arc<Mutex<(usize, usize)>>) {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap().to_string();
+        let counts = Arc::new(Mutex::new((0usize, 0usize))); // (accepted, closed)
+        let c = counts.clone();
+        std::thread::spawn(move || {
+            for sock in listener.incoming().flatten() {
+                c.lock().unwrap().0 += 1;
+                let c = c.clone();
+                std::thread::spawn(move || {
+                    let mut sock = sock;
+                    let mut frames = protocol::FrameBuffer::default();
+                    let mut chunk = [0u8; 4096];
+                    loop {
+                        match sock.read(&mut chunk) {
+                            Ok(0) | Err(_) => break,
+                            Ok(n) => frames.push(&chunk[..n]),
+                        }
+                        while let Some(frame) = frames.next_frame() {
+                            let msg = protocol::decode_frame(&frame, KEY, None).unwrap();
+                            if msg.protocol == protocol::HELLO_REQUEST {
+                                let reply = Message {
+                                    seq: msg.seq,
+                                    random: 7,
+                                    ..Message::new(protocol::HELLO_RESPONSE, None)
+                                };
+                                let _ = sock
+                                    .write_all(&protocol::encode(&reply, KEY, true, None).unwrap());
+                            }
+                        }
+                    }
+                    c.lock().unwrap().1 += 1;
+                });
+            }
+        });
+        (addr, counts)
+    }
+
+    #[test]
+    fn racing_reconnects_leave_exactly_one_open_channel() {
+        let (addr, counts) = counting_device();
+        let state = Arc::new(Mutex::new(LocalState::new()));
+        let barrier = Arc::new(std::sync::Barrier::new(2));
+        let racers: Vec<_> = (0..2)
+            .map(|_| {
+                let (state, barrier, addr) = (state.clone(), barrier.clone(), addr.clone());
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    ensure_local_with(&state, |_| {
+                        // Slow enough that the two attempts overlap.
+                        std::thread::sleep(Duration::from_millis(200));
+                        LocalChannel::connect_addr(&addr, KEY, Arc::new(|_| {})).map_err(|e| e.0)
+                    });
+                })
+            })
+            .collect();
+        for r in racers {
+            r.join().unwrap();
+        }
+        std::thread::sleep(Duration::from_millis(300));
+        let (accepted, closed) = *counts.lock().unwrap();
+        assert_eq!(
+            accepted - closed,
+            1,
+            "{accepted} connections, {closed} closed"
+        );
+        assert_eq!(accepted, 1, "both racers connected");
+        let local = state.lock().unwrap();
+        assert!(local.channel.as_ref().unwrap().is_connected());
+        local.channel.as_ref().unwrap().close();
     }
 }
