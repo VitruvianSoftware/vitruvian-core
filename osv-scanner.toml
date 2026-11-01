@@ -24,7 +24,7 @@
 # advisory in this repo's dependencies. Everything listed here was ALREADY
 # PRESENT when the gate landed. Failing on them would have made a REQUIRED check
 # red on day one, and a permanently-red gate is one everybody learns to ignore
-# -- the same reasoning that makes //tools/ci:secret_scan diff-scoped over this
+# -- the same reasoning that makes tools/ci/secret-scan.sh diff-scoped over this
 # repo's known historical findings.
 #
 # This is a BASELINE, not an absolution. What it buys immediately is the point
