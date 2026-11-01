@@ -82,7 +82,7 @@ pub fn extract_xsrf_token_from_mole_world_html(html: &str) -> Result<String, GCh
         }
     }
 
-    Err(GChatError::AuthExpired(
+    Err(GChatError::Network(
         "xsrf_token not found in /u/0/mole/world HTML".to_string(),
     ))
 }
@@ -265,15 +265,10 @@ crate::edition2021! {
                         ));
                     }
                 }
-                return Err(GChatError::AuthExpired(format!(
-                    "unexpected redirect from /u/0/mole/world: {status}"
-                )));
-            }
-            if status.as_u16() == 401 || status.as_u16() == 403 {
-                return Err(GChatError::AuthExpired(format!(
-                    "/u/0/mole/world returned HTTP {}",
-                    status.as_u16()
-                )));
+                return Err(GChatError::HttpStatus(
+                    status.as_u16(),
+                    format!("unexpected redirect from /u/0/mole/world: {status}"),
+                ));
             }
             if !status.is_success() {
                 return Err(GChatError::HttpStatus(
@@ -327,11 +322,76 @@ mod tests {
             Err(GChatError::AuthExpired(_))
         ));
 
+        let sign_in_ui_html = r#"<script>window.WIZ_global_data = {"qwAQke":"AccountsSignInUi"};</script>"#;
+        assert!(matches!(
+            extract_xsrf_token_from_mole_world_html(sign_in_ui_html),
+            Err(GChatError::AuthExpired(_))
+        ));
+
         let empty_html = r#"<html><body>No token here</body></html>"#;
         assert!(matches!(
             extract_xsrf_token_from_mole_world_html(empty_html),
-            Err(GChatError::AuthExpired(_))
+            Err(GChatError::Network(_))
         ));
+    }
+
+    crate::edition2021! {
+        #[tokio::test]
+        async fn test_fetch_mole_world_only_treats_signed_out_responses_as_auth_expired() {
+            use crate::cookies::ScopedCookie;
+            use std::sync::atomic::{AtomicUsize, Ordering};
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            use tokio::net::TcpListener;
+
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let base_url = Url::parse(&format!("http://127.0.0.1:{}/", addr.port())).unwrap();
+            let step = Arc::new(AtomicUsize::new(0));
+            let step_srv = Arc::clone(&step);
+
+            let server_handle = tokio::spawn(async move {
+                loop {
+                    let Ok((mut stream, _)) = listener.accept().await else {
+                        break;
+                    };
+                    let step = Arc::clone(&step_srv);
+                    tokio::spawn(async move {
+                        let mut buf = [0u8; 4096];
+                        let _ = stream.read(&mut buf).await;
+                        let n = step.fetch_add(1, Ordering::SeqCst) + 1;
+                        let resp = match n {
+                            1 => "HTTP/1.1 302 Found\r\nLocation: https://accounts.google.com/ServiceLogin\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                            2 => "HTTP/1.1 302 Found\r\nLocation: https://chat.google.com/u/0/\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                            3 => "HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                            4 => "HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                            _ => "HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                        };
+                        let _ = stream.write_all(resp.as_bytes()).await;
+                    });
+                }
+            });
+
+            let jar = DomainCookieJar::from_scoped_cookies(vec![
+                ScopedCookie { name: "COMPASS".into(), value: "c1".into(), domain: "chat.google.com".into(), path: "/".into() },
+                ScopedCookie { name: "OSID".into(), value: "o1".into(), domain: "chat.google.com".into(), path: "/".into() },
+                ScopedCookie { name: "SID".into(), value: "s1".into(), domain: ".google.com".into(), path: "/".into() },
+                ScopedCookie { name: "HSID".into(), value: "h1".into(), domain: ".google.com".into(), path: "/".into() },
+                ScopedCookie { name: "SSID".into(), value: "ss1".into(), domain: ".google.com".into(), path: "/".into() },
+            ])
+            .unwrap()
+            .with_loopback_for_test(true);
+
+            let guard = NetGuard::allow_loopback_for_test();
+            let http = guard.build_http_client().unwrap();
+            let mgr = XsrfTokenManager::new(http, jar, base_url, "UA".to_string(), guard);
+
+            assert!(matches!(mgr.get_token().await, Err(GChatError::AuthExpired(_))));
+            assert!(matches!(mgr.get_token().await, Err(GChatError::HttpStatus(302, _))));
+            assert!(matches!(mgr.get_token().await, Err(GChatError::HttpStatus(401, _))));
+            assert!(matches!(mgr.get_token().await, Err(GChatError::HttpStatus(403, _))));
+
+            server_handle.abort();
+        }
     }
     #[test]
     fn test_mole_world_request_carries_the_web_clients_query_and_headers() {
