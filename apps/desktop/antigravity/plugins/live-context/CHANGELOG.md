@@ -2,6 +2,13 @@
 
 All notable changes to live-context are recorded here.
 
+## [0.1.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/live-context-v0.1.2...live-context-v0.1.3) (2026-11-01)
+
+
+### Bug Fixes
+
+* **live-context:** never inject a stale snapshot as "OPEN PRs: (none)" ([#4139](https://github.com/VitruvianSoftware/vitruvian-core/issues/4139)) ([7a83b7f](https://github.com/VitruvianSoftware/vitruvian-core/commit/7a83b7ffc79ef17e82c97f36257a81e1a898c9bb))
+
 ## [0.1.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/live-context-v0.1.1...live-context-v0.1.2) (2026-10-24)
 
 
