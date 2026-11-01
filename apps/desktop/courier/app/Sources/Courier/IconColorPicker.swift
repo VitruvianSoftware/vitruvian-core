@@ -44,22 +44,151 @@ enum LabelColor {
     }
 }
 
-/// A label's look: a row of the 12 colours and a grid of the 24 icons. Click one, or move with the arrow keys once
-/// the row or the grid has focus (Tab moves between them).
-struct IconColorPicker: View {
-    @Binding var color: Int
-    @Binding var icon: String
+/// A label's look: a row of the 12 colours, a quick-pick grid of the default icons, and an expandable searchable
+/// catalog of all 151 §22 icons (`CourierIconCatalog`).
+public struct IconColorPicker: View {
+    @Binding public var color: Int
+    @Binding public var icon: String
+    @State private var showsCatalog: Bool
+    @State private var searchQuery: String
+    @State private var selectedCategory: CourierIconCategory
 
     static let columns = 8
 
-    var body: some View {
+    public init(
+        color: Binding<Int>,
+        icon: Binding<String>,
+        showsAllIconsInitially: Bool = false,
+        initialSearchQuery: String = "",
+        initialCategory: CourierIconCategory = .all
+    ) {
+        self._color = color
+        self._icon = icon
+        self._showsCatalog = State(initialValue: showsAllIconsInitially)
+        self._searchQuery = State(initialValue: initialSearchQuery)
+        self._selectedCategory = State(initialValue: initialCategory)
+    }
+
+    private var filteredCatalogIcons: [CourierIconEntry] {
+        CourierIconCatalog.search(query: searchQuery, category: selectedCategory)
+    }
+
+    public var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(String(localized: "Colour"))
                 .font(.subheadline.weight(.semibold))
             ColorRow(color: $color)
-            Text(String(localized: "Icon"))
-                .font(.subheadline.weight(.semibold))
+
+            HStack {
+                Text(String(localized: "Icon"))
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Button {
+                    showsCatalog.toggle()
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(String(localized: "All Icons (\(CourierIconCatalog.labelAndSpaceIcons.count))…"))
+                            .font(.caption.weight(.medium))
+                        Image(systemName: showsCatalog ? "chevron.up" : "chevron.down")
+                            .font(.caption2.weight(.semibold))
+                    }
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Color.accentColor)
+                .accessibilityLabel(String(localized: "All Icons"))
+            }
+
             IconGrid(icon: $icon, tint: LabelColor.color(color))
+
+            if showsCatalog {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        TextField(String(localized: "Search icons…"), text: $searchQuery)
+                            .textFieldStyle(.plain)
+                            .font(.callout)
+                        if !searchQuery.isEmpty {
+                            Button {
+                                searchQuery = ""
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(String(localized: "Clear icon search"))
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(RoundedRectangle(cornerRadius: 7).fill(Color.primary.opacity(0.06)))
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 5) {
+                            ForEach(CourierIconCategory.allCases) { category in
+                                Button {
+                                    selectedCategory = category
+                                } label: {
+                                    Text(category.title)
+                                        .font(.caption2.weight(selectedCategory == category ? .semibold : .regular))
+                                        .foregroundStyle(selectedCategory == category ? Color.white : Color.primary)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(
+                                            Capsule().fill(
+                                                selectedCategory == category
+                                                    ? LabelColor.color(color)
+                                                    : Color.primary.opacity(0.08)
+                                            )
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+
+                    let entries = filteredCatalogIcons
+                    if entries.isEmpty {
+                        Text(String(localized: "No matching icons"))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding(.vertical, 12)
+                    } else {
+                        ScrollView {
+                            LazyVGrid(
+                                columns: Array(repeating: GridItem(.fixed(34), spacing: 6), count: Self.columns),
+                                alignment: .leading,
+                                spacing: 6
+                            ) {
+                                ForEach(entries) { entry in
+                                    let isSelected = entry.sfSymbol == icon
+                                    Image(systemName: entry.sfSymbol)
+                                        .font(.system(size: 15))
+                                        .frame(width: 34, height: 34)
+                                        .foregroundStyle(isSelected ? Color.white : LabelColor.color(color))
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 7)
+                                                .fill(isSelected ? LabelColor.color(color) : Color.primary.opacity(0.06))
+                                        )
+                                        .contentShape(Rectangle())
+                                        .onTapGesture { icon = entry.sfSymbol }
+                                        .help(entry.title)
+                                        .accessibilityLabel(entry.title)
+                                        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+                                }
+                            }
+                            .padding(4)
+                        }
+                        .frame(maxHeight: 164)
+                    }
+                }
+                .padding(8)
+                .background(RoundedRectangle(cornerRadius: 9).fill(Color.primary.opacity(0.04)))
+                .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(.quaternary))
+            }
         }
     }
 }

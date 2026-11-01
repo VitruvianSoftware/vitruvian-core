@@ -4743,6 +4743,62 @@ final class ViewSnapshotTests: XCTestCase {
             }
         }
     }
+
+    func testSection22IconCatalogPickerAndRemovedMediaSnapshotsLightAndDark() throws {
+        try assertLightAndDarkSnapshot("m47-icon-color-picker-catalog", width: 500) {
+            VStack(alignment: .leading, spacing: 16) {
+                IconColorPicker(
+                    color: .constant(5),
+                    icon: .constant("snowflake"),
+                    showsAllIconsInitially: true,
+                    initialSearchQuery: "",
+                    initialCategory: .all
+                )
+                Divider()
+                HStack(spacing: 12) {
+                    CreateLabelNudgeIcon()
+                    RemovedMediaPlaceholderView(
+                        message: TimelineMessage(
+                            id: "$removed",
+                            roomID: Fixture.room,
+                            sender: "@alice:courier.local",
+                            senderName: "Alice Example",
+                            senderAvatarPath: "",
+                            mine: false,
+                            ts: Fixture.millis(5),
+                            kind: .image,
+                            body: "Photo from trip",
+                            rich: RichText(text: "Photo from trip"),
+                            isEdited: false,
+                            editCount: 0,
+                            editFailed: nil,
+                            failedEditID: nil,
+                            fileName: "vacation.jpg",
+                            mimeType: "image/jpeg",
+                            byteSize: 42_000,
+                            width: 640,
+                            height: 480,
+                            mediaPath: "",
+                            statusLine: nil,
+                            countsAsUnread: false,
+                            poll: nil,
+                            thread: nil,
+                            bookmarked: false,
+                            expiresAt: nil,
+                            timerChange: nil,
+                            call: nil,
+                            reply: nil,
+                            reactions: [],
+                            startsGroup: true,
+                            mediaRemoved: true
+                        )
+                    )
+                }
+            }
+            .padding(16)
+            .background(Color(nsColor: .windowBackgroundColor))
+        }
+    }
 }
 
 private struct SnapshotLoginItemService: LoginItemService {
