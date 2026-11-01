@@ -25,6 +25,14 @@ exports standalone HTML or CSV reports.
 - The side panel renders live project summaries, hotspot alerts, and an OpenUI
   Lang v0.5 dashboard, with one-click export to standalone HTML or CSV.
 
+## Requirements
+
+The hook is written in Rust using only the standard library. The first time it
+runs, `hooks/rust-hook.sh` compiles it with `rustc` (about a second) into
+`~/.cache/antigravity-plugins/`, and later runs reuse that binary. You need
+Rust installed ([rustup.rs](https://rustup.rs)). Without it the hook records no turn notes (the panel still reads transcripts directly) and says why on stderr. The side panel runs on
+Antigravity's Node.js.
+
 ## Install
 
 From GitHub:
@@ -57,6 +65,8 @@ git -C ~/.gemini/config/plugins/receipts-report pull
 | --- | --- |
 | `plugin.json` | Plugin manifest |
 | `hooks.json`, `hooks/record-turn.sh` | `PostInvocation` hook that records session turn metadata |
+| `hooks/rust-hook.sh` | Builds the hook from `hooks/src` with `rustc` on first use, then runs it |
+| `hooks/src/` | The hook: `lib.rs` (logic and tests), `main.rs` (entry point) |
 | `rules/AGENTS.md` | Standing rule teaching agents how to query and export session receipts |
 | `skills/receipts-report/SKILL.md` | On-demand skill for generating HTML/CSV impact reports |
 | `sidecars/panel/sidecar.json` | Sidecar process and auxiliary pane UI manifest |
@@ -71,6 +81,7 @@ From the plugin folder:
 
 ```bash
 node --test sidecars/panel/lib/core.test.mjs sidecars/panel/lib/openui.test.mjs sidecars/panel/lib/version.test.mjs
+rustc --edition 2021 --test hooks/src/lib.rs -o /tmp/receipts-report-hook-test && /tmp/receipts-report-hook-test
 ```
 
 In the `vitruvian-core` monorepo:

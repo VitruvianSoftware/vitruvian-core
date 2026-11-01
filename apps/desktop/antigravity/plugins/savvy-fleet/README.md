@@ -33,12 +33,23 @@ git -C ~/.gemini/config/plugins/savvy-fleet pull
 
 Disable and re-enable the plugin after updating so Antigravity restarts the background sidecar process.
 
+## Requirements
+
+The hook is written in Rust using only the standard library. The first time
+it runs, `hooks/rust-hook.sh` compiles it with `rustc` (about 1 s) into
+`~/.cache/antigravity-plugins/`, and later runs reuse that binary. You need
+Rust installed ([rustup.rs](https://rustup.rs)); without it the hook does
+nothing but say why on stderr. The side panel runs on Antigravity's
+Node.js.
+
 ## Architecture
 
 | Path | Purpose |
 | --- | --- |
 | `plugin.json` | Plugin manifest |
 | `hooks.json`, `hooks/track-subagent.sh` | `PostToolUse` hook capturing `invoke_subagent` and `send_message` events into `~/.gemini/antigravity/savvy-fleet-inbox/` |
+| `hooks/rust-hook.sh` | Builds the hook from `hooks/src` with `rustc` on first use, then runs it |
+| `hooks/src/` | The hook: `lib.rs` (logic and tests), `main.rs` (entry point) |
 | `rules/AGENTS.md` | Standing instructions for reporting flow progress and opening the Savvy Fleet panel |
 | `skills/savvy-flow/SKILL.md` | Complete `savvy-flow` tiered orchestration guide for Antigravity subagents |
 | `skills/savvy-fleet/SKILL.md` | Skill entrypoint for inspecting fleet status and managing flows |
@@ -50,10 +61,12 @@ Disable and re-enable the plugin after updating so Antigravity restarts the back
 
 ## Test
 
-Run the unit test suite with Node's built-in test runner:
+Run the panel's unit tests with Node's built-in test runner, and the hook's
+with `rustc --test`:
 
 ```bash
 node --test sidecars/panel/lib/core.test.mjs sidecars/panel/lib/openui.test.mjs sidecars/panel/lib/version.test.mjs
+rustc --edition 2021 --test hooks/src/lib.rs -o /tmp/savvy-fleet-hook-test && /tmp/savvy-fleet-hook-test
 ```
 
 Or via Bazel in the monorepo:

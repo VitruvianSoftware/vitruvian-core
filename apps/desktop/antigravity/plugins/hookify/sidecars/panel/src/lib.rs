@@ -5,9 +5,9 @@ pub mod openui;
 
 pub use evaluate_rules::{
     evaluate_condition, evaluate_pre_tool_use, evaluate_rule, evaluate_stop,
-    extract_field_from_payload, handle_hookify_payload, parse_hookify_markdown, resolve_app_dir,
-    serialize_hookify_markdown, PreToolEvalSummary, RuleEvalResult, StopEvalSummary,
-    SUPPORTED_ACTIONS, SUPPORTED_OPERATORS,
+    extract_field_from_payload, handle_hookify_payload, json as hook_json, parse_hookify_markdown,
+    resolve_app_dir, serialize_hookify_markdown, PreToolEvalSummary, RuleEvalResult,
+    StopEvalSummary, SUPPORTED_ACTIONS, SUPPORTED_OPERATORS,
 };
 
 use serde_json::{json, Value};
@@ -83,23 +83,28 @@ pub fn summarise_hookify_state(rules: &[Value], audit_log: &[Value]) -> Value {
 mod tests {
     use super::*;
 
+    /// The hook library has its own std-only JSON type.
+    fn h(v: Value) -> hook_json::Value {
+        hook_json::parse(&v.to_string()).unwrap()
+    }
+
     #[test]
     fn parse_hookify_markdown_parses_simple_and_multi_condition_rules() {
         let simple_md = "---\nname: block-rm\nenabled: true\nevent: bash\npattern: rm\\s+-rf\naction: block\n---\n\nDangerous rm command detected!";
         let parsed =
             parse_hookify_markdown(simple_md, "/w/.gemini/hookify.block-rm.local.md").unwrap();
-        assert_eq!(parsed["name"], json!("block-rm"));
-        assert_eq!(parsed["enabled"], json!(true));
-        assert_eq!(parsed["event"], json!("bash"));
-        assert_eq!(parsed["action"], json!("block"));
-        assert_eq!(parsed["message"], json!("Dangerous rm command detected!"));
+        assert_eq!(parsed["name"], "block-rm");
+        assert_eq!(parsed["enabled"], true);
+        assert_eq!(parsed["event"], "bash");
+        assert_eq!(parsed["action"], "block");
+        assert_eq!(parsed["message"], "Dangerous rm command detected!");
 
         let multi_md = "---\nname: block-env-edits\nenabled: true\nevent: file\naction: block\nconditions:\n  - field: file_path\n    operator: regex_match\n    pattern: \\.env$\n  - field: new_text\n    operator: contains\n    pattern: API_KEY\n---\n\nDo not hardcode API keys in .env files.";
         let multi = parse_hookify_markdown(multi_md, "").unwrap();
         let conds = multi["conditions"].as_array().unwrap();
         assert_eq!(conds.len(), 2);
-        assert_eq!(conds[0]["field"], json!("file_path"));
-        assert_eq!(conds[1]["operator"], json!("contains"));
+        assert_eq!(conds[0]["field"], "file_path");
+        assert_eq!(conds[1]["operator"], "contains");
     }
 
     #[test]
@@ -112,13 +117,13 @@ mod tests {
             "pattern": "TODO|FIXME",
             "message": "Remember to file an issue for TODOs."
         });
-        let md = serialize_hookify_markdown(&rule);
+        let md = serialize_hookify_markdown(&h(rule));
         let round_trip = parse_hookify_markdown(&md, "").unwrap();
-        assert_eq!(round_trip["name"], json!("warn-todo"));
-        assert_eq!(round_trip["action"], json!("warn"));
+        assert_eq!(round_trip["name"], "warn-todo");
+        assert_eq!(round_trip["action"], "warn");
         assert_eq!(
             round_trip["message"],
-            json!("Remember to file an issue for TODOs.")
+            "Remember to file an issue for TODOs."
         );
     }
 
@@ -139,24 +144,24 @@ mod tests {
 
         let blocked = evaluate_pre_tool_use(
             &rules,
-            &json!({
+            &h(json!({
                 "toolCall": {
                     "name": "run_command",
                     "args": { "CommandLine": "git push --force origin main" }
                 }
-            }),
+            })),
         );
         assert_eq!(blocked.decision, "deny");
         assert!(blocked.reason.contains("--force-with-lease"));
 
         let warned = evaluate_pre_tool_use(
             &rules,
-            &json!({
+            &h(json!({
                 "toolCall": {
                     "name": "write_file",
                     "args": { "Path": "src/app.js", "Content": "console.log('hi')" }
                 }
-            }),
+            })),
         );
         assert_eq!(warned.decision, "ask");
         assert_eq!(warned.matched_rules.len(), 1);
@@ -172,7 +177,7 @@ mod tests {
 
         let res = evaluate_stop(
             &rules,
-            &json!({ "reason": "Leaving UNCOMMITTED_WORK for later" }),
+            &h(json!({ "reason": "Leaving UNCOMMITTED_WORK for later" })),
         );
         assert!(!res.continue_flag);
         assert!(res.stop_reason.contains("Commit your work"));

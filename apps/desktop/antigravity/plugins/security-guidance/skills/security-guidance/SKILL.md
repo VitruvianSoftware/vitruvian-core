@@ -29,4 +29,4 @@ When a finding is an intentional test fixture or verified false positive, add an
 inline suppression comment on the same line:
 
 - JavaScript / TypeScript / Go / C++: `// security-guidance-ignore: <rule-id>` (or `// security-guidance-ignore` to suppress all rules on that line)
-- Python / Shell / YAML: `# security-guidance-ignore: <rule-id>` or `# nosec <rule-id>`
+- Python / Shell / YAML: `# security-guidance-ignore: <rule-id>` or `# nosec: <rule-id>` (the colon matters: a bare `# nosec` silences every rule on the line)

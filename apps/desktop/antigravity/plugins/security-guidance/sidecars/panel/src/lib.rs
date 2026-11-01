@@ -4,15 +4,15 @@
 pub mod openui;
 
 pub use security_check::{
-    filter_suppressed_findings, handle_security_hook, has_inline_suppression, resolve_app_dir,
-    scan_content_for_patterns, scan_diff_for_vulnerabilities, summarise_security_state,
-    BuiltinPattern, Finding, SecurityStore, SecuritySummary, SeverityCounts, BUILTIN_PATTERNS,
+    filter_suppressed_findings, handle_security_hook, has_inline_suppression, json,
+    resolve_app_dir, scan_content_for_patterns, scan_diff_for_vulnerabilities,
+    summarise_security_state, BuiltinPattern, Finding, SecurityStore, SecuritySummary,
+    SeverityCounts, BUILTIN_PATTERNS,
 };
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
 
     #[test]
     fn scan_content_for_patterns_detects_secrets_command_injection_xss_and_unsafe_deserialization()
@@ -81,7 +81,10 @@ mod tests {
 
         let summary = summarise_security_state(&SecurityStore {
             findings: findings.clone(),
-            suppressions: vec![json!({ "ruleId": "dom-xss-innerhtml", "filePath": "index.js" })],
+            suppressions: vec![json::parse(
+                r#"{"ruleId":"dom-xss-innerhtml","filePath":"index.js"}"#,
+            )
+            .unwrap()],
         });
         assert_eq!(summary.total_active, 1);
         assert_eq!(summary.suppressed_count, 1);

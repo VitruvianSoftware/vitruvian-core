@@ -20,27 +20,13 @@
  * SOFTWARE.
  */
 
-// Pure logic for ralph-loop: creating loop state, matching completion promises,
-// bounding iterations, evaluating Stop hook continuation decisions, and
-// summarising loops across conversations.
+// Pure logic for the ralph-loop panel: creating loop state, bounding
+// iterations, and summarising loops across conversations. The Stop hook's
+// decision (promise matching, continue or stop) is in hooks/src/lib.rs.
 
 export const MIN_ITERATIONS = 1;
 export const MAX_ITERATIONS_LIMIT = 200;
 export const DEFAULT_MAX_ITERATIONS = 10;
-
-/**
- * Checks whether an assistant message contains the required
- * `<promise>${completionPromise}</promise>` completion tag.
- *
- * @param {string | null | undefined} text
- * @param {string | null | undefined} [completionPromise="DONE"]
- * @returns {boolean}
- */
-export function checkPromiseMatched(text, completionPromise = "DONE") {
-  const token = String(completionPromise ?? "DONE").trim();
-  if (!token) return false;
-  return String(text ?? "").includes(`<promise>${token}</promise>`);
-}
 
 /**
  * Creates a fresh active loop state record for a conversation.
@@ -105,77 +91,6 @@ export function updateLoopIteration(state, { now = Date.now() } = {}) {
     iteration: nextIteration,
     status: "running",
     updatedAt: now,
-  };
-}
-
-/**
- * Evaluates a Stop event against a conversation's loop state.
- * - When inactive or missing: returns `{ response: {}, nextState, action: "idle" }`.
- * - When `<promise>${completionPromise}</promise>` is present in `lastAssistantText`:
- *   marks the loop `"completed"` and returns `{ response: {}, nextState, action: "completed" }`.
- * - When `iteration >= maxIterations`: marks the loop `"max_iterations"` and
- *   returns `{ response: {}, nextState, action: "max_iterations" }`.
- * - Otherwise increments `iteration` and returns `{ response: { decision: "continue", reason }, nextState, action: "continue" }`.
- *
- * @param {Record<string, any> | null | undefined} state
- * @param {{ lastAssistantText?: string, now?: number }} [opts]
- * @returns {{
- *   response: Record<string, string>,
- *   nextState: Record<string, any> | null,
- *   action: "idle" | "completed" | "max_iterations" | "continue"
- * }}
- */
-export function evaluateStopEvent(
-  state,
-  { lastAssistantText = "", now = Date.now() } = {},
-) {
-  if (!state || typeof state !== "object" || state.active !== true) {
-    return { response: {}, nextState: state ?? null, action: "idle" };
-  }
-
-  const promiseToken = String(state.completionPromise ?? "").trim() || "DONE";
-  if (checkPromiseMatched(lastAssistantText, promiseToken)) {
-    return {
-      response: {},
-      nextState: {
-        ...state,
-        active: false,
-        status: "completed",
-        completedAt: now,
-        updatedAt: now,
-      },
-      action: "completed",
-    };
-  }
-
-  const iteration = Number(state.iteration) || 0;
-  const maxIterations =
-    Number(state.maxIterations) > 0
-      ? Number(state.maxIterations)
-      : DEFAULT_MAX_ITERATIONS;
-
-  if (iteration >= maxIterations) {
-    return {
-      response: {},
-      nextState: {
-        ...state,
-        active: false,
-        status: "max_iterations",
-        completedAt: now,
-        updatedAt: now,
-      },
-      action: "max_iterations",
-    };
-  }
-
-  const nextState = updateLoopIteration(state, { now });
-  return {
-    response: {
-      decision: "continue",
-      reason: `Ralph Loop (iteration ${nextState.iteration}/${maxIterations}): continue working on the task until completion criteria are met and emit <promise>${promiseToken}</promise>.`,
-    },
-    nextState,
-    action: "continue",
   };
 }
 

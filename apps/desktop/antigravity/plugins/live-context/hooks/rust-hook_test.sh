@@ -321,6 +321,44 @@ echo $(($(date +%s) - 3600)) >"$lock/since"
 cp -R "$lock" "$tmp/lock.saved"
 run_hook "$first" '{}'
 contains "a live builder's lock over 30 minutes old is taken over" "$err" "building in the background (first run"
+# The builder that lost its lock must not delete its successor's when it
+# finishes: rerun the takeover with a first builder that ends soon.
+i=0
+while [ ! -f "$lock/pid" ] && [ "$i" -lt 50 ]; do
+	sleep 0.1
+	i=$((i + 1))
+done
+second=$(cat "$lock/pid")
+kill -KILL "$second" 2>/dev/null
+kill -KILL -- "-$second" 2>/dev/null
+rm -rf "$lock"
+echo "// lock tests: successor" >>"$plugin/hooks/src/lib.rs"
+export STUB_SLEEP=2
+run_hook "$first" '{}'
+lock=$(find "$cache" -maxdepth 1 -type d -name "$plugin_name-$(name_of "$first")-*.lock" | head -n 1)
+i=0
+while [ ! -f "$lock/pid" ] && [ "$i" -lt 50 ]; do
+	sleep 0.1
+	i=$((i + 1))
+done
+early=$(cat "$lock/pid")
+echo $(($(date +%s) - 3600)) >"$lock/since"
+export STUB_SLEEP=30
+run_hook "$first" '{}'
+contains "(a 30-minute-old lock is taken over)" "$err" "building in the background (first run"
+i=0
+while kill -0 "$early" 2>/dev/null && [ "$i" -lt 150 ]; do
+	sleep 0.1
+	i=$((i + 1))
+done
+kill -0 "$early" 2>/dev/null && ok=1 || ok=0
+check "(the replaced builder finished)" "$ok" "0"
+[ -d "$lock" ] && [ "$(cat "$lock/pid" 2>/dev/null)" != "$early" ] && ok=0 || ok=1
+check "a replaced builder leaves its successor's lock alone" "$ok" "0"
+# The replaced builder finished a binary; drop it so the cases below miss.
+rm -f "$(bin_of "$first")"
+export STUB_SLEEP=30
+
 # Stop the builder that took over, and put the first builder's lock back for
 # the dead-builder case below.
 i=0

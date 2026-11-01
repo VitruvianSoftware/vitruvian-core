@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use security_guidance_sidecar::openui::{compile_to_html, to_openui_lang, RenderOpts};
-use security_guidance_sidecar::{summarise_security_state, SecurityStore};
+use security_guidance_sidecar::{json as hook_json, summarise_security_state, SecurityStore};
 use serde_json::{json, Value};
 use std::io::{self, Read};
 
@@ -23,9 +23,10 @@ fn main() {
 
     match cmd {
         "summarise" => {
-            let store: SecurityStore = serde_json::from_value(input).unwrap_or_default();
-            let out = summarise_security_state(&store);
-            println!("{}", serde_json::to_string(&out).unwrap_or_default());
+            // The hook library has its own std-only JSON type.
+            let input = hook_json::parse(&input.to_string()).unwrap_or_default();
+            let out = summarise_security_state(&SecurityStore::from_json(&input));
+            println!("{}", out.to_json());
         }
         "html" => {
             let dsl = to_openui_lang(&input);

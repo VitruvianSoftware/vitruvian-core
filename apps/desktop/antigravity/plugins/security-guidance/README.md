@@ -1,8 +1,10 @@
 # security-guidance
 
 An Antigravity desktop plugin that performs real-time vulnerability and secret
-scanning on `edit_file`, `write_file`, and `run_command` tool calls (`PreToolUse`)
-as well as turn-completion checks (`Stop`). It blocks hardcoded credentials and
+scanning on file writes and edits (`write_file`, `edit_file`, `write_to_file`,
+`replace_file_content`, `multi_replace_file_content`) and `run_command`
+(`PreToolUse`).
+It blocks hardcoded credentials and
 critical command injection patterns before they land on disk, prompts with
 context-specific remediation guidance on risky constructs (`eval(`, `innerHTML`,
 `pickle.loads`, `yaml.load(`, `torch.load` without `weights_only=True`, SQL
@@ -24,12 +26,23 @@ Security Guidance side panel.
     (`169.254.169.254`), and GitHub Actions `${{ github.event.* }}` script
     injection
 - **Inline Suppression Comments:** Suppress false positives on a line with
-  `// security-guidance-ignore: <rule-id>` or `# nosec <rule-id>`, or suppress
-  findings directly from the side panel.
+  `// security-guidance-ignore: <rule-id>[, <rule-id>]` or `# nosec: <rule-id>`
+  (`all` for every rule). Without the colon and list (`# nosec`), the comment
+  suppresses every rule on that line. You can also suppress findings from the
+  side panel.
 - **Interactive Sidecar Panel & OpenUI Lang v0.5:** Inspect active and
   suppressed findings, paste code or unified diffs to run ad-hoc security scans,
   wake the owning conversation with a remediation prompt, and view live OpenUI
   Lang v0.5 state (`GET /api/openui`).
+
+## Requirements
+
+The hook is written in Rust using only the standard library. The first time
+it runs, `hooks/rust-hook.sh` compiles it with `rustc` (about 1-2 s) into
+`~/.cache/antigravity-plugins/`, and later runs reuse that binary. You need
+Rust installed ([rustup.rs](https://rustup.rs)). Without it, the hook asks
+before every edit and command, says that nothing is being checked, and gives
+the reason on stderr. The side panel runs on Antigravity's Node.js.
 
 ## Install
 
@@ -62,12 +75,14 @@ git -C ~/.gemini/config/plugins/security-guidance pull
 | Path | Description |
 | --- | --- |
 | `plugin.json` | Plugin manifest |
-| `hooks.json`, `hooks/security-check.sh` | `PreToolUse` and `Stop` security scanner hook |
+| `hooks.json`, `hooks/security-check.sh` | `PreToolUse` security scanner hook (allows on `Stop`) |
+| `hooks/rust-hook.sh` | Builds the hook from `hooks/src` with `rustc` on first use, then runs it |
+| `hooks/src/` | The hook: `lib.rs` (rules, store, decision, tests), `json.rs`, `main.rs` |
 | `rules/AGENTS.md` | Standing security instructions for agents |
 | `skills/security-guidance/SKILL.md` | Skill for running security audits and remediating findings |
 | `sidecars/panel/sidecar.json` | Sidecar manifest |
 | `sidecars/panel/main.mjs` | Sidecar backend and REST API |
-| `sidecars/panel/lib/core.mjs` | Pure vulnerability scanner, diff parser, and suppression filter |
+| `sidecars/panel/lib/core.mjs` | The same rules as regular expressions, for the panel's ad-hoc scans and summary |
 | `sidecars/panel/lib/openui.mjs` | OpenUI Lang v0.5 parser, renderer, and state serializer |
 | `sidecars/panel/{index.html,app.js,styles.css}` | Interactive security dashboard and ad-hoc scanner |
 
@@ -77,6 +92,7 @@ From the plugin folder:
 
 ```bash
 node --test sidecars/panel/lib/
+rustc --edition 2021 --test hooks/src/lib.rs -o /tmp/security-guidance-test && /tmp/security-guidance-test
 ```
 
 Or through Bazel in the monorepo:

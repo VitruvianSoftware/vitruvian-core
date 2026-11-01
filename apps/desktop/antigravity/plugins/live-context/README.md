@@ -87,7 +87,7 @@ git -C ~/.gemini/config/plugins/live-context pull
 | `skills/live-context/SKILL.md` | Skill for configuring live context injection and response shape rules |
 | `sidecars/panel/sidecar.json` | Sidecar process and auxiliary pane UI manifest |
 | `sidecars/panel/main.mjs` | Sidecar backend: refreshes Git/GitHub cache, serves `/api/state`, `/api/openui`, `/api/settings` |
-| `sidecars/panel/lib/core.mjs` | Pure functions (`buildEphemeralContextPayload`, `checkResponseContract`, `formatLiveGitSummary`, `evaluateStopShape`) |
+| `sidecars/panel/lib/core.mjs` | `formatLiveGitSummary` and `buildEphemeralContextPayload`, for the panel's preview of the injected message |
 | `sidecars/panel/lib/openui.mjs` | OpenUI Lang v0.5 parser, HTML compiler, and `toOpenUILang(state)` |
 | `sidecars/panel/{index.html,app.js,styles.css}` | Interactive side panel |
 

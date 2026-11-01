@@ -2,13 +2,9 @@
   "ralph-loop-stop": {
     "Stop": [
       {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "./hooks/ralph-stop.sh",
-            "timeout": 5
-          }
-        ]
+        "type": "command",
+        "command": "./hooks/ralph-stop.sh",
+        "timeout": 5
       }
     ]
   }
