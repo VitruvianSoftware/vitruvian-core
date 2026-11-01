@@ -230,9 +230,11 @@ A pull request that changes any of these waits until `ipv1337`, through the
 - `.claude/settings.local.json`
 - `.claude/*.sh`
 - `.agents/hooks.json`
-- `tools/cloud-bootstrap/cloud-bootstrap.sh`, `tools/cloud-bootstrap/profiles.tsv`
-  and `tools/remote/setup.sh` (they run or steer session start, before
-  review, with the session's credentials; `profiles.tsv` decides which
+- `tools/cloud-bootstrap/cloud-bootstrap.sh`, `tools/cloud-bootstrap/src/cloud_bootstrap/**`,
+  `tools/cloud-bootstrap/profiles.tsv` and `tools/remote/setup.sh` (they run
+  or steer session start, before review, with the session's credentials:
+  `cloud-bootstrap.sh` is a launcher that builds and runs the Rust sources in
+  `src/cloud_bootstrap/` from the working copy; `profiles.tsv` decides which
   secrets each session fetches)
 - the requirement itself: `infrastructure/pulumi/platform/repo-config/guard_review.go`
   (the rule and the team), `infrastructure/pulumi/platform/repo-config/main.go`
