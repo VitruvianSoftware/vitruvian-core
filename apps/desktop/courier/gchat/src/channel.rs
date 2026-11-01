@@ -531,13 +531,16 @@ crate::edition2021! {
             let _csessionid = self.step1_register().await?;
 
             // Step 2: GET /u/0/webchannel/events?...&SID=null -> X-HTTP-Initial-Response
-            let sid = self.step2_bind_sid().await?;
+            let (sid, bind_resp) = self.step2_bind_sid().await?;
 
             // Step 3: Ack GET + initial PingEvent POST at ofs=0, AID=0
             self.step3_ack_and_ping(&sid).await?;
 
-            // Step 4: Long-poll GET /u/0/webchannel/events
-            let events = self.step4_poll_events(&sid, &mut on_event).await?;
+            // Read the bind GET response body as the first long-poll stream, then poll Step 4.
+            let mut events = self.read_poll_response(bind_resp, &mut on_event).await?;
+            if events.is_empty() {
+                events.extend(self.step4_poll_events(&sid, &mut on_event).await?);
+            }
 
             Ok(events)
         }
@@ -613,7 +616,7 @@ crate::edition2021! {
             Ok(csessionid)
         }
 
-        pub async fn step2_bind_sid(&self) -> Result<String, GChatError> {
+        pub async fn step2_bind_sid(&self) -> Result<(String, reqwest::Response), GChatError> {
             let rid = self.next_rid();
             let zx = self.next_zx();
             let mut url = self
@@ -675,16 +678,11 @@ crate::edition2021! {
                 .and_then(|v| v.to_str().ok())
                 .map(|s| s.to_owned());
 
-            let _ = resp
-                .bytes()
-                .await
-                .map_err(|e| GChatError::Network(format!("SID bind body read failed: {e}")))?;
-
             if let Some(hdr) = initial_hdr {
                 if let Some(sid) = parse_sid_from_json(&hdr) {
                     self.aid.store(0, Ordering::SeqCst);
                     self.ofs.store(0, Ordering::SeqCst);
-                    return Ok(sid);
+                    return Ok((sid, resp));
                 }
             }
 
@@ -806,14 +804,7 @@ crate::edition2021! {
             Ok(())
         }
 
-        pub async fn step4_poll_events<F>(
-            &self,
-            sid: &str,
-            on_event: &mut F,
-        ) -> Result<Vec<pb::Event>, GChatError>
-        where
-            F: FnMut(&pb::Event),
-        {
+        pub async fn step4_open_poll(&self, sid: &str) -> Result<reqwest::Response, GChatError> {
             let aid = self.aid();
             let zx = self.next_zx();
             let mut url = self
@@ -842,7 +833,7 @@ crate::edition2021! {
                 req = req.header(COOKIE, cookie_hdr);
             }
 
-            let mut resp = req
+            let resp = req
                 .send()
                 .await
                 .map_err(|e| GChatError::Network(format!("webchannel GET stream failed: {e}")))?;
@@ -861,7 +852,17 @@ crate::edition2021! {
                     "webchannel GET failed".to_string(),
                 ));
             }
+            Ok(resp)
+        }
 
+        pub async fn read_poll_response<F>(
+            &self,
+            mut resp: reqwest::Response,
+            on_event: &mut F,
+        ) -> Result<Vec<pb::Event>, GChatError>
+        where
+            F: FnMut(&pb::Event),
+        {
             let mut parser = ChunkParser::new();
             let mut emitted = Vec::new();
             let clock = self.clock();
@@ -914,6 +915,18 @@ crate::edition2021! {
             }
 
             Ok(emitted)
+        }
+
+        pub async fn step4_poll_events<F>(
+            &self,
+            sid: &str,
+            on_event: &mut F,
+        ) -> Result<Vec<pb::Event>, GChatError>
+        where
+            F: FnMut(&pb::Event),
+        {
+            let resp = self.step4_open_poll(sid).await?;
+            self.read_poll_response(resp, on_event).await
         }
 
         fn process_chunk_frame(&self, frame: &str) -> Result<(Vec<pb::Event>, bool), GChatError> {
@@ -996,8 +1009,8 @@ crate::edition2021! {
                     _ = cancel_rx.changed() => break,
                     r = self.step2_bind_sid() => r,
                 };
-                let sid = match sid_res {
-                    Ok(s) => s,
+                let (sid, bind_resp) = match sid_res {
+                    Ok(pair) => pair,
                     Err(e) => {
                         if !self.handle_stream_error(e, &mut attempt, &mut cancel_rx, &mut emit).await {
                             break;
@@ -1011,6 +1024,7 @@ crate::edition2021! {
                     r = self.step3_ack_and_ping(&sid) => r,
                 };
                 if let Err(e) = ack_ping_res {
+                    drop(bind_resp);
                     if !self.handle_stream_error(e, &mut attempt, &mut cancel_rx, &mut emit).await {
                         break;
                     }
@@ -1023,6 +1037,25 @@ crate::edition2021! {
                     emit(GCHAT_EVENT_KIND_RESYNC, &[]);
                 }
                 attempt = 0;
+
+                // Read the bind GET response body as the first long-poll stream.
+                {
+                    let mut on_ev = |ev: &pb::Event| {
+                        let bytes = ev.encode_to_vec();
+                        emit(GCHAT_EVENT_KIND_EVENT_PROTO, &bytes);
+                    };
+                    let bind_poll_res = tokio::select! {
+                        _ = cancel_rx.changed() => return,
+                        r = self.read_poll_response(bind_resp, &mut on_ev) => r,
+                    };
+                    drop(on_ev);
+                    if let Err(e) = bind_poll_res {
+                        if !self.handle_stream_error(e, &mut attempt, &mut cancel_rx, &mut emit).await {
+                            return;
+                        }
+                        continue;
+                    }
+                }
 
                 // Long-poll rotation loop preserving AID while SID remains valid.
                 loop {
@@ -1844,6 +1877,202 @@ mod tests {
             err.to_string().contains("90s watchdog"),
             "expected 90s server-event watchdog error, got: {err}"
         );
+    }
+
+    #[test]
+    fn test_webchannel_bind_get_held_open_until_ping_emits_connected_and_event() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback");
+        let addr = listener.local_addr().expect("local addr");
+
+        let server_thread = std::thread::spawn(move || {
+            // Step 1: GET /u/0/webchannel/register?ignore_compass_cookie=1
+            {
+                let (mut stream, _) = listener.accept().expect("accept step 1");
+                let (first_line, _, _) = read_http_request(&mut stream);
+                assert!(
+                    first_line.starts_with("GET /u/0/webchannel/register?ignore_compass_cookie=1 "),
+                    "Step 1 unexpected request line: {first_line}"
+                );
+                let resp = concat!(
+                    "HTTP/1.1 200 OK\r\n",
+                    "Set-Cookie: COMPASS=dynamite-ui=csession_bind; Path=/; Domain=chat.google.com; Secure; HttpOnly\r\n",
+                    "Content-Length: 0\r\n",
+                    "Connection: close\r\n\r\n"
+                );
+                stream.write_all(resp.as_bytes()).expect("write step 1");
+            }
+
+            // Step 2: GET /u/0/webchannel/events?...&SID=null
+            // Return 200 with X-HTTP-Initial-Response and hold the body open until Ping POST arrives.
+            let (mut bind_stream, _) = listener.accept().expect("accept step 2 bind GET");
+            {
+                let (first_line, _, _) = read_http_request(&mut bind_stream);
+                assert!(
+                    first_line.starts_with("GET /u/0/webchannel/events?") && first_line.contains("SID=null"),
+                    "Step 2 unexpected request line: {first_line}"
+                );
+                let hdrs = concat!(
+                    "HTTP/1.1 200 OK\r\n",
+                    "X-HTTP-Initial-Response: [[0,[\"c\",\"sid_bind_open\",\"\",8,12]]]\r\n",
+                    "Transfer-Encoding: chunked\r\n",
+                    "Connection: close\r\n\r\n"
+                );
+                bind_stream
+                    .write_all(hdrs.as_bytes())
+                    .expect("write step 2 headers");
+                bind_stream.flush().expect("flush step 2 headers");
+            }
+
+            // Step 3a: Ack GET while bind_stream is still open.
+            {
+                let (mut ack_stream, _) = listener.accept().expect("accept step 3a ack GET");
+                let (first_line, _, _) = read_http_request(&mut ack_stream);
+                assert!(
+                    first_line.contains("RID=rpc") && first_line.contains("SID=sid_bind_open"),
+                    "Step 3a unexpected request line: {first_line}"
+                );
+                let resp = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+                ack_stream.write_all(resp.as_bytes()).expect("write step 3a");
+            }
+
+            // Step 3b: Ping POST while bind_stream is still open.
+            {
+                let (mut ping_stream, _) = listener.accept().expect("accept step 3b ping POST");
+                let (first_line, _, body) = read_http_request(&mut ping_stream);
+                assert!(
+                    first_line.starts_with("POST /u/0/webchannel/events?")
+                        && first_line.contains("SID=sid_bind_open"),
+                    "Step 3b unexpected request line: {first_line}"
+                );
+                assert!(
+                    body.starts_with("count=1&ofs=0&req0_data="),
+                    "Step 3b unexpected ping body: {body}"
+                );
+                let resp = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+                ping_stream.write_all(resp.as_bytes()).expect("write step 3b");
+            }
+
+            // Only after receiving Ping POST, stream one valid chunk carrying an event on bind_stream and close.
+            let event_chunk = json!([[
+                1,
+                [[[
+                    [["space-bind-open"]],
+                    null,
+                    6,
+                    [
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        [[
+                            null,
+                            null,
+                            "1711234567000099",
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            null,
+                            "Hello from held-open bind stream"
+                        ]],
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        6
+                    ]
+                ]]]
+            ]])
+            .to_string();
+            let frame = format!("{}\n{}", event_chunk.encode_utf16().count(), event_chunk);
+            let http_chunk = format!("{:x}\r\n{}\r\n0\r\n\r\n", frame.len(), frame);
+            bind_stream
+                .write_all(http_chunk.as_bytes())
+                .expect("write bind stream event chunk");
+            bind_stream.flush().expect("flush bind stream event chunk");
+            drop(bind_stream);
+        });
+
+        let guard = NetGuard::allow_loopback_for_test();
+        let http = guard.build_http_client().expect("build http client");
+        let jar = DomainCookieJar::from_scoped_cookies(vec![
+            ScopedCookie { name: "COMPASS".into(), value: "c1".into(), domain: "chat.google.com".into(), path: "/".into() },
+            ScopedCookie { name: "OSID".into(), value: "o1".into(), domain: "chat.google.com".into(), path: "/".into() },
+            ScopedCookie { name: "SID".into(), value: "s1".into(), domain: ".google.com".into(), path: "/".into() },
+            ScopedCookie { name: "HSID".into(), value: "h1".into(), domain: ".google.com".into(), path: "/".into() },
+            ScopedCookie { name: "SSID".into(), value: "ss1".into(), domain: ".google.com".into(), path: "/".into() },
+        ])
+        .expect("valid cookies")
+        .with_loopback_for_test(true);
+
+        let base_url = Url::parse(&format!("http://{addr}/")).expect("base url");
+        let xsrf = Arc::new(XsrfTokenManager::new(
+            http.clone(),
+            jar.clone(),
+            base_url.clone(),
+            "Mozilla/5.0".to_string(),
+            guard.clone(),
+        ));
+        let wc = Arc::new(WebChannelClient::new(
+            http,
+            jar,
+            xsrf,
+            guard,
+            "Mozilla/5.0".to_string(),
+            base_url,
+        ));
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("tokio runtime");
+
+        let (got_connected, got_event) = rt.block_on(async {
+            let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
+            let (ev_tx, mut ev_rx) = tokio::sync::mpsc::unbounded_channel::<(i32, Vec<u8>)>();
+            let wc_task = tokio::spawn(wc.clone().run_forever(cancel_rx, move |kind, payload| {
+                let _ = ev_tx.send((kind, payload.to_vec()));
+            }));
+
+            let res = tokio::time::timeout(Duration::from_secs(5), async {
+                let mut saw_connected = false;
+                let mut decoded_event: Option<pb::Event> = None;
+                while let Some((kind, payload)) = ev_rx.recv().await {
+                    if kind == GCHAT_EVENT_KIND_CONNECTED {
+                        saw_connected = true;
+                    } else if kind == GCHAT_EVENT_KIND_EVENT_PROTO {
+                        decoded_event = Some(
+                            pb::Event::decode(payload.as_slice()).expect("decode emitted pb::Event"),
+                        );
+                    }
+                    if saw_connected && decoded_event.is_some() {
+                        break;
+                    }
+                }
+                (saw_connected, decoded_event)
+            })
+            .await;
+
+            let _ = cancel_tx.send(true);
+            let _ = wc_task.await;
+            res.expect("timed out waiting 5s for CONNECTED and event on held-open bind response")
+        });
+
+        server_thread.join().expect("server thread finished");
+        assert!(got_connected, "expected GCHAT_EVENT_KIND_CONNECTED");
+        let ev = got_event.expect("expected GCHAT_EVENT_KIND_EVENT_PROTO");
+        assert_eq!(wc.aid(), 1, "AID must advance to 1 from bind stream chunk");
+        let msg_text = ev
+            .body
+            .and_then(|b| match b.r#type {
+                Some(pb::event::event_body::Type::MessagePosted(mp)) => mp.message,
+                _ => None,
+            })
+            .and_then(|m| m.text_body);
+        assert_eq!(msg_text.as_deref(), Some("Hello from held-open bind stream"));
     }
     }
 
