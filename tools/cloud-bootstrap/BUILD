@@ -26,7 +26,6 @@ See tools/cloud-bootstrap/README.md and docs/admin/claude-code-cloud-sessions.md
 """
 
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 exports_files([
@@ -34,45 +33,63 @@ exports_files([
     "profiles.tsv",
 ])
 
-# The calling sh_binary bakes the subcommand as $1 (mirrors //tools/saas-cli and
-# //tools/sync-env-secrets). Flags a developer appends after `--` are forwarded.
-sh_binary(
+# One std-only crate (src/cloud_bootstrap/main.rs and its modules), so it also
+# builds with a single plain `rustc` call where Bazel does not exist yet. Each
+# subcommand is its own target with the subcommand baked in as the first
+# argument (as //tools/saas-cli and //tools/sync-env-secrets do); flags a
+# developer appends after `--` are forwarded.
+CLOUD_BOOTSTRAP_SRCS = glob(
+    ["src/cloud_bootstrap/*.rs"],
+    exclude = ["src/cloud_bootstrap/tests.rs"],
+)
+
+rust_binary(
     name = "cloud-bootstrap",
-    srcs = ["cloud-bootstrap.sh"],
+    srcs = CLOUD_BOOTSTRAP_SRCS,
     args = ["up"],
+    crate_root = "src/cloud_bootstrap/main.rs",
     data = ["profiles.tsv"],
+    edition = "2021",
     visibility = ["//visibility:public"],
 )
 
-sh_binary(
+rust_binary(
     name = "install",
-    srcs = ["cloud-bootstrap.sh"],
+    srcs = CLOUD_BOOTSTRAP_SRCS,
     args = ["install"],
+    crate_root = "src/cloud_bootstrap/main.rs",
     data = ["profiles.tsv"],
+    edition = "2021",
     visibility = ["//visibility:public"],
 )
 
-sh_binary(
+rust_binary(
     name = "auth",
-    srcs = ["cloud-bootstrap.sh"],
+    srcs = CLOUD_BOOTSTRAP_SRCS,
     args = ["auth"],
+    crate_root = "src/cloud_bootstrap/main.rs",
     data = ["profiles.tsv"],
+    edition = "2021",
     visibility = ["//visibility:public"],
 )
 
-sh_binary(
+rust_binary(
     name = "whoami",
-    srcs = ["cloud-bootstrap.sh"],
+    srcs = CLOUD_BOOTSTRAP_SRCS,
     args = ["whoami"],
+    crate_root = "src/cloud_bootstrap/main.rs",
     data = ["profiles.tsv"],
+    edition = "2021",
     visibility = ["//visibility:public"],
 )
 
-sh_binary(
+rust_binary(
     name = "profiles",
-    srcs = ["cloud-bootstrap.sh"],
+    srcs = CLOUD_BOOTSTRAP_SRCS,
     args = ["profiles"],
+    crate_root = "src/cloud_bootstrap/main.rs",
     data = ["profiles.tsv"],
+    edition = "2021",
     visibility = ["//visibility:public"],
 )
 
@@ -116,7 +133,7 @@ rust_test(
 
 # Hermetic guard for the properties whose failure would be a PRIVILEGE ESCALATION
 # or a SECRET LEAK -- not for the installers, which are network downloads whose
-# only interesting property is "did curl work". It drives the real script's auth
+# only interesting property is "did curl work". It drives the real binary's auth
 # path against a fake `gcloud` that records argv, and pins: an unset/unknown
 # profile bootstraps nothing (no implicit privileged default); a key whose
 # client_email is not the profile's declared account is REFUSED and, crucially,
@@ -129,8 +146,56 @@ rust_test(
 # build cache it pins the same two classes: the BuildBuddy key never reaching
 # argv, and a profile that does not declare it never getting the cache
 # configured -- plus the guards against a config that only looks enabled.
-sh_test(
+# session.env is read back by real bash, which is what every later shell does.
+rust_test(
     name = "cloud-bootstrap_test",
+    size = "small",
+    srcs = ["src/cloud_bootstrap/tests.rs"],
+    data = [
+        "profiles.tsv",
+        ":auth",
+    ],
+    edition = "2021",
+    env = {
+        "BIN": "$(rootpath :auth)",
+        "SHIPPED_PROFILES": "$(rootpath profiles.tsv)",
+    },
+)
+
+# The helpers' own unit tests (bash quoting, session.env parsing, base64, the
+# client_email and tokeninfo extraction).
+rust_test(
+    name = "cloud-bootstrap_unit_test",
+    size = "small",
+    crate = ":cloud-bootstrap",
+    edition = "2021",
+)
+
+# The crate builds with one plain `rustc` call (no crates, no Bazel inputs),
+# which is how a bare cloud VM builds it before Bazel exists. Type-checked here
+# with the toolchain's own rustc, so a new dependency fails CI, not session start.
+rust_test(
+    name = "cloud-bootstrap_rustc_test",
+    size = "small",
+    srcs = ["src/cloud_bootstrap_rustc_test.rs"],
+    data = CLOUD_BOOTSTRAP_SRCS + [
+        "@rules_rust//rust/toolchain:current_rust_stdlib_files",
+        "@rules_rust//rust/toolchain:current_rustc_files",
+        "@rules_rust//rust/toolchain:current_rustc_lib_files",
+    ],
+    edition = "2021",
+    env = {
+        "MAIN_RS": "$(rootpath src/cloud_bootstrap/main.rs)",
+        "RUSTC": "$(rootpath @rules_rust//rust/toolchain:current_rustc_files)",
+    },
+)
+
+# The shell implementation is still what .claude/session-start.sh runs, until
+# the follow-up that turns cloud-bootstrap.sh into a launcher for the Rust
+# binary (that file is on the guard-review list, so the switch needs James's
+# approval). Until then its own suite keeps guarding it.
+sh_test(
+    name = "cloud-bootstrap_sh_test",
     size = "small",
     srcs = ["cloud-bootstrap_test.sh"],
     data = [
