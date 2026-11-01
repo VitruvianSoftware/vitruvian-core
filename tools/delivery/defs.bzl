@@ -133,7 +133,7 @@ def delivery(
         satisfy, e.g. "SYNC_AUTH_AUTO_APPLY" — the opt-in switch a legacy job
         carries because its apply is off by default. Dropping it would turn
         "cleanly does not run" into "runs on every affected push".
-      soak: gate the promotion rungs on tools/ci/require-dev-soak.sh, which
+      soak: gate the promotion rungs on //tools/ci:require_dev_soak, which
         refuses to promote while the unit's DEVELOPMENT deploy is red. Requires
         promotion (there is no promotion rung to gate without it) and at least
         two environments (the ladder needs something to promote INTO).
@@ -219,7 +219,7 @@ def delivery(
     elif build_context or image_repository_path:
         fail("delivery(%s): build_context/image_repository_path apply to kind=\"cloud-run\" only" % name)
 
-    # The soak interlock (tools/ci/require-dev-soak.sh) refuses to PROMOTE
+    # The soak interlock (//tools/ci:require_dev_soak) refuses to PROMOTE
     # while development is red. Both preconditions below are the difference
     # between a gate and a decoration: with no promotion there is no rung to
     # hold back, and with a one-rung ladder the only environment IS the one the
