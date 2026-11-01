@@ -19,3 +19,23 @@ loads, so installing one is a link into `~/.gemini/config/plugins/`.
 These are not native macOS apps, so the release contract in
 [`apps/desktop/AGENTS.md`](../AGENTS.md) (DMGs, Homebrew cask, downloads
 catalog) does not apply to them.
+
+## Writing a hook
+
+Each plugin's hooks are std-only Rust in `hooks/src`, run through
+`hooks/rust-hook.sh`, which builds them with `rustc` in the background and
+caches the binary. The launcher, its test and `hooks/src/json.rs` are copied
+into every plugin and must stay byte-identical
+(`//apps/desktop/antigravity:shared_files_test`). The hooks.json shape, each
+guard's tool list and each hook's fallback are pinned in
+`//apps/desktop/antigravity:hooks_json_test`.
+
+- **A hook must always print a JSON answer, never nothing.** The launcher
+  treats empty output as a broken binary: it deletes it, rebuilds it, and
+  answers with the hook's fallback. On `PreToolUse` an empty answer would let
+  the call through, and `{}` denies it. If a hook has nothing to say, it
+  prints the event's neutral answer: `{"decision":"allow"}` for `PreToolUse`
+  and `Stop`, `{}` for the others.
+- **The fallback is the answer when the hook cannot run** (no rustc, still
+  building, a failed build). Word it so the agent and the user can tell the
+  plugin is not running, and never use `{}` for `PreToolUse`.

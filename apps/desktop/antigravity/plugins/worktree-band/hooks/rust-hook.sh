@@ -22,6 +22,10 @@
 # binary. The sources use only Rust's standard library, so a bare `rustc`
 # builds them: no cargo, no crates, no network.
 #
+# Every hook must answer with JSON: a binary that prints nothing is treated
+# as broken (removed and rebuilt), since on PreToolUse no answer would let
+# the call through.
+#
 # This always prints a valid answer and exits 0. Whenever the hook cannot run
 # (no rustc, building, a failed build, a broken cached binary, an unsafe cache
 # folder) it prints <fallback JSON>, which each hook words so the agent and the
@@ -97,7 +101,9 @@ if [ "${RUST_HOOK_BUILD:-}" = 1 ]; then
 	log=$RUST_HOOK_LOG
 	cache=$(dirname "$bin")
 	tmp=
-	trap 'rm -rf "$tmp" "$bin.lock"' EXIT
+	# Drop the lock only while it is still ours: after a takeover it belongs
+	# to the builder that replaced this one.
+	trap 'rm -rf "$tmp"; [ "$(cat "$bin.lock/pid" 2>/dev/null)" = "$$" ] && rm -rf "$bin.lock"' EXIT
 	trap 'exit 1' HUP INT TERM
 	# Tell the launcher this process is out of the hook's process group, and
 	# who holds the lock.
