@@ -203,53 +203,96 @@ pub fn curl_fetch(url: &str) -> Result<HttpResponse, String> {
 }
 
 /// The URL `celestrakTleUrl(group)` in src/data/spaceProviderRequests.js builds,
-/// read from that function's source: its `new URL('<base>')` and each
-/// `url.searchParams.set('<KEY>', <group | '<literal>'>)`, in order. Lets the
-/// test hold [`celestrak_group_url`] to the server's code, not to a copy of it.
+/// read from that function's source. Lets the test hold [`celestrak_group_url`]
+/// to the server's code, not to a copy of it.
+///
+/// The reading is strict, because a lenient one passes when the function
+/// changes in a way it does not understand. Each line of the body must be one
+/// of these, in this order, and anything else is an error:
+///
+///   const url = new URL('<base>');                         (exactly once, first)
+///   url.searchParams.set('<KEY>', group | '<literal>');    (any number, distinct keys)
+///   return url;                                            (exactly once, last)
+///
+/// Blank lines and `//` comment lines are skipped. The base must carry no
+/// query or fragment, so the result is the whole URL: path plus every query
+/// parameter, in order.
 pub fn server_group_url(source: &str, group: &str) -> Result<String, String> {
+    const HEAD: &str = "export function celestrakTleUrl(group) {";
     let start = source
-        .find("export function celestrakTleUrl(group) {")
+        .find(HEAD)
         .ok_or_else(|| "celestrakTleUrl(group) is not declared".to_string())?;
-    let rest = &source[start..];
-    let body = &rest[..rest.find("\n}").ok_or_else(|| "celestrakTleUrl has no end".to_string())?];
+    let rest = &source[start + HEAD.len()..];
+    let body = &rest[..rest
+        .find("\n}")
+        .ok_or_else(|| "celestrakTleUrl has no end".to_string())?];
 
-    let quoted = |s: &str| -> Option<String> {
-        let s = s.trim().strip_prefix('\'')?;
-        Some(s[..s.find('\'')?].to_string())
-    };
-    let base_at = body
-        .find("new URL(")
-        .ok_or_else(|| "celestrakTleUrl builds no URL".to_string())?;
-    let base = quoted(&body[base_at + "new URL(".len()..])
-        .ok_or_else(|| "celestrakTleUrl's base URL is not a literal".to_string())?;
+    /// `'<text>'` with nothing around it, and no quote or backslash inside.
+    fn literal(s: &str) -> Option<&str> {
+        let inner = s.strip_prefix('\'')?.strip_suffix('\'')?;
+        (!inner.contains('\'') && !inner.contains('\\')).then_some(inner)
+    }
 
-    let mut params = Vec::new();
-    let marker = "url.searchParams.set(";
-    let mut search = body;
-    while let Some(at) = search.find(marker) {
-        let call = &search[at + marker.len()..];
-        let close = call
-            .find(");")
-            .ok_or_else(|| "unterminated searchParams.set".to_string())?;
-        let (key, value) = call[..close]
-            .split_once(',')
-            .ok_or_else(|| "searchParams.set takes two arguments".to_string())?;
-        let key = quoted(key).ok_or_else(|| format!("key {} is not a literal", key.trim()))?;
-        let value = match value.trim() {
-            "group" => group.to_string(),
-            other => quoted(other).ok_or_else(|| format!("value {} is not a literal", other))?,
-        };
-        params.push(format!(
-            "{}={}",
-            url_encode_query_param(&key),
-            url_encode_query_param(&value)
-        ));
-        search = &call[close..];
+    let mut base: Option<String> = None;
+    let mut params: Vec<(String, String)> = Vec::new();
+    let mut returned = false;
+    for raw in body.lines() {
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with("//") {
+            continue;
+        }
+        let unrecognised = || format!("celestrakTleUrl: unrecognised statement `{line}`");
+        if returned {
+            return Err(format!("celestrakTleUrl: statement after return `{line}`"));
+        }
+        if let Some(arg) = line
+            .strip_prefix("const url = new URL(")
+            .and_then(|r| r.strip_suffix(");"))
+        {
+            if base.is_some() || !params.is_empty() {
+                return Err(unrecognised());
+            }
+            let b = literal(arg).ok_or_else(unrecognised)?;
+            if !b.starts_with("https://") || b.contains('?') || b.contains('#') {
+                return Err(format!("celestrakTleUrl: unexpected base URL `{b}`"));
+            }
+            base = Some(b.to_string());
+        } else if let Some(args) = line
+            .strip_prefix("url.searchParams.set(")
+            .and_then(|r| r.strip_suffix(");"))
+        {
+            if base.is_none() {
+                return Err(unrecognised());
+            }
+            let (key, value) = args.split_once(", ").ok_or_else(unrecognised)?;
+            let key = literal(key).ok_or_else(unrecognised)?.to_string();
+            let value = match value {
+                "group" => group.to_string(),
+                v => literal(v).ok_or_else(unrecognised)?.to_string(),
+            };
+            if params.iter().any(|(k, _)| *k == key) {
+                return Err(format!("celestrakTleUrl: {key} is set twice"));
+            }
+            params.push((key, value));
+        } else if line == "return url;" {
+            returned = true;
+        } else {
+            return Err(unrecognised());
+        }
+    }
+
+    let base = base.ok_or_else(|| "celestrakTleUrl builds no URL".to_string())?;
+    if !returned {
+        return Err("celestrakTleUrl does not return its URL".to_string());
     }
     if params.is_empty() {
         return Err("celestrakTleUrl sets no query parameters".to_string());
     }
-    Ok(format!("{}?{}", base, params.join("&")))
+    let query: Vec<String> = params
+        .iter()
+        .map(|(k, v)| format!("{}={}", url_encode_query_param(k), url_encode_query_param(v)))
+        .collect();
+    Ok(format!("{}?{}", base, query.join("&")))
 }
 
 /// The quoted strings in the array literal that `const <name> = [` opens; with

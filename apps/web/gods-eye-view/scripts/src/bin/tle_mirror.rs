@@ -114,10 +114,50 @@ mod tests {
                 "{group}"
             );
         }
+        // The whole URL, path and every parameter, as the server builds it.
+        assert_eq!(
+            server_group_url(&source, "gps-ops").unwrap(),
+            "https://celestrak.org/NORAD/elements/gp.php?GROUP=gps-ops&FORMAT=tle"
+        );
         assert_eq!(
             celestrak_group_url("gps-ops"),
             "https://celestrak.org/NORAD/elements/gp.php?GROUP=gps-ops&FORMAT=tle"
         );
+    }
+
+    /// Any change to celestrakTleUrl the reader does not understand is an
+    /// error, never a silent pass.
+    #[test]
+    fn server_url_reader_rejects_what_it_does_not_understand() {
+        let good = "export function celestrakTleUrl(group) {\n  const url = new URL('https://celestrak.org/NORAD/elements/gp.php');\n  url.searchParams.set('GROUP', group);\n  url.searchParams.set('FORMAT', 'tle');\n  return url;\n}\n";
+        assert_eq!(
+            server_group_url(good, "stations").unwrap(),
+            "https://celestrak.org/NORAD/elements/gp.php?GROUP=stations&FORMAT=tle"
+        );
+        let with = |from: &str, to: &str| {
+            assert!(good.contains(from), "{from}");
+            good.replacen(from, to, 1)
+        };
+        let ret = "  return url;";
+        let mutants = [
+            with(ret, "  url.searchParams.append('SPECIAL', 'x');\n  return url;"),
+            with(ret, "  url.pathname = '/NORAD/elements/other.php';\n  return url;"),
+            with(ret, "  url.hash = 'x';\n  return url;"),
+            with(ret, "  url.searchParams.delete('FORMAT');\n  return url;"),
+            with(ret, "  url.searchParams.set('GROUP', 'active');\n  return url;"),
+            with(ret, "  return url;\n  url.searchParams.set('X', 'y');"),
+            with(ret, "  return new URL(url);"),
+            with("url.searchParams.set('FORMAT', 'tle');", "url.searchParams.set('FORMAT', 'tle'); url.search = '';"),
+            with("url.searchParams.set('FORMAT', 'tle');", "url.searchParams.set('FORMAT', format);"),
+            with("gp.php');", "gp.php?X=1');"),
+            with("new URL('https://", "new URL(`https://"),
+        ];
+        for m in &mutants {
+            assert!(server_group_url(m, "stations").is_err(), "accepted:\n{m}");
+        }
+        // Comments and blank lines are not statements.
+        let commented = with(ret, "\n  // Stable for every caller.\n  return url;");
+        assert!(server_group_url(&commented, "stations").is_ok());
     }
 
     /// mirror.test.mjs: "a failed group keeps the file it had; good groups are
