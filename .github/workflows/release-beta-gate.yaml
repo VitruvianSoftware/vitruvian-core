@@ -20,8 +20,8 @@
 
 
 # Keep vitruvian's release PR out of auto-merge until the beta DMG has been
-# built for the exact code the release would tag (tools/ci/release-beta-gate.sh
-# has the decision and how it finds that build).
+# built for the exact code the release would tag (//tools/ci:release_beta_gate,
+# tools/ci/src/release_beta_gate, has the decision and how it finds that build).
 #
 # WHY A GATE AND NOT A HOLD. release-hold.yaml reacts to a RED development
 # deploy, so it can only stop a release PR that has not merged yet. For
@@ -94,6 +94,12 @@ jobs:
         with:
           private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
 
+      - name: Build //tools/ci:release_beta_gate (no Bazel on this job)
+        id: gate-bin
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: release_beta_gate
+
       - name: Gate vitruvian's release PR on the beta DMG
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -105,4 +111,5 @@ jobs:
           # vitruvian delivered through the shared delivery.yaml before the
           # per-app split; code that workflow built is judged by its runs.
           LEGACY_WORKFLOW: delivery.yaml
-        run: bash tools/ci/release-beta-gate.sh
+          GATE_BIN: ${{ steps.gate-bin.outputs.path }}
+        run: '"$GATE_BIN"'

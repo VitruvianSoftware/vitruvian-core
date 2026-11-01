@@ -160,7 +160,7 @@ jobs:
               run: |
                   # +e so a failing preview does not abort before we capture its
                   # exit code. --color=no --curses=no stops Bazel ANSI/cursor noise;
-                  # pulumi-summary.sh strips any residual pulumi color itself.
+                  # //tools/ci:pulumi_summary strips any residual pulumi color itself.
                   set +e -u -o pipefail
                   bazel run --color=no --curses=no \
                       //infrastructure/pulumi/platform/repo-config:preview -- --stack dev --diff \
@@ -172,7 +172,7 @@ jobs:
 
             # Structured digest (creates/updates/replaces/deletes, destructive
             # flagged) → step summary + the same sticky comment, replacing the
-            # prior raw-dump. pulumi-summary.sh cleans ANSI and parses only the
+            # prior raw-dump. //tools/ci:pulumi_summary cleans ANSI and parses only the
             # last `Resources:` section, so it takes the raw combined bazel log
             # directly (no pre-clean/section-extraction needed here).
             - name: Pulumi digest → summary + sticky comment

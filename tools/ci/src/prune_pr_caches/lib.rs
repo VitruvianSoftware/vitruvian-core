@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! prune-pr-caches.sh — delete GitHub Actions caches belonging to CLOSED pull
+//! prune-pr-caches — delete GitHub Actions caches belonging to CLOSED pull
 //! requests.
 
 use shell_compat::{capture, cat, env_or, env_or_empty, err, out, status, subst, which};

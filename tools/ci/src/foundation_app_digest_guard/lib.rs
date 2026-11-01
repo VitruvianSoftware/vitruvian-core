@@ -18,32 +18,31 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! foundation-app-digest-guard.sh — export per-app image digests for the
+//! foundation-app-digest-guard — export per-app image digests for the
 //! Pulumi program, and FAIL CLOSED if any workload enabled in
 //! Pulumi.production.yaml has no digest supplied.
 
 use shell_compat::{cat, err, out};
 
+const KEY: &[u8] = b"_workload_enabled:";
+
 /// Pure function: returns space-separated list of app names that are
 /// `_workload_enabled: "true"` in `pulumi_file_contents` but have no
 /// matching entry in `app_image_digests`.
+///
+/// Line for line the script's `grep -E '_workload_enabled: *"true"'` and
+/// `sed -E 's/.*:([a-z0-9-]+)_workload_enabled:.*/\1/'`. When the sed does not
+/// match (no `ns:` prefix, or a name outside `[a-z0-9-]`), the app "name" is
+/// the WHOLE line, which no digest pair ever matches: the line is reported
+/// missing and the guard fails closed.
 pub fn missing_digest_apps(pulumi_file_contents: &[u8], app_image_digests: &[u8]) -> Vec<u8> {
     let mut missing = Vec::new();
     let haystack = cat(&[b",", app_image_digests, b","]);
     for line in pulumi_file_contents.split(|&c| c == b'\n') {
-        let Some(we_pos) = find_subslice(line, b"_workload_enabled:") else {
-            continue;
-        };
-        let after_key = &line[we_pos + b"_workload_enabled:".len()..];
-        if !contains_enabled_true(after_key) {
+        if !enabled_true(line) {
             continue;
         }
-        let before = &line[..we_pos];
-        let colon_pos = match before.iter().rposition(|&c| c == b':') {
-            Some(p) => p,
-            None => continue,
-        };
-        let app = &before[colon_pos + 1..];
+        let app = app_name(line);
         if app.is_empty() {
             continue;
         }
@@ -59,6 +58,35 @@ pub fn missing_digest_apps(pulumi_file_contents: &[u8], app_image_digests: &[u8]
     missing
 }
 
+/// `_workload_enabled: *"true"` anywhere on the line: the key, any number of
+/// spaces, then `"true"` straight after. `"false" # "true"` is not enabled.
+fn enabled_true(line: &[u8]) -> bool {
+    (0..line.len()).any(|q| {
+        line[q..].starts_with(KEY) && {
+            let rest = &line[q + KEY.len()..];
+            let spaces = rest.iter().take_while(|&&c| c == b' ').count();
+            rest[spaces..].starts_with(b"\"true\"")
+        }
+    })
+}
+
+/// `s/.*:([a-z0-9-]+)_workload_enabled:.*/\1/`: greedy `.*:` takes the LAST
+/// colon that is followed by one or more `[a-z0-9-]` and then the key. No such
+/// colon: sed leaves the line as it is.
+fn app_name(line: &[u8]) -> &[u8] {
+    let ok = |c: u8| c.is_ascii_lowercase() || c.is_ascii_digit() || c == b'-';
+    for c in (0..line.len()).rev() {
+        if line[c] != b':' {
+            continue;
+        }
+        let run = line[c + 1..].iter().take_while(|&&b| ok(b)).count();
+        if run > 0 && line[c + 1 + run..].starts_with(KEY) {
+            return &line[c + 1..c + 1 + run];
+        }
+    }
+    line
+}
+
 fn find_subslice(hay: &[u8], needle: &[u8]) -> Option<usize> {
     if needle.is_empty() {
         return Some(0);
@@ -66,41 +94,40 @@ fn find_subslice(hay: &[u8], needle: &[u8]) -> Option<usize> {
     hay.windows(needle.len()).position(|w| w == needle)
 }
 
-fn contains_enabled_true(after_key: &[u8]) -> bool {
-    let trimmed = after_key
-        .iter()
-        .skip_while(|&&c| c == b' ')
-        .copied()
-        .collect::<Vec<u8>>();
-    find_subslice(&trimmed, b"\"true\"").is_some()
+fn append(file: &[u8], data: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    std::fs::OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(shell_compat::path(file))?
+        .write_all(data)
 }
 
 pub fn run(args: &[Vec<u8>]) -> i32 {
-    let app_image_digests = if !args.is_empty() {
-        args[0].clone()
-    } else {
-        Vec::new()
+    let app_image_digests = args.first().cloned().unwrap_or_default();
+    // `${2:?pulumi file required}`: missing OR empty stops before anything is
+    // exported.
+    let pulumi_file = match args.get(1) {
+        Some(p) if !p.is_empty() => p.clone(),
+        _ => {
+            err(b"foundation-app-digest-guard: pulumi file required\n");
+            return 1;
+        }
     };
-    let pulumi_file = if args.len() >= 2 {
-        args[1].clone()
-    } else {
-        err(b"pulumi file required\n");
-        return 2;
-    };
-
-    let github_env = shell_compat::env_or_empty("GITHUB_ENV");
 
     if !app_image_digests.is_empty() {
-        for pair in app_image_digests.split(|&c| c == b',') {
-            if pair.is_empty() {
-                continue;
-            }
-            let eq_pos = match pair.iter().position(|&c| c == b'=') {
-                Some(p) => p,
-                None => continue,
+        let github_env = shell_compat::env_or_empty("GITHUB_ENV");
+        // `IFS=',' read -ra pairs <<< "$digests"` reads the first line only.
+        let first_line = app_image_digests
+            .split(|&c| c == b'\n')
+            .next()
+            .unwrap_or_default();
+        for pair in first_line.split(|&c| c == b',') {
+            // `${pair%%=*}` / `${pair#*=}`: with no `=` both are the pair.
+            let (app, digest) = match pair.iter().position(|&c| c == b'=') {
+                Some(p) => (&pair[..p], &pair[p + 1..]),
+                None => (pair, pair),
             };
-            let app = &pair[..eq_pos];
-            let digest = &pair[eq_pos + 1..];
             if app.is_empty() || digest.is_empty() {
                 continue;
             }
@@ -115,37 +142,49 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
                 })
                 .collect();
             let var_line = cat(&[&var, b"_IMAGE_DIGEST"]);
-            if !github_env.is_empty() {
-                let entry = cat(&[&var_line, b"=", digest, b"\n"]);
-                let _ = std::fs::OpenOptions::new()
-                    .append(true)
-                    .create(true)
-                    .open(shell_compat::path(&github_env))
-                    .and_then(|mut f| {
-                        use std::io::Write;
-                        f.write_all(&entry)
-                    });
+            // The script ran under `set -eu`: an unset GITHUB_ENV, or one it
+            // cannot append to, stopped it with exit 1. A digest that never
+            // reaches the program would render the EMPTY image this guard
+            // exists to prevent, so this fails the same way.
+            if github_env.is_empty() {
+                err(b"foundation-app-digest-guard: GITHUB_ENV is not set; cannot export the image digests\n");
+                return 1;
+            }
+            if let Err(e) = append(&github_env, &cat(&[&var_line, b"=", digest, b"\n"])) {
+                err(&cat(&[
+                    b"foundation-app-digest-guard: cannot write GITHUB_ENV: ",
+                    e.to_string().as_bytes(),
+                    b"\n",
+                ]));
+                return 1;
             }
             out(&cat(&[b"exporting ", &var_line, b"\n"]));
         }
     }
 
+    // Deliberately STRICTER than the script, which read the file with a bare
+    // `$(cat ...)`: a missing file read as "no workloads enabled" and the
+    // guard printed OK. A deploy guard that cannot read its input must not
+    // pass.
     let contents = match std::fs::read(shell_compat::path(&pulumi_file)) {
         Ok(c) => c,
         Err(e) => {
-            err(&cat(&[
-                b"could not read pulumi file: ",
+            out(&cat(&[
+                b"::error::digest guard: cannot read ",
+                &pulumi_file,
+                b": ",
                 e.to_string().as_bytes(),
                 b"\n",
             ]));
-            return 2;
+            return 1;
         }
     };
 
     let missing = missing_digest_apps(&contents, &app_image_digests);
     if !missing.is_empty() {
-        err(&cat(&[
-            b"::error::workload enabled but no image digest supplied for: ",
+        // stdout, like the script's echo: the runner reads ::error:: there.
+        out(&cat(&[
+            b"::error::workload enabled but no image digest supplied for:",
             &missing,
             b" \xe2\x80\x94 deploying would render an EMPTY image and strip it off the live service. Pass app_image_digests as '<app>=<ref>'.\n",
         ]));
@@ -202,5 +241,21 @@ mod tests {
             b"oauth-user-inspector=sha256:aaa,mcp-slack=sha256:bbb,unrelated-app=sha256:zzz",
         );
         assert_eq!(got, b"");
+    }
+
+    #[test]
+    fn a_name_the_sed_cannot_read_is_reported_whole() {
+        // No `ns:` prefix, and a name outside [a-z0-9-]: the script's sed
+        // leaves the line as is, so it is missing and the guard fails closed.
+        let got = missing_digest_apps(b"  b_workload_enabled: \"true\"\n", b"b=1");
+        assert_eq!(got, b"  b_workload_enabled: \"true\"");
+        let got = missing_digest_apps(b"  ns:My_App_workload_enabled: \"true\"\n", b"My_App=1");
+        assert_eq!(got, b"  ns:My_App_workload_enabled: \"true\"");
+    }
+
+    #[test]
+    fn true_must_follow_the_key() {
+        let pf = b"  ns:x_workload_enabled: \"false\" # \"true\"\n  ns:y_workload_enabled:\"true\"\n  ns:z_workload_enabled:   \"true\"\r\n";
+        assert_eq!(missing_digest_apps(pf, b""), b"y z");
     }
 }
