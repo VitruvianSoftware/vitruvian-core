@@ -453,7 +453,17 @@ const SECURITY_SECRET_FLAGS: [(&str, &str); 6] = [
 /// `password`, …), or `api`/`access`/`private`/`secret` followed by `key`.
 /// `key` alone is not one: `keychain`, `key-id` and `cache_key` stay.
 pub fn is_secret_name(name: &str) -> bool {
-    let lower = name.to_ascii_lowercase();
+    // Words also break where a lower-case letter meets an upper-case one, so
+    // `accessToken`, `clientSecret` and `SecretAccessKey` count.
+    let mut lower = String::with_capacity(name.len() + 4);
+    let mut prev_lower = false;
+    for c in name.chars() {
+        if prev_lower && c.is_ascii_uppercase() {
+            lower.push(' ');
+        }
+        prev_lower = c.is_ascii_lowercase();
+        lower.push(c.to_ascii_lowercase());
+    }
     let words: Vec<&str> = lower
         .split(|c: char| !c.is_ascii_alphanumeric())
         .filter(|w| !w.is_empty())
@@ -744,7 +754,9 @@ fn curl_option(arg: &str) -> CurlOption<'_> {
 /// members of a JSON body ([`redact_json_secrets`]) and GitHub tokens
 /// ([`redact_github_tokens`]) included wherever they sit in it.
 fn redact_arg(arg: &str) -> String {
-    redact_github_tokens(&redact_json_secrets(&redact_arg_by_shape(arg)))
+    // JSON first: the `name=value` rule would read `{"token":"QUJD` as a
+    // name and hide only what follows a `=` in the value.
+    redact_github_tokens(&redact_arg_by_shape(&redact_json_secrets(arg)))
 }
 
 /// `text` with the value of every JSON member whose key [`is_secret_name`]
@@ -833,7 +845,8 @@ pub fn redact_json_secrets(text: &str) -> String {
                 if end > v + 1 && !text[v + 1..end].contains(REDACTED) {
                     spans.push((v + 1, end, REDACTED));
                 }
-                i = end;
+                // Past the closing quote, so the next key's quotes pair up.
+                i = end + 1;
             }
             b'{' | b'[' => {
                 let end = container_end(v);
@@ -1060,13 +1073,15 @@ pub fn redact_credentials_in_text(text: &str) -> String {
                 }
             }
         }
-        // A quoted value runs to its closing quote, blanks and all.
+        // A quoted value runs to its closing quote, blanks and `\` escapes
+        // (`"ab\"cd"`) and all.
         let e = match quote {
             Some(q) => {
-                j + b[j..]
-                    .iter()
-                    .take_while(|c| **c != q && **c != b'\n' && **c != b'\r')
-                    .count()
+                let mut k = j;
+                while k < b.len() && b[k] != q && b[k] != b'\n' && b[k] != b'\r' {
+                    k += if b[k] == b'\\' { 2 } else { 1 };
+                }
+                k.min(b.len())
             }
             None => cred_end(j),
         };
@@ -2306,6 +2321,113 @@ mod tests {
             r.stderr.contains(
                 "response: {\"id\": 7, \"token\": \"<redacted>\"}\n{\"password\": \"<redacted>\n"
             ),
+            "{:?}",
+            r.stderr
+        );
+    }
+
+    #[test]
+    fn every_secret_on_a_json_line_is_hidden_not_only_the_first() {
+        assert_eq!(
+            red(
+                "curl",
+                &[
+                    "--data",
+                    r#"{"client_id":"c","client_secret":"SECRET-1","refresh_token":"SECRET-2"}"#,
+                    "--json",
+                    r#"{"token":"","password":"SECRET-AFTER-EMPTY"}"#,
+                ]
+            ),
+            concat!(
+                r#"curl --data {"client_id":"c","client_secret":"<redacted>","refresh_token":"<redacted>"}"#,
+                r#" --json {"token":"","password":"<redacted>"}"#,
+            )
+        );
+        let mut r = FakeRunner::new(|_| {
+            Out::fail(
+                1,
+                "{\"token\":\"SECRET-O1\",\"expires_at\":\"2026\",\"secret\":\"SECRET-O2\"}\n",
+            )
+        });
+        let _ = capture(&mut r, &Cmd::new("tool"));
+        assert!(
+            r.stderr.contains(
+                "{\"token\":\"<redacted>\",\"expires_at\":\"2026\",\"secret\":\"<redacted>\"}\n"
+            ),
+            "{:?}",
+            r.stderr
+        );
+    }
+
+    #[test]
+    fn an_equals_sign_inside_a_json_value_does_not_cut_its_hiding_short() {
+        // Base64 padding: the `name=value` rule must not judge
+        // `{"token":"QUJD` as a name and hide only what follows the `=`.
+        assert_eq!(
+            red(
+                "curl",
+                &[
+                    "--data",
+                    r#"{"token":"SECRET-QUJD=="}"#,
+                    "--json",
+                    r#"{"password":"SECRET-pa=ss"}"#,
+                    r#"--json={"token":"SECRET-EQ=="}"#,
+                    "--json",
+                    r#"{"query":"a=b"}"#,
+                ]
+            ),
+            concat!(
+                r#"curl --data {"token":"<redacted>"}"#,
+                r#" --json {"password":"<redacted>"}"#,
+                r#" --json={"token":"<redacted>"}"#,
+                r#" --json {"query":"a=b"}"#,
+            )
+        );
+    }
+
+    #[test]
+    fn camel_and_pascal_case_secret_names_count() {
+        for name in [
+            "accessToken",
+            "refreshToken",
+            "clientSecret",
+            "privateKey",
+            "idToken",
+            "SessionToken",
+            "SecretAccessKey",
+        ] {
+            assert!(is_secret_name(name), "{}", name);
+            let body = format!(r#"{{"{}":"SECRET-CC"}}"#, name);
+            assert_eq!(
+                red("curl", &["--json", &body]),
+                format!(r#"curl --json {{"{}":"<redacted>"}}"#, name),
+            );
+        }
+        // Words split at a case change only; these stay harmless.
+        for name in [
+            "keyChain",
+            "tokenizerVersion",
+            "GitHubRepo",
+            "cacheKey",
+            "KEYCHAIN_PATH",
+        ] {
+            assert!(!is_secret_name(name), "{}", name);
+        }
+    }
+
+    #[test]
+    fn an_escaped_quote_inside_a_secret_value_in_output_does_not_end_its_hiding() {
+        let mut r = FakeRunner::new(|_| {
+            Out::fail(
+                1,
+                "{\"client_secret\":\"ab\\\"SECRET-ESC\"}\nx-api-key: \"cd\\\"SECRET-HDR\"\n",
+            )
+        });
+        let _ = capture(&mut r, &Cmd::new("tool"));
+        assert!(!r.stderr.contains("SECRET"), "{:?}", r.stderr);
+        assert!(
+            r.stderr
+                .contains("{\"client_secret\":\"<redacted>\"}\nx-api-key: \"<redacted>\"\n"),
             "{:?}",
             r.stderr
         );
