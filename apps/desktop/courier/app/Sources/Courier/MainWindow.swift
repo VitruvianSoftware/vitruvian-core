@@ -64,6 +64,8 @@ struct MainWindow: View {
     var detachedWindows: DetachedWindowRegistry? = nil
     @ObservedObject var hotkeys: HotkeyRegistry
     var hotkeyDispatcher: HotkeyDispatcher? = nil
+    var commandBar: CommandBarModel? = nil
+    var appearance: AppearancePreferences? = nil
     var onOpenShortcutsSettings: () -> Void = {}
     @Environment(\.openWindow) private var openWindow
     @Environment(\.controlActiveState) private var controlActiveState
@@ -74,7 +76,24 @@ struct MainWindow: View {
                 .frame(minWidth: 480, maxWidth: .infinity, minHeight: 320, maxHeight: .infinity)
                 .overlay {
                     if search.phase != .closed {
-                        SearchOverlay(search: search, inbox: inbox, composerPreferences: composerPreferences)
+                        SearchOverlay(
+                            search: search,
+                            inbox: inbox,
+                            composerPreferences: composerPreferences,
+                            onOpenCommandBar: { initialQuery in
+                                commandBar?.open(initialQuery: initialQuery)
+                            }
+                        )
+                    }
+                }
+                .overlay {
+                    if let commandBar, commandBar.isPresented {
+                        CommandBarOverlay(model: commandBar)
+                    }
+                }
+                .overlay {
+                    if let appearance {
+                        ConfettiOverlayView(triggerCount: appearance.confettiTriggerCount)
                     }
                 }
                 .overlay {
@@ -137,6 +156,7 @@ struct MainWindow: View {
                 .onDisappear {
                     ui.isMainWindowKey = false
                     search.close()
+                    commandBar?.close()
                     conversation.composer.voiceRecorder.cancelImmediately()
                     conversation.thread.composer.voiceRecorder.cancelImmediately()
                     conversation.composer.isStickerPickerPresented = false

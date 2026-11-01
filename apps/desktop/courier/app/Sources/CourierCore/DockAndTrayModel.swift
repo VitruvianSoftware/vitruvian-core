@@ -161,6 +161,7 @@ public final class AppMenuCoordinator: ObservableObject {
     @Published public private(set) var focusCount: Int = 0
     @Published public private(set) var quitRequestedCount: Int = 0
     public let settingsNavigation: SettingsNavigationModel
+    public var onOpenCommandBar: @MainActor () -> Void = {}
 
     public let inbox: InboxModel
     public let lifecycle: SystemLifecycleModel
@@ -262,6 +263,12 @@ public final class AppMenuCoordinator: ObservableObject {
         guard !lifecycle.isLocked else { return }
         showMainWindow()
         inbox.openStartNewChat()
+    }
+
+    public func openCommandBar() {
+        guard !lifecycle.isLocked else { return }
+        showMainWindow()
+        onOpenCommandBar()
     }
 
     public func openChatInNewWindow() {

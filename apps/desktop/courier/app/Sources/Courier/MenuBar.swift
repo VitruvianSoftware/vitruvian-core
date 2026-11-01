@@ -70,6 +70,15 @@ struct MenuBarMenu: View {
         }
         Divider()
         Button(String(localized: "Open Courier"), action: openCourier)
+        Button(String(localized: "Command Bar…")) {
+            if let hotkeyDispatcher {
+                _ = hotkeyDispatcher.perform(HotkeyID.commandBar)
+            } else {
+                menuCoordinator.openCommandBar()
+            }
+        }
+        .registryShortcut(HotkeyID.commandBar, in: hotkeys)
+        .disabled(lifecycle.isLocked || (hotkeyDispatcher.map { !$0.canPerform(HotkeyID.commandBar) } ?? false))
         Button(String(localized: "Minimize to Menu Bar")) {
             if let hotkeyDispatcher {
                 _ = hotkeyDispatcher.perform("Minimize To Menu Bar")

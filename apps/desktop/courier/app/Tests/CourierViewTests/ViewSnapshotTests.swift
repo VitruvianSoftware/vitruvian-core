@@ -4799,6 +4799,100 @@ final class ViewSnapshotTests: XCTestCase {
             .background(Color(nsColor: .windowBackgroundColor))
         }
     }
+
+    func testCommandBarOverlaySnapshotsLightAndDark() throws {
+        let suite = defaults()
+        let app = offlineApp()
+        let inbox = InboxModel(appModel: app, preferences: InboxPreferences(defaults: suite))
+        inbox.select(Fixture.room)
+        let spaces = SpacesModel(appModel: app, inbox: inbox)
+        let appearance = AppearancePreferences(defaults: suite)
+
+        let makeModel = { () -> CommandBarModel in
+            let model = CommandBarModel(defaults: suite)
+            model.commandsProvider = {
+                CommandSet.all(inbox: inbox, spaces: spaces, appearance: appearance)
+            }
+            model.recentChatsProvider = {
+                [
+                    Fixture.row("!dm-alice:courier.local", "Alice Example", network: "signal", ts: 5, preview: "See you at 8 AM"),
+                    Fixture.row("!grp-trail:courier.local", "Weekend Trail Crew", network: "whatsapp", direct: false, ts: 15, preview: "Bob: Packing snacks"),
+                    Fixture.row("!dm-carol:courier.local", "Carol Chen", network: "telegram", ts: 30, preview: "Sent a photo"),
+                ]
+            }
+            return model
+        }
+
+        // 1. Empty query with recent commands & categories
+        let emptyModel = makeModel()
+        emptyModel.open()
+        if let sidebarCmd = emptyModel.displayedCommands.first(where: { $0.id == "nav.toggleSidebar" }) {
+            emptyModel.execute(sidebarCmd)
+        }
+        emptyModel.open()
+        try assertLightAndDarkSnapshot("m47-command-bar-empty", width: 640, height: 480) {
+            CommandBarOverlay(model: emptyModel)
+                .frame(width: 640, height: 480)
+                .background(Color(nsColor: .windowBackgroundColor))
+        }
+
+        // 2. Filtered query ("archive")
+        let filteredModel = makeModel()
+        filteredModel.open(initialQuery: "archive")
+        try assertLightAndDarkSnapshot("m47-command-bar-filtered", width: 640, height: 420) {
+            CommandBarOverlay(model: filteredModel)
+                .frame(width: 640, height: 420)
+                .background(Color(nsColor: .windowBackgroundColor))
+        }
+
+        // 3. Drilled into sub-commands ("Filter Chats")
+        let drilledModel = makeModel()
+        drilledModel.open()
+        guard let filterCmd = drilledModel.displayedCommands.first(where: { $0.id == "Filter Chats" }) else {
+            XCTFail("Missing Filter Chats")
+            return
+        }
+        drilledModel.execute(filterCmd)
+        XCTAssertEqual(drilledModel.breadcrumb.map(\.title), ["Filter Chats"])
+        try assertLightAndDarkSnapshot("m47-command-bar-drilled-subcommands", width: 640, height: 420) {
+            CommandBarOverlay(model: drilledModel)
+                .frame(width: 640, height: 420)
+                .background(Color(nsColor: .windowBackgroundColor))
+        }
+
+        // 4. Recently viewed chats mode + destructive confirmation banner
+        let recentChatsModel = makeModel()
+        recentChatsModel.open()
+        guard let deleteMedia = recentChatsModel.displayedCommands.first(where: { $0.id == "Delete Media…" }),
+              let recentChatsCmd = recentChatsModel.displayedCommands.first(where: { $0.id == "recent.openRecentlyViewedChats" }) else {
+            XCTFail("Missing Delete Media… or recent.openRecentlyViewedChats")
+            return
+        }
+        recentChatsModel.execute(recentChatsCmd)
+        recentChatsModel.pendingConfirmation = deleteMedia
+        try assertLightAndDarkSnapshot("m47-command-bar-recent-chats", width: 640, height: 440) {
+            CommandBarOverlay(model: recentChatsModel)
+                .frame(width: 640, height: 440)
+                .background(Color(nsColor: .windowBackgroundColor))
+        }
+
+        // 5. SearchPanel with "Commands ⌘J" switch button
+        let searchModel = SearchModel(appModel: app, recents: RecentSearches(defaults: suite), open: { _ in })
+        searchModel.show()
+        searchModel.text = "mountain"
+        var switchedQuery: String?
+        try assertLightAndDarkSnapshot("m47-search-panel-commands-switch", width: 680, height: 260) {
+            SearchPanel(
+                search: searchModel,
+                inbox: inbox,
+                maxHeight: 220,
+                onOpenCommandBar: { query in switchedQuery = query }
+            )
+            .padding(16)
+            .background(Color(nsColor: .windowBackgroundColor))
+        }
+        XCTAssertNil(switchedQuery)
+    }
 }
 
 private struct SnapshotLoginItemService: LoginItemService {

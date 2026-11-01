@@ -10,6 +10,7 @@ struct SearchOverlay: View {
     @ObservedObject var search: SearchModel
     @ObservedObject var inbox: InboxModel
     @ObservedObject var composerPreferences: ComposerPreferences = ComposerPreferences()
+    var onOpenCommandBar: ((String) -> Void)? = nil
 
     var body: some View {
         GeometryReader { proxy in
@@ -22,7 +23,8 @@ struct SearchOverlay: View {
                     search: search,
                     inbox: inbox,
                     composerPreferences: composerPreferences,
-                    maxHeight: proxy.size.height * 0.7
+                    maxHeight: proxy.size.height * 0.7,
+                    onOpenCommandBar: onOpenCommandBar
                 )
                     .padding(.top, max(16, proxy.size.height * 0.06))
             }
@@ -37,6 +39,7 @@ struct SearchPanel: View {
     @ObservedObject var composerPreferences: ComposerPreferences = ComposerPreferences()
     /// 70% of the window's height: the panel grows with its rows up to this.
     let maxHeight: CGFloat
+    var onOpenCommandBar: ((String) -> Void)? = nil
     @State private var rowsHeight: CGFloat = 0
 
     static let width: CGFloat = 640
@@ -72,6 +75,14 @@ struct SearchPanel: View {
         .contentShape(RoundedRectangle(cornerRadius: 12))
         // Esc while a filter's menu or a button has the keyboard, as in the field.
         .onExitCommand { _ = search.escape() }
+        .onChange(of: search.text) { _, newValue in
+            if newValue.hasPrefix(">") {
+                let forwarded = String(newValue.dropFirst()).trimmingCharacters(in: .whitespaces)
+                search.text = ""
+                search.close()
+                onOpenCommandBar?(forwarded)
+            }
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(String(localized: "Search"))
     }
@@ -90,6 +101,30 @@ struct SearchPanel: View {
             }
             SearchField(text: $search.text, placeholder: placeholder, command: command)
                 .frame(height: 24)
+            if let onOpenCommandBar {
+                Button {
+                    let current = search.text
+                    search.close()
+                    onOpenCommandBar(current)
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "command")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text(String(localized: "Commands ⌘J"))
+                            .font(.system(size: 11, weight: .medium))
+                    }
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        Capsule()
+                            .fill(Color.primary.opacity(0.07))
+                    )
+                }
+                .buttonStyle(.plain)
+                .help(String(localized: "Switch to Command Bar (⌘J)"))
+                .accessibilityIdentifier("search.switchToCommandBar")
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)

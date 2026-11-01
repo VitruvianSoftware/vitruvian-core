@@ -18,6 +18,8 @@ struct CourierApp: App {
                        focus: delegate.messageFocus, detachedWindows: delegate.detachedWindows,
                        hotkeys: delegate.hotkeys,
                        hotkeyDispatcher: delegate.hotkeyDispatcher,
+                       commandBar: delegate.commandBar,
+                       appearance: delegate.appearance,
                        onOpenShortcutsSettings: {
                            delegate.settingsNavigation.openPane(.hotkeys)
                            delegate.menuCoordinator.openSettings(.shortcuts)
