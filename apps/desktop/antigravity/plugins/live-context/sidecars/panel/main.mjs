@@ -22,8 +22,9 @@
 
 // Backend for the live-context sidecar panel. Maintains a cached Git & GitHub
 // snapshot in ~/.gemini/antigravity/live-context-state/snapshot.json and active
-// response contract settings in settings.json so hooks/inject-live-context.sh
-// and hooks/verify-response-shape.sh execute instantaneously.
+// response contract settings in settings.json. The hooks (hooks/src, Rust)
+// read both; the PreInvocation hook re-asks gh itself when this snapshot is
+// over two minutes old, so the panel need not be open.
 
 import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -202,10 +203,9 @@ async function refreshSnapshot() {
     ]);
     git.branch = branchOut.stdout.trim();
     git.headSha = shaOut.stdout.trim();
-    const statusLines = statusOut.stdout
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter(Boolean);
+    // Porcelain lines are "XY path": the path starts at column 3, so the
+    // status must not be trimmed first (" M a" would lose the "a").
+    const statusLines = statusOut.stdout.split(/\r?\n/).filter((l) => l.trim());
     git.dirtyCount = statusLines.length;
     git.dirtyFiles = statusLines.slice(0, 8).map((l) => l.slice(3).trim());
   } catch {

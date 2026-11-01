@@ -1,8 +1,8 @@
 // Copyright (c) 2026 VitruvianSoftware
 // SPDX-License-Identifier: MIT
 
-use live_context_sidecar::build_ephemeral_context_payload;
 use live_context_sidecar::openui::{compile_to_html, to_openui_lang, RenderOpts};
+use live_context_sidecar::{build_ephemeral_context_payload, json as hook_json};
 use serde_json::{json, Value};
 use std::io::{self, Read};
 
@@ -23,11 +23,13 @@ fn main() {
 
     match cmd {
         "summarise" => {
+            // The hook library has its own std-only JSON type.
+            let input = hook_json::parse(&input.to_string()).unwrap_or_default();
             let git = input.get("git").and_then(|v| v.as_object());
             let github = input.get("github").and_then(|v| v.as_object());
             let settings = input.get("settings").and_then(|v| v.as_object());
             let out = build_ephemeral_context_payload(git, github, settings);
-            println!("{}", serde_json::to_string(&out).unwrap_or_default());
+            println!("{out}");
         }
         "html" => {
             let dsl = to_openui_lang(&input);
