@@ -1252,6 +1252,30 @@ mod tests {
     }
 
     #[test]
+    fn fresh_snapshot_without_a_pr_list_is_not_served_as_none() {
+        // A snapshot written by something that never asked GitHub (the
+        // panel's defaults, a partial write) has no openPrs. Even when fresh
+        // it is not an answer: ask gh, and if that fails say "unknown".
+        for github in [
+            r#"{"repo":"VitruvianSoftware/vitruvian-core"}"#,
+            r#"{"repo":"VitruvianSoftware/vitruvian-core","openPrs":null}"#,
+            r#"{}"#,
+        ] {
+            let dir = temp_dir("fresh-no-list");
+            let snap = format!(
+                r#"{{"updatedAt":{},"git":{{}},"github":{github}}}"#,
+                NOW - 1_000.0
+            );
+            fs::write(dir.join("snapshot.json"), snap).unwrap();
+            let tools = FakeTools::new(true, false);
+            let msg = message(&inject(&dir, PAYLOAD, &tools));
+            assert!(!msg.contains("(none)"), "{github}:\n{msg}");
+            assert!(msg.contains(GITHUB_UNKNOWN), "{github}:\n{msg}");
+            assert_eq!(tools.gh_calls(), 3, "{github}");
+        }
+    }
+
+    #[test]
     fn snapshot_from_the_future_is_not_trusted() {
         let mut snap = map(SNAPSHOT_EMPTY);
         snap.insert("updatedAt", NOW + 86_400_000.0);

@@ -178,8 +178,9 @@ fi
 
 if [ -f "$bin" ]; then
 	# Read the payload exactly (keeping trailing newlines), then run the hook
-	# on it. If the binary cannot run, or dies without answering, throw it
-	# away so the next run rebuilds, and answer with the fallback.
+	# on it. Every hook answers with JSON, so a binary that cannot run, or
+	# exits with no answer (even with status 0: an empty answer is not a
+	# verdict), is thrown away to rebuild, and the fallback answers instead.
 	payload=$(
 		cat
 		printf x
@@ -187,8 +188,7 @@ if [ -f "$bin" ]; then
 	payload=${payload%x}
 	out=$(printf '%s' "$payload" | "$bin")
 	status=$?
-	if [ "$status" -eq 126 ] || [ "$status" -eq 127 ] ||
-		{ [ "$status" -ne 0 ] && [ -z "$out" ]; }; then
+	if [ "$status" -eq 126 ] || [ "$status" -eq 127 ] || [ -z "$out" ]; then
 		rm -f "$bin"
 		printf '%s hook (%s): the cached hook failed (exit %s); removed it to rebuild\n' \
 			"$plugin" "$name" "$status" >&2
@@ -207,7 +207,7 @@ if [ -f "$bin.failed" ] && recent "$bin.failed" "$retry_min"; then
 fi
 [ -n "$(rustcs)" ] ||
 	answer_fallback "rustc not found, so the hook cannot be built. Install Rust from https://rustup.rs"
-# A lock is live while its builder runs (for at most 2 minutes), or for the
+# A lock is live while its builder runs (for at most 30 minutes), or for the
 # few seconds before a just-started builder records itself. A lock left by a
 # hook killed in that window, or by a builder that died, is taken over.
 if [ -d "$bin.lock" ]; then
@@ -216,7 +216,7 @@ if [ -d "$bin.lock" ]; then
 	pid=$(cat "$bin.lock/pid" 2>/dev/null)
 	age=$((now - since))
 	if [ -n "$pid" ]; then
-		if kill -0 "$pid" 2>/dev/null && [ "$age" -lt 120 ]; then
+		if kill -0 "$pid" 2>/dev/null && [ "$age" -lt 1800 ]; then
 			answer_fallback "being built in the background; see $log"
 		fi
 	elif [ "$age" -lt 5 ]; then
