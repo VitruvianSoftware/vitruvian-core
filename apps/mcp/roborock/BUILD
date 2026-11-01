@@ -57,7 +57,6 @@ rust_binary(
     srcs = ["rust_src/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-    visibility = ["//visibility:public"],
     deps = [":roborock_lib"],
 )
 
