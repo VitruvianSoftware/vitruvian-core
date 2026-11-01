@@ -399,13 +399,15 @@ pub fn run_command(
 }
 
 /// Reads branch, HEAD and the dirty files of the repository at `workspace`.
+/// `--no-optional-locks`: a status every turn must never take the index lock
+/// (or rewrite the index) under a git command the user is running.
 /// `None` when it is not a repository or git did not answer in time.
 pub fn probe_git(workspace: &Path, run: &Runner<'_>) -> Option<Map> {
     let (branch, sha, status) = thread::scope(|s| {
         let branch = s.spawn(|| {
             run(
                 "git",
-                &["rev-parse", "--abbrev-ref", "HEAD"],
+                &["--no-optional-locks", "rev-parse", "--abbrev-ref", "HEAD"],
                 Some(workspace),
                 GIT_TIMEOUT,
             )
@@ -413,7 +415,7 @@ pub fn probe_git(workspace: &Path, run: &Runner<'_>) -> Option<Map> {
         let sha = s.spawn(|| {
             run(
                 "git",
-                &["rev-parse", "--short", "HEAD"],
+                &["--no-optional-locks", "rev-parse", "--short", "HEAD"],
                 Some(workspace),
                 GIT_TIMEOUT,
             )
@@ -421,7 +423,7 @@ pub fn probe_git(workspace: &Path, run: &Runner<'_>) -> Option<Map> {
         let status = s.spawn(|| {
             run(
                 "git",
-                &["status", "--porcelain"],
+                &["--no-optional-locks", "status", "--porcelain"],
                 Some(workspace),
                 GIT_TIMEOUT,
             )
@@ -1126,9 +1128,9 @@ mod tests {
             match program {
                 "git" if self.git_ok => Some(
                     match args {
-                        ["rev-parse", "--abbrev-ref", _] => "feat/x\n",
-                        ["rev-parse", "--short", _] => "abc1234\n",
-                        ["status", ..] => " M src/a.rs\n?? new.txt\n",
+                        ["--no-optional-locks", "rev-parse", "--abbrev-ref", _] => "feat/x\n",
+                        ["--no-optional-locks", "rev-parse", "--short", _] => "abc1234\n",
+                        ["--no-optional-locks", "status", ..] => " M src/a.rs\n?? new.txt\n",
                         _ => "",
                     }
                     .to_string(),

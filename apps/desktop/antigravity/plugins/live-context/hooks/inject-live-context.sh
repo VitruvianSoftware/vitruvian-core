@@ -11,4 +11,4 @@
 # runs it. If it cannot, the message below says the state is unknown.
 
 exec "$(dirname "$0")/rust-hook.sh" live_context_hooks bin/inject_live_context.rs \
-	'{"injectSteps":[{"ephemeralMessage":"live-context could not run this turn: its hook is built with rustc on first use, and that failed (details in ~/.cache/antigravity-plugins). Live Git and GitHub state is UNKNOWN: do not state branch, PR or issue status without querying it first."}]}'
+	'{"injectSteps":[{"ephemeralMessage":"live-context did not run this turn: its hook is still being built with rustc, or cannot be (details in ~/.cache/antigravity-plugins). Live Git and GitHub state is UNKNOWN: do not state branch, PR or issue status without querying it first."}]}'
