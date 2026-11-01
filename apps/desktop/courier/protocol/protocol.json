@@ -1,10 +1,10 @@
 {
   "name": "Courier engine protocol",
-  "protocol": 11,
+  "protocol": 12,
   "doc": "How Courier.app talks to its courier-engine helper. This file is the single definition: the engine's Go tests and the app's Swift tests both check the examples in examples/ against it, and the Swift Codable types are named exactly as the entries in types. Copyright 2026 VitruvianSoftware, SPDX-License-Identifier: AGPL-3.0-or-later.",
 
   "transport": {
-    "socket": "A Unix stream socket at <data dir>/engine.sock, mode 0600, in a 0700 directory. Nothing listens on TCP.",
+    "socket": "A Unix stream socket at <data dir>/engine.sock, mode 0600, in a 0700 directory. This protocol never goes over TCP. (The local API, MCP for other apps, is separate: it listens on TCP only when integrations.update turns it on.)",
     "framing": "JSON-RPC 2.0. Each message is one UTF-8 JSON object on one line, ended by a single \\n. A line is at most max_frame_bytes bytes, not counting the \\n.",
     "max_frame_bytes": 4194304,
     "oversize": "A line longer than max_frame_bytes closes the connection. Nothing is answered.",
@@ -2411,6 +2411,119 @@
         "freed_bytes": { "type": "int" },
         "removed_blobs": { "type": "int" }
       }
+    },
+    "IntegrationsStatus": {
+      "doc": "How the local API (MCP for Claude and other apps, at /v0/mcp) is running. Its keys are camelCase, as are all of protocol 12's.",
+      "fields": {
+        "enabled": { "type": "bool", "doc": "Allow connections is on." },
+        "port": {
+          "type": "int",
+          "doc": "The port: the one listened on while listening, else the one set. 23390 until changed."
+        },
+        "remote": {
+          "type": "bool",
+          "doc": "Remote Access is on: it listens on every address (0.0.0.0 and ::) and accepts any Host, the token being the guard. Off, it listens on 127.0.0.1 only and accepts only a loopback Host."
+        },
+        "listening": { "type": "bool" },
+        "error": {
+          "type": "string",
+          "doc": "Why it isn't listening although enabled, for people: \"Port 23390 is in use by another app\". \"\" otherwise."
+        }
+      }
+    },
+    "IntegrationsUpdateParams": {
+      "doc": "What to change. What is left out stays as it was. It is saved, so it holds after a relaunch, and it applies at once.",
+      "fields": {
+        "enabled": { "type": "bool?", "doc": "Allow connections." },
+        "port": { "type": "int?", "doc": "1024 to 65535; another is -32602." },
+        "remote": {
+          "type": "bool?",
+          "doc": "Remote Access. The app asks the person to confirm before turning it on."
+        }
+      }
+    },
+    "APIToken": {
+      "doc": "A token an MCP client connects with. Neither its secret nor its hash is ever sent, except the secret once in integrations.createToken's answer.",
+      "fields": {
+        "id": { "type": "string" },
+        "name": {
+          "type": "string",
+          "doc": "The client's name: at most 64 characters, control and format characters removed, \"Unnamed client\" when empty."
+        },
+        "canSend": {
+          "type": "bool",
+          "doc": "It may send messages (send_message). Off unless turned on."
+        },
+        "createdMs": { "type": "int" },
+        "lastUsedMs": {
+          "type": "int|null",
+          "doc": "When a request last came with it, to the minute. null when none has."
+        }
+      }
+    },
+    "CreateTokenParams": {
+      "fields": {
+        "name": { "type": "string", "doc": "Cleaned as APIToken.name says." },
+        "canSend": { "type": "bool?", "doc": "Left out is false." }
+      }
+    },
+    "CreateTokenResult": {
+      "fields": {
+        "token": { "type": "APIToken" },
+        "secret": {
+          "type": "string",
+          "doc": "courier_ followed by 43 characters of base64url: what the client sends as Authorization: Bearer. It is shown once and can't be had again."
+        }
+      }
+    },
+    "TokenParams": {
+      "fields": {
+        "id": { "type": "string" }
+      }
+    },
+    "SetCanSendParams": {
+      "fields": {
+        "id": { "type": "string" },
+        "canSend": { "type": "bool" }
+      }
+    },
+    "AnswerPairingParams": {
+      "fields": {
+        "requestID": {
+          "type": "string",
+          "doc": "integrations.pairRequest's requestID."
+        },
+        "allow": {
+          "type": "bool",
+          "doc": "Allow, or Allow and Send Messages (true); Don't Allow (false)."
+        },
+        "canSend": {
+          "type": "bool?",
+          "doc": "Allow and Send Messages. Left out is false."
+        }
+      }
+    },
+    "PairRequest": {
+      "doc": "A client asking to connect (POST /v0/pair). The app asks the person: \u201c<clientName>\u201d wants to read your chats in Courier. Allow, Allow and Send Messages, Don't Allow.",
+      "fields": {
+        "requestID": { "type": "string" },
+        "clientName": {
+          "type": "string",
+          "doc": "What the client calls itself, cleaned as APIToken.name says. Still untrusted text: show it as text, never as markup or a link."
+        }
+      }
+    },
+    "FocusParams": {
+      "doc": "An MCP client's focus_app: bring Courier to the front, open the chat (if given) at the message (if given), and put draftText and the file at draftAttachmentPath in that chat's composer, unsent. The engine has checked that the chat and message exist and that the file is a readable regular file. A chat the app can't open leaves it on the inbox.",
+      "fields": {
+        "chatID": { "type": "string?", "doc": "A room_id." },
+        "messageID": { "type": "string?", "doc": "An event_id in that chat." },
+        "draftText": { "type": "string?", "doc": "Only with chatID." },
+        "draftAttachmentPath": {
+          "type": "string?",
+          "doc": "An absolute path. Only with chatID."
+        }
+      }
     }
   },
 
@@ -2984,6 +3097,48 @@
       "params": "StorageCleanupParams",
       "result": "StorageCleanupResult",
       "errors": []
+    },
+    "integrations.status": {
+      "doc": "How the local API is running.",
+      "params": "Empty",
+      "result": "IntegrationsStatus",
+      "errors": []
+    },
+    "integrations.update": {
+      "doc": "Change the local API's settings: Allow connections, the port, Remote Access. They are saved and apply at once, without a relaunch. A port another app holds is not an error: the answer's error says so, and nothing else stops.",
+      "params": "IntegrationsUpdateParams",
+      "result": "IntegrationsStatus",
+      "errors": []
+    },
+    "integrations.tokens": {
+      "doc": "The approved connections, oldest first. Revoked ones are left out.",
+      "params": "Empty",
+      "result": "APIToken[]",
+      "errors": []
+    },
+    "integrations.createToken": {
+      "doc": "Make a token for a new connection. The only answer that ever carries a secret.",
+      "params": "CreateTokenParams",
+      "result": "CreateTokenResult",
+      "errors": []
+    },
+    "integrations.revokeToken": {
+      "doc": "Revoke a token: its very next request is refused, even on a connection already open. One that doesn't exist or was revoked already is -32020.",
+      "params": "TokenParams",
+      "result": "Empty",
+      "errors": [-32020]
+    },
+    "integrations.setCanSend": {
+      "doc": "Let a token send messages, or stop it, from its next request on. One that doesn't exist or was revoked is -32020.",
+      "params": "SetCanSendParams",
+      "result": "Empty",
+      "errors": [-32020]
+    },
+    "integrations.answerPairing": {
+      "doc": "The person's answer to integrations.pairRequest. Allowed, the client gets a new token named clientName. A request that isn't waiting any more (answered, or timed out after 120 s) is -32020.",
+      "params": "AnswerPairingParams",
+      "result": "Empty",
+      "errors": [-32020]
     }
   },
 
@@ -2991,6 +3146,14 @@
     "changed": {
       "doc": "Sent by the engine after a successful hello, whenever something the app shows changes.",
       "params": "Changed"
+    },
+    "integrations.pairRequest": {
+      "doc": "A client asks to connect to the local API (protocol 12). Sent to every connection that has said hello; answer with integrations.answerPairing within 120 s. One is waiting at a time.",
+      "params": "PairRequest"
+    },
+    "app.focus": {
+      "doc": "An MCP client's focus_app (protocol 12). Sent to every connection that has said hello.",
+      "params": "FocusParams"
     }
   },
 

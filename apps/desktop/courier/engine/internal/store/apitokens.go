@@ -147,7 +147,7 @@ WHERE hash = $1 AND revoked_ms IS NULL`, want).Scan(&tok.ID, &tok.Name, &hash, &
 // ListAPITokens is every token not revoked, oldest first.
 func (s *Store) ListAPITokens(ctx context.Context) ([]APIToken, error) {
 	rows, err := s.db.Query(ctx, `SELECT id, name, can_send, created_ms, last_used_ms FROM api_tokens
-WHERE revoked_ms IS NULL ORDER BY created_ms, id`)
+WHERE revoked_ms IS NULL ORDER BY created_ms, rowid`)
 	if err != nil {
 		return nil, err
 	}

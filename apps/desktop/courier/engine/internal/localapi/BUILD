@@ -4,6 +4,7 @@ go_library(
     name = "localapi",
     srcs = [
         "markdown.go",
+        "pair.go",
         "schemas.go",
         "server.go",
         "tools.go",

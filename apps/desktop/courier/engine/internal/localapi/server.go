@@ -89,12 +89,14 @@ type Server struct {
 
 	remote atomic.Bool  // Remote Access as the listener was opened with: read on every request
 	port   atomic.Int64 // the port listened on: the Host guard's
+
+	pairs pairing // the pairing request waiting for the person, if any (pair.go)
 }
 
 // New is a local API serving from s, calling the engine through d and telling the app through p. It listens only
 // once Apply says so.
 func New(s *store.Store, d Dispatcher, p Publisher, log zerolog.Logger) *Server {
-	srv := &Server{store: s, disp: d, pub: p, log: log}
+	srv := &Server{store: s, disp: d, pub: p, log: log, status: Status{Port: store.DefaultLocalAPIPort}}
 	srv.mcp = mcp.NewServer(&mcp.Implementation{Name: "courier", Title: "Courier", Version: "0.5"}, &mcp.ServerOptions{
 		Instructions: "Courier is a messaging app on this Mac that brings several chat networks into one inbox. " +
 			"These tools read its chats and messages, and send messages when this connection is allowed to.",
@@ -110,6 +112,7 @@ func New(s *store.Store, d Dispatcher, p Publisher, log zerolog.Logger) *Server 
 	authed := auth.RequireBearerToken(srv.verify, &auth.RequireBearerTokenOptions{AllowMissingExpiration: true})(streamable)
 	mux := http.NewServeMux()
 	mux.Handle(MCPPath, srv.requireToken(authed))
+	mux.HandleFunc(PairPath, srv.servePair)
 	srv.http = srv.guard(mux)
 	return srv
 }

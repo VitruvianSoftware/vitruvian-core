@@ -9,7 +9,7 @@
 //
 // Standard output carries exactly one line, once the engine is serving:
 //
-//	{"ready":true,"socket":"/path/to/engine.sock","protocol":3}
+//	{"ready":true,"socket":"/path/to/engine.sock","protocol":12}
 //
 // Standard error carries warnings and errors as JSON lines, and one info line when the history already on disk has
 // been added to search ("search backfill done", counts and a duration); nothing is written to a log file, because
@@ -295,6 +295,7 @@ func run(cfg config, stdout, stderr io.Writer) error {
 	}
 	// The local API (MCP for Claude and other clients) answers through the very methods the app's requests run.
 	api := localapi.New(s, rpc.NewDispatcher(deps), deps.Notices, log)
+	deps.LocalAPI = api // Settings → Integrations (integrations.*) sets it up
 
 	served := make(chan struct{})
 	var serveErr error

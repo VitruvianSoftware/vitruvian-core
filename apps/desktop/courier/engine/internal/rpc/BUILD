@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "dispatch.go",
         "feed.go",
+        "integrations.go",
         "messages.go",
         "methods.go",
         "organise.go",
@@ -21,6 +22,7 @@ go_library(
         "//apps/desktop/courier/engine/internal/engine",
         "//apps/desktop/courier/engine/internal/entitlement",
         "//apps/desktop/courier/engine/internal/ids",
+        "//apps/desktop/courier/engine/internal/localapi",
         "//apps/desktop/courier/engine/internal/login",
         "//apps/desktop/courier/engine/internal/logscrub",
         "//apps/desktop/courier/engine/internal/media",
@@ -41,6 +43,7 @@ go_test(
     srcs = [
         "conformance_test.go",
         "dispatch_test.go",
+        "integrations_test.go",
         "messages_test.go",
         "organise_test.go",
         "presence_test.go",
@@ -57,6 +60,7 @@ go_test(
         "//apps/desktop/courier/engine/internal/entitlement",
         "//apps/desktop/courier/engine/internal/fakenet",
         "//apps/desktop/courier/engine/internal/ids",
+        "//apps/desktop/courier/engine/internal/localapi",
         "//apps/desktop/courier/engine/internal/login",
         "//apps/desktop/courier/engine/internal/media",
         "//apps/desktop/courier/engine/internal/richtext",
