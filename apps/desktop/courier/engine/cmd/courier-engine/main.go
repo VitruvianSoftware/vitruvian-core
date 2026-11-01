@@ -39,6 +39,7 @@ import (
 	"github.com/VitruvianSoftware/courier/engine/internal/datadir"
 	"github.com/VitruvianSoftware/courier/engine/internal/engine"
 	"github.com/VitruvianSoftware/courier/engine/internal/entitlement"
+	"github.com/VitruvianSoftware/courier/engine/internal/localapi"
 	"github.com/VitruvianSoftware/courier/engine/internal/login"
 	"github.com/VitruvianSoftware/courier/engine/internal/logscrub"
 	"github.com/VitruvianSoftware/courier/engine/internal/media"
@@ -278,8 +279,11 @@ func run(cfg config, stdout, stderr io.Writer) error {
 		Networks:    infos,
 		Version:     version,
 		DataDir:     cfg.data,
+		Notices:     rpc.NewNotifier(),
 		Log:         log,
 	}
+	// The local API (MCP for Claude and other clients) answers through the very methods the app's requests run.
+	api := localapi.New(s, rpc.NewDispatcher(deps), deps.Notices, log)
 
 	served := make(chan struct{})
 	var serveErr error
@@ -292,6 +296,16 @@ func run(cfg config, stdout, stderr io.Writer) error {
 		<-served
 		return fmt.Errorf("write the ready line: %w", err)
 	}
+
+	// The local API listens as its saved settings say: off until the person turns on Allow connections. A port
+	// another app holds leaves it off, with the reason for Settings → Integrations, and the engine runs on. It stops
+	// before the store closes (defers run in reverse).
+	if set, serr := s.LocalAPI(ctx); serr != nil {
+		log.Warn().Err(serr).Msg("couldn't read the local API's settings; it stays off")
+	} else {
+		api.Apply(ctx, localapi.Config{Enabled: set.Enabled, Port: set.Port, Remote: set.Remote})
+	}
+	defer api.Close()
 
 	// Now the timer loop (reminders, auto-archive, the outbox, waiting messages and disappearing timers) and, beside
 	// it, the networks, one after the other, each reporting STARTING, then its own states. The loop starts after

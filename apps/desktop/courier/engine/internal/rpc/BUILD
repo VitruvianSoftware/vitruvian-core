@@ -3,6 +3,7 @@ load("@rules_go//go:def.bzl", "go_library", "go_test")
 go_library(
     name = "rpc",
     srcs = [
+        "dispatch.go",
         "feed.go",
         "messages.go",
         "methods.go",
@@ -39,6 +40,7 @@ go_test(
     name = "rpc_test",
     srcs = [
         "conformance_test.go",
+        "dispatch_test.go",
         "messages_test.go",
         "organise_test.go",
         "presence_test.go",

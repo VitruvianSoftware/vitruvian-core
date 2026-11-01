@@ -11,6 +11,7 @@ go_library(
         "//apps/desktop/courier/engine/internal/datadir",
         "//apps/desktop/courier/engine/internal/engine",
         "//apps/desktop/courier/engine/internal/entitlement",
+        "//apps/desktop/courier/engine/internal/localapi",
         "//apps/desktop/courier/engine/internal/login",
         "//apps/desktop/courier/engine/internal/logscrub",
         "//apps/desktop/courier/engine/internal/media",

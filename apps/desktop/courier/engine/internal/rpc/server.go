@@ -96,6 +96,9 @@ type Deps struct {
 	Version string
 	// DataDir is the engine's data directory, where engine-stderr.log lives for diagnostics.export.
 	DataDir string
+	// Notices sends the engine's own notifications (app.focus, integrations.pairRequest) to every connection that
+	// has said hello. nil sends none.
+	Notices *Notifier
 	// Log gets the engine's own failures: an internal error (the method and the error) and a recovered panic
 	// (with its stack). Nothing else is logged, never params or values. The zero value logs nothing.
 	Log zerolog.Logger
@@ -291,14 +294,22 @@ func (c *conn) handle(line []byte) {
 		first := !c.greeted
 		res, err := c.hello(req.params)
 		var feed *store.Feed
+		var notices chan []byte
+		var unsubscribe func()
 		if first && c.greeted {
 			// Subscribed before the answer goes out, so a change made as soon as the client has it is notified.
 			feed = c.d.Store.Feed()
+			if c.d.Notices != nil {
+				notices, unsubscribe = c.d.Notices.subscribe()
+			}
 		}
 		c.reply(req.id, res, err)
 		if feed != nil {
 			// Forwarded only now, with the answer queued, so no notification gets ahead of it.
 			c.startFeed(feed)
+		}
+		if notices != nil {
+			c.startNotices(notices, unsubscribe)
 		}
 		return
 	}
