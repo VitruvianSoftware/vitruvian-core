@@ -139,17 +139,17 @@ projects:
       A Slack MCP server with dual-token auth: around forty tools covering
       channels, threads, search, files, user groups and Canvas editing, acting
       as the bot or as you.
-    tags: [TypeScript, MCP, Slack]
+    tags: [Rust, MCP, Slack]
     repo: https://github.com/VitruvianSoftware/mcp-slack
     source: apps/mcp/slack
     extension:
       kind: mcp
-      needs: Slack bot and user tokens, passed to the server as environment variables (add an --env flag for each; the README lists them)
+      needs: Docker, plus a Slack bot token, user token and team ID, passed to the server as environment variables (add an --env flag for each; the README lists them)
       installs:
         - tool: Claude Code
-          command: claude mcp add slack -- npx -y @vitruviansoftware/mcp-slack@latest
+          command: claude mcp add slack -- docker run -i --rm -e SLACK_BOT_TOKEN -e SLACK_USER_TOKEN -e SLACK_TEAM_ID -e MCP_TRANSPORT=stdio ghcr.io/vitruviansoftware/mcp-slack:main
         - tool: Antigravity
-          command: agy mcp add slack npx -y @vitruviansoftware/mcp-slack@latest
+          command: agy mcp add slack -- docker run -i --rm -e SLACK_BOT_TOKEN -e SLACK_USER_TOKEN -e SLACK_TEAM_ID -e MCP_TRANSPORT=stdio ghcr.io/vitruviansoftware/mcp-slack:main
 
   - name: gh-watch
     group: agents

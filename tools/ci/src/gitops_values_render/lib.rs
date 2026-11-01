@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! gitops-values-render.sh — `helm template` over every remote chart that an
+//! //tools/ci:gitops_values_render — `helm template` over every remote chart that an
 //! ArgoCD Application pairs with a values file kept in this repo, with the
 //! chart's own values.schema.json enforced.
 
@@ -264,6 +264,13 @@ fn find_chartdir(dest: &[u8], chart: &[u8]) -> Option<Vec<u8>> {
 }
 
 pub fn run(_args: &[Vec<u8>]) -> i32 {
+    // Under `bazel run` the working directory is the runfiles tree, where no
+    // Application is; scan the workspace instead. CI runs it from the checkout.
+    if let Some(ws) = shell_compat::env("BUILD_WORKSPACE_DIRECTORY") {
+        if !ws.is_empty() && std::env::set_current_dir(shell_compat::path(&ws)).is_err() {
+            return fail(b"cannot cd to BUILD_WORKSPACE_DIRECTORY");
+        }
+    }
     if shell_compat::which(b"helm").is_none() {
         return fail(b"helm not found on PATH");
     }

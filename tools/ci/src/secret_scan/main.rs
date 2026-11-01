@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! //tools/ci:secret-scan: the Rust port.
+//! //tools/ci:secret_scan (see lib.rs).
 
 fn main() {
     std::process::exit(secret_scan::run(&shell_compat::args()));

@@ -92,6 +92,11 @@ final class TestEngineServer: @unchecked Sendable {
         broadcast(["jsonrpc": "2.0", "method": "changed", "params": params])
     }
 
+    /// Sends another notification (protocol 12: integrations.pairRequest, integrations.pairEnded, app.focus).
+    func notify(method: String, params: [String: Any]) {
+        broadcast(["jsonrpc": "2.0", "method": method, "params": params])
+    }
+
     /// Answers a request the handler held with `.later`.
     func reply(to id: Int, with result: Any) {
         guard let connection = lock.withLock({ heldIDs.removeValue(forKey: id) }) else { return }

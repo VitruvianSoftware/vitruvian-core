@@ -2,6 +2,14 @@
 
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
+# What CI jobs without Bazel compile with a bare rustc
+# (//tools/ci:workflow_rustc_test runs those lines).
+filegroup(
+    name = "srcs",
+    srcs = glob(["src/**/*.rs"]),
+    visibility = ["//tools/ci:__pkg__"],
+)
+
 rust_library(
     name = "appset_render_lib",
     srcs = glob(

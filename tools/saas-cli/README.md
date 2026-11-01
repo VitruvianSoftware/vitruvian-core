@@ -52,7 +52,7 @@ If a run fails with `PERMISSION_DENIED`, that grant is what is missing.
 
 `NEONCTL_VERSION` and `UPSTASH_CLI_VERSION` are pinned in the script so a run is
 reproducible and a surprise major cannot land in the middle of an incident —
-same reasoning as the Squawk pin in `tools/ci/migration-safety.sh`. Override per
+same reasoning as the Squawk pin in `//tools/ci:migration_safety`. Override per
 invocation with the matching env var when you need a newer one.
 
 ## Tests

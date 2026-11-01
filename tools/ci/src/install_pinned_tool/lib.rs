@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! install-pinned-tool.sh — download a pinned CI-tool release asset, verify
+//! //tools/ci:install_pinned_tool — download a pinned CI-tool release asset, verify
 //! its checksum, and install it to ~/.local/bin for the rest of the job.
 
 use shell_compat::{cat, env, env_or_empty, err, mktemp_dir, os, out, path, status};
@@ -26,7 +26,7 @@ use std::process::Command;
 
 pub fn run(args: &[Vec<u8>]) -> i32 {
     if args.len() < 6 || args.len() > 7 {
-        err(b"usage: install-pinned-tool.sh <base-url> <asset> <checksum-file> <checksum-pattern> <bin-name> --tar|--raw [member-path]\n");
+        err(b"usage: install-pinned-tool <base-url> <asset> <checksum-file> <checksum-pattern> <bin-name> --tar|--raw [member-path]\n");
         return 2;
     }
 
@@ -37,10 +37,10 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
     let bin_name = &args[4];
     let mode = &args[5];
 
-    let member_path = if args.len() > 6 {
-        args[6].clone()
-    } else {
-        bin_name.clone()
+    // `${7:-${BIN_NAME}}`: an empty member path means the bin name too.
+    let member_path = match args.get(6) {
+        Some(m) if !m.is_empty() => m.clone(),
+        _ => bin_name.clone(),
     };
 
     match mode.as_slice() {
@@ -58,7 +58,8 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
     let github_path = match env("GITHUB_PATH") {
         Some(v) if !v.is_empty() => v,
         _ => {
-            err(b"GITHUB_PATH must be set \xe2\x80\x94 this script is meant to run as a GitHub Actions step\n");
+            // As bash's `${GITHUB_PATH:?...}` did in the script: exit 1.
+            err(b"install-pinned-tool: GITHUB_PATH: GITHUB_PATH must be set \xe2\x80\x94 this script is meant to run as a GitHub Actions step\n");
             return 1;
         }
     };
@@ -180,7 +181,17 @@ fn run_inner(
 
     let home = env_or_empty("HOME");
     let local_bin = cat(&[&home, b"/.local/bin"]);
-    let _ = shell_compat::mkdir_p(&local_bin);
+    // `mkdir -p` under `set -e`: a failure stops here, before anything installs.
+    if let Err(e) = shell_compat::mkdir_p(&local_bin) {
+        err(&cat(&[
+            b"install-pinned-tool: mkdir -p ",
+            &local_bin,
+            b": ",
+            e.to_string().as_bytes(),
+            b"\n",
+        ]));
+        return 1;
+    }
 
     match mode {
         b"--tar" => {
@@ -218,13 +229,26 @@ fn run_inner(
         _ => unreachable!(),
     }
 
-    if let Ok(mut f) = std::fs::OpenOptions::new()
+    // `echo ... >> "${GITHUB_PATH}"` under `set -e`: a step that cannot put
+    // the tool on PATH fails, rather than reporting an install later steps
+    // cannot use.
+    let appended = std::fs::OpenOptions::new()
         .append(true)
         .create(true)
         .open(path(github_path))
-    {
-        use std::io::Write;
-        let _ = f.write_all(&cat(&[&local_bin, b"\n"]));
+        .and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(&cat(&[&local_bin, b"\n"]))
+        });
+    if let Err(e) = appended {
+        err(&cat(&[
+            b"install-pinned-tool: ",
+            github_path,
+            b": ",
+            e.to_string().as_bytes(),
+            b"\n",
+        ]));
+        return 1;
     }
 
     out(&cat(&[

@@ -90,17 +90,17 @@ jobs:
         with:
           persist-credentials: false
 
-      # Logic lives in tools/ci/install-pinned-tool.sh (shared with
-      # gitops-validate.yaml, supply-chain.yaml, mcp-slack-image.yaml — see
-      # that script's header for why this was deduped).
+      # Shared with gitops-validate, chart-render, supply-chain and
+      # mcp-slack-image: .github/actions/install-pinned-tool.
       - name: Install actionlint (pinned + checksum-verified)
-        run: |
-          bash tools/ci/install-pinned-tool.sh \
-            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}" \
-            "actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
-            "actionlint_${ACTIONLINT_VERSION}_checksums.txt" \
-            "actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
-            actionlint --tar
+        uses: ./.github/actions/install-pinned-tool
+        with:
+          base-url: https://github.com/rhysd/actionlint/releases/download/v${{ env.ACTIONLINT_VERSION }}
+          asset: actionlint_${{ env.ACTIONLINT_VERSION }}_linux_amd64.tar.gz
+          checksum-file: actionlint_${{ env.ACTIONLINT_VERSION }}_checksums.txt
+          checksum-pattern: actionlint_${{ env.ACTIONLINT_VERSION }}_linux_amd64.tar.gz
+          bin-name: actionlint
+          mode: tar
 
       # actionlint auto-discovers .github/workflows/*.{yml,yaml} when run at the
       # repo root; shellcheck is preinstalled on the runner.
@@ -110,9 +110,25 @@ jobs:
       # Every action from outside this repo is pinned to a full commit SHA
       # (with the version in a trailing comment, which Dependabot keeps in
       # step). A tag can be moved to different code after review; a commit
-      # cannot. The rule lives in the script, which `bazel run
-      # //tools/ci:actionlint` also runs, so the local check and this one agree.
-      # Keep ACTIONLINT_VERSION above level with tools/tools.lock.json:
+      # cannot. The rule lives in //tools/ci:require_pinned_actions, which
+      # `bazel run //tools/ci:actionlint` also runs, so the local check and this
+      # one agree. This job has no Bazel, and the check is one std-only file, so
+      # the runner's rustc builds it from the checkout; the homelab queue
+      # runner's image has no rustc, hence the apt fallback.
+      # //tools/ci:require_pinned_actions_test runs the rustc line below as
+      # written. Keep ACTIONLINT_VERSION above level with tools/tools.lock.json:
       # //tools/ci:actionlint_test fails when they drift.
       - name: Require commit-pinned actions
-        run: bash tools/ci/require-pinned-actions.sh
+        run: |
+          set -euo pipefail
+          # Fails here, by name, when apt cannot supply it (a failed install must not
+          # surface later as "rustc: command not found"). //tools/ci:workflow_rustc_test
+          # runs this block with apt failing.
+          if ! command -v rustc >/dev/null 2>&1; then
+            { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends rustc; } \
+              || { echo "::error::apt install rustc failed"; exit 1; }
+            command -v rustc >/dev/null 2>&1 \
+              || { echo "::error::rustc is still not on PATH after apt install"; exit 1; }
+          fi
+          rustc --edition 2021 -O tools/ci/src/require_pinned_actions/main.rs -o "$RUNNER_TEMP/require-pinned-actions"
+          "$RUNNER_TEMP/require-pinned-actions"

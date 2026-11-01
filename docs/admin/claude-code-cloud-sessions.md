@@ -26,7 +26,7 @@ what the earlier ones made: the CLIs, and the `TS_AUTHKEY`, `LAB_SA_TOKEN` and
 `CLAUDE_SSH_KEY` that cloud-bootstrap fetches into `session.env`. Keep them in
 that one script. Claude Code runs every hook of an event in parallel, so as three
 separate hooks the later steps read `session.env` before cloud-bootstrap had
-written it. `tools/ci/session-start_test.sh` checks the order and the wiring.
+written it. `//tools/ci:session_start_test` checks the order and the wiring.
 
 > **`VITRUVIAN_CLOUD_KEY` cannot be created, so use the keyless path.** The org
 > forbids service-account keys (`iam.disableServiceAccountKeyCreation`, see
@@ -191,7 +191,7 @@ reason (tailscale not installed, `tailscaled` not running, the tailnet logged
 out with tailscaled's own error, `LAB_SA_TOKEN` rejected, or kubectl's error).
 If `tailscale-up.sh` is still joining (it runs first, but nothing stops the two
 being run side by side), it waits for that to finish. That line is the only place
-a failure shows: a hook's stderr never reaches the agent. `tools/ci/kube-setup_test.sh` pins each case.
+a failure shows: a hook's stderr never reaches the agent. `//tools/ci:kube_setup_test` pins each case.
 
 Verify with `kubectl get nodes` (context `lab`). If it works, you're done.
 

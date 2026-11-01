@@ -4,9 +4,12 @@
 // courier-engine is the helper the Courier app runs: it serves the app protocol on a Unix socket in the data
 // directory as soon as its store is open, and starts every network's bridge over that store behind it.
 //
+// `courier-engine mcp-stdio [--port N]` is something else: an MCP server on stdin and stdout that forwards to the
+// running engine's local API with the token in COURIER_TOKEN, for MCP clients that only speak stdio (mcpstdio.go).
+//
 // Standard output carries exactly one line, once the engine is serving:
 //
-//	{"ready":true,"socket":"/path/to/engine.sock","protocol":3}
+//	{"ready":true,"socket":"/path/to/engine.sock","protocol":12}
 //
 // Standard error carries warnings and errors as JSON lines, and one info line when the history already on disk has
 // been added to search ("search backfill done", counts and a duration); nothing is written to a log file, because
@@ -39,6 +42,7 @@ import (
 	"github.com/VitruvianSoftware/courier/engine/internal/datadir"
 	"github.com/VitruvianSoftware/courier/engine/internal/engine"
 	"github.com/VitruvianSoftware/courier/engine/internal/entitlement"
+	"github.com/VitruvianSoftware/courier/engine/internal/localapi"
 	"github.com/VitruvianSoftware/courier/engine/internal/login"
 	"github.com/VitruvianSoftware/courier/engine/internal/logscrub"
 	"github.com/VitruvianSoftware/courier/engine/internal/media"
@@ -53,7 +57,12 @@ import (
 // version is the engine's version, sent in hello. A build stamps it with Bazel's x_defs ("main.version").
 var version = "dev"
 
-const usage = "usage: courier-engine --data DIR [--parent-fd N]"
+const usage = "usage: courier-engine --data DIR [--parent-fd N]\n       courier-engine mcp-stdio [--port N]"
+
+// nopCloser is a writer that MCP's transport may close without closing it.
+type nopCloser struct{ io.Writer }
+
+func (nopCloser) Close() error { return nil }
 
 const (
 	exitUsage  = 2
@@ -83,6 +92,9 @@ func main() {
 }
 
 func realMain(argv []string, stdout, stderr io.Writer) int {
+	if len(argv) > 0 && argv[0] == "mcp-stdio" {
+		return runMCPStdio(argv[1:], os.Stdin, nopCloser{stdout}, stderr, os.Getenv)
+	}
 	cfg, err := parseArgs(argv)
 	if err != nil {
 		if !errors.Is(err, flag.ErrHelp) {
@@ -278,8 +290,12 @@ func run(cfg config, stdout, stderr io.Writer) error {
 		Networks:    infos,
 		Version:     version,
 		DataDir:     cfg.data,
+		Notices:     rpc.NewNotifier(),
 		Log:         log,
 	}
+	// The local API (MCP for Claude and other clients) answers through the very methods the app's requests run.
+	api := localapi.New(s, rpc.NewDispatcher(deps), deps.Notices, log)
+	deps.LocalAPI = api // Settings → Integrations (integrations.*) sets it up
 
 	served := make(chan struct{})
 	var serveErr error
@@ -292,6 +308,16 @@ func run(cfg config, stdout, stderr io.Writer) error {
 		<-served
 		return fmt.Errorf("write the ready line: %w", err)
 	}
+
+	// The local API listens as its saved settings say: off until the person turns on Allow connections. A port
+	// another app holds leaves it off, with the reason for Settings → Integrations, and the engine runs on. It stops
+	// before the store closes (defers run in reverse).
+	if set, serr := s.LocalAPI(ctx); serr != nil {
+		log.Warn().Err(serr).Msg("couldn't read the local API's settings; it stays off")
+	} else {
+		api.Apply(ctx, localapi.Config{Enabled: set.Enabled, Port: set.Port, Remote: set.Remote})
+	}
+	defer api.Close()
 
 	// Now the timer loop (reminders, auto-archive, the outbox, waiting messages and disappearing timers) and, beside
 	// it, the networks, one after the other, each reporting STARTING, then its own states. The loop starts after

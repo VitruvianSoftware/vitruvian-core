@@ -1,0 +1,15 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "integrations.revokeToken",
+    "params": {
+      "id": "tok_5f2a9c0d1e3b4a6f7c8d9e0f"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "result": {}
+  }
+}

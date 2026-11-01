@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! chart-render.sh — `helm template` over every co-located chart
+//! //tools/ci:chart_render — `helm template` over every co-located chart
 //! (**/deploy/chart), with negative controls.
 
 use shell_compat::{capture, cat, err, out, subst, which};
@@ -204,7 +204,9 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
             let r = capture(0, &mut cmd);
             if !r.ok() {
                 fail(&cat(&[&reldir, b": helm lint"]), &mut failures);
-                err(&r.stdout);
+                // The script printed `helm lint ... 2>&1`: both streams (lint
+                // puts its closing `Error: ... failed` on stderr).
+                err(&subst(cat(&[&r.stdout, &r.stderr])));
                 err(b"\n");
             }
         }

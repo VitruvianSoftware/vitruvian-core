@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! //tools/ci:gitops-validate: the Rust port.
+//! //tools/ci:gitops_validate (see lib.rs).
 
 fn main() {
     std::process::exit(gitops_validate::run(&shell_compat::args()));

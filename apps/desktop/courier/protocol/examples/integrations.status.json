@@ -1,0 +1,19 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "integrations.status",
+    "params": {}
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "result": {
+      "enabled": false,
+      "port": 23390,
+      "remote": false,
+      "listening": false,
+      "error": ""
+    }
+  }
+}

@@ -34,3 +34,11 @@ filegroup(
         "//apps/desktop/courier/engine:__subpackages__",
     ],
 )
+
+# The reference app's MCP tools (names and input schemas), which the local API's tools must match exactly
+# (engine/internal/localapi's TestToolsMatchReferenceSchemas). Never edited by hand: it is a capture.
+filegroup(
+    name = "mcp_tools",
+    srcs = ["mcp-tools.json"],
+    visibility = ["//apps/desktop/courier/engine:__subpackages__"],
+)

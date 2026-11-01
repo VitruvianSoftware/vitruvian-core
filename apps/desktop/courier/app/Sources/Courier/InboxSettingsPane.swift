@@ -26,6 +26,7 @@ struct SettingsView: View {
     var appearance: AppearancePreferences = AppearancePreferences()
     var aiPreferences: AIPreferences = AIPreferences()
     var storage: StorageModel? = nil
+    var integrations: IntegrationsModel? = nil
     var onRestartNotificationCenter: () -> Void = {}
 
     private var resolvedAppModel: AppModel {
@@ -65,6 +66,7 @@ struct SettingsView: View {
             appearance: appearance,
             aiPreferences: aiPreferences,
             storage: storage ?? StorageModel(appModel: resolvedApp, lifecycle: lifecycle),
+            integrations: integrations ?? IntegrationsModel(appModel: nil, enginePath: EngineLocation.enginePath()),
             onRestartNotificationCenter: onRestartNotificationCenter
         )
     }

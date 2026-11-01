@@ -33,7 +33,7 @@ flowchart TB
     Clients["Claude, Raycast, scripts"]
     subgraph Engine["courier-engine (Go, one process)"]
       Sock["App socket<br/>commands + live events"]
-      API["Local API + MCP<br/>127.0.0.1 only, token"]
+      API["Local API + MCP<br/>127.0.0.1 by default, token"]
       Store["Local store<br/>stands in for a Matrix server<br/>SQLite"]
       Bridges["mautrix bridges (AGPL)<br/>WhatsApp, Signal, Telegram,<br/>Google Messages, Slack"]
     end
@@ -122,7 +122,7 @@ Reminders and scheduled sends are timers in the engine, so they fire with the wi
 
 ## 6. Local API and MCP
 
-- **Address:** 127.0.0.1, default port **23390** (changeable in Settings → Integrations), so it doesn't collide with Beeper's 23373 during side-by-side use. No remote-access mode.
+- **Address:** 127.0.0.1, default port **23390** (changeable in Settings → Integrations), so it doesn't collide with Beeper's 23373 during side-by-side use. A **Remote Access** setting, off by default, listens on every network address, as Beeper's does (James, 2026-11-01: "I don't want courier to only listen on localhost. Change that to match beeper."). Tokens are still required; traffic is plain HTTP, as in Beeper.
 - **Access:** a new client gets a token only after James approves an in-app prompt. Tokens are listed and revocable in Settings → Integrations. Sending messages is a separate per-token permission.
 - **MCP tools:** the same names and arguments as Beeper's MCP: `get_accounts`, `search`, `search_chats`, `search_messages`, `get_chat`, `list_messages`, `send_message`, `archive_chat`, `set_chat_reminder`, `clear_chat_reminder`, `focus_app`. Beeper's `search_docs` becomes a stub.
 - **Transports:** streamable HTTP and stdio. The Integrations pane keeps the "install to Claude Code / Cursor / VS Code / Raycast" helpers.
