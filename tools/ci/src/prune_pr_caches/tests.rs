@@ -57,6 +57,7 @@ if [ "$1" = "api" ]; then
         gone) echo "gh: Not Found (HTTP 404)" >&2; exit 1 ;;
         live) echo '{"name":"x"}'; exit 0 ;;
         err)  echo "error connecting to api.github.com" >&2; exit 1 ;;
+        err5xx) echo "gh: Bad Gateway (HTTP 502): https://api.github.com/repos/o/r/branches/gh-readonly-queue/main/pr-4170-9f1c4040 not found upstream" >&2; exit 1 ;;
       esac ;;
     esac
   done
@@ -398,6 +399,27 @@ fn transport_error_is_not_proof_of_deletion() {
     assert_has(&o.stderr, "existence undeterminable", "logged");
     // The whole set, so an extra delete anywhere fails too.
     assert_eq!(p.deleted(), "101 102 104 106 ");
+}
+
+#[test]
+fn a_5xx_whose_message_contains_404_is_not_a_deleted_branch() {
+    // gh puts the request URL in a 5xx error, and a queue branch's SHA can
+    // contain "404" (and the body can say "not found"). Only gh's
+    // "(HTTP 404)" status means the branch is gone.
+    let p = Pruner::new();
+    let o = p.run(
+        "900:MERGED,901:MERGED,902:MERGED",
+        "pr-905:err5xx",
+        &[],
+        &[],
+    );
+    assert_lacks(
+        &p.deleted(),
+        "108",
+        "a 502 mentioning 404 was read as a deleted branch",
+    );
+    assert_has(&o.stderr, "existence undeterminable", "logged as unknown");
+    assert_eq!(p.deleted(), "101 102 104 ");
 }
 
 #[test]

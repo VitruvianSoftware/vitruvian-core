@@ -86,6 +86,27 @@ fn every_enabled_workload_has_a_digest_passes() {
 }
 
 #[test]
+fn an_empty_digest_is_refused_like_a_missing_one() {
+    // `app=${{ needs.x.outputs.digest }}` with an empty output: the key is
+    // there but there is no image. The script passed this; it must not.
+    let l = Leaf::new(THREE);
+    let o = l.run("oauth-user-inspector=,mcp-slack=sha256:bbb");
+    assert_eq!(o.code, 1, "{o:?}");
+    assert_eq!(
+        o.stdout,
+        format!(
+            "exporting MCP_SLACK_IMAGE_DIGEST\n{}",
+            error_line("oauth-user-inspector")
+        )
+    );
+    assert_eq!(
+        l.env(),
+        "MCP_SLACK_IMAGE_DIGEST=sha256:bbb\n",
+        "nothing exported for the empty one"
+    );
+}
+
+#[test]
 fn one_enabled_workload_missing_its_digest_is_refused() {
     let l = Leaf::new(THREE);
     let o = l.run("oauth-user-inspector=sha256:aaa");

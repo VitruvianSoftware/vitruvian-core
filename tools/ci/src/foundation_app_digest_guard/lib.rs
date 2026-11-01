@@ -46,8 +46,13 @@ pub fn missing_digest_apps(pulumi_file_contents: &[u8], app_image_digests: &[u8]
         if app.is_empty() {
             continue;
         }
+        // `app=` with nothing after it is no digest: it renders the same
+        // EMPTY image as a missing pair, so it counts as missing.
         let needle = cat(&[b",", app, b"="]);
-        if find_subslice(&haystack, &needle).is_some() {
+        let has_digest = haystack.windows(needle.len()).enumerate().any(|(i, w)| {
+            w == needle.as_slice() && !matches!(haystack.get(i + needle.len()), None | Some(b','))
+        });
+        if has_digest {
             continue;
         }
         if !missing.is_empty() {
@@ -251,6 +256,23 @@ mod tests {
         assert_eq!(got, b"  b_workload_enabled: \"true\"");
         let got = missing_digest_apps(b"  ns:My_App_workload_enabled: \"true\"\n", b"My_App=1");
         assert_eq!(got, b"  ns:My_App_workload_enabled: \"true\"");
+    }
+
+    #[test]
+    fn an_empty_digest_counts_as_missing() {
+        let pf = b"  ns:oauth-user-inspector_workload_enabled: \"true\"\n";
+        assert_eq!(
+            missing_digest_apps(pf, b"oauth-user-inspector="),
+            b"oauth-user-inspector"
+        );
+        assert_eq!(
+            missing_digest_apps(pf, b"oauth-user-inspector=,x=1"),
+            b"oauth-user-inspector"
+        );
+        assert_eq!(
+            missing_digest_apps(pf, b"oauth-user-inspector=sha256:ab"),
+            b""
+        );
     }
 
     #[test]

@@ -247,6 +247,11 @@ fn every_tool_a_workflow_builds_compiles_with_the_actions_own_rustc_lines() {
             text(&s.out.stdout),
             text(&s.out.stderr)
         );
+        assert!(
+            text(&s.out.stdout).lines().any(|l| l.starts_with("rustc ")),
+            "{t}: the step must log `rustc --version`:\n{}",
+            text(&s.out.stdout)
+        );
         let built = runner_temp.join("ci-tools").join(t);
         assert_eq!(
             s.github_output,
@@ -427,4 +432,251 @@ fn a_notifier_that_cannot_build_still_reaches_ntfy() {
     ] {
         assert!(argv.lines().any(|l| l == want), "curl was not given {want:?}:\n{argv}");
     }
+}
+
+/// The `run: |` block of the step whose `- name:` line is at `name`, dedented.
+fn run_block(lines: &[&str], name: usize) -> String {
+    let run = (name..lines.len())
+        .find(|&i| lines[i].trim() == "run: |")
+        .expect("the step has a `run: |` block");
+    let key = indent(lines[run]);
+    let body: Vec<&str> = lines[run + 1..]
+        .iter()
+        .take_while(|l| l.trim().is_empty() || indent(l) > key)
+        .copied()
+        .collect();
+    let pad = body
+        .iter()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| indent(l))
+        .min()
+        .unwrap();
+    body.iter()
+        .map(|l| format!("{}\n", l.get(pad..).unwrap_or("")))
+        .collect()
+}
+
+/// The lines of the step whose `- name:` line is at `name`.
+fn step_lines<'a>(lines: &[&'a str], name: usize) -> Vec<&'a str> {
+    let key = indent(lines[name]);
+    let mut v = vec![lines[name]];
+    v.extend(
+        lines[name + 1..]
+            .iter()
+            .take_while(|l| l.trim().is_empty() || indent(l) > key)
+            .copied(),
+    );
+    v
+}
+
+fn exe(path: &Path, body: &str) {
+    fs::write(path, body).unwrap();
+    fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+#[test]
+fn a_rustc_that_succeeds_without_a_binary_fails_the_step() {
+    // A swallowed rustc error (or any build that leaves nothing behind) must
+    // not hand on a path: the caller would run a missing file AFTER this step
+    // reported success, and the `if: failure()` fallbacks would never fire.
+    let script = build_script(&read(ACTION));
+    let tools: BTreeSet<String> = ["release_hold".to_string()].into_iter().collect();
+    let ws = workspace(&tools);
+    let shim = tmp();
+    exe(
+        &shim.join("rustc"),
+        "#!/bin/sh\n[ \"$1\" = --version ] && { echo 'rustc 9.9.9-fake'; exit 0; }\nexit 0\n",
+    );
+    let runner_temp = tmp();
+    let s = run_step(&script, "release_hold", &ws, &runner_temp, &shim);
+    assert_eq!(s.out.status.code(), Some(1), "{:?}", s.out);
+    assert!(
+        text(&s.out.stdout).contains("::error::build-ci-tool: rustc reported success but"),
+        "no ::error annotation:\n{}",
+        text(&s.out.stdout)
+    );
+    assert!(
+        text(&s.out.stdout).contains("rustc 9.9.9-fake"),
+        "version not logged"
+    );
+    assert_eq!(s.github_output, "", "no path output without a binary");
+}
+
+#[test]
+fn a_broken_main_rs_fails_the_step_and_sets_no_output() {
+    let script = build_script(&read(ACTION));
+    let tools: BTreeSet<String> = ["release_hold".to_string()].into_iter().collect();
+    let ws = workspace(&tools);
+    fs::write(
+        ws.join("tools/ci/src/release_hold/main.rs"),
+        "fn main() { nope }\n",
+    )
+    .unwrap();
+    let s = run_step(&script, "release_hold", &ws, &tmp(), &rustc_shim());
+    assert!(
+        !s.out.status.success(),
+        "a failed main.rs build must fail the step"
+    );
+    assert_eq!(s.github_output, "", "no path output for a failed build");
+}
+
+#[test]
+fn every_caller_runs_the_variable_its_build_step_sets() {
+    // A run line reading a misnamed variable passes actionlint and exits 127
+    // on a runner. For each build-ci-tool step id, every env var set from its
+    // `path` output must be read as "$VAR" or "${VAR}" in the same file.
+    let mut checked = 0;
+    for dir in [".github/workflows", ".github/actions"] {
+        for e in fs::read_dir(dir).unwrap() {
+            let p = e.unwrap().path();
+            let f = if p.is_dir() { p.join("action.yml") } else { p };
+            if !f.exists() {
+                continue;
+            }
+            let text = read(&f);
+            let lines: Vec<&str> = text.lines().collect();
+            for (i, l) in lines.iter().enumerate() {
+                if l.trim().trim_start_matches("- ") != USES {
+                    continue;
+                }
+                let id = lines[..i]
+                    .iter()
+                    .rev()
+                    .take(4)
+                    .find_map(|n| n.trim().strip_prefix("id: "))
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "{}:{}: a build-ci-tool step needs an id",
+                            f.display(),
+                            i + 1
+                        )
+                    });
+                let output = format!("${{{{ steps.{id}.outputs.path }}}}");
+                let vars: Vec<&str> = lines
+                    .iter()
+                    .filter_map(|l| {
+                        let (k, v) = l.trim().split_once(": ")?;
+                        (v == output).then_some(k)
+                    })
+                    .collect();
+                assert!(!vars.is_empty(), "{}: nothing reads {output}", f.display());
+                for v in vars {
+                    let used =
+                        text.contains(&format!("\"${v}\"")) || text.contains(&format!("${{{v}}}"));
+                    assert!(
+                        used,
+                        "{}: {v} is set from {output} but no run line reads \"${v}\" or ${{{v}}}",
+                        f.display()
+                    );
+                    checked += 1;
+                }
+            }
+        }
+    }
+    assert!(checked >= 8, "only {checked} callers checked");
+}
+
+/// A fake gh for the beta gate's fallback: `pr list` prints $FAKE_ROW (or
+/// fails when $FAKE_LIST_RC is set), `pr merge` is recorded.
+const FALLBACK_GH: &str = r#"#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$GH_LOG"
+case "$1 $2" in
+  "pr list") [ -n "${FAKE_LIST_RC:-}" ] && { echo "gh: boom (HTTP 502)" >&2; exit "$FAKE_LIST_RC"; }; printf '%s\n' "${FAKE_ROW:-}" ;;
+  "pr merge") exit "${FAKE_MERGE_RC:-0}" ;;
+  *) echo "unexpected gh $*" >&2; exit 99 ;;
+esac
+"#;
+
+#[test]
+fn a_beta_gate_that_cannot_run_turns_auto_merge_off() {
+    let wf = read(".github/workflows/release-beta-gate.yaml");
+    let lines: Vec<&str> = wf.lines().collect();
+    let name = lines
+        .iter()
+        .position(|l| l.trim() == "- name: Turn auto-merge off when the gate could not decide")
+        .expect("release-beta-gate.yaml has the auto-merge-off fallback");
+    let gate = lines
+        .iter()
+        .position(|l| l.trim() == "- name: Gate vitruvian's release PR on the beta DMG")
+        .expect("the gate step");
+    let build = lines
+        .iter()
+        .position(|l| l.trim() == "id: gate-bin")
+        .expect("the gate's build step");
+    assert!(
+        build < gate && gate < name,
+        "build, gate, then the fallback"
+    );
+    let step = step_lines(&lines, name);
+    assert!(
+        step.iter().any(|l| l.trim() == "if: ${{ failure() }}"),
+        "the fallback runs whenever the job failed, the build or the gate itself:\n{}",
+        step.join("\n")
+    );
+    assert!(
+        step.iter().any(|l| l.trim() == "COMPONENT: vitruvian"),
+        "same component as the gate"
+    );
+    let script = run_block(&lines, name);
+
+    let run = |row: &str, extra: &[(&str, &str)]| {
+        let dir = tmp();
+        exe(&dir.join("gh"), FALLBACK_GH);
+        let log = dir.join("gh.log");
+        fs::write(&log, "").unwrap();
+        let mut c = Command::new("bash");
+        c.arg("-e")
+            .arg("-c")
+            .arg(&script)
+            .env(
+                "PATH",
+                format!(
+                    "{}:{}",
+                    dir.display(),
+                    std::env::var("PATH").unwrap_or_default()
+                ),
+            )
+            .env("GH_LOG", &log)
+            .env("REPO", "o/r")
+            .env("COMPONENT", "vitruvian")
+            .env("FAKE_ROW", row);
+        for (k, v) in extra {
+            c.env(k, v);
+        }
+        let o = c.output().unwrap();
+        (o, read(&log))
+    };
+
+    // Armed: turned off, loudly.
+    let (o, log) = run("42 true", &[]);
+    assert!(o.status.success(), "{}", text(&o.stderr));
+    assert!(
+        log.lines().next().unwrap_or("").starts_with(
+            "pr list --repo o/r --head release-please--branches--main--components--vitruvian --state open --json number,autoMergeRequest,isCrossRepository --jq"
+        ),
+        "looks the PR up by the gate's head branch:\n{log}"
+    );
+    assert!(
+        log.lines()
+            .any(|l| l == "pr merge 42 --repo o/r --disable-auto"),
+        "disables auto-merge:\n{log}"
+    );
+    assert!(text(&o.stdout)
+        .contains("::error title=release-beta-gate could not run::turned auto-merge off on #42"));
+
+    // Already off, or no PR: nothing to do.
+    for row in ["42 false", ""] {
+        let (o, log) = run(row, &[]);
+        assert!(o.status.success(), "{row:?}: {}", text(&o.stderr));
+        assert!(
+            !log.contains("pr merge"),
+            "{row:?}: must not call merge:\n{log}"
+        );
+    }
+
+    // A failed lookup or a refused disable fails the step: red, never quiet.
+    let (o, _) = run("", &[("FAKE_LIST_RC", "1")]);
+    assert!(!o.status.success(), "a failed lookup must fail the step");
+    let (o, _) = run("42 true", &[("FAKE_MERGE_RC", "1")]);
+    assert!(!o.status.success(), "a refused disable must fail the step");
 }

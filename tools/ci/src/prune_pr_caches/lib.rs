@@ -113,11 +113,12 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
         let result = if r.ok() {
             b"no".to_vec()
         } else {
+            // gh reports an API error as "gh: <message> (HTTP <status>)".
+            // Only the status says the branch is gone: a 5xx message carries
+            // the request URL, and a queue branch's SHA can contain "404".
             let combined = cat(&[&r.stdout, &r.stderr]);
             let lower: Vec<u8> = combined.iter().map(|c| c.to_ascii_lowercase()).collect();
-            if shell_compat::contains(&lower, b"404")
-                || shell_compat::contains(&lower, b"not found")
-            {
+            if shell_compat::contains(&lower, b"(http 404)") {
                 b"yes".to_vec()
             } else {
                 b"unknown".to_vec()

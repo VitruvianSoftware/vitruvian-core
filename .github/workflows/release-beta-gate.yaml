@@ -113,3 +113,33 @@ jobs:
           LEGACY_WORKFLOW: delivery.yaml
           GATE_BIN: ${{ steps.gate-bin.outputs.path }}
         run: '"$GATE_BIN"'
+
+      # Auto-merge stays armed from the last green beta, and turning it OFF
+      # while the new code's beta is unbuilt is this gate's job on every run.
+      # So a gate that could not run (its build failed, or it failed itself)
+      # must still turn it off, or the PR merges new code with no beta: the
+      # vitruvian-v3.6.0 incident. Safe to over-fire: the gate re-arms the PR
+      # itself on its next green-beta run, as it does after any wait.
+      - name: Turn auto-merge off when the gate could not decide
+        if: ${{ failure() }}
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          COMPONENT: vitruvian
+        run: |
+          set -euo pipefail
+          branch="release-please--branches--main--components--${COMPONENT}"
+          row=$(gh pr list --repo "$REPO" --head "$branch" --state open \
+            --json number,autoMergeRequest,isCrossRepository \
+            --jq 'map(select(.isCrossRepository | not)) | .[0] // empty | "\(.number) \(.autoMergeRequest != null)"')
+          if [ -z "$row" ]; then
+            echo "No open release PR on $branch: nothing to turn off."
+            exit 0
+          fi
+          pr="${row%% *}"
+          if [ "${row#* }" != "true" ]; then
+            echo "Auto-merge is already off on #$pr."
+            exit 0
+          fi
+          gh pr merge "$pr" --repo "$REPO" --disable-auto
+          echo "::error title=release-beta-gate could not run::turned auto-merge off on #$pr; the gate re-arms it once a green beta is found for its code"
