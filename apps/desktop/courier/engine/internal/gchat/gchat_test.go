@@ -5667,3 +5667,13 @@ func TestServeGChatEngineHelperForAppE2E(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 }
+
+func TestPlaceholderChatNameKeepsRealNamesThatLookLikeIDs(t *testing.T) {
+	id := networkid.PortalID("space:AAAAabc")
+	if !isPlaceholderChatName(id, "") || !isPlaceholderChatName(id, " space:AAAAabc ") {
+		t.Fatal("blank and the portal's own ID are placeholders")
+	}
+	if isPlaceholderChatName(id, "dm: weekend plans") || isPlaceholderChatName(id, "space:other") {
+		t.Fatal("a real name that starts like an ID must be kept")
+	}
+}

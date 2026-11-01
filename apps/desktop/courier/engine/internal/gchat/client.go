@@ -685,12 +685,11 @@ func (c *Client) buildChatMemberList(
 	}
 }
 
+// isPlaceholderChatName is whether name is no name at all: blank, or the portal ID an older build stored when it
+// had none. A real name that merely starts with "space:" or "dm:" is a name.
 func isPlaceholderChatName(portalID networkid.PortalID, name string) bool {
 	trimmed := strings.TrimSpace(name)
-	if trimmed == "" || trimmed == string(portalID) {
-		return true
-	}
-	return strings.HasPrefix(trimmed, "space:") || strings.HasPrefix(trimmed, "dm:")
+	return trimmed == "" || trimmed == string(portalID)
 }
 
 func otherMemberIDs(memberGaiaIDs []string, own networkid.UserID) []networkid.UserID {
