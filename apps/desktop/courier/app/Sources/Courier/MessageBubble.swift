@@ -68,6 +68,10 @@ struct MessageActions {
     var showMessageTimestamps = true
     /// Optional appearance preferences for theme bubble colours, font scaling, and name/avatar redaction.
     var appearance: AppearancePreferences? = nil
+    /// Per-message inline translation disposition (`MessageTranslationRowView`).
+    var translation: (String) -> (targetLanguage: String, disposition: AIProviderDisposition)? = { _ in nil }
+    /// Dismisses an inline translation row for a message ID.
+    var dismissTranslation: (String) -> Void = { _ in }
     /// Pops a video message out into the floating Picture-in-Picture window.
     var popOutPiP: @MainActor (TimelineMessage) -> Void = { message in
         PictureInPictureController.shared.show(
@@ -353,6 +357,13 @@ struct MessageRowView: View {
                     if message.mine { bookmarkMark }
                     bubble
                     if !message.mine { bookmarkMark }
+                }
+                if let translated = actions.translation(message.id) {
+                    MessageTranslationRowView(
+                        targetLanguage: translated.targetLanguage,
+                        disposition: translated.disposition,
+                        onDismiss: { actions.dismissTranslation(message.id) }
+                    )
                 }
                 if message.editFailed != nil { editNotSent }
                 if ui.historyOpen.contains(message.id) {

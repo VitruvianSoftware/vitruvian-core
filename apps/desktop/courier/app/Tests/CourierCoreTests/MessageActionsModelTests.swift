@@ -565,4 +565,19 @@ extension MessageActionsModelTests {
         actions.reportProblem(for: "$1")
         XCTAssertEqual(actions.request, .reportProblem(roomID: "!a", eventID: "$1"))
     }
+
+    func testTranslateMessageStoresCalmUnavailableTranslationOnEvent() async throws {
+        let (_, actions, _, _) = try await start()
+
+        actions.translateMessage(eventID: "$1", targetLanguage: "Spanish")
+        XCTAssertEqual(
+            actions.translations["$1"],
+            .unavailable(reason: "Message translation isn’t available yet in Courier.")
+        )
+        XCTAssertEqual(actions.translationTargetLanguages["$1"], "Spanish")
+
+        actions.dismissTranslation(eventID: "$1")
+        XCTAssertNil(actions.translations["$1"])
+        XCTAssertNil(actions.translationTargetLanguages["$1"])
+    }
 }

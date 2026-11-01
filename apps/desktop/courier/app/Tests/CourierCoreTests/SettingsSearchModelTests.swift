@@ -315,6 +315,34 @@ final class SettingsSearchModelTests: XCTestCase {
             )
         }
     }
+
+    func testAIPlanAndIntegrationsSettingsCatalogCoversEveryMilestone47Setting() {
+        for rawPane in ["ai", "plan", "integrations"] {
+            XCTAssertTrue(
+                SettingsPaneID.allCases.contains { $0.rawValue == rawPane },
+                "Missing SettingsPaneID.\(rawPane)"
+            )
+        }
+        let ids = Set(SettingsNavigationModel.allSettings.map(\.id))
+        let expectedIDs = [
+            "ai.contextual",
+            "ai.translation",
+            "ai.talkToType",
+            "ai.slashCommands",
+            "plan.overview",
+            "plan.features",
+            "integrations.browserExtension",
+            "integrations.mobileApps",
+            "integrations.developer",
+        ]
+        for expectedID in expectedIDs {
+            XCTAssertTrue(ids.contains(expectedID), "Missing SettingDefinition \(expectedID)")
+            XCTAssertTrue(
+                SettingsNavigationModel.anchoredSettingIDs.contains(expectedID),
+                "Missing highlight anchor \(expectedID)"
+            )
+        }
+    }
 }
 
 @MainActor

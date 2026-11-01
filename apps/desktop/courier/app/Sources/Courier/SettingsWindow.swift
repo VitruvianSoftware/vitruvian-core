@@ -25,6 +25,7 @@ struct SettingsWindow: View {
     @ObservedObject var loginFlow: LoginFlowModel
     @ObservedObject var problemReport: ProblemReportModel
     @ObservedObject var appearance: AppearancePreferences = AppearancePreferences()
+    @ObservedObject var aiPreferences: AIPreferences = AIPreferences()
     var storage: StorageModel? = nil
     var onOpenSystemNotificationSettings: () -> Void = {
         if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") {
@@ -339,6 +340,21 @@ struct SettingsWindow: View {
             StorageSettingsPane(
                 model: storage ?? StorageModel(appModel: app, lifecycle: lifecycle),
                 lifecycle: lifecycle,
+                highlightedSettingID: navigation.highlightedSettingID
+            )
+        case .ai:
+            AISettingsPane(
+                preferences: aiPreferences,
+                lifecycle: lifecycle,
+                highlightedSettingID: navigation.highlightedSettingID
+            )
+        case .plan:
+            PlusSettingsPane(
+                entitlement: AlwaysEntitled(),
+                highlightedSettingID: navigation.highlightedSettingID
+            )
+        case .integrations:
+            IntegrationsSettingsPane(
                 highlightedSettingID: navigation.highlightedSettingID
             )
         case .about:

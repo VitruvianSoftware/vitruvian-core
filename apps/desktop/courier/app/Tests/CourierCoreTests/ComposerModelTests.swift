@@ -2957,4 +2957,29 @@ extension ComposerModelTests {
             "engine sticker import error must use import wording: got '\(engineFailureNotice.displayText)'"
         )
     }
+
+    func testTalkToTypeDraftWithAIAndSlashCommandsShowCalmStubNoticeWithoutLosingDraft() {
+        let (composer, sender) = make()
+        composer.open("!a")
+        composer.text = "Hello team"
+
+        composer.triggerTalkToType()
+        XCTAssertEqual(composer.text, "Hello team", "draft must never be lost or cleared by Talk to Type stub")
+        XCTAssertEqual(composer.notice?.displayText, "Talk to Type isn’t available yet in Courier.")
+        XCTAssertTrue(sender.calls.isEmpty)
+
+        composer.draftWithAI(tone: .moreConcise)
+        XCTAssertEqual(composer.text, "Hello team", "draft must never be lost or cleared by Draft with AI stub")
+        XCTAssertEqual(composer.notice?.displayText, "Drafting with AI isn’t available yet in Courier.")
+        XCTAssertTrue(sender.calls.isEmpty)
+
+        for slash in ["/ai", "/translate", "/summarize", "/draft"] {
+            composer.executeSlashCommand(slash)
+            XCTAssertEqual(composer.text, "Hello team", "draft must never be lost or cleared by \(slash)")
+            let noticeText = composer.notice?.displayText ?? ""
+            XCTAssertTrue(noticeText.contains("Courier"), "expected Courier calm stub notice for \(slash), got '\(noticeText)'")
+            XCTAssertFalse(noticeText.localizedCaseInsensitiveContains("Beeper"))
+            XCTAssertTrue(sender.calls.isEmpty)
+        }
+    }
 }
