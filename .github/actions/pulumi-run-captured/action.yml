@@ -23,7 +23,8 @@ description: >-
   Select a Pulumi stack (creating it if missing) and run `pulumi preview` or
   `pulumi up` with --diff --non-interactive (waiting out Pulumi Cloud's
   account-wide concurrent-update 409 via
-  tools/pulumi/retry-concurrent-update.sh), teeing the full output to a log
+  //tools/pulumi:retry-concurrent-update, built here with the runner's rustc
+  because the callers set up no Bazel), teeing the full output to a log
   file and exposing the command's REAL exit code as `exit_code`. GitHub runs
   steps with `bash -eo pipefail`, so a bare `pulumi ... | tee log` step would
   either abort early (with -e, before the log is complete) or report tee's own
@@ -121,12 +122,29 @@ runs:
 
         echo "::group::pulumi ${PULUMI_COMMAND} ${args[*]} (${STACK})"
         : > "${out_file}"
+
+        # The 409 retry helper, //tools/pulumi:retry-concurrent-update. None of
+        # this action's callers set up Bazel, and the helper is one std-only
+        # file, so the runner's rustc builds it from the checkout in about a
+        # second. Its compiler output goes to stderr, not the pulumi log the
+        # summary reads. A failed build fails the step like a failed pulumi.
+        retry_bin="${RUNNER_TEMP}/retry-concurrent-update"
+        if ! rustc --edition 2021 -O \
+             "${GITHUB_WORKSPACE}/tools/pulumi/src/bin/retry_concurrent_update.rs" \
+             -o "${retry_bin}" >&2; then
+          echo "::error::could not build tools/pulumi/src/bin/retry_concurrent_update.rs with rustc" | tee -a "${out_file}"
+          echo "::endgroup::"
+          echo "exit_code=1" >> "${GITHUB_OUTPUT}"
+          echo "exit-code=1" >> "${GITHUB_OUTPUT}"
+          exit 1
+        fi
+
         # The pulumi command goes through the shared retry helper: the stacks
         # share ONE Pulumi Cloud account that runs a single update at a time,
         # so another app's apply can reject this one with a 409. The helper
         # waits that out (and only that); every other failure is immediate.
         if pulumi stack select -c "${STACK}" 2>&1 | tee -a "${out_file}" && \
-           bash "${GITHUB_WORKSPACE}/tools/pulumi/retry-concurrent-update.sh" \
+           "${retry_bin}" \
              pulumi "${PULUMI_COMMAND}" "${args[@]}" 2>&1 | tee -a "${out_file}"; then
           ec="${PIPESTATUS[0]}"
         else
