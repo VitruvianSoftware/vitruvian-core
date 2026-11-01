@@ -497,10 +497,14 @@ pub fn env_secrets(env: &BTreeMap<String, String>) -> Vec<String> {
 /// ordinary words and they are not real secrets.
 ///
 /// A secret of several lines (a PEM key, wrapped base64) is also hidden
-/// line by line, since a tool that echoes it may re-wrap, indent or switch
-/// its line endings so the value as a whole never appears. A line counts
-/// when it is at least [`MIN_SECRET_LINE`] characters once trimmed and is
-/// not PEM armour (`-----BEGIN …-----`), which is not secret.
+/// line by line, so a tool that echoes it re-indented or with other line
+/// endings, or prints only some of its lines, still cannot show it. A line
+/// counts when it is at least [`MIN_SECRET_LINE`] characters once trimmed
+/// and is not PEM armour (`-----BEGIN …-----`), which is not secret.
+///
+/// Not covered: a secret re-wrapped at another width (base64 at 76
+/// columns instead of 64) has lines that match none of the original's,
+/// and a one-line secret a tool wraps over several lines matches nothing.
 pub fn redact_known(text: &str, secrets: &[String]) -> String {
     let mut all: Vec<&str> = Vec::new();
     for s in secrets {
@@ -659,30 +663,46 @@ fn redact_arg(arg: &str) -> String {
     if lower.starts_with("pass:") {
         return format!("pass:{}", REDACTED);
     }
-    if let Some(url) = redact_url(arg) {
-        return url;
-    }
-    if let Some(header) = redact_secret_header(arg) {
-        return header;
-    }
     // The name before each `=` is what follows the previous one, so
     // `--remote_header=x-buildbuddy-api-key=V` is judged by
     // `x-buildbuddy-api-key`.
     let mut start = 0;
+    let mut secret_eq = None;
     for (i, _) in arg.match_indices('=') {
         if is_secret_name(&arg[start..i]) {
-            return format!("{}={}", &arg[..i], REDACTED);
+            secret_eq = Some(i);
+            break;
         }
         start = i + 1;
     }
-    arg.to_string()
+    let url_at = arg.find("://");
+    let header = redact_secret_header(arg);
+    // A secret-named `NAME=` that comes before a URL or a header hides the
+    // whole value, whatever it holds: `MY_PASSWORD=db-password:hunter2`
+    // and `TOKEN=https://hooks.slack.com/…` are one secret each, not a
+    // header or a URL with a little hidden.
+    if let Some(i) = secret_eq {
+        if url_at.map_or(true, |u| i < u) && header.as_ref().map_or(true, |(c, _)| i < *c) {
+            return format!("{}={}", &arg[..i], REDACTED);
+        }
+    }
+    if let Some(url) = redact_url(arg) {
+        return url;
+    }
+    if let Some((_, header)) = header {
+        return header;
+    }
+    match secret_eq {
+        Some(i) => format!("{}={}", &arg[..i], REDACTED),
+        None => arg.to_string(),
+    }
 }
 
 /// A `Name: value` header (as `-H` or `--header=` passes it) whose name
 /// [`is_secret_name`], any case: `X-Api-Key`, `PRIVATE-TOKEN`,
 /// `X-Auth-Token`. The name must look like a header name, so a path or a
-/// time holding a colon is left alone.
-fn redact_secret_header(arg: &str) -> Option<String> {
+/// time holding a colon is left alone. Also answers where the colon is.
+fn redact_secret_header(arg: &str) -> Option<(usize, String)> {
     let colon = arg.find(':')?;
     let before = &arg[..colon];
     let name = before.rsplit('=').next().unwrap_or(before);
@@ -696,7 +716,7 @@ fn redact_secret_header(arg: &str) -> Option<String> {
     }
     let value = &arg[colon + 1..];
     let space = &value[..value.len() - value.trim_start().len()];
-    Some(format!("{}{}{}", &arg[..colon + 1], space, REDACTED))
+    Some((colon, format!("{}{}{}", &arg[..colon + 1], space, REDACTED)))
 }
 
 /// `arg` with the credentials of the URL in it hidden, or `None` when it
@@ -1509,6 +1529,34 @@ mod tests {
         assert_eq!(
             red("curl", &["http://[::1]:8080/@scope/pkg"]),
             "curl http://[::1]:8080/@scope/pkg"
+        );
+    }
+
+    #[test]
+    fn a_secret_named_variable_hides_its_whole_value_whatever_it_holds() {
+        // Review finding on #4123: the header rule ran first and showed
+        // `db-password:` of a password's value.
+        assert_eq!(
+            red("env", &["MY_PASSWORD=db-password:hunter2"]),
+            "env MY_PASSWORD=<redacted>"
+        );
+        // A webhook URL held in a secret variable is the secret itself.
+        assert_eq!(
+            red(
+                "env",
+                &["SLACK_TOKEN=https://hooks.slack.com/services/T0/B0/xyz"]
+            ),
+            "env SLACK_TOKEN=<redacted>"
+        );
+        // The other way round: a header's value holding `=` is all hidden.
+        assert_eq!(
+            red("curl", &["-H", "X-Api-Key: ab=cd"]),
+            "curl -H X-Api-Key: <redacted>"
+        );
+        // A non-secret name before the URL leaves it to the URL rule.
+        assert_eq!(
+            red("curl", &["--url=https://u:pw@h/p?page=2"]),
+            "curl --url=https://u:<redacted>@h/p?page=2"
         );
     }
 
