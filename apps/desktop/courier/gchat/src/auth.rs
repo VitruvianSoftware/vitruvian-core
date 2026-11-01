@@ -95,6 +95,42 @@ pub(crate) fn map_reqwest_error(context: &str, err: reqwest::Error) -> GChatErro
     GChatError::Network(format!("{context}: {err}"))
 }
 
+/// The `hs` query parameter the web client sends to `/u/0/mole/world` (spec §6, step 4).
+const MOLE_WORLD_HS: &str = r#"["h_hs",null,null,[1,0],null,null,"gmail.pinto-server_20230730.06_p0",1,null,[15,38,36,35,26,30,41,18,24,11,21,14,6],null,null,"3Mu86PSulM4.en..es5",0,null,null,[0]]"#;
+
+/// `/u/0/mole/world` with the query the web client sends. Google answers HTTP 400 without it.
+fn mole_world_url(base_url: &Url) -> Result<Url, GChatError> {
+    let mut url = base_url
+        .join("/u/0/mole/world")
+        .map_err(|e| GChatError::Internal(format!("invalid mole/world URL: {e}")))?;
+    url.query_pairs_mut()
+        .append_pair("origin", "https://mail.google.com")
+        .append_pair("shell", "9")
+        .append_pair("hl", "en")
+        .append_pair("wfi", "gtn-roster-iframe-id")
+        .append_pair("hs", MOLE_WORLD_HS);
+    Ok(url)
+}
+
+/// The `/u/0/mole/world` GET with the web client's headers, `refer` misspelled as it sends it.
+fn mole_world_request(
+    http: &Client,
+    url: Url,
+    user_agent: &str,
+    cookie_hdr: Option<String>,
+) -> reqwest::RequestBuilder {
+    let mut req = http
+        .get(url)
+        .timeout(Duration::from_secs(15))
+        .header("User-Agent", user_agent)
+        .header("authority", "chat.google.com")
+        .header("refer", "https://mail.google.com/");
+    if let Some(cookie_hdr) = cookie_hdr {
+        req = req.header("Cookie", cookie_hdr);
+    }
+    req
+}
+
 struct XsrfState {
     token: Option<String>,
     fetched_at: Option<Instant>,
@@ -209,23 +245,10 @@ crate::edition2021! {
         }
 
         async fn fetch_mole_world(&self) -> Result<String, GChatError> {
-            let url = self
-                .base_url
-                .join("/u/0/mole/world")
-                .map_err(|e| GChatError::Internal(format!("invalid mole/world URL: {e}")))?;
+            let url = mole_world_url(&self.base_url)?;
             self.guard.validate_host_and_scheme(&url, false)?;
-
-            let mut req = self
-                .http
-                .get(url.clone())
-                .timeout(Duration::from_secs(15))
-                .header("User-Agent", &self.user_agent)
-                .header("authority", "chat.google.com")
-                .header("Referer", "https://mail.google.com/");
-
-            if let Some(cookie_hdr) = self.jar.cookie_header_for_request(&url) {
-                req = req.header("Cookie", cookie_hdr);
-            }
+            let cookie_hdr = self.jar.cookie_header_for_request(&url);
+            let req = mole_world_request(&self.http, url, &self.user_agent, cookie_hdr);
 
             let resp = req
                 .send()
@@ -309,5 +332,34 @@ mod tests {
             extract_xsrf_token_from_mole_world_html(empty_html),
             Err(GChatError::AuthExpired(_))
         ));
+    }
+    #[test]
+    fn test_mole_world_request_carries_the_web_clients_query_and_headers() {
+        let base = Url::parse("https://chat.google.com/").unwrap();
+        let req = mole_world_request(
+            &Client::new(),
+            mole_world_url(&base).unwrap(),
+            "UA",
+            Some("SID=x".to_string()),
+        )
+        .build()
+        .unwrap();
+
+        assert_eq!(req.url().path(), "/u/0/mole/world");
+        let query: std::collections::HashMap<String, String> =
+            req.url().query_pairs().into_owned().collect();
+        assert_eq!(query.get("origin").map(String::as_str), Some("https://mail.google.com"));
+        assert_eq!(query.get("shell").map(String::as_str), Some("9"));
+        assert_eq!(query.get("hl").map(String::as_str), Some("en"));
+        assert_eq!(query.get("wfi").map(String::as_str), Some("gtn-roster-iframe-id"));
+        assert_eq!(query.get("hs").map(String::as_str), Some(MOLE_WORLD_HS));
+        assert_eq!(query.len(), 5);
+
+        let headers = req.headers();
+        assert_eq!(headers.get("authority").unwrap(), "chat.google.com");
+        assert_eq!(headers.get("refer").unwrap(), "https://mail.google.com/");
+        assert!(headers.get("referer").is_none());
+        assert_eq!(headers.get("cookie").unwrap(), "SID=x");
+        assert_eq!(headers.get("user-agent").unwrap(), "UA");
     }
 }
