@@ -79,6 +79,9 @@ func TestGuardReviewPathsCoverage(t *testing.T) {
 		".claude/session-start.sh",
 		".agents/hooks.json",
 		"tools/cloud-bootstrap/cloud-bootstrap.sh",
+		// What that launcher builds and runs at session start.
+		"tools/cloud-bootstrap/src/cloud_bootstrap/main.rs",
+		"tools/cloud-bootstrap/src/cloud_bootstrap/creds.rs",
 		"tools/cloud-bootstrap/profiles.tsv",
 		"tools/remote/setup.sh",
 		"infrastructure/pulumi/platform/repo-config/guard_review.go",
@@ -99,6 +102,9 @@ func TestGuardReviewPathsCoverage(t *testing.T) {
 		"tools/cloud-bootstrap/README.md",
 		"tools/cloud-bootstrap/BUILD",
 		"tools/cloud-bootstrap/cloud-bootstrap_test.sh",
+		// The tests beside the launcher's sources, and the other tool there.
+		"tools/cloud-bootstrap/src/launcher_test.rs",
+		"tools/cloud-bootstrap/src/configure_tailscale/lib.rs",
 		"tools/remote/setup_test.sh",
 		"apps/cli/devx/main.go",
 		".claude/agents/wren.md",

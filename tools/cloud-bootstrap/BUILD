@@ -18,7 +18,9 @@ iam.disableServiceAccountKeyCreation) and reads the rest from Secret Manager at
 session start (see README.md, "Two knobs").
 
 It is also the first step of the SessionStart hook, .claude/session-start.sh,
-which is how it actually runs. The `bazel run` targets exist because the hook cannot be
+which is how it actually runs: through cloud-bootstrap.sh, a launcher that
+builds src/cloud_bootstrap with the VM's rustc (there is no Bazel yet) and runs
+it. The `bazel run` targets exist because the hook cannot be
 the only way to exercise it -- `:whoami` is how an operator (or the agent) proves
 what the session actually holds without printing a single secret value.
 
@@ -26,7 +28,6 @@ See tools/cloud-bootstrap/README.md and docs/admin/claude-code-cloud-sessions.md
 """
 
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 exports_files([
     "cloud-bootstrap.sh",
@@ -190,18 +191,22 @@ rust_test(
     },
 )
 
-# The shell implementation is still what .claude/session-start.sh runs, until
-# the follow-up that turns cloud-bootstrap.sh into a launcher for the Rust
-# binary (that file is on the guard-review list, so the switch needs James's
-# approval). Until then its own suite keeps guarding it.
-sh_test(
-    name = "cloud-bootstrap_sh_test",
+# cloud-bootstrap.sh, the launcher session start runs before Bazel exists: it
+# builds src/cloud_bootstrap with the VM's rustc, caches it, and runs it.
+rust_test(
+    name = "cloud-bootstrap_launcher_test",
     size = "small",
-    srcs = ["cloud-bootstrap_test.sh"],
-    data = [
+    srcs = ["src/launcher_test.rs"],
+    data = CLOUD_BOOTSTRAP_SRCS + [
         "cloud-bootstrap.sh",
-        "profiles.tsv",
+        ":auth",
     ],
+    edition = "2021",
+    env = {
+        "BIN": "$(rootpath :auth)",
+        "LAUNCHER": "$(rootpath cloud-bootstrap.sh)",
+        "MAIN_RS": "$(rootpath src/cloud_bootstrap/main.rs)",
+    },
 )
 
 alias(

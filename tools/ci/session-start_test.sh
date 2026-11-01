@@ -120,7 +120,7 @@ for step in "${STEPS[@]}"; do
   fi
 done
 # shellcheck disable=SC2016 # the wrapper's literal ${root}/<step> text
-order="$(grep -oE '"\$\{root\}/[^"]+"' "${WRAPPER}" | tr -d '"' | sed 's|^\${root}/||' | paste -sd ' ')"
+order="$(grep -oE '"\$\{root\}/[^"]+"' "${WRAPPER}" | tr -d '"' | sed 's|^\${root}/||' | paste -sd ' ' -)"
 if [ "${order}" = "${STEPS[*]}" ]; then pass "in the order: ${order}"; else fail "wrapper order is '${order}', want '${STEPS[*]}'"; fi
 if [ -x "${WRAPPER}" ]; then pass "wrapper is executable"; else fail "wrapper is not executable"; fi
 
