@@ -141,7 +141,8 @@ Two things in the panel are about what is waiting on a person, not an agent:
 ## Automatic sign-up
 
 Antigravity runs `hooks/note-pr-create.sh` after every shell command an
-agent runs. For anything but `gh pr create` and the sign-up command below it
+agent runs. It hands over to the Rust in `hooks/src`, which
+`hooks/rust-hook.sh` compiles with `rustc` on first use. For anything but `gh pr create` and the sign-up command below it
 does nothing. For `gh pr create`
 it leaves a note in a fixed folder (`~/.gemini/antigravity/gh-watch-inbox`); the watcher looks up the pull
 request for the branch in the folder the command ran in, and starts watching

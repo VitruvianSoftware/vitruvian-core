@@ -11,7 +11,7 @@ and usage.
 flowchart LR
     subgraph app["Antigravity desktop app"]
         conv["Agent conversation"]
-        hook["hooks/evaluate-rules.sh"]
+        hook["hooks/evaluate-rules.sh (Rust, built by rustc on first use)"]
         panel["Hookify Side Panel"]
     end
     conv -- "PreToolUse / Stop payload" --> hook

@@ -3,19 +3,14 @@
 #
 # SPDX-License-Identifier: MIT
 #
-# Notices `agy plugin` commands run by an agent so the Extensions Marketplace
-# sidecar knows when a plugin was installed, toggled, or removed from the CLI.
+# PostToolUse hook on run_command (see ../hooks.json). When an agent ran an
+# `agy plugin` command, it saves the payload as a note in
+# ${ANTIGRAVITY_APP_DATA_DIR:-~/.gemini/antigravity}/ext-marketplace-inbox, so
+# the Extensions Marketplace sidecar knows a plugin was installed, toggled or
+# removed from the CLI. It always answers {}.
+#
+# The logic is in src/lib.rs (run_from_stdio); rust-hook.sh builds and runs
+# it. If it cannot, the hook answers {} and stderr says why.
 
-payload=$(cat)
-printf '{}'
-
-case "$payload" in
-*'agy plugin'*) ;;
-*) exit 0 ;;
-esac
-
-inbox="${ANTIGRAVITY_APP_DATA_DIR:-$HOME/.gemini/antigravity}/ext-marketplace-inbox"
-mkdir -p "$inbox" 2>/dev/null || exit 0
-note="$inbox/$(date +%s)-$$.json"
-printf '%s' "$payload" >"$note.tmp" 2>/dev/null && mv "$note.tmp" "$note" 2>/dev/null
-exit 0
+exec "$(dirname "$0")/rust-hook.sh" note_plugin_cmd main.rs \
+	'{}'

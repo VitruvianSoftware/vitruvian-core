@@ -7,8 +7,8 @@ use std::env;
 use std::io::{self, Read, Write};
 
 fn main() {
-    let mut payload = String::new();
-    let _ = io::stdin().read_to_string(&mut payload);
+    let mut payload = Vec::new();
+    let _ = io::stdin().read_to_end(&mut payload);
 
     print!("{{}}");
     let _ = io::stdout().flush();

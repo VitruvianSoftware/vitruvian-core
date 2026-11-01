@@ -9,8 +9,22 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Returns true if the hook payload contains a subagent-related tool call
 /// (`invoke_subagent` or `send_message`).
-pub fn is_subagent_payload(payload: &str) -> bool {
-    payload.contains("invoke_subagent") || payload.contains("send_message")
+pub fn is_subagent_payload(payload: impl AsRef<[u8]>) -> bool {
+    let payload = payload.as_ref();
+    contains_bytes(payload, b"invoke_subagent") || contains_bytes(payload, b"send_message")
+}
+
+/// The payload as the shell hook saw it: `payload=$(cat)` drops every
+/// trailing newline (and nothing else), and the note gets exactly that.
+pub fn strip_trailing_newlines(mut input: &[u8]) -> &[u8] {
+    while let Some((&b'\n', rest)) = input.split_last() {
+        input = rest;
+    }
+    input
+}
+
+fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
+    haystack.windows(needle.len()).any(|w| w == needle)
 }
 
 /// Resolves the savvy-fleet inbox directory from `ANTIGRAVITY_APP_DATA_DIR` or `HOME`.
@@ -29,7 +43,13 @@ pub fn resolve_inbox_dir(app_data_dir: Option<&str>, home_dir: Option<&str>) -> 
 
 /// Atomically writes the payload to `<inbox_dir>/<epoch>-<pid>.json` if it matches
 /// `is_subagent_payload`. Never panics; returns `Ok(Some(path))` when written.
-pub fn handle_payload(payload: &str, inbox_dir: &Path) -> std::io::Result<Option<PathBuf>> {
+pub fn handle_payload(
+    payload: impl AsRef<[u8]>,
+    inbox_dir: &Path,
+) -> std::io::Result<Option<PathBuf>> {
+    // Raw bytes: a payload that is not UTF-8 is still recorded, as the
+    // shell hook recorded it.
+    let payload = strip_trailing_newlines(payload.as_ref());
     if !is_subagent_payload(payload) {
         return Ok(None);
     }
@@ -45,7 +65,7 @@ pub fn handle_payload(payload: &str, inbox_dir: &Path) -> std::io::Result<Option
     let note_path = inbox_dir.join(&filename);
     let tmp_path = inbox_dir.join(format!("{filename}.tmp"));
 
-    fs::write(&tmp_path, payload.as_bytes())?;
+    fs::write(&tmp_path, payload)?;
     fs::rename(&tmp_path, &note_path)?;
 
     Ok(Some(note_path))
@@ -123,5 +143,32 @@ mod tests {
         let written = handle_payload(payload, &inbox).expect("handle_payload should succeed");
         assert!(written.is_none());
         assert!(!inbox.exists());
+    }
+
+    // Parity with the shell hook this replaced (`payload=$(cat)`, then
+    // `printf '%s' "$payload"` into the note).
+
+    #[test]
+    fn note_drops_trailing_newlines_like_the_shell_hook() {
+        let inbox = temp_inbox();
+        let payload = "{\"x\":\"invoke_subagent\"}\r\n\n\n";
+        let written = handle_payload(payload, &inbox).unwrap().unwrap();
+        // Only the newlines go; a carriage return stays, as in the shell.
+        assert_eq!(
+            fs::read(&written).unwrap(),
+            b"{\"x\":\"invoke_subagent\"}\r"
+        );
+        let _ = fs::remove_dir_all(&inbox);
+    }
+
+    #[test]
+    fn note_keeps_inner_newlines_and_bytes_that_are_not_utf8() {
+        let inbox = temp_inbox();
+        let payload: &[u8] = b"{\"a\":\"\xe9\",\n\"x\":\"invoke_subagent\"}\n";
+        let written = handle_payload(payload, &inbox)
+            .unwrap()
+            .expect("a payload that is not UTF-8 is still recorded");
+        assert_eq!(fs::read(&written).unwrap(), &payload[..payload.len() - 1]);
+        let _ = fs::remove_dir_all(&inbox);
     }
 }

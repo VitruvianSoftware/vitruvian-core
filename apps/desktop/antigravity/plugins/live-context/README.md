@@ -35,13 +35,17 @@ and diagnostics side panel.
 
 ## Requirements
 
-The hooks are written in Rust using only the standard library. The first time
-a hook runs, `hooks/rust-hook.sh` compiles it with `rustc` (about 1-2 s) into
-`~/.cache/antigravity-plugins/`, and later runs reuse that binary. You need
-Rust installed ([rustup.rs](https://rustup.rs)); without it the hook tells the
-agent that live state is unknown, and says why on stderr. The side panel runs
-on Antigravity's Node.js, and the live state needs `git` and an authenticated
-`gh`.
+The hooks are written in Rust using only the standard library, and
+`hooks/rust-hook.sh` compiles them with `rustc` into
+`~/.cache/antigravity-plugins/` (a private folder; it refuses one that is a
+symlink or writable by others). The build runs in the background, never inside
+a hook's timeout: until it finishes (a second or two after the first turn, or
+after the plugin changes) the hook answers with its fallback, which tells the
+agent that live state is unknown. You need Rust installed
+([rustup.rs](https://rustup.rs)); without it, or if the build fails, the hook
+keeps answering with that fallback, says why on stderr, and retries the build
+every 10 minutes. The side panel runs on Antigravity's Node.js, and the live
+state needs `git` and an authenticated `gh`.
 
 ## Install
 
@@ -77,13 +81,13 @@ git -C ~/.gemini/config/plugins/live-context pull
 | `hooks.json` | `PreInvocation` and `Stop` lifecycle hook definitions |
 | `hooks/inject-live-context.sh` | Emits `injectSteps: [{ ephemeralMessage }]` before model calls |
 | `hooks/verify-response-shape.sh` | Validates response shape on `Stop` and logs verdicts |
-| `hooks/rust-hook.sh` | Builds a hook from `hooks/src` with `rustc` on first use, then runs it |
+| `hooks/rust-hook.sh` | Builds a hook from `hooks/src` with `rustc` in the background, then runs it; answers with the hook's fallback until then |
 | `hooks/src/` | The hooks: `lib.rs` (logic and tests), `json.rs`, `bin/*.rs` (entry points) |
 | `rules/AGENTS.md` | Standing instructions for live state precedence and response contract |
 | `skills/live-context/SKILL.md` | Skill for configuring live context injection and response shape rules |
 | `sidecars/panel/sidecar.json` | Sidecar process and auxiliary pane UI manifest |
 | `sidecars/panel/main.mjs` | Sidecar backend: refreshes Git/GitHub cache, serves `/api/state`, `/api/openui`, `/api/settings` |
-| `sidecars/panel/lib/core.mjs` | Pure functions (`buildEphemeralContextPayload`, `checkResponseContract`, `formatLiveGitSummary`, `evaluateStopShape`) |
+| `sidecars/panel/lib/core.mjs` | `formatLiveGitSummary` and `buildEphemeralContextPayload`, for the panel's preview of the injected message |
 | `sidecars/panel/lib/openui.mjs` | OpenUI Lang v0.5 parser, HTML compiler, and `toOpenUILang(state)` |
 | `sidecars/panel/{index.html,app.js,styles.css}` | Interactive side panel |
 

@@ -5,31 +5,66 @@
 """security-guidance: an Antigravity plugin that scans file edits and shell
 commands for security vulnerabilities and leaked secrets.
 
-The plugin is plain ESM JavaScript that Antigravity runs with its own bundled
-Node.js, so there is nothing to build; these targets only run the unit tests.
+The hook is std-only Rust (hooks/src) that hooks/rust-hook.sh compiles with
+rustc on the user's machine; the side panel is ESM JavaScript that Antigravity
+runs with Node.js. Nothing here is shipped from Bazel: these targets test.
 """
 
 load("@aspect_rules_js//js:defs.bzl", "js_library", "js_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+load("@rules_shell//shell:sh_library.bzl", "sh_library")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # gazelle:ignore
 
 package(default_visibility = ["//apps/desktop/antigravity/plugins/security-guidance:__subpackages__"])
 
-exports_files(["hooks/security-check.sh"])
+exports_files([
+    "hooks/rust-hook.sh",
+    "hooks/security-check.sh",
+])
+
+sh_library(
+    name = "hook_scripts",
+    srcs = glob(
+        ["hooks/*.sh"],
+        exclude = ["hooks/*_test.sh"],
+    ),
+)
+
+# The hook Antigravity runs (hooks.json) goes through hooks/rust-hook.sh, which
+# compiles hooks/src with a bare rustc on the user's machine. This builds it
+# that way with Bazel's rustc, and checks the launcher's caching and its
+# fallback when rustc is missing or the build fails.
+sh_test(
+    name = "rust_hook_test",
+    size = "medium",
+    srcs = ["hooks/rust-hook_test.sh"],
+    data = glob(["hooks/src/**/*.rs"]) + [
+        "hooks.json",
+        "@rules_rust//rust/toolchain:current_rust_stdlib_files",
+        "@rules_rust//rust/toolchain:current_rustc_files",
+        "@rules_rust//rust/toolchain:current_rustc_lib_files",
+    ],
+    env = {
+        "HOOKS_JSON": "$(rootpath hooks.json)",
+        "PLUGIN_NAME": "security-guidance",
+        "REAL_RUSTC": "$(rootpath @rules_rust//rust/toolchain:current_rustc_files)",
+    },
+    deps = [":hook_scripts"],
+)
 
 rust_library(
     name = "security_check_lib",
-    srcs = ["hooks/src/lib.rs"],
+    srcs = [
+        "hooks/src/json.rs",
+        "hooks/src/lib.rs",
+    ],
     crate_name = "security_check",
     crate_root = "hooks/src/lib.rs",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-    deps = [
-        "@crates//:serde",
-        "@crates//:serde_json",
-    ],
 )
 
 rust_binary(
@@ -149,6 +184,7 @@ pipeline_unit(
     test_targets = [
         ":core_test",
         ":openui_test",
+        ":rust_hook_test",
         ":security_check_lib_test",
         ":security-check_test",
         ":security_check_lib_test",
@@ -176,4 +212,19 @@ filegroup(
         allow_empty = True,
     ),
     visibility = ["//tools/sync-site-tools:__pkg__"],
+)
+
+# What //apps/desktop/antigravity's cross-plugin tests read: the hooks.json
+# shape, each hook's fallback, and the files every plugin shares.
+js_library(
+    name = "conformance_files",
+    srcs = glob(
+        [
+            "hooks.json",
+            "hooks/*.sh",
+            "hooks/src/json.rs",
+        ],
+        allow_empty = True,
+    ),
+    visibility = ["//apps/desktop/antigravity:__pkg__"],
 )

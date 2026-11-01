@@ -5,19 +5,55 @@
 """receipts-report: an Antigravity plugin that parses session transcripts,
 aggregates per-project impact receipts, and exports HTML or CSV reports.
 
-The plugin is plain ESM JavaScript that Antigravity runs with its own bundled
-Node.js, so there is nothing to build; these targets only run the unit tests.
+The hook is std-only Rust (hooks/src) that hooks/rust-hook.sh compiles with
+rustc on the user's machine; the side panel is ESM JavaScript that Antigravity
+runs with Node.js. Nothing here is shipped from Bazel: these targets test.
 """
 
 load("@aspect_rules_js//js:defs.bzl", "js_library", "js_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
+load("@rules_shell//shell:sh_library.bzl", "sh_library")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 
 # gazelle:ignore
 
 package(default_visibility = ["//apps/desktop/antigravity/plugins/receipts-report:__subpackages__"])
 
-exports_files(["hooks/record-turn.sh"])
+exports_files([
+    "hooks/record-turn.sh",
+    "hooks/rust-hook.sh",
+])
+
+sh_library(
+    name = "hook_scripts",
+    srcs = glob(
+        ["hooks/*.sh"],
+        exclude = ["hooks/*_test.sh"],
+    ),
+)
+
+# The hooks Antigravity runs (hooks.json) go through hooks/rust-hook.sh, which
+# compiles hooks/src with a bare rustc on the user's machine. This builds them
+# that way with Bazel's rustc, and checks the launcher's caching and its
+# fallback when rustc is missing or the build fails.
+sh_test(
+    name = "rust_hook_test",
+    size = "medium",
+    srcs = ["hooks/rust-hook_test.sh"],
+    data = glob(["hooks/src/**/*.rs"]) + [
+        "hooks.json",
+        "@rules_rust//rust/toolchain:current_rust_stdlib_files",
+        "@rules_rust//rust/toolchain:current_rustc_files",
+        "@rules_rust//rust/toolchain:current_rustc_lib_files",
+    ],
+    env = {
+        "HOOKS_JSON": "$(rootpath hooks.json)",
+        "PLUGIN_NAME": "receipts-report",
+        "REAL_RUSTC": "$(rootpath @rules_rust//rust/toolchain:current_rustc_files)",
+    },
+    deps = [":hook_scripts"],
+)
 
 js_library(
     name = "lib",
@@ -142,6 +178,7 @@ pipeline_unit(
     persona = "backend",
     runner = "ubuntu-26.04",
     test_targets = [
+        ":rust_hook_test",
         ":core_test",
         ":openui_test",
         ":record_turn_lib_test",
@@ -171,4 +208,19 @@ filegroup(
         allow_empty = True,
     ),
     visibility = ["//tools/sync-site-tools:__pkg__"],
+)
+
+# What //apps/desktop/antigravity's cross-plugin tests read: the hooks.json
+# shape, each hook's fallback, and the files every plugin shares.
+js_library(
+    name = "conformance_files",
+    srcs = glob(
+        [
+            "hooks.json",
+            "hooks/*.sh",
+            "hooks/src/json.rs",
+        ],
+        allow_empty = True,
+    ),
+    visibility = ["//apps/desktop/antigravity:__pkg__"],
 )

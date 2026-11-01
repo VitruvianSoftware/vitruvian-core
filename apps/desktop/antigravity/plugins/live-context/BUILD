@@ -229,3 +229,18 @@ filegroup(
     ),
     visibility = ["//tools/sync-site-tools:__pkg__"],
 )
+
+# What //apps/desktop/antigravity's cross-plugin tests read: the hooks.json
+# shape, each hook's fallback, and the files every plugin shares.
+js_library(
+    name = "conformance_files",
+    srcs = glob(
+        [
+            "hooks.json",
+            "hooks/*.sh",
+            "hooks/src/json.rs",
+        ],
+        allow_empty = True,
+    ),
+    visibility = ["//apps/desktop/antigravity:__pkg__"],
+)

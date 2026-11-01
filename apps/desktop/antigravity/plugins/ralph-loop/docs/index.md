@@ -25,7 +25,9 @@ flowchart LR
 ## Stop hook lifecycle
 
 When an agent turn finishes, Antigravity invokes `hooks/ralph-stop.sh` with the
-conversation's `conversationId` and `transcriptPath`:
+conversation's `conversationId` and `transcriptPath`. The script runs the Rust
+in `hooks/src` (built once with `rustc` by `hooks/rust-hook.sh`; without Rust
+the turn simply ends):
 
 | Condition | Result |
 | --- | --- |

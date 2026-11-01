@@ -10,6 +10,14 @@ An Antigravity desktop plugin that provides an interactive **Extensions Marketpl
 - **One-Click Install, Update & Uninstall**: Install directly from the local `vitruvian-core` monorepo path (via symlink) or GitHub repository URL (`agy plugin install <repo>`), pull updates (`git -C ~/.gemini/config/plugins/<name> pull`), or uninstall (`agy plugin uninstall <name>`).
 - **OpenUI Lang v0.5 Dashboard**: Exposes `/api/state` and `/api/openui` producing a valid `Card([Header(...), Grid(4, [...]), Table([...])])` specification.
 
+## Requirements
+
+The hook is written in Rust using only the standard library. The first time it
+runs, `hooks/rust-hook.sh` compiles it with `rustc` (about a second) into
+`~/.cache/antigravity-plugins/`, and later runs reuse that binary. You need
+Rust installed ([rustup.rs](https://rustup.rs)). Without it the hook leaves no notes about `agy plugin` commands (the panel still lists plugins on refresh) and says why on stderr. The side panel runs on
+Antigravity's Node.js.
+
 ## Install
 
 From GitHub:
@@ -38,6 +46,8 @@ git -C ~/.gemini/config/plugins/ext-marketplace pull
 | --- | --- |
 | `plugin.json` | Plugin manifest |
 | `hooks.json`, `hooks/note-plugin-cmd.sh` | `PostToolUse` hook noticing `agy plugin` CLI invocations |
+| `hooks/rust-hook.sh` | Builds the hook from `hooks/src` with `rustc` on first use, then runs it |
+| `hooks/src/` | The hook: `lib.rs` (logic and tests), `main.rs` (entry point) |
 | `rules/AGENTS.md` | Standing instructions for discovering and managing Antigravity plugins |
 | `skills/ext-marketplace/SKILL.md` | Skill guide for inspecting the catalog, toggling plugins, and opening the marketplace pane |
 | `sidecars/panel/sidecar.json` | Sidecar manifest (`SIDECAR_UI_ENTRYPOINT_AUX_PANE`) |
@@ -52,6 +62,7 @@ Run the unit test suite with Node's built-in test runner:
 
 ```bash
 node --test sidecars/panel/lib/core.test.mjs sidecars/panel/lib/openui.test.mjs sidecars/panel/lib/version.test.mjs
+rustc --edition 2021 --test hooks/src/lib.rs -o /tmp/ext-marketplace-hook-test && /tmp/ext-marketplace-hook-test
 ```
 
 Or via Bazel in the monorepo:

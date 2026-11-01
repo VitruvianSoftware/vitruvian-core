@@ -23,12 +23,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import {
-  buildEphemeralContextPayload,
-  checkResponseContract,
-  evaluateStopShape,
-  formatLiveGitSummary,
-} from "./core.mjs";
+import { buildEphemeralContextPayload, formatLiveGitSummary } from "./core.mjs";
 
 test("formatLiveGitSummary formats git branch, dirty count, open PRs, and merged PRs", () => {
   const text = formatLiveGitSummary(
@@ -96,67 +91,4 @@ test("buildEphemeralContextPayload emits injectSteps with ephemeralMessage", () 
     }),
     {},
   );
-});
-
-test("checkResponseContract exempts short replies and flags trailing filler lines", () => {
-  const shortReply = checkResponseContract("Yes, the build passed.");
-  assert.equal(shortReply.exempt, true);
-  assert.equal(shortReply.valid, true);
-
-  const fillerReply = checkResponseContract(
-    `${"Detailed investigation and verification results for the cluster deployment. ".repeat(6)}\n\nNothing needed from you.`,
-  );
-  assert.equal(fillerReply.exempt, false);
-  assert.equal(fillerReply.hasFiller, true);
-  assert.equal(fillerReply.valid, false);
-
-  // Quoting the forbidden phrase inside backticks or quotes is allowed.
-  const quotedPhraseReply = checkResponseContract(
-    `${"Verified that the Stop hook blocks replies ending with filler phrases. ".repeat(6)}\nWe specifically tested \`Nothing needed from you.\` in the unit suite.`,
-  );
-  assert.equal(quotedPhraseReply.hasFiller, false);
-  assert.equal(quotedPhraseReply.valid, true);
-});
-
-test("evaluateStopShape bounces once in enforce mode and allows on second pass or log mode", () => {
-  const badMessage = `${"Substantive explanation of the architecture and test coverage across all modules. ".repeat(5)}\n\nNo action needed.`;
-
-  const logModeResult = evaluateStopShape(
-    {
-      conversationId: "conv-log-1234",
-      executionNum: 1,
-      terminationReason: "NO_TOOL_CALL",
-      lastAssistantMessage: badMessage,
-    },
-    { mode: "log" },
-  );
-  assert.equal(logModeResult.bounced, false);
-  assert.deepEqual(logModeResult.output, { decision: "allow" });
-  assert.equal(logModeResult.logRecord?.verdict, "block");
-
-  const enforceFirstPass = evaluateStopShape(
-    {
-      conversationId: "conv-enf-1234",
-      executionNum: 1,
-      terminationReason: "NO_TOOL_CALL",
-      lastAssistantMessage: badMessage,
-    },
-    { mode: "enforce" },
-  );
-  assert.equal(enforceFirstPass.bounced, true);
-  assert.equal(enforceFirstPass.output.decision, "continue");
-  assert.match(enforceFirstPass.output.reason, /RESPONSE CONTRACT:/);
-
-  // Second pass (executionNum > 1) never loops
-  const enforceSecondPass = evaluateStopShape(
-    {
-      conversationId: "conv-enf-1234",
-      executionNum: 2,
-      terminationReason: "NO_TOOL_CALL",
-      lastAssistantMessage: badMessage,
-    },
-    { mode: "enforce" },
-  );
-  assert.equal(enforceSecondPass.bounced, false);
-  assert.deepEqual(enforceSecondPass.output, { decision: "allow" });
 });

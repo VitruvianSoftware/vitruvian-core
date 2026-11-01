@@ -3,21 +3,14 @@
 #
 # SPDX-License-Identifier: MIT
 #
-# Antigravity runs this after each model invocation (see ../hooks.json).
-# It records a lightweight JSON note in ~/.gemini/antigravity/receipts-report-inbox
-# with the conversationId, workspacePaths, modelName, and step count so the
-# receipts-report sidecar can index active conversations without full directory
-# walks on every poll.
+# PostInvocation hook (see ../hooks.json). When the payload carries a
+# "conversationId", it saves the payload as a note in
+# ${ANTIGRAVITY_APP_DATA_DIR:-~/.gemini/antigravity}/receipts-report-inbox, so
+# the receipts-report sidecar can index active conversations without walking
+# every directory on each poll. It always answers {}.
 #
-# Always exits 0 and prints `{}` so it never alters or blocks agent execution.
+# The logic is in src/lib.rs (run_from_stdio); rust-hook.sh builds and runs
+# it. If it cannot, the hook answers {} and stderr says why.
 
-payload=$(cat)
-printf '{}'
-
-case "$payload" in *'"conversationId"'*) ;; *) exit 0 ;; esac
-
-inbox="${ANTIGRAVITY_APP_DATA_DIR:-$HOME/.gemini/antigravity}/receipts-report-inbox"
-mkdir -p "$inbox" 2>/dev/null || exit 0
-note="$inbox/$(date +%s)-$$.json"
-printf '%s' "$payload" >"$note.tmp" 2>/dev/null && mv "$note.tmp" "$note" 2>/dev/null
-exit 0
+exec "$(dirname "$0")/rust-hook.sh" record_turn main.rs \
+	'{}'

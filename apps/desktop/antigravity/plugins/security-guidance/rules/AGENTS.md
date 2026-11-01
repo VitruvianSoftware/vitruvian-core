@@ -21,4 +21,4 @@ The `security-guidance` plugin scans `edit_file`, `write_file`, and
   - Use parameterized queries (`$1`, `?`) instead of string interpolation in SQL.
 - **Intentional false positives:** If a pattern is genuinely required (for
   example inside a unit test fixture), annotate that line with
-  `// security-guidance-ignore: <rule-id>` or `# nosec <rule-id>`.
+  `// security-guidance-ignore: <rule-id>` or `# nosec: <rule-id>` (the colon matters: a bare `# nosec` silences every rule on the line).

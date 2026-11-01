@@ -7,14 +7,9 @@
 # active workspace paths and conversationId into
 # ~/.gemini/antigravity/worktree-band-inbox/ so the worktree-band sidecar can
 # automatically discover and monitor the conversation's git worktrees.
+#
+# The logic is in src/lib.rs; rust-hook.sh builds and runs it. If it cannot,
+# the message below tells the agent the worktree is not being tracked.
 
-payload=$(cat)
-printf '{}'
-
-case "$payload" in *'"workspacePaths"'* | *'"cwd"'* | *'"conversationId"'*) ;; *) exit 0 ;; esac
-
-inbox="$HOME/.gemini/antigravity/worktree-band-inbox"
-mkdir -p "$inbox" 2>/dev/null || exit 0
-note="$inbox/$(date +%s)-$$.json"
-printf '%s' "$payload" >"$note.tmp" 2>/dev/null && mv "$note.tmp" "$note" 2>/dev/null
-exit 0
+exec "$(dirname "$0")/rust-hook.sh" session_worktree main.rs \
+	'{"injectSteps":[{"ephemeralMessage":"worktree-band could not run: its hook is still being built with rustc, or cannot be (details in ~/.cache/antigravity-plugins). The worktree of this conversation is not being tracked."}]}'

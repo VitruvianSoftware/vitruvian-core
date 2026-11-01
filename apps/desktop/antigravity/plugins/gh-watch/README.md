@@ -85,6 +85,12 @@ matters where there is none. Draft pull requests cannot auto-merge.
   only the desktop app runs plugin background processes.
 - The GitHub CLI (`gh`) on your `PATH`, signed in (`gh auth status`). The
   plugin reads GitHub as you, with whatever access that login has.
+- Rust (`rustc`, from [rustup.rs](https://rustup.rs)) for the sign-up hook.
+  The hook is written in Rust using only the standard library; the first time
+  it runs, `hooks/rust-hook.sh` compiles it (about 1 s) into
+  `~/.cache/antigravity-plugins/`, and later runs reuse that binary. Without
+  `rustc` the hook still answers `{}` and says why on stderr, so automatic
+  sign-up stops; watching from the panel still works.
 
 ## Platforms
 
@@ -193,6 +199,8 @@ pull request until you turn it on.
 | `sidecars/panel/sidecar.json` | Background process and panel manifest |
 | `sidecars/panel/main.mjs` | Panel backend: HTTP routes, starts the watcher |
 | `hooks.json`, `hooks/note-pr-create.sh` | The hook that notices `gh pr create` and the sign-up command |
+| `hooks/rust-hook.sh` | Builds the hook from `hooks/src` with `rustc` on first use, then runs it |
+| `hooks/src/` | The hook: `lib.rs` (logic and tests), `main.rs` (entry point) |
 | `rules/AGENTS.md` | Standing instruction: sign up pull requests a subagent opened |
 | `sidecars/panel/lib/decide.mjs` | When to wake and when to wait (pure logic) |
 | `sidecars/panel/lib/flakes.mjs` | Remembering flaky checks (pure logic) |
@@ -221,12 +229,13 @@ is gone.
 
 ## Test
 
-The logic is plain JavaScript with no dependencies, tested with Node's
-built-in runner. From the plugin folder:
+The watcher is plain JavaScript with no dependencies, tested with Node's
+built-in runner; the hook is Rust, tested with `rustc --test`. From the plugin
+folder:
 
 ```bash
 node --test sidecars/panel/lib/
-bash hooks/note-pr-create_test.sh
+rustc --edition 2021 --test hooks/src/lib.rs -o /tmp/gh-watch-hook-test && /tmp/gh-watch-hook-test
 ```
 
 This plugin is developed in the

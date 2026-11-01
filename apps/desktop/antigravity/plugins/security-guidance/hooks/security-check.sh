@@ -3,115 +3,16 @@
 #
 # SPDX-License-Identifier: MIT
 #
-# Antigravity runs this on PreToolUse (edit_file|write_file|run_command) and
-# Stop (see ../hooks.json). It scans incoming file edits and shell commands for
-# dangerous constructs and hardcoded secrets using sidecars/panel/lib/core.mjs,
-# records audit findings for the Security Guidance sidecar panel, and emits a
-# permissionDecision when critical/high findings are detected.
+# PreToolUse (edit_file|write_file|run_command) and Stop hook (see
+# ../hooks.json): scans what an edit or a shell command is about to write for
+# dangerous constructs and hardcoded secrets, records findings for the Security
+# Guidance panel, and answers {"decision":"ask"} (or "deny" for a critical
+# finding) with the reasons, and {"decision":"allow"} otherwise (Antigravity
+# denies a tool call whose PreToolUse hook answers without a decision).
+#
+# The logic is in src/lib.rs (handle_security_hook); rust-hook.sh builds and
+# runs it. If it cannot, the answer below asks before every edit and command
+# and says why: unchecked edits must not look checked.
 
-payload=$(cat)
-if [ -z "$payload" ]; then
-	printf '{}'
-	exit 0
-fi
-
-HERE="$(cd "$(dirname "$0")" && pwd)"
-CORE_MJS="${HERE}/../sidecars/panel/lib/core.mjs"
-
-if ! command -v node >/dev/null 2>&1 || [ ! -f "$CORE_MJS" ]; then
-	printf '{}'
-	exit 0
-fi
-
-SEC_PAYLOAD="$payload" SEC_CORE="$CORE_MJS" node --input-type=module -e '
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
-
-try {
-  const core = await import(pathToFileURL(process.env.SEC_CORE).href);
-  const payload = JSON.parse(process.env.SEC_PAYLOAD || "{}");
-  const appDir = process.env.ANTIGRAVITY_APP_DATA_DIR || join(homedir(), ".gemini", "antigravity");
-  const stateFile = join(appDir, "security-guidance-state.json");
-
-  let store = { findings: [], suppressions: [] };
-  if (existsSync(stateFile)) {
-    try {
-      const parsed = JSON.parse(readFileSync(stateFile, "utf8"));
-      if (parsed && typeof parsed === "object") {
-        store = {
-          findings: Array.isArray(parsed.findings) ? parsed.findings : [],
-          suppressions: Array.isArray(parsed.suppressions) ? parsed.suppressions : [],
-        };
-      }
-    } catch {}
-  }
-
-  const isStop =
-    payload?.hook_event_name === "Stop" ||
-    payload?.event === "Stop" ||
-    (!payload?.toolCall && !payload?.tool_name && ("stop_hook_active" in payload || "reason" in payload));
-
-  if (isStop) {
-    process.stdout.write("{}");
-    process.exit(0);
-  }
-
-  const args = payload?.toolCall?.args || payload?.tool_input || {};
-  const toolName = payload?.toolCall?.name || payload?.tool_name || "unknown";
-  const filePath = String(args.Path || args.file_path || (toolName === "run_command" ? "<shell>" : "<unknown>"));
-  const content = String(args.Content ?? args.Replacement ?? args.new_string ?? args.CommandLine ?? args.command ?? "");
-
-  const rawFindings = core.scanContentForPatterns(content, { filePath });
-  const activeFindings = core.filterSuppressedFindings(rawFindings, store.suppressions);
-
-  if (activeFindings.length === 0) {
-    process.stdout.write("{}");
-    process.exit(0);
-  }
-
-  const now = Date.now();
-  const recorded = activeFindings.map((f) => ({
-    ...f,
-    id: f.id || `${f.ruleId}:${filePath}:${f.line}`,
-    conversationId: payload?.conversationId || "",
-    tool: toolName,
-    timestamp: now,
-  }));
-
-  try {
-    mkdirSync(appDir, { recursive: true });
-    const byId = new Map();
-    for (const item of [...recorded, ...store.findings]) {
-      if (item && item.id && !byId.has(item.id)) byId.set(item.id, item);
-    }
-    store.findings = [...byId.values()].slice(0, 200);
-    const tmp = `${stateFile}.tmp`;
-    writeFileSync(tmp, JSON.stringify(store, null, 2) + "\n", "utf8");
-    renameSync(tmp, stateFile);
-  } catch {}
-
-  const hasCritical = activeFindings.some((f) => f.severity === "critical");
-  const decision = hasCritical ? "deny" : "ask";
-  const reason = activeFindings
-    .map((f) => `[${f.severity.toUpperCase()} ${f.ruleId}] (${f.cwe}) line ${f.line}: ${f.message} — Remediation: ${f.remediation}`)
-    .join("\n\n");
-
-  process.stdout.write(
-    JSON.stringify({
-      permissionDecision: decision,
-      permissionDecisionReason: reason,
-      hookSpecificOutput: {
-        hookEventName: "PreToolUse",
-        permissionDecision: decision,
-        permissionDecisionReason: reason,
-      },
-    }),
-  );
-} catch {
-  process.stdout.write("{}");
-}
-' 2>/dev/null || printf '{}'
-
-exit 0
+exec "$(dirname "$0")/rust-hook.sh" security_check main.rs \
+	'{"decision":"ask","reason":"security-guidance could not run its checks this time: its hook is still being built with rustc, or cannot be (details in ~/.cache/antigravity-plugins). Edits and commands are NOT being checked."}'

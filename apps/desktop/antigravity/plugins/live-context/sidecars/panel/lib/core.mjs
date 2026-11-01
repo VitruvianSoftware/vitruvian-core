@@ -20,11 +20,11 @@
  * SOFTWARE.
  */
 
-// Pure logic for the live-context Antigravity plugin:
-// - Formats live Git branch/status and GitHub PR/issue state
-// - Builds Antigravity PreInvocation `{ injectSteps: [{ ephemeralMessage }] }` payloads
-// - Checks assistant reply shape against the user's response contract
-// - Evaluates Antigravity Stop hook events (`{ decision: "continue" | "allow" }`)
+// Pure logic the live-context side panel needs to preview the PreInvocation
+// message: formats live Git branch/status and GitHub PR/issue state and builds
+// the `{ injectSteps: [{ ephemeralMessage }] }` payload. The hooks themselves,
+// including the Stop-hook reply check, are Rust (hooks/src/lib.rs), and keep
+// this file's wording.
 
 export const DEFAULT_RESPONSE_CONTRACT = `RESPONSE CONTRACT: Scale to the question.
 - Simple or factual question: one or two sentences. No headers, no sections.
@@ -34,9 +34,6 @@ export const DEFAULT_RESPONSE_CONTRACT = `RESPONSE CONTRACT: Scale to the questi
 - CHOICES: give your pick and a one-line why. Alternatives only if they would change the decision.
 - DIAGRAM only when it earns its place: a workflow, pipeline, state machine or genuinely complex topic.
 - NEXT only when the user must do or decide something, or there is a concrete follow-up. Otherwise end after the detail. Never write 'Nothing needed from you.'`;
-
-const FILLER_REGEX =
-  /(nothing needed from you|nothing for you|no action (is )?(needed|required)|nothing (else )?(is )?needed)/i;
 
 /**
  * Formats live local Git state and GitHub open/merged pull requests into a
@@ -149,141 +146,5 @@ export function buildEphemeralContextPayload(input = {}) {
         ephemeralMessage: blocks.join("\n\n---\n\n"),
       },
     ],
-  };
-}
-
-/**
- * Checks an assistant reply against the response shape contract.
- *
- * @param {string} message
- * @param {{ minChars?: number, diagramMinChars?: number }} [options={}]
- */
-export function checkResponseContract(message, options = {}) {
-  const msg = String(message ?? "").trim();
-  const chars = msg.length;
-  const minChars = Number(options.minChars ?? 300);
-  const diagramMinChars = Number(options.diagramMinChars ?? 2600);
-
-  if (chars < minChars) {
-    return {
-      exempt: true,
-      chars,
-      hasFiller: false,
-      hasDiagram: null,
-      longNoDiagram: false,
-      finalLine: "",
-      failures: [],
-      valid: true,
-    };
-  }
-
-  const hasDiagram =
-    chars >= diagramMinChars
-      ? /```mermaid\b|<agent-embed\b|show_widget/i.test(msg)
-      : null;
-  const longNoDiagram = hasDiagram === false;
-
-  // Strip fenced code blocks so trailing commands do not hide or fake the ending.
-  const withoutCode = msg.replace(/```[\s\S]*?```/g, "");
-  const nonEmptyLines = withoutCode
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .filter(Boolean);
-  const rawLastLine =
-    nonEmptyLines.length > 0 ? nonEmptyLines[nonEmptyLines.length - 1] : "";
-  // Strip inline code spans and quoted phrases so quoting the forbidden phrase
-  // in an explanation does not trigger a false positive.
-  const strippedLastLine = rawLastLine.replace(
-    /`[^`]*`|"[^"]*"|\u201c[^\u201d]*\u201d|'[^']*'/g,
-    "",
-  );
-  const hasFiller = FILLER_REGEX.test(strippedLastLine);
-
-  const failures = [];
-  if (hasFiller) {
-    failures.push(
-      "closes with an empty 'nothing needed' line -- end after the detail instead; only add a next step when there is a real one",
-    );
-  }
-
-  return {
-    exempt: false,
-    chars,
-    hasFiller,
-    hasDiagram,
-    longNoDiagram,
-    finalLine: rawLastLine,
-    failures,
-    valid: failures.length === 0,
-  };
-}
-
-/**
- * Evaluates an Antigravity `Stop` hook event and returns the hook stdout object
- * (`{ decision: "allow" }` or `{ decision: "continue", reason: "..." }`) plus a
- * structured log record.
- *
- * @param {{ conversationId?: string, executionNum?: number, terminationReason?: string, lastAssistantMessage?: string, stopHookActive?: boolean }} [stopEvent={}]
- * @param {{ mode?: "log" | "enforce", minChars?: number, diagramMinChars?: number, nowIso?: string }} [options={}]
- */
-export function evaluateStopShape(stopEvent = {}, options = {}) {
-  const mode = options.mode === "enforce" ? "enforce" : "log";
-  const executionNum = Number(stopEvent.executionNum ?? 1);
-  const reason = String(stopEvent.terminationReason ?? "NO_TOOL_CALL");
-
-  // Never bounce more than once per turn, or on abnormal termination reasons.
-  if (
-    stopEvent.stopHookActive === true ||
-    executionNum > 1 ||
-    (reason && reason !== "NO_TOOL_CALL")
-  ) {
-    return {
-      output: { decision: "allow" },
-      bounced: false,
-      logRecord: null,
-    };
-  }
-
-  const check = checkResponseContract(stopEvent.lastAssistantMessage ?? "", {
-    minChars: options.minChars,
-    diagramMinChars: options.diagramMinChars,
-  });
-
-  if (check.exempt) {
-    return {
-      output: { decision: "allow" },
-      bounced: false,
-      logRecord: null,
-    };
-  }
-
-  const msg = String(stopEvent.lastAssistantMessage ?? "").trim();
-  const logRecord = {
-    ts: options.nowIso || new Date().toISOString(),
-    conversationId: String(stopEvent.conversationId ?? "").slice(0, 8),
-    mode,
-    chars: check.chars,
-    filler: check.hasFiller,
-    diagram: check.hasDiagram,
-    longNoDiagram: check.longNoDiagram,
-    verdict: check.valid ? "pass" : "block",
-    tail: msg.slice(-120).replaceAll("\n", " "),
-  };
-
-  if (!check.valid && mode === "enforce") {
-    return {
-      output: {
-        decision: "continue",
-        reason: `RESPONSE CONTRACT: ${check.failures.join("; ")}. Revise once; keep the evidence, cut the padding.`,
-      },
-      bounced: true,
-      logRecord,
-    };
-  }
-
-  return {
-    output: { decision: "allow" },
-    bounced: false,
-    logRecord,
   };
 }

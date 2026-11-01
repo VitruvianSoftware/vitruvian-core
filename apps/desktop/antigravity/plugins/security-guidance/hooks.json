@@ -2,7 +2,7 @@
   "security-guidance": {
     "PreToolUse": [
       {
-        "matcher": "edit_file|write_file|run_command",
+        "matcher": "write_file|edit_file|write_to_file|replace_file_content|multi_replace_file_content|run_command",
         "hooks": [
           {
             "type": "command",
@@ -14,14 +14,9 @@
     ],
     "Stop": [
       {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "./hooks/security-check.sh",
-            "timeout": 5
-          }
-        ]
+        "type": "command",
+        "command": "./hooks/security-check.sh",
+        "timeout": 5
       }
     ]
   }

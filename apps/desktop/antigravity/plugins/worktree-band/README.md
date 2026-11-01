@@ -49,6 +49,15 @@ then enable it again:
 git -C ~/.gemini/config/plugins/worktree-band pull
 ```
 
+## Requirements
+
+The hook is written in Rust using only the standard library. The first time
+it runs, `hooks/rust-hook.sh` compiles it with `rustc` (about 1 s) into
+`~/.cache/antigravity-plugins/`, and later runs reuse that binary. You need
+Rust installed ([rustup.rs](https://rustup.rs)); without it the hook does
+nothing but say why on stderr, and tells the agent the worktree is not being tracked. The side panel runs on Antigravity's
+Node.js.
+
 ## Layout
 
 | Path | What it is |
@@ -57,6 +66,8 @@ git -C ~/.gemini/config/plugins/worktree-band pull
 | `sidecars/panel/sidecar.json` | Background process and panel manifest |
 | `sidecars/panel/main.mjs` | Panel backend: HTTP routes (`/api/state`, `/api/openui`, `/api/refresh`, `/api/cleanup`, `/api/track`) |
 | `hooks.json`, `hooks/session-worktree.sh` | `SessionStart` hook recording active workspace paths |
+| `hooks/rust-hook.sh` | Builds the hook from `hooks/src` with `rustc` on first use, then runs it |
+| `hooks/src/` | The hook: `lib.rs` (logic and tests), `main.rs` (entry point) |
 | `rules/AGENTS.md` | Standing instructions for agents working with worktrees |
 | `skills/worktree-band/SKILL.md` | Skill guide for inspecting and cleaning up worktrees |
 | `sidecars/panel/lib/core.mjs` | Pure logic: `countChecks`, `fmtSize`, `isRemovable`, `judgeCleanup`, `summariseWorktrees` |
@@ -69,6 +80,7 @@ From the plugin folder:
 
 ```bash
 node --test sidecars/panel/lib/*.test.mjs
+rustc --edition 2021 --test hooks/src/lib.rs -o /tmp/worktree-band-hook-test && /tmp/worktree-band-hook-test
 ```
 
 Or via Bazel in the monorepo:

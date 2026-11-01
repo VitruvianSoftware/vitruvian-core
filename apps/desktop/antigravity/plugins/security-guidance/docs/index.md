@@ -1,7 +1,7 @@
 # security-guidance
 
 An Antigravity desktop plugin that scans `edit_file`, `write_file`, and
-`run_command` tool calls (as well as `Stop` events) for 15+ classes of
+`run_command` tool calls for 16 classes of
 security vulnerabilities and hardcoded secrets. See the [README](../README.md)
 for installation and usage.
 
@@ -15,9 +15,10 @@ flowchart LR
         panel["Security Guidance Panel"]
     end
     conv -- "edit_file / write_file / run_command" --> hook
-    hook -- "scanContentForPatterns (15+ rules)" --> core["lib/core.mjs"]
-    core -- "deny secrets / ask on high-severity" --> conv
-    hook -- "records audit finding" --> store["security-findings.json"]
+    hook -- "builds once with rustc, then runs" --> rust["hooks/src (Rust, 16 rules)"]
+    rust -- "deny critical / ask otherwise" --> conv
+    rust -- "records audit finding" --> store["security-guidance-state.json"]
+    panel -- "same rules for ad-hoc scans" --> core["lib/core.mjs"]
     panel <-- "view / suppress / wake agent" --> store
     panel -- "sendMessage remediation wake" --> conv
 ```
