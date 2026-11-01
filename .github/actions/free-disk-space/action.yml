@@ -32,6 +32,9 @@
 # the calling lane; Node/Python are used by other steps in some lanes (e.g.
 # `npx playwright`). Only CodeQL is pruned from the toolcache. `|| true` on
 # the removal so a missing path is never fatal to a required check.
+#
+# setup-bazel calls this itself, only when / is short of space (it runs on
+# every job, including ones that never called this directly).
 name: Free up runner disk space
 description: >-
   Reclaim large preinstalled SDKs (dotnet, ghc, the CodeQL toolcache, plus any
@@ -57,6 +60,7 @@ runs:
       env:
         EXTRA_PATHS: ${{ inputs.extra-paths }}
       run: |
+        start=$SECONDS
         echo "Disk before cleanup:" && df -h /
         paths=(
           /usr/share/dotnet
@@ -69,5 +73,17 @@ runs:
             [ -n "$p" ] && paths+=("$p")
           done <<< "$EXTRA_PATHS"
         fi
-        sudo rm -rf "${paths[@]}" || true
-        echo "Disk after cleanup:" && df -h /
+        # One background job per path: the trees hold hundreds of thousands of
+        # small files, so removing them one after another is the slow part.
+        # Each job reports what it freed (du runs just before the rm, in the
+        # same job), so the log carries a measured size per path.
+        for p in "${paths[@]}"; do
+          (
+            [ -e "$p" ] || { echo "  absent    $p"; exit 0; }
+            mb="$(du -sm "$p" 2>/dev/null | cut -f1)"
+            sudo rm -rf "$p" || true
+            echo "  freed ${mb:-?} MB  $p"
+          ) &
+        done
+        wait
+        echo "Disk after cleanup ($((SECONDS - start))s):" && df -h /

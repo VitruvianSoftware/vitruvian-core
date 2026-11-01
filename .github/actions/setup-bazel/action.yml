@@ -85,6 +85,44 @@ runs:
           || { echo "::error::libxml2.so.2 still missing after install"; exit 1; }
         echo "installed libxml2.so.2 (noble 2.9.14) for LLVM's linker"
 
+    # Make room for the repository-cache restore on GitHub-hosted Linux.
+    #
+    # The restore holds the 5.55 GB archive (cache.tzst) on disk while tar
+    # unpacks it, so disk use peaks at about 16.5 GB before it settles. On
+    # 2026-10-31 two jobs on ubuntu-26.04 image 20261018.50.1 died in this
+    # step with "tar: Cannot mkdir: No space left on device" (run 41246054493
+    # job 124670890058, run 41247748253 job 124675646736); the retries landed
+    # on image 20261025.179.1 and passed, so the margin is thin, not absent.
+    #
+    # Only when `df` shows less than 25 GB free: jobs that already called
+    # free-disk-space have more than that and skip this at the cost of one df.
+    # Self-hosted runners are left alone (their disk is ours to size).
+    #
+    # Removes the free-disk-space set plus /usr/share/swift and
+    # /usr/local/share/powershell (no hosted-Linux job uses either; the Swift
+    # lanes run on macOS, and tabula-e2e already removes both ahead of
+    # setup-bazel). NEVER add /usr/local/lib/android: android_sdk_repository
+    # resolves the SDK from $ANDROID_HOME at analysis time.
+    - name: Check free disk space before the cache restore
+      id: disk
+      if: runner.os == 'Linux' && runner.environment == 'github-hosted'
+      shell: bash
+      run: |
+        free_gb="$(df -BG --output=avail / | tail -n 1 | tr -dc '0-9')"
+        echo "free on /: ${free_gb} GB (threshold 25 GB)"
+        if [ "${free_gb}" -lt 25 ]; then
+          echo "low=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "enough space -- skipping the cleanup"
+        fi
+    - name: Free disk space for the cache restore
+      if: steps.disk.outputs.low == 'true'
+      uses: ./.github/actions/free-disk-space
+      with:
+        extra-paths: |
+          /usr/share/swift
+          /usr/local/share/powershell
+
     # Every job RESTORES the caches; only GitHub-hosted jobs on main SAVE them.
     #
     # An Actions cache is readable only from the ref that saved it and from the
