@@ -55,7 +55,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          sparse-checkout: apps/web/gods-eye-view/tle-mirror
+          sparse-checkout: apps/web/gods-eye-view/scripts/src
 
       - name: Start from the published mirror
         run: |
@@ -67,8 +67,19 @@ jobs:
             git archive FETCH_HEAD | tar -x -C "${MIRROR_DIR}"
           fi
 
+      # The mirror is //apps/web/gods-eye-view:tle_mirror, built here with the
+      # runner's plain rustc: it is standard library only (plus curl), so no
+      # Bazel, no cache and no BuildBuddy key for a job that runs every 6 hours.
+      # Its tests are :tle_mirror_test, run by presubmit.
+      - name: Build the mirror
+        run: |
+          set -euo pipefail
+          src=apps/web/gods-eye-view/scripts/src
+          rustc --version
+          rustc --edition 2021 -O "${src}/bin/tle_mirror.rs" -o "${RUNNER_TEMP}/tle_mirror"
+
       - name: Refresh from CelesTrak
-        run: node apps/web/gods-eye-view/tle-mirror/mirror.mjs "${RUNNER_TEMP}/tle"
+        run: '"${RUNNER_TEMP}/tle_mirror" "${RUNNER_TEMP}/tle"'
 
       - name: Publish
         env:

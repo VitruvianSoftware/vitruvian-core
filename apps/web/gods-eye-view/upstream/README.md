@@ -140,9 +140,10 @@ production does not run.
 
 Satellites are the one feed production does not take straight from its
 source: connections from the homelab to celestrak.org time out, so
-`.github/workflows/gods-eye-view-tle-mirror.yaml` runs `tle-mirror/mirror.mjs`
-every 6 hours from GitHub's runners and publishes each group the client
+`.github/workflows/gods-eye-view-tle-mirror.yaml` runs the Rust mirror
+(`scripts/src/tle_mirror.rs`, `:tle_mirror`) every 6 hours from GitHub's runners and publishes each group the client
 requests on the `gods-eye-view-tle` branch. The deployment points
 `CELESTRAK_TLE_MIRROR_URL` at that branch, and the Celestrak provider tries it
 before CelesTrak (a local change to `server/providers/space/celestrak.js`).
-`:tle_mirror_test` fails when the client requests a group the mirror lacks.
+`:tle_mirror_test` fails when the client requests a group the mirror lacks,
+or when the mirror's URL drifts from the server's.
