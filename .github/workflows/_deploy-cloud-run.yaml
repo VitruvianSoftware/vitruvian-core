@@ -347,6 +347,10 @@ jobs:
           DATABASE_URL="$("$PWD/bazel-bin/tools/ci/gcp_secret_or_fail" \
             "$SECRET_ID" "$GCP_PROJECT_ID" \
             "check the secret exists under that exact id AND that the deployer SA has secretAccessor ON THAT SECRET")"
+          # A value fetched at runtime is not a GitHub secret, so the runner
+          # does not redact it on its own: mask it before anything can echo it
+          # (the migrate tool, a Prisma error carrying the connection string).
+          if [ -n "$DATABASE_URL" ]; then echo "::add-mask::$DATABASE_URL"; fi
           export DATABASE_URL
           bazel run --config=remotecache-ci --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" \
             //apps/suites/tabula/api:migrate_deploy_bin -- --schema apps/suites/tabula/api/prisma/schema.prisma --phase expand
@@ -368,7 +372,7 @@ jobs:
           CF_TOKEN="$("$PWD/bazel-bin/tools/ci/gcp_secret_or_fail" \
             CLOUDFLARE_API_TOKEN "${{ inputs.cloudflare-token-secret-project }}" \
             "deploy SA needs secretAccessor on it")"
-          echo "::add-mask::$CF_TOKEN"
+          if [ -n "$CF_TOKEN" ]; then echo "::add-mask::$CF_TOKEN"; fi
           echo "CLOUDFLARE_API_TOKEN=$CF_TOKEN" >> "$GITHUB_ENV"
 
       - name: Ensure custom-domain ownership (Site Verification, self-verify)

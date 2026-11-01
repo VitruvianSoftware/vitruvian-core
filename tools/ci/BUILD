@@ -1942,6 +1942,18 @@ rust_test(
     deps = [":ci_testkit"],
 )
 
+# Every gcp_secret_or_fail capture in a workflow is masked with ::add-mask::
+# right after; a value fetched at runtime is not redacted on its own.
+rust_test(
+    name = "gcp_secret_or_fail_masking_test",
+    size = "small",
+    srcs = ["src/gcp_secret_or_fail/masking_test.rs"],
+    data = ["//:workflow_files"],
+    edition = "2021",
+    env = {"WORKFLOW_FILES": "$(rootpaths //:workflow_files)"},
+    rustc_flags = ["-Copt-level=3"],
+)
+
 # agent-guard reads this file to check its refusal advice names a real target
 # (//tools/agent-guard:pending_target_files).
 exports_files(
