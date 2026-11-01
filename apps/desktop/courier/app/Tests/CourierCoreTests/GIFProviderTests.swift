@@ -33,6 +33,9 @@ final class GIFProviderTests: XCTestCase {
 
         let provider: any GIFProvider = StubGIFProvider()
         XCTAssertFalse(provider.isAvailable)
+        XCTAssertFalse(provider.unavailableReason.isEmpty)
+        XCTAssertTrue(provider.unavailableReason.contains("Courier"))
+        XCTAssertFalse(provider.unavailableReason.localizedCaseInsensitiveContains("Beeper"))
 
         let trending = try await provider.trending()
         XCTAssertEqual(trending, [])

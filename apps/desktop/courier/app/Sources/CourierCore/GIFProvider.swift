@@ -30,13 +30,23 @@ public struct GIFCandidate: Identifiable, Equatable, Sendable {
 
 public protocol GIFProvider: Sendable {
     var isAvailable: Bool { get }
+    var unavailableReason: String { get }
     func trending() async throws -> [GIFCandidate]
     func search(_ query: String) async throws -> [GIFCandidate]
+}
+
+extension GIFProvider {
+    public var unavailableReason: String {
+        String(localized: "Online GIF search isn’t available yet in Courier. You can still send GIFs from your recent history or local files on this Mac.")
+    }
 }
 
 public struct StubGIFProvider: GIFProvider {
     public init() {}
     public var isAvailable: Bool { false }
+    public var unavailableReason: String {
+        String(localized: "Online GIF search isn’t available yet in Courier. You can still send GIFs from your recent history or local files on this Mac.")
+    }
     public func trending() async throws -> [GIFCandidate] { [] }
     public func search(_ query: String) async throws -> [GIFCandidate] { [] }
 }
