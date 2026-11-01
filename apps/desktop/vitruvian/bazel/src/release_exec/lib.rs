@@ -419,7 +419,9 @@ pub fn capture(r: &mut dyn Runner, cmd: &Cmd) -> Result<String, i32> {
 /// that no environment variable holds.
 pub fn report_redacted(r: &mut dyn Runner, text: &str) {
     let secrets = r.secrets();
-    r.report(&redact_urls_in_text(&redact_known(text, &secrets)));
+    r.report(&redact_github_tokens(&redact_urls_in_text(&redact_known(
+        text, &secrets,
+    ))));
 }
 
 pub const REDACTED: &str = "<redacted>";
@@ -614,6 +616,11 @@ pub fn redact_args(program: &str, args: &[String]) -> Vec<String> {
 /// `pip install --user`).
 const CURL_SECRET_FLAGS: [&str; 5] = ["-u", "--user", "-U", "--proxy-user", "--oauth2-bearer"];
 
+/// curl's short options, other than `-u`/`-U`, that take a value: in a
+/// cluster, whatever follows one of them is its value (`-XPUT`, `-oout.bin`,
+/// `-HName: v`).
+const CURL_VALUE_SHORT_FLAGS: &str = "AbcCdDeEFHKmoPQrtTwxXyYz";
+
 enum CurlCredential {
     /// Not a credential flag.
     None,
@@ -633,13 +640,16 @@ fn curl_credential(arg: &str) -> CurlCredential {
         }
     }
     // Short options cluster (`-sSu user:pw`) and take their value joined
-    // (`-uuser:pw`): the first `u`/`U` among the leading letters is the flag.
+    // (`-uuser:pw`): the first `u`/`U` among the leading letters is the flag,
+    // unless an option that takes a value comes first: the rest of the
+    // argument is then that option's value (`-XPUT` is the method PUT, not
+    // `-X` plus `-U`), which [`redact_arg`] judges like any other.
     if let Some(cluster) = arg.strip_prefix('-') {
         if cluster.starts_with('-') {
             return CurlCredential::None;
         }
         for (i, c) in cluster.char_indices() {
-            if !c.is_ascii_alphabetic() {
+            if !c.is_ascii_alphabetic() || CURL_VALUE_SHORT_FLAGS.contains(c) {
                 break;
             }
             if c == 'u' || c == 'U' {
@@ -655,7 +665,13 @@ fn curl_credential(arg: &str) -> CurlCredential {
     CurlCredential::None
 }
 
+/// One argument with its secrets hidden (see [`redact_args`]), GitHub
+/// tokens included wherever they sit in it ([`redact_github_tokens`]).
 fn redact_arg(arg: &str) -> String {
+    redact_github_tokens(&redact_arg_by_shape(arg))
+}
+
+fn redact_arg_by_shape(arg: &str) -> String {
     let lower = arg.to_ascii_lowercase();
     if let Some(i) = lower.find("authorization:") {
         return format!("{} {}", &arg[..i + "authorization:".len()], REDACTED);
@@ -717,6 +733,49 @@ fn redact_secret_header(arg: &str) -> Option<(usize, String)> {
     let value = &arg[colon + 1..];
     let space = &value[..value.len() - value.trim_start().len()];
     Some((colon, format!("{}{}{}", &arg[..colon + 1], space, REDACTED)))
+}
+
+/// The prefixes GitHub gives its tokens: personal (classic and
+/// fine-grained), OAuth, user-to-server, server-to-server (an App's
+/// installation token) and refresh.
+const GITHUB_TOKEN_PREFIXES: [&str; 6] = ["github_pat_", "ghp_", "gho_", "ghu_", "ghs_", "ghr_"];
+
+/// `text` with every GitHub token hidden by its prefix, wherever it sits:
+/// after `;`, `=`, `(`, a quote or at the start of a word, not only where a
+/// name like `token=` or a URL's userinfo announces it. A token runs while
+/// its characters are letters, digits or `_`, so what follows it (`!`, `)`,
+/// `]`, `,`, `.`, a quote) is kept. A prefix inside a longer word
+/// (`xghp_…`) or with nothing after it is not a token.
+pub fn redact_github_tokens(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = String::with_capacity(text.len());
+    let mut copied = 0;
+    let mut i = 0;
+    while i < bytes.len() {
+        let at_word_start = i == 0 || !bytes[i - 1].is_ascii_alphanumeric();
+        let prefix = GITHUB_TOKEN_PREFIXES
+            .iter()
+            .find(|p| bytes[i..].starts_with(p.as_bytes()));
+        if let (true, Some(p)) = (at_word_start, prefix) {
+            let body = i + p.len();
+            let end = body
+                + bytes[body..]
+                    .iter()
+                    .take_while(|b| b.is_ascii_alphanumeric() || **b == b'_')
+                    .count();
+            if end > body {
+                // Both ends sit next to ASCII bytes, so on char boundaries.
+                out.push_str(&text[copied..i]);
+                out.push_str(REDACTED);
+                copied = end;
+                i = end;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    out.push_str(&text[copied..]);
+    out
 }
 
 /// `arg` with the credentials of the URL in it hidden, or `None` when it
@@ -1638,6 +1697,77 @@ mod tests {
         assert_eq!(
             red("curl", &["-sS", "-o", "out.json", "https://h/"]),
             "curl -sS -o out.json https://h/"
+        );
+    }
+
+    #[test]
+    fn curl_flags_that_take_a_value_end_the_cluster_so_x_put_is_not_a_credential() {
+        // `-XPUT`: `X` takes the method as its value, so the `U` in PUT is
+        // not curl's `-U` (proxy user). Likewise `-o`/`-T` take a file name.
+        assert_eq!(
+            red(
+                "curl",
+                &["-XPUT", "-XPOST", "-sXPUT", "-X", "PUT", "https://h/"]
+            ),
+            "curl -XPUT -XPOST -sXPUT -X PUT https://h/"
+        );
+        assert_eq!(
+            red(
+                "curl",
+                &["-oupload.bin", "-Tupdate.json", "-sSfL", "https://h/"]
+            ),
+            "curl -oupload.bin -Tupdate.json -sSfL https://h/"
+        );
+        // A credential flag before the value-taking one still counts, and
+        // one after it is the other flag's value.
+        assert_eq!(
+            red("curl", &["-sUp:pw-PROXY", "-XPUT", "https://h/"]),
+            "curl -sU<redacted> -XPUT https://h/"
+        );
+        assert_eq!(
+            red("curl", &["-ufoo:pw-USER", "-sSu", "bob:pw-NEXT"]),
+            "curl -u<redacted> -sSu <redacted>"
+        );
+        // Headers keep being judged by their name, attached or not.
+        assert_eq!(
+            red("curl", &["-XPUT", "-HAuthorization: Bearer tok-ATTACHED"]),
+            "curl -XPUT -HAuthorization: <redacted>"
+        );
+    }
+
+    #[test]
+    fn github_tokens_are_hidden_wherever_they_sit_and_keep_what_follows() {
+        for (arg, want) in [
+            ("--data=a;ghp_AAAA1111bbbb", "--data=a;<redacted>"),
+            ("note:ghs_MINTED22!", "note:<redacted>!"),
+            ("(gho_OAUTH33)", "(<redacted>)"),
+            ("[ghu_USER44],", "[<redacted>],"),
+            ("\"ghr_REFRESH55\"", "\"<redacted>\""),
+            ("'github_pat_11ABCD_efgh66'", "'<redacted>'"),
+            ("x=1&t=ghp_QUERY77.", "x=1&t=<redacted>."),
+            ("ghp_WHOLE88", "<redacted>"),
+            // Not tokens: a longer word ending in the prefix, a bare prefix.
+            ("xghp_notatoken", "xghp_notatoken"),
+            ("ghp_", "ghp_"),
+            ("ghx_OTHER", "ghx_OTHER"),
+        ] {
+            assert_eq!(red("tool", &[arg]), format!("tool {}", want), "{}", arg);
+        }
+        // In output a tool prints, which no environment variable names.
+        let mut r = FakeRunner::new(|_| {
+            Out::fail(
+                1,
+                "remote: token ghs_RUNTIME99, rejected (see github_pat_11ZZ_yy) ok\n",
+            )
+        });
+        let _ = capture(&mut r, &Cmd::new("git").args(["push"]));
+        assert!(!r.stderr.contains("RUNTIME99"), "{:?}", r.stderr);
+        assert!(!r.stderr.contains("11ZZ_yy"), "{:?}", r.stderr);
+        assert!(
+            r.stderr
+                .contains("remote: token <redacted>, rejected (see <redacted>) ok\n"),
+            "{:?}",
+            r.stderr
         );
     }
 
