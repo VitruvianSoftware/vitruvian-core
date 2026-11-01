@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.86.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.86.1...vitruvian-v3.86.2) (2026-11-01)
+
+
+### Bug Fixes
+
+* **vitruvian:** close three secret and fail-open gaps in the release tools and preview reaper ([#4123](https://github.com/VitruvianSoftware/vitruvian-core/issues/4123)) ([0988c63](https://github.com/VitruvianSoftware/vitruvian-core/commit/0988c6349466d8c9696c81b298c8b736bf9f6c9b))
+
 ## [3.86.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.86.0...vitruvian-v3.86.1) (2026-10-31)
 
 
