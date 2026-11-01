@@ -667,7 +667,7 @@ fn additional() -> Vec<Ext> {
             kind: s("plugin"),
             category: s("Home Automation & FastMCP"),
             status: s("mirror"),
-            summary: s("A Roborock vacuum integration: a local daemon, a FastMCP server and plugins that let a coding agent check status, start room cleans or send the robot home."),
+            summary: s("A Roborock vacuum integration: a local daemon, an MCP server and plugins that let a coding agent check status, start room cleans or send the robot home."),
             repo: s("https://github.com/VitruvianSoftware/mcp-roborock"),
             mirror_repo: s("https://github.com/VitruvianSoftware/mcp-roborock"),
             source: s("apps/mcp/roborock"),
@@ -677,7 +677,7 @@ fn additional() -> Vec<Ext> {
             hooks: vec![],
             rules: vec![],
             keywords: list_of_str(&["roborock", "vacuum", "home-automation", "mcp"]),
-            needs: s("uv, and a Roborock account (the plugin walks you through logging in)"),
+            needs: s("rrctl on your PATH (a release download, or cargo install), and a Roborock account (the plugin walks you through logging in)"),
             note: s(""),
             installs: vec![
                 install("Claude Code", "claude-code", "Claude Code, step 1: add the marketplace", "claude plugin marketplace add VitruvianSoftware/mcp-roborock"),
