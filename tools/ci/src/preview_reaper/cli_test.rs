@@ -89,6 +89,11 @@ exit 0
             &stubs.join("gcloud"),
             r#"#!/usr/bin/env bash
 if [ "${1:-}" = "run" ] && [ "${2:-}" = "services" ] && [ "${3:-}" = "list" ]; then
+  if [ -n "${STUB_CR_LIST_RC:-}" ]; then
+    printf 'tabula-api-pr-101\t2023-11-14T10:00:00Z\n'
+    echo "ERROR: (gcloud.run.services.list) PERMISSION_DENIED: run.services.list denied" >&2
+    exit "$STUB_CR_LIST_RC"
+  fi
   [ -n "${STUB_CR_LIST:-}" ] && { printf '%b' "$STUB_CR_LIST"; exit 0; }
   printf 'tabula-api-pr-101\t2023-11-14T10:00:00Z\n'
   printf 'tabula-api-pr-102\t2023-11-14T10:00:00Z\n'
@@ -109,7 +114,17 @@ exit 0
         write_exec(
             &stubs.join("kubectl"),
             r#"#!/usr/bin/env bash
+if [ "${1:-}" = "config" ] && [ "${2:-}" = "current-context" ]; then
+  [ -n "${STUB_K8S_NO_CONTEXT:-}" ] && { echo "error: current-context is not set" >&2; exit 1; }
+  echo test-cluster
+  exit 0
+fi
 if [ "${1:-}" = "get" ] && [ "${2:-}" = "namespaces" ]; then
+  if [ -n "${STUB_K8S_LIST_RC:-}" ]; then
+    printf 'pr-101\t2023-11-14T10:00:00Z\n'
+    echo "error: You must be logged in to the server (Unauthorized)" >&2
+    exit "$STUB_K8S_LIST_RC"
+  fi
   [ -n "${STUB_K8S_LIST:-}" ] && { printf '%b' "$STUB_K8S_LIST"; exit 0; }
   printf 'pr-101\t2023-11-14T10:00:00Z\n'
   printf 'pr-102\t2023-11-14T10:00:00Z\n'
@@ -131,6 +146,21 @@ exit 0
         write_exec(
             &stubs.join("curl"),
             r#"#!/usr/bin/env bash
+# Every argv, one call per line: the API key must never be in one (ps shows
+# argv to every local user). It is read from `--config -` on stdin instead,
+# and a call that does not present it there is refused as the API would.
+printf '%s\n' "$*" >> "$CURL_ARGV"
+auth=""
+case " $* " in *" --config - "*|*" -K - "*)
+  cfg="$(cat)"
+  printf '%s\n' "$cfg" >> "$CURL_CONFIG"
+  case "$cfg" in *'header = "Authorization: Bearer test-key"'*) auth=ok ;; esac
+  ;;
+esac
+if [ "$auth" != ok ]; then
+  case " $* " in *" --fail-with-body "*) printf '{"message":"no API key"}' ;; esac
+  exit 22
+fi
 if [[ "$*" == *"-X DELETE"* ]]; then
   echo "$*" | sed 's|.*/branches/||' | awk '{print $1}' >> "$NEON_DELETED"
   # A real curl only reports an HTTP error status when asked to (-f / --fail).
@@ -198,6 +228,8 @@ exit 0
             "k8s_deleted",
             "neon_deleted",
             "neon_list_args",
+            "curl_argv",
+            "curl_config",
         ] {
             let _ = std::fs::remove_file(self.work.join(f));
         }
@@ -214,6 +246,8 @@ exit 0
             .env("K8S_DELETED", self.work.join("k8s_deleted"))
             .env("NEON_DELETED", self.work.join("neon_deleted"))
             .env("NEON_LIST_ARGS", self.work.join("neon_list_args"))
+            .env("CURL_ARGV", self.work.join("curl_argv"))
+            .env("CURL_CONFIG", self.work.join("curl_config"))
             .env("GCP_PROJECT", "test-gcp")
             .env("NEON_API_KEY", "test-key")
             .env("NEON_PROJECT_ID", "test-proj")
@@ -544,6 +578,7 @@ fn a_neon_branch_name_with_an_earlier_non_numeric_pr_marker_still_matches() {
         write_exec(
             &f.stubs.join("curl"),
             r#"#!/usr/bin/env bash
+cat >/dev/null # the --config on stdin
 if [[ "$*" == *"-X DELETE"* ]]; then
   echo "$*" | sed 's|.*/branches/||' | awk '{print $1}' >> "$NEON_DELETED"
   exit 0
@@ -696,5 +731,177 @@ fn an_open_prs_age_is_computed_from_its_utc_instant_not_its_local_clock() {
     assert!(
         e.contains("PR #401 is OPEN but age (27h) exceeds TTL (24h) \u{2014} marked for reap"),
         "{e}"
+    );
+}
+
+#[test]
+fn a_cloud_run_listing_gcloud_cannot_make_fails_the_run_and_deletes_no_service() {
+    // A gcloud that fails (no credentials, an API outage) must not read as
+    // "no services": that is a green run that reaps nothing, forever.
+    let f = Fixture::new();
+    let o = f.run(&[], &[("STUB_CR_LIST_RC", "1"), ("GITHUB_ACTIONS", "true")]);
+    let e = stderr(&o);
+    assert_eq!(o.status.code(), Some(1), "{e}");
+    assert!(
+        e.contains("ERROR: could not list Cloud Run services (gcloud exit 1)"),
+        "{e}"
+    );
+    assert!(e.contains("PERMISSION_DENIED"), "{e}");
+    assert!(
+        e.contains(
+            "::error title=Preview Reaper Error::could not list Cloud Run services (gcloud exit 1)"
+        ),
+        "{e}"
+    );
+    // Not even what it printed before failing is acted on.
+    assert!(!f.work.join("cr_deleted").exists());
+    // The other providers still run and are reported.
+    assert_eq!(
+        stdout(&o),
+        "reaped_cloudrun=0\nreaped_k8s=4\nreaped_neon=4\ntotal_reaped=8\n"
+    );
+}
+
+#[test]
+fn a_namespace_listing_kubectl_cannot_make_fails_the_run_and_deletes_no_namespace() {
+    let f = Fixture::new();
+    let o = f.run(
+        &[],
+        &[("STUB_K8S_LIST_RC", "1"), ("GITHUB_ACTIONS", "true")],
+    );
+    let e = stderr(&o);
+    assert_eq!(o.status.code(), Some(1), "{e}");
+    assert!(
+        e.contains("ERROR: could not list K8s namespaces (kubectl exit 1)"),
+        "{e}"
+    );
+    assert!(e.contains("Unauthorized"), "{e}");
+    assert!(
+        e.contains(
+            "::error title=Preview Reaper Error::could not list K8s namespaces (kubectl exit 1)"
+        ),
+        "{e}"
+    );
+    assert!(!f.work.join("k8s_deleted").exists());
+    assert_eq!(
+        stdout(&o),
+        "reaped_cloudrun=4\nreaped_k8s=0\nreaped_neon=4\ntotal_reaped=8\n"
+    );
+}
+
+#[test]
+fn a_neon_listing_that_is_not_a_branch_list_fails_the_run() {
+    // A proxy's HTML error page, a truncated body, or JSON without
+    // `branches` arrives with HTTP 200: it is a failure to list, never an
+    // empty list.
+    for body in [
+        "<html><body>502 Bad Gateway</body></html>",
+        r#"{"branches": [{"id": "br-101", "name""#,
+        r#"{"message": "maintenance"}"#,
+        r#"{"branches": "none"}"#,
+        r#"{"branches": ["br-101"]}"#,
+    ] {
+        let f = Fixture::new();
+        let o = f.run(&[], &[("STUB_NEON_JSON", body), ("GITHUB_ACTIONS", "true")]);
+        let e = stderr(&o);
+        assert_eq!(o.status.code(), Some(1), "{body}: {e}");
+        assert!(
+            e.contains("ERROR: could not read the Neon branch list:"),
+            "{body}: {e}"
+        );
+        assert!(
+            e.contains("::error title=Neon Reaper Error::could not read the Neon branch list"),
+            "{body}: {e}"
+        );
+        assert!(!f.work.join("neon_deleted").exists(), "{body}");
+        assert_eq!(
+            stdout(&o),
+            "reaped_cloudrun=4\nreaped_k8s=4\nreaped_neon=0\ntotal_reaped=8\n",
+            "{body}"
+        );
+    }
+}
+
+#[test]
+fn an_empty_neon_branch_list_is_not_a_failure() {
+    let f = Fixture::new();
+    let o = f.run(&[], &[("STUB_NEON_JSON", r#"{"branches": []}"#)]);
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    assert!(stdout(&o).contains("reaped_neon=0\n"), "{}", stdout(&o));
+}
+
+#[test]
+fn the_neon_api_key_is_never_on_a_command_line() {
+    // List and delete both run; the key reaches curl only on its stdin.
+    let f = Fixture::new();
+    let o = f.run(&[], &[]);
+    let e = stderr(&o);
+    assert_eq!(o.status.code(), Some(0), "{e}");
+    assert!(stdout(&o).contains("reaped_neon=4\n"), "{}", stdout(&o));
+    let argv = std::fs::read_to_string(f.work.join("curl_argv")).unwrap();
+    assert_eq!(argv.lines().count(), 5, "one list and four deletes: {argv}");
+    assert!(
+        !argv.contains("test-key"),
+        "the API key is in curl's argv: {argv}"
+    );
+    assert!(!argv.contains("Authorization"), "{argv}");
+    let config = std::fs::read_to_string(f.work.join("curl_config")).unwrap();
+    assert_eq!(
+        config
+            .matches("header = \"Authorization: Bearer test-key\"")
+            .count(),
+        5,
+        "{config}"
+    );
+}
+
+#[test]
+fn a_neon_api_key_is_quoted_for_curls_config_syntax() {
+    // A key holding `"` or `\` must not end the quoted value early, and a
+    // trailing newline (as a secret written with `echo` carries) is dropped.
+    let f = Fixture::new();
+    let o = f.run(&["200"], &[("NEON_API_KEY", "a\"b\\c\n")]);
+    // The stub only accepts `test-key`, so the listing is refused: what
+    // matters here is what was sent.
+    assert_eq!(o.status.code(), Some(1), "{}", stderr(&o));
+    let config = std::fs::read_to_string(f.work.join("curl_config")).unwrap();
+    assert_eq!(config, "header = \"Authorization: Bearer a\\\"b\\\\c\"\n");
+}
+
+#[test]
+fn a_neon_api_key_with_a_line_break_inside_is_refused_unsent() {
+    // A line break inside the key would start a second curl option.
+    let f = Fixture::new();
+    let o = f.run(
+        &["200"],
+        &[("NEON_API_KEY", "abc\nurl = \"https://evil.example\"")],
+    );
+    let e = stderr(&o);
+    assert_eq!(o.status.code(), Some(1), "{e}");
+    assert!(
+        e.contains("ERROR: NEON_API_KEY holds a control character"),
+        "{e}"
+    );
+    assert!(!e.contains("evil.example"), "{e}");
+    assert!(!f.work.join("curl_config").exists());
+    assert!(!f.work.join("curl_argv").exists());
+}
+
+#[test]
+fn kubectl_without_a_cluster_configured_is_skipped_not_failed() {
+    // A hosted runner has kubectl but no kubeconfig: that is "no cluster
+    // here", like a missing GCP_PROJECT, not a failed listing.
+    let f = Fixture::new();
+    let o = f.run(&[], &[("STUB_K8S_NO_CONTEXT", "1")]);
+    let e = stderr(&o);
+    assert_eq!(o.status.code(), Some(0), "{e}");
+    assert!(
+        e.contains("kubectl not found or has no current context"),
+        "{e}"
+    );
+    assert!(!f.work.join("k8s_deleted").exists());
+    assert_eq!(
+        stdout(&o),
+        "reaped_cloudrun=4\nreaped_k8s=0\nreaped_neon=4\ntotal_reaped=8\n"
     );
 }
