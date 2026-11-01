@@ -100,7 +100,8 @@ final class CourierIconCatalogTests: XCTestCase {
 
     func testSearchFiltersByCategoryKeywordAndMaterialName() {
         let allResults = CourierIconCatalog.search(query: "", category: .all)
-        XCTAssertEqual(allResults.count, 151)
+        XCTAssertEqual(allResults, CourierIconCatalog.pickerIcons)
+        XCTAssertEqual(allResults.count, 150)
 
         let wineResults = CourierIconCatalog.search(query: "wine")
         XCTAssertTrue(wineResults.contains { $0.ledgerComponent == "wine_bar.tsx" && $0.sfSymbol == "wineglass" })
@@ -115,11 +116,89 @@ final class CourierIconCatalogTests: XCTestCase {
         XCTAssertEqual(snowResults.first?.ledgerComponent, "ac_unit.tsx")
         XCTAssertEqual(snowResults.first?.sfSymbol, "snowflake")
 
+        // Every catalog name remains resolvable (including chevron_forward.tsx and chevron_right.tsx),
+        // and searching for either alias finds the single deduplicated right-chevron entry in the picker.
+        for name in Self.expectedMaterialSymbolRows {
+            XCTAssertNotNil(CourierIconCatalog.resolve(name), "Catalog name \(name) must resolve")
+        }
+        XCTAssertEqual(CourierIconCatalog.resolve("chevron_forward.tsx")?.sfSymbol, "chevron.forward")
+        XCTAssertEqual(CourierIconCatalog.resolve("chevron_right.tsx")?.sfSymbol, "chevron.right")
+        let forwardSearch = CourierIconCatalog.search(query: "chevron_forward")
+        XCTAssertEqual(forwardSearch.map(\.sfSymbol), ["chevron.right"])
+
         for category in CourierIconCategory.allCases where category != .all {
             XCTAssertFalse(category.title.isEmpty)
             let filtered = CourierIconCatalog.search(query: "", category: category)
             XCTAssertFalse(filtered.isEmpty, "Category \(category) should not be empty")
             XCTAssertTrue(filtered.allSatisfy { $0.category == category })
         }
+    }
+
+    func testPickerOfferedIconsHaveUniqueRenderedSymbolsAfterAliasFolding() {
+        let offered = CourierIconCatalog.pickerIcons
+        XCTAssertEqual(offered, CourierIconCatalog.search(query: "", category: .all))
+        var seenCanonical: [String: String] = [:]
+        var seenBitmaps: [Data: String] = [:]
+
+        for entry in offered {
+            let folded = CourierIconCatalog.canonicalSFSymbol(entry.sfSymbol)
+            XCTAssertEqual(folded, Self.foldAliases(entry.sfSymbol))
+            if let existing = seenCanonical[folded] {
+                XCTFail("Picker offers duplicate alias-folded symbol '\(folded)' in \(existing) and \(entry.ledgerComponent) (\(entry.sfSymbol))")
+            }
+            seenCanonical[folded] = "\(entry.ledgerComponent) (\(entry.sfSymbol))"
+
+            if let bitmap = Self.renderSymbolBitmap(entry.sfSymbol) {
+                if let existing = seenBitmaps[bitmap] {
+                    XCTFail("Picker offers visually identical rendered symbol in \(existing) and \(entry.ledgerComponent) (\(entry.sfSymbol))")
+                }
+                seenBitmaps[bitmap] = "\(entry.ledgerComponent) (\(entry.sfSymbol))"
+            } else {
+                XCTFail("Failed to render bitmap for \(entry.sfSymbol)")
+            }
+        }
+    }
+
+    private static func foldAliases(_ symbol: String) -> String {
+        let parts = symbol.split(separator: ".").map(String.init)
+        guard parts.count > 1 else { return symbol }
+        return parts.map { part in
+            switch part {
+            case "forward", "trailing": return "right"
+            case "backward", "leading": return "left"
+            default: return part
+            }
+        }.joined(separator: ".")
+    }
+
+    private static func renderSymbolBitmap(_ symbol: String) -> Data? {
+        guard let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) else {
+            return nil
+        }
+        let configured = image.withSymbolConfiguration(
+            NSImage.SymbolConfiguration(pointSize: 18, weight: .regular)
+        ) ?? image
+        let size = 32
+        guard let rep = NSBitmapImageRep(
+            bitmapDataPlanes: nil,
+            pixelsWide: size,
+            pixelsHigh: size,
+            bitsPerSample: 8,
+            samplesPerPixel: 4,
+            hasAlpha: true,
+            isPlanar: false,
+            colorSpaceName: .deviceRGB,
+            bytesPerRow: size * 4,
+            bitsPerPixel: 32
+        ) else {
+            return nil
+        }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        NSColor.clear.setFill()
+        NSRect(x: 0, y: 0, width: size, height: size).fill()
+        configured.draw(in: NSRect(x: 4, y: 4, width: size - 8, height: size - 8))
+        NSGraphicsContext.restoreGraphicsState()
+        return rep.representation(using: .png, properties: [:])
     }
 }

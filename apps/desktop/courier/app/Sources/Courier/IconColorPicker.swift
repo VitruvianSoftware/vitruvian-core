@@ -87,7 +87,7 @@ public struct IconColorPicker: View {
                     showsCatalog.toggle()
                 } label: {
                     HStack(spacing: 4) {
-                        Text(String(localized: "All Icons (\(CourierIconCatalog.labelAndSpaceIcons.count))…"))
+                        Text(String(localized: "All Icons (\(CourierIconCatalog.pickerIcons.count))…"))
                             .font(.caption.weight(.medium))
                         Image(systemName: showsCatalog ? "chevron.up" : "chevron.down")
                             .font(.caption2.weight(.semibold))
@@ -164,7 +164,8 @@ public struct IconColorPicker: View {
                                 spacing: 6
                             ) {
                                 ForEach(entries) { entry in
-                                    let isSelected = entry.sfSymbol == icon
+                                    let isSelected = CourierIconCatalog.canonicalSFSymbol(entry.sfSymbol)
+                                        == CourierIconCatalog.canonicalSFSymbol(icon)
                                     Image(systemName: entry.sfSymbol)
                                         .font(.system(size: 15))
                                         .frame(width: 34, height: 34)

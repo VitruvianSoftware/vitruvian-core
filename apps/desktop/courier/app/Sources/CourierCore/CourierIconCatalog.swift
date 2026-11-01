@@ -249,17 +249,105 @@ public enum CourierIconCatalog {
         var set = Set(LabelsModel.icons)
         for entry in labelAndSpaceIcons {
             set.insert(entry.sfSymbol)
+            set.insert(canonicalSFSymbol(entry.sfSymbol))
         }
         return set
     }()
 
-    /// Filters `labelAndSpaceIcons` by category and free-text query across `title`, `ledgerComponent`, `sfSymbol`, and `keywords`.
+    /// Folds SF Symbol directional aliases (`*.forward` / `*.trailing` → `*.right`, `*.backward` / `*.leading` → `*.left`)
+    /// so visually identical symbols share a single canonical name.
+    public static func canonicalSFSymbol(_ symbol: String) -> String {
+        let parts = symbol.split(separator: ".").map(String.init)
+        guard parts.count > 1 else { return symbol }
+        return parts.map { part in
+            switch part {
+            case "forward", "trailing": return "right"
+            case "backward", "leading": return "left"
+            default: return part
+            }
+        }.joined(separator: ".")
+    }
+
+    /// Resolves any catalog component name (with or without `.tsx`) or SF Symbol name to its catalog entry,
+    /// keeping every catalog name resolvable even when its rendered symbol duplicates another entry in the picker.
+    public static func resolve(_ name: String) -> CourierIconEntry? {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let lower = trimmed.lowercased()
+        let withExtension = lower.hasSuffix(".tsx") ? lower : lower + ".tsx"
+        if let match = labelAndSpaceIcons.first(where: {
+            $0.ledgerComponent.lowercased() == lower
+                || $0.ledgerComponent.lowercased() == withExtension
+                || $0.sfSymbol.lowercased() == lower
+        }) {
+            return match
+        }
+        return uiPrimitiveIcons.first(where: {
+            $0.ledgerComponent.lowercased() == lower
+                || $0.ledgerComponent.lowercased() == withExtension
+                || $0.sfSymbol.lowercased() == lower
+        })
+    }
+
+    /// Icons offered in the label/space icon picker: deduplicated by canonical SF Symbol after alias folding
+    /// so two catalog rows that render the exact same glyph (such as `chevron_forward.tsx` and `chevron_right.tsx`)
+    /// are never offered twice, while keeping alias search terms attached to the retained entry.
+    public static let pickerIcons: [CourierIconEntry] = {
+        var indexByCanonical: [String: Int] = [:]
+        var result: [CourierIconEntry] = []
+
+        for entry in labelAndSpaceIcons {
+            let canonical = canonicalSFSymbol(entry.sfSymbol)
+            if let existingIndex = indexByCanonical[canonical] {
+                let existing = result[existingIndex]
+                let extraKeywords = [
+                    entry.ledgerComponent,
+                    entry.ledgerComponent.replacingOccurrences(of: ".tsx", with: ""),
+                    entry.ledgerComponent.replacingOccurrences(of: ".tsx", with: "").replacingOccurrences(of: "_", with: " "),
+                    entry.sfSymbol,
+                    entry.title,
+                ] + entry.keywords
+                let mergedKeywords = Array(Set(existing.keywords + extraKeywords)).sorted()
+                // Prefer the entry whose sfSymbol is already the canonical form (e.g. chevron.right over chevron.forward).
+                if existing.sfSymbol != canonical && entry.sfSymbol == canonical {
+                    let aliasKeywords = [
+                        existing.ledgerComponent,
+                        existing.ledgerComponent.replacingOccurrences(of: ".tsx", with: ""),
+                        existing.ledgerComponent.replacingOccurrences(of: ".tsx", with: "").replacingOccurrences(of: "_", with: " "),
+                        existing.sfSymbol,
+                        existing.title,
+                    ] + existing.keywords + entry.keywords
+                    result[existingIndex] = CourierIconEntry(
+                        ledgerComponent: entry.ledgerComponent,
+                        sfSymbol: entry.sfSymbol,
+                        title: entry.title,
+                        category: entry.category,
+                        keywords: Array(Set(aliasKeywords)).sorted()
+                    )
+                } else {
+                    result[existingIndex] = CourierIconEntry(
+                        ledgerComponent: existing.ledgerComponent,
+                        sfSymbol: existing.sfSymbol,
+                        title: existing.title,
+                        category: existing.category,
+                        keywords: mergedKeywords
+                    )
+                }
+            } else {
+                indexByCanonical[canonical] = result.count
+                result.append(entry)
+            }
+        }
+        return result
+    }()
+
+    /// Filters `pickerIcons` by category and free-text query across `title`, `ledgerComponent`, `sfSymbol`, and `keywords`.
     public static func search(query: String, category: CourierIconCategory = .all) -> [CourierIconEntry] {
         let base: [CourierIconEntry]
         if category == .all {
-            base = labelAndSpaceIcons
+            base = pickerIcons
         } else {
-            base = labelAndSpaceIcons.filter { $0.category == category }
+            base = pickerIcons.filter { $0.category == category }
         }
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !trimmed.isEmpty else { return base }
