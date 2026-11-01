@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! //tools/ci:gcp-secret-or-fail: the Rust port.
+//! //tools/ci:gcp_secret_or_fail: see lib.rs.
 
 fn main() {
     std::process::exit(gcp_secret_or_fail::run(&shell_compat::args()));

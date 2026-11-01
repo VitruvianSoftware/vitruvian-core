@@ -329,7 +329,8 @@ jobs:
         # un-marked backward-incompatible migration from reaching main.
         run: |
           bazel build --config=remotecache-ci --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" \
-            //apps/suites/tabula/api:schema_engine //apps/suites/tabula/api:migrate_deploy_bin
+            //apps/suites/tabula/api:schema_engine //apps/suites/tabula/api:migrate_deploy_bin \
+            //tools/ci:gcp_secret_or_fail
           export PRISMA_SCHEMA_ENGINE_BINARY="$PWD/bazel-bin/apps/suites/tabula/api/schema-engine"
           export PRISMA_QUERY_ENGINE_LIBRARY="$PWD/apps/suites/tabula/api/prisma/engine-placeholder"
           # The secret id carries the app's SECRET_PREFIX when one is set, so
@@ -337,12 +338,13 @@ jobs:
           # `DATABASE_URL`. Falls back to the bare name for callers that have no
           # prefix, keeping pre-existing single-tenant deploys working.
           #
-          # gcp-secret-or-fail.sh surfaces the raw gcloud stderr on failure:
-          # reading the WRONG secret id here (PERMISSION_DENIED, not NOT_FOUND
-          # -- indistinguishable from an IAM gap otherwise) cost three rounds
-          # of IAM debugging on the tabula bu2 migration.
+          # //tools/ci:gcp_secret_or_fail surfaces the raw gcloud stderr on
+          # failure: reading the WRONG secret id here (PERMISSION_DENIED, not
+          # NOT_FOUND -- indistinguishable from an IAM gap otherwise) cost three
+          # rounds of IAM debugging on the tabula bu2 migration. Called from
+          # bazel-bin, not `bazel run`, so the capture holds only the secret.
           SECRET_ID="${SECRET_PREFIX}DATABASE_URL"
-          DATABASE_URL="$(bash "${GITHUB_WORKSPACE}/tools/ci/gcp-secret-or-fail.sh" \
+          DATABASE_URL="$("$PWD/bazel-bin/tools/ci/gcp_secret_or_fail" \
             "$SECRET_ID" "$GCP_PROJECT_ID" \
             "check the secret exists under that exact id AND that the deployer SA has secretAccessor ON THAT SECRET")"
           export DATABASE_URL
@@ -356,9 +358,14 @@ jobs:
         # it — the cloudflare provider reads the env var implicitly, so it
         # never touches Pulumi config or state.
         if: ${{ inputs.cloudflare-token-secret-project != '' && steps.preflight.outputs.unchanged != 'true' }}
+        #
+        # Builds the helper itself: the migrations step above (which also
+        # builds it) is skipped for apps that set run-migrations: false.
         run: |
           set -euo pipefail
-          CF_TOKEN="$(bash "${GITHUB_WORKSPACE}/tools/ci/gcp-secret-or-fail.sh" \
+          bazel build --config=remotecache-ci --remote_header=x-buildbuddy-api-key="$BUILDBUDDY_API_KEY" \
+            //tools/ci:gcp_secret_or_fail
+          CF_TOKEN="$("$PWD/bazel-bin/tools/ci/gcp_secret_or_fail" \
             CLOUDFLARE_API_TOKEN "${{ inputs.cloudflare-token-secret-project }}" \
             "deploy SA needs secretAccessor on it")"
           echo "::add-mask::$CF_TOKEN"

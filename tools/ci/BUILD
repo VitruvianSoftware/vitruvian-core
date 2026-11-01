@@ -43,8 +43,6 @@ exports_files([
     "foundation-app-digest-guard.sh",
     "foundation-app-digest-guard_test.sh",
     "gate-evaluator_test.sh",
-    "gcp-secret-or-fail.sh",
-    "gcp-secret-or-fail_test.sh",
     "gitops-validate.sh",
     "gitops-values-render.sh",
     "go-test-with-retry.sh",
@@ -1925,25 +1923,18 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
-sh_test(
+# Black-box: runs the REAL binary with a fake gcloud on PATH, the way the
+# deploy workflows call it. Ported case for case from the former
+# gcp-secret-or-fail_test.sh.
+rust_test(
     name = "gcp_secret_or_fail_test",
     size = "small",
-    srcs = ["gcp-secret-or-fail_test.sh"],
-    args = ["$(location gcp-secret-or-fail.sh)"],
-    data = [
-        "gcp-secret-or-fail.sh",
-    ],
-)
-
-sh_test(
-    name = "gcp_secret_or_fail_rs_test",
-    size = "small",
-    srcs = ["gcp-secret-or-fail_test.sh"],
-    args = ["$(location :gcp_secret_or_fail)"],
-    data = [
-        "gcp-secret-or-fail.sh",
-        ":gcp_secret_or_fail",
-    ],
+    srcs = ["src/gcp_secret_or_fail/tests.rs"],
+    data = [":gcp_secret_or_fail"],
+    edition = "2021",
+    env = {"BIN": "$(rootpath :gcp_secret_or_fail)"},
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":ci_testkit"],
 )
 
 # agent-guard reads this file to check its refusal advice names a real target
