@@ -262,6 +262,27 @@ jobs:
             exit 1
           fi
 
+      # Cargo.lock freshness (#4026). Nothing checked that a Cargo.lock still
+      # matches its Cargo.toml files: the SDK release moved vitruvian-tool-kit
+      # to 1.9.0 in its manifest and the root lock stayed at 0.10.0 until
+      # someone happened to re-lock. //tools/crates:check reads every
+      # committed Cargo.lock and fails when a workspace package's name,
+      # version or dependency list differs from its Cargo.toml. No cargo, no
+      # network, about a second. Verified both ways: exit 0 on main, exit 1
+      # with a member version bumped and with a dependency added, each
+      # without re-locking.
+      - name: Cargo.lock files are in sync with the Cargo.toml files
+        if: steps.gate.outputs.relevant != 'false'
+        run: |
+          cache=()
+          if [ -n "${BUILDBUDDY_API_KEY}" ]; then
+            cache=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
+          fi
+          if ! bazel run "${cache[@]}" //tools/crates:check; then
+            echo "::error::a Cargo.lock is out of step with its Cargo.toml files. Run the re-lock command printed above for each STALE lock and commit the result."
+            exit 1
+          fi
+
       # Lockfile/manifest sync guard (#523 fallout). Dependabot PRs carry a
       # pnpm-lock.yaml diff generated BEFORE the merge queue rebases them; when
       # grouped/parallel dep PRs land in one queue window, main can end up with

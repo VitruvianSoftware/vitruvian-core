@@ -65,7 +65,7 @@ Run the panel's unit tests with Node's built-in test runner, and the hook's
 with `rustc --test`:
 
 ```bash
-node --test sidecars/panel/lib/core.test.mjs sidecars/panel/lib/openui.test.mjs sidecars/panel/lib/version.test.mjs
+node --test sidecars/panel/lib/core.test.mjs sidecars/panel/lib/openui.test.mjs
 rustc --edition 2021 --test hooks/src/lib.rs -o /tmp/savvy-fleet-hook-test && /tmp/savvy-fleet-hook-test
 ```
 

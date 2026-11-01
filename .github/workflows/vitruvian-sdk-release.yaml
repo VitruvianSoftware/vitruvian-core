@@ -33,7 +33,16 @@
 # reads as "never released", and the config's initial-version names 0.9.0.
 # bootstrap-sha stops its first look back at the commit the publishing work
 # started from, so the first changelog holds that work and not the app commits
-# that touched the package before. Release PRs merge themselves
+# that touched the package before.
+#
+# The release PR also writes the new version into the repo-root Cargo.lock's
+# vitruvian-tool-kit entry (the "/Cargo.lock" extra-file; a leading slash is
+# repo-root-relative). Without it the kit's Cargo.toml moved and the lock did
+# not (#4026), which //tools/crates:check in tidy-check now fails. The jsonpath
+# filters on `@.name.value`, not `@.name`: release-please's TOML parser wraps
+# every value in an object, so `@.name=='...'` matches nothing and the update
+# is silently skipped (tried against release-please 17.6.0, the version this
+# action bundles). Release PRs merge themselves
 # (release-pr-automerge.yaml); label one do-not-automerge to hold it.
 name: vitruvian-sdk-release
 
