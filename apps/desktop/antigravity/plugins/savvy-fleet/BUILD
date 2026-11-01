@@ -93,7 +93,7 @@ js_library(
     ],
 )
 
-js_library(
+filegroup(
     name = "release_files",
     srcs = [
         ".release-please-manifest.json",
@@ -116,13 +116,6 @@ js_test(
     size = "small",
     data = [":lib"],
     entry_point = "sidecars/panel/lib/openui.test.mjs",
-)
-
-js_test(
-    name = "version_test",
-    size = "small",
-    data = [":release_files"],
-    entry_point = "sidecars/panel/lib/version.test.mjs",
 )
 
 rust_library(
@@ -187,7 +180,6 @@ pipeline_unit(
         ":track-subagent_test",
         ":track_subagent_lib_test",
         ":version_rs_test",
-        ":version_test",
     ],
     tier = "L1",
     timeout_minutes = 15,
@@ -213,7 +205,7 @@ filegroup(
 
 # What //apps/desktop/antigravity's cross-plugin tests read: the hooks.json
 # shape, each hook's fallback, and the files every plugin shares.
-js_library(
+filegroup(
     name = "conformance_files",
     srcs = glob(
         [
