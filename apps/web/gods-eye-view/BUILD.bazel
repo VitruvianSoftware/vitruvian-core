@@ -114,19 +114,6 @@ js_test(
     entry_point = "tests/server/image.test.mjs",
 )
 
-# The TLE mirror's group list against the client's, and its refresh logic.
-js_test(
-    name = "tle_mirror_test",
-    size = "small",
-    chdir = package_name(),
-    data = ["package.json"] + glob([
-        "src/**/*.js",
-        "src/**/*.mjs",
-        "tle-mirror/**",
-    ]),
-    entry_point = "tle-mirror/mirror.test.mjs",
-)
-
 test_suite(
     name = "cesium_assets_rs_test",
     tests = [":cesium_assets_test"],
@@ -136,7 +123,10 @@ test_suite(
 
 rust_library(
     name = "scripts_rs_lib",
-    srcs = glob(["scripts/src/*.rs"]),
+    srcs = glob(
+        ["scripts/src/*.rs"],
+        exclude = ["scripts/src/tle_mirror.rs"],
+    ),
     crate_name = "gev_scripts_lib",
     crate_root = "scripts/src/lib.rs",
     edition = "2021",
@@ -242,13 +232,22 @@ rust_binary(
     deps = [":scripts_rs_lib"],
 )
 
+# The CelesTrak TLE mirror (.github/workflows/gods-eye-view-tle-mirror.yaml).
+# The bin includes scripts/src/tle_mirror.rs by path and uses only the
+# standard library, so the workflow builds it with plain rustc; keep it off
+# scripts_rs_lib and its crates.
+tle_mirror_srcs = [
+    "scripts/src/bin/tle_mirror.rs",
+    "scripts/src/tle_mirror.rs",
+]
+
 rust_binary(
-    name = "tle_mirror_rs",
-    srcs = ["scripts/src/bin/tle_mirror.rs"],
+    name = "tle_mirror",
+    srcs = tle_mirror_srcs,
+    crate_root = "scripts/src/bin/tle_mirror.rs",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//apps/web/gods-eye-view:__subpackages__"],
-    deps = [":scripts_rs_lib"],
 )
 
 rust_binary(
@@ -295,7 +294,6 @@ boundary_check_data = [
         "scripts/**",
         "server/**",
         "src/**",
-        "tle-mirror/**",
         "tools/**",
     ],
     exclude = ["scripts/src/**"],
@@ -324,15 +322,20 @@ rust_test(
     deps = [":scripts_rs_lib"],
 )
 
+# The TLE mirror's group list against the client's, its URL against the
+# server's, its refresh logic and its curl hardening.
 rust_test(
-    name = "tle_mirror_rs_test",
+    name = "tle_mirror_test",
     size = "small",
-    srcs = ["scripts/src/bin/tle_mirror.rs"],
-    data = boundary_check_data,
+    srcs = tle_mirror_srcs,
+    crate_root = "scripts/src/bin/tle_mirror.rs",
+    data = ["package.json"] + glob([
+        "src/**/*.js",
+        "src/**/*.mjs",
+    ]),
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     visibility = ["//apps/web/gods-eye-view:__subpackages__"],
-    deps = [":scripts_rs_lib"],
 )
 
 rust_test(
