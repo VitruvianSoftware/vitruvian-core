@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! require-dev-soak.sh — refuse to PROMOTE when development is currently RED
+//! require-dev-soak — refuse to PROMOTE when development is currently RED
 //! for the service being promoted. Fail-closed on red, fail-open on unknown.
 
 use shell_compat::{capture, cat, env, env_or, env_or_empty, err, lines, out, subst};
@@ -244,7 +244,7 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
     let dev_job_name = match env("DEV_JOB_NAME") {
         Some(v) if !v.is_empty() => v,
         _ => {
-            err(b"require-dev-soak.sh: DEV_JOB_NAME must name the development deploy job\n");
+            err(b"require-dev-soak: DEV_JOB_NAME must name the development deploy job\n");
             return 1;
         }
     };
