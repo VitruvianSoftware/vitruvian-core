@@ -96,7 +96,7 @@ pub fn token_path() -> PathBuf {
 }
 
 pub fn cache_path() -> PathBuf {
-    config_dir().join("cache").join("home.pickle")
+    config_dir().join("cache").join("home.json")
 }
 
 pub fn log_path() -> PathBuf {

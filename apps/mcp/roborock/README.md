@@ -14,7 +14,7 @@ One lightweight local process, the **daemon**, manages the single authenticated 
 ```mermaid
 flowchart LR
     cli["rrctl (CLI)"] --> daemon
-    mcp["FastMCP Server (Agents)"] --> daemon
+    mcp["MCP server (agents)"] --> daemon
     web["Live Dashboard (Browser)"] --> daemon
     daemon["Daemon 127.0.0.1:8765"] -- "Local LAN / Cloud Session" --> vacuum["Roborock Vacuum"]
 ```
@@ -23,9 +23,22 @@ flowchart LR
 
 ## Quick Installation
 
-You need [`uv`](https://docs.astral.sh/uv/). The package is on
-[PyPI](https://pypi.org/project/vitruvian-roborock/), and the plugins fetch
-and run it themselves with `uvx`, so there is nothing to install first.
+`rrctl` is one self-contained binary: the daemon, the CLI and the MCP server.
+The plugins start it as `rrctl mcp`, so put `rrctl` on your `PATH` first, one of
+these ways:
+
+- **Download it** from the
+  [latest release](https://github.com/VitruvianSoftware/mcp-roborock/releases/latest)
+  (macOS universal, Linux x86_64), check it against its `.sha256`, and put
+  `rrctl` in a directory on your `PATH`, such as `~/.local/bin`.
+- **Build it** with Rust installed:
+  `cargo install --locked --git https://github.com/VitruvianSoftware/mcp-roborock`
+- **In the vitruvian-core monorepo:** `bazel build //apps/mcp/roborock:rrctl`,
+  then copy `bazel-bin/apps/mcp/roborock/rrctl` onto your `PATH`.
+
+Upgrading from the Python version (0.1.x, installed with `uv`)? Stop its
+daemon and uninstall it first; see
+[Switching from the Python version](docs/installation.md#switching-from-the-python-version-01x).
 
 Claude Code:
 
@@ -40,11 +53,7 @@ Antigravity:
 agy plugin install https://github.com/VitruvianSoftware/mcp-roborock
 ```
 
-Just the CLI, `rrctl`, without an agent:
-
-```bash
-uv tool install vitruvian-roborock
-```
+Just the CLI, without an agent: install `rrctl` as above and you are done.
 
 ---
 
@@ -68,18 +77,18 @@ rrctl dashboard    # Open the real-time visual map in your browser
 | `rrctl pause` / `resume` / `dock` | Control cleaning runs |
 | `rrctl daemon [status\|start\|stop]` | Manage the background connection daemon |
 | `rrctl dashboard [--no-open]` | Launch the live web dashboard |
-| `rrctl mcp` | Start the FastMCP server over stdio |
+| `rrctl mcp` | Start the MCP server over stdio |
 
 ---
 
 ## Agent Capabilities & Skills
 
-When installed as a plugin, your AI agent automatically gains two specialized skills and seven FastMCP tools:
+When installed as a plugin, your AI agent automatically gains two specialized skills and seven MCP tools:
 
 - **Skills**:
   - `roborock-control`: Natural language cleaning, targeted room dispatch, docking, and mop washing.
   - `roborock-setup`: First-time authentication flow directly inside the conversation.
-- **FastMCP Tools**:
+- **MCP Tools**:
   - `get_status`: Live status, battery, active errors, and room names.
   - `start_clean`: Start cleaning (full floor plan).
   - `control`: Pause, resume, stop, or find the vacuum.

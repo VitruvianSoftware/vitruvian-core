@@ -31,7 +31,7 @@ metadata:
   tags:
     - iot
     - roborock
-    - python
+    - rust
     - mcp
     - home-automation
   annotations:

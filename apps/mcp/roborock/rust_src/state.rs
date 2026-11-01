@@ -27,6 +27,7 @@ use crate::device::{DeviceError, RoborockVacuum, Vacuum};
 use serde_json::{json, Map, Value};
 use std::collections::VecDeque;
 use std::fmt;
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
@@ -510,7 +511,14 @@ fn poll_loop(
             return;
         }
         let mut active = false;
-        match vacuum.status() {
+        // A panic while reading the vacuum must not kill this thread: the
+        // daemon would go on serving the last status as "connected".
+        let polled = catch_unwind(AssertUnwindSafe(|| vacuum.status())).unwrap_or_else(|_| {
+            Err(DeviceError::rejected(
+                "Reading the vacuum's status failed unexpectedly.",
+            ))
+        });
+        match polled {
             Ok(snapshot) => {
                 active = is_active(&snapshot);
                 store.set_status(online_status(snapshot));
@@ -554,7 +562,9 @@ fn refresh_map(
         }
         guard.map_fetched_at = Some(now);
     }
-    if let Ok(png) = vacuum.map_png() {
+    // A bad map is skipped (the last good one stays); it must never take the
+    // poll loop down with it.
+    if let Ok(Ok(png)) = catch_unwind(AssertUnwindSafe(|| vacuum.map_png())) {
         store.set_map(png.as_deref());
     }
 }

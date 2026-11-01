@@ -1,0 +1,72 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# The Roborock daemon, CLI (rrctl) and MCP server.
+#
+# Its own workspace and its own Cargo.lock, apart from the root one, for the
+# same reason as apps/mcp/slack/rs: the standalone mirror (mcp-roborock)
+# receives apps/mcp/roborock alone, and `cargo install --locked` there needs
+# the lock to live in here. Bazel reads the same lock through the
+# @mcp_roborock_crates hub (MODULE.bazel). Re-lock with
+#   bazel run //tools/crates:lock -- --dir apps/mcp/roborock
+#
+# Network and crypto are vetted crates, never hand-rolled primitives: rustls
+# (ring) for the MQTT and HTTPS TLS, ureq for HTTPS, RustCrypto for the AES
+# modes, MD5, SHA-256 and HMAC the Roborock protocol is built on.
+
+[workspace]
+
+[package]
+name = "vitruvian-roborock"
+version = "0.2.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT"
+description = "Local daemon, CLI (rrctl) and MCP server for Roborock vacuums"
+repository = "https://github.com/VitruvianSoftware/mcp-roborock"
+publish = false
+
+[lib]
+name = "roborock_rs_lib"
+path = "rust_src/lib.rs"
+
+[[bin]]
+name = "rrctl"
+path = "rust_src/main.rs"
+
+[dependencies]
+aes = "0.8"
+aes-gcm = "0.10"
+base64 = "0.22"
+crc32fast = "1"
+flate2 = "1"
+getrandom = "0.2"
+hmac = "0.12"
+md-5 = "0.10"
+png = "0.17"
+rustls = { version = "0.23", default-features = false, features = ["logging", "ring", "std", "tls12"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+ureq = { version = "2.12", default-features = false, features = ["tls"] }
+webpki-roots = "0.26"
+
+[profile.release]
+opt-level = 3
