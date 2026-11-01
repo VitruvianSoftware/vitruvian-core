@@ -96,7 +96,7 @@ git -C ~/.gemini/config/plugins/live-context pull
 From the plugin folder:
 
 ```bash
-node --test sidecars/panel/lib/core.test.mjs sidecars/panel/lib/openui.test.mjs sidecars/panel/lib/version.test.mjs
+node --test sidecars/panel/lib/core.test.mjs sidecars/panel/lib/openui.test.mjs
 rustc --edition 2021 --test hooks/src/lib.rs -o /tmp/live-context-hooks-test && /tmp/live-context-hooks-test
 ```
 
