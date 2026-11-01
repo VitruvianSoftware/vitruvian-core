@@ -2,6 +2,13 @@
 
 All notable changes to gh-watch are recorded here.
 
+## [0.8.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/gh-watch-v0.8.2...gh-watch-v0.8.3) (2026-11-01)
+
+
+### Bug Fixes
+
+* **antigravity-plugins:** every plugin's hooks run as std-only Rust, and the four that never loaded now do ([#4145](https://github.com/VitruvianSoftware/vitruvian-core/issues/4145)) ([d180000](https://github.com/VitruvianSoftware/vitruvian-core/commit/d1800006c16a30d3e9acca5a78183e188abbc016))
+
 ## [0.8.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/gh-watch-v0.8.1...gh-watch-v0.8.2) (2026-10-24)
 
 
