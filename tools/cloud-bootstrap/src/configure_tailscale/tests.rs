@@ -197,6 +197,38 @@ fn check_on_stale_file_fails_with_diff_and_fix_command() {
     );
 }
 
+/// The diff `--check` prints never goes through the shared temp directory.
+/// A file at a guessable path there (it was `<tmp>/configure-tailscale-<pid>
+/// .expected`, written with a plain create-or-truncate) lets another user
+/// on the machine plant a symlink at that name and have the check overwrite
+/// whatever it points at. TMPDIR here is a regular file, so any attempt to
+/// create something under it fails, for root as well: the diff must still be
+/// printed.
+#[test]
+fn check_diff_uses_no_temp_file() {
+    let t = Tmp::new();
+    let hook = stub(&t);
+    let not_a_dir = t.join("tmpdir-is-a-file");
+    fs::write(&not_a_dir, "not a directory\n").unwrap();
+    let o = Command::new(tool())
+        .args(["--check", "--file", hook.to_str().unwrap()])
+        .env_remove("BUILD_WORKSPACE_DIRECTORY")
+        .env("TMPDIR", &not_a_dir)
+        .output()
+        .expect("run configure-tailscale");
+    let stdout = String::from_utf8_lossy(&o.stdout);
+    assert_eq!(o.status.code(), Some(1), "stale file passed --check");
+    assert!(
+        stdout.contains("--- ") && stdout.contains("+++ "),
+        "no unified diff without a usable temp dir: {stdout}"
+    );
+    assert!(
+        stdout.contains("+--accept-routes=true") || stdout.contains("+\t--accept-routes=true"),
+        "diff: {stdout}"
+    );
+    assert_eq!(fs::read_to_string(&not_a_dir).unwrap(), "not a directory\n");
+}
+
 #[test]
 fn unknown_argument_is_exit_2() {
     let c = configure(&["--bogus"], None);

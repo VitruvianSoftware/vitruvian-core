@@ -258,16 +258,25 @@ fn check(target: &Path) -> i32 {
 
 /// Print `diff -u <target> <expected>` to stdout, as the script did. Best
 /// effort: the verdict is the byte comparison above, not diff's exit code.
+///
+/// The expected text goes to diff on its stdin (`-`), never through a file
+/// in the shared temp directory: a file there at a guessable name, written
+/// with a plain create-or-truncate, lets another local user plant a symlink
+/// at that name and have this overwrite whatever it points at.
 fn show_diff(target: &Path) {
-    let tmp = std::env::temp_dir().join(format!("{NAME}-{}.expected", std::process::id()));
-    if std::fs::write(&tmp, HOOK).is_ok() {
-        let _ = Command::new("diff")
-            .arg("-u")
-            .arg(target)
-            .arg(&tmp)
-            .status();
-        let _ = std::fs::remove_file(&tmp);
+    let child = Command::new("diff")
+        .arg("-u")
+        .arg(target)
+        .arg("-")
+        .stdin(std::process::Stdio::piped())
+        .spawn();
+    let Ok(mut child) = child else { return };
+    if let Some(mut stdin) = child.stdin.take() {
+        // The hook is a few KiB, well under a pipe's buffer, so this cannot
+        // block on diff's output; dropping stdin then closes it.
+        let _ = stdin.write_all(HOOK.as_bytes());
     }
+    let _ = child.wait();
 }
 
 fn write(target: &Path) -> i32 {
