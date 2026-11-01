@@ -27,6 +27,7 @@ struct SettingsWindow: View {
     @ObservedObject var appearance: AppearancePreferences = AppearancePreferences()
     @ObservedObject var aiPreferences: AIPreferences = AIPreferences()
     var storage: StorageModel? = nil
+    var integrations: IntegrationsModel = IntegrationsModel(appModel: nil, enginePath: EngineLocation.enginePath())
     var onOpenSystemNotificationSettings: () -> Void = {
         if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") {
             NSWorkspace.shared.open(url)
@@ -355,6 +356,7 @@ struct SettingsWindow: View {
             )
         case .integrations:
             IntegrationsSettingsPane(
+                model: integrations,
                 highlightedSettingID: navigation.highlightedSettingID
             )
         case .about:

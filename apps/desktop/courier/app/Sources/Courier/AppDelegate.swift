@@ -41,6 +41,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let accountsAndBridges: AccountsAndBridgesModel
     /// Local storage breakdown and media cleanup model (`StorageModel`).
     let storage: StorageModel
+    /// Settings ▸ Integrations: the local API for MCP clients, its connections, and pairing requests.
+    let integrations: IntegrationsModel
+    private var pairingPrompt: PairingPrompt?
     /// Local problem report bundle model (`ProblemReportModel`).
     let problemReport: ProblemReportModel
     /// Shared keyboard shortcut registry read by menus, the ⌘/ sheet, and the Settings ▸ Shortcuts recorder.
@@ -116,8 +119,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     override init() {
         let environment = ProcessInfo.processInfo.environment
+        let enginePath = EngineLocation.enginePath(environment: environment)
         let supervisor = EngineSupervisor(
-            enginePath: EngineLocation.enginePath(environment: environment),
+            enginePath: enginePath,
             dataDir: EngineLocation.dataDirectory(environment: environment),
             environment: environment,
             launcher: FoundationProcessLauncher()
@@ -190,6 +194,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.accountsAndBridges = accountsAndBridges
         settingsNavigation.bind(accountsAndBridges: accountsAndBridges)
         storage = StorageModel(appModel: model, lifecycle: lifecycle)
+        integrations = IntegrationsModel(appModel: model, enginePath: enginePath, lifecycle: lifecycle)
         problemReport = ProblemReportModel(appModel: model)
         spaces = SpacesModel(appModel: model, inbox: inbox, lifecycle: lifecycle)
         labels = LabelsModel(appModel: model, lifecycle: lifecycle)
@@ -275,6 +280,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             model.open(.message(roomID: roomID, eventID: messageID))
         }
         signInWindows = SignInWindowPresenter(login: login)
+        pairingPrompt = PairingPrompt(model: integrations, showMainWindow: { [windowOpener] in windowOpener.show() })
         globalHotkeyMonitor = GlobalHotkeyMonitor(registry: hotkeys, dispatcher: hotkeyDispatcher)
         detachedWindowManager = DetachedWindowManager(
             registry: detachedWindows,
