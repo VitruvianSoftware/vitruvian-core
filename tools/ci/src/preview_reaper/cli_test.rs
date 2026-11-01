@@ -140,6 +140,24 @@ if [[ "$*" == *"-X DELETE"* ]]; then
   exit "${STUB_NEON_DELETE_RC:-0}"
 fi
 if [[ "$*" == *"api/v2/projects/test-proj/branches"* ]]; then
+  printf '%s\n' "$@" > "$NEON_LIST_ARGS"
+  # As a real curl does: a transport failure is only described on stderr
+  # with -S (-s alone silences it), and an HTTP error status still exits 0
+  # with the error body unless --fail / --fail-with-body asks otherwise.
+  if [ -n "${STUB_NEON_LIST_CURL_RC:-}" ]; then
+    case " $* " in *" -sS "*|*" -S "*|*" --show-error "*)
+      echo "curl: (${STUB_NEON_LIST_CURL_RC}) Could not resolve host: console.neon.tech" >&2 ;;
+    esac
+    exit "$STUB_NEON_LIST_CURL_RC"
+  fi
+  if [ -n "${STUB_NEON_LIST_HTTP_ERROR:-}" ]; then
+    case " $* " in
+      *" --fail-with-body "*) printf '%s' "$STUB_NEON_LIST_HTTP_ERROR"; exit 22 ;;
+      *" -f "*|*" -sf "*|*" --fail "*) exit 22 ;;
+    esac
+    printf '%s' "$STUB_NEON_LIST_HTTP_ERROR"
+    exit 0
+  fi
   [ -n "${STUB_NEON_JSON:-}" ] && { printf '%s' "$STUB_NEON_JSON"; exit 0; }
   cat <<'JSON'
 {
@@ -175,7 +193,12 @@ exit 0
     /// Runs the binary with a clean environment: only the stubs plus the system
     /// tools the stubs and python3 need are on PATH, so nothing real is touched.
     fn run(&self, args: &[&str], envs: &[(&str, &str)]) -> Output {
-        for f in ["cr_deleted", "k8s_deleted", "neon_deleted"] {
+        for f in [
+            "cr_deleted",
+            "k8s_deleted",
+            "neon_deleted",
+            "neon_list_args",
+        ] {
             let _ = std::fs::remove_file(self.work.join(f));
         }
         let path = format!(
@@ -190,6 +213,7 @@ exit 0
             .env("CR_DELETED", self.work.join("cr_deleted"))
             .env("K8S_DELETED", self.work.join("k8s_deleted"))
             .env("NEON_DELETED", self.work.join("neon_deleted"))
+            .env("NEON_LIST_ARGS", self.work.join("neon_list_args"))
             .env("GCP_PROJECT", "test-gcp")
             .env("NEON_API_KEY", "test-key")
             .env("NEON_PROJECT_ID", "test-proj")
@@ -448,6 +472,66 @@ fn a_missing_curl_fails_the_run_and_prints_no_summary() {
     // workflow to publish alongside a red step.
     assert_eq!(stdout(&o), "");
     assert!(!e.contains("Summary:"), "{e}");
+}
+
+#[test]
+fn a_neon_listing_the_api_rejects_fails_the_run_and_deletes_no_branch() {
+    // A 401 must not read as "no branches": curl exits 0 on an HTTP error
+    // unless told to fail, and the error body parses as an empty list.
+    let f = Fixture::new();
+    let o = f.run(
+        &[],
+        &[
+            (
+                "STUB_NEON_LIST_HTTP_ERROR",
+                r#"{"code":"","message":"authorization failed"}"#,
+            ),
+            ("GITHUB_ACTIONS", "true"),
+        ],
+    );
+    let e = stderr(&o);
+    assert_eq!(o.status.code(), Some(1), "{e}");
+    assert!(
+        e.contains("ERROR: could not list Neon branches (curl exit 22)"),
+        "{e}"
+    );
+    assert!(e.contains("authorization failed"), "{e}");
+    assert!(
+        e.contains("::error title=Neon Reaper Error::could not list Neon branches (curl exit 22)"),
+        "{e}"
+    );
+    assert!(!e.contains("test-key"), "the API key leaked: {e}");
+    assert!(!f.work.join("neon_deleted").exists());
+    // What was reaped before the failure is still reported.
+    assert_eq!(
+        stdout(&o),
+        "reaped_cloudrun=4\nreaped_k8s=4\nreaped_neon=0\ntotal_reaped=8\n"
+    );
+}
+
+#[test]
+fn a_neon_listing_curl_cannot_make_fails_the_run_with_curls_reason() {
+    let f = Fixture::new();
+    let o = f.run(&["200"], &[("STUB_NEON_LIST_CURL_RC", "6")]);
+    let e = stderr(&o);
+    assert_eq!(o.status.code(), Some(1), "{e}");
+    assert!(
+        e.contains("ERROR: could not list Neon branches (curl exit 6)"),
+        "{e}"
+    );
+    assert!(e.contains("Could not resolve host"), "{e}");
+    assert!(!f.work.join("neon_deleted").exists());
+}
+
+#[test]
+fn the_neon_listing_asks_curl_to_fail_on_http_errors_and_say_why() {
+    let f = Fixture::new();
+    let o = f.run(&["200"], &[]);
+    assert_eq!(o.status.code(), Some(0), "{}", stderr(&o));
+    let args = std::fs::read_to_string(f.work.join("neon_list_args")).unwrap();
+    let args: Vec<&str> = args.lines().collect();
+    assert!(args.contains(&"-sS"), "{args:?}");
+    assert!(args.contains(&"--fail-with-body"), "{args:?}");
 }
 
 #[test]

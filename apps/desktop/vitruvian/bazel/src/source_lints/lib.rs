@@ -2000,14 +2000,82 @@ fn release_tools_run_with_their_secrets(repo: &Repository) -> Vec<String> {
             continue;
         }
         let code = code_before_tests(&text);
-        if code.contains("SystemRunner::new()") {
+        for how in secretless_system_runners(code) {
             problems.push(format!(
-                "{} builds its runner with SystemRunner::new(), which does not know the environment's secrets; use SystemRunner::from_env()",
-                path
+                "{} builds its runner with {}, which does not know the environment's secrets; use SystemRunner::from_env()",
+                path, how
             ));
         }
     }
     problems
+}
+
+/// Every way `code` builds a `SystemRunner` other than `from_env()`, which
+/// is the one that knows the environment's secrets: `SystemRunner::new()`,
+/// `SystemRunner::default()`, `<SystemRunner as Default>::default()`,
+/// `let r: SystemRunner = Default::default()` and a `SystemRunner { .. }`
+/// struct literal, however qualified (`release_exec::SystemRunner`) or
+/// spaced. Naming the type is not building one: its `struct`, its `impl`s,
+/// a return type (`-> SystemRunner {`) and a field (`inner: SystemRunner,`)
+/// are left alone, as are comments and strings.
+pub fn secretless_system_runners(code: &str) -> Vec<String> {
+    const TYPE: &str = "SystemRunner";
+    let cleaned: String = code
+        .lines()
+        .map(|l| code_and_blanked(l).1)
+        .collect::<Vec<_>>()
+        .join("\n");
+    let is_ident = |c: char| c.is_ascii_alphanumeric() || c == '_';
+    let mut found = Vec::new();
+    for (idx, _) in cleaned.match_indices(TYPE) {
+        let before = &cleaned[..idx];
+        let after = &cleaned[idx + TYPE.len()..];
+        if before.chars().next_back().is_some_and(is_ident)
+            || after.chars().next().is_some_and(is_ident)
+        {
+            continue;
+        }
+        let after = after.trim_start();
+        if let Some(path) = after.strip_prefix("::") {
+            let path = path.trim_start();
+            let name: String = path.chars().take_while(|c| is_ident(*c)).collect();
+            if (name == "new" || name == "default")
+                && path[name.len()..].trim_start().starts_with('(')
+            {
+                found.push(format!("SystemRunner::{}()", name));
+            }
+        } else if after.starts_with('{') {
+            // What precedes the (possibly qualified) type name.
+            let mut head = before.trim_end();
+            while let Some(p) = head.strip_suffix("::") {
+                head = p.trim_end().trim_end_matches(is_ident).trim_end();
+            }
+            let names_the_type = head.ends_with("->")
+                || ["struct", "impl", "for", "enum", "union", "trait"]
+                    .iter()
+                    .any(|kw| {
+                        head.strip_suffix(kw)
+                            .is_some_and(|p| !p.chars().next_back().is_some_and(is_ident))
+                    });
+            if !names_the_type {
+                found.push("a SystemRunner { .. } literal".to_string());
+            }
+        } else if after
+            .split_whitespace()
+            .collect::<String>()
+            .starts_with("asDefault>::default(")
+        {
+            found.push("<SystemRunner as Default>::default()".to_string());
+        } else if let Some(value) = after.strip_prefix('=') {
+            let value: String = value.split_whitespace().collect();
+            if value.starts_with("Default::default(")
+                || value.starts_with("std::default::Default::default(")
+            {
+                found.push("SystemRunner = Default::default()".to_string());
+            }
+        }
+    }
+    found
 }
 
 fn about_box_credits_both_authors(repo: &Repository) -> Vec<String> {
@@ -2827,6 +2895,63 @@ mod tests {
         let (w, b) = code_and_blanked("let x = \"hello\" // comment");
         assert_eq!(w, "let x = \"hello\" ");
         assert_eq!(b, "let x = \"     \" ");
+    }
+
+    #[test]
+    fn test_every_secretless_system_runner_is_found() {
+        for (code, want) in [
+            ("let mut r = SystemRunner::new();", "SystemRunner::new()"),
+            ("let mut r = release_exec::SystemRunner::new();", "SystemRunner::new()"),
+            ("let mut r = SystemRunner::default();", "SystemRunner::default()"),
+            ("run(&mut release_exec::SystemRunner :: default ())", "SystemRunner::default()"),
+            ("let r = <SystemRunner as Default>::default();", "<SystemRunner as Default>::default()"),
+            ("let r: SystemRunner = Default::default();", "SystemRunner = Default::default()"),
+            ("let r = SystemRunner { envs, secrets: vec![] };", "a SystemRunner { .. } literal"),
+            (
+                "let r = release_exec::SystemRunner {\n    envs: BTreeMap::new(),\n    ..Default::default()\n};",
+                "a SystemRunner { .. } literal",
+            ),
+            ("go(&mut SystemRunner{ secrets: Vec::new(), envs })", "a SystemRunner { .. } literal"),
+        ] {
+            assert_eq!(secretless_system_runners(code), vec![want], "{}", code);
+        }
+        // Both halves of a literal filled from default() are reported.
+        assert_eq!(
+            secretless_system_runners("SystemRunner { envs, ..SystemRunner::default() }"),
+            vec!["a SystemRunner { .. } literal", "SystemRunner::default()"]
+        );
+    }
+
+    #[test]
+    fn test_naming_system_runner_is_not_building_one() {
+        let code = r#"
+/// Runs the commands for real; never `SystemRunner::new()` in a release tool.
+#[derive(Debug, Default, Clone)]
+pub struct SystemRunner {
+    pub secrets: Vec<String>,
+}
+impl SystemRunner {
+    pub fn from_env() -> SystemRunner {
+        todo!()
+    }
+}
+impl Runner for SystemRunner {
+}
+impl Default for release_exec::SystemRunner {
+}
+struct Resolving {
+    inner: release_exec::SystemRunner,
+}
+fn make() -> release_exec::SystemRunner {
+    release_exec::SystemRunner::from_env()
+}
+fn takes(r: &mut SystemRunner) -> Option<SystemRunner> { None }
+let mut r = release_exec::SystemRunner::from_env(); // not SystemRunner::default()
+let msg = "SystemRunner::new() and SystemRunner { secrets }";
+let other = MySystemRunner::new();
+let other = SystemRunnerish::default();
+"#;
+        assert_eq!(secretless_system_runners(code), Vec::<String>::new());
     }
 
     #[test]
