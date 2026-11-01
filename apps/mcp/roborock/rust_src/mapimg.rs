@@ -36,6 +36,10 @@ pub const SCALE: u32 = 4;
 /// The largest floor plan accepted, per side. Real maps are about 1024
 /// pixels a side; the device's numbers are not trusted beyond this.
 pub const MAX_SIDE: usize = 4096;
+/// The largest floor plan accepted in total, before the 4x scale-up. A
+/// 2048x2048 plan already means a 32 MB canvas scaled to half a gigabyte;
+/// real maps (an S8 Pro Ultra's is 413x394) are a small fraction of this.
+pub const MAX_AREA: usize = 2048 * 2048;
 const VACUUM_RADIUS: f64 = 6.0 * SCALE as f64;
 const CHARGER_RADIUS: f64 = 6.0 * SCALE as f64;
 const PATH_WIDTH: f64 = 1.0 * SCALE as f64;
@@ -190,9 +194,9 @@ pub fn parse(raw: &[u8]) -> Result<MapData, MapError> {
                 };
                 let height = u32_at(header, at(8)?)? as usize;
                 let width = u32_at(header, at(4)?)? as usize;
-                if width > MAX_SIDE || height > MAX_SIDE {
+                if width > MAX_SIDE || height > MAX_SIDE || width * height > MAX_AREA {
                     return Err(MapError(format!(
-                        "The map is {width}x{height}, larger than the {MAX_SIDE}x{MAX_SIDE} this accepts"
+                        "The map is {width}x{height}, larger than this accepts ({MAX_SIDE} a side, {MAX_AREA} pixels in all)"
                     )));
                 }
                 map.image = Some(ImageBlock {
@@ -512,6 +516,7 @@ fn render(map: &MapData) -> Result<Canvas, MapError> {
     }
     let fits = img.width <= MAX_SIDE
         && img.height <= MAX_SIDE
+        && img.width * img.height <= MAX_AREA
         && img
             .width
             .checked_mul(img.height)
@@ -711,8 +716,17 @@ pub mod tests {
                 .expect_err("an oversized map must be an error");
             assert!(err.0.contains("larger than"), "{w}x{h}: {err}");
         }
-        // The largest accepted size still parses (pixels missing read as outside).
+        // Within each side, but too large in total.
+        for (w, h) in [(2049, 2048), (4096, 4096), (4096, 1025)] {
+            let err = map_png(&sample_with_size(w, h)).unwrap_err();
+            assert!(err.0.contains("larger than"), "{w}x{h}: {err}");
+        }
+        // The largest accepted sizes still parse (missing pixels read as outside).
         assert!(parse(&sample_with_size(MAX_SIDE as u32, 3)).is_ok());
+        assert!(parse(&sample_with_size(2048, 2048)).is_ok());
+        assert!(parse(&sample_with_size(4096, 1024)).is_ok());
+        // The S8 Pro Ultra's real plan fits with lots of room to spare.
+        assert!(413 * 394 * 20 < MAX_AREA);
     }
 
     #[test]

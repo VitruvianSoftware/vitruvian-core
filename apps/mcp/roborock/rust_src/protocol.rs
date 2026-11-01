@@ -390,7 +390,7 @@ impl FrameBuffer {
             }
             // Resynchronise on the next marker that has room for a prefix in
             // front of it, dropping at least one byte.
-            match find_version(&self.buf[5..]) {
+            match self.buf.get(5..).and_then(find_version) {
                 Some(i) => {
                     self.buf.drain(..i + 1);
                 }
@@ -899,6 +899,35 @@ mod tests {
             decode_frame(&frame.unwrap(), KEY, None).unwrap().protocol,
             PING_REQUEST
         );
+    }
+
+    #[test]
+    fn exactly_four_bad_bytes_do_not_panic() {
+        let got = within_a_second(|| {
+            let mut buf = FrameBuffer::default();
+            buf.push(&[0, 0, 0, 0]);
+            buf.next_frame()
+        });
+        assert_eq!(got, None);
+    }
+
+    #[test]
+    fn junk_of_every_short_length_is_handled() {
+        for n in 0..=8usize {
+            for byte in [0x00u8, 0xFF, b'1', b'L'] {
+                let got = within_a_second(move || {
+                    let std::thread::Result::Ok(r) = std::panic::catch_unwind(|| {
+                        let mut buf = FrameBuffer::default();
+                        buf.push(&vec![byte; n]);
+                        buf.next_frame()
+                    }) else {
+                        return Err(());
+                    };
+                    Ok(r)
+                });
+                assert_eq!(got, Ok(None), "{n} bytes of {byte:#04x}");
+            }
+        }
     }
 
     #[test]

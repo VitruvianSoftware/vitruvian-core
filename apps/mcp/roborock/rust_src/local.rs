@@ -53,6 +53,9 @@ struct Inner {
     connected: AtomicBool,
     waiters: Mutex<Vec<Waiter>>,
     subscriber: Subscriber,
+    /// How long the link may go without one decoded frame before it is
+    /// treated as dead. Pings are answered every 10 seconds.
+    liveness: Duration,
 }
 
 pub struct LocalChannel {
@@ -83,6 +86,15 @@ impl LocalChannel {
         local_key: &str,
         subscriber: Subscriber,
     ) -> Result<Self, LocalError> {
+        Self::connect_with_liveness(addr, local_key, subscriber, PING_INTERVAL * 6)
+    }
+
+    fn connect_with_liveness(
+        addr: &str,
+        local_key: &str,
+        subscriber: Subscriber,
+        liveness: Duration,
+    ) -> Result<Self, LocalError> {
         let sock: SocketAddr = addr
             .parse()
             .map_err(|_| LocalError(format!("Failed to connect to {addr}: not an IP address")))?;
@@ -103,6 +115,7 @@ impl LocalChannel {
             connected: AtomicBool::new(true),
             waiters: Mutex::new(Vec::new()),
             subscriber,
+            liveness,
         });
         let reader_inner = inner.clone();
         thread::Builder::new()
@@ -216,30 +229,49 @@ impl LocalChannel {
     }
 }
 
+/// Marks the link down when the reader stops, however it stops (a panic in
+/// a subscriber included), so callers fall back to MQTT and the link is
+/// reconnected instead of looking alive forever.
+struct ReaderGuard(Arc<Inner>);
+
+impl Drop for ReaderGuard {
+    fn drop(&mut self) {
+        self.0.connected.store(false, Ordering::SeqCst);
+        if let Ok(stream) = self.0.stream.lock() {
+            let _ = stream.shutdown(Shutdown::Both);
+        }
+        // Wake anyone waiting on a reply that will now never come.
+        self.0
+            .waiters
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
+    }
+}
+
 fn read_loop(mut reader: TcpStream, inner: Arc<Inner>) {
+    let _guard = ReaderGuard(inner.clone());
     let mut frames = FrameBuffer::default();
     let mut chunk = [0u8; 8192];
     reader
         .set_read_timeout(Some(Duration::from_millis(500)))
         .ok();
-    let mut last_data = Instant::now();
+    // Liveness counts decoded frames, not bytes: a framer stuck waiting on
+    // a bogus length still receives bytes but never a message.
+    let mut last_frame = Instant::now();
     while inner.connected.load(Ordering::SeqCst) {
+        if last_frame.elapsed() > inner.liveness {
+            break;
+        }
         match reader.read(&mut chunk) {
             Ok(0) => break,
-            Ok(n) => {
-                last_data = Instant::now();
-                frames.push(&chunk[..n]);
-            }
+            Ok(n) => frames.push(&chunk[..n]),
             Err(e)
                 if matches!(
                     e.kind(),
                     ErrorKind::WouldBlock | ErrorKind::TimedOut | ErrorKind::Interrupted
                 ) =>
             {
-                // Pings answer every 10s; a minute of silence is a dead link.
-                if last_data.elapsed() > PING_INTERVAL * 6 {
-                    break;
-                }
                 continue;
             }
             Err(_) => break,
@@ -249,6 +281,7 @@ fn read_loop(mut reader: TcpStream, inner: Arc<Inner>) {
             let Ok(msg) = protocol::decode_frame(&frame, &inner.local_key, Some(nonces)) else {
                 continue;
             };
+            last_frame = Instant::now();
             let waiter = {
                 let mut waiters = inner.waiters.lock().unwrap_or_else(|e| e.into_inner());
                 waiters
@@ -264,7 +297,6 @@ fn read_loop(mut reader: TcpStream, inner: Arc<Inner>) {
             }
         }
     }
-    inner.connected.store(false, Ordering::SeqCst);
 }
 
 #[cfg(test)]
@@ -349,5 +381,97 @@ mod tests {
             .err()
             .unwrap();
         assert!(err.0.contains("any known protocol"), "{err}");
+    }
+
+    /// A fake vacuum that answers hello, then runs `then` on the socket.
+    fn scripted_device(then: impl FnOnce(&mut TcpStream) + Send + 'static) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap().to_string();
+        thread::spawn(move || {
+            let (mut sock, _) = listener.accept().unwrap();
+            sock.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+            let mut frames = FrameBuffer::default();
+            let mut chunk = [0u8; 4096];
+            loop {
+                let n = match sock.read(&mut chunk) {
+                    Ok(0) | Err(_) => return,
+                    Ok(n) => n,
+                };
+                frames.push(&chunk[..n]);
+                if let Some(frame) = frames.next_frame() {
+                    let msg = protocol::decode_frame(&frame, KEY, None).unwrap();
+                    let reply = Message {
+                        seq: msg.seq,
+                        random: 4242,
+                        ..Message::new(protocol::HELLO_RESPONSE, None)
+                    };
+                    sock.write_all(&protocol::encode(&reply, KEY, true, None).unwrap())
+                        .unwrap();
+                    break;
+                }
+            }
+            then(&mut sock);
+            // Hold the socket open so only the reader's own state can end the link.
+            thread::sleep(Duration::from_secs(10));
+        });
+        addr
+    }
+
+    fn becomes_disconnected(ch: &LocalChannel, within: Duration) -> bool {
+        let deadline = Instant::now() + within;
+        while Instant::now() < deadline {
+            if !ch.is_connected() {
+                return true;
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+        false
+    }
+
+    #[test]
+    fn a_reader_that_dies_marks_the_link_down() {
+        let addr = scripted_device(|sock| {
+            thread::sleep(Duration::from_millis(200));
+            let push = Message::new(
+                protocol::GENERAL_RESPONSE,
+                Some(br#"{"dps":{"121":5}}"#.to_vec()),
+            );
+            sock.write_all(&protocol::encode(&push, KEY, true, None).unwrap())
+                .unwrap();
+        });
+        // A subscriber that panics takes the reader thread down with it.
+        let ch =
+            LocalChannel::connect_addr(&addr, KEY, Arc::new(|_| panic!("subscriber bug"))).unwrap();
+        assert!(ch.is_connected());
+        assert!(
+            becomes_disconnected(&ch, Duration::from_secs(3)),
+            "the link still looks alive"
+        );
+    }
+
+    #[test]
+    fn a_framer_stuck_on_a_bogus_length_resets_the_link() {
+        let addr = scripted_device(|sock| {
+            // A plausible prefix for a frame that never completes, then a
+            // trickle of bytes: data keeps arriving, messages never do.
+            let _ = sock.write_all(&100_000u32.to_be_bytes());
+            for _ in 0..60 {
+                if sock.write_all(b"x").is_err() {
+                    return;
+                }
+                thread::sleep(Duration::from_millis(50));
+            }
+        });
+        let ch = LocalChannel::connect_with_liveness(
+            &addr,
+            KEY,
+            Arc::new(|_| {}),
+            Duration::from_secs(1),
+        )
+        .unwrap();
+        assert!(
+            becomes_disconnected(&ch, Duration::from_secs(4)),
+            "a stalled framer kept the link up"
+        );
     }
 }
