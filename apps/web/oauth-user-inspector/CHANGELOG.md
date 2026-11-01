@@ -8,6 +8,13 @@ adoption and is kept verbatim as the app's history — it sat under an
 `[Unreleased]` heading, unchanged, for 69 commits.
 -->
 
+## [1.15.5](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.15.4...oauth-user-inspector-v1.15.5) (2026-11-01)
+
+
+### Bug Fixes
+
+* **oauth-user-inspector:** test the container entrypoint end to end, and start without node ([#4164](https://github.com/VitruvianSoftware/vitruvian-core/issues/4164)) ([4f22bc1](https://github.com/VitruvianSoftware/vitruvian-core/commit/4f22bc186c543f500c93fe9407c8240c94d2c6af))
+
 ## [1.15.4](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.15.3...oauth-user-inspector-v1.15.4) (2026-10-29)
 
 
