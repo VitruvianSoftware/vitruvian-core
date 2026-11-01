@@ -107,7 +107,20 @@ impl Input {
     /// variable) and whether a full line was read: at end of input `read`
     /// fails, though the variable still gets what it read.
     fn read(&mut self, prompt: &str, silent: bool) -> (String, bool) {
-        let echo_off = silent && self.tty && stty("-echo");
+        // bash's `read -s` turns echo off itself; this port asks stty. If that
+        // fails the key would be shown as it is typed, so it is not read at
+        // all (it can still come from BUILDBUDDY_API_KEY or --key).
+        let echo_off = silent && self.tty;
+        if echo_off {
+            term::trap_interrupt();
+            if !stty("-echo") {
+                term::release();
+                eprintln!(
+                    "Cannot hide the input (stty -echo failed), so the key is not read from the terminal.\nPass it in the BUILDBUDDY_API_KEY environment variable instead."
+                );
+                process::exit(2);
+            }
+        }
         if self.tty {
             eprint!("{prompt}");
             let _ = io::stderr().flush();
@@ -120,11 +133,69 @@ impl Input {
         }
         if echo_off {
             stty("echo");
+            term::release();
         }
         buf.retain(|&c| c != 0);
         let s = String::from_utf8_lossy(&buf);
         let t = s.trim_matches(|c| c == ' ' || c == '\t' || c == '\n');
         (t.to_string(), complete)
+    }
+}
+
+/// Ctrl-C during the hidden key prompt must not leave the terminal with echo
+/// off. The terminal state is saved before echo goes off, and a SIGINT
+/// handler puts it back (tcsetattr is async-signal-safe) and then dies of the
+/// signal as it would have. The termios struct is only saved and restored
+/// whole, so it is kept as opaque bytes (big enough for Linux and macOS).
+mod term {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    const SIGINT: i32 = 2;
+    const SIG_DFL: usize = 0;
+    const TCSANOW: i32 = 0;
+
+    #[repr(C, align(8))]
+    struct Termios([u8; 256]);
+
+    static mut SAVED: Termios = Termios([0; 256]);
+    static HAVE: AtomicBool = AtomicBool::new(false);
+
+    extern "C" {
+        fn tcgetattr(fd: i32, t: *mut u8) -> i32;
+        fn tcsetattr(fd: i32, action: i32, t: *const u8) -> i32;
+        fn signal(sig: i32, handler: usize) -> usize;
+        fn raise(sig: i32) -> i32;
+    }
+
+    extern "C" fn on_interrupt(_: i32) {
+        // SAFETY: only async-signal-safe calls; SAVED is written before the
+        // handler is installed and not again while it is.
+        unsafe {
+            if HAVE.load(Ordering::SeqCst) {
+                tcsetattr(0, TCSANOW, std::ptr::addr_of!(SAVED) as *const u8);
+            }
+            signal(SIGINT, SIG_DFL);
+            raise(SIGINT);
+        }
+    }
+
+    pub fn trap_interrupt() {
+        // SAFETY: SAVED is a buffer larger than any platform's termios.
+        unsafe {
+            if tcgetattr(0, std::ptr::addr_of_mut!(SAVED) as *mut u8) == 0 {
+                HAVE.store(true, Ordering::SeqCst);
+                signal(SIGINT, on_interrupt as extern "C" fn(i32) as usize);
+            }
+        }
+    }
+
+    pub fn release() {
+        if HAVE.swap(false, Ordering::SeqCst) {
+            // SAFETY: restores the default disposition.
+            unsafe {
+                signal(SIGINT, SIG_DFL);
+            }
+        }
     }
 }
 
@@ -167,13 +238,46 @@ fn read_lines(p: &str) -> Vec<Vec<u8>> {
     lines
 }
 
+/// user.bazelrc holds the API key, so it (and its temp file) is written
+/// 0600, or kept stricter if the user made it so. setup.sh left it at the
+/// umask default (usually 0644), and its temp-file-and-rename undid a user's
+/// own `chmod 600` on every run. The mode is read once, before this run
+/// changes the file.
+fn private_mode() -> u32 {
+    use std::os::unix::fs::PermissionsExt;
+    static MODE: std::sync::OnceLock<u32> = std::sync::OnceLock::new();
+    *MODE.get_or_init(|| match fs::metadata("user.bazelrc") {
+        Ok(m) if m.permissions().mode() & 0o600 != 0 => m.permissions().mode() & 0o600,
+        _ => 0o600,
+    })
+}
+
+fn is_private(p: &str) -> bool {
+    p == "user.bazelrc" || p == "user.bazelrc.tmp"
+}
+
+/// Open for writing; a private file is created 0600 and set to private_mode.
+fn open_for_write(p: &str, append: bool) -> io::Result<fs::File> {
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+    let mut o = fs::OpenOptions::new();
+    o.create(true).write(true).append(append).truncate(!append);
+    if is_private(p) {
+        o.mode(0o600);
+    }
+    let f = o.open(p)?;
+    if is_private(p) {
+        f.set_permissions(fs::Permissions::from_mode(private_mode()))?;
+    }
+    Ok(f)
+}
+
 fn write_lines(p: &str, lines: &[Vec<u8>]) -> io::Result<()> {
     let mut v = Vec::new();
     for l in lines {
         v.extend_from_slice(l);
         v.push(b'\n');
     }
-    fs::write(p, v)
+    open_for_write(p, false)?.write_all(&v)
 }
 
 fn contains(hay: &[u8], needle: &[u8]) -> bool {
@@ -182,13 +286,7 @@ fn contains(hay: &[u8], needle: &[u8]) -> bool {
 
 /// `>> file` / `> file`, or bash's redirection error and exit 1.
 fn write_to(line: u32, p: &str, data: &str, append: bool) {
-    let r = fs::OpenOptions::new()
-        .create(true)
-        .write(true)
-        .append(append)
-        .truncate(!append)
-        .open(p)
-        .and_then(|mut f| f.write_all(data.as_bytes()));
+    let r = open_for_write(p, append).and_then(|mut f| f.write_all(data.as_bytes()));
     if let Err(e) = r {
         die(&format!("{}: line {line}: {p}: {}", prog(), strerror(&e)));
     }
@@ -196,7 +294,7 @@ fn write_to(line: u32, p: &str, data: &str, append: bool) {
 
 /// `touch user.bazelrc`.
 fn touch(p: &str) {
-    if let Err(e) = fs::OpenOptions::new().create(true).append(true).open(p) {
+    if let Err(e) = open_for_write(p, true) {
         die(&format!("touch: cannot touch '{p}': {}", strerror(&e)));
     }
 }

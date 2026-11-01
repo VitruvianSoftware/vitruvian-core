@@ -26,6 +26,7 @@ rust_test(
     srcs = ["src/tests.rs"],
     data = [
         "setup.sh",
+        "testdata/setup_sh.golden",
         ":setup",
         "//tools:remote.bazelrc",
     ],
@@ -33,6 +34,7 @@ rust_test(
     env = {
         "BIN": "$(rootpath :setup)",
         "COMMITTED_REMOTE_BAZELRC": "$(rootpath //tools:remote.bazelrc)",
+        "GOLDEN": "$(rootpath testdata/setup_sh.golden)",
         "SETUP_SH": "$(rootpath setup.sh)",
     },
 )

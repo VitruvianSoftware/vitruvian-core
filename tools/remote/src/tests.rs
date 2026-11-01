@@ -86,6 +86,8 @@ fn run(root: &Path, sh: bool, args: &[&str], env: &[(&str, &str)], stdin: &str) 
     for (k, v) in env {
         if v.is_empty() && *k == "BUILD_WORKSPACE_DIRECTORY" {
             c.env_remove(k);
+        } else if *v == NO_GH_PATH {
+            c.env(k, root.join("nogh-bin"));
         } else {
             c.env(k, v);
         }
@@ -105,9 +107,17 @@ fn read(p: PathBuf) -> String {
     fs::read_to_string(&p).unwrap_or_else(|e| panic!("{}: {e}", p.display()))
 }
 
-/// Total header lines that could apply to ANY invocation: unscoped `common`
-/// plus any config-scoped variant. The doubling bug shows up as >1.
-fn header_expansions(ws: &Path) -> usize {
+/// Header lines that could apply to ANY invocation, unscoped `common` plus any
+/// config-scoped variant, as (`--remote_header`, `--bes_header`). Both flags
+/// comma-join when repeated, so the doubling bug shows up as either >1.
+fn header_expansions(ws: &Path) -> (usize, usize) {
+    (
+        flag_expansions(ws, " --remote_header=x-buildbuddy-api-key="),
+        flag_expansions(ws, " --bes_header=x-buildbuddy-api-key="),
+    )
+}
+
+fn flag_expansions(ws: &Path, flag: &str) -> usize {
     read(ws.join("user.bazelrc"))
         .lines()
         .filter(|l| {
@@ -123,7 +133,7 @@ fn header_expansions(ws: &Path) -> usize {
                 },
                 None => rest,
             };
-            rest.starts_with(" --remote_header=x-buildbuddy-api-key=")
+            rest.starts_with(flag)
         })
         .count()
 }
@@ -155,7 +165,7 @@ fn t1_fresh_setup_writes_exactly_one_unscoped_header() {
     bb(&r, "TESTKEY", &[]);
     assert_eq!(
         header_expansions(&ws),
-        1,
+        (1, 1),
         "the auth header must expand exactly once:\n{}",
         read(ws.join("user.bazelrc"))
     );
@@ -180,7 +190,7 @@ fn t2_rerun_rotates_the_key_without_duplicating() {
     let rc = read(ws.join("user.bazelrc"));
     assert_eq!(
         header_expansions(&ws),
-        1,
+        (1, 1),
         "re-run duplicated header lines:\n{rc}"
     );
     assert!(rc.contains("ROTATED"), "rotated key not written");
@@ -202,13 +212,13 @@ fn t3_legacy_scoped_headers_are_cleaned_up() {
         .open(ws.join("user.bazelrc"))
         .unwrap();
     f.write_all(
-        b"common:remote --remote_header=x-buildbuddy-api-key=LEGACY\ncommon:remotecache --remote_header=x-buildbuddy-api-key=LEGACY\n",
+        b"common:remote --remote_header=x-buildbuddy-api-key=LEGACY\ncommon:remotecache --remote_header=x-buildbuddy-api-key=LEGACY\ncommon:remote --bes_header=x-buildbuddy-api-key=LEGACY\n",
     )
     .unwrap();
     bb(&r, "TESTKEY", &[]);
     assert_eq!(
         header_expansions(&ws),
-        1,
+        (1, 1),
         "legacy scoped headers not cleaned:\n{}",
         read(ws.join("user.bazelrc"))
     );
@@ -228,7 +238,7 @@ fn t4_no_local_default_omits_the_default_and_keeps_one_header() {
     );
     assert_eq!(
         header_expansions(&ws),
-        1,
+        (1, 1),
         "no-local-default broke header count"
     );
     assert!(o
@@ -380,14 +390,14 @@ fn cache_shared_is_read_only_with_an_optional_header() {
             "--url",
             "grpcs://c.example",
             "--key",
-            "K",
+            "KSHORT",
         ],
         &[],
         "",
     );
     assert_eq!(o.code, 0, "{}", o.stderr);
     let rc = read(ws.join("user.bazelrc"));
-    assert!(rc.contains("common --remote_cache=grpcs://c.example\ncommon --remote_upload_local_results=false\ncommon --remote_header=x-api-key=K\n"), "{rc}");
+    assert!(rc.contains("common --remote_cache=grpcs://c.example\ncommon --remote_upload_local_results=false\ncommon --remote_header=x-api-key=KSHORT\n"), "{rc}");
     // Blank key on the prompt: no header at all.
     let o = run(
         &r,
@@ -547,11 +557,36 @@ fn ci_gh_set_fails(r: &Path) {
 fn ci_gh_unauthed(r: &Path) {
     fake_gh(r, false, true);
 }
+/// Stands for `<root>/nogh-bin` in a case's env (see `no_gh`).
+const NO_GH_PATH: &str = "<NO_GH_PATH>";
+
+/// A PATH dir with just the tools setup.sh runs, and no gh.
+fn no_gh(r: &Path) {
+    let d = r.join("nogh-bin");
+    fs::create_dir_all(&d).unwrap();
+    let host = std::env::var_os("PATH").unwrap_or_default();
+    for tool in [
+        "bash", "awk", "grep", "mv", "touch", "mkdir", "basename", "cat", "git", "sed", "head",
+    ] {
+        if let Some(p) = std::env::split_paths(&host)
+            .map(|dir| dir.join(tool))
+            .find(|p| p.is_file())
+        {
+            std::os::unix::fs::symlink(p, d.join(tool)).unwrap();
+        }
+    }
+    assert!(!d.join("gh").exists());
+}
+
 fn workflows(r: &Path) {
     let w = r.join("ws/.github/workflows");
     fs::create_dir_all(w.join("nested")).unwrap();
     fs::write(w.join("ci.yaml"), "run: bazel test //...\n").unwrap();
-    fs::write(w.join("nested/x.yaml"), "run: bazel build //x\n").unwrap();
+    // ONE matching workflow: grep -r lists in directory order, which on ext4
+    // depends on a hash seeded when the filesystem was made, so two matches
+    // compare differently on different machines. The Rust binary's sorting
+    // is pinned by workflow_hints_are_listed_in_sorted_order instead.
+    fs::write(w.join("nested/x.yaml"), "run: echo nested\n").unwrap();
     fs::write(w.join("other.yaml"), "run: echo hi\n").unwrap();
 }
 
@@ -676,7 +711,7 @@ const CASES: &[Case] = &[
             "--provider",
             "custom",
             "--key",
-            "K",
+            "KSHORT",
         ],
         env: &[],
         stdin: "",
@@ -690,7 +725,7 @@ const CASES: &[Case] = &[
             "--provider",
             "custom",
             "--key",
-            "K",
+            "KSHORT",
         ],
         env: &[],
         stdin: "grpcs://e\n",
@@ -704,7 +739,7 @@ const CASES: &[Case] = &[
             "--provider",
             "custom",
             "--key",
-            "K",
+            "KSHORT",
         ],
         env: &[],
         stdin: "\nh\n",
@@ -712,7 +747,7 @@ const CASES: &[Case] = &[
     },
     Case {
         name: "unknown provider",
-        args: &["--provider", "nope", "--key", "K"],
+        args: &["--provider", "nope", "--key", "KSHORT"],
         env: &[],
         stdin: "",
         prep: nothing,
@@ -821,7 +856,7 @@ const CASES: &[Case] = &[
             "--url",
             "grpcs://c.example",
             "--key",
-            "K",
+            "KSHORT",
             "--header-name",
             "h",
         ],
@@ -923,9 +958,11 @@ const CASES: &[Case] = &[
             "--key",
             "K1",
         ],
-        env: &[],
+        // Only the tools setup.sh uses: CI runners ship /usr/bin/gh, which
+        // would turn this into "gh not authenticated".
+        env: &[("PATH", NO_GH_PATH)],
         stdin: "",
-        prep: nothing,
+        prep: no_gh,
     },
 ];
 
@@ -957,6 +994,219 @@ fn tree(r: &Path) -> Vec<String> {
     v.into_iter()
         .map(|s| s.replace(&r.display().to_string(), "<ROOT>"))
         .collect()
+}
+
+/// One case's result as text: what the golden file holds per case.
+fn render(c: &Case, o: &Out, files: &[String]) -> String {
+    format!(
+        "=== case: {}\nexit: {}\n--- stdout\n{}\n--- stderr\n{}\n--- files\n{}\n",
+        c.name,
+        o.code,
+        o.stdout,
+        o.stderr,
+        files.join("\n")
+    )
+}
+
+/// Every case through the Rust binary (or setup.sh), rendered.
+fn render_all(sh: bool) -> Vec<String> {
+    CASES
+        .iter()
+        .map(|c| {
+            let r = scratch();
+            (c.prep)(&r);
+            let o = run(&r, sh, c.args, c.env, c.stdin);
+            render(c, &o, &tree(&r))
+        })
+        .collect()
+}
+
+/// setup.sh's outputs for every case, recorded so this coverage outlives
+/// setup.sh. Regenerate (only while setup.sh still exists) with
+///   bazel run //tools/remote:setup_test -- --exact regenerate_golden --ignored
+/// with REGENERATE_GOLDEN=<absolute path to testdata/setup_sh.golden>.
+fn golden() -> String {
+    read(abs("GOLDEN"))
+}
+
+#[test]
+fn matches_the_recorded_setup_sh_outputs() {
+    let want = golden();
+    let want: Vec<&str> = want.split_inclusive_cases();
+    let got = render_all(false);
+    assert_eq!(
+        want.len(),
+        got.len(),
+        "the golden file has a different number of cases; regenerate it"
+    );
+    let bad: Vec<String> = want
+        .iter()
+        .zip(&got)
+        .filter(|(w, g)| *w != g)
+        .map(|(w, g)| format!("--- recorded (setup.sh)\n{w}--- rust\n{g}"))
+        .collect();
+    assert!(
+        bad.is_empty(),
+        "{} case(s) differ from setup.sh's recorded outputs:\n\n{}",
+        bad.len(),
+        bad.join("\n")
+    );
+}
+
+#[test]
+#[ignore]
+fn regenerate_golden() {
+    let dest = std::env::var("REGENERATE_GOLDEN")
+        .expect("set REGENERATE_GOLDEN to the golden file's absolute path");
+    fs::write(dest, render_all(true).concat()).unwrap();
+}
+
+trait Cases {
+    fn split_inclusive_cases(&self) -> Vec<&str>;
+}
+
+impl Cases for String {
+    /// The golden file split back into one rendered block per case.
+    fn split_inclusive_cases(&self) -> Vec<&str> {
+        let starts: Vec<usize> = self
+            .match_indices("=== case: ")
+            .map(|(i, _)| i)
+            .filter(|&i| i == 0 || self.as_bytes()[i - 1] == b'\n')
+            .collect();
+        starts
+            .iter()
+            .enumerate()
+            .map(|(n, &i)| &self[i..starts.get(n + 1).copied().unwrap_or(self.len())])
+            .collect()
+    }
+}
+
+/// Every key any case hands the tool. None may ever reach stdout or stderr.
+const KEYS: &[&str] = &["K1", "KSHORT", "ENVKEY", "TYPEDKEY", "PROMPTKEY", "AUTH"];
+
+#[test]
+fn no_case_ever_prints_a_key() {
+    for c in CASES {
+        let r = scratch();
+        (c.prep)(&r);
+        let o = run(&r, false, c.args, c.env, c.stdin);
+        for k in KEYS {
+            assert!(
+                !o.stdout.contains(k) && !o.stderr.contains(k),
+                "case '{}' printed the key {k}:\n--- stdout\n{}\n--- stderr\n{}",
+                c.name,
+                o.stdout,
+                o.stderr
+            );
+        }
+    }
+}
+
+#[test]
+fn workflow_hints_are_listed_in_sorted_order() {
+    let r = scratch();
+    let w = r.join("ws/.github/workflows");
+    fs::create_dir_all(w.join("nested")).unwrap();
+    for f in ["zz.yaml", "nested/x.yaml", "aa.yaml", "m.yml"] {
+        fs::write(w.join(f), "run: bazel build //x\n").unwrap();
+    }
+    fs::write(w.join("quiet.yaml"), "run: echo hi\n").unwrap();
+    fake_gh(&r, false, true);
+    let o = run(
+        &r,
+        false,
+        &[
+            "--cache",
+            "buildbuddy",
+            "--provider",
+            "buildbuddy",
+            "--key",
+            "K1",
+        ],
+        &[],
+        "",
+    );
+    assert_eq!(o.code, 0, "{}", o.stderr);
+    let listed: Vec<&str> = o
+        .stdout
+        .lines()
+        .skip_while(|l| !l.starts_with("Detected Bazel steps"))
+        .skip(1)
+        .take_while(|l| l.starts_with("  .github/"))
+        .collect();
+    assert_eq!(
+        listed,
+        [
+            "  .github/workflows/aa.yaml",
+            "  .github/workflows/m.yml",
+            "  .github/workflows/nested/x.yaml",
+            "  .github/workflows/zz.yaml",
+        ],
+        "{}",
+        o.stdout
+    );
+}
+
+fn mode(p: &Path) -> u32 {
+    fs::metadata(p).unwrap().permissions().mode() & 0o777
+}
+
+#[test]
+fn user_bazelrc_holding_the_key_is_private() {
+    // An improvement on setup.sh, which left it at the umask default (0644)
+    // and reset a user's own chmod 600 on every run.
+    let r = scratch();
+    let ws = r.join("ws");
+    bb(&r, "TESTKEY", &[]);
+    assert_eq!(
+        mode(&ws.join("user.bazelrc")),
+        0o600,
+        "a fresh user.bazelrc is not 0600"
+    );
+
+    // An existing world-readable one is tightened.
+    fs::set_permissions(ws.join("user.bazelrc"), fs::Permissions::from_mode(0o644)).unwrap();
+    bb(&r, "ROTATED", &[]);
+    assert_eq!(
+        mode(&ws.join("user.bazelrc")),
+        0o600,
+        "a 0644 user.bazelrc was not tightened"
+    );
+
+    // A stricter mode the user chose is kept.
+    fs::set_permissions(
+        ws.join("user.bazelrc"),
+        fs::Permissions::from_mode(0o400 | 0o200),
+    )
+    .unwrap();
+    bb(&r, "ROTATED", &[]);
+    assert_eq!(mode(&ws.join("user.bazelrc")), 0o600);
+    assert!(
+        !ws.join("user.bazelrc.tmp").exists(),
+        "the temp file was left behind"
+    );
+
+    // The shared path writes a key too, and the local one shares the file.
+    for args in [
+        &[
+            "--cache",
+            "shared",
+            "--url",
+            "grpcs://c.example",
+            "--key",
+            "K1",
+        ][..],
+        &["--cache", "local"][..],
+    ] {
+        let r = scratch();
+        let o = run(&r, false, args, &[], "");
+        assert_eq!(o.code, 0, "{}", o.stderr);
+        assert_eq!(
+            mode(&r.join("ws/user.bazelrc")),
+            0o600,
+            "{args:?}: user.bazelrc is not 0600"
+        );
+    }
 }
 
 #[test]
