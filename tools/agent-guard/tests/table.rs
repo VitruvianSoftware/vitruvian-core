@@ -184,6 +184,11 @@ fn messages_name_the_replacement() {
         ("actionlint", "bazel run //tools/ci:actionlint"),
         ("rm -rf ~/.cache/bazel", "bazel run //tools/bazel-cache:gc"),
         ("go test ./...", "bazel test"),
+        ("cargo update", "bazel run //tools/crates:lock"),
+        ("cargo update -p ring", "bazel run //tools/crates:lock"),
+        ("cargo generate-lockfile", "bazel run //tools/crates:lock"),
+        ("cargo add serde", "bazel run //tools/crates:lock"),
+        ("cargo remove serde", "bazel run //tools/crates:lock"),
         ("prettier --write .", "bazel run //tools/format"),
         ("kubectl apply -f x.yaml", "//tools/gitops"),
         (
@@ -210,6 +215,36 @@ fn messages_name_the_replacement() {
         );
         assert!(msg.contains("guardrail"), "{}: {}", command, msg);
     }
+}
+
+#[test]
+fn cargo_lock_changes_point_at_crates_lock() {
+    // //tools/crates:lock exists (#4016): a lock change must not send the
+    // agent to James for a target that is already there (#4027).
+    let t = setup();
+    for command in [
+        "cargo update",
+        "cargo generate-lockfile",
+        "cargo add serde",
+        "cargo rm serde",
+    ] {
+        let msg = t.fx.run(command).message;
+        assert!(
+            msg.contains("bazel run //tools/crates:lock"),
+            "{}: {}",
+            command,
+            msg
+        );
+        assert!(msg.contains("--dir <path>"), "{}: {}", command, msg);
+        assert!(
+            !msg.contains("no target for it yet"),
+            "{}: {}",
+            command,
+            msg
+        );
+    }
+    let msg = t.fx.run("cargo add serde").message;
+    assert!(msg.contains("Edit the dependency in Cargo.toml"), "{}", msg);
 }
 
 #[test]

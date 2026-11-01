@@ -178,6 +178,12 @@ pub const T_BAZEL_BUILD: Target = t(
     "bazel build //<package>:<target> (or bazel run for a binary)",
     None,
 );
+pub const T_CRATES_LOCK: Target = t(
+    "bazel run //tools/crates:lock (add -- --dir <path> for an app with its own Cargo.lock)",
+    None,
+);
+pub const CRATES_EDIT_NOTE: &str =
+    "Edit the dependency in Cargo.toml by hand first; the target then re-locks for the Bazel Rust toolchain.";
 pub const T_PULUMI: Target = t(
     "bazel run //infrastructure/pulumi/<project>:preview (and :up only as AGENTS.md allows)",
     None,
@@ -1705,6 +1711,19 @@ pub fn classify_tool(inv: &Invocation, ctx: &Context) -> (Option<Verdict>, Strin
         if sub == "fmt" {
             return here(vt("lint", "cargo fmt", T_FORMAT));
         }
+        // Changing what Cargo.lock holds goes through //tools/crates:lock,
+        // which resolves for the Bazel toolchain's Rust version (#4016).
+        if inl(&["update", "generate-lockfile"], sub) {
+            return here(vt("cargo", &format!("cargo {}", sub), T_CRATES_LOCK));
+        }
+        if inl(&["add", "remove", "rm"], sub) {
+            return here(Some(v(
+                "cargo",
+                &format!("cargo {}", sub),
+                Some(T_CRATES_LOCK),
+                CRATES_EDIT_NOTE,
+            )));
+        }
         if sub == "publish" {
             return here(Some(v(
                 "cargo",
@@ -2380,6 +2399,7 @@ mod tests {
         ("T_LINT", T_LINT),
         ("T_BAZEL_TEST", T_BAZEL_TEST),
         ("T_BAZEL_BUILD", T_BAZEL_BUILD),
+        ("T_CRATES_LOCK", T_CRATES_LOCK),
         ("T_PULUMI", T_PULUMI),
         ("T_GITOPS", T_GITOPS),
         ("T_HELM", T_HELM),

@@ -436,7 +436,7 @@ another branch; until one lands, the refusal says so and points to James.
 | `swift` | `swift build/test/run/package`, `swiftc` | `bazel test //apps/desktop/<app>:<Tests>` |
 | `xcode` | `xcodebuild`, `xcrun notarytool/stapler/altool` | the app's `bazel build`/`test` and packaging targets |
 | `node` | `npm`/`pnpm`/`yarn`/`bun` install, test, run, exec; `npx` | `bazel test` / `bazel run`; Bazel installs node_modules itself |
-| `cargo` | `cargo build/test/run/check/clippy/publish` | `bazel test` / `bazel build` |
+| `cargo` | `cargo build/test/run/check/clippy/publish`; `cargo update/generate-lockfile/add/remove` | `bazel test` / `bazel build`; `bazel run //tools/crates:lock` (after editing `Cargo.toml` by hand for add/remove) |
 | `gradle` | `gradle`, `./gradlew` | `bazel build //apps/mobile/<app>:app` |
 | `pytest` | `pytest`, `python -m pytest`, `uv run pytest` | `bazel test` |
 | `lint` | `gofmt`, `golangci-lint`, `ruff`, `eslint`, `prettier`, `shellcheck`, `buildifier`, ... | `bazel run //tools/format` (or `//:tidy`), `aspect lint` |
