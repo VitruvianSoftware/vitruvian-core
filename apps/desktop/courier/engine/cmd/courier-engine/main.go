@@ -4,6 +4,9 @@
 // courier-engine is the helper the Courier app runs: it serves the app protocol on a Unix socket in the data
 // directory as soon as its store is open, and starts every network's bridge over that store behind it.
 //
+// `courier-engine mcp-stdio [--port N]` is something else: an MCP server on stdin and stdout that forwards to the
+// running engine's local API with the token in COURIER_TOKEN, for MCP clients that only speak stdio (mcpstdio.go).
+//
 // Standard output carries exactly one line, once the engine is serving:
 //
 //	{"ready":true,"socket":"/path/to/engine.sock","protocol":3}
@@ -54,7 +57,12 @@ import (
 // version is the engine's version, sent in hello. A build stamps it with Bazel's x_defs ("main.version").
 var version = "dev"
 
-const usage = "usage: courier-engine --data DIR [--parent-fd N]"
+const usage = "usage: courier-engine --data DIR [--parent-fd N]\n       courier-engine mcp-stdio [--port N]"
+
+// nopCloser is a writer that MCP's transport may close without closing it.
+type nopCloser struct{ io.Writer }
+
+func (nopCloser) Close() error { return nil }
 
 const (
 	exitUsage  = 2
@@ -84,6 +92,9 @@ func main() {
 }
 
 func realMain(argv []string, stdout, stderr io.Writer) int {
+	if len(argv) > 0 && argv[0] == "mcp-stdio" {
+		return runMCPStdio(argv[1:], os.Stdin, nopCloser{stdout}, stderr, os.Getenv)
+	}
 	cfg, err := parseArgs(argv)
 	if err != nil {
 		if !errors.Is(err, flag.ErrHelp) {
