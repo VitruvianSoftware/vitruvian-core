@@ -14,10 +14,21 @@ pub const MAX_MEDIA_BYTES: usize = 200 * 1024 * 1024;
 pub const MAX_AVATAR_OR_EXTERNAL_BYTES: usize = 20 * 1024 * 1024;
 pub const MAX_AVATAR_BYTES: usize = 10 * 1024 * 1024;
 pub const MAX_EXTERNAL_IMAGE_BYTES: usize = MAX_AVATAR_OR_EXTERNAL_BYTES;
-pub const MAX_REDIRECT_HOPS: usize = 3;
+pub const MAX_ATTACHMENT_REDIRECT_HOPS: usize = 10;
+pub const MAX_AVATAR_REDIRECT_HOPS: usize = 5;
 
 const FIFE_IMAGE_SIZE: &str = "w10000-h10000";
 const MAX_UPLOAD_METADATA_RESPONSE_BYTES: usize = 1024 * 1024;
+
+fn scotty_start_url(base_url: &Url, raw_group_id: &str) -> Result<Url, GChatError> {
+    let mut start_url = base_url
+        .join("/uploads")
+        .map_err(|e| GChatError::Internal(format!("invalid Scotty start URL: {e}")))?;
+    start_url
+        .query_pairs_mut()
+        .append_pair("group_id", raw_group_id.trim());
+    Ok(start_url)
+}
 
 fn decode_upload_metadata(raw: &[u8]) -> Result<pb::UploadMetadata, GChatError> {
     let cleaned: Vec<u8> = raw
@@ -107,10 +118,11 @@ crate::edition2021! {
         cookies: Option<&DomainCookieJar>,
         user_agent: &str,
         max_bytes: usize,
+        max_redirect_hops: usize,
         label: &str,
     ) -> Result<(Vec<u8>, String), GChatError> {
         let mut current_url = initial_url;
-        for hop in 0..=MAX_REDIRECT_HOPS {
+        for hop in 0..=max_redirect_hops {
             guard.validate_url_with_role(&current_url, role).await?;
 
             let mut req = http
@@ -133,9 +145,9 @@ crate::edition2021! {
 
             let status = resp.status();
             if matches!(status.as_u16(), 301 | 302 | 303 | 307 | 308) {
-                if hop >= MAX_REDIRECT_HOPS {
+                if hop >= max_redirect_hops {
                     return Err(GChatError::SsrfBlocked(format!(
-                        "{label} exceeded maximum redirect hops ({MAX_REDIRECT_HOPS})"
+                        "{label} exceeded maximum redirect hops ({max_redirect_hops})"
                     )));
                 }
                 let loc = resp
@@ -181,7 +193,7 @@ crate::edition2021! {
         }
 
         Err(GChatError::SsrfBlocked(format!(
-            "{label} exceeded maximum redirect hops ({MAX_REDIRECT_HOPS})"
+            "{label} exceeded maximum redirect hops ({max_redirect_hops})"
         )))
     }
 
@@ -220,13 +232,7 @@ crate::edition2021! {
             content_type.trim()
         };
 
-        let mut start_url = client
-            .base_url
-            .join("/u/0/uploads")
-            .map_err(|e| GChatError::Internal(format!("invalid Scotty start URL: {e}")))?;
-        start_url
-            .query_pairs_mut()
-            .append_pair("group_id", raw_group_id.trim());
+        let start_url = scotty_start_url(&client.base_url, raw_group_id)?;
 
         client
             .guard
@@ -415,6 +421,7 @@ crate::edition2021! {
             Some(&client.jar),
             &client.user_agent,
             MAX_MEDIA_BYTES,
+            MAX_ATTACHMENT_REDIRECT_HOPS,
             "attachment download",
         )
         .await?;
@@ -441,6 +448,7 @@ crate::edition2021! {
             None,
             DEFAULT_MACOS_SAFARI_UA,
             MAX_AVATAR_BYTES,
+            MAX_AVATAR_REDIRECT_HOPS,
             "avatar download",
         )
         .await
@@ -465,6 +473,7 @@ crate::edition2021! {
             None,
             DEFAULT_MACOS_SAFARI_UA,
             MAX_EXTERNAL_IMAGE_BYTES,
+            MAX_AVATAR_REDIRECT_HOPS,
             "external image download",
         )
         .await?;
@@ -596,9 +605,7 @@ mod tests {
                                 html
                             );
                             let _ = stream.write_all(resp.as_bytes()).await;
-                        } else if req_line.starts_with("POST /u/0/uploads?group_id=space_xyz")
-                            || req_line.starts_with("POST /uploads?group_id=space_xyz")
-                        {
+                        } else if req_line.starts_with("POST /uploads?group_id=space_xyz") {
                             *sh.lock().unwrap() = headers;
                             *sb.lock().unwrap() = body;
                             let up_url = nu.lock().unwrap().clone();
@@ -841,7 +848,7 @@ mod tests {
                                 html
                             );
                             let _ = stream.write_all(resp.as_bytes()).await;
-                        } else if req_line.starts_with("POST /u/0/uploads?") {
+                        } else if req_line.starts_with("POST /uploads?group_id=space_xyz") {
                             *sh.lock().unwrap() = headers;
                             let up_url = format!("http://{addr}/u/0/upload_put?upload_id=up_f4");
                             let resp = format!(
@@ -1002,7 +1009,8 @@ mod tests {
     }
 
     #[test]
-    fn test_redirect_status_codes_and_three_hop_cap_across_downloads() {
+    fn test_redirect_status_codes_and_hop_caps_across_downloads() {
+        let client_holder: Arc<Mutex<Option<GChatClient>>> = Arc::new(Mutex::new(None));
         let rt = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -1012,6 +1020,7 @@ mod tests {
             let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
             let addr = listener.local_addr().unwrap();
             let port = addr.port();
+            let base_url = format!("http://{addr}/");
             let guard = NetGuard::allow_loopback_for_test();
 
             let server_task = tokio::spawn(async move {
@@ -1021,30 +1030,40 @@ mod tests {
                     };
                     tokio::spawn(async move {
                         let (req_line, _, _) = read_http_request(&mut stream).await;
-                        if req_line.starts_with("GET /a/hop0") {
-                            let loc = format!("http://127.0.0.1:{port}/a/hop1");
-                            let resp = format!("HTTP/1.1 301 Moved Permanently\r\nLocation: {loc}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
-                            let _ = stream.write_all(resp.as_bytes()).await;
-                        } else if req_line.starts_with("GET /a/hop1") {
-                            let loc = format!("http://127.0.0.1:{port}/a/hop2");
+                        if let Some(rest) = req_line.strip_prefix("GET /a/hop") {
+                            let hop_str = rest.split_whitespace().next().unwrap_or("");
+                            if let Ok(hop_num) = hop_str.parse::<usize>() {
+                                if hop_num == 0 {
+                                    let _ = stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok").await;
+                                } else {
+                                    let status_line = match hop_num % 4 {
+                                        0 => "HTTP/1.1 301 Moved Permanently",
+                                        1 => "HTTP/1.1 302 Found",
+                                        2 => "HTTP/1.1 307 Temporary Redirect",
+                                        _ => "HTTP/1.1 308 Permanent Redirect",
+                                    };
+                                    let next_hop = hop_num - 1;
+                                    let loc = format!("http://127.0.0.1:{port}/a/hop{next_hop}");
+                                    let resp = format!("{status_line}\r\nLocation: {loc}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                                    let _ = stream.write_all(resp.as_bytes()).await;
+                                }
+                                return;
+                            }
+                        }
+                        if req_line.starts_with("GET /u/0/api/get_attachment_url?alt=proto&attachment_token=tok_10") {
+                            let loc = format!("http://127.0.0.1:{port}/a/hop9");
                             let resp = format!("HTTP/1.1 302 Found\r\nLocation: {loc}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
                             let _ = stream.write_all(resp.as_bytes()).await;
-                        } else if req_line.starts_with("GET /a/hop2") {
-                            let loc = format!("http://127.0.0.1:{port}/a/hop3");
-                            let resp = format!("HTTP/1.1 307 Temporary Redirect\r\nLocation: {loc}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                        } else if req_line.starts_with("GET /u/0/api/get_attachment_url?alt=proto&attachment_token=tok_11") {
+                            let loc = format!("http://127.0.0.1:{port}/a/hop10");
+                            let resp = format!("HTTP/1.1 302 Found\r\nLocation: {loc}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
                             let _ = stream.write_all(resp.as_bytes()).await;
-                        } else if req_line.starts_with("GET /a/hop3") {
-                            let loc = format!("http://127.0.0.1:{port}/a/hop4");
-                            let resp = format!("HTTP/1.1 308 Permanent Redirect\r\nLocation: {loc}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
-                            let _ = stream.write_all(resp.as_bytes()).await;
-                        } else if req_line.starts_with("GET /a/hop4") {
-                            let _ = stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok").await;
                         } else if req_line.starts_with("GET /a/hostile_chain") {
                             let loc = "https://evil.example.com/steal";
                             let resp = format!("HTTP/1.1 302 Found\r\nLocation: {loc}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
                             let _ = stream.write_all(resp.as_bytes()).await;
                         } else if req_line.starts_with("GET /a/status304") {
-                            let loc = format!("http://127.0.0.1:{port}/a/hop4");
+                            let loc = format!("http://127.0.0.1:{port}/a/hop0");
                             let resp = format!("HTTP/1.1 304 Not Modified\r\nLocation: {loc}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
                             let _ = stream.write_all(resp.as_bytes()).await;
                         }
@@ -1052,10 +1071,10 @@ mod tests {
                 }
             });
 
-            // 3-hop avatar redirect chain (hop1 -> hop2 -> hop3 -> hop4) must succeed
-            let three_hop_url = format!("http://127.0.0.1:{port}/a/hop1");
-            let three_hop_res = download_avatar(&guard, &three_hop_url).await.expect("3-hop chain should succeed");
-            assert_eq!(three_hop_res.0, b"ok");
+            // 5-hop avatar redirect chain (hop5 -> ... -> hop0) must succeed
+            let five_hop_url = format!("http://127.0.0.1:{port}/a/hop5");
+            let five_hop_res = download_avatar(&guard, &five_hop_url).await.expect("5-hop avatar chain should succeed");
+            assert_eq!(five_hop_res.0, b"ok");
 
             // Hostile redirect chain to non-allowlisted host must be rejected by NetGuard
             let hostile_url = format!("http://127.0.0.1:{port}/a/hostile_chain");
@@ -1065,12 +1084,23 @@ mod tests {
                 "hostile redirect chain must be blocked by NetGuard, got: {hostile_res:?}"
             );
 
-            // 4-hop avatar redirect chain must fail because max redirect hops is 3
-            let four_hop_url = format!("http://127.0.0.1:{port}/a/hop0");
-            let four_hop_res = download_avatar(&guard, &four_hop_url).await;
+            // 6-hop avatar redirect chain must fail because MAX_AVATAR_REDIRECT_HOPS is 5
+            let six_hop_url = format!("http://127.0.0.1:{port}/a/hop6");
+            let six_hop_res = download_avatar(&guard, &six_hop_url).await;
             assert!(
-                matches!(four_hop_res, Err(GChatError::SsrfBlocked(_))),
-                "avatar redirect chain of 4 hops must be rejected by 3-hop cap, got: {four_hop_res:?}"
+                matches!(six_hop_res, Err(GChatError::SsrfBlocked(_))),
+                "avatar redirect chain of 6 hops must be rejected by 5-hop cap, got: {six_hop_res:?}"
+            );
+
+            // 10-hop attachment redirect chain must succeed, while 11-hop must fail (MAX_ATTACHMENT_REDIRECT_HOPS is 10)
+            let client = build_loopback_client(&base_url);
+            let ten_hop_att = download_attachment(&client, "tok_10").await.expect("10-hop attachment chain should succeed");
+            assert_eq!(ten_hop_att.0, b"ok");
+
+            let eleven_hop_att = download_attachment(&client, "tok_11").await;
+            assert!(
+                matches!(eleven_hop_att, Err(GChatError::SsrfBlocked(_))),
+                "attachment redirect chain of 11 hops must be rejected by 10-hop cap, got: {eleven_hop_att:?}"
             );
 
             // Non-redirect 3xx status (304 Not Modified with Location) must not be followed
@@ -1081,8 +1111,17 @@ mod tests {
                 "HTTP 304 must not be followed as a redirect, got: {status_304_res:?}"
             );
 
+            *client_holder.lock().unwrap() = Some(client);
             server_task.abort();
         });
+        drop(rt);
+        drop(client_holder);
+
+        let base = Url::parse("https://chat.google.com/").unwrap();
+        let start_url = scotty_start_url(&base, "space_xyz").unwrap();
+        assert_eq!(start_url.as_str(), "https://chat.google.com/uploads?group_id=space_xyz");
+        assert_eq!(MAX_ATTACHMENT_REDIRECT_HOPS, 10);
+        assert_eq!(MAX_AVATAR_REDIRECT_HOPS, 5);
     }
 
     #[test]
