@@ -23,6 +23,14 @@ typedef enum GChatStatus {
   GCHAT_ERR_INTERNAL = 7,
 } GChatStatus;
 
+typedef enum GChatEventKind {
+  GCHAT_EVENT_KIND_EVENT_PROTO = 1,
+  GCHAT_EVENT_KIND_AUTH_EXPIRED = 2,
+  GCHAT_EVENT_KIND_RESYNC = 3,
+  GCHAT_EVENT_KIND_CONNECTED = 4,
+  GCHAT_EVENT_KIND_STREAM_ERROR = 5,
+} GChatEventKind;
+
 typedef struct GChatByteSlice {
   uint8_t *ptr;
   size_t len;

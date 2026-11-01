@@ -5205,6 +5205,41 @@ func TestSyncWorldWith300MembersAndSlowGetMembersDoesNotDelayStreamEvents(t *tes
 	}, 5*time.Second, 20*time.Millisecond, "prewarmed member ghost must carry the fetched display name")
 }
 
+func TestStreamErrorBeforeConnectTransitionsToTransientDisconnect(t *testing.T) {
+	ctx := context.Background()
+	_, _, client := setupLoggedInGChatTestEnv(t, nil)
+
+	client.mu.Lock()
+	client.initialSyncDone = false
+	client.mu.Unlock()
+
+	const errMsg = "step2_bind_sid: http_status:503"
+	client.processStreamNotification(ctx, streamNotification{
+		kind:    EventKindStreamError,
+		payload: []byte(errMsg),
+	})
+
+	require.Equal(t, status.StateTransientDisconnect, client.lastBridgeState())
+	fullSt := client.lastBridgeStateFull()
+	require.Equal(t, status.StateTransientDisconnect, fullSt.StateEvent)
+	require.Equal(t, status.BridgeStateErrorCode("gchat-stream-error"), fullSt.Error)
+	require.Equal(t, errMsg, fullSt.Message)
+
+	// Once CONNECTED has been reached since Connect, subsequent stream errors
+	// log a warning while reconnecting without clobbering StateConnected.
+	client.processStreamNotification(ctx, streamNotification{
+		kind:    EventKindConnected,
+		payload: []byte(`{}`),
+	})
+	require.Equal(t, status.StateConnected, client.lastBridgeState())
+
+	client.processStreamNotification(ctx, streamNotification{
+		kind:    EventKindStreamError,
+		payload: []byte("step4_poll_events: network"),
+	})
+	require.Equal(t, status.StateConnected, client.lastBridgeState())
+}
+
 func TestServeGChatEngineHelperForAppE2E(t *testing.T) {
 	sockPath := os.Getenv("COURIER_GCHAT_E2E_SOCKET")
 	if sockPath == "" {
