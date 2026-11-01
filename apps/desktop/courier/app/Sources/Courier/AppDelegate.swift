@@ -44,6 +44,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Settings ▸ Integrations: the local API for MCP clients, its connections, and pairing requests.
     let integrations: IntegrationsModel
     private var pairingPrompt: PairingPrompt?
+    /// An MCP client's focus_app: the chat, the message and the draft it asks for.
+    private var focusRouter: FocusRouter?
     /// Local problem report bundle model (`ProblemReportModel`).
     let problemReport: ProblemReportModel
     /// Shared keyboard shortcut registry read by menus, the ⌘/ sheet, and the Settings ▸ Shortcuts recorder.
@@ -281,6 +283,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         signInWindows = SignInWindowPresenter(login: login)
         pairingPrompt = PairingPrompt(model: integrations, showMainWindow: { [windowOpener] in windowOpener.show() })
+        focusRouter = FocusRouter(
+            appModel: model,
+            composer: conversation.composer,
+            lookUpChat: { [inbox] id in await inbox.lookUpRow(id) != nil },
+            activate: { [windowOpener] in windowOpener.show() }
+        )
         globalHotkeyMonitor = GlobalHotkeyMonitor(registry: hotkeys, dispatcher: hotkeyDispatcher)
         detachedWindowManager = DetachedWindowManager(
             registry: detachedWindows,
