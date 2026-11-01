@@ -622,21 +622,19 @@ crate::edition2021! {
                 .await
                 .map_err(|e| GChatError::Network(format!("register body read failed: {e}")))?;
 
-            let Some(compass_val) = self.jar.absorb_set_cookies(&set_cookies) else {
-                return Err(GChatError::Protocol(
-                    "webchannel register missing COMPASS Set-Cookie".to_string(),
-                ));
-            };
-            let csessionid = compass_val
-                .strip_prefix("dynamite-ui=")
-                .unwrap_or(compass_val.as_str())
-                .trim()
-                .to_string();
-            if csessionid.is_empty() {
-                return Err(GChatError::Protocol(
-                    "webchannel register returned empty COMPASS csessionid".to_string(),
-                ));
-            }
+            // Google does not always rotate COMPASS here; the reference carries on without it, and nothing
+            // downstream needs the csessionid. An absent one is "", not an error.
+            let csessionid = self
+                .jar
+                .absorb_set_cookies(&set_cookies)
+                .map(|compass_val| {
+                    compass_val
+                        .strip_prefix("dynamite-ui=")
+                        .unwrap_or(compass_val.as_str())
+                        .trim()
+                        .to_string()
+                })
+                .unwrap_or_default();
             Ok(csessionid)
         }
 
@@ -1581,7 +1579,7 @@ mod tests {
     }
 
     #[test]
-    fn test_webchannel_register_without_compass_cookie_fails_closed() {
+    fn test_webchannel_register_without_compass_cookie_still_succeeds() {
         let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback");
         let addr = listener.local_addr().expect("local addr");
 
@@ -1644,14 +1642,11 @@ mod tests {
             .enable_all()
             .build()
             .expect("tokio runtime");
-        let err = rt.block_on(wc.step1_register()).expect_err(
-            "register without COMPASS Set-Cookie must fail closed (no gsession_default fallback)",
-        );
+        let csessionid = rt
+            .block_on(wc.step1_register())
+            .expect("register without a COMPASS Set-Cookie still succeeds, as the web client does");
         server_thread.join().expect("server thread finished");
-        assert!(
-            matches!(err, GChatError::Protocol(_)),
-            "expected GChatError::Protocol, got: {err:?}"
-        );
+        assert_eq!(csessionid, "");
     }
 
     crate::edition2021! {
