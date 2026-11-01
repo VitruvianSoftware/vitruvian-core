@@ -86,7 +86,7 @@ testing, fail-open deploys, the nightly safety floor) is in
 |---|---|---|
 | SaaS web service (`tabula`, `oauth-user-inspector`) | **Deploy** | Cloud Run via WIF + Pulumi, blue-green |
 | CLI / developer tool (`devx`, `homelab`) | **Release** | GitHub Release + Homebrew tap from the mirror |
-| Agent / MCP service (`mcp-slack`, `nexus-agent`) | **Release** | npm / DMG from the mirror |
+| Agent / MCP service (`mcp-slack`, `nexus-agent`) | **Release** | `mcp-slack`: container image on GHCR, built on every merge to `main`; `nexus-agent`: DMG from the mirror |
 | Platform service (`gitops/`) | **Merge** | ArgoCD reconciles git — merged = promoted |
 
 ### The environment ladder

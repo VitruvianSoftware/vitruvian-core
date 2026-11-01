@@ -237,7 +237,7 @@ Pins (checkout v4 vs v6), runners, and which checks run all differ. `homelab` an
 
 **Current state.** Two apps document an install path that **no CI produces**:
 
-- **mcp-slack** — README says `npx -y @vitruviansoftware/mcp-slack@latest`, and the package has a `bin` entry, but **no npm-publish workflow exists** (the only mcp-slack workflow is copybara export). The documented `npx` path has nothing behind it.
+- **mcp-slack** — README says `npx -y @vitruviansoftware/mcp-slack@latest`, and the package has a `bin` entry, but **no npm-publish workflow exists** (the only mcp-slack workflow is copybara export). The documented `npx` path has nothing behind it. **(Update: closed the other way. The server is now Rust and the npm package is retired (#4025); it ships as the `ghcr.io/vitruviansoftware/mcp-slack` container image, built by `mcp-slack-image.yaml` on every merge, and the README and site install from that.)**
 - **nexus-agent** — README documents a DMG from Releases + a Gemini-CLI extension, but there is **no DMG-build/notarize workflow**. Its npm package is also named `nexus-agent` (not org-scoped like `@vitruviansoftware/mcp-slack`), which will collide with the public npm namespace if ever published.
 
 **Target.** Every shipped artifact has a CI build that produces it: `release-please` + npm-publish for mcp-slack; a notarized-DMG release workflow (or goreleaser-equivalent) for nexus-agent.
