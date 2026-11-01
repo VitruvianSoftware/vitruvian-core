@@ -33,6 +33,9 @@
 use std::f64::consts::PI;
 
 pub const SCALE: u32 = 4;
+/// The largest floor plan accepted, per side. Real maps are about 1024
+/// pixels a side; the device's numbers are not trusted beyond this.
+pub const MAX_SIDE: usize = 4096;
 const VACUUM_RADIUS: f64 = 6.0 * SCALE as f64;
 const CHARGER_RADIUS: f64 = 6.0 * SCALE as f64;
 const PATH_WIDTH: f64 = 1.0 * SCALE as f64;
@@ -180,11 +183,23 @@ pub fn parse(raw: &[u8]) -> Result<MapData, MapError> {
         match block_type {
             1 => map.charger = Some(object_position(data_len, data)?),
             2 => {
+                let at = |back: usize| {
+                    header_len
+                        .checked_sub(back)
+                        .ok_or_else(|| MapError("Failed to parse map data".into()))
+                };
+                let height = u32_at(header, at(8)?)? as usize;
+                let width = u32_at(header, at(4)?)? as usize;
+                if width > MAX_SIDE || height > MAX_SIDE {
+                    return Err(MapError(format!(
+                        "The map is {width}x{height}, larger than the {MAX_SIDE}x{MAX_SIDE} this accepts"
+                    )));
+                }
                 map.image = Some(ImageBlock {
-                    top: u32_at(header, header_len - 16)? as i64,
-                    left: u32_at(header, header_len - 12)? as i64,
-                    height: u32_at(header, header_len - 8)? as usize,
-                    width: u32_at(header, header_len - 4)? as usize,
+                    top: u32_at(header, at(16)?)? as i64,
+                    left: u32_at(header, at(12)?)? as i64,
+                    height,
+                    width,
                     pixels: data.to_vec(),
                 })
             }
@@ -319,6 +334,13 @@ impl Canvas {
         let maxx = x0.max(x1) + half;
         let miny = y0.min(y1) - half;
         let maxy = y0.max(y1) + half;
+        // Clip to the canvas so a far-off point can't mean a huge loop.
+        let (wmax, hmax) = (self.w as f64, self.h as f64);
+        let (minx, maxx) = (minx.max(0.0), maxx.min(wmax));
+        let (miny, maxy) = (miny.max(0.0), maxy.min(hmax));
+        if minx > maxx || miny > maxy {
+            return;
+        }
         for y in miny.floor() as i64..=maxy.ceil() as i64 {
             for x in minx.floor() as i64..=maxx.ceil() as i64 {
                 let (px, py) = (x as f64, y as f64);
@@ -357,6 +379,8 @@ impl Dims {
 }
 
 fn floor_plan(map: &MapData, img: &ImageBlock) -> Canvas {
+    // parse() and render() bound these; keep the invariant visible here.
+    debug_assert!(img.width <= MAX_SIDE && img.height <= MAX_SIDE);
     let (w, h) = (img.width, img.height);
     let mut c = Canvas::new(w, h, [0, 0, 0, 0]);
     for img_y in 0..h {
@@ -485,6 +509,16 @@ fn render(map: &MapData) -> Result<Canvas, MapError> {
         .ok_or_else(|| MapError("Failed to render map image".into()))?;
     if img.width == 0 || img.height == 0 {
         return Ok(empty_map());
+    }
+    let fits = img.width <= MAX_SIDE
+        && img.height <= MAX_SIDE
+        && img
+            .width
+            .checked_mul(img.height)
+            .and_then(|n| n.checked_mul((SCALE * SCALE) as usize))
+            .is_some();
+    if !fits {
+        return Err(MapError("The map is too large to draw".into()));
     }
     let mut canvas = floor_plan(map, img);
     let dims = Dims {
@@ -655,6 +689,30 @@ pub mod tests {
         let mut raw = vec![0u8; 0x14];
         raw[0x02] = 0x14;
         assert!(map_png(&raw).is_err());
+    }
+
+    /// The sample map with its image block claiming `width` x `height`.
+    fn sample_with_size(width: u32, height: u32) -> Vec<u8> {
+        let mut raw = sample_map();
+        // Image header: block starts at 0x14; height/width are its last 8 bytes.
+        let header_len = u16::from_le_bytes([raw[0x16], raw[0x17]]) as usize;
+        let end = 0x14 + header_len;
+        raw[end - 8..end - 4].copy_from_slice(&height.to_le_bytes());
+        raw[end - 4..end].copy_from_slice(&width.to_le_bytes());
+        raw
+    }
+
+    #[test]
+    fn oversized_maps_are_refused_not_allocated() {
+        for (w, h) in [(5000, 3), (3, 5000), (30_000, 30_000), (u32::MAX, u32::MAX)] {
+            let result = std::panic::catch_unwind(|| map_png(&sample_with_size(w, h)));
+            let err = result
+                .unwrap_or_else(|_| panic!("{w}x{h} panicked"))
+                .expect_err("an oversized map must be an error");
+            assert!(err.0.contains("larger than"), "{w}x{h}: {err}");
+        }
+        // The largest accepted size still parses (pixels missing read as outside).
+        assert!(parse(&sample_with_size(MAX_SIDE as u32, 3)).is_ok());
     }
 
     #[test]

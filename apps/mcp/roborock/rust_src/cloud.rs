@@ -88,7 +88,12 @@ pub struct Ureq {
 impl Default for Ureq {
     fn default() -> Self {
         Self {
-            agent: ureq::AgentBuilder::new().timeout(TIMEOUT).build(),
+            // Base URLs come from server responses; never follow one to
+            // plain HTTP.
+            agent: ureq::AgentBuilder::new()
+                .timeout(TIMEOUT)
+                .https_only(true)
+                .build(),
         }
     }
 }
@@ -114,10 +119,16 @@ impl Transport for Ureq {
             Ok(resp) => resp,
             // Roborock puts its error code in a JSON body even on HTTP errors.
             Err(ureq::Error::Status(_, resp)) => resp,
-            Err(e) => {
+            // Only the kind of failure: ureq's own message repeats the whole
+            // URL, query string (email, login code) included.
+            Err(ureq::Error::Transport(t)) => {
                 return Err(err(
                     "RoborockNoResponseFromBaseURL",
-                    format!("Network error contacting {}: {e}", strip_query(&req.url)),
+                    format!(
+                        "Network error contacting {}: {}",
+                        strip_query(&req.url),
+                        t.kind()
+                    ),
                 ))
             }
         };
@@ -724,6 +735,55 @@ mod tests {
         assert_eq!(form["majorVersion"], "15");
         assert_eq!(form["countryCode"], "1");
         assert_eq!(c.base_url().as_deref(), Some("https://usiot.roborock.com"));
+    }
+
+    #[test]
+    fn network_errors_never_repeat_the_query_string() {
+        let ureq = Ureq::default();
+        for url in [
+            // Nothing listens on port 1: a transport error.
+            "https://127.0.0.1:1/api/v1/loginWithCode",
+            // Plain HTTP is refused outright.
+            "http://127.0.0.1:1/api/v1/loginWithCode",
+        ] {
+            let e = ureq
+                .send(&HttpRequest {
+                    method: "POST",
+                    url: url.into(),
+                    query: vec![
+                        ("username".into(), "secret@example.com".into()),
+                        ("verifycode".into(), "424242".into()),
+                    ],
+                    headers: vec![],
+                    form: None,
+                })
+                .unwrap_err();
+            assert_eq!(e.class_name, "RoborockNoResponseFromBaseURL", "{url}");
+            assert!(
+                !e.message.contains("secret") && !e.message.contains("424242"),
+                "{url}: {}",
+                e.message
+            );
+        }
+    }
+
+    #[test]
+    fn plain_http_is_refused_before_any_connection() {
+        let e = Ureq::default()
+            .send(&HttpRequest {
+                method: "GET",
+                url: "http://example.invalid/".into(),
+                query: vec![],
+                headers: vec![],
+                form: None,
+            })
+            .unwrap_err();
+        assert!(
+            e.message.to_lowercase().contains("insecure")
+                || e.message.contains("InsecureRequestHttpsOnly"),
+            "{}",
+            e.message
+        );
     }
 
     #[test]

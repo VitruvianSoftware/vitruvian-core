@@ -296,18 +296,32 @@ pub fn decode_frame(
     let protocol = u16::from_be_bytes(frame[15..17].try_into().unwrap());
     let rest = &frame[17..];
     let mut payload = None;
-    if rest.len() >= 2 {
+    // A frame without a payload is the bare header, optionally followed by
+    // the header's own checksum.
+    let header_only = rest.len() < 2
+        || (rest.len() == 4
+            && u32::from_be_bytes(rest.try_into().unwrap()) == crypto::crc32(&frame[..17]));
+    if !header_only {
         let len = u16::from_be_bytes([rest[0], rest[1]]) as usize;
-        if len > 0 && rest.len() >= 2 + len {
+        if len > 0 {
             let end = 17 + 2 + len;
-            if frame.len() >= end + 4 {
-                let want = u32::from_be_bytes(frame[end..end + 4].try_into().unwrap());
-                let got = crypto::crc32(&frame[..end]);
-                if want != got {
-                    return Err(ProtocolError(format!(
-                        "wrong checksum, read {want:08x}, computed {got:08x}"
-                    )));
-                }
+            if frame.len() < end {
+                return Err(ProtocolError(format!(
+                    "truncated frame: payload of {len} bytes, {} present",
+                    frame.len() - 19
+                )));
+            }
+            // As in python-roborock's OptionalChecksum: a frame that carries a
+            // payload must carry its checksum too.
+            let crc = frame
+                .get(end..end + 4)
+                .ok_or_else(|| ProtocolError("missing checksum".into()))?;
+            let want = u32::from_be_bytes(crc.try_into().unwrap());
+            let got = crypto::crc32(&frame[..end]);
+            if want != got {
+                return Err(ProtocolError(format!(
+                    "wrong checksum, read {want:08x}, computed {got:08x}"
+                )));
             }
             payload = Some(decrypt_payload(
                 &version,
@@ -342,34 +356,78 @@ impl FrameBuffer {
     }
 
     /// The next complete frame (without its prefix), if one has arrived.
+    ///
+    /// Every pass either returns a frame, waits for more bytes, or drops at
+    /// least one byte, so hostile or buggy input can never make this spin.
     pub fn next_frame(&mut self) -> Option<Vec<u8>> {
         loop {
+            if self.buf.len() > MAX_BUFFER {
+                // Nothing sane is this big; start over rather than grow.
+                self.buf.clear();
+                return None;
+            }
             if self.buf.len() < 4 {
                 return None;
             }
             let len = u32::from_be_bytes(self.buf[0..4].try_into().unwrap()) as usize;
-            if len < 17 || len > 1 << 20 {
-                // Out of step: resynchronise on the next version marker, as
-                // python-roborock's PrefixedStruct does.
-                match find_version(&self.buf[1..]) {
-                    Some(i) if i + 1 >= 4 => {
-                        self.buf.drain(..i + 1 - 4);
-                        continue;
-                    }
-                    _ => {
-                        self.buf.clear();
-                        return None;
-                    }
+            if (17..=MAX_FRAME).contains(&len) {
+                if self.buf.len() < 4 + len {
+                    return None;
+                }
+                let frame = self.buf[4..4 + len].to_vec();
+                self.buf.drain(..4 + len);
+                return Some(frame);
+            }
+            // A bad prefix. python-roborock ignores the prefix value and reads
+            // the frame from the version marker, so do the same when the marker
+            // sits right after the prefix and a whole frame with a valid
+            // checksum is already here. Never wait on a bad prefix: that would
+            // let noise hold the buffer hostage.
+            if let Some(n) = structural_len(&self.buf[4..]) {
+                let frame = self.buf[4..4 + n].to_vec();
+                self.buf.drain(..4 + n);
+                return Some(frame);
+            }
+            // Resynchronise on the next marker that has room for a prefix in
+            // front of it, dropping at least one byte.
+            match find_version(&self.buf[5..]) {
+                Some(i) => {
+                    self.buf.drain(..i + 1);
+                }
+                None => {
+                    // Keep a possible partial prefix+marker at the tail.
+                    let keep = 6.min(self.buf.len() - 1);
+                    let cut = self.buf.len() - keep;
+                    self.buf.drain(..cut);
+                    return None;
                 }
             }
-            if self.buf.len() < 4 + len {
-                return None;
-            }
-            let frame = self.buf[4..4 + len].to_vec();
-            self.buf.drain(..4 + len);
-            return Some(frame);
         }
     }
+}
+
+/// Largest frame accepted (the device's frames are a few kilobytes).
+const MAX_FRAME: usize = 1 << 20;
+/// Largest amount of unparsed input held before giving up on it.
+const MAX_BUFFER: usize = 4 << 20;
+
+fn is_version(data: &[u8]) -> bool {
+    data.len() >= 3 && VALID_VERSIONS.iter().any(|v| &v[..] == &data[..3])
+}
+
+/// The length of a whole, checksum-valid frame at the front of `data`, read
+/// from its own fields, or None.
+fn structural_len(data: &[u8]) -> Option<usize> {
+    if !is_version(data) || data.len() < 19 {
+        return None;
+    }
+    let len = u16::from_be_bytes([data[17], data[18]]) as usize;
+    let n = 17 + 2 + len + 4;
+    if len == 0 || data.len() < n {
+        return None;
+    }
+    let want = u32::from_be_bytes(data[n - 4..n].try_into().unwrap());
+    (crypto::crc32(&data[..n - 4]) == want).then_some(n)
 }
 
 fn find_version(data: &[u8]) -> Option<usize> {
@@ -707,6 +765,140 @@ mod tests {
             ..nonces
         };
         assert!(decode_frame(&frame, KEY, Some(wrong)).is_err());
+    }
+
+    /// Reference frames for python-roborock 7.12.1: seq 123456, random 23456,
+    /// ts 1700000000, key "abcdefghijklmnop", RPC_REQUEST, prefixed. aegis
+    /// produced them with python-roborock itself; they were reproduced
+    /// independently with pycryptodome from protocol.py's formulas.
+    const KAT_PAYLOAD: &[u8] = br#"{"dps":{"101":"x"},"t":1700000000}"#;
+    const KAT_V1: &str = "00000047312e300001e24000005ba06553f100006500301e75ac7f20dff947ebf5cfecdaa3d507aa0f76eb2b6cafd1e0ccb043326425973f138e626cacf875bf28d0c4a2472bc73625b860";
+    const KAT_L01: &str = "000000494c30310001e24000005ba06553f10000650032d0f01ab2bcf4ffc82203d53358665027f1e0213980cb2073ac633cbb069353174718b7f95051c624332664aa9c1b3fa065e999189aea";
+
+    fn kat_message(version: [u8; 3]) -> Message {
+        Message {
+            version,
+            seq: 123_456,
+            random: 23_456,
+            timestamp: 1_700_000_000,
+            protocol: RPC_REQUEST,
+            payload: Some(KAT_PAYLOAD.to_vec()),
+        }
+    }
+
+    #[test]
+    fn v1_frames_match_python_roborock_byte_for_byte() {
+        let wire = encode(&kat_message(V1), "abcdefghijklmnop", true, None).unwrap();
+        assert_eq!(crypto::hex(&wire), KAT_V1);
+    }
+
+    #[test]
+    fn l01_frames_match_python_roborock_byte_for_byte() {
+        let nonces = Nonces {
+            connect_nonce: 12_345,
+            ack_nonce: Some(54_321),
+        };
+        let wire = encode(&kat_message(L01), "abcdefghijklmnop", true, Some(nonces)).unwrap();
+        assert_eq!(crypto::hex(&wire), KAT_L01);
+    }
+
+    #[test]
+    fn a_payload_without_its_checksum_is_rejected() {
+        let wire = encode(&kat_message(V1), "abcdefghijklmnop", false, None).unwrap();
+        let err = decode_frame(&wire[..wire.len() - 4], "abcdefghijklmnop", None).unwrap_err();
+        assert!(err.0.contains("missing checksum"), "{err}");
+        // A bare header, with or without its checksum, is still fine.
+        let hello = encode(&Message::new(HELLO_REQUEST, None), KEY, false, None).unwrap();
+        assert!(decode_frame(&hello, KEY, None).unwrap().payload.is_none());
+        assert!(decode_frame(&hello[..17], KEY, None)
+            .unwrap()
+            .payload
+            .is_none());
+    }
+
+    /// Runs `f` on another thread and fails, instead of hanging, if it spins.
+    fn within_a_second<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> T {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(f());
+        });
+        rx.recv_timeout(std::time::Duration::from_secs(1))
+            .expect("next_frame did not return: it is looping")
+    }
+
+    #[test]
+    fn a_zero_prefix_before_a_version_marker_cannot_hang_the_reader() {
+        // aegis's input: four zero bytes then "1.0".
+        let got = within_a_second(|| {
+            let mut buf = FrameBuffer::default();
+            buf.push(b"\x00\x00\x00\x001.0");
+            buf.next_frame()
+        });
+        assert_eq!(got, None);
+        // The same bad prefix in front of a whole frame: read it from the
+        // marker, as python-roborock does.
+        let frames = within_a_second(|| {
+            let body = encode(&kat_message(V1), "abcdefghijklmnop", false, None).unwrap();
+            let mut stream = vec![0u8; 4];
+            stream.extend_from_slice(&body);
+            stream.extend(encode(&Message::new(PING_REQUEST, None), KEY, true, None).unwrap());
+            let mut buf = FrameBuffer::default();
+            buf.push(&stream);
+            let mut out = Vec::new();
+            while let Some(f) = buf.next_frame() {
+                out.push(f);
+            }
+            out
+        });
+        assert_eq!(frames.len(), 2);
+        assert_eq!(
+            decode_frame(&frames[0], "abcdefghijklmnop", None)
+                .unwrap()
+                .payload
+                .unwrap(),
+            KAT_PAYLOAD
+        );
+        assert_eq!(
+            decode_frame(&frames[1], KEY, None).unwrap().protocol,
+            PING_REQUEST
+        );
+    }
+
+    #[test]
+    fn garbage_is_dropped_and_the_buffer_stays_bounded() {
+        let (most, junk_frames) = within_a_second(|| {
+            let mut buf = FrameBuffer::default();
+            let mut most = 0;
+            let mut junk = 0;
+            // Markers everywhere and impossible prefixes.
+            for _ in 0..20_000 {
+                buf.push(b"\xff\xff\xff\xff1.0L01");
+                while buf.next_frame().is_some() {
+                    junk += 1;
+                }
+                most = most.max(buf.buf.len());
+            }
+            // Plain noise with no marker at all must be dropped too.
+            for _ in 0..20_000 {
+                buf.push(&[0xEE; 10]);
+                while buf.next_frame().is_some() {
+                    junk += 1;
+                }
+                most = most.max(buf.buf.len());
+            }
+            (most, junk)
+        });
+        assert_eq!(junk_frames, 0);
+        assert!(most <= 16, "held {most} bytes of garbage");
+        // After a short burst of noise, a real frame still comes through.
+        let mut buf = FrameBuffer::default();
+        buf.push(b"\x00\x00\x00\x02junk");
+        buf.push(&encode(&Message::new(PING_REQUEST, None), KEY, true, None).unwrap());
+        let frame = within_a_second(move || buf.next_frame());
+        assert_eq!(
+            decode_frame(&frame.unwrap(), KEY, None).unwrap().protocol,
+            PING_REQUEST
+        );
     }
 
     #[test]

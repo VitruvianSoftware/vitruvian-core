@@ -75,6 +75,35 @@ rrctl --help
 
 ---
 
+### Switching from the Python version (0.1.x)
+
+Up to 0.1.1 this was a Python package, installed with `uv tool install
+vitruvian-roborock`. That puts a Python `rrctl` in `~/.local/bin`, and its
+daemon uses the same port (8765) and token file as the Rust one. Until it is
+gone, an agent can keep running the Python version without anyone noticing. To
+switch:
+
+1. **Stop the Python daemon:** `rrctl daemon stop`.
+2. **Remove the Python tool:** `uv tool uninstall vitruvian-roborock`.
+3. **Install the Rust `rrctl`** in one of these ways:
+   - in the vitruvian-core monorepo:
+     `bazel build //apps/mcp/roborock:rrctl`, then
+     `install -m 755 bazel-bin/apps/mcp/roborock/rrctl ~/.local/bin/rrctl`;
+   - with Rust installed:
+     `cargo install --locked --git https://github.com/VitruvianSoftware/mcp-roborock`;
+   - or download a release binary, as above.
+4. **Check it:** `rrctl --version` should print `rrctl 0.2.0 (rust)`.
+5. **Restart your agent sessions** (Claude Code, Antigravity), so their MCP
+   servers start again with the new binary.
+
+Your login carries over: both versions use
+`~/.config/vitruvian/roborock/credentials.json`. If you miss a step, the new
+version tells you. The Rust `rrctl` refuses to use a Python daemon it finds on
+port 8765. The plugin's launcher also refuses to start a Python `rrctl`, and
+says so if `rrctl` is not on your `PATH` at all.
+
+---
+
 ## 3. First-Time Setup & Authentication
 
 Before commanding the vacuum, log in with your Roborock account:

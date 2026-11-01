@@ -4,8 +4,11 @@
   "description": "Check on and control a Roborock vacuum: status, live map, start, pause, dock and mop wash.",
   "mcpServers": {
     "roborock": {
-      "command": "rrctl",
-      "args": ["mcp"]
+      "command": "sh",
+      "args": [
+        "-c",
+        "command -v rrctl >/dev/null 2>&1 || { echo \"vitruvian-roborock: rrctl is not on your PATH. Install it: https://github.com/VitruvianSoftware/mcp-roborock#quick-installation\" >&2; exit 127; }; case \"$(rrctl --version 2>/dev/null)\" in *\"(rust)\"*) exec rrctl mcp ;; esac; echo \"vitruvian-roborock: the rrctl on your PATH is the old Python tool. Run rrctl daemon stop, then uv tool uninstall vitruvian-roborock, install the Rust rrctl (https://github.com/VitruvianSoftware/mcp-roborock#quick-installation) and restart this session.\" >&2; exit 1"
+      ]
     }
   }
 }

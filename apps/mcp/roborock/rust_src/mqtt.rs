@@ -411,7 +411,12 @@ fn serve(conn: &mut Box<dyn Stream>, rx: &Receiver<Outgoing>, shared: &Shared) -
                 ) => {}
             Err(e) => return Served::Lost(format!("read failed: {e}")),
         }
-        while let Some((header, body, used)) = split_packet(&buf) {
+        loop {
+            let (header, body, used) = match split_packet(&buf) {
+                Ok(Some(p)) => p,
+                Ok(None) => break,
+                Err(why) => return Served::Lost(why),
+            };
             let result = handle(header, &body, conn, shared, &mut ping_sent);
             buf.drain(..used);
             if let Err(why) = result {
@@ -516,7 +521,7 @@ fn open(opts: &Options) -> Result<Box<dyn Stream>, MqttError> {
     let mut chunk = [0u8; 1024];
     let deadline = Instant::now() + CONNECT_TIMEOUT;
     loop {
-        if let Some((header, body, _)) = split_packet(&buf) {
+        if let Some((header, body, _)) = split_packet(&buf).map_err(MqttError)? {
             if header >> 4 != 2 || body.len() < 2 {
                 return Err(MqttError(
                     "the broker did not answer CONNECT with CONNACK".into(),
@@ -627,16 +632,38 @@ pub fn publish_packet(topic: &str, payload: &[u8]) -> Vec<u8> {
     packet(0x30, body)
 }
 
+/// The largest packet accepted from the broker. Map replies are a few
+/// hundred kilobytes; the protocol's own limit (256 MiB) is far too trusting.
+pub const MAX_PACKET: usize = 4 << 20;
+
 /// One whole packet from the front of `buf`: (first byte, body, bytes used).
-pub fn split_packet(buf: &[u8]) -> Option<(u8, Vec<u8>, usize)> {
-    let header = *buf.first()?;
-    let (len, n) = read_varint(&buf[1..])?;
+/// `Ok(None)` means wait for more bytes; `Err` means the stream is broken
+/// (a malformed length, or a packet over [`MAX_PACKET`]) and the connection
+/// should be dropped.
+pub fn split_packet(buf: &[u8]) -> Result<Option<(u8, Vec<u8>, usize)>, String> {
+    let Some(&header) = buf.first() else {
+        return Ok(None);
+    };
+    let len_bytes = &buf[1..];
+    // A remaining length is at most 4 bytes; a 4th byte with the
+    // continuation bit set is malformed.
+    if len_bytes.len() >= 4 && len_bytes[..4].iter().all(|b| b & 0x80 != 0) {
+        return Err("malformed MQTT remaining length".into());
+    }
+    let Some((len, n)) = read_varint(len_bytes) else {
+        return Ok(None);
+    };
+    if len as usize > MAX_PACKET {
+        return Err(format!(
+            "MQTT packet of {len} bytes is over the {MAX_PACKET}-byte limit"
+        ));
+    }
     let start = 1 + n;
     let end = start + len as usize;
     if buf.len() < end {
-        return None;
+        return Ok(None);
     }
-    Some((header, buf[start..end].to_vec(), end))
+    Ok(Some((header, buf[start..end].to_vec(), end)))
 }
 
 /// (topic, payload, packet id when QoS > 0) of an MQTT 5 PUBLISH body.
@@ -685,7 +712,7 @@ mod tests {
             password: "pw".into(),
             client_id: "cid".into(),
         });
-        let (header, body, used) = split_packet(&p).unwrap();
+        let (header, body, used) = split_packet(&p).unwrap().unwrap();
         assert_eq!(header, 0x10);
         assert_eq!(used, p.len());
         assert_eq!(&body[0..6], b"\x00\x04MQTT");
@@ -698,7 +725,7 @@ mod tests {
     #[test]
     fn publish_packets_parse_back_to_topic_and_payload() {
         let p = publish_packet("rr/m/o/a/b/c", b"\x01\x02payload");
-        let (header, body, _) = split_packet(&p).unwrap();
+        let (header, body, _) = split_packet(&p).unwrap().unwrap();
         let (topic, payload, pid) = parse_publish(header, &body).unwrap();
         assert_eq!(topic, "rr/m/o/a/b/c");
         assert_eq!(payload, b"\x01\x02payload");
@@ -719,8 +746,23 @@ mod tests {
     #[test]
     fn split_packet_waits_for_the_whole_body() {
         let p = publish_packet("t", &[0u8; 300]);
-        assert!(split_packet(&p[..p.len() - 1]).is_none());
-        assert!(split_packet(&p).is_some());
+        assert_eq!(split_packet(&p[..p.len() - 1]), Ok(None));
+        assert!(split_packet(&p).unwrap().is_some());
+    }
+
+    #[test]
+    fn a_malformed_or_huge_length_breaks_the_connection() {
+        // Four length bytes, all with the continuation bit: malformed.
+        assert!(split_packet(&[0x30, 0xFF, 0xFF, 0xFF, 0xFF]).is_err());
+        // Three so far could still be valid: wait.
+        assert_eq!(split_packet(&[0x30, 0xFF, 0xFF, 0xFF]), Ok(None));
+        // A well-formed length over the cap is refused before any buffering.
+        let mut big = vec![0x30];
+        write_varint(&mut big, MAX_PACKET + 1);
+        assert!(split_packet(&big).unwrap_err().contains("limit"));
+        let mut ok = vec![0x30];
+        write_varint(&mut ok, MAX_PACKET);
+        assert_eq!(split_packet(&ok), Ok(None));
     }
 
     #[test]

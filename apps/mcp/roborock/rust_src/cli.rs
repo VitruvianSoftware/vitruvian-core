@@ -109,7 +109,11 @@ pub fn parse_args(argv: &[String]) -> ParseOutcome {
         let arg = argv[idx].as_str();
         match arg {
             "-h" | "--help" => return ParseOutcome::Help(help_text()),
-            "--version" => return ParseOutcome::Version(format!("rrctl {}\n", crate::VERSION)),
+            // "(rust)" lets the plugin's launcher tell this binary from the
+            // older Python rrctl, which also answers `rrctl mcp`.
+            "--version" => {
+                return ParseOutcome::Version(format!("rrctl {} (rust)\n", crate::VERSION))
+            }
             "--port" => {
                 idx += 1;
                 if idx >= argv.len() {
@@ -295,6 +299,10 @@ pub trait CliClient: DaemonApi {
     fn base_url(&self) -> String;
     fn port(&self) -> u16;
     fn health(&self) -> Option<Map<String, Value>>;
+    /// The older Python daemon's `/healthz`, when it holds the port.
+    fn legacy_health(&self) -> Option<Map<String, Value>> {
+        None
+    }
     fn reload(&self) -> Result<Map<String, Value>, ClientError>;
     fn shutdown(&self) -> Result<Map<String, Value>, ClientError>;
 }
@@ -310,6 +318,10 @@ impl CliClient for DaemonClient {
 
     fn health(&self) -> Option<Map<String, Value>> {
         DaemonClient::health(self)
+    }
+
+    fn legacy_health(&self) -> Option<Map<String, Value>> {
+        DaemonClient::legacy_health(self)
     }
 
     fn reload(&self) -> Result<Map<String, Value>, ClientError> {
@@ -632,6 +644,12 @@ pub fn run_with_hooks(argv: &[String], hooks: &CliHooks) -> CliExecution {
         }
         Subcommand::Daemon { action } => match action {
             DaemonSubcommand::Run => {
+                if let Ok(probe) = (hooks.probe_client)(parsed.port) {
+                    if let Some(doc) = probe.legacy_health() {
+                        fail(&mut out, &daemon::legacy_daemon_message(probe.port(), &doc));
+                        return out;
+                    }
+                }
                 let port = match parsed.port {
                     Some(p) => p,
                     None => match config::daemon_port() {
@@ -678,6 +696,10 @@ pub fn run_with_hooks(argv: &[String], hooks: &CliHooks) -> CliExecution {
                     }
                 };
                 let Some(health) = probe.health() else {
+                    if let Some(doc) = probe.legacy_health() {
+                        fail(&mut out, &daemon::legacy_daemon_message(probe.port(), &doc));
+                        return out;
+                    }
                     out.stdout.push_str(&format!(
                         "Daemon is not running on port {}.\n",
                         probe.port()
@@ -704,7 +726,14 @@ pub fn run_with_hooks(argv: &[String], hooks: &CliHooks) -> CliExecution {
                         return out;
                     }
                 };
-                if probe.health().is_none() {
+                // The Python daemon shares the token file and the shutdown
+                // endpoint, so this stops it too; say what to do next.
+                let legacy = probe
+                    .health()
+                    .is_none()
+                    .then(|| probe.legacy_health())
+                    .flatten();
+                if probe.health().is_none() && legacy.is_none() {
                     out.stdout.push_str("Daemon is not running.\n");
                     out.exit_code = 0;
                     return out;
@@ -713,7 +742,14 @@ pub fn run_with_hooks(argv: &[String], hooks: &CliHooks) -> CliExecution {
                     fail(&mut out, &err.to_string());
                     return out;
                 }
-                out.stdout.push_str("Daemon stopped.\n");
+                if legacy.is_some() {
+                    out.stdout.push_str(
+                        "Stopped the older Python daemon. Now remove the Python tool with \
+`uv tool uninstall vitruvian-roborock` and restart your agent sessions.\n",
+                    );
+                } else {
+                    out.stdout.push_str("Daemon stopped.\n");
+                }
                 out.exit_code = 0;
             }
             DaemonSubcommand::Start => {

@@ -92,15 +92,20 @@ jobs:
     env:
       V: ${{ needs.detect.outputs.version }}
       NAME: ${{ matrix.name }}
+      # The Rust that Cargo.lock was resolved for (Cargo.toml's rust-version,
+      # and the toolchain Bazel builds with in the monorepo).
+      RUST_VERSION: 1.75.0
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Build
         run: |
-          rustc --version
+          rustup toolchain install "$RUST_VERSION" --profile minimal
+          rustup override set "$RUST_VERSION"
+          rustc --version | grep -q "^rustc ${RUST_VERSION} " || { echo "::error::not on Rust ${RUST_VERSION}"; exit 1; }
           if [ "$NAME" = macos-universal ]; then
-            rustup target add aarch64-apple-darwin x86_64-apple-darwin
+            rustup target add --toolchain "$RUST_VERSION" aarch64-apple-darwin x86_64-apple-darwin
             cargo build --release --locked --bin rrctl --target aarch64-apple-darwin
             cargo build --release --locked --bin rrctl --target x86_64-apple-darwin
             mkdir -p out
@@ -113,7 +118,7 @@ jobs:
             mkdir -p out
             cp target/release/rrctl out/rrctl
           fi
-          out/rrctl --version | grep -qx "rrctl ${V}" || { echo "::error::the binary does not say rrctl ${V}"; exit 1; }
+          out/rrctl --version | grep -qx "rrctl ${V} (rust)" || { echo "::error::the binary does not say rrctl ${V} (rust)"; exit 1; }
       - name: Package
         run: |
           asset="rrctl-${V}-${NAME}.tar.gz"

@@ -171,6 +171,9 @@ mod tests {
         closed: Mutex<usize>,
         fail_connect: Mutex<usize>,
         fail_status: Mutex<bool>,
+        panic_status: Mutex<bool>,
+        panic_map: Mutex<bool>,
+        map_panics: Mutex<usize>,
         credentials_rejected: Mutex<bool>,
         listener: Mutex<Option<UpdateCallback>>,
     }
@@ -185,6 +188,9 @@ mod tests {
                 closed: Mutex::new(0),
                 fail_connect: Mutex::new(0),
                 fail_status: Mutex::new(false),
+                panic_status: Mutex::new(false),
+                panic_map: Mutex::new(false),
+                map_panics: Mutex::new(0),
                 credentials_rejected: Mutex::new(false),
                 listener: Mutex::new(None),
             })
@@ -215,6 +221,9 @@ mod tests {
         }
 
         fn status(&self) -> Result<Map<String, Value>, DeviceError> {
+            if *self.panic_status.lock().unwrap() {
+                panic!("status blew up");
+            }
             if *self.fail_status.lock().unwrap() {
                 return Err(DeviceError::rejected("no answer"));
             }
@@ -222,6 +231,10 @@ mod tests {
         }
 
         fn map_png(&self) -> Result<Option<Vec<u8>>, DeviceError> {
+            if *self.panic_map.lock().unwrap() {
+                *self.map_panics.lock().unwrap() += 1;
+                panic!("map blew up");
+            }
             Ok(self.png.lock().unwrap().clone())
         }
 
@@ -1068,6 +1081,44 @@ mod tests {
             until(|| store.status().get("connected") == Some(&json!(true)));
             assert_eq!(store.status().get("error"), Some(&Value::Null));
             assert_eq!(*vacuum.connects.lock().unwrap(), 1);
+            service.stop();
+        });
+    }
+
+    #[test]
+    fn test_a_panicking_map_or_status_does_not_stop_the_poll_loop() {
+        with_isolated_home(|_| {
+            save_test_login();
+            let vacuum = FakeVacuum::new();
+            let (store, service) = make_service_for(vacuum.clone(), Duration::from_millis(10));
+            service.start();
+            until(|| store.status().get("connected") == Some(&json!(true)));
+            // A map that blows up every time: polling must carry on.
+            // Cleaning, so the map is fetched on every poll.
+            *vacuum.panic_map.lock().unwrap() = true;
+            vacuum
+                .snapshot
+                .lock()
+                .unwrap()
+                .insert("state_code".into(), json!(5));
+            until(|| *vacuum.map_panics.lock().unwrap() >= 2);
+            vacuum
+                .snapshot
+                .lock()
+                .unwrap()
+                .insert("battery".into(), json!(42));
+            until(|| store.status().get("battery") == Some(&json!(42)));
+            // A status read that blows up reads as disconnected, not stuck.
+            *vacuum.panic_status.lock().unwrap() = true;
+            until(|| store.status().get("connected") == Some(&json!(false)));
+            *vacuum.panic_status.lock().unwrap() = false;
+            vacuum
+                .snapshot
+                .lock()
+                .unwrap()
+                .insert("battery".into(), json!(41));
+            until(|| store.status().get("battery") == Some(&json!(41)));
+            assert_eq!(store.status().get("connected"), Some(&json!(true)));
             service.stop();
         });
     }
@@ -2173,6 +2224,8 @@ mod tests {
         sent: Mutex<Vec<String>>,
         refuse: Mutex<Option<ClientError>>,
         health_doc: Mutex<Option<Map<String, Value>>>,
+        legacy_doc: Mutex<Option<Map<String, Value>>>,
+        shutdowns: Mutex<usize>,
     }
 
     impl FakeCliClient {
@@ -2186,6 +2239,8 @@ mod tests {
                 sent: Mutex::new(Vec::new()),
                 refuse: Mutex::new(None),
                 health_doc: Mutex::new(None),
+                legacy_doc: Mutex::new(None),
+                shutdowns: Mutex::new(0),
             })
         }
     }
@@ -2233,7 +2288,12 @@ mod tests {
         }
 
         fn shutdown(&self) -> Result<Map<String, Value>, ClientError> {
+            *self.shutdowns.lock().unwrap() += 1;
             Ok(json!({"ok": true}).as_object().unwrap().clone())
+        }
+
+        fn legacy_health(&self) -> Option<Map<String, Value>> {
+            self.legacy_doc.lock().unwrap().clone()
         }
     }
 
@@ -2521,13 +2581,171 @@ mod tests {
         }
     }
 
+    /// The plugin's launcher: run the Rust rrctl, or say plainly why not.
+    fn launcher(config: &str) -> String {
+        let doc: Value = serde_json::from_str(config).unwrap();
+        let server = &doc["mcpServers"]["roborock"];
+        assert_eq!(server["command"], "sh");
+        assert_eq!(server["args"][0], "-c");
+        server["args"][1].as_str().unwrap().to_string()
+    }
+
     #[test]
     fn test_every_mcp_config_starts_rrctl_mcp() {
+        let first = launcher(MCP_CONFIGS[0].1);
         for (name, text) in MCP_CONFIGS {
-            let doc: Value = serde_json::from_str(text).unwrap();
-            let server = &doc["mcpServers"]["roborock"];
-            assert_eq!(server["command"], "rrctl", "{name}");
-            assert_eq!(server["args"], json!(["mcp"]), "{name}");
+            assert_eq!(launcher(text), first, "{name} differs from the others");
         }
+        assert!(first.contains("exec rrctl mcp"));
+    }
+
+    /// Runs the launcher with only `bin` (plus the system dirs) on PATH.
+    fn run_launcher(bin: &Path) -> std::process::Output {
+        std::process::Command::new("/bin/sh")
+            .arg("-c")
+            .arg(launcher(MCP_CONFIGS[0].1))
+            .env("PATH", format!("{}:/usr/bin:/bin", bin.display()))
+            .output()
+            .unwrap()
+    }
+
+    fn fake_rrctl(dir: &Path, version_line: &str) {
+        let path = dir.join("rrctl");
+        fs::write(
+            &path,
+            format!("#!/bin/sh\nif [ \"$1\" = --version ]; then echo '{version_line}'; else echo \"ran $*\"; fi\n"),
+        )
+        .unwrap();
+        fs::set_permissions(&path, Permissions::from_mode(0o755)).unwrap();
+    }
+
+    #[test]
+    fn test_the_launcher_runs_rust_rrctl_and_explains_anything_else() {
+        let dir = env::temp_dir().join(format!(
+            "rr-launcher-{}-{}",
+            std::process::id(),
+            TEST_DIR_SEQ.fetch_add(1, Ordering::SeqCst)
+        ));
+        fs::create_dir_all(&dir).unwrap();
+        // Not installed.
+        let none = run_launcher(&dir);
+        assert_eq!(none.status.code(), Some(127));
+        assert!(String::from_utf8_lossy(&none.stderr).contains("rrctl is not on your PATH"));
+        // The old Python tool.
+        fake_rrctl(&dir, "rrctl 0.1.1");
+        let python = run_launcher(&dir);
+        assert_eq!(python.status.code(), Some(1));
+        let msg = String::from_utf8_lossy(&python.stderr).to_string();
+        assert!(
+            msg.contains("old Python tool") && msg.contains("uv tool uninstall vitruvian-roborock"),
+            "{msg}"
+        );
+        assert!(
+            python.stdout.is_empty(),
+            "must not start the Python MCP server"
+        );
+        // The Rust one.
+        fake_rrctl(&dir, &format!("rrctl {VERSION} (rust)"));
+        let rust = run_launcher(&dir);
+        assert_eq!(rust.status.code(), Some(0));
+        assert_eq!(String::from_utf8_lossy(&rust.stdout), "ran mcp\n");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    // =========================================================================
+    // Switching from the Python tool: its daemon answers on the same port with
+    // the same service name and token file.
+    // =========================================================================
+
+    fn python_health() -> Map<String, Value> {
+        json!({"ok": true, "service": "vitruvian-roborock", "version": "0.1.1", "pid": 4242})
+            .as_object()
+            .unwrap()
+            .clone()
+    }
+
+    /// A stand-in for the Python daemon: answers /healthz as it did.
+    fn fake_python_daemon() -> u16 {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        thread::spawn(move || {
+            for stream in listener.incoming().flatten().take(8) {
+                let mut stream = stream;
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                let mut line = String::new();
+                while reader.read_line(&mut line).map(|n| n > 2).unwrap_or(false) {
+                    line.clear();
+                }
+                let body = Value::Object(python_health()).to_string();
+                let _ = write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+            }
+        });
+        port
+    }
+
+    #[test]
+    fn test_the_python_daemon_is_recognised_and_not_reused() {
+        with_isolated_home(|_| {
+            let port = fake_python_daemon();
+            let client = DaemonClient::with_port(port, None);
+            assert!(
+                client.health().is_none(),
+                "the Python daemon must not count as ours"
+            );
+            assert_eq!(client.legacy_health().unwrap()["version"], "0.1.1");
+            let spawned = Arc::new(Mutex::new(false));
+            let flag = spawned.clone();
+            let err = crate::daemon::ensure_running_with_spawner(
+                Some(port),
+                Duration::from_secs(1),
+                move |_| {
+                    *flag.lock().unwrap() = true;
+                    Err(DaemonUnavailable::new("should not spawn"))
+                },
+            )
+            .err()
+            .expect("must refuse the Python daemon");
+            let msg = err.to_string();
+            assert!(msg.contains("older Python"), "{msg}");
+            assert!(
+                msg.contains("uv tool uninstall vitruvian-roborock"),
+                "{msg}"
+            );
+            assert!(msg.contains("pid 4242"), "{msg}");
+            assert!(!*spawned.lock().unwrap());
+        });
+    }
+
+    #[test]
+    fn test_our_daemon_says_it_is_the_rust_one() {
+        let doc = Value::Object(python_health());
+        assert!(!crate::daemon::legacy_daemon_message(8765, doc.as_object().unwrap()).is_empty());
+        let ver = run_cli(FakeCliClient::new(), &["--version"]);
+        assert_eq!(ver.stdout, format!("rrctl {VERSION} (rust)\n"));
+    }
+
+    #[test]
+    fn test_daemon_commands_explain_the_python_daemon() {
+        let fake = FakeCliClient::new();
+        *fake.legacy_doc.lock().unwrap() = Some(python_health());
+        let status = run_cli(fake.clone(), &["daemon", "status"]);
+        assert_eq!(status.exit_code, 1);
+        assert!(status.stderr.contains("older Python"), "{}", status.stderr);
+        let run = run_cli(fake.clone(), &["daemon", "run"]);
+        assert_eq!(run.exit_code, 1);
+        assert!(run.stderr.contains("older Python"), "{}", run.stderr);
+        let stop = run_cli(fake.clone(), &["daemon", "stop"]);
+        assert_eq!(stop.exit_code, 0);
+        assert_eq!(*fake.shutdowns.lock().unwrap(), 1);
+        assert!(
+            stop.stdout.contains("uv tool uninstall vitruvian-roborock"),
+            "{}",
+            stop.stdout
+        );
     }
 }

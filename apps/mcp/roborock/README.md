@@ -36,6 +36,10 @@ these ways:
 - **In the vitruvian-core monorepo:** `bazel build //apps/mcp/roborock:rrctl`,
   then copy `bazel-bin/apps/mcp/roborock/rrctl` onto your `PATH`.
 
+Upgrading from the Python version (0.1.x, installed with `uv`)? Stop its
+daemon and uninstall it first; see
+[Switching from the Python version](docs/installation.md#switching-from-the-python-version-01x).
+
 Claude Code:
 
 ```bash
