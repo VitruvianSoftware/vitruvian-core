@@ -29,7 +29,6 @@ pub mod pano_pinhole;
 pub mod sat_ortho;
 pub mod streetview_headings;
 pub mod streetview_panorama;
-pub mod tle_mirror;
 pub mod tool_io;
 pub mod verify_cesium_assets;
 
@@ -1042,84 +1041,6 @@ mod tests {
 
         let probes = streetview_panorama::probe_points(30.0, -97.0);
         assert_eq!(probes.len(), 9);
-    }
-
-    // ---- 6. tle_mirror ----
-
-    #[test]
-    fn tle_mirror_retry_and_preservation() {
-        let tmp = std::env::temp_dir().join("gev_test_tle_mirror_unit");
-        let _ = std::fs::remove_dir_all(&tmp);
-        std::fs::create_dir_all(&tmp).unwrap();
-        std::fs::write(tmp.join("visual.txt"), "previous visual\n").unwrap();
-
-        let tle = "ISS (ZARYA)\n1 25544U 98067A   26280.50000000  .00010000  00000-0  18000-3 0  9990\n2 25544  51.6400 100.0000 0005000 100.0000 260.0000 15.50000000400000\n";
-        let mut calls = Vec::new();
-        let groups = ["stations", "visual", "geo", "galileo"];
-
-        let failed = tle_mirror::mirror_with_fetcher(
-            &tmp,
-            &groups,
-            std::time::Duration::ZERO,
-            |url| {
-                let group = url
-                    .split("GROUP=")
-                    .nth(1)
-                    .and_then(|s| s.split('&').next())
-                    .unwrap_or("")
-                    .to_string();
-                calls.push(group.clone());
-                match group.as_str() {
-                    "stations" => Ok(tle_mirror::HttpResponse {
-                        status: 200,
-                        body: tle.to_string(),
-                    }),
-                    "visual" => Ok(tle_mirror::HttpResponse {
-                        status: 200,
-                        body: "<html>error</html>".to_string(),
-                    }),
-                    "geo" => Ok(tle_mirror::HttpResponse {
-                        status: 403,
-                        body: "nope".to_string(),
-                    }),
-                    "galileo" => {
-                        let count = calls.iter().filter(|g| *g == "galileo").count();
-                        if count == 1 {
-                            Err("fetch failed".to_string())
-                        } else {
-                            Ok(tle_mirror::HttpResponse {
-                                status: 200,
-                                body: tle.to_string(),
-                            })
-                        }
-                    }
-                    _ => Err("unknown".to_string()),
-                }
-            },
-        )
-        .unwrap();
-
-        assert_eq!(
-            failed,
-            vec![
-                "visual: no TLE lines in the response".to_string(),
-                "geo: HTTP 403".to_string()
-            ]
-        );
-        assert_eq!(std::fs::read_to_string(tmp.join("stations.txt")).unwrap(), tle);
-        assert_eq!(std::fs::read_to_string(tmp.join("galileo.txt")).unwrap(), tle);
-        assert_eq!(
-            calls,
-            vec!["stations", "visual", "visual", "geo", "geo", "galileo", "galileo"]
-        );
-        assert_eq!(
-            std::fs::read_to_string(tmp.join("visual.txt")).unwrap(),
-            "previous visual\n"
-        );
-        assert!(!tmp.join("geo.txt").exists());
-        assert!(tle_mirror::has_tle(tle) && !tle_mirror::has_tle("<html>error</html>"));
-
-        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     // ---- 7. check_import_directions & analyze_module ----

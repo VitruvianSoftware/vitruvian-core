@@ -18,11 +18,33 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+//! Mirrors the CelesTrak groups the app requests, for a server CelesTrak does
+//! not answer. Connections from the homelab to celestrak.org time out
+//! (CelesTrak throttles hosts that poll it too often, as the old uncached
+//! server did), so .github/workflows/gods-eye-view-tle-mirror.yaml runs this
+//! every 6 hours from GitHub's runners and publishes the files on the
+//! gods-eye-view-tle branch; the server reads them through
+//! CELESTRAK_TLE_MIRROR_URL (server/providers/space/celestrak.js) and falls
+//! back to CelesTrak.
+//!
+//!   bazel run //apps/web/gods-eye-view:tle_mirror -- <dir>
+//!
+//! writes <dir>/<group>.txt for each group it fetches, and leaves the file a
+//! failed group already had, so one bad fetch never empties the mirror.
+//!
+//! Standard library only (plus the `curl` binary), and included by path from
+//! bin/tle_mirror.rs, so the workflow compiles it with plain `rustc`, without
+//! Bazel.
+
 use std::collections::BTreeSet;
 use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
 
+/// The groups the client requests: the satellite catalog's (CATALOG_GROUPS in
+/// src/layers/satellites/policy.js), the space tool's (GROUPS in
+/// src/tools/queries/space.js) and every `/api/celestrak/<group>` literal.
+/// [`verify_client_groups_mirrored`] holds this list to the client's code.
 pub const MIRRORED_GROUPS: &[&str] = &[
     "active",
     "stations",
@@ -34,6 +56,7 @@ pub const MIRRORED_GROUPS: &[&str] = &[
     "starlink",
 ];
 
+/// CelesTrak 403s bulk groups (`active`) without a descriptive User-Agent.
 pub const USER_AGENT: &str =
     "vitruvian-core-gods-eye-view-tle-mirror/1.0 (+https://github.com/VitruvianSoftware/vitruvian-core)";
 
@@ -127,19 +150,41 @@ where
     Ok(failed)
 }
 
+/// The arguments [`curl_fetch`] runs curl with, before the URL. `-q` has to be
+/// first: it stops curl reading the user's ~/.curlrc. Every request and
+/// redirect stays on HTTPS with TLS 1.2 or later, and a redirect loop stops
+/// after 5 hops. [`curl_args`] ends them with `--`, so the URL can never be
+/// read as an option.
+pub const CURL_ARGS: &[&str] = &[
+    "-q",
+    "--proto",
+    "=https",
+    "--proto-redir",
+    "=https",
+    "--tlsv1.2",
+    "-sS",
+    "-L",
+    "--max-redirs",
+    "5",
+    "--max-time",
+    "60",
+    "-A",
+    USER_AGENT,
+    "-w",
+    "\n%{http_code}",
+];
+
+/// The full curl argument list for `url`: [`CURL_ARGS`], then `--`, then the URL.
+pub fn curl_args(url: &str) -> Vec<String> {
+    let mut args: Vec<String> = CURL_ARGS.iter().map(|a| a.to_string()).collect();
+    args.push("--".to_string());
+    args.push(url.to_string());
+    args
+}
+
 pub fn curl_fetch(url: &str) -> Result<HttpResponse, String> {
     let output = Command::new("curl")
-        .args([
-            "-sS",
-            "-L",
-            "--max-time",
-            "60",
-            "-A",
-            USER_AGENT,
-            "-w",
-            "\n%{http_code}",
-            url,
-        ])
+        .args(curl_args(url))
         .output()
         .map_err(|e| format!("fetch failed: {}", e))?;
 
@@ -157,7 +202,58 @@ pub fn curl_fetch(url: &str) -> Result<HttpResponse, String> {
     Ok(HttpResponse { status, body })
 }
 
-/// Port of `arrayStrings(source, name, key)` from `tle-mirror/mirror.test.mjs`.
+/// The URL `celestrakTleUrl(group)` in src/data/spaceProviderRequests.js builds,
+/// read from that function's source: its `new URL('<base>')` and each
+/// `url.searchParams.set('<KEY>', <group | '<literal>'>)`, in order. Lets the
+/// test hold [`celestrak_group_url`] to the server's code, not to a copy of it.
+pub fn server_group_url(source: &str, group: &str) -> Result<String, String> {
+    let start = source
+        .find("export function celestrakTleUrl(group) {")
+        .ok_or_else(|| "celestrakTleUrl(group) is not declared".to_string())?;
+    let rest = &source[start..];
+    let body = &rest[..rest.find("\n}").ok_or_else(|| "celestrakTleUrl has no end".to_string())?];
+
+    let quoted = |s: &str| -> Option<String> {
+        let s = s.trim().strip_prefix('\'')?;
+        Some(s[..s.find('\'')?].to_string())
+    };
+    let base_at = body
+        .find("new URL(")
+        .ok_or_else(|| "celestrakTleUrl builds no URL".to_string())?;
+    let base = quoted(&body[base_at + "new URL(".len()..])
+        .ok_or_else(|| "celestrakTleUrl's base URL is not a literal".to_string())?;
+
+    let mut params = Vec::new();
+    let marker = "url.searchParams.set(";
+    let mut search = body;
+    while let Some(at) = search.find(marker) {
+        let call = &search[at + marker.len()..];
+        let close = call
+            .find(");")
+            .ok_or_else(|| "unterminated searchParams.set".to_string())?;
+        let (key, value) = call[..close]
+            .split_once(',')
+            .ok_or_else(|| "searchParams.set takes two arguments".to_string())?;
+        let key = quoted(key).ok_or_else(|| format!("key {} is not a literal", key.trim()))?;
+        let value = match value.trim() {
+            "group" => group.to_string(),
+            other => quoted(other).ok_or_else(|| format!("value {} is not a literal", other))?,
+        };
+        params.push(format!(
+            "{}={}",
+            url_encode_query_param(&key),
+            url_encode_query_param(&value)
+        ));
+        search = &call[close..];
+    }
+    if params.is_empty() {
+        return Err("celestrakTleUrl sets no query parameters".to_string());
+    }
+    Ok(format!("{}?{}", base, params.join("&")))
+}
+
+/// The quoted strings in the array literal that `const <name> = [` opens; with
+/// `obj_key`, only the `<key>: '<value>'` values.
 pub fn extract_array_strings(
     source: &str,
     const_name: &str,
@@ -291,7 +387,7 @@ pub fn run(args: &[String]) -> Result<(), i32> {
     let dir = match args.first() {
         Some(d) if !d.is_empty() => Path::new(d),
         _ => {
-            eprintln!("usage: mirror.mjs <dir>");
+            eprintln!("usage: tle_mirror <dir>");
             return Err(2);
         }
     };
