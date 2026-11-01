@@ -191,6 +191,14 @@ fn the_build_step_builds_every_tool_with_a_real_rustc_and_it_matches_bazel() {
             "{tool}: the build step failed: {:?}",
             step.out
         );
+        assert!(
+            step.out
+                .stdout
+                .lines()
+                .any(|l| l.starts_with("build-ci-tool: rustc ")),
+            "{tool}: the step must log the rustc version: {:?}",
+            step.out
+        );
         let built = step.bin();
         assert!(built.is_file(), "{tool}: no binary at {}", built.display());
         assert!(
@@ -639,9 +647,76 @@ fn the_tripwire_checks_the_restore_ran_before_using_its_tool() {
     let outcome = t
         .find(r#"if [ "$RESTORE_OUTCOME" != "success" ]; then"#)
         .expect("outcome check");
-    let first_use = t.find(r#""$STAGE_BIN""#).expect("a use of the stage tool");
+    let exists = t
+        .find(r#"if [ ! -x "$STAGE_BIN" ]; then"#)
+        .expect("the tripwire must check the stage tool exists");
+    let first_use = t.find(r#""$STAGE_BIN" "#).expect("a use of the stage tool");
+    assert!(
+        exists < first_use,
+        "{TRIPWIRE} uses the stage tool before checking it exists"
+    );
     assert!(
         outcome < first_use,
         "{TRIPWIRE} uses the stage tool before checking the restore ran"
+    );
+}
+
+// --- the step only hands back a binary that exists and runs
+
+/// A rustc on PATH that runs the real one but spoils what the LAST call (the
+/// binary) leaves behind: `nothing`, or `garbage` that cannot be executed.
+fn path_with_rustc_that_spoils_the_binary(tmp: &TempDir, what: &str) -> String {
+    let dir = tmp.join("spoiling-rustc");
+    let spoil = match what {
+        "nothing" => r#"rm -f "$o""#,
+        "garbage" => r#"printf 'not a program' > "$o"; chmod +x "$o""#,
+        other => panic!("{other}"),
+    };
+    let script = format!(
+        r#"#!/bin/bash
+"{real}" "$@" || exit $?
+case " $* " in *" --crate-type lib "*|*" --version "*) exit 0 ;; esac
+o=""; prev=""; for a in "$@"; do [ "$prev" = -o ] && o="$a"; prev="$a"; done
+{spoil}
+"#,
+        real = toolchain_rustc().display()
+    );
+    ci_testkit::write_exe(dir.join("rustc"), script);
+    ci_testkit::path_with(&dir)
+}
+
+#[test]
+fn no_bin_is_handed_back_when_rustc_leaves_no_binary() {
+    let ws = workspace();
+    let tmp = TempDir::new();
+    let path = path_with_rustc_that_spoils_the_binary(&tmp, "nothing");
+    let step = run_step(&tmp, &ws, "relevant_paths", "", &path);
+    assert_ne!(step.out.code, 0, "{:?}", step.out);
+    assert!(
+        step.out.stdout.contains("rustc left no executable"),
+        "{:?}",
+        step.out
+    );
+    assert!(
+        !step.github_output.contains("bin="),
+        "bin= written for a missing binary"
+    );
+}
+
+#[test]
+fn no_bin_is_handed_back_when_the_binary_does_not_run() {
+    let ws = workspace();
+    let tmp = TempDir::new();
+    let path = path_with_rustc_that_spoils_the_binary(&tmp, "garbage");
+    let step = run_step(&tmp, &ws, "relevant_paths", "", &path);
+    assert_ne!(step.out.code, 0, "{:?}", step.out);
+    assert!(
+        step.out.stdout.contains("was built but does not run"),
+        "{:?}",
+        step.out
+    );
+    assert!(
+        !step.github_output.contains("bin="),
+        "bin= written for a binary that cannot run"
     );
 }

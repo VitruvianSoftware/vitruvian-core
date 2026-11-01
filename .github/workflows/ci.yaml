@@ -113,9 +113,9 @@ jobs:
           WORKFLOW_PATH: .github/workflows/ci.yaml
           PUSH_BEFORE: ${{ github.event.before }}
           FORCED_PUSH: ${{ github.event.forced }}
-          QUEUE_FAST_PASS: ${{ steps.tool.outputs.bin }}
+          QUEUE_FAST_PASS_BIN: ${{ steps.tool.outputs.bin }}
         run: |
-          "$QUEUE_FAST_PASS" queued | tee "$RUNNER_TEMP/queued.out"
+          "$QUEUE_FAST_PASS_BIN" queued | tee "$RUNNER_TEMP/queued.out"
           {
             echo "### Already passed in the merge queue?"
             echo ""
@@ -176,9 +176,9 @@ jobs:
           PR_AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
           PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
           AGENTS_TSV: base/tools/agent-app/agents.tsv
-          FAST_LANE: ${{ steps.rule.outputs.bin }}
+          FAST_LANE_BIN: ${{ steps.rule.outputs.bin }}
         run: |
-          "$FAST_LANE" | tee "$RUNNER_TEMP/fast-lane.out"
+          "$FAST_LANE_BIN" | tee "$RUNNER_TEMP/fast-lane.out"
           {
             echo "### Agent fast lane?"
             echo ""

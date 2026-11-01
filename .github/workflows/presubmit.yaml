@@ -77,9 +77,9 @@ jobs:
           WORKFLOW_PATH: .github/workflows/presubmit.yaml
           PUSH_BEFORE: ${{ github.event.before }}
           FORCED_PUSH: ${{ github.event.forced }}
-          QUEUE_FAST_PASS: ${{ steps.queue-fast-pass.outputs.bin }}
+          QUEUE_FAST_PASS_BIN: ${{ steps.queue-fast-pass.outputs.bin }}
         run: |
-          "$QUEUE_FAST_PASS" queued | tee "$RUNNER_TEMP/queued.out"
+          "$QUEUE_FAST_PASS_BIN" queued | tee "$RUNNER_TEMP/queued.out"
           {
             echo "### Already passed in the merge queue?"
             echo ""
@@ -124,9 +124,9 @@ jobs:
           PR_AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
           PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
           AGENTS_TSV: ${{ steps.fastlane-src.outputs.root }}/tools/agent-app/agents.tsv
-          FAST_LANE: ${{ steps.fastlane-bin.outputs.bin }}
+          FAST_LANE_BIN: ${{ steps.fastlane-bin.outputs.bin }}
         run: |
-          "$FAST_LANE" | tee "$RUNNER_TEMP/fast-lane.out"
+          "$FAST_LANE_BIN" | tee "$RUNNER_TEMP/fast-lane.out"
           {
             echo "### Agent fast lane?"
             echo ""
@@ -142,13 +142,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           EVENT_NAME: ${{ github.event_name }}
           WORKFLOW_PATH: .github/workflows/presubmit.yaml
-          QUEUE_FAST_PASS: ${{ steps.queue-fast-pass.outputs.bin }}
+          QUEUE_FAST_PASS_BIN: ${{ steps.queue-fast-pass.outputs.bin }}
         run: |
           if [ "$EVENT_NAME" != merge_group ]; then
-            "$QUEUE_FAST_PASS" tree
+            "$QUEUE_FAST_PASS_BIN" tree
             exit 0
           fi
-          "$QUEUE_FAST_PASS" lookup presubmit | tee "$RUNNER_TEMP/fastpass.out"
+          "$QUEUE_FAST_PASS_BIN" lookup presubmit | tee "$RUNNER_TEMP/fastpass.out"
           {
             echo "### Already tested? (log only, nothing is skipped)"
             echo ""

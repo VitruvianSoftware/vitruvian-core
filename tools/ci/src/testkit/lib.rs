@@ -433,3 +433,186 @@ pub fn names_job(hay: &str, name: &str) -> bool {
     }
     false
 }
+
+/// Problems with how a workflow reads `steps.<step>.outputs.verdict`, where
+/// `skip` is the one value that lets work be skipped ("fast", "hit").
+///
+/// Fail-safe means an EMPTY verdict -- the tool failed, its build failed
+/// under continue-on-error, or the step was skipped -- runs everything. That
+/// holds only when every comparison names the skip value, never the run
+/// value: `== 'skip'` where a skip is switched on (a job output, or a shell
+/// `[ "$V" = "skip" ]`), `!= 'skip'` in an `if:` that lets work run. Turning
+/// either around (`!= 'full'`, `== 'miss'`) makes "" mean skip. A verdict
+/// copied into a step's env is followed into that step's shell tests.
+pub fn verdict_fail_open(yaml: &str, step: &str, skip: &str) -> Vec<String> {
+    let needle = format!("steps.{step}.outputs.verdict");
+    let mut bad = Vec::new();
+    let mut env_names = Vec::new();
+    let mut seen = 0;
+    for (n, line) in yaml.lines().enumerate() {
+        let at = |what: &str| format!("line {}: {what}: {}", n + 1, line.trim());
+        let t = line.trim_start();
+        let mut from = 0;
+        while let Some(i) = line[from..].find(&needle) {
+            seen += 1;
+            let rest = line[from + i + needle.len()..].trim_start();
+            from += i + needle.len();
+            let op = if rest.starts_with("==") {
+                "=="
+            } else if rest.starts_with("!=") {
+                "!="
+            } else {
+                // Not compared here: only a plain env copy is allowed.
+                let key = t.split(':').next().unwrap_or("");
+                if rest.starts_with("}}")
+                    && !key.is_empty()
+                    && key
+                        .bytes()
+                        .all(|b| b.is_ascii_uppercase() || b == b'_' || b.is_ascii_digit())
+                {
+                    env_names.push((key.to_string(), n));
+                } else {
+                    bad.push(at("the verdict is used without a comparison"));
+                }
+                continue;
+            };
+            let value = rest[2..].trim_start();
+            if !value.starts_with(&format!("'{skip}'")) {
+                bad.push(at(&format!(
+                    "compares the verdict with something other than '{skip}'"
+                )));
+            }
+            let want = if t.starts_with("if:") { "!=" } else { "==" };
+            if op != want {
+                bad.push(at(&format!(
+                    "uses {op}; here it must be {want} so an empty verdict runs everything"
+                )));
+            }
+        }
+    }
+    if seen == 0 {
+        bad.push(format!("nothing reads {needle}; is the step id right?"));
+    }
+    // Each env copy is followed through the step that declares it: from the
+    // step's `- ` line to the next step or job.
+    let lines: Vec<&str> = yaml.lines().collect();
+    let is_step = |l: &str| l.starts_with("      - ") || l.starts_with("    - ");
+    let is_job =
+        |l: &str| l.starts_with("  ") && !l.starts_with("   ") && l.trim_end().ends_with(':');
+    for (name, at) in env_names {
+        let start = (0..=at).rev().find(|&i| is_step(lines[i])).unwrap_or(0);
+        let end = (at + 1..lines.len())
+            .find(|&i| is_step(lines[i]) || is_job(lines[i]))
+            .unwrap_or(lines.len());
+        let var = format!("\"${name}\"");
+        for (n, line) in lines.iter().enumerate().take(end).skip(start) {
+            if !line.contains(&var) {
+                continue;
+            }
+            let ok = format!("[ \"${name}\" = \"{skip}\" ]");
+            if !line.contains(&ok) || line.matches(&var).count() != 1 {
+                bad.push(format!(
+                    "line {}: ${name} (the verdict) must only be tested as {ok}: {}",
+                    n + 1,
+                    line.trim()
+                ));
+            }
+        }
+    }
+    bad
+}
+
+/// The steps of one job's text (from `workflow_job_text`): each starts at a
+/// six-space `- ` line and runs to the next.
+pub fn workflow_steps(job: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut in_steps = false;
+    for l in job.lines() {
+        if l.starts_with("    steps:") {
+            in_steps = true;
+            continue;
+        }
+        if !in_steps {
+            continue;
+        }
+        if l.starts_with("    ") && !l.starts_with("     ") {
+            break; // another job key after steps
+        }
+        if l.starts_with("      - ") {
+            out.push(String::new());
+        }
+        if let Some(s) = out.last_mut() {
+            s.push_str(l);
+            s.push('\n');
+        }
+    }
+    out
+}
+
+/// The value of `key: value` anywhere in a step (`uses`, `id`, `ref`, ...).
+pub fn step_value(step: &str, key: &str) -> Option<String> {
+    let k = format!("{key}: ");
+    step.lines().find_map(|l| {
+        let t = l.trim_start().trim_start_matches("- ");
+        t.strip_prefix(&k).map(|v| v.trim().to_string())
+    })
+}
+
+/// The entries of a block or one-line value (`sparse-checkout: |` or
+/// `sparse-checkout: x`); None when the key is absent.
+pub fn step_list(step: &str, key: &str) -> Option<Vec<String>> {
+    let lines: Vec<&str> = step.lines().collect();
+    let k = format!("{key}:");
+    let i = lines.iter().position(|l| l.trim_start().starts_with(&k))?;
+    let v = lines[i].trim_start()[k.len()..].trim();
+    if v != "|" {
+        return Some(vec![v.to_string()]);
+    }
+    let indent = lines[i].len() - lines[i].trim_start().len();
+    Some(
+        lines[i + 1..]
+            .iter()
+            .take_while(|l| !l.trim().is_empty() && l.len() - l.trim_start().len() > indent)
+            .map(|l| l.trim().to_string())
+            .collect(),
+    )
+}
+
+/// The keys of a step's `env:` block, with their values.
+pub fn step_env(step: &str) -> Vec<(String, String)> {
+    let lines: Vec<&str> = step.lines().collect();
+    let Some(i) = lines.iter().position(|l| l.trim() == "env:") else {
+        return Vec::new();
+    };
+    let indent = lines[i].len() - lines[i].trim_start().len();
+    lines[i + 1..]
+        .iter()
+        .take_while(|l| l.len() - l.trim_start().len() > indent)
+        .filter_map(|l| l.trim().split_once(": "))
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect()
+}
+
+/// A step's `run: |` block, dedented; "" when it has none.
+pub fn step_run(step: &str) -> String {
+    let lines: Vec<&str> = step.lines().collect();
+    let Some(i) = lines.iter().position(|l| l.trim() == "run: |") else {
+        return step_value(step, "run").unwrap_or_default();
+    };
+    let Some(first) = lines.get(i + 1) else {
+        return String::new();
+    };
+    let indent = first.len() - first.trim_start().len();
+    let mut out = String::new();
+    for l in &lines[i + 1..] {
+        if !l.trim().is_empty() && l.len() - l.trim_start().len() < indent {
+            break;
+        }
+        out.push_str(l.get(indent..).unwrap_or(""));
+        out.push('\n');
+    }
+    while out.ends_with("\n\n") {
+        out.pop();
+    }
+    out
+}

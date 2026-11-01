@@ -282,6 +282,58 @@ mod tests {
         }
     }
 
+    /// The fast lane decides with the BASE commit's rule and roster, and an
+    /// empty verdict (failed build, failed or skipped step) runs everything.
+    /// //tools/ci:agent_fast_lane_test and queue_fast_pass_test hold the
+    /// rendered presubmit.yaml to the same; this fails on a generator change
+    /// before it is regenerated (#4173 review: head.sha went unnoticed).
+    #[test]
+    fn fast_lane_reads_the_base_commit_and_fails_safe() {
+        let got = render(&[unit("alpha")]);
+        let start = got
+            .find("        id: fastlane-src\n")
+            .expect("fastlane-src step");
+        let end = got.find("        id: fastpass\n").expect("fastpass step");
+        let lane = &got[start..end];
+        assert!(
+            lane.contains("          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}\n"),
+            "{lane}"
+        );
+        assert!(
+            lane.contains("if ! git show \"$PR_BASE_SHA:$f\" > \"$src/$f\"; then"),
+            "{lane}"
+        );
+        assert!(
+            !lane.contains("head.sha") && !lane.contains("head_ref"),
+            "the fast lane reads the PR head:\n{lane}"
+        );
+        assert!(
+            lane.contains("          source-root: ${{ steps.fastlane-src.outputs.root }}\n"),
+            "{lane}"
+        );
+        assert!(lane.contains("          AGENTS_TSV: ${{ steps.fastlane-src.outputs.root }}/tools/agent-app/agents.tsv\n"), "{lane}");
+        assert_eq!(
+            lane.matches("git show").count(),
+            1,
+            "one git show, of the base commit:\n{lane}"
+        );
+        // Fail-safe direction: only an explicit fast or hit skips.
+        assert!(crate::render::PLAN_GATE_FOR_TEST.contains("steps.queued.outputs.verdict != 'hit'"));
+        assert!(
+            crate::render::PLAN_GATE_FOR_TEST.contains("steps.fastlane.outputs.verdict != 'fast'")
+        );
+        assert!(got.contains("          if [ \"$FAST_LANE\" = \"fast\" ]; then\n"));
+        assert!(got.contains("          if [ \"$QUEUED\" = \"hit\" ]; then\n"));
+        for bad in [
+            "verdict == 'full'",
+            "verdict != 'full'",
+            "verdict == 'miss'",
+            "verdict != 'miss'",
+        ] {
+            assert!(!got.contains(bad), "{bad}");
+        }
+    }
+
     #[test]
     fn jobs_are_gated_on_the_plan_and_fail_open() {
         let mut beta = unit("beta");

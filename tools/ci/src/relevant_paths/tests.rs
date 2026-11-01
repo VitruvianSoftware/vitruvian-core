@@ -33,7 +33,8 @@
 //! out of ci.yaml and tidy-check.yaml rather than copied here: a literal would
 //! let a workflow drift to an unsafe set while this kept asserting the old one.
 
-use ci_testkit::{bin, git, write, Run, TempDir};
+use ci_testkit::{bin, git, write, write_exe, Run, TempDir};
+use std::path::{Path, PathBuf};
 
 /// The one `ignore-regex: '...'` value in a workflow file; panics unless there
 /// is exactly one, so a second narrowed lane has to be added here too.
@@ -71,6 +72,11 @@ const CONFORMANCE: &str = r"^docs/|\.md$";
 /// A throwaway repo with a base commit, then one commit changing `files`;
 /// returns what the binary prints with BEFORE_REV at the base.
 fn verdict(ignore: &str, files: &[&str]) -> String {
+    verdict_with(ignore, files, None)
+}
+
+/// `verdict`, with PATH replaced when `path` is given (fake or missing grep).
+fn verdict_with(ignore: &str, files: &[&str], path: Option<&str>) -> String {
     let dir = TempDir::new();
     let repo = dir.path();
     git(repo, &["init", "-q", "."]);
@@ -100,6 +106,9 @@ fn verdict(ignore: &str, files: &[&str]) -> String {
     } else {
         r.env("IGNORE_REGEX", ignore)
     };
+    if let Some(p) = path {
+        r = r.env("PATH", p);
+    }
     r.go().all()
 }
 
@@ -360,5 +369,108 @@ fn no_workflow_runs_it_directly() {
     assert!(
         gate.contains("tool: relevant_paths"),
         "the changed-paths gate no longer builds relevant_paths"
+    );
+}
+
+// --- counting the changed files can fail: any doubt is "run" -------------
+//
+// The shell script ran in all of these: `[ "" -eq 0 ]` errors, so it fell
+// through to "run". The first Rust port counted every grep failure as zero
+// changed files and said skip (#4173 review).
+
+/// A directory holding only `git` (a link to the real one), so the binary
+/// can diff but finds no grep.
+fn path_without_grep(tmp: &TempDir) -> String {
+    let real_git = std::env::var("PATH")
+        .unwrap_or_default()
+        .split(':')
+        .map(|d| Path::new(d).join("git"))
+        .find(|p| p.is_file())
+        .expect("git on PATH");
+    let dir: PathBuf = tmp.join("only-git");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::os::unix::fs::symlink(real_git, dir.join("git")).unwrap();
+    dir.display().to_string()
+}
+
+/// A fake grep first on PATH, the real tools after it.
+fn path_with_fake_grep(tmp: &TempDir, body: &str) -> String {
+    let dir = tmp.join("fake-grep");
+    write_exe(dir.join("grep"), format!("#!/bin/sh\n{body}\n"));
+    ci_testkit::path_with(&dir)
+}
+
+#[track_caller]
+fn runs_with_reason(got: &str, what: &str) {
+    assert!(
+        got.contains("relevant=true"),
+        "{what} must run, got:\n{got}"
+    );
+    assert!(
+        got.contains("could not count changed files"),
+        "{what}: say why it ran, got:\n{got}"
+    );
+}
+
+#[test]
+fn an_invalid_ignore_regex_runs() {
+    for bad in ["(", "[z-a]"] {
+        let got = verdict(bad, &["tabula/api/src/index.ts"]);
+        runs_with_reason(&got, &format!("invalid IGNORE_REGEX {bad:?}"));
+        // A docs-only diff too: the bad regex must not be read as "all ignored".
+        let got = verdict(bad, &["docs/guide.md"]);
+        runs_with_reason(
+            &got,
+            &format!("invalid IGNORE_REGEX {bad:?} on a docs diff"),
+        );
+    }
+}
+
+#[test]
+fn no_grep_on_path_runs() {
+    let tmp = TempDir::new();
+    let got = verdict_with("", &["docs/guide.md"], Some(&path_without_grep(&tmp)));
+    runs_with_reason(&got, "no grep on PATH");
+}
+
+#[test]
+fn grep_exiting_non_zero_runs() {
+    for (what, body) in [
+        (
+            "grep exits 2 with no count",
+            "echo 'grep: broken' >&2; exit 2",
+        ),
+        ("grep exits 2 after printing 0", "echo 0; exit 2"),
+        ("grep killed by a signal", "kill -9 $$"),
+        ("grep exits 1 with no count", "exit 1"),
+        (
+            "grep prints something that is not a count",
+            "echo nope; exit 0",
+        ),
+    ] {
+        let tmp = TempDir::new();
+        let got = verdict_with(
+            "",
+            &["docs/guide.md"],
+            Some(&path_with_fake_grep(&tmp, body)),
+        );
+        runs_with_reason(&got, what);
+    }
+}
+
+/// The other side: a grep that answers "0 lines outside the set" (exit 1,
+/// as real grep -c does) is still a skip, so the fix did not make every
+/// diff run.
+#[test]
+fn a_real_zero_count_still_skips() {
+    let tmp = TempDir::new();
+    let got = verdict_with(
+        "",
+        &["docs/guide.md"],
+        Some(&path_with_fake_grep(&tmp, "cat >/dev/null; echo 0; exit 1")),
+    );
+    assert!(
+        got.contains("relevant=false"),
+        "a counted zero must skip, got:\n{got}"
     );
 }

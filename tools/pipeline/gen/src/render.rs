@@ -51,6 +51,9 @@ const MIT_LICENSE_HEADER: &str = r#"# Copyright (c) 2026 VitruvianSoftware
 # SOFTWARE."#;
 
 /// The condition on every step that only feeds the planner.
+#[cfg(test)]
+pub(crate) const PLAN_GATE_FOR_TEST: &str = PLAN_NEEDED;
+
 const PLAN_NEEDED: &str = "steps.release.outputs.skip != 'true' && steps.queued.outputs.verdict != 'hit' && steps.fastlane.outputs.verdict != 'fast'";
 
 /// Why rendering stopped: a DAG error is reported, an action-pin problem is
@@ -186,9 +189,9 @@ pub fn render_presubmit_workflow(
     b.push_str("          WORKFLOW_PATH: .github/workflows/presubmit.yaml\n");
     b.push_str("          PUSH_BEFORE: ${{ github.event.before }}\n");
     b.push_str("          FORCED_PUSH: ${{ github.event.forced }}\n");
-    b.push_str("          QUEUE_FAST_PASS: ${{ steps.queue-fast-pass.outputs.bin }}\n");
+    b.push_str("          QUEUE_FAST_PASS_BIN: ${{ steps.queue-fast-pass.outputs.bin }}\n");
     b.push_str("        run: |\n");
-    b.push_str("          \"$QUEUE_FAST_PASS\" queued | tee \"$RUNNER_TEMP/queued.out\"\n");
+    b.push_str("          \"$QUEUE_FAST_PASS_BIN\" queued | tee \"$RUNNER_TEMP/queued.out\"\n");
     b.push_str("          {\n");
     b.push_str("            echo \"### Already passed in the merge queue?\"\n");
     b.push_str("            echo \"\"\n");
@@ -258,9 +261,9 @@ pub fn render_presubmit_workflow(
     b.push_str(
         "          AGENTS_TSV: ${{ steps.fastlane-src.outputs.root }}/tools/agent-app/agents.tsv\n",
     );
-    b.push_str("          FAST_LANE: ${{ steps.fastlane-bin.outputs.bin }}\n");
+    b.push_str("          FAST_LANE_BIN: ${{ steps.fastlane-bin.outputs.bin }}\n");
     b.push_str("        run: |\n");
-    b.push_str("          \"$FAST_LANE\" | tee \"$RUNNER_TEMP/fast-lane.out\"\n");
+    b.push_str("          \"$FAST_LANE_BIN\" | tee \"$RUNNER_TEMP/fast-lane.out\"\n");
     b.push_str("          {\n");
     b.push_str("            echo \"### Agent fast lane?\"\n");
     b.push_str("            echo \"\"\n");
@@ -279,14 +282,14 @@ pub fn render_presubmit_workflow(
     b.push_str("          GH_TOKEN: ${{ github.token }}\n");
     b.push_str("          EVENT_NAME: ${{ github.event_name }}\n");
     b.push_str("          WORKFLOW_PATH: .github/workflows/presubmit.yaml\n");
-    b.push_str("          QUEUE_FAST_PASS: ${{ steps.queue-fast-pass.outputs.bin }}\n");
+    b.push_str("          QUEUE_FAST_PASS_BIN: ${{ steps.queue-fast-pass.outputs.bin }}\n");
     b.push_str("        run: |\n");
     b.push_str("          if [ \"$EVENT_NAME\" != merge_group ]; then\n");
-    b.push_str("            \"$QUEUE_FAST_PASS\" tree\n");
+    b.push_str("            \"$QUEUE_FAST_PASS_BIN\" tree\n");
     b.push_str("            exit 0\n");
     b.push_str("          fi\n");
     b.push_str(
-        "          \"$QUEUE_FAST_PASS\" lookup presubmit | tee \"$RUNNER_TEMP/fastpass.out\"\n",
+        "          \"$QUEUE_FAST_PASS_BIN\" lookup presubmit | tee \"$RUNNER_TEMP/fastpass.out\"\n",
     );
     b.push_str("          {\n");
     b.push_str("            echo \"### Already tested? (log only, nothing is skipped)\"\n");

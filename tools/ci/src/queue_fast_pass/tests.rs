@@ -26,7 +26,8 @@
 //! queue-fast-pass_test.sh.
 
 use ci_testkit::{
-    bin, git, names_job, read, workflow_jobs, write, write_exe, Output, Run, TempDir,
+    bin, git, names_job, read, verdict_fail_open, workflow_job_text, workflow_jobs, write,
+    write_exe, Output, Run, TempDir,
 };
 use std::path::{Path, PathBuf};
 
@@ -776,4 +777,34 @@ fn it_refuses_a_check_name_that_is_not_a_plain_slug() {
 fn it_refuses_an_unknown_mode() {
     let o = Gh::new().run(&["nonsense"], &[]);
     assert_eq!(o.code, 2, "accepted an unknown mode: {o:?}");
+}
+
+// --- an empty verdict always means the full run ---------------------------
+//
+// The lookup's build step is continue-on-error, so a failed build leaves the
+// verdict empty, as does a failed lookup. Each comparison has to name "hit"
+// the right way round or "" turns into a skip (#4173 review: `hit: ... !=
+// 'miss'` went unnoticed).
+
+#[test]
+fn ci_yaml_skips_only_on_an_explicit_hit() {
+    let ci = std::fs::read_to_string(".github/workflows/ci.yaml").unwrap();
+    let q = workflow_job_text(&ci, "queued");
+    assert!(
+        q.contains("\n      hit: ${{ steps.lookup.outputs.verdict == 'hit' }}\n"),
+        "queued's hit output must be exactly verdict == 'hit':\n{q}"
+    );
+    let bad = verdict_fail_open(&ci, "lookup", "hit");
+    assert!(bad.is_empty(), "ci.yaml:\n{}", bad.join("\n"));
+}
+
+#[test]
+fn presubmit_skips_only_on_an_explicit_hit() {
+    let p = std::fs::read_to_string(".github/workflows/presubmit.yaml").unwrap();
+    let bad = verdict_fail_open(&p, "queued", "hit");
+    assert!(bad.is_empty(), "presubmit.yaml:\n{}", bad.join("\n"));
+    assert!(
+        p.contains("if [ \"$QUEUED\" = \"hit\" ]; then"),
+        "the planner no longer plans nothing for an explicit hit"
+    );
 }

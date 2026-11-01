@@ -69,8 +69,19 @@ runs:
         esac
         root="${SOURCE_ROOT:-$GITHUB_WORKSPACE}"
         command -v rustc >/dev/null || { echo "::error::build-ci-tool: no rustc on this runner, so tools/ci/src/$TOOL cannot be built"; exit 1; }
+        # The runner's rustc is newer than the Bazel toolchain's (1.75.0), which
+        # is what //tools/ci:build_ci_tool_test builds with; name it in the log.
+        echo "build-ci-tool: $(rustc --version)"
         out="$(mktemp -d "$RUNNER_TEMP/ci-tool-$TOOL.XXXXXX")"
         rustc --edition 2021 -O --crate-type lib --crate-name shell_compat "$root/tools/shell-compat/src/lib.rs" -o "$out/libshell_compat.rlib"
         rustc --edition 2021 -O --crate-type lib --crate-name "$TOOL" "$root/tools/ci/src/$TOOL/lib.rs" -L "$out" --extern shell_compat="$out/libshell_compat.rlib" -o "$out/lib$TOOL.rlib"
         rustc --edition 2021 -O "$root/tools/ci/src/$TOOL/main.rs" -L "$out" --extern shell_compat="$out/libshell_compat.rlib" --extern "$TOOL=$out/lib$TOOL.rlib" -o "$out/$TOOL"
+        # Only hand back a binary that exists and starts. With no arguments and
+        # an empty environment every tool here stops at once (usage error, or
+        # "not a pull request"), so this cannot reach GitHub or write outputs.
+        # 126+ means it could not be executed or died on a signal.
+        [ -x "$out/$TOOL" ] || { echo "::error::build-ci-tool: rustc left no executable at $out/$TOOL"; exit 1; }
+        rc=0
+        env -i "$out/$TOOL" </dev/null >/dev/null 2>&1 || rc=$?
+        [ "$rc" -lt 126 ] || { echo "::error::build-ci-tool: $out/$TOOL was built but does not run (exit $rc)"; exit 1; }
         echo "bin=$out/$TOOL" >> "$GITHUB_OUTPUT"
