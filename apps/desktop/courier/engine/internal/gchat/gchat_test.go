@@ -227,14 +227,26 @@ func setupLoggedInGChatTestEnv(t *testing.T, apiHandler http.HandlerFunc) (*host
 			w.Header().Set("Content-Type", "application/x-protobuf")
 			_, _ = w.Write(payload)
 		case "/u/0/api/get_members":
-			payload := buildSyntheticGetMembersResponse(
-				"112233445566778899001",
-				"Ada Lovelace",
-				"ada@example.com",
-				"https://example.invalid/avatar/ada.png",
-			)
-			w.Header().Set("Content-Type", "application/x-protobuf")
-			_, _ = w.Write(payload)
+			body, _ := io.ReadAll(r.Body)
+			var req pb.GetMembersRequest
+			_ = pb.Unmarshal(body, &req)
+			if len(req.GetMemberIds()) == 1 && req.GetMemberIds()[0].GetUserId().GetId() == "112233445566778899001" {
+				payload := buildSyntheticGetMembersResponse(
+					"112233445566778899001",
+					"Ada Lovelace",
+					"ada@example.com",
+					"https://example.invalid/avatar/ada.png",
+				)
+				w.Header().Set("Content-Type", "application/x-protobuf")
+				_, _ = w.Write(payload)
+				return
+			}
+			r.Body = io.NopCloser(strings.NewReader(string(body)))
+			if apiHandler != nil {
+				apiHandler(w, r)
+				return
+			}
+			http.NotFound(w, r)
 		default:
 			if apiHandler != nil {
 				apiHandler(w, r)
@@ -5238,6 +5250,406 @@ func TestStreamErrorBeforeConnectTransitionsToTransientDisconnect(t *testing.T) 
 		payload: []byte("step4_poll_events: network"),
 	})
 	require.Equal(t, status.StateConnected, client.lastBridgeState())
+}
+
+func TestGetChatInfoSpaceWithoutGroupNameNeverUsesPortalID(t *testing.T) {
+	ctx := context.Background()
+	h, ul, client := setupLoggedInGChatTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/u/0/api/get_group":
+			w.Header().Set("Content-Type", "application/x-protobuf")
+			_, _ = w.Write(pb.MustMarshal(&pb.GetGroupResponse{
+				Group: &pb.Group{
+					GroupId: pb.SpaceGroupID("unnamed_space"),
+				},
+			}))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	portal, err := h.Bridge.GetPortalByKey(ctx, networkid.PortalKey{
+		ID:       MakeSpacePortalID("unnamed_space"),
+		Receiver: ul.ID,
+	})
+	require.NoError(t, err)
+
+	info, err := client.GetChatInfo(ctx, portal)
+	require.NoError(t, err)
+	require.NotNil(t, info)
+	require.Nil(t, info.Name, "space with no Group.Name and no resolvable members must leave Name nil, never portal.ID")
+}
+
+func TestGetChatInfoRepairsStoredPortalIDPlaceholderWithGroupName(t *testing.T) {
+	ctx := context.Background()
+	var returnEmptyGroupName atomic.Bool
+	h, ul, client := setupLoggedInGChatTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/u/0/api/get_group":
+			w.Header().Set("Content-Type", "application/x-protobuf")
+			g := &pb.Group{GroupId: pb.SpaceGroupID("team_space")}
+			if !returnEmptyGroupName.Load() {
+				g.Name = pb.String("Team")
+			}
+			_, _ = w.Write(pb.MustMarshal(&pb.GetGroupResponse{Group: g}))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	portal, err := h.Bridge.GetPortalByKey(ctx, networkid.PortalKey{
+		ID:       MakeSpacePortalID("team_space"),
+		Receiver: ul.ID,
+	})
+	require.NoError(t, err)
+	portal.Name = string(portal.ID) // "space:team_space"
+	portal.NameSet = true
+
+	info, err := client.GetChatInfo(ctx, portal)
+	require.NoError(t, err)
+	require.NotNil(t, info)
+	require.NotNil(t, info.Name, "GetChatInfo must return Group.Name when stored portal.Name is a portal ID placeholder")
+	require.Equal(t, "Team", *info.Name)
+
+	// A stored real name from world sync still wins over nothing when get_group returns no name.
+	returnEmptyGroupName.Store(true)
+	portal.Name = "World Sync Real Name"
+	portal.NameSet = true
+	infoReal, err := client.GetChatInfo(ctx, portal)
+	require.NoError(t, err)
+	require.NotNil(t, infoReal.Name)
+	require.Equal(t, "World Sync Real Name", *infoReal.Name)
+}
+
+func TestGetChatInfoGroupDMWithTwoOtherMembersComposesName(t *testing.T) {
+	ctx := context.Background()
+	var gotGroupDMID atomic.Value
+	h, ul, client := setupLoggedInGChatTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/x-protobuf")
+		switch r.URL.Path {
+		case "/u/0/api/get_group":
+			var req pb.GetGroupRequest
+			_ = pb.Unmarshal(body, &req)
+			gotGroupDMID.Store(req.GetGroupId().GetDmId().GetDmId())
+			_, _ = w.Write(pb.MustMarshal(&pb.GetGroupResponse{
+				Group: &pb.Group{
+					GroupId: pb.DMGroupID("grp_dm_3"),
+				},
+				Memberships: []*pb.Membership{
+					{
+						Id:              &pb.MembershipId{MemberId: pb.UserMemberID("112233445566778899001")},
+						MembershipState: pb.MembershipState_MEMBER_JOINED.Enum(),
+					},
+					{
+						Id:              &pb.MembershipId{MemberId: pb.UserMemberID("112233445566778899002")},
+						MembershipState: pb.MembershipState_MEMBER_JOINED.Enum(),
+					},
+					{
+						Id:              &pb.MembershipId{MemberId: pb.UserMemberID("112233445566778899003")},
+						MembershipState: pb.MembershipState_MEMBER_JOINED.Enum(),
+					},
+				},
+			}))
+		case "/u/0/api/get_members":
+			var req pb.GetMembersRequest
+			_ = pb.Unmarshal(body, &req)
+			uid := ""
+			if len(req.GetMemberIds()) > 0 {
+				uid = req.GetMemberIds()[0].GetUserId().GetId()
+			}
+			switch uid {
+			case "112233445566778899002":
+				_, _ = w.Write(buildSyntheticGetMembersResponse(uid, "Ann", "ann@example.com", ""))
+			case "112233445566778899003":
+				_, _ = w.Write(buildSyntheticGetMembersResponse(uid, "Bob", "bob@example.com", ""))
+			default:
+				http.NotFound(w, r)
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	portal, err := h.Bridge.GetPortalByKey(ctx, networkid.PortalKey{
+		ID:       MakeDMPortalID("grp_dm_3"),
+		Receiver: ul.ID,
+	})
+	require.NoError(t, err)
+	portal.RoomType = database.RoomTypeDM
+	portal.Metadata = &PortalMetadata{
+		MemberUserIDs: []string{
+			"112233445566778899001",
+			"112233445566778899002",
+			"112233445566778899003",
+		},
+	}
+
+	info, err := client.GetChatInfo(ctx, portal)
+	require.NoError(t, err)
+	require.NotNil(t, info)
+	require.Equal(t, "grp_dm_3", gotGroupDMID.Load(), "GetChatInfo must call get_group with DM GroupId for group DMs")
+	require.NotNil(t, info.Name)
+	require.Equal(t, "Ann, Bob", *info.Name)
+}
+
+func TestGetChatInfoFiveOtherMembersComposesThreeNamesAndNOthers(t *testing.T) {
+	ctx := context.Background()
+	namesByID := map[string]string{
+		"112233445566778899011": "A",
+		"112233445566778899012": "B",
+		"112233445566778899013": "C",
+		"112233445566778899014": "D",
+		"112233445566778899015": "E",
+	}
+	h, ul, client := setupLoggedInGChatTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/x-protobuf")
+		switch r.URL.Path {
+		case "/u/0/api/get_group":
+			_, _ = w.Write(pb.MustMarshal(&pb.GetGroupResponse{
+				Group: &pb.Group{
+					GroupId: pb.SpaceGroupID("space_five"),
+				},
+			}))
+		case "/u/0/api/get_members":
+			var req pb.GetMembersRequest
+			_ = pb.Unmarshal(body, &req)
+			uid := ""
+			if len(req.GetMemberIds()) > 0 {
+				uid = req.GetMemberIds()[0].GetUserId().GetId()
+			}
+			if name, ok := namesByID[uid]; ok {
+				_, _ = w.Write(buildSyntheticGetMembersResponse(uid, name, "", ""))
+				return
+			}
+			http.NotFound(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	portal, err := h.Bridge.GetPortalByKey(ctx, networkid.PortalKey{
+		ID:       MakeSpacePortalID("space_five"),
+		Receiver: ul.ID,
+	})
+	require.NoError(t, err)
+	portal.Metadata = &PortalMetadata{
+		MemberUserIDs: []string{
+			"112233445566778899001",
+			"112233445566778899011",
+			"112233445566778899012",
+			"112233445566778899013",
+			"112233445566778899014",
+			"112233445566778899015",
+		},
+	}
+
+	info, err := client.GetChatInfo(ctx, portal)
+	require.NoError(t, err)
+	require.NotNil(t, info)
+	require.NotNil(t, info.Name)
+	require.Equal(t, "A, B, C and 2 others", *info.Name)
+}
+
+func TestWorldSyncEmptyRoomNameDoesNotSetOrOverwriteEmptyString(t *testing.T) {
+	ctx := context.Background()
+	h, ul, client := setupLoggedInGChatTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/x-protobuf")
+		switch r.URL.Path {
+		case "/u/0/api/paginated_world":
+			_, _ = w.Write(pb.MustMarshal(&pb.PaginatedWorldResponse{
+				UserRevision: &pb.ReadRevision{Timestamp: pb.Int64(700)},
+				WorldItems: []*pb.WorldItemLite{
+					{
+						GroupId:       pb.SpaceGroupID("space_existing_name"),
+						GroupRevision: &pb.ReadRevision{Timestamp: pb.Int64(10)},
+						SortTimestamp: pb.Int64(1710000002000000),
+						ReadState: &pb.GroupReadState{
+							MembershipState: pb.MembershipState_MEMBER_JOINED.Enum(),
+						},
+						RoomName: pb.String(""),
+					},
+					{
+						GroupId:       pb.SpaceGroupID("space_empty_name"),
+						GroupRevision: &pb.ReadRevision{Timestamp: pb.Int64(11)},
+						SortTimestamp: pb.Int64(1710000001000000),
+						ReadState: &pb.GroupReadState{
+							MembershipState: pb.MembershipState_MEMBER_JOINED.Enum(),
+						},
+						RoomName: pb.String(""),
+					},
+				},
+			}))
+		case "/u/0/api/get_group":
+			_, _ = w.Write(pb.MustMarshal(&pb.GetGroupResponse{}))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	existingPortal, err := h.Bridge.GetPortalByKey(ctx, networkid.PortalKey{
+		ID:       MakeSpacePortalID("space_existing_name"),
+		Receiver: ul.ID,
+	})
+	require.NoError(t, err)
+	existingPortal.Name = "Keep Existing Name"
+	existingPortal.NameSet = true
+	require.NoError(t, existingPortal.Save(ctx))
+
+	require.NoError(t, client.syncWorld(ctx))
+
+	require.Equal(t, "Keep Existing Name", existingPortal.Name, "world item with empty room_name must not overwrite stored name with empty string")
+	for _, rs := range client.recordedChatResyncs() {
+		if rs.ChatInfo != nil && rs.ChatInfo.Name != nil {
+			require.NotEmpty(t, *rs.ChatInfo.Name, "syncWorld must never set empty string as ChatInfo.Name")
+		}
+	}
+}
+
+func TestWorldSyncRefreshesUnnamedAndPlaceholderPortalsLeavingOneToOneDMUnchanged(t *testing.T) {
+	ctx := context.Background()
+	var dmOneToOneGetGroupCalled atomic.Bool
+	h, ul, client := setupLoggedInGChatTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/x-protobuf")
+		switch r.URL.Path {
+		case "/u/0/api/paginated_world":
+			_, _ = w.Write(pb.MustMarshal(&pb.PaginatedWorldResponse{
+				UserRevision: &pb.ReadRevision{Timestamp: pb.Int64(800)},
+				WorldItems: []*pb.WorldItemLite{
+					{
+						GroupId:       pb.SpaceGroupID("space_unnamed_world"),
+						GroupRevision: &pb.ReadRevision{Timestamp: pb.Int64(20)},
+						SortTimestamp: pb.Int64(1710000003000000),
+						ReadState: &pb.GroupReadState{
+							MembershipState: pb.MembershipState_MEMBER_JOINED.Enum(),
+						},
+					},
+					{
+						GroupId:       pb.DMGroupID("group_dm_world"),
+						GroupRevision: &pb.ReadRevision{Timestamp: pb.Int64(21)},
+						SortTimestamp: pb.Int64(1710000002000000),
+						ReadState: &pb.GroupReadState{
+							MembershipState: pb.MembershipState_MEMBER_JOINED.Enum(),
+							JoinedUsers: []*pb.UserId{
+								pb.HumanUserID("112233445566778899001"),
+								pb.HumanUserID("112233445566778899021"),
+								pb.HumanUserID("112233445566778899022"),
+							},
+						},
+					},
+					{
+						GroupId:       pb.DMGroupID("dm_one_to_one"),
+						GroupRevision: &pb.ReadRevision{Timestamp: pb.Int64(22)},
+						SortTimestamp: pb.Int64(1710000001000000),
+						ReadState: &pb.GroupReadState{
+							MembershipState: pb.MembershipState_MEMBER_JOINED.Enum(),
+							JoinedUsers: []*pb.UserId{
+								pb.HumanUserID("112233445566778899001"),
+								pb.HumanUserID("112233445566778899099"),
+							},
+						},
+					},
+				},
+			}))
+		case "/u/0/api/get_group":
+			var req pb.GetGroupRequest
+			_ = pb.Unmarshal(body, &req)
+			spaceID := req.GetGroupId().GetSpaceId().GetSpaceId()
+			dmID := req.GetGroupId().GetDmId().GetDmId()
+			switch {
+			case spaceID == "legacy_placeholder":
+				_, _ = w.Write(pb.MustMarshal(&pb.GetGroupResponse{
+					Group: &pb.Group{
+						GroupId: pb.SpaceGroupID("legacy_placeholder"),
+						Name:    pb.String("Repaired Legacy Space"),
+					},
+				}))
+			case spaceID == "space_unnamed_world":
+				_, _ = w.Write(pb.MustMarshal(&pb.GetGroupResponse{
+					Group: &pb.Group{
+						GroupId: pb.SpaceGroupID("space_unnamed_world"),
+						Name:    pb.String("Fetched Space Name"),
+					},
+				}))
+			case dmID == "group_dm_world":
+				_, _ = w.Write(pb.MustMarshal(&pb.GetGroupResponse{
+					Group: &pb.Group{
+						GroupId: pb.DMGroupID("group_dm_world"),
+					},
+				}))
+			case dmID == "dm_one_to_one":
+				dmOneToOneGetGroupCalled.Store(true)
+				_, _ = w.Write(pb.MustMarshal(&pb.GetGroupResponse{}))
+			default:
+				_, _ = w.Write(pb.MustMarshal(&pb.GetGroupResponse{}))
+			}
+		case "/u/0/api/get_members":
+			var req pb.GetMembersRequest
+			_ = pb.Unmarshal(body, &req)
+			uid := ""
+			if len(req.GetMemberIds()) > 0 {
+				uid = req.GetMemberIds()[0].GetUserId().GetId()
+			}
+			switch uid {
+			case "112233445566778899021":
+				_, _ = w.Write(buildSyntheticGetMembersResponse(uid, "Ann", "", ""))
+			case "112233445566778899022":
+				_, _ = w.Write(buildSyntheticGetMembersResponse(uid, "Bob", "", ""))
+			default:
+				http.NotFound(w, r)
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	// Seed an existing portal already stored with "space:<id>" prior to world sync.
+	legacyPortal, err := h.Bridge.GetPortalByKey(ctx, networkid.PortalKey{
+		ID:       MakeSpacePortalID("legacy_placeholder"),
+		Receiver: ul.ID,
+	})
+	require.NoError(t, err)
+	legacyPortal.RoomType = database.RoomTypeDefault
+	legacyPortal.Name = string(legacyPortal.ID)
+	legacyPortal.NameSet = true
+	require.NoError(t, legacyPortal.Save(ctx))
+
+	require.NoError(t, client.syncWorld(ctx))
+
+	require.Eventually(t, func() bool {
+		p, err := h.Bridge.GetExistingPortalByKey(ctx, networkid.PortalKey{
+			ID:       MakeSpacePortalID("legacy_placeholder"),
+			Receiver: ul.ID,
+		})
+		return err == nil && p != nil && p.Name == "Repaired Legacy Space"
+	}, 2*time.Second, 20*time.Millisecond, "existing portal with 'space:<id>' name must be refreshed and fixed after world sync")
+
+	require.Eventually(t, func() bool {
+		p, err := h.Bridge.GetExistingPortalByKey(ctx, networkid.PortalKey{
+			ID:       MakeSpacePortalID("space_unnamed_world"),
+			Receiver: ul.ID,
+		})
+		return err == nil && p != nil && p.Name == "Fetched Space Name"
+	}, 2*time.Second, 20*time.Millisecond, "unnamed space portal from world sync must be refreshed via get_group")
+
+	require.Eventually(t, func() bool {
+		p, err := h.Bridge.GetExistingPortalByKey(ctx, networkid.PortalKey{
+			ID:       MakeDMPortalID("group_dm_world"),
+			Receiver: ul.ID,
+		})
+		return err == nil && p != nil && p.Name == "Ann, Bob"
+	}, 2*time.Second, 20*time.Millisecond, "unnamed group DM portal must be refreshed with member names after world sync")
+
+	oneToOnePortal, err := h.Bridge.GetExistingPortalByKey(ctx, networkid.PortalKey{
+		ID:       MakeDMPortalID("dm_one_to_one"),
+		Receiver: ul.ID,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, oneToOnePortal)
+	require.Equal(t, MakeUserID("112233445566778899099"), oneToOnePortal.OtherUserID)
+	require.False(t, dmOneToOneGetGroupCalled.Load(), "1:1 DM must not be refreshed via get_group")
 }
 
 func TestServeGChatEngineHelperForAppE2E(t *testing.T) {
