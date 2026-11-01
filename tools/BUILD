@@ -117,3 +117,10 @@ rust_test(
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
 )
+
+# The committed RBE config //tools/remote:setup must never rewrite. Its test checks
+# the no-clobber guard recognises this exact file.
+exports_files(
+    ["remote.bazelrc"],
+    visibility = ["//tools/remote:__pkg__"],
+)
