@@ -17,10 +17,11 @@ Welcome to the **Vitruvian Roborock** integration! This guide walks you through 
 The plugins start it as `rrctl mcp`, so put `rrctl` on your `PATH` first, one of
 these ways:
 
-- **Download it** from the
-  [latest release](https://github.com/VitruvianSoftware/mcp-roborock/releases/latest)
-  (macOS universal, Linux x86_64), check it against its `.sha256`, and put
-  `rrctl` in a directory on your `PATH`, such as `~/.local/bin`.
+- **Download it** from a [release](https://github.com/VitruvianSoftware/mcp-roborock/releases)
+  numbered 0.2.0 or later (macOS universal, Linux x86_64). Releases before
+  0.2.0 are the old Python package and have no `rrctl` binary. Check the
+  download against its `.sha256`, and put `rrctl` in a directory on your
+  `PATH`, such as `~/.local/bin`.
 - **Build it** with Rust installed:
   `cargo install --locked --git https://github.com/VitruvianSoftware/mcp-roborock`
 - **In the vitruvian-core monorepo:** `bazel build //apps/mcp/roborock:rrctl`,
@@ -91,7 +92,7 @@ switch:
      `install -m 755 bazel-bin/apps/mcp/roborock/rrctl ~/.local/bin/rrctl`;
    - with Rust installed:
      `cargo install --locked --git https://github.com/VitruvianSoftware/mcp-roborock`;
-   - or download a release binary, as above.
+   - or download a release binary (0.2.0 or later), as above.
 4. **Check it:** `rrctl --version` should print `rrctl 0.2.0 (rust)`.
 5. **Restart your agent sessions** (Claude Code, Antigravity), so their MCP
    servers start again with the new binary.

@@ -21,7 +21,8 @@ says which. Have the user, in a terminal:
    `bazel build //apps/mcp/roborock:rrctl` and copy
    `bazel-bin/apps/mcp/roborock/rrctl` to `~/.local/bin/`; otherwise
    `cargo install --locked --git https://github.com/VitruvianSoftware/mcp-roborock`,
-   or a release binary from https://github.com/VitruvianSoftware/mcp-roborock/releases.
+   or a release binary (0.2.0 or later; earlier releases are the Python
+   package) from https://github.com/VitruvianSoftware/mcp-roborock/releases.
 4. Restart the agent session so the server starts again.
 
 The login carries over, so setup is usually not needed after this.

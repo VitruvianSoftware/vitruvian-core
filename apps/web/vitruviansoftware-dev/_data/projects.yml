@@ -249,15 +249,15 @@ projects:
     group: agents
     status: mirror
     summary: >-
-      A Roborock vacuum integration: a local daemon, a FastMCP server and
+      A Roborock vacuum integration: a local daemon, an MCP server and
       plugins that let a coding agent check status, start room cleans or send
       the robot home.
-    tags: [Python, MCP, FastMCP]
+    tags: [Rust, MCP]
     repo: https://github.com/VitruvianSoftware/mcp-roborock
     source: apps/mcp/roborock
     extension:
       kind: plugin
-      needs: uv, and a Roborock account (the plugin walks you through logging in)
+      needs: rrctl on your PATH (download it from a 0.2.0+ release, or cargo install), and a Roborock account (the plugin walks you through logging in)
       installs:
         - tool: Claude Code
           label: "Claude Code, step 1: add the marketplace"

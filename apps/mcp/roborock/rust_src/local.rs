@@ -40,13 +40,24 @@ const TIMEOUT: Duration = Duration::from_secs(5);
 const PING_INTERVAL: Duration = Duration::from_secs(10);
 
 static CONNECT_NONCE: NextInt = NextInt::new(10_000, 32_767);
+/// Numbers every channel, so a late signal from an old one can be told
+/// apart from the current one.
+static GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 pub type Subscriber = Arc<dyn Fn(Message) + Send + Sync>;
+/// Called once when the link goes down, so a caller can fail its own
+/// requests that were sent over it.
+pub type DownHook = Arc<dyn Fn() + Send + Sync>;
 
 type Waiter = (u16, u32, mpsc::Sender<Message>);
+/// Bytes for the writer thread, and where to report how the write went.
+type WriteJob = (Vec<u8>, mpsc::Sender<std::io::Result<()>>);
 
 struct Inner {
+    /// Only for shutting the socket down: writes go through `writer`.
     stream: Mutex<TcpStream>,
+    /// The writer thread's queue; None once the link is down.
+    writer: Mutex<Option<mpsc::Sender<WriteJob>>>,
     local_key: String,
     version: Mutex<[u8; 3]>,
     nonces: Mutex<Nonces>,
@@ -56,6 +67,31 @@ struct Inner {
     /// How long the link may go without one decoded frame before it is
     /// treated as dead. Pings are answered every 10 seconds.
     liveness: Duration,
+    on_down: Mutex<Option<DownHook>>,
+    generation: u64,
+}
+
+impl Inner {
+    /// Mark the link down, once: fail every waiter and call the hook. Never
+    /// waits on the socket, so a stuck send can't hold it up.
+    fn mark_down(&self) {
+        self.connected.store(false, Ordering::SeqCst);
+        // No more writes; the writer thread ends after the one in hand.
+        self.writer.lock().unwrap_or_else(|e| e.into_inner()).take();
+        // Dropping the senders wakes every exchange at once.
+        self.waiters
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
+        let hook = self
+            .on_down
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take();
+        if let Some(hook) = hook {
+            hook();
+        }
+    }
 }
 
 pub struct LocalChannel {
@@ -104,8 +140,13 @@ impl LocalChannel {
         let reader = stream
             .try_clone()
             .map_err(|e| LocalError(format!("Failed to connect to {addr}: {e}")))?;
+        let writer_stream = stream
+            .try_clone()
+            .map_err(|e| LocalError(format!("Failed to connect to {addr}: {e}")))?;
+        let (writer_tx, writer_rx) = mpsc::channel::<WriteJob>();
         let inner = Arc::new(Inner {
             stream: Mutex::new(stream),
+            writer: Mutex::new(Some(writer_tx)),
             local_key: local_key.to_string(),
             version: Mutex::new(protocol::V1),
             nonces: Mutex::new(Nonces {
@@ -116,7 +157,13 @@ impl LocalChannel {
             waiters: Mutex::new(Vec::new()),
             subscriber,
             liveness,
+            on_down: Mutex::new(None),
+            generation: GENERATION.fetch_add(1, Ordering::SeqCst),
         });
+        thread::Builder::new()
+            .name("roborock-local-write".into())
+            .spawn(move || write_loop(writer_stream, writer_rx))
+            .map_err(|e| LocalError(format!("cannot start the local writer: {e}")))?;
         let reader_inner = inner.clone();
         thread::Builder::new()
             .name("roborock-local".into())
@@ -177,12 +224,26 @@ impl LocalChannel {
         ))
     }
 
+    /// Run `hook` once when this link goes down (straight away if it already
+    /// has).
+    pub fn set_on_down(&self, hook: DownHook) {
+        *self.inner.on_down.lock().unwrap_or_else(|e| e.into_inner()) = Some(hook);
+        if !self.is_connected() {
+            self.inner.mark_down();
+        }
+    }
+
     pub fn version(&self) -> [u8; 3] {
         *self.inner.version.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     fn nonces(&self) -> Nonces {
         *self.inner.nonces.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// This channel's number, unique in the process.
+    pub fn generation(&self) -> u64 {
+        self.inner.generation
     }
 
     pub fn is_connected(&self) -> bool {
@@ -195,11 +256,36 @@ impl LocalChannel {
         }
         let wire = protocol::encode(msg, &self.inner.local_key, true, Some(self.nonces()))
             .map_err(|e| LocalError(format!("Failed to encode message: {e}")))?;
-        let mut stream = self.inner.stream.lock().unwrap_or_else(|e| e.into_inner());
-        stream.write_all(&wire).map_err(|e| {
-            self.inner.connected.store(false, Ordering::SeqCst);
-            LocalError(format!("Failed to send message: {e}"))
-        })
+        // A hard deadline for the caller, whatever the kernel does with one
+        // write(): the writer thread does the blocking, and if it isn't done
+        // in time the socket is shut down under it.
+        let deadline = Instant::now() + TIMEOUT;
+        let writer = self
+            .inner
+            .writer
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+            .ok_or_else(|| LocalError("Not connected to device".into()))?;
+        let (done_tx, done_rx) = mpsc::channel();
+        if writer.send((wire, done_tx)).is_err() {
+            self.inner.mark_down();
+            return Err(LocalError(
+                "Failed to send message: the writer has stopped".into(),
+            ));
+        }
+        let outcome = match done_rx.recv_timeout(deadline.saturating_duration_since(Instant::now()))
+        {
+            Ok(Ok(())) => return Ok(()),
+            Ok(Err(e)) => format!("Failed to send message: {e}"),
+            Err(_) => "Failed to send message: the device stopped reading".to_string(),
+        };
+        // Half a frame may be on the wire; the link can't be trusted.
+        self.inner.mark_down();
+        if let Ok(stream) = self.inner.stream.lock() {
+            let _ = stream.shutdown(Shutdown::Both);
+        }
+        Err(LocalError(outcome))
     }
 
     /// Send `msg` and wait for the frame with the same seq and `response_protocol`.
@@ -211,8 +297,14 @@ impl LocalChannel {
             .unwrap_or_else(|e| e.into_inner())
             .push((response_protocol, msg.seq, tx));
         let result = self.publish(&msg).and_then(|_| {
-            rx.recv_timeout(TIMEOUT)
-                .map_err(|_| LocalError(format!("Command timed out after {}s", TIMEOUT.as_secs())))
+            rx.recv_timeout(TIMEOUT).map_err(|e| match e {
+                mpsc::RecvTimeoutError::Timeout => {
+                    LocalError(format!("Command timed out after {}s", TIMEOUT.as_secs()))
+                }
+                mpsc::RecvTimeoutError::Disconnected => {
+                    LocalError("The local connection to the vacuum was lost".into())
+                }
+            })
         });
         self.inner
             .waiters
@@ -223,9 +315,25 @@ impl LocalChannel {
     }
 
     pub fn close(&self) {
-        self.inner.connected.store(false, Ordering::SeqCst);
+        self.inner.mark_down();
         let stream = self.inner.stream.lock().unwrap_or_else(|e| e.into_inner());
         let _ = stream.shutdown(Shutdown::Both);
+    }
+}
+
+/// Writes each job with the socket's write timeout; the caller enforces the
+/// overall deadline (macOS can stretch one write() past its timeout while a
+/// peer drains slowly). Ends at the first failure, or when the link is
+/// marked down.
+fn write_loop(mut stream: TcpStream, jobs: mpsc::Receiver<WriteJob>) {
+    stream.set_write_timeout(Some(TIMEOUT)).ok();
+    while let Ok((data, done)) = jobs.recv() {
+        let result = stream.write_all(&data);
+        let failed = result.is_err();
+        let _ = done.send(result);
+        if failed {
+            return;
+        }
     }
 }
 
@@ -236,16 +344,13 @@ struct ReaderGuard(Arc<Inner>);
 
 impl Drop for ReaderGuard {
     fn drop(&mut self) {
-        self.0.connected.store(false, Ordering::SeqCst);
+        // Waiters and the hook first, before touching the socket. Sends no
+        // longer hold the socket lock (the writer thread owns its own handle),
+        // but nothing here should depend on that.
+        self.0.mark_down();
         if let Ok(stream) = self.0.stream.lock() {
             let _ = stream.shutdown(Shutdown::Both);
         }
-        // Wake anyone waiting on a reply that will now never come.
-        self.0
-            .waiters
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .clear();
     }
 }
 
@@ -412,7 +517,7 @@ mod tests {
             }
             then(&mut sock);
             // Hold the socket open so only the reader's own state can end the link.
-            thread::sleep(Duration::from_secs(10));
+            thread::sleep(Duration::from_secs(30));
         });
         addr
     }
@@ -442,10 +547,187 @@ mod tests {
         // A subscriber that panics takes the reader thread down with it.
         let ch =
             LocalChannel::connect_addr(&addr, KEY, Arc::new(|_| panic!("subscriber bug"))).unwrap();
+        let downs = Arc::new(Mutex::new(0usize));
+        let d = downs.clone();
+        ch.set_on_down(Arc::new(move || *d.lock().unwrap() += 1));
         assert!(ch.is_connected());
         assert!(
             becomes_disconnected(&ch, Duration::from_secs(3)),
             "the link still looks alive"
+        );
+        // The owner hears about it exactly once.
+        thread::sleep(Duration::from_millis(50));
+        assert_eq!(*downs.lock().unwrap(), 1);
+    }
+
+    #[test]
+    fn a_request_in_flight_fails_at_once_when_the_reader_dies() {
+        // The device takes a ping, never answers it, and pushes a message
+        // that kills the reader.
+        let addr = scripted_device(|sock| {
+            let mut frames = FrameBuffer::default();
+            let mut chunk = [0u8; 4096];
+            loop {
+                let n = match sock.read(&mut chunk) {
+                    Ok(0) | Err(_) => return,
+                    Ok(n) => n,
+                };
+                frames.push(&chunk[..n]);
+                if frames.next_frame().is_some() {
+                    break;
+                }
+            }
+            let push = Message::new(
+                protocol::GENERAL_RESPONSE,
+                Some(br#"{"dps":{"121":5}}"#.to_vec()),
+            );
+            sock.write_all(&protocol::encode(&push, KEY, true, None).unwrap())
+                .unwrap();
+        });
+        let ch =
+            LocalChannel::connect_addr(&addr, KEY, Arc::new(|_| panic!("subscriber bug"))).unwrap();
+        let started = Instant::now();
+        let ping = Message {
+            version: ch.version(),
+            ..Message::new(protocol::PING_REQUEST, None)
+        };
+        let err = ch.exchange(ping, protocol::PING_RESPONSE).unwrap_err();
+        assert!(
+            started.elapsed() < Duration::from_secs(3),
+            "waited {:?}",
+            started.elapsed()
+        );
+        assert!(err.0.contains("connection to the vacuum was lost"), "{err}");
+    }
+
+    /// Sends 60 KB frames until one fails, checking that every send comes
+    /// back within the deadline plus `slack`. Returns whether one failed.
+    fn every_send_is_bounded(
+        ch: Arc<LocalChannel>,
+        slack: Duration,
+        for_at_most: Duration,
+    ) -> bool {
+        let (tx, rx) = mpsc::channel();
+        thread::spawn(move || {
+            let big = Message::new(protocol::GENERAL_REQUEST, Some(vec![b'x'; 60_000]));
+            loop {
+                let started = Instant::now();
+                let failed = ch.publish(&big).is_err();
+                if tx.send((failed, started.elapsed())).is_err() || failed {
+                    return;
+                }
+            }
+        });
+        let started = Instant::now();
+        while started.elapsed() < for_at_most {
+            match rx.recv_timeout(TIMEOUT + slack + Duration::from_secs(2)) {
+                Ok((failed, took)) => {
+                    assert!(took <= TIMEOUT + slack, "one send took {took:?}");
+                    if failed {
+                        return true;
+                    }
+                }
+                Err(_) => panic!("a send blocked past its deadline"),
+            }
+        }
+        false
+    }
+
+    #[test]
+    fn a_device_that_stops_reading_cannot_block_a_send_forever() {
+        // The device answers hello and then never reads again.
+        let addr = scripted_device(|_| {});
+        let ch = Arc::new(LocalChannel::connect_addr(&addr, KEY, Arc::new(|_| {})).unwrap());
+        let failed =
+            every_send_is_bounded(ch.clone(), Duration::from_secs(1), Duration::from_secs(14));
+        assert!(failed, "the buffers never filled");
+        // A send that timed out leaves half a frame on the wire: the link is down.
+        assert!(!ch.is_connected());
+    }
+
+    #[test]
+    fn a_slowly_draining_device_cannot_stretch_one_send_past_its_deadline() {
+        // The device reads a trickle: enough that writes make progress, never
+        // enough to keep up.
+        let addr = scripted_device(|sock| {
+            let mut buf = [0u8; 256];
+            for _ in 0..400 {
+                if sock.read(&mut buf).is_err() {
+                    return;
+                }
+                thread::sleep(Duration::from_millis(50));
+            }
+        });
+        let ch = Arc::new(LocalChannel::connect_addr(&addr, KEY, Arc::new(|_| {})).unwrap());
+        every_send_is_bounded(ch, Duration::from_secs(1), Duration::from_secs(8));
+    }
+
+    #[test]
+    fn the_down_hook_fires_once_however_the_link_goes_down() {
+        let addr = scripted_device(|sock| {
+            thread::sleep(Duration::from_millis(200));
+            // Also end the reader, after close() has run.
+            let _ = sock.shutdown(Shutdown::Both);
+        });
+        let ch = LocalChannel::connect_addr(&addr, KEY, Arc::new(|_| {})).unwrap();
+        let downs = Arc::new(Mutex::new(0usize));
+        let d = downs.clone();
+        ch.set_on_down(Arc::new(move || *d.lock().unwrap() += 1));
+        ch.close();
+        ch.close();
+        thread::sleep(Duration::from_millis(600));
+        assert_eq!(*downs.lock().unwrap(), 1);
+    }
+
+    #[test]
+    fn a_hook_set_on_a_link_already_down_fires_at_once() {
+        let addr = scripted_device(|_| {});
+        let ch = LocalChannel::connect_addr(&addr, KEY, Arc::new(|_| {})).unwrap();
+        ch.close();
+        let downs = Arc::new(Mutex::new(0usize));
+        let d = downs.clone();
+        ch.set_on_down(Arc::new(move || *d.lock().unwrap() += 1));
+        assert_eq!(*downs.lock().unwrap(), 1);
+    }
+
+    #[test]
+    fn requests_fail_before_cleanup_waits_on_a_stuck_send() {
+        // The device stops reading, so a send holds the socket lock for its
+        // whole deadline; then it pushes a message that kills the reader.
+        let (kill_tx, kill_rx) = mpsc::channel::<()>();
+        let addr = scripted_device(move |sock| {
+            let _ = kill_rx.recv_timeout(Duration::from_secs(10));
+            let push = Message::new(
+                protocol::GENERAL_RESPONSE,
+                Some(br#"{"dps":{"121":5}}"#.to_vec()),
+            );
+            sock.write_all(&protocol::encode(&push, KEY, true, None).unwrap())
+                .unwrap();
+        });
+        let ch = Arc::new(
+            LocalChannel::connect_addr(&addr, KEY, Arc::new(|_| panic!("subscriber bug"))).unwrap(),
+        );
+        let fired = Arc::new(Mutex::new(None::<Instant>));
+        let f = fired.clone();
+        ch.set_on_down(Arc::new(move || *f.lock().unwrap() = Some(Instant::now())));
+        // Fill the buffers until a send is blocked, holding the socket lock.
+        let sender = ch.clone();
+        thread::spawn(move || {
+            let big = Message::new(protocol::GENERAL_REQUEST, Some(vec![b'x'; 60_000]));
+            while sender.publish(&big).is_ok() {}
+        });
+        thread::sleep(Duration::from_millis(1500));
+        let killed = Instant::now();
+        kill_tx.send(()).unwrap();
+        let deadline = killed + Duration::from_secs(8);
+        while fired.lock().unwrap().is_none() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(20));
+        }
+        let at = fired.lock().unwrap().expect("the hook never fired");
+        assert!(
+            at.duration_since(killed) < Duration::from_secs(2),
+            "requests waited {:?} behind the stuck send",
+            at.duration_since(killed)
         );
     }
 

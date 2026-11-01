@@ -555,7 +555,7 @@
       "id": "mcp-roborock",
       "name": "mcp-roborock",
       "kind": "plugin",
-      "category": "Home Automation & FastMCP",
+      "category": "Home Automation & MCP",
       "status": "mirror",
       "summary": "A Roborock vacuum integration: a local daemon, an MCP server and plugins that let a coding agent check status, start room cleans or send the robot home.",
       "repo": "https://github.com/VitruvianSoftware/mcp-roborock",
@@ -578,7 +578,7 @@
       ],
       "hooks": [],
       "rules": [],
-      "needs": "rrctl on your PATH (a release download, or cargo install), and a Roborock account (the plugin walks you through logging in)",
+      "needs": "rrctl on your PATH (download it from a 0.2.0+ release, or cargo install), and a Roborock account (the plugin walks you through logging in)",
       "note": "",
       "installs": [
         {
