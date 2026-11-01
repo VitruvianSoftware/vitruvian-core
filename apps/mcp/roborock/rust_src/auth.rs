@@ -101,24 +101,6 @@ pub trait ApiClient: Send + Sync {
 
 pub type ClientFactory = Arc<dyn Fn(&str) -> Arc<dyn ApiClient> + Send + Sync>;
 
-struct UnconfiguredApiClient;
-
-impl ApiClient for UnconfiguredApiClient {
-    fn request_code_v4(&self) -> Result<(), ApiError> {
-        Err(ApiError::new(
-            "RoborockNoResponseFromBaseURL",
-            "cloud client not configured",
-        ))
-    }
-
-    fn code_login_v4(&self, _code: &str) -> Result<Map<String, Value>, ApiError> {
-        Err(ApiError::new(
-            "RoborockNoResponseFromBaseURL",
-            "cloud client not configured",
-        ))
-    }
-}
-
 pub fn explain_api_error(err: &ApiError) -> String {
     match err.class_name.as_str() {
         "RoborockAccountDoesNotExist" => "No Roborock account uses that email address.".to_string(),
@@ -245,8 +227,11 @@ impl Default for LoginFlow {
 
 impl LoginFlow {
     pub fn new(client_factory: Option<ClientFactory>) -> Self {
-        let factory = client_factory
-            .unwrap_or_else(|| Arc::new(|_email: &str| Arc::new(UnconfiguredApiClient)));
+        let factory = client_factory.unwrap_or_else(|| {
+            Arc::new(|email: &str| -> Arc<dyn ApiClient> {
+                Arc::new(crate::cloud::CloudClient::new(email, None))
+            })
+        });
         Self {
             client_factory: factory,
             pending: Arc::new(Mutex::new(HashMap::new())),

@@ -383,6 +383,23 @@ crate.from_cargo(
 )
 use_repo(crate, "mcp_slack_crates")
 
+# The Roborock daemon/CLI/MCP server's crates. A separate hub with its own
+# Cargo.lock because the mcp-roborock mirror builds from apps/mcp/roborock
+# alone (see apps/mcp/roborock/Cargo.toml).
+# Re-lock: bazel run //tools/crates:lock -- --dir apps/mcp/roborock
+crate.from_cargo(
+    name = "mcp_roborock_crates",
+    cargo_lock = "//apps/mcp/roborock:Cargo.lock",
+    cargo_toml = "//apps/mcp/roborock:Cargo.toml",
+    platform_triples = [
+        "aarch64-apple-darwin",
+        "aarch64-unknown-linux-gnu",
+        "x86_64-apple-darwin",
+        "x86_64-unknown-linux-gnu",
+    ],
+)
+use_repo(crate, "mcp_roborock_crates")
+
 # ring compiles C with cc-rs: same execroot problem, same wrapper as Courier's
 # libsignal annotation below. Linux too, since CI builds this on Linux.
 crate.annotation(
@@ -395,7 +412,10 @@ crate.annotation(
     },
     build_script_tools = ["@@//apps/desktop/courier/libsignal:cc_in_execroot"],
     crate = "ring",
-    repositories = ["mcp_slack_crates"],
+    repositories = [
+        "mcp_roborock_crates",
+        "mcp_slack_crates",
+    ],
 )
 
 # --- libsignal (Courier's Signal bridge) -----------------------------------

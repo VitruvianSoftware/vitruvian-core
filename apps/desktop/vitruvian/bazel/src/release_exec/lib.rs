@@ -419,7 +419,9 @@ pub fn capture(r: &mut dyn Runner, cmd: &Cmd) -> Result<String, i32> {
 /// that no environment variable holds.
 pub fn report_redacted(r: &mut dyn Runner, text: &str) {
     let secrets = r.secrets();
-    r.report(&redact_urls_in_text(&redact_known(text, &secrets)));
+    r.report(&redact_github_tokens(&redact_credentials_in_text(
+        &redact_urls_in_text(&redact_known(text, &secrets)),
+    )));
 }
 
 pub const REDACTED: &str = "<redacted>";
@@ -582,24 +584,29 @@ pub fn redact_args(program: &str, args: &[String]) -> Vec<String> {
     let is_curl = base == "curl";
     let mut out = Vec::with_capacity(args.len());
     let mut hide_next = false;
+    let mut curl_next: Option<CurlValue> = None;
     for a in args {
         if hide_next {
             out.push(REDACTED.to_string());
             hide_next = false;
             continue;
         }
+        if let Some(kind) = curl_next.take() {
+            out.push(redact_curl_value(kind, a));
+            continue;
+        }
         if is_curl {
-            match curl_credential(a) {
-                CurlCredential::Next => {
-                    hide_next = true;
+            match curl_option(a) {
+                CurlOption::ValueNext(kind) => {
+                    curl_next = Some(kind);
                     out.push(a.clone());
                     continue;
                 }
-                CurlCredential::Inline(kept) => {
-                    out.push(format!("{}{}", kept, REDACTED));
+                CurlOption::Attached(flag, kind, value) => {
+                    out.push(format!("{}{}", flag, redact_curl_value(kind, value)));
                     continue;
                 }
-                CurlCredential::None => {}
+                CurlOption::Plain => {}
             }
         }
         hide_next = SECRET_FLAGS.contains(&a.as_str()) || security_flag == Some(a.as_str());
@@ -608,54 +615,129 @@ pub fn redact_args(program: &str, args: &[String]) -> Vec<String> {
     out
 }
 
-/// curl's flags whose value is a credential: `-u`/`--user` and
-/// `-U`/`--proxy-user` (`user:password`) and `--oauth2-bearer`. Only for
-/// curl: elsewhere `-u` and `--user` mean other things (`git add -u`,
-/// `pip install --user`).
-const CURL_SECRET_FLAGS: [&str; 5] = ["-u", "--user", "-U", "--proxy-user", "--oauth2-bearer"];
-
-enum CurlCredential {
-    /// Not a credential flag.
-    None,
-    /// A credential flag whose value is the next argument.
-    Next,
-    /// A credential flag with its value attached: keep this prefix.
-    Inline(String),
+/// How the value of a curl option is hidden. Only for curl: elsewhere
+/// `-u`, `--user` and `-E` mean other things (`git add -u`, `pip install
+/// --user`, `grep -E`).
+#[derive(Clone, Copy)]
+enum CurlValue {
+    /// A credential whole: `-u`/`--user` and `-U`/`--proxy-user`
+    /// (`user:password`), `--oauth2-bearer`, and `--pass`/`--proxy-pass`
+    /// (the private key's passphrase).
+    Whole,
+    /// `certificate[:password]` (`-E`/`--cert`, `--proxy-cert`): the
+    /// password is hidden, the path kept.
+    Cert,
+    /// `-b`/`--cookie`: cookie data (`name=value; …`) is hidden whole; a
+    /// value without `=` is a file to read cookies from, and is kept.
+    Cookie,
+    /// Anything else, judged like any argument ([`redact_arg`]): a header
+    /// by its name, `name=value` data by its name, a URL's credentials.
+    Other,
 }
 
-fn curl_credential(arg: &str) -> CurlCredential {
-    if CURL_SECRET_FLAGS.contains(&arg) {
-        return CurlCredential::Next;
-    }
-    if let Some((flag, _)) = arg.split_once('=') {
-        if flag.starts_with("--") && CURL_SECRET_FLAGS.contains(&flag) {
-            return CurlCredential::Inline(format!("{}=", flag));
+fn curl_value_kind(flag: &str) -> CurlValue {
+    match flag {
+        "-u" | "--user" | "-U" | "--proxy-user" | "--oauth2-bearer" | "--pass" | "--proxy-pass" => {
+            CurlValue::Whole
         }
+        "-E" | "--cert" | "--proxy-cert" => CurlValue::Cert,
+        "-b" | "--cookie" => CurlValue::Cookie,
+        _ => CurlValue::Other,
+    }
+}
+
+fn redact_curl_value(kind: CurlValue, value: &str) -> String {
+    match kind {
+        CurlValue::Whole => REDACTED.to_string(),
+        CurlValue::Cert => redact_cert_password(value),
+        CurlValue::Cookie if value.contains('=') => REDACTED.to_string(),
+        CurlValue::Cookie => value.to_string(),
+        CurlValue::Other => redact_arg(value),
+    }
+}
+
+/// `certificate[:password]` with the password hidden. As curl reads it, a
+/// `\:` is a colon in the path, and so is a Windows drive letter's
+/// (`C:\certs\c.pem:pw`). A PKCS#11 URI (`pkcs11:…;pin-value=…`) is hidden
+/// after its scheme, the PIN with it.
+fn redact_cert_password(value: &str) -> String {
+    let b = value.as_bytes();
+    let drive = b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':';
+    let mut i = if drive && (b[2] == b'\\' || b[2] == b'/') {
+        2
+    } else {
+        0
+    };
+    while i < b.len() {
+        match b[i] {
+            b'\\' => i += 2,
+            b':' => return format!("{}{}", &value[..=i], REDACTED),
+            _ => i += 1,
+        }
+    }
+    value.to_string()
+}
+
+/// curl's short options, other than `-u`/`-U`, that take a value: in a
+/// cluster, whatever follows one of them is its value (`-XPUT`, `-oout.bin`,
+/// `-HName: v`).
+const CURL_VALUE_SHORT_FLAGS: &str = "AbcCdDeEFHKmoPQrtTwxXyYz";
+
+enum CurlOption<'a> {
+    /// Not an option whose value needs its own handling: judged whole.
+    Plain,
+    /// An option whose value is the next argument and is hidden its way.
+    ValueNext(CurlValue),
+    /// An option with its value attached: the option as written (`-d`,
+    /// `-sSE`, `--cert=`), how to hide the value, and the value.
+    Attached(&'a str, CurlValue, &'a str),
+}
+
+fn curl_option(arg: &str) -> CurlOption<'_> {
+    if let Some(long) = arg.strip_prefix("--") {
+        let (flag, value) = match long.split_once('=') {
+            Some((name, value)) => (&arg[..2 + name.len()], Some(value)),
+            None => (arg, None),
+        };
+        return match (curl_value_kind(flag), value) {
+            // `--data=token=x` and `--header=Name: v` are judged whole, by
+            // the names in them, as before.
+            (CurlValue::Other, _) => CurlOption::Plain,
+            (kind, Some(value)) => CurlOption::Attached(&arg[..flag.len() + 1], kind, value),
+            (kind, None) => CurlOption::ValueNext(kind),
+        };
     }
     // Short options cluster (`-sSu user:pw`) and take their value joined
-    // (`-uuser:pw`): the first `u`/`U` among the leading letters is the flag.
-    if let Some(cluster) = arg.strip_prefix('-') {
-        if cluster.starts_with('-') {
-            return CurlCredential::None;
+    // (`-uuser:pw`, `-dtoken=x`): the first option that takes a value ends
+    // the cluster, and the rest of the argument is its value. So `-XPUT` is
+    // the method PUT, not `-X` plus `-U`.
+    let Some(cluster) = arg.strip_prefix('-') else {
+        return CurlOption::Plain;
+    };
+    for (i, c) in cluster.char_indices() {
+        if !c.is_ascii_alphabetic() {
+            break;
         }
-        for (i, c) in cluster.char_indices() {
-            if !c.is_ascii_alphabetic() {
-                break;
-            }
-            if c == 'u' || c == 'U' {
-                let end = 1 + i + 1;
-                return if end == arg.len() {
-                    CurlCredential::Next
-                } else {
-                    CurlCredential::Inline(arg[..end].to_string())
-                };
-            }
+        if c == 'u' || c == 'U' || CURL_VALUE_SHORT_FLAGS.contains(c) {
+            let end = 1 + i + 1;
+            let kind = curl_value_kind(&format!("-{}", c));
+            return match (kind, end == arg.len()) {
+                (CurlValue::Other, true) => CurlOption::Plain,
+                (kind, true) => CurlOption::ValueNext(kind),
+                (kind, false) => CurlOption::Attached(&arg[..end], kind, &arg[end..]),
+            };
         }
     }
-    CurlCredential::None
+    CurlOption::Plain
 }
 
+/// One argument with its secrets hidden (see [`redact_args`]), GitHub
+/// tokens included wherever they sit in it ([`redact_github_tokens`]).
 fn redact_arg(arg: &str) -> String {
+    redact_github_tokens(&redact_arg_by_shape(arg))
+}
+
+fn redact_arg_by_shape(arg: &str) -> String {
     let lower = arg.to_ascii_lowercase();
     if let Some(i) = lower.find("authorization:") {
         return format!("{} {}", &arg[..i + "authorization:".len()], REDACTED);
@@ -710,13 +792,160 @@ fn redact_secret_header(arg: &str) -> Option<(usize, String)> {
         || !name
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-        || !is_secret_name(name)
+        || !(is_secret_name(name) || is_cookie_header(name))
     {
         return None;
     }
     let value = &arg[colon + 1..];
     let space = &value[..value.len() - value.trim_start().len()];
     Some((colon, format!("{}{}{}", &arg[..colon + 1], space, REDACTED)))
+}
+
+/// The prefixes GitHub gives its tokens: personal (classic and
+/// fine-grained), OAuth, user-to-server, server-to-server (an App's
+/// installation token) and refresh.
+const GITHUB_TOKEN_PREFIXES: [&str; 6] = ["github_pat_", "ghp_", "gho_", "ghu_", "ghs_", "ghr_"];
+
+/// `text` with every GitHub token hidden by its prefix, wherever it sits:
+/// after `;`, `=`, `(`, a quote or at the start of a word, not only where a
+/// name like `token=` or a URL's userinfo announces it. A token runs while
+/// its characters are letters, digits or `_`, so what follows it (`!`, `)`,
+/// `]`, `,`, `.`, a quote) is kept. A prefix right after a letter
+/// (`xghp_…`) or with nothing after it is not a token.
+pub fn redact_github_tokens(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = String::with_capacity(text.len());
+    let mut copied = 0;
+    let mut i = 0;
+    while i < bytes.len() {
+        // Only a letter before the prefix makes it part of a longer word:
+        // a token glued to a number (`run 42ghs_…`) is still one.
+        let at_word_start = i == 0 || !bytes[i - 1].is_ascii_alphabetic();
+        let prefix = GITHUB_TOKEN_PREFIXES
+            .iter()
+            .find(|p| bytes[i..].starts_with(p.as_bytes()));
+        if let (true, Some(p)) = (at_word_start, prefix) {
+            let body = i + p.len();
+            let end = body
+                + bytes[body..]
+                    .iter()
+                    .take_while(|b| b.is_ascii_alphanumeric() || **b == b'_')
+                    .count();
+            if end > body {
+                // Both ends sit next to ASCII bytes, so on char boundaries.
+                out.push_str(&text[copied..i]);
+                out.push_str(REDACTED);
+                copied = end;
+                i = end;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    out.push_str(&text[copied..]);
+    out
+}
+
+/// `Cookie` and `Set-Cookie`, any case: a header whose value is a session.
+fn is_cookie_header(name: &str) -> bool {
+    name.eq_ignore_ascii_case("cookie") || name.eq_ignore_ascii_case("set-cookie")
+}
+
+/// The shortest token after a bare `Bearer` that [`redact_credentials_in_text`]
+/// hides: real tokens are far longer, and prose (`the bearer of …`) is not.
+pub const MIN_BEARER_TOKEN: usize = 8;
+
+/// `text` with the credentials that announce themselves hidden, though no
+/// environment variable holds them (a token minted at run time): the value
+/// of an `Authorization:` header after its scheme (`token`, `Bearer`,
+/// `Basic`, …), also as a JSON key; a token of at least
+/// [`MIN_BEARER_TOKEN`] characters after a bare `Bearer`; and the rest of
+/// the line after `Cookie:` or `Set-Cookie:`, unless already `<redacted>`.
+/// A credential runs to a blank, quote, `,`, `;` or closing bracket, which
+/// are kept.
+pub fn redact_credentials_in_text(text: &str) -> String {
+    let lower = text.to_ascii_lowercase();
+    let b = text.as_bytes();
+    let word_start = |i: usize| i == 0 || !b[i - 1].is_ascii_alphanumeric();
+    let is_cred = |c: u8| !c.is_ascii_whitespace() && !b"\"'`,;)]}<>".contains(&c);
+    let cred_end = |j: usize| j + b[j..].iter().take_while(|c| is_cred(**c)).count();
+    let skip_blank = |j: usize| {
+        j + b[j..]
+            .iter()
+            .take_while(|c| **c == b' ' || **c == b'\t')
+            .count()
+    };
+    let is_quote = |j: usize| j < b.len() && (b[j] == b'"' || b[j] == b'\'');
+    let mut spans: Vec<(usize, usize)> = Vec::new();
+    for (i, _) in lower.match_indices("authorization") {
+        let mut j = i + "authorization".len();
+        if !word_start(i) {
+            continue;
+        }
+        if is_quote(j) {
+            j += 1;
+        }
+        if j >= b.len() || b[j] != b':' {
+            continue;
+        }
+        j = skip_blank(j + 1);
+        if is_quote(j) {
+            j += 1;
+        }
+        // A scheme, then a blank: the credential is what follows.
+        let w = j + b[j..]
+            .iter()
+            .take_while(|c| c.is_ascii_alphabetic())
+            .count();
+        if w > j && w < b.len() && (b[w] == b' ' || b[w] == b'\t') {
+            let k = skip_blank(w);
+            if k < b.len() && is_cred(b[k]) {
+                j = k;
+            }
+        }
+        let e = cred_end(j);
+        if e > j {
+            spans.push((j, e));
+        }
+    }
+    for (i, _) in lower.match_indices("bearer") {
+        let j = i + "bearer".len();
+        if !word_start(i) || j >= b.len() || !(b[j] == b' ' || b[j] == b'\t') {
+            continue;
+        }
+        let j = skip_blank(j);
+        let e = cred_end(j);
+        if e - j >= MIN_BEARER_TOKEN {
+            spans.push((j, e));
+        }
+    }
+    for (i, _) in lower.match_indices("cookie:") {
+        if !word_start(i) {
+            continue;
+        }
+        let j = skip_blank(i + "cookie:".len());
+        let e = j + b[j..]
+            .iter()
+            .take_while(|c| **c != b'\n' && **c != b'\r')
+            .count();
+        if e > j && !text[j..].starts_with(REDACTED) {
+            spans.push((j, e));
+        }
+    }
+    spans.sort();
+    let mut out = String::with_capacity(text.len());
+    let mut copied = 0;
+    for (start, end) in spans {
+        if end <= copied {
+            continue;
+        }
+        let start = start.max(copied);
+        out.push_str(&text[copied..start]);
+        out.push_str(REDACTED);
+        copied = end;
+    }
+    out.push_str(&text[copied..]);
+    out
 }
 
 /// `arg` with the credentials of the URL in it hidden, or `None` when it
@@ -1639,6 +1868,247 @@ mod tests {
             red("curl", &["-sS", "-o", "out.json", "https://h/"]),
             "curl -sS -o out.json https://h/"
         );
+    }
+
+    #[test]
+    fn curl_flags_that_take_a_value_end_the_cluster_so_x_put_is_not_a_credential() {
+        // `-XPUT`: `X` takes the method as its value, so the `U` in PUT is
+        // not curl's `-U` (proxy user). Likewise `-o`/`-T` take a file name.
+        assert_eq!(
+            red(
+                "curl",
+                &["-XPUT", "-XPOST", "-sXPUT", "-X", "PUT", "https://h/"]
+            ),
+            "curl -XPUT -XPOST -sXPUT -X PUT https://h/"
+        );
+        assert_eq!(
+            red(
+                "curl",
+                &["-oupload.bin", "-Tupdate.json", "-sSfL", "https://h/"]
+            ),
+            "curl -oupload.bin -Tupdate.json -sSfL https://h/"
+        );
+        // A credential flag before the value-taking one still counts, and
+        // one after it is the other flag's value.
+        assert_eq!(
+            red("curl", &["-sUp:pw-PROXY", "-XPUT", "https://h/"]),
+            "curl -sU<redacted> -XPUT https://h/"
+        );
+        assert_eq!(
+            red("curl", &["-ufoo:pw-USER", "-sSu", "bob:pw-NEXT"]),
+            "curl -u<redacted> -sSu <redacted>"
+        );
+        // Headers keep being judged by their name, attached or not.
+        assert_eq!(
+            red("curl", &["-XPUT", "-HAuthorization: Bearer tok-ATTACHED"]),
+            "curl -XPUT -HAuthorization: <redacted>"
+        );
+    }
+
+    #[test]
+    fn github_tokens_are_hidden_wherever_they_sit_and_keep_what_follows() {
+        for (arg, want) in [
+            ("--data=a;ghp_AAAA1111bbbb", "--data=a;<redacted>"),
+            ("note:ghs_MINTED22!", "note:<redacted>!"),
+            ("(gho_OAUTH33)", "(<redacted>)"),
+            ("[ghu_USER44],", "[<redacted>],"),
+            ("\"ghr_REFRESH55\"", "\"<redacted>\""),
+            ("'github_pat_11ABCD_efgh66'", "'<redacted>'"),
+            ("x=1&t=ghp_QUERY77.", "x=1&t=<redacted>."),
+            ("ghp_WHOLE88", "<redacted>"),
+            // Not tokens: a longer word ending in the prefix, a bare prefix.
+            ("xghp_notatoken", "xghp_notatoken"),
+            ("ghp_", "ghp_"),
+            ("ghx_OTHER", "ghx_OTHER"),
+        ] {
+            assert_eq!(red("tool", &[arg]), format!("tool {}", want), "{}", arg);
+        }
+        // In output a tool prints, which no environment variable names.
+        let mut r = FakeRunner::new(|_| {
+            Out::fail(
+                1,
+                "remote: token ghs_RUNTIME99, rejected (see github_pat_11ZZ_yy) ok\n",
+            )
+        });
+        let _ = capture(&mut r, &Cmd::new("git").args(["push"]));
+        assert!(!r.stderr.contains("RUNTIME99"), "{:?}", r.stderr);
+        assert!(!r.stderr.contains("11ZZ_yy"), "{:?}", r.stderr);
+        assert!(
+            r.stderr
+                .contains("remote: token <redacted>, rejected (see <redacted>) ok\n"),
+            "{:?}",
+            r.stderr
+        );
+    }
+
+    #[test]
+    fn curl_certificate_passwords_are_hidden_and_the_path_kept() {
+        // `-E`/`--cert` take `certificate[:password]`.
+        assert_eq!(
+            red(
+                "curl",
+                &[
+                    "-E",
+                    "cert.pem:pw-SHORT",
+                    "--cert",
+                    "c.pem:pw-LONG",
+                    "--cert=c.pem:pw-EQ",
+                    "-Ec.pem:pw-JOINED",
+                    "-sSEc.pem:pw-CLUSTER",
+                    "--proxy-cert",
+                    "p.pem:pw-PX",
+                    "https://h/",
+                ]
+            ),
+            "curl -E cert.pem:<redacted> --cert c.pem:<redacted> --cert=c.pem:<redacted> -Ec.pem:<redacted> -sSEc.pem:<redacted> --proxy-cert p.pem:<redacted> https://h/"
+        );
+        // The private key's passphrase is a secret whole.
+        assert_eq!(
+            red(
+                "curl",
+                &[
+                    "--pass",
+                    "pw-PASS",
+                    "--pass=pw-PEQ",
+                    "--proxy-pass",
+                    "pw-PP"
+                ]
+            ),
+            "curl --pass <redacted> --pass=<redacted> --proxy-pass <redacted>"
+        );
+        // No password: the path is kept. An escaped colon and a Windows
+        // drive letter are part of the path; a PKCS#11 URI is hidden after
+        // its scheme (it can carry `pin-value=`).
+        for (cert, want) in [
+            ("cert.pem", "cert.pem"),
+            ("a\\:b.pem:pw-ESC", "a\\:b.pem:<redacted>"),
+            ("C:\\certs\\c.pem:pw-WIN", "C:\\certs\\c.pem:<redacted>"),
+            ("pkcs11:token=t;pin-value=1234", "pkcs11:<redacted>"),
+        ] {
+            assert_eq!(
+                red("curl", &["--cert", cert]),
+                format!("curl --cert {}", want),
+                "{}",
+                cert
+            );
+        }
+        // `-E` means something else to other programs.
+        assert_eq!(red("grep", &["-E", "a:b"]), "grep -E a:b");
+    }
+
+    #[test]
+    fn curl_data_attached_to_its_flag_is_judged_by_its_name() {
+        assert_eq!(
+            red(
+                "curl",
+                &[
+                    "-dtoken=SECRET-D",
+                    "-sSdpassword=SECRET-CL",
+                    "--data=password=SECRET-DATA",
+                    "--data-raw",
+                    "api_key=SECRET-RAW",
+                    "--data-urlencode",
+                    "client_secret=SECRET-URL",
+                    "--data-urlencode=token=SECRET-UEQ",
+                    "-Ftoken=SECRET-F",
+                    "--form",
+                    "password=SECRET-FORM",
+                    "-d",
+                    "page=2",
+                    "-dpage=3",
+                ]
+            ),
+            "curl -dtoken=<redacted> -sSdpassword=<redacted> --data=password=<redacted> --data-raw api_key=<redacted> --data-urlencode client_secret=<redacted> --data-urlencode=token=<redacted> -Ftoken=<redacted> --form password=<redacted> -d page=2 -dpage=3"
+        );
+    }
+
+    #[test]
+    fn cookies_are_hidden_in_headers_curl_cookie_flags_and_output() {
+        assert_eq!(
+            red(
+                "curl",
+                &[
+                    "-H",
+                    "Cookie: session=SECRET-H",
+                    "--header=cookie: sid=SECRET-HEQ",
+                    "-b",
+                    "session=SECRET-B",
+                    "--cookie",
+                    "a=SECRET-C; b=2",
+                    "--cookie=sid=SECRET-CEQ",
+                    "-bsid=SECRET-BJ",
+                    "-b",
+                    "cookies.txt",
+                    "-c",
+                    "jar.txt",
+                ]
+            ),
+            "curl -H Cookie: <redacted> --header=cookie: <redacted> -b <redacted> --cookie <redacted> --cookie=<redacted> -b<redacted> -b cookies.txt -c jar.txt"
+        );
+        let mut r = FakeRunner::new(|_| {
+            Out::fail(
+                1,
+                "> Cookie: session=SECRET-OUT; theme=dark\r\n< Set-Cookie: id=SECRET-SET; Path=/\n",
+            )
+        });
+        let _ = capture(
+            &mut r,
+            &Cmd::new("curl").args(["-v", "-H", "Cookie: a=SECRET-ARG", "https://h/"]),
+        );
+        assert!(!r.stderr.contains("SECRET"), "{:?}", r.stderr);
+        assert!(
+            r.stderr
+                .contains("`curl -v -H Cookie: <redacted> https://h/` failed (exit 1)\n"),
+            "{:?}",
+            r.stderr
+        );
+        assert!(
+            r.stderr
+                .contains("> Cookie: <redacted>\r\n< Set-Cookie: <redacted>\n"),
+            "{:?}",
+            r.stderr
+        );
+    }
+
+    #[test]
+    fn authorization_values_in_output_are_hidden_without_a_known_secret() {
+        // Minted at run time, so in no environment variable.
+        let mut r = FakeRunner::new(|_| {
+            Out::fail(
+                1,
+                "> Authorization: token tok-AUTHTOKEN\nsent authorization: Bearer eyJhbGciOi.payload.sig-JWT\nretrying with Bearer abcDEF123456789-BARE, then gave up\n{\"Authorization\": \"Basic dXNlcjpwYXNz\", \"x\": 1}\nproxy-authorization:raw-PROXYCRED\nthe bearer of bad news\n",
+            )
+        });
+        let _ = capture(&mut r, &Cmd::new("tool"));
+        for leaked in ["AUTHTOKEN", "sig-JWT", "BARE", "dXNlcjpwYXNz", "PROXYCRED"] {
+            assert!(
+                !r.stderr.contains(leaked),
+                "{} leaked: {:?}",
+                leaked,
+                r.stderr
+            );
+        }
+        assert!(
+            r.stderr.contains(
+                "> Authorization: token <redacted>\nsent authorization: Bearer <redacted>\nretrying with Bearer <redacted>, then gave up\n{\"Authorization\": \"Basic <redacted>\", \"x\": 1}\nproxy-authorization:<redacted>\nthe bearer of bad news\n"
+            ),
+            "{:?}",
+            r.stderr
+        );
+    }
+
+    #[test]
+    fn a_github_token_right_after_a_digit_is_hidden() {
+        assert_eq!(red("tool", &["id=9ghp_AFTERDIGIT1"]), "tool id=9<redacted>");
+        let mut r = FakeRunner::new(|_| Out::fail(1, "run 42ghs_AFTERDIGIT2 failed\n"));
+        let _ = capture(&mut r, &Cmd::new("tool"));
+        assert!(
+            r.stderr.contains("run 42<redacted> failed\n"),
+            "{:?}",
+            r.stderr
+        );
+        // A letter before the prefix still makes it part of a longer word.
+        assert_eq!(red("tool", &["xghp_notatoken"]), "tool xghp_notatoken");
     }
 
     #[test]

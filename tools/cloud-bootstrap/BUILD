@@ -101,6 +101,8 @@ rust_test(
     name = "configure-tailscale_test",
     size = "small",
     srcs = ["src/configure_tailscale/tests.rs"],
+    # show_diff_writes_no_file reads the tool's source.
+    compile_data = ["src/configure_tailscale/lib.rs"],
     data = [
         ":configure-tailscale",
         "//:.claude/tailscale-up.sh",

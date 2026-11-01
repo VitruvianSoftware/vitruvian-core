@@ -1,52 +1,40 @@
 """vitruvian-roborock: local daemon, CLI (rrctl) and MCP server for Roborock vacuums."""
 
-# Hand-written, and gazelle is kept out of the source trees below. The shipped
-# artifact is a wheel that hatchling builds from pyproject.toml's src/ layout, so
-# one library spanning src/ mirrors what users install; gazelle would instead
-# emit a target per directory.
+# Hand-written: gazelle has no Rust extension here, and the plugin manifests
+# are data, not code.
 # gazelle:ignore
-# gazelle:exclude src
-# gazelle:exclude tests
 # gazelle:exclude plugin
 # gazelle:exclude rust_src
 
-load("@aspect_rules_py//py:defs.bzl", "py_binary", "py_library")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 
 package(default_visibility = ["//apps/mcp/roborock:__subpackages__"])
 
-py_library(
-    name = "vitruvian_roborock",
-    srcs = glob(["src/vitruvian_roborock/**/*.py"]),
-    # Loaded with importlib.resources by both the daemon and the MCP server.
-    data = ["src/vitruvian_roborock/dashboard/dashboard.html"],
-    imports = ["src"],
-    deps = [
-        "@pip//aiohttp",
-        "@pip//mcp",
-        "@pip//python_roborock",
-    ],
-)
+exports_files([
+    "Cargo.lock",
+    "Cargo.toml",
+])
 
-# `bazel run //apps/mcp/roborock:rrctl -- status`
-py_binary(
-    name = "rrctl",
-    srcs = ["src/vitruvian_roborock/__main__.py"],
-    imports = ["src"],
-    main = "src/vitruvian_roborock/__main__.py",
-    deps = [":vitruvian_roborock"],
-)
-
-# The plugin manifests, for anything that packages or validates them.
-filegroup(
-    name = "plugin",
-    srcs = glob(
-        ["plugin/**"],
-        exclude_directories = 1,
-    ),
-)
-
-# --- Rust ports ---------------------------------------------------------------
+# The crates come from apps/mcp/roborock/Cargo.toml through the
+# @mcp_roborock_crates hub (MODULE.bazel), so `cargo install` in the
+# standalone mirror and Bazel here build the same dependency set.
+_CRATES = [
+    "@mcp_roborock_crates//:aes",
+    "@mcp_roborock_crates//:aes-gcm",
+    "@mcp_roborock_crates//:base64",
+    "@mcp_roborock_crates//:crc32fast",
+    "@mcp_roborock_crates//:flate2",
+    "@mcp_roborock_crates//:getrandom",
+    "@mcp_roborock_crates//:hmac",
+    "@mcp_roborock_crates//:md-5",
+    "@mcp_roborock_crates//:png",
+    "@mcp_roborock_crates//:rustls",
+    "@mcp_roborock_crates//:serde",
+    "@mcp_roborock_crates//:serde_json",
+    "@mcp_roborock_crates//:sha2",
+    "@mcp_roborock_crates//:ureq",
+    "@mcp_roborock_crates//:webpki-roots",
+]
 
 rust_library(
     name = "roborock_lib",
@@ -54,19 +42,18 @@ rust_library(
         ["rust_src/*.rs"],
         exclude = ["rust_src/main.rs"],
     ),
-    compile_data = ["src/vitruvian_roborock/dashboard/dashboard.html"],
+    # The dashboard is compiled in with include_str!.
+    compile_data = ["assets/dashboard.html"],
     crate_name = "roborock_rs_lib",
     crate_root = "rust_src/lib.rs",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-    deps = [
-        "@crates//:serde",
-        "@crates//:serde_json",
-    ],
+    deps = _CRATES,
 )
 
+# `bazel run //apps/mcp/roborock:rrctl -- status`
 rust_binary(
-    name = "rrctl-rs",
+    name = "rrctl",
     srcs = ["rust_src/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
@@ -76,7 +63,23 @@ rust_binary(
 rust_test(
     name = "roborock_test",
     size = "small",
+    # Read with include_str! by the release-metadata tests in lib.rs.
+    compile_data = [
+        ".claude-plugin/marketplace.json",
+        "Cargo.toml",
+        "assets/dashboard.html",
+        ":plugin",
+    ],
     crate = ":roborock_lib",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
+)
+
+# The plugin manifests, for anything that packages or validates them.
+filegroup(
+    name = "plugin",
+    srcs = glob(
+        ["plugin/**"],
+        exclude_directories = 1,
+    ),
 )

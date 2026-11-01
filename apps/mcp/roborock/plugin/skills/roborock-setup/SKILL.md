@@ -8,6 +8,24 @@ description: Connect the Roborock vacuum for the first time, or fix a login that
 The vacuum is reached through the user's Roborock cloud account. Logging in takes
 their account email and a code that Roborock emails them. No password is involved.
 
+## Before anything else: is the server running?
+
+If the roborock tools are missing, or the MCP server "failed to connect", the
+`rrctl` binary is missing or is the old Python version. The server's log (stderr)
+says which. Have the user, in a terminal:
+
+1. Run `rrctl --version`. It should print `rrctl <version> (rust)`.
+2. If it prints something else, or nothing, it is the old Python tool. Run
+   `rrctl daemon stop`, then `uv tool uninstall vitruvian-roborock`.
+3. Install the Rust `rrctl`: in the vitruvian-core monorepo,
+   `bazel build //apps/mcp/roborock:rrctl` and copy
+   `bazel-bin/apps/mcp/roborock/rrctl` to `~/.local/bin/`; otherwise
+   `cargo install --locked --git https://github.com/VitruvianSoftware/mcp-roborock`,
+   or a release binary from https://github.com/VitruvianSoftware/mcp-roborock/releases.
+4. Restart the agent session so the server starts again.
+
+The login carries over, so setup is usually not needed after this.
+
 ## Steps
 
 1. Call `get_status`. If it reports `authenticated: true`, there is nothing to set
@@ -37,6 +55,7 @@ by the user. If they already used the `roborock` command-line tool, its login in
 | Requested too recently / rate limited | Wait a minute before asking for another code. |
 | Accept the user agreement | The user must open the Roborock phone app and accept the updated terms, then retry. |
 | `daemon_unavailable` | Ask the user to run `rrctl daemon start` in a terminal and share any error. |
+| "the older Python vitruvian-roborock" | A Python daemon still holds the port. Follow the steps under "Before anything else" above. |
 | `authenticated: true`, `connected: false` | The vacuum is offline or the cloud is unreachable. Check it has power and Wi-Fi. |
 
 The user can do all of this themselves in a terminal with `rrctl setup`.

@@ -2057,7 +2057,7 @@ pub fn secretless_system_runners(code: &str) -> Vec<String> {
                         head.strip_suffix(kw)
                             .is_some_and(|p| !p.chars().next_back().is_some_and(is_ident))
                     });
-            if !names_the_type {
+            if !names_the_type && !is_struct_pattern(head, after) {
                 found.push("a SystemRunner { .. } literal".to_string());
             }
         } else if after
@@ -2076,6 +2076,53 @@ pub fn secretless_system_runners(code: &str) -> Vec<String> {
         }
     }
     found
+}
+
+/// Whether `Type { .. }` is a pattern that takes an existing value apart
+/// (`let SystemRunner { .. } = r;`), not a literal that builds one. `head`
+/// is the code before the (qualified) type name, `body` the code from its
+/// `{`. It is a pattern when it sits between a `let` and that `let`'s `=`
+/// (`let`, `if let`, `while let Some(…)`, `let (a, …)`), or when its closing
+/// `}` is followed by what only a pattern can be: `=` (not `==`) or `=>`,
+/// `:` (a parameter's type), `|` (a closure's parameters end or an
+/// or-pattern), `if` (a match guard) or `in` (a `for` loop). An unbalanced
+/// `{` reads as a literal, so the check errs towards reporting.
+fn is_struct_pattern(head: &str, body: &str) -> bool {
+    let is_ident = |c: char| c.is_ascii_alphanumeric() || c == '_';
+    let statement = head.rsplit([';', '{', '}']).next().unwrap_or(head);
+    let after_let = statement.rmatch_indices("let").find(|(i, _)| {
+        let before = statement[..*i].chars().next_back();
+        let after = statement[i + 3..].chars().next();
+        !before.is_some_and(is_ident) && !after.is_some_and(is_ident)
+    });
+    if let Some((i, _)) = after_let {
+        if !statement[i + 3..].contains('=') {
+            return true;
+        }
+    }
+    let mut depth = 0usize;
+    let mut close = None;
+    for (i, c) in body.char_indices() {
+        match c {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    close = Some(i);
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let Some(close) = close else { return false };
+    let rest = body[close + 1..].trim_start();
+    let word: String = rest.chars().take_while(|c| is_ident(*c)).collect();
+    (rest.starts_with('=') && !rest.starts_with("=="))
+        || (rest.starts_with(':') && !rest.starts_with("::"))
+        || (rest.starts_with('|') && !rest.starts_with("||"))
+        || word == "if"
+        || word == "in"
 }
 
 fn about_box_credits_both_authors(repo: &Repository) -> Vec<String> {
@@ -2952,6 +2999,47 @@ let other = MySystemRunner::new();
 let other = SystemRunnerish::default();
 "#;
         assert_eq!(secretless_system_runners(code), Vec::<String>::new());
+    }
+
+    #[test]
+    fn test_destructuring_a_system_runner_is_not_building_one() {
+        // A `SystemRunner { .. }` pattern reads an existing runner apart.
+        for code in [
+            "let SystemRunner { .. } = r;",
+            "let release_exec::SystemRunner { envs, .. } = r;",
+            "if let SystemRunner { secrets, .. } = &r {}",
+            "while let Some(SystemRunner { envs, .. }) = it.next() {}",
+            "match r { SystemRunner { envs, .. } => {} }",
+            "match r { SystemRunner { envs, .. } if envs.is_empty() => {} }",
+            "fn f(SystemRunner { envs, .. }: SystemRunner) {}",
+            "for SystemRunner { envs, .. } in runners {}",
+            "let f = |SystemRunner { envs, .. }| envs;",
+            "SystemRunner { envs, .. } = r;",
+        ] {
+            assert_eq!(
+                secretless_system_runners(code),
+                Vec::<String>::new(),
+                "{}",
+                code
+            );
+        }
+        // Literals in the same places are still found.
+        for code in [
+            "let r = SystemRunner { envs, secrets: vec![] };",
+            "if r == SystemRunner { envs, secrets } {}",
+            "assert_eq!(r, SystemRunner { envs: e, secrets: s });",
+            "let r = Some(SystemRunner { envs, secrets }) ;",
+            "match SystemRunner { envs, secrets } { _ => {} }",
+            "let r = SystemRunner { envs: { let e = e; e }, secrets };",
+            "let r = SystemRunner { envs",
+        ] {
+            assert_eq!(
+                secretless_system_runners(code),
+                vec!["a SystemRunner { .. } literal"],
+                "{}",
+                code
+            );
+        }
     }
 
     #[test]

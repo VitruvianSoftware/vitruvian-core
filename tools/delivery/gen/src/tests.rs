@@ -581,3 +581,151 @@ fn tempdir(tag: &str) -> String {
     std::fs::create_dir_all(&d).unwrap();
     d.to_string_lossy().into_owned()
 }
+
+// --- the soak step: a failed rustc build fails closed, ALLOW_UNSOAKED=true
+// still overrides it (the retired shell script had no build to fail) --------
+
+/// The `run: |` body of every `*-require-dev-soak` job, de-indented.
+fn soak_scripts(yaml: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut rest = yaml;
+    while let Some(i) = rest.find("-require-dev-soak:\n") {
+        let job = &rest[i..];
+        let end = job.find("\n\n").unwrap_or(job.len());
+        let job = &job[..end];
+        let run = job
+            .find("        run: |\n")
+            .expect("soak job has a run block");
+        let body: Vec<&str> = job[run..]
+            .lines()
+            .skip(1)
+            .take_while(|l| l.starts_with("          "))
+            .map(|l| &l[10..])
+            .collect();
+        out.push(body.join("\n") + "\n");
+        rest = &rest[i + end..];
+    }
+    out
+}
+
+#[test]
+fn soak_step_shape() {
+    let scripts = soak_scripts(&must_render(&fixtures(), 2));
+    assert_eq!(
+        scripts.len(),
+        3,
+        "the phase-2 fixtures carry three soak jobs"
+    );
+    for s in &scripts {
+        let order = [
+            "if ! {\n",
+            "rustc --edition 2021 --crate-type lib --crate-name shell_compat ",
+            "rustc --edition 2021 tools/ci/src/require_dev_soak/main.rs ",
+            "}; then\n",
+            "  if [ \"${ALLOW_UNSOAKED:-}\" = \"true\" ]; then\n",
+            "::warning title=dev-soak gate bypassed::",
+            "    exit 0\n",
+            "  fi\n",
+            "::error title=dev-soak gate could not run::rustc failed",
+            "  exit 1\n",
+            "fi\n",
+            "\"$RUNNER_TEMP/require-dev-soak\"\n",
+        ];
+        let mut at = 0;
+        for want in order {
+            match s[at..].find(want) {
+                Some(i) => at += i + want.len(),
+                None => panic!("soak step lacks {want:?} (in order):\n{s}"),
+            }
+        }
+    }
+}
+
+/// Run a soak step under GitHub's `bash -eo pipefail` with a fake rustc.
+/// `build_ok` false makes rustc fail; true makes it write a binary that
+/// prints RAN and exits 7, standing in for the real gate.
+fn run_soak_step(script: &str, build_ok: bool, allow: Option<&str>) -> (i32, String) {
+    let base = std::env::var("TEST_TMPDIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| std::env::temp_dir());
+    static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let d = base.join(format!(
+        "soak-{}-{}",
+        std::process::id(),
+        N.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+    ));
+    let bin = d.join("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let fake = if build_ok {
+        "#!/usr/bin/env bash\nwhile [ $# -gt 0 ]; do [ \"$1\" = -o ] && out=\"$2\"; shift; done\nprintf '#!/bin/sh\\necho RAN\\nexit 7\\n' >\"$out\"\nchmod +x \"$out\"\n"
+    } else {
+        "#!/usr/bin/env bash\necho 'error: could not compile' >&2\nexit 1\n"
+    };
+    let rustc = bin.join("rustc");
+    std::fs::write(&rustc, fake).unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&rustc, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let step = d.join("step.sh");
+    std::fs::write(&step, script).unwrap();
+    let mut c = std::process::Command::new("bash");
+    c.args(["--noprofile", "--norc", "-eo", "pipefail"])
+        .arg(&step)
+        .current_dir(&d)
+        .env_clear()
+        .env("PATH", format!("{}:/usr/bin:/bin", bin.display()))
+        .env("RUNNER_TEMP", &d);
+    if let Some(v) = allow {
+        c.env("ALLOW_UNSOAKED", v);
+    }
+    let o = c.output().unwrap();
+    let text =
+        String::from_utf8_lossy(&o.stdout).into_owned() + &String::from_utf8_lossy(&o.stderr);
+    (o.status.code().unwrap_or(-1), text)
+}
+
+#[test]
+fn soak_step_build_failure_fails_closed() {
+    for s in soak_scripts(&must_render(&fixtures(), 2)) {
+        for allow in [Some("false"), Some("TRUE"), Some("1"), Some(""), None] {
+            let (rc, out) = run_soak_step(&s, false, allow);
+            assert_eq!(
+                rc, 1,
+                "ALLOW_UNSOAKED={allow:?} must not pass a failed build:\n{out}"
+            );
+            assert!(
+                out.contains("::error title=dev-soak gate could not run::"),
+                "{out}"
+            );
+            assert!(!out.contains("bypassed"), "{out}");
+        }
+    }
+}
+
+#[test]
+fn soak_step_build_failure_allow_unsoaked_true_overrides() {
+    for s in soak_scripts(&must_render(&fixtures(), 2)) {
+        let (rc, out) = run_soak_step(&s, false, Some("true"));
+        assert_eq!(rc, 0, "the break-glass must survive a failed build:\n{out}");
+        assert!(
+            out.contains("::warning title=dev-soak gate bypassed::"),
+            "{out}"
+        );
+        assert!(!out.contains("RAN"), "nothing was built to run:\n{out}");
+    }
+}
+
+#[test]
+fn soak_step_built_gate_decides() {
+    for s in soak_scripts(&must_render(&fixtures(), 2)) {
+        // A successful build runs the gate, whose own status is the step's,
+        // even with the override set (the gate itself honours it).
+        for allow in [Some("true"), Some("false")] {
+            let (rc, out) = run_soak_step(&s, true, allow);
+            assert_eq!((rc, out.contains("RAN")), (7, true), "{out}");
+            assert!(
+                !out.contains("::error title=dev-soak gate could not run"),
+                "{out}"
+            );
+        }
+    }
+}

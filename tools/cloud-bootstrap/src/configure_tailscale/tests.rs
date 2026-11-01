@@ -197,6 +197,105 @@ fn check_on_stale_file_fails_with_diff_and_fix_command() {
     );
 }
 
+/// The diff `--check` prints never goes through the shared temp directory.
+/// A file at a guessable path there (it was `<tmp>/configure-tailscale-<pid>
+/// .expected`, written with a plain create-or-truncate) lets another user
+/// on the machine plant a symlink at that name and have the check overwrite
+/// whatever it points at. TMPDIR here is a regular file, so any attempt to
+/// create something under it fails, for root as well: the diff must still be
+/// printed.
+#[test]
+fn check_diff_uses_no_temp_file() {
+    let t = Tmp::new();
+    let hook = stub(&t);
+    let not_a_dir = t.join("tmpdir-is-a-file");
+    fs::write(&not_a_dir, "not a directory\n").unwrap();
+    let o = Command::new(tool())
+        .args(["--check", "--file", hook.to_str().unwrap()])
+        .env_remove("BUILD_WORKSPACE_DIRECTORY")
+        .env("TMPDIR", &not_a_dir)
+        .output()
+        .expect("run configure-tailscale");
+    let stdout = String::from_utf8_lossy(&o.stdout);
+    assert_eq!(o.status.code(), Some(1), "stale file passed --check");
+    assert!(
+        stdout.contains("--- ") && stdout.contains("+++ "),
+        "no unified diff without a usable temp dir: {stdout}"
+    );
+    assert!(
+        stdout.contains("+--accept-routes=true") || stdout.contains("+\t--accept-routes=true"),
+        "diff: {stdout}"
+    );
+    assert_eq!(fs::read_to_string(&not_a_dir).unwrap(), "not a directory\n");
+}
+
+/// The diff is fed the expected hook on its stdin and given no file but
+/// the target: whatever the temp directory, a fixed path (`/tmp/…`) or any
+/// other file written for diff to read shows up in diff's arguments. A fake
+/// `diff` first on PATH records what it was given.
+#[test]
+fn check_diff_reads_the_expected_hook_from_stdin_not_a_file() {
+    let t = Tmp::new();
+    let hook = stub(&t);
+    let bin = t.join("bin");
+    fs::create_dir(&bin).unwrap();
+    write_exe(
+        &bin.join("diff"),
+        "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$DIFF_ARGV\"\ncat > \"$DIFF_STDIN\"\nexit 1\n",
+    );
+    let path = format!(
+        "{}:{}",
+        bin.display(),
+        std::env::var("PATH").unwrap_or_else(|_| "/usr/bin:/bin".into())
+    );
+    let o = Command::new(tool())
+        .args(["--check", "--file", hook.to_str().unwrap()])
+        .env_remove("BUILD_WORKSPACE_DIRECTORY")
+        .env("PATH", path)
+        .env("DIFF_ARGV", t.join("diff-argv"))
+        .env("DIFF_STDIN", t.join("diff-stdin"))
+        .output()
+        .expect("run configure-tailscale");
+    assert_eq!(o.status.code(), Some(1), "stale file passed --check");
+    let argv = fs::read_to_string(t.join("diff-argv")).expect("diff was run");
+    assert_eq!(
+        argv.lines().collect::<Vec<_>>(),
+        ["-u", hook.to_str().unwrap(), "-"],
+        "diff must compare the target with stdin, not with a file written for it"
+    );
+    assert_eq!(
+        fs::read(t.join("diff-stdin")).unwrap(),
+        fs::read(checked_in_hook()).unwrap(),
+        "diff's stdin is not the expected hook"
+    );
+}
+
+/// `show_diff` writes no file at all, used by diff or not. A source check,
+/// because a write that nothing reads leaves no trace a run can see.
+#[test]
+fn show_diff_writes_no_file() {
+    let src = include_str!("lib.rs");
+    let start = src.find("fn show_diff(").expect("show_diff is in lib.rs");
+    let body = &src[start..];
+    let body = &body[..body.find("\n}\n").expect("show_diff ends")];
+    for writes in [
+        "fs::write",
+        "File::create",
+        "OpenOptions",
+        "create_new",
+        "temp_dir",
+        "TMPDIR",
+        "/tmp",
+        "tempfile",
+        "mktemp",
+    ] {
+        assert!(
+            !body.contains(writes),
+            "show_diff uses `{writes}`; feed diff the expected text on stdin instead:\n{body}"
+        );
+    }
+}
+
 #[test]
 fn unknown_argument_is_exit_2() {
     let c = configure(&["--bogus"], None);

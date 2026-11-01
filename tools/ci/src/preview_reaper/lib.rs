@@ -21,9 +21,12 @@
 //! preview-reaper — purge closed, merged, and TTL-expired ephemeral
 //! preview environments across Cloud Run, Kubernetes, and Neon branches.
 
-use shell_compat::{capture, cat, env, env_or, env_or_empty, err, out, status, subst, which};
+use shell_compat::{
+    capture, cat, env, env_or, env_or_empty, err, out, status, status_with_input, subst, which, Ran,
+};
 use std::collections::HashMap;
-use std::process::Command;
+use std::io::Write;
+use std::process::{Command, Stdio};
 
 fn log(msg: &[u8]) {
     err(&cat(&[b"preview-reaper: ", msg, b"\n"]));
@@ -212,7 +215,10 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
     let curl_bin = env_or("CURL", b"curl");
     let gcp_project = env_or_empty("GCP_PROJECT");
     let gcp_region = env_or("GCP_REGION", b"us-central1");
-    let neon_api_key = env_or_empty("NEON_API_KEY");
+    // Trimmed once, here: curl is sent this key and the redaction looks for
+    // this key, so an API echoing it back is hidden even when the secret was
+    // written with a trailing newline (`echo`).
+    let neon_api_key = trim_ascii_whitespace(&env_or_empty("NEON_API_KEY")).to_vec();
     let neon_project_id = env_or_empty("NEON_PROJECT_ID");
     let ttl_hours: i64 = std::str::from_utf8(&env_or("PREVIEW_TTL_HOURS", b"24"))
         .ok()
@@ -354,7 +360,10 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
     let mut reaped_cloudrun: u64 = 0;
     let mut reaped_k8s: u64 = 0;
     let mut reaped_neon: u64 = 0;
-    let mut neon_list_failed = false;
+    // A provider whose resources could not be listed: reported, and the run
+    // fails, so an outage or a lost credential is never read as "nothing to
+    // reap" (which is a green run that reaps nothing, indefinitely).
+    let mut list_failed = false;
 
     // 1. Cloud Run
     if which(&gcloud).is_some() && !gcp_project.is_empty() {
@@ -372,7 +381,20 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
                 .arg(shell_compat::os(&cat(&[b"--project=", &gcp_project])))
                 .arg("--format=value(metadata.name,metadata.creationTimestamp)"),
         );
-        let services = subst(r.stdout);
+        let services = if r.ok() {
+            subst(r.stdout)
+        } else {
+            // Not even what it printed before failing is acted on.
+            listing_failed(
+                "Preview Reaper Error",
+                "Cloud Run services",
+                "gcloud",
+                &r,
+                b"",
+            );
+            list_failed = true;
+            Vec::new()
+        };
         for line in shell_compat::lines(&services) {
             if line.is_empty() {
                 continue;
@@ -440,8 +462,21 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
         log(b"gcloud not found or GCP_PROJECT unset \xe2\x80\x94 skipping Cloud Run reap");
     }
 
-    // 2. Kubernetes
-    if which(&kubectl).is_some() {
+    // 2. Kubernetes. kubectl with no current context (a hosted runner ships
+    // kubectl but no kubeconfig) is "not configured" and skipped, as Cloud
+    // Run is without a project; a configured cluster that cannot be listed
+    // fails the run.
+    let kube_configured = which(&kubectl).is_some()
+        && status(
+            232,
+            Command::new(shell_compat::os(&kubectl))
+                .arg("config")
+                .arg("current-context")
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null()),
+            true,
+        ) == 0;
+    if kube_configured {
         log(b"Scanning Kubernetes preview namespaces...");
         let r = capture(
             233,
@@ -451,7 +486,13 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
                 .arg("-o")
                 .arg("jsonpath={range .items[*]}{.metadata.name}{\"\\t\"}{.metadata.creationTimestamp}{\"\\n\"}{end}"),
         );
-        let namespaces = subst(r.stdout);
+        let namespaces = if r.ok() {
+            subst(r.stdout)
+        } else {
+            listing_failed("Preview Reaper Error", "K8s namespaces", "kubectl", &r, b"");
+            list_failed = true;
+            Vec::new()
+        };
         for line in shell_compat::lines(&namespaces) {
             if line.is_empty() {
                 continue;
@@ -514,7 +555,9 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
             }
         }
     } else {
-        log(b"kubectl not found \xe2\x80\x94 skipping K8s namespace reap");
+        log(
+            b"kubectl not found or has no current context \xe2\x80\x94 skipping K8s namespace reap",
+        );
     }
 
     // 3. Neon
@@ -539,7 +582,16 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
         if shell_compat::env_set_nonempty("GITHUB_ACTIONS") {
             err(b"::warning title=Neon Branch Reap Skipped::NEON_API_KEY or NEON_PROJECT_ID is empty \xe2\x80\x94 skipping Neon branch reap\n");
         }
+    } else if neon_auth_config(&neon_api_key).is_none() {
+        log(b"ERROR: NEON_API_KEY holds a control character (a line break?) \xe2\x80\x94 refusing to send it; no Neon branch was reaped");
+        if shell_compat::env_set_nonempty("GITHUB_ACTIONS") {
+            err(b"::error title=Neon Reaper Error::NEON_API_KEY holds a control character\n");
+        }
+        list_failed = true;
     } else {
+        // The key reaches curl on its stdin (`--config -`), never on its
+        // command line, which every local user can read (`ps`, /proc).
+        let auth = neon_auth_config(&neon_api_key).unwrap_or_default();
         log(&cat(&[
             b"Scanning Neon Postgres branches for project ",
             &neon_project_id,
@@ -548,24 +600,35 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
         // -sS: quiet, but say why if curl itself fails. --fail-with-body:
         // an HTTP error status (a bad key, an outage) is a failure, not an
         // error body that parses as an empty branch list.
-        let r = capture(
-            292,
+        let r = capture_with_input(
             Command::new(shell_compat::os(&curl_bin))
                 .arg("-sS")
                 .arg("--fail-with-body")
-                .arg("-H")
-                .arg(shell_compat::os(&cat(&[
-                    b"Authorization: Bearer ",
-                    &neon_api_key,
-                ])))
+                .arg("--config")
+                .arg("-")
                 .arg(shell_compat::os(&cat(&[
                     b"https://console.neon.tech/api/v2/projects/",
                     &neon_project_id,
                     b"/branches",
                 ]))),
+            &auth,
         );
         let branches = if r.ok() {
-            parse_neon_branches(&subst(r.stdout))
+            match parse_neon_branches(&r.stdout) {
+                Ok(b) => b,
+                Err(why) => {
+                    log(&cat(&[
+                        b"ERROR: could not read the Neon branch list: ",
+                        &failure_detail(&why, b"", &neon_api_key),
+                        b" \xe2\x80\x94 no Neon branch was reaped",
+                    ]));
+                    if shell_compat::env_set_nonempty("GITHUB_ACTIONS") {
+                        err(b"::error title=Neon Reaper Error::could not read the Neon branch list\n");
+                    }
+                    list_failed = true;
+                    Vec::new()
+                }
+            }
         } else {
             let code = r.status.to_string();
             log(&cat(&[
@@ -582,7 +645,7 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
                     b")\n",
                 ]));
             }
-            neon_list_failed = true;
+            list_failed = true;
             Vec::new()
         };
         for (branch_id, branch_name, created_at, is_primary) in &branches {
@@ -620,17 +683,14 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
                             branch_id,
                             b")...",
                         ]));
-                        let rc = status(
+                        let rc = status_with_input(
                             334,
                             Command::new(shell_compat::os(&curl_bin))
                                 .arg("-sf")
                                 .arg("-X")
                                 .arg("DELETE")
-                                .arg("-H")
-                                .arg(shell_compat::os(&cat(&[
-                                    b"Authorization: Bearer ",
-                                    &neon_api_key,
-                                ])))
+                                .arg("--config")
+                                .arg("-")
                                 .arg(shell_compat::os(&cat(&[
                                     b"https://console.neon.tech/api/v2/projects/",
                                     &neon_project_id,
@@ -639,6 +699,7 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
                                 ])))
                                 .stdout(std::process::Stdio::null())
                                 .stderr(std::process::Stdio::null()),
+                            &auth,
                             true,
                         );
                         if rc == 0 {
@@ -691,8 +752,8 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
     ]));
 
     // Reported above, after the counts of what was reaped: the step fails so
-    // a broken Neon listing is not mistaken for nothing to reap.
-    if neon_list_failed {
+    // a broken listing is not mistaken for nothing to reap.
+    if list_failed {
         return 1;
     }
     0
@@ -740,6 +801,108 @@ fn failure_detail(stderr: &[u8], stdout: &[u8], secret: &[u8]) -> Vec<u8> {
     trimmed[..trimmed.len().min(500)].to_vec()
 }
 
+/// Log (and annotate, in Actions) that `what` could not be listed by `tool`.
+fn listing_failed(title: &str, what: &str, tool: &str, r: &Ran, secret: &[u8]) {
+    let code = r.status.to_string();
+    log(&cat(&[
+        b"ERROR: could not list ",
+        what.as_bytes(),
+        b" (",
+        tool.as_bytes(),
+        b" exit ",
+        code.as_bytes(),
+        b"): ",
+        &failure_detail(&r.stderr, &r.stdout, secret),
+        b" \xe2\x80\x94 none of them was reaped",
+    ]));
+    if shell_compat::env_set_nonempty("GITHUB_ACTIONS") {
+        err(&cat(&[
+            b"::error title=",
+            title.as_bytes(),
+            b"::could not list ",
+            what.as_bytes(),
+            b" (",
+            tool.as_bytes(),
+            b" exit ",
+            code.as_bytes(),
+            b")\n",
+        ]));
+    }
+}
+
+/// `v` without leading or trailing ASCII whitespace.
+fn trim_ascii_whitespace(v: &[u8]) -> &[u8] {
+    let start = v
+        .iter()
+        .position(|c| !c.is_ascii_whitespace())
+        .unwrap_or(v.len());
+    let end = v
+        .iter()
+        .rposition(|c| !c.is_ascii_whitespace())
+        .map_or(start, |i| i + 1);
+    &v[start..end]
+}
+
+/// The curl config (read with `--config -`) that sends `key` as the Neon
+/// bearer token: one `header = "..."` line, `"` and `\` escaped as curl's
+/// config syntax requires. `key` arrives trimmed (a secret written with
+/// `echo` ends in a newline). `None` for a key still holding a control
+/// character: a line break would start a second curl option.
+fn neon_auth_config(key: &[u8]) -> Option<Vec<u8>> {
+    if key.iter().any(|c| c.is_ascii_control()) {
+        return None;
+    }
+    let mut v = b"header = \"Authorization: Bearer ".to_vec();
+    for &c in key {
+        if c == b'"' || c == b'\\' {
+            v.push(b'\\');
+        }
+        v.push(c);
+    }
+    v.extend_from_slice(b"\"\n");
+    Some(v)
+}
+
+/// Run `cmd` with `input` on its stdin, stdout and stderr captured. A child
+/// that exits without reading its input fails (141, as `printf | cmd` does
+/// under pipefail): curl that never read its `--config -` sent no key.
+fn capture_with_input(cmd: &mut Command, input: &[u8]) -> Ran {
+    cmd.stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => {
+            return Ran {
+                status: shell_compat::spawn_failure_status(&e),
+                stdout: Vec::new(),
+                stderr: shell_compat::spawn_diag(292, cmd, &e),
+            }
+        }
+    };
+    // The config is one short line, far below a pipe's buffer, so writing
+    // it before reading the output cannot deadlock.
+    let wrote = child
+        .stdin
+        .take()
+        .map_or(false, |mut sin| sin.write_all(input).is_ok());
+    match child.wait_with_output() {
+        Ok(o) => {
+            let status = shell_compat::status_code(o.status);
+            Ran {
+                status: if status == 0 && !wrote { 141 } else { status },
+                stdout: o.stdout,
+                stderr: o.stderr,
+            }
+        }
+        Err(e) => Ran {
+            status: 1,
+            stdout: Vec::new(),
+            stderr: e.to_string().into_bytes(),
+        },
+    }
+}
+
 fn json_string_field(json: &[u8], field: &[u8]) -> Vec<u8> {
     let needle = cat(&[b"\"", field, b"\":"]);
     if let Some(pos) = json
@@ -759,15 +922,36 @@ fn json_string_field(json: &[u8], field: &[u8]) -> Vec<u8> {
     Vec::new()
 }
 
-fn parse_neon_branches(json: &[u8]) -> Vec<(Vec<u8>, Vec<u8>, Vec<u8>, bool)> {
-    // Use python3 for JSON parsing (same as the script)
-    let r = capture(
-        295,
-        Command::new("python3")
-            .arg("-c")
-            .arg("import sys, json\ntry:\n    data = json.loads(sys.argv[1])\n    branches = data.get('branches', [])\n    for b in branches:\n        b_id = b.get('id', '')\n        b_name = b.get('name', '')\n        b_created = b.get('created_at', '')\n        b_prim = b.get('primary', False)\n        print(f'{b_id}\\t{b_name}\\t{b_created}\\t{b_prim}')\nexcept Exception:\n    pass")
-            .arg(shell_compat::os(json)),
-    );
+/// The branches in a Neon `GET /branches` response: (id, name, created_at,
+/// primary). Anything that is not a JSON object whose `branches` is a list
+/// of objects (an HTML error page from a proxy, a truncated body, an error
+/// object) is `Err` with the reason, never an empty list: an empty list
+/// means nothing to reap, and the run would pass.
+fn parse_neon_branches(json: &[u8]) -> Result<Vec<(Vec<u8>, Vec<u8>, Vec<u8>, bool)>, Vec<u8>> {
+    // python3 parses the JSON (as the original script did). The body goes
+    // on stdin, not argv: a long branch list must not hit ARG_MAX.
+    const PARSE: &str = r#"import sys, json
+try:
+    data = json.loads(sys.stdin.buffer.read())
+except ValueError as e:
+    sys.exit('not JSON: %s' % e)
+if not isinstance(data, dict) or not isinstance(data.get('branches'), list):
+    sys.exit('no "branches" list in the response')
+for b in data['branches']:
+    if not isinstance(b, dict):
+        sys.exit('a branch that is not an object')
+    print('%s\t%s\t%s\t%s' % (b.get('id', ''), b.get('name', ''), b.get('created_at', ''), b.get('primary', False)))
+"#;
+
+    let r = capture_with_input(Command::new("python3").arg("-c").arg(PARSE), json);
+    if !r.ok() {
+        let why = if r.stderr.iter().any(|c| !c.is_ascii_whitespace()) {
+            r.stderr
+        } else {
+            cat(&[b"python3 exit ", r.status.to_string().as_bytes()])
+        };
+        return Err(why);
+    }
     let output = subst(r.stdout);
     let mut result = Vec::new();
     for line in shell_compat::lines(&output) {
@@ -786,5 +970,5 @@ fn parse_neon_branches(json: &[u8]) -> Vec<(Vec<u8>, Vec<u8>, Vec<u8>, bool)> {
             is_primary,
         ));
     }
-    result
+    Ok(result)
 }

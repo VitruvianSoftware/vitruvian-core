@@ -18,10 +18,29 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
+//! Retries a command ONLY on Pulumi Cloud's account-wide concurrent-update
+//! 409; every other failure exits at once with the command's own status.
+//!
+//! Standard library only and free of `crate::` paths ON PURPOSE: CI jobs
+//! without Bazel (.github/actions/pulumi-run-captured, the zitadel-apps
+//! applies) build the binary straight from the checkout with
+//! `rustc --edition 2021 -O tools/pulumi/src/bin/retry_concurrent_update.rs`,
+//! which pulls this file in by `#[path]`. Keep it that way.
+
 use std::io::{Read, Write};
+use std::os::unix::process::ExitStatusExt;
 use std::process::{Command, Stdio};
 
-use crate::tools;
+/// The shell's `$?`: the exit code, or 128 + the signal that killed it.
+fn exit_code(status: std::process::ExitStatus) -> i32 {
+    if let Some(c) = status.code() {
+        c
+    } else if let Some(sig) = status.signal() {
+        128 + sig
+    } else {
+        1
+    }
+}
 
 /// Both markers are required (AND, not OR): `[409]` in the text AND
 /// `concurrent update` case-insensitively.
@@ -101,7 +120,7 @@ pub fn retry_command(cmd_args: &[String]) -> i32 {
             Ok(s) => s,
             Err(_) => return 1,
         };
-        let rc = tools::exit_code(status);
+        let rc = exit_code(status);
 
         if rc == 0 {
             return 0;
@@ -125,7 +144,7 @@ pub fn retry_command(cmd_args: &[String]) -> i32 {
                 std::thread::sleep(std::time::Duration::from_secs(wait));
             }
             attempt += 1;
-            delay *= 2;
+            delay = delay.saturating_mul(2);
             continue;
         }
 

@@ -127,6 +127,11 @@ jobs:
         working-directory: infrastructure/pulumi/platform/zitadel-apps
         run: |
           set -euo pipefail
+          # The 409 retry helper, //tools/pulumi:retry-concurrent-update. This job
+          # sets up no Bazel and the helper is one std-only file, so the runner's
+          # rustc builds it from the checkout (about a second), before the tunnel.
+          retry="${RUNNER_TEMP}/retry-concurrent-update"
+          rustc --edition 2021 -O "$GITHUB_WORKSPACE/tools/pulumi/src/bin/retry_concurrent_update.rs" -o "$retry"
           # TLS terminator must live for this step (backgrounded processes don't
           # survive across steps): localhost:443 -> the Envoy gateway, Host preserved.
           # Target the gateway's NodePort on a cluster node's TAILSCALE device
@@ -153,4 +158,4 @@ jobs:
           pulumi config set --secret zitadel:jwtProfileJson "$ZITADEL_MACHINE_KEY_JSON"
           # Waits out Pulumi Cloud's account-wide concurrent-update 409 (another
           # app's apply holding the account); any other failure is immediate.
-          bash "$GITHUB_WORKSPACE/tools/pulumi/retry-concurrent-update.sh" pulumi up --yes
+          "$retry" pulumi up --yes

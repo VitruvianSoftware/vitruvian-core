@@ -83,7 +83,7 @@ on:
           - beta
           - production
       allow-unsoaked:
-        description: Promote even if the unit's development deploy is RED (logged loudly; tools/ci/require-dev-soak.sh)
+        description: Promote even if the unit's development deploy is RED (logged loudly; //tools/ci:require_dev_soak)
         type: boolean
         required: false
         default: false
