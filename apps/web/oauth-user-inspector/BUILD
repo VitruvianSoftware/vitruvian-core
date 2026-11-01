@@ -134,25 +134,12 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
-rust_test(
-    name = "oauth_scripts_rs_test",
-    size = "small",
-    crate = ":oauth_scripts_lib",
-    edition = "2021",
-    rustc_flags = ["-Copt-level=3"],
-)
-
 rust_binary(
-    name = "check-sensitive-rs",
+    name = "check-sensitive",
     srcs = ["scripts/src/bin/check_sensitive.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [":oauth_scripts_lib"],
-)
-
-alias(
-    name = "check_sensitive_rs",
-    actual = ":check-sensitive-rs",
 )
 
 # The candidate smoke //tools/deploy runs against each new revision
@@ -195,21 +182,11 @@ rust_test(
 )
 
 rust_binary(
-    name = "start-rs",
+    name = "start",
     srcs = ["scripts/src/bin/start.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     deps = [":oauth_scripts_lib"],
-)
-
-alias(
-    name = "start",
-    actual = ":start-rs",
-)
-
-alias(
-    name = "start_rs",
-    actual = ":start-rs",
 )
 
 rust_binary(
@@ -225,16 +202,6 @@ alias(
     actual = ":deploy-cloudbuild",
 )
 
-alias(
-    name = "deploy-script-rs",
-    actual = ":deploy-cloudbuild",
-)
-
-alias(
-    name = "deploy_script_rs",
-    actual = ":deploy-cloudbuild",
-)
-
 rust_binary(
     name = "setup-dev",
     srcs = ["scripts/src/bin/setup_dev.rs"],
@@ -245,16 +212,6 @@ rust_binary(
 
 alias(
     name = "setup_dev",
-    actual = ":setup-dev",
-)
-
-alias(
-    name = "setup-dev-rs",
-    actual = ":setup-dev",
-)
-
-alias(
-    name = "setup_dev_rs",
     actual = ":setup-dev",
 )
 

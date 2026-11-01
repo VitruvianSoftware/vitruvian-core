@@ -34,45 +34,35 @@ load("//tools/pipeline:defs.bzl", "pipeline_unit")
 # deps) is preserved below.
 package(default_visibility = ["//apps/suites/tabula:__subpackages__"])
 
-alias(
-    name = "tabcli",
-    actual = ":tabcli-rs",
-)
-
 test_suite(
     name = "unit_tests",
-    tests = [":tabcli_rs_test"],
+    tests = [":tabcli_test"],
 )
 
 rust_library(
-    name = "tabcli_rs_lib",
+    name = "tabcli_lib",
     srcs = glob(
         ["rs/src/**/*.rs"],
         exclude = ["rs/src/main.rs"],
     ),
-    crate_name = "tabcli_rs_lib",
+    crate_name = "tabcli_lib",
     crate_root = "rs/src/lib.rs",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
 )
 
 rust_binary(
-    name = "tabcli-rs",
+    name = "tabcli",
     srcs = ["rs/src/main.rs"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-    deps = [":tabcli_rs_lib"],
-)
-
-alias(
-    name = "tabcli_rs",
-    actual = ":tabcli-rs",
+    deps = [":tabcli_lib"],
 )
 
 rust_test(
-    name = "tabcli_rs_test",
+    name = "tabcli_test",
     size = "small",
-    crate = ":tabcli_rs_lib",
+    crate = ":tabcli_lib",
     data = [
         ".release-please-manifest.json",
         "package.json",
@@ -89,7 +79,7 @@ pipeline_unit(
     runner = "ubuntu-26.04",
     test_targets = [
         ":unit_tests",
-        ":tabcli_rs_test",
+        ":tabcli_test",
     ],
     tier = "L1",
     timeout_minutes = 15,

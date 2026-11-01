@@ -20,8 +20,8 @@
 
 use std::process::Command;
 
-use tabula_api_tools_rs_lib::store::PgClient;
-use tabula_api_tools_rs_lib::{
+use tabula_api_tools::store::PgClient;
+use tabula_api_tools::{
     build_user_upsert_sql, format_seed_stdout, now_unix_secs, sign_test_user_jwt, ALL_SEED_USERS,
     TEST_USER,
 };

@@ -90,12 +90,6 @@ alias(
     visibility = ["//visibility:public"],
 )
 
-alias(
-    name = "test-mcp-slack-e2e-rs",
-    actual = ":test_mcp_slack_e2e",
-    visibility = ["//visibility:public"],
-)
-
 rust_test(
     name = "design_sync_lib_test",
     size = "small",

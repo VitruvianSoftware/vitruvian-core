@@ -28,8 +28,8 @@
 use std::fs;
 use std::path::PathBuf;
 
-use tabula_api_tools_rs_lib::migration_guard::{find_missing_required_columns, ProbeOptions};
-use tabula_api_tools_rs_lib::store::PgClient;
+use tabula_api_tools::migration_guard::{find_missing_required_columns, ProbeOptions};
+use tabula_api_tools::store::PgClient;
 
 const POSTGRES_LABEL: &str = "@@//apps/suites/tabula/api:postgres";
 
