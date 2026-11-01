@@ -181,7 +181,6 @@ func insertImage(t *testing.T, s *Store, roomID, eventID, uri string, ts time.Ti
 	require.NoError(t, err)
 }
 
-
 // older_than_ms is a duration (the app sends one week as 604800000), so "older than 30 days" is measured back from
 // now: a message 40 days old loses its media, one 2 days old keeps it.
 func TestCleanupStorageOlderThanIsADurationBackFromNow(t *testing.T) {
