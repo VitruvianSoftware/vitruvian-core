@@ -259,9 +259,13 @@ exit 1
 "#
             ),
         );
+        // Records argv and stdin, so a test can pin where the token travels.
+        let (argv, stdin) = (self.s("escbin/curl.argv"), self.s("escbin/curl.stdin"));
         write_exec(
             &self.p("escbin/curl"),
-            &format!("#!/usr/bin/env bash\ncat >/dev/null\necho '{{\"email\": \"{email}\"}}'\n"),
+            &format!(
+                "#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >>\"{argv}\"\ncat >>\"{stdin}\"\necho '{{\"email\": \"{email}\"}}'\n"
+            ),
         );
     }
 
@@ -518,6 +522,26 @@ fn esc_identity_reads_secrets_with_the_token_file() {
         "the ESC token file is not mode 600"
     );
     assert_not_contains("the ESC token itself is never echoed", &out, "eeeeeeeeee");
+
+    // The token is checked with Google over curl: on stdin, never in argv
+    // (argv is world-readable through `ps`).
+    let token = "e".repeat(120);
+    let curl_argv = w.read("escbin/curl.argv");
+    assert_contains(
+        "curl was asked about the token",
+        &curl_argv,
+        "oauth2.googleapis.com/tokeninfo",
+    );
+    assert_not_contains(
+        "the ESC token never reaches curl's argv",
+        &curl_argv,
+        "eeeeeeeeee",
+    );
+    assert_eq!(
+        w.read("escbin/curl.stdin"),
+        format!("access_token={token}"),
+        "the ESC token must reach curl on stdin"
+    );
 }
 
 #[test]
@@ -1289,6 +1313,39 @@ fn session_env_round_trips_awkward_values_through_bash() {
         );
         assert_eq!(mode(&w.state("session.env")), 0o600);
     }
+}
+
+#[test]
+fn a_reused_key_file_is_made_private() {
+    // The SA key file survives from an earlier session; if it was left 0644
+    // (by hand, or an older tool), rewriting it must not keep that mode.
+    let w = World::new();
+    let _ = fs::remove_dir_all(w.p("state"));
+    fs::create_dir_all(w.p("state")).unwrap();
+    fs::write(w.state("sa-key-pinned.json"), "stale").unwrap();
+    fs::set_permissions(
+        w.state("sa-key-pinned.json"),
+        fs::Permissions::from_mode(0o644),
+    )
+    .unwrap();
+    fs::create_dir_all(w.p("home")).unwrap();
+    w.exec(
+        &["auth"],
+        &[
+            ("VITRUVIAN_PROFILE", "pinned".into()),
+            ("VITRUVIAN_CLOUD_KEY", SA_KEY_GOOD.into()),
+        ],
+    );
+    assert_contains(
+        "the key was rewritten",
+        &w.argv(),
+        "activate-service-account",
+    );
+    assert_eq!(
+        mode(&w.state("sa-key-pinned.json")),
+        0o600,
+        "a reused 0644 key file stayed world-readable"
+    );
 }
 
 #[test]
