@@ -193,10 +193,6 @@ func Deploy(ctx *pulumi.Context, name string, args *Args) (*Result, error) {
 	// the running pipeline's ability to deploy.
 	member := pulumi.Sprintf("principalSet://iam.googleapis.com/%s/attribute.environment/%s",
 		args.WorkloadIdentityPool, args.GitHubEnvironment)
-	if args.GitHubRepository != "" {
-		member = pulumi.Sprintf("principalSet://iam.googleapis.com/%s/attribute.repository/%s",
-			args.WorkloadIdentityPool, args.GitHubRepository)
-	}
 	if _, err := serviceaccount.NewIAMMember(ctx, name+"-wif-impersonation", &serviceaccount.IAMMemberArgs{
 		ServiceAccountId: sa.Name,
 		Role:             pulumi.String("roles/iam.workloadIdentityUser"),
