@@ -42,9 +42,20 @@
 //! `//go:build <tag>` file under a go_test_with_retry root, which plain
 //! `go test ./...` skips. A `.bazelignore`d path never counts as Bazel.
 //!
-//! A step's `if:` is rejected only when it is constant-false; one that is
-//! never true by its meaning (`github.event_name == 'never'`) still counts.
-//! That is not decidable in general, and review catches it.
+//! Path filters: a step's `if:` and its job's `if:` are both traced, link
+//! by link, from `needs.<job>.outputs.<o>` through the job's `outputs:` map,
+//! the `id:` step that `say`s it, and that step's env, to the paths-filter
+//! globs; a broken link fails. Each gate must read a filter matching every
+//! Go file under the root, as alternatives (`||`, never `&&`), and the job
+//! gate must keep the step's `needs.<job>.result != 'success'` fail-safe.
+//!
+//! Accepted limits, each left to review:
+//! - an `if:` that is never true by its meaning but not constant
+//!   (`github.event_name == 'never'`) still counts: not decidable;
+//! - globs are read with paths-filter's default `predicate-quantifier:
+//!   some`, under which a `!` glob widens the filter; under `every` it
+//!   would exclude, and that is not modelled;
+//! - two `filters:` blocks that reuse a filter name have their globs merged.
 //!
 //! Directories Go itself ignores (`testdata`, `vendor`, dot- and
 //! `_`-prefixed) are skipped, as are `node_modules` and the `bazel-*` links.
@@ -474,22 +485,187 @@ fn path_filters(lines: &[String]) -> BTreeMap<String, Vec<String>> {
     out
 }
 
-/// For a `needs.changes.outputs.<name>` the step's `if:` reads, the path
-/// filter behind it: `say <name> "$VAR"` in the changes job, then
-/// `VAR: ${{ steps.filter.outputs.<filter> }}`.
-fn filter_behind(lines: &[String], output: &str) -> Option<String> {
-    let say = format!("say {output} \"$");
-    let var = lines.iter().find_map(|l| {
-        let t = l.trim();
-        t.strip_prefix(&say)
-            .map(|r| r.trim_end_matches('"').to_string())
-    })?;
+/// The jobs of a workflow: each job id with its body lines.
+fn jobs_of(lines: &[String]) -> Vec<(String, Vec<String>)> {
+    let mut out = Vec::new();
+    let Some(jobs_at) = lines.iter().position(|l| l.trim_end() == "jobs:") else {
+        return out;
+    };
+    let is_job = |l: &str| {
+        indent(l) == 2
+            && l.trim_end().ends_with(':')
+            && !l.trim_start().starts_with('#')
+            && !l.trim().contains(' ')
+    };
+    let mut i = jobs_at + 1;
+    while i < lines.len() {
+        if !is_job(&lines[i]) {
+            i += 1;
+            continue;
+        }
+        let name = lines[i].trim().trim_end_matches(':').to_string();
+        let end = (i + 1..lines.len())
+            .find(|&j| is_job(&lines[j]) || (indent(&lines[j]) == 0 && !lines[j].trim().is_empty()))
+            .unwrap_or(lines.len());
+        out.push((name, lines[i + 1..end].to_vec()));
+        i = end;
+    }
+    out
+}
+
+/// A job's steps, each as its lines with the leading `- ` blanked so its
+/// keys all sit at 8 spaces.
+fn steps_of(job_lines: &[String]) -> Vec<Vec<String>> {
+    let starts: Vec<usize> = (0..job_lines.len())
+        .filter(|&j| indent(&job_lines[j]) == 6 && job_lines[j].trim_start().starts_with("- "))
+        .collect();
+    let mut out = Vec::new();
+    for (n, &st) in starts.iter().enumerate() {
+        let se = starts.get(n + 1).copied().unwrap_or_else(|| {
+            (st + 1..job_lines.len())
+                .find(|&j| !job_lines[j].trim().is_empty() && indent(&job_lines[j]) <= 4)
+                .unwrap_or(job_lines.len())
+        });
+        let mut step: Vec<String> = job_lines[st..se].to_vec();
+        step[0] = step[0].replacen("- ", "  ", 1);
+        out.push(step);
+    }
+    out
+}
+
+/// Every `needs.<job>.outputs.<name>` a condition reads, with its offset.
+fn outputs_read(cond: &str) -> Vec<(usize, String, String)> {
+    let ident = |s: &str| -> String {
+        s.chars()
+            .take_while(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
+            .collect()
+    };
+    let mut out = Vec::new();
+    for (at, _) in cond.match_indices("needs.") {
+        let rest = &cond[at + "needs.".len()..];
+        let job = ident(rest);
+        if let Some(r) = rest[job.len()..].strip_prefix(".outputs.") {
+            out.push((at, job, ident(r)));
+        }
+    }
+    out
+}
+
+/// The path filter behind `needs.<job>.outputs.<output>`, followed link by
+/// link: the job's `outputs:` map (`<output>: ${{ steps.<id>.outputs.<n> }}`),
+/// the step with that `id`, its `say <n> "$VAR"` line, and its env
+/// (`VAR: ${{ steps.filter.outputs.<filter> }}`). A broken link (a typo in
+/// any of the four names) is an error naming it.
+fn resolve_filter(
+    jobs: &[(String, Vec<String>)],
+    job: &str,
+    output: &str,
+) -> Result<String, String> {
+    let lines = &jobs
+        .iter()
+        .find(|(j, _)| j == job)
+        .ok_or_else(|| format!("no job `{job}`"))?
+        .1;
+    let Some(o) = lines
+        .iter()
+        .position(|l| indent(l) == 4 && l.trim() == "outputs:")
+    else {
+        return Err(format!("job `{job}` has no outputs: map"));
+    };
+    let key = format!("{output}:");
+    let value = lines[o + 1..]
+        .iter()
+        .take_while(|l| l.trim().is_empty() || indent(l) > 4)
+        .find_map(|l| l.trim().strip_prefix(&key).map(|v| scalar(v)))
+        .ok_or_else(|| format!("job `{job}` has no output `{output}`"))?;
+    let inner = value
+        .strip_prefix("${{")
+        .and_then(|v| v.strip_suffix("}}"))
+        .map(str::trim)
+        .and_then(|v| v.strip_prefix("steps."))
+        .ok_or_else(|| format!("`{job}` output `{output}` is not a step output: {value}"))?;
+    let (id, name) = inner
+        .split_once(".outputs.")
+        .ok_or_else(|| format!("`{job}` output `{output}` is not a step output: {value}"))?;
+    let step = steps_of(lines)
+        .into_iter()
+        .find(|st| key_value(st, 8, "id").as_deref() == Some(id))
+        .ok_or_else(|| {
+            format!("`{job}` output `{output}` reads step `{id}`, which `{job}` does not have")
+        })?;
+    let say = format!("say {name} \"$");
+    let var = step
+        .iter()
+        .find_map(|l| l.trim().strip_prefix(&say).map(|r| r.trim_end_matches('"').to_string()))
+        .ok_or_else(|| format!("`{job}` output `{output}` reads `steps.{id}.outputs.{name}`, which step `{id}` never sets"))?;
     let env = format!("{var}: ${{{{ steps.filter.outputs.");
-    lines.iter().find_map(|l| {
-        let t = l.trim();
-        t.strip_prefix(&env)
-            .map(|r| r.trim_end_matches("}}").trim().to_string())
-    })
+    step.iter()
+        .find_map(|l| {
+            l.trim()
+                .strip_prefix(&env)
+                .map(|r| r.trim_end_matches("}}").trim().to_string())
+        })
+        .ok_or_else(|| {
+            format!("step `{id}` sets `{name}` from `${var}`, which no path filter feeds")
+        })
+}
+
+/// True when `filter`'s globs match every Go file under `root`.
+fn filter_covers(lines: &[String], filter: &str, root: &str) -> bool {
+    let globs = path_filters(lines).remove(filter).unwrap_or_default();
+    globs.iter().any(|g| glob_covers_tree(g, root))
+        || ["/**/*.go", "/**/go.mod", "/**/go.sum"].iter().all(|want| {
+            globs.iter().any(|g| {
+                g.strip_suffix(want)
+                    .is_some_and(|d| glob_covers_tree(&format!("{d}/**"), root))
+            })
+        })
+}
+
+/// The path filters a job's or step's `if:` gates on (outputs of jobs that
+/// run dorny/paths-filter), or why it cannot be trusted to run on a change
+/// under `root`. `Ok(None)` means the condition reads no path filter.
+fn gate_filters(
+    lines: &[String],
+    jobs: &[(String, Vec<String>)],
+    cond: &str,
+    root: &str,
+    what: &str,
+) -> Result<Option<Vec<String>>, String> {
+    let filter_jobs: Vec<&str> = jobs
+        .iter()
+        .filter(|(_, l)| l.iter().any(|x| x.trim_start().starts_with("filters: |")))
+        .map(|(j, _)| j.as_str())
+        .collect();
+    let refs: Vec<(usize, String, String)> = outputs_read(cond)
+        .into_iter()
+        .filter(|(_, j, _)| filter_jobs.contains(&j.as_str()))
+        .collect();
+    if refs.is_empty() {
+        return Ok(None);
+    }
+    // The outputs it reads must be alternatives (`a || b`): an `&&` between
+    // two of them can make one filter's match not enough.
+    let span = &cond[refs[0].0..refs[refs.len() - 1].0];
+    if span.contains("&&") {
+        return Err(format!("{what} `if:` combines path filters with &&"));
+    }
+    let mut filters = Vec::new();
+    for (_, job, out) in &refs {
+        filters.push(
+            resolve_filter(jobs, job, out)
+                .map_err(|e| format!("{what} `if:` reads needs.{job}.outputs.{out}: {e}"))?,
+        );
+    }
+    if !filters.iter().any(|f| filter_covers(lines, f, root)) {
+        return Err(format!(
+            "{what} `if:` path filter{} `{}` do{} not match every Go file under {root}, so a change there skips it",
+            if filters.len() > 1 { "s" } else { "" },
+            filters.join("`, `"),
+            if filters.len() > 1 { "" } else { "es" },
+        ));
+    }
+    Ok(Some(filters))
 }
 
 /// True when `glob` (a paths-filter pattern) matches every file under `root`:
@@ -504,40 +680,35 @@ fn glob_covers_tree(glob: &str, root: &str) -> bool {
     g.len() <= r.len() && g.iter().zip(&r).all(|(a, b)| *a == "*" || a == b)
 }
 
-/// Why the step's path filter can skip it on a change under `root`, or
-/// None. A step whose `if:` reads no `needs.changes.outputs.*` is not
-/// filtered here.
-fn filter_gap(lines: &[String], step: &[String], root: &str) -> Option<String> {
-    let cond = key_value(step, 8, "if")?;
-    let at = cond.find("needs.changes.outputs.")?;
-    let output: String = cond[at + "needs.changes.outputs.".len()..]
-        .chars()
-        .take_while(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
-        .collect();
-    let Some(filter) = filter_behind(lines, &output) else {
-        return Some(format!(
-            "its `if:` reads needs.changes.outputs.{output}, which no path filter feeds"
-        ));
-    };
-    let globs = path_filters(lines).remove(&filter).unwrap_or_default();
-    let covered = globs.iter().any(|g| glob_covers_tree(g, root))
-        || ["go", "mod", "sum"].iter().all(|ext| {
-            let want = if *ext == "go" {
-                "/**/*.go".to_string()
-            } else {
-                format!("/**/go.{ext}")
-            };
-            globs.iter().any(|g| {
-                g.strip_suffix(want.as_str())
-                    .is_some_and(|d| glob_covers_tree(&format!("{d}/**"), root))
-            })
-        });
-    if covered {
-        None
-    } else {
-        Some(format!(
-            "path filter `{filter}` does not match every Go file under {root}, so a change there skips the step"
-        ))
+/// Why a path filter can skip the step on a change under `root`, or None.
+/// Both gates are traced: the step's `if:` and its job's `if:`. Each that
+/// reads a path filter must have one matching every Go file under `root`
+/// (the job's may be wider, e.g. IaC OR examples), and a job gate must keep
+/// the step's `needs.<job>.result != 'success'` fail-safe.
+fn filter_gap(
+    lines: &[String],
+    jobs: &[(String, Vec<String>)],
+    job_lines: &[String],
+    step: &[String],
+    root: &str,
+) -> Option<String> {
+    let step_if = key_value(step, 8, "if").unwrap_or_default();
+    let job_if = key_value(job_lines, 4, "if").unwrap_or_default();
+    if let Err(e) = gate_filters(lines, jobs, &step_if, root, "step") {
+        return Some(e);
+    }
+    match gate_filters(lines, jobs, &job_if, root, "job") {
+        Err(e) => Some(e),
+        Ok(Some(_)) => {
+            for (_, j, _) in outputs_read(&step_if) {
+                let safe = format!("needs.{j}.result != 'success'");
+                if step_if.contains(&safe) && !job_if.contains(&safe) {
+                    return Some(format!("job `if:` drops the step's fail-safe `{safe}`"));
+                }
+            }
+            None
+        }
+        Ok(None) => None,
     }
 }
 
@@ -549,39 +720,12 @@ pub fn lanes_from_workflow(
     ci_yaml: &str,
 ) -> Vec<(String, Vec<String>, Option<String>)> {
     let lines: Vec<String> = ci_yaml.lines().map(str::to_string).collect();
+    let jobs = jobs_of(&lines);
     let mut lanes = Vec::new();
-    let Some(jobs_at) = lines.iter().position(|l| l.trim_end() == "jobs:") else {
-        return lanes;
-    };
-    let is_job = |l: &str| {
-        indent(l) == 2
-            && l.trim_end().ends_with(':')
-            && !l.trim_start().starts_with('#')
-            && !l.trim().contains(' ')
-    };
-    let mut i = jobs_at + 1;
-    while i < lines.len() {
-        if !is_job(&lines[i]) {
-            i += 1;
-            continue;
-        }
-        let job = lines[i].trim().trim_end_matches(':').to_string();
-        let end = (i + 1..lines.len())
-            .find(|&j| is_job(&lines[j]) || (indent(&lines[j]) == 0 && !lines[j].trim().is_empty()))
-            .unwrap_or(lines.len());
-        let job_lines = &lines[i + 1..end];
-        // Steps: each starts at `      - ` (6 spaces).
-        let starts: Vec<usize> = (0..job_lines.len())
-            .filter(|&j| indent(&job_lines[j]) == 6 && job_lines[j].trim_start().starts_with("- "))
-            .collect();
-        for (n, &st) in starts.iter().enumerate() {
-            let se = starts.get(n + 1).copied().unwrap_or_else(|| {
-                (st + 1..job_lines.len())
-                    .find(|&j| !job_lines[j].trim().is_empty() && indent(&job_lines[j]) <= 4)
-                    .unwrap_or(job_lines.len())
-            });
-            let mut step: Vec<String> = job_lines[st..se].to_vec();
-            step[0] = step[0].replacen("- ", "  ", 1);
+    for (job, job_lines) in &jobs {
+        let job_lines = &job_lines[..];
+        for step in steps_of(job_lines) {
+            let step = &step[..];
             // The run script: an inline `run: cmd`, or the block under `run: |`.
             let Some(ri) = step
                 .iter()
@@ -629,16 +773,17 @@ pub fn lanes_from_workflow(
                         .map(|r| String::from_utf8_lossy(&r).into_owned())
                         .collect();
                 }
-                let why = why_disabled(job_lines, &step, &run, c);
+                let why = why_disabled(job_lines, step, &run, c);
                 // A root its path filter does not match is tested only when
                 // something else triggers the step: not a lane for that root.
                 for root in roots {
-                    let why = why.clone().or_else(|| filter_gap(&lines, &step, &root));
+                    let why = why
+                        .clone()
+                        .or_else(|| filter_gap(&lines, &jobs, job_lines, step, &root));
                     lanes.push((job.clone(), vec![root], why));
                 }
             }
         }
-        i = end;
     }
     lanes
 }

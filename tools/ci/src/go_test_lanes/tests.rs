@@ -30,7 +30,10 @@ impl Tree {
         let base = std::env::var("TEST_TMPDIR")
             .map(PathBuf::from)
             .unwrap_or_else(|_| std::env::temp_dir());
-        let p = base.join(format!("go_test_lanes_{name}_{}", std::process::id()));
+        // Unique per call: tests run in parallel and may share a `name`.
+        static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let n = N.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let p = base.join(format!("go_test_lanes_{name}_{}_{n}", std::process::id()));
         let _ = fs::remove_dir_all(&p);
         fs::create_dir_all(&p).unwrap();
         Tree(p)
@@ -482,16 +485,151 @@ fn an_earlier_exit_is_not_a_lane() {
     }
 }
 
-/// A ci.yaml whose examples step is gated on a paths-filter output, the way
-/// go-test-infra is: `globs` is the `ex` filter.
+/// The real wiring, in small: a `changes` job runs paths-filter, a `decide`
+/// step `say`s one output per filter, the job maps them in `outputs:`, and
+/// go-test-infra's job and step `if:`s read them. Each knob replaces one
+/// link, so a test can break exactly that link.
+struct Wiring<'a> {
+    ex_globs: &'a [&'a str],
+    /// `changes` job `outputs:` lines.
+    outputs: &'a str,
+    /// `say` lines in the decide step.
+    says: &'a str,
+    job_if: &'a str,
+    step_output: &'a str,
+}
+
+impl Default for Wiring<'_> {
+    fn default() -> Self {
+        Wiring {
+            ex_globs: &["packages/pulumi/examples/**"],
+            outputs: "      go-test-iac: ${{ steps.decide.outputs.go-test-iac }}\n      go-test-examples: ${{ steps.decide.outputs.go-test-examples }}\n",
+            says: "say go-test-iac \"$IAC\"\n          say go-test-examples \"$EX\"",
+            job_if: "${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.go-test-iac == 'true' || needs.changes.outputs.go-test-examples == 'true') }}",
+            step_output: "go-test-examples",
+        }
+    }
+}
+
+impl Wiring<'_> {
+    fn ci(&self) -> String {
+        let g: String = self
+            .ex_globs
+            .iter()
+            .map(|g| format!("              - '{g}'\n"))
+            .collect();
+        format!(
+            "name: CI\njobs:\n  changes:\n    runs-on: x\n    outputs:\n{outputs}    steps:\n      - id: filter\n        uses: dorny/paths-filter@x\n        with:\n          filters: |\n            iac:\n              - 'infrastructure/pulumi/**'\n            ex:\n{g}      - name: Decide\n        id: decide\n        env:\n          IAC: ${{{{ steps.filter.outputs.iac }}}}\n          EX: ${{{{ steps.filter.outputs.ex }}}}\n        run: |\n          {says}\n  go-test-infra:\n    needs: [changes]\n    if: {job_if}\n    steps:\n      - name: go test\n        if: needs.changes.result != 'success' || needs.changes.outputs.{step} == 'true'\n        run: |\n          set -euo pipefail\n          {EX_CMD}\n",
+            outputs = self.outputs,
+            says = self.says,
+            job_if = self.job_if,
+            step = self.step_output,
+        )
+    }
+}
+
 fn filtered_ci(globs: &[&str], output: &str) -> String {
-    let g: String = globs
-        .iter()
-        .map(|g| format!("              - '{g}'\n"))
-        .collect();
-    format!(
-        "name: CI\njobs:\n  changes:\n    steps:\n      - id: filter\n        uses: dorny/paths-filter@x\n        with:\n          filters: |\n            ex:\n{g}            other:\n              - 'x/**'\n      - id: decide\n        env:\n          EX: ${{{{ steps.filter.outputs.ex }}}}\n        run: |\n          say go-test-examples \"$EX\"\n  go-test-infra:\n    steps:\n      - name: go test\n        if: needs.changes.result != 'success' || needs.changes.outputs.{output} == 'true'\n        run: |\n          set -euo pipefail\n          {EX_CMD}\n"
-    )
+    Wiring {
+        ex_globs: globs,
+        step_output: output,
+        ..Wiring::default()
+    }
+    .ci()
+}
+
+fn assert_not_a_lane(ci: &str, reason: &str) {
+    let t = example_tree("wiring");
+    let r = t.check(ci, "");
+    assert_eq!(
+        r.uncovered(),
+        vec!["packages/pulumi/examples/e/e_test.go"],
+        "{:?}",
+        r.disabled
+    );
+    assert!(
+        r.disabled.iter().any(|(_, w)| w.contains(reason)),
+        "want `{reason}`: {:?}",
+        r.disabled
+    );
+}
+
+#[test]
+fn the_real_wiring_is_a_lane() {
+    let t = example_tree("wiringok");
+    let r = t.check(&Wiring::default().ci(), "");
+    assert!(r.ok(), "{:?}", r);
+}
+
+#[test]
+fn n8_a_job_gate_fed_by_the_iac_filter_only_is_not_a_lane() {
+    // aegis N8: main's `say go-test-infra "$IAC"`, brought back by a revert.
+    let w = Wiring {
+        outputs: "      go-test-infra: ${{ steps.decide.outputs.go-test-infra }}\n      go-test-examples: ${{ steps.decide.outputs.go-test-examples }}\n",
+        says: "say go-test-infra \"$IAC\"\n          say go-test-examples \"$EX\"",
+        job_if: "${{ needs.changes.result != 'success' || needs.changes.outputs.go-test-infra == 'true' }}",
+        ..Wiring::default()
+    };
+    assert_not_a_lane(&w.ci(), "job `if:` path filter `iac` does not match");
+}
+
+#[test]
+fn n5_a_job_gate_reading_only_the_iac_output_is_not_a_lane() {
+    let w = Wiring {
+        job_if: "${{ needs.changes.result != 'success' || needs.changes.outputs.go-test-iac == 'true' }}",
+        ..Wiring::default()
+    };
+    assert_not_a_lane(&w.ci(), "job `if:` path filter `iac` does not match");
+}
+
+#[test]
+fn n4_a_typo_in_the_outputs_map_is_not_a_lane() {
+    let w = Wiring {
+        outputs: "      go-test-iac: ${{ steps.decide.outputs.go-test-iac }}\n      go-test-examples: ${{ steps.decide.outputs.go-test-exmpls }}\n",
+        ..Wiring::default()
+    };
+    assert_not_a_lane(&w.ci(), "never sets");
+}
+
+#[test]
+fn a_missing_output_or_step_id_is_not_a_lane() {
+    let w = Wiring {
+        outputs: "      go-test-iac: ${{ steps.decide.outputs.go-test-iac }}\n",
+        ..Wiring::default()
+    };
+    assert_not_a_lane(&w.ci(), "has no output `go-test-examples`");
+    let w = Wiring {
+        outputs: "      go-test-iac: ${{ steps.decide.outputs.go-test-iac }}\n      go-test-examples: ${{ steps.decid.outputs.go-test-examples }}\n",
+        ..Wiring::default()
+    };
+    assert_not_a_lane(&w.ci(), "reads step `decid`");
+}
+
+#[test]
+fn a_job_gate_anding_the_filters_is_not_a_lane() {
+    let w = Wiring {
+        job_if: "${{ needs.changes.outputs.go-test-iac == 'true' && needs.changes.outputs.go-test-examples == 'true' }}",
+        ..Wiring::default()
+    };
+    assert_not_a_lane(&w.ci(), "combines path filters with &&");
+}
+
+#[test]
+fn a_job_gate_dropping_the_fail_safe_is_not_a_lane() {
+    let w = Wiring {
+        job_if: "${{ needs.changes.outputs.go-test-iac == 'true' || needs.changes.outputs.go-test-examples == 'true' }}",
+        ..Wiring::default()
+    };
+    assert_not_a_lane(&w.ci(), "drops the step's fail-safe");
+}
+
+#[test]
+fn a_job_gate_on_no_path_filter_is_fine() {
+    let w = Wiring {
+        job_if: "${{ !cancelled() }}",
+        ..Wiring::default()
+    };
+    let t = example_tree("nojobfilter");
+    assert!(t.check(&w.ci(), "").ok());
 }
 
 #[test]
@@ -542,7 +680,7 @@ fn an_if_reading_an_unknown_output_is_not_a_lane() {
     );
     assert_eq!(r.uncovered().len(), 1);
     assert!(
-        r.disabled[0].1.contains("no path filter feeds"),
+        r.disabled[0].1.contains("has no output `no-such-output`"),
         "{:?}",
         r.disabled
     );

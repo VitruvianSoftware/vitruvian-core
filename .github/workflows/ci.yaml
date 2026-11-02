@@ -816,7 +816,6 @@ jobs:
     outputs:
       go-lint-devx: ${{ steps.decide.outputs.go-lint-devx }}
       go-lint-homelab: ${{ steps.decide.outputs.go-lint-homelab }}
-      go-test-infra: ${{ steps.decide.outputs.go-test-infra }}
       go-test-iac: ${{ steps.decide.outputs.go-test-iac }}
       go-test-examples: ${{ steps.decide.outputs.go-test-examples }}
       go-race: ${{ steps.decide.outputs.go-race }}
@@ -918,13 +917,9 @@ jobs:
           say() { if want "$2"; then v=true; else v=false; fi; echo "$1=$v" | tee -a "$GITHUB_OUTPUT"; }
           say go-lint-devx "$DEVX"
           say go-lint-homelab "$HOMELAB"
-          # go-test-infra runs for IaC OR example changes; each of its two
-          # test steps then checks its own filter. Unknown (empty) stays
-          # unknown, so the queue still fails safe to running.
-          if [ "$IAC" = "true" ] || [ "$EX" = "true" ]; then either=true
-          elif [ "$IAC" = "false" ] && [ "$EX" = "false" ]; then either=false
-          else either=""; fi
-          say go-test-infra "$either"
+          # go-test-infra's two test steps each read their own output, and
+          # the job runs when either would (its `if:` reads both directly;
+          # //tools/ci:go_test_lanes checks it reads the examples one).
           say go-test-iac "$IAC"
           say go-test-examples "$EX"
           say example-build "$EX"
@@ -1012,7 +1007,7 @@ jobs:
     # Each test step checks its own path filter, so an IaC-only change does
     # not pay for the examples, and the reverse.
     needs: [queued, fast-lane, changes]
-    if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' && needs.fast-lane.outputs.skip != 'true' && (needs.changes.result != 'success' || needs.changes.outputs.go-test-infra == 'true') }}
+    if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' && needs.fast-lane.outputs.skip != 'true' && (needs.changes.result != 'success' || needs.changes.outputs.go-test-iac == 'true' || needs.changes.outputs.go-test-examples == 'true') }}
     runs-on: ubuntu-26.04
     timeout-minutes: 40
     env:
