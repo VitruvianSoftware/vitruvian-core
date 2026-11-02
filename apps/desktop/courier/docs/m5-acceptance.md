@@ -85,13 +85,13 @@ Each line is one row of the inventory's `ledger.tsv`, kept under its row name. T
 - `VS Code` — shipped as an install link, the same way.
 - `Install to` — partly shipped: Claude Code commands for HTTP and for stdio. There is no Codex command and no picker; the sheet lists every option at once.
 - `Claude Desktop` — not planned in iteration 1. The reference app downloads a Claude Desktop extension file (`.dxt`). Courier doesn't build one. Claude Desktop can still use Courier through its MCP settings with the stdio command.
-- `Raycast` — not planned in iteration 1. Raycast's extension talks to the reference app's REST API, which Courier doesn't have.
+- `Raycast` — not planned in iteration 1. Raycast's extension talks to the reference app's REST API, of which Courier serves only the two read-only endpoints below.
 
 ## Not ledger rows
 
 These were in the reference app but have no ledger row of their own. They are out of scope for milestone 5.
 
-- The REST API (`/v1`) and its OpenAPI spec endpoint. Courier serves MCP only.
+- The REST API (`/v1`) and its OpenAPI spec endpoint, except two read-only endpoints added after milestone 5 so HomeSpeaker can read chats from Courier: `GET /v1/accounts` and `GET /v1/messages/search`. They are on the same port as MCP, take the same tokens, and keep the same Remote Access and Host rules. `GET /v1/messages/search` may leave out `query` and list the messages its filters pick, such as everything after `dateAfter`. Nothing else under `/v1` is served, and nothing there can send.
 - The OAuth flow third-party apps used to get a token. In Courier you make a token in Settings, or a client asks with `POST /v0/pair` and you answer the alert.
 - The approval dialog's "Expires in" choice. Courier's tokens last until revoked.
 - "Join Developer Community chat".

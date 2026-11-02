@@ -1047,54 +1047,92 @@ gather:
 	return out, nil
 }
 
+// searchMessagesArgs are search_messages's arguments, and GET /v1/messages/search's query parameters (rest.go).
+type searchMessagesArgs struct {
+	AccountIDs         []string `json:"accountIDs"`
+	ChatIDs            []string `json:"chatIDs"`
+	ChatType           *string  `json:"chatType"`
+	Cursor             *string  `json:"cursor"`
+	DateAfter          *string  `json:"dateAfter"`
+	DateBefore         *string  `json:"dateBefore"`
+	Direction          *string  `json:"direction"`
+	ExcludeLowPriority *bool    `json:"excludeLowPriority"`
+	IncludeMuted       *bool    `json:"includeMuted"`
+	Limit              *int     `json:"limit"`
+	MediaTypes         []string `json:"mediaTypes"`
+	Query              *string  `json:"query"`
+	Sender             *string  `json:"sender"`
+}
+
+// foundMessages is one page of a message search: the hits newest first, the chats they are in, and where the
+// pages either side of it start.
+type foundMessages struct {
+	l              *lookups
+	hits           []wireHit
+	rows           map[string]wireRow // room ID → its inbox row, for every chat a hit is in
+	hasMore        bool
+	oldest, newest *string
+}
+
 func (s *Server) searchMessages(ctx context.Context, _ *mcp.CallToolRequest, raw json.RawMessage) (any, error) {
-	var a struct {
-		AccountIDs         []string `json:"accountIDs"`
-		ChatIDs            []string `json:"chatIDs"`
-		ChatType           *string  `json:"chatType"`
-		Cursor             *string  `json:"cursor"`
-		DateAfter          *string  `json:"dateAfter"`
-		DateBefore         *string  `json:"dateBefore"`
-		Direction          *string  `json:"direction"`
-		ExcludeLowPriority *bool    `json:"excludeLowPriority"`
-		IncludeMuted       *bool    `json:"includeMuted"`
-		Limit              *int     `json:"limit"`
-		MediaTypes         []string `json:"mediaTypes"`
-		Query              *string  `json:"query"`
-		Sender             *string  `json:"sender"`
-	}
+	var a searchMessagesArgs
 	if err := args(raw, &a); err != nil {
 		return nil, err
 	}
+	if a.Query == nil || strings.TrimSpace(*a.Query) == "" {
+		return nil, fail("query is required: Courier searches messages by their words. To read a chat's latest messages, use list_messages.")
+	}
+	f, err := s.findMessages(ctx, a)
+	if err != nil {
+		return nil, err
+	}
+	out := struct {
+		Messages     []messageJSON       `json:"messages"`
+		Chats        map[string]chatJSON `json:"chats"`
+		HasMore      bool                `json:"hasMore"`
+		OldestCursor *string             `json:"oldestCursor"`
+		NewestCursor *string             `json:"newestCursor"`
+	}{Messages: []messageJSON{}, Chats: map[string]chatJSON{}, HasMore: f.hasMore, OldestCursor: f.oldest, NewestCursor: f.newest}
+	for _, h := range f.hits {
+		out.Messages = append(out.Messages, s.hitMessage(f.l, h))
+	}
+	for id, r := range f.rows {
+		out.Chats[id] = f.l.chat(r)
+	}
+	return out, nil
+}
+
+// findMessages is one page of a message search, the one search_messages and GET /v1/messages/search share. With
+// no query it lists the messages its filters pick, newest first (the store's browse); with nothing that picks
+// messages either, it finds none. A deleted message is never among them.
+func (s *Server) findMessages(ctx context.Context, a searchMessagesArgs) (foundMessages, error) {
 	limit := clampLimit(a.Limit, defaultMessagesLimit)
 	query := ""
 	if a.Query != nil {
 		query = strings.TrimSpace(*a.Query)
 	}
-	if query == "" {
-		return nil, fail("query is required: Courier searches messages by their words. To read a chat's latest messages, use list_messages.")
-	}
+	l := s.lookups(ctx)
 	cur, err := parseCursor(a.Cursor)
 	if err != nil {
-		return nil, err
+		return foundMessages{}, err
 	}
 	after, err := directionOf(a.Direction)
 	if err != nil {
-		return nil, err
+		return foundMessages{}, err
 	}
 	since, hasSince, err := parseTime("dateAfter", a.DateAfter)
 	if err != nil {
-		return nil, err
+		return foundMessages{}, err
 	}
 	until, hasUntil, err := parseTime("dateBefore", a.DateBefore)
 	if err != nil {
-		return nil, err
+		return foundMessages{}, err
 	}
 	var from *position
 	if cur != nil {
 		p, err := s.cursorPosition(ctx, cur)
 		if err != nil {
-			return nil, err
+			return foundMessages{}, err
 		}
 		from = &p
 		if after {
@@ -1108,10 +1146,10 @@ func (s *Server) searchMessages(ctx context.Context, _ *mcp.CallToolRequest, raw
 		}
 	}
 	if after && from == nil {
-		return nil, fail("direction after needs a cursor.")
+		return foundMessages{}, fail("direction after needs a cursor.")
 	}
 	if len(a.ChatIDs) > maxSearchChatIDs {
-		return nil, fail("chatIDs can name at most %d chats.", maxSearchChatIDs)
+		return foundMessages{}, fail("chatIDs can name at most %d chats.", maxSearchChatIDs)
 	}
 
 	filters := map[string]any{}
@@ -1125,7 +1163,7 @@ func (s *Server) searchMessages(ctx context.Context, _ *mcp.CallToolRequest, raw
 		case "single":
 			filters["chat_type"] = "dm"
 		default:
-			return nil, fail("chatType must be group or single.")
+			return foundMessages{}, fail("chatType must be group or single.")
 		}
 	}
 	senderID := ""
@@ -1155,7 +1193,7 @@ func (s *Server) searchMessages(ctx context.Context, _ *mcp.CallToolRequest, raw
 			case "image", "video", "link", "file":
 				kinds[t] = true
 			default:
-				return nil, fail("mediaTypes may hold any, video, image, link and file.")
+				return foundMessages{}, fail("mediaTypes may hold any, video, image, link and file.")
 			}
 		}
 		list := make([]string, 0, len(kinds))
@@ -1172,15 +1210,8 @@ func (s *Server) searchMessages(ctx context.Context, _ *mcp.CallToolRequest, raw
 			sections = append(sections, "messages")
 		}
 	}
-	empty := struct {
-		Messages     []messageJSON       `json:"messages"`
-		Chats        map[string]chatJSON `json:"chats"`
-		HasMore      bool                `json:"hasMore"`
-		OldestCursor *string             `json:"oldestCursor"`
-		NewestCursor *string             `json:"newestCursor"`
-	}{Messages: []messageJSON{}, Chats: map[string]chatJSON{}}
 	if hasSince && hasUntil && since >= until {
-		return empty, nil
+		return foundMessages{l: l}, nil
 	}
 
 	// Each section is its own stream of hits, newest first; they are merged here.
@@ -1233,7 +1264,6 @@ func (s *Server) searchMessages(ctx context.Context, _ *mcp.CallToolRequest, raw
 		}
 		return nil
 	}
-	l := s.lookups(ctx)
 	var rowCache map[string]wireRow
 	rowOf := func(roomID string) (wireRow, bool) {
 		if rowCache == nil {
@@ -1296,7 +1326,7 @@ func (s *Server) searchMessages(ctx context.Context, _ *mcp.CallToolRequest, raw
 		var best *stream
 		for _, st := range streams {
 			if err := fill(st); err != nil {
-				return nil, err
+				return foundMessages{}, err
 			}
 			if len(st.buf) == 0 {
 				continue
@@ -1314,35 +1344,31 @@ func (s *Server) searchMessages(ctx context.Context, _ *mcp.CallToolRequest, raw
 			got = append(got, h)
 		}
 	}
-	out := empty
+	out := foundMessages{l: l}
 	if after {
 		if len(got) > limit {
-			out.HasMore = true
+			out.hasMore = true
 			got = got[len(got)-limit:]
 		}
 	} else if len(got) > limit {
-		out.HasMore = true
+		out.hasMore = true
 		got = got[:limit]
 	}
 	var roomIDs []string
 	for _, h := range got {
-		out.Messages = append(out.Messages, s.hitMessage(l, h))
 		if !slices.Contains(roomIDs, h.RoomID) {
 			roomIDs = append(roomIDs, h.RoomID)
 		}
 	}
-	rows, err := s.rows(ctx, roomIDs)
-	if err != nil {
-		return nil, err
+	if out.rows, err = s.rows(ctx, roomIDs); err != nil {
+		return foundMessages{}, err
 	}
-	for id, r := range rows {
-		out.Chats[id] = l.chat(r)
-	}
+	out.hits = got
 	if len(got) > 0 {
 		oldest, newest := got[len(got)-1], got[0]
 		o := pageCursor{T: oldest.TS, ID: oldest.EventID, S: &oldest.Seq}.String()
 		n := pageCursor{T: newest.TS, ID: newest.EventID, S: &newest.Seq}.String()
-		out.OldestCursor, out.NewestCursor = &o, &n
+		out.oldest, out.newest = &o, &n
 	}
 	return out, nil
 }
