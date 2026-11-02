@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! changelog-summary.sh — render a component's release notes into the GitHub
+//! changelog-summary — render a component's release notes into the GitHub
 //! Actions run page (a job summary).
 
 use shell_compat::{basename, cat, dirname, env, err, is_file, out, path, subst};
@@ -67,16 +67,32 @@ fn extract_block(changelog: &[u8], ver: &[u8]) -> Vec<u8> {
     result
 }
 
+/// awk's `match($0, /\[[^]]+\]/)`: the LEFTMOST `[` that is followed by at
+/// least one non-`]` byte and then a `]`. So `## [] [1.2.0]` reads `1.2.0`,
+/// not the empty `[]`.
 fn extract_bracket_version(line: &[u8]) -> Vec<u8> {
-    if let Some(start) = line.iter().position(|&c| c == b'[') {
-        if let Some(end) = line[start..].iter().position(|&c| c == b']') {
-            return line[start + 1..start + end].to_vec();
+    for start in 0..line.len() {
+        if line[start] != b'[' {
+            continue;
+        }
+        if let Some(end) = line[start + 1..].iter().position(|&c| c == b']') {
+            if end > 0 {
+                return line[start + 1..start + 1 + end].to_vec();
+            }
         }
     }
     Vec::new()
 }
 
+/// `printf '%s\n' "$block" | sed 's/^\(#\{1,\}\)/#\1/'`, where `$block`
+/// came from a command substitution: every trailing newline is dropped first
+/// (only `\n`; a CRLF file keeps its last `\r`), then exactly one is added.
 fn nest_headings(block: &[u8]) -> Vec<u8> {
+    let mut end = block.len();
+    while end > 0 && block[end - 1] == b'\n' {
+        end -= 1;
+    }
+    let block = &block[..end];
     let mut result = Vec::new();
     for line in block.split(|&c| c == b'\n') {
         if line.starts_with(b"#") {
@@ -121,7 +137,7 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
     }
 
     if changelog.is_empty() {
-        err(b"changelog-summary: usage: changelog-summary.sh <changelog-path> [version] [title] [--range A..B] [--path PATHSPEC]\n");
+        err(b"changelog-summary: usage: changelog_summary <changelog-path> [version] [title] [--range A..B] [--path PATHSPEC]\n");
         return 2;
     }
 

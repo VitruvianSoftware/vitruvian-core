@@ -48,11 +48,13 @@ merge, which this never does.
 **A hold is the label and auto-merge off, together.** Auto-merge is a setting
 on the PR, not a check, so a label alone stops nothing: GitHub merges an armed
 PR the moment its checks pass. `do-not-automerge` is the label the release
-gates ([`release-hold.sh`](../ci/release-hold.sh),
-[`release-beta-gate.sh`](../ci/release-beta-gate.sh)) treat as a person's
+gates ([`release_hold`](../ci/src/release_hold/lib.rs),
+[`release_beta_gate`](../ci/src/release_beta_gate/lib.rs)) treat as a person's
 hold: they never remove it and never re-arm a PR that carries it. The gates' own hold labels (`dev-deploy-red`, `beta-not-built`) are copied
-into `agent-app.sh` so `pr-enqueue` can refuse them too. The test fails if any
-of the three names drifts from its script.
+into `src/agent_app/mod.rs` so `pr-enqueue` can refuse them too. Each name is
+pinned twice: by this tool's tests and by the gate's own
+(`//tools/ci:release_hold_test`, `//tools/ci:release_beta_gate_test`), so a
+rename on either side fails a test.
 
 **Tests run the real `--jq` filters.** The fake `gh` in `agent-app_test.sh`
 answers with responses saved from GitHub ([`testdata/`](testdata/README.md))

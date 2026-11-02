@@ -88,7 +88,7 @@ jobs:
 
   # Surface each just-released component's changelog on the run page BEFORE the
   # gated deploy jobs, so an approver can read WHAT is shipping before approving
-  # (the deploy digest -- pulumi-summary.sh -- only renders AFTER approval). This
+  # (the deploy digest -- //tools/ci:pulumi_summary -- only renders AFTER approval). This
   # job is ungated and runs as soon as the release jobs settle; the deploy jobs
   # do not depend on it, so it never delays a rollout. `always() && (any
   # released)` shows notes for whatever released even if a sibling release job
@@ -115,6 +115,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Build //tools/ci:changelog_summary (no Bazel on this job)
+        id: changelog-bin
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: changelog_summary
+
       - name: Released changelogs → step summary
         env:
           R_ORG: ${{ needs.release-gcp-org.outputs['release-created'] || needs.release-gcp-org.outputs.release_created }}
@@ -123,8 +129,9 @@ jobs:
           R_ENVS: ${{ needs.release-gcp-environments.outputs['release-created'] || needs.release-gcp-environments.outputs.release_created }}
           R_NETS: ${{ needs.release-gcp-networks.outputs['release-created'] || needs.release-gcp-networks.outputs.release_created }}
           R_PROJS: ${{ needs.release-gcp-projects.outputs['release-created'] || needs.release-gcp-projects.outputs.release_created }}
+          CHANGELOG_BIN: ${{ steps.changelog-bin.outputs.path }}
         run: |
-          cl() { bash tools/ci/changelog-summary.sh "infrastructure/pulumi/foundation/$1/CHANGELOG.md" "" "$1"; }
+          cl() { "$CHANGELOG_BIN" "infrastructure/pulumi/foundation/$1/CHANGELOG.md" "" "$1"; }
           if [ "$R_ORG" = "true" ]; then cl gcp-org; fi
           if [ "$R_FOLDERS" = "true" ]; then cl org-folders; fi
           if [ "$R_BOOTSTRAP" = "true" ]; then cl gcp-bootstrap; fi

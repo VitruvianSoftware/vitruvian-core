@@ -105,10 +105,16 @@ jobs:
       # keeps the script's wider default.
       CUTOFF_MINUTES: ${{ github.event_name == 'schedule' && '20' || '8' }}
     steps:
-      # tools/ci/notify-ci-issues.sh must physically exist on the runner.
+      # The notifier's source (tools/ci/src/notify_ci_issues) is built from the checkout.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Build //tools/ci:notify_ci_issues (no Bazel on this job)
+        id: notify-bin
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: notify_ci_issues
 
       - name: Check for stuck approvals and main-branch failures, notify
         env:
@@ -132,4 +138,19 @@ jobs:
             VitruvianSoftware/site-vitruviansoftware-dev
             VitruvianSoftware/vitruvian-sdk
             VitruvianSoftware/vitruvian-tool-github
-        run: bash tools/ci/notify-ci-issues.sh
+          NOTIFY_BIN: ${{ steps.notify-bin.outputs.path }}
+        run: '"$NOTIFY_BIN"'
+
+      # The notifier is the thing that tells us CI broke, so a notifier that
+      # cannot build would otherwise fail in silence. Say so on ntfy directly:
+      # fixed text, no jq, the same endpoint and login the tool uses.
+      - name: Tell ntfy the notifier could not be built
+        if: ${{ failure() && steps.notify-bin.outcome == 'failure' }}
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          body=$(printf '{"topic":"vitruvian-alerts","title":"[ci] notify-ci-issues cannot build","message":"rustc could not build tools/ci/src/notify_ci_issues, so CI failures are not being sent. %s","priority":5,"tags":["red_circle","notify-ci-issues"],"click":"%s"}' "$RUN_URL" "$RUN_URL")
+          curl -fsS -u "github-actions:${NTFY_PASSWORD}" \
+            -H "Content-Type: application/json" \
+            -H "User-Agent: vitruvian-ci-notify/1.0" \
+            -X POST https://ntfy.ipv1337.dev -d "$body" >/dev/null

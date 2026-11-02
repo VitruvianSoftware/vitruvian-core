@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! release-hold.sh — hold or release a component's open release PR based on
+//! release-hold — hold or release a component's open release PR based on
 //! the conclusion of its development deploy job.
 
 use shell_compat::{capture, cat, env_or_empty, err, out, status, subst};

@@ -1,0 +1,91 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Builds one of the tools under tools/ci/src/<tool>/ with the runner's own
+# rustc, for jobs that set up no Bazel (release gates, the changelog and
+# pulumi digests, the cache pruner, the ntfy notifier). Each of those tools is
+# a lib.rs + main.rs pair that depends only on //tools/shell-compat and std,
+# so three rustc calls build it from the checkout in about a second.
+#
+# The same three calls, byte for byte, are what //tools/ci:build_ci_tool_test
+# runs (it reads this file and executes the step below with Bazel's rustc),
+# so a tool that stops building this way fails presubmit, not a release.
+#
+# A failed build fails this step, and so does a build that claims success
+# without leaving an executable binary. The caller's next step, which runs the
+# tool, then never starts and the run goes red. A caller whose tool must act
+# even then (the beta gate turning auto-merge off, the notifier reaching ntfy)
+# has its own `if: failure()` step after this one.
+#
+# Interface (kept stable for other callers): input `tool`, output `path`.
+#
+# Requires the repo to be checked out first (composite actions referenced as
+# `./.github/actions/...` resolve from the workspace).
+name: Build a tools/ci Rust tool
+description: >-
+  Compile tools/ci/src/<tool> with the runner's rustc (no Bazel) and output
+  the binary's path.
+
+inputs:
+  tool:
+    description: >-
+      The tool's directory under tools/ci/src, which is also its crate name
+      (for example release_hold).
+    required: true
+
+outputs:
+  path:
+    description: Absolute path of the built binary.
+    value: ${{ steps.build.outputs.path }}
+
+runs:
+  using: composite
+  steps:
+    - name: rustc ${{ inputs.tool }}
+      id: build
+      shell: bash
+      env:
+        TOOL: ${{ inputs.tool }}
+      run: |
+        set -euo pipefail
+        case "$TOOL" in
+          "" | *[!a-z0-9_]*)
+            echo "::error::build-ci-tool: tool must be a directory name under tools/ci/src, got '$TOOL'"
+            exit 1
+            ;;
+        esac
+        src="$GITHUB_WORKSPACE/tools"
+        out="$RUNNER_TEMP/ci-tools"
+        mkdir -p "$out"
+        # The runner's rustc is newer than the Bazel toolchain that
+        # //tools/ci:build_ci_tool_test proves this build with; log it so a
+        # failure on a newer compiler is told apart from a code break.
+        rustc --version
+        rustc --edition 2021 -O --crate-type lib --crate-name shell_compat "$src/shell-compat/src/lib.rs" -o "$out/libshell_compat.rlib"
+        rustc --edition 2021 -O --crate-type lib --crate-name "$TOOL" "$src/ci/src/$TOOL/lib.rs" -L "$out" --extern shell_compat="$out/libshell_compat.rlib" -o "$out/lib$TOOL.rlib"
+        rustc --edition 2021 -O "$src/ci/src/$TOOL/main.rs" -L "$out" --extern shell_compat="$out/libshell_compat.rlib" --extern "$TOOL=$out/lib$TOOL.rlib" -o "$out/$TOOL"
+        # Only a binary that is really there may be handed on: a caller that
+        # runs a missing path fails with 127 AFTER this step reported success,
+        # which is the failure the callers' `if: failure()` fallbacks miss.
+        if [ ! -f "$out/$TOOL" ] || [ ! -x "$out/$TOOL" ]; then
+          echo "::error::build-ci-tool: rustc reported success but $out/$TOOL is not an executable file"
+          exit 1
+        fi
+        echo "path=$out/$TOOL" >> "$GITHUB_OUTPUT"
