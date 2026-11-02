@@ -620,12 +620,21 @@ public struct ChatWallpaperCanvasView: View {
         ZStack {
             if let path = customImagePath,
                !path.isEmpty,
-               let nsImage = NSImage(contentsOfFile: path) {
-                Image(nsImage: nsImage)
-                    .resizable()
-                    .scaledToFill()
-                    .opacity(effectiveOpacity)
-                    .blur(radius: blur ? 8 : 0)
+               let picture = WallpaperImageCache.shared.image(atPath: path) {
+                // The picture fills whatever size the pane is and never sizes the pane: Color.clear takes the size
+                // it is offered, and the picture is drawn over it and cut to it. (`scaledToFill` on its own asks for
+                // the picture's shape at the offered height, which made a taller window wider and pushed the
+                // messages out of view.) It is read once (WallpaperImageCache), not on every redraw of a live resize.
+                Color.clear
+                    .overlay {
+                        Image(decorative: picture, scale: 1)
+                            .resizable()
+                            .interpolation(.medium)
+                            .scaledToFill()
+                            .blur(radius: blur ? 8 : 0, opaque: true)
+                            .opacity(effectiveOpacity)
+                    }
+                    .clipped()
             } else if preset != .none {
                 Canvas { context, size in
                     drawWallpaper(preset: preset, in: &context, size: size, isDark: colorScheme == .dark)
