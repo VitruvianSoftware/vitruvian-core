@@ -89,17 +89,32 @@ pub fn run(args: &[String]) -> i32 {
         }
     }
 
-    // Check file type
+    // The engine runs on every CPU the app runs on: a universal app with a
+    // one-CPU engine would start on the other CPU and its engine would not.
     let engine_str = engine.to_string_lossy().to_string();
-    if let Ok(out) = Command::new("file").args(["-b", &engine_str]).output() {
-        let kind = String::from_utf8_lossy(&out.stdout).trim().to_string();
-        if kind.contains("Mach-O 64-bit executable arm64") {
-            println!("ok: courier-engine is {}", kind);
-        } else {
-            eprintln!(
-                "FAIL: courier-engine is not an arm64 Mach-O executable: {}",
-                kind
-            );
+    match (
+        crate::archs::read(&app.join("Contents/MacOS/Courier")),
+        crate::archs::read(&engine),
+    ) {
+        (Ok(app_archs), Ok(engine_archs)) => {
+            let lacking = crate::archs::engine_lacks(&app_archs, &engine_archs);
+            if engine_archs.is_empty() || !lacking.is_empty() {
+                eprintln!(
+                    "FAIL: the app runs on {} but courier-engine only on {}",
+                    app_archs.join(" "),
+                    engine_archs.join(" ")
+                );
+                failed = 1;
+            } else {
+                println!(
+                    "ok: courier-engine runs on {} (the app: {})",
+                    engine_archs.join(" "),
+                    app_archs.join(" ")
+                );
+            }
+        }
+        (Err(e), _) | (_, Err(e)) => {
+            eprintln!("FAIL: {}", e);
             failed = 1;
         }
     }

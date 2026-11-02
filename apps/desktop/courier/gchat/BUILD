@@ -13,6 +13,7 @@ load("@rules_cc//cc:defs.bzl", "cc_library")
 load("@rules_rust//cargo:defs.bzl", "cargo_build_script")
 load("@rules_rust//rust:defs.bzl", "rust_library", "rust_static_library", "rust_test")
 load("//apps/desktop/courier/libsignal:defs.bzl", "protoc_dist")
+load(":scoped_archive.bzl", "scoped_archive_cmds")
 
 package(default_visibility = ["//apps/desktop/courier:__subpackages__"])
 
@@ -101,17 +102,7 @@ genrule(
     name = "gchat_scoped_archive",
     srcs = [":gchat_static"],
     outs = ["libgchat_ffi_scoped.a"],
-    cmd = """
-        set -eu
-        if /usr/bin/nm -g $(location :gchat_static) 2>/dev/null | /usr/bin/grep -Eq 'gchat_test_only|manual_clock|fuzz_'; then
-            echo "ERROR: test-loopback, manual_clock, or fuzz symbol leaked into production gchat_static" >&2
-            exit 1
-        fi
-        REL_OBJ="$$(mktemp -t gchat_ffi_reloc).o"
-        trap 'rm -f "$$REL_OBJ"' EXIT
-        /usr/bin/clang -nostdlib -r -Wl,-exported_symbol,'_gchat_*' -Wl,-all_load $(location :gchat_static) -o "$$REL_OBJ"
-        /usr/bin/ar rcs $@ "$$REL_OBJ"
-    """,
+    cmd = scoped_archive_cmds(True, "gchat_ffi_reloc", ":gchat_static"),
     target_compatible_with = ["@platforms//os:macos"],
 )
 
@@ -148,13 +139,7 @@ genrule(
     testonly = True,
     srcs = [":gchat_static_test_loopback"],
     outs = ["libgchat_ffi_test_loopback_scoped.a"],
-    cmd = """
-        set -eu
-        REL_OBJ="$$(mktemp -t gchat_ffi_test_reloc).o"
-        trap 'rm -f "$$REL_OBJ"' EXIT
-        /usr/bin/clang -nostdlib -r -Wl,-exported_symbol,'_gchat_*' -Wl,-all_load $(location :gchat_static_test_loopback) -o "$$REL_OBJ"
-        /usr/bin/ar rcs $@ "$$REL_OBJ"
-    """,
+    cmd = scoped_archive_cmds(False, "gchat_ffi_test_reloc", ":gchat_static_test_loopback"),
     target_compatible_with = ["@platforms//os:macos"],
 )
 

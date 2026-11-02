@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 pub mod app_holds_engine;
+pub mod archs;
 pub mod engine_contract;
 pub mod inject_app_credentials;
 pub mod install;
+pub mod publish;
 
 #[cfg(test)]
 mod tests {
