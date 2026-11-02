@@ -35,6 +35,7 @@ use vitruvian_remote_macagent_metrics::time_util::Timestamp;
 use crate::http_util::{log_act, HttpRequest, HttpResponse};
 use crate::phone::{first_text_content, PhoneBridge};
 use crate::sampler::{find_executable_in_path, run_tool_within};
+use crate::voice_cache::{shared_voice_cache, VoiceCache};
 
 pub const HOME_SPEAKER_BINARY: &str = "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker";
 pub const DEFAULT_LOCAL_VOICE: &str = "com.apple.ttsbundle.siri_Aaron_en-US_premium";
@@ -44,6 +45,10 @@ pub const MAX_PHONE_SAY_BODY: usize = 8 << 20;
 pub const PHONE_SAY_TIMEOUT: Duration = Duration::from_secs(60);
 pub const SAY_LIMIT: Duration = Duration::from_secs(90);
 pub const VOLUME_LIMIT: Duration = Duration::from_secs(45);
+/// Upper bound on one `say -v ?` run (about 13 s with ~200 voices installed).
+/// Callers share a single in-flight run (see `voice_cache`), so a hung `say`
+/// must not block them indefinitely.
+pub const LIST_VOICES_LIMIT: Duration = Duration::from_secs(60);
 
 /// Seconds between 1970-01-01T00:00:00Z and 2001-01-01T00:00:00Z (Swift Foundation `Date` reference epoch).
 pub const SWIFT_REFERENCE_EPOCH_UNIX_SECS: i64 = 978_307_200;
@@ -95,6 +100,8 @@ pub struct HomeSpeaker {
     pub say: Option<RunnerFn>,
     pub running: Option<RunningFn>,
     pub list_voices: Option<ListVoicesFn>,
+    /// Caches what `list_voices` returns; `new()` shares one process-wide.
+    pub voice_cache: Arc<VoiceCache>,
     pub read_clipboard: Option<ReadClipboardFn>,
 }
 
@@ -1255,15 +1262,19 @@ pub fn default_voice_list() -> Vec<HomeSpeakerVoice> {
     ]
 }
 
+/// Runs `say -v ?` (bounded by [`LIST_VOICES_LIMIT`]). Slow with many voices
+/// installed, so callers go through `voice_cache` rather than calling this per request.
 pub fn list_macos_voices() -> Result<Vec<HomeSpeakerVoice>, String> {
-    let out = Command::new("say")
-        .args(["-v", "?"])
-        .output()
-        .map_err(|e| e.to_string())?;
-    if !out.status.success() {
-        return Err("say -v ? failed".to_string());
+    let args = ["-v".to_string(), "?".to_string()];
+    let (out, _, err) = run_tool_within(LIST_VOICES_LIMIT, "say", &args, None);
+    if let Some(e) = err {
+        return Err(format!("say -v ?: {e}"));
     }
-    let text = String::from_utf8_lossy(&out.stdout);
+    Ok(parse_say_voices(&out))
+}
+
+/// Parses `say -v ?` output: `<name...> <lang>  # <sample>` per line.
+pub fn parse_say_voices(text: &str) -> Vec<HomeSpeakerVoice> {
     let mut voices = Vec::new();
     for line in text.lines() {
         let before_hash = line.split('#').next().unwrap_or("");
@@ -1278,7 +1289,7 @@ pub fn list_macos_voices() -> Result<Vec<HomeSpeakerVoice>, String> {
             });
         }
     }
-    Ok(voices)
+    voices
 }
 
 pub fn person_env(env: &[String]) -> Vec<String> {
@@ -1524,6 +1535,7 @@ impl HomeSpeaker {
                 Ok(String::from_utf8_lossy(&out.stdout).into_owned())
             })),
             list_voices: Some(Arc::new(list_macos_voices)),
+            voice_cache: shared_voice_cache(),
         }
     }
 
@@ -2342,7 +2354,7 @@ impl HomeSpeaker {
         st.quiet_hours_active = q_active;
 
         st.available_voices = if let Some(ref lv) = self.list_voices {
-            match lv() {
+            match self.voice_cache.get(lv) {
                 Ok(list) if !list.is_empty() => list,
                 _ => default_voice_list(),
             }
@@ -3773,6 +3785,11 @@ mod tests {
             running: Some(Arc::new(|| true)),
             read_clipboard: Some(Arc::new(|| Ok("clipboard announcement text".to_string()))),
             list_voices: Some(Arc::new(|| Ok(default_voice_list()))),
+            voice_cache: Arc::new(VoiceCache::new(
+                crate::voice_cache::VOICE_TTL,
+                crate::voice_cache::VOICE_FAILURE_TTL,
+                Arc::new(Instant::now),
+            )),
         };
         if with_config {
             fs::write(&h.config_path, HOME_SPEAKER_CONFIG_FIXTURE).unwrap();
@@ -3785,6 +3802,53 @@ mod tests {
 
     fn post_req(path: &str, body: &str) -> HttpRequest {
         HttpRequest::new_test("POST", path, body).with_header("content-type", "application/json")
+    }
+
+    #[test]
+    fn test_home_speaker_state_lists_voices_once_across_polls() {
+        // GET /v1/homespeaker is polled; `say -v ?` must not run per poll.
+        let (mut h, _, _, _) = new_test_home_speaker(true);
+        let calls = Arc::new(AtomicU64::new(0));
+        let calls_l = calls.clone();
+        h.list_voices = Some(Arc::new(move || {
+            calls_l.fetch_add(1, Ordering::SeqCst);
+            Ok(vec![HomeSpeakerVoice {
+                id: "Zarvox".to_string(),
+                name: "Zarvox".to_string(),
+                lang: "en_US".to_string(),
+            }])
+        }));
+        for _ in 0..20 {
+            let st = h.state();
+            assert_eq!(st.available_voices.len(), 1);
+            assert_eq!(st.available_voices[0].id, "Zarvox");
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn test_home_speaker_state_falls_back_without_caching_a_failed_listing() {
+        let (mut h, _, _, _) = new_test_home_speaker(true);
+        let calls = Arc::new(AtomicU64::new(0));
+        let calls_l = calls.clone();
+        h.list_voices = Some(Arc::new(move || {
+            calls_l.fetch_add(1, Ordering::SeqCst);
+            Err("say -v ? failed".to_string())
+        }));
+        for _ in 0..5 {
+            assert_eq!(h.state().available_voices, default_voice_list());
+        }
+        // Negative-cached: one attempt, not one per poll.
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn test_parse_say_voices() {
+        let out = "Alex                en_US    # Most people recognize me by my voice.\nGood News           en_US    # Hello!\n\n";
+        let v = parse_say_voices(out);
+        assert_eq!(v.len(), 2);
+        assert_eq!(v[1].name, "Good News");
+        assert_eq!(v[1].lang, "en_US");
     }
 
     #[test]

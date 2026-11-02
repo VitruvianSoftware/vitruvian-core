@@ -665,7 +665,7 @@ The following status and diagnostic fields bring `/v1/homespeaker` to full parit
 | Field | Type | Description |
 |---|---|---|
 | `quiet_hours.active` | bool | Whether quiet hours are currently silencing announcements |
-| `available_voices` | `[{id, name, lang}]` | Installed macOS voices from `say -v '?'` |
+| `available_voices` | `[{id, name, lang}]` | Installed macOS voices from `say -v '?'`, cached (see below) |
 | `structure_id` | string | Google Home structure ID (`structure_id` in config) |
 | `homes` | `[{id, name}]` | Available Google Home structures discovered from targets |
 | `account_email` | string | Google account email address stored in `secrets.json` |
@@ -688,6 +688,13 @@ The following status and diagnostic fields bring `/v1/homespeaker` to full parit
 | `custom_oauth_client_id` | string | Saved Google Cloud OAuth client ID |
 | `has_custom_oauth_secret` | bool | Whether custom OAuth client secret is saved |
 | `home_speaker_version` | string | Version of the installed HomeSpeaker application |
+
+`available_voices` is cached by the agent, because `say -v '?'` takes seconds (about 13 s with ~200
+voices installed) and this endpoint is polled. A good, non-empty list is reused for 10 minutes; a
+failed or empty listing is remembered for 30 s, during which the response carries the last good list
+or, if there is none, a built-in fallback of five common voices. Only one `say -v '?'` runs at a time:
+requests that arrive during a refresh wait for it. So a voice installed on the Mac can take up to
+10 minutes to appear, or an agent restart.
 
 ### `POST /v1/homespeaker` parity updates
 

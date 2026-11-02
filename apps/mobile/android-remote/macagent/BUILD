@@ -109,6 +109,7 @@ rust_library(
         "rs/src/stream.rs",
         "rs/src/tailnet.rs",
         "rs/src/tv.rs",
+        "rs/src/voice_cache.rs",
     ],
     crate_name = "vitruvian_remote_macagent",
     edition = "2021",

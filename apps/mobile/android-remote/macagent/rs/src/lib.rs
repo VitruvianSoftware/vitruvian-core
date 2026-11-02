@@ -36,3 +36,4 @@ pub mod server;
 pub mod stream;
 pub mod tailnet;
 pub mod tv;
+pub mod voice_cache;
