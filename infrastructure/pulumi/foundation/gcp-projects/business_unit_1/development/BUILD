@@ -1,4 +1,4 @@
-load("//tools/pulumi:defs.bzl", "pulumi_project")
+load("//tools/pulumi:defs.bzl", "pulumi_go_test", "pulumi_project")
 
 # Live foundation 4-projects bu1 development leaf for the vitruviansoftware.dev
 # org, mirroring upstream terraform-example-foundation
@@ -9,4 +9,14 @@ load("//tools/pulumi:defs.bzl", "pulumi_project")
 pulumi_project(
     name = "development",
     dir = "infrastructure/pulumi/foundation/gcp-projects/business_unit_1/development",
+)
+
+# `bazel test` visibility into the same `go test ./...` CI's go-test-infra job
+# runs. extra_data carries the shared modules the go.mod `replace` points at,
+# plus the committed stack config the config-pinning tests read.
+pulumi_go_test(
+    extra_data = [
+        "Pulumi.production.yaml",
+        "//infrastructure/pulumi/foundation/gcp-projects/modules:srcs",
+    ],
 )

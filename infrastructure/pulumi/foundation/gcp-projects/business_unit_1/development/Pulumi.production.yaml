@@ -69,4 +69,11 @@ config:
   # It must NOT be appended to _deploy_roles: unconditioned, secretmanager.admin
   # reaches every co-tenant app's secrets (app_deploy_identity refuses it).
   foundation-projects-bu1-development:oauth-user-inspector_deploy_conditional_roles: 'roles/secretmanager.admin|oauth-user-inspector-secrets-only|resource.name.startsWith("projects/${projectNumber}/secrets/OAUTH_USER_INSPECTOR_")'
+  # Read-only identity for the PR `pulumi preview` of oauth-user-inspector's app stack (#4120):
+  # oauth-user-inspector-preview@<oss-floating project>, roles/viewer ONLY (the module refuses
+  # anything else; the preview reads no secrets), impersonable only from the
+  # oauth-user-inspector-preview GitHub Environment. Exported as oauth-user-inspector_preview_service_account
+  # for repo-config. Once the preview job uses it, the oauth-user-inspector-development
+  # Environment can be pinned to main.
+  foundation-projects-bu1-development:oauth-user-inspector_preview_identity: "true"
   foundation-projects-bu1-development:app_build_reader_grants: "oauth-user-inspector=prj-c-bu1-infra-pipeline-4b48/us-central1/oauth-user-inspector"
