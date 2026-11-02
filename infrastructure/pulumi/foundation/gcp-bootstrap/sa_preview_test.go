@@ -527,26 +527,67 @@ func TestWholeProgramServiceAccountUseIsAllowListed(t *testing.T) {
 	}
 }
 
-// The GitHub provider must accept tokens only from this repository and map
-// attribute.environment from the job's Environment claim; every per-Environment
-// binding above depends on both.
+// expectedProviders is the COMPLETE allow-list of identity providers, by pool.
+// Federated principals are scoped to a pool, not a provider, so every provider
+// in a pool can satisfy that pool's bindings: a second provider in
+// foundation-pool would bypass the repository pin and the environment mapping
+// below. Each pool therefore holds exactly the one provider listed here.
+var expectedProviders = map[string]string{
+	"foundation-pool":      "foundation-gh-provider",
+	"homelab-cluster-pool": "homelab-cluster-provider",
+	"pulumi-esc-pool":      "pulumi-esc-provider",
+}
+
+// The GitHub provider must be the only provider in its pool, trust only
+// GitHub's issuer, accept tokens only from this repository, and map
+// attribute.environment from the job's Environment claim; every
+// per-Environment binding above depends on all four.
 func TestFoundationProviderIsPinnedToTheRepository(t *testing.T) {
-	var found bool
+	providersByPool := map[string][]string{}
+	var foundation *recorded
 	for _, r := range runWholeProgram(t) {
 		if r.typ != "gcp:iam/workloadIdentityPoolProvider:WorkloadIdentityPoolProvider" {
 			continue
 		}
+		r := r
+		pool := str(r, "workloadIdentityPoolId")
+		id := str(r, "workloadIdentityPoolProviderId")
+		providersByPool[pool] = append(providersByPool[pool], id)
 		assert.NotEmpty(t, str(r, "attributeCondition"), "%s has no attribute condition", r.name)
-		if str(r, "workloadIdentityPoolProviderId") != "foundation-gh-provider" {
-			continue
+		if pool == "foundation-pool" && id == "foundation-gh-provider" {
+			foundation = &r
 		}
-		found = true
-		assert.Equal(t, "assertion.repository=='VitruvianSoftware/vitruvian-core'", str(r, "attributeCondition"))
-		mapping := r.inputs["attributeMapping"]
-		require.True(t, mapping.IsObject(), "attributeMapping missing")
-		m := mapping.ObjectValue()
-		assert.Equal(t, "assertion.environment", m["attribute.environment"].StringValue())
-		assert.Equal(t, "assertion.sub", m["google.subject"].StringValue())
 	}
-	assert.True(t, found, "foundation-gh-provider not declared")
+
+	want := map[string][]string{}
+	for pool, id := range expectedProviders {
+		want[pool] = []string{id}
+	}
+	assert.Equal(t, want, providersByPool, "identity providers by pool")
+
+	require.NotNil(t, foundation, "foundation-gh-provider not declared in foundation-pool")
+	assert.Equal(t, "assertion.repository=='VitruvianSoftware/vitruvian-core'", str(*foundation, "attributeCondition"))
+
+	oidc := foundation.inputs["oidc"]
+	require.True(t, oidc.IsObject(), "foundation-gh-provider has no oidc block")
+	issuer := oidc.ObjectValue()["issuerUri"]
+	require.True(t, issuer.IsString(), "foundation-gh-provider has no issuer")
+	assert.Equal(t, "https://token.actions.githubusercontent.com", issuer.StringValue())
+	_, saml := foundation.inputs["saml"]
+	assert.False(t, saml, "foundation-gh-provider must not also trust a SAML issuer")
+
+	mapping := foundation.inputs["attributeMapping"]
+	require.True(t, mapping.IsObject(), "attributeMapping missing")
+	got := map[string]string{}
+	for k, v := range mapping.ObjectValue() {
+		got[string(k)] = v.StringValue()
+	}
+	assert.Equal(t, map[string]string{
+		"google.subject":             "assertion.sub",
+		"attribute.actor":            "assertion.actor",
+		"attribute.aud":              "assertion.aud",
+		"attribute.environment":      "assertion.environment",
+		"attribute.repository":       "assertion.repository",
+		"attribute.repository_owner": "assertion.repository_owner",
+	}, got, "foundation-gh-provider attribute mapping")
 }
