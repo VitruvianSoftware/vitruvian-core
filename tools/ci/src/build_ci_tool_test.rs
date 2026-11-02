@@ -1020,9 +1020,9 @@ mod callers_and_wiring {
         assert!(text(&o.stdout).contains("verdict=full"), "{o:?}");
     }
 
-    /// A GitHub-hosted runner with no rustc fails at once, naming the tool,
-    /// and never reaches apt: a sudo on PATH that records its call stays
-    /// uncalled.
+    /// A runner with no rustc, self-hosted included, fails at once naming the
+    /// tool, and never reaches apt: a sudo on PATH that records its call
+    /// stays uncalled (#4183: the queue runner's image ships a pinned rustc).
     #[test]
     fn no_rustc_fails_with_an_error_naming_the_tool() {
         let ws = tmp();
@@ -1032,7 +1032,7 @@ mod callers_and_wiring {
             &fakes.join("sudo"),
             &format!("#!/bin/sh\n: > '{}'\nexit 0\n", called.display()),
         );
-        for runner_env in ["github-hosted", ""] {
+        for runner_env in ["self-hosted", "github-hosted", ""] {
             let (out, gho) = step_on(
                 runner_env,
                 "relevant_paths",
@@ -1042,37 +1042,14 @@ mod callers_and_wiring {
             );
             assert_eq!(out.status.code(), Some(1), "{runner_env:?}: {out:?}");
             let so = text(&out.stdout);
-            assert!(so.contains("::error::build-ci-tool: no rustc"), "{so}");
-            assert!(so.contains("tools/ci/src/relevant_paths"), "{so}");
-            assert!(so.contains("only a self-hosted runner"), "{so}");
             assert!(
-                !called.exists(),
-                "{runner_env:?}: apt ran on a non-self-hosted runner"
+                so.contains("::error::build-ci-tool: no rustc on this runner"),
+                "{so}"
             );
+            assert!(so.contains("tools/ci/src/relevant_paths"), "{so}");
+            assert!(!called.exists(), "{runner_env:?}: apt ran");
             assert_eq!(gho, "", "no rustc, no path output");
         }
-    }
-
-    /// The homelab queue runner (self-hosted, no Rust in its image) tries
-    /// apt; with nothing on PATH that fails, and the error names both the
-    /// missing rustc and the tool.
-    #[test]
-    fn no_rustc_on_a_self_hosted_runner_tries_apt_and_fails_by_name() {
-        let ws = tmp();
-        let empty = tmp();
-        let (out, gho) = step_on(
-            "self-hosted",
-            "relevant_paths",
-            &ws,
-            "",
-            &empty.display().to_string(),
-        );
-        assert_eq!(out.status.code(), Some(1), "{out:?}");
-        let so = text(&out.stdout);
-        assert!(so.contains("::error::apt install rustc failed"), "{so}");
-        assert!(so.contains("no rustc on this runner"), "{so}");
-        assert!(so.contains("tools/ci/src/relevant_paths"), "{so}");
-        assert_eq!(gho, "", "no rustc, no path output");
     }
 
     #[test]

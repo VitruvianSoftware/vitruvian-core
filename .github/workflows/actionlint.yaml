@@ -111,22 +111,21 @@ jobs:
       # cannot. The rule lives in //tools/ci:require_pinned_actions, which
       # `bazel run //tools/ci:actionlint` also runs, so the local check and this
       # one agree. This job has no Bazel, and the check is one std-only file, so
-      # the runner's rustc builds it from the checkout; the homelab queue
-      # runner's image has no rustc, hence the apt fallback.
+      # the runner's rustc builds it from the checkout (the homelab queue
+      # runner's image ships one, pinned, since #4202).
       # //tools/ci:require_pinned_actions_test runs the rustc line below as
       # written. Keep ACTIONLINT_VERSION above level with tools/tools.lock.json:
       # //tools/ci:actionlint_test fails when they drift.
       - name: Require commit-pinned actions
         run: |
           set -euo pipefail
-          # Fails here, by name, when apt cannot supply it (a failed install must not
-          # surface later as "rustc: command not found"). //tools/ci:workflow_rustc_test
-          # runs this block with apt failing.
+          # Fails here, by name, when the runner has no rustc (a missing one must
+          # not surface later as "rustc: command not found"). Every runner this
+          # job uses ships one, the homelab queue runner's image included (#4183).
+          # //tools/ci:workflow_rustc_test runs this block with no rustc.
           if ! command -v rustc >/dev/null 2>&1; then
-            { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends rustc; } \
-              || { echo "::error::apt install rustc failed"; exit 1; }
-            command -v rustc >/dev/null 2>&1 \
-              || { echo "::error::rustc is still not on PATH after apt install"; exit 1; }
+            echo "::error::no rustc on this runner; the runner image must ship one"
+            exit 1
           fi
           rustc --edition 2021 -O tools/ci/src/require_pinned_actions/main.rs -o "$RUNNER_TEMP/require-pinned-actions"
           "$RUNNER_TEMP/require-pinned-actions"

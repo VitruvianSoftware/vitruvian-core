@@ -154,39 +154,35 @@ fn every_workflow_rustc_line_builds_its_tool() {
     assert_eq!(checked, EXPECT.len());
 }
 
-// --- the rustc fallback on runners without one --------------------------------
+// --- a runner without rustc ---------------------------------------------------
 
-/// The files whose steps install rustc with apt when the runner has none (the
-/// homelab queue runner's image carries no Rust toolchain).
-const FALLBACKS: &[&str] = &[
+/// The files whose steps check for rustc before using it. Every runner they
+/// use ships one (the homelab queue runner's image since #4202), so a missing
+/// rustc fails the step by name; none of them installs one with apt (#4183).
+const GUARDS: &[&str] = &[
     ".github/actions/build-ci-tool/action.yml",
     ".github/workflows/actionlint.yaml",
     ".github/workflows/queue-runner-watch.yaml",
 ];
 
 /// The `if ! command -v rustc ...` block of `text`, through its `fi`.
-fn fallback_block(file: &str, text: &str) -> String {
+fn guard_block(file: &str, text: &str) -> String {
     let lines: Vec<&str> = text.lines().collect();
     let start = lines
         .iter()
         .position(|l| l.trim() == "if ! command -v rustc >/dev/null 2>&1; then")
-        .unwrap_or_else(|| panic!("{file}: no rustc fallback block"));
+        .unwrap_or_else(|| panic!("{file}: no rustc guard block"));
     let end = start
         + lines[start..]
             .iter()
             .position(|l| l.trim() == "fi")
-            .unwrap_or_else(|| panic!("{file}: rustc fallback block has no fi"));
+            .unwrap_or_else(|| panic!("{file}: rustc guard block has no fi"));
     lines[start..=end].join("\n")
 }
 
 /// Run `block` then `echo REACHED` under `bash -eo pipefail` (GitHub's step
-/// shell) with only `fakes` on PATH, on a self-hosted runner (where apt may
-/// install rustc).
-fn run_fallback(block: &str, fakes: &Path) -> std::process::Output {
-    run_fallback_on("self-hosted", block, fakes)
-}
-
-fn run_fallback_on(runner_env: &str, block: &str, fakes: &Path) -> std::process::Output {
+/// shell) with only `fakes` on PATH.
+fn run_guard_on(runner_env: &str, block: &str, fakes: &Path) -> std::process::Output {
     Command::new("/bin/bash")
         .arg("-eo")
         .arg("pipefail")
@@ -204,92 +200,67 @@ fn exe(path: &Path, body: &str) {
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
 }
 
-/// build-ci-tool installs rustc with apt only on a self-hosted runner. On a
-/// GitHub-hosted one (or with RUNNER_ENVIRONMENT unset) a missing rustc is an
-/// image change: fail loudly, never install whatever rustc apt carries.
+/// No step installs rustc with apt any more: the unpinned install is what
+/// #4183 removed, and a runner image without rustc must fail, not drift.
 #[test]
-fn build_ci_tool_installs_rustc_only_on_a_self_hosted_runner() {
-    let file = ".github/actions/build-ci-tool/action.yml";
+fn no_step_installs_rustc_with_apt() {
     let root = std::env::current_dir().unwrap();
-    let block = fallback_block(file, &std::fs::read_to_string(root.join(file)).unwrap());
-    for runner_env in ["github-hosted", ""] {
-        let fakes = tmpdir(&format!("gh-hosted-{runner_env}"));
-        exe(
-            &fakes.join("sudo"),
-            "#!/bin/bash\necho SUDO-CALLED\nexit 0\n",
-        );
-        let o = run_fallback_on(runner_env, &block, &fakes);
-        let out = String::from_utf8_lossy(&o.stdout);
-        assert_eq!(o.status.code(), Some(1), "{runner_env:?}: {out}");
-        assert!(
-            out.contains("::error::build-ci-tool: no rustc on this runner"),
-            "{runner_env:?}: {out}"
-        );
-        assert!(
-            !out.contains("SUDO-CALLED"),
-            "{runner_env:?}: apt ran: {out}"
-        );
-        assert!(
-            !out.contains("REACHED"),
-            "{runner_env:?}: went on without rustc"
-        );
+    for file in GUARDS {
+        let text = std::fs::read_to_string(root.join(file)).unwrap();
+        for (n, line) in text.lines().enumerate() {
+            assert!(
+                !(line.contains("apt-get install") && line.contains("rustc")),
+                "{file}:{}: installs rustc with apt: {line}",
+                n + 1
+            );
+        }
+    }
+}
+
+/// On any runner, self-hosted included, a missing rustc fails the step by
+/// name and never reaches sudo/apt.
+#[test]
+fn a_runner_without_rustc_fails_the_step_by_name() {
+    let root = std::env::current_dir().unwrap();
+    for file in GUARDS {
+        let block = guard_block(file, &std::fs::read_to_string(root.join(file)).unwrap());
+        for runner_env in ["self-hosted", "github-hosted", ""] {
+            let fakes = tmpdir(&format!("no-rustc-{runner_env}-{}", file.replace('/', "_")));
+            exe(
+                &fakes.join("sudo"),
+                "#!/bin/bash\necho SUDO-CALLED\nexit 0\n",
+            );
+            let o = run_guard_on(runner_env, &block, &fakes);
+            let out = String::from_utf8_lossy(&o.stdout);
+            assert_eq!(o.status.code(), Some(1), "{file} {runner_env:?}: {out}");
+            assert!(
+                out.contains("no rustc on this runner"),
+                "{file} {runner_env:?}: {out}"
+            );
+            assert!(
+                !out.contains("SUDO-CALLED"),
+                "{file} {runner_env:?}: apt ran: {out}"
+            );
+            assert!(
+                !out.contains("REACHED"),
+                "{file} {runner_env:?}: the step went on without rustc"
+            );
+        }
     }
 }
 
 #[test]
-fn a_failed_apt_install_of_rustc_fails_the_step_by_name() {
+fn a_runner_with_rustc_goes_on() {
     let root = std::env::current_dir().unwrap();
-    for file in FALLBACKS {
-        let block = fallback_block(file, &std::fs::read_to_string(root.join(file)).unwrap());
-        let fakes = tmpdir(&format!("apt-fails-{}", file.replace('/', "_")));
-        exe(
-            &fakes.join("sudo"),
-            "#!/bin/bash\necho \"E: Unable to locate package rustc\" >&2\nexit 100\n",
-        );
-        let o = run_fallback(&block, &fakes);
-        let out = String::from_utf8_lossy(&o.stdout);
-        assert_eq!(o.status.code(), Some(1), "{file}: {out}");
-        assert!(
-            out.contains("::error::apt install rustc failed"),
-            "{file}: {out}"
-        );
-        assert!(
-            !out.contains("REACHED"),
-            "{file}: the step went on without rustc"
-        );
-    }
-}
-
-#[test]
-fn an_apt_install_that_leaves_no_rustc_fails_the_step() {
-    let root = std::env::current_dir().unwrap();
-    for file in FALLBACKS {
-        let block = fallback_block(file, &std::fs::read_to_string(root.join(file)).unwrap());
-        let fakes = tmpdir(&format!("apt-noop-{}", file.replace('/', "_")));
-        exe(&fakes.join("sudo"), "#!/bin/bash\nexit 0\n");
-        let o = run_fallback(&block, &fakes);
-        let out = String::from_utf8_lossy(&o.stdout);
-        assert_eq!(o.status.code(), Some(1), "{file}: {out}");
-        assert!(
-            out.contains("::error::rustc is still not on PATH after apt install"),
-            "{file}: {out}"
-        );
-        assert!(!out.contains("REACHED"));
-    }
-}
-
-#[test]
-fn a_runner_with_rustc_skips_apt() {
-    let root = std::env::current_dir().unwrap();
-    for file in FALLBACKS {
-        let block = fallback_block(file, &std::fs::read_to_string(root.join(file)).unwrap());
+    for file in GUARDS {
+        let block = guard_block(file, &std::fs::read_to_string(root.join(file)).unwrap());
         let fakes = tmpdir(&format!("has-rustc-{}", file.replace('/', "_")));
         exe(&fakes.join("rustc"), "#!/bin/bash\nexit 0\n");
         exe(
             &fakes.join("sudo"),
             "#!/bin/bash\necho SUDO-CALLED\nexit 0\n",
         );
-        let o = run_fallback(&block, &fakes);
+        let o = run_guard_on("self-hosted", &block, &fakes);
         let out = String::from_utf8_lossy(&o.stdout);
         assert!(o.status.success(), "{file}: {out}");
         assert!(
@@ -297,33 +268,4 @@ fn a_runner_with_rustc_skips_apt() {
             "{file}: {out}"
         );
     }
-}
-
-#[test]
-fn every_rustc_fallback_is_listed() {
-    let root = std::env::current_dir().unwrap();
-    let mut found = Vec::new();
-    for dir in [".github/workflows", ".github/actions"] {
-        let mut stack = vec![root.join(dir)];
-        while let Some(d) = stack.pop() {
-            for e in std::fs::read_dir(&d).unwrap().flatten() {
-                let p = e.path();
-                if p.is_dir() {
-                    stack.push(p);
-                } else if std::fs::read_to_string(&p)
-                    .map(|t| t.contains("if ! command -v rustc >/dev/null 2>&1; then"))
-                    .unwrap_or(false)
-                {
-                    found.push(p.strip_prefix(&root).unwrap().display().to_string());
-                }
-            }
-        }
-    }
-    found.sort();
-    let mut want: Vec<String> = FALLBACKS.iter().map(|s| s.to_string()).collect();
-    want.sort();
-    assert_eq!(
-        found, want,
-        "a rustc fallback this test does not run: add it to FALLBACKS"
-    );
 }
