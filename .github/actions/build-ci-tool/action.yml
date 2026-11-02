@@ -122,21 +122,22 @@ runs:
           esac
           dep_names+=("$dep")
         done
-        # Before anything else needs PATH: with no rustc (and no apt), stop
-        # here naming the tool, not later on a missing mkdir or rustc.
+        # Before anything else needs PATH: with no rustc, stop here naming the
+        # tool, not later on a missing mkdir or rustc. Every runner that runs
+        # this ships one: GitHub's images, and the homelab queue runner's
+        # (tools/ci-runner/Dockerfile, pinned to the Bazel toolchain's
+        # version). A missing rustc is an image change, never something to
+        # paper over with an unpinned apt install (#4183).
         if ! command -v rustc >/dev/null 2>&1; then
-          [ "${RUNNER_ENVIRONMENT:-}" = self-hosted ] \
-            || { echo "::error::build-ci-tool: no rustc on this runner (RUNNER_ENVIRONMENT=${RUNNER_ENVIRONMENT:-unset}), so tools/ci/src/$TOOL cannot be built; only a self-hosted runner installs it with apt"; exit 1; }
-          { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends rustc; } \
-            || { echo "::error::apt install rustc failed, so build-ci-tool has no rustc on this runner and cannot build tools/ci/src/$TOOL"; exit 1; }
-          command -v rustc >/dev/null 2>&1 \
-            || { echo "::error::rustc is still not on PATH after apt install, so build-ci-tool has no rustc on this runner and cannot build tools/ci/src/$TOOL"; exit 1; }
+          echo "::error::build-ci-tool: no rustc on this runner (RUNNER_ENVIRONMENT=${RUNNER_ENVIRONMENT:-unset}), so tools/ci/src/$TOOL cannot be built; the runner image must ship one"
+          exit 1
         fi
         out="$RUNNER_TEMP/ci-tools"
         mkdir -p "$out"
-        # The runner's rustc is newer than the Bazel toolchain that
-        # //tools/ci:build_ci_tool_test proves this build with; log it so a
-        # failure on a newer compiler is told apart from a code break.
+        # A hosted runner's rustc is newer than the Bazel toolchain that
+        # //tools/ci:build_ci_tool_test proves this build with (the queue
+        # runner's is the same); log it so a failure on a newer compiler is
+        # told apart from a code break.
         rustc --version
         rustc --edition 2021 -O --crate-type lib --crate-name shell_compat "$src/shell-compat/src/lib.rs" -o "$out/libshell_compat.rlib"
         externs=()
