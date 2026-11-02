@@ -136,9 +136,16 @@ jobs:
   preview:
     runs-on: ubuntu-26.04
     timeout-minutes: 30
-    # foundation-proj-preview is the ungated, read-scoped identity the PR
-    # previews already use — approval must not be required to SEE the plan.
-    environment: foundation-proj-preview
+    # Approval must not be required to SEE the plan, so this job needs an
+    # Environment with no required reviewer. It uses foundation-proj-development:
+    # pinned to protected branches (so only main's code can run here) and
+    # federated to the projects deploy identity, which `--refresh` below needs
+    # to read the stack's live state exactly as the apply will. NOT
+    # foundation-proj-preview: that Environment is for PR previews, has no
+    # branch policy, and federates only to the read-only preview identity.
+    # Side effect: each run records a deployment against
+    # foundation-proj-development, whichever environment it plans.
+    environment: foundation-proj-development
     outputs:
       deleted: ${{ steps.summary.outputs.deleted }}
       replaced: ${{ steps.summary.outputs.replaced }}

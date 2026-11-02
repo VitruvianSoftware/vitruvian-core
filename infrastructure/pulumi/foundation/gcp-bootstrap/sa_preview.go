@@ -85,9 +85,9 @@ func previewSAAccountID(key string) (string, error) {
 	return id, nil
 }
 
-// previewBindingKey is the WIF binding key for a preview Environment. It is
-// distinct from the existing `<stage>-preview` keys, which bind the same
-// Environments to the deploy SAs and are removed in a follow-up.
+// previewBindingKey is the WIF binding key for a preview Environment. It
+// differs from the old `<stage>-preview` keys, which bound these Environments
+// to the deploy SAs, so state never confuses the two.
 func previewBindingKey(environment string) string {
 	return strings.TrimPrefix(environment, "foundation-") + "-readonly"
 }

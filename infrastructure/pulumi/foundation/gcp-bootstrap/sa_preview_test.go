@@ -107,6 +107,9 @@ func (m *programMocks) NewResource(args pulumi.MockResourceArgs) (string, resour
 	case "gcp:organizations/project:Project":
 		outs["number"] = resource.NewStringProperty("123456789012")
 	}
+	if id, ok := args.Inputs["workloadIdentityPoolId"]; ok && id.IsString() && args.TypeToken == "gcp:iam/workloadIdentityPool:WorkloadIdentityPool" {
+		outs["name"] = resource.NewStringProperty("projects/123456789012/locations/global/workloadIdentityPools/" + id.StringValue())
+	}
 	if _, ok := outs["name"]; !ok {
 		outs["name"] = resource.NewStringProperty("projects/123456789012/locations/global/mock/" + args.Name)
 	}
@@ -368,4 +371,182 @@ func TestWholeProgramPreviewEnvironmentsReachOnlyTheirPreviewIdentity(t *testing
 	for env, want := range expectedPreviewEnvironments {
 		assert.Equal(t, []string{want}, reached[env], "%s must federate to exactly %s", env, want)
 	}
+}
+
+// Roles that let a member use a service account: federate to it, mint its
+// tokens, or act as it. A grant of one of these is a grant of the account.
+var serviceAccountUseRoles = map[string]bool{
+	"roles/iam.workloadIdentityUser":             true,
+	"roles/iam.serviceAccountTokenCreator":       true,
+	"roles/iam.serviceAccountUser":               true,
+	"roles/iam.serviceAccountOpenIdTokenCreator": true,
+}
+
+const (
+	foundationPool = "projects/123456789012/locations/global/workloadIdentityPools/foundation-pool"
+	homelabPool    = "projects/123456789012/locations/global/workloadIdentityPools/homelab-cluster-pool"
+	escPool        = "projects/123456789012/locations/global/workloadIdentityPools/pulumi-esc-pool"
+	orgAdmins      = "group:gcp-organization-admins@vitruviansoftware.dev"
+)
+
+func envPrincipal(env string) string {
+	return "principalSet://iam.googleapis.com/" + foundationPool + "/attribute.environment/" + env
+}
+
+// expectedAccountGrants is the COMPLETE allow-list of who may use each service
+// account in this program, by account id and role. A member that is not listed
+// here fails, whatever its form: a whole-pool or whole-repository principalSet,
+// a subject principal, another Environment, a wildcard. "self" stands for the
+// account's own serviceAccount: member.
+var expectedAccountGrants = func() map[string]map[string][]string {
+	wif := "roles/iam.workloadIdentityUser"
+	deployEnvs := map[string][]string{
+		"sa-terraform-bootstrap": {"foundation-bootstrap", "foundation-org-folders"},
+		"sa-terraform-org":       {"foundation-org"},
+		"sa-terraform-env":       {"foundation-env", "foundation-env-development", "foundation-env-nonproduction", "foundation-env-production"},
+		"sa-terraform-net":       {"foundation-net", "foundation-net-shared", "foundation-net-development", "foundation-net-nonproduction", "foundation-net-production"},
+		"sa-terraform-proj":      {"foundation-proj", "foundation-proj-shared", "foundation-proj-development", "foundation-proj-nonproduction", "foundation-proj-production"},
+	}
+	out := map[string]map[string][]string{}
+	for id, envs := range deployEnvs {
+		var members []string
+		for _, env := range envs {
+			members = append(members, envPrincipal(env))
+		}
+		out[id] = map[string][]string{
+			wif:                                    members,
+			"roles/iam.serviceAccountTokenCreator": {"self", orgAdmins},
+			"roles/iam.serviceAccountUser":         {orgAdmins},
+		}
+	}
+	for env, id := range expectedPreviewEnvironments {
+		if out[id] == nil {
+			out[id] = map[string][]string{}
+		}
+		out[id][wif] = append(out[id][wif], envPrincipal(env))
+	}
+	out["sa-homelab-cluster"] = map[string][]string{wif: {
+		"principal://iam.googleapis.com/" + homelabPool + "/subject/system:serviceaccount:backstage:backstage",
+		"principal://iam.googleapis.com/" + homelabPool + "/subject/system:serviceaccount:grafana:grafana",
+	}}
+	out["sa-pulumi-esc"] = map[string][]string{wif: {
+		"principal://iam.googleapis.com/" + escPool + "/subject/pulumi:environments:org:ipv1337:env:vitruvian-core/cloud-session",
+	}}
+	return out
+}()
+
+// grantPairs returns the (role, member) pairs an IAM resource grants, and
+// whether it is a grant on a single service account. ok=false means the
+// resource is an IAM type this test does not know how to read.
+func grantPairs(r recorded) (pairs [][2]string, onAccount bool, ok bool) {
+	onAccount = str(r, "serviceAccountId") != ""
+	switch {
+	case strings.HasSuffix(r.typ, "/iAMMember:IAMMember"):
+		return [][2]string{{str(r, "role"), str(r, "member")}}, onAccount, true
+	case strings.HasSuffix(r.typ, "/iAMBinding:IAMBinding"):
+		for _, m := range stringsIn(r.inputs["members"]) {
+			pairs = append(pairs, [2]string{str(r, "role"), m})
+		}
+		return pairs, onAccount, true
+	case strings.HasSuffix(r.typ, "/iAMPolicy:IAMPolicy"):
+		var policy struct {
+			Bindings []struct {
+				Role    string   `json:"role"`
+				Members []string `json:"members"`
+			} `json:"bindings"`
+		}
+		if err := json.Unmarshal([]byte(str(r, "policyData")), &policy); err != nil {
+			return nil, onAccount, false
+		}
+		for _, b := range policy.Bindings {
+			for _, m := range b.Members {
+				pairs = append(pairs, [2]string{b.Role, m})
+			}
+		}
+		return pairs, onAccount, true
+	}
+	return nil, onAccount, !onAccount
+}
+
+// Who may use each service account is an allow-list. Every IAM grant on a
+// service account, of any IAM resource type, must name an expected member for
+// that account and role; a grant of a role that uses service accounts at any
+// wider scope (project, folder, org) is refused outright; and every federated
+// principal string anywhere in the program must be one of those expected
+// bindings, so a principal cannot reach an account by another route.
+func TestWholeProgramServiceAccountUseIsAllowListed(t *testing.T) {
+	resources := runWholeProgram(t)
+
+	seen := map[string]map[string][]string{}
+	for _, r := range resources {
+		pairs, onAccount, ok := grantPairs(r)
+		if !assert.True(t, ok, "%s (%s): unrecognized IAM resource on a service account", r.name, r.typ) {
+			continue
+		}
+		allowedBinding := false
+		if onAccount {
+			saName := str(r, "serviceAccountId")
+			id := accountIDFromSAName(saName)
+			selfMember := "serviceAccount:" + saName[strings.LastIndex(saName, "/")+1:]
+			for _, p := range pairs {
+				role, member := p[0], p[1]
+				if member == selfMember {
+					member = "self"
+				}
+				want := expectedAccountGrants[id][role]
+				assert.Contains(t, want, member, "%s (%s): %s on %s for %q is not on the allow-list", r.name, r.typ, role, id, p[1])
+				if seen[id] == nil {
+					seen[id] = map[string][]string{}
+				}
+				seen[id][role] = append(seen[id][role], member)
+			}
+			allowedBinding = r.typ == saIAMMemberType && len(pairs) == 1
+		} else {
+			for _, p := range pairs {
+				assert.False(t, serviceAccountUseRoles[p[0]],
+					"%s (%s): grants %s to %q at a scope wider than one service account", r.name, r.typ, p[0], p[1])
+			}
+		}
+
+		for _, s := range allStrings(r) {
+			if strings.Contains(s, "principalSet://") || strings.Contains(s, "principal://") {
+				assert.True(t, allowedBinding && s == str(r, "member"),
+					"%s (%s) names federated principal %q outside an allow-listed service account binding", r.name, r.typ, s)
+			}
+		}
+	}
+
+	for id, roles := range expectedAccountGrants {
+		for role, want := range roles {
+			got := append([]string{}, seen[id][role]...)
+			sort.Strings(got)
+			w := append([]string{}, want...)
+			sort.Strings(w)
+			assert.Equal(t, w, got, "members with %s on %s", role, id)
+		}
+	}
+}
+
+// The GitHub provider must accept tokens only from this repository and map
+// attribute.environment from the job's Environment claim; every per-Environment
+// binding above depends on both.
+func TestFoundationProviderIsPinnedToTheRepository(t *testing.T) {
+	var found bool
+	for _, r := range runWholeProgram(t) {
+		if r.typ != "gcp:iam/workloadIdentityPoolProvider:WorkloadIdentityPoolProvider" {
+			continue
+		}
+		assert.NotEmpty(t, str(r, "attributeCondition"), "%s has no attribute condition", r.name)
+		if str(r, "workloadIdentityPoolProviderId") != "foundation-gh-provider" {
+			continue
+		}
+		found = true
+		assert.Equal(t, "assertion.repository=='VitruvianSoftware/vitruvian-core'", str(r, "attributeCondition"))
+		mapping := r.inputs["attributeMapping"]
+		require.True(t, mapping.IsObject(), "attributeMapping missing")
+		m := mapping.ObjectValue()
+		assert.Equal(t, "assertion.environment", m["attribute.environment"].StringValue())
+		assert.Equal(t, "assertion.sub", m["google.subject"].StringValue())
+	}
+	assert.True(t, found, "foundation-gh-provider not declared")
 }
