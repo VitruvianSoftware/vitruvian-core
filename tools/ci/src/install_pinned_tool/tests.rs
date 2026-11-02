@@ -488,6 +488,123 @@ fn a_missing_or_broken_lock_is_refused() {
     r.assert_installed_nothing();
 }
 
+// --- a lock every reader reads the same way ----------------------------------
+//
+// Bazel's json.decode (behind @multitool) and Python keep the LAST of a
+// repeated key; a reader that kept the first would check a hash reviewers
+// never see. So any repeat is refused, whichever copy comes first.
+
+/// The lock with `from` replaced by `to`, once.
+fn edit_lock(w: &World, from: &str, to: &str) {
+    let text = read(w.lock());
+    assert!(text.contains(from), "fixture lock lacks {from:?}");
+    write(w.lock(), text.replacen(from, to, 1));
+}
+
+fn assert_refused(r: &Ran, needle: &str) {
+    assert_eq!(r.out.code, 1, "{}", r.out.all());
+    assert!(r.out.stderr.contains(needle), "{}", r.out.stderr);
+    r.assert_installed_nothing();
+}
+
+#[test]
+fn a_repeated_sha256_key_is_refused_in_either_order() {
+    let w = World::new();
+    let real = w.true_pins()[0].sha256.clone();
+    let fake = sha256_of(&{
+        let p = w.dir.join("payload");
+        write(&p, "attacker-controlled-bytes\n");
+        p
+    });
+    for (first, second) in [(&fake, &real), (&real, &fake)] {
+        w.write_lock(&w.true_pins());
+        edit_lock(
+            &w,
+            &format!("\"sha256\": \"{real}\""),
+            &format!("\"sha256\": \"{first}\",\n        \"sha256\": \"{second}\""),
+        );
+        let r = run(&w, &strs(&raw_args(&w)));
+        assert_refused(&r, "duplicate key \"sha256\"");
+    }
+}
+
+#[test]
+fn a_repeated_tool_name_is_refused() {
+    let w = World::new();
+    let real = w.true_pins()[0].sha256.clone();
+    let text = read(w.lock());
+    let decoy = format!(
+        "{{\n  \"mytool\": {{\n    \"binaries\": [\n      {{\n        \"kind\": \"file\",\n        \"url\": \"{URL}/{RAW}\",\n        \"sha256\": \"{}\"\n      }}\n    ]\n  }},",
+        "0".repeat(64)
+    );
+    write(w.lock(), text.replacen('{', &decoy, 1));
+    assert!(read(w.lock()).contains(&real));
+    let r = run(&w, &strs(&raw_args(&w)));
+    assert_refused(&r, "duplicate key \"mytool\"");
+}
+
+#[test]
+fn a_repeated_url_within_a_tool_is_refused() {
+    let w = World::new();
+    let mut pins = w.true_pins();
+    let fake = Pin {
+        tool: "mytool",
+        kind: "file",
+        file: None,
+        asset: RAW,
+        sha256: "0".repeat(64),
+    };
+    pins.insert(0, fake);
+    w.write_lock(&pins);
+    let r = run(&w, &strs(&raw_args(&w)));
+    assert_refused(&r, &format!("'mytool' pins {URL}/{RAW} more than once"));
+}
+
+#[test]
+fn a_repeated_key_anywhere_is_refused() {
+    // Not only the fields the lookup reads: any object, any level.
+    let w = World::new();
+    edit_lock(&w, "\"$schema\": ", "\"$schema\": \"x\",\n  \"$schema\": ");
+    let r = run(&w, &strs(&raw_args(&w)));
+    assert_refused(&r, "duplicate key \"$schema\"");
+}
+
+// --- the URL must match the pin exactly ---------------------------------------
+
+#[test]
+fn only_the_exact_pinned_url_matches() {
+    // The hash check would still stop these, but the lookup must not let a
+    // near miss through to it.
+    let w = World::new();
+    let log = w.dir.join("curl-args.log");
+    let l = lock_arg(&w);
+    for asset in [
+        format!("{RAW}.evil"),
+        format!("{RAW}?x=1"),
+        format!("{RAW}#frag"),
+        // A prefix of the pinned asset name.
+        "mytool_linux".to_string(),
+        format!("{RAW}/"),
+    ] {
+        let r = run_with(&w, &[&l, URL, &asset, "mytool", "--raw"], |r, _| {
+            r.env("FAKE_CURL_ARGS_LOG", &log)
+        });
+        assert_refused(&r, &format!("{URL}/{asset} is not pinned"));
+    }
+    // A prefix of the pinned base URL, and the pinned URL inside another.
+    for (base, asset) in [
+        ("https://example.invalid/down", format!("load/{RAW}")),
+        ("https://example.invalid/download/x", RAW.to_string()),
+        ("http://example.invalid/download", RAW.to_string()),
+    ] {
+        let r = run_with(&w, &[&l, base, &asset, "mytool", "--raw"], |r, _| {
+            r.env("FAKE_CURL_ARGS_LOG", &log)
+        });
+        assert_refused(&r, "is not pinned");
+    }
+    assert!(!log.exists(), "curl never ran for a near miss");
+}
+
 // --- transport, arguments and the environment ---------------------------------
 
 #[test]

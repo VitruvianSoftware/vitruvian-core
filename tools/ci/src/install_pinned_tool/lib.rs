@@ -143,9 +143,27 @@ fn pinned_sha256(
             ]))
         }
     };
+    // One entry per URL: two would leave which hash counts to the reader.
+    let mut urls: Vec<&str> = Vec::new();
+    for b in binaries {
+        if let Some(u) = b.str("url") {
+            if urls.contains(&u) {
+                return Err(cat(&[
+                    lock_file,
+                    b": '",
+                    bin_name,
+                    b"' pins ",
+                    u.as_bytes(),
+                    b" more than once",
+                ]));
+            }
+            urls.push(u);
+        }
+    }
     let url_s = String::from_utf8_lossy(url).into_owned();
     let entry = binaries
         .iter()
+        // Byte-for-byte: no prefix, query, fragment or normalisation.
         .find(|b| b.str("url") == Some(url_s.as_str()))
         .ok_or_else(|| {
             let mut pinned: Vec<u8> = Vec::new();
@@ -473,7 +491,15 @@ mod json {
                 if self.b.get(self.i) != Some(&b'"') {
                     return self.fail("expected a string key");
                 }
+                let at = self.i;
                 let k = self.string()?;
+                // Fail closed on a repeated key. Bazel's json.decode (behind
+                // @multitool) and Python keep the LAST value; taking either
+                // one here would let a lock show reviewers one hash and check
+                // another (#4203 review).
+                if m.iter().any(|(seen, _): &(String, Value)| *seen == k) {
+                    return Err(format!("duplicate key \"{k}\" at byte {at}"));
+                }
                 self.ws();
                 if self.b.get(self.i) != Some(&b':') {
                     return self.fail("expected ':'");
