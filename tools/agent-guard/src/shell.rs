@@ -664,13 +664,13 @@ pub fn parse_script_at(
 
 /// `parse_script_at`, read as bash 3.2 reads it when `bash32` is set.
 ///
-/// bash 3.2 (macOS `/bin/bash`, and `/bin/sh` there) reads a leading
-/// `NAME[` word up to its matching `]` as one array assignment, spaces,
-/// `;`, `|` and newlines included: `A[ x ]=1 git push` and `A[;]=1 git push`
-/// run `git push` (#4210). bash 5.2 also reads the bracket as one word but
-/// runs nothing, and zsh stops with `bad pattern`. The default reading splits
-/// at blanks; `saw` is set when it cut such a word before its `]`, so the
-/// caller judges both readings (the safe side). The same two readings cover a NUL in
+/// bash 3.2 (macOS `/bin/bash`, and `/bin/sh` there) and bash 5.2 read a
+/// leading `NAME[...]` up to its `]` as one word, blanks, `;`, `|` and
+/// newlines included, and then run what follows: `A[ x ]=1 git push` and
+/// `A[;]=1 git push` run `git push` (#4210). The default reading splits at
+/// blanks as zsh does (zsh stops with `bad pattern`); `saw` is set when it
+/// cut such a word before its `]`, so the caller judges both readings, which
+/// only errs on the safe side. The same two readings cover a NUL in
 /// `$'...'`: bash cuts only the quoted part, zsh the whole word.
 pub fn parse_dialect(
     t: &[char],
