@@ -515,6 +515,60 @@ func main() {
 	})
 }
 
+// envTagPolicy is one tag-pattern deployment policy. suffix names the Pulumi
+// resource (<env>-deploy-policy-<suffix>); it is fixed per pattern so the
+// existing nonproduction/production resources keep their names.
+type envTagPolicy struct {
+	suffix  string
+	pattern string
+}
+
+// envGate is who may deploy to one GitHub Environment.
+//
+// The branch policy is the ONLY ref check on a deploy identity: the
+// foundation-pool WIF provider checks just the repository, and each deploy SA
+// is bound to attribute.environment/<env>. So an Environment with no policy
+// lets any workflow on any unmerged branch sign in as its service account
+// (#4120). Every Environment that holds deploy or registry-push power must
+// therefore be mainOnly; only the read-only <app>-preview Environments, which
+// back the PR pulumi-preview leg, stay open.
+type envGate struct {
+	mainOnly bool           // custom branch policy: main only
+	tags     []envTagPolicy // extra tag refs allowed (release events)
+	reviewer bool           // require a human approval
+}
+
+var tabulaReleaseTags = []envTagPolicy{
+	{suffix: "tags", pattern: "tabula-api-v*"},
+	{suffix: "tags-web", pattern: "tabula-web-v*"},
+}
+
+// tabulaEnvGate returns the deployment gate for tabula-<env>
+// (docs/engineering/deployment-strategy.md):
+//   - development: main only. delivery-tabula deploys it on push to main and
+//     on dispatch; preview-teardown is dispatched from main.
+//   - build: main plus the release tags, because delivery-tabula's
+//     tabula-build job also runs on `release`, whose ref is the tag.
+//   - nonproduction: main plus release tags, no reviewer. Promotion is
+//     release-gated in delivery-tabula, so the release merge is the human gate.
+//   - production: the same, plus a required reviewer as the final checkpoint.
+//     GitHub allows self-approval, so on a single-maintainer repo that is a
+//     deliberate "break glass" pause, not a four-eyes gate.
+//   - preview: open. It holds only the read-only tabula-preview identity
+//     (roles/viewer) that the PR pulumi-preview leg runs as.
+func tabulaEnvGate(env string) envGate {
+	switch env {
+	case "development":
+		return envGate{mainOnly: true}
+	case "build", "nonproduction":
+		return envGate{mainOnly: true, tags: tabulaReleaseTags}
+	case "production":
+		return envGate{mainOnly: true, tags: tabulaReleaseTags, reviewer: true}
+	default:
+		return envGate{}
+	}
+}
+
 // tabulaEnvironments manages the per-component GitHub Environments for the
 // tabula deploy pipeline (.github/workflows/tabula-deploy.yaml). The
 // environment name carries the component namespace (tabula-<env>), so the
@@ -540,32 +594,23 @@ func tabulaEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *github.Re
 	var tabulaVars map[string]map[string]string
 	_ = cfg.GetObject("tabulaVars", &tabulaVars)
 
-	// build pushes the shared Artifact Registry once; preview backs the advisory
-	// token-less PR pulumi-preview leg. Both are ungated — they never touch a
-	// live service — mirroring the oauth-user-inspector environment set.
 	for _, env := range []string{"build", "preview", "development", "nonproduction", "production"} {
 		name := "tabula-" + env
+		gate := tabulaEnvGate(env)
 
 		args := &github.RepositoryEnvironmentArgs{
 			Repository:  repo.Name,
 			Environment: pulumi.String(name),
 		}
 
-		// Deployment strategy (docs/engineering/deployment-strategy.md): both
-		// nonproduction and production deploy only from protected branches (main)
-		// and release tags, but promotion is release-gated in tabula-deploy.yaml
-		// (a tabula-api release merge), so nonproduction carries NO reviewer —
-		// the release merge is the human gate. production keeps a required
-		// reviewer as the final checkpoint. GitHub allows self-approval, so on a
-		// single-maintainer repo that reviewer is a deliberate "break glass"
-		// pause, not a four-eyes gate.
-		if env == "nonproduction" || env == "production" {
+		// See tabulaEnvGate for which environments are pinned and why.
+		if gate.mainOnly {
 			args.DeploymentBranchPolicy = &github.RepositoryEnvironmentDeploymentBranchPolicyArgs{
 				ProtectedBranches:    pulumi.Bool(false),
 				CustomBranchPolicies: pulumi.Bool(true),
 			}
 		}
-		if env == "production" {
+		if gate.reviewer {
 			reviewerIds, err := productionReviewerIds(ctx, cfg)
 			if err != nil {
 				return err
@@ -582,7 +627,7 @@ func tabulaEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *github.Re
 			return err
 		}
 
-		if env == "nonproduction" || env == "production" {
+		if gate.mainOnly {
 			if _, err := github.NewRepositoryEnvironmentDeploymentPolicy(ctx, fmt.Sprintf("%s-deploy-policy-main", name), &github.RepositoryEnvironmentDeploymentPolicyArgs{
 				Repository:    repo.Name,
 				Environment:   envRes.Environment,
@@ -590,17 +635,12 @@ func tabulaEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *github.Re
 			}, pulumi.DependsOn([]pulumi.Resource{envRes})); err != nil {
 				return err
 			}
-			if _, err := github.NewRepositoryEnvironmentDeploymentPolicy(ctx, fmt.Sprintf("%s-deploy-policy-tags", name), &github.RepositoryEnvironmentDeploymentPolicyArgs{
+		}
+		for _, tag := range gate.tags {
+			if _, err := github.NewRepositoryEnvironmentDeploymentPolicy(ctx, fmt.Sprintf("%s-deploy-policy-%s", name, tag.suffix), &github.RepositoryEnvironmentDeploymentPolicyArgs{
 				Repository:  repo.Name,
 				Environment: envRes.Environment,
-				TagPattern:  pulumi.String("tabula-api-v*"),
-			}, pulumi.DependsOn([]pulumi.Resource{envRes})); err != nil {
-				return err
-			}
-			if _, err := github.NewRepositoryEnvironmentDeploymentPolicy(ctx, fmt.Sprintf("%s-deploy-policy-tags-web", name), &github.RepositoryEnvironmentDeploymentPolicyArgs{
-				Repository:  repo.Name,
-				Environment: envRes.Environment,
-				TagPattern:  pulumi.String("tabula-web-v*"),
+				TagPattern:  pulumi.String(tag.pattern),
 			}, pulumi.DependsOn([]pulumi.Resource{envRes})); err != nil {
 				return err
 			}
@@ -626,6 +666,35 @@ func tabulaEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *github.Re
 		}
 	}
 	return nil
+}
+
+var oauthReleaseTags = []envTagPolicy{{suffix: "tags", pattern: "oauth-user-inspector-v*"}}
+
+// oauthEnvGate returns the deployment gate for oauth-user-inspector-<env>
+// (docs/engineering/deployment-strategy.md; envGate explains why every
+// deploy-capable Environment is pinned):
+//   - development: main only. delivery-oauth-user-inspector deploys it on push
+//     to main and on dispatch; _zitadel-apps-apply and
+//     zitadel-apps-mcp-slack-apply use it from the same push/dispatch runs.
+//     It also holds the ZITADEL_MACHINE_KEY_JSON / TS_OAUTH_* secrets.
+//   - build: main plus the release tag, because the build job also runs on
+//     `release`, whose ref is the tag.
+//   - nonproduction: main plus the release tag, no reviewer (the release
+//     merge is the human gate).
+//   - production: the same, plus a required reviewer.
+//   - preview: open. It holds only the read-only oauth-user-inspector-preview
+//     identity (roles/viewer) that the PR pulumi-preview leg runs as.
+func oauthEnvGate(env string) envGate {
+	switch env {
+	case "development":
+		return envGate{mainOnly: true}
+	case "build", "nonproduction":
+		return envGate{mainOnly: true, tags: oauthReleaseTags}
+	case "production":
+		return envGate{mainOnly: true, tags: oauthReleaseTags, reviewer: true}
+	default:
+		return envGate{}
+	}
 }
 
 // oauthEnvironment manages the GitHub Environment + repo-level gate for the
@@ -715,46 +784,36 @@ func oauthEnvironment(ctx *pulumi.Context, cfg *config.Config, repo *github.Repo
 	var oauthVars map[string]map[string]string
 	_ = cfg.GetObject("oauthVars", &oauthVars)
 
-	// Environment set + gating, per the repo-wide deployment strategy
-	// (docs/engineering/deployment-strategy.md):
-	//   - development: auto on push, ungated.
-	//   - nonproduction: promoted only when the app's release-please PR merges
-	//     (release-gated in the deploy workflow). The release merge IS the human
-	//     gate. Uses custom branch/tag policies (main + oauth-user-inspector-v*)
-	//     so the release event's tag ref is accepted. No reviewer — the release
-	//     merge is the approval.
-	//   - production: release-gated AND a required reviewer — the one deliberate
-	//     human checkpoint before prod. Same custom branch/tag policies.
-	//   - build / preview: ungated.
+	// development's environment and variables predate this program and are
+	// adopted via pulumi.Import (see the doc comment); the rest are created here.
+	// Gating per environment is oauthEnvGate.
 	envs := []struct {
-		env          string
-		branchPolicy bool   // restrict deploys to protected branches (main)
-		tagPattern   string // allow deploys from specific tags
-		reviewer     bool   // require a human approval
-		imported     bool
+		env      string
+		imported bool
 	}{
-		{"development", false, "", false, true},
-		{"nonproduction", true, "oauth-user-inspector-v*", false, false},
-		{"production", true, "oauth-user-inspector-v*", true, false},
-		{"build", false, "", false, false},
-		{"preview", false, "", false, false},
+		{"development", true},
+		{"nonproduction", false},
+		{"production", false},
+		{"build", false},
+		{"preview", false},
 	}
 
 	for _, e := range envs {
 		name := "oauth-user-inspector-" + e.env
+		gate := oauthEnvGate(e.env)
 
 		args := &github.RepositoryEnvironmentArgs{
 			Repository:  repo.Name,
 			Environment: pulumi.String(name),
 		}
-		if e.branchPolicy || e.tagPattern != "" {
-			// Deploy only from main branch and/or release tags.
+		if gate.mainOnly {
+			// Deploy only from main and the gate's release tags.
 			args.DeploymentBranchPolicy = &github.RepositoryEnvironmentDeploymentBranchPolicyArgs{
 				ProtectedBranches:    pulumi.Bool(false),
 				CustomBranchPolicies: pulumi.Bool(true),
 			}
 		}
-		if e.reviewer {
+		if gate.reviewer {
 			// Require an approval from the configured reviewer(s). GitHub permits
 			// self-approval, so on a single-maintainer repo this is a deliberate
 			// "break glass" pause.
@@ -778,7 +837,7 @@ func oauthEnvironment(ctx *pulumi.Context, cfg *config.Config, repo *github.Repo
 			return err
 		}
 
-		if e.branchPolicy {
+		if gate.mainOnly {
 			if _, err := github.NewRepositoryEnvironmentDeploymentPolicy(ctx, fmt.Sprintf("%s-deploy-policy-main", name), &github.RepositoryEnvironmentDeploymentPolicyArgs{
 				Repository:    repo.Name,
 				Environment:   envRes.Environment,
@@ -787,11 +846,11 @@ func oauthEnvironment(ctx *pulumi.Context, cfg *config.Config, repo *github.Repo
 				return err
 			}
 		}
-		if e.tagPattern != "" {
-			if _, err := github.NewRepositoryEnvironmentDeploymentPolicy(ctx, fmt.Sprintf("%s-deploy-policy-tags", name), &github.RepositoryEnvironmentDeploymentPolicyArgs{
+		for _, tag := range gate.tags {
+			if _, err := github.NewRepositoryEnvironmentDeploymentPolicy(ctx, fmt.Sprintf("%s-deploy-policy-%s", name, tag.suffix), &github.RepositoryEnvironmentDeploymentPolicyArgs{
 				Repository:  repo.Name,
 				Environment: envRes.Environment,
-				TagPattern:  pulumi.String(e.tagPattern),
+				TagPattern:  pulumi.String(tag.pattern),
 			}, pulumi.DependsOn([]pulumi.Resource{envRes})); err != nil {
 				return err
 			}
