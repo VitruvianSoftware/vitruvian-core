@@ -56,6 +56,15 @@ config:
       GCP_PROJECT_ID: prj-n-bu2-oss-floating-a943
       GCP_REGION: us-central1
       GCP_WORKLOAD_IDENTITY_PROVIDER: projects/1064807322707/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider
+    # Read-only identity for the PR pulumi-preview leg (#4120): roles/viewer on
+    # the dev project and nothing else, minted by foundation gcp-projects
+    # bu2 development (#4197). NOT the deploy SA, so the development
+    # Environment can be pinned to main without breaking PR previews.
+    preview:
+      GCP_DEPLOY_SERVICE_ACCOUNT: tabula-preview@prj-d-bu2-oss-floating-c3d1.iam.gserviceaccount.com
+      GCP_PROJECT_ID: prj-d-bu2-oss-floating-c3d1
+      GCP_REGION: us-central1
+      GCP_WORKLOAD_IDENTITY_PROVIDER: projects/1064807322707/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider
     production:
       GCP_DEPLOY_SERVICE_ACCOUNT: tabula-deploy@prj-p-bu2-oss-floating-8663.iam.gserviceaccount.com
       GCP_PROJECT_ID: prj-p-bu2-oss-floating-8663
@@ -119,6 +128,15 @@ config:
     nonproduction:
       GCP_DEPLOY_SERVICE_ACCOUNT: oauth-user-inspector-deploy@prj-n-bu1-oss-floating-630b.iam.gserviceaccount.com
       GCP_PROJECT_ID: prj-n-bu1-oss-floating-630b
+      GCP_REGION: us-central1
+      GCP_WORKLOAD_IDENTITY_PROVIDER: projects/1064807322707/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider
+    # Read-only identity for the PR pulumi-preview leg (#4120): roles/viewer on
+    # the dev project and nothing else, minted by foundation gcp-projects
+    # bu1 development (#4197). NOT the deploy SA, so the development
+    # Environment can be pinned to main without breaking PR previews.
+    preview:
+      GCP_DEPLOY_SERVICE_ACCOUNT: oauth-user-inspector-preview@prj-d-bu1-oss-floating-648a.iam.gserviceaccount.com
+      GCP_PROJECT_ID: prj-d-bu1-oss-floating-648a
       GCP_REGION: us-central1
       GCP_WORKLOAD_IDENTITY_PROVIDER: projects/1064807322707/locations/global/workloadIdentityPools/foundation-pool/providers/foundation-gh-provider
     production:
