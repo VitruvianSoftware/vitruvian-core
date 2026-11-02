@@ -5259,19 +5259,8 @@ func TestStreamErrorBeforeConnectTransitionsToTransientDisconnect(t *testing.T) 
 	require.Equal(t, status.BridgeStateErrorCode("gchat-stream-error"), fullSt.Error)
 	require.Equal(t, errMsg, fullSt.Message)
 
-	// Once CONNECTED has been reached since Connect, subsequent stream errors
-	// log a warning while reconnecting without clobbering StateConnected.
-	client.processStreamNotification(ctx, streamNotification{
-		kind:    EventKindConnected,
-		payload: []byte(`{}`),
-	})
-	require.Equal(t, status.StateConnected, client.lastBridgeState())
-
-	client.processStreamNotification(ctx, streamNotification{
-		kind:    EventKindStreamError,
-		payload: []byte("step4_poll_events: network"),
-	})
-	require.Equal(t, status.StateConnected, client.lastBridgeState())
+	// A stream error after CONNECTED also reports TRANSIENT_DISCONNECT (see
+	// TestStreamErrorAfterConnectReportsReconnecting); it used to leave StateConnected in place.
 }
 
 func TestGetChatInfoSpaceWithoutGroupNameNeverUsesPortalID(t *testing.T) {
@@ -5770,4 +5759,34 @@ func TestFirstConnectAfterRestartCatchesUpFromSavedRevision(t *testing.T) {
 	parts, err := h.Bridge.DB.Message.GetAllPartsByID(ctx, ul.ID, MakeMessageID("topic_gap", "msg_gap_1"))
 	require.NoError(t, err)
 	require.Len(t, parts, 1, "a message caught up twice is stored once")
+}
+
+// While the live stream is failing, the account must not keep saying it is connected: it reports
+// TRANSIENT_DISCONNECT (shown as "Reconnecting…", as for the other networks) until the stream is back.
+func TestStreamErrorAfterConnectReportsReconnecting(t *testing.T) {
+	ctx := context.Background()
+	_, _, client := setupLoggedInGChatTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/x-protobuf")
+		switch r.URL.Path {
+		case "/u/0/api/paginated_world":
+			_, _ = w.Write(pb.MustMarshal(&pb.PaginatedWorldResponse{}))
+		case "/u/0/api/catch_up_user":
+			_, _ = w.Write(pb.MustMarshal(&pb.CatchUpResponse{Status: pb.CatchUpResponse_COMPLETED.Enum()}))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	// Stop the background stream the login started (this fake server has no WebChannel), so only the
+	// notifications below change the state.
+	client.Disconnect()
+
+	client.processStreamNotification(ctx, streamNotification{kind: EventKindConnected})
+	require.Equal(t, status.StateConnected, client.lastBridgeState())
+
+	client.processStreamNotification(ctx, streamNotification{kind: EventKindStreamError, payload: []byte("step4_poll_events: http_status:400")})
+	require.Equal(t, status.StateTransientDisconnect, client.lastBridgeState(), "a failing stream must not stay CONNECTED")
+	require.Equal(t, "gchat-stream-error", string(client.lastBridgeStateFull().Error))
+
+	client.processStreamNotification(ctx, streamNotification{kind: EventKindConnected})
+	require.Equal(t, status.StateConnected, client.lastBridgeState())
 }

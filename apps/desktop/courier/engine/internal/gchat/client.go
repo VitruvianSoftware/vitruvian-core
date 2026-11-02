@@ -276,16 +276,12 @@ func (c *Client) processStreamNotification(ctx context.Context, item streamNotif
 		if c.UserLogin != nil {
 			c.UserLogin.Log.Warn().Str("message", msg).Msg("gchat stream error")
 		}
-		c.mu.Lock()
-		connectedSinceConnect := c.initialSyncDone
-		c.mu.Unlock()
-		if !connectedSinceConnect {
-			c.sendBridgeState(status.BridgeState{
-				StateEvent: status.StateTransientDisconnect,
-				Error:      "gchat-stream-error",
-				Message:    msg,
-			})
-		}
+		// The stream retries on its own; until it is back, say so rather than staying CONNECTED.
+		c.sendBridgeState(status.BridgeState{
+			StateEvent: status.StateTransientDisconnect,
+			Error:      "gchat-stream-error",
+			Message:    msg,
+		})
 	}
 }
 
