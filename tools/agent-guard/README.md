@@ -476,9 +476,11 @@ bodies, `bash -c`/`sh -c`/`zsh -lc`, `bash <<EOF` and `<<<`, `eval`, `env`
 (including `-S`), `xargs`, `find -exec`, `watch`, `nice`, `time`, `timeout`,
 `nohup`, `command`, `exec`, `sudo`, `caffeinate`, `direnv exec`, `rustup run`, `uv run`,
 `uvx` and `python -m`. It matches programs by basename (`/usr/bin/git` is git,
-and so is zsh's `=git`) and ignores their case, as macOS's disk does (`GIT
-push` runs git), decodes `$'...'` escapes and `$"..."` strings as bash does
-(`$'\x67it'` is git), reads prefix assignments the way bash 3.2 does as well
+and so is zsh's `=git`) and ignores their case as macOS's disk does: ASCII, plus the eleven non-ASCII
+letters whose full Unicode case fold is ASCII (`ſ`, Kelvin `K`, `ß`, `ﬀ`, ...),
+so `GIT push` and `baſh -c ...` are judged as git and bash. It decodes `$'...'`
+escapes and `$"..."` strings as bash does (`$'\x67it'` is git), ending the text
+at a NUL as bash and zsh do (`$'git\0zz'` is git), reads prefix assignments the way bash 3.2 does as well
 as the way bash 5 and zsh do (`A[ x ]=1 git push` runs git push on macOS's
 `/bin/bash`), and judges every rustup proxy in a command (`rustup`, `cargo`,
 `rustc`, `rustdoc`, `rustfmt`, `cargo-fmt`, ... — rustup 1.29.2's list) as the

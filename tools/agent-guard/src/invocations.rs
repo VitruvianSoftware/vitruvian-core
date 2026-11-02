@@ -126,7 +126,7 @@ fn arg0_stem(value: &str) -> Option<String> {
     }
     std::path::Path::new(value)
         .file_stem()
-        .map(|s| s.to_string_lossy().to_ascii_lowercase())
+        .map(|s| fold_case(&s.to_string_lossy()))
 }
 
 /// Program names are matched without regard to case: macOS's disk ignores
@@ -136,10 +136,43 @@ fn arg0_stem(value: &str) -> Option<String> {
 /// guard's idea of where it is.
 fn fold_program_case(w: &mut String) {
     let cut = w.rfind('/').map_or(0, |k| k + 1);
-    let lower = w[cut..].to_ascii_lowercase();
+    let lower = fold_case(&w[cut..]);
     if lower != w[cut..] && lower != "cd" && lower != "pushd" {
         w.replace_range(cut.., &lower);
     }
+}
+
+/// Every non-ASCII character whose full Unicode case fold (CaseFolding.txt,
+/// status C and F) is plain ASCII. Listed with Python's `str.casefold()`
+/// over all code points (Unicode 17.0). APFS folds all of them: `/bin/baſh`,
+/// `/bin/Kill`, `/usr/bin/ßh` and `/usr/bin/diﬀ` are bash, kill, ssh and
+/// diff on macOS (#4220, review).
+const FOLD_TO_ASCII: [(char, &str); 11] = [
+    ('\u{00DF}', "ss"),  // ß
+    ('\u{017F}', "s"),   // ſ long s
+    ('\u{1E9E}', "ss"),  // ẞ capital sharp s
+    ('\u{212A}', "k"),   // K Kelvin sign
+    ('\u{FB00}', "ff"),  // ﬀ
+    ('\u{FB01}', "fi"),  // ﬁ
+    ('\u{FB02}', "fl"),  // ﬂ
+    ('\u{FB03}', "ffi"), // ﬃ
+    ('\u{FB04}', "ffl"), // ﬄ
+    ('\u{FB05}', "st"),  // ﬅ
+    ('\u{FB06}', "st"),  // ﬆ
+];
+
+/// A name as a case-insensitive Mac disk compares it: ASCII lower case,
+/// plus the characters above. Other non-ASCII stays as it is: it cannot
+/// fold to a plain-ASCII program name.
+fn fold_case(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    for c in name.chars() {
+        match FOLD_TO_ASCII.iter().find(|(k, _)| *k == c) {
+            Some((_, f)) => out.push_str(f),
+            None => out.push(c.to_ascii_lowercase()),
+        }
+    }
+    out
 }
 
 fn note_force_arg0(
@@ -876,6 +909,17 @@ mod tests {
             argvs_of("SUDO /x/GIT push"),
             vec![vec!["/x/git".to_string(), "push".into()]]
         );
+        // APFS folds these non-ASCII letters to ASCII too (#4220 review).
+        assert_eq!(fold_case("ba\u{17f}h"), "bash");
+        assert_eq!(fold_case("\u{212a}ubectl"), "kubectl");
+        assert_eq!(fold_case("\u{df}h"), "ssh");
+        assert_eq!(fold_case("di\u{fb00}"), "diff");
+        assert_eq!(fold_case("g\u{131}t"), "g\u{131}t"); // dotless i: not folded
+        for (c, f) in FOLD_TO_ASCII {
+            assert!(!c.is_ascii() && f.is_ascii(), "{:?}", c);
+        }
+        assert_eq!(argvs_of("\u{17f}udo git push"), vec![git_push.clone()]);
+        assert!(argvs_of("ba\u{17f}h -c 'git push'").contains(&git_push));
         let cd = invocations("CD /tmp; git push", "/r", "/h").unwrap();
         assert_eq!(cd.last().unwrap().cwd, "/r");
         assert_eq!(

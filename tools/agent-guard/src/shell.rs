@@ -442,6 +442,10 @@ struct Parser<'a> {
     prefix_ok: bool,
     /// Still in the leading keywords (`if`, `!`, `time -p`, ...).
     lead_kw: bool,
+    /// Where in the word a `$'...'` NUL fell. bash cuts only that quoted
+    /// part there; zsh keeps the NUL, and the C string the kernel gets ends
+    /// at it, so the rest of the word is dropped. (#4207 review)
+    nul_at: Option<usize>,
 }
 
 impl<'a> Parser<'a> {
@@ -449,7 +453,17 @@ impl<'a> Parser<'a> {
         if !self.in_word {
             return;
         }
-        let w = std::mem::take(&mut self.word);
+        let mut w = std::mem::take(&mut self.word);
+        if let Some(k) = self.nul_at.take() {
+            // The default reading is zsh's: the word ends at the NUL. The
+            // bash reading (`bash32`) keeps what follows the quote.
+            if !self.bash32 {
+                if w.len() > k {
+                    self.saw = true;
+                }
+                w.truncate(k);
+            }
+        }
         if let Some(op) = self.pending_redirect.take() {
             if op == "<<" || op == "<<-" {
                 // A quoted delimiter ('EOF', "EOF", \EOF) makes the body
@@ -655,7 +669,8 @@ pub fn parse_script_at(
 /// `;`, `|` and newlines included: `A[ x ]=1 git push` and `A[;]=1 git push`
 /// run `git push` (#4210). bash 5 and zsh split those words instead. `saw`
 /// is set when the default reading cut such a word before its `]`, so the
-/// caller can judge both readings.
+/// caller can judge both readings. The same two readings cover a NUL in
+/// `$'...'`: bash cuts only the quoted part, zsh the whole word.
 pub fn parse_dialect(
     t: &[char],
     depth: usize,
@@ -686,6 +701,7 @@ pub fn parse_dialect(
         bracket_seen: false,
         prefix_ok: true,
         lead_kw: true,
+        nul_at: None,
     };
     let mut i = 0;
     while i < n {
@@ -761,6 +777,13 @@ pub fn parse_dialect(
             }
             if j >= n {
                 return Err(PErr::Parse);
+            }
+            // bash and zsh end the text at a NUL (`\0`, `\x00`, `\c@`).
+            if let Some(k) = out.find('\0') {
+                out.truncate(k);
+                if p.nul_at.is_none() {
+                    p.nul_at = Some(p.word.len() + k);
+                }
             }
             p.word.push_str(&out);
             p.in_word = true;
@@ -1216,5 +1239,34 @@ mod tests {
         ] {
             assert_eq!(words(text), v(&[&[want]]), "{}", text);
         }
+    }
+
+    #[test]
+    fn nul_in_ansi_c_ends_the_text() {
+        let read = |text: &str, bash32: bool| {
+            let t: Vec<char> = text.chars().collect();
+            let mut b = MAX_COMMANDS;
+            let mut saw = false;
+            let cmds = parse_dialect(&t, 0, &mut b, bash32, &mut saw).unwrap();
+            (cmds.into_iter().map(|c| c.words).collect::<Vec<_>>(), saw)
+        };
+        // The kernel gets a C string, so the program name ends at the NUL.
+        for text in [
+            "$'git\\0zz' push",
+            "$'git\\x00' push",
+            "$'git\\c@' push",
+            "$'gi\\x74\\0' push",
+            "$'git\\U00000000' push",
+            "$'git\u{0}zz' push",
+        ] {
+            assert_eq!(read(text, false).0, v(&[&["git", "push"]]), "{}", text);
+        }
+        // bash cuts only the quoted part; zsh the whole word. Both are judged.
+        assert_eq!(
+            read("$'gi\\0zz't push", false),
+            (v(&[&["gi", "push"]]), true)
+        );
+        assert_eq!(read("$'gi\\0zz't push", true).0, v(&[&["git", "push"]]));
+        assert!(!read("$'git\\0' push", false).1);
     }
 }
