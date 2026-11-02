@@ -50,6 +50,9 @@ on:
       release_created:
         value: ${{ jobs.release.outputs['release-created'] || jobs.release.outputs.release_created }}
 
+permissions:
+  contents: read
+
 jobs:
   release:
     # Serialize release-please for this component: two rapid merges to main
