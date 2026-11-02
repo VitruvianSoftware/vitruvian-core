@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.86.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.86.2...vitruvian-v3.86.3) (2026-11-02)
+
+
+### Bug Fixes
+
+* **vitruvian:** stop the island's music reader trapping when a cover arrives off the main thread ([#4213](https://github.com/VitruvianSoftware/vitruvian-core/issues/4213)) ([9f91dd7](https://github.com/VitruvianSoftware/vitruvian-core/commit/9f91dd78554bf308dbce012e483c6860928920a0))
+
 ## [3.86.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.86.1...vitruvian-v3.86.2) (2026-11-01)
 
 
