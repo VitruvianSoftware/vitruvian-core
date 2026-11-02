@@ -40,8 +40,11 @@ ARG NODE_VERSION=22
 # dist-server/start), which checks the build outputs and execs the server.
 FROM rust:1.85-slim-bookworm AS server-build
 WORKDIR /app/server
+# server/ carries its Cargo.lock (bazel run //tools/crates:lock -- --dir
+# apps/web/oauth-user-inspector/server), so the image builds the versions that
+# lock pins: --locked fails rather than resolving fresh ones.
 COPY server/ ./
-RUN cargo build --release \
+RUN cargo build --release --locked \
     && mkdir -p /app/dist-server \
     && cp target/release/oauth-user-inspector-server /app/dist-server/oauth-user-inspector-server
 WORKDIR /app
