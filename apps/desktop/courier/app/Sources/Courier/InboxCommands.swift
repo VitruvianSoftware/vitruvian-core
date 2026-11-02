@@ -80,14 +80,14 @@ struct InboxCommands: Commands {
                 Task { await menuCoordinator.lockOrUnlockApp() }
             }
         }
-        CommandGroup(before: .appTermination) {
+        // Minimize to Menu Bar goes in the group it sits beside: a group placed before one the app also replaces
+        // never shows (MenuBarAuditTests).
+        CommandGroup(replacing: .appTermination) {
             Button(String(localized: "Minimize to Menu Bar")) {
                 dispatch("Minimize To Menu Bar")
             }
             .registryShortcut("Minimize To Menu Bar", in: hotkeys)
             .disabled(!hotkeyDispatcher.canPerform("Minimize To Menu Bar"))
-        }
-        CommandGroup(replacing: .appTermination) {
             Button(String(localized: "Quit Courier")) {
                 dispatch("Quit App")
             }
@@ -116,15 +116,8 @@ struct InboxCommands: Commands {
             Button(String(localized: "Add a Network…"), action: inbox.addNetwork)
                 .disabled(inbox.accounts.isEmpty || login.screen != .closed || lifecycle.isLocked)
         }
-        CommandGroup(after: .importExport) {
-            Divider()
-            Button(String(localized: "Close Window"), action: menuCoordinator.closeWindow)
-                .keyboardShortcut("w", modifiers: .command)
-                .disabled(lifecycle.isLocked)
-            Button(String(localized: "Close All"), action: menuCoordinator.closeAllWindows)
-                .keyboardShortcut("w", modifiers: [.command, .option])
-                .disabled(lifecycle.isLocked)
-        }
+        // File ▸ Close (⌘W) and Close All (⌥⌘W) are the system's own: a detached chat window closes through them too
+        // (DetachedWindows' windowWillClose), so the app adds no second pair.
         // ⌘Z takes back my newest held message while the open chat has one (undo send); otherwise it undoes what
         // the toast says was just done, and otherwise it is the text's own undo. ⌘⇧Z sends the held messages now,
         // or else is the text's redo.
@@ -240,7 +233,8 @@ struct InboxCommands: Commands {
             spaceKeys
                 .disabled(lifecycle.isLocked)
         }
-        CommandGroup(after: .help) {
+        // Courier has no help book, so the standard Help ▸ Courier Help would only say that help isn't available.
+        CommandGroup(replacing: .help) {
             Button(String(localized: "Report a Problem…")) {
                 dispatch("Report a Problem")
             }

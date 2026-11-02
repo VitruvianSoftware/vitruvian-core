@@ -155,5 +155,8 @@ struct CourierApp: App {
             }
         }
         .defaultSize(width: 820, height: 600)
+        // InboxCommands' Settings… is the menu's only one: it follows the shortcut set in Settings ▸ Shortcuts and is
+        // off while Courier is locked. Without this the scene adds its own Settings… (⌘,) beside it.
+        .commandsRemoved()
     }
 }
