@@ -417,6 +417,15 @@ pub fn analyze_module(source: &str) -> Result<ModuleAnalysis, String> {
     let len = tokens.len();
     let mut imports = Vec::new();
     let mut excluded_ident = vec![false; len];
+    // `const require = createRequire(import.meta.url)` is the ES-module way to
+    // load a CommonJS-only package (build/vueLoader.js loads vue/compiler-sfc
+    // this way); calls to that binding are not CommonJS modules.
+    let binds_create_require = tokens.windows(4).any(|w| {
+        matches!(
+            w,
+            [Token::Ident("const"), Token::Ident("require"), Token::Punct("="), Token::Ident("createRequire")]
+        )
+    });
 
     let mut i = 0;
     while i < len {
@@ -533,6 +542,7 @@ pub fn analyze_module(source: &str) -> Result<ModuleAnalysis, String> {
                             Token::Ident(w) if *w == "function" || *w == "const" || *w == "let" || *w == "var"
                         ));
                 if !prev_is_dot_or_decl
+                    && !binds_create_require
                     && matches!(tokens.get(i + 1), Some(Token::Punct(p)) if *p == "(")
                 {
                     return Err("Runtime modules must use ES imports".to_string());

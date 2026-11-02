@@ -171,8 +171,16 @@ fn feature_01_source_tree(ctx: &mut TestContext) {
     let idx = format!("{}/index.html", APP);
     if ctx.file_exists(&idx) {
         let content = ctx.read_file(&idx).unwrap_or_default();
-        if (content.contains("id=\"cesiumContainer\"") || content.contains("gev:template"))
-            && content.contains("type=\"module\"")
+        // The viewer container moved into the scene-chrome Vue view, which
+        // index.html mounts at its data-gev-view slot.
+        let scene_chrome = ctx
+            .read_file(&format!("{}/src/ui/views/SceneChromeView.vue", APP))
+            .unwrap_or_default();
+        let has_container = content.contains("id=\"cesiumContainer\"")
+            || content.contains("gev:template")
+            || (content.contains("data-gev-view=\"scene-chrome\"")
+                && scene_chrome.contains("cesiumContainer"));
+        if has_container && content.contains("type=\"module\"")
         {
             ctx.pass("F002", "index.html contains #cesiumContainer and ES module entry");
         } else {
