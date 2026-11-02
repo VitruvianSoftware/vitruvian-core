@@ -483,6 +483,7 @@ struct GeneralSettingsPane: View {
                 }
             }
             .settingAnchor("general.preferredMicrophone", highlighted: highlightedSettingID)
+            .task { await activeVoiceRecorder.refreshDevices() }
 
             Toggle(
                 SettingsNavigationModel.title(for: "general.autoCopyOTP"),

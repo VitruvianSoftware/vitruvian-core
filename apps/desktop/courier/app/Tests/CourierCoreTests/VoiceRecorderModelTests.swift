@@ -273,6 +273,21 @@ final class VoiceRecorderModelTests: XCTestCase {
     }
 }
 
+extension VoiceRecorderModelTests {
+    /// Every open chat's composer makes a recorder on the main thread, and listing microphones asks Core Audio, which
+    /// can block for minutes when the audio service is busy (it hung the view tests, PR #4238). So making one lists
+    /// nothing; a picker's refresh does.
+    func testMakingARecorderDoesNotListMicrophones() async {
+        let backend = FakeVoiceRecordingBackend(devices: [AudioInputDevice(uid: "mic-1", name: "Microphone 1")])
+        let recorder = VoiceRecorderModel(backend: backend, automaticallyPollsMeter: false)
+        XCTAssertEqual(backend.deviceListCallCount, 0)
+        XCTAssertTrue(recorder.availableDevices.isEmpty)
+        await recorder.refreshDevices()
+        XCTAssertEqual(backend.deviceListCallCount, 1)
+        XCTAssertEqual(recorder.availableDevices.map(\.uid), ["mic-1"])
+    }
+}
+
 private final class FakeVoiceRecordingBackend: VoiceRecordingBackend, @unchecked Sendable {
     private let lock = NSLock()
     var devices: [AudioInputDevice]
@@ -306,8 +321,13 @@ private final class FakeVoiceRecordingBackend: VoiceRecordingBackend, @unchecked
         self.stoppedDurationMS = stoppedDurationMS
     }
 
+    private(set) var deviceListCallCount = 0
+
     func availableDevices() -> [AudioInputDevice] {
-        lock.withLock { devices }
+        lock.withLock {
+            deviceListCallCount += 1
+            return devices
+        }
     }
 
     func authorizationStatus() -> MicrophoneAuthStatus {
