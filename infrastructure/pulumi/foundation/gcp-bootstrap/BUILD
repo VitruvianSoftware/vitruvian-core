@@ -1,4 +1,4 @@
-load("//tools/pulumi:defs.bzl", "pulumi_project")
+load("//tools/pulumi:defs.bzl", "pulumi_go_test", "pulumi_project")
 
 # Live foundation bootstrap for the vitruviansoftware.dev org. Not gazelle-built /
 # not in //:go.work — consumes the PUBLISHED pulumi-library Go modules (no replace;
@@ -8,3 +8,7 @@ pulumi_project(
     name = "gcp-bootstrap",
     dir = "infrastructure/pulumi/foundation/gcp-bootstrap",
 )
+
+# `bazel test //infrastructure/pulumi/foundation/gcp-bootstrap:test` runs the
+# stack's `go test ./...` locally (see pulumi_go_test() in defs.bzl).
+pulumi_go_test()

@@ -39,6 +39,7 @@ func exportOutputs(
 	seed *SeedProject,
 	cicd *CICDProject,
 	sas map[string]*serviceaccount.Account,
+	previewSAs map[string]*serviceaccount.Account,
 	buildOutputs *CICDBuildOutputs,
 	groupOutputs *GroupOutputs,
 ) {
@@ -61,6 +62,14 @@ func exportOutputs(
 			prefix = key
 		}
 		ctx.Export(prefix+"_step_terraform_service_account_email", sa.Email)
+	}
+	// Read-only PR-preview identities, named after the deploy SA outputs.
+	for key, sa := range previewSAs {
+		prefix, ok := saOutputNames[key]
+		if !ok {
+			prefix = key
+		}
+		ctx.Export(prefix+"_step_preview_service_account_email", sa.Email)
 	}
 
 	// 2. Common config — composite output consumed by all downstream

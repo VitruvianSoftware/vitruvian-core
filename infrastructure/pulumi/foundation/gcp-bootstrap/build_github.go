@@ -56,7 +56,7 @@ type CICDBuildOutputs struct {
 // here — that is published as GitHub Environment config by the existing
 // infrastructure/pulumi/platform/repo-config project, keeping a single GitOps
 // owner for GitHub settings and avoiding an admin:org token in this stack.
-func deployGitHubActionsBuild(ctx *pulumi.Context, cfg *Config, _ *SeedProject, cicd *CICDProject, sas map[string]*serviceaccount.Account, issuerPolicy *orgpolicy.Policy) (*CICDBuildOutputs, error) {
+func deployGitHubActionsBuild(ctx *pulumi.Context, cfg *Config, _ *SeedProject, cicd *CICDProject, sas map[string]*serviceaccount.Account, previewSAs map[string]*serviceaccount.Account, issuerPolicy *orgpolicy.Policy) (*CICDBuildOutputs, error) {
 	outputs := &CICDBuildOutputs{}
 
 	// If github_owner is not set, skip WIF provisioning.
@@ -180,6 +180,21 @@ func deployGitHubActionsBuild(ctx *pulumi.Context, cfg *Config, _ *SeedProject, 
 				SAName:    projSA.Name,
 				Attribute: pulumi.String(fmt.Sprintf("attribute.environment/foundation-app-%s", envName)),
 			}
+		}
+	}
+
+	// PR-preview Environments also federate to the stage's read-only preview
+	// identity (sa_preview.go). The `<stage>-preview` bindings to the deploy
+	// SAs above are kept for now so previews keep working until the preview
+	// workflow switches identities; a follow-up removes them.
+	for environment, key := range previewEnvironments {
+		previewSA, ok := previewSAs[key]
+		if !ok {
+			return nil, fmt.Errorf("preview environment %q needs the %q preview service account, which was not created", environment, key)
+		}
+		saMappings[previewBindingKey(environment)] = libcicd.SAMappingEntry{
+			SAName:    previewSA.Name,
+			Attribute: pulumi.String("attribute.environment/" + environment),
 		}
 	}
 
