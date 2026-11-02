@@ -429,6 +429,30 @@ final class MessageActionsModelTests: XCTestCase {
         XCTAssertFalse(refused, "a draft with problems is never sent")
         XCTAssertEqual(h.count("poll.create"), 1)
     }
+
+    /// In a merged chat the poll goes to the room it replies in: the merge's ID is no room the engine knows.
+    func testCreatePollInAMergedChatGoesToItsReplyRoom() async throws {
+        let h = try await startConversation(
+            ["!wa": [textEvent(id: "$w1", room: "!wa", at: 1)], "!sig": [textEvent(id: "$s1", room: "!sig", at: 2)]],
+            features: ["!wa": featuresJSON(), "!sig": featuresJSON()],
+            rows: ["!wa": chatRow("!wa", name: "Alice", network: "whatsapp"),
+                   "!sig": chatRow("!sig", name: "Alice", network: "signal")])
+        harnesses.append(h)
+        h.app.mergedChats["merge:alice"] = MergedChat(
+            mergeID: "merge:alice", name: "Alice", avatarPath: "", lastRoomID: "!sig",
+            roomIDs: ["!wa", "!sig"], networks: ["whatsapp", "signal"], createdTS: 1)
+        h.app.selectedRoomID = "merge:alice"
+        try await waitUntil { h.conversation.roomID == "merge:alice" && h.conversation.features.poll != nil }
+        let actions = MessageActionsModel(conversation: h.conversation, appModel: h.app, preferences: h.preferences,
+                                          pasteboard: FakePasteboard())
+
+        var draft = PollDraft()
+        draft.question = "Lunch?"
+        draft.options = ["Pizza", "Soup"]
+        let sent = await actions.createPoll(draft)
+        XCTAssertTrue(sent)
+        XCTAssertEqual(h.server.receivedParams("poll.create").map { $0["room_id"] as? String }, ["!sig"])
+    }
 }
 
 // MARK: - Task 12, fix round 1: ⌘C, Edit History's timeline, Reply, ↑

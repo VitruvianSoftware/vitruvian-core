@@ -654,7 +654,8 @@ public final class ComposerModel: ObservableObject {
                 }
                 return .send
             }
-            if mode == .new, trimmedText.isEmpty, attachments.isEmpty, pendingGIF == nil, let selected = selectedMessage() {
+            if actsOnSelectedMessage, trimmedText.isEmpty, attachments.isEmpty, pendingGIF == nil,
+               let selected = selectedMessage() {
                 if resolvedHotkeys.chords(for: "Message: Quote or Edit Selected Message").contains(chord) {
                     act(on: selected)
                 } else if resolvedHotkeys.chords(for: "Send Message").contains(chord) {
@@ -677,7 +678,8 @@ public final class ComposerModel: ObservableObject {
             }
             return action
         }
-        if mode == .new, trimmedText.isEmpty, attachments.isEmpty, pendingGIF == nil, let selected = selectedMessage() {
+        if actsOnSelectedMessage, trimmedText.isEmpty, attachments.isEmpty, pendingGIF == nil,
+               let selected = selectedMessage() {
             act(on: selected)
         } else {
             submit()
@@ -713,13 +715,28 @@ public final class ComposerModel: ObservableObject {
         return true
     }
 
+    /// The thread pane's composer (`ThreadModel` sets it): always in its thread, and Return in it, empty, acts on
+    /// the message selected in the pane.
+    var isThreadPaneComposer = false
+
+    /// Return in an empty composer acts on the selected message: in the chat's composer writing a new message, and
+    /// in the thread pane's (`ThreadPane` gives it the pane's selection).
+    private var actsOnSelectedMessage: Bool {
+        switch mode {
+        case .new: true
+        case .thread: isThreadPaneComposer
+        case .editing: false
+        }
+    }
+
     private func act(on message: TimelineMessage) {
         let offered = MessageActions.available(for: message, in: features, network: network, now: now()).actions
         if offered.contains(.edit) {
             startEditing(message)
         } else if offered.contains(.reply) {
             startReply(to: message.quoted)
-        } else if offered.contains(.replyInThread) {
+        } else if offered.contains(.replyInThread), !isThreadPaneComposer {
+            // Not from the thread pane: its composer stays in the thread it is open on.
             startThread(message.id)
         }
     }
@@ -1008,6 +1025,12 @@ public final class ComposerModel: ObservableObject {
     /// A quick reply in place of `range`, filled from the open chat's other person (`otherPerson`).
     public func insertQuickReply(_ reply: QuickReply, replacing range: NSRange) {
         insertQuickReply(reply, replacing: range, otherPerson: otherPerson)
+    }
+
+    /// Puts a kept draft back (the thread pane's, on reopening the thread): the composer's own text, so it is not
+    /// typing and no emoticon in it is replaced.
+    public func restoreDraft(_ rich: RichText) {
+        setContents(rich.text, rich.entities)
     }
 
     /// "Insert as Draft" on someone else's message: its text and formatting go into the composer, below what is

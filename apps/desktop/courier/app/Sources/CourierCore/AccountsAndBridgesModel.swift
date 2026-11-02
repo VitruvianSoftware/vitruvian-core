@@ -272,6 +272,8 @@ public final class AccountsAndBridgesModel: ObservableObject {
         do {
             let res: BridgesResult = try await client.call("bridges.list", Empty())
             bridges = res.bridges
+            // Read again, so an earlier failure to read (an engine restarting, say) no longer stands.
+            lastError = nil
             if selectedAccountKey == nil {
                 for br in res.bridges {
                     for acct in br.accounts {

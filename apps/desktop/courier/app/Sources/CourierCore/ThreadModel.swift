@@ -86,6 +86,7 @@ public final class ThreadModel: ObservableObject {
         self.calendar = calendar
         self.sleep = sleep
         composer = ComposerModel(sender: ThreadMessageSender(base: EngineMessageSender(appModel: appModel)), now: now)
+        composer.isThreadPaneComposer = true
         // The chat's draft is the chat composer's: the pane's composer neither takes it nor saves over it.
         composer.savedDraft = { _ in "" }
         composer.onSettled = { [weak self] in self?.requestRefetch() }
@@ -114,8 +115,7 @@ public final class ThreadModel: ObservableObject {
         composer.open(roomID)
         composer.startThread(rootID)
         if let kept = drafts.removeValue(forKey: Self.key(roomID, rootID)) {
-            composer.text = kept.text
-            composer.entities = kept.entities
+            composer.restoreDraft(kept)
         }
         target = replyID
         pagesForTarget = 0
@@ -415,10 +415,32 @@ final class ThreadMessageSender: MessageSending {
         try await base.send(roomID: roomID, rich: rich, replyTo: replyTo, threadRoot: threadRoot, holdMillis: holdMillis)
     }
 
+    func send(roomID: String, rich: RichText, replyTo: String?, threadRoot: String?, holdMillis: Int,
+              disableLinkPreview: Bool?) async throws -> String {
+        try await base.send(roomID: roomID, rich: rich, replyTo: replyTo, threadRoot: threadRoot,
+                            holdMillis: holdMillis, disableLinkPreview: disableLinkPreview)
+    }
+
     func sendFile(roomID: String, url: URL, size: Int64, replyTo: String?, threadRoot: String?, holdMillis: Int)
         async throws -> String {
         try await base.sendFile(roomID: roomID, url: url, size: size, replyTo: replyTo, threadRoot: threadRoot,
                                 holdMillis: holdMillis)
+    }
+
+    func listStickers(refreshBridgePacks: Bool) async throws -> StickersListResult {
+        try await base.listStickers(refreshBridgePacks: refreshBridgePacks)
+    }
+
+    func importSticker(_ params: StickersImportParams) async throws -> StickerItemWire {
+        try await base.importSticker(params)
+    }
+
+    func sendSticker(_ params: MessageSendStickerParams) async throws -> String {
+        try await base.sendSticker(params)
+    }
+
+    func sendGIF(_ params: MessageSendGIFParams) async throws -> String {
+        try await base.sendGIF(params)
     }
 
     func sendVoice(roomID: String, url: URL, durationMS: Int64, waveform: [Int], replyTo: String?) async throws

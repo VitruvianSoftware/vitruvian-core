@@ -145,6 +145,7 @@ struct CourierApp: App {
                     loginFlow: delegate.login,
                     problemReport: delegate.problemReport,
                     appearance: delegate.appearance,
+                    aiPreferences: delegate.aiPreferences,
                     storage: delegate.storage,
                     integrations: delegate.integrations,
                     onRestartNotificationCenter: {

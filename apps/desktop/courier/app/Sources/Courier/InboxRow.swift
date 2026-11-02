@@ -52,6 +52,7 @@ struct InboxRowView<HoverMenu: View>: View {
     /// The hover button's menu, when the setting is Menu.
     @ViewBuilder let hoverMenu: () -> HoverMenu
     @Environment(\.appearancePreferences) private var appearanceEnv
+    @Environment(\.redactNamesAndPictures) private var redactsNamesAndPictures
 
     @Environment(\.courierZoomMultiplier) private var zoom
 
@@ -67,7 +68,7 @@ struct InboxRowView<HoverMenu: View>: View {
     }
 
     private var isRedacted: Bool {
-        style.redactNamesAndPictures || (appearanceEnv?.redactNamesAndPictures ?? false)
+        style.redactNamesAndPictures || redactsNamesAndPictures
     }
 
     private var displayTitle: String {
@@ -252,12 +253,15 @@ struct InboxRowView<HoverMenu: View>: View {
             .disabled(row.pinned && !row.archived)
             .help(row.archived ? String(localized: "Unarchive")
                 : row.pinned ? String(localized: "Unpin a chat to archive it") : String(localized: "Archive"))
+            // A tooltip is not a label: without this, VoiceOver reads the symbol's name.
+            .accessibilityLabel(row.archived ? String(localized: "Unarchive") : String(localized: "Archive"))
         case .toggleRead:
             Button(action: hoverAct) {
                 Image(systemName: row.isUnread ? "envelope.open" : "envelope.badge")
             }
             .buttonStyle(.borderless)
             .help(row.isUnread ? String(localized: "Mark as Read") : String(localized: "Mark as Unread"))
+            .accessibilityLabel(row.isUnread ? String(localized: "Mark as Read") : String(localized: "Mark as Unread"))
         case .menu:
             Menu(content: hoverMenu) {
                 Image(systemName: "ellipsis.circle")
@@ -266,6 +270,7 @@ struct InboxRowView<HoverMenu: View>: View {
             .menuIndicator(.hidden)
             .fixedSize()
             .help(String(localized: "More"))
+            .accessibilityLabel(String(localized: "More"))
         default:
             EmptyView()
         }
