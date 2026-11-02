@@ -52,11 +52,15 @@ Use each from Claude Code, connected over HTTP. None of them may crash Courier o
 - [ ] `search` finds chats, people in groups and messages for a word you know is there.
 - [ ] `search_chats` filters by network, inbox (primary, low priority, archive), unread and name, and pages with its cursor.
 - [ ] `search_messages` finds a known word. `sender: "me"` keeps only your messages.
+- [ ] `search_messages` with a 1-letter query answers that messages are searched from 2 letters, not an empty list; `search` with 1 letter finds chats and says the same in its `note`.
 - [ ] `get_chat` gives the chat's details and its people.
 - [ ] `list_messages` pages back through a chat with no gaps or repeats, even when new messages arrive between pages.
+- [ ] Edit a message, then delete another. `list_messages`, `search_messages` and `search` show the edited one's new text with `isEdited: true`, never its old text, and leave the deleted one out.
 - [ ] `send_message` sends from a token with "Can send messages" on, and is refused from one without.
 - [ ] `archive_chat`, `set_chat_reminder` and `clear_chat_reminder` show in Courier at once.
+- [ ] A reminder set with `dismissOnIncomingMessage: true` is dropped when someone else writes in the chat before it is due, and still comes back if only you wrote.
 - [ ] `focus_app` brings Courier forward at the chat and message. With draft text and a file, they are in the composer, with the file's name on its chip, and nothing is sent until you press Send. A file path that doesn't exist is an error and the composer is left alone.
+- [ ] With Courier locked, `focus_app` with a chat answers "Courier is locked. Unlock it to open the chat." and nothing opens; after unlocking, the same call opens the chat.
 - [ ] `search_docs` answers with one line: "Courier has no documentation search. Each tool's description is its documentation."
 - [ ] An unknown chat ID, message ID or cursor is a plain error message from the tool.
 

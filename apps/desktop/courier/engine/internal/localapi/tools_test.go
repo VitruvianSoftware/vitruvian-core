@@ -5,6 +5,7 @@ package localapi_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -49,6 +50,7 @@ type messageOut struct {
 	IsSender    bool   `json:"isSender"`
 	Timestamp   string `json:"timestamp"`
 	Text        string `json:"text"`
+	IsEdited    bool   `json:"isEdited"`
 	Attachments []struct {
 		Type string `json:"type"`
 	} `json:"attachments"`
@@ -417,7 +419,7 @@ func TestChatReminders(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, rows[0].Reminder)
 	require.Equal(t, at, rows[0].Reminder.DueAt.UnixMilli())
-	require.Equal(t, "if_no_reply", rows[0].Reminder.Condition)
+	require.Equal(t, "if_no_incoming", rows[0].Reminder.Condition, "dismissed by a message from someone else, not by mine")
 
 	require.Contains(t, fails(t, sess, "set_chat_reminder", map[string]any{"chatID": w.room, "reminder": map[string]any{"remindAtMs": time.Now().Add(-time.Minute).UnixMilli()}}), "in the past")
 	require.Contains(t, fails(t, sess, "set_chat_reminder", map[string]any{"chatID": w.room, "reminder": map[string]any{}}), "remindAtMs is required")
@@ -503,4 +505,138 @@ func TestSearchDocsIsAStub(t *testing.T) {
 	text, isErr := call(t, sess, "search_docs", map[string]any{"query": "send", "language": "python"})
 	require.False(t, isErr)
 	require.Equal(t, "Courier has no documentation search. Each tool's description is its documentation.", text)
+}
+
+// edit stores an edit of message target by its own sender, as the bridge would, and returns the edit's ID.
+func (w *world) edit(t *testing.T, target, body string) string {
+	t.Helper()
+	ctx := context.Background()
+	orig, found, err := w.s.GetEvent(ctx, target)
+	require.NoError(t, err)
+	require.True(t, found)
+	content, err := json.Marshal(map[string]any{
+		"msgtype": "m.text", "body": "* " + body,
+		"m.new_content": map[string]string{"msgtype": "m.text", "body": body},
+		"m.relates_to":  map[string]string{"rel_type": "m.replace", "event_id": target},
+	})
+	require.NoError(t, err)
+	id := "$edit-" + target
+	ins, err := w.s.InsertEvent(ctx, store.Event{
+		RoomID: w.room, EventID: id, Sender: orig.Sender, Type: "m.room.message", Content: content,
+		TS: orig.TS.Add(time.Second), Status: "sent",
+	})
+	require.NoError(t, err)
+	require.True(t, ins)
+	return id
+}
+
+// unsend stores the sender's deletion (a redaction) of message target.
+func (w *world) unsend(t *testing.T, target string) {
+	t.Helper()
+	ctx := context.Background()
+	orig, found, err := w.s.GetEvent(ctx, target)
+	require.NoError(t, err)
+	require.True(t, found)
+	content, err := json.Marshal(map[string]string{"redacts": target})
+	require.NoError(t, err)
+	ins, err := w.s.InsertEvent(ctx, store.Event{
+		RoomID: w.room, EventID: "$redact-" + target, Sender: orig.Sender, Type: "m.room.redaction", Content: content,
+		TS: orig.TS.Add(2 * time.Second), Status: "sent",
+	})
+	require.NoError(t, err)
+	require.True(t, ins)
+}
+
+// An edited message reads as its latest edit everywhere a tool shows its text, and a deleted one is never shown:
+// its old text stays in the history on disk, and must not reach a client.
+func TestEditedAndDeletedMessagesReadAsTheyAreNow(t *testing.T) {
+	w := newWorld(t, 3)
+	sess := w.session(t, false)
+	edited, deleted, plainMsg := w.events[0], w.events[1], w.events[2]
+	w.edit(t, edited, "latest words")
+	w.unsend(t, deleted)
+
+	var list messagesPage
+	ok(t, sess, "list_messages", map[string]any{"chatID": w.room}, &list)
+	require.Len(t, list.Messages, 2, "the edit is no message of its own, and the deleted one is gone")
+	byID := map[string]messageOut{}
+	for _, m := range list.Messages {
+		byID[m.ID] = m
+	}
+	require.Equal(t, "latest words", byID[edited].Text)
+	require.True(t, byID[edited].IsEdited)
+	require.Equal(t, "message 2", byID[plainMsg].Text)
+	require.False(t, byID[plainMsg].IsEdited)
+	require.NotContains(t, byID, deleted)
+
+	var found messagesPage
+	ok(t, sess, "search_messages", map[string]any{"query": "latest"}, &found)
+	require.Len(t, found.Messages, 1)
+	require.Equal(t, edited, found.Messages[0].ID)
+	require.Equal(t, "latest words", found.Messages[0].Text, "the whole text as it reads now")
+	require.True(t, found.Messages[0].IsEdited)
+
+	var all messagesPage
+	ok(t, sess, "search_messages", map[string]any{"query": "message"}, &all)
+	require.Len(t, all.Messages, 1, "the edited one no longer says it, and the deleted one is gone")
+	require.Equal(t, plainMsg, all.Messages[0].ID)
+
+	var res struct {
+		Messages []messageOut `json:"messages"`
+	}
+	ok(t, sess, "search", map[string]any{"query": "latest"}, &res)
+	require.Len(t, res.Messages, 1)
+	require.Equal(t, "latest words", res.Messages[0].Text)
+}
+
+// While Courier is locked its window shows only the lock screen, so focus_app says so instead of claiming to have
+// opened the chat, and the app is told nothing.
+func TestFocusAppSaysWhenCourierIsLocked(t *testing.T) {
+	w := newWorld(t, 1)
+	sess := w.session(t, false)
+	w.api.SetAppLocked(true)
+	require.Equal(t, "Courier is locked. Unlock it to open the chat.", fails(t, sess, "focus_app", map[string]any{"chatID": w.room, "draftText": "hi"}))
+	require.Equal(t, "Courier is locked. Unlock it first.", fails(t, sess, "focus_app", nil))
+	require.Empty(t, w.pub.all(), "nothing reached the app")
+
+	w.api.SetAppLocked(false)
+	var res struct {
+		Focused bool   `json:"focused"`
+		ChatID  string `json:"chatID"`
+	}
+	ok(t, sess, "focus_app", map[string]any{"chatID": w.room}, &res)
+	require.True(t, res.Focused)
+	require.Equal(t, w.room, res.ChatID)
+	require.Len(t, w.pub.all(), 1)
+}
+
+// A query too short to search messages by is an error that says what it needs, never an empty answer that reads as
+// "no such messages". search still finds chats from 1 letter, and says why it has no messages.
+func TestShortQueriesSayWhatTheyNeed(t *testing.T) {
+	w := newWorld(t, 3)
+	sess := w.session(t, false)
+	for _, q := range []string{"m", " m "} {
+		require.Contains(t, fails(t, sess, "search_messages", map[string]any{"query": q}), "from 2 letters", q)
+	}
+	require.Contains(t, fails(t, sess, "search_messages", map[string]any{"query": "🙂"}), "no letters or numbers")
+	var two messagesPage
+	ok(t, sess, "search_messages", map[string]any{"query": "me"}, &two)
+	require.Len(t, two.Messages, 3, "2 letters search as a prefix")
+
+	var res struct {
+		Chats    []chatOut    `json:"chats"`
+		Messages []messageOut `json:"messages"`
+		Note     string       `json:"note"`
+	}
+	ok(t, sess, "search", map[string]any{"query": "m"}, &res)
+	require.Empty(t, res.Messages)
+	require.Contains(t, res.Note, "from 2 letters")
+	var full struct {
+		Messages []messageOut `json:"messages"`
+		Note     *string      `json:"note"`
+	}
+	ok(t, sess, "search", map[string]any{"query": "message"}, &full)
+	require.Len(t, full.Messages, 3)
+	require.Nil(t, full.Note, "messages were searched")
+	require.Contains(t, fails(t, sess, "search", map[string]any{"query": "🙂"}), "no letters or numbers")
 }

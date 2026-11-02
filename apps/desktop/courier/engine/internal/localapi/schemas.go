@@ -85,7 +85,8 @@ var toolDefs = []toolDef{
 		name: "list_messages",
 		description: "Read a chat's messages, 20 at a time, newest first. Without a cursor it starts at the newest " +
 			"message. Pass the page's oldestCursor with direction \"before\" for older messages, or its " +
-			"newestCursor with direction \"after\" for newer ones. A cursor keeps working as new messages arrive.",
+			"newestCursor with direction \"after\" for newer ones. A cursor keeps working as new messages arrive. " +
+			"An edited message shows its latest text, with isEdited true; a deleted message is left out.",
 		schema: `{"type":"object","properties":{
   "chatID":{"type":"string","description":"The chat's ID."},
   "cursor":{"type":"string","description":"A cursor from an earlier page."},
@@ -117,7 +118,7 @@ var toolDefs = []toolDef{
 		schema: `{"type":"object","properties":{
   "chatID":{"type":"string","description":"The chat."},
   "reminder":{"type":"object","properties":{
-    "dismissOnIncomingMessage":{"type":"boolean","description":"When true, the reminder is dropped once the chat has a reply from you before it is due."},
+    "dismissOnIncomingMessage":{"type":"boolean","description":"When true, the reminder is dropped if someone else sends a message in the chat before it is due."},
     "remindAtMs":{"type":"number","description":"When to remind, in Unix milliseconds. Must be in the future."}
   },"required":["remindAtMs"],"description":"When, and on what condition."}
 },"required":["chatID","reminder"]}`,

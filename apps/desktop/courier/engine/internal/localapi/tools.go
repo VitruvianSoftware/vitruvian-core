@@ -21,6 +21,7 @@ import (
 
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
 	"github.com/VitruvianSoftware/courier/engine/internal/searchtext"
+	"github.com/VitruvianSoftware/courier/engine/internal/store"
 )
 
 // The engine's protocol codes the tools put in their own words (protocol.json's errors).
@@ -320,6 +321,18 @@ type wireHits struct {
 	NextCursor *string   `json:"next_cursor"`
 }
 
+// The hints search.query gives when it didn't search messages (search.HintNeedMoreLetters, search.HintEmojiOnly).
+const (
+	hintNeedMoreLetters = "need_more_letters"
+	hintEmojiOnly       = "emoji_only"
+)
+
+// Why messages weren't searched, in the words of a tool error or note.
+const (
+	needMoreLetters = "Messages are searched from 2 letters (or one character of a language written without spaces): add a letter."
+	nothingToFind   = "That query has no letters or numbers to search for."
+)
+
 // ---- What the tools answer ----
 
 type accountJSON struct {
@@ -368,6 +381,7 @@ type messageJSON struct {
 	Text             string           `json:"text"`
 	Attachments      []attachmentJSON `json:"attachments"`
 	ReplyToMessageID string           `json:"replyToMessageID,omitempty"`
+	IsEdited         bool             `json:"isEdited,omitempty"` // its text is its latest edit's
 }
 
 // lookups caches what several results of one tool call share: the networks' names, each chat's account.
@@ -535,6 +549,24 @@ func (l *lookups) message(id, roomID, sender, senderName string, mine bool, typ 
 	return m
 }
 
+// current is message id as it reads now: its latest edit's content and true when it has been edited (the store's
+// CurrentContent, the rule search and the edit history keep to), else content as it is.
+func (s *Server) current(ctx context.Context, id, roomID, sender string, content json.RawMessage) (json.RawMessage, bool) {
+	c, edited, err := s.store.CurrentContent(ctx, store.Event{RoomID: roomID, EventID: id, Sender: sender, Content: content})
+	if err != nil {
+		return content, false
+	}
+	return c, edited
+}
+
+// currentMessage is l.message with the message's text as it reads now (current).
+func (s *Server) currentMessage(l *lookups, id, roomID, sender, senderName string, mine bool, typ string, content json.RawMessage, ts int64) messageJSON {
+	c, edited := s.current(l.ctx, id, roomID, sender, content)
+	m := l.message(id, roomID, sender, senderName, mine, typ, c, ts)
+	m.IsEdited = edited
+	return m
+}
+
 // ---- The tools ----
 
 func (s *Server) getAccounts(ctx context.Context, _ *mcp.CallToolRequest, _ json.RawMessage) (any, error) {
@@ -575,11 +607,15 @@ func (s *Server) search(ctx context.Context, _ *mcp.CallToolRequest, raw json.Ra
 		} `json:"in_groups"`
 		Messages *wireHits `json:"messages"`
 		Media    *wireHits `json:"media"`
+		Hint     string    `json:"hint"`
 	}
 	if err := s.call(ctx, "search.query", map[string]any{
 		"text": *a.Query, "sections": []string{"chats", "in_groups", "media", "messages"},
 	}, &res); err != nil {
 		return nil, err
+	}
+	if res.Hint == hintEmojiOnly {
+		return nil, fail(nothingToFind)
 	}
 	l := s.lookups(ctx)
 	type personJSON struct {
@@ -593,7 +629,11 @@ func (s *Server) search(ctx context.Context, _ *mcp.CallToolRequest, raw json.Ra
 		Chats                   []chatJSON    `json:"chats"`
 		GroupParticipantMatches []personJSON  `json:"groupParticipantMatches"`
 		Messages                []messageJSON `json:"messages"`
+		Note                    string        `json:"note,omitempty"` // why messages weren't searched
 	}{Chats: []chatJSON{}, GroupParticipantMatches: []personJSON{}, Messages: []messageJSON{}}
+	if res.Hint == hintNeedMoreLetters {
+		out.Note = needMoreLetters // chats and people match from 1 letter; messages need 2
+	}
 	for _, r := range res.Chats {
 		out.Chats = append(out.Chats, l.chat(r))
 	}
@@ -610,6 +650,9 @@ func (s *Server) search(ctx context.Context, _ *mcp.CallToolRequest, raw json.Ra
 	}
 	slices.SortFunc(hits, func(a, b wireHit) int { return cmp.Or(cmp.Compare(b.TS, a.TS), cmp.Compare(b.Seq, a.Seq)) })
 	for _, h := range hits {
+		if gone, err := s.store.Redacted(ctx, h.EventID); err != nil || gone {
+			continue // deleted since it was indexed: its text is not shown
+		}
 		out.Messages = append(out.Messages, s.hitMessage(l, h))
 	}
 	return out, nil
@@ -621,7 +664,7 @@ func (s *Server) hitMessage(l *lookups, h wireHit) messageJSON {
 	if e, ok, err := s.store.GetEvent(l.ctx, h.EventID); err == nil && ok {
 		typ, content = e.Type, e.Content
 	}
-	return l.message(h.EventID, h.RoomID, h.Sender, h.SenderName, h.Mine, typ, content, h.TS)
+	return s.currentMessage(l, h.EventID, h.RoomID, h.Sender, h.SenderName, h.Mine, typ, content, h.TS)
 }
 
 func (s *Server) searchChats(ctx context.Context, _ *mcp.CallToolRequest, raw json.RawMessage) (any, error) {
@@ -949,8 +992,20 @@ gather:
 		if after {
 			slices.Reverse(evs)
 		}
+		// A deleted message stays in the history (the app shows where it was) with its old content: it is left
+		// out here, so its text never reaches the client.
+		var msgIDs []string
 		for _, e := range evs {
-			if !isMessage(e.Type, e.Content) {
+			if isMessage(e.Type, e.Content) {
+				msgIDs = append(msgIDs, e.EventID)
+			}
+		}
+		deleted, err := s.store.RedactedAmong(ctx, msgIDs)
+		if err != nil {
+			return nil, err
+		}
+		for _, e := range evs {
+			if !isMessage(e.Type, e.Content) || deleted[e.EventID] {
 				continue
 			}
 			if len(got) == messagesPage {
@@ -982,7 +1037,7 @@ gather:
 		NewestCursor *string       `json:"newestCursor"`
 	}{Messages: []messageJSON{}, HasMore: hasMore}
 	for _, e := range got {
-		out.Messages = append(out.Messages, l.message(e.EventID, e.RoomID, e.Sender, e.SenderName, e.Mine, e.Type, e.Content, e.TS))
+		out.Messages = append(out.Messages, s.currentMessage(l, e.EventID, e.RoomID, e.Sender, e.SenderName, e.Mine, e.Type, e.Content, e.TS))
 	}
 	if len(got) > 0 {
 		out.OldestCursor, out.NewestCursor = messageCursor(got[len(got)-1]), messageCursor(got[0])
@@ -1153,9 +1208,16 @@ func (s *Server) searchMessages(ctx context.Context, _ *mcp.CallToolRequest, raw
 			var res struct {
 				Messages *wireHits `json:"messages"`
 				Media    *wireHits `json:"media"`
+				Hint     string    `json:"hint"`
 			}
 			if err := s.call(ctx, "search.query", params, &res); err != nil {
 				return err
+			}
+			switch res.Hint { // nothing was searched: say why, rather than answer "no messages"
+			case hintNeedMoreLetters:
+				return fail(needMoreLetters)
+			case hintEmojiOnly:
+				return fail(nothingToFind)
 			}
 			h := res.Messages
 			if st.section == "media" {
@@ -1196,6 +1258,9 @@ func (s *Server) searchMessages(ctx context.Context, _ *mcp.CallToolRequest, raw
 	}
 	excludeLow, includeMuted := boolOr(a.ExcludeLowPriority, true), boolOr(a.IncludeMuted, true)
 	keep := func(h wireHit) bool {
+		if gone, err := s.store.Redacted(ctx, h.EventID); err != nil || gone {
+			return false // deleted since it was indexed: its text is not shown
+		}
 		if from != nil {
 			if after && (h.TS < from.ts || (h.TS == from.ts && h.Seq <= from.seq)) {
 				return false
@@ -1371,7 +1436,7 @@ func (s *Server) setChatReminder(ctx context.Context, _ *mcp.CallToolRequest, ra
 	}
 	condition := "always"
 	if boolOr(a.Reminder.DismissOnIncomingMessage, false) {
-		condition = "if_no_reply"
+		condition = "if_no_incoming" // dropped when someone else sends a message in the chat first
 	}
 	if err := s.call(ctx, "reminder.set", map[string]any{"room_ids": []string{*a.ChatID}, "due_at": due, "condition": condition}, nil); err != nil {
 		return nil, err
@@ -1444,6 +1509,13 @@ func (s *Server) focusApp(ctx context.Context, req *mcp.CallToolRequest, raw jso
 	}
 	if s.pub == nil || s.pub.Listeners() == 0 {
 		return nil, fail("Courier's window isn't open to bring forward.")
+	}
+	// Locked, the app shows only its lock screen: no chat opens and no draft goes in, so nothing is sent to it.
+	if s.appLocked.Load() {
+		if p.ChatID != "" {
+			return nil, fail("Courier is locked. Unlock it to open the chat.")
+		}
+		return nil, fail("Courier is locked. Unlock it first.")
 	}
 	if attach {
 		if !canSend(req) {
