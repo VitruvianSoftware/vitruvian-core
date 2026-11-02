@@ -262,7 +262,21 @@ public final class AppMenuCoordinator: ObservableObject {
             settingsNavigation.openPane(.about)
             settingsNavigation.isPresentingProblemReport = true
         }
+        // Help ▸ Privacy & Security and Help ▸ Changelog open About at their part of it, shown and highlighted, as a
+        // Settings search result does; any other menu item clears what an earlier search left highlighted.
+        if AppLockGate.shared.canPerform(.settingsChange) {
+            settingsNavigation.highlightedSettingID = Self.highlightedSetting(for: section)
+        }
         showSettingsWindow()
+    }
+
+    /// The setting a menu's Settings section points at, if it is one part of a pane.
+    public static func highlightedSetting(for section: SettingsSection) -> String? {
+        switch section {
+        case .privacy: "about.privacy"
+        case .changelog: "about.changelog"
+        default: nil
+        }
     }
 
     public func openSettings(pane: SettingsPaneID, accountKey: String? = nil) {

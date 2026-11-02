@@ -63,6 +63,14 @@ struct AboutSettingsPane: View {
             .formStyle(.grouped)
             .disabled(lifecycle.isLocked)
             .onChange(of: highlightedSettingID, initial: true) { _, targetID in
+                // Help ▸ Changelog and Help ▸ Privacy & Security, and a search result, open what they point at even
+                // while Settings is already showing About.
+                switch targetID {
+                case "about.changelog": showChangelog = true
+                case "about.privacy": showPrivacyDetails = true
+                case "about.legalNotices": showLegalNotices = true
+                default: break
+                }
                 if let targetID {
                     withAnimation(.easeInOut(duration: 0.2)) {
                         proxy.scrollTo(targetID, anchor: .center)

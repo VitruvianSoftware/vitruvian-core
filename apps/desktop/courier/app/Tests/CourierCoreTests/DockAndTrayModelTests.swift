@@ -193,6 +193,20 @@ final class DockAndTrayModelTests: XCTestCase {
         }
         XCTAssertEqual(shownSettingsCount, 6)
 
+        // 5b. Help ▸ Privacy & Security and Help ▸ Changelog land on their part of About, not just the pane; About
+        // Courier, and any other section, clears the highlight a Settings search left behind.
+        let navigation = coordinator.settingsNavigation
+        coordinator.openSettings(.changelog)
+        XCTAssertEqual(navigation.selectedPane, .about)
+        XCTAssertEqual(navigation.highlightedSettingID, "about.changelog")
+        coordinator.openSettings(.privacy)
+        XCTAssertEqual(navigation.highlightedSettingID, "about.privacy")
+        coordinator.openSettings(.about)
+        XCTAssertNil(navigation.highlightedSettingID)
+        navigation.highlightedSettingID = "general.incognito"
+        coordinator.openSettings(.accounts)
+        XCTAssertNil(navigation.highlightedSettingID)
+
         // 6. File menu actions: New Chat (⌘N), Open Chat in New Window, Close Window (⌘W), Close All (⌘⌥W)
         coordinator.newChat()
         XCTAssertNotNil(inbox.startNewChatDraft)
