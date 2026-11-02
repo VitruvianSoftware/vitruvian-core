@@ -420,7 +420,9 @@ pub fn capture(r: &mut dyn Runner, cmd: &Cmd) -> Result<String, i32> {
 pub fn report_redacted(r: &mut dyn Runner, text: &str) {
     let secrets = r.secrets();
     r.report(&redact_github_tokens(&redact_json_secrets(
-        &redact_credentials_in_text(&redact_urls_in_text(&redact_known(text, &secrets))),
+        &redact_xml_secrets(&redact_credentials_in_text(&redact_urls_in_text(
+            &redact_known(text, &secrets),
+        ))),
     )));
 }
 
@@ -451,17 +453,25 @@ const SECURITY_SECRET_FLAGS: [(&str, &str); 6] = [
 /// Whether a variable, flag or header name names a secret. Precise on
 /// purpose: a name holding a secret word as a whole word (`token`,
 /// `password`, …), or `api`/`access`/`private`/`secret` followed by `key`.
-/// `key` alone is not one: `keychain`, `key-id` and `cache_key` stay.
+/// The short words `pwd`, `pass`, `pin`, `otp`, `jwt`, `auth` and `session`
+/// count only as the name's last word (`DB_PASS`, `userPin`, `basic_auth`),
+/// so `session_id`, `auth_method`, `pin_count` and `SSH_AUTH_SOCK` stay.
+/// `key` counts only as the whole name (`key=…`, `"key":`, `--key`):
+/// `keychain`, `key-id`, `cache_key` and `KEYCHAIN_PATH` stay.
 pub fn is_secret_name(name: &str) -> bool {
-    // Words also break where a lower-case letter meets an upper-case one, so
-    // `accessToken`, `clientSecret` and `SecretAccessKey` count.
+    // Words also break where a lower-case letter meets an upper-case one
+    // (`accessToken`, `clientSecret`) and where an acronym ends, before its
+    // last capital (`DBPassword`, `APIToken`, `AWSSecretKey`).
+    let chars: Vec<char> = name.chars().collect();
     let mut lower = String::with_capacity(name.len() + 4);
-    let mut prev_lower = false;
-    for c in name.chars() {
-        if prev_lower && c.is_ascii_uppercase() {
-            lower.push(' ');
+    for (k, &c) in chars.iter().enumerate() {
+        if k > 0 && c.is_ascii_uppercase() {
+            let prev = chars[k - 1];
+            let next_lower = chars.get(k + 1).is_some_and(|n| n.is_ascii_lowercase());
+            if prev.is_ascii_lowercase() || (prev.is_ascii_uppercase() && next_lower) {
+                lower.push(' ');
+            }
         }
-        prev_lower = c.is_ascii_lowercase();
         lower.push(c.to_ascii_lowercase());
     }
     let words: Vec<&str> = lower
@@ -482,18 +492,25 @@ pub fn is_secret_name(name: &str) -> bool {
     if words.iter().any(|w| WHOLE.contains(w)) {
         return true;
     }
+    const LAST: [&str; 7] = ["pwd", "pass", "pin", "otp", "jwt", "auth", "session"];
+    if words.last().is_some_and(|w| LAST.contains(w)) || words == ["key"] {
+        return true;
+    }
     words
         .windows(2)
         .any(|p| p[1] == "key" && matches!(p[0], "api" | "access" | "private" | "secret"))
 }
 
 /// The values of the environment's secrets: every variable whose name
-/// [`is_secret_name`], plus the base64 p12 and its password.
+/// [`is_secret_name`], plus the base64 p12 and its password. Not `PWD`,
+/// which the shell sets to the working directory: hiding it would hide
+/// every path in the log.
 pub fn env_secrets(env: &BTreeMap<String, String>) -> Vec<String> {
     let mut v: Vec<String> = env
         .iter()
         .filter(|(k, val)| {
             !val.is_empty()
+                && k.as_str() != "PWD"
                 && (is_secret_name(k)
                     || matches!(k.as_str(), "SIGNING_CERT_P12" | "NOTARY_API_KEY_P8"))
         })
@@ -722,6 +739,10 @@ fn curl_option(arg: &str) -> CurlOption<'_> {
             // `--data=token=x` and `--header=Name: v` are judged whole, by
             // the names in them, as before.
             (CurlValue::Other, _) => CurlOption::Plain,
+            // `--tlspassword=` with nothing after it: the secret, if any, is
+            // the next argument. curl itself (8.7.1) rejects `--opt=value`,
+            // but hiding the next argument costs nothing.
+            (kind, Some("")) => CurlOption::ValueNext(kind),
             (kind, Some(value)) => CurlOption::Attached(&arg[..flag.len() + 1], kind, value),
             (kind, None) => CurlOption::ValueNext(kind),
         };
@@ -751,21 +772,94 @@ fn curl_option(arg: &str) -> CurlOption<'_> {
 }
 
 /// One argument with its secrets hidden (see [`redact_args`]), secret
-/// members of a JSON body ([`redact_json_secrets`]) and GitHub tokens
-/// ([`redact_github_tokens`]) included wherever they sit in it.
+/// members of a JSON or XML body ([`redact_json_secrets`],
+/// [`redact_xml_secrets`]) and GitHub tokens ([`redact_github_tokens`])
+/// included wherever they sit in it.
 fn redact_arg(arg: &str) -> String {
     // JSON first: the `name=value` rule would read `{"token":"QUJD` as a
     // name and hide only what follows a `=` in the value.
-    redact_github_tokens(&redact_arg_by_shape(&redact_json_secrets(arg)))
+    redact_github_tokens(&redact_arg_by_shape(&redact_json_secrets(
+        &redact_xml_secrets(arg),
+    )))
+}
+
+/// How a JSON-like string is quoted: `"…"`, `'…'` (Python's repr of a
+/// dict) or `\"…\"` (JSON held inside a JSON string).
+#[derive(Clone, Copy, PartialEq)]
+enum Quote {
+    Double,
+    Single,
+    Escaped,
+}
+
+impl Quote {
+    /// The quote that opens at `i`, if any. A `"` right after a `\` is an
+    /// escaped quote, so it opens only a [`Quote::Escaped`] string (at the
+    /// `\`).
+    fn at(b: &[u8], i: usize) -> Option<Quote> {
+        let escaped = i > 0 && b[i - 1] == b'\\';
+        match b[i] {
+            b'\\' if b.get(i + 1) == Some(&b'"') => Some(Quote::Escaped),
+            b'"' if !escaped => Some(Quote::Double),
+            b'\'' if !escaped => Some(Quote::Single),
+            _ => None,
+        }
+    }
+
+    fn len(self) -> usize {
+        if self == Quote::Escaped {
+            2
+        } else {
+            1
+        }
+    }
+
+    /// `"<redacted>"` quoted this way, for a hidden object or array.
+    fn redacted(self) -> &'static str {
+        match self {
+            Quote::Double => "\"<redacted>\"",
+            Quote::Single => "'<redacted>'",
+            Quote::Escaped => "\\\"<redacted>\\\"",
+        }
+    }
+
+    /// Where the string whose content starts at `start` closes (its
+    /// closing quote), past `\` escapes; within its line unless `lines`.
+    /// In an escaped string, `\\` is the inner string's own escape, so it
+    /// and the unit after it (`\"`, a quote in the inner value) are content.
+    fn close(self, b: &[u8], start: usize, lines: bool) -> Option<usize> {
+        let mut k = start;
+        while k < b.len() {
+            match (self, b[k]) {
+                (_, b'\n' | b'\r') if !lines => return None,
+                (Quote::Escaped, b'\\') => match b.get(k + 1) {
+                    Some(b'"') => return Some(k),
+                    Some(b'\\') => k += if b.get(k + 2) == Some(&b'\\') { 4 } else { 3 },
+                    _ => k += 2,
+                },
+                (_, b'\\') => k += 2,
+                (Quote::Double, b'"') | (Quote::Single, b'\'') => return Some(k),
+                _ => k += 1,
+            }
+        }
+        None
+    }
 }
 
 /// `text` with the value of every JSON member whose key [`is_secret_name`]
 /// hidden, wherever the JSON sits (a curl `--data`/`--json` body, a line of
 /// a tool's output): `{"token":"X"}` becomes `{"token":"<redacted>"}`, an
 /// object or array value becomes `"<redacted>"` and a number `<redacted>`.
-/// `true`, `false`, `null` and a value already (partly) `<redacted>` are
-/// kept, so `"Basic <redacted>"` keeps its scheme. A value cut off before
-/// its end is hidden to the end of its line.
+/// The same goes for Python's single-quoted repr (`{'token': 'X'}`) and for
+/// JSON inside a JSON string (`{"body":"{\"token\":\"X\"}"}`), one level
+/// deep. `true`, `false`, `null` and a value already (partly) `<redacted>`
+/// are kept, so `"Basic <redacted>"` keeps its scheme.
+///
+/// Every quote is tried as a key's opening quote, so a stray quote earlier
+/// on the line (`say "hi {"token":"X"}`) cannot pair the quotes up wrongly
+/// and hide nothing. A secret string value runs to its closing quote even
+/// across a raw line break; one cut off before its end is hidden to the end
+/// of its line.
 pub fn redact_json_secrets(text: &str) -> String {
     let b = text.as_bytes();
     let skip_ws = |j: usize| {
@@ -780,34 +874,25 @@ pub fn redact_json_secrets(text: &str) -> String {
             .take_while(|c| **c != b'\n' && **c != b'\r')
             .count()
     };
-    // The closing quote of the string opening at `open`, past `\` escapes.
-    // A JSON string never spans lines, so a stray quote in prose throws off
-    // the pairing of quotes on its own line only.
-    let string_close = |open: usize| {
-        let mut k = open + 1;
-        while k < b.len() {
-            match b[k] {
-                b'\\' => k += 2,
-                b'"' => return Some(k),
-                b'\n' | b'\r' => return None,
-                _ => k += 1,
-            }
-        }
-        None
-    };
-    // Just past the bracket closing the object or array opening at `open`.
-    let container_end = |open: usize| {
+    // Just past the bracket closing the object or array opening at `open`,
+    // skipping strings quoted as `q`.
+    let container_end = |open: usize, q: Quote| {
         let mut depth = 0usize;
         let mut k = open;
         while k < b.len() {
-            match b[k] {
-                b'"' => match string_close(k) {
-                    Some(c) => k = c,
+            if Quote::at(b, k) == Some(q) {
+                match q.close(b, k + q.len(), false) {
+                    Some(c) => {
+                        k = c + q.len();
+                        continue;
+                    }
                     None => return b.len(),
-                },
+                }
+            }
+            match b[k] {
                 b'{' | b'[' => depth += 1,
                 b'}' | b']' => {
-                    depth -= 1;
+                    depth = depth.saturating_sub(1);
                     if depth == 0 {
                         return k + 1;
                     }
@@ -821,42 +906,56 @@ pub fn redact_json_secrets(text: &str) -> String {
     let mut spans: Vec<(usize, usize, &str)> = Vec::new();
     let mut i = 0;
     while i < b.len() {
-        if b[i] != b'"' {
+        let Some(q) = Quote::at(b, i) else {
             i += 1;
             continue;
-        }
-        let Some(close) = string_close(i) else {
-            i = line_end(i);
+        };
+        let start = i + q.len();
+        i += 1;
+        let Some(name_end) = q.close(b, start, false) else {
             continue;
         };
-        let key = &text[i + 1..close];
-        i = close + 1;
-        let colon = skip_ws(i);
-        if colon >= b.len() || b[colon] != b':' || !is_secret_name(key) {
+        // A key looks like a name, so a quoted URL or path followed by a
+        // colon (`'https://x-access-token:…@host/': denied`) is not one.
+        let key = &text[start..name_end];
+        let colon = skip_ws(name_end + q.len());
+        if colon >= b.len()
+            || b[colon] != b':'
+            || !key
+                .bytes()
+                .all(|c| c.is_ascii_alphanumeric() || b"-_. ".contains(&c))
+            || !is_secret_name(key)
+        {
             continue;
         }
         let v = skip_ws(colon + 1);
         if v >= b.len() || text[v..].starts_with(REDACTED) {
             continue;
         }
-        match b[v] {
-            b'"' => {
-                let end = string_close(v).unwrap_or_else(|| line_end(v));
-                if end > v + 1 && !text[v + 1..end].contains(REDACTED) {
-                    spans.push((v + 1, end, REDACTED));
-                }
-                // Past the closing quote, so the next key's quotes pair up.
-                i = end + 1;
+        // A value quoted as its key is; Python's repr also uses `"` for a
+        // value holding a `'`.
+        let vq =
+            Quote::at(b, v).filter(|&vq| vq == q || (q == Quote::Single && vq == Quote::Double));
+        if let Some(vq) = vq {
+            let s = v + vq.len();
+            let end = vq.close(b, s, true).unwrap_or_else(|| line_end(s));
+            if end > s && !text[s..end].contains(REDACTED) {
+                spans.push((s, end, REDACTED));
             }
+            // Past the closing quote, so the next key's quotes pair up.
+            i = end + vq.len();
+            continue;
+        }
+        match b[v] {
             b'{' | b'[' => {
-                let end = container_end(v);
-                spans.push((v, end, "\"<redacted>\""));
+                let end = container_end(v, q);
+                spans.push((v, end, q.redacted()));
                 i = end;
             }
             _ => {
                 let end = v + b[v..]
                     .iter()
-                    .take_while(|c| !c.is_ascii_whitespace() && !b",}]".contains(c))
+                    .take_while(|c| !c.is_ascii_whitespace() && !b",}]\\".contains(c))
                     .count();
                 if end > v && !matches!(&text[v..end], "true" | "false" | "null") {
                     spans.push((v, end, REDACTED));
@@ -868,8 +967,98 @@ pub fn redact_json_secrets(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut copied = 0;
     for (start, end, with) in spans {
-        out.push_str(&text[copied..start]);
+        out.push_str(&text[copied..start.max(copied)]);
         out.push_str(with);
+        copied = copied.max(end);
+    }
+    out.push_str(&text[copied..]);
+    out
+}
+
+/// `text` with the content of every XML element whose name
+/// [`is_secret_name`] hidden (`<password>X</password>`, `<token>X</token>`),
+/// and in a property list the value after a secret `<key>`
+/// (`<key>password</key><string>X</string>`); a plain `<key>` element is a
+/// property list's key name, not a secret. Content runs to the element's
+/// closing tag, across lines; with none, to the end of the line, so a
+/// placeholder in usage text (`--token <token>`) hides at most the rest of
+/// its line.
+pub fn redact_xml_secrets(text: &str) -> String {
+    let b = text.as_bytes();
+    let lower = text.to_ascii_lowercase();
+    let is_tag_char = |c: u8| c.is_ascii_alphanumeric() || b"-_.:".contains(&c);
+    // A start tag at `i` (`<name>` or `<name attr="…">`, not `<name/>`):
+    // its name and where its content starts.
+    let start_tag = |i: usize| -> Option<(&str, usize)> {
+        if i >= b.len() || b[i] != b'<' {
+            return None;
+        }
+        let n = i + 1 + b[i + 1..].iter().take_while(|c| is_tag_char(**c)).count();
+        if n == i + 1 || n >= b.len() || !(b[n] == b'>' || b[n] == b' ' || b[n] == b'\t') {
+            return None;
+        }
+        let gt = n + b[n..].iter().take_while(|c| !b"<>\n\r".contains(c)).count();
+        if gt >= b.len() || b[gt] != b'>' || b[gt - 1] == b'/' {
+            return None;
+        }
+        Some((&text[i + 1..n], gt + 1))
+    };
+    // Where the content of `name` starting at `s` ends, and whether its
+    // closing tag was found.
+    let content_end = |s: usize, name: &str| {
+        let close = format!("</{}>", name.to_ascii_lowercase());
+        match lower[s..].find(&close) {
+            Some(k) => (s + k, true),
+            None => (
+                s + b[s..]
+                    .iter()
+                    .take_while(|c| **c != b'\n' && **c != b'\r')
+                    .count(),
+                false,
+            ),
+        }
+    };
+    let mut spans: Vec<(usize, usize)> = Vec::new();
+    let mut i = 0;
+    while i < b.len() {
+        let Some((name, after)) = start_tag(i) else {
+            i += 1;
+            continue;
+        };
+        i = after;
+        let span = if name.eq_ignore_ascii_case("key") {
+            let (e, closed) = content_end(after, "key");
+            if !closed || !is_secret_name(text[after..e].trim()) {
+                continue;
+            }
+            let k = e + "</key>".len();
+            let k = k + b[k..]
+                .iter()
+                .take_while(|c| c.is_ascii_whitespace())
+                .count();
+            match start_tag(k) {
+                Some((value, s)) => {
+                    let (e, _) = content_end(s, value);
+                    (s, e)
+                }
+                None => continue,
+            }
+        } else if is_secret_name(name) {
+            (after, content_end(after, name).0)
+        } else {
+            continue;
+        };
+        let (s, e) = span;
+        if e > s && !text[s..].starts_with(REDACTED) {
+            spans.push((s, e));
+        }
+        i = e.max(i);
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut copied = 0;
+    for (start, end) in spans {
+        out.push_str(&text[copied..start]);
+        out.push_str(REDACTED);
         copied = end;
     }
     out.push_str(&text[copied..]);
@@ -998,8 +1187,9 @@ pub const MIN_BEARER_TOKEN: usize = 8;
 /// environment variable holds them (a token minted at run time): the value
 /// of an `Authorization:` header after its scheme (`token`, `Bearer`,
 /// `Basic`, …), also as a JSON key or as `authorization=`; the value of any
-/// other secret-named header (`X-Auth-Token: …`) or `name=value` pair
-/// (`password=…`); a token of at least
+/// other secret-named header (`X-Auth-Token: …`, `Password: …`) or
+/// `name=value` pair (`password=…`, `password = …`); the value after a
+/// secret `--flag` echoed back (`--password …`); a token of at least
 /// [`MIN_BEARER_TOKEN`] characters after a bare `Bearer`; and the rest of
 /// the line after `Cookie:` or `Set-Cookie:`, unless already `<redacted>`.
 /// A credential runs to a blank, quote, `,`, `;` or closing bracket, which
@@ -1020,9 +1210,11 @@ pub fn redact_credentials_in_text(text: &str) -> String {
     let is_name = |c: u8| c.is_ascii_alphanumeric() || c == b'-' || c == b'_';
     let mut spans: Vec<(usize, usize)> = Vec::new();
     // A secret-named `Name: value` header or `name=value` pair. A header
-    // name must look like one (`X-Auth-Token`, `api_key`, `Authorization`),
-    // so prose such as `token: expired` is kept; any secret name before `=`
-    // counts (`password=…`, `authorization=token …`).
+    // name must look like one (`X-Auth-Token`, `api_key`, `Authorization`,
+    // or capitalised as a header or prompt is: `Apikey`, `Password`), so
+    // prose such as `token: expired` is kept; any secret name before `=`
+    // counts (`password=…`, `password = …`, `authorization=token …`), and a
+    // secret `--flag` followed by a blank hides the word after it.
     let mut i = 0;
     while i < b.len() {
         if !is_name(b[i]) || (i > 0 && is_name(b[i - 1])) {
@@ -1040,10 +1232,18 @@ pub fn redact_credentials_in_text(text: &str) -> String {
         if j >= b.len() || !is_secret_name(name) {
             continue;
         }
-        let header_like = name.eq_ignore_ascii_case("authorization") || name.contains(['-', '_']);
-        j = match b[j] {
-            b':' if header_like => skip_blank(j + 1),
-            b'=' => j + 1,
+        let header_like = name.eq_ignore_ascii_case("authorization")
+            || name.contains(['-', '_'])
+            || name.starts_with(|c: char| c.is_ascii_uppercase());
+        let k = skip_blank(j);
+        j = match b.get(k) {
+            // `password = X` takes blanks on both sides; `password ==` is a
+            // comparison, not a value.
+            Some(b'=') if k > j && b.get(k + 1) != Some(&b'=') => skip_blank(k + 1),
+            Some(b'=') if k == j => j + 1,
+            Some(b':') if k == j && header_like => skip_blank(j + 1),
+            // `--password X`, but not `--password --verbose`.
+            _ if k > j && name.starts_with("--") && !text[k..].starts_with("--") => k,
             _ => continue,
         };
         let quote = if is_quote(j) {
@@ -1073,15 +1273,23 @@ pub fn redact_credentials_in_text(text: &str) -> String {
                 }
             }
         }
-        // A quoted value runs to its closing quote, blanks and `\` escapes
-        // (`"ab\"cd"`) and all.
+        // A quoted value runs to its closing quote, blanks, `\` escapes
+        // (`"ab\"cd"`) and raw line breaks and all; one never closed runs to
+        // the end of its line.
         let e = match quote {
             Some(q) => {
-                let mut k = j;
-                while k < b.len() && b[k] != q && b[k] != b'\n' && b[k] != b'\r' {
-                    k += if b[k] == b'\\' { 2 } else { 1 };
+                let close = |in_line: bool| {
+                    let mut k = j;
+                    while k < b.len() && b[k] != q && !(in_line && (b[k] == b'\n' || b[k] == b'\r'))
+                    {
+                        k += if b[k] == b'\\' { 2 } else { 1 };
+                    }
+                    k.min(b.len())
+                };
+                match close(false) {
+                    k if k < b.len() => k,
+                    _ => close(true),
                 }
-                k.min(b.len())
             }
             None => cred_end(j),
         };
@@ -1198,12 +1406,14 @@ pub fn redact_url(arg: &str) -> Option<String> {
 }
 
 /// Whether a URL query or fragment parameter carries a secret: any name
-/// [`is_secret_name`] (`access_token`, `client_secret`, `api_key`), a
+/// [`is_secret_name`] (`access_token`, `accessToken`, `api_key`), a
 /// signed URL's signature (`sig`, `X-Goog-Signature`, `X-Amz-Signature`),
 /// and a bare `key`, which in a URL is an API key (`?key=AIza…`).
 pub fn is_secret_url_param(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
-    is_secret_name(&lower)
+    // The name as written: lower-casing it first would hide the case
+    // change that makes `accessToken` two words.
+    is_secret_name(name)
         || matches!(lower.as_str(), "key" | "sig")
         || lower
             .split(|c: char| !c.is_ascii_alphanumeric())
@@ -2291,7 +2501,7 @@ mod tests {
                     r#"-d{"api_key":"SECRET-JOINED"}"#,
                     r#"--data-raw={"client_secret":"SECRET-ESC\"APED","ok":true}"#,
                     "--json",
-                    r#"{"credentials":{"user":"u","pass":"SECRET-NESTED"},"pin":1}"#,
+                    r#"{"credentials":{"user":"u","pass":"SECRET-NESTED"},"pin":1234}"#,
                     "--json",
                     r#"{"access_token":123456789,"refresh_token":null}"#,
                     "--json",
@@ -2303,7 +2513,7 @@ mod tests {
                 r#" --json { "user": "me", "password" : "<redacted>" }"#,
                 r#" -d{"api_key":"<redacted>"}"#,
                 r#" --data-raw={"client_secret":"<redacted>","ok":true}"#,
-                r#" --json {"credentials":"<redacted>","pin":1}"#,
+                r#" --json {"credentials":"<redacted>","pin":<redacted>}"#,
                 r#" --json {"access_token":<redacted>,"refresh_token":null}"#,
                 r#" --json {"note":"token","a":1}"#,
             )
@@ -2451,6 +2661,258 @@ mod tests {
                 ]
             ),
             "curl --tlsuser me --tlspassword <redacted> --tlspassword=<redacted> --proxy-tlspassword <redacted> --proxy-tlspassword=<redacted> https://h/"
+        );
+    }
+
+    /// What a failed command's stderr `out` reads as once reported.
+    fn reported(out: &'static str) -> String {
+        let mut r = FakeRunner::new(move |_| Out::fail(1, out));
+        let _ = capture(&mut r, &Cmd::new("tool"));
+        r.stderr
+    }
+
+    #[test]
+    fn short_secret_words_count_as_a_names_last_word_and_key_only_whole() {
+        for name in [
+            "DB_PWD",
+            "dbPass",
+            "SMTP_PASS",
+            "pass",
+            "user_pin",
+            "PIN",
+            "otp",
+            "jwt",
+            "JWT",
+            "basic_auth",
+            "auth",
+            "session",
+            "SESSION",
+            "key",
+            "Key",
+            "--key",
+        ] {
+            assert!(is_secret_name(name), "{}", name);
+        }
+        for name in [
+            "session_id",
+            "auth_method",
+            "SSH_AUTH_SOCK",
+            "pin_count",
+            "otp_enabled",
+            "pinned",
+            "passed",
+            "monkey",
+            "keychain-path",
+            "keychain_path",
+            "cache_key",
+            "key-id",
+            "KEYCHAIN_PATH",
+            "bypass",
+            "OLDPWD",
+            "keys",
+        ] {
+            assert!(!is_secret_name(name), "{}", name);
+        }
+        // `PWD` is the shell's working directory, not a password.
+        let env: BTreeMap<String, String> = [("PWD", "/work/dir"), ("DB_PWD", "SECRET-DBPWD")]
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        assert_eq!(env_secrets(&env), vec!["SECRET-DBPWD"]);
+        let out = reported(
+            "pass=SECRET-P pin=SECRET-N key=SECRET-K session=SECRET-S\npassed=3 pinned=v monkey=1 keychain-path=/k session_id=7 cache_key=c\n",
+        );
+        assert!(!out.contains("SECRET"), "{:?}", out);
+        assert!(
+            out.contains("pass=<redacted> pin=<redacted> key=<redacted> session=<redacted>\npassed=3 pinned=v monkey=1 keychain-path=/k session_id=7 cache_key=c\n"),
+            "{:?}",
+            out
+        );
+    }
+
+    #[test]
+    fn acronym_prefixed_secret_names_count() {
+        for name in [
+            "DBPassword",
+            "JWTSecret",
+            "AWSSecretKey",
+            "APIToken",
+            "SMTPPassword",
+        ] {
+            assert!(is_secret_name(name), "{}", name);
+            let body = format!(r#"{{"{}":"SECRET-AC"}}"#, name);
+            assert_eq!(
+                red("curl", &["--json", &body]),
+                format!(r#"curl --json {{"{}":"<redacted>"}}"#, name),
+            );
+        }
+        for name in [
+            "HTTPStatus",
+            "XMLKeyName",
+            "URLPath",
+            "GitHubRepo",
+            "IDList",
+        ] {
+            assert!(!is_secret_name(name), "{}", name);
+        }
+    }
+
+    #[test]
+    fn a_camel_case_secret_url_parameter_is_hidden() {
+        assert_eq!(
+            red("curl", &["https://h/p?accessToken=SECRET-CQ&pageSize=2"]),
+            "curl https://h/p?accessToken=<redacted>&pageSize=2"
+        );
+    }
+
+    #[test]
+    fn a_secret_pair_with_blanks_around_its_equals_sign_is_hidden() {
+        let out = reported(
+            "password = SECRET-SP\napi_key\t=\tSECRET-TAB\nif password == nil; count = 3\n",
+        );
+        assert!(!out.contains("SECRET"), "{:?}", out);
+        assert!(
+            out.contains(
+                "password = <redacted>\napi_key\t=\t<redacted>\nif password == nil; count = 3\n"
+            ),
+            "{:?}",
+            out
+        );
+    }
+
+    #[test]
+    fn capitalised_secret_headers_in_output_are_hidden() {
+        let out = reported(
+            "Apikey: SECRET-AK\nPassword: SECRET-PW\n< Session: SECRET-SE\ntoken: expired\nStatus: ok\nKeychain: login.keychain\n",
+        );
+        assert!(!out.contains("SECRET"), "{:?}", out);
+        assert!(
+            out.contains("Apikey: <redacted>\nPassword: <redacted>\n< Session: <redacted>\ntoken: expired\nStatus: ok\nKeychain: login.keychain\n"),
+            "{:?}",
+            out
+        );
+    }
+
+    #[test]
+    fn a_quoted_secret_broken_by_a_raw_newline_hides_both_lines() {
+        let out = reported(
+            "password=\"SECRET-L1\nSECRET-L2\" next\n{\"token\": \"SECRET-J1\nSECRET-J2\"}\napi_key='SECRET-OPEN\nkept line\n",
+        );
+        assert!(!out.contains("SECRET"), "{:?}", out);
+        // A quote never closed hides only the rest of its own line.
+        assert!(
+            out.contains("password=\"<redacted>\" next\n{\"token\": \"<redacted>\"}\napi_key='<redacted>\nkept line\n"),
+            "{:?}",
+            out
+        );
+    }
+
+    #[test]
+    fn a_secret_flag_echoed_in_output_hides_its_value() {
+        let out = reported(
+            "error: tool --password SECRET-F1 --token \"SECRET F2\" --keychain-path /k --verbose\nretry --password --verbose\n",
+        );
+        assert!(!out.contains("SECRET"), "{:?}", out);
+        assert!(
+            out.contains("error: tool --password <redacted> --token \"<redacted>\" --keychain-path /k --verbose\nretry --password --verbose\n"),
+            "{:?}",
+            out
+        );
+    }
+
+    #[test]
+    fn secret_xml_elements_and_plist_values_are_hidden() {
+        let out = reported(concat!(
+            "<password>SECRET-X1</password><token>SECRET-X2</token>\n",
+            "<Password type=\"t\">SECRET-X3</Password>\n",
+            "<key>password</key>\n\t<string>SECRET-X4</string>\n",
+            "<key>keychain</key><string>login</string><keychain>k</keychain><passed>3</passed><token/>\n",
+            "usage: tool --token <token>\nnext line\n",
+        ));
+        assert!(!out.contains("SECRET"), "{:?}", out);
+        assert!(
+            out.contains(concat!(
+                "<password><redacted></password><token><redacted></token>\n",
+                "<Password type=\"t\"><redacted></Password>\n",
+                "<key>password</key>\n\t<string><redacted></string>\n",
+                "<key>keychain</key><string>login</string><keychain>k</keychain><passed>3</passed><token/>\n",
+                "usage: tool --token <token>\nnext line\n",
+            )),
+            "{:?}",
+            out
+        );
+        assert_eq!(
+            red(
+                "curl",
+                &["--data", "<login><password>SECRET-XA</password></login>"]
+            ),
+            "curl --data <login><password><redacted></password></login>"
+        );
+    }
+
+    #[test]
+    fn json_inside_a_json_string_is_hidden() {
+        assert_eq!(
+            red(
+                "curl",
+                &[
+                    "--json",
+                    r#"{"body":"{\"token\":\"SECRET-E1\",\"pin\":1234,\"page\":2}"}"#,
+                    "--json",
+                    r#"{"body":"{\"password\":\"a\\\"SECRET-E2\"}"}"#,
+                    "--json",
+                    r#"{"body":"{\"note\":\"token\"}"}"#,
+                ]
+            ),
+            concat!(
+                r#"curl --json {"body":"{\"token\":\"<redacted>\",\"pin\":<redacted>,\"page\":2}"}"#,
+                r#" --json {"body":"{\"password\":\"<redacted>\"}"}"#,
+                r#" --json {"body":"{\"note\":\"token\"}"}"#,
+            )
+        );
+    }
+
+    #[test]
+    fn single_quoted_python_dicts_are_hidden() {
+        let out = reported(
+            "{'token': 'SECRET-S1', 'page': 2}\n{'password': \"it's SECRET-S2\"}\n{'note': 'token', 'a': 1} don't 'x'\n",
+        );
+        assert!(!out.contains("SECRET"), "{:?}", out);
+        assert!(
+            out.contains("{'token': '<redacted>', 'page': 2}\n{'password': \"<redacted>\"}\n{'note': 'token', 'a': 1} don't 'x'\n"),
+            "{:?}",
+            out
+        );
+    }
+
+    #[test]
+    fn a_stray_quote_earlier_on_a_line_does_not_stop_json_hiding() {
+        assert_eq!(
+            redact_json_secrets(
+                r#"say "hi {"token":"SECRET-Q1"} and 'it {"password": "SECRET-Q2", "a": "b"}"#
+            ),
+            r#"say "hi {"token":"<redacted>"} and 'it {"password": "<redacted>", "a": "b"}"#
+        );
+        assert_eq!(
+            redact_json_secrets(r#"say "hi" {"note":"x"} it's "#),
+            r#"say "hi" {"note":"x"} it's "#
+        );
+    }
+
+    #[test]
+    fn an_empty_attached_curl_tls_password_hides_the_next_argument() {
+        assert_eq!(
+            red(
+                "curl",
+                &[
+                    "--tlspassword=",
+                    "SECRET-NEXT",
+                    "--cert=",
+                    "c.pem",
+                    "https://h/"
+                ]
+            ),
+            "curl --tlspassword= <redacted> --cert= c.pem https://h/"
         );
     }
 
