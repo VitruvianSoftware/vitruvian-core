@@ -736,18 +736,28 @@ const catchUpMaxPages = 100
 // falls back to syncWorld when from_revision == 0 or CatchUpResponse.status is ABORTED_*, and advances
 // user_revision only after all pages are processed without overwriting any portal's group_revision.
 func (c *Client) catchUpAfterReconnect(ctx context.Context) error {
-	var fromRev int64
-	if c.UserLogin != nil {
-		c.metaMu.Lock()
-		if meta, ok := c.UserLogin.Metadata.(*UserLoginMetadata); ok && meta != nil {
-			fromRev = meta.UserRevision
-		}
-		c.metaMu.Unlock()
-	}
+	fromRev := c.storedUserRevision()
 	if fromRev <= 0 {
 		return c.syncWorld(ctx)
 	}
+	return c.catchUpUserFrom(ctx, fromRev)
+}
 
+// storedUserRevision is the catch_up_user watermark saved on UserLoginMetadata, or 0.
+func (c *Client) storedUserRevision() int64 {
+	if c.UserLogin == nil {
+		return 0
+	}
+	c.metaMu.Lock()
+	defer c.metaMu.Unlock()
+	if meta, ok := c.UserLogin.Metadata.(*UserLoginMetadata); ok && meta != nil {
+		return meta.UserRevision
+	}
+	return 0
+}
+
+// catchUpUserFrom replays every event since fromRev through catch_up_user (see catchUpAfterReconnect).
+func (c *Client) catchUpUserFrom(ctx context.Context, fromRev int64) error {
 	maxUserRev := fromRev
 	for page := 0; page < catchUpMaxPages; page++ {
 		pageStartRev := maxUserRev

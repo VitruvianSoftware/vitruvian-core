@@ -5699,3 +5699,75 @@ func TestPlaceholderChatNameKeepsRealNamesThatLookLikeIDs(t *testing.T) {
 		t.Fatal("a real name that starts like an ID must be kept")
 	}
 }
+
+// After a restart the first CONNECTED runs the world sync, which moves the stored user revision up to
+// "now". Catch-up must still start from the revision saved before the restart, or whatever arrived while
+// Courier was closed is skipped. A second catch-up (the stream dropping and coming back) must not store the
+// same message twice.
+func TestFirstConnectAfterRestartCatchesUpFromSavedRevision(t *testing.T) {
+	ctx := context.Background()
+	var catchUpFrom []int64
+	var mu sync.Mutex
+	spaceGID := pb.SpaceGroupID("space_xyz")
+
+	h, ul, client := setupLoggedInGChatTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/x-protobuf")
+		switch r.URL.Path {
+		case "/u/0/api/paginated_world":
+			_, _ = w.Write(pb.MustMarshal(&pb.PaginatedWorldResponse{
+				UserRevision: &pb.ReadRevision{Timestamp: pb.Int64(900)},
+				WorldItems: []*pb.WorldItemLite{{
+					GroupId:       spaceGID,
+					GroupRevision: &pb.ReadRevision{Timestamp: pb.Int64(300)},
+					SortTimestamp: pb.Int64(1710000300000000),
+					ReadState:     &pb.GroupReadState{MembershipState: pb.MembershipState_MEMBER_JOINED.Enum()},
+					RoomName:      pb.String("Engineering"),
+				}},
+			}))
+		case "/u/0/api/catch_up_user":
+			mu.Lock()
+			catchUpFrom = append(catchUpFrom, decodeCatchUpUserFromRevision(body))
+			mu.Unlock()
+			msg := buildSyntheticMessageProto(spaceGID, "topic_gap", "msg_gap_1", "112233445566778899002", "Sent while Courier was closed", 1710000250000000, "", 0, 0)
+			_, _ = w.Write(pb.MustMarshal(&pb.CatchUpResponse{
+				Events: []*pb.Event{{
+					GroupId: spaceGID,
+					Type:    pb.Event_MESSAGE_POSTED.Enum(),
+					Body: &pb.Event_EventBody{
+						Type:      &pb.Event_EventBody_MessagePosted{MessagePosted: &pb.MessageEvent{Message: msg}},
+						EventType: pb.Event_MESSAGE_POSTED.Enum(),
+					},
+					RevisionType: &pb.Event_UserRevision{UserRevision: &pb.WriteRevision{Timestamp: pb.Int64(650)}},
+				}},
+				Status: pb.CatchUpResponse_COMPLETED.Enum(),
+			}))
+		case "/u/0/api/list_topics":
+			_, _ = w.Write(pb.MustMarshal(&pb.ListTopicsResponse{}))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	client.Disconnect()                                 // only the notifications below drive the client
+	ul.Metadata.(*UserLoginMetadata).UserRevision = 500 // saved before Courier was closed
+	require.NoError(t, ul.Save(ctx))
+
+	client.processStreamNotification(ctx, streamNotification{kind: EventKindConnected})
+
+	mu.Lock()
+	require.Equal(t, []int64{500}, catchUpFrom, "the first connect must catch up from the revision saved before the restart")
+	mu.Unlock()
+	require.Eventually(t, func() bool {
+		m, err := h.Bridge.DB.Message.GetFirstPartByID(ctx, ul.ID, MakeMessageID("topic_gap", "msg_gap_1"))
+		return err == nil && m != nil
+	}, 3*time.Second, 20*time.Millisecond, "the message sent while Courier was closed must arrive")
+	require.Equal(t, int64(900), ul.Metadata.(*UserLoginMetadata).UserRevision)
+
+	// The stream drops and comes back: catch-up runs again and must not store the message twice.
+	ul.Metadata.(*UserLoginMetadata).UserRevision = 500
+	client.processStreamNotification(ctx, streamNotification{kind: EventKindResync})
+	parts, err := h.Bridge.DB.Message.GetAllPartsByID(ctx, ul.ID, MakeMessageID("topic_gap", "msg_gap_1"))
+	require.NoError(t, err)
+	require.Len(t, parts, 1, "a message caught up twice is stored once")
+}
