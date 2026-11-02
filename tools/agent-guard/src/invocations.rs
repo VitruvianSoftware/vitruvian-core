@@ -23,7 +23,7 @@
 
 use crate::paths::{basename, isabs, join, normpath};
 use crate::pyutil::{is_assignment, is_python3_dotted, split_assignment};
-use crate::shell::{fallback_split, parse_script_at, PErr, SimpleCommand, MAX_COMMANDS};
+use crate::shell::{fallback_split, parse_dialect, PErr, SimpleCommand, MAX_COMMANDS};
 
 pub const SHELLS: [&str; 6] = ["bash", "sh", "zsh", "dash", "ksh", "fish"];
 
@@ -84,18 +84,37 @@ fn quote_join(words: &[String]) -> String {
         .join(" ")
 }
 
-fn note_force_arg0(name: &str, value: &str, slot: &mut Option<String>) {
+fn note_force_arg0(name: &str, value: &str, slot: &mut Option<String>, seen: &mut Vec<String>) {
     if name == "RUSTUP_FORCE_ARG0" {
         *slot = if value.is_empty() {
             None
         } else {
+            if !seen.iter().any(|s| s == value) {
+                seen.push(value.to_string());
+            }
             Some(value.to_string())
         };
     }
 }
 
+/// zsh's `=name` expands to the path of `name` (`=git` is `/usr/bin/git`),
+/// so a leading `=` on a program word is dropped (#4209).
+fn strip_equals(w: &mut String) {
+    if w.len() > 1 && w.starts_with('=') {
+        w.remove(0);
+    }
+}
+
 /// Strip wrappers. Returns (argv, scripts) where scripts are nested shell text.
-pub fn unwrap(mut words: Vec<String>, cmd: &SimpleCommand) -> (Vec<String>, Vec<String>) {
+///
+/// `default_arg0` is a RUSTUP_FORCE_ARG0 value set elsewhere in the command
+/// (`export`, a parent shell); every value this command sets is added to `seen`.
+pub fn unwrap(
+    mut words: Vec<String>,
+    cmd: &SimpleCommand,
+    default_arg0: Option<&str>,
+    seen: &mut Vec<String>,
+) -> (Vec<String>, Vec<String>) {
     let mut scripts: Vec<String> = Vec::new();
     // RUSTUP_FORCE_ARG0=<x> makes rustup act as <x> (#4171), so remember it
     // from `VAR=...` prefixes and `env VAR=...` for the rustup it reaches.
@@ -104,13 +123,14 @@ pub fn unwrap(mut words: Vec<String>, cmd: &SimpleCommand) -> (Vec<String>, Vec<
         let lead = words.iter().take_while(|w| is_assignment(w)).count();
         for w in &words[..lead] {
             if let Some((name, value)) = split_assignment(w) {
-                note_force_arg0(name, value, &mut force_arg0);
+                note_force_arg0(name, value, &mut force_arg0, seen);
             }
         }
         words.drain(..lead);
         if words.is_empty() {
             return (vec![], scripts);
         }
+        strip_equals(&mut words[0]);
         let prog = basename(&words[0]).to_string();
         let args: Vec<String> = words[1..].to_vec();
         let first = args.first().map(|s| s.as_str());
@@ -134,11 +154,16 @@ pub fn unwrap(mut words: Vec<String>, cmd: &SimpleCommand) -> (Vec<String>, Vec<
                     scripts.push(parts.join(" "));
                     return (vec![], scripts);
                 }
+                // Under zsh `env =git push` runs /usr/bin/git (#4209).
+                if a.len() > 1 && a.starts_with('=') {
+                    rest = args[i..].to_vec();
+                    break;
+                }
                 // env takes any word with `=` as NAME=VALUE, NAME taken
                 // literally (`env A-B=1 git push` runs git push, #4206).
                 if a.starts_with('-') || a.contains('=') {
                     let (name, value) = crate::pyutil::split1(a, '=');
-                    note_force_arg0(name, value.unwrap_or(""), &mut force_arg0);
+                    note_force_arg0(name, value.unwrap_or(""), &mut force_arg0, seen);
                     i += 1;
                     continue;
                 }
@@ -228,7 +253,7 @@ pub fn unwrap(mut words: Vec<String>, cmd: &SimpleCommand) -> (Vec<String>, Vec<
         // runs <cmd> with that toolchain: judge <cmd> (#4171). Usage and
         // flags are from `rustup --help` / `rustup run --help` (rustup 1.29.2).
         if p == "rustup" {
-            if let Some(arg0) = force_arg0.take() {
+            if let Some(arg0) = force_arg0.take().or_else(|| default_arg0.map(String::from)) {
                 let mut w = vec![arg0];
                 w.extend_from_slice(&args);
                 words = w;
@@ -422,7 +447,8 @@ pub fn hides_agent_marker(words: &[String]) -> bool {
     if i >= words.len() {
         return false;
     }
-    let prog = basename(&words[i]);
+    let w0 = words[i].strip_prefix('=').filter(|w| !w.is_empty());
+    let prog = basename(w0.unwrap_or(&words[i]));
     let args = &words[i + 1..];
     if prog == "env" {
         let mut j = 0;
@@ -474,30 +500,129 @@ pub fn invocations(text: &str, cwd: &str, home: &str) -> Result<Vec<Invocation>,
     let mut out = Vec::new();
     let mut state_cwd = cwd.to_string();
     let mut budget = MAX_COMMANDS;
-    walk(text, 0, home, &mut state_cwd, &mut budget, &mut out)?;
+    let mut seen: Vec<String> = Vec::new();
+    walk(
+        text,
+        0,
+        home,
+        &mut state_cwd,
+        &mut budget,
+        None,
+        &mut seen,
+        &mut out,
+    )?;
+    // RUSTUP_FORCE_ARG0 set anywhere in the command (`export X=cargo; rustup
+    // update`, `X=cargo bash -c 'rustup update'`) reaches rustups the
+    // line-by-line walk does not tie it to (#4207). Judge every rustup in the
+    // command as each value set; over-blocking a rustup the value does not
+    // reach is the safe side.
+    if !seen.is_empty() {
+        let values = seen.clone();
+        for value in values {
+            let mut cwd2 = cwd.to_string();
+            walk(
+                text,
+                0,
+                home,
+                &mut cwd2,
+                &mut budget,
+                Some(&value),
+                &mut seen,
+                &mut out,
+            )?;
+        }
+    }
     Ok(out)
 }
 
+/// `export`/`declare -x`/... RUSTUP_FORCE_ARG0=<x>: note <x> (#4207).
+fn note_declared_arg0(argv: &[String], seen: &mut Vec<String>) {
+    let prog = basename(&argv[0]);
+    if !["export", "declare", "typeset", "local", "readonly"].contains(&prog) {
+        return;
+    }
+    for a in &argv[1..] {
+        if let Some((name, value)) = split_assignment(a) {
+            let mut slot = None;
+            note_force_arg0(name, value, &mut slot, seen);
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn walk(
     script: &str,
     depth: usize,
     home: &str,
     state_cwd: &mut String,
     budget: &mut i64,
+    default_arg0: Option<&str>,
+    seen: &mut Vec<String>,
     out: &mut Vec<Invocation>,
 ) -> Result<(), PErr> {
     if depth > 6 {
         return Ok(());
     }
     let t: Vec<char> = script.chars().collect();
-    let cmds = match parse_script_at(&t, 0, budget) {
+    let mut saw_subscript = false;
+    let cmds = match parse_dialect(&t, 0, budget, false, &mut saw_subscript) {
         Ok(c) => c,
         Err(PErr::Parse) => fallback_split(script, Some(budget))?,
         Err(e) => return Err(e),
     };
+    let start_cwd = state_cwd.clone();
+    walk_cmds(
+        cmds,
+        depth,
+        home,
+        state_cwd,
+        budget,
+        default_arg0,
+        seen,
+        out,
+    )?;
+    // bash 3.2 reads `A[ x ]=1 git push` as one assignment and then runs
+    // git push; bash 5 and zsh split it. Judge that reading too (#4210).
+    if saw_subscript {
+        let mut ignored = false;
+        match parse_dialect(&t, 0, budget, true, &mut ignored) {
+            Ok(cmds) => {
+                let mut cwd2 = start_cwd;
+                walk_cmds(
+                    cmds,
+                    depth,
+                    home,
+                    &mut cwd2,
+                    budget,
+                    default_arg0,
+                    seen,
+                    out,
+                )?;
+            }
+            Err(PErr::Parse) => {} // bash 3.2 would not run it either
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn walk_cmds(
+    cmds: Vec<SimpleCommand>,
+    depth: usize,
+    home: &str,
+    state_cwd: &mut String,
+    budget: &mut i64,
+    default_arg0: Option<&str>,
+    seen: &mut Vec<String>,
+    out: &mut Vec<Invocation>,
+) -> Result<(), PErr> {
     for cmd in cmds {
         let hidden = hides_agent_marker(&cmd.words);
-        let (argv, scripts) = unwrap(cmd.words.clone(), &cmd);
+        let (argv, scripts) = unwrap(cmd.words.clone(), &cmd, default_arg0, seen);
+        if !argv.is_empty() {
+            note_declared_arg0(&argv, seen);
+        }
         if !argv.is_empty() {
             let prog = basename(&argv[0]);
             if (prog == "cd" || prog == "pushd") && argv.len() >= 2 {
@@ -521,7 +646,16 @@ fn walk(
             });
         }
         for s in scripts {
-            walk(&s, depth + 1, home, state_cwd, budget, out)?;
+            walk(
+                &s,
+                depth + 1,
+                home,
+                state_cwd,
+                budget,
+                default_arg0,
+                seen,
+                out,
+            )?;
         }
     }
     Ok(())
@@ -606,5 +740,53 @@ mod tests {
             "CLAUDECODE".into(),
             "x".into()
         ]));
+        let argvs_of = |text: &str| -> Vec<Vec<String>> {
+            invocations(text, "/r", "/h")
+                .unwrap()
+                .into_iter()
+                .map(|i| i.argv)
+                .collect()
+        };
+        let git_push = vec!["git".to_string(), "push".into()];
+        // #4209: zsh's =git is /usr/bin/git, wherever a program word may be.
+        for text in [
+            "=git push",
+            "sudo =git push",
+            "env =git push",
+            "FOO=1 =git push",
+        ] {
+            assert_eq!(argvs_of(text), vec![git_push.clone()], "{}", text);
+        }
+        assert!(hides_agent_marker(&[
+            "=env".into(),
+            "-u".into(),
+            "CLAUDECODE".into(),
+            "x".into()
+        ]));
+        // #4210: bash 3.2's reading is judged as well as the split one.
+        for text in [
+            "A[ x ]=1 git push",
+            "A[;]=1 git push",
+            "bash -c 'A[|]=1 git push'",
+        ] {
+            assert!(argvs_of(text).contains(&git_push), "{}", text);
+        }
+        // #4207: RUSTUP_FORCE_ARG0 set anywhere in the command reaches every rustup.
+        let cargo_update = vec!["cargo".to_string(), "update".into()];
+        for text in [
+            "export RUSTUP_FORCE_ARG0=cargo; rustup update",
+            "declare -x RUSTUP_FORCE_ARG0=cargo && rustup update",
+            "RUSTUP_FORCE_ARG0=cargo bash -c 'rustup update'",
+            "RUSTUP_FORCE_ARG0=cargo sh -c \"rustup update\"",
+        ] {
+            assert!(argvs_of(text).contains(&cargo_update), "{}", text);
+        }
+        assert_eq!(
+            argvs_of("export RUSTUP_FORCE_ARG0=; rustup update"),
+            vec![
+                vec!["export".to_string(), "RUSTUP_FORCE_ARG0=".into()],
+                vec!["rustup".to_string(), "update".into()]
+            ]
+        );
     }
 }
