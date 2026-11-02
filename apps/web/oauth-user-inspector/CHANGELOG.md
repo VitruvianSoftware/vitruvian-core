@@ -8,6 +8,13 @@ adoption and is kept verbatim as the app's history — it sat under an
 `[Unreleased]` heading, unchanged, for 69 commits.
 -->
 
+## [1.15.6](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.15.5...oauth-user-inspector-v1.15.6) (2026-11-02)
+
+
+### Bug Fixes
+
+* **oauth-user-inspector:** hosted mode uses only the configured provider domain ([#4211](https://github.com/VitruvianSoftware/vitruvian-core/issues/4211)) ([1db9efb](https://github.com/VitruvianSoftware/vitruvian-core/commit/1db9efb6ed4abe72e00d3666b6528bfb3a57bb6c))
+
 ## [1.15.5](https://github.com/VitruvianSoftware/vitruvian-core/compare/oauth-user-inspector-v1.15.4...oauth-user-inspector-v1.15.5) (2026-11-01)
 
 
