@@ -78,15 +78,18 @@ jobs:
       - name: Install Helm
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
 
-      # //tools/ci:chart_render, built with the runner's rustc (this job sets
-      # up no Bazel). //tools/ci:workflow_rustc_test runs these lines.
+      - name: Build //tools/ci:chart_render (no Bazel on this job)
+        id: chart-render-bin
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: chart_render
+
       - name: Render charts and assert their guards refuse
+        env:
+          CHART_RENDER: ${{ steps.chart-render-bin.outputs.path }}
         run: |
           set -euo pipefail
-          rustc --edition 2021 -O --crate-type lib --crate-name shell_compat tools/shell-compat/src/lib.rs -o "$RUNNER_TEMP/libshell_compat.rlib"
-          rustc --edition 2021 -O --crate-type lib --crate-name chart_render tools/ci/src/chart_render/lib.rs -L "$RUNNER_TEMP" --extern shell_compat="$RUNNER_TEMP/libshell_compat.rlib" -o "$RUNNER_TEMP/libchart_render.rlib"
-          rustc --edition 2021 -O tools/ci/src/chart_render/main.rs -L "$RUNNER_TEMP" --extern shell_compat="$RUNNER_TEMP/libshell_compat.rlib" --extern chart_render="$RUNNER_TEMP/libchart_render.rlib" -o "$RUNNER_TEMP/chart-render"
-          "$RUNNER_TEMP/chart-render"
+          "$CHART_RENDER"
 
   # Separate job, not another step on chart-render: this one needs the network
   # and a GHCR credential, and chart-render is deliberately offline. Keeping
@@ -118,18 +121,20 @@ jobs:
       - name: Install PyYAML
         run: python3 -m pip install --disable-pip-version-check --quiet pyyaml
 
+      - name: Build //tools/ci:gitops_values_render (no Bazel on this job)
+        id: values-render-bin
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: gitops_values_render
+
       - name: Render each Application's values against its chart
         env:
+          GITOPS_VALUES_RENDER: ${{ steps.values-render-bin.outputs.path }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
-        # //tools/ci:gitops_values_render, built with the runner's rustc.
-        # //tools/ci:workflow_rustc_test runs these lines.
         run: |
           set -euo pipefail
-          rustc --edition 2021 -O --crate-type lib --crate-name shell_compat tools/shell-compat/src/lib.rs -o "$RUNNER_TEMP/libshell_compat.rlib"
-          rustc --edition 2021 -O --crate-type lib --crate-name gitops_values_render tools/ci/src/gitops_values_render/lib.rs -L "$RUNNER_TEMP" --extern shell_compat="$RUNNER_TEMP/libshell_compat.rlib" -o "$RUNNER_TEMP/libgitops_values_render.rlib"
-          rustc --edition 2021 -O tools/ci/src/gitops_values_render/main.rs -L "$RUNNER_TEMP" --extern shell_compat="$RUNNER_TEMP/libshell_compat.rlib" --extern gitops_values_render="$RUNNER_TEMP/libgitops_values_render.rlib" -o "$RUNNER_TEMP/gitops-values-render"
-          "$RUNNER_TEMP/gitops-values-render"
+          "$GITOPS_VALUES_RENDER"
   # Unit-tests the Prometheus ALERT RULES, not just their syntax. Offline and
   # fast; no cluster, no network.
   #

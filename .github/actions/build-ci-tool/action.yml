@@ -40,6 +40,16 @@
 #
 # Interface (kept stable for other callers): input `tool`, optional input
 # `source-root`, output `path`.
+# Optional input `deps`: extra std-only crates the tool's lib needs, built
+# first and passed with --extern. Only the names in the step's `case` are
+# accepted, each at its one known path.
+#
+# The homelab queue runner's image carries no Rust toolchain; GitHub's ubuntu
+# images do. On a self-hosted runner (RUNNER_ENVIRONMENT=self-hosted) with no
+# rustc the step installs it with apt, and fails by name if that does not
+# leave a rustc on PATH. A GitHub-hosted runner with no rustc fails at once:
+# that is an image change to look at, not a gap to fill with whatever rustc
+# apt carries.
 #
 # Requires the repo to be checked out first (composite actions referenced as
 # `./.github/actions/...` resolve from the workspace).
@@ -54,6 +64,14 @@ inputs:
       The tool's directory under tools/ci/src, which is also its crate name
       (for example release_hold).
     required: true
+  deps:
+    description: >-
+      Space-separated extra crates the tool's lib uses, built first:
+      transient_lib (tools/ci/src/transient_lib) or appset_render
+      (tools/gitops/appset-render). Empty for a tool that needs only
+      shell-compat.
+    required: false
+    default: ""
   source-root:
     description: >-
       The checkout to build from; empty means the workspace. The fast-lane
@@ -76,6 +94,7 @@ runs:
       shell: bash
       env:
         TOOL: ${{ inputs.tool }}
+        DEPS: ${{ inputs.deps }}
         SOURCE_ROOT: ${{ inputs.source-root }}
       run: |
         set -euo pipefail
@@ -85,8 +104,34 @@ runs:
             exit 1
             ;;
         esac
-        command -v rustc >/dev/null || { echo "::error::build-ci-tool: no rustc on this runner, so tools/ci/src/$TOOL cannot be built"; exit 1; }
         src="${SOURCE_ROOT:-$GITHUB_WORKSPACE}/tools"
+        # Each dep: a known name at its one path, std-only (built with no --extern).
+        # Split on whitespace into an array, so nothing in DEPS is globbed.
+        dep_list=()
+        read -r -a dep_list <<<"${DEPS:-}" || true
+        dep_names=()
+        dep_srcs=()
+        for dep in ${dep_list[@]+"${dep_list[@]}"}; do
+          case "$dep" in
+            transient_lib) dep_srcs+=("$src/ci/src/transient_lib/lib.rs") ;;
+            appset_render) dep_srcs+=("$src/gitops/appset-render/src/lib.rs") ;;
+            *)
+              echo "::error::build-ci-tool: unknown dep '$dep' (known: transient_lib appset_render)"
+              exit 1
+              ;;
+          esac
+          dep_names+=("$dep")
+        done
+        # Before anything else needs PATH: with no rustc (and no apt), stop
+        # here naming the tool, not later on a missing mkdir or rustc.
+        if ! command -v rustc >/dev/null 2>&1; then
+          [ "${RUNNER_ENVIRONMENT:-}" = self-hosted ] \
+            || { echo "::error::build-ci-tool: no rustc on this runner (RUNNER_ENVIRONMENT=${RUNNER_ENVIRONMENT:-unset}), so tools/ci/src/$TOOL cannot be built; only a self-hosted runner installs it with apt"; exit 1; }
+          { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends rustc; } \
+            || { echo "::error::apt install rustc failed, so build-ci-tool has no rustc on this runner and cannot build tools/ci/src/$TOOL"; exit 1; }
+          command -v rustc >/dev/null 2>&1 \
+            || { echo "::error::rustc is still not on PATH after apt install, so build-ci-tool has no rustc on this runner and cannot build tools/ci/src/$TOOL"; exit 1; }
+        fi
         out="$RUNNER_TEMP/ci-tools"
         mkdir -p "$out"
         # The runner's rustc is newer than the Bazel toolchain that
@@ -94,7 +139,12 @@ runs:
         # failure on a newer compiler is told apart from a code break.
         rustc --version
         rustc --edition 2021 -O --crate-type lib --crate-name shell_compat "$src/shell-compat/src/lib.rs" -o "$out/libshell_compat.rlib"
-        rustc --edition 2021 -O --crate-type lib --crate-name "$TOOL" "$src/ci/src/$TOOL/lib.rs" -L "$out" --extern shell_compat="$out/libshell_compat.rlib" -o "$out/lib$TOOL.rlib"
+        externs=()
+        for i in "${!dep_names[@]}"; do
+          rustc --edition 2021 -O --crate-type lib --crate-name "${dep_names[$i]}" "${dep_srcs[$i]}" -o "$out/lib${dep_names[$i]}.rlib"
+          externs+=(--extern "${dep_names[$i]}=$out/lib${dep_names[$i]}.rlib")
+        done
+        rustc --edition 2021 -O --crate-type lib --crate-name "$TOOL" "$src/ci/src/$TOOL/lib.rs" -L "$out" --extern shell_compat="$out/libshell_compat.rlib" ${externs[@]+"${externs[@]}"} -o "$out/lib$TOOL.rlib"
         rustc --edition 2021 -O "$src/ci/src/$TOOL/main.rs" -L "$out" --extern shell_compat="$out/libshell_compat.rlib" --extern "$TOOL=$out/lib$TOOL.rlib" -o "$out/$TOOL"
         # Only a binary that is really there may be handed on: a caller that
         # runs a missing path fails with 127 AFTER this step reported success,
@@ -103,17 +153,35 @@ runs:
           echo "::error::build-ci-tool: rustc reported success but $out/$TOOL is not an executable file"
           exit 1
         fi
-        # And one that starts: run it once with no arguments and an empty
-        # environment, where every tool here stops at once (a usage error, or
-        # "not a pull request"). PATH names a folder that does not exist, so
-        # it finds no gh, git or curl even by the default search path: it
-        # cannot reach GitHub or ntfy, and with no GITHUB_OUTPUT it writes
-        # nothing. 126 and up means it could not be executed or died on a
-        # signal.
+        # And one that starts. First it must be a native executable (ELF or
+        # Mach-O): env runs any other file through /bin/sh, which tells
+        # garbage apart from a real program only by "command not found".
+        magic=$(od -An -tx1 -N4 "$out/$TOOL" | tr -d ' \n')
+        case "$magic" in
+          7f454c46 | cffaedfe | cefaedfe | cafebabe) ;;
+          *)
+            echo "::error::build-ci-tool: $out/$TOOL was built but does not run (not a native executable: $magic)"
+            exit 1
+            ;;
+        esac
+        # Then run it once with no arguments and an empty environment, where
+        # every tool here stops at once (a usage error, "not a pull request",
+        # or the first command it needs not found). PATH names a folder that
+        # does not exist, so it finds no gh, git or curl even by the default
+        # search path: it cannot reach GitHub or ntfy, and with no
+        # GITHUB_OUTPUT it writes nothing. 126 or 128 and up means it could
+        # not be executed or died on a signal. 127 is ambiguous: a tool ported
+        # from a `set -e` script (secret_scan runs git first) exits 127 itself
+        # when that command is missing, printing "<bin>: line 49: git: command
+        # not found" as the script did. Only that counts as started: every
+        # other 127 fails, including env's own ("env: ...") and the dynamic
+        # loader's ("error while loading shared libraries").
         rc=0
-        env -i PATH="$out/no-such-dir" "$out/$TOOL" </dev/null >/dev/null 2>&1 || rc=$?
-        if [ "$rc" -ge 126 ]; then
-          echo "::error::build-ci-tool: $out/$TOOL was built but does not run (exit $rc)"
+        env -i PATH="$out/no-such-dir" "$out/$TOOL" </dev/null >/dev/null 2>"$out/$TOOL.start-err" || rc=$?
+        first=""
+        IFS= read -r first <"$out/$TOOL.start-err" || true
+        if [ "$rc" -eq 126 ] || [ "$rc" -ge 128 ] || { [ "$rc" -eq 127 ] && [ "${first%: command not found}" = "$first" ]; }; then
+          echo "::error::build-ci-tool: $out/$TOOL was built but does not run (exit $rc${first:+: $first})"
           exit 1
         fi
         echo "path=$out/$TOOL" >> "$GITHUB_OUTPUT"

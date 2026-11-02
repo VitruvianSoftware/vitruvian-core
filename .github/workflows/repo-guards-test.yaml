@@ -31,8 +31,10 @@
 #   //tools/ci:session_start_test                  .claude/session-start.sh and its steps
 #   //tools/ci:workflow_git_push_credentials_test  every workflow that pushes
 #   //tools/ci:require_pinned_actions_test         actionlint.yaml's rustc line
-#   //tools/ci:workflow_rustc_test                 every other workflow/action rustc
-#                                                  line, and the apt rustc fallbacks
+#   //tools/ci:build_ci_tool_test                  .github/actions/build-ci-tool and
+#                                                  every tool its callers build
+#   //tools/ci:workflow_rustc_test                 the remaining inline rustc lines
+#                                                  (gomod), and the apt rustc fallbacks
 #
 # It replaces block-queue-bypass-test, kube-setup-test, session-start-test and
 # workflow-git-push-credentials-test, which ran shell suites on these paths.
@@ -49,6 +51,7 @@ on:
       - "tools/ci/src/hook_tests/**"
       - "tools/ci/src/require_pinned_actions/**"
       - "tools/ci/src/workflow_git_push_credentials/**"
+      - "tools/ci/src/workflow_rustc/**"
   push:
     branches: [main]
     paths:
@@ -59,6 +62,7 @@ on:
       - "tools/ci/src/hook_tests/**"
       - "tools/ci/src/require_pinned_actions/**"
       - "tools/ci/src/workflow_git_push_credentials/**"
+      - "tools/ci/src/workflow_rustc/**"
 
 permissions:
   contents: read
@@ -91,4 +95,5 @@ jobs:
             //tools/ci:session_start_test \
             //tools/ci:workflow_git_push_credentials_test \
             //tools/ci:require_pinned_actions_test \
-            //tools/ci:workflow_rustc_test
+            //tools/ci:workflow_rustc_test \
+            //tools/ci:build_ci_tool_test

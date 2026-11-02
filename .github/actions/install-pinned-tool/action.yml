@@ -63,9 +63,19 @@ inputs:
 runs:
   using: composite
   steps:
+    # //tools/ci:install_pinned_tool, built with the runner's rustc (the
+    # callers set up no Bazel) by the shared action, which also installs
+    # rustc where the runner has none.
+    - name: Build //tools/ci:install_pinned_tool
+      id: ipt-bin
+      uses: ./.github/actions/build-ci-tool
+      with:
+        tool: install_pinned_tool
+
     - name: Install ${{ inputs.bin-name }} (pinned + checksum-verified)
       shell: bash
       env:
+        IPT_BIN: ${{ steps.ipt-bin.outputs.path }}
         IPT_BASE_URL: ${{ inputs.base-url }}
         IPT_ASSET: ${{ inputs.asset }}
         IPT_CHECKSUM_FILE: ${{ inputs.checksum-file }}
@@ -76,21 +86,6 @@ runs:
       run: |
         set -euo pipefail
         cd "${GITHUB_WORKSPACE}"
-        # The homelab queue runner's image carries no Rust toolchain; GitHub's
-        # ubuntu images do. Same fallback as queue-runner-watch.yaml.
-        # Fails here, by name, when apt cannot supply it (a failed install must not
-        # surface later as "rustc: command not found"). //tools/ci:workflow_rustc_test
-        # runs this block with apt failing.
-        if ! command -v rustc >/dev/null 2>&1; then
-          { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends rustc; } \
-            || { echo "::error::apt install rustc failed"; exit 1; }
-          command -v rustc >/dev/null 2>&1 \
-            || { echo "::error::rustc is still not on PATH after apt install"; exit 1; }
-        fi
-        # These three lines are run verbatim by //tools/ci:workflow_rustc_test.
-        rustc --edition 2021 -O --crate-type lib --crate-name shell_compat tools/shell-compat/src/lib.rs -o "$RUNNER_TEMP/libshell_compat.rlib"
-        rustc --edition 2021 -O --crate-type lib --crate-name install_pinned_tool tools/ci/src/install_pinned_tool/lib.rs -L "$RUNNER_TEMP" --extern shell_compat="$RUNNER_TEMP/libshell_compat.rlib" -o "$RUNNER_TEMP/libinstall_pinned_tool.rlib"
-        rustc --edition 2021 -O tools/ci/src/install_pinned_tool/main.rs -L "$RUNNER_TEMP" --extern shell_compat="$RUNNER_TEMP/libshell_compat.rlib" --extern install_pinned_tool="$RUNNER_TEMP/libinstall_pinned_tool.rlib" -o "$RUNNER_TEMP/install-pinned-tool"
         args=("${IPT_BASE_URL}" "${IPT_ASSET}" "${IPT_CHECKSUM_FILE}" "${IPT_CHECKSUM_PATTERN}" "${IPT_BIN_NAME}" "--${IPT_MODE}")
         if [ -n "${IPT_MEMBER_PATH}" ]; then args+=("${IPT_MEMBER_PATH}"); fi
-        "$RUNNER_TEMP/install-pinned-tool" "${args[@]}"
+        "$IPT_BIN" "${args[@]}"

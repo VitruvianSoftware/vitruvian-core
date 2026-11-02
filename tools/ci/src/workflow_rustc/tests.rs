@@ -37,28 +37,10 @@ use std::process::Command;
 
 /// (file, the binary its block writes to `$RUNNER_TEMP`), in file order.
 const EXPECT: &[(&str, &str)] = &[
-    (
-        ".github/actions/install-pinned-tool/action.yml",
-        "install-pinned-tool",
-    ),
-    (
-        ".github/workflows/backstage-image.yaml",
-        "backstage-boot-smoke",
-    ),
-    (".github/workflows/chart-render.yaml", "chart-render"),
-    (
-        ".github/workflows/chart-render.yaml",
-        "gitops-values-render",
-    ),
-    (".github/workflows/ci.yaml", "go-test-with-retry"),
+    // //tools/gomod:check lives outside tools/ci/src, so it does not fit
+    // .github/actions/build-ci-tool (which //tools/ci:build_ci_tool_test
+    // covers); its three lines stay inline in ci.yaml.
     (".github/workflows/ci.yaml", "tidy"),
-    (".github/workflows/gitops-validate.yaml", "gitops-validate"),
-    (".github/workflows/mcp-slack-image.yaml", "image-sbom-scan"),
-    (
-        ".github/workflows/migration-safety.yaml",
-        "migration-safety",
-    ),
-    (".github/workflows/supply-chain.yaml", "secret-scan"),
 ];
 
 /// Only blocks that build one of these are this test's business; a listed
@@ -177,9 +159,8 @@ fn every_workflow_rustc_line_builds_its_tool() {
 /// The files whose steps install rustc with apt when the runner has none (the
 /// homelab queue runner's image carries no Rust toolchain).
 const FALLBACKS: &[&str] = &[
-    ".github/actions/install-pinned-tool/action.yml",
+    ".github/actions/build-ci-tool/action.yml",
     ".github/workflows/actionlint.yaml",
-    ".github/workflows/migration-safety.yaml",
     ".github/workflows/queue-runner-watch.yaml",
 ];
 
@@ -199,14 +180,20 @@ fn fallback_block(file: &str, text: &str) -> String {
 }
 
 /// Run `block` then `echo REACHED` under `bash -eo pipefail` (GitHub's step
-/// shell) with only `fakes` on PATH.
+/// shell) with only `fakes` on PATH, on a self-hosted runner (where apt may
+/// install rustc).
 fn run_fallback(block: &str, fakes: &Path) -> std::process::Output {
+    run_fallback_on("self-hosted", block, fakes)
+}
+
+fn run_fallback_on(runner_env: &str, block: &str, fakes: &Path) -> std::process::Output {
     Command::new("/bin/bash")
         .arg("-eo")
         .arg("pipefail")
         .arg("-c")
         .arg(format!("{block}\necho REACHED"))
         .env("PATH", fakes)
+        .env("RUNNER_ENVIRONMENT", runner_env)
         .output()
         .expect("run bash")
 }
@@ -215,6 +202,38 @@ fn exe(path: &Path, body: &str) {
     use std::os::unix::fs::PermissionsExt;
     std::fs::write(path, body).unwrap();
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+/// build-ci-tool installs rustc with apt only on a self-hosted runner. On a
+/// GitHub-hosted one (or with RUNNER_ENVIRONMENT unset) a missing rustc is an
+/// image change: fail loudly, never install whatever rustc apt carries.
+#[test]
+fn build_ci_tool_installs_rustc_only_on_a_self_hosted_runner() {
+    let file = ".github/actions/build-ci-tool/action.yml";
+    let root = std::env::current_dir().unwrap();
+    let block = fallback_block(file, &std::fs::read_to_string(root.join(file)).unwrap());
+    for runner_env in ["github-hosted", ""] {
+        let fakes = tmpdir(&format!("gh-hosted-{runner_env}"));
+        exe(
+            &fakes.join("sudo"),
+            "#!/bin/bash\necho SUDO-CALLED\nexit 0\n",
+        );
+        let o = run_fallback_on(runner_env, &block, &fakes);
+        let out = String::from_utf8_lossy(&o.stdout);
+        assert_eq!(o.status.code(), Some(1), "{runner_env:?}: {out}");
+        assert!(
+            out.contains("::error::build-ci-tool: no rustc on this runner"),
+            "{runner_env:?}: {out}"
+        );
+        assert!(
+            !out.contains("SUDO-CALLED"),
+            "{runner_env:?}: apt ran: {out}"
+        );
+        assert!(
+            !out.contains("REACHED"),
+            "{runner_env:?}: went on without rustc"
+        );
+    }
 }
 
 #[test]
