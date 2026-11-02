@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! release-pr-dequeue.sh — take a component's release PR out of the merge
+//! release-pr-dequeue — take a component's release PR out of the merge
 //! queue when main has just gained a change that PR does not list.
 
 use shell_compat::{capture, cat, out, read_fields, subst};

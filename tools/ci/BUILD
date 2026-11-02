@@ -34,30 +34,14 @@ alias(
 exports_files([
     "agent-fast-lane.sh",
     "agent-fast-lane_test.sh",
-    "changelog-summary.sh",
-    "changelog-summary_test.sh",
-    "foundation-app-digest-guard.sh",
-    "foundation-app-digest-guard_test.sh",
     "llvm-cache-key.sh",
     "llvm-cache-key_test.sh",
     "llvm-cache-stage.sh",
     "llvm-cache-stage_test.sh",
-    "notify-ci-issues.sh",
-    "notify-ci-issues_test.sh",
-    "prune-pr-caches.sh",
-    "prune-pr-caches_test.sh",
-    "pulumi-summary.sh",
-    "pulumi-summary_test.sh",
     "queue-fast-pass.sh",
     "queue-fast-pass_test.sh",
     "queue-runner-watch.sh",
     "queue-runner-watch_test.sh",
-    "release-beta-gate.sh",
-    "release-beta-gate_test.sh",
-    "release-hold.sh",
-    "release-hold_test.sh",
-    "release-pr-dequeue.sh",
-    "release-pr-dequeue_test.sh",
     "relevant-paths.sh",
     "relevant-paths_test.sh",
 ])
@@ -94,13 +78,65 @@ sh_test(
 
 # Safety tests for the cache pruner. It DELETES, so the suite is mostly
 # negative: an open PR's cache, a branch cache, and an undeterminable PR state
-# must all survive.
-sh_test(
+# must all survive. Runs the REAL binary with a fake gh on PATH (hermetic: no
+# network, no token). Ported case for case from the former
+# prune-pr-caches_test.sh.
+rust_test(
     name = "prune_pr_caches_test",
     size = "small",
-    srcs = ["prune-pr-caches_test.sh"],
-    args = ["$(location prune-pr-caches.sh)"],
-    data = ["prune-pr-caches.sh"],
+    srcs = ["src/prune_pr_caches/tests.rs"],
+    data = [":prune_pr_caches"],
+    edition = "2021",
+    env = {"BIN": "$(rootpath :prune_pr_caches)"},
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":ci_testkit"],
+)
+
+# Jobs with no Bazel build these tools with the runner's rustc through
+# .github/actions/build-ci-tool. This runs that action's build step exactly as
+# written, with Bazel's rustc, for every tool a workflow asks it to build, and
+# checks each result answers like the Bazel-built binary. TOOLS must list the
+# tools the workflows build; the test fails when the two differ.
+_BUILD_CI_TOOLS = [
+    "changelog_summary",
+    "foundation_app_digest_guard",
+    "notify_ci_issues",
+    "prune_pr_caches",
+    "pulumi_summary",
+    "release_beta_gate",
+    "release_hold",
+    "release_pr_dequeue",
+]
+
+rust_test(
+    name = "build_ci_tool_test",
+    size = "medium",
+    srcs = ["src/build_ci_tool_test.rs"],
+    data = [
+        "//:composite_actions",
+        "//:workflow_files",
+        "//tools/shell-compat:src/lib.rs",
+        "@rules_rust//rust/toolchain:current_rust_stdlib_files",
+        "@rules_rust//rust/toolchain:current_rustc_files",
+        "@rules_rust//rust/toolchain:current_rustc_lib_files",
+        # The beta gate's fallback runs its real --jq through Bazel's jq.
+        "@jq_toolchains//:resolved_toolchain",
+    ] + [":" + t for t in _BUILD_CI_TOOLS] + [
+        "src/%s/%s.rs" % (t, f)
+        for t in _BUILD_CI_TOOLS
+        for f in [
+            "lib",
+            "main",
+        ]
+    ],
+    edition = "2021",
+    env = {
+        "JQ_BIN": "$(JQ_BIN)",
+        "REAL_RUSTC": "$(rootpath @rules_rust//rust/toolchain:current_rustc_files)",
+        "TOOLS": " ".join(_BUILD_CI_TOOLS),
+    },
+    rustc_flags = ["-Copt-level=3"],
+    toolchains = ["@jq_toolchains//:resolved_toolchain"],
 )
 
 # The mirror's release workflow for the standalone Nexus Agent never runs here;
@@ -748,23 +784,6 @@ rust_binary(
     ],
 )
 
-sh_binary(
-    name = "prune-pr-caches-sh",
-    srcs = ["prune-pr-caches.sh"],
-    visibility = ["//visibility:public"],
-)
-
-sh_test(
-    name = "prune_pr_caches_rs_test",
-    size = "small",
-    srcs = ["prune-pr-caches_test.sh"],
-    args = ["$(location :prune_pr_caches)"],
-    data = [
-        "prune-pr-caches.sh",
-        ":prune_pr_caches",
-    ],
-)
-
 # delivery-drift
 rust_library(
     name = "delivery_drift_lib",
@@ -985,25 +1004,18 @@ rust_binary(
     ],
 )
 
-sh_test(
+# Black-box: runs the REAL binary the way its workflow step does, with fake
+# programs on PATH (hermetic: no network, no token). Ported case for case from
+# the former pulumi-summary_test.sh.
+rust_test(
     name = "pulumi_summary_test",
     size = "small",
-    srcs = ["pulumi-summary_test.sh"],
-    args = ["$(location pulumi-summary.sh)"],
-    data = [
-        "pulumi-summary.sh",
-    ] + glob(["testdata/pulumi/*.txt"]),
-)
-
-sh_test(
-    name = "pulumi_summary_rs_test",
-    size = "small",
-    srcs = ["pulumi-summary_test.sh"],
-    args = ["$(location :pulumi_summary)"],
-    data = [
-        "pulumi-summary.sh",
-        ":pulumi_summary",
-    ] + glob(["testdata/pulumi/*.txt"]),
+    srcs = ["src/pulumi_summary/tests.rs"],
+    data = [":pulumi_summary"] + glob(["testdata/pulumi/*.txt"]),
+    edition = "2021",
+    env = {"BIN": "$(rootpath :pulumi_summary)"},
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":ci_testkit"],
 )
 
 # gitops-validate
@@ -1065,25 +1077,18 @@ rust_binary(
     ],
 )
 
-sh_test(
+# Black-box: runs the REAL binary the way its workflow step does, with fake
+# programs on PATH (hermetic: no network, no token). Ported case for case from
+# the former release-beta-gate_test.sh.
+rust_test(
     name = "release_beta_gate_test",
     size = "small",
-    srcs = ["release-beta-gate_test.sh"],
-    args = ["$(location release-beta-gate.sh)"],
-    data = [
-        "release-beta-gate.sh",
-    ],
-)
-
-sh_test(
-    name = "release_beta_gate_rs_test",
-    size = "small",
-    srcs = ["release-beta-gate_test.sh"],
-    args = ["$(location :release_beta_gate)"],
-    data = [
-        "release-beta-gate.sh",
-        ":release_beta_gate",
-    ],
+    srcs = ["src/release_beta_gate/tests.rs"],
+    data = [":release_beta_gate"],
+    edition = "2021",
+    env = {"BIN": "$(rootpath :release_beta_gate)"},
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":ci_testkit"],
 )
 
 # gitops-values-render
@@ -1312,31 +1317,26 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
-sh_test(
+# Black-box: runs the REAL binary the way its workflow step does, with fake
+# programs on PATH (hermetic: no network, no token). Ported case for case from
+# the former notify-ci-issues_test.sh.
+rust_test(
     name = "notify_ci_issues_test",
     size = "small",
-    srcs = ["notify-ci-issues_test.sh"],
-    args = ["$(location notify-ci-issues.sh)"],
+    srcs = ["src/notify_ci_issues/tests.rs"],
+    # Bazel's jq, not one on PATH: the RBE image has none.
     data = [
-        "notify-ci-issues.sh",
-        "@jq_toolchains//:resolved_toolchain",
-    ],
-    env = {"JQ_BIN": "$(JQ_BIN)"},
-    toolchains = ["@jq_toolchains//:resolved_toolchain"],
-)
-
-sh_test(
-    name = "notify_ci_issues_rs_test",
-    size = "small",
-    srcs = ["notify-ci-issues_test.sh"],
-    args = ["$(location :notify_ci_issues)"],
-    data = [
-        "notify-ci-issues.sh",
         ":notify_ci_issues",
         "@jq_toolchains//:resolved_toolchain",
     ],
-    env = {"JQ_BIN": "$(JQ_BIN)"},
+    edition = "2021",
+    env = {
+        "BIN": "$(rootpath :notify_ci_issues)",
+        "JQ_BIN": "$(JQ_BIN)",
+    },
+    rustc_flags = ["-Copt-level=3"],
     toolchains = ["@jq_toolchains//:resolved_toolchain"],
+    deps = [":ci_testkit"],
 )
 
 # queue-fast-pass
@@ -1489,25 +1489,18 @@ rust_binary(
     ],
 )
 
-sh_test(
+# Black-box: runs the REAL binary the way its workflow step does, with fake
+# programs on PATH (hermetic: no network, no token). Ported case for case from
+# the former release-hold_test.sh.
+rust_test(
     name = "release_hold_test",
     size = "small",
-    srcs = ["release-hold_test.sh"],
-    args = ["$(location release-hold.sh)"],
-    data = [
-        "release-hold.sh",
-    ],
-)
-
-sh_test(
-    name = "release_hold_rs_test",
-    size = "small",
-    srcs = ["release-hold_test.sh"],
-    args = ["$(location :release_hold)"],
-    data = [
-        "release-hold.sh",
-        ":release_hold",
-    ],
+    srcs = ["src/release_hold/tests.rs"],
+    data = [":release_hold"],
+    edition = "2021",
+    env = {"BIN": "$(rootpath :release_hold)"},
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":ci_testkit"],
 )
 
 # secret-scan
@@ -1707,25 +1700,18 @@ rust_binary(
     ],
 )
 
-sh_test(
+# Black-box: runs the REAL binary the way its workflow step does, with fake
+# programs on PATH (hermetic: no network, no token). Ported case for case from
+# the former changelog-summary_test.sh.
+rust_test(
     name = "changelog_summary_test",
     size = "small",
-    srcs = ["changelog-summary_test.sh"],
-    args = ["$(location changelog-summary.sh)"],
-    data = [
-        "changelog-summary.sh",
-    ],
-)
-
-sh_test(
-    name = "changelog_summary_rs_test",
-    size = "small",
-    srcs = ["changelog-summary_test.sh"],
-    args = ["$(location :changelog_summary)"],
-    data = [
-        "changelog-summary.sh",
-        ":changelog_summary",
-    ],
+    srcs = ["src/changelog_summary/tests.rs"],
+    data = [":changelog_summary"],
+    edition = "2021",
+    env = {"BIN": "$(rootpath :changelog_summary)"},
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":ci_testkit"],
 )
 
 # relevant-paths
@@ -1882,27 +1868,22 @@ rust_binary(
     ],
 )
 
-sh_test(
+# Black-box: runs the REAL binary the way its workflow step does, with fake
+# programs on PATH (hermetic: no network, no token). Ported case for case from
+# the former release-pr-dequeue_test.sh.
+rust_test(
     name = "release_pr_dequeue_test",
     size = "small",
-    srcs = ["release-pr-dequeue_test.sh"],
-    args = ["$(location release-pr-dequeue.sh)"],
+    srcs = ["src/release_pr_dequeue/tests.rs"],
+    # vitruvian-release.yaml: the dequeue must run before release-please.
     data = [
-        "release-pr-dequeue.sh",
-        "//:workflow_files",
-    ],
-)
-
-sh_test(
-    name = "release_pr_dequeue_rs_test",
-    size = "small",
-    srcs = ["release-pr-dequeue_test.sh"],
-    args = ["$(location :release_pr_dequeue)"],
-    data = [
-        "release-pr-dequeue.sh",
         ":release_pr_dequeue",
         "//:workflow_files",
     ],
+    edition = "2021",
+    env = {"BIN": "$(rootpath :release_pr_dequeue)"},
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":ci_testkit"],
 )
 
 # foundation-app-digest-guard
@@ -1938,25 +1919,18 @@ rust_test(
     rustc_flags = ["-Copt-level=3"],
 )
 
-sh_test(
+# Black-box: runs the REAL binary the way its workflow step does, with fake
+# programs on PATH (hermetic: no network, no token). Ported case for case from
+# the former foundation-app-digest-guard_test.sh.
+rust_test(
     name = "foundation_app_digest_guard_test",
     size = "small",
-    srcs = ["foundation-app-digest-guard_test.sh"],
-    args = ["$(location foundation-app-digest-guard.sh)"],
-    data = [
-        "foundation-app-digest-guard.sh",
-    ],
-)
-
-sh_test(
-    name = "foundation_app_digest_guard_rs_test",
-    size = "small",
-    srcs = ["foundation-app-digest-guard_test.sh"],
-    args = ["$(location :foundation_app_digest_guard)"],
-    data = [
-        "foundation-app-digest-guard.sh",
-        ":foundation_app_digest_guard",
-    ],
+    srcs = ["src/foundation_app_digest_guard/tests.rs"],
+    data = [":foundation_app_digest_guard"],
+    edition = "2021",
+    env = {"BIN": "$(rootpath :foundation_app_digest_guard)"},
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":ci_testkit"],
 )
 
 # fast-lane-report

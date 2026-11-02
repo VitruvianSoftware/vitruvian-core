@@ -73,6 +73,13 @@ jobs:
       # queued release PR could not be refreshed and merged without the change
       # that just landed (#2938). Out of the queue it can; release-beta-gate.yaml
       # queues it again once the beta DMG exists for the new code.
+      - name: Build //tools/ci:release_pr_dequeue (no Bazel on this job)
+        id: dequeue-bin
+        if: ${{ inputs.tag == '' }}
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: release_pr_dequeue
+
       - name: Take a stale release PR out of the merge queue
         if: ${{ inputs.tag == '' }}
         env:
@@ -81,7 +88,8 @@ jobs:
           COMPONENT: vitruvian
           CODE_PATH: apps/desktop/vitruvian
           MAIN_SHA: ${{ github.sha }}
-        run: bash tools/ci/release-pr-dequeue.sh
+          DEQUEUE_BIN: ${{ steps.dequeue-bin.outputs.path }}
+        run: '"$DEQUEUE_BIN"'
 
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release

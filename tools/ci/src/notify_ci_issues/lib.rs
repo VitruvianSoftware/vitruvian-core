@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! notify-ci-issues.sh — poll for stuck approvals and main-branch failures,
+//! notify-ci-issues — poll for stuck approvals and main-branch failures,
 //! push an ntfy notification for each. Always exits 0.
 
 use shell_compat::{capture, cat, env_or, env_or_empty, err, out, subst};
@@ -130,6 +130,8 @@ fn notify(title: &[u8], message: &[u8], priority: &[u8], tags: &[u8], url: &[u8]
             .arg(r#"{"topic":"vitruvian-alerts","title":$title,"message":$message,"priority":$priority,"tags":$tags,"click":$click}"#),
     );
     if !r.ok() {
+        // Silence is the failure this tool exists to prevent: say so.
+        err(&cat(&[b"WARN: ntfy push failed for: ", title, b"\n"]));
         return;
     }
     let body = subst(r.stdout);
@@ -415,9 +417,12 @@ fn check_queue_bypass(repo: &[u8], cutoff: &[u8], allow_list: &[u8]) {
                 continue;
             }
         };
-        let tested: i64 = match tested_str.parse() {
-            Ok(n) => n,
-            Err(_) => {
+        // The script's `[[ $tested =~ ^[0-9]+$ ]]`: digits only, so "-1",
+        // "+0" or "null" is unreadable, never "untested".
+        let digits = !tested_str.is_empty() && tested_str.bytes().all(|c| c.is_ascii_digit());
+        let tested: u64 = match tested_str.parse() {
+            Ok(n) if digits => n,
+            _ => {
                 let sha_short = if sha.len() >= 9 { &sha[..9] } else { sha };
                 err(&cat(&[
                     b"WARN: cannot tell whether ",
