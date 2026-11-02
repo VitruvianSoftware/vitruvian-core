@@ -304,6 +304,7 @@ public final class AppearancePreferences: ObservableObject {
         static let fontSizeScale = "courier.appearance.fontSizeScale"
         static let zoomPercent = "courier.appearance.zoomPercent"
         static let reduceTransparency = "courier.appearance.reduceTransparency"
+        static let useLiquidGlass = "courier.appearance.useLiquidGlass"
         static let enableMessageAnimations = "courier.appearance.enableMessageAnimations"
         static let balanceMessageText = "courier.appearance.balanceMessageText"
         static let usePointerCursor = "courier.appearance.usePointerCursor"
@@ -504,6 +505,38 @@ public final class AppearancePreferences: ObservableObject {
         }
     }
 
+    /// Settings ▸ Appearance ▸ Use Liquid Glass: the sidebar's space bar, the composer, the side panes (thread,
+    /// Chat Info, Calendar) and the floating panels (search, the command bar) drawn in Apple's Liquid Glass. On by
+    /// default where the Mac has it (macOS 26 and later). A chat's wallpaper never sits behind glass: the chat pane
+    /// itself stays plain, so a busy picture can't make the messages or the composer harder to read.
+    @Published public var useLiquidGlass: Bool {
+        didSet {
+            guard !isInitializing else { return }
+            guard AppLockGate.shared.canPerform(.settingsChange) else {
+                isInitializing = true
+                useLiquidGlass = oldValue
+                isInitializing = false
+                return
+            }
+            defaults.set(useLiquidGlass, forKey: Keys.useLiquidGlass)
+        }
+    }
+
+    /// Whether this Mac can draw Liquid Glass at all. The option is shown only where it can.
+    public let liquidGlassIsSupported: Bool
+
+    /// macOS 26 and later draw Liquid Glass.
+    public nonisolated static var systemSupportsLiquidGlass: Bool {
+        if #available(macOS 26.0, *) { return true }
+        return false
+    }
+
+    /// Whether the views draw Liquid Glass now: the Mac supports it, the person has it on, and Reduce transparency
+    /// (which asks for solid backgrounds) is off.
+    public var liquidGlassIsActive: Bool {
+        liquidGlassIsSupported && useLiquidGlass && !reduceTransparency
+    }
+
     @Published public var enableMessageAnimations: Bool {
         didSet {
             guard !isInitializing else { return }
@@ -644,9 +677,11 @@ public final class AppearancePreferences: ObservableObject {
     public init(
         defaults: UserDefaults = .standard,
         themeFileLoader: any ThemeFileLoader = UnavailableThemeFileLoader(),
-        appIconApplier: any AppIconApplying = MACAppIconApplier()
+        appIconApplier: any AppIconApplying = MACAppIconApplier(),
+        liquidGlassSupported: Bool = AppearancePreferences.systemSupportsLiquidGlass
     ) {
         self.defaults = defaults
+        self.liquidGlassIsSupported = liquidGlassSupported
         self.themeFileLoader = themeFileLoader
         self.appIconApplier = appIconApplier
 
@@ -705,6 +740,7 @@ public final class AppearancePreferences: ObservableObject {
         }
 
         self.reduceTransparency = defaults.object(forKey: Keys.reduceTransparency) as? Bool ?? false
+        self.useLiquidGlass = defaults.object(forKey: Keys.useLiquidGlass) as? Bool ?? true
         self.enableMessageAnimations = defaults.object(forKey: Keys.enableMessageAnimations) as? Bool ?? true
         self.balanceMessageText = defaults.object(forKey: Keys.balanceMessageText) as? Bool ?? true
         self.usePointerCursor = defaults.object(forKey: Keys.usePointerCursor) as? Bool ?? false

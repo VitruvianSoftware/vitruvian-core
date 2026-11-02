@@ -754,6 +754,7 @@ private struct ConversationHeader: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
         .frame(minHeight: 48)
+        .courierSurface(.headerBar)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)
     }

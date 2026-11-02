@@ -124,4 +124,63 @@ final class WindowLayoutTests: XCTestCase {
             XCTAssertEqual(sizes.count, 2)
         }
     }
+
+    /// Settings ▸ Appearance ▸ Use Liquid Glass: the surfaces that change, with it on and off, over a colourful window
+    /// so the glass shows. Look at liquid-glass-on and liquid-glass-off: off is the look before the option.
+    func testLiquidGlassSurfacesSnapshots() throws {
+        func surfaces(glass: Bool) -> some View {
+            ZStack {
+                LinearGradient(colors: [.teal, .indigo, .pink], startPoint: .topLeading, endPoint: .bottomTrailing)
+                HStack(alignment: .top, spacing: 16) {
+                    VStack(spacing: 10) {
+                        ForEach(0 ..< 5) { index in
+                            RoundedRectangle(cornerRadius: 10).fill(Color.accentColor.opacity(0.2 + 0.15 * Double(index)))
+                                .frame(width: 40, height: 40)
+                        }
+                        Spacer()
+                    }
+                    .padding(.vertical, 10)
+                    .frame(width: SpaceBar.width)
+                    .frame(maxHeight: .infinity)
+                    .courierSurface(.sidebarStrip)
+                    VStack(spacing: 16) {
+                        Text("Search chats and messages")
+                            .padding(14)
+                            .frame(width: 300, alignment: .leading)
+                            .courierSurface(.floatingPanel(cornerRadius: 12, opaque: false))
+                        Text("Command Bar")
+                            .padding(14)
+                            .frame(width: 300, alignment: .leading)
+                            .courierSurface(.floatingPanel(cornerRadius: 12, opaque: true))
+                        Spacer()
+                        Text("Message")
+                            .foregroundStyle(.secondary)
+                            .padding(10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .courierSurface(.composerBar)
+                    }
+                    .padding(.vertical, 16)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Chat Info").font(.headline)
+                        Text("Members, media and links").foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    .padding(12)
+                    .frame(width: 200)
+                    .frame(maxHeight: .infinity)
+                    .courierSurface(.sidePane)
+                }
+            }
+            .environment(\.liquidGlass, glass)
+        }
+        for (name, glass) in [("liquid-glass-on", true), ("liquid-glass-off", false)] {
+            let sizes = try Snapshot.render(name, width: 760, height: 420) { surfaces(glass: glass) }
+            XCTAssertEqual(sizes.count, 2)
+        }
+        if AppearancePreferences.systemSupportsLiquidGlass {
+            let on = try Data(contentsOf: Snapshot.directory.appendingPathComponent("liquid-glass-on-light.png"))
+            let off = try Data(contentsOf: Snapshot.directory.appendingPathComponent("liquid-glass-off-light.png"))
+            XCTAssertNotEqual(on, off, "with the option on, the surfaces draw differently from the plain look")
+        }
+    }
 }

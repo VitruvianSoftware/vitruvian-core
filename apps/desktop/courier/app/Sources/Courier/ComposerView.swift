@@ -180,7 +180,7 @@ struct ComposerView: View {
             }
         }
         .padding(10)
-        .background(.bar)
+        .courierSurface(.composerBar)
         .sheet(item: $ui.link) { request in LinkDialog(request: request) }
         .onChange(of: composer.mentionQuery?.text) { _, _ in findMembers() }
         // ⌘⇧K, the bar's Link, or the Message menu's Link…: the dialog, over the range asked for.

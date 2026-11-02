@@ -398,6 +398,13 @@ public final class SettingsNavigationModel: ObservableObject {
             keywords: ["reduce transparency", "transparency", "blur", "vibrancy", "contrast"]
         ),
         SettingDefinition(
+            id: "appearance.liquidGlass",
+            pane: .appearance,
+            section: "Display & Typography",
+            title: "Use Liquid Glass",
+            keywords: ["liquid glass", "glass", "translucent", "material", "sidebar", "toolbar", "macos 26"]
+        ),
+        SettingDefinition(
             id: "appearance.enableMessageAnimations",
             pane: .appearance,
             section: "Display & Typography",
@@ -957,6 +964,7 @@ public final class SettingsNavigationModel: ObservableObject {
         "appearance.fontSize",
         "appearance.zoomLevel",
         "appearance.reduceTransparency",
+        "appearance.liquidGlass",
         "appearance.enableMessageAnimations",
         "appearance.balanceMessageText",
         "appearance.usePointerCursor",

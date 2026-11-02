@@ -852,6 +852,24 @@ struct AppearanceSettingsPane: View {
             .help(String(localized: "Replaces translucent materials and blurs with solid backgrounds."))
             .settingAnchor("appearance.reduceTransparency", highlighted: highlightedSettingID)
 
+            // Only where the Mac draws Liquid Glass (macOS 26 and later). Reduce transparency wins over it.
+            if appearance.liquidGlassIsSupported {
+                VStack(alignment: .leading, spacing: 2) {
+                    Toggle(
+                        SettingsNavigationModel.title(for: "appearance.liquidGlass"),
+                        isOn: $appearance.useLiquidGlass
+                    )
+                    .disabled(appearance.reduceTransparency)
+                    Text(appearance.reduceTransparency
+                        ? String(localized: "Off while Reduce transparency is on.")
+                        : String(localized: "The space bar, the chat’s header and message box, the side panes, search and the command bar in Apple’s Liquid Glass. The messages and a chat’s wallpaper stay on a plain background."))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .settingAnchor("appearance.liquidGlass", highlighted: highlightedSettingID)
+            }
+
             Toggle(
                 SettingsNavigationModel.title(for: "appearance.enableMessageAnimations"),
                 isOn: $appearance.enableMessageAnimations

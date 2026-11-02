@@ -211,6 +211,38 @@ final class AppearancePreferencesTests: XCTestCase {
         XCTAssertFalse(prefs.effectiveTheme(for: "!room2:courier.local").isOverriddenForRoom)
     }
 
+    /// Settings ▸ Appearance ▸ Use Liquid Glass: on by default where the Mac draws it, never on where it can't, off
+    /// while Reduce transparency is on, and remembered.
+    func testLiquidGlassIsOnByDefaultWhereSupportedAndRemembered() {
+        let name = "courier.appearance.glass.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        defer { defaults.removePersistentDomain(forName: name) }
+
+        let supported = AppearancePreferences(defaults: defaults, appIconApplier: FakeAppIconApplier(),
+                                              liquidGlassSupported: true)
+        XCTAssertTrue(supported.useLiquidGlass)
+        XCTAssertTrue(supported.liquidGlassIsActive)
+
+        let unsupported = AppearancePreferences(defaults: defaults, appIconApplier: FakeAppIconApplier(),
+                                                liquidGlassSupported: false)
+        XCTAssertFalse(unsupported.liquidGlassIsSupported)
+        XCTAssertFalse(unsupported.liquidGlassIsActive, "an older Mac keeps the plain look")
+
+        supported.reduceTransparency = true
+        XCTAssertFalse(supported.liquidGlassIsActive, "Reduce transparency asks for solid backgrounds")
+        supported.reduceTransparency = false
+
+        supported.useLiquidGlass = false
+        XCTAssertFalse(supported.liquidGlassIsActive)
+        let reloaded = AppearancePreferences(defaults: defaults, appIconApplier: FakeAppIconApplier(),
+                                             liquidGlassSupported: true)
+        XCTAssertFalse(reloaded.useLiquidGlass, "the choice outlives a relaunch")
+        XCTAssertEqual(AppearancePreferences.systemSupportsLiquidGlass,
+                       ProcessInfo.processInfo.isOperatingSystemAtLeast(OperatingSystemVersion(majorVersion: 26,
+                                                                                               minorVersion: 0,
+                                                                                               patchVersion: 0)))
+    }
+
     func testZoomAndFontSizeSteppingClampsToBounds() {
         let suiteName = "test.courier.appearance.stepping.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
