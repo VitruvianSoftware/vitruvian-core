@@ -25,9 +25,12 @@
 //! not in yet. The gate waits for it (polling every POLL_SECONDS, default 30,
 //! for up to WAIT_SECONDS, default 2400) and then judges its result; still
 //! running after that, it blocks as not yet soaked. Ignoring it, as the gate
-//! once did by reading only completed runs, judged an older run instead and
-//! let the promotion's Pulumi applies start while the development deploy still
-//! held Pulumi Cloud's account-wide lock (v1.15.4: a 409 on every retry, #4176).
+//! once did by reading only completed runs, judged an older run instead
+//! (#4176).
+//!
+//! A run whose development caller job was skipped (the app was unaffected)
+//! will never deploy development, so it is passed over at once, whatever the
+//! rest of that run is still doing.
 
 use shell_compat::{capture, cat, env, env_or, env_or_empty, err, lines, out, subst};
 use std::process::Command;
@@ -132,6 +135,11 @@ fn scan(
         ]));
     }
     let runs = subst(r.stdout);
+    // "<caller> / <job>" -> "<caller>", the name the calling job has when skipped.
+    let caller = dev_job_name
+        .windows(3)
+        .position(|w| w == b" / ")
+        .map_or(dev_job_name, |p| &dev_job_name[..p]);
 
     for run_line in lines(&runs) {
         if run_line.is_empty() {
@@ -182,15 +190,29 @@ fn scan(
         // None: the run has no such job (yet). Some(empty): it is queued or
         // running.
         let mut conclusion: Option<Vec<u8>> = None;
+        // The calling job was skipped: orchestrate found the app unaffected, so
+        // this run will never deploy development. GitHub then lists the caller
+        // only under its bare name ("<unit>-development", no " / deploy"), and
+        // does so as soon as orchestrate finishes, while the rest of the run may
+        // go on for hours (an approval-gated production job). Waiting for that
+        // run would hold, then block, a promotion while development is green.
+        let mut caller_skipped = false;
         for job_line in lines(&jobs) {
             if let Some(tab_pos) = job_line.iter().position(|&c| c == b'\t') {
                 let name = &job_line[..tab_pos];
+                let c = &job_line[tab_pos + 1..];
                 if name == dev_job_name {
-                    let c = &job_line[tab_pos + 1..];
                     conclusion = Some(if c == b"null" { Vec::new() } else { c.to_vec() });
                     break;
                 }
+                if caller != dev_job_name && name == caller && c == b"skipped" {
+                    caller_skipped = true;
+                }
             }
+        }
+        if conclusion.is_none() && caller_skipped {
+            // No development deploy here: the previous run's result stands.
+            continue;
         }
         let conclusion = match conclusion {
             // A finished run without the job never deployed development.

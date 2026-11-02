@@ -495,9 +495,9 @@ fn allow_unsoaked_empty_does_not_bypass() {
 }
 
 // --- a development deploy still running is waited for, not ignored (#4176) --
-// The release commit's own push run deploys development while the release run
-// starts; judging an older finished run instead promoted unsoaked code and
-// started the promotion's Pulumi applies under the dev deploy's lock.
+// A push run can still be deploying development when the release run starts;
+// judging an older finished run instead promotes before that deploy is in, and
+// starts the promotion's Pulumi applies under the dev deploy's lock.
 
 #[test]
 fn running_dev_deploy_is_waited_for_then_its_green_decides() {
@@ -617,4 +617,120 @@ fn run_list_uses_the_configured_branch() {
         " -b release-1 ",
         "BRANCH reaches gh run list",
     );
+}
+
+// --- a run that will never deploy development is not waited for ------------
+// When orchestrate finds the app unaffected, GitHub lists the skipped calling
+// job under its bare name ("deploy-dev", no " / deploy") as soon as
+// orchestrate finishes. The run itself may stay open for hours on an
+// approval-gated production job; waiting for it would block a green release.
+
+#[test]
+fn running_run_whose_dev_caller_was_skipped_is_not_waited_for() {
+    let g = Gate::new();
+    g.file("runs.txt", "901\tin_progress\n900\tcompleted\n")
+        .file(
+            "jobs.901",
+            &jobs(&[
+                ("orchestrate", "success"),
+                ("deploy-dev", "skipped"),
+                ("identity-production / deploy", "null"),
+            ]),
+        )
+        .file("jobs.900", &jobs(&[(JOB, "success")]));
+    let o = g.run(&[("WAIT_SECONDS", "0")]);
+    assert_eq!(
+        o.code,
+        0,
+        "a run that skips dev must not hold the gate:\n{}",
+        o.all()
+    );
+    assert!(!o.stdout.contains("waiting"), "no wait:\n{}", o.all());
+    assert_has(
+        &o.stdout,
+        "succeeded in run 900",
+        "the previous run decides",
+    );
+}
+
+#[test]
+fn skipped_dev_caller_defers_to_a_red_previous_run() {
+    let g = Gate::new();
+    g.file("runs.txt", "901\tin_progress\n900\tcompleted\n")
+        .file(
+            "jobs.901",
+            &jobs(&[("orchestrate", "success"), ("deploy-dev", "skipped")]),
+        )
+        .file("jobs.900", &jobs(&[(JOB, "failure")]));
+    let o = g.run(&[("WAIT_SECONDS", "0")]);
+    assert_eq!(
+        o.code,
+        1,
+        "development is still red from run 900:\n{}",
+        o.all()
+    );
+    assert_has(&o.all(), "actions/runs/900", "the block names the red run");
+}
+
+#[test]
+fn dev_caller_not_yet_decided_is_waited_for() {
+    // Orchestrate still running: the caller is listed but has no conclusion.
+    let g = Gate::new();
+    g.file("runs.txt", "901\tin_progress\n900\tcompleted\n")
+        .file(
+            "jobs.901",
+            &jobs(&[("orchestrate", "null"), ("deploy-dev", "null")]),
+        )
+        .file("jobs.900", &jobs(&[(JOB, "success")]));
+    let o = g.run(&[("WAIT_SECONDS", "0")]);
+    assert_eq!(
+        o.code,
+        1,
+        "the run may still deploy development; an older green must not decide:\n{}",
+        o.all()
+    );
+    assert_has(&o.all(), "still running in run 901", "the block says why");
+}
+
+#[test]
+fn running_dev_deploy_is_waited_for_even_when_another_units_caller_is_skipped() {
+    // "deploy-dev-web" is another unit's caller, not this one's.
+    let g = Gate::new();
+    g.file("runs.txt.1", "901\tin_progress\n900\tcompleted\n")
+        .file("runs.txt", "901\tcompleted\n900\tcompleted\n")
+        .file(
+            "jobs.901.1",
+            &jobs(&[("deploy-dev-web", "skipped"), (JOB, "null")]),
+        )
+        .file(
+            "jobs.901",
+            &jobs(&[("deploy-dev-web", "skipped"), (JOB, "success")]),
+        )
+        .file("jobs.900", &jobs(&[(JOB, "failure")]));
+    let o = g.run(&[]);
+    assert_eq!(o.code, 0, "{}", o.all());
+    assert_has(&o.stdout, "waiting", "the deploy in progress is waited for");
+    assert_has(&o.stdout, "succeeded in run 901", "and then decides");
+}
+
+#[test]
+fn another_units_skipped_caller_does_not_pass_over_the_run() {
+    // Our caller is not listed yet (its needs are still running); a different
+    // unit's skipped caller says nothing about whether this run deploys ours.
+    let g = Gate::new();
+    g.file("runs.txt.1", "901\tin_progress\n900\tcompleted\n")
+        .file("runs.txt", "901\tcompleted\n900\tcompleted\n")
+        .file(
+            "jobs.901.1",
+            &jobs(&[("orchestrate", "success"), ("deploy-dev-web", "skipped")]),
+        )
+        .file(
+            "jobs.901",
+            &jobs(&[("deploy-dev-web", "skipped"), (JOB, "success")]),
+        )
+        .file("jobs.900", &jobs(&[(JOB, "failure")]));
+    let o = g.run(&[]);
+    assert_eq!(o.code, 0, "{}", o.all());
+    assert_has(&o.stdout, "waiting", "the run is waited for");
+    assert_has(&o.stdout, "succeeded in run 901", "and then decides");
 }
