@@ -172,19 +172,22 @@ jobs:
       # exists for osv-scan, which is the check that benefits from it. secret-scan
       # still runs on every pull_request/push/merge_group, so its required-check
       # behaviour is unchanged.
+      - name: Build //tools/ci:secret_scan (no Bazel on this job)
+        if: github.event_name != 'schedule'
+        id: secret-scan-bin
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: secret_scan
+
       - name: Scan added commits for secrets
         if: github.event_name != 'schedule'
         env:
+          SECRET_SCAN: ${{ steps.secret-scan-bin.outputs.path }}
           BASE_REF: ${{ github.event_name == 'pull_request' && github.base_ref || '' }}
           BASE_REV: ${{ github.event_name == 'push' && github.event.before || github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
-        # //tools/ci:secret_scan, built with the runner's rustc (this job sets
-        # up no Bazel). //tools/ci:workflow_rustc_test runs these lines.
         run: |
           set -euo pipefail
-          rustc --edition 2021 -O --crate-type lib --crate-name shell_compat tools/shell-compat/src/lib.rs -o "$RUNNER_TEMP/libshell_compat.rlib"
-          rustc --edition 2021 -O --crate-type lib --crate-name secret_scan tools/ci/src/secret_scan/lib.rs -L "$RUNNER_TEMP" --extern shell_compat="$RUNNER_TEMP/libshell_compat.rlib" -o "$RUNNER_TEMP/libsecret_scan.rlib"
-          rustc --edition 2021 -O tools/ci/src/secret_scan/main.rs -L "$RUNNER_TEMP" --extern shell_compat="$RUNNER_TEMP/libshell_compat.rlib" --extern secret_scan="$RUNNER_TEMP/libsecret_scan.rlib" -o "$RUNNER_TEMP/secret-scan"
-          "$RUNNER_TEMP/secret-scan"
+          "$SECRET_SCAN"
 
   # A red NIGHTLY osv-scan is the only signal that a new advisory hit a
   # dependency already on main (PR/push runs report-but-pass on those), and a

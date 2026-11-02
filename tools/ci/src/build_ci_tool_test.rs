@@ -136,6 +136,41 @@ fn callers() -> Vec<(String, String)> {
     found
 }
 
+/// The `deps:` each caller passes with a tool (empty when it passes none).
+fn caller_deps() -> std::collections::BTreeMap<String, String> {
+    let mut deps = std::collections::BTreeMap::new();
+    for dir in [".github/workflows", ".github/actions"] {
+        for e in fs::read_dir(dir).unwrap() {
+            let p = e.unwrap().path();
+            let f = if p.is_dir() { p.join("action.yml") } else { p };
+            if !f.exists() {
+                continue;
+            }
+            let text = read(&f);
+            let lines: Vec<&str> = text.lines().collect();
+            for (i, l) in lines.iter().enumerate() {
+                if l.trim().trim_start_matches("- ") != USES {
+                    continue;
+                }
+                let near: Vec<&str> = lines[i + 1..].iter().take(4).map(|n| n.trim()).collect();
+                let tool = near.iter().find_map(|n| n.strip_prefix("tool: ")).unwrap();
+                let d = near
+                    .iter()
+                    .find_map(|n| n.strip_prefix("deps: "))
+                    .unwrap_or("");
+                deps.insert(tool.trim().to_string(), d.trim().to_string());
+            }
+        }
+    }
+    deps
+}
+
+/// The std-only crates the action's `deps` input may name, at their paths.
+const DEP_SOURCES: &[&str] = &[
+    "tools/ci/src/transient_lib/lib.rs",
+    "tools/gitops/appset-render/src",
+];
+
 /// A copy of the sources the step reads, laid out as in a checkout.
 fn workspace(tools: &BTreeSet<String>) -> PathBuf {
     let ws = tmp();
@@ -145,6 +180,15 @@ fn workspace(tools: &BTreeSet<String>) -> PathBuf {
         fs::copy(rel, &dst).unwrap_or_else(|e| panic!("copy {rel}: {e}"));
     };
     copy("tools/shell-compat/src/lib.rs");
+    for d in DEP_SOURCES {
+        if Path::new(d).is_dir() {
+            for e in fs::read_dir(d).unwrap() {
+                copy(&e.unwrap().path().display().to_string());
+            }
+        } else {
+            copy(d);
+        }
+    }
     for t in tools {
         copy(&format!("tools/ci/src/{t}/lib.rs"));
         copy(&format!("tools/ci/src/{t}/main.rs"));
@@ -173,6 +217,17 @@ struct Step {
 }
 
 fn run_step(script: &str, tool: &str, ws: &Path, runner_temp: &Path, shim: &Path) -> Step {
+    run_step_deps(script, tool, "", ws, runner_temp, shim)
+}
+
+fn run_step_deps(
+    script: &str,
+    tool: &str,
+    deps: &str,
+    ws: &Path,
+    runner_temp: &Path,
+    shim: &Path,
+) -> Step {
     let gho = tmp().join("github_output");
     fs::write(&gho, "").unwrap();
     let path = format!(
@@ -187,6 +242,7 @@ fn run_step(script: &str, tool: &str, ws: &Path, runner_temp: &Path, shim: &Path
         .arg("-c")
         .arg(script)
         .env("TOOL", tool)
+        .env("DEPS", deps)
         .env("GITHUB_WORKSPACE", ws)
         .env("RUNNER_TEMP", runner_temp)
         .env("GITHUB_OUTPUT", &gho)
@@ -214,7 +270,12 @@ fn bare(bin: &Path, cwd: &Path) -> (Option<i32>, String, String) {
         .current_dir(cwd)
         .output()
         .unwrap_or_else(|e| panic!("run {}: {e}", bin.display()));
-    (o.status.code(), text(&o.stdout), text(&o.stderr))
+    // A tool that names itself in a message (as bash names $0, e.g. "<path>:
+    // line 49: git: command not found") does so by the path it was run from,
+    // which differs between the two builds by construction.
+    let me = bin.display().to_string();
+    let scrub = |b: &[u8]| text(b).replace(&me, "<bin>");
+    (o.status.code(), scrub(&o.stdout), scrub(&o.stderr))
 }
 
 #[test]
@@ -238,8 +299,9 @@ fn every_tool_a_workflow_builds_compiles_with_the_actions_own_rustc_lines() {
     let runner_temp = tmp();
     let shim = rustc_shim();
     // One RUNNER_TEMP for every tool, as in a job that builds two of them.
+    let deps = caller_deps();
     for t in &tools {
-        let s = run_step(&script, t, &ws, &runner_temp, &shim);
+        let s = run_step_deps(&script, t, &deps[t], &ws, &runner_temp, &shim);
         assert!(
             s.out.status.success(),
             "building {t} failed ({:?})\nstdout:\n{}\nstderr:\n{}",
@@ -782,4 +844,73 @@ fn a_built_file_that_is_not_executable_fails_the_step() {
         s.github_output, "",
         "no path output for a file that cannot run"
     );
+}
+
+#[test]
+fn an_unknown_dep_is_refused_before_rustc() {
+    let script = build_script(&read(ACTION));
+    let ws = tmp();
+    let shim = tmp();
+    let called = shim.join("called");
+    fs::write(
+        shim.join("rustc"),
+        format!("#!/bin/sh\ntouch '{}'\nexit 0\n", called.display()),
+    )
+    .unwrap();
+    fs::set_permissions(shim.join("rustc"), fs::Permissions::from_mode(0o755)).unwrap();
+    for bad in [
+        "serde",
+        "../transient_lib",
+        "transient_lib shell_compat",
+        "transient-lib",
+    ] {
+        let s = run_step_deps(&script, "go_test_with_retry", bad, &ws, &tmp(), &shim);
+        assert_eq!(s.out.status.code(), Some(1), "deps {bad:?} must be refused");
+        assert!(
+            text(&s.out.stdout).contains("::error::build-ci-tool: unknown dep"),
+            "deps {bad:?}:\n{}",
+            text(&s.out.stdout)
+        );
+        assert!(!called.exists(), "deps {bad:?} reached rustc");
+        assert_eq!(s.github_output, "");
+    }
+}
+
+#[test]
+fn a_dep_that_does_not_build_fails_the_step() {
+    let script = build_script(&read(ACTION));
+    let tools: BTreeSet<String> = ["go_test_with_retry".to_string()].into_iter().collect();
+    let ws = workspace(&tools);
+    fs::write(ws.join("tools/ci/src/transient_lib/lib.rs"), "not rust\n").unwrap();
+    let s = run_step_deps(
+        &script,
+        "go_test_with_retry",
+        "transient_lib",
+        &ws,
+        &tmp(),
+        &rustc_shim(),
+    );
+    assert!(
+        !s.out.status.success(),
+        "a dep that fails to build must fail the step"
+    );
+    assert_eq!(s.github_output, "");
+}
+
+#[test]
+fn a_tool_built_without_its_dep_fails_the_step() {
+    // The caller's `deps:` is load-bearing: drop it and the lib cannot resolve
+    // the crate, so the step fails rather than producing something else.
+    let script = build_script(&read(ACTION));
+    let tools: BTreeSet<String> = ["go_test_with_retry".to_string()].into_iter().collect();
+    let ws = workspace(&tools);
+    let s = run_step_deps(
+        &script,
+        "go_test_with_retry",
+        "",
+        &ws,
+        &tmp(),
+        &rustc_shim(),
+    );
+    assert!(!s.out.status.success(), "{}", text(&s.out.stderr));
 }

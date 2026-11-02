@@ -104,13 +104,16 @@ jobs:
           bin-name: kubeconform
           mode: tar
 
-      # //tools/ci:gitops_validate, built with the runner's rustc (this job sets
-      # up no Bazel). //tools/ci:workflow_rustc_test runs these lines.
+      - name: Build //tools/ci:gitops_validate (no Bazel on this job)
+        id: gitops-validate-bin
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: gitops_validate
+          deps: appset_render
+
       - name: Validate gitops manifests
+        env:
+          GITOPS_VALIDATE: ${{ steps.gitops-validate-bin.outputs.path }}
         run: |
           set -euo pipefail
-          rustc --edition 2021 -O --crate-type lib --crate-name shell_compat tools/shell-compat/src/lib.rs -o "$RUNNER_TEMP/libshell_compat.rlib"
-          rustc --edition 2021 -O --crate-type lib --crate-name appset_render tools/gitops/appset-render/src/lib.rs -o "$RUNNER_TEMP/libappset_render.rlib"
-          rustc --edition 2021 -O --crate-type lib --crate-name gitops_validate tools/ci/src/gitops_validate/lib.rs -L "$RUNNER_TEMP" --extern shell_compat="$RUNNER_TEMP/libshell_compat.rlib" --extern appset_render="$RUNNER_TEMP/libappset_render.rlib" -o "$RUNNER_TEMP/libgitops_validate.rlib"
-          rustc --edition 2021 -O tools/ci/src/gitops_validate/main.rs -L "$RUNNER_TEMP" --extern shell_compat="$RUNNER_TEMP/libshell_compat.rlib" --extern gitops_validate="$RUNNER_TEMP/libgitops_validate.rlib" -o "$RUNNER_TEMP/gitops-validate"
-          "$RUNNER_TEMP/gitops-validate"
+          "$GITOPS_VALIDATE"

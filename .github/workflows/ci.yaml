@@ -958,16 +958,19 @@ jobs:
           cache-dependency-path: |
             infrastructure/pulumi/**/go.sum
             */infra/**/go.sum
-      # //tools/ci:go_test_with_retry, built with the runner's rustc (this job
-      # sets up no Bazel). //tools/ci:workflow_rustc_test runs these lines.
+      - name: Build //tools/ci:go_test_with_retry (no Bazel on this job)
+        id: go-test-bin
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: go_test_with_retry
+          deps: transient_lib
+
       - name: go test (IaC modules with tests)
+        env:
+          GO_TEST_WITH_RETRY: ${{ steps.go-test-bin.outputs.path }}
         run: |
           set -euo pipefail
-          rustc --edition 2021 -O --crate-type lib --crate-name shell_compat tools/shell-compat/src/lib.rs -o "$RUNNER_TEMP/libshell_compat.rlib"
-          rustc --edition 2021 -O --crate-type lib --crate-name transient_lib tools/ci/src/transient_lib/lib.rs -o "$RUNNER_TEMP/libtransient_lib.rlib"
-          rustc --edition 2021 -O --crate-type lib --crate-name go_test_with_retry tools/ci/src/go_test_with_retry/lib.rs -L "$RUNNER_TEMP" --extern shell_compat="$RUNNER_TEMP/libshell_compat.rlib" --extern transient_lib="$RUNNER_TEMP/libtransient_lib.rlib" -o "$RUNNER_TEMP/libgo_test_with_retry.rlib"
-          rustc --edition 2021 -O tools/ci/src/go_test_with_retry/main.rs -L "$RUNNER_TEMP" --extern shell_compat="$RUNNER_TEMP/libshell_compat.rlib" --extern go_test_with_retry="$RUNNER_TEMP/libgo_test_with_retry.rlib" -o "$RUNNER_TEMP/go-test-with-retry"
-          "$RUNNER_TEMP/go-test-with-retry"
+          "$GO_TEST_WITH_RETRY"
 
   go-race:
     # Race detector over EVERY Bazel go_test target (72 today).

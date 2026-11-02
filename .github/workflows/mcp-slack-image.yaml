@@ -380,20 +380,23 @@ jobs:
           bin-name: osv-scanner
           mode: raw
 
+      - name: Build //tools/ci:image_sbom_scan (no Bazel on this job)
+        if: github.event_name != 'pull_request'
+        id: sbom-scan-bin
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: image_sbom_scan
+
       - name: Scan the published image's SBOM for known advisories
         if: github.event_name != 'pull_request'
         env:
+          IMAGE_SBOM_SCAN: ${{ steps.sbom-scan-bin.outputs.path }}
           DIGEST: ${{ steps.publish.outputs.digest }}
           # Since #3985 the server is a Rust binary built --locked from a
           # lockfile osv-scan covers: no /app/node_modules, nothing for the
           # blocking arm to scan. `absent` makes the scan require that, and refuse if a package
           # tree ever comes back. See the script header.
           APP_TREE: absent
-        # //tools/ci:image_sbom_scan, built with the runner's rustc (this job
-        # sets up no Bazel). //tools/ci:workflow_rustc_test runs these lines.
         run: |
           set -euo pipefail
-          rustc --edition 2021 -O --crate-type lib --crate-name shell_compat tools/shell-compat/src/lib.rs -o "$RUNNER_TEMP/libshell_compat.rlib"
-          rustc --edition 2021 -O --crate-type lib --crate-name image_sbom_scan tools/ci/src/image_sbom_scan/lib.rs -L "$RUNNER_TEMP" --extern shell_compat="$RUNNER_TEMP/libshell_compat.rlib" -o "$RUNNER_TEMP/libimage_sbom_scan.rlib"
-          rustc --edition 2021 -O tools/ci/src/image_sbom_scan/main.rs -L "$RUNNER_TEMP" --extern shell_compat="$RUNNER_TEMP/libshell_compat.rlib" --extern image_sbom_scan="$RUNNER_TEMP/libimage_sbom_scan.rlib" -o "$RUNNER_TEMP/image-sbom-scan"
-          "$RUNNER_TEMP/image-sbom-scan"
+          "$IMAGE_SBOM_SCAN"

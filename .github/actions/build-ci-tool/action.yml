@@ -35,6 +35,13 @@
 # has its own `if: failure()` step after this one.
 #
 # Interface (kept stable for other callers): input `tool`, output `path`.
+# Optional input `deps`: extra std-only crates the tool's lib needs, built
+# first and passed with --extern. Only the names in the step's `case` are
+# accepted, each at its one known path.
+#
+# The homelab queue runner's image carries no Rust toolchain; GitHub's ubuntu
+# images do. Where rustc is missing the step installs it with apt, and fails
+# by name if that does not leave a rustc on PATH.
 #
 # Requires the repo to be checked out first (composite actions referenced as
 # `./.github/actions/...` resolve from the workspace).
@@ -49,6 +56,14 @@ inputs:
       The tool's directory under tools/ci/src, which is also its crate name
       (for example release_hold).
     required: true
+  deps:
+    description: >-
+      Space-separated extra crates the tool's lib uses, built first:
+      transient_lib (tools/ci/src/transient_lib) or appset_render
+      (tools/gitops/appset-render). Empty for a tool that needs only
+      shell-compat.
+    required: false
+    default: ""
 
 outputs:
   path:
@@ -63,6 +78,7 @@ runs:
       shell: bash
       env:
         TOOL: ${{ inputs.tool }}
+        DEPS: ${{ inputs.deps }}
       run: |
         set -euo pipefail
         case "$TOOL" in
@@ -74,12 +90,37 @@ runs:
         src="$GITHUB_WORKSPACE/tools"
         out="$RUNNER_TEMP/ci-tools"
         mkdir -p "$out"
+        # Each dep: a known name at its one path, std-only (built with no --extern).
+        dep_names=()
+        dep_srcs=()
+        for dep in $DEPS; do
+          case "$dep" in
+            transient_lib) dep_srcs+=("$src/ci/src/transient_lib/lib.rs") ;;
+            appset_render) dep_srcs+=("$src/gitops/appset-render/src/lib.rs") ;;
+            *)
+              echo "::error::build-ci-tool: unknown dep '$dep' (known: transient_lib appset_render)"
+              exit 1
+              ;;
+          esac
+          dep_names+=("$dep")
+        done
+        if ! command -v rustc >/dev/null 2>&1; then
+          { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends rustc; } \
+            || { echo "::error::apt install rustc failed"; exit 1; }
+          command -v rustc >/dev/null 2>&1 \
+            || { echo "::error::rustc is still not on PATH after apt install"; exit 1; }
+        fi
         # The runner's rustc is newer than the Bazel toolchain that
         # //tools/ci:build_ci_tool_test proves this build with; log it so a
         # failure on a newer compiler is told apart from a code break.
         rustc --version
         rustc --edition 2021 -O --crate-type lib --crate-name shell_compat "$src/shell-compat/src/lib.rs" -o "$out/libshell_compat.rlib"
-        rustc --edition 2021 -O --crate-type lib --crate-name "$TOOL" "$src/ci/src/$TOOL/lib.rs" -L "$out" --extern shell_compat="$out/libshell_compat.rlib" -o "$out/lib$TOOL.rlib"
+        externs=()
+        for i in "${!dep_names[@]}"; do
+          rustc --edition 2021 -O --crate-type lib --crate-name "${dep_names[$i]}" "${dep_srcs[$i]}" -o "$out/lib${dep_names[$i]}.rlib"
+          externs+=(--extern "${dep_names[$i]}=$out/lib${dep_names[$i]}.rlib")
+        done
+        rustc --edition 2021 -O --crate-type lib --crate-name "$TOOL" "$src/ci/src/$TOOL/lib.rs" -L "$out" --extern shell_compat="$out/libshell_compat.rlib" ${externs[@]+"${externs[@]}"} -o "$out/lib$TOOL.rlib"
         rustc --edition 2021 -O "$src/ci/src/$TOOL/main.rs" -L "$out" --extern shell_compat="$out/libshell_compat.rlib" --extern "$TOOL=$out/lib$TOOL.rlib" -o "$out/$TOOL"
         # Only a binary that is really there may be handed on: a caller that
         # runs a missing path fails with 127 AFTER this step reported success,

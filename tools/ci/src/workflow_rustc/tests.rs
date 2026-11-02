@@ -37,28 +37,10 @@ use std::process::Command;
 
 /// (file, the binary its block writes to `$RUNNER_TEMP`), in file order.
 const EXPECT: &[(&str, &str)] = &[
-    (
-        ".github/actions/install-pinned-tool/action.yml",
-        "install-pinned-tool",
-    ),
-    (
-        ".github/workflows/backstage-image.yaml",
-        "backstage-boot-smoke",
-    ),
-    (".github/workflows/chart-render.yaml", "chart-render"),
-    (
-        ".github/workflows/chart-render.yaml",
-        "gitops-values-render",
-    ),
-    (".github/workflows/ci.yaml", "go-test-with-retry"),
+    // //tools/gomod:check lives outside tools/ci/src, so it does not fit
+    // .github/actions/build-ci-tool (which //tools/ci:build_ci_tool_test
+    // covers); its three lines stay inline in ci.yaml.
     (".github/workflows/ci.yaml", "tidy"),
-    (".github/workflows/gitops-validate.yaml", "gitops-validate"),
-    (".github/workflows/mcp-slack-image.yaml", "image-sbom-scan"),
-    (
-        ".github/workflows/migration-safety.yaml",
-        "migration-safety",
-    ),
-    (".github/workflows/supply-chain.yaml", "secret-scan"),
 ];
 
 /// Only blocks that build one of these are this test's business; a listed
@@ -177,9 +159,8 @@ fn every_workflow_rustc_line_builds_its_tool() {
 /// The files whose steps install rustc with apt when the runner has none (the
 /// homelab queue runner's image carries no Rust toolchain).
 const FALLBACKS: &[&str] = &[
-    ".github/actions/install-pinned-tool/action.yml",
+    ".github/actions/build-ci-tool/action.yml",
     ".github/workflows/actionlint.yaml",
-    ".github/workflows/migration-safety.yaml",
     ".github/workflows/queue-runner-watch.yaml",
 ];
 
