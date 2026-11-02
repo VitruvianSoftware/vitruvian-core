@@ -729,3 +729,50 @@ fn soak_step_built_gate_decides() {
         }
     }
 }
+
+// --- the promotion rung's companion waits on the soak gate (#4176) ---------
+
+/// The body of job `name` in a rendered workflow, up to the next blank line.
+fn job_block<'a>(yaml: &'a str, name: &str) -> &'a str {
+    let head = format!("\n  {name}:\n");
+    let i = yaml.find(&head).unwrap_or_else(|| panic!("no job {name}"));
+    let job = &yaml[i + 1..];
+    &job[..job.find("\n\n").unwrap_or(job.len())]
+}
+
+#[test]
+fn promotion_companion_needs_the_soak_verdict() {
+    let yaml = must_render(&fixtures(), 2);
+    let soak = "oauth-user-inspector-require-dev-soak";
+    let job = job_block(&yaml, "zitadel-apps-nonproduction");
+    assert!(
+        job.contains(&format!("    needs: [{soak}]\n")),
+        "the nonproduction expand must wait for the soak gate:\n{job}"
+    );
+    let cond = job
+        .lines()
+        .find(|l| l.starts_with("    if: "))
+        .expect("companion has an if:");
+    assert!(
+        cond.contains(&format!("needs.{soak}.result == 'success'")),
+        "and check its verdict explicitly (an if: replaces success()):\n{cond}"
+    );
+    // The development rung has no soak gate to wait for, and production
+    // already follows the nonproduction deploy.
+    for other in ["zitadel-apps-development", "zitadel-apps-production"] {
+        assert!(
+            !job_block(&yaml, other).contains(soak),
+            "{other} must not depend on the soak gate"
+        );
+    }
+}
+
+#[test]
+fn soak_job_outlives_the_gates_wait() {
+    let yaml = must_render(&fixtures(), 2);
+    let job = job_block(&yaml, "oauth-user-inspector-require-dev-soak");
+    // require_dev_soak waits up to WAIT_SECONDS (2400 s = 40 min) for a
+    // development deploy still running; a shorter job timeout would kill it
+    // mid-wait with no verdict.
+    assert!(job.contains("    timeout-minutes: 50\n"), "{job}");
+}

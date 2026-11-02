@@ -1257,7 +1257,7 @@ fn render_fan_out(b: &mut String, units: &[Unit], opts: &Opts) -> R {
                 render_soak_job(b, &soak_job, u, opts)?;
             }
             let companion_jobs =
-                render_rung_companions(b, u, &by_name, &mut rendered, i, env, opts)?;
+                render_rung_companions(b, u, &by_name, &mut rendered, i, env, &soak_job, opts)?;
             render_deploy_job(
                 b,
                 u,
@@ -1441,11 +1441,16 @@ fn render_soak_job(b: &mut String, job: &str, u: &Unit, opts: &Opts) -> R {
     b.push_str("  # PR check suite, which knows nothing about the DEPLOYMENT — so without\n");
     b.push_str("  # this a commit whose development deploy FAILED rides into nonproduction\n");
     b.push_str("  # with no human in the loop. Fails CLOSED on a definitive red, OPEN on an\n");
-    b.push_str("  # indeterminate answer (//tools/ci:require_dev_soak).\n");
+    b.push_str("  # indeterminate answer (//tools/ci:require_dev_soak). A development\n");
+    b.push_str("  # deploy still RUNNING is waited for (up to 40 min) and then judged; still\n");
+    b.push_str("  # running after that, it blocks as not yet soaked.\n");
     w!(b, "  {}:\n", job);
     w!(b, "    if: {}\n", soak_condition(u, env, opts));
     b.push_str("    runs-on: ubuntu-26.04\n");
-    b.push_str("    timeout-minutes: 5\n");
+    // The gate waits up to 40 min (WAIT_SECONDS) for a development deploy
+    // still running; the job outlives that so the gate, not the runner,
+    // decides and says why.
+    b.push_str("    timeout-minutes: 50\n");
     b.push_str("    permissions:\n");
     b.push_str("      contents: read\n");
     b.push_str("      # `actions: read` is what lets the script read this repo's run\n");
@@ -1477,7 +1482,7 @@ fn render_soak_job(b: &mut String, job: &str, u: &Unit, opts: &Opts) -> R {
     b.push_str("          # variable second (an unset variable is falsy, so this ends at\n");
     b.push_str("          # 'false'). The script logs loudly when it is honoured.\n");
     b.push_str("          ALLOW_UNSOAKED: ${{ inputs.allow-unsoaked || vars.ALLOW_UNSOAKED_PROMOTION || 'false' }}\n");
-    b.push_str("        # No Bazel on this job: it is a five-minute gate on a stock runner, so\n");
+    b.push_str("        # No Bazel on this job: it is a short gate on a stock runner, so\n");
     b.push_str("        # the image's rustc builds //tools/ci:require_dev_soak (std only) from\n");
     b.push_str("        # the checkout in seconds instead. A failed BUILD fails closed like a\n");
     b.push_str("        # red development, and ALLOW_UNSOAKED=true still overrides it: the\n");
@@ -1499,6 +1504,7 @@ fn render_soak_job(b: &mut String, job: &str, u: &Unit, opts: &Opts) -> R {
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_rung_companions(
     b: &mut String,
     u: &Unit,
@@ -1506,6 +1512,7 @@ fn render_rung_companions(
     rendered: &mut HashSet<String>,
     rung: usize,
     env: &str,
+    soak_job: &str,
     opts: &Opts,
 ) -> R<Vec<String>> {
     let mut jobs = Vec::with_capacity(u.companions.len());
@@ -1543,7 +1550,7 @@ fn render_rung_companions(
             continue;
         }
         rendered.insert(job.clone());
-        render_companion_job(b, &job, u, cu, &spec, rung, env, opts)?;
+        render_companion_job(b, &job, u, cu, &spec, rung, env, soak_job, opts)?;
     }
     Ok(jobs)
 }
@@ -1665,8 +1672,14 @@ fn render_companion_job(
     spec: &CompanionSpec,
     rung: usize,
     env: &str,
+    soak_job: &str,
     opts: &Opts,
 ) -> R {
+    // The promotion rung's companion waits on the same soak verdict as the
+    // deploy it expands for. Without it the companion applied while the soak
+    // gate was still deciding (or had just said no), and its Pulumi update
+    // ran alongside the development deploy's (v1.15.4's 409s, #4176).
+    let soak = if rung == SOAK_RUNG { soak_job } else { "" };
     b.push('\n');
     w!(
         b,
@@ -1695,11 +1708,18 @@ fn render_companion_job(
             "    needs: [{}]\n",
             deploy_job_id(consumer, &consumer.environments[rung - 1])
         );
+    } else if !soak.is_empty() {
+        w!(b, "    needs: [{}]\n", soak);
+        b.push_str("    # Waits on the soak gate like the deploy below, and checks it\n");
+        b.push_str("    # EXPLICITLY: an `if:` replaces the success()-of-needs default. So a\n");
+        b.push_str("    # red development stops the expand too, and the gate's wait for a\n");
+        b.push_str("    # development deploy still running keeps this Pulumi update from\n");
+        b.push_str("    # starting under that deploy's account-wide lock.\n");
     }
     w!(
         b,
         "    if: {}\n",
-        companion_condition(spec, consumer, rung, env, opts)
+        companion_condition(spec, consumer, rung, env, soak, opts)
     );
     b.push_str("    concurrency:\n");
     w!(b, "      group: delivery-{}-{}\n", companion.name, env);
@@ -2185,11 +2205,15 @@ fn companion_condition(
     consumer: &Unit,
     rung: usize,
     env: &str,
+    soak_job: &str,
     opts: &Opts,
 ) -> String {
     let mut parts = vec![KILL_SWITCH_EXPR.to_string()];
     if !spec.gate_var.is_empty() {
         parts.push(spec.gate_var.to_string());
+    }
+    if !soak_job.is_empty() {
+        parts.push(format!("needs.{}.result == 'success'", soak_job));
     }
     let mut arms = Vec::new();
     if rung == 0 {

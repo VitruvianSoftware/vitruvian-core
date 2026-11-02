@@ -20,14 +20,26 @@
 
 //! require-dev-soak — refuse to PROMOTE when development is currently RED
 //! for the service being promoted. Fail-closed on red, fail-open on unknown.
+//!
+//! A development deploy that is still RUNNING is neither: the newest answer is
+//! not in yet. The gate waits for it (polling every POLL_SECONDS, default 30,
+//! for up to WAIT_SECONDS, default 2400) and then judges its result; still
+//! running after that, it blocks as not yet soaked. Ignoring it, as the gate
+//! once did by reading only completed runs, judged an older run instead and
+//! let the promotion's Pulumi applies start while the development deploy still
+//! held Pulumi Cloud's account-wide lock (v1.15.4: a 409 on every retry, #4176).
 
 use shell_compat::{capture, cat, env, env_or, env_or_empty, err, lines, out, subst};
 use std::process::Command;
+use std::time::{Duration, Instant};
 
 enum Verdict {
     Pass(Vec<u8>),
     Block(Vec<u8>),
     Unknown(Vec<u8>),
+    /// The newest run that has, or may still reach, the development deploy is
+    /// in progress (its run id): wait and look again.
+    Pending(Vec<u8>),
     Continue,
 }
 
@@ -95,14 +107,12 @@ fn scan(
             .arg(shell_compat::os(branch))
             .arg("-e")
             .arg("push")
-            .arg("-s")
-            .arg("completed")
             .arg("-L")
             .arg(shell_compat::os(scan_limit))
             .arg("--json")
-            .arg("databaseId")
+            .arg("databaseId,status")
             .arg("--jq")
-            .arg(".[].databaseId"),
+            .arg(".[] | \"\\(.databaseId)\\t\\(.status)\""),
     );
     if !r.ok() {
         let runs_out = subst(r.stdout);
@@ -123,11 +133,15 @@ fn scan(
     }
     let runs = subst(r.stdout);
 
-    for run_id_line in lines(&runs) {
-        if run_id_line.is_empty() {
+    for run_line in lines(&runs) {
+        if run_line.is_empty() {
             continue;
         }
-        let run_id = &run_id_line;
+        // "<id>\t<status>"; a bare id is a completed run.
+        let (run_id, run_done) = match run_line.iter().position(|&c| c == b'\t') {
+            Some(t) => (&run_line[..t], &run_line[t + 1..] == b"completed"),
+            None => (&run_line[..], true),
+        };
 
         let jr = capture(
             0,
@@ -159,23 +173,34 @@ fn scan(
                 &combined,
                 b"\n",
             ]));
+            // An unreadable run is no evidence, running or not: waiting on it
+            // would turn an API error into a block.
             continue;
         }
         let jobs = subst(jr.stdout);
 
-        let mut conclusion = Vec::new();
+        // None: the run has no such job (yet). Some(empty): it is queued or
+        // running.
+        let mut conclusion: Option<Vec<u8>> = None;
         for job_line in lines(&jobs) {
             if let Some(tab_pos) = job_line.iter().position(|&c| c == b'\t') {
                 let name = &job_line[..tab_pos];
                 if name == dev_job_name {
-                    conclusion = job_line[tab_pos + 1..].to_vec();
+                    let c = &job_line[tab_pos + 1..];
+                    conclusion = Some(if c == b"null" { Vec::new() } else { c.to_vec() });
                     break;
                 }
             }
         }
-        if conclusion.is_empty() {
-            continue;
-        }
+        let conclusion = match conclusion {
+            // A finished run without the job never deployed development.
+            None if run_done => continue,
+            // A running one may still reach it: a later job shows up in the
+            // run only once its needs finish.
+            None => return Verdict::Pending(run_id.to_vec()),
+            Some(c) if c.is_empty() => return Verdict::Pending(run_id.to_vec()),
+            Some(c) => c,
+        };
 
         match conclusion.as_slice() {
             b"success" => {
@@ -227,6 +252,15 @@ fn scan(
     }
 
     Verdict::Continue
+}
+
+/// A whole number of seconds from `name`, or `default` when unset or not a
+/// number.
+fn seconds_env(name: &str, default: u64) -> u64 {
+    env(name)
+        .and_then(|v| String::from_utf8(v).ok())
+        .and_then(|v| v.trim().parse().ok())
+        .unwrap_or(default)
 }
 
 pub fn run(_args: &[Vec<u8>]) -> i32 {
@@ -326,18 +360,60 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
         b")\n",
     ]));
 
-    match scan(
-        &gh_bin,
-        &repo,
-        &branch,
-        &scan_limit,
-        &dev_job_name,
-        &workflow_file,
-    ) {
+    let wait = Duration::from_secs(seconds_env("WAIT_SECONDS", 2400));
+    let poll = Duration::from_secs(seconds_env("POLL_SECONDS", 30));
+    let started = Instant::now();
+    let verdict = loop {
+        match scan(
+            &gh_bin,
+            &repo,
+            &branch,
+            &scan_limit,
+            &dev_job_name,
+            &workflow_file,
+        ) {
+            Verdict::Pending(run_id) => {
+                if started.elapsed() >= wait {
+                    return block(
+                        &dev_job_name,
+                        &cat(&[
+                            b"development deploy '",
+                            &dev_job_name,
+                            b"' is still running in run ",
+                            &run_id,
+                            b" (https://github.com/",
+                            &repo,
+                            b"/actions/runs/",
+                            &run_id,
+                            b") after waiting ",
+                            started.elapsed().as_secs().to_string().as_bytes(),
+                            b"s, so development is not yet soaked. Re-run this job once that run finishes, or set ALLOW_UNSOAKED=true to override deliberately.",
+                        ]),
+                    );
+                }
+                out(&cat(&[
+                    b"require-dev-soak[",
+                    &dev_job_name,
+                    b"]: waiting \xe2\x80\x94 run ",
+                    &run_id,
+                    b" of ",
+                    &workflow_file,
+                    b" is still in progress and may deploy development (",
+                    started.elapsed().as_secs().to_string().as_bytes(),
+                    b"s of ",
+                    wait.as_secs().to_string().as_bytes(),
+                    b"s)\n",
+                ]));
+                std::thread::sleep(poll);
+            }
+            v => break v,
+        }
+    };
+    match verdict {
         Verdict::Pass(reason) => return pass(&dev_job_name, &reason),
         Verdict::Block(reason) => return block(&dev_job_name, &reason),
         Verdict::Unknown(reason) => return unknown(&dev_job_name, &reason),
-        Verdict::Continue => {}
+        Verdict::Pending(_) | Verdict::Continue => {}
     }
 
     let mut searched = workflow_file.clone();
@@ -353,11 +429,13 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
             &legacy,
             b", which deployed development before it\n",
         ]));
+        // The legacy workflow no longer deploys, so nothing there is still
+        // running; a run that somehow is gives no answer either way.
         match scan(&gh_bin, &repo, &branch, &scan_limit, &dev_job_name, &legacy) {
             Verdict::Pass(reason) => return pass(&dev_job_name, &reason),
             Verdict::Block(reason) => return block(&dev_job_name, &reason),
             Verdict::Unknown(reason) => return unknown(&dev_job_name, &reason),
-            Verdict::Continue => {}
+            Verdict::Pending(_) | Verdict::Continue => {}
         }
         searched = cat(&[&workflow_file, b" and ", &legacy]);
     }
@@ -367,7 +445,7 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
         &cat(&[
             b"scanned the last ",
             &scan_limit,
-            b" completed push runs of ",
+            b" push runs of ",
             &searched,
             b" without finding a terminal '",
             &dev_job_name,

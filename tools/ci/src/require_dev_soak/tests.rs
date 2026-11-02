@@ -26,8 +26,11 @@
 use ci_testkit::{assert_has, bin, write, write_exe, Output, Run, TempDir};
 
 /// Behaviour is driven by files in $GH_STUB_DIR, so each case reshapes it:
-///   runs.txt        run ids for `gh run list` (runs.legacy.txt for -w legacy.yaml)
-///   jobs.<id>       "<name>\t<conclusion>" lines for `gh run view <id>`
+///   runs.txt        "<id>[\t<status>]" lines for `gh run list` (runs.legacy.txt
+///                   for -w legacy.yaml); runs.txt.<n>, if present, answers the
+///                   n-th call instead, so a run can finish while the gate waits
+///   jobs.<id>       "<name>\t<conclusion>" lines for `gh run view <id>`;
+///                   jobs.<id>.<n> answers the n-th view of that run
 ///   list_rc         forced exit code for `gh run list`
 ///   api_workflow    what `gh api repos/...` returns; absent = the lookup fails
 ///   list_argv       written BY the fake: each `gh run list` command line
@@ -49,10 +52,16 @@ case "$1 $2" in
       echo "simulated gh failure" >&2
       exit "$(cat "$W/list_rc")"
     fi
-    cat "$W/runs.txt" 2>/dev/null
+    n=$(( $(cat "$W/list_count" 2>/dev/null || echo 0) + 1 ))
+    echo "$n" >"$W/list_count"
+    if [ -f "$W/runs.txt.$n" ]; then cat "$W/runs.txt.$n"; else cat "$W/runs.txt" 2>/dev/null; fi
     ;;
   "run view")
-    if [ -f "$W/jobs.$3" ]; then
+    n=$(( $(cat "$W/view_count.$3" 2>/dev/null || echo 0) + 1 ))
+    echo "$n" >"$W/view_count.$3"
+    if [ -f "$W/jobs.$3.$n" ]; then
+      cat "$W/jobs.$3.$n"
+    elif [ -f "$W/jobs.$3" ]; then
       cat "$W/jobs.$3"
     else
       echo "no such run" >&2
@@ -92,6 +101,9 @@ impl Gate {
             .env("DEV_JOB_NAME", JOB)
             .env("ALLOW_UNSOAKED", "false")
             .env("SCAN_LIMIT", "20")
+            // Poll without sleeping, and bound any wait so a bug cannot hang.
+            .env("POLL_SECONDS", "0")
+            .env("WAIT_SECONDS", "5")
             .env_remove("LEGACY_WORKFLOW_FILE")
             .env_remove("GITHUB_RUN_ID")
             .env_remove("GITHUB_WORKFLOW_REF")
@@ -482,16 +494,96 @@ fn allow_unsoaked_empty_does_not_bypass() {
     assert_no_bypass("");
 }
 
+// --- a development deploy still running is waited for, not ignored (#4176) --
+// The release commit's own push run deploys development while the release run
+// starts; judging an older finished run instead promoted unsoaked code and
+// started the promotion's Pulumi applies under the dev deploy's lock.
+
+#[test]
+fn running_dev_deploy_is_waited_for_then_its_green_decides() {
+    let g = Gate::new();
+    g.file("runs.txt.1", "901\tin_progress\n900\tcompleted\n")
+        .file("runs.txt", "901\tcompleted\n900\tcompleted\n")
+        .file("jobs.901.1", &jobs(&[("build", "success"), (JOB, "")]))
+        .file("jobs.901", &jobs(&[("build", "success"), (JOB, "success")]))
+        .file("jobs.900", &jobs(&[(JOB, "failure")]));
+    let o = g.run(&[]);
+    assert_eq!(o.code, 0, "{}", o.all());
+    assert_has(&o.stdout, "waiting", "the gate says it is waiting");
+    assert_has(&o.stdout, "succeeded in run 901", "the newest run decides");
+}
+
+#[test]
+fn running_dev_deploy_that_ends_red_blocks() {
+    let g = Gate::new();
+    g.file("runs.txt.1", "901\tin_progress\n900\tcompleted\n")
+        .file("runs.txt", "901\tcompleted\n900\tcompleted\n")
+        .file("jobs.901.1", &jobs(&[(JOB, "")]))
+        .file("jobs.901", &jobs(&[(JOB, "failure")]))
+        .file("jobs.900", &jobs(&[(JOB, "success")]));
+    let o = g.run(&[]);
+    assert_eq!(o.code, 1, "{}", o.all());
+    assert_has(&o.all(), "actions/runs/901", "the block names the new run");
+}
+
+#[test]
+fn dev_deploy_still_running_after_the_wait_blocks_as_unsoaked() {
+    let g = Gate::new();
+    g.file("runs.txt", "901\tin_progress\n900\tcompleted\n")
+        .file("jobs.901", &jobs(&[(JOB, "null")]))
+        .file("jobs.900", &jobs(&[(JOB, "success")]));
+    let o = g.run(&[("WAIT_SECONDS", "0")]);
+    assert_eq!(
+        o.code,
+        1,
+        "an older green must not stand in for a deploy still running:\n{}",
+        o.all()
+    );
+    assert_has(&o.all(), "still running in run 901", "the block says why");
+}
+
+#[test]
+fn running_run_that_has_not_reached_the_dev_job_is_waited_for() {
+    let g = Gate::new();
+    g.file("runs.txt.1", "902\tqueued\n900\tcompleted\n")
+        .file("runs.txt", "902\tcompleted\n900\tcompleted\n")
+        .file("jobs.902.1", &jobs(&[("orchestrate", "")]))
+        .file(
+            "jobs.902",
+            &jobs(&[("orchestrate", "success"), (JOB, "skipped")]),
+        )
+        .file("jobs.900", &jobs(&[(JOB, "failure")]));
+    let o = g.run(&[]);
+    assert_eq!(o.code, 0, "{}", o.all());
+    assert_has(
+        &o.stdout,
+        "was skipped in run 902",
+        "the newest run decides",
+    );
+}
+
+#[test]
+fn running_run_whose_dev_job_already_finished_is_evidence() {
+    let g = Gate::new();
+    g.file("runs.txt", "901\tin_progress\n900\tcompleted\n")
+        .file("jobs.901", &jobs(&[(JOB, "success"), ("later", "")]))
+        .file("jobs.900", &jobs(&[(JOB, "failure")]));
+    let o = g.run(&[("WAIT_SECONDS", "0")]);
+    assert_eq!(o.code, 0, "{}", o.all());
+    assert_has(&o.stdout, "succeeded in run 901", "no wait needed");
+}
+
 // --- the run-history query keeps its filters --------------------------------
-// Only completed push runs on the branch carry the development deploy; a query
-// without these filters reads release or PR runs, or runs still in progress.
+// Only push runs on the branch carry the development deploy; a query without
+// these filters reads release or PR runs. Runs still in progress are read too
+// (with their status), so the gate can wait for them.
 
 fn list_argv(g: &Gate) -> String {
     std::fs::read_to_string(g.dir.join("list_argv")).unwrap_or_default()
 }
 
 #[test]
-fn run_list_filters_completed_push_runs_on_main() {
+fn run_list_filters_push_runs_on_main() {
     let g = Gate::new();
     g.file("runs.txt", "900\n")
         .file("jobs.900", &jobs(&[(JOB, "success")]));
@@ -502,11 +594,15 @@ fn run_list_filters_completed_push_runs_on_main() {
         " -w tabula-deploy.yaml ",
         " -b main ",
         " -e push ",
-        " -s completed ",
         " -L 20 ",
+        " --json databaseId,status ",
     ] {
         assert_has(&argv, want, "gh run list must pass this filter");
     }
+    assert!(
+        !argv.contains(" -s completed "),
+        "reading only completed runs ignores a deploy still running: {argv}"
+    );
 }
 
 #[test]
