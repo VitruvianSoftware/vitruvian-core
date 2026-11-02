@@ -282,6 +282,73 @@ fn is_exact_version(tok: &str) -> bool {
             .all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
 }
 
+/// The last path component, so `/usr/bin/apt-get` is `apt-get`.
+fn base(tok: &str) -> &str {
+    tok.rsplit('/').next().unwrap_or(tok)
+}
+
+/// rustup options that take a value: the value is not a toolchain name.
+fn takes_value(flag: &str) -> bool {
+    matches!(
+        flag,
+        "--profile" | "-c" | "--component" | "-t" | "--target" | "--path"
+    )
+}
+
+/// The toolchain names in `args`, skipping flags and their values.
+fn toolchain_args(args: &[String]) -> Vec<&str> {
+    let mut out = Vec::new();
+    let mut skip = false;
+    for a in args {
+        if skip {
+            skip = false;
+        } else if a.starts_with('-') {
+            skip = takes_value(a);
+        } else {
+            out.push(a.as_str());
+        }
+    }
+    out
+}
+
+/// Why the rustup invocation `args` (what follows `rustup`) installs or
+/// switches to a toolchain that is not one exact release, if it does.
+fn rustup_moves(args: &[String]) -> Option<&'static str> {
+    // Global flags (-v, -q) come before the subcommand.
+    let args: Vec<String> = args
+        .iter()
+        .skip_while(|a| a.starts_with('-'))
+        .cloned()
+        .collect();
+    let sub = args.first().map(String::as_str);
+    let names: Vec<&str> = match sub {
+        Some("toolchain") => match args.get(1).map(String::as_str) {
+            Some("install" | "add") => toolchain_args(&args[2..]),
+            _ => return None,
+        },
+        Some("install" | "default") => toolchain_args(&args[1..]),
+        Some("update") => {
+            let n = toolchain_args(&args[1..]);
+            if n.is_empty() {
+                // Updates every installed toolchain to its channel's latest.
+                return Some("runs a bare `rustup update`, which moves every toolchain");
+            }
+            n
+        }
+        Some("override") => match args.get(1).map(String::as_str) {
+            Some("set" | "add") => toolchain_args(&args[2..]),
+            _ => return None,
+        },
+        // `rustup run X cmd`: only X is a toolchain.
+        Some("run") => toolchain_args(&args[1..]).into_iter().take(1).collect(),
+        _ => return None,
+    };
+    if names.iter().any(|n| !is_exact_version(n)) {
+        return Some("selects a rustup toolchain that is not one exact release");
+    }
+    None
+}
+
 /// Why one shell command (already split from its neighbours) installs Rust,
 /// if it does.
 fn command_installs_rust(cmd: &str) -> Option<&'static str> {
@@ -300,7 +367,24 @@ fn command_installs_rust(cmd: &str) -> Option<&'static str> {
     }) {
         return Some("bootstraps rustup");
     }
-    if let Some(i) = toks.iter().position(|t| MANAGERS.contains(&t.as_str())) {
+    // RUSTUP_TOOLCHAIN picks (and rustup installs) a toolchain for every
+    // cargo/rustc after it: `RUSTUP_TOOLCHAIN=x`, `export ...`, or YAML
+    // `env:` as `RUSTUP_TOOLCHAIN: x`.
+    for (i, t) in toks.iter().enumerate() {
+        let value = if let Some(v) = t.strip_prefix("RUSTUP_TOOLCHAIN=") {
+            Some(v)
+        } else if t == "RUSTUP_TOOLCHAIN:" {
+            toks.get(i + 1).map(String::as_str)
+        } else {
+            None
+        };
+        if let Some(v) = value {
+            if !is_exact_version(v) {
+                return Some("sets RUSTUP_TOOLCHAIN to something other than one exact release");
+            }
+        }
+    }
+    if let Some(i) = toks.iter().position(|t| MANAGERS.contains(&base(t))) {
         let rest = &toks[i + 1..];
         if let Some(j) = rest.iter().position(|t| t == "install" || t == "add") {
             if rest[j + 1..]
@@ -311,29 +395,22 @@ fn command_installs_rust(cmd: &str) -> Option<&'static str> {
             }
         }
     }
-    if let Some(i) = toks.iter().position(|t| t == "rustup") {
-        let rest = &toks[i + 1..];
-        let after = match rest.first().map(String::as_str) {
-            Some("toolchain") if rest.get(1).map(String::as_str) == Some("install") => &rest[2..],
-            Some("install") => &rest[1..],
-            _ => &[][..],
-        };
-        // --profile takes a value; it is not a toolchain name.
-        let mut prev_flag = false;
-        for t in after {
-            if t.starts_with('-') {
-                prev_flag = matches!(
-                    t.as_str(),
-                    "--profile" | "-c" | "--component" | "-t" | "--target"
-                );
-                continue;
+    for (i, t) in toks.iter().enumerate() {
+        let b = base(t);
+        // `cargo +nightly build`: rustup installs the named toolchain on the fly.
+        if matches!(
+            b,
+            "cargo" | "rustc" | "rustdoc" | "rustup" | "rustfmt" | "cargo-clippy"
+        ) {
+            if let Some(sel) = toks.get(i + 1).and_then(|n| n.strip_prefix('+')) {
+                if !is_exact_version(sel) {
+                    return Some("selects a `+toolchain` that is not one exact release");
+                }
             }
-            if prev_flag {
-                prev_flag = false;
-                continue;
-            }
-            if !is_exact_version(t) {
-                return Some("installs a rustup toolchain that is not one exact release");
+        }
+        if b == "rustup" {
+            if let Some(why) = rustup_moves(&toks[i + 1..]) {
+                return Some(why);
             }
         }
     }
@@ -434,6 +511,24 @@ fn files_under(dir: &Path) -> Vec<PathBuf> {
 /// and not as a rustup toolchain other than one exact release. Every runner
 /// ships a rustc, the homelab queue runner's pinned in its image (#4183); an
 /// unpinned install is how that runner ended up on whatever rustc Ubuntu had.
+///
+/// rustup counts wherever it installs or switches a toolchain: `toolchain
+/// install`/`add`, `install`, `update` (bare `rustup update` always fails: it
+/// moves every installed toolchain), `default`, `override set`, `run`, a
+/// `+toolchain` selector (`cargo +nightly`) and `RUSTUP_TOOLCHAIN`. Each must
+/// name one exact `x.y.z` release; a channel (`stable`, `beta`, `nightly`,
+/// `nightly-2024-01-01`) or a partial version (`1.75`) fails. Managers match
+/// on their basename, so `/usr/bin/apt-get` and `/usr/bin/env apt-get` count.
+///
+/// Accepted limits, left to code review (none is in use here, and each takes
+/// deliberate effort):
+/// - package names passed in a variable (`apt-get install -y $PKG`);
+/// - rustup fetched from another URL (`https://rustup.rs`);
+/// - the standalone `static.rust-lang.org/dist/rust-X...tar.xz` installer,
+///   which is version-pinned anyway (tools/ci-runner/Dockerfile uses it);
+/// - nix, conda, mise, asdf and pip routes;
+/// - actions that take packages as inputs (`awalsh128/cache-apt-pkgs-action`
+///   with `packages: rustc`).
 #[test]
 fn no_file_under_github_installs_rust() {
     let root = std::env::current_dir().unwrap();
@@ -492,6 +587,28 @@ fn the_scan_catches_every_spelling_of_a_rust_install() {
         "rustup toolchain install 1.75 --profile minimal",
         "      - uses: dtolnay/rust-toolchain@stable",
         "      - uses: actions-rs/toolchain@v1",
+        // rustup commands that install or switch to a moving channel.
+        "rustup update stable && rustup default stable",
+        "rustup update",
+        "rustup update --no-self-update",
+        "rustup update stable",
+        "rustup default nightly",
+        "rustup default 1.75",
+        "rustup toolchain add nightly",
+        "rustup toolchain add nightly-2024-01-01",
+        "rustup -v toolchain install beta",
+        "rustup override set nightly",
+        "rustup run nightly cargo build",
+        "cargo +nightly build",
+        "rustc +beta --version",
+        "~/.cargo/bin/cargo +stable test",
+        "RUSTUP_TOOLCHAIN=nightly cargo build",
+        "export RUSTUP_TOOLCHAIN=stable",
+        "      RUSTUP_TOOLCHAIN: nightly",
+        // Managers called by full path.
+        "sudo /usr/bin/apt-get install -y rustc",
+        "/usr/bin/env apt-get install -y cargo",
+        "/usr/bin/apt -y install rustc",
     ] {
         assert!(!rust_installs(text).is_empty(), "not caught: {text:?}");
     }
@@ -509,6 +626,19 @@ fn the_scan_leaves_other_steps_alone() {
         "echo \"::error::apt install rustc failed\"",
         "rustc --edition 2021 -O tools/ci/src/x/main.rs -o \"$RUNNER_TEMP/x\"",
         "      - uses: actions/checkout@v4",
+        "rustup update 1.75.0",
+        "rustup toolchain add 1.75.0",
+        "rustup override set 1.75.0",
+        "rustup run 1.75.0 cargo build",
+        "cargo +1.75.0 build",
+        "RUSTUP_TOOLCHAIN=1.75.0 cargo build",
+        "      RUSTUP_TOOLCHAIN: 1.75.0",
+        "rustup default",
+        "rustup show",
+        "rustup target add x86_64-unknown-linux-musl",
+        "rustup component add clippy",
+        "/usr/bin/apt-get install -y jq",
+        "cargo build --release",
     ] {
         assert!(
             rust_installs(text).is_empty(),
