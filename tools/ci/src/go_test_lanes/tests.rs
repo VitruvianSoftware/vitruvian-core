@@ -768,3 +768,42 @@ fn a_failure_or_cancelled_gate_is_not_a_lane() {
     let t = example_tree("notcancelled");
     assert!(t.check(&Wiring::default().ci(), "").ok());
 }
+
+#[test]
+fn an_unquoted_or_double_quoted_literal_is_not_a_lane() {
+    // aegis on #4223: GitHub coerces `'true' == true` to NaN == 1, false,
+    // so the gate never fires. Only the single-quoted literal is a string.
+    for cmp in [
+        "== true",
+        "== \"true\"",
+        "!= false",
+        "!= \"false\"",
+        "== 1",
+        "== 'true '",
+    ] {
+        let job_if = format!(
+            "${{{{ needs.changes.result != 'success' || {OUT_IAC} == 'true' || {OUT_EX} {cmp} }}}}"
+        );
+        let w = Wiring {
+            job_if: &job_if,
+            ..Wiring::default()
+        };
+        assert_not_a_lane(&w.ci(), "(single-quoted)");
+
+        let t = example_tree("stepliteral");
+        let ci = Wiring::default().ci().replace(
+            &format!("|| {OUT_EX} == 'true'\n"),
+            &format!("|| {OUT_EX} {cmp}\n"),
+        );
+        assert!(ci.contains(&format!("{OUT_EX} {cmp}\n")), "fixture changed");
+        let r = t.check(&ci, "");
+        assert_eq!(r.uncovered().len(), 1, "step `{cmp}`: {:?}", r.disabled);
+        assert!(
+            r.disabled
+                .iter()
+                .any(|(_, w)| w.contains("(single-quoted)")),
+            "{:?}",
+            r.disabled
+        );
+    }
+}

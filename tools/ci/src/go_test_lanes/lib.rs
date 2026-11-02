@@ -268,11 +268,15 @@ fn scalar(v: &str) -> String {
         Some(i) => &v[..i],
         None => v,
     };
-    v.trim()
-        .trim_matches('"')
-        .trim_matches('\'')
-        .trim()
-        .to_string()
+    // Unquote only a value quoted as a whole: `== 'true'` at the end of a
+    // plain scalar keeps its closing quote.
+    let v = v.trim();
+    for q in ['"', '\''] {
+        if v.len() >= 2 && v.starts_with(q) && v.ends_with(q) {
+            return v[1..v.len() - 1].trim().to_string();
+        }
+    }
+    v.to_string()
 }
 
 /// The value of `key:` among `lines` at exactly `at` spaces of indent (a
@@ -583,15 +587,26 @@ fn bad_comparison(cond: &str, at: usize, job: &str, out: &str) -> Option<String>
     } else {
         return Some(format!("reads `{name}` without comparing it to 'true'"));
     };
-    let value: String = rest
-        .trim_start()
-        .trim_start_matches(['\'', '"'])
-        .chars()
-        .take_while(|c| c.is_alphanumeric())
-        .collect();
-    match (op, value.as_str()) {
-        ("==", "true") | ("!=", "false") => None,
-        _ => Some(format!("compares `{name} {op} '{value}'`: only == 'true' or != 'false' mean the filter matched")),
+    // Exactly a single-quoted literal. GitHub compares a string output with
+    // an unquoted `true` by coercing both to numbers ('true' -> NaN), so
+    // `== true` is never true; double quotes are not a string in an
+    // expression at all.
+    let rest = rest.trim_start();
+    let literal = rest
+        .strip_prefix('\'')
+        .and_then(|r| r.split_once('\''))
+        .map(|(v, _)| v);
+    match (op, literal) {
+        ("==", Some("true")) | ("!=", Some("false")) => None,
+        _ => {
+            let shown: String = rest
+                .chars()
+                .take_while(|c| !c.is_whitespace() && *c != ')' && *c != '}')
+                .collect();
+            Some(format!(
+                "compares `{name} {op} {shown}`: only == 'true' or != 'false' (single-quoted) mean the filter matched"
+            ))
+        }
     }
 }
 

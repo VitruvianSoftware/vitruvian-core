@@ -173,6 +173,11 @@ fn strip_starlark_comments(text: &str) -> String {
 
 /// The parser behind [`canonical_rust`], on `MODULE.bazel`'s text. Comments
 /// are stripped first, so nothing commented out is read.
+///
+/// Accepted limit: strings are kept, so a top-level string that spells the
+/// call out (`_DOC = """\nrust.toolchain(versions = ["1.80.0"])\n"""`) is
+/// read as the call. That fails loudly, as DRIFT on every rust-toolchain
+/// file, and takes a docstring written in exact call syntax.
 pub fn rust_version_from_module(content: &str) -> Option<String> {
     let stripped = strip_starlark_comments(content);
     let content = stripped.as_str();
