@@ -1680,9 +1680,25 @@ pub fn classify_tool(inv: &Invocation, ctx: &Context) -> (Option<Verdict>, Strin
     }
 
     if prog == "cargo" {
+        // `cargo +nightly update` is `cargo update` on another toolchain, and
+        // the value of a global flag (`--color never`) is not the subcommand
+        // (#4171). Value-taking globals are from `cargo --help` (cargo 1.95.0).
+        let args = match args.first() {
+            Some(a) if a.starts_with('+') => &args[1..],
+            _ => args,
+        };
         let sub = first_sub(
             args,
-            &["--manifest-path", "-p", "--package", "-Z", "--config", "-C"],
+            &[
+                "--manifest-path",
+                "-p",
+                "--package",
+                "-Z",
+                "--config",
+                "-C",
+                "--color",
+                "--explain",
+            ],
         );
         let sub = sub.as_str();
         if version_only(args)

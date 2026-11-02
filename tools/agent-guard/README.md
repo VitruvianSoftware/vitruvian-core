@@ -436,7 +436,7 @@ another branch; until one lands, the refusal says so and points to James.
 | `swift` | `swift build/test/run/package`, `swiftc` | `bazel test //apps/desktop/<app>:<Tests>` |
 | `xcode` | `xcodebuild`, `xcrun notarytool/stapler/altool` | the app's `bazel build`/`test` and packaging targets |
 | `node` | `npm`/`pnpm`/`yarn`/`bun` install, test, run, exec; `npx` | `bazel test` / `bazel run`; Bazel installs node_modules itself |
-| `cargo` | `cargo build/test/run/check/clippy/publish`; `cargo update/generate-lockfile/add/remove` | `bazel test` / `bazel build`; `bazel run //tools/crates:lock` (after editing `Cargo.toml` by hand for add/remove) |
+| `cargo` | `cargo build/test/run/check/clippy/publish`; `cargo update/generate-lockfile/add/remove` (also with `+toolchain`, global flags or `rustup run <toolchain>`) | `bazel test` / `bazel build`; `bazel run //tools/crates:lock` (after editing `Cargo.toml` by hand for add/remove) |
 | `gradle` | `gradle`, `./gradlew` | `bazel build //apps/mobile/<app>:app` |
 | `pytest` | `pytest`, `python -m pytest`, `uv run pytest` | `bazel test` |
 | `lint` | `gofmt`, `golangci-lint`, `ruff`, `eslint`, `prettier`, `shellcheck`, `buildifier`, ... | `bazel run //tools/format` (or `//:tidy`), `aspect lint` |
@@ -474,7 +474,7 @@ It splits a command into every program it runs: `&&`, `||`, `;`, `|`,
 newlines, `( )` and `{ }`, `$(...)`, backticks, `<(...)`, `if/for/while`
 bodies, `bash -c`/`sh -c`/`zsh -lc`, `bash <<EOF` and `<<<`, `eval`, `env`
 (including `-S`), `xargs`, `find -exec`, `watch`, `nice`, `time`, `timeout`,
-`nohup`, `command`, `exec`, `sudo`, `caffeinate`, `direnv exec`, `uv run`,
+`nohup`, `command`, `exec`, `sudo`, `caffeinate`, `direnv exec`, `rustup run`, `uv run`,
 `uvx` and `python -m`. It matches programs by basename (`/usr/bin/git` is git)
 and follows `cd`, `git -C`, `--git-dir` and `--work-tree` to decide scope. A
 heredoc fed to `cat` is data, including inside `"$(cat <<'EOF' ... EOF)"`

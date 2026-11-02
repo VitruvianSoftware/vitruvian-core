@@ -227,6 +227,15 @@ fn cargo_lock_changes_point_at_crates_lock() {
         "cargo generate-lockfile",
         "cargo add serde",
         "cargo rm serde",
+        // #4171: a toolchain wrapper, +toolchain and global flags are seen through.
+        "rustup run stable cargo update",
+        "rustup run --install nightly cargo add serde",
+        "rustup -v run stable -- cargo generate-lockfile",
+        "cargo +nightly update",
+        "cargo --color never add serde",
+        "cargo --color=never update",
+        "cargo -v --offline --manifest-path x/Cargo.toml update",
+        "cargo -Z unstable-options --config k=v -C dir update",
     ] {
         let msg = t.fx.run(command).message;
         assert!(
@@ -243,8 +252,18 @@ fn cargo_lock_changes_point_at_crates_lock() {
             msg
         );
     }
-    let msg = t.fx.run("cargo add serde").message;
-    assert!(msg.contains("Edit the dependency in Cargo.toml"), "{}", msg);
+    for command in ["cargo add serde", "rustup run stable cargo add serde"] {
+        let msg = t.fx.run(command).message;
+        assert!(
+            msg.contains("Edit the dependency in Cargo.toml"),
+            "{}: {}",
+            command,
+            msg
+        );
+    }
+    // The refusal names what was actually run, not a flag's value.
+    let msg = t.fx.run("cargo --color never add serde").message;
+    assert!(msg.contains("`cargo add`"), "{}", msg);
 }
 
 #[test]

@@ -202,6 +202,20 @@ pub fn unwrap(mut words: Vec<String>, cmd: &SimpleCommand) -> (Vec<String>, Vec<
             }
             continue;
         }
+        // rustup [-v|-q] run [--install] <toolchain> <command...> runs the
+        // command with that toolchain: judge the command (#4171). Flags are
+        // from `rustup --help` / `rustup run --help` (rustup 1.29.2).
+        if p == "rustup" {
+            let rest = skip_opts(&args, &[]);
+            if rest.first().map(|s| s.as_str()) == Some("run") {
+                let after = skip_opts(&rest[1..], &[]);
+                words = after.get(1..).map(|s| s.to_vec()).unwrap_or_default();
+                if words.first().map(|s| s.as_str()) == Some("--") {
+                    words.remove(0);
+                }
+                continue;
+            }
+        }
         if p == "direnv" && first == Some("exec") {
             words = args.get(2..).map(|s| s.to_vec()).unwrap_or_default();
             continue;
@@ -508,6 +522,30 @@ mod tests {
                 vec!["go".into(), "test".into()]
             ]
         );
+        // rustup run [--install] <toolchain> [--] <cmd...> runs <cmd> (#4171).
+        for text in [
+            "rustup run stable cargo update",
+            "rustup run --install nightly cargo update",
+            "rustup -q run 1.95.0 -- cargo update",
+        ] {
+            let argvs: Vec<Vec<String>> = invocations(text, "/r", "/h")
+                .unwrap()
+                .into_iter()
+                .map(|i| i.argv)
+                .collect();
+            assert_eq!(
+                argvs,
+                vec![vec!["cargo".to_string(), "update".into()]],
+                "{}",
+                text
+            );
+        }
+        let show: Vec<Vec<String>> = invocations("rustup show", "/r", "/h")
+            .unwrap()
+            .into_iter()
+            .map(|i| i.argv)
+            .collect();
+        assert_eq!(show, vec![vec!["rustup".to_string(), "show".into()]]);
         assert!(hides_agent_marker(&[
             "env".into(),
             "-u".into(),
