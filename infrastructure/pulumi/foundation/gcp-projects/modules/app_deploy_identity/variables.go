@@ -49,10 +49,11 @@ type Args struct {
 	// impersonate this SA, e.g. "oauth-user-inspector-development". The WIF
 	// provider already pins the repository, so the environment is the isolation
 	// layer.
+	//
+	// There is deliberately no option to bind by repository instead: in this
+	// monorepo a repository principalSet would let EVERY job in the repo
+	// impersonate the SA, Environment or not, which widens rather than narrows.
 	GitHubEnvironment string
-	// GitHubRepository optionally restricts the WIF impersonation to a specific
-	// GitHub repository claim (e.g. "VitruvianSoftware/vitruvian-core").
-	GitHubRepository string
 	// ConditionalDeployRoles are project-level roles granted WITH an IAM
 	// condition. Nil (the zero value) reproduces the pre-existing behaviour
 	// exactly. They are a SEPARATE field, not entries in DeployRoles, because
