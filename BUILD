@@ -61,18 +61,39 @@ exports_files(
 # worktrees under it), but a file named from this package still resolves.
 # //tools/agent-guard:agent_guard_test fails if agent-guard is unwired from either.
 exports_files(
-    [
-        ".agents/hooks.json",
-        ".claude/settings.json",
-    ],
+    [".agents/hooks.json"],
     visibility = ["//tools/agent-guard:__pkg__"],
 )
 
+# //tools/ci's hook tests read settings.json too, to check each hook is wired.
+exports_files(
+    [".claude/settings.json"],
+    visibility = [
+        "//tools/agent-guard:__pkg__",
+        "//tools/ci:__pkg__",
+    ],
+)
+
+# The Claude Code hooks //tools/ci's rust_tests run for real
+# (block_queue_bypass_test, kube_setup_test, session_start_test).
+exports_files(
+    [
+        ".claude/block-queue-bypass.sh",
+        ".claude/kube-setup.sh",
+        ".claude/session-start.sh",
+    ],
+    visibility = ["//tools/ci:__pkg__"],
+)
+
 # The cloud-session tailnet hook that //tools/cloud-bootstrap:configure-tailscale
-# writes; its test checks this file is what the tool writes.
+# writes; its test checks this file is what the tool writes. //tools/ci's
+# session_start_test checks the session-start hook runs it.
 exports_files(
     [".claude/tailscale-up.sh"],
-    visibility = ["//tools/cloud-bootstrap:__pkg__"],
+    visibility = [
+        "//tools/ci:__pkg__",
+        "//tools/cloud-bootstrap:__pkg__",
+    ],
 )
 
 exports_files(
@@ -119,7 +140,10 @@ filegroup(
     # Only action.yml: every composite in this repo uses that spelling, and an
     # empty glob arm is a hard error under --incompatible_disallow_empty_glob.
     srcs = glob([".github/actions/*/action.yml"]),
-    visibility = ["//tools/delivery/gen:__pkg__"],
+    visibility = [
+        "//tools/ci:__pkg__",
+        "//tools/delivery/gen:__pkg__",
+    ],
 )
 
 filegroup(

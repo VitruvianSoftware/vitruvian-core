@@ -26,7 +26,8 @@
   bazel run //tools/secret-scan -- --unpushed       # commits origin does not have yet
 
 gitleaks is pinned in tools/tools.lock.json at the version CI's
-tools/ci/secret-scan.sh downloads (the test fails if the two drift apart), and
+//tools/ci:secret_scan downloads (//tools/ci:secret_scan_test fails if the two
+drift apart), and
 the rules are the repo's .gitleaks.toml. //tools/git:commit and :push call this
 before they record or publish anything.
 """

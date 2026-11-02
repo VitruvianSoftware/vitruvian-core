@@ -235,7 +235,7 @@ fn release_please_config_bumps_both_versioned_json_files_together() {
         .get("packages")
         .and_then(|p| p.get(PKG))
         .unwrap_or_else(|| panic!("missing {PLUGIN_NAME} package in release-please-config.json"));
-    let extra: Vec<&str> = entry
+    let mut extra: Vec<&str> = entry
         .get("extra-files")
         .and_then(|v| v.as_array())
         .map(|arr| {
@@ -244,5 +244,6 @@ fn release_please_config_bumps_both_versioned_json_files_together() {
                 .collect()
         })
         .unwrap_or_default();
+    extra.sort_unstable();
     assert_eq!(extra, vec!["plugin.json", "sidecars/panel/package.json"]);
 }

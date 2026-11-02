@@ -1,0 +1,187 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Builds one of the tools under tools/ci/src/<tool>/ with the runner's own
+# rustc, for jobs and steps that set up no Bazel, or run before it: the release
+# gates, the changelog and pulumi digests, the cache pruner, the ntfy notifier,
+# the changed-paths gate (it decides whether Bazel is set up at all), the LLVM
+# cache key and stage tools (a Bazel-built Rust binary links with the very
+# LLVM toolchain they restore), the merge-queue lookup, the fast lane and the
+# queue-runner watcher. Each of those tools is
+# a lib.rs + main.rs pair that depends only on //tools/shell-compat and std,
+# so three rustc calls build it from the checkout in about a second.
+#
+# The same three calls, byte for byte, are what //tools/ci:build_ci_tool_test
+# runs (it reads this file and executes the step below with Bazel's rustc),
+# so a tool that stops building this way fails presubmit, not a release.
+#
+# A failed build fails this step, and so does a build that claims success
+# without leaving an executable binary, or one that will not start. The caller's next step, which runs the
+# tool, then never starts and the run goes red. A caller whose tool must act
+# even then (the beta gate turning auto-merge off, the notifier reaching ntfy)
+# has its own `if: failure()` step after this one.
+#
+# Interface (kept stable for other callers): input `tool`, optional input
+# `source-root`, output `path`.
+# Optional input `deps`: extra std-only crates the tool's lib needs, built
+# first and passed with --extern. Only the names in the step's `case` are
+# accepted, each at its one known path.
+#
+# The homelab queue runner's image carries no Rust toolchain; GitHub's ubuntu
+# images do. On a self-hosted runner (RUNNER_ENVIRONMENT=self-hosted) with no
+# rustc the step installs it with apt, and fails by name if that does not
+# leave a rustc on PATH. A GitHub-hosted runner with no rustc fails at once:
+# that is an image change to look at, not a gap to fill with whatever rustc
+# apt carries.
+#
+# Requires the repo to be checked out first (composite actions referenced as
+# `./.github/actions/...` resolve from the workspace).
+name: Build a tools/ci Rust tool
+description: >-
+  Compile tools/ci/src/<tool> with the runner's rustc (no Bazel) and output
+  the binary's path.
+
+inputs:
+  tool:
+    description: >-
+      The tool's directory under tools/ci/src, which is also its crate name
+      (for example release_hold).
+    required: true
+  deps:
+    description: >-
+      Space-separated extra crates the tool's lib uses, built first:
+      transient_lib (tools/ci/src/transient_lib) or appset_render
+      (tools/gitops/appset-render). Empty for a tool that needs only
+      shell-compat.
+    required: false
+    default: ""
+  source-root:
+    description: >-
+      The checkout to build from; empty means the workspace. The fast-lane
+      steps pass a checkout of the pull request's BASE commit, so a pull
+      request cannot rewrite the rule that decides whether it may skip tests.
+      Relative paths are relative to the workspace.
+    required: false
+    default: ""
+
+outputs:
+  path:
+    description: Absolute path of the built binary.
+    value: ${{ steps.build.outputs.path }}
+
+runs:
+  using: composite
+  steps:
+    - name: rustc ${{ inputs.tool }}
+      id: build
+      shell: bash
+      env:
+        TOOL: ${{ inputs.tool }}
+        DEPS: ${{ inputs.deps }}
+        SOURCE_ROOT: ${{ inputs.source-root }}
+      run: |
+        set -euo pipefail
+        case "$TOOL" in
+          "" | *[!a-z0-9_]*)
+            echo "::error::build-ci-tool: tool must be a directory name under tools/ci/src, got '$TOOL'"
+            exit 1
+            ;;
+        esac
+        src="${SOURCE_ROOT:-$GITHUB_WORKSPACE}/tools"
+        # Each dep: a known name at its one path, std-only (built with no --extern).
+        # Split on whitespace into an array, so nothing in DEPS is globbed.
+        dep_list=()
+        read -r -a dep_list <<<"${DEPS:-}" || true
+        dep_names=()
+        dep_srcs=()
+        for dep in ${dep_list[@]+"${dep_list[@]}"}; do
+          case "$dep" in
+            transient_lib) dep_srcs+=("$src/ci/src/transient_lib/lib.rs") ;;
+            appset_render) dep_srcs+=("$src/gitops/appset-render/src/lib.rs") ;;
+            *)
+              echo "::error::build-ci-tool: unknown dep '$dep' (known: transient_lib appset_render)"
+              exit 1
+              ;;
+          esac
+          dep_names+=("$dep")
+        done
+        # Before anything else needs PATH: with no rustc (and no apt), stop
+        # here naming the tool, not later on a missing mkdir or rustc.
+        if ! command -v rustc >/dev/null 2>&1; then
+          [ "${RUNNER_ENVIRONMENT:-}" = self-hosted ] \
+            || { echo "::error::build-ci-tool: no rustc on this runner (RUNNER_ENVIRONMENT=${RUNNER_ENVIRONMENT:-unset}), so tools/ci/src/$TOOL cannot be built; only a self-hosted runner installs it with apt"; exit 1; }
+          { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends rustc; } \
+            || { echo "::error::apt install rustc failed, so build-ci-tool has no rustc on this runner and cannot build tools/ci/src/$TOOL"; exit 1; }
+          command -v rustc >/dev/null 2>&1 \
+            || { echo "::error::rustc is still not on PATH after apt install, so build-ci-tool has no rustc on this runner and cannot build tools/ci/src/$TOOL"; exit 1; }
+        fi
+        out="$RUNNER_TEMP/ci-tools"
+        mkdir -p "$out"
+        # The runner's rustc is newer than the Bazel toolchain that
+        # //tools/ci:build_ci_tool_test proves this build with; log it so a
+        # failure on a newer compiler is told apart from a code break.
+        rustc --version
+        rustc --edition 2021 -O --crate-type lib --crate-name shell_compat "$src/shell-compat/src/lib.rs" -o "$out/libshell_compat.rlib"
+        externs=()
+        for i in "${!dep_names[@]}"; do
+          rustc --edition 2021 -O --crate-type lib --crate-name "${dep_names[$i]}" "${dep_srcs[$i]}" -o "$out/lib${dep_names[$i]}.rlib"
+          externs+=(--extern "${dep_names[$i]}=$out/lib${dep_names[$i]}.rlib")
+        done
+        rustc --edition 2021 -O --crate-type lib --crate-name "$TOOL" "$src/ci/src/$TOOL/lib.rs" -L "$out" --extern shell_compat="$out/libshell_compat.rlib" ${externs[@]+"${externs[@]}"} -o "$out/lib$TOOL.rlib"
+        rustc --edition 2021 -O "$src/ci/src/$TOOL/main.rs" -L "$out" --extern shell_compat="$out/libshell_compat.rlib" --extern "$TOOL=$out/lib$TOOL.rlib" -o "$out/$TOOL"
+        # Only a binary that is really there may be handed on: a caller that
+        # runs a missing path fails with 127 AFTER this step reported success,
+        # which is the failure the callers' `if: failure()` fallbacks miss.
+        if [ ! -f "$out/$TOOL" ] || [ ! -x "$out/$TOOL" ]; then
+          echo "::error::build-ci-tool: rustc reported success but $out/$TOOL is not an executable file"
+          exit 1
+        fi
+        # And one that starts. First it must be a native executable (ELF or
+        # Mach-O): env runs any other file through /bin/sh, which tells
+        # garbage apart from a real program only by "command not found".
+        magic=$(od -An -tx1 -N4 "$out/$TOOL" | tr -d ' \n')
+        case "$magic" in
+          7f454c46 | cffaedfe | cefaedfe | cafebabe) ;;
+          *)
+            echo "::error::build-ci-tool: $out/$TOOL was built but does not run (not a native executable: $magic)"
+            exit 1
+            ;;
+        esac
+        # Then run it once with no arguments and an empty environment, where
+        # every tool here stops at once (a usage error, "not a pull request",
+        # or the first command it needs not found). PATH names a folder that
+        # does not exist, so it finds no gh, git or curl even by the default
+        # search path: it cannot reach GitHub or ntfy, and with no
+        # GITHUB_OUTPUT it writes nothing. 126 or 128 and up means it could
+        # not be executed or died on a signal. 127 is ambiguous: a tool ported
+        # from a `set -e` script (secret_scan runs git first) exits 127 itself
+        # when that command is missing, printing "<bin>: line 49: git: command
+        # not found" as the script did. Only that counts as started: every
+        # other 127 fails, including env's own ("env: ...") and the dynamic
+        # loader's ("error while loading shared libraries").
+        rc=0
+        env -i PATH="$out/no-such-dir" "$out/$TOOL" </dev/null >/dev/null 2>"$out/$TOOL.start-err" || rc=$?
+        first=""
+        IFS= read -r first <"$out/$TOOL.start-err" || true
+        if [ "$rc" -eq 126 ] || [ "$rc" -ge 128 ] || { [ "$rc" -eq 127 ] && [ "${first%: command not found}" = "$first" ]; }; then
+          echo "::error::build-ci-tool: $out/$TOOL was built but does not run (exit $rc${first:+: $first})"
+          exit 1
+        fi
+        echo "path=$out/$TOOL" >> "$GITHUB_OUTPUT"

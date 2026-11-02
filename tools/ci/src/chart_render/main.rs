@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! //tools/ci:chart-render: the Rust port.
+//! //tools/ci:chart_render (see lib.rs).
 
 fn main() {
     std::process::exit(chart_render::run(&shell_compat::args()));

@@ -358,7 +358,7 @@ jobs:
       # reporting arm still lists advisories in the distroless base.
       #
       # #1504 attached the SBOM this reads. Attaching an SBOM is not scanning it.
-      # See tools/ci/image-sbom-scan.sh for the two arms.
+      # See tools/ci/src/image_sbom_scan/lib.rs for the two arms.
       #
       # BOUND, stated because the green does not carry it: this cannot pre-empt a
       # merge. PR runs build but never push, so there is no published index and
@@ -366,30 +366,37 @@ jobs:
       # `!= 'pull_request'` guard as the publish itself. It reddens the PUBLISH,
       # after the merge. Making it a PR gate needs the SBOM read out of a local
       # build rather than the registry, which is a different change.
-      # Logic lives in tools/ci/install-pinned-tool.sh (shared with
-      # actionlint.yaml, gitops-validate.yaml, supply-chain.yaml — same shape
-      # and same version pin as supply-chain.yaml's install step: one scanner
-      # version across the repo, so a finding here and a finding there are the
-      # same instrument. See that script's header for why this was deduped.
+      # .github/actions/install-pinned-tool, with the same version pin as
+      # supply-chain.yaml's install step: one scanner version across the repo,
+      # so a finding here and a finding there are the same instrument.
       - name: Install osv-scanner (pinned + checksum-verified)
         if: github.event_name != 'pull_request'
-        env:
-          OSV_SCANNER_VERSION: v2.6.0
-        run: |
-          bash tools/ci/install-pinned-tool.sh \
-            "https://github.com/google/osv-scanner/releases/download/${OSV_SCANNER_VERSION}" \
-            osv-scanner_linux_amd64 \
-            osv-scanner_SHA256SUMS \
-            ' osv-scanner_linux_amd64$' \
-            osv-scanner --raw
+        uses: ./.github/actions/install-pinned-tool
+        with:
+          base-url: https://github.com/google/osv-scanner/releases/download/v2.6.0
+          asset: osv-scanner_linux_amd64
+          checksum-file: osv-scanner_SHA256SUMS
+          checksum-pattern: " osv-scanner_linux_amd64$"
+          bin-name: osv-scanner
+          mode: raw
+
+      - name: Build //tools/ci:image_sbom_scan (no Bazel on this job)
+        if: github.event_name != 'pull_request'
+        id: sbom-scan-bin
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: image_sbom_scan
 
       - name: Scan the published image's SBOM for known advisories
         if: github.event_name != 'pull_request'
         env:
+          IMAGE_SBOM_SCAN: ${{ steps.sbom-scan-bin.outputs.path }}
           DIGEST: ${{ steps.publish.outputs.digest }}
           # Since #3985 the server is a Rust binary built --locked from a
           # lockfile osv-scan covers: no /app/node_modules, nothing for the
           # blocking arm to scan. `absent` makes the scan require that, and refuse if a package
           # tree ever comes back. See the script header.
           APP_TREE: absent
-        run: bash tools/ci/image-sbom-scan.sh
+        run: |
+          set -euo pipefail
+          "$IMAGE_SBOM_SCAN"

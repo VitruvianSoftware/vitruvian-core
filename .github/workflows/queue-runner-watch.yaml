@@ -21,7 +21,7 @@
 # Is the homelab runner pool taking jobs, and can it run them? Every 10 minutes
 # and after every push to main, a canary asks the homelab runners for a job and
 # runs the runner image's own parity checks (//tools/ci-runner:parity: bazel,
-# shellcheck, node, sudo...) while tools/ci/queue-runner-watch.sh waits on a
+# shellcheck, node, sudo...) while //tools/ci:queue_runner_watch waits on a
 # GitHub-hosted runner. A canary nobody picks up in 4 minutes, or one whose
 # checks fail, sets the
 # repository variable QUEUE_RUNNER_FALLBACK to "on", which sends the merge
@@ -81,8 +81,14 @@ jobs:
       - name: The runner image has what the queue jobs need
         run: |
           set -euo pipefail
+          # Fails here, by name, when apt cannot supply it (a failed install must not
+          # surface later as "rustc: command not found"). //tools/ci:workflow_rustc_test
+          # runs this block with apt failing.
           if ! command -v rustc >/dev/null 2>&1; then
-            sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends rustc
+            { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends rustc; } \
+              || { echo "::error::apt install rustc failed"; exit 1; }
+            command -v rustc >/dev/null 2>&1 \
+              || { echo "::error::rustc is still not on PATH after apt install"; exit 1; }
           fi
           rustc --edition 2021 --crate-type lib --crate-name parity_lib tools/ci-runner/src/lib.rs -o "$RUNNER_TEMP/libparity_lib.rlib"
           rustc --edition 2021 tools/ci-runner/src/main.rs -L "$RUNNER_TEMP" --extern parity_lib="$RUNNER_TEMP/libparity_lib.rlib" -o "$RUNNER_TEMP/parity"
@@ -107,10 +113,18 @@ jobs:
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
 
+      # Built with the runner's rustc: this job sets up no Bazel.
+      - name: Build the watcher
+        id: watcher
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: queue_runner_watch
+
       - name: Wait for the canary, then set or clear the fallback
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
           WAIT_SECONDS: '240'
-        run: bash tools/ci/queue-runner-watch.sh
+          WATCHER: ${{ steps.watcher.outputs.path }}
+        run: '"$WATCHER"'

@@ -585,6 +585,15 @@ public final class InboxModel: ObservableObject {
 
     /// A chat's draft as the engine keeps it, wherever the chat is: its row when loaded, else looked up by id.
     /// Nil when the engine doesn't answer or doesn't have the chat: the draft is unknown, not empty.
+    /// The chat's row: the one loaded, or with none, the engine's; nil when the engine has no such chat.
+    public func lookUpRow(_ roomID: String) async -> InboxRow? {
+        if let row = knownRow(roomID) { return row }
+        guard let client = appModel.client else { return nil }
+        let result: InboxResult? = try? await client.call("inbox.list", InboxListParams(roomIDs: [roomID]))
+        guard client === appModel.client else { return nil }
+        return result?.rooms.first { $0.roomID == roomID }
+    }
+
     public func lookUpDraft(_ roomID: String) async -> String? {
         if let row = knownRow(roomID) { return row.draft }
         if let lookup = rowLookup, lookup.roomID == roomID {

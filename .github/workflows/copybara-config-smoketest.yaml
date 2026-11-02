@@ -37,7 +37,7 @@ name: Copybara Config Smoke Test
 # `paths:` filter for exactly this reason.
 #
 # The safe pattern, if this ever does need to gate the queue, is "always report,
-# conditionally work" (tools/ci/relevant-paths.sh, PR #273): trigger on every
+# conditionally work" (.github/actions/changed-paths-gate, PR #273): trigger on every
 # pull_request/merge_group with NO `paths:` filter, and skip the WORK inside the
 # job based on a changed-files diff. Note `merge_group` events ignore `paths:`
 # anyway, so the filter buys nothing on the lane that would matter.

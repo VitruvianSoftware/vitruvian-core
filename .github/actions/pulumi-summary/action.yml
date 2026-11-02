@@ -20,13 +20,13 @@
 
 name: Pulumi summary digest
 description: >-
-  Render tools/ci/pulumi-summary.sh's markdown digest of a `pulumi preview`/`up`
+  Render //tools/ci:pulumi_summary's markdown digest of a `pulumi preview`/`up`
   log -- creates / updates / replaces / deletes, with destructive ops (replace +
   delete) flagged -- to the Actions step summary and, on a pull_request, an
   in-place sticky PR comment. One digest feeds both sinks so they never drift.
   Feed it the log a prior step captured with `2>&1 | tee "$OUT_FILE"` plus that
-  step's PIPESTATUS exit code. Requires the repo to be checked out (for the
-  script) before use.
+  step's PIPESTATUS exit code. Requires the repo to be checked out (the
+  digest tool is built from it with the runner's rustc) before use.
 
 inputs:
   label:
@@ -72,6 +72,14 @@ outputs:
 runs:
   using: composite
   steps:
+    # The callers set up no Bazel, so build the digest tool with the runner's
+    # rustc. A failed build fails here, before any digest is written.
+    - name: Build //tools/ci:pulumi_summary
+      id: digest-bin
+      uses: ./.github/actions/build-ci-tool
+      with:
+        tool: pulumi_summary
+
     - name: Build the pulumi digest
       id: digest
       shell: bash
@@ -79,18 +87,19 @@ runs:
         LABEL: ${{ inputs.label }}
         OUT_FILE: ${{ inputs.out-file }}
         EXIT_CODE: ${{ inputs.exit-code }}
+        DIGEST_BIN: ${{ steps.digest-bin.outputs.path }}
       run: |
         set -euo pipefail
         # A missing/empty log means the pulumi step was skipped for this stack
         # (e.g. an unchanged matrix leg) -- emit a clean "no changes" digest
-        # rather than letting pulumi-summary.sh read a false failure off an
+        # rather than letting pulumi_summary read a false failure off an
         # absent file. digest.md is reused by the sticky-comment step below.
         if [ ! -s "${OUT_FILE}" ]; then
           printf '### %s\n\n_No pulumi output — preview/apply was skipped for this stack._\n' \
             "${LABEL}" | tee "${RUNNER_TEMP}/pulumi-digest.md" >> "${GITHUB_STEP_SUMMARY}"
           exit 0
         fi
-        "${GITHUB_WORKSPACE}/tools/ci/pulumi-summary.sh" \
+        "${DIGEST_BIN}" \
           "${LABEL}" "${OUT_FILE}" "${EXIT_CODE:-1}" \
           | tee "${RUNNER_TEMP}/pulumi-digest.md" >> "${GITHUB_STEP_SUMMARY}"
 

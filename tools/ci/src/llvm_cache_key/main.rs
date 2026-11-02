@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! //tools/ci:llvm-cache-key: the Rust port.
+//! //tools/ci:llvm_cache_key: the binary; what it does is in lib.rs.
 
 fn main() {
     std::process::exit(llvm_cache_key::run(&shell_compat::args()));

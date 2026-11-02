@@ -157,6 +157,37 @@ func TestReminderSkippedWhenIReplied(t *testing.T) {
 	require.True(t, rowOf(t, s, "!always").MarkedUnread)
 }
 
+// "if_no_incoming" (the local API's dismissOnIncomingMessage) is dropped by a message from someone else since it
+// was set, and by nothing of mine: my own message, their reaction or their edit of an older message is no new
+// message coming in.
+func TestReminderSkippedWhenSomethingCameIn(t *testing.T) {
+	s, ctx := open(t), context.Background()
+	t0 := time.UnixMilli(1_000_000_000)
+	clock := clockAt(s, t0)
+	for _, id := range []string{"!quiet", "!incoming", "!noreply"} {
+		chat(t, s, id, "whatsapp", true, 900_000)
+	}
+	due := t0.Add(time.Hour)
+	require.NoError(t, s.SetReminder(ctx, []string{"!quiet", "!incoming"}, due, "if_no_incoming"))
+	require.NoError(t, s.SetReminder(ctx, []string{"!noreply"}, due, "if_no_reply"))
+	mkMsg(t, s, "!quiet", "$before", ghost, "m.room.message", text("earlier"), t0.Add(-time.Minute))
+	mkMsg(t, s, "!quiet", "$mine", me, "m.room.message", text("on it"), t0.Add(time.Minute))
+	mkMsg(t, s, "!quiet", "$react", ghost, "m.reaction", `{"m.relates_to":{"event_id":"$before","key":"x"}}`, t0.Add(time.Minute))
+	mkMsg(t, s, "!quiet", "$edit", ghost, "m.room.message", editTo("$before", "earlier still"), t0.Add(2*time.Minute))
+	mkMsg(t, s, "!incoming", "$theirs", ghost, "m.room.message", text("news"), t0.Add(time.Minute))
+	mkMsg(t, s, "!noreply", "$theirs2", ghost, "m.room.message", text("news"), t0.Add(time.Minute))
+
+	clock.set(due)
+	fired, err := s.FireDueReminders(ctx)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{"!quiet", "!noreply"}, fired, "their message doesn't cancel if_no_reply")
+	incoming := rowOf(t, s, "!incoming")
+	require.Nil(t, incoming.Reminder, "a message came in: the reminder is gone")
+	require.False(t, incoming.MarkedUnread, "and nothing else happened")
+	require.Equal(t, "if_no_incoming", rowOf(t, s, "!quiet").Reminder.Condition)
+	require.ErrorIs(t, s.SetReminder(ctx, []string{"!quiet"}, due.Add(time.Hour), "if_unknown"), ErrBadValue)
+}
+
 // Review Focus 2: a reminder that came due while Courier was quit fires once at the next chance: not zero times,
 // not twice.
 func TestOverdueReminderFiresOnceAfterRestart(t *testing.T) {

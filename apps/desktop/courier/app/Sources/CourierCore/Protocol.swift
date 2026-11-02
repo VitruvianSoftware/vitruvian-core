@@ -16,8 +16,8 @@ import Foundation
 
 /// The protocol this app speaks, and the framing limit both sides keep.
 public enum CourierProtocol {
-    public static let version = 11
-    public static let schemaVersion = 10
+    public static let version = 12
+    public static let schemaVersion = 11
     /// The longest line either side may send, not counting the newline.
     public static let maxFrameBytes = 4_194_304
     /// protocol.json's `conventions.typing_repeat_ms`: while the text keeps changing, room.setTyping true goes again
@@ -645,8 +645,10 @@ public struct ReminderCondition: OpenValues {
 
     /// Only if I haven't sent a message in the chat since setting it.
     public static let ifNoReply = Self(rawValue: "if_no_reply")
+    /// Only if no one else has sent a message in the chat since setting it (set by the local API).
+    public static let ifNoIncoming = Self(rawValue: "if_no_incoming")
     public static let always = Self(rawValue: "always")
-    public static let known: [Self] = [.ifNoReply, .always]
+    public static let known: [Self] = [.ifNoReply, .ifNoIncoming, .always]
 }
 
 /// Brings a chat back to my attention at `dueAt`.
@@ -4958,6 +4960,261 @@ public struct StorageCleanupResult: ProtocolType, Equatable, Sendable {
     }
 }
 
+// MARK: - Integrations: the local API for MCP clients, and focus_app (protocol 12)
+
+/// How the local API (MCP for Claude and other apps, at /v0/mcp) is running. Protocol 12's keys are camelCase.
+public struct IntegrationsStatus: ProtocolType, Equatable, Sendable {
+    public static let protocolName = "IntegrationsStatus"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    /// Allow connections is on.
+    public var enabled: Bool
+    /// The port listened on while listening, else the one set.
+    public var port: Int
+    /// Remote Access: it listens on every address, not only 127.0.0.1.
+    public var remote: Bool
+    public var listening: Bool
+    /// Why it isn't listening although enabled, for people ("Port 23390 is in use by another app"); "" otherwise.
+    public var error: String
+
+    public init(enabled: Bool = false, port: Int = IntegrationsStatus.defaultPort, remote: Bool = false,
+                listening: Bool = false, error: String = "") {
+        self.enabled = enabled
+        self.port = port
+        self.remote = remote
+        self.listening = listening
+        self.error = error
+    }
+
+    /// The port the engine uses until it is changed.
+    public static let defaultPort = 23390
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case enabled, port, remote, listening, error
+    }
+}
+
+/// What to change in the local API's settings. What is nil is left out, and stays as it was.
+public struct IntegrationsUpdateParams: ProtocolType, Equatable, Sendable {
+    public static let protocolName = "IntegrationsUpdateParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var enabled: Bool?
+    public var port: Int?
+    public var remote: Bool?
+
+    public init(enabled: Bool? = nil, port: Int? = nil, remote: Bool? = nil) {
+        self.enabled = enabled
+        self.port = port
+        self.remote = remote
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case enabled, port, remote
+    }
+}
+
+/// A token an MCP client connects with. Its secret is never here: only `CreateTokenResult` carries it, once.
+public struct APIToken: ProtocolType, Equatable, Sendable, Identifiable {
+    public static let protocolName = "APIToken"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var id: String
+    public var name: String
+    public var canSend: Bool
+    public var createdMs: Int64
+    /// When a request last came with it, to the minute; nil when none has. Always written, as null when nil.
+    public var lastUsedMs: Int64?
+
+    public init(id: String, name: String, canSend: Bool = false, createdMs: Int64, lastUsedMs: Int64? = nil) {
+        self.id = id
+        self.name = name
+        self.canSend = canSend
+        self.createdMs = createdMs
+        self.lastUsedMs = lastUsedMs
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case id, name, canSend, createdMs, lastUsedMs
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(canSend, forKey: .canSend)
+        try container.encode(createdMs, forKey: .createdMs)
+        try container.encode(lastUsedMs, forKey: .lastUsedMs)
+    }
+}
+
+/// integrations.tokens answers with a bare JSON array of tokens: protocol.json's `APIToken[]`.
+extension Array: ProtocolType where Element == APIToken {
+    public static var protocolName: String { "APIToken[]" }
+    public static var fieldNames: [String] { [] }
+}
+
+public struct CreateTokenParams: ProtocolType, Equatable, Sendable {
+    public static let protocolName = "CreateTokenParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var name: String
+    public var canSend: Bool?
+
+    public init(name: String, canSend: Bool? = nil) {
+        self.name = name
+        self.canSend = canSend
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case name, canSend
+    }
+}
+
+public struct CreateTokenResult: ProtocolType, Equatable, Sendable {
+    public static let protocolName = "CreateTokenResult"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var token: APIToken
+    /// `courier_` and 43 characters: what the client sends as `Authorization: Bearer`. Shown once.
+    public var secret: String
+
+    public init(token: APIToken, secret: String) {
+        self.token = token
+        self.secret = secret
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case token, secret
+    }
+}
+
+public struct TokenParams: ProtocolType, Equatable, Sendable {
+    public static let protocolName = "TokenParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var id: String
+
+    public init(id: String) {
+        self.id = id
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case id
+    }
+}
+
+public struct SetCanSendParams: ProtocolType, Equatable, Sendable {
+    public static let protocolName = "SetCanSendParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var id: String
+    public var canSend: Bool
+
+    public init(id: String, canSend: Bool) {
+        self.id = id
+        self.canSend = canSend
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case id, canSend
+    }
+}
+
+/// app.setLocked's params: whether Courier is locked, so the engine's focus_app answers its client truthfully.
+public struct AppLockParams: ProtocolType, Equatable, Sendable {
+    public static let protocolName = "AppLockParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var locked: Bool
+
+    public init(locked: Bool) {
+        self.locked = locked
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case locked
+    }
+}
+
+public struct AnswerPairingParams: ProtocolType, Equatable, Sendable {
+    public static let protocolName = "AnswerPairingParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var requestID: String
+    public var allow: Bool
+    public var canSend: Bool?
+
+    public init(requestID: String, allow: Bool, canSend: Bool? = nil) {
+        self.requestID = requestID
+        self.allow = allow
+        self.canSend = canSend
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case requestID, allow, canSend
+    }
+}
+
+/// A client asking to connect (POST /v0/pair). `clientName` is cleaned by the engine but still untrusted: show it
+/// as plain text, never as markup or a link.
+public struct PairRequest: ProtocolType, Equatable, Sendable, Identifiable {
+    public static let protocolName = "PairRequest"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var requestID: String
+    public var clientName: String
+
+    public var id: String { requestID }
+
+    public init(requestID: String, clientName: String) {
+        self.requestID = requestID
+        self.clientName = clientName
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case requestID, clientName
+    }
+}
+
+/// A pairing request ended (allowed, denied, timed out, or the client went away): the prompt for it goes away.
+public struct PairEnded: ProtocolType, Equatable, Sendable {
+    public static let protocolName = "PairEnded"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var requestID: String
+
+    public init(requestID: String) {
+        self.requestID = requestID
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case requestID
+    }
+}
+
+/// An MCP client's focus_app: bring Courier to the front at the chat and message given, with a draft in the chat's
+/// composer, unsent. The engine has checked that the chat and message exist and that the file is readable.
+public struct FocusParams: ProtocolType, Equatable, Sendable {
+    public static let protocolName = "FocusParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var chatID: String?
+    public var messageID: String?
+    public var draftText: String?
+    public var draftAttachmentPath: String?
+
+    public init(chatID: String? = nil, messageID: String? = nil, draftText: String? = nil,
+                draftAttachmentPath: String? = nil) {
+        self.chatID = chatID
+        self.messageID = messageID
+        self.draftText = draftText
+        self.draftAttachmentPath = draftAttachmentPath
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case chatID, messageID, draftText, draftAttachmentPath
+    }
+}
+
+/// A notification other than `changed` (protocol 12): something for the app to do, not something to re-read.
+public enum EngineNotice: Equatable, Sendable {
+    /// A client asks to connect: ask the person, then answer with integrations.answerPairing.
+    case pairRequest(PairRequest)
+    /// That request ended, however it ended: dismiss its prompt.
+    case pairEnded(PairEnded)
+    /// An MCP client's focus_app.
+    case focus(FocusParams)
+}
+
 // MARK: - Changes
 
 /// Something the app shows has changed: re-query it. A `Changed` notification, read.
@@ -5031,6 +5288,16 @@ public enum Change: Equatable, Hashable, Sendable {
 /// The methods, with the types of their params and results, as protocol.json's "methods".
 public enum ProtocolMethods {
     public static let changedNotification = "changed"
+    public static let pairRequestNotification = "integrations.pairRequest"
+    public static let pairEndedNotification = "integrations.pairEnded"
+    public static let focusNotification = "app.focus"
+    /// Every notification protocol.json lists, with the type of its params.
+    public static let notifications: [String: any ProtocolType.Type] = [
+        changedNotification: Changed.self,
+        pairRequestNotification: PairRequest.self,
+        pairEndedNotification: PairEnded.self,
+        focusNotification: FocusParams.self,
+    ]
 
     /// Whether a protocol method is read-only/background or a user-initiated mutation refused while locked.
     public enum AccessClassification: String, Equatable, Sendable {
@@ -5135,6 +5402,15 @@ public enum ProtocolMethods {
         "diagnostics.export": .userInitiatedMutation,
         "storage.usage": .userInitiatedMutation,
         "storage.cleanup": .userInitiatedMutation,
+        "integrations.status": .userInitiatedMutation,
+        "integrations.tokens": .userInitiatedMutation,
+        "integrations.update": .userInitiatedMutation,
+        "integrations.createToken": .userInitiatedMutation,
+        "integrations.revokeToken": .userInitiatedMutation,
+        "integrations.setCanSend": .userInitiatedMutation,
+        "integrations.answerPairing": .userInitiatedMutation,
+        // Sent while locked too: it is how the engine learns the app is.
+        "app.setLocked": .readOnlyOrBackground,
     ]
 
     public static func classification(for method: String) -> AccessClassification? {
@@ -5237,6 +5513,14 @@ public enum ProtocolMethods {
         "diagnostics.export": (DiagnosticsExportParams.self, DiagnosticsExportResult.self),
         "storage.usage": (Empty.self, StorageUsageResult.self),
         "storage.cleanup": (StorageCleanupParams.self, StorageCleanupResult.self),
+        "integrations.status": (Empty.self, IntegrationsStatus.self),
+        "integrations.update": (IntegrationsUpdateParams.self, IntegrationsStatus.self),
+        "integrations.tokens": (Empty.self, [APIToken].self),
+        "integrations.createToken": (CreateTokenParams.self, CreateTokenResult.self),
+        "integrations.revokeToken": (TokenParams.self, Empty.self),
+        "integrations.setCanSend": (SetCanSendParams.self, Empty.self),
+        "integrations.answerPairing": (AnswerPairingParams.self, Empty.self),
+        "app.setLocked": (AppLockParams.self, Empty.self),
     ]
 
     /// Every type of protocol.json's "types".
@@ -5274,6 +5558,9 @@ public enum ProtocolMethods {
         SubAccountsParams.self, SubAccountsResult.self, SetSubAccountParams.self, DiagnosticsExportParams.self,
         RoomDiagnostic.self, MessageDiagnostic.self, DiagnosticsExportResult.self,
         RoomStorageUsage.self, StorageUsageResult.self, StorageCleanupParams.self, StorageCleanupResult.self,
+        IntegrationsStatus.self, IntegrationsUpdateParams.self, APIToken.self, CreateTokenParams.self,
+        CreateTokenResult.self, TokenParams.self, SetCanSendParams.self, AnswerPairingParams.self, PairRequest.self,
+        PairEnded.self, FocusParams.self, AppLockParams.self,
     ]
 
     /// The open-valued fields, by "Type.field", with the values this app knows.

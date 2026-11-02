@@ -29,6 +29,7 @@ import (
 	"github.com/VitruvianSoftware/courier/engine/internal/actions"
 	"github.com/VitruvianSoftware/courier/engine/internal/engine"
 	"github.com/VitruvianSoftware/courier/engine/internal/entitlement"
+	"github.com/VitruvianSoftware/courier/engine/internal/localapi"
 	"github.com/VitruvianSoftware/courier/engine/internal/login"
 	"github.com/VitruvianSoftware/courier/engine/internal/media"
 	"github.com/VitruvianSoftware/courier/engine/internal/search"
@@ -59,7 +60,10 @@ import (
 // (accounts.remove, accounts.subAccounts, accounts.setSubAccount), and scrubbed diagnostics export (diagnostics.export).
 // Protocol 10 adds can_lookup_email on Account and Login so starting a DM by email follows engine capabilities.
 // Protocol 11 adds local storage inspection and media deletion (storage.usage, storage.cleanup).
-const Protocol = 11
+// Protocol 12 adds the local API's settings, tokens and pairing (integrations.status, integrations.update,
+// integrations.tokens, integrations.createToken, integrations.revokeToken, integrations.setCanSend,
+// integrations.answerPairing) and two notifications besides changed: integrations.pairRequest and app.focus.
+const Protocol = 12
 
 // MaxFrameBytes is the longest line the engine reads, not counting its newline. A longer one closes the connection.
 const MaxFrameBytes = 4 << 20
@@ -96,6 +100,11 @@ type Deps struct {
 	Version string
 	// DataDir is the engine's data directory, where engine-stderr.log lives for diagnostics.export.
 	DataDir string
+	// LocalAPI is the local API (MCP), which the integrations.* methods set up. nil makes them internal errors.
+	LocalAPI *localapi.Server
+	// Notices sends the engine's own notifications (app.focus, integrations.pairRequest) to every connection that
+	// has said hello. nil sends none.
+	Notices *Notifier
 	// Log gets the engine's own failures: an internal error (the method and the error) and a recovered panic
 	// (with its stack). Nothing else is logged, never params or values. The zero value logs nothing.
 	Log zerolog.Logger
@@ -291,14 +300,22 @@ func (c *conn) handle(line []byte) {
 		first := !c.greeted
 		res, err := c.hello(req.params)
 		var feed *store.Feed
+		var notices chan []byte
+		var unsubscribe func()
 		if first && c.greeted {
 			// Subscribed before the answer goes out, so a change made as soon as the client has it is notified.
 			feed = c.d.Store.Feed()
+			if c.d.Notices != nil {
+				notices, unsubscribe = c.d.Notices.subscribe()
+			}
 		}
 		c.reply(req.id, res, err)
 		if feed != nil {
 			// Forwarded only now, with the answer queued, so no notification gets ahead of it.
 			c.startFeed(feed)
+		}
+		if notices != nil {
+			c.startNotices(notices, unsubscribe)
 		}
 		return
 	}

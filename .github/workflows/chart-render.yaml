@@ -19,8 +19,8 @@
 # SOFTWARE.
 
 # Renders every co-located Helm chart and asserts its guards REFUSE, not just
-# that it parses. Logic lives in tools/ci/chart-render.sh so it is reviewable
-# and runnable locally (`bash tools/ci/chart-render.sh`, needs only helm).
+# that it parses. Logic lives in //tools/ci:chart_render so it is reviewable
+# and runnable locally (`bazel run //tools/ci:chart_render`, needs only helm).
 #
 # Until this existed, no CI job rendered a chart. Every statement about the
 # mcp-slack chart — which `required` calls fire, whether the boolean type-check
@@ -78,11 +78,21 @@ jobs:
       - name: Install Helm
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
 
+      - name: Build //tools/ci:chart_render (no Bazel on this job)
+        id: chart-render-bin
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: chart_render
+
       - name: Render charts and assert their guards refuse
-        run: bash tools/ci/chart-render.sh
+        env:
+          CHART_RENDER: ${{ steps.chart-render-bin.outputs.path }}
+        run: |
+          set -euo pipefail
+          "$CHART_RENDER"
 
   # Separate job, not another step on chart-render: this one needs the network
-  # and a GHCR credential, and chart-render.sh is deliberately offline. Keeping
+  # and a GHCR credential, and chart-render is deliberately offline. Keeping
   # them apart means a registry outage cannot redden the offline template checks,
   # and the two contexts can be promoted to required independently.
   #
@@ -111,11 +121,20 @@ jobs:
       - name: Install PyYAML
         run: python3 -m pip install --disable-pip-version-check --quiet pyyaml
 
+      - name: Build //tools/ci:gitops_values_render (no Bazel on this job)
+        id: values-render-bin
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: gitops_values_render
+
       - name: Render each Application's values against its chart
         env:
+          GITOPS_VALUES_RENDER: ${{ steps.values-render-bin.outputs.path }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
-        run: bash tools/ci/gitops-values-render.sh
+        run: |
+          set -euo pipefail
+          "$GITOPS_VALUES_RENDER"
   # Unit-tests the Prometheus ALERT RULES, not just their syntax. Offline and
   # fast; no cluster, no network.
   #
@@ -149,13 +168,15 @@ jobs:
           # rules fail to load is the failure mode this whole directory exists
           # to prevent. Bump this together with the chart's targetRevision.
           PROMETHEUS_VERSION: 2.45.0
-        run: |
-          bash tools/ci/install-pinned-tool.sh \
-            "https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}" \
-            "prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz" \
-            sha256sums.txt \
-            "prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz" \
-            promtool --tar "prometheus-${PROMETHEUS_VERSION}.linux-amd64/promtool"
+        uses: ./.github/actions/install-pinned-tool
+        with:
+          base-url: https://github.com/prometheus/prometheus/releases/download/v${{ env.PROMETHEUS_VERSION }}
+          asset: prometheus-${{ env.PROMETHEUS_VERSION }}.linux-amd64.tar.gz
+          checksum-file: sha256sums.txt
+          checksum-pattern: prometheus-${{ env.PROMETHEUS_VERSION }}.linux-amd64.tar.gz
+          bin-name: promtool
+          mode: tar
+          member-path: prometheus-${{ env.PROMETHEUS_VERSION }}.linux-amd64/promtool
 
       - name: Install PyYAML
         run: python3 -m pip install --disable-pip-version-check --quiet pyyaml

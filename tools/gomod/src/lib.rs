@@ -535,74 +535,11 @@ pub fn indent_diff(diff_out: &str) -> String {
     String::from_utf8_lossy(&indent_diff_bytes(diff_out.as_bytes())).into_owned()
 }
 
-/// Locate `tools/ci/transient-lib.sh` using the exact candidate list and order of `tidy.sh`.
-pub fn locate_transient_lib(argv0: &[u8], self_dir: &[u8], root: &[u8]) -> Option<Vec<u8>> {
-    let runfiles_base = match std::env::var_os("RUNFILES_DIR") {
-        Some(v) if !v.as_bytes().is_empty() => v.as_bytes().to_vec(),
-        _ => {
-            let mut b = argv0.to_vec();
-            b.extend_from_slice(b".runfiles");
-            b
-        }
-    };
-    let mut cand1 = runfiles_base;
-    cand1.extend_from_slice(b"/_main/tools/ci/transient-lib.sh");
-
-    let mut cand2 = self_dir.to_vec();
-    cand2.extend_from_slice(b"/../ci/transient-lib.sh");
-
-    let mut cand3 = root.to_vec();
-    cand3.extend_from_slice(b"/tools/ci/transient-lib.sh");
-
-    for cand in [cand1, cand2, cand3] {
-        if Path::new(OsStr::from_bytes(&cand)).is_file() {
-            return Some(cand);
-        }
-    }
-    None
-}
-
-fn source_transient_lib_startup(argv0: &[u8], transient_lib: &[u8]) -> Result<(), i32> {
-    let mut script = Vec::with_capacity(105 + 120);
-    script.resize(105, b'\n');
-    script.extend_from_slice(
-        b"set -euo pipefail; if [ \"${BASH_VERSINFO[0]}\" -ge 4 ]; then . \"$1\"; else\n. \"$1\"; fi",
-    );
-    match Command::new("bash")
-        .env_remove("BASH_ENV")
-        .env_remove("ENV")
-        .arg("-c")
-        .arg(OsStr::from_bytes(&script))
-        .arg(OsStr::from_bytes(argv0))
-        .arg(OsStr::from_bytes(transient_lib))
-        .stdin(Stdio::inherit())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .status()
-    {
-        Ok(s) if s.success() => Ok(()),
-        Ok(s) => Err(exit_status_code(s)),
-        Err(e) => Err(report_exec_error(argv0, 106, b"bash", &e)),
-    }
-}
-
-/// Classify whether `diff_file` contains a transient network error by shelling out to
-/// `tools/ci/transient-lib.sh`, keeping a single authoritative copy of the regex.
-pub fn is_transient_network_error_file(transient_lib: &[u8], diff_file: &[u8]) -> bool {
-    Command::new("bash")
-        .env_remove("BASH_ENV")
-        .env_remove("ENV")
-        .arg("-c")
-        .arg(". \"$1\"; is_transient_network_error \"$2\"")
-        .arg("_")
-        .arg(OsStr::from_bytes(transient_lib))
-        .arg(OsStr::from_bytes(diff_file))
-        .stdin(Stdio::inherit())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+/// Classify whether `diff_file` carries a transient module-proxy / network
+/// failure, with the one shared classifier (//tools/ci:transient_lib) that
+/// //tools/ci:go_test_with_retry also uses.
+pub fn is_transient_network_error_file(diff_file: &[u8]) -> bool {
+    transient_lib::is_transient_network_error_file(Path::new(OsStr::from_bytes(diff_file)))
 }
 
 fn is_file_executable(candidate: &Path) -> bool {
@@ -1108,9 +1045,6 @@ fn run_with_argv0(argv0: &[u8], args: &[OsString]) -> i32 {
 
     let initial_pwd = resolve_initial_pwd();
 
-    // Line 74: SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    let self_dir = logical_cd_bytes(&initial_pwd, &posix_dirname_bytes(argv0));
-
     // Lines 76-77: ROOT="${BUILD_WORKSPACE_DIRECTORY:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
     //              cd "${ROOT}"
     let root = resolve_root_dir(&initial_pwd);
@@ -1128,43 +1062,6 @@ fn run_with_argv0(argv0: &[u8], args: &[OsString]) -> i32 {
     let root_pwd = logical_cd_bytes(&initial_pwd, &root);
     std::env::set_var("OLDPWD", OsStr::from_bytes(&initial_pwd));
     std::env::set_var("PWD", OsStr::from_bytes(&root_pwd));
-
-    // Lines 93-106: locate and source tools/ci/transient-lib.sh.
-    let Some(transient_lib) = locate_transient_lib(argv0, &self_dir, &root) else {
-        let Some(c_red) = std::env::var_os("C_RED") else {
-            let mut msg = Vec::new();
-            msg.extend_from_slice(argv0);
-            msg.extend_from_slice(b": line 101: C_RED: unbound variable\n");
-            write_stderr(&msg);
-            return 1;
-        };
-        let Some(glyph_fail) = std::env::var_os("GLYPH_FAIL") else {
-            let mut msg = Vec::new();
-            msg.extend_from_slice(argv0);
-            msg.extend_from_slice(b": line 101: GLYPH_FAIL: unbound variable\n");
-            write_stderr(&msg);
-            return 1;
-        };
-        let Some(c_reset) = std::env::var_os("C_RESET") else {
-            let mut msg = Vec::new();
-            msg.extend_from_slice(argv0);
-            msg.extend_from_slice(b": line 101: C_RESET: unbound variable\n");
-            write_stderr(&msg);
-            return 1;
-        };
-        let mut msg = Vec::new();
-        msg.extend_from_slice(c_red.as_bytes());
-        msg.extend_from_slice(glyph_fail.as_bytes());
-        msg.extend_from_slice(b" gomod");
-        msg.extend_from_slice(c_reset.as_bytes());
-        msg.extend_from_slice(" — cannot locate tools/ci/transient-lib.sh\n".as_bytes());
-        let _ = printf_stderr(argv0, 101, &msg);
-        return 1;
-    };
-
-    if let Err(code) = source_transient_lib_startup(argv0, &transient_lib) {
-        return code;
-    }
 
     // Line 111: export GOWORK=off
     std::env::set_var("GOWORK", "off");
@@ -1285,9 +1182,7 @@ fn run_with_argv0(argv0: &[u8], args: &[OsString]) -> i32 {
                     if let Err(code) = write_diff_file(argv0, &temp_guard.path, &diff_out) {
                         return code;
                     }
-                    if attempt < 3
-                        && is_transient_network_error_file(&transient_lib, &temp_guard.path)
-                    {
+                    if attempt < 3 && is_transient_network_error_file(&temp_guard.path) {
                         let mut msg = Vec::new();
                         msg.extend_from_slice(palette.yellow.as_bytes());
                         msg.push(b'~');
@@ -1306,7 +1201,7 @@ fn run_with_argv0(argv0: &[u8], args: &[OsString]) -> i32 {
                         attempt += 1;
                         continue;
                     }
-                    if is_transient_network_error_file(&transient_lib, &temp_guard.path) {
+                    if is_transient_network_error_file(&temp_guard.path) {
                         unreachable.push(dir.clone());
                         let mut line = Vec::new();
                         line.extend_from_slice(palette.red.as_bytes());

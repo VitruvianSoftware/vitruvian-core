@@ -180,11 +180,18 @@ jobs:
       # the apply STRIPS the image off something that is serving traffic. The
       # §7 step-2 preview caught exactly this before it reached an apply, so it
       # is enforced here rather than trusted to the caller.
+      - name: Build //tools/ci:foundation_app_digest_guard (no Bazel on this job)
+        id: digest-guard-bin
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: foundation_app_digest_guard
+
       - name: Export image digests and refuse an enabled workload without one
         env:
           APP_IMAGE_DIGESTS: ${{ inputs['app-image-digests'] || inputs.app_image_digests }}
+          DIGEST_GUARD_BIN: ${{ steps.digest-guard-bin.outputs.path }}
         working-directory: ${{ inputs['working-directory'] || inputs.working_directory }}/${{ inputs['business-unit'] || inputs.business_unit }}/${{ inputs.environment }}
-        run: bash "${GITHUB_WORKSPACE}/tools/ci/foundation-app-digest-guard.sh" "${APP_IMAGE_DIGESTS}" Pulumi.production.yaml
+        run: '"$DIGEST_GUARD_BIN" "$APP_IMAGE_DIGESTS" Pulumi.production.yaml'
 
       # Upstream-leaf layout: the environment selects the business-unit leaf
       # Pulumi project dir; every leaf has exactly one stack, `production`.

@@ -22,8 +22,9 @@
 # change reaches main and reconciles live against the cluster (selfHeal +
 # prune). Advisory today; the intent is to add "gitops-validate" to the
 # merge-queue required set (repo-config `mergeQueueRequiredChecks`) once proven.
-# Issue #454. Logic lives in tools/ci/gitops-validate.sh so it is reviewable and
-# runnable locally (`bash tools/ci/gitops-validate.sh` with kubeconform on PATH).
+# Issue #454. Logic lives in //tools/ci:gitops_validate so it is reviewable and
+# runnable locally (`bazel run //tools/ci:gitops_validate` with kubeconform on
+# PATH).
 name: gitops-validate
 
 on:
@@ -91,19 +92,28 @@ jobs:
           go-version-file: go.mod
           cache: false
 
-      # Logic lives in tools/ci/install-pinned-tool.sh (shared with
-      # actionlint.yaml, supply-chain.yaml, mcp-slack-image.yaml — see that
-      # script's header for why this was deduped).
+      # Shared with actionlint, chart-render, supply-chain and
+      # mcp-slack-image: .github/actions/install-pinned-tool.
       - name: Install kubeconform (pinned + checksum-verified)
-        env:
-          KUBECONFORM_VERSION: v0.8.0
-        run: |
-          bash tools/ci/install-pinned-tool.sh \
-            "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}" \
-            kubeconform-linux-amd64.tar.gz \
-            CHECKSUMS \
-            kubeconform-linux-amd64.tar.gz \
-            kubeconform --tar
+        uses: ./.github/actions/install-pinned-tool
+        with:
+          base-url: https://github.com/yannh/kubeconform/releases/download/v0.8.0
+          asset: kubeconform-linux-amd64.tar.gz
+          checksum-file: CHECKSUMS
+          checksum-pattern: kubeconform-linux-amd64.tar.gz
+          bin-name: kubeconform
+          mode: tar
+
+      - name: Build //tools/ci:gitops_validate (no Bazel on this job)
+        id: gitops-validate-bin
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: gitops_validate
+          deps: appset_render
 
       - name: Validate gitops manifests
-        run: bash tools/ci/gitops-validate.sh
+        env:
+          GITOPS_VALIDATE: ${{ steps.gitops-validate-bin.outputs.path }}
+        run: |
+          set -euo pipefail
+          "$GITOPS_VALIDATE"

@@ -11,7 +11,7 @@
 
 The repo has **five independent implementations** of "what did this commit
 affect?": 50 workflow-level `push.paths` filters, `tools/ci/deploy-affected.sh`
-(10 callers), `tools/ci/relevant-paths.sh` (5), `dorny/paths-filter` (3), and
+(10 callers), `tools/ci/relevant-paths.sh` (5; now `//tools/ci:relevant_paths`), `dorny/paths-filter` (3), and
 `_deploy-gate.yaml` (2) — plus hand-maintained `extra-path-regex` strings inside
 workflows. A job's *relevance* is expressed separately from its *dependencies*,
 and nothing forces a job to consume the verdict its own workflow computed.

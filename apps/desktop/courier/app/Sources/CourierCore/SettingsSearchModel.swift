@@ -866,26 +866,47 @@ public final class SettingsNavigationModel: ObservableObject {
             keywords: ["send later", "reminders", "undo send", "incognito", "low priority", "auto-archive"]
         ),
 
-        // MARK: - Integrations (3)
+        // MARK: - Integrations (6)
+        SettingDefinition(
+            id: "integrations.localAPI",
+            pane: .integrations,
+            section: "Connect other apps",
+            title: "Allow connections",
+            keywords: ["mcp", "claude", "cursor", "local api", "endpoint", "port", "connect other apps"]
+        ),
+        SettingDefinition(
+            id: "integrations.remoteAccess",
+            pane: .integrations,
+            section: "Connect other apps",
+            title: "Remote Access",
+            keywords: ["remote", "network", "other devices", "lan"]
+        ),
+        SettingDefinition(
+            id: "integrations.connections",
+            pane: .integrations,
+            section: "Approved connections",
+            title: "Approved connections",
+            keywords: ["token", "new connection", "revoke", "pairing", "can send messages"]
+        ),
         SettingDefinition(
             id: "integrations.browserExtension",
             pane: .integrations,
-            section: "Browser Extension",
-            title: "Browser Companion Extension",
+            section: "Browser extension",
+            title: "Browser companion extension",
             keywords: ["browser", "extension", "chrome", "safari", "companion"]
         ),
         SettingDefinition(
             id: "integrations.mobileApps",
             pane: .integrations,
-            section: "Mobile Companion Apps",
-            title: "Mobile Companion Sync",
+            section: "Mobile companion apps",
+            title: "Mobile companion sync",
             keywords: ["mobile", "ios", "android", "companion", "phone"]
         ),
         SettingDefinition(
             id: "integrations.developer",
             pane: .integrations,
-            section: "Advanced & Local Diagnostics",
-            title: "Local-First Diagnostics",
+            section: "Advanced and local diagnostics",
+            title: "Local-first diagnostics",
             keywords: ["developer", "debug", "diagnostics", "bridge logs", "report a problem"]
         ),
     ]
@@ -1003,6 +1024,9 @@ public final class SettingsNavigationModel: ObservableObject {
         "plan.overview",
         "plan.features",
         // IntegrationsSettingsPane
+        "integrations.localAPI",
+        "integrations.remoteAccess",
+        "integrations.connections",
         "integrations.browserExtension",
         "integrations.mobileApps",
         "integrations.developer",

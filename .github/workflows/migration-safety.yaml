@@ -21,7 +21,7 @@
 # Migration-safety gate (issue #819): Squawk-lint Tabula's Prisma migrations so a
 # backward-INCOMPATIBLE change (drop/rename a column, narrow a type, add a
 # validated constraint) can't reach main and break the OLD Cloud Run revision
-# during the blue-green traffic shift (see tools/ci/migration-safety.sh and
+# during the blue-green traffic shift (see tools/ci/src/migration_safety/lib.rs and
 # tabula/api/prisma/.squawk.toml for the WHY and the tuned rule set).
 name: migration-safety
 
@@ -84,8 +84,15 @@ jobs:
       # On pull_request / merge_group, lint the migrations the change adds
       # (base = the event's base sha). On push / workflow_dispatch there is no
       # meaningful base, so the script runs its self-test only and still reports.
+      - name: Build //tools/ci:migration_safety (no Bazel on this job)
+        id: migration-safety-bin
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: migration_safety
+
       - name: Squawk migration-safety
         env:
+          MIGRATION_SAFETY: ${{ steps.migration-safety-bin.outputs.path }}
           EVENT: ${{ github.event_name }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
           MG_BASE: ${{ github.event.merge_group.base_sha }}
@@ -96,4 +103,4 @@ jobs:
             merge_group)  BASE="$MG_BASE" ;;
             *)            BASE="" ;;
           esac
-          bash tools/ci/migration-safety.sh "$BASE"
+          "$MIGRATION_SAFETY" "$BASE"

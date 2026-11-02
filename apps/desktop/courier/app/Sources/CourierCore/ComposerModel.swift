@@ -2454,6 +2454,25 @@ public final class ComposerModel: ObservableObject {
         if mayHaveBeenSent { show([.noAnswer], in: room) }
     }
 
+    /// An MCP client's focus_app: `text` and the file at `attachment` go into `room`'s composer (now if it is open,
+    /// otherwise with its draft, for when it opens), ahead of anything already typed there. They are only filled in:
+    /// nothing is sent until the person presses Send. A file that isn't there, is a folder, or can't be read puts in
+    /// nothing at all, so a composer is never left half filled, and false is returned.
+    @discardableResult
+    public func placeDraft(text: String?, attachment: URL?, in room: String) -> Bool {
+        guard !isLocked else { return false }
+        var items: [Outgoing] = []
+        if let text, !text.isEmpty { items.append(.text(RichText(text: text))) }
+        if let attachment {
+            guard attachment.isFileURL, let info = fileInfo(attachment), info.isRegularFile,
+                  info.size <= Self.maxAttachmentBytes else { return false }
+            items.append(.file(ComposerAttachment(url: attachment, size: info.size)))
+        }
+        guard !items.isEmpty else { return true }
+        _ = putBack(items[...], reply: nil, in: room)
+        return true
+    }
+
     /// Tells the person: now if the chat is open, otherwise with that chat's draft, for when it is.
     private func show(_ notices: [ComposerNotice], in room: String) {
         if room == roomID {

@@ -20,7 +20,7 @@
 
 # RENDER-GATE VALUES. NOT A DEPLOYMENT, AND NOTHING HERE IS REAL.
 #
-# tools/ci/chart-render.sh renders mcp-slack/deploy/chart with this file so the
+# //tools/ci:chart_render renders mcp-slack/deploy/chart with this file so the
 # TEMPLATES get an executed gate instead of a careful read. Every value below is
 # synthetic and deliberately implausible as a live setting.
 #
@@ -35,7 +35,7 @@
 # that tree, so a values file inside the chart would both republish the chart on
 # every edit to it and ship these fake values inside the published artifact.
 #
-# NOT hand-maintained against the chart's `required` list. chart-render.sh
+# NOT hand-maintained against the chart's `required` list. chart-render
 # EXTRACTS that list from the templates and fails if any required value is
 # missing here — so a new `required` breaks the gate until it is added, rather
 # than silently going ungated. That is the same drift that produced today's
@@ -61,7 +61,7 @@ slack:
   privateChannelIds: ""
 
 # A real boolean, which is the whole point of the type check in
-# templates/networkpolicy.yaml. chart-render.sh separately asserts that the
+# templates/networkpolicy.yaml. chart-render separately asserts that the
 # STRING "false" is REFUSED — see the negative controls there.
 networkPolicy:
   enabled: true

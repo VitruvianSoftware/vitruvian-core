@@ -64,13 +64,20 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Build //tools/ci:prune_pr_caches (no Bazel on this job)
+        id: prune-bin
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: prune_pr_caches
+
       - name: Delete caches belonging to closed pull requests
         id: prune
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
+          PRUNE_BIN: ${{ steps.prune-bin.outputs.path }}
         run: |
-          bash tools/ci/prune-pr-caches.sh ${{ github.event_name == 'pull_request' && github.event.pull_request.number || '' }} >> "$GITHUB_OUTPUT"
+          "$PRUNE_BIN" ${{ github.event_name == 'pull_request' && github.event.pull_request.number || '' }} >> "$GITHUB_OUTPUT"
 
       - name: Report remaining cache budget
         # Every number here comes from the script, which enumerates the listing

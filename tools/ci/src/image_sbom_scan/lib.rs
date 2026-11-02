@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! image-sbom-scan.sh — scan a published image's SBOM attestation for known
+//! //tools/ci:image_sbom_scan — scan a published image's SBOM attestation for known
 //! advisories. Two arms: BLOCKING (APP_PREFIX packages via osv-scanner) and
 //! REPORTING (whole image). Fails closed on missing attestation, missing SBOM,
 //! zero app packages, or missing osv-scanner. APP_TREE=absent declares an image
@@ -46,6 +46,21 @@ fn parse_image(image: &[u8]) -> Option<(Vec<u8>, Vec<u8>)> {
 
 fn valid_digest(digest: &[u8]) -> bool {
     digest.len() > 7 && &digest[..7] == b"sha256:"
+}
+
+/// One line of the attestation list: "<attestation sha256> <subject sha256>".
+/// None for anything else (an empty digest, a missing subject, extra fields).
+fn parse_attestation_line(line: &[u8]) -> Option<(&[u8], &[u8])> {
+    let parts: Vec<&[u8]> = line.split(|&b| b == b' ').collect();
+    match parts.as_slice() {
+        [a, s] if valid_digest(a) && valid_digest(s) => Some((*a, *s)),
+        _ => None,
+    }
+}
+
+/// A run that scanned no SBOM has verified nothing, whatever it skipped.
+fn nothing_scanned(sboms_found: i32) -> bool {
+    sboms_found == 0
 }
 
 fn fetch(
@@ -103,17 +118,35 @@ fn fetch_blob(
         b"/blobs/",
         digest,
     ]);
-    let auth = cat(&[b"Bearer ", token]);
-    let r = capture(
+    // `curl ... | jq '.predicate' > out` under pipefail: curl's own error and
+    // status, not an empty document that fails later for another reason. Two
+    // steps, so neither status is lost and the token is an argument, never
+    // shell text.
+    let blob_path = cat(&[out_path, b".blob"]);
+    let rc = status(
         0,
-        Command::new("bash").arg("-c").arg(os(&cat(&[
-            b"curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors --max-time 300 -H 'Authorization: ",
-            &auth,
-            b"' '",
-            &url,
-            b"' | jq '.predicate'",
-        ]))),
+        Command::new("curl")
+            .arg("-fsSL")
+            .arg("--retry")
+            .arg("3")
+            .arg("--retry-delay")
+            .arg("2")
+            .arg("--retry-all-errors")
+            .arg("--max-time")
+            .arg("300")
+            .arg("-H")
+            .arg(os(&cat(&[b"Authorization: Bearer ", token])))
+            .arg(os(&url))
+            .arg("-o")
+            .arg(os(&blob_path)),
+        false,
     );
+    if rc != 0 {
+        return false;
+    }
+    let r =
+        shell_compat::capture_stdout(0, Command::new("jq").arg(".predicate").arg(os(&blob_path)));
+    let _ = std::fs::remove_file(shell_compat::path(&blob_path));
     if !r.ok() {
         return false;
     }
@@ -155,24 +188,22 @@ fn app_arm(app_tree: &[u8], app_count: &[u8]) -> Option<AppArm> {
     }
 }
 
+/// `jq -r <filter> <file>`, with jq's own errors on stderr as the script
+/// showed them: a filter that does not compile must not read as "no output".
 fn jq_r(file: &[u8], filter: &[u8]) -> Vec<u8> {
-    let r = capture(
+    let r = shell_compat::capture_stdout(
         0,
         Command::new("jq").arg("-r").arg(os(filter)).arg(os(file)),
     );
     subst(r.stdout)
 }
 
-fn jq_r_arg(file: &[u8], filter: &[u8], arg_name: &[u8], arg_val: &[u8]) -> Vec<u8> {
+/// The same with stderr discarded, for the one call the script ran with
+/// `2>/dev/null` (the index's manifest count on a non-JSON answer).
+fn jq_r_quiet(file: &[u8], filter: &[u8]) -> Vec<u8> {
     let r = capture(
         0,
-        Command::new("jq")
-            .arg("-r")
-            .arg("--arg")
-            .arg(os(arg_name))
-            .arg(os(arg_val))
-            .arg(os(filter))
-            .arg(os(file)),
+        Command::new("jq").arg("-r").arg(os(filter)).arg(os(file)),
     );
     subst(r.stdout)
 }
@@ -283,7 +314,9 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
         b":pull&service=",
         &registry,
     ]);
-    let r = capture(
+    // `TOKEN="$(curl ... | jq ...)"` under pipefail and set -e: a failed
+    // fetch shows curl's error and exits with its status.
+    let r = shell_compat::capture_stdout(
         0,
         Command::new("curl")
             .arg("-fsSL")
@@ -296,6 +329,9 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
             .arg("60")
             .arg(os(&token_url)),
     );
+    if !r.ok() {
+        return r.status;
+    }
     let token_json = r.stdout;
     let token = {
         let tmp = cat(&[&work, b"/token.json"]);
@@ -320,7 +356,7 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
         return 1;
     }
 
-    let manifest_count = jq_r(&index_path, b".manifests | length? // 0");
+    let manifest_count = jq_r_quiet(&index_path, b".manifests | length? // 0");
     if manifest_count == b"0" || manifest_count.is_empty() {
         let media_type = jq_r(&index_path, b".mediaType // \"unknown\"");
         err(&cat(&[
@@ -335,7 +371,9 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
     }
 
     let att_path = cat(&[&work, b"/attestations.txt"]);
-    let att_filter = br#".manifests[]? | select(.annotations["vnd.docker.reference.type"] == "attestation-manifest") | "\(.digest) \(.annotations["vnd.docker.reference.digest"])"#;
+    // `##` delimiters: the filter itself ends in `"`, which closes a `#` raw
+    // string one character early (jq then fails to compile it).
+    let att_filter = br##".manifests[]? | select(.annotations["vnd.docker.reference.type"] == "attestation-manifest") | "\(.digest) \(.annotations["vnd.docker.reference.digest"])""##;
     let att_text = jq_r(&index_path, att_filter);
     let _ = write_file(&att_path, &att_text, 0o644);
 
@@ -358,18 +396,24 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
 
     let att_lines = shell_compat::lines(&att_text);
     for line in &att_lines {
-        if line.is_empty() {
-            continue;
-        }
-        let parts: Vec<&[u8]> = line.splitn(2, |&b| b == b' ').collect();
-        if parts.len() < 2 {
-            continue;
-        }
-        let att_digest = parts[0];
-        let subject = parts[1];
-        if att_digest.is_empty() {
-            continue;
-        }
+        // Each line is "<attestation digest> <subject digest>", both sha256.
+        // Anything else is refused, never skipped: a skipped line is an
+        // attestation nobody scanned, and the run would still pass.
+        let (att_digest, subject) = match parse_attestation_line(line) {
+            Some(pair) => pair,
+            None => {
+                err(&cat(&[
+                    b"::error::cannot read attestation entry '",
+                    line,
+                    b"' in ",
+                    &image,
+                    b"@",
+                    &digest,
+                    b" (want '<attestation sha256> <subject sha256>'). Refusing rather than skipping it.\n",
+                ]));
+                return 1;
+            }
+        };
 
         out(&cat(&[
             b"==> attestation ",
@@ -577,11 +621,23 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
         sboms_found.to_string().as_bytes(),
         b" SBOM attestation(s) scanned\n",
     ]));
+    if nothing_scanned(sboms_found) {
+        err(&cat(&[
+            b"::error::no SBOM was scanned for ",
+            &image,
+            b"@",
+            &digest,
+            b". Refusing to report it clean.\n",
+        ]));
+        return 1;
+    }
 
+    // `[ -n "${GITHUB_STEP_SUMMARY:-}" ]`: set and non-empty appends (a failed
+    // append fails the step, as `>>` did under set -e); otherwise stdout.
     let summary_content = std::fs::read(path(&summary_path)).unwrap_or_default();
-    if let Some(gss) = env("GITHUB_STEP_SUMMARY") {
-        if !gss.is_empty() {
-            let _ = std::fs::OpenOptions::new()
+    match env("GITHUB_STEP_SUMMARY") {
+        Some(gss) if !gss.is_empty() => {
+            let appended = std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
                 .open(path(&gss))
@@ -589,9 +645,16 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
                     use std::io::Write;
                     f.write_all(&summary_content)
                 });
+            if let Err(e) = appended {
+                err(&cat(&[
+                    b"::error::cannot append to GITHUB_STEP_SUMMARY: ",
+                    e.to_string().as_bytes(),
+                    b"\n",
+                ]));
+                return 1;
+            }
         }
-    } else {
-        out(&summary_content);
+        _ => out(&summary_content),
     }
 
     blocking_rc
@@ -662,5 +725,35 @@ mod tests {
         assert!(valid_digest(b"sha256:0"));
         assert!(!valid_digest(b"sha256"));
         assert!(!valid_digest(b"sha25:x"));
+    }
+
+    #[test]
+    fn attestation_lines_must_be_two_digests() {
+        let a = b"sha256:aa sha256:bb";
+        assert_eq!(
+            parse_attestation_line(a),
+            Some((&b"sha256:aa"[..], &b"sha256:bb"[..]))
+        );
+        for bad in [
+            &b" sha256:bb"[..],
+            b"sha256:aa ",
+            b"sha256:aa null",
+            b"null sha256:bb",
+            b"sha256:aa sha256:bb extra",
+            b"",
+        ] {
+            assert_eq!(
+                parse_attestation_line(bad),
+                None,
+                "{:?}",
+                String::from_utf8_lossy(bad)
+            );
+        }
+    }
+
+    #[test]
+    fn scanning_nothing_is_a_failure() {
+        assert!(nothing_scanned(0));
+        assert!(!nothing_scanned(1));
     }
 }

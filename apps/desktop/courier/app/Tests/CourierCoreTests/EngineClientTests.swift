@@ -262,6 +262,9 @@ final class EngineClientTests: XCTestCase {
             "room.members",
             "scheduled.list",
             "merge.list",
+            // The app's own lock state, not the person's data: it must reach the engine while locked, or focus_app
+            // couldn't say Courier is locked.
+            "app.setLocked",
         ]
         // Go handlers that fetch from remote networks or write to SQLite/disk (including people.contacts, room.info,
         // stickers.list, accounts.subAccounts) must never be classified as readOnlyOrBackground.
@@ -350,6 +353,13 @@ final class EngineClientTests: XCTestCase {
             "diagnostics.export",
             "storage.usage",
             "storage.cleanup",
+            "integrations.status",
+            "integrations.tokens",
+            "integrations.update",
+            "integrations.createToken",
+            "integrations.revokeToken",
+            "integrations.setCanSend",
+            "integrations.answerPairing",
         ]
         for method in goHandlersThatFetchOrWrite.sorted() {
             XCTAssertEqual(

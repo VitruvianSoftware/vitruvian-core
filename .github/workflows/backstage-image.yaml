@@ -30,14 +30,16 @@ on:
     paths:
       - 'apps/web/backstage/**'
       - '.github/workflows/backstage-image.yaml'
-      - 'tools/ci/backstage-boot-smoke.sh'
+      - 'tools/ci/src/backstage_boot_smoke/**'
+      - 'tools/shell-compat/src/**'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
   pull_request:
     paths:
       - 'apps/web/backstage/**'
       - '.github/workflows/backstage-image.yaml'
-      - 'tools/ci/backstage-boot-smoke.sh'
+      - 'tools/ci/src/backstage_boot_smoke/**'
+      - 'tools/shell-compat/src/**'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
 
@@ -163,5 +165,15 @@ jobs:
       # Boots the image and asserts every plugin initializes and readiness
       # serves 200. Unit tests cannot catch a plugin that fails to REGISTER --
       # #1709 shipped with a green suite and wedged production for hours.
+      - name: Build //tools/ci:backstage_boot_smoke (no Bazel on this job)
+        id: boot-smoke-bin
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: backstage_boot_smoke
+
       - name: Boot smoke test
-        run: tools/ci/backstage-boot-smoke.sh backstage:smoke
+        env:
+          BOOT_SMOKE: ${{ steps.boot-smoke-bin.outputs.path }}
+        run: |
+          set -euo pipefail
+          "$BOOT_SMOKE" backstage:smoke
