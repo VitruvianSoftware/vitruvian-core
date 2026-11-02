@@ -32,13 +32,12 @@ use crate::scope::repo_root_of;
 pub const INSTALL_DIR_REL: &str = ".local/share/agent-guard";
 pub const STATE_DIR_REL: &str = ".local/state/agent-guard";
 
-pub const PROTECTED_REPO_FILES: [&str; 6] = [
+pub const PROTECTED_REPO_FILES: [&str; 5] = [
     ".claude/settings.json",
     ".claude/settings.local.json",
     ".claude/*.sh",
     ".agents/hooks.json",
     "tools/agent-guard/hook.sh",
-    "tools/remote/setup.sh",
 ];
 
 pub fn hook_files_note() -> String {

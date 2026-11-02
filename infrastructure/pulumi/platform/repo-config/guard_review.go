@@ -89,11 +89,11 @@ var guardReviewPaths = []string{
 	// session's credentials: cloud-bootstrap.sh (a launcher that builds and
 	// runs the Rust sources beside it, so those are covered too), the profiles
 	// it reads (which secrets each session fetches), and the build-cache
-	// configurator it runs.
+	// configurator it runs (Rust; the launcher builds it at session start).
 	"tools/cloud-bootstrap/cloud-bootstrap.sh",
 	"tools/cloud-bootstrap/src/cloud_bootstrap/**",
 	"tools/cloud-bootstrap/profiles.tsv",
-	"tools/remote/setup.sh",
+	"tools/remote/src/**",
 	// This requirement itself: the ruleset and team (this file), where it is
 	// wired in and the other ruleset's bypass list (main.go), and the stack
 	// it is applied to.

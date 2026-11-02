@@ -85,7 +85,7 @@ func TestGuardReviewPathsCoverage(t *testing.T) {
 		"tools/cloud-bootstrap/src/cloud_bootstrap/main.rs",
 		"tools/cloud-bootstrap/src/cloud_bootstrap/creds.rs",
 		"tools/cloud-bootstrap/profiles.tsv",
-		"tools/remote/setup.sh",
+		"tools/remote/src/main.rs",
 		"infrastructure/pulumi/platform/repo-config/guard_review.go",
 		"infrastructure/pulumi/platform/repo-config/main.go",
 		"infrastructure/pulumi/platform/repo-config/Pulumi.dev.yaml",
