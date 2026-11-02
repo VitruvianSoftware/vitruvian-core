@@ -323,5 +323,6 @@ private struct MicrophoneDevicePicker: View {
             }
         }
         .help(String(localized: "The microphone used when recording voice notes (⌘⇧A)."))
+        .task { await voiceRecorder.refreshDevices() }
     }
 }

@@ -79,9 +79,11 @@ swift_test(
 # dark, to PNGs in the test's undeclared outputs (bazel-testlogs/.../CourierViewTests/test.outputs), and asserts only
 # that each drew at a sensible size. A person reads the PNGs before a view change ships: green tests have shipped a
 # broken layout before. SwiftPM's CourierViewTests is the same harness against the executable target.
+# Large (900 s): on CI's hosted Macs the suite already took 254 s of medium's 300 on main, and each new snapshot
+# pushes it closer; a timeout there fails the merge queue for no fault in the change (PR #4238).
 swift_test(
     name = "CourierViewTests",
-    size = "medium",
+    size = "large",
     srcs = glob(["Tests/CourierViewTests/**/*.swift"]),
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],

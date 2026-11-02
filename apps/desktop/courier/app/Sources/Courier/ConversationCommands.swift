@@ -82,11 +82,7 @@ struct ConversationCommands: Commands {
             formatting
                 .disabled(lifecycle.isLocked)
             Divider()
-            Button(String(localized: "Attach Files…")) {
-                _ = hotkeyDispatcher.perform("Chat: Send File")
-            }
-            .registryShortcut("Chat: Send File", in: hotkeys)
-            .disabled(!hotkeyDispatcher.canPerform("Chat: Send File"))
+            // Attaching files is File ▸ Open… (⌘O), FileOpenCommandItem: one item per action (MenuBarAuditTests).
             Button(String(localized: "Download Attachments")) {
                 _ = hotkeyDispatcher.perform("Download Attachments")
             }

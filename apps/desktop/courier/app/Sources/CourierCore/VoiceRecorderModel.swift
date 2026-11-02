@@ -424,8 +424,9 @@ public final class VoiceRecorderModel: ObservableObject {
         self.backend = backend
         self.now = now
         self.automaticallyPollsMeter = automaticallyPollsMeter ?? (backend is AVAudioVoiceRecordingBackend)
-        // Device discovery does not prompt for microphone access; permission is never checked or requested at launch.
-        self.availableDevices = backend.availableDevices()
+        // The microphones are listed when a picker opens (`refreshDevices`) or a recording starts, not here: every
+        // open chat's composer makes one of these on the main thread, and listing devices asks Core Audio, which can
+        // block for minutes when the audio service is busy. Listing never prompts for microphone access.
     }
 
     public var isRecordingOrReviewing: Bool {
@@ -437,8 +438,15 @@ public final class VoiceRecorderModel: ObservableObject {
         }
     }
 
-    public func refreshDevices() {
-        availableDevices = backend.availableDevices()
+    /// Lists the microphones again, off the main thread: Core Audio can block for minutes when its service is busy,
+    /// and a picker that freezes the window while it opens is worse than one that fills in a moment later.
+    public func refreshDevices() async {
+        availableDevices = await listDevices()
+    }
+
+    private func listDevices() async -> [AudioInputDevice] {
+        let backend = self.backend
+        return await Task.detached { backend.availableDevices() }.value
     }
 
     public func start(preferredDeviceUID: String = "") async {
@@ -465,7 +473,7 @@ public final class VoiceRecorderModel: ObservableObject {
         }
 
         stopMeterTimer()
-        availableDevices = backend.availableDevices()
+        availableDevices = await listDevices()
         let trimmedUID = preferredDeviceUID.trimmingCharacters(in: .whitespacesAndNewlines)
         let uid: String?
         if trimmedUID.isEmpty {

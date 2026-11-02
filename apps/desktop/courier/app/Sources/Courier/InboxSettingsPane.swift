@@ -27,6 +27,7 @@ struct SettingsView: View {
     var aiPreferences: AIPreferences = AIPreferences()
     var storage: StorageModel? = nil
     var integrations: IntegrationsModel? = nil
+    var updates: UpdateModel? = nil
     var onRestartNotificationCenter: () -> Void = {}
 
     private var resolvedAppModel: AppModel {
@@ -67,6 +68,9 @@ struct SettingsView: View {
             aiPreferences: aiPreferences,
             storage: storage ?? StorageModel(appModel: resolvedApp, lifecycle: lifecycle),
             integrations: integrations ?? IntegrationsModel(appModel: nil, enginePath: EngineLocation.enginePath()),
+            updates: updates ?? UpdateModel(
+                currentVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+                appURL: Bundle.main.bundleURL, environment: SystemUpdateEnvironment(), quit: {}),
             onRestartNotificationCenter: onRestartNotificationCenter
         )
     }
