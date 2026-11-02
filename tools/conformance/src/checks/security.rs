@@ -1031,58 +1031,79 @@ pub fn tag_collides(tag: &str, prefix: &str) -> bool {
     true
 }
 
-/// Why the marked block cannot be read the way Go reads it, if it cannot:
-/// each marker text must appear exactly once in the file (an earlier comment
-/// mentioning it would move this reader's start), and nothing between the
-/// markers may contain a backslash (an escape such as `\x2d` is a different
-/// string to Go than to this reader). TestRollingTagMarkersMatchRollingTags
-/// holds the same two rules on the Go side.
-pub fn rolling_tags_problem(src: &str) -> Option<String> {
+/// Whether one line between the rolling-tags markers has an allowed shape:
+/// blank, a whole-line `//` comment, or exactly one plain double-quoted
+/// `[a-z0-9.-]+` literal followed by a comma (trailing whitespace allowed).
+/// Nothing else, so this reader and Go's parser cannot disagree about what a
+/// line means: no escapes, no raw strings, no block comments, no second
+/// literal. TestRollingTagMarkersMatchRollingTags applies the same rule.
+pub fn rolling_tag_line(line: &str) -> Result<Option<String>, ()> {
+    let t = line.trim_start_matches([' ', '\t']);
+    if t.trim_end_matches([' ', '\t']).is_empty() || t.starts_with("//") {
+        return Ok(None);
+    }
+    let t = t.trim_end_matches([' ', '\t']);
+    let name = t
+        .strip_prefix('"')
+        .and_then(|r| r.strip_suffix("\","))
+        .ok_or(())?;
+    if name.is_empty()
+        || !name
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.' || c == '-')
+    {
+        return Err(());
+    }
+    Ok(Some(name.to_string()))
+}
+
+/// The names in the one rolling-tags block of release_tags.go, or why the
+/// block cannot be read: each marker text must appear exactly once, on a
+/// line that is only that marker comment, begin before end, and every line
+/// between them must pass rolling_tag_line.
+pub fn rolling_tags(src: &str) -> Result<Vec<String>, String> {
     for marker in ["rolling-tags:begin", "rolling-tags:end"] {
         let n = src.matches(marker).count();
         if n != 1 {
-            return Some(format!(
+            return Err(format!(
                 "{marker:?} appears {n} times in release_tags.go; it must appear exactly once"
             ));
         }
     }
-    let b = src.find("rolling-tags:begin")?;
-    let e = src.find("rolling-tags:end")?;
-    if e < b {
-        return Some("rolling-tags:end comes before rolling-tags:begin".to_string());
+    let lines: Vec<&str> = src.lines().collect();
+    let find = |m: &str| lines.iter().position(|l| l.contains(m));
+    let (Some(b), Some(e)) = (find("rolling-tags:begin"), find("rolling-tags:end")) else {
+        return Err("rolling-tags markers missing".to_string());
+    };
+    for (i, m) in [(b, "// rolling-tags:begin"), (e, "// rolling-tags:end")] {
+        if lines[i].trim() != m {
+            return Err(format!(
+                "line {} must be exactly `{m}`, found {:?}",
+                i + 1,
+                lines[i]
+            ));
+        }
     }
-    if src[b..e].contains('\\') {
-        return Some("a backslash between the rolling-tags markers: write each tag as a plain string, with no escapes".to_string());
+    if e <= b {
+        return Err("rolling-tags:end comes before rolling-tags:begin".to_string());
     }
-    None
-}
-
-/// The names between `rolling-tags:begin` and `rolling-tags:end` in
-/// release_tags.go.
-pub fn rolling_tags(src: &str) -> Vec<String> {
     let mut out = Vec::new();
-    let Some(b) = src.find("rolling-tags:begin") else {
-        return out;
-    };
-    let Some(e) = src[b..].find("rolling-tags:end") else {
-        return out;
-    };
-    for line in src[b..b + e].lines() {
-        let t = line.trim();
-        if t.starts_with("//") {
-            continue;
-        }
-        // Go string literals in either form: "interpreted" or `raw`.
-        let mut rest = t;
-        while let Some(q1) = rest.find(['"', '`']) {
-            let quote = rest.as_bytes()[q1] as char;
-            let after = &rest[q1 + 1..];
-            let Some(q2) = after.find(quote) else { break };
-            out.push(after[..q2].to_string());
-            rest = &after[q2 + 1..];
+    for (i, line) in lines.iter().enumerate().take(e).skip(b + 1) {
+        match rolling_tag_line(line) {
+            Ok(Some(name)) => out.push(name),
+            Ok(None) => {}
+            Err(()) => {
+                return Err(format!(
+                    "line {} between the rolling-tags markers is not blank, a // comment, or one plain \"[a-z0-9.-]+\", literal: {line:?}",
+                    i + 1
+                ))
+            }
         }
     }
-    out
+    if out.is_empty() {
+        return Err("no names found between the rolling-tags markers".to_string());
+    }
+    Ok(out)
 }
 
 /// The release-tags ruleset exempts a few rolling tags by exact name. None
@@ -1106,29 +1127,20 @@ pub fn check_release_tag_exemptions(ctx: &Context) {
         );
         return;
     };
-    if let Some(problem) = rolling_tags_problem(&src) {
-        ctx.emit_fail(
-            "releasetags",
-            src_rel,
-            "unreadable markers",
-            "one plain marked block",
-            &problem,
-            "keep exactly one rolling-tags:begin/end pair around rollingTags, with plain string literals",
-        );
-        return;
-    }
-    let tags = rolling_tags(&src);
-    if tags.is_empty() {
-        ctx.emit_fail(
-            "releasetags",
-            src_rel,
-            "(none)",
-            "rolling tags between markers",
-            "no names found between the rolling-tags markers: the exemptions cannot be checked",
-            "keep the rolling-tags:begin/end markers around rollingTags",
-        );
-        return;
-    }
+    let tags = match rolling_tags(&src) {
+        Ok(tags) => tags,
+        Err(problem) => {
+            ctx.emit_fail(
+                "releasetags",
+                src_rel,
+                "unreadable rolling-tags block",
+                "one plain marked block",
+                &format!("{problem}: the exemptions cannot be checked"),
+                "keep exactly one rolling-tags:begin/end pair around rollingTags, one plain \"name\", per line",
+            );
+            return;
+        }
+    };
 
     let listed = Command::new("git")
         .args([
@@ -1243,21 +1255,30 @@ mod release_tag_tests {
 
     #[test]
     fn reads_marked_rolling_tags() {
-        let src = "var x = []string{\n\t// rolling-tags:begin\n\t\"a-latest\",\n\t// \"commented\",\n\t\"b-latest\",\n\t// rolling-tags:end\n}\n";
-        assert_eq!(rolling_tags(src), vec!["a-latest", "b-latest"]);
-        let raw = "// rolling-tags:begin\n\t`c-latest`,\n\t\"d-latest\",\n// rolling-tags:end\n";
-        assert_eq!(rolling_tags(raw), vec!["c-latest", "d-latest"]);
-        assert!(rolling_tags("no markers here").is_empty());
+        let src = "var x = []string{\n\t// rolling-tags:begin\n\t\"a-latest\",\n\n\t// \"commented\",\n\t\"b-latest\",  \n\t// rolling-tags:end\n}\n";
+        assert_eq!(rolling_tags(src).unwrap(), vec!["a-latest", "b-latest"]);
     }
 
     #[test]
-    fn marker_block_must_read_the_same_as_go() {
-        let ok = "// rolling-tags:begin\n\t\"a-latest\",\n// rolling-tags:end\n";
-        assert_eq!(rolling_tags_problem(ok), None);
-        let escaped = "// rolling-tags:begin\n\t\"devx\\x2dv9-latest\",\n// rolling-tags:end\n";
-        assert!(rolling_tags_problem(escaped).is_some());
-        let decoy = "// rolling-tags:begin is a marker\n// rolling-tags:begin\n\t\"a-latest\",\n// rolling-tags:end\n";
-        assert!(rolling_tags_problem(decoy).is_some());
-        assert!(rolling_tags_problem("nothing").is_some());
+    fn anything_but_the_plain_shape_is_refused() {
+        let wrap = |body: &str| format!("\t// rolling-tags:begin\n{body}\n\t// rolling-tags:end\n");
+        for bad in [
+            "\t`raw-latest`,",
+            "\t\"devx\\x2dv9-latest\",",
+            "\t/* ` */ \"devx-v9-latest\",",
+            "\t`devx-v9-latest\n\t// tail`,",
+            "\t\"a-latest\", \"b-latest\",",
+            "\t\"Upper-latest\",",
+            "\t\"a-latest\"",
+            "\t\"\",",
+        ] {
+            assert!(rolling_tags(&wrap(bad)).is_err(), "accepted {bad:?}");
+        }
+        assert!(rolling_tags("// rolling-tags:begin is a marker\n\t// rolling-tags:begin\n\t\"a-latest\",\n\t// rolling-tags:end\n").is_err());
+        assert!(rolling_tags(
+            "\t\"x\", // rolling-tags:begin\n\t\"a-latest\",\n\t// rolling-tags:end\n"
+        )
+        .is_err());
+        assert!(rolling_tags("nothing").is_err());
     }
 }

@@ -27,6 +27,7 @@ import (
 	"go/token"
 	"os"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -370,6 +371,37 @@ func TestRollingTagMarkersMatchRollingTags(t *testing.T) {
 			t.Errorf("%q appears %d times in release_tags.go, want exactly once", marker, n)
 		}
 	}
+	// The same line-shape rule the conformance reader applies
+	// (rolling_tag_line in tools/conformance/src/checks/security.rs): the
+	// markers stand alone on their lines, and every line between them is
+	// blank, a whole-line // comment, or exactly one plain "[a-z0-9.-]+",
+	// literal. Nothing else (escapes, raw strings, block comments, two
+	// literals on a line), so the two readers agree by construction.
+	lines := strings.Split(string(src), "\n")
+	bl, el := -1, -1
+	for i, l := range lines {
+		if strings.Contains(l, "rolling-tags:begin") {
+			bl = i
+		}
+		if strings.Contains(l, "rolling-tags:end") {
+			el = i
+		}
+	}
+	if bl < 0 || el <= bl {
+		t.Fatalf("rolling-tags markers missing or out of order (begin line %d, end line %d)", bl+1, el+1)
+	}
+	for i, want := range map[int]string{bl: "// rolling-tags:begin", el: "// rolling-tags:end"} {
+		if strings.TrimSpace(lines[i]) != want {
+			t.Errorf("release_tags.go:%d = %q, want exactly %q", i+1, lines[i], want)
+		}
+	}
+	shape := regexp.MustCompile(`^[ \t]*(//.*|"[a-z0-9.-]+",[ \t]*)?$`)
+	for i := bl + 1; i < el; i++ {
+		if !shape.MatchString(lines[i]) {
+			t.Errorf("release_tags.go:%d %q is not blank, a // comment, or one plain \"[a-z0-9.-]+\", literal", i+1, lines[i])
+		}
+	}
+
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, "release_tags.go", src, parser.ParseComments)
 	if err != nil {
@@ -400,11 +432,6 @@ func TestRollingTagMarkersMatchRollingTags(t *testing.T) {
 	var marked []string
 	ast.Inspect(f, func(n ast.Node) bool {
 		if lit, ok := n.(*ast.BasicLit); ok && lit.Kind == token.STRING && lit.Pos() > begin && lit.End() < end {
-			// The conformance reader does not decode escapes, so an escaped
-			// character would be one tag to Go and another to it.
-			if strings.Contains(lit.Value, `\`) {
-				t.Errorf("rolling tag literal %s at %v contains a backslash; write it as a plain string", lit.Value, fset.Position(lit.Pos()))
-			}
 			v, err := strconv.Unquote(lit.Value)
 			if err != nil {
 				t.Fatalf("unquoting %s: %v", lit.Value, err)
