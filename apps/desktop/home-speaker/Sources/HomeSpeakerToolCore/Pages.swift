@@ -389,8 +389,8 @@ public enum Pages {
         }
 
         /// A Beeper network's switch: on reads it, off mutes it. By the
-        /// network's key (`BeeperClient.networkKey`): only `a-z`, `0-9`,
-        /// `_` and `-`, and at most `BeeperClient.maxNetworkKeyLength`
+        /// network's key (`ChatAppClient.networkKey`): only `a-z`, `0-9`,
+        /// `_` and `-`, and at most `ChatAppClient.maxNetworkKeyLength`
         /// (64) long, which keeps the id within the protocol's 128. The
         /// cap is the engine's; `beeperNetworkKey` checks the characters
         /// only, not the length.
@@ -789,7 +789,7 @@ public enum Pages {
                 networks
             } else {
                 text(UIText.plain(beeperNetworksTitle), style: .caption)
-                // Only a key a network can have (`BeeperClient.networkKey`)
+                // Only a key a network can have (`ChatAppClient.networkKey`)
                 // gets a switch: a mute saved by hand as `My Network` mutes
                 // nothing, and its id would refuse the page.
                 for row in list.rows where hasSwitch(row.key) {

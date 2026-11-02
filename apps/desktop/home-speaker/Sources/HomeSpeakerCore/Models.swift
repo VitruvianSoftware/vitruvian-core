@@ -774,7 +774,7 @@ public struct BroadcastLogItem: Identifiable, Codable, Equatable {
 }
 
 /// Settings for the in-app chat monitor. Every source is OFF by default:
-/// reading someone's Slack, Google Chat or Beeper is opt-in, never a
+/// reading someone's Slack, Google Chat, Beeper or Courier is opt-in, never a
 /// surprise on first launch. Tokens never live here — see `SecretStore`.
 public struct ChatMonitorConfig: Codable, Equatable {
     public static let minPollInterval = 5
@@ -788,8 +788,8 @@ public struct ChatMonitorConfig: Codable, Equatable {
         case auto, api, gws
     }
 
-    /// Which Beeper messages are spoken: direct messages and group
-    /// messages that mention you, or every message.
+    /// Which Beeper (or Courier) messages are spoken: direct messages and
+    /// group messages that mention you, or every message.
     public enum BeeperAnnounce: String, Codable, CaseIterable, Sendable {
         case directAndMentions = "direct_and_mentions"
         case all
@@ -810,13 +810,31 @@ public struct ChatMonitorConfig: Codable, Equatable {
     public var googleChatSource: GoogleChatSource
     /// `--account` passed to gws; empty means gws's default account.
     public var gwsAccount: String
-    /// Read Beeper Desktop's local API on this Mac (BeeperClient).
+    /// Read Beeper Desktop's local API on this Mac (ChatAppClient).
     public var beeperEnabled: Bool
     public var beeperAnnounce: BeeperAnnounce
-    /// The Beeper networks not spoken, by `BeeperClient.networkKey`
+    /// The Beeper networks not spoken, by `ChatAppClient.networkKey`
     /// ("whatsapp", "telegram"). Read at each poll, so muting one never
     /// restarts the monitor (`ChatMonitorReconciliation`).
     public var beeperMutedNetworks: [String]
+    /// Where Beeper's API is, as typed in Settings; empty is its default
+    /// (`ChatApp.defaultBaseURL`). Only an http address on this Mac is used.
+    public var beeperAddress: String
+    /// Read Courier's local API on this Mac: the same API as Beeper's, with
+    /// its own address, token, Announce choice and network switches. Off
+    /// until switched on, which Settings allows once a token is saved.
+    public var courierEnabled: Bool
+    public var courierAnnounce: BeeperAnnounce
+    /// The Courier networks not spoken, by `ChatAppClient.networkKey`;
+    /// Courier's own list, apart from Beeper's.
+    public var courierMutedNetworks: [String]
+    /// Where Courier's API is; empty is its default.
+    public var courierAddress: String
+    /// Courier networks read through Courier even while HomeSpeaker's own
+    /// Slack or Google Chat reader is on, by `ChatAppClient.networkKey`
+    /// ("slack"). Courier cannot say which Slack workspace an account is,
+    /// so without this every Courier Slack account is left to that reader.
+    public var courierReadAnyway: [String]
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case slackEnabled = "slack_enabled"
@@ -828,6 +846,12 @@ public struct ChatMonitorConfig: Codable, Equatable {
         case beeperEnabled = "beeper_enabled"
         case beeperAnnounce = "beeper_announce"
         case beeperMutedNetworks = "beeper_muted_networks"
+        case beeperAddress = "beeper_address"
+        case courierEnabled = "courier_enabled"
+        case courierAnnounce = "courier_announce"
+        case courierMutedNetworks = "courier_muted_networks"
+        case courierAddress = "courier_address"
+        case courierReadAnyway = "courier_read_anyway"
     }
 
     public init(
@@ -839,7 +863,13 @@ public struct ChatMonitorConfig: Codable, Equatable {
         gwsAccount: String = "",
         beeperEnabled: Bool = false,
         beeperAnnounce: BeeperAnnounce = .directAndMentions,
-        beeperMutedNetworks: [String] = []
+        beeperMutedNetworks: [String] = [],
+        beeperAddress: String = "",
+        courierEnabled: Bool = false,
+        courierAnnounce: BeeperAnnounce = .directAndMentions,
+        courierMutedNetworks: [String] = [],
+        courierAddress: String = "",
+        courierReadAnyway: [String] = []
     ) {
         self.slackEnabled = slackEnabled
         self.googleChatEnabled = googleChatEnabled
@@ -850,6 +880,12 @@ public struct ChatMonitorConfig: Codable, Equatable {
         self.beeperEnabled = beeperEnabled
         self.beeperAnnounce = beeperAnnounce
         self.beeperMutedNetworks = beeperMutedNetworks
+        self.beeperAddress = beeperAddress
+        self.courierEnabled = courierEnabled
+        self.courierAnnounce = courierAnnounce
+        self.courierMutedNetworks = courierMutedNetworks
+        self.courierAddress = courierAddress
+        self.courierReadAnyway = courierReadAnyway
     }
 
     public init(from decoder: Decoder) throws {
@@ -865,6 +901,12 @@ public struct ChatMonitorConfig: Codable, Equatable {
         // newer file never stops the settings reading.
         beeperAnnounce = (try? c.decodeIfPresent(BeeperAnnounce.self, forKey: .beeperAnnounce)) ?? .directAndMentions
         beeperMutedNetworks = try c.decodeIfPresent([String].self, forKey: .beeperMutedNetworks) ?? []
+        beeperAddress = try c.decodeIfPresent(String.self, forKey: .beeperAddress) ?? ""
+        courierEnabled = try c.decodeIfPresent(Bool.self, forKey: .courierEnabled) ?? false
+        courierAnnounce = (try? c.decodeIfPresent(BeeperAnnounce.self, forKey: .courierAnnounce)) ?? .directAndMentions
+        courierMutedNetworks = try c.decodeIfPresent([String].self, forKey: .courierMutedNetworks) ?? []
+        courierAddress = try c.decodeIfPresent(String.self, forKey: .courierAddress) ?? ""
+        courierReadAnyway = try c.decodeIfPresent([String].self, forKey: .courierReadAnyway) ?? []
     }
 
     public var clampedPollInterval: Int {
@@ -872,18 +914,78 @@ public struct ChatMonitorConfig: Codable, Equatable {
     }
 
     /// True when at least one source is switched on.
-    public var anySourceEnabled: Bool { slackEnabled || googleChatEnabled || beeperEnabled }
+    public var anySourceEnabled: Bool { slackEnabled || googleChatEnabled || beeperEnabled || courierEnabled }
 
     /// A Beeper network's switch: off mutes the network (by its
-    /// `BeeperClient.networkKey`), on reads it again. The extension's
+    /// `ChatAppClient.networkKey`), on reads it again. The extension's
     /// pages and the app's Settings window both save through this. Muting
     /// a muted network, or reading one already read, changes nothing, so
     /// the saved order stays and a caller can tell nothing changed.
     public mutating func setBeeperNetwork(_ key: String, reading: Bool) {
+        setNetwork(key, of: .beeper, reading: reading)
+    }
+
+    /// The same switch in `app`'s own list.
+    public mutating func setNetwork(_ key: String, of app: ChatApp, reading: Bool) {
+        var muted = mutedNetworks(for: app)
         if reading {
-            beeperMutedNetworks.removeAll { $0 == key }
-        } else if !beeperMutedNetworks.contains(key) {
-            beeperMutedNetworks.append(key)
+            muted.removeAll { $0 == key }
+        } else if !muted.contains(key) {
+            muted.append(key)
+        }
+        self[keyPath: Self.mutedNetworksKey(app)] = muted
+    }
+
+    // MARK: Each chat app's settings, by app
+
+    /// The switch that turns `app` on.
+    public static func enabledKey(_ app: ChatApp) -> WritableKeyPath<ChatMonitorConfig, Bool> {
+        switch app {
+        case .beeper: return \.beeperEnabled
+        case .courier: return \.courierEnabled
+        }
+    }
+
+    public static func announceKey(_ app: ChatApp) -> WritableKeyPath<ChatMonitorConfig, BeeperAnnounce> {
+        switch app {
+        case .beeper: return \.beeperAnnounce
+        case .courier: return \.courierAnnounce
+        }
+    }
+
+    public static func mutedNetworksKey(_ app: ChatApp) -> WritableKeyPath<ChatMonitorConfig, [String]> {
+        switch app {
+        case .beeper: return \.beeperMutedNetworks
+        case .courier: return \.courierMutedNetworks
+        }
+    }
+
+    public static func addressKey(_ app: ChatApp) -> WritableKeyPath<ChatMonitorConfig, String> {
+        switch app {
+        case .beeper: return \.beeperAddress
+        case .courier: return \.courierAddress
+        }
+    }
+
+    public func isEnabled(_ app: ChatApp) -> Bool { self[keyPath: Self.enabledKey(app)] }
+    public func announce(for app: ChatApp) -> BeeperAnnounce { self[keyPath: Self.announceKey(app)] }
+    public func mutedNetworks(for app: ChatApp) -> [String] { self[keyPath: Self.mutedNetworksKey(app)] }
+    public func address(for app: ChatApp) -> String { self[keyPath: Self.addressKey(app)] }
+
+    /// The networks `app` reads although HomeSpeaker reads them itself:
+    /// Courier's choice; Beeper, which can tell Slack workspaces apart,
+    /// has none.
+    public func readsAnyway(_ app: ChatApp) -> [String] {
+        app == .courier ? courierReadAnyway : []
+    }
+
+    /// Reads one of Courier's networks although HomeSpeaker's own reader
+    /// covers it (`isOn`), or leaves it to that reader again.
+    public mutating func setReadAnyway(_ key: String, _ isOn: Bool) {
+        if isOn {
+            if !courierReadAnyway.contains(key) { courierReadAnyway.append(key) }
+        } else {
+            courierReadAnyway.removeAll { $0 == key }
         }
     }
 }

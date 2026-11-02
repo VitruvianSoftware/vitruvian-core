@@ -245,10 +245,34 @@ public class ConfigManager: ObservableObject {
     /// nothing changed, when it was already so or the file would not take it.
     @discardableResult
     public func setBeeperNetwork(_ key: String, reading: Bool) -> Bool {
+        setNetwork(key, of: .beeper, reading: reading)
+    }
+
+    /// Reads one of Courier's networks although HomeSpeaker's own Slack or
+    /// Google Chat reader covers it, or leaves it to that reader again,
+    /// and saves. The monitor restarts so the accounts are sorted again.
+    @discardableResult
+    public func setCourierReadsAnyway(_ key: String, _ isOn: Bool) -> Bool {
         let before = config.effectiveChatMonitor
         var after = before
-        after.setBeeperNetwork(key, reading: reading)
-        guard after.beeperMutedNetworks != before.beeperMutedNetworks else { return false }
+        after.setReadAnyway(key, isOn)
+        guard after != before else { return false }
+        config.effectiveChatMonitor = after
+        guard saveConfig() else {
+            config.effectiveChatMonitor = before
+            return false
+        }
+        reconcileChatMonitor(from: before, to: after)
+        return true
+    }
+
+    /// The same, for a network in `app`'s own list (Beeper's or Courier's).
+    @discardableResult
+    public func setNetwork(_ key: String, of app: ChatApp, reading: Bool) -> Bool {
+        let before = config.effectiveChatMonitor
+        var after = before
+        after.setNetwork(key, of: app, reading: reading)
+        guard after.mutedNetworks(for: app) != before.mutedNetworks(for: app) else { return false }
         config.effectiveChatMonitor = after
         guard saveConfig() else {
             config.effectiveChatMonitor = before

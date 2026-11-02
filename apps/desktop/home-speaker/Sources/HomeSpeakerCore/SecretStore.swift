@@ -61,6 +61,19 @@ public struct GoogleCredentials: Codable, Equatable {
 
 /// Everything the app must keep private, in one file.
 public struct Secrets: Codable, Equatable {
+    /// `app`'s token: where Beeper's and Courier's are kept.
+    public static func tokenKey(_ app: ChatApp) -> WritableKeyPath<Secrets, String?> {
+        switch app {
+        case .beeper: return \.beeperToken
+        case .courier: return \.courierToken
+        }
+    }
+
+    /// `app`'s token, when one is saved and not empty.
+    public func token(for app: ChatApp) -> String? {
+        self[keyPath: Self.tokenKey(app)].flatMap { $0.isEmpty ? nil : $0 }
+    }
+
     /// Google Home login (scope home.platform.v2). Google refuses to grant
     /// that scope together with any other API's, so Chat has its own slot.
     public var google: GoogleCredentials?
@@ -70,6 +83,9 @@ public struct Secrets: Codable, Equatable {
     /// Beeper Desktop's API token (Settings › Integrations), for the local
     /// API on this Mac only.
     public var beeperToken: String?
+    /// Courier's API token (Settings › Integrations › New connection…),
+    /// for its local API on this Mac only.
+    public var courierToken: String?
     /// A Gemini API key (aistudio.google.com), for the announcement rewrite
     /// and the Gemini voice on this Mac. Read at each announcement.
     public var geminiApiKey: String?
@@ -82,12 +98,13 @@ public struct Secrets: Codable, Equatable {
     public init(
         google: GoogleCredentials? = nil, googleChat: GoogleCredentials? = nil, slackToken: String? = nil,
         oauthClientIdOverride: String? = nil, oauthClientSecretOverride: String? = nil,
-        beeperToken: String? = nil, geminiApiKey: String? = nil
+        beeperToken: String? = nil, geminiApiKey: String? = nil, courierToken: String? = nil
     ) {
         self.google = google
         self.googleChat = googleChat
         self.slackToken = slackToken
         self.beeperToken = beeperToken
+        self.courierToken = courierToken
         self.geminiApiKey = geminiApiKey
         self.oauthClientIdOverride = oauthClientIdOverride
         self.oauthClientSecretOverride = oauthClientSecretOverride

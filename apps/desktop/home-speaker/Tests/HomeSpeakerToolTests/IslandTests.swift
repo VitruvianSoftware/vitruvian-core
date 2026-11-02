@@ -1227,7 +1227,7 @@ final class IslandTests: XCTestCase {
         XCTAssertEqual(Pages.Block.beeperNetwork("whatsapp"), "beeper.network.whatsapp")
         XCTAssertEqual(Pages.Block.beeperNetworkKey("beeper.network.whatsapp"), "whatsapp")
         XCTAssertEqual(Pages.Block.beeperNetworkKey(Pages.Block.beeperNetwork("google-chat_2")), "google-chat_2")
-        let longest = Pages.Block.beeperNetwork(String(repeating: "k", count: BeeperClient.maxNetworkKeyLength))
+        let longest = Pages.Block.beeperNetwork(String(repeating: "k", count: ChatAppClient.maxNetworkKeyLength))
         XCTAssertLessThanOrEqual(longest.count, 128, "within the protocol's id length")
         for id in ["beeper.network.", "beeper.network.a.b", "beeper.network.Up", "beeperAnnounce", "replay.x", "beeper.networkx"] {
             XCTAssertNil(Pages.Block.beeperNetworkKey(id), id)

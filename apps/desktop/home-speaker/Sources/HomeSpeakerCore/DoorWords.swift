@@ -138,6 +138,7 @@ public enum DoorSummary {
         Fact(title: "Google Chat") { $0.hasChatLogin ? "Access granted" : "No access" },
         Fact(title: "Slack") { $0.hasSlackToken ? "Token saved" : "No token" },
         Fact(title: "Beeper") { $0.hasBeeperToken ? "Token saved" : "No token" },
+        Fact(title: "Courier") { $0.hasCourierToken ? "Token saved" : "No token" },
         Fact(title: "Gemini") { $0.hasGeminiKey ? "Key saved" : "No key" },
         Fact(title: "Own sign-in client") { $0.hasOwnClient ? "Saved" : "None" },
         Fact(title: "Home") { $0.homeName ?? "None" },
@@ -178,9 +179,9 @@ public enum DoorSummary {
 }
 
 extension DoorSnapshot {
-    /// Any sign-in at all: Google Home, Google Chat, Slack, Beeper, Gemini or an own client.
+    /// Any sign-in at all: Google Home, Google Chat, Slack, Beeper, Courier, Gemini or an own client.
     public var hasAnySignIn: Bool {
-        hasHomeLogin || hasChatLogin || hasSlackToken || hasBeeperToken || hasGeminiKey || hasOwnClient
+        hasHomeLogin || hasChatLogin || hasSlackToken || hasBeeperToken || hasCourierToken || hasGeminiKey || hasOwnClient
     }
 
     /// The settings as read, or the defaults this side would run with.

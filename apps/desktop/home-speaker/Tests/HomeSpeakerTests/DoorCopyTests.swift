@@ -86,9 +86,10 @@ private struct Planted {
     var ownClientSecret: String { "GOCSPX-own-secret-\(id)" }
     var beeper: String { "fake-beeper-secret-\(id)" } // gitleaks:allow (made-up test token)
     var gemini: String { "fake-gemini-secret-\(id)" } // gitleaks:allow (made-up test token)
+    var courier: String { "fake-courier-secret-\(id)" } // gitleaks:allow (made-up test token)
 
     var all: [String] {
-        [slack, homeRefresh, chatRefresh, homeAccess, chatAccess, clientSecret, ownClientSecret, beeper, gemini, "xoxp-secret-123", "1//secret"] // gitleaks:allow (made-up test tokens)
+        [slack, homeRefresh, chatRefresh, homeAccess, chatAccess, clientSecret, ownClientSecret, beeper, gemini, courier, "xoxp-secret-123", "1//secret"] // gitleaks:allow (made-up test tokens)
     }
 
     var secrets: Secrets {
@@ -105,7 +106,7 @@ private struct Planted {
                 userId: account, email: email),
             slackToken: slack,
             oauthClientIdOverride: "own-client-\(id)", oauthClientSecretOverride: ownClientSecret,
-            beeperToken: beeper, geminiApiKey: gemini)
+            beeperToken: beeper, geminiApiKey: gemini, courierToken: courier)
     }
 }
 
@@ -226,7 +227,7 @@ private struct QuietLocal: LocalSpeaking {
         let expected: [(String, String)] = [
             ("settingsRead", "ConfigFileRead"), ("settingsChanged", "Optional<Date>"),
             ("googleEmail", "Optional<String>"), ("hasHomeLogin", "Bool"), ("hasChatLogin", "Bool"),
-            ("hasSlackToken", "Bool"), ("hasBeeperToken", "Bool"), ("hasGeminiKey", "Bool"), ("hasOwnClient", "Bool"),
+            ("hasSlackToken", "Bool"), ("hasBeeperToken", "Bool"), ("hasCourierToken", "Bool"), ("hasGeminiKey", "Bool"), ("hasOwnClient", "Bool"),
             ("homeName", "Optional<String>"), ("speakerCount", "Int"), ("defaultSpeaker", "Optional<String>"),
             ("outputs", "Outputs"), ("quietHours", "Optional<String>"), ("chatSources", "Array<String>"),
             ("historyCount", "Int"),
@@ -246,6 +247,8 @@ private struct QuietLocal: LocalSpeaking {
         #expect(snapshot.hasHomeLogin && snapshot.hasChatLogin && snapshot.hasSlackToken && snapshot.hasOwnClient)
         #expect(snapshot.hasBeeperToken)
         #expect(DoorSummary.facts.first { $0.title == "Beeper" }?.value(snapshot) == "Token saved")
+        #expect(snapshot.hasCourierToken)
+        #expect(DoorSummary.facts.first { $0.title == "Courier" }?.value(snapshot) == "Token saved")
         #expect(snapshot.hasGeminiKey)
         #expect(DoorSummary.facts.first { $0.title == "Gemini" }?.value(snapshot) == "Key saved")
         #expect(DoorSummary.facts.first { $0.title == "Style" }?.value(snapshot) == "As written")

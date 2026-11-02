@@ -20,13 +20,16 @@
 
 import Foundation
 
-// Beeper Desktop's local HTTP API, read-only. Beeper bridges WhatsApp,
-// Signal, Telegram, Google Messages, Slack and more into one app on this
-// Mac, and serves them on http://localhost:23373 to whoever holds a token
-// made in its Settings › Integrations. HomeSpeaker asks it two things, both
-// GET: the accounts (once at start, and again when a message names one it
-// has not seen), and the messages after a date (once a poll). It never sends
-// anything else, and never sends the token anywhere but this Mac.
+// A chat app's local HTTP API, read-only: Beeper Desktop's, or Courier's,
+// which serves the same two endpoints in the same shape (`ChatApp`). Each
+// bridges WhatsApp, Signal, Telegram, Google Messages, Slack and more into
+// one app on this Mac, and serves them on localhost to whoever holds a
+// token made in its Settings › Integrations. HomeSpeaker asks it two
+// things, both GET: the accounts (once at start, and again when a message
+// names one it has not seen), and the messages after a date (once a poll).
+// It never sends anything else, and never sends the token anywhere but this
+// Mac. The types below keep Beeper's names: Beeper's API defined the shape,
+// and Courier's answers read into the same ones.
 
 /// One network account inside Beeper.
 public struct BeeperAccount: Equatable, Sendable {
@@ -144,14 +147,11 @@ public struct BeeperPages: Equatable, Sendable {
     public var truncated: Bool
 }
 
-public struct BeeperClient: Sendable {
-    /// Beeper Desktop's API on this Mac. `localhost`, not `127.0.0.1`: App
-    /// Transport Security refuses plain HTTP to an address written as
-    /// numbers, and allows it to localhost.
-    public static let defaultBaseURL = URL(string: "http://localhost:23373")!
-    /// Names another address, for tests only. Taken only for this Mac
-    /// (loopback), so a token can never leave it.
-    public static let urlVariable = "HOMESPEAKER_BEEPER_URL"
+public struct ChatAppClient: Sendable {
+    /// Beeper Desktop's address (`ChatApp.defaultBaseURL`), as before.
+    public static let defaultBaseURL = ChatApp.beeper.defaultBaseURL
+    /// Beeper's test-only address variable (`ChatApp.urlVariable`).
+    public static let urlVariable = ChatApp.beeper.urlVariable
     /// How far back each poll looks again, for a message that arrived late.
     public static let lookBack: TimeInterval = 5 * 60
     /// The most one search returns (the API's own limit).
@@ -164,18 +164,21 @@ public struct BeeperClient: Sendable {
     /// skipped.
     public static let maxPages = 50
 
+    /// Which app this reads: what its errors are named after.
+    public let app: ChatApp
     let token: String
     public let baseURL: URL
     let session: URLSession
 
-    public init(token: String, baseURL: URL = BeeperClient.defaultBaseURL, session: URLSession = BeeperClient.makeSession()) {
+    public init(app: ChatApp = .beeper, token: String, baseURL: URL? = nil, session: URLSession = ChatAppClient.makeSession()) {
+        self.app = app
         self.token = token
-        self.baseURL = baseURL
+        self.baseURL = baseURL ?? app.defaultBaseURL
         self.session = session
     }
 
     /// A session of its own: five seconds to answer, no proxy, no cookies,
-    /// no cache. Beeper is on this Mac, so a slow answer means it is stuck.
+    /// no cache. The app is on this Mac, so a slow answer means it is stuck.
     public static func makeSession() -> URLSession {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 5
@@ -190,16 +193,47 @@ public struct BeeperClient: Sendable {
         return URLSession(configuration: configuration)
     }
 
-    /// Where Beeper is: `defaultBaseURL`, or `HOMESPEAKER_BEEPER_URL` when
-    /// that names an http address on this Mac. Any other value is refused,
-    /// and Beeper is not read at all, rather than falling back to the real
-    /// Beeper on this Mac.
+    /// Where Beeper is, as `baseURL(for:configured:environment:)` says.
     public static func baseURL(environment: [String: String]) -> Result<URL, ChatMonitorError> {
-        guard let named = environment[urlVariable], !named.isEmpty else { return .success(defaultBaseURL) }
-        guard let url = URL(string: named), url.scheme == "http", isLoopback(url) else {
-            return .failure(.beeper("\(urlVariable) must be an http address on this Mac, not \(named)"))
+        baseURL(for: .beeper, environment: environment)
+    }
+
+    /// Where `app` is: its test variable (`ChatApp.urlVariable`) when set,
+    /// else the address saved in Settings (`configured`), else its
+    /// default. Either must be an http address on this Mac; any other is
+    /// refused, and the app is not read at all, rather than falling back
+    /// to the real app on this Mac or sending its token elsewhere.
+    public static func baseURL(
+        for app: ChatApp, configured: String = "", environment: [String: String]
+    ) -> Result<URL, ChatMonitorError> {
+        if let named = environment[app.urlVariable], !named.isEmpty {
+            guard let url = localURL(named) else {
+                return .failure(.chatApp(app, "\(app.urlVariable) must be an http address on this Mac, not \(named)"))
+            }
+            return .success(url)
         }
+        let saved = configured.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !saved.isEmpty else { return .success(app.defaultBaseURL) }
+        guard let url = localURL(saved) else { return .failure(addressRefused(app, saved)) }
         return .success(url)
+    }
+
+    /// Why an address typed into Settings is not taken; nil when it is
+    /// (an empty one is: it means the app's default).
+    public static func addressProblem(_ address: String, app: ChatApp) -> ChatMonitorError? {
+        let saved = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !saved.isEmpty, localURL(saved) == nil else { return nil }
+        return addressRefused(app, saved)
+    }
+
+    private static func addressRefused(_ app: ChatApp, _ address: String) -> ChatMonitorError {
+        .chatApp(app, "the address must start with http:// and be on this Mac (like \(app.defaultBaseURL.absoluteString)), not \(address)")
+    }
+
+    /// `text` as a plain http address on this Mac, or nil.
+    static func localURL(_ text: String) -> URL? {
+        guard let url = URL(string: text), url.scheme == "http", isLoopback(url) else { return nil }
+        return url
     }
 
     /// The address is this Mac's own.
@@ -244,7 +278,7 @@ public struct BeeperClient: Sendable {
     /// read, or at `maxPages`. Messages already handled,
     /// or skipped, do not count, so a busy window of those is no alarm.
     public func allMessages(
-        after: Date, othersOnly: Bool, unseenBudget: Int = BeeperClient.unseenBudget, maxPages: Int = BeeperClient.maxPages,
+        after: Date, othersOnly: Bool, unseenBudget: Int = ChatAppClient.unseenBudget, maxPages: Int = ChatAppClient.maxPages,
         counts: @Sendable (BeeperMessage, BeeperChat?) -> Bool = { _, _ in true }
     ) async throws -> BeeperPages {
         var messages: [String: BeeperMessage] = [:]
@@ -288,7 +322,7 @@ public struct BeeperClient: Sendable {
         var comps = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
         comps.queryItems = query.isEmpty ? nil : query
         guard let url = comps.url, Self.isLoopback(url) else {
-            throw ChatMonitorError.beeper("refused to send the Beeper token anywhere but this Mac")
+            throw ChatMonitorError.chatApp(app, "refused to send the \(app.name) token anywhere but this Mac")
         }
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
@@ -301,32 +335,33 @@ public struct BeeperClient: Sendable {
         do {
             (data, response) = try await session.data(for: request, delegate: RefuseRedirects())
         } catch let error as URLError where error.code != .cancelled {
-            throw Self.mapped(error)
+            throw Self.mapped(error, app: app)
         }
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         let json = try? JSONSerialization.jsonObject(with: data)
         switch status {
         case 200: return json ?? [:]
-        case 401: throw ChatMonitorError.beeperTokenRefused
-        case 429: throw ChatMonitorError.beeperSlowDown
-        case 300..<400: throw ChatMonitorError.beeper("Beeper Desktop answered with a redirect, which HomeSpeaker does not follow")
+        case 401: throw ChatMonitorError.chatAppTokenRefused(app)
+        case 429: throw ChatMonitorError.chatAppSlowDown(app)
+        case 300..<400:
+            throw ChatMonitorError.chatApp(app, "\(app.programName) answered with a redirect, which HomeSpeaker does not follow")
         default:
             let message = ((json as? [String: Any])?["message"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-            throw ChatMonitorError.beeper(message ?? "HTTP \(status)")
+            throw ChatMonitorError.chatApp(app, message ?? "HTTP \(status)")
         }
     }
 
-    /// Nothing listening is Beeper not running, or its API switched off.
-    static func mapped(_ error: URLError) -> ChatMonitorError {
+    /// Nothing listening is the app not running, or its API switched off.
+    static func mapped(_ error: URLError, app: ChatApp = .beeper) -> ChatMonitorError {
         switch error.code {
         case .cannotConnectToHost, .cannotFindHost, .networkConnectionLost, .dnsLookupFailed, .notConnectedToInternet:
-            return .beeperNotRunning
+            return .chatAppNotRunning(app)
         case .timedOut:
-            return .beeper("Beeper Desktop did not answer within 5 seconds")
+            return .chatApp(app, "\(app.programName) did not answer within 5 seconds")
         case .appTransportSecurityRequiresSecureConnection:
-            return .beeper("macOS refused a plain connection to Beeper Desktop on this Mac (App Transport Security)")
+            return .chatApp(app, "macOS refused a plain connection to \(app.programName) on this Mac (App Transport Security)")
         default:
-            return .beeper(error.localizedDescription)
+            return .chatApp(app, error.localizedDescription)
         }
     }
 
@@ -440,9 +475,18 @@ public struct BeeperClient: Sendable {
     /// (`nativeSlackUser`, from the same `auth.test`) matching counts too:
     /// Slack user ids are a workspace's own, and an Enterprise Grid account
     /// may carry its grid's id where the team goes.
+    ///
+    /// Courier's account ids do not say which Slack workspace they are, so
+    /// all its Slack accounts look like the one HomeSpeaker reads and are
+    /// left to it. A network the person switched on in Courier's list
+    /// (`ChatMonitorConfig.courierReadAnyway`) is read through Courier all
+    /// the same: the way to hear a second workspace that HomeSpeaker's own
+    /// reader does not cover.
     public static func isSkipped(
-        _ account: BeeperAccount, config: ChatMonitorConfig, nativeSlackTeam: String?, nativeSlackUser: String? = nil
+        _ account: BeeperAccount, config: ChatMonitorConfig, nativeSlackTeam: String?, nativeSlackUser: String? = nil,
+        app: ChatApp = .beeper
     ) -> Bool {
+        if config.readsAnyway(app).contains(networkKey(account)) { return false }
         switch classify(account) {
         case .slack(let team):
             guard config.slackEnabled else { return false }
@@ -484,9 +528,15 @@ public struct BeeperClient: Sendable {
 
     public static let maxNetworkKeyLength = 64
 
-    /// The person switched the account's network off.
+    /// The person switched the account's network off in Beeper's list.
     public static func isMuted(_ account: BeeperAccount, config: ChatMonitorConfig) -> Bool {
-        config.beeperMutedNetworks.contains(networkKey(account))
+        isMuted(account, app: .beeper, config: config)
+    }
+
+    /// The person switched the account's network off in `app`'s list:
+    /// each app's switches are its own.
+    public static func isMuted(_ account: BeeperAccount, app: ChatApp, config: ChatMonitorConfig) -> Bool {
+        config.mutedNetworks(for: app).contains(networkKey(account))
     }
 
     // MARK: Which messages are spoken, and how
@@ -528,17 +578,20 @@ public struct BeeperClient: Sendable {
     }
 
     /// The message as the monitor speaks it: "WhatsApp message from Alice:
-    /// …", with the group's name for a group.
-    public static func incoming(_ message: BeeperMessage, chat: BeeperChat?, account: BeeperAccount?, text: String) -> IncomingMessage {
+    /// …", with the group's name for a group; with neither network known,
+    /// by the app's name ("Courier message from …").
+    public static func incoming(
+        _ message: BeeperMessage, chat: BeeperChat?, account: BeeperAccount?, text: String, app: ChatApp = .beeper
+    ) -> IncomingMessage {
         let network = [account?.network, chat?.network].compactMap { $0 }.first { !$0.isEmpty }
         return IncomingMessage(
-            source: .beeper, id: "beeper/\(message.key)", timestamp: message.timestamp,
+            source: app.source, id: "\(app.rawValue)/\(message.key)", timestamp: message.timestamp,
             senderId: message.senderID, senderName: message.senderName,
             channel: chat?.isDirect == true ? "" : (chat?.title ?? ""), text: text, network: network)
     }
 }
 
-/// Answers every redirect with "no": the token goes to this Mac's Beeper
+/// Answers every redirect with "no": the token goes to the app on this Mac
 /// and is never carried on to wherever a redirect points.
 final class RefuseRedirects: NSObject, URLSessionTaskDelegate, Sendable {
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,

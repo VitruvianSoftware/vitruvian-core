@@ -50,12 +50,19 @@ public struct ChatMonitorStatus: Codable, Equatable, Sendable {
     /// skipped (HomeSpeaker reads it itself) or muted; nil as the lists
     /// above are. Absent from a file an older HomeSpeaker wrote.
     public var beeperNetworkStates: [BeeperNetworkState]?
+    /// The same three for Courier, read the same way; absent from a file
+    /// an older HomeSpeaker wrote.
+    public var courierNetworks: [String]?
+    public var courierSkippedNetworks: [String]?
+    public var courierNetworkStates: [BeeperNetworkState]?
     /// The app process that wrote it.
     public var pid: Int32
 
     public init(isRunning: Bool = false, lastPollDate: Date? = nil, lastError: String? = nil, slackIdentity: String? = nil,
                 activeGoogleChatBackend: String? = nil, beeperNetworks: [String]? = nil, beeperSkippedNetworks: [String]? = nil,
-                beeperNetworkStates: [BeeperNetworkState]? = nil, pid: Int32 = ProcessInfo.processInfo.processIdentifier) {
+                beeperNetworkStates: [BeeperNetworkState]? = nil, courierNetworks: [String]? = nil,
+                courierSkippedNetworks: [String]? = nil, courierNetworkStates: [BeeperNetworkState]? = nil,
+                pid: Int32 = ProcessInfo.processInfo.processIdentifier) {
         self.isRunning = isRunning
         self.lastPollDate = lastPollDate
         self.lastError = lastError
@@ -64,6 +71,9 @@ public struct ChatMonitorStatus: Codable, Equatable, Sendable {
         self.beeperNetworks = beeperNetworks
         self.beeperSkippedNetworks = beeperSkippedNetworks
         self.beeperNetworkStates = beeperNetworkStates
+        self.courierNetworks = courierNetworks
+        self.courierSkippedNetworks = courierSkippedNetworks
+        self.courierNetworkStates = courierNetworkStates
         self.pid = pid
     }
 
@@ -77,6 +87,9 @@ public struct ChatMonitorStatus: Codable, Equatable, Sendable {
         case beeperNetworks = "beeper_networks"
         case beeperSkippedNetworks = "beeper_skipped_networks"
         case beeperNetworkStates = "beeper_network_states"
+        case courierNetworks = "courier_networks"
+        case courierSkippedNetworks = "courier_skipped_networks"
+        case courierNetworkStates = "courier_network_states"
         case pid
     }
 
@@ -89,17 +102,31 @@ public struct ChatMonitorStatus: Codable, Equatable, Sendable {
         activeGoogleChatBackend = try c.decodeIfPresent(String.self, forKey: .activeGoogleChatBackend)
         beeperNetworks = try c.decodeIfPresent([String].self, forKey: .beeperNetworks)
         beeperSkippedNetworks = try c.decodeIfPresent([String].self, forKey: .beeperSkippedNetworks)
-        // Read entry by entry: one a newer HomeSpeaker writes, with a state
-        // this one does not know, is skipped, and the rest are kept. A list
-        // none of whose entries reads (or that is not a list) is as if it
-        // were not there; it never costs the file.
-        if let entries = (try? c.decodeIfPresent([Lenient<BeeperNetworkState>].self, forKey: .beeperNetworkStates)) ?? nil {
-            let states = entries.compactMap(\.value)
-            beeperNetworkStates = states.isEmpty && !entries.isEmpty ? nil : states
-        } else {
-            beeperNetworkStates = nil
-        }
+        beeperNetworkStates = Self.states(c, .beeperNetworkStates)
+        courierNetworks = try c.decodeIfPresent([String].self, forKey: .courierNetworks)
+        courierSkippedNetworks = try c.decodeIfPresent([String].self, forKey: .courierSkippedNetworks)
+        courierNetworkStates = Self.states(c, .courierNetworkStates)
         pid = try c.decode(Int32.self, forKey: .pid)
+    }
+
+    /// Read entry by entry: one a newer HomeSpeaker writes, with a state
+    /// this one does not know, is skipped, and the rest are kept. A list
+    /// none of whose entries reads (or that is not a list) is as if it
+    /// were not there; it never costs the file.
+    private static func states(_ c: KeyedDecodingContainer<CodingKeys>, _ key: CodingKeys) -> [BeeperNetworkState]? {
+        guard let entries = (try? c.decodeIfPresent([Lenient<BeeperNetworkState>].self, forKey: key)) ?? nil else {
+            return nil
+        }
+        let states = entries.compactMap(\.value)
+        return states.isEmpty && !entries.isEmpty ? nil : states
+    }
+
+    /// `app`'s networks: read, skipped and every one with its state.
+    public func networks(for app: ChatApp) -> (reading: [String]?, skipped: [String]?, states: [BeeperNetworkState]?) {
+        switch app {
+        case .beeper: return (beeperNetworks, beeperSkippedNetworks, beeperNetworkStates)
+        case .courier: return (courierNetworks, courierSkippedNetworks, courierNetworkStates)
+        }
     }
 
     /// What a reader should believe: a status that says "running" from an
@@ -124,8 +151,8 @@ private struct Lenient<Value: Decodable>: Decodable {
     }
 }
 
-/// One Beeper network as the monitor sees it: its key (what a mute is
-/// saved under), its name for people, and what is done with it.
+/// One Beeper (or Courier) network as the monitor sees it: its key (what a
+/// mute is saved under), its name for people, and what is done with it.
 public struct BeeperNetworkState: Codable, Equatable, Sendable {
     public enum State: String, Codable, Sendable {
         /// Read, and spoken by the Announce rules.
@@ -153,6 +180,11 @@ public struct BeeperNetworkList: Equatable, Sendable {
     /// Under the networks while the monitor has not read Beeper: only the
     /// muted ones are known.
     public static let othersLater = "Other networks show here once Beeper is being read."
+
+    /// The same, for either app.
+    public static func othersLater(_ app: ChatApp) -> String {
+        "Other networks show here once \(app.name) is being read."
+    }
 
     /// The ones the running monitor listed, then the saved mutes it did
     /// not list (named by their key), sorted by name. On or off follows

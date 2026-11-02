@@ -131,7 +131,7 @@ public enum ExtensionSide {
     /// settings, secrets, speakers, announcer and sign-in, and its own
     /// status file, `<data>/speaker_monitor_status.json`. Beeper is read
     /// through `beeperSession` (nil: its own short-timeout session), at
-    /// `BeeperClient.defaultBaseURL` unless `HOMESPEAKER_BEEPER_URL` names
+    /// `ChatAppClient.defaultBaseURL` unless `HOMESPEAKER_BEEPER_URL` names
     /// another address on this Mac.
     @MainActor
     public static func chatMonitor(
