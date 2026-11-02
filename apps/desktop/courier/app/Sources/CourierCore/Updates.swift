@@ -465,7 +465,9 @@ public struct SystemUpdateEnvironment: UpdateEnvironment {
     }
 
     public func satisfies(_ url: URL, requirement: String) -> Bool {
-        run("/usr/bin/codesign", ["--verify", "--deep", "--strict", "-R=\(requirement)", url.path]) == 0
+        // An app's nested code (the engine in Contents/Helpers) is checked too; a disk image has none.
+        let deep = url.pathExtension == "app" ? ["--deep"] : []
+        return run("/usr/bin/codesign", ["--verify"] + deep + ["--strict", "-R=\(requirement)", url.path]) == 0
     }
 
     public func passesGatekeeper(_ app: URL) -> Bool {

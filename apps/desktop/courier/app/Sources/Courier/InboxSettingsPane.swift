@@ -68,7 +68,9 @@ struct SettingsView: View {
             aiPreferences: aiPreferences,
             storage: storage ?? StorageModel(appModel: resolvedApp, lifecycle: lifecycle),
             integrations: integrations ?? IntegrationsModel(appModel: nil, enginePath: EngineLocation.enginePath()),
-            updates: updates,
+            updates: updates ?? UpdateModel(
+                currentVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+                appURL: Bundle.main.bundleURL, environment: SystemUpdateEnvironment(), quit: {}),
             onRestartNotificationCenter: onRestartNotificationCenter
         )
     }
