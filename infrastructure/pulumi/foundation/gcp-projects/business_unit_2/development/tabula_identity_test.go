@@ -79,12 +79,13 @@ func TestTabulaConditionedRolesMatchLiveBindings(t *testing.T) {
 	}
 }
 
-// The four plain roles must match the live unconditioned set exactly; a missing
-// one silently narrows tabula's deploy permissions at adoption.
+// The plain roles must match the live unconditioned set exactly; a missing one
+// silently narrows tabula's deploy permissions. roles/iam.serviceAccountUser
+// was adopted at project level and is now granted on tabula-rt only
+// (tabula_deploy_act_as), so it is deliberately absent here.
 func TestTabulaPlainRolesMatchLive(t *testing.T) {
 	live := []string{
 		"roles/run.admin",
-		"roles/iam.serviceAccountUser",
 		"roles/serviceusage.serviceUsageConsumer",
 		"roles/logging.viewer",
 	}

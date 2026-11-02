@@ -237,9 +237,10 @@ func loadProjectsConfig(ctx *pulumi.Context) *ProjectsConfig {
 	// an app is a one-line config change.
 	for _, name := range splitAppList(conf.Get("apps")) {
 		app := AppIdentityConfig{
-			Name:            name,
-			DeployAccountID: conf.Get(name + "_deploy_account_id"),
-			DeployRoles:     splitAppList(conf.Get(name + "_deploy_roles")),
+			Name:                 name,
+			DeployAccountID:      conf.Get(name + "_deploy_account_id"),
+			DeployRoles:          splitAppList(conf.Get(name + "_deploy_roles")),
+			ActAsServiceAccounts: splitAppList(conf.Get(name + "_deploy_act_as")),
 		}
 		if raw := conf.Get(name + "_deploy_conditional_roles"); raw != "" {
 			parsed, err := parseConditionalRoles(raw)
@@ -397,6 +398,11 @@ type AppIdentityConfig struct {
 	Name            string
 	DeployAccountID string
 	DeployRoles     []string
+	// ActAsServiceAccounts are the bare ids of the runtime service accounts
+	// this app's Cloud Run services run as (`<app>_deploy_act_as`). The deploy
+	// SA, and the BU app-infra pipeline SA, may act as these accounts and no
+	// others; that role is never granted project-wide.
+	ActAsServiceAccounts []string
 	// ConditionalDeployRoles are project roles granted with an IAM condition,
 	// e.g. Secret Manager scoped to the app's secret prefix. They are separate
 	// from DeployRoles because the condition is part of the binding's identity
@@ -430,22 +436,38 @@ func (a AppIdentityConfig) PreviewGitHubEnvironment() string {
 // identity was adopted from (oauth-user-inspector/infra/identity) — adoption
 // must be permission-neutral.
 // defaultAppInfraPipelineRoles are what the BU's app-infra pipeline SA needs to
-// apply stage-5 workloads: manage Cloud Run services, act as the runtime SA it
-// sets on them, and read its own project's service usage. Deliberately the same
+// apply stage-5 workloads: manage Cloud Run services and read its own project's
+// service usage. Acting as the runtime SA it sets on them is granted on the
+// named runtime accounts only (appInfraActAs), never project-wide. Deliberately the same
 // shape as a per-app deploy SA — the pipeline applies the same class of
 // resource, just for the whole BU leaf rather than one app.
 var defaultAppInfraPipelineRoles = []string{
 	"roles/run.admin",
-	"roles/iam.serviceAccountUser",
 	"roles/serviceusage.serviceUsageConsumer",
 	"roles/logging.viewer",
 }
 
 var defaultAppDeployRoles = []string{
 	"roles/run.admin",
-	"roles/iam.serviceAccountUser",
 	"roles/serviceusage.serviceUsageConsumer",
 	"roles/logging.viewer",
+}
+
+// appInfraActAs is every hosted app's runtime accounts, in config order: the
+// BU app-infra pipeline applies their workloads, so it may act as those
+// accounts (and only those).
+func appInfraActAs(apps []AppIdentityConfig) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, a := range apps {
+		for _, id := range a.ActAsServiceAccounts {
+			if !seen[id] {
+				seen[id] = true
+				out = append(out, id)
+			}
+		}
+	}
+	return out
 }
 
 // splitAppList parses a comma-separated config list, trimming blanks.

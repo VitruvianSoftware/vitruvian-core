@@ -223,9 +223,10 @@ func loadProjectsConfig(ctx *pulumi.Context) *ProjectsConfig {
 	// Per-app deploy identities (§4.1), mirroring business_unit_1.
 	for _, name := range splitAppList(conf.Get("apps")) {
 		app := AppIdentityConfig{
-			Name:            name,
-			DeployAccountID: conf.Get(name + "_deploy_account_id"),
-			DeployRoles:     splitAppList(conf.Get(name + "_deploy_roles")),
+			Name:                 name,
+			DeployAccountID:      conf.Get(name + "_deploy_account_id"),
+			DeployRoles:          splitAppList(conf.Get(name + "_deploy_roles")),
+			ActAsServiceAccounts: splitAppList(conf.Get(name + "_deploy_act_as")),
 		}
 		if len(app.DeployRoles) == 0 {
 			app.DeployRoles = defaultAppDeployRoles
@@ -379,13 +380,30 @@ func projectLabels(cfg *ProjectsConfig, suffix, vpc string) pulumi.StringMap {
 }
 
 // defaultAppInfraPipelineRoles are what the BU's app-infra pipeline SA needs to
-// apply stage-5 workloads: manage Cloud Run services, act as the runtime SA it
-// sets on them, and read its own project's service usage.
+// apply stage-5 workloads: manage Cloud Run services and read its own project's
+// service usage. Acting as the runtime SA it sets on them is granted on the
+// named runtime accounts only (appInfraActAs), never project-wide.
 var defaultAppInfraPipelineRoles = []string{
 	"roles/run.admin",
-	"roles/iam.serviceAccountUser",
 	"roles/serviceusage.serviceUsageConsumer",
 	"roles/logging.viewer",
+}
+
+// appInfraActAs is every hosted app's runtime accounts, in config order: the
+// BU app-infra pipeline applies their workloads, so it may act as those
+// accounts (and only those).
+func appInfraActAs(apps []AppIdentityConfig) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, a := range apps {
+		for _, id := range a.ActAsServiceAccounts {
+			if !seen[id] {
+				seen[id] = true
+				out = append(out, id)
+			}
+		}
+	}
+	return out
 }
 
 // splitAppList parses a comma-separated config list, trimming blanks.
@@ -442,6 +460,11 @@ type AppIdentityConfig struct {
 	Name            string
 	DeployAccountID string
 	DeployRoles     []string
+	// ActAsServiceAccounts are the bare ids of the runtime service accounts
+	// this app's Cloud Run services run as (`<app>_deploy_act_as`). The deploy
+	// SA, and the BU app-infra pipeline SA, may act as these accounts and no
+	// others; that role is never granted project-wide.
+	ActAsServiceAccounts []string
 	// ConditionalDeployRoles are project roles granted with an IAM condition —
 	// Secret Manager scoped to the app's secret prefix. Separate from
 	// DeployRoles because the condition is part of the binding's identity in
@@ -474,7 +497,6 @@ func (a AppIdentityConfig) PreviewGitHubEnvironment() string {
 // permission-neutral.
 var defaultAppDeployRoles = []string{
 	"roles/run.admin",
-	"roles/iam.serviceAccountUser",
 	"roles/serviceusage.serviceUsageConsumer",
 	"roles/logging.viewer",
 }

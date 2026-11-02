@@ -184,9 +184,10 @@ func TestPeeringResultStruct(t *testing.T) {
 // list is the one the app-side stack held at adoption time — changing it must
 // be a deliberate, reviewed edit to BOTH this test and the stack config.
 func TestDefaultAppDeployRolesMatchAdoptedSet(t *testing.T) {
+	// roles/iam.serviceAccountUser was in the adopted set at project level; it
+	// is now granted on the runtime account only (<app>_deploy_act_as).
 	want := []string{
 		"roles/run.admin",
-		"roles/iam.serviceAccountUser",
 		"roles/serviceusage.serviceUsageConsumer",
 		"roles/logging.viewer",
 	}

@@ -57,7 +57,12 @@ type PipelineArgs struct {
 	// ProjectID is the env's app-hosting project the stage-5 leaf deploys into.
 	ProjectID pulumi.StringInput
 	// Roles are the project-level roles needed to apply stage-5 workloads.
+	// Each must be in allowedProjectRoles (roles.go); anything else fails.
 	Roles []string
+	// ActAsServiceAccounts are the bare account ids (in ProjectID) of the
+	// runtime service accounts the stage-5 workloads run as. Granted
+	// roles/iam.serviceAccountUser on those accounts only, never project-wide.
+	ActAsServiceAccounts []string
 	// WorkloadIdentityPool is the shared pool from gcp-bootstrap.
 	WorkloadIdentityPool pulumi.StringInput
 	// GitHubEnvironment is the stage-5 deploy environment permitted to
@@ -81,10 +86,18 @@ func DeployBUPipeline(ctx *pulumi.Context, name string, args *PipelineArgs) (*Pi
 	if args.GitHubEnvironment == "" {
 		return nil, fmt.Errorf("GitHubEnvironment is required")
 	}
+	accountID := fmt.Sprintf("sa-app-infra-%s", args.BusinessCode)
+	who := fmt.Sprintf("app-infra pipeline identity for %q", args.BusinessCode)
+	if err := validateProjectRoles(who, args.Roles); err != nil {
+		return nil, err
+	}
+	if err := validateActAsTargets(who, accountID, args.ActAsServiceAccounts); err != nil {
+		return nil, err
+	}
 
 	// Account ids are capped at 30 chars; "sa-app-infra-<bu>" stays well under.
 	sa, err := serviceaccount.NewAccount(ctx, name+"-app-infra-pipeline-sa", &serviceaccount.AccountArgs{
-		AccountId:                 pulumi.String(fmt.Sprintf("sa-app-infra-%s", args.BusinessCode)),
+		AccountId:                 pulumi.String(accountID),
 		DisplayName:               pulumi.Sprintf("%s app-infra pipeline (%s)", args.BusinessCode, args.Env),
 		Description:               pulumi.String("Applies the gcp-app-infra (stage 5) leaf. Grants authored in foundation/gcp-projects, which it does not apply."),
 		Project:                   args.ProjectID,
@@ -103,6 +116,10 @@ func DeployBUPipeline(ctx *pulumi.Context, name string, args *PipelineArgs) (*Pi
 		}); err != nil {
 			return nil, err
 		}
+	}
+
+	if err := grantActAs(ctx, name+"-app-infra-actas", args.ProjectID, args.ActAsServiceAccounts, member); err != nil {
+		return nil, err
 	}
 
 	if _, err := serviceaccount.NewIAMMember(ctx, name+"-app-infra-wif", &serviceaccount.IAMMemberArgs{

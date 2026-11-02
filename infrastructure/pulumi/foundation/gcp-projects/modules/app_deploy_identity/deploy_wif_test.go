@@ -109,8 +109,22 @@ func iamGrants(t *testing.T, r recorded, module string) (pairs []string, isIAM b
 // across every IAM resource type, are exactly the Environment principalSet.
 func assertOnlyEnvironmentPrincipal(t *testing.T, got []recorded, env string) {
 	t.Helper()
+	// Only grants ON the deploy SA count here; act-as grants the deploy SA
+	// holds on runtime accounts are asserted in roles_test.go.
+	deploySA := ""
+	for _, r := range got {
+		if r.typ == "gcp:serviceaccount/account:Account" && strings.HasSuffix(r.name, "-deploy-sa") {
+			deploySA = r.inputs["name"].StringValue()
+		}
+	}
+	if deploySA == "" {
+		t.Fatal("deploy SA not declared")
+	}
 	var grants []string
 	for _, r := range got {
+		if v, ok := r.inputs["serviceAccountId"]; ok && v.IsString() && v.StringValue() != deploySA {
+			continue
+		}
 		pairs, _ := iamGrants(t, r, "serviceaccount")
 		grants = append(grants, pairs...)
 	}
@@ -163,6 +177,7 @@ var expectedArgsFields = []string{
 	"GitHubEnvironment string",
 	"ConditionalDeployRoles []app_deploy_identity.ConditionalRole",
 	"ProjectNumber pulumi.StringInput",
+	"ActAsServiceAccounts []string",
 	"ServiceAccountNamingScheme string",
 }
 
@@ -217,7 +232,7 @@ func TestDeployGrantsAreUnchangedWithEveryStringFieldSet(t *testing.T) {
 // in the shared project.
 func TestProjectGrantsGoOnlyToTheDeploySA(t *testing.T) {
 	args := oauthDeployArgs()
-	args.DeployRoles = []string{"roles/run.admin", "roles/iam.serviceAccountUser"}
+	args.DeployRoles = []string{"roles/run.admin", "roles/logging.viewer"}
 	args.ConditionalDeployRoles = []ConditionalRole{{
 		Role:       "roles/secretmanager.secretAccessor",
 		Title:      "own secrets",
