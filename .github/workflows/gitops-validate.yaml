@@ -99,8 +99,6 @@ jobs:
         with:
           base-url: https://github.com/yannh/kubeconform/releases/download/v0.8.0
           asset: kubeconform-linux-amd64.tar.gz
-          checksum-file: CHECKSUMS
-          checksum-pattern: kubeconform-linux-amd64.tar.gz
           bin-name: kubeconform
           mode: tar
 
