@@ -218,7 +218,7 @@ fn log_is_private() {
 #[test]
 fn desktop_commander_cannot_touch_the_session_start_scripts() {
     let h = Harness::new();
-    for rel in ["tools/remote/setup.sh"] {
+    for rel in [".claude/session-start.sh"] {
         let path = join(&h.fx.repo, rel);
         for (tool, tin) in [
             (
@@ -347,7 +347,6 @@ fn file_tools_cannot_touch_the_hook_files() {
             ".claude/session-start.sh",
             ".agents/hooks.json",
             "tools/agent-guard/hook.sh",
-            "tools/remote/setup.sh",
         ] {
             for root in [h.fx.repo.clone(), h.fx.wt.clone()] {
                 let p = claude(tool, &root, obj(vec![("file_path", s(&join(&root, rel)))]));
@@ -374,7 +373,12 @@ fn file_tools_cannot_touch_the_hook_files() {
         ".claude/notes.md",
         "tools/cloud-bootstrap/cloud-bootstrap_test.sh",
         "tools/cloud-bootstrap/README.md",
-        "tools/remote/setup_test.sh",
+        // Not locally protected: the build-cache configurator session start
+        // builds is behind the agent-guard-review ruleset instead, like
+        // cloud-bootstrap.sh.
+        "tools/remote/BUILD",
+        "tools/remote/src/main.rs",
+        "tools/remote/src/tests.rs",
     ] {
         let p = claude(
             "Edit",

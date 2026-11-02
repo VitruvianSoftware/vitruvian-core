@@ -329,14 +329,15 @@ directly, since hooks are separate processes and would not otherwise see a
 
 The `auth` phase points a plain `bazel` at the shared BuildBuddy cache, for any
 profile that both installs `bazel` and declares `BUILDBUDDY_API_KEY`. It
-delegates to `//tools/remote:setup` — the same script a developer runs — so the
+delegates to `//tools/remote:setup` — the same tool a developer runs, which the
+launcher builds from `tools/remote/src/main.rs` with plain `rustc` — so the
 block written to `user.bazelrc` has one definition and one place that keeps the
 file git-ignored.
 
 It belongs here because that config is git-ignored and therefore absent from a
 fresh clone: without it a session cold-builds a large polyglot repo on a 4-core
 box while holding a working key it never uses. A laptop has someone to run the
-setup script; a cloud session does not.
+setup tool; a cloud session does not.
 
 Four constraints shape it:
 

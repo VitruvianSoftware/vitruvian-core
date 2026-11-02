@@ -114,8 +114,8 @@ which is **git-ignored**, so a freshly cloned sandbox has none. Without this a
 session cold-builds a large polyglot repo on a 4-core box while holding a
 perfectly good key it never uses. A developer gets this from `bazel run
 //tools/remote:setup`; a cloud session has nobody to run it, so the bootstrap
-runs it for them (delegating to that same script, so the block has one
-definition).
+runs it for them (the launcher builds that same tool from
+`tools/remote/src/main.rs` with plain `rustc`, so the block has one definition).
 
 Two properties worth knowing:
 

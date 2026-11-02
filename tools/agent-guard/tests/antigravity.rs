@@ -405,7 +405,6 @@ fn file_tools_cannot_touch_the_hook_files() {
         ".agents/hooks.json",
         ".claude/settings.json",
         "tools/agent-guard/hook.sh",
-        "tools/remote/setup.sh",
     ] {
         let path = join(&repo, rel);
         let out =
@@ -421,7 +420,7 @@ fn file_tools_cannot_touch_the_hook_files() {
     // And through agy's shell, wherever the command says it runs.
     let out =
         t.h.hook(&run(
-            "sed -i '' s/a/b/ tools/remote/setup.sh",
+            "sed -i '' s/a/b/ .claude/session-start.sh",
             Some(&repo),
             Some(&[&repo]),
         ))

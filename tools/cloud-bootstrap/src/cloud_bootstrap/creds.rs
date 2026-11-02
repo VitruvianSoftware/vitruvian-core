@@ -540,6 +540,10 @@ impl Ctx {
         if !self.tools_all.iter().any(|t| t == "bazel") {
             return; // nothing in this session would read user.bazelrc
         }
+        if self.cache_setup.as_os_str().is_empty() {
+            note("build cache: the configurator (//tools/remote:setup) is not available — skipped, builds stay local");
+            return;
+        }
         if !sh::is_executable(&self.cache_setup) {
             note(&format!(
                 "build cache: {} is not executable — skipped, builds stay local",

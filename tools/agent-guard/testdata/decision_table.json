@@ -883,10 +883,11 @@
   ["chmod -x .claude/tailscale-up.sh", "deny", "guard-config", ""],
   ["echo x > .claude/new-hook.sh", "deny", "guard-config", ""],
   ["bash .claude/session-start.sh", "allow", null, ""],
-  "# The repo script session-start.sh runs that is still protected: the",
-  "# build-cache configurator. (cloud-bootstrap.sh and profiles.tsv were",
-  "# unprotected so an agent can change them in a PR the guard owner approves:",
-  "# they stay behind the agent-guard-review ruleset.)",
+  "# The repo files session-start.sh runs (cloud-bootstrap.sh and the Rust",
+  "# sources it builds, the build-cache configurator in tools/remote/src, and",
+  "# profiles.tsv) are not locally protected, so an agent can change them in a",
+  "# PR the guard owner approves: they stay behind the agent-guard-review",
+  "# ruleset. Nothing under tools/remote is locally protected any more.",
   [
     "echo 'exit 0' > tools/cloud-bootstrap/cloud-bootstrap.sh",
     "allow",
@@ -899,16 +900,17 @@
     null,
     ""
   ],
-  ["cp /tmp/x.sh tools/remote/setup.sh", "deny", "guard-config", ""],
-  ["cat /tmp/x | tee tools/remote/setup.sh", "deny", "guard-config", ""],
-  ["rm tools/remote/setup.sh", "deny", "guard-config", ""],
+  ["cp /tmp/x.rs tools/remote/src/main.rs", "allow", null, ""],
+  ["cat /tmp/x | tee tools/remote/src/main.rs", "allow", null, ""],
+  ["rm tools/remote/src/main.rs", "allow", null, ""],
   ["rm -rf tools/cloud-bootstrap", "allow", null, ""],
-  ["mv tools/remote /tmp/remote", "deny", "guard-config", ""],
+  ["mv tools/remote /tmp/remote", "allow", null, ""],
+  ["mv .claude /tmp/claude", "deny", "guard-config", ""],
   ["chmod -x tools/cloud-bootstrap/cloud-bootstrap.sh", "allow", null, ""],
   [
-    "python3 -c \"open('tools/remote/setup.sh', 'w').write('')\"",
-    "deny",
-    "guard-config",
+    "python3 -c \"open('tools/remote/src/main.rs', 'w').write('')\"",
+    "allow",
+    null,
     ""
   ],
   [
@@ -918,8 +920,8 @@
     "out"
   ],
   ["cat tools/cloud-bootstrap/cloud-bootstrap.sh", "allow", null, ""],
-  ["sed -n 1,40p tools/remote/setup.sh", "allow", null, ""],
-  ["cp tools/remote/setup.sh /tmp/setup.sh", "allow", null, ""],
+  ["sed -n 1,40p tools/remote/src/main.rs", "allow", null, ""],
+  ["cp tools/remote/src/main.rs /tmp/main.rs", "allow", null, ""],
   ["bash tools/cloud-bootstrap/cloud-bootstrap.sh whoami", "allow", null, ""],
   ["bazel run //tools/cloud-bootstrap:whoami", "allow", null, ""],
   [
@@ -928,7 +930,7 @@
     null,
     ""
   ],
-  ["echo x > tools/remote/setup_test.sh", "allow", null, ""],
+  ["echo x > tools/remote/src/tests.rs", "allow", null, ""],
   "# profiles.tsv decides which secrets session start fetches; changing it is",
   "# gated by the agent-guard-review ruleset, not by this local guard.",
   ["echo x >> tools/cloud-bootstrap/profiles.tsv", "allow", null, ""],

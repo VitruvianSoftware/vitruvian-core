@@ -85,7 +85,7 @@ func TestGuardReviewPathsCoverage(t *testing.T) {
 		"tools/cloud-bootstrap/src/cloud_bootstrap/main.rs",
 		"tools/cloud-bootstrap/src/cloud_bootstrap/creds.rs",
 		"tools/cloud-bootstrap/profiles.tsv",
-		"tools/remote/setup.sh",
+		"tools/remote/src/main.rs",
 		"infrastructure/pulumi/platform/repo-config/guard_review.go",
 		"infrastructure/pulumi/platform/repo-config/main.go",
 		"infrastructure/pulumi/platform/repo-config/Pulumi.dev.yaml",
@@ -107,7 +107,8 @@ func TestGuardReviewPathsCoverage(t *testing.T) {
 		// The tests beside the launcher's sources, and the other tool there.
 		"tools/cloud-bootstrap/src/launcher_test.rs",
 		"tools/cloud-bootstrap/src/configure_tailscale/lib.rs",
-		"tools/remote/setup_test.sh",
+		"tools/remote/BUILD",
+		"tools/remote/testdata/setup_sh.golden",
 		"apps/cli/devx/main.go",
 		".claude/agents/wren.md",
 		".agents/agents/wren.md",
@@ -359,14 +360,25 @@ func TestGuardReviewCoversEverySessionStartSource(t *testing.T) {
 			t.Errorf("%s is compiled and run at session start but is not covered by guardReviewPaths", f)
 		}
 	}
-	// Any .rs a later change adds beside them is covered too.
-	entries, err := os.ReadDir(filepath.Join(root, crate))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, e := range entries {
-		if strings.HasSuffix(e.Name(), ".rs") && !guardCovers(crate+"/"+e.Name()) {
-			t.Errorf("%s/%s is not covered by guardReviewPaths", crate, e.Name())
+	// Any .rs a later change adds beside them is covered too, and so is the
+	// build-cache configurator the launcher also builds and the tool runs.
+	for _, dir := range []string{crate, "tools/remote/src"} {
+		entries, err := os.ReadDir(filepath.Join(root, dir))
+		if err != nil {
+			t.Fatal(err)
+		}
+		n := 0
+		for _, e := range entries {
+			if !strings.HasSuffix(e.Name(), ".rs") {
+				continue
+			}
+			n++
+			if !guardCovers(dir + "/" + e.Name()) {
+				t.Errorf("%s/%s is not covered by guardReviewPaths", dir, e.Name())
+			}
+		}
+		if n == 0 {
+			t.Errorf("no .rs files found in %s; this test must see them to check them", dir)
 		}
 	}
 }

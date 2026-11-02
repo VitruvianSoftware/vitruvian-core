@@ -11,10 +11,10 @@
 //! invariant: across every scope, the auth header expands EXACTLY ONCE for
 //! any config combination (t1).
 //!
-//! t1..t5 are the shell suite (setup_test.sh) ported. The `parity_*` tests
-//! run the former shell implementation (setup.sh, still on disk because
-//! cloud-bootstrap runs it at session start) as an oracle over a matrix of
-//! scenarios and require the same stdout, stderr, exit code and files.
+//! t1..t5 are the shell suite (setup_test.sh) ported. The former shell
+//! implementation's outputs over a matrix of scenarios (stdout, stderr, exit
+//! code and files) are recorded in testdata/setup_sh.golden, and the binary
+//! must still produce them; setup.sh itself is retired.
 
 use std::fs;
 use std::io::Write;
@@ -32,10 +32,6 @@ fn abs(var: &str) -> PathBuf {
 
 fn bin() -> PathBuf {
     abs("BIN")
-}
-
-fn shell() -> PathBuf {
-    abs("SETUP_SH")
 }
 
 /// A fresh directory: `<tmp>/<n>/` with `ws/` (the workspace) and `home/`.
@@ -60,15 +56,9 @@ struct Out {
     stderr: String,
 }
 
-/// Run `prog` (the binary, or `bash setup.sh` when `sh`) against `root/ws`.
-fn run(root: &Path, sh: bool, args: &[&str], env: &[(&str, &str)], stdin: &str) -> Out {
-    let mut c = if sh {
-        let mut c = Command::new("bash");
-        c.arg(shell());
-        c
-    } else {
-        Command::new(bin())
-    };
+/// Run the binary against `root/ws`.
+fn run(root: &Path, args: &[&str], env: &[(&str, &str)], stdin: &str) -> Out {
+    let mut c = Command::new(bin());
     let path = format!(
         "{}:{}",
         root.join("fakebin").display(),
@@ -151,7 +141,7 @@ fn bb(root: &Path, key: &str, extra: &[&str]) -> Out {
     let mut a: Vec<&str> = BB.to_vec();
     a.extend_from_slice(&["--key", key]);
     a.extend_from_slice(extra);
-    let o = run(root, false, &a, &[], "");
+    let o = run(root, &a, &[], "");
     assert_eq!(o.code, 0, "setup failed: {}{}", o.stdout, o.stderr);
     o
 }
@@ -287,7 +277,6 @@ fn the_key_comes_from_the_environment_when_not_given() {
     let r = scratch();
     let o = run(
         &r,
-        false,
         &[
             "--cache",
             "buildbuddy",
@@ -308,7 +297,6 @@ fn no_key_at_all_exits_2() {
     let r = scratch();
     let o = run(
         &r,
-        false,
         &[
             "--cache",
             "buildbuddy",
@@ -326,7 +314,7 @@ fn no_key_at_all_exits_2() {
 #[test]
 fn unknown_argument_exits_2_with_usage() {
     let r = scratch();
-    let o = run(&r, false, &["--bogus"], &[], "");
+    let o = run(&r, &["--bogus"], &[], "");
     assert_eq!(o.code, 2);
     assert_eq!(o.stderr, "unknown argument: --bogus\n");
     assert!(o
@@ -337,7 +325,7 @@ fn unknown_argument_exits_2_with_usage() {
 #[test]
 fn a_flag_without_its_value_exits_1() {
     let r = scratch();
-    let o = run(&r, false, &["--cache"], &[], "");
+    let o = run(&r, &["--cache"], &[], "");
     assert_eq!(o.code, 1);
     assert!(
         o.stderr.contains("2: parameter null or not set"),
@@ -352,7 +340,7 @@ fn cache_none_removes_the_managed_block_only() {
     let ws = r.join("ws");
     fs::write(ws.join("user.bazelrc"), "common --jobs=8\n").unwrap();
     bb(&r, "TESTKEY", &[]);
-    let o = run(&r, false, &["--cache", "none"], &[], "");
+    let o = run(&r, &["--cache", "none"], &[], "");
     assert_eq!(o.code, 0);
     let rc = read(ws.join("user.bazelrc"));
     assert!(!rc.contains("build cache"), "{rc}");
@@ -366,7 +354,7 @@ fn cache_local_writes_a_disk_cache_under_home() {
     let r = scratch();
     let ws = r.join("ws");
     fs::write(ws.join(".gitignore"), "bazel-*\n").unwrap();
-    let o = run(&r, false, &["--cache", "local"], &[], "");
+    let o = run(&r, &["--cache", "local"], &[], "");
     assert_eq!(o.code, 0, "{}", o.stderr);
     let dir = r.join("home/.cache/ws-bazel-disk");
     assert!(dir.is_dir());
@@ -383,7 +371,6 @@ fn cache_shared_is_read_only_with_an_optional_header() {
     let ws = r.join("ws");
     let o = run(
         &r,
-        false,
         &[
             "--cache",
             "shared",
@@ -401,7 +388,6 @@ fn cache_shared_is_read_only_with_an_optional_header() {
     // Blank key on the prompt: no header at all.
     let o = run(
         &r,
-        false,
         &["--cache", "shared", "--url", "grpcs://c.example"],
         &[],
         "\n",
@@ -409,7 +395,7 @@ fn cache_shared_is_read_only_with_an_optional_header() {
     assert_eq!(o.code, 0);
     assert!(!read(ws.join("user.bazelrc")).contains("remote_header"));
     // No URL and nothing on stdin: `read` fails under set -e.
-    let o = run(&r, false, &["--cache", "shared"], &[], "");
+    let o = run(&r, &["--cache", "shared"], &[], "");
     assert_eq!(o.code, 1);
 }
 
@@ -420,7 +406,6 @@ fn the_ci_secret_travels_on_stdin_never_argv() {
     fake_gh(&r, true, true);
     let o = run(
         &r,
-        false,
         &[
             "--cache",
             "buildbuddy",
@@ -1008,23 +993,21 @@ fn render(c: &Case, o: &Out, files: &[String]) -> String {
     )
 }
 
-/// Every case through the Rust binary (or setup.sh), rendered.
-fn render_all(sh: bool) -> Vec<String> {
+/// Every case through the binary, rendered.
+fn render_all() -> Vec<String> {
     CASES
         .iter()
         .map(|c| {
             let r = scratch();
             (c.prep)(&r);
-            let o = run(&r, sh, c.args, c.env, c.stdin);
+            let o = run(&r, c.args, c.env, c.stdin);
             render(c, &o, &tree(&r))
         })
         .collect()
 }
 
-/// setup.sh's outputs for every case, recorded so this coverage outlives
-/// setup.sh. Regenerate (only while setup.sh still exists) with
-///   bazel run //tools/remote:setup_test -- --exact regenerate_golden --ignored
-/// with REGENERATE_GOLDEN=<absolute path to testdata/setup_sh.golden>.
+/// setup.sh's outputs for every case, recorded before it was retired. A
+/// deliberate behaviour change edits this file by hand, in the same PR.
 fn golden() -> String {
     read(abs("GOLDEN"))
 }
@@ -1033,7 +1016,7 @@ fn golden() -> String {
 fn matches_the_recorded_setup_sh_outputs() {
     let want = golden();
     let want: Vec<&str> = want.split_inclusive_cases();
-    let got = render_all(false);
+    let got = render_all();
     assert_eq!(
         want.len(),
         got.len(),
@@ -1051,14 +1034,6 @@ fn matches_the_recorded_setup_sh_outputs() {
         bad.len(),
         bad.join("\n")
     );
-}
-
-#[test]
-#[ignore]
-fn regenerate_golden() {
-    let dest = std::env::var("REGENERATE_GOLDEN")
-        .expect("set REGENERATE_GOLDEN to the golden file's absolute path");
-    fs::write(dest, render_all(true).concat()).unwrap();
 }
 
 trait Cases {
@@ -1089,7 +1064,7 @@ fn no_case_ever_prints_a_key() {
     for c in CASES {
         let r = scratch();
         (c.prep)(&r);
-        let o = run(&r, false, c.args, c.env, c.stdin);
+        let o = run(&r, c.args, c.env, c.stdin);
         for k in KEYS {
             assert!(
                 !o.stdout.contains(k) && !o.stderr.contains(k),
@@ -1114,7 +1089,6 @@ fn workflow_hints_are_listed_in_sorted_order() {
     fake_gh(&r, false, true);
     let o = run(
         &r,
-        false,
         &[
             "--cache",
             "buildbuddy",
@@ -1195,7 +1169,7 @@ fn user_bazelrc_holding_the_key_is_private() {
         &["--cache", "local"][..],
     ] {
         let r = scratch();
-        let o = run(&r, false, args, &[], "");
+        let o = run(&r, args, &[], "");
         assert_eq!(o.code, 0, "{}", o.stderr);
         assert_eq!(
             mode(&r.join("ws/user.bazelrc")),
@@ -1203,32 +1177,6 @@ fn user_bazelrc_holding_the_key_is_private() {
             "{args:?}: user.bazelrc is not 0600"
         );
     }
-}
-
-#[test]
-fn parity_with_setup_sh() {
-    let mut bad = Vec::new();
-    for c in CASES {
-        let rs = scratch();
-        let sh = scratch();
-        (c.prep)(&rs);
-        (c.prep)(&sh);
-        let a = run(&rs, false, c.args, c.env, c.stdin);
-        let b = run(&sh, true, c.args, c.env, c.stdin);
-        let (ta, tb) = (tree(&rs), tree(&sh));
-        if a.code != b.code || a.stdout != b.stdout || a.stderr != b.stderr || ta != tb {
-            bad.push(format!(
-                "case '{}':\n  exit rust={} sh={}\n  --- rust stdout\n{}\n  --- sh stdout\n{}\n  --- rust stderr\n{}\n  --- sh stderr\n{}\n  --- rust files\n{}\n  --- sh files\n{}",
-                c.name, a.code, b.code, a.stdout, b.stdout, a.stderr, b.stderr, ta.join("\n"), tb.join("\n")
-            ));
-        }
-    }
-    assert!(
-        bad.is_empty(),
-        "{} case(s) differ from setup.sh:\n\n{}",
-        bad.len(),
-        bad.join("\n\n")
-    );
 }
 
 #[test]
@@ -1259,7 +1207,7 @@ fn an_unreadable_user_bazelrc_stops_the_run_and_is_left_untouched() {
                 eprintln!("skipping: mode {m:o} is readable here (root?)");
                 return;
             }
-            let o = run(&r, false, args, &[], "");
+            let o = run(&r, args, &[], "");
             assert_ne!(
                 o.code, 0,
                 "mode {m:o} {args:?}: an unreadable user.bazelrc did not stop the run:\n{}",
@@ -1315,7 +1263,7 @@ fn a_read_only_user_bazelrc_is_updated_and_made_0600() {
         let f = r.join("ws/user.bazelrc");
         fs::write(&f, "common --jobs=8\n").unwrap();
         fs::set_permissions(&f, fs::Permissions::from_mode(0o400)).unwrap();
-        let o = run(&r, false, args, &[], "");
+        let o = run(&r, args, &[], "");
         assert_eq!(
             o.code, 0,
             "{args:?}: a 0400 user.bazelrc failed the run:\n{}",

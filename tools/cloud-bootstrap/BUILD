@@ -49,8 +49,12 @@ rust_binary(
     srcs = CLOUD_BOOTSTRAP_SRCS,
     args = ["up"],
     crate_root = "src/cloud_bootstrap/main.rs",
-    data = ["profiles.tsv"],
+    data = [
+        "profiles.tsv",
+        "//tools/remote:setup",
+    ],
     edition = "2021",
+    env = {"CLOUD_BOOTSTRAP_REMOTE_SETUP": "$(rootpath //tools/remote:setup)"},
     visibility = ["//visibility:public"],
 )
 
@@ -59,8 +63,12 @@ rust_binary(
     srcs = CLOUD_BOOTSTRAP_SRCS,
     args = ["install"],
     crate_root = "src/cloud_bootstrap/main.rs",
-    data = ["profiles.tsv"],
+    data = [
+        "profiles.tsv",
+        "//tools/remote:setup",
+    ],
     edition = "2021",
+    env = {"CLOUD_BOOTSTRAP_REMOTE_SETUP": "$(rootpath //tools/remote:setup)"},
     visibility = ["//visibility:public"],
 )
 
@@ -69,8 +77,12 @@ rust_binary(
     srcs = CLOUD_BOOTSTRAP_SRCS,
     args = ["auth"],
     crate_root = "src/cloud_bootstrap/main.rs",
-    data = ["profiles.tsv"],
+    data = [
+        "profiles.tsv",
+        "//tools/remote:setup",
+    ],
     edition = "2021",
+    env = {"CLOUD_BOOTSTRAP_REMOTE_SETUP": "$(rootpath //tools/remote:setup)"},
     visibility = ["//visibility:public"],
 )
 
@@ -79,8 +91,12 @@ rust_binary(
     srcs = CLOUD_BOOTSTRAP_SRCS,
     args = ["whoami"],
     crate_root = "src/cloud_bootstrap/main.rs",
-    data = ["profiles.tsv"],
+    data = [
+        "profiles.tsv",
+        "//tools/remote:setup",
+    ],
     edition = "2021",
+    env = {"CLOUD_BOOTSTRAP_REMOTE_SETUP": "$(rootpath //tools/remote:setup)"},
     visibility = ["//visibility:public"],
 )
 
@@ -89,8 +105,12 @@ rust_binary(
     srcs = CLOUD_BOOTSTRAP_SRCS,
     args = ["profiles"],
     crate_root = "src/cloud_bootstrap/main.rs",
-    data = ["profiles.tsv"],
+    data = [
+        "profiles.tsv",
+        "//tools/remote:setup",
+    ],
     edition = "2021",
+    env = {"CLOUD_BOOTSTRAP_REMOTE_SETUP": "$(rootpath //tools/remote:setup)"},
     visibility = ["//visibility:public"],
 )
 
@@ -195,7 +215,10 @@ rust_test(
 # guard-review test that checks each one needs James's approval to change.
 filegroup(
     name = "session_start_sources",
-    srcs = CLOUD_BOOTSTRAP_SRCS + ["cloud-bootstrap.sh"],
+    srcs = CLOUD_BOOTSTRAP_SRCS + [
+        "cloud-bootstrap.sh",
+        "//tools/remote:session_start_sources",
+    ],
     visibility = ["//infrastructure/pulumi/platform/repo-config:__pkg__"],
 )
 
@@ -208,12 +231,14 @@ rust_test(
     data = CLOUD_BOOTSTRAP_SRCS + [
         "cloud-bootstrap.sh",
         ":auth",
+        "//tools/remote:session_start_sources",
     ],
     edition = "2021",
     env = {
         "BIN": "$(rootpath :auth)",
         "LAUNCHER": "$(rootpath cloud-bootstrap.sh)",
         "MAIN_RS": "$(rootpath src/cloud_bootstrap/main.rs)",
+        "REMOTE_MAIN": "$(rootpath //tools/remote:session_start_sources)",
     },
 )
 
