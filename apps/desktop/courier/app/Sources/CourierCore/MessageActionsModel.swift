@@ -513,7 +513,8 @@ public final class MessageActionsModel: ObservableObject {
     @discardableResult
     public func createPoll(_ draft: PollDraft) async -> Bool {
         guard !isLocked else { return false }
-        guard let room = conversation.roomID else { return false }
+        // A merged chat's poll goes to the room it replies in, not to its merge ID.
+        guard let room = conversation.activeReplyRoomID ?? conversation.roomID else { return false }
         guard let polls = conversation.features.poll else {
             if let reason = conversation.features.pollsUnavailableReason(network: conversation.network) {
                 onToast(reason)

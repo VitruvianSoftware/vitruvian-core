@@ -31,6 +31,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let dockPreferences = DockAndTrayPreferences()
     /// Shared Appearance preferences (`AppearancePreferences`: themes, zoom, fonts, confetti).
     let appearance = AppearancePreferences()
+    /// The AI settings (slash commands, translation languages): one instance, so what Settings changes reaches the
+    /// composers at once.
+    let aiPreferences = AIPreferences()
     /// Shared ⌘J Command Bar model (`CommandBarModel`).
     let commandBar: CommandBarModel
     /// Shared Settings navigation and search model (`⌘,`).
@@ -164,6 +167,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for composer in [conversation.composer, conversation.thread.composer] {
             composer.entitlement = entitlement
             composer.quickReplies = quickReplies
+            composer.aiPreferences = aiPreferences
             composer.onArchive = { [weak inbox] room in await inbox?.archive(true, ids: [room]) }
             composer.onToast = { [weak inbox] message in inbox?.announce(message) }
         }

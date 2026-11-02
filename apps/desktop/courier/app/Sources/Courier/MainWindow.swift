@@ -64,17 +64,19 @@ struct MainWindow: View {
     var detachedWindows: DetachedWindowRegistry? = nil
     @ObservedObject var hotkeys: HotkeyRegistry
     var hotkeyDispatcher: HotkeyDispatcher? = nil
-    var commandBar: CommandBarModel? = nil
-    var appearance: AppearancePreferences? = nil
+    /// Watched here: the overlay shows and goes with `isPresented`, and the theme, confetti, zoom and redaction with
+    /// the appearance settings, without waiting for something else to redraw the window.
+    @ObservedObject var commandBar: CommandBarModel
+    @ObservedObject var appearance: AppearancePreferences
     var onOpenShortcutsSettings: () -> Void = {}
     @Environment(\.openWindow) private var openWindow
     @Environment(\.controlActiveState) private var controlActiveState
 
     private var preferredColorScheme: ColorScheme? {
-        switch appearance?.themeMode {
+        switch appearance.themeMode {
         case .light: .light
         case .dark: .dark
-        case .system, .none: nil
+        case .system: nil
         }
     }
 
@@ -88,20 +90,18 @@ struct MainWindow: View {
                         inbox: inbox,
                         composerPreferences: composerPreferences,
                         onOpenCommandBar: { initialQuery in
-                            commandBar?.open(initialQuery: initialQuery)
+                            commandBar.open(initialQuery: initialQuery)
                         }
                     )
                 }
             }
             .overlay {
-                if let commandBar, commandBar.isPresented {
+                if commandBar.isPresented {
                     CommandBarOverlay(model: commandBar)
                 }
             }
             .overlay {
-                if let appearance {
-                    ConfettiOverlayView(triggerCount: appearance.confettiTriggerCount)
-                }
+                ConfettiOverlayView(triggerCount: appearance.confettiTriggerCount)
             }
             .overlay {
                 if conversation.carousel.isPresented {
@@ -157,6 +157,7 @@ struct MainWindow: View {
             .environment(\.searchInChat, { search.show(in: $0) })
             .environment(\.openDetachedWindow, { target in detachedWindows?.open(target) })
             .environment(\.appearancePreferences, appearance)
+            .environment(\.redactNamesAndPictures, appearance.redactNamesAndPictures)
             .courierTextZoom(appearance)
             .preferredColorScheme(preferredColorScheme)
     }
@@ -171,7 +172,7 @@ struct MainWindow: View {
                 .onDisappear {
                     ui.isMainWindowKey = false
                     search.close()
-                    commandBar?.close()
+                    commandBar.close()
                     conversation.composer.voiceRecorder.cancelImmediately()
                     conversation.thread.composer.voiceRecorder.cancelImmediately()
                     conversation.composer.isStickerPickerPresented = false
@@ -429,13 +430,13 @@ struct MainWindow: View {
 
 /// The right-hand pane while no chat is open.
 struct NoChatSelected: View {
-    var appearance: AppearancePreferences? = nil
+    @ObservedObject var appearance: AppearancePreferences
     var rows: [InboxRow] = []
     var onSelectRoom: (String) -> Void = { _ in }
 
     var body: some View {
         ZStack {
-            if let appearance, appearance.showEmptyStateBackground, appearance.defaultWallpaper != .none {
+            if appearance.showEmptyStateBackground, appearance.defaultWallpaper != .none {
                 ChatWallpaperCanvasView(
                     preset: appearance.defaultWallpaper,
                     customImagePath: appearance.customWallpaperPath,
@@ -444,7 +445,7 @@ struct NoChatSelected: View {
                     reduceTransparency: appearance.reduceTransparency
                 )
             }
-            if let appearance, appearance.showHoneycombCards {
+            if appearance.showHoneycombCards {
                 EmptyStateUnreadCardsView(
                     unreadRows: rows,
                     redactNamesAndPictures: appearance.redactNamesAndPictures,
@@ -463,10 +464,21 @@ private struct AppearancePreferencesEnvironmentKey: EnvironmentKey {
     static let defaultValue: AppearancePreferences? = nil
 }
 
+private struct RedactNamesAndPicturesKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
 extension EnvironmentValues {
     var appearancePreferences: AppearancePreferences? {
         get { self[AppearancePreferencesEnvironmentKey.self] }
         set { self[AppearancePreferencesEnvironmentKey.self] = newValue }
+    }
+
+    /// "Redact names and pictures", as a value: a view that reads it redraws when it changes, which reading it off
+    /// `appearancePreferences` (an object no view here watches) does not.
+    var redactNamesAndPictures: Bool {
+        get { self[RedactNamesAndPicturesKey.self] }
+        set { self[RedactNamesAndPicturesKey.self] = newValue }
     }
 }
 

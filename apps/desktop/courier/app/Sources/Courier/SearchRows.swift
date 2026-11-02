@@ -68,15 +68,18 @@ struct SearchRowView: View {
 private struct ChatResultRow: View {
     let row: InboxRow
     let networkName: String
+    @Environment(\.redactNamesAndPictures) private var isRedacted
 
     var body: some View {
         HStack(spacing: 10) {
             ChatAvatar(row: row)
+                .blur(radius: isRedacted ? 6 : 0)
+                .clipShape(Circle())
                 .frame(width: 32, height: 32)
                 .overlay(alignment: .bottomTrailing) { badge(row.network) }
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    Text(row.name.isEmpty ? String(localized: "Unnamed chat") : row.name)
+                    Text(SearchRedaction.chatTitle(row.name, redacted: isRedacted))
                         .font(.body.weight(.medium))
                         .lineLimit(1)
                     if let tag = row.place.tag { PlaceTag(text: tag) }
@@ -101,10 +104,13 @@ private struct ChatResultRow: View {
 private struct PersonResultRow: View {
     let person: PersonHit
     let networkName: String
+    @Environment(\.redactNamesAndPictures) private var isRedacted
 
     var body: some View {
         HStack(spacing: 10) {
             AvatarView(path: person.avatarPath, initials: InboxRow.initials(of: person.name), seed: person.name)
+                .blur(radius: isRedacted ? 6 : 0)
+                .clipShape(Circle())
                 .frame(width: 32, height: 32)
                 .overlay(alignment: .bottomTrailing) {
                     NetworkBadge(network: person.network, name: networkName, size: 13)
@@ -112,7 +118,7 @@ private struct PersonResultRow: View {
                         .offset(x: 3, y: 3)
                 }
             VStack(alignment: .leading, spacing: 2) {
-                Text(person.name)
+                Text(isRedacted ? AppearancePreferences.redactedText(person.name, kind: .name) : person.name)
                     .font(.body.weight(.medium))
                     .lineLimit(1)
                 Text(person.groupsLine)
@@ -130,6 +136,7 @@ private struct MessageResultRow: View {
     let hit: MessageHit
     var isBookmark = false
     var timeFormat: TimeFormatPreference = .system
+    @Environment(\.redactNamesAndPictures) private var isRedacted
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -140,10 +147,11 @@ private struct MessageResultRow: View {
                         .foregroundStyle(.orange)
                         .accessibilityLabel(String(localized: "Bookmarked"))
                 }
-                Text(hit.senderLine)
+                Text(isRedacted && !hit.mine ? AppearancePreferences.redactedText(hit.senderLine, kind: .name)
+                    : hit.senderLine)
                     .font(.callout.weight(.semibold))
                     .lineLimit(1)
-                Text(hit.roomName.isEmpty ? String(localized: "Unnamed chat") : hit.roomName)
+                Text(SearchRedaction.chatTitle(hit.roomName, redacted: isRedacted))
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -232,5 +240,15 @@ private struct PlaceTag: View {
             .padding(.vertical, 1)
             .background(Capsule().strokeBorder(.tertiary))
             .fixedSize()
+    }
+}
+
+/// A chat's name in a search row: "Unnamed chat" for none, and with "Redact names and pictures" on, the stand-in the
+/// chat list shows.
+@MainActor
+enum SearchRedaction {
+    static func chatTitle(_ name: String, redacted: Bool) -> String {
+        let raw = name.isEmpty ? String(localized: "Unnamed chat") : name
+        return redacted ? AppearancePreferences.redactedText(raw, kind: .chatTitle) : raw
     }
 }
