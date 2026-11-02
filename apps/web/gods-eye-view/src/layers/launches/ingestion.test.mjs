@@ -109,6 +109,7 @@ async function fixture({ legacySource = false } = {}) {
       renderMissionRoster: noop,
       renderMissionPanel: noop,
       clearMissionRosterHover: noop,
+      clearMissionPanel: noop,
     },
     replay: { stopMissionReplay: noop },
     selection: {

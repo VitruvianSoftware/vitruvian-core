@@ -22,6 +22,9 @@
 
 import assert from 'node:assert/strict';
 import { readLayerSource } from '../testSupport/readLayerSource.mjs';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
@@ -158,6 +161,7 @@ test('traffic timing pairs real ordering to the scheduling change and guards re-
   const timeouts = new Map();
   let timerId = 0;
   let server;
+  const cacheDir = mkdtempSync(path.join(tmpdir(), 'gev-traffic-timing-vite-'));
   let trafficLayer;
   let viewer;
 
@@ -181,6 +185,12 @@ test('traffic timing pairs real ordering to the scheduling change and guards re-
     };
     server = await createServer({
       root: fileURLToPath(new URL('../..', import.meta.url)),
+      // Its own optimizer cache, not node_modules/.vite in the package tree:
+      // a host running Core's suite refuses files inside Core.
+      cacheDir,
+      // The test loads modules over SSR; the browser dependency optimizer would
+      // keep writing its cache after the server closes.
+      optimizeDeps: { noDiscovery: true, include: [] },
       configFile: false,
       appType: 'custom',
       logLevel: 'silent',
@@ -350,6 +360,7 @@ test('traffic timing pairs real ordering to the scheduling change and guards re-
     console.warn = originalWarn;
     performance.clearMarks();
     performance.clearMeasures();
+    rmSync(cacheDir, { recursive: true, force: true, maxRetries: 3 });
   }
 });
 

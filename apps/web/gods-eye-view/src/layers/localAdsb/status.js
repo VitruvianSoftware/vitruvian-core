@@ -73,7 +73,7 @@ function feedsConfigured(feedState) {
 
 function webUsbStatus(receiver, heard, feedState) {
   if (receiver.status === 'error')
-    return { status: 'error', error: receiver.message };
+    return { status: 'error', error: receiver.errorText ?? receiver.message };
   if (receiver.status === 'connecting' || receiver.status === 'tuning')
     return { loading: true, loadingLabel: msg('opening receiver') };
   if (

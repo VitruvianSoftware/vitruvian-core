@@ -8,7 +8,7 @@
 # files upstream does not have. See upstream/README.md.
 #
 # change: added (only here), modified (both, but different), deleted (only upstream)
-# base	a3a19883b4f9ebb879040e2a6969c689355c3008	tree	8dcaeba09923b5c1eb53398f7c95b253780db251
+# base	0088df95ca21b3581b50f49f950569d31c65b9d8	tree	15e67f31a2b8b9b905ce3c64efd84c82697294f3
 # path	change	why
 .dockerignore	modified	Build context for the monorepo's Dockerfile. Upstream now ships its own, for its dev container; this copy keeps the monorepo's.
 BUILD.bazel	added	Bazel targets. Named BUILD.bazel because a file named BUILD collides with upstream's build/ directory on case-insensitive file systems.
@@ -49,7 +49,7 @@ upstream/	added	This tracking: the tool, its tests, this list and the sync brief
 package-lock.json	deleted	The monorepo is one pnpm workspace; pnpm-lock.yaml at the repository root is the lockfile.
 .github/workflows/ci.yml	modified	Upstream's CI, which never runs here; Dependabot bumps its action pins with the rest of the repository's.
 build/vite.js	modified	Browser build at target es2022 with ES-module workers: satellite.js 7, at the monorepo's one version, ships an Emscripten wasm build that spawns a module worker and uses top-level await, which Vite's defaults (iife workers, es2020) cannot bundle (#3581).
-package.json	modified	Dependencies at the monorepo's one version (cesium, sharp, satellite.js 7, vite 8; build/vite.js and src/data/infrastructure.test.mjs carry what the last two need); @cesium/engine declared, which upstream's tests import and npm hoists but pnpm does not; ws a runtime dependency, since upstream's AIS provider requires it at run time and the image installs dependencies only; `start` runs server.mjs; `dev:secure`, `opensky:import` and `check:boundaries` run the Rust ports through `bazel run`, since their scripts are not in this copy.
+package.json	modified	Dependencies at the monorepo's one version (cesium, sharp, satellite.js 7, vite 8, happy-dom and its global registrator 21, since 20.14.6 carries GHSA-834v-8h66-3h79 and GHSA-c8p4-j97h-3vg8 and the osv-scan gate refuses new advisories, @vitejs/plugin-vue 6 for vite 8; build/vite.js and src/data/infrastructure.test.mjs carry what the last two need); @cesium/engine declared, which upstream's tests import and npm hoists but pnpm does not; ws a runtime dependency, since upstream's AIS provider requires it at run time and the image installs dependencies only; `start` runs server.mjs; `dev:secure`, `opensky:import` and `check:boundaries` run the Rust ports through `bazel run`, since their scripts are not in this copy.
 server/providers/space/celestrak.js	modified	Tries a mirror of CelesTrak's groups first when CELESTRAK_TLE_MIRROR_URL is set, then CelesTrak: production cannot reach celestrak.org (see scripts/src/tle_mirror.rs).
 src/app/controls.js	modified	Lands on HOME_VIEW (Irvine, CA) instead of Austin, TX.
 src/app/startupCamera.test.mjs	modified	Follows flyToAustin's rename to flyToHome.
@@ -69,4 +69,12 @@ src/sky/starrySky.js	modified	STARRY_SKY_CESIUM_VERSION names the cesium release
 src/tooling/viteBuild.test.mjs	modified	Vite 8, at the monorepo's one version, refuses a disallowed Host before any plugin middleware runs, so that refusal carries no API headers; the test checks only its status.
 src/i18n/locales/es.json	modified	The startup status line names HOME_VIEW's city through a {place} message, in place of upstream's Austin one.
 src/i18n/locales/ru.json	modified	The startup status line names HOME_VIEW's city through a {place} message, in place of upstream's Austin one.
+src/i18n/locales/ar.json	modified	The startup status line names HOME_VIEW's city through a {place} message, in place of upstream's Austin one.
+src/i18n/locales/de.json	modified	The startup status line names HOME_VIEW's city through a {place} message, in place of upstream's Austin one.
+src/i18n/locales/fr.json	modified	The startup status line names HOME_VIEW's city through a {place} message, in place of upstream's Austin one.
+src/i18n/locales/it.json	modified	The startup status line names HOME_VIEW's city through a {place} message, in place of upstream's Austin one.
+src/i18n/locales/ja.json	modified	The startup status line names HOME_VIEW's city through a {place} message, in place of upstream's Austin one.
+src/i18n/locales/pt.json	modified	The startup status line names HOME_VIEW's city through a {place} message, in place of upstream's Austin one.
+src/i18n/locales/uk.json	modified	The startup status line names HOME_VIEW's city through a {place} message, in place of upstream's Austin one.
+src/i18n/locales/zh-Hant.json	modified	The startup status line names HOME_VIEW's city through a {place} message, in place of upstream's Austin one.
 src/i18n/locales/zh-CN.json	modified	The startup status line names HOME_VIEW's city through a {place} message, in place of upstream's Austin one.
