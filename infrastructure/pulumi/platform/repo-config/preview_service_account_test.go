@@ -155,7 +155,27 @@ func runEnvironments(t *testing.T) (vars map[string]map[string]string, envs map[
 }
 
 func isServiceAccountEmail(v string) bool {
+	v = strings.ToLower(strings.TrimSpace(v))
 	return strings.HasSuffix(v, ".iam.gserviceaccount.com") && strings.Contains(v, "@")
+}
+
+// previewValueProblem says what is wrong with one variable a -preview
+// Environment publishes, or "" if nothing is. Values are compared trimmed, so
+// surrounding whitespace or a trailing newline cannot carry a deploy account
+// past the -preview@ check; and an untrimmed value is refused outright, since
+// nothing a workflow reads from these variables should need it.
+func previewValueProblem(value string) string {
+	if value != strings.TrimSpace(value) {
+		return "has surrounding whitespace; publish it trimmed"
+	}
+	if !isServiceAccountEmail(value) {
+		return ""
+	}
+	local, _, _ := strings.Cut(strings.ToLower(value), "@")
+	if !strings.HasSuffix(local, "-preview") {
+		return "is not a read-only -preview@ account"
+	}
+	return ""
 }
 
 // checkServiceAccounts compares each Environment's GCP_SERVICE_ACCOUNT with
@@ -199,8 +219,8 @@ func TestPreviewEnvironmentsAdvertisePreviewServiceAccounts(t *testing.T) {
 			continue
 		}
 		for name, value := range vs {
-			if isServiceAccountEmail(value) && !strings.Contains(value, "-preview@") {
-				t.Errorf("%s: %s = %q, want a read-only -preview@ account", env, name, value)
+			if problem := previewValueProblem(value); problem != "" {
+				t.Errorf("%s: %s = %q %s", env, name, value, problem)
 			}
 		}
 	}
@@ -284,6 +304,32 @@ func TestPreviewFoundationVars(t *testing.T) {
 	for _, bad := range []string{"", "not-an-email", "@prj.iam.gserviceaccount.com", "sa-terraform-org-preview@prj-b-seed-c010.iam.gserviceaccount.com"} {
 		if _, err := previewFoundationVars(map[string]string{"GCP_SERVICE_ACCOUNT": bad}); err == nil {
 			t.Errorf("previewFoundationVars(%q) = nil error, want one", bad)
+		}
+	}
+}
+
+// The -preview@ check must not be slipped past by whitespace, a trailing
+// newline or letter case, and must still pass the values it should.
+func TestPreviewValueProblem(t *testing.T) {
+	for _, tc := range []struct {
+		value string
+		ok    bool
+	}{
+		{"sa-terraform-org-preview@prj-b-seed-c010.iam.gserviceaccount.com", true},
+		{"tabula-preview@prj-d-bu2-oss-floating-c3d1.iam.gserviceaccount.com", true},
+		{"prj-b-seed-c010", true},
+		{"projects/1/locations/global/workloadIdentityPools/p/providers/x", true},
+		{"sa-terraform-org@prj-b-seed-c010.iam.gserviceaccount.com", false},
+		{"sa-terraform-org@prj-b-seed-c010.iam.gserviceaccount.com\n", false},
+		{" sa-terraform-org@prj-b-seed-c010.iam.gserviceaccount.com", false},
+		{" sa-terraform-org-preview@prj-b-seed-c010.iam.gserviceaccount.com\n", false},
+		{"\tsa-terraform-org@prj-b-seed-c010.iam.gserviceaccount.com", false},
+		{"SA-TERRAFORM-ORG@PRJ-B-SEED-C010.IAM.GSERVICEACCOUNT.COM", false},
+		{"sa-terraform-org@x-preview@prj-b-seed-c010.iam.gserviceaccount.com", false},
+		{"prj-b-seed-c010\n", false},
+	} {
+		if got := previewValueProblem(tc.value) == ""; got != tc.ok {
+			t.Errorf("previewValueProblem(%q): accepted = %v, want %v", tc.value, got, tc.ok)
 		}
 	}
 }

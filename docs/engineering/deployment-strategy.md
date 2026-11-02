@@ -70,6 +70,14 @@ release.
 
 Environment reviewers (managed as code in `repo_config`):
 
+- **development** and **build** — `main` only, no reviewer (build also allows
+  the app's release tags, because its job runs on the `release` event). Nothing
+  on the GCP side checks the branch: the deploy identity trusts the Environment
+  name alone, so this branch rule is what stops an unmerged branch from
+  signing in as it (#4120).
+- **preview** — open to any branch, because pull requests need it. It holds only
+  a read-only identity (`roles/viewer` on the dev project), used by the PR
+  `pulumi preview` job.
 - **nonproduction** — protected-branch policy, **no reviewer**. The release-PR
   merge is the human gate; a second per-deploy approval would only reintroduce
   the fatigue this model removes.

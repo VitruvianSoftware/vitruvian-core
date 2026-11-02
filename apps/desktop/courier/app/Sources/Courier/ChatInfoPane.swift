@@ -162,7 +162,7 @@ public struct ChatInfoPane: View {
             }
         }
         .frame(minWidth: 280)
-        .background(Color(nsColor: .textBackgroundColor).opacity(0.4))
+        .courierSurface(.sidePane)
         .onChange(of: focusSearchTrigger) { _, _ in
             isFilterFocused = true
         }

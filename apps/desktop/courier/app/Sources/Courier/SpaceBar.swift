@@ -76,7 +76,7 @@ struct SpaceBar: View {
         }
         .scrollIndicators(.never)
         .frame(width: Self.width)
-        .background(.bar)
+        .courierSurface(.sidebarStrip)
         .accessibilityElement(children: .contain)
         .accessibilityLabel(String(localized: "Spaces"))
     }

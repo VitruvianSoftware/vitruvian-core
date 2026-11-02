@@ -24,12 +24,22 @@ struct InboxCommands: Commands {
     let minimizeToMenuBar: @MainActor () -> Void
     @ObservedObject var hotkeys: HotkeyRegistry
     @ObservedObject var hotkeyDispatcher: HotkeyDispatcher
+    /// Courier ▸ Check for Updates…, which names the newer version once a check has found one.
+    @ObservedObject var updates: UpdateModel
     @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
         CommandGroup(replacing: .appInfo) {
             Button(String(localized: "About Courier")) {
                 menuCoordinator.openSettings(.about)
+            }
+            .disabled(lifecycle.isLocked)
+            // Opens Settings ▸ About, where the check's answer and the Install button are, and checks.
+            Button(checkForUpdatesMenuTitle) {
+                menuCoordinator.openSettings(.updates)
+                if updates.availableVersion == nil {
+                    Task { await updates.check() }
+                }
             }
             .disabled(lifecycle.isLocked)
         }
@@ -80,14 +90,14 @@ struct InboxCommands: Commands {
                 Task { await menuCoordinator.lockOrUnlockApp() }
             }
         }
-        CommandGroup(before: .appTermination) {
+        // Minimize to Menu Bar goes in the group it sits beside: a group placed before one the app also replaces
+        // never shows (MenuBarAuditTests).
+        CommandGroup(replacing: .appTermination) {
             Button(String(localized: "Minimize to Menu Bar")) {
                 dispatch("Minimize To Menu Bar")
             }
             .registryShortcut("Minimize To Menu Bar", in: hotkeys)
             .disabled(!hotkeyDispatcher.canPerform("Minimize To Menu Bar"))
-        }
-        CommandGroup(replacing: .appTermination) {
             Button(String(localized: "Quit Courier")) {
                 dispatch("Quit App")
             }
@@ -116,15 +126,8 @@ struct InboxCommands: Commands {
             Button(String(localized: "Add a Network…"), action: inbox.addNetwork)
                 .disabled(inbox.accounts.isEmpty || login.screen != .closed || lifecycle.isLocked)
         }
-        CommandGroup(after: .importExport) {
-            Divider()
-            Button(String(localized: "Close Window"), action: menuCoordinator.closeWindow)
-                .keyboardShortcut("w", modifiers: .command)
-                .disabled(lifecycle.isLocked)
-            Button(String(localized: "Close All"), action: menuCoordinator.closeAllWindows)
-                .keyboardShortcut("w", modifiers: [.command, .option])
-                .disabled(lifecycle.isLocked)
-        }
+        // File ▸ Close (⌘W) and Close All (⌥⌘W) are the system's own: a detached chat window closes through them too
+        // (DetachedWindows' windowWillClose), so the app adds no second pair.
         // ⌘Z takes back my newest held message while the open chat has one (undo send); otherwise it undoes what
         // the toast says was just done, and otherwise it is the text's own undo. ⌘⇧Z sends the held messages now,
         // or else is the text's redo.
@@ -240,7 +243,8 @@ struct InboxCommands: Commands {
             spaceKeys
                 .disabled(lifecycle.isLocked)
         }
-        CommandGroup(after: .help) {
+        // Courier has no help book, so the standard Help ▸ Courier Help would only say that help isn't available.
+        CommandGroup(replacing: .help) {
             Button(String(localized: "Report a Problem…")) {
                 dispatch("Report a Problem")
             }
@@ -292,6 +296,13 @@ struct InboxCommands: Commands {
         NSApp.activate()
         openWindow(id: "main")
         return false
+    }
+
+    var checkForUpdatesMenuTitle: String {
+        guard !lifecycle.isLocked, case let .available(version) = updates.phase else {
+            return String(localized: "Check for Updates…")
+        }
+        return String(localized: "Update to Courier \(version.description)…")
     }
 
     // MARK: The open chat (or the chats selected)

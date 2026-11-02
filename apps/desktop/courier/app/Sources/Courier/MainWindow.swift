@@ -158,6 +158,7 @@ struct MainWindow: View {
             .environment(\.openDetachedWindow, { target in detachedWindows?.open(target) })
             .environment(\.appearancePreferences, appearance)
             .environment(\.redactNamesAndPictures, appearance.redactNamesAndPictures)
+            .environment(\.liquidGlass, appearance.liquidGlassIsActive)
             .courierTextZoom(appearance)
             .preferredColorScheme(preferredColorScheme)
     }

@@ -28,6 +28,10 @@ struct SettingsWindow: View {
     @ObservedObject var aiPreferences: AIPreferences = AIPreferences()
     var storage: StorageModel? = nil
     var integrations: IntegrationsModel = IntegrationsModel(appModel: nil, enginePath: EngineLocation.enginePath())
+    /// Settings ▸ About ▸ Updates. The app passes its own; the default one checks nothing until asked.
+    var updates: UpdateModel = UpdateModel(
+        currentVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+        appURL: Bundle.main.bundleURL, environment: SystemUpdateEnvironment(), quit: {})
     var onOpenSystemNotificationSettings: () -> Void = {
         if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") {
             NSWorkspace.shared.open(url)
@@ -368,7 +372,8 @@ struct SettingsWindow: View {
                 onShowKeyboardShortcuts: {
                     hotkeys.isShortcutsSheetPresented = true
                 },
-                highlightedSettingID: navigation.highlightedSettingID
+                highlightedSettingID: navigation.highlightedSettingID,
+                updates: updates
             )
         }
     }

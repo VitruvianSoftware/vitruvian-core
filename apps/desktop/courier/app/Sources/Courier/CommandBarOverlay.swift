@@ -48,13 +48,7 @@ public struct CommandBarOverlay: View {
             }
             .frame(width: 560)
             .frame(maxHeight: 440)
-            .background(
-                ZStack {
-                    Color(nsColor: .windowBackgroundColor)
-                    Rectangle().fill(.ultraThinMaterial)
-                }
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .courierSurface(.floatingPanel(cornerRadius: 12, opaque: true))
             .overlay(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .strokeBorder(Color.primary.opacity(0.14), lineWidth: 1)

@@ -153,6 +153,8 @@ public enum SettingsSection: String, CaseIterable, Sendable {
     case changelog
     case reportProblem
     case about
+    /// Settings ▸ About ▸ Updates (Courier ▸ Check for Updates…).
+    case updates
 }
 
 /// Shared menu action model invoked identically by the native macOS menu bar, the Dock menu (`applicationDockMenu`),
@@ -256,13 +258,28 @@ public final class AppMenuCoordinator: ObservableObject {
             settingsNavigation.openPane(.plan)
         case .integrations:
             settingsNavigation.openPane(.integrations)
-        case .privacy, .changelog, .about:
+        case .privacy, .changelog, .about, .updates:
             settingsNavigation.openPane(.about)
         case .reportProblem:
             settingsNavigation.openPane(.about)
             settingsNavigation.isPresentingProblemReport = true
         }
+        // Help ▸ Privacy & Security and Help ▸ Changelog open About at their part of it, shown and highlighted, as a
+        // Settings search result does; any other menu item clears what an earlier search left highlighted.
+        if AppLockGate.shared.canPerform(.settingsChange) {
+            settingsNavigation.highlightedSettingID = Self.highlightedSetting(for: section)
+        }
         showSettingsWindow()
+    }
+
+    /// The setting a menu's Settings section points at, if it is one part of a pane.
+    public static func highlightedSetting(for section: SettingsSection) -> String? {
+        switch section {
+        case .privacy: "about.privacy"
+        case .changelog: "about.changelog"
+        case .updates: "about.updates"
+        default: nil
+        }
     }
 
     public func openSettings(pane: SettingsPaneID, accountKey: String? = nil) {

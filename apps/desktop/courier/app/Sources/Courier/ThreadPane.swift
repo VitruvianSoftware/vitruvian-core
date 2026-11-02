@@ -33,7 +33,7 @@ struct ThreadPane: View {
                          })
                 .simultaneousGesture(TapGesture().onEnded { focus.inPane = true })
         }
-        .background(Color(nsColor: .textBackgroundColor).opacity(0.4))
+        .courierSurface(.sidePane)
         .onAppear {
             ui.history = { await messageActions.history(of: $0) }
             // Return in the pane's empty composer edits or replies to the message selected in the pane.

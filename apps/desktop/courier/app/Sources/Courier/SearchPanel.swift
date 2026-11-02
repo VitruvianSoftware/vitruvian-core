@@ -68,7 +68,7 @@ struct SearchPanel: View {
             }
         }
         .frame(width: Self.width)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .courierSurface(.floatingPanel(cornerRadius: 12, opaque: false))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.quaternary))
         .shadow(color: .black.opacity(0.25), radius: 18, y: 6)
         // A click on the panel itself isn't a click on the dim.

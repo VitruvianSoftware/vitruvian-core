@@ -34,7 +34,8 @@ struct CourierApp: App {
                           menuCoordinator: delegate.menuCoordinator,
                           minimizeToMenuBar: delegate.minimizeToMenuBar,
                           hotkeys: delegate.hotkeys,
-                          hotkeyDispatcher: delegate.hotkeyDispatcher)
+                          hotkeyDispatcher: delegate.hotkeyDispatcher,
+                          updates: delegate.updates)
             ConversationCommands(conversation: delegate.conversation, chatComposer: delegate.conversation.composer,
                                  paneComposer: delegate.conversation.thread.composer,
                                  messageActions: delegate.messageActions, focus: delegate.messageFocus,
@@ -148,6 +149,7 @@ struct CourierApp: App {
                     aiPreferences: delegate.aiPreferences,
                     storage: delegate.storage,
                     integrations: delegate.integrations,
+                    updates: delegate.updates,
                     onRestartNotificationCenter: {
                         delegate.notifier.restartNotificationCenter()
                     }
@@ -155,5 +157,8 @@ struct CourierApp: App {
             }
         }
         .defaultSize(width: 820, height: 600)
+        // InboxCommands' Settings… is the menu's only one: it follows the shortcut set in Settings ▸ Shortcuts and is
+        // off while Courier is locked. Without this the scene adds its own Settings… (⌘,) beside it.
+        .commandsRemoved()
     }
 }

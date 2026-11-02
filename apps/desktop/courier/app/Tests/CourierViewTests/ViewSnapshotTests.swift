@@ -3298,7 +3298,9 @@ final class ViewSnapshotTests: XCTestCase {
             menuCoordinator: menuCoordinator,
             minimizeToMenuBar: {},
             hotkeys: hotkeys,
-            hotkeyDispatcher: dispatcher
+            hotkeyDispatcher: dispatcher,
+            updates: UpdateModel(currentVersion: "0.7.0", appURL: URL(fileURLWithPath: "/Applications/Courier.app"),
+                                 environment: SystemUpdateEnvironment(), quit: {})
         )
         let conversationCommands = ConversationCommands(
             conversation: conversation,
@@ -5167,13 +5169,13 @@ final class ViewSnapshotTests: XCTestCase {
     }
 }
 
-private struct SnapshotLoginItemService: LoginItemService {
+struct SnapshotLoginItemService: LoginItemService {
     func status() -> LoginItemRegistrationStatus { .notRegistered }
     func register() throws {}
     func unregister() throws {}
 }
 
-private struct SnapshotBiometricService: BiometricAuthService {
+struct SnapshotBiometricService: BiometricAuthService {
     func canEvaluateBiometricsOrWatch() -> Bool { true }
     func authenticate(reason: String) async throws -> Bool { false }
 }

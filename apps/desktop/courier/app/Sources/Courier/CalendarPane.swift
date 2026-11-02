@@ -40,7 +40,7 @@ public struct CalendarPane: View {
             contentArea
         }
         .frame(width: 280)
-        .background(Color(nsColor: .textBackgroundColor).opacity(0.4))
+        .courierSurface(.sidePane)
     }
 
     // MARK: - Top Bar
