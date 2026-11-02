@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! //tools/ci:go-test-with-retry: the Rust port.
+//! //tools/ci:go_test_with_retry (see lib.rs).
 
 fn main() {
     std::process::exit(go_test_with_retry::run(&shell_compat::args()));

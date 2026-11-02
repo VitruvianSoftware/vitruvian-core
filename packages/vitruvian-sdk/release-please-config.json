@@ -56,6 +56,11 @@
           "jsonpath": "$.package.version"
         },
         {
+          "type": "toml",
+          "path": "/Cargo.lock",
+          "jsonpath": "$.package[?(@.name.value=='vitruvian-tool-kit')].version"
+        },
+        {
           "type": "generic",
           "path": "samples/hello-go/go.mod"
         },

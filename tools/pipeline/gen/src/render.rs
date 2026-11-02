@@ -189,7 +189,7 @@ pub fn render_presubmit_workflow(
     b.push_str("          WORKFLOW_PATH: .github/workflows/presubmit.yaml\n");
     b.push_str("          PUSH_BEFORE: ${{ github.event.before }}\n");
     b.push_str("          FORCED_PUSH: ${{ github.event.forced }}\n");
-    b.push_str("          QUEUE_FAST_PASS_BIN: ${{ steps.queue-fast-pass.outputs.bin }}\n");
+    b.push_str("          QUEUE_FAST_PASS_BIN: ${{ steps.queue-fast-pass.outputs.path }}\n");
     b.push_str("        run: |\n");
     b.push_str("          \"$QUEUE_FAST_PASS_BIN\" queued | tee \"$RUNNER_TEMP/queued.out\"\n");
     b.push_str("          {\n");
@@ -250,7 +250,7 @@ pub fn render_presubmit_workflow(
     b.push_str("          source-root: ${{ steps.fastlane-src.outputs.root }}\n\n");
     b.push_str("      - name: Is this an agent PR in the fast lane?\n");
     b.push_str("        id: fastlane\n");
-    b.push_str("        if: steps.fastlane-bin.outputs.bin != ''\n");
+    b.push_str("        if: steps.fastlane-bin.outputs.path != ''\n");
     b.push_str("        continue-on-error: true\n");
     b.push_str("        env:\n");
     b.push_str("          EVENT_NAME: ${{ github.event_name }}\n");
@@ -261,7 +261,7 @@ pub fn render_presubmit_workflow(
     b.push_str(
         "          AGENTS_TSV: ${{ steps.fastlane-src.outputs.root }}/tools/agent-app/agents.tsv\n",
     );
-    b.push_str("          FAST_LANE_BIN: ${{ steps.fastlane-bin.outputs.bin }}\n");
+    b.push_str("          FAST_LANE_BIN: ${{ steps.fastlane-bin.outputs.path }}\n");
     b.push_str("        run: |\n");
     b.push_str("          \"$FAST_LANE_BIN\" | tee \"$RUNNER_TEMP/fast-lane.out\"\n");
     b.push_str("          {\n");
@@ -282,7 +282,7 @@ pub fn render_presubmit_workflow(
     b.push_str("          GH_TOKEN: ${{ github.token }}\n");
     b.push_str("          EVENT_NAME: ${{ github.event_name }}\n");
     b.push_str("          WORKFLOW_PATH: .github/workflows/presubmit.yaml\n");
-    b.push_str("          QUEUE_FAST_PASS_BIN: ${{ steps.queue-fast-pass.outputs.bin }}\n");
+    b.push_str("          QUEUE_FAST_PASS_BIN: ${{ steps.queue-fast-pass.outputs.path }}\n");
     b.push_str("        run: |\n");
     b.push_str("          if [ \"$EVENT_NAME\" != merge_group ]; then\n");
     b.push_str("            \"$QUEUE_FAST_PASS_BIN\" tree\n");

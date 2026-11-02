@@ -77,7 +77,7 @@ jobs:
     # against a run that never deployed development and hold it for no reason.
     #
     # Every matrix entry starts on every listed workflow's run, and
-    # release-hold.sh skips an entry whose `source:` is not the workflow that
+    # //tools/ci:release_hold skips an entry whose `source:` is not the workflow that
     # triggered it. Within its own app's run, each entry looks up ITS OWN job
     # name, and "no such job" means "nothing deployable changed — leave the PR
     # untouched".
@@ -120,6 +120,12 @@ jobs:
         with:
           private-key: ${{ secrets.SYNC_APP_PRIVATE_KEY }}
 
+      - name: Build //tools/ci:release_hold (no Bazel on this job)
+        id: hold-bin
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: release_hold
+
       - name: Hold or release this component's open release PR
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
@@ -129,4 +135,5 @@ jobs:
           COMPONENT: ${{ matrix.component }}
           SOURCE: ${{ matrix.source }}
           TRIGGERED_BY: ${{ github.event.workflow_run.name }}
-        run: bash tools/ci/release-hold.sh
+          HOLD_BIN: ${{ steps.hold-bin.outputs.path }}
+        run: '"$HOLD_BIN"'

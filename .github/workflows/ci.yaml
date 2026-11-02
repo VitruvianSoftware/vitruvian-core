@@ -113,7 +113,7 @@ jobs:
           WORKFLOW_PATH: .github/workflows/ci.yaml
           PUSH_BEFORE: ${{ github.event.before }}
           FORCED_PUSH: ${{ github.event.forced }}
-          QUEUE_FAST_PASS_BIN: ${{ steps.tool.outputs.bin }}
+          QUEUE_FAST_PASS_BIN: ${{ steps.tool.outputs.path }}
         run: |
           "$QUEUE_FAST_PASS_BIN" queued | tee "$RUNNER_TEMP/queued.out"
           {
@@ -176,7 +176,7 @@ jobs:
           PR_AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
           PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
           AGENTS_TSV: base/tools/agent-app/agents.tsv
-          FAST_LANE_BIN: ${{ steps.rule.outputs.bin }}
+          FAST_LANE_BIN: ${{ steps.rule.outputs.path }}
         run: |
           "$FAST_LANE_BIN" | tee "$RUNNER_TEMP/fast-lane.out"
           {
@@ -986,8 +986,16 @@ jobs:
           cache-dependency-path: |
             infrastructure/pulumi/**/go.sum
             */infra/**/go.sum
+      # //tools/ci:go_test_with_retry, built with the runner's rustc (this job
+      # sets up no Bazel). //tools/ci:workflow_rustc_test runs these lines.
       - name: go test (IaC modules with tests)
-        run: bash tools/ci/go-test-with-retry.sh
+        run: |
+          set -euo pipefail
+          rustc --edition 2021 -O --crate-type lib --crate-name shell_compat tools/shell-compat/src/lib.rs -o "$RUNNER_TEMP/libshell_compat.rlib"
+          rustc --edition 2021 -O --crate-type lib --crate-name transient_lib tools/ci/src/transient_lib/lib.rs -o "$RUNNER_TEMP/libtransient_lib.rlib"
+          rustc --edition 2021 -O --crate-type lib --crate-name go_test_with_retry tools/ci/src/go_test_with_retry/lib.rs -L "$RUNNER_TEMP" --extern shell_compat="$RUNNER_TEMP/libshell_compat.rlib" --extern transient_lib="$RUNNER_TEMP/libtransient_lib.rlib" -o "$RUNNER_TEMP/libgo_test_with_retry.rlib"
+          rustc --edition 2021 -O tools/ci/src/go_test_with_retry/main.rs -L "$RUNNER_TEMP" --extern shell_compat="$RUNNER_TEMP/libshell_compat.rlib" --extern go_test_with_retry="$RUNNER_TEMP/libgo_test_with_retry.rlib" -o "$RUNNER_TEMP/go-test-with-retry"
+          "$RUNNER_TEMP/go-test-with-retry"
 
   go-race:
     # Race detector over EVERY Bazel go_test target (72 today).
@@ -1094,8 +1102,11 @@ jobs:
       - name: Assert example/library module pins are in sync
         run: |
           set -euo pipefail
-          rustc --edition 2021 --crate-type lib --crate-name gomod_lib tools/gomod/src/lib.rs -o "$RUNNER_TEMP/libgomod_lib.rlib"
-          rustc --edition 2021 tools/gomod/src/main.rs -L "$RUNNER_TEMP" --extern gomod_lib="$RUNNER_TEMP/libgomod_lib.rlib" -o "$RUNNER_TEMP/tidy"
+          # //tools/gomod:check, with the shared transient-error classifier
+          # //tools/ci:transient_lib. //tools/ci:workflow_rustc_test runs these lines.
+          rustc --edition 2021 -O --crate-type lib --crate-name transient_lib tools/ci/src/transient_lib/lib.rs -o "$RUNNER_TEMP/libtransient_lib.rlib"
+          rustc --edition 2021 -O --crate-type lib --crate-name gomod_lib tools/gomod/src/lib.rs -L "$RUNNER_TEMP" --extern transient_lib="$RUNNER_TEMP/libtransient_lib.rlib" -o "$RUNNER_TEMP/libgomod_lib.rlib"
+          rustc --edition 2021 -O tools/gomod/src/main.rs -L "$RUNNER_TEMP" --extern gomod_lib="$RUNNER_TEMP/libgomod_lib.rlib" -o "$RUNNER_TEMP/tidy"
           "$RUNNER_TEMP/tidy" --check
 
       - name: go build (every example module)

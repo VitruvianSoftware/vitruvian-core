@@ -26,7 +26,7 @@
 # still reads, narrow a type, add a validated constraint) therefore breaks the
 # live revision the instant it applies -- and can't be rolled back to. This
 # config makes Squawk FAIL on exactly that class so the gate (tools/ci/
-# migration-safety.sh, run by the `migration-safety` workflow) blocks it.
+# //tools/ci:migration_safety, run by the `migration-safety` workflow) blocks it.
 #
 # The kept rules are the backward-incompatibility set: changing-column-type,
 # ban-drop-column/table/not-null, renaming-column/table, disallowed-unique-

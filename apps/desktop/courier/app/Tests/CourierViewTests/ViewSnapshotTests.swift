@@ -5135,7 +5135,7 @@ final class ViewSnapshotTests: XCTestCase {
         }
 
         try assertLightAndDarkSnapshot("m47-integrations-settings-pane", width: 640, height: 440) {
-            IntegrationsSettingsPane()
+            IntegrationsSettingsPane(model: IntegrationsModel(appModel: nil, enginePath: "/nonexistent/courier-engine"))
                 .frame(width: 640, height: 440)
                 .background(Color(nsColor: .windowBackgroundColor))
         }

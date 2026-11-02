@@ -42,15 +42,15 @@ metadata:
     backstage.io/kubernetes-label-selector: app.kubernetes.io/name=mcp-slack
     argocd/app-name: mcp-slack
     vitruvian.dev/release-workflow: apps-release.yaml
-    vitruvian.dev/release-model: npm-publish
+    vitruvian.dev/release-model: gitops-argocd
     vitruvian.dev/environments: production
     vitruvian.dev/mirror: VitruvianSoftware/mcp-slack
   links:
     - url: https://status.ipv1337.dev
       title: Uptime Status
       icon: web
-    - url: https://www.npmjs.com/package/@vitruviansoftware/mcp-slack
-      title: npm Package
+    - url: https://github.com/VitruvianSoftware/vitruvian-core/pkgs/container/mcp-slack
+      title: Container Image
       icon: web
     - url: https://github.com/VitruvianSoftware/mcp-slack
       title: GitHub Mirror

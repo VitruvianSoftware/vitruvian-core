@@ -48,9 +48,9 @@ its Helm source at this local path instead of the vendor's `repoURL`.
 
 ## Known gap
 
-`tools/ci/gitops-validate.sh` only validates static YAML under
+`//tools/ci:gitops_validate` only validates static YAML under
 `gitops/argocd/**` via kubeconform today. A forked chart's `templates/*.yaml`
 contain unrendered `{{ }}` Go-template syntax, which kubeconform can't parse —
-this directory isn't covered by CI yet. Extend `gitops-validate.sh` (`helm
+this directory isn't covered by CI yet. Extend `//tools/ci:gitops_validate` (`helm
 lint` + `helm template | kubeconform`, roughly what `ct lint` does) before the
 first chart lands here.

@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! pulumi-summary.sh — render a markdown digest of a `pulumi up`/`pulumi preview`
+//! pulumi-summary — render a markdown digest of a `pulumi up`/`pulumi preview`
 //! run so foundation CI surfaces the deploy signal on the Actions run page
 //! ($GITHUB_STEP_SUMMARY) and, for previews, in the sticky PR comment.
 
@@ -47,86 +47,134 @@ fn parse_num(s: &[u8]) -> i64 {
         .unwrap_or(0)
 }
 
+/// The script's `sed -E -e 's/\x1b\[[0-9;]*[a-zA-Z]//g' -e 's/<\{%[^%]*%\}>//g'
+/// -e 's/\r$//'`: applied line by line, each expression in turn. So an escape
+/// only goes when it is ESC `[` digits/semicolons and a letter (`ESC[?25l`
+/// stays), a colour directive has no `%` inside, and only a line's LAST `\r`
+/// goes. Nothing spans a newline.
 fn strip_ansi_and_color(raw: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(raw.len());
-    let mut i = 0;
-    while i < raw.len() {
-        if raw[i] == 0x1b && i + 1 < raw.len() && raw[i + 1] == b'[' {
-            i += 2;
-            while i < raw.len() {
-                let c = raw[i];
-                i += 1;
-                if c.is_ascii_alphabetic() {
-                    break;
-                }
-            }
-            continue;
+    let mut lines = raw.split(|&c| c == b'\n').peekable();
+    while let Some(line) = lines.next() {
+        let a = strip_csi(line);
+        let b = strip_directives(&a);
+        let c = match b.last() {
+            Some(b'\r') => &b[..b.len() - 1],
+            _ => &b[..],
+        };
+        out.extend_from_slice(c);
+        if lines.peek().is_some() {
+            out.push(b'\n');
         }
-        if raw[i] == b'<' && i + 2 < raw.len() && raw[i + 1] == b'{' && raw[i + 2] == b'%' {
-            if let Some(end) = find_seq(&raw[i..], b"%}>") {
-                i += end + 3;
+    }
+    out
+}
+
+/// `s/\x1b\[[0-9;]*[a-zA-Z]//g` on one line.
+fn strip_csi(line: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(line.len());
+    let mut i = 0;
+    while i < line.len() {
+        if line[i] == 0x1b && line.get(i + 1) == Some(&b'[') {
+            let mut j = i + 2;
+            while j < line.len() && (line[j].is_ascii_digit() || line[j] == b';') {
+                j += 1;
+            }
+            if j < line.len() && line[j].is_ascii_alphabetic() {
+                i = j + 1;
                 continue;
             }
         }
-        if raw[i] == b'\r' {
-            i += 1;
-            continue;
-        }
-        out.push(raw[i]);
+        out.push(line[i]);
         i += 1;
     }
     out
 }
 
-fn trim_ascii_end_slice(s: &[u8]) -> &[u8] {
-    let mut end = s.len();
-    while end > 0 && s[end - 1].is_ascii_whitespace() {
-        end -= 1;
+/// `s/<\{%[^%]*%\}>//g` on one line.
+fn strip_directives(line: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(line.len());
+    let mut i = 0;
+    while i < line.len() {
+        if line[i..].starts_with(b"<{%") {
+            let mut j = i + 3;
+            while j < line.len() && line[j] != b'%' {
+                j += 1;
+            }
+            if line[j..].starts_with(b"%}>") {
+                i = j + 3;
+                continue;
+            }
+        }
+        out.push(line[i]);
+        i += 1;
     }
-    &s[..end]
-}
-
-fn trim_ascii_slice(s: &[u8]) -> &[u8] {
-    let s = trim_ascii_end_slice(s);
-    let mut start = 0;
-    while start < s.len() && s[start].is_ascii_whitespace() {
-        start += 1;
-    }
-    &s[start..]
+    out
 }
 
 fn find_seq(hay: &[u8], needle: &[u8]) -> Option<usize> {
     hay.windows(needle.len()).position(|w| w == needle)
 }
 
+/// awk's `num()`: the leftmost `<digits> <keyword>` on the line (exactly one
+/// space), its digits read as `%d`. `5  created` (two spaces) and
+/// `2 recreated` do not count.
 fn extract_num(line: &[u8], keywords: &[&[u8]]) -> Option<i64> {
-    for kw in keywords {
-        if let Some(pos) = find_seq(line, kw) {
-            let before = &line[..pos];
-            let before = trim_ascii_end_slice(before);
-            let start = before
-                .iter()
-                .rposition(|&c| !c.is_ascii_digit())
-                .map(|p| p + 1)
-                .unwrap_or(0);
-            let num_bytes = &before[start..];
-            if !num_bytes.is_empty() {
-                return Some(parse_num(num_bytes));
+    let mut i = 0;
+    while i < line.len() {
+        if !line[i].is_ascii_digit() {
+            i += 1;
+            continue;
+        }
+        let mut j = i;
+        while j < line.len() && line[j].is_ascii_digit() {
+            j += 1;
+        }
+        if line.get(j) == Some(&b' ') {
+            let rest = &line[j + 1..];
+            if keywords.iter().any(|kw| rest.starts_with(kw)) {
+                return Some(parse_num(&line[i..j]));
             }
         }
+        i += 1;
     }
     None
 }
 
+/// `sub(/^[ \t]*[-+~]*[ \t]*/, "", t)`: blanks, then markers, then blanks,
+/// once (so `" + - x"` keeps `- x`).
 fn trim_leading_markers(s: &[u8]) -> Vec<u8> {
     let mut i = 0;
-    while i < s.len() {
-        match s[i] {
-            b' ' | b'\t' | b'-' | b'+' | b'~' => i += 1,
-            _ => break,
-        }
+    while i < s.len() && (s[i] == b' ' || s[i] == b'\t') {
+        i += 1;
+    }
+    while i < s.len() && matches!(s[i], b'-' | b'+' | b'~') {
+        i += 1;
+    }
+    while i < s.len() && (s[i] == b' ' || s[i] == b'\t') {
+        i += 1;
     }
     s[i..].to_vec()
+}
+
+/// Trailing spaces and tabs only, as the awk header regex's `[ \t]*$`.
+fn trim_blank_end(s: &[u8]) -> &[u8] {
+    let mut end = s.len();
+    while end > 0 && (s[end - 1] == b' ' || s[end - 1] == b'\t') {
+        end -= 1;
+    }
+    &s[..end]
+}
+
+/// awk: `u = L[j]; sub(/^.*::/, "", u); sub(/\].*$/, "", u)`: after the line's
+/// LAST `::`, up to the first `]`. A name holding a single `:` survives whole.
+fn urn_name(line: &[u8]) -> Vec<u8> {
+    let after = match line.windows(2).rposition(|w| w == b"::") {
+        Some(p) => &line[p + 2..],
+        None => line,
+    };
+    let end = after.iter().position(|&c| c == b']').unwrap_or(after.len());
+    after[..end].to_vec()
 }
 
 fn cell_escape(s: &[u8]) -> Vec<u8> {
@@ -176,8 +224,7 @@ fn parse_clean(clean_lines: &[Vec<u8>]) -> (Counts, Vec<ResRow>, Vec<Vec<u8>>, V
             continue;
         }
         if in_resources {
-            let trimmed = trim_ascii_slice(line);
-            if trimmed.is_empty() || line.starts_with(b"Duration:") {
+            if line.iter().all(|&c| c == b' ' || c == b'\t') || line.starts_with(b"Duration:") {
                 in_resources = false;
                 continue;
             }
@@ -207,7 +254,7 @@ fn parse_clean(clean_lines: &[Vec<u8>]) -> (Counts, Vec<ResRow>, Vec<Vec<u8>>, V
     let mut rows = Vec::new();
     for i in start..n {
         let line = &clean_lines[i];
-        let trimmed = trim_ascii_end_slice(line);
+        let trimmed = trim_blank_end(line);
         let mut action = None;
         for &suffix in hdr_suffixes {
             if trimmed.ends_with(suffix) {
@@ -221,29 +268,18 @@ fn parse_clean(clean_lines: &[Vec<u8>]) -> (Counts, Vec<ResRow>, Vec<Vec<u8>>, V
             None => continue,
         };
 
-        let before_suffix_len = trim_ascii_end_slice(line)
-            .len()
-            .saturating_sub(action.len() + 4);
-        let type_part = &trim_ascii_end_slice(line)[..before_suffix_len];
+        let before_suffix_len = trimmed.len().saturating_sub(action.len() + 4);
+        let type_part = &trimmed[..before_suffix_len];
         let rtype = trim_leading_markers(type_part);
 
         let mut name = Vec::new();
         for j in (i + 1)..std::cmp::min(i + 9, n) {
             let jline = &clean_lines[j];
             if find_seq(jline, b"[urn=").is_some() {
-                let urn_start = find_seq(jline, b"[urn=").unwrap();
-                let urn_data = &jline[urn_start + 5..];
-                let urn_end = urn_data
-                    .iter()
-                    .position(|&c| c == b']')
-                    .unwrap_or(urn_data.len());
-                let urn = &urn_data[..urn_end];
-                if let Some(last_sep) = urn.iter().rposition(|&c| c == b':') {
-                    name = urn[last_sep + 1..].to_vec();
-                }
+                name = urn_name(jline);
                 break;
             }
-            let jt = trim_ascii_end_slice(jline);
+            let jt = trim_blank_end(jline);
             if hdr_suffixes.iter().any(|s| jt.ends_with(s)) {
                 break;
             }
@@ -270,35 +306,43 @@ fn parse_clean(clean_lines: &[Vec<u8>]) -> (Counts, Vec<ResRow>, Vec<Vec<u8>>, V
     for i in 0..n {
         let line = &clean_lines[i];
         if (line.starts_with(b"error:") || line.starts_with(b"Error:")) && errors.len() < 20 {
-            errors.push(line.clone());
+            // The script carried these as `ERR\t<line>` and read back field
+            // 2 with awk -F'\t', so a tab ends the line.
+            let cut = line.iter().position(|&c| c == b'\t').unwrap_or(line.len());
+            errors.push(line[..cut].to_vec());
         }
     }
 
     (counts, rows, errors, op, stack)
 }
 
+/// awk's `paren()`: after the first `(`, up to the first `)` (or the end).
 fn paren(line: &[u8]) -> Vec<u8> {
-    if let Some(open) = line.iter().position(|&c| c == b'(') {
-        if let Some(close) = line[open..].iter().position(|&c| c == b')') {
-            return line[open + 1..open + close].to_vec();
-        }
-    }
-    Vec::new()
+    let Some(open) = line.iter().position(|&c| c == b'(') else {
+        return line.to_vec();
+    };
+    let rest = &line[open + 1..];
+    let close = rest.iter().position(|&c| c == b')').unwrap_or(rest.len());
+    rest[..close].to_vec()
 }
 
 pub fn run(_args: &[Vec<u8>]) -> i32 {
-    if _args.len() < 3 {
+    // Like the script: all three must be present AND non-empty.
+    if _args.len() < 3 || _args[..3].iter().any(|a| a.is_empty()) {
         err(b"usage: pulumi-summary <phase-label> <pulumi-output-file> <exit-code>\n");
         return 2;
     }
     let label = &_args[0];
     let out_file = &_args[1];
-    let exit_code_s = &_args[2];
-
-    let exit_code: i64 = std::str::from_utf8(exit_code_s)
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(1);
+    // `[[ "$EXIT_CODE" =~ ^[0-9]+$ ]] || EXIT_CODE=1`: anything but plain
+    // digits (`-1`, `+0`, ` 0`, `abc`) is a failure, and the digits are shown
+    // as given (`007` stays `007`). Success is a value equal to zero.
+    let exit_code: Vec<u8> = if _args[2].iter().all(|c| c.is_ascii_digit()) {
+        _args[2].clone()
+    } else {
+        b"1".to_vec()
+    };
+    let succeeded = exit_code.iter().all(|&c| c == b'0');
 
     let raw_max: usize = std::str::from_utf8(&env_or("PULUMI_SUMMARY_RAW_MAX", b"40000"))
         .ok()
@@ -323,7 +367,10 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
     let clean_lines: Vec<Vec<u8>> = if clean.is_empty() {
         Vec::new()
     } else {
-        clean.split(|&c| c == b'\n').map(|l| l.to_vec()).collect()
+        // awk's records: a final newline ends the last line, it does not
+        // start an empty one.
+        let body = clean.strip_suffix(b"\n").unwrap_or(&clean);
+        body.split(|&c| c == b'\n').map(|l| l.to_vec()).collect()
     };
 
     let (counts, rows, errors, op, stack) = parse_clean(&clean_lines);
@@ -365,9 +412,14 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
         _ => b"pulumi",
     };
 
-    let head = render_head(
-        label, op_display, &stack, exit_code, &counts, &rows, &errors, row_max,
+    let mut head = render_head(
+        label, op_display, &stack, &exit_code, succeeded, &counts, &rows, &errors, row_max,
     );
+    // HEAD="$(render_head)" drops the trailing newlines before both the
+    // print and the byte count the log budget is cut from.
+    while head.last() == Some(&b'\n') {
+        head.pop();
+    }
     out(&head);
     out(b"\n\n");
 
@@ -411,7 +463,8 @@ fn render_head(
     label: &[u8],
     op_display: &[u8],
     stack: &[u8],
-    exit_code: i64,
+    exit_code: &[u8],
+    succeeded: bool,
     counts: &Counts,
     rows: &[ResRow],
     errors: &[Vec<u8>],
@@ -428,7 +481,7 @@ fn render_head(
         buf.extend_from_slice(b" \xc2\xb7 ");
         buf.extend_from_slice(stack);
     }
-    if exit_code == 0 {
+    if succeeded {
         buf.extend_from_slice(b" \xc2\xb7 \xe2\x9c\x85 Succeeded");
     } else {
         buf.extend_from_slice(b" \xc2\xb7 \xe2\x9d\x8c Failed");
@@ -436,12 +489,12 @@ fn render_head(
     buf.extend_from_slice(b"\n\n");
 
     // Error block on failure
-    if exit_code != 0 {
+    if !succeeded {
         if counts.errored > 0 {
             buf.extend_from_slice(b"> \xe2\x9d\x8c **");
             buf.extend_from_slice(op_display);
             buf.extend_from_slice(b" failed** (exit ");
-            buf.extend_from_slice(itoa(exit_code).as_bytes());
+            buf.extend_from_slice(exit_code);
             buf.extend_from_slice(b") \xc2\xb7 \xf0\x9f\x92\xa5 ");
             buf.extend_from_slice(itoa(counts.errored).as_bytes());
             buf.extend_from_slice(b" errored\n\n");
@@ -449,7 +502,7 @@ fn render_head(
             buf.extend_from_slice(b"> \xe2\x9d\x8c **");
             buf.extend_from_slice(op_display);
             buf.extend_from_slice(b" failed** (exit ");
-            buf.extend_from_slice(itoa(exit_code).as_bytes());
+            buf.extend_from_slice(exit_code);
             buf.extend_from_slice(b")\n\n");
         }
         if !errors.is_empty() {

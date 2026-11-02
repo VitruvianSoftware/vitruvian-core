@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! release-beta-gate.sh — keep a component's release PR out of auto-merge
+//! release-beta-gate — keep a component's release PR out of auto-merge
 //! until the push rung that builds its artifact has SUCCEEDED for the exact
 //! code the release would tag.
 
@@ -41,16 +41,24 @@ fn gh_status(args: &[&[u8]]) -> i32 {
     status(0, &mut cmd, true)
 }
 
+/// Run gh with stdout and stderr discarded; the status is ignored by callers
+/// that, like the shell's `|| true`, carry on either way.
+fn gh_quiet(args: &[&[u8]]) -> i32 {
+    let mut cmd = Command::new("gh");
+    for a in args {
+        cmd.arg(shell_compat::os(a));
+    }
+    cmd.stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    status(0, &mut cmd, true)
+}
+
 struct State {
     repo: Vec<u8>,
-    component: Vec<u8>,
     code_path: Vec<u8>,
     beta_job: Vec<u8>,
-    workflow: Vec<u8>,
-    legacy_workflow: Vec<u8>,
     pr: Vec<u8>,
     auto_on: bool,
-    is_draft: bool,
     labels: Vec<u8>,
     run_id: Vec<u8>,
     conclusion: Vec<u8>,
@@ -411,14 +419,10 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
 
     let mut st = State {
         repo: repo.clone(),
-        component,
         code_path: code_path.clone(),
         beta_job: beta_job.clone(),
-        workflow: workflow.clone(),
-        legacy_workflow: legacy_workflow.clone(),
         pr: pr.clone(),
         auto_on,
-        is_draft,
         labels: labels.clone(),
         run_id: Vec::new(),
         conclusion: Vec::new(),
@@ -604,7 +608,9 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
                 &pr,
                 b"\n",
             ]));
-            gh_status(&[
+            // Its output is discarded, as the shell's `>/dev/null 2>&1` did:
+            // the label usually exists already, and the hold continues anyway.
+            gh_quiet(&[
                 b"label",
                 b"create",
                 hold_label,

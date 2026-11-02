@@ -418,7 +418,7 @@ fn ci_yaml_fast_lane_job_has_exactly_this_shape() {
     assert!(
         env.contains(&(
             "FAST_LANE_BIN".into(),
-            "${{ steps.rule.outputs.bin }}".into()
+            "${{ steps.rule.outputs.path }}".into()
         )),
         "{decide}"
     );
@@ -505,7 +505,7 @@ fn presubmit_fast_lane_steps_have_exactly_this_shape() {
     let d = &steps[decide];
     assert_eq!(
         step_value(d, "if").as_deref(),
-        Some("steps.fastlane-bin.outputs.bin != ''"),
+        Some("steps.fastlane-bin.outputs.path != ''"),
         "{d}"
     );
     let env = step_env(d);
@@ -519,7 +519,7 @@ fn presubmit_fast_lane_steps_have_exactly_this_shape() {
     assert!(
         env.contains(&(
             "FAST_LANE_BIN".into(),
-            "${{ steps.fastlane-bin.outputs.bin }}".into()
+            "${{ steps.fastlane-bin.outputs.path }}".into()
         )),
         "{d}"
     );

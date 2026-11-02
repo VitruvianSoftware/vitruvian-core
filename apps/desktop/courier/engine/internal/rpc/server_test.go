@@ -26,6 +26,7 @@ import (
 	"github.com/VitruvianSoftware/courier/engine/internal/engine"
 	"github.com/VitruvianSoftware/courier/engine/internal/fakenet"
 	"github.com/VitruvianSoftware/courier/engine/internal/ids"
+	"github.com/VitruvianSoftware/courier/engine/internal/localapi"
 	"github.com/VitruvianSoftware/courier/engine/internal/login"
 	"github.com/VitruvianSoftware/courier/engine/internal/media"
 	"github.com/VitruvianSoftware/courier/engine/internal/search"
@@ -727,7 +728,11 @@ func newWorldWaiting(t *testing.T, loginWait time.Duration) *world {
 		Networks:    testNetworks,
 		Version:     "0.3.0-test",
 		DataDir:     dir,
+		Notices:     NewNotifier(),
 	}
+	// The local API, as courier-engine wires it: not listening until a test turns it on.
+	w.deps.LocalAPI = localapi.New(s, NewDispatcher(w.deps), w.deps.Notices, zerolog.Nop())
+	t.Cleanup(w.deps.LocalAPI.Close)
 	w.path = serve(t, w.deps)
 	return w
 }

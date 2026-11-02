@@ -43,7 +43,7 @@ Six first-party apps in three categories (full taxonomy + per-category standards
 |---|---|---|---|
 | SaaS web service | `tabula`, `oauth-user-inspector` | GCP Cloud Run (per-app project) | deploy pipeline (blue-green) |
 | CLI / developer tool | `devx`, `homelab` | user's machine | GitHub Releases + Homebrew (mirror) |
-| Agent / MCP service | `mcp-slack`, `nexus-agent` | user's machine | npm / DMG (mirror) |
+| Agent / MCP service | `mcp-slack`, `nexus-agent` | user's machine (`mcp-slack` also hosted on the homelab cluster) | container image on GHCR (`mcp-slack`) / DMG (mirror) |
 
 The category determines the hosting target, build shape, secrets model, and release
 mechanics — there is no free choice

@@ -141,8 +141,8 @@ js_test(
 )
 
 # The files that name the plugin's version. release-please updates them in
-# lockstep via release-please-config.json; version_test keeps them in step.
-js_library(
+# lockstep via release-please-config.json; version_rs_test keeps them in step.
+filegroup(
     name = "release_files",
     srcs = [
         ".release-please-manifest.json",
@@ -158,13 +158,6 @@ js_test(
     size = "small",
     data = [":lib"],
     entry_point = "sidecars/panel/lib/search.test.mjs",
-)
-
-js_test(
-    name = "version_test",
-    size = "small",
-    data = [":release_files"],
-    entry_point = "sidecars/panel/lib/version.test.mjs",
 )
 
 js_test(
@@ -275,7 +268,6 @@ pipeline_unit(
         ":search_test",
         ":sidecar_lib_test",
         ":version_rs_test",
-        ":version_test",
         ":watcher_test",
     ],
     tier = "L1",
@@ -302,7 +294,7 @@ filegroup(
 
 # What //apps/desktop/antigravity's cross-plugin tests read: the hooks.json
 # shape, each hook's fallback, and the files every plugin shares.
-js_library(
+filegroup(
     name = "conformance_files",
     srcs = glob(
         [

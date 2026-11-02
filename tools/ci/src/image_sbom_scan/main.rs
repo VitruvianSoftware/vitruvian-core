@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! //tools/ci:image-sbom-scan: the Rust port.
+//! //tools/ci:image_sbom_scan (see lib.rs).
 
 fn main() {
     std::process::exit(image_sbom_scan::run(&shell_compat::args()));

@@ -297,6 +297,15 @@ var methods = map[string]handler{
 	// Storage usage & media cache cleanup (protocol 11).
 	"storage.usage":   storageUsage,
 	"storage.cleanup": storageCleanup,
+
+	// Protocol 12: Settings → Integrations, the local API (milestone 5).
+	"integrations.status":        integrationsStatus,
+	"integrations.update":        integrationsUpdate,
+	"integrations.tokens":        integrationsTokens,
+	"integrations.createToken":   integrationsCreateToken,
+	"integrations.revokeToken":   integrationsRevokeToken,
+	"integrations.setCanSend":    integrationsSetCanSend,
+	"integrations.answerPairing": integrationsAnswerPairing,
 }
 
 var errMissing = errors.New("a dependency this method needs is missing")

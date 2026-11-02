@@ -311,10 +311,25 @@ CREATE TABLE sub_accounts (
   PRIMARY KEY (network, login_id, sub_id),
   UNIQUE (network, sub_id)
 );`,
+	// 11: the local API (milestone 5): the tokens MCP clients connect with, kept only as hashes, and the engine's own
+	// settings (whether the local API is on, its port and Remote Access).
+	`CREATE TABLE api_tokens (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  hash BLOB NOT NULL UNIQUE,
+  can_send INTEGER NOT NULL DEFAULT 0,
+  created_ms INTEGER NOT NULL,
+  last_used_ms INTEGER,
+  revoked_ms INTEGER
+);
+CREATE TABLE settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);`,
 }
 
 // SchemaVersion is the latest courier.db schema version (PRAGMA user_version).
-const SchemaVersion = 10
+const SchemaVersion = 11
 
 // migrate brings db up to the latest version.
 func migrate(ctx context.Context, db *dbutil.Database) error { return migrateWith(ctx, db, migrations) }

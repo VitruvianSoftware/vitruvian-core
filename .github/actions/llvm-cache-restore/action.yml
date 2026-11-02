@@ -150,8 +150,8 @@ runs:
     - name: Export the LLVM cache stage tool
       shell: bash
       env:
-        STAGE_BIN: ${{ steps.stage-tool.outputs.bin }}
-      run: echo "LLVM_CACHE_STAGE_BIN=$STAGE_BIN" >> "$GITHUB_ENV"
+        STAGE_BIN: ${{ steps.stage-tool.outputs.path }}
+      run: echo "LLVM_CACHE_STAGE_BIN=${STAGE_BIN}" >> "$GITHUB_ENV"
 
     # The key must move with EVERY recorded input of the llvm_toolchain_llvm
     # repo rule, not just MODULE.bazel -- toolchains_llvm reads /etc/os-release
@@ -164,7 +164,7 @@ runs:
       env:
         RUNNER_OS_NAME: ${{ runner.os }}
         MODULE_HASH: ${{ hashFiles('MODULE.bazel') }}
-        KEY_BIN: ${{ steps.key-tool.outputs.bin }}
+        KEY_BIN: ${{ steps.key-tool.outputs.path }}
       run: |
         key=$("$KEY_BIN" "$RUNNER_OS_NAME" "$MODULE_HASH")
         echo "value=$key" >> "$GITHUB_OUTPUT"

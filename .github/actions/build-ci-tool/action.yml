@@ -18,70 +18,102 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-# Builds one of the std-only Rust tools in tools/ci/src/<tool>/ with the
-# runner's rustc, for steps that run before (or without) Bazel: the
-# changed-paths gate decides whether Bazel is set up at all, the LLVM cache
-# restore runs before the first build that would extract LLVM, and the merge
-# queue and fast-lane lookups run on a sparse checkout with no Bazel. Each tool
-# is a lib.rs plus a main.rs over //tools/shell-compat, nothing else, so three
-# rustc calls build exactly what //tools/ci:<tool> builds, in about a second.
+# Builds one of the tools under tools/ci/src/<tool>/ with the runner's own
+# rustc, for jobs and steps that set up no Bazel, or run before it: the release
+# gates, the changelog and pulumi digests, the cache pruner, the ntfy notifier,
+# the changed-paths gate (it decides whether Bazel is set up at all), the LLVM
+# cache key and stage tools (a Bazel-built Rust binary links with the very
+# LLVM toolchain they restore), the merge-queue lookup, the fast lane and the
+# queue-runner watcher. Each of those tools is
+# a lib.rs + main.rs pair that depends only on //tools/shell-compat and std,
+# so three rustc calls build it from the checkout in about a second.
 #
-# These are the only rustc command lines for those tools in any workflow or
-# action. //tools/ci:build_ci_tool_test runs this step's `run:` block verbatim
-# with the Bazel toolchain's rustc, for every tool, so a change here that stops
-# building fails `bazel test` before it can fail a lane.
+# The same three calls, byte for byte, are what //tools/ci:build_ci_tool_test
+# runs (it reads this file and executes the step below with Bazel's rustc),
+# so a tool that stops building this way fails presubmit, not a release.
+#
+# A failed build fails this step, and so does a build that claims success
+# without leaving an executable binary, or one that will not start. The caller's next step, which runs the
+# tool, then never starts and the run goes red. A caller whose tool must act
+# even then (the beta gate turning auto-merge off, the notifier reaching ntfy)
+# has its own `if: failure()` step after this one.
+#
+# Interface (kept stable for other callers): input `tool`, optional input
+# `source-root`, output `path`.
+#
+# Requires the repo to be checked out first (composite actions referenced as
+# `./.github/actions/...` resolve from the workspace).
 name: Build a tools/ci Rust tool
 description: >-
-  Compile tools/ci/src/<tool> (lib.rs + main.rs over tools/shell-compat) with
-  the runner's rustc and output the binary's path.
+  Compile tools/ci/src/<tool> with the runner's rustc (no Bazel) and output
+  the binary's path.
 
 inputs:
   tool:
     description: >-
-      The tool's folder under tools/ci/src, which is also its crate name
-      (for example relevant_paths).
+      The tool's directory under tools/ci/src, which is also its crate name
+      (for example release_hold).
     required: true
   source-root:
     description: >-
       The checkout to build from; empty means the workspace. The fast-lane
       steps pass a checkout of the pull request's BASE commit, so a pull
       request cannot rewrite the rule that decides whether it may skip tests.
+      Relative paths are relative to the workspace.
     required: false
     default: ""
 
 outputs:
-  bin:
+  path:
     description: Absolute path of the built binary.
-    value: ${{ steps.build.outputs.bin }}
+    value: ${{ steps.build.outputs.path }}
 
 runs:
   using: composite
   steps:
-    - name: Build tools/ci/src/${{ inputs.tool }}
+    - name: rustc ${{ inputs.tool }}
       id: build
       shell: bash
       env:
         TOOL: ${{ inputs.tool }}
         SOURCE_ROOT: ${{ inputs.source-root }}
       run: |
+        set -euo pipefail
         case "$TOOL" in
-          '' | *[!a-z0-9_]*) echo "::error::build-ci-tool: tool must be a crate name under tools/ci/src, got '$TOOL'"; exit 1 ;;
+          "" | *[!a-z0-9_]*)
+            echo "::error::build-ci-tool: tool must be a directory name under tools/ci/src, got '$TOOL'"
+            exit 1
+            ;;
         esac
-        root="${SOURCE_ROOT:-$GITHUB_WORKSPACE}"
         command -v rustc >/dev/null || { echo "::error::build-ci-tool: no rustc on this runner, so tools/ci/src/$TOOL cannot be built"; exit 1; }
-        # The runner's rustc is newer than the Bazel toolchain's (1.75.0), which
-        # is what //tools/ci:build_ci_tool_test builds with; name it in the log.
-        echo "build-ci-tool: $(rustc --version)"
-        out="$(mktemp -d "$RUNNER_TEMP/ci-tool-$TOOL.XXXXXX")"
-        rustc --edition 2021 -O --crate-type lib --crate-name shell_compat "$root/tools/shell-compat/src/lib.rs" -o "$out/libshell_compat.rlib"
-        rustc --edition 2021 -O --crate-type lib --crate-name "$TOOL" "$root/tools/ci/src/$TOOL/lib.rs" -L "$out" --extern shell_compat="$out/libshell_compat.rlib" -o "$out/lib$TOOL.rlib"
-        rustc --edition 2021 -O "$root/tools/ci/src/$TOOL/main.rs" -L "$out" --extern shell_compat="$out/libshell_compat.rlib" --extern "$TOOL=$out/lib$TOOL.rlib" -o "$out/$TOOL"
-        # Only hand back a binary that exists and starts. With no arguments and
-        # an empty environment every tool here stops at once (usage error, or
-        # "not a pull request"), so this cannot reach GitHub or write outputs.
-        # 126+ means it could not be executed or died on a signal.
-        [ -x "$out/$TOOL" ] || { echo "::error::build-ci-tool: rustc left no executable at $out/$TOOL"; exit 1; }
+        src="${SOURCE_ROOT:-$GITHUB_WORKSPACE}/tools"
+        out="$RUNNER_TEMP/ci-tools"
+        mkdir -p "$out"
+        # The runner's rustc is newer than the Bazel toolchain that
+        # //tools/ci:build_ci_tool_test proves this build with; log it so a
+        # failure on a newer compiler is told apart from a code break.
+        rustc --version
+        rustc --edition 2021 -O --crate-type lib --crate-name shell_compat "$src/shell-compat/src/lib.rs" -o "$out/libshell_compat.rlib"
+        rustc --edition 2021 -O --crate-type lib --crate-name "$TOOL" "$src/ci/src/$TOOL/lib.rs" -L "$out" --extern shell_compat="$out/libshell_compat.rlib" -o "$out/lib$TOOL.rlib"
+        rustc --edition 2021 -O "$src/ci/src/$TOOL/main.rs" -L "$out" --extern shell_compat="$out/libshell_compat.rlib" --extern "$TOOL=$out/lib$TOOL.rlib" -o "$out/$TOOL"
+        # Only a binary that is really there may be handed on: a caller that
+        # runs a missing path fails with 127 AFTER this step reported success,
+        # which is the failure the callers' `if: failure()` fallbacks miss.
+        if [ ! -f "$out/$TOOL" ] || [ ! -x "$out/$TOOL" ]; then
+          echo "::error::build-ci-tool: rustc reported success but $out/$TOOL is not an executable file"
+          exit 1
+        fi
+        # And one that starts: run it once with no arguments and an empty
+        # environment, where every tool here stops at once (a usage error, or
+        # "not a pull request"). PATH names a folder that does not exist, so
+        # it finds no gh, git or curl even by the default search path: it
+        # cannot reach GitHub or ntfy, and with no GITHUB_OUTPUT it writes
+        # nothing. 126 and up means it could not be executed or died on a
+        # signal.
         rc=0
-        env -i "$out/$TOOL" </dev/null >/dev/null 2>&1 || rc=$?
-        [ "$rc" -lt 126 ] || { echo "::error::build-ci-tool: $out/$TOOL was built but does not run (exit $rc)"; exit 1; }
-        echo "bin=$out/$TOOL" >> "$GITHUB_OUTPUT"
+        env -i PATH="$out/no-such-dir" "$out/$TOOL" </dev/null >/dev/null 2>&1 || rc=$?
+        if [ "$rc" -ge 126 ]; then
+          echo "::error::build-ci-tool: $out/$TOOL was built but does not run (exit $rc)"
+          exit 1
+        fi
+        echo "path=$out/$TOOL" >> "$GITHUB_OUTPUT"

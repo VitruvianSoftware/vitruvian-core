@@ -64,5 +64,5 @@ runs:
         BASE_REF: ${{ github.event_name == 'pull_request' && github.base_ref || '' }}
         BEFORE_REV: ${{ github.event_name == 'push' && github.event.before || github.event_name == 'merge_group' && github.event.merge_group.base_sha || '' }}
         IGNORE_REGEX: ${{ inputs.ignore-regex }}
-        RELEVANT_PATHS: ${{ steps.build.outputs.bin }}
+        RELEVANT_PATHS: ${{ steps.build.outputs.path }}
       run: '"$RELEVANT_PATHS"'

@@ -1,0 +1,94 @@
+# Copyright (c) 2026 VitruvianSoftware
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+# Runs the Bazel tests that guard files the presubmit planner cannot see.
+# //tools/pipeline/plan maps a changed file to the nearest enclosing BUILD
+# package, and .claude/ and .github/workflows/ have none (the root package is
+# never chosen), so a change that touches only these paths selects no tests in
+# build-test or the merge queue. This workflow is what runs them then:
+#
+#   //tools/ci:block_queue_bypass_test             .claude/block-queue-bypass.sh
+#   //tools/ci:kube_setup_test                     .claude/kube-setup.sh
+#   //tools/ci:kube_setup_join_test                its wait for a joining tailscale-up.sh
+#                                                  (manual, local: needs this runner's pgrep)
+#   //tools/ci:session_start_test                  .claude/session-start.sh and its steps
+#   //tools/ci:workflow_git_push_credentials_test  every workflow that pushes
+#   //tools/ci:require_pinned_actions_test         actionlint.yaml's rustc line
+#   //tools/ci:workflow_rustc_test                 every other workflow/action rustc
+#                                                  line, and the apt rustc fallbacks
+#
+# It replaces block-queue-bypass-test, kube-setup-test, session-start-test and
+# workflow-git-push-credentials-test, which ran shell suites on these paths.
+# A change under tools/ci/ is planned normally, so build-test runs them too.
+name: Repo Guards Test
+
+on:
+  pull_request:
+    paths:
+      - ".claude/**"
+      - ".github/actions/**"
+      - ".github/workflows/**"
+      - "tools/cloud-bootstrap/cloud-bootstrap.sh"
+      - "tools/ci/src/hook_tests/**"
+      - "tools/ci/src/require_pinned_actions/**"
+      - "tools/ci/src/workflow_git_push_credentials/**"
+  push:
+    branches: [main]
+    paths:
+      - ".claude/**"
+      - ".github/actions/**"
+      - ".github/workflows/**"
+      - "tools/cloud-bootstrap/cloud-bootstrap.sh"
+      - "tools/ci/src/hook_tests/**"
+      - "tools/ci/src/require_pinned_actions/**"
+      - "tools/ci/src/workflow_git_push_credentials/**"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    env:
+      BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Bazel
+        uses: ./.github/actions/setup-bazel
+
+      - name: Run the guard tests
+        run: |
+          set -euo pipefail
+          cache_flags=()
+          if [ -n "${BUILDBUDDY_API_KEY}" ]; then
+            cache_flags=(--config=remote "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
+          fi
+          bazel test "${cache_flags[@]}" --test_output=errors \
+            //tools/ci:block_queue_bypass_test \
+            //tools/ci:kube_setup_test \
+            //tools/ci:kube_setup_join_test \
+            //tools/ci:session_start_test \
+            //tools/ci:workflow_git_push_credentials_test \
+            //tools/ci:require_pinned_actions_test \
+            //tools/ci:workflow_rustc_test

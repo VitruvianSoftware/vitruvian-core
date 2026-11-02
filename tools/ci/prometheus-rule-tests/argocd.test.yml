@@ -37,7 +37,7 @@ tests:
               dest_namespace: backstage
             exp_annotations:
               summary: "ArgoCD cannot render backstage -- merges are NOT deploying"
-              description: "ArgoCD has been unable to compare backstage (project platform-project, ns backstage) against git for >10m, so it is frozen at its last good render and every change merged since then is undeployed. The app will still report Healthy, so do not trust health here. Get the cause with: kubectl get application backstage -n argocd -o yaml | grep -A5 conditions -- a ComparisonError names the offending file. The values-schema form of this is caught pre-merge by tools/ci/gitops-values-render.sh."
+              description: "ArgoCD has been unable to compare backstage (project platform-project, ns backstage) against git for >10m, so it is frozen at its last good render and every change merged since then is undeployed. The app will still report Healthy, so do not trust health here. Get the cause with: kubectl get application backstage -n argocd -o yaml | grep -A5 conditions -- a ComparisonError names the offending file. The values-schema form of this is caught pre-merge by //tools/ci:gitops_values_render."
       # A Degraded alert must NOT also fire -- health was Healthy throughout.
       - eval_time: 20m
         alertname: ArgoCDAppDegraded
@@ -126,4 +126,4 @@ tests:
               dest_namespace: backstage
             exp_annotations:
               summary: "ArgoCD cannot render backstage -- merges are NOT deploying"
-              description: "ArgoCD has been unable to compare backstage (project platform-project, ns backstage) against git for >10m, so it is frozen at its last good render and every change merged since then is undeployed. The app will still report Healthy, so do not trust health here. Get the cause with: kubectl get application backstage -n argocd -o yaml | grep -A5 conditions -- a ComparisonError names the offending file. The values-schema form of this is caught pre-merge by tools/ci/gitops-values-render.sh."
+              description: "ArgoCD has been unable to compare backstage (project platform-project, ns backstage) against git for >10m, so it is frozen at its last good render and every change merged since then is undeployed. The app will still report Healthy, so do not trust health here. Get the cause with: kubectl get application backstage -n argocd -o yaml | grep -A5 conditions -- a ComparisonError names the offending file. The values-schema form of this is caught pre-merge by //tools/ci:gitops_values_render."

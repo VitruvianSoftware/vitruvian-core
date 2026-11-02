@@ -77,7 +77,7 @@ jobs:
           WORKFLOW_PATH: .github/workflows/presubmit.yaml
           PUSH_BEFORE: ${{ github.event.before }}
           FORCED_PUSH: ${{ github.event.forced }}
-          QUEUE_FAST_PASS_BIN: ${{ steps.queue-fast-pass.outputs.bin }}
+          QUEUE_FAST_PASS_BIN: ${{ steps.queue-fast-pass.outputs.path }}
         run: |
           "$QUEUE_FAST_PASS_BIN" queued | tee "$RUNNER_TEMP/queued.out"
           {
@@ -115,7 +115,7 @@ jobs:
 
       - name: Is this an agent PR in the fast lane?
         id: fastlane
-        if: steps.fastlane-bin.outputs.bin != ''
+        if: steps.fastlane-bin.outputs.path != ''
         continue-on-error: true
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -124,7 +124,7 @@ jobs:
           PR_AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
           PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
           AGENTS_TSV: ${{ steps.fastlane-src.outputs.root }}/tools/agent-app/agents.tsv
-          FAST_LANE_BIN: ${{ steps.fastlane-bin.outputs.bin }}
+          FAST_LANE_BIN: ${{ steps.fastlane-bin.outputs.path }}
         run: |
           "$FAST_LANE_BIN" | tee "$RUNNER_TEMP/fast-lane.out"
           {
@@ -142,7 +142,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           EVENT_NAME: ${{ github.event_name }}
           WORKFLOW_PATH: .github/workflows/presubmit.yaml
-          QUEUE_FAST_PASS_BIN: ${{ steps.queue-fast-pass.outputs.bin }}
+          QUEUE_FAST_PASS_BIN: ${{ steps.queue-fast-pass.outputs.path }}
         run: |
           if [ "$EVENT_NAME" != merge_group ]; then
             "$QUEUE_FAST_PASS_BIN" tree

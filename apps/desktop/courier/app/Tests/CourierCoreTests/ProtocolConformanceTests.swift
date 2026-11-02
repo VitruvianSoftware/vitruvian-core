@@ -87,8 +87,11 @@ final class ProtocolConformanceTests: XCTestCase {
             XCTAssertEqual(types.result.protocolName, definition["result"] as? String, "\(method)'s result")
         }
         let notifications = spec["notifications"] as? [String: [String: Any]] ?? [:]
-        XCTAssertEqual(Array(notifications.keys), [ProtocolMethods.changedNotification])
-        XCTAssertEqual(notifications[ProtocolMethods.changedNotification]?["params"] as? String, Changed.protocolName)
+        XCTAssertEqual(Set(notifications.keys), Set(ProtocolMethods.notifications.keys))
+        for (name, definition) in notifications {
+            XCTAssertEqual(ProtocolMethods.notifications[name]?.protocolName, definition["params"] as? String,
+                           "\(name)'s params")
+        }
     }
 
     func testEveryErrorCodeIsKnown() {
@@ -196,9 +199,14 @@ final class ProtocolConformanceTests: XCTestCase {
                     checked += 1
                 }
             } else if let notification = example["notification"] as? [String: Any] {
-                XCTAssertEqual(notification["method"] as? String, ProtocolMethods.changedNotification, name)
+                let method = try XCTUnwrap(notification["method"] as? String, name)
+                let type = try XCTUnwrap(ProtocolMethods.notifications[method], "\(name): unknown notification \(method)")
                 let params = try XCTUnwrap(notification["params"], name)
-                try assertRoundTrip(params, as: Changed.self, in: "\(name) params")
+                try assertRoundTrip(params, as: type, in: "\(name) params")
+                guard method == ProtocolMethods.changedNotification else {
+                    checked += 1
+                    continue
+                }
                 let changed = try JSONDecoder().decode(Changed.self, from: JSONSerialization.data(withJSONObject: params))
                 if changed.kind == .resync {
                     XCTAssertEqual(Change(changed), .resync, name)
@@ -245,8 +253,8 @@ final class ProtocolConformanceTests: XCTestCase {
     }
 
     func testProtocol6TypesDecodeAndRoundTrip() throws {
-        XCTAssertEqual(protocolVersion, 11)
-        XCTAssertEqual(CourierProtocol.version, 11)
+        XCTAssertEqual(protocolVersion, 12)
+        XCTAssertEqual(CourierProtocol.version, 12)
         XCTAssertEqual(RPCErrorCode(number: -32027), .networkRefused)
 
         let infoJSON = """
@@ -405,7 +413,7 @@ final class ProtocolConformanceTests: XCTestCase {
     }
 
     func testProtocol9BridgesSubAccountsAndDiagnosticsDecodeAndRoundTrip() throws {
-        XCTAssertEqual(CourierProtocol.version, 11)
+        XCTAssertEqual(CourierProtocol.version, 12)
         XCTAssertNotNil(ProtocolMethods.all["bridges.list"])
         XCTAssertNotNil(ProtocolMethods.all["bridges.restart"])
         XCTAssertNotNil(ProtocolMethods.all["accounts.remove"])
@@ -475,7 +483,7 @@ final class ProtocolConformanceTests: XCTestCase {
     }
 
     func testProtocol11StorageUsageAndCleanupDecodeAndRoundTrip() throws {
-        XCTAssertEqual(CourierProtocol.version, 11)
+        XCTAssertEqual(CourierProtocol.version, 12)
         XCTAssertNotNil(ProtocolMethods.all["storage.usage"])
         XCTAssertNotNil(ProtocolMethods.all["storage.cleanup"])
         XCTAssertEqual(ProtocolMethods.classification(for: "storage.usage"), .userInitiatedMutation)
@@ -512,5 +520,37 @@ final class ProtocolConformanceTests: XCTestCase {
         let cleanupResult = StorageCleanupResult(freedBytes: 5_376, removedBlobs: 2)
         let resultData = try JSONEncoder().encode(cleanupResult)
         XCTAssertEqual(try JSONDecoder().decode(StorageCleanupResult.self, from: resultData), cleanupResult)
+    }
+
+    func testProtocol12IntegrationsAndFocusDecodeAndRoundTrip() throws {
+        XCTAssertEqual(CourierProtocol.version, 12)
+        // Settings, all of it: refused while Courier is locked.
+        for method in ["integrations.status", "integrations.tokens", "integrations.update", "integrations.createToken", "integrations.revokeToken",
+                       "integrations.setCanSend", "integrations.answerPairing"] {
+            XCTAssertEqual(ProtocolMethods.classification(for: method), .userInitiatedMutation, method)
+        }
+        XCTAssertEqual(ProtocolMethods.all["integrations.tokens"]?.result.protocolName, "APIToken[]")
+
+        // A token that was never used says so with null, not by leaving the key out.
+        let unused = APIToken(id: "tok_1", name: "Example client", createdMs: 1_793_500_000_000)
+        let unusedJSON = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(unused)) as? [String: Any])
+        XCTAssertTrue(unusedJSON.keys.contains("lastUsedMs"))
+        XCTAssertTrue(unusedJSON["lastUsedMs"] is NSNull)
+
+        let created = CreateTokenResult(
+            token: APIToken(id: "tok_2", name: "Example client", canSend: true, createdMs: 1, lastUsedMs: 2),
+            secret: "courier_exampleexampleexampleexampleexampleexa" // gitleaks:allow
+        )
+        XCTAssertEqual(try JSONDecoder().decode(CreateTokenResult.self, from: JSONEncoder().encode(created)), created)
+
+        // Left-out fields stay out: integrations.update changes only what it names.
+        let update = try JSONSerialization.jsonObject(with: JSONEncoder().encode(IntegrationsUpdateParams(port: 24000)))
+        XCTAssertEqual(update as? NSDictionary, ["port": 24000] as NSDictionary)
+
+        let focus = FocusParams(chatID: "!a:courier.local", draftText: "Example draft")
+        let focusJSON = try JSONSerialization.jsonObject(with: JSONEncoder().encode(focus))
+        XCTAssertEqual(focusJSON as? NSDictionary,
+                       ["chatID": "!a:courier.local", "draftText": "Example draft"] as NSDictionary)
     }
 }

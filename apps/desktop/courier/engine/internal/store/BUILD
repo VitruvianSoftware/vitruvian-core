@@ -4,6 +4,7 @@ go_library(
     name = "store",
     srcs = [
         "accounts.go",
+        "apitokens.go",
         "autoarchive.go",
         "bookmarks.go",
         "callnotes.go",
@@ -49,6 +50,7 @@ go_test(
     name = "store_test",
     srcs = [
         "accounts_test.go",
+        "apitokens_test.go",
         "autoarchive_test.go",
         "bookmarks_test.go",
         "callnotes_test.go",
