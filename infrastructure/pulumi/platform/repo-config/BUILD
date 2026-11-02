@@ -26,7 +26,12 @@ pulumi_project(
 pulumi_go_test(
     # guard_review_test.go checks every file the session-start launcher
     # compiles is covered by guardReviewPaths, so it needs to see them.
-    extra_data = ["//tools/cloud-bootstrap:session_start_sources"],
+    # preview_vars_test.go reads the committed stack config to check the
+    # <app>-preview Environments name the read-only identity (#4120).
+    extra_data = [
+        "Pulumi.dev.yaml",
+        "//tools/cloud-bootstrap:session_start_sources",
+    ],
 )
 
 pipeline_unit(
