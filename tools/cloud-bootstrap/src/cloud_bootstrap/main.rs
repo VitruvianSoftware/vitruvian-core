@@ -143,10 +143,14 @@ impl Ctx {
             &format!("{home}/.config/vitruvian-core/cloud"),
         ));
         let profiles_default = sh::path_str(&ws.join("tools/cloud-bootstrap/profiles.tsv"));
-        // A path, not a `bazel run` target: this runs inside a SessionStart
-        // hook, where starting a Bazel server to configure Bazel would cost
-        // ~25s and nest an invocation inside the one the agent is about to make.
-        let cache_default = sh::path_str(&ws.join("tools/remote/setup.sh"));
+        // The build-cache configurator, //tools/remote:setup, as a binary
+        // path, not a `bazel run` target: this runs inside a SessionStart hook,
+        // where starting a Bazel server to configure Bazel would cost ~25s and
+        // nest an invocation inside the one the agent is about to make. The
+        // launcher (cloud-bootstrap.sh) builds it and names it here; under
+        // `bazel run` the target's runfiles do. Unset means not available, and
+        // the cache step says so.
+        let cache_default = sh::lossy(&sh::env_or_empty("CLOUD_BOOTSTRAP_REMOTE_SETUP"));
         let delay_raw = sh::env_str("VITRUVIAN_ESC_RETRY_DELAY", "5");
         Ctx {
             min_credential_len: sh::env_str("MIN_CREDENTIAL_LEN", "20")

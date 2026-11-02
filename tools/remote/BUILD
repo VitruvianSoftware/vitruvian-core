@@ -1,5 +1,4 @@
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_test")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 # Remote-build (RBE) setup helper.
 #
@@ -25,7 +24,6 @@ rust_test(
     size = "small",
     srcs = ["src/tests.rs"],
     data = [
-        "setup.sh",
         "testdata/setup_sh.golden",
         ":setup",
         "//tools:remote.bazelrc",
@@ -35,17 +33,16 @@ rust_test(
         "BIN": "$(rootpath :setup)",
         "COMMITTED_REMOTE_BAZELRC": "$(rootpath //tools:remote.bazelrc)",
         "GOLDEN": "$(rootpath testdata/setup_sh.golden)",
-        "SETUP_SH": "$(rootpath setup.sh)",
     },
 )
 
-# setup.sh is still what //tools/cloud-bootstrap runs at session start (by path,
-# before Bazel exists), and agent-guard protects it, so it stays until the gated
-# change that moves cloud-bootstrap onto the Rust binary. Until then its own
-# regression test keeps running.
-sh_test(
-    name = "setup_sh_test",
-    size = "small",
-    srcs = ["setup_test.sh"],
-    data = ["setup.sh"],
+# The source the session-start launcher (tools/cloud-bootstrap/cloud-bootstrap.sh)
+# builds with plain rustc: guard-review checks it needs James's approval.
+filegroup(
+    name = "session_start_sources",
+    srcs = ["src/main.rs"],
+    visibility = [
+        "//infrastructure/pulumi/platform/repo-config:__pkg__",
+        "//tools/cloud-bootstrap:__pkg__",
+    ],
 )

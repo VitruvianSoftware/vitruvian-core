@@ -128,6 +128,11 @@ impl Tree {
     /// A fake rustc: `--version` answers, a build is logged and the real
     /// Bazel-built tool copied to `-o`, or (FAIL) a compile error.
     fn fake_rustc(&self, fail: bool) {
+        self.fake_rustc_with(fail, false)
+    }
+
+    /// `fake_rustc`, optionally failing only the build of tools/remote.
+    fn fake_rustc_with(&self, fail: bool, fail_remote: bool) {
         let tool = runfile("BIN");
         let log = self.dir.join("rustc.log");
         write_exec(
@@ -149,6 +154,7 @@ printf 'cwd=%s\n' "$PWD" >>"{cwdlog}"
 if [ "$1" = --version ]; then echo "rustc 1.75.0 (fake)"; exit 0; fi
 printf '%s\n' "$*" >>"{log}"
 if [ "{fail}" = true ]; then echo "error[E0425]: cannot find value" >&2; exit 1; fi
+case "$*" in *tools/remote/*) [ "{fail_remote}" = true ] && {{ echo "remote build broke" >&2; exit 1; }} ;; esac
 while [ "$#" -gt 0 ]; do [ "$1" = -o ] && out="$2"; shift; done
 cp "{tool}" "$out"
 "#,
@@ -481,4 +487,65 @@ fn without_home_it_refuses_rather_than_using_a_shared_dir() {
         true,
     );
     assert_contains(&out, "must be an absolute path");
+}
+
+/// The tree with tools/remote/src/main.rs (the build-cache configurator) and a
+/// profile that uses the cache.
+fn tree_with_configurator() -> Tree {
+    let t = Tree::new();
+    let r = t.dir.join("repo/tools/remote/src");
+    fs::create_dir_all(&r).unwrap();
+    fs::copy(runfile("REMOTE_MAIN"), r.join("main.rs")).unwrap();
+    fs::write(
+        t.dir.join("repo/tools/cloud-bootstrap/profiles.tsv"),
+        "cacheprof bazel - - BUILDBUDDY_API_KEY=- Uses the build cache.\n",
+    )
+    .unwrap();
+    t
+}
+
+fn cache_env() -> Vec<(&'static str, String)> {
+    vec![
+        ("VITRUVIAN_PROFILE", "cacheprof".into()),
+        ("BUILDBUDDY_API_KEY", "k".repeat(40)),
+    ]
+}
+
+#[test]
+fn it_builds_the_cache_configurator_and_hands_it_to_the_tool() {
+    let t = tree_with_configurator();
+    t.fake_rustc(false);
+    let env = cache_env();
+    let env: Vec<(&str, &str)> = env.iter().map(|(k, v)| (*k, v.as_str())).collect();
+    let (out, _, rc) = t.run_with(&["auth", "--force"], &env, &[], true);
+    assert_eq!(rc, 0, "{out}");
+    assert!(
+        t.log("rustc.log").contains("tools/remote/src/main.rs"),
+        "{}",
+        t.log("rustc.log")
+    );
+    let built: Vec<String> = fs::read_dir(t.cache())
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.starts_with("remote-setup-") && !n.ends_with(".log"))
+        .collect();
+    assert_eq!(built.len(), 1, "{built:?}");
+    // The fake built the configurator from the cloud-bootstrap binary, which
+    // rejects the cache flags: "could not configure" (it was handed over and
+    // run), not "not available" (nothing was).
+    assert_contains(&out, "build cache: could not configure");
+    assert!(!out.contains("not available"), "{out}");
+}
+
+#[test]
+fn a_configurator_that_will_not_build_does_not_block_the_session() {
+    let t = tree_with_configurator();
+    t.fake_rustc_with(false, true);
+    let env = cache_env();
+    let env: Vec<(&str, &str)> = env.iter().map(|(k, v)| (*k, v.as_str())).collect();
+    let (out, _, rc) = t.run_with(&["auth", "--force"], &env, &[], true);
+    assert_eq!(rc, 0, "{out}");
+    assert_contains(&out, "could not build the build-cache configurator");
+    assert_contains(&out, "configurator (//tools/remote:setup) is not available");
 }

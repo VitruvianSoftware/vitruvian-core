@@ -106,6 +106,32 @@ if command -v rustc >/dev/null 2>&1; then
 			[ "${old}" = "${bin}" ] || rm -f "${old}"
 		done
 	fi
+
+	# The build-cache configurator (//tools/remote:setup), which the tool runs
+	# during `auth`: built the same way, beside it. Best-effort: if it cannot
+	# be built the session goes on with the cache unconfigured, which the tool
+	# reports ("builds stay local").
+	rsrc="${here}/../remote/src/main.rs"
+	if [ -f "${rsrc}" ]; then
+		rkey="$({ trusted_rustc --version && cat "${rsrc}"; } | cksum | tr ' ' '-')"
+		rbin="${cache}/remote-setup-${rkey}"
+		if [ -e "${rbin}" ] && ! private_to_me "${rbin}"; then
+			rm -f "${rbin}"
+		fi
+		if [ ! -x "${rbin}" ]; then
+			rlog="${cache}/remote-setup.build.log"
+			if trusted_rustc --edition 2021 -o "${rbin}.$$" "$(cd "$(dirname "${rsrc}")" && pwd)/main.rs" >"${rlog}" 2>&1 &&
+				mv -f "${rbin}.$$" "${rbin}"; then
+				for old in "${cache}"/remote-setup-*; do
+					case "${old}" in "${rbin}" | "${rlog}") ;; *) rm -f "${old}" ;; esac
+				done
+			else
+				rm -f "${rbin}.$$"
+				printf 'cloud-bootstrap: could not build the build-cache configurator (log: %s); builds stay local\n' "${rlog}" >&2
+			fi
+		fi
+		[ -x "${rbin}" ] && private_to_me "${rbin}" && export CLOUD_BOOTSTRAP_REMOTE_SETUP="${rbin}"
+	fi
 	exec "${bin}" "$@"
 fi
 

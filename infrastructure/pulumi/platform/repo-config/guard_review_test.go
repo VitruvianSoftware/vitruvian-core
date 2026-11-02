@@ -359,14 +359,25 @@ func TestGuardReviewCoversEverySessionStartSource(t *testing.T) {
 			t.Errorf("%s is compiled and run at session start but is not covered by guardReviewPaths", f)
 		}
 	}
-	// Any .rs a later change adds beside them is covered too.
-	entries, err := os.ReadDir(filepath.Join(root, crate))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, e := range entries {
-		if strings.HasSuffix(e.Name(), ".rs") && !guardCovers(crate+"/"+e.Name()) {
-			t.Errorf("%s/%s is not covered by guardReviewPaths", crate, e.Name())
+	// Any .rs a later change adds beside them is covered too, and so is the
+	// build-cache configurator the launcher also builds and the tool runs.
+	for _, dir := range []string{crate, "tools/remote/src"} {
+		entries, err := os.ReadDir(filepath.Join(root, dir))
+		if err != nil {
+			t.Fatal(err)
+		}
+		n := 0
+		for _, e := range entries {
+			if !strings.HasSuffix(e.Name(), ".rs") {
+				continue
+			}
+			n++
+			if !guardCovers(dir + "/" + e.Name()) {
+				t.Errorf("%s/%s is not covered by guardReviewPaths", dir, e.Name())
+			}
+		}
+		if n == 0 {
+			t.Errorf("no .rs files found in %s; this test must see them to check them", dir)
 		}
 	}
 }

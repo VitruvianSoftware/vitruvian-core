@@ -1492,3 +1492,44 @@ fn cli_contract() {
     let (_, rc) = w.exec(&["install"], &[("VITRUVIAN_PROFILE", "nope".into())]);
     assert_eq!(rc, 0, "install must never fail the session");
 }
+
+#[test]
+fn the_configurator_comes_from_the_launcher_and_its_absence_is_said() {
+    // cloud-bootstrap.sh builds //tools/remote:setup and names it in
+    // CLOUD_BOOTSTRAP_REMOTE_SETUP; CLOUD_BOOTSTRAP_CACHE_SETUP is only a seam.
+    let w = World::new();
+    let ws = w.s("ws");
+    let setup = w.s("cache-setup");
+    let _ = fs::remove_dir_all(w.p("ws"));
+    fs::create_dir_all(w.p("ws")).unwrap();
+    let out = w.auth(
+        SA_KEY_GOOD,
+        &[
+            ("VITRUVIAN_PROFILE", "cached"),
+            ("CLAUDE_PROJECT_DIR", &ws),
+            ("CLOUD_BOOTSTRAP_REMOTE_SETUP", &setup),
+            ("BUILDBUDDY_API_KEY", BB_KEY),
+        ],
+    );
+    assert_contains(
+        "the launcher's configurator is run",
+        &w.read("cache-setup.argv"),
+        "--cache buildbuddy",
+    );
+    assert_contains("…and reported", &out, "default for plain bazel");
+
+    let out = w.auth(
+        SA_KEY_GOOD,
+        &[
+            ("VITRUVIAN_PROFILE", "cached"),
+            ("CLAUDE_PROJECT_DIR", &ws),
+            ("BUILDBUDDY_API_KEY", BB_KEY),
+        ],
+    );
+    assert!(w.read("cache-setup.argv").is_empty());
+    assert_contains(
+        "no configurator is said plainly",
+        &out,
+        "configurator (//tools/remote:setup) is not available",
+    );
+}
