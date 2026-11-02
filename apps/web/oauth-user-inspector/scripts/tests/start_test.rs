@@ -152,6 +152,10 @@ fn start_serves_on_port_from_the_image_layout() {
     );
     assert!(response.contains("oauth-user-inspector"), "{response}");
     let log = read_log(&out);
+    // The server logs the address its socket is bound to. Cloud Run reaches
+    // it on the container's own address, so loopback would serve nothing
+    // there, while every request this test makes (over loopback) succeeds.
+    assert!(log.contains(r#""address":"0.0.0.0""#), "{log}");
     // The native path never looks for Node (the image ships none, #4176).
     assert!(!log.contains("Node version"), "{log}");
     assert!(!log.contains("NPM version"), "{log}");

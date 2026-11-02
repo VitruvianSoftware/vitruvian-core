@@ -89,10 +89,14 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app/dist ./dist
 COPY --from=server-build /app/dist-server ./dist-server
-RUN chmod +x dist-server/start dist-server/oauth-user-inspector-server \
+# /app stays owned by root and read-only to the runtime user: the server writes
+# no files, so uid 1001 has no reason to be able to rewrite its own binaries or
+# the frontend it serves (#4176). Anything that ever needs to write gets its own
+# directory, never /app.
+RUN chmod 0755 dist-server/start dist-server/oauth-user-inspector-server \
+    && chmod -R go-w /app \
     && groupadd -r -g 1001 app \
-    && useradd -r -u 1001 -g app app \
-    && chown -R app:app /app
+    && useradd -r -u 1001 -g app app
 USER app
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \

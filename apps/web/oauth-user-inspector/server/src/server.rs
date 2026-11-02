@@ -26,7 +26,7 @@ use crate::logger::{
 use crate::oauth_error_guide::enhance_oauth_error;
 use crate::rate_limit::{client_ip, RateLimitTier, RateLimiter};
 use crate::safe_fetch::{
-    safe_fetch, ParsedUrl, SafeFetchOptions, SafeFetchResponse, UpstreamError,
+    is_safe_header_value, safe_fetch, ParsedUrl, SafeFetchOptions, SafeFetchResponse, UpstreamError,
 };
 use crate::security_headers::default_security_headers;
 use serde_json::{json, Map, Value};
@@ -1746,6 +1746,20 @@ impl App {
             );
         };
 
+        // The token goes into an Authorization header; a CR/LF in it would
+        // inject headers into the upstream request (#4176). Node's fetch
+        // refused such a value, so this refuses it too, before any fetch.
+        if !is_safe_header_value(access_token) {
+            return self.json_response(
+                400,
+                request_id,
+                true,
+                json!({
+                    "error": "Invalid accessToken: it contains control characters",
+                }),
+            );
+        }
+
         let endpoint_id = endpoint_obj
             .get("id")
             .and_then(Value::as_str)
@@ -1940,13 +1954,12 @@ pub fn default_bind_addr(port: u16) -> SocketAddr {
 /// (normally [`default_bind_addr`]).
 pub fn serve_http(app: Arc<App>, addr: SocketAddr) -> std::io::Result<()> {
     let listener = TcpListener::bind(addr)?;
-    let port = listener
-        .local_addr()
-        .map(|a| a.port())
-        .unwrap_or(addr.port());
+    // Log what the socket is actually bound to, not what was asked for:
+    // start_test asserts on this line to pin the 0.0.0.0 bind end to end.
+    let bound = listener.local_addr().unwrap_or(addr);
     app.logger.info(
         "OAuth User Inspector server started",
-        Some(json!({ "port": port, "address": addr.ip().to_string() })),
+        Some(json!({ "port": bound.port(), "address": bound.ip().to_string() })),
     );
 
     for stream_res in listener.incoming() {

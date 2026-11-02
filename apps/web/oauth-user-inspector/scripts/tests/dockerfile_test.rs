@@ -246,6 +246,52 @@ fn runtime_stage_ships_no_node() {
     );
 }
 
+/// #4176: with `chown -R app:app /app` the runtime user could rewrite the
+/// server binary and the frontend it serves. The server writes no files, so
+/// /app stays root-owned and no instruction may hand it (or any part of it) to
+/// the runtime user, nor make it world-writable.
+#[test]
+fn runtime_user_cannot_write_the_app() {
+    let (_, all) = stages(&read("DOCKERFILE"));
+    let runtime = all.last().unwrap();
+    let user = runtime
+        .body
+        .iter()
+        .rev()
+        .find_map(|i| i.strip_prefix("USER "))
+        .map(str::trim)
+        .expect("runtime stage must drop root with USER");
+    assert_ne!(user, "root", "the image must not run as root");
+    assert_ne!(user, "0", "the image must not run as root");
+    for ins in &runtime.body {
+        let words: Vec<&str> = ins.split_whitespace().collect();
+        for (i, w) in words.iter().enumerate() {
+            if *w == "chown" {
+                let rest = words[i + 1..].join(" ");
+                assert!(
+                    !rest.contains("/app") && !rest.contains(" ."),
+                    "runtime stage hands /app to a user ({ins}); keep it root-owned"
+                );
+            }
+            if *w == "chmod" {
+                let rest = words[i + 1..].join(" ");
+                for mode in ["777", "666", "a+w", "o+w", "go+w", "g+w", "+w "] {
+                    assert!(
+                        !(rest.contains(mode) && rest.contains("/app")),
+                        "runtime stage makes /app writable ({ins})"
+                    );
+                }
+            }
+        }
+        if let Some(rest) = ins.strip_prefix("COPY ") {
+            assert!(
+                !rest.contains("--chown"),
+                "COPY --chown hands files to a user ({ins}); keep /app root-owned"
+            );
+        }
+    }
+}
+
 #[test]
 fn copied_context_paths_are_not_dockerignored() {
     let ignore = read("DOCKERIGNORE");

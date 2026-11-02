@@ -333,6 +333,35 @@ mod tests {
     // =========================================================================
     // 3. hardening.test.ts
     // =========================================================================
+    /// #4176: safe_fetch refuses a header carrying CR/LF (or another control
+    /// character) before it resolves or calls curl, whoever built the header.
+    #[test]
+    fn safe_fetch_refuses_header_injection_before_the_network() {
+        use crate::safe_fetch::{check_headers, is_safe_header_value, safe_fetch};
+        assert!(is_safe_header_value("Bearer abc.def-ghi_jkl"));
+        assert!(is_safe_header_value("tab\tok"));
+        for bad in ["a\r\nX-Injected: 1", "a\nb", "a\rb", "a\u{0}b", "a\u{7f}b"] {
+            assert!(!is_safe_header_value(bad), "{bad:?}");
+        }
+        let mut headers = HashMap::new();
+        headers.insert("Bad:Name".to_string(), "v".to_string());
+        assert!(check_headers(&headers).is_err());
+
+        let mut headers = HashMap::new();
+        headers.insert(
+            "Authorization".to_string(),
+            "Bearer t\r\nX-Injected: 1".to_string(),
+        );
+        let opts = SafeFetchOptions {
+            headers,
+            ..SafeFetchOptions::default()
+        };
+        // .invalid never resolves: an error that is not about the header means
+        // the request got as far as DNS.
+        let err = safe_fetch("https://never.invalid/", &opts).unwrap_err();
+        assert!(err.reason.contains("refused header"), "{}", err.reason);
+    }
+
     /// Cloud Run reaches the container on its own address, never loopback,
     /// and `start_test` only connects over loopback — so this is the one test
     /// that fails if the server stops listening on every interface (#4176).
@@ -1178,6 +1207,28 @@ mod tests {
             Some("unknown endpoint")
         );
         assert_eq!(fetcher.recorded_calls().len(), before_calls);
+
+        // #4176: a CR/LF in the token would inject headers into the upstream
+        // request (curl sends -H text as given). Refused with a 400, unfetched.
+        for bad in ["tok\r\nX-Injected: 1", "tok\nX-Injected: 1", "tok\u{0}"] {
+            let before = fetcher.recorded_calls().len();
+            let exp_inject =
+                app.handle_request(&HttpRequest::new("POST", "/api/explore").with_json(json!({
+                    "provider": "github",
+                    "accessToken": bad,
+                    "endpoint": { "id": "user", "method": "GET" },
+                })));
+            assert_eq!(exp_inject.status, 400, "token {bad:?}");
+            assert_eq!(
+                exp_inject.json().get("error").and_then(Value::as_str),
+                Some("Invalid accessToken: it contains control characters")
+            );
+            assert_eq!(
+                fetcher.recorded_calls().len(),
+                before,
+                "token {bad:?} was fetched"
+            );
+        }
 
         let exp_ok =
             app.handle_request(&HttpRequest::new("POST", "/api/explore").with_json(json!({
