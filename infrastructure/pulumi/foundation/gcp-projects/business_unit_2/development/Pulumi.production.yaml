@@ -66,4 +66,11 @@ config:
   foundation-projects-bu2-development:tabula_deploy_roles: "roles/run.admin,roles/iam.serviceAccountUser,roles/serviceusage.serviceUsageConsumer,roles/logging.viewer"
   foundation-projects-bu2-development:tabula_deploy_conditional_roles: 'roles/secretmanager.admin|tabula-secrets-only|resource.name.startsWith("projects/${projectNumber}/secrets/TABULA_");roles/secretmanager.secretAccessor|tabula-secrets-only|resource.name.startsWith("projects/${projectNumber}/secrets/TABULA_")'
   foundation-projects-bu2-development:bootstrap_stack_name: "ipv1337/foundation-bootstrap/production"
+  # Read-only identity for the PR `pulumi preview` of tabula's app stack (#4120):
+  # tabula-preview@<oss-floating project>, roles/viewer ONLY (the module refuses
+  # anything else; the preview reads no secrets), impersonable only from the
+  # tabula-preview GitHub Environment. Exported as tabula_preview_service_account
+  # for repo-config. Once the preview job uses it, the tabula-development
+  # Environment can be pinned to main.
+  foundation-projects-bu2-development:tabula_preview_identity: "true"
   foundation-projects-bu2-development:app_build_reader_grants: "tabula=prj-c-bu2-infra-pipeline-3d09/us-central1/tabula"

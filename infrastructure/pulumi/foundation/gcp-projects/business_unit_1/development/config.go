@@ -251,6 +251,9 @@ func loadProjectsConfig(ctx *pulumi.Context) *ProjectsConfig {
 		if len(app.DeployRoles) == 0 {
 			app.DeployRoles = defaultAppDeployRoles
 		}
+		// "<app>_preview_identity: true" opts in to the read-only PR preview
+		// identity. Off by default, so existing apps are unchanged.
+		app.PreviewIdentity = conf.Get(name+"_preview_identity") == "true"
 		c.Apps = append(c.Apps, app)
 	}
 	if val, err := conf.TryBool("peering_project_enabled"); err == nil {
@@ -400,6 +403,11 @@ type AppIdentityConfig struct {
 	// in GCP, and because granting such a role UNCONDITIONALLY would reach
 	// every co-tenant app's secrets in the shared project.
 	ConditionalDeployRoles []app_deploy_identity.ConditionalRole
+	// PreviewIdentity mints a separate READ-ONLY identity for the app's PR
+	// `pulumi preview`, bound to the <app>-preview GitHub Environment
+	// (app_deploy_identity.DeployPreview, #4120). It lets the deploy
+	// Environment be pinned to main without breaking PR previews.
+	PreviewIdentity bool
 }
 
 // GitHubEnvironment is the per-env GitHub Environment permitted to impersonate
@@ -408,6 +416,14 @@ type AppIdentityConfig struct {
 // layer.
 func (a AppIdentityConfig) GitHubEnvironment(env string) string {
 	return a.Name + "-" + env
+}
+
+// PreviewGitHubEnvironment is the GitHub Environment allowed to impersonate
+// this app's read-only preview identity, e.g. "tabula-preview". It is
+// deliberately NOT env-suffixed: PR previews only ever target the development
+// stack, and the repo-config Environment is named <app>-preview.
+func (a AppIdentityConfig) PreviewGitHubEnvironment() string {
+	return a.Name + "-preview"
 }
 
 // defaultAppDeployRoles is replicated EXACTLY from the app-side stack this
