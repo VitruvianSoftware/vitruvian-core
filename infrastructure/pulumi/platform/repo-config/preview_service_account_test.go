@@ -36,10 +36,17 @@ import (
 
 // envMocks records every resource and answers the two lookups the environment
 // functions make: GET /users (production reviewers) and the gcp-projects stack
-// references (no outputs, so stage 5 takes its fail-closed path).
+// references, which return appInfraSA(<reference name>) as
+// app_infra_pipeline_service_account so the stage-5 variables are exercised.
 type envMocks struct {
 	mu        sync.Mutex
 	resources map[string][]resource.PropertyMap
+}
+
+// appInfraSA is the stand-in stack output for a gcp-projects reference such
+// as projects-bu1-development.
+func appInfraSA(ref string) string {
+	return "sa-app-infra-" + strings.TrimPrefix(ref, "projects-") + "@example.iam.gserviceaccount.com"
 }
 
 func (m *envMocks) NewResource(args pulumi.MockResourceArgs) (string, resource.PropertyMap, error) {
@@ -48,8 +55,10 @@ func (m *envMocks) NewResource(args pulumi.MockResourceArgs) (string, resource.P
 	m.resources[args.TypeToken] = append(m.resources[args.TypeToken], args.Inputs)
 	if args.TypeToken == "pulumi:pulumi:StackReference" {
 		return args.Name, resource.PropertyMap{
-			"name":    resource.NewStringProperty(args.Name),
-			"outputs": resource.NewObjectProperty(resource.PropertyMap{}),
+			"name": resource.NewStringProperty(args.Name),
+			"outputs": resource.NewObjectProperty(resource.PropertyMap{
+				"app_infra_pipeline_service_account": resource.NewStringProperty(appInfraSA(args.Name)),
+			}),
 		}, nil
 	}
 	return args.Name + "-id", args.Inputs, nil
@@ -99,11 +108,11 @@ func stackConfigEnv(t *testing.T) string {
 	return string(b)
 }
 
-// Every Environment ending in -preview backs a pull-request run, so whatever
-// GCP_SERVICE_ACCOUNT it advertises must be a read-only -preview@ account,
-// never a stage deploy account. This runs the real environment functions over
-// the committed stack config and checks the variables they would publish.
-func TestPreviewEnvironmentsAdvertisePreviewServiceAccounts(t *testing.T) {
+// runEnvironments runs the real environment functions over the committed
+// stack config and returns every published Actions variable, keyed by
+// Environment and then variable name, plus the set of Environments created.
+func runEnvironments(t *testing.T) (vars map[string]map[string]string, envs map[string]bool) {
+	t.Helper()
 	t.Setenv("PULUMI_CONFIG", stackConfigEnv(t))
 
 	mocks := &envMocks{resources: map[string][]resource.PropertyMap{}}
@@ -127,69 +136,127 @@ func TestPreviewEnvironmentsAdvertisePreviewServiceAccounts(t *testing.T) {
 		t.Fatalf("environment functions: %v", err)
 	}
 
-	const seed = "@prj-b-seed-c010.iam.gserviceaccount.com"
-	want := map[string]string{
-		"foundation-bootstrap-preview":   "sa-terraform-bootstrap-preview" + seed,
-		"foundation-org-preview":         "sa-terraform-org-preview" + seed,
-		"foundation-org-folders-preview": "sa-terraform-bootstrap-preview" + seed,
-		"foundation-env-preview":         "sa-terraform-env-preview" + seed,
-		"foundation-net-preview":         "sa-terraform-net-preview" + seed,
-		"foundation-proj-preview":        "sa-terraform-proj-preview" + seed,
-		"foundation-app-preview":         "sa-terraform-proj-preview" + seed,
-	}
-
-	// Environment name -> GCP_SERVICE_ACCOUNT, for every preview Environment
-	// that sets one.
-	got := map[string]string{}
-	previewEnvs := map[string]bool{}
+	envs = map[string]bool{}
 	for _, e := range mocks.resources["github:index/repositoryEnvironment:RepositoryEnvironment"] {
-		if name := e["environment"].StringValue(); strings.HasSuffix(name, "-preview") {
-			previewEnvs[name] = true
-		}
+		envs[e["environment"].StringValue()] = true
 	}
+	vars = map[string]map[string]string{}
 	for _, v := range mocks.resources["github:index/actionsEnvironmentVariable:ActionsEnvironmentVariable"] {
-		env := v["environment"].StringValue()
-		if !strings.HasSuffix(env, "-preview") || v["variableName"].StringValue() != "GCP_SERVICE_ACCOUNT" {
-			continue
+		env, name, value := v["environment"].StringValue(), v["variableName"].StringValue(), v["value"].StringValue()
+		if vars[env] == nil {
+			vars[env] = map[string]string{}
 		}
-		sa := v["value"].StringValue()
-		if prev, dup := got[env]; dup {
-			t.Errorf("%s sets GCP_SERVICE_ACCOUNT twice (%q, %q)", env, prev, sa)
+		if prev, dup := vars[env][name]; dup {
+			t.Errorf("%s sets %s twice (%q, %q)", env, name, prev, value)
 		}
-		got[env] = sa
-		if !strings.Contains(sa, "-preview@") {
-			t.Errorf("%s: GCP_SERVICE_ACCOUNT = %q, want a read-only -preview@ account", env, sa)
-		}
+		vars[env][name] = value
 	}
+	return vars, envs
+}
 
+func isServiceAccountEmail(v string) bool {
+	return strings.HasSuffix(v, ".iam.gserviceaccount.com") && strings.Contains(v, "@")
+}
+
+// checkServiceAccounts compares each Environment's GCP_SERVICE_ACCOUNT with
+// want, and reports any Environment matching scope that sets the variable but
+// is missing from want.
+func checkServiceAccounts(t *testing.T, vars map[string]map[string]string, envs map[string]bool, want map[string]string, scope func(string) bool) {
+	t.Helper()
 	for env, sa := range want {
-		if !previewEnvs[env] {
+		if !envs[env] {
 			t.Errorf("%s: Environment not created", env)
 		}
-		if got[env] != sa {
-			t.Errorf("%s: GCP_SERVICE_ACCOUNT = %q, want %q", env, got[env], sa)
+		if got := vars[env]["GCP_SERVICE_ACCOUNT"]; got != sa {
+			t.Errorf("%s: GCP_SERVICE_ACCOUNT = %q, want %q", env, got, sa)
 		}
 	}
-	// Anything else that sets the variable is new: it still has to pass the
-	// -preview@ check above, but should also be added to want.
 	var extra []string
-	for env := range got {
-		if _, ok := want[env]; !ok {
-			extra = append(extra, env)
+	for env, vs := range vars {
+		if _, set := vs["GCP_SERVICE_ACCOUNT"]; set && scope(env) {
+			if _, ok := want[env]; !ok {
+				extra = append(extra, env)
+			}
 		}
 	}
 	sort.Strings(extra)
 	if len(extra) > 0 {
-		t.Errorf("preview Environments not in the expected table: %v", extra)
+		t.Errorf("Environments setting GCP_SERVICE_ACCOUNT that are not in the expected table: %v", extra)
 	}
-	// The app previews (tabula-preview, oauth-user-inspector-preview) sign in
-	// with GCP_DEPLOY_SERVICE_ACCOUNT instead (TestPreviewEnvironmentsUseReadOnlyIdentity);
-	// make sure they were actually exercised here.
-	for _, env := range []string{"tabula-preview", "oauth-user-inspector-preview"} {
-		if !previewEnvs[env] {
-			t.Errorf("%s: Environment not created, so it was not checked", env)
+}
+
+const seedSA = "@prj-b-seed-c010.iam.gserviceaccount.com"
+
+// Every Environment ending in -preview backs a pull-request run, so every
+// service account it advertises, under any variable name, must be a
+// read-only -preview@ account, and each foundation preview Environment's
+// GCP_SERVICE_ACCOUNT must be exactly its stage's preview account.
+func TestPreviewEnvironmentsAdvertisePreviewServiceAccounts(t *testing.T) {
+	vars, envs := runEnvironments(t)
+
+	for env, vs := range vars {
+		if !strings.HasSuffix(env, "-preview") {
+			continue
+		}
+		for name, value := range vs {
+			if isServiceAccountEmail(value) && !strings.Contains(value, "-preview@") {
+				t.Errorf("%s: %s = %q, want a read-only -preview@ account", env, name, value)
+			}
 		}
 	}
+
+	checkServiceAccounts(t, vars, envs, map[string]string{
+		"foundation-bootstrap-preview":   "sa-terraform-bootstrap-preview" + seedSA,
+		"foundation-org-preview":         "sa-terraform-org-preview" + seedSA,
+		"foundation-org-folders-preview": "sa-terraform-bootstrap-preview" + seedSA,
+		"foundation-env-preview":         "sa-terraform-env-preview" + seedSA,
+		"foundation-net-preview":         "sa-terraform-net-preview" + seedSA,
+		"foundation-proj-preview":        "sa-terraform-proj-preview" + seedSA,
+		"foundation-app-preview":         "sa-terraform-proj-preview" + seedSA,
+	}, func(env string) bool { return strings.HasSuffix(env, "-preview") })
+
+	// The app previews sign in with GCP_DEPLOY_SERVICE_ACCOUNT instead (see
+	// TestPreviewEnvironmentsUseReadOnlyIdentity); make sure the any-variable
+	// check above actually saw them.
+	for _, env := range []string{"tabula-preview", "oauth-user-inspector-preview"} {
+		if !envs[env] || vars[env]["GCP_DEPLOY_SERVICE_ACCOUNT"] == "" {
+			t.Errorf("%s: Environment or its GCP_DEPLOY_SERVICE_ACCOUNT not created, so it was not checked", env)
+		}
+	}
+}
+
+// The foundation deploy Environments keep their stage's deploy account; the
+// preview change must not leak into them.
+func TestFoundationDeployEnvironmentsKeepDeployServiceAccounts(t *testing.T) {
+	vars, envs := runEnvironments(t)
+
+	want := map[string]string{
+		"foundation-bootstrap":   "sa-terraform-bootstrap" + seedSA,
+		"foundation-org":         "sa-terraform-org" + seedSA,
+		"foundation-org-folders": "sa-terraform-bootstrap" + seedSA,
+	}
+	for _, stage := range []struct {
+		name string
+		envs []string
+	}{
+		{"env", []string{"development", "nonproduction", "production"}},
+		{"net", []string{"development", "nonproduction", "shared", "production"}},
+		{"proj", []string{"development", "nonproduction", "shared", "production"}},
+	} {
+		for _, e := range stage.envs {
+			want["foundation-"+stage.name+"-"+e] = "sa-terraform-" + stage.name + seedSA
+		}
+	}
+	// Stage 5 takes its account from the gcp-projects stack output.
+	for _, bu := range []struct{ prefix, bu string }{{"foundation-app-", "bu1"}, {"foundation-app-bu2-", "bu2"}} {
+		for _, e := range []string{"development", "nonproduction", "production"} {
+			want[bu.prefix+e] = appInfraSA("projects-" + bu.bu + "-" + e)
+		}
+	}
+
+	checkServiceAccounts(t, vars, envs, want, func(env string) bool {
+		return strings.HasPrefix(env, "foundation-") && !strings.HasSuffix(env, "-preview")
+	})
 }
 
 func TestPreviewFoundationVars(t *testing.T) {
