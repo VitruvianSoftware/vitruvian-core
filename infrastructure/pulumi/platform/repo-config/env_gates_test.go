@@ -100,11 +100,11 @@ func TestTagPolicyResourceNamesAreStable(t *testing.T) {
 	}
 }
 
-// envMocks records resources like recordingMocks, and answers the GetUser
+// envGateMocks records resources like recordingMocks, and answers the GetUser
 // invoke productionReviewerIds makes with a numeric id.
-type envMocks struct{ recordingMocks }
+type envGateMocks struct{ recordingMocks }
 
-func (m *envMocks) Call(args pulumi.MockCallArgs) (resource.PropertyMap, error) {
+func (m *envGateMocks) Call(args pulumi.MockCallArgs) (resource.PropertyMap, error) {
 	if args.Token == "github:index/getUser:getUser" {
 		return resource.PropertyMap{"id": resource.NewStringProperty("1")}, nil
 	}
@@ -134,7 +134,7 @@ func TestDeployEnvironmentResourcesArePinnedToMain(t *testing.T) {
 		"oauth-user-inspector-production":    oauthTags,
 	}
 
-	mocks := &envMocks{recordingMocks{resources: map[string][]resource.PropertyMap{}}}
+	mocks := &envGateMocks{recordingMocks{resources: map[string][]resource.PropertyMap{}}}
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
 		repo, err := github.NewRepository(ctx, "vitruvian-core", &github.RepositoryArgs{
 			Name: pulumi.String("vitruvian-core"),
