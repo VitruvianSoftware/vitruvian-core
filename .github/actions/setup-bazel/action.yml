@@ -148,6 +148,30 @@ runs:
     #
     # tools/conformance (CACHESAVE) fails if this guard is dropped, or if a
     # workflow calls bazel-contrib/setup-bazel directly instead of this action.
+    #
+    # GOPROXY: if proxy.golang.org fails to answer, fetch the Go module
+    # straight from its source repository instead of failing the job (#4187).
+    #
+    # Go modules from go.mod are NOT fetched by Bazel's downloader, so
+    # --http_connector_attempts / --http_timeout_scaling / downloader.cfg never
+    # apply to them, and the repository cache restored above does not hold
+    # them. gazelle's go_repository (0.51.3; still so in 0.54.0) runs its
+    # fetch_repo tool, which runs `go mod download` with Go's own HTTP client:
+    # no retries, and a fresh download on every CI run. On 2026-11-01 that
+    # failed twice in the merge queue on macOS with "proxy.golang.org ...
+    # net/http: TLS handshake timeout" (run 41353399428 job 124989530940,
+    # run 41361913018 job 125015487496), ejecting the PR at the head.
+    #
+    # Go's default is "https://proxy.golang.org,direct". A COMMA falls through
+    # to the next entry only on a 404/410 answer, so a timeout fails the fetch.
+    # A PIPE falls through on any error. Listing the proxy twice does not
+    # retry it: Go tries the same URL once (checked against a server that
+    # never completes a TLS handshake, the CI failure exactly).
+    #
+    # `direct` cannot change what we build: fetch_repo checks the module's
+    # hash against go.sum whatever the source, and fails on a mismatch.
+    #
+    # tools/conformance (GOPROXY) fails if this line loses the pipe fallback.
     - uses: bazel-contrib/setup-bazel@104e3eea9447cdaa4b00d0fb46191a3985d26ab3 # 0.19.1
       with:
         bazelisk-cache: true
@@ -156,3 +180,4 @@ runs:
         bazelrc: |
           common --announce_rc --color=yes --curses=yes
           common --show_progress_rate_limit=60 --show_timestamps
+          common --repo_env=GOPROXY=https://proxy.golang.org|direct
