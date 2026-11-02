@@ -1409,7 +1409,7 @@ func (s *Server) setChatReminder(ctx context.Context, _ *mcp.CallToolRequest, ra
 	}
 	condition := "always"
 	if boolOr(a.Reminder.DismissOnIncomingMessage, false) {
-		condition = "if_no_reply"
+		condition = "if_no_incoming" // dropped when someone else sends a message in the chat first
 	}
 	if err := s.call(ctx, "reminder.set", map[string]any{"room_ids": []string{*a.ChatID}, "due_at": due, "condition": condition}, nil); err != nil {
 		return nil, err

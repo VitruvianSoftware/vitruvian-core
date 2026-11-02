@@ -118,7 +118,7 @@ var toolDefs = []toolDef{
 		schema: `{"type":"object","properties":{
   "chatID":{"type":"string","description":"The chat."},
   "reminder":{"type":"object","properties":{
-    "dismissOnIncomingMessage":{"type":"boolean","description":"When true, the reminder is dropped once the chat has a reply from you before it is due."},
+    "dismissOnIncomingMessage":{"type":"boolean","description":"When true, the reminder is dropped if someone else sends a message in the chat before it is due."},
     "remindAtMs":{"type":"number","description":"When to remind, in Unix milliseconds. Must be in the future."}
   },"required":["remindAtMs"],"description":"When, and on what condition."}
 },"required":["chatID","reminder"]}`,

@@ -419,7 +419,7 @@ func TestChatReminders(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, rows[0].Reminder)
 	require.Equal(t, at, rows[0].Reminder.DueAt.UnixMilli())
-	require.Equal(t, "if_no_reply", rows[0].Reminder.Condition)
+	require.Equal(t, "if_no_incoming", rows[0].Reminder.Condition, "dismissed by a message from someone else, not by mine")
 
 	require.Contains(t, fails(t, sess, "set_chat_reminder", map[string]any{"chatID": w.room, "reminder": map[string]any{"remindAtMs": time.Now().Add(-time.Minute).UnixMilli()}}), "in the past")
 	require.Contains(t, fails(t, sess, "set_chat_reminder", map[string]any{"chatID": w.room, "reminder": map[string]any{}}), "remindAtMs is required")

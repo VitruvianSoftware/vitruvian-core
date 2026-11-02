@@ -548,6 +548,12 @@ final class ProtocolConformanceTests: XCTestCase {
         let update = try JSONSerialization.jsonObject(with: JSONEncoder().encode(IntegrationsUpdateParams(port: 24000)))
         XCTAssertEqual(update as? NSDictionary, ["port": 24000] as NSDictionary)
 
+        // A reminder the local API set reads as its own condition, and is set again as it was (Undo).
+        let reminder = try JSONDecoder().decode(
+            Reminder.self, from: Data(#"{"due_at":1793500000000,"condition":"if_no_incoming","fired":false}"#.utf8))
+        XCTAssertEqual(reminder.condition, .ifNoIncoming)
+        XCTAssertEqual(try JSONDecoder().decode(Reminder.self, from: JSONEncoder().encode(reminder)), reminder)
+
         let focus = FocusParams(chatID: "!a:courier.local", draftText: "Example draft")
         let focusJSON = try JSONSerialization.jsonObject(with: JSONEncoder().encode(focus))
         XCTAssertEqual(focusJSON as? NSDictionary,

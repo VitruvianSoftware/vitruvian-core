@@ -335,8 +335,8 @@
         "due_at": { "type": "int" },
         "condition": {
           "type": "string",
-          "values": ["if_no_reply", "always"],
-          "doc": "if_no_reply: only if I haven't sent a message in the chat since setting it; otherwise it just ends. always: whatever happens."
+          "values": ["if_no_reply", "if_no_incoming", "always"],
+          "doc": "if_no_reply: only if I haven't sent a message in the chat since setting it; otherwise it just ends. if_no_incoming: only if no one else has sent a message in the chat since setting it (the local API's dismissOnIncomingMessage; the app's own menu doesn't offer it); otherwise it just ends. always: whatever happens."
         },
         "fired": { "type": "bool" }
       }
@@ -574,7 +574,10 @@
           "type": "int",
           "doc": "After now and at most 5 years ahead."
         },
-        "condition": { "type": "string", "values": ["if_no_reply", "always"] },
+        "condition": {
+          "type": "string",
+          "values": ["if_no_reply", "if_no_incoming", "always"]
+        },
         "archive": {
           "type": "bool?",
           "doc": "Also archive the chats, all but pinned ones, until the reminder brings them back."

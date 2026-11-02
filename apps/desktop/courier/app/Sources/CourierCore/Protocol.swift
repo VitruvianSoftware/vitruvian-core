@@ -645,8 +645,10 @@ public struct ReminderCondition: OpenValues {
 
     /// Only if I haven't sent a message in the chat since setting it.
     public static let ifNoReply = Self(rawValue: "if_no_reply")
+    /// Only if no one else has sent a message in the chat since setting it (set by the local API).
+    public static let ifNoIncoming = Self(rawValue: "if_no_incoming")
     public static let always = Self(rawValue: "always")
-    public static let known: [Self] = [.ifNoReply, .always]
+    public static let known: [Self] = [.ifNoReply, .ifNoIncoming, .always]
 }
 
 /// Brings a chat back to my attention at `dueAt`.
