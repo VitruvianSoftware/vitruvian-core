@@ -200,23 +200,6 @@ fn exe(path: &Path, body: &str) {
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
 }
 
-/// No step installs rustc with apt any more: the unpinned install is what
-/// #4183 removed, and a runner image without rustc must fail, not drift.
-#[test]
-fn no_step_installs_rustc_with_apt() {
-    let root = std::env::current_dir().unwrap();
-    for file in GUARDS {
-        let text = std::fs::read_to_string(root.join(file)).unwrap();
-        for (n, line) in text.lines().enumerate() {
-            assert!(
-                !(line.contains("apt-get install") && line.contains("rustc")),
-                "{file}:{}: installs rustc with apt: {line}",
-                n + 1
-            );
-        }
-    }
-}
-
 /// On any runner, self-hosted included, a missing rustc fails the step by
 /// name and never reaches sudo/apt.
 #[test]
@@ -266,6 +249,558 @@ fn a_runner_with_rustc_goes_on() {
         assert!(
             out.contains("REACHED") && !out.contains("SUDO-CALLED"),
             "{file}: {out}"
+        );
+    }
+}
+
+// --- no step installs Rust ------------------------------------------------------
+
+/// Package managers whose `install` (or `add`) could pull in a distro Rust.
+const MANAGERS: &[&str] = &[
+    "apt", "apt-get", "aptitude", "dnf", "yum", "microdnf", "zypper", "apk", "brew", "snap",
+];
+
+/// A package name that is Rust's compiler or tooling (`rustc`, `rustc-1.80`,
+/// `cargo`, `rustup`, `rust`, `rust-all`...), with any `=version`, `:arch`
+/// or `@version` suffix removed first.
+fn is_rust_package(tok: &str) -> bool {
+    let name = tok.split(['=', ':', '@']).next().unwrap_or("");
+    name == "rust"
+        || name.starts_with("rust-")
+        || name.starts_with("rustc")
+        || name.starts_with("cargo")
+        || name.starts_with("rustup")
+}
+
+/// `1.75.0`, or `1.75.0-<target triple>`: a toolchain pinned to one release.
+fn is_exact_version(tok: &str) -> bool {
+    let v = tok.split('-').next().unwrap_or("");
+    let parts: Vec<&str> = v.split('.').collect();
+    parts.len() == 3
+        && parts
+            .iter()
+            .all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
+}
+
+/// The last path component, so `/usr/bin/apt-get` is `apt-get`.
+fn base(tok: &str) -> &str {
+    tok.rsplit('/').next().unwrap_or(tok)
+}
+
+/// rustup options that take a value: the value is not a toolchain name.
+fn takes_value(flag: &str) -> bool {
+    matches!(
+        flag,
+        "--profile" | "-c" | "--component" | "-t" | "--target" | "--path"
+    )
+}
+
+/// The toolchain names in `args`, skipping flags and their values.
+fn toolchain_args(args: &[String]) -> Vec<&str> {
+    let mut out = Vec::new();
+    let mut skip = false;
+    for a in args {
+        if skip {
+            skip = false;
+        } else if a.starts_with('-') {
+            skip = takes_value(a);
+        } else {
+            out.push(a.as_str());
+        }
+    }
+    out
+}
+
+/// Why the rustup invocation `args` (what follows `rustup`) installs or
+/// switches to a toolchain that is not one exact release, if it does.
+fn rustup_moves(args: &[String]) -> Option<&'static str> {
+    // Global flags (-v, -q) come before the subcommand.
+    let args: Vec<String> = args
+        .iter()
+        .skip_while(|a| a.starts_with('-'))
+        .cloned()
+        .collect();
+    let sub = args.first().map(String::as_str);
+    let names: Vec<&str> = match sub {
+        Some("toolchain") => match args.get(1).map(String::as_str) {
+            Some("install" | "add") => toolchain_args(&args[2..]),
+            _ => return None,
+        },
+        Some("install" | "default") => toolchain_args(&args[1..]),
+        Some("update") => {
+            let n = toolchain_args(&args[1..]);
+            if n.is_empty() {
+                // Updates every installed toolchain to its channel's latest.
+                return Some("runs a bare `rustup update`, which moves every toolchain");
+            }
+            n
+        }
+        Some("override") => match args.get(1).map(String::as_str) {
+            Some("set" | "add") => toolchain_args(&args[2..]),
+            _ => return None,
+        },
+        // `rustup run X cmd`: only X is a toolchain.
+        Some("run") => toolchain_args(&args[1..]).into_iter().take(1).collect(),
+        _ => return None,
+    };
+    if names.iter().any(|n| !is_exact_version(n)) {
+        return Some("selects a rustup toolchain that is not one exact release");
+    }
+    None
+}
+
+/// Why one shell command (already split from its neighbours) installs Rust,
+/// if it does.
+fn command_installs_rust(cmd: &str) -> Option<&'static str> {
+    let toks: Vec<String> = cmd
+        .split_whitespace()
+        .map(|t| t.trim_matches(|c| c == '"' || c == '\'').to_string())
+        .filter(|t| !t.is_empty())
+        .collect();
+    if matches!(toks.first().map(String::as_str), Some("echo" | "printf")) {
+        return None;
+    }
+    if toks.iter().any(|t| {
+        t.contains("sh.rustup.rs")
+            || t.contains("rustup-init")
+            || t.contains("static.rust-lang.org/rustup")
+    }) {
+        return Some("bootstraps rustup");
+    }
+    // RUSTUP_TOOLCHAIN picks (and rustup installs) a toolchain for every
+    // cargo/rustc after it: `RUSTUP_TOOLCHAIN=x`, `export ...`, or YAML
+    // `env:` as `RUSTUP_TOOLCHAIN: x`.
+    for (i, t) in toks.iter().enumerate() {
+        let value = if let Some(v) = t.strip_prefix("RUSTUP_TOOLCHAIN=") {
+            Some(v)
+        } else if t == "RUSTUP_TOOLCHAIN:" {
+            toks.get(i + 1).map(String::as_str)
+        } else {
+            None
+        };
+        if let Some(v) = value {
+            if !is_exact_version(v) {
+                return Some("sets RUSTUP_TOOLCHAIN to something other than one exact release");
+            }
+        }
+    }
+    if let Some(i) = toks.iter().position(|t| MANAGERS.contains(&base(t))) {
+        let rest = &toks[i + 1..];
+        if let Some(j) = rest.iter().position(|t| t == "install" || t == "add") {
+            if rest[j + 1..]
+                .iter()
+                .any(|t| !t.starts_with('-') && is_rust_package(t))
+            {
+                return Some("installs a Rust package with a package manager");
+            }
+        }
+    }
+    for (i, t) in toks.iter().enumerate() {
+        let b = base(t);
+        // `cargo +nightly build`: rustup installs the named toolchain on the fly.
+        if matches!(
+            b,
+            "cargo" | "rustc" | "rustdoc" | "rustup" | "rustfmt" | "cargo-clippy"
+        ) {
+            if let Some(sel) = toks.get(i + 1).and_then(|n| n.strip_prefix('+')) {
+                if !is_exact_version(sel) {
+                    return Some("selects a `+toolchain` that is not one exact release");
+                }
+            }
+        }
+        if b == "rustup" {
+            if let Some(why) = rustup_moves(&toks[i + 1..]) {
+                return Some(why);
+            }
+        }
+    }
+    None
+}
+
+/// The files a step writes to set state for later steps. A
+/// `RUSTUP_TOOLCHAIN=...` line written into one sets the toolchain for every
+/// later step, the same as `env:`.
+const ENV_FILES: &[&str] = &["GITHUB_ENV", "GITHUB_OUTPUT"];
+
+fn mentions_env_file(line: &str) -> bool {
+    ENV_FILES.iter().any(|f| line.contains(f))
+}
+
+/// Every value `line` assigns to `RUSTUP_TOOLCHAIN=`, cut at the first
+/// whitespace, quote, backslash (`\n` in printf) or shell operator.
+fn rustup_toolchain_assignments(line: &str) -> Vec<&str> {
+    line.match_indices("RUSTUP_TOOLCHAIN=")
+        .map(|(i, m)| {
+            let rest = &line[i + m.len()..];
+            let end = rest
+                .find(|c: char| {
+                    c.is_whitespace()
+                        || matches!(c, '"' | '\'' | '\\' | '>' | '|' | ';' | '&' | ')')
+                })
+                .unwrap_or(rest.len());
+            &rest[..end]
+        })
+        .collect()
+}
+
+/// The delimiter of a heredoc that `line` opens (`<<EOF`, `<<-EOF`,
+/// `<< 'EOF'`), if it opens one.
+fn heredoc_delimiter(line: &str) -> Option<String> {
+    let i = line.find("<<")?;
+    let rest = line[i + 2..].trim_start_matches('-').trim_start();
+    let d: String = rest
+        .trim_start_matches(|c| c == '\'' || c == '"')
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+        .collect();
+    (!d.is_empty()).then_some(d)
+}
+
+/// `RUSTUP_TOOLCHAIN=` lines inside a multi-line group whose output goes to
+/// an env file:
+///
+/// ```text
+/// {
+///   echo "CARGO_TERM_COLOR=always"
+///   echo "RUSTUP_TOOLCHAIN=stable"
+/// } >> "$GITHUB_ENV"
+/// ```
+///
+/// The assignment and the redirect are on different lines, so the per-line
+/// check cannot see both. The group must open on a line of its own (`{` or
+/// `(`), the usual style; a group opened mid-line (`if ...; then {`) is not
+/// tracked.
+fn env_file_group_assignments(lines: &[&str]) -> Vec<(usize, &'static str, String)> {
+    let mut out = Vec::new();
+    let mut open: Vec<usize> = Vec::new();
+    for (i, l) in lines.iter().enumerate() {
+        let t = l.trim();
+        if t == "{" || t == "(" {
+            open.push(i);
+        } else if t.starts_with('}') || t.starts_with(')') {
+            let Some(start) = open.pop() else { continue };
+            if !mentions_env_file(t) {
+                continue;
+            }
+            for (j, body) in lines.iter().enumerate().take(i).skip(start + 1) {
+                let b = body.trim();
+                if !b.starts_with('#')
+                    && rustup_toolchain_assignments(b)
+                        .iter()
+                        .any(|v| !is_exact_version(v))
+                {
+                    out.push((
+                        j + 1,
+                        "writes RUSTUP_TOOLCHAIN to an env file as something other than one exact release",
+                        b.to_string(),
+                    ));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Every place in `text` (a workflow, an action, or any file beside them)
+/// that installs Rust: `(line number, why, the logical line)`.
+///
+/// Lines ending in `\` are joined with the next, so `apt-get install -y \`
+/// then `rustc` on its own line is one command. Comment lines are skipped.
+/// Each logical line is split into commands at `;`, `&&`, `||`, `|`, `&` and
+/// subshell brackets, so `apt-get update && apt-get install rustc` is caught
+/// and `rustc --version; apt-get install jq` is not.
+fn rust_installs(text: &str) -> Vec<(usize, &'static str, String)> {
+    let lines: Vec<&str> = text.lines().collect();
+    let mut out = env_file_group_assignments(&lines);
+    // Inside `cat >> "$GITHUB_ENV" <<EOF ... EOF`: the delimiter that ends it.
+    let mut env_heredoc: Option<String> = None;
+    let mut i = 0;
+    while i < lines.len() {
+        if let Some(delim) = &env_heredoc {
+            let l = lines[i].trim();
+            if l == delim {
+                env_heredoc = None;
+            } else if rustup_toolchain_assignments(l)
+                .iter()
+                .any(|v| !is_exact_version(v))
+            {
+                out.push((
+                    i + 1,
+                    "writes RUSTUP_TOOLCHAIN to an env file as something other than one exact release",
+                    l.to_string(),
+                ));
+            }
+            i += 1;
+            continue;
+        }
+        let start = i;
+        let mut logical = String::new();
+        loop {
+            let l = lines[i].trim_end();
+            if let Some(cont) = l.strip_suffix('\\') {
+                logical.push_str(cont);
+                logical.push(' ');
+                i += 1;
+                if i < lines.len() {
+                    continue;
+                }
+            } else {
+                logical.push_str(l);
+                i += 1;
+            }
+            break;
+        }
+        let trimmed = logical.trim_start();
+        if trimmed.starts_with('#') {
+            continue;
+        }
+        if trimmed.trim_start_matches("- ").starts_with("uses:") {
+            let action = trimmed.to_ascii_lowercase();
+            if ["rust-toolchain", "setup-rust", "actions-rs/", "rustup"]
+                .iter()
+                .any(|a| action.contains(a))
+            {
+                out.push((
+                    start + 1,
+                    "uses an action that installs Rust",
+                    logical.trim().to_string(),
+                ));
+            }
+            continue;
+        }
+        // Checked on the whole line, before it is split into commands: `echo
+        // RUSTUP_TOOLCHAIN=beta | tee -a "$GITHUB_ENV"` names the env file in
+        // a different command from the assignment, and an echo is otherwise
+        // exempt.
+        if mentions_env_file(&logical) {
+            if rustup_toolchain_assignments(&logical)
+                .iter()
+                .any(|v| !is_exact_version(v))
+            {
+                out.push((
+                    start + 1,
+                    "writes RUSTUP_TOOLCHAIN to an env file as something other than one exact release",
+                    logical.trim().to_string(),
+                ));
+                continue;
+            }
+            if let Some(d) = heredoc_delimiter(&logical) {
+                env_heredoc = Some(d);
+                continue;
+            }
+        }
+        let flat: String = logical
+            .chars()
+            .map(|c| {
+                if matches!(c, ';' | '&' | '|' | '(' | ')' | '{' | '}' | '`') {
+                    ';'
+                } else {
+                    c
+                }
+            })
+            .collect();
+        for cmd in flat.split(';') {
+            if let Some(why) = command_installs_rust(cmd) {
+                out.push((start + 1, why, logical.trim().to_string()));
+                break;
+            }
+        }
+    }
+    // A line the group check and the per-line check both flag, once.
+    out.sort_by_key(|(line, _, _)| *line);
+    out.dedup_by_key(|(line, _, _)| *line);
+    out
+}
+
+/// Every file under `dir`, recursively.
+fn files_under(dir: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        for e in std::fs::read_dir(&d)
+            .unwrap_or_else(|e| panic!("{}: {e}", d.display()))
+            .flatten()
+        {
+            let p = e.path();
+            if p.is_dir() {
+                stack.push(p);
+            } else {
+                out.push(p);
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+/// No workflow, composite action or file beside them installs Rust: not from a
+/// distro package (apt, apt-get, dnf, brew...), not by bootstrapping rustup,
+/// and not as a rustup toolchain other than one exact release. Every runner
+/// ships a rustc, the homelab queue runner's pinned in its image (#4183); an
+/// unpinned install is how that runner ended up on whatever rustc Ubuntu had.
+///
+/// rustup counts wherever it installs or switches a toolchain: `toolchain
+/// install`/`add`, `install`, `update` (bare `rustup update` always fails: it
+/// moves every installed toolchain), `default`, `override set`, `run`, a
+/// `+toolchain` selector (`cargo +nightly`) and `RUSTUP_TOOLCHAIN`, whether
+/// set in the shell, in YAML `env:`, or written to `$GITHUB_ENV` /
+/// `$GITHUB_OUTPUT` (by echo, printf, `tee -a`, a heredoc, or a `{ ... }` /
+/// `( ... )` group opened on its own line whose closing line redirects there).
+/// Each must
+/// name one exact `x.y.z` release; a channel (`stable`, `beta`, `nightly`,
+/// `nightly-2024-01-01`) or a partial version (`1.75`) fails. Managers match
+/// on their basename, so `/usr/bin/apt-get` and `/usr/bin/env apt-get` count.
+///
+/// Accepted limits, left to code review (none is in use here, and each takes
+/// deliberate effort):
+/// - package names passed in a variable (`apt-get install -y $PKG`), and a
+///   `RUSTUP_TOOLCHAIN` group opened mid-line rather than on its own line;
+/// - rustup fetched from another URL (`https://rustup.rs`);
+/// - the standalone `static.rust-lang.org/dist/rust-X...tar.xz` installer,
+///   which is version-pinned anyway (tools/ci-runner/Dockerfile uses it);
+/// - nix, conda, mise, asdf and pip routes;
+/// - actions that take packages as inputs (`awalsh128/cache-apt-pkgs-action`
+///   with `packages: rustc`).
+#[test]
+fn no_file_under_github_installs_rust() {
+    let root = std::env::current_dir().unwrap();
+    let files = files_under(&root.join(".github"));
+    // The scan must really see the tree, not an empty data dependency.
+    for want in GUARDS
+        .iter()
+        .chain([".github/workflows/ci.yaml", ".github/dependabot.yml"].iter())
+    {
+        assert!(
+            files
+                .iter()
+                .any(|f| f.strip_prefix(&root).ok() == Some(Path::new(want))),
+            "{want} is not in the scanned tree; is //:github_files in the test's data?"
+        );
+    }
+    let mut bad = Vec::new();
+    for f in &files {
+        if f.extension().is_some_and(|e| e == "md") {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(f) else {
+            continue;
+        };
+        for (line, why, cmd) in rust_installs(&text) {
+            bad.push(format!(
+                "{}:{line}: {why}: {cmd}",
+                f.strip_prefix(&root).unwrap().display()
+            ));
+        }
+    }
+    assert!(
+        bad.is_empty(),
+        "steps that install Rust (#4183):\n{}",
+        bad.join("\n")
+    );
+}
+
+#[test]
+fn the_scan_catches_every_spelling_of_a_rust_install() {
+    for text in [
+        "sudo apt-get install -y rustc",
+        "apt install -y rustc",
+        "apt-get -y install --no-install-recommends rustc",
+        "sudo apt update && sudo apt install rustc-1.80",
+        "sudo apt-get install -y \\\n  --no-install-recommends \\\n  rustc",
+        "apt-get install -y cargo",
+        "apt-get install -y rustc=1.75.0+dfsg0ubuntu1",
+        "dnf install -y rust cargo",
+        "brew install rustup",
+        "run: sudo apt-get install -qq rustc",
+        "curl --proto '=https' -sSf https://sh.rustup.rs | sh -s -- -y",
+        "curl -sSfLO https://static.rust-lang.org/rustup/dist/x86_64-unknown-linux-gnu/rustup-init",
+        "rustup toolchain install stable",
+        "rustup install nightly",
+        "rustup toolchain install 1.75 --profile minimal",
+        "      - uses: dtolnay/rust-toolchain@stable",
+        "      - uses: actions-rs/toolchain@v1",
+        // rustup commands that install or switch to a moving channel.
+        "rustup update stable && rustup default stable",
+        "rustup update",
+        "rustup update --no-self-update",
+        "rustup update stable",
+        "rustup default nightly",
+        "rustup default 1.75",
+        "rustup toolchain add nightly",
+        "rustup toolchain add nightly-2024-01-01",
+        "rustup -v toolchain install beta",
+        "rustup override set nightly",
+        "rustup run nightly cargo build",
+        "cargo +nightly build",
+        "rustc +beta --version",
+        "~/.cargo/bin/cargo +stable test",
+        "RUSTUP_TOOLCHAIN=nightly cargo build",
+        "export RUSTUP_TOOLCHAIN=stable",
+        "      RUSTUP_TOOLCHAIN: nightly",
+        // RUSTUP_TOOLCHAIN written to an env file for later steps.
+        "echo \"RUSTUP_TOOLCHAIN=nightly\" >> \"$GITHUB_ENV\"",
+        "echo RUSTUP_TOOLCHAIN=beta | tee -a \"$GITHUB_ENV\"",
+        "echo RUSTUP_TOOLCHAIN=stable >> $GITHUB_ENV",
+        "printf 'RUSTUP_TOOLCHAIN=%s\\n' nightly >> \"$GITHUB_ENV\"",
+        "printf 'RUSTUP_TOOLCHAIN=stable\\n' >> \"$GITHUB_ENV\"",
+        "echo \"RUSTUP_TOOLCHAIN=${{ matrix.rust }}\" >> \"$GITHUB_ENV\"",
+        "echo \"RUSTUP_TOOLCHAIN=nightly\" >> \"$GITHUB_OUTPUT\"",
+        "cat >> \"$GITHUB_ENV\" <<EOF\nCARGO_TERM_COLOR=always\nRUSTUP_TOOLCHAIN=nightly\nEOF",
+        "cat <<-'ENV' >> $GITHUB_ENV\n  RUSTUP_TOOLCHAIN=beta\nENV",
+        // A multi-line group whose output goes to the env file.
+        "{\n  echo \"CARGO_TERM_COLOR=always\"\n  echo \"RUSTUP_TOOLCHAIN=stable\"\n} >> \"$GITHUB_ENV\"",
+        "(\n  echo RUSTUP_TOOLCHAIN=nightly\n) >>\"${GITHUB_ENV}\"",
+        "{\n  {\n    echo A=1\n  }\n  printf 'RUSTUP_TOOLCHAIN=%s\\n' beta\n} | tee -a \"$GITHUB_ENV\"",
+        // Managers called by full path.
+        "sudo /usr/bin/apt-get install -y rustc",
+        "/usr/bin/env apt-get install -y cargo",
+        "/usr/bin/apt -y install rustc",
+    ] {
+        assert!(!rust_installs(text).is_empty(), "not caught: {text:?}");
+    }
+}
+
+#[test]
+fn the_scan_leaves_other_steps_alone() {
+    for text in [
+        "rustup toolchain install 1.75.0 --profile minimal",
+        "rustup default 1.75.0",
+        "rustup toolchain install 1.75.0-x86_64-unknown-linux-gnu",
+        "sudo apt-get install -y jq shellcheck",
+        "rustc --version; sudo apt-get install -y jq",
+        "# an unpinned apt-get install rustc used to live here",
+        "echo \"::error::apt install rustc failed\"",
+        "rustc --edition 2021 -O tools/ci/src/x/main.rs -o \"$RUNNER_TEMP/x\"",
+        "      - uses: actions/checkout@v4",
+        "echo \"RUSTUP_TOOLCHAIN=1.75.0\" >> \"$GITHUB_ENV\"",
+        "echo RUSTUP_TOOLCHAIN=1.75.0 | tee -a \"$GITHUB_ENV\"",
+        "printf 'RUSTUP_TOOLCHAIN=1.75.0\\n' >> \"$GITHUB_ENV\"",
+        "cat >> \"$GITHUB_ENV\" <<EOF\nRUSTUP_TOOLCHAIN=1.75.0\nEOF",
+        // A heredoc ends at its delimiter; what follows is ordinary again.
+        "cat >> \"$GITHUB_ENV\" <<EOF\nCARGO_TERM_COLOR=always\nEOF\necho \"toolchain: RUSTUP_TOOLCHAIN=nightly\"",
+        "echo \"PATH_EXTRA=/opt/bin\" >> \"$GITHUB_ENV\"",
+        "echo \"using RUSTUP_TOOLCHAIN=nightly would move it\"",
+        "{\n  echo \"CARGO_TERM_COLOR=always\"\n  echo \"RUSTUP_TOOLCHAIN=1.75.0\"\n} >> \"$GITHUB_ENV\"",
+        // A group that goes somewhere else is ordinary logging.
+        "{\n  echo \"RUSTUP_TOOLCHAIN=nightly is what upstream uses\"\n} >> \"$RUNNER_TEMP/notes.txt\"",
+        "rustup update 1.75.0",
+        "rustup toolchain add 1.75.0",
+        "rustup override set 1.75.0",
+        "rustup run 1.75.0 cargo build",
+        "cargo +1.75.0 build",
+        "RUSTUP_TOOLCHAIN=1.75.0 cargo build",
+        "      RUSTUP_TOOLCHAIN: 1.75.0",
+        "rustup default",
+        "rustup show",
+        "rustup target add x86_64-unknown-linux-musl",
+        "rustup component add clippy",
+        "/usr/bin/apt-get install -y jq",
+        "cargo build --release",
+    ] {
+        assert!(
+            rust_installs(text).is_empty(),
+            "flagged: {text:?}: {:?}",
+            rust_installs(text)
         );
     }
 }
