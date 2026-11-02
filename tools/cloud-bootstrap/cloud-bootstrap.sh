@@ -103,7 +103,11 @@ if command -v rustc >/dev/null 2>&1; then
 		fi
 		mv -f "${bin}.$$" "${bin}" || give_up "cannot write ${bin}; nothing bootstrapped"
 		for old in "${cache}"/cloud-bootstrap-*; do
-			[ "${old}" = "${bin}" ] || rm -f "${old}"
+			case "${old##*/}" in
+			# Another session's build in progress (<name>.<pid>): its own.
+			cloud-bootstrap-*.*) ;;
+			*) [ "${old}" = "${bin}" ] || rm -f "${old}" ;;
+			esac
 		done
 	fi
 
@@ -111,26 +115,39 @@ if command -v rustc >/dev/null 2>&1; then
 	# during `auth`: built the same way, beside it. Best-effort: if it cannot
 	# be built the session goes on with the cache unconfigured, which the tool
 	# reports ("builds stay local").
-	rsrc="${here}/../remote/src/main.rs"
-	if [ -f "${rsrc}" ]; then
-		rkey="$({ trusted_rustc --version && cat "${rsrc}"; } | cksum | tr ' ' '-')"
+	#
+	# Only this block may name the configurator: a path inherited from the
+	# environment would otherwise run whenever the build below fails.
+	unset CLOUD_BOOTSTRAP_REMOTE_SETUP
+	rsrc_dir="${here}/../remote/src"
+	if [ -f "${rsrc_dir}/main.rs" ]; then
+		rsrc_dir="$(cd "${rsrc_dir}" && pwd)"
+		# Keyed on every .rs beside main.rs, so a module added later rebuilds.
+		rkey="$({ trusted_rustc --version && cat "${rsrc_dir}"/*.rs; } | cksum | tr ' ' '-')"
 		rbin="${cache}/remote-setup-${rkey}"
-		if [ -e "${rbin}" ] && ! private_to_me "${rbin}"; then
-			rm -f "${rbin}"
-		fi
-		if [ ! -x "${rbin}" ]; then
-			rlog="${cache}/remote-setup.build.log"
-			if trusted_rustc --edition 2021 -o "${rbin}.$$" "$(cd "$(dirname "${rsrc}")" && pwd)/main.rs" >"${rlog}" 2>&1 &&
+		rlog="${cache}/remote-setup.build.log"
+		# Missing, or not ours and private: build it. A file that fails the
+		# check is not deleted here; the check before it is handed over
+		# refuses it, whether or not this rebuild succeeds.
+		if [ ! -x "${rbin}" ] || ! private_to_me "${rbin}"; then
+			# Built under a per-process name and renamed into place.
+			if trusted_rustc --edition 2021 -o "${rbin}.$$" "${rsrc_dir}/main.rs" >"${rlog}" 2>&1 &&
 				mv -f "${rbin}.$$" "${rbin}"; then
 				for old in "${cache}"/remote-setup-*; do
-					case "${old}" in "${rbin}" | "${rlog}") ;; *) rm -f "${old}" ;; esac
+					case "${old##*/}" in
+					# Another session's build in progress (<name>.<pid>): its own.
+					remote-setup-*.*) ;;
+					*) [ "${old}" = "${rbin}" ] || rm -f "${old}" ;;
+					esac
 				done
 			else
 				rm -f "${rbin}.$$"
 				printf 'cloud-bootstrap: could not build the build-cache configurator (log: %s); builds stay local\n' "${rlog}" >&2
 			fi
 		fi
-		[ -x "${rbin}" ] && private_to_me "${rbin}" && export CLOUD_BOOTSTRAP_REMOTE_SETUP="${rbin}"
+		if [ -x "${rbin}" ] && private_to_me "${rbin}"; then
+			export CLOUD_BOOTSTRAP_REMOTE_SETUP="${rbin}"
+		fi
 	fi
 	exec "${bin}" "$@"
 fi

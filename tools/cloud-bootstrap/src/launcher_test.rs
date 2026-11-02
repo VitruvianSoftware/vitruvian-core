@@ -549,3 +549,216 @@ fn a_configurator_that_will_not_build_does_not_block_the_session() {
     assert_contains(&out, "could not build the build-cache configurator");
     assert_contains(&out, "configurator (//tools/remote:setup) is not available");
 }
+
+/// `run_with` for `auth --force` under the cache profile, plus `extra` env.
+fn run_cache_auth(t: &Tree, extra: &[(&str, &str)]) -> String {
+    let env = cache_env();
+    let mut env: Vec<(&str, &str)> = env.iter().map(|(k, v)| (*k, v.as_str())).collect();
+    env.extend_from_slice(extra);
+    let (out, _, rc) = t.run_with(&["auth", "--force"], &env, &[], true);
+    assert_eq!(rc, 0, "auth must not block the session:\n{out}");
+    out
+}
+
+/// How many times rustc was asked to build the configurator.
+fn configurator_builds(t: &Tree) -> usize {
+    t.log("rustc.log")
+        .lines()
+        .filter(|l| l.contains("tools/remote/src/main.rs"))
+        .count()
+}
+
+/// The finished configurator builds in the cache (not logs or temp files).
+fn configurator_binaries(t: &Tree) -> Vec<String> {
+    let mut v: Vec<String> = fs::read_dir(t.cache())
+        .map(|rd| {
+            rd.filter_map(|e| e.ok())
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .filter(|n| n.starts_with("remote-setup-") && !n.contains('.'))
+                .collect()
+        })
+        .unwrap_or_default();
+    v.sort();
+    v
+}
+
+/// A script that leaves a marker if anything runs it.
+fn planted_script(t: &Tree, at: &Path) -> PathBuf {
+    let marker = t.dir.join("PLANTED-CONFIGURATOR-RAN");
+    if at.exists() {
+        fs::set_permissions(at, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    write_exec(
+        at,
+        &format!(
+            "#!/bin/sh\n{} {}\n",
+            t.dir.join("bin/touch").display(),
+            marker.display()
+        ),
+    );
+    marker
+}
+
+#[test]
+fn a_planted_rust_toolchain_cannot_pick_the_configurators_compiler() {
+    // The same rule as for the tool itself: the configurator's build also runs
+    // rustc from /, without RUSTUP_TOOLCHAIN, never from the checkout.
+    let t = tree_with_configurator();
+    t.fake_rustc(false);
+    fs::write(
+        t.dir.join("repo/rust-toolchain.toml"),
+        "[toolchain]\nchannel = \"planted\"\n",
+    )
+    .unwrap();
+    fs::write(t.dir.join("repo/tools/remote/rust-toolchain"), "planted\n").unwrap();
+    let out = run_cache_auth(&t, &[("RUSTUP_TOOLCHAIN", "planted")]);
+    assert!(
+        !t.dir.join("PWNED").exists(),
+        "the planted compiler ran:\n{out}"
+    );
+    assert_eq!(configurator_builds(&t), 1, "{}", t.log("rustc.log"));
+    let cwds = t.log("rustc.cwd");
+    assert_eq!(
+        cwds.lines().count(),
+        4,
+        "all four rustc calls (--version and a build, for the tool and the configurator) must be seen: {cwds}"
+    );
+    assert!(
+        cwds.lines().all(|l| l == "cwd=/"),
+        "rustc ran outside /: {cwds}"
+    );
+}
+
+#[test]
+fn a_configurator_binary_others_can_write_is_rebuilt_not_run() {
+    let t = tree_with_configurator();
+    t.fake_rustc(false);
+    run_cache_auth(&t, &[]);
+    let bins = configurator_binaries(&t);
+    assert_eq!(bins.len(), 1, "{bins:?}");
+    let bin = t.cache().join(&bins[0]);
+    let marker = planted_script(&t, &bin);
+    fs::set_permissions(&bin, fs::Permissions::from_mode(0o775)).unwrap();
+    let out = run_cache_auth(&t, &[]);
+    assert!(
+        !marker.exists(),
+        "a group-writable configurator was run:\n{out}"
+    );
+    assert_eq!(configurator_builds(&t), 2, "it must be rebuilt:\n{out}");
+    assert_eq!(fs::metadata(&bin).unwrap().permissions().mode() & 0o022, 0);
+    assert_contains(&out, "build cache: could not configure");
+}
+
+#[test]
+fn a_configurator_binary_others_can_write_is_not_run_when_its_rebuild_fails() {
+    // The check before the configurator is handed to the tool is what stops a
+    // planted binary when the rebuild cannot replace it.
+    let t = tree_with_configurator();
+    t.fake_rustc(false);
+    run_cache_auth(&t, &[]);
+    let bin = t.cache().join(&configurator_binaries(&t)[0]);
+    let marker = planted_script(&t, &bin);
+    fs::set_permissions(&bin, fs::Permissions::from_mode(0o775)).unwrap();
+    t.fake_rustc_with(false, true);
+    let out = run_cache_auth(&t, &[]);
+    assert!(
+        !marker.exists(),
+        "a group-writable configurator was run:\n{out}"
+    );
+    assert_contains(&out, "could not build the build-cache configurator");
+    assert_contains(&out, "configurator (//tools/remote:setup) is not available");
+}
+
+#[test]
+fn a_changed_configurator_source_rebuilds_it() {
+    let t = tree_with_configurator();
+    t.fake_rustc(false);
+    run_cache_auth(&t, &[]);
+    let first = configurator_binaries(&t);
+    assert_eq!(first.len(), 1, "{first:?}");
+    run_cache_auth(&t, &[]);
+    assert_eq!(
+        configurator_builds(&t),
+        1,
+        "an unchanged source must reuse it"
+    );
+
+    let main = t.dir.join("repo/tools/remote/src/main.rs");
+    let mut src = fs::read_to_string(&main).unwrap();
+    src.push_str("\n// changed\n");
+    fs::write(&main, src).unwrap();
+    run_cache_auth(&t, &[]);
+    assert_eq!(configurator_builds(&t), 2, "a changed main.rs must rebuild");
+    let second = configurator_binaries(&t);
+    assert_eq!(second.len(), 1, "the old build was not pruned: {second:?}");
+    assert_ne!(first, second, "the rebuild reused the old cache key");
+
+    // A module file beside main.rs is part of the key too.
+    fs::write(
+        t.dir.join("repo/tools/remote/src/extra.rs"),
+        "// new module\n",
+    )
+    .unwrap();
+    run_cache_auth(&t, &[]);
+    assert_eq!(configurator_builds(&t), 3, "a new module file must rebuild");
+}
+
+#[test]
+fn an_inherited_configurator_path_is_never_run() {
+    // Only the launcher names the configurator. A path in the environment must
+    // not survive to the tool, least of all when the build fails.
+    let t = tree_with_configurator();
+    t.fake_rustc_with(false, true);
+    let planted = t.dir.join("inherited-configurator");
+    let marker = planted_script(&t, &planted);
+    let p = planted.display().to_string();
+    let out = run_cache_auth(&t, &[("CLOUD_BOOTSTRAP_REMOTE_SETUP", &p)]);
+    assert!(!marker.exists(), "an inherited configurator ran:\n{out}");
+    assert_contains(&out, "configurator (//tools/remote:setup) is not available");
+
+    // Nor when there is no configurator source at all.
+    let t2 = Tree::new();
+    t2.fake_rustc(false);
+    fs::write(
+        t2.dir.join("repo/tools/cloud-bootstrap/profiles.tsv"),
+        "cacheprof bazel - - BUILDBUDDY_API_KEY=- Uses the build cache.\n",
+    )
+    .unwrap();
+    let marker2 = planted_script(&t2, &t2.dir.join("inherited-configurator"));
+    let p2 = t2.dir.join("inherited-configurator").display().to_string();
+    let out = run_cache_auth(&t2, &[("CLOUD_BOOTSTRAP_REMOTE_SETUP", &p2)]);
+    assert!(!marker2.exists(), "an inherited configurator ran:\n{out}");
+    assert_contains(&out, "configurator (//tools/remote:setup) is not available");
+}
+
+#[test]
+fn another_sessions_build_in_progress_is_left_alone() {
+    // A build is written to <name>.<pid> and renamed into place; pruning old
+    // builds must not delete another session's half-written one.
+    let t = tree_with_configurator();
+    t.fake_rustc(false);
+    fs::create_dir_all(t.cache()).unwrap();
+    fs::set_permissions(t.cache(), fs::Permissions::from_mode(0o700)).unwrap();
+    let theirs = [
+        t.cache().join("cloud-bootstrap-1-2.99999"),
+        t.cache().join("remote-setup-1-2.99999"),
+    ];
+    for p in &theirs {
+        fs::write(p, "half-written").unwrap();
+    }
+    // And a stale finished build of each, which pruning should remove.
+    let stale = [
+        t.cache().join("cloud-bootstrap-1-2"),
+        t.cache().join("remote-setup-1-2"),
+    ];
+    for p in &stale {
+        fs::write(p, "old").unwrap();
+    }
+    run_cache_auth(&t, &[]);
+    for p in &theirs {
+        assert!(p.exists(), "{} was deleted", p.display());
+    }
+    for p in &stale {
+        assert!(!p.exists(), "{} was not pruned", p.display());
+    }
+}
