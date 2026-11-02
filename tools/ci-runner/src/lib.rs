@@ -137,6 +137,7 @@ pub fn run() -> i32 {
     let os_release_path = env_or_default("OS_RELEASE_PATH", "/etc/os-release");
     let runner_home = env_or_default("RUNNER_HOME", "/home/runner");
     let bazel_version = env_or_default("BAZEL_VERSION", "9.3.0");
+    let rust_version = env_or_default("RUST_VERSION", "1.75.0");
 
     let vid = read_version_id(&os_release_path);
     check(&format!("test {} = 26.04", vid), vid == "26.04", &mut fail);
@@ -186,6 +187,15 @@ pub fn run() -> i32 {
         &mut fail,
     );
 
+    // build-ci-tool compiles tools/ci with this rustc; with none it falls
+    // back to an unpinned apt install (#4183).
+    let rustc = cmd_output("rustc", &["--version"]).unwrap_or_default();
+    check(
+        &format!("rustc --version = rustc {} (got '{}')", rust_version, rustc),
+        rustc_version_is(&rustc, &rust_version),
+        &mut fail,
+    );
+
     if !fail {
         println!("parity: OK");
         0
@@ -193,6 +203,11 @@ pub fn run() -> i32 {
         eprintln!("parity: FAILED");
         1
     }
+}
+
+/// `rustc --version` prints `rustc 1.75.0 (82e1608df 2023-12-21)`.
+pub fn rustc_version_is(output: &str, version: &str) -> bool {
+    output.split_whitespace().take(2).eq(["rustc", version])
 }
 
 fn is_executable(path: &str) -> bool {
@@ -210,6 +225,20 @@ fn is_executable(path: &str) -> bool {
 mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn test_rustc_version_is() {
+        assert!(rustc_version_is(
+            "rustc 1.75.0 (82e1608df 2023-12-21)",
+            "1.75.0"
+        ));
+        assert!(!rustc_version_is("rustc 1.75.01 (x)", "1.75.0"));
+        assert!(!rustc_version_is(
+            "rustc 1.83.0 (90b35a623 2024-11-26)",
+            "1.75.0"
+        ));
+        assert!(!rustc_version_is("", "1.75.0"));
+    }
 
     #[test]
     fn test_read_version_id_standard() {
