@@ -125,9 +125,11 @@ final class WindowLayoutTests: XCTestCase {
         }
     }
 
-    /// Settings ▸ Appearance ▸ Use Liquid Glass: the surfaces that change, with it on and off, over a colourful window
-    /// so the glass shows. Look at liquid-glass-on and liquid-glass-off: off is the look before the option.
-    func testLiquidGlassSurfacesSnapshots() throws {
+    /// Settings ▸ Appearance ▸ Use Liquid Glass off: the surfaces the option changes, over a colourful window, in the
+    /// plain look they keep when it is off. The "on" look isn't rendered here: Liquid Glass is composited by the window
+    /// server, so an offscreen render shows nothing useful, and on CI's headless Mac it never returned (the view tests
+    /// timed out, PR #4238). Whether glass is used is tested in AppearancePreferencesTests (`liquidGlassIsActive`).
+    func testLiquidGlassOffSurfacesSnapshots() throws {
         func surfaces(glass: Bool) -> some View {
             ZStack {
                 LinearGradient(colors: [.teal, .indigo, .pink], startPoint: .topLeading, endPoint: .bottomTrailing)
@@ -173,14 +175,7 @@ final class WindowLayoutTests: XCTestCase {
             }
             .environment(\.liquidGlass, glass)
         }
-        for (name, glass) in [("liquid-glass-on", true), ("liquid-glass-off", false)] {
-            let sizes = try Snapshot.render(name, width: 760, height: 420) { surfaces(glass: glass) }
-            XCTAssertEqual(sizes.count, 2)
-        }
-        if AppearancePreferences.systemSupportsLiquidGlass {
-            let on = try Data(contentsOf: Snapshot.directory.appendingPathComponent("liquid-glass-on-light.png"))
-            let off = try Data(contentsOf: Snapshot.directory.appendingPathComponent("liquid-glass-off-light.png"))
-            XCTAssertNotEqual(on, off, "with the option on, the surfaces draw differently from the plain look")
-        }
+        let sizes = try Snapshot.render("liquid-glass-off", width: 760, height: 420) { surfaces(glass: false) }
+        XCTAssertEqual(sizes.count, 2)
     }
 }
