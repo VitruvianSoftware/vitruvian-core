@@ -84,6 +84,7 @@ jobs:
           rustc --edition 2021 tools/ci-runner/src/main.rs -L "$RUNNER_TEMP" --extern parity_lib="$RUNNER_TEMP/libparity_lib.rlib" -o "$RUNNER_TEMP/parity"
           docker run --rm -e ACTIONS_RUNNER_PRINT_LOG_TO_STDOUT= \
               -e BAZEL_VERSION="$(cat .bazelversion)" \
+              -e RUST_VERSION="$(sed -n 's/^ARG RUST_VERSION=//p' tools/ci-runner/Dockerfile)" \
               -v "$RUNNER_TEMP/parity:/check/parity:ro" \
               vitruvian-ci-runner:check /check/parity
 
