@@ -108,7 +108,7 @@ def pulumi_project(name, dir, backend_url = None, visibility = ["//visibility:pu
         visibility = visibility,
     )
 
-def pulumi_go_test(name = "test", extra_data = [], visibility = ["//visibility:public"]):
+def pulumi_go_test(name = "test", extra_data = [], timeout = None, visibility = ["//visibility:public"]):
     """Declare a `bazel test` target that runs `go test ./...` for this Pulumi
     Go project.
 
@@ -141,6 +141,9 @@ def pulumi_go_test(name = "test", extra_data = [], visibility = ["//visibility:p
         repo-config inlined its former external packages into internal/
         sub-packages, eliminating the need for replace directives and
         extra_data entirely.
+      timeout: Bazel test timeout ("short", "moderate", "long", "eternal").
+        None keeps Bazel's default for the size (moderate, 300 s). Set it for a
+        project whose tests run the whole program and need longer.
       visibility: visibility for the generated target.
     """
     sh_test(
@@ -166,5 +169,6 @@ def pulumi_go_test(name = "test", extra_data = [], visibility = ["//visibility:p
             "no-remote-exec",
             "requires-network",
         ],
+        timeout = timeout,
         visibility = visibility,
     )
