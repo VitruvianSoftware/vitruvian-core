@@ -178,6 +178,12 @@ pub const T_BAZEL_BUILD: Target = t(
     "bazel build //<package>:<target> (or bazel run for a binary)",
     None,
 );
+pub const T_CRATES_LOCK: Target = t(
+    "bazel run //tools/crates:lock (add -- --dir <path> for an app with its own Cargo.lock)",
+    None,
+);
+pub const CRATES_EDIT_NOTE: &str =
+    "Edit the dependency in Cargo.toml by hand first; the target then re-locks for the Bazel Rust toolchain.";
 pub const T_PULUMI: Target = t(
     "bazel run //infrastructure/pulumi/<project>:preview (and :up only as AGENTS.md allows)",
     None,
@@ -1305,6 +1311,36 @@ fn first_sub(args: &[String], with_arg: &[&str]) -> String {
         .unwrap_or_default()
 }
 
+/// Split each grouped short flag (`-vC`, `-vCdir`) at its first letter in
+/// `value_letters`: `-v -C` or `-v -C dir`, so the value is consumed like
+/// one given on its own. Words after `--` are left alone.
+fn split_short_clusters(args: &[String], value_letters: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for (i, a) in args.iter().enumerate() {
+        if a == "--" {
+            out.extend_from_slice(&args[i..]);
+            break;
+        }
+        let chars: Vec<char> = a.chars().collect();
+        if chars.len() > 2 && chars[0] == '-' && chars[1] != '-' {
+            if let Some(k) = chars[1..].iter().position(|c| value_letters.contains(*c)) {
+                let k = k + 1;
+                for c in &chars[1..k] {
+                    out.push(format!("-{}", c));
+                }
+                out.push(format!("-{}", chars[k]));
+                let value: String = chars[k + 1..].iter().collect();
+                if !value.is_empty() {
+                    out.push(value);
+                }
+                continue;
+            }
+        }
+        out.push(a.clone());
+    }
+    out
+}
+
 fn version_only(args: &[String]) -> bool {
     args.first().map_or(false, |a| {
         inl(
@@ -1674,9 +1710,28 @@ pub fn classify_tool(inv: &Invocation, ctx: &Context) -> (Option<Verdict>, Strin
     }
 
     if prog == "cargo" {
+        // `cargo +nightly update` is `cargo update` on another toolchain, and
+        // the value of a global flag (`--color never`) is not the subcommand
+        // (#4171). Value-taking globals are from `cargo --help` (cargo 1.95.0).
+        let args = match args.first() {
+            Some(a) if a.starts_with('+') => &args[1..],
+            _ => args,
+        };
+        // `-vC dir` is `-v -C dir`: a grouped short flag can end in one that
+        // takes a value, and that value is not the subcommand either.
+        let split = split_short_clusters(args, "CZp");
         let sub = first_sub(
-            args,
-            &["--manifest-path", "-p", "--package", "-Z", "--config", "-C"],
+            &split,
+            &[
+                "--manifest-path",
+                "-p",
+                "--package",
+                "-Z",
+                "--config",
+                "-C",
+                "--color",
+                "--explain",
+            ],
         );
         let sub = sub.as_str();
         if version_only(args)
@@ -1704,6 +1759,19 @@ pub fn classify_tool(inv: &Invocation, ctx: &Context) -> (Option<Verdict>, Strin
         }
         if sub == "fmt" {
             return here(vt("lint", "cargo fmt", T_FORMAT));
+        }
+        // Changing what Cargo.lock holds goes through //tools/crates:lock,
+        // which resolves for the Bazel toolchain's Rust version (#4016).
+        if inl(&["update", "generate-lockfile"], sub) {
+            return here(vt("cargo", &format!("cargo {}", sub), T_CRATES_LOCK));
+        }
+        if inl(&["add", "remove", "rm"], sub) {
+            return here(Some(v(
+                "cargo",
+                &format!("cargo {}", sub),
+                Some(T_CRATES_LOCK),
+                CRATES_EDIT_NOTE,
+            )));
         }
         if sub == "publish" {
             return here(Some(v(
@@ -2380,6 +2448,7 @@ mod tests {
         ("T_LINT", T_LINT),
         ("T_BAZEL_TEST", T_BAZEL_TEST),
         ("T_BAZEL_BUILD", T_BAZEL_BUILD),
+        ("T_CRATES_LOCK", T_CRATES_LOCK),
         ("T_PULUMI", T_PULUMI),
         ("T_GITOPS", T_GITOPS),
         ("T_HELM", T_HELM),
