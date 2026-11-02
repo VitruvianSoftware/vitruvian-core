@@ -874,7 +874,13 @@ func foundationEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *githu
 		}
 
 		// Deterministic resource names: iterate variables in sorted order.
+		// The preview Environment gets the same project and provider but the
+		// stage's read-only preview account (see previewFoundationVars).
 		vars := foundationVars[env]
+		pvars, err := previewFoundationVars(vars)
+		if err != nil {
+			return fmt.Errorf("%s: %w", previewEnv, err)
+		}
 		keys := make([]string, 0, len(vars))
 		for k := range vars {
 			keys = append(keys, k)
@@ -895,7 +901,7 @@ func foundationEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *githu
 				Repository:   repo.Name,
 				Environment:  previewEnvRes.Environment,
 				VariableName: pulumi.String(k),
-				Value:        pulumi.String(vars[k]),
+				Value:        pulumi.String(pvars[k]),
 			})
 			if err != nil {
 				return err
@@ -1316,15 +1322,17 @@ func foundationEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *githu
 	// preview needs a dedicated, UNGATED environment (no branch policy, no
 	// reviewers).
 	//
-	// Each preview env reuses its stage's WIF variables/SA (foundation-env uses
-	// sa-terraform-env, foundation-net uses sa-terraform-net, foundation-proj
-	// uses sa-terraform-proj). The matching WIF principalSet already exists:
-	// gcp-bootstrap's generic per-stage binding grants
-	// attribute.environment/foundation-<stage>-preview for every stage SA, so no
-	// gcp-bootstrap change is needed for the preview leg. PULUMI_ACCESS_TOKEN is
-	// repo-level (see tabulaEnvironments), so only the GCP_* variables are set here.
-	// foundation-app previews with the PROJ stage's vars/SA (stage 5 reuses the
-	// proj SA — see Phase 5), so the preview env name and the vars key differ.
+	// Each preview env reuses its stage's project and WIF provider, but its
+	// GCP_SERVICE_ACCOUNT is the stage's read-only preview account
+	// (foundation-env-preview → sa-terraform-env-preview, and likewise for net
+	// and proj), minted and federated to exactly that Environment by
+	// gcp-bootstrap. foundation-preview.yaml now picks the sign-in identity
+	// per leg itself, so the variable is informational, but it should never
+	// name a deploy account. PULUMI_ACCESS_TOKEN is repo-level (see
+	// tabulaEnvironments), so only the GCP_* variables are set here.
+	// foundation-app previews with the PROJ stage's vars (its read-only
+	// account is sa-terraform-proj-preview), so the preview env name and the
+	// vars key differ.
 	for _, previewDef := range []struct{ envPrefix, varsKey string }{
 		{"foundation-env", "foundation-env"},
 		{"foundation-net", "foundation-net"},
@@ -1342,7 +1350,10 @@ func foundationEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *githu
 		}
 
 		// Deterministic resource names: iterate variables in sorted order.
-		vars := foundationVars[stage]
+		vars, err := previewFoundationVars(foundationVars[stage])
+		if err != nil {
+			return fmt.Errorf("%s: %w", previewEnv, err)
+		}
 		keys := make([]string, 0, len(vars))
 		for k := range vars {
 			keys = append(keys, k)
@@ -1362,6 +1373,31 @@ func foundationEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *githu
 	}
 
 	return nil
+}
+
+// previewFoundationVars returns the variables for a foundation stage's
+// -preview Environment: the stage's own variables, with GCP_SERVICE_ACCOUNT
+// swapped for the stage's read-only preview account. gcp-bootstrap names each
+// one after its deploy account with a "-preview" suffix on the account id
+// (sa-terraform-org@… → sa-terraform-org-preview@…), so deriving it here keeps
+// one source of truth in the stack config. A value that is not a service
+// account email, or is already a preview account, is an error rather than a
+// silent pass-through.
+func previewFoundationVars(vars map[string]string) (map[string]string, error) {
+	out := make(map[string]string, len(vars))
+	for k, v := range vars {
+		out[k] = v
+	}
+	sa, ok := vars["GCP_SERVICE_ACCOUNT"]
+	if !ok {
+		return out, nil
+	}
+	at := strings.Index(sa, "@")
+	if at <= 0 || strings.HasSuffix(sa[:at], "-preview") {
+		return nil, fmt.Errorf("GCP_SERVICE_ACCOUNT %q: want a stage deploy account email to derive the preview account from", sa)
+	}
+	out["GCP_SERVICE_ACCOUNT"] = sa[:at] + "-preview" + sa[at:]
+	return out, nil
 }
 
 // pipelineGates codifies the repo-level Actions variables that gate the IaC
