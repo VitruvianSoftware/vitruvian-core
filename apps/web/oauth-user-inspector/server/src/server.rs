@@ -19,21 +19,21 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-use crate::api_endpoints::resolve_explore_target;
+use crate::api_endpoints::{explore_endpoint_def, resolve_explore_target};
 use crate::logger::{
     create_logger, create_request_logger, log_error, log_timing, now_epoch_ms, Logger,
 };
 use crate::oauth_error_guide::enhance_oauth_error;
 use crate::rate_limit::{client_ip, RateLimitTier, RateLimiter};
 use crate::safe_fetch::{
-    safe_fetch, ParsedUrl, SafeFetchOptions, SafeFetchResponse, UpstreamError,
+    is_safe_header_value, safe_fetch, ParsedUrl, SafeFetchOptions, SafeFetchResponse, UpstreamError,
 };
 use crate::security_headers::default_security_headers;
 use serde_json::{json, Map, Value};
 use std::collections::HashMap;
 use std::fs;
 use std::io::{Read, Write};
-use std::net::TcpListener;
+use std::net::{Ipv4Addr, SocketAddr, TcpListener};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -1746,6 +1746,20 @@ impl App {
             );
         };
 
+        // The token goes into an Authorization header; a CR/LF in it would
+        // inject headers into the upstream request (#4176). Node's fetch
+        // refused such a value, so this refuses it too, before any fetch.
+        if !is_safe_header_value(access_token) {
+            return self.json_response(
+                400,
+                request_id,
+                true,
+                json!({
+                    "error": "Invalid accessToken: it contains control characters",
+                }),
+            );
+        }
+
         let endpoint_id = endpoint_obj
             .get("id")
             .and_then(Value::as_str)
@@ -1801,6 +1815,31 @@ impl App {
                 }
             };
 
+        // The method sent upstream is the endpoint definition's, never the
+        // client's: a client value went straight to curl's -X, which puts it on
+        // the request line as given (a method of "GET /x HTTP/1.1\r\nX: 1"
+        // injected a header; "DELETE" hit a GET endpoint). A client method
+        // that differs from the definition is refused (#4176).
+        let Some(def) = explore_endpoint_def(provider, endpoint_id) else {
+            return self.json_response(
+                400,
+                request_id,
+                true,
+                json!({ "error": "unknown endpoint" }),
+            );
+        };
+        if endpoint_method != def.method {
+            return self.json_response(
+                400,
+                request_id,
+                true,
+                json!({
+                    "error": "Invalid endpoint: method does not match the endpoint definition",
+                }),
+            );
+        }
+        let upstream_method = def.method;
+
         if let Some(ref domain) = issuer_domain {
             if let Err(err) = self.validate_issuer_domain(domain) {
                 return self.collapse_upstream_error(request_id, &err);
@@ -1825,7 +1864,7 @@ impl App {
         }
 
         let opts = SafeFetchOptions {
-            method: endpoint_method.to_string(),
+            method: upstream_method.to_string(),
             headers,
             body: None,
             ..Default::default()
@@ -1928,12 +1967,24 @@ fn guess_content_type(path: &Path) -> &'static str {
     }
 }
 
-/// Serve the HTTP application over a standard `TcpListener`.
-pub fn serve_http(app: Arc<App>, port: u16) -> std::io::Result<()> {
-    let listener = TcpListener::bind(("0.0.0.0", port))?;
+/// The address the server listens on for a given `PORT`: every interface
+/// (`0.0.0.0`). Cloud Run sends traffic to the container's own address, not
+/// loopback, so binding `127.0.0.1` would pass every local test and serve
+/// nothing in production (#4176).
+pub fn default_bind_addr(port: u16) -> SocketAddr {
+    SocketAddr::from((Ipv4Addr::UNSPECIFIED, port))
+}
+
+/// Serve the HTTP application over a standard `TcpListener` bound to `addr`
+/// (normally [`default_bind_addr`]).
+pub fn serve_http(app: Arc<App>, addr: SocketAddr) -> std::io::Result<()> {
+    let listener = TcpListener::bind(addr)?;
+    // Log what the socket is actually bound to, not what was asked for:
+    // start_test asserts on this line to pin the 0.0.0.0 bind end to end.
+    let bound = listener.local_addr().unwrap_or(addr);
     app.logger.info(
         "OAuth User Inspector server started",
-        Some(json!({ "port": port })),
+        Some(json!({ "port": bound.port(), "address": bound.ip().to_string() })),
     );
 
     for stream_res in listener.incoming() {

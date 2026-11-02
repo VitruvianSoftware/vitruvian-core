@@ -333,6 +333,74 @@ mod tests {
     // =========================================================================
     // 3. hardening.test.ts
     // =========================================================================
+    /// #4176: safe_fetch refuses a header carrying CR/LF (or another control
+    /// character) before it resolves or calls curl, whoever built the header.
+    #[test]
+    fn safe_fetch_refuses_header_injection_before_the_network() {
+        use crate::safe_fetch::{check_headers, is_safe_header_value, safe_fetch};
+        assert!(is_safe_header_value("Bearer abc.def-ghi_jkl"));
+        assert!(is_safe_header_value("tab\tok"));
+        for bad in ["a\r\nX-Injected: 1", "a\nb", "a\rb", "a\u{0}b", "a\u{7f}b"] {
+            assert!(!is_safe_header_value(bad), "{bad:?}");
+        }
+        let mut headers = HashMap::new();
+        headers.insert("Bad:Name".to_string(), "v".to_string());
+        assert!(check_headers(&headers).is_err());
+
+        let mut headers = HashMap::new();
+        headers.insert(
+            "Authorization".to_string(),
+            "Bearer t\r\nX-Injected: 1".to_string(),
+        );
+        let opts = SafeFetchOptions {
+            headers,
+            ..SafeFetchOptions::default()
+        };
+        // .invalid never resolves: an error that is not about the header means
+        // the request got as far as DNS.
+        let err = safe_fetch("https://never.invalid/", &opts).unwrap_err();
+        assert!(err.reason.contains("refused header"), "{}", err.reason);
+    }
+
+    /// #4176: curl's -X puts the method on the request line as given, so
+    /// safe_fetch sends only a fixed set of methods, checked before DNS.
+    #[test]
+    fn safe_fetch_refuses_methods_outside_the_allow_list() {
+        use crate::safe_fetch::{check_method, safe_fetch};
+        for ok in ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"] {
+            assert!(check_method(ok).is_ok(), "{ok}");
+        }
+        for bad in [
+            "GET /user HTTP/1.1\r\nX-Injected: 1\r\nX-Pad:",
+            "GET /x",
+            "get",
+            "",
+            "TRACE",
+            "CONNECT",
+        ] {
+            assert!(check_method(bad).is_err(), "{bad:?}");
+        }
+        let opts = SafeFetchOptions {
+            method: "GET /user HTTP/1.1\r\nX-Injected: 1".to_string(),
+            ..SafeFetchOptions::default()
+        };
+        let err = safe_fetch("https://never.invalid/", &opts).unwrap_err();
+        assert!(err.reason.contains("refused method"), "{}", err.reason);
+    }
+
+    /// Cloud Run reaches the container on its own address, never loopback,
+    /// and `start_test` only connects over loopback — so this is the one test
+    /// that fails if the server stops listening on every interface (#4176).
+    #[test]
+    fn server_binds_every_interface_by_default() {
+        let addr = crate::server::default_bind_addr(8080);
+        assert_eq!(
+            addr,
+            "0.0.0.0:8080".parse::<std::net::SocketAddr>().unwrap()
+        );
+        assert!(addr.ip().is_unspecified(), "bind address {addr}");
+    }
+
     #[test]
     fn hardening_emits_security_headers_and_no_store_on_api() {
         let app = App::with_backends(
@@ -1166,6 +1234,55 @@ mod tests {
         );
         assert_eq!(fetcher.recorded_calls().len(), before_calls);
 
+        // #4176: a CR/LF in the token would inject headers into the upstream
+        // request (curl sends -H text as given). Refused with a 400, unfetched.
+        for bad in ["tok\r\nX-Injected: 1", "tok\nX-Injected: 1", "tok\u{0}"] {
+            let before = fetcher.recorded_calls().len();
+            let exp_inject =
+                app.handle_request(&HttpRequest::new("POST", "/api/explore").with_json(json!({
+                    "provider": "github",
+                    "accessToken": bad,
+                    "endpoint": { "id": "user", "method": "GET" },
+                })));
+            assert_eq!(exp_inject.status, 400, "token {bad:?}");
+            assert_eq!(
+                exp_inject.json().get("error").and_then(Value::as_str),
+                Some("Invalid accessToken: it contains control characters")
+            );
+            assert_eq!(
+                fetcher.recorded_calls().len(),
+                before,
+                "token {bad:?} was fetched"
+            );
+        }
+
+        // #4176: the client's method is never forwarded. A request-line
+        // injection, or a different verb than the endpoint defines, is a 400
+        // with no fetch.
+        for bad in [
+            "GET /user HTTP/1.1\r\nX-Injected: 1\r\nX-Pad:",
+            "DELETE",
+            "get",
+        ] {
+            let before = fetcher.recorded_calls().len();
+            let exp_method =
+                app.handle_request(&HttpRequest::new("POST", "/api/explore").with_json(json!({
+                    "provider": "github",
+                    "accessToken": "test_token",
+                    "endpoint": { "id": "user", "method": bad },
+                })));
+            assert_eq!(exp_method.status, 400, "method {bad:?}");
+            assert_eq!(
+                exp_method.json().get("error").and_then(Value::as_str),
+                Some("Invalid endpoint: method does not match the endpoint definition")
+            );
+            assert_eq!(
+                fetcher.recorded_calls().len(),
+                before,
+                "method {bad:?} was fetched"
+            );
+        }
+
         let exp_ok =
             app.handle_request(&HttpRequest::new("POST", "/api/explore").with_json(json!({
                 "provider": "github",
@@ -1187,6 +1304,7 @@ mod tests {
             fetcher.recorded_calls().last().unwrap().url,
             "https://api.github.com/user"
         );
+        assert_eq!(fetcher.recorded_calls().last().unwrap().opts.method, "GET");
     }
 
     // =========================================================================

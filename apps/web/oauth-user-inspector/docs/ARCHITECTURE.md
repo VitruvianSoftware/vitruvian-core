@@ -26,7 +26,7 @@ deliberate exceptions noted below).
 | Secrets / logging | `@google-cloud/secret-manager`, `@google-cloud/logging-winston`, `winston` | Runtime creds read from GCP Secret Manager; structured logs to Cloud Logging when running on Cloud Run. |
 | Tests | **Jest 30** + **ts-jest** + **supertest** | Node test env. Outbound HTTP mocked with a CommonJS fetch mock. |
 | Package manager | **pnpm 10.20** | The monorepo is pnpm-workspace + Bazel. |
-| Container | multi-stage **Dockerfile** (`node:22-slim`) | Non-root `nodejs` user, `PORT=8080`, `HEALTHCHECK`, `CMD ["/app/dist-server/start"]`. |
+| Container | multi-stage **Dockerfile** (runtime `debian:bookworm-slim`, no Node) | Non-root `app` user (uid 1001), `PORT=8080`, `HEALTHCHECK`, `CMD ["/app/dist-server/start"]`. |
 | Deploy target | **Cloud Run v2** | Build-once / promote-by-digest, blue-green traffic, per-env. See [OPERATIONS.md](OPERATIONS.md). |
 
 There is **no database** and **no server-side session store**. The server is
@@ -250,13 +250,23 @@ entries (see [The secret model](#the-secret-model)).
 
 The `Dockerfile` is multi-stage:
 
+- **server-build stage** (`rust:${RUST_VERSION}-slim-bookworm`): compiles the
+  Rust server (`dist-server/oauth-user-inspector-server`) and the `start`
+  entrypoint. `RUST_VERSION` defaults to the Rust that Bazel builds and tests
+  the server with (`MODULE.bazel`); `:dockerfile_test` fails if they drift.
 - **build stage** (`node:${NODE_VERSION}-slim`, default 22): `corepack enable`,
-  `pnpm install`, `pnpm build` (frontend via Vite → `dist/`, server via `tsc` →
-  `dist-server/`). A `sed` neutralizes the monorepo's pnpm `catalog:` version
-  refs so the image builds standalone.
-- **runtime stage**: `NODE_ENV=production`, `PORT=8080`, prod-only deps, copies
-  `dist/` + `dist-server/` (the server and the `start` entrypoint), runs as non-root `nodejs` (uid 1001),
-  `EXPOSE 8080`, a curl `HEALTHCHECK` against `/`, and `CMD ["/app/dist-server/start"]`.
+  `pnpm install`, `pnpm run build:frontend` (Vite → `dist/`). A `sed`
+  neutralizes the monorepo's pnpm `catalog:` version refs so the image builds
+  standalone. Node is used only here.
+- **runtime stage** (`debian:bookworm-slim`): `NODE_ENV=production`,
+  `PORT=8080`, `ca-certificates` and `curl` (the server's outbound HTTPS calls
+  go through curl), copies `dist/` + `dist-server/`, runs as non-root `app`
+  (uid 1001), `EXPOSE 8080`, a curl `HEALTHCHECK` against `/`, and
+  `CMD ["/app/dist-server/start"]`. No Node and no `node_modules`.
+
+`:dockerfile_test` checks the parts of this that decide whether the image
+serves: the runtime stage copies the server and starts it through `start`,
+ships no Node, and `.dockerignore` drops nothing the build copies.
 
 `dist-server/start` (a Rust binary built from `scripts/src/bin/start.rs`) prints a
 short diagnostic banner, asserts the build outputs exist (fails fast with an `ls`
