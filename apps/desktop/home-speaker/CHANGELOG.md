@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.37.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.36.1...home-speaker-v1.37.0) (2026-11-02)
+
+
+### Features
+
+* **home-speaker:** read chats from Courier as well as Beeper ([#4237](https://github.com/VitruvianSoftware/vitruvian-core/issues/4237)) ([d48174d](https://github.com/VitruvianSoftware/vitruvian-core/commit/d48174d5c0f6fab063233128bf244906c307c147))
+
 ## [1.36.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/home-speaker-v1.36.0...home-speaker-v1.36.1) (2026-10-25)
 
 
