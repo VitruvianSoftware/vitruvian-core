@@ -50,7 +50,18 @@ The injector signs the app after it writes the plist, and it signs it the way th
 
 **First install after ad hoc builds.** Keychain items saved by earlier ad hoc builds had an access rule tied to that build's binary. The first Developer ID-signed Courier may ask once for permission to read them; click Always Allow. From then on, rebuilds carry the same team signature and do not ask.
 
-Not done here: notarization, and the DMG. Those are milestone 6's, through the desktop pipeline (`--options runtime --timestamp` and the nested signing above are what it will build on).
+Notarization and the DMG are the release's, below.
+
+### Releases
+
+A release goes through the desktop pipeline, the same way as HomeSpeaker. release-please opens a release PR from conventional commits under `apps/desktop/courier/` (config: `../release-please-config.json`; the version lives in `version.bzl`). When that PR merges, `.github/workflows/courier-release.yaml` runs, on a Mac:
+
+```sh
+bazel run //apps/desktop/courier/app:publish              # with RELEASE_TAG=courier-vX.Y.Z, in CI
+bazel run //apps/desktop/courier/app:publish -- --dry-run # locally: package and check, publish nothing
+```
+
+It builds the app and the engine for arm64 and x86_64 (`--macos_cpus=arm64,x86_64`; a plain build stays one-CPU), refuses an app or engine that lacks either, adds the Telegram app ID, and hands the app to `//tools/desktop-package`: Developer ID signing (engine, then app, hardened runtime, `Resources/Courier.entitlements`), notarization, the universal, arm64 and x86_64 DMGs, the ZIP, checksums, the GitHub Release upload and the Homebrew cask (`vitruviansoftware/tap/courier`). A real release refuses to start without the Telegram app ID or the notary key; a dry run needs neither and leaves everything in `../dist/`. `scripts/src/publish.rs` lists what it reads.
 
 ```sh
 bazel run --config=macos-app //apps/desktop/courier/app:install               # into /Applications

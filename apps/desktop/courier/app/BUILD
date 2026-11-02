@@ -8,6 +8,7 @@
 # Swift has no Gazelle, so this file is hand-written. It MUST MIRROR
 # Package.swift, target for target.
 
+load("@build_bazel_rules_apple//apple:apple.bzl", "apple_universal_binary")
 load("@build_bazel_rules_apple//apple:macos.bzl", "macos_application")
 load("@build_bazel_rules_apple//apple:versioning.bzl", "apple_bundle_version")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
@@ -100,19 +101,31 @@ apple_bundle_version(
     target_compatible_with = ["@platforms//os:macos"],
 )
 
-# The engine, as the file the app bundles. macos_application's
-# additional_contents keeps a file's path relative to its package, and rules_go
-# writes a go_binary to `<name>_/<name>`, so the go_binary given directly lands
-# at Contents/Helpers/courier-engine_/courier-engine. This copy is the same
-# binary at `courier-engine` in this package, so it lands at
-# Contents/Helpers/courier-engine. It is built in the app's configuration (the
-# darwin platform macos_application transitions to): arm64 only until
-# milestone 6's universal build.
+# The engine, built once for each CPU in --macos_cpus and joined with lipo. A
+# plain build (one CPU) gives a one-architecture engine; the release builds
+# with --macos_cpus=arm64,x86_64 (scripts/src/publish.rs), so the engine is
+# universal like the app.
+apple_universal_binary(
+    name = "engine_universal",
+    binary = "//apps/desktop/courier/engine/cmd/courier-engine",
+    minimum_os_version = "14.0",
+    platform_type = "macos",
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+)
+
+# The engine as the file the app bundles. macos_application's
+# additional_contents keeps a file's path relative to its package, so this
+# copy, `courier-engine` in this package, lands at
+# Contents/Helpers/courier-engine. It is signed ad hoc here because the
+# macOS linker signs only an arm64 binary: lipo's x86_64 half would be
+# unsigned, and the app's signing refuses an unsigned helper. The install
+# and the release sign it again with the Developer ID.
 genrule(
     name = "engine_helper",
-    srcs = ["//apps/desktop/courier/engine/cmd/courier-engine"],
+    srcs = [":engine_universal"],
     outs = ["courier-engine"],
-    cmd = "cp $(location //apps/desktop/courier/engine/cmd/courier-engine) $@ && chmod 755 $@",
+    cmd = "cp $(location :engine_universal) $@ && chmod 755 $@ && /usr/bin/codesign --force --sign - --identifier com.vitruviansoftware.courier.engine $@",
     executable = True,
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
@@ -143,8 +156,8 @@ macos_application(
 )
 
 # The app Bazel built holds a working engine: Contents/Helpers/courier-engine
-# is an arm64 executable that answers --help with its usage, and the bundle's
-# version is COURIER_VERSION. It reads the archive :Courier already produced.
+# runs on every CPU the app binary does and answers --help with its usage, and
+# the bundle's version is COURIER_VERSION. It reads the archive :Courier already produced.
 rust_test(
     name = "app_holds_engine_test",
     size = "small",
@@ -200,7 +213,12 @@ rust_test(
     name = "inject_app_credentials_test",
     size = "small",
     crate = ":courier_scripts_lib",
-    data = ["Resources/Courier.entitlements"],
+    # The same crate's tests as :courier_scripts_lib_test, so the same data:
+    # publish's test reads version.bzl.
+    data = [
+        "Resources/Courier.entitlements",
+        "version.bzl",
+    ],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
     tags = ["manual"],
@@ -252,6 +270,38 @@ pipeline_unit(
     timeout_minutes = 60,
 )
 
+# bazel run //apps/desktop/courier/app:publish [-- --dry-run]
+#
+# The release: builds Courier.app for arm64 and x86_64 (it runs `bazel build`
+# itself, with --config=macos-app --macos_cpus=arm64,x86_64), checks the app
+# and its engine run on both, adds Courier's Telegram app ID, and hands the app
+# to //tools/desktop-package to sign (engine, then app, hardened runtime,
+# Resources/Courier.entitlements), notarise, make the DMGs, ZIP, checksums and
+# Homebrew cask, and on a real release upload them. --dry-run uploads and
+# pushes nothing. .github/workflows/courier-release.yaml runs it when a
+# release-please release is cut; scripts/src/publish.rs says what it reads.
+rust_binary(
+    name = "publish",
+    srcs = ["scripts/src/bin/publish.rs"],
+    args = [
+        "$(rootpath :inject-app-credentials)",
+        "$(rootpath Resources/Courier.entitlements)",
+        "$(rootpath //tools/desktop-package:package-desktop)",
+        "$(rootpath //tools/sync-downloads:sync_downloads)",
+    ],
+    data = [
+        "Resources/Courier.entitlements",
+        ":inject-app-credentials",
+        "//tools/desktop-package:package-desktop",
+        "//tools/sync-downloads:sync_downloads",
+    ],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [":courier_scripts_lib"],
+)
+
 # --- Rust ports of courier app scripts ----------------------------------------
 
 rust_library(
@@ -269,6 +319,8 @@ rust_test(
     name = "courier_scripts_lib_test",
     size = "small",
     crate = ":courier_scripts_lib",
+    # publish's test reads the real version.bzl, as release-please rewrites it.
+    data = ["version.bzl"],
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
 )
