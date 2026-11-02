@@ -12,6 +12,9 @@ pulumi_project(
 # `bazel test //infrastructure/pulumi/foundation/gcp-bootstrap:test` runs the
 # stack's `go test ./...` locally (see pulumi_go_test() in defs.bzl).
 pulumi_go_test(
+    # The default (moderate, 300 s) is too tight: the merge queue timed this
+    # test out at 300 s. "long" allows 900 s.
+    timeout = "long",
     # sa_preview_test.go runs the whole program with the committed stack config.
     extra_data = ["Pulumi.production.yaml"],
 )
