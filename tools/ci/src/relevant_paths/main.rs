@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! //tools/ci:relevant-paths: the Rust port.
+//! //tools/ci:relevant_paths: the binary; what it does is in lib.rs.
 
 fn main() {
     std::process::exit(relevant_paths::run(&shell_compat::args()));

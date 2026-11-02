@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! //tools/ci:agent-fast-lane: the Rust port.
+//! //tools/ci:agent_fast_lane: the binary; what it does is in lib.rs.
 
 fn main() {
     std::process::exit(agent_fast_lane::run(&shell_compat::args()));

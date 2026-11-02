@@ -381,7 +381,7 @@ This is the part that lets us sleep.
 
 If the homelab dies (power cut, ISP outage, a broken node, the DNS bug above), jobs labelled `vitruvian-queue` just wait. GitHub doesn't time them out quickly. The merge queue stalls, and without a watchdog it stays stalled until a person notices.
 
-So [`queue-runner-watch`](https://github.com/VitruvianSoftware/vitruvian-core/blob/main/.github/workflows/queue-runner-watch.yaml) asks the pool for a job and starts a timer somewhere the pool can't take down with it.
+So [`queue-runner-watch`](https://github.com/VitruvianSoftware/vitruvian-core/blob/6957b40dd5287ccf48f641c7a4b8a5ed7e318865/.github/workflows/queue-runner-watch.yaml) asks the pool for a job and starts a timer somewhere the pool can't take down with it.
 
 ![The 4-Minute Canary Watchdog Loop](/images/homelab-canary-watchdog-loop.svg)
 *Figure 5: Each run starts two jobs at once: a canary on the homelab and a watcher on GitHub's runners. After 240 seconds the watcher reads the canary's status and sets `QUEUE_RUNNER_FALLBACK` to match.*
@@ -463,7 +463,7 @@ jobs:
 ```
 {% endraw %}
 
-And the decision, in [`tools/ci/queue-runner-watch.sh`](https://github.com/VitruvianSoftware/vitruvian-core/blob/main/tools/ci/queue-runner-watch.sh):
+And the decision, in [`tools/ci/queue-runner-watch.sh`](https://github.com/VitruvianSoftware/vitruvian-core/blob/6957b40dd5287ccf48f641c7a4b8a5ed7e318865/tools/ci/queue-runner-watch.sh):
 
 ```bash
 set -euo pipefail

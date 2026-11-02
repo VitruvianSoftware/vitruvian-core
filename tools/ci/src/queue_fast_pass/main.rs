@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! //tools/ci:queue-fast-pass: the Rust port.
+//! //tools/ci:queue_fast_pass: the binary; what it does is in lib.rs.
 
 fn main() {
     std::process::exit(queue_fast_pass::run(&shell_compat::args()));

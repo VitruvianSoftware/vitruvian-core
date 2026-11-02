@@ -18,8 +18,30 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! llvm-cache-stage.sh — move the extracted LLVM toolchain between the cache's
-//! fixed stage folder and Bazel's contents cache.
+//! llvm_cache_stage -- move the extracted LLVM toolchain between the Actions
+//! cache's FIXED folder and Bazel's repo contents cache, so that no file in this
+//! repo ever has to name the folder Bazel extracts LLVM into (#2456).
+//!
+//! WHY. Bazel names that folder after a hash of the llvm repo rule's whole
+//! definition -- not just llvm_versions. A rules_cc bump (#2419) moved it, and
+//! the cache kept pointing at the old, hand-copied name: every Bazel lane paid
+//! the full extraction for ~20 runs before anyone noticed (#2455). A hand-copied
+//! name will go stale again on the next toolchain-adjacent bump, so there isn't
+//! one any more:
+//!
+//!   restore  the cache unpacks into <stage>/<hash>/ (a path that never
+//!            changes); move each <hash>/ into <contents>/<hash>/ -- the same
+//!            bytes at the same final path the old pinned cache produced.
+//!   stage    after the build, find the folder that actually holds clang and
+//!            hard-link it into <stage>/, where the cache's post step saves it.
+//!   live     print the contents folder that actually holds clang.
+//!
+//! Moves and hard links stay on one filesystem, so neither copies the ~8GB tree.
+//!
+//! Usage:
+//!   llvm_cache_stage restore <stage> <contents>   # prints the restored dir
+//!   llvm_cache_stage stage   <stage> <contents>   # prints the staged hash
+//!   llvm_cache_stage live    <contents>           # prints the live dir
 
 use shell_compat::{basename, cat, err, out, status};
 #[cfg(unix)]

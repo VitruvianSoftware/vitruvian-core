@@ -19,8 +19,12 @@
 # SOFTWARE.
 
 # Builds one of the tools under tools/ci/src/<tool>/ with the runner's own
-# rustc, for jobs that set up no Bazel (release gates, the changelog and
-# pulumi digests, the cache pruner, the ntfy notifier). Each of those tools is
+# rustc, for jobs and steps that set up no Bazel, or run before it: the release
+# gates, the changelog and pulumi digests, the cache pruner, the ntfy notifier,
+# the changed-paths gate (it decides whether Bazel is set up at all), the LLVM
+# cache key and stage tools (a Bazel-built Rust binary links with the very
+# LLVM toolchain they restore), the merge-queue lookup, the fast lane and the
+# queue-runner watcher. Each of those tools is
 # a lib.rs + main.rs pair that depends only on //tools/shell-compat and std,
 # so three rustc calls build it from the checkout in about a second.
 #
@@ -29,12 +33,13 @@
 # so a tool that stops building this way fails presubmit, not a release.
 #
 # A failed build fails this step, and so does a build that claims success
-# without leaving an executable binary. The caller's next step, which runs the
+# without leaving an executable binary, or one that will not start. The caller's next step, which runs the
 # tool, then never starts and the run goes red. A caller whose tool must act
 # even then (the beta gate turning auto-merge off, the notifier reaching ntfy)
 # has its own `if: failure()` step after this one.
 #
-# Interface (kept stable for other callers): input `tool`, output `path`.
+# Interface (kept stable for other callers): input `tool`, optional input
+# `source-root`, output `path`.
 #
 # Requires the repo to be checked out first (composite actions referenced as
 # `./.github/actions/...` resolve from the workspace).
@@ -49,6 +54,14 @@ inputs:
       The tool's directory under tools/ci/src, which is also its crate name
       (for example release_hold).
     required: true
+  source-root:
+    description: >-
+      The checkout to build from; empty means the workspace. The fast-lane
+      steps pass a checkout of the pull request's BASE commit, so a pull
+      request cannot rewrite the rule that decides whether it may skip tests.
+      Relative paths are relative to the workspace.
+    required: false
+    default: ""
 
 outputs:
   path:
@@ -63,6 +76,7 @@ runs:
       shell: bash
       env:
         TOOL: ${{ inputs.tool }}
+        SOURCE_ROOT: ${{ inputs.source-root }}
       run: |
         set -euo pipefail
         case "$TOOL" in
@@ -71,7 +85,8 @@ runs:
             exit 1
             ;;
         esac
-        src="$GITHUB_WORKSPACE/tools"
+        command -v rustc >/dev/null || { echo "::error::build-ci-tool: no rustc on this runner, so tools/ci/src/$TOOL cannot be built"; exit 1; }
+        src="${SOURCE_ROOT:-$GITHUB_WORKSPACE}/tools"
         out="$RUNNER_TEMP/ci-tools"
         mkdir -p "$out"
         # The runner's rustc is newer than the Bazel toolchain that
@@ -86,6 +101,19 @@ runs:
         # which is the failure the callers' `if: failure()` fallbacks miss.
         if [ ! -f "$out/$TOOL" ] || [ ! -x "$out/$TOOL" ]; then
           echo "::error::build-ci-tool: rustc reported success but $out/$TOOL is not an executable file"
+          exit 1
+        fi
+        # And one that starts: run it once with no arguments and an empty
+        # environment, where every tool here stops at once (a usage error, or
+        # "not a pull request"). PATH names a folder that does not exist, so
+        # it finds no gh, git or curl even by the default search path: it
+        # cannot reach GitHub or ntfy, and with no GITHUB_OUTPUT it writes
+        # nothing. 126 and up means it could not be executed or died on a
+        # signal.
+        rc=0
+        env -i PATH="$out/no-such-dir" "$out/$TOOL" </dev/null >/dev/null 2>&1 || rc=$?
+        if [ "$rc" -ge 126 ]; then
+          echo "::error::build-ci-tool: $out/$TOOL was built but does not run (exit $rc)"
           exit 1
         fi
         echo "path=$out/$TOOL" >> "$GITHUB_OUTPUT"
