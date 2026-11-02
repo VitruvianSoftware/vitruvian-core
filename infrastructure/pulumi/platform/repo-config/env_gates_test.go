@@ -21,7 +21,14 @@ package main
 
 import (
 	"reflect"
+	"sort"
+	"strings"
 	"testing"
+
+	"github.com/pulumi/pulumi-github/sdk/v6/go/github"
+	"github.com/pulumi/pulumi/sdk/v3/go/common/resource"
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
 
 // Every Environment that holds a deploy or registry-push identity must be
@@ -89,6 +96,118 @@ func TestTagPolicyResourceNamesAreStable(t *testing.T) {
 		}
 		if !reflect.DeepEqual(got, tc.want) {
 			t.Errorf("%s tag policy suffixes = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+// envMocks records resources like recordingMocks, and answers the GetUser
+// invoke productionReviewerIds makes with a numeric id.
+type envMocks struct{ recordingMocks }
+
+func (m *envMocks) Call(args pulumi.MockCallArgs) (resource.PropertyMap, error) {
+	if args.Token == "github:index/getUser:getUser" {
+		return resource.PropertyMap{"id": resource.NewStringProperty("1")}, nil
+	}
+	return args.Args, nil
+}
+
+// The gate table is only half the property: what matters is the Environment
+// resources actually built from it (#4120). Run both builders under mocks and
+// check every Environment they create. Each one must be either a deliberately
+// open *-preview Environment, or carry custom branch policies (not "protected
+// branches", which lets any protected branch in) with exactly the expected
+// main/tag rows. An Environment this table does not know fails, so a new one
+// cannot slip in open by default.
+func TestDeployEnvironmentResourcesArePinnedToMain(t *testing.T) {
+	tabulaTags := []string{"branch:main", "tag:tabula-api-v*", "tag:tabula-web-v*"}
+	oauthTags := []string{"branch:main", "tag:oauth-user-inspector-v*"}
+	want := map[string][]string{ // nil = deliberately open
+		"tabula-preview":                     nil,
+		"tabula-development":                 {"branch:main"},
+		"tabula-build":                       tabulaTags,
+		"tabula-nonproduction":               tabulaTags,
+		"tabula-production":                  tabulaTags,
+		"oauth-user-inspector-preview":       nil,
+		"oauth-user-inspector-development":   {"branch:main"},
+		"oauth-user-inspector-build":         oauthTags,
+		"oauth-user-inspector-nonproduction": oauthTags,
+		"oauth-user-inspector-production":    oauthTags,
+	}
+
+	mocks := &envMocks{recordingMocks{resources: map[string][]resource.PropertyMap{}}}
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		repo, err := github.NewRepository(ctx, "vitruvian-core", &github.RepositoryArgs{
+			Name: pulumi.String("vitruvian-core"),
+		})
+		if err != nil {
+			return err
+		}
+		cfg := config.New(ctx, "")
+		if err := tabulaEnvironments(ctx, cfg, repo); err != nil {
+			return err
+		}
+		return oauthEnvironment(ctx, cfg, repo)
+	}, pulumi.WithMocks("repo-config", "dev", mocks))
+	if err != nil {
+		t.Fatalf("building environments: %v", err)
+	}
+
+	refs := map[string][]string{}
+	for _, p := range mocks.resources["github:index/repositoryEnvironmentDeploymentPolicy:RepositoryEnvironmentDeploymentPolicy"] {
+		env := p["environment"].StringValue()
+		if v, ok := p["branchPattern"]; ok && v.StringValue() != "" {
+			refs[env] = append(refs[env], "branch:"+v.StringValue())
+		}
+		if v, ok := p["tagPattern"]; ok && v.StringValue() != "" {
+			refs[env] = append(refs[env], "tag:"+v.StringValue())
+		}
+	}
+
+	seen := map[string]bool{}
+	for _, e := range mocks.resources["github:index/repositoryEnvironment:RepositoryEnvironment"] {
+		name := e["environment"].StringValue()
+		seen[name] = true
+		wantRefs, known := want[name]
+		if !known {
+			t.Errorf("%s: unexpected Environment; add it to this test's table, pinned (or deliberately open if it holds only a read-only identity)", name)
+			continue
+		}
+		got := append([]string(nil), refs[name]...)
+		sort.Strings(got)
+		bpv, hasBP := e["deploymentBranchPolicy"]
+		if wantRefs == nil {
+			if hasBP && !bpv.IsNull() {
+				t.Errorf("%s: deploymentBranchPolicy = %v, want none (open preview Environment)", name, bpv)
+			}
+			if len(got) != 0 {
+				t.Errorf("%s: deploy refs = %v, want none", name, got)
+			}
+			continue
+		}
+		if !hasBP || bpv.IsNull() {
+			t.Errorf("%s: no deploymentBranchPolicy, so ANY branch may deploy", name)
+		} else {
+			bp := bpv.ObjectValue()
+			if bp["protectedBranches"].BoolValue() || !bp["customBranchPolicies"].BoolValue() {
+				t.Errorf("%s: deploymentBranchPolicy = %v, want protectedBranches=false customBranchPolicies=true", name, bp)
+			}
+		}
+		if g, w := strings.Join(got, " "), strings.Join(wantRefs, " "); g != w {
+			t.Errorf("%s: deploy refs = %q, want %q", name, g, w)
+		}
+	}
+	for name := range want {
+		if !seen[name] {
+			t.Errorf("%s: Environment was not created", name)
+		}
+	}
+}
+
+// A gate nobody wrote a case for must come out pinned, not open.
+func TestUnknownEnvironmentGateIsClosed(t *testing.T) {
+	for app, gate := range map[string]func(string) envGate{"tabula": tabulaEnvGate, "oauth-user-inspector": oauthEnvGate} {
+		if g := gate("staging"); !g.mainOnly {
+			t.Errorf("%s gate for an unlisted env = %+v, want mainOnly (default closed)", app, g)
 		}
 	}
 }

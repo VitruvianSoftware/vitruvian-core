@@ -555,7 +555,8 @@ var tabulaReleaseTags = []envTagPolicy{
 //     GitHub allows self-approval, so on a single-maintainer repo that is a
 //     deliberate "break glass" pause, not a four-eyes gate.
 //   - preview: open. It holds only the read-only tabula-preview identity
-//     (roles/viewer) that the PR pulumi-preview leg runs as.
+//     (roles/viewer) that the PR pulumi-preview leg runs as. This is the
+//     ONLY open case; anything unlisted defaults to main only.
 func tabulaEnvGate(env string) envGate {
 	switch env {
 	case "development":
@@ -564,8 +565,12 @@ func tabulaEnvGate(env string) envGate {
 		return envGate{mainOnly: true, tags: tabulaReleaseTags}
 	case "production":
 		return envGate{mainOnly: true, tags: tabulaReleaseTags, reviewer: true}
-	default:
+	case "preview":
 		return envGate{}
+	default:
+		// Default closed: an Environment added without a case starts pinned
+		// to main, not open to every branch.
+		return envGate{mainOnly: true}
 	}
 }
 
@@ -683,7 +688,8 @@ var oauthReleaseTags = []envTagPolicy{{suffix: "tags", pattern: "oauth-user-insp
 //     merge is the human gate).
 //   - production: the same, plus a required reviewer.
 //   - preview: open. It holds only the read-only oauth-user-inspector-preview
-//     identity (roles/viewer) that the PR pulumi-preview leg runs as.
+//     identity (roles/viewer) that the PR pulumi-preview leg runs as. This is
+//     the ONLY open case; anything unlisted defaults to main only.
 func oauthEnvGate(env string) envGate {
 	switch env {
 	case "development":
@@ -692,8 +698,12 @@ func oauthEnvGate(env string) envGate {
 		return envGate{mainOnly: true, tags: oauthReleaseTags}
 	case "production":
 		return envGate{mainOnly: true, tags: oauthReleaseTags, reviewer: true}
-	default:
+	case "preview":
 		return envGate{}
+	default:
+		// Default closed: an Environment added without a case starts pinned
+		// to main, not open to every branch.
+		return envGate{mainOnly: true}
 	}
 }
 
