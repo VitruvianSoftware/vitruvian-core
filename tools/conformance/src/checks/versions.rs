@@ -304,9 +304,23 @@ pub fn check_node(ctx: &Context) {
 /// hermetic toolchain, which is exactly why the two would drift apart. A
 /// justified exception goes in version-pins.tsv (tool `rust`) like any pin.
 pub fn check_rust_toolchain(ctx: &Context) {
+    // Fail closed. Unlike go.work, whose absence means no Go to check, this
+    // repo always has a Rust toolchain: not finding its version means this
+    // reader no longer understands MODULE.bazel, and returning here would
+    // report every rust-toolchain file as clean.
     let canon = match canonical_rust(&ctx.root) {
         Ok(v) => v,
-        Err(_) => return,
+        Err(e) => {
+            ctx.emit_fail(
+                "rust",
+                "MODULE.bazel",
+                "",
+                "",
+                &e,
+                "keep a use_extension(\"@rules_rust//rust:extensions.bzl\", \"rust\") binding with a .toolchain(versions = [...]) call, or teach canonical_rust the new shape",
+            );
+            return;
+        }
     };
     let mut files = ctx.files.discover(&ctx.root, "rust-toolchain");
     files.extend(ctx.files.discover(&ctx.root, "rust-toolchain.toml"));
@@ -683,6 +697,95 @@ fn copies_package_json(content: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A temp repo root holding `files` (relative path, content).
+    fn repo(files: &[(&str, &str)]) -> std::path::PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static N: AtomicU64 = AtomicU64::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "conformance-rust-{}-{}",
+            std::process::id(),
+            N.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        for (rel, body) in files {
+            let p = dir.join(rel);
+            fs::create_dir_all(p.parent().unwrap()).unwrap();
+            fs::write(p, body).unwrap();
+        }
+        dir
+    }
+
+    fn run_rust_check(files: &[(&str, &str)]) -> (u32, u32, String) {
+        let dir = repo(files);
+        let ctx = Context::for_root(dir.to_str().unwrap());
+        check_rust_toolchain(&ctx);
+        let out = (
+            ctx.ok_count.get(),
+            ctx.fail_count.get(),
+            ctx.rows.get("rust"),
+        );
+        let _ = fs::remove_dir_all(&dir);
+        out
+    }
+
+    const MODULE: &str = "rust = use_extension(\"@rules_rust//rust:extensions.bzl\", \"rust\")\n\
+rust.toolchain(\n    edition = \"2021\",\n    versions = [\"1.75.0\"],\n)\n";
+
+    #[test]
+    fn a_rust_toolchain_on_a_moving_channel_fails() {
+        let (ok, fail, rows) = run_rust_check(&[
+            ("MODULE.bazel", MODULE),
+            (
+                "apps/x/rust-toolchain.toml",
+                "[toolchain]\nchannel = \"stable\"\n",
+            ),
+            ("rust-toolchain", "nightly\n"),
+            (
+                "tools/rust-toolchain.toml",
+                "[toolchain]\nchannel = \"1.75.0\"\n",
+            ),
+        ]);
+        assert_eq!((ok, fail), (1, 2), "{rows}");
+        assert!(
+            rows.contains("apps/x/rust-toolchain.toml") && rows.contains("DRIFT"),
+            "{rows}"
+        );
+    }
+
+    /// aegis's repro: with the extension variable renamed, the drifting
+    /// files must still fail, not drop out of the report.
+    #[test]
+    fn a_renamed_extension_variable_still_checks_every_file() {
+        let renamed = MODULE
+            .replace("rust = use_extension", "rust_ext = use_extension")
+            .replace("rust.toolchain(", "rust_ext.toolchain(");
+        let (ok, fail, rows) = run_rust_check(&[
+            ("MODULE.bazel", &renamed),
+            (
+                "apps/x/rust-toolchain.toml",
+                "[toolchain]\nchannel = \"stable\"\n",
+            ),
+            ("rust-toolchain", "nightly\n"),
+        ]);
+        assert_eq!((ok, fail), (0, 2), "{rows}");
+    }
+
+    /// Fail closed: a MODULE.bazel whose Rust version cannot be read fails
+    /// the run, even with no rust-toolchain file anywhere.
+    #[test]
+    fn an_unreadable_rust_version_fails_the_run() {
+        for module in [
+            "bazel_dep(name = \"rules_rust\", version = \"0.60.0\")\n",
+            "rust = use_extension(\"@rules_rust//rust:extensions.bzl\", \"rust\")\nrust.toolchain(edition = \"2021\")\n",
+        ] {
+            let (ok, fail, rows) = run_rust_check(&[("MODULE.bazel", module)]);
+            assert_eq!((ok, fail), (0, 1), "{module}: {rows}");
+            assert!(rows.contains("could not read"), "{rows}");
+        }
+        let (_, fail, rows) = run_rust_check(&[]);
+        assert_eq!(fail, 1, "no MODULE.bazel: {rows}");
+    }
 
     #[test]
     fn rust_toolchain_channel_reads_toml() {

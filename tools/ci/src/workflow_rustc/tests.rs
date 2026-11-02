@@ -456,6 +456,51 @@ fn heredoc_delimiter(line: &str) -> Option<String> {
     (!d.is_empty()).then_some(d)
 }
 
+/// `RUSTUP_TOOLCHAIN=` lines inside a multi-line group whose output goes to
+/// an env file:
+///
+/// ```text
+/// {
+///   echo "CARGO_TERM_COLOR=always"
+///   echo "RUSTUP_TOOLCHAIN=stable"
+/// } >> "$GITHUB_ENV"
+/// ```
+///
+/// The assignment and the redirect are on different lines, so the per-line
+/// check cannot see both. The group must open on a line of its own (`{` or
+/// `(`), the usual style; a group opened mid-line (`if ...; then {`) is not
+/// tracked.
+fn env_file_group_assignments(lines: &[&str]) -> Vec<(usize, &'static str, String)> {
+    let mut out = Vec::new();
+    let mut open: Vec<usize> = Vec::new();
+    for (i, l) in lines.iter().enumerate() {
+        let t = l.trim();
+        if t == "{" || t == "(" {
+            open.push(i);
+        } else if t.starts_with('}') || t.starts_with(')') {
+            let Some(start) = open.pop() else { continue };
+            if !mentions_env_file(t) {
+                continue;
+            }
+            for (j, body) in lines.iter().enumerate().take(i).skip(start + 1) {
+                let b = body.trim();
+                if !b.starts_with('#')
+                    && rustup_toolchain_assignments(b)
+                        .iter()
+                        .any(|v| !is_exact_version(v))
+                {
+                    out.push((
+                        j + 1,
+                        "writes RUSTUP_TOOLCHAIN to an env file as something other than one exact release",
+                        b.to_string(),
+                    ));
+                }
+            }
+        }
+    }
+    out
+}
+
 /// Every place in `text` (a workflow, an action, or any file beside them)
 /// that installs Rust: `(line number, why, the logical line)`.
 ///
@@ -465,8 +510,8 @@ fn heredoc_delimiter(line: &str) -> Option<String> {
 /// subshell brackets, so `apt-get update && apt-get install rustc` is caught
 /// and `rustc --version; apt-get install jq` is not.
 fn rust_installs(text: &str) -> Vec<(usize, &'static str, String)> {
-    let mut out = Vec::new();
     let lines: Vec<&str> = text.lines().collect();
+    let mut out = env_file_group_assignments(&lines);
     // Inside `cat >> "$GITHUB_ENV" <<EOF ... EOF`: the delimiter that ends it.
     let mut env_heredoc: Option<String> = None;
     let mut i = 0;
@@ -561,6 +606,9 @@ fn rust_installs(text: &str) -> Vec<(usize, &'static str, String)> {
             }
         }
     }
+    // A line the group check and the per-line check both flag, once.
+    out.sort_by_key(|(line, _, _)| *line);
+    out.dedup_by_key(|(line, _, _)| *line);
     out
 }
 
@@ -596,14 +644,17 @@ fn files_under(dir: &Path) -> Vec<PathBuf> {
 /// moves every installed toolchain), `default`, `override set`, `run`, a
 /// `+toolchain` selector (`cargo +nightly`) and `RUSTUP_TOOLCHAIN`, whether
 /// set in the shell, in YAML `env:`, or written to `$GITHUB_ENV` /
-/// `$GITHUB_OUTPUT` (by echo, printf, `tee -a` or a heredoc). Each must
+/// `$GITHUB_OUTPUT` (by echo, printf, `tee -a`, a heredoc, or a `{ ... }` /
+/// `( ... )` group opened on its own line whose closing line redirects there).
+/// Each must
 /// name one exact `x.y.z` release; a channel (`stable`, `beta`, `nightly`,
 /// `nightly-2024-01-01`) or a partial version (`1.75`) fails. Managers match
 /// on their basename, so `/usr/bin/apt-get` and `/usr/bin/env apt-get` count.
 ///
 /// Accepted limits, left to code review (none is in use here, and each takes
 /// deliberate effort):
-/// - package names passed in a variable (`apt-get install -y $PKG`);
+/// - package names passed in a variable (`apt-get install -y $PKG`), and a
+///   `RUSTUP_TOOLCHAIN` group opened mid-line rather than on its own line;
 /// - rustup fetched from another URL (`https://rustup.rs`);
 /// - the standalone `static.rust-lang.org/dist/rust-X...tar.xz` installer,
 ///   which is version-pinned anyway (tools/ci-runner/Dockerfile uses it);
@@ -696,6 +747,10 @@ fn the_scan_catches_every_spelling_of_a_rust_install() {
         "echo \"RUSTUP_TOOLCHAIN=nightly\" >> \"$GITHUB_OUTPUT\"",
         "cat >> \"$GITHUB_ENV\" <<EOF\nCARGO_TERM_COLOR=always\nRUSTUP_TOOLCHAIN=nightly\nEOF",
         "cat <<-'ENV' >> $GITHUB_ENV\n  RUSTUP_TOOLCHAIN=beta\nENV",
+        // A multi-line group whose output goes to the env file.
+        "{\n  echo \"CARGO_TERM_COLOR=always\"\n  echo \"RUSTUP_TOOLCHAIN=stable\"\n} >> \"$GITHUB_ENV\"",
+        "(\n  echo RUSTUP_TOOLCHAIN=nightly\n) >>\"${GITHUB_ENV}\"",
+        "{\n  {\n    echo A=1\n  }\n  printf 'RUSTUP_TOOLCHAIN=%s\\n' beta\n} | tee -a \"$GITHUB_ENV\"",
         // Managers called by full path.
         "sudo /usr/bin/apt-get install -y rustc",
         "/usr/bin/env apt-get install -y cargo",
@@ -725,6 +780,9 @@ fn the_scan_leaves_other_steps_alone() {
         "cat >> \"$GITHUB_ENV\" <<EOF\nCARGO_TERM_COLOR=always\nEOF\necho \"toolchain: RUSTUP_TOOLCHAIN=nightly\"",
         "echo \"PATH_EXTRA=/opt/bin\" >> \"$GITHUB_ENV\"",
         "echo \"using RUSTUP_TOOLCHAIN=nightly would move it\"",
+        "{\n  echo \"CARGO_TERM_COLOR=always\"\n  echo \"RUSTUP_TOOLCHAIN=1.75.0\"\n} >> \"$GITHUB_ENV\"",
+        // A group that goes somewhere else is ordinary logging.
+        "{\n  echo \"RUSTUP_TOOLCHAIN=nightly is what upstream uses\"\n} >> \"$RUNNER_TEMP/notes.txt\"",
         "rustup update 1.75.0",
         "rustup toolchain add 1.75.0",
         "rustup override set 1.75.0",

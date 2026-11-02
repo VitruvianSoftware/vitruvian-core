@@ -58,6 +58,39 @@ pub struct Context {
 }
 
 impl Context {
+    /// A Context over `root` with an empty pin registry and no colours, for
+    /// tests that run one check against a temp tree.
+    #[cfg(test)]
+    pub fn for_root(root: &str) -> Self {
+        Context {
+            root: root.to_string(),
+            start_pwd: root.to_string(),
+            today: "2026-01-01".to_string(),
+            registry: Registry { rows: Vec::new() },
+            files: FileCache::new(root),
+            catalog_names: Vec::new(),
+            colors: Colors {
+                reset: "",
+                green: "",
+                yellow: "",
+                red: "",
+                dim: "",
+                bold: "",
+                cyan: "",
+            },
+            rows: RowBuffers::new(),
+            workflows_dir: format!("{root}/.github/workflows"),
+            workspace_yaml: format!("{root}/pnpm-workspace.yaml"),
+            catalog_exempt: Vec::new(),
+            ok_count: Cell::new(0),
+            fail_count: Cell::new(0),
+            pin_count: Cell::new(0),
+            warn_count: Cell::new(0),
+            overall_fail: Cell::new(false),
+            fatal: RefCell::new(None),
+        }
+    }
+
     pub fn new() -> Result<Self, String> {
         let root = std::env::var("BUILD_WORKSPACE_DIRECTORY").unwrap_or_else(|_| {
             std::env::current_dir()
