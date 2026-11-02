@@ -39,17 +39,34 @@ fn has_test_files(dir: &[u8]) -> bool {
     !subst(r.stdout).is_empty()
 }
 
-fn find_go_mods() -> Vec<Vec<u8>> {
-    let mut search_paths: Vec<Vec<u8>> = vec![b"infrastructure/pulumi".to_vec()];
-    if let Ok(entries) = std::fs::read_dir(".") {
+/// The non-dot subdirectories of `dir`, as `dir/<name>` (a shell `dir/*/`
+/// glob: dot-directories are skipped, as the glob skips them).
+fn subdirs(dir: &[u8]) -> Vec<Vec<u8>> {
+    let mut found = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(shell_compat::path(dir)) {
         for entry in entries.flatten() {
             let name = entry.file_name();
             let name_bytes = std::os::unix::ffi::OsStrExt::as_bytes(name.as_os_str());
-            // The shell glob `*/infra` skips dot-directories.
             if name_bytes.first() == Some(&b'.') {
                 continue;
             }
-            let infra = cat(&[name_bytes, b"/infra"]);
+            let p = cat(&[dir, b"/", name_bytes]);
+            if shell_compat::is_dir(&p) {
+                found.push(p);
+            }
+        }
+    }
+    found
+}
+
+/// Every go.mod under `infrastructure/pulumi` and `apps/*/*/infra` (the app
+/// layout, `apps/<category>/<app>/infra`). The old `*/infra` glob predates
+/// that layout and matched nothing once apps moved (#4178), so it is gone.
+fn find_go_mods() -> Vec<Vec<u8>> {
+    let mut search_paths: Vec<Vec<u8>> = vec![b"infrastructure/pulumi".to_vec()];
+    for category in subdirs(b"apps") {
+        for app in subdirs(&category) {
+            let infra = cat(&[&app, b"/infra"]);
             if shell_compat::is_dir(&infra) {
                 search_paths.push(infra);
             }
