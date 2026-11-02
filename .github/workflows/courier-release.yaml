@@ -40,9 +40,9 @@
 #   - COURIER_TELEGRAM_API_ID and COURIER_TELEGRAM_API_HASH, secrets of the
 #     `courier-release` GitHub Environment, so only that job can read them.
 #     The environment is declared in infrastructure/pulumi/platform/repo-config
-#     (courier_release.go: only main and courier-v* tags may deploy to it); the
-#     values are set with `bazel run //tools/sync-env-secrets:apply --
-#     courier-release` (apps/desktop/courier/docs/cutover.md).
+#     (courier_release.go: only main and courier-v* tags may deploy to it); a
+#     person sets the values once with //tools/sync-env-secrets, as
+#     apps/desktop/courier/docs/cutover.md says. This workflow never sets them.
 name: courier-release
 
 on:
