@@ -362,6 +362,32 @@ mod tests {
         assert!(err.reason.contains("refused header"), "{}", err.reason);
     }
 
+    /// #4176: curl's -X puts the method on the request line as given, so
+    /// safe_fetch sends only a fixed set of methods, checked before DNS.
+    #[test]
+    fn safe_fetch_refuses_methods_outside_the_allow_list() {
+        use crate::safe_fetch::{check_method, safe_fetch};
+        for ok in ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"] {
+            assert!(check_method(ok).is_ok(), "{ok}");
+        }
+        for bad in [
+            "GET /user HTTP/1.1\r\nX-Injected: 1\r\nX-Pad:",
+            "GET /x",
+            "get",
+            "",
+            "TRACE",
+            "CONNECT",
+        ] {
+            assert!(check_method(bad).is_err(), "{bad:?}");
+        }
+        let opts = SafeFetchOptions {
+            method: "GET /user HTTP/1.1\r\nX-Injected: 1".to_string(),
+            ..SafeFetchOptions::default()
+        };
+        let err = safe_fetch("https://never.invalid/", &opts).unwrap_err();
+        assert!(err.reason.contains("refused method"), "{}", err.reason);
+    }
+
     /// Cloud Run reaches the container on its own address, never loopback,
     /// and `start_test` only connects over loopback — so this is the one test
     /// that fails if the server stops listening on every interface (#4176).
@@ -1230,6 +1256,33 @@ mod tests {
             );
         }
 
+        // #4176: the client's method is never forwarded. A request-line
+        // injection, or a different verb than the endpoint defines, is a 400
+        // with no fetch.
+        for bad in [
+            "GET /user HTTP/1.1\r\nX-Injected: 1\r\nX-Pad:",
+            "DELETE",
+            "get",
+        ] {
+            let before = fetcher.recorded_calls().len();
+            let exp_method =
+                app.handle_request(&HttpRequest::new("POST", "/api/explore").with_json(json!({
+                    "provider": "github",
+                    "accessToken": "test_token",
+                    "endpoint": { "id": "user", "method": bad },
+                })));
+            assert_eq!(exp_method.status, 400, "method {bad:?}");
+            assert_eq!(
+                exp_method.json().get("error").and_then(Value::as_str),
+                Some("Invalid endpoint: method does not match the endpoint definition")
+            );
+            assert_eq!(
+                fetcher.recorded_calls().len(),
+                before,
+                "method {bad:?} was fetched"
+            );
+        }
+
         let exp_ok =
             app.handle_request(&HttpRequest::new("POST", "/api/explore").with_json(json!({
                 "provider": "github",
@@ -1251,6 +1304,7 @@ mod tests {
             fetcher.recorded_calls().last().unwrap().url,
             "https://api.github.com/user"
         );
+        assert_eq!(fetcher.recorded_calls().last().unwrap().opts.method, "GET");
     }
 
     // =========================================================================

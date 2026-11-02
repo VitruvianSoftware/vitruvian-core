@@ -19,7 +19,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-use crate::api_endpoints::resolve_explore_target;
+use crate::api_endpoints::{explore_endpoint_def, resolve_explore_target};
 use crate::logger::{
     create_logger, create_request_logger, log_error, log_timing, now_epoch_ms, Logger,
 };
@@ -1815,6 +1815,31 @@ impl App {
                 }
             };
 
+        // The method sent upstream is the endpoint definition's, never the
+        // client's: a client value went straight to curl's -X, which puts it on
+        // the request line as given (a method of "GET /x HTTP/1.1\r\nX: 1"
+        // injected a header; "DELETE" hit a GET endpoint). A client method
+        // that differs from the definition is refused (#4176).
+        let Some(def) = explore_endpoint_def(provider, endpoint_id) else {
+            return self.json_response(
+                400,
+                request_id,
+                true,
+                json!({ "error": "unknown endpoint" }),
+            );
+        };
+        if endpoint_method != def.method {
+            return self.json_response(
+                400,
+                request_id,
+                true,
+                json!({
+                    "error": "Invalid endpoint: method does not match the endpoint definition",
+                }),
+            );
+        }
+        let upstream_method = def.method;
+
         if let Some(ref domain) = issuer_domain {
             if let Err(err) = self.validate_issuer_domain(domain) {
                 return self.collapse_upstream_error(request_id, &err);
@@ -1839,7 +1864,7 @@ impl App {
         }
 
         let opts = SafeFetchOptions {
-            method: endpoint_method.to_string(),
+            method: upstream_method.to_string(),
             headers,
             body: None,
             ..Default::default()

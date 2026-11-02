@@ -246,10 +246,36 @@ fn runtime_stage_ships_no_node() {
     );
 }
 
+/// Whether an owner spec (`user`, `user:group`, `uid:gid`) names root only.
+fn is_root_owner(spec: &str) -> bool {
+    spec.split(':')
+        .filter(|p| !p.is_empty())
+        .all(|p| p == "root" || p == "0")
+}
+
+/// Whether a chmod mode grants write to group or other: an octal mode whose
+/// group or other digit has the write bit, or a symbolic clause like `g+w`,
+/// `o=rw`, `a+w` or a bare `+w`.
+fn mode_grants_group_or_other_write(mode: &str) -> bool {
+    if !mode.is_empty() && mode.chars().all(|c| c.is_ascii_digit()) {
+        let d: Vec<u32> = mode.chars().filter_map(|c| c.to_digit(8)).collect();
+        let n = d.len();
+        return n >= 2 && (d[n - 2] & 2 != 0 || d[n - 1] & 2 != 0);
+    }
+    mode.split(',').any(|clause| {
+        let who: String = clause.chars().take_while(|c| "ugoa".contains(*c)).collect();
+        let rest = &clause[who.len()..];
+        let grants = rest.starts_with('+') || rest.starts_with('=');
+        grants
+            && rest.contains('w')
+            && (who.is_empty() || who.contains('g') || who.contains('o') || who.contains('a'))
+    })
+}
+
 /// #4176: with `chown -R app:app /app` the runtime user could rewrite the
 /// server binary and the frontend it serves. The server writes no files, so
-/// /app stays root-owned and no instruction may hand it (or any part of it) to
-/// the runtime user, nor make it world-writable.
+/// nothing in the runtime stage may give a non-root owner any file (chown,
+/// `COPY --chown`, `install -o/-g`), grant group/other write, or run as uid 0.
 #[test]
 fn runtime_user_cannot_write_the_app() {
     let (_, all) = stages(&read("DOCKERFILE"));
@@ -261,35 +287,92 @@ fn runtime_user_cannot_write_the_app() {
         .find_map(|i| i.strip_prefix("USER "))
         .map(str::trim)
         .expect("runtime stage must drop root with USER");
-    assert_ne!(user, "root", "the image must not run as root");
-    assert_ne!(user, "0", "the image must not run as root");
+    let uid = user.split(':').next().unwrap_or_default();
+    assert!(
+        uid != "root" && uid != "0" && !uid.is_empty(),
+        "the image must not run as root (USER {user})"
+    );
     for ins in &runtime.body {
-        let words: Vec<&str> = ins.split_whitespace().collect();
-        for (i, w) in words.iter().enumerate() {
-            if *w == "chown" {
-                let rest = words[i + 1..].join(" ");
+        if let Some(rest) = ins
+            .strip_prefix("COPY ")
+            .or_else(|| ins.strip_prefix("ADD "))
+        {
+            for w in rest.split_whitespace() {
+                if let Some(owner) = w.strip_prefix("--chown=") {
+                    assert!(is_root_owner(owner), "{ins}: keep copied files root-owned");
+                }
                 assert!(
-                    !rest.contains("/app") && !rest.contains(" ."),
-                    "runtime stage hands /app to a user ({ins}); keep it root-owned"
+                    !w.starts_with("--chmod="),
+                    "{ins}: set modes with chmod, checked below"
                 );
             }
-            if *w == "chmod" {
-                let rest = words[i + 1..].join(" ");
-                for mode in ["777", "666", "a+w", "o+w", "go+w", "g+w", "+w "] {
+        }
+        let words: Vec<&str> = ins.split_whitespace().collect();
+        for (i, w) in words.iter().enumerate() {
+            let args: Vec<&str> = words[i + 1..]
+                .iter()
+                .take_while(|a| !["&&", "||", ";", "|"].contains(a))
+                .copied()
+                .collect();
+            let operand = || {
+                args.iter()
+                    .find(|a| !a.starts_with('-'))
+                    .copied()
+                    .unwrap_or("")
+            };
+            match *w {
+                "chown" | "chgrp" => {
+                    let owner = operand();
                     assert!(
-                        !(rest.contains(mode) && rest.contains("/app")),
-                        "runtime stage makes /app writable ({ins})"
+                        is_root_owner(owner),
+                        "{ins}: hands files to {owner:?}; keep /app root-owned"
                     );
                 }
+                "chmod" => {
+                    let mode = operand();
+                    assert!(
+                        !mode_grants_group_or_other_write(mode),
+                        "{ins}: grants group/other write ({mode})"
+                    );
+                }
+                "install" | "mkdir" => {
+                    for (j, a) in args.iter().enumerate() {
+                        let owner = match *a {
+                            "-o" | "-g" | "--owner" | "--group" => args.get(j + 1).copied(),
+                            _ => a
+                                .strip_prefix("--owner=")
+                                .or_else(|| a.strip_prefix("--group=")),
+                        };
+                        if let Some(o) = owner {
+                            assert!(is_root_owner(o), "{ins}: creates files owned by {o:?}");
+                        }
+                        if *a == "-m" || *a == "--mode" {
+                            let m = args.get(j + 1).copied().unwrap_or("");
+                            assert!(
+                                !mode_grants_group_or_other_write(m),
+                                "{ins}: grants group/other write ({m})"
+                            );
+                        }
+                    }
+                }
+                _ => {}
             }
         }
-        if let Some(rest) = ins.strip_prefix("COPY ") {
-            assert!(
-                !rest.contains("--chown"),
-                "COPY --chown hands files to a user ({ins}); keep /app root-owned"
-            );
-        }
     }
+}
+
+#[test]
+fn write_grant_detection() {
+    for bad in [
+        "777", "0777", "775", "0757", "g+w", "o+w", "a+w", "+w", "go=rwx", "u+x,g+w",
+    ] {
+        assert!(mode_grants_group_or_other_write(bad), "{bad}");
+    }
+    for ok in ["755", "0755", "644", "go-w", "u+w", "u=rwx,go=rx", "+x"] {
+        assert!(!mode_grants_group_or_other_write(ok), "{ok}");
+    }
+    assert!(is_root_owner("root:root") && is_root_owner("0:0") && is_root_owner("root"));
+    assert!(!is_root_owner("app:app") && !is_root_owner("1001") && !is_root_owner("root:app"));
 }
 
 #[test]

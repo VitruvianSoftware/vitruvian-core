@@ -208,6 +208,19 @@ impl std::error::Error for UnknownExploreEndpointError {}
 ///
 /// Throws `UnknownExploreEndpointError` for any provider/endpointId not in the
 /// table, or for an issuer endpoint called without an `issuer_domain`.
+/// The server-side definition of `endpoint_id` for `provider`, if any. Its
+/// `method` is the one sent upstream: the client's value is only checked
+/// against it, never forwarded (#4176).
+pub fn explore_endpoint_def(
+    provider: &str,
+    endpoint_id: &str,
+) -> Option<&'static ExploreEndpointDef> {
+    let prov = ExploreProvider::parse(provider)?;
+    endpoints_for_provider(prov)
+        .iter()
+        .find(|d| d.id == endpoint_id)
+}
+
 pub fn resolve_explore_target(
     provider: &str,
     endpoint_id: &str,

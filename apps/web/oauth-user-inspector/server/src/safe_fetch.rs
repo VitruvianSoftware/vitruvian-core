@@ -420,8 +420,6 @@ pub fn resolve_and_pin(raw_url: &str) -> Result<ResolvedPin, UpstreamError> {
 /// APIs) reject requests with no `User-Agent` header with `403 Forbidden`.
 pub const SAFE_FETCH_USER_AGENT: &str = "oauth-user-inspector";
 
-/// Return a shallow copy of `headers` with `User-Agent: oauth-user-inspector`
-/// populated unless a `user-agent` header (any case) is already present.
 /// Whether `value` is safe inside an HTTP header: no control characters
 /// except horizontal tab (no CR, LF or NUL, which would end the header and
 /// start another), the rule Node's fetch applied.
@@ -443,6 +441,26 @@ pub fn check_headers(headers: &HashMap<String, String>) -> Result<(), UpstreamEr
     Ok(())
 }
 
+/// The request methods safe_fetch will send. curl's `-X` puts the value on
+/// the request line as given, so anything else (a space, CR/LF, a path) would
+/// let the caller rewrite the request line or inject headers (#4176).
+pub const ALLOWED_METHODS: &[&str] = &["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"];
+
+/// Refuse any method outside [`ALLOWED_METHODS`] (exact, upper case).
+pub fn check_method(method: &str) -> Result<(), UpstreamError> {
+    if ALLOWED_METHODS.contains(&method) {
+        Ok(())
+    } else {
+        Err(UpstreamError::new(format!(
+            "refused method {:?}: not one of {}",
+            method.escape_debug().to_string(),
+            ALLOWED_METHODS.join(", ")
+        )))
+    }
+}
+
+/// Return a shallow copy of `headers` with `User-Agent: oauth-user-inspector`
+/// populated unless a `user-agent` header (any case) is already present.
 pub fn with_default_user_agent(headers: &HashMap<String, String>) -> HashMap<String, String> {
     let mut out = headers.clone();
     let has_ua = out.keys().any(|k| k.eq_ignore_ascii_case("user-agent"));
@@ -548,6 +566,7 @@ pub fn safe_fetch(
     // Before anything touches the network: a CR/LF in a header would let the
     // caller add headers of their own to the upstream request (curl sends
     // `-H` text as given; Node's fetch refused it).
+    check_method(&opts.method)?;
     check_headers(&opts.headers)?;
     let pin = resolve_and_pin(raw_url)?;
     let headers = with_content_length(
