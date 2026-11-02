@@ -33,7 +33,7 @@ export function createLifecycle({
 }) {
   const { state } = vesselState;
   const { restoreSpriteOrder, restoreSpriteOrderOnEnable } = services.sprites;
-  const { holdContinuousRender, releaseContinuousRender } = services.render;
+  const { releaseContinuousRender } = services.render;
   const { ensureGeoidReady } = services.geoid;
   const { registerPickOwner, unregisterPickOwner } = services.picking;
 
@@ -147,6 +147,7 @@ export function createLifecycle({
     state.interactionHandlerFactory = null;
     state.interactionKeyTarget = null;
     state.preRenderRemover = null;
+    components.rendering.cancelTrailingVisibilityPass();
     state.lastVisibilityUpdate = 0;
     state.lastFocusUpdate = 0;
     state.activeFocusCount = 0;
@@ -186,7 +187,6 @@ export function createLifecycle({
       const wasEnabled = state.feed.enabled;
       state.feed.enabled = true;
       if (!wasEnabled) beginAisSession();
-      holdContinuousRender('ais-vessels'); // per-frame animator (perf wave 2)
       const activeViewer = viewer || state.viewer;
       components.rendering.ensureCollections(activeViewer);
       components.selection.installInteraction(activeViewer);
@@ -230,6 +230,7 @@ export function createLifecycle({
       state.feed.enabled = false;
       invalidateAisSession();
       releaseContinuousRender('ais-vessels');
+      components.rendering.cancelTrailingVisibilityPass();
       unregisterPickOwner('ais-live-vessels');
       components.rendering.setVisible(false);
       vesselState._vesselOverlayHost.clearSource(VESSEL_OVERLAY_SOURCE_ID);
@@ -249,6 +250,7 @@ export function createLifecycle({
       const activeViewer = viewer || state.viewer;
       invalidateAisSession();
       releaseContinuousRender('ais-vessels'); // direct-destroy path (perf wave 2 fix)
+      components.rendering.cancelTrailingVisibilityPass();
       if (state.feed.abort) state.feed.abort.abort();
       unregisterPickOwner('ais-live-vessels');
       components.selection.clearVesselInspection();

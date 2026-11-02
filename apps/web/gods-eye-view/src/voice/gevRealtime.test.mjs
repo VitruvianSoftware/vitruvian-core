@@ -56,6 +56,7 @@ import {
   withToolCatalog,
 } from './gevRealtime.js';
 import { createVoiceCostTracker } from './voiceCost.js';
+import { createTestVoiceUi } from '../testSupport/voiceUi.mjs';
 
 test('push-to-talk recognizes Space by code or key', () => {
   assert.equal(PUSH_TO_TALK_HOLD_DELAY_MS, 500);
@@ -136,10 +137,7 @@ function createPushToTalkFixture(t) {
   const makeController = () => {
     const microphone = { enabled: false, stopped: false, stop() { this.stopped = true; } };
     const controller = new GevRealtimeController({
-      ui: {
-        root: { dataset: {}, querySelectorAll: () => [], remove() {} },
-        status: {}, detail: {},
-      },
+      ui: createTestVoiceUi(),
       runner: async () => ({}),
       radioLayer: {
         pause: () => radio.push('pause'),
@@ -340,8 +338,8 @@ test('push-to-talk starts once at 500ms and repeat does not reset the threshold'
   assert.equal(f.controller.spaceKeyHeld, false);
   assert.equal(f.controller.pushToTalkKeyHeld, false);
   assert.equal(f.microphone.enabled, false);
-  assert.equal(f.controller.ui.root.dataset.pushToTalk, undefined);
-  assert.equal(f.controller.ui.detail.textContent, 'Hold Space to talk');
+  assert.equal(f.controller.ui.state.root.pushToTalk, null);
+  assert.equal(f.controller.ui.state.detail.text, 'Hold Space to talk');
 });
 
 test('push-to-talk treats a Space release before 500ms as a background tap', (t) => {
@@ -414,7 +412,7 @@ test('push-to-talk cancels pending and active holds on blur or hidden document',
     assert.equal(f.controller.spaceKeyHeld, false);
     assert.equal(f.controller.pushToTalkKeyHeld, false);
     assert.equal(f.microphone.enabled, false);
-    assert.equal(f.controller.ui.root.dataset.pushToTalk, undefined);
+    assert.equal(f.controller.ui.state.root.pushToTalk, null);
     assert.equal(f.key('keyup', background).defaultPrevented, false);
     f.document.visibilityState = 'visible';
   }
@@ -601,7 +599,7 @@ test('failed or superseded Radio preflight keeps voice open and cancels audio', 
 test('replacement input invalidates an in-flight Radio preflight immediately', () => {
   const order = [];
   const controller = new GevRealtimeController({
-    ui: {},
+    ui: createTestVoiceUi(),
     runner: async () => ({}),
     radioLayer: { stopPlayback: () => order.push('radio-stop') },
   });
@@ -618,12 +616,7 @@ test('replacement input invalidates an in-flight Radio preflight immediately', (
 test('direct Radio pause or stop cancels a pending voice handoff', async () => {
   const order = [];
   let playbackControl = null;
-  const ui = {
-    root: { dataset: {}, classList: { remove() {} }, querySelectorAll: () => [] },
-    status: { textContent: '' },
-    detail: { textContent: '', title: '' },
-    errorDetail: { textContent: '' },
-  };
+  const ui = createTestVoiceUi();
   const controller = new GevRealtimeController({
     ui,
     runner: async () => ({ ok: true }),
@@ -659,12 +652,7 @@ test('direct Radio pause or stop cancels a pending voice handoff', async () => {
 test('confirmed manual Radio playback closes active voice without stopping Radio', () => {
   const order = [];
   let playbackControl = null;
-  const ui = {
-    root: { dataset: {}, classList: { remove() {} }, querySelectorAll: () => [] },
-    status: { textContent: '' },
-    detail: { textContent: '', title: '' },
-    errorDetail: { textContent: '' },
-  };
+  const ui = createTestVoiceUi();
   const controller = new GevRealtimeController({
     ui,
     runner: async () => ({ ok: true }),
@@ -697,12 +685,7 @@ test('manual playback takeover survives stale voice preflight cleanup', async ()
   let resolvePreflight;
   let activeAttemptId = null;
   const stopRequests = [];
-  const ui = {
-    root: { dataset: {}, classList: { remove() {} }, querySelectorAll: () => [] },
-    status: { textContent: '' },
-    detail: { textContent: '', title: '' },
-    errorDetail: { textContent: '' },
-  };
+  const ui = createTestVoiceUi();
   const radioLayer = {
     subscribePlaybackControls(listener) {
       playbackControl = listener;
@@ -754,7 +737,7 @@ test('manual playback takeover survives stale voice preflight cleanup', async ()
 test('internal Radio cleanup controls do not masquerade as newer user input', () => {
   let playbackControl = null;
   const controller = new GevRealtimeController({
-    ui: {},
+    ui: createTestVoiceUi(),
     runner: async () => ({}),
     radioLayer: {
       subscribePlaybackControls(listener) {
@@ -779,7 +762,7 @@ test('manual Radio playback does not close voice when voice is already idle', ()
   let playbackControl = null;
   let voiceStops = 0;
   const controller = new GevRealtimeController({
-    ui: {},
+    ui: createTestVoiceUi(),
     runner: async () => ({}),
     radioLayer: {
       subscribePlaybackControls(listener) {
@@ -799,12 +782,7 @@ test('manual Radio playback does not close voice when voice is already idle', ()
 test('active-response Realtime errors invalidate pending and in-flight Radio handoffs', async () => {
   const order = [];
   let playbackControl = null;
-  const ui = {
-    root: { dataset: {}, classList: { remove() {} }, querySelectorAll: () => [] },
-    status: { textContent: '' },
-    detail: { textContent: '', title: '' },
-    errorDetail: { textContent: '' },
-  };
+  const ui = createTestVoiceUi();
   const controller = new GevRealtimeController({
     ui,
     runner: async () => ({ ok: true }),
@@ -852,16 +830,7 @@ test('voice ownership ducks tuner static before pausing broadcaster audio', () =
 test('Radio handoff waits for response.done so later multi-intent tools execute before voice closes', async () => {
   const order = [];
   const confirmationInstructions = [];
-  const ui = {
-    root: {
-      dataset: {},
-      classList: { remove() {} },
-      querySelectorAll: () => [],
-    },
-    status: { textContent: '' },
-    detail: { textContent: '', title: '' },
-    errorDetail: { textContent: '' },
-  };
+  const ui = createTestVoiceUi();
   const runner = async (name) => {
     order.push(`tool:${name}`);
     if (name === 'control_radio') {
@@ -946,12 +915,7 @@ test('Radio handoff waits for response.done so later multi-intent tools execute 
 test('Radio playback failure leaves voice connected and speaks a correction', async () => {
   const sent = [];
   const order = [];
-  const ui = {
-    root: { dataset: {}, classList: { remove() {} }, querySelectorAll: () => [] },
-    status: { textContent: '' },
-    detail: { textContent: '', title: '' },
-    errorDetail: { textContent: '' },
-  };
+  const ui = createTestVoiceUi();
   const controller = new GevRealtimeController({
     ui,
     runner: async () => ({
@@ -1004,16 +968,7 @@ test('Radio playback failure leaves voice connected and speaks a correction', as
 
 test('detected speech cancels a prepared Radio handoff before a cancelled response completes', async () => {
   const order = [];
-  const ui = {
-    root: {
-      dataset: {},
-      classList: { remove() {} },
-      querySelectorAll: () => [],
-    },
-    status: { textContent: '' },
-    detail: { textContent: '', title: '' },
-    errorDetail: { textContent: '' },
-  };
+  const ui = createTestVoiceUi();
   const controller = new GevRealtimeController({
     ui,
     runner: async () => ({
@@ -1072,12 +1027,7 @@ test('a Radio tool result that resolves after speech interruption cannot re-arm 
   let resolveRunner;
   const runnerResult = new Promise((resolve) => { resolveRunner = resolve; });
   let receivedSignal = null;
-  const ui = {
-    root: { dataset: {}, classList: { remove() {} }, querySelectorAll: () => [] },
-    status: { textContent: '' },
-    detail: { textContent: '', title: '' },
-    errorDetail: { textContent: '' },
-  };
+  const ui = createTestVoiceUi();
   const controller = new GevRealtimeController({
     ui,
     runner: async (_name, _args, options) => {
@@ -1132,12 +1082,7 @@ test('sibling tool calls in one response do not abort an in-flight Radio action'
   let resolveRadio;
   let radioSignal = null;
   const radioResult = new Promise((resolve) => { resolveRadio = resolve; });
-  const ui = {
-    root: { dataset: {}, classList: { remove() {} }, querySelectorAll: () => [] },
-    status: { textContent: '' },
-    detail: { textContent: '', title: '' },
-    errorDetail: { textContent: '' },
-  };
+  const ui = createTestVoiceUi();
   const controller = new GevRealtimeController({
     ui,
     runner: async (name, _args, options) => {
@@ -1178,12 +1123,7 @@ test('Radio stop does not abort an unrelated sibling tool from the same response
   let releaseStyle;
   let styleSignal = null;
   const styleResult = new Promise((resolve) => { releaseStyle = resolve; });
-  const ui = {
-    root: { dataset: {}, classList: { remove() {} }, querySelectorAll: () => [] },
-    status: { textContent: '' },
-    detail: { textContent: '', title: '' },
-    errorDetail: { textContent: '' },
-  };
+  const ui = createTestVoiceUi();
   const controller = new GevRealtimeController({
     ui,
     runner: async (name, _args, options) => {
@@ -1257,12 +1197,7 @@ test('real Radio Select cannot enable or play after a same-response Disable comp
       return true;
     },
   };
-  const ui = {
-    root: { dataset: {}, classList: { remove() {} }, querySelectorAll: () => [] },
-    status: { textContent: '' },
-    detail: { textContent: '', title: '' },
-    errorDetail: { textContent: '' },
-  };
+  const ui = createTestVoiceUi();
   globalThis.window = { __GOOGLE_MAPS_API_KEY__: 'test-key' };
   globalThis.fetch = async () => {
     announceLookupStarted();
@@ -1388,12 +1323,7 @@ test('generic same-response Radio visibility disable supersedes delayed Select',
     camera: { moveEnd: { addEventListener() {} } },
   };
   const genericRunner = createGevActionRunner({ viewer, styleManager: {}, dataManager });
-  const ui = {
-    root: { dataset: {}, classList: { remove() {} }, querySelectorAll: () => [] },
-    status: { textContent: '' },
-    detail: { textContent: '', title: '' },
-    errorDetail: { textContent: '' },
-  };
+  const ui = createTestVoiceUi();
   globalThis.window = { __GOOGLE_MAPS_API_KEY__: 'test-key' };
   globalThis.fetch = async () => {
     announceLookupStarted();
@@ -1523,12 +1453,7 @@ test('same-response Pause aborts a real manager enable already in flight', async
   dataManager.subscribe((change) => {
     if (change.type === 'visibility') trace.push(`visibility:${change.enabled}`);
   });
-  const ui = {
-    root: { dataset: {}, classList: { remove() {} }, querySelectorAll: () => [] },
-    status: { textContent: '' },
-    detail: { textContent: '', title: '' },
-    errorDetail: { textContent: '' },
-  };
+  const ui = createTestVoiceUi();
   const controller = new GevRealtimeController({
     ui,
     dataManager,
@@ -1654,12 +1579,7 @@ test('Pause and Stop preserve independent dedicated and generic Radio ON across 
                 styleManager: {},
                 dataManager,
               });
-              const ui = {
-                root: { dataset: {}, classList: { remove() {} }, querySelectorAll: () => [] },
-                status: { textContent: '' },
-                detail: { textContent: '', title: '' },
-                errorDetail: { textContent: '' },
-              };
+              const ui = createTestVoiceUi();
               const controller = new GevRealtimeController({
                 ui,
                 dataManager,
@@ -1788,12 +1708,7 @@ test('successful same- or newer-response Stop aborts Select across real manager 
           if (change.origin === 'voice') persistenceWrites.push(change.enabled);
         }
       });
-      const ui = {
-        root: { dataset: {}, classList: { remove() {} }, querySelectorAll: () => [] },
-        status: { textContent: '' },
-        detail: { textContent: '', title: '' },
-        errorDetail: { textContent: '' },
-      };
+      const ui = createTestVoiceUi();
       const controller = new GevRealtimeController({
         ui,
         radioLayer,
@@ -1859,12 +1774,7 @@ test('same-response pause and disable suppress play/select handoffs without canc
       const playbackGate = new Promise((resolve) => { releasePlayback = resolve; });
       const sent = [];
       const radioState = { enabled: true, audioState: 'playing' };
-      const ui = {
-        root: { dataset: {}, classList: { remove() {} }, querySelectorAll: () => [] },
-        status: { textContent: '' },
-        detail: { textContent: '', title: '' },
-        errorDetail: { textContent: '' },
-      };
+      const ui = createTestVoiceUi();
       const controller = new GevRealtimeController({
         ui,
         radioLayer: { getUIState: () => ({ ...radioState }) },
@@ -1940,12 +1850,7 @@ test('Realtime Radio route exceptions preserve the authoritative lifecycle summa
   for (const route of ['dedicated', 'generic']) {
     const sent = [];
     const lifecycle = { enabled: true, lifecycleState: 'disabling', uncertain: true };
-    const ui = {
-      root: { dataset: {}, classList: { remove() {} }, querySelectorAll: () => [] },
-      status: { textContent: '' },
-      detail: { textContent: '', title: '' },
-      errorDetail: { textContent: '' },
-    };
+    const ui = createTestVoiceUi();
     const controller = new GevRealtimeController({
       ui,
       dataManager: {
@@ -1992,12 +1897,7 @@ test('different-response Radio stop remains a cancellation authority for an olde
   let releaseSelect;
   const selectGate = new Promise((resolve) => { releaseSelect = resolve; });
   const sent = [];
-  const ui = {
-    root: { dataset: {}, classList: { remove() {} }, querySelectorAll: () => [] },
-    status: { textContent: '' },
-    detail: { textContent: '', title: '' },
-    errorDetail: { textContent: '' },
-  };
+  const ui = createTestVoiceUi();
   const controller = new GevRealtimeController({
     ui,
     runner: async (_name, args) => {
@@ -2070,12 +1970,7 @@ test('failed same-response stop does not suppress a successful playback request'
     }]]),
     isEnabled: () => true,
   };
-  const ui = {
-    root: { dataset: {}, classList: { remove() {} }, querySelectorAll: () => [] },
-    status: { textContent: '' },
-    detail: { textContent: '', title: '' },
-    errorDetail: { textContent: '' },
-  };
+  const ui = createTestVoiceUi();
   const controller = new GevRealtimeController({
     ui,
     runner: async (_name, args) => {
@@ -2178,12 +2073,7 @@ test('failed same-response Stop preserves Select auto-enable held inside real ma
   };
   dataManager = new DataLayerManager({});
   dataManager.register(radioLayer);
-  const ui = {
-    root: { dataset: {}, classList: { remove() {} }, querySelectorAll: () => [] },
-    status: { textContent: '' },
-    detail: { textContent: '', title: '' },
-    errorDetail: { textContent: '' },
-  };
+  const ui = createTestVoiceUi();
   const controller = new GevRealtimeController({
     ui,
     dataManager,
@@ -2266,12 +2156,7 @@ test('failed same-response Pause and Disable do not suppress valid older playbac
           return () => visibilityListeners.delete(listener);
         },
       };
-      const ui = {
-        root: { dataset: {}, classList: { remove() {} }, querySelectorAll: () => [] },
-        status: { textContent: '' },
-        detail: { textContent: '', title: '' },
-        errorDetail: { textContent: '' },
-      };
+      const ui = createTestVoiceUi();
       const controller = new GevRealtimeController({
         ui,
         dataManager,
@@ -2329,12 +2214,7 @@ test('failed generic same-response Radio OFF does not suppress valid older playb
   let releaseSelect;
   const selectGate = new Promise((resolve) => { releaseSelect = resolve; });
   const sent = [];
-  const ui = {
-    root: { dataset: {}, classList: { remove() {} }, querySelectorAll: () => [] },
-    status: { textContent: '' },
-    detail: { textContent: '', title: '' },
-    errorDetail: { textContent: '' },
-  };
+  const ui = createTestVoiceUi();
   const controller = new GevRealtimeController({
     ui,
     runner: async (name, args) => {
@@ -2423,12 +2303,7 @@ test('direct user Radio OFF aborts an in-flight voice enable before settled publ
   dataManager.subscribe((change) => {
     if (change.type === 'visibility') visibility.push(`${change.origin}:${change.enabled}`);
   });
-  const ui = {
-    root: { dataset: {}, classList: { remove() {} }, querySelectorAll: () => [] },
-    status: { textContent: '' },
-    detail: { textContent: '', title: '' },
-    errorDetail: { textContent: '' },
-  };
+  const ui = createTestVoiceUi();
   const controller = new GevRealtimeController({
     ui,
     dataManager,
@@ -2514,12 +2389,7 @@ test('direct user Radio OFF freezes a prepared handoff until disable success or 
       dataManager = new DataLayerManager({});
       dataManager.register(radioLayer);
       await dataManager.setEnabled('radio', true);
-      const ui = {
-        root: { dataset: {}, classList: { remove() {} }, querySelectorAll: () => [] },
-        status: { textContent: '' },
-        detail: { textContent: '', title: '' },
-        errorDetail: { textContent: '' },
-      };
+      const ui = createTestVoiceUi();
       const controller = new GevRealtimeController({
         ui,
         dataManager,
@@ -2593,12 +2463,7 @@ test('dedicated and generic Radio OFF reservations freeze an in-flight playback 
           },
           getUIState: () => ({ enabled: true, audioState: 'stopped' }),
         };
-        const ui = {
-          root: { dataset: {}, classList: { remove() {} }, querySelectorAll: () => [] },
-          status: { textContent: '' },
-          detail: { textContent: '', title: '' },
-          errorDetail: { textContent: '' },
-        };
+        const ui = createTestVoiceUi();
         const controller = new GevRealtimeController({
           ui,
           radioLayer,
@@ -2695,12 +2560,7 @@ test('delayed Stop reports its result before committing or resuming a prepared h
         },
         getUIState: () => ({ enabled: true, audioState: 'stopped' }),
       };
-      const ui = {
-        root: { dataset: {}, classList: { remove() {} }, querySelectorAll: () => [] },
-        status: { textContent: '' },
-        detail: { textContent: '', title: '' },
-        errorDetail: { textContent: '' },
-      };
+      const ui = createTestVoiceUi();
       const controller = new GevRealtimeController({
         ui,
         radioLayer,
@@ -2778,12 +2638,7 @@ test('stale handoff cleanup cannot erase a resumed successor across repeated fai
       return true;
     },
   };
-  const ui = {
-    root: { dataset: {}, classList: { remove() {} }, querySelectorAll: () => [] },
-    status: { textContent: '' },
-    detail: { textContent: '', title: '' },
-    errorDetail: { textContent: '' },
-  };
+  const ui = createTestVoiceUi();
   const controller = new GevRealtimeController({
     ui,
     radioLayer,
@@ -2830,12 +2685,7 @@ test('stale handoff cleanup cannot erase a resumed successor across repeated fai
 });
 
 test('a later same-response stop clears an already prepared playback result', async () => {
-  const ui = {
-    root: { dataset: {}, classList: { remove() {} }, querySelectorAll: () => [] },
-    status: { textContent: '' },
-    detail: { textContent: '', title: '' },
-    errorDetail: { textContent: '' },
-  };
+  const ui = createTestVoiceUi();
   const controller = new GevRealtimeController({
     ui,
     runner: async (_name, args) => args.action === 'select'
@@ -3129,22 +2979,7 @@ const usdUsage = (usd) => ({
 /** A controller wired to inert UI stubs, with the cost surface present. */
 function costControllerHarness({ runner } = {}) {
   const toolCalls = [];
-  const ui = {
-    root: { dataset: {}, classList: { remove() {}, add() {} }, querySelectorAll: () => [] },
-    status: { textContent: '' },
-    detail: { textContent: '', title: '' },
-    errorDetail: { textContent: '' },
-    button: { dataset: {} },
-    buttonLabel: { textContent: '' },
-    tierButton: {
-      textContent: '',
-      title: '',
-      attrs: {},
-      setAttribute(key, value) { this.attrs[key] = value; },
-      getAttribute(key) { return this.attrs[key] ?? null; },
-    },
-    costValue: { textContent: '', title: '', dataset: {} },
-  };
+  const ui = createTestVoiceUi();
   const controller = new GevRealtimeController({
     ui,
     runner: runner || (async (name) => { toolCalls.push(name); return { ok: true }; }),
@@ -3212,9 +3047,9 @@ test('F1: the toggle still records the next-session preference while live', () =
   controller.status = 'listening';
   controller.setVoiceTier('mini');
   assert.equal(controller.voiceTier, 'mini');
-  assert.equal(ui.tierButton.textContent, 'MINI');
+  assert.equal(ui.state.tier.text, 'MINI');
   // ...and says so, rather than implying the live session switched.
-  assert.match(ui.tierButton.title, /this session stays on/i);
+  assert.match(ui.state.tier.title, /this session stays on/i);
 });
 
 test('OAuth cloud sessions report unknown cost and usage without tripping the API spend guard', () => {
@@ -3224,8 +3059,8 @@ test('OAuth cloud sessions report unknown cost and usage without tripping the AP
   controller._cost.sessionCloudVoiceAuth = 'oauth';
   controller.syncCostUi();
   const before = controller.costTracker.state();
-  assert.equal(ui.costValue.hidden, false);
-  assert.equal(ui.costValue.textContent, 'COST UNKNOWN');
+  assert.equal(ui.state.cost.hidden, false);
+  assert.equal(ui.state.cost.text, 'COST UNKNOWN');
   assert.deepEqual(controller.recordUsage(usdUsage(100)), {
     responses: 1,
     input: 0,
@@ -3236,11 +3071,11 @@ test('OAuth cloud sessions report unknown cost and usage without tripping the AP
   const after = controller.costTracker.state();
   assert.equal(after.totalUsd, before.totalUsd);
   assert.equal(controller.costCapStopped, false);
-  assert.match(ui.costValue.title, /1 response\(s\).*1562500 output tokens/);
+  assert.match(ui.state.cost.title, /1 response\(s\).*1562500 output tokens/);
   controller.dc = {};
   controller.responseActive = true;
   controller.stop();
-  assert.match(ui.costValue.title, /Usage is incomplete/);
+  assert.match(ui.state.cost.title, /Usage is incomplete/);
 });
 
 test('OAuth cloud sessions count caption transcriptions without pricing them into the API cap', () => {
@@ -3261,8 +3096,8 @@ test('OAuth cloud sessions count caption transcriptions without pricing them int
   assert.equal(after.totalUsd, before.totalUsd);
   assert.equal(after.capReached, false);
   assert.equal(controller.costCapStopped, false);
-  assert.equal(ui.costValue.textContent, 'COST UNKNOWN');
-  assert.match(ui.costValue.title, /1 caption transcription\(s\)/);
+  assert.equal(ui.state.cost.text, 'COST UNKNOWN');
+  assert.match(ui.state.cost.title, /1 caption transcription\(s\)/);
 });
 
 test('F1: when idle, toggling does re-price the preview meter', () => {
@@ -3466,7 +3301,7 @@ test('F4: two clicks during a live session return to the original preference', (
 
   controller.toggleVoiceTier();
   assert.equal(controller.voiceTier, 'standard', 'second click switches back');
-  assert.equal(ui.tierButton.textContent, 'STD');
+  assert.equal(ui.state.tier.text, 'STD');
 });
 
 test('F4: the toggle alternates across many clicks mid-session', () => {
@@ -3503,7 +3338,7 @@ test('F3: an unrecognised session model bills at the most expensive known rates'
 function textCommandController() {
   const sent = [];
   const controller = new GevRealtimeController({
-    ui: {},
+    ui: createTestVoiceUi(),
     runner: async () => ({}),
   });
   controller.dc = { readyState: 'open' };

@@ -20,7 +20,7 @@
  * SOFTWARE.
  */
 
-import { msg } from '../i18n/index.js';
+import { msg } from '../i18n/marker.js';
 
 /**
  * FLIR — Forward Looking Infrared

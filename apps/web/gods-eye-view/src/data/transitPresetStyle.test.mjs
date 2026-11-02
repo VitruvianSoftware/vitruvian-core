@@ -39,7 +39,6 @@ test('profile mapping: NVG/FLIR/noir and cockpit nvg are mono, retro is crt, eve
   for (const plain of [
     'normal',
     'anime',
-    'snow',
     'minecraft',
     '',
     null,

@@ -8,7 +8,7 @@
 # files upstream does not have. See upstream/README.md.
 #
 # change: added (only here), modified (both, but different), deleted (only upstream)
-# base	a3a19883b4f9ebb879040e2a6969c689355c3008	tree	8dcaeba09923b5c1eb53398f7c95b253780db251
+# base	0088df95ca21b3581b50f49f950569d31c65b9d8	tree	15e67f31a2b8b9b905ce3c64efd84c82697294f3
 # path	change	why
 .dockerignore	modified	Build context for the monorepo's Dockerfile. Upstream now ships its own, for its dev container; this copy keeps the monorepo's.
 BUILD.bazel	added	Bazel targets. Named BUILD.bazel because a file named BUILD collides with upstream's build/ directory on case-insensitive file systems.
@@ -69,4 +69,12 @@ src/sky/starrySky.js	modified	STARRY_SKY_CESIUM_VERSION names the cesium release
 src/tooling/viteBuild.test.mjs	modified	Vite 8, at the monorepo's one version, refuses a disallowed Host before any plugin middleware runs, so that refusal carries no API headers; the test checks only its status.
 src/i18n/locales/es.json	modified	The startup status line names HOME_VIEW's city through a {place} message, in place of upstream's Austin one.
 src/i18n/locales/ru.json	modified	The startup status line names HOME_VIEW's city through a {place} message, in place of upstream's Austin one.
+src/i18n/locales/ar.json	modified	The startup status line names HOME_VIEW's city through a {place} message, in place of upstream's Austin one.
+src/i18n/locales/de.json	modified	The startup status line names HOME_VIEW's city through a {place} message, in place of upstream's Austin one.
+src/i18n/locales/fr.json	modified	The startup status line names HOME_VIEW's city through a {place} message, in place of upstream's Austin one.
+src/i18n/locales/it.json	modified	The startup status line names HOME_VIEW's city through a {place} message, in place of upstream's Austin one.
+src/i18n/locales/ja.json	modified	The startup status line names HOME_VIEW's city through a {place} message, in place of upstream's Austin one.
+src/i18n/locales/pt.json	modified	The startup status line names HOME_VIEW's city through a {place} message, in place of upstream's Austin one.
+src/i18n/locales/uk.json	modified	The startup status line names HOME_VIEW's city through a {place} message, in place of upstream's Austin one.
+src/i18n/locales/zh-Hant.json	modified	The startup status line names HOME_VIEW's city through a {place} message, in place of upstream's Austin one.
 src/i18n/locales/zh-CN.json	modified	The startup status line names HOME_VIEW's city through a {place} message, in place of upstream's Austin one.

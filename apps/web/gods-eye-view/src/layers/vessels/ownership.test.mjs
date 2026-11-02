@@ -51,7 +51,11 @@ function services() {
       forgetSpriteFocus: noop,
     },
     worldFocus: {},
-    render: { releaseContinuousRender: noop },
+    render: {
+      holdContinuousRender: noop,
+      releaseContinuousRender: noop,
+      governorRequestRender: noop,
+    },
   };
 }
 function setup(source, options = {}) {

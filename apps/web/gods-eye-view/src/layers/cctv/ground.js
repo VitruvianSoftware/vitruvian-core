@@ -20,6 +20,7 @@
  * SOFTWARE.
  */
 
+import * as Cesium from 'cesium';
 import {
   SUPPORT_KEYS,
   planeSupportPoints,
@@ -98,6 +99,14 @@ export function createGround({ state: layerState, services, parts, source }) {
 
   function isGroundResolved(record, regime = currentSurfaceRegime()) {
     return record?.groundResolved?.[regime] === true;
+  }
+
+  /**
+   * True until the record has geometry grounded for the regime. Cameras are
+   * refined only once they enter the view, so many never have geometry.
+   */
+  function needsGeometry(record, regime = currentSurfaceRegime()) {
+    return !record?.frustumGeometry || !isGroundResolved(record, regime);
   }
 
   /**
@@ -206,8 +215,11 @@ export function createGround({ state: layerState, services, parts, source }) {
    * Task 5: applies a LATE-arriving ground-prior batch (init's bounded race
    * lost — cold proxy cache / slow upstream). Pure recomputes only, no scene
    * queries:
+   *  - records without geometry yet: only the icon moves onto the prior;
+   *    the frustum is built when the camera enters the view.
    *  - terrain-globe regime: the prior IS the resolution → re-run the
-   *    resolution (updateRecordGeometry latches it) for every record.
+   *    resolution (updateRecordGeometry latches it) for every record with
+   *    geometry.
    *  - google-3d regime: records still awaiting a shared floor move from the
    *    catalog fallback onto the exact prior; records already holding a shared
    *    mesh/DEM floor keep it untouched.
@@ -220,6 +232,7 @@ export function createGround({ state: layerState, services, parts, source }) {
   function applyLateGroundPriors(records, priors) {
     if (!Array.isArray(records) || !Array.isArray(priors)) return;
     let applied = 0;
+    let moved = 0;
     for (let i = 0; i < records.length && i < priors.length; i++) {
       const record = records[i];
       const prior = priors[i];
@@ -234,6 +247,24 @@ export function createGround({ state: layerState, services, parts, source }) {
         record.camera.absoluteHeightM =
           prior.ellipsoid + record.camera.mountHeightM;
       }
+      // Cameras without geometry only move their icon onto the prior, so the
+      // view pass projects the right point; their frustums are built when
+      // they enter the view, as recomputing the whole catalog here would
+      // stall a large one.
+      if (!record.frustumGeometry) {
+        if (record.position) {
+          Cesium.Cartesian3.fromDegrees(
+            record.camera.lon,
+            record.camera.lat,
+            record.camera.absoluteHeightM,
+            undefined,
+            record.position,
+          );
+          if (record.billboard) record.billboard.position = record.position;
+          moved += 1;
+        }
+        continue;
+      }
       const regime = currentSurfaceRegime();
       if (regime === 'terrain-globe') {
         // Prior IS the resolution — re-latch onto the fresh value.
@@ -246,7 +277,9 @@ export function createGround({ state: layerState, services, parts, source }) {
         applied += 1;
       }
     }
-    if (applied) parts.presentation.notifyListeners();
+    if (moved && parts.rendering.refreshHorizonCulling())
+      parts.geometryQueue.enqueueViewGeometry();
+    if (applied || moved) parts.presentation.notifyListeners();
   }
 
   /**
@@ -256,7 +289,7 @@ export function createGround({ state: layerState, services, parts, source }) {
    * deck/building-top in google-3d vs bare Re:Earth DEM on globe stacks), so
    * on a REGIME change (photoreal ↔ globe; bing→osm stays 'terrain-globe' and
    * no-ops):
-   *  1. every record's geometry recomputes IMMEDIATELY from the new regime's
+   *  1. every record that has geometry recomputes IMMEDIATELY from the new regime's
    *     resolution — cached sample if that regime has one, else the Re:Earth
    *     prior (never blank, zero scene queries);
    *  2. entering google-3d re-arms the one-shot tiles-ready completion latch so
@@ -272,6 +305,9 @@ export function createGround({ state: layerState, services, parts, source }) {
     layerState._lastAppliedRegime = regime;
 
     for (const record of layerState._records) {
+      // Only cameras that already have geometry are rewritten; the rest are
+      // grounded for the new regime when they enter the view.
+      if (!record.frustumGeometry) continue;
       if (regime === 'terrain-globe') {
         // Prior IS the resolution — latch it (zero scene queries).
         record.groundSamples['terrain-globe'] = groundPriorAltFor(record);
@@ -375,6 +411,7 @@ export function createGround({ state: layerState, services, parts, source }) {
     resolveFootprintGround,
     groundPriorAltFor,
     isGroundResolved,
+    needsGeometry,
     groundAltFor,
     rearmGroundResolution,
     resolveCommittedGroundAnchor,
