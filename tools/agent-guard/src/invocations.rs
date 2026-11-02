@@ -691,7 +691,7 @@ fn walk(
         out,
     )?;
     // bash 3.2 reads `A[ x ]=1 git push` as one assignment and then runs
-    // git push; bash 5 and zsh split it. Judge that reading too (#4210).
+    // git push; the default reading splits it. Judge both (#4210).
     if saw_subscript {
         let mut ignored = false;
         match parse_dialect(&t, 0, budget, true, &mut ignored) {

@@ -480,9 +480,11 @@ and so is zsh's `=git`) and ignores their case as macOS's disk does: ASCII, plus
 letters whose full Unicode case fold is ASCII (`ſ`, Kelvin `K`, `ß`, `ﬀ`, ...),
 so `GIT push` and `baſh -c ...` are judged as git and bash. It decodes `$'...'`
 escapes and `$"..."` strings as bash does (`$'\x67it'` is git), ending the text
-at a NUL as bash and zsh do (`$'git\0zz'` is git), reads prefix assignments the way bash 3.2 does as well
-as the way bash 5 and zsh do (`A[ x ]=1 git push` runs git push on macOS's
-`/bin/bash`), and judges every rustup proxy in a command (`rustup`, `cargo`,
+at a NUL as bash and zsh do (`$'git\0zz'` is git), judges prefix assignments both the way bash 3.2 reads
+them and split at blanks (`A[ x ]=1 git push` runs git push on macOS's
+`/bin/bash`; bash 5.2 also reads the bracket as one word but runs nothing,
+and zsh stops with `bad pattern`, so judging both readings only errs on the
+safe side), and judges every rustup proxy in a command (`rustup`, `cargo`,
 `rustc`, `rustdoc`, `rustfmt`, `cargo-fmt`, ... — rustup 1.29.2's list) as the
 program a `RUSTUP_FORCE_ARG0=<x>` anywhere in it names (`export`,
 `declare -x`, a prefix on `bash -c`), taking `<x>`'s file stem as rustup does

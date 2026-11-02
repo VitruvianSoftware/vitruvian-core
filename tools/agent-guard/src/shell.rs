@@ -667,9 +667,10 @@ pub fn parse_script_at(
 /// bash 3.2 (macOS `/bin/bash`, and `/bin/sh` there) reads a leading
 /// `NAME[` word up to its matching `]` as one array assignment, spaces,
 /// `;`, `|` and newlines included: `A[ x ]=1 git push` and `A[;]=1 git push`
-/// run `git push` (#4210). bash 5 and zsh split those words instead. `saw`
-/// is set when the default reading cut such a word before its `]`, so the
-/// caller can judge both readings. The same two readings cover a NUL in
+/// run `git push` (#4210). bash 5.2 also reads the bracket as one word but
+/// runs nothing, and zsh stops with `bad pattern`. The default reading splits
+/// at blanks; `saw` is set when it cut such a word before its `]`, so the
+/// caller judges both readings (the safe side). The same two readings cover a NUL in
 /// `$'...'`: bash cuts only the quoted part, zsh the whole word.
 pub fn parse_dialect(
     t: &[char],
