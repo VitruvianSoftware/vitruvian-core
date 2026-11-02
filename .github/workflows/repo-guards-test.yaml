@@ -34,7 +34,8 @@
 #   //tools/ci:build_ci_tool_test                  .github/actions/build-ci-tool and
 #                                                  every tool its callers build
 #   //tools/ci:workflow_rustc_test                 the remaining inline rustc lines
-#                                                  (gomod), and the apt rustc fallbacks
+#                                                  (gomod), the rustc guards, and that
+#                                                  no file under .github installs Rust
 #
 # It replaces block-queue-bypass-test, kube-setup-test, session-start-test and
 # workflow-git-push-credentials-test, which ran shell suites on these paths.

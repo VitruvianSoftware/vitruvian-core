@@ -203,6 +203,7 @@ rust_test(
     data = [
         "src/transient_lib/lib.rs",
         "//:composite_actions",
+        "//:github_files",
         "//:workflow_files",
         "//tools/gomod:srcs",
         "@rules_rust//rust/toolchain:current_rust_stdlib_files",

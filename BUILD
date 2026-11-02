@@ -153,6 +153,16 @@ filegroup(
     ],
 )
 
+# Every file under .github, whatever its name or extension:
+# //tools/ci:workflow_rustc_test scans all of them for a step that installs
+# Rust, so a new workflow spelled .yml or a helper script beside an action
+# cannot sit outside the scan (#4183).
+filegroup(
+    name = "github_files",
+    srcs = glob([".github/**"]),
+    visibility = ["//tools/ci:__pkg__"],
+)
+
 filegroup(
     name = "pins_manifest",
     srcs = [".github/actions/pins/action.yml"],
