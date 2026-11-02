@@ -1,0 +1,931 @@
+// Copyright (c) 2026 VitruvianSoftware
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+
+//! //tools/ci:go_test_lanes — fail when a Go test exists that no CI lane runs.
+//!
+//! Go tests in this repo run in one of three ways, and a test outside all
+//! three is dead: it compiles on a laptop and never executes (#4178, #4205):
+//!
+//! - **Bazel** (`bazel test //...`): the `_test.go` file is listed in a
+//!   non-`manual` `go_test` in its directory's BUILD file.
+//! - **go-test-infra**: `"$GO_TEST_WITH_RETRY"` with no arguments in ci.yaml,
+//!   which tests every module under the IaC roots that
+//!   //tools/ci:go_test_with_retry itself computes (`iac_roots_in`).
+//! - **example-build** (or any other job): `"$GO_TEST_WITH_RETRY" --root <dir>`
+//!   in ci.yaml, which tests every module under `<dir>`.
+//!
+//! The lanes are read from ci.yaml and from go_test_with_retry's own code,
+//! never from a list kept here, so moving a root or dropping a step changes
+//! the verdict. A test that is deliberately run by hand (an integration test
+//! behind a build tag) goes in allowlist.txt with its reason; an entry that
+//! no longer exists, or that a lane now covers, is itself an error.
+//!
+//! Not modelled (none hits a file today): a go_test excluded by
+//! `--test_tag_filters` (`e2e`) or `target_compatible_with`, and a
+//! `//go:build <tag>` file under a go_test_with_retry root, which plain
+//! `go test ./...` skips. A `.bazelignore`d path never counts as Bazel.
+//!
+//! Path filters: a step's `if:` and its job's `if:` are both traced, link
+//! by link, from `needs.<job>.outputs.<o>` through the job's `outputs:` map,
+//! the `id:` step that `say`s it, and that step's env, to the paths-filter
+//! globs; a broken link fails. Each gate must read a filter matching every
+//! Go file under the root, as alternatives (`||`, never `&&`), and the job
+//! gate must keep the step's `needs.<job>.result != 'success'` fail-safe.
+//!
+//! Accepted limits, each left to review:
+//! - an `if:` that is never true by its meaning but not constant
+//!   (`github.event_name == 'never'`) still counts: not decidable;
+//! - globs are read with paths-filter's default `predicate-quantifier:
+//!   some`, under which a `!` glob widens the filter; under `every` it
+//!   would exclude, and that is not modelled;
+//! - two `filters:` blocks that reuse a filter name have their globs merged.
+//!
+//! Directories Go itself ignores (`testdata`, `vendor`, dot- and
+//! `_`-prefixed) are skipped, as are `node_modules` and the `bazel-*` links.
+
+use std::collections::BTreeMap;
+use std::fs;
+use std::path::Path;
+
+/// Where a test file is run, or why it is not.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Cover {
+    Bazel,
+    /// `go_test_with_retry` in the named ci.yaml job.
+    Job(String),
+    Allowlisted,
+    Uncovered,
+}
+
+#[derive(Debug, Default)]
+pub struct Report {
+    /// Every `_test.go` (repo-relative) and how it is covered.
+    pub files: BTreeMap<String, Cover>,
+    /// The roots each ci.yaml job hands go_test_with_retry.
+    pub lanes: Vec<(String, Vec<String>)>,
+    /// `"$GO_TEST_WITH_RETRY"` steps that do not count as lanes, and why
+    /// (`if: false`, `continue-on-error`, `|| true`, ...).
+    pub disabled: Vec<(String, String)>,
+    /// Allowlist entries that are missing or now covered.
+    pub stale: Vec<String>,
+}
+
+impl Report {
+    pub fn uncovered(&self) -> Vec<&str> {
+        self.files
+            .iter()
+            .filter(|(_, c)| **c == Cover::Uncovered)
+            .map(|(f, _)| f.as_str())
+            .collect()
+    }
+    pub fn ok(&self) -> bool {
+        self.uncovered().is_empty() && self.stale.is_empty()
+    }
+}
+
+fn skip_dir(name: &str) -> bool {
+    name.starts_with('.')
+        || name.starts_with('_')
+        || name.starts_with("bazel-")
+        || matches!(name, "testdata" | "vendor" | "node_modules")
+}
+
+/// Repo-relative go.mod directories ("" is the root) and `_test.go` files.
+fn walk(repo: &Path, rel: &str, mods: &mut Vec<String>, tests: &mut Vec<String>) {
+    let Ok(entries) = fs::read_dir(repo.join(rel)) else {
+        return;
+    };
+    for e in entries.flatten() {
+        let Ok(ft) = e.file_type() else { continue };
+        let name = e.file_name().to_string_lossy().into_owned();
+        let path = if rel.is_empty() {
+            name.clone()
+        } else {
+            format!("{rel}/{name}")
+        };
+        if ft.is_dir() {
+            if !skip_dir(&name) {
+                walk(repo, &path, mods, tests);
+            }
+        } else if ft.is_file() {
+            if name == "go.mod" {
+                mods.push(rel.to_string());
+            } else if name.ends_with("_test.go") {
+                tests.push(path);
+            }
+        }
+    }
+}
+
+fn under(path: &str, dir: &str) -> bool {
+    dir.is_empty() || path == dir || path.starts_with(&format!("{dir}/"))
+}
+
+/// The module a file belongs to: its nearest enclosing go.mod directory.
+fn owner<'a>(file: &str, mods: &'a [String]) -> Option<&'a str> {
+    mods.iter()
+        .filter(|m| under(file, m))
+        .max_by_key(|m| m.len())
+        .map(String::as_str)
+}
+
+/// A BUILD file's text with its `#` comments blanked out. Strings ("...",
+/// '...', and the triple-quoted forms) are kept intact, so a `#` inside one
+/// is not a comment; a commented-out `go_test(...)` disappears.
+pub fn strip_starlark_comments(text: &str) -> String {
+    let b = text.as_bytes();
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0;
+    while i < b.len() {
+        let c = b[i];
+        if c == b'#' {
+            while i < b.len() && b[i] != b'\n' {
+                i += 1;
+            }
+            continue;
+        }
+        if c == b'"' || c == b'\'' {
+            let triple = i + 2 < b.len() && b[i + 1] == c && b[i + 2] == c;
+            let q = if triple { 3 } else { 1 };
+            let start = i;
+            i += q;
+            while i < b.len() {
+                if b[i] == b'\\' {
+                    i += 2;
+                    continue;
+                }
+                if b[i] == c && (!triple || (i + 2 < b.len() && b[i + 1] == c && b[i + 2] == c)) {
+                    i += q;
+                    break;
+                }
+                if !triple && b[i] == b'\n' {
+                    break;
+                }
+                i += 1;
+            }
+            out.push_str(&text[start..i.min(b.len())]);
+            continue;
+        }
+        let len = text[i..].chars().next().map_or(1, char::len_utf8);
+        out.push_str(&text[i..i + len]);
+        i += len;
+    }
+    out
+}
+
+/// Every `go_test(...)` call in a BUILD file's text (comments already
+/// stripped).
+fn go_test_blocks(build: &str) -> Vec<&str> {
+    let mut blocks = Vec::new();
+    let mut rest = build;
+    let mut offset = 0;
+    while let Some(i) = rest.find("go_test(") {
+        let start = offset + i;
+        let open = start + "go_test".len();
+        let bytes = build.as_bytes();
+        let (mut depth, mut j, mut in_str) = (0usize, open, false);
+        while j < bytes.len() {
+            match bytes[j] {
+                b'"' => in_str = !in_str,
+                b'(' if !in_str => depth += 1,
+                b')' if !in_str => {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                _ => {}
+            }
+            j += 1;
+        }
+        let end = (j + 1).min(build.len());
+        blocks.push(&build[start..end]);
+        offset = end;
+        rest = &build[end..];
+    }
+    blocks
+}
+
+/// True when a `glob(...)` in the block matches test files (`*_test.go`).
+/// A `data = glob(["testdata/**"])` beside listed srcs does not count.
+fn globs_tests(block: &str) -> bool {
+    block.match_indices("glob(").any(|(i, _)| {
+        let rest = &block[i..];
+        let call = &rest[..rest.find(')').map_or(rest.len(), |j| j + 1)];
+        call.contains("_test.go")
+    })
+}
+
+/// True when the file's directory BUILD lists it in a go_test that
+/// `bazel test //...` runs (not tagged manual).
+fn in_bazel_go_test(repo: &Path, file: &str) -> bool {
+    let p = Path::new(file);
+    let dir = p.parent().unwrap_or(Path::new(""));
+    let base = p.file_name().unwrap_or_default().to_string_lossy();
+    let quoted = format!("\"{base}\"");
+    for build_name in ["BUILD.bazel", "BUILD"] {
+        let Ok(raw) = fs::read_to_string(repo.join(dir).join(build_name)) else {
+            continue;
+        };
+        let text = strip_starlark_comments(&raw);
+        return go_test_blocks(&text)
+            .iter()
+            .any(|b| !b.contains("\"manual\"") && (b.contains(&quoted) || globs_tests(b)));
+    }
+    false
+}
+
+const CALL: &str = "\"$GO_TEST_WITH_RETRY\"";
+
+fn indent(line: &str) -> usize {
+    line.len() - line.trim_start().len()
+}
+
+/// A YAML scalar with its trailing ` # comment` and quotes removed.
+fn scalar(v: &str) -> String {
+    let v = match v.find(" #") {
+        Some(i) => &v[..i],
+        None => v,
+    };
+    v.trim()
+        .trim_matches('"')
+        .trim_matches('\'')
+        .trim()
+        .to_string()
+}
+
+/// The value of `key:` among `lines` at exactly `at` spaces of indent (a
+/// step's first line is passed with its `- ` already blanked). A block
+/// scalar (`>-`, `|`) is joined from its deeper lines.
+fn key_value(lines: &[String], at: usize, key: &str) -> Option<String> {
+    let prefix = format!("{key}:");
+    for (i, l) in lines.iter().enumerate() {
+        if indent(l) != at || !l.trim_start().starts_with(&prefix) {
+            continue;
+        }
+        let v = l.trim_start()[prefix.len()..].trim();
+        if v.starts_with('>') || v.starts_with('|') {
+            let body: Vec<&str> = lines[i + 1..]
+                .iter()
+                .take_while(|n| n.trim().is_empty() || indent(n) > at)
+                .map(|n| n.trim())
+                .collect();
+            return Some(body.join(" ").trim().to_string());
+        }
+        return Some(scalar(v));
+    }
+    None
+}
+
+/// True for an `if:` that can never be true: `false`, `${{ false }}`,
+/// `0`, an empty string, or `false && ...` / `... && false`.
+fn constant_false(cond: &str) -> bool {
+    let mut c = cond.trim().to_string();
+    if let Some(inner) = c.strip_prefix("${{").and_then(|x| x.strip_suffix("}}")) {
+        c = inner.trim().to_string();
+    }
+    let c = c
+        .trim()
+        .trim_matches('(')
+        .trim_matches(')')
+        .trim()
+        .to_lowercase();
+    matches!(
+        c.as_str(),
+        "false" | "0" | "''" | "\"\"" | "null" | "!true" | "! true"
+    ) || c.starts_with("false &&")
+        || c.starts_with("false&&")
+        || c.ends_with("&& false")
+        || c.ends_with("&&false")
+        || c.contains("&& false &&")
+}
+
+/// Shell compound-command nesting, fed one line at a time: `if`, `case`,
+/// `for`/`while`/`until`, `{ ... }`, `( ... )` and function bodies. One-line
+/// forms (`if x; then y; fi`) net to zero. Inside a `case`, a `pattern)`
+/// word is a pattern, not the end of a subshell.
+#[derive(Default)]
+struct ShellDepth {
+    depth: i32,
+    in_case: i32,
+}
+
+impl ShellDepth {
+    fn feed(&mut self, line: &str) {
+        for w in line.split(|c: char| c.is_whitespace() || c == ';') {
+            match w {
+                "" => {}
+                "case" => {
+                    self.depth += 1;
+                    self.in_case += 1;
+                }
+                "esac" => {
+                    self.depth -= 1;
+                    self.in_case -= 1;
+                }
+                "if" | "for" | "while" | "until" | "{" | "(" => self.depth += 1,
+                "fi" | "done" | "}" | ")" => self.depth -= 1,
+                _ if w.ends_with("(){") => self.depth += 1,
+                _ if w.ends_with("()") => {}
+                _ if w.starts_with('(') && !w.starts_with("((") && !w.starts_with("$(") => {
+                    self.depth += 1
+                }
+                _ if w.ends_with(')') && !w.ends_with("))") && !w.contains('(') => {
+                    if self.in_case == 0 {
+                        self.depth -= 1;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+/// Why a ci.yaml `"$GO_TEST_WITH_RETRY"` step could pass with failing tests,
+/// or None when its failure fails the job.
+fn why_disabled(
+    job_lines: &[String],
+    step_lines: &[String],
+    run: &[String],
+    call_at: usize,
+) -> Option<String> {
+    if let Some(c) = key_value(job_lines, 4, "if") {
+        if constant_false(&c) {
+            return Some(format!("job `if: {c}` never runs"));
+        }
+    }
+    if let Some(v) = key_value(job_lines, 4, "continue-on-error") {
+        if v != "false" {
+            return Some(format!("job `continue-on-error: {v}`"));
+        }
+    }
+    if let Some(c) = key_value(step_lines, 8, "if") {
+        if constant_false(&c) {
+            return Some(format!("step `if: {c}` never runs"));
+        }
+    }
+    if let Some(v) = key_value(step_lines, 8, "continue-on-error") {
+        if v != "false" {
+            return Some(format!("step `continue-on-error: {v}`"));
+        }
+    }
+    // Before the call: it must start its own line (no `!`, `true ||`,
+    // `cond &&`, `bash -c '...`), not continue the previous line, sit outside
+    // any if/case/loop/function/subshell/brace block, and follow no `exit`.
+    let line = run[call_at].trim_start();
+    if !line.starts_with(CALL) {
+        return Some(format!(
+            "something runs before it on its line: `{}`",
+            line.trim()
+        ));
+    }
+    let code_before: Vec<&str> = run[..call_at]
+        .iter()
+        .map(|l| l.split(" #").next().unwrap_or("").trim())
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .collect();
+    if let Some(prev) = code_before.last() {
+        if prev.ends_with('\\')
+            || prev.ends_with("&&")
+            || prev.ends_with("||")
+            || prev.ends_with('|')
+        {
+            return Some(format!("it continues the line before: `{prev}`"));
+        }
+    }
+    let mut nest = ShellDepth::default();
+    for l in &code_before {
+        nest.feed(l);
+        if l.split(|c: char| !c.is_alphanumeric() && c != '_')
+            .any(|w| w == "exit")
+        {
+            return Some(format!("an earlier line can end the step first: `{l}`"));
+        }
+    }
+    if nest.depth != 0 {
+        return Some("it is inside an if/case/loop/function/subshell block".into());
+    }
+    // The command itself, with `\` continuations joined: anything after the
+    // call that is not an argument can swallow its status (`|| true`,
+    // `; true`, `|| :`, `| tee` without pipefail, `&`).
+    let mut cmd = run[call_at].clone();
+    let mut k = call_at;
+    while cmd.trim_end().ends_with('\\') && k + 1 < run.len() {
+        k += 1;
+        cmd = format!(
+            "{} {}",
+            cmd.trim_end().trim_end_matches('\\'),
+            run[k].trim()
+        );
+    }
+    let tail = &cmd[cmd.find(CALL).unwrap() + CALL.len()..];
+    let tail = match tail.find(" #") {
+        Some(i) => &tail[..i],
+        None => tail,
+    };
+    if tail.contains(['|', ';', '&']) {
+        return Some(format!("its status can be swallowed: `{}`", cmd.trim()));
+    }
+    // GitHub runs bash with -e; a `set +e` before the call turns that off, so
+    // a later command decides the step's status.
+    if run[..call_at].iter().any(|l| {
+        let t = l.trim();
+        !t.starts_with('#') && (t.contains("set +e") || t.contains("set +o errexit"))
+    }) && run[k + 1..]
+        .iter()
+        .any(|l| !l.trim().is_empty() && !l.trim().starts_with('#'))
+    {
+        return Some("`set +e` before it, and later commands decide the step's status".into());
+    }
+    None
+}
+
+/// The dorny/paths-filter globs in ci.yaml, by filter name.
+fn path_filters(lines: &[String]) -> BTreeMap<String, Vec<String>> {
+    let mut out: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut i = 0;
+    while i < lines.len() {
+        let l = &lines[i];
+        if l.trim_start().starts_with("filters: |") {
+            let base = indent(l);
+            let mut cur = String::new();
+            i += 1;
+            while i < lines.len() && (lines[i].trim().is_empty() || indent(&lines[i]) > base) {
+                let t = lines[i].trim();
+                if let Some(g) = t.strip_prefix("- ") {
+                    if !cur.is_empty() {
+                        out.entry(cur.clone()).or_default().push(scalar(g));
+                    }
+                } else if !t.starts_with('#') && t.ends_with(':') && !t.contains(' ') {
+                    cur = t.trim_end_matches(':').to_string();
+                }
+                i += 1;
+            }
+            continue;
+        }
+        i += 1;
+    }
+    out
+}
+
+/// The jobs of a workflow: each job id with its body lines.
+fn jobs_of(lines: &[String]) -> Vec<(String, Vec<String>)> {
+    let mut out = Vec::new();
+    let Some(jobs_at) = lines.iter().position(|l| l.trim_end() == "jobs:") else {
+        return out;
+    };
+    let is_job = |l: &str| {
+        indent(l) == 2
+            && l.trim_end().ends_with(':')
+            && !l.trim_start().starts_with('#')
+            && !l.trim().contains(' ')
+    };
+    let mut i = jobs_at + 1;
+    while i < lines.len() {
+        if !is_job(&lines[i]) {
+            i += 1;
+            continue;
+        }
+        let name = lines[i].trim().trim_end_matches(':').to_string();
+        let end = (i + 1..lines.len())
+            .find(|&j| is_job(&lines[j]) || (indent(&lines[j]) == 0 && !lines[j].trim().is_empty()))
+            .unwrap_or(lines.len());
+        out.push((name, lines[i + 1..end].to_vec()));
+        i = end;
+    }
+    out
+}
+
+/// A job's steps, each as its lines with the leading `- ` blanked so its
+/// keys all sit at 8 spaces.
+fn steps_of(job_lines: &[String]) -> Vec<Vec<String>> {
+    let starts: Vec<usize> = (0..job_lines.len())
+        .filter(|&j| indent(&job_lines[j]) == 6 && job_lines[j].trim_start().starts_with("- "))
+        .collect();
+    let mut out = Vec::new();
+    for (n, &st) in starts.iter().enumerate() {
+        let se = starts.get(n + 1).copied().unwrap_or_else(|| {
+            (st + 1..job_lines.len())
+                .find(|&j| !job_lines[j].trim().is_empty() && indent(&job_lines[j]) <= 4)
+                .unwrap_or(job_lines.len())
+        });
+        let mut step: Vec<String> = job_lines[st..se].to_vec();
+        step[0] = step[0].replacen("- ", "  ", 1);
+        out.push(step);
+    }
+    out
+}
+
+/// Every `needs.<job>.outputs.<name>` a condition reads, with its offset.
+fn outputs_read(cond: &str) -> Vec<(usize, String, String)> {
+    let ident = |s: &str| -> String {
+        s.chars()
+            .take_while(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
+            .collect()
+    };
+    let mut out = Vec::new();
+    for (at, _) in cond.match_indices("needs.") {
+        let rest = &cond[at + "needs.".len()..];
+        let job = ident(rest);
+        if let Some(r) = rest[job.len()..].strip_prefix(".outputs.") {
+            out.push((at, job, ident(r)));
+        }
+    }
+    out
+}
+
+/// The path filter behind `needs.<job>.outputs.<output>`, followed link by
+/// link: the job's `outputs:` map (`<output>: ${{ steps.<id>.outputs.<n> }}`),
+/// the step with that `id`, its `say <n> "$VAR"` line, and its env
+/// (`VAR: ${{ steps.filter.outputs.<filter> }}`). A broken link (a typo in
+/// any of the four names) is an error naming it.
+fn resolve_filter(
+    jobs: &[(String, Vec<String>)],
+    job: &str,
+    output: &str,
+) -> Result<String, String> {
+    let lines = &jobs
+        .iter()
+        .find(|(j, _)| j == job)
+        .ok_or_else(|| format!("no job `{job}`"))?
+        .1;
+    let Some(o) = lines
+        .iter()
+        .position(|l| indent(l) == 4 && l.trim() == "outputs:")
+    else {
+        return Err(format!("job `{job}` has no outputs: map"));
+    };
+    let key = format!("{output}:");
+    let value = lines[o + 1..]
+        .iter()
+        .take_while(|l| l.trim().is_empty() || indent(l) > 4)
+        .find_map(|l| l.trim().strip_prefix(&key).map(|v| scalar(v)))
+        .ok_or_else(|| format!("job `{job}` has no output `{output}`"))?;
+    let inner = value
+        .strip_prefix("${{")
+        .and_then(|v| v.strip_suffix("}}"))
+        .map(str::trim)
+        .and_then(|v| v.strip_prefix("steps."))
+        .ok_or_else(|| format!("`{job}` output `{output}` is not a step output: {value}"))?;
+    let (id, name) = inner
+        .split_once(".outputs.")
+        .ok_or_else(|| format!("`{job}` output `{output}` is not a step output: {value}"))?;
+    let step = steps_of(lines)
+        .into_iter()
+        .find(|st| key_value(st, 8, "id").as_deref() == Some(id))
+        .ok_or_else(|| {
+            format!("`{job}` output `{output}` reads step `{id}`, which `{job}` does not have")
+        })?;
+    let say = format!("say {name} \"$");
+    let var = step
+        .iter()
+        .find_map(|l| l.trim().strip_prefix(&say).map(|r| r.trim_end_matches('"').to_string()))
+        .ok_or_else(|| format!("`{job}` output `{output}` reads `steps.{id}.outputs.{name}`, which step `{id}` never sets"))?;
+    let env = format!("{var}: ${{{{ steps.filter.outputs.");
+    step.iter()
+        .find_map(|l| {
+            l.trim()
+                .strip_prefix(&env)
+                .map(|r| r.trim_end_matches("}}").trim().to_string())
+        })
+        .ok_or_else(|| {
+            format!("step `{id}` sets `{name}` from `${var}`, which no path filter feeds")
+        })
+}
+
+/// True when `filter`'s globs match every Go file under `root`.
+fn filter_covers(lines: &[String], filter: &str, root: &str) -> bool {
+    let globs = path_filters(lines).remove(filter).unwrap_or_default();
+    globs.iter().any(|g| glob_covers_tree(g, root))
+        || ["/**/*.go", "/**/go.mod", "/**/go.sum"].iter().all(|want| {
+            globs.iter().any(|g| {
+                g.strip_suffix(want)
+                    .is_some_and(|d| glob_covers_tree(&format!("{d}/**"), root))
+            })
+        })
+}
+
+/// The path filters a job's or step's `if:` gates on (outputs of jobs that
+/// run dorny/paths-filter), or why it cannot be trusted to run on a change
+/// under `root`. `Ok(None)` means the condition reads no path filter.
+fn gate_filters(
+    lines: &[String],
+    jobs: &[(String, Vec<String>)],
+    cond: &str,
+    root: &str,
+    what: &str,
+) -> Result<Option<Vec<String>>, String> {
+    let filter_jobs: Vec<&str> = jobs
+        .iter()
+        .filter(|(_, l)| l.iter().any(|x| x.trim_start().starts_with("filters: |")))
+        .map(|(j, _)| j.as_str())
+        .collect();
+    let refs: Vec<(usize, String, String)> = outputs_read(cond)
+        .into_iter()
+        .filter(|(_, j, _)| filter_jobs.contains(&j.as_str()))
+        .collect();
+    if refs.is_empty() {
+        return Ok(None);
+    }
+    // The outputs it reads must be alternatives (`a || b`): an `&&` between
+    // two of them can make one filter's match not enough.
+    let span = &cond[refs[0].0..refs[refs.len() - 1].0];
+    if span.contains("&&") {
+        return Err(format!("{what} `if:` combines path filters with &&"));
+    }
+    let mut filters = Vec::new();
+    for (_, job, out) in &refs {
+        filters.push(
+            resolve_filter(jobs, job, out)
+                .map_err(|e| format!("{what} `if:` reads needs.{job}.outputs.{out}: {e}"))?,
+        );
+    }
+    if !filters.iter().any(|f| filter_covers(lines, f, root)) {
+        return Err(format!(
+            "{what} `if:` path filter{} `{}` do{} not match every Go file under {root}, so a change there skips it",
+            if filters.len() > 1 { "s" } else { "" },
+            filters.join("`, `"),
+            if filters.len() > 1 { "" } else { "es" },
+        ));
+    }
+    Ok(Some(filters))
+}
+
+/// True when `glob` (a paths-filter pattern) matches every file under `root`:
+/// `<dir>/**` where `<dir>` is `root` or a parent of it (`*` matches one
+/// segment).
+fn glob_covers_tree(glob: &str, root: &str) -> bool {
+    let Some(dir) = glob.strip_suffix("/**") else {
+        return false;
+    };
+    let g: Vec<&str> = dir.split('/').collect();
+    let r: Vec<&str> = root.split('/').collect();
+    g.len() <= r.len() && g.iter().zip(&r).all(|(a, b)| *a == "*" || a == b)
+}
+
+/// Why a path filter can skip the step on a change under `root`, or None.
+/// Both gates are traced: the step's `if:` and its job's `if:`. Each that
+/// reads a path filter must have one matching every Go file under `root`
+/// (the job's may be wider, e.g. IaC OR examples), and a job gate must keep
+/// the step's `needs.<job>.result != 'success'` fail-safe.
+fn filter_gap(
+    lines: &[String],
+    jobs: &[(String, Vec<String>)],
+    job_lines: &[String],
+    step: &[String],
+    root: &str,
+) -> Option<String> {
+    let step_if = key_value(step, 8, "if").unwrap_or_default();
+    let job_if = key_value(job_lines, 4, "if").unwrap_or_default();
+    if let Err(e) = gate_filters(lines, jobs, &step_if, root, "step") {
+        return Some(e);
+    }
+    match gate_filters(lines, jobs, &job_if, root, "job") {
+        Err(e) => Some(e),
+        Ok(Some(_)) => {
+            for (_, j, _) in outputs_read(&step_if) {
+                let safe = format!("needs.{j}.result != 'success'");
+                if step_if.contains(&safe) && !job_if.contains(&safe) {
+                    return Some(format!("job `if:` drops the step's fail-safe `{safe}`"));
+                }
+            }
+            None
+        }
+        Ok(None) => None,
+    }
+}
+
+/// The `"$GO_TEST_WITH_RETRY"` steps of ci.yaml, by job: each with the roots
+/// it tests (its `--root` arguments, or go_test_with_retry's IaC roots when
+/// it passes none) and, if it cannot fail the build, why not.
+pub fn lanes_from_workflow(
+    repo: &Path,
+    ci_yaml: &str,
+) -> Vec<(String, Vec<String>, Option<String>)> {
+    let lines: Vec<String> = ci_yaml.lines().map(str::to_string).collect();
+    let jobs = jobs_of(&lines);
+    let mut lanes = Vec::new();
+    for (job, job_lines) in &jobs {
+        let job_lines = &job_lines[..];
+        for step in steps_of(job_lines) {
+            let step = &step[..];
+            // The run script: an inline `run: cmd`, or the block under `run: |`.
+            let Some(ri) = step
+                .iter()
+                .position(|l| indent(l) == 8 && l.trim_start().starts_with("run:"))
+            else {
+                continue;
+            };
+            let inline = step[ri].trim_start()["run:".len()..].trim().to_string();
+            let run: Vec<String> = if inline.starts_with('|') || inline.starts_with('>') {
+                step[ri + 1..]
+                    .iter()
+                    .take_while(|l| l.trim().is_empty() || indent(l) > 8)
+                    .cloned()
+                    .collect()
+            } else {
+                vec![inline]
+            };
+            for (c, line) in run.iter().enumerate() {
+                let code = line.trim_start();
+                if code.starts_with('#') || !code.contains(CALL) {
+                    continue;
+                }
+                let args: Vec<&str> = code[code.find(CALL).unwrap() + CALL.len()..]
+                    .split_whitespace()
+                    .collect();
+                let mut roots: Vec<String> = Vec::new();
+                let mut k = 0;
+                while k < args.len() {
+                    if args[k] == "--root" && k + 1 < args.len() {
+                        roots.push(
+                            args[k + 1]
+                                .trim_matches('"')
+                                .trim_end_matches('/')
+                                .to_string(),
+                        );
+                        k += 2;
+                    } else {
+                        k += 1;
+                    }
+                }
+                if roots.is_empty() {
+                    let base = repo.to_string_lossy().into_owned();
+                    roots = go_test_with_retry::iac_roots_in(base.as_bytes())
+                        .into_iter()
+                        .map(|r| String::from_utf8_lossy(&r).into_owned())
+                        .collect();
+                }
+                let why = why_disabled(job_lines, step, &run, c);
+                // A root its path filter does not match is tested only when
+                // something else triggers the step: not a lane for that root.
+                for root in roots {
+                    let why = why
+                        .clone()
+                        .or_else(|| filter_gap(&lines, &jobs, job_lines, step, &root));
+                    lanes.push((job.clone(), vec![root], why));
+                }
+            }
+        }
+    }
+    lanes
+}
+
+/// The allowlist's paths: one per line, `#` starts a comment.
+pub fn parse_allowlist(text: &str) -> Vec<String> {
+    text.lines()
+        .map(|l| l.split('#').next().unwrap_or("").trim())
+        .filter(|l| !l.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+pub fn check(repo: &Path, ci_yaml: &str, allowlist: &str) -> Result<Report, String> {
+    let all = lanes_from_workflow(repo, ci_yaml);
+    let disabled: Vec<(String, String)> = all
+        .iter()
+        .filter_map(|(j, _, why)| why.clone().map(|w| (j.clone(), w)))
+        .collect();
+    let lanes: Vec<(String, Vec<String>)> = all
+        .into_iter()
+        .filter(|(_, _, why)| why.is_none())
+        .map(|(j, r, _)| (j, r))
+        .collect();
+    if lanes.is_empty() && disabled.is_empty() {
+        return Err(
+            "no \"$GO_TEST_WITH_RETRY\" step in ci.yaml: cannot tell which Go modules CI tests"
+                .into(),
+        );
+    }
+    let mut mods = Vec::new();
+    let mut tests = Vec::new();
+    walk(repo, "", &mut mods, &mut tests);
+    let allow = parse_allowlist(allowlist);
+    // Bazel never loads a package under a .bazelignore path, so a go_test
+    // there is not run by `bazel test //...`.
+    let bazel_ignored: Vec<String> = fs::read_to_string(repo.join(".bazelignore"))
+        .unwrap_or_default()
+        .lines()
+        .map(|l| l.trim().trim_end_matches('/').to_string())
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .collect();
+
+    let mut report = Report {
+        lanes: lanes.clone(),
+        disabled,
+        ..Report::default()
+    };
+    for file in &tests {
+        let module = owner(file, &mods);
+        let job = module.and_then(|m| {
+            lanes
+                .iter()
+                .find(|(_, roots)| roots.iter().any(|r| !r.is_empty() && under(m, r)))
+                .map(|(j, _)| j.clone())
+        });
+        let cover = if !bazel_ignored.iter().any(|d| under(file, d)) && in_bazel_go_test(repo, file)
+        {
+            Cover::Bazel
+        } else if let Some(j) = job {
+            Cover::Job(j)
+        } else if allow.contains(file) {
+            Cover::Allowlisted
+        } else {
+            Cover::Uncovered
+        };
+        report.files.insert(file.clone(), cover);
+    }
+    for a in &allow {
+        match report.files.get(a) {
+            Some(Cover::Allowlisted) => {}
+            Some(_) => report.stale.push(format!(
+                "{a}: a lane covers it now; drop it from the allowlist"
+            )),
+            None => report
+                .stale
+                .push(format!("{a}: no such _test.go; drop it from the allowlist")),
+        }
+    }
+    Ok(report)
+}
+
+pub const ALLOWLIST: &str = include_str!("allowlist.txt");
+
+pub fn run(args: &[Vec<u8>]) -> i32 {
+    // `bazel run` starts in the runfiles tree; check the checkout instead.
+    let repo = match std::env::var("BUILD_WORKSPACE_DIRECTORY") {
+        Ok(d) if !d.is_empty() => d,
+        _ => match args.first() {
+            Some(a) => String::from_utf8_lossy(a).into_owned(),
+            None => ".".to_string(),
+        },
+    };
+    let repo = Path::new(&repo);
+    let ci = match fs::read_to_string(repo.join(".github/workflows/ci.yaml")) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("::error::go_test_lanes: cannot read .github/workflows/ci.yaml: {e}");
+            return 1;
+        }
+    };
+    let report = match check(repo, &ci, ALLOWLIST) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("::error::go_test_lanes: {e}");
+            return 1;
+        }
+    };
+    for (job, roots) in &report.lanes {
+        println!("lane {job}: go_test_with_retry over {}", roots.join(" "));
+    }
+    for (job, why) in &report.disabled {
+        println!("NOT a lane: the go_test_with_retry step in {job}: {why}");
+    }
+    let mut counts: BTreeMap<String, usize> = BTreeMap::new();
+    for c in report.files.values() {
+        let k = match c {
+            Cover::Bazel => "bazel test //...".to_string(),
+            Cover::Job(j) => j.clone(),
+            Cover::Allowlisted => "allowlisted".to_string(),
+            Cover::Uncovered => "UNCOVERED".to_string(),
+        };
+        *counts.entry(k).or_default() += 1;
+    }
+    for (k, n) in &counts {
+        println!("{n:>5} _test.go file(s): {k}");
+    }
+    for f in report.uncovered() {
+        eprintln!(
+            "::error file={f}::{f} is a Go test no CI lane runs: add it to a go_test (bazel run //:gazelle), move its module under a go_test_with_retry root, or allowlist it with a reason in tools/ci/src/go_test_lanes/allowlist.txt"
+        );
+    }
+    for s in &report.stale {
+        eprintln!("::error::go_test_lanes: stale allowlist entry {s}");
+    }
+    if report.ok() {
+        println!("go_test_lanes: every Go test is run by a CI lane");
+        0
+    } else {
+        1
+    }
+}
+
+#[cfg(test)]
+mod tests;

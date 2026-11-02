@@ -1762,6 +1762,46 @@ rust_test(
     deps = [":ci_testkit"],
 )
 
+# go-test-lanes: fails when a Go test exists that no CI lane runs (#4205).
+# Lanes come from ci.yaml's go_test_with_retry steps and that tool's own IaC
+# roots, plus each test file's go_test. The live check walks the whole
+# checkout, so it is a `bazel run` (the lint-naming job runs it on every PR):
+# a test target would only re-run when its own inputs changed, never when a
+# new module lands elsewhere. The unit tests below run over scratch trees.
+rust_library(
+    name = "go_test_lanes_lib",
+    srcs = [
+        "src/go_test_lanes/lib.rs",
+        "src/go_test_lanes/tests.rs",
+    ],
+    compile_data = ["src/go_test_lanes/allowlist.txt"],
+    crate_name = "go_test_lanes",
+    crate_root = "src/go_test_lanes/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":go_test_with_retry_lib"],
+)
+
+rust_binary(
+    name = "go_test_lanes",
+    srcs = ["src/go_test_lanes/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":go_test_lanes_lib",
+        "//tools/shell-compat:shell_compat",
+    ],
+)
+
+rust_test(
+    name = "go_test_lanes_test",
+    size = "small",
+    crate = ":go_test_lanes_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+)
+
 # tabula-deploy-preflight
 rust_library(
     name = "tabula_deploy_preflight_lib",
