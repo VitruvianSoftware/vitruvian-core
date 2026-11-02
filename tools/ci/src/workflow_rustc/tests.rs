@@ -225,8 +225,14 @@ fn build_ci_tool_installs_rustc_only_on_a_self_hosted_runner() {
             out.contains("::error::build-ci-tool: no rustc on this runner"),
             "{runner_env:?}: {out}"
         );
-        assert!(!out.contains("SUDO-CALLED"), "{runner_env:?}: apt ran: {out}");
-        assert!(!out.contains("REACHED"), "{runner_env:?}: went on without rustc");
+        assert!(
+            !out.contains("SUDO-CALLED"),
+            "{runner_env:?}: apt ran: {out}"
+        );
+        assert!(
+            !out.contains("REACHED"),
+            "{runner_env:?}: went on without rustc"
+        );
     }
 }
 

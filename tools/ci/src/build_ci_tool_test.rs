@@ -303,7 +303,10 @@ fn every_tool_a_workflow_builds_compiles_with_the_actions_own_rustc_lines() {
     // One RUNNER_TEMP for every tool, as in a job that builds two of them.
     let pairs = caller_deps();
     let built_tools: BTreeSet<String> = pairs.iter().map(|(t, _)| t.clone()).collect();
-    assert_eq!(built_tools, tools, "every caller's tool must be built with its deps");
+    assert_eq!(
+        built_tools, tools,
+        "every caller's tool must be built with its deps"
+    );
     for (t, d) in &pairs {
         let s = run_step_deps(&script, t, d, &ws, &runner_temp, &shim);
         assert!(
@@ -1042,7 +1045,10 @@ mod callers_and_wiring {
             assert!(so.contains("::error::build-ci-tool: no rustc"), "{so}");
             assert!(so.contains("tools/ci/src/relevant_paths"), "{so}");
             assert!(so.contains("only a self-hosted runner"), "{so}");
-            assert!(!called.exists(), "{runner_env:?}: apt ran on a non-self-hosted runner");
+            assert!(
+                !called.exists(),
+                "{runner_env:?}: apt ran on a non-self-hosted runner"
+            );
             assert_eq!(gho, "", "no rustc, no path output");
         }
     }
