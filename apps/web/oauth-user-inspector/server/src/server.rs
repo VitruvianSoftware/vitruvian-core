@@ -531,16 +531,40 @@ impl App {
         }
     }
 
+    /// Zitadel domain for a request that brings its own client credentials:
+    /// the caller's domain if given, else the configured one.
     pub fn resolve_zitadel_domain(&self, domain_from_body: Option<&str>) -> String {
         if let Some(d) = domain_from_body.filter(|s| !s.is_empty()) {
             return d.to_string();
         }
+        self.configured_zitadel_domain()
+    }
+
+    /// The configured Zitadel domain: the `ZITADEL_APP_OAUTH_DOMAIN` secret,
+    /// else the built-in default.
+    pub fn configured_zitadel_domain(&self) -> String {
         if let Ok(secret_domain) = self.get_secret("ZITADEL_APP_OAUTH_DOMAIN") {
-            if !secret_domain.is_empty() {
+            if !secret_domain.trim().is_empty() {
                 return secret_domain;
             }
         }
         DEFAULT_ZITADEL_DOMAIN.to_string()
+    }
+
+    /// Provider domain for a hosted-mode request, which uses the app's own
+    /// client credentials. It comes only from configuration; a domain in the
+    /// request is never consulted. Auth0 has no safe default, so a missing
+    /// `AUTH0_APP_OAUTH_DOMAIN` is an error. Providers with a fixed host
+    /// return `None`.
+    pub fn hosted_issuer_domain(&self, provider: &str) -> Result<Option<String>, String> {
+        match provider {
+            "auth0" => match self.get_secret("AUTH0_APP_OAUTH_DOMAIN") {
+                Ok(d) if !d.trim().is_empty() => Ok(Some(d)),
+                _ => Err("Hosted Auth0 domain is not configured.".to_string()),
+            },
+            "zitadel" => Ok(Some(self.configured_zitadel_domain())),
+            _ => Ok(None),
+        }
     }
 
     pub fn get_hosted_credentials(&self, provider: &str) -> Result<(String, String), String> {
@@ -858,13 +882,28 @@ impl App {
                     );
                 }
             };
-            if provider == "auth0" {
-                if let Ok(d) = self.get_secret("AUTH0_APP_OAUTH_DOMAIN") {
-                    auth0_domain = Some(d);
+            // Hosted mode sends the app's own client credentials, so the
+            // provider domain comes only from configuration, never the body.
+            let domain = match self.hosted_issuer_domain(provider) {
+                Ok(d) => d,
+                Err(err) => {
+                    return self.json_response(
+                        500,
+                        request_id,
+                        true,
+                        json!({
+                            "error": "Internal server error.",
+                            "message": err,
+                        }),
+                    );
                 }
-            }
-            if provider == "zitadel" {
-                zitadel_domain = Some(self.resolve_zitadel_domain(zitadel_domain.as_deref()));
+            };
+            auth0_domain = None;
+            zitadel_domain = None;
+            match provider {
+                "auth0" => auth0_domain = domain,
+                "zitadel" => zitadel_domain = domain,
+                _ => {}
             }
             (cid, csec)
         } else {
@@ -1124,13 +1163,28 @@ impl App {
                     );
                 }
             };
-            if provider == "auth0" {
-                if let Ok(d) = self.get_secret("AUTH0_APP_OAUTH_DOMAIN") {
-                    auth0_domain = Some(d);
+            // Hosted mode sends the app's own client credentials, so the
+            // provider domain comes only from configuration, never the body.
+            let domain = match self.hosted_issuer_domain(provider) {
+                Ok(d) => d,
+                Err(err) => {
+                    return self.json_response(
+                        500,
+                        request_id,
+                        true,
+                        json!({
+                            "error": "Internal server error.",
+                            "message": err,
+                        }),
+                    );
                 }
-            }
-            if provider == "zitadel" {
-                zitadel_domain = Some(self.resolve_zitadel_domain(zitadel_domain.as_deref()));
+            };
+            auth0_domain = None;
+            zitadel_domain = None;
+            match provider {
+                "auth0" => auth0_domain = domain,
+                "zitadel" => zitadel_domain = domain,
+                _ => {}
             }
             (cid, csec)
         } else {
@@ -1368,13 +1422,29 @@ impl App {
                     );
                 }
             };
-            if provider == "auth0" {
-                if let Ok(d) = self.get_secret("AUTH0_APP_OAUTH_DOMAIN") {
-                    auth0_domain = Some(d);
+            // Hosted mode sends the app's own client credentials, so the
+            // provider domain comes only from configuration, never the body.
+            let domain = match self.hosted_issuer_domain(provider) {
+                Ok(d) => d,
+                Err(err) => {
+                    return self.json_response(
+                        500,
+                        request_id,
+                        true,
+                        json!({
+                            "success": false,
+                            "error": "Internal server error.",
+                            "message": err,
+                        }),
+                    );
                 }
-            }
-            if provider == "zitadel" {
-                zitadel_domain = Some(self.resolve_zitadel_domain(zitadel_domain.as_deref()));
+            };
+            auth0_domain = None;
+            zitadel_domain = None;
+            match provider {
+                "auth0" => auth0_domain = domain,
+                "zitadel" => zitadel_domain = domain,
+                _ => {}
             }
             (cid, csec)
         } else {
@@ -1650,7 +1720,7 @@ impl App {
                 )
             }
             "zitadel" => {
-                let zitadel_domain = self.resolve_zitadel_domain(None);
+                let zitadel_domain = self.configured_zitadel_domain();
                 let scope = scopes
                     .map(str::trim)
                     .filter(|s| !s.is_empty())
