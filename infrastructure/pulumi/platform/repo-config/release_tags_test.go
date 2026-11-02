@@ -22,7 +22,11 @@ package main
 
 import (
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"path"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -343,6 +347,109 @@ func TestDeployTagPatternsNeverMatchExemptTags(t *testing.T) {
 	for p := range declared {
 		if !registered[p] {
 			t.Errorf("environmentTagPatterns lists %q, which no Environment uses", p)
+		}
+	}
+}
+
+// //tools/conformance:check reads the rolling tags between the rolling-tags
+// markers in release_tags.go (it cannot import Go). Those markers must wrap
+// exactly the rollingTags literal: every element inside them, and no other
+// string, in either quote style. Otherwise a tag placed outside the markers
+// would escape that check.
+func TestRollingTagMarkersMatchRollingTags(t *testing.T) {
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "release_tags.go", nil, parser.ParseComments)
+	if err != nil {
+		t.Fatalf("parsing release_tags.go (the test runs in the package directory): %v", err)
+	}
+	begin, end := token.NoPos, token.NoPos
+	for _, cg := range f.Comments {
+		for _, c := range cg.List {
+			switch strings.TrimSpace(strings.TrimPrefix(c.Text, "//")) {
+			case "rolling-tags:begin":
+				if begin != token.NoPos {
+					t.Fatal("rolling-tags:begin appears twice")
+				}
+				begin = c.Pos()
+			case "rolling-tags:end":
+				if end != token.NoPos {
+					t.Fatal("rolling-tags:end appears twice")
+				}
+				end = c.Pos()
+			}
+		}
+	}
+	if begin == token.NoPos || end == token.NoPos || end < begin {
+		t.Fatalf("rolling-tags markers missing or out of order (begin %v, end %v)", begin, end)
+	}
+
+	// Every string literal between the markers, in source order.
+	var marked []string
+	ast.Inspect(f, func(n ast.Node) bool {
+		if lit, ok := n.(*ast.BasicLit); ok && lit.Kind == token.STRING && lit.Pos() > begin && lit.End() < end {
+			v, err := strconv.Unquote(lit.Value)
+			if err != nil {
+				t.Fatalf("unquoting %s: %v", lit.Value, err)
+			}
+			marked = append(marked, v)
+		}
+		return true
+	})
+	if strings.Join(marked, " ") != strings.Join(rollingTags, " ") {
+		t.Errorf("strings between the rolling-tags markers = %v, want exactly rollingTags = %v", marked, rollingTags)
+	}
+
+	// And every element of the rollingTags literal sits between them.
+	found := false
+	ast.Inspect(f, func(n ast.Node) bool {
+		vs, ok := n.(*ast.ValueSpec)
+		if !ok || len(vs.Names) != 1 || vs.Names[0].Name != "rollingTags" {
+			return true
+		}
+		found = true
+		cl, ok := vs.Values[0].(*ast.CompositeLit)
+		if !ok {
+			t.Fatalf("rollingTags is %T, want a literal []string{...}", vs.Values[0])
+		}
+		for _, e := range cl.Elts {
+			if e.Pos() < begin || e.End() > end {
+				t.Errorf("rollingTags element at %v is outside the rolling-tags markers", fset.Position(e.Pos()))
+			}
+		}
+		return false
+	})
+	if !found {
+		t.Fatal("no rollingTags declaration in release_tags.go")
+	}
+}
+
+// The whole program also registers main's two branch rulesets: the merge
+// queue and the guard review.
+func TestProgramRegistersMainRulesets(t *testing.T) {
+	res := runProgram(t)
+	byName := map[string]resource.PropertyMap{}
+	for _, rs := range res["github:index/repositoryRuleset:RepositoryRuleset"] {
+		byName[rs["name"].StringValue()] = rs
+	}
+	for _, name := range []string{"merge-queue", "agent-guard-review"} {
+		rs, ok := byName[name]
+		if !ok {
+			t.Errorf("program does not register the %s ruleset", name)
+			continue
+		}
+		if rs["target"].StringValue() != "branch" || rs["enforcement"].StringValue() != "active" {
+			t.Errorf("%s = %v/%v, want branch/active", name, rs["target"], rs["enforcement"])
+		}
+		inc := propStrings(rs["conditions"].ObjectValue()["refName"].ObjectValue()["includes"])
+		if len(inc) != 1 || inc[0] != "~DEFAULT_BRANCH" {
+			t.Errorf("%s targets %v, want ~DEFAULT_BRANCH", name, inc)
+		}
+	}
+	if rs, ok := byName["agent-guard-review"]; ok {
+		pr := rs["rules"].ObjectValue()["pullRequest"].ObjectValue()
+		rr := pr["requiredReviewers"].ArrayValue()
+		if len(rr) != 1 || len(propStrings(rr[0].ObjectValue()["filePatterns"])) != len(guardReviewPaths) {
+			t.Errorf("agent-guard-review requiredReviewers = %v, want one reviewer over guardReviewPaths", rr)
 		}
 	}
 }

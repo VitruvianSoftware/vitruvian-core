@@ -1046,10 +1046,12 @@ pub fn rolling_tags(src: &str) -> Vec<String> {
         if t.starts_with("//") {
             continue;
         }
+        // Go string literals in either form: "interpreted" or `raw`.
         let mut rest = t;
-        while let Some(q1) = rest.find('"') {
+        while let Some(q1) = rest.find(['"', '`']) {
+            let quote = rest.as_bytes()[q1] as char;
             let after = &rest[q1 + 1..];
-            let Some(q2) = after.find('"') else { break };
+            let Some(q2) = after.find(quote) else { break };
             out.push(after[..q2].to_string());
             rest = &after[q2 + 1..];
         }
@@ -1065,7 +1067,17 @@ pub fn rolling_tags(src: &str) -> Vec<String> {
 /// new component is covered without editing this check.
 pub fn check_release_tag_exemptions(ctx: &Context) {
     let src_rel = "infrastructure/pulumi/platform/repo-config/release_tags.go";
+    // Missing is a failure, not a skip: a rename would otherwise switch the
+    // check off silently.
     let Ok(src) = fs::read_to_string(format!("{}/{src_rel}", ctx.root)) else {
+        ctx.emit_fail(
+            "releasetags",
+            src_rel,
+            "missing",
+            "readable",
+            "cannot read release_tags.go, so the release-tag exemptions are not checked",
+            "point check_release_tag_exemptions at where the rolling tags are declared now",
+        );
         return;
     };
     let tags = rolling_tags(&src);
@@ -1196,5 +1208,8 @@ mod release_tag_tests {
     fn reads_marked_rolling_tags() {
         let src = "var x = []string{\n\t// rolling-tags:begin\n\t\"a-latest\",\n\t// \"commented\",\n\t\"b-latest\",\n\t// rolling-tags:end\n}\n";
         assert_eq!(rolling_tags(src), vec!["a-latest", "b-latest"]);
+        let raw = "// rolling-tags:begin\n\t`c-latest`,\n\t\"d-latest\",\n// rolling-tags:end\n";
+        assert_eq!(rolling_tags(raw), vec!["c-latest", "d-latest"]);
+        assert!(rolling_tags("no markers here").is_empty());
     }
 }
