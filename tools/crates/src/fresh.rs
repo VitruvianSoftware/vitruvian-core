@@ -816,6 +816,28 @@ fn resolve<'l>(dep: &str, all: &'l [Locked]) -> (String, Option<&'l Locked>) {
     (name, one)
 }
 
+/// `%XX` escapes decoded; anything else, `+` included, kept as written. A
+/// version 4 Cargo.lock percent-encodes a git `branch`/`tag`/`rev`
+/// (`release/1.0` is written `release%2F1.0`); version 3 writes it as is.
+pub fn percent_decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        let hex = |c: u8| (c as char).to_digit(16);
+        if b[i] == b'%' && i + 2 < b.len() {
+            if let (Some(h), Some(l)) = (hex(b[i + 1]), hex(b[i + 2])) {
+                out.push((h * 16 + l) as u8);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(b[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
 /// `https://github.com/a/b.git/` and `https://github.com/a/b` are one repo.
 fn same_repo(a: &str, b: &str) -> bool {
     let norm = |u: &str| {
@@ -856,7 +878,7 @@ fn satisfies(d: &Dep, l: Option<&Locked>, patched: &BTreeSet<String>) -> bool {
             }
             let locked_ref = query.split('&').find_map(|kv| {
                 let (k, v) = kv.split_once('=')?;
-                matches!(k, "rev" | "tag" | "branch").then(|| (k.to_string(), v.to_string()))
+                matches!(k, "rev" | "tag" | "branch").then(|| (k.to_string(), percent_decode(v)))
             });
             if locked_ref != *reference {
                 return false;
@@ -934,7 +956,11 @@ pub fn lock_problems(
 
         // Per package name: every declaration has a locked package that
         // meets it, and every locked package meets some declaration. Two
-        // aliases of one crate are two declarations (#4172).
+        // aliases of one crate are two declarations (#4172). Overlapping
+        // ones (`rand = "0.8"` beside an alias at `"<=0.9"`) are not
+        // re-resolved: one locked rand 0.8.5 meets both, though cargo might
+        // now pick two. That is `bazel run //tools/crates:lock -- --check`'s
+        // job.
         let locked: Vec<(String, Option<&Locked>)> =
             entry.deps.iter().map(|d| resolve(d, &all)).collect();
         let names: BTreeSet<&str> = p
@@ -1385,6 +1411,38 @@ dependencies = [
             .len(),
             1
         );
+    }
+
+    #[test]
+    fn a_git_ref_cargo_percent_encodes_is_decoded() {
+        // Both from cargo 1.99.1 (`bazel run //tools/crates:lock`) locking
+        // `log = { git = "https://github.com/rust-lang/log", branch =
+        // "fix/lifetime-rules" }`: a version 3 lock writes the branch as is,
+        // a version 4 lock percent-encodes it (#4200 review).
+        const COMMIT: &str = "956640dca67d9f36be6b5aaaca941729fa757791";
+        let spec =
+            "{ git = \"https://github.com/rust-lang/log\", branch = \"fix/lifetime-rules\" }";
+        for query in ["branch=fix/lifetime-rules", "branch=fix%2Flifetime-rules"] {
+            let source = format!("git+https://github.com/rust-lang/log?{query}#{COMMIT}");
+            assert_eq!(
+                git_problems(spec, &source),
+                Vec::<String>::new(),
+                "{source}"
+            );
+        }
+        // Still compared after decoding.
+        let other = format!("git+https://github.com/rust-lang/log?branch=fix%2Fother#{COMMIT}");
+        assert_eq!(git_problems(spec, &other).len(), 1);
+        // Any reserved character, in a tag too; `+` stays `+`.
+        let tag = "git+https://github.com/s/l?tag=v1%2Bbuild%2Fx#abc";
+        assert_eq!(
+            git_problems(
+                "{ git = \"https://github.com/s/l\", tag = \"v1+build/x\" }",
+                tag
+            ),
+            Vec::<String>::new()
+        );
+        assert_eq!(percent_decode("a%2fb%2Bc+d%zz%"), "a/b+c+d%zz%");
     }
 
     // The shape cargo 1.9x locks (`bazel run //tools/crates:lock` on this
