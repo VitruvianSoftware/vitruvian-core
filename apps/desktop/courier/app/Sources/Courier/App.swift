@@ -154,23 +154,5 @@ struct CourierApp: App {
             }
         }
         .defaultSize(width: 820, height: 600)
-
-        // The menu-bar icon. Closing the window leaves Courier running (spec §2), and this is how to get it back.
-        MenuBarExtra(
-            isInserted: Binding(
-                get: { delegate.dockPreferences.showMenuBarIcon },
-                set: { delegate.dockPreferences.showMenuBarIcon = $0 }
-            )
-        ) {
-            MenuBarMenu(spaces: delegate.spaces, inbox: delegate.inbox, model: delegate.model,
-                        lifecycle: delegate.lifecycle, dockPreferences: delegate.dockPreferences,
-                        menuCoordinator: delegate.menuCoordinator,
-                        hotkeys: delegate.hotkeys,
-                        hotkeyDispatcher: delegate.hotkeyDispatcher,
-                        openCourier: delegate.windowOpener.show)
-        } label: {
-            MenuBarIcon(spaces: delegate.spaces, dockPreferences: delegate.dockPreferences,
-                        lifecycle: delegate.lifecycle)
-        }
     }
 }

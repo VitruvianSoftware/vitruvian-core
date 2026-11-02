@@ -450,6 +450,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         openItem.isEnabled = true
         menu.addItem(openItem)
 
+        let commandBarItem = NSMenuItem(title: String(localized: "Command Bar…"), action: #selector(commandBarFromMenu(_:)),
+                                        keyEquivalent: "")
+        let canOpenCommandBar = !lifecycle.isLocked && hotkeyDispatcher.canPerform(HotkeyID.commandBar)
+        applyMenuChord(hotkeys.primaryChord(for: HotkeyID.commandBar), to: commandBarItem, enabled: canOpenCommandBar)
+        commandBarItem.target = self
+        commandBarItem.isEnabled = canOpenCommandBar
+        menu.addItem(commandBarItem)
+
         let minItem = NSMenuItem(title: String(localized: "Minimize to Menu Bar"), action: #selector(minimizeFromMenu(_:)), keyEquivalent: "")
         applyMenuChord(hotkeys.primaryChord(for: "Minimize To Menu Bar"), to: minItem, enabled: !lifecycle.isLocked)
         minItem.target = self
@@ -488,6 +496,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openCourierFromMenu(_ sender: NSMenuItem) {
         windowOpener.show()
+    }
+
+    @objc private func commandBarFromMenu(_ sender: NSMenuItem) {
+        _ = hotkeyDispatcher.perform(HotkeyID.commandBar)
     }
 
     @objc private func minimizeFromMenu(_ sender: NSMenuItem) {
