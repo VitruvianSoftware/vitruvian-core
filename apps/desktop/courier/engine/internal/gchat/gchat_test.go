@@ -428,11 +428,26 @@ func TestPaginatedWorldSyncsDMsAndSpacesWithThreadedMetadata(t *testing.T) {
 	require.Equal(t, int64(500), loginMeta.UserRevision)
 }
 
-func TestBackfillUsesListTopicsForSpacesAndListMessagesForDMs(t *testing.T) {
+// listTopicsBodyWithoutHeader strips the RequestHeader the Rust client adds, so a test can compare the
+// rest of a list_topics request byte for byte with what the reference client sends.
+func listTopicsBodyWithoutHeader(t *testing.T, req []byte) []byte {
+	t.Helper()
+	var r pb.ListTopicsRequest
+	require.NoError(t, pb.Unmarshal(req, &r))
+	require.NotNil(t, r.GetRequestHeader(), "every list_topics request carries a RequestHeader at field 100")
+	r.RequestHeader = nil
+	return pb.MustMarshal(&r)
+}
+
+// The reference client (ref pkg/connector/backfill.go fetchTopicHeadMessages, live-tested in
+// ref pkg/gchatmeow/live_test.go) sends list_topics with only group_id and page_size_for_topics, for spaces and
+// DMs alike. We used to add page_size_for_replies, page_size_for_unread_replies and page_size_for_read_replies,
+// and every such request came back HTTP 500; DMs went to list_messages with an empty topic id instead.
+func TestBackfillListTopicsRequestMatchesReference(t *testing.T) {
 	ctx := context.Background()
 	var mu sync.Mutex
 	var listTopicsReqs [][]byte
-	var listMessagesReqs [][]byte
+	var listMessagesCalls int
 
 	h, ul, client := setupLoggedInGChatTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
@@ -441,74 +456,81 @@ func TestBackfillUsesListTopicsForSpacesAndListMessagesForDMs(t *testing.T) {
 			mu.Lock()
 			listTopicsReqs = append(listTopicsReqs, body)
 			mu.Unlock()
-			spaceGID := pb.SpaceGroupID("space_xyz")
-			msgProto := buildSyntheticMessageProto(spaceGID, "topic_1", "msg_1", "112233445566778899002", "Space topic head", 1710000010000000, "", 0, 0)
+			var req pb.ListTopicsRequest
+			_ = pb.Unmarshal(body, &req)
+			gid := req.GetGroupId()
+			topicPrefix := "topic"
+			if gid.GetDmId() != nil {
+				topicPrefix = "dm_topic"
+			}
+			older := buildSyntheticMessageProto(gid, topicPrefix+"_1", "msg_old", "112233445566778899002", "Older", 1710000010000000, "", 0, 0)
+			newer := buildSyntheticMessageProto(gid, topicPrefix+"_2", "msg_new", "112233445566778899002", "Newer", 1710000020000000, "", 0, 0)
 			resp := pb.MustMarshal(&pb.ListTopicsResponse{
-				Topics: []*pb.Topic{{
-					Id:       buildTopicID(spaceGID, "topic_1"),
-					SortTime: pb.Int64(1710000010000000),
-					Replies:  []*pb.Message{msgProto},
-				}},
+				Topics: []*pb.Topic{
+					{Id: buildTopicID(gid, topicPrefix+"_2"), SortTime: pb.Int64(1710000020000000), Replies: []*pb.Message{newer}},
+					{Id: buildTopicID(gid, topicPrefix+"_1"), SortTime: pb.Int64(1710000010000000), Replies: []*pb.Message{older}},
+				},
 			})
 			w.Header().Set("Content-Type", "application/x-protobuf")
 			_, _ = w.Write(resp)
 		case "/u/0/api/list_messages":
 			mu.Lock()
-			listMessagesReqs = append(listMessagesReqs, body)
+			listMessagesCalls++
 			mu.Unlock()
-			dmGID := pb.DMGroupID("dm_abc")
-			msgProto := buildSyntheticMessageProto(dmGID, "dm_topic_1", "dm_msg_1", "112233445566778899002", "Hello in DM", 1710000020000000, "", 0, 0)
-			resp := pb.MustMarshal(&pb.ListMessagesResponse{
-				Messages: []*pb.Message{msgProto},
-			})
-			w.Header().Set("Content-Type", "application/x-protobuf")
-			_, _ = w.Write(resp)
+			w.WriteHeader(http.StatusInternalServerError)
 		default:
 			http.NotFound(w, r)
 		}
 	})
 
-	spacePortal, err := h.Bridge.GetPortalByKey(ctx, networkid.PortalKey{
-		ID:       MakeSpacePortalID("space_xyz"),
-		Receiver: ul.ID,
-	})
+	spacePortal, err := h.Bridge.GetPortalByKey(ctx, networkid.PortalKey{ID: MakeSpacePortalID("space_xyz"), Receiver: ul.ID})
 	require.NoError(t, err)
 	spacePortal.Metadata = &PortalMetadata{TopicThreaded: true, GroupRevision: 120}
 
-	spaceBackfill, err := client.FetchMessages(ctx, bridgev2.FetchMessagesParams{
-		Portal: spacePortal,
-		Count:  30,
-	})
+	spaceBackfill, err := client.FetchMessages(ctx, bridgev2.FetchMessagesParams{Portal: spacePortal, Count: 30})
 	require.NoError(t, err)
 	require.False(t, spaceBackfill.HasMore)
 	require.False(t, spaceBackfill.MarkRead)
-	require.Len(t, spaceBackfill.Messages, 1)
-	require.Equal(t, MakeMessageID("topic_1", "msg_1"), spaceBackfill.Messages[0].ID)
+	require.Len(t, spaceBackfill.Messages, 2)
+	require.Equal(t, MakeMessageID("topic_1", "msg_old"), spaceBackfill.Messages[0].ID, "oldest first")
+	require.Equal(t, MakeMessageID("topic_2", "msg_new"), spaceBackfill.Messages[1].ID)
 
-	dmPortal, err := h.Bridge.GetPortalByKey(ctx, networkid.PortalKey{
-		ID:       MakeDMPortalID("dm_abc"),
-		Receiver: ul.ID,
-	})
+	dmPortal, err := h.Bridge.GetPortalByKey(ctx, networkid.PortalKey{ID: MakeDMPortalID("dm_abc"), Receiver: ul.ID})
 	require.NoError(t, err)
 	dmPortal.RoomType = database.RoomTypeDM
 
-	dmBackfill, err := client.FetchMessages(ctx, bridgev2.FetchMessagesParams{
-		Portal: dmPortal,
-		Count:  50,
+	dmBackfill, err := client.FetchMessages(ctx, bridgev2.FetchMessagesParams{Portal: dmPortal, Count: 50})
+	require.NoError(t, err, "DM history must not go through list_messages, which needs a real topic id")
+	require.Len(t, dmBackfill.Messages, 2)
+	require.Equal(t, MakeMessageID("dm_topic_2", "msg_new"), dmBackfill.Messages[1].ID)
+
+	// A forward backfill (the catch-up a chat resync asks for) keeps only messages newer than the anchor.
+	fwd, err := client.FetchMessages(ctx, bridgev2.FetchMessagesParams{
+		Portal:  spacePortal,
+		Forward: true,
+		Count:   30,
+		AnchorMessage: &database.Message{
+			ID:        MakeMessageID("topic_1", "msg_old"),
+			Timestamp: time.UnixMicro(1710000010000000),
+		},
 	})
 	require.NoError(t, err)
-	require.False(t, dmBackfill.HasMore)
-	require.False(t, dmBackfill.MarkRead)
-	require.Len(t, dmBackfill.Messages, 1)
-	require.Equal(t, MakeMessageID("dm_topic_1", "dm_msg_1"), dmBackfill.Messages[0].ID)
+	require.Len(t, fwd.Messages, 1)
+	require.Equal(t, MakeMessageID("topic_2", "msg_new"), fwd.Messages[0].ID)
 
 	mu.Lock()
 	defer mu.Unlock()
-	require.Len(t, listTopicsReqs, 1, "space backfill must do a single list_topics request")
-	require.Len(t, listMessagesReqs, 1, "DM backfill must do a single list_messages request")
-	require.Equal(t, int64(30), decodeListTopicsPageSizeForTopics(listTopicsReqs[0]))
-	require.Equal(t, int64(10), decodeListTopicsPageSizeForReplies(listTopicsReqs[0]))
-	require.Equal(t, int64(50), decodeListMessagesPageSize(listMessagesReqs[0]))
+	require.Zero(t, listMessagesCalls)
+	require.Len(t, listTopicsReqs, 3)
+	require.Equal(t, pb.MustMarshal(&pb.ListTopicsRequest{
+		GroupId:           pb.SpaceGroupID("space_xyz"),
+		PageSizeForTopics: pb.Int32(30),
+	}), listTopicsBodyWithoutHeader(t, listTopicsReqs[0]), "space list_topics must carry only group_id and page_size_for_topics")
+	require.Equal(t, pb.MustMarshal(&pb.ListTopicsRequest{
+		GroupId:           pb.DMGroupID("dm_abc"),
+		PageSizeForTopics: pb.Int32(50),
+	}), listTopicsBodyWithoutHeader(t, listTopicsReqs[1]), "DM history uses list_topics with the DM group id")
+	require.Equal(t, listTopicsBodyWithoutHeader(t, listTopicsReqs[0]), listTopicsBodyWithoutHeader(t, listTopicsReqs[2]))
 }
 
 func TestCatchUpUserAdvancesUserRevisionWithoutOverwritingGroupRevision(t *testing.T) {

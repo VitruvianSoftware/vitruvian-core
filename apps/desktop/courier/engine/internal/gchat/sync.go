@@ -25,7 +25,6 @@ import (
 const (
 	worldSectionPageSize      = 999
 	defaultTopicsPageSize     = 30
-	defaultRepliesPageSize    = 10
 	defaultMessagesPageSize   = 50
 	typingNotificationTimeout = 6 * time.Second
 	initialChatSyncCap        = 30
@@ -618,11 +617,12 @@ func (c *Client) convertParsedMessage(ctx context.Context, pm parsedMessage) (*b
 	return cm, nil
 }
 
-// FetchMessages implements bridgev2.BackfillingNetworkAPI.
-// For Space portals ("space:<id>") it performs a single-page POST /u/0/api/list_topics
-// (page_size_for_topics = 30, page_size_for_replies = 10); for DM portals ("dm:<id>")
-// it performs a single-page POST /u/0/api/list_messages (page_size = 50).
-// History sync is strictly read-only (MarkRead: false, HasMore: false).
+// FetchMessages implements bridgev2.BackfillingNetworkAPI with one POST /u/0/api/list_topics for
+// spaces and DMs alike, as the reference does (ref pkg/connector/backfill.go fetchTopicHeadMessages).
+// The request carries only group_id and page_size_for_topics: adding the page_size_for_*replies fields
+// made Google answer HTTP 500, and list_messages cannot list a whole DM because it needs a topic id.
+// A forward backfill keeps only messages newer than the anchor, so a chat resync fills a gap without
+// re-sending what is already stored. History sync is strictly read-only (MarkRead: false, HasMore: false).
 func (c *Client) FetchMessages(ctx context.Context, fetchParams bridgev2.FetchMessagesParams) (*bridgev2.FetchMessagesResponse, error) {
 	if fetchParams.Portal == nil {
 		return nil, fmt.Errorf("FetchMessages called with nil portal")
@@ -632,76 +632,16 @@ func (c *Client) FetchMessages(ctx context.Context, fetchParams bridgev2.FetchMe
 		return nil, err
 	}
 
-	if isDM {
-		pageSize := defaultMessagesPageSize
-		if fetchParams.Count > 0 {
-			pageSize = fetchParams.Count
-		}
-		reqBytes, err := pb.Marshal(&pb.ListMessagesRequest{
-			ParentId: buildMessageParentID(pb.DMGroupID(rawID), ""),
-			PageSize: pb.Int32(int32(pageSize)),
-		})
-		if err != nil {
-			return nil, fmt.Errorf("marshal list_messages request: %w", err)
-		}
-
-		respBytes, err := c.rpcCall(ctx, "list_messages", reqBytes)
-		if err != nil {
-			return nil, fmt.Errorf("list_messages failed: %w", err)
-		}
-
-		var resp pb.ListMessagesResponse
-		if err := pb.Unmarshal(respBytes, &resp); err != nil {
-			return nil, fmt.Errorf("decode list_messages response: %w", err)
-		}
-
-		parsed := make([]parsedMessage, 0, len(resp.GetMessages()))
-		for _, m := range resp.GetMessages() {
-			parsed = append(parsed, parseMessageFromProto(m))
-		}
-		slices.SortStableFunc(parsed, func(a, b parsedMessage) int {
-			return cmp.Compare(a.createTimeUsec, b.createTimeUsec)
-		})
-
-		backfillMsgs := make([]*bridgev2.BackfillMessage, 0, len(parsed))
-		for _, pm := range parsed {
-			if pm.messageID == "" {
-				continue
-			}
-			cm, err := c.convertParsedMessage(ctx, pm)
-			if err != nil {
-				return nil, err
-			}
-			senderID := MakeUserID(pm.senderGaiaID)
-			backfillMsgs = append(backfillMsgs, &bridgev2.BackfillMessage{
-				ConvertedMessage: cm,
-				Sender: bridgev2.EventSender{
-					Sender:   senderID,
-					IsFromMe: c.IsThisUser(ctx, senderID),
-				},
-				ID:          MakeMessageID(pm.topicID, pm.messageID),
-				Timestamp:   time.UnixMicro(pm.createTimeUsec),
-				StreamOrder: pm.createTimeUsec,
-			})
-		}
-		return &bridgev2.FetchMessagesResponse{
-			Messages: backfillMsgs,
-			HasMore:  false,
-			MarkRead: false,
-		}, nil
-	}
-
-	// Space portal: POST /u/0/api/list_topics
 	topicsPageSize := defaultTopicsPageSize
+	if isDM {
+		topicsPageSize = defaultMessagesPageSize
+	}
 	if fetchParams.Count > 0 {
 		topicsPageSize = fetchParams.Count
 	}
 	reqBytes, err := pb.Marshal(&pb.ListTopicsRequest{
-		GroupId:                  pb.SpaceGroupID(rawID),
-		PageSizeForTopics:        pb.Int32(int32(topicsPageSize)),
-		PageSizeForReplies:       pb.Int32(defaultRepliesPageSize),
-		PageSizeForUnreadReplies: pb.Int32(defaultRepliesPageSize),
-		PageSizeForReadReplies:   pb.Int32(defaultRepliesPageSize),
+		GroupId:           pb.PartsToGroupID(rawID, isDM),
+		PageSizeForTopics: pb.Int32(int32(topicsPageSize)),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("marshal list_topics request: %w", err)
@@ -729,13 +669,36 @@ func (c *Client) FetchMessages(ctx context.Context, fetchParams bridgev2.FetchMe
 		}
 	}
 	slices.SortStableFunc(parsed, func(a, b parsedMessage) int {
-		return cmp.Compare(a.createTimeUsec, b.createTimeUsec)
+		if byTime := cmp.Compare(a.createTimeUsec, b.createTimeUsec); byTime != 0 {
+			return byTime
+		}
+		return cmp.Compare(a.messageID, b.messageID)
 	})
+
+	anchor := fetchParams.AnchorMessage
+	var anchorMicros int64
+	if anchor != nil {
+		anchorMicros = anchor.Timestamp.UnixMicro()
+	}
 
 	backfillMsgs := make([]*bridgev2.BackfillMessage, 0, len(parsed))
 	for _, pm := range parsed {
 		if pm.messageID == "" {
 			continue
+		}
+		msgID := MakeMessageID(pm.topicID, pm.messageID)
+		if anchor != nil {
+			// Drop the anchor itself, and whatever lies on the wrong side of it. Same-microsecond
+			// siblings survive: dropping them with >= would lose distinct messages.
+			if msgID == anchor.ID {
+				continue
+			}
+			if fetchParams.Forward && pm.createTimeUsec < anchorMicros {
+				continue
+			}
+			if !fetchParams.Forward && pm.createTimeUsec > anchorMicros {
+				continue
+			}
 		}
 		cm, err := c.convertParsedMessage(ctx, pm)
 		if err != nil {
@@ -748,7 +711,7 @@ func (c *Client) FetchMessages(ctx context.Context, fetchParams bridgev2.FetchMe
 				Sender:   senderID,
 				IsFromMe: c.IsThisUser(ctx, senderID),
 			},
-			ID:          MakeMessageID(pm.topicID, pm.messageID),
+			ID:          msgID,
 			Timestamp:   time.UnixMicro(pm.createTimeUsec),
 			StreamOrder: pm.createTimeUsec,
 		})
@@ -1312,22 +1275,6 @@ func decodeListTopicsPageSizeForTopics(req []byte) int64 {
 		return 0
 	}
 	return int64(r.GetPageSizeForTopics())
-}
-
-func decodeListTopicsPageSizeForReplies(req []byte) int64 {
-	var r pb.ListTopicsRequest
-	if err := pb.Unmarshal(req, &r); err != nil {
-		return 0
-	}
-	return int64(r.GetPageSizeForReplies())
-}
-
-func decodeListMessagesPageSize(req []byte) int64 {
-	var r pb.ListMessagesRequest
-	if err := pb.Unmarshal(req, &r); err != nil {
-		return 0
-	}
-	return int64(r.GetPageSize())
 }
 
 func decodeCatchUpUserFromRevision(req []byte) int64 {
