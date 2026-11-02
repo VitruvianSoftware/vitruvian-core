@@ -1609,18 +1609,30 @@ rust_binary(
 )
 
 # Downloads a pinned CI tool (actionlint, kubeconform, osv-scanner, promtool)
-# and verifies its checksum; the composite action
-# .github/actions/install-pinned-tool builds and runs this binary. Also guards
-# the curl retry policy: a fixed --retry-delay turns off curl's backoff, and ~6s
-# of GitHub-releases 500s then failed a required merge-queue check. Black-box:
-# fake curl, real tar/install/grep/sha256sum, no network.
+# and verifies it against the sha256 tools/tools.lock.json pins for that URL
+# (#4183); the composite action .github/actions/install-pinned-tool builds and
+# runs this binary. Also guards the curl retry policy: a fixed --retry-delay
+# turns off curl's backoff, and ~6s of GitHub-releases 500s then failed a
+# required merge-queue check. Black-box: fake curl, real tar/install/sha256sum,
+# no network. Its last case runs every install-pinned-tool step in .github/
+# against the real lock, so a version bump without its hashes fails here.
 rust_test(
     name = "install_pinned_tool_test",
     size = "small",
     srcs = ["src/install_pinned_tool/tests.rs"],
-    data = [":install_pinned_tool"],
+    data = [
+        ":install_pinned_tool",
+        "//:composite_actions",
+        "//:workflow_files",
+        "//tools:tools.lock.json",
+    ],
     edition = "2021",
-    env = {"BIN": "$(rootpath :install_pinned_tool)"},
+    env = {
+        "BIN": "$(rootpath :install_pinned_tool)",
+        "COMPOSITE_ACTIONS": "$(rootpaths //:composite_actions)",
+        "LOCK": "$(rootpath //tools:tools.lock.json)",
+        "WORKFLOW_FILES": "$(rootpaths //:workflow_files)",
+    },
     rustc_flags = ["-Copt-level=3"],
     deps = [":ci_testkit"],
 )

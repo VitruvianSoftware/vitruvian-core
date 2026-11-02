@@ -20,14 +20,19 @@
 
 name: Install a pinned CI tool
 description: >-
-  Download a pinned release asset, verify it against the release's checksum
-  listing, and install it to ~/.local/bin (added to $GITHUB_PATH) for the rest
-  of the job. Runs //tools/ci:install_pinned_tool, built here from the checkout
-  with the runner's rustc, because the callers (actionlint, gitops-validate,
+  Download a pinned release asset, verify it against the sha256 that
+  tools/tools.lock.json records for that exact URL, and install it to
+  ~/.local/bin (added to $GITHUB_PATH) for the rest of the job. The hash comes
+  from the repo, not from the release's own checksum file, so a version bump
+  must add the new hashes to the lock where reviewers see them (#4183). A URL
+  the lock does not pin under bin-name, a lock entry whose kind or archive
+  member disagrees with mode and member-path, a checksum mismatch or a failed
+  download fails the step and installs nothing. Runs
+  //tools/ci:install_pinned_tool, built here from the checkout with the
+  runner's rustc, because the callers (actionlint, gitops-validate,
   chart-render, supply-chain, mcp-slack-image) set up no Bazel. Every fetch
-  retries 6 times with curl's exponential backoff under a 180s cap; a
-  checksum mismatch, a missing checksum line or a failed download fails the
-  step and installs nothing. See tools/ci/src/install_pinned_tool/lib.rs.
+  retries 6 times with curl's exponential backoff under a 180s cap. See
+  tools/ci/src/install_pinned_tool/lib.rs.
 
 inputs:
   base-url:
@@ -36,19 +41,11 @@ inputs:
   asset:
     description: Release asset filename under base-url.
     required: true
-  checksum-file:
-    description: Checksum-listing asset filename under base-url.
-    required: true
-  checksum-pattern:
-    description: >-
-      grep basic regex selecting the asset's line from checksum-file, for
-      `sha256sum -c`. Anchor it yourself when a shorter name could match a
-      longer one.
-    required: true
   bin-name:
     description: >-
-      Installed binary name in ~/.local/bin. In tar mode also the archive
-      member, unless member-path is set.
+      Installed binary name in ~/.local/bin, and the tool's key in
+      tools/tools.lock.json. In tar mode also the archive member, unless
+      member-path is set.
     required: true
   mode:
     description: "`tar` (asset is a .tar.gz) or `raw` (asset is the binary)."
@@ -78,14 +75,12 @@ runs:
         IPT_BIN: ${{ steps.ipt-bin.outputs.path }}
         IPT_BASE_URL: ${{ inputs.base-url }}
         IPT_ASSET: ${{ inputs.asset }}
-        IPT_CHECKSUM_FILE: ${{ inputs.checksum-file }}
-        IPT_CHECKSUM_PATTERN: ${{ inputs.checksum-pattern }}
         IPT_BIN_NAME: ${{ inputs.bin-name }}
         IPT_MODE: ${{ inputs.mode }}
         IPT_MEMBER_PATH: ${{ inputs.member-path }}
       run: |
         set -euo pipefail
         cd "${GITHUB_WORKSPACE}"
-        args=("${IPT_BASE_URL}" "${IPT_ASSET}" "${IPT_CHECKSUM_FILE}" "${IPT_CHECKSUM_PATTERN}" "${IPT_BIN_NAME}" "--${IPT_MODE}")
+        args=(tools/tools.lock.json "${IPT_BASE_URL}" "${IPT_ASSET}" "${IPT_BIN_NAME}" "--${IPT_MODE}")
         if [ -n "${IPT_MEMBER_PATH}" ]; then args+=("${IPT_MEMBER_PATH}"); fi
         "$IPT_BIN" "${args[@]}"

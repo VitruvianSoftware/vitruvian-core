@@ -375,8 +375,6 @@ jobs:
         with:
           base-url: https://github.com/google/osv-scanner/releases/download/v2.6.0
           asset: osv-scanner_linux_amd64
-          checksum-file: osv-scanner_SHA256SUMS
-          checksum-pattern: " osv-scanner_linux_amd64$"
           bin-name: osv-scanner
           mode: raw
 
