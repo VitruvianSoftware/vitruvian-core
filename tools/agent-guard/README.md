@@ -234,10 +234,14 @@ A pull request that changes any of these waits until `ipv1337`, through the
   `src/cloud_bootstrap/` and the build-cache configurator in `tools/remote/src/`
   from the working copy; `profiles.tsv` decides which secrets each session
   fetches)
+- the CI definitions: `.github/workflows/**` and `.github/actions/**` (they
+  run in GitHub Actions with the repository's secrets and tokens, and decide
+  what the required checks and the release jobs do)
 - the requirement itself: `infrastructure/pulumi/platform/repo-config/guard_review.go`
   (the rule and the team), `infrastructure/pulumi/platform/repo-config/main.go`
   (where it is wired in, and the merge-queue ruleset's bypass list),
-  `infrastructure/pulumi/platform/repo-config/Pulumi.yaml` and
+  `infrastructure/pulumi/platform/repo-config/release_tags.go` (the
+  release-tag ruleset), `infrastructure/pulumi/platform/repo-config/Pulumi.yaml` and
   `infrastructure/pulumi/platform/repo-config/Pulumi.dev.yaml` (the stack)
 
 How it works and what it does not do:

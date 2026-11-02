@@ -42,6 +42,7 @@ rust_library(
     visibility = ["//tools:__subpackages__"],
     deps = [
         "//tools/shell-compat:shell_compat",
+        "@crates//:serde_json",
     ],
 )
 

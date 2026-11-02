@@ -94,11 +94,17 @@ var guardReviewPaths = []string{
 	"tools/cloud-bootstrap/src/cloud_bootstrap/**",
 	"tools/cloud-bootstrap/profiles.tsv",
 	"tools/remote/src/**",
+	// CI definitions: the workflows and the local actions they call run in
+	// GitHub Actions with the repository's secrets and tokens, and decide
+	// what the required checks and the release jobs actually do.
+	".github/workflows/**",
+	".github/actions/**",
 	// This requirement itself: the ruleset and team (this file), where it is
-	// wired in and the other ruleset's bypass list (main.go), and the stack
-	// it is applied to.
+	// wired in and the other ruleset's bypass list (main.go), the release-tag
+	// ruleset (release_tags.go), and the stack it is applied to.
 	"infrastructure/pulumi/platform/repo-config/guard_review.go",
 	"infrastructure/pulumi/platform/repo-config/main.go",
+	"infrastructure/pulumi/platform/repo-config/release_tags.go",
 	"infrastructure/pulumi/platform/repo-config/Pulumi.yaml",
 	"infrastructure/pulumi/platform/repo-config/Pulumi.dev.yaml",
 	// guard-review-paths:end
@@ -153,7 +159,7 @@ func guardReviewPullRequestRule(teamID pulumi.IntInput) *github.RepositoryRulese
 func agentGuardReview(ctx *pulumi.Context, repo *github.Repository) error {
 	team, err := github.NewTeam(ctx, guardReviewTeamSlug, &github.TeamArgs{
 		Name:        pulumi.String(guardReviewTeamSlug),
-		Description: pulumi.String("Approves changes to agent-guard's rules (tools/agent-guard and the hook wiring)"),
+		Description: pulumi.String("Approves changes to agent-guard's rules, the hook wiring and the CI definitions"),
 		Privacy:     pulumi.String("closed"),
 	})
 	if err != nil {

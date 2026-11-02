@@ -54,465 +54,475 @@ import (
 )
 
 func main() {
-	pulumi.Run(func(ctx *pulumi.Context) error {
-		cfg := config.New(ctx, "")
+	pulumi.Run(program)
+}
 
-		// repoOwner is the GitHub org or user that owns this repository
-		// (required). repoName defaults to this project's kebab-case name but
-		// can be overridden if the repository was renamed.
-		repoOwner := cfg.Require("repoOwner")
-		repoName := repoName(cfg)
-		defaultBranch := defaultBranch(cfg)
+// program is the whole stack. A function of its own so the tests can run it
+// under Pulumi's mock engine and check what it actually registers.
+func program(ctx *pulumi.Context) error {
+	cfg := config.New(ctx, "")
 
-		// Branch-protection knobs, all config-driven with sane defaults.
-		requirePullRequest, err := requirePullRequest(cfg)
+	// repoOwner is the GitHub org or user that owns this repository
+	// (required). repoName defaults to this project's kebab-case name but
+	// can be overridden if the repository was renamed.
+	repoOwner := cfg.Require("repoOwner")
+	repoName := repoName(cfg)
+	defaultBranch := defaultBranch(cfg)
+
+	// Branch-protection knobs, all config-driven with sane defaults.
+	requirePullRequest, err := requirePullRequest(cfg)
+	if err != nil {
+		return err
+	}
+	requiredApprovals, err := intConfig(cfg, "requiredApprovals", 0)
+	if err != nil {
+		return err
+	}
+	requireStatusChecks, err := requireStatusChecks(cfg)
+	if err != nil {
+		return err
+	}
+	// statusCheckContexts is an optional JSON string list. GetObject returns
+	// nil when the key is unset (no named contexts) and a non-nil error only
+	// when it's SET but fails to unmarshal -- unlike mergeQueueRequiredChecks
+	// below, there's no safe hardcoded fallback here, so a malformed value
+	// must abort the apply rather than silently produce an empty list.
+	var statusCheckContexts []string
+	if err := cfg.GetObject("statusCheckContexts", &statusCheckContexts); err != nil {
+		return fmt.Errorf("config %q: %w", "statusCheckContexts", err)
+	}
+	enforceAdmins, err := boolConfig(cfg, "enforceAdmins", false) // default false
+	if err != nil {
+		return err
+	}
+
+	// Adopt the EXISTING repository rather than create it. The import ID is
+	// the bare repo name (the GitHub provider derives the owner from the
+	// token / provider config). IgnoreChanges keeps Pulumi from touching the
+	// attributes the developer owns; we only manage DeleteBranchOnMerge.
+	repo, err := github.NewRepository(
+		ctx, repoName, &github.RepositoryArgs{
+			Name:                pulumi.String(repoName),
+			DeleteBranchOnMerge: pulumi.Bool(true),
+			// Required by the merge-queue ruleset (#83): GitHub adds PRs to the
+			// merge queue via the auto-merge mechanism, so "Allow auto-merge"
+			// must be enabled for the queue to function.
+			AllowAutoMerge: pulumi.Bool(true),
+			// Governance (#803): enable secret scanning + push protection as code
+			// (both free on public repos). advanced_security is intentionally
+			// omitted -- GitHub Advanced Security is not applicable to public
+			// repos. Removed from IgnoreChanges below so Pulumi manages exactly
+			// these two settings and nothing else the developer owns.
+			SecurityAndAnalysis: &github.RepositorySecurityAndAnalysisArgs{
+				SecretScanning: &github.RepositorySecurityAndAnalysisSecretScanningArgs{
+					Status: pulumi.String("enabled"),
+				},
+				SecretScanningPushProtection: &github.RepositorySecurityAndAnalysisSecretScanningPushProtectionArgs{
+					Status: pulumi.String("enabled"),
+				},
+				// NOT DECLARED: SecretScanningNonProviderPatterns.
+				//
+				// It was declared "enabled" here and NEVER took effect. Pulumi
+				// reported `~ Repository updated [diff: ~securityAndAnalysis]`
+				// on every apply while the live API kept returning
+				// "disabled" -- verified 2026-07-25 after the #1200 apply
+				// (run 30169006463, success). A silent no-op, and a perpetual
+				// spurious diff on an otherwise clean stack.
+				//
+				// The cause is not this program. Non-provider patterns is a
+				// GitHub Secret Protection (Advanced Security) feature, and
+				// the org's code security configuration "dependency-graph-only"
+				// (id 262482) pins it `disabled` with enforcement `enforced`.
+				// An enforced org configuration overrides the repo-level
+				// setting, so this write could never win. That configuration's
+				// own description says every setting other than the dependency
+				// graph is `not_set` "so repo_config/Pulumi stays the
+				// authority" -- this one is the exception to that intent.
+				//
+				// That is deliberate, not an oversight to fix: Advanced
+				// Security is billed per active committer, and this repo
+				// intentionally runs free alternatives instead -- gitleaks
+				// (the required `secret-scan` gate) for this exact class of
+				// generic token / bare private key, and osv-scanner in place
+				// of dependency-review. Re-adding the field would restore the
+				// phantom diff without turning anything on; the way to
+				// actually enable it is to change the org configuration and
+				// accept the GHAS bill.
+			},
+		},
+		pulumi.Import(pulumi.ID(repoName)),
+		pulumi.IgnoreChanges([]string{
+			// We manage DeleteBranchOnMerge + AllowAutoMerge; ignore drift on every other
+			// attribute so adopting a brownfield repo never clobbers settings
+			// the developer owns (homepage, merge buttons, feature flags, the
+			// generated-from-template marker, topics, etc.).
+			"description",
+			"homepageUrl",
+			"visibility",
+			"hasIssues",
+			"hasProjects",
+			"hasWiki",
+			// hasDownloads stays ignored: the GitHub provider deprecated it, but
+			// dropping it from this list makes Pulumi want to TOGGLE the repo's
+			// (defunct) hasDownloads setting (preview: `- hasDownloads: true`),
+			// which is exactly the brownfield clobber this list prevents. The
+			// cosmetic deprecation warning on preview is the lesser evil.
+			"hasDownloads",
+			"hasDiscussions",
+			"isTemplate",
+			"template",
+			"topics",
+			"allowForking",
+			"allowMergeCommit",
+			"allowSquashMerge",
+			"allowRebaseMerge",
+			"mergeCommitTitle",
+			"mergeCommitMessage",
+			"squashMergeCommitTitle",
+			"squashMergeCommitMessage",
+			"vulnerabilityAlerts",
+			"pages",
+			"name",
+		}),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Dependabot automated security fixes (#815): open PRs to fix dependencies
+	// with a known vulnerability. Free on every repo; on a public repo the
+	// dependency graph + Dependabot alerts it needs are on by default. Managed
+	// as code here alongside the other repo governance settings. These security
+	// PRs are authored by Dependabot and auto-merged via the sync App, which
+	// bypasses the required-review rule (#804), so they are never blocked.
+	if _, err := github.NewRepositoryDependabotSecurityUpdates(
+		ctx, repoName+"-dependabot-security-updates",
+		&github.RepositoryDependabotSecurityUpdatesArgs{
+			Repository: repo.Name,
+			Enabled:    pulumi.Bool(true),
+		},
+	); err != nil {
+		return err
+	}
+
+	// Assemble the branch-protection args from config. Only attach the PR
+	// review / status check blocks when their respective toggles are on.
+	protectionArgs := &github.BranchProtectionArgs{
+		RepositoryId:      repo.NodeId,
+		Pattern:           pulumi.String(defaultBranch),
+		EnforceAdmins:     pulumi.Bool(enforceAdmins),
+		AllowsForcePushes: pulumi.Bool(false),
+		AllowsDeletions:   pulumi.Bool(false),
+	}
+
+	if requirePullRequest {
+		protectionArgs.RequiredPullRequestReviews = github.BranchProtectionRequiredPullRequestReviewArray{
+			&github.BranchProtectionRequiredPullRequestReviewArgs{
+				RequiredApprovingReviewCount: pulumi.Int(requiredApprovals),
+			},
+		}
+	}
+
+	if requireStatusChecks {
+		statusCheck := &github.BranchProtectionRequiredStatusCheckArgs{
+			Strict: pulumi.Bool(true),
+		}
+		if len(statusCheckContexts) > 0 {
+			statusCheck.Contexts = pulumi.ToStringArray(statusCheckContexts)
+		}
+		protectionArgs.RequiredStatusChecks = github.BranchProtectionRequiredStatusCheckArray{
+			statusCheck,
+		}
+	}
+
+	_, err = github.NewBranchProtection(ctx, repoName+"-default-protection", protectionArgs)
+	if err != nil {
+		return err
+	}
+
+	// Merge queue (#83): serialize merges into the default branch through a
+	// GitHub merge queue, configured as a repository RULESET (the modern,
+	// API-managed mechanism; classic branch protection cannot express a
+	// merge queue). For each group GitHub builds the would-be-merged commit,
+	// runs the required CI checks on it, and only fast-forwards the branch
+	// when they pass -- the trunk-based postsubmit gate from the scaling
+	// roadmap. The jobs in .github/workflows/ci.yaml now also run on the
+	// `merge_group` event so the queue has checks to wait on.
+	mergeQueueOn, err := mergeQueueEnabled(cfg)
+	if err != nil {
+		return err
+	}
+	if mergeQueueOn {
+		// Required checks default to the merge-queue gate set — the job names
+		// across ci.yaml (build-test, build-macos, license-check, go-lint,
+		// go-test, validate-butane), tidy-check.yaml and conformance-check.yaml.
+		// Each of those workflows triggers on the `merge_group` event so the
+		// queue has a result to wait on. The go-lint/go-test jobs are matrix'd
+		// over the standalone-mirror modules, so their check contexts are the
+		// per-matrix names ("go-lint (devx)", …), not the bare job name —
+		// listing the bare name would never report and wedge the queue pending.
+		// go-lint/go-test/validate-butane were added when the monorepo became
+		// the single CI authority and the per-app mirror CI was retired; they
+		// ran on every PR but were never in the gate set, so a lint/race/Butane
+		// regression could still merge. Override via the
+		// `mergeQueueRequiredChecks` JSON-list config.
+		//
+		// GUARDED: `bazel run //tools/conformance:check` (#458) asserts every
+		// name here is produced by a job that runs on the `merge_group` event —
+		// so a rename on either side can't silently wedge the queue "pending".
+		var checks []string
+		_ = cfg.GetObject("mergeQueueRequiredChecks", &checks)
+		if len(checks) == 0 {
+			checks = []string{
+				"gate/all-required-passed",
+				"build-test", "build-macos", "license-check", "tidy-check", "conformance-check",
+				"lint-naming",
+				"go-lint (devx)", "go-lint (homelab)", "validate-butane",
+				// gitops-validate (kubeconform over gitops/**, which reconciles to
+				// the LIVE cluster) and actionlint (workflow lint) now also trigger
+				// on merge_group, so they gate the queue instead of only advising on
+				// PRs. Both validate their whole dir on every queued commit, so they
+				// always report — safe to require.
+				"gitops-validate", "actionlint",
+				// migration-safety (#819) Squawk-lints Tabula's Prisma migrations so a
+				// backward-incompatible change can't reach main and break the OLD Cloud
+				// Run revision during the blue-green traffic shift. Its job runs a
+				// self-test on every event (and carries no pull_request paths filter),
+				// so it always reports — safe to require.
+				"migration-safety",
+				// go-test-infra (#1015) runs the Go tests for the IaC programs
+				// (infrastructure/pulumi/** and <app>/infra/**), which are outside
+				// go.work and emit no go_test target -- so before that job existed
+				// they never executed in CI at all. It landed advisory and, like
+				// go-lint/go-test/validate-butane before it, ran on every PR without
+				// gating: an IaC test regression could still merge. Its job is
+				// unconditional (only the STEPS are gated, on a dorny/paths-filter
+				// that returns 'false' for non-IaC diffs), so it always reports --
+				// safe to require, and a no-op in seconds for the PRs that don't
+				// touch IaC.
+				"go-test-infra",
+				// Supply-chain gates (supply-chain.yaml) -- the class of
+				// check this repo had NONE of. Dependabot only alerts AFTER
+				// a vulnerable dependency is already on main, and GitHub
+				// secret scanning covers known PROVIDER patterns only;
+				// neither BLOCKS a merge.
+				//
+				// Both are diff/lockfile-scoped but use the
+				// run-then-noop-green shape: the job always runs and
+				// reports on every event including merge_group, which is
+				// what makes them safe to require. Neither carries a
+				// pull_request paths filter, so they cannot leave a PR stuck
+				// unmergeable (asserted by the conformance check).
+				//
+				// osv-scan (google/osv-scanner) replaced GitHub's
+				// dependency-review gate. dependency-review reads GitHub's
+				// dependency graph, which is an Advanced Security feature:
+				// free on public repos but BILLED PER ACTIVE COMMITTER on
+				// private ones, and (verified against the API) the
+				// configuration enabling it cannot omit advanced_security --
+				// the only accepted values are
+				// enabled|disabled|code_security|secret_protection. So the
+				// gate could not survive this repo going private without
+				// either an invoice or a wedged merge queue. osv-scanner
+				// reads the LOCKFILES directly instead, so it costs nothing
+				// at any visibility, runs locally as well as in CI, and also
+				// covers Cargo and PyPI, which GitHub's graph handled poorly
+				// here.
+				// go-race (#1039-adjacent) runs the race detector over EVERY Bazel
+				// go_test target. Before it, race coverage was the standalone
+				// `go test -race` matrix over devx+homelab only -- so every other Go
+				// target, tabula's included, was never race-tested anywhere. Its job
+				// is unconditional (only the STEPS are path-gated), so it always
+				// reports and is safe to require.
+				"go-race",
+				"osv-scan",
+				"secret-scan",
+				// release-scope (release-scope.yaml) fails a pull request that
+				// would make release-please release a product its title does
+				// not name: a `feat`/`fix` for one product that also changes a
+				// file in another's folder cuts a release of the second with
+				// nothing in it (#3193, #3211 and #3217, all on 2026-10-13).
+				// Its workflow carries no pull_request paths or branches
+				// filter and its job is unconditional on merge_group (where it
+				// runs the check's own tests; the pull request itself was
+				// judged before it could be queued), so it always reports --
+				// safe to require.
+				"release-scope",
+			}
+		}
+		requiredChecks := github.RepositoryRulesetRulesRequiredStatusChecksRequiredCheckArray{}
+		for _, c := range checks {
+			requiredChecks = append(requiredChecks, &github.RepositoryRulesetRulesRequiredStatusChecksRequiredCheckArgs{
+				Context: pulumi.String(c),
+			})
+		}
+
+		// #804 code-owner review is gated behind requireCodeOwnerReview
+		// (default false). A single maintainer has no second reviewer, so the
+		// rule produces zero real reviews; and a ruleset bypass actor's bypass
+		// applies only to a DIRECT merge -- NEVER to auto-merge INTO the merge
+		// queue -- so bot automation (release-please / Dependabot) cannot
+		// satisfy it either and sits REVIEW_REQUIRED forever (verified on a
+		// canary). While solo it therefore only blocks auto-merge and forces
+		// manual admin merges. Flip requireCodeOwnerReview=true once a second
+		// reviewer exists; the merge queue + required status checks below stay
+		// enforced either way.
+		codeOwnerReview, err := boolConfig(cfg, "requireCodeOwnerReview", false)
 		if err != nil {
 			return err
 		}
+		// requiredApprovals is deliberately SEPARATE from codeOwnerReview,
+		// because the two are no longer the same question. Agent identities are
+		// GitHub Apps (docs/guides/agent-github-identities.md), and an App CANNOT be
+		// listed in CODEOWNERS -- GitHub's CODEOWNERS docs enumerate users,
+		// teams and email addresses only. But an App's review DOES satisfy the
+		// approval count: measured on a canary PR, where an installation token
+		// POSTing event=APPROVE moved the PR from
+		// reviewDecision=REVIEW_REQUIRED/blocked to APPROVED, with the review
+		// recorded as type=Bot.
+		//
+		// So the reachable configuration is requiredApprovals>=1 with
+		// requireCodeOwnerReview=false. Deriving approvals from codeOwnerReview,
+		// as this did, made that combination unexpressible.
+		//
+		// Both still default OFF. The old blocker was that a lone maintainer has
+		// no second reviewer, so the rule produced zero real reviews while
+		// wedging bot auto-merge (release-please / Dependabot) at
+		// REVIEW_REQUIRED forever -- a ruleset bypass applies to a DIRECT merge,
+		// never to auto-merge INTO the merge queue. That blocker is removed only
+		// once each agent authors PRs under its own App; until then, raising
+		// this re-creates exactly that wedge.
 		requiredApprovals, err := intConfig(cfg, "requiredApprovals", 0)
 		if err != nil {
 			return err
 		}
-		requireStatusChecks, err := requireStatusChecks(cfg)
-		if err != nil {
-			return err
+		if requiredApprovals < 0 {
+			return fmt.Errorf("config \"requiredApprovals\" = %d must not be negative", requiredApprovals)
 		}
-		// statusCheckContexts is an optional JSON string list. GetObject returns
-		// nil when the key is unset (no named contexts) and a non-nil error only
-		// when it's SET but fails to unmarshal -- unlike mergeQueueRequiredChecks
-		// below, there's no safe hardcoded fallback here, so a malformed value
-		// must abort the apply rather than silently produce an empty list.
-		var statusCheckContexts []string
-		if err := cfg.GetObject("statusCheckContexts", &statusCheckContexts); err != nil {
-			return fmt.Errorf("config %q: %w", "statusCheckContexts", err)
-		}
-		enforceAdmins, err := boolConfig(cfg, "enforceAdmins", false) // default false
-		if err != nil {
-			return err
-		}
+		approvals := resolveApprovals(requiredApprovals, codeOwnerReview)
 
-		// Adopt the EXISTING repository rather than create it. The import ID is
-		// the bare repo name (the GitHub provider derives the owner from the
-		// token / provider config). IgnoreChanges keeps Pulumi from touching the
-		// attributes the developer owns; we only manage DeleteBranchOnMerge.
-		repo, err := github.NewRepository(
-			ctx, repoName, &github.RepositoryArgs{
-				Name:                pulumi.String(repoName),
-				DeleteBranchOnMerge: pulumi.Bool(true),
-				// Required by the merge-queue ruleset (#83): GitHub adds PRs to the
-				// merge queue via the auto-merge mechanism, so "Allow auto-merge"
-				// must be enabled for the queue to function.
-				AllowAutoMerge: pulumi.Bool(true),
-				// Governance (#803): enable secret scanning + push protection as code
-				// (both free on public repos). advanced_security is intentionally
-				// omitted -- GitHub Advanced Security is not applicable to public
-				// repos. Removed from IgnoreChanges below so Pulumi manages exactly
-				// these two settings and nothing else the developer owns.
-				SecurityAndAnalysis: &github.RepositorySecurityAndAnalysisArgs{
-					SecretScanning: &github.RepositorySecurityAndAnalysisSecretScanningArgs{
-						Status: pulumi.String("enabled"),
-					},
-					SecretScanningPushProtection: &github.RepositorySecurityAndAnalysisSecretScanningPushProtectionArgs{
-						Status: pulumi.String("enabled"),
-					},
-					// NOT DECLARED: SecretScanningNonProviderPatterns.
-					//
-					// It was declared "enabled" here and NEVER took effect. Pulumi
-					// reported `~ Repository updated [diff: ~securityAndAnalysis]`
-					// on every apply while the live API kept returning
-					// "disabled" -- verified 2026-07-25 after the #1200 apply
-					// (run 30169006463, success). A silent no-op, and a perpetual
-					// spurious diff on an otherwise clean stack.
-					//
-					// The cause is not this program. Non-provider patterns is a
-					// GitHub Secret Protection (Advanced Security) feature, and
-					// the org's code security configuration "dependency-graph-only"
-					// (id 262482) pins it `disabled` with enforcement `enforced`.
-					// An enforced org configuration overrides the repo-level
-					// setting, so this write could never win. That configuration's
-					// own description says every setting other than the dependency
-					// graph is `not_set` "so repo_config/Pulumi stays the
-					// authority" -- this one is the exception to that intent.
-					//
-					// That is deliberate, not an oversight to fix: Advanced
-					// Security is billed per active committer, and this repo
-					// intentionally runs free alternatives instead -- gitleaks
-					// (the required `secret-scan` gate) for this exact class of
-					// generic token / bare private key, and osv-scanner in place
-					// of dependency-review. Re-adding the field would restore the
-					// phantom diff without turning anything on; the way to
-					// actually enable it is to change the org configuration and
-					// accept the GHAS bill.
+		if _, err := github.NewRepositoryRuleset(ctx, repoName+"-merge-queue", &github.RepositoryRulesetArgs{
+			Name:         pulumi.String("merge-queue"),
+			Repository:   repo.Name,
+			Target:       pulumi.String("branch"),
+			Enforcement:  pulumi.String("active"),
+			BypassActors: mergeQueueBypassActors(),
+			Conditions: &github.RepositoryRulesetConditionsArgs{
+				RefName: &github.RepositoryRulesetConditionsRefNameArgs{
+					// ~DEFAULT_BRANCH tracks the default branch even if it is
+					// renamed later.
+					Includes: pulumi.StringArray{pulumi.String("~DEFAULT_BRANCH")},
+					Excludes: pulumi.StringArray{},
 				},
 			},
-			pulumi.Import(pulumi.ID(repoName)),
-			pulumi.IgnoreChanges([]string{
-				// We manage DeleteBranchOnMerge + AllowAutoMerge; ignore drift on every other
-				// attribute so adopting a brownfield repo never clobbers settings
-				// the developer owns (homepage, merge buttons, feature flags, the
-				// generated-from-template marker, topics, etc.).
-				"description",
-				"homepageUrl",
-				"visibility",
-				"hasIssues",
-				"hasProjects",
-				"hasWiki",
-				// hasDownloads stays ignored: the GitHub provider deprecated it, but
-				// dropping it from this list makes Pulumi want to TOGGLE the repo's
-				// (defunct) hasDownloads setting (preview: `- hasDownloads: true`),
-				// which is exactly the brownfield clobber this list prevents. The
-				// cosmetic deprecation warning on preview is the lesser evil.
-				"hasDownloads",
-				"hasDiscussions",
-				"isTemplate",
-				"template",
-				"topics",
-				"allowForking",
-				"allowMergeCommit",
-				"allowSquashMerge",
-				"allowRebaseMerge",
-				"mergeCommitTitle",
-				"mergeCommitMessage",
-				"squashMergeCommitTitle",
-				"squashMergeCommitMessage",
-				"vulnerabilityAlerts",
-				"pages",
-				"name",
-			}),
-		)
-		if err != nil {
-			return err
-		}
-
-		// Dependabot automated security fixes (#815): open PRs to fix dependencies
-		// with a known vulnerability. Free on every repo; on a public repo the
-		// dependency graph + Dependabot alerts it needs are on by default. Managed
-		// as code here alongside the other repo governance settings. These security
-		// PRs are authored by Dependabot and auto-merged via the sync App, which
-		// bypasses the required-review rule (#804), so they are never blocked.
-		if _, err := github.NewRepositoryDependabotSecurityUpdates(
-			ctx, repoName+"-dependabot-security-updates",
-			&github.RepositoryDependabotSecurityUpdatesArgs{
-				Repository: repo.Name,
-				Enabled:    pulumi.Bool(true),
+			Rules: &github.RepositoryRulesetRulesArgs{
+				MergeQueue: mergeQueueRule(),
+				// Checks the queue must see green before merging a group.
+				// strict_policy=false: the queue rebases each entry onto the
+				// latest base itself, so "require branches up to date" is
+				// both redundant and incompatible with a merge queue.
+				RequiredStatusChecks: &github.RepositoryRulesetRulesRequiredStatusChecksArgs{
+					RequiredChecks:                   requiredChecks,
+					StrictRequiredStatusChecksPolicy: pulumi.Bool(false),
+				},
+				// Require a PR before merging + squash-only, ALWAYS. Review is
+				// gated by two INDEPENDENT knobs, both default OFF (see above):
+				// requiredApprovals (a count, satisfiable by an agent App) and
+				// requireCodeOwnerReview (#804, satisfiable only by a human or
+				// team, since an App cannot be a code owner).
+				//
+				// dismiss-stale and require-last-push-approval key off whether any
+				// approval is required at all, NOT off codeOwnerReview. Keying
+				// them off codeOwnerReview meant requiredApprovals=1 alone left
+				// both off, so an approval survived a later push -- exactly the
+				// gaming these two exist to prevent.
+				PullRequest: &github.RepositoryRulesetRulesPullRequestArgs{
+					RequireCodeOwnerReview:       pulumi.Bool(codeOwnerReview),
+					RequiredApprovingReviewCount: pulumi.Int(approvals),
+					DismissStaleReviewsOnPush:    pulumi.Bool(approvals > 0),
+					RequireLastPushApproval:      pulumi.Bool(approvals > 0),
+					AllowedMergeMethods:          pulumi.StringArray{pulumi.String("squash")},
+				},
 			},
-		); err != nil {
+		}); err != nil {
 			return err
 		}
+	}
 
-		// Assemble the branch-protection args from config. Only attach the PR
-		// review / status check blocks when their respective toggles are on.
-		protectionArgs := &github.BranchProtectionArgs{
-			RepositoryId:      repo.NodeId,
-			Pattern:           pulumi.String(defaultBranch),
-			EnforceAdmins:     pulumi.Bool(enforceAdmins),
-			AllowsForcePushes: pulumi.Bool(false),
-			AllowsDeletions:   pulumi.Bool(false),
-		}
+	// Changes to agent-guard's rules need James's approval: a second
+	// ruleset on main, independent of the merge-queue knobs above and of
+	// any config, so no config value can switch it off. See guard_review.go.
+	if err := agentGuardReview(ctx, repo); err != nil {
+		return err
+	}
 
-		if requirePullRequest {
-			protectionArgs.RequiredPullRequestReviews = github.BranchProtectionRequiredPullRequestReviewArray{
-				&github.BranchProtectionRequiredPullRequestReviewArgs{
-					RequiredApprovingReviewCount: pulumi.Int(requiredApprovals),
-				},
-			}
-		}
+	// Only release-please (and the admin break-glass) may create, move
+	// or delete a tag; a release tag starts deploys. See release_tags.go.
+	if err := releaseTagProtection(ctx, repo); err != nil {
+		return err
+	}
 
-		if requireStatusChecks {
-			statusCheck := &github.BranchProtectionRequiredStatusCheckArgs{
-				Strict: pulumi.Bool(true),
-			}
-			if len(statusCheckContexts) > 0 {
-				statusCheck.Contexts = pulumi.ToStringArray(statusCheckContexts)
-			}
-			protectionArgs.RequiredStatusChecks = github.BranchProtectionRequiredStatusCheckArray{
-				statusCheck,
-			}
-		}
+	if err := tabulaEnvironments(ctx, cfg, repo); err != nil {
+		return err
+	}
 
-		_, err = github.NewBranchProtection(ctx, repoName+"-default-protection", protectionArgs)
-		if err != nil {
-			return err
-		}
+	if err := oauthEnvironment(ctx, cfg, repo); err != nil {
+		return err
+	}
 
-		// Merge queue (#83): serialize merges into the default branch through a
-		// GitHub merge queue, configured as a repository RULESET (the modern,
-		// API-managed mechanism; classic branch protection cannot express a
-		// merge queue). For each group GitHub builds the would-be-merged commit,
-		// runs the required CI checks on it, and only fast-forwards the branch
-		// when they pass -- the trunk-based postsubmit gate from the scaling
-		// roadmap. The jobs in .github/workflows/ci.yaml now also run on the
-		// `merge_group` event so the queue has checks to wait on.
-		mergeQueueOn, err := mergeQueueEnabled(cfg)
-		if err != nil {
-			return err
-		}
-		if mergeQueueOn {
-			// Required checks default to the merge-queue gate set — the job names
-			// across ci.yaml (build-test, build-macos, license-check, go-lint,
-			// go-test, validate-butane), tidy-check.yaml and conformance-check.yaml.
-			// Each of those workflows triggers on the `merge_group` event so the
-			// queue has a result to wait on. The go-lint/go-test jobs are matrix'd
-			// over the standalone-mirror modules, so their check contexts are the
-			// per-matrix names ("go-lint (devx)", …), not the bare job name —
-			// listing the bare name would never report and wedge the queue pending.
-			// go-lint/go-test/validate-butane were added when the monorepo became
-			// the single CI authority and the per-app mirror CI was retired; they
-			// ran on every PR but were never in the gate set, so a lint/race/Butane
-			// regression could still merge. Override via the
-			// `mergeQueueRequiredChecks` JSON-list config.
-			//
-			// GUARDED: `bazel run //tools/conformance:check` (#458) asserts every
-			// name here is produced by a job that runs on the `merge_group` event —
-			// so a rename on either side can't silently wedge the queue "pending".
-			var checks []string
-			_ = cfg.GetObject("mergeQueueRequiredChecks", &checks)
-			if len(checks) == 0 {
-				checks = []string{
-					"gate/all-required-passed",
-					"build-test", "build-macos", "license-check", "tidy-check", "conformance-check",
-					"lint-naming",
-					"go-lint (devx)", "go-lint (homelab)", "validate-butane",
-					// gitops-validate (kubeconform over gitops/**, which reconciles to
-					// the LIVE cluster) and actionlint (workflow lint) now also trigger
-					// on merge_group, so they gate the queue instead of only advising on
-					// PRs. Both validate their whole dir on every queued commit, so they
-					// always report — safe to require.
-					"gitops-validate", "actionlint",
-					// migration-safety (#819) Squawk-lints Tabula's Prisma migrations so a
-					// backward-incompatible change can't reach main and break the OLD Cloud
-					// Run revision during the blue-green traffic shift. Its job runs a
-					// self-test on every event (and carries no pull_request paths filter),
-					// so it always reports — safe to require.
-					"migration-safety",
-					// go-test-infra (#1015) runs the Go tests for the IaC programs
-					// (infrastructure/pulumi/** and <app>/infra/**), which are outside
-					// go.work and emit no go_test target -- so before that job existed
-					// they never executed in CI at all. It landed advisory and, like
-					// go-lint/go-test/validate-butane before it, ran on every PR without
-					// gating: an IaC test regression could still merge. Its job is
-					// unconditional (only the STEPS are gated, on a dorny/paths-filter
-					// that returns 'false' for non-IaC diffs), so it always reports --
-					// safe to require, and a no-op in seconds for the PRs that don't
-					// touch IaC.
-					"go-test-infra",
-					// Supply-chain gates (supply-chain.yaml) -- the class of
-					// check this repo had NONE of. Dependabot only alerts AFTER
-					// a vulnerable dependency is already on main, and GitHub
-					// secret scanning covers known PROVIDER patterns only;
-					// neither BLOCKS a merge.
-					//
-					// Both are diff/lockfile-scoped but use the
-					// run-then-noop-green shape: the job always runs and
-					// reports on every event including merge_group, which is
-					// what makes them safe to require. Neither carries a
-					// pull_request paths filter, so they cannot leave a PR stuck
-					// unmergeable (asserted by the conformance check).
-					//
-					// osv-scan (google/osv-scanner) replaced GitHub's
-					// dependency-review gate. dependency-review reads GitHub's
-					// dependency graph, which is an Advanced Security feature:
-					// free on public repos but BILLED PER ACTIVE COMMITTER on
-					// private ones, and (verified against the API) the
-					// configuration enabling it cannot omit advanced_security --
-					// the only accepted values are
-					// enabled|disabled|code_security|secret_protection. So the
-					// gate could not survive this repo going private without
-					// either an invoice or a wedged merge queue. osv-scanner
-					// reads the LOCKFILES directly instead, so it costs nothing
-					// at any visibility, runs locally as well as in CI, and also
-					// covers Cargo and PyPI, which GitHub's graph handled poorly
-					// here.
-					// go-race (#1039-adjacent) runs the race detector over EVERY Bazel
-					// go_test target. Before it, race coverage was the standalone
-					// `go test -race` matrix over devx+homelab only -- so every other Go
-					// target, tabula's included, was never race-tested anywhere. Its job
-					// is unconditional (only the STEPS are path-gated), so it always
-					// reports and is safe to require.
-					"go-race",
-					"osv-scan",
-					"secret-scan",
-					// release-scope (release-scope.yaml) fails a pull request that
-					// would make release-please release a product its title does
-					// not name: a `feat`/`fix` for one product that also changes a
-					// file in another's folder cuts a release of the second with
-					// nothing in it (#3193, #3211 and #3217, all on 2026-10-13).
-					// Its workflow carries no pull_request paths or branches
-					// filter and its job is unconditional on merge_group (where it
-					// runs the check's own tests; the pull request itself was
-					// judged before it could be queued), so it always reports --
-					// safe to require.
-					"release-scope",
-				}
-			}
-			requiredChecks := github.RepositoryRulesetRulesRequiredStatusChecksRequiredCheckArray{}
-			for _, c := range checks {
-				requiredChecks = append(requiredChecks, &github.RepositoryRulesetRulesRequiredStatusChecksRequiredCheckArgs{
-					Context: pulumi.String(c),
-				})
-			}
+	// Courier's release job and the Telegram app ID it builds in
+	// (courier_release.go).
+	if err := courierReleaseEnvironment(ctx, repo); err != nil {
+		return err
+	}
 
-			// #804 code-owner review is gated behind requireCodeOwnerReview
-			// (default false). A single maintainer has no second reviewer, so the
-			// rule produces zero real reviews; and a ruleset bypass actor's bypass
-			// applies only to a DIRECT merge -- NEVER to auto-merge INTO the merge
-			// queue -- so bot automation (release-please / Dependabot) cannot
-			// satisfy it either and sits REVIEW_REQUIRED forever (verified on a
-			// canary). While solo it therefore only blocks auto-merge and forces
-			// manual admin merges. Flip requireCodeOwnerReview=true once a second
-			// reviewer exists; the merge queue + required status checks below stay
-			// enforced either way.
-			codeOwnerReview, err := boolConfig(cfg, "requireCodeOwnerReview", false)
-			if err != nil {
-				return err
-			}
-			// requiredApprovals is deliberately SEPARATE from codeOwnerReview,
-			// because the two are no longer the same question. Agent identities are
-			// GitHub Apps (docs/guides/agent-github-identities.md), and an App CANNOT be
-			// listed in CODEOWNERS -- GitHub's CODEOWNERS docs enumerate users,
-			// teams and email addresses only. But an App's review DOES satisfy the
-			// approval count: measured on a canary PR, where an installation token
-			// POSTing event=APPROVE moved the PR from
-			// reviewDecision=REVIEW_REQUIRED/blocked to APPROVED, with the review
-			// recorded as type=Bot.
-			//
-			// So the reachable configuration is requiredApprovals>=1 with
-			// requireCodeOwnerReview=false. Deriving approvals from codeOwnerReview,
-			// as this did, made that combination unexpressible.
-			//
-			// Both still default OFF. The old blocker was that a lone maintainer has
-			// no second reviewer, so the rule produced zero real reviews while
-			// wedging bot auto-merge (release-please / Dependabot) at
-			// REVIEW_REQUIRED forever -- a ruleset bypass applies to a DIRECT merge,
-			// never to auto-merge INTO the merge queue. That blocker is removed only
-			// once each agent authors PRs under its own App; until then, raising
-			// this re-creates exactly that wedge.
-			requiredApprovals, err := intConfig(cfg, "requiredApprovals", 0)
-			if err != nil {
-				return err
-			}
-			if requiredApprovals < 0 {
-				return fmt.Errorf("config \"requiredApprovals\" = %d must not be negative", requiredApprovals)
-			}
-			approvals := resolveApprovals(requiredApprovals, codeOwnerReview)
+	if err := foundationEnvironments(ctx, cfg, repo); err != nil {
+		return err
+	}
 
-			if _, err := github.NewRepositoryRuleset(ctx, repoName+"-merge-queue", &github.RepositoryRulesetArgs{
-				Name:         pulumi.String("merge-queue"),
-				Repository:   repo.Name,
-				Target:       pulumi.String("branch"),
-				Enforcement:  pulumi.String("active"),
-				BypassActors: mergeQueueBypassActors(),
-				Conditions: &github.RepositoryRulesetConditionsArgs{
-					RefName: &github.RepositoryRulesetConditionsRefNameArgs{
-						// ~DEFAULT_BRANCH tracks the default branch even if it is
-						// renamed later.
-						Includes: pulumi.StringArray{pulumi.String("~DEFAULT_BRANCH")},
-						Excludes: pulumi.StringArray{},
-					},
-				},
-				Rules: &github.RepositoryRulesetRulesArgs{
-					MergeQueue: mergeQueueRule(),
-					// Checks the queue must see green before merging a group.
-					// strict_policy=false: the queue rebases each entry onto the
-					// latest base itself, so "require branches up to date" is
-					// both redundant and incompatible with a merge queue.
-					RequiredStatusChecks: &github.RepositoryRulesetRulesRequiredStatusChecksArgs{
-						RequiredChecks:                   requiredChecks,
-						StrictRequiredStatusChecksPolicy: pulumi.Bool(false),
-					},
-					// Require a PR before merging + squash-only, ALWAYS. Review is
-					// gated by two INDEPENDENT knobs, both default OFF (see above):
-					// requiredApprovals (a count, satisfiable by an agent App) and
-					// requireCodeOwnerReview (#804, satisfiable only by a human or
-					// team, since an App cannot be a code owner).
-					//
-					// dismiss-stale and require-last-push-approval key off whether any
-					// approval is required at all, NOT off codeOwnerReview. Keying
-					// them off codeOwnerReview meant requiredApprovals=1 alone left
-					// both off, so an approval survived a later push -- exactly the
-					// gaming these two exist to prevent.
-					PullRequest: &github.RepositoryRulesetRulesPullRequestArgs{
-						RequireCodeOwnerReview:       pulumi.Bool(codeOwnerReview),
-						RequiredApprovingReviewCount: pulumi.Int(approvals),
-						DismissStaleReviewsOnPush:    pulumi.Bool(approvals > 0),
-						RequireLastPushApproval:      pulumi.Bool(approvals > 0),
-						AllowedMergeMethods:          pulumi.StringArray{pulumi.String("squash")},
-					},
-				},
-			}); err != nil {
-				return err
-			}
-		}
+	if err := pipelineGates(ctx, cfg, repo); err != nil {
+		return err
+	}
 
-		// Changes to agent-guard's rules need James's approval: a second
-		// ruleset on main, independent of the merge-queue knobs above and of
-		// any config, so no config value can switch it off. See guard_review.go.
-		if err := agentGuardReview(ctx, repo); err != nil {
-			return err
-		}
+	if err := dependabotSecrets(ctx, cfg, repo); err != nil {
+		return err
+	}
 
-		if err := tabulaEnvironments(ctx, cfg, repo); err != nil {
-			return err
-		}
+	if err := dependabotLabels(ctx, repo); err != nil {
+		return err
+	}
 
-		if err := oauthEnvironment(ctx, cfg, repo); err != nil {
-			return err
-		}
+	if err := manageTeams(ctx, repo, repoName); err != nil {
+		return err
+	}
 
-		// Courier's release job and the Telegram app ID it builds in
-		// (courier_release.go).
-		if err := courierReleaseEnvironment(ctx, repo); err != nil {
-			return err
-		}
+	// Copybara sync auth: deploy keys + dispatch secrets for every synced
+	// standalone component repository. Previously the standalone
+	// vitruvian-core-infra project; consolidated here because both manage
+	// this repo's GitHub configuration.
+	if err := copybara_sync.ManageSyncAuth(ctx); err != nil {
+		return err
+	}
 
-		if err := foundationEnvironments(ctx, cfg, repo); err != nil {
-			return err
-		}
+	// GitHub Actions run/job events -> the CI collector (cicd-telemetry).
+	if err := cicd_webhook.Manage(ctx); err != nil {
+		return err
+	}
 
-		if err := pipelineGates(ctx, cfg, repo); err != nil {
-			return err
-		}
+	// The vitruviansoftware.dev website's custom domain: two Cloudflare
+	// records and the mirror repo's Pages setting. Dormant until
+	// SITE_DOMAIN_MANAGED=true; see internal/site_domain.
+	if err := site_domain.Manage(ctx); err != nil {
+		return err
+	}
 
-		if err := dependabotSecrets(ctx, cfg, repo); err != nil {
-			return err
-		}
+	// Surface the resolved owner so `pulumi stack output` records which
+	// account these settings were applied to.
+	ctx.Export("repoOwner", pulumi.String(repoOwner))
+	ctx.Export("repoName", repo.Name)
+	ctx.Export("defaultBranch", pulumi.String(defaultBranch))
 
-		if err := dependabotLabels(ctx, repo); err != nil {
-			return err
-		}
-
-		if err := manageTeams(ctx, repo, repoName); err != nil {
-			return err
-		}
-
-		// Copybara sync auth: deploy keys + dispatch secrets for every synced
-		// standalone component repository. Previously the standalone
-		// vitruvian-core-infra project; consolidated here because both manage
-		// this repo's GitHub configuration.
-		if err := copybara_sync.ManageSyncAuth(ctx); err != nil {
-			return err
-		}
-
-		// GitHub Actions run/job events -> the CI collector (cicd-telemetry).
-		if err := cicd_webhook.Manage(ctx); err != nil {
-			return err
-		}
-
-		// The vitruviansoftware.dev website's custom domain: two Cloudflare
-		// records and the mirror repo's Pages setting. Dormant until
-		// SITE_DOMAIN_MANAGED=true; see internal/site_domain.
-		if err := site_domain.Manage(ctx); err != nil {
-			return err
-		}
-
-		// Surface the resolved owner so `pulumi stack output` records which
-		// account these settings were applied to.
-		ctx.Export("repoOwner", pulumi.String(repoOwner))
-		ctx.Export("repoName", repo.Name)
-		ctx.Export("defaultBranch", pulumi.String(defaultBranch))
-
-		return nil
-	})
+	return nil
 }
 
 // envTagPolicy is one tag-pattern deployment policy. suffix names the Pulumi
@@ -539,8 +549,8 @@ type envGate struct {
 }
 
 var tabulaReleaseTags = []envTagPolicy{
-	{suffix: "tags", pattern: "tabula-api-v*"},
-	{suffix: "tags-web", pattern: "tabula-web-v*"},
+	{suffix: "tags", pattern: tabulaAPIReleaseTagPattern},
+	{suffix: "tags-web", pattern: tabulaWebReleaseTagPattern},
 }
 
 // tabulaEnvGate returns the deployment gate for tabula-<env>
@@ -673,7 +683,7 @@ func tabulaEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *github.Re
 	return nil
 }
 
-var oauthReleaseTags = []envTagPolicy{{suffix: "tags", pattern: "oauth-user-inspector-v*"}}
+var oauthReleaseTags = []envTagPolicy{{suffix: "tags", pattern: oauthUserInspectorReleaseTagPattern}}
 
 // oauthEnvGate returns the deployment gate for oauth-user-inspector-<env>
 // (docs/engineering/deployment-strategy.md; envGate explains why every

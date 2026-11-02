@@ -42,7 +42,7 @@ var courierReleaseDeployRefs = []struct {
 	tagGlob string
 }{
 	{suffix: "main", branch: "main"},
-	{suffix: "tags", tagGlob: "courier-v*"},
+	{suffix: "tags", tagGlob: courierReleaseTagPattern},
 }
 
 // courierReleaseEnvironment declares the environment and its deployment

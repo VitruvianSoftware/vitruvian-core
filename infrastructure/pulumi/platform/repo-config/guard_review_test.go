@@ -88,7 +88,14 @@ func TestGuardReviewPathsCoverage(t *testing.T) {
 		"tools/remote/src/main.rs",
 		"infrastructure/pulumi/platform/repo-config/guard_review.go",
 		"infrastructure/pulumi/platform/repo-config/main.go",
+		"infrastructure/pulumi/platform/repo-config/release_tags.go",
 		"infrastructure/pulumi/platform/repo-config/Pulumi.dev.yaml",
+		// CI definitions, at any depth below the two directories.
+		".github/workflows/ci.yaml",
+		".github/workflows/_copybara-export.yaml",
+		".github/workflows/README.md",
+		".github/actions/mint-sync-app-token/action.yaml",
+		".github/actions/some/nested/script.sh",
 	}
 	for _, p := range protected {
 		if !guardCovers(p) {
@@ -112,14 +119,39 @@ func TestGuardReviewPathsCoverage(t *testing.T) {
 		"apps/cli/devx/main.go",
 		".claude/agents/wren.md",
 		".agents/agents/wren.md",
-		".github/workflows/ci.yaml",
+		// Other .github files, and a mirror's own workflows (they run in the
+		// standalone repository, not here).
+		".github/dependabot.yml",
+		".github/CODEOWNERS",
+		".github/PULL_REQUEST_TEMPLATE.md",
+		"apps/desktop/nexus-agent/.github/workflows/release.yml",
 		"infrastructure/pulumi/platform/repo-config/internal/secrets/secrets.go",
+		"infrastructure/pulumi/platform/repo-config/release_tags_test.go",
 		"infrastructure/pulumi/platform/repo-config/guard_review_test.go",
 		"infrastructure/pulumi/platform/dev-local/main.go",
 	}
 	for _, p := range free {
 		if guardCovers(p) {
 			t.Errorf("%s is covered by guardReviewPaths; only agent-guard's rules and their enforcement should need James", p)
+		}
+	}
+}
+
+// The CI definitions need James's approval: the workflows and the local
+// actions they call run with the repository's secrets and tokens. Each
+// directory is named by its own pattern, so dropping either fails here (the
+// coverage test above would still pass on a narrower or renamed pattern that
+// happens to match its sample files; this one does not).
+func TestGuardReviewCoversCIDefinitions(t *testing.T) {
+	for _, want := range []string{".github/workflows/**", ".github/actions/**"} {
+		found := false
+		for _, p := range guardReviewPaths {
+			if p == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("guardReviewPaths has no %q; changes to the CI definitions must need James's approval", want)
 		}
 	}
 }
@@ -231,7 +263,7 @@ func TestGuardReviewBypassMatchesMergeQueue(t *testing.T) {
 		}
 	}
 	// And what that list is today: admins and copybara-sync, both "always".
-	pinned := []actor{{5, "RepositoryRole", "always"}, {copybaraSyncAppID, "Integration", "always"}}
+	pinned := []actor{{5, "RepositoryRole", "always"}, {3863936, "Integration", "always"}}
 	for i := range pinned {
 		if i >= len(got) || got[i] != pinned[i] {
 			t.Fatalf("bypass actors = %v, want %v", got, pinned)

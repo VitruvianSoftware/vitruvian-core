@@ -346,6 +346,7 @@ impl Context {
             ("ACTION_PINS", "GitHub Actions SHA pins (#814: third-party actions pinned to commit SHA)"),
             ("GITLEAKS", "Secret-scan allowlist (every .gitleaks.toml path exemption still matches a file)"),
             ("GUARDREVIEW", "agent-guard review paths (every path that needs James's approval still names a file)"),
+            ("RELEASETAGS", "Release-tag exemptions (no rolling tag starts with a release-please release tag prefix)"),
             ("OCIBASE", "Container base images (no oci.pull from Docker Hub, which rate-limits shared runners)"),
             ("PROMGRAPH", "Backstage Prometheus graphs (every prometheus.io/rule names a recording rule)"),
             ("PROMALERT", "Backstage Prometheus alerts (each component lists only its own namespace's alerts)"),
