@@ -136,9 +136,11 @@ fn callers() -> Vec<(String, String)> {
     found
 }
 
-/// The `deps:` each caller passes with a tool (empty when it passes none).
-fn caller_deps() -> std::collections::BTreeMap<String, String> {
-    let mut deps = std::collections::BTreeMap::new();
+/// Every distinct (tool, deps) pair a caller passes (deps empty when it
+/// passes none). Two callers of one tool with different deps are two pairs,
+/// so each is built: a caller that drops a needed dep fails the build.
+fn caller_deps() -> BTreeSet<(String, String)> {
+    let mut deps = BTreeSet::new();
     for dir in [".github/workflows", ".github/actions"] {
         for e in fs::read_dir(dir).unwrap() {
             let p = e.unwrap().path();
@@ -158,7 +160,7 @@ fn caller_deps() -> std::collections::BTreeMap<String, String> {
                     .iter()
                     .find_map(|n| n.strip_prefix("deps: "))
                     .unwrap_or("");
-                deps.insert(tool.trim().to_string(), d.trim().to_string());
+                deps.insert((tool.trim().to_string(), d.trim().to_string()));
             }
         }
     }
@@ -299,9 +301,11 @@ fn every_tool_a_workflow_builds_compiles_with_the_actions_own_rustc_lines() {
     let runner_temp = tmp();
     let shim = rustc_shim();
     // One RUNNER_TEMP for every tool, as in a job that builds two of them.
-    let deps = caller_deps();
-    for t in &tools {
-        let s = run_step_deps(&script, t, &deps[t], &ws, &runner_temp, &shim);
+    let pairs = caller_deps();
+    let built_tools: BTreeSet<String> = pairs.iter().map(|(t, _)| t.clone()).collect();
+    assert_eq!(built_tools, tools, "every caller's tool must be built with its deps");
+    for (t, d) in &pairs {
+        let s = run_step_deps(&script, t, d, &ws, &runner_temp, &shim);
         assert!(
             s.out.status.success(),
             "building {t} failed ({:?})\nstdout:\n{}\nstderr:\n{}",
@@ -850,6 +854,9 @@ fn a_built_file_that_is_not_executable_fails_the_step() {
 fn an_unknown_dep_is_refused_before_rustc() {
     let script = build_script(&read(ACTION));
     let ws = tmp();
+    // The step runs in the workspace: an unquoted `for dep in $DEPS` would
+    // glob "*" into this file's name, a known dep.
+    fs::write(ws.join("transient_lib"), "").unwrap();
     let shim = tmp();
     let called = shim.join("called");
     fs::write(
@@ -863,6 +870,7 @@ fn an_unknown_dep_is_refused_before_rustc() {
         "../transient_lib",
         "transient_lib shell_compat",
         "transient-lib",
+        "*",
     ] {
         let s = run_step_deps(&script, "go_test_with_retry", bad, &ws, &tmp(), &shim);
         assert_eq!(s.out.status.code(), Some(1), "deps {bad:?} must be refused");
@@ -944,6 +952,17 @@ mod callers_and_wiring {
         source_root: &str,
         path: &str,
     ) -> (std::process::Output, String) {
+        step_on("github-hosted", tool, ws, source_root, path)
+    }
+
+    /// `step` on a runner whose RUNNER_ENVIRONMENT is `runner_env`.
+    fn step_on(
+        runner_env: &str,
+        tool: &str,
+        ws: &Path,
+        source_root: &str,
+        path: &str,
+    ) -> (std::process::Output, String) {
         let gho = tmp().join("github_output");
         std::fs::write(&gho, "").unwrap();
         let out = Command::new("/bin/bash")
@@ -952,6 +971,7 @@ mod callers_and_wiring {
             .arg(build_script(&read(ACTION)))
             .env("TOOL", tool)
             .env("SOURCE_ROOT", source_root)
+            .env("RUNNER_ENVIRONMENT", runner_env)
             .env("GITHUB_WORKSPACE", ws)
             .env("RUNNER_TEMP", tmp())
             .env("GITHUB_OUTPUT", &gho)
@@ -997,25 +1017,58 @@ mod callers_and_wiring {
         assert!(text(&o.stdout).contains("verdict=full"), "{o:?}");
     }
 
+    /// A GitHub-hosted runner with no rustc fails at once, naming the tool,
+    /// and never reaches apt: a sudo on PATH that records its call stays
+    /// uncalled.
     #[test]
     fn no_rustc_fails_with_an_error_naming_the_tool() {
         let ws = tmp();
+        let fakes = tmp();
+        let called = fakes.join("sudo-called");
+        exe(
+            &fakes.join("sudo"),
+            &format!("#!/bin/sh\n: > '{}'\nexit 0\n", called.display()),
+        );
+        for runner_env in ["github-hosted", ""] {
+            let (out, gho) = step_on(
+                runner_env,
+                "relevant_paths",
+                &ws,
+                "",
+                &fakes.display().to_string(),
+            );
+            assert_eq!(out.status.code(), Some(1), "{runner_env:?}: {out:?}");
+            let so = text(&out.stdout);
+            assert!(so.contains("::error::build-ci-tool: no rustc"), "{so}");
+            assert!(so.contains("tools/ci/src/relevant_paths"), "{so}");
+            assert!(so.contains("only a self-hosted runner"), "{so}");
+            assert!(!called.exists(), "{runner_env:?}: apt ran on a non-self-hosted runner");
+            assert_eq!(gho, "", "no rustc, no path output");
+        }
+    }
+
+    /// The homelab queue runner (self-hosted, no Rust in its image) tries
+    /// apt; with nothing on PATH that fails, and the error names both the
+    /// missing rustc and the tool.
+    #[test]
+    fn no_rustc_on_a_self_hosted_runner_tries_apt_and_fails_by_name() {
+        let ws = tmp();
         let empty = tmp();
-        let (out, gho) = step("relevant_paths", &ws, "", &empty.display().to_string());
+        let (out, gho) = step_on(
+            "self-hosted",
+            "relevant_paths",
+            &ws,
+            "",
+            &empty.display().to_string(),
+        );
         assert_eq!(out.status.code(), Some(1), "{out:?}");
         let so = text(&out.stdout);
-        // The step first tries apt (the homelab queue runner's image has no
-        // Rust); with nothing on PATH that fails too, and the error names both
-        // the missing rustc and the tool.
-        assert!(so.contains("::error::"), "{so}");
+        assert!(so.contains("::error::apt install rustc failed"), "{so}");
         assert!(so.contains("no rustc on this runner"), "{so}");
         assert!(so.contains("tools/ci/src/relevant_paths"), "{so}");
         assert_eq!(gho, "", "no rustc, no path output");
     }
 
-    /// A file that is there and executable but is not a program: the step's
-    /// start check must refuse it, or the caller runs it AFTER the step
-    /// reported success.
     #[test]
     fn a_binary_that_does_not_start_fails_the_step_and_sets_no_output() {
         let tools: BTreeSet<String> = ["relevant_paths".to_string()].into_iter().collect();
@@ -1056,11 +1109,13 @@ mod callers_and_wiring {
     }
 
     /// secret_scan runs git before anything else, as its script did, so on
-    /// the probe's empty PATH it exits 127 itself. A native binary that ran
-    /// and chose 127 has started; only env's own 127 means it did not.
+    /// the probe's empty PATH it exits 127 itself after printing the shell's
+    /// "command not found". That native binary has started.
     #[test]
-    fn a_native_tool_that_exits_127_itself_counts_as_started() {
-        let ws = native_tool("std::process::exit(127);");
+    fn a_native_tool_that_exits_127_on_command_not_found_counts_as_started() {
+        let ws = native_tool(
+            r#"eprintln!("/tmp/ci-tools/probe_tool: line 49: git: command not found"); std::process::exit(127);"#,
+        );
         let (out, gho) = step("probe_tool", &ws, "", &path_first(&rustc_shim()));
         assert!(
             out.status.success(),
@@ -1069,6 +1124,34 @@ mod callers_and_wiring {
             text(&out.stderr)
         );
         assert!(gho.starts_with("path="), "{gho}");
+    }
+
+    /// Every other 127 means the binary did not run: env's own (a missing
+    /// interpreter), the dynamic loader's (a missing shared library, as on
+    /// Ubuntu with GNU or uutils env), or a bare 127 with nothing said.
+    #[test]
+    fn any_other_exit_127_fails_the_step() {
+        for (what, body) in [
+            (
+                "env",
+                r#"eprintln!("env: '/tmp/ci-tools/probe_tool': No such file or directory"); std::process::exit(127);"#,
+            ),
+            (
+                "loader",
+                r#"eprintln!("/tmp/ci-tools/probe_tool: error while loading shared libraries: libfoo.so.1: cannot open shared object file: No such file or directory"); std::process::exit(127);"#,
+            ),
+            ("silent", "std::process::exit(127);"),
+        ] {
+            let ws = native_tool(body);
+            let (out, gho) = step("probe_tool", &ws, "", &path_first(&rustc_shim()));
+            assert_eq!(out.status.code(), Some(1), "{what}: {out:?}");
+            assert!(
+                text(&out.stdout).contains("was built but does not run (exit 127"),
+                "{what}: {}",
+                text(&out.stdout)
+            );
+            assert_eq!(gho, "", "{what}: no path output");
+        }
     }
 
     #[test]

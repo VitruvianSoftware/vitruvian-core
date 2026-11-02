@@ -180,14 +180,20 @@ fn fallback_block(file: &str, text: &str) -> String {
 }
 
 /// Run `block` then `echo REACHED` under `bash -eo pipefail` (GitHub's step
-/// shell) with only `fakes` on PATH.
+/// shell) with only `fakes` on PATH, on a self-hosted runner (where apt may
+/// install rustc).
 fn run_fallback(block: &str, fakes: &Path) -> std::process::Output {
+    run_fallback_on("self-hosted", block, fakes)
+}
+
+fn run_fallback_on(runner_env: &str, block: &str, fakes: &Path) -> std::process::Output {
     Command::new("/bin/bash")
         .arg("-eo")
         .arg("pipefail")
         .arg("-c")
         .arg(format!("{block}\necho REACHED"))
         .env("PATH", fakes)
+        .env("RUNNER_ENVIRONMENT", runner_env)
         .output()
         .expect("run bash")
 }
@@ -196,6 +202,32 @@ fn exe(path: &Path, body: &str) {
     use std::os::unix::fs::PermissionsExt;
     std::fs::write(path, body).unwrap();
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+}
+
+/// build-ci-tool installs rustc with apt only on a self-hosted runner. On a
+/// GitHub-hosted one (or with RUNNER_ENVIRONMENT unset) a missing rustc is an
+/// image change: fail loudly, never install whatever rustc apt carries.
+#[test]
+fn build_ci_tool_installs_rustc_only_on_a_self_hosted_runner() {
+    let file = ".github/actions/build-ci-tool/action.yml";
+    let root = std::env::current_dir().unwrap();
+    let block = fallback_block(file, &std::fs::read_to_string(root.join(file)).unwrap());
+    for runner_env in ["github-hosted", ""] {
+        let fakes = tmpdir(&format!("gh-hosted-{runner_env}"));
+        exe(
+            &fakes.join("sudo"),
+            "#!/bin/bash\necho SUDO-CALLED\nexit 0\n",
+        );
+        let o = run_fallback_on(runner_env, &block, &fakes);
+        let out = String::from_utf8_lossy(&o.stdout);
+        assert_eq!(o.status.code(), Some(1), "{runner_env:?}: {out}");
+        assert!(
+            out.contains("::error::build-ci-tool: no rustc on this runner"),
+            "{runner_env:?}: {out}"
+        );
+        assert!(!out.contains("SUDO-CALLED"), "{runner_env:?}: apt ran: {out}");
+        assert!(!out.contains("REACHED"), "{runner_env:?}: went on without rustc");
+    }
 }
 
 #[test]

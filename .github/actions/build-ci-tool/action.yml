@@ -45,8 +45,11 @@
 # accepted, each at its one known path.
 #
 # The homelab queue runner's image carries no Rust toolchain; GitHub's ubuntu
-# images do. Where rustc is missing the step installs it with apt, and fails
-# by name if that does not leave a rustc on PATH.
+# images do. On a self-hosted runner (RUNNER_ENVIRONMENT=self-hosted) with no
+# rustc the step installs it with apt, and fails by name if that does not
+# leave a rustc on PATH. A GitHub-hosted runner with no rustc fails at once:
+# that is an image change to look at, not a gap to fill with whatever rustc
+# apt carries.
 #
 # Requires the repo to be checked out first (composite actions referenced as
 # `./.github/actions/...` resolve from the workspace).
@@ -103,9 +106,12 @@ runs:
         esac
         src="${SOURCE_ROOT:-$GITHUB_WORKSPACE}/tools"
         # Each dep: a known name at its one path, std-only (built with no --extern).
+        # Split on whitespace into an array, so nothing in DEPS is globbed.
+        dep_list=()
+        read -r -a dep_list <<<"${DEPS:-}" || true
         dep_names=()
         dep_srcs=()
-        for dep in ${DEPS:-}; do
+        for dep in ${dep_list[@]+"${dep_list[@]}"}; do
           case "$dep" in
             transient_lib) dep_srcs+=("$src/ci/src/transient_lib/lib.rs") ;;
             appset_render) dep_srcs+=("$src/gitops/appset-render/src/lib.rs") ;;
@@ -119,6 +125,8 @@ runs:
         # Before anything else needs PATH: with no rustc (and no apt), stop
         # here naming the tool, not later on a missing mkdir or rustc.
         if ! command -v rustc >/dev/null 2>&1; then
+          [ "${RUNNER_ENVIRONMENT:-}" = self-hosted ] \
+            || { echo "::error::build-ci-tool: no rustc on this runner (RUNNER_ENVIRONMENT=${RUNNER_ENVIRONMENT:-unset}), so tools/ci/src/$TOOL cannot be built; only a self-hosted runner installs it with apt"; exit 1; }
           { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends rustc; } \
             || { echo "::error::apt install rustc failed, so build-ci-tool has no rustc on this runner and cannot build tools/ci/src/$TOOL"; exit 1; }
           command -v rustc >/dev/null 2>&1 \
@@ -164,14 +172,15 @@ runs:
         # GITHUB_OUTPUT it writes nothing. 126 or 128 and up means it could
         # not be executed or died on a signal. 127 is ambiguous: a tool ported
         # from a `set -e` script (secret_scan runs git first) exits 127 itself
-        # when that command is missing, as the script did. It counts as "does
-        # not run" only when env said so (a missing ELF interpreter), which
-        # env reports on stderr as "env: ...".
+        # when that command is missing, printing "<bin>: line 49: git: command
+        # not found" as the script did. Only that counts as started: every
+        # other 127 fails, including env's own ("env: ...") and the dynamic
+        # loader's ("error while loading shared libraries").
         rc=0
         env -i PATH="$out/no-such-dir" "$out/$TOOL" </dev/null >/dev/null 2>"$out/$TOOL.start-err" || rc=$?
         first=""
         IFS= read -r first <"$out/$TOOL.start-err" || true
-        if [ "$rc" -eq 126 ] || [ "$rc" -ge 128 ] || { [ "$rc" -eq 127 ] && [ "${first#env:}" != "$first" ]; }; then
+        if [ "$rc" -eq 126 ] || [ "$rc" -ge 128 ] || { [ "$rc" -eq 127 ] && [ "${first%: command not found}" = "$first" ]; }; then
           echo "::error::build-ci-tool: $out/$TOOL was built but does not run (exit $rc${first:+: $first})"
           exit 1
         fi
