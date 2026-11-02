@@ -109,23 +109,36 @@ pub const RUSTUP_PROXIES: [&str; 14] = [
 
 /// The program a rustup proxy runs when RUSTUP_FORCE_ARG0 is computed
 /// (`$X`, `$(...)`, backticks): the guard cannot tell which, so it refuses.
-pub const COMPUTED_ARG0: &str = "<RUSTUP_FORCE_ARG0 computed>";
+// Lower-case, so the case folding of program names (#4220) leaves it alone.
+pub const COMPUTED_ARG0: &str = "<rustup_force_arg0 computed>";
 
 /// More distinct RUSTUP_FORCE_ARG0 values than this in one command is refused
 /// as `oversize`: each one costs a walk of the whole command.
 pub const MAX_FORCE_ARG0_VALUES: usize = 8;
 
-/// What rustup makes of a RUSTUP_FORCE_ARG0 value: the file stem
-/// (`PathBuf::from(v).file_stem()`), so `/x/cargo.exe` is `cargo`.
-fn arg0_stem(value: &str) -> String {
+/// What rustup makes of a RUSTUP_FORCE_ARG0 value: its file stem, the same
+/// `Path::file_stem` call rustup makes, so `/x/cargo.exe` and `cargo/.` are
+/// `cargo`. Lower-cased like program names (#4220). None when there is no
+/// stem (`..`, `/`): rustup then goes by argv[0].
+fn arg0_stem(value: &str) -> Option<String> {
     if value.contains('$') || value.contains('`') {
-        return COMPUTED_ARG0.to_string();
+        return Some(COMPUTED_ARG0.to_string());
     }
-    let name = value.trim_end_matches('/');
-    let name = name.rsplit('/').next().unwrap_or(name);
-    match name.rfind('.') {
-        Some(k) if k > 0 => name[..k].to_string(),
-        _ => name.to_string(),
+    std::path::Path::new(value)
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_ascii_lowercase())
+}
+
+/// Program names are matched without regard to case: macOS's disk ignores
+/// it, so `GIT push` runs git (#4220). Only the name is lower-cased, not the
+/// directory. `CD` and `PUSHD` stay as they are: the shell's `cd` builtin is
+/// lower-case only, so `CD x` does not move the shell and must not move the
+/// guard's idea of where it is.
+fn fold_program_case(w: &mut String) {
+    let cut = w.rfind('/').map_or(0, |k| k + 1);
+    let lower = w[cut..].to_ascii_lowercase();
+    if lower != w[cut..] && lower != "cd" && lower != "pushd" {
+        w.replace_range(cut.., &lower);
     }
 }
 
@@ -140,8 +153,10 @@ fn note_force_arg0(
             None
         } else {
             let stem = arg0_stem(value);
-            seen.insert(stem.clone());
-            Some(stem)
+            if let Some(st) = &stem {
+                seen.insert(st.clone());
+            }
+            stem
         };
     }
 }
@@ -181,6 +196,7 @@ pub fn unwrap(
             return (vec![], scripts);
         }
         strip_equals(&mut words[0]);
+        fold_program_case(&mut words[0]);
         let prog = basename(&words[0]).to_string();
         let args: Vec<String> = words[1..].to_vec();
         let first = args.first().map(|s| s.as_str());
@@ -502,8 +518,10 @@ pub fn hides_agent_marker(words: &[String]) -> bool {
     if i >= words.len() {
         return false;
     }
-    let w0 = words[i].strip_prefix('=').filter(|w| !w.is_empty());
-    let prog = basename(w0.unwrap_or(&words[i]));
+    let mut w0 = words[i].clone();
+    strip_equals(&mut w0);
+    fold_program_case(&mut w0);
+    let prog = basename(&w0);
     let args = &words[i + 1..];
     if prog == "env" {
         let mut j = 0;
@@ -839,6 +857,27 @@ mod tests {
         ] {
             assert!(argvs_of(text).contains(&cargo_update), "{}", text);
         }
+        // #4207 review: the value is decoded, then reduced like rustup does.
+        for text in [
+            "RUSTUP_FORCE_ARG0=$'\\x63argo' rustc update",
+            "RUSTUP_FORCE_ARG0=cargo/. rustc update",
+            "RUSTUP_FORCE_ARG0=cargo/./ rustc update",
+            "RUSTUP_FORCE_ARG0=/x/CARGO.exe rustc update",
+        ] {
+            assert!(argvs_of(text).contains(&cargo_update), "{}", text);
+        }
+        assert_eq!(arg0_stem("cargo/."), Some("cargo".into()));
+        assert_eq!(arg0_stem("/x/cargo.any"), Some("cargo".into()));
+        assert_eq!(arg0_stem(".."), None);
+        assert_eq!(arg0_stem("$R"), Some(COMPUTED_ARG0.into()));
+        // #4220: program names ignore case, but `CD` does not move the shell.
+        assert_eq!(argvs_of("GIT push"), vec![git_push.clone()]);
+        assert_eq!(
+            argvs_of("SUDO /x/GIT push"),
+            vec![vec!["/x/git".to_string(), "push".into()]]
+        );
+        let cd = invocations("CD /tmp; git push", "/r", "/h").unwrap();
+        assert_eq!(cd.last().unwrap().cwd, "/r");
         assert_eq!(
             argvs_of("export RUSTUP_FORCE_ARG0=; rustup update"),
             vec![

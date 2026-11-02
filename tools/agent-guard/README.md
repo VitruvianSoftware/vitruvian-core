@@ -476,13 +476,15 @@ bodies, `bash -c`/`sh -c`/`zsh -lc`, `bash <<EOF` and `<<<`, `eval`, `env`
 (including `-S`), `xargs`, `find -exec`, `watch`, `nice`, `time`, `timeout`,
 `nohup`, `command`, `exec`, `sudo`, `caffeinate`, `direnv exec`, `rustup run`, `uv run`,
 `uvx` and `python -m`. It matches programs by basename (`/usr/bin/git` is git,
-and so is zsh's `=git`), reads prefix assignments the way bash 3.2 does as well
+and so is zsh's `=git`) and ignores their case, as macOS's disk does (`GIT
+push` runs git), decodes `$'...'` escapes and `$"..."` strings as bash does
+(`$'\x67it'` is git), reads prefix assignments the way bash 3.2 does as well
 as the way bash 5 and zsh do (`A[ x ]=1 git push` runs git push on macOS's
 `/bin/bash`), and judges every rustup proxy in a command (`rustup`, `cargo`,
 `rustc`, `rustdoc`, `rustfmt`, `cargo-fmt`, ... — rustup 1.29.2's list) as the
 program a `RUSTUP_FORCE_ARG0=<x>` anywhere in it names (`export`,
 `declare -x`, a prefix on `bash -c`), taking `<x>`'s file stem as rustup does
-(`/x/cargo.exe` is cargo). A computed value (`$R`, `${X:-cargo}`, `$(...)`,
+(`Path::file_stem`: `/x/cargo.exe` and `cargo/.` are cargo). A computed value (`$R`, `${X:-cargo}`, `$(...)`,
 backticks) refuses every rustup proxy, and more than 8 distinct values is
 `oversize`. `cargo-<sub>` called by name is judged as `cargo <sub>`. It follows `cd`, `git -C`, `--git-dir` and `--work-tree` to decide scope. A
 heredoc fed to `cat` is data, including inside `"$(cat <<'EOF' ... EOF)"`

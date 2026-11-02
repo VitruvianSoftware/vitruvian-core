@@ -301,15 +301,61 @@ fn find_backtick(t: &[char], mut i: usize) -> Result<usize, PErr> {
     Err(PErr::Parse)
 }
 
-fn ansi_escape(c: char) -> char {
+/// Decode the escape at t[j] == '\\' inside `$'...'` as bash and zsh do:
+/// `\n`-style letters, `\NNN` octal, `\xHH`, `\uHHHH`, `\UHHHHHHHH` and
+/// `\cX`. So `$'\x67it'` is `git` (#4207 review). An unknown escape keeps
+/// its backslash, as bash does. Returns the text and the index after it.
+fn ansi_escape(t: &[char], j: usize) -> (String, usize) {
+    let c = t[j + 1];
+    let simple = match c {
+        'n' => Some('\n'),
+        't' => Some('\t'),
+        'r' => Some('\r'),
+        'a' => Some('\x07'),
+        'b' => Some('\x08'),
+        'e' | 'E' => Some('\x1b'),
+        'f' => Some('\x0c'),
+        'v' => Some('\x0b'),
+        '\\' | '\'' | '"' | '?' => Some(c),
+        _ => None,
+    };
+    if let Some(ch) = simple {
+        return (ch.to_string(), j + 2);
+    }
+    // Up to `max` digits of `radix` starting at k.
+    let digits = |k: usize, radix: u32, max: usize| -> (u32, usize) {
+        let mut v = 0u32;
+        let mut e = k;
+        while e < t.len() && e - k < max {
+            match t[e].to_digit(radix) {
+                Some(d) => v = v.wrapping_mul(radix).wrapping_add(d),
+                None => break,
+            }
+            e += 1;
+        }
+        (v, e)
+    };
+    let code = |v: u32| char::from_u32(v).unwrap_or('\u{fffd}').to_string();
     match c {
-        'n' => '\n',
-        't' => '\t',
-        'r' => '\r',
-        'a' => '\x07',
-        'e' => '\x1b',
-        '0' => '\0',
-        other => other, // \\ \' \" and anything else: the character itself
+        '0'..='7' => {
+            let (v, e) = digits(j + 1, 8, 3);
+            (code(v & 0xff), e)
+        }
+        'x' | 'u' | 'U' => {
+            let max = match c {
+                'x' => 2,
+                'u' => 4,
+                _ => 8,
+            };
+            let (v, e) = digits(j + 2, 16, max);
+            if e == j + 2 {
+                (format!("\\{}", c), j + 2) // no digits: kept as written
+            } else {
+                (code(v), e)
+            }
+        }
+        'c' if j + 2 < t.len() => (code((t[j + 2] as u32) & 0x1f), j + 3),
+        _ => (format!("\\{}", c), j + 2),
     }
 }
 
@@ -687,6 +733,12 @@ pub fn parse_dialect(
             i = j + 1;
             continue;
         }
+        if c == '$' && i + 1 < n && t[i + 1] == '"' {
+            // A `$"..."` locale string is its text when there is no
+            // translation, which is always here: `$"git" push` is git push.
+            i += 1;
+            continue;
+        }
         if c == '$' && i + 1 < n && t[i + 1] == '\'' {
             // ANSI-C quoting.
             let mut j = i + 2;
@@ -699,8 +751,9 @@ pub fn parse_dialect(
                     continue;
                 }
                 if t[j] == '\\' && j + 1 < n {
-                    out.push(ansi_escape(t[j + 1]));
-                    j += 2;
+                    let (text, next) = ansi_escape(t, j);
+                    out.push_str(&text);
+                    j = next;
                     continue;
                 }
                 out.push(t[j]);
@@ -1143,5 +1196,25 @@ mod tests {
         assert!(!read("\"A\"[ x ]=1 git push", false).1);
         // After a redirection bash 3.2 stops reading it whole.
         assert_eq!(read(">f A[ x ]=1", true).0, v(&[&["A[", "x", "]=1"]]));
+    }
+
+    #[test]
+    fn ansi_c_and_locale_strings_decode_like_bash() {
+        // #4207 review: `$'\x63argo'` is cargo to the shell, so to the guard.
+        for (text, want) in [
+            ("$'\\x63argo'", "cargo"),
+            ("$'\\143argo'", "cargo"),
+            ("$'c\\u0061rgo'", "cargo"),
+            ("$'c\\U00000061rgo'", "cargo"),
+            ("$'\\x67it'", "git"),
+            ("$'a\\tb'", "a\tb"),
+            ("$'\\q'", "\\q"),
+            ("$'\\x'", "\\x"),
+            ("$'\\cA'", "\u{1}"),
+            ("$\"cargo\"", "cargo"),
+            ("x$\"y\"z", "xyz"),
+        ] {
+            assert_eq!(words(text), v(&[&[want]]), "{}", text);
+        }
     }
 }
