@@ -792,6 +792,13 @@ public final class SettingsNavigationModel: ObservableObject {
             keywords: ["version", "build", "about courier"]
         ),
         SettingDefinition(
+            id: "about.updates",
+            pane: .about,
+            section: "About Courier",
+            title: "Updates",
+            keywords: ["update", "upgrade", "new version", "check for updates", "release", "download"]
+        ),
+        SettingDefinition(
             id: "about.changelog",
             pane: .about,
             section: "About Courier",
@@ -1040,6 +1047,7 @@ public final class SettingsNavigationModel: ObservableObject {
         "integrations.developer",
         // AboutSettingsPane
         "about.version",
+        "about.updates",
         "about.changelog",
         "about.reportProblem",
         "about.keyboardShortcuts",

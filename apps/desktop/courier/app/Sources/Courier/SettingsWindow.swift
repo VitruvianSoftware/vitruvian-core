@@ -28,6 +28,8 @@ struct SettingsWindow: View {
     @ObservedObject var aiPreferences: AIPreferences = AIPreferences()
     var storage: StorageModel? = nil
     var integrations: IntegrationsModel = IntegrationsModel(appModel: nil, enginePath: EngineLocation.enginePath())
+    /// Settings ▸ About ▸ Updates; nil leaves the section out (the snapshot tests' windows).
+    var updates: UpdateModel? = nil
     var onOpenSystemNotificationSettings: () -> Void = {
         if let url = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension") {
             NSWorkspace.shared.open(url)
@@ -368,7 +370,8 @@ struct SettingsWindow: View {
                 onShowKeyboardShortcuts: {
                     hotkeys.isShortcutsSheetPresented = true
                 },
-                highlightedSettingID: navigation.highlightedSettingID
+                highlightedSettingID: navigation.highlightedSettingID,
+                updates: updates
             )
         }
     }

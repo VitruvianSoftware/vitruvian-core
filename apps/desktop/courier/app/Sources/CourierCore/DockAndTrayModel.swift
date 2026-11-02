@@ -153,6 +153,8 @@ public enum SettingsSection: String, CaseIterable, Sendable {
     case changelog
     case reportProblem
     case about
+    /// Settings ▸ About ▸ Updates (Courier ▸ Check for Updates…).
+    case updates
 }
 
 /// Shared menu action model invoked identically by the native macOS menu bar, the Dock menu (`applicationDockMenu`),
@@ -256,7 +258,7 @@ public final class AppMenuCoordinator: ObservableObject {
             settingsNavigation.openPane(.plan)
         case .integrations:
             settingsNavigation.openPane(.integrations)
-        case .privacy, .changelog, .about:
+        case .privacy, .changelog, .about, .updates:
             settingsNavigation.openPane(.about)
         case .reportProblem:
             settingsNavigation.openPane(.about)
@@ -275,6 +277,7 @@ public final class AppMenuCoordinator: ObservableObject {
         switch section {
         case .privacy: "about.privacy"
         case .changelog: "about.changelog"
+        case .updates: "about.updates"
         default: nil
         }
     }

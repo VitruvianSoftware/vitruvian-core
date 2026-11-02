@@ -110,6 +110,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Whether the person is looking at the open chat: marking it read and keeping its notifications quiet use it.
     let attention: Attention
     let windowOpener = MainWindowOpener()
+    /// Settings ▸ About ▸ Updates and Courier ▸ Check for Updates…: checks at launch and daily, and installs a newer
+    /// release only once its checksum, signatures and notarization check out.
+    let updates = UpdateModel(
+        currentVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
+        appURL: Bundle.main.bundleURL,
+        environment: SystemUpdateEnvironment(),
+        quit: { NSApp.terminate(nil) }
+    )
     private var signInWindows: SignInWindowPresenter?
     private var notifications: NotificationCoordinator?
     let notifier = Notifier()
@@ -281,6 +289,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appearance.applySavedAppIcon()
         // Copies made to open received files last until the next launch.
         OpenFileCache.shared.clear()
+        updates.startAutomaticChecks()
         PictureInPictureController.shared.onReturnToChat = { [windowOpener, model] roomID, messageID in
             windowOpener.show()
             model.open(.message(roomID: roomID, eventID: messageID))

@@ -14,6 +14,8 @@ struct AboutSettingsPane: View {
     var onReportProblem: () -> Void = {}
     var onShowKeyboardShortcuts: () -> Void = {}
     var highlightedSettingID: String? = nil
+    /// Updates: nil leaves the section out.
+    var updates: UpdateModel? = nil
 
     @State private var showChangelog: Bool = false
     @State private var showPrivacyDetails: Bool = true
@@ -28,8 +30,10 @@ struct AboutSettingsPane: View {
         highlightedSettingID: String? = nil,
         showChangelog: Bool = false,
         showPrivacyDetails: Bool = true,
-        showLegalNotices: Bool = false
+        showLegalNotices: Bool = false,
+        updates: UpdateModel? = nil
     ) {
+        self.updates = updates
         self.lifecycle = lifecycle
         self.appVersion = appVersion
         self.buildNumber = buildNumber
@@ -39,6 +43,14 @@ struct AboutSettingsPane: View {
         _showChangelog = State(initialValue: showChangelog || highlightedSettingID == "about.changelog")
         _showPrivacyDetails = State(initialValue: showPrivacyDetails || highlightedSettingID == "about.privacy")
         _showLegalNotices = State(initialValue: showLegalNotices || highlightedSettingID == "about.legalNotices")
+    }
+
+    /// The release's page for this version, or every Courier release when the version isn't a release's.
+    static func releaseNotesURL(version: String) -> URL {
+        if let release = SemanticVersion(version) {
+            return CourierReleases.releasePageURL(for: release)
+        }
+        return URL(string: "https://github.com/\(CourierReleases.owner)/\(CourierReleases.repository)/releases?q=courier-v")!
     }
 
     public static let embeddedBridgeNotices: [(component: String, license: String, summary: String)] = [
@@ -56,6 +68,9 @@ struct AboutSettingsPane: View {
         ScrollViewReader { proxy in
             Form {
                 headerSection
+                if let updates {
+                    UpdatesSection(updates: updates, highlightedSettingID: highlightedSettingID)
+                }
                 actionsSection
                 privacySection
                 legalNoticesSection
@@ -111,11 +126,10 @@ struct AboutSettingsPane: View {
                 isExpanded: $showChangelog
             ) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(String(localized: "• Milestone 4.6: Two-column Settings window with search, Accounts & Bridges panes, Touch ID App Lock, detached windows, shortcut recorder, and local problem report bundles."))
+                    Text(String(localized: "What changed in each version of Courier is in its release notes."))
                         .font(.caption)
-                    Text(String(localized: "• Milestone 4.5: Chat Info drawer, Calendar pane, Contacts hover cards, Stickers, GIFs, Voice Notes, Emoji autocomplete, and Media Viewer."))
-                        .font(.caption)
-                    Text(String(localized: "• Milestone 4.4: Read receipts, typing indicators, Incognito mode, and multi-account support."))
+                    Link(String(localized: "Release Notes for Courier \(appVersion)"),
+                         destination: AboutSettingsPane.releaseNotesURL(version: appVersion))
                         .font(.caption)
                 }
                 .foregroundStyle(.secondary)
@@ -191,6 +205,93 @@ struct AboutSettingsPane: View {
                 .padding(.top, 4)
             }
             .settingAnchor("about.legalNotices", highlighted: highlightedSettingID)
+        }
+    }
+}
+
+/// Settings ▸ About ▸ Updates: whether a newer Courier is out, and installing it. The check runs at launch and daily
+/// (unless turned off here), and Courier ▸ Check for Updates… runs it now.
+struct UpdatesSection: View {
+    @ObservedObject var updates: UpdateModel
+    var highlightedSettingID: String?
+
+    var body: some View {
+        Section(SettingsNavigationModel.title(for: "about.updates")) {
+            VStack(alignment: .leading, spacing: 8) {
+                status
+                actions
+            }
+            .padding(.vertical, 2)
+            .settingAnchor("about.updates", highlighted: highlightedSettingID)
+
+            Toggle(String(localized: "Check for updates automatically"), isOn: $updates.checksAutomatically)
+            Text(String(localized: "Courier checks GitHub when it opens and once a day. An update is installed only after its checksum, its Developer ID signature and Apple’s notarization check out; Courier then quits and opens again."))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    @ViewBuilder
+    private var status: some View {
+        switch updates.phase {
+        case .idle:
+            Text(String(localized: "Courier hasn’t checked for updates yet."))
+                .foregroundStyle(.secondary)
+        case .checking:
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text(String(localized: "Checking for updates…"))
+            }
+        case .upToDate:
+            VStack(alignment: .leading, spacing: 2) {
+                Text(String(localized: "Courier \(updates.currentVersion?.description ?? "") is up to date."))
+                if let lastChecked = updates.lastChecked {
+                    Text(String(localized: "Checked \(lastChecked.formatted(date: .abbreviated, time: .shortened))."))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        case let .available(version):
+            Text(String(localized: "Courier \(version.description) is available. You have \(updates.currentVersion?.description ?? "")."))
+                .fontWeight(.medium)
+        case let .downloading(version, fraction):
+            VStack(alignment: .leading, spacing: 4) {
+                Text(String(localized: "Downloading Courier \(version.description)…"))
+                ProgressView(value: fraction)
+            }
+        case let .verifying(version):
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text(String(localized: "Checking Courier \(version.description)’s checksum, signature and notarization…"))
+            }
+        case let .installing(version):
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text(String(localized: "Installing Courier \(version.description). Courier will quit and open again."))
+            }
+        case let .failed(message):
+            Label(message, systemImage: "exclamationmark.triangle")
+                .foregroundStyle(.orange)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    @ViewBuilder
+    private var actions: some View {
+        HStack(spacing: 10) {
+            if case let .available(version) = updates.phase {
+                Button(String(localized: "Download and Install")) {
+                    Task { await updates.installUpdate() }
+                }
+                .buttonStyle(.borderedProminent)
+                Link(String(localized: "Release Notes"), destination: CourierReleases.releasePageURL(for: version))
+            } else {
+                Button(String(localized: "Check for Updates")) {
+                    Task { await updates.check() }
+                }
+                .disabled(updates.isBusy)
+            }
         }
     }
 }

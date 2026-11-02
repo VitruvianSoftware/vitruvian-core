@@ -24,12 +24,22 @@ struct InboxCommands: Commands {
     let minimizeToMenuBar: @MainActor () -> Void
     @ObservedObject var hotkeys: HotkeyRegistry
     @ObservedObject var hotkeyDispatcher: HotkeyDispatcher
+    /// Courier ▸ Check for Updates…, which names the newer version once a check has found one.
+    @ObservedObject var updates: UpdateModel
     @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
         CommandGroup(replacing: .appInfo) {
             Button(String(localized: "About Courier")) {
                 menuCoordinator.openSettings(.about)
+            }
+            .disabled(lifecycle.isLocked)
+            // Opens Settings ▸ About, where the check's answer and the Install button are, and checks.
+            Button(checkForUpdatesMenuTitle) {
+                menuCoordinator.openSettings(.updates)
+                if updates.availableVersion == nil {
+                    Task { await updates.check() }
+                }
             }
             .disabled(lifecycle.isLocked)
         }
@@ -286,6 +296,13 @@ struct InboxCommands: Commands {
         NSApp.activate()
         openWindow(id: "main")
         return false
+    }
+
+    var checkForUpdatesMenuTitle: String {
+        guard !lifecycle.isLocked, case let .available(version) = updates.phase else {
+            return String(localized: "Check for Updates…")
+        }
+        return String(localized: "Update to Courier \(version.description)…")
     }
 
     // MARK: The open chat (or the chats selected)
