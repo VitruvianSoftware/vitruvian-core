@@ -18,7 +18,7 @@ rust_binary(
 # Drives the real binary: the auth header must expand EXACTLY ONCE for any
 # --config combination (the scoped-header doubling bug comma-joined the key into
 # "KEY,KEY" under --config=remote), plus every mode, prompt and exit code, and
-# parity with setup.sh run as an oracle over the same scenarios.
+# parity with the retired shell script's outputs, recorded in testdata/setup_sh.golden.
 rust_test(
     name = "setup_test",
     size = "small",

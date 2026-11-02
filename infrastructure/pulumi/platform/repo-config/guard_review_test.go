@@ -107,7 +107,8 @@ func TestGuardReviewPathsCoverage(t *testing.T) {
 		// The tests beside the launcher's sources, and the other tool there.
 		"tools/cloud-bootstrap/src/launcher_test.rs",
 		"tools/cloud-bootstrap/src/configure_tailscale/lib.rs",
-		"tools/remote/setup_test.sh",
+		"tools/remote/BUILD",
+		"tools/remote/testdata/setup_sh.golden",
 		"apps/cli/devx/main.go",
 		".claude/agents/wren.md",
 		".agents/agents/wren.md",
