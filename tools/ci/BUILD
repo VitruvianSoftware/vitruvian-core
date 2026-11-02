@@ -31,51 +31,6 @@ alias(
     visibility = ["//visibility:public"],
 )
 
-exports_files([
-    "agent-fast-lane.sh",
-    "agent-fast-lane_test.sh",
-    "llvm-cache-key.sh",
-    "llvm-cache-key_test.sh",
-    "llvm-cache-stage.sh",
-    "llvm-cache-stage_test.sh",
-    "queue-fast-pass.sh",
-    "queue-fast-pass_test.sh",
-    "queue-runner-watch.sh",
-    "queue-runner-watch_test.sh",
-    "relevant-paths.sh",
-    "relevant-paths_test.sh",
-])
-
-# The extracted-LLVM cache key. Keyed on every recorded input of the
-# llvm_toolchain_llvm repo rule -- /etc/os-release included -- so a runner-image
-# point release is a one-run miss instead of a permanent restore-and-re-extract
-# (#2242). Hermetic: fixtures only, no bazel-in-bazel, no network.
-sh_test(
-    name = "llvm_cache_key_test",
-    size = "small",
-    srcs = ["llvm-cache-key_test.sh"],
-    args = ["$(location llvm-cache-key.sh)"],
-    data = ["llvm-cache-key.sh"],
-)
-
-# Moves the extracted LLVM toolchain between the cache's fixed stage folder and
-# Bazel's contents cache, so no file pins the content-hash folder name (#2456).
-sh_test(
-    name = "llvm_cache_stage_test",
-    size = "small",
-    srcs = ["llvm-cache-stage_test.sh"],
-    args = ["$(location llvm-cache-stage.sh)"],
-    data = ["llvm-cache-stage.sh"],
-)
-
-sh_test(
-    name = "queue_runner_watch_test",
-    size = "small",
-    srcs = ["queue-runner-watch_test.sh"],
-    args = ["$(location queue-runner-watch.sh)"],
-    data = ["queue-runner-watch.sh"],
-)
-
 # Safety tests for the cache pruner. It DELETES, so the suite is mostly
 # negative: an open PR's cache, a branch cache, and an undeterminable PR state
 # must all survive. Runs the REAL binary with a fake gh on PATH (hermetic: no
@@ -98,6 +53,7 @@ rust_test(
 # checks each result answers like the Bazel-built binary. TOOLS must list the
 # tools the workflows build; the test fails when the two differ.
 _BUILD_CI_TOOLS = [
+    "agent_fast_lane",
     "backstage_boot_smoke",
     "changelog_summary",
     "chart_render",
@@ -107,13 +63,18 @@ _BUILD_CI_TOOLS = [
     "go_test_with_retry",
     "image_sbom_scan",
     "install_pinned_tool",
+    "llvm_cache_key",
+    "llvm_cache_stage",
     "migration_safety",
     "notify_ci_issues",
     "prune_pr_caches",
     "pulumi_summary",
+    "queue_fast_pass",
+    "queue_runner_watch",
     "release_beta_gate",
     "release_hold",
     "release_pr_dequeue",
+    "relevant_paths",
     "secret_scan",
 ]
 
@@ -149,6 +110,7 @@ rust_test(
     },
     rustc_flags = ["-Copt-level=3"],
     toolchains = ["@jq_toolchains//:resolved_toolchain"],
+    deps = [":ci_testkit"],
 )
 
 # The mirror's release workflow for the standalone Nexus Agent never runs here;
@@ -473,21 +435,20 @@ rust_binary(
     ],
 )
 
-sh_binary(
-    name = "llvm-cache-key-sh",
-    srcs = ["llvm-cache-key.sh"],
-    visibility = ["//visibility:public"],
-)
-
-sh_test(
-    name = "llvm_cache_key_rs_test",
+# Black-box: the REAL binary against os-release fixtures. The key must move
+# with every recorded input of the llvm_toolchain_llvm repo rule --
+# /etc/os-release included -- so a runner-image point release is a one-run
+# miss instead of a permanent restore-and-re-extract (#2242). Ported case for
+# case from the former llvm-cache-key_test.sh.
+rust_test(
+    name = "llvm_cache_key_test",
     size = "small",
-    srcs = ["llvm-cache-key_test.sh"],
-    args = ["$(location :llvm_cache_key)"],
-    data = [
-        "llvm-cache-key.sh",
-        ":llvm_cache_key",
-    ],
+    srcs = ["src/llvm_cache_key/tests.rs"],
+    data = [":llvm_cache_key"],
+    edition = "2021",
+    env = {"BIN": "$(rootpath :llvm_cache_key)"},
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":ci_testkit"],
 )
 
 # llvm-cache-stage
@@ -513,21 +474,19 @@ rust_binary(
     ],
 )
 
-sh_binary(
-    name = "llvm-cache-stage-sh",
-    srcs = ["llvm-cache-stage.sh"],
-    visibility = ["//visibility:public"],
-)
-
-sh_test(
-    name = "llvm_cache_stage_rs_test",
+# Black-box: the REAL binary on fake extractions. Moves the extracted LLVM
+# toolchain between the cache's fixed stage folder and Bazel's contents cache,
+# so no file pins the content-hash folder name (#2456). Ported case for case
+# from the former llvm-cache-stage_test.sh.
+rust_test(
+    name = "llvm_cache_stage_test",
     size = "small",
-    srcs = ["llvm-cache-stage_test.sh"],
-    args = ["$(location :llvm_cache_stage)"],
-    data = [
-        "llvm-cache-stage.sh",
-        ":llvm_cache_stage",
-    ],
+    srcs = ["src/llvm_cache_stage/tests.rs"],
+    data = [":llvm_cache_stage"],
+    edition = "2021",
+    env = {"BIN": "$(rootpath :llvm_cache_stage)"},
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":ci_testkit"],
 )
 
 # queue-runner-routing
@@ -593,21 +552,27 @@ rust_binary(
     ],
 )
 
-sh_binary(
-    name = "queue-runner-watch-sh",
-    srcs = ["queue-runner-watch.sh"],
-    visibility = ["//visibility:public"],
-)
-
-sh_test(
-    name = "queue_runner_watch_rs_test",
+# Black-box: the REAL binary with a fake gh. Ported case for case from the
+# former queue-runner-watch_test.sh.
+rust_test(
+    name = "queue_runner_watch_test",
     size = "small",
-    srcs = ["queue-runner-watch_test.sh"],
-    args = ["$(location :queue_runner_watch)"],
+    srcs = ["src/queue_runner_watch/tests.rs"],
+    # One case runs the watcher's real --jq filter through the hermetic jq
+    # (the RBE image has none), so a filter jq cannot parse fails here as it
+    # would against GitHub.
     data = [
-        "queue-runner-watch.sh",
         ":queue_runner_watch",
+        "@jq_toolchains//:resolved_toolchain",
     ],
+    edition = "2021",
+    env = {
+        "BIN": "$(rootpath :queue_runner_watch)",
+        "JQ_BIN": "$(JQ_BIN)",
+    },
+    rustc_flags = ["-Copt-level=3"],
+    toolchains = ["@jq_toolchains//:resolved_toolchain"],
+    deps = [":ci_testkit"],
 )
 
 # bisect-culprit
@@ -1356,33 +1321,26 @@ rust_binary(
     ],
 )
 
-sh_test(
+# Black-box: the REAL binary in a real git repo with a fake gh and the jq
+# toolchain on PATH; also holds ci.yaml's jobs to the safe way of waiting on
+# the lookup. Ported case for case from the former queue-fast-pass_test.sh.
+rust_test(
     name = "queue_fast_pass_test",
     size = "small",
-    srcs = ["queue-fast-pass_test.sh"],
-    args = ["$(location queue-fast-pass.sh)"],
+    srcs = ["src/queue_fast_pass/tests.rs"],
     data = [
-        "queue-fast-pass.sh",
-        "//:workflow_files",
-        "@jq_toolchains//:resolved_toolchain",
-    ],
-    env = {"JQ_BIN": "$(JQ_BIN)"},
-    toolchains = ["@jq_toolchains//:resolved_toolchain"],
-)
-
-sh_test(
-    name = "queue_fast_pass_rs_test",
-    size = "small",
-    srcs = ["queue-fast-pass_test.sh"],
-    args = ["$(location :queue_fast_pass)"],
-    data = [
-        "queue-fast-pass.sh",
         ":queue_fast_pass",
         "//:workflow_files",
         "@jq_toolchains//:resolved_toolchain",
     ],
-    env = {"JQ_BIN": "$(JQ_BIN)"},
+    edition = "2021",
+    env = {
+        "BIN": "$(rootpath :queue_fast_pass)",
+        "JQ_BIN": "$(JQ_BIN)",
+    },
+    rustc_flags = ["-Copt-level=3"],
     toolchains = ["@jq_toolchains//:resolved_toolchain"],
+    deps = [":ci_testkit"],
 )
 
 # migration-safety
@@ -1731,27 +1689,23 @@ rust_binary(
     ],
 )
 
-sh_test(
+# Black-box: the REAL binary against throwaway git repos, with the narrowed
+# ignore sets read straight out of ci.yaml, tidy-check.yaml and
+# conformance-check.yaml. Ported case for case from the former
+# relevant-paths_test.sh (and the relevant-paths-test workflow that ran it).
+rust_test(
     name = "relevant_paths_test",
     size = "small",
-    srcs = ["relevant-paths_test.sh"],
-    args = ["$(location relevant-paths.sh)"],
+    srcs = ["src/relevant_paths/tests.rs"],
     data = [
-        "relevant-paths.sh",
-        "//:workflow_files",
-    ],
-)
-
-sh_test(
-    name = "relevant_paths_rs_test",
-    size = "small",
-    srcs = ["relevant-paths_test.sh"],
-    args = ["$(location :relevant_paths)"],
-    data = [
-        "relevant-paths.sh",
         ":relevant_paths",
+        "//:composite_actions",
         "//:workflow_files",
     ],
+    edition = "2021",
+    env = {"BIN": "$(rootpath :relevant_paths)"},
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":ci_testkit"],
 )
 
 # go-test-with-retry
@@ -1983,43 +1937,31 @@ rust_binary(
     ],
 )
 
+# Black-box: the REAL binary against the real agent roster, plus how ci.yaml
+# and presubmit.yaml build it from the base commit. Ported case for case from
+# the former agent-fast-lane_test.sh.
+rust_test(
+    name = "agent_fast_lane_test",
+    size = "small",
+    srcs = ["src/agent_fast_lane/tests.rs"],
+    data = [
+        ":agent_fast_lane",
+        "//:workflow_files",
+        # Its runfiles carry tools/agent-app/agents.tsv, the real roster.
+        "//tools/agent-app:agent-app-sh",
+    ],
+    edition = "2021",
+    env = {"BIN": "$(rootpath :agent_fast_lane)"},
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":ci_testkit"],
+)
+
 rust_test(
     name = "agent_fast_lane_lib_test",
     size = "small",
     crate = ":agent_fast_lane_lib",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-)
-
-sh_test(
-    name = "agent_fast_lane_test",
-    size = "small",
-    srcs = ["agent-fast-lane_test.sh"],
-    args = ["$(location agent-fast-lane.sh)"],
-    data = [
-        "agent-fast-lane.sh",
-        "//:workflow_files",
-        "//tools/agent-app:agent-app-sh",
-        "@jq_toolchains//:resolved_toolchain",
-    ],
-    env = {"JQ_BIN": "$(JQ_BIN)"},
-    toolchains = ["@jq_toolchains//:resolved_toolchain"],
-)
-
-sh_test(
-    name = "agent_fast_lane_rs_test",
-    size = "small",
-    srcs = ["agent-fast-lane_test.sh"],
-    args = ["$(location :agent_fast_lane)"],
-    data = [
-        "agent-fast-lane.sh",
-        ":agent_fast_lane",
-        "//:workflow_files",
-        "//tools/agent-app:agent-app-sh",
-        "@jq_toolchains//:resolved_toolchain",
-    ],
-    env = {"JQ_BIN": "$(JQ_BIN)"},
-    toolchains = ["@jq_toolchains//:resolved_toolchain"],
 )
 
 # gcp-secret-or-fail

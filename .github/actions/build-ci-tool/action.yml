@@ -19,8 +19,12 @@
 # SOFTWARE.
 
 # Builds one of the tools under tools/ci/src/<tool>/ with the runner's own
-# rustc, for jobs that set up no Bazel (release gates, the changelog and
-# pulumi digests, the cache pruner, the ntfy notifier). Each of those tools is
+# rustc, for jobs and steps that set up no Bazel, or run before it: the release
+# gates, the changelog and pulumi digests, the cache pruner, the ntfy notifier,
+# the changed-paths gate (it decides whether Bazel is set up at all), the LLVM
+# cache key and stage tools (a Bazel-built Rust binary links with the very
+# LLVM toolchain they restore), the merge-queue lookup, the fast lane and the
+# queue-runner watcher. Each of those tools is
 # a lib.rs + main.rs pair that depends only on //tools/shell-compat and std,
 # so three rustc calls build it from the checkout in about a second.
 #
@@ -29,12 +33,13 @@
 # so a tool that stops building this way fails presubmit, not a release.
 #
 # A failed build fails this step, and so does a build that claims success
-# without leaving an executable binary. The caller's next step, which runs the
+# without leaving an executable binary, or one that will not start. The caller's next step, which runs the
 # tool, then never starts and the run goes red. A caller whose tool must act
 # even then (the beta gate turning auto-merge off, the notifier reaching ntfy)
 # has its own `if: failure()` step after this one.
 #
-# Interface (kept stable for other callers): input `tool`, output `path`.
+# Interface (kept stable for other callers): input `tool`, optional input
+# `source-root`, output `path`.
 # Optional input `deps`: extra std-only crates the tool's lib needs, built
 # first and passed with --extern. Only the names in the step's `case` are
 # accepted, each at its one known path.
@@ -64,6 +69,14 @@ inputs:
       shell-compat.
     required: false
     default: ""
+  source-root:
+    description: >-
+      The checkout to build from; empty means the workspace. The fast-lane
+      steps pass a checkout of the pull request's BASE commit, so a pull
+      request cannot rewrite the rule that decides whether it may skip tests.
+      Relative paths are relative to the workspace.
+    required: false
+    default: ""
 
 outputs:
   path:
@@ -79,6 +92,7 @@ runs:
       env:
         TOOL: ${{ inputs.tool }}
         DEPS: ${{ inputs.deps }}
+        SOURCE_ROOT: ${{ inputs.source-root }}
       run: |
         set -euo pipefail
         case "$TOOL" in
@@ -87,13 +101,11 @@ runs:
             exit 1
             ;;
         esac
-        src="$GITHUB_WORKSPACE/tools"
-        out="$RUNNER_TEMP/ci-tools"
-        mkdir -p "$out"
+        src="${SOURCE_ROOT:-$GITHUB_WORKSPACE}/tools"
         # Each dep: a known name at its one path, std-only (built with no --extern).
         dep_names=()
         dep_srcs=()
-        for dep in $DEPS; do
+        for dep in ${DEPS:-}; do
           case "$dep" in
             transient_lib) dep_srcs+=("$src/ci/src/transient_lib/lib.rs") ;;
             appset_render) dep_srcs+=("$src/gitops/appset-render/src/lib.rs") ;;
@@ -104,12 +116,16 @@ runs:
           esac
           dep_names+=("$dep")
         done
+        # Before anything else needs PATH: with no rustc (and no apt), stop
+        # here naming the tool, not later on a missing mkdir or rustc.
         if ! command -v rustc >/dev/null 2>&1; then
           { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends rustc; } \
-            || { echo "::error::apt install rustc failed"; exit 1; }
+            || { echo "::error::apt install rustc failed, so build-ci-tool has no rustc on this runner and cannot build tools/ci/src/$TOOL"; exit 1; }
           command -v rustc >/dev/null 2>&1 \
-            || { echo "::error::rustc is still not on PATH after apt install"; exit 1; }
+            || { echo "::error::rustc is still not on PATH after apt install, so build-ci-tool has no rustc on this runner and cannot build tools/ci/src/$TOOL"; exit 1; }
         fi
+        out="$RUNNER_TEMP/ci-tools"
+        mkdir -p "$out"
         # The runner's rustc is newer than the Bazel toolchain that
         # //tools/ci:build_ci_tool_test proves this build with; log it so a
         # failure on a newer compiler is told apart from a code break.
@@ -127,6 +143,36 @@ runs:
         # which is the failure the callers' `if: failure()` fallbacks miss.
         if [ ! -f "$out/$TOOL" ] || [ ! -x "$out/$TOOL" ]; then
           echo "::error::build-ci-tool: rustc reported success but $out/$TOOL is not an executable file"
+          exit 1
+        fi
+        # And one that starts. First it must be a native executable (ELF or
+        # Mach-O): env runs any other file through /bin/sh, which tells
+        # garbage apart from a real program only by "command not found".
+        magic=$(od -An -tx1 -N4 "$out/$TOOL" | tr -d ' \n')
+        case "$magic" in
+          7f454c46 | cffaedfe | cefaedfe | cafebabe) ;;
+          *)
+            echo "::error::build-ci-tool: $out/$TOOL was built but does not run (not a native executable: $magic)"
+            exit 1
+            ;;
+        esac
+        # Then run it once with no arguments and an empty environment, where
+        # every tool here stops at once (a usage error, "not a pull request",
+        # or the first command it needs not found). PATH names a folder that
+        # does not exist, so it finds no gh, git or curl even by the default
+        # search path: it cannot reach GitHub or ntfy, and with no
+        # GITHUB_OUTPUT it writes nothing. 126 or 128 and up means it could
+        # not be executed or died on a signal. 127 is ambiguous: a tool ported
+        # from a `set -e` script (secret_scan runs git first) exits 127 itself
+        # when that command is missing, as the script did. It counts as "does
+        # not run" only when env said so (a missing ELF interpreter), which
+        # env reports on stderr as "env: ...".
+        rc=0
+        env -i PATH="$out/no-such-dir" "$out/$TOOL" </dev/null >/dev/null 2>"$out/$TOOL.start-err" || rc=$?
+        first=""
+        IFS= read -r first <"$out/$TOOL.start-err" || true
+        if [ "$rc" -eq 126 ] || [ "$rc" -ge 128 ] || { [ "$rc" -eq 127 ] && [ "${first#env:}" != "$first" ]; }; then
+          echo "::error::build-ci-tool: $out/$TOOL was built but does not run (exit $rc${first:+: $first})"
           exit 1
         fi
         echo "path=$out/$TOOL" >> "$GITHUB_OUTPUT"
