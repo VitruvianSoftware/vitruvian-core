@@ -5,6 +5,7 @@ go_library(
     srcs = [
         "markdown.go",
         "pair.go",
+        "rest.go",
         "schemas.go",
         "server.go",
         "tools.go",
@@ -27,6 +28,7 @@ go_test(
     srcs = [
         "helpers_test.go",
         "markdown_test.go",
+        "rest_test.go",
         "schema_test.go",
         "server_test.go",
         "tools_test.go",

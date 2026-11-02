@@ -4,7 +4,8 @@
 // Package localapi is Courier's local API (milestone 5): an MCP server over streamable HTTP at /v0/mcp, the same
 // path the reference app uses, so an MCP client that used the reference app's server needs only a new address and
 // token. Each tool calls the engine's own protocol methods in-process (Dispatcher), so it answers from the same
-// code the app's requests run.
+// code the app's requests run. Beside it, two read-only endpoints of the reference app's REST API, GET /v1/accounts
+// and GET /v1/messages/search (rest.go), on the same port with the same tokens and guards.
 //
 // It listens on 127.0.0.1 only, unless Remote Access is on: then on every address. Every request needs a bearer
 // token the person approved in Settings → Integrations. With Remote Access off, a request whose Host isn't this
@@ -133,6 +134,9 @@ func New(s *store.Store, d Dispatcher, p Publisher, log zerolog.Logger) *Server 
 	authed := auth.RequireBearerToken(srv.verify, &auth.RequireBearerTokenOptions{AllowMissingExpiration: true})(streamable)
 	mux := http.NewServeMux()
 	mux.Handle(MCPPath, srv.requireToken(authed))
+	// The two read-only REST endpoints HomeSpeaker reads (rest.go), behind the same token check and guards.
+	mux.Handle(AccountsPath, srv.requireToken(srv.rest("accounts", srv.restAccounts)))
+	mux.Handle(MessagesSearchPath, srv.requireToken(srv.rest("messages.search", srv.restSearchMessages)))
 	mux.HandleFunc(PairPath, srv.servePair)
 	srv.http = srv.guard(mux)
 	return srv
