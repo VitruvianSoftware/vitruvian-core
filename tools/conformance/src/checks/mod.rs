@@ -96,6 +96,7 @@ pub fn run_all(ctx: &Context) {
     security::check_action_sha_pins(ctx);
     security::check_gitleaks_allowlist_paths(ctx);
     security::check_guard_review_paths(ctx);
+    security::check_release_tag_exemptions(ctx);
 }
 
 /// The workflow-label check alone: `bazel run //tools/conformance:workflow-labels`.

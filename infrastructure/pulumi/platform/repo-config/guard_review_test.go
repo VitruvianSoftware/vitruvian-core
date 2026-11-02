@@ -263,7 +263,7 @@ func TestGuardReviewBypassMatchesMergeQueue(t *testing.T) {
 		}
 	}
 	// And what that list is today: admins and copybara-sync, both "always".
-	pinned := []actor{{5, "RepositoryRole", "always"}, {copybaraSyncAppID, "Integration", "always"}}
+	pinned := []actor{{5, "RepositoryRole", "always"}, {3863936, "Integration", "always"}}
 	for i := range pinned {
 		if i >= len(got) || got[i] != pinned[i] {
 			t.Fatalf("bypass actors = %v, want %v", got, pinned)

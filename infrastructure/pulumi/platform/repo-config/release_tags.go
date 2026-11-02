@@ -45,15 +45,18 @@ import (
 //   - repository admins, James's break-glass (a hand-cut release).
 //
 // Who may not, on purpose: the GitHub Actions token (github-actions[bot]).
-// Any workflow on any branch can hold it with contents: write, so letting it
-// bypass would let a branch push mint a release tag. The rolling publishers
-// that use it are why rollingTags exist.
+// Any workflow on any branch can hold it with contents: write, so it is not a
+// bypass actor. The rolling publishers that use it are why rollingTags exist.
+//
+// This ruleset is only as strong as its bypass actors' credentials: the
+// bypass App's key must stay limited to main. That is tracked separately;
+// this file does not establish it.
 
 // environmentTagPatterns are the tag patterns GitHub Environments accept
 // deploys from (the deployment policies in main.go and courier_release.go
-// use these constants). TestEnvironmentTagPatternsAreDeclaredHere fails if
-// another file in this program writes a tag pattern inline instead, so this
-// list is the whole set.
+// use these constants). TestDeployTagPatternsNeverMatchExemptTags runs the
+// whole program and fails if the patterns it registers differ from this list
+// or accept an exempt tag.
 const (
 	tabulaAPIReleaseTagPattern          = "tabula-api-v*"
 	tabulaWebReleaseTagPattern          = "tabula-web-v*"
@@ -71,7 +74,11 @@ var environmentTagPatterns = []string{
 // rollingTags are moved to main's HEAD by the beta/dev publishers, with the
 // GitHub Actions token, on every push to main. Exact names only: a wildcard
 // here (say "*-latest") would also exempt "tabula-api-v9-latest", which an
-// Environment accepts. TestRollingTagsAreExactAndUndeployable holds that.
+// Environment accepts. TestRollingTagsAreExactAndUndeployable holds that,
+// and //tools/conformance:check (check_release_tag_exemptions) fails if one
+// starts with a release tag prefix derived from any release-please-config.json,
+// the prefixes the release-event delivery jobs act on. It reads the names
+// between the markers below.
 //
 // Where each is set:
 //   - vitruvian-beta-latest: apps/desktop/vitruvian/bazel/src/publish/lib.rs
@@ -82,10 +89,12 @@ var environmentTagPatterns = []string{
 // A new rolling tag that is not listed fails its publish job on the first
 // push (the ruleset refuses the move), which is the safe way round.
 var rollingTags = []string{
+	// rolling-tags:begin
 	"vitruvian-beta-latest",
 	"esp32-s3-beta-latest",
 	"gravastar-mouse-beta-latest",
 	"tabula-extension-dev-latest",
+	// rolling-tags:end
 }
 
 // releaseTagBypassActors is main's merge-queue bypass list: repository admins

@@ -968,3 +968,233 @@ pub fn check_guard_review_paths(ctx: &Context) {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// check_release_tag_exemptions
+// ---------------------------------------------------------------------------
+
+/// The release tag prefix(es) one release-please-config.json produces: per
+/// package, `<component><tag-separator>v` (release-please's defaults:
+/// include-component-in-tag true, separator "-", include-v-in-tag true; a
+/// package setting overrides the top-level one). These are what the
+/// release-event delivery jobs match (`startsWith(tag_name, 'vitruvian-v')`).
+pub fn release_tag_prefixes(json: &str) -> Result<Vec<String>, String> {
+    let cfg: serde_json::Value =
+        serde_json::from_str(json).map_err(|e| format!("not JSON: {e}"))?;
+    let packages = cfg
+        .get("packages")
+        .and_then(|p| p.as_object())
+        .ok_or_else(|| "no \"packages\" object".to_string())?;
+    let mut out = Vec::new();
+    for (path, pkg) in packages {
+        let get = |k: &str| pkg.get(k).or_else(|| cfg.get(k));
+        let with_component = get("include-component-in-tag")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+        let sep = get("tag-separator").and_then(|v| v.as_str()).unwrap_or("-");
+        let with_v = get("include-v-in-tag")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+        let mut prefix = String::new();
+        if with_component {
+            let component = pkg
+                .get("component")
+                .or_else(|| pkg.get("package-name"))
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| format!("package {path:?} has no component or package-name, so its tag prefix cannot be derived"))?;
+            prefix.push_str(component);
+            prefix.push_str(sep);
+        }
+        if with_v {
+            prefix.push('v');
+        }
+        out.push(prefix);
+    }
+    Ok(out)
+}
+
+/// Whether a release with tag `tag` could carry `prefix`'s release tags'
+/// prefix. A prefix with a component is matched as the delivery jobs match it
+/// (starts-with); a bare `v` or empty prefix only before a digit, or every
+/// tag starting with `v` would collide.
+pub fn tag_collides(tag: &str, prefix: &str) -> bool {
+    if !tag.starts_with(prefix) {
+        return false;
+    }
+    if prefix.is_empty() || prefix == "v" {
+        return tag[prefix.len()..]
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_digit());
+    }
+    true
+}
+
+/// The names between `rolling-tags:begin` and `rolling-tags:end` in
+/// release_tags.go.
+pub fn rolling_tags(src: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let Some(b) = src.find("rolling-tags:begin") else {
+        return out;
+    };
+    let Some(e) = src[b..].find("rolling-tags:end") else {
+        return out;
+    };
+    for line in src[b..b + e].lines() {
+        let t = line.trim();
+        if t.starts_with("//") {
+            continue;
+        }
+        let mut rest = t;
+        while let Some(q1) = rest.find('"') {
+            let after = &rest[q1 + 1..];
+            let Some(q2) = after.find('"') else { break };
+            out.push(after[..q2].to_string());
+            rest = &after[q2 + 1..];
+        }
+    }
+    out
+}
+
+/// The release-tags ruleset exempts a few rolling tags by exact name. None
+/// may start with a release tag prefix that any release-please config
+/// produces: a release published on such a tag would run that component's
+/// release-event delivery jobs from an exempt, freely movable tag. The
+/// prefixes are derived from every tracked release-please-config.json, so a
+/// new component is covered without editing this check.
+pub fn check_release_tag_exemptions(ctx: &Context) {
+    let src_rel = "infrastructure/pulumi/platform/repo-config/release_tags.go";
+    let Ok(src) = fs::read_to_string(format!("{}/{src_rel}", ctx.root)) else {
+        return;
+    };
+    let tags = rolling_tags(&src);
+    if tags.is_empty() {
+        ctx.emit_fail(
+            "releasetags",
+            src_rel,
+            "(none)",
+            "rolling tags between markers",
+            "no names found between the rolling-tags markers: the exemptions cannot be checked",
+            "keep the rolling-tags:begin/end markers around rollingTags",
+        );
+        return;
+    }
+
+    let listed = Command::new("git")
+        .args([
+            "-C",
+            &ctx.root,
+            "ls-files",
+            "-z",
+            "--",
+            "*release-please-config.json",
+        ])
+        .output();
+    let files: Vec<String> = match listed {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout)
+            .split('\0')
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .collect(),
+        _ => Vec::new(),
+    };
+
+    let mut failed = false;
+    let mut prefixes: Vec<(String, String)> = Vec::new();
+    for rel in &files {
+        let Ok(json) = fs::read_to_string(format!("{}/{rel}", ctx.root)) else {
+            continue;
+        };
+        match release_tag_prefixes(&json) {
+            Ok(ps) => prefixes.extend(ps.into_iter().map(|p| (p, rel.clone()))),
+            Err(e) => {
+                ctx.emit_fail(
+                    "releasetags",
+                    rel,
+                    "unreadable",
+                    "release tag prefix",
+                    &e,
+                    "give every package a component",
+                );
+                failed = true;
+            }
+        }
+    }
+    if prefixes.is_empty() {
+        ctx.emit_fail(
+            "releasetags",
+            "*release-please-config.json",
+            "none found",
+            "at least 1",
+            "found no release-please config to derive release tag prefixes from: the check is running blind, not passing",
+            &format!("check `git ls-files` works from $ROOT ({})", ctx.root),
+        );
+        return;
+    }
+
+    for tag in &tags {
+        for (prefix, rel) in &prefixes {
+            if tag_collides(tag, prefix) {
+                ctx.emit_fail(
+                    "releasetags",
+                    src_rel,
+                    tag,
+                    "no release tag prefix",
+                    &format!("exempt rolling tag {tag:?} starts with {prefix:?}, the release tag prefix {rel} produces; a release on it would run that component's release deliveries from an unprotected tag"),
+                    "rename the rolling tag so no component's release tag prefix matches it",
+                );
+                failed = true;
+            }
+        }
+    }
+    if !failed {
+        ctx.emit_ok(
+            "releasetags",
+            src_rel,
+            &format!("{} exempt tag(s)", tags.len()),
+            &format!("{} release tag prefix(es)", prefixes.len()),
+            "no exempt rolling tag starts with a release tag prefix from any release-please config",
+        );
+    }
+}
+
+#[cfg(test)]
+mod release_tag_tests {
+    use super::*;
+
+    #[test]
+    fn prefixes_follow_release_please_defaults_and_overrides() {
+        let json = r#"{"tag-separator":"-","packages":{
+            "apps/a":{"component":"vitruvian"},
+            "apps/b":{"package-name":"esp32-s3"},
+            "apps/c":{"component":"go/pkg/x","tag-separator":"/"},
+            "apps/d":{"component":"lib","include-component-in-tag":false},
+            "apps/e":{"component":"bare","include-v-in-tag":false}}}"#;
+        let mut got = release_tag_prefixes(json).unwrap();
+        got.sort();
+        assert_eq!(
+            got,
+            vec!["bare-", "esp32-s3-v", "go/pkg/x/v", "v", "vitruvian-v"]
+        );
+        assert!(release_tag_prefixes(r#"{"packages":{"x":{}}}"#).is_err());
+    }
+
+    #[test]
+    fn collisions() {
+        assert!(tag_collides("vitruvian-v0-beta-latest", "vitruvian-v"));
+        assert!(!tag_collides("vitruvian-beta-latest", "vitruvian-v"));
+        assert!(!tag_collides("vitruvian-beta-latest", "v"));
+        assert!(tag_collides("v1-latest", "v"));
+        assert!(!tag_collides(
+            "tabula-extension-dev-latest",
+            "tabula-extension-v"
+        ));
+    }
+
+    #[test]
+    fn reads_marked_rolling_tags() {
+        let src = "var x = []string{\n\t// rolling-tags:begin\n\t\"a-latest\",\n\t// \"commented\",\n\t\"b-latest\",\n\t// rolling-tags:end\n}\n";
+        assert_eq!(rolling_tags(src), vec!["a-latest", "b-latest"]);
+    }
+}

@@ -21,10 +21,8 @@
 package main
 
 import (
-	"os"
+	"fmt"
 	"path"
-	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 
@@ -167,7 +165,8 @@ func TestReleaseTagsProtected(t *testing.T) {
 
 // release-please (copybara-sync) and admins, the same list as main's; never
 // the GitHub Actions token, which any branch's workflow can hold, and never
-// Renovate.
+// Renovate. The App id is pinned as a literal, so a changed constant cannot
+// carry the test along with it.
 func TestReleaseTagBypassActors(t *testing.T) {
 	type actor struct {
 		id        int
@@ -182,7 +181,7 @@ func TestReleaseTagBypassActors(t *testing.T) {
 		return out
 	}
 	got := flatten(releaseTagBypassActors())
-	want := []actor{{5, "RepositoryRole", "always"}, {copybaraSyncAppID, "Integration", "always"}}
+	want := []actor{{5, "RepositoryRole", "always"}, {3863936, "Integration", "always"}}
 	if len(got) != len(want) {
 		t.Fatalf("bypass actors = %v, want %v", got, want)
 	}
@@ -198,72 +197,152 @@ func TestReleaseTagBypassActors(t *testing.T) {
 	}
 }
 
-// The Environment deployment policies use the constants in release_tags.go,
-// so environmentTagPatterns is the whole set the tests above check against.
-// An inline tag glob anywhere else in the program would escape them.
-func TestEnvironmentTagPatternsAreDeclaredHere(t *testing.T) {
-	files, err := filepath.Glob("*.go")
-	if err != nil || len(files) < 3 {
-		t.Fatalf("listing the program's .go files (the test runs in the package directory): %v %v", files, err)
+// programMocks is envMocks plus numeric team ids (GitHub's are numbers, and
+// the guard review ruleset parses one).
+type programMocks struct{ envMocks }
+
+func (m *programMocks) NewResource(args pulumi.MockResourceArgs) (string, resource.PropertyMap, error) {
+	id, props, err := m.envMocks.NewResource(args)
+	if args.TypeToken == "github:index/team:Team" {
+		id = "4242"
 	}
-	// A string literal with a wildcard and no slash: a tag glob. (File paths,
-	// like guardReviewPaths, carry a slash.)
-	glob := regexp.MustCompile(`"[^"/\n]*\*[^"/\n]*"`)
-	var mainSrc string
-	for _, f := range files {
-		if strings.HasSuffix(f, "_test.go") || f == "release_tags.go" {
-			continue
-		}
-		src, err := os.ReadFile(f)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if f == "main.go" {
-			mainSrc = string(src)
-		}
-		for i, line := range strings.Split(string(src), "\n") {
-			if strings.HasPrefix(strings.TrimSpace(line), "//") {
-				continue
-			}
-			if m := glob.FindString(line); m != "" {
-				t.Errorf("%s:%d has the pattern %s inline; declare tag patterns in environmentTagPatterns (release_tags.go)", f, i+1, m)
-			}
-		}
-	}
-	if !strings.Contains(mainSrc, "releaseTagProtection(ctx, repo)") {
-		t.Error("main.go does not call releaseTagProtection; the ruleset would never be declared")
-	}
+	return id, props, err
 }
 
-// Under Pulumi's mock engine: one active tag ruleset with the rules above.
-func TestReleaseTagResources(t *testing.T) {
-	mocks := &guardMocks{resources: map[string]resource.PropertyMap{}}
-	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
-		repo, err := github.NewRepository(ctx, "vitruvian-core", &github.RepositoryArgs{
-			Name: pulumi.String("vitruvian-core"),
-		})
-		if err != nil {
-			return err
+// runProgram runs the WHOLE stack (program, as main runs it) under Pulumi's
+// mock engine with the committed stack config, and returns every registered
+// resource's inputs by type token.
+func runProgram(t *testing.T) map[string][]resource.PropertyMap {
+	t.Helper()
+	t.Setenv("PULUMI_CONFIG", stackConfigEnv(t))
+	// Stand-ins for the secrets CI injects (copybara-sync App, CI telemetry
+	// webhook), and the
+	// site-domain switch left off, so the run needs no real secret.
+	t.Setenv("SYNC_APP_ID", "1")
+	t.Setenv("SYNC_APP_PRIVATE_KEY", "test-only-not-a-key")
+	t.Setenv("OTEL_GITHUB_WEBHOOK_SECRET", "test-only")
+	t.Setenv("SITE_DOMAIN_MANAGED", "")
+	mocks := &programMocks{envMocks{resources: map[string][]resource.PropertyMap{}}}
+	if err := pulumi.RunErr(program, pulumi.WithMocks("vitruvian-core-repo-config", "dev", mocks)); err != nil {
+		t.Fatalf("program: %v", err)
+	}
+	return mocks.resources
+}
+
+func propStrings(v resource.PropertyValue) []string {
+	if !v.IsArray() {
+		return nil
+	}
+	var out []string
+	for _, e := range v.ArrayValue() {
+		out = append(out, e.StringValue())
+	}
+	return out
+}
+
+// The program as applied registers exactly one tag ruleset, release-tags,
+// with the shape the unit tests above check piecewise: wiring it out of
+// main.go, or changing it on the way, fails here.
+func TestProgramRegistersReleaseTagRuleset(t *testing.T) {
+	res := runProgram(t)
+
+	var tagRulesets []resource.PropertyMap
+	for _, rs := range res["github:index/repositoryRuleset:RepositoryRuleset"] {
+		if rs["target"].StringValue() == "tag" || rs["name"].StringValue() == "release-tags" {
+			tagRulesets = append(tagRulesets, rs)
 		}
-		return releaseTagProtection(ctx, repo)
-	}, pulumi.WithMocks("repo-config", "dev", mocks))
-	if err != nil {
-		t.Fatalf("releaseTagProtection: %v", err)
 	}
-	rs := mocks.resources["github:index/repositoryRuleset:RepositoryRuleset"]
-	if rs == nil {
-		t.Fatal("no ruleset declared")
+	if len(tagRulesets) != 1 {
+		t.Fatalf("program registers %d tag rulesets, want exactly one (release-tags)", len(tagRulesets))
 	}
+	rs := tagRulesets[0]
 	if rs["name"].StringValue() != "release-tags" || rs["target"].StringValue() != "tag" || rs["enforcement"].StringValue() != "active" {
-		t.Errorf("ruleset = %v, want an active tag ruleset named release-tags", rs)
+		t.Errorf("ruleset = %v/%v/%v, want release-tags/tag/active", rs["name"], rs["target"], rs["enforcement"])
 	}
+
+	ref := rs["conditions"].ObjectValue()["refName"].ObjectValue()
+	if inc := propStrings(ref["includes"]); len(inc) != 1 || inc[0] != "~ALL" {
+		t.Errorf("includes = %v, want [~ALL]", inc)
+	}
+	exc := propStrings(ref["excludes"])
+	var wantExc []string
+	for _, tag := range []string{"vitruvian-beta-latest", "esp32-s3-beta-latest", "gravastar-mouse-beta-latest", "tabula-extension-dev-latest"} {
+		wantExc = append(wantExc, "refs/tags/"+tag)
+	}
+	if strings.Join(exc, " ") != strings.Join(wantExc, " ") {
+		t.Errorf("excludes = %v, want %v", exc, wantExc)
+	}
+
 	rules := rs["rules"].ObjectValue()
+	if len(rules) != 3 {
+		t.Errorf("rules = %v, want exactly creation, update and deletion", rules)
+	}
 	for _, k := range []resource.PropertyKey{"creation", "update", "deletion"} {
 		if !rules[k].IsBool() || !rules[k].BoolValue() {
 			t.Errorf("rules.%s = %v, want true", k, rules[k])
 		}
 	}
-	if got := len(rs["bypassActors"].ArrayValue()); got != 2 {
-		t.Errorf("bypassActors has %d entries, want 2 (admins, copybara-sync)", got)
+
+	var actors []string
+	for _, a := range rs["bypassActors"].ArrayValue() {
+		o := a.ObjectValue()
+		actors = append(actors, fmt.Sprintf("%d/%s/%s", int64(o["actorId"].NumberValue()), o["actorType"].StringValue(), o["bypassMode"].StringValue()))
+	}
+	if got, want := strings.Join(actors, " "), "5/RepositoryRole/always 3863936/Integration/always"; got != want {
+		t.Errorf("bypassActors = %s, want %s", got, want)
+	}
+}
+
+// Every tag pattern an Environment really accepts deploys from (read from
+// the deployment policies the program registers, however the pattern was
+// built) must leave the exempt rolling tags out: an exempt tag that an
+// Environment accepts reopens the deploy path. The registered set must also
+// equal environmentTagPatterns, so the constants stay the truth.
+func TestDeployTagPatternsNeverMatchExemptTags(t *testing.T) {
+	res := runProgram(t)
+
+	var exempt []string
+	for _, rs := range res["github:index/repositoryRuleset:RepositoryRuleset"] {
+		if rs["name"].StringValue() != "release-tags" {
+			continue
+		}
+		for _, e := range propStrings(rs["conditions"].ObjectValue()["refName"].ObjectValue()["excludes"]) {
+			exempt = append(exempt, strings.TrimPrefix(e, "refs/tags/"))
+		}
+	}
+	if len(exempt) == 0 {
+		t.Fatal("found no exempt tags on a registered release-tags ruleset; the check would be blind")
+	}
+
+	registered := map[string]bool{}
+	for _, p := range res["github:index/repositoryEnvironmentDeploymentPolicy:RepositoryEnvironmentDeploymentPolicy"] {
+		if v, ok := p["tagPattern"]; ok && v.IsString() && v.StringValue() != "" {
+			registered[v.StringValue()] = true
+		}
+	}
+	if len(registered) == 0 {
+		t.Fatal("the program registers no tag deployment policy; the check would be blind")
+	}
+	for pattern := range registered {
+		for _, tag := range exempt {
+			if ok, err := path.Match(pattern, tag); err != nil || ok {
+				t.Errorf("Environment tag pattern %q accepts the exempt tag %q (err %v); exempt tags must never be deployable", pattern, tag, err)
+			}
+		}
+	}
+
+	declared := map[string]bool{}
+	for _, p := range environmentTagPatterns {
+		declared[p] = true
+	}
+	for p := range registered {
+		if !declared[p] {
+			t.Errorf("the program registers tag pattern %q, which is not in environmentTagPatterns", p)
+		}
+	}
+	for p := range declared {
+		if !registered[p] {
+			t.Errorf("environmentTagPatterns lists %q, which no Environment uses", p)
+		}
 	}
 }
