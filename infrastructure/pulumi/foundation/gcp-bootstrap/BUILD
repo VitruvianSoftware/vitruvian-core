@@ -11,4 +11,7 @@ pulumi_project(
 
 # `bazel test //infrastructure/pulumi/foundation/gcp-bootstrap:test` runs the
 # stack's `go test ./...` locally (see pulumi_go_test() in defs.bzl).
-pulumi_go_test()
+pulumi_go_test(
+    # sa_preview_test.go runs the whole program with the committed stack config.
+    extra_data = ["Pulumi.production.yaml"],
+)

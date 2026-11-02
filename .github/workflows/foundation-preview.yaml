@@ -51,6 +51,9 @@ jobs:
       # representative leg per stage, to avoid duplicate runs) additionally
       # vets/tests the shared modules Go module, which the per-leaf `go vet
       # ./...` compiles but does not analyze.
+      # `preview_service_account` is the read-only identity the leg runs as;
+      # it must match the identity gcp-bootstrap binds to the leg's
+      # `environment` (sa_preview.go previewEnvironments).
       matrix:
         include:
           - app: gcp-bootstrap
@@ -58,11 +61,13 @@ jobs:
             stage_dir: infrastructure/pulumi/foundation/gcp-bootstrap
             stack: production
             environment: foundation-bootstrap-preview
+            preview_service_account: sa-terraform-bootstrap-preview@prj-b-seed-c010.iam.gserviceaccount.com
           - app: org-folders
             dir: infrastructure/pulumi/foundation/org-folders
             stage_dir: infrastructure/pulumi/foundation/org-folders
             stack: production
             environment: foundation-org-folders-preview
+            preview_service_account: sa-terraform-bootstrap-preview@prj-b-seed-c010.iam.gserviceaccount.com
           # 1-org lives at envs/shared (upstream 1-org/envs/shared), a single
           # leaf; stack ipv1337/foundation-org-shared/production.
           - app: gcp-org
@@ -71,6 +76,7 @@ jobs:
             modules_dir: infrastructure/pulumi/foundation/gcp-org/modules
             stack: production
             environment: foundation-org-preview
+            preview_service_account: sa-terraform-org-preview@prj-b-seed-c010.iam.gserviceaccount.com
           # gcp-environments: preview the development leaf as the representative
           # leg per the old stack-based matrix — it runs first in the promotion
           # chain and reads the cross-stack StackReference to the applied
@@ -83,6 +89,7 @@ jobs:
             modules_dir: infrastructure/pulumi/foundation/gcp-environments/modules
             stack: production
             environment: foundation-env-preview
+            preview_service_account: sa-terraform-env-preview@prj-b-seed-c010.iam.gserviceaccount.com
           # gcp-networks: the old development STACK deployed the hub AND a spoke
           # with secondary ranges in one program; the leaf split moved the hub
           # into envs/shared and the spoke into envs/development. Preview BOTH
@@ -93,12 +100,14 @@ jobs:
             stage_dir: infrastructure/pulumi/foundation/gcp-networks
             stack: production
             environment: foundation-net-preview
+            preview_service_account: sa-terraform-net-preview@prj-b-seed-c010.iam.gserviceaccount.com
           - app: gcp-networks-development
             dir: infrastructure/pulumi/foundation/gcp-networks/envs/development
             stage_dir: infrastructure/pulumi/foundation/gcp-networks
             modules_dir: infrastructure/pulumi/foundation/gcp-networks/modules
             stack: production
             environment: foundation-net-preview
+            preview_service_account: sa-terraform-net-preview@prj-b-seed-c010.iam.gserviceaccount.com
           # gcp-projects (stage 4): the business_unit_1/shared leaf (BU
           # infra-pipeline, extracted modules/infra_pipelines) plus the
           # development leaf (floating-only base_env; reads the 2-environments
@@ -109,12 +118,14 @@ jobs:
             stage_dir: infrastructure/pulumi/foundation/gcp-projects
             stack: production
             environment: foundation-proj-preview
+            preview_service_account: sa-terraform-proj-preview@prj-b-seed-c010.iam.gserviceaccount.com
           - app: gcp-projects-development
             dir: infrastructure/pulumi/foundation/gcp-projects/business_unit_1/development
             stage_dir: infrastructure/pulumi/foundation/gcp-projects
             modules_dir: infrastructure/pulumi/foundation/gcp-projects/modules
             stack: production
             environment: foundation-proj-preview
+            preview_service_account: sa-terraform-proj-preview@prj-b-seed-c010.iam.gserviceaccount.com
           # business_unit_2 (tabula): one representative leaf. No modules_dir —
           # bu1's development leg already carries the single modules vet/test run
           # for this stage, and a second one would just duplicate it.
@@ -123,6 +134,7 @@ jobs:
             stage_dir: infrastructure/pulumi/foundation/gcp-projects
             stack: production
             environment: foundation-proj-preview
+            preview_service_account: sa-terraform-proj-preview@prj-b-seed-c010.iam.gserviceaccount.com
           # nonproduction + production leaves of BOTH business units. Previously
           # UNCOVERED: only the shared/development leaves above were previewed,
           # so a config or type error confined to a nonprod/prod leaf reached
@@ -135,21 +147,25 @@ jobs:
             stage_dir: infrastructure/pulumi/foundation/gcp-projects
             stack: production
             environment: foundation-proj-preview
+            preview_service_account: sa-terraform-proj-preview@prj-b-seed-c010.iam.gserviceaccount.com
           - app: gcp-projects-production
             dir: infrastructure/pulumi/foundation/gcp-projects/business_unit_1/production
             stage_dir: infrastructure/pulumi/foundation/gcp-projects
             stack: production
             environment: foundation-proj-preview
+            preview_service_account: sa-terraform-proj-preview@prj-b-seed-c010.iam.gserviceaccount.com
           - app: gcp-projects-bu2-nonproduction
             dir: infrastructure/pulumi/foundation/gcp-projects/business_unit_2/nonproduction
             stage_dir: infrastructure/pulumi/foundation/gcp-projects
             stack: production
             environment: foundation-proj-preview
+            preview_service_account: sa-terraform-proj-preview@prj-b-seed-c010.iam.gserviceaccount.com
           - app: gcp-projects-bu2-production
             dir: infrastructure/pulumi/foundation/gcp-projects/business_unit_2/production
             stage_dir: infrastructure/pulumi/foundation/gcp-projects
             stack: production
             environment: foundation-proj-preview
+            preview_service_account: sa-terraform-proj-preview@prj-b-seed-c010.iam.gserviceaccount.com
           # gcp-app-infra (stage 5). Its own config bug reached main and only
           # failed at deploy time because this leg was missing — previewing this
           # leaf would have caught the mangled config key immediately. Enabled
@@ -161,6 +177,7 @@ jobs:
             modules_dir: infrastructure/pulumi/foundation/gcp-app-infra/modules
             stack: production
             environment: foundation-app-preview
+            preview_service_account: sa-terraform-proj-preview@prj-b-seed-c010.iam.gserviceaccount.com
           # gcp-app-infra bu2 (tabula): one representative leaf. No modules_dir —
           # the bu1 leg above already runs the single modules vet/test for this
           # stage. This leg exists so the bu2 leaves' go vet/test run in CI and a
@@ -172,6 +189,7 @@ jobs:
             stage_dir: infrastructure/pulumi/foundation/gcp-app-infra
             stack: production
             environment: foundation-app-preview
+            preview_service_account: sa-terraform-proj-preview@prj-b-seed-c010.iam.gserviceaccount.com
     environment: ${{ matrix.environment }}
     env:
       GOWORK: off
@@ -236,7 +254,10 @@ jobs:
         uses: ./.github/actions/gcp-auth
         with:
           workload-identity-provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service-account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          # Each leg runs as its stage's READ-ONLY preview identity
+          # (gcp-bootstrap sa_preview.go), set per leg in the matrix. The
+          # foundation-*-preview Environments federate only to those identities.
+          service-account: ${{ matrix.preview_service_account }}
 
       - name: Install Pulumi
         if: steps.changes.outputs.stack == 'true'

@@ -21,13 +21,14 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 	"sync"
 	"testing"
 
-	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/serviceaccount"
 	"github.com/pulumi/pulumi/sdk/v3/go/common/resource"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 	"github.com/stretchr/testify/assert"
@@ -38,12 +39,14 @@ const (
 	saAccountType   = "gcp:serviceaccount/account:Account"
 	saIAMMemberType = "gcp:serviceaccount/iAMMember:IAMMember"
 	orgIAMMemberTyp = "gcp:organizations/iAMMember:IAMMember"
-	testSeedProject = "seed-proj"
+	wifUserRole     = "roles/iam.workloadIdentityUser"
+	envAttrPrefix   = "attribute.environment/"
+	mockProject     = "mock-proj"
 )
 
 // allowedPreviewRoles is the spec for what a preview identity may hold. It is
 // written out here, not read from previewReadRoles, so widening that list fails
-// this test until the spec is changed on purpose.
+// these tests until the spec is changed on purpose.
 var allowedPreviewRoles = []string{
 	"roles/browser",
 	"roles/iam.securityReviewer",
@@ -52,7 +55,7 @@ var allowedPreviewRoles = []string{
 }
 
 // expectedPreviewEnvironments is the spec for which read-only identity each
-// PR-preview GitHub Environment federates to.
+// PR-preview GitHub Environment federates to (account ids).
 var expectedPreviewEnvironments = map[string]string{
 	"foundation-bootstrap-preview":   "sa-terraform-bootstrap-preview",
 	"foundation-org-preview":         "sa-terraform-org-preview",
@@ -71,50 +74,187 @@ var forbiddenRoleMarkers = []string{
 	"workloadIdentityUser", "storage.object",
 }
 
-// previewMocks records every resource's inputs by type, and gives service
-// accounts and the WIF pool the computed outputs real GCP would.
-type previewMocks struct {
-	mu     sync.Mutex
-	inputs map[string][]resource.PropertyMap
+// recorded is one resource the program registered, with its resolved inputs.
+type recorded struct {
+	typ, name string
+	inputs    resource.PropertyMap
 }
 
-func (m *previewMocks) NewResource(args pulumi.MockResourceArgs) (string, resource.PropertyMap, error) {
+// programMocks records every resource and gives computed outputs the program
+// reads back (service account email/name, project number).
+type programMocks struct {
+	mu        sync.Mutex
+	resources []recorded
+}
+
+func (m *programMocks) NewResource(args pulumi.MockResourceArgs) (string, resource.PropertyMap, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.inputs == nil {
-		m.inputs = map[string][]resource.PropertyMap{}
-	}
-	m.inputs[args.TypeToken] = append(m.inputs[args.TypeToken], args.Inputs)
+	m.resources = append(m.resources, recorded{args.TypeToken, args.Name, args.Inputs})
 
 	outs := args.Inputs.Copy()
 	switch args.TypeToken {
 	case saAccountType:
 		id := args.Inputs["accountId"].StringValue()
-		email := fmt.Sprintf("%s@%s.iam.gserviceaccount.com", id, testSeedProject)
+		project := mockProject
+		if p, ok := args.Inputs["project"]; ok && p.IsString() && p.StringValue() != "" {
+			project = p.StringValue()
+		}
+		email := fmt.Sprintf("%s@%s.iam.gserviceaccount.com", id, project)
 		outs["email"] = resource.NewStringProperty(email)
-		outs["name"] = resource.NewStringProperty(fmt.Sprintf("projects/%s/serviceAccounts/%s", testSeedProject, email))
-	case "gcp:iam/workloadIdentityPool:WorkloadIdentityPool":
-		outs["name"] = resource.NewStringProperty("projects/123/locations/global/workloadIdentityPools/foundation-pool")
+		outs["name"] = resource.NewStringProperty(fmt.Sprintf("projects/%s/serviceAccounts/%s", project, email))
+		outs["member"] = resource.NewStringProperty("serviceAccount:" + email)
+	case "gcp:organizations/project:Project":
+		outs["number"] = resource.NewStringProperty("123456789012")
+	}
+	if _, ok := outs["name"]; !ok {
+		outs["name"] = resource.NewStringProperty("projects/123456789012/locations/global/mock/" + args.Name)
 	}
 	return args.Name + "_id", outs, nil
 }
 
-func (m *previewMocks) Call(args pulumi.MockCallArgs) (resource.PropertyMap, error) {
+func (m *programMocks) Call(args pulumi.MockCallArgs) (resource.PropertyMap, error) {
+	switch args.Token {
+	case "gcp:organizations/getOrganization:getOrganization":
+		return resource.NewPropertyMapFromMap(map[string]interface{}{"directoryCustomerId": "C0test", "orgId": "90456063361"}), nil
+	case "gcp:organizations/getProject:getProject":
+		return resource.NewPropertyMapFromMap(map[string]interface{}{"number": "123456789012", "projectId": mockProject}), nil
+	case "gcp:storage/getProjectServiceAccount:getProjectServiceAccount":
+		return resource.NewPropertyMapFromMap(map[string]interface{}{"emailAddress": "service-123@gs-project-accounts.iam.gserviceaccount.com"}), nil
+	}
 	return args.Args, nil
 }
 
-func (m *previewMocks) of(typ string) []resource.PropertyMap {
+// committedConfig reads Pulumi.production.yaml's single-line values into the
+// PULUMI_CONFIG shape, so the program runs with the real stack config.
+func committedConfig(t *testing.T) string {
+	t.Helper()
+	raw, err := os.ReadFile("Pulumi.production.yaml")
+	require.NoError(t, err)
+	cfg := map[string]string{}
+	for _, line := range strings.Split(string(raw), "\n") {
+		l := strings.TrimSpace(line)
+		if !strings.HasPrefix(l, "foundation-bootstrap:") {
+			continue
+		}
+		key, value, ok := strings.Cut(l, ": ")
+		if !ok {
+			continue
+		}
+		value = strings.TrimSpace(value)
+		if len(value) >= 2 && (value[0] == '"' || value[0] == '\'') && value[len(value)-1] == value[0] {
+			value = value[1 : len(value)-1]
+		}
+		cfg[key] = value
+	}
+	require.NotEmpty(t, cfg["foundation-bootstrap:org_id"], "Pulumi.production.yaml: org_id not found")
+	out, err := json.Marshal(cfg)
+	require.NoError(t, err)
+	return string(out)
+}
+
+// runWholeProgram runs the complete stack program under mocks with the
+// committed config and returns every resource it declared.
+func runWholeProgram(t *testing.T) []recorded {
+	t.Helper()
+	t.Setenv("PULUMI_CONFIG", committedConfig(t))
+	m := &programMocks{}
+	err := pulumi.RunErr(program, pulumi.WithMocks("foundation-bootstrap", "production", m))
+	require.NoError(t, err)
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.inputs[typ]
+	// The live stack has ~390 resources. A run that registers only a handful
+	// means the program stopped early, and every check below would pass on
+	// nothing.
+	require.Greater(t, len(m.resources), 200, "the whole program did not run")
+	t.Logf("whole program declared %d resources", len(m.resources))
+	return append([]recorded{}, m.resources...)
 }
 
-func saName(accountID string) string {
-	return fmt.Sprintf("projects/%s/serviceAccounts/%s@%s.iam.gserviceaccount.com", testSeedProject, accountID, testSeedProject)
+// stringsIn returns every string anywhere in a property value, including
+// inside arrays, maps and secrets, so a grant cannot hide in a nested field.
+func stringsIn(v resource.PropertyValue) []string {
+	switch {
+	case v.IsString():
+		return []string{v.StringValue()}
+	case v.IsArray():
+		var out []string
+		for _, e := range v.ArrayValue() {
+			out = append(out, stringsIn(e)...)
+		}
+		return out
+	case v.IsObject():
+		var out []string
+		for _, e := range v.ObjectValue() {
+			out = append(out, stringsIn(e)...)
+		}
+		return out
+	case v.IsSecret():
+		return stringsIn(v.SecretValue().Element)
+	case v.IsOutput():
+		return stringsIn(v.OutputValue().Element)
+	}
+	return nil
 }
 
-func testSeed() *SeedProject {
-	return &SeedProject{ProjectID: pulumi.String(testSeedProject).ToStringOutput()}
+func allStrings(r recorded) []string {
+	return stringsIn(resource.NewObjectProperty(r.inputs))
+}
+
+func str(r recorded, key string) string {
+	v, ok := r.inputs[resource.PropertyKey(key)]
+	if !ok {
+		return ""
+	}
+	if v.IsSecret() {
+		v = v.SecretValue().Element
+	}
+	if v.IsString() {
+		return v.StringValue()
+	}
+	return ""
+}
+
+// previewAccountsIn returns the preview account ids ("sa-terraform-x-preview")
+// whose email appears anywhere in s.
+func previewAccountsIn(s string) []string {
+	var out []string
+	for _, part := range strings.FieldsFunc(s, func(r rune) bool {
+		return r == ':' || r == '/' || r == '"' || r == ',' || r == ' ' || r == '\n' || r == '[' || r == ']' || r == '{' || r == '}'
+	}) {
+		if at := strings.Index(part, "-preview@"); at > 0 {
+			out = append(out, part[:at+len("-preview")])
+		}
+	}
+	return out
+}
+
+// previewEnvsIn returns every attribute.environment/<x>-preview named in s.
+func previewEnvsIn(s string) []string {
+	var out []string
+	for rest := s; ; {
+		i := strings.Index(rest, envAttrPrefix)
+		if i < 0 {
+			return out
+		}
+		rest = rest[i+len(envAttrPrefix):]
+		end := strings.IndexFunc(rest, func(r rune) bool {
+			return !(r == '-' || r == '_' || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9'))
+		})
+		env := rest
+		if end >= 0 {
+			env = rest[:end]
+		}
+		if strings.HasSuffix(env, "-preview") {
+			out = append(out, env)
+		}
+	}
+}
+
+func accountIDFromSAName(name string) string {
+	email := name[strings.LastIndex(name, "/")+1:]
+	id, _, _ := strings.Cut(email, "@")
+	return id
 }
 
 func TestPreviewReadRolesAreExactlyTheAllowedSet(t *testing.T) {
@@ -125,6 +265,7 @@ func TestPreviewReadRolesAreExactlyTheAllowedSet(t *testing.T) {
 	assert.Equal(t, want, got)
 
 	for _, role := range previewReadRoles {
+		assert.True(t, strings.HasPrefix(role, "roles/"), "preview role %q is not a predefined role", role)
 		for _, marker := range forbiddenRoleMarkers {
 			assert.NotContains(t, strings.ToLower(role), strings.ToLower(marker),
 				"preview role %q is not read-only (matches %q)", role, marker)
@@ -143,98 +284,88 @@ func TestPreviewSAAccountIDs(t *testing.T) {
 	assert.Error(t, err, "an id over 30 characters must be refused, not sent to GCP")
 }
 
-// Every preview identity holds exactly the allowed roles, and nothing else is
-// granted to it anywhere in this program's preview-identity code path.
-func TestPreviewIdentitiesHoldOnlyReadRoles(t *testing.T) {
-	m := &previewMocks{}
-	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
-		_, err := deployPreviewIdentities(ctx, &Config{OrgID: "123456789"}, testSeed())
-		return err
-	}, pulumi.WithMocks("foundation-bootstrap", "production", m))
-	require.NoError(t, err)
+// Every resource in the whole program that names a preview identity must be
+// one of exactly two shapes: an org-level grant of an allowed role to it, or
+// a workloadIdentityUser binding on it whose member is its own preview
+// Environment. Anything else (a project, folder, bucket or secret grant, a
+// binding, a policy, a custom role, a grant of it on another account) fails.
+func TestWholeProgramGrantsPreviewIdentitiesOnlyAllowedAccess(t *testing.T) {
+	resources := runWholeProgram(t)
 
-	var accounts []string
-	for _, in := range m.of(saAccountType) {
-		accounts = append(accounts, in["accountId"].StringValue())
+	allowed := map[string]bool{}
+	for _, r := range allowedPreviewRoles {
+		allowed[r] = true
 	}
-	sort.Strings(accounts)
-	assert.Equal(t, []string{
-		"sa-terraform-bootstrap-preview",
-		"sa-terraform-env-preview",
-		"sa-terraform-net-preview",
-		"sa-terraform-org-preview",
-		"sa-terraform-proj-preview",
-	}, accounts)
+	rolesByAccount := map[string][]string{}
 
-	rolesByMember := map[string][]string{}
-	for _, in := range m.of(orgIAMMemberTyp) {
-		member := in["member"].StringValue()
-		rolesByMember[member] = append(rolesByMember[member], in["role"].StringValue())
+	for _, r := range resources {
+		named := map[string]bool{}
+		for _, s := range allStrings(r) {
+			for _, id := range previewAccountsIn(s) {
+				named[id] = true
+			}
+		}
+		for id := range named {
+			switch {
+			case r.typ == orgIAMMemberTyp && strings.HasPrefix(str(r, "member"), "serviceAccount:"+id+"@"):
+				role := str(r, "role")
+				assert.True(t, allowed[role], "%s (%s): grants %q to %s, which is not an allowed preview role", r.name, r.typ, role, id)
+				rolesByAccount[id] = append(rolesByAccount[id], role)
+			case r.typ == saIAMMemberType && accountIDFromSAName(str(r, "serviceAccountId")) == id &&
+				!strings.Contains(str(r, "member"), "-preview@"):
+				assert.Equal(t, wifUserRole, str(r, "role"), "%s: %s on %s", r.name, str(r, "role"), id)
+				envs := previewEnvsIn(str(r, "member"))
+				if assert.Len(t, envs, 1, "%s: member %q is not a single preview Environment", r.name, str(r, "member")) {
+					assert.Equal(t, expectedPreviewEnvironments[envs[0]], id, "%s: %s federates to %s", r.name, envs[0], id)
+				}
+			default:
+				assert.Fail(t, "preview identity has access it must not have",
+					"%s (%s) names %s; only allowed org roles and its own Environment's federation are permitted", r.name, r.typ, id)
+			}
+		}
 	}
+
 	want := append([]string{}, allowedPreviewRoles...)
 	sort.Strings(want)
-	for _, id := range accounts {
-		member := fmt.Sprintf("serviceAccount:%s@%s.iam.gserviceaccount.com", id, testSeedProject)
-		got := rolesByMember[member]
+	for _, id := range []string{
+		"sa-terraform-bootstrap-preview", "sa-terraform-env-preview", "sa-terraform-net-preview",
+		"sa-terraform-org-preview", "sa-terraform-proj-preview",
+	} {
+		got := rolesByAccount[id]
 		sort.Strings(got)
 		assert.Equal(t, want, got, "org roles for %s", id)
 	}
-	assert.Len(t, rolesByMember, len(accounts), "org roles granted to an identity that is not a preview SA")
-
-	// No service-account-level grants (actAs, token minting) to or from them.
-	assert.Empty(t, m.of(saIAMMemberType), "preview identities must not get service-account-level grants")
 }
 
-// Each PR-preview Environment federates to its read-only identity.
-func TestPreviewEnvironmentsFederateToPreviewIdentities(t *testing.T) {
-	m := &previewMocks{}
-	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
-		sas := map[string]*serviceaccount.Account{}
-		for _, key := range previewStageKeys {
-			sa, err := serviceaccount.NewAccount(ctx, "sa-terraform-"+key, &serviceaccount.AccountArgs{
-				Project:   pulumi.String(testSeedProject),
-				AccountId: pulumi.String("sa-terraform-" + key),
-			})
-			if err != nil {
-				return err
-			}
-			sas[key] = sa
-		}
-		cfg := &Config{OrgID: "123456789", GitHubOwner: "VitruvianSoftware"}
-		previewSAs, err := deployPreviewIdentities(ctx, cfg, testSeed())
-		if err != nil {
-			return err
-		}
-		cicd := &CICDProject{ProjectID: pulumi.String("cicd-proj").ToStringOutput()}
-		_, err = deployGitHubActionsBuild(ctx, cfg, testSeed(), cicd, sas, previewSAs, nil)
-		return err
-	}, pulumi.WithMocks("foundation-bootstrap", "production", m))
-	require.NoError(t, err)
+// Each preview Environment reaches its read-only identity and nothing else:
+// across every resource the program declares, the only thing that may name a
+// preview Environment is the workloadIdentityUser binding on its preview SA.
+func TestWholeProgramPreviewEnvironmentsReachOnlyTheirPreviewIdentity(t *testing.T) {
+	resources := runWholeProgram(t)
 
-	// attribute.environment/<env> -> service accounts it may impersonate.
-	federated := map[string][]string{}
-	for _, in := range m.of(saIAMMemberType) {
-		if in["role"].StringValue() != "roles/iam.workloadIdentityUser" {
-			continue
-		}
-		member := in["member"].StringValue()
-		i := strings.Index(member, "attribute.environment/")
-		require.GreaterOrEqual(t, i, 0, "unexpected WIF member %q", member)
-		env := strings.TrimPrefix(member[i:], "attribute.environment/")
-		federated[env] = append(federated[env], in["serviceAccountId"].StringValue())
-	}
-
-	for env, previewID := range expectedPreviewEnvironments {
-		assert.Contains(t, federated[env], saName(previewID), "%s must federate to %s", env, previewID)
-	}
-
-	// Deploy Environments must never federate to a preview identity, and a
-	// preview identity must never be reachable from a non-preview Environment.
-	for env, accounts := range federated {
-		for _, account := range accounts {
-			if strings.Contains(account, "-preview@") {
-				assert.True(t, strings.HasSuffix(env, "-preview"), "%s federates to preview identity %s", env, account)
+	reached := map[string][]string{}
+	for _, r := range resources {
+		envs := map[string]bool{}
+		for _, s := range allStrings(r) {
+			for _, env := range previewEnvsIn(s) {
+				envs[env] = true
 			}
 		}
+		for env := range envs {
+			want, known := expectedPreviewEnvironments[env]
+			if !assert.True(t, known, "%s (%s) names unknown preview Environment %s", r.name, r.typ, env) {
+				continue
+			}
+			if !assert.Equal(t, saIAMMemberType, r.typ, "%s names %s but is a %s, not its federation binding", r.name, env, r.typ) {
+				continue
+			}
+			assert.Equal(t, wifUserRole, str(r, "role"), "%s: %s gets %s", r.name, env, str(r, "role"))
+			got := accountIDFromSAName(str(r, "serviceAccountId"))
+			assert.Equal(t, want, got, "%s: %s reaches %s; it may reach only %s", r.name, env, got, want)
+			reached[env] = append(reached[env], got)
+		}
+	}
+	for env, want := range expectedPreviewEnvironments {
+		assert.Equal(t, []string{want}, reached[env], "%s must federate to exactly %s", env, want)
 	}
 }
