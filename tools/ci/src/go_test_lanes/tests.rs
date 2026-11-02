@@ -685,3 +685,125 @@ fn an_if_reading_an_unknown_output_is_not_a_lane() {
         r.disabled
     );
 }
+
+// --- aegis non-blocking findings on #4212 (follow-up) ---------------------
+
+const OUT_EX: &str = "needs.changes.outputs.go-test-examples";
+const OUT_IAC: &str = "needs.changes.outputs.go-test-iac";
+
+#[test]
+fn a_job_gate_comparison_must_mean_the_filter_matched() {
+    for cmp in ["== 'false'", "!= 'true'", "== \"false\"", "== 'yes'"] {
+        let job_if = format!(
+            "${{{{ needs.changes.result != 'success' || {OUT_IAC} == 'true' || {OUT_EX} {cmp} }}}}"
+        );
+        let w = Wiring {
+            job_if: &job_if,
+            ..Wiring::default()
+        };
+        assert_not_a_lane(&w.ci(), "only == 'true' or != 'false'");
+    }
+}
+
+#[test]
+fn a_step_gate_comparison_must_mean_the_filter_matched() {
+    let t = example_tree("stepcmp");
+    let ci = Wiring::default().ci().replace(
+        &format!("|| {OUT_EX} == 'true'\n"),
+        &format!("|| {OUT_EX} == 'false'\n"),
+    );
+    assert!(ci.contains("== 'false'\n"), "fixture changed");
+    let r = t.check(&ci, "");
+    assert_eq!(r.uncovered().len(), 1, "{:?}", r.disabled);
+}
+
+#[test]
+fn a_bare_or_negated_read_is_not_a_lane() {
+    for gate in [
+        format!("{OUT_EX}"),
+        format!("!{OUT_EX}"),
+        format!("!({OUT_EX} == 'true')"),
+    ] {
+        let job_if = format!(
+            "${{{{ needs.changes.result != 'success' || {OUT_IAC} == 'true' || {gate} }}}}"
+        );
+        let w = Wiring {
+            job_if: &job_if,
+            ..Wiring::default()
+        };
+        let t = example_tree("bare");
+        let r = t.check(&w.ci(), "");
+        assert_eq!(
+            r.uncovered().len(),
+            1,
+            "`{gate}` must not count: {:?}",
+            r.disabled
+        );
+    }
+}
+
+#[test]
+fn run_unless_sure_counts() {
+    let job_if = format!("${{{{ needs.changes.result != 'success' || {OUT_IAC} != 'false' || {OUT_EX} != 'false' }}}}");
+    let w = Wiring {
+        job_if: &job_if,
+        ..Wiring::default()
+    };
+    let t = example_tree("unlesssure");
+    let r = t.check(&w.ci(), "");
+    assert!(r.ok(), "{:?}", r);
+}
+
+#[test]
+fn a_failure_or_cancelled_gate_is_not_a_lane() {
+    for prefix in ["failure() && ", "cancelled() && ", "( failure() ) && "] {
+        let job_if = format!("${{{{ {prefix}(needs.changes.result != 'success' || {OUT_IAC} == 'true' || {OUT_EX} == 'true') }}}}");
+        let w = Wiring {
+            job_if: &job_if,
+            ..Wiring::default()
+        };
+        assert_not_a_lane(&w.ci(), "runs only on");
+    }
+    // The real gate's `!cancelled()` is the opposite, and fine.
+    let t = example_tree("notcancelled");
+    assert!(t.check(&Wiring::default().ci(), "").ok());
+}
+
+#[test]
+fn an_unquoted_or_double_quoted_literal_is_not_a_lane() {
+    // aegis on #4223: GitHub coerces `'true' == true` to NaN == 1, false,
+    // so the gate never fires. Only the single-quoted literal is a string.
+    for cmp in [
+        "== true",
+        "== \"true\"",
+        "!= false",
+        "!= \"false\"",
+        "== 1",
+        "== 'true '",
+    ] {
+        let job_if = format!(
+            "${{{{ needs.changes.result != 'success' || {OUT_IAC} == 'true' || {OUT_EX} {cmp} }}}}"
+        );
+        let w = Wiring {
+            job_if: &job_if,
+            ..Wiring::default()
+        };
+        assert_not_a_lane(&w.ci(), "(single-quoted)");
+
+        let t = example_tree("stepliteral");
+        let ci = Wiring::default().ci().replace(
+            &format!("|| {OUT_EX} == 'true'\n"),
+            &format!("|| {OUT_EX} {cmp}\n"),
+        );
+        assert!(ci.contains(&format!("{OUT_EX} {cmp}\n")), "fixture changed");
+        let r = t.check(&ci, "");
+        assert_eq!(r.uncovered().len(), 1, "step `{cmp}`: {:?}", r.disabled);
+        assert!(
+            r.disabled
+                .iter()
+                .any(|(_, w)| w.contains("(single-quoted)")),
+            "{:?}",
+            r.disabled
+        );
+    }
+}
