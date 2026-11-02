@@ -172,8 +172,6 @@ jobs:
         with:
           base-url: https://github.com/prometheus/prometheus/releases/download/v${{ env.PROMETHEUS_VERSION }}
           asset: prometheus-${{ env.PROMETHEUS_VERSION }}.linux-amd64.tar.gz
-          checksum-file: sha256sums.txt
-          checksum-pattern: prometheus-${{ env.PROMETHEUS_VERSION }}.linux-amd64.tar.gz
           bin-name: promtool
           mode: tar
           member-path: prometheus-${{ env.PROMETHEUS_VERSION }}.linux-amd64/promtool

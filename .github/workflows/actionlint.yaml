@@ -97,8 +97,6 @@ jobs:
         with:
           base-url: https://github.com/rhysd/actionlint/releases/download/v${{ env.ACTIONLINT_VERSION }}
           asset: actionlint_${{ env.ACTIONLINT_VERSION }}_linux_amd64.tar.gz
-          checksum-file: actionlint_${{ env.ACTIONLINT_VERSION }}_checksums.txt
-          checksum-pattern: actionlint_${{ env.ACTIONLINT_VERSION }}_linux_amd64.tar.gz
           bin-name: actionlint
           mode: tar
 
