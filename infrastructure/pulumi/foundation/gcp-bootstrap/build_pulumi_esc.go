@@ -146,6 +146,7 @@ func deployPulumiESCOIDC(ctx *pulumi.Context, cfg *Config, cicd *CICDProject, is
 		Project:                        cicd.ProjectID,
 		WorkloadIdentityPoolId:         pool.WorkloadIdentityPoolId,
 		WorkloadIdentityPoolProviderId: pulumi.String(cfg.PulumiESCProviderID),
+		Disabled:                       pulumi.Bool(false),
 		DisplayName:                    pulumi.String("Pulumi Cloud OIDC"),
 		Description:                    pulumi.String("Issuer api.pulumi.com/oidc; subjects are ESC environments"),
 		AttributeCondition:             pulumi.String(fmt.Sprintf("assertion.aud == %q", audience)),

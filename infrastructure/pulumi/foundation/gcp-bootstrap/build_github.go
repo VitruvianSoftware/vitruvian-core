@@ -24,6 +24,7 @@ import (
 	"fmt"
 
 	libcicd "github.com/VitruvianSoftware/pulumi-library/go/pkg/cicd"
+	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/iam"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/orgpolicy"
 	"github.com/pulumi/pulumi-gcp/sdk/v9/go/gcp/serviceaccount"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
@@ -194,7 +195,7 @@ func deployGitHubActionsBuild(ctx *pulumi.Context, cfg *Config, _ *SeedProject, 
 		ProviderID:         pulumi.String("foundation-gh-provider"),
 		AttributeCondition: pulumi.String(attributeCondition),
 		SAMapping:          saMappings,
-	}, pulumi.DependsOn(wifDeps))
+	}, pulumi.DependsOn(wifDeps), pulumi.Transformations([]pulumi.ResourceTransformation{pinFoundationWIFSettings}))
 	if err != nil {
 		return nil, err
 	}
@@ -206,4 +207,38 @@ func deployGitHubActionsBuild(ctx *pulumi.Context, cfg *Config, _ *SeedProject, 
 	outputs.WIFProviderName = githubOidc.Provider.Name
 
 	return outputs, nil
+}
+
+// pinFoundationWIFSettings sets, on the pool and provider the cicd library
+// creates, the security-relevant settings the library leaves to provider
+// defaults. The library's args do not expose them, so they are set here on the
+// resources it registers. Each value equals what is live, so this changes
+// nothing in GCP; what it changes is that a default can no longer move under us.
+//
+// Pinned here: `disabled = false` on the provider (the pool already sets it).
+//
+// Deliberately NOT set, and pinned as ABSENT by the whole-program tests instead
+// (pools: wif_settings_test.go; providers: expectedProviderInputs in
+// sa_preview_test.go):
+//   - pool `mode`: unset means FEDERATION_ONLY, and the field is immutable, so
+//     writing it into a pool created without it would be refused at apply.
+//   - provider `oidc.allowedAudiences`: unset means the only accepted audience
+//     is this provider's own full resource name, which is the narrowest choice.
+//   - provider `oidc.jwksJson`: unset means keys are fetched from the issuer.
+//
+// The attribute mapping, attribute condition and issuer are already explicit
+// (here and in the library) and are pinned value for value by the same tests.
+//
+// Note for an incident: because `disabled` is now declared, disabling the
+// provider by hand is reverted by the next apply. Disable it in code instead.
+func pinFoundationWIFSettings(args *pulumi.ResourceTransformationArgs) *pulumi.ResourceTransformationResult {
+	switch props := args.Props.(type) {
+	case *iam.WorkloadIdentityPoolArgs:
+		props.Disabled = pulumi.Bool(false)
+	case *iam.WorkloadIdentityPoolProviderArgs:
+		props.Disabled = pulumi.Bool(false)
+	default:
+		return nil
+	}
+	return &pulumi.ResourceTransformationResult{Props: args.Props, Opts: args.Opts}
 }

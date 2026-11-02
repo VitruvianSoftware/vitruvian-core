@@ -195,6 +195,7 @@ func deployHomelabClusterWIF(
 		Project:                        cicd.ProjectID,
 		WorkloadIdentityPoolId:         pool.WorkloadIdentityPoolId,
 		WorkloadIdentityPoolProviderId: pulumi.String(cfg.ClusterProviderID),
+		Disabled:                       pulumi.Bool(false),
 		DisplayName:                    pulumi.String("Homelab cluster OIDC"),
 		Description:                    pulumi.String("Projected ServiceAccount tokens from the homelab k3s cluster; JWKS supplied statically"),
 		AttributeCondition:             pulumi.String(condition),
