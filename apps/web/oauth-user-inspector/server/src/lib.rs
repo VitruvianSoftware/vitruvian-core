@@ -1453,4 +1453,155 @@ mod tests {
         assert_eq!(mismatch.redirect_uri, "https://inspector.example.com");
         assert!(!mismatch.state_valid);
     }
+
+    // =========================================================================
+    // Hosted mode: provider domain comes only from configuration
+    // =========================================================================
+
+    const CALLER_DOMAIN: &str = "caller-chosen.example";
+
+    /// Hosted-mode app whose Secret Manager holds the standard test secrets,
+    /// plus `ZITADEL_APP_OAUTH_DOMAIN` when given; `AUTH0_APP_OAUTH_DOMAIN` is
+    /// dropped when `with_auth0_domain` is false. Every fetch succeeds.
+    fn hosted_domain_test_app(
+        with_auth0_domain: bool,
+        zitadel_secret: Option<&'static str>,
+    ) -> (App, MockHttpFetcher) {
+        let standard = MockSecretBackend::standard_test_secrets();
+        let secrets = MockSecretBackend::new(move |name| {
+            if name.contains("ZITADEL_APP_OAUTH_DOMAIN") {
+                return Ok(zitadel_secret.map(String::from));
+            }
+            if name.contains("AUTH0_APP_OAUTH_DOMAIN") && !with_auth0_domain {
+                return Ok(None);
+            }
+            standard.access_secret_version(name)
+        });
+        let fetcher = MockHttpFetcher::new(|_url, _opts| {
+            Ok(mock_json_response(
+                200,
+                json!({ "access_token": "a", "refresh_token": "r" }),
+            ))
+        });
+        let app = App::with_backends(Arc::new(secrets), Arc::new(fetcher.clone()));
+        app.set_env("GOOGLE_CLOUD_PROJECT", Some("test-project".to_string()));
+        (app, fetcher)
+    }
+
+    /// (path, body) for each credentialed endpoint, naming `domain` as both the
+    /// Auth0 and Zitadel domain.
+    fn credentialed_requests(
+        provider: &str,
+        is_hosted: bool,
+        domain: &str,
+    ) -> Vec<(&'static str, Value)> {
+        let mut out = Vec::new();
+        for (path, mut body) in [
+            (
+                "/api/oauth/token",
+                json!({ "code": "c", "redirectUri": "https://inspector.example.com" }),
+            ),
+            ("/api/oauth/refresh", json!({ "refreshToken": "r" })),
+            ("/api/oauth/revoke", json!({ "token": "t" })),
+        ] {
+            let map = body.as_object_mut().unwrap();
+            map.insert("provider".into(), json!(provider));
+            map.insert("isHosted".into(), json!(is_hosted));
+            map.insert("auth0Domain".into(), json!(domain));
+            map.insert("zitadelDomain".into(), json!(domain));
+            if !is_hosted {
+                map.insert("clientId".into(), json!("byo-id"));
+                map.insert("clientSecret".into(), json!("byo-secret"));
+            }
+            out.push((path, body));
+        }
+        out
+    }
+
+    fn url_host(url: &str) -> String {
+        url.trim_start_matches("https://")
+            .split(['/', '?'])
+            .next()
+            .unwrap()
+            .to_string()
+    }
+
+    #[test]
+    fn hosted_requests_use_only_the_configured_provider_domain() {
+        // (provider, configured ZITADEL_APP_OAUTH_DOMAIN, expected host)
+        let cases: &[(&str, Option<&'static str>, &str)] = &[
+            ("auth0", None, "oauth-user-inspector.us.auth0.com"),
+            (
+                "zitadel",
+                Some("zitadel.configured.test"),
+                "zitadel.configured.test",
+            ),
+            ("zitadel", None, "auth.ipv1337.dev"),
+            ("github", None, ""),
+            ("google", None, ""),
+            ("gitlab", None, ""),
+            ("linkedin", None, ""),
+        ];
+        for &(provider, zitadel_secret, expected_host) in cases {
+            for (path, body) in credentialed_requests(provider, true, CALLER_DOMAIN) {
+                // No upstream call: GitHub OAuth Apps have no refresh grant and
+                // LinkedIn has no revoke endpoint.
+                if (provider, path) == ("github", "/api/oauth/refresh")
+                    || (provider, path) == ("linkedin", "/api/oauth/revoke")
+                {
+                    continue;
+                }
+                let (app, fetcher) = hosted_domain_test_app(true, zitadel_secret);
+                let res = app.handle_request(&HttpRequest::new("POST", path).with_json(body));
+                let ctx = format!("{provider} {path} (zitadel secret {zitadel_secret:?})");
+                assert_eq!(res.status, 200, "{ctx}: {}", res.text());
+                let calls = fetcher.recorded_calls();
+                assert!(!calls.is_empty(), "{ctx}: no upstream call");
+                for call in &calls {
+                    let host = url_host(&call.url);
+                    assert_ne!(
+                        host, CALLER_DOMAIN,
+                        "{ctx}: hosted request went to {}",
+                        call.url
+                    );
+                    if !expected_host.is_empty() {
+                        assert_eq!(host, expected_host, "{ctx}: {}", call.url);
+                    }
+                }
+                assert!(
+                    !res.text().contains(CALLER_DOMAIN),
+                    "{ctx}: response echoes the caller's domain: {}",
+                    res.text()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn hosted_auth0_without_configured_domain_is_refused() {
+        for (path, body) in credentialed_requests("auth0", true, CALLER_DOMAIN) {
+            let (app, fetcher) = hosted_domain_test_app(false, None);
+            let res = app.handle_request(&HttpRequest::new("POST", path).with_json(body));
+            assert_eq!(res.status, 500, "{path}: {}", res.text());
+            assert!(
+                fetcher.recorded_calls().is_empty(),
+                "{path}: made an upstream call: {:?}",
+                fetcher.recorded_calls()
+            );
+        }
+    }
+
+    #[test]
+    fn byo_requests_still_use_the_callers_provider_domain() {
+        for provider in ["auth0", "zitadel"] {
+            for (path, body) in credentialed_requests(provider, false, CALLER_DOMAIN) {
+                let (app, fetcher) = hosted_domain_test_app(true, Some("zitadel.configured.test"));
+                let res = app.handle_request(&HttpRequest::new("POST", path).with_json(body));
+                assert_eq!(res.status, 200, "{provider} {path}: {}", res.text());
+                let calls = fetcher.recorded_calls();
+                assert_eq!(calls.len(), 1, "{provider} {path}");
+                assert_eq!(url_host(&calls[0].url), CALLER_DOMAIN, "{provider} {path}");
+            }
+        }
+    }
 }
