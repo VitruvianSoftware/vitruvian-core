@@ -37,6 +37,11 @@
 //! behind a build tag) goes in allowlist.txt with its reason; an entry that
 //! no longer exists, or that a lane now covers, is itself an error.
 //!
+//! Not modelled (none hits a file today): a go_test excluded by
+//! `--test_tag_filters` (`e2e`) or `target_compatible_with`, and a
+//! `//go:build <tag>` file under a go_test_with_retry root, which plain
+//! `go test ./...` skips. A `.bazelignore`d path never counts as Bazel.
+//!
 //! Directories Go itself ignores (`testdata`, `vendor`, dot- and
 //! `_`-prefixed) are skipped, as are `node_modules` and the `bazel-*` links.
 
@@ -60,6 +65,9 @@ pub struct Report {
     pub files: BTreeMap<String, Cover>,
     /// The roots each ci.yaml job hands go_test_with_retry.
     pub lanes: Vec<(String, Vec<String>)>,
+    /// `"$GO_TEST_WITH_RETRY"` steps that do not count as lanes, and why
+    /// (`if: false`, `continue-on-error`, `|| true`, ...).
+    pub disabled: Vec<(String, String)>,
     /// Allowlist entries that are missing or now covered.
     pub stale: Vec<String>,
 }
@@ -123,7 +131,52 @@ fn owner<'a>(file: &str, mods: &'a [String]) -> Option<&'a str> {
         .map(String::as_str)
 }
 
-/// Every `go_test(...)` call in a BUILD file's text.
+/// A BUILD file's text with its `#` comments blanked out. Strings ("...",
+/// '...', and the triple-quoted forms) are kept intact, so a `#` inside one
+/// is not a comment; a commented-out `go_test(...)` disappears.
+pub fn strip_starlark_comments(text: &str) -> String {
+    let b = text.as_bytes();
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0;
+    while i < b.len() {
+        let c = b[i];
+        if c == b'#' {
+            while i < b.len() && b[i] != b'\n' {
+                i += 1;
+            }
+            continue;
+        }
+        if c == b'"' || c == b'\'' {
+            let triple = i + 2 < b.len() && b[i + 1] == c && b[i + 2] == c;
+            let q = if triple { 3 } else { 1 };
+            let start = i;
+            i += q;
+            while i < b.len() {
+                if b[i] == b'\\' {
+                    i += 2;
+                    continue;
+                }
+                if b[i] == c && (!triple || (i + 2 < b.len() && b[i + 1] == c && b[i + 2] == c)) {
+                    i += q;
+                    break;
+                }
+                if !triple && b[i] == b'\n' {
+                    break;
+                }
+                i += 1;
+            }
+            out.push_str(&text[start..i.min(b.len())]);
+            continue;
+        }
+        let len = text[i..].chars().next().map_or(1, char::len_utf8);
+        out.push_str(&text[i..i + len]);
+        i += len;
+    }
+    out
+}
+
+/// Every `go_test(...)` call in a BUILD file's text (comments already
+/// stripped).
 fn go_test_blocks(build: &str) -> Vec<&str> {
     let mut blocks = Vec::new();
     let mut rest = build;
@@ -173,9 +226,10 @@ fn in_bazel_go_test(repo: &Path, file: &str) -> bool {
     let base = p.file_name().unwrap_or_default().to_string_lossy();
     let quoted = format!("\"{base}\"");
     for build_name in ["BUILD.bazel", "BUILD"] {
-        let Ok(text) = fs::read_to_string(repo.join(dir).join(build_name)) else {
+        let Ok(raw) = fs::read_to_string(repo.join(dir).join(build_name)) else {
             continue;
         };
+        let text = strip_starlark_comments(&raw);
         return go_test_blocks(&text)
             .iter()
             .any(|b| !b.contains("\"manual\"") && (b.contains(&quoted) || globs_tests(b)));
@@ -183,52 +237,227 @@ fn in_bazel_go_test(repo: &Path, file: &str) -> bool {
     false
 }
 
-/// For each ci.yaml job that runs `"$GO_TEST_WITH_RETRY"`, the roots it
-/// tests: its `--root` arguments, or go_test_with_retry's IaC roots when it
-/// passes none.
-pub fn lanes_from_workflow(repo: &Path, ci_yaml: &str) -> Vec<(String, Vec<String>)> {
-    let mut lanes: Vec<(String, Vec<String>)> = Vec::new();
-    let mut job = String::new();
-    for line in ci_yaml.lines() {
-        // A job header: two-space indent, `name:` and nothing else.
-        if let Some(name) = line.strip_prefix("  ").and_then(|l| l.strip_suffix(':')) {
-            if !name.starts_with(' ') && !name.contains(' ') && !name.starts_with('#') {
-                job = name.to_string();
-            }
-        }
-        let code = line.split(" #").next().unwrap_or("").trim_start();
-        if code.starts_with('#') {
+const CALL: &str = "\"$GO_TEST_WITH_RETRY\"";
+
+fn indent(line: &str) -> usize {
+    line.len() - line.trim_start().len()
+}
+
+/// A YAML scalar with its trailing ` # comment` and quotes removed.
+fn scalar(v: &str) -> String {
+    let v = match v.find(" #") {
+        Some(i) => &v[..i],
+        None => v,
+    };
+    v.trim()
+        .trim_matches('"')
+        .trim_matches('\'')
+        .trim()
+        .to_string()
+}
+
+/// The value of `key:` among `lines` at exactly `at` spaces of indent (a
+/// step's first line is passed with its `- ` already blanked). A block
+/// scalar (`>-`, `|`) is joined from its deeper lines.
+fn key_value(lines: &[String], at: usize, key: &str) -> Option<String> {
+    let prefix = format!("{key}:");
+    for (i, l) in lines.iter().enumerate() {
+        if indent(l) != at || !l.trim_start().starts_with(&prefix) {
             continue;
         }
-        let Some(i) = code.find("\"$GO_TEST_WITH_RETRY\"") else {
-            continue;
-        };
-        let args: Vec<&str> = code[i + "\"$GO_TEST_WITH_RETRY\"".len()..]
-            .split_whitespace()
-            .collect();
-        let mut roots: Vec<String> = Vec::new();
-        let mut k = 0;
-        while k < args.len() {
-            if args[k] == "--root" && k + 1 < args.len() {
-                roots.push(
-                    args[k + 1]
-                        .trim_matches('"')
-                        .trim_end_matches('/')
-                        .to_string(),
-                );
-                k += 2;
-            } else {
-                k += 1;
-            }
-        }
-        if roots.is_empty() {
-            let base = repo.to_string_lossy().into_owned();
-            roots = go_test_with_retry::iac_roots_in(base.as_bytes())
-                .into_iter()
-                .map(|r| String::from_utf8_lossy(&r).into_owned())
+        let v = l.trim_start()[prefix.len()..].trim();
+        if v.starts_with('>') || v.starts_with('|') {
+            let body: Vec<&str> = lines[i + 1..]
+                .iter()
+                .take_while(|n| n.trim().is_empty() || indent(n) > at)
+                .map(|n| n.trim())
                 .collect();
+            return Some(body.join(" ").trim().to_string());
         }
-        lanes.push((job.clone(), roots));
+        return Some(scalar(v));
+    }
+    None
+}
+
+/// True for an `if:` that can never be true: `false`, `${{ false }}`,
+/// `0`, an empty string, or `false && ...` / `... && false`.
+fn constant_false(cond: &str) -> bool {
+    let mut c = cond.trim().to_string();
+    if let Some(inner) = c.strip_prefix("${{").and_then(|x| x.strip_suffix("}}")) {
+        c = inner.trim().to_string();
+    }
+    let c = c
+        .trim()
+        .trim_matches('(')
+        .trim_matches(')')
+        .trim()
+        .to_lowercase();
+    matches!(
+        c.as_str(),
+        "false" | "0" | "''" | "\"\"" | "null" | "!true" | "! true"
+    ) || c.starts_with("false &&")
+        || c.starts_with("false&&")
+        || c.ends_with("&& false")
+        || c.ends_with("&&false")
+        || c.contains("&& false &&")
+}
+
+/// Why a ci.yaml `"$GO_TEST_WITH_RETRY"` step could pass with failing tests,
+/// or None when its failure fails the job.
+fn why_disabled(
+    job_lines: &[String],
+    step_lines: &[String],
+    run: &[String],
+    call_at: usize,
+) -> Option<String> {
+    if let Some(c) = key_value(job_lines, 4, "if") {
+        if constant_false(&c) {
+            return Some(format!("job `if: {c}` never runs"));
+        }
+    }
+    if let Some(v) = key_value(job_lines, 4, "continue-on-error") {
+        if v != "false" {
+            return Some(format!("job `continue-on-error: {v}`"));
+        }
+    }
+    if let Some(c) = key_value(step_lines, 8, "if") {
+        if constant_false(&c) {
+            return Some(format!("step `if: {c}` never runs"));
+        }
+    }
+    if let Some(v) = key_value(step_lines, 8, "continue-on-error") {
+        if v != "false" {
+            return Some(format!("step `continue-on-error: {v}`"));
+        }
+    }
+    // The command itself, with `\` continuations joined: anything after the
+    // call that is not an argument can swallow its status (`|| true`,
+    // `; true`, `|| :`, `| tee` without pipefail, `&`).
+    let mut cmd = run[call_at].clone();
+    let mut k = call_at;
+    while cmd.trim_end().ends_with('\\') && k + 1 < run.len() {
+        k += 1;
+        cmd = format!(
+            "{} {}",
+            cmd.trim_end().trim_end_matches('\\'),
+            run[k].trim()
+        );
+    }
+    let tail = &cmd[cmd.find(CALL).unwrap() + CALL.len()..];
+    let tail = match tail.find(" #") {
+        Some(i) => &tail[..i],
+        None => tail,
+    };
+    if tail.contains(['|', ';', '&']) {
+        return Some(format!("its status can be swallowed: `{}`", cmd.trim()));
+    }
+    // GitHub runs bash with -e; a `set +e` before the call turns that off, so
+    // a later command decides the step's status.
+    if run[..call_at].iter().any(|l| {
+        let t = l.trim();
+        !t.starts_with('#') && (t.contains("set +e") || t.contains("set +o errexit"))
+    }) && run[k + 1..]
+        .iter()
+        .any(|l| !l.trim().is_empty() && !l.trim().starts_with('#'))
+    {
+        return Some("`set +e` before it, and later commands decide the step's status".into());
+    }
+    None
+}
+
+/// The `"$GO_TEST_WITH_RETRY"` steps of ci.yaml, by job: each with the roots
+/// it tests (its `--root` arguments, or go_test_with_retry's IaC roots when
+/// it passes none) and, if it cannot fail the build, why not.
+pub fn lanes_from_workflow(
+    repo: &Path,
+    ci_yaml: &str,
+) -> Vec<(String, Vec<String>, Option<String>)> {
+    let lines: Vec<String> = ci_yaml.lines().map(str::to_string).collect();
+    let mut lanes = Vec::new();
+    let Some(jobs_at) = lines.iter().position(|l| l.trim_end() == "jobs:") else {
+        return lanes;
+    };
+    let is_job = |l: &str| {
+        indent(l) == 2
+            && l.trim_end().ends_with(':')
+            && !l.trim_start().starts_with('#')
+            && !l.trim().contains(' ')
+    };
+    let mut i = jobs_at + 1;
+    while i < lines.len() {
+        if !is_job(&lines[i]) {
+            i += 1;
+            continue;
+        }
+        let job = lines[i].trim().trim_end_matches(':').to_string();
+        let end = (i + 1..lines.len())
+            .find(|&j| is_job(&lines[j]) || (indent(&lines[j]) == 0 && !lines[j].trim().is_empty()))
+            .unwrap_or(lines.len());
+        let job_lines = &lines[i + 1..end];
+        // Steps: each starts at `      - ` (6 spaces).
+        let starts: Vec<usize> = (0..job_lines.len())
+            .filter(|&j| indent(&job_lines[j]) == 6 && job_lines[j].trim_start().starts_with("- "))
+            .collect();
+        for (n, &st) in starts.iter().enumerate() {
+            let se = starts.get(n + 1).copied().unwrap_or_else(|| {
+                (st + 1..job_lines.len())
+                    .find(|&j| !job_lines[j].trim().is_empty() && indent(&job_lines[j]) <= 4)
+                    .unwrap_or(job_lines.len())
+            });
+            let mut step: Vec<String> = job_lines[st..se].to_vec();
+            step[0] = step[0].replacen("- ", "  ", 1);
+            // The run script: an inline `run: cmd`, or the block under `run: |`.
+            let Some(ri) = step
+                .iter()
+                .position(|l| indent(l) == 8 && l.trim_start().starts_with("run:"))
+            else {
+                continue;
+            };
+            let inline = step[ri].trim_start()["run:".len()..].trim().to_string();
+            let run: Vec<String> = if inline.starts_with('|') || inline.starts_with('>') {
+                step[ri + 1..]
+                    .iter()
+                    .take_while(|l| l.trim().is_empty() || indent(l) > 8)
+                    .cloned()
+                    .collect()
+            } else {
+                vec![inline]
+            };
+            for (c, line) in run.iter().enumerate() {
+                let code = line.trim_start();
+                if code.starts_with('#') || !code.contains(CALL) {
+                    continue;
+                }
+                let args: Vec<&str> = code[code.find(CALL).unwrap() + CALL.len()..]
+                    .split_whitespace()
+                    .collect();
+                let mut roots: Vec<String> = Vec::new();
+                let mut k = 0;
+                while k < args.len() {
+                    if args[k] == "--root" && k + 1 < args.len() {
+                        roots.push(
+                            args[k + 1]
+                                .trim_matches('"')
+                                .trim_end_matches('/')
+                                .to_string(),
+                        );
+                        k += 2;
+                    } else {
+                        k += 1;
+                    }
+                }
+                if roots.is_empty() {
+                    let base = repo.to_string_lossy().into_owned();
+                    roots = go_test_with_retry::iac_roots_in(base.as_bytes())
+                        .into_iter()
+                        .map(|r| String::from_utf8_lossy(&r).into_owned())
+                        .collect();
+                }
+                let why = why_disabled(job_lines, &step, &run, c);
+                lanes.push((job.clone(), roots, why));
+            }
+        }
+        i = end;
     }
     lanes
 }
@@ -243,8 +472,17 @@ pub fn parse_allowlist(text: &str) -> Vec<String> {
 }
 
 pub fn check(repo: &Path, ci_yaml: &str, allowlist: &str) -> Result<Report, String> {
-    let lanes = lanes_from_workflow(repo, ci_yaml);
-    if lanes.is_empty() {
+    let all = lanes_from_workflow(repo, ci_yaml);
+    let disabled: Vec<(String, String)> = all
+        .iter()
+        .filter_map(|(j, _, why)| why.clone().map(|w| (j.clone(), w)))
+        .collect();
+    let lanes: Vec<(String, Vec<String>)> = all
+        .into_iter()
+        .filter(|(_, _, why)| why.is_none())
+        .map(|(j, r, _)| (j, r))
+        .collect();
+    if lanes.is_empty() && disabled.is_empty() {
         return Err(
             "no \"$GO_TEST_WITH_RETRY\" step in ci.yaml: cannot tell which Go modules CI tests"
                 .into(),
@@ -254,9 +492,18 @@ pub fn check(repo: &Path, ci_yaml: &str, allowlist: &str) -> Result<Report, Stri
     let mut tests = Vec::new();
     walk(repo, "", &mut mods, &mut tests);
     let allow = parse_allowlist(allowlist);
+    // Bazel never loads a package under a .bazelignore path, so a go_test
+    // there is not run by `bazel test //...`.
+    let bazel_ignored: Vec<String> = fs::read_to_string(repo.join(".bazelignore"))
+        .unwrap_or_default()
+        .lines()
+        .map(|l| l.trim().trim_end_matches('/').to_string())
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .collect();
 
     let mut report = Report {
         lanes: lanes.clone(),
+        disabled,
         ..Report::default()
     };
     for file in &tests {
@@ -267,7 +514,8 @@ pub fn check(repo: &Path, ci_yaml: &str, allowlist: &str) -> Result<Report, Stri
                 .find(|(_, roots)| roots.iter().any(|r| !r.is_empty() && under(m, r)))
                 .map(|(j, _)| j.clone())
         });
-        let cover = if in_bazel_go_test(repo, file) {
+        let cover = if !bazel_ignored.iter().any(|d| under(file, d)) && in_bazel_go_test(repo, file)
+        {
             Cover::Bazel
         } else if let Some(j) = job {
             Cover::Job(j)
@@ -320,6 +568,9 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
     };
     for (job, roots) in &report.lanes {
         println!("lane {job}: go_test_with_retry over {}", roots.join(" "));
+    }
+    for (job, why) in &report.disabled {
+        println!("NOT a lane: the go_test_with_retry step in {job}: {why}");
     }
     let mut counts: BTreeMap<String, usize> = BTreeMap::new();
     for c in report.files.values() {

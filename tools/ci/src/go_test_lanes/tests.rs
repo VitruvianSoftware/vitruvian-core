@@ -226,3 +226,178 @@ fn a_srcs_glob_of_tests_covers_them() {
     );
     assert_eq!(cover(&t.check(CI, ""), "pkg/a_test.go"), Cover::Bazel);
 }
+
+// --- aegis review on #4212: things that must NOT read as covered ---------
+
+#[test]
+fn a_commented_out_go_test_does_not_count() {
+    let t = Tree::new("commented");
+    t.module("").write("pkg/a_test.go", "").write(
+        "pkg/BUILD",
+        "# go_test(\n#     name = \"a_test\",\n#     srcs = [\"a_test.go\"],\n# )\n",
+    );
+    assert_eq!(t.check(CI, "").uncovered(), vec!["pkg/a_test.go"]);
+}
+
+#[test]
+fn a_trailing_comment_naming_the_file_does_not_count() {
+    let t = Tree::new("trailing");
+    t.module("").write("pkg/a_test.go", "").write(
+        "pkg/BUILD",
+        "go_test(\n    name = \"t\",\n    srcs = [],  # was \"a_test.go\"\n)\n",
+    );
+    assert_eq!(t.check(CI, "").uncovered(), vec!["pkg/a_test.go"]);
+}
+
+#[test]
+fn a_hash_inside_a_string_is_not_a_comment() {
+    let t = Tree::new("hashstr");
+    t.module("").write("pkg/a_test.go", "").write(
+        "pkg/BUILD",
+        "go_test(\n    name = \"t\",\n    args = [\"--x=#1\"],\n    srcs = [\"a_test.go\"],\n)\n",
+    );
+    assert_eq!(cover(&t.check(CI, ""), "pkg/a_test.go"), Cover::Bazel);
+}
+
+#[test]
+fn a_bazelignored_go_test_does_not_count() {
+    let t = Tree::new("bazelignore");
+    t.module("")
+        .write(".bazelignore", "tools/initializer\n")
+        .write("tools/initializer/a_test.go", "")
+        .write(
+            "tools/initializer/BUILD",
+            "go_test(name = \"t\", srcs = [\"a_test.go\"])\n",
+        );
+    assert_eq!(
+        t.check(CI, "").uncovered(),
+        vec!["tools/initializer/a_test.go"]
+    );
+}
+
+/// A realistic example-build job: `body` replaces the job's `if:` line and
+/// `cmd` the test command; `step_extra` goes on the test step.
+fn example_job(job_if: &str, step_extra: &str, cmd: &str) -> String {
+    format!(
+        "name: CI\non:\n  pull_request:\njobs:\n  example-build:\n    {job_if}\n    runs-on: ubuntu\n    steps:\n      - uses: actions/checkout@x\n      - name: go test\n{step_extra}        env:\n          GO_TEST_WITH_RETRY: x\n        run: |\n          set -euo pipefail\n          {cmd}\n"
+    )
+}
+
+fn example_tree(name: &str) -> Tree {
+    let t = Tree::new(name);
+    t.module("packages/pulumi/examples/e")
+        .write("packages/pulumi/examples/e/e_test.go", "");
+    t
+}
+
+const EX_CMD: &str = "\"$GO_TEST_WITH_RETRY\" --root packages/pulumi/examples";
+
+#[test]
+fn a_live_lane_counts() {
+    let t = example_tree("live");
+    let ci = example_job(
+        "if: ${{ !cancelled() && needs.changes.outputs.x == 'true' }}",
+        "        if: steps.gate.outputs.relevant != 'false'\n",
+        EX_CMD,
+    );
+    let r = t.check(&ci, "");
+    assert!(r.ok(), "{:?}", r);
+    assert!(r.disabled.is_empty(), "{:?}", r.disabled);
+}
+
+#[test]
+fn a_job_that_never_runs_is_not_a_lane() {
+    for job_if in [
+        "if: false",
+        "if: ${{ false }}",
+        "if: 'false'",
+        "if: ${{ false && github.event_name == 'push' }}",
+    ] {
+        let t = example_tree("jobfalse");
+        let r = t.check(&example_job(job_if, "", EX_CMD), "");
+        assert_eq!(
+            r.uncovered(),
+            vec!["packages/pulumi/examples/e/e_test.go"],
+            "{job_if}"
+        );
+        assert!(
+            r.disabled[0].1.contains("never runs"),
+            "{job_if}: {:?}",
+            r.disabled
+        );
+    }
+}
+
+#[test]
+fn a_step_that_never_runs_is_not_a_lane() {
+    let t = example_tree("stepfalse");
+    let r = t.check(
+        &example_job("if: always()", "        if: false\n", EX_CMD),
+        "",
+    );
+    assert_eq!(r.uncovered().len(), 1);
+    assert!(
+        r.disabled[0].1.contains("step `if: false`"),
+        "{:?}",
+        r.disabled
+    );
+}
+
+#[test]
+fn continue_on_error_is_not_a_lane() {
+    let t = example_tree("coe");
+    let r = t.check(
+        &example_job("if: always()", "        continue-on-error: true\n", EX_CMD),
+        "",
+    );
+    assert_eq!(r.uncovered().len(), 1, "step-level");
+    let r = t.check(&example_job("continue-on-error: true", "", EX_CMD), "");
+    assert_eq!(r.uncovered().len(), 1, "job-level");
+}
+
+#[test]
+fn a_swallowed_status_is_not_a_lane() {
+    for tail in [
+        " || true",
+        " || :",
+        "; true",
+        " | tee log",
+        " &",
+        " || echo failed",
+    ] {
+        let t = example_tree("swallow");
+        let r = t.check(
+            &example_job("if: always()", "", &format!("{EX_CMD}{tail}")),
+            "",
+        );
+        assert_eq!(r.uncovered().len(), 1, "`{tail}` must not count");
+    }
+}
+
+#[test]
+fn a_swallow_on_a_continuation_line_is_caught() {
+    let t = example_tree("cont");
+    let r = t.check(
+        &example_job(
+            "if: always()",
+            "",
+            &format!("{EX_CMD} \\\n            || true"),
+        ),
+        "",
+    );
+    assert_eq!(r.uncovered().len(), 1);
+}
+
+#[test]
+fn set_plus_e_with_a_later_command_is_not_a_lane() {
+    let t = example_tree("setplus");
+    let r = t.check(
+        &example_job(
+            "if: always()",
+            "",
+            &format!("set +e\n          {EX_CMD}\n          echo done"),
+        ),
+        "",
+    );
+    assert_eq!(r.uncovered().len(), 1);
+}
