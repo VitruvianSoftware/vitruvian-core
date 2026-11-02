@@ -26,18 +26,60 @@ use shell_compat::{cat, err, out};
 
 const KEY: &[u8] = b"_workload_enabled:";
 
+/// One `<app>=<digest>` entry of APP_IMAGE_DIGESTS, exactly as it is
+/// exported.
+pub struct Pair<'a> {
+    pub app: &'a [u8],
+    pub digest: &'a [u8],
+    /// The entry had an `=`. Without one the script's `${pair%%=*}` and
+    /// `${pair#*=}` are both the whole entry, so it is still exported, but it
+    /// names no digest and never satisfies the check.
+    pub keyed: bool,
+}
+
+/// The ONE parse of APP_IMAGE_DIGESTS. The export writes these pairs and the
+/// check reads these pairs, so an app can only pass the check if it is also
+/// exported (#4184: the check used to read the whole input while the export
+/// read only the first line, so `x=1\n,app=sha256:...` passed without ever
+/// exporting `app`).
+///
+/// `IFS=',' read -ra pairs <<< "$digests"` reads the first line only, so
+/// anything after a newline is dropped here, for both. Entries with an empty
+/// name or an empty / whitespace-only digest (a YAML `|` block leaves a
+/// newline) are no digest and are dropped too: they would render the same
+/// EMPTY image as a missing pair.
+pub fn digest_pairs(app_image_digests: &[u8]) -> Vec<Pair<'_>> {
+    let first_line = app_image_digests
+        .split(|&c| c == b'\n')
+        .next()
+        .unwrap_or_default();
+    first_line
+        .split(|&c| c == b',')
+        .filter_map(|pair| {
+            let (app, digest, keyed) = match pair.iter().position(|&c| c == b'=') {
+                Some(p) => (&pair[..p], &pair[p + 1..], true),
+                None => (pair, pair, false),
+            };
+            if app.is_empty() || trim(digest).is_empty() {
+                return None;
+            }
+            Some(Pair { app, digest, keyed })
+        })
+        .collect()
+}
+
 /// Pure function: returns space-separated list of app names that are
 /// `_workload_enabled: "true"` in `pulumi_file_contents` but have no
-/// matching entry in `app_image_digests`.
+/// matching pair in `pairs` (from [`digest_pairs`], the same pairs the guard
+/// exports).
 ///
 /// Line for line the script's `grep -E '_workload_enabled: *"true"'` and
 /// `sed -E 's/.*:([a-z0-9-]+)_workload_enabled:.*/\1/'`. When the sed does not
 /// match (no `ns:` prefix, or a name outside `[a-z0-9-]`), the app "name" is
 /// the WHOLE line, which no digest pair ever matches: the line is reported
 /// missing and the guard fails closed.
-pub fn missing_digest_apps(pulumi_file_contents: &[u8], app_image_digests: &[u8]) -> Vec<u8> {
+pub fn missing_digest_apps(pulumi_file_contents: &[u8], pairs: &[Pair<'_>]) -> Vec<u8> {
     let mut missing = Vec::new();
-    let haystack = cat(&[b",", app_image_digests, b","]);
     for line in pulumi_file_contents.split(|&c| c == b'\n') {
         if !enabled_true(line) {
             continue;
@@ -46,17 +88,7 @@ pub fn missing_digest_apps(pulumi_file_contents: &[u8], app_image_digests: &[u8]
         if app.is_empty() {
             continue;
         }
-        // `app=` with nothing after it, or only whitespace (a YAML `|` block
-        // leaves a newline), is no digest: it renders the same EMPTY image
-        // as a missing pair, so it counts as missing.
-        let has_digest =
-            haystack
-                .split(|&c| c == b',')
-                .any(|pair| match pair.iter().position(|&c| c == b'=') {
-                    Some(p) => &pair[..p] == app && !trim(&pair[p + 1..]).is_empty(),
-                    None => false,
-                });
-        if has_digest {
+        if pairs.iter().any(|p| p.keyed && p.app == app) {
             continue;
         }
         if !missing.is_empty() {
@@ -136,22 +168,10 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
         }
     };
 
-    if !app_image_digests.is_empty() {
+    let pairs = digest_pairs(&app_image_digests);
+    if !pairs.is_empty() {
         let github_env = shell_compat::env_or_empty("GITHUB_ENV");
-        // `IFS=',' read -ra pairs <<< "$digests"` reads the first line only.
-        let first_line = app_image_digests
-            .split(|&c| c == b'\n')
-            .next()
-            .unwrap_or_default();
-        for pair in first_line.split(|&c| c == b',') {
-            // `${pair%%=*}` / `${pair#*=}`: with no `=` both are the pair.
-            let (app, digest) = match pair.iter().position(|&c| c == b'=') {
-                Some(p) => (&pair[..p], &pair[p + 1..]),
-                None => (pair, pair),
-            };
-            if app.is_empty() || trim(digest).is_empty() {
-                continue;
-            }
+        for &Pair { app, digest, .. } in &pairs {
             let var: Vec<u8> = app
                 .iter()
                 .map(|&c| {
@@ -201,7 +221,7 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
         }
     };
 
-    let missing = missing_digest_apps(&contents, &app_image_digests);
+    let missing = missing_digest_apps(&contents, &pairs);
     if !missing.is_empty() {
         // stdout, like the script's echo: the runner reads ::error:: there.
         out(&cat(&[
@@ -219,45 +239,50 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
 mod tests {
     use super::*;
 
+    /// The check as `run` performs it: over the pairs it exports.
+    fn m(pf: &[u8], digests: &[u8]) -> Vec<u8> {
+        missing_digest_apps(pf, &digest_pairs(digests))
+    }
+
     #[test]
     fn all_digests_present() {
         let pf = b"config:\n  gcp-app-infra:oauth-user-inspector_workload_enabled: \"true\"\n  gcp-app-infra:zitadel-apps_workload_enabled: \"false\"\n  gcp-app-infra:mcp-slack_workload_enabled: \"true\"\n";
-        let got = missing_digest_apps(pf, b"oauth-user-inspector=sha256:aaa,mcp-slack=sha256:bbb");
+        let got = m(pf, b"oauth-user-inspector=sha256:aaa,mcp-slack=sha256:bbb");
         assert_eq!(got, b"");
     }
 
     #[test]
     fn one_missing() {
         let pf = b"config:\n  gcp-app-infra:oauth-user-inspector_workload_enabled: \"true\"\n  gcp-app-infra:zitadel-apps_workload_enabled: \"false\"\n  gcp-app-infra:mcp-slack_workload_enabled: \"true\"\n";
-        let got = missing_digest_apps(pf, b"oauth-user-inspector=sha256:aaa");
+        let got = m(pf, b"oauth-user-inspector=sha256:aaa");
         assert_eq!(got, b"mcp-slack");
     }
 
     #[test]
     fn no_digests_at_all() {
         let pf = b"config:\n  gcp-app-infra:oauth-user-inspector_workload_enabled: \"true\"\n  gcp-app-infra:zitadel-apps_workload_enabled: \"false\"\n  gcp-app-infra:mcp-slack_workload_enabled: \"true\"\n";
-        let got = missing_digest_apps(pf, b"");
+        let got = m(pf, b"");
         assert_eq!(got, b"oauth-user-inspector mcp-slack");
     }
 
     #[test]
     fn disabled_workload_digest_doesnt_excuse_enabled() {
         let pf = b"config:\n  gcp-app-infra:oauth-user-inspector_workload_enabled: \"true\"\n  gcp-app-infra:zitadel-apps_workload_enabled: \"false\"\n  gcp-app-infra:mcp-slack_workload_enabled: \"true\"\n";
-        let got = missing_digest_apps(pf, b"mcp-slack=sha256:bbb,zitadel-apps=sha256:ccc");
+        let got = m(pf, b"mcp-slack=sha256:bbb,zitadel-apps=sha256:ccc");
         assert_eq!(got, b"oauth-user-inspector");
     }
 
     #[test]
     fn no_workloads_enabled() {
         let pf = b"config:\n  gcp-app-infra:zitadel-apps_workload_enabled: \"false\"\n";
-        let got = missing_digest_apps(pf, b"");
+        let got = m(pf, b"");
         assert_eq!(got, b"");
     }
 
     #[test]
     fn extra_digest_is_harmless() {
         let pf = b"config:\n  gcp-app-infra:oauth-user-inspector_workload_enabled: \"true\"\n  gcp-app-infra:zitadel-apps_workload_enabled: \"false\"\n  gcp-app-infra:mcp-slack_workload_enabled: \"true\"\n";
-        let got = missing_digest_apps(
+        let got = m(
             pf,
             b"oauth-user-inspector=sha256:aaa,mcp-slack=sha256:bbb,unrelated-app=sha256:zzz",
         );
@@ -268,40 +293,49 @@ mod tests {
     fn a_name_the_sed_cannot_read_is_reported_whole() {
         // No `ns:` prefix, and a name outside [a-z0-9-]: the script's sed
         // leaves the line as is, so it is missing and the guard fails closed.
-        let got = missing_digest_apps(b"  b_workload_enabled: \"true\"\n", b"b=1");
+        let got = m(b"  b_workload_enabled: \"true\"\n", b"b=1");
         assert_eq!(got, b"  b_workload_enabled: \"true\"");
-        let got = missing_digest_apps(b"  ns:My_App_workload_enabled: \"true\"\n", b"My_App=1");
+        let got = m(b"  ns:My_App_workload_enabled: \"true\"\n", b"My_App=1");
         assert_eq!(got, b"  ns:My_App_workload_enabled: \"true\"");
     }
 
     #[test]
     fn an_empty_digest_counts_as_missing() {
         let pf = b"  ns:oauth-user-inspector_workload_enabled: \"true\"\n";
-        assert_eq!(
-            missing_digest_apps(pf, b"oauth-user-inspector="),
-            b"oauth-user-inspector"
-        );
-        assert_eq!(
-            missing_digest_apps(pf, b"oauth-user-inspector=,x=1"),
-            b"oauth-user-inspector"
-        );
-        assert_eq!(
-            missing_digest_apps(pf, b"oauth-user-inspector=sha256:ab"),
-            b""
-        );
+        assert_eq!(m(pf, b"oauth-user-inspector="), b"oauth-user-inspector");
+        assert_eq!(m(pf, b"oauth-user-inspector=,x=1"), b"oauth-user-inspector");
+        assert_eq!(m(pf, b"oauth-user-inspector=sha256:ab"), b"");
         // Whitespace only is no digest either.
         for d in [
             &b"oauth-user-inspector=\n"[..],
             b"oauth-user-inspector= ",
             b"oauth-user-inspector=\t\r\n,x=1",
         ] {
-            assert_eq!(missing_digest_apps(pf, d), b"oauth-user-inspector", "{d:?}");
+            assert_eq!(m(pf, d), b"oauth-user-inspector", "{d:?}");
         }
     }
 
     #[test]
     fn true_must_follow_the_key() {
         let pf = b"  ns:x_workload_enabled: \"false\" # \"true\"\n  ns:y_workload_enabled:\"true\"\n  ns:z_workload_enabled:   \"true\"\r\n";
-        assert_eq!(missing_digest_apps(pf, b""), b"y z");
+        assert_eq!(m(pf, b""), b"y z");
+    }
+
+    #[test]
+    fn a_digest_after_a_newline_is_not_exported_so_it_is_missing() {
+        // #4184: the check read the whole input but the export read only the
+        // first line, so this passed while `app` was never exported.
+        let pf = b"  ns:app_workload_enabled: \"true\"\n";
+        assert_eq!(m(pf, b"x=1\n,app=sha256:aaa"), b"app");
+        assert_eq!(m(pf, b"x=1\napp=sha256:aaa"), b"app");
+        assert_eq!(m(pf, b"app=sha256:aaa\n,x=1"), b"");
+    }
+
+    #[test]
+    fn a_pair_without_equals_is_exported_but_never_a_digest() {
+        let pf = b"  ns:app_workload_enabled: \"true\"\n";
+        let pairs = digest_pairs(b"app");
+        assert_eq!(pairs.len(), 1);
+        assert_eq!(missing_digest_apps(pf, &pairs), b"app");
     }
 }

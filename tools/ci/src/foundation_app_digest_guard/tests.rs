@@ -110,15 +110,23 @@ fn an_empty_digest_is_refused_like_a_missing_one() {
 fn a_whitespace_only_digest_is_refused_and_not_exported() {
     // A YAML `|` block leaves `app=` followed by a newline; a stray space is
     // no image either. Both are refused, and neither is exported.
-    for digests in [
-        "oauth-user-inspector=\n,mcp-slack=sha256:bbb",
-        "oauth-user-inspector= ,mcp-slack=sha256:bbb",
+    // After the newline nothing is exported (the export reads one line), so
+    // mcp-slack is missing there too and the error says so.
+    for (digests, missing) in [
+        (
+            "oauth-user-inspector=\n,mcp-slack=sha256:bbb",
+            "oauth-user-inspector mcp-slack",
+        ),
+        (
+            "oauth-user-inspector= ,mcp-slack=sha256:bbb",
+            "oauth-user-inspector",
+        ),
     ] {
         let l = Leaf::new(THREE);
         let o = l.run(digests);
         assert_eq!(o.code, 1, "{digests:?}: {o:?}");
         assert!(
-            o.stdout.ends_with(&error_line("oauth-user-inspector")),
+            o.stdout.ends_with(&error_line(missing)),
             "{digests:?}: {}",
             o.stdout
         );
@@ -220,6 +228,21 @@ fn only_the_first_line_of_the_digests_is_exported() {
 }
 
 // --- failing closed ------------------------------------------------------------
+
+#[test]
+fn a_digest_after_a_newline_is_refused_not_passed_unexported() {
+    // #4184: the check read the whole input but the export read only the
+    // first line, so this printed OK while APP_IMAGE_DIGEST was never
+    // exported and the deploy rendered an EMPTY image.
+    let l = Leaf::new("config:\n  ns:app_workload_enabled: \"true\"\n");
+    let o = l.run("x=1\n,app=sha256:aaa");
+    assert_eq!(o.code, 1, "{o:?}");
+    assert_eq!(
+        o.stdout,
+        format!("exporting X_IMAGE_DIGEST\n{}", error_line("app"))
+    );
+    assert_eq!(l.env(), "X_IMAGE_DIGEST=1\n", "app was not exported");
+}
 
 #[test]
 fn a_name_the_guard_cannot_read_is_reported_missing_whole() {
