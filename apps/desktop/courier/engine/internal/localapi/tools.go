@@ -321,6 +321,18 @@ type wireHits struct {
 	NextCursor *string   `json:"next_cursor"`
 }
 
+// The hints search.query gives when it didn't search messages (search.HintNeedMoreLetters, search.HintEmojiOnly).
+const (
+	hintNeedMoreLetters = "need_more_letters"
+	hintEmojiOnly       = "emoji_only"
+)
+
+// Why messages weren't searched, in the words of a tool error or note.
+const (
+	needMoreLetters = "Messages are searched from 2 letters (or one character of a language written without spaces): add a letter."
+	nothingToFind   = "That query has no letters or numbers to search for."
+)
+
 // ---- What the tools answer ----
 
 type accountJSON struct {
@@ -595,11 +607,15 @@ func (s *Server) search(ctx context.Context, _ *mcp.CallToolRequest, raw json.Ra
 		} `json:"in_groups"`
 		Messages *wireHits `json:"messages"`
 		Media    *wireHits `json:"media"`
+		Hint     string    `json:"hint"`
 	}
 	if err := s.call(ctx, "search.query", map[string]any{
 		"text": *a.Query, "sections": []string{"chats", "in_groups", "media", "messages"},
 	}, &res); err != nil {
 		return nil, err
+	}
+	if res.Hint == hintEmojiOnly {
+		return nil, fail(nothingToFind)
 	}
 	l := s.lookups(ctx)
 	type personJSON struct {
@@ -613,7 +629,11 @@ func (s *Server) search(ctx context.Context, _ *mcp.CallToolRequest, raw json.Ra
 		Chats                   []chatJSON    `json:"chats"`
 		GroupParticipantMatches []personJSON  `json:"groupParticipantMatches"`
 		Messages                []messageJSON `json:"messages"`
+		Note                    string        `json:"note,omitempty"` // why messages weren't searched
 	}{Chats: []chatJSON{}, GroupParticipantMatches: []personJSON{}, Messages: []messageJSON{}}
+	if res.Hint == hintNeedMoreLetters {
+		out.Note = needMoreLetters // chats and people match from 1 letter; messages need 2
+	}
 	for _, r := range res.Chats {
 		out.Chats = append(out.Chats, l.chat(r))
 	}
@@ -1188,9 +1208,16 @@ func (s *Server) searchMessages(ctx context.Context, _ *mcp.CallToolRequest, raw
 			var res struct {
 				Messages *wireHits `json:"messages"`
 				Media    *wireHits `json:"media"`
+				Hint     string    `json:"hint"`
 			}
 			if err := s.call(ctx, "search.query", params, &res); err != nil {
 				return err
+			}
+			switch res.Hint { // nothing was searched: say why, rather than answer "no messages"
+			case hintNeedMoreLetters:
+				return fail(needMoreLetters)
+			case hintEmojiOnly:
+				return fail(nothingToFind)
 			}
 			h := res.Messages
 			if st.section == "media" {

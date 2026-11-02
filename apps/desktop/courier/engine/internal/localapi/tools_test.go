@@ -609,3 +609,34 @@ func TestFocusAppSaysWhenCourierIsLocked(t *testing.T) {
 	require.Equal(t, w.room, res.ChatID)
 	require.Len(t, w.pub.all(), 1)
 }
+
+// A query too short to search messages by is an error that says what it needs, never an empty answer that reads as
+// "no such messages". search still finds chats from 1 letter, and says why it has no messages.
+func TestShortQueriesSayWhatTheyNeed(t *testing.T) {
+	w := newWorld(t, 3)
+	sess := w.session(t, false)
+	for _, q := range []string{"m", " m "} {
+		require.Contains(t, fails(t, sess, "search_messages", map[string]any{"query": q}), "from 2 letters", q)
+	}
+	require.Contains(t, fails(t, sess, "search_messages", map[string]any{"query": "🙂"}), "no letters or numbers")
+	var two messagesPage
+	ok(t, sess, "search_messages", map[string]any{"query": "me"}, &two)
+	require.Len(t, two.Messages, 3, "2 letters search as a prefix")
+
+	var res struct {
+		Chats    []chatOut    `json:"chats"`
+		Messages []messageOut `json:"messages"`
+		Note     string       `json:"note"`
+	}
+	ok(t, sess, "search", map[string]any{"query": "m"}, &res)
+	require.Empty(t, res.Messages)
+	require.Contains(t, res.Note, "from 2 letters")
+	var full struct {
+		Messages []messageOut `json:"messages"`
+		Note     *string      `json:"note"`
+	}
+	ok(t, sess, "search", map[string]any{"query": "message"}, &full)
+	require.Len(t, full.Messages, 3)
+	require.Nil(t, full.Note, "messages were searched")
+	require.Contains(t, fails(t, sess, "search", map[string]any{"query": "🙂"}), "no letters or numbers")
+}
