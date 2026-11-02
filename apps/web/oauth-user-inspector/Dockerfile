@@ -32,13 +32,19 @@
 
 # NODE_VERSION defaults to the repo canonical (.nvmrc major); CI overrides it via
 # --build-arg sourced from .nvmrc. //tools/conformance:check enforces that this
-# default equals canonical, so it cannot silently drift.
+# default equals canonical, so it cannot silently drift. Node is used only to
+# BUILD the frontend; the runtime image ships none.
 ARG NODE_VERSION=22
+# The Rust that compiles the server: the SAME release Bazel builds and tests it
+# with (MODULE.bazel, rust.toolchain(versions = [...])), so the image runs the
+# code the tests ran. //apps/web/oauth-user-inspector:dockerfile_test fails if
+# the two drift.
+ARG RUST_VERSION=1.75.0
 
 # --- Server build stage: compile the Rust backend (-> dist-server/oauth-user-inspector-server)
 # and the container entrypoint (scripts/src/bin/start.rs + scripts/src/lib.rs ->
 # dist-server/start), which checks the build outputs and execs the server.
-FROM rust:1.85-slim-bookworm AS server-build
+FROM rust:${RUST_VERSION}-slim-bookworm AS server-build
 WORKDIR /app/server
 COPY server/ ./
 RUN cargo build --release \
@@ -68,27 +74,26 @@ RUN sed -i 's/"catalog:"/"^29.7.0"/g' package.json
 RUN pnpm install --no-frozen-lockfile
 RUN pnpm run build:frontend
 
-# --- Runtime stage: slim image with only production deps + built artifacts
-FROM node:${NODE_VERSION}-slim AS runtime
+# --- Runtime stage: Debian with only what the native server uses at run time.
+# No Node and no node_modules: the server is the Rust binary (#4039), and
+# `start` no longer runs `node`/`npm --version` on every cold start (#4176).
+# curl stays: the server makes its outbound HTTPS calls through it (safe_fetch,
+# Secret Manager), and the HEALTHCHECK uses it. The base matches the
+# server-build stage's Debian release (bookworm), so the binaries' glibc matches.
+FROM debian:bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production \
     PORT=8080
-RUN corepack enable \
-    && apt-get update \
+RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
-COPY package.json ./
-# Same standalone-build catalog neutralization as the build stage (see above);
-# --prod skips devDeps but pnpm still parses every spec, including `catalog:`.
-RUN sed -i 's/"catalog:"/"^29.7.0"/g' package.json
-RUN pnpm install --prod --no-frozen-lockfile && pnpm store prune
 COPY --from=build /app/dist ./dist
 COPY --from=server-build /app/dist-server ./dist-server
 RUN chmod +x dist-server/start dist-server/oauth-user-inspector-server \
-    && groupadd -r -g 1001 nodejs \
-    && useradd -r -u 1001 -g nodejs nodejs \
-    && chown -R nodejs:nodejs /app
-USER nodejs
+    && groupadd -r -g 1001 app \
+    && useradd -r -u 1001 -g app app \
+    && chown -R app:app /app
+USER app
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:8080/ || exit 1

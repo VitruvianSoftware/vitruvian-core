@@ -333,6 +333,19 @@ mod tests {
     // =========================================================================
     // 3. hardening.test.ts
     // =========================================================================
+    /// Cloud Run reaches the container on its own address, never loopback,
+    /// and `start_test` only connects over loopback — so this is the one test
+    /// that fails if the server stops listening on every interface (#4176).
+    #[test]
+    fn server_binds_every_interface_by_default() {
+        let addr = crate::server::default_bind_addr(8080);
+        assert_eq!(
+            addr,
+            "0.0.0.0:8080".parse::<std::net::SocketAddr>().unwrap()
+        );
+        assert!(addr.ip().is_unspecified(), "bind address {addr}");
+    }
+
     #[test]
     fn hardening_emits_security_headers_and_no_store_on_api() {
         let app = App::with_backends(

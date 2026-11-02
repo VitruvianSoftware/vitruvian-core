@@ -206,6 +206,28 @@ rust_test(
     },
 )
 
+# The Dockerfile against what the tests prove: the server's Rust equals
+# MODULE.bazel's, the runtime stage copies the server and starts it through
+# dist-server/start, ships no Node, and .dockerignore drops nothing it copies
+# (#4176). start_test alone builds its own /app and would miss all of these.
+rust_test(
+    name = "dockerfile_test",
+    size = "small",
+    srcs = ["scripts/tests/dockerfile_test.rs"],
+    data = [
+        ".dockerignore",
+        "Dockerfile",
+        "//:MODULE.bazel",
+    ],
+    edition = "2021",
+    env = {
+        "DOCKERFILE": "$(rootpath Dockerfile)",
+        "DOCKERIGNORE": "$(rootpath .dockerignore)",
+        "MODULE_BAZEL": "$(rootpath //:MODULE.bazel)",
+    },
+    deps = [":oauth_scripts_lib"],
+)
+
 rust_binary(
     name = "deploy-cloudbuild",
     srcs = ["scripts/src/bin/deploy.rs"],
@@ -249,6 +271,7 @@ pipeline_unit(
     test_targets = [
         ":oauth_scripts_lib_test",
         ":deploy_smoke_test",
+        ":dockerfile_test",
         ":smoke_test",
         ":start_test",
         ":unit_tests",

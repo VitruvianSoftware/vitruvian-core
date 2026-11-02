@@ -152,7 +152,9 @@ fn start_serves_on_port_from_the_image_layout() {
     );
     assert!(response.contains("oauth-user-inspector"), "{response}");
     let log = read_log(&out);
-    assert!(log.contains("Node version: not found"), "{log}");
+    // The native path never looks for Node (the image ships none, #4176).
+    assert!(!log.contains("Node version"), "{log}");
+    assert!(!log.contains("NPM version"), "{log}");
     assert!(log.contains(&format!("Port: {port}")), "{log}");
     drop(child);
     let _ = fs::remove_dir_all(&app);

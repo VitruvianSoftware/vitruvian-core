@@ -59,6 +59,50 @@ pub enum ServerCommand {
     Node(&'static str),
 }
 
+impl ServerCommand {
+    /// The program `exec` runs, and what a failed exec must name. For the
+    /// Node fallback that is `node`, not the script: when `node` is missing
+    /// the error is about `node` (#4176), and the script is only an argument.
+    pub fn program(&self) -> String {
+        match self {
+            ServerCommand::Native(bin) => format!("./{bin}"),
+            ServerCommand::Node(_) => "node".to_string(),
+        }
+    }
+
+    pub fn args(&self) -> Vec<&'static str> {
+        match self {
+            ServerCommand::Native(_) => Vec::new(),
+            ServerCommand::Node(js) => vec![js],
+        }
+    }
+
+    /// `exec` the server. Returns only on failure, with the message to log.
+    pub fn exec(&self) -> String {
+        self.exec_with_path(None)
+    }
+
+    /// [`exec`](Self::exec), resolving the program on `path` when given
+    /// (tests use an empty directory, so no `node` is found) instead of the
+    /// process's PATH.
+    pub fn exec_with_path(&self, path: Option<&Path>) -> String {
+        let program = self.program();
+        let mut cmd = Command::new(program.as_str());
+        cmd.args(self.args());
+        if let Some(p) = path {
+            cmd.env("PATH", p);
+        }
+        let err = cmd.exec();
+        exec_failure_message(&program, &err)
+    }
+}
+
+/// The line logged when the server cannot be exec'd: it names the program
+/// that could not be started.
+pub fn exec_failure_message(program: &str, err: &std::io::Error) -> String {
+    format!("failed to exec {program}: {err}")
+}
+
 /// Pick the server to exec, mirroring the former `start.sh`: prefer the native
 /// binary, fall back to `node dist-server/server.js`.
 pub fn select_server_command(root: &Path) -> ServerCommand {
@@ -118,10 +162,9 @@ fn run_ls_la(target: Option<&str>) {
 }
 
 /// One "<label>: <version>" banner line. A missing tool is reported, not
-/// fatal: the server is the native binary and needs neither `node` nor `npm`.
-/// `start.sh` behaved the same way (a failed `$(node --version)` inside `echo`
-/// does not trip `set -e`); exiting here instead would stop the container
-/// before it listens on PORT, with nothing in the log to say why.
+/// fatal: exiting here instead would stop the container before it listens on
+/// PORT, with nothing in the log to say why. Only the legacy Node fallback
+/// prints it; the native server needs no `node` (and the image ships none).
 pub fn version_line(label: &str, version: Option<String>) -> String {
     match version {
         Some(v) => format!("{label}: {v}"),
@@ -131,14 +174,6 @@ pub fn version_line(label: &str, version: Option<String>) -> String {
 
 pub fn run(_args: &[String]) -> i32 {
     println!("🚀 Starting OAuth User Inspector");
-    println!(
-        "{}",
-        version_line("Node version", capture_trimmed("node", &["--version"]))
-    );
-    println!(
-        "{}",
-        version_line("NPM version", capture_trimmed("npm", &["--version"]))
-    );
     let cwd = env::current_dir().unwrap_or_default();
     println!("Working directory: {}", cwd.display());
 
@@ -168,11 +203,14 @@ pub fn run(_args: &[String]) -> i32 {
     println!("Contents of dist-server/ (backend):");
     run_ls_la(Some("dist-server/"));
 
-    let (err, what) = match select_server_command(&cwd) {
-        ServerCommand::Native(bin) => (Command::new(format!("./{bin}")).exec(), bin),
-        ServerCommand::Node(js) => (Command::new("node").arg(js).exec(), js),
-    };
-    eprintln!("failed to exec {what}: {err}");
+    let server = select_server_command(&cwd);
+    if let ServerCommand::Node(_) = server {
+        println!(
+            "{}",
+            version_line("Node version", capture_trimmed("node", &["--version"]))
+        );
+    }
+    eprintln!("{}", server.exec());
     1
 }
 
@@ -209,6 +247,30 @@ mod tests {
             "Node version: v22.1.0"
         );
         assert_eq!(version_line("NPM version", None), "NPM version: not found");
+    }
+
+    /// #4176: with no `node` on PATH the fallback's error named the script
+    /// (`failed to exec dist-server/server.js: No such file`), pointing at a
+    /// file that is there. It must name the program that is missing.
+    #[test]
+    fn missing_node_names_node_not_the_script() {
+        let cmd = ServerCommand::Node("dist-server/server.js");
+        assert_eq!(cmd.program(), "node");
+        assert_eq!(cmd.args(), vec!["dist-server/server.js"]);
+        // An empty directory as PATH: there is no `node` to find.
+        let empty = env::temp_dir().join(format!("oui-start-nopath-{}", std::process::id()));
+        fs::create_dir_all(&empty).unwrap();
+        let msg = cmd.exec_with_path(Some(&empty));
+        let _ = fs::remove_dir_all(&empty);
+        assert!(msg.starts_with("failed to exec node: "), "{msg}");
+        assert!(!msg.contains("server.js"), "{msg}");
+    }
+
+    #[test]
+    fn native_exec_names_the_binary() {
+        let cmd = ServerCommand::Native("dist-server/oauth-user-inspector-server");
+        assert_eq!(cmd.program(), "./dist-server/oauth-user-inspector-server");
+        assert!(cmd.args().is_empty());
     }
 
     #[test]

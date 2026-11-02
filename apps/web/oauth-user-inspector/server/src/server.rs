@@ -33,7 +33,7 @@ use serde_json::{json, Map, Value};
 use std::collections::HashMap;
 use std::fs;
 use std::io::{Read, Write};
-use std::net::TcpListener;
+use std::net::{Ipv4Addr, SocketAddr, TcpListener};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -1928,12 +1928,25 @@ fn guess_content_type(path: &Path) -> &'static str {
     }
 }
 
-/// Serve the HTTP application over a standard `TcpListener`.
-pub fn serve_http(app: Arc<App>, port: u16) -> std::io::Result<()> {
-    let listener = TcpListener::bind(("0.0.0.0", port))?;
+/// The address the server listens on for a given `PORT`: every interface
+/// (`0.0.0.0`). Cloud Run sends traffic to the container's own address, not
+/// loopback, so binding `127.0.0.1` would pass every local test and serve
+/// nothing in production (#4176).
+pub fn default_bind_addr(port: u16) -> SocketAddr {
+    SocketAddr::from((Ipv4Addr::UNSPECIFIED, port))
+}
+
+/// Serve the HTTP application over a standard `TcpListener` bound to `addr`
+/// (normally [`default_bind_addr`]).
+pub fn serve_http(app: Arc<App>, addr: SocketAddr) -> std::io::Result<()> {
+    let listener = TcpListener::bind(addr)?;
+    let port = listener
+        .local_addr()
+        .map(|a| a.port())
+        .unwrap_or(addr.port());
     app.logger.info(
         "OAuth User Inspector server started",
-        Some(json!({ "port": port })),
+        Some(json!({ "port": port, "address": addr.ip().to_string() })),
     );
 
     for stream_res in listener.incoming() {
