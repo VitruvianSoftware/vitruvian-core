@@ -22,26 +22,32 @@ any reason, the script is directly runnable and takes the same subcommands:
 tools/cloud-bootstrap/cloud-bootstrap.sh whoami
 ```
 
-### Implementation (moving from shell to Rust)
+### Implementation: a Rust tool and its launcher
 
-The `bazel run` targets are a Rust binary: `src/cloud_bootstrap/`, standard
-library only and a single crate, so it also builds with one plain `rustc` call
-on a machine where Bazel does not exist yet (the cloud image ships `rustc`;
-`bazel` is one of the things this tool installs).
+The tool is Rust, in `src/cloud_bootstrap/`: standard library only and a single
+crate, so one plain `rustc` call builds it. That matters because of where it
+runs. The `SessionStart` hook and the cloud environment's *Setup script* run it
+before Bazel exists (`bazel` is one of the things it installs), so they run
+`cloud-bootstrap.sh`, a launcher that:
 
-The `SessionStart` hook, and the cloud environment's *Setup script*, still run
-`cloud-bootstrap.sh`, the original shell implementation. A follow-up turns that
-path into a small launcher that builds and runs the Rust binary, so neither
-caller changes. That file is on the guard-review list (it runs at session start
-with the session's credentials), so the switch is its own pull request and
-needs James's approval. Until then both implementations exist; they were
-diffed scenario by scenario (stdout, stderr, exit code, every `gcloud` argv,
-`session.env` as bash reads it, `~/.bashrc`, file modes) and agree, and the
-shell's own test suite passes against the Rust binary unchanged.
+1. builds `src/cloud_bootstrap/main.rs` with the image's `rustc` into
+   `~/.cache/vitruvian-core/cloud-bootstrap/`, keyed on the rustc version and the
+   sources (about a second, once; a later session, or the Setup script's cached
+   image, reuses it; a changed source rebuilds and the old build is removed);
+2. runs it with the same arguments, so `cloud-bootstrap.sh whoami` and
+   `cloud-bootstrap.sh install --force` work as they always did;
+3. falls back to `bazel run //tools/cloud-bootstrap:<subcommand>` when there is
+   no `rustc` but there is `bazel` (a laptop);
+4. keeps the tool's contract when it cannot build at all: `up`, `install` and
+   `auth` say why and exit 0, so the session still starts; `whoami` exits 1.
+
+The launcher and the Rust sources are both on the guard-review list: they run at
+session start, from the working copy, with the session's credentials, so a
+change to either needs James's approval to merge.
 
 ## The problem
 
-A cloud session boots a bare Ubuntu box. It has `git`, `go`, `node` and `docker`
+A cloud session boots a bare Ubuntu box. It has `git`, `go`, `node`, `rustc` and `docker`
 — and no `bazel`, no `gh`, no `gcloud`, no `pulumi`, no `direnv`. It also has no
 credentials for any of them, and no human at a browser to run `gcloud auth login`
 or `pulumi login`. The agent drives these tools, so every credential has to be a
@@ -412,8 +418,11 @@ subcommand, flag and exit-code contract.
 `rustc` and nothing else, so adding a dependency fails CI instead of breaking
 session start on a machine without Bazel. `:cloud-bootstrap_unit_test` covers
 the helpers (bash quoting and unquoting, base64, the `client_email` and
-tokeninfo extraction). `:cloud-bootstrap_sh_test` is the shell suite, kept while
-the shell script is still what the hook runs.
+tokeninfo extraction). `:cloud-bootstrap_launcher_test` runs `cloud-bootstrap.sh` against a copy of the
+tree with a fake `rustc` and `bazel`: one build then reuse, a changed source
+rebuilds and prunes, arguments and exit codes pass through, the checkout is the
+tool's workspace, a failed build never blocks a session and leaves no
+half-written binary, and the `bazel run` fallback.
 
 The installers are not covered — they are network downloads whose only
 interesting property is whether `curl` worked.

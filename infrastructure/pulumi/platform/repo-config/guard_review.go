@@ -86,9 +86,12 @@ var guardReviewPaths = []string{
 	".claude/*.sh",
 	".agents/hooks.json",
 	// What .claude/session-start.sh runs from the working copy, with the
-	// session's credentials: cloud-bootstrap.sh, the profiles it reads (which
-	// secrets each session fetches), and the build-cache configurator it runs.
+	// session's credentials: cloud-bootstrap.sh (a launcher that builds and
+	// runs the Rust sources beside it, so those are covered too), the profiles
+	// it reads (which secrets each session fetches), and the build-cache
+	// configurator it runs.
 	"tools/cloud-bootstrap/cloud-bootstrap.sh",
+	"tools/cloud-bootstrap/src/cloud_bootstrap/**",
 	"tools/cloud-bootstrap/profiles.tsv",
 	"tools/remote/setup.sh",
 	// This requirement itself: the ruleset and team (this file), where it is

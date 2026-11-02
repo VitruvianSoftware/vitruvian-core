@@ -11,10 +11,13 @@ to the tailnet, and the facts that generalise are: the cluster API is the HA nam
 
 ## Tooling and credentials: the profile
 
-A cloud session boots a bare Ubuntu box — `git`, `go`, `node`, `docker`, and none
-of this repo's CLI tooling or credentials. The first step of the `SessionStart`
-hook, [`//tools/cloud-bootstrap`](../../tools/cloud-bootstrap/README.md), fixes
-both.
+A cloud session boots a bare Ubuntu box — `git`, `go`, `node`, `rustc`,
+`docker`, and none of this repo's CLI tooling or credentials. The first step of
+the `SessionStart` hook, [`//tools/cloud-bootstrap`](../../tools/cloud-bootstrap/README.md),
+fixes both. It is a Rust tool, and `cloud-bootstrap.sh` is its launcher: there
+is no Bazel yet at that point (the tool installs it), so the launcher builds the
+tool with the image's `rustc` (about a second, once; later sessions and the
+cached image reuse the build) and runs it.
 
 The hook is one script, `.claude/session-start.sh`, registered in
 `.claude/settings.json`. It runs three steps in order: `cloud-bootstrap.sh`, then
@@ -77,7 +80,8 @@ echo "cloud-bootstrap: repo not cloned yet — the SessionStart hook will instal
 ```
 
 `--force` is required: `CLAUDE_CODE_REMOTE` is not set that early, so without it
-the script silently no-ops. Credentials are deliberately *not* done here — the
+the tool silently no-ops. The Setup script also builds the tool, so the build
+lands in the cached image with the CLIs. Credentials are deliberately *not* done here — the
 `SessionStart` hook establishes those per session, so no token is baked into a
 cached image.
 
