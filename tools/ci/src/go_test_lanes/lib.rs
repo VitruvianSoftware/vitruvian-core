@@ -42,6 +42,10 @@
 //! `//go:build <tag>` file under a go_test_with_retry root, which plain
 //! `go test ./...` skips. A `.bazelignore`d path never counts as Bazel.
 //!
+//! A step's `if:` is rejected only when it is constant-false; one that is
+//! never true by its meaning (`github.event_name == 'never'`) still counts.
+//! That is not decidable in general, and review catches it.
+//!
 //! Directories Go itself ignores (`testdata`, `vendor`, dot- and
 //! `_`-prefixed) are skipped, as are `node_modules` and the `bazel-*` links.
 
@@ -302,6 +306,47 @@ fn constant_false(cond: &str) -> bool {
         || c.contains("&& false &&")
 }
 
+/// Shell compound-command nesting, fed one line at a time: `if`, `case`,
+/// `for`/`while`/`until`, `{ ... }`, `( ... )` and function bodies. One-line
+/// forms (`if x; then y; fi`) net to zero. Inside a `case`, a `pattern)`
+/// word is a pattern, not the end of a subshell.
+#[derive(Default)]
+struct ShellDepth {
+    depth: i32,
+    in_case: i32,
+}
+
+impl ShellDepth {
+    fn feed(&mut self, line: &str) {
+        for w in line.split(|c: char| c.is_whitespace() || c == ';') {
+            match w {
+                "" => {}
+                "case" => {
+                    self.depth += 1;
+                    self.in_case += 1;
+                }
+                "esac" => {
+                    self.depth -= 1;
+                    self.in_case -= 1;
+                }
+                "if" | "for" | "while" | "until" | "{" | "(" => self.depth += 1,
+                "fi" | "done" | "}" | ")" => self.depth -= 1,
+                _ if w.ends_with("(){") => self.depth += 1,
+                _ if w.ends_with("()") => {}
+                _ if w.starts_with('(') && !w.starts_with("((") && !w.starts_with("$(") => {
+                    self.depth += 1
+                }
+                _ if w.ends_with(')') && !w.ends_with("))") && !w.contains('(') => {
+                    if self.in_case == 0 {
+                        self.depth -= 1;
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
 /// Why a ci.yaml `"$GO_TEST_WITH_RETRY"` step could pass with failing tests,
 /// or None when its failure fails the job.
 fn why_disabled(
@@ -329,6 +374,42 @@ fn why_disabled(
         if v != "false" {
             return Some(format!("step `continue-on-error: {v}`"));
         }
+    }
+    // Before the call: it must start its own line (no `!`, `true ||`,
+    // `cond &&`, `bash -c '...`), not continue the previous line, sit outside
+    // any if/case/loop/function/subshell/brace block, and follow no `exit`.
+    let line = run[call_at].trim_start();
+    if !line.starts_with(CALL) {
+        return Some(format!(
+            "something runs before it on its line: `{}`",
+            line.trim()
+        ));
+    }
+    let code_before: Vec<&str> = run[..call_at]
+        .iter()
+        .map(|l| l.split(" #").next().unwrap_or("").trim())
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .collect();
+    if let Some(prev) = code_before.last() {
+        if prev.ends_with('\\')
+            || prev.ends_with("&&")
+            || prev.ends_with("||")
+            || prev.ends_with('|')
+        {
+            return Some(format!("it continues the line before: `{prev}`"));
+        }
+    }
+    let mut nest = ShellDepth::default();
+    for l in &code_before {
+        nest.feed(l);
+        if l.split(|c: char| !c.is_alphanumeric() && c != '_')
+            .any(|w| w == "exit")
+        {
+            return Some(format!("an earlier line can end the step first: `{l}`"));
+        }
+    }
+    if nest.depth != 0 {
+        return Some("it is inside an if/case/loop/function/subshell block".into());
     }
     // The command itself, with `\` continuations joined: anything after the
     // call that is not an argument can swallow its status (`|| true`,
@@ -363,6 +444,101 @@ fn why_disabled(
         return Some("`set +e` before it, and later commands decide the step's status".into());
     }
     None
+}
+
+/// The dorny/paths-filter globs in ci.yaml, by filter name.
+fn path_filters(lines: &[String]) -> BTreeMap<String, Vec<String>> {
+    let mut out: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut i = 0;
+    while i < lines.len() {
+        let l = &lines[i];
+        if l.trim_start().starts_with("filters: |") {
+            let base = indent(l);
+            let mut cur = String::new();
+            i += 1;
+            while i < lines.len() && (lines[i].trim().is_empty() || indent(&lines[i]) > base) {
+                let t = lines[i].trim();
+                if let Some(g) = t.strip_prefix("- ") {
+                    if !cur.is_empty() {
+                        out.entry(cur.clone()).or_default().push(scalar(g));
+                    }
+                } else if !t.starts_with('#') && t.ends_with(':') && !t.contains(' ') {
+                    cur = t.trim_end_matches(':').to_string();
+                }
+                i += 1;
+            }
+            continue;
+        }
+        i += 1;
+    }
+    out
+}
+
+/// For a `needs.changes.outputs.<name>` the step's `if:` reads, the path
+/// filter behind it: `say <name> "$VAR"` in the changes job, then
+/// `VAR: ${{ steps.filter.outputs.<filter> }}`.
+fn filter_behind(lines: &[String], output: &str) -> Option<String> {
+    let say = format!("say {output} \"$");
+    let var = lines.iter().find_map(|l| {
+        let t = l.trim();
+        t.strip_prefix(&say)
+            .map(|r| r.trim_end_matches('"').to_string())
+    })?;
+    let env = format!("{var}: ${{{{ steps.filter.outputs.");
+    lines.iter().find_map(|l| {
+        let t = l.trim();
+        t.strip_prefix(&env)
+            .map(|r| r.trim_end_matches("}}").trim().to_string())
+    })
+}
+
+/// True when `glob` (a paths-filter pattern) matches every file under `root`:
+/// `<dir>/**` where `<dir>` is `root` or a parent of it (`*` matches one
+/// segment).
+fn glob_covers_tree(glob: &str, root: &str) -> bool {
+    let Some(dir) = glob.strip_suffix("/**") else {
+        return false;
+    };
+    let g: Vec<&str> = dir.split('/').collect();
+    let r: Vec<&str> = root.split('/').collect();
+    g.len() <= r.len() && g.iter().zip(&r).all(|(a, b)| *a == "*" || a == b)
+}
+
+/// Why the step's path filter can skip it on a change under `root`, or
+/// None. A step whose `if:` reads no `needs.changes.outputs.*` is not
+/// filtered here.
+fn filter_gap(lines: &[String], step: &[String], root: &str) -> Option<String> {
+    let cond = key_value(step, 8, "if")?;
+    let at = cond.find("needs.changes.outputs.")?;
+    let output: String = cond[at + "needs.changes.outputs.".len()..]
+        .chars()
+        .take_while(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
+        .collect();
+    let Some(filter) = filter_behind(lines, &output) else {
+        return Some(format!(
+            "its `if:` reads needs.changes.outputs.{output}, which no path filter feeds"
+        ));
+    };
+    let globs = path_filters(lines).remove(&filter).unwrap_or_default();
+    let covered = globs.iter().any(|g| glob_covers_tree(g, root))
+        || ["go", "mod", "sum"].iter().all(|ext| {
+            let want = if *ext == "go" {
+                "/**/*.go".to_string()
+            } else {
+                format!("/**/go.{ext}")
+            };
+            globs.iter().any(|g| {
+                g.strip_suffix(want.as_str())
+                    .is_some_and(|d| glob_covers_tree(&format!("{d}/**"), root))
+            })
+        });
+    if covered {
+        None
+    } else {
+        Some(format!(
+            "path filter `{filter}` does not match every Go file under {root}, so a change there skips the step"
+        ))
+    }
 }
 
 /// The `"$GO_TEST_WITH_RETRY"` steps of ci.yaml, by job: each with the roots
@@ -454,7 +630,12 @@ pub fn lanes_from_workflow(
                         .collect();
                 }
                 let why = why_disabled(job_lines, &step, &run, c);
-                lanes.push((job.clone(), roots, why));
+                // A root its path filter does not match is tested only when
+                // something else triggers the step: not a lane for that root.
+                for root in roots {
+                    let why = why.clone().or_else(|| filter_gap(&lines, &step, &root));
+                    lanes.push((job.clone(), vec![root], why));
+                }
             }
         }
         i = end;

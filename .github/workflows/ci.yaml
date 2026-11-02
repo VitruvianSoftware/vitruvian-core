@@ -855,6 +855,12 @@ jobs:
             iac:
               - 'infrastructure/pulumi/**'
               - 'apps/*/*/infra/**'
+              # go_test_with_retry and what it is built from: a change to
+              # the tool must run the tests it runs.
+              - 'tools/ci/src/go_test_with_retry/**'
+              - 'tools/ci/src/transient_lib/**'
+              - 'tools/shell-compat/**'
+              - '.github/actions/build-ci-tool/**'
               - '.github/workflows/ci.yaml'
             go:
               - '**/*.go'
@@ -864,14 +870,22 @@ jobs:
               - '.bazelrc'
               - '.github/workflows/ci.yaml'
             ex:
+              # go-test-infra tests EVERY Go module under
+              # packages/pulumi/examples (--root), so this matches every Go
+              # file there, not just today's trees: a new example dir must
+              # run its own tests (#4212 review). //tools/ci:go_test_lanes
+              # fails if this stops covering that step's --root.
               - 'packages/pulumi/examples/go-foundation/**'
-              # ts-foundation is TypeScript, but carries one Go module
-              # (helpers/iam-validate) that example-build now tests (#4205).
-              - 'packages/pulumi/examples/ts-foundation/**/*.go'
-              - 'packages/pulumi/examples/ts-foundation/**/go.mod'
-              - 'packages/pulumi/examples/ts-foundation/**/go.sum'
+              - 'packages/pulumi/examples/**/*.go'
+              - 'packages/pulumi/examples/**/go.mod'
+              - 'packages/pulumi/examples/**/go.sum'
               - 'packages/pulumi/library/**'
+              # go_test_with_retry and what it is built from: a change to
+              # the tool must run the tests it runs.
               - 'tools/ci/src/go_test_with_retry/**'
+              - 'tools/ci/src/transient_lib/**'
+              - 'tools/shell-compat/**'
+              - '.github/actions/build-ci-tool/**'
               - '.github/workflows/ci.yaml'
             butane:
               - 'apps/cli/devx/dev-machine.template.bu'

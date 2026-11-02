@@ -401,3 +401,149 @@ fn set_plus_e_with_a_later_command_is_not_a_lane() {
     );
     assert_eq!(r.uncovered().len(), 1);
 }
+
+// --- aegis second review on #4212 -----------------------------------------
+
+/// `lines` as the run block, each at the block's 10-space indent.
+fn block(lines: &[&str]) -> String {
+    lines.join("\n          ")
+}
+
+#[test]
+fn something_before_the_call_is_not_a_lane() {
+    for cmd in [
+        format!("! {EX_CMD}"),
+        format!("true || {EX_CMD}"),
+        format!("[ -n \"$X\" ] && {EX_CMD}"),
+        format!("bash -c '{EX_CMD}'"),
+    ] {
+        let t = example_tree("before");
+        let r = t.check(&example_job("if: always()", "", &cmd), "");
+        assert_eq!(r.uncovered().len(), 1, "`{cmd}` must not count");
+    }
+}
+
+#[test]
+fn a_call_continuing_the_previous_line_is_not_a_lane() {
+    for prev in ["true \\", "false &&", "true ||", "echo x |"] {
+        let t = example_tree("cont2");
+        let r = t.check(
+            &example_job("if: always()", "", &block(&[prev, EX_CMD])),
+            "",
+        );
+        assert_eq!(r.uncovered().len(), 1, "after `{prev}`");
+    }
+}
+
+#[test]
+fn a_call_inside_a_block_is_not_a_lane() {
+    for (open, close) in [
+        ("if false; then", "fi"),
+        ("for x in; do", "done"),
+        ("while false; do", "done"),
+        ("case x in y)", "esac"),
+        ("f() {", "}"),
+        ("(", ")"),
+        ("{", "}"),
+    ] {
+        let t = example_tree("nested");
+        let r = t.check(
+            &example_job("if: always()", "", &block(&[open, EX_CMD, close])),
+            "",
+        );
+        assert_eq!(r.uncovered().len(), 1, "inside `{open}`");
+        assert!(r.disabled[0].1.contains("inside"), "{:?}", r.disabled);
+    }
+}
+
+#[test]
+fn a_closed_block_before_the_call_is_fine() {
+    let t = example_tree("closed");
+    let cmd = block(&[
+        "if [ -n \"$X\" ]; then echo x; fi",
+        "for f in a b; do",
+        "  echo \"$f\"",
+        "done",
+        EX_CMD,
+    ]);
+    let r = t.check(&example_job("if: always()", "", &cmd), "");
+    assert!(r.ok(), "{:?}", r);
+}
+
+#[test]
+fn an_earlier_exit_is_not_a_lane() {
+    for prev in ["exit 0", "[ -z \"$X\" ] || exit 0", "test -f x && exit"] {
+        let t = example_tree("exit");
+        let r = t.check(
+            &example_job("if: always()", "", &block(&[prev, EX_CMD])),
+            "",
+        );
+        assert_eq!(r.uncovered().len(), 1, "after `{prev}`");
+    }
+}
+
+/// A ci.yaml whose examples step is gated on a paths-filter output, the way
+/// go-test-infra is: `globs` is the `ex` filter.
+fn filtered_ci(globs: &[&str], output: &str) -> String {
+    let g: String = globs
+        .iter()
+        .map(|g| format!("              - '{g}'\n"))
+        .collect();
+    format!(
+        "name: CI\njobs:\n  changes:\n    steps:\n      - id: filter\n        uses: dorny/paths-filter@x\n        with:\n          filters: |\n            ex:\n{g}            other:\n              - 'x/**'\n      - id: decide\n        env:\n          EX: ${{{{ steps.filter.outputs.ex }}}}\n        run: |\n          say go-test-examples \"$EX\"\n  go-test-infra:\n    steps:\n      - name: go test\n        if: needs.changes.result != 'success' || needs.changes.outputs.{output} == 'true'\n        run: |\n          set -euo pipefail\n          {EX_CMD}\n"
+    )
+}
+
+#[test]
+fn a_filter_that_matches_the_whole_root_is_a_lane() {
+    for globs in [
+        vec!["packages/pulumi/examples/**"],
+        vec!["packages/pulumi/**"],
+        vec![
+            "packages/pulumi/examples/**/*.go",
+            "packages/pulumi/examples/**/go.mod",
+            "packages/pulumi/examples/**/go.sum",
+        ],
+    ] {
+        let t = example_tree("filterok");
+        let r = t.check(&filtered_ci(&globs, "go-test-examples"), "");
+        assert!(r.ok(), "{globs:?}: {:?}", r);
+    }
+}
+
+#[test]
+fn a_filter_narrower_than_the_root_is_not_a_lane() {
+    // The #4212 review repro: a new py-foundation/ tree the filter missed.
+    for globs in [
+        vec!["packages/pulumi/examples/go-foundation/**"],
+        vec![
+            "packages/pulumi/examples/**/*.go",
+            "packages/pulumi/examples/**/go.mod",
+        ],
+        vec!["packages/pulumi/examples/*.go"],
+    ] {
+        let t = example_tree("filternarrow");
+        let r = t.check(&filtered_ci(&globs, "go-test-examples"), "");
+        assert_eq!(r.uncovered().len(), 1, "{globs:?}");
+        assert!(
+            r.disabled[0].1.contains("path filter `ex`"),
+            "{:?}",
+            r.disabled
+        );
+    }
+}
+
+#[test]
+fn an_if_reading_an_unknown_output_is_not_a_lane() {
+    let t = example_tree("nooutput");
+    let r = t.check(
+        &filtered_ci(&["packages/pulumi/examples/**"], "no-such-output"),
+        "",
+    );
+    assert_eq!(r.uncovered().len(), 1);
+    assert!(
+        r.disabled[0].1.contains("no path filter feeds"),
+        "{:?}",
+        r.disabled
+    );
+}
