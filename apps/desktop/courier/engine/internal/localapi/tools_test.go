@@ -5,6 +5,7 @@ package localapi_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -49,6 +50,7 @@ type messageOut struct {
 	IsSender    bool   `json:"isSender"`
 	Timestamp   string `json:"timestamp"`
 	Text        string `json:"text"`
+	IsEdited    bool   `json:"isEdited"`
 	Attachments []struct {
 		Type string `json:"type"`
 	} `json:"attachments"`
@@ -503,4 +505,86 @@ func TestSearchDocsIsAStub(t *testing.T) {
 	text, isErr := call(t, sess, "search_docs", map[string]any{"query": "send", "language": "python"})
 	require.False(t, isErr)
 	require.Equal(t, "Courier has no documentation search. Each tool's description is its documentation.", text)
+}
+
+// edit stores an edit of message target by its own sender, as the bridge would, and returns the edit's ID.
+func (w *world) edit(t *testing.T, target, body string) string {
+	t.Helper()
+	ctx := context.Background()
+	orig, found, err := w.s.GetEvent(ctx, target)
+	require.NoError(t, err)
+	require.True(t, found)
+	content, err := json.Marshal(map[string]any{
+		"msgtype": "m.text", "body": "* " + body,
+		"m.new_content": map[string]string{"msgtype": "m.text", "body": body},
+		"m.relates_to":  map[string]string{"rel_type": "m.replace", "event_id": target},
+	})
+	require.NoError(t, err)
+	id := "$edit-" + target
+	ins, err := w.s.InsertEvent(ctx, store.Event{
+		RoomID: w.room, EventID: id, Sender: orig.Sender, Type: "m.room.message", Content: content,
+		TS: orig.TS.Add(time.Second), Status: "sent",
+	})
+	require.NoError(t, err)
+	require.True(t, ins)
+	return id
+}
+
+// unsend stores the sender's deletion (a redaction) of message target.
+func (w *world) unsend(t *testing.T, target string) {
+	t.Helper()
+	ctx := context.Background()
+	orig, found, err := w.s.GetEvent(ctx, target)
+	require.NoError(t, err)
+	require.True(t, found)
+	content, err := json.Marshal(map[string]string{"redacts": target})
+	require.NoError(t, err)
+	ins, err := w.s.InsertEvent(ctx, store.Event{
+		RoomID: w.room, EventID: "$redact-" + target, Sender: orig.Sender, Type: "m.room.redaction", Content: content,
+		TS: orig.TS.Add(2 * time.Second), Status: "sent",
+	})
+	require.NoError(t, err)
+	require.True(t, ins)
+}
+
+// An edited message reads as its latest edit everywhere a tool shows its text, and a deleted one is never shown:
+// its old text stays in the history on disk, and must not reach a client.
+func TestEditedAndDeletedMessagesReadAsTheyAreNow(t *testing.T) {
+	w := newWorld(t, 3)
+	sess := w.session(t, false)
+	edited, deleted, plainMsg := w.events[0], w.events[1], w.events[2]
+	w.edit(t, edited, "latest words")
+	w.unsend(t, deleted)
+
+	var list messagesPage
+	ok(t, sess, "list_messages", map[string]any{"chatID": w.room}, &list)
+	require.Len(t, list.Messages, 2, "the edit is no message of its own, and the deleted one is gone")
+	byID := map[string]messageOut{}
+	for _, m := range list.Messages {
+		byID[m.ID] = m
+	}
+	require.Equal(t, "latest words", byID[edited].Text)
+	require.True(t, byID[edited].IsEdited)
+	require.Equal(t, "message 2", byID[plainMsg].Text)
+	require.False(t, byID[plainMsg].IsEdited)
+	require.NotContains(t, byID, deleted)
+
+	var found messagesPage
+	ok(t, sess, "search_messages", map[string]any{"query": "latest"}, &found)
+	require.Len(t, found.Messages, 1)
+	require.Equal(t, edited, found.Messages[0].ID)
+	require.Equal(t, "latest words", found.Messages[0].Text, "the whole text as it reads now")
+	require.True(t, found.Messages[0].IsEdited)
+
+	var all messagesPage
+	ok(t, sess, "search_messages", map[string]any{"query": "message"}, &all)
+	require.Len(t, all.Messages, 1, "the edited one no longer says it, and the deleted one is gone")
+	require.Equal(t, plainMsg, all.Messages[0].ID)
+
+	var res struct {
+		Messages []messageOut `json:"messages"`
+	}
+	ok(t, sess, "search", map[string]any{"query": "latest"}, &res)
+	require.Len(t, res.Messages, 1)
+	require.Equal(t, "latest words", res.Messages[0].Text)
 }

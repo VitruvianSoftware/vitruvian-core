@@ -54,6 +54,7 @@ Use each from Claude Code, connected over HTTP. None of them may crash Courier o
 - [ ] `search_messages` finds a known word. `sender: "me"` keeps only your messages.
 - [ ] `get_chat` gives the chat's details and its people.
 - [ ] `list_messages` pages back through a chat with no gaps or repeats, even when new messages arrive between pages.
+- [ ] Edit a message, then delete another. `list_messages`, `search_messages` and `search` show the edited one's new text with `isEdited: true`, never its old text, and leave the deleted one out.
 - [ ] `send_message` sends from a token with "Can send messages" on, and is refused from one without.
 - [ ] `archive_chat`, `set_chat_reminder` and `clear_chat_reminder` show in Courier at once.
 - [ ] `focus_app` brings Courier forward at the chat and message. With draft text and a file, they are in the composer, with the file's name on its chip, and nothing is sent until you press Send. A file path that doesn't exist is an error and the composer is left alone.
