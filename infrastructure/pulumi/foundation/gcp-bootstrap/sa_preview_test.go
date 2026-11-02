@@ -540,7 +540,9 @@ var expectedProviders = map[string]string{
 
 // expectedProviderInputs is every input of every provider, exactly, keyed by
 // provider id. Extra keys anywhere (a JWKS, more audiences, a SAML block, a
-// changed mapping) fail. The project id carries a random suffix, so it is
+// changed mapping) fail, and so does a missing one: `disabled: false` is set
+// explicitly so the provider cannot rest on a default. The project id carries
+// a random suffix, so it is
 // checked separately and left out here.
 func expectedProviderInputs(t *testing.T) map[string]map[string]interface{} {
 	var cfg map[string]string
@@ -551,6 +553,7 @@ func expectedProviderInputs(t *testing.T) map[string]map[string]interface{} {
 		"foundation-gh-provider": {
 			"workloadIdentityPoolId":         "foundation-pool",
 			"workloadIdentityPoolProviderId": "foundation-gh-provider",
+			"disabled":                       false,
 			"attributeCondition":             "assertion.repository=='VitruvianSoftware/vitruvian-core'",
 			"attributeMapping": map[string]interface{}{
 				"google.subject":             "assertion.sub",
@@ -565,6 +568,7 @@ func expectedProviderInputs(t *testing.T) map[string]map[string]interface{} {
 		"homelab-cluster-provider": {
 			"workloadIdentityPoolId":         "homelab-cluster-pool",
 			"workloadIdentityPoolProviderId": "homelab-cluster-provider",
+			"disabled":                       false,
 			"attributeCondition":             `assertion.sub == "system:serviceaccount:backstage:backstage" || assertion.sub == "system:serviceaccount:grafana:grafana"`,
 			"attributeMapping":               map[string]interface{}{"google.subject": "assertion.sub"},
 			"description":                    "Projected ServiceAccount tokens from the homelab k3s cluster; JWKS supplied statically",
@@ -578,6 +582,7 @@ func expectedProviderInputs(t *testing.T) map[string]map[string]interface{} {
 		"pulumi-esc-provider": {
 			"workloadIdentityPoolId":         "pulumi-esc-pool",
 			"workloadIdentityPoolProviderId": "pulumi-esc-provider",
+			"disabled":                       false,
 			"attributeCondition":             `assertion.aud == "gcp:ipv1337"`,
 			"attributeMapping":               map[string]interface{}{"google.subject": "assertion.sub"},
 			"description":                    "Issuer api.pulumi.com/oidc; subjects are ESC environments",
