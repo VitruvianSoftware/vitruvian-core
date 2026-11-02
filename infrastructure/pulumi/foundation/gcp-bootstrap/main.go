@@ -26,6 +26,7 @@
 //	groups.go          — groups.tf      (optional Google Workspace groups)
 //	projects.go        — main.tf        (bootstrap folder + seed/CI-CD projects)
 //	sa.go              — sa.tf          (granular SAs + least-privilege IAM)
+//	sa_preview.go      — (monorepo)     read-only PR-preview SAs
 //	build_github.go    — build_github.tf.example (default builder: GitHub WIF)
 //	outputs.go         — outputs.tf     (common stage outputs)
 //	outputs_github.go  — outputs_github.tf.example (builder-specific outputs)
@@ -95,6 +96,12 @@ func main() {
 			return err
 		}
 
+		// 5a. Read-only identities for PR previews (see sa_preview.go).
+		previewSAs, err := deployPreviewIdentities(ctx, cfg, seed, pulumi.DependsOn(groupResources))
+		if err != nil {
+			return err
+		}
+
 		// 5b. The folder-scoped allowlist of external OIDC issuers. Built once, as
 		// the union of every federation below, because it is a SINGLE GCP resource
 		// -- and created FIRST, because a provider naming an issuer that is not yet
@@ -134,13 +141,13 @@ func main() {
 
 		// 5d. Deploy CI/CD Build Infrastructure (GitHub Actions WIF by default,
 		// see build_github.go)
-		buildOutputs, err := deployGitHubActionsBuild(ctx, cfg, seed, cicd, sas, issuerPolicy)
+		buildOutputs, err := deployGitHubActionsBuild(ctx, cfg, seed, cicd, sas, previewSAs, issuerPolicy)
 		if err != nil {
 			return err
 		}
 
 		// 6. Exports — matching TF outputs.tf (see outputs.go)
-		exportOutputs(ctx, cfg, bootstrapFolder, seed, cicd, sas, buildOutputs, groupOutputs)
+		exportOutputs(ctx, cfg, bootstrapFolder, seed, cicd, sas, previewSAs, buildOutputs, groupOutputs)
 
 		// 7. Builder-specific outputs — mirrors upstream's per-builder
 		// outputs_*.tf files (outputs_github.tf.example here; swap for
