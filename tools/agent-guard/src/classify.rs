@@ -1466,6 +1466,31 @@ pub fn classify_tool(inv: &Invocation, ctx: &Context) -> (Option<Verdict>, Strin
     let cwd = inv.cwd.clone();
     let here = |v: Option<Verdict>| (v, cwd.clone());
 
+    if prog == crate::invocations::COMPUTED_ARG0 {
+        return here(Some(v(
+            "cargo",
+            "a rustup proxy with RUSTUP_FORCE_ARG0 set to a computed value",
+            None,
+            "RUSTUP_FORCE_ARG0 picks the program rustup runs; agent-guard cannot read a value built from `$...` or backticks.",
+        )));
+    }
+    // `cargo-fmt` / `cargo-clippy` are what `cargo fmt` / `cargo clippy` run;
+    // cargo maps `cargo <sub>` to `cargo-<sub>`, so judge them alike (#4217).
+    let cargo_sub: Option<Invocation> = prog
+        .strip_prefix("cargo-")
+        .filter(|sub| !sub.is_empty())
+        .map(|sub| {
+            let mut argv = vec!["cargo".to_string(), sub.to_string()];
+            argv.extend_from_slice(args);
+            Invocation {
+                argv,
+                ..inv.clone()
+            }
+        });
+    if let Some(sub_inv) = &cargo_sub {
+        return classify_tool(sub_inv, ctx);
+    }
+
     if prog == "git" {
         return classify_git(inv, ctx);
     }

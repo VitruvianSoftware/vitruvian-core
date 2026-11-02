@@ -74,6 +74,15 @@ pub fn table() -> Vec<Row> {
     rows.push(gen("echo `x`".repeat(25000), D, Some("oversize")));
     rows.push(gen("true; ".repeat(5000) + "git status", A, None));
     rows.push(gen("true; ".repeat(5000) + "git push", D, Some("git-push")));
+    // More distinct RUSTUP_FORCE_ARG0 values than the cap (8) is oversize;
+    // the cap itself is still judged normally.
+    let sets = |n: usize| -> String {
+        (0..n)
+            .map(|i| format!("RUSTUP_FORCE_ARG0=v{} ", i))
+            .collect()
+    };
+    rows.push(gen(format!("env {}true", sets(9)), D, Some("oversize")));
+    rows.push(gen(format!("env {}true", sets(8)), A, None));
     rows
 }
 

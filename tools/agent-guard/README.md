@@ -478,9 +478,13 @@ bodies, `bash -c`/`sh -c`/`zsh -lc`, `bash <<EOF` and `<<<`, `eval`, `env`
 `uvx` and `python -m`. It matches programs by basename (`/usr/bin/git` is git,
 and so is zsh's `=git`), reads prefix assignments the way bash 3.2 does as well
 as the way bash 5 and zsh do (`A[ x ]=1 git push` runs git push on macOS's
-`/bin/bash`), and judges every `rustup` in a command as the program a
-`RUSTUP_FORCE_ARG0=<x>` anywhere in it names (`export`, `declare -x`, a prefix
-on `bash -c`). It follows `cd`, `git -C`, `--git-dir` and `--work-tree` to decide scope. A
+`/bin/bash`), and judges every rustup proxy in a command (`rustup`, `cargo`,
+`rustc`, `rustdoc`, `rustfmt`, `cargo-fmt`, ... — rustup 1.29.2's list) as the
+program a `RUSTUP_FORCE_ARG0=<x>` anywhere in it names (`export`,
+`declare -x`, a prefix on `bash -c`), taking `<x>`'s file stem as rustup does
+(`/x/cargo.exe` is cargo). A computed value (`$R`, `${X:-cargo}`, `$(...)`,
+backticks) refuses every rustup proxy, and more than 8 distinct values is
+`oversize`. `cargo-<sub>` called by name is judged as `cargo <sub>`. It follows `cd`, `git -C`, `--git-dir` and `--work-tree` to decide scope. A
 heredoc fed to `cat` is data, including inside `"$(cat <<'EOF' ... EOF)"`
 with apostrophes or backticks in the body; one fed to `bash` is a script. In
 an UNQUOTED heredoc (`<<EOF`, not `<<'EOF'`) the shell runs every `$(...)` and
@@ -544,7 +548,8 @@ jq -c 'select(.source // "" | startswith("working-copy"))' ~/.local/state/agent-
 
 - **It reads text.** A script that calls git inside it (`bash tools/x.sh`,
   `make`, a Python `subprocess`), a variable used as a command (`g=git; $g push`)
-  or as a value (`R=cargo; export RUSTUP_FORCE_ARG0=$R`) or an alias is not seen. A second layer (agent-only `git`/`gh` shims on
+  or as a value (`R=cargo; X=$R`) or an alias is not seen (RUSTUP_FORCE_ARG0 is
+  the exception: a computed value there is refused outright). A second layer (agent-only `git`/`gh` shims on
   `PATH`) is planned to catch most of these.
 - **Unquoted heredocs** (`<<EOF`) are only half-read. The guard checks the
   `$(...)` and backtick commands in the body, which the shell runs, but treats

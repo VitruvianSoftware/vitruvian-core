@@ -21,6 +21,8 @@
 //! Unwrapping: env/nice/time/timeout/xargs/sudo/... and shells/eval, and the
 //! walk that turns command text into every program it would run.
 
+use std::collections::BTreeSet;
+
 use crate::paths::{basename, isabs, join, normpath};
 use crate::pyutil::{is_assignment, is_python3_dotted, split_assignment};
 use crate::shell::{fallback_split, parse_dialect, PErr, SimpleCommand, MAX_COMMANDS};
@@ -84,15 +86,62 @@ fn quote_join(words: &[String]) -> String {
         .join(" ")
 }
 
-fn note_force_arg0(name: &str, value: &str, slot: &mut Option<String>, seen: &mut Vec<String>) {
+/// The names rustup answers to: itself and every proxy it links into
+/// `~/.cargo/bin` (`TOOLS` and `DUP_TOOLS` in rustup 1.29.2). Each one reads
+/// RUSTUP_FORCE_ARG0 before argv[0], so `RUSTUP_FORCE_ARG0=cargo rustc update`
+/// runs `cargo update`.
+pub const RUSTUP_PROXIES: [&str; 14] = [
+    "rustup",
+    "rustc",
+    "rustdoc",
+    "cargo",
+    "rust-lldb",
+    "rust-gdb",
+    "rust-gdbgui",
+    "rls",
+    "cargo-clippy",
+    "clippy-driver",
+    "cargo-miri",
+    "rust-analyzer",
+    "rustfmt",
+    "cargo-fmt",
+];
+
+/// The program a rustup proxy runs when RUSTUP_FORCE_ARG0 is computed
+/// (`$X`, `$(...)`, backticks): the guard cannot tell which, so it refuses.
+pub const COMPUTED_ARG0: &str = "<RUSTUP_FORCE_ARG0 computed>";
+
+/// More distinct RUSTUP_FORCE_ARG0 values than this in one command is refused
+/// as `oversize`: each one costs a walk of the whole command.
+pub const MAX_FORCE_ARG0_VALUES: usize = 8;
+
+/// What rustup makes of a RUSTUP_FORCE_ARG0 value: the file stem
+/// (`PathBuf::from(v).file_stem()`), so `/x/cargo.exe` is `cargo`.
+fn arg0_stem(value: &str) -> String {
+    if value.contains('$') || value.contains('`') {
+        return COMPUTED_ARG0.to_string();
+    }
+    let name = value.trim_end_matches('/');
+    let name = name.rsplit('/').next().unwrap_or(name);
+    match name.rfind('.') {
+        Some(k) if k > 0 => name[..k].to_string(),
+        _ => name.to_string(),
+    }
+}
+
+fn note_force_arg0(
+    name: &str,
+    value: &str,
+    slot: &mut Option<String>,
+    seen: &mut BTreeSet<String>,
+) {
     if name == "RUSTUP_FORCE_ARG0" {
         *slot = if value.is_empty() {
             None
         } else {
-            if !seen.iter().any(|s| s == value) {
-                seen.push(value.to_string());
-            }
-            Some(value.to_string())
+            let stem = arg0_stem(value);
+            seen.insert(stem.clone());
+            Some(stem)
         };
     }
 }
@@ -113,12 +162,13 @@ pub fn unwrap(
     mut words: Vec<String>,
     cmd: &SimpleCommand,
     default_arg0: Option<&str>,
-    seen: &mut Vec<String>,
+    seen: &mut BTreeSet<String>,
 ) -> (Vec<String>, Vec<String>) {
     let mut scripts: Vec<String> = Vec::new();
     // RUSTUP_FORCE_ARG0=<x> makes rustup act as <x> (#4171), so remember it
     // from `VAR=...` prefixes and `env VAR=...` for the rustup it reaches.
     let mut force_arg0: Option<String> = None;
+    let mut forced = false;
     for _ in 0..20 {
         let lead = words.iter().take_while(|w| is_assignment(w)).count();
         for w in &words[..lead] {
@@ -249,16 +299,21 @@ pub fn unwrap(
             }
             continue;
         }
-        // rustup [OPTIONS] [+toolchain] run [--install] <toolchain> <cmd...>
-        // runs <cmd> with that toolchain: judge <cmd> (#4171). Usage and
-        // flags are from `rustup --help` / `rustup run --help` (rustup 1.29.2).
-        if p == "rustup" {
+        // Any rustup proxy with RUSTUP_FORCE_ARG0=<x> runs <x> (#4171,
+        // #4207). The tool it runs is the toolchain's own, so only once.
+        if !forced && RUSTUP_PROXIES.contains(&p) {
             if let Some(arg0) = force_arg0.take().or_else(|| default_arg0.map(String::from)) {
+                forced = true;
                 let mut w = vec![arg0];
                 w.extend_from_slice(&args);
                 words = w;
                 continue;
             }
+        }
+        // rustup [OPTIONS] [+toolchain] run [--install] <toolchain> <cmd...>
+        // runs <cmd> with that toolchain: judge <cmd> (#4171). Usage and
+        // flags are from `rustup --help` / `rustup run --help` (rustup 1.29.2).
+        if p == "rustup" {
             let mut rest = skip_opts(&args, &[]);
             if rest.first().map_or(false, |s| s.starts_with('+')) {
                 rest = skip_opts(&rest[1..], &[]);
@@ -500,7 +555,7 @@ pub fn invocations(text: &str, cwd: &str, home: &str) -> Result<Vec<Invocation>,
     let mut out = Vec::new();
     let mut state_cwd = cwd.to_string();
     let mut budget = MAX_COMMANDS;
-    let mut seen: Vec<String> = Vec::new();
+    let mut seen: BTreeSet<String> = BTreeSet::new();
     walk(
         text,
         0,
@@ -512,12 +567,15 @@ pub fn invocations(text: &str, cwd: &str, home: &str) -> Result<Vec<Invocation>,
         &mut out,
     )?;
     // RUSTUP_FORCE_ARG0 set anywhere in the command (`export X=cargo; rustup
-    // update`, `X=cargo bash -c 'rustup update'`) reaches rustups the
-    // line-by-line walk does not tie it to (#4207). Judge every rustup in the
-    // command as each value set; over-blocking a rustup the value does not
-    // reach is the safe side.
+    // update`, `X=cargo bash -c 'rustup update'`) reaches rustup proxies the
+    // line-by-line walk does not tie it to (#4207). Judge every proxy in the
+    // command as each value set; over-blocking a proxy the value does not
+    // reach is the safe side. Each value is a walk, so they are capped.
+    if seen.len() > MAX_FORCE_ARG0_VALUES {
+        return Err(PErr::TooComplex);
+    }
     if !seen.is_empty() {
-        let values = seen.clone();
+        let values: Vec<String> = seen.iter().cloned().collect();
         for value in values {
             let mut cwd2 = cwd.to_string();
             walk(
@@ -536,7 +594,7 @@ pub fn invocations(text: &str, cwd: &str, home: &str) -> Result<Vec<Invocation>,
 }
 
 /// `export`/`declare -x`/... RUSTUP_FORCE_ARG0=<x>: note <x> (#4207).
-fn note_declared_arg0(argv: &[String], seen: &mut Vec<String>) {
+fn note_declared_arg0(argv: &[String], seen: &mut BTreeSet<String>) {
     let prog = basename(&argv[0]);
     if !["export", "declare", "typeset", "local", "readonly"].contains(&prog) {
         return;
@@ -557,7 +615,7 @@ fn walk(
     state_cwd: &mut String,
     budget: &mut i64,
     default_arg0: Option<&str>,
-    seen: &mut Vec<String>,
+    seen: &mut BTreeSet<String>,
     out: &mut Vec<Invocation>,
 ) -> Result<(), PErr> {
     if depth > 6 {
@@ -614,7 +672,7 @@ fn walk_cmds(
     state_cwd: &mut String,
     budget: &mut i64,
     default_arg0: Option<&str>,
-    seen: &mut Vec<String>,
+    seen: &mut BTreeSet<String>,
     out: &mut Vec<Invocation>,
 ) -> Result<(), PErr> {
     for cmd in cmds {
