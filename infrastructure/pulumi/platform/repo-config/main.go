@@ -451,6 +451,12 @@ func main() {
 			return err
 		}
 
+		// Only release-please (and the admin break-glass) may create, move
+		// or delete a tag; a release tag starts deploys. See release_tags.go.
+		if err := releaseTagProtection(ctx, repo); err != nil {
+			return err
+		}
+
 		if err := tabulaEnvironments(ctx, cfg, repo); err != nil {
 			return err
 		}
@@ -593,14 +599,14 @@ func tabulaEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *github.Re
 			if _, err := github.NewRepositoryEnvironmentDeploymentPolicy(ctx, fmt.Sprintf("%s-deploy-policy-tags", name), &github.RepositoryEnvironmentDeploymentPolicyArgs{
 				Repository:  repo.Name,
 				Environment: envRes.Environment,
-				TagPattern:  pulumi.String("tabula-api-v*"),
+				TagPattern:  pulumi.String(tabulaAPIReleaseTagPattern),
 			}, pulumi.DependsOn([]pulumi.Resource{envRes})); err != nil {
 				return err
 			}
 			if _, err := github.NewRepositoryEnvironmentDeploymentPolicy(ctx, fmt.Sprintf("%s-deploy-policy-tags-web", name), &github.RepositoryEnvironmentDeploymentPolicyArgs{
 				Repository:  repo.Name,
 				Environment: envRes.Environment,
-				TagPattern:  pulumi.String("tabula-web-v*"),
+				TagPattern:  pulumi.String(tabulaWebReleaseTagPattern),
 			}, pulumi.DependsOn([]pulumi.Resource{envRes})); err != nil {
 				return err
 			}
@@ -734,8 +740,8 @@ func oauthEnvironment(ctx *pulumi.Context, cfg *config.Config, repo *github.Repo
 		imported     bool
 	}{
 		{"development", false, "", false, true},
-		{"nonproduction", true, "oauth-user-inspector-v*", false, false},
-		{"production", true, "oauth-user-inspector-v*", true, false},
+		{"nonproduction", true, oauthUserInspectorReleaseTagPattern, false, false},
+		{"production", true, oauthUserInspectorReleaseTagPattern, true, false},
 		{"build", false, "", false, false},
 		{"preview", false, "", false, false},
 	}
