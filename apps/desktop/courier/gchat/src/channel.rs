@@ -152,6 +152,14 @@ pub const PING_INTERVAL: Duration = Duration::from_secs(60);
 pub const READ_INACTIVITY_TIMEOUT: Duration = Duration::from_secs(35);
 pub const SERVER_EVENT_TIMEOUT: Duration = Duration::from_secs(90);
 pub const RECONNECT_BACKOFF_LADDER_MS: [u64; 6] = [1_000, 2_000, 4_000, 8_000, 15_000, 30_000];
+/// Longest one handshake request (register, SID bind, ack, ping, opening a long poll) may take before
+/// it counts as a network error. The HTTP client has no timeout of its own, so without this a request
+/// sent over a connection that died (sleep, Wi-Fi change) waits forever and the stream never retries.
+pub const HANDSHAKE_STEP_TIMEOUT: Duration = Duration::from_secs(30);
+/// Oldest a WebChannel session may get before we start a fresh one, as the reference does
+/// (ref pkg/gchatmeow/channel.go defaultChannelMaxAge). A session kept too long ends in HTTP 400
+/// "Unknown SID" (seen about hourly in the field); recycling first avoids that gap.
+pub const SID_MAX_AGE: Duration = Duration::from_secs(90 * 60);
 
 pub const GCHAT_EVENT_KIND_EVENT_PROTO: i32 = 1;
 pub const GCHAT_EVENT_KIND_AUTH_EXPIRED: i32 = 2;
@@ -1003,6 +1011,26 @@ crate::edition2021! {
             Ok((out, saw_valid_frame))
         }
 
+        /// Runs `fut` but gives up after [`HANDSHAKE_STEP_TIMEOUT`] on the channel clock, as a network error.
+        async fn within_step_timeout<T, Fut>(&self, what: &str, fut: Fut) -> Result<T, GChatError>
+        where
+            Fut: Future<Output = Result<T, GChatError>>,
+        {
+            let clock = self.clock();
+            tokio::select! {
+                r = fut => r,
+                _ = clock.sleep(HANDSHAKE_STEP_TIMEOUT) => Err(GChatError::Network(format!(
+                    "webchannel {what} timed out after {}s",
+                    HANDSHAKE_STEP_TIMEOUT.as_secs()
+                ))),
+            }
+        }
+
+        /// Keeps a WebChannel session alive forever: every failure (network, timeout, HTTP 400 for a stale
+        /// SID, any other status) throws the session away, waits on the backoff ladder, and registers a new
+        /// one, never reusing the old SID. Only a confirmed auth failure stops it. After any gap (an error,
+        /// or recycling a session older than [`SID_MAX_AGE`]) the next CONNECTED is followed by RESYNC so the
+        /// engine catches up on what the gap missed.
         pub async fn run_forever<F>(
             self: Arc<Self>,
             mut cancel_rx: tokio::sync::watch::Receiver<bool>,
@@ -1011,6 +1039,7 @@ crate::edition2021! {
             F: FnMut(i32, &[u8]) + Send + 'static,
         {
             let mut attempt = 0usize;
+            let mut resync_on_connect = false;
             loop {
                 if *cancel_rx.borrow() {
                     break;
@@ -1018,7 +1047,7 @@ crate::edition2021! {
 
                 let reg_res = tokio::select! {
                     _ = cancel_rx.changed() => break,
-                    r = self.step1_register() => r,
+                    r = self.within_step_timeout("register", self.step1_register()) => r,
                 };
                 if let Err(e) = reg_res {
                     if !self.handle_stream_error("step1_register", e, &mut attempt, &mut cancel_rx, &mut emit).await {
@@ -1029,7 +1058,7 @@ crate::edition2021! {
 
                 let sid_res = tokio::select! {
                     _ = cancel_rx.changed() => break,
-                    r = self.step2_bind_sid() => r,
+                    r = self.within_step_timeout("SID bind", self.step2_bind_sid()) => r,
                 };
                 let (sid, bind_resp) = match sid_res {
                     Ok(pair) => pair,
@@ -1043,7 +1072,7 @@ crate::edition2021! {
 
                 let ack_ping_res = tokio::select! {
                     _ = cancel_rx.changed() => break,
-                    r = self.step3_ack_and_ping(&sid) => r,
+                    r = self.within_step_timeout("ack and ping", self.step3_ack_and_ping(&sid)) => r,
                 };
                 if let Err(e) = ack_ping_res {
                     drop(bind_resp);
@@ -1053,12 +1082,14 @@ crate::edition2021! {
                     continue;
                 }
 
+                let session_started_ms = self.clock().now_ms();
                 let cookies_json = self.jar.to_cookie_map_json();
                 emit(GCHAT_EVENT_KIND_CONNECTED, cookies_json.as_bytes());
-                if attempt > 0 {
+                if attempt > 0 || resync_on_connect {
                     emit(GCHAT_EVENT_KIND_RESYNC, &[]);
                 }
                 attempt = 0;
+                resync_on_connect = false;
 
                 // Read the bind GET response body as the first long-poll stream.
                 {
@@ -1084,15 +1115,31 @@ crate::edition2021! {
                     if *cancel_rx.borrow() {
                         return;
                     }
-                    let mut on_ev = |ev: &pb::Event| {
-                        let bytes = ev.encode_to_vec();
-                        emit(GCHAT_EVENT_KIND_EVENT_PROTO, &bytes);
-                    };
-                    let poll_res = tokio::select! {
+                    let age_ms = self.clock().now_ms().saturating_sub(session_started_ms);
+                    if age_ms >= SID_MAX_AGE.as_millis() as u64 {
+                        // Recycle before Google expires the SID; register a fresh session straight away.
+                        resync_on_connect = true;
+                        break;
+                    }
+                    let open_res = tokio::select! {
                         _ = cancel_rx.changed() => return,
-                        r = self.step4_poll_events(&sid, &mut on_ev) => r,
+                        r = self.within_step_timeout("long poll", self.step4_open_poll(&sid)) => r,
                     };
-                    drop(on_ev);
+                    let poll_res = match open_res {
+                        Ok(resp) => {
+                            let mut on_ev = |ev: &pb::Event| {
+                                let bytes = ev.encode_to_vec();
+                                emit(GCHAT_EVENT_KIND_EVENT_PROTO, &bytes);
+                            };
+                            let r = tokio::select! {
+                                _ = cancel_rx.changed() => return,
+                                r = self.read_poll_response(resp, &mut on_ev) => r,
+                            };
+                            drop(on_ev);
+                            r
+                        }
+                        Err(e) => Err(e),
+                    };
                     match poll_res {
                         Ok(_) => {
                             // Normal long-poll EOF rotation: preserve AID and re-open GET.
@@ -2161,5 +2208,273 @@ mod tests {
                 );
             }
         }
+    }
+
+    fn loopback_webchannel(
+        addr: std::net::SocketAddr,
+        clock: Arc<ManualChannelClock>,
+    ) -> Arc<WebChannelClient> {
+        let guard = NetGuard::allow_loopback_for_test();
+        let http = guard.build_http_client().expect("build http client");
+        let jar = DomainCookieJar::from_scoped_cookies(vec![
+            ScopedCookie {
+                name: "COMPASS".into(),
+                value: "c1".into(),
+                domain: "chat.google.com".into(),
+                path: "/".into(),
+            },
+            ScopedCookie {
+                name: "OSID".into(),
+                value: "o1".into(),
+                domain: "chat.google.com".into(),
+                path: "/".into(),
+            },
+            ScopedCookie {
+                name: "SID".into(),
+                value: "s1".into(),
+                domain: ".google.com".into(),
+                path: "/".into(),
+            },
+            ScopedCookie {
+                name: "HSID".into(),
+                value: "h1".into(),
+                domain: ".google.com".into(),
+                path: "/".into(),
+            },
+            ScopedCookie {
+                name: "SSID".into(),
+                value: "ss1".into(),
+                domain: ".google.com".into(),
+                path: "/".into(),
+            },
+        ])
+        .expect("valid cookies")
+        .with_loopback_for_test(true);
+        let base_url = Url::parse(&format!("http://{addr}/")).expect("base url");
+        let xsrf = Arc::new(XsrfTokenManager::new(
+            http.clone(),
+            jar.clone(),
+            base_url.clone(),
+            "Mozilla/5.0".to_string(),
+            guard.clone(),
+        ));
+        Arc::new(WebChannelClient::with_clock(
+            http,
+            jar,
+            xsrf,
+            guard,
+            "Mozilla/5.0".to_string(),
+            base_url,
+            clock,
+        ))
+    }
+
+    /// Accepts the next connection that carries an HTTP request, skipping any the client opened and
+    /// closed without sending one. Returns the stream and the request line.
+    fn accept_request(listener: &TcpListener) -> (std::net::TcpStream, String) {
+        loop {
+            let (mut s, _) = listener.accept().expect("accept");
+            let mut buf = Vec::new();
+            let mut temp = [0u8; 4096];
+            loop {
+                match s.read(&mut temp) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => {
+                        buf.extend_from_slice(&temp[..n]);
+                        if buf.windows(4).any(|w| w == b"\r\n\r\n") {
+                            break;
+                        }
+                    }
+                }
+            }
+            if let Some(end) = buf.windows(4).position(|w| w == b"\r\n\r\n") {
+                let head = String::from_utf8_lossy(&buf[..end]).to_string();
+                return (s, head.lines().next().unwrap_or("").to_string());
+            }
+        }
+    }
+
+    /// Reads one request's head from `s` and returns its request line, or None if it sent nothing.
+    fn read_request_line(s: &mut std::net::TcpStream) -> Option<String> {
+        let mut buf = Vec::new();
+        let mut temp = [0u8; 4096];
+        while !buf.windows(4).any(|w| w == b"\r\n\r\n") {
+            match s.read(&mut temp) {
+                Ok(0) | Err(_) => return None,
+                Ok(n) => buf.extend_from_slice(&temp[..n]),
+            }
+        }
+        let end = buf.windows(4).position(|w| w == b"\r\n\r\n")?;
+        Some(
+            String::from_utf8_lossy(&buf[..end])
+                .lines()
+                .next()
+                .unwrap_or("")
+                .to_string(),
+        )
+    }
+
+    const OK_EMPTY: &[u8] = b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+
+    fn bind_ok(sid: &str) -> String {
+        format!("HTTP/1.1 200 OK\r\nX-HTTP-Initial-Response: [[0,[\"c\",\"{sid}\",\"\",8,12]]]\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+    }
+
+    crate::edition2021! {
+    /// A register that never answers (a connection that died under us) must time out and be retried, and a
+    /// reconnect that Google answers with HTTP 400 must be dropped for a brand-new session (fresh register,
+    /// new SID) rather than retried on the dead one. Before the step timeout, the first register waited forever.
+    #[test]
+    fn test_webchannel_reconnect_survives_hung_register_and_a_400_with_a_fresh_session() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback");
+        let addr = listener.local_addr().expect("local addr");
+        let clock = Arc::new(ManualChannelClock::new(0.0));
+        let (poll_tx, poll_rx) = tokio::sync::oneshot::channel::<String>();
+
+        // Each connection gets its own thread and is answered by the order its request arrived in, so an
+        // idle connection the HTTP client opens and never uses cannot stall the script.
+        let (line_tx, mut line_rx) = tokio::sync::mpsc::unbounded_channel::<(usize, String)>();
+        let seq = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+        let release_rx = Arc::new(Mutex::new(release_rx));
+        let poll_tx = Arc::new(Mutex::new(Some(poll_tx)));
+        std::thread::spawn(move || loop {
+            let Ok((s, _)) = listener.accept() else { return };
+            let (seq, line_tx, release_rx, poll_tx) = (seq.clone(), line_tx.clone(), release_rx.clone(), poll_tx.clone());
+            std::thread::spawn(move || {
+                let mut s = s;
+                let Some(line) = read_request_line(&mut s) else { return };
+                let n = seq.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let _ = line_tx.send((n, line.clone()));
+                match n {
+                    // 0: a register that never answers, held until the test ends.
+                    0 => {
+                        let _ = release_rx.lock().unwrap().recv();
+                    }
+                    // 2: the reconnect's SID bind is answered with HTTP 400 once.
+                    2 => {
+                        let _ = s.write_all(b"HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                    }
+                    4 => {
+                        let _ = s.write_all(bind_ok("sid_fresh").as_bytes());
+                    }
+                    7 => {
+                        if let Some(tx) = poll_tx.lock().unwrap().take() {
+                            let _ = tx.send(line);
+                        }
+                        let chunk = "[[1,[\"noop\"]]]";
+                        let body = format!("{}\n{}", chunk.encode_utf16().count(), chunk);
+                        let _ = s.write_all(format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body).as_bytes());
+                    }
+                    // 1, 3: register OK; 5, 6: ack and ping OK; later polls: empty.
+                    _ => {
+                        let _ = s.write_all(OK_EMPTY);
+                    }
+                }
+            });
+        });
+
+        let wc = loopback_webchannel(addr, clock.clone());
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().expect("tokio runtime");
+        let (kinds, errors, poll_line, lines) = rt.block_on(async {
+            let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
+            let (ev_tx, mut ev_rx) = tokio::sync::mpsc::unbounded_channel::<(i32, Vec<u8>)>();
+            let wc_task = tokio::spawn(wc.clone().run_forever(cancel_rx, move |kind, payload| {
+                let _ = ev_tx.send((kind, payload.to_vec()));
+            }));
+            let mut lines: Vec<(usize, String)> = Vec::new();
+            let drive = async {
+                // Let the first register reach the server before its timeout runs out.
+                lines.push(line_rx.recv().await.expect("first register"));
+                clock.wait_for_sleep_duration(HANDSHAKE_STEP_TIMEOUT).await;
+                clock.advance(HANDSHAKE_STEP_TIMEOUT);
+                clock.wait_for_sleep_duration(Duration::from_millis(1_000)).await;
+                clock.advance(Duration::from_millis(1_000));
+                clock.wait_for_sleep_duration(Duration::from_millis(2_000)).await;
+                clock.advance(Duration::from_millis(2_000));
+                let poll_line = poll_rx.await.expect("poll on the fresh SID");
+                while let Ok(l) = line_rx.try_recv() {
+                    lines.push(l);
+                }
+                let mut kinds = Vec::new();
+                let mut errors = Vec::new();
+                while let Some((kind, payload)) = ev_rx.recv().await {
+                    kinds.push(kind);
+                    if kind == GCHAT_EVENT_KIND_STREAM_ERROR {
+                        errors.push(String::from_utf8_lossy(&payload).to_string());
+                    }
+                    if kind == GCHAT_EVENT_KIND_RESYNC {
+                        break;
+                    }
+                }
+                (kinds, errors, poll_line)
+            };
+            let out = tokio::time::timeout(Duration::from_secs(10), drive)
+                .await
+                .expect("stream never recovered: a hung register or a 400 stopped the retries");
+            let _ = cancel_tx.send(true);
+            let _ = wc_task.await;
+            let (kinds, errors, poll_line) = out;
+            (kinds, errors, poll_line, lines)
+        });
+        drop(release_tx);
+        let mut lines = lines;
+        lines.sort();
+        let lines: Vec<String> = lines.into_iter().map(|(_, l)| l).collect();
+
+        assert_eq!(errors, vec!["step1_register: network".to_string(), "step2_bind_sid: http_status:400".to_string()]);
+        assert!(kinds.contains(&GCHAT_EVENT_KIND_CONNECTED) && kinds.contains(&GCHAT_EVENT_KIND_RESYNC), "got {kinds:?}");
+        assert!(lines[3].contains("/u/0/webchannel/register"), "a 400 must start over with a fresh register, got {}", lines[3]);
+        assert!(lines[4].contains("SID=null"), "the fresh session binds a new SID, got {}", lines[4]);
+        assert!(poll_line.contains("SID=sid_fresh") && poll_line.contains("AID=0"), "poll must use the new SID, got {poll_line}");
+    }
+
+    /// A session older than SID_MAX_AGE is replaced with a fresh one before Google expires it, and the
+    /// engine is told to catch up. Before this, the old SID was polled until Google answered HTTP 400.
+    #[test]
+    fn test_webchannel_recycles_session_older_than_max_age() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback");
+        let addr = listener.local_addr().expect("local addr");
+        let clock = Arc::new(ManualChannelClock::new(0.0));
+        let (next_tx, next_rx) = tokio::sync::oneshot::channel::<String>();
+
+        let server_thread = std::thread::spawn(move || {
+            let (mut s, _) = accept_request(&listener);
+            s.write_all(OK_EMPTY).unwrap();
+            let (mut s, _) = accept_request(&listener);
+            s.write_all(bind_ok("sid_old").as_bytes()).unwrap();
+            for _step in ["ack", "ping"] {
+                let (mut s, _) = accept_request(&listener);
+                s.write_all(OK_EMPTY).unwrap();
+            }
+            // The bind stream ended (empty body). The next request is a fresh register, not a poll on sid_old.
+            let (mut s, line) = accept_request(&listener);
+            let _ = next_tx.send(line);
+            s.write_all(OK_EMPTY).unwrap();
+        });
+
+        let wc = loopback_webchannel(addr, clock.clone());
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().expect("tokio runtime");
+        let next_line = rt.block_on(async {
+            let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
+            let clock_in_cb = clock.clone();
+            let mut aged = false;
+            let wc_task = tokio::spawn(wc.clone().run_forever(cancel_rx, move |kind, _| {
+                if kind == GCHAT_EVENT_KIND_CONNECTED && !aged {
+                    aged = true;
+                    clock_in_cb.advance(SID_MAX_AGE);
+                }
+            }));
+            let line = tokio::time::timeout(Duration::from_secs(10), next_rx)
+                .await
+                .expect("no request after the session aged out")
+                .expect("server sent the next request line");
+            let _ = cancel_tx.send(true);
+            let _ = wc_task.await;
+            line
+        });
+        server_thread.join().expect("server thread");
+        assert!(next_line.contains("/u/0/webchannel/register"), "an aged session must be replaced with a fresh register, got {next_line}");
+    }
     }
 }
