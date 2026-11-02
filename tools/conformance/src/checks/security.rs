@@ -1031,6 +1031,32 @@ pub fn tag_collides(tag: &str, prefix: &str) -> bool {
     true
 }
 
+/// Why the marked block cannot be read the way Go reads it, if it cannot:
+/// each marker text must appear exactly once in the file (an earlier comment
+/// mentioning it would move this reader's start), and nothing between the
+/// markers may contain a backslash (an escape such as `\x2d` is a different
+/// string to Go than to this reader). TestRollingTagMarkersMatchRollingTags
+/// holds the same two rules on the Go side.
+pub fn rolling_tags_problem(src: &str) -> Option<String> {
+    for marker in ["rolling-tags:begin", "rolling-tags:end"] {
+        let n = src.matches(marker).count();
+        if n != 1 {
+            return Some(format!(
+                "{marker:?} appears {n} times in release_tags.go; it must appear exactly once"
+            ));
+        }
+    }
+    let b = src.find("rolling-tags:begin")?;
+    let e = src.find("rolling-tags:end")?;
+    if e < b {
+        return Some("rolling-tags:end comes before rolling-tags:begin".to_string());
+    }
+    if src[b..e].contains('\\') {
+        return Some("a backslash between the rolling-tags markers: write each tag as a plain string, with no escapes".to_string());
+    }
+    None
+}
+
 /// The names between `rolling-tags:begin` and `rolling-tags:end` in
 /// release_tags.go.
 pub fn rolling_tags(src: &str) -> Vec<String> {
@@ -1080,6 +1106,17 @@ pub fn check_release_tag_exemptions(ctx: &Context) {
         );
         return;
     };
+    if let Some(problem) = rolling_tags_problem(&src) {
+        ctx.emit_fail(
+            "releasetags",
+            src_rel,
+            "unreadable markers",
+            "one plain marked block",
+            &problem,
+            "keep exactly one rolling-tags:begin/end pair around rollingTags, with plain string literals",
+        );
+        return;
+    }
     let tags = rolling_tags(&src);
     if tags.is_empty() {
         ctx.emit_fail(
@@ -1211,5 +1248,16 @@ mod release_tag_tests {
         let raw = "// rolling-tags:begin\n\t`c-latest`,\n\t\"d-latest\",\n// rolling-tags:end\n";
         assert_eq!(rolling_tags(raw), vec!["c-latest", "d-latest"]);
         assert!(rolling_tags("no markers here").is_empty());
+    }
+
+    #[test]
+    fn marker_block_must_read_the_same_as_go() {
+        let ok = "// rolling-tags:begin\n\t\"a-latest\",\n// rolling-tags:end\n";
+        assert_eq!(rolling_tags_problem(ok), None);
+        let escaped = "// rolling-tags:begin\n\t\"devx\\x2dv9-latest\",\n// rolling-tags:end\n";
+        assert!(rolling_tags_problem(escaped).is_some());
+        let decoy = "// rolling-tags:begin is a marker\n// rolling-tags:begin\n\t\"a-latest\",\n// rolling-tags:end\n";
+        assert!(rolling_tags_problem(decoy).is_some());
+        assert!(rolling_tags_problem("nothing").is_some());
     }
 }

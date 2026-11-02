@@ -25,6 +25,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"os"
 	"path"
 	"strconv"
 	"strings"
@@ -357,10 +358,22 @@ func TestDeployTagPatternsNeverMatchExemptTags(t *testing.T) {
 // string, in either quote style. Otherwise a tag placed outside the markers
 // would escape that check.
 func TestRollingTagMarkersMatchRollingTags(t *testing.T) {
-	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, "release_tags.go", nil, parser.ParseComments)
+	src, err := os.ReadFile("release_tags.go")
 	if err != nil {
-		t.Fatalf("parsing release_tags.go (the test runs in the package directory): %v", err)
+		t.Fatalf("reading release_tags.go (the test runs in the package directory): %v", err)
+	}
+	// The conformance reader takes the first textual occurrence of each
+	// marker, so any other mention (an earlier comment, say) would point it
+	// at a different block from the one checked here.
+	for _, marker := range []string{"rolling-tags:begin", "rolling-tags:end"} {
+		if n := strings.Count(string(src), marker); n != 1 {
+			t.Errorf("%q appears %d times in release_tags.go, want exactly once", marker, n)
+		}
+	}
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "release_tags.go", src, parser.ParseComments)
+	if err != nil {
+		t.Fatalf("parsing release_tags.go: %v", err)
 	}
 	begin, end := token.NoPos, token.NoPos
 	for _, cg := range f.Comments {
@@ -387,6 +400,11 @@ func TestRollingTagMarkersMatchRollingTags(t *testing.T) {
 	var marked []string
 	ast.Inspect(f, func(n ast.Node) bool {
 		if lit, ok := n.(*ast.BasicLit); ok && lit.Kind == token.STRING && lit.Pos() > begin && lit.End() < end {
+			// The conformance reader does not decode escapes, so an escaped
+			// character would be one tag to Go and another to it.
+			if strings.Contains(lit.Value, `\`) {
+				t.Errorf("rolling tag literal %s at %v contains a backslash; write it as a plain string", lit.Value, fset.Position(lit.Pos()))
+			}
 			v, err := strconv.Unquote(lit.Value)
 			if err != nil {
 				t.Fatalf("unquoting %s: %v", lit.Value, err)
