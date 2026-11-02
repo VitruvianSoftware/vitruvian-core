@@ -84,11 +84,24 @@ fn quote_join(words: &[String]) -> String {
         .join(" ")
 }
 
+fn note_force_arg0(assignment: &str, slot: &mut Option<String>) {
+    let (name, value) = crate::pyutil::split1(assignment, '=');
+    if name == "RUSTUP_FORCE_ARG0" {
+        *slot = value.filter(|v| !v.is_empty()).map(|v| v.to_string());
+    }
+}
+
 /// Strip wrappers. Returns (argv, scripts) where scripts are nested shell text.
 pub fn unwrap(mut words: Vec<String>, cmd: &SimpleCommand) -> (Vec<String>, Vec<String>) {
     let mut scripts: Vec<String> = Vec::new();
+    // RUSTUP_FORCE_ARG0=<x> makes rustup act as <x> (#4171), so remember it
+    // from `VAR=...` prefixes and `env VAR=...` for the rustup it reaches.
+    let mut force_arg0: Option<String> = None;
     for _ in 0..20 {
         let lead = words.iter().take_while(|w| is_assignment(w)).count();
+        for w in &words[..lead] {
+            note_force_arg0(w, &mut force_arg0);
+        }
         words.drain(..lead);
         if words.is_empty() {
             return (vec![], scripts);
@@ -117,6 +130,7 @@ pub fn unwrap(mut words: Vec<String>, cmd: &SimpleCommand) -> (Vec<String>, Vec<
                     return (vec![], scripts);
                 }
                 if a.starts_with('-') || is_assignment(a) {
+                    note_force_arg0(a, &mut force_arg0);
                     i += 1;
                     continue;
                 }
@@ -202,11 +216,20 @@ pub fn unwrap(mut words: Vec<String>, cmd: &SimpleCommand) -> (Vec<String>, Vec<
             }
             continue;
         }
-        // rustup [-v|-q] run [--install] <toolchain> <command...> runs the
-        // command with that toolchain: judge the command (#4171). Flags are
-        // from `rustup --help` / `rustup run --help` (rustup 1.29.2).
+        // rustup [OPTIONS] [+toolchain] run [--install] <toolchain> <cmd...>
+        // runs <cmd> with that toolchain: judge <cmd> (#4171). Usage and
+        // flags are from `rustup --help` / `rustup run --help` (rustup 1.29.2).
         if p == "rustup" {
-            let rest = skip_opts(&args, &[]);
+            if let Some(arg0) = force_arg0.take() {
+                let mut w = vec![arg0];
+                w.extend_from_slice(&args);
+                words = w;
+                continue;
+            }
+            let mut rest = skip_opts(&args, &[]);
+            if rest.first().map_or(false, |s| s.starts_with('+')) {
+                rest = skip_opts(&rest[1..], &[]);
+            }
             if rest.first().map(|s| s.as_str()) == Some("run") {
                 let after = skip_opts(&rest[1..], &[]);
                 words = after.get(1..).map(|s| s.to_vec()).unwrap_or_default();

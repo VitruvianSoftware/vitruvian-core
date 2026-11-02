@@ -236,6 +236,11 @@ fn cargo_lock_changes_point_at_crates_lock() {
         "cargo --color=never update",
         "cargo -v --offline --manifest-path x/Cargo.toml update",
         "cargo -Z unstable-options --config k=v -C dir update",
+        "rustup +stable run stable cargo update",
+        "rustup -v +nightly run nightly cargo add serde",
+        "cargo -vC metadata update",
+        "RUSTUP_FORCE_ARG0=cargo rustup update",
+        "env RUSTUP_FORCE_ARG0=cargo rustup add serde",
     ] {
         let msg = t.fx.run(command).message;
         assert!(

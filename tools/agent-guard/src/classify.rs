@@ -1311,6 +1311,36 @@ fn first_sub(args: &[String], with_arg: &[&str]) -> String {
         .unwrap_or_default()
 }
 
+/// Split each grouped short flag (`-vC`, `-vCdir`) at its first letter in
+/// `value_letters`: `-v -C` or `-v -C dir`, so the value is consumed like
+/// one given on its own. Words after `--` are left alone.
+fn split_short_clusters(args: &[String], value_letters: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for (i, a) in args.iter().enumerate() {
+        if a == "--" {
+            out.extend_from_slice(&args[i..]);
+            break;
+        }
+        let chars: Vec<char> = a.chars().collect();
+        if chars.len() > 2 && chars[0] == '-' && chars[1] != '-' {
+            if let Some(k) = chars[1..].iter().position(|c| value_letters.contains(*c)) {
+                let k = k + 1;
+                for c in &chars[1..k] {
+                    out.push(format!("-{}", c));
+                }
+                out.push(format!("-{}", chars[k]));
+                let value: String = chars[k + 1..].iter().collect();
+                if !value.is_empty() {
+                    out.push(value);
+                }
+                continue;
+            }
+        }
+        out.push(a.clone());
+    }
+    out
+}
+
 fn version_only(args: &[String]) -> bool {
     args.first().map_or(false, |a| {
         inl(
@@ -1687,8 +1717,11 @@ pub fn classify_tool(inv: &Invocation, ctx: &Context) -> (Option<Verdict>, Strin
             Some(a) if a.starts_with('+') => &args[1..],
             _ => args,
         };
+        // `-vC dir` is `-v -C dir`: a grouped short flag can end in one that
+        // takes a value, and that value is not the subcommand either.
+        let split = split_short_clusters(args, "CZp");
         let sub = first_sub(
-            args,
+            &split,
             &[
                 "--manifest-path",
                 "-p",
