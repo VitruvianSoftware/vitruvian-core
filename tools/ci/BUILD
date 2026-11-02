@@ -566,10 +566,20 @@ rust_test(
     name = "queue_runner_watch_test",
     size = "small",
     srcs = ["src/queue_runner_watch/tests.rs"],
-    data = [":queue_runner_watch"],
+    # One case runs the watcher's real --jq filter through the hermetic jq
+    # (the RBE image has none), so a filter jq cannot parse fails here as it
+    # would against GitHub.
+    data = [
+        ":queue_runner_watch",
+        "@jq_toolchains//:resolved_toolchain",
+    ],
     edition = "2021",
-    env = {"BIN": "$(rootpath :queue_runner_watch)"},
+    env = {
+        "BIN": "$(rootpath :queue_runner_watch)",
+        "JQ_BIN": "$(JQ_BIN)",
+    },
     rustc_flags = ["-Copt-level=3"],
+    toolchains = ["@jq_toolchains//:resolved_toolchain"],
     deps = [":ci_testkit"],
 )
 

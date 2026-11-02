@@ -211,3 +211,81 @@ fn repo_and_run_id_are_required() {
         assert_eq!(read(w.dir.join("calls")), "", "called gh without {missing}");
     }
 }
+
+// == the real --jq filter ==
+//
+// The fake gh above answers the canary's state directly, so it never runs the
+// filter the watcher sends. This one does: it pipes a GitHub-shaped jobs
+// response through the watcher's OWN --jq expression with Bazel's jq. A filter
+// jq cannot parse prints nothing, which the watcher reads as "no job named
+// canary" -- the merge-queue failure on run 41371376294.
+
+const JQ_GH: &str = r#"#!/usr/bin/env bash
+echo "$*" >>"$FAKE_DIR/calls"
+case "$*" in
+  *"/jobs"*)
+    expr="" prev=""
+    for a in "$@"; do [ "$prev" = --jq ] && expr="$a"; prev="$a"; done
+    [ -n "$expr" ] || { echo "fake gh: no --jq" >&2; exit 98; }
+    printf '%s' "$FAKE_JSON" | "$JQ" -r "$expr" ;;
+  *"/variables/QUEUE_RUNNER_FALLBACK"*"--jq"*) echo on ;;
+esac
+"#;
+
+/// Bazel's jq (from $JQ_BIN, an exec path the runfiles tree spells `../`).
+fn jq() -> std::path::PathBuf {
+    let raw = std::env::var("JQ_BIN").expect("JQ_BIN is set by BUILD");
+    let rel = match raw.strip_prefix("external/") {
+        Some(rest) => format!("../{rest}"),
+        None => raw,
+    };
+    std::fs::canonicalize(&rel).unwrap_or_else(|e| panic!("JQ_BIN={rel}: {e}"))
+}
+
+fn run_real_filter(json: &str) -> Ran {
+    let dir = TempDir::new();
+    write_exe(dir.join("gh"), JQ_GH);
+    let out = Run::new(&bin("BIN"))
+        .env("FAKE_DIR", dir.path())
+        .env("FAKE_JSON", json)
+        .env("JQ", jq())
+        .env("GH_BIN", dir.join("gh"))
+        .env("REPO", "o/r")
+        .env("RUN_ID", "7")
+        .env("WAIT_SECONDS", "0")
+        .env_remove("CANARY_JOB")
+        .go();
+    Ran {
+        out,
+        calls: read(dir.join("calls")),
+    }
+}
+
+#[test]
+fn the_real_filter_reads_a_finished_canary_from_the_jobs_api() {
+    let r = run_real_filter(
+        r#"{"total_count":2,"jobs":[
+             {"name":"other","status":"completed","conclusion":"failure"},
+             {"name":"canary","status":"completed","conclusion":"success"}]}"#,
+    );
+    assert!(
+        r.out.code == 0
+            && r.out.stdout.contains("the canary completed (success)")
+            && r.wrote(&format!("{PATCH}off")),
+        "{}",
+        r.why()
+    );
+}
+
+#[test]
+fn the_real_filter_reads_a_null_conclusion_as_empty() {
+    let r = run_real_filter(
+        r#"{"total_count":1,"jobs":[
+             {"name":"canary","status":"in_progress","conclusion":null}]}"#,
+    );
+    assert!(
+        r.out.code == 0 && r.out.stdout.contains("the canary in_progress: homelab"),
+        "{}",
+        r.why()
+    );
+}

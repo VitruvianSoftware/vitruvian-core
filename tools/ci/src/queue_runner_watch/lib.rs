@@ -70,7 +70,10 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
     let jq_expr = cat(&[
         b".jobs[] | select(.name == \"",
         &job,
-        b"\") | \"\\(.status) \\(.conclusion // \\\"\\\")\"",
+        // jq receives `"\(.status) \(.conclusion // "")"`: inside a `\( )`
+        // interpolation the inner quotes stay bare. `\"` there is a jq syntax
+        // error, gh prints nothing and the watcher sees no canary job.
+        br#"") | "\(.status) \(.conclusion // "")""#,
     ]);
     let r = capture(
         48,
