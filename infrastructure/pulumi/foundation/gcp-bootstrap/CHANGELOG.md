@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.16.2...foundation-gcp-bootstrap-v0.17.0) (2026-11-02)
+
+
+### Features
+
+* **foundation-gcp-bootstrap:** add read-only identities for PR previews ([#4247](https://github.com/VitruvianSoftware/vitruvian-core/issues/4247)) ([7e0332c](https://github.com/VitruvianSoftware/vitruvian-core/commit/7e0332c7950d4b9d65291c993e301b3839592050))
+
 ## [0.16.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.16.1...foundation-gcp-bootstrap-v0.16.2) (2026-10-01)
 
 
