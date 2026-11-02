@@ -30,10 +30,18 @@ name: Pulumi Preview
 # forbids paths filters on REQUIRED checks, which would wedge PR mergeability).
 #
 # Auth notes:
-#   * tabula / oauth-user-inspector authenticate to GCP via the same keyless
-#     WIF the deploy workflows use. The WIF pool's attribute condition is
-#     repository-scoped (assertion.repository == this repo), so pull_request
-#     refs authenticate fine; fork PRs never see the vars/secrets at all.
+#   * tabula / oauth-user-inspector authenticate to GCP with keyless WIF, but
+#     as the READ-ONLY <app>-preview service account (roles/viewer on the dev
+#     project, nothing else), NOT the deploy identity (#4120). Each leg runs in
+#     the <app>-preview Environment, whose WIF binding is
+#     attribute.environment/<app>-preview (foundation gcp-projects, #4197). Do
+#     not point a leg back at <app>-development: that Environment is pinned to
+#     main, and a PR branch must never hold deploy power. The pool's attribute
+#     condition is repository-scoped (assertion.repository == this repo), so
+#     pull_request refs authenticate fine; fork PRs never see the vars/secrets.
+#     The step input is still vars.GCP_DEPLOY_SERVICE_ACCOUNT: repo-config
+#     reuses that variable name for the preview SA. PULUMI_ACCESS_TOKEN is a
+#     repository secret, so the preview Environments carry no secrets at all.
 #   * The bazel-run wrappers (//infrastructure/pulumi/<p>:preview) are NOT used
 #     here: //tools/pulumi:pulumi-cmd pins those projects to a HUMAN gcloud
 #     identity (infrastructure/gcp-identities.tsv) and hard-errors without it.
@@ -81,7 +89,8 @@ jobs:
           - app: tabula
             dir: apps/suites/tabula/infra/app
             stack: development
-            environment: tabula-development
+            # Read-only preview identity (#4120), NOT the deploy Environment.
+            environment: tabula-preview
             # Same non-secret placeholder as the oauth leg below: tabula's app
             # stack now declares a Cloudflare CNAME, so its DEFAULT provider must
             # CONFIGURE for this advisory, token-less preview. A dry run makes no
@@ -91,7 +100,8 @@ jobs:
           - app: oauth-user-inspector
             dir: apps/web/oauth-user-inspector/infra/app
             stack: development
-            environment: oauth-user-inspector-development
+            # Read-only preview identity (#4120), NOT the deploy Environment.
+            environment: oauth-user-inspector-preview
             # Non-secret placeholder so the app stack's DEFAULT cloudflare
             # provider can CONFIGURE during this advisory, token-less preview
             # (a dry run makes zero Cloudflare API calls; the zone lookup is
