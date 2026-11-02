@@ -28,7 +28,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 
-use crate::canonical::{canonical_go, canonical_node, canonical_pnpm, go_is_newer};
+use crate::canonical::{canonical_go, canonical_node, canonical_pnpm, canonical_rust, go_is_newer};
 use crate::emit::GLYPH_PIN;
 use crate::Context;
 
@@ -289,6 +289,56 @@ pub fn check_node(ctx: &Context) {
         for maj in &majors {
             verdict(ctx, "node", &df_rel, "node", maj, &canon, false);
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// CHECK: Rust — every rust-toolchain(.toml) vs MODULE.bazel's rust.toolchain
+// ---------------------------------------------------------------------------
+
+/// Every `rust-toolchain` / `rust-toolchain.toml` in the tree must pin exactly
+/// the Bazel toolchain's version (`rust.toolchain` in MODULE.bazel). rustup
+/// reads such a file in its directory and every directory below, so one that
+/// says `channel = "stable"` silently moves every rustup-driven cargo/rustc
+/// run there to whatever stable is today (#4183). It cannot move Bazel's
+/// hermetic toolchain, which is exactly why the two would drift apart. A
+/// justified exception goes in version-pins.tsv (tool `rust`) like any pin.
+pub fn check_rust_toolchain(ctx: &Context) {
+    let canon = match canonical_rust(&ctx.root) {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+    let mut files = ctx.files.discover(&ctx.root, "rust-toolchain");
+    files.extend(ctx.files.discover(&ctx.root, "rust-toolchain.toml"));
+    files.sort();
+    for f in &files {
+        let content = match fs::read_to_string(f) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let found = rust_toolchain_channel(&content).unwrap_or_else(|| "(no channel)".to_string());
+        verdict(ctx, "rust", &ctx.rel(f), "rust", &found, &canon, false);
+    }
+}
+
+/// The toolchain a `rust-toolchain(.toml)` file selects: TOML's
+/// `channel = "..."`, or the legacy one-line form (`1.75.0`, `nightly`).
+fn rust_toolchain_channel(content: &str) -> Option<String> {
+    let lines: Vec<&str> = content
+        .lines()
+        .map(|l| l.split('#').next().unwrap_or("").trim())
+        .filter(|l| !l.is_empty())
+        .collect();
+    for l in &lines {
+        if let Some(rest) = l.strip_prefix("channel") {
+            let v = rest.trim_start().strip_prefix('=')?.trim();
+            return Some(v.trim_matches(|c| c == '"' || c == '\'').to_string());
+        }
+    }
+    // Legacy form: the whole file is one toolchain name, no TOML at all.
+    match lines.as_slice() {
+        [one] if !one.contains('=') && !one.starts_with('[') => Some(one.to_string()),
+        _ => None,
     }
 }
 
@@ -633,6 +683,44 @@ fn copies_package_json(content: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rust_toolchain_channel_reads_toml() {
+        assert_eq!(
+            rust_toolchain_channel("[toolchain]\nchannel = \"1.75.0\"\nprofile = \"minimal\"\n")
+                .as_deref(),
+            Some("1.75.0")
+        );
+        assert_eq!(
+            rust_toolchain_channel("[toolchain]\n# pinned\nchannel = 'stable'\n").as_deref(),
+            Some("stable")
+        );
+        assert_eq!(
+            rust_toolchain_channel("[toolchain]\nchannel=\"nightly-2024-01-01\"\n").as_deref(),
+            Some("nightly-2024-01-01")
+        );
+    }
+
+    #[test]
+    fn rust_toolchain_channel_reads_the_legacy_form() {
+        assert_eq!(
+            rust_toolchain_channel("1.75.0\n").as_deref(),
+            Some("1.75.0")
+        );
+        assert_eq!(
+            rust_toolchain_channel("nightly\n").as_deref(),
+            Some("nightly")
+        );
+    }
+
+    #[test]
+    fn rust_toolchain_channel_without_one() {
+        assert_eq!(
+            rust_toolchain_channel("[toolchain]\ncomponents = [\"clippy\"]\n"),
+            None
+        );
+        assert_eq!(rust_toolchain_channel(""), None);
+    }
 
     #[test]
     fn extract_leading_digits_works() {

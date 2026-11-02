@@ -417,6 +417,45 @@ fn command_installs_rust(cmd: &str) -> Option<&'static str> {
     None
 }
 
+/// The files a step writes to set state for later steps. A
+/// `RUSTUP_TOOLCHAIN=...` line written into one sets the toolchain for every
+/// later step, the same as `env:`.
+const ENV_FILES: &[&str] = &["GITHUB_ENV", "GITHUB_OUTPUT"];
+
+fn mentions_env_file(line: &str) -> bool {
+    ENV_FILES.iter().any(|f| line.contains(f))
+}
+
+/// Every value `line` assigns to `RUSTUP_TOOLCHAIN=`, cut at the first
+/// whitespace, quote, backslash (`\n` in printf) or shell operator.
+fn rustup_toolchain_assignments(line: &str) -> Vec<&str> {
+    line.match_indices("RUSTUP_TOOLCHAIN=")
+        .map(|(i, m)| {
+            let rest = &line[i + m.len()..];
+            let end = rest
+                .find(|c: char| {
+                    c.is_whitespace()
+                        || matches!(c, '"' | '\'' | '\\' | '>' | '|' | ';' | '&' | ')')
+                })
+                .unwrap_or(rest.len());
+            &rest[..end]
+        })
+        .collect()
+}
+
+/// The delimiter of a heredoc that `line` opens (`<<EOF`, `<<-EOF`,
+/// `<< 'EOF'`), if it opens one.
+fn heredoc_delimiter(line: &str) -> Option<String> {
+    let i = line.find("<<")?;
+    let rest = line[i + 2..].trim_start_matches('-').trim_start();
+    let d: String = rest
+        .trim_start_matches(|c| c == '\'' || c == '"')
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+        .collect();
+    (!d.is_empty()).then_some(d)
+}
+
 /// Every place in `text` (a workflow, an action, or any file beside them)
 /// that installs Rust: `(line number, why, the logical line)`.
 ///
@@ -428,8 +467,27 @@ fn command_installs_rust(cmd: &str) -> Option<&'static str> {
 fn rust_installs(text: &str) -> Vec<(usize, &'static str, String)> {
     let mut out = Vec::new();
     let lines: Vec<&str> = text.lines().collect();
+    // Inside `cat >> "$GITHUB_ENV" <<EOF ... EOF`: the delimiter that ends it.
+    let mut env_heredoc: Option<String> = None;
     let mut i = 0;
     while i < lines.len() {
+        if let Some(delim) = &env_heredoc {
+            let l = lines[i].trim();
+            if l == delim {
+                env_heredoc = None;
+            } else if rustup_toolchain_assignments(l)
+                .iter()
+                .any(|v| !is_exact_version(v))
+            {
+                out.push((
+                    i + 1,
+                    "writes RUSTUP_TOOLCHAIN to an env file as something other than one exact release",
+                    l.to_string(),
+                ));
+            }
+            i += 1;
+            continue;
+        }
         let start = i;
         let mut logical = String::new();
         loop {
@@ -464,6 +522,27 @@ fn rust_installs(text: &str) -> Vec<(usize, &'static str, String)> {
                 ));
             }
             continue;
+        }
+        // Checked on the whole line, before it is split into commands: `echo
+        // RUSTUP_TOOLCHAIN=beta | tee -a "$GITHUB_ENV"` names the env file in
+        // a different command from the assignment, and an echo is otherwise
+        // exempt.
+        if mentions_env_file(&logical) {
+            if rustup_toolchain_assignments(&logical)
+                .iter()
+                .any(|v| !is_exact_version(v))
+            {
+                out.push((
+                    start + 1,
+                    "writes RUSTUP_TOOLCHAIN to an env file as something other than one exact release",
+                    logical.trim().to_string(),
+                ));
+                continue;
+            }
+            if let Some(d) = heredoc_delimiter(&logical) {
+                env_heredoc = Some(d);
+                continue;
+            }
         }
         let flat: String = logical
             .chars()
@@ -515,7 +594,9 @@ fn files_under(dir: &Path) -> Vec<PathBuf> {
 /// rustup counts wherever it installs or switches a toolchain: `toolchain
 /// install`/`add`, `install`, `update` (bare `rustup update` always fails: it
 /// moves every installed toolchain), `default`, `override set`, `run`, a
-/// `+toolchain` selector (`cargo +nightly`) and `RUSTUP_TOOLCHAIN`. Each must
+/// `+toolchain` selector (`cargo +nightly`) and `RUSTUP_TOOLCHAIN`, whether
+/// set in the shell, in YAML `env:`, or written to `$GITHUB_ENV` /
+/// `$GITHUB_OUTPUT` (by echo, printf, `tee -a` or a heredoc). Each must
 /// name one exact `x.y.z` release; a channel (`stable`, `beta`, `nightly`,
 /// `nightly-2024-01-01`) or a partial version (`1.75`) fails. Managers match
 /// on their basename, so `/usr/bin/apt-get` and `/usr/bin/env apt-get` count.
@@ -605,6 +686,16 @@ fn the_scan_catches_every_spelling_of_a_rust_install() {
         "RUSTUP_TOOLCHAIN=nightly cargo build",
         "export RUSTUP_TOOLCHAIN=stable",
         "      RUSTUP_TOOLCHAIN: nightly",
+        // RUSTUP_TOOLCHAIN written to an env file for later steps.
+        "echo \"RUSTUP_TOOLCHAIN=nightly\" >> \"$GITHUB_ENV\"",
+        "echo RUSTUP_TOOLCHAIN=beta | tee -a \"$GITHUB_ENV\"",
+        "echo RUSTUP_TOOLCHAIN=stable >> $GITHUB_ENV",
+        "printf 'RUSTUP_TOOLCHAIN=%s\\n' nightly >> \"$GITHUB_ENV\"",
+        "printf 'RUSTUP_TOOLCHAIN=stable\\n' >> \"$GITHUB_ENV\"",
+        "echo \"RUSTUP_TOOLCHAIN=${{ matrix.rust }}\" >> \"$GITHUB_ENV\"",
+        "echo \"RUSTUP_TOOLCHAIN=nightly\" >> \"$GITHUB_OUTPUT\"",
+        "cat >> \"$GITHUB_ENV\" <<EOF\nCARGO_TERM_COLOR=always\nRUSTUP_TOOLCHAIN=nightly\nEOF",
+        "cat <<-'ENV' >> $GITHUB_ENV\n  RUSTUP_TOOLCHAIN=beta\nENV",
         // Managers called by full path.
         "sudo /usr/bin/apt-get install -y rustc",
         "/usr/bin/env apt-get install -y cargo",
@@ -626,6 +717,14 @@ fn the_scan_leaves_other_steps_alone() {
         "echo \"::error::apt install rustc failed\"",
         "rustc --edition 2021 -O tools/ci/src/x/main.rs -o \"$RUNNER_TEMP/x\"",
         "      - uses: actions/checkout@v4",
+        "echo \"RUSTUP_TOOLCHAIN=1.75.0\" >> \"$GITHUB_ENV\"",
+        "echo RUSTUP_TOOLCHAIN=1.75.0 | tee -a \"$GITHUB_ENV\"",
+        "printf 'RUSTUP_TOOLCHAIN=1.75.0\\n' >> \"$GITHUB_ENV\"",
+        "cat >> \"$GITHUB_ENV\" <<EOF\nRUSTUP_TOOLCHAIN=1.75.0\nEOF",
+        // A heredoc ends at its delimiter; what follows is ordinary again.
+        "cat >> \"$GITHUB_ENV\" <<EOF\nCARGO_TERM_COLOR=always\nEOF\necho \"toolchain: RUSTUP_TOOLCHAIN=nightly\"",
+        "echo \"PATH_EXTRA=/opt/bin\" >> \"$GITHUB_ENV\"",
+        "echo \"using RUSTUP_TOOLCHAIN=nightly would move it\"",
         "rustup update 1.75.0",
         "rustup toolchain add 1.75.0",
         "rustup override set 1.75.0",

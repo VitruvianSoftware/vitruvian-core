@@ -79,6 +79,38 @@ pub fn canonical_node(root: &str) -> Result<String, String> {
     Ok(major.to_string())
 }
 
+/// Read the canonical Rust version from `MODULE.bazel`: the first entry of
+/// `versions = [...]` inside the `rust.toolchain(...)` call, the hermetic
+/// toolchain every Rust target builds with (`1.75.0` today).
+///
+/// `rust.repository_set(...)` calls (the libsignal 1.98.1 toolchain, selected
+/// only by its own flag) are not the canonical version and are ignored.
+///
+/// Returns `Err` if `MODULE.bazel` is missing or has no such call.
+pub fn canonical_rust(root: &str) -> Result<String, String> {
+    let path = Path::new(root).join("MODULE.bazel");
+    let content = fs::read_to_string(&path)
+        .map_err(|_| "canonical source missing: MODULE.bazel".to_string())?;
+    rust_version_from_module(&content)
+        .ok_or_else(|| "MODULE.bazel has no rust.toolchain(versions = [...])".to_string())
+}
+
+/// The parser behind [`canonical_rust`], on `MODULE.bazel`'s text.
+pub fn rust_version_from_module(content: &str) -> Option<String> {
+    let start = content.find("rust.toolchain(")?;
+    let body = &content[start..];
+    let body = &body[..body.find("\n)").map(|e| e + 2).unwrap_or(body.len())];
+    let v = body.find("versions")?;
+    let rest = &body[v..];
+    let open = rest.find('[')?;
+    let close = rest[open..].find(']')? + open;
+    rest[open + 1..close]
+        .split(',')
+        .map(|s| s.trim().trim_matches('"'))
+        .find(|s| !s.is_empty())
+        .map(|s| s.to_string())
+}
+
 /// Read the canonical pnpm version from the root `package.json`.
 ///
 /// Finds a line containing `"packageManager"`, then extracts the version
@@ -270,6 +302,40 @@ mod tests {
         let mut f = fs::File::create(dir.join(name)).unwrap();
         f.write_all(content.as_bytes()).unwrap();
         dir
+    }
+
+    #[test]
+    fn rust_version_reads_the_toolchain_call() {
+        let module = "bazel_dep(name = \"rules_rust\", version = \"0.60.0\")\n\
+rust = use_extension(\"@rules_rust//rust:extensions.bzl\", \"rust\")\n\
+rust.toolchain(\n    edition = \"2021\",\n    versions = [\"1.75.0\"],\n)\n\
+rust.repository_set(\n    name = \"rust_libsignal\",\n    versions = [\"1.98.1\"],\n)\n";
+        assert_eq!(rust_version_from_module(module).as_deref(), Some("1.75.0"));
+    }
+
+    #[test]
+    fn rust_version_ignores_a_repository_set_before_the_toolchain() {
+        let module = "rust.repository_set(\n    versions = [\"1.98.1\"],\n)\n\
+rust.toolchain(\n    versions = [\"1.80.1\", \"1.75.0\"],\n)\n";
+        assert_eq!(rust_version_from_module(module).as_deref(), Some("1.80.1"));
+    }
+
+    #[test]
+    fn rust_version_missing() {
+        assert_eq!(rust_version_from_module("bazel_dep(name = \"x\")\n"), None);
+        assert!(canonical_rust("/nonexistent/path")
+            .unwrap_err()
+            .contains("MODULE.bazel"));
+    }
+
+    #[test]
+    fn canonical_rust_reads_module_bazel() {
+        let dir = temp_dir_with_file(
+            "MODULE.bazel",
+            "rust.toolchain(\n    edition = \"2021\",\n    versions = [\"1.75.0\"],\n)\n",
+        );
+        assert_eq!(canonical_rust(dir.to_str().unwrap()).unwrap(), "1.75.0");
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

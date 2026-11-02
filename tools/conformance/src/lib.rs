@@ -285,6 +285,7 @@ impl Context {
             ("GO", "Go (go.mod → go.work)"),
             ("NODE", "Node (Dockerfile FROM node → .nvmrc major)"),
             ("PNPM", "pnpm (package.json packageManager → root)"),
+            ("RUST", "Rust (rust-toolchain(.toml) → MODULE.bazel rust.toolchain)"),
             ("CATALOG", "Catalog (package.json → pnpm-workspace.yaml catalog)"),
             ("VIS", "App visibility firewall (#82: app-scoped defaults + public allowlist)"),
             ("META", "App metadata catalog (#500: catalog-info.yaml ↔ CODEOWNERS)"),

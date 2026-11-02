@@ -36,6 +36,7 @@ pub fn run_all(ctx: &Context) {
     versions::check_go(ctx);
     versions::check_node(ctx);
     versions::check_pnpm(ctx);
+    versions::check_rust_toolchain(ctx);
     versions::stale_sweep(ctx);
     versions::doc_sync(ctx);
     if ctx.is_dead() {
