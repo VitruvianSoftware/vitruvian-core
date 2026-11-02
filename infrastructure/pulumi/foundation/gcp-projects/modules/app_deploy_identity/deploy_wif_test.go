@@ -25,15 +25,18 @@
 package app_deploy_identity
 
 import (
+	"encoding/json"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
 
+	"github.com/pulumi/pulumi/sdk/v3/go/common/resource"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
-func runDeploy(t *testing.T, args *Args) []recorded {
+func runDeploy(t *testing.T, args *Args) ([]recorded, error) {
 	t.Helper()
 	var mu sync.Mutex
 	var got []recorded
@@ -41,35 +44,99 @@ func runDeploy(t *testing.T, args *Args) []recorded {
 		_, err := Deploy(ctx, args.App, args)
 		return err
 	}, pulumi.WithMocks("proj", "stack", previewMocks{mu: &mu, got: &got}))
-	if err != nil {
-		t.Fatalf("Deploy: %v", err)
-	}
-	return got
+	return got, err
 }
 
-func TestDeployWIFBindingIsExactlyTheEnvironmentPrincipal(t *testing.T) {
-	got := runDeploy(t, &Args{
+func oauthDeployArgs() *Args {
+	return &Args{
 		App:                  "oauth-user-inspector",
 		Env:                  "development",
 		ProjectID:            pulumi.String("prj-d-bu1-oss-floating-648a"),
 		DeployRoles:          []string{"roles/run.admin"},
 		WorkloadIdentityPool: pulumi.String(testPool),
 		GitHubEnvironment:    "oauth-user-inspector-development",
-	})
-
-	var members []string
-	for _, r := range got {
-		if r.typ != "gcp:serviceaccount/iAMMember:IAMMember" {
-			continue
-		}
-		if role := r.inputs["role"].StringValue(); role != "roles/iam.workloadIdentityUser" {
-			t.Errorf("%s: unexpected role %q on the deploy SA", r.name, role)
-		}
-		members = append(members, r.inputs["member"].StringValue())
 	}
-	want := "principalSet://iam.googleapis.com/" + testPool + "/attribute.environment/oauth-user-inspector-development"
-	if len(members) != 1 || members[0] != want {
-		t.Fatalf("WIF members on the deploy SA = %q, want exactly [%q]", members, want)
+}
+
+// saGrants returns every (role, principal) pair granted on a service account
+// by r, whichever IAM resource type carries it, and whether r is a service
+// account IAM resource at all. An unknown service account IAM type is
+// reported rather than skipped, so a new way to grant cannot hide.
+func saGrants(t *testing.T, r recorded) (pairs []string, isSAIAM bool) {
+	t.Helper()
+	str := func(k string) string {
+		if v, ok := r.inputs[resource.PropertyKey(k)]; ok && v.IsString() {
+			return v.StringValue()
+		}
+		return ""
+	}
+	switch r.typ {
+	case "gcp:serviceaccount/iAMMember:IAMMember":
+		return []string{str("role") + " " + str("member")}, true
+	case "gcp:serviceaccount/iAMBinding:IAMBinding":
+		if v, ok := r.inputs["members"]; ok && v.IsArray() {
+			for _, m := range v.ArrayValue() {
+				pairs = append(pairs, str("role")+" "+m.StringValue())
+			}
+		}
+		return pairs, true
+	case "gcp:serviceaccount/iAMPolicy:IAMPolicy":
+		var policy struct {
+			Bindings []struct {
+				Role    string   `json:"role"`
+				Members []string `json:"members"`
+			} `json:"bindings"`
+		}
+		if err := json.Unmarshal([]byte(str("policyData")), &policy); err != nil {
+			t.Errorf("%s: unreadable policyData: %v", r.name, err)
+		}
+		for _, b := range policy.Bindings {
+			for _, m := range b.Members {
+				pairs = append(pairs, b.Role+" "+m)
+			}
+		}
+		return pairs, true
+	}
+	if strings.HasPrefix(r.typ, "gcp:serviceaccount/") && strings.Contains(strings.ToLower(r.typ), "iam") {
+		t.Errorf("%s: unhandled service account IAM type %s", r.name, r.typ)
+		return nil, true
+	}
+	return nil, false
+}
+
+// Every grant on the deploy service account, through ANY service account IAM
+// resource type (member, binding or whole policy), taken together, must be
+// exactly one: workloadIdentityUser for the app's own Environment principal.
+func TestDeployWIFBindingIsExactlyTheEnvironmentPrincipal(t *testing.T) {
+	got, err := runDeploy(t, oauthDeployArgs())
+	if err != nil {
+		t.Fatalf("Deploy: %v", err)
+	}
+
+	var grants []string
+	for _, r := range got {
+		pairs, _ := saGrants(t, r)
+		grants = append(grants, pairs...)
+	}
+	sort.Strings(grants)
+	want := []string{"roles/iam.workloadIdentityUser principalSet://iam.googleapis.com/" + testPool +
+		"/attribute.environment/oauth-user-inspector-development"}
+	if !reflect.DeepEqual(grants, want) {
+		t.Fatalf("grants on the deploy SA = %q, want exactly %q", grants, want)
+	}
+}
+
+// The Environment is the isolation layer; without one, the principal would be
+// ".../attribute.environment/", so the module must refuse rather than build it.
+func TestDeployRefusesEmptyGitHubEnvironment(t *testing.T) {
+	args := oauthDeployArgs()
+	args.GitHubEnvironment = ""
+	got, err := runDeploy(t, args)
+	if err == nil {
+		t.Fatalf("Deploy with an empty GitHubEnvironment succeeded and declared %d resources; want an error", len(got))
+	}
+	if !strings.Contains(err.Error(), "GitHubEnvironment") {
+		t.Errorf("error %q does not name GitHubEnvironment", err)
 	}
 }
 
