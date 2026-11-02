@@ -22,7 +22,7 @@
 //! walk that turns command text into every program it would run.
 
 use crate::paths::{basename, isabs, join, normpath};
-use crate::pyutil::{is_assignment, is_python3_dotted};
+use crate::pyutil::{is_assignment, is_python3_dotted, split_assignment};
 use crate::shell::{fallback_split, parse_script_at, PErr, SimpleCommand, MAX_COMMANDS};
 
 pub const SHELLS: [&str; 6] = ["bash", "sh", "zsh", "dash", "ksh", "fish"];
@@ -84,10 +84,13 @@ fn quote_join(words: &[String]) -> String {
         .join(" ")
 }
 
-fn note_force_arg0(assignment: &str, slot: &mut Option<String>) {
-    let (name, value) = crate::pyutil::split1(assignment, '=');
+fn note_force_arg0(name: &str, value: &str, slot: &mut Option<String>) {
     if name == "RUSTUP_FORCE_ARG0" {
-        *slot = value.filter(|v| !v.is_empty()).map(|v| v.to_string());
+        *slot = if value.is_empty() {
+            None
+        } else {
+            Some(value.to_string())
+        };
     }
 }
 
@@ -100,7 +103,9 @@ pub fn unwrap(mut words: Vec<String>, cmd: &SimpleCommand) -> (Vec<String>, Vec<
     for _ in 0..20 {
         let lead = words.iter().take_while(|w| is_assignment(w)).count();
         for w in &words[..lead] {
-            note_force_arg0(w, &mut force_arg0);
+            if let Some((name, value)) = split_assignment(w) {
+                note_force_arg0(name, value, &mut force_arg0);
+            }
         }
         words.drain(..lead);
         if words.is_empty() {
@@ -129,8 +134,11 @@ pub fn unwrap(mut words: Vec<String>, cmd: &SimpleCommand) -> (Vec<String>, Vec<
                     scripts.push(parts.join(" "));
                     return (vec![], scripts);
                 }
-                if a.starts_with('-') || is_assignment(a) {
-                    note_force_arg0(a, &mut force_arg0);
+                // env takes any word with `=` as NAME=VALUE, NAME taken
+                // literally (`env A-B=1 git push` runs git push, #4206).
+                if a.starts_with('-') || a.contains('=') {
+                    let (name, value) = crate::pyutil::split1(a, '=');
+                    note_force_arg0(name, value.unwrap_or(""), &mut force_arg0);
                     i += 1;
                     continue;
                 }
@@ -397,8 +405,9 @@ fn is_marker(name: &str) -> bool {
     name == "CLAUDECODE" || name == "GEMINI_CLI" || name.starts_with("ANTIGRAVITY_")
 }
 
+/// The name a shell prefix assignment sets (`A+=1` and `A[0]=1` set `A`).
 fn assign_name(a: &str) -> &str {
-    crate::pyutil::split1(a, '=').0
+    split_assignment(a).map_or_else(|| crate::pyutil::split1(a, '=').0, |(n, _)| n)
 }
 
 /// Does this simple command unset or blank an agent marker for what it runs?
@@ -433,8 +442,9 @@ pub fn hides_agent_marker(words: &[String]) -> bool {
             if a == "-i" || a == "--ignore-environment" || a == "-" {
                 return true;
             }
-            if is_assignment(a) {
-                if is_marker(assign_name(a)) {
+            if a.contains('=') && !a.starts_with('-') {
+                // env's NAME is literal: `env CLAUDECODE+=x` sets `CLAUDECODE+`.
+                if is_marker(crate::pyutil::split1(a, '=').0) {
                     return true;
                 }
             } else if !a.starts_with('-') {
@@ -569,6 +579,27 @@ mod tests {
             .map(|i| i.argv)
             .collect();
         assert_eq!(show, vec![vec!["rustup".to_string(), "show".into()]]);
+        // #4206: append / array-element prefixes are assignments; env's are literal.
+        assert!(hides_agent_marker(&["CLAUDECODE+=x".into(), "git".into()]));
+        assert!(hides_agent_marker(&["CLAUDECODE[0]=".into(), "git".into()]));
+        assert!(!hides_agent_marker(&[
+            "env".into(),
+            "CLAUDECODE+=x".into(),
+            "git".into()
+        ]));
+        for text in ["FOO+=1 git push", "A[0]+=1 git push", "env A-B=1 git push"] {
+            let argvs: Vec<Vec<String>> = invocations(text, "/r", "/h")
+                .unwrap()
+                .into_iter()
+                .map(|i| i.argv)
+                .collect();
+            assert_eq!(
+                argvs,
+                vec![vec!["git".to_string(), "push".into()]],
+                "{}",
+                text
+            );
+        }
         assert!(hides_agent_marker(&[
             "env".into(),
             "-u".into(),
