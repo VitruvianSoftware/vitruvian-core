@@ -849,7 +849,13 @@ jobs:
               - '.github/workflows/ci.yaml'
             ex:
               - 'packages/pulumi/examples/go-foundation/**'
+              # ts-foundation is TypeScript, but carries one Go module
+              # (helpers/iam-validate) that example-build now tests (#4205).
+              - 'packages/pulumi/examples/ts-foundation/**/*.go'
+              - 'packages/pulumi/examples/ts-foundation/**/go.mod'
+              - 'packages/pulumi/examples/ts-foundation/**/go.sum'
               - 'packages/pulumi/library/**'
+              - 'tools/ci/src/go_test_with_retry/**'
               - '.github/workflows/ci.yaml'
             butane:
               - 'apps/cli/devx/dev-machine.template.bu'
@@ -1075,7 +1081,15 @@ jobs:
     # users copy. Its Go is otherwise compiled ONLY in its downstream copybara
     # mirror, so a change here that breaks it (e.g. #1097 broke the app-infra
     # example leaf while this repo's CI stayed green) was invisible until the
-    # mirror re-ran. This compiles every example module IN THE SOURCE REPO.
+    # mirror re-ran. This compiles every example module IN THE SOURCE REPO,
+    # then runs the tests of every one that has them.
+    #
+    # `go build` skips _test.go files, so until #4205 the examples' ~22 test
+    # modules were never even compiled anywhere: no go_test targets, outside
+    # go.work, and not under go-test-infra's IaC roots. The test step finds
+    # them from the filesystem (any go.mod under packages/pulumi/examples
+    # with a _test.go, ts-foundation's Go helper included) and fails if it
+    # finds none, so a moved tree cannot turn this into a silent no-op.
     #
     # Own job (not folded into go-test-infra) + generous timeout because it is
     # ~27 standalone modules each pulling the Pulumi SDK; runs only when the
@@ -1122,8 +1136,25 @@ jobs:
             echo "::group::go build $dir"
             (cd "$dir" && go build ./...)
             echo "::endgroup::"
-          done < <(find packages/pulumi/examples/go-foundation -name go.mod -not -path '*/vendor/*' | sort)
+          done < <(find packages/pulumi/examples -name go.mod -not -path '*/vendor/*' -not -path '*/node_modules/*' | sort)
           echo "compiled $n example module(s)"
+
+      - name: Build //tools/ci:go_test_with_retry (no Bazel on this job)
+        id: go-test-bin
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: go_test_with_retry
+          deps: transient_lib
+
+      # Same tool as go-test-infra (retries only a transient proxy error), on
+      # the examples tree instead of the IaC roots. Locally:
+      #   GOWORK=off bazel run //tools/ci:go_test_with_retry -- --root packages/pulumi/examples
+      - name: go test (every example module with tests)
+        env:
+          GO_TEST_WITH_RETRY: ${{ steps.go-test-bin.outputs.path }}
+        run: |
+          set -euo pipefail
+          "$GO_TEST_WITH_RETRY" --root packages/pulumi/examples
 
   validate-butane:
     # devx's Fedora CoreOS Butane template must render to valid Ignition. There
