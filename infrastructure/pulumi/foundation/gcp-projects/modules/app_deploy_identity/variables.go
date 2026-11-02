@@ -41,6 +41,7 @@ type Args struct {
 	DeployAccountID string
 	// DeployRoles are the project-level roles the deploy SA needs. These reach
 	// outside the application, which is why they are authored in the foundation.
+	// Each must be in allowedProjectRoles (roles.go); anything else fails.
 	DeployRoles []string
 	// WorkloadIdentityPool is the FULL pool resource name from gcp-bootstrap,
 	// e.g. projects/<n>/locations/global/workloadIdentityPools/foundation-pool.
@@ -67,6 +68,12 @@ type Args struct {
 	// Secret Manager conditions must address secrets by project NUMBER, which
 	// differs per environment and is only known as a stack output.
 	ProjectNumber pulumi.StringInput
+	// ActAsServiceAccounts are the bare account ids (in ProjectID) of the
+	// runtime service accounts this app's Cloud Run services run as. The deploy
+	// SA gets roles/iam.serviceAccountUser on each of these accounts and on no
+	// other: never at project level, where it would cover every account in the
+	// shared project. Platform-issued identities are refused (roles.go).
+	ActAsServiceAccounts []string
 	// ServiceAccountNamingScheme selects standard "sa-<app>-deploy-<env>" or
 	// legacy "<app>-deploy" account naming.
 	ServiceAccountNamingScheme string

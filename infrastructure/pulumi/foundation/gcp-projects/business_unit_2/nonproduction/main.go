@@ -152,11 +152,12 @@ func main() {
 		if cfg.OSSFloatingProjectEnabled {
 			for _, app := range cfg.Apps {
 				res, err := app_deploy_identity.Deploy(ctx, app.Name, &app_deploy_identity.Args{
-					App:             app.Name,
-					Env:             cfg.Env,
-					ProjectID:       projects.OSSFloatingProjectID,
-					DeployAccountID: app.DeployAccountID,
-					DeployRoles:     app.DeployRoles,
+					App:                  app.Name,
+					Env:                  cfg.Env,
+					ProjectID:            projects.OSSFloatingProjectID,
+					DeployAccountID:      app.DeployAccountID,
+					DeployRoles:          app.DeployRoles,
+					ActAsServiceAccounts: app.ActAsServiceAccounts,
 					// Resolves ${projectNumber} in the IAM conditions below.
 					ProjectNumber:          projects.OSSFloatingProjectNumber,
 					ConditionalDeployRoles: app.ConditionalDeployRoles,
@@ -183,6 +184,7 @@ func main() {
 				Env:                  cfg.Env,
 				ProjectID:            projects.OSSFloatingProjectID,
 				Roles:                defaultAppInfraPipelineRoles,
+				ActAsServiceAccounts: appInfraActAs(cfg.Apps),
 				WorkloadIdentityPool: refs.WIFPoolName,
 				GitHubEnvironment:    "foundation-app-" + cfg.BusinessCode + "-" + cfg.Env,
 			})

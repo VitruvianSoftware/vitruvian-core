@@ -63,7 +63,12 @@ config:
   # The secretmanager roles MUST stay in _deploy_conditional_roles: unconditioned
   # they would reach every co-tenant app's secrets (the module refuses them).
   foundation-projects-bu2-development:tabula_deploy_account_id: "tabula-deploy"
-  foundation-projects-bu2-development:tabula_deploy_roles: "roles/run.admin,roles/iam.serviceAccountUser,roles/serviceusage.serviceUsageConsumer,roles/logging.viewer"
+  foundation-projects-bu2-development:tabula_deploy_roles: "roles/run.admin,roles/serviceusage.serviceUsageConsumer,roles/logging.viewer"
+  # The runtime account(s) the app's Cloud Run services run as. The deploy SA
+  # (and this BU's app-infra pipeline SA) may act as these and no others; the
+  # module refuses roles/iam.serviceAccountUser at project level. This replaces
+  # the project-level grant of that role adopted from the app-side stack.
+  foundation-projects-bu2-development:tabula_deploy_act_as: "tabula-rt"
   foundation-projects-bu2-development:tabula_deploy_conditional_roles: 'roles/secretmanager.admin|tabula-secrets-only|resource.name.startsWith("projects/${projectNumber}/secrets/TABULA_");roles/secretmanager.secretAccessor|tabula-secrets-only|resource.name.startsWith("projects/${projectNumber}/secrets/TABULA_")'
   foundation-projects-bu2-development:bootstrap_stack_name: "ipv1337/foundation-bootstrap/production"
   # Read-only identity for the PR `pulumi preview` of tabula's app stack (#4120):

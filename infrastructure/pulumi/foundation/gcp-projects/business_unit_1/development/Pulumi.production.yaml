@@ -57,7 +57,12 @@ config:
   foundation-projects-bu1-development:bootstrap_stack_name: "ipv1337/foundation-bootstrap/production"
   foundation-projects-bu1-development:apps: "oauth-user-inspector"
   foundation-projects-bu1-development:oauth-user-inspector_deploy_account_id: "oauth-user-inspector-deploy"
-  foundation-projects-bu1-development:oauth-user-inspector_deploy_roles: "roles/run.admin,roles/iam.serviceAccountUser,roles/serviceusage.serviceUsageConsumer,roles/logging.viewer"
+  foundation-projects-bu1-development:oauth-user-inspector_deploy_roles: "roles/run.admin,roles/serviceusage.serviceUsageConsumer,roles/logging.viewer"
+  # The runtime account(s) the app's Cloud Run services run as. The deploy SA
+  # (and this BU's app-infra pipeline SA) may act as these and no others; the
+  # module refuses roles/iam.serviceAccountUser at project level. This replaces
+  # the project-level grant of that role adopted from the app-side stack.
+  foundation-projects-bu1-development:oauth-user-inspector_deploy_act_as: "oauth-user-inspector-rt"
   # The FIFTH deploy grant: Secret Manager admin CONDITIONED to this app's
   # secret prefix. It was NOT carried over when the deploy identity was adopted
   # here (the "replicated EXACTLY" note above predates conditioned-role support

@@ -81,20 +81,17 @@ func Deploy(ctx *pulumi.Context, name string, args *Args) (*Result, error) {
 		return nil, fmt.Errorf("GitHubEnvironment is required (the per-env isolation layer)")
 	}
 
-	// Refuse Secret Manager roles in the UNCONDITIONED list. These projects are
-	// shared by co-tenant OSS applications, and an unconditioned
-	// secretmanager.admin/secretAccessor hands one app's deploy identity every
-	// other app's secrets. That is a silent privilege ESCALATION no CI check
-	// would catch — the apply succeeds and nothing looks wrong. The prefix
-	// condition is the isolation boundary, so these roles must be declared as
-	// ConditionalDeployRoles.
-	for _, role := range args.DeployRoles {
-		if strings.HasPrefix(role, "roles/secretmanager.") {
-			return nil, fmt.Errorf(
-				"%q must be declared in ConditionalDeployRoles with a secret-prefix condition, not in DeployRoles: "+
-					"an unconditioned Secret Manager grant reaches every co-tenant app's secrets in this shared project", role,
-			)
-		}
+	// Every project role must be on the allow-list (roles.go). In particular
+	// Secret Manager roles must be conditioned (these projects are shared by
+	// co-tenant apps), and service-account roles are never project-wide: the
+	// runtime accounts this identity deploys as are named in
+	// ActAsServiceAccounts instead.
+	who := fmt.Sprintf("deploy identity for %q", args.App)
+	if err := validateProjectRoles(who, args.DeployRoles); err != nil {
+		return nil, err
+	}
+	if err := validateConditionalRoles(who, args.ConditionalDeployRoles); err != nil {
+		return nil, err
 	}
 
 	accountID := args.DeployAccountID
@@ -104,6 +101,10 @@ func Deploy(ctx *pulumi.Context, name string, args *Args) (*Result, error) {
 		} else {
 			accountID = args.App + "-deploy"
 		}
+	}
+
+	if err := validateActAsTargets(who, accountID, args.ActAsServiceAccounts); err != nil {
+		return nil, err
 	}
 
 	// 1. The deploy service account. CreateIgnoreAlreadyExists lets this module
@@ -183,6 +184,14 @@ func Deploy(ctx *pulumi.Context, name string, args *Args) (*Result, error) {
 		}
 	}
 
+	// 2c. Act-as on the NAMED runtime service accounts only. Deploying a Cloud
+	// Run service with a service account requires actAs on that account; a
+	// project-level grant would cover every account in the shared project.
+	if err := grantActAs(ctx, name+"-deploy-actas", args.ProjectID, args.ActAsServiceAccounts,
+		sa.Email.ApplyT(func(e string) string { return "serviceAccount:" + e }).(pulumi.StringOutput)); err != nil {
+		return nil, err
+	}
+
 	// 3. WIF: let this app's per-env GitHub Environment impersonate the SA. The
 	// pool is the shared foundation-pool from gcp-bootstrap — apps never mint
 	// their own. The provider's attribute condition already pins
@@ -244,6 +253,29 @@ func expandCondition(expr, projectNumber, projectID string, extra ...string) (st
 		return "", fmt.Errorf("unknown placeholder %s in condition expression (supported: ${projectNumber}, ${projectId}, ${app}, ${env}, ${region})", rest)
 	}
 	return out, nil
+}
+
+// grantActAs grants actAsRole to member on each named service account in
+// project. Resource names are <prefix>-<account id>, so adding or removing one
+// account never renames another's binding.
+func grantActAs(ctx *pulumi.Context, prefix string, project pulumi.StringInput, ids []string, member pulumi.StringInput) error {
+	if len(ids) > 0 && project == nil {
+		return fmt.Errorf("%s: ProjectID is required to name the act-as service accounts", prefix)
+	}
+	for _, id := range ids {
+		id := id
+		saName := project.ToStringOutput().ApplyT(func(p string) string {
+			return fmt.Sprintf("projects/%s/serviceAccounts/%s@%s.iam.gserviceaccount.com", p, id, p)
+		}).(pulumi.StringOutput)
+		if _, err := serviceaccount.NewIAMMember(ctx, prefix+"-"+id, &serviceaccount.IAMMemberArgs{
+			ServiceAccountId: saName,
+			Role:             pulumi.String(actAsRole),
+			Member:           member,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // sanitize turns an IAM role into a stable, unique Pulumi resource-name suffix

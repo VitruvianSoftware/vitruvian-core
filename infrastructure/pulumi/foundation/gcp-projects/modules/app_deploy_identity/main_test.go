@@ -125,14 +125,9 @@ func TestExpandConditionPreservesCEL(t *testing.T) {
 // oss project. The module must refuse them outright.
 func TestPlainSecretManagerRoleIsRefused(t *testing.T) {
 	for _, role := range []string{"roles/secretmanager.admin", "roles/secretmanager.secretAccessor"} {
-		var refused bool
-		for _, r := range []string{role} {
-			if strings.HasPrefix(r, "roles/secretmanager.") {
-				refused = true
-			}
-		}
-		if !refused {
-			t.Errorf("%q should be refused in DeployRoles — unconditioned it reaches co-tenant secrets", role)
+		err := validateProjectRoles("test", []string{role})
+		if err == nil || !strings.Contains(err.Error(), "ConditionalDeployRoles") {
+			t.Errorf("%q in DeployRoles: err = %v, want a refusal pointing at ConditionalDeployRoles", role, err)
 		}
 	}
 }
