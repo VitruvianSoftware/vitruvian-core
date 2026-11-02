@@ -1682,7 +1682,8 @@ extension ConversationModelTests {
                                  "message.sendHeld"], "the stops go before the held messages")
         XCTAssertEqual(h.server.receivedParams("room.setTyping").map { $0["typing"] as? Bool },
                        [true, true, false, false], "a stop from each composer")
-        XCTAssertNil(h.app.client, "then the engine stops")
+        // The supervisor has stopped; AppModel hears it through its state stream, a hop later.
+        try await waitUntil { h.app.client == nil }
     }
 
     /// In Incognito the chat stays unread, so its "New" divider stays where opening put it, through new messages.

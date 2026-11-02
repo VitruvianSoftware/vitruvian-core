@@ -240,6 +240,110 @@
       }
     ]
   },
+  "kubeconform": {
+    "binaries": [
+      {
+        "kind": "archive",
+        "file": "kubeconform",
+        "os": "linux",
+        "cpu": "x86_64",
+        "url": "https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-amd64.tar.gz",
+        "sha256": "9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883"
+      },
+      {
+        "kind": "archive",
+        "file": "kubeconform",
+        "os": "linux",
+        "cpu": "arm64",
+        "url": "https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-linux-arm64.tar.gz",
+        "sha256": "1f53fc8e81258197a35e8603054162a5af1de8c5af13746c71ab680d9534ed87"
+      },
+      {
+        "kind": "archive",
+        "file": "kubeconform",
+        "os": "macos",
+        "cpu": "x86_64",
+        "url": "https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-darwin-amd64.tar.gz",
+        "sha256": "71dbc87ac9f24099a62b93570e65aa06312ba6ac8aea63b7f86e9d999edf5a92"
+      },
+      {
+        "kind": "archive",
+        "file": "kubeconform",
+        "os": "macos",
+        "cpu": "arm64",
+        "url": "https://github.com/yannh/kubeconform/releases/download/v0.8.0/kubeconform-darwin-arm64.tar.gz",
+        "sha256": "f84f4dfbebf4a6b0b230385fa065a39ea35e02608c2b50d025dcf64775a69d67"
+      }
+    ]
+  },
+  "osv-scanner": {
+    "binaries": [
+      {
+        "kind": "file",
+        "os": "linux",
+        "cpu": "x86_64",
+        "url": "https://github.com/google/osv-scanner/releases/download/v2.6.0/osv-scanner_linux_amd64",
+        "sha256": "ca69b3d3cd08f889a49dc0a383122f71cc528b83803671df5fd874d97485b108"
+      },
+      {
+        "kind": "file",
+        "os": "linux",
+        "cpu": "arm64",
+        "url": "https://github.com/google/osv-scanner/releases/download/v2.6.0/osv-scanner_linux_arm64",
+        "sha256": "2c71403eb443d05891c4f268c3ad771cf4f16e5443463fd7851ef8f454d3c7e4"
+      },
+      {
+        "kind": "file",
+        "os": "macos",
+        "cpu": "x86_64",
+        "url": "https://github.com/google/osv-scanner/releases/download/v2.6.0/osv-scanner_darwin_amd64",
+        "sha256": "60c5296637e977b28eeda5c7f13573e447659a632922737f94d11fa7e30ad6ca"
+      },
+      {
+        "kind": "file",
+        "os": "macos",
+        "cpu": "arm64",
+        "url": "https://github.com/google/osv-scanner/releases/download/v2.6.0/osv-scanner_darwin_arm64",
+        "sha256": "98c460dcd37de25819babd757d04542045b6243113e209edcd4d89fedb0256b4"
+      }
+    ]
+  },
+  "promtool": {
+    "binaries": [
+      {
+        "kind": "archive",
+        "file": "prometheus-2.45.0.linux-amd64/promtool",
+        "os": "linux",
+        "cpu": "x86_64",
+        "url": "https://github.com/prometheus/prometheus/releases/download/v2.45.0/prometheus-2.45.0.linux-amd64.tar.gz",
+        "sha256": "1c7f489a3cc919c1ed0df2ae673a280309dc4a3eaa6ee3411e7d1f4bdec4d4c5"
+      },
+      {
+        "kind": "archive",
+        "file": "prometheus-2.45.0.linux-arm64/promtool",
+        "os": "linux",
+        "cpu": "arm64",
+        "url": "https://github.com/prometheus/prometheus/releases/download/v2.45.0/prometheus-2.45.0.linux-arm64.tar.gz",
+        "sha256": "eb7c3f28a83892dcd1a1c85d0ba7e1f7f9f3e7a74b567fd65a4aa2e7f8aa981a"
+      },
+      {
+        "kind": "archive",
+        "file": "prometheus-2.45.0.darwin-amd64/promtool",
+        "os": "macos",
+        "cpu": "x86_64",
+        "url": "https://github.com/prometheus/prometheus/releases/download/v2.45.0/prometheus-2.45.0.darwin-amd64.tar.gz",
+        "sha256": "e65d4ca0676bec55d21947290d51a62126cba829f7a8cec93808a35f17e63174"
+      },
+      {
+        "kind": "archive",
+        "file": "prometheus-2.45.0.darwin-arm64/promtool",
+        "os": "macos",
+        "cpu": "arm64",
+        "url": "https://github.com/prometheus/prometheus/releases/download/v2.45.0/prometheus-2.45.0.darwin-arm64.tar.gz",
+        "sha256": "15af7577dd7f6849a6a17409ec82fe4ac2865811c7a9a2c035cad45643442710"
+      }
+    ]
+  },
   "scaffold": {
     "binaries": [
       {

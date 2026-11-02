@@ -28,7 +28,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 
-use crate::canonical::{canonical_go, canonical_node, canonical_pnpm, go_is_newer};
+use crate::canonical::{canonical_go, canonical_node, canonical_pnpm, canonical_rust, go_is_newer};
 use crate::emit::GLYPH_PIN;
 use crate::Context;
 
@@ -289,6 +289,70 @@ pub fn check_node(ctx: &Context) {
         for maj in &majors {
             verdict(ctx, "node", &df_rel, "node", maj, &canon, false);
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// CHECK: Rust — every rust-toolchain(.toml) vs MODULE.bazel's rust.toolchain
+// ---------------------------------------------------------------------------
+
+/// Every `rust-toolchain` / `rust-toolchain.toml` in the tree must pin exactly
+/// the Bazel toolchain's version (`rust.toolchain` in MODULE.bazel). rustup
+/// reads such a file in its directory and every directory below, so one that
+/// says `channel = "stable"` silently moves every rustup-driven cargo/rustc
+/// run there to whatever stable is today (#4183). It cannot move Bazel's
+/// hermetic toolchain, which is exactly why the two would drift apart. A
+/// justified exception goes in version-pins.tsv (tool `rust`) like any pin.
+pub fn check_rust_toolchain(ctx: &Context) {
+    // Fail closed. Unlike go.work, whose absence means no Go to check, this
+    // repo always has a Rust toolchain: not finding its version means this
+    // reader no longer understands MODULE.bazel, and returning here would
+    // report every rust-toolchain file as clean.
+    let canon = match canonical_rust(&ctx.root) {
+        Ok(v) => v,
+        Err(e) => {
+            ctx.emit_fail(
+                "rust",
+                "MODULE.bazel",
+                "",
+                "",
+                &e,
+                "keep a use_extension(\"@rules_rust//rust:extensions.bzl\", \"rust\") binding with a .toolchain(versions = [...]) call, or teach canonical_rust the new shape",
+            );
+            return;
+        }
+    };
+    let mut files = ctx.files.discover(&ctx.root, "rust-toolchain");
+    files.extend(ctx.files.discover(&ctx.root, "rust-toolchain.toml"));
+    files.sort();
+    for f in &files {
+        let content = match fs::read_to_string(f) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let found = rust_toolchain_channel(&content).unwrap_or_else(|| "(no channel)".to_string());
+        verdict(ctx, "rust", &ctx.rel(f), "rust", &found, &canon, false);
+    }
+}
+
+/// The toolchain a `rust-toolchain(.toml)` file selects: TOML's
+/// `channel = "..."`, or the legacy one-line form (`1.75.0`, `nightly`).
+fn rust_toolchain_channel(content: &str) -> Option<String> {
+    let lines: Vec<&str> = content
+        .lines()
+        .map(|l| l.split('#').next().unwrap_or("").trim())
+        .filter(|l| !l.is_empty())
+        .collect();
+    for l in &lines {
+        if let Some(rest) = l.strip_prefix("channel") {
+            let v = rest.trim_start().strip_prefix('=')?.trim();
+            return Some(v.trim_matches(|c| c == '"' || c == '\'').to_string());
+        }
+    }
+    // Legacy form: the whole file is one toolchain name, no TOML at all.
+    match lines.as_slice() {
+        [one] if !one.contains('=') && !one.starts_with('[') => Some(one.to_string()),
+        _ => None,
     }
 }
 
@@ -633,6 +697,133 @@ fn copies_package_json(content: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A temp repo root holding `files` (relative path, content).
+    fn repo(files: &[(&str, &str)]) -> std::path::PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static N: AtomicU64 = AtomicU64::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "conformance-rust-{}-{}",
+            std::process::id(),
+            N.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        for (rel, body) in files {
+            let p = dir.join(rel);
+            fs::create_dir_all(p.parent().unwrap()).unwrap();
+            fs::write(p, body).unwrap();
+        }
+        dir
+    }
+
+    fn run_rust_check(files: &[(&str, &str)]) -> (u32, u32, String) {
+        let dir = repo(files);
+        let ctx = Context::for_root(dir.to_str().unwrap());
+        check_rust_toolchain(&ctx);
+        let out = (
+            ctx.ok_count.get(),
+            ctx.fail_count.get(),
+            ctx.rows.get("rust"),
+        );
+        let _ = fs::remove_dir_all(&dir);
+        out
+    }
+
+    const MODULE: &str = "rust = use_extension(\"@rules_rust//rust:extensions.bzl\", \"rust\")\n\
+rust.toolchain(\n    edition = \"2021\",\n    versions = [\"1.75.0\"],\n)\n";
+
+    #[test]
+    fn a_rust_toolchain_on_a_moving_channel_fails() {
+        let (ok, fail, rows) = run_rust_check(&[
+            ("MODULE.bazel", MODULE),
+            (
+                "apps/x/rust-toolchain.toml",
+                "[toolchain]\nchannel = \"stable\"\n",
+            ),
+            ("rust-toolchain", "nightly\n"),
+            (
+                "tools/rust-toolchain.toml",
+                "[toolchain]\nchannel = \"1.75.0\"\n",
+            ),
+        ]);
+        assert_eq!((ok, fail), (1, 2), "{rows}");
+        assert!(
+            rows.contains("apps/x/rust-toolchain.toml") && rows.contains("DRIFT"),
+            "{rows}"
+        );
+    }
+
+    /// aegis's repro: with the extension variable renamed, the drifting
+    /// files must still fail, not drop out of the report.
+    #[test]
+    fn a_renamed_extension_variable_still_checks_every_file() {
+        let renamed = MODULE
+            .replace("rust = use_extension", "rust_ext = use_extension")
+            .replace("rust.toolchain(", "rust_ext.toolchain(");
+        let (ok, fail, rows) = run_rust_check(&[
+            ("MODULE.bazel", &renamed),
+            (
+                "apps/x/rust-toolchain.toml",
+                "[toolchain]\nchannel = \"stable\"\n",
+            ),
+            ("rust-toolchain", "nightly\n"),
+        ]);
+        assert_eq!((ok, fail), (0, 2), "{rows}");
+    }
+
+    /// Fail closed: a MODULE.bazel whose Rust version cannot be read fails
+    /// the run, even with no rust-toolchain file anywhere.
+    #[test]
+    fn an_unreadable_rust_version_fails_the_run() {
+        for module in [
+            "bazel_dep(name = \"rules_rust\", version = \"0.60.0\")\n",
+            "rust = use_extension(\"@rules_rust//rust:extensions.bzl\", \"rust\")\nrust.toolchain(edition = \"2021\")\n",
+        ] {
+            let (ok, fail, rows) = run_rust_check(&[("MODULE.bazel", module)]);
+            assert_eq!((ok, fail), (0, 1), "{module}: {rows}");
+            assert!(rows.contains("could not read"), "{rows}");
+        }
+        let (_, fail, rows) = run_rust_check(&[]);
+        assert_eq!(fail, 1, "no MODULE.bazel: {rows}");
+    }
+
+    #[test]
+    fn rust_toolchain_channel_reads_toml() {
+        assert_eq!(
+            rust_toolchain_channel("[toolchain]\nchannel = \"1.75.0\"\nprofile = \"minimal\"\n")
+                .as_deref(),
+            Some("1.75.0")
+        );
+        assert_eq!(
+            rust_toolchain_channel("[toolchain]\n# pinned\nchannel = 'stable'\n").as_deref(),
+            Some("stable")
+        );
+        assert_eq!(
+            rust_toolchain_channel("[toolchain]\nchannel=\"nightly-2024-01-01\"\n").as_deref(),
+            Some("nightly-2024-01-01")
+        );
+    }
+
+    #[test]
+    fn rust_toolchain_channel_reads_the_legacy_form() {
+        assert_eq!(
+            rust_toolchain_channel("1.75.0\n").as_deref(),
+            Some("1.75.0")
+        );
+        assert_eq!(
+            rust_toolchain_channel("nightly\n").as_deref(),
+            Some("nightly")
+        );
+    }
+
+    #[test]
+    fn rust_toolchain_channel_without_one() {
+        assert_eq!(
+            rust_toolchain_channel("[toolchain]\ncomponents = [\"clippy\"]\n"),
+            None
+        );
+        assert_eq!(rust_toolchain_channel(""), None);
+    }
 
     #[test]
     fn extract_leading_digits_works() {

@@ -193,28 +193,69 @@ func newContentBody(content json.RawMessage) (string, bool) {
 // (looked up through events_edits), else MessageText. A redacted or failed edit doesn't count, so redacting the
 // newest edit, or the network refusing it, puts back the one before it.
 func (s *Store) CurrentText(ctx context.Context, e Event) (string, error) {
-	rows, err := s.db.Query(ctx, currentEditSQL, e.EventID, e.Sender)
+	edit, ok, err := s.currentEdit(ctx, e)
 	if err != nil {
 		return "", err
+	}
+	if ok {
+		body, _ := newContentBody(edit)
+		return body, nil
+	}
+	text, _, _ := MessageText(e.Type, e.Content)
+	return text, nil
+}
+
+// CurrentContent is message e's content as it reads now, by CurrentText's rule: the m.new_content of its newest
+// live edit from the same sender (edited is true), else its own content. The edit's m.new_content carries no
+// m.relates_to of its own, so the original's (a reply's m.in_reply_to) is kept.
+func (s *Store) CurrentContent(ctx context.Context, e Event) (content json.RawMessage, edited bool, err error) {
+	edit, ok, err := s.currentEdit(ctx, e)
+	if err != nil || !ok {
+		return e.Content, false, err
+	}
+	var c struct {
+		NewContent map[string]json.RawMessage `json:"m.new_content"`
+	}
+	if json.Unmarshal(edit, &c) != nil || c.NewContent == nil {
+		return e.Content, false, nil
+	}
+	var orig struct {
+		RelatesTo json.RawMessage `json:"m.relates_to"`
+	}
+	_ = json.Unmarshal(e.Content, &orig) // content that can't be read relates to nothing
+	if len(orig.RelatesTo) > 0 {
+		c.NewContent["m.relates_to"] = orig.RelatesTo
+	} else {
+		delete(c.NewContent, "m.relates_to")
+	}
+	out, err := json.Marshal(c.NewContent)
+	if err != nil {
+		return e.Content, false, err
+	}
+	return out, true, nil
+}
+
+// currentEdit is the content of message e's newest live edit that carries a new body (currentEditSQL), and
+// whether there is one.
+func (s *Store) currentEdit(ctx context.Context, e Event) (json.RawMessage, bool, error) {
+	rows, err := s.db.Query(ctx, currentEditSQL, e.EventID, e.Sender)
+	if err != nil {
+		return nil, false, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var roomID, content string
 		if err := rows.Scan(&roomID, &content); err != nil {
-			return "", err
+			return nil, false, err
 		}
 		if roomID != e.RoomID {
 			continue
 		}
-		if body, ok := newContentBody(json.RawMessage(content)); ok {
-			return body, nil
+		if _, ok := newContentBody(json.RawMessage(content)); ok {
+			return json.RawMessage(content), true, nil
 		}
 	}
-	if err := rows.Err(); err != nil {
-		return "", err
-	}
-	text, _, _ := MessageText(e.Type, e.Content)
-	return text, nil
+	return nil, false, rows.Err()
 }
 
 // messageScope is the scope column of a message's doc: everything search can filter messages on.

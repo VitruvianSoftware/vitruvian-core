@@ -59,6 +59,24 @@ RUN curl -fsSL -o /usr/local/bin/bazelisk \
  && chmod 0755 /usr/local/bin/bazelisk \
  && ln -s bazelisk /usr/local/bin/bazel
 
+# rustc: .github/actions/build-ci-tool compiles tools/ci with the runner's
+# rustc. Without one it falls back to an unpinned `apt-get install rustc`
+# (#4183), so install it here, pinned by SHA-256 like everything above. The
+# version is the Bazel Rust toolchain's (rust.toolchain in MODULE.bazel), the
+# one //tools/ci:build_ci_tool_test proves every tool builds with. Only the
+# compiler and its x86_64 std, from the official standalone installer.
+ARG RUST_VERSION=1.75.0
+ARG RUST_SHA256=6bf166ddcad545aa26aa2d12a186454d7697133b52b7fbbd271ce3ee1ecfedc6
+RUN curl -fsSL -o /tmp/rust.tar.xz \
+      "https://static.rust-lang.org/dist/rust-${RUST_VERSION}-x86_64-unknown-linux-gnu.tar.xz" \
+ && echo "${RUST_SHA256}  /tmp/rust.tar.xz" | sha256sum -c - \
+ && mkdir /tmp/rust \
+ && tar -xJf /tmp/rust.tar.xz -C /tmp/rust --strip-components=1 \
+ && /tmp/rust/install.sh --prefix=/usr/local --disable-ldconfig \
+      --components=rustc,rust-std-x86_64-unknown-linux-gnu \
+ && rm -rf /tmp/rust /tmp/rust.tar.xz \
+ && rustc --version
+
 # The runner user, uid 1001 as ARC's pods run it, with passwordless sudo.
 RUN useradd --create-home --uid 1001 --shell /bin/bash runner \
  && echo 'runner ALL=(ALL) NOPASSWD:ALL' >/etc/sudoers.d/runner \

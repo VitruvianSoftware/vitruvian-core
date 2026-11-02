@@ -83,7 +83,8 @@ alias(
 
 # The lockfile behind @multitool. //tools/secret-scan and //tools/ci:actionlint
 # tests read it to keep its gitleaks and actionlint pins level with the ones CI
-# downloads.
+# downloads, and .github/actions/install-pinned-tool takes every hash it checks
+# from it (//tools/ci:install_pinned_tool_test holds the workflows to it).
 exports_files(
     ["tools.lock.json"],
     visibility = [

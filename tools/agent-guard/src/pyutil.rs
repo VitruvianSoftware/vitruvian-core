@@ -308,22 +308,52 @@ pub fn is_python_prog(s: &str) -> bool {
     is_python3_dotted(s)
 }
 
-/// `re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", s)`.
+/// A shell prefix assignment, `NAME=`, `NAME+=`, `NAME[sub]=` or
+/// `NAME[sub]+=` (bash 3.2 and zsh 5.9 run the command after each, #4206):
+/// returns (NAME, value), or None if the word is not one.
+pub fn split_assignment(s: &str) -> Option<(&str, &str)> {
+    let b = s.as_bytes();
+    if b.is_empty() || !(b[0].is_ascii_alphabetic() || b[0] == b'_') {
+        return None;
+    }
+    let mut i = 1;
+    while i < b.len() && (b[i].is_ascii_alphanumeric() || b[i] == b'_') {
+        i += 1;
+    }
+    let name = &s[..i];
+    if i < b.len() && b[i] == b'[' {
+        let mut depth = 0usize;
+        while i < b.len() {
+            match b[i] {
+                b'[' => depth += 1,
+                b']' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                _ => {}
+            }
+            i += 1;
+        }
+        if i >= b.len() {
+            return None; // no closing bracket
+        }
+        i += 1;
+    }
+    if i < b.len() && b[i] == b'+' {
+        i += 1;
+    }
+    if i < b.len() && b[i] == b'=' {
+        Some((name, &s[i + 1..]))
+    } else {
+        None
+    }
+}
+
+/// Is this word a shell prefix assignment (see `split_assignment`)?
 pub fn is_assignment(s: &str) -> bool {
-    let mut it = s.chars();
-    match it.next() {
-        Some(c) if c.is_ascii_alphabetic() || c == '_' => {}
-        _ => return false,
-    }
-    for c in it {
-        if c == '=' {
-            return true;
-        }
-        if !(c.is_ascii_alphanumeric() || c == '_') {
-            return false;
-        }
-    }
-    false
+    split_assignment(s).is_some()
 }
 
 /// Python's `repr(str)`.
@@ -472,5 +502,23 @@ mod tests {
             is_python_prog("python3.12") && is_python_prog("python") && !is_python_prog("python2")
         );
         assert!(is_assignment("A_1=x") && !is_assignment("1A=x") && !is_assignment("A"));
+        // #4206: append and array-element assignments are prefixes too.
+        for w in [
+            "A+=x",
+            "A[0]=x",
+            "A[0]+=x",
+            "A[i+1]=x",
+            "A[a[1]]=x",
+            "A[k=v]=x",
+        ] {
+            assert!(is_assignment(w), "{}", w);
+        }
+        for w in [
+            "A-B=x", "A[0=x", "A+x=y", "+A=x", "A[0]", "A++=x", "A[0]x=y",
+        ] {
+            assert!(!is_assignment(w), "{}", w);
+        }
+        assert_eq!(split_assignment("A[k=v]+=x=y"), Some(("A", "x=y")));
+        assert_eq!(split_assignment("R+=cargo"), Some(("R", "cargo")));
     }
 }

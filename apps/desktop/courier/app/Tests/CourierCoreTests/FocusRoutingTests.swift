@@ -16,6 +16,7 @@ final class FocusRoutingTests: XCTestCase {
     override func tearDown() async throws {
         await harness?.stop()
         harness = nil
+        AppLockGate.shared.resetForTesting()
         for file in files { try? FileManager.default.removeItem(at: file) }
         files = []
     }
@@ -126,6 +127,41 @@ final class FocusRoutingTests: XCTestCase {
         try await waitUntil { h.conversation.roomID == "!a" && h.conversation.composer.text == "From a client" }
         XCTAssertEqual(h.conversation.composer.attachments.map(\.fileName), ["photo.png"])
         XCTAssertEqual(sends(h), [])
+        withExtendedLifetime(router) {}
+    }
+
+    /// The engine hears whether Courier is locked, in order, so focus_app can tell its client the truth.
+    func testTheEngineIsToldWhenCourierLocksAndUnlocks() async throws {
+        struct AlwaysBiometric: BiometricAuthService {
+            func canEvaluateBiometricsOrWatch() -> Bool { true }
+            func authenticate(reason _: String) async throws -> Bool { true }
+        }
+        struct NoopLoginItem: LoginItemService {
+            func status() -> LoginItemRegistrationStatus { .notRegistered }
+            func register() throws {}
+            func unregister() throws {}
+        }
+        let suiteName = "courier.test.focuslock.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        AppLockGate.shared.resetForTesting()
+        let lifecycle = SystemLifecycleModel(defaults: defaults, loginItem: NoopLoginItem(),
+                                             biometrics: AlwaysBiometric())
+        let h = try await start()
+        // What the engine was told, in order. Saying the same twice is harmless (a connect and the first read can
+        // both say it), so repeats are folded.
+        let reports = {
+            h.server.received.filter { $0["method"] as? String == "app.setLocked" }
+                .compactMap { ($0["params"] as? [String: Any])?["locked"] as? Bool }
+                .reduce(into: [Bool]()) { folded, locked in if folded.last != locked { folded.append(locked) } }
+        }
+        let router = router(h)
+        try await waitUntil { reports() == [false] }
+        lifecycle.lockNow()
+        try await waitUntil { reports() == [false, true] }
+        let unlocked = await lifecycle.unlock()
+        XCTAssertTrue(unlocked)
+        try await waitUntil { reports() == [false, true, false] }
         withExtendedLifetime(router) {}
     }
 }

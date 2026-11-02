@@ -84,8 +84,15 @@ jobs:
       # On pull_request / merge_group, lint the migrations the change adds
       # (base = the event's base sha). On push / workflow_dispatch there is no
       # meaningful base, so the script runs its self-test only and still reports.
+      - name: Build //tools/ci:migration_safety (no Bazel on this job)
+        id: migration-safety-bin
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: migration_safety
+
       - name: Squawk migration-safety
         env:
+          MIGRATION_SAFETY: ${{ steps.migration-safety-bin.outputs.path }}
           EVENT: ${{ github.event_name }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
           MG_BASE: ${{ github.event.merge_group.base_sha }}
@@ -96,20 +103,4 @@ jobs:
             merge_group)  BASE="$MG_BASE" ;;
             *)            BASE="" ;;
           esac
-          # //tools/ci:migration_safety, built with the runner's rustc (this job
-          # sets up no Bazel). The homelab queue runner's image carries no Rust
-          # toolchain; same fallback as queue-runner-watch.yaml.
-          # Fails here, by name, when apt cannot supply it (a failed install must not
-          # surface later as "rustc: command not found"). //tools/ci:workflow_rustc_test
-          # runs this block with apt failing.
-          if ! command -v rustc >/dev/null 2>&1; then
-            { sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends rustc; } \
-              || { echo "::error::apt install rustc failed"; exit 1; }
-            command -v rustc >/dev/null 2>&1 \
-              || { echo "::error::rustc is still not on PATH after apt install"; exit 1; }
-          fi
-          # //tools/ci:workflow_rustc_test runs these lines.
-          rustc --edition 2021 -O --crate-type lib --crate-name shell_compat tools/shell-compat/src/lib.rs -o "$RUNNER_TEMP/libshell_compat.rlib"
-          rustc --edition 2021 -O --crate-type lib --crate-name migration_safety tools/ci/src/migration_safety/lib.rs -L "$RUNNER_TEMP" --extern shell_compat="$RUNNER_TEMP/libshell_compat.rlib" -o "$RUNNER_TEMP/libmigration_safety.rlib"
-          rustc --edition 2021 -O tools/ci/src/migration_safety/main.rs -L "$RUNNER_TEMP" --extern shell_compat="$RUNNER_TEMP/libshell_compat.rlib" --extern migration_safety="$RUNNER_TEMP/libmigration_safety.rlib" -o "$RUNNER_TEMP/migration-safety"
-          "$RUNNER_TEMP/migration-safety" "$BASE"
+          "$MIGRATION_SAFETY" "$BASE"

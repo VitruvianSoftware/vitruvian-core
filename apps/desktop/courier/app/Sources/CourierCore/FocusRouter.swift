@@ -10,12 +10,18 @@ import Foundation
 /// presses Send or doesn't. A chat the app can't find leaves it on the inbox with nothing filled in, and so does a
 /// file that can't be attached. While Courier is locked it only comes to the front: the lock screen shows, and no
 /// chat opens behind it.
+///
+/// It also tells the engine whether Courier is locked (app.setLocked), after each connect and each time it locks
+/// or unlocks, so that focus_app answers its client "Courier is locked" rather than claim a chat opened.
 @MainActor
 public final class FocusRouter {
     private let appModel: AppModel
     private let composer: ComposerModel
     private let lookUpChat: (String) async -> Bool
     private let activate: () -> Void
+    private var lockObservers: [NSObjectProtocol] = []
+    /// The last app.setLocked sent, so each waits for the one before it and the engine hears them in order.
+    private var lastReport: Task<Void, Never>?
 
     /// - Parameters:
     ///   - composer: the main window's chat composer.
@@ -30,6 +36,35 @@ public final class FocusRouter {
         appModel.onNotice { [weak self] notice in
             guard case let .focus(params) = notice else { return }
             Task { await self?.route(params) }
+        }
+        appModel.onConnect { [weak self] client in
+            self?.reportLock(to: client)
+        }
+        if let client = appModel.client {
+            reportLock(to: client) // already connected: the next connect would be too late
+        }
+        for name in [SystemLifecycleModel.didLockNotification, SystemLifecycleModel.didUnlockNotification] {
+            let observer = NotificationCenter.default.addObserver(forName: name, object: nil, queue: nil) { [weak self] _ in
+                Task { @MainActor in
+                    guard let self, let client = self.appModel.client else { return }
+                    self.reportLock(to: client)
+                }
+            }
+            lockObservers.append(observer)
+        }
+    }
+
+    deinit {
+        for observer in lockObservers { NotificationCenter.default.removeObserver(observer) }
+    }
+
+    /// Tells the engine whether Courier is locked now, after whatever was told it before.
+    private func reportLock(to client: EngineClient) {
+        let locked = appModel.isLocked
+        let previous = lastReport
+        lastReport = Task {
+            await previous?.value
+            let _: Empty? = try? await client.call("app.setLocked", AppLockParams(locked: locked))
         }
     }
 

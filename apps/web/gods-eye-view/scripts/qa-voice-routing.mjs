@@ -1045,7 +1045,7 @@ async function runDeixisBehavior(page, run, settle) {
   };
   const beginAt = (x, y, said = null) =>
     page.evaluate(
-      (px, py, text) => {
+      async (px, py, text) => {
         const voice = window.__gevVoiceCommands;
         if (text) {
           // What the session emits for a spoken turn: a new turn, then the caption.
@@ -1065,6 +1065,8 @@ async function runDeixisBehavior(page, run, settle) {
         voice.pointer.hold('keydown');
         const snapshot = voice.beginPointerTurn('keydown');
         voice.pointer.releaseHold();
+        // The voice card and the reticle render on Vue's next flush.
+        await Promise.resolve();
         const chip = document.getElementById('gev-voice-card-pointer');
         const reticle = document.querySelector('.gev-pointer-reticle');
         return {

@@ -74,8 +74,12 @@ impl Tree {
         write(self.dir.join("plan").join(module), lines);
     }
     fn run(&self) -> Output {
+        self.run_args(&[])
+    }
+    fn run_args(&self, args: &[&str]) -> Output {
         std::fs::create_dir_all(self.root()).unwrap();
         Run::new(&bin("BIN"))
+            .args(args)
             .cwd(self.root())
             .path_first(&self.dir.join("fakes"))
             .env("FAKE_LOG", self.dir.join("log"))
@@ -110,24 +114,29 @@ fn runs_only_modules_with_tests_in_sorted_order() {
     t.module("infrastructure/pulumi/a", true);
     t.module("infrastructure/pulumi/no-tests", false);
     t.module("infrastructure/pulumi/a/vendor/dep", true);
+    t.module("apps/x/y/infra", true);
+    t.module("apps/x/y/infra/stack", true);
+    t.module("apps/x/.hidden/infra", true);
+    t.module("apps/.hidden/y/infra", true);
+    t.module("apps/x/infra", true);
+    t.module("apps/x/y/z/infra", true);
     t.module("app/infra", true);
-    t.module(".hidden/infra", true);
     let o = t.run();
     assert_eq!(o.code, 0, "{}", o.all());
     assert_eq!(
         t.go_calls(),
         vec![
-            "app/infra",
+            "apps/x/y/infra",
+            "apps/x/y/infra/stack",
             "infrastructure/pulumi/a",
             "infrastructure/pulumi/b"
         ],
-        "*/infra and infrastructure/pulumi, sorted; no vendor, no test-less module, no dot-dir"
+        "apps/*/*/infra and infrastructure/pulumi, sorted; no vendor, no test-less \
+         module, no dot-dir, no top-level */infra (#4178), nothing too shallow or deep"
     );
-    assert!(o
-        .stdout
-        .contains("::group::go test infrastructure/pulumi/a\n"));
+    assert!(o.stdout.contains("::group::go test apps/x/y/infra\n"));
     assert!(
-        o.stdout.ends_with("ran go test in 3 IaC module(s)\n"),
+        o.stdout.ends_with("ran go test in 4 IaC module(s)\n"),
         "{}",
         o.stdout
     );
@@ -224,4 +233,73 @@ fn the_first_failing_module_ends_the_run() {
     assert_eq!(o.code, 2);
     assert_eq!(t.go_calls(), vec!["infrastructure/pulumi/a"]);
     assert!(!o.stdout.contains("ran go test in"));
+}
+
+#[test]
+fn root_searches_only_the_named_tree() {
+    // example-build: `--root packages/pulumi/examples` (#4205). Every module
+    // with tests under it, at any depth, and nothing from the IaC set.
+    let t = Tree::new();
+    t.module("infrastructure/pulumi/a", true);
+    t.module("apps/x/y/infra", true);
+    t.module("packages/pulumi/examples/go-foundation/1-org/modules", true);
+    t.module(
+        "packages/pulumi/examples/go-foundation/1-org/envs/shared",
+        false,
+    );
+    t.module(
+        "packages/pulumi/examples/ts-foundation/helpers/iam-validate",
+        true,
+    );
+    t.module(
+        "packages/pulumi/examples/ts-foundation/node_modules/dep",
+        true,
+    );
+    t.module("packages/pulumi/examples/go-foundation/vendor/dep", true);
+    let o = t.run_args(&["--root", "packages/pulumi/examples"]);
+    assert_eq!(o.code, 0, "{}", o.all());
+    assert_eq!(
+        t.go_calls(),
+        vec![
+            "packages/pulumi/examples/go-foundation/1-org/modules",
+            "packages/pulumi/examples/ts-foundation/helpers/iam-validate"
+        ],
+        "only the root; no test-less module, no vendor, no node_modules"
+    );
+    assert!(
+        o.stdout.ends_with("ran go test in 2 module(s)\n"),
+        "{}",
+        o.stdout
+    );
+}
+
+#[test]
+fn a_missing_root_is_an_error() {
+    let t = Tree::new();
+    t.module("infrastructure/pulumi/a", true);
+    let o = t.run_args(&["--root", "packages/pulumi/examples"]);
+    assert_eq!(o.code, 1, "{}", o.all());
+    assert!(o.stderr.contains("is not a directory"), "{}", o.stderr);
+    assert_eq!(read(t.dir.join("log/go")), "", "no go run");
+}
+
+#[test]
+fn a_root_with_no_tests_is_an_error_not_a_green() {
+    let t = Tree::new();
+    t.module("packages/pulumi/examples/a", false);
+    let o = t.run_args(&["--root", "packages/pulumi/examples"]);
+    assert_eq!(o.code, 1, "{}", o.all());
+    assert!(
+        o.stderr.contains("refusing to report green"),
+        "{}",
+        o.stderr
+    );
+}
+
+#[test]
+fn an_unknown_argument_is_a_usage_error() {
+    let t = Tree::new();
+    let o = t.run_args(&["--bogus"]);
+    assert_eq!(o.code, 2, "{}", o.all());
+    assert!(o.stderr.contains("usage:"), "{}", o.stderr);
 }

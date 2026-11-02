@@ -66,6 +66,7 @@ export function initialVoiceCardState() {
     visible: false,
     dismissed: false,
     user: null,
+    userAttribution: null,
     pointer: null,
     assistant: null,
     assistantResponse: null,
@@ -91,6 +92,7 @@ function newTurn(state) {
     visible: true,
     dismissed: false,
     user: '',
+    userAttribution: null,
     pointer: null,
     assistant: null,
     assistantResponse: null,
@@ -165,7 +167,14 @@ export function reduceVoiceCard(state, event) {
     case 'transcript': {
       const text = event.text || '';
       if (event.role === 'user') {
-        return text ? reveal({ ...state, user: caption(text) }) : state;
+        return text
+          ? reveal({
+              ...state,
+              user: caption(text),
+              userAttribution:
+                event.attribution === 'unverified' ? 'unverified' : null,
+            })
+          : state;
       }
       if (event.role !== 'assistant' || !text) return state;
       const sameResponse =
@@ -309,6 +318,8 @@ export function voiceCardView(state) {
     busy: running,
     phase: running ? t('WORKING') : state.steps.length ? t('DONE') : '',
     user: {
+      label:
+        state.userAttribution === 'unverified' ? t('Recent speech') : t('YOU'),
       visible: state.user !== null,
       text: state.user || '…',
     },

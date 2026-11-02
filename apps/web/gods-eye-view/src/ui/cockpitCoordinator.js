@@ -20,6 +20,7 @@
  * SOFTWARE.
  */
 
+import { nextTick } from 'vue';
 import { CockpitViewController, CockpitDisplayPortal } from './cockpit.js';
 import { cockpitEntryAllowed } from '../contextModePolicy.js';
 import { formatAwarenessLabel } from '../data/militaryAwarenessEngine.js';
@@ -36,6 +37,7 @@ export class CockpitCoordinator {
     readDataManager,
     readContext,
     readActiveStyle,
+    readUtilityDisclosureOpen,
     enterPanels,
     exitPanels,
   }) {
@@ -47,6 +49,7 @@ export class CockpitCoordinator {
         readDataManager,
         readContext,
         readActiveStyle,
+        readUtilityDisclosureOpen,
         enterPanels,
         exitPanels,
       },
@@ -104,6 +107,8 @@ export class CockpitCoordinator {
           flightsEnabled: !!this._dataManager?.isEnabled('flights'),
           militaryEnabled: !!this._dataManager?.isEnabled('military'),
         }),
+      publish: this.publishCockpit,
+      isUtilityDisclosureOpen: () => !!this.readUtilityDisclosureOpen?.(),
       onEntered: () => this.enterPanels(),
       onExited: () => this.exitPanels(),
       restoreTrackingFrame: (entity) => {
@@ -397,6 +402,10 @@ export class CockpitCoordinator {
       layout: () => {
         this._layoutRightPanels();
         this.cockpitView?.scheduleContextLayout();
+      },
+      publish: (slots) => this.publishCockpitPortal?.(slots),
+      afterRender: (callback) => {
+        void nextTick(callback);
       },
     });
   }

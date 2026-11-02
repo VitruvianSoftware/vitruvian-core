@@ -15,7 +15,10 @@ import (
 const (
 	// Inferred (inventory 01 §18): "If no reply" means "if I haven't sent a message since setting it" (repliedSinceSQL).
 	condIfNoReply = "if_no_reply"
-	condAlways    = "always"
+	// "If nothing comes in": dropped when someone else sent a message in the chat since setting it
+	// (incomingSinceSQL). The local API's dismissOnIncomingMessage means this; the app's own menu doesn't offer it.
+	condIfNoIncoming = "if_no_incoming"
+	condAlways       = "always"
 )
 
 // maxReminderYears is how far ahead a reminder can be set.
@@ -32,11 +35,12 @@ func (s *Store) roomExists(ctx context.Context, roomID string) (bool, error) {
 }
 
 // SetReminder sets (or replaces) the reminder of each chat in roomIDs: bring it back at due, under condition
-// ("if_no_reply" or "always"). due must be after now and at most 5 years ahead, and condition one of the two, or
+// ("if_no_reply", "if_no_incoming" or "always"). due must be after now and at most 5 years ahead, and condition one
+// of the three, or
 // it is ErrBadValue. An unknown chat is ErrNotFound and sets none of them. A replaced reminder starts again: its
 // set time is now and it has not fired. Each chat's row changes ("room").
 func (s *Store) SetReminder(ctx context.Context, roomIDs []string, due time.Time, condition string) error {
-	if condition != condIfNoReply && condition != condAlways {
+	if condition != condIfNoReply && condition != condIfNoIncoming && condition != condAlways {
 		return ErrBadValue
 	}
 	now := s.now()
@@ -167,10 +171,18 @@ var repliedSinceSQL = `SELECT EXISTS (SELECT 1 FROM events WHERE room_id = $1 AN
 	AND type IN (` + messageLikeTypes + `) AND status NOT IN ('failed', 'queued', '` + StatusWaiting + `') AND ` + notEditSQL("content") + `
 	AND (` + isTimerNoteSQL("content") + `) IS NOT 1)`
 
+// incomingSinceSQL is whether someone other than me sent a message in room $1 after $3 (Unix ms), $2 being my user
+// ID: a message-like event that isn't an edit (as repliedSinceSQL), didn't fail, and isn't a note that they changed
+// the disappearing timer (changing a setting isn't a message). Their call counts: it is them reaching out. It is a
+// range scan of events_room_ts.
+var incomingSinceSQL = `SELECT EXISTS (SELECT 1 FROM events WHERE room_id = $1 AND ts > $3 AND sender <> $2
+	AND type IN (` + messageLikeTypes + `) AND status <> 'failed' AND ` + notEditSQL("content") + `
+	AND (` + isTimerNoteSQL("content") + `) IS NOT 1)`
+
 // FireDueReminders fires every reminder that is due by now and hasn't fired, and returns the chats whose reminder
 // fired. Each goes in its own transaction:
-//   - "if_no_reply", and I sent a message in the chat since setting it: the reminder is deleted, and nothing else
-//     happens (the row loses its badge: "room");
+//   - "if_no_reply", and I sent a message in the chat since setting it, or "if_no_incoming", and someone else did:
+//     the reminder is deleted, and nothing else happens (the row loses its badge: "room");
 //   - otherwise the reminder fires: fired_at is now, the chat is marked unread and back from the archive and Low
 //     priority (a hidden chat stays hidden), a pending auto-archive of it is dropped (it would hide what the
 //     reminder just brought back), and "room" then "reminder" are published.
@@ -219,7 +231,7 @@ type reminderOutcome int
 const (
 	reminderGone    reminderOutcome = iota // cleared, or fired, since FireDueReminders looked
 	reminderFired                          // it fired
-	reminderDropped                        // "if no reply", and I replied
+	reminderDropped                        // "if no reply" and I replied, or "if nothing comes in" and something did
 )
 
 // fireReminder fires roomID's reminder, if it is still due and unfired, in one transaction.
@@ -237,12 +249,13 @@ func (s *Store) fireReminder(ctx context.Context, roomID string, now int64) (rem
 		if err != nil {
 			return err
 		}
-		if cond == condIfNoReply {
-			var replied bool
-			if err = s.db.QueryRow(ctx, repliedSinceSQL, roomID, myID, setAt).Scan(&replied); err != nil {
+		dropIf := map[string]string{condIfNoReply: repliedSinceSQL, condIfNoIncoming: incomingSinceSQL}[cond]
+		if dropIf != "" {
+			var happened bool
+			if err = s.db.QueryRow(ctx, dropIf, roomID, myID, setAt).Scan(&happened); err != nil {
 				return err
 			}
-			if replied {
+			if happened {
 				_, err = s.db.Exec(ctx, "DELETE FROM reminders WHERE room_id=$1", roomID)
 				outcome = reminderDropped
 				return err

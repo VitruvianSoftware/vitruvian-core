@@ -363,3 +363,14 @@ func TestPairingWithNoAppIsRefused(t *testing.T) {
 	got := waitPair(t, pair(t, st.Port, "Nobody home"))
 	require.Equal(t, http.StatusForbidden, got.status)
 }
+
+// The app says when it locks and unlocks, so focus_app can answer truthfully. It may say so while locked.
+func TestAppSetLockedReachesTheLocalAPI(t *testing.T) {
+	_, api, c := integrationsWorld(t)
+	require.False(t, api.AppLocked(), "unlocked until the app says")
+	c.ok("app.setLocked", map[string]any{"locked": true}, nil)
+	require.True(t, api.AppLocked())
+	c.ok("app.setLocked", map[string]any{"locked": false}, nil)
+	require.False(t, api.AppLocked())
+	c.fails(CodeInvalidParams, "app.setLocked", map[string]any{})
+}

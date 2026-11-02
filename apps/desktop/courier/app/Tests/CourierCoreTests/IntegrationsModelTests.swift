@@ -183,9 +183,54 @@ final class IntegrationsModelTests: XCTestCase {
         model.dismissNewConnection()
         let token = try XCTUnwrap(model.tokens.first)
         model.tokenPendingRevoke = token
-        await model.confirmRevoke()
+        await model.confirmRevoke()?.value
         XCTAssertEqual(server!.receivedParams("integrations.revokeToken").map { $0["id"] as? String }, [token.id])
         XCTAssertEqual(model.tokens, [])
+    }
+
+    /// The alert's Revoke runs, then the alert closing clears `tokenPendingRevoke` (its binding's setter), and only
+    /// then does the revoke's task get to run: the connection must be taken before that, or nothing is revoked.
+    func testRevokeStillRevokesOnceTheAlertHasClosed() async throws {
+        let model = try await start()
+        model.beginNewConnection()
+        model.newConnectionName = "Example client"
+        await model.createConnection()
+        model.dismissNewConnection()
+        let token = try XCTUnwrap(model.tokens.first)
+
+        model.tokenPendingRevoke = token
+        let revoking = model.confirmRevoke()   // the Revoke button
+        model.tokenPendingRevoke = nil          // the alert closing
+        await revoking?.value
+        XCTAssertEqual(server!.receivedParams("integrations.revokeToken").map { $0["id"] as? String }, [token.id])
+        XCTAssertEqual(model.tokens, [])
+    }
+
+    /// Cancel while the engine is still making the connection: its secret is never shown, so it must not stay
+    /// approved on the engine, nor wait in memory for the next sheet.
+    func testACancelledNewConnectionIsRevokedNotKept() async throws {
+        let engine = Engine()
+        let model = try await start(engine)
+        server!.setHandler { method, params in
+            method == "integrations.createToken" ? .later : engine.handle(method, params)
+        }
+        model.beginNewConnection()
+        model.newConnectionName = "Example client"
+        let creating = Task { await model.createConnection() }
+        try await waitUntil { self.server!.receivedMethods().contains("integrations.createToken") }
+        model.dismissNewConnection() // Cancel
+
+        let request = try XCTUnwrap(server!.received.last { $0["method"] as? String == "integrations.createToken" })
+        let id = try XCTUnwrap(request["id"] as? Int)
+        let token: [String: Any] = ["id": "tok_late", "name": "Example client", "canSend": false,
+                                    "createdMs": 1_793_500_000_000, "lastUsedMs": NSNull()]
+        engine.lock.withLock { engine.tokens.append(token) }
+        server!.reply(to: id, with: ["token": token, "secret": "courier_madeupmadeupmadeupmadeupmadeupmadeupmad"]) // gitleaks:allow
+        await creating.value
+
+        XCTAssertNil(model.createdConnection, "no secret is kept for a sheet that is gone")
+        XCTAssertEqual(server!.receivedParams("integrations.revokeToken").map { $0["id"] as? String }, ["tok_late"])
+        XCTAssertEqual(model.tokens, [], "and the connection nobody saw is not left approved")
     }
 
     func testPairingShowsOneAtATimeAndEndsWithTheRequest() async throws {

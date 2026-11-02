@@ -645,8 +645,10 @@ public struct ReminderCondition: OpenValues {
 
     /// Only if I haven't sent a message in the chat since setting it.
     public static let ifNoReply = Self(rawValue: "if_no_reply")
+    /// Only if no one else has sent a message in the chat since setting it (set by the local API).
+    public static let ifNoIncoming = Self(rawValue: "if_no_incoming")
     public static let always = Self(rawValue: "always")
-    public static let known: [Self] = [.ifNoReply, .always]
+    public static let known: [Self] = [.ifNoReply, .ifNoIncoming, .always]
 }
 
 /// Brings a chat back to my attention at `dueAt`.
@@ -5112,6 +5114,21 @@ public struct SetCanSendParams: ProtocolType, Equatable, Sendable {
     }
 }
 
+/// app.setLocked's params: whether Courier is locked, so the engine's focus_app answers its client truthfully.
+public struct AppLockParams: ProtocolType, Equatable, Sendable {
+    public static let protocolName = "AppLockParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var locked: Bool
+
+    public init(locked: Bool) {
+        self.locked = locked
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case locked
+    }
+}
+
 public struct AnswerPairingParams: ProtocolType, Equatable, Sendable {
     public static let protocolName = "AnswerPairingParams"
     public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
@@ -5392,6 +5409,8 @@ public enum ProtocolMethods {
         "integrations.revokeToken": .userInitiatedMutation,
         "integrations.setCanSend": .userInitiatedMutation,
         "integrations.answerPairing": .userInitiatedMutation,
+        // Sent while locked too: it is how the engine learns the app is.
+        "app.setLocked": .readOnlyOrBackground,
     ]
 
     public static func classification(for method: String) -> AccessClassification? {
@@ -5501,6 +5520,7 @@ public enum ProtocolMethods {
         "integrations.revokeToken": (TokenParams.self, Empty.self),
         "integrations.setCanSend": (SetCanSendParams.self, Empty.self),
         "integrations.answerPairing": (AnswerPairingParams.self, Empty.self),
+        "app.setLocked": (AppLockParams.self, Empty.self),
     ]
 
     /// Every type of protocol.json's "types".
@@ -5540,7 +5560,7 @@ public enum ProtocolMethods {
         RoomStorageUsage.self, StorageUsageResult.self, StorageCleanupParams.self, StorageCleanupResult.self,
         IntegrationsStatus.self, IntegrationsUpdateParams.self, APIToken.self, CreateTokenParams.self,
         CreateTokenResult.self, TokenParams.self, SetCanSendParams.self, AnswerPairingParams.self, PairRequest.self,
-        PairEnded.self, FocusParams.self,
+        PairEnded.self, FocusParams.self, AppLockParams.self,
     ]
 
     /// The open-valued fields, by "Type.field", with the values this app knows.

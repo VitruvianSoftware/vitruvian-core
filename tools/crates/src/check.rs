@@ -21,10 +21,11 @@
 //! `bazel run //tools/crates:check`: every committed Cargo.lock matches its
 //! Cargo.toml files (see fresh.rs). Offline; tidy-check runs it on every PR.
 
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crates_lock::fresh::{lock_problems, relock_hint};
+use crates_lock::fresh::{local_packages, lock_problems, relock_hint, unlocked_manifests};
 
 fn main() {
     std::process::exit(match run() {
@@ -40,22 +41,9 @@ fn run() -> Result<i32, String> {
     let repo = std::env::var_os("BUILD_WORKSPACE_DIRECTORY")
         .map(PathBuf::from)
         .ok_or("run this with `bazel run //tools/crates:check`")?;
-    // The committed locks, so a scratch or vendored one cannot fail the check.
-    let out = Command::new("git")
-        .args(["ls-files", "-z", "--", "*Cargo.lock"])
-        .current_dir(&repo)
-        .output()
-        .map_err(|e| format!("cannot run git: {e}"))?;
-    if !out.status.success() {
-        return Err(format!(
-            "git ls-files failed: {}",
-            String::from_utf8_lossy(&out.stderr).trim()
-        ));
-    }
-    let mut lock_dirs: Vec<PathBuf> = String::from_utf8_lossy(&out.stdout)
-        .split('\0')
-        .map(Path::new)
-        .filter(|p| p.file_name().map_or(false, |n| n == "Cargo.lock"))
+    // The committed files, so a scratch or vendored one cannot fail the check.
+    let mut lock_dirs: Vec<PathBuf> = tracked(&repo, "Cargo.lock")?
+        .iter()
         .map(|p| p.parent().unwrap_or(Path::new("")).to_path_buf())
         .collect();
     lock_dirs.sort();
@@ -83,9 +71,25 @@ fn run() -> Result<i32, String> {
             }
         }
     }
+    // A manifest no lock covers is never checked: say so rather than pass.
+    let mut covered = BTreeSet::new();
+    for dir in &lock_dirs {
+        covered.insert(dir.clone());
+        if let Ok(ws) = local_packages(dir, &read) {
+            covered.extend(ws.packages.into_iter().map(|p| p.dir));
+        }
+    }
+    for manifest in unlocked_manifests(&tracked(&repo, "Cargo.toml")?, &covered) {
+        failed += 1;
+        println!("NOLOCK {}", manifest.display());
+        println!(
+            "      no committed Cargo.lock covers it; lock it: {}",
+            relock_hint(manifest.parent().unwrap_or(Path::new("")))
+        );
+    }
     if failed > 0 {
         eprintln!(
-            "crates:check: {failed} of {} Cargo.lock files do not match their Cargo.toml files.",
+            "crates:check: {failed} problem(s) across {} Cargo.lock files and their Cargo.toml files.",
             lock_dirs.len()
         );
         return Ok(1);
@@ -95,4 +99,24 @@ fn run() -> Result<i32, String> {
         lock_dirs.len()
     );
     Ok(0)
+}
+
+/// The tracked files named `name`, repo-relative.
+fn tracked(repo: &Path, name: &str) -> Result<Vec<PathBuf>, String> {
+    let out = Command::new("git")
+        .args(["ls-files", "-z", "--", &format!("*{name}")])
+        .current_dir(repo)
+        .output()
+        .map_err(|e| format!("cannot run git: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "git ls-files failed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout)
+        .split('\0')
+        .map(PathBuf::from)
+        .filter(|p| p.file_name().map_or(false, |n| n == name))
+        .collect())
 }

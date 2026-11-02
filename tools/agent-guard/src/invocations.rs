@@ -21,9 +21,11 @@
 //! Unwrapping: env/nice/time/timeout/xargs/sudo/... and shells/eval, and the
 //! walk that turns command text into every program it would run.
 
+use std::collections::BTreeSet;
+
 use crate::paths::{basename, isabs, join, normpath};
-use crate::pyutil::{is_assignment, is_python3_dotted};
-use crate::shell::{fallback_split, parse_script_at, PErr, SimpleCommand, MAX_COMMANDS};
+use crate::pyutil::{is_assignment, is_python3_dotted, split_assignment};
+use crate::shell::{fallback_split, parse_dialect, PErr, SimpleCommand, MAX_COMMANDS};
 
 pub const SHELLS: [&str; 6] = ["bash", "sh", "zsh", "dash", "ksh", "fish"];
 
@@ -84,15 +86,150 @@ fn quote_join(words: &[String]) -> String {
         .join(" ")
 }
 
+/// The names rustup answers to: itself and every proxy it links into
+/// `~/.cargo/bin` (`TOOLS` and `DUP_TOOLS` in rustup 1.29.2). Each one reads
+/// RUSTUP_FORCE_ARG0 before argv[0], so `RUSTUP_FORCE_ARG0=cargo rustc update`
+/// runs `cargo update`.
+pub const RUSTUP_PROXIES: [&str; 14] = [
+    "rustup",
+    "rustc",
+    "rustdoc",
+    "cargo",
+    "rust-lldb",
+    "rust-gdb",
+    "rust-gdbgui",
+    "rls",
+    "cargo-clippy",
+    "clippy-driver",
+    "cargo-miri",
+    "rust-analyzer",
+    "rustfmt",
+    "cargo-fmt",
+];
+
+/// The program a rustup proxy runs when RUSTUP_FORCE_ARG0 is computed
+/// (`$X`, `$(...)`, backticks): the guard cannot tell which, so it refuses.
+// Lower-case, so the case folding of program names (#4220) leaves it alone.
+pub const COMPUTED_ARG0: &str = "<rustup_force_arg0 computed>";
+
+/// More distinct RUSTUP_FORCE_ARG0 values than this in one command is refused
+/// as `oversize`: each one costs a walk of the whole command.
+pub const MAX_FORCE_ARG0_VALUES: usize = 8;
+
+/// What rustup makes of a RUSTUP_FORCE_ARG0 value: its file stem, the same
+/// `Path::file_stem` call rustup makes, so `/x/cargo.exe` and `cargo/.` are
+/// `cargo`. Lower-cased like program names (#4220). None when there is no
+/// stem (`..`, `/`): rustup then goes by argv[0].
+fn arg0_stem(value: &str) -> Option<String> {
+    if value.contains('$') || value.contains('`') {
+        return Some(COMPUTED_ARG0.to_string());
+    }
+    std::path::Path::new(value)
+        .file_stem()
+        .map(|s| fold_case(&s.to_string_lossy()))
+}
+
+/// Program names are matched without regard to case: macOS's disk ignores
+/// it, so `GIT push` runs git (#4220). Only the name is lower-cased, not the
+/// directory. `CD` and `PUSHD` stay as they are: the shell's `cd` builtin is
+/// lower-case only, so `CD x` does not move the shell and must not move the
+/// guard's idea of where it is.
+fn fold_program_case(w: &mut String) {
+    let cut = w.rfind('/').map_or(0, |k| k + 1);
+    let lower = fold_case(&w[cut..]);
+    if lower != w[cut..] && lower != "cd" && lower != "pushd" {
+        w.replace_range(cut.., &lower);
+    }
+}
+
+/// Every non-ASCII character whose full Unicode case fold (CaseFolding.txt,
+/// status C and F) is plain ASCII. Listed with Python's `str.casefold()`
+/// over all code points (Unicode 17.0). APFS folds all of them: `/bin/baſh`,
+/// `/bin/Kill`, `/usr/bin/ßh` and `/usr/bin/diﬀ` are bash, kill, ssh and
+/// diff on macOS (#4220, review).
+const FOLD_TO_ASCII: [(char, &str); 11] = [
+    ('\u{00DF}', "ss"),  // ß
+    ('\u{017F}', "s"),   // ſ long s
+    ('\u{1E9E}', "ss"),  // ẞ capital sharp s
+    ('\u{212A}', "k"),   // K Kelvin sign
+    ('\u{FB00}', "ff"),  // ﬀ
+    ('\u{FB01}', "fi"),  // ﬁ
+    ('\u{FB02}', "fl"),  // ﬂ
+    ('\u{FB03}', "ffi"), // ﬃ
+    ('\u{FB04}', "ffl"), // ﬄ
+    ('\u{FB05}', "st"),  // ﬅ
+    ('\u{FB06}', "st"),  // ﬆ
+];
+
+/// A name as a case-insensitive Mac disk compares it: ASCII lower case,
+/// plus the characters above. Other non-ASCII stays as it is: it cannot
+/// fold to a plain-ASCII program name.
+fn fold_case(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    for c in name.chars() {
+        match FOLD_TO_ASCII.iter().find(|(k, _)| *k == c) {
+            Some((_, f)) => out.push_str(f),
+            None => out.push(c.to_ascii_lowercase()),
+        }
+    }
+    out
+}
+
+fn note_force_arg0(
+    name: &str,
+    value: &str,
+    slot: &mut Option<String>,
+    seen: &mut BTreeSet<String>,
+) {
+    if name == "RUSTUP_FORCE_ARG0" {
+        *slot = if value.is_empty() {
+            None
+        } else {
+            let stem = arg0_stem(value);
+            if let Some(st) = &stem {
+                seen.insert(st.clone());
+            }
+            stem
+        };
+    }
+}
+
+/// zsh's `=name` expands to the path of `name` (`=git` is `/usr/bin/git`),
+/// so a leading `=` on a program word is dropped (#4209).
+fn strip_equals(w: &mut String) {
+    if w.len() > 1 && w.starts_with('=') {
+        w.remove(0);
+    }
+}
+
 /// Strip wrappers. Returns (argv, scripts) where scripts are nested shell text.
-pub fn unwrap(mut words: Vec<String>, cmd: &SimpleCommand) -> (Vec<String>, Vec<String>) {
+///
+/// `default_arg0` is a RUSTUP_FORCE_ARG0 value set elsewhere in the command
+/// (`export`, a parent shell); every value this command sets is added to `seen`.
+pub fn unwrap(
+    mut words: Vec<String>,
+    cmd: &SimpleCommand,
+    default_arg0: Option<&str>,
+    seen: &mut BTreeSet<String>,
+) -> (Vec<String>, Vec<String>) {
     let mut scripts: Vec<String> = Vec::new();
+    // RUSTUP_FORCE_ARG0=<x> makes rustup act as <x> (#4171), so remember it
+    // from `VAR=...` prefixes and `env VAR=...` for the rustup it reaches.
+    let mut force_arg0: Option<String> = None;
+    let mut forced = false;
     for _ in 0..20 {
         let lead = words.iter().take_while(|w| is_assignment(w)).count();
+        for w in &words[..lead] {
+            if let Some((name, value)) = split_assignment(w) {
+                note_force_arg0(name, value, &mut force_arg0, seen);
+            }
+        }
         words.drain(..lead);
         if words.is_empty() {
             return (vec![], scripts);
         }
+        strip_equals(&mut words[0]);
+        fold_program_case(&mut words[0]);
         let prog = basename(&words[0]).to_string();
         let args: Vec<String> = words[1..].to_vec();
         let first = args.first().map(|s| s.as_str());
@@ -116,7 +253,16 @@ pub fn unwrap(mut words: Vec<String>, cmd: &SimpleCommand) -> (Vec<String>, Vec<
                     scripts.push(parts.join(" "));
                     return (vec![], scripts);
                 }
-                if a.starts_with('-') || is_assignment(a) {
+                // Under zsh `env =git push` runs /usr/bin/git (#4209).
+                if a.len() > 1 && a.starts_with('=') {
+                    rest = args[i..].to_vec();
+                    break;
+                }
+                // env takes any word with `=` as NAME=VALUE, NAME taken
+                // literally (`env A-B=1 git push` runs git push, #4206).
+                if a.starts_with('-') || a.contains('=') {
+                    let (name, value) = crate::pyutil::split1(a, '=');
+                    note_force_arg0(name, value.unwrap_or(""), &mut force_arg0, seen);
                     i += 1;
                     continue;
                 }
@@ -201,6 +347,34 @@ pub fn unwrap(mut words: Vec<String>, cmd: &SimpleCommand) -> (Vec<String>, Vec<
                 return (vec![], scripts); // xargs with no command runs echo
             }
             continue;
+        }
+        // Any rustup proxy with RUSTUP_FORCE_ARG0=<x> runs <x> (#4171,
+        // #4207). The tool it runs is the toolchain's own, so only once.
+        if !forced && RUSTUP_PROXIES.contains(&p) {
+            if let Some(arg0) = force_arg0.take().or_else(|| default_arg0.map(String::from)) {
+                forced = true;
+                let mut w = vec![arg0];
+                w.extend_from_slice(&args);
+                words = w;
+                continue;
+            }
+        }
+        // rustup [OPTIONS] [+toolchain] run [--install] <toolchain> <cmd...>
+        // runs <cmd> with that toolchain: judge <cmd> (#4171). Usage and
+        // flags are from `rustup --help` / `rustup run --help` (rustup 1.29.2).
+        if p == "rustup" {
+            let mut rest = skip_opts(&args, &[]);
+            if rest.first().map_or(false, |s| s.starts_with('+')) {
+                rest = skip_opts(&rest[1..], &[]);
+            }
+            if rest.first().map(|s| s.as_str()) == Some("run") {
+                let after = skip_opts(&rest[1..], &[]);
+                words = after.get(1..).map(|s| s.to_vec()).unwrap_or_default();
+                if words.first().map(|s| s.as_str()) == Some("--") {
+                    words.remove(0);
+                }
+                continue;
+            }
         }
         if p == "direnv" && first == Some("exec") {
             words = args.get(2..).map(|s| s.to_vec()).unwrap_or_default();
@@ -360,8 +534,9 @@ fn is_marker(name: &str) -> bool {
     name == "CLAUDECODE" || name == "GEMINI_CLI" || name.starts_with("ANTIGRAVITY_")
 }
 
+/// The name a shell prefix assignment sets (`A+=1` and `A[0]=1` set `A`).
 fn assign_name(a: &str) -> &str {
-    crate::pyutil::split1(a, '=').0
+    split_assignment(a).map_or_else(|| crate::pyutil::split1(a, '=').0, |(n, _)| n)
 }
 
 /// Does this simple command unset or blank an agent marker for what it runs?
@@ -376,7 +551,10 @@ pub fn hides_agent_marker(words: &[String]) -> bool {
     if i >= words.len() {
         return false;
     }
-    let prog = basename(&words[i]);
+    let mut w0 = words[i].clone();
+    strip_equals(&mut w0);
+    fold_program_case(&mut w0);
+    let prog = basename(&w0);
     let args = &words[i + 1..];
     if prog == "env" {
         let mut j = 0;
@@ -396,8 +574,9 @@ pub fn hides_agent_marker(words: &[String]) -> bool {
             if a == "-i" || a == "--ignore-environment" || a == "-" {
                 return true;
             }
-            if is_assignment(a) {
-                if is_marker(assign_name(a)) {
+            if a.contains('=') && !a.starts_with('-') {
+                // env's NAME is literal: `env CLAUDECODE+=x` sets `CLAUDECODE+`.
+                if is_marker(crate::pyutil::split1(a, '=').0) {
                     return true;
                 }
             } else if !a.starts_with('-') {
@@ -427,30 +606,132 @@ pub fn invocations(text: &str, cwd: &str, home: &str) -> Result<Vec<Invocation>,
     let mut out = Vec::new();
     let mut state_cwd = cwd.to_string();
     let mut budget = MAX_COMMANDS;
-    walk(text, 0, home, &mut state_cwd, &mut budget, &mut out)?;
+    let mut seen: BTreeSet<String> = BTreeSet::new();
+    walk(
+        text,
+        0,
+        home,
+        &mut state_cwd,
+        &mut budget,
+        None,
+        &mut seen,
+        &mut out,
+    )?;
+    // RUSTUP_FORCE_ARG0 set anywhere in the command (`export X=cargo; rustup
+    // update`, `X=cargo bash -c 'rustup update'`) reaches rustup proxies the
+    // line-by-line walk does not tie it to (#4207). Judge every proxy in the
+    // command as each value set; over-blocking a proxy the value does not
+    // reach is the safe side. Each value is a walk, so they are capped.
+    if seen.len() > MAX_FORCE_ARG0_VALUES {
+        return Err(PErr::TooComplex);
+    }
+    if !seen.is_empty() {
+        let values: Vec<String> = seen.iter().cloned().collect();
+        for value in values {
+            let mut cwd2 = cwd.to_string();
+            walk(
+                text,
+                0,
+                home,
+                &mut cwd2,
+                &mut budget,
+                Some(&value),
+                &mut seen,
+                &mut out,
+            )?;
+        }
+    }
     Ok(out)
 }
 
+/// `export`/`declare -x`/... RUSTUP_FORCE_ARG0=<x>: note <x> (#4207).
+fn note_declared_arg0(argv: &[String], seen: &mut BTreeSet<String>) {
+    let prog = basename(&argv[0]);
+    if !["export", "declare", "typeset", "local", "readonly"].contains(&prog) {
+        return;
+    }
+    for a in &argv[1..] {
+        if let Some((name, value)) = split_assignment(a) {
+            let mut slot = None;
+            note_force_arg0(name, value, &mut slot, seen);
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn walk(
     script: &str,
     depth: usize,
     home: &str,
     state_cwd: &mut String,
     budget: &mut i64,
+    default_arg0: Option<&str>,
+    seen: &mut BTreeSet<String>,
     out: &mut Vec<Invocation>,
 ) -> Result<(), PErr> {
     if depth > 6 {
         return Ok(());
     }
     let t: Vec<char> = script.chars().collect();
-    let cmds = match parse_script_at(&t, 0, budget) {
+    let mut saw_subscript = false;
+    let cmds = match parse_dialect(&t, 0, budget, false, &mut saw_subscript) {
         Ok(c) => c,
         Err(PErr::Parse) => fallback_split(script, Some(budget))?,
         Err(e) => return Err(e),
     };
+    let start_cwd = state_cwd.clone();
+    walk_cmds(
+        cmds,
+        depth,
+        home,
+        state_cwd,
+        budget,
+        default_arg0,
+        seen,
+        out,
+    )?;
+    // bash 3.2 reads `A[ x ]=1 git push` as one assignment and then runs
+    // git push; the default reading splits it. Judge both (#4210).
+    if saw_subscript {
+        let mut ignored = false;
+        match parse_dialect(&t, 0, budget, true, &mut ignored) {
+            Ok(cmds) => {
+                let mut cwd2 = start_cwd;
+                walk_cmds(
+                    cmds,
+                    depth,
+                    home,
+                    &mut cwd2,
+                    budget,
+                    default_arg0,
+                    seen,
+                    out,
+                )?;
+            }
+            Err(PErr::Parse) => {} // bash 3.2 would not run it either
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn walk_cmds(
+    cmds: Vec<SimpleCommand>,
+    depth: usize,
+    home: &str,
+    state_cwd: &mut String,
+    budget: &mut i64,
+    default_arg0: Option<&str>,
+    seen: &mut BTreeSet<String>,
+    out: &mut Vec<Invocation>,
+) -> Result<(), PErr> {
     for cmd in cmds {
         let hidden = hides_agent_marker(&cmd.words);
-        let (argv, scripts) = unwrap(cmd.words.clone(), &cmd);
+        let (argv, scripts) = unwrap(cmd.words.clone(), &cmd, default_arg0, seen);
+        if !argv.is_empty() {
+            note_declared_arg0(&argv, seen);
+        }
         if !argv.is_empty() {
             let prog = basename(&argv[0]);
             if (prog == "cd" || prog == "pushd") && argv.len() >= 2 {
@@ -474,7 +755,16 @@ fn walk(
             });
         }
         for s in scripts {
-            walk(&s, depth + 1, home, state_cwd, budget, out)?;
+            walk(
+                &s,
+                depth + 1,
+                home,
+                state_cwd,
+                budget,
+                default_arg0,
+                seen,
+                out,
+            )?;
         }
     }
     Ok(())
@@ -508,11 +798,136 @@ mod tests {
                 vec!["go".into(), "test".into()]
             ]
         );
+        // rustup run [--install] <toolchain> [--] <cmd...> runs <cmd> (#4171).
+        for text in [
+            "rustup run stable cargo update",
+            "rustup run --install nightly cargo update",
+            "rustup -q run 1.95.0 -- cargo update",
+        ] {
+            let argvs: Vec<Vec<String>> = invocations(text, "/r", "/h")
+                .unwrap()
+                .into_iter()
+                .map(|i| i.argv)
+                .collect();
+            assert_eq!(
+                argvs,
+                vec![vec!["cargo".to_string(), "update".into()]],
+                "{}",
+                text
+            );
+        }
+        let show: Vec<Vec<String>> = invocations("rustup show", "/r", "/h")
+            .unwrap()
+            .into_iter()
+            .map(|i| i.argv)
+            .collect();
+        assert_eq!(show, vec![vec!["rustup".to_string(), "show".into()]]);
+        // #4206: append / array-element prefixes are assignments; env's are literal.
+        assert!(hides_agent_marker(&["CLAUDECODE+=x".into(), "git".into()]));
+        assert!(hides_agent_marker(&["CLAUDECODE[0]=".into(), "git".into()]));
+        assert!(!hides_agent_marker(&[
+            "env".into(),
+            "CLAUDECODE+=x".into(),
+            "git".into()
+        ]));
+        for text in ["FOO+=1 git push", "A[0]+=1 git push", "env A-B=1 git push"] {
+            let argvs: Vec<Vec<String>> = invocations(text, "/r", "/h")
+                .unwrap()
+                .into_iter()
+                .map(|i| i.argv)
+                .collect();
+            assert_eq!(
+                argvs,
+                vec![vec!["git".to_string(), "push".into()]],
+                "{}",
+                text
+            );
+        }
         assert!(hides_agent_marker(&[
             "env".into(),
             "-u".into(),
             "CLAUDECODE".into(),
             "x".into()
         ]));
+        let argvs_of = |text: &str| -> Vec<Vec<String>> {
+            invocations(text, "/r", "/h")
+                .unwrap()
+                .into_iter()
+                .map(|i| i.argv)
+                .collect()
+        };
+        let git_push = vec!["git".to_string(), "push".into()];
+        // #4209: zsh's =git is /usr/bin/git, wherever a program word may be.
+        for text in [
+            "=git push",
+            "sudo =git push",
+            "env =git push",
+            "FOO=1 =git push",
+        ] {
+            assert_eq!(argvs_of(text), vec![git_push.clone()], "{}", text);
+        }
+        assert!(hides_agent_marker(&[
+            "=env".into(),
+            "-u".into(),
+            "CLAUDECODE".into(),
+            "x".into()
+        ]));
+        // #4210: bash 3.2's reading is judged as well as the split one.
+        for text in [
+            "A[ x ]=1 git push",
+            "A[;]=1 git push",
+            "bash -c 'A[|]=1 git push'",
+        ] {
+            assert!(argvs_of(text).contains(&git_push), "{}", text);
+        }
+        // #4207: RUSTUP_FORCE_ARG0 set anywhere in the command reaches every rustup.
+        let cargo_update = vec!["cargo".to_string(), "update".into()];
+        for text in [
+            "export RUSTUP_FORCE_ARG0=cargo; rustup update",
+            "declare -x RUSTUP_FORCE_ARG0=cargo && rustup update",
+            "RUSTUP_FORCE_ARG0=cargo bash -c 'rustup update'",
+            "RUSTUP_FORCE_ARG0=cargo sh -c \"rustup update\"",
+        ] {
+            assert!(argvs_of(text).contains(&cargo_update), "{}", text);
+        }
+        // #4207 review: the value is decoded, then reduced like rustup does.
+        for text in [
+            "RUSTUP_FORCE_ARG0=$'\\x63argo' rustc update",
+            "RUSTUP_FORCE_ARG0=cargo/. rustc update",
+            "RUSTUP_FORCE_ARG0=cargo/./ rustc update",
+            "RUSTUP_FORCE_ARG0=/x/CARGO.exe rustc update",
+        ] {
+            assert!(argvs_of(text).contains(&cargo_update), "{}", text);
+        }
+        assert_eq!(arg0_stem("cargo/."), Some("cargo".into()));
+        assert_eq!(arg0_stem("/x/cargo.any"), Some("cargo".into()));
+        assert_eq!(arg0_stem(".."), None);
+        assert_eq!(arg0_stem("$R"), Some(COMPUTED_ARG0.into()));
+        // #4220: program names ignore case, but `CD` does not move the shell.
+        assert_eq!(argvs_of("GIT push"), vec![git_push.clone()]);
+        assert_eq!(
+            argvs_of("SUDO /x/GIT push"),
+            vec![vec!["/x/git".to_string(), "push".into()]]
+        );
+        // APFS folds these non-ASCII letters to ASCII too (#4220 review).
+        assert_eq!(fold_case("ba\u{17f}h"), "bash");
+        assert_eq!(fold_case("\u{212a}ubectl"), "kubectl");
+        assert_eq!(fold_case("\u{df}h"), "ssh");
+        assert_eq!(fold_case("di\u{fb00}"), "diff");
+        assert_eq!(fold_case("g\u{131}t"), "g\u{131}t"); // dotless i: not folded
+        for (c, f) in FOLD_TO_ASCII {
+            assert!(!c.is_ascii() && f.is_ascii(), "{:?}", c);
+        }
+        assert_eq!(argvs_of("\u{17f}udo git push"), vec![git_push.clone()]);
+        assert!(argvs_of("ba\u{17f}h -c 'git push'").contains(&git_push));
+        let cd = invocations("CD /tmp; git push", "/r", "/h").unwrap();
+        assert_eq!(cd.last().unwrap().cwd, "/r");
+        assert_eq!(
+            argvs_of("export RUSTUP_FORCE_ARG0=; rustup update"),
+            vec![
+                vec!["export".to_string(), "RUSTUP_FORCE_ARG0=".into()],
+                vec!["rustup".to_string(), "update".into()]
+            ]
+        );
     }
 }

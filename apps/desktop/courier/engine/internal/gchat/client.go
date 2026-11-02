@@ -239,8 +239,17 @@ func (c *Client) processStreamNotification(ctx context.Context, item streamNotif
 		}
 		c.mu.Unlock()
 		if needInitial {
+			// The world sync moves the stored user revision up to now, so read the one saved before
+			// this connect (a restart, or a re-login) first and catch up from it once the chats exist.
+			// Otherwise whatever arrived while Courier was closed is never fetched.
+			savedRev := c.storedUserRevision()
 			if err := c.syncWorld(ctx); err != nil && c.UserLogin != nil {
 				c.UserLogin.Log.Warn().Err(err).Msg("gchat initial world sync failed")
+			}
+			if savedRev > 0 {
+				if err := c.catchUpUserFrom(ctx, savedRev); err != nil && c.UserLogin != nil {
+					c.UserLogin.Log.Warn().Err(err).Msg("gchat catch-up after connect failed")
+				}
 			}
 		}
 	case EventKindResync:
@@ -267,16 +276,12 @@ func (c *Client) processStreamNotification(ctx context.Context, item streamNotif
 		if c.UserLogin != nil {
 			c.UserLogin.Log.Warn().Str("message", msg).Msg("gchat stream error")
 		}
-		c.mu.Lock()
-		connectedSinceConnect := c.initialSyncDone
-		c.mu.Unlock()
-		if !connectedSinceConnect {
-			c.sendBridgeState(status.BridgeState{
-				StateEvent: status.StateTransientDisconnect,
-				Error:      "gchat-stream-error",
-				Message:    msg,
-			})
-		}
+		// The stream retries on its own; until it is back, say so rather than staying CONNECTED.
+		c.sendBridgeState(status.BridgeState{
+			StateEvent: status.StateTransientDisconnect,
+			Error:      "gchat-stream-error",
+			Message:    msg,
+		})
 	}
 }
 

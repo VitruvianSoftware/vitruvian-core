@@ -304,6 +304,21 @@ enum NotchMusicCommandContract {
             main.drain()
         }
 
+        /// The newest adapter prints a line the way the app's pipe does: on a
+        /// queue of its own, never the main thread. The reply lands on the main queue.
+        func feedOffMain(_ reply: [String: Any]) {
+            let data = try! JSONSerialization.data(withJSONObject: reply) + Data([0x0A])
+            let read = machine.links.last!.read
+            // `sync` would run on this thread, which is the main one here.
+            let done = DispatchSemaphore(value: 0)
+            DispatchQueue(label: "vitru.tests.notch-music.adapter").async {
+                read(data)
+                done.signal()
+            }
+            done.wait()
+            main.drain()
+        }
+
         /// The newest adapter exits.
         func end() {
             machine.links.last?.running = false
@@ -344,6 +359,7 @@ enum NotchMusicHardeningTests {
         sourceRestore(suite)
         sourcePreference(suite)
         artworkInheritance(suite)
+        adapterThread(suite)
         trackChanges(suite)
         playbackGap(suite)
         standInGap(suite)
@@ -681,6 +697,25 @@ enum NotchMusicHardeningTests {
         cache.update(nil, for: missing, now: at(0.8))
         suite.expect(cache.artwork == "second" && cache.expiresAt == nil,
                      "the new song's own cover survives its metadata-only replies")
+    }
+
+    /// The adapter's pipe delivers each reply off the main thread. Swift 6
+    /// stops the app at run time when work the service wrote inside its
+    /// main-actor `launch()` is not safe off the main actor, so the test
+    /// sends a reply with a cover through the reader on another queue.
+    private static func adapterThread(_ suite: TestSuite) {
+        let harness = NotchMusicCommandContract.Harness()
+        harness.service.start()
+        let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 4, pixelsHigh: 4, bitsPerSample: 8,
+                                      samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                      colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+        let png = bitmap.representation(using: .png, properties: [:])!
+        harness.feedOffMain(["pid": 42, "displayID": "com.example.player", "isPlaying": true,
+                             RadialNowPlayingSupport.titleKey: "Cover", "artworkBase64": png.base64EncodedString(),
+                             "sourceIsAutomatic": true, "sources": [Any]()])
+        suite.expect(harness.service.playback?.track.title == "Cover",
+                     "a reply with a cover that arrives off the main thread reaches the page")
+        suite.expect(harness.service.artwork != nil, "its cover is decoded off the main thread and shown")
     }
 
     private static func sourcePriority(_ suite: TestSuite) {

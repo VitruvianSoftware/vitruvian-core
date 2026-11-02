@@ -102,7 +102,6 @@ try {
     'thermal',
     'anime',
     'noir',
-    'snow',
     'normal',
   ]) {
     await page.evaluate(

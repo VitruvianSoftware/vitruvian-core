@@ -445,7 +445,7 @@ ci-app:
 ```
 
 > [!IMPORTANT]
-> **Keep `build-test` (the existing whole-affected-set job) as the single always-reporting *required* check, and treat the per-app `ci-app` jobs as *additional* status for team visibility.** GitHub cannot safely *require* a check that is sometimes skipped: a required check that never runs on a given PR leaves the merge queue **stuck "pending" forever**. The pattern the repo already relies on (`tools/ci/relevant-paths.sh`) is to always *run* the gate job and let it finish green in seconds when there is nothing to do — mirror that before promoting any per-app check to *required*.
+> **Keep `build-test` (the existing whole-affected-set job) as the single always-reporting *required* check, and treat the per-app `ci-app` jobs as *additional* status for team visibility.** GitHub cannot safely *require* a check that is sometimes skipped: a required check that never runs on a given PR leaves the merge queue **stuck "pending" forever**. The pattern the repo already relies on (`tools/ci/relevant-paths.sh`, now `//tools/ci:relevant_paths` behind `.github/actions/changed-paths-gate`) is to always *run* the gate job and let it finish green in seconds when there is nothing to do — mirror that before promoting any per-app check to *required*.
 
 **Per-app checks managed in `repo-config` Pulumi:**
 

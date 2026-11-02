@@ -56,10 +56,19 @@ private struct PinnedChat: View {
     let isSelected: Bool
     let showsBadge: Bool
     let tinted: Bool
+    @Environment(\.redactNamesAndPictures) private var isRedacted
+
+    /// The chat's name, or with "Redact names and pictures" on, its stand-in, as the chat list shows it.
+    private var displayName: String {
+        let raw = row.name.isEmpty ? String(localized: "Unnamed chat") : row.name
+        return isRedacted ? AppearancePreferences.redactedText(raw, kind: .chatTitle) : raw
+    }
 
     var body: some View {
         VStack(spacing: 3) {
             ChatAvatar(row: row)
+                .blur(radius: isRedacted ? 6 : 0)
+                .clipShape(Circle())
                 .frame(width: 40, height: 40)
                 .overlay(alignment: .bottomTrailing) {
                     if showsBadge {
@@ -71,7 +80,8 @@ private struct PinnedChat: View {
                 .overlay(alignment: .topTrailing) {
                     if row.isUnread {
                         Circle()
-                            .fill(row.muted ? Color.gray : Color.accentColor)
+                            // Grey when the chat is muted itself or by its label or account, as in the chat list.
+                            .fill(row.muted || row.mutedBy != .none ? Color.gray : Color.accentColor)
                             .frame(width: 10, height: 10)
                             .overlay(Circle().strokeBorder(.background, lineWidth: 1.5))
                             .accessibilityLabel(String(localized: "Unread"))
@@ -83,13 +93,13 @@ private struct PinnedChat: View {
                         Circle().strokeBorder(Color.accentColor, lineWidth: 2)
                     }
                 }
-            Text(row.name.isEmpty ? String(localized: "Unnamed chat") : row.name)
+            Text(displayName)
                 .font(.caption2)
                 .lineLimit(1)
                 .foregroundStyle(.secondary)
         }
         .contentShape(Rectangle())
-        .help(row.name)
+        .help(displayName)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
     }

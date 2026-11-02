@@ -79,6 +79,193 @@ pub fn canonical_node(root: &str) -> Result<String, String> {
     Ok(major.to_string())
 }
 
+/// Read the canonical Rust version from `MODULE.bazel`: the first entry of
+/// `versions = [...]` in the `<ext>.toolchain(...)` call, where `<ext>` is
+/// whatever variable `use_extension("@rules_rust//rust:extensions.bzl",
+/// "rust")` is bound to (`rust` today). That is the hermetic toolchain every
+/// Rust target builds with (`1.75.0` today).
+///
+/// `<ext>.repository_set(...)` calls (the libsignal 1.98.1 toolchain,
+/// selected only by its own flag) are not the canonical version and are
+/// ignored.
+///
+/// Returns `Err` if `MODULE.bazel` is missing or the version cannot be found.
+/// The caller must treat that as a failure: this repo always has a Rust
+/// toolchain, so not finding one means this reader is broken.
+pub fn canonical_rust(root: &str) -> Result<String, String> {
+    let path = Path::new(root).join("MODULE.bazel");
+    let content = fs::read_to_string(&path)
+        .map_err(|_| "canonical source missing: MODULE.bazel".to_string())?;
+    rust_version_from_module(&content).ok_or_else(|| {
+        "could not read rules_rust's <ext>.toolchain(versions = [...]) from MODULE.bazel"
+            .to_string()
+    })
+}
+
+/// The variable `use_extension("@rules_rust//rust:extensions.bzl", "rust")`
+/// is bound to, in either quote style and with any spacing.
+fn rules_rust_extension_var(content: &str) -> Option<String> {
+    for line in content.lines() {
+        let l = line.split('#').next().unwrap_or("");
+        let Some((lhs, rhs)) = l.split_once('=') else {
+            continue;
+        };
+        let rhs: String = rhs
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect::<String>()
+            .replace('\'', "\"");
+        if rhs.starts_with("use_extension(\"@rules_rust//rust:extensions.bzl\",\"rust\"") {
+            let var = lhs.trim();
+            if !var.is_empty() && var.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+                return Some(var.to_string());
+            }
+        }
+    }
+    None
+}
+
+/// `text` with its Starlark `#` comments removed, line breaks kept. String
+/// literals (`"..."`, `'...'` and the triple-quoted forms) are copied as
+/// they are, so a `#` inside one is not a comment. Without this, a
+/// commented-out `# rust.toolchain(versions = [...])` above the real call
+/// was read as the version.
+fn strip_starlark_comments(text: &str) -> String {
+    let b = text.as_bytes();
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0;
+    while i < b.len() {
+        let c = b[i];
+        if c == b'#' {
+            while i < b.len() && b[i] != b'\n' {
+                i += 1;
+            }
+            continue;
+        }
+        if c == b'"' || c == b'\'' {
+            let triple = i + 2 < b.len() && b[i + 1] == c && b[i + 2] == c;
+            let q = if triple { 3 } else { 1 };
+            let start = i;
+            i += q;
+            while i < b.len() {
+                if b[i] == b'\\' {
+                    i += 2;
+                    continue;
+                }
+                if b[i] == c && (!triple || (i + 2 < b.len() && b[i + 1] == c && b[i + 2] == c)) {
+                    i += q;
+                    break;
+                }
+                if !triple && b[i] == b'\n' {
+                    break;
+                }
+                i += 1;
+            }
+            out.push_str(&text[start..i.min(b.len())]);
+            continue;
+        }
+        let len = text[i..].chars().next().map_or(1, char::len_utf8);
+        out.push_str(&text[i..i + len]);
+        i += len;
+    }
+    out
+}
+
+/// The parser behind [`canonical_rust`], on `MODULE.bazel`'s text. Comments
+/// are stripped first, so nothing commented out is read.
+///
+/// Accepted limit: strings are kept, so a top-level string that spells the
+/// call out (`_DOC = """\nrust.toolchain(versions = ["1.80.0"])\n"""`) is
+/// read as the call. That fails loudly, as DRIFT on every rust-toolchain
+/// file, and takes a docstring written in exact call syntax.
+pub fn rust_version_from_module(content: &str) -> Option<String> {
+    let stripped = strip_starlark_comments(content);
+    let content = stripped.as_str();
+    let var = rules_rust_extension_var(content)?;
+    let call = format!("{var}.toolchain(");
+    // The call must start a statement: `xrust.toolchain(` is a different
+    // variable.
+    let start = content.match_indices(&call).map(|(i, _)| i).find(|&i| {
+        i == 0 || content[..i].ends_with(|c: char| c == '\n' || c == ' ' || c == '\t')
+    })?;
+    let body = &content[start + call.len()..];
+    // The call's own parentheses, so a later call's versions are not read.
+    let mut depth = 1;
+    let mut end = body.len();
+    for (i, c) in body.char_indices() {
+        match c {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    end = i;
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let body = &body[..end];
+    // `versions = [ ... ]`, as a keyword argument: not `versions` inside
+    // another argument's value.
+    let list = body.match_indices("versions").find_map(|(i, m)| {
+        let before_ok =
+            i == 0 || body[..i].ends_with(|c: char| c.is_whitespace() || c == '(' || c == ',');
+        let rest = body[i + m.len()..]
+            .trim_start()
+            .strip_prefix('=')?
+            .trim_start();
+        if !before_ok {
+            return None;
+        }
+        let inner = rest.strip_prefix('[')?;
+        Some(&inner[..inner.find(']')?])
+    })?;
+    let first = list.split(',').map(str::trim).find(|s| !s.is_empty())?;
+    let version = if let Some(lit) = string_literal(first) {
+        lit.to_string()
+    } else {
+        // A bare name (`versions = [RUST_VERSION]`): its top-level assignment.
+        top_level_string(content, first)?
+    };
+    // Anything but one exact release means this reader misread the file.
+    is_exact_release(&version).then_some(version)
+}
+
+/// The contents of `"x"` or `'x'`.
+fn string_literal(s: &str) -> Option<&str> {
+    let s = s.trim();
+    for q in ['"', '\''] {
+        if let Some(inner) = s.strip_prefix(q).and_then(|r| r.strip_suffix(q)) {
+            return Some(inner);
+        }
+    }
+    None
+}
+
+/// The string a top-level `name = "..."` statement assigns, if any.
+fn top_level_string(content: &str, name: &str) -> Option<String> {
+    if name.is_empty() || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        return None;
+    }
+    content.lines().find_map(|l| {
+        let (lhs, rhs) = l.split('#').next()?.split_once('=')?;
+        if l.starts_with(char::is_whitespace) || lhs.trim() != name {
+            return None;
+        }
+        string_literal(rhs).map(str::to_string)
+    })
+}
+
+/// `1.75.0`: three dot-separated numbers.
+fn is_exact_release(v: &str) -> bool {
+    let parts: Vec<&str> = v.split('.').collect();
+    parts.len() == 3
+        && parts
+            .iter()
+            .all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
+}
+
 /// Read the canonical pnpm version from the root `package.json`.
 ///
 /// Finds a line containing `"packageManager"`, then extracts the version
@@ -270,6 +457,136 @@ mod tests {
         let mut f = fs::File::create(dir.join(name)).unwrap();
         f.write_all(content.as_bytes()).unwrap();
         dir
+    }
+
+    const EXT: &str = "rust = use_extension(\"@rules_rust//rust:extensions.bzl\", \"rust\")\n";
+
+    #[test]
+    fn rust_version_reads_the_toolchain_call() {
+        let module = format!(
+            "bazel_dep(name = \"rules_rust\", version = \"0.60.0\")\n{EXT}\
+rust.toolchain(\n    edition = \"2021\",\n    versions = [\"1.75.0\"],\n)\n\
+rust.repository_set(\n    name = \"rust_libsignal\",\n    versions = [\"1.98.1\"],\n)\n"
+        );
+        assert_eq!(rust_version_from_module(&module).as_deref(), Some("1.75.0"));
+    }
+
+    #[test]
+    fn rust_version_ignores_a_commented_out_toolchain_call() {
+        // aegis on #4183: the commented line above the real call was read.
+        let module = "rust = use_extension(\"@rules_rust//rust:extensions.bzl\", \"rust\")\n\
+# rust.toolchain(versions = [\"1.80.0\"])\n\
+#rust.toolchain(\n#    versions = [\"1.81.0\"],\n#)\n\
+rust.toolchain(\n    edition = \"2021\",  # versions = [\"1.82.0\"]\n    versions = [\"1.75.0\"],\n)\n";
+        assert_eq!(rust_version_from_module(module).as_deref(), Some("1.75.0"));
+    }
+
+    #[test]
+    fn rust_version_ignores_a_commented_out_extension_binding() {
+        let module = "# old = use_extension(\"@rules_rust//rust:extensions.bzl\", \"rust\")\n\
+# old.toolchain(versions = [\"1.80.0\"])\n\
+rust = use_extension(\"@rules_rust//rust:extensions.bzl\", \"rust\")\n\
+rust.toolchain(versions = [\"1.75.0\"])\n";
+        assert_eq!(rust_version_from_module(module).as_deref(), Some("1.75.0"));
+    }
+
+    #[test]
+    fn rust_version_finds_nothing_when_the_only_call_is_commented_out() {
+        let module = "rust = use_extension(\"@rules_rust//rust:extensions.bzl\", \"rust\")\n\
+# rust.toolchain(versions = [\"1.75.0\"])\n";
+        assert_eq!(rust_version_from_module(module), None);
+    }
+
+    #[test]
+    fn a_hash_inside_a_string_is_kept() {
+        assert_eq!(
+            strip_starlark_comments("x = \"a#b\"  # c\ny = '''#\n'''\n"),
+            "x = \"a#b\"  \ny = '''#\n'''\n"
+        );
+    }
+
+    #[test]
+    fn rust_version_ignores_a_repository_set_before_the_toolchain() {
+        let module = format!(
+            "{EXT}rust.repository_set(\n    versions = [\"1.98.1\"],\n)\n\
+rust.toolchain(\n    versions = [\"1.80.1\", \"1.75.0\"],\n)\n"
+        );
+        assert_eq!(rust_version_from_module(&module).as_deref(), Some("1.80.1"));
+    }
+
+    /// aegis's repro: the extension bound to another name is still read.
+    #[test]
+    fn rust_version_follows_a_renamed_extension_variable() {
+        let module = "rust_ext = use_extension('@rules_rust//rust:extensions.bzl', 'rust')\n\
+rust_ext.toolchain(\n    edition = \"2021\",\n    versions = [\"1.75.0\"],\n)\n\
+use_repo(rust_ext, \"rust_toolchains\")\n";
+        assert_eq!(rust_version_from_module(module).as_deref(), Some("1.75.0"));
+    }
+
+    /// A `rust.toolchain(` belonging to another extension is not the one.
+    #[test]
+    fn rust_version_reads_only_the_rules_rust_binding() {
+        let module = "rust = use_extension(\"@other//x:ext.bzl\", \"rust\")\n\
+rust.toolchain(versions = [\"9.9.9\"])\n";
+        assert_eq!(rust_version_from_module(module), None);
+        let module = format!("{EXT}xrust.toolchain(versions = [\"9.9.9\"])\nrust.toolchain(versions = [\"1.75.0\"])\n");
+        assert_eq!(rust_version_from_module(&module).as_deref(), Some("1.75.0"));
+    }
+
+    /// The version moved into a variable (valid, builds the same) is read
+    /// through it; a name that resolves to nothing, or to no exact release,
+    /// is a failed read, never the name taken as a version.
+    #[test]
+    fn rust_version_through_a_variable() {
+        let module = format!(
+            "RUST_VERSION = \"1.75.0\"\n{EXT}rust.toolchain(\n    versions = [RUST_VERSION],\n)\n"
+        );
+        assert_eq!(rust_version_from_module(&module).as_deref(), Some("1.75.0"));
+        let module = format!("{EXT}rust.toolchain(\n    versions = [RUST_VERSION],\n)\n");
+        assert_eq!(rust_version_from_module(&module), None);
+        let module = format!("RUST_VERSIONS = [\"1.75.0\"]\n{EXT}rust.toolchain(\n    versions = RUST_VERSIONS,\n)\n");
+        assert_eq!(rust_version_from_module(&module), None);
+        let module = format!("{EXT}rust.toolchain(versions = [\"stable\"])\n");
+        assert_eq!(rust_version_from_module(&module), None);
+    }
+
+    /// `versions` is read as the call's own keyword argument only.
+    #[test]
+    fn rust_version_reads_the_versions_argument_only() {
+        let module = format!(
+            "{EXT}rust.toolchain(\n    extra_target_triples = [\"x\"],\n    versions = [\"1.75.0\"],\n)\n"
+        );
+        assert_eq!(rust_version_from_module(&module).as_deref(), Some("1.75.0"));
+        let module = format!("{EXT}rust.toolchain(\n    extra_versions = [\"9.9.9\"],\n)\n");
+        assert_eq!(rust_version_from_module(&module), None);
+    }
+
+    #[test]
+    fn rust_version_missing() {
+        assert_eq!(rust_version_from_module("bazel_dep(name = \"x\")\n"), None);
+        // The extension is bound but its toolchain call names no version.
+        let module = format!("{EXT}rust.toolchain(edition = \"2021\")\n");
+        assert_eq!(rust_version_from_module(&module), None);
+        // The toolchain call is there but under a name nothing binds.
+        assert_eq!(
+            rust_version_from_module("rust.toolchain(versions = [\"1.75.0\"])\n"),
+            None
+        );
+        assert!(canonical_rust("/nonexistent/path")
+            .unwrap_err()
+            .contains("MODULE.bazel"));
+    }
+
+    #[test]
+    fn canonical_rust_reads_module_bazel() {
+        let dir = temp_dir_with_file(
+            "MODULE.bazel",
+            &format!(
+                "{EXT}rust.toolchain(\n    edition = \"2021\",\n    versions = [\"1.75.0\"],\n)\n"
+            ),
+        );
+        assert_eq!(canonical_rust(dir.to_str().unwrap()).unwrap(), "1.75.0");
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

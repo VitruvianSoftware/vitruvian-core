@@ -22,6 +22,9 @@
 name = "oauth-user-inspector-server"
 version = "1.15.2"
 edition = "2021"
+# The Bazel Rust toolchain's, so `bazel run //tools/crates:lock -- --dir
+# apps/web/oauth-user-inspector/server` only locks versions it can build.
+rust-version = "1.75"
 publish = false
 
 [workspace]

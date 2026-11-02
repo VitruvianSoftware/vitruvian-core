@@ -306,6 +306,7 @@ var methods = map[string]handler{
 	"integrations.revokeToken":   integrationsRevokeToken,
 	"integrations.setCanSend":    integrationsSetCanSend,
 	"integrations.answerPairing": integrationsAnswerPairing,
+	"app.setLocked":              appSetLocked,
 }
 
 var errMissing = errors.New("a dependency this method needs is missing")

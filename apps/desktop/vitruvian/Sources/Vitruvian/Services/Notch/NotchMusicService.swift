@@ -244,10 +244,7 @@ package final class NotchMusicService: ObservableObject {
         // The adapter's `artworkUnchanged` stands for the player's own last
         // cover, never one found from a tab or Apple, so a later song that
         // keeps the same small cover still gets a lookup of its own.
-        var playerArtwork: Data?
-        var cachedArtwork: Data?
-        var cachedImage: NSImage?
-        var cachedTint: NotchArtworkTint?
+        let cache = NotchMusicReaderCache()
         let reader = NotchMusicPipeReader { [weak self] data in
             let reply = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
             if let reply, reply["validationRequest"] != nil {
@@ -272,22 +269,22 @@ package final class NotchMusicService: ObservableObject {
                 }
                 return
             }
-            var next = NotchPlayback.decode(data, previousArtwork: playerArtwork,
+            var next = NotchPlayback.decode(data, previousArtwork: cache.playerArtwork,
                                            commandContext: reply.flatMap(NotchPlaybackContext.init(reply:)),
                                            canSendCommandsDirectly: reply?["canSendCommandsDirectly"] as? Bool == true)
-            playerArtwork = next?.track.artworkData
+            cache.playerArtwork = next?.track.artworkData
             // A cover already found for a Firefox-family browser replaces
             // the player's missing or small cover before it is decoded.
             if let playback = next, let cover = NotchBrowserArtwork.shared.artwork(for: playback) {
                 next = playback.withArtwork(cover)
             }
-            if cachedArtwork != next?.track.artworkData {
-                cachedArtwork = next?.track.artworkData
-                cachedImage = cachedArtwork.flatMap { ImageThumbnailer.thumbnail(data: $0, pointSize: 160, scale: 2) }
-                cachedTint = cachedImage.flatMap(NotchMusicService.artworkTint(of:))
+            if cache.artwork != next?.track.artworkData {
+                cache.artwork = next?.track.artworkData
+                cache.image = cache.artwork.flatMap { ImageThumbnailer.thumbnail(data: $0, pointSize: 160, scale: 2) }
+                cache.tint = cache.image.flatMap(NotchMusicService.artworkTint(of:))
             }
-            let image = cachedImage
-            let tint = cachedTint
+            nonisolated(unsafe) let image = cache.image
+            let tint = cache.tint
             let automatic = reply?["sourceIsAutomatic"] as? Bool
             let selectedPID = automatic == false ? NotchPlaybackSource.decodePID(reply?["selectedPID"]) : nil
             let sources = NotchPlaybackSource.decode(reply?["sources"], selectedPID: selectedPID)
@@ -697,6 +694,16 @@ package final class NotchMusicService: ObservableObject {
 
 }
 
+/// What the pipe's reply closure keeps from one reply to the next: the
+/// player's own last cover and the decoded cover shown. Only the reader's
+/// serial queue touches it, so it is `@unchecked Sendable`.
+private final class NotchMusicReaderCache: @unchecked Sendable {
+    var playerArtwork: Data?
+    var artwork: Data?
+    var image: NSImage?
+    var tint: NotchArtworkTint?
+}
+
 /// Pipe callbacks may split a UTF-8 character or join several replies. Parsing
 /// stays serial and bounded before any metadata reaches the main thread.
 /// `buffer` and `receive` are touched only on `queue`, so it is
@@ -704,8 +711,11 @@ package final class NotchMusicService: ObservableObject {
 private final class NotchMusicPipeReader: @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.vitruviansoftware.vitruvian.notch-music-reader", qos: .utility)
     private var buffer = Data()
-    private let receive: (Data) -> Void
-    init(receive: @escaping (Data) -> Void) { self.receive = receive }
+    private let receive: @Sendable (Data) -> Void
+    /// `receive` runs on `queue`, so it is `@Sendable`. Without that, a closure
+    /// written in the main-actor `launch()` is main-actor too, and Swift 6
+    /// stops the app when the pipe runs it here.
+    init(receive: @escaping @Sendable (Data) -> Void) { self.receive = receive }
 
     func append(_ data: Data) {
         // Backpressure keeps native metadata bursts from queuing unbounded

@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! //tools/ci:queue-runner-watch: the Rust port.
+//! //tools/ci:queue_runner_watch: the binary; what it does is in lib.rs.
 
 fn main() {
     std::process::exit(queue_runner_watch::run(&shell_compat::args()));

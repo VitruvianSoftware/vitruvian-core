@@ -134,7 +134,9 @@ def delivery(
         carries because its apply is off by default. Dropping it would turn
         "cleanly does not run" into "runs on every affected push".
       soak: gate the promotion rungs on //tools/ci:require_dev_soak, which
-        refuses to promote while the unit's DEVELOPMENT deploy is red. Requires
+        refuses to promote while the unit's DEVELOPMENT deploy is red, and
+        waits for one still running before judging it. The promotion rung's
+        companions wait on the same verdict. Requires
         promotion (there is no promotion rung to gate without it) and at least
         two environments (the ladder needs something to promote INTO).
       companions: expand-before-serve delivery() labels that must apply first.

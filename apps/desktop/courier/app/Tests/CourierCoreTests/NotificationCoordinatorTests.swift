@@ -97,9 +97,12 @@ final class NotificationCoordinatorTests: XCTestCase {
     private func finish(_ h: Harness) async { await h.app.stop() }
 
     /// Lets a fetch that should lead to nothing finish before the test says nothing happened.
+    /// Waits until the chat has been read `fetches` times in all and the coordinator has dealt with every read it
+    /// had waiting: by then all it would announce is announced. Never a fixed wait: a read's answer can take longer
+    /// than any one picked, and a fetch the conversation made counts too, before the coordinator's own has gone.
     private func settle(_ h: Harness, fetches: Int = 1) async throws {
         try await waitUntil { h.server.receivedMethods().filter { $0 == "room.events" }.count >= fetches }
-        try await Task.sleep(nanoseconds: 100_000_000)
+        try await waitUntil { h.coordinator.isQuietForTesting }
     }
 
     // MARK: - Someone starts typing
@@ -394,8 +397,8 @@ final class NotificationCoordinatorTests: XCTestCase {
 
         // A chat the engine doesn't have says nothing: there is no name to show.
         h.server.notify(["kind": "reminder", "room_id": "!gone"])
-        try await waitUntil { h.server.receivedParams("inbox.list").count == 2 }
-        try await Task.sleep(nanoseconds: 100_000_000)
+        try await waitUntil { h.coordinator.remindersHandled == 2 }
+        XCTAssertEqual(h.server.receivedParams("inbox.list").count, 2)
         XCTAssertEqual(h.delivery.delivered.count, 1)
         await finish(h)
     }
@@ -466,9 +469,8 @@ final class NotificationCoordinatorTests: XCTestCase {
         h.window.isKey = true
         h.window.isAway = true
         h.server.notify(["kind": "reminder", "room_id": "!a"])
-        try await waitUntil { !h.server.receivedParams("reminder.clear").isEmpty }
+        try await waitUntil { h.coordinator.remindersHandled == 1 }
         XCTAssertEqual(h.server.receivedParams("reminder.clear").first?["room_ids"] as? [String], ["!a"])
-        try await Task.sleep(nanoseconds: 100_000_000)
         XCTAssertTrue(h.server.receivedParams("room.markRead").isEmpty, "the newer messages stay unread")
         XCTAssertTrue(h.delivery.delivered.isEmpty, "the person is in the chat: no notification")
         XCTAssertTrue(h.delivery.cleared.isEmpty, "nothing was read, so nothing shown is taken down")
@@ -698,7 +700,7 @@ final class NotificationCoordinatorTests: XCTestCase {
         h.script.events["!gone"] = [message("$g", ts: connectedMillis + 1000, text: "hello", room: "!gone")]
         h.server.notify(["kind": "event", "room_id": "!gone", "event_id": "$g"])
         try await waitUntil { h.server.receivedMethods().contains("inbox.list") }
-        try await Task.sleep(nanoseconds: 100_000_000)
+        try await waitUntil { h.coordinator.isQuietForTesting }
         XCTAssertTrue(h.delivery.delivered.isEmpty, "no row, so no name to show: nothing is announced")
         await finish(h)
     }
@@ -1419,8 +1421,9 @@ final class NotificationCoordinatorTests: XCTestCase {
 
         // Deliver a due reminder in the open chat !a while locked: must NOT call room.markRead or reminder.clear, and must post a redacted banner.
         let markReadBeforeReminder = h.server.receivedMethods().filter { $0 == "room.markRead" }.count
+        let remindersBefore = h.coordinator.remindersHandled
         h.server.notify(["kind": "reminder", "room_id": "!a"])
-        try await Task.sleep(nanoseconds: 100_000_000)
+        try await waitUntil { h.coordinator.remindersHandled > remindersBefore }
         XCTAssertEqual(
             h.server.receivedMethods().filter { $0 == "room.markRead" }.count,
             markReadBeforeReminder,

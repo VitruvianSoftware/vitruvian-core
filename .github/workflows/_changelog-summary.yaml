@@ -58,6 +58,9 @@ on:
         type: string
         default: ""
 
+permissions:
+  contents: read
+
 jobs:
   changelog:
     runs-on: ubuntu-26.04

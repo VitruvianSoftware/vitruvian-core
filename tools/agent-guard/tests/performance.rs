@@ -161,6 +161,26 @@ fn too_many_commands_is_refused_quickly() {
 }
 
 #[test]
+fn many_rustup_force_arg0_values_are_refused_quickly() {
+    // Each distinct RUSTUP_FORCE_ARG0 value used to cost a walk of the whole
+    // command: 4,000 of them took 45 s, past the hook's 10 s limit.
+    let p = Perf::new();
+    let sets: String = (0..4000)
+        .map(|i| format!("RUSTUP_FORCE_ARG0=v{} ", i))
+        .collect();
+    let cmd = format!("env {}true; rustup update", sets);
+    assert_eq!(
+        p.timed("4,000 RUSTUP_FORCE_ARG0 values", &cmd, None),
+        deny()
+    );
+    let cmd = format!(
+        "{}",
+        "export RUSTUP_FORCE_ARG0=cargo; rustc update; ".repeat(20000)
+    );
+    assert_eq!(p.timed("20k repeated exports + rustc", &cmd, None), deny());
+}
+
+#[test]
 fn adversarial_shapes() {
     let p = Perf::new();
     for (name, cmd) in [

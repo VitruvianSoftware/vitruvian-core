@@ -12,6 +12,7 @@ import SwiftUI
 public struct IntegrationsSettingsPane: View {
     @ObservedObject public var model: IntegrationsModel
     public var highlightedSettingID: String?
+    @FocusState private var isPortFocused: Bool
 
     public init(model: IntegrationsModel, highlightedSettingID: String? = nil) {
         self.model = model
@@ -48,7 +49,7 @@ public struct IntegrationsSettingsPane: View {
                 set: { if !$0 { model.tokenPendingRevoke = nil } }
             )
         ) {
-            Button(String(localized: "Revoke"), role: .destructive) { Task { await model.confirmRevoke() } }
+            Button(String(localized: "Revoke"), role: .destructive) { model.confirmRevoke() }
             Button(String(localized: "Cancel"), role: .cancel) { model.tokenPendingRevoke = nil }
         } message: {
             Text(String(localized: "It stops working at once. An app that uses it will need a new connection."))
@@ -90,7 +91,13 @@ public struct IntegrationsSettingsPane: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 TextField(String(localized: "Port"), text: $model.portText)
+                    .focused($isPortFocused)
                     .onSubmit { Task { await model.savePort() } }
+                    // Leaving the field saves too: a port typed and left would otherwise be overwritten, unsaved, by
+                    // the next status the engine sends.
+                    .onChange(of: isPortFocused) { _, focused in
+                        if !focused { Task { await model.savePort() } }
+                    }
                 if let error = model.portError {
                     Text(error)
                         .font(.caption)

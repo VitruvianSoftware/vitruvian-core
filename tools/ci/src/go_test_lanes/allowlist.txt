@@ -1,0 +1,11 @@
+# Go tests that no CI lane runs ON PURPOSE. //tools/ci:go_test_lanes fails on
+# any other test no lane runs, and on an entry here that has gone or that a
+# lane now covers. One repo-relative _test.go per line; say why.
+#
+
+# devx multinode integration tests: `//go:build integration`, so gazelle
+# leaves them out of the go_test. provider needs a real SSH host
+# (DEVX_NATIVE_ITEST_HOST); usb builds a real FCOS image in a Lima VM. Each
+# file's header gives the `go test -tags integration` command to run it.
+apps/cli/devx/internal/multinode/provider/native_integration_test.go
+apps/cli/devx/internal/multinode/usb/assemble_integration_test.go

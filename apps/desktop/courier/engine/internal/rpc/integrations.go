@@ -182,3 +182,23 @@ func integrationsAnswerPairing(_ context.Context, d *Deps, raw json.RawMessage) 
 	}
 	return nil, nil
 }
+
+// appSetLocked is the app saying whether it is locked, at each connect and each time it locks or unlocks, so that
+// focus_app tells its client the truth.
+func appSetLocked(_ context.Context, d *Deps, raw json.RawMessage) (any, error) {
+	var p struct {
+		Locked *bool `json:"locked"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	if p.Locked == nil {
+		return nil, invalidParams("locked is required")
+	}
+	api, err := d.localAPI()
+	if err != nil {
+		return nil, err
+	}
+	api.SetAppLocked(*p.Locked)
+	return nil, nil
+}

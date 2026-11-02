@@ -333,6 +333,74 @@ mod tests {
     // =========================================================================
     // 3. hardening.test.ts
     // =========================================================================
+    /// #4176: safe_fetch refuses a header carrying CR/LF (or another control
+    /// character) before it resolves or calls curl, whoever built the header.
+    #[test]
+    fn safe_fetch_refuses_header_injection_before_the_network() {
+        use crate::safe_fetch::{check_headers, is_safe_header_value, safe_fetch};
+        assert!(is_safe_header_value("Bearer abc.def-ghi_jkl"));
+        assert!(is_safe_header_value("tab\tok"));
+        for bad in ["a\r\nX-Injected: 1", "a\nb", "a\rb", "a\u{0}b", "a\u{7f}b"] {
+            assert!(!is_safe_header_value(bad), "{bad:?}");
+        }
+        let mut headers = HashMap::new();
+        headers.insert("Bad:Name".to_string(), "v".to_string());
+        assert!(check_headers(&headers).is_err());
+
+        let mut headers = HashMap::new();
+        headers.insert(
+            "Authorization".to_string(),
+            "Bearer t\r\nX-Injected: 1".to_string(),
+        );
+        let opts = SafeFetchOptions {
+            headers,
+            ..SafeFetchOptions::default()
+        };
+        // .invalid never resolves: an error that is not about the header means
+        // the request got as far as DNS.
+        let err = safe_fetch("https://never.invalid/", &opts).unwrap_err();
+        assert!(err.reason.contains("refused header"), "{}", err.reason);
+    }
+
+    /// #4176: curl's -X puts the method on the request line as given, so
+    /// safe_fetch sends only a fixed set of methods, checked before DNS.
+    #[test]
+    fn safe_fetch_refuses_methods_outside_the_allow_list() {
+        use crate::safe_fetch::{check_method, safe_fetch};
+        for ok in ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"] {
+            assert!(check_method(ok).is_ok(), "{ok}");
+        }
+        for bad in [
+            "GET /user HTTP/1.1\r\nX-Injected: 1\r\nX-Pad:",
+            "GET /x",
+            "get",
+            "",
+            "TRACE",
+            "CONNECT",
+        ] {
+            assert!(check_method(bad).is_err(), "{bad:?}");
+        }
+        let opts = SafeFetchOptions {
+            method: "GET /user HTTP/1.1\r\nX-Injected: 1".to_string(),
+            ..SafeFetchOptions::default()
+        };
+        let err = safe_fetch("https://never.invalid/", &opts).unwrap_err();
+        assert!(err.reason.contains("refused method"), "{}", err.reason);
+    }
+
+    /// Cloud Run reaches the container on its own address, never loopback,
+    /// and `start_test` only connects over loopback — so this is the one test
+    /// that fails if the server stops listening on every interface (#4176).
+    #[test]
+    fn server_binds_every_interface_by_default() {
+        let addr = crate::server::default_bind_addr(8080);
+        assert_eq!(
+            addr,
+            "0.0.0.0:8080".parse::<std::net::SocketAddr>().unwrap()
+        );
+        assert!(addr.ip().is_unspecified(), "bind address {addr}");
+    }
+
     #[test]
     fn hardening_emits_security_headers_and_no_store_on_api() {
         let app = App::with_backends(
@@ -1166,6 +1234,55 @@ mod tests {
         );
         assert_eq!(fetcher.recorded_calls().len(), before_calls);
 
+        // #4176: a CR/LF in the token would inject headers into the upstream
+        // request (curl sends -H text as given). Refused with a 400, unfetched.
+        for bad in ["tok\r\nX-Injected: 1", "tok\nX-Injected: 1", "tok\u{0}"] {
+            let before = fetcher.recorded_calls().len();
+            let exp_inject =
+                app.handle_request(&HttpRequest::new("POST", "/api/explore").with_json(json!({
+                    "provider": "github",
+                    "accessToken": bad,
+                    "endpoint": { "id": "user", "method": "GET" },
+                })));
+            assert_eq!(exp_inject.status, 400, "token {bad:?}");
+            assert_eq!(
+                exp_inject.json().get("error").and_then(Value::as_str),
+                Some("Invalid accessToken: it contains control characters")
+            );
+            assert_eq!(
+                fetcher.recorded_calls().len(),
+                before,
+                "token {bad:?} was fetched"
+            );
+        }
+
+        // #4176: the client's method is never forwarded. A request-line
+        // injection, or a different verb than the endpoint defines, is a 400
+        // with no fetch.
+        for bad in [
+            "GET /user HTTP/1.1\r\nX-Injected: 1\r\nX-Pad:",
+            "DELETE",
+            "get",
+        ] {
+            let before = fetcher.recorded_calls().len();
+            let exp_method =
+                app.handle_request(&HttpRequest::new("POST", "/api/explore").with_json(json!({
+                    "provider": "github",
+                    "accessToken": "test_token",
+                    "endpoint": { "id": "user", "method": bad },
+                })));
+            assert_eq!(exp_method.status, 400, "method {bad:?}");
+            assert_eq!(
+                exp_method.json().get("error").and_then(Value::as_str),
+                Some("Invalid endpoint: method does not match the endpoint definition")
+            );
+            assert_eq!(
+                fetcher.recorded_calls().len(),
+                before,
+                "method {bad:?} was fetched"
+            );
+        }
+
         let exp_ok =
             app.handle_request(&HttpRequest::new("POST", "/api/explore").with_json(json!({
                 "provider": "github",
@@ -1187,6 +1304,7 @@ mod tests {
             fetcher.recorded_calls().last().unwrap().url,
             "https://api.github.com/user"
         );
+        assert_eq!(fetcher.recorded_calls().last().unwrap().opts.method, "GET");
     }
 
     // =========================================================================
@@ -1452,5 +1570,156 @@ mod tests {
         assert_eq!(mismatch.provider.as_deref(), Some("github"));
         assert_eq!(mismatch.redirect_uri, "https://inspector.example.com");
         assert!(!mismatch.state_valid);
+    }
+
+    // =========================================================================
+    // Hosted mode: provider domain comes only from configuration
+    // =========================================================================
+
+    const CALLER_DOMAIN: &str = "caller-chosen.example";
+
+    /// Hosted-mode app whose Secret Manager holds the standard test secrets,
+    /// plus `ZITADEL_APP_OAUTH_DOMAIN` when given; `AUTH0_APP_OAUTH_DOMAIN` is
+    /// dropped when `with_auth0_domain` is false. Every fetch succeeds.
+    fn hosted_domain_test_app(
+        with_auth0_domain: bool,
+        zitadel_secret: Option<&'static str>,
+    ) -> (App, MockHttpFetcher) {
+        let standard = MockSecretBackend::standard_test_secrets();
+        let secrets = MockSecretBackend::new(move |name| {
+            if name.contains("ZITADEL_APP_OAUTH_DOMAIN") {
+                return Ok(zitadel_secret.map(String::from));
+            }
+            if name.contains("AUTH0_APP_OAUTH_DOMAIN") && !with_auth0_domain {
+                return Ok(None);
+            }
+            standard.access_secret_version(name)
+        });
+        let fetcher = MockHttpFetcher::new(|_url, _opts| {
+            Ok(mock_json_response(
+                200,
+                json!({ "access_token": "a", "refresh_token": "r" }),
+            ))
+        });
+        let app = App::with_backends(Arc::new(secrets), Arc::new(fetcher.clone()));
+        app.set_env("GOOGLE_CLOUD_PROJECT", Some("test-project".to_string()));
+        (app, fetcher)
+    }
+
+    /// (path, body) for each credentialed endpoint, naming `domain` as both the
+    /// Auth0 and Zitadel domain.
+    fn credentialed_requests(
+        provider: &str,
+        is_hosted: bool,
+        domain: &str,
+    ) -> Vec<(&'static str, Value)> {
+        let mut out = Vec::new();
+        for (path, mut body) in [
+            (
+                "/api/oauth/token",
+                json!({ "code": "c", "redirectUri": "https://inspector.example.com" }),
+            ),
+            ("/api/oauth/refresh", json!({ "refreshToken": "r" })),
+            ("/api/oauth/revoke", json!({ "token": "t" })),
+        ] {
+            let map = body.as_object_mut().unwrap();
+            map.insert("provider".into(), json!(provider));
+            map.insert("isHosted".into(), json!(is_hosted));
+            map.insert("auth0Domain".into(), json!(domain));
+            map.insert("zitadelDomain".into(), json!(domain));
+            if !is_hosted {
+                map.insert("clientId".into(), json!("byo-id"));
+                map.insert("clientSecret".into(), json!("byo-secret"));
+            }
+            out.push((path, body));
+        }
+        out
+    }
+
+    fn url_host(url: &str) -> String {
+        url.trim_start_matches("https://")
+            .split(['/', '?'])
+            .next()
+            .unwrap()
+            .to_string()
+    }
+
+    #[test]
+    fn hosted_requests_use_only_the_configured_provider_domain() {
+        // (provider, configured ZITADEL_APP_OAUTH_DOMAIN, expected host)
+        let cases: &[(&str, Option<&'static str>, &str)] = &[
+            ("auth0", None, "oauth-user-inspector.us.auth0.com"),
+            (
+                "zitadel",
+                Some("zitadel.configured.test"),
+                "zitadel.configured.test",
+            ),
+            ("zitadel", None, "auth.ipv1337.dev"),
+            ("github", None, ""),
+            ("google", None, ""),
+            ("gitlab", None, ""),
+            ("linkedin", None, ""),
+        ];
+        for &(provider, zitadel_secret, expected_host) in cases {
+            for (path, body) in credentialed_requests(provider, true, CALLER_DOMAIN) {
+                // No upstream call: GitHub OAuth Apps have no refresh grant and
+                // LinkedIn has no revoke endpoint.
+                if (provider, path) == ("github", "/api/oauth/refresh")
+                    || (provider, path) == ("linkedin", "/api/oauth/revoke")
+                {
+                    continue;
+                }
+                let (app, fetcher) = hosted_domain_test_app(true, zitadel_secret);
+                let res = app.handle_request(&HttpRequest::new("POST", path).with_json(body));
+                let ctx = format!("{provider} {path} (zitadel secret {zitadel_secret:?})");
+                assert_eq!(res.status, 200, "{ctx}: {}", res.text());
+                let calls = fetcher.recorded_calls();
+                assert!(!calls.is_empty(), "{ctx}: no upstream call");
+                for call in &calls {
+                    let host = url_host(&call.url);
+                    assert_ne!(
+                        host, CALLER_DOMAIN,
+                        "{ctx}: hosted request went to {}",
+                        call.url
+                    );
+                    if !expected_host.is_empty() {
+                        assert_eq!(host, expected_host, "{ctx}: {}", call.url);
+                    }
+                }
+                assert!(
+                    !res.text().contains(CALLER_DOMAIN),
+                    "{ctx}: response echoes the caller's domain: {}",
+                    res.text()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn hosted_auth0_without_configured_domain_is_refused() {
+        for (path, body) in credentialed_requests("auth0", true, CALLER_DOMAIN) {
+            let (app, fetcher) = hosted_domain_test_app(false, None);
+            let res = app.handle_request(&HttpRequest::new("POST", path).with_json(body));
+            assert_eq!(res.status, 500, "{path}: {}", res.text());
+            assert!(
+                fetcher.recorded_calls().is_empty(),
+                "{path}: made an upstream call: {:?}",
+                fetcher.recorded_calls()
+            );
+        }
+    }
+
+    #[test]
+    fn byo_requests_still_use_the_callers_provider_domain() {
+        for provider in ["auth0", "zitadel"] {
+            for (path, body) in credentialed_requests(provider, false, CALLER_DOMAIN) {
+                let (app, fetcher) = hosted_domain_test_app(true, Some("zitadel.configured.test"));
+                let res = app.handle_request(&HttpRequest::new("POST", path).with_json(body));
+                assert_eq!(res.status, 200, "{provider} {path}: {}", res.text());
+                let calls = fetcher.recorded_calls();
+                assert_eq!(calls.len(), 1, "{provider} {path}");
+                assert_eq!(url_host(&calls[0].url), CALLER_DOMAIN, "{provider} {path}");
+            }
+        }
     }
 }

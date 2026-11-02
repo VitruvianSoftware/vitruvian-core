@@ -31,51 +31,6 @@ alias(
     visibility = ["//visibility:public"],
 )
 
-exports_files([
-    "agent-fast-lane.sh",
-    "agent-fast-lane_test.sh",
-    "llvm-cache-key.sh",
-    "llvm-cache-key_test.sh",
-    "llvm-cache-stage.sh",
-    "llvm-cache-stage_test.sh",
-    "queue-fast-pass.sh",
-    "queue-fast-pass_test.sh",
-    "queue-runner-watch.sh",
-    "queue-runner-watch_test.sh",
-    "relevant-paths.sh",
-    "relevant-paths_test.sh",
-])
-
-# The extracted-LLVM cache key. Keyed on every recorded input of the
-# llvm_toolchain_llvm repo rule -- /etc/os-release included -- so a runner-image
-# point release is a one-run miss instead of a permanent restore-and-re-extract
-# (#2242). Hermetic: fixtures only, no bazel-in-bazel, no network.
-sh_test(
-    name = "llvm_cache_key_test",
-    size = "small",
-    srcs = ["llvm-cache-key_test.sh"],
-    args = ["$(location llvm-cache-key.sh)"],
-    data = ["llvm-cache-key.sh"],
-)
-
-# Moves the extracted LLVM toolchain between the cache's fixed stage folder and
-# Bazel's contents cache, so no file pins the content-hash folder name (#2456).
-sh_test(
-    name = "llvm_cache_stage_test",
-    size = "small",
-    srcs = ["llvm-cache-stage_test.sh"],
-    args = ["$(location llvm-cache-stage.sh)"],
-    data = ["llvm-cache-stage.sh"],
-)
-
-sh_test(
-    name = "queue_runner_watch_test",
-    size = "small",
-    srcs = ["queue-runner-watch_test.sh"],
-    args = ["$(location queue-runner-watch.sh)"],
-    data = ["queue-runner-watch.sh"],
-)
-
 # Safety tests for the cache pruner. It DELETES, so the suite is mostly
 # negative: an open PR's cache, a branch cache, and an undeterminable PR state
 # must all survive. Runs the REAL binary with a fake gh on PATH (hermetic: no
@@ -98,14 +53,29 @@ rust_test(
 # checks each result answers like the Bazel-built binary. TOOLS must list the
 # tools the workflows build; the test fails when the two differ.
 _BUILD_CI_TOOLS = [
+    "agent_fast_lane",
+    "backstage_boot_smoke",
     "changelog_summary",
+    "chart_render",
     "foundation_app_digest_guard",
+    "gitops_validate",
+    "gitops_values_render",
+    "go_test_with_retry",
+    "image_sbom_scan",
+    "install_pinned_tool",
+    "llvm_cache_key",
+    "llvm_cache_stage",
+    "migration_safety",
     "notify_ci_issues",
     "prune_pr_caches",
     "pulumi_summary",
+    "queue_fast_pass",
+    "queue_runner_watch",
     "release_beta_gate",
     "release_hold",
     "release_pr_dequeue",
+    "relevant_paths",
+    "secret_scan",
 ]
 
 rust_test(
@@ -116,6 +86,9 @@ rust_test(
         "//:composite_actions",
         "//:workflow_files",
         "//tools/shell-compat:src/lib.rs",
+        # What the action's `deps` input may name.
+        "src/transient_lib/lib.rs",
+        "//tools/gitops/appset-render:srcs",
         "@rules_rust//rust/toolchain:current_rust_stdlib_files",
         "@rules_rust//rust/toolchain:current_rustc_files",
         "@rules_rust//rust/toolchain:current_rustc_lib_files",
@@ -137,6 +110,7 @@ rust_test(
     },
     rustc_flags = ["-Copt-level=3"],
     toolchains = ["@jq_toolchains//:resolved_toolchain"],
+    deps = [":ci_testkit"],
 )
 
 # The mirror's release workflow for the standalone Nexus Agent never runs here;
@@ -227,30 +201,11 @@ rust_test(
     size = "medium",
     srcs = ["src/workflow_rustc/tests.rs"],
     data = [
-        "src/backstage_boot_smoke/lib.rs",
-        "src/backstage_boot_smoke/main.rs",
-        "src/chart_render/lib.rs",
-        "src/chart_render/main.rs",
-        "src/gitops_validate/lib.rs",
-        "src/gitops_validate/main.rs",
-        "src/gitops_values_render/lib.rs",
-        "src/gitops_values_render/main.rs",
-        "src/go_test_with_retry/lib.rs",
-        "src/go_test_with_retry/main.rs",
-        "src/image_sbom_scan/lib.rs",
-        "src/image_sbom_scan/main.rs",
-        "src/install_pinned_tool/lib.rs",
-        "src/install_pinned_tool/main.rs",
-        "src/migration_safety/lib.rs",
-        "src/migration_safety/main.rs",
-        "src/secret_scan/lib.rs",
-        "src/secret_scan/main.rs",
         "src/transient_lib/lib.rs",
         "//:composite_actions",
+        "//:github_files",
         "//:workflow_files",
-        "//tools/gitops/appset-render:srcs",
         "//tools/gomod:srcs",
-        "//tools/shell-compat:src/lib.rs",
         "@rules_rust//rust/toolchain:current_rust_stdlib_files",
         "@rules_rust//rust/toolchain:current_rustc_files",
         "@rules_rust//rust/toolchain:current_rustc_lib_files",
@@ -481,21 +436,20 @@ rust_binary(
     ],
 )
 
-sh_binary(
-    name = "llvm-cache-key-sh",
-    srcs = ["llvm-cache-key.sh"],
-    visibility = ["//visibility:public"],
-)
-
-sh_test(
-    name = "llvm_cache_key_rs_test",
+# Black-box: the REAL binary against os-release fixtures. The key must move
+# with every recorded input of the llvm_toolchain_llvm repo rule --
+# /etc/os-release included -- so a runner-image point release is a one-run
+# miss instead of a permanent restore-and-re-extract (#2242). Ported case for
+# case from the former llvm-cache-key_test.sh.
+rust_test(
+    name = "llvm_cache_key_test",
     size = "small",
-    srcs = ["llvm-cache-key_test.sh"],
-    args = ["$(location :llvm_cache_key)"],
-    data = [
-        "llvm-cache-key.sh",
-        ":llvm_cache_key",
-    ],
+    srcs = ["src/llvm_cache_key/tests.rs"],
+    data = [":llvm_cache_key"],
+    edition = "2021",
+    env = {"BIN": "$(rootpath :llvm_cache_key)"},
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":ci_testkit"],
 )
 
 # llvm-cache-stage
@@ -521,21 +475,19 @@ rust_binary(
     ],
 )
 
-sh_binary(
-    name = "llvm-cache-stage-sh",
-    srcs = ["llvm-cache-stage.sh"],
-    visibility = ["//visibility:public"],
-)
-
-sh_test(
-    name = "llvm_cache_stage_rs_test",
+# Black-box: the REAL binary on fake extractions. Moves the extracted LLVM
+# toolchain between the cache's fixed stage folder and Bazel's contents cache,
+# so no file pins the content-hash folder name (#2456). Ported case for case
+# from the former llvm-cache-stage_test.sh.
+rust_test(
+    name = "llvm_cache_stage_test",
     size = "small",
-    srcs = ["llvm-cache-stage_test.sh"],
-    args = ["$(location :llvm_cache_stage)"],
-    data = [
-        "llvm-cache-stage.sh",
-        ":llvm_cache_stage",
-    ],
+    srcs = ["src/llvm_cache_stage/tests.rs"],
+    data = [":llvm_cache_stage"],
+    edition = "2021",
+    env = {"BIN": "$(rootpath :llvm_cache_stage)"},
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":ci_testkit"],
 )
 
 # queue-runner-routing
@@ -601,21 +553,27 @@ rust_binary(
     ],
 )
 
-sh_binary(
-    name = "queue-runner-watch-sh",
-    srcs = ["queue-runner-watch.sh"],
-    visibility = ["//visibility:public"],
-)
-
-sh_test(
-    name = "queue_runner_watch_rs_test",
+# Black-box: the REAL binary with a fake gh. Ported case for case from the
+# former queue-runner-watch_test.sh.
+rust_test(
+    name = "queue_runner_watch_test",
     size = "small",
-    srcs = ["queue-runner-watch_test.sh"],
-    args = ["$(location :queue_runner_watch)"],
+    srcs = ["src/queue_runner_watch/tests.rs"],
+    # One case runs the watcher's real --jq filter through the hermetic jq
+    # (the RBE image has none), so a filter jq cannot parse fails here as it
+    # would against GitHub.
     data = [
-        "queue-runner-watch.sh",
         ":queue_runner_watch",
+        "@jq_toolchains//:resolved_toolchain",
     ],
+    edition = "2021",
+    env = {
+        "BIN": "$(rootpath :queue_runner_watch)",
+        "JQ_BIN": "$(JQ_BIN)",
+    },
+    rustc_flags = ["-Copt-level=3"],
+    toolchains = ["@jq_toolchains//:resolved_toolchain"],
+    deps = [":ci_testkit"],
 )
 
 # bisect-culprit
@@ -1364,33 +1322,26 @@ rust_binary(
     ],
 )
 
-sh_test(
+# Black-box: the REAL binary in a real git repo with a fake gh and the jq
+# toolchain on PATH; also holds ci.yaml's jobs to the safe way of waiting on
+# the lookup. Ported case for case from the former queue-fast-pass_test.sh.
+rust_test(
     name = "queue_fast_pass_test",
     size = "small",
-    srcs = ["queue-fast-pass_test.sh"],
-    args = ["$(location queue-fast-pass.sh)"],
+    srcs = ["src/queue_fast_pass/tests.rs"],
     data = [
-        "queue-fast-pass.sh",
-        "//:workflow_files",
-        "@jq_toolchains//:resolved_toolchain",
-    ],
-    env = {"JQ_BIN": "$(JQ_BIN)"},
-    toolchains = ["@jq_toolchains//:resolved_toolchain"],
-)
-
-sh_test(
-    name = "queue_fast_pass_rs_test",
-    size = "small",
-    srcs = ["queue-fast-pass_test.sh"],
-    args = ["$(location :queue_fast_pass)"],
-    data = [
-        "queue-fast-pass.sh",
         ":queue_fast_pass",
         "//:workflow_files",
         "@jq_toolchains//:resolved_toolchain",
     ],
-    env = {"JQ_BIN": "$(JQ_BIN)"},
+    edition = "2021",
+    env = {
+        "BIN": "$(rootpath :queue_fast_pass)",
+        "JQ_BIN": "$(JQ_BIN)",
+    },
+    rustc_flags = ["-Copt-level=3"],
     toolchains = ["@jq_toolchains//:resolved_toolchain"],
+    deps = [":ci_testkit"],
 )
 
 # migration-safety
@@ -1659,18 +1610,30 @@ rust_binary(
 )
 
 # Downloads a pinned CI tool (actionlint, kubeconform, osv-scanner, promtool)
-# and verifies its checksum; the composite action
-# .github/actions/install-pinned-tool builds and runs this binary. Also guards
-# the curl retry policy: a fixed --retry-delay turns off curl's backoff, and ~6s
-# of GitHub-releases 500s then failed a required merge-queue check. Black-box:
-# fake curl, real tar/install/grep/sha256sum, no network.
+# and verifies it against the sha256 tools/tools.lock.json pins for that URL
+# (#4183); the composite action .github/actions/install-pinned-tool builds and
+# runs this binary. Also guards the curl retry policy: a fixed --retry-delay
+# turns off curl's backoff, and ~6s of GitHub-releases 500s then failed a
+# required merge-queue check. Black-box: fake curl, real tar/install/sha256sum,
+# no network. Its last case runs every install-pinned-tool step in .github/
+# against the real lock, so a version bump without its hashes fails here.
 rust_test(
     name = "install_pinned_tool_test",
     size = "small",
     srcs = ["src/install_pinned_tool/tests.rs"],
-    data = [":install_pinned_tool"],
+    data = [
+        ":install_pinned_tool",
+        "//:composite_actions",
+        "//:workflow_files",
+        "//tools:tools.lock.json",
+    ],
     edition = "2021",
-    env = {"BIN": "$(rootpath :install_pinned_tool)"},
+    env = {
+        "BIN": "$(rootpath :install_pinned_tool)",
+        "COMPOSITE_ACTIONS": "$(rootpaths //:composite_actions)",
+        "LOCK": "$(rootpath //tools:tools.lock.json)",
+        "WORKFLOW_FILES": "$(rootpaths //:workflow_files)",
+    },
     rustc_flags = ["-Copt-level=3"],
     deps = [":ci_testkit"],
 )
@@ -1739,27 +1702,23 @@ rust_binary(
     ],
 )
 
-sh_test(
+# Black-box: the REAL binary against throwaway git repos, with the narrowed
+# ignore sets read straight out of ci.yaml, tidy-check.yaml and
+# conformance-check.yaml. Ported case for case from the former
+# relevant-paths_test.sh (and the relevant-paths-test workflow that ran it).
+rust_test(
     name = "relevant_paths_test",
     size = "small",
-    srcs = ["relevant-paths_test.sh"],
-    args = ["$(location relevant-paths.sh)"],
+    srcs = ["src/relevant_paths/tests.rs"],
     data = [
-        "relevant-paths.sh",
-        "//:workflow_files",
-    ],
-)
-
-sh_test(
-    name = "relevant_paths_rs_test",
-    size = "small",
-    srcs = ["relevant-paths_test.sh"],
-    args = ["$(location :relevant_paths)"],
-    data = [
-        "relevant-paths.sh",
         ":relevant_paths",
+        "//:composite_actions",
         "//:workflow_files",
     ],
+    edition = "2021",
+    env = {"BIN": "$(rootpath :relevant_paths)"},
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":ci_testkit"],
 )
 
 # go-test-with-retry
@@ -1802,6 +1761,46 @@ rust_test(
     env = {"BIN": "$(rootpath :go_test_with_retry)"},
     rustc_flags = ["-Copt-level=3"],
     deps = [":ci_testkit"],
+)
+
+# go-test-lanes: fails when a Go test exists that no CI lane runs (#4205).
+# Lanes come from ci.yaml's go_test_with_retry steps and that tool's own IaC
+# roots, plus each test file's go_test. The live check walks the whole
+# checkout, so it is a `bazel run` (the lint-naming job runs it on every PR):
+# a test target would only re-run when its own inputs changed, never when a
+# new module lands elsewhere. The unit tests below run over scratch trees.
+rust_library(
+    name = "go_test_lanes_lib",
+    srcs = [
+        "src/go_test_lanes/lib.rs",
+        "src/go_test_lanes/tests.rs",
+    ],
+    compile_data = ["src/go_test_lanes/allowlist.txt"],
+    crate_name = "go_test_lanes",
+    crate_root = "src/go_test_lanes/lib.rs",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":go_test_with_retry_lib"],
+)
+
+rust_binary(
+    name = "go_test_lanes",
+    srcs = ["src/go_test_lanes/main.rs"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":go_test_lanes_lib",
+        "//tools/shell-compat:shell_compat",
+    ],
+)
+
+rust_test(
+    name = "go_test_lanes_test",
+    size = "small",
+    crate = ":go_test_lanes_lib",
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
 )
 
 # tabula-deploy-preflight
@@ -1991,43 +1990,31 @@ rust_binary(
     ],
 )
 
+# Black-box: the REAL binary against the real agent roster, plus how ci.yaml
+# and presubmit.yaml build it from the base commit. Ported case for case from
+# the former agent-fast-lane_test.sh.
+rust_test(
+    name = "agent_fast_lane_test",
+    size = "small",
+    srcs = ["src/agent_fast_lane/tests.rs"],
+    data = [
+        ":agent_fast_lane",
+        "//:workflow_files",
+        # Its runfiles carry tools/agent-app/agents.tsv, the real roster.
+        "//tools/agent-app:agent-app-sh",
+    ],
+    edition = "2021",
+    env = {"BIN": "$(rootpath :agent_fast_lane)"},
+    rustc_flags = ["-Copt-level=3"],
+    deps = [":ci_testkit"],
+)
+
 rust_test(
     name = "agent_fast_lane_lib_test",
     size = "small",
     crate = ":agent_fast_lane_lib",
     edition = "2021",
     rustc_flags = ["-Copt-level=3"],
-)
-
-sh_test(
-    name = "agent_fast_lane_test",
-    size = "small",
-    srcs = ["agent-fast-lane_test.sh"],
-    args = ["$(location agent-fast-lane.sh)"],
-    data = [
-        "agent-fast-lane.sh",
-        "//:workflow_files",
-        "//tools/agent-app:agent-app-sh",
-        "@jq_toolchains//:resolved_toolchain",
-    ],
-    env = {"JQ_BIN": "$(JQ_BIN)"},
-    toolchains = ["@jq_toolchains//:resolved_toolchain"],
-)
-
-sh_test(
-    name = "agent_fast_lane_rs_test",
-    size = "small",
-    srcs = ["agent-fast-lane_test.sh"],
-    args = ["$(location :agent_fast_lane)"],
-    data = [
-        "agent-fast-lane.sh",
-        ":agent_fast_lane",
-        "//:workflow_files",
-        "//tools/agent-app:agent-app-sh",
-        "@jq_toolchains//:resolved_toolchain",
-    ],
-    env = {"JQ_BIN": "$(JQ_BIN)"},
-    toolchains = ["@jq_toolchains//:resolved_toolchain"],
 )
 
 # gcp-secret-or-fail

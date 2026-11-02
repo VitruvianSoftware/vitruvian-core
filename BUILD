@@ -57,6 +57,13 @@ exports_files(
     visibility = ["//tools/maven:__pkg__"],
 )
 
+# The module file, exported so oauth-user-inspector's dockerfile_test can
+# check the Dockerfile builds the server with this file's Rust toolchain.
+exports_files(
+    ["MODULE.bazel"],
+    visibility = ["//apps/web/oauth-user-inspector:__pkg__"],
+)
+
 # agent-guard's hook files. .claude is in .bazelignore (Claude Code keeps
 # worktrees under it), but a file named from this package still resolves.
 # //tools/agent-guard:agent_guard_test fails if agent-guard is unwired from either.
@@ -144,6 +151,16 @@ filegroup(
         "//tools/ci:__pkg__",
         "//tools/delivery/gen:__pkg__",
     ],
+)
+
+# Every file under .github, whatever its name or extension:
+# //tools/ci:workflow_rustc_test scans all of them for a step that installs
+# Rust, so a new workflow spelled .yml or a helper script beside an action
+# cannot sit outside the scan (#4183).
+filegroup(
+    name = "github_files",
+    srcs = glob([".github/**"]),
+    visibility = ["//tools/ci:__pkg__"],
 )
 
 filegroup(

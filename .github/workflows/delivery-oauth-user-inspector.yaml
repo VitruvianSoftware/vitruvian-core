@@ -396,11 +396,13 @@ jobs:
   # PR check suite, which knows nothing about the DEPLOYMENT — so without
   # this a commit whose development deploy FAILED rides into nonproduction
   # with no human in the loop. Fails CLOSED on a definitive red, OPEN on an
-  # indeterminate answer (//tools/ci:require_dev_soak).
+  # indeterminate answer (//tools/ci:require_dev_soak). A development
+  # deploy still RUNNING is waited for (up to 40 min) and then judged; still
+  # running after that, it blocks as not yet soaked.
   oauth-user-inspector-require-dev-soak:
     if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'oauth-user-inspector' && inputs.environment == 'nonproduction'))
     runs-on: ubuntu-26.04
-    timeout-minutes: 5
+    timeout-minutes: 50
     permissions:
       contents: read
       # `actions: read` is what lets the script read this repo's run
@@ -426,7 +428,7 @@ jobs:
           # variable second (an unset variable is falsy, so this ends at
           # 'false'). The script logs loudly when it is honoured.
           ALLOW_UNSOAKED: ${{ inputs.allow-unsoaked || vars.ALLOW_UNSOAKED_PROMOTION || 'false' }}
-        # No Bazel on this job: it is a five-minute gate on a stock runner, so
+        # No Bazel on this job: it is a short gate on a stock runner, so
         # the image's rustc builds //tools/ci:require_dev_soak (std only) from
         # the checkout in seconds instead. A failed BUILD fails closed like a
         # red development, and ALLOW_UNSOAKED=true still overrides it: the
@@ -453,7 +455,13 @@ jobs:
   # unconditionally is #1794: ~9 needless applies a day against a stack
   # whose force-replace DELETES the live OIDC client.
   zitadel-apps-nonproduction:
-    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && vars.ZITADEL_APPS_AUTO_APPLY == 'true' && !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'oauth-user-inspector' && inputs.environment == 'nonproduction'))
+    needs: [oauth-user-inspector-require-dev-soak]
+    # Waits on the soak gate like the deploy below, and checks it
+    # EXPLICITLY: an `if:` replaces the success()-of-needs default. So a
+    # red development stops the expand too, and the gate's wait for a
+    # development deploy still running keeps this Pulumi update from
+    # starting under that deploy's account-wide lock.
+    if: vars.DELIVERY_ORCHESTRATOR_ENABLED == 'true' && vars.ZITADEL_APPS_AUTO_APPLY == 'true' && needs.oauth-user-inspector-require-dev-soak.result == 'success' && !cancelled() && ((github.event_name == 'release' && startsWith(github.event.release.tag_name, 'oauth-user-inspector-v')) || (github.event_name == 'workflow_dispatch' && inputs.unit == 'oauth-user-inspector' && inputs.environment == 'nonproduction'))
     concurrency:
       group: delivery-zitadel-apps-nonproduction
       cancel-in-progress: false

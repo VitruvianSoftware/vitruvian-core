@@ -87,7 +87,7 @@ fn is_supported_prettier_file(name: &str) -> bool {
     }
     matches!(
         Path::new(name).extension().and_then(|e| e.to_str()),
-        Some("js" | "mjs" | "cjs" | "json" | "css" | "md" | "html" | "yml" | "yaml")
+        Some("js" | "mjs" | "cjs" | "vue" | "json" | "css" | "md" | "html" | "yml" | "yaml")
     )
 }
 

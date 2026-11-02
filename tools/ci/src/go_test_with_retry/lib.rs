@@ -21,6 +21,13 @@
 //! //tools/ci:go_test_with_retry — `go test ./...` over every IaC Go module that
 //! actually carries tests, retrying a module ONLY on a recognizable transient
 //! module-proxy/network signature.
+//!
+//! With no arguments it searches the IaC set (`infrastructure/pulumi` and
+//! `apps/*/*/infra`; the go-test-infra job). `--root <dir>` (repeatable)
+//! searches only the given trees instead: example-build passes
+//! `--root packages/pulumi/examples`, whose tests had never run anywhere
+//! (#4205). A named root that is missing, or holds no module with tests, is an
+//! error: asking for a tree and testing nothing must not read as green.
 
 use shell_compat::{cat, err, out, status_code, subst};
 use std::io::Read;
@@ -39,32 +46,72 @@ fn has_test_files(dir: &[u8]) -> bool {
     !subst(r.stdout).is_empty()
 }
 
-fn find_go_mods() -> Vec<Vec<u8>> {
-    let mut search_paths: Vec<Vec<u8>> = vec![b"infrastructure/pulumi".to_vec()];
-    if let Ok(entries) = std::fs::read_dir(".") {
+/// The names of the non-dot subdirectories of `dir` (a shell `dir/*/` glob:
+/// dot-directories are skipped, as the glob skips them).
+fn subdir_names(dir: &[u8]) -> Vec<Vec<u8>> {
+    let mut found = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(shell_compat::path(dir)) {
         for entry in entries.flatten() {
             let name = entry.file_name();
             let name_bytes = std::os::unix::ffi::OsStrExt::as_bytes(name.as_os_str());
-            // The shell glob `*/infra` skips dot-directories.
             if name_bytes.first() == Some(&b'.') {
                 continue;
             }
-            let infra = cat(&[name_bytes, b"/infra"]);
-            if shell_compat::is_dir(&infra) {
-                search_paths.push(infra);
+            if shell_compat::is_dir(&cat(&[dir, b"/", name_bytes])) {
+                found.push(name_bytes.to_vec());
             }
         }
     }
+    found
+}
 
+/// The IaC roots go-test-infra tests (this tool with no arguments), relative
+/// to `base`: `infrastructure/pulumi` and every `apps/*/*/infra` (the app
+/// layout, `apps/<category>/<app>/infra`). The old `*/infra` glob predates
+/// that layout and matched nothing once apps moved (#4178), so it is gone.
+///
+/// Public so //tools/ci:go_test_lanes judges coverage by the same roots this
+/// tool searches, not a second hand-kept list.
+pub fn iac_roots_in(base: &[u8]) -> Vec<Vec<u8>> {
+    let under = |rel: &[u8]| -> Vec<u8> {
+        if base == b"." {
+            rel.to_vec()
+        } else {
+            cat(&[base, b"/", rel])
+        }
+    };
+    let mut roots: Vec<Vec<u8>> = vec![b"infrastructure/pulumi".to_vec()];
+    for category in subdir_names(&under(b"apps")) {
+        let category_rel = cat(&[b"apps/", &category]);
+        for app in subdir_names(&under(&category_rel)) {
+            let infra = cat(&[&category_rel, b"/", &app, b"/infra"]);
+            if shell_compat::is_dir(&under(&infra)) {
+                roots.push(infra);
+            }
+        }
+    }
+    roots
+}
+
+fn iac_search_paths() -> Vec<Vec<u8>> {
+    iac_roots_in(b".")
+}
+
+/// Every go.mod under `search_paths`, sorted, skipping vendored copies (and
+/// node_modules, which an npm workspace such as ts-foundation may carry).
+fn find_go_mods(search_paths: &[Vec<u8>]) -> Vec<Vec<u8>> {
     let mut cmd = Command::new("find");
-    for p in &search_paths {
+    for p in search_paths {
         cmd.arg(shell_compat::os(p));
     }
     cmd.arg("-name")
         .arg("go.mod")
         .arg("-not")
         .arg("-path")
-        .arg("*/vendor/*");
+        .arg("*/vendor/*")
+        .arg("-not")
+        .arg("-path")
+        .arg("*/node_modules/*");
     cmd.stderr(std::process::Stdio::null());
 
     let r = shell_compat::capture(0, &mut cmd);
@@ -153,8 +200,45 @@ fn go_test_with_retry(dir: &[u8]) -> i32 {
     last_status
 }
 
-pub fn run(_args: &[Vec<u8>]) -> i32 {
-    let mods = find_go_mods();
+const USAGE: &[u8] = b"usage: go_test_with_retry [--root <dir>]...\n";
+
+pub fn run(args: &[Vec<u8>]) -> i32 {
+    let rc = shell_compat::enter_bazel_run_cwd("go_test_with_retry");
+    if rc != 0 {
+        return rc;
+    }
+
+    let mut roots: Vec<Vec<u8>> = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_slice() {
+            b"--root" if i + 1 < args.len() => {
+                roots.push(args[i + 1].clone());
+                i += 2;
+            }
+            b"-h" | b"--help" => {
+                out(USAGE);
+                return 0;
+            }
+            _ => {
+                err(USAGE);
+                return 2;
+            }
+        }
+    }
+    for r in &roots {
+        if !shell_compat::is_dir(r) {
+            err(&cat(&[
+                b"::error::go_test_with_retry: --root ",
+                r,
+                b" is not a directory\n",
+            ]));
+            return 1;
+        }
+    }
+    let explicit = !roots.is_empty();
+    let search_paths = if explicit { roots } else { iac_search_paths() };
+    let mods = find_go_mods(&search_paths);
     let mut ran: u32 = 0;
 
     for mod_path in &mods {
@@ -171,10 +255,19 @@ pub fn run(_args: &[Vec<u8>]) -> i32 {
         }
     }
 
+    if explicit && ran == 0 {
+        err(b"::error::go_test_with_retry: no Go module with tests under the given --root -- refusing to report green on an empty run\n");
+        return 1;
+    }
+
     out(&cat(&[
         b"ran go test in ",
         ran.to_string().as_bytes(),
-        b" IaC module(s)\n",
+        if explicit {
+            b" module(s)\n" as &[u8]
+        } else {
+            b" IaC module(s)\n"
+        },
     ]));
     0
 }

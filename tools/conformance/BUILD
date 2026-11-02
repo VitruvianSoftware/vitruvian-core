@@ -20,7 +20,8 @@
 
 # The repo version-conformance checker: `bazel run //tools/conformance:check`.
 # Reads the live source tree via BUILD_WORKSPACE_DIRECTORY, checking that every
-# go.mod / Dockerfile-node / package.json matches the repo's canonical version,
+# go.mod / Dockerfile-node / package.json / rust-toolchain(.toml) matches the
+# repo's canonical version,
 # with deviations allowed only as justified temporary pins in version-pins.tsv.
 # gazelle:ignore
 

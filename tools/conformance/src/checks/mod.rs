@@ -36,6 +36,7 @@ pub fn run_all(ctx: &Context) {
     versions::check_go(ctx);
     versions::check_node(ctx);
     versions::check_pnpm(ctx);
+    versions::check_rust_toolchain(ctx);
     versions::stale_sweep(ctx);
     versions::doc_sync(ctx);
     if ctx.is_dead() {
@@ -57,6 +58,7 @@ pub fn run_all(ctx: &Context) {
     ci::check_job_timeouts(ctx);
     ci::check_sweep_backstop(ctx);
     ci::check_cache_save(ctx);
+    ci::check_goproxy_fallback(ctx);
 
     iac::check_zitadel_import(ctx);
     iac::check_pulumi_project_names(ctx);

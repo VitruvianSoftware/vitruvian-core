@@ -165,12 +165,15 @@ jobs:
       # Boots the image and asserts every plugin initializes and readiness
       # serves 200. Unit tests cannot catch a plugin that fails to REGISTER --
       # #1709 shipped with a green suite and wedged production for hours.
-      # //tools/ci:backstage_boot_smoke, built with the runner's rustc (this
-      # job sets up no Bazel). //tools/ci:workflow_rustc_test runs these lines.
+      - name: Build //tools/ci:backstage_boot_smoke (no Bazel on this job)
+        id: boot-smoke-bin
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: backstage_boot_smoke
+
       - name: Boot smoke test
+        env:
+          BOOT_SMOKE: ${{ steps.boot-smoke-bin.outputs.path }}
         run: |
           set -euo pipefail
-          rustc --edition 2021 -O --crate-type lib --crate-name shell_compat tools/shell-compat/src/lib.rs -o "$RUNNER_TEMP/libshell_compat.rlib"
-          rustc --edition 2021 -O --crate-type lib --crate-name backstage_boot_smoke tools/ci/src/backstage_boot_smoke/lib.rs -L "$RUNNER_TEMP" --extern shell_compat="$RUNNER_TEMP/libshell_compat.rlib" -o "$RUNNER_TEMP/libbackstage_boot_smoke.rlib"
-          rustc --edition 2021 -O tools/ci/src/backstage_boot_smoke/main.rs -L "$RUNNER_TEMP" --extern shell_compat="$RUNNER_TEMP/libshell_compat.rlib" --extern backstage_boot_smoke="$RUNNER_TEMP/libbackstage_boot_smoke.rlib" -o "$RUNNER_TEMP/backstage-boot-smoke"
-          "$RUNNER_TEMP/backstage-boot-smoke" backstage:smoke
+          "$BOOT_SMOKE" backstage:smoke

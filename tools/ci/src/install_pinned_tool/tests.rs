@@ -20,11 +20,14 @@
 
 //! //tools/ci:install_pinned_tool_test. Runs the REAL binary with a fake
 //! `curl` first on PATH (it copies fixtures, no network) and the real `tar`,
-//! `install`, `grep` and `sha256sum`, so both install paths and the checksum
-//! verification itself run for real. Ported case for case from the former
-//! install-pinned-tool_test.sh, plus the cases that held the binary to the
-//! script it replaced: exit codes, a nested tar member, an empty member path,
-//! a checksum line that is not there, and an unwritable PATH file or HOME.
+//! `install` and `sha256sum`, so both install paths and the checksum check
+//! run for real. Each world writes its own tools.lock.json, in the real
+//! lock's format, pinning the fixtures' true hashes.
+//!
+//! The expected hash comes only from the lock (#4183): a version the lock does
+//! not pin is refused before anything is downloaded, and a download whose
+//! hash differs from the lock's is not installed. The last test runs every
+//! install-pinned-tool step in .github/ against the real tools/tools.lock.json.
 
 use ci_testkit::{bin, read, write, write_exe, Output, Run, TempDir};
 use std::path::{Path, PathBuf};
@@ -32,6 +35,9 @@ use std::process::Command;
 
 const URL: &str = "https://example.invalid/download";
 const RAW: &str = "mytool_linux_amd64";
+const TGZ: &str = "mytool_linux_amd64.tar.gz";
+const PROM: &str = "prometheus-2.45.0.linux-amd64.tar.gz";
+const PROM_MEMBER: &str = "prometheus-2.45.0.linux-amd64/promtool";
 
 /// The fake curl: `curl ... -O <url>` copies `$FIXTURES_DIR/<basename>` into
 /// the working directory, as real curl's -O names the file.
@@ -54,6 +60,15 @@ struct World {
     dir: TempDir,
 }
 
+/// One lock entry: (tool, kind, file-in-archive, asset, sha256).
+struct Pin<'a> {
+    tool: &'a str,
+    kind: &'a str,
+    file: Option<&'a str>,
+    asset: &'a str,
+    sha256: String,
+}
+
 impl World {
     fn new() -> World {
         let dir = TempDir::new();
@@ -61,41 +76,85 @@ impl World {
         let fx = dir.join("fixtures");
         // --raw: the asset IS the binary.
         write(fx.join(RAW), "fake-binary-bytes-for-mytool\n");
-        sha256_into(&fx, RAW, &format!("{RAW}_SHA256SUMS"));
-        write(
-            fx.join(format!("{RAW}_BAD_SHA256SUMS")),
-            format!("{}  {RAW}\n", "0".repeat(64)),
-        );
         // --tar: a top-level member named after the tool.
         let stage = dir.join("stage");
         write_exe(stage.join("mytool"), "#!/bin/sh\necho fake-tar-tool\n");
-        tar_into(&stage, &["mytool"], &fx.join("mytool_linux_amd64.tar.gz"));
-        sha256_into(&fx, "mytool_linux_amd64.tar.gz", "mytool_checksums.txt");
+        tar_into(&stage, &["mytool"], &fx.join(TGZ));
         // --tar with the binary in a directory, as prometheus ships promtool.
         let nested = dir.join("nested");
-        write_exe(
-            nested.join("prometheus-2.45.0.linux-amd64/promtool"),
-            "#!/bin/sh\necho fake-promtool\n",
-        );
+        write_exe(nested.join(PROM_MEMBER), "#!/bin/sh\necho fake-promtool\n");
         write(
             nested.join("prometheus-2.45.0.linux-amd64/prometheus"),
             "server\n",
         );
-        tar_into(
-            &nested,
-            &["prometheus-2.45.0.linux-amd64"],
-            &fx.join("prometheus-2.45.0.linux-amd64.tar.gz"),
-        );
-        sha256_into(
-            &fx,
-            "prometheus-2.45.0.linux-amd64.tar.gz",
-            "sha256sums.txt",
-        );
-        World { dir }
+        tar_into(&nested, &["prometheus-2.45.0.linux-amd64"], &fx.join(PROM));
+        let w = World { dir };
+        w.write_lock(&w.true_pins());
+        w
     }
 
     fn fixtures(&self) -> PathBuf {
         self.dir.join("fixtures")
+    }
+
+    fn lock(&self) -> PathBuf {
+        self.dir.join("tools.lock.json")
+    }
+
+    /// The fixtures pinned at their real hashes.
+    fn true_pins(&self) -> Vec<Pin<'static>> {
+        let fx = self.fixtures();
+        vec![
+            Pin {
+                tool: "mytool",
+                kind: "file",
+                file: None,
+                asset: RAW,
+                sha256: sha256_of(&fx.join(RAW)),
+            },
+            Pin {
+                tool: "mytool",
+                kind: "archive",
+                file: Some("mytool"),
+                asset: TGZ,
+                sha256: sha256_of(&fx.join(TGZ)),
+            },
+            Pin {
+                tool: "promtool",
+                kind: "archive",
+                file: Some(PROM_MEMBER),
+                asset: PROM,
+                sha256: sha256_of(&fx.join(PROM)),
+            },
+        ]
+    }
+
+    /// Write the pins as tools/tools.lock.json lays them out.
+    fn write_lock(&self, pins: &[Pin]) {
+        let mut tools: Vec<&str> = pins.iter().map(|p| p.tool).collect();
+        tools.dedup();
+        let mut s = String::from("{\n  \"$schema\": \"https://raw.githubusercontent.com/theoremlp/rules_multitool/main/lockfile.schema.json\"");
+        for t in tools {
+            s.push_str(&format!(",\n  \"{t}\": {{\n    \"binaries\": [\n"));
+            let entries: Vec<String> = pins
+                .iter()
+                .filter(|p| p.tool == t)
+                .map(|p| {
+                    let file = p
+                        .file
+                        .map(|f| format!("        \"file\": \"{f}\",\n"))
+                        .unwrap_or_default();
+                    format!(
+                        "      {{\n        \"kind\": \"{}\",\n{file}        \"os\": \"linux\",\n        \"cpu\": \"x86_64\",\n        \"url\": \"{URL}/{}\",\n        \"sha256\": \"{}\"\n      }}",
+                        p.kind, p.asset, p.sha256
+                    )
+                })
+                .collect();
+            s.push_str(&entries.join(",\n"));
+            s.push_str("\n    ]\n  }");
+        }
+        s.push_str("\n}\n");
+        write(self.lock(), s);
     }
 }
 
@@ -109,15 +168,14 @@ fn path_for(fakes: &Path) -> String {
     )
 }
 
-fn sha256_into(dir: &Path, file: &str, out: &str) {
+fn sha256_of(file: &Path) -> String {
     let o = Command::new("sha256sum")
         .arg(file)
-        .current_dir(dir)
         .env("PATH", path_for(Path::new("/nonexistent")))
         .output()
         .expect("sha256sum");
     assert!(o.status.success());
-    write(dir.join(out), o.stdout);
+    String::from_utf8(o.stdout).unwrap()[..64].to_string()
 }
 
 fn tar_into(dir: &Path, members: &[&str], out: &Path) {
@@ -144,6 +202,12 @@ impl Ran {
     fn github_path(&self) -> String {
         read(self.scratch.join("github_path"))
     }
+    fn assert_installed_nothing(&self) {
+        let bin = self.scratch.join("home/.local/bin");
+        let n = std::fs::read_dir(&bin).map(|d| d.count()).unwrap_or(0);
+        assert_eq!(n, 0, "nothing installed in {}", bin.display());
+        assert_eq!(self.github_path(), "", "nothing put on PATH");
+    }
 }
 
 fn run_with(w: &World, args: &[&str], tweak: impl FnOnce(Run, &Path) -> Run) -> Ran {
@@ -168,14 +232,27 @@ fn run(w: &World, args: &[&str]) -> Ran {
     run_with(w, args, |r, _| r)
 }
 
-fn raw_args() -> Vec<String> {
+fn lock_arg(w: &World) -> String {
+    w.lock().display().to_string()
+}
+
+fn raw_args(w: &World) -> Vec<String> {
     vec![
+        lock_arg(w),
         URL.into(),
-        RAW.into(),
-        format!("{RAW}_SHA256SUMS"),
         RAW.into(),
         "mytool".into(),
         "--raw".into(),
+    ]
+}
+
+fn tar_args(w: &World) -> Vec<String> {
+    vec![
+        lock_arg(w),
+        URL.into(),
+        TGZ.into(),
+        "mytool".into(),
+        "--tar".into(),
     ]
 }
 
@@ -190,12 +267,12 @@ fn is_exec(p: &Path) -> bool {
         .unwrap_or(false)
 }
 
-// --- the shell suite, case for case ------------------------------------------
+// --- the happy paths ----------------------------------------------------------
 
 #[test]
 fn raw_happy_path() {
     let w = World::new();
-    let r = run(&w, &strs(&raw_args()));
+    let r = run(&w, &strs(&raw_args(&w)));
     assert_eq!(r.out.code, 0, "{}", r.out.all());
     assert!(
         is_exec(&r.home_bin("mytool")),
@@ -210,142 +287,28 @@ fn raw_happy_path() {
     );
     assert_eq!(
         r.out.stdout,
-        format!("{RAW}: OK\ninstall-pinned-tool: installed mytool from {URL}/{RAW}\n"),
-        "sha256sum -c's verdict, then the install line"
+        format!(
+            "{RAW}: OK (sha256 pinned in {})\ninstall-pinned-tool: installed mytool from {URL}/{RAW}\n",
+            w.lock().display()
+        ),
+        "the lock's verdict, then the install line"
     );
 }
 
 #[test]
 fn tar_happy_path() {
     let w = World::new();
-    let r = run(
-        &w,
-        &[
-            URL,
-            "mytool_linux_amd64.tar.gz",
-            "mytool_checksums.txt",
-            "mytool_linux_amd64.tar.gz",
-            "mytool",
-            "--tar",
-        ],
-    );
+    let r = run(&w, &strs(&tar_args(&w)));
     assert_eq!(r.out.code, 0, "{}", r.out.all());
     assert!(is_exec(&r.home_bin("mytool")));
     assert!(read(r.home_bin("mytool")).contains("fake-tar-tool"));
 }
 
 #[test]
-fn checksum_mismatch_fails_closed_and_installs_nothing() {
-    let w = World::new();
-    let mut a = raw_args();
-    a[2] = format!("{RAW}_BAD_SHA256SUMS");
-    let r = run(&w, &strs(&a));
-    assert_ne!(r.out.code, 0, "a checksum mismatch must fail");
-    assert!(!r.home_bin("mytool").exists(), "nothing installed");
-    assert_eq!(r.github_path(), "", "nothing put on PATH");
-}
-
-#[test]
-fn transport_failure_propagates_curls_status() {
-    let w = World::new();
-    let r = run_with(&w, &strs(&raw_args()), |r, _| r.env("FAKE_CURL_RC", "22"));
-    assert_eq!(r.out.code, 22, "set -e exits with curl's own status");
-    assert!(!r.home_bin("mytool").exists());
-}
-
-#[test]
-fn retry_policy_is_backoff_under_a_cap() {
-    // A fixed --retry-delay turns off curl's exponential backoff; it gave up
-    // after ~6s of GitHub-releases 500s on 2026-09-25 and failed the queue.
-    let w = World::new();
-    let log = w.dir.join("curl-args.log");
-    let r = run_with(&w, &strs(&raw_args()), |r, _| {
-        r.env("FAKE_CURL_ARGS_LOG", &log)
-    });
-    assert_eq!(r.out.code, 0, "{}", r.out.all());
-    let calls = read(&log);
-    let lines: Vec<&str> = calls.lines().collect();
-    assert_eq!(
-        lines,
-        vec![
-            format!("-fsSL --retry 6 --retry-all-errors --retry-max-time 180 --max-time 120 -O {URL}/{RAW}"),
-            format!("-fsSL --retry 6 --retry-all-errors --retry-max-time 180 --max-time 120 -O {URL}/{RAW}_SHA256SUMS"),
-        ],
-        "asset then checksums, each with the full retry policy and no --retry-delay"
-    );
-}
-
-#[test]
-fn wrong_arg_count_exits_2() {
-    let w = World::new();
-    assert_eq!(run(&w, &["only", "one", "arg"]).out.code, 2);
-    let mut eight = raw_args();
-    eight.push("member".into());
-    eight.push("extra".into());
-    let r = run(&w, &strs(&eight));
-    assert_eq!(r.out.code, 2);
-    assert!(
-        r.out.stderr.starts_with("usage: install-pinned-tool"),
-        "{}",
-        r.out.stderr
-    );
-}
-
-#[test]
-fn bad_mode_exits_2() {
-    let w = World::new();
-    let r = run(
-        &w,
-        &[URL, "asset", "checksums", "pattern", "name", "--bogus-mode"],
-    );
-    assert_eq!(r.out.code, 2);
-    assert!(r
-        .out
-        .stderr
-        .contains("mode must be --tar or --raw, got '--bogus-mode'"));
-}
-
-#[test]
-fn missing_github_path_fails_like_bash() {
-    let w = World::new();
-    let r = run_with(&w, &strs(&raw_args()), |r, _| r.env_remove("GITHUB_PATH"));
-    assert_eq!(r.out.code, 1, "the script's ${{GITHUB_PATH:?}} exited 1");
-    assert!(
-        r.out.stderr.contains("GITHUB_PATH must be set"),
-        "{}",
-        r.out.stderr
-    );
-    assert!(
-        !r.home_bin("mytool").exists(),
-        "fails before downloading anything"
-    );
-}
-
-// --- parity with the retired script ------------------------------------------
-
-#[test]
-fn empty_github_path_fails_like_unset() {
-    let w = World::new();
-    let r = run_with(&w, &strs(&raw_args()), |r, _| r.env("GITHUB_PATH", ""));
-    assert_eq!(r.out.code, 1);
-    assert!(r.out.stderr.contains("GITHUB_PATH must be set"));
-}
-
-#[test]
 fn nested_member_lands_as_bin_name() {
     let w = World::new();
-    let r = run(
-        &w,
-        &[
-            URL,
-            "prometheus-2.45.0.linux-amd64.tar.gz",
-            "sha256sums.txt",
-            "prometheus-2.45.0.linux-amd64.tar.gz",
-            "promtool",
-            "--tar",
-            "prometheus-2.45.0.linux-amd64/promtool",
-        ],
-    );
+    let l = lock_arg(&w);
+    let r = run(&w, &[&l, URL, PROM, "promtool", "--tar", PROM_MEMBER]);
     assert_eq!(r.out.code, 0, "{}", r.out.all());
     assert!(read(r.home_bin("promtool")).contains("fake-promtool"));
     assert!(
@@ -357,56 +320,377 @@ fn nested_member_lands_as_bin_name() {
 #[test]
 fn empty_member_path_means_bin_name() {
     let w = World::new();
-    let r = run(
-        &w,
-        &[
-            URL,
-            "mytool_linux_amd64.tar.gz",
-            "mytool_checksums.txt",
-            "mytool_linux_amd64.tar.gz",
-            "mytool",
-            "--tar",
-            "",
-        ],
-    );
-    assert_eq!(r.out.code, 0, "${{7:-$BIN_NAME}}: {}", r.out.all());
+    let mut a = tar_args(&w);
+    a.push(String::new());
+    let r = run(&w, &strs(&a));
+    assert_eq!(r.out.code, 0, "{}", r.out.all());
     assert!(read(r.home_bin("mytool")).contains("fake-tar-tool"));
 }
 
+// --- the lock is the only source of the expected hash -------------------------
+
 #[test]
-fn checksum_pattern_matching_no_line_fails_closed() {
+fn checksum_mismatch_with_the_lock_fails_closed_and_installs_nothing() {
     let w = World::new();
-    let mut a = raw_args();
-    a[3] = "no-such-asset-name".into();
-    let r = run(&w, &strs(&a));
-    assert_ne!(r.out.code, 0, "no checksum line is not a pass");
-    assert!(!r.home_bin("mytool").exists());
-    assert_eq!(r.github_path(), "");
+    let mut pins = w.true_pins();
+    pins[0].sha256 = "0".repeat(64);
+    w.write_lock(&pins);
+    let r = run(&w, &strs(&raw_args(&w)));
+    assert_eq!(
+        r.out.code,
+        1,
+        "a checksum mismatch must fail: {}",
+        r.out.all()
+    );
+    assert!(
+        r.out.stderr.contains("checksum mismatch")
+            && r.out.stderr.contains(&"0".repeat(64))
+            && r.out.stderr.contains(&w.true_pins()[0].sha256),
+        "names the pinned and the downloaded hash: {}",
+        r.out.stderr
+    );
+    r.assert_installed_nothing();
 }
 
 #[test]
-fn checksum_pattern_selects_only_its_line() {
-    // The listing names two assets; only the selected line is verified, so a
-    // bad line for another asset does not fail this one.
+fn a_tampered_download_is_refused() {
+    // The release swaps the binary (and would swap its checksum file too):
+    // the lock still pins the old bytes, so nothing installs.
     let w = World::new();
-    let fx = w.fixtures();
-    let good = read(fx.join(format!("{RAW}_SHA256SUMS")));
-    write(
-        fx.join("multi_SHA256SUMS"),
-        format!("{}  other_asset\n{good}", "f".repeat(64)),
+    write(w.fixtures().join(RAW), "attacker-controlled-bytes\n");
+    let r = run(&w, &strs(&raw_args(&w)));
+    assert_eq!(r.out.code, 1, "{}", r.out.all());
+    assert!(
+        r.out.stderr.contains("checksum mismatch"),
+        "{}",
+        r.out.stderr
     );
-    let mut a = raw_args();
-    a[2] = "multi_SHA256SUMS".into();
-    a[3] = format!(" {RAW}$");
+    r.assert_installed_nothing();
+}
+
+#[test]
+fn a_version_not_in_the_lock_is_refused_before_downloading() {
+    let w = World::new();
+    let log = w.dir.join("curl-args.log");
+    let base = "https://example.invalid/download/v9.9.9";
+    let l = lock_arg(&w);
+    let r = run_with(&w, &[&l, base, RAW, "mytool", "--raw"], |r, _| {
+        r.env("FAKE_CURL_ARGS_LOG", &log)
+    });
+    assert_eq!(r.out.code, 1, "{}", r.out.all());
+    assert!(
+        r.out
+            .stderr
+            .contains(&format!("{base}/{RAW} is not pinned in {l} under 'mytool'")),
+        "{}",
+        r.out.stderr
+    );
+    assert!(
+        r.out.stderr.contains(&format!("pinned: {URL}/{RAW}")),
+        "lists what is pinned: {}",
+        r.out.stderr
+    );
+    assert!(!log.exists(), "curl never ran");
+    r.assert_installed_nothing();
+}
+
+#[test]
+fn a_tool_not_in_the_lock_is_refused() {
+    let w = World::new();
+    let l = lock_arg(&w);
+    let r = run(&w, &[&l, URL, RAW, "othertool", "--raw"]);
+    assert_eq!(r.out.code, 1, "{}", r.out.all());
+    assert!(
+        r.out.stderr.contains("pins no tool named 'othertool'"),
+        "{}",
+        r.out.stderr
+    );
+    r.assert_installed_nothing();
+}
+
+#[test]
+fn a_pinned_url_under_another_tool_is_refused() {
+    // promtool's tarball is pinned, but for promtool, not mytool.
+    let w = World::new();
+    let l = lock_arg(&w);
+    let r = run(&w, &[&l, URL, PROM, "mytool", "--tar", PROM_MEMBER]);
+    assert_eq!(r.out.code, 1, "{}", r.out.all());
+    assert!(r.out.stderr.contains("is not pinned"), "{}", r.out.stderr);
+    r.assert_installed_nothing();
+}
+
+#[test]
+fn mode_must_match_the_locks_kind() {
+    let w = World::new();
+    let l = lock_arg(&w);
+    let r = run(&w, &[&l, URL, RAW, "mytool", "--tar"]);
+    assert_eq!(r.out.code, 1, "{}", r.out.all());
+    assert!(
+        r.out
+            .stderr
+            .contains("as kind 'file', but --tar installs kind 'archive'"),
+        "{}",
+        r.out.stderr
+    );
+    r.assert_installed_nothing();
+}
+
+#[test]
+fn member_path_must_match_the_locks_file() {
+    let w = World::new();
+    let l = lock_arg(&w);
+    let r = run(&w, &[&l, URL, PROM, "promtool", "--tar"]);
+    assert_eq!(r.out.code, 1, "{}", r.out.all());
+    assert!(
+        r.out.stderr.contains(&format!(
+            "is '{PROM_MEMBER}', but this step extracts 'promtool'"
+        )),
+        "{}",
+        r.out.stderr
+    );
+    r.assert_installed_nothing();
+}
+
+#[test]
+fn a_malformed_pinned_hash_is_refused() {
+    let w = World::new();
+    let mut pins = w.true_pins();
+    pins[0].sha256 = pins[0].sha256.to_uppercase();
+    w.write_lock(&pins);
+    let r = run(&w, &strs(&raw_args(&w)));
+    assert_eq!(r.out.code, 1, "{}", r.out.all());
+    assert!(
+        r.out.stderr.contains("not 64 lowercase hex"),
+        "{}",
+        r.out.stderr
+    );
+    r.assert_installed_nothing();
+}
+
+#[test]
+fn a_missing_or_broken_lock_is_refused() {
+    let w = World::new();
+    let mut a = raw_args(&w);
+    a[0] = w.dir.join("no-such.json").display().to_string();
     let r = run(&w, &strs(&a));
+    assert_eq!(r.out.code, 1);
+    assert!(r.out.stderr.contains("cannot read"), "{}", r.out.stderr);
+    r.assert_installed_nothing();
+
+    write(w.lock(), "{\"mytool\": {\"binaries\": [\n");
+    let r = run(&w, &strs(&raw_args(&w)));
+    assert_eq!(r.out.code, 1);
+    assert!(
+        r.out.stderr.contains("is not valid JSON"),
+        "{}",
+        r.out.stderr
+    );
+    r.assert_installed_nothing();
+}
+
+// --- a lock every reader reads the same way ----------------------------------
+//
+// Bazel's json.decode (behind @multitool) and Python keep the LAST of a
+// repeated key; a reader that kept the first would check a hash reviewers
+// never see. So any repeat is refused, whichever copy comes first.
+
+/// The lock with `from` replaced by `to`, once.
+fn edit_lock(w: &World, from: &str, to: &str) {
+    let text = read(w.lock());
+    assert!(text.contains(from), "fixture lock lacks {from:?}");
+    write(w.lock(), text.replacen(from, to, 1));
+}
+
+fn assert_refused(r: &Ran, needle: &str) {
+    assert_eq!(r.out.code, 1, "{}", r.out.all());
+    assert!(r.out.stderr.contains(needle), "{}", r.out.stderr);
+    r.assert_installed_nothing();
+}
+
+#[test]
+fn a_repeated_sha256_key_is_refused_in_either_order() {
+    let w = World::new();
+    let real = w.true_pins()[0].sha256.clone();
+    let fake = sha256_of(&{
+        let p = w.dir.join("payload");
+        write(&p, "attacker-controlled-bytes\n");
+        p
+    });
+    for (first, second) in [(&fake, &real), (&real, &fake)] {
+        w.write_lock(&w.true_pins());
+        edit_lock(
+            &w,
+            &format!("\"sha256\": \"{real}\""),
+            &format!("\"sha256\": \"{first}\",\n        \"sha256\": \"{second}\""),
+        );
+        let r = run(&w, &strs(&raw_args(&w)));
+        assert_refused(&r, "duplicate key \"sha256\"");
+    }
+}
+
+#[test]
+fn a_repeated_tool_name_is_refused() {
+    let w = World::new();
+    let real = w.true_pins()[0].sha256.clone();
+    let text = read(w.lock());
+    let decoy = format!(
+        "{{\n  \"mytool\": {{\n    \"binaries\": [\n      {{\n        \"kind\": \"file\",\n        \"url\": \"{URL}/{RAW}\",\n        \"sha256\": \"{}\"\n      }}\n    ]\n  }},",
+        "0".repeat(64)
+    );
+    write(w.lock(), text.replacen('{', &decoy, 1));
+    assert!(read(w.lock()).contains(&real));
+    let r = run(&w, &strs(&raw_args(&w)));
+    assert_refused(&r, "duplicate key \"mytool\"");
+}
+
+#[test]
+fn a_repeated_url_within_a_tool_is_refused() {
+    let w = World::new();
+    let mut pins = w.true_pins();
+    let fake = Pin {
+        tool: "mytool",
+        kind: "file",
+        file: None,
+        asset: RAW,
+        sha256: "0".repeat(64),
+    };
+    pins.insert(0, fake);
+    w.write_lock(&pins);
+    let r = run(&w, &strs(&raw_args(&w)));
+    assert_refused(&r, &format!("'mytool' pins {URL}/{RAW} more than once"));
+}
+
+#[test]
+fn a_repeated_key_anywhere_is_refused() {
+    // Not only the fields the lookup reads: any object, any level.
+    let w = World::new();
+    edit_lock(&w, "\"$schema\": ", "\"$schema\": \"x\",\n  \"$schema\": ");
+    let r = run(&w, &strs(&raw_args(&w)));
+    assert_refused(&r, "duplicate key \"$schema\"");
+}
+
+// --- the URL must match the pin exactly ---------------------------------------
+
+#[test]
+fn only_the_exact_pinned_url_matches() {
+    // The hash check would still stop these, but the lookup must not let a
+    // near miss through to it.
+    let w = World::new();
+    let log = w.dir.join("curl-args.log");
+    let l = lock_arg(&w);
+    for asset in [
+        format!("{RAW}.evil"),
+        format!("{RAW}?x=1"),
+        format!("{RAW}#frag"),
+        // A prefix of the pinned asset name.
+        "mytool_linux".to_string(),
+        format!("{RAW}/"),
+    ] {
+        let r = run_with(&w, &[&l, URL, &asset, "mytool", "--raw"], |r, _| {
+            r.env("FAKE_CURL_ARGS_LOG", &log)
+        });
+        assert_refused(&r, &format!("{URL}/{asset} is not pinned"));
+    }
+    // A prefix of the pinned base URL, and the pinned URL inside another.
+    for (base, asset) in [
+        ("https://example.invalid/down", format!("load/{RAW}")),
+        ("https://example.invalid/download/x", RAW.to_string()),
+        ("http://example.invalid/download", RAW.to_string()),
+    ] {
+        let r = run_with(&w, &[&l, base, &asset, "mytool", "--raw"], |r, _| {
+            r.env("FAKE_CURL_ARGS_LOG", &log)
+        });
+        assert_refused(&r, "is not pinned");
+    }
+    assert!(!log.exists(), "curl never ran for a near miss");
+}
+
+// --- transport, arguments and the environment ---------------------------------
+
+#[test]
+fn transport_failure_propagates_curls_status() {
+    let w = World::new();
+    let r = run_with(&w, &strs(&raw_args(&w)), |r, _| r.env("FAKE_CURL_RC", "22"));
+    assert_eq!(r.out.code, 22, "exits with curl's own status");
+    r.assert_installed_nothing();
+}
+
+#[test]
+fn retry_policy_is_backoff_under_a_cap_and_only_the_asset_is_fetched() {
+    // A fixed --retry-delay turns off curl's exponential backoff; it gave up
+    // after ~6s of GitHub-releases 500s on 2026-09-25 and failed the queue.
+    // No checksum file is fetched: the lock is the only source of the hash.
+    let w = World::new();
+    let log = w.dir.join("curl-args.log");
+    let r = run_with(&w, &strs(&raw_args(&w)), |r, _| {
+        r.env("FAKE_CURL_ARGS_LOG", &log)
+    });
     assert_eq!(r.out.code, 0, "{}", r.out.all());
-    assert!(is_exec(&r.home_bin("mytool")));
+    let calls = read(&log);
+    let lines: Vec<&str> = calls.lines().collect();
+    assert_eq!(
+        lines,
+        vec![format!(
+            "-fsSL --retry 6 --retry-all-errors --retry-max-time 180 --max-time 120 -O {URL}/{RAW}"
+        )],
+    );
+}
+
+#[test]
+fn wrong_arg_count_exits_2() {
+    let w = World::new();
+    assert_eq!(run(&w, &["only", "one", "arg"]).out.code, 2);
+    let mut seven = raw_args(&w);
+    seven.push("member".into());
+    seven.push("extra".into());
+    let r = run(&w, &strs(&seven));
+    assert_eq!(r.out.code, 2);
+    assert!(
+        r.out
+            .stderr
+            .starts_with("usage: install-pinned-tool <lock-file>"),
+        "{}",
+        r.out.stderr
+    );
+}
+
+#[test]
+fn bad_mode_exits_2() {
+    let w = World::new();
+    let l = lock_arg(&w);
+    let r = run(&w, &[&l, URL, "asset", "name", "--bogus-mode"]);
+    assert_eq!(r.out.code, 2);
+    assert!(r
+        .out
+        .stderr
+        .contains("mode must be --tar or --raw, got '--bogus-mode'"));
+}
+
+#[test]
+fn missing_github_path_fails() {
+    let w = World::new();
+    let r = run_with(&w, &strs(&raw_args(&w)), |r, _| r.env_remove("GITHUB_PATH"));
+    assert_eq!(r.out.code, 1);
+    assert!(
+        r.out.stderr.contains("GITHUB_PATH must be set"),
+        "{}",
+        r.out.stderr
+    );
+    assert!(!r.home_bin("mytool").exists());
+}
+
+#[test]
+fn empty_github_path_fails_like_unset() {
+    let w = World::new();
+    let r = run_with(&w, &strs(&raw_args(&w)), |r, _| r.env("GITHUB_PATH", ""));
+    assert_eq!(r.out.code, 1);
+    assert!(r.out.stderr.contains("GITHUB_PATH must be set"));
 }
 
 #[test]
 fn unwritable_github_path_fails() {
     let w = World::new();
-    let r = run_with(&w, &strs(&raw_args()), |r, scratch| {
+    let r = run_with(&w, &strs(&raw_args(&w)), |r, scratch| {
         let d = scratch.join("github_path_dir");
         std::fs::create_dir_all(&d).unwrap();
         r.env("GITHUB_PATH", d)
@@ -422,7 +706,7 @@ fn unwritable_github_path_fails() {
 #[test]
 fn uncreatable_install_dir_fails() {
     let w = World::new();
-    let r = run_with(&w, &strs(&raw_args()), |r, scratch| {
+    let r = run_with(&w, &strs(&raw_args(&w)), |r, scratch| {
         let home = scratch.join("home-is-a-file");
         write(&home, "not a directory\n");
         r.env("HOME", home)
@@ -434,11 +718,179 @@ fn uncreatable_install_dir_fails() {
 #[test]
 fn downloads_stay_out_of_the_working_directory() {
     let w = World::new();
-    let r = run(&w, &strs(&raw_args()));
+    let r = run(&w, &strs(&raw_args(&w)));
     assert_eq!(r.out.code, 0);
     assert!(
         !r.scratch.join(RAW).exists(),
         "the asset is fetched into a private temp dir"
     );
-    assert!(!r.scratch.join(format!("{RAW}_SHA256SUMS")).exists());
+}
+
+// --- the real workflows against the real lock ---------------------------------
+
+/// One `uses: ./.github/actions/install-pinned-tool` step: its file and its
+/// `with:` inputs, `${{ env.X }}` resolved from the same file.
+struct Usage {
+    file: String,
+    with: Vec<(String, String)>,
+}
+
+impl Usage {
+    fn get(&self, k: &str) -> &str {
+        self.with
+            .iter()
+            .find(|(key, _)| key == k)
+            .map(|(_, v)| v.as_str())
+            .unwrap_or("")
+    }
+}
+
+fn unquote(v: &str) -> String {
+    let v = v.trim();
+    for q in ['"', '\''] {
+        if v.len() >= 2 && v.starts_with(q) && v.ends_with(q) {
+            return v[1..v.len() - 1].to_string();
+        }
+    }
+    v.to_string()
+}
+
+fn resolve_env(file: &str, text: &str, v: &str) -> String {
+    let mut out = v.to_string();
+    while let Some(a) = out.find("${{ env.") {
+        let b = out[a..]
+            .find("}}")
+            .map(|b| a + b + 2)
+            .expect("unclosed ${{");
+        let name = out[a + "${{ env.".len()..b - 2].trim().to_string();
+        let defs: Vec<String> = text
+            .lines()
+            .filter_map(|l| l.trim().strip_prefix(&format!("{name}: ")).map(unquote))
+            .collect();
+        assert!(
+            defs.len() == 1,
+            "{file}: env.{name} must be defined exactly once to check it against the lock, found {defs:?}"
+        );
+        out.replace_range(a..b, &defs[0]);
+    }
+    assert!(
+        !out.contains("${{"),
+        "{file}: cannot resolve '{v}' statically"
+    );
+    out
+}
+
+fn usages() -> Vec<Usage> {
+    let files: Vec<String> = ["WORKFLOW_FILES", "COMPOSITE_ACTIONS"]
+        .iter()
+        .flat_map(|v| {
+            std::env::var(v)
+                .unwrap_or_else(|_| panic!("{v} is set by BUILD"))
+                .split_whitespace()
+                .map(String::from)
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    let mut found = Vec::new();
+    let mut expected = 0;
+    for f in &files {
+        let text = read(f);
+        let lines: Vec<&str> = text.lines().collect();
+        for (i, l) in lines.iter().enumerate() {
+            let t = l.trim().trim_start_matches("- ");
+            if !t.starts_with("uses: ./.github/actions/install-pinned-tool") {
+                continue;
+            }
+            expected += 1;
+            let step_indent = l.len() - l.trim_start().len();
+            let mut with = Vec::new();
+            let mut j = i + 1;
+            // The rest of this step: deeper than its first key, or a `- ` at it.
+            while j < lines.len() {
+                let m = lines[j];
+                let ind = m.len() - m.trim_start().len();
+                if !m.trim().is_empty()
+                    && (ind < step_indent
+                        || (ind == step_indent && m.trim_start().starts_with("- ")))
+                {
+                    break;
+                }
+                if m.trim() == "with:" {
+                    let wi = ind;
+                    j += 1;
+                    while j < lines.len() {
+                        let n = lines[j];
+                        let ni = n.len() - n.trim_start().len();
+                        if n.trim().is_empty() || ni <= wi {
+                            break;
+                        }
+                        if let Some((k, v)) = n.trim().split_once(':') {
+                            with.push((k.trim().to_string(), resolve_env(f, &text, &unquote(v))));
+                        }
+                        j += 1;
+                    }
+                    break;
+                }
+                j += 1;
+            }
+            found.push(Usage {
+                file: f.clone(),
+                with,
+            });
+        }
+    }
+    assert_eq!(found.len(), expected);
+    found
+}
+
+#[test]
+fn every_workflow_install_is_pinned_in_tools_lock_json() {
+    // Runs the real lookup: curl is a stub that exits 99, so 99 means the lock
+    // pinned the step's URL (kind and member included) and the binary moved on
+    // to download it; anything else is the refusal it printed.
+    // Absolute: each run's working directory is its own scratch dir.
+    let lock = std::fs::canonicalize(std::env::var("LOCK").expect("LOCK is set by BUILD"))
+        .unwrap()
+        .display()
+        .to_string();
+    let all = usages();
+    assert!(
+        all.len() >= 5,
+        "found only {} install-pinned-tool steps; the scan is broken",
+        all.len()
+    );
+    let w = World::new();
+    let mut seen = Vec::new();
+    for u in &all {
+        let base = u.get("base-url");
+        let asset = u.get("asset");
+        let bin_name = u.get("bin-name");
+        let mode = format!("--{}", u.get("mode"));
+        let member = u.get("member-path");
+        assert!(
+            !base.is_empty() && !asset.is_empty() && !bin_name.is_empty(),
+            "{}: incomplete step {:?}",
+            u.file,
+            u.with
+        );
+        for gone in ["checksum-file", "checksum-pattern"] {
+            assert!(
+                u.with.iter().all(|(k, _)| k != gone),
+                "{}: '{gone}' is no longer an input; the hash comes from the lock",
+                u.file
+            );
+        }
+        let mut args = vec![lock.as_str(), base, asset, bin_name, mode.as_str()];
+        if !member.is_empty() {
+            args.push(member);
+        }
+        let r = run_with(&w, &args, |r, _| r.env("FAKE_CURL_RC", "99"));
+        assert_eq!(
+            r.out.code, 99,
+            "{}: {base}/{asset} as {bin_name}: {}",
+            u.file, r.out.stderr
+        );
+        seen.push(format!("{bin_name} {base}/{asset}"));
+    }
+    eprintln!("checked against the lock:\n  {}", seen.join("\n  "));
 }

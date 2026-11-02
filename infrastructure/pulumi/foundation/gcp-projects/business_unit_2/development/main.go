@@ -149,6 +149,7 @@ func main() {
 		// 5-app-infra workloads they deploy, so an app's pipeline can never edit
 		// the stack that defines its own permissions.
 		deploySAs := map[string]pulumi.StringOutput{}
+		previewSAs := map[string]pulumi.StringOutput{}
 		if cfg.OSSFloatingProjectEnabled {
 			for _, app := range cfg.Apps {
 				res, err := app_deploy_identity.Deploy(ctx, app.Name, &app_deploy_identity.Args{
@@ -167,6 +168,22 @@ func main() {
 					return err
 				}
 				deploySAs[app.Name] = res.DeployServiceAccountEmail
+
+				// Read-only identity for the app's PR `pulumi preview` (#4120),
+				// so the deploy Environment above can be pinned to main.
+				if app.PreviewIdentity {
+					pv, err := app_deploy_identity.DeployPreview(ctx, app.Name, &app_deploy_identity.PreviewArgs{
+						App:                  app.Name,
+						Env:                  cfg.Env,
+						ProjectID:            projects.OSSFloatingProjectID,
+						WorkloadIdentityPool: refs.WIFPoolName,
+						GitHubEnvironment:    app.PreviewGitHubEnvironment(),
+					})
+					if err != nil {
+						return err
+					}
+					previewSAs[app.Name] = pv.ServiceAccountEmail
+				}
 			}
 		}
 
@@ -223,6 +240,11 @@ func main() {
 
 		for app, email := range deploySAs {
 			ctx.Export(app+"_deploy_service_account", email)
+		}
+		// Consumed by repo-config as the <app>-preview Environment's
+		// GCP_DEPLOY_SERVICE_ACCOUNT (#4120 step 2).
+		for app, email := range previewSAs {
+			ctx.Export(app+"_preview_service_account", email)
 		}
 
 		exportStackOutputs(ctx, cfg, projects)

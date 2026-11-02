@@ -72,8 +72,8 @@ jobs:
   # and notify-ci-issues has nothing to announce. Any doubt is a miss and the
   # run is the full run it always was: a direct push, a red or missing queue
   # run, a lookup error, or a change to a file the main-only Actions caches
-  # are keyed on (see tools/ci/queue-fast-pass.sh). If this job itself fails,
-  # `hit` is empty and everything runs.
+  # are keyed on (see tools/ci/src/queue_fast_pass/lib.rs). If this job itself
+  # fails, `hit` is empty and everything runs.
   #
   # On a pull request or in the queue this job is skipped without taking a
   # runner, and the `!cancelled()` on every job below lets them start at once.
@@ -91,8 +91,20 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          # Only the script is needed; HEAD's tree hash comes with any checkout.
-          sparse-checkout: tools/ci
+          # Only the tool's sources and the action that builds them are
+          # needed; HEAD's tree hash comes with any checkout.
+          sparse-checkout: |
+            .github/actions/build-ci-tool
+            tools/ci/src/queue_fast_pass
+            tools/shell-compat
+      # Built with the runner's rustc: this job sets up no Bazel. A failed
+      # build leaves the lookup below with no binary, which is a miss.
+      - name: Build the merge-queue lookup
+        id: tool
+        continue-on-error: true
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: queue_fast_pass
       - name: Did the merge queue already pass this exact code?
         id: lookup
         continue-on-error: true
@@ -101,8 +113,9 @@ jobs:
           WORKFLOW_PATH: .github/workflows/ci.yaml
           PUSH_BEFORE: ${{ github.event.before }}
           FORCED_PUSH: ${{ github.event.forced }}
+          QUEUE_FAST_PASS_BIN: ${{ steps.tool.outputs.path }}
         run: |
-          bash tools/ci/queue-fast-pass.sh queued | tee "$RUNNER_TEMP/queued.out"
+          "$QUEUE_FAST_PASS_BIN" queued | tee "$RUNNER_TEMP/queued.out"
           {
             echo "### Already passed in the merge queue?"
             echo ""
@@ -114,16 +127,17 @@ jobs:
   # label (#3418, Step 2b): may this PR skip the heavy test and build jobs?
   # Yes only for a PR from a branch in this repository, opened by one of our
   # agent apps (checked by bot user id), with the label; see
-  # tools/ci/agent-fast-lane.sh. The merge queue still runs everything on the
+  # tools/ci/src/agent_fast_lane/lib.rs. The merge queue still runs everything on the
   # exact code that lands, so main stays protected; the cost is measured as
   # queue failures on #3418. The fast checks (license-check, lint-naming here,
   # and the separate secret-scan, osv-scan, conformance, tidy and actionlint
   # workflows) never read this.
   #
-  # It checks out the PR's BASE commit, so the rule and the agent roster come
-  # from main and a PR cannot rewrite what lets it skip. Unlabelled PRs, the
-  # merge queue and pushes skip this job without taking a runner. If it fails,
-  # `skip` is empty and everything runs.
+  # It builds the rule from a checkout of the PR's BASE commit and reads the
+  # agent roster from there too, so both come from main and a PR cannot
+  # rewrite what lets it skip. Only the build action comes from the PR. Unlabelled
+  # PRs, the merge queue and pushes skip this job without taking a runner. If
+  # it fails, `skip` is empty and everything runs.
   fast-lane:
     name: agent-fast-lane
     if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'agent-fast-lane')
@@ -135,10 +149,23 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          sparse-checkout: .github/actions/build-ci-tool
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
           ref: ${{ github.event.pull_request.base.sha }}
+          path: base
           sparse-checkout: |
-            tools/ci
+            tools/ci/src/agent_fast_lane
+            tools/shell-compat
             tools/agent-app
+      - name: Build the base commit's fast-lane rule
+        id: rule
+        continue-on-error: true
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: agent_fast_lane
+          source-root: base
       - name: May this PR skip the heavy jobs?
         id: decide
         continue-on-error: true
@@ -148,9 +175,10 @@ jobs:
           PR_AUTHOR_ID: ${{ github.event.pull_request.user.id }}
           PR_AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
           PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
-          AGENTS_TSV: tools/agent-app/agents.tsv
+          AGENTS_TSV: base/tools/agent-app/agents.tsv
+          FAST_LANE_BIN: ${{ steps.rule.outputs.path }}
         run: |
-          bash tools/ci/agent-fast-lane.sh | tee "$RUNNER_TEMP/fast-lane.out"
+          "$FAST_LANE_BIN" | tee "$RUNNER_TEMP/fast-lane.out"
           {
             echo "### Agent fast lane?"
             echo ""
@@ -442,7 +470,7 @@ jobs:
       # one-line gitops digest bump claimed a macOS runner and built the app:
       # 156s on 69436a56. Decide it HERE, on the cheap ubuntu gatekeeper, rather
       # than after the macOS runner is already claimed. Fails safe -- see
-      # tools/ci/relevant-paths.sh; the nightly full sweep is unchanged.
+      # tools/ci/src/relevant_paths/lib.rs; the nightly full sweep is unchanged.
       - name: Gate on changed paths (push lane)
         id: gate
         if: github.event_name == 'push'
@@ -735,6 +763,20 @@ jobs:
           fi
           bazel test "${cache[@]}" //tools/lint-naming:lint-naming_test
 
+      # Whole-repo, like the naming check, so it lives in this always-on job
+      # rather than behind a path filter: fails when a Go test exists that no
+      # lane runs -- not in a go_test, and not under a go_test_with_retry
+      # root (go-test-infra, example-build). #4205 found 22 such modules under
+      # packages/pulumi/examples. A `bazel run`, not a test: it must re-walk
+      # the tree on every PR, and a cached test result would not.
+      - name: Every Go test is run by a CI lane
+        run: |
+          cache=()
+          if [ -n "${BUILDBUDDY_API_KEY}" ]; then
+            cache=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
+          fi
+          bazel run "${cache[@]}" //tools/ci:go_test_lanes
+
   changes:
     # Decides ONCE, on one runner, whether each small path-gated job below has
     # any work to do. Those jobs then skip at the JOB level when they do not,
@@ -774,7 +816,8 @@ jobs:
     outputs:
       go-lint-devx: ${{ steps.decide.outputs.go-lint-devx }}
       go-lint-homelab: ${{ steps.decide.outputs.go-lint-homelab }}
-      go-test-infra: ${{ steps.decide.outputs.go-test-infra }}
+      go-test-iac: ${{ steps.decide.outputs.go-test-iac }}
+      go-test-examples: ${{ steps.decide.outputs.go-test-examples }}
       go-race: ${{ steps.decide.outputs.go-race }}
       example-build: ${{ steps.decide.outputs.example-build }}
       validate-butane: ${{ steps.decide.outputs.validate-butane }}
@@ -810,7 +853,13 @@ jobs:
               - '.github/workflows/ci.yaml'
             iac:
               - 'infrastructure/pulumi/**'
-              - '*/infra/**'
+              - 'apps/*/*/infra/**'
+              # go_test_with_retry and what it is built from: a change to
+              # the tool must run the tests it runs.
+              - 'tools/ci/src/go_test_with_retry/**'
+              - 'tools/ci/src/transient_lib/**'
+              - 'tools/shell-compat/**'
+              - '.github/actions/build-ci-tool/**'
               - '.github/workflows/ci.yaml'
             go:
               - '**/*.go'
@@ -820,8 +869,22 @@ jobs:
               - '.bazelrc'
               - '.github/workflows/ci.yaml'
             ex:
+              # go-test-infra tests EVERY Go module under
+              # packages/pulumi/examples (--root), so this matches every Go
+              # file there, not just today's trees: a new example dir must
+              # run its own tests (#4212 review). //tools/ci:go_test_lanes
+              # fails if this stops covering that step's --root.
               - 'packages/pulumi/examples/go-foundation/**'
+              - 'packages/pulumi/examples/**/*.go'
+              - 'packages/pulumi/examples/**/go.mod'
+              - 'packages/pulumi/examples/**/go.sum'
               - 'packages/pulumi/library/**'
+              # go_test_with_retry and what it is built from: a change to
+              # the tool must run the tests it runs.
+              - 'tools/ci/src/go_test_with_retry/**'
+              - 'tools/ci/src/transient_lib/**'
+              - 'tools/shell-compat/**'
+              - '.github/actions/build-ci-tool/**'
               - '.github/workflows/ci.yaml'
             butane:
               - 'apps/cli/devx/dev-machine.template.bu'
@@ -854,7 +917,11 @@ jobs:
           say() { if want "$2"; then v=true; else v=false; fi; echo "$1=$v" | tee -a "$GITHUB_OUTPUT"; }
           say go-lint-devx "$DEVX"
           say go-lint-homelab "$HOMELAB"
-          say go-test-infra "$IAC"
+          # go-test-infra's two test steps each read their own output, and
+          # the job runs when either would (its `if:` reads both directly;
+          # //tools/ci:go_test_lanes checks it reads the examples one).
+          say go-test-iac "$IAC"
+          say go-test-examples "$EX"
           say example-build "$EX"
           say validate-butane "$BUTANE"
           # go-race keeps its own rule: push (unless docs/gitops-only), or any
@@ -918,7 +985,7 @@ jobs:
           (cd apps/cli/homelab && "$RUNNER_TEMP/homelab_test")
 
   go-test-infra:
-    # Go tests for the IaC programs (infrastructure/pulumi/** and <app>/infra/**).
+    # Go tests for the IaC programs (infrastructure/pulumi/** and apps/<category>/<app>/infra/**).
     #
     # These had NO test lane at all. They are outside go.work, the `go-test`
     # matrix above covers only devx/homelab, and `pulumi_project` emits just
@@ -933,10 +1000,16 @@ jobs:
     # the day it lands, and only modules that actually contain a _test.go are
     # run -- `go test ./...` in a module with no tests is a slow no-op. GOWORK
     # is off because these modules are deliberately not workspace members.
+    #
+    # It also runs the pulumi example modules' tests (#4205). They live in
+    # this job, not example-build, because this job is a REQUIRED check and
+    # example-build is not: a failing example test has to block the merge.
+    # Each test step checks its own path filter, so an IaC-only change does
+    # not pay for the examples, and the reverse.
     needs: [queued, fast-lane, changes]
-    if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' && needs.fast-lane.outputs.skip != 'true' && (needs.changes.result != 'success' || needs.changes.outputs.go-test-infra == 'true') }}
+    if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' && needs.fast-lane.outputs.skip != 'true' && (needs.changes.result != 'success' || needs.changes.outputs.go-test-iac == 'true' || needs.changes.outputs.go-test-examples == 'true') }}
     runs-on: ubuntu-26.04
-    timeout-minutes: 20
+    timeout-minutes: 40
     env:
       GOWORK: "off"
     steps:
@@ -957,17 +1030,34 @@ jobs:
           # network entirely for a module whose deps haven't changed.
           cache-dependency-path: |
             infrastructure/pulumi/**/go.sum
-            */infra/**/go.sum
-      # //tools/ci:go_test_with_retry, built with the runner's rustc (this job
-      # sets up no Bazel). //tools/ci:workflow_rustc_test runs these lines.
+            apps/*/*/infra/**/go.sum
+            packages/pulumi/examples/**/go.sum
+      - name: Build //tools/ci:go_test_with_retry (no Bazel on this job)
+        id: go-test-bin
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: go_test_with_retry
+          deps: transient_lib
+
       - name: go test (IaC modules with tests)
+        if: needs.changes.result != 'success' || needs.changes.outputs.go-test-iac == 'true'
+        env:
+          GO_TEST_WITH_RETRY: ${{ steps.go-test-bin.outputs.path }}
         run: |
           set -euo pipefail
-          rustc --edition 2021 -O --crate-type lib --crate-name shell_compat tools/shell-compat/src/lib.rs -o "$RUNNER_TEMP/libshell_compat.rlib"
-          rustc --edition 2021 -O --crate-type lib --crate-name transient_lib tools/ci/src/transient_lib/lib.rs -o "$RUNNER_TEMP/libtransient_lib.rlib"
-          rustc --edition 2021 -O --crate-type lib --crate-name go_test_with_retry tools/ci/src/go_test_with_retry/lib.rs -L "$RUNNER_TEMP" --extern shell_compat="$RUNNER_TEMP/libshell_compat.rlib" --extern transient_lib="$RUNNER_TEMP/libtransient_lib.rlib" -o "$RUNNER_TEMP/libgo_test_with_retry.rlib"
-          rustc --edition 2021 -O tools/ci/src/go_test_with_retry/main.rs -L "$RUNNER_TEMP" --extern shell_compat="$RUNNER_TEMP/libshell_compat.rlib" --extern go_test_with_retry="$RUNNER_TEMP/libgo_test_with_retry.rlib" -o "$RUNNER_TEMP/go-test-with-retry"
-          "$RUNNER_TEMP/go-test-with-retry"
+          "$GO_TEST_WITH_RETRY"
+
+      # Every example module with tests (go-foundation and ts-foundation's Go
+      # helper). `go build` in example-build never compiles _test.go files,
+      # so until #4205 these had never run anywhere. Locally:
+      #   GOWORK=off bazel run //tools/ci:go_test_with_retry -- --root packages/pulumi/examples
+      - name: go test (pulumi example modules with tests)
+        if: needs.changes.result != 'success' || needs.changes.outputs.go-test-examples == 'true'
+        env:
+          GO_TEST_WITH_RETRY: ${{ steps.go-test-bin.outputs.path }}
+        run: |
+          set -euo pipefail
+          "$GO_TEST_WITH_RETRY" --root packages/pulumi/examples
 
   go-race:
     # Race detector over EVERY Bazel go_test target (72 today).
@@ -1046,6 +1136,11 @@ jobs:
     # example leaf while this repo's CI stayed green) was invisible until the
     # mirror re-ran. This compiles every example module IN THE SOURCE REPO.
     #
+    # The examples' TESTS run in go-test-infra, not here: that job is a
+    # required check and this one is not (#4205). //tools/ci:go_test_lanes
+    # (lint-naming job) reads that step's --root to decide what is covered,
+    # so dropping or disabling it fails there.
+    #
     # Own job (not folded into go-test-infra) + generous timeout because it is
     # ~27 standalone modules each pulling the Pulumi SDK; runs only when the
     # example -- or a library it consumes -- actually changes (see `changes`).
@@ -1091,7 +1186,7 @@ jobs:
             echo "::group::go build $dir"
             (cd "$dir" && go build ./...)
             echo "::endgroup::"
-          done < <(find packages/pulumi/examples/go-foundation -name go.mod -not -path '*/vendor/*' | sort)
+          done < <(find packages/pulumi/examples -name go.mod -not -path '*/vendor/*' -not -path '*/node_modules/*' | sort)
           echo "compiled $n example module(s)"
 
   validate-butane:

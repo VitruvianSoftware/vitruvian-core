@@ -1,0 +1,67 @@
+/**
+ * Copyright (c) 2026 VitruvianSoftware
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { appRootUrl, parseSharePath, shareLinkUrl } from './shareLinkPath.js';
+
+test('a share path names its code and the app base path', () => {
+  assert.deepEqual(parseSharePath('/share/AQc'), {
+    code: 'AQc',
+    basePath: '/',
+  });
+  assert.deepEqual(parseSharePath('/gev/share/AQc/'), {
+    code: 'AQc',
+    basePath: '/gev/',
+  });
+  // A mangled code is still a share link, so the app refuses it out loud.
+  assert.equal(parseSharePath('/share/AQ.c').code, 'AQ.c');
+  for (const path of ['/', '/share', '/share/', '/share/a/b', '/sharex/AQc'])
+    assert.equal(parseSharePath(path), null, path);
+  assert.equal(parseSharePath(undefined), null);
+});
+
+test('the app root drops a share path and the hash, and keeps the query', () => {
+  assert.equal(
+    appRootUrl('https://gev.example/share/AQc?qa=1#v=2').href,
+    'https://gev.example/?qa=1',
+  );
+  assert.equal(
+    appRootUrl('http://localhost:4173/gev/share/AQc').href,
+    'http://localhost:4173/gev/',
+  );
+  assert.equal(
+    appRootUrl('https://gev.example/index.html#v=2&lat=1').href,
+    'https://gev.example/',
+  );
+});
+
+test('a share link sits under the app root without the sender ?lang', () => {
+  assert.equal(
+    shareLinkUrl('AQc', 'https://gev.example/?lang=ru#v=2&lat=1'),
+    'https://gev.example/share/AQc',
+  );
+  assert.equal(
+    shareLinkUrl('AQc', 'https://gev.example/gev/share/old?qa=1&lang=es'),
+    'https://gev.example/gev/share/AQc?qa=1',
+  );
+});

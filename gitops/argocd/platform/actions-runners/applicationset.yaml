@@ -26,7 +26,8 @@
 # PHASE 0: registered and idle. minRunners is 0 and no workflow names this
 # runner until QUEUE_RUNNER is "on", so no pod runs. The image is the
 # project-built Ubuntu 26.04 one (tools/ci-runner, built and checked by the
-# ci-runner-image workflow), pinned by digest.
+# ci-runner-image workflow), pinned by digest: the build of f193271ae (#4202),
+# the first with a pinned rustc (#4183).
 #
 # Credentials: the vitruvian-arc GitHub App (repository Administration
 # read/write, Metadata read, vitruvian-core only), sealed by
@@ -104,7 +105,7 @@ spec:
                               values: [fedora, nuc9i9]
                 containers:
                   - name: runner
-                    image: ghcr.io/vitruviansoftware/vitruvian-ci-runner@sha256:b06b5d1249f6c4442ca4a23f5579858acdab236a9773d3d83c98ab801582dfc8
+                    image: ghcr.io/vitruviansoftware/vitruvian-ci-runner@sha256:f24e04da315c7e8086f03e13b452a0017f63af91ed037fb536b4a777e00b2a74
                     command: ["/home/runner/run.sh"]
                     resources:
                       requests:

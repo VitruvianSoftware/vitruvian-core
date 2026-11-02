@@ -2983,3 +2983,79 @@ extension ComposerModelTests {
         }
     }
 }
+
+// MARK: - The thread pane's composer
+
+extension ComposerModelTests {
+    /// The thread pane's sender passes on every way of sending, not just text and files: without its own, a GIF or
+    /// sticker fell through to `MessageSending`'s do-nothing defaults, cleared the composer and was never sent.
+    func testTheThreadPanesSenderPassesOnGIFsStickersAndLinkPreviews() async throws {
+        let base = FakeSender()
+        let sender: any MessageSending = ThreadMessageSender(base: base)
+
+        _ = try await sender.sendGIF(MessageSendGIFParams(roomID: "!a", path: "/tmp/a.gif", threadRoot: "$root"))
+        _ = try await sender.sendSticker(MessageSendStickerParams(roomID: "!a", path: "/tmp/s.png", threadRoot: "$root"))
+        _ = try await sender.listStickers(refreshBridgePacks: true)
+        let imported = try await sender.importSticker(StickersImportParams(path: "/tmp/wave.png", shortcode: "wave",
+                                                                            name: "wave", emoji: nil, usage: ["sticker"]))
+        _ = try await sender.send(roomID: "!a", rich: RichText(text: "https://example.com"), replyTo: nil,
+                                  threadRoot: "$root", holdMillis: 0, disableLinkPreview: false)
+
+        XCTAssertEqual(base.gifSends.map(\.threadRoot), ["$root"])
+        XCTAssertEqual(base.stickerSends.map(\.threadRoot), ["$root"])
+        XCTAssertEqual(base.stickerListRefreshes, [true])
+        XCTAssertEqual(base.stickerImports.map(\.shortcode), ["wave"])
+        XCTAssertEqual(imported.id, "imported:wave", "the engine's sticker, not the stand-in")
+        XCTAssertEqual(base.sends.map(\.disableLinkPreview), [false], "the link preview setting reaches the engine")
+    }
+
+    /// Return in the thread pane's empty composer edits my selected message or replies to someone else's, as the
+    /// chat's composer does; and it stays in its thread whatever the message allows.
+    func testReturnInTheThreadPanesEmptyComposerActsOnTheSelectedMessage() async {
+        let timeline = items([event("$mine", body: "mine", at: 0), event("$theirs", mine: false, body: "theirs", at: 1000)])
+        let composer = makeComposer().composer
+        composer.isThreadPaneComposer = true
+        composer.startThread("$root")
+        var selected: TimelineMessage?
+        composer.selectedMessage = { selected }
+
+        selected = message("$mine", in: timeline)
+        composer.handleReturn(modifiers: [])
+        XCTAssertEqual(composer.mode, .editing(eventID: "$mine", original: RichText(text: "mine")), "mine: edit it")
+        XCTAssertTrue(composer.escape())
+        XCTAssertEqual(composer.mode, .thread(rootID: "$root"), "the edit ends back in the thread")
+
+        selected = message("$theirs", in: timeline)
+        composer.handleReturn(modifiers: [])
+        XCTAssertEqual(composer.replyTarget?.eventID, "$theirs", "someone else's: reply to it")
+        composer.cancelReply()
+
+        // Where replies are thread replies, the pane's composer doesn't move to another thread.
+        composer.features = slack
+        composer.handleReturn(modifiers: [])
+        XCTAssertEqual(composer.mode, .thread(rootID: "$root"))
+    }
+
+    /// The chat's composer, writing in a thread, is not the pane's: Return with nothing typed leaves it as it was.
+    func testReturnInTheChatComposersThreadLeavesTheSelectionAlone() async {
+        let timeline = items([event("$theirs", mine: false, body: "theirs", at: 1000)])
+        let composer = makeComposer().composer
+        composer.startThread("$root")
+        composer.selectedMessage = { self.message("$theirs", in: timeline) }
+        composer.handleReturn(modifiers: [])
+        XCTAssertNil(composer.replyTarget)
+        XCTAssertEqual(composer.mode, .thread(rootID: "$root"))
+    }
+
+    /// A kept thread draft coming back is the composer's own text: not typing, and its emoticon stays as typed.
+    func testARestoredDraftIsNotTypingAndKeepsItsEmoticon() async {
+        let sleeps = SleepControl()
+        let made = makeComposer(typingSleeps: sleeps)
+        made.composer.sendsTyping = { true }
+        made.composer.restoreDraft(RichText(text: "see you then :)"))
+        await made.composer.waitForTyping()
+        XCTAssertEqual(made.sender.typings, [], "opening a thread with a draft doesn't tell the chat I'm typing")
+        XCTAssertEqual(made.composer.text, "see you then :)")
+        await sleeps.releaseAlways()
+    }
+}

@@ -18,8 +18,52 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! queue-fast-pass.sh — has this exact code already passed this check on its
-//! pull request, or did the merge queue already pass it on main? (#2841)
+//! Asks one question for the merge queue: has this exact code already passed
+//! this check on its pull request? (#2841)
+//!
+//! WHY. The queue re-tests every PR on top of the newest main. When main has
+//! not moved since the PR's own checks ran, the queue's trial commit holds the
+//! very same files the PR run already tested, and the re-test can only repeat
+//! the answer (or trip over a flaky test). A replay of 103 queue entries on
+//! 2026-10-07..09 found 23 such entries; five checked by hand all matched.
+//!
+//! HOW. "The same files" is decided by git's tree hash of HEAD, which is equal
+//! exactly when every file is byte-for-byte equal, however the commit was made.
+//! A PR run that passes uploads an artifact named passed-<check>-<tree>.
+//! `lookup` in the queue looks for that name and then confirms the run behind
+//! it: same repository (not a fork), a pull_request run of the expected
+//! workflow, concluded success.
+//!
+//! It never fails the job and never says "hit" on doubt: any error, any field
+//! that does not match, is a miss, and a miss means "run the tests as usual".
+//!
+//! A second question, for a push to main (#3418): did the merge queue already
+//! pass this workflow on this exact code? The queue squash-merges, so the
+//! commit that lands on main has the same tree its merge_group run tested, and
+//! re-testing it can only repeat the answer or trip over a flaky test. `queued`
+//! lists this workflow's newest successful merge_group runs and looks for one
+//! whose head commit has HEAD's tree. Same rule: doubt is a miss, and a miss
+//! runs everything as before. A direct push, or a queue run that went red or
+//! never happened, finds nothing.
+//!
+//! It also misses when the push changes a file that GitHub Actions cache keys
+//! are built from (MODULE.bazel, go.sum, ...). Those caches live per branch:
+//! one saved by a queue run sits on the queue's temporary branch, where pull
+//! requests cannot read it. Only a run on main saves them where pull requests
+//! look, and they are saved only when the key moves, so that push runs in
+//! full. CACHE_KEY_REGEX overrides the list.
+//!
+//! Usage:
+//!   queue_fast_pass tree              print tree= and marker= for HEAD
+//!   queue_fast_pass lookup <check>    also print verdict=hit|miss, run=, reason=
+//!   queue_fast_pass queued            the same three, for a push to main
+//!
+//! Every line printed to stdout is also appended to $GITHUB_OUTPUT when set.
+//!
+//! Env: GH_TOKEN (needs actions: read), GITHUB_REPOSITORY, WORKFLOW_PATH
+//! (optional for lookup, required for queued, e.g.
+//! .github/workflows/presubmit.yaml: the run must be of it). queued also reads
+//! PUSH_BEFORE (main's commit before the push) and FORCED_PUSH.
 
 use shell_compat::{capture, cat, env, env_or_empty, err, out, subst};
 use std::process::Command;
@@ -458,7 +502,7 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
         b"lookup" => check_arg.clone(),
         b"queued" => b"presubmit".to_vec(),
         _ => {
-            log(b"usage: queue-fast-pass.sh tree | lookup <check> | queued");
+            log(b"usage: queue_fast_pass tree | lookup <check> | queued");
             return 2;
         }
     };

@@ -61,6 +61,13 @@ jobs:
           RELEASE_PR: ${{ github.event_name == 'pull_request' && startsWith(github.head_ref, 'release-please--') && github.event.pull_request.user.type == 'Bot' && github.event.pull_request.head.repo.full_name == github.repository }}
         run: echo "skip=$RELEASE_PR" | tee -a "$GITHUB_OUTPUT"
 
+      - name: Build the merge-queue lookup
+        id: queue-fast-pass
+        continue-on-error: true
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: queue_fast_pass
+
       - name: Did the merge queue already pass this exact code?
         id: queued
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -70,8 +77,9 @@ jobs:
           WORKFLOW_PATH: .github/workflows/presubmit.yaml
           PUSH_BEFORE: ${{ github.event.before }}
           FORCED_PUSH: ${{ github.event.forced }}
+          QUEUE_FAST_PASS_BIN: ${{ steps.queue-fast-pass.outputs.path }}
         run: |
-          bash tools/ci/queue-fast-pass.sh queued | tee "$RUNNER_TEMP/queued.out"
+          "$QUEUE_FAST_PASS_BIN" queued | tee "$RUNNER_TEMP/queued.out"
           {
             echo "### Already passed in the merge queue?"
             echo ""
@@ -79,24 +87,46 @@ jobs:
             echo "- why: $(sed -n 's/^reason=//p' "$RUNNER_TEMP/queued.out")"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Is this an agent PR in the fast lane?
-        id: fastlane
+      - name: Read the base commit's fast-lane rule
+        id: fastlane-src
         if: github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'agent-fast-lane')
         continue-on-error: true
         env:
-          EVENT_NAME: ${{ github.event_name }}
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          src="$RUNNER_TEMP/fast-lane-base"
+          for f in tools/ci/src/agent_fast_lane/lib.rs tools/ci/src/agent_fast_lane/main.rs tools/shell-compat/src/lib.rs tools/agent-app/agents.tsv; do
+            mkdir -p "$src/$(dirname "$f")"
+            if ! git show "$PR_BASE_SHA:$f" > "$src/$f"; then
+              echo "::notice::The base commit has no fast-lane rule yet; every unit runs."
+              exit 0
+            fi
+          done
+          echo "root=$src" >> "$GITHUB_OUTPUT"
+
+      - name: Build the base commit's fast-lane rule
+        id: fastlane-bin
+        if: steps.fastlane-src.outputs.root != ''
+        continue-on-error: true
+        uses: ./.github/actions/build-ci-tool
+        with:
+          tool: agent_fast_lane
+          source-root: ${{ steps.fastlane-src.outputs.root }}
+
+      - name: Is this an agent PR in the fast lane?
+        id: fastlane
+        if: steps.fastlane-bin.outputs.path != ''
+        continue-on-error: true
+        env:
+          EVENT_NAME: ${{ github.event_name }}
           PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           PR_AUTHOR_ID: ${{ github.event.pull_request.user.id }}
           PR_AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
           PR_LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          AGENTS_TSV: ${{ steps.fastlane-src.outputs.root }}/tools/agent-app/agents.tsv
+          FAST_LANE_BIN: ${{ steps.fastlane-bin.outputs.path }}
         run: |
-          if ! git show "$PR_BASE_SHA:tools/ci/agent-fast-lane.sh" > "$RUNNER_TEMP/agent-fast-lane.sh" ||
-             ! git show "$PR_BASE_SHA:tools/agent-app/agents.tsv" > "$RUNNER_TEMP/agents.tsv"; then
-            echo "::notice::The base commit has no fast-lane rule yet; every unit runs."
-            exit 0
-          fi
-          AGENTS_TSV="$RUNNER_TEMP/agents.tsv" bash "$RUNNER_TEMP/agent-fast-lane.sh" | tee "$RUNNER_TEMP/fast-lane.out"
+          "$FAST_LANE_BIN" | tee "$RUNNER_TEMP/fast-lane.out"
           {
             echo "### Agent fast lane?"
             echo ""
@@ -112,12 +142,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           EVENT_NAME: ${{ github.event_name }}
           WORKFLOW_PATH: .github/workflows/presubmit.yaml
+          QUEUE_FAST_PASS_BIN: ${{ steps.queue-fast-pass.outputs.path }}
         run: |
           if [ "$EVENT_NAME" != merge_group ]; then
-            bash tools/ci/queue-fast-pass.sh tree
+            "$QUEUE_FAST_PASS_BIN" tree
             exit 0
           fi
-          bash tools/ci/queue-fast-pass.sh lookup presubmit | tee "$RUNNER_TEMP/fastpass.out"
+          "$QUEUE_FAST_PASS_BIN" lookup presubmit | tee "$RUNNER_TEMP/fastpass.out"
           {
             echo "### Already tested? (log only, nothing is skipped)"
             echo ""

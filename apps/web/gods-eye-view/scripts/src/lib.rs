@@ -1066,6 +1066,12 @@ mod tests {
         assert!(check_import_directions::analyze_module("require('node:fs')")
             .unwrap_err()
             .contains("ES imports"));
+        // A binding made by createRequire is the ES-module way to load a
+        // CommonJS-only package, not a CommonJS module.
+        assert!(check_import_directions::analyze_module(
+            "import { createRequire } from 'node:module';\nconst require = createRequire(import.meta.url);\nrequire('vue/compiler-sfc');",
+        )
+        .is_ok());
     }
 
     #[test]

@@ -58,6 +58,39 @@ pub struct Context {
 }
 
 impl Context {
+    /// A Context over `root` with an empty pin registry and no colours, for
+    /// tests that run one check against a temp tree.
+    #[cfg(test)]
+    pub fn for_root(root: &str) -> Self {
+        Context {
+            root: root.to_string(),
+            start_pwd: root.to_string(),
+            today: "2026-01-01".to_string(),
+            registry: Registry { rows: Vec::new() },
+            files: FileCache::new(root),
+            catalog_names: Vec::new(),
+            colors: Colors {
+                reset: "",
+                green: "",
+                yellow: "",
+                red: "",
+                dim: "",
+                bold: "",
+                cyan: "",
+            },
+            rows: RowBuffers::new(),
+            workflows_dir: format!("{root}/.github/workflows"),
+            workspace_yaml: format!("{root}/pnpm-workspace.yaml"),
+            catalog_exempt: Vec::new(),
+            ok_count: Cell::new(0),
+            fail_count: Cell::new(0),
+            pin_count: Cell::new(0),
+            warn_count: Cell::new(0),
+            overall_fail: Cell::new(false),
+            fatal: RefCell::new(None),
+        }
+    }
+
     pub fn new() -> Result<Self, String> {
         let root = std::env::var("BUILD_WORKSPACE_DIRECTORY").unwrap_or_else(|_| {
             std::env::current_dir()
@@ -285,6 +318,7 @@ impl Context {
             ("GO", "Go (go.mod → go.work)"),
             ("NODE", "Node (Dockerfile FROM node → .nvmrc major)"),
             ("PNPM", "pnpm (package.json packageManager → root)"),
+            ("RUST", "Rust (rust-toolchain(.toml) → MODULE.bazel rust.toolchain)"),
             ("CATALOG", "Catalog (package.json → pnpm-workspace.yaml catalog)"),
             ("VIS", "App visibility firewall (#82: app-scoped defaults + public allowlist)"),
             ("META", "App metadata catalog (#500: catalog-info.yaml ↔ CODEOWNERS)"),
@@ -296,6 +330,7 @@ impl Context {
             ("TIMEOUT", "Job timeouts (#209: every job bounded — no 6h default-timeout runners)"),
             ("SWEEP", "Full-sweep backstop (affected-scoped lanes → scheduled //... sweep)"),
             ("CACHESAVE", "Actions cache saves (only GitHub-hosted jobs on main save; queue/PR refs and self-hosted runners restore only)"),
+            ("GOPROXY", "CI Go module fetches (#4187: GOPROXY falls through on a proxy.golang.org timeout)"),
             ("IAC", "IaC destructive-import guard (zitadel-apps must create, never import)"),
             ("PULUMI", "Pulumi program identity (unique project names · customDomain under its zone)"),
             ("COPYBARA", "Copybara infra-leak guard (<app>/infra/ is monorepo-only, never mirrored)"),

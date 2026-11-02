@@ -21,6 +21,7 @@
  */
 
 import { GeminiSessionController } from '../voice/geminiSession.js';
+import { createTestVoiceUi } from './voiceUi.mjs';
 import { createNarrationScheduler } from '../voice/narration.js';
 
 const endpoint =
@@ -143,7 +144,7 @@ function harness(overrides = {}) {
       calls.push({ name, args, options });
       return { ok: true, action: name };
     },
-    ui: { root: { remove() {} } },
+    ui: createTestVoiceUi(),
     radioLayer: radio,
     now: () => clock,
     setTimer: (fn, ms) => {

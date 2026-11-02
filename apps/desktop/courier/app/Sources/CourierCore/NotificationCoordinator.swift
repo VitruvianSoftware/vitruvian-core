@@ -189,6 +189,11 @@ public final class NotificationCoordinator {
     private var typingEpoch: [String: Int] = [:]
     /// Tests: how many typing changes have been dealt with (read and acted on, or not read at all).
     private(set) var typingChangesHandled = 0
+    /// Tests: how many reminder changes have been dealt with (announced, ended in the open chat, or dropped).
+    private(set) var remindersHandled = 0
+    /// Tests: no chat is waiting to be read or being read for new messages, so whatever a change led to has been
+    /// announced. A test waits on this, never on time: a read takes as long as the machine makes it.
+    var isQuietForTesting: Bool { scheduled.isEmpty && inFlight.isEmpty }
 
     /// Pending delayed-delivery and repeat-unread timer IDs per chat, canceled when the chat is read.
     private var pendingTimerIDsByRoom: [String: Set<UUID>] = [:]
@@ -295,7 +300,10 @@ public final class NotificationCoordinator {
             latestOTPByRoom.removeValue(forKey: roomID)
             delivery.clear(roomID: roomID)
         case let .reminder(roomID):
-            Task { [weak self] in await self?.announceReminder(roomID: roomID) }
+            Task { [weak self] in
+                await self?.announceReminder(roomID: roomID)
+                self?.remindersHandled += 1
+            }
         case let .scheduled(roomID):
             guard let client = appModel.client else { return }
             Task { [weak self] in await self?.readScheduled(roomID: roomID, with: client) }

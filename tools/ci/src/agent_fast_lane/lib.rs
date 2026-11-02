@@ -18,7 +18,34 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-//! agent-fast-lane.sh — decide whether a PR may skip the heavy test jobs.
+//! Decides one thing for a pull request: may it skip the heavy test and build
+//! jobs? (#3418, Step 2b)
+//!
+//! WHY. Agent PRs are tested three times today: on the PR, in the merge queue,
+//! and (until Step 1) on main. The merge queue runs every test on the exact
+//! code that will land, so a PR run only finds a problem a little earlier. For
+//! our own agents' PRs we try going without it and measure what it costs in
+//! queue failures.
+//!
+//! WHO. All of these, or nobody:
+//!   - a pull_request event;
+//!   - from a branch in this repository, not a fork;
+//!   - opened by one of our agent apps: the author is a Bot whose user id is in
+//!     tools/agent-app/agents.tsv (the id, not the name, which anyone can copy);
+//!   - carrying the `agent-fast-lane` label.
+//! The fast checks (secret scan, licence, vulnerability scan, conformance,
+//! tidy, naming, actionlint) never ask this tool and always run.
+//!
+//! Callers build this tool and read agents.tsv from the BASE commit, not from the
+//! PR, so a pull request cannot rewrite the rule that lets it skip its tests.
+//!
+//! Any doubt is "full": a missing or unreadable roster, an unexpected event,
+//! a malformed label list. Full means the PR runs everything, as before.
+//!
+//! Prints verdict=fast|full and reason=..., also appended to $GITHUB_OUTPUT.
+//!
+//! Env: EVENT_NAME, GITHUB_REPOSITORY, PR_HEAD_REPO, PR_AUTHOR_ID,
+//! PR_AUTHOR_TYPE, PR_LABELS (JSON array of label names), AGENTS_TSV (path).
 
 use shell_compat::{cat, env, env_or_empty, err, out};
 
