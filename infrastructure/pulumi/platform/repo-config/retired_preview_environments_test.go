@@ -21,9 +21,6 @@
 package main
 
 import (
-	"sort"
-	"strings"
-	"sync"
 	"testing"
 
 	"github.com/pulumi/pulumi-github/sdk/v6/go/github"
@@ -32,34 +29,16 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi/config"
 )
 
-type importRecord struct {
-	typ, name, id string
-	inputs        resource.PropertyMap
-}
-
-// importMocks wraps envMocks and also keeps each resource's import id, which
-// envMocks drops.
-type importMocks struct {
-	envMocks
-	mu  sync.Mutex
-	got []importRecord
-}
-
-func (m *importMocks) NewResource(args pulumi.MockResourceArgs) (string, resource.PropertyMap, error) {
-	m.mu.Lock()
-	m.got = append(m.got, importRecord{args.TypeToken, args.Name, args.ID, args.Inputs})
-	m.mu.Unlock()
-	return m.envMocks.NewResource(args)
-}
-
-// The retired preview Environments are adopted exactly as they are live: an
-// import of the existing Environment, with only the repository and name set
-// (every other setting at its default, which is what GitHub shows), and
-// nothing else attached to them. Anything more would turn the import into a
-// change, or put an identity behind an Environment that is about to go.
-func TestRetiredFoundationPreviewEnvironmentsAreAdoptedUnchanged(t *testing.T) {
+// foundation-environments-preview and foundation-networks-preview were two
+// GitHub Environments that nothing used. GitHub created them when the
+// foundation preview jobs briefly used those names (#779). #780 renamed the
+// jobs, and the two Environments were left behind. #4260 brought them into
+// the stack unchanged, and removing them from code then deleted them. Nothing
+// may declare them again: either one coming back would be an unused
+// Environment that a workflow could name to pick up its settings.
+func TestRetiredFoundationPreviewEnvironmentsAreNotDeclared(t *testing.T) {
 	t.Setenv("PULUMI_CONFIG", stackConfigEnv(t))
-	m := &importMocks{envMocks: envMocks{resources: map[string][]resource.PropertyMap{}}}
+	m := &envMocks{resources: map[string][]resource.PropertyMap{}}
 	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
 		cfg := config.New(ctx, "")
 		repo, err := github.NewRepository(ctx, "vitruvian-core", &github.RepositoryArgs{
@@ -74,38 +53,28 @@ func TestRetiredFoundationPreviewEnvironmentsAreAdoptedUnchanged(t *testing.T) {
 		t.Fatalf("foundationEnvironments: %v", err)
 	}
 
-	want := map[string]bool{
+	retired := map[string]bool{
 		"foundation-environments-preview": true,
 		"foundation-networks-preview":     true,
 	}
-	var adopted []string
-	for _, r := range m.got {
-		env := ""
-		if v, ok := r.inputs["environment"]; ok && v.IsString() {
-			env = v.StringValue()
+	declared := 0
+	for typ, all := range m.resources {
+		for _, inputs := range all {
+			v, ok := inputs["environment"]
+			if !ok || !v.IsString() {
+				continue
+			}
+			if typ == "github:index/repositoryEnvironment:RepositoryEnvironment" {
+				declared++
+			}
+			if retired[v.StringValue()] {
+				t.Errorf("%s declares retired Environment %s", typ, v.StringValue())
+			}
 		}
-		if !want[env] && !want[r.name] {
-			continue
-		}
-		if r.typ != "github:index/repositoryEnvironment:RepositoryEnvironment" {
-			t.Errorf("%s (%s) is attached to retired Environment %s", r.name, r.typ, env)
-			continue
-		}
-		if r.id != "vitruvian-core:"+env {
-			t.Errorf("%s: import id = %q, want %q (an Environment created rather than imported would be new)", r.name, r.id, "vitruvian-core:"+env)
-		}
-		var keys []string
-		for k := range r.inputs {
-			keys = append(keys, string(k))
-		}
-		sort.Strings(keys)
-		if got := strings.Join(keys, ","); got != "environment,repository" {
-			t.Errorf("%s: inputs = [%s], want only [environment,repository]", r.name, got)
-		}
-		adopted = append(adopted, env)
 	}
-	sort.Strings(adopted)
-	if got := strings.Join(adopted, ","); got != "foundation-environments-preview,foundation-networks-preview" {
-		t.Errorf("adopted = [%s], want each retired Environment exactly once", got)
+	// Guard against a vacuous pass: the mocks must have seen the foundation
+	// Environments that do still exist.
+	if declared == 0 {
+		t.Fatal("foundationEnvironments declared no Environments; the check above saw nothing")
 	}
 }
