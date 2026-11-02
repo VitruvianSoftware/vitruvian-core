@@ -301,15 +301,61 @@ fn find_backtick(t: &[char], mut i: usize) -> Result<usize, PErr> {
     Err(PErr::Parse)
 }
 
-fn ansi_escape(c: char) -> char {
+/// Decode the escape at t[j] == '\\' inside `$'...'` as bash and zsh do:
+/// `\n`-style letters, `\NNN` octal, `\xHH`, `\uHHHH`, `\UHHHHHHHH` and
+/// `\cX`. So `$'\x67it'` is `git` (#4207 review). An unknown escape keeps
+/// its backslash, as bash does. Returns the text and the index after it.
+fn ansi_escape(t: &[char], j: usize) -> (String, usize) {
+    let c = t[j + 1];
+    let simple = match c {
+        'n' => Some('\n'),
+        't' => Some('\t'),
+        'r' => Some('\r'),
+        'a' => Some('\x07'),
+        'b' => Some('\x08'),
+        'e' | 'E' => Some('\x1b'),
+        'f' => Some('\x0c'),
+        'v' => Some('\x0b'),
+        '\\' | '\'' | '"' | '?' => Some(c),
+        _ => None,
+    };
+    if let Some(ch) = simple {
+        return (ch.to_string(), j + 2);
+    }
+    // Up to `max` digits of `radix` starting at k.
+    let digits = |k: usize, radix: u32, max: usize| -> (u32, usize) {
+        let mut v = 0u32;
+        let mut e = k;
+        while e < t.len() && e - k < max {
+            match t[e].to_digit(radix) {
+                Some(d) => v = v.wrapping_mul(radix).wrapping_add(d),
+                None => break,
+            }
+            e += 1;
+        }
+        (v, e)
+    };
+    let code = |v: u32| char::from_u32(v).unwrap_or('\u{fffd}').to_string();
     match c {
-        'n' => '\n',
-        't' => '\t',
-        'r' => '\r',
-        'a' => '\x07',
-        'e' => '\x1b',
-        '0' => '\0',
-        other => other, // \\ \' \" and anything else: the character itself
+        '0'..='7' => {
+            let (v, e) = digits(j + 1, 8, 3);
+            (code(v & 0xff), e)
+        }
+        'x' | 'u' | 'U' => {
+            let max = match c {
+                'x' => 2,
+                'u' => 4,
+                _ => 8,
+            };
+            let (v, e) = digits(j + 2, 16, max);
+            if e == j + 2 {
+                (format!("\\{}", c), j + 2) // no digits: kept as written
+            } else {
+                (code(v), e)
+            }
+        }
+        'c' if j + 2 < t.len() => (code((t[j + 2] as u32) & 0x1f), j + 3),
+        _ => (format!("\\{}", c), j + 2),
     }
 }
 
@@ -382,6 +428,24 @@ struct Parser<'a> {
     quoted: bool,
     pending_redirect: Option<&'static str>,
     pending_heredocs: VecDeque<PendingHeredoc>,
+    /// Read the way bash 3.2 does: a leading `NAME[` word runs to its `]`.
+    bash32: bool,
+    /// Open-bracket depth of a leading `NAME[` word being read.
+    subscript: usize,
+    /// Such a word ended before its `]`, so bash 3.2 reads the text differently.
+    saw: bool,
+    /// The current word has had an unquoted `[` (checked once per word).
+    bracket_seen: bool,
+    /// Only leading keywords and assignments so far in this command, and no
+    /// redirection: a word here may be a prefix assignment. Kept as words
+    /// end, so checking it is O(1) however long the command is.
+    prefix_ok: bool,
+    /// Still in the leading keywords (`if`, `!`, `time -p`, ...).
+    lead_kw: bool,
+    /// Where in the word a `$'...'` NUL fell. bash cuts only that quoted
+    /// part there; zsh keeps the NUL, and the C string the kernel gets ends
+    /// at it, so the rest of the word is dropped. (#4207 review)
+    nul_at: Option<usize>,
 }
 
 impl<'a> Parser<'a> {
@@ -389,7 +453,17 @@ impl<'a> Parser<'a> {
         if !self.in_word {
             return;
         }
-        let w = std::mem::take(&mut self.word);
+        let mut w = std::mem::take(&mut self.word);
+        if let Some(k) = self.nul_at.take() {
+            // The default reading is zsh's: the word ends at the NUL. The
+            // bash reading (`bash32`) keeps what follows the quote.
+            if !self.bash32 {
+                if w.len() > k {
+                    self.saw = true;
+                }
+                w.truncate(k);
+            }
+        }
         if let Some(op) = self.pending_redirect.take() {
             if op == "<<" || op == "<<-" {
                 // A quoted delimiter ('EOF', "EOF", \EOF) makes the body
@@ -405,11 +479,35 @@ impl<'a> Parser<'a> {
             } else {
                 self.arena[self.cur].redirects.push((op.to_string(), w));
             }
+            self.prefix_ok = false;
         } else {
+            if self.prefix_ok {
+                let last_time = self.arena[self.cur].words.last().map(|l| l == "time");
+                let kw = KEYWORDS_DROP.contains(&w.as_str())
+                    || w == "time"
+                    || (w == "-p" && last_time == Some(true));
+                if !(self.lead_kw && kw) {
+                    self.lead_kw = false;
+                    self.prefix_ok = crate::pyutil::is_assignment(&w);
+                }
+            }
             self.arena[self.cur].words.push(w);
         }
         self.in_word = false;
         self.quoted = false;
+        // A `NAME[` word cut before its `]`: bash 3.2 would read on.
+        if self.subscript > 0 {
+            self.saw = true;
+        }
+        self.subscript = 0;
+        self.bracket_seen = false;
+    }
+
+    /// Would a word starting here be read as a prefix assignment? Only
+    /// leading keywords and assignments come before it, and no redirection
+    /// (bash 3.2 stops reading `NAME[...]` whole after one).
+    fn prefix_position(&self) -> bool {
+        self.prefix_ok && self.pending_redirect.is_none()
     }
 
     fn end_command(&mut self, budget: &mut i64) -> Result<(), PErr> {
@@ -420,6 +518,8 @@ impl<'a> Parser<'a> {
         }
         self.arena.push(SimpleCommand::default());
         self.cur = self.arena.len() - 1;
+        self.prefix_ok = true;
+        self.lead_kw = true;
         Ok(())
     }
 
@@ -463,7 +563,7 @@ impl<'a> Parser<'a> {
                         continue;
                     }
                     seen.push(sub.clone());
-                    match parse_script_at(&sub, self.depth + 1, budget) {
+                    match parse_dialect(&sub, self.depth + 1, budget, self.bash32, &mut self.saw) {
                         Ok(cmds) => self.nested.extend(cmds),
                         Err(PErr::Parse) => {
                             self.nested.extend(fallback_split(&cs(&sub), Some(budget))?)
@@ -526,6 +626,13 @@ fn fd_dup(t: &[char], i: usize) -> Option<usize> {
     None
 }
 
+/// A shell variable name: `[A-Za-z_][A-Za-z0-9_]*`.
+fn is_name(w: &str) -> bool {
+    let mut cs = w.chars();
+    matches!(cs.next(), Some(c) if c.is_ascii_alphabetic() || c == '_')
+        && cs.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
 /// `re.match(r"^[A-Za-z_][A-Za-z0-9_]*\(\)$", w)`: a function definition.
 fn is_funcdef(w: &str) -> bool {
     let t: Vec<char> = w.chars().collect();
@@ -551,6 +658,27 @@ pub fn parse_script_at(
     depth: usize,
     budget: &mut i64,
 ) -> Result<Vec<SimpleCommand>, PErr> {
+    let mut saw = false;
+    parse_dialect(t, depth, budget, false, &mut saw)
+}
+
+/// `parse_script_at`, read as bash 3.2 reads it when `bash32` is set.
+///
+/// bash 3.2 (macOS `/bin/bash`, and `/bin/sh` there) and bash 5.2 read a
+/// leading `NAME[...]` up to its `]` as one word, blanks, `;`, `|` and
+/// newlines included, and then run what follows: `A[ x ]=1 git push` and
+/// `A[;]=1 git push` run `git push` (#4210). The default reading splits at
+/// blanks as zsh does (zsh stops with `bad pattern`); `saw` is set when it
+/// cut such a word before its `]`, so the caller judges both readings, which
+/// only errs on the safe side. The same two readings cover a NUL in
+/// `$'...'`: bash cuts only the quoted part, zsh the whole word.
+pub fn parse_dialect(
+    t: &[char],
+    depth: usize,
+    budget: &mut i64,
+    bash32: bool,
+    saw: &mut bool,
+) -> Result<Vec<SimpleCommand>, PErr> {
     spend(budget)?;
     if depth > 8 {
         return Err(PErr::Parse);
@@ -568,10 +696,26 @@ pub fn parse_script_at(
         quoted: false,
         pending_redirect: None,
         pending_heredocs: VecDeque::new(),
+        bash32,
+        subscript: 0,
+        saw: false,
+        bracket_seen: false,
+        prefix_ok: true,
+        lead_kw: true,
+        nul_at: None,
     };
     let mut i = 0;
     while i < n {
         let c = t[i];
+        // Inside bash 3.2's `NAME[...`, blanks and operators are word text.
+        if p.bash32
+            && p.subscript > 0
+            && (" \t\n;|&()#".contains(c) || ((c == '<' || c == '>') && t.get(i + 1) != Some(&'(')))
+        {
+            p.word.push(c);
+            i += 1;
+            continue;
+        }
         // Comments start only at the beginning of a word.
         if c == '#' && !p.in_word {
             i = find_char(t, '\n', i).unwrap_or(n);
@@ -606,6 +750,12 @@ pub fn parse_script_at(
             i = j + 1;
             continue;
         }
+        if c == '$' && i + 1 < n && t[i + 1] == '"' {
+            // A `$"..."` locale string is its text when there is no
+            // translation, which is always here: `$"git" push` is git push.
+            i += 1;
+            continue;
+        }
         if c == '$' && i + 1 < n && t[i + 1] == '\'' {
             // ANSI-C quoting.
             let mut j = i + 2;
@@ -618,8 +768,9 @@ pub fn parse_script_at(
                     continue;
                 }
                 if t[j] == '\\' && j + 1 < n {
-                    out.push(ansi_escape(t[j + 1]));
-                    j += 2;
+                    let (text, next) = ansi_escape(t, j);
+                    out.push_str(&text);
+                    j = next;
                     continue;
                 }
                 out.push(t[j]);
@@ -627,6 +778,13 @@ pub fn parse_script_at(
             }
             if j >= n {
                 return Err(PErr::Parse);
+            }
+            // bash and zsh end the text at a NUL (`\0`, `\x00`, `\c@`).
+            if let Some(k) = out.find('\0') {
+                out.truncate(k);
+                if p.nul_at.is_none() {
+                    p.nul_at = Some(p.word.len() + k);
+                }
             }
             p.word.push_str(&out);
             p.in_word = true;
@@ -671,7 +829,7 @@ pub fn parse_script_at(
                         continue;
                     }
                     let k = find_matching(t, j + 2, '(', ')')?;
-                    let sub = parse_script_at(&t[j + 2..k], depth + 1, budget)?;
+                    let sub = parse_dialect(&t[j + 2..k], depth + 1, budget, bash32, &mut p.saw)?;
                     p.nested.extend(sub);
                     out.push_str(&cs(&t[j..k + 1]));
                     j = k + 1;
@@ -679,7 +837,7 @@ pub fn parse_script_at(
                 }
                 if ch == '`' {
                     let k = find_backtick(t, j + 1)?;
-                    let sub = parse_script_at(&t[j + 1..k], depth + 1, budget)?;
+                    let sub = parse_dialect(&t[j + 1..k], depth + 1, budget, bash32, &mut p.saw)?;
                     p.nested.extend(sub);
                     out.push_str(&cs(&t[j..k + 1]));
                     j = k + 1;
@@ -709,7 +867,7 @@ pub fn parse_script_at(
                 continue;
             }
             let k = find_matching(t, i + 2, '(', ')')?;
-            let sub = parse_script_at(&t[i + 2..k], depth + 1, budget)?;
+            let sub = parse_dialect(&t[i + 2..k], depth + 1, budget, bash32, &mut p.saw)?;
             p.nested.extend(sub);
             p.word.push_str(&cs(&t[i..k + 1]));
             p.in_word = true;
@@ -725,7 +883,7 @@ pub fn parse_script_at(
         }
         if c == '`' {
             let k = find_backtick(t, i + 1)?;
-            let sub = parse_script_at(&t[i + 1..k], depth + 1, budget)?;
+            let sub = parse_dialect(&t[i + 1..k], depth + 1, budget, bash32, &mut p.saw)?;
             p.nested.extend(sub);
             p.word.push_str(&cs(&t[i..k + 1]));
             p.in_word = true;
@@ -735,7 +893,7 @@ pub fn parse_script_at(
         if (c == '<' || c == '>') && i + 1 < n && t[i + 1] == '(' {
             // Process substitution <( ... ) / >( ... ).
             let k = find_matching(t, i + 2, '(', ')')?;
-            let sub = parse_script_at(&t[i + 2..k], depth + 1, budget)?;
+            let sub = parse_dialect(&t[i + 2..k], depth + 1, budget, bash32, &mut p.saw)?;
             p.nested.extend(sub);
             p.word.push_str(&cs(&t[i..k + 1]));
             p.in_word = true;
@@ -794,11 +952,26 @@ pub fn parse_script_at(
         }
         let m = word_run(t, i);
         let end = if m > i { m } else { i + 1 };
-        p.word.push_str(&cs(&t[i..end]));
-        p.in_word = true;
+        for &ch in &t[i..end] {
+            if p.subscript > 0 {
+                if ch == '[' {
+                    p.subscript += 1;
+                } else if ch == ']' {
+                    p.subscript -= 1;
+                }
+            } else if ch == '[' && !p.bracket_seen {
+                p.bracket_seen = true;
+                if p.in_word && !p.quoted && p.prefix_position() && is_name(&p.word) {
+                    p.subscript = 1;
+                }
+            }
+            p.word.push(ch);
+            p.in_word = true;
+        }
         i = end;
     }
     p.end_command(budget)?;
+    *saw |= p.saw;
 
     // Drop shell keywords that lead a command (if/then/do/...); keep the rest.
     let Parser {
@@ -1005,5 +1178,96 @@ mod tests {
             parse_script(&"true; ".repeat(25000), &mut b),
             Err(PErr::TooComplex)
         );
+    }
+
+    #[test]
+    fn bash32_reads_a_leading_subscript_whole() {
+        let read = |text: &str, bash32: bool| {
+            let t: Vec<char> = text.chars().collect();
+            let mut b = MAX_COMMANDS;
+            let mut saw = false;
+            let cmds = parse_dialect(&t, 0, &mut b, bash32, &mut saw).unwrap();
+            (cmds.into_iter().map(|c| c.words).collect::<Vec<_>>(), saw)
+        };
+        // #4210: bash 3.2 keeps blanks, ; and | inside a leading NAME[...].
+        assert_eq!(
+            read("A[ x ]=1 git push", true).0,
+            v(&[&["A[ x ]=1", "git", "push"]])
+        );
+        assert_eq!(
+            read("A[;]=1 git push", true).0,
+            v(&[&["A[;]=1", "git", "push"]])
+        );
+        assert_eq!(
+            read("A[|]=1 git push", true).0,
+            v(&[&["A[|]=1", "git", "push"]])
+        );
+        assert_eq!(
+            read("A[ [ ] ]=1 git push", true).0,
+            v(&[&["A[ [ ] ]=1", "git", "push"]])
+        );
+        // The default reading splits them, and says bash 3.2 would not.
+        let (cmds, saw) = read("A[;]=1 git push", false);
+        assert_eq!(cmds, v(&[&["A["], &["]=1", "git", "push"]]));
+        assert!(saw);
+        // Closed brackets, quoted names and later words read the same either way.
+        assert!(!read("A[0]=1 git push", false).1);
+        assert!(!read("echo A[ x ]=1", false).1);
+        assert_eq!(
+            read("echo A[ x ]=1", true).0,
+            v(&[&["echo", "A[", "x", "]=1"]])
+        );
+        assert!(!read("\"A\"[ x ]=1 git push", false).1);
+        // After a redirection bash 3.2 stops reading it whole.
+        assert_eq!(read(">f A[ x ]=1", true).0, v(&[&["A[", "x", "]=1"]]));
+    }
+
+    #[test]
+    fn ansi_c_and_locale_strings_decode_like_bash() {
+        // #4207 review: `$'\x63argo'` is cargo to the shell, so to the guard.
+        for (text, want) in [
+            ("$'\\x63argo'", "cargo"),
+            ("$'\\143argo'", "cargo"),
+            ("$'c\\u0061rgo'", "cargo"),
+            ("$'c\\U00000061rgo'", "cargo"),
+            ("$'\\x67it'", "git"),
+            ("$'a\\tb'", "a\tb"),
+            ("$'\\q'", "\\q"),
+            ("$'\\x'", "\\x"),
+            ("$'\\cA'", "\u{1}"),
+            ("$\"cargo\"", "cargo"),
+            ("x$\"y\"z", "xyz"),
+        ] {
+            assert_eq!(words(text), v(&[&[want]]), "{}", text);
+        }
+    }
+
+    #[test]
+    fn nul_in_ansi_c_ends_the_text() {
+        let read = |text: &str, bash32: bool| {
+            let t: Vec<char> = text.chars().collect();
+            let mut b = MAX_COMMANDS;
+            let mut saw = false;
+            let cmds = parse_dialect(&t, 0, &mut b, bash32, &mut saw).unwrap();
+            (cmds.into_iter().map(|c| c.words).collect::<Vec<_>>(), saw)
+        };
+        // The kernel gets a C string, so the program name ends at the NUL.
+        for text in [
+            "$'git\\0zz' push",
+            "$'git\\x00' push",
+            "$'git\\c@' push",
+            "$'gi\\x74\\0' push",
+            "$'git\\U00000000' push",
+            "$'git\u{0}zz' push",
+        ] {
+            assert_eq!(read(text, false).0, v(&[&["git", "push"]]), "{}", text);
+        }
+        // bash cuts only the quoted part; zsh the whole word. Both are judged.
+        assert_eq!(
+            read("$'gi\\0zz't push", false),
+            (v(&[&["gi", "push"]]), true)
+        );
+        assert_eq!(read("$'gi\\0zz't push", true).0, v(&[&["git", "push"]]));
+        assert!(!read("$'git\\0' push", false).1);
     }
 }

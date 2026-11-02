@@ -436,7 +436,7 @@ another branch; until one lands, the refusal says so and points to James.
 | `swift` | `swift build/test/run/package`, `swiftc` | `bazel test //apps/desktop/<app>:<Tests>` |
 | `xcode` | `xcodebuild`, `xcrun notarytool/stapler/altool` | the app's `bazel build`/`test` and packaging targets |
 | `node` | `npm`/`pnpm`/`yarn`/`bun` install, test, run, exec; `npx` | `bazel test` / `bazel run`; Bazel installs node_modules itself |
-| `cargo` | `cargo build/test/run/check/clippy/publish` | `bazel test` / `bazel build` |
+| `cargo` | `cargo build/test/run/check/clippy/publish`; `cargo update/generate-lockfile/add/remove` (also with `+toolchain`, global flags or `rustup run <toolchain>`) | `bazel test` / `bazel build`; `bazel run //tools/crates:lock` (after editing `Cargo.toml` by hand for add/remove) |
 | `gradle` | `gradle`, `./gradlew` | `bazel build //apps/mobile/<app>:app` |
 | `pytest` | `pytest`, `python -m pytest`, `uv run pytest` | `bazel test` |
 | `lint` | `gofmt`, `golangci-lint`, `ruff`, `eslint`, `prettier`, `shellcheck`, `buildifier`, ... | `bazel run //tools/format` (or `//:tidy`), `aspect lint` |
@@ -474,9 +474,23 @@ It splits a command into every program it runs: `&&`, `||`, `;`, `|`,
 newlines, `( )` and `{ }`, `$(...)`, backticks, `<(...)`, `if/for/while`
 bodies, `bash -c`/`sh -c`/`zsh -lc`, `bash <<EOF` and `<<<`, `eval`, `env`
 (including `-S`), `xargs`, `find -exec`, `watch`, `nice`, `time`, `timeout`,
-`nohup`, `command`, `exec`, `sudo`, `caffeinate`, `direnv exec`, `uv run`,
-`uvx` and `python -m`. It matches programs by basename (`/usr/bin/git` is git)
-and follows `cd`, `git -C`, `--git-dir` and `--work-tree` to decide scope. A
+`nohup`, `command`, `exec`, `sudo`, `caffeinate`, `direnv exec`, `rustup run`, `uv run`,
+`uvx` and `python -m`. It matches programs by basename (`/usr/bin/git` is git,
+and so is zsh's `=git`) and ignores their case as macOS's disk does: ASCII, plus the eleven non-ASCII
+letters whose full Unicode case fold is ASCII (`ſ`, Kelvin `K`, `ß`, `ﬀ`, ...),
+so `GIT push` and `baſh -c ...` are judged as git and bash. It decodes `$'...'`
+escapes and `$"..."` strings as bash does (`$'\x67it'` is git), ending the text
+at a NUL as bash and zsh do (`$'git\0zz'` is git), judges prefix assignments both the way bash reads them (bash 3.2 and
+5.2 read a leading `NAME[...]` up to its `]` as one word, blanks, `;` and `|`
+included, and then run what follows: `A[ x ]=1 git push` runs git push) and
+split at blanks as zsh does (zsh stops with `bad pattern`), so judging both
+readings only errs on the safe side, and judges every rustup proxy in a command (`rustup`, `cargo`,
+`rustc`, `rustdoc`, `rustfmt`, `cargo-fmt`, ... — rustup 1.29.2's list) as the
+program a `RUSTUP_FORCE_ARG0=<x>` anywhere in it names (`export`,
+`declare -x`, a prefix on `bash -c`), taking `<x>`'s file stem as rustup does
+(`Path::file_stem`: `/x/cargo.exe` and `cargo/.` are cargo). A computed value (`$R`, `${X:-cargo}`, `$(...)`,
+backticks) refuses every rustup proxy, and more than 8 distinct values is
+`oversize`. `cargo-<sub>` called by name is judged as `cargo <sub>`. It follows `cd`, `git -C`, `--git-dir` and `--work-tree` to decide scope. A
 heredoc fed to `cat` is data, including inside `"$(cat <<'EOF' ... EOF)"`
 with apostrophes or backticks in the body; one fed to `bash` is a script. In
 an UNQUOTED heredoc (`<<EOF`, not `<<'EOF'`) the shell runs every `$(...)` and
@@ -540,7 +554,8 @@ jq -c 'select(.source // "" | startswith("working-copy"))' ~/.local/state/agent-
 
 - **It reads text.** A script that calls git inside it (`bash tools/x.sh`,
   `make`, a Python `subprocess`), a variable used as a command (`g=git; $g push`)
-  or an alias is not seen. A second layer (agent-only `git`/`gh` shims on
+  or as a value (`R=cargo; X=$R`) or an alias is not seen (RUSTUP_FORCE_ARG0 is
+  the exception: a computed value there is refused outright). A second layer (agent-only `git`/`gh` shims on
   `PATH`) is planned to catch most of these.
 - **Unquoted heredocs** (`<<EOF`) are only half-read. The guard checks the
   `$(...)` and backtick commands in the body, which the shell runs, but treats
