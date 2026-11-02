@@ -68,6 +68,62 @@ pub fn digest_pairs(app_image_digests: &[u8]) -> Vec<Pair<'_>> {
         .collect()
 }
 
+/// The `<APP>_IMAGE_DIGEST` variable a pair is exported as.
+fn env_var(app: &[u8]) -> Vec<u8> {
+    let mut v: Vec<u8> = app
+        .iter()
+        .map(|&c| {
+            if c == b'-' {
+                b'_'
+            } else {
+                c.to_ascii_uppercase()
+            }
+        })
+        .collect();
+    v.extend_from_slice(b"_IMAGE_DIGEST");
+    v
+}
+
+/// Refuses the WHOLE input before anything is exported, because every line
+/// written to $GITHUB_ENV is parsed by the runner, not by us:
+///
+/// - an app name outside `[a-z0-9-]`: `a<<D=x` becomes `A<<D_IMAGE_DIGEST=x`,
+///   which the runner reads as the start of a heredoc that swallows the lines
+///   after it, so a digest the check saw is never set;
+/// - two pairs for one variable (`app=..,app=..`): the last silently wins, and
+///   the check only ever looked for one of them;
+/// - whitespace or a control character in a digest (`app=sha256:aaa\r`,
+///   `app= sha256:aaa`): no image reference contains one, and it reaches the
+///   program as part of the image.
+///
+/// Pairs [`digest_pairs`] already dropped (empty name, empty or
+/// whitespace-only digest) export nothing and stay "missing" instead.
+pub fn invalid_pairs(pairs: &[Pair<'_>]) -> Option<Vec<u8>> {
+    let name_ok = |c: &u8| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == b'-';
+    let mut seen: Vec<Vec<u8>> = Vec::new();
+    for p in pairs {
+        if !p.app.iter().all(name_ok) {
+            return Some(cat(&[b"app name '", p.app, b"' is not [a-z0-9-]"]));
+        }
+        if p.digest
+            .iter()
+            .any(|c| c.is_ascii_whitespace() || c.is_ascii_control())
+        {
+            return Some(cat(&[
+                b"the digest for '",
+                p.app,
+                b"' contains whitespace or a control character",
+            ]));
+        }
+        let var = env_var(p.app);
+        if seen.contains(&var) {
+            return Some(cat(&[b"'", p.app, b"' is given more than once"]));
+        }
+        seen.push(var);
+    }
+    None
+}
+
 /// Pure function: returns space-separated list of app names that are
 /// `_workload_enabled: "true"` in `pulumi_file_contents` but have no
 /// matching pair in `pairs` (from [`digest_pairs`], the same pairs the guard
@@ -169,20 +225,19 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
     };
 
     let pairs = digest_pairs(&app_image_digests);
+    if let Some(why) = invalid_pairs(&pairs) {
+        // stdout, like the other ::error:: lines; nothing has been exported.
+        out(&cat(&[
+            b"::error::digest guard: refusing app_image_digests: ",
+            &why,
+            b". Pass '<app>=<ref>' pairs, one per app, with lowercase [a-z0-9-] names.\n",
+        ]));
+        return 1;
+    }
     if !pairs.is_empty() {
         let github_env = shell_compat::env_or_empty("GITHUB_ENV");
         for &Pair { app, digest, .. } in &pairs {
-            let var: Vec<u8> = app
-                .iter()
-                .map(|&c| {
-                    if c == b'-' {
-                        b'_'
-                    } else {
-                        c.to_ascii_uppercase()
-                    }
-                })
-                .collect();
-            let var_line = cat(&[&var, b"_IMAGE_DIGEST"]);
+            let var_line = env_var(app);
             // The script ran under `set -eu`: an unset GITHUB_ENV, or one it
             // cannot append to, stopped it with exit 1. A digest that never
             // reaches the program would render the EMPTY image this guard
