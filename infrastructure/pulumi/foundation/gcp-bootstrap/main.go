@@ -37,124 +37,128 @@ import (
 )
 
 func main() {
-	pulumi.Run(func(ctx *pulumi.Context) error {
-		// 1. Load Configuration (see config.go)
-		cfg := loadConfig(ctx)
+	pulumi.Run(program)
+}
 
-		// 1b. Optionally create Google Workspace groups (see groups.go).
-		// Groups must exist before IAM bindings reference them.
-		groupOpts, err := groupsProviderOptions(ctx, cfg)
-		if err != nil {
-			return err
-		}
-		groupOutputs, groupResources, err := deployGroups(ctx, cfg, groupOpts...)
-		if err != nil {
-			return err
-		}
+// program is the whole stack. It is a named function so tests can run the
+// complete program under Pulumi mocks and inspect every resource it declares.
+func program(ctx *pulumi.Context) error {
+	// 1. Load Configuration (see config.go)
+	cfg := loadConfig(ctx)
 
-		// 2. Create the Bootstrap Folder (see projects.go)
-		bootstrapFolder, folderID, err := deployBootstrapFolder(ctx, cfg)
-		if err != nil {
-			return err
-		}
+	// 1b. Optionally create Google Workspace groups (see groups.go).
+	// Groups must exist before IAM bindings reference them.
+	groupOpts, err := groupsProviderOptions(ctx, cfg)
+	if err != nil {
+		return err
+	}
+	groupOutputs, groupResources, err := deployGroups(ctx, cfg, groupOpts...)
+	if err != nil {
+		return err
+	}
 
-		// 2b. Authorize project-metadata (label/name) UPDATES before any project is
-		// created or updated. On a migration apply the seed + cicd label update needs
-		// resourcemanager.projects.update, granted by the foundationProjectMetadataUpdater
-		// custom org role bound to the bootstrap SA. That grant must be effective
-		// (created AND IAM-propagated) before the update runs. When bootstrap_sa_email
-		// is set we bind it via a config-derived STRING member so the grant chain does
-		// NOT depend on the seed project that hosts the SA — breaking the
-		// seed -> SA -> grant -> seed cycle — and return a propagation-wait gate the
-		// projects are ordered behind. When unset (fresh org) this is a no-op and the
-		// legacy in-deployIAM path applies (create-with-labels, no update).
-		grant, err := authorizeProjectMetadataUpdates(ctx, cfg, groupResources)
-		if err != nil {
-			return err
-		}
+	// 2. Create the Bootstrap Folder (see projects.go)
+	bootstrapFolder, folderID, err := deployBootstrapFolder(ctx, cfg)
+	if err != nil {
+		return err
+	}
 
-		// 3. Deploy the Seed Project (state storage and SA hosting)
-		// Bucket IAM members are added later in deployIAM once SAs exist.
-		seed, err := deploySeedProject(ctx, cfg, folderID, nil, grant)
-		if err != nil {
-			return err
-		}
+	// 2b. Authorize project-metadata (label/name) UPDATES before any project is
+	// created or updated. On a migration apply the seed + cicd label update needs
+	// resourcemanager.projects.update, granted by the foundationProjectMetadataUpdater
+	// custom org role bound to the bootstrap SA. That grant must be effective
+	// (created AND IAM-propagated) before the update runs. When bootstrap_sa_email
+	// is set we bind it via a config-derived STRING member so the grant chain does
+	// NOT depend on the seed project that hosts the SA — breaking the
+	// seed -> SA -> grant -> seed cycle — and return a propagation-wait gate the
+	// projects are ordered behind. When unset (fresh org) this is a no-op and the
+	// legacy in-deployIAM path applies (create-with-labels, no update).
+	grant, err := authorizeProjectMetadataUpdates(ctx, cfg, groupResources)
+	if err != nil {
+		return err
+	}
 
-		// 4. Deploy the CI/CD Project (pipeline hosting)
-		cicd, err := deployCICDProject(ctx, cfg, folderID, grant)
-		if err != nil {
-			return err
-		}
+	// 3. Deploy the Seed Project (state storage and SA hosting)
+	// Bucket IAM members are added later in deployIAM once SAs exist.
+	seed, err := deploySeedProject(ctx, cfg, folderID, nil, grant)
+	if err != nil {
+		return err
+	}
 
-		// 5. Deploy IAM: granular service accounts with least-privilege
-		// bindings (see sa.go)
-		// gates collects bindings created inside deployIAM that later resources must
-		// be ordered behind — see bootstrapGates in sa.go.
-		gates := &bootstrapGates{}
-		sas, err := deployIAM(ctx, cfg, seed, cicd, groupResources, grant, gates)
-		if err != nil {
-			return err
-		}
+	// 4. Deploy the CI/CD Project (pipeline hosting)
+	cicd, err := deployCICDProject(ctx, cfg, folderID, grant)
+	if err != nil {
+		return err
+	}
 
-		// 5a. Read-only identities for PR previews (see sa_preview.go).
-		previewSAs, err := deployPreviewIdentities(ctx, cfg, seed, pulumi.DependsOn(groupResources))
-		if err != nil {
-			return err
-		}
+	// 5. Deploy IAM: granular service accounts with least-privilege
+	// bindings (see sa.go)
+	// gates collects bindings created inside deployIAM that later resources must
+	// be ordered behind — see bootstrapGates in sa.go.
+	gates := &bootstrapGates{}
+	sas, err := deployIAM(ctx, cfg, seed, cicd, groupResources, grant, gates)
+	if err != nil {
+		return err
+	}
 
-		// 5b. The folder-scoped allowlist of external OIDC issuers. Built once, as
-		// the union of every federation below, because it is a SINGLE GCP resource
-		// -- and created FIRST, because a provider naming an issuer that is not yet
-		// allowed is refused outright. See build_wif_issuer_policy.go.
-		issuerPolicy, err := deployWIFIssuerPolicy(ctx, cfg, gates.PolicyAdminBinding)
-		if err != nil {
-			return err
-		}
+	// 5a. Read-only identities for PR previews (see sa_preview.go).
+	previewSAs, err := deployPreviewIdentities(ctx, cfg, seed, pulumi.DependsOn(groupResources))
+	if err != nil {
+		return err
+	}
 
-		// 5c. Pulumi ESC federation: lets an agent session obtain GCP credentials
-		// with no key anywhere, since the org forbids SA keys. Gated on
-		// pulumi_esc_org; unset, this is a no-op and //tools/gcp-token's tailnet
-		// broker stays the only path. See build_pulumi_esc.go.
-		escOutputs, err := deployPulumiESCOIDC(ctx, cfg, cicd, issuerPolicy)
-		if err != nil {
-			return err
-		}
-		exportPulumiESCOutputs(ctx, cfg, escOutputs)
+	// 5b. The folder-scoped allowlist of external OIDC issuers. Built once, as
+	// the union of every federation below, because it is a SINGLE GCP resource
+	// -- and created FIRST, because a provider naming an issuer that is not yet
+	// allowed is refused outright. See build_wif_issuer_policy.go.
+	issuerPolicy, err := deployWIFIssuerPolicy(ctx, cfg, gates.PolicyAdminBinding)
+	if err != nil {
+		return err
+	}
 
-		// The Pulumi half of the same federation. Ordered after the GCP half
-		// because the environment definition quotes its outputs.
-		if err := deployPulumiESCEnvironments(ctx, cfg, cicd, escOutputs); err != nil {
-			return err
-		}
+	// 5c. Pulumi ESC federation: lets an agent session obtain GCP credentials
+	// with no key anywhere, since the org forbids SA keys. Gated on
+	// pulumi_esc_org; unset, this is a no-op and //tools/gcp-token's tailnet
+	// broker stays the only path. See build_pulumi_esc.go.
+	escOutputs, err := deployPulumiESCOIDC(ctx, cfg, cicd, issuerPolicy)
+	if err != nil {
+		return err
+	}
+	exportPulumiESCOutputs(ctx, cfg, escOutputs)
 
-		// 5d. Homelab cluster federation: the same keyless idea applied to
-		// workloads running IN the cluster (Backstage, Grafana) that need to read
-		// GCP APIs. Gated on cluster_issuer_uri; unset, this is a no-op.
-		// See build_homelab_cluster_wif.go.
-		clusterSA, err := deployHomelabClusterWIF(ctx, cfg, cicd, issuerPolicy)
-		if err != nil {
-			return err
-		}
-		if clusterSA != nil {
-			ctx.Export("homelabClusterServiceAccountEmail", clusterSA.Email)
-		}
+	// The Pulumi half of the same federation. Ordered after the GCP half
+	// because the environment definition quotes its outputs.
+	if err := deployPulumiESCEnvironments(ctx, cfg, cicd, escOutputs); err != nil {
+		return err
+	}
 
-		// 5d. Deploy CI/CD Build Infrastructure (GitHub Actions WIF by default,
-		// see build_github.go)
-		buildOutputs, err := deployGitHubActionsBuild(ctx, cfg, seed, cicd, sas, previewSAs, issuerPolicy)
-		if err != nil {
-			return err
-		}
+	// 5d. Homelab cluster federation: the same keyless idea applied to
+	// workloads running IN the cluster (Backstage, Grafana) that need to read
+	// GCP APIs. Gated on cluster_issuer_uri; unset, this is a no-op.
+	// See build_homelab_cluster_wif.go.
+	clusterSA, err := deployHomelabClusterWIF(ctx, cfg, cicd, issuerPolicy)
+	if err != nil {
+		return err
+	}
+	if clusterSA != nil {
+		ctx.Export("homelabClusterServiceAccountEmail", clusterSA.Email)
+	}
 
-		// 6. Exports — matching TF outputs.tf (see outputs.go)
-		exportOutputs(ctx, cfg, bootstrapFolder, seed, cicd, sas, previewSAs, buildOutputs, groupOutputs)
+	// 5d. Deploy CI/CD Build Infrastructure (GitHub Actions WIF by default,
+	// see build_github.go)
+	buildOutputs, err := deployGitHubActionsBuild(ctx, cfg, seed, cicd, sas, previewSAs, issuerPolicy)
+	if err != nil {
+		return err
+	}
 
-		// 7. Builder-specific outputs — mirrors upstream's per-builder
-		// outputs_*.tf files (outputs_github.tf.example here; swap for
-		// exportCloudBuildOutputs / exportGitLabOutputs /
-		// exportTerraformCloudOutputs when switching builders).
-		exportGitHubOutputs(ctx, cicd)
+	// 6. Exports — matching TF outputs.tf (see outputs.go)
+	exportOutputs(ctx, cfg, bootstrapFolder, seed, cicd, sas, previewSAs, buildOutputs, groupOutputs)
 
-		return nil
-	})
+	// 7. Builder-specific outputs — mirrors upstream's per-builder
+	// outputs_*.tf files (outputs_github.tf.example here; swap for
+	// exportCloudBuildOutputs / exportGitLabOutputs /
+	// exportTerraformCloudOutputs when switching builders).
+	exportGitHubOutputs(ctx, cicd)
+
+	return nil
 }

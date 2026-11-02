@@ -51,6 +51,7 @@ type CICDBuildOutputs struct {
 //   - A Workload Identity Pool ("foundation-pool")
 //   - A GitHub OIDC provider ("foundation-gh-provider")
 //   - Per-SA principalSet bindings on `attribute.environment/foundation-<stage>`
+//   - Read-only preview SA bindings on `attribute.environment/foundation-<stage>-preview`
 //
 // Secrets/vars (WIF provider name, per-stage SA emails) are NOT written from
 // here — that is published as GitHub Environment config by the existing
@@ -83,11 +84,6 @@ func deployGitHubActionsBuild(ctx *pulumi.Context, cfg *Config, _ *SeedProject, 
 			SAName:    sa.Name,
 			Attribute: pulumi.String(fmt.Sprintf("attribute.environment/foundation-%s", key)),
 		}
-		// Also allow the -preview environment for PRs
-		saMappings[key+"-preview"] = libcicd.SAMappingEntry{
-			SAName:    sa.Name,
-			Attribute: pulumi.String(fmt.Sprintf("attribute.environment/foundation-%s-preview", key)),
-		}
 	}
 
 	// org-folders uses the bootstrap SA but deploys from its own GitHub
@@ -97,10 +93,6 @@ func deployGitHubActionsBuild(ctx *pulumi.Context, cfg *Config, _ *SeedProject, 
 		saMappings["org-folders"] = libcicd.SAMappingEntry{
 			SAName:    bootstrapSA.Name,
 			Attribute: pulumi.String("attribute.environment/foundation-org-folders"),
-		}
-		saMappings["org-folders-preview"] = libcicd.SAMappingEntry{
-			SAName:    bootstrapSA.Name,
-			Attribute: pulumi.String("attribute.environment/foundation-org-folders-preview"),
 		}
 	}
 
@@ -146,8 +138,8 @@ func deployGitHubActionsBuild(ctx *pulumi.Context, cfg *Config, _ *SeedProject, 
 	//   foundation-proj-shared        → manual approval (BU infra-pipeline)
 	//   foundation-proj-production    → manual approval
 	// Each needs its own WIF binding to the proj SA. (The generic loop above
-	// already binds the single foundation-proj / foundation-proj-preview
-	// environments; these add the per-env promotion bindings.)
+	// already binds the single foundation-proj environment; these add the
+	// per-env promotion bindings.)
 	if projSA, ok := sas["proj"]; ok {
 		for _, envName := range []string{"shared", "development", "nonproduction", "production"} {
 			saMappings[fmt.Sprintf("proj-%s", envName)] = libcicd.SAMappingEntry{
@@ -164,29 +156,13 @@ func deployGitHubActionsBuild(ctx *pulumi.Context, cfg *Config, _ *SeedProject, 
 	// permissions and stage 5 can be ungated for routine app deploys.
 	//
 	// Its WIF binding is created ALONGSIDE the SA in gcp-projects (it needs the
-	// SA's own name), so nothing is bound here. The bindings below remain on
-	// the proj SA only for the stage-5 PREVIEW leg, which runs read-only and
-	// predates the pipeline SA:
-	//   foundation-app-development  → auto-deploy
-	//   foundation-app-nonproduction → manual approval
-	//   foundation-app-production    → manual approval
-	//   foundation-app-preview       → PR preview (ungated environment)
-	// Stage 5 has no `shared` leaf (upstream 5-app-infra has none).
-	//
-	// THIS MUST APPLY BEFORE the first foundation-app-* deploy can authenticate.
-	if projSA, ok := sas["proj"]; ok {
-		for _, envName := range []string{"preview"} {
-			saMappings[fmt.Sprintf("app-%s", envName)] = libcicd.SAMappingEntry{
-				SAName:    projSA.Name,
-				Attribute: pulumi.String(fmt.Sprintf("attribute.environment/foundation-app-%s", envName)),
-			}
-		}
-	}
+	// SA's own name), so nothing is bound here. Stage 5's PR preview
+	// (foundation-app-preview) uses the projects stage's read-only preview
+	// identity, bound below.
 
-	// PR-preview Environments also federate to the stage's read-only preview
-	// identity (sa_preview.go). The `<stage>-preview` bindings to the deploy
-	// SAs above are kept for now so previews keep working until the preview
-	// workflow switches identities; a follow-up removes them.
+	// PR-preview Environments federate ONLY to the stage's read-only preview
+	// identity (sa_preview.go), never to a deploy SA. org-folders previews with
+	// the bootstrap identity and app-infra with the projects identity.
 	for environment, key := range previewEnvironments {
 		previewSA, ok := previewSAs[key]
 		if !ok {
