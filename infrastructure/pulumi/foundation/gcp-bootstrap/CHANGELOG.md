@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.18.0...foundation-gcp-bootstrap-v0.18.1) (2026-11-02)
+
+
+### Bug Fixes
+
+* **foundation-gcp-bootstrap:** pin the workload identity pools' own settings ([#4256](https://github.com/VitruvianSoftware/vitruvian-core/issues/4256)) ([f896efb](https://github.com/VitruvianSoftware/vitruvian-core/commit/f896efbf5c50de21178f491d9631f14231cc0810))
+
 ## [0.18.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-bootstrap-v0.17.0...foundation-gcp-bootstrap-v0.18.0) (2026-11-02)
 
 
