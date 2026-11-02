@@ -538,24 +538,83 @@ var expectedProviders = map[string]string{
 	"pulumi-esc-pool":      "pulumi-esc-provider",
 }
 
-// The GitHub provider must be the only provider in its pool, trust only
-// GitHub's issuer, accept tokens only from this repository, and map
+// expectedProviderInputs is every input of every provider, exactly, keyed by
+// provider id. Extra keys anywhere (a JWKS, more audiences, a SAML block, a
+// changed mapping) fail. The project id carries a random suffix, so it is
+// checked separately and left out here.
+func expectedProviderInputs(t *testing.T) map[string]map[string]interface{} {
+	var cfg map[string]string
+	require.NoError(t, json.Unmarshal([]byte(committedConfig(t)), &cfg))
+	jwks := cfg["foundation-bootstrap:cluster_jwks_json"]
+	require.NotEmpty(t, jwks, "cluster_jwks_json missing from the committed config")
+	return map[string]map[string]interface{}{
+		"foundation-gh-provider": {
+			"workloadIdentityPoolId":         "foundation-pool",
+			"workloadIdentityPoolProviderId": "foundation-gh-provider",
+			"attributeCondition":             "assertion.repository=='VitruvianSoftware/vitruvian-core'",
+			"attributeMapping": map[string]interface{}{
+				"google.subject":             "assertion.sub",
+				"attribute.actor":            "assertion.actor",
+				"attribute.aud":              "assertion.aud",
+				"attribute.environment":      "assertion.environment",
+				"attribute.repository":       "assertion.repository",
+				"attribute.repository_owner": "assertion.repository_owner",
+			},
+			"oidc": map[string]interface{}{"issuerUri": "https://token.actions.githubusercontent.com"},
+		},
+		"homelab-cluster-provider": {
+			"workloadIdentityPoolId":         "homelab-cluster-pool",
+			"workloadIdentityPoolProviderId": "homelab-cluster-provider",
+			"attributeCondition":             `assertion.sub == "system:serviceaccount:backstage:backstage" || assertion.sub == "system:serviceaccount:grafana:grafana"`,
+			"attributeMapping":               map[string]interface{}{"google.subject": "assertion.sub"},
+			"description":                    "Projected ServiceAccount tokens from the homelab k3s cluster; JWKS supplied statically",
+			"displayName":                    "Homelab cluster OIDC",
+			"oidc": map[string]interface{}{
+				"allowedAudiences": []interface{}{"gcp-workload-identity"},
+				"issuerUri":        "https://kubernetes.default.svc.cluster.local",
+				"jwksJson":         jwks,
+			},
+		},
+		"pulumi-esc-provider": {
+			"workloadIdentityPoolId":         "pulumi-esc-pool",
+			"workloadIdentityPoolProviderId": "pulumi-esc-provider",
+			"attributeCondition":             `assertion.aud == "gcp:ipv1337"`,
+			"attributeMapping":               map[string]interface{}{"google.subject": "assertion.sub"},
+			"description":                    "Issuer api.pulumi.com/oidc; subjects are ESC environments",
+			"displayName":                    "Pulumi Cloud OIDC",
+			"oidc": map[string]interface{}{
+				"allowedAudiences": []interface{}{"gcp:ipv1337"},
+				"issuerUri":        "https://api.pulumi.com/oidc",
+			},
+		},
+	}
+}
+
+// Every identity provider is pinned whole. The GitHub provider must be the
+// only provider in its pool, trust only GitHub's issuer (no JWKS, no extra
+// audiences), accept tokens only from this repository, and map
 // attribute.environment from the job's Environment claim; every
-// per-Environment binding above depends on all four.
+// per-Environment binding above depends on all of it.
 func TestFoundationProviderIsPinnedToTheRepository(t *testing.T) {
+	expected := expectedProviderInputs(t)
 	providersByPool := map[string][]string{}
-	var foundation *recorded
+	seen := map[string]bool{}
 	for _, r := range runWholeProgram(t) {
 		if r.typ != "gcp:iam/workloadIdentityPoolProvider:WorkloadIdentityPoolProvider" {
 			continue
 		}
-		r := r
 		pool := str(r, "workloadIdentityPoolId")
 		id := str(r, "workloadIdentityPoolProviderId")
 		providersByPool[pool] = append(providersByPool[pool], id)
-		assert.NotEmpty(t, str(r, "attributeCondition"), "%s has no attribute condition", r.name)
-		if pool == "foundation-pool" && id == "foundation-gh-provider" {
-			foundation = &r
+
+		got := r.inputs.Mappable()
+		project, _ := got["project"].(string)
+		assert.True(t, strings.HasPrefix(project, "prj-b-cicd-"), "%s: project %q is not the CI/CD project", id, project)
+		delete(got, "project")
+		want, known := expected[id]
+		if assert.True(t, known, "%s: unexpected provider", id) {
+			assert.Equal(t, want, got, "%s: provider inputs", id)
+			seen[id] = true
 		}
 	}
 
@@ -564,30 +623,7 @@ func TestFoundationProviderIsPinnedToTheRepository(t *testing.T) {
 		want[pool] = []string{id}
 	}
 	assert.Equal(t, want, providersByPool, "identity providers by pool")
-
-	require.NotNil(t, foundation, "foundation-gh-provider not declared in foundation-pool")
-	assert.Equal(t, "assertion.repository=='VitruvianSoftware/vitruvian-core'", str(*foundation, "attributeCondition"))
-
-	oidc := foundation.inputs["oidc"]
-	require.True(t, oidc.IsObject(), "foundation-gh-provider has no oidc block")
-	issuer := oidc.ObjectValue()["issuerUri"]
-	require.True(t, issuer.IsString(), "foundation-gh-provider has no issuer")
-	assert.Equal(t, "https://token.actions.githubusercontent.com", issuer.StringValue())
-	_, saml := foundation.inputs["saml"]
-	assert.False(t, saml, "foundation-gh-provider must not also trust a SAML issuer")
-
-	mapping := foundation.inputs["attributeMapping"]
-	require.True(t, mapping.IsObject(), "attributeMapping missing")
-	got := map[string]string{}
-	for k, v := range mapping.ObjectValue() {
-		got[string(k)] = v.StringValue()
+	for id := range expected {
+		assert.True(t, seen[id], "%s not declared", id)
 	}
-	assert.Equal(t, map[string]string{
-		"google.subject":             "assertion.sub",
-		"attribute.actor":            "assertion.actor",
-		"attribute.aud":              "assertion.aud",
-		"attribute.environment":      "assertion.environment",
-		"attribute.repository":       "assertion.repository",
-		"attribute.repository_owner": "assertion.repository_owner",
-	}, got, "foundation-gh-provider attribute mapping")
 }
