@@ -110,24 +110,29 @@ fn runs_only_modules_with_tests_in_sorted_order() {
     t.module("infrastructure/pulumi/a", true);
     t.module("infrastructure/pulumi/no-tests", false);
     t.module("infrastructure/pulumi/a/vendor/dep", true);
+    t.module("apps/x/y/infra", true);
+    t.module("apps/x/y/infra/stack", true);
+    t.module("apps/x/.hidden/infra", true);
+    t.module("apps/.hidden/y/infra", true);
+    t.module("apps/x/infra", true);
+    t.module("apps/x/y/z/infra", true);
     t.module("app/infra", true);
-    t.module(".hidden/infra", true);
     let o = t.run();
     assert_eq!(o.code, 0, "{}", o.all());
     assert_eq!(
         t.go_calls(),
         vec![
-            "app/infra",
+            "apps/x/y/infra",
+            "apps/x/y/infra/stack",
             "infrastructure/pulumi/a",
             "infrastructure/pulumi/b"
         ],
-        "*/infra and infrastructure/pulumi, sorted; no vendor, no test-less module, no dot-dir"
+        "apps/*/*/infra and infrastructure/pulumi, sorted; no vendor, no test-less \
+         module, no dot-dir, no top-level */infra (#4178), nothing too shallow or deep"
     );
-    assert!(o
-        .stdout
-        .contains("::group::go test infrastructure/pulumi/a\n"));
+    assert!(o.stdout.contains("::group::go test apps/x/y/infra\n"));
     assert!(
-        o.stdout.ends_with("ran go test in 3 IaC module(s)\n"),
+        o.stdout.ends_with("ran go test in 4 IaC module(s)\n"),
         "{}",
         o.stdout
     );

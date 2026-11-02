@@ -485,4 +485,39 @@ final class AccountsAndBridgesModelTests: XCTestCase {
         XCTAssertFalse(subAccountError.contains("CourierCore.EngineError"), "Failed sub-account toggle must show plain English: \(subAccountError)")
         XCTAssertEqual(subAccountError, "That isn’t accepted. Check it and try again.")
     }
+    /// A failure to read the bridges (an engine restarting, say) goes once a read works: it doesn't stay in red.
+    func testASuccessfulRefreshClearsAnEarlierReadError() async throws {
+        final class Failing: @unchecked Sendable {
+            let lock = NSLock()
+            var on = true
+        }
+        let failing = Failing()
+        let server = try TestEngineServer { method, _ in
+            switch method {
+            case "hello":
+                return TestEngineServer.helloOK
+            case "bridges.list":
+                if failing.lock.withLock({ failing.on }) {
+                    return .error(code: -32016, message: "this network isn't running")
+                }
+                return .result(["bridges": [[String: Any]]()])
+            default:
+                return .result([String: Any]())
+            }
+        }
+        defer { server.stop() }
+        let (app, process) = try await makeConnectedApp(server: server)
+        defer {
+            process.exit(0)
+            app.supervisor.stop()
+        }
+        let model = AccountsAndBridgesModel(appModel: app, dockTileService: FakeDockTileService())
+
+        await model.refresh()
+        XCTAssertNotNil(model.lastError, "the failed read shows")
+        failing.lock.withLock { failing.on = false }
+        await model.refresh()
+        XCTAssertNil(model.lastError, "and goes once a read works")
+    }
 }
+

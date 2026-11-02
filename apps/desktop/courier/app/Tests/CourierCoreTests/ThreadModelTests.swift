@@ -80,6 +80,25 @@ final class ThreadModelTests: XCTestCase {
         XCTAssertEqual(h.conversation.composer.text, "", "the chat's own composer is untouched")
     }
 
+    /// A draft kept with its thread comes back when the thread opens again, as the composer's own text: opening
+    /// the thread does not tell the chat I'm typing.
+    func testReopeningAThreadWithADraftIsNotTyping() async throws {
+        let h = try await start()
+        let thread = h.conversation.thread
+        h.conversation.openThread("$r")
+        try await waitUntil { thread.isLoaded }
+        thread.composer.text = "Back in a minute"
+        thread.close()
+        await thread.composer.waitForTyping()
+        let typingBefore = h.count("room.setTyping")
+
+        h.conversation.openThread("$r")
+        try await waitUntil { thread.isLoaded }
+        XCTAssertEqual(thread.composer.text, "Back in a minute", "the kept draft comes back")
+        await thread.composer.waitForTyping()
+        XCTAssertEqual(h.count("room.setTyping"), typingBefore, "a draft coming back is not typing")
+    }
+
     func testOnlyThreadEventsRefetch() async throws {
         let h = try await start()
         let thread = h.conversation.thread

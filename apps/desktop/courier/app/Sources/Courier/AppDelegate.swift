@@ -31,6 +31,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let dockPreferences = DockAndTrayPreferences()
     /// Shared Appearance preferences (`AppearancePreferences`: themes, zoom, fonts, confetti).
     let appearance = AppearancePreferences()
+    /// The AI settings (slash commands, translation languages): one instance, so what Settings changes reaches the
+    /// composers at once.
+    let aiPreferences = AIPreferences()
     /// Shared ⌘J Command Bar model (`CommandBarModel`).
     let commandBar: CommandBarModel
     /// Shared Settings navigation and search model (`⌘,`).
@@ -164,6 +167,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for composer in [conversation.composer, conversation.thread.composer] {
             composer.entitlement = entitlement
             composer.quickReplies = quickReplies
+            composer.aiPreferences = aiPreferences
             composer.onArchive = { [weak inbox] room in await inbox?.archive(true, ids: [room]) }
             composer.onToast = { [weak inbox] message in inbox?.announce(message) }
         }
@@ -450,6 +454,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         openItem.isEnabled = true
         menu.addItem(openItem)
 
+        let commandBarItem = NSMenuItem(title: String(localized: "Command Bar…"), action: #selector(commandBarFromMenu(_:)),
+                                        keyEquivalent: "")
+        let canOpenCommandBar = !lifecycle.isLocked && hotkeyDispatcher.canPerform(HotkeyID.commandBar)
+        applyMenuChord(hotkeys.primaryChord(for: HotkeyID.commandBar), to: commandBarItem, enabled: canOpenCommandBar)
+        commandBarItem.target = self
+        commandBarItem.isEnabled = canOpenCommandBar
+        menu.addItem(commandBarItem)
+
         let minItem = NSMenuItem(title: String(localized: "Minimize to Menu Bar"), action: #selector(minimizeFromMenu(_:)), keyEquivalent: "")
         applyMenuChord(hotkeys.primaryChord(for: "Minimize To Menu Bar"), to: minItem, enabled: !lifecycle.isLocked)
         minItem.target = self
@@ -488,6 +500,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openCourierFromMenu(_ sender: NSMenuItem) {
         windowOpener.show()
+    }
+
+    @objc private func commandBarFromMenu(_ sender: NSMenuItem) {
+        _ = hotkeyDispatcher.perform(HotkeyID.commandBar)
     }
 
     @objc private func minimizeFromMenu(_ sender: NSMenuItem) {

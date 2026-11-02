@@ -27,7 +27,7 @@
 image:
   # Updated automatically by argocd-image-updater when a new digest lands
   # behind ghcr.io/vitruviansoftware/mcp-slack:latest.
-  digest: "main@sha256:678af8a32aa575c9c874b4b16cc3d46c5706e954208ddfc9fc7d9fb605a6abfd"
+  digest: "main@sha256:928946e36610d813921a0c456c3f0c0312a53e49b815147980d567a18697bd3b"
   repository: ghcr.io/vitruviansoftware/mcp-slack
 oidc:
   projectId: "385463212784486211" # pulumi stack output projectId — REQUIRED

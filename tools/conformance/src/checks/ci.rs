@@ -1109,6 +1109,89 @@ pub fn check_cache_save(ctx: &Context) {
 }
 
 // ---------------------------------------------------------------------------
+// CHECK: CI Go module fetches fall back when proxy.golang.org fails
+// ---------------------------------------------------------------------------
+//
+// gazelle's go_repository fetches every go.mod dependency with `go mod
+// download` (its fetch_repo tool), outside Bazel's downloader, so Bazel's
+// retry flags and the restored repository cache never cover it. On 2026-11-01
+// a proxy.golang.org "TLS handshake timeout" failed the macOS courier units
+// twice in the merge queue (#4187). setup-bazel now sets a GOPROXY list joined
+// with `|`, which Go falls through on ANY error; Go's default joins with `,`,
+// which falls through only on a 404/410 answer. This check keeps the pipe.
+
+/// Why a GOPROXY value does not fall back on a network error, or None when
+/// it does: two or more distinct entries, joined only with `|`.
+pub(crate) fn goproxy_fallback_problem(value: &str) -> Option<String> {
+    if value.contains(',') {
+        return Some(
+            "a ',' falls through only on a 404/410 answer, so a timeout still fails the fetch"
+                .to_string(),
+        );
+    }
+    let entries: Vec<&str> = value.split('|').map(str::trim).collect();
+    if entries.iter().any(|e| e.is_empty() || *e == "off") {
+        return Some("an empty or 'off' entry ends the list".to_string());
+    }
+    let distinct: BTreeSet<&str> = entries.iter().copied().collect();
+    if distinct.len() < 2 {
+        return Some(
+            "needs a second, different entry: Go tries the same URL only once, so repeating it is not a retry"
+                .to_string(),
+        );
+    }
+    None
+}
+
+/// The value of the first `--repo_env=GOPROXY=` on a non-comment line.
+pub(crate) fn repo_env_goproxy(content: &str) -> Option<String> {
+    const FLAG: &str = "--repo_env=GOPROXY=";
+    content
+        .lines()
+        .map(strip)
+        .filter(|l| !l.starts_with('#'))
+        .find_map(|l| {
+            let at = l.find(FLAG)?;
+            let rest = &l[at + FLAG.len()..];
+            Some(rest.split_whitespace().next().unwrap_or("").to_string())
+        })
+}
+
+pub fn check_goproxy_fallback(ctx: &Context) {
+    let rel = ".github/actions/setup-bazel/action.yml";
+    let content =
+        match fs::read_to_string(format!("{}/{}", ctx.root, rel)) {
+            Ok(c) => c,
+            Err(_) => {
+                ctx.emit_fail(
+                "goproxy", rel, "missing", "--repo_env=GOPROXY=https://proxy.golang.org|direct",
+                "the shared setup action is gone, so nothing sets the Go module fallback for CI",
+                "restore the composite, or move this check to wherever CI's bazelrc is now written",
+            );
+                return;
+            }
+        };
+    let want = "--repo_env=GOPROXY=https://proxy.golang.org|direct";
+    match repo_env_goproxy(&content) {
+        None => ctx.emit_fail(
+            "goproxy", rel, "unset", want,
+            "Go's default GOPROXY (',' separated) fails a go_repository fetch on any proxy.golang.org timeout, ejecting the merge-queue head (#4187)",
+            &format!("add 'common {}' to the action's bazelrc", want),
+        ),
+        Some(v) => match goproxy_fallback_problem(&v) {
+            None => ctx.emit_ok(
+                "goproxy", rel, &v, want,
+                "go_repository fetches fall through to the next source on a proxy timeout; go.sum still pins the bytes",
+            ),
+            Some(why) => ctx.emit_fail(
+                "goproxy", rel, &v, want, &why,
+                &format!("set 'common {}'", want),
+            ),
+        },
+    }
+}
+
+// ---------------------------------------------------------------------------
 // CHECK: CI gate list consistency
 // ---------------------------------------------------------------------------
 
@@ -1364,6 +1447,47 @@ runs:
             Some("${{ github.ref == 'refs/heads/main' }}")
         );
         assert_eq!(yaml_value_of(content, "repository-cache"), None);
+    }
+
+    #[test]
+    fn goproxy_pipe_list_is_accepted() {
+        assert_eq!(
+            goproxy_fallback_problem("https://proxy.golang.org|direct"),
+            None
+        );
+        assert_eq!(
+            goproxy_fallback_problem("https://proxy.golang.org|https://goproxy.example|direct"),
+            None
+        );
+    }
+
+    #[test]
+    fn goproxy_shapes_that_do_not_fall_back_are_rejected() {
+        // Go's default: a timeout on the proxy never reaches `direct`.
+        assert!(goproxy_fallback_problem("https://proxy.golang.org,direct").is_some());
+        // One source: nothing to fall back to.
+        assert!(goproxy_fallback_problem("https://proxy.golang.org").is_some());
+        // The same URL twice is tried once, so it is not a retry.
+        assert!(
+            goproxy_fallback_problem("https://proxy.golang.org|https://proxy.golang.org").is_some()
+        );
+        assert!(goproxy_fallback_problem("https://proxy.golang.org|off").is_some());
+        assert!(goproxy_fallback_problem("https://proxy.golang.org|").is_some());
+    }
+
+    #[test]
+    fn repo_env_goproxy_reads_the_bazelrc_line() {
+        let content = "\
+        bazelrc: |
+          # common --repo_env=GOPROXY=https://commented.example
+          common --show_timestamps
+          common --repo_env=GOPROXY=https://proxy.golang.org|direct --other
+";
+        assert_eq!(
+            repo_env_goproxy(content).as_deref(),
+            Some("https://proxy.golang.org|direct")
+        );
+        assert_eq!(repo_env_goproxy("common --show_timestamps\n"), None);
     }
 
     #[test]

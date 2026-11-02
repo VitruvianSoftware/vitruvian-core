@@ -110,15 +110,23 @@ fn an_empty_digest_is_refused_like_a_missing_one() {
 fn a_whitespace_only_digest_is_refused_and_not_exported() {
     // A YAML `|` block leaves `app=` followed by a newline; a stray space is
     // no image either. Both are refused, and neither is exported.
-    for digests in [
-        "oauth-user-inspector=\n,mcp-slack=sha256:bbb",
-        "oauth-user-inspector= ,mcp-slack=sha256:bbb",
+    // After the newline nothing is exported (the export reads one line), so
+    // mcp-slack is missing there too and the error says so.
+    for (digests, missing) in [
+        (
+            "oauth-user-inspector=\n,mcp-slack=sha256:bbb",
+            "oauth-user-inspector mcp-slack",
+        ),
+        (
+            "oauth-user-inspector= ,mcp-slack=sha256:bbb",
+            "oauth-user-inspector",
+        ),
     ] {
         let l = Leaf::new(THREE);
         let o = l.run(digests);
         assert_eq!(o.code, 1, "{digests:?}: {o:?}");
         assert!(
-            o.stdout.ends_with(&error_line("oauth-user-inspector")),
+            o.stdout.ends_with(&error_line(missing)),
             "{digests:?}: {}",
             o.stdout
         );
@@ -221,15 +229,92 @@ fn only_the_first_line_of_the_digests_is_exported() {
 
 // --- failing closed ------------------------------------------------------------
 
+fn refusal(why: &str) -> String {
+    format!(
+        "::error::digest guard: refusing app_image_digests: {why}. Pass '<app>=<ref>' pairs, one per app, with lowercase [a-z0-9-] names.\n"
+    )
+}
+
+/// The whole input is refused before anything reaches $GITHUB_ENV, which
+/// the runner parses, not us.
+fn assert_refused(digests: &str, why: &str) {
+    let l = Leaf::new("config:\n  ns:app_workload_enabled: \"true\"\n");
+    let o = l.run(digests);
+    assert_eq!(o.code, 1, "{digests:?}: {o:?}");
+    assert_eq!(o.stdout, refusal(why), "{digests:?}");
+    assert_eq!(l.env(), "", "{digests:?}: nothing exported");
+}
+
+#[test]
+fn a_heredoc_name_after_the_digest_is_refused() {
+    // The runner reads `APP_IMAGE_DIGEST<<X_IMAGE_DIGEST=y` as a heredoc
+    // and ends with APP_IMAGE_DIGEST="" while the guard said OK.
+    assert_refused(
+        "app=sha256:aaa,app_image_digest<<X=y,x=y",
+        "app name 'app_image_digest<<X' is not [a-z0-9-]",
+    );
+}
+
+#[test]
+fn a_heredoc_name_before_the_digest_is_refused() {
+    // `A<<D_IMAGE_DIGEST=x` opens a heredoc that swallows APP_IMAGE_DIGEST.
+    assert_refused(
+        "a<<D=x,app=sha256:aaa,d=x",
+        "app name 'a<<D' is not [a-z0-9-]",
+    );
+}
+
+#[test]
+fn a_second_pair_for_the_same_variable_is_refused() {
+    // Exported twice, the last one wins, and the check saw only the first.
+    assert_refused("app=sha256:aaa,APP=x", "app name 'APP' is not [a-z0-9-]");
+    assert_refused("app=sha256:aaa,app=x", "'app' is given more than once");
+}
+
+#[test]
+fn whitespace_inside_a_digest_is_refused() {
+    for d in ["app=sha256:aaa\r", "app= sha256:aaa", "app=sha256:a a"] {
+        assert_refused(
+            d,
+            "the digest for 'app' contains whitespace or a control character",
+        );
+    }
+}
+
+#[test]
+fn a_trailing_newline_from_a_yaml_block_is_harmless() {
+    let l = Leaf::new("config:\n  ns:app_workload_enabled: \"true\"\n");
+    let o = l.run("app=sha256:aaa\n");
+    assert_eq!(o.code, 0, "{o:?}");
+    assert_eq!(l.env(), "APP_IMAGE_DIGEST=sha256:aaa\n");
+}
+
+#[test]
+fn a_digest_after_a_newline_is_refused_not_passed_unexported() {
+    // #4184: the check read the whole input but the export read only the
+    // first line, so this printed OK while APP_IMAGE_DIGEST was never
+    // exported and the deploy rendered an EMPTY image.
+    let l = Leaf::new("config:\n  ns:app_workload_enabled: \"true\"\n");
+    let o = l.run("x=1\n,app=sha256:aaa");
+    assert_eq!(o.code, 1, "{o:?}");
+    assert_eq!(
+        o.stdout,
+        format!("exporting X_IMAGE_DIGEST\n{}", error_line("app"))
+    );
+    assert_eq!(l.env(), "X_IMAGE_DIGEST=1\n", "app was not exported");
+}
+
 #[test]
 fn a_name_the_guard_cannot_read_is_reported_missing_whole() {
     // No `ns:` prefix / a name outside [a-z0-9-]: the script's sed left the
     // line as it was, which no digest matches. The guard must refuse, not pass.
+    // (`My_App=1` itself is refused as a name, so the digest side here is a
+    // valid name that still cannot match the unreadable line.)
     for (file, digests) in [
         ("config:\n  b_workload_enabled: \"true\"\n", "b=1"),
         (
             "config:\n  ns:My_App_workload_enabled: \"true\"\n",
-            "My_App=1",
+            "my-app=1",
         ),
     ] {
         let l = Leaf::new(file);

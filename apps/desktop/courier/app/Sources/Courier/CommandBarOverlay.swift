@@ -8,6 +8,7 @@ import SwiftUI
 public struct CommandBarOverlay: View {
     @ObservedObject public var model: CommandBarModel
     @FocusState private var isSearchFocused: Bool
+    @Environment(\.redactNamesAndPictures) private var isRedacted
 
     public init(model: CommandBarModel) {
         self.model = model
@@ -392,71 +393,82 @@ public struct CommandBarOverlay: View {
 
     private var recentChatsList: some View {
         let rows = model.displayedRecentChats
-        return ScrollView {
-            VStack(alignment: .leading, spacing: 2) {
-                if rows.isEmpty {
-                    HStack {
-                        Spacer()
-                        Text("No recently viewed chats")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                            .padding(.vertical, 28)
-                        Spacer()
-                    }
-                } else {
-                    sectionHeader("Recently Viewed Chats")
-                    ForEach(Array(rows.enumerated()), id: \.element.roomID) { index, row in
-                        let isSelected = index == model.selectedIndex
-                        HStack(spacing: 10) {
-                            Image(systemName: row.isDirect ? "person.crop.circle.fill" : "person.2.circle.fill")
-                                .font(.system(size: 16))
-                                .foregroundStyle(isSelected ? Color.accentColor : .secondary)
-                                .frame(width: 22)
-
-                            VStack(alignment: .leading, spacing: 1) {
-                                HStack(spacing: 6) {
-                                    Text(row.name)
-                                        .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
-                                        .lineLimit(1)
-                                    Text(row.network.capitalized)
-                                        .font(.system(size: 10, weight: .semibold))
-                                        .foregroundStyle(.secondary)
-                                        .padding(.horizontal, 5)
-                                        .padding(.vertical, 1)
-                                        .background(
-                                            Capsule().fill(Color.primary.opacity(0.08))
-                                        )
-                                }
-                                if !row.preview.isEmpty {
-                                    Text(row.preview)
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
-                            }
+        return ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 2) {
+                    if rows.isEmpty {
+                        HStack {
                             Spacer()
-                            Image(systemName: "arrow.turn.down.left")
-                                .font(.system(size: 11))
+                            Text("No recently viewed chats")
+                                .font(.callout)
                                 .foregroundStyle(.secondary)
+                                .padding(.vertical, 28)
+                            Spacer()
                         }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 7)
-                        .background(
-                            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                .fill(isSelected ? Color.accentColor.opacity(0.16) : Color.clear)
-                        )
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            model.selectedIndex = index
-                            model.close()
-                            model.onSelectRecentChat(row.roomID)
+                    } else {
+                        sectionHeader("Recently Viewed Chats")
+                        ForEach(Array(rows.enumerated()), id: \.element.roomID) { index, row in
+                            let isSelected = index == model.selectedIndex
+                            HStack(spacing: 10) {
+                                Image(systemName: row.isDirect ? "person.crop.circle.fill" : "person.2.circle.fill")
+                                    .font(.system(size: 16))
+                                    .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+                                    .frame(width: 22)
+
+                                VStack(alignment: .leading, spacing: 1) {
+                                    HStack(spacing: 6) {
+                                        Text(isRedacted
+                                            ? AppearancePreferences.redactedText(row.name, kind: .chatTitle) : row.name)
+                                            .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
+                                            .lineLimit(1)
+                                        Text(row.network.capitalized)
+                                            .font(.system(size: 10, weight: .semibold))
+                                            .foregroundStyle(.secondary)
+                                            .padding(.horizontal, 5)
+                                            .padding(.vertical, 1)
+                                            .background(
+                                                Capsule().fill(Color.primary.opacity(0.08))
+                                            )
+                                    }
+                                    if !row.preview.isEmpty {
+                                        Text(row.preview)
+                                            .font(.system(size: 11))
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                    }
+                                }
+                                Spacer()
+                                Image(systemName: "arrow.turn.down.left")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 7)
+                            .background(
+                                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                    .fill(isSelected ? Color.accentColor.opacity(0.16) : Color.clear)
+                            )
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                model.selectedIndex = index
+                                model.close()
+                                model.onSelectRecentChat(row.roomID)
+                            }
+                            .id(row.roomID)
+                            .accessibilityIdentifier("commandBar.recentChat.\(row.roomID)")
                         }
-                        .accessibilityIdentifier("commandBar.recentChat.\(row.roomID)")
                     }
                 }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
+            // ↑ and ↓ keep the highlighted chat in view, as they do in the command list.
+            .onChange(of: model.selectedIndex) { _, newIndex in
+                guard rows.indices.contains(newIndex) else { return }
+                withAnimation(.easeInOut(duration: 0.12)) {
+                    proxy.scrollTo(rows[newIndex].roomID, anchor: .center)
+                }
+            }
         }
     }
 }

@@ -210,9 +210,16 @@ public final class IntegrationsModel: ObservableObject {
         await refreshTokens()
     }
 
-    public func confirmRevoke() async {
-        guard let token = tokenPendingRevoke else { return }
+    /// The alert's Revoke: takes the connection at once, before the alert closing clears `tokenPendingRevoke`, and
+    /// revokes it in the background. The task is the revoke, for tests to wait on.
+    @discardableResult
+    public func confirmRevoke() -> Task<Void, Never>? {
+        guard let token = tokenPendingRevoke else { return nil }
         tokenPendingRevoke = nil
+        return Task { await revoke(token) }
+    }
+
+    public func revoke(_ token: APIToken) async {
         guard canChange, let client = appModel?.client else { return }
         lastError = nil
         do {
@@ -231,7 +238,11 @@ public final class IntegrationsModel: ObservableObject {
 
     // MARK: - A new connection
 
+    /// Counts the new-connection sheets, so a connection made after its sheet was cancelled is known for one.
+    private var newConnectionSheet = 0
+
     public func beginNewConnection() {
+        newConnectionSheet += 1
         newConnectionName = ""
         newConnectionCanSend = false
         createdConnection = nil
@@ -247,9 +258,16 @@ public final class IntegrationsModel: ObservableObject {
         isCreating = true
         lastError = nil
         defer { isCreating = false }
+        let sheet = newConnectionSheet
         do {
             let params = CreateTokenParams(name: newConnectionName, canSend: newConnectionCanSend)
-            createdConnection = try await client.call("integrations.createToken", params)
+            let created: CreateTokenResult = try await client.call("integrations.createToken", params)
+            guard sheet == newConnectionSheet, isPresentingNewConnection else {
+                // Cancelled while it was being made: its secret was never shown, so nothing can use it. It goes.
+                await revoke(created.token)
+                return
+            }
+            createdConnection = created
         } catch {
             lastError = EngineErrorText.text(for: error, fallback: String(localized: "Couldn’t make the connection."))
         }
@@ -258,6 +276,7 @@ public final class IntegrationsModel: ObservableObject {
 
     /// The sheet goes, and the secret with it: it can't be shown again.
     public func dismissNewConnection() {
+        newConnectionSheet += 1
         isPresentingNewConnection = false
         createdConnection = nil
         newConnectionName = ""
