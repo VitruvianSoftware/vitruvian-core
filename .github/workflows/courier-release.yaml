@@ -32,11 +32,17 @@
 # Developer ID for every Mac app). There is no beta channel: nothing is
 # published on a push, only when a release PR merges.
 #
-# The publishing job needs these repository secrets, and refuses to publish
-# without them: VITRUVIAN_SIGNING_CERT_P12 and VITRUVIAN_SIGNING_CERT_PASSWORD,
-# VITRUVIAN_NOTARY_API_KEY_P8, VITRUVIAN_NOTARY_KEY_ID and
-# VITRUVIAN_NOTARY_ISSUER_ID (all already used by the Vitruvian release), and
-# COURIER_TELEGRAM_API_ID and COURIER_TELEGRAM_API_HASH (Courier's own).
+# The publishing job refuses to publish without these secrets:
+#   - repository secrets VITRUVIAN_SIGNING_CERT_P12 and
+#     VITRUVIAN_SIGNING_CERT_PASSWORD, VITRUVIAN_NOTARY_API_KEY_P8,
+#     VITRUVIAN_NOTARY_KEY_ID and VITRUVIAN_NOTARY_ISSUER_ID (the ones the
+#     Vitruvian release uses; a job in an environment still sees them);
+#   - COURIER_TELEGRAM_API_ID and COURIER_TELEGRAM_API_HASH, secrets of the
+#     `courier-release` GitHub Environment, so only that job can read them.
+#     The environment is declared in infrastructure/pulumi/platform/repo-config
+#     (courier_release.go: only main and courier-v* tags may deploy to it); the
+#     values are set with `bazel run //tools/sync-env-secrets:apply --
+#     courier-release` (apps/desktop/courier/docs/cutover.md).
 name: courier-release
 
 on:
@@ -94,6 +100,8 @@ jobs:
   publish-package:
     needs: release-please
     if: ${{ always() && !cancelled() && (needs.release-please.outputs.release_created == 'true' || (github.event_name == 'workflow_dispatch' && inputs.tag != '')) }}
+    # Courier's Telegram app ID lives in this environment's secrets.
+    environment: courier-release
     # The same Xcode as CI and developers (.xcode-version); see ci.yaml.
     runs-on: xcode-27
     # A cold build of the engine is libsignal's 2,000+ actions, twice (arm64

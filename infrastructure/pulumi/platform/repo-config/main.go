@@ -459,6 +459,12 @@ func main() {
 			return err
 		}
 
+		// Courier's release job and the Telegram app ID it builds in
+		// (courier_release.go).
+		if err := courierReleaseEnvironment(ctx, repo); err != nil {
+			return err
+		}
+
 		if err := foundationEnvironments(ctx, cfg, repo); err != nil {
 			return err
 		}

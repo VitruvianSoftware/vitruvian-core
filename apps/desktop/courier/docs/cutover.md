@@ -11,6 +11,20 @@ You will need your phone (for Google Messages) and Terminal (for Claude Code).
 
 ## 1. Install the release
 
+**Once, before the first release.** The release builds Courier's Telegram app ID into the app, from the `courier-release` GitHub Environment. Without it the release job stops. Fill it from the secret store, in Terminal at your checkout:
+
+```sh
+bazel run //tools/sync-env-secrets:unlock     # asks for your Bitwarden password
+bazel run //tools/sync-env-secrets:bw-pull    # brings the store down
+# Only if the two values are not in the vault yet (from my.telegram.org ▸ API development tools):
+bazel run //tools/sync-env-secrets:set -- courier-release COURIER_TELEGRAM_API_ID
+bazel run //tools/sync-env-secrets:set -- courier-release COURIER_TELEGRAM_API_HASH
+bazel run //tools/sync-env-secrets:bw-push    # saves the store back to Bitwarden
+bazel run //tools/sync-env-secrets:apply -- courier-release   # puts both into the environment
+```
+
+Use the values your installed Courier already has, so Telegram keeps working as it does now. The environment must exist first: it is created when the repo-config change in this milestone is applied.
+
 1. Quit Courier if it is open (Courier ▸ Quit Courier, ⌘Q).
 2. Download `Courier-<version>-universal.dmg` from the newest `courier-v…` release on the [releases page](https://github.com/VitruvianSoftware/vitruvian-core/releases?q=courier), or run `brew install --cask vitruviansoftware/tap/courier`.
 3. Open the DMG and drag Courier onto Applications. Choose **Replace** when asked.

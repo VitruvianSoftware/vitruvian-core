@@ -11,7 +11,8 @@ A tick means "I saw this work", not "the code exists". The plan is `docs/superpo
 
 ## Before the first release
 
-- [ ] The repository has the secrets `COURIER_TELEGRAM_API_ID` and `COURIER_TELEGRAM_API_HASH`, with the same values as the secret store the local install reads. Without them the release job stops before building, by design.
+- [ ] The `courier-release` GitHub Environment exists (Settings ▸ Environments), and its deployment branches are `main` and `courier-v*` tags only.
+- [ ] It has the secrets `COURIER_TELEGRAM_API_ID` and `COURIER_TELEGRAM_API_HASH` (`bazel run //tools/sync-env-secrets:apply -- courier-release`), with the same values as the secret store the local install reads. Without them the release job stops before building, by design.
 - [ ] The Courier release PR ("chore(main): release courier …") opened after this milestone's PR merged. If you want to look at it before it ships, hold it (`bazel run //tools/agent-app -- pr-hold <pr#>`); otherwise it merges itself on green CI.
 
 ## The release

@@ -16,7 +16,8 @@
 //!   DRY_RUN=true           the same as --dry-run: package and check, upload
 //!                          nothing, push nothing.
 //!   COURIER_TELEGRAM_API_ID, COURIER_TELEGRAM_API_HASH
-//!                          Courier's Telegram app ID. A real release refuses
+//!                          Courier's Telegram app ID (secrets of the
+//!                          courier-release GitHub Environment). A real release refuses
 //!                          to start without both; a dry run goes on without.
 //!   NOTARY_KEY_ID, NOTARY_ISSUER_ID, NOTARY_API_KEY_P8
 //!                          the notary key. A real release refuses to start
@@ -150,7 +151,8 @@ pub fn resolve_plan(
     {
         return Err(format!(
             "publish: a real release needs Courier's Telegram app ID ({TELEGRAM_ID} and {TELEGRAM_HASH}); \
-             without it Telegram would ask each person for developer keys. Add both as repository secrets"
+             without it Telegram would ask each person for developer keys. Set both in the courier-release GitHub Environment \
+             (bazel run //tools/sync-env-secrets:apply -- courier-release)"
         ));
     }
 

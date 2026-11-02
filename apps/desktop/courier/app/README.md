@@ -18,7 +18,7 @@ tools/sync-env-secrets/secrets/courier-release/COURIER_TELEGRAM_API_ID
 tools/sync-env-secrets/secrets/courier-release/COURIER_TELEGRAM_API_HASH
 ```
 
-The release uses the same two names as secrets of the `courier-release` GitHub Environment.
+The release uses the same two names as secrets of the `courier-release` GitHub Environment, which `infrastructure/pulumi/platform/repo-config` declares (only `main` and `courier-v*` tags may deploy to it) and `bazel run //tools/sync-env-secrets:apply -- courier-release` fills from this store.
 
 **How to set them.** Register Courier's app at my.telegram.org (API development tools), then put each value in the store. The safe way, which fetches the store first so nothing already in Bitwarden is lost, is:
 
@@ -61,7 +61,7 @@ bazel run //apps/desktop/courier/app:publish              # with RELEASE_TAG=cou
 bazel run //apps/desktop/courier/app:publish -- --dry-run # locally: package and check, publish nothing
 ```
 
-It builds the app and the engine for arm64 and x86_64 (`--macos_cpus=arm64,x86_64`; a plain build stays one-CPU), refuses an app or engine that lacks either, adds the Telegram app ID, and hands the app to `//tools/desktop-package`: Developer ID signing (engine, then app, hardened runtime, `Resources/Courier.entitlements`), notarization, the universal, arm64 and x86_64 DMGs, the ZIP, checksums, the GitHub Release upload and the Homebrew cask (`vitruviansoftware/tap/courier`). A real release refuses to start without the Telegram app ID or the notary key; a dry run needs neither and leaves everything in `../dist/`. `scripts/src/publish.rs` lists what it reads.
+It builds the app and the engine for arm64 and x86_64 (`--macos_cpus=arm64,x86_64`; a plain build stays one-CPU), refuses an app or engine that lacks either, adds the Telegram app ID, and hands the app to `//tools/desktop-package`: Developer ID signing (engine, then app, hardened runtime, `Resources/Courier.entitlements`), notarization, the universal, arm64 and x86_64 DMGs, the ZIP, checksums, the GitHub Release upload and the Homebrew cask (`vitruviansoftware/tap/courier`). The publishing job runs in the `courier-release` environment, for the Telegram app ID; the Developer ID and notary key are repository secrets. A real release refuses to start without the Telegram app ID or the notary key; a dry run needs neither and leaves everything in `../dist/`. `scripts/src/publish.rs` lists what it reads.
 
 ```sh
 bazel run --config=macos-app //apps/desktop/courier/app:install               # into /Applications
