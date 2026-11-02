@@ -832,6 +832,9 @@ func oauthEnvironment(ctx *pulumi.Context, cfg *config.Config, repo *github.Repo
 //	pulumi config set --path 'foundationVars["foundation-bootstrap"]' \
 //	  '{"GCP_SERVICE_ACCOUNT":"...","GCP_WORKLOAD_IDENTITY_PROVIDER":"..."}'
 func foundationEnvironments(ctx *pulumi.Context, cfg *config.Config, repo *github.Repository) error {
+	if err := adoptRetiredFoundationPreviewEnvironments(ctx, cfg, repo); err != nil {
+		return err
+	}
 	var foundationVars map[string]map[string]string
 	_ = cfg.GetObject("foundationVars", &foundationVars)
 
