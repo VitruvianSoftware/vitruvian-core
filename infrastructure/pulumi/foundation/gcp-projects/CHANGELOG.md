@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.16.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.15.2...foundation-gcp-projects-v1.16.0) (2026-11-02)
+
+
+### Features
+
+* **foundation-gcp-projects:** read-only preview identities for tabula and oauth-user-inspector dev ([#4197](https://github.com/VitruvianSoftware/vitruvian-core/issues/4197)) ([b273feb](https://github.com/VitruvianSoftware/vitruvian-core/commit/b273feb479bcf2a927d64dd9dfb1859a3e958d8d))
+
 ## [1.15.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.15.1...foundation-gcp-projects-v1.15.2) (2026-10-29)
 
 
