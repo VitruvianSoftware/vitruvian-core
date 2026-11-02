@@ -9,13 +9,3 @@
 # file's header gives the `go test -tags integration` command to run it.
 apps/cli/devx/internal/multinode/provider/native_integration_test.go
 apps/cli/devx/internal/multinode/usb/assemble_integration_test.go
-
-# devx provider: the go_test is tagged manual ("requires docker/podman/colima/
-# lima binaries on PATH"), so CI has never run these. Run in the Bazel sandbox
-# on 2026-11-01, TestDetect_ReturnsResults fails (Detect() returns nil, not an
-# empty slice, when no runtime is installed). Drop these lines once that is
-# fixed and the manual tag is gone.
-apps/cli/devx/internal/provider/colima_test.go
-apps/cli/devx/internal/provider/detect_test.go
-apps/cli/devx/internal/provider/lima_test.go
-apps/cli/devx/internal/provider/registry_test.go

@@ -25,5 +25,4 @@ go_test(
         "registry_test.go",
     ],
     embed = [":provider"],
-    tags = ["manual"],  # requires docker/podman/colima/lima binaries on PATH; not available in Bazel sandbox
 )
