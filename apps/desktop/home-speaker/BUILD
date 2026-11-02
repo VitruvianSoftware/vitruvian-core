@@ -21,20 +21,66 @@ swift_library(
 
 swift_test(
     name = "HomeSpeakerTests",
-    # The tool's tests are a target of their own, below: they link the
-    # tool's core, which this target does not.
+    # The tool's tests and the view snapshots are targets of their own,
+    # below: they link the tool's core and the app's views, which this
+    # target does not.
     srcs = glob(
         ["Tests/**/*.swift"],
-        exclude = ["Tests/HomeSpeakerToolTests/**"],
+        exclude = [
+            "Tests/HomeSpeakerToolTests/**",
+            "Tests/HomeSpeakerViewTests/**",
+        ],
     ),
     # ProductionReadinessTests reads these: no source ships a home-directory
     # path, and Info.plist tracks Version.swift.
     data = glob(["Sources/**/*.swift"]) + ["Resources/Info.plist"],
-    # Never the real Beeper Desktop (23373): see scripts/test.sh.
-    env = {"HOMESPEAKER_BEEPER_URL": "http://localhost:9"},
+    # Never the real Beeper Desktop (23373) or Courier (23390).
+    env = {
+        "HOMESPEAKER_BEEPER_URL": "http://localhost:9",
+        "HOMESPEAKER_COURIER_URL": "http://localhost:9",
+    },
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
     deps = [":HomeSpeakerCore"],
+)
+
+# The app's views without Entry.swift (whose @main no test can link), as the
+# module HomeSpeaker, compiled for @testable import: HomeSpeakerViewTests
+# renders them. Test-only; the app itself is HomeSpeakerLib.
+swift_library(
+    name = "HomeSpeakerViews",
+    testonly = True,
+    srcs = glob(
+        ["Sources/HomeSpeaker/**/*.swift"],
+        exclude = ["Sources/HomeSpeaker/Entry.swift"],
+    ),
+    features = ["swift.enable_testing"],
+    module_name = "HomeSpeaker",
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [":HomeSpeakerCore"],
+)
+
+# A render harness, not a test of how anything looks: it draws Settings ›
+# Chats' Beeper and Courier sections, light and dark, to PNGs in the test's
+# undeclared outputs (bazel-testlogs/.../HomeSpeakerViewTests/test.outputs),
+# and asserts only that each drew at a sensible size. A person reads the
+# PNGs before a view change ships: green tests have shipped a broken layout
+# before. Nothing here reads or writes this Mac's settings or secrets.
+swift_test(
+    name = "HomeSpeakerViewTests",
+    size = "small",
+    srcs = glob(["Tests/HomeSpeakerViewTests/**/*.swift"]),
+    env = {
+        "HOMESPEAKER_BEEPER_URL": "http://localhost:9",
+        "HOMESPEAKER_COURIER_URL": "http://localhost:9",
+    },
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [
+        ":HomeSpeakerCore",
+        ":HomeSpeakerViews",
+    ],
 )
 
 # The HomeSpeaker tool for the Vitruvian app (docs/superpowers/plans/2026-10-12-vitruvian-tools-for-everyone-stage-f.md):
@@ -63,8 +109,11 @@ swift_test(
     name = "HomeSpeakerToolTests",
     size = "small",
     srcs = glob(["Tests/HomeSpeakerToolTests/**/*.swift"]),
-    # Never the real Beeper Desktop (23373): see scripts/test.sh.
-    env = {"HOMESPEAKER_BEEPER_URL": "http://localhost:9"},
+    # Never the real Beeper Desktop (23373) or Courier (23390).
+    env = {
+        "HOMESPEAKER_BEEPER_URL": "http://localhost:9",
+        "HOMESPEAKER_COURIER_URL": "http://localhost:9",
+    },
     tags = ["manual"],
     target_compatible_with = ["@platforms//os:macos"],
     deps = [

@@ -39,6 +39,10 @@ public class SettingsViewModel: ObservableObject {
     @Published public var showReplaceSlackToken: Bool = false
     @Published public var beeperToken: String = ""
     @Published public var showReplaceBeeperToken: Bool = false
+    @Published public var courierToken: String = ""
+    @Published public var showReplaceCourierToken: Bool = false
+    /// Beeper's and Courier's addresses as typed, saved on Return.
+    @Published public var chatAppAddresses: [ChatApp: String] = [:]
     @Published public var geminiApiKey: String = ""
     @Published public var showReplaceGeminiKey: Bool = false
     @Published public var oauthClientId: String = ""
@@ -56,7 +60,7 @@ public class SettingsViewModel: ObservableObject {
 
     public init() {}
 
-    func refresh(secrets: SecretStore = .shared) {
+    func refresh(secrets: SecretStore = .shared, config: ConfigManager = .shared) {
         agents = CodingAgent.allCases.map { AgentIntegration.shared.status(of: $0) }
         legacyLaunchAgentInstalled = AgentIntegration.shared.isLegacyLaunchAgentInstalled()
         launchAtLogin = LoginItem.isEnabled
@@ -65,6 +69,10 @@ public class SettingsViewModel: ObservableObject {
         showReplaceSlackToken = false
         beeperToken = s.beeperToken ?? ""
         showReplaceBeeperToken = false
+        courierToken = s.courierToken ?? ""
+        showReplaceCourierToken = false
+        let monitor = config.config.effectiveChatMonitor
+        chatAppAddresses = Dictionary(uniqueKeysWithValues: ChatApp.allCases.map { ($0, monitor.address(for: $0)) })
         geminiApiKey = s.geminiApiKey ?? ""
         showReplaceGeminiKey = false
         oauthClientId = s.oauthClientIdOverride ?? ""
@@ -163,24 +171,54 @@ public struct SettingsView: View {
         )
     }
 
-    /// A Beeper network's switch: on reads it, off mutes it. Saved only:
-    /// unlike `monitorBinding`, the monitor is not restarted, because each
-    /// poll reads the mutes fresh and a restart would drop what arrived
-    /// meanwhile (`ConfigManager.setBeeperNetwork`).
-    private func beeperNetworkBinding(_ key: String) -> Binding<Bool> {
+    /// A Beeper or Courier network's switch: on reads it, off mutes it.
+    /// Saved only: unlike `monitorBinding`, the monitor is not restarted,
+    /// because each poll reads the mutes fresh and a restart would drop
+    /// what arrived meanwhile (`ConfigManager.setNetwork`).
+    private func networkBinding(_ app: ChatApp, _ key: String) -> Binding<Bool> {
         Binding(
-            get: { !configManager.config.effectiveChatMonitor.beeperMutedNetworks.contains(key) },
-            set: { configManager.setBeeperNetwork(key, reading: $0) }
+            get: { !configManager.config.effectiveChatMonitor.mutedNetworks(for: app).contains(key) },
+            set: { configManager.setNetwork(key, of: app, reading: $0) }
         )
     }
 
-    /// The Beeper networks to show a switch for, as the extension's pages
-    /// show them: what the running monitor last listed, and the saved
+    /// An app's networks to show a switch for, as the extension's pages
+    /// show Beeper's: what the running monitor last listed, and the saved
     /// mutes, so the mutes show while it is stopped too.
-    private var beeperNetworkList: BeeperNetworkList {
+    private func networkList(_ app: ChatApp) -> BeeperNetworkList {
         BeeperNetworkList(
-            listed: monitorService.isRunning ? monitorService.beeperNetworkStates : nil,
-            muted: configManager.config.effectiveChatMonitor.beeperMutedNetworks)
+            listed: monitorService.isRunning ? monitorService.networkStates(for: app) : nil,
+            muted: configManager.config.effectiveChatMonitor.mutedNetworks(for: app))
+    }
+
+    /// Settings › Chats for Beeper or Courier.
+    private func chatAppSection(_ app: ChatApp) -> some View {
+        ChatAppSection(
+            app: app,
+            isOn: sourceBinding(ChatMonitorConfig.enabledKey(app)),
+            announce: monitorBinding(ChatMonitorConfig.announceKey(app)),
+            networks: networkList(app),
+            networkSwitch: { networkBinding(app, $0) },
+            hasToken: SecretStore.shared.load().token(for: app) != nil,
+            tokenDraft: app == .beeper ? $viewModel.beeperToken : $viewModel.courierToken,
+            showReplaceToken: app == .beeper ? $viewModel.showReplaceBeeperToken : $viewModel.showReplaceCourierToken,
+            saveToken: { saveToken(app) },
+            addressDraft: Binding(
+                get: { viewModel.chatAppAddresses[app] ?? configManager.config.effectiveChatMonitor.address(for: app) },
+                set: { viewModel.chatAppAddresses[app] = $0 }),
+            saveAddress: { saveAddress(app) },
+            readingLine: monitorService.isRunning
+                ? ChatMonitorService.readingLine(
+                    app, networks: monitorService.networks(for: app), skipped: monitorService.skippedNetworks(for: app))
+                : nil,
+            readAnyway: app == .courier
+                ? { key in
+                    Binding(
+                        get: { configManager.config.effectiveChatMonitor.courierReadAnyway.contains(key) },
+                        set: { configManager.setCourierReadsAnyway(key, $0) })
+                }
+                : nil,
+            readAnywayKeys: configManager.config.effectiveChatMonitor.readsAnyway(app))
     }
 
     /// A chat source's switch: saved, and the monitor brought along
@@ -882,58 +920,8 @@ public struct SettingsView: View {
                 }
             }
 
-            Section {
-                Toggle("Announce Beeper messages", isOn: sourceBinding(\.beeperEnabled))
-                    .accessibilityHint("Announces new messages from Beeper Desktop aloud")
-                if monitor.beeperEnabled {
-                    Picker("Announce", selection: monitorBinding(\.beeperAnnounce)) {
-                        ForEach(ChatMonitorConfig.BeeperAnnounce.allCases, id: \.self) { mode in
-                            Text(mode.title).tag(mode)
-                        }
-                    }
-                    beeperNetworkSwitches
-                    let hasBeeperToken = !(SecretStore.shared.load().beeperToken ?? "").isEmpty
-                    if hasBeeperToken && !viewModel.showReplaceBeeperToken {
-                        HStack {
-                            Label("Beeper token saved", systemImage: "checkmark.circle.fill")
-                                .font(.caption).foregroundStyle(.green)
-                            Button("Replace Token…") { viewModel.showReplaceBeeperToken = true }
-                                .controlSize(.small)
-                            if monitorService.isRunning, let line = ChatMonitorService.beeperReadingLine(
-                                networks: monitorService.beeperNetworks, skipped: monitorService.beeperSkippedNetworks) {
-                                Text(line).font(.caption).foregroundStyle(.secondary)
-                            }
-                        }
-                    } else {
-                        SecureField("Access token", text: $viewModel.beeperToken)
-                            .onSubmit {
-                                saveBeeperToken()
-                                viewModel.showReplaceBeeperToken = false
-                            }
-                        HStack {
-                            Button("Save Token") {
-                                saveBeeperToken()
-                                viewModel.showReplaceBeeperToken = false
-                            }
-                            .controlSize(.small)
-                            if hasBeeperToken {
-                                Button("Cancel") { viewModel.showReplaceBeeperToken = false }
-                                    .controlSize(.small)
-                            }
-                            if monitorService.isRunning, let line = ChatMonitorService.beeperReadingLine(
-                                networks: monitorService.beeperNetworks, skipped: monitorService.beeperSkippedNetworks) {
-                                Text(line).font(.caption).foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                }
-            } header: {
-                Text("Beeper")
-            } footer: {
-                if monitor.beeperEnabled {
-                    Text("In Beeper Desktop: Settings › Integrations, turn on the Desktop API, then + next to Approved connections. Beeper Desktop must be running; HomeSpeaker only talks to it on this Mac. Slack and Google Chat chats in Beeper are skipped while their own switches above are on.")
-                }
-            }
+            chatAppSection(.beeper)
+            chatAppSection(.courier)
 
             Section("Options") {
                 Toggle("Skip messages I sent", isOn: monitorBinding(\.muteOwnMessages))
@@ -951,31 +939,6 @@ public struct SettingsView: View {
             statusSection
         }
         .formStyle(.grouped)
-    }
-
-    /// A switch for each Beeper network, under a "Networks" caption: on
-    /// reads it, off mutes it. A network HomeSpeaker reads itself is shown
-    /// off and greyed. Before the monitor has read Beeper, the saved mutes
-    /// and where the others will show.
-    @ViewBuilder
-    private var beeperNetworkSwitches: some View {
-        let list = beeperNetworkList
-        if list.shows(beeperEnabled: configManager.config.effectiveChatMonitor.beeperEnabled) {
-            Text("Networks").font(.caption).foregroundStyle(.secondary)
-            ForEach(list.rows, id: \.key) { row in
-                if row.state == .skipped {
-                    Toggle("\(row.name) · Read directly", isOn: .constant(false))
-                        .disabled(true)
-                        .accessibilityHint("Read by HomeSpeaker's own reader while its switch is on")
-                } else {
-                    Toggle(row.name, isOn: beeperNetworkBinding(row.key))
-                        .accessibilityHint("Off mutes this Beeper network")
-                }
-            }
-            if !list.isListed {
-                Text(BeeperNetworkList.othersLater).font(.caption).foregroundStyle(.secondary)
-            }
-        }
     }
 
     private var hasChatScopes: Bool { SecretStore.shared.load().hasChatAccess }
@@ -1274,13 +1237,33 @@ public struct SettingsView: View {
         } catch { status(error.localizedDescription, isError: true) }
     }
 
-    private func saveBeeperToken() {
+    /// Saves Beeper's or Courier's token, and restarts the monitor so it
+    /// reads with it. Clearing Courier's switches Courier off: it stays off
+    /// until a token is saved.
+    private func saveToken(_ app: ChatApp) {
         do {
-            let token = viewModel.beeperToken.trimmingCharacters(in: .whitespacesAndNewlines)
-            try SecretStore.shared.update { $0.beeperToken = token.isEmpty ? nil : token }
-            status(token.isEmpty ? "Beeper token cleared." : "Beeper token saved.")
+            let typed = app == .beeper ? viewModel.beeperToken : viewModel.courierToken
+            let token = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+            try SecretStore.shared.update { $0[keyPath: Secrets.tokenKey(app)] = token.isEmpty ? nil : token }
+            status(token.isEmpty ? "\(app.name) token cleared." : "\(app.name) token saved.")
+            if app == .courier, token.isEmpty, configManager.config.effectiveChatMonitor.courierEnabled {
+                configManager.setChatSource(\.courierEnabled, false)
+            }
             monitorService.restartIfRunning()
         } catch { status(error.localizedDescription, isError: true) }
+    }
+
+    /// Saves where Beeper's or Courier's API is, unless it is not an http
+    /// address on this Mac; empty is the app's usual address.
+    private func saveAddress(_ app: ChatApp) {
+        let typed = (viewModel.chatAppAddresses[app] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if let problem = ChatAppClient.addressProblem(typed, app: app) {
+            status(problem.localizedDescription, isError: true)
+            return
+        }
+        viewModel.chatAppAddresses[app] = typed
+        monitorBinding(ChatMonitorConfig.addressKey(app)).wrappedValue = typed
+        status(typed.isEmpty ? "\(app.name) address set to the usual one." : "\(app.name) address saved.")
     }
 
     private func saveOAuthClient() {

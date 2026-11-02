@@ -338,7 +338,7 @@ final class PageIdsTests: XCTestCase {
             XCTAssertTrue(ManifestRules.isWellFormedName(Pages.Block.setupDiscoverHome(index)))
         }
         // The longest key the engine makes for a Beeper network.
-        let key = String(repeating: "k", count: BeeperClient.maxNetworkKeyLength)
+        let key = String(repeating: "k", count: ChatAppClient.maxNetworkKeyLength)
         XCTAssertTrue(ManifestRules.isWellFormedName(Pages.Block.beeperNetwork(key)))
         // Every value a picker can draw as a list row from an enum.
         let enumValues = Pages.Section.allCases.map(\.rawValue) + SpeechLength.allCases.map(\.rawValue)

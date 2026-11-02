@@ -95,7 +95,7 @@ private struct SilentLocal: LocalSpeaking {
         for url in [profile.settingsURL, profile.historyURL, profile.secretsURL, profile.monitorStatusURL] {
             try #require(url.path.hasPrefix(root.path + "/"), "\(url.path) is outside the scratch folder")
         }
-        try #require(standInBeeperBase.port != 23373 && BeeperClient.isLoopback(standInBeeperBase))
+        try #require(standInBeeperBase.port != 23373 && ChatAppClient.isLoopback(standInBeeperBase))
 
         let slackToken = "fake-slack-cancel-\(UUID().uuidString)" // gitleaks:allow (made-up test token)
         let beeperToken = "fake-beeper-cancel-\(UUID().uuidString)" // gitleaks:allow (made-up test token)

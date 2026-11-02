@@ -354,6 +354,10 @@ public struct MenuBarView: View {
                 chatSwitch("Slack", \.slackEnabled)
                 chatSwitch("Google Chat", \.googleChatEnabled)
                 chatSwitch("Beeper", \.beeperEnabled)
+                chatSwitch("Courier", \.courierEnabled)
+                    // Off until a Courier token is saved in Settings.
+                    .disabled(SecretStore.shared.load().token(for: .courier) == nil
+                        && !configManager.config.effectiveChatMonitor.courierEnabled)
             }
             .toggleStyle(.checkbox)
         }

@@ -264,7 +264,7 @@ private final class StandInBeeper: URLProtocol {
         let scenario = Self.lock.withLock { bearer.flatMap { Self.scenarios[$0] } }
         // Beeper is only ever asked with GET, on this Mac, never on its
         // real port; anything else is recorded as a failure and refused.
-        let rulesKept = seen.method == "GET" && BeeperClient.isLoopback(url) && url.port != 23373
+        let rulesKept = seen.method == "GET" && ChatAppClient.isLoopback(url) && url.port != 23373
         guard rulesKept, let scenario else {
             Self.lock.withLock { Self.strays.append(seen) }
             finish(status: 418, body: "{}")
@@ -379,7 +379,7 @@ private struct Rig {
             try #require(url.path.hasPrefix(root.path + "/"), "\(url.path) is outside the scratch folder")
         }
         // Never the real Beeper: the address the monitor is given is not its port.
-        try #require(standInBase.port != 23373 && BeeperClient.isLoopback(standInBase))
+        try #require(standInBase.port != 23373 && ChatAppClient.isLoopback(standInBase))
         engine = HomeSpeakerEngine(profile: profile, session: StandInSlack.session, local: local)
         var config = SpeakerConfig(enabled: true, quietHoursEnabled: false, chatMonitor: monitorConfig)
         config.speakHome = false
@@ -436,7 +436,7 @@ private func fakeToken() -> String { "fake-beeper-test-token-\(UUID().uuidString
 
 @Suite struct BeeperRulesTests {
     @Test func classifyGoesByBridgeThenAccountIdThenNetwork() {
-        let cases: [(BeeperAccount, BeeperClient.Kind)] = [
+        let cases: [(BeeperAccount, ChatAppClient.Kind)] = [
             (BeeperAccount(accountID: "slackgo.T01-U02", network: "Slack"), .slack(team: "T01")),
             (BeeperAccount(accountID: "x", bridgeType: "slackgo", network: ""), .slack(team: nil)),
             (BeeperAccount(accountID: "slackgo.T01-U02", bridgeType: "slackgo", network: "Slack"), .slack(team: "T01")),
@@ -453,16 +453,16 @@ private func fakeToken() -> String { "fake-beeper-test-token-\(UUID().uuidString
             (BeeperAccount(accountID: "matrix", network: "Beeper"), .other),
         ]
         for (account, kind) in cases {
-            #expect(BeeperClient.classify(account) == kind, "\(account)")
+            #expect(ChatAppClient.classify(account) == kind, "\(account)")
         }
     }
 
     @Test func slackTeamComesFromASlackgoAccountIdOnly() {
-        #expect(BeeperClient.slackTeam(accountID: "slackgo.T0ABC-U0DEF") == "T0ABC")
-        #expect(BeeperClient.slackTeam(accountID: "slackgo.-U0DEF") == nil)
-        #expect(BeeperClient.slackTeam(accountID: "slackgo.T0ABC") == nil)
-        #expect(BeeperClient.slackTeam(accountID: "gmessages.a-b") == nil)
-        #expect(BeeperClient.slackTeam(accountID: "local-slack_T0-U0") == nil)
+        #expect(ChatAppClient.slackTeam(accountID: "slackgo.T0ABC-U0DEF") == "T0ABC")
+        #expect(ChatAppClient.slackTeam(accountID: "slackgo.-U0DEF") == nil)
+        #expect(ChatAppClient.slackTeam(accountID: "slackgo.T0ABC") == nil)
+        #expect(ChatAppClient.slackTeam(accountID: "gmessages.a-b") == nil)
+        #expect(ChatAppClient.slackTeam(accountID: "local-slack_T0-U0") == nil)
     }
 
     /// James's rule: nothing spoken twice. Slack by workspace; a workspace
@@ -475,7 +475,7 @@ private func fakeToken() -> String { "fake-beeper-test-token-\(UUID().uuidString
         let sms = BeeperAccount(accountID: "gmessages.x/0", network: "Google Messages")
         let whatsapp = BeeperAccount(accountID: "local-whatsapp_x", network: "WhatsApp")
         func skipped(_ a: BeeperAccount, slack: Bool, chatOn: Bool, team: String?) -> Bool {
-            BeeperClient.isSkipped(a, config: ChatMonitorConfig(slackEnabled: slack, googleChatEnabled: chatOn), nativeSlackTeam: team)
+            ChatAppClient.isSkipped(a, config: ChatMonitorConfig(slackEnabled: slack, googleChatEnabled: chatOn), nativeSlackTeam: team)
         }
         // Slack on, workspace known: only that workspace.
         #expect(skipped(native, slack: true, chatOn: false, team: "TNATIVE"))
@@ -486,12 +486,12 @@ private func fakeToken() -> String { "fake-beeper-test-token-\(UUID().uuidString
         #expect(skipped(other, slack: true, chatOn: false, team: nil))
         // An Enterprise Grid account may carry the grid's id: the same
         // Slack user is the same workspace, whatever the team says.
-        #expect(BeeperClient.isSkipped(BeeperAccount(accountID: "slackgo.E0GRID-UME1", network: "Slack"),
+        #expect(ChatAppClient.isSkipped(BeeperAccount(accountID: "slackgo.E0GRID-UME1", network: "Slack"),
                                        config: ChatMonitorConfig(slackEnabled: true), nativeSlackTeam: "TNATIVE", nativeSlackUser: "UME1"))
-        #expect(!BeeperClient.isSkipped(BeeperAccount(accountID: "slackgo.E0GRID-UOTHER", network: "Slack"),
+        #expect(!ChatAppClient.isSkipped(BeeperAccount(accountID: "slackgo.E0GRID-UOTHER", network: "Slack"),
                                         config: ChatMonitorConfig(slackEnabled: true), nativeSlackTeam: "TNATIVE", nativeSlackUser: "UME1"))
-        #expect(BeeperClient.slackUser(accountID: "slackgo.T0ABC-U0DEF") == "U0DEF")
-        #expect(BeeperClient.slackUser(accountID: "local-slack_T0-U0") == nil)
+        #expect(ChatAppClient.slackUser(accountID: "slackgo.T0ABC-U0DEF") == "U0DEF")
+        #expect(ChatAppClient.slackUser(accountID: "local-slack_T0-U0") == nil)
         // Slack off: none.
         #expect(!skipped(native, slack: false, chatOn: false, team: "TNATIVE"))
         #expect(!skipped(other, slack: false, chatOn: false, team: nil))
@@ -525,26 +525,26 @@ private func fakeToken() -> String { "fake-beeper-test-token-\(UUID().uuidString
             (BeeperAccount(accountID: "/", bridgeType: "", network: "✉️"), "beeper"),
             // Never longer than a block id has room for.
             (BeeperAccount(accountID: "x", bridgeType: String(repeating: "b", count: 300), network: ""),
-             String(repeating: "b", count: BeeperClient.maxNetworkKeyLength)),
+             String(repeating: "b", count: ChatAppClient.maxNetworkKeyLength)),
         ]
         let wellFormed = try! Regex("^[a-z0-9_-]+$")
         for (account, key) in cases {
-            let got = BeeperClient.networkKey(account)
+            let got = ChatAppClient.networkKey(account)
             #expect(got == key, "\(account)")
             #expect(got.wholeMatch(of: wellFormed) != nil, "\(got)")
         }
         // Two WhatsApp accounts are one network.
-        #expect(BeeperClient.networkKey(BeeperAccount(accountID: "local-whatsapp_ba_ONE", network: "WhatsApp"))
-                == BeeperClient.networkKey(BeeperAccount(accountID: "local-whatsapp_ba_TWO", bridgeType: "whatsapp", network: "WhatsApp")))
+        #expect(ChatAppClient.networkKey(BeeperAccount(accountID: "local-whatsapp_ba_ONE", network: "WhatsApp"))
+                == ChatAppClient.networkKey(BeeperAccount(accountID: "local-whatsapp_ba_TWO", bridgeType: "whatsapp", network: "WhatsApp")))
     }
 
     @Test func aNetworkIsMutedByItsKey() {
         let whatsapp = BeeperAccount(accountID: "local-whatsapp_ba_FAKE", bridgeType: "whatsapp", network: "WhatsApp")
         let signal = BeeperAccount(accountID: "local-signal_FAKE", network: "Signal")
         let config = ChatMonitorConfig(beeperEnabled: true, beeperMutedNetworks: ["whatsapp"])
-        #expect(BeeperClient.isMuted(whatsapp, config: config))
-        #expect(!BeeperClient.isMuted(signal, config: config))
-        #expect(!BeeperClient.isMuted(whatsapp, config: ChatMonitorConfig(beeperEnabled: true)))
+        #expect(ChatAppClient.isMuted(whatsapp, config: config))
+        #expect(!ChatAppClient.isMuted(signal, config: config))
+        #expect(!ChatAppClient.isMuted(whatsapp, config: ChatMonitorConfig(beeperEnabled: true)))
     }
 
     @Test func whatIsAnnouncedInEachMode() {
@@ -557,7 +557,7 @@ private func fakeToken() -> String { "fake-beeper-test-token-\(UUID().uuidString
                           isSender: isSender, isHidden: hidden, isDeleted: deleted, mentions: mentions)
         }
         func says(_ msg: BeeperMessage, _ chat: BeeperChat?, _ mode: ChatMonitorConfig.BeeperAnnounce, muteOwn: Bool = true) -> Bool {
-            BeeperClient.shouldAnnounce(msg, chat: chat, ownUserIDs: me, mode: mode, muteOwn: muteOwn)
+            ChatAppClient.shouldAnnounce(msg, chat: chat, ownUserIDs: me, mode: mode, muteOwn: muteOwn)
         }
         #expect(says(m(), dm, .directAndMentions))
         #expect(!says(m(), group, .directAndMentions))
@@ -579,7 +579,7 @@ private func fakeToken() -> String { "fake-beeper-test-token-\(UUID().uuidString
 
     @Test func whatIsSaidOfAMessage() {
         func text(_ type: String, _ body: String) -> String? {
-            BeeperClient.spokenText(BeeperMessage(id: "1", chatID: "c", accountID: "a", timestamp: start, type: type, text: body))
+            ChatAppClient.spokenText(BeeperMessage(id: "1", chatID: "c", accountID: "a", timestamp: start, type: type, text: body))
         }
         #expect(text("TEXT", "  hello \n there ") == "hello there")
         #expect(text("TEXT", "  ") == nil)
@@ -597,14 +597,14 @@ private func fakeToken() -> String { "fake-beeper-test-token-\(UUID().uuidString
     @Test func theSpokenLineNamesTheNetworkAndTheGroup() {
         let msg = BeeperMessage(id: "1", chatID: "c", accountID: "a", senderName: "Bob", timestamp: start, text: "hi")
         let account = BeeperAccount(accountID: "a", network: "Signal")
-        #expect(BeeperClient.incoming(msg, chat: BeeperChat(id: "c", isDirect: false, title: "Family"), account: account, text: "hi")
+        #expect(ChatAppClient.incoming(msg, chat: BeeperChat(id: "c", isDirect: false, title: "Family"), account: account, text: "hi")
                 .spokenLine == "Signal message from Bob in Family: hi")
-        #expect(BeeperClient.incoming(msg, chat: BeeperChat(id: "c", isDirect: true, title: "Bob"), account: account, text: "hi")
+        #expect(ChatAppClient.incoming(msg, chat: BeeperChat(id: "c", isDirect: true, title: "Bob"), account: account, text: "hi")
                 .spokenLine == "Signal message from Bob: hi")
         // No account known: the chat's network; neither: Beeper.
-        #expect(BeeperClient.incoming(msg, chat: BeeperChat(id: "c", isDirect: true, network: "Telegram"), account: nil, text: "hi")
+        #expect(ChatAppClient.incoming(msg, chat: BeeperChat(id: "c", isDirect: true, network: "Telegram"), account: nil, text: "hi")
                 .spokenLine == "Telegram message from Bob: hi")
-        #expect(BeeperClient.incoming(msg, chat: nil, account: nil, text: "hi").spokenLine == "Beeper message from Bob: hi")
+        #expect(ChatAppClient.incoming(msg, chat: nil, account: nil, text: "hi").spokenLine == "Beeper message from Bob: hi")
         // Slack and Google Chat read as before.
         #expect(IncomingMessage(source: .slack, id: "1", timestamp: start, senderId: "", senderName: "alice", channel: "general",
                                 text: "hi").spokenLine == "Slack message from alice in general: hi")
@@ -613,14 +613,14 @@ private func fakeToken() -> String { "fake-beeper-test-token-\(UUID().uuidString
     /// The address can be moved for a test, only on this Mac; anything
     /// else reads nothing rather than falling back to the real Beeper.
     @Test func theAddressStaysOnThisMac() {
-        #expect(BeeperClient.baseURL(environment: [:]) == .success(URL(string: "http://localhost:23373")!))
-        #expect(BeeperClient.baseURL(environment: ["HOMESPEAKER_BEEPER_URL": ""]) == .success(BeeperClient.defaultBaseURL))
+        #expect(ChatAppClient.baseURL(environment: [:]) == .success(URL(string: "http://localhost:23373")!))
+        #expect(ChatAppClient.baseURL(environment: ["HOMESPEAKER_BEEPER_URL": ""]) == .success(ChatAppClient.defaultBaseURL))
         for good in ["http://localhost:5000", "http://127.0.0.1:5000", "http://[::1]:5000"] {
-            #expect(BeeperClient.baseURL(environment: ["HOMESPEAKER_BEEPER_URL": good]) == .success(URL(string: good)!), "\(good)")
+            #expect(ChatAppClient.baseURL(environment: ["HOMESPEAKER_BEEPER_URL": good]) == .success(URL(string: good)!), "\(good)")
         }
         for bad in ["http://example.com:23373", "https://localhost:5000", "http://192.168.1.10:23373", "localhost:5000",
                     "http://localhost.example.com"] {
-            guard case .failure = BeeperClient.baseURL(environment: ["HOMESPEAKER_BEEPER_URL": bad]) else {
+            guard case .failure = ChatAppClient.baseURL(environment: ["HOMESPEAKER_BEEPER_URL": bad]) else {
                 Issue.record("\(bad) was taken")
                 continue
             }
@@ -631,24 +631,24 @@ private func fakeToken() -> String { "fake-beeper-test-token-\(UUID().uuidString
     /// (scripts/test.sh, and the Bazel test targets' env), so a test that
     /// forgets its stand-in can never reach the real Beeper Desktop.
     @Test func testRunsNeverPointAtTheRealBeeper() throws {
-        let url = try BeeperClient.baseURL(environment: ProcessInfo.processInfo.environment).get()
+        let url = try ChatAppClient.baseURL(environment: ProcessInfo.processInfo.environment).get()
         #expect(url.port != 23373, "run the tests with scripts/test.sh, which sets HOMESPEAKER_BEEPER_URL")
-        #expect(url != BeeperClient.defaultBaseURL)
+        #expect(url != ChatAppClient.defaultBaseURL)
     }
 
     @Test func accountsReadAsAListOrUnderItems() {
-        let list = BeeperClient.parseAccounts(try! JSONSerialization.jsonObject(with: Data(accountsBody.utf8)))
+        let list = ChatAppClient.parseAccounts(try! JSONSerialization.jsonObject(with: Data(accountsBody.utf8)))
         #expect(list.count == 6)
         #expect(list[0] == BeeperAccount(accountID: "local-whatsapp_ba_FAKE", bridgeType: "whatsapp", network: "WhatsApp",
                                          userID: "@me-wa:fake.test"))
-        let wrapped = BeeperClient.parseAccounts(["items": [["accountID": "a", "network": "Signal"], ["network": "no id"]]])
+        let wrapped = ChatAppClient.parseAccounts(["items": [["accountID": "a", "network": "Signal"], ["network": "no id"]]])
         #expect(wrapped == [BeeperAccount(accountID: "a", network: "Signal")])
-        #expect(BeeperClient.parseAccounts("nonsense").isEmpty)
+        #expect(ChatAppClient.parseAccounts("nonsense").isEmpty)
     }
 
     @Test func aSearchReadsOldestFirstWithItsChats() throws {
         let json = try #require(try JSONSerialization.jsonObject(with: Data(searchBody(everyCase.reversed()).utf8)) as? [String: Any])
-        let found = BeeperClient.parseSearch(json)
+        let found = ChatAppClient.parseSearch(json)
         #expect(found.messages.count == everyCase.count)
         #expect(found.messages.first?.id == "m-old")
         #expect(found.messages.map(\.timestamp) == found.messages.map(\.timestamp).sorted())
@@ -659,11 +659,11 @@ private func fakeToken() -> String { "fake-beeper-test-token-\(UUID().uuidString
     }
 
     @Test func connectionErrorsSayWhatHappened() {
-        #expect(BeeperClient.mapped(URLError(.cannotConnectToHost)) == .beeperNotRunning)
-        #expect(BeeperClient.mapped(URLError(.networkConnectionLost)) == .beeperNotRunning)
+        #expect(ChatAppClient.mapped(URLError(.cannotConnectToHost)) == .beeperNotRunning)
+        #expect(ChatAppClient.mapped(URLError(.networkConnectionLost)) == .beeperNotRunning)
         #expect(ChatMonitorError.beeperNotRunning.localizedDescription.contains("isn't running"))
-        #expect(BeeperClient.mapped(URLError(.timedOut)).localizedDescription.contains("did not answer"))
-        #expect(BeeperClient.mapped(URLError(.appTransportSecurityRequiresSecureConnection)).localizedDescription
+        #expect(ChatAppClient.mapped(URLError(.timedOut)).localizedDescription.contains("did not answer"))
+        #expect(ChatAppClient.mapped(URLError(.appTransportSecurityRequiresSecureConnection)).localizedDescription
                 .contains("App Transport Security"))
     }
 
@@ -910,7 +910,7 @@ private func fakeToken() -> String { "fake-beeper-test-token-\(UUID().uuidString
         defer { rig.finish() }
         await rig.startMonitor()
         await rig.poll(at: 60)
-        #expect(rig.beeper.searches.count == BeeperClient.unseenBudget / BeeperClient.pageLimit)
+        #expect(rig.beeper.searches.count == ChatAppClient.unseenBudget / ChatAppClient.pageLimit)
         #expect(rig.local.spoken.count == 200)
         let said = ChatMonitorError.beeperTooMany.localizedDescription
         #expect(said == "Beeper: too many messages at once; some may be missed. Mute busy chats in Beeper.")
@@ -986,7 +986,7 @@ private func fakeToken() -> String { "fake-beeper-test-token-\(UUID().uuidString
         defer { rig.finish() }
         await rig.startMonitor()
         await rig.poll(at: 60)
-        #expect(rig.beeper.searches.count == BeeperClient.maxPages)
+        #expect(rig.beeper.searches.count == ChatAppClient.maxPages)
         #expect(rig.monitor.lastError == ChatMonitorError.beeperTooMany.localizedDescription)
     }
 

@@ -47,6 +47,7 @@ public struct DoorSnapshot: Equatable {
     public let hasChatLogin: Bool
     public let hasSlackToken: Bool
     public let hasBeeperToken: Bool
+    public let hasCourierToken: Bool
     public let hasGeminiKey: Bool
     /// A sign-in client of the person's own, used instead of the shipped one.
     public let hasOwnClient: Bool
@@ -57,7 +58,7 @@ public struct DoorSnapshot: Equatable {
     public let outputs: Outputs
     /// "22:00 to 07:00" while quiet hours are on; nil while off.
     public let quietHours: String?
-    /// The chat sources switched on, by name: "Slack", "Google Chat", "Beeper".
+    /// The chat sources switched on, by name: "Slack", "Google Chat", "Beeper", "Courier".
     public let chatSources: [String]
     public let historyCount: Int
 
@@ -67,7 +68,7 @@ public struct DoorSnapshot: Equatable {
         hasOwnClient: Bool = false, homeName: String? = nil, speakerCount: Int = 0,
         defaultSpeaker: String? = nil, outputs: Outputs = .home, quietHours: String? = nil,
         chatSources: [String] = [], historyCount: Int = 0, hasBeeperToken: Bool = false,
-        hasGeminiKey: Bool = false
+        hasGeminiKey: Bool = false, hasCourierToken: Bool = false
     ) {
         self.settingsRead = settingsRead
         self.settingsChanged = settingsChanged
@@ -76,6 +77,7 @@ public struct DoorSnapshot: Equatable {
         self.hasChatLogin = hasChatLogin
         self.hasSlackToken = hasSlackToken
         self.hasBeeperToken = hasBeeperToken
+        self.hasCourierToken = hasCourierToken
         self.hasGeminiKey = hasGeminiKey
         self.hasOwnClient = hasOwnClient
         self.homeName = homeName
@@ -115,6 +117,7 @@ public struct DoorSnapshot: Equatable {
         if monitor.slackEnabled { sources.append("Slack") }
         if monitor.googleChatEnabled { sources.append("Google Chat") }
         if monitor.beeperEnabled { sources.append("Beeper") }
+        if monitor.courierEnabled { sources.append("Courier") }
 
         self.init(
             settingsRead: read,
@@ -133,7 +136,8 @@ public struct DoorSnapshot: Equatable {
             chatSources: sources,
             historyCount: BroadcastHistory(fileURL: profile.historyURL).load().count,
             hasBeeperToken: Self.present(secrets.beeperToken),
-            hasGeminiKey: Self.present(secrets.geminiApiKey))
+            hasGeminiKey: Self.present(secrets.geminiApiKey),
+            hasCourierToken: Self.present(secrets.courierToken))
     }
 
     /// Set up: signed in to Google Home, with a Gemini key, with speakers,
@@ -347,6 +351,7 @@ public enum DoorCopy {
         if let chat = secrets.googleChat, !chat.refreshToken.isEmpty { parts.append("Google Chat") }
         if !(secrets.slackToken ?? "").isEmpty { parts.append("a Slack token") }
         if !(secrets.beeperToken ?? "").isEmpty { parts.append("a Beeper token") }
+        if !(secrets.courierToken ?? "").isEmpty { parts.append("a Courier token") }
         if !(secrets.geminiApiKey ?? "").isEmpty { parts.append("a Gemini API key") }
         if !(secrets.oauthClientIdOverride ?? "").isEmpty { parts.append("an own sign-in client") }
         guard !parts.isEmpty else { return "Sign-ins: \(from) has none, so this one is now signed out." }
