@@ -125,8 +125,57 @@ fn rules_rust_extension_var(content: &str) -> Option<String> {
     None
 }
 
-/// The parser behind [`canonical_rust`], on `MODULE.bazel`'s text.
+/// `text` with its Starlark `#` comments removed, line breaks kept. String
+/// literals (`"..."`, `'...'` and the triple-quoted forms) are copied as
+/// they are, so a `#` inside one is not a comment. Without this, a
+/// commented-out `# rust.toolchain(versions = [...])` above the real call
+/// was read as the version.
+fn strip_starlark_comments(text: &str) -> String {
+    let b = text.as_bytes();
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0;
+    while i < b.len() {
+        let c = b[i];
+        if c == b'#' {
+            while i < b.len() && b[i] != b'\n' {
+                i += 1;
+            }
+            continue;
+        }
+        if c == b'"' || c == b'\'' {
+            let triple = i + 2 < b.len() && b[i + 1] == c && b[i + 2] == c;
+            let q = if triple { 3 } else { 1 };
+            let start = i;
+            i += q;
+            while i < b.len() {
+                if b[i] == b'\\' {
+                    i += 2;
+                    continue;
+                }
+                if b[i] == c && (!triple || (i + 2 < b.len() && b[i + 1] == c && b[i + 2] == c)) {
+                    i += q;
+                    break;
+                }
+                if !triple && b[i] == b'\n' {
+                    break;
+                }
+                i += 1;
+            }
+            out.push_str(&text[start..i.min(b.len())]);
+            continue;
+        }
+        let len = text[i..].chars().next().map_or(1, char::len_utf8);
+        out.push_str(&text[i..i + len]);
+        i += len;
+    }
+    out
+}
+
+/// The parser behind [`canonical_rust`], on `MODULE.bazel`'s text. Comments
+/// are stripped first, so nothing commented out is read.
 pub fn rust_version_from_module(content: &str) -> Option<String> {
+    let stripped = strip_starlark_comments(content);
+    let content = stripped.as_str();
     let var = rules_rust_extension_var(content)?;
     let call = format!("{var}.toolchain(");
     // The call must start a statement: `xrust.toolchain(` is a different
@@ -415,6 +464,40 @@ rust.toolchain(\n    edition = \"2021\",\n    versions = [\"1.75.0\"],\n)\n\
 rust.repository_set(\n    name = \"rust_libsignal\",\n    versions = [\"1.98.1\"],\n)\n"
         );
         assert_eq!(rust_version_from_module(&module).as_deref(), Some("1.75.0"));
+    }
+
+    #[test]
+    fn rust_version_ignores_a_commented_out_toolchain_call() {
+        // aegis on #4183: the commented line above the real call was read.
+        let module = "rust = use_extension(\"@rules_rust//rust:extensions.bzl\", \"rust\")\n\
+# rust.toolchain(versions = [\"1.80.0\"])\n\
+#rust.toolchain(\n#    versions = [\"1.81.0\"],\n#)\n\
+rust.toolchain(\n    edition = \"2021\",  # versions = [\"1.82.0\"]\n    versions = [\"1.75.0\"],\n)\n";
+        assert_eq!(rust_version_from_module(module).as_deref(), Some("1.75.0"));
+    }
+
+    #[test]
+    fn rust_version_ignores_a_commented_out_extension_binding() {
+        let module = "# old = use_extension(\"@rules_rust//rust:extensions.bzl\", \"rust\")\n\
+# old.toolchain(versions = [\"1.80.0\"])\n\
+rust = use_extension(\"@rules_rust//rust:extensions.bzl\", \"rust\")\n\
+rust.toolchain(versions = [\"1.75.0\"])\n";
+        assert_eq!(rust_version_from_module(module).as_deref(), Some("1.75.0"));
+    }
+
+    #[test]
+    fn rust_version_finds_nothing_when_the_only_call_is_commented_out() {
+        let module = "rust = use_extension(\"@rules_rust//rust:extensions.bzl\", \"rust\")\n\
+# rust.toolchain(versions = [\"1.75.0\"])\n";
+        assert_eq!(rust_version_from_module(module), None);
+    }
+
+    #[test]
+    fn a_hash_inside_a_string_is_kept() {
+        assert_eq!(
+            strip_starlark_comments("x = \"a#b\"  # c\ny = '''#\n'''\n"),
+            "x = \"a#b\"  \ny = '''#\n'''\n"
+        );
     }
 
     #[test]

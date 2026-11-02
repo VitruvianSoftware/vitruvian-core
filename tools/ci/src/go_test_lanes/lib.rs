@@ -48,6 +48,10 @@
 //! globs; a broken link fails. Each gate must read a filter matching every
 //! Go file under the root, as alternatives (`||`, never `&&`), and the job
 //! gate must keep the step's `needs.<job>.result != 'success'` fail-safe.
+//! Each filter output must be read as `== 'true'` or the run-unless-sure
+//! `!= 'false'`, with no `!` in front; and a job or step `if:` that calls
+//! `failure()` or `cancelled()` (without `!`) does not count, even inside
+//! `||`, where it would only be over-strict.
 //!
 //! Accepted limits, each left to review:
 //! - an `if:` that is never true by its meaning but not constant
@@ -370,6 +374,11 @@ fn why_disabled(
         if constant_false(&c) {
             return Some(format!("job `if: {c}` never runs"));
         }
+        for f in ["failure", "cancelled"] {
+            if calls_status_fn(&c, f) {
+                return Some(format!("job `if:` runs only on {f}(): `{c}`"));
+            }
+        }
     }
     if let Some(v) = key_value(job_lines, 4, "continue-on-error") {
         if v != "false" {
@@ -379,6 +388,11 @@ fn why_disabled(
     if let Some(c) = key_value(step_lines, 8, "if") {
         if constant_false(&c) {
             return Some(format!("step `if: {c}` never runs"));
+        }
+        for f in ["failure", "cancelled"] {
+            if calls_status_fn(&c, f) {
+                return Some(format!("step `if:` runs only on {f}(): `{c}`"));
+            }
         }
     }
     if let Some(v) = key_value(step_lines, 8, "continue-on-error") {
@@ -551,6 +565,47 @@ fn outputs_read(cond: &str) -> Vec<(usize, String, String)> {
     out
 }
 
+/// Why `needs.<job>.outputs.<out>` at `at` in `cond` does not read as "the
+/// filter matched", or None. Only `== 'true'` and the run-unless-sure
+/// `!= 'false'` do. `== 'false'`, `!= 'true'`, a bare truthy read (the
+/// string 'false' is truthy) or a `!` in front all invert or blur it.
+fn bad_comparison(cond: &str, at: usize, job: &str, out: &str) -> Option<String> {
+    let name = format!("needs.{job}.outputs.{out}");
+    let before = cond[..at].trim_end_matches(|c: char| c.is_whitespace() || c == '(');
+    if before.ends_with('!') {
+        return Some(format!("negates `{name}`"));
+    }
+    let after = cond[at + name.len()..].trim_start();
+    let (op, rest) = if let Some(r) = after.strip_prefix("==") {
+        ("==", r)
+    } else if let Some(r) = after.strip_prefix("!=") {
+        ("!=", r)
+    } else {
+        return Some(format!("reads `{name}` without comparing it to 'true'"));
+    };
+    let value: String = rest
+        .trim_start()
+        .trim_start_matches(['\'', '"'])
+        .chars()
+        .take_while(|c| c.is_alphanumeric())
+        .collect();
+    match (op, value.as_str()) {
+        ("==", "true") | ("!=", "false") => None,
+        _ => Some(format!("compares `{name} {op} '{value}'`: only == 'true' or != 'false' mean the filter matched")),
+    }
+}
+
+/// True when `cond` calls `fn_name()` without a `!` in front: a job or
+/// step that runs only after a failure (`failure()`) or a cancel
+/// (`cancelled()`) never runs on a green PR.
+fn calls_status_fn(cond: &str, fn_name: &str) -> bool {
+    let call = format!("{fn_name}()");
+    cond.match_indices(&call).any(|(i, _)| {
+        let before = cond[..i].trim_end_matches(|c: char| c.is_whitespace() || c == '(');
+        !before.ends_with('!')
+    })
+}
+
 /// The path filter behind `needs.<job>.outputs.<output>`, followed link by
 /// link: the job's `outputs:` map (`<output>: ${{ steps.<id>.outputs.<n> }}`),
 /// the step with that `id`, its `say <n> "$VAR"` line, and its env
@@ -649,6 +704,11 @@ fn gate_filters(
     let span = &cond[refs[0].0..refs[refs.len() - 1].0];
     if span.contains("&&") {
         return Err(format!("{what} `if:` combines path filters with &&"));
+    }
+    for (at, job, out) in &refs {
+        if let Some(why) = bad_comparison(cond, *at, job, out) {
+            return Err(format!("{what} `if:` {why}"));
+        }
     }
     let mut filters = Vec::new();
     for (_, job, out) in &refs {
