@@ -588,3 +588,24 @@ func TestEditedAndDeletedMessagesReadAsTheyAreNow(t *testing.T) {
 	require.Len(t, res.Messages, 1)
 	require.Equal(t, "latest words", res.Messages[0].Text)
 }
+
+// While Courier is locked its window shows only the lock screen, so focus_app says so instead of claiming to have
+// opened the chat, and the app is told nothing.
+func TestFocusAppSaysWhenCourierIsLocked(t *testing.T) {
+	w := newWorld(t, 1)
+	sess := w.session(t, false)
+	w.api.SetAppLocked(true)
+	require.Equal(t, "Courier is locked. Unlock it to open the chat.", fails(t, sess, "focus_app", map[string]any{"chatID": w.room, "draftText": "hi"}))
+	require.Equal(t, "Courier is locked. Unlock it first.", fails(t, sess, "focus_app", nil))
+	require.Empty(t, w.pub.all(), "nothing reached the app")
+
+	w.api.SetAppLocked(false)
+	var res struct {
+		Focused bool   `json:"focused"`
+		ChatID  string `json:"chatID"`
+	}
+	ok(t, sess, "focus_app", map[string]any{"chatID": w.room}, &res)
+	require.True(t, res.Focused)
+	require.Equal(t, w.room, res.ChatID)
+	require.Len(t, w.pub.all(), 1)
+}

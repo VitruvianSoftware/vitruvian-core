@@ -59,6 +59,7 @@ Use each from Claude Code, connected over HTTP. None of them may crash Courier o
 - [ ] `archive_chat`, `set_chat_reminder` and `clear_chat_reminder` show in Courier at once.
 - [ ] A reminder set with `dismissOnIncomingMessage: true` is dropped when someone else writes in the chat before it is due, and still comes back if only you wrote.
 - [ ] `focus_app` brings Courier forward at the chat and message. With draft text and a file, they are in the composer, with the file's name on its chip, and nothing is sent until you press Send. A file path that doesn't exist is an error and the composer is left alone.
+- [ ] With Courier locked, `focus_app` with a chat answers "Courier is locked. Unlock it to open the chat." and nothing opens; after unlocking, the same call opens the chat.
 - [ ] `search_docs` answers with one line: "Courier has no documentation search. Each tool's description is its documentation."
 - [ ] An unknown chat ID, message ID or cursor is a plain error message from the tool.
 

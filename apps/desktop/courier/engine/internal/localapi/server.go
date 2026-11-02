@@ -95,8 +95,17 @@ type Server struct {
 
 	pairs pairing // the pairing request waiting for the person, if any (pair.go)
 
+	appLocked atomic.Bool // the app is locked, as it last said (SetAppLocked): focus_app can't open a chat
+
 	idleTimeout time.Duration // IdleTimeout unless a test sets it (SetIdleTimeout)
 }
+
+// SetAppLocked records whether the app is locked, as it says through app.setLocked: when it is, focus_app says so
+// rather than claim to open a chat the lock screen hides. Until the app says, it is taken as unlocked.
+func (s *Server) SetAppLocked(locked bool) { s.appLocked.Store(locked) }
+
+// AppLocked is whether the app last said it is locked.
+func (s *Server) AppLocked() bool { return s.appLocked.Load() }
 
 // SetIdleTimeout changes IdleTimeout for listeners opened after it, for tests.
 func (s *Server) SetIdleTimeout(d time.Duration) {

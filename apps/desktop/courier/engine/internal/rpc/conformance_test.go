@@ -1289,6 +1289,7 @@ func prepare(t *testing.T, w *world, name string, params map[string]any) {
 		params["id"] = tok.ID
 	case "integrations.answerPairing":
 		params["requestID"] = pairRequest(t, w).RequestID
+	case "app.setLocked":
 	default:
 		t.Fatalf("example %s has no setup in prepare: add one", name)
 	}

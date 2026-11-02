@@ -1483,6 +1483,13 @@ func (s *Server) focusApp(ctx context.Context, req *mcp.CallToolRequest, raw jso
 	if s.pub == nil || s.pub.Listeners() == 0 {
 		return nil, fail("Courier's window isn't open to bring forward.")
 	}
+	// Locked, the app shows only its lock screen: no chat opens and no draft goes in, so nothing is sent to it.
+	if s.appLocked.Load() {
+		if p.ChatID != "" {
+			return nil, fail("Courier is locked. Unlock it to open the chat.")
+		}
+		return nil, fail("Courier is locked. Unlock it first.")
+	}
 	if attach {
 		if !canSend(req) {
 			return nil, fail("Attaching a file needs permission to send messages. Turn on \"Can send messages\" for this connection in Courier's Settings → Integrations.")

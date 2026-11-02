@@ -2525,6 +2525,14 @@
         }
       }
     },
+    "AppLockParams": {
+      "fields": {
+        "locked": {
+          "type": "bool",
+          "doc": "Courier is locked: only its lock screen shows."
+        }
+      }
+    },
     "FocusParams": {
       "doc": "An MCP client's focus_app: bring Courier to the front, open the chat (if given) at the message (if given), and put draftText and the file at draftAttachmentPath in that chat's composer, unsent. The engine has checked that the chat and message exist and that the file is a readable regular file. A chat the app can't open leaves it on the inbox.",
       "fields": {
@@ -3151,6 +3159,12 @@
       "params": "AnswerPairingParams",
       "result": "Empty",
       "errors": [-32020]
+    },
+    "app.setLocked": {
+      "doc": "Whether Courier is locked. The app sends it after each hello and each time it locks or unlocks, and may send it while locked. While locked, focus_app answers its client that Courier is locked, and sends no app.focus. Until the app says, the engine takes it as unlocked.",
+      "params": "AppLockParams",
+      "result": "Empty",
+      "errors": []
     }
   },
 
@@ -3168,7 +3182,7 @@
       "params": "PairEnded"
     },
     "app.focus": {
-      "doc": "An MCP client's focus_app (protocol 12). Sent to every connection that has said hello.",
+      "doc": "An MCP client's focus_app (protocol 12). Sent to every connection that has said hello, and never while the app has said it is locked (app.setLocked).",
       "params": "FocusParams"
     }
   },
