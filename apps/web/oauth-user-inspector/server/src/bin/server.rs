@@ -19,7 +19,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-use oauth_server_lib::server::{serve_http, App};
+use oauth_server_lib::server::{default_bind_addr, serve_http, App};
 use std::sync::Arc;
 
 fn main() {
@@ -28,7 +28,7 @@ fn main() {
         .and_then(|s| s.parse().ok())
         .unwrap_or(8080);
     let app = Arc::new(App::new());
-    if let Err(err) = serve_http(app, port) {
+    if let Err(err) = serve_http(app, default_bind_addr(port)) {
         eprintln!("Failed to start OAuth User Inspector server: {err}");
         std::process::exit(1);
     }
