@@ -46,9 +46,9 @@ fn has_test_files(dir: &[u8]) -> bool {
     !subst(r.stdout).is_empty()
 }
 
-/// The non-dot subdirectories of `dir`, as `dir/<name>` (a shell `dir/*/`
-/// glob: dot-directories are skipped, as the glob skips them).
-fn subdirs(dir: &[u8]) -> Vec<Vec<u8>> {
+/// The names of the non-dot subdirectories of `dir` (a shell `dir/*/` glob:
+/// dot-directories are skipped, as the glob skips them).
+fn subdir_names(dir: &[u8]) -> Vec<Vec<u8>> {
     let mut found = Vec::new();
     if let Ok(entries) = std::fs::read_dir(shell_compat::path(dir)) {
         for entry in entries.flatten() {
@@ -57,29 +57,44 @@ fn subdirs(dir: &[u8]) -> Vec<Vec<u8>> {
             if name_bytes.first() == Some(&b'.') {
                 continue;
             }
-            let p = cat(&[dir, b"/", name_bytes]);
-            if shell_compat::is_dir(&p) {
-                found.push(p);
+            if shell_compat::is_dir(&cat(&[dir, b"/", name_bytes])) {
+                found.push(name_bytes.to_vec());
             }
         }
     }
     found
 }
 
-/// Every go.mod under `infrastructure/pulumi` and `apps/*/*/infra` (the app
+/// The IaC roots go-test-infra tests (this tool with no arguments), relative
+/// to `base`: `infrastructure/pulumi` and every `apps/*/*/infra` (the app
 /// layout, `apps/<category>/<app>/infra`). The old `*/infra` glob predates
 /// that layout and matched nothing once apps moved (#4178), so it is gone.
-fn iac_search_paths() -> Vec<Vec<u8>> {
-    let mut search_paths: Vec<Vec<u8>> = vec![b"infrastructure/pulumi".to_vec()];
-    for category in subdirs(b"apps") {
-        for app in subdirs(&category) {
-            let infra = cat(&[&app, b"/infra"]);
-            if shell_compat::is_dir(&infra) {
-                search_paths.push(infra);
+///
+/// Public so //tools/ci:go_test_lanes judges coverage by the same roots this
+/// tool searches, not a second hand-kept list.
+pub fn iac_roots_in(base: &[u8]) -> Vec<Vec<u8>> {
+    let under = |rel: &[u8]| -> Vec<u8> {
+        if base == b"." {
+            rel.to_vec()
+        } else {
+            cat(&[base, b"/", rel])
+        }
+    };
+    let mut roots: Vec<Vec<u8>> = vec![b"infrastructure/pulumi".to_vec()];
+    for category in subdir_names(&under(b"apps")) {
+        let category_rel = cat(&[b"apps/", &category]);
+        for app in subdir_names(&under(&category_rel)) {
+            let infra = cat(&[&category_rel, b"/", &app, b"/infra"]);
+            if shell_compat::is_dir(&under(&infra)) {
+                roots.push(infra);
             }
         }
     }
-    search_paths
+    roots
+}
+
+fn iac_search_paths() -> Vec<Vec<u8>> {
+    iac_roots_in(b".")
 }
 
 /// Every go.mod under `search_paths`, sorted, skipping vendored copies (and

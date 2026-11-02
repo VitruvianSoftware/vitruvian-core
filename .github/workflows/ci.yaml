@@ -763,6 +763,20 @@ jobs:
           fi
           bazel test "${cache[@]}" //tools/lint-naming:lint-naming_test
 
+      # Whole-repo, like the naming check, so it lives in this always-on job
+      # rather than behind a path filter: fails when a Go test exists that no
+      # lane runs -- not in a go_test, and not under a go_test_with_retry
+      # root (go-test-infra, example-build). #4205 found 22 such modules under
+      # packages/pulumi/examples. A `bazel run`, not a test: it must re-walk
+      # the tree on every PR, and a cached test result would not.
+      - name: Every Go test is run by a CI lane
+        run: |
+          cache=()
+          if [ -n "${BUILDBUDDY_API_KEY}" ]; then
+            cache=(--config=remotecache-ci "--remote_header=x-buildbuddy-api-key=${BUILDBUDDY_API_KEY}")
+          fi
+          bazel run "${cache[@]}" //tools/ci:go_test_lanes
+
   changes:
     # Decides ONCE, on one runner, whether each small path-gated job below has
     # any work to do. Those jobs then skip at the JOB level when they do not,
@@ -1090,6 +1104,8 @@ jobs:
     # them from the filesystem (any go.mod under packages/pulumi/examples
     # with a _test.go, ts-foundation's Go helper included) and fails if it
     # finds none, so a moved tree cannot turn this into a silent no-op.
+    # //tools/ci:go_test_lanes (lint-naming job) reads this step's --root to
+    # decide what counts as covered, so dropping it fails there too.
     #
     # Own job (not folded into go-test-infra) + generous timeout because it is
     # ~27 standalone modules each pulling the Pulumi SDK; runs only when the

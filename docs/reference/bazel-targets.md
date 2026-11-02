@@ -75,6 +75,7 @@ mindmap
 | `//tools/conformance:workflow-labels` | Every Bazel label a workflow or composite action runs resolves (runs in tidy-check) |
 | `//tools/secret-scan` | `secret-scan`: CI's gitleaks version and `.gitleaks.toml` over this branch's commits (`--staged`, `--range a..b`, `--unpushed`). Names file and line, never the secret |
 | `//tools/ci:actionlint` | `actionlint`: the pinned actionlint with shellcheck over `.github/workflows`, then the commit-SHA pin check |
+| `//tools/ci:go_test_lanes` | Fails when a Go `_test.go` exists that no CI lane runs: not in a non-manual `go_test`, and not under a `go_test_with_retry` root in `ci.yaml`. Deliberate exceptions live in `tools/ci/src/go_test_lanes/allowlist.txt` (runs in lint-naming) |
 | `//tools/techdocs:check` | Verifies that all 15 TechDocs sites compile cleanly with `mkdocs-techdocs-core` |
 
 | `//tools/lint-naming` | Monorepo naming convention audit (`--check`, `--root <path>`). Validates file casing, test suffixes, and rule boundaries across all languages |
