@@ -428,11 +428,26 @@ func TestPaginatedWorldSyncsDMsAndSpacesWithThreadedMetadata(t *testing.T) {
 	require.Equal(t, int64(500), loginMeta.UserRevision)
 }
 
-func TestBackfillUsesListTopicsForSpacesAndListMessagesForDMs(t *testing.T) {
+// listTopicsBodyWithoutHeader strips the RequestHeader the Rust client adds, so a test can compare the
+// rest of a list_topics request byte for byte with what the reference client sends.
+func listTopicsBodyWithoutHeader(t *testing.T, req []byte) []byte {
+	t.Helper()
+	var r pb.ListTopicsRequest
+	require.NoError(t, pb.Unmarshal(req, &r))
+	require.NotNil(t, r.GetRequestHeader(), "every list_topics request carries a RequestHeader at field 100")
+	r.RequestHeader = nil
+	return pb.MustMarshal(&r)
+}
+
+// The reference client (ref pkg/connector/backfill.go fetchTopicHeadMessages, live-tested in
+// ref pkg/gchatmeow/live_test.go) sends list_topics with only group_id and page_size_for_topics, for spaces and
+// DMs alike. We used to add page_size_for_replies, page_size_for_unread_replies and page_size_for_read_replies,
+// and every such request came back HTTP 500; DMs went to list_messages with an empty topic id instead.
+func TestBackfillListTopicsRequestMatchesReference(t *testing.T) {
 	ctx := context.Background()
 	var mu sync.Mutex
 	var listTopicsReqs [][]byte
-	var listMessagesReqs [][]byte
+	var listMessagesCalls int
 
 	h, ul, client := setupLoggedInGChatTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
@@ -441,74 +456,81 @@ func TestBackfillUsesListTopicsForSpacesAndListMessagesForDMs(t *testing.T) {
 			mu.Lock()
 			listTopicsReqs = append(listTopicsReqs, body)
 			mu.Unlock()
-			spaceGID := pb.SpaceGroupID("space_xyz")
-			msgProto := buildSyntheticMessageProto(spaceGID, "topic_1", "msg_1", "112233445566778899002", "Space topic head", 1710000010000000, "", 0, 0)
+			var req pb.ListTopicsRequest
+			_ = pb.Unmarshal(body, &req)
+			gid := req.GetGroupId()
+			topicPrefix := "topic"
+			if gid.GetDmId() != nil {
+				topicPrefix = "dm_topic"
+			}
+			older := buildSyntheticMessageProto(gid, topicPrefix+"_1", "msg_old", "112233445566778899002", "Older", 1710000010000000, "", 0, 0)
+			newer := buildSyntheticMessageProto(gid, topicPrefix+"_2", "msg_new", "112233445566778899002", "Newer", 1710000020000000, "", 0, 0)
 			resp := pb.MustMarshal(&pb.ListTopicsResponse{
-				Topics: []*pb.Topic{{
-					Id:       buildTopicID(spaceGID, "topic_1"),
-					SortTime: pb.Int64(1710000010000000),
-					Replies:  []*pb.Message{msgProto},
-				}},
+				Topics: []*pb.Topic{
+					{Id: buildTopicID(gid, topicPrefix+"_2"), SortTime: pb.Int64(1710000020000000), Replies: []*pb.Message{newer}},
+					{Id: buildTopicID(gid, topicPrefix+"_1"), SortTime: pb.Int64(1710000010000000), Replies: []*pb.Message{older}},
+				},
 			})
 			w.Header().Set("Content-Type", "application/x-protobuf")
 			_, _ = w.Write(resp)
 		case "/u/0/api/list_messages":
 			mu.Lock()
-			listMessagesReqs = append(listMessagesReqs, body)
+			listMessagesCalls++
 			mu.Unlock()
-			dmGID := pb.DMGroupID("dm_abc")
-			msgProto := buildSyntheticMessageProto(dmGID, "dm_topic_1", "dm_msg_1", "112233445566778899002", "Hello in DM", 1710000020000000, "", 0, 0)
-			resp := pb.MustMarshal(&pb.ListMessagesResponse{
-				Messages: []*pb.Message{msgProto},
-			})
-			w.Header().Set("Content-Type", "application/x-protobuf")
-			_, _ = w.Write(resp)
+			w.WriteHeader(http.StatusInternalServerError)
 		default:
 			http.NotFound(w, r)
 		}
 	})
 
-	spacePortal, err := h.Bridge.GetPortalByKey(ctx, networkid.PortalKey{
-		ID:       MakeSpacePortalID("space_xyz"),
-		Receiver: ul.ID,
-	})
+	spacePortal, err := h.Bridge.GetPortalByKey(ctx, networkid.PortalKey{ID: MakeSpacePortalID("space_xyz"), Receiver: ul.ID})
 	require.NoError(t, err)
 	spacePortal.Metadata = &PortalMetadata{TopicThreaded: true, GroupRevision: 120}
 
-	spaceBackfill, err := client.FetchMessages(ctx, bridgev2.FetchMessagesParams{
-		Portal: spacePortal,
-		Count:  30,
-	})
+	spaceBackfill, err := client.FetchMessages(ctx, bridgev2.FetchMessagesParams{Portal: spacePortal, Count: 30})
 	require.NoError(t, err)
 	require.False(t, spaceBackfill.HasMore)
 	require.False(t, spaceBackfill.MarkRead)
-	require.Len(t, spaceBackfill.Messages, 1)
-	require.Equal(t, MakeMessageID("topic_1", "msg_1"), spaceBackfill.Messages[0].ID)
+	require.Len(t, spaceBackfill.Messages, 2)
+	require.Equal(t, MakeMessageID("topic_1", "msg_old"), spaceBackfill.Messages[0].ID, "oldest first")
+	require.Equal(t, MakeMessageID("topic_2", "msg_new"), spaceBackfill.Messages[1].ID)
 
-	dmPortal, err := h.Bridge.GetPortalByKey(ctx, networkid.PortalKey{
-		ID:       MakeDMPortalID("dm_abc"),
-		Receiver: ul.ID,
-	})
+	dmPortal, err := h.Bridge.GetPortalByKey(ctx, networkid.PortalKey{ID: MakeDMPortalID("dm_abc"), Receiver: ul.ID})
 	require.NoError(t, err)
 	dmPortal.RoomType = database.RoomTypeDM
 
-	dmBackfill, err := client.FetchMessages(ctx, bridgev2.FetchMessagesParams{
-		Portal: dmPortal,
-		Count:  50,
+	dmBackfill, err := client.FetchMessages(ctx, bridgev2.FetchMessagesParams{Portal: dmPortal, Count: 50})
+	require.NoError(t, err, "DM history must not go through list_messages, which needs a real topic id")
+	require.Len(t, dmBackfill.Messages, 2)
+	require.Equal(t, MakeMessageID("dm_topic_2", "msg_new"), dmBackfill.Messages[1].ID)
+
+	// A forward backfill (the catch-up a chat resync asks for) keeps only messages newer than the anchor.
+	fwd, err := client.FetchMessages(ctx, bridgev2.FetchMessagesParams{
+		Portal:  spacePortal,
+		Forward: true,
+		Count:   30,
+		AnchorMessage: &database.Message{
+			ID:        MakeMessageID("topic_1", "msg_old"),
+			Timestamp: time.UnixMicro(1710000010000000),
+		},
 	})
 	require.NoError(t, err)
-	require.False(t, dmBackfill.HasMore)
-	require.False(t, dmBackfill.MarkRead)
-	require.Len(t, dmBackfill.Messages, 1)
-	require.Equal(t, MakeMessageID("dm_topic_1", "dm_msg_1"), dmBackfill.Messages[0].ID)
+	require.Len(t, fwd.Messages, 1)
+	require.Equal(t, MakeMessageID("topic_2", "msg_new"), fwd.Messages[0].ID)
 
 	mu.Lock()
 	defer mu.Unlock()
-	require.Len(t, listTopicsReqs, 1, "space backfill must do a single list_topics request")
-	require.Len(t, listMessagesReqs, 1, "DM backfill must do a single list_messages request")
-	require.Equal(t, int64(30), decodeListTopicsPageSizeForTopics(listTopicsReqs[0]))
-	require.Equal(t, int64(10), decodeListTopicsPageSizeForReplies(listTopicsReqs[0]))
-	require.Equal(t, int64(50), decodeListMessagesPageSize(listMessagesReqs[0]))
+	require.Zero(t, listMessagesCalls)
+	require.Len(t, listTopicsReqs, 3)
+	require.Equal(t, pb.MustMarshal(&pb.ListTopicsRequest{
+		GroupId:           pb.SpaceGroupID("space_xyz"),
+		PageSizeForTopics: pb.Int32(30),
+	}), listTopicsBodyWithoutHeader(t, listTopicsReqs[0]), "space list_topics must carry only group_id and page_size_for_topics")
+	require.Equal(t, pb.MustMarshal(&pb.ListTopicsRequest{
+		GroupId:           pb.DMGroupID("dm_abc"),
+		PageSizeForTopics: pb.Int32(50),
+	}), listTopicsBodyWithoutHeader(t, listTopicsReqs[1]), "DM history uses list_topics with the DM group id")
+	require.Equal(t, listTopicsBodyWithoutHeader(t, listTopicsReqs[0]), listTopicsBodyWithoutHeader(t, listTopicsReqs[2]))
 }
 
 func TestCatchUpUserAdvancesUserRevisionWithoutOverwritingGroupRevision(t *testing.T) {
@@ -5237,19 +5259,8 @@ func TestStreamErrorBeforeConnectTransitionsToTransientDisconnect(t *testing.T) 
 	require.Equal(t, status.BridgeStateErrorCode("gchat-stream-error"), fullSt.Error)
 	require.Equal(t, errMsg, fullSt.Message)
 
-	// Once CONNECTED has been reached since Connect, subsequent stream errors
-	// log a warning while reconnecting without clobbering StateConnected.
-	client.processStreamNotification(ctx, streamNotification{
-		kind:    EventKindConnected,
-		payload: []byte(`{}`),
-	})
-	require.Equal(t, status.StateConnected, client.lastBridgeState())
-
-	client.processStreamNotification(ctx, streamNotification{
-		kind:    EventKindStreamError,
-		payload: []byte("step4_poll_events: network"),
-	})
-	require.Equal(t, status.StateConnected, client.lastBridgeState())
+	// A stream error after CONNECTED also reports TRANSIENT_DISCONNECT (see
+	// TestStreamErrorAfterConnectReportsReconnecting); it used to leave StateConnected in place.
 }
 
 func TestGetChatInfoSpaceWithoutGroupNameNeverUsesPortalID(t *testing.T) {
@@ -5676,4 +5687,106 @@ func TestPlaceholderChatNameKeepsRealNamesThatLookLikeIDs(t *testing.T) {
 	if isPlaceholderChatName(id, "dm: weekend plans") || isPlaceholderChatName(id, "space:other") {
 		t.Fatal("a real name that starts like an ID must be kept")
 	}
+}
+
+// After a restart the first CONNECTED runs the world sync, which moves the stored user revision up to
+// "now". Catch-up must still start from the revision saved before the restart, or whatever arrived while
+// Courier was closed is skipped. A second catch-up (the stream dropping and coming back) must not store the
+// same message twice.
+func TestFirstConnectAfterRestartCatchesUpFromSavedRevision(t *testing.T) {
+	ctx := context.Background()
+	var catchUpFrom []int64
+	var mu sync.Mutex
+	spaceGID := pb.SpaceGroupID("space_xyz")
+
+	h, ul, client := setupLoggedInGChatTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/x-protobuf")
+		switch r.URL.Path {
+		case "/u/0/api/paginated_world":
+			_, _ = w.Write(pb.MustMarshal(&pb.PaginatedWorldResponse{
+				UserRevision: &pb.ReadRevision{Timestamp: pb.Int64(900)},
+				WorldItems: []*pb.WorldItemLite{{
+					GroupId:       spaceGID,
+					GroupRevision: &pb.ReadRevision{Timestamp: pb.Int64(300)},
+					SortTimestamp: pb.Int64(1710000300000000),
+					ReadState:     &pb.GroupReadState{MembershipState: pb.MembershipState_MEMBER_JOINED.Enum()},
+					RoomName:      pb.String("Engineering"),
+				}},
+			}))
+		case "/u/0/api/catch_up_user":
+			mu.Lock()
+			catchUpFrom = append(catchUpFrom, decodeCatchUpUserFromRevision(body))
+			mu.Unlock()
+			msg := buildSyntheticMessageProto(spaceGID, "topic_gap", "msg_gap_1", "112233445566778899002", "Sent while Courier was closed", 1710000250000000, "", 0, 0)
+			_, _ = w.Write(pb.MustMarshal(&pb.CatchUpResponse{
+				Events: []*pb.Event{{
+					GroupId: spaceGID,
+					Type:    pb.Event_MESSAGE_POSTED.Enum(),
+					Body: &pb.Event_EventBody{
+						Type:      &pb.Event_EventBody_MessagePosted{MessagePosted: &pb.MessageEvent{Message: msg}},
+						EventType: pb.Event_MESSAGE_POSTED.Enum(),
+					},
+					RevisionType: &pb.Event_UserRevision{UserRevision: &pb.WriteRevision{Timestamp: pb.Int64(650)}},
+				}},
+				Status: pb.CatchUpResponse_COMPLETED.Enum(),
+			}))
+		case "/u/0/api/list_topics":
+			_, _ = w.Write(pb.MustMarshal(&pb.ListTopicsResponse{}))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	client.Disconnect()                                 // only the notifications below drive the client
+	ul.Metadata.(*UserLoginMetadata).UserRevision = 500 // saved before Courier was closed
+	require.NoError(t, ul.Save(ctx))
+
+	client.processStreamNotification(ctx, streamNotification{kind: EventKindConnected})
+
+	mu.Lock()
+	require.Equal(t, []int64{500}, catchUpFrom, "the first connect must catch up from the revision saved before the restart")
+	mu.Unlock()
+	require.Eventually(t, func() bool {
+		m, err := h.Bridge.DB.Message.GetFirstPartByID(ctx, ul.ID, MakeMessageID("topic_gap", "msg_gap_1"))
+		return err == nil && m != nil
+	}, 3*time.Second, 20*time.Millisecond, "the message sent while Courier was closed must arrive")
+	require.Equal(t, int64(900), ul.Metadata.(*UserLoginMetadata).UserRevision)
+
+	// The stream drops and comes back: catch-up runs again and must not store the message twice.
+	ul.Metadata.(*UserLoginMetadata).UserRevision = 500
+	client.processStreamNotification(ctx, streamNotification{kind: EventKindResync})
+	parts, err := h.Bridge.DB.Message.GetAllPartsByID(ctx, ul.ID, MakeMessageID("topic_gap", "msg_gap_1"))
+	require.NoError(t, err)
+	require.Len(t, parts, 1, "a message caught up twice is stored once")
+}
+
+// While the live stream is failing, the account must not keep saying it is connected: it reports
+// TRANSIENT_DISCONNECT (shown as "Reconnecting…", as for the other networks) until the stream is back.
+func TestStreamErrorAfterConnectReportsReconnecting(t *testing.T) {
+	ctx := context.Background()
+	_, _, client := setupLoggedInGChatTestEnv(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/x-protobuf")
+		switch r.URL.Path {
+		case "/u/0/api/paginated_world":
+			_, _ = w.Write(pb.MustMarshal(&pb.PaginatedWorldResponse{}))
+		case "/u/0/api/catch_up_user":
+			_, _ = w.Write(pb.MustMarshal(&pb.CatchUpResponse{Status: pb.CatchUpResponse_COMPLETED.Enum()}))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	// Stop the background stream the login started (this fake server has no WebChannel), so only the
+	// notifications below change the state.
+	client.Disconnect()
+
+	client.processStreamNotification(ctx, streamNotification{kind: EventKindConnected})
+	require.Equal(t, status.StateConnected, client.lastBridgeState())
+
+	client.processStreamNotification(ctx, streamNotification{kind: EventKindStreamError, payload: []byte("step4_poll_events: http_status:400")})
+	require.Equal(t, status.StateTransientDisconnect, client.lastBridgeState(), "a failing stream must not stay CONNECTED")
+	require.Equal(t, "gchat-stream-error", string(client.lastBridgeStateFull().Error))
+
+	client.processStreamNotification(ctx, streamNotification{kind: EventKindConnected})
+	require.Equal(t, status.StateConnected, client.lastBridgeState())
 }
