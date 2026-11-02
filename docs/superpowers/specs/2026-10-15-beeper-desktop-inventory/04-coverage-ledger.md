@@ -6,7 +6,7 @@
 
 **Courier Milestone 4 implementation status:** Parts 4.1 through 4.7 are complete in Courier (`apps/desktop/courier/docs/m4-acceptance.md`). Every row in [ledger.tsv](ledger.tsv) is either shipped natively on this Mac or documented with its explicit iteration-1 stub / non-applicable rationale in `m4-acceptance.md`.
 
-**Courier Milestone 5 (local API and MCP):** the `setting:integrations` rows are accounted for in `apps/desktop/courier/docs/m5-acceptance.md`: Allow connections, Remote Access, Cursor and VS Code ship; Install to ships in part (Claude Code over HTTP and stdio); Claude Desktop (the `.dxt` extension download) and Raycast (which needs the REST API) are not planned in iteration 1. The reference app's REST API (`/v1`) and its OAuth flow have no ledger rows; they are listed as out of scope in the same file.
+**Courier Milestone 5 (local API and MCP):** the `setting:integrations` rows are accounted for in `apps/desktop/courier/docs/m5-acceptance.md`: Allow connections, Remote Access, Cursor and VS Code ship; Install to ships in part (Claude Code over HTTP and stdio); Claude Desktop (the `.dxt` extension download) and Raycast (which needs the REST API) are not planned in iteration 1. The reference app's REST API (`/v1`) and its OAuth flow have no ledger rows; they are listed as out of scope in the same file. Since then Courier serves two read-only REST endpoints, `GET /v1/accounts` and `GET /v1/messages/search`, the two HomeSpeaker reads; the rest of `/v1` is still out of scope.
 
 ## The checklists
 
