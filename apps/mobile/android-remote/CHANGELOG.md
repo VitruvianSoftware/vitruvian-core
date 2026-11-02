@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.23](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.22...android-remote-v0.1.23) (2026-11-02)
+
+
+### Bug Fixes
+
+* **android-remote:** cache the macOS voice list so the agent stops pegging the CPU ([#4263](https://github.com/VitruvianSoftware/vitruvian-core/issues/4263)) ([35e02f4](https://github.com/VitruvianSoftware/vitruvian-core/commit/35e02f48a58b1ca5b5445b8d17805be6ae7dc4f0))
+
 ## [0.1.22](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.21...android-remote-v0.1.22) (2026-10-29)
 
 
