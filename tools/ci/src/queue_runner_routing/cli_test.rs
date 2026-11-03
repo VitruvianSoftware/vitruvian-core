@@ -26,6 +26,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
 const ROUTED: &str = "runs-on: ${{ (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}";
+const ROUTED_QUEUE_ONLY: &str = "runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}";
 
 fn binary() -> PathBuf {
     let rel = std::env::var("QUEUE_RUNNER_ROUTING_BIN").expect("set by Bazel");
@@ -81,7 +82,7 @@ fn refused(tag: &str, body: &str) {
     let (ok, t) = verdict(tag, "x.yaml", body);
     assert!(!ok, "expected fail, got pass: {t}");
     assert!(
-        t.contains("names the homelab runner outside the one allowed rule"),
+        t.contains("names the homelab runner outside the allowed rules"),
         "{t}"
     );
     assert!(
@@ -98,6 +99,30 @@ fn a_plain_hosted_job_is_allowed() {
 #[test]
 fn the_one_routing_rule_is_allowed() {
     allowed("rule", &format!("jobs:\n  a:\n    {ROUTED}"));
+}
+
+#[test]
+fn the_queue_only_rule_is_allowed() {
+    allowed(
+        "queueonly",
+        &format!("jobs:\n  a:\n    {ROUTED_QUEUE_ONLY}"),
+    );
+}
+
+#[test]
+fn the_queue_only_rule_without_the_fallback_check_is_refused() {
+    refused(
+        "queueonly-nofallback",
+        "jobs:\n  a:\n    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}",
+    );
+}
+
+#[test]
+fn a_queue_only_guard_negated_to_let_pull_requests_in_is_refused() {
+    refused(
+        "queueonly-negated",
+        "jobs:\n  a:\n    runs-on: ${{ github.event_name != 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}",
+    );
 }
 
 #[test]

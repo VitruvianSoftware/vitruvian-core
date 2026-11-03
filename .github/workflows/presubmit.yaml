@@ -38,7 +38,7 @@ permissions:
 jobs:
   plan:
     name: plan/affected-units
-    runs-on: ubuntu-26.04
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 35
     outputs:
       units: ${{ steps.plan.outputs.units }}
@@ -307,7 +307,7 @@ jobs:
 
   unit-antigravity-ext-marketplace:
     name: antigravity-ext-marketplace
-    runs-on: ubuntu-26.04
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 15
     needs: [plan]
     if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'antigravity-ext-marketplace')) }}
@@ -350,7 +350,7 @@ jobs:
 
   unit-antigravity-gh-watch:
     name: antigravity-gh-watch
-    runs-on: ubuntu-26.04
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 15
     needs: [plan]
     if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'antigravity-gh-watch')) }}
@@ -393,7 +393,7 @@ jobs:
 
   unit-antigravity-hookify:
     name: antigravity-hookify
-    runs-on: ubuntu-26.04
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 15
     needs: [plan]
     if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'antigravity-hookify')) }}
@@ -436,7 +436,7 @@ jobs:
 
   unit-antigravity-live-context:
     name: antigravity-live-context
-    runs-on: ubuntu-26.04
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 15
     needs: [plan]
     if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'antigravity-live-context')) }}
@@ -479,7 +479,7 @@ jobs:
 
   unit-antigravity-plugins-conformance:
     name: antigravity-plugins-conformance
-    runs-on: ubuntu-26.04
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 15
     needs: [plan]
     if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'antigravity-plugins-conformance')) }}
@@ -522,7 +522,7 @@ jobs:
 
   unit-antigravity-ralph-loop:
     name: antigravity-ralph-loop
-    runs-on: ubuntu-26.04
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 15
     needs: [plan]
     if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'antigravity-ralph-loop')) }}
@@ -565,7 +565,7 @@ jobs:
 
   unit-antigravity-receipts-report:
     name: antigravity-receipts-report
-    runs-on: ubuntu-26.04
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 15
     needs: [plan]
     if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'antigravity-receipts-report')) }}
@@ -608,7 +608,7 @@ jobs:
 
   unit-antigravity-savvy-fleet:
     name: antigravity-savvy-fleet
-    runs-on: ubuntu-26.04
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 15
     needs: [plan]
     if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'antigravity-savvy-fleet')) }}
@@ -651,7 +651,7 @@ jobs:
 
   unit-antigravity-security-guidance:
     name: antigravity-security-guidance
-    runs-on: ubuntu-26.04
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 15
     needs: [plan]
     if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'antigravity-security-guidance')) }}
@@ -694,7 +694,7 @@ jobs:
 
   unit-antigravity-worktree-band:
     name: antigravity-worktree-band
-    runs-on: ubuntu-26.04
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 15
     needs: [plan]
     if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'antigravity-worktree-band')) }}
@@ -737,7 +737,7 @@ jobs:
 
   unit-backstage-backend:
     name: backstage-backend
-    runs-on: ubuntu-26.04
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 20
     needs: [plan]
     if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'backstage-backend')) }}
@@ -842,7 +842,7 @@ jobs:
 
   unit-design-system:
     name: design-system
-    runs-on: ubuntu-26.04
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 15
     needs: [plan]
     if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'design-system')) }}
@@ -885,7 +885,7 @@ jobs:
 
   unit-backstage-app:
     name: backstage-app
-    runs-on: ubuntu-26.04
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 20
     needs: [plan, unit-design-system]
     if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'backstage-app')) }}
@@ -928,7 +928,7 @@ jobs:
 
   unit-design-system-android:
     name: design-system-android
-    runs-on: ubuntu-26.04
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 20
     needs: [plan]
     if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'design-system-android')) }}
@@ -971,7 +971,7 @@ jobs:
 
   unit-devx-cli:
     name: devx-cli
-    runs-on: ubuntu-26.04
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 20
     needs: [plan]
     if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'devx-cli')) }}
@@ -1014,7 +1014,7 @@ jobs:
 
   unit-gods-eye-view:
     name: gods-eye-view
-    runs-on: ubuntu-26.04
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 15
     needs: [plan]
     if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'gods-eye-view')) }}
@@ -1057,7 +1057,7 @@ jobs:
 
   unit-homelab:
     name: homelab
-    runs-on: ubuntu-26.04
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 20
     needs: [plan]
     if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'homelab')) }}
@@ -1100,7 +1100,7 @@ jobs:
 
   unit-mcp-slack-service:
     name: mcp-slack-service
-    runs-on: ubuntu-26.04
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 15
     needs: [plan]
     if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'mcp-slack-service')) }}
@@ -1143,7 +1143,7 @@ jobs:
 
   unit-nexus-agent-src:
     name: nexus-agent-src
-    runs-on: ubuntu-26.04
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 15
     needs: [plan]
     if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'nexus-agent-src')) }}
@@ -1217,7 +1217,7 @@ jobs:
 
   unit-oauth-user-inspector:
     name: oauth-user-inspector
-    runs-on: ubuntu-26.04
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 15
     needs: [plan]
     if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'oauth-user-inspector')) }}
@@ -1291,7 +1291,7 @@ jobs:
 
   unit-pulumi-repo-config:
     name: pulumi-repo-config
-    runs-on: ubuntu-26.04
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 20
     needs: [plan]
     if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'pulumi-repo-config')) }}
@@ -1334,7 +1334,7 @@ jobs:
 
   unit-remote:
     name: remote
-    runs-on: ubuntu-26.04
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 30
     needs: [plan]
     if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'remote')) }}
@@ -1389,7 +1389,7 @@ jobs:
 
   unit-remote-boot:
     name: remote-boot
-    runs-on: ubuntu-26.04
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 45
     needs: [plan]
     if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'remote-boot')) }}
@@ -1436,7 +1436,7 @@ jobs:
 
   unit-remote-mac-agent:
     name: remote-mac-agent
-    runs-on: ubuntu-26.04
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 10
     needs: [plan]
     if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'remote-mac-agent')) }}
@@ -1510,7 +1510,7 @@ jobs:
 
   unit-tabula-shared:
     name: tabula-shared
-    runs-on: ubuntu-26.04
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 15
     needs: [plan]
     if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'tabula-shared')) }}
@@ -1553,7 +1553,7 @@ jobs:
 
   unit-tabula-api:
     name: tabula-api
-    runs-on: ubuntu-26.04
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 20
     needs: [plan, unit-tabula-shared]
     if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'tabula-api')) }}
@@ -1596,7 +1596,7 @@ jobs:
 
   unit-tabula-cli:
     name: tabula-cli
-    runs-on: ubuntu-26.04
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 15
     needs: [plan, unit-tabula-shared]
     if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'tabula-cli')) }}
@@ -1639,7 +1639,7 @@ jobs:
 
   unit-tabula-extension:
     name: tabula-extension
-    runs-on: ubuntu-26.04
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 15
     needs: [plan, unit-tabula-shared]
     if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'tabula-extension')) }}
@@ -1682,7 +1682,7 @@ jobs:
 
   unit-tabula-web:
     name: tabula-web
-    runs-on: ubuntu-26.04
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 15
     needs: [plan, unit-design-system, unit-tabula-shared]
     if: ${{ always() && !cancelled() && (needs.plan.result != 'success' || contains(fromJSON(needs.plan.outputs.units || '[]'), 'tabula-web')) }}
@@ -1873,7 +1873,7 @@ jobs:
     name: gate/all-required-passed
     needs: [plan, unit-antigravity-ext-marketplace, unit-antigravity-gh-watch, unit-antigravity-hookify, unit-antigravity-live-context, unit-antigravity-plugins-conformance, unit-antigravity-ralph-loop, unit-antigravity-receipts-report, unit-antigravity-savvy-fleet, unit-antigravity-security-guidance, unit-antigravity-worktree-band, unit-backstage-backend, unit-courier-app-macos, unit-courier-engine-macos, unit-design-system, unit-backstage-app, unit-design-system-android, unit-devx-cli, unit-gods-eye-view, unit-homelab, unit-mcp-slack-service, unit-nexus-agent-src, unit-nexus-agent-macos, unit-oauth-user-inspector, unit-peripherals, unit-pulumi-repo-config, unit-remote, unit-remote-boot, unit-remote-mac-agent, unit-remote-mac-menu, unit-tabula-shared, unit-tabula-api, unit-tabula-cli, unit-tabula-extension, unit-tabula-web, unit-vitruvian-desktop-macos, unit-vitruvian-sdk, unit-vitruvian-tool-github]
     if: always()
-    runs-on: ubuntu-26.04
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 5
     steps:
       - name: Evaluate Monorepo Gate Verdict

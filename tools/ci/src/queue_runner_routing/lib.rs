@@ -19,11 +19,16 @@
 // SOFTWARE.
 
 //! queue-runner-routing — a workflow may name the homelab runner only through
-//! one exact rule, so a pull request can never choose it.
+//! one of two exact rules, so a pull request can never choose it.
 
 use shell_compat::{basename, cat, contains, err, out};
 
 const ROUTED: &[u8] = b"runs-on: ${{ (github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}";
+
+// Merge-queue jobs only: pushes to main stay on GitHub-hosted runners. For jobs
+// whose main-branch runs save the shared Actions caches, which only
+// GitHub-hosted jobs on main may do (setup-bazel's cache-save guard).
+const ROUTED_QUEUE_ONLY: &[u8] = b"runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}";
 
 pub fn run(args: &[Vec<u8>]) -> i32 {
     if args.is_empty() {
@@ -71,13 +76,13 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
                 continue;
             }
             let body = trimmed.strip_prefix(b"- ").unwrap_or(trimmed);
-            if body != ROUTED {
+            if body != ROUTED && body != ROUTED_QUEUE_ONLY {
                 err(&cat(&[
                     b"queue-runner-routing: ",
                     f,
                     b":",
                     lineno.to_string().as_bytes(),
-                    b" names the homelab runner outside the one allowed rule:\n",
+                    b" names the homelab runner outside the allowed rules:\n",
                 ]));
                 err(&cat(&[b"    ", trimmed, b"\n"]));
                 fail = true;
@@ -87,6 +92,11 @@ pub fn run(args: &[Vec<u8>]) -> i32 {
 
     if fail {
         err(&cat(&[b"queue-runner-routing: allowed: ", ROUTED, b"\n"]));
+        err(&cat(&[
+            b"queue-runner-routing: allowed: ",
+            ROUTED_QUEUE_ONLY,
+            b"\n",
+        ]));
         1
     } else {
         out(b"queue-runner-routing: ok\n");
