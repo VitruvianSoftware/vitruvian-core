@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/courier-v0.3.1...courier-v0.3.2) (2026-11-03)
+
+
+### Bug Fixes
+
+* **courier:** Settings opens again from every menu, and Hide Sidebar works ([#4269](https://github.com/VitruvianSoftware/vitruvian-core/issues/4269)) ([79e74b4](https://github.com/VitruvianSoftware/vitruvian-core/commit/79e74b4c0765a129db3931d6340b1141a9a15b2e))
+
 ## [0.3.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/courier-v0.3.0...courier-v0.3.1) (2026-11-02)
 
 
