@@ -782,8 +782,8 @@ importers:
         specifier: ^11.4.15
         version: 11.4.16(vue@3.5.44(typescript@6.0.3))
       ws:
-        specifier: ^8.22.0
-        version: 8.22.0
+        specifier: ^8.22.1
+        version: 8.22.1
     devDependencies:
       '@cesium/engine':
         specifier: 26.4.0
@@ -19062,8 +19062,8 @@ packages:
       utf-8-validate:
         optional: true
 
-  ws@8.22.0:
-    resolution: {integrity: sha512-Ydggc987+RO0AnWtZ/7Wq9FtNvcrL1b/RO0ud9mWjUPgDrsAAwQSF51sm2hm1XofbU/4jkpGEsLFsZZxU+1DOg==}
+  ws@8.22.1:
+    resolution: {integrity: sha512-oyL6OPYme/CmiFvNuGzeoxCJ4nOrZE2O1FwM9MWM1AsGri6nLXB2pg+lNA8aLeXMSav0J6eIVS1j6vUPzUtK9g==}
     engines: {node: '>=10.0.0'}
     peerDependencies:
       bufferutil: ^4.0.1
@@ -24172,7 +24172,7 @@ snapshots:
       graphql: 15.10.3
       iterall: 1.3.0
       symbol-observable: 1.2.0
-      ws: 8.22.0
+      ws: 8.22.1
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -24182,10 +24182,10 @@ snapshots:
       '@types/ws': 8.18.2
       duplexify: 3.7.1
       inherits: 2.0.4
-      isomorphic-ws: 4.0.1(ws@8.22.0)
+      isomorphic-ws: 4.0.1(ws@8.22.1)
       readable-stream: 2.3.8
       safe-buffer: 5.2.1
-      ws: 8.22.0
+      ws: 8.22.1
       xtend: 4.0.2
     transitivePeerDependencies:
       - bufferutil
@@ -25365,7 +25365,7 @@ snapshots:
       '@types/stream-buffers': 3.0.8
       form-data: 4.0.6
       hpagent: 1.2.0
-      isomorphic-ws: 5.0.0(ws@8.22.0)
+      isomorphic-ws: 5.0.0(ws@8.22.1)
       js-yaml: 4.3.2
       jsonpath-plus: 10.4.0
       node-fetch: 2.7.0(encoding@0.1.13)
@@ -25374,7 +25374,7 @@ snapshots:
       socks-proxy-agent: 8.0.5
       stream-buffers: 3.0.3
       tar-fs: 3.1.3
-      ws: 8.22.0
+      ws: 8.22.1
     transitivePeerDependencies:
       - bare-abort-controller
       - bare-buffer
@@ -28012,7 +28012,7 @@ snapshots:
       sockjs: 0.3.24
       spdy: 4.0.2
       webpack-dev-middleware: 7.4.6(webpack@5.105.4(@swc/core@1.16.20(@swc/helpers@0.5.23))(esbuild@0.28.2)(postcss@8.5.29))
-      ws: 8.22.0
+      ws: 8.22.1
     transitivePeerDependencies:
       - bufferutil
       - debug
@@ -30828,7 +30828,7 @@ snapshots:
       algoliasearch: 4.27.0
       clipanion: 4.0.0-rc.4(typanion@3.14.0)
       diff: 5.2.2
-      ink: 3.2.0(@types/react@18.3.31)(react@18.3.1)
+      ink: 3.2.0(@types/react@18.3.31)(react@17.0.2)
       ink-text-input: 4.0.3(ink@3.2.0(@types/react@18.3.31)(react@17.0.2))(react@17.0.2)
       react: 17.0.2
       semver: 7.8.5
@@ -31115,7 +31115,7 @@ snapshots:
       '@yarnpkg/plugin-git': 3.2.1(@yarnpkg/core@4.9.2(typanion@3.14.0))(typanion@3.14.0)
       clipanion: 4.0.0-rc.4(typanion@3.14.0)
       es-toolkit: 1.51.0
-      ink: 3.2.0(@types/react@18.3.31)(react@17.0.2)
+      ink: 3.2.0(@types/react@18.3.31)(react@18.3.1)
       react: 17.0.2
       semver: 7.8.5
       tslib: 2.9.1
@@ -35398,7 +35398,7 @@ snapshots:
       buffer-image-size: 0.6.4
       entities: 7.0.1
       whatwg-mimetype: 3.0.0
-      ws: 8.22.0
+      ws: 8.22.1
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -36348,17 +36348,17 @@ snapshots:
 
   isomorphic-timers-promises@1.0.1: {}
 
-  isomorphic-ws@4.0.1(ws@8.22.0):
+  isomorphic-ws@4.0.1(ws@8.22.1):
     dependencies:
-      ws: 8.22.0
+      ws: 8.22.1
 
   isomorphic-ws@5.0.0(ws@8.21.0):
     dependencies:
       ws: 8.21.0
 
-  isomorphic-ws@5.0.0(ws@8.22.0):
+  isomorphic-ws@5.0.0(ws@8.22.1):
     dependencies:
-      ws: 8.22.0
+      ws: 8.22.1
 
   istanbul-lib-coverage@3.2.2: {}
 
@@ -37403,7 +37403,7 @@ snapshots:
       whatwg-encoding: 3.1.1
       whatwg-mimetype: 4.0.0
       whatwg-url: 14.2.0
-      ws: 8.22.0
+      ws: 8.22.1
       xml-name-validator: 5.0.0
     transitivePeerDependencies:
       - bufferutil
@@ -38768,7 +38768,7 @@ snapshots:
       http-encoding: 2.2.0
       http2-wrapper: 2.2.1
       https-proxy-agent: 5.0.1
-      isomorphic-ws: 4.0.1(ws@8.22.0)
+      isomorphic-ws: 4.0.1(ws@8.22.1)
       lodash: 4.18.1
       lru-cache: 7.18.3
       native-duplexpair: 1.0.0
@@ -38783,7 +38783,7 @@ snapshots:
       typed-error: 3.2.3
       urlpattern-polyfill: 8.0.2
       uuid: 11.1.1
-      ws: 8.22.0
+      ws: 8.22.1
     transitivePeerDependencies:
       - bufferutil
       - encoding
@@ -40435,7 +40435,7 @@ snapshots:
       devtools-protocol: 0.0.1704951
       typed-query-selector: 2.12.3
       webdriver-bidi-protocol: 1.0.1
-      ws: 8.22.0
+      ws: 8.22.1
     transitivePeerDependencies:
       - bufferutil
       - proxy-agent
@@ -42309,7 +42309,7 @@ snapshots:
       recast: 0.23.21
       semver: 7.8.5
       use-sync-external-store: 1.7.0(react@19.2.8)
-      ws: 8.22.0
+      ws: 8.22.1
     optionalDependencies:
       '@types/react': 19.2.18
       prettier: 3.9.10
@@ -43989,7 +43989,7 @@ snapshots:
       sockjs: 0.3.24
       spdy: 4.0.2
       webpack-dev-middleware: 7.4.6(webpack@5.112.2)
-      ws: 8.22.0
+      ws: 8.22.1
     optionalDependencies:
       webpack: 5.112.2(@swc/core@1.16.21(@swc/helpers@0.5.23))(esbuild@0.28.2)(postcss@8.5.29)(webpack-cli@7.3.1)
       webpack-cli: 7.3.1(js-yaml@4.3.2)(json5@2.2.3)(webpack-dev-server@5.2.6)(webpack@5.112.2)
@@ -44029,7 +44029,7 @@ snapshots:
       sockjs: 0.3.24
       spdy: 4.0.2
       webpack-dev-middleware: 7.4.6(webpack@5.105.4(@swc/core@1.16.20(@swc/helpers@0.5.23))(esbuild@0.28.2)(postcss@8.5.29))
-      ws: 8.22.0
+      ws: 8.22.1
     optionalDependencies:
       webpack: 5.105.4(@swc/core@1.16.20(@swc/helpers@0.5.23))(esbuild@0.28.2)(postcss@8.5.29)
     transitivePeerDependencies:
@@ -44067,7 +44067,7 @@ snapshots:
       sockjs: 0.3.24
       spdy: 4.0.2
       webpack-dev-middleware: 7.4.6(webpack@5.112.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(esbuild@0.28.2)(postcss@8.5.29))
-      ws: 8.22.0
+      ws: 8.22.1
     optionalDependencies:
       webpack: 5.112.2(@swc/core@1.16.20(@swc/helpers@0.5.23))(esbuild@0.28.2)(postcss@8.5.29)
     transitivePeerDependencies:
@@ -44412,7 +44412,7 @@ snapshots:
 
   ws@8.21.0: {}
 
-  ws@8.22.0: {}
+  ws@8.22.1: {}
 
   wsl-utils@0.1.0:
     dependencies:
