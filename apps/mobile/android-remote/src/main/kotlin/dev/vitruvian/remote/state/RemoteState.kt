@@ -24,6 +24,7 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.runtime.toMutableStateList
 import dev.vitruvian.design.LogEntry
@@ -48,9 +49,14 @@ import kotlin.random.Random
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** How often the live metric series advances. */
 private const val TICK_MS = 1500L
@@ -705,10 +711,11 @@ public class RemoteState(
   /**
    * Whether the activity is on screen.
    *
-   * Only used to decide whether a finished command deserves a notification: telling someone who is
-   * watching the output that the output has arrived is noise.
+   * Decides whether a finished command deserves a notification (telling someone who is watching the
+   * output that the output has arrived is noise), and what the poll asks the Mac for: off screen,
+   * only whether it still answers. Snapshot state so the poll wakes when it flips.
    */
-  private var foreground: Boolean = true
+  private var foreground: Boolean by mutableStateOf(true)
 
   /**
    * GPU and Neural Engine power, in watts, from `tools/ops/macos-power-agent` via Prometheus.
@@ -4615,6 +4622,13 @@ public class RemoteState(
     get() = moduleDashboards[module] ?: moduleDashboards.getValue("claude")
 
   /**
+   * The id [currentModule] resolves to, without building every dashboard to find out: the poll
+   * reads this on each pass and on every change of state.
+   */
+  private val currentModuleId: String
+    get() = if (MockHost.gallery.any { it.id == module }) module else "claude"
+
+  /**
    * The memory bar, filled from the pressure figure above it rather than from a constant.
    *
    * It used to be a fixed 7-on, 2-warn pattern sitting directly under a percentage it never
@@ -4685,25 +4699,77 @@ public class RemoteState(
    * A random walk clamped to plausible bounds, matching the prototype's shape; the point of the
    * motion is that the dashboards read as live, not that the numbers mean anything yet.
    */
-  public suspend fun runMetrics() {
+  public suspend fun runMetrics(): Unit = coroutineScope {
+    // Whatever changes what is on screen -- a tab, a module, the gallery, the
+    // app going to the background and back -- wakes the loop at once, so a
+    // module that has just opened is asked for now rather than at the next tick.
+    launch {
+      snapshotFlow { pollView }.distinctUntilChanged().drop(1).collect { pollWake.trySend(Unit) }
+    }
+    var last = monotonicMs()
+    var pairAskMs = 0L
     while (true) {
-      val step = if (agentUrl.isBlank()) TICK_MS else refreshMillis
-      delay(step)
-      // Counted from the delay actually taken rather than from a wall clock:
+      val live = agentUrl.isNotBlank()
+      val wait =
+          if (live) Derive.pollWaitMs(pollView, refreshMillis, monotonicMs(), lastFetched)
+          else TICK_MS
+      val woken = withTimeoutOrNull(wait) { pollWake.receive() } != null
+      val now = monotonicMs()
+      val elapsed = now - last
+      last = now
+      // Counted from the time actually elapsed rather than from a wall clock:
       // the code's five minutes are five minutes of this loop, which is the
-      // only thing that can ask the Mac for the token.
-      tickPairing(step)
-      // Counted in milliseconds rather than in ticks because the tick length
-      // is a user setting: at "30 s" a count of ticks would ask GitHub every
-      // half hour, and at "1 s" every minute, for the same "every 60 s".
-      msSincePrPoll += step
+      // only thing that can ask the Mac for the token. Asked at most once a
+      // tick, however often the loop wakes.
+      pairAskMs += elapsed
+      val ask = pairAskMs >= (if (live) refreshMillis else TICK_MS)
+      if (ask) pairAskMs = 0
+      tickPairing(elapsed, ask)
       // The trust countdown reads against this, so it advances with the rest
       // of the screen instead of freezing at whatever it said when the last
       // tool ran.
       bridgeNowMs = System.currentTimeMillis()
-      if (agentUrl.isBlank()) advance() else pollAgent()
+      if (!live) {
+        // The simulated walk moves on the tick, not on every navigation.
+        if (!woken) advance()
+      } else {
+        pollAgent(now)
+      }
     }
   }
+
+  /** Woken when what is on screen changes, so the newly visible is fetched now. */
+  private val pollWake = Channel<Unit>(Channel.CONFLATED)
+
+  /** When each source was last asked for, on [monotonicMs]. Cleared with the host. */
+  private val lastFetched = HashMap<Derive.PollSource, Long>()
+
+  /** What was on screen at the last pass that reached the Mac; what comes on screen is due now. */
+  private var lastVisible: Map<Derive.PollSource, Long>? = null
+
+  private fun monotonicMs(): Long = System.nanoTime() / NANOS_PER_MS
+
+  /**
+   * What is on screen, as far as the poll is concerned. See [Derive.pollCadences] for what each
+   * screen and module draws, and so asks for.
+   */
+  private val pollView: Derive.PollView
+    get() =
+        Derive.PollView(
+            page =
+                when (effectiveScreen) {
+                  Screen.Home -> Derive.PollPage.Home
+                  Screen.Remote -> Derive.PollPage.Remote
+                  Screen.Mac -> Derive.PollPage.Mac
+                  Screen.Apps -> Derive.PollPage.Apps
+                  Screen.Console -> Derive.PollPage.Console
+                  Screen.Hosts -> Derive.PollPage.Hosts
+                },
+            module = currentModuleId,
+            appsDashboards = appsView == AppsView.Dashboards,
+            foreground = foreground,
+            antigravitySessionsSupported = antigravitySessionsSupported != false,
+        )
 
   /**
    * How often to ask, honouring the Hosts screen's setting.
@@ -4727,12 +4793,12 @@ public class RemoteState(
    * runs the `pair` subcommand, so it is not logged -- it would be a warning every tick for as long
    * as the code is on screen.
    */
-  private suspend fun tickPairing(elapsedMs: Long) {
+  private suspend fun tickPairing(elapsedMs: Long, ask: Boolean) {
     if (pairMillisLeft > 0) pairMillisLeft = (pairMillisLeft - elapsedMs).coerceAtLeast(0)
     if (pairMillisLeft <= 0) qrPairPending = false
     // Already paired only stops the tick when no QR pairing is in flight: a
     // scan replaces the token, but only once the new one is in hand.
-    if (agentUrl.isBlank() || (paired && !qrPairPending) || pairMillisLeft <= 0) return
+    if (!ask || agentUrl.isBlank() || (paired && !qrPairPending) || pairMillisLeft <= 0) return
     val token = runCatching { AgentClient(agentUrl).pair(pairCode) }.getOrNull() ?: return
     qrPairPending = false
     updateSelected { it.copy(token = token) }
@@ -5397,11 +5463,11 @@ public class RemoteState(
     tvLastFeedback = ""
     tvLastFeedbackTone = TerminalTone.Dim
     tvReconnectCount = 0
-    pollsSinceHost = 0
     sawUnreachable = false
-    // Due immediately: the new host's PRs are a different list, and waiting a
-    // minute to find that out would show the old Mac's for that minute.
-    msSincePrPoll = PR_POLL_MS
+    // Everything due immediately: the new host's PRs, sessions and speaker are
+    // a different machine's, and waiting a cadence to find that out would show
+    // the old Mac's for that long.
+    lastFetched.clear()
     if (agentUrl.isNotBlank()) {
       // The demo lines were seeded for a phone with no Mac. Now there is one.
       terminal.clear()
@@ -5424,70 +5490,77 @@ public class RemoteState(
     forgetHost(current.id)
   }
 
-  private var pollsSinceHost = 0
-
   /** Whether the selected Mac has dropped out since it was last live, so "back" means something. */
   private var sawUnreachable = false
 
   /**
-   * One poll of the agent. Failure freezes the numbers where they are and says so; it does NOT
-   * resume the simulated walk, because motion over a stale reading is the most misleading thing a
-   * dashboard can do.
+   * One pass of the poll: whatever on screen is due, and nothing else.
+   *
+   * Metrics are the connection's heartbeat. Failure freezes the numbers where they are and says so;
+   * it does NOT resume the simulated walk, because motion over a stale reading is the most
+   * misleading thing a dashboard can do. The rest is asked for only while the Mac is answering: a
+   * pass that finds it unreachable leaves them due, so they come back with it.
    */
-  private var pollCount = 0
-  private var msSincePrPoll = Long.MAX_VALUE / 2
-
-  private suspend fun pollAgent() {
+  private suspend fun pollAgent(nowMs: Long) {
     val client = AgentClient(agentUrl, agentToken)
-    val result = runCatching {
-      // Host identity changes never; refresh it rarely so a renamed machine
-      // or an upgraded agent shows up without a restart.
-      if (agentHost == null || pollsSinceHost >= HOST_REFRESH_POLLS) {
-        val h = client.host()
-        agentHost = h
-        if (h.macAddress.isNotBlank() && h.macAddress != agentMac) {
-          updateSelected { entry -> entry.copy(mac = h.macAddress) }
+    val view = pollView
+    val due = Derive.pollDue(view, refreshMillis, nowMs, lastFetched, lastVisible)
+    if (Derive.PollSource.Metrics in due) {
+      lastFetched[Derive.PollSource.Metrics] = nowMs
+      val result = runCatching {
+        // Host identity changes rarely; refresh it now and then so a renamed
+        // machine or an upgraded agent shows up without a restart.
+        if (agentHost == null || Derive.PollSource.Host in due) {
+          lastFetched[Derive.PollSource.Host] = nowMs
+          val h = client.host()
+          agentHost = h
+          if (h.macAddress.isNotBlank() && h.macAddress != agentMac) {
+            updateSelected { entry -> entry.copy(mac = h.macAddress) }
+          }
         }
-        pollsSinceHost = 0
+        client.metrics()
       }
-      pollsSinceHost++
-      client.metrics()
+      result
+          .onSuccess { m ->
+            applyAgentMetrics(m)
+            if (metricsSource != MetricsSource.Live) {
+              log("ok", "agent · live from ${agentHost?.hostname ?: "host"}")
+              // Only on the transition, and only when something was there to
+              // come back FROM: a first successful poll after launch is not a
+              // recovery and does not deserve a notification.
+              if (metricsSource == MetricsSource.Unreachable && sawUnreachable) {
+                post("host", "$hostShortName is back", "the agent is answering again", Screen.Home)
+              }
+              sawUnreachable = false
+            }
+            metricsSource = MetricsSource.Live
+            agentError = ""
+          }
+          .onFailure { e ->
+            val message = e.message ?: e::class.simpleName ?: "error"
+            if (metricsSource == MetricsSource.Live) {
+              log("warn", "agent · unreachable: $message")
+              // The switch used to change only a dialog's wording. Now it does
+              // what it says: one magic packet the moment a live Mac stops
+              // answering, not one per tick -- a Mac that is off for the night
+              // does not need a packet every second.
+              if (wakeOnLan && agentMac.isNotBlank()) {
+                log("info", "power · Wake-on-LAN sent, the Mac stopped answering")
+                scope.launch { wakeHost() }
+              }
+              sawUnreachable = true
+              post("host", "$hostShortName is unreachable", message, Screen.Hosts)
+            }
+            metricsSource = MetricsSource.Unreachable
+            agentError = message
+          }
     }
-    result
-        .onSuccess { m ->
-          applyAgentMetrics(m)
-          pollExtras(client)
-          if (metricsSource != MetricsSource.Live) {
-            log("ok", "agent · live from ${agentHost?.hostname ?: "host"}")
-            // Only on the transition, and only when something was there to
-            // come back FROM: a first successful poll after launch is not a
-            // recovery and does not deserve a notification.
-            if (metricsSource == MetricsSource.Unreachable && sawUnreachable) {
-              post("host", "$hostShortName is back", "the agent is answering again", Screen.Home)
-            }
-            sawUnreachable = false
-          }
-          metricsSource = MetricsSource.Live
-          agentError = ""
-        }
-        .onFailure { e ->
-          val message = e.message ?: e::class.simpleName ?: "error"
-          if (metricsSource == MetricsSource.Live) {
-            log("warn", "agent · unreachable: $message")
-            // The switch used to change only a dialog's wording. Now it does
-            // what it says: one magic packet the moment a live Mac stops
-            // answering, not one per tick -- a Mac that is off for the night
-            // does not need a packet every second.
-            if (wakeOnLan && agentMac.isNotBlank()) {
-              log("info", "power · Wake-on-LAN sent, the Mac stopped answering")
-              scope.launch { wakeHost() }
-            }
-            sawUnreachable = true
-            post("host", "$hostShortName is unreachable", message, Screen.Hosts)
-          }
-          metricsSource = MetricsSource.Unreachable
-          agentError = message
-        }
+    if (metricsSource == MetricsSource.Live) {
+      pollExtras(client, due - Derive.PollSource.Metrics - Derive.PollSource.Host, nowMs)
+      // Only once they have actually been asked for: a module opened while
+      // the Mac is not answering is still "just opened" when it comes back.
+      lastVisible = Derive.pollCadences(view, refreshMillis)
+    }
   }
 
   private fun applyAgentMetrics(m: AgentMetrics) {
@@ -5504,52 +5577,57 @@ public class RemoteState(
   }
 
   /**
-   * The rest of the read surface.
+   * The rest of the read surface: only the [due] sources, which [Derive.pollDue] limits to what is
+   * on screen.
    *
-   * Processes and audio move every second and are asked for every tick. The four that shell out to
-   * `limactl`, `docker`, `kubectl` and the filesystem cost the Mac real work for numbers that
-   * change on the order of minutes, so they go every third tick -- and the PromQL power queries,
-   * which leave the machine entirely, go with them.
-   *
-   * Each is caught on its own: one endpoint failing must not blank the other five, and it certainly
+   * Each is caught on its own: one endpoint failing must not blank the others, and it certainly
    * must not knock the whole app back to "unreachable" when `/v1/metrics` answered perfectly well.
+   * A source counts as asked for when it is asked, not when it answers, so a failing endpoint is
+   * retried at its cadence rather than on every wake.
    */
-  private suspend fun pollExtras(client: AgentClient) {
-    pollCount++
-    runCatching { client.processes() }.onSuccess { agentProcesses = it }
-    runCatching { client.audio() }.onSuccess { agentAudio = it }
-    // Claude Code sessions are the one v1.2 read that changes second to
-    // second: "waiting for permission" is only useful while it is still true.
-    runCatching { client.claudeSessions() }.onSuccess { agentClaudeSessions = it }
-    // Antigravity's conversations, for the same reason; an agent older than
-    // v1.7 is asked again only on the slow ticks, in case it was upgraded.
-    if (antigravitySessionsSupported != false || pollCount % SLOW_POLL_EVERY == 1) {
-      pollAntigravitySessions(client)
+  private suspend fun pollExtras(
+      client: AgentClient,
+      due: Set<Derive.PollSource>,
+      nowMs: Long,
+  ) {
+    for (source in Derive.PollSource.values()) {
+      if (source !in due) continue
+      // Not while a change is in flight: the read would race it and flash the old level.
+      if (source == Derive.PollSource.SpeakerVolume && speakerVolumeBusy) continue
+      lastFetched[source] = nowMs
+      when (source) {
+        Derive.PollSource.Metrics,
+        Derive.PollSource.Host -> Unit
+        Derive.PollSource.Processes ->
+            runCatching { client.processes() }.onSuccess { agentProcesses = it }
+        Derive.PollSource.Audio -> runCatching { client.audio() }.onSuccess { agentAudio = it }
+        Derive.PollSource.ClaudeSessions ->
+            runCatching { client.claudeSessions() }.onSuccess { agentClaudeSessions = it }
+        Derive.PollSource.Sessions ->
+            runCatching { client.sessions() }.onSuccess { agentSessions = it }
+        Derive.PollSource.AntigravitySessions -> pollAntigravitySessions(client)
+        Derive.PollSource.Antigravity ->
+            runCatching { client.antigravity() }.onSuccess { agentAntigravity = it }
+        // GitHub is somebody else's rate limit; Derive keeps this to a minute.
+        Derive.PollSource.Prs -> runCatching { client.prs() }.onSuccess { agentPrs = it }
+        Derive.PollSource.Argo -> runCatching { client.argocd() }.onSuccess { agentArgo = it }
+        Derive.PollSource.K8s -> runCatching { client.k8s() }.onSuccess { agentK8s = it }
+        Derive.PollSource.Vms -> runCatching { client.vms() }.onSuccess { agentVms = it }
+        Derive.PollSource.Containers ->
+            runCatching { client.containers() }.onSuccess { agentContainers = it }
+        Derive.PollSource.Ollama -> runCatching { client.ollama() }.onSuccess { agentOllama = it }
+        Derive.PollSource.HomeSpeaker ->
+            runCatching { client.homeSpeaker() }.onSuccess { agentHomeSpeaker = it }
+        Derive.PollSource.SpeakerVolume ->
+            runCatching { client.homeSpeakerVolume() }.onSuccess { agentSpeakerVolume = it }
+        Derive.PollSource.Tv -> runCatching { client.tv() }.onSuccess { agentTv = it }
+        Derive.PollSource.Tools -> runCatching { client.tools() }.onSuccess { agentTools = it }
+        // Flags on the Mac, so this changes only when the agent is restarted.
+        Derive.PollSource.Notify ->
+            runCatching { client.notifyStatus() }.onSuccess { agentNotify = it }
+        Derive.PollSource.Power -> pollPower(client)
+      }
     }
-    // GitHub is somebody else's rate limit, and a PR's checks do not move in
-    // under a minute.
-    if (msSincePrPoll >= PR_POLL_MS) {
-      msSincePrPoll = 0
-      runCatching { client.prs() }.onSuccess { agentPrs = it }
-    }
-    if (pollCount % SLOW_POLL_EVERY != 1) return
-    runCatching { client.argocd() }.onSuccess { agentArgo = it }
-    runCatching { client.vms() }.onSuccess { agentVms = it }
-    runCatching { client.ollama() }.onSuccess { agentOllama = it }
-    runCatching { client.homeSpeaker() }.onSuccess { agentHomeSpeaker = it }
-    runCatching { client.tv() }.onSuccess { agentTv = it }
-    // Not while a change is in flight: the read would race it and flash the old level.
-    if (!speakerVolumeBusy) {
-      runCatching { client.homeSpeakerVolume() }.onSuccess { agentSpeakerVolume = it }
-    }
-    runCatching { client.tools() }.onSuccess { agentTools = it }
-    runCatching { client.antigravity() }.onSuccess { agentAntigravity = it }
-    runCatching { client.containers() }.onSuccess { agentContainers = it }
-    runCatching { client.k8s() }.onSuccess { agentK8s = it }
-    runCatching { client.sessions() }.onSuccess { agentSessions = it }
-    // Flags on the Mac, so this changes only when the agent is restarted.
-    runCatching { client.notifyStatus() }.onSuccess { agentNotify = it }
-    pollPower(client)
   }
 
   /**
@@ -5785,7 +5863,7 @@ public class RemoteState(
       runCatching { client.prs() }
           .onSuccess {
             agentPrs = it
-            msSincePrPoll = 0
+            lastFetched[Derive.PollSource.Prs] = monotonicMs()
           }
     }
   }
@@ -6298,7 +6376,10 @@ public class RemoteState(
       return
     }
     log("info", "host · retrying ${AgentClient.normalize(agentUrl)}")
-    scope.launch { pollAgent() }
+    // Through the loop rather than beside it: two polls racing would ask for
+    // everything twice. Clearing the clock makes all of it due now.
+    lastFetched.clear()
+    pollWake.trySend(Unit)
   }
 
   // --- Claude Code permission prompts (API v1.6) -----------------------------
@@ -6800,10 +6881,7 @@ public class RemoteState(
     const val PAIR_CODE_BOUND = 1_000_000
     const val CLAUDE_TIMEOUT_S = 180
     const val RECENT_COMMANDS = 20
-    const val SLOW_POLL_EVERY = 3
-
-    /** The contract samples PRs every 60 s on the Mac; asking faster only spends rate limit. */
-    const val PR_POLL_MS = 60_000L
+    const val NANOS_PER_MS = 1_000_000L
     const val RUNNING_LABEL_MAX = 40
     const val NOTIFY_BODY_MAX = 80
 
@@ -6833,7 +6911,6 @@ public class RemoteState(
       return "${digits.take(3)} ${digits.drop(3)}"
     }
 
-    const val HOST_REFRESH_POLLS = 40
     const val SERIES_ROWS = 12
 
     /** How many series the Mac screen's panel shows before it stops. */
