@@ -669,12 +669,22 @@ impl<'a> Parser<'a> {
             } else if b < 0x20 {
                 return Err(format!("unescaped control character 0x{:02x}", b));
             } else {
-                // Decode UTF-8 char starting at self.pos
-                let s = std::str::from_utf8(&self.bytes[self.pos..])
+                // A run of plain bytes: everything up to the next quote,
+                // backslash or control byte. Those three are ASCII, and ASCII
+                // never occurs inside a multi-byte UTF-8 sequence, so a run
+                // boundary cannot split a valid character. Validate the run
+                // once and copy it whole. (This used to validate the entire
+                // rest of the buffer once per character, which made parsing
+                // quadratic: a 2.5 MB Argo CD app list pegged a core.)
+                let start = self.pos;
+                let end = self.bytes[start..]
+                    .iter()
+                    .position(|&c| c == b'"' || c == b'\\' || c < 0x20)
+                    .map_or(self.bytes.len(), |i| start + i);
+                let run = std::str::from_utf8(&self.bytes[start..end])
                     .map_err(|_| "invalid UTF-8 in JSON string".to_string())?;
-                let ch = s.chars().next().unwrap();
-                out.push(ch);
-                self.pos += ch.len_utf8();
+                out.push_str(run);
+                self.pos = end;
             }
         }
         Err("unterminated JSON string".to_string())
@@ -747,5 +757,156 @@ impl<'a> Parser<'a> {
                 _ => return Err(format!("expected ',' or '}}' at {}", self.pos)),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    /// The two characters that start a JSON unicode escape. Built at run time
+    /// so no editor or tool can decode the escapes in this file's source.
+    const U: &str = concat!("\\", "u");
+
+    /// A quoted JSON string made of the given unicode escapes.
+    fn u(hexes: &[&str]) -> String {
+        let body: String = hexes.iter().map(|h| format!("{U}{h}")).collect();
+        format!("\"{body}\"")
+    }
+
+    fn s(input: &str) -> Result<String, String> {
+        match JsonValue::parse(input)? {
+            JsonValue::String(v) => Ok(v),
+            other => Err(format!("not a string: {:?}", other)),
+        }
+    }
+
+    #[test]
+    fn plain_and_multibyte_strings_round_trip() {
+        assert_eq!(s(r#""""#).unwrap(), "");
+        assert_eq!(s(r#""hello world""#).unwrap(), "hello world");
+        assert_eq!(
+            s("\"caf\u{e9} \u{4e2d}\u{6587}\"").unwrap(),
+            "caf\u{e9} \u{4e2d}\u{6587}"
+        );
+        assert_eq!(
+            s("\"\u{1F680} launch \u{1F44D}\u{1F3FD}\"").unwrap(),
+            "\u{1F680} launch \u{1F44D}\u{1F3FD}"
+        );
+        // Multi-byte characters directly next to escapes and the closing quote.
+        assert_eq!(
+            s("\"\u{e9}\\n\u{1F600}\\\"\u{e9}\"").unwrap(),
+            "\u{e9}\n\u{1F600}\"\u{e9}"
+        );
+    }
+
+    #[test]
+    fn simple_escapes() {
+        assert_eq!(
+            s(r#""a\"b\\c\/d\be\ff\ng\rh\ti""#).unwrap(),
+            "a\"b\\c/d\x08e\x0Cf\ng\rh\ti"
+        );
+        assert_eq!(s(&u(&["0041", "00e9", "4e2d"])).unwrap(), "A\u{e9}\u{4e2d}");
+    }
+
+    #[test]
+    fn surrogate_pairs() {
+        assert_eq!(s(&u(&["d83d", "de80"])).unwrap(), "\u{1F680}");
+        assert_eq!(s(&format!("\"x{U}D83D{U}DE00y\"")).unwrap(), "x\u{1F600}y");
+        // Lone high surrogate, high followed by a non-low escape, lone low.
+        assert_eq!(s(&format!("\"{U}d83dz\"")).unwrap(), "\u{FFFD}z");
+        assert_eq!(s(&u(&["d83d", "0041"])).unwrap(), "\u{FFFD}");
+        assert_eq!(s(&u(&["de00"])).unwrap(), "\u{FFFD}");
+    }
+
+    #[test]
+    fn string_errors_keep_their_messages() {
+        assert_eq!(s(r#""abc"#).unwrap_err(), "unterminated JSON string");
+        assert_eq!(s("\"caf\u{e9}").unwrap_err(), "unterminated JSON string");
+        assert_eq!(s(r#""abc\"#).unwrap_err(), "unterminated escape sequence");
+        assert_eq!(s(r#""\q""#).unwrap_err(), "invalid escape '\\q'");
+        assert_eq!(
+            s(&format!("\"{U}12zz\"")).unwrap_err(),
+            "invalid hex '12zz' in \\u escape"
+        );
+        assert_eq!(s(&format!("\"{U}1")).unwrap_err(), "incomplete \\u escape");
+        assert_eq!(
+            s("\"a\nb\"").unwrap_err(),
+            "unescaped control character 0x0a"
+        );
+        assert_eq!(
+            s("\"a\x01\"").unwrap_err(),
+            "unescaped control character 0x01"
+        );
+    }
+
+    #[test]
+    fn invalid_utf8_mid_string_is_rejected() {
+        let cases: &[&[u8]] = &[
+            b"\"ab\xffcd\"",          // byte that never appears in UTF-8
+            b"\"ab\xc3\"",            // truncated two-byte sequence before the quote
+            b"\"ab\xe2\x82\"",        // truncated three-byte sequence
+            b"\"ok\\n\xed\xa0\x80\"", // encoded surrogate, after an escape
+            b"\"\xf0\x9f\x9a\"",      // truncated four-byte sequence
+        ];
+        for c in cases {
+            assert_eq!(
+                JsonValue::parse_bytes(c).unwrap_err(),
+                "invalid UTF-8 in JSON string",
+                "input {:?}",
+                c
+            );
+        }
+        assert_eq!(
+            JsonValue::parse_bytes("\"\u{1F680}\"".as_bytes()).unwrap(),
+            JsonValue::String("\u{1F680}".to_string())
+        );
+    }
+
+    #[test]
+    fn strings_inside_documents() {
+        let v = JsonValue::parse("{\"k\u{e9}y\": [\"a\\tb\", \"\u{1F680}\"], \"n\": 1}").unwrap();
+        let arr = v.get_array("k\u{e9}y").unwrap();
+        assert_eq!(arr[0].as_str(), Some("a\tb"));
+        assert_eq!(arr[1].as_str(), Some("\u{1F680}"));
+        assert_eq!(v.get_i64("n"), 1);
+    }
+
+    /// Parsing must stay linear in the input. The parser used to re-validate
+    /// the whole rest of the buffer for every plain character, so a ~3 MB
+    /// document took minutes, and the agent re-parses the live Argo CD app
+    /// list (2.5 MB on the homelab) on every sampler tick. Linear parsing of
+    /// this input takes milliseconds; the bound is generous so a slow CI
+    /// runner cannot flake it.
+    #[test]
+    fn large_document_parses_in_linear_time() {
+        let long = "x".repeat(2_000) + "\u{e9}\u{1F680}" + &"y".repeat(2_000);
+        let mut doc = String::from("{\"items\":[");
+        for i in 0..800 {
+            if i > 0 {
+                doc.push(',');
+            }
+            doc.push_str(&format!(
+                "{{\"name\":\"app-{i}\",\"note\":\"{long}\",\"esc\":\"a\\n\\u00e9\\ud83d\\ude80\"}}"
+            ));
+        }
+        doc.push_str("]}");
+        assert!(doc.len() > 3_000_000, "document is {} bytes", doc.len());
+
+        let started = Instant::now();
+        let v = JsonValue::parse(&doc).unwrap();
+        let took = started.elapsed();
+
+        let items = v.get_array("items").unwrap();
+        assert_eq!(items.len(), 800);
+        assert_eq!(items[799].get_str("note"), long);
+        assert_eq!(items[0].get_str("esc"), "a\n\u{e9}\u{1F680}");
+        assert!(
+            took < Duration::from_secs(2),
+            "parsing {} bytes took {:?}; string parsing has gone non-linear",
+            doc.len(),
+            took
+        );
     }
 }
