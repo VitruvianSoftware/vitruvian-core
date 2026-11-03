@@ -160,6 +160,14 @@ pub const HANDSHAKE_STEP_TIMEOUT: Duration = Duration::from_secs(30);
 /// (ref pkg/gchatmeow/channel.go defaultChannelMaxAge). A session kept too long ends in HTTP 400
 /// "Unknown SID" (seen about hourly in the field); recycling first avoids that gap.
 pub const SID_MAX_AGE: Duration = Duration::from_secs(90 * 60);
+/// A session must have stayed up at least this long before a later drop starts the backoff ladder over.
+/// Without it, a connection that opens and dies at once resets the ladder every time and retries every second.
+pub const STABLE_SESSION_MIN: Duration = Duration::from_secs(60);
+
+/// Whether a session of this age counts as stable, so that dropping it resets the reconnect backoff.
+pub fn session_was_stable(age_ms: u64) -> bool {
+    age_ms >= STABLE_SESSION_MIN.as_millis() as u64
+}
 
 pub const GCHAT_EVENT_KIND_EVENT_PROTO: i32 = 1;
 pub const GCHAT_EVENT_KIND_AUTH_EXPIRED: i32 = 2;
@@ -172,8 +180,7 @@ pub const GCHAT_EVENT_KIND_STREAM_ERROR: i32 = 5;
 /// query strings, SIDs, cookies, tokens, or response bodies.
 pub fn format_stream_error_message(step: &str, err: &GChatError) -> String {
     let safe_step = match step {
-        "step1_register" | "step2_bind_sid" | "step3_ack_and_ping" | "step2_bind_poll"
-        | "step4_poll_events" => step,
+        "register" | "bind_sid" | "ack_ping" | "bind_poll" | "poll_events" => step,
         _ => "stream",
     };
     let kind = match err {
@@ -1050,7 +1057,7 @@ crate::edition2021! {
                     r = self.within_step_timeout("register", self.step1_register()) => r,
                 };
                 if let Err(e) = reg_res {
-                    if !self.handle_stream_error("step1_register", e, &mut attempt, &mut cancel_rx, &mut emit).await {
+                    if !self.handle_stream_error("register", e, &mut attempt, &mut cancel_rx, &mut emit).await {
                         break;
                     }
                     continue;
@@ -1063,7 +1070,7 @@ crate::edition2021! {
                 let (sid, bind_resp) = match sid_res {
                     Ok(pair) => pair,
                     Err(e) => {
-                        if !self.handle_stream_error("step2_bind_sid", e, &mut attempt, &mut cancel_rx, &mut emit).await {
+                        if !self.handle_stream_error("bind_sid", e, &mut attempt, &mut cancel_rx, &mut emit).await {
                             break;
                         }
                         continue;
@@ -1076,7 +1083,7 @@ crate::edition2021! {
                 };
                 if let Err(e) = ack_ping_res {
                     drop(bind_resp);
-                    if !self.handle_stream_error("step3_ack_and_ping", e, &mut attempt, &mut cancel_rx, &mut emit).await {
+                    if !self.handle_stream_error("ack_ping", e, &mut attempt, &mut cancel_rx, &mut emit).await {
                         break;
                     }
                     continue;
@@ -1088,7 +1095,6 @@ crate::edition2021! {
                 if attempt > 0 || resync_on_connect {
                     emit(GCHAT_EVENT_KIND_RESYNC, &[]);
                 }
-                attempt = 0;
                 resync_on_connect = false;
 
                 // Read the bind GET response body as the first long-poll stream.
@@ -1103,7 +1109,8 @@ crate::edition2021! {
                     };
                     drop(on_ev);
                     if let Err(e) = bind_poll_res {
-                        if !self.handle_stream_error("step2_bind_poll", e, &mut attempt, &mut cancel_rx, &mut emit).await {
+                        self.note_session_gap(session_started_ms, &mut attempt, &mut resync_on_connect);
+                        if !self.handle_stream_error("bind_poll", e, &mut attempt, &mut cancel_rx, &mut emit).await {
                             return;
                         }
                         continue;
@@ -1118,7 +1125,7 @@ crate::edition2021! {
                     let age_ms = self.clock().now_ms().saturating_sub(session_started_ms);
                     if age_ms >= SID_MAX_AGE.as_millis() as u64 {
                         // Recycle before Google expires the SID; register a fresh session straight away.
-                        resync_on_connect = true;
+                        self.note_session_gap(session_started_ms, &mut attempt, &mut resync_on_connect);
                         break;
                     }
                     let open_res = tokio::select! {
@@ -1146,7 +1153,8 @@ crate::edition2021! {
                             continue;
                         }
                         Err(e) => {
-                            if !self.handle_stream_error("step4_poll_events", e, &mut attempt, &mut cancel_rx, &mut emit).await {
+                            self.note_session_gap(session_started_ms, &mut attempt, &mut resync_on_connect);
+                            if !self.handle_stream_error("poll_events", e, &mut attempt, &mut cancel_rx, &mut emit).await {
                                 return;
                             }
                             break;
@@ -1154,6 +1162,16 @@ crate::edition2021! {
                     }
                 }
             }
+        }
+
+        /// Called when a connected session ends (drop or recycle). Clears the backoff only if the session was
+        /// stable, and always marks that the next CONNECTED must be followed by RESYNC to catch up on the gap.
+        fn note_session_gap(&self, session_started_ms: u64, attempt: &mut usize, resync_on_connect: &mut bool) {
+            let age_ms = self.clock().now_ms().saturating_sub(session_started_ms);
+            if session_was_stable(age_ms) {
+                *attempt = 0;
+            }
+            *resync_on_connect = true;
         }
 
         async fn handle_stream_error<F>(
@@ -2152,33 +2170,70 @@ mod tests {
     }
 
     #[test]
+    fn test_only_a_stable_session_resets_reconnect_backoff() {
+        // A session that dies straight after connecting must not restart the 1s ladder.
+        assert!(!session_was_stable(0));
+        assert!(!session_was_stable(
+            STABLE_SESSION_MIN.as_millis() as u64 - 1
+        ));
+        assert!(session_was_stable(STABLE_SESSION_MIN.as_millis() as u64));
+        // Failures keep climbing the ladder until a session lasts.
+        assert_eq!(
+            reconnect_backoff_delay(0, 0.0),
+            Duration::from_millis(1_000)
+        );
+        assert_eq!(
+            reconnect_backoff_delay(5, 0.0),
+            Duration::from_millis(30_000)
+        );
+    }
+
+    #[test]
+    fn test_safe_step_names_contain_no_digits() {
+        // The Go log scrubber turns any word with a digit into "[id]", hiding which step failed.
+        for step in [
+            "register",
+            "bind_sid",
+            "ack_ping",
+            "bind_poll",
+            "poll_events",
+        ] {
+            assert!(!step.chars().any(|c| c.is_ascii_digit()), "{step}");
+            assert_eq!(
+                format_stream_error_message(step, &GChatError::Network("x".into())),
+                format!("{step}: network")
+            );
+        }
+    }
+
+    #[test]
     fn test_format_stream_error_message_never_echoes_sid_cookie_token_url_or_body() {
         let sensitive_payload = "https://chat.google.com/u/0/webchannel/events?SID=sid_val_999&zx=abc Cookie: COMPASS=dynamite-ui=compass_val; OSID=osid_val xsrf=xsrf_val body=resp_body_val"; // gitleaks:allow
         let cases = [
             (
-                "step1_register",
+                "register",
                 GChatError::HttpStatus(503, sensitive_payload.to_string()),
-                "step1_register: http_status:503",
+                "register: http_status:503",
             ),
             (
-                "step2_bind_sid",
+                "bind_sid",
                 GChatError::Network(sensitive_payload.to_string()),
-                "step2_bind_sid: network",
+                "bind_sid: network",
             ),
             (
-                "step3_ack_and_ping",
+                "ack_ping",
                 GChatError::Protocol(sensitive_payload.to_string()),
-                "step3_ack_and_ping: protocol",
+                "ack_ping: protocol",
             ),
             (
-                "step2_bind_poll",
+                "bind_poll",
                 GChatError::AuthExpired(sensitive_payload.to_string()),
-                "step2_bind_poll: auth_expired",
+                "bind_poll: auth_expired",
             ),
             (
-                "step4_poll_events",
+                "poll_events",
                 GChatError::HttpStatus(400, sensitive_payload.to_string()),
-                "step4_poll_events: http_status:400",
+                "poll_events: http_status:400",
             ),
             (
                 sensitive_payload,
@@ -2422,7 +2477,7 @@ mod tests {
         lines.sort();
         let lines: Vec<String> = lines.into_iter().map(|(_, l)| l).collect();
 
-        assert_eq!(errors, vec!["step1_register: network".to_string(), "step2_bind_sid: http_status:400".to_string()]);
+        assert_eq!(errors, vec!["register: network".to_string(), "bind_sid: http_status:400".to_string()]);
         assert!(kinds.contains(&GCHAT_EVENT_KIND_CONNECTED) && kinds.contains(&GCHAT_EVENT_KIND_RESYNC), "got {kinds:?}");
         assert!(lines[3].contains("/u/0/webchannel/register"), "a 400 must start over with a fresh register, got {}", lines[3]);
         assert!(lines[4].contains("SID=null"), "the fresh session binds a new SID, got {}", lines[4]);
