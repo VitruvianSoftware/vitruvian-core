@@ -59,7 +59,7 @@ enum NotchLockScreenTests {
         suite.expect(SettingsBackupSupport.exportKeys().isSuperset(of: [DefaultsKey.notchLockScreen, DefaultsKey.notchLockSounds]),
                      "settings backups carry the lock screen preferences")
         let domain = "com.vitruviansoftware.vitruvian.tests.notch-lock-screen"
-        let defaults = UserDefaults(suiteName: domain)!
+        let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
         for (key, value) in Defaults.registeredDefaults where key.hasPrefix("notch") { defaults.set(value, forKey: key) }

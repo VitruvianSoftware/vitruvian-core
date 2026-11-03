@@ -88,7 +88,7 @@ enum NotchCapsuleTests {
 
     private static func preferenceContracts(_ suite: TestSuite) {
         let domain = "com.vitruviansoftware.vitruvian.tests.notch-capsule"
-        let defaults = UserDefaults(suiteName: domain)!
+        let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
         suite.expect(Defaults.registeredDefaults[DefaultsKey.notchSilhouette] as? String == NotchSilhouette.capsule.rawValue
@@ -360,7 +360,7 @@ enum NotchCapsuleTests {
     /// open and closed alike, and leaves every other island untouched.
     private static func fitContracts(_ suite: TestSuite) {
         let domain = "com.vitruviansoftware.vitruvian.tests.notch-capsule-fit"
-        let defaults = UserDefaults(suiteName: domain)!
+        let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
         let keys = [DefaultsKey.notchCapsuleFitWidth, DefaultsKey.notchCapsuleFitHeight, DefaultsKey.notchCapsuleFitDrop]

@@ -41,7 +41,7 @@ enum NotchAudioLevelTests {
                && NotchAudioLevelSupport.fallsBack(heard: false, elapsed: NotchAudioLevelSupport.silenceGrace),
                "a tap that only ever delivers silence hands the bars back to their synthetic motion")
         let domain = "com.vitruviansoftware.vitruvian.tests.audio-levels"
-        let defaults = UserDefaults(suiteName: domain)!
+        let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
         expect(!NotchAudioLevelSupport.isEnabled(in: defaults),

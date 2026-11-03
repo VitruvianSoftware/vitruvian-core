@@ -69,7 +69,7 @@ enum NotchSettingsChoiceTests {
         // whatever was saved: its feature is uninstalled, or something else
         // rules it out.
         let domain = "com.vitruviansoftware.vitruvian.tests.notch-settings-choice"
-        let defaults = UserDefaults(suiteName: domain)!
+        let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
         let runtime = FeatureRuntime(environment: .init(defaults: defaults, perform: { _ in },

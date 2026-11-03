@@ -642,7 +642,7 @@ enum ClipboardFeatureTests {
         suite.expect(Defaults.registeredDefaults[DefaultsKey.clipboardHistoryLayout] as? String
                         == ClipboardHistoryLayout.list.rawValue,
                "the clipboard history opens as the list until the cards are chosen")
-        let layoutDefaults = UserDefaults(suiteName: "com.vitruviansoftware.vitruvian.tests.clipboard-layout")!
+        let layoutDefaults = ScratchDefaults.suite(named: "com.vitruviansoftware.vitruvian.tests.clipboard-layout")!
         layoutDefaults.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.clipboard-layout")
         suite.expect(ClipboardHistoryLayout.current(in: layoutDefaults) == .list,
                "an unset clipboard history layout reads as the list")
@@ -1565,7 +1565,7 @@ enum ClipboardPreviewContract {
             let recorder = Recorder()
             let name = "vitru.tests.clipboard-preview.\(UUID().uuidString)"
             let directory = FileManager.default.temporaryDirectory.appendingPathComponent(name)
-            let defaults = UserDefaults(suiteName: name)!
+            let defaults = ScratchDefaults.suite(named: name)!
             let storeURL = hasFile ? directory.appendingPathComponent("ClipboardHistory.json") : nil
             try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             let data = ClipboardHistoryEditing.encodedHistory(entries)!.data

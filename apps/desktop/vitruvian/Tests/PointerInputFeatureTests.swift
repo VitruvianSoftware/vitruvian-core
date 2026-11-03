@@ -837,7 +837,7 @@ enum PointerInputFeatureTests {
         suite.expect(!uninstalledInverter.invertVertical && !uninstalledInverter.invertHorizontal,
                "an uninstalled inverter flips nothing even with its switches left on")
         let linearName = "com.vitruviansoftware.vitruvian.tests.linear-lines.\(UUID().uuidString)"
-        let linearDefaults = UserDefaults(suiteName: linearName)!
+        let linearDefaults = ScratchDefaults.suite(named: linearName)!
         defer { linearDefaults.removePersistentDomain(forName: linearName) }
         var exceptionChecks = 0
         let excepted = { () -> Bool in exceptionChecks += 1; return true }
@@ -3235,7 +3235,7 @@ enum PointerInputFeatureTests {
         // identifier is trimmed, and a path keeps its exact file name, which
         // may legally end in a space the running program reports too.
         do {
-            let listDefaults = UserDefaults(suiteName: "vitru.tests.mouse-exception-lists")!
+            let listDefaults = ScratchDefaults.suite(named: "vitru.tests.mouse-exception-lists")!
             listDefaults.removePersistentDomain(forName: "vitru.tests.mouse-exception-lists")
             defer { listDefaults.removePersistentDomain(forName: "vitru.tests.mouse-exception-lists") }
             let listKey = MouseExceptionScope.middleClick.defaultsKey
@@ -3749,7 +3749,7 @@ enum PointerInputFeatureTests {
         // A grant re-syncs every feature that declares it, so quit protection
         // is covered by its catalog entry, not by a hand-kept list.
         do {
-            let grantDefaults = UserDefaults(suiteName: "vitru.tests.accessibility-grant")!
+            let grantDefaults = ScratchDefaults.suite(named: "vitru.tests.accessibility-grant")!
             grantDefaults.removePersistentDomain(forName: "vitru.tests.accessibility-grant")
             defer { grantDefaults.removePersistentDomain(forName: "vitru.tests.accessibility-grant") }
             grantDefaults.set(true, forKey: AppFeature.quitWindowProtection.availabilityKey)

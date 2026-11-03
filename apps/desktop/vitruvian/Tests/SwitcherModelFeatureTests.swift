@@ -225,7 +225,7 @@ enum SwitcherModelFeatureTests {
                == GlobalShortcut.switcherWindowDefault.storageValue,
                "switcher window shortcut defaults to Cmd+Grave")
         let shortcutSuite = "vitru.tests.switcher.shortcut"
-        if let migrationDefaults = UserDefaults(suiteName: shortcutSuite) {
+        if let migrationDefaults = ScratchDefaults.suite(named: shortcutSuite) {
             migrationDefaults.removePersistentDomain(forName: shortcutSuite)
             migrationDefaults.set("control+option+command:50", forKey: DefaultsKey.switcherWindowShortcut)
             Defaults.migrateLegacySwitcherWindowShortcut(in: migrationDefaults)
@@ -928,7 +928,7 @@ enum SwitcherModelFeatureTests {
         // minimized windows left out, a hidden app's window goes with them
         // only when the choice says so.
         let hiddenPlacementSuite = "vitru.tests.switcher.hidden-app-placement"
-        if let hiddenPlacementDefaults = UserDefaults(suiteName: hiddenPlacementSuite) {
+        if let hiddenPlacementDefaults = ScratchDefaults.suite(named: hiddenPlacementSuite) {
             hiddenPlacementDefaults.removePersistentDomain(forName: hiddenPlacementSuite)
             hiddenPlacementDefaults.set(WindowSwitchMinimizedPlacement.hidden.rawValue,
                                         forKey: DefaultsKey.switcherMinimizedPlacement)
@@ -1880,7 +1880,7 @@ enum SwitcherModelFeatureTests {
                                                                   DefaultsKey.monitorSysBattery]),
                "preview appearance and moved battery visibility travel in settings backups")
         let batteryVisibilitySuite = "com.vitruviansoftware.vitruvian.tests.batteryVisibility.\(UUID().uuidString)"
-        if let batteryVisibilityDefaults = UserDefaults(suiteName: batteryVisibilitySuite) {
+        if let batteryVisibilityDefaults = ScratchDefaults.suite(named: batteryVisibilitySuite) {
             batteryVisibilityDefaults.removePersistentDomain(forName: batteryVisibilitySuite)
             batteryVisibilityDefaults.set(false, forKey: DefaultsKey.monitorSysTemps)
             Defaults.migrateBatteryTemperatureVisibility(in: batteryVisibilityDefaults)
@@ -2840,7 +2840,7 @@ enum SwitcherModelFeatureTests {
         suite.expect(registeredDefaults[DefaultsKey.notchHidesMenuBarIcon] as? Bool == false,
                "Dynamic Island only takes the icon's place when asked")
         let islandIconSuite = "com.vitruviansoftware.vitruvian.tests.islandMenuBarIcon"
-        if let islandDefaults = UserDefaults(suiteName: islandIconSuite) {
+        if let islandDefaults = ScratchDefaults.suite(named: islandIconSuite) {
             islandDefaults.removePersistentDomain(forName: islandIconSuite)
             defer { islandDefaults.removePersistentDomain(forName: islandIconSuite) }
             islandDefaults.set(true, forKey: AppFeature.notch.availabilityKey)
@@ -2904,7 +2904,7 @@ enum SwitcherModelFeatureTests {
                                                                   hasEndDate: false),
                "idle, hidden and indefinite Keep Awake titles need no timer")
         let statusPlacementSuite = "com.vitruviansoftware.vitruvian.tests.statusItemPlacement"
-        if let statusDefaults = UserDefaults(suiteName: statusPlacementSuite) {
+        if let statusDefaults = ScratchDefaults.suite(named: statusPlacementSuite) {
             statusDefaults.removePersistentDomain(forName: statusPlacementSuite)
             suite.expect(StatusItemPlacementSupport.placementGeneration(in: statusDefaults) == 0,
                    "initial placement generation is 0")
@@ -3137,7 +3137,7 @@ enum SwitcherModelFeatureTests {
                                                                   isApplication: true)) == "com.apple.finder",
                "the log names the sender by bundle identifier, or by executable without its path")
         let reshowSuite = "vitru.tests.switcher.reshow-icon"
-        if let reshowDefaults = UserDefaults(suiteName: reshowSuite) {
+        if let reshowDefaults = ScratchDefaults.suite(named: reshowSuite) {
             reshowDefaults.removePersistentDomain(forName: reshowSuite)
             reshowDefaults.set(true, forKey: DefaultsKey.menuBarHideIconWithMetrics)
             reshowDefaults.set(true, forKey: DefaultsKey.notchHidesMenuBarIcon)
@@ -3381,7 +3381,7 @@ enum SwitcherModelFeatureTests {
         suite.expect(registeredDefaults[DefaultsKey.monitorPwrPeripherals] as? Bool == false,
                "peripheral batteries stay out of the Power card until turned on")
         let peripheralsSuite = "com.vitruviansoftware.vitruvian.tests.powerPeripherals.\(UUID().uuidString)"
-        if let peripheralsDefaults = UserDefaults(suiteName: peripheralsSuite) {
+        if let peripheralsDefaults = ScratchDefaults.suite(named: peripheralsSuite) {
             peripheralsDefaults.removePersistentDomain(forName: peripheralsSuite)
             peripheralsDefaults.set(false, forKey: DefaultsKey.menuBarPeripheralBattery)
             Defaults.migratePowerPeripheralsVisibility(in: peripheralsDefaults)
@@ -4047,7 +4047,7 @@ enum SwitcherModelFeatureTests {
             UserDefaults.standard.removeObject(forKey: DefaultsKey.switcherPreviewSize)
         }
         let previewSizeSuite = "com.vitruviansoftware.vitruvian.tests.switcher-preview-size.\(UUID().uuidString)"
-        if let previewSizeDefaults = UserDefaults(suiteName: previewSizeSuite) {
+        if let previewSizeDefaults = ScratchDefaults.suite(named: previewSizeSuite) {
             previewSizeDefaults.set("large", forKey: DefaultsKey.previewSize)
             Defaults.migrateSwitcherPreviewSize(in: previewSizeDefaults)
             let upgradedSwitcherSize = previewSizeDefaults.string(forKey: DefaultsKey.switcherPreviewSize)
@@ -4066,7 +4066,7 @@ enum SwitcherModelFeatureTests {
             previewSizeDefaults.removePersistentDomain(forName: previewSizeSuite)
         }
         let excludedAppsSuite = "com.vitruviansoftware.vitruvian.tests.switcher-preview-excluded-apps.\(UUID().uuidString)"
-        if let excludedAppsDefaults = UserDefaults(suiteName: excludedAppsSuite) {
+        if let excludedAppsDefaults = ScratchDefaults.suite(named: excludedAppsSuite) {
             excludedAppsDefaults.set(["com.example.vault"], forKey: DefaultsKey.windowPreviewExcludedApps)
             Defaults.migrateSwitcherPreviewExcludedApps(in: excludedAppsDefaults)
             let upgradedSwitcherApps = excludedAppsDefaults.stringArray(forKey: DefaultsKey.switcherPreviewExcludedApps)
@@ -4086,7 +4086,7 @@ enum SwitcherModelFeatureTests {
         // The module's own check, with preferences of its own and the app in
         // front passed in.
         let previewSuite = "com.vitruviansoftware.vitruvian.tests.preview-pause"
-        let previewDefaults = UserDefaults(suiteName: previewSuite)!
+        let previewDefaults = ScratchDefaults.suite(named: previewSuite)!
         previewDefaults.removePersistentDomain(forName: previewSuite)
         previewDefaults.set(["com.example.vault"], forKey: DefaultsKey.windowPreviewExcludedApps)
         previewDefaults.set(["com.example.game"], forKey: DefaultsKey.switcherPreviewExcludedApps)

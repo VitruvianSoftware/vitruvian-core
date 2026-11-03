@@ -306,7 +306,7 @@ final class AccountsAndBridgesModelTests: XCTestCase {
         }
 
         let suiteName = "courier.accounts.lock.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = ScratchDefaults.suite(named: suiteName)!
         defer { UserDefaults.standard.removePersistentDomain(forName: suiteName) }
 
         let lifecycle = SystemLifecycleModel(

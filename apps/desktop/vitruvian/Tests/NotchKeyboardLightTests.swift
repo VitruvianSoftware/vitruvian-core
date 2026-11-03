@@ -22,7 +22,7 @@ enum NotchKeyboardLightTests {
             }
         }
         let domain = "com.vitruviansoftware.vitruvian.tests.notch-keyboard-light"
-        let defaults = UserDefaults(suiteName: domain)!
+        let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
         for (key, value) in Defaults.registeredDefaults where key.hasPrefix("notch") { defaults.set(value, forKey: key) }

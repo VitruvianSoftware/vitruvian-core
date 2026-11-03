@@ -226,11 +226,17 @@ public final class AppLockGate {
     }
 
     private weak var boundLifecycle: SystemLifecycleModel?
+    /// The suite the stand-in reads, unlocked because it is empty. One fixed
+    /// name, emptied if anything was ever saved there, rather than a new one
+    /// per launch: each of those stayed in ~/Library/Preferences for good.
+    public nonisolated static let fallbackSuiteName = "courier.lockgate.fallback"
+
     private lazy var fallbackLifecycle: SystemLifecycleModel = {
-        let suiteName = "courier.lockgate.fallback.\(UUID().uuidString)"
+        let suiteName = Self.fallbackSuiteName
         let defaults = UserDefaults(suiteName: suiteName) ?? .standard
-        defaults.set(false, forKey: SystemLifecycleModel.key("autoLockEnabled"))
-        defaults.set(false, forKey: SystemLifecycleModel.key("requireTouchIDOnLaunch"))
+        if defaults.persistentDomain(forName: suiteName)?.isEmpty == false {
+            defaults.removePersistentDomain(forName: suiteName)
+        }
         return SystemLifecycleModel(
             loginItemService: UnlockedFallbackLoginItemService(),
             biometricService: UnlockedFallbackBiometricService(),

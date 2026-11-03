@@ -64,7 +64,7 @@ enum PreferencesFeatureTests {
                 .contains(DefaultsKey.notchLiquidGlassEnabled),
                "old backups with island settings can migrate their glass choice, while older backups keep the local choice")
         let glassDomain = "vitru.tests.glass-migration.\(UUID().uuidString)"
-        let glassDefaults = UserDefaults(suiteName: glassDomain)!
+        let glassDefaults = ScratchDefaults.suite(named: glassDomain)!
         defer { glassDefaults.removePersistentDomain(forName: glassDomain) }
         Defaults.migrateLiquidGlassIsland(in: glassDefaults, domainName: glassDomain)
         suite.expect(glassDefaults.persistentDomain(forName: glassDomain)?[
@@ -88,7 +88,7 @@ enum PreferencesFeatureTests {
         suite.expect(!glassDefaults.bool(forKey: DefaultsKey.notchLiquidGlassEnabled),
                "an explicit island choice survives later launches")
         let companionDomain = "com.vitruviansoftware.vitruvian.tests.companion-beta.\(UUID().uuidString)"
-        let companionDefaults = UserDefaults(suiteName: companionDomain)!
+        let companionDefaults = ScratchDefaults.suite(named: companionDomain)!
         defer { companionDefaults.removePersistentDomain(forName: companionDomain) }
         // Setup writes every feature's availability, the companion's as off.
         companionDefaults.set(true, forKey: AppFeature.commandBar.availabilityKey)

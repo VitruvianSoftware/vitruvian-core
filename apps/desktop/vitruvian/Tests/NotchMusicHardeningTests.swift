@@ -231,7 +231,7 @@ enum NotchMusicCommandContract {
         init() {
             let machine = Machine(), main = Jobs(), commands = Jobs()
             let name = "vitru.tests.notch-music.\(UUID().uuidString)"
-            let defaults = UserDefaults(suiteName: name)!
+            let defaults = ScratchDefaults.suite(named: name)!
             self.machine = machine
             self.main = main
             self.commands = commands
@@ -1282,7 +1282,7 @@ enum NotchMusicHardeningTests {
                "the row, writer and native bridge share rejection of NUL identifiers")
 
         let domain = "com.vitruviansoftware.vitruvian.tests.notch-queue-selection"
-        let defaults = UserDefaults(suiteName: domain)!
+        let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
         for (key, value) in Defaults.registeredDefaults where key.hasPrefix("notch") { defaults.set(value, forKey: key) }

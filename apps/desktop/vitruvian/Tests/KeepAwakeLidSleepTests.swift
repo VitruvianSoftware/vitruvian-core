@@ -230,7 +230,7 @@ enum KeepAwakeLidSleepContract {
     static func make(_ prepare: (Machine, UserDefaults) -> Void = { _, _ in }) -> Rig {
         let name = "vitru.tests.keep-awake.\(UUID().uuidString)"
         suites.append(name)
-        let defaults = UserDefaults(suiteName: name)!
+        let defaults = ScratchDefaults.suite(named: name)!
         defaults.set(true, forKey: AppFeature.keepAwake.availabilityKey)
         defaults.set(true, forKey: DefaultsKey.clamshellPreferred)
         let machine = Machine()

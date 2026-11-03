@@ -186,7 +186,7 @@ final class VoiceRecorderModelTests: XCTestCase {
             stoppedDurationMS: 3100
         )
         let suiteName = "courier.test.voice.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let preferences = ComposerPreferences(defaults: defaults)
         preferences.preferredMicrophoneUID = "ext-mic"

@@ -12,7 +12,7 @@ final class CommandBarModelTests: XCTestCase {
 
     override func setUp() async throws {
         suiteName = "CommandBarModelTests.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suiteName)!
+        defaults = ScratchDefaults.suite(named: suiteName)!
     }
 
     override func tearDown() async throws {

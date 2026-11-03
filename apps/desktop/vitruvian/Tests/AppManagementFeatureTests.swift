@@ -123,7 +123,7 @@ enum AppManagementFeatureTests {
         // MARK: WhatsApp downloads
 
         let whatsAppEnabledSuite = "vitru.tests.whatsapp.enabled"
-        if let migrationDefaults = UserDefaults(suiteName: whatsAppEnabledSuite) {
+        if let migrationDefaults = ScratchDefaults.suite(named: whatsAppEnabledSuite) {
             migrationDefaults.removePersistentDomain(forName: whatsAppEnabledSuite)
             Defaults.migrateWhatsAppDownloadsEnabled(in: migrationDefaults)
             suite.expect(migrationDefaults.object(forKey: DefaultsKey.whatsAppDownloadsEnabled) == nil,
@@ -2213,7 +2213,7 @@ enum AppManagementFeatureTests {
         // returns with its alert open and unanswered, and answers through its
         // buttons. No window is shown here.
         let installerStrings = FeatureStrings.diskImageInstaller(.enUS)
-        let promptDefaults = UserDefaults(suiteName: "vitru.tests.disk-image-prompt")!
+        let promptDefaults = ScratchDefaults.suite(named: "vitru.tests.disk-image-prompt")!
         // Each option set the way the prompt is expected to answer, rather
         // than left to its declared default.
         promptDefaults.set(false, forKey: DefaultsKey.diskImageInstallerTrashesDownload)

@@ -32,7 +32,7 @@ enum NotchActivityTests {
     /// last in the automatic order, and read in whole minutes like a timer.
     private static func keepAwakeContracts(_ suite: TestSuite) {
         let domain = "com.vitruviansoftware.vitruvian.tests.notch-keep-awake"
-        let defaults = UserDefaults(suiteName: domain)!
+        let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
         for (key, value) in Defaults.registeredDefaults where key.hasPrefix("notch") { defaults.set(value, forKey: key) }
@@ -144,7 +144,7 @@ enum NotchActivityTests {
                      && NotchSupport.earlyBatteryThreshold(99, above: 150) == 100,
                      "the amber level stays within its range and above the red level")
         let domain = "com.vitruviansoftware.vitruvian.tests.low-battery"
-        let defaults = UserDefaults(suiteName: domain)!
+        let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
         suite.expect(NotchSupport.batteryWarning(percent: 5, externalConnected: false, in: defaults) == .none,
@@ -166,7 +166,7 @@ enum NotchActivityTests {
 
     private static func alertContracts(_ suite: TestSuite) {
         let domain = "com.vitruviansoftware.vitruvian.tests.timer-alert"
-        let defaults = UserDefaults(suiteName: domain)!
+        let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
         suite.expect(NotchTimerSupport.isSoundEnabled(in: defaults), "timer sound is enabled by default")
@@ -413,7 +413,7 @@ enum NotchActivityTests {
                && bounded.longBreakInterval == 1 && bounded.totalSessions == 24,
                "restored out-of-range values cannot overflow deadlines or create invalid cycle intervals")
         let domain = "com.vitruviansoftware.vitruvian.tests.pomodoro"
-        let defaults = UserDefaults(suiteName: domain)!
+        let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
         let keys: Set<String> = [DefaultsKey.notchPomodoroFocusMinutes, DefaultsKey.notchPomodoroShortBreakMinutes,
@@ -549,7 +549,7 @@ enum NotchActivityTests {
                "compact countdowns still switch from hours to minutes at the hour boundary")
 
         let domain = "com.vitruviansoftware.vitruvian.tests.timer-mode"
-        let defaults = UserDefaults(suiteName: domain)!
+        let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
         suite.expect(NotchTimerSupport.savedMode(in: defaults) == .timer, "a fresh install opens the countdown")
@@ -994,7 +994,7 @@ enum NotchActivityTests {
 
     private static func gateContracts(_ suite: TestSuite) {
         let domain = "com.vitruviansoftware.vitruvian.tests.notch-activities"
-        let defaults = UserDefaults(suiteName: domain)!
+        let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
         for (key, value) in Defaults.registeredDefaults where key.hasPrefix("notch") { defaults.set(value, forKey: key) }

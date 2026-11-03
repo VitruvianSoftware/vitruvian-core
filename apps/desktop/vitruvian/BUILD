@@ -28,11 +28,11 @@ load("@build_bazel_rules_apple//apple:resources.bzl", "apple_resource_group")
 load("@build_bazel_rules_swift//swift:swift_binary.bzl", "swift_binary")
 load("@build_bazel_rules_swift//swift:swift_interop_hint.bzl", "swift_interop_hint")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
-load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("//tools/delivery:defs.bzl", "delivery")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
+load("//tools/swift-test-preferences:defs.bzl", "swift_test")
 load(
     ":bazel/sources.bzl",
     "FAN_HELPER_SOURCES",
@@ -823,8 +823,9 @@ rust_test(
         "VITRUVIAN_MESSAGE_EXAMPLES": "$(rootpath //packages/vitruvian-sdk:message_examples)",
         "VITRUVIAN_TOOL_FIXTURE": "$(rootpath :tool_fixture)",
     },
-    # The tests' UserDefaults suites land in the real ~/Library/Preferences;
-    # the sandbox would block sweeping them afterwards.
+    # The tests' UserDefaults suites stay in a container under TEST_TMPDIR
+    # (//tools/swift-test-preferences); the wrapper looks in the real
+    # ~/Library/Preferences, and fails the run if one got there anyway.
     tags = [
         "manual",
         "no-remote",

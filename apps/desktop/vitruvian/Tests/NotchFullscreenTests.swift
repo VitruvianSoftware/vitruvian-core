@@ -184,7 +184,7 @@ enum NotchFullscreenTests {
     private static func volumeLifecycleChecks(_ topology: Topology, _ suite: TestSuite) {
         for preciseVolume in [false, true] {
             let suiteName = "vitru.tests.notch-fullscreen-\(UUID().uuidString)"
-            let defaults = UserDefaults(suiteName: suiteName)!
+            let defaults = ScratchDefaults.suite(named: suiteName)!
             defer { defaults.removePersistentDomain(forName: suiteName) }
             defaults.set(preciseVolume, forKey: DefaultsKey.preciseVolumeRollerEnabled)
             let desk = Desk()

@@ -13,7 +13,7 @@ import VitruvianUI
 enum CleanerLastRunContract {
     static func run(_ suite: TestSuite) {
         let domain = "com.vitruviansoftware.vitruvian.tests.cleaner-last-run"
-        let defaults = UserDefaults(suiteName: domain)!
+        let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
         let strings = Strings.localized(.enUS)

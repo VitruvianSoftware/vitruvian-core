@@ -29,6 +29,7 @@ mod governance;
 mod iac;
 mod labels;
 mod security;
+mod swift_tests;
 mod versions;
 
 use crate::Context;
@@ -99,6 +100,8 @@ pub fn run_all(ctx: &Context) {
     security::check_gitleaks_allowlist_paths(ctx);
     security::check_guard_review_paths(ctx);
     security::check_release_tag_exemptions(ctx);
+
+    swift_tests::check_test_preferences(ctx);
 }
 
 /// The workflow-label check alone: `bazel run //tools/conformance:workflow-labels`.

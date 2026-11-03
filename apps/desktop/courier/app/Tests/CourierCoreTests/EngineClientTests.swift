@@ -384,7 +384,7 @@ final class EngineClientTests: XCTestCase {
         // 2. While locked, EngineClient centrally refuses every mutating method with EngineError.appLocked
         //    without sending the request over the socket.
         let suiteName = "courier.test.engineclient.lock.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         struct AlwaysBiometric: BiometricAuthService {
@@ -450,7 +450,7 @@ final class EngineClientTests: XCTestCase {
         }
 
         let suiteName = "courier.test.quitlock.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         struct AlwaysBiometric: BiometricAuthService {
@@ -523,11 +523,11 @@ final class EngineClientTests: XCTestCase {
         }
 
         let primarySuite = "courier.test.lockgate.primary.\(UUID().uuidString)"
-        let primaryDefaults = try XCTUnwrap(UserDefaults(suiteName: primarySuite))
+        let primaryDefaults = try XCTUnwrap(ScratchDefaults.suite(named: primarySuite))
         defer { primaryDefaults.removePersistentDomain(forName: primarySuite) }
 
         let straySuite = "courier.test.lockgate.stray.\(UUID().uuidString)"
-        let strayDefaults = try XCTUnwrap(UserDefaults(suiteName: straySuite))
+        let strayDefaults = try XCTUnwrap(ScratchDefaults.suite(named: straySuite))
         defer { strayDefaults.removePersistentDomain(forName: straySuite) }
 
         AppLockGate.shared.resetForTesting()

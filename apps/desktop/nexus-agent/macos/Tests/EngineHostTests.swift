@@ -145,7 +145,7 @@ final class EngineHostTests: XCTestCase {
         }
 
         init(realHome: Bool = false) {
-            defaults = UserDefaults(suiteName: domain)!
+            defaults = ScratchDefaults.suite(named: domain)!
             defaults.removePersistentDomain(forName: domain)
             if realHome {
                 home = NSTemporaryDirectory() + "nexus-agent-host-tests-\(UUID().uuidString)"

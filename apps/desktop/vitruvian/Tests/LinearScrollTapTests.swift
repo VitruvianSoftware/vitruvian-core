@@ -18,7 +18,7 @@ enum LinearScrollTapTests {
 
     static func run(_ suite: TestSuite) {
         let name = "com.vitruviansoftware.vitruvian.tests.linear-scroll-tap.\(UUID().uuidString)"
-        let defaults = Foundation.UserDefaults(suiteName: name)!
+        let defaults = ScratchDefaults.suite(named: name)!
         let exceptions = Exceptions()
         let targets = ScrollInverter.WheelTapTargets(excludes: { scope, _, _ in exceptions.excepted.contains(scope) },
                                                      isOwnWindow: { _ in false })

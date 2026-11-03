@@ -11,7 +11,7 @@ import VitruvianUI
 /// own and scans the test finishes. Nothing is scanned, scheduled or posted.
 enum AppUpdateRulesContract {
     static let defaultsName = "vitru.tests.app-update-rules.\(UUID().uuidString)"
-    static let defaults = UserDefaults(suiteName: defaultsName)!
+    static let defaults = ScratchDefaults.suite(named: defaultsName)!
 
     /// The scans a service asked for, and the notices it posted.
     final class Scans {

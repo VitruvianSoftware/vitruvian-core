@@ -1458,7 +1458,7 @@ enum WindowLayoutFeatureTests {
         }
         // The switch the page shows is the setting the service follows.
         let sideRepeatKey = WindowLayoutSettings.sideRepeatRow(FeatureStrings.windowLayout(.enUS)).preference.key
-        let cycleDefaults = UserDefaults(suiteName: "vitru.tests.window-layout-side-repeat")!
+        let cycleDefaults = ScratchDefaults.suite(named: "vitru.tests.window-layout-side-repeat")!
         cycleDefaults.set(true, forKey: sideRepeatKey)
         let cyclesWhenOn = WindowLayoutSideRepeat.cyclesThirds(in: cycleDefaults)
         cycleDefaults.set(false, forKey: sideRepeatKey)

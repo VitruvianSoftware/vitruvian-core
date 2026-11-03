@@ -116,7 +116,7 @@ enum RepositoryFeatureTests {
     /// saves its use and the search as digests keyed by a local key, and a
     /// relaunched bar starts from them.
     private static func queryHabitsPersistLocally(_ suite: TestSuite) {
-        let defaults = UserDefaults(suiteName: "vitru.tests.query-habits")!
+        let defaults = ScratchDefaults.suite(named: "vitru.tests.query-habits")!
         defaults.removePersistentDomain(forName: "vitru.tests.query-habits")
         defer { defaults.removePersistentDomain(forName: "vitru.tests.query-habits") }
         let recorder = CommandBarRunRecorder(host: .init(

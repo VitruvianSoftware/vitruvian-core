@@ -55,7 +55,7 @@ enum NexusAgentHandoffTests {
     /// a provider of their own chosen, a history, and the shortcut on.
     static func defaults(_ name: String) -> UserDefaults {
         let domain = "com.vitruviansoftware.vitruvian.tests.nexus-agent.handoff.\(name)"
-        let defaults = UserDefaults(suiteName: domain)!
+        let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         // No register(defaults:): it writes the process's registration domain,
         // which every later suite would read (features' fan and scroll checks).

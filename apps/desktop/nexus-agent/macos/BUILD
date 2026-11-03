@@ -1,9 +1,9 @@
 load("@build_bazel_rules_apple//apple:macos.bzl", "macos_application")
 load("@build_bazel_rules_swift//swift:swift_binary.bzl", "swift_binary")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
-load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
+load("//tools/swift-test-preferences:defs.bzl", "swift_test")
 
 # The shared core: built into this app AND into the Vitruvian desktop app
 # (docs/superpowers/specs/2026-10-08-nexus-agent-shared-library-design.md).

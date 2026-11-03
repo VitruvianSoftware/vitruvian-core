@@ -172,7 +172,7 @@ enum NotchNotificationListTests {
 
     private static func settings(_ suite: TestSuite) {
         let domain = "com.vitruviansoftware.vitruvian.tests.notch-notification-list"
-        let defaults = UserDefaults(suiteName: domain)!
+        let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
         suite.expect(NotchNotificationListSupport.layout(in: defaults) == .cards,

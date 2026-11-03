@@ -60,7 +60,7 @@ enum SuperKeyTapContract {
     /// A private settings suite, removed when `body` returns.
     static func withDefaults(mappingApplied: Bool, _ body: (UserDefaults) -> Void) {
         let name = "vitru.tests.super-key-tap.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: name)!
+        let defaults = ScratchDefaults.suite(named: name)!
         defer { defaults.removePersistentDomain(forName: name) }
         if mappingApplied { defaults.set(true, forKey: DefaultsKey.superKeyMappingApplied) }
         body(defaults)

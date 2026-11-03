@@ -35,7 +35,7 @@ enum KeepAwakeTimerHandoffTests {
 
     static func run(expect: (Bool, String) -> Void) {
         let domain = "com.vitruviansoftware.vitruvian.tests.keep-awake-handoff"
-        let defaults = UserDefaults(suiteName: domain)!
+        let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
         defaults.set(true, forKey: AppFeature.keepAwake.availabilityKey)
