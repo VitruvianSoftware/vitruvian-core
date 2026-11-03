@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.16.1](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.16.0...foundation-gcp-projects-v1.16.1) (2026-11-03)
+
+
+### Bug Fixes
+
+* **foundation-gcp-projects:** drop the repository-wide deploy identity binding option ([#4257](https://github.com/VitruvianSoftware/vitruvian-core/issues/4257)) ([b3a514c](https://github.com/VitruvianSoftware/vitruvian-core/commit/b3a514c45814385948cab8bae5413cae467c6a2a))
+
 ## [1.16.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/foundation-gcp-projects-v1.15.2...foundation-gcp-projects-v1.16.0) (2026-11-02)
 
 
