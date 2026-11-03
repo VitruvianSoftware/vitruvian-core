@@ -223,8 +223,7 @@ A pull request that changes any of these waits until `ipv1337`, through the
 
 - `tools/agent-guard/**` (`policy.json` decides what is blocked; the guard and
   launcher load from origin/main)
-- `.claude/settings.json`
-- `.claude/settings.local.json`
+- `.claude/settings*.json` (`.claude/settings.json` and `.claude/settings.local.json`)
 - `.claude/*.sh`
 - `.agents/hooks.json`
 - `tools/cloud-bootstrap/cloud-bootstrap.sh`, `tools/cloud-bootstrap/src/cloud_bootstrap/**`,
@@ -241,8 +240,14 @@ A pull request that changes any of these waits until `ipv1337`, through the
   (the rule and the team), `infrastructure/pulumi/platform/repo-config/main.go`
   (where it is wired in, and the merge-queue ruleset's bypass list),
   `infrastructure/pulumi/platform/repo-config/release_tags.go` (the
-  release-tag ruleset), `infrastructure/pulumi/platform/repo-config/Pulumi.yaml` and
-  `infrastructure/pulumi/platform/repo-config/Pulumi.dev.yaml` (the stack)
+  release-tag ruleset) and `infrastructure/pulumi/platform/repo-config/Pulumi*.yaml`
+  (the stack: `Pulumi.yaml` and `Pulumi.dev.yaml`)
+
+GitHub allows at most 15 file patterns in one required-reviewers rule and
+rejects more only when the ruleset is applied, after merge (#4259 hit this).
+The list is at 14; a test in `guard_review_test.go` fails above 15. To add a
+path when it is full, fold patterns into a broader glob that matches the same
+files, as the two above do.
 
 How it works and what it does not do:
 

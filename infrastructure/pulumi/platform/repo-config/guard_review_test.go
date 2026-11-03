@@ -89,6 +89,7 @@ func TestGuardReviewPathsCoverage(t *testing.T) {
 		"infrastructure/pulumi/platform/repo-config/guard_review.go",
 		"infrastructure/pulumi/platform/repo-config/main.go",
 		"infrastructure/pulumi/platform/repo-config/release_tags.go",
+		"infrastructure/pulumi/platform/repo-config/Pulumi.yaml",
 		"infrastructure/pulumi/platform/repo-config/Pulumi.dev.yaml",
 		// CI definitions, at any depth below the two directories.
 		".github/workflows/ci.yaml",
@@ -133,6 +134,35 @@ func TestGuardReviewPathsCoverage(t *testing.T) {
 	for _, p := range free {
 		if guardCovers(p) {
 			t.Errorf("%s is covered by guardReviewPaths; only agent-guard's rules and their enforcement should need James", p)
+		}
+	}
+}
+
+// GitHub rejects a required_reviewers entry with more than
+// guardReviewMaxPatterns file patterns, but only when the ruleset is applied
+// after merge (#4259's apply failed this way). Checked on the rule as built,
+// entry by entry, so a second entry or a longer list is caught here.
+func TestGuardReviewPatternLimit(t *testing.T) {
+	if guardReviewMaxPatterns != 15 {
+		t.Errorf("guardReviewMaxPatterns = %d, want 15 (GitHub's limit)", guardReviewMaxPatterns)
+	}
+	r := guardReviewPullRequestRule(pulumi.Int(42))
+	reviewers, ok := r.RequiredReviewers.(github.RepositoryRulesetRulesPullRequestRequiredReviewerArray)
+	if !ok || len(reviewers) == 0 {
+		t.Fatalf("RequiredReviewers = %#v, want at least one entry", r.RequiredReviewers)
+	}
+	for i, e := range reviewers {
+		rv, ok := e.(*github.RepositoryRulesetRulesPullRequestRequiredReviewerArgs)
+		if !ok {
+			t.Fatalf("entry %d is %T", i, e)
+		}
+		patterns, ok := rv.FilePatterns.(pulumi.StringArray)
+		if !ok {
+			t.Fatalf("entry %d FilePatterns is %T", i, rv.FilePatterns)
+		}
+		if len(patterns) > guardReviewMaxPatterns {
+			t.Errorf("required_reviewers entry %d has %d file patterns; GitHub allows %d and rejects the apply with 422: fold patterns into a broader glob that matches the same files",
+				i, len(patterns), guardReviewMaxPatterns)
 		}
 	}
 }
