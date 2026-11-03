@@ -419,6 +419,66 @@ fn foundation_leaf_values_must_name_a_real_leaf() {
 }
 
 #[test]
+fn raw_field_inputs_are_checked_in_both_forms() {
+    for (wf, a) in [
+        (
+            "foundation-proj-deploy.yaml",
+            &["--raw-field", "working-directory=x"][..],
+        ),
+        (
+            "foundation-proj-deploy.yaml",
+            &["--raw-field=working-directory=x"],
+        ),
+        (
+            "foundation-app-deploy.yaml",
+            &["--raw-field", "allow-destructive=true"],
+        ),
+        (
+            "foundation-app-deploy.yaml",
+            &["--raw-field=allow_destructive=true"],
+        ),
+        (
+            "foundation-proj-deploy.yaml",
+            &["--raw-field", "business-unit=../x"],
+        ),
+        (
+            "foundation-proj-deploy.yaml",
+            &["--raw-field=business-unit=../x"],
+        ),
+    ] {
+        assert!(workflow_args("u", &v(a)).is_ok(), "{:?}", a);
+        assert!(inputs(wf, a).is_err(), "{} {:?}", wf, a);
+    }
+}
+
+#[test]
+fn foundation_app_deploy_values_must_name_a_real_leaf() {
+    for bad in [
+        "business-unit=../x",
+        "business-unit=../../gcp-projects/business_unit_1",
+        "environment=staging",
+        "environment=shared",
+    ] {
+        let m = msg(inputs("foundation-app-deploy.yaml", &["-f", bad]).unwrap_err());
+        assert!(m.contains("not an accepted value"), "{}: {}", bad, m);
+    }
+    for env in ["development", "nonproduction", "production"] {
+        let kv = format!("environment={}", env);
+        assert_eq!(
+            inputs("foundation-app-deploy.yaml", &["-f", &kv]),
+            Ok(()),
+            "{}",
+            env
+        );
+    }
+    // The projects stage does have a shared leaf.
+    assert_eq!(
+        inputs("foundation-proj-deploy.yaml", &["-f", "environment=shared"]),
+        Ok(())
+    );
+}
+
+#[test]
 fn input_given_twice_or_without_value_refused() {
     let r = inputs(
         "foundation-proj-deploy.yaml",

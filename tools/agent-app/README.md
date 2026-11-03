@@ -105,17 +105,23 @@ bazel run //tools/agent-app -- workflow-run foundation-app-deploy.yaml \
   -f environment=development -f business-unit=business_unit_1 -f app-image-digests=<app>=<digest-ref>
 ```
 
-Three rules hold whatever `workflow-allowlist.txt` says, since a branch can
-edit that file:
+Three rules are written in the tool itself, not in `workflow-allowlist.txt`.
+They are **guardrails against mistakes, not a security boundary**: the tool is
+built from the same checkout, so a branch can edit these rules as easily as the
+list, and any agent can mint wren's token and call GitHub's dispatch API
+directly. The real controls are on GitHub: each Environment's protected-branch
+policy and required reviewers, and which App has Actions write.
 
 - `allow-destructive` (also spelled `allow_destructive`, any case) is accepted
   only for `foundation-proj-deploy.yaml`, and only as `true` or `false`. It lets
   the apply delete or replace resources, so every other workflow refuses the key.
 - `working-directory` is refused for every `foundation-*` workflow: it picks
   which Pulumi project the run applies.
-- For a `foundation-*` workflow, `environment` must be `shared`, `development`,
-  `nonproduction` or `production`, and `business-unit` must be
-  `business_unit_<n>`. The business unit is joined into the leaf's path, so a
+- For a `foundation-*` workflow, `environment` must be `development`,
+  `nonproduction` or `production` (or `shared`, for `foundation-proj-deploy.yaml`
+  only: app-infra has no shared leaf, and a run there would create a
+  `foundation-app-*shared` Environment with no rules), and `business-unit` must
+  be `business_unit_<n>`. The business unit is joined into the leaf's path, so a
   value like `../../gcp-org` must not get through.
 
 A key given twice is refused too.

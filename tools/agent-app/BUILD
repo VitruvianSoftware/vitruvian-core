@@ -100,11 +100,34 @@ rust_test(
     },
 )
 
+# workflow-run run end to end: a refused input stops it before the token
+# step, so the input rules are wired in, not just correct. No key, so it never
+# reaches GitHub.
+rust_test(
+    name = "workflow_run_inputs_test",
+    size = "small",
+    srcs = ["tests/workflow_run_inputs.rs"],
+    data = [
+        "agents.tsv",
+        "permissions.tsv",
+        "workflow-allowlist.txt",
+        ":agent-app",
+    ],
+    edition = "2021",
+    env = {
+        "AGENT_APP_BIN": "$(rootpath :agent-app)",
+        "AGENT_PERMISSIONS_TSV": "$(rootpath permissions.tsv)",
+        "AGENT_REGISTRY_TSV": "$(rootpath agents.tsv)",
+        "WORKFLOW_ALLOWLIST_TXT": "$(rootpath workflow-allowlist.txt)",
+    },
+)
+
 test_suite(
     name = "agent-app_test",
     tests = [
         ":branch_delete_gate_test",
         ":permission_drift_lib_test",
+        ":workflow_run_inputs_test",
     ],
 )
 
@@ -113,6 +136,7 @@ test_suite(
     tests = [
         ":branch_delete_gate_test",
         ":permission_drift_lib_test",
+        ":workflow_run_inputs_test",
     ],
 )
 

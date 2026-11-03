@@ -2361,12 +2361,13 @@ fn input_key_norm(k: &[u8]) -> Vec<u8> {
 
 /// workflow-run's checks on the inputs once the workflow is known. Every
 /// key must be one the workflow's allowlist line declares, once. Three rules
-/// hold whatever the list says, since it is a file a branch can edit:
+/// hold whatever the list says (guardrails, not a security boundary):
 /// allow-destructive only for DESTRUCTIVE_WORKFLOW, and only true or false;
 /// no working-directory for a foundation-* workflow (it picks the Pulumi
 /// project the run applies); and a foundation-* workflow's environment and
 /// business-unit only name a real leaf (business-unit is joined into that
-/// path too, so `..` must not get through).
+/// path too, so `..` must not get through; foundation-app-* has no shared
+/// leaf).
 pub fn workflow_inputs_ok(
     wf: &[u8],
     declared: &[Vec<u8>],
@@ -2428,10 +2429,11 @@ pub fn workflow_inputs_ok(
         let bad_value = if norm == b"allow-destructive" {
             !matches!(v, b"true" | b"false")
         } else if foundation && norm == b"environment" {
-            !matches!(
-                v,
-                b"shared" | b"development" | b"nonproduction" | b"production"
-            )
+            // app-infra has no shared leaf, and no foundation-app-*shared
+            // Environment: a run would create one with no rules.
+            let shared_ok = !wf.starts_with(b"foundation-app-");
+            !(matches!(v, b"development" | b"nonproduction" | b"production")
+                || (shared_ok && v == b"shared"))
         } else if foundation && norm == b"business-unit" {
             !business_unit_name(v)
         } else {
@@ -2440,7 +2442,7 @@ pub fn workflow_inputs_ok(
         if bad_value {
             return Err(refuse(&[
                 b"refusing ", k, b"=", v, b" for ", wf,
-                b": not an accepted value (allow-destructive: true or false; environment: shared, development, nonproduction or production; business-unit: business_unit_<n>). Nothing was run",
+                b": not an accepted value (allow-destructive: true or false; environment: development, nonproduction or production, or shared for foundation-proj-deploy; business-unit: business_unit_<n>). Nothing was run",
             ]));
         }
     }

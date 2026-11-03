@@ -8,10 +8,12 @@
 # can deploy, publish or push to another repository, so adding a line or a key
 # is a decision for review, not a fix to make in passing.
 #
-# The tool also holds three rules whatever this file says: allow-destructive
-# only for foundation-proj-deploy.yaml; no working-directory for a
-# foundation-* workflow; and a foundation-* environment and business-unit
-# must name a real leaf (see workflow_inputs_ok in src/agent_app/mod.rs).
+# The tool also holds three rules of its own: allow-destructive only for
+# foundation-proj-deploy.yaml; no working-directory for a foundation-*
+# workflow; and a foundation-* environment and business-unit must name a real
+# leaf (see workflow_inputs_ok in src/agent_app/mod.rs). Like this file, they
+# are guardrails against mistakes, not a security boundary: the real controls
+# are each GitHub Environment's rules and which App has Actions write.
 #
 # Most entries only read, or open a pull request that the merge queue still
 # tests. The two foundation-* entries deploy. Each only re-runs a leaf that
