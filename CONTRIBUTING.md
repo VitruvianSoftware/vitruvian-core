@@ -22,7 +22,7 @@ The build graph is **Bazel** (Bzlmod, via Bazelisk) with Aspect rulesets. Almost
 | **Node** | **22.21.1**, pinned in `.nvmrc` (and fed into the Bazel node toolchain) | All TS/JS apps. Use `nvm use` (or a manager that reads `.nvmrc`) |
 | **Go** | go.work toolchain (currently **1.26.6**); see note below | `devx`, `homelab`, and all `infrastructure/pulumi/*` programs |
 | **gcloud** | latest | Cloud Run deploys (CI does this for you; needed locally only for a per-app GCP dev project) |
-| **devx** | `brew install vitruviansoftware/tap/devx` | Local-dev orchestrator (Lima VMs / devcontainers / ephemeral DBs / local k3s). See Section 3 |
+| **devx** | `brew tap vitruviansoftware/tap && brew trust vitruviansoftware/tap && brew install vitruviansoftware/tap/devx` | Local-dev orchestrator (Lima VMs / devcontainers / ephemeral DBs / local k3s). See Section 3 |
 | **gh** | latest | PRs, merge queue, looking at CI runs |
 
 > **Go version drift is real.** `go.work`/`homelab` are on 1.26.6, `infrastructure/pulumi` on 1.26.6, `devx` on 1.26.6. Nothing enforces a single Go version yet. **🎯 Target:** every `go.mod` pins the `go.work` toolchain version with a CI check on drift. Until then, install the highest (1.26.6) and expect `devx` to lag. See the Alignment Gaps doc.
@@ -48,10 +48,16 @@ bazel run //:doctor
 # 5. Smoke-test the build graph (warms the BuildBuddy remote cache)
 bazel build //...
 
-# 6. (Optional, for local-dev orchestration) install devx + gh
+# 6. (Optional, for local-dev orchestration) install devx + gh.
+#    Homebrew 7 refuses to load anything from a third-party tap until you trust
+#    it, so trust ours once, then install by its full name.
+brew tap vitruviansoftware/tap
+brew trust vitruviansoftware/tap
 brew install vitruviansoftware/tap/devx
 gh auth login
 ```
+
+> **devx stuck on an old version?** Homebrew skips untrusted taps in `brew upgrade` and `brew outdated` without saying so. Run `brew trust vitruviansoftware/tap && brew upgrade vitruviansoftware/tap/devx`.
 
 `bazel run //:doctor` checks the core toolchain; `bazel run //<app>:doctor` (e.g. `//apps/suites/tabula:doctor`) checks
 that app's exact requirements and fails if anything is missing or the wrong version. Run it first whenever a

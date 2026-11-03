@@ -30,12 +30,19 @@ command or any service. That is why there is no store of tools.
 ## Your first tool, in ten minutes
 
 You need a Mac. Install the `vitruvian-tool` command with Homebrew, which
-builds it from source on your Mac:
+builds it from source on your Mac. Homebrew 7 refuses to load anything from a
+third-party tap until you trust it, so trust ours once first:
 
 ```sh
-brew install VitruvianSoftware/tap/vitruvian-tool
+brew tap vitruviansoftware/tap
+brew trust vitruviansoftware/tap
+brew install vitruviansoftware/tap/vitruvian-tool
 vitruvian-tool --version
 ```
+
+If an older `vitruvian-tool` never updates, `brew upgrade` is skipping the
+untrusted tap without saying so:
+`brew trust vitruviansoftware/tap && brew upgrade vitruviansoftware/tap/vitruvian-tool`.
 
 Without Homebrew, download `vitruvian-tool-<version>-macos.tar.gz` and the
 `.sha256` file beside it from the

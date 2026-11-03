@@ -19,7 +19,9 @@ Pick one; each gives you the same `gravastar-mouse` command.
   `/Applications/Vitruvian.app/Contents/Helpers/gravastar-mouse`. Link it onto
   your `PATH` to use it from a terminal or a hook:
   `ln -s /Applications/Vitruvian.app/Contents/Helpers/gravastar-mouse ~/.local/bin/`.
-- **Homebrew:** `brew install vitruviansoftware/tap/gravastar-mouse`.
+- **Homebrew:** trust our tap once (Homebrew 7 refuses to load anything from
+  an untrusted third-party tap), then install by full name:
+  `brew tap vitruviansoftware/tap && brew trust vitruviansoftware/tap && brew install vitruviansoftware/tap/gravastar-mouse`.
 - **Download:** each `gravastar-mouse-vX.Y.Z` release of this repository has
   `gravastar-mouse-X.Y.Z-macos.tar.gz` (universal, arm64 and x86_64) and its
   `.sha256`. The `gravastar-mouse-beta-latest` prerelease follows `main`. The

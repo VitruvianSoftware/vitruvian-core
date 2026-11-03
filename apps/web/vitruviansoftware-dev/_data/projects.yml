@@ -59,7 +59,7 @@ projects:
     tags: [Go, Lima, Kubernetes, Cloudflare]
     repo: https://github.com/VitruvianSoftware/devx
     source: apps/cli/devx
-    install: brew install VitruvianSoftware/tap/devx
+    install: brew tap vitruviansoftware/tap && brew trust vitruviansoftware/tap && brew install vitruviansoftware/tap/devx
     extension:
       kind: skill
       needs: devx installed
@@ -79,7 +79,7 @@ projects:
     tags: [Go, K3s, Lima VZ, macOS]
     repo: https://github.com/VitruvianSoftware/homelab
     source: apps/cli/homelab
-    install: brew install VitruvianSoftware/tap/homelab
+    install: brew tap vitruviansoftware/tap && brew trust vitruviansoftware/tap && brew install vitruviansoftware/tap/homelab
 
   - name: homebrew-tap
     group: devtools

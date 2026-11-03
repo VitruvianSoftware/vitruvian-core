@@ -19,7 +19,8 @@ A tick means "I saw this work", not "the code exists". The plan is `docs/superpo
 
 - [ ] The `courier-release` run for the release finished green, including "Check the release has every file".
 - [ ] The release `courier-v<version>` has five files and their `.sha256`: `Courier-<version>-universal.dmg`, `Courier-<version>.dmg`, `-arm64.dmg`, `-x86_64.dmg` and `-universal.zip`.
-- [ ] `brew info --cask vitruviansoftware/tap/courier` shows the new version.
+- [ ] `brew info --cask vitruviansoftware/tap/courier` shows the new version. Homebrew 7 will not read an untrusted tap, so on a Mac that has not trusted ours, run `brew tap vitruviansoftware/tap && brew trust vitruviansoftware/tap` first.
+- [ ] On a Mac with the previous version from Homebrew, `brew upgrade --cask vitruviansoftware/tap/courier` installs the new one. If it says nothing is outdated, the tap is not trusted: `brew trust vitruviansoftware/tap`, then upgrade again.
 - [ ] The downloaded DMG opens with no "unidentified developer" or "can't be checked" warning, and Courier opens from it with none either.
 - [ ] In Terminal, `spctl -a -vv /Applications/Courier.app` says "accepted" and "source=Notarized Developer ID".
 - [ ] `codesign -dv /Applications/Courier.app/Contents/Helpers/courier-engine` names the Developer ID and shows `flags=0x10000(runtime)`.

@@ -45,8 +45,10 @@ This folder is published, on every change, to
 [VitruvianSoftware/vitruvian-sdk](https://github.com/VitruvianSoftware/vitruvian-sdk),
 with a tagged release for each version.
 
-- **The command, with Homebrew**, which builds it from source on your Mac:
-  `brew install VitruvianSoftware/tap/vitruvian-tool`.
+- **The command, with Homebrew**, which builds it from source on your Mac.
+  Trust our tap once (Homebrew 7 refuses to load anything from an untrusted
+  third-party tap), then install by full name:
+  `brew tap vitruviansoftware/tap && brew trust vitruviansoftware/tap && brew install vitruviansoftware/tap/vitruvian-tool`.
 - **The command, downloaded**: `vitruvian-tool-X.Y.Z-macos.tar.gz` from a
   [release](https://github.com/VitruvianSoftware/vitruvian-sdk/releases), one
   program for Apple silicon and Intel, with its `.sha256`. It is signed ad

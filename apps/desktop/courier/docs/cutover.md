@@ -26,7 +26,7 @@ bazel run //tools/sync-env-secrets:apply -- courier-release   # puts both into t
 Use the values your installed Courier already has, so Telegram keeps working as it does now. The environment must exist first: it is created when the repo-config change in this milestone is applied.
 
 1. Quit Courier if it is open (Courier ▸ Quit Courier, ⌘Q).
-2. Download `Courier-<version>-universal.dmg` from the newest `courier-v…` release on the [releases page](https://github.com/VitruvianSoftware/vitruvian-core/releases?q=courier), or run `brew install --cask vitruviansoftware/tap/courier`.
+2. Download `Courier-<version>-universal.dmg` from the newest `courier-v…` release on the [releases page](https://github.com/VitruvianSoftware/vitruvian-core/releases?q=courier), or install it with Homebrew. Homebrew 7 refuses to load anything from a third-party tap until you trust it, so trust ours once: `brew tap vitruviansoftware/tap && brew trust vitruviansoftware/tap && brew install --cask vitruviansoftware/tap/courier`. To update later, `brew upgrade --cask vitruviansoftware/tap/courier`.
 3. Open the DMG and drag Courier onto Applications. Choose **Replace** when asked.
 4. Open Courier. It opens without a warning, because the release is signed and notarised. Your chats are still there: the release uses the same data as the build you had.
 5. If macOS asks whether Courier may use an item in your keychain, choose **Always Allow**. It asks once, because the release is signed in CI rather than on this Mac.
