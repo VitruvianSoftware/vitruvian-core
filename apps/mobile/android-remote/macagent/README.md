@@ -430,10 +430,13 @@ queue holds Claude Code's prompts only.
 
 ## What it reads, and what it honestly cannot
 
-Sampling uses tools an unprivileged process may run: `top`, `vm_stat`,
+Sampling uses tools an unprivileged process may run: `vm_stat`,
 `sysctl`, `ioreg`, `df`, `netstat`, `route`, `pmset`, `sw_vers`, `ifconfig`,
 `ps`, `limactl`, `docker`, `podman`, `kubectl`, `osascript`. Fixed arguments,
-no shell, nothing from a request in an argv.
+no shell, nothing from a request in an argv. CPU usage is the exception: the
+agent reads the kernel's CPU tick counters itself (`host_statistics`, the same
+numbers `top` uses) instead of running `top`, which walked every process on the
+Mac and cost about two CPU-seconds each time.
 
 `exec.go` is the **only** file that executes anything, and the only one that
 imports `os/exec`. Sampling and acting both go through it; the difference is
@@ -456,9 +459,10 @@ What macOS will not hand an unprivileged process is reported as absent in
 
 Three figures are easy to misread and are documented in the JSON field names:
 
-- `cpu.ready` is `false` for the first few seconds after start, while `top`
-  takes the two samples a real percentage needs. Until then `cpu.*` is zero,
-  and zero is not "idle".
+- `cpu.ready` is `false` for about a second after start, while the agent
+  takes the two counter readings a real percentage needs. Until then `cpu.*`
+  is zero, and zero is not "idle". After that each figure covers the last
+  sampling interval (`--interval`, 2 s by default).
 - `memory.free_percent` is the **kernel's** number (`kern.memorystatus_level`),
   the one the pressure graph and memory warnings are based on. It is not
   `100 - used_percent`.

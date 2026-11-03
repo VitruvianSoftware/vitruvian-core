@@ -287,32 +287,36 @@ impl Thermal {
     }
 }
 
-/// Parses the `CPU usage: 11.42% user, 6.18% sys, 82.39% idle` line from `top -l 1 -n 0`.
-pub fn parse_top(out: &str) -> Option<(f64, f64, f64)> {
-    for line in out.lines() {
-        if let Some(idx) = line.find("CPU usage:") {
-            let rest = &line[idx + "CPU usage:".len()..];
-            // Expect: "<user>% user, <sys>% sys, <idle>% idle"
-            let parts: Vec<&str> = rest.split(',').collect();
-            if parts.len() < 3 {
-                continue;
-            }
-            let parse_pct = |part: &str, suffix: &str| -> Option<f64> {
-                let part = part.trim();
-                let part = part.strip_suffix(suffix)?.trim();
-                let part = part.strip_suffix('%')?.trim();
-                part.parse::<f64>().ok()
-            };
-            if let (Some(u), Some(s), Some(i)) = (
-                parse_pct(parts[0], "user"),
-                parse_pct(parts[1], "sys"),
-                parse_pct(parts[2], "idle"),
-            ) {
-                return Some((u, s, i));
-            }
-        }
+/// One reading of the kernel's CPU tick counters (macOS `host_cpu_load_info`):
+/// how many clock ticks every core together has spent in each state since boot.
+/// The kernel keeps them as 32-bit `natural_t`, so they wrap.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct CpuTicks {
+    pub user: u32,
+    pub system: u32,
+    pub idle: u32,
+    pub nice: u32,
+}
+
+/// Turns two successive [`CpuTicks`] readings into the `(user, sys, idle)`
+/// percentages `top` prints on its `CPU usage:` line, rounded to two places
+/// as `top` prints them, so the wire values keep the same shape.
+///
+/// Like `top`, niced user time counts as user. Each counter is differenced
+/// with wrapping arithmetic, so one 32-bit wrap between readings is handled.
+/// Returns `None` when no ticks elapsed (the same reading twice), because
+/// there is no honest percentage to report for an empty window.
+pub fn cpu_percent_from_ticks(prev: CpuTicks, cur: CpuTicks) -> Option<(f64, f64, f64)> {
+    let user =
+        u64::from(cur.user.wrapping_sub(prev.user)) + u64::from(cur.nice.wrapping_sub(prev.nice));
+    let sys = u64::from(cur.system.wrapping_sub(prev.system));
+    let idle = u64::from(cur.idle.wrapping_sub(prev.idle));
+    let total = user + sys + idle;
+    if total == 0 {
+        return None;
     }
-    None
+    let pct = |n: u64| ((n as f64) * 10_000.0 / (total as f64)).round() / 100.0;
+    Some((pct(user), pct(sys), pct(idle)))
 }
 
 /// Parses `{ 2.41 2.18 1.97 }` (or bare `2.41 2.18 1.97`) from `sysctl -n vm.loadavg`.
@@ -654,15 +658,63 @@ pub fn parse_boottime(out: &str, now: Timestamp) -> Option<i64> {
 mod tests {
     use super::*;
 
+    fn ticks(user: u32, system: u32, idle: u32, nice: u32) -> CpuTicks {
+        CpuTicks {
+            user,
+            system,
+            idle,
+            nice,
+        }
+    }
+
     #[test]
-    fn test_parse_top() {
-        let sample = "Processes: 582 total, 3 running, 579 sleeping, 3421 threads \n\
-2026/09/07 01:12:44\n\
-Load Avg: 2.31, 2.04, 1.89 \n\
-CPU usage: 11.42% user, 6.18% sys, 82.39% idle \n\
-SharedLibs: 642M resident, 98M data, 62M linkedit.\n";
-        let (u, s, i) = parse_top(sample).expect("parse_top failed");
-        assert_eq!((u, s, i), (11.42, 6.18, 82.39));
+    fn cpu_percent_from_ticks_all_idle() {
+        let prev = ticks(1_000, 500, 10_000, 0);
+        let cur = ticks(1_000, 500, 10_400, 0);
+        assert_eq!(cpu_percent_from_ticks(prev, cur), Some((0.0, 0.0, 100.0)));
+    }
+
+    #[test]
+    fn cpu_percent_from_ticks_busy() {
+        // 300 user + 100 nice + 200 sys + 400 idle = 1000 ticks.
+        let prev = ticks(1_000, 500, 10_000, 50);
+        let cur = ticks(1_300, 700, 10_400, 150);
+        assert_eq!(cpu_percent_from_ticks(prev, cur), Some((40.0, 20.0, 40.0)));
+    }
+
+    #[test]
+    fn cpu_percent_from_ticks_rounds_to_two_places_like_top() {
+        // 1/3 each: top prints 33.33%.
+        let prev = ticks(0, 0, 0, 0);
+        let cur = ticks(1, 1, 1, 0);
+        assert_eq!(
+            cpu_percent_from_ticks(prev, cur),
+            Some((33.33, 33.33, 33.33))
+        );
+    }
+
+    #[test]
+    fn cpu_percent_from_ticks_survives_counter_wrap() {
+        // user wraps from near u32::MAX past zero: 10 + 90 = 100 ticks elapsed.
+        let prev = ticks(u32::MAX - 9, 0, 0, 0);
+        let cur = ticks(90, 0, 300, 0);
+        assert_eq!(cpu_percent_from_ticks(prev, cur), Some((25.0, 0.0, 75.0)));
+    }
+
+    #[test]
+    fn cpu_percent_from_ticks_zero_delta_is_none() {
+        let t = ticks(1_000, 500, 10_000, 7);
+        assert_eq!(cpu_percent_from_ticks(t, t), None);
+    }
+
+    #[test]
+    fn cpu_percent_from_ticks_first_sample_from_boot() {
+        // A first reading against an all-zero baseline is the since-boot average.
+        let cur = ticks(2_000, 1_000, 7_000, 0);
+        assert_eq!(
+            cpu_percent_from_ticks(CpuTicks::default(), cur),
+            Some((20.0, 10.0, 70.0))
+        );
     }
 
     #[test]
