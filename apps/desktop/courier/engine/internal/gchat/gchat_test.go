@@ -5783,7 +5783,7 @@ func TestStreamErrorAfterConnectReportsReconnecting(t *testing.T) {
 	client.processStreamNotification(ctx, streamNotification{kind: EventKindConnected})
 	require.Equal(t, status.StateConnected, client.lastBridgeState())
 
-	client.processStreamNotification(ctx, streamNotification{kind: EventKindStreamError, payload: []byte("step4_poll_events: http_status:400")})
+	client.processStreamNotification(ctx, streamNotification{kind: EventKindStreamError, payload: []byte("poll_events: http_status:400")})
 	require.Equal(t, status.StateTransientDisconnect, client.lastBridgeState(), "a failing stream must not stay CONNECTED")
 	require.Equal(t, "gchat-stream-error", string(client.lastBridgeStateFull().Error))
 

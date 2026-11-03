@@ -276,3 +276,21 @@ func TestConcurrentLinesStayWhole(t *testing.T) {
 		require.Len(t, m, 3, l)
 	}
 }
+
+// The Google Chat stream reports a failed step as "<step>: <kind>" (gchat/src/channel.rs format_stream_error_message)
+// and logs it under "error", so the reason survives next to the line's own message. Its step names have no digits,
+// because a word with digits is redacted to [id] and the step that failed would be lost.
+func TestGChatStreamErrorKeepsItsStepAndReason(t *testing.T) {
+	for _, step := range []string{"register", "bind_sid", "ack_ping", "bind_poll", "poll_events"} {
+		in := step + ": network"
+		require.Equal(t, in, Redact(in), "step %q must survive redaction", step)
+	}
+
+	var buf bytes.Buffer
+	log := zerolog.New(New(&buf))
+	log.Warn().Str("network", "gchat").Str("error", "bind_poll: network").Msg("gchat stream error")
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &m), buf.String())
+	require.Equal(t, "bind_poll: network", m["error"])
+	require.Equal(t, "gchat stream error", m["message"])
+}

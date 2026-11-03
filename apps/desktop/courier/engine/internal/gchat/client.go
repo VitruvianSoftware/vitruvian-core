@@ -274,7 +274,7 @@ func (c *Client) processStreamNotification(ctx context.Context, item streamNotif
 	case EventKindStreamError:
 		msg := string(item.payload)
 		if c.UserLogin != nil {
-			c.UserLogin.Log.Warn().Str("message", msg).Msg("gchat stream error")
+			c.UserLogin.Log.Warn().Str("error", msg).Msg("gchat stream error")
 		}
 		// The stream retries on its own; until it is back, say so rather than staying CONNECTED.
 		c.sendBridgeState(status.BridgeState{
