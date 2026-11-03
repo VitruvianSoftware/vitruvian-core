@@ -1009,6 +1009,9 @@ enum UpdateFeatureTests {
                "installer requires the signed app to match the offered release version")
         suite.expect(installerScript.contains("chown -R"),
                "an elevated install hands the bundle back to the user")
+        suite.expect(installerScript.contains("/usr/bin/touch \"$DEST\"")
+               && installerScript.contains("lsregister -f \"$DEST\""),
+               "an in-place update refreshes the bundle timestamp and LaunchServices registration so icon changes appear")
         suite.expect(installerScript.contains("update-old.$PID"),
                "the swap backup name is unique per run so a stale root-owned one never blocks it")
         suite.expect(installerScript.contains("STAGE=\"$DIR/.$NAME.update-new\""),

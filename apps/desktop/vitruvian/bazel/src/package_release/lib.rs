@@ -292,8 +292,17 @@ pub fn package_release(
             return Err(1);
         }
     }
-    // Bazel's outputs are read-only; signing rewrites them in place.
+    // Bazel's outputs are read-only and carry the hermetic 1980-01-01 zip
+    // timestamp; signing rewrites the binaries in place, and touching the
+    // bundle gives the app and its icon real modification times so macOS
+    // LaunchServices / IconServices invalidates cached icons on update.
     run(r, &Cmd::new("chmod").args(["-R", "u+w"]).path(&layout.app))?;
+    run(
+        r,
+        &Cmd::new("find")
+            .path(&layout.app)
+            .args(["-exec", "touch", "{}", "+"]),
+    )?;
     clear_xattrs(r, &layout.app);
 
     let developer_id = detect_developer_id(r);

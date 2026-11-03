@@ -158,6 +158,10 @@ package enum UpdateInstallerSupport {
                             if [ "$(/usr/bin/id -u)" = "0" ] && [ -n "$ASUSER" ]; then
                                 /usr/sbin/chown -R "$ASUSER" "$DEST" 2>/dev/null
                             fi
+                            # Refresh bundle timestamp and LaunchServices registration
+                            # so the Dock and Settings > About pick up icon updates.
+                            /usr/bin/touch "$DEST" 2>/dev/null || true
+                            /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$DEST" 2>/dev/null || true
                             /bin/rm -rf "$BACKUP"
                             # If the bundle was renamed, remove the old-named one.
                             # This happens only after the new bundle is in place.
