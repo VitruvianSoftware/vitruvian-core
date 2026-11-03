@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.87.0](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.86.3...vitruvian-v3.87.0) (2026-11-03)
+
+
+### Features
+
+* **vitruvian:** redesign app icon with enlarged full-bleed emblem ([#4294](https://github.com/VitruvianSoftware/vitruvian-core/issues/4294)) ([a915417](https://github.com/VitruvianSoftware/vitruvian-core/commit/a9154172209f4c99e762d78b39f27fb363951ccb))
+
 ## [3.86.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/vitruvian-v3.86.2...vitruvian-v3.86.3) (2026-11-02)
 
 
