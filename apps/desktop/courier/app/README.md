@@ -7,6 +7,24 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 The SwiftUI app. It runs and supervises the Go engine (`../engine`, bundled as `Contents/Helpers/courier-engine`) and talks to it over the protocol in `../protocol`. `BUILD` and `Package.swift` list the same targets; `scripts/test.sh` runs the tests under SwiftPM.
 
+## Trying a change in a running app: the test copy
+
+Unit tests can't show that a window really opens or a column really hides. To check that by hand, or with a script, run the test copy:
+
+```sh
+bazel run --config=macos-app //apps/desktop/courier/app:run_test_copy            # its data in $TMPDIR/courier-test-copy/data
+bazel run --config=macos-app //apps/desktop/courier/app:run_test_copy -- --data DIR
+```
+
+It is the same app, built as `:CourierTestCopy` with its own bundle identifier (`com.vitruviansoftware.courier.dev`) and name ("Courier Test Copy"), so it stays apart from the Courier you use:
+
+- **Settings** (UserDefaults), the notification permission and the Login Items entry are its own, because macOS keys them by bundle identifier.
+- **Data.** `run_test_copy` opens it with `COURIER_DATA_DIR` set, which the app hands to its engine. It refuses `~/Library/Application Support/Courier` as the folder. Even started some other way, the test copy never falls back to that folder: without `COURIER_DATA_DIR` it uses `~/Library/Application Support/Courier Test Copy` (`TestCopy` in `EngineLocation.swift`).
+- **Keychain.** It keeps its Telegram keys under its own service, `com.vitruviansoftware.courier.dev.telegram`, so it never reads the installed app's.
+- **The installed app** in `/Applications` is never touched: the copy is unpacked under `$TMPDIR/courier-test-copy/app`, and `run_test_copy` refuses an app whose bundle identifier isn't the test copy's. Both can run at once.
+
+It has no networks until you add one, so the Chat and Message items that need a chat are greyed out. Quit it from its menu, or `osascript -e 'tell application id "com.vitruviansoftware.courier.dev" to quit'`. Its menus can be driven by System Events (`click menu item "Settings…" of menu 1 of menu bar item "Courier Test Copy" of menu bar 1 of process "Courier Test Copy"`), which is how the menu bar was checked item by item.
+
 ## Courier's Telegram app ID
 
 Telegram wants every app to register its own `api_id` and `api_hash`. Courier is built for people who will never type them, so a finished app carries Courier's own, and Telegram goes straight to its QR code.

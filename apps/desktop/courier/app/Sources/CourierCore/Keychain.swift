@@ -16,7 +16,12 @@ public protocol CredentialStore: Sendable {
 /// the person once and keeps the pair in the Keychain. Either way the engine gets them only in its environment, at
 /// launch, and nothing ever logs or writes them anywhere else (TelegramCredentialSource says which is used).
 public struct TelegramCredentials: Equatable, Sendable {
-    public static let service = "com.vitruviansoftware.courier.telegram"
+    /// The Keychain service: the test copy (`TestCopy`) keeps its own, so it never reads the installed app's items.
+    public static var service: String { service(for: Bundle.main.bundleIdentifier) }
+    public static func service(for bundleIdentifier: String?) -> String {
+        bundleIdentifier == TestCopy.bundleIdentifier
+            ? "com.vitruviansoftware.courier.dev.telegram" : "com.vitruviansoftware.courier.telegram"
+    }
     public static let apiIDAccount = "api_id"
     public static let apiHashAccount = "api_hash"
     /// The variables the engine reads them from.

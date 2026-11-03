@@ -87,9 +87,28 @@ final class MenuBarAuditTests: XCTestCase {
         XCTAssertTrue(items.contains { $0.title == "Show Calendar" || $0.title == "calendarMenuTitle" })
     }
 
-    func testEveryMenuItemDoesSomething() throws {
+    // That each item does what its title says is CourierViewTests' MenuEffectTests, with the app's own wiring:
+    // an action alone proved nothing (View ▸ Hide Sidebar had one and changed nothing on screen).
+    func testEveryMenuItemHasAnAction() throws {
         for item in try Self.items() {
             XCTAssertTrue(item.hasAction, "\(item.file): \(item.title) has no action")
+        }
+    }
+
+    /// Since macOS 14 SwiftUI ignores `showSettingsWindow:` (it logs "Please use SettingsLink for opening the
+    /// Settings scene"), so every item that opened Settings that way did nothing. Settings opens through SwiftUI's
+    /// openSettings (MainWindowOpener.showSettings).
+    func testNothingOpensSettingsWithTheSelectorSwiftUIIgnores() throws {
+        let directory = try Self.sourceDirectory()
+        let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "swift" }
+        XCTAssertFalse(files.isEmpty)
+        for file in files {
+            let text = SwiftSource.strippingComments(try String(contentsOf: file, encoding: .utf8))
+            XCTAssertFalse(text.contains("\"showSettingsWindow:\""),
+                           "\(file.lastPathComponent) opens Settings with showSettingsWindow:, which does nothing")
+            XCTAssertFalse(text.contains("\"showPreferencesWindow:\""),
+                           "\(file.lastPathComponent) opens Settings with showPreferencesWindow:, which does nothing")
         }
     }
 

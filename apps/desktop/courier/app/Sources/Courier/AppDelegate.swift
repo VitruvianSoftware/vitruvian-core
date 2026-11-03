@@ -62,10 +62,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         lifecycle: lifecycle,
         settingsNavigation: settingsNavigation,
         showMainWindow: { [weak self] in self?.windowOpener.show() },
-        showSettingsWindow: {
-            NSApp.activate()
-            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-        },
+        // SwiftUI's openSettings, which the main window and the menus register: sending showSettingsWindow: opens
+        // nothing since macOS 14.
+        showSettingsWindow: { [weak self] in self?.windowOpener.showSettings() },
         hideApp: { NSApp.hide(nil) },
         closeKeyWindow: { NSApp.keyWindow?.performClose(nil) },
         closeAllAppWindows: { [weak self] in

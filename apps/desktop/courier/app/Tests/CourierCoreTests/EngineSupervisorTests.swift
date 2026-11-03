@@ -478,6 +478,17 @@ final class EngineSupervisorTests: XCTestCase {
         XCTAssertEqual(EngineLocation.dataDirectory(environment: [:], home: home).path,
                        "/Users/example/Library/Application Support/Courier")
         XCTAssertEqual(EngineLocation.dataDirectory(environment: ["COURIER_DATA_DIR": "/tmp/c"], home: home).path, "/tmp/c")
+        // The test copy keeps away from the installed app's data and Keychain items, even with no override.
+        XCTAssertEqual(EngineLocation.dataDirectory(environment: [:], home: home,
+                                                    bundleIdentifier: "com.vitruviansoftware.courier").path,
+                       "/Users/example/Library/Application Support/Courier")
+        XCTAssertEqual(EngineLocation.dataDirectory(environment: [:], home: home,
+                                                    bundleIdentifier: TestCopy.bundleIdentifier).path,
+                       "/Users/example/Library/Application Support/Courier Test Copy")
+        XCTAssertEqual(TelegramCredentials.service(for: "com.vitruviansoftware.courier"),
+                       "com.vitruviansoftware.courier.telegram")
+        XCTAssertNotEqual(TelegramCredentials.service(for: TestCopy.bundleIdentifier),
+                          TelegramCredentials.service(for: "com.vitruviansoftware.courier"))
         let bundle = URL(fileURLWithPath: "/Applications/Courier.app")
         XCTAssertEqual(EngineLocation.enginePath(environment: [:], bundleURL: bundle),
                        "/Applications/Courier.app/Contents/Helpers/courier-engine")

@@ -157,6 +157,52 @@ macos_application(
     deps = [":CourierLib"],
 )
 
+# The test copy: the same app with its own bundle identifier (com.vitruviansoftware.courier.dev) and name, so a
+# change can be tried in a real running Courier without touching the installed one. Its own identifier gives it its
+# own settings, notification permission and Login Items entry, and makes it keep its data and Keychain items apart
+# (CourierCore's TestCopy). Never installed or released: :run_test_copy runs it. See README.md.
+genrule(
+    name = "test_copy_infoplist",
+    srcs = ["Resources/Info.plist"],
+    outs = ["TestCopy-Info.plist"],
+    cmd = "sed -e 's|<string>com.vitruviansoftware.courier</string>|<string>com.vitruviansoftware.courier.dev</string>|' " +
+          "-e 's|<string>Courier</string>|<string>Courier Test Copy</string>|' $< > $@",
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+)
+
+macos_application(
+    name = "CourierTestCopy",
+    additional_contents = {
+        ":engine_helper": "Helpers",
+    },
+    bundle_id = "com.vitruviansoftware.courier.dev",
+    bundle_name = "Courier Test Copy",
+    infoplists = [":test_copy_infoplist"],
+    minimum_os_version = "14.0",
+    resources = ["Resources/AppIcon.icns"] + glob(["Resources/*.lproj/*.strings"]),
+    tags = ["manual"],
+    version = ":version",
+    deps = [":CourierLib"],
+)
+
+# bazel run --config=macos-app //apps/desktop/courier/app:run_test_copy [-- --data DIR]
+#
+# Unpacks :CourierTestCopy into a temporary folder and opens it with COURIER_DATA_DIR set to its own data folder
+# (default: a folder under $TMPDIR). It refuses an app whose bundle identifier is not the test copy's, and a data
+# folder that is the installed app's. It never touches /Applications/Courier.app.
+rust_binary(
+    name = "run_test_copy",
+    srcs = ["scripts/src/bin/run_test_copy.rs"],
+    args = ["$(rootpaths :CourierTestCopy)"],
+    data = [":CourierTestCopy"],
+    edition = "2021",
+    rustc_flags = ["-Copt-level=3"],
+    tags = ["manual"],
+    target_compatible_with = ["@platforms//os:macos"],
+    deps = [":courier_scripts_lib"],
+)
+
 # The app Bazel built holds a working engine: Contents/Helpers/courier-engine
 # runs on every CPU the app binary does and answers --help with its usage, and
 # the bundle's version is COURIER_VERSION. It reads the archive :Courier already produced.

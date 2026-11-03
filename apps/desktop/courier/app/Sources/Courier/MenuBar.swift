@@ -6,12 +6,14 @@ import Combine
 import CourierCore
 import SwiftUI
 
-/// Brings the main window forward, opening it again if it was closed. A clicked notification and the menu both ask
-/// for it, and neither has a SwiftUI environment to ask in, so the window scene registers the way to open it.
+/// Brings the main window forward, opening it again if it was closed, and opens the Settings window. A clicked
+/// notification and the menu both ask for them, and neither has a SwiftUI environment to ask in, so the window scene
+/// and the menus register the way to open them.
 @MainActor
 final class MainWindowOpener {
     private var open: (() -> Void)?
     private var openChatWindow: ((String) -> Void)?
+    private var openSettingsWindow: (() -> Void)?
 
     func register(
         _ open: @escaping () -> Void,
@@ -27,16 +29,34 @@ final class MainWindowOpener {
         open?()
     }
 
+    /// Hands over SwiftUI's `openSettings`. The way the app opened Settings before, sending `showSettingsWindow:`,
+    /// does nothing since macOS 14: SwiftUI only logs "Please use SettingsLink for opening the Settings scene."
+    func registerSettings(_ openSettings: @escaping () -> Void) {
+        openSettingsWindow = openSettings
+    }
+
+    /// Whether a way to open Settings has been registered yet.
+    var canShowSettings: Bool { openSettingsWindow != nil }
+
+    /// Brings Courier forward and opens Settings (or brings its window forward if it is open). The menu's Settings…,
+    /// About Courier, Accounts…, Check for Updates…, Help's items and the command bar's settings commands all come
+    /// here, through `AppMenuCoordinator.openSettings`.
+    func showSettings() {
+        NSApp.activate()
+        openSettingsWindow?()
+    }
+
     func openChatInfo(_ roomID: String) {
         NSApp.activate()
         openChatWindow?(roomID)
     }
 }
 
-/// Hands the opener the window scene's `openWindow`.
+/// Hands the opener the window scene's `openWindow` and `openSettings`.
 struct OpenWindowRegistrar: View {
     let opener: MainWindowOpener
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         Color.clear
@@ -46,6 +66,7 @@ struct OpenWindowRegistrar: View {
                     { openWindow(id: "main") },
                     openChatWindow: { roomID in openWindow(id: WindowID.chatInfo, value: roomID) }
                 )
+                opener.registerSettings { openSettings() }
             }
     }
 }

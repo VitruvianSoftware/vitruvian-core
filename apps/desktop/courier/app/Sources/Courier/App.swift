@@ -23,7 +23,8 @@ struct CourierApp: App {
                        onOpenShortcutsSettings: {
                            delegate.settingsNavigation.openPane(.hotkeys)
                            delegate.menuCoordinator.openSettings(.shortcuts)
-                       })
+                       },
+                       menuCoordinator: delegate.menuCoordinator)
                 .background(OpenWindowRegistrar(opener: delegate.windowOpener))
         }
         .defaultSize(width: 1020, height: 660)
@@ -35,7 +36,8 @@ struct CourierApp: App {
                           minimizeToMenuBar: delegate.minimizeToMenuBar,
                           hotkeys: delegate.hotkeys,
                           hotkeyDispatcher: delegate.hotkeyDispatcher,
-                          updates: delegate.updates)
+                          updates: delegate.updates,
+                          windowOpener: delegate.windowOpener)
             ConversationCommands(conversation: delegate.conversation, chatComposer: delegate.conversation.composer,
                                  paneComposer: delegate.conversation.thread.composer,
                                  messageActions: delegate.messageActions, focus: delegate.messageFocus,

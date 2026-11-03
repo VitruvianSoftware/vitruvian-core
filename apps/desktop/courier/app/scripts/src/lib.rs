@@ -7,6 +7,7 @@ pub mod engine_contract;
 pub mod inject_app_credentials;
 pub mod install;
 pub mod publish;
+pub mod run_test_copy;
 
 #[cfg(test)]
 mod tests {
