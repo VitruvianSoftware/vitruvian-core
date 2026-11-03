@@ -11,7 +11,7 @@
     "@openfeature/web-sdk": "^1.1.0",
     "@tabula/shared": "workspace:*",
     "@vitruviansoftware/design-system": "workspace:*",
-    "framer-motion": "^14.6.0",
+    "framer-motion": "^14.9.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "zustand": "^5.0.16"
@@ -22,7 +22,7 @@
     "@swc/jest": "catalog:",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
-    "@types/chrome": "^0.3.6",
+    "@types/chrome": "^0.3.7",
     "@types/jest": "^30.0.0",
     "@types/jsonwebtoken": "^9.0.0",
     "@types/react": "^19.2.18",
@@ -43,6 +43,6 @@
     "ts-loader": "^9.6.2",
     "typescript": "^5.3.3",
     "webpack": "^5.112.2",
-    "webpack-cli": "^7.2.3"
+    "webpack-cli": "^7.3.1"
   }
 }
