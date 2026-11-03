@@ -22,6 +22,7 @@ go_library(
     visibility = ["//apps/desktop/courier/engine:__subpackages__"],
     deps = [
         "//apps/desktop/courier/engine/internal/gchat/pb",
+        "@com_github_rs_zerolog//:zerolog",
         "@fi_mau_go_util//configupgrade",
         "@net_maunium_go_mautrix//bridgev2",
         "@net_maunium_go_mautrix//bridgev2/database",
@@ -45,6 +46,7 @@ go_test(
         "rooms.go",
         "send.go",
         "sync.go",
+        "thread_backfill_test.go",
         "threads_test.go",
     ],
     cdeps = ["//apps/desktop/courier/gchat:gchat_ffi_test_loopback"],
