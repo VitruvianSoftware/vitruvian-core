@@ -180,8 +180,12 @@ fn issue_and_workflow_rules() {
     assert!(issue_args_ok("u", &v(&["--web"])).is_err());
     assert!(issue_args_ok("u", &v(&["--title", "t"])).is_ok());
     assert!(workflow_args("u", &v(&["-f", "tool=github", "--ref", "main"])).is_ok());
-    assert!(workflow_args("u", &v(&["--ref=main", "-Fn=1"])).is_ok());
+    assert!(workflow_args("u", &v(&["--ref=main", "-fn=1", "--raw-field", "a=b"])).is_ok());
     for bad in [
+        &["-F", "n=1"][..],
+        &["-Fn=1"],
+        &["--field", "n=@secret.txt"],
+        &["--field=n=1"],
         &["--ref", "feature"][..],
         &["-rfeature"],
         &["--ref", "refs/heads/main"],
@@ -201,6 +205,252 @@ fn allowlist_matches_whole_names() {
     assert!(allowed_has(&a, b"catalog-bump.yaml"));
     assert!(!allowed_has(&a, b"catalog-bump"));
     assert!(!allowed_has(&a, b"catalog-bump.yaml.bak"));
+}
+
+#[test]
+fn allowlist_entries_declare_their_input_keys() {
+    let list = b"# c\ncatalog-bump.yaml id tag # inputs\n  delivery-drift.yaml  # x\n  # indented\nfoundation-proj-deploy.yaml environment business-unit allow-destructive\n";
+    assert_eq!(
+        allowlist(list),
+        b"catalog-bump.yaml\ndelivery-drift.yaml\nfoundation-proj-deploy.yaml"
+    );
+    assert_eq!(
+        allowlist_entry(list, b"catalog-bump.yaml"),
+        Some(v(&["id", "tag"]))
+    );
+    assert_eq!(allowlist_entry(list, b"delivery-drift.yaml"), Some(vec![]));
+    assert_eq!(allowlist_entry(list, b"catalog-bump"), None);
+    assert_eq!(allowlist_entry(list, b"#"), None);
+}
+
+/// The committed list, read the way workflow-run reads it.
+fn committed_list() -> Vec<u8> {
+    let p = std::env::var("WORKFLOW_ALLOWLIST_TXT").expect("WORKFLOW_ALLOWLIST_TXT (set by BUILD)");
+    std::fs::read(p).expect("read workflow-allowlist.txt")
+}
+
+fn inputs(wf: &str, args: &[&str]) -> Result<(), Refusal> {
+    let list = committed_list();
+    let declared = allowlist_entry(&list, wf.as_bytes()).expect("listed");
+    workflow_inputs_ok(wf.as_bytes(), &declared, &v(args))
+}
+
+fn proj() -> Vec<Vec<u8>> {
+    v(&["environment", "business-unit", "allow-destructive"])
+}
+
+#[test]
+fn committed_allowlist_pins_the_foundation_entries() {
+    let list = committed_list();
+    assert_eq!(
+        allowlist_entry(&list, b"foundation-proj-deploy.yaml"),
+        Some(proj())
+    );
+    assert_eq!(
+        allowlist_entry(&list, b"foundation-app-deploy.yaml"),
+        Some(v(&["environment", "business-unit", "app-image-digests"]))
+    );
+    assert_eq!(
+        allowlist_entry(&list, b"catalog-bump.yaml"),
+        Some(v(&["id", "tag"]))
+    );
+    assert_eq!(allowlist_entry(&list, b"delivery-drift.yaml"), Some(vec![]));
+    assert_eq!(
+        allowlist_entry(&list, b"agent-app-permissions.yaml"),
+        Some(vec![])
+    );
+}
+
+#[test]
+fn foundation_rerun_accepted() {
+    let good: &[&[&str]] = &[
+        &[
+            "-f",
+            "environment=development",
+            "-f",
+            "business-unit=business_unit_1",
+            "-f",
+            "allow-destructive=true",
+            "--ref",
+            "main",
+        ],
+        &[
+            "-fenvironment=production",
+            "--raw-field=business-unit=business_unit_2",
+            "-f",
+            "allow-destructive=false",
+        ],
+        &["-f", "environment=shared"],
+    ];
+    for g in good {
+        assert_eq!(inputs("foundation-proj-deploy.yaml", g), Ok(()), "{:?}", g);
+        assert!(workflow_args("u", &v(g)).is_ok(), "{:?}", g);
+    }
+    assert_eq!(
+        inputs(
+            "foundation-app-deploy.yaml",
+            &[
+                "-f",
+                "environment=nonproduction",
+                "-f",
+                "business-unit=business_unit_2",
+                "-f",
+                "app-image-digests=tabula=ghcr.io/x@sha256:ab"
+            ]
+        ),
+        Ok(())
+    );
+    assert_eq!(
+        inputs(
+            "catalog-bump.yaml",
+            &[
+                "-f",
+                "id=dev.vitruvian.homespeaker",
+                "-f",
+                "tag=home-speaker-v1.20.0"
+            ]
+        ),
+        Ok(())
+    );
+    assert_eq!(inputs("delivery-drift.yaml", &["--ref", "main"]), Ok(()));
+}
+
+#[test]
+fn undeclared_input_key_refused() {
+    for (wf, a) in [
+        ("foundation-proj-deploy.yaml", "-fapp-image-digests=x=y"),
+        ("foundation-proj-deploy.yaml", "-fEnvironment=production"),
+        ("foundation-app-deploy.yaml", "-fextra=1"),
+        ("catalog-bump.yaml", "-ftool=github"),
+        ("delivery-drift.yaml", "-fid=x"),
+        ("agent-app-permissions.yaml", "-fx=y"),
+    ] {
+        let m = msg(inputs(wf, &[a]).unwrap_err());
+        assert!(m.contains("not declared"), "{} {}: {}", wf, a, m);
+    }
+}
+
+#[test]
+fn allow_destructive_only_for_foundation_proj_deploy() {
+    // Refused on every other workflow even when its list line is edited to
+    // declare the key: the rule does not trust the file.
+    for wf in [
+        "foundation-app-deploy.yaml",
+        "catalog-bump.yaml",
+        "delivery-drift.yaml",
+        "other.yaml",
+    ] {
+        for key in [
+            "allow-destructive",
+            "allow_destructive",
+            "Allow-Destructive",
+        ] {
+            let declared = v(&[key, "environment"]);
+            let kv = format!("{}=true", key);
+            let r = workflow_inputs_ok(wf.as_bytes(), &declared, &v(&["-f", &kv]));
+            let m = msg(r.unwrap_err());
+            assert!(
+                m.contains("only foundation-proj-deploy.yaml"),
+                "{} {}: {}",
+                wf,
+                key,
+                m
+            );
+        }
+    }
+    // And against the committed list: app-deploy has no such input.
+    let m = msg(inputs(
+        "foundation-app-deploy.yaml",
+        &["-f", "allow-destructive=true"],
+    )
+    .unwrap_err());
+    assert!(m.contains("only foundation-proj-deploy.yaml"), "{}", m);
+}
+
+#[test]
+fn allow_destructive_value_must_be_true_or_false() {
+    for bad in ["1", "TRUE", "yes", "", "true ", "on"] {
+        let kv = format!("allow-destructive={}", bad);
+        let m = msg(inputs("foundation-proj-deploy.yaml", &["-f", &kv]).unwrap_err());
+        assert!(m.contains("not an accepted value"), "{:?}: {}", bad, m);
+    }
+}
+
+#[test]
+fn working_directory_refused_for_foundation_workflows() {
+    for wf in ["foundation-proj-deploy.yaml", "foundation-app-deploy.yaml"] {
+        for key in [
+            "working-directory",
+            "working_directory",
+            "Working-Directory",
+        ] {
+            let mut declared = proj();
+            declared.push(key.as_bytes().to_vec());
+            let kv = format!("{}=infrastructure/pulumi/foundation/gcp-org", key);
+            let m =
+                msg(workflow_inputs_ok(wf.as_bytes(), &declared, &v(&["-f", &kv])).unwrap_err());
+            assert!(
+                m.contains("chooses which Pulumi project"),
+                "{} {}: {}",
+                wf,
+                key,
+                m
+            );
+        }
+        assert!(inputs(wf, &["-f", "working-directory=x"]).is_err());
+    }
+}
+
+#[test]
+fn foundation_leaf_values_must_name_a_real_leaf() {
+    for bad in [
+        "business-unit=../../gcp-org/production",
+        "business-unit=business_unit_1/../../x",
+        "business-unit=business_unit_",
+        "business-unit=business_unit_01",
+        "business-unit=",
+        "environment=staging",
+        "environment=../shared",
+    ] {
+        let m = msg(inputs("foundation-proj-deploy.yaml", &["-f", bad]).unwrap_err());
+        assert!(m.contains("not an accepted value"), "{}: {}", bad, m);
+    }
+    assert!(business_unit_name(b"business_unit_12"));
+}
+
+#[test]
+fn input_given_twice_or_without_value_refused() {
+    let r = inputs(
+        "foundation-proj-deploy.yaml",
+        &[
+            "-f",
+            "environment=development",
+            "-f",
+            "environment=production",
+        ],
+    );
+    assert!(msg(r.unwrap_err()).contains("given twice"));
+    let r = inputs("foundation-proj-deploy.yaml", &["-f", "environment"]);
+    assert!(msg(r.unwrap_err()).contains("key=value"));
+}
+
+#[test]
+fn non_main_ref_still_refused_with_good_inputs() {
+    let ok = [
+        "-f",
+        "environment=development",
+        "-f",
+        "allow-destructive=true",
+    ];
+    for r in [
+        &["--ref", "feature"][..],
+        &["-rfeature"],
+        &["--ref=refs/heads/main"],
+    ] {
+        let mut a: Vec<&str> = ok.to_vec();
+        a.extend_from_slice(r);
+        assert!(workflow_args("u", &v(&a)).is_err(), "{:?}", a);
+    }
 }
 
 #[test]

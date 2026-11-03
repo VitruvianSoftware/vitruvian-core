@@ -173,9 +173,14 @@ rust_test(
     data = [
         "agents.tsv",
         "permissions.tsv",
+        "workflow-allowlist.txt",
         "//tools/landed",
     ],
     edition = "2021",
-    env = {"LANDED_BIN": "$(rootpath //tools/landed)"},
+    env = {
+        "LANDED_BIN": "$(rootpath //tools/landed)",
+        # The committed list, so a test pins what each entry accepts.
+        "WORKFLOW_ALLOWLIST_TXT": "$(rootpath workflow-allowlist.txt)",
+    },
     rustc_flags = ["-Copt-level=3"],
 )
