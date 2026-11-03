@@ -43,7 +43,7 @@ enum URLCleanerTests {
 
         init() {
             let domain = "com.vitruviansoftware.vitruvian.tests.url-cleaner"
-            let defaults = UserDefaults(suiteName: domain)!
+            let defaults = ScratchDefaults.suite(named: domain)!
             defaults.removePersistentDomain(forName: domain)
             self.defaults = defaults
             board.clearContents()

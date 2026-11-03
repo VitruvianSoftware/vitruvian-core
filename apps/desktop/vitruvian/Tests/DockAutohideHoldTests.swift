@@ -66,7 +66,7 @@ enum DockAutohideHoldTests {
 
     static func run(_ suite: TestSuite) {
         let name = "com.vitruviansoftware.vitruvian.tests.dock-hold.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: name)!
+        let defaults = ScratchDefaults.suite(named: name)!
         defer { defaults.removePersistentDomain(forName: name) }
         let marker = DefaultsKey.dockPreviewRestoreAutohide
         var autohide: Bool? = true

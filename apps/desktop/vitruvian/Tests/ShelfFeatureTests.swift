@@ -482,7 +482,7 @@ enum ShelfFeatureTests {
         // MARK: Shelf dock placement
 
         let placementDomain = "com.vitruviansoftware.vitruvian.tests.shelf-dock-placement"
-        let placementDefaults = UserDefaults(suiteName: placementDomain)!
+        let placementDefaults = ScratchDefaults.suite(named: placementDomain)!
         placementDefaults.removePersistentDomain(forName: placementDomain)
         defer { placementDefaults.removePersistentDomain(forName: placementDomain) }
         for (key, value) in AppFeature.availabilityDefaults { placementDefaults.set(value, forKey: key) }

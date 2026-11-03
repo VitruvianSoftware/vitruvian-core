@@ -91,7 +91,7 @@ enum NotchMascotTests {
 
     private static func preferenceContracts(_ suite: TestSuite) {
         let domain = "com.vitruviansoftware.vitruvian.tests.notch-mascot"
-        let defaults = UserDefaults(suiteName: domain)!
+        let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
         for (key, value) in Defaults.registeredDefaults where key.hasPrefix("notch") { defaults.set(value, forKey: key) }
@@ -407,7 +407,7 @@ enum NotchMascotTests {
     /// to visit and to react.
     private static func hidingContracts(_ suite: TestSuite) {
         let domain = "com.vitruviansoftware.vitruvian.tests.notch-mascot-hiding"
-        let defaults = UserDefaults(suiteName: domain)!
+        let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
         for (key, value) in Defaults.registeredDefaults where key.hasPrefix("notch") { defaults.set(value, forKey: key) }

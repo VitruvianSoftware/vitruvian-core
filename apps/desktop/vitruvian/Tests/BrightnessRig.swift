@@ -194,7 +194,7 @@ enum BrightnessRig {
         init(defaults custom: UserDefaults? = nil) {
             let suiteName = "vitru.tests.brightness-rig-\(UUID().uuidString)"
             self.suiteName = suiteName
-            defaults = custom ?? UserDefaults(suiteName: suiteName)!
+            defaults = custom ?? ScratchDefaults.suite(named: suiteName)!
         }
 
         func tearDown() {

@@ -13,7 +13,7 @@ enum NotchMusicExtrasTests {
     private static func musicVolumePreference(_ suite: TestSuite) {
         let key = DefaultsKey.notchMusicShowVolume
         let domain = "com.vitruviansoftware.vitruvian.tests.notch-music-volume"
-        let defaults = UserDefaults(suiteName: domain)!
+        let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
         defaults.set(true, forKey: AppFeature.mixer.availabilityKey)
@@ -60,7 +60,7 @@ enum NotchMusicExtrasTests {
         suite.expect(resolve(Player.automatic, last: spotify, installed: []) == nil && resolve(other, installed: []) == nil,
                      "with no music app installed nothing is offered to open")
         let domain = "com.vitruviansoftware.vitruvian.tests.notch-preferred-player"
-        let defaults = UserDefaults(suiteName: domain)!
+        let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
         suite.expect(Player.choice(in: defaults) == Player.automatic, "the choice starts as automatic")
@@ -843,7 +843,7 @@ enum NotchMusicExtrasTests {
                "missing player position never masquerades as a synchronized lyric clock")
 
         let domain = "com.vitruviansoftware.vitruvian.tests.notch-music-extras"
-        let defaults = UserDefaults(suiteName: domain)!
+        let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
         for (key, value) in Defaults.registeredDefaults where key.hasPrefix("notch") { defaults.set(value, forKey: key) }

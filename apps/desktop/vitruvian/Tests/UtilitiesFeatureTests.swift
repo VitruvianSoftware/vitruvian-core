@@ -1027,7 +1027,7 @@ enum UtilitiesFeatureTests {
         suite.expect(RadialMenuSupport.needsAccessibility([shortcutProfile]),
                "profile with keyboard shortcut slice needs Accessibility")
 
-        let profileTestDefaults = UserDefaults(suiteName: "com.vitruviansoftware.vitruvian.tests.radialProfiles")!
+        let profileTestDefaults = ScratchDefaults.suite(named: "com.vitruviansoftware.vitruvian.tests.radialProfiles")!
         profileTestDefaults.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.radialProfiles")
         profileTestDefaults.set(true, forKey: AppFeature.radialMenu.availabilityKey)
         profileTestDefaults.set(true, forKey: DefaultsKey.radialMenuEnabled)
@@ -1134,7 +1134,7 @@ enum UtilitiesFeatureTests {
                 && RadialMenuSupport.claimedMouseButtons(iconProfilesData) == fullyDecodedButtons,
                "claimed mouse buttons read without the items match the full profile decode")
 
-        let legacyButtonDefaults = UserDefaults(suiteName: "com.vitruviansoftware.vitruvian.tests.radialLegacyButton")!
+        let legacyButtonDefaults = ScratchDefaults.suite(named: "com.vitruviansoftware.vitruvian.tests.radialLegacyButton")!
         legacyButtonDefaults.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.radialLegacyButton")
         legacyButtonDefaults.set(RadialMenuMouseTrigger.forward.rawValue,
                                  forKey: DefaultsKey.radialMenuMouseButton)

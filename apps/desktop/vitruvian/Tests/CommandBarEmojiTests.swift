@@ -44,7 +44,7 @@ enum CommandBarEmojiContract {
 
     static func run(_ suite: TestSuite) {
         let domain = "com.vitruviansoftware.vitruvian.tests.command-bar-emoji"
-        let defaults = Foundation.UserDefaults(suiteName: domain)!
+        let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer {
             defaults.removePersistentDomain(forName: domain)

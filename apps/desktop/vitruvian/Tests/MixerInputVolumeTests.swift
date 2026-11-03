@@ -176,7 +176,7 @@ enum MixerInputVolumeContract {
             if !suite.isEmpty { defaults.removePersistentDomain(forName: suite) }
             let name = "vitru.tests.mixer-input.\(UUID().uuidString)"
             suite = name
-            defaults = Foundation.UserDefaults(suiteName: name)!
+            defaults = ScratchDefaults.suite(named: name)!
             for feature in [AppFeature.mixer, .audioPriority, .micMute] {
                 defaults.set(true, forKey: feature.availabilityKey)
             }

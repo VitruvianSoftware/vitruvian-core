@@ -7,11 +7,14 @@
 //!      files (sources, `Resources/`, `build.sh`) by app-relative paths;
 //!   2. on a full run, run `preference_cleanup_tests` and
 //!      `uninstall_spaces_tests`;
-//!   3. always sweep the throwaway `UserDefaults` suites the tests created;
+//!   3. fail if the run saved a test preference in the real
+//!      ~/Library/Preferences: the tests' suites belong in their own container
+//!      under TEST_TMPDIR (//tools/swift-test-preferences);
 //!   4. fail unless every suite asked for reported its result;
 //!   5. end the log with `TESTS OK` or `TESTS FAILED`, which `mutation_checks`
 //!      reads.
 
+use std::collections::BTreeMap;
 use std::env;
 use std::fs::{self, File};
 use std::io::{self, Read, Write};
@@ -19,6 +22,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::SystemTime;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
@@ -296,6 +300,9 @@ pub fn run_cli(args: &[String]) -> i32 {
         return 1;
     }
 
+    let prefs_dir = real_home.join("Library/Preferences");
+    let prefs_before = test_preferences(&prefs_dir);
+
     let test_groups_src = fs::read_to_string("Tests/TestGroups.swift").unwrap_or_default();
     let expected = count_expected_suites(&config.selection, &test_groups_src);
     let output_log = test_tmpdir.join("unit-tests.log");
@@ -354,18 +361,95 @@ pub fn run_cli(args: &[String]) -> i32 {
         }
     }
 
-    let prefs_dir = real_home.join("Library/Preferences");
-    if let Err(e) = preference_cleanup_tests::discard_test_preferences(&prefs_dir) {
-        eprintln!("{}", e);
+    // Nothing is taken out of the real folder here: a file there means a
+    // test got past the container, and that is what has to be fixed.
+    let saved = changed_test_preferences(&prefs_before, &test_preferences(&prefs_dir));
+    if !saved.is_empty() {
+        eprintln!(
+            "\u{2717} the unit tests saved preferences in {}: {}",
+            prefs_dir.display(),
+            saved.join(", ")
+        );
         status = 1;
     }
 
     status
 }
 
+/// The test-named plists in a preferences folder, with when each last changed.
+pub fn test_preferences(dir: &Path) -> BTreeMap<String, Option<SystemTime>> {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return BTreeMap::new();
+    };
+    entries
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name().to_str()?.to_string();
+            preference_cleanup_tests::is_test_preference_filename(&name)
+                .then(|| (name, entry.metadata().and_then(|m| m.modified()).ok()))
+        })
+        .collect()
+}
+
+/// The test-named plists that appeared or changed between two looks.
+pub fn changed_test_preferences(
+    before: &BTreeMap<String, Option<SystemTime>>,
+    after: &BTreeMap<String, Option<SystemTime>>,
+) -> Vec<String> {
+    after
+        .iter()
+        .filter(|(name, modified)| before.get(*name) != Some(*modified))
+        .map(|(name, _)| name.clone())
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_changed_test_preferences() {
+        let dir = env::temp_dir().join(format!("run_unit_tests_prefs_{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("vitru.tests.kept.plist"), "{}").unwrap();
+        fs::write(dir.join("com.example.app.plist"), "{}").unwrap();
+        let before = test_preferences(&dir);
+        assert_eq!(
+            before.keys().collect::<Vec<_>>(),
+            vec!["vitru.tests.kept.plist"]
+        );
+        assert!(changed_test_preferences(&before, &test_preferences(&dir)).is_empty());
+
+        // A new test suite and the test program's own domain are caught; an
+        // app's preferences are none of this check's business.
+        fs::write(
+            dir.join("com.vitruviansoftware.vitruvian.tests.new.plist"),
+            "{}",
+        )
+        .unwrap();
+        fs::write(dir.join("metrics-tests.plist"), "{}").unwrap();
+        fs::write(dir.join("com.example.other.plist"), "{}").unwrap();
+        assert_eq!(
+            changed_test_preferences(&before, &test_preferences(&dir)),
+            vec![
+                "com.vitruviansoftware.vitruvian.tests.new.plist",
+                "metrics-tests.plist"
+            ]
+        );
+
+        // A file that was there already counts once it is written again.
+        let kept = dir.join("vitru.tests.kept.plist");
+        let later = SystemTime::now() + std::time::Duration::from_secs(60);
+        File::options()
+            .write(true)
+            .open(&kept)
+            .unwrap()
+            .set_modified(later)
+            .unwrap();
+        assert!(changed_test_preferences(&before, &test_preferences(&dir))
+            .contains(&"vitru.tests.kept.plist".to_string()));
+        fs::remove_dir_all(&dir).unwrap();
+    }
 
     #[test]
     fn test_parse_args() {

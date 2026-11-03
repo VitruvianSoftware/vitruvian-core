@@ -44,7 +44,7 @@ enum ScreenshotSelectionRefreshContract {
         init() {
             let suiteName = "vitru.tests.screenshot-selection-\(UUID().uuidString)"
             self.suiteName = suiteName
-            defaults = UserDefaults(suiteName: suiteName)!
+            defaults = ScratchDefaults.suite(named: suiteName)!
             defaults.set(true, forKey: DefaultsKey.screenshotFreeze)
             defaults.set(false, forKey: DefaultsKey.screenshotIncludePointer)
             defaults.set(false, forKey: DefaultsKey.screenshotHideVitruvianWindows)

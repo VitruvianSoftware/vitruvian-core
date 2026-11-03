@@ -42,7 +42,7 @@ enum RecorderZoomAimingTests {
             let source = RecorderEditorModel.Environment.Source(
                 duration: 5, size: CGSize(width: 1000, height: 500), frameRate: 60, audioTracks: [:])
             let environment = RecorderEditorModel.Environment(
-                defaults: UserDefaults(suiteName: suiteName)!,
+                defaults: ScratchDefaults.suite(named: suiteName)!,
                 loadSource: { _ in source },
                 previewDelay: 0,
                 composePreview: { _ in

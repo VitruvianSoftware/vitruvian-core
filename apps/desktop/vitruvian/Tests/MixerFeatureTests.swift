@@ -48,7 +48,7 @@ enum MixerFeatureTests {
         suite.expect(SettingsBackupSupport.exportKeys().contains(DefaultsKey.appVolumesArePositions),
                "the saved volumes' format travels with them in a backup")
         let curveSuite = "vitru.tests.mixer.volumecurve"
-        if let curveDefaults = UserDefaults(suiteName: curveSuite) {
+        if let curveDefaults = ScratchDefaults.suite(named: curveSuite) {
             curveDefaults.removePersistentDomain(forName: curveSuite)
             curveDefaults.set(["com.example.quiet": 0.25, "com.example.boosted": 1.5, "com.example.muted": 0.0],
                               forKey: DefaultsKey.appVolumes)
@@ -151,7 +151,7 @@ enum MixerFeatureTests {
         suite.expect(!SettingsBackupSupport.valueLooksRight(DefaultsKey.mixerHeadphonesDisconnectSilenceAllowed, "true"),
                "an imported silence marker must be a boolean")
         let headphonesSuite = "vitru.tests.mixer.headphones"
-        if let silentHeadphoneVolume = UserDefaults(suiteName: headphonesSuite) {
+        if let silentHeadphoneVolume = ScratchDefaults.suite(named: headphonesSuite) {
             let volumeKey = DefaultsKey.mixerHeadphonesDisconnectVolumePercent
             let markerKey = DefaultsKey.mixerHeadphonesDisconnectSilenceAllowed
             silentHeadphoneVolume.removePersistentDomain(forName: headphonesSuite)

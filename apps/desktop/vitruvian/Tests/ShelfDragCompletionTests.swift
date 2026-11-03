@@ -57,7 +57,7 @@ enum ShelfDragCompletionContract {
 
         init(closeAfterDrop: Bool = true, removeAfterDrop: Bool = true) {
             let domain = "com.vitruviansoftware.vitruvian.tests.shelf-drag.\(UUID().uuidString)"
-            defaults = UserDefaults(suiteName: domain)!
+            defaults = ScratchDefaults.suite(named: domain)!
             defaults.set(closeAfterDrop, forKey: DefaultsKey.shelfCloseAfterDrop)
             defaults.set(removeAfterDrop, forKey: DefaultsKey.shelfRemoveAfterDrop)
         }

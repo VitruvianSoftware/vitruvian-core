@@ -61,7 +61,7 @@ enum ScreenshotPreviewHoverTests {
     /// keyboard. The island's half runs in the capture controls checks.
     static func presentationChecks(_ suite: TestSuite) {
         let domain = "vitru.tests.screenshot-preview-presentation"
-        let defaults = UserDefaults(suiteName: "vitru.tests.screenshot-preview-presentation")!
+        let defaults = ScratchDefaults.suite(named: "vitru.tests.screenshot-preview-presentation")!
         defer { defaults.removePersistentDomain(forName: domain) }
         let cases: [(interval: TimeInterval?, prefersFocus: Bool)] = [(3, true), (3, false), (nil, true)]
         for (interval, prefersFocus) in cases {
