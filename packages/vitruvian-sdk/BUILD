@@ -48,11 +48,11 @@ load("@aspect_rules_py//py:defs.bzl", "py_library", "py_test")
 load("@bazel_lib//lib:copy_to_directory.bzl", "copy_to_directory")
 load("@build_bazel_rules_swift//swift:swift_binary.bzl", "swift_binary")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
-load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
 load("@rules_go//go:def.bzl", "go_binary")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
 load("//tools/pytest:defs.bzl", pytest_test = "py_test")
+load("//tools/swift-test-preferences:defs.bzl", "swift_test")
 
 # The protocol as it is written down: the schemas, the table of messages, and
 # the examples both halves of the drift test read.
