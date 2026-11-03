@@ -104,10 +104,12 @@ public enum Pages {
     }
 
     /// The Chats credentials and surroundings, as Settings shows
-    /// them: whether a Slack or Beeper token is saved, never the token.
+    /// them: whether a Slack, Beeper or Courier token is saved, never the
+    /// token.
     public struct Chat: Equatable, Sendable {
         public var hasSlackToken = false
         public var hasBeeperToken = false
+        public var hasCourierToken = false
         /// A Gemini API key is saved, for the rewording and the Gemini voice.
         public var hasGeminiKey = false
         /// The Google Chat login exists with every Chat scope.
@@ -123,9 +125,11 @@ public enum Pages {
         public var monitor: ChatMonitorStatus?
 
         public init(hasSlackToken: Bool = false, hasChatAccess: Bool = false, gwsPath: String? = nil, ownerRunning: Bool = false,
-                    monitor: ChatMonitorStatus? = nil, hasBeeperToken: Bool = false, hasGeminiKey: Bool = false) {
+                    monitor: ChatMonitorStatus? = nil, hasBeeperToken: Bool = false, hasGeminiKey: Bool = false,
+                    hasCourierToken: Bool = false) {
             self.hasSlackToken = hasSlackToken
             self.hasBeeperToken = hasBeeperToken
+            self.hasCourierToken = hasCourierToken
             self.hasGeminiKey = hasGeminiKey
             self.hasChatAccess = hasChatAccess
             self.gwsPath = gwsPath
@@ -135,6 +139,14 @@ public enum Pages {
 
         /// The monitor is polling: its owner runs and says so.
         public var monitorRunning: Bool { ownerRunning && monitor?.isRunning == true }
+
+        /// Whether `app`'s token is saved.
+        public func hasToken(_ app: ChatApp) -> Bool {
+            switch app {
+            case .beeper: return hasBeeperToken
+            case .courier: return hasCourierToken
+            }
+        }
 
         /// What went wrong while it ran, when it is running.
         public var runtimeError: String? {
@@ -171,6 +183,10 @@ public enum Pages {
         public var section = Section.general
         /// The setup job HomeSpeaker is running, beside any speaker job.
         public var setupBusy: Job?
+        /// Courier's switch was turned on from the island with no token
+        /// saved: the island asks for the token under it, and Courier goes
+        /// on once one is saved.
+        public var courierTokenAsked = false
         /// The last thing a setup job said.
         public var setupNotice: String?
         public var account = Account()
@@ -240,6 +256,12 @@ public enum Pages {
     /// The island's token fields, under a source switched on with no token.
     public static let pasteSlackToken = "Paste Slack token and press Return"
     public static let pasteBeeperToken = "Paste Beeper token and press Return"
+    public static let pasteCourierToken = "Paste Courier token and press Return"
+    /// Under Courier's switch while no token is saved: Courier stays off
+    /// until one is, as in HomeSpeaker's own Settings.
+    public static let courierTokenFirst = "Save a token to turn Courier on."
+    /// Under the island's Courier token field: where the token comes from.
+    public static let courierTokenSteps = "Make a token in Courier: Settings › Integrations › New connection…, then paste it here."
     /// The Gemini API key's field, its island placeholder and its button.
     public static let geminiKeyTitle = "Gemini API key"
     public static let pasteGeminiKey = "Paste Gemini API key and press Return"
@@ -320,6 +342,11 @@ public enum Pages {
         public static let clearBeeperToken = "clearBeeperToken"
         public static let saveBeeperToken = "saveBeeperToken"
         public static let beeperAnnounce = "beeperAnnounce"
+        public static let courierEnabled = "courierEnabled"
+        public static let courierToken = "courierToken"
+        public static let clearCourierToken = "clearCourierToken"
+        public static let saveCourierToken = "saveCourierToken"
+        public static let courierAnnounce = "courierAnnounce"
         public static let googleChatEnabled = "googleChatEnabled"
         /// Each coding agent's own switch, under Broadcasting: on the
         /// island and in Settings › AI Agents.
@@ -362,6 +389,86 @@ public enum Pages {
         /// one (`Status.offersChips`): a chip on reads the network, off
         /// mutes it.
         public static let beeperNetworks = "beeperNetworks"
+        public static let courierNetworkPrefix = "courier.network."
+        /// Courier's networks as one `chips` block, as Beeper's are.
+        public static let courierNetworks = "courierNetworks"
+
+        /// `app`'s switch.
+        public static func enabled(_ app: ChatApp) -> String {
+            switch app {
+            case .beeper: return beeperEnabled
+            case .courier: return courierEnabled
+            }
+        }
+
+        /// `app`'s Announce picker.
+        public static func announce(_ app: ChatApp) -> String {
+            switch app {
+            case .beeper: return beeperAnnounce
+            case .courier: return courierAnnounce
+            }
+        }
+
+        /// `app`'s networks as one `chips` block.
+        public static func networks(_ app: ChatApp) -> String {
+            switch app {
+            case .beeper: return beeperNetworks
+            case .courier: return courierNetworks
+            }
+        }
+
+        /// `app`'s token field, its save and its clear buttons.
+        public static func token(_ app: ChatApp) -> String {
+            switch app {
+            case .beeper: return beeperToken
+            case .courier: return courierToken
+            }
+        }
+
+        public static func saveToken(_ app: ChatApp) -> String {
+            switch app {
+            case .beeper: return saveBeeperToken
+            case .courier: return saveCourierToken
+            }
+        }
+
+        public static func clearToken(_ app: ChatApp) -> String {
+            switch app {
+            case .beeper: return clearBeeperToken
+            case .courier: return clearCourierToken
+            }
+        }
+
+        static func networkPrefix(_ app: ChatApp) -> String {
+            switch app {
+            case .beeper: return beeperNetworkPrefix
+            case .courier: return courierNetworkPrefix
+            }
+        }
+
+        /// One of `app`'s network switches, by the network's key, as
+        /// `beeperNetwork` is for Beeper.
+        public static func network(_ app: ChatApp, _ key: String) -> String { "\(networkPrefix(app))\(key)" }
+
+        /// The app and network key a switch's id names; nil for any other
+        /// id, or a key no network has.
+        public static func networkKey(_ id: String) -> (app: ChatApp, key: String)? {
+            for app in ChatApp.allCases {
+                if let key = networkKey(id, of: app) { return (app, key) }
+            }
+            return nil
+        }
+
+        /// The network key one of `app`'s switches names; nil for any other id.
+        public static func networkKey(_ id: String, of app: ChatApp) -> String? {
+            let prefix = networkPrefix(app)
+            guard id.hasPrefix(prefix) else { return nil }
+            let key = id.dropFirst(prefix.count)
+            guard !key.isEmpty, key.unicodeScalars.allSatisfy({
+                ("a"..."z").contains($0) || ("0"..."9").contains($0) || $0 == "_" || $0 == "-"
+            }) else { return nil }
+            return String(key)
+        }
 
         /// The switch for `agent`'s announcements.
         public static func agentEnabled(_ agent: CodingAgent) -> String {
@@ -394,18 +501,11 @@ public enum Pages {
         /// (64) long, which keeps the id within the protocol's 128. The
         /// cap is the engine's; `beeperNetworkKey` checks the characters
         /// only, not the length.
-        public static func beeperNetwork(_ key: String) -> String { "\(beeperNetworkPrefix)\(key)" }
+        public static func beeperNetwork(_ key: String) -> String { network(.beeper, key) }
 
         /// The network key a switch's id names; nil for any other id, or a
         /// key no network has.
-        public static func beeperNetworkKey(_ id: String) -> String? {
-            guard id.hasPrefix(beeperNetworkPrefix) else { return nil }
-            let key = id.dropFirst(beeperNetworkPrefix.count)
-            guard !key.isEmpty, key.unicodeScalars.allSatisfy({
-                ("a"..."z").contains($0) || ("0"..."9").contains($0) || $0 == "_" || $0 == "-"
-            }) else { return nil }
-            return String(key)
-        }
+        public static func beeperNetworkKey(_ id: String) -> String? { networkKey(id, of: .beeper) }
 
         /// The button that finds the speakers of the home at `index` in
         /// the homes listed.
@@ -736,6 +836,17 @@ public enum Pages {
                 button(Block.saveBeeperToken, UIText.plain(saveTokenButton))
             }
             islandBeeperBlocks(status)
+            // Courier stays off until a token is saved, as in HomeSpeaker's
+            // own Settings: turned on without one, the island asks for it
+            // here and turns Courier on once it is saved.
+            toggle(Block.courierEnabled, "Courier", isOn: chat.courierEnabled)
+            if (chat.courierEnabled || status.courierTokenAsked) && !status.chat.hasCourierToken {
+                field(Block.courierToken, title: UIText.plain(beeperTokenTitle), value: "",
+                      placeholder: UIText.plain(pasteCourierToken), kind: .secret)
+                button(Block.saveCourierToken, UIText.plain(saveTokenButton))
+                text(UIText.plain(courierTokenSteps), style: .caption)
+            }
+            islandChatAppBlocks(.courier, status)
             // Skipping your own messages is for every chat app, so it
             // follows them all, and only while one of them reads.
             if chat.anySourceEnabled {
@@ -748,8 +859,13 @@ public enum Pages {
     /// while Beeper is on: which messages it announces, then a switch for
     /// each of its networks. Nothing while it is off.
     static func islandBeeperBlocks(_ status: Status) -> [UIBlock] {
-        guard status.config.effectiveChatMonitor.beeperEnabled else { return [] }
-        return beeperAnnouncePicker(status) + beeperNetworkBlocks(status)
+        islandChatAppBlocks(.beeper, status)
+    }
+
+    /// The same for either app.
+    static func islandChatAppBlocks(_ app: ChatApp, _ status: Status) -> [UIBlock] {
+        guard status.config.effectiveChatMonitor.isEnabled(app) else { return [] }
+        return announcePicker(app, status) + networkBlocks(app, status)
     }
 
     /// Under the networks while the monitor has not read Beeper: only the
@@ -759,7 +875,12 @@ public enum Pages {
     /// The Beeper networks, each with its switch's state, as the app's
     /// Settings window shows them too (`BeeperNetworkList`).
     public static func beeperNetworkList(_ status: Status) -> BeeperNetworkList {
-        BeeperNetworkList(listed: beeperNetworksRead(status), muted: status.config.effectiveChatMonitor.beeperMutedNetworks)
+        networkList(.beeper, status)
+    }
+
+    /// `app`'s networks, each with its switch's state.
+    public static func networkList(_ app: ChatApp, _ status: Status) -> BeeperNetworkList {
+        BeeperNetworkList(listed: networksRead(app, status), muted: status.config.effectiveChatMonitor.mutedNetworks(for: app))
     }
 
     /// The rows of `beeperNetworkList`.
@@ -770,8 +891,22 @@ public enum Pages {
     /// The networks the running monitor last listed; nil while it is not
     /// running or has not read Beeper.
     static func beeperNetworksRead(_ status: Status) -> [BeeperNetworkState]? {
+        networksRead(.beeper, status)
+    }
+
+    /// The same for either app.
+    static func networksRead(_ app: ChatApp, _ status: Status) -> [BeeperNetworkState]? {
         guard status.chat.monitorRunning else { return nil }
-        return status.chat.monitor?.beeperNetworkStates
+        return status.chat.monitor?.networks(for: app).states
+    }
+
+    /// A Courier network HomeSpeaker's own Slack or Google Chat reader
+    /// covers, or one read through Courier anyway: its switch is the
+    /// "read it here as well" choice (`ChatMonitorConfig.courierReadAnyway`),
+    /// not a mute, as in HomeSpeaker's own Settings. Never for Beeper,
+    /// whose skipped networks stay greyed.
+    static func readsAnywaySwitch(_ app: ChatApp, _ row: BeeperNetworkState, _ monitor: ChatMonitorConfig) -> Bool {
+        app == .courier && (row.state == .skipped || monitor.readsAnyway(app).contains(row.key))
     }
 
     /// A switch for each Beeper network, under a caption: on reads it, off
@@ -782,30 +917,44 @@ public enum Pages {
     /// with Beeper off and nothing saved. An app that draws chips gets the
     /// caption and the switches as one block (`beeperNetworkChips`).
     static func beeperNetworkBlocks(_ status: Status) -> [UIBlock] {
-        let list = beeperNetworkList(status)
-        guard list.shows(beeperEnabled: status.config.effectiveChatMonitor.beeperEnabled) else { return [] }
+        networkBlocks(.beeper, status)
+    }
+
+    /// The same for either app. Courier's networks that HomeSpeaker reads
+    /// itself are not greyed: their switch reads them through Courier as
+    /// well (`readsAnywaySwitch`).
+    static func networkBlocks(_ app: ChatApp, _ status: Status) -> [UIBlock] {
+        let list = networkList(app, status)
+        let monitor = status.config.effectiveChatMonitor
+        guard list.shows(beeperEnabled: monitor.isEnabled(app)) else { return [] }
         return UITree {
-            if let networks = beeperNetworkChips(status, rows: list.rows) {
+            if let networks = networkChips(app, status, rows: list.rows) {
                 networks
             } else {
                 text(UIText.plain(beeperNetworksTitle), style: .caption)
                 // Only a key a network can have (`ChatAppClient.networkKey`)
                 // gets a switch: a mute saved by hand as `My Network` mutes
                 // nothing, and its id would refuse the page.
-                for row in list.rows where hasSwitch(row.key) {
-                    switch row.state {
-                    case .reading:
-                        toggle(Block.beeperNetwork(row.key), UIText.plain(row.name), isOn: true)
-                    case .muted:
-                        toggle(Block.beeperNetwork(row.key), UIText.plain(row.name), isOn: false)
-                    case .skipped:
-                        toggle(Block.beeperNetwork(row.key), UIText.plain("\(row.name) · \(beeperReadDirectly)"), isOn: false,
-                               enabled: false)
+                for row in list.rows where hasSwitch(app, row.key) {
+                    if readsAnywaySwitch(app, row, monitor) {
+                        let on = monitor.readsAnyway(app).contains(row.key)
+                        toggle(Block.network(app, row.key), UIText.plain("\(row.name) · \(on ? alsoReadHere : beeperReadDirectly)"),
+                               isOn: on)
+                    } else {
+                        switch row.state {
+                        case .reading:
+                            toggle(Block.network(app, row.key), UIText.plain(row.name), isOn: true)
+                        case .muted:
+                            toggle(Block.network(app, row.key), UIText.plain(row.name), isOn: false)
+                        case .skipped:
+                            toggle(Block.network(app, row.key), UIText.plain("\(row.name) · \(beeperReadDirectly)"), isOn: false,
+                                   enabled: false)
+                        }
                     }
                 }
             }
             if !list.isListed {
-                text(UIText.plain(beeperNetworksLater), style: .caption)
+                text(UIText.plain(BeeperNetworkList.othersLater(app)), style: .caption)
             }
         }.blocks
     }
@@ -813,14 +962,22 @@ public enum Pages {
     /// A Beeper network key that can be a switch: one `Block.beeperNetwork`
     /// reads back, in an id the protocol takes.
     static func hasSwitch(_ key: String) -> Bool {
-        let id = Block.beeperNetwork(key)
-        return Block.beeperNetworkKey(id) == key && ManifestRules.isWellFormedName(id)
+        hasSwitch(.beeper, key)
+    }
+
+    /// The same for either app.
+    static func hasSwitch(_ app: ChatApp, _ key: String) -> Bool {
+        let id = Block.network(app, key)
+        return Block.networkKey(id, of: app) == key && ManifestRules.isWellFormedName(id)
     }
 
     /// Over Beeper's networks: the caption, or the chips' title.
     static let beeperNetworksTitle = "Networks"
     /// Why a network HomeSpeaker reads itself cannot be muted.
     static let beeperReadDirectly = "Read directly"
+    /// A Courier network HomeSpeaker reads itself, read through Courier
+    /// as well, as HomeSpeaker's own Settings says it.
+    static let alsoReadHere = "Also read here"
 
     /// Beeper's networks as one `chips` block titled Networks, for an app
     /// that draws chips: a chip a network, by name, on while it is read.
@@ -831,10 +988,22 @@ public enum Pages {
     /// mute edited by hand): the app would refuse the page, so the
     /// switches stand in.
     static func beeperNetworkChips(_ status: Status, rows: [BeeperNetworkState]) -> UIBlock? {
+        networkChips(.beeper, status, rows: rows)
+    }
+
+    /// The same for either app. A Courier network HomeSpeaker reads itself
+    /// is a chip that reads it through Courier as well.
+    static func networkChips(_ app: ChatApp, _ status: Status, rows: [BeeperNetworkState]) -> UIBlock? {
         guard status.offersChips, (1...UILimits.maxChoiceOptions).contains(rows.count),
               Set(rows.map(\.key)).count == rows.count,
               rows.allSatisfy({ $0.key.unicodeScalars.count <= UILimits.maxChoiceValueLength }) else { return nil }
-        return chips(Block.beeperNetworks, title: UIText.plain(beeperNetworksTitle), options: rows.map { row in
+        let monitor = status.config.effectiveChatMonitor
+        return chips(Block.networks(app), title: UIText.plain(beeperNetworksTitle), options: rows.map { row in
+            if readsAnywaySwitch(app, row, monitor) {
+                let on = monitor.readsAnyway(app).contains(row.key)
+                return UIChipOption(value: row.key, title: UIText.plain("\(row.name) · \(on ? alsoReadHere : beeperReadDirectly)"),
+                                    on: on)
+            }
             switch row.state {
             case .reading:
                 return UIChipOption(value: row.key, title: UIText.plain(row.name), on: true)
@@ -856,11 +1025,25 @@ public enum Pages {
     /// no row is kept. True when the mutes changed.
     static func saveBeeperNetworkChips(_ values: [String], rows: [BeeperNetworkState],
                                        into monitor: inout ChatMonitorConfig) -> Bool {
-        let before = Set(monitor.beeperMutedNetworks)
-        for row in rows where row.state != .skipped {
-            monitor.setBeeperNetwork(row.key, reading: values.contains(row.key))
+        saveNetworkChips(.beeper, values, rows: rows, into: &monitor)
+    }
+
+    /// The same for either app. A Courier network HomeSpeaker reads
+    /// itself (`readsAnywaySwitch`) is read through Courier as well while
+    /// its chip is on, and left to HomeSpeaker's reader while it is off;
+    /// it is never muted.
+    static func saveNetworkChips(_ app: ChatApp, _ values: [String], rows: [BeeperNetworkState],
+                                 into monitor: inout ChatMonitorConfig) -> Bool {
+        let before = monitor
+        for row in rows {
+            if readsAnywaySwitch(app, row, before) {
+                monitor.setReadAnyway(row.key, values.contains(row.key))
+            } else if row.state != .skipped {
+                monitor.setNetwork(row.key, of: app, reading: values.contains(row.key))
+            }
         }
-        return Set(monitor.beeperMutedNetworks) != before
+        return Set(monitor.mutedNetworks(for: app)) != Set(before.mutedNetworks(for: app))
+            || Set(monitor.readsAnyway(app)) != Set(before.readsAnyway(app))
     }
 
     /// How much of a reply to speak: one picker for the island and
@@ -936,7 +1119,12 @@ public enum Pages {
     /// Which Beeper messages are announced: one picker for the island and
     /// Settings › Chats.
     static func beeperAnnouncePicker(_ status: Status) -> [UIBlock] {
-        picker(Block.beeperAnnounce, title: "Announce", value: status.config.effectiveChatMonitor.beeperAnnounce.rawValue,
+        announcePicker(.beeper, status)
+    }
+
+    /// The same for either app.
+    static func announcePicker(_ app: ChatApp, _ status: Status) -> [UIBlock] {
+        picker(Block.announce(app), title: "Announce", value: status.config.effectiveChatMonitor.announce(for: app).rawValue,
                options: ChatMonitorConfig.BeeperAnnounce.allCases.map {
                    UIChoiceOption(value: $0.rawValue, title: UIText.plain($0.title))
                },
@@ -1299,7 +1487,7 @@ public enum Pages {
 
     /// What the chat monitor does with messages, and where they go.
     public static func monitorPrivacyLine(_ config: SpeakerConfig) -> String {
-        "HomeSpeaker reads new messages in the background while Slack, Google Chat or Beeper is on, "
+        "HomeSpeaker reads new messages in the background while Slack, Google Chat, Beeper or Courier is on, "
             + "and announces them on your speakers. " + config.chatMessagesSentTo
     }
 
@@ -1307,6 +1495,21 @@ public enum Pages {
     public static let beeperHelp = "In Beeper Desktop: Settings › Integrations, turn on the Desktop API, then + next to Approved connections. "
         + "Beeper Desktop must be running; HomeSpeaker only talks to it on this Mac. "
         + "Slack and Google Chat chats in Beeper are skipped while their own switches above are on."
+
+    /// Where Courier's token comes from, what it does with Beeper on as
+    /// well, and how it shares Slack: HomeSpeaker's own Settings' words, in
+    /// two captions, since the app cuts a caption at four lines. Two, not
+    /// one a sentence: a page may carry 200 blocks, and every network can
+    /// be a switch of its own.
+    public static let courierHelpLines = [
+        "In Courier: Settings › Integrations › New connection…, then paste the token here. "
+            + "Courier must be running; HomeSpeaker only talks to it on this Mac. "
+            + "With Beeper on as well, a message that comes through both is read out once.",
+        "Courier can't say which Slack workspace is which, so while the Slack switch above is on, Courier's Slack is left to it. "
+            + "To hear another workspace through Courier, switch its Slack on here; messages from the workspace above may then be read twice.",
+    ]
+    /// The same, as one text.
+    public static let courierHelp = courierHelpLines.joined(separator: " ")
 
     /// What "Read Google Chat via" offers, in the app's words.
     public static func chatSourceTitle(_ source: ChatMonitorConfig.GoogleChatSource) -> String {
@@ -1328,7 +1531,8 @@ public enum Pages {
         guard monitor.anySourceEnabled else { return [] }
         return ChatMonitorService.setupProblems(config: monitor, hasSlackToken: status.chat.hasSlackToken,
                                                 hasChatScopes: status.chat.hasChatAccess, gwsInstalled: status.chat.gwsPath != nil,
-                                                hasBeeperToken: status.chat.hasBeeperToken)
+                                                hasBeeperToken: status.chat.hasBeeperToken,
+                                                hasCourierToken: status.chat.hasCourierToken)
     }
 
     /// Chats, as HomeSpeaker's tab of that name: what reads the
@@ -1417,9 +1621,43 @@ public enum Pages {
                 text(UIText.plain(beeperHelp), style: .caption)
             }
 
+            courierSettings(status)
+
             heading("Options")
             toggle(Block.muteOwnMessages, "Skip messages I sent", isOn: monitor.muteOwnMessages)
             field(Block.pollInterval, title: UIText.plain(pollIntervalTitle), value: String(monitor.clampedPollInterval), kind: .number)
+        }.blocks
+    }
+
+    /// Settings › Chats' Courier, as HomeSpeaker's own Settings has it: its
+    /// switch, which stays off until a token is saved; while it is on, its
+    /// Announce choice and its networks; its token while it is on or none
+    /// is saved; and where the token comes from.
+    static func courierSettings(_ status: Status) -> [UIBlock] {
+        let monitor = status.config.effectiveChatMonitor
+        let hasToken = status.chat.hasCourierToken
+        let needsTokenFirst = !hasToken && !monitor.courierEnabled
+        return UITree {
+            heading("Courier")
+            toggle(Block.courierEnabled, "Announce Courier messages", isOn: monitor.courierEnabled, enabled: !needsTokenFirst)
+            if monitor.courierEnabled {
+                announcePicker(.courier, status)
+                networkBlocks(.courier, status)
+            }
+            if monitor.courierEnabled || needsTokenFirst {
+                field(Block.courierToken, title: UIText.plain(beeperTokenTitle), value: "",
+                      placeholder: hasToken ? "Paste a new token to replace it" : "Paste the token, then Save Token",
+                      kind: .secret)
+                button(Block.saveCourierToken, UIText.plain(saveTokenButton), style: .prominent)
+                if hasToken {
+                    row(nil, "Courier token saved", icon: "checkmark.circle.fill")
+                    button(Block.clearCourierToken, "Clear Courier Token")
+                } else {
+                    row(nil, "No Courier token saved", icon: "exclamationmark.circle")
+                }
+                if needsTokenFirst { text(UIText.plain(courierTokenFirst), style: .caption) }
+                for line in courierHelpLines { text(UIText.plain(line), style: .caption) }
+            }
         }.blocks
     }
 
@@ -1450,9 +1688,11 @@ public enum Pages {
                 if let via = monitor.activeGoogleChatBackend, !via.isEmpty {
                     text(UIText.plain(readingViaLine(via)), style: .caption)
                 }
-                if let line = ChatMonitorService.beeperReadingLine(
-                    networks: monitor.beeperNetworks, skipped: monitor.beeperSkippedNetworks) {
-                    text(UIText.plain(line), style: .caption)
+                for app in ChatApp.allCases {
+                    let networks = monitor.networks(for: app)
+                    if let line = ChatMonitorService.readingLine(app, networks: networks.reading, skipped: networks.skipped) {
+                        text(UIText.plain(line), style: .caption)
+                    }
                 }
             }
         }.blocks

@@ -133,9 +133,10 @@ public final class NoGoogleAccount: GoogleAccount {
 }
 
 /// The Chats credentials, as far as the tool's Settings needs them:
-/// whether a Slack or Beeper token is saved and whether Google Chat access
-/// was granted, never a value. A token goes in through `saveSlackToken` or
-/// `saveBeeperToken` and nothing reads it back out.
+/// whether a Slack, Beeper or Courier token is saved and whether Google Chat
+/// access was granted, never a value. A token goes in through
+/// `saveSlackToken`, `saveBeeperToken` or `saveCourierToken` and nothing
+/// reads it back out.
 public protocol ChatCredentials: AnyObject {
     var hasSlackToken: Bool { get }
     /// The Google Chat login exists with every Chat scope.
@@ -147,6 +148,10 @@ public protocol ChatCredentials: AnyObject {
     /// Saves `token` as it is given: the caller trims it.
     func saveBeeperToken(_ token: String) throws
     func clearBeeperToken() throws
+    var hasCourierToken: Bool { get }
+    /// Saves `token` as it is given: the caller trims it.
+    func saveCourierToken(_ token: String) throws
+    func clearCourierToken() throws
     /// A Gemini API key, for the announcement rewrite and the Gemini voice.
     var hasGeminiKey: Bool { get }
     /// Saves `key` as it is given: the caller trims it.
@@ -187,6 +192,16 @@ public final class SecretStoreChatCredentials: ChatCredentials {
         try store.update { $0.beeperToken = nil }
     }
 
+    public var hasCourierToken: Bool { !(store.load().courierToken?.isEmpty ?? true) }
+
+    public func saveCourierToken(_ token: String) throws {
+        try store.update { $0.courierToken = token.isEmpty ? nil : token }
+    }
+
+    public func clearCourierToken() throws {
+        try store.update { $0.courierToken = nil }
+    }
+
     public var hasGeminiKey: Bool { !(store.load().geminiApiKey?.isEmpty ?? true) }
 
     public func saveGeminiKey(_ key: String) throws {
@@ -208,6 +223,9 @@ public final class NoChatCredentials: ChatCredentials {
     public var hasBeeperToken: Bool { false }
     public func saveBeeperToken(_ token: String) throws {}
     public func clearBeeperToken() throws {}
+    public var hasCourierToken: Bool { false }
+    public func saveCourierToken(_ token: String) throws {}
+    public func clearCourierToken() throws {}
     public var hasGeminiKey: Bool { false }
     public func saveGeminiKey(_ key: String) throws {}
     public func clearGeminiKey() throws {}

@@ -181,6 +181,9 @@ final class PageIdsTests: XCTestCase {
         full.config.effectivePauseMedia = true
         full.config.effectiveChatMonitor = ChatMonitorConfig(slackEnabled: true, googleChatEnabled: true, beeperEnabled: true)
         full.config.effectiveChatMonitor.beeperMutedNetworks = ["telegram", "saved-mute"]
+        full.config.effectiveChatMonitor.courierEnabled = true
+        full.config.effectiveChatMonitor.courierMutedNetworks = ["signal", "saved-mute"]
+        full.config.effectiveChatMonitor.courierReadAnyway = ["network1" + String(repeating: "k", count: 40)]
         full.account = Pages.Account(isSignedIn: true, email: "me@example.com", hasOAuthClient: true, customOAuthClientId: "id",
                                      hasCustomOAuthClientSecret: true, hasBundledOAuthClient: true)
         full.volume = Volume(speaker: "Kitchen", percent: 40, muted: false, online: true)
@@ -193,8 +196,13 @@ final class PageIdsTests: XCTestCase {
         full.recentBroadcasts = (0..<3).map { BroadcastLogItem(text: "message \($0)", targetName: "Kitchen", source: "Say") }
         full.chat = Pages.Chat(hasSlackToken: true, hasChatAccess: true, gwsPath: "/opt/homebrew/bin/gws", ownerRunning: true,
                                monitor: ChatMonitorStatus(isRunning: true, lastPollDate: Date(), lastError: "it failed",
-                                                          beeperNetworkStates: ChatSlackTests.manyNetworkStates()),
-                               hasBeeperToken: true)
+                                                          beeperNetworkStates: ChatSlackTests.manyNetworkStates(),
+                                                          // Eight: Courier's networks are few. Thirty
+                                                          // more switches beside Beeper's thirty would
+                                                          // pass a page's 200 blocks on an app without
+                                                          // chips; Beeper's carry that test.
+                                                          courierNetworkStates: Array(ChatSlackTests.manyNetworkStates().prefix(8))),
+                               hasBeeperToken: true, hasCourierToken: true)
         full.mediaPauseReport = "Paused Music"
         full.volumeRestoreReport = "Put Kitchen back to 40"
         full.draftClientId = "draft"
@@ -217,6 +225,8 @@ final class PageIdsTests: XCTestCase {
         }
         status.config.defaultTarget = "Living Room"
         status.config.effectiveChatMonitor.beeperMutedNetworks = ["My Network", "WhatsApp", "a:b", long]
+        status.config.effectiveChatMonitor.courierMutedNetworks = ["My Network", "WhatsApp", "a:b", long]
+        status.config.effectiveChatMonitor.courierReadAnyway = ["Slack (acme)", long]
         status.config.effectiveLocalVoice = "Samantha (Enhanced)" + String(repeating: " ", count: 130)
         status.config.quietHoursStart = String(repeating: "9", count: 200)
         status.homes = [HomeStructure(id: "enterprises/p/structures/s 1", name: "Lake House"), HomeStructure(id: "home:2", name: "City Flat")]

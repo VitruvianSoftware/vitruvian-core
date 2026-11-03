@@ -66,6 +66,20 @@ final class ChatSlackTests: XCTestCase {
             beeperCleared += 1
             beeperToken = nil
         }
+        var courierToken: String?
+        var courierSaved: [String] = []
+        var courierCleared = 0
+        var hasCourierToken: Bool { courierToken != nil }
+        func saveCourierToken(_ token: String) throws {
+            if refuses { throw CocoaError(.fileWriteNoPermission) }
+            courierSaved.append(token)
+            courierToken = token
+        }
+        func clearCourierToken() throws {
+            if refuses { throw CocoaError(.fileWriteNoPermission) }
+            courierCleared += 1
+            courierToken = nil
+        }
         var geminiKey: String?
         var geminiSaved: [String] = []
         var geminiCleared = 0
@@ -192,8 +206,10 @@ final class ChatSlackTests: XCTestCase {
         var tree = tool.settingsPage()
         XCTAssertEqual(texts(tree).filter { ["Background Monitoring", "Slack", "Google Chat", "Beeper", "Options"].contains($0) },
                        ["Background Monitoring", "Slack", "Google Chat", "Beeper", "Options"])
-        // Defaults: every source off, so child fields are hidden.
-        XCTAssertEqual(ids(tree), ["section", "slackEnabled", "googleChatEnabled", "beeperEnabled", "muteOwnMessages", "pollInterval"])
+        // Defaults: every source off, so child fields are hidden, except
+        // Courier's token: it stays off until one is saved.
+        XCTAssertEqual(ids(tree), ["section", "slackEnabled", "googleChatEnabled", "beeperEnabled", "courierEnabled", "courierToken",
+                                   "saveCourierToken", "muteOwnMessages", "pollInterval"])
         XCTAssertEqual(toggle(tree, Pages.Block.slackEnabled)?.title.text(for: "en"), "Announce Slack messages")
         XCTAssertEqual(toggle(tree, Pages.Block.slackEnabled)?.value, false)
         XCTAssertEqual(toggle(tree, Pages.Block.googleChatEnabled)?.title.text(for: "en"), "Announce Google Chat messages")
@@ -229,7 +245,7 @@ final class ChatSlackTests: XCTestCase {
         var tree = tool.settingsPage()
         XCTAssertTrue(texts(tree).contains("HomeSpeaker is running · "))
         XCTAssertEqual(icons(tree)["HomeSpeaker is running"], "bolt.fill")
-        XCTAssertTrue(texts(tree).contains { $0.hasPrefix("HomeSpeaker reads new messages in the background while Slack, Google Chat or Beeper is on") })
+        XCTAssertTrue(texts(tree).contains { $0.hasPrefix("HomeSpeaker reads new messages in the background while Slack, Google Chat, Beeper or Courier is on") })
         appRunning = false
         tree = tool.settingsPage()
         XCTAssertTrue(texts(tree).contains("HomeSpeaker is not running · "))

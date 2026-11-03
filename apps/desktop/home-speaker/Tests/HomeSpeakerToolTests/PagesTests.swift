@@ -145,7 +145,8 @@ final class PagesTests: XCTestCase {
         let page = Pages.island(status)
         XCTAssertEqual(ids(page), ["say", "sayClipboard", "broadcasting", "speechLength", "announcementStyle", "quiet", "quietStart", "quietEnd",
                                      "speakers", "volume", "mute", "output.home", "output.local", "output.phone",
-                                     "claudeCodeEnabled", "antigravityEnabled", "opencodeEnabled", "slackEnabled", "googleChatEnabled", "beeperEnabled"])
+                                     "claudeCodeEnabled", "antigravityEnabled", "opencodeEnabled", "slackEnabled", "googleChatEnabled", "beeperEnabled",
+                                     "courierEnabled"])
         XCTAssertFalse(texts(page).contains("HomeSpeaker"), "the island's header names it already")
         XCTAssertTrue(texts(page).contains("Quiet hours until 07:00: what you type still plays"))
         XCTAssertFalse(page.blocks.contains { if case .choice = $0.content { return true } else { return false } },
@@ -170,7 +171,8 @@ final class PagesTests: XCTestCase {
         status.config.defaultTarget = ""
         XCTAssertEqual(ids(Pages.island(status)), ["say", "sayClipboard", "broadcasting", "speechLength", "announcementStyle", "quiet", "quietStart", "quietEnd",
                                                  "speakers", "output.home", "output.local", "output.phone",
-                                                 "claudeCodeEnabled", "antigravityEnabled", "opencodeEnabled", "slackEnabled", "googleChatEnabled", "beeperEnabled"],
+                                                 "claudeCodeEnabled", "antigravityEnabled", "opencodeEnabled", "slackEnabled", "googleChatEnabled", "beeperEnabled",
+                                                 "courierEnabled"],
                        "no speaker, no volume controls")
         XCTAssertTrue(texts(Pages.island(status)).contains("No speaker picked yet"))
     }
@@ -185,7 +187,8 @@ final class PagesTests: XCTestCase {
         let page = Pages.island(status)
         XCTAssertEqual(ids(page), ["say", "sayClipboard", "broadcasting", "speechLength", "announcementStyle", "quiet", "quietStart", "quietEnd",
                                      "speakers", "volume", "mute", "output.home", "output.local", "output.phone",
-                                     "claudeCodeEnabled", "antigravityEnabled", "opencodeEnabled", "slackEnabled", "googleChatEnabled", "beeperEnabled"])
+                                     "claudeCodeEnabled", "antigravityEnabled", "opencodeEnabled", "slackEnabled", "googleChatEnabled", "beeperEnabled",
+                                     "courierEnabled"])
         guard case .choice(let speaker)? = page.blocks.first(where: { $0.id == "speakers" })?.content else { return XCTFail("no menu") }
         XCTAssertEqual(speaker.title?.text(for: "en"), "Speaker")
         XCTAssertEqual(speaker.value, "kitchen")
@@ -361,7 +364,7 @@ final class PagesTests: XCTestCase {
         status.section = .monitor
         // Nothing on, nothing saved, nothing installed.
         XCTAssertEqual(ids(Pages.settings(status)), ["section", "slackEnabled", "googleChatEnabled", "beeperEnabled",
-                                                    "muteOwnMessages", "pollInterval"])
+                                                    "courierEnabled", "courierToken", "saveCourierToken", "muteOwnMessages", "pollInterval"])
         // Tokens saved, Chat granted, gws there.
         status.config.effectiveChatMonitor.slackEnabled = true
         status.config.effectiveChatMonitor.googleChatEnabled = true
@@ -370,7 +373,8 @@ final class PagesTests: XCTestCase {
                                  hasBeeperToken: true)
         XCTAssertEqual(ids(Pages.settings(status)), ["section", "startChatMonitor", "slackEnabled", "slackToken", "saveSlackToken", "clearSlackToken", "googleChatEnabled",
                                                     "chatSource", "disconnectChat", "gwsAccount", "beeperEnabled", "beeperAnnounce",
-                                                    "beeperToken", "saveBeeperToken", "clearBeeperToken", "muteOwnMessages", "pollInterval"])
+                                                    "beeperToken", "saveBeeperToken", "clearBeeperToken", "courierEnabled", "courierToken",
+                                                    "saveCourierToken", "muteOwnMessages", "pollInterval"])
         XCTAssertTrue(texts(Pages.settings(status)).contains("Beeper token saved · "))
         XCTAssertTrue(texts(Pages.settings(status)).contains("Slack token saved · "))
         XCTAssertTrue(texts(Pages.settings(status)).contains("HomeSpeaker is running · "))

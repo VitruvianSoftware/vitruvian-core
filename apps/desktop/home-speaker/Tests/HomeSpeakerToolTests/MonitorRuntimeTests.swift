@@ -234,7 +234,7 @@ final class MonitorRuntimeTests: XCTestCase {
         store.config?.effectiveChatMonitor.slackEnabled = false
         _ = event(tool, Pages.Block.startChatMonitor, .tap)
         XCTAssertEqual(asked, [])
-        XCTAssertEqual(tool.setupNotice, "Turn on Slack, Google Chat or Beeper first")
+        XCTAssertEqual(tool.setupNotice, "Turn on Slack, Google Chat, Beeper or Courier first")
     }
 
     func testAChangeTheAppWritesIsDrawnWithoutATap() throws {

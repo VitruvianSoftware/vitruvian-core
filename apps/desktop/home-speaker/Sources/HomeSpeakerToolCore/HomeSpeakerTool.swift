@@ -276,11 +276,16 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     /// secret is never drawn back into its field.
     public private(set) var draftClientId = ""
     public private(set) var draftClientSecret = ""
-    /// The Slack and Beeper tokens and the Gemini key pasted and not saved
-    /// yet, held until Save Token / Save Key (or Return). Never drawn back
-    /// into their fields.
+    /// The Slack, Beeper and Courier tokens and the Gemini key pasted and
+    /// not saved yet, held until Save Token / Save Key (or Return). Never
+    /// drawn back into their fields.
     public private(set) var draftSlackToken = ""
     public private(set) var draftBeeperToken = ""
+    public private(set) var draftCourierToken = ""
+    /// Courier's island switch was turned on with no token saved: the
+    /// island asks for one, and Courier goes on once it is saved
+    /// (`Pages.Status.courierTokenAsked`).
+    public private(set) var courierTokenAsked = false
     public private(set) var draftGeminiKey = ""
     private var voices: [LocalVoice]?
     /// Asked once each time Settings opens, so a failure is not asked again
@@ -443,7 +448,8 @@ public final class HomeSpeakerTool: @unchecked Sendable {
     /// Beeper's network switches are among them, by their id's shape.
     static let islandSettings: Set<String> = [
         Pages.Block.speechLength, Pages.Block.quietStart, Pages.Block.quietEnd, Pages.Block.beeperAnnounce,
-        Pages.Block.beeperNetworks, Pages.Block.muteOwnMessages, Pages.Block.announcementStyle, Pages.Block.customStylePrompt,
+        Pages.Block.beeperNetworks, Pages.Block.courierAnnounce, Pages.Block.courierNetworks, Pages.Block.muteOwnMessages,
+        Pages.Block.announcementStyle, Pages.Block.customStylePrompt,
     ]
 
     public func islandEvent(_ event: PanelEvent) -> PanelAnswer {
@@ -550,7 +556,21 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                 default: config.effectiveChatMonitor.beeperEnabled = isOn
                 }
                 try save()
-            case let id? where Self.islandSettings.contains(id) || Pages.Block.beeperNetworkKey(id) != nil:
+            case Pages.Block.courierEnabled?:
+                // Courier stays off until a token is saved, as in
+                // HomeSpeaker's own Settings: on with none, the island asks
+                // for it under the switch instead, and saving it turns
+                // Courier on.
+                guard let isOn = event.isOn else { return .keep }
+                reload()
+                if isOn && !parts.chat.hasCourierToken && !config.effectiveChatMonitor.courierEnabled {
+                    courierTokenAsked = true
+                    return .page(Pages.island(status()))
+                }
+                courierTokenAsked = false
+                config.effectiveChatMonitor.courierEnabled = isOn
+                try save()
+            case let id? where Self.islandSettings.contains(id) || Pages.Block.networkKey(id) != nil:
                 // Settings' own controls, saved as Settings saves them; an
                 // open Settings is drawn again so it shows the same value.
                 // A time that does not read is said here, not saved.
@@ -600,6 +620,13 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         do {
             try save(secret, typed)
             notice = setupNotice
+            if secret == .courier, courierTokenAsked, parts.chat.hasCourierToken {
+                // What the switch was turned on for.
+                courierTokenAsked = false
+                reload()
+                config.effectiveChatMonitor.courierEnabled = true
+                try save()
+            }
         } catch {
             notice = Self.words(error)
         }
@@ -642,6 +669,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             draftClientSecret = ""
             draftSlackToken = ""
             draftBeeperToken = ""
+            draftCourierToken = ""
             draftGeminiKey = ""
         }
         openPanels.insert(Self.settingsPanel)
@@ -746,6 +774,25 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             case Pages.Block.clearBeeperToken?:
                 try saveBeeperToken("")
                 tokenSavedElsewhere()
+            case Pages.Block.courierToken?:
+                if event.kind == .change {
+                    draftCourierToken = event.text ?? ""
+                    return .keep
+                }
+                guard event.kind == .submit, let text = event.text else { return .keep }
+                try saveCourierToken(text)
+                tokenSavedElsewhere()
+            case Pages.Block.saveCourierToken?:
+                guard event.kind == .tap else { return .keep }
+                let typed = tokenToSave(.courier)
+                guard !typed.isEmpty else {
+                    throw CommandRefused("paste the Courier token first")
+                }
+                try saveCourierToken(typed)
+                tokenSavedElsewhere()
+            case Pages.Block.clearCourierToken?:
+                try saveCourierToken("")
+                tokenSavedElsewhere()
             case Pages.Block.geminiApiKey?:
                 if event.kind == .change {
                     draftGeminiKey = event.text ?? ""
@@ -791,12 +838,13 @@ public final class HomeSpeakerTool: @unchecked Sendable {
                  Pages.Block.quiet?, Pages.Block.quietStart?, Pages.Block.quietEnd?, Pages.Block.targets?, Pages.Block.speakers?, Pages.Block.voice?,
                  Pages.Block.slackEnabled?, Pages.Block.googleChatEnabled?, Pages.Block.chatSource?, Pages.Block.gwsAccount?,
                  Pages.Block.beeperEnabled?, Pages.Block.beeperAnnounce?, Pages.Block.beeperNetworks?,
+                 Pages.Block.courierEnabled?, Pages.Block.courierAnnounce?, Pages.Block.courierNetworks?,
                  Pages.Block.muteOwnMessages?, Pages.Block.pollInterval?,
                  Pages.Block.claudeCodeEnabled?, Pages.Block.antigravityEnabled?, Pages.Block.opencodeEnabled?,
                  Pages.Block.announcementStyle?, Pages.Block.styleModel?, Pages.Block.localEngine?, Pages.Block.geminiVoice?:
                 guard try saveSetting(event, picked: picked) else { return .keep }
-            case let id? where Pages.Block.beeperNetworkKey(id) != nil:
-                // A Beeper network's switch, saved as the others are.
+            case let id? where Pages.Block.networkKey(id) != nil:
+                // A Beeper or Courier network's switch, saved as the others are.
                 guard try saveSetting(event, picked: picked) else { return .keep }
             case let id?:
                 guard let (action, agent) = Pages.Block.agentAction(id) else { return .keep }
@@ -825,7 +873,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             break
         }
         if action == .start, !config.effectiveChatMonitor.anySourceEnabled {
-            throw CommandRefused("turn on Slack, Google Chat or Beeper first")
+            throw CommandRefused("turn on Slack, Google Chat, Beeper or Courier first")
         }
         parts.controlChatMonitor(action)
         setupNotice = "Asked HomeSpeaker to \(action.rawValue) the chat monitor"
@@ -1015,25 +1063,44 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         case Pages.Block.beeperAnnounce?:
             guard let picked, let mode = ChatMonitorConfig.BeeperAnnounce(rawValue: picked) else { return false }
             config.effectiveChatMonitor.beeperAnnounce = mode
+        case Pages.Block.courierEnabled?:
+            // Off until a token is saved, as in HomeSpeaker's own Settings,
+            // where the switch is greyed: an app may ignore `enabled`.
+            guard let isOn = event.isOn else { return false }
+            guard isOn != config.effectiveChatMonitor.courierEnabled else { return false }
+            if isOn && !parts.chat.hasCourierToken { throw CommandRefused(Pages.courierTokenFirst) }
+            config.effectiveChatMonitor.courierEnabled = isOn
+        case Pages.Block.courierAnnounce?:
+            guard let picked, let mode = ChatMonitorConfig.BeeperAnnounce(rawValue: picked) else { return false }
+            config.effectiveChatMonitor.courierAnnounce = mode
         case Pages.Block.claudeCodeEnabled?, Pages.Block.antigravityEnabled?, Pages.Block.opencodeEnabled?:
             guard let isOn = event.isOn, let id = event.block, let agent = Pages.Block.agentEnabledAgent(id) else { return false }
             config.setAnnounces(agent, isOn)
         case Pages.Block.muteOwnMessages?:
             guard let isOn = event.isOn else { return false }
             config.effectiveChatMonitor.muteOwnMessages = isOn
-        case let id? where Pages.Block.beeperNetworkKey(id) != nil:
+        case let id? where Pages.Block.networkKey(id) != nil:
             // Off mutes the network, on reads it again. Read at the
             // monitor's next poll, without a restart. A switch already
             // where it is put saves nothing, and a network HomeSpeaker
             // reads itself (drawn greyed) is never muted: an app may
-            // ignore a toggle's `enabled`.
-            guard let isOn = event.isOn, let key = Pages.Block.beeperNetworkKey(id) else { return false }
-            if !isOn, beeperNetworksListed()?.contains(where: { $0.key == key && $0.state == .skipped }) == true {
-                return false
+            // ignore a toggle's `enabled`. For Courier, that network's
+            // switch reads it through Courier as well, or leaves it to
+            // HomeSpeaker's reader again (`courierReadAnyway`); the
+            // engine restarts its monitor to sort the accounts again.
+            guard let isOn = event.isOn, let (app, key) = Pages.Block.networkKey(id) else { return false }
+            let skipped = networksListed(app)?.contains(where: { $0.key == key && $0.state == .skipped }) == true
+            let monitor = config.effectiveChatMonitor
+            if app == .courier, skipped || monitor.readsAnyway(app).contains(key) {
+                config.effectiveChatMonitor.setReadAnyway(key, isOn)
+                return config.effectiveChatMonitor.readsAnyway(app) != monitor.readsAnyway(app)
             }
-            let before = config.effectiveChatMonitor.beeperMutedNetworks
-            config.effectiveChatMonitor.setBeeperNetwork(key, reading: isOn)
-            return config.effectiveChatMonitor.beeperMutedNetworks != before
+            if !isOn, skipped { return false }
+            config.effectiveChatMonitor.setNetwork(key, of: app, reading: isOn)
+            return config.effectiveChatMonitor.mutedNetworks(for: app) != monitor.mutedNetworks(for: app)
+        case Pages.Block.courierNetworks?:
+            guard let values = event.values else { return false }
+            return saveDrawnNetworkChips(.courier, values)
         case Pages.Block.beeperNetworks?:
             // The chips of an app that draws them: every network whose chip
             // is off is muted, as its switch would be, and the same values
@@ -1043,15 +1110,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             // one it stops listing keeps its tap. A network HomeSpeaker now
             // reads itself is still never muted, as for a switch.
             guard let values = event.values else { return false }
-            let drawn = drawnChat.flatMap { $0.monitorRunning ? $0.monitor?.beeperNetworkStates : nil }
-            let skippedNow = Set((beeperNetworksListed() ?? []).filter { $0.state == .skipped }.map(\.key))
-            let rows = BeeperNetworkList(listed: drawn, muted: config.effectiveChatMonitor.beeperMutedNetworks).rows
-                .map { row -> BeeperNetworkState in
-                    var row = row
-                    if skippedNow.contains(row.key) { row.state = .skipped }
-                    return row
-                }
-            return Pages.saveBeeperNetworkChips(values, rows: rows, into: &config.effectiveChatMonitor)
+            return saveDrawnNetworkChips(.beeper, values)
         case Pages.Block.pollInterval?:
             guard let text = event.text else { return false }
             guard let seconds = Int(text.trimmingCharacters(in: .whitespaces)),
@@ -1065,12 +1124,26 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         return true
     }
 
-    /// The networks the running monitor last listed, as the pages draw
-    /// them (`Pages.beeperNetworksRead`); nil while it is not running or
-    /// has not read Beeper.
-    private func beeperNetworksListed() -> [BeeperNetworkState]? {
+    /// Saves a change of `app`'s network chips against the networks as
+    /// last drawn, with any HomeSpeaker now reads itself marked skipped.
+    private func saveDrawnNetworkChips(_ app: ChatApp, _ values: [String]) -> Bool {
+        let drawn = drawnChat.flatMap { $0.monitorRunning ? $0.monitor?.networks(for: app).states : nil }
+        let skippedNow = Set((networksListed(app) ?? []).filter { $0.state == .skipped }.map(\.key))
+        let rows = BeeperNetworkList(listed: drawn, muted: config.effectiveChatMonitor.mutedNetworks(for: app)).rows
+            .map { row -> BeeperNetworkState in
+                var row = row
+                if skippedNow.contains(row.key) { row.state = .skipped }
+                return row
+            }
+        return Pages.saveNetworkChips(app, values, rows: rows, into: &config.effectiveChatMonitor)
+    }
+
+    /// The networks the running monitor last listed for `app`, as the
+    /// pages draw them (`Pages.networksRead`); nil while it is not running
+    /// or has not read that app.
+    private func networksListed(_ app: ChatApp) -> [BeeperNetworkState]? {
         let chat = chatStatus()
-        return chat.monitorRunning ? chat.monitor?.beeperNetworkStates : nil
+        return chat.monitorRunning ? chat.monitor?.networks(for: app).states : nil
     }
 
     public func panelClosed(_ panel: String) {
@@ -1666,6 +1739,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         status.section = section
         status.setupBusy = setupBusy
         status.setupNotice = setupNotice
+        status.courierTokenAsked = courierTokenAsked
         status.mediaPauseReport = mediaPauseReport
         status.homes = homes
         status.selectedHomeId = selectedHomeId
@@ -1737,7 +1811,8 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         return Pages.Chat(hasSlackToken: chat.hasSlackToken, hasChatAccess: chat.hasChatAccess,
                           gwsPath: parts.gwsLocation(), ownerRunning: Self.runs(role ?? parts.role()) && parts.ownerRunning(),
                           monitor: ChatMonitorStatusFile(url: parts.monitorStatusURL).read(),
-                          hasBeeperToken: chat.hasBeeperToken, hasGeminiKey: chat.hasGeminiKey)
+                          hasBeeperToken: chat.hasBeeperToken, hasGeminiKey: chat.hasGeminiKey,
+                          hasCourierToken: chat.hasCourierToken)
     }
 
     /// The settings page, after starting what Settings reads by itself:
@@ -1797,12 +1872,13 @@ public final class HomeSpeakerTool: @unchecked Sendable {
 
     /// The secrets a field takes: its field and its save button.
     enum Secret: Equatable {
-        case slack, beeper, gemini
+        case slack, beeper, courier, gemini
 
         init?(block: String) {
             switch block {
             case Pages.Block.slackToken, Pages.Block.saveSlackToken: self = .slack
             case Pages.Block.beeperToken, Pages.Block.saveBeeperToken: self = .beeper
+            case Pages.Block.courierToken, Pages.Block.saveCourierToken: self = .courier
             case Pages.Block.geminiApiKey, Pages.Block.saveGeminiApiKey: self = .gemini
             default: return nil
             }
@@ -1812,6 +1888,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             switch self {
             case .slack: return Pages.Block.slackToken
             case .beeper: return Pages.Block.beeperToken
+            case .courier: return Pages.Block.courierToken
             case .gemini: return Pages.Block.geminiApiKey
             }
         }
@@ -1821,6 +1898,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             switch self {
             case .slack: return "Slack token"
             case .beeper: return "Beeper token"
+            case .courier: return "Courier token"
             case .gemini: return "Gemini API key"
             }
         }
@@ -1830,6 +1908,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         switch secret {
         case .slack: return draftSlackToken
         case .beeper: return draftBeeperToken
+        case .courier: return draftCourierToken
         case .gemini: return draftGeminiKey
         }
     }
@@ -1838,6 +1917,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         switch secret {
         case .slack: draftSlackToken = text
         case .beeper: draftBeeperToken = text
+        case .courier: draftCourierToken = text
         case .gemini: draftGeminiKey = text
         }
     }
@@ -1846,6 +1926,7 @@ public final class HomeSpeakerTool: @unchecked Sendable {
         switch secret {
         case .slack: try saveSlackToken(typed)
         case .beeper: try saveBeeperToken(typed)
+        case .courier: try saveCourierToken(typed)
         case .gemini: try saveGeminiKey(typed)
         }
     }
@@ -1884,6 +1965,29 @@ public final class HomeSpeakerTool: @unchecked Sendable {
             try parts.chat.saveBeeperToken(token)
             setupNotice = "Beeper token saved"
             draftBeeperToken = ""
+        }
+        parts.credentialsChanged()
+    }
+
+    /// Saves the Courier token typed, trimmed; nothing typed clears it, and
+    /// switches Courier off: it stays off until a token is saved, as in
+    /// HomeSpeaker's own Settings. To the secrets file only, and the
+    /// running monitor is told, so it starts or restarts with it.
+    private func saveCourierToken(_ typed: String) throws {
+        let token = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+        if token.isEmpty {
+            try parts.chat.clearCourierToken()
+            setupNotice = "Courier token cleared"
+            courierTokenAsked = false
+            reload()
+            if config.effectiveChatMonitor.courierEnabled {
+                config.effectiveChatMonitor.courierEnabled = false
+                try save()
+            }
+        } else {
+            try parts.chat.saveCourierToken(token)
+            setupNotice = "Courier token saved"
+            draftCourierToken = ""
         }
         parts.credentialsChanged()
     }
