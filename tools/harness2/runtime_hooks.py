@@ -90,6 +90,49 @@ _REDIRECT = re.compile(r"(?:\d|&)?>>?\|?\s*(['\"]?)([^\s;&|'\"]+)\1")
 _USER_ONLY = re.compile(
     r"\bharness2\b[^;&|\n]*?(?:\s(?:apply|unlock)\b|\s--apply\b|\s--reseed\b)"
 )
+# The harness's own files. The agent may read them; changing them is what
+# `harness2 apply` (run by the user) is for.
+PROTECTED_MARKERS = (
+    ".gemini/config/plugins/harness2",
+    ".gemini/config/plugins/hookify",
+    ".gemini/antigravity/hookify-rules.json",
+    ".gemini/antigravity/harness2/",
+)
+
+
+def _protected(path: str) -> bool:
+    norm = os.path.expanduser(path.replace("\\", "/"))
+    return any(m in norm for m in PROTECTED_MARKERS)
+
+
+def _command_writes_protected(cmd: str) -> bool:
+    home = os.path.expanduser("~")
+    expanded = (
+        cmd.replace("~/", home + "/")
+        .replace("$HOME/", home + "/")
+        .replace("${HOME}/", home + "/")
+    )
+    for segment in re.split(r"&&|\|\||;|\|", expanded):
+        if not any(m in segment for m in PROTECTED_MARKERS):
+            continue
+        if any(_protected(m.group(2)) for m in _REDIRECT.finditer(segment)):
+            return True
+        rest = _REDIRECT.sub(" ", segment)
+        if not any(m in rest for m in PROTECTED_MARKERS):
+            continue
+        if _COPY_CMD.match(rest) or re.match(r"^\s*ln\b", rest):
+            try:
+                parts = [w for w in shlex.split(rest) if not w.startswith("-")]
+            except ValueError:
+                parts = [w for w in rest.split() if not w.startswith("-")]
+            if parts and _protected(parts[-1]):
+                return True  # copying ONTO a harness file; copying one out is a read
+            continue
+        if _WRITE_CMD.search(rest) or re.match(r"^\s*mv\b", rest):
+            return True
+    return False
+
+
 _COPY_CMD = re.compile(r"^\s*(?:cp|ditto|rsync|scp)\b")
 
 DEFAULT_GUARDRAILS = {
@@ -359,6 +402,13 @@ def _command_writes_lock(cmd: str, lock: str) -> bool:
     return False
 
 
+PROTECTED_REASON = (
+    "Harness² Guardrail: the harness's own files (the harness2 and hookify plugins, hookify-rules.json, "
+    "~/.gemini/antigravity/harness2/) are changed only by `harness2 apply`, which the user runs after "
+    "reading the diff. Propose the change with `harness2 distill` or describe it to the user."
+)
+
+
 def _deny(reason: str, conv: str, tool: str, logged: Optional[str] = None) -> dict:
     """Refuses a call. `logged` replaces the reason in events.jsonl when the
     reason quotes tool output, which may hold secrets."""
@@ -389,6 +439,14 @@ def pre_tool_use(p: dict) -> dict:
     conv = str(p.get("conversationId") or "default")
     st = load_state(conv)
 
+    if name in WRITE_TOOLS:
+        for k in PATH_KEYS:
+            if _protected(str(args.get(k, ""))):
+                return _deny(PROTECTED_REASON, conv, name)
+    if name in SHELL_TOOLS:
+        cmd = next((str(args[k]) for k in COMMAND_KEYS if k in args), "")
+        if _command_writes_protected(cmd):
+            return _deny(PROTECTED_REASON, conv, name)
     if name in SHELL_TOOLS:
         cmd = next((str(args[k]) for k in COMMAND_KEYS if k in args), "")
         if _USER_ONLY.search(cmd):

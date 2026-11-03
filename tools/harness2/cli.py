@@ -137,16 +137,18 @@ _ENV_KEEP = (
     "TERM",
 )
 _ENV_KEEP_PREFIX = ("ANTHROPIC_", "CLAUDE_CODE_", "CLAUDE_CONFIG_DIR")
-# Tools a session may use, each scoped by claude_command(): read anywhere it
-# is given, edit only inside its own folder. No shell, web, subagents or MCP.
+# The ONLY tools a session has (--tools); permission rules alone are not enough,
+# because tools such as RemoteTrigger or CronCreate need no permission. Each is
+# then path-scoped by claude_command(): read where it is given, edit only inside
+# its own folder. No shell, web, subagents, scheduling or MCP.
+SESSION_TOOLS = ("Read", "Edit", "Write", "Glob", "Grep")
 SESSION_DENIED = (
     "Bash",
     "WebFetch",
     "WebSearch",
+    "Agent",
     "Task",
     "NotebookEdit",
-    "KillShell",
-    "BashOutput",
     "mcp__*",
 )
 
@@ -176,7 +178,7 @@ def claude_command(
     hooks) are not loaded; no MCP server is configured."""
     allowed: List[str] = []
     for d in _abs_variants(str(cwd)):
-        for tool in ("Read", "Glob", "Grep", "LS", "Edit", "Write", "MultiEdit"):
+        for tool in ("Read", "Glob", "Grep", "Edit"):
             allowed.append(f"{tool}(/{d}/**)")
     for rd in read_dirs or []:
         for d in _abs_variants(rd):
@@ -184,7 +186,6 @@ def claude_command(
                 f"Read(/{d}/**)",
                 f"Glob(/{d}/**)",
                 f"Grep(/{d}/**)",
-                f"LS(/{d}/**)",
             ]
     return [
         exe,
@@ -193,6 +194,8 @@ def claude_command(
         "-p",
         "--output-format",
         "text",
+        "--tools",
+        ",".join(SESSION_TOOLS),
         "--permission-mode",
         "default",
         "--setting-sources",
@@ -425,11 +428,34 @@ def distill(args) -> int:
     else:
         print("  reflector: NO_ENTRY")
     if args.apply:
+        if not confirm_apply(run, getattr(args, "yes", False)):
+            print(f"\n  not applied. Later: harness2 apply {run}")
+            return 0
         return apply_run(run)
     print(
         f"\n  proposal only. Review {run / 'harness.diff'}, then: harness2 apply {run}"
     )
     return 0
+
+
+def confirm_apply(run: Path, yes: bool) -> bool:
+    """`--apply` shows the diff and asks; without a terminal it needs --yes."""
+    diff = (
+        (run / "harness.diff").read_text(encoding="utf-8")
+        if (run / "harness.diff").is_file()
+        else ""
+    )
+    if not diff.strip():
+        return True
+    print("\n" + diff)
+    if yes:
+        return True
+    if not sys.stdin.isatty():
+        print("  --apply without a terminal needs --yes (after reading the diff above)")
+        return False
+    return input(
+        "  Apply these changes to the live harness? [y/N] "
+    ).strip().lower() in ("y", "yes")
 
 
 def _inside(path: Path, root: Path) -> bool:
@@ -591,7 +617,7 @@ def probe(args) -> int:
         f"  changes ({len(changed)}): "
         + ("\n    " + "\n    ".join(changed) if changed else "none (KEEP_BASE)")
     )
-    if args.apply and changed:
+    if args.apply and changed and confirm_apply(run, args.yes):
         return apply_run(run)
     if changed:
         print(f"  proposal only: harness2 apply {run}")
@@ -804,7 +830,14 @@ def main(argv: Optional[List[str]] = None) -> int:
             p.add_argument(
                 "--workspace", help="the folder the task runs in (default: cwd)"
             )
-        p.add_argument("--apply", action="store_true")
+        p.add_argument(
+            "--apply", action="store_true", help="show the diff and ask, then adopt it"
+        )
+        p.add_argument(
+            "--yes",
+            action="store_true",
+            help="with --apply: do not ask (you read the diff)",
+        )
         p.add_argument(
             "--dry-run",
             action="store_true",

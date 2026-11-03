@@ -53,15 +53,20 @@ and takes several minutes.
 A conversation's transcript includes tool output, web pages and file contents, so it can carry
 instructions someone planted. Distill is built on that assumption:
 
-- **Each Claude session is confined.** It can read and edit files only inside its own run
-  folder (plus read-only access to `--workspace` for `probe`). No shell, no web, no subagents,
-  no MCP servers, no user settings or plugins, and an environment stripped of tokens. This was
-  checked live: writes outside the folder, reads of other files, and Bash were all refused.
+- **Each Claude session is confined.** It gets exactly five tools (`--tools
+  Read,Edit,Write,Glob,Grep`), may edit only inside its own run folder and read only there
+  (plus `--workspace` for `probe`, read-only). No shell, web, subagents, scheduling, remote
+  triggers or MCP servers; no user settings or plugins; tokens stripped from the environment.
+  Checked live: the session lists only those five tools, and writes outside its folder and
+  reads of other files are refused.
 - **Hook rules can only ask or refuse.** The validator rejects any hookify rule not named
   `harness2-*`, any action other than warn/block, and any extra key (no argument rewriting).
 - **A person adopts changes.** `distill` only proposes. Read `harness.diff`, then run
   `harness2 apply`. The hooks refuse the agent's own attempts to run `harness2 apply`,
-  `--apply`, `--reseed` or `unlock`. (`distill --apply` exists for you to use by hand.)
+  `--apply`, `--reseed` or `unlock`, and any edit of the harness's own files (both plugins,
+  `hookify-rules.json`, `~/.gemini/antigravity/harness2/`). `distill --apply` is for you to
+  use by hand: it prints the diff and asks before adopting (`--yes` skips the question).
+- **Install never merges hook rules from a harness that fails validation.**
 - **Adoption is all-or-nothing.** The new plugin is assembled and validated beside the live one
   and swapped in with two renames; the previous plugin is kept whole in the run folder, and any
   failure puts it back exactly.

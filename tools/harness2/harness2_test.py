@@ -1025,7 +1025,9 @@ class DistillTest(Env):
     def test_distill_apply_end_to_end(self):
         self.install()
         self.stub()
-        self.assertEqual(cli.main(["distill", str(self.transcript), "--apply"]), 0)
+        self.assertEqual(
+            cli.main(["distill", str(self.transcript), "--apply", "--yes"]), 0
+        )
         plugin = self.tmp / "config/plugins/harness2"
         self.assertTrue((plugin / "skills/png-measure/scripts/measure.py").is_file())
         self.assertIn("png-measure", (plugin / "rules/AGENTS.md").read_text())
@@ -1110,7 +1112,7 @@ class ReviewFindingsTest(Env):
         allowed = cmd[cmd.index("--allowedTools") + 1 : cmd.index("--disallowedTools")]
         sess = os.path.realpath(self.tmp / "sess")
         ws = os.path.realpath(self.tmp / "ws")
-        self.assertIn(f"Write(/{sess}/**)", allowed)
+        self.assertIn(f"Edit(/{sess}/**)", allowed)  # Edit rules govern Write too
         self.assertFalse(
             [
                 a
@@ -1321,6 +1323,86 @@ class ReviewFindingsTest(Env):
             sorted(str(p.relative_to(plugin)) for p in plugin.rglob("*")), snapshot
         )
         self.assertFalse((plugin / "scripts/added.py").exists())
+
+    def test_session_has_only_five_tools(self):
+        cmd = cli.claude_command("claude", "opus", self.tmp / "s")
+        self.assertEqual(cmd[cmd.index("--tools") + 1], "Read,Edit,Write,Glob,Grep")
+
+    def test_agent_cannot_edit_the_harness_directly(self):
+        home = os.path.expanduser("~")
+
+        def d(name, **a):
+            return runtime_hooks.run(
+                "pre-tool-use",
+                json.dumps(
+                    {"conversationId": "p", "toolCall": {"name": name, "args": a}}
+                ),
+            )["decision"]
+
+        self.assertEqual(
+            d(
+                "write_file",
+                Path=f"{home}/.gemini/config/plugins/harness2/rules/AGENTS.md",
+            ),
+            "deny",
+        )
+        self.assertEqual(
+            d("replace_file_content", Path="~/.gemini/antigravity/hookify-rules.json"),
+            "deny",
+        )
+        self.assertEqual(
+            d(
+                "write_file",
+                Path=f"{home}/.gemini/antigravity/harness2/library/index.json",
+            ),
+            "deny",
+        )
+        self.assertEqual(d("write_file", Path="/tmp/notes.md"), "allow")
+        for c in (
+            "echo x >> ~/.gemini/config/plugins/harness2/rules/harness2-memory.md",
+            "cp /tmp/r.json ~/.gemini/antigravity/hookify-rules.json",
+            "rm -rf $HOME/.gemini/antigravity/harness2/library",
+        ):
+            self.assertEqual(d("run_command", CommandLine=c), "deny", c)
+        for c in (
+            "cat ~/.gemini/config/plugins/harness2/rules/AGENTS.md 2>/dev/null",
+            "ls ~/.gemini/antigravity/harness2/ && rm /tmp/scratch.txt",
+            "cp ~/.gemini/antigravity/hookify-rules.json /tmp/copy.json",
+            "harness2 status",
+        ):
+            self.assertEqual(d("run_command", CommandLine=c), "allow", c)
+
+    def test_install_does_not_merge_rules_from_an_invalid_tree(self):
+        self.install()
+        plugin = self.tmp / "config/plugins/harness2"
+        (plugin / "hookify-rules.json").write_text(
+            json.dumps(
+                {
+                    "rules": [
+                        {
+                            "name": "harness2-bad",
+                            "action": "overwrite",
+                            "overwrite": {"field": "CommandLine"},
+                        }
+                    ]
+                }
+            )
+        )
+        self.assertEqual(self.install(), 1)
+        names = [
+            r["name"]
+            for r in json.loads(
+                (self.tmp / "antigravity/hookify-rules.json").read_text()
+            )["rules"]
+        ]
+        self.assertNotIn("harness2-bad", names)
+
+    def test_apply_flag_needs_confirmation_without_a_terminal(self):
+        run = self.tmp / "run"
+        run.mkdir()
+        (run / "harness.diff").write_text("--- a\n+++ b\n+x\n")
+        self.assertFalse(cli.confirm_apply(run, yes=False))  # tests have no tty
+        self.assertTrue(cli.confirm_apply(run, yes=True))
 
     def test_hook_log_is_private(self):
         self.install()

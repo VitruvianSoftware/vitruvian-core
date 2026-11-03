@@ -330,7 +330,12 @@ def install(
     plugin = install_plugin(reseed=reseed, log=log)
     hk = install_hookify(hookify_source(hookify_src), log=log)
     enable_plugins(["harness2"] + (["hookify"] if hk else []), log=log)
-    merge_hookify_rules(plugin, log=log)
+    rule_problems = validator.validate_tree(plugin)
+    if rule_problems:
+        # Never push rules from an invalid tree into the shared hookify file.
+        log("hookify rules: NOT merged, the installed harness fails validation (below)")
+    else:
+        merge_hookify_rules(plugin, log=log)
     install_wrapper(log=log)
     seed_library(log=log)
     for d in ("state", "runs"):
