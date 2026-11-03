@@ -28,6 +28,10 @@ rust_library(
     crate_name = "vitruvian_remote_macagent_metrics",
     crate_root = "src/lib.rs",
     edition = "2021",
+    # Like every other crate in this app: the daemon ships from the default
+    # (fastbuild) mode, so without this the parsers it runs on every sampler
+    # tick ship unoptimised.
+    rustc_flags = ["-Copt-level=3"],
     visibility = ["//apps/mobile/android-remote:__subpackages__"],
 )
 
