@@ -9,7 +9,7 @@ lead: >-
   Homebrew tap, download mobile companion APKs, or grab pre-compiled hardware firmware bundles.
 description: >-
   Download packaged apps and Homebrew formulae from Vitruvian Software: NexusAgent,
-  Vitruvian Desktop, HomeSpeaker, Vitruvian Remote, devx, homelab, and ESP32-S3 firmware.
+  Vitruvian Desktop, HomeSpeaker, Courier, Vitruvian Remote, devx, homelab, and ESP32-S3 firmware.
 ---
 
 {%- include wayfinder.html current="downloads" -%}
@@ -23,9 +23,12 @@ description: >-
         <h2>The Vitruvian Software Tap</h2>
         <p>{{ tap.summary }}</p>
         <div class="install-block" style="margin-top: var(--space-4);">
-          <span class="install-label">One-command setup</span>
-          <code class="install">{{ tap.command }}</code>
+          <span class="install-label">One-time setup: add the tap, then trust it</span>
+          {%- for command in tap.commands -%}
+          <code class="install">{{ command }}</code>
+          {%- endfor -%}
         </div>
+        <p class="install-note">{{ tap.trust_note }}</p>
       </div>
       <div class="category-jump">
         <a class="btn" href="#desktop">Desktop Apps</a>

@@ -6,10 +6,20 @@
 tap:
   name: VitruvianSoftware/tap
   repo: https://github.com/VitruvianSoftware/homebrew-tap
-  command: brew tap VitruvianSoftware/tap
+  # Homebrew 7 refuses to load anything from a third-party tap until the user
+  # trusts it, so the setup is two commands, and every install line below uses
+  # the full vitruviansoftware/tap/<name>. //tools/conformance:check holds
+  # this file (and every other published install line) to that.
+  commands:
+    - brew tap vitruviansoftware/tap
+    - brew trust vitruviansoftware/tap
   summary: >-
     The official Homebrew tap for Vitruvian Software applications and command-line tools.
     Formulae and casks are built, verified, and updated with every release.
+  trust_note: >-
+    Homebrew 7 refuses to load apps and tools from a tap you have not trusted, and
+    brew upgrade skips that tap without saying so. If an install stopped updating,
+    run brew trust vitruviansoftware/tap, then upgrade it again.
 
 categories:
   - id: desktop
@@ -24,7 +34,7 @@ categories:
           Gemini Antigravity, and local LLMs to your phone via Telegram, with
           native toast notifications and streaming output.
         platforms: ["macOS Universal", "Apple Silicon", "Intel"]
-        brew_cask: VitruvianSoftware/tap/nexus-agent
+        brew_cask: vitruviansoftware/tap/nexus-agent
         downloads:
           - label: Universal DMG
             url: https://github.com/VitruvianSoftware/nexus-agent/releases/download/v1.31.1/NexusAgent-1.31.1-universal.dmg
@@ -54,7 +64,7 @@ categories:
           The flagship desktop control hub for Vitruvian. Orchestrates AI coding sessions,
           multi-agent workspaces, live status tracking, and terminal integration from the macOS menu bar.
         platforms: ["macOS Universal", "Apple Silicon", "Intel"]
-        brew_cask: VitruvianSoftware/tap/vitruvian
+        brew_cask: vitruviansoftware/tap/vitruvian
         downloads:
           - label: Universal DMG
             url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/vitruvian-v3.86.3/Vitruvian-3.86.3-universal.dmg
@@ -84,7 +94,7 @@ categories:
           A macOS menu bar app that announces agent summaries, chat notifications, and spoken
           briefings aloud on Google Home, Nest speakers, or local system speech synthesis with quiet hours.
         platforms: ["macOS Universal", "Apple Silicon", "Intel"]
-        brew_cask: VitruvianSoftware/tap/home-speaker
+        brew_cask: vitruviansoftware/tap/home-speaker
         downloads:
           - label: Universal DMG
             url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/home-speaker-v1.36.1/HomeSpeaker-1.36.1-universal.dmg
@@ -106,6 +116,34 @@ categories:
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/home-speaker
         extensions_url: /ai/#dev.vitruvian.homespeaker
         extensions_label: HomeSpeaker Extension
+
+      - id: courier
+        name: Courier
+        version: "0.3.2"
+        summary: >-
+          Every chat app in one inbox, on this Mac. A native macOS app that brings
+          your messaging accounts into one window, signed with Developer ID and notarized.
+        platforms: ["macOS Universal", "Apple Silicon", "Intel"]
+        brew_cask: vitruviansoftware/tap/courier
+        downloads:
+          - label: Universal DMG
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/courier-v0.3.2/Courier-0.3.2-universal.dmg
+            size: 133.5 MB
+            arch: Universal
+          - label: Apple Silicon DMG
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/courier-v0.3.2/Courier-0.3.2-arm64.dmg
+            size: 64.9 MB
+            arch: arm64
+          - label: Intel x86_64 DMG
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/courier-v0.3.2/Courier-0.3.2-x86_64.dmg
+            size: 69.5 MB
+            arch: x86_64
+          - label: Universal ZIP
+            url: https://github.com/VitruvianSoftware/vitruvian-core/releases/download/courier-v0.3.2/Courier-0.3.2-universal.zip
+            size: 134.1 MB
+            arch: Universal
+        releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases?q=courier
+        source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/desktop/courier
 
   - id: mobile
     title: Mobile & Companion Apps
@@ -138,7 +176,7 @@ categories:
           A local development orchestrator. One CLI provisions container VMs, ephemeral
           databases and cloud emulators, local K3s clusters, and Cloudflare tunnel ingress in dependency order.
         platforms: ["macOS (arm64, amd64)", "Linux (arm64, amd64)"]
-        brew_formula: VitruvianSoftware/tap/devx
+        brew_formula: vitruviansoftware/tap/devx
         releases_url: https://github.com/VitruvianSoftware/devx/releases
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/cli/devx
         extensions_url: /ai/#eco-codex-opencode
@@ -151,7 +189,7 @@ categories:
           Declarative multi-node K3s clusters on macOS. Describe nodes in one file and homelab
           provisions Lima VZ virtual machines, networking, and the cluster to match.
         platforms: ["macOS (Apple Silicon, Intel)"]
-        brew_formula: VitruvianSoftware/tap/homelab
+        brew_formula: vitruviansoftware/tap/homelab
         releases_url: https://github.com/VitruvianSoftware/homelab/releases
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/apps/cli/homelab
 
@@ -162,7 +200,7 @@ categories:
           Low-level USB/HID hardware configuration and battery telemetry CLI for GravaStar
           wireless gaming mice on macOS.
         platforms: ["macOS (Apple Silicon, Intel)"]
-        brew_formula: VitruvianSoftware/tap/gravastar-mouse
+        brew_formula: vitruviansoftware/tap/gravastar-mouse
         releases_url: https://github.com/VitruvianSoftware/vitruvian-core/releases/tag/gravastar-mouse-v0.1.2
         source_url: https://github.com/VitruvianSoftware/vitruvian-core/tree/main/packages/peripherals/Sources/gravastar-mouse
 

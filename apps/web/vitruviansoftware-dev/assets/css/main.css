@@ -1760,6 +1760,12 @@ img.is-expandable:focus-visible {
   color: var(--color-text-dim);
 }
 
+.install-note {
+  margin-top: var(--space-3);
+  font-size: 13px;
+  color: var(--color-text-dim);
+}
+
 .download-list {
   display: flex;
   flex-direction: column;

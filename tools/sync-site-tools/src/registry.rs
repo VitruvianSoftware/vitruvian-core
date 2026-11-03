@@ -750,7 +750,7 @@ fn additional() -> Vec<Ext> {
             hooks: vec![],
             rules: vec![],
             keywords: list_of_str(&["devx", "k3s", "lima", "skills"]),
-            needs: s("devx installed (`brew install VitruvianSoftware/tap/devx`)"),
+            needs: s("devx installed (`brew tap vitruviansoftware/tap && brew trust vitruviansoftware/tap && brew install vitruviansoftware/tap/devx`)"),
             note: s(""),
             installs: vec![
                 install("Any agent", "codex-opencode", "Add the skills to your project (Antigravity, Claude Code, Codex, OpenCode)", "devx agent init"),

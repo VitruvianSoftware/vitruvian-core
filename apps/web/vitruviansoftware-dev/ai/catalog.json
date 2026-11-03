@@ -709,7 +709,7 @@
       ],
       "hooks": [],
       "rules": [],
-      "needs": "devx installed (`brew install VitruvianSoftware/tap/devx`)",
+      "needs": "devx installed (`brew tap vitruviansoftware/tap && brew trust vitruviansoftware/tap && brew install vitruviansoftware/tap/devx`)",
       "note": "",
       "installs": [
         {

@@ -439,7 +439,7 @@ extensions:
     repo: "https://github.com/VitruvianSoftware/devx"
     mirror_repo: "https://github.com/VitruvianSoftware/devx"
     source: "apps/cli/devx"
-    needs: "devx installed (`brew install VitruvianSoftware/tap/devx`)"
+    needs: "devx installed (`brew tap vitruviansoftware/tap && brew trust vitruviansoftware/tap && brew install vitruviansoftware/tap/devx`)"
     ecosystems:
       - "antigravity"
       - "claude-code"

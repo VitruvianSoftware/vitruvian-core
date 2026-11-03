@@ -43,11 +43,13 @@ description: >-
         <div class="card-head">
           <h3>Homebrew</h3>
         </div>
-        <p>Builds the command from source on your Mac, so macOS runs it without asking.</p>
+        <p>Builds the command from source on your Mac, so macOS runs it without asking. Homebrew 7 loads nothing from a tap you have not trusted, so trust ours once first.</p>
         <div class="card-foot">
           <div class="install-block">
             <span class="install-label">Homebrew Formula</span>
-            <code class="install">brew install VitruvianSoftware/tap/vitruvian-tool</code>
+            <code class="install">brew tap vitruviansoftware/tap</code>
+            <code class="install">brew trust vitruviansoftware/tap</code>
+            <code class="install">brew install vitruviansoftware/tap/vitruvian-tool</code>
           </div>
         </div>
       </article>

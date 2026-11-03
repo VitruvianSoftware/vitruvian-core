@@ -21,6 +21,7 @@
 //! All conformance check functions, ported from check.sh.
 
 mod app;
+mod brew;
 mod catalog;
 mod ci;
 mod delivery;
@@ -90,6 +91,7 @@ pub fn run_all(ctx: &Context) {
     governance::check_root_directories(ctx);
     governance::check_preview_governance(ctx);
     governance::check_lab_hostnames_served(ctx);
+    brew::check_brew_tap_instructions(ctx);
 
     security::check_checkout_credentials(ctx);
     security::check_dependabot_action_coverage(ctx);
