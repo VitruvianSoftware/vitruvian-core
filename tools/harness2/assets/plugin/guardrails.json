@@ -1,0 +1,15 @@
+{
+  "generative_image_tools": [
+    {
+      "tool": "invoke_subagent",
+      "field": "TypeName",
+      "pattern": "image-generator|image_generator|imagen|nano-?banana"
+    },
+    {
+      "tool": "generate_image|image_generation|create_image|edit_image",
+      "field": "",
+      "pattern": ""
+    }
+  ],
+  "stop_nag_limit": 2
+}
