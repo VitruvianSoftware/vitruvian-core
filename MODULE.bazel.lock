@@ -594,7 +594,7 @@
   "moduleExtensions": {
     "//tools/android_ndk:extension.bzl%hermetic_android_ndk": {
       "os:linux,arch:amd64": {
-        "bzlTransitiveDigest": "F60DL1S9H5tv4n7iTTyzh1USQ0+lCqLQTaaLzqhr27g=",
+        "bzlTransitiveDigest": "GX325WK+ye5QM2t5ByFUvw9Ut18SoPU9abpDTqp7ptk=",
         "usagesDigest": "KeLEDRecmj4rqodyUvxuQBtO7iKbS57iA/tEaErm56Q=",
         "recordedInputs": [
           "REPO_MAPPING:,rules_android_ndk rules_android_ndk+"
