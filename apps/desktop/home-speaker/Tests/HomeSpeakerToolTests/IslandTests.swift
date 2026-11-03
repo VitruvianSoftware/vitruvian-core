@@ -1110,7 +1110,7 @@ final class IslandTests: XCTestCase {
         let status = ready()
         XCTAssertNil(toggle(Pages.island(status), Pages.Block.muteOwnMessages), "no chat app on: nothing to skip")
 
-        for source in [\ChatMonitorConfig.slackEnabled, \.googleChatEnabled, \.beeperEnabled] {
+        for source in [\ChatMonitorConfig.slackEnabled, \.googleChatEnabled, \.beeperEnabled, \.courierEnabled] {
             var on = status
             on.config.effectiveChatMonitor[keyPath: source] = true
             let page = Pages.island(on)
@@ -1121,13 +1121,19 @@ final class IslandTests: XCTestCase {
             let skipAt = try XCTUnwrap(blocks.firstIndex { $0.id == Pages.Block.muteOwnMessages })
             let chatApps: Set<String> = [Pages.Block.slackEnabled, Pages.Block.slackToken, Pages.Block.saveSlackToken,
                                          Pages.Block.googleChatEnabled, Pages.Block.beeperEnabled, Pages.Block.beeperToken,
-                                         Pages.Block.saveBeeperToken, Pages.Block.beeperAnnounce]
+                                         Pages.Block.saveBeeperToken, Pages.Block.beeperAnnounce, Pages.Block.courierEnabled,
+                                         Pages.Block.courierToken, Pages.Block.saveCourierToken, Pages.Block.courierAnnounce]
             let lastChatApp = try XCTUnwrap(blocks.lastIndex { $0.id.map(chatApps.contains) ?? false })
-            // With Beeper on and its networks not read yet, its Networks
-            // caption and where they will show follow Announce.
-            let networks = source == \ChatMonitorConfig.beeperEnabled ? 2 : 0
+            // With Beeper or Courier on and its networks not read yet, its
+            // Networks caption and where they will show follow Announce.
+            if source == \ChatMonitorConfig.beeperEnabled {
+                let announceAt = try XCTUnwrap(blocks.firstIndex { $0.id == Pages.Block.beeperAnnounce })
+                XCTAssertEqual(blocks[(announceAt + 1)...].prefix(2).map { blockText($0) }, ["Networks", Pages.beeperNetworksLater])
+            }
+            let networks = source == \ChatMonitorConfig.courierEnabled ? 2 : 0
             if networks > 0 {
-                XCTAssertEqual(blocks[(lastChatApp + 1)...].prefix(2).map { blockText($0) }, ["Networks", Pages.beeperNetworksLater])
+                XCTAssertEqual(blocks[(lastChatApp + 1)...].prefix(2).map { blockText($0) },
+                               ["Networks", "Other networks show here once Courier is being read."])
             }
             XCTAssertEqual(skipAt, lastChatApp + networks + 1, "after the last chat-app block")
         }
@@ -1257,8 +1263,9 @@ final class IslandTests: XCTestCase {
         XCTAssertEqual(telegram.title.text(for: "en"), "Telegram")
         XCTAssertFalse(telegram.value)
         XCTAssertFalse(texts(page).contains(Pages.beeperNetworksLater), "the monitor has read Beeper")
-        // Skip messages I sent still follows the chat apps, networks included.
-        XCTAssertEqual(blocks.firstIndex { $0.id == Pages.Block.muteOwnMessages }, announceAt + 5)
+        // Skip messages I sent still follows the chat apps, networks and
+        // Courier's switch included.
+        XCTAssertEqual(blocks.firstIndex { $0.id == Pages.Block.muteOwnMessages }, announceAt + 6)
     }
 
     /// The switch follows what is saved, not the last poll: a mute just
@@ -1371,7 +1378,7 @@ final class IslandTests: XCTestCase {
         XCTAssertFalse(texts(page).contains("Networks"), "the block's title is the caption")
         XCTAssertEqual(networkSwitches(page), [], "no switch each")
         XCTAssertFalse(texts(page).contains(Pages.beeperNetworksLater), "the monitor has read Beeper")
-        XCTAssertEqual(blocks.firstIndex { $0.id == Pages.Block.muteOwnMessages }, announceAt + 2)
+        XCTAssertEqual(blocks.firstIndex { $0.id == Pages.Block.muteOwnMessages }, announceAt + 3, "after Courier's switch")
 
         // Not read yet: the saved mutes as chips, then where the others will show.
         var unread = beeperOn(nil, muted: ["telegram"])

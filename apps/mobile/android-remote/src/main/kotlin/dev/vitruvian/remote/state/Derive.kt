@@ -561,6 +561,83 @@ public object Derive {
         else -> "Direct & mentions"
       }
 
+  /** What a chat-app network's switch does on the phone. */
+  public enum class NetworkSwitch {
+    /** On reads it, off mutes it. */
+    Mute,
+
+    /**
+     * Courier only: a network HomeSpeaker's own Slack or Google Chat reader covers. On reads it
+     * through Courier as well (`courier_read_anyway`); off leaves it to that reader.
+     */
+    ReadAnyway,
+
+    /** No switch: Beeper's networks that HomeSpeaker reads itself. */
+    None,
+  }
+
+  /** One Beeper or Courier network as a row on the phone. */
+  public data class ChatNetworkRow(
+      val title: String,
+      val subtitle: String,
+      val trailing: String,
+      val on: Boolean,
+      val switch: NetworkSwitch,
+  )
+
+  /**
+   * [network] of chat app [app] ("Beeper" or "Courier") as HomeSpeaker's Settings shows it. A
+   * network HomeSpeaker reads itself is greyed for Beeper; for Courier its switch reads it through
+   * Courier as well, since Courier cannot say which Slack workspace an account is.
+   */
+  public fun chatNetworkRow(app: String, network: AgentBeeperNetwork): ChatNetworkRow {
+    val title = "$app · ${network.name}"
+    val skipped = network.state == "skipped"
+    if (app == "Courier" && (skipped || network.readAnyway)) {
+      return if (network.readAnyway) {
+        ChatNetworkRow(
+            title,
+            "read through Courier as well as directly",
+            "also here",
+            on = true,
+            switch = NetworkSwitch.ReadAnyway)
+      } else {
+        ChatNetworkRow(
+            title,
+            "read directly by HomeSpeaker · on reads it through Courier too",
+            "read directly",
+            on = false,
+            switch = NetworkSwitch.ReadAnyway)
+      }
+    }
+    return when {
+      skipped ->
+          ChatNetworkRow(
+              title, "covered by its own chat toggle", "skipped", on = false, NetworkSwitch.None)
+      network.state == "reading" ->
+          ChatNetworkRow(
+              title, "messages on this network are read aloud", "on", on = true, NetworkSwitch.Mute)
+      else -> ChatNetworkRow(title, "muted in $app", "muted", on = false, NetworkSwitch.Mute)
+    }
+  }
+
+  /**
+   * Under an app's networks before the running monitor has listed them, in HomeSpeaker's words.
+   * Null when it has, or when an older agent cannot say ([listed] null).
+   */
+  public fun networksLaterLine(app: String, listed: Boolean?): String? =
+      if (listed == false) "Other networks show here once $app is being read." else null
+
+  /**
+   * Where Courier's token comes from. The phone never carries it: it is pasted into HomeSpeaker on
+   * the Mac, where Courier runs.
+   */
+  public val courierTokenSteps: String =
+      "In Courier: Settings › Integrations › New connection…, then paste the token into HomeSpeaker on your Mac"
+
+  /** Courier stays off until a token is saved, as in HomeSpeaker's own Settings. */
+  public fun courierSwitchEnabled(hasToken: Boolean, on: Boolean): Boolean = hasToken || on
+
   /**
    * The speaker's volume in one word, never a number that is not current: an offline speaker
    * reports the last level it had, which would read as its level now.

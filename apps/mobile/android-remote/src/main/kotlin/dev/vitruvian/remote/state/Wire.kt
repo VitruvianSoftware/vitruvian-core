@@ -302,11 +302,16 @@ public data class AgentHookStatus(
         }
 }
 
-/** One Beeper network reported by `GET /v1/homespeaker` (`reading`, `muted`, or `skipped`). */
+/**
+ * One Beeper or Courier network reported by `GET /v1/homespeaker` (`reading`, `muted`, or
+ * `skipped`). [readAnyway] is Courier's only: read through Courier although HomeSpeaker's own Slack
+ * or Google Chat reader covers it.
+ */
 public data class AgentBeeperNetwork(
     val key: String,
     val name: String,
     val state: String,
+    val readAnyway: Boolean = false,
 )
 
 /** One cloned voice from `custom_voices`; its [id] is a valid `gemini_voice`. */
@@ -368,6 +373,18 @@ public data class HomeSpeakerSources(
     val customOAuthClientId: String = "",
     val hasCustomOAuthSecret: Boolean = false,
     val homeSpeakerVersion: String = "",
+    /** Courier's switch; null from an older agent, which does not know Courier. */
+    val courierEnabled: Boolean? = null,
+    val courierAnnounce: String = "direct_and_mentions",
+    val courierNetworks: List<AgentBeeperNetwork> = emptyList(),
+    /** Whether a Courier token is saved on the Mac. The token itself never comes to the phone. */
+    val hasCourierToken: Boolean = false,
+    /**
+     * Whether the running monitor has listed each app's networks; null from an older agent. Until
+     * it has, only the saved mutes are known, and the phone says where the others will show.
+     */
+    val beeperNetworksListed: Boolean? = null,
+    val courierNetworksListed: Boolean? = null,
 )
 
 public object HomeSpeakerWire {
@@ -393,8 +410,9 @@ public object HomeSpeakerWire {
               at = it["at"] as? String ?: "",
           )
         }
-    val beeperNetworks =
-        (o["beeper_networks"] as? List<*>).orEmpty().mapNotNull { element ->
+
+    fun networks(field: String): List<AgentBeeperNetwork> =
+        (o[field] as? List<*>).orEmpty().mapNotNull { element ->
           val it = element as? Map<*, *> ?: return@mapNotNull null
           val key = (it["key"] as? String)?.trim().orEmpty()
           if (key.isEmpty()) return@mapNotNull null
@@ -402,8 +420,10 @@ public object HomeSpeakerWire {
               key = key,
               name = (it["name"] as? String)?.takeIf { n -> n.isNotBlank() } ?: key,
               state = (it["state"] as? String)?.takeIf { s -> s.isNotBlank() } ?: "reading",
+              readAnyway = it["read_anyway"] as? Boolean ?: false,
           )
         }
+    val beeperNetworks = networks("beeper_networks")
     val customVoices =
         (o["custom_voices"] as? List<*>).orEmpty().mapNotNull { element ->
           val it = element as? Map<*, *> ?: return@mapNotNull null
@@ -497,6 +517,12 @@ public object HomeSpeakerWire {
         customOAuthClientId = str("custom_oauth_client_id", ""),
         hasCustomOAuthSecret = flag("has_custom_oauth_secret") ?: false,
         homeSpeakerVersion = str("home_speaker_version", ""),
+        courierEnabled = flag("courier_enabled"),
+        courierAnnounce = str("courier_announce", "direct_and_mentions"),
+        courierNetworks = networks("courier_networks"),
+        hasCourierToken = flag("has_courier_token") ?: false,
+        beeperNetworksListed = flag("beeper_networks_listed"),
+        courierNetworksListed = flag("courier_networks_listed"),
     )
   }
 }

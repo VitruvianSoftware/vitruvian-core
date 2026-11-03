@@ -539,6 +539,50 @@ public class DeriveTest {
   }
 
   @Test
+  public fun `Courier's networks HomeSpeaker reads itself are read here as well, Beeper's are greyed`() {
+    val slack = AgentBeeperNetwork("slack", "Slack", "skipped")
+    val beeper = Derive.chatNetworkRow("Beeper", slack)
+    assertEquals(Derive.NetworkSwitch.None, beeper.switch)
+    assertEquals("Beeper · Slack", beeper.title)
+
+    val direct = Derive.chatNetworkRow("Courier", slack)
+    assertEquals(Derive.NetworkSwitch.ReadAnyway, direct.switch)
+    assertFalse(direct.on)
+    assertEquals("Courier · Slack", direct.title)
+    assertEquals("read directly", direct.trailing)
+
+    val also =
+        Derive.chatNetworkRow("Courier", AgentBeeperNetwork("slack", "Slack", "reading", true))
+    assertEquals(Derive.NetworkSwitch.ReadAnyway, also.switch)
+    assertTrue(also.on)
+
+    val muted =
+        Derive.chatNetworkRow("Courier", AgentBeeperNetwork("telegram", "Telegram", "muted"))
+    assertEquals(Derive.NetworkSwitch.Mute, muted.switch)
+    assertFalse(muted.on)
+    assertEquals("muted in Courier", muted.subtitle)
+    val reading =
+        Derive.chatNetworkRow("Courier", AgentBeeperNetwork("whatsapp", "WhatsApp", "reading"))
+    assertEquals(Derive.NetworkSwitch.Mute, reading.switch)
+    assertTrue(reading.on)
+  }
+
+  @Test
+  public fun `Courier says where its networks and its token come from`() {
+    assertEquals(
+        "Other networks show here once Courier is being read.",
+        Derive.networksLaterLine("Courier", listed = false))
+    assertEquals(null, Derive.networksLaterLine("Courier", listed = true))
+    assertEquals(null, Derive.networksLaterLine("Beeper", listed = null))
+    assertTrue(Derive.courierTokenSteps.contains("Settings › Integrations › New connection…"))
+    assertTrue(Derive.courierTokenSteps.contains("HomeSpeaker on your Mac"))
+    assertFalse(
+        "off until a token is saved", Derive.courierSwitchEnabled(hasToken = false, on = false))
+    assertTrue("always switchable off", Derive.courierSwitchEnabled(hasToken = false, on = true))
+    assertTrue(Derive.courierSwitchEnabled(hasToken = true, on = false))
+  }
+
+  @Test
   public fun `speech length labels round trip the wire values and default to summary`() {
     assertEquals(listOf("headline", "summary", "full"), Derive.speechLengths)
     assertEquals("Headline", Derive.speechLengthLabel("headline"))

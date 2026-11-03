@@ -381,6 +381,37 @@ public class WireTest {
   }
 
   @Test
+  public fun `homespeaker reads Courier beside Beeper and an older agent hides it`() {
+    val old = HomeSpeakerWire.sources(homeSpeakerV110)
+    assertNull("an agent that does not know Courier: no switch", old.courierEnabled)
+    assertEquals("direct_and_mentions", old.courierAnnounce)
+    assertTrue(old.courierNetworks.isEmpty())
+    assertEquals(false, old.hasCourierToken)
+    assertNull(old.beeperNetworksListed)
+    assertNull(old.courierNetworksListed)
+
+    val s =
+        HomeSpeakerWire.sources(
+            """{"beeper_enabled":true,"beeper_networks":[{"key":"signal","name":"Signal","state":"reading"}],""" +
+                """"beeper_networks_listed":true,"courier_enabled":true,"courier_announce":"all",""" +
+                """"has_courier_token":true,"courier_networks_listed":false,""" +
+                """"courier_networks":[{"key":"slack","name":"Slack","state":"reading","read_anyway":true},""" +
+                """{"key":"whatsapp","name":"WhatsApp","state":"muted"},{"key":" ","name":"blank"}]}""")
+    assertEquals(true, s.courierEnabled)
+    assertEquals("all", s.courierAnnounce)
+    assertEquals(true, s.hasCourierToken)
+    assertEquals(
+        listOf(
+            AgentBeeperNetwork("slack", "Slack", "reading", readAnyway = true),
+            AgentBeeperNetwork("whatsapp", "WhatsApp", "muted"),
+        ),
+        s.courierNetworks)
+    assertEquals(listOf(AgentBeeperNetwork("signal", "Signal", "reading")), s.beeperNetworks)
+    assertEquals(true, s.beeperNetworksListed)
+    assertEquals(false, s.courierNetworksListed)
+  }
+
+  @Test
   public fun `homespeaker reads v1_11 local engine, gemini voice, style and active door with safe defaults`() {
     val old = HomeSpeakerWire.sources(homeSpeakerV110)
     assertEquals("apple", old.localEngine)
