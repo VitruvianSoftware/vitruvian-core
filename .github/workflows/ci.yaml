@@ -64,6 +64,15 @@ permissions:
   contents: read
 
 jobs:
+  # Runners (queue-runner spec phase 2): jobs with the merge-queue-only rule run
+  # on the homelab for merge_group when QUEUE_RUNNER is on and the fallback is
+  # off, and on GitHub-hosted runners otherwise, always for pull requests and
+  # pushes to main. Main stays hosted because only GitHub-hosted jobs on main
+  # save the shared Actions caches (setup-bazel). Still hosted everywhere: the
+  # setup-go jobs (their cache saves would upload from the homelab, too slow),
+  # validate-butane (Docker), and the PR-only and main-only jobs.
+  # //tools/ci:queue_runner_routing_test holds each rule's text exact.
+  #
   # Push to main only (#3418): did the merge queue already pass this workflow
   # on the exact code that just landed? The queue squash-merges, so main's
   # commit has the same tree its merge_group run tested, and a re-test could
@@ -201,7 +210,7 @@ jobs:
             startsWith(github.head_ref, 'release-please--') &&
             github.event.pull_request.user.type == 'Bot' &&
             github.event.pull_request.head.repo.full_name == github.repository) }}
-    runs-on: ubuntu-26.04
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 45
     env:
       # RBE auth for BuildBuddy (remote execution + cache on the Linux runner).
@@ -447,7 +456,7 @@ jobs:
   detect-macos:
     needs: [queued, fast-lane]
     if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' && needs.fast-lane.outputs.skip != 'true' }}
-    runs-on: ubuntu-26.04
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 10
     outputs:
       macos: ${{ steps.changes.outputs.macos }}
@@ -646,7 +655,7 @@ jobs:
     # ambiguity this repo avoids -- the required job itself always runs + reports.
     needs: [queued, fast-lane, detect-macos, macos-build]
     if: ${{ always() && needs.queued.outputs.hit != 'true' && needs.fast-lane.outputs.skip != 'true' }}
-    runs-on: ubuntu-26.04
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 5
     steps:
       - name: Reflect the macOS build result
@@ -672,7 +681,7 @@ jobs:
     # files are ignored there (BUILD = gazelle, lockfiles, baselines, etc.).
     needs: queued
     if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' }}
-    runs-on: ubuntu-26.04
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 45
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
@@ -742,7 +751,7 @@ jobs:
     # Runs the hermetic Bazel test harness and verifies 0 naming violations monorepo-wide.
     needs: queued
     if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' }}
-    runs-on: ubuntu-26.04
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 15
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
@@ -811,7 +820,7 @@ jobs:
     # `bazel test //...` nightly.
     needs: [queued, fast-lane]
     if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' && needs.fast-lane.outputs.skip != 'true' }}
-    runs-on: ubuntu-26.04
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 10
     outputs:
       go-lint-devx: ${{ steps.decide.outputs.go-lint-devx }}
@@ -1082,7 +1091,7 @@ jobs:
     # (a skipped job still satisfies the required check; see `changes`).
     needs: [queued, fast-lane, changes]
     if: ${{ !cancelled() && needs.queued.outputs.hit != 'true' && needs.fast-lane.outputs.skip != 'true' && (needs.changes.result != 'success' || needs.changes.outputs.go-race == 'true') }}
-    runs-on: ubuntu-26.04
+    runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
     timeout-minutes: 30
     env:
       BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}

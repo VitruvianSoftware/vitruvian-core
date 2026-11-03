@@ -390,6 +390,46 @@ mod tests {
         assert!(got.contains("Select the pinned Xcode"));
     }
 
+    /// Phase 2 of the queue-runner spec: the default Linux runner is routed to
+    /// the homelab for merge-queue jobs only, every other label is untouched,
+    /// and the text is the exact rule //tools/ci:queue_runner_routing allows
+    /// (its every_workflow_in_the_repo_passes test holds presubmit.yaml to it).
+    #[test]
+    fn linux_jobs_route_merge_queue_runs_to_the_homelab() {
+        const ROUTED: &str = "runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}\n";
+        let linux = unit("linux");
+        let mut mac = unit("mac");
+        mac.runner = "xcode-27".into();
+        let mut other = unit("other");
+        other.runner = "ubuntu-latest".into();
+        let got = render(&[linux, mac, other]);
+
+        let job = |name: &str| {
+            let start = got.find(&format!("  unit-{name}:\n")).expect(name);
+            got[start..].lines().nth(2).unwrap().to_string() + "\n"
+        };
+        assert_eq!(job("linux"), format!("    {ROUTED}"));
+        assert_eq!(job("mac"), "    runs-on: xcode-27\n");
+        assert_eq!(job("other"), "    runs-on: ubuntu-latest\n");
+
+        let after = |header: &str| {
+            let start = got.find(header).expect(header);
+            got[start..]
+                .lines()
+                .find(|l| l.trim_start().starts_with("runs-on:"))
+                .unwrap()
+                .to_string()
+                + "\n"
+        };
+        assert_eq!(after("  plan:\n"), format!("    {ROUTED}"));
+        assert_eq!(after("  gate:\n"), format!("    {ROUTED}"));
+        // Main-only and slow: stays hosted (spec phase 2).
+        assert_eq!(after("  rdeps-map:\n"), "    runs-on: ubuntu-26.04\n");
+        // Never the push-to-main rule, and never a bare label.
+        assert!(!got.contains("refs/heads/main')) && vars.QUEUE_RUNNER"));
+        assert!(!got.contains("runs-on: vitruvian-queue"));
+    }
+
     #[test]
     fn missing_pin_is_a_panic() {
         let err = render::render_presubmit_workflow(&[unit("a")], &mut || {

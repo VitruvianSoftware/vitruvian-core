@@ -116,6 +116,17 @@ runs-on: ${{ (github.event_name == 'merge_group' || (github.event_name == 'push'
   outside exactly this guarded expression.
 - **actionlint:** `vitruvian-queue` joins the self-hosted labels in
   `.github/actionlint.yaml`.
+- **Merge-queue-only rule (phase 2, 2026-11-03):** a second allowed
+  expression routes `merge_group` jobs only, leaving pushes to main hosted:
+
+  ```yaml
+  runs-on: ${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}
+  ```
+
+  Presubmit and CI use it because their main-branch runs save the shared
+  Actions caches, which only GitHub-hosted jobs on main may do (`setup-bazel`
+  excludes self-hosted runners: their uploads measured ~1.8 MB/s). Routing
+  those runs would let the caches go cold for every hosted job.
 
 ## 5. Security: the repository is public
 
@@ -152,7 +163,7 @@ events, so the controls are layered:
 |---|---|---|
 | 0 | Fork approval tightened. App created, controller and scale set deployed idle, image built, `QUEUE_RUNNER` `off`. | Merged; the runner shows as online and idle in the repo's runner settings |
 | 1 | Pilot: actionlint, release-scope, migration-safety, conformance-check, tidy-check, the small, setup-bazel-only workflows. `QUEUE_RUNNER` `on`. | A week of queue runs with no runner-caused failures |
-| 2 | Presubmit and CI Linux jobs, still no Docker | Phase 1 clean |
+| 2 | Presubmit and CI Linux jobs, still no Docker. **Merge queue only** (§4), not pushes to main. Still hosted: Presubmit's `rdeps-map` (main-only, near its timeout), CI's `setup-go` jobs (their cache saves would upload from the homelab) and `validate-butane` (Docker). | Phase 1 clean (96/96 homelab jobs green on 2026-11-03) |
 | 3 | Measure with `//tools/merge-queue-stats` against #3518's baseline | — |
 
 Rollback at any phase: set `QUEUE_RUNNER` to `off`.

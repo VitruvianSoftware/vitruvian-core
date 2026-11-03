@@ -70,6 +70,26 @@ pub fn is_mac_runner(runner: &str) -> bool {
     runner.starts_with("macos") || runner.starts_with("xcode")
 }
 
+/// The default Linux runner a job may be routed away from.
+const HOSTED_LINUX: &str = "ubuntu-26.04";
+
+/// Merge-queue jobs go to the homelab runners while QUEUE_RUNNER is on (spec:
+/// docs/superpowers/specs/2026-10-19-queue-runners-on-homelab-design.md,
+/// phase 2). Pushes to main stay hosted: their setup-bazel runs save the
+/// shared Actions caches, which only GitHub-hosted jobs on main may do. Must be
+/// the exact text //tools/ci:queue_runner_routing allows.
+const QUEUE_ROUTED_LINUX: &str = "${{ github.event_name == 'merge_group' && vars.QUEUE_RUNNER == 'on' && vars.QUEUE_RUNNER_FALLBACK != 'on' && 'vitruvian-queue' || 'ubuntu-26.04' }}";
+
+/// The `runs-on` value for a job declared on `runner`: the default Linux
+/// runner is routed, any other label (macOS, a larger runner) is kept as is.
+pub fn runs_on(runner: &str) -> &str {
+    if runner == HOSTED_LINUX {
+        QUEUE_ROUTED_LINUX
+    } else {
+        runner
+    }
+}
+
 /// Go's `RenderPresubmitWorkflow`. `load_pins` is called once, after the DAG
 /// is known to be valid, as the Go tool loaded its pin manifest lazily.
 pub fn render_presubmit_workflow(
@@ -124,7 +144,7 @@ pub fn render_presubmit_workflow(
 
     b.push_str("  plan:\n");
     b.push_str("    name: plan/affected-units\n");
-    b.push_str("    runs-on: ubuntu-26.04\n");
+    b.push_str(&format!("    runs-on: {}\n", runs_on(HOSTED_LINUX)));
     // 35, not 20: building the planner takes ~5 min on a cold runner and the
     // query below is allowed 15 (see --timeout-sec), plus checkout and setup.
     b.push_str("    timeout-minutes: 35\n");
@@ -524,7 +544,7 @@ pub fn render_presubmit_workflow(
 
         b.push_str(&format!("  {job_name}:\n"));
         b.push_str(&format!("    name: {}\n", u.name));
-        b.push_str(&format!("    runs-on: {}\n", u.runner));
+        b.push_str(&format!("    runs-on: {}\n", runs_on(&u.runner)));
         b.push_str(&format!("    timeout-minutes: {}\n", u.timeout_minutes));
 
         let mut needs: Vec<String> = vec!["plan".to_string()];
@@ -768,7 +788,7 @@ pub fn render_presubmit_workflow(
     gate_needs.extend(job_names.iter().cloned());
     b.push_str(&format!("    needs: [{}]\n", gate_needs.join(", ")));
     b.push_str("    if: always()\n");
-    b.push_str("    runs-on: ubuntu-26.04\n");
+    b.push_str(&format!("    runs-on: {}\n", runs_on(HOSTED_LINUX)));
     b.push_str("    timeout-minutes: 5\n");
     b.push_str("    steps:\n");
     b.push_str("      - name: Evaluate Monorepo Gate Verdict\n");
