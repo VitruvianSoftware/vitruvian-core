@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.25](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.24...android-remote-v0.1.25) (2026-11-03)
+
+
+### Features
+
+* **home-speaker, android-remote:** Courier beside Beeper on HomeSpeaker's pages and the remote ([#4286](https://github.com/VitruvianSoftware/vitruvian-core/issues/4286)) ([7cf761a](https://github.com/VitruvianSoftware/vitruvian-core/commit/7cf761a046d1b0580145ff7873e326e0218a9ef3))
+
 ## [0.1.24](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.23...android-remote-v0.1.24) (2026-11-03)
 
 
