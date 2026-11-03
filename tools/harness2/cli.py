@@ -76,12 +76,12 @@ def copy_surface(src: Path, dst: Path) -> None:
             shutil.copytree(
                 s,
                 dst / rel,
-                symlinks=False,
+                symlinks=True,  # kept as links, so the validator can reject them
                 dirs_exist_ok=True,
                 ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
             )
-        elif s.is_file():
-            shutil.copyfile(s, dst / rel)
+        elif s.is_file() or s.is_symlink():
+            shutil.copyfile(s, dst / rel, follow_symlinks=False)
 
 
 def tree_files(root: Path) -> Dict[str, Path]:
@@ -92,7 +92,7 @@ def tree_files(root: Path) -> Dict[str, Path]:
             out[rel] = p
         elif p.is_dir():
             for f in p.rglob("*"):
-                if f.is_file() and "__pycache__" not in f.parts:
+                if f.is_file() and not f.is_symlink() and "__pycache__" not in f.parts:
                     out[str(f.relative_to(root))] = f
     return out
 
@@ -123,26 +123,100 @@ def diff_trees(base: Path, new: Path) -> Tuple[List[str], str]:
 # ---- Claude sessions ---------------------------------------------------------
 
 
+# Environment a session keeps: enough to run and authenticate Claude Code,
+# nothing else (no GH_TOKEN, cloud credentials or other secrets).
+_ENV_KEEP = (
+    "HOME",
+    "PATH",
+    "USER",
+    "LOGNAME",
+    "SHELL",
+    "TMPDIR",
+    "LANG",
+    "LC_ALL",
+    "TERM",
+)
+_ENV_KEEP_PREFIX = ("ANTHROPIC_", "CLAUDE_CODE_", "CLAUDE_CONFIG_DIR")
+# Tools a session may use, each scoped by claude_command(): read anywhere it
+# is given, edit only inside its own folder. No shell, web, subagents or MCP.
+SESSION_DENIED = (
+    "Bash",
+    "WebFetch",
+    "WebSearch",
+    "Task",
+    "NotebookEdit",
+    "KillShell",
+    "BashOutput",
+    "mcp__*",
+)
+
+
+def session_env() -> Dict[str, str]:
+    return {
+        k: v
+        for k, v in os.environ.items()
+        if k in _ENV_KEEP or k.startswith(_ENV_KEEP_PREFIX)
+    }
+
+
+def _abs_variants(path: str) -> List[str]:
+    """Both spellings of a path (macOS /tmp is a symlink to /private/tmp)."""
+    a, r = os.path.abspath(path), os.path.realpath(path)
+    return [a] if a == r else [a, r]
+
+
+def claude_command(
+    exe: str, model: str, cwd: Path, read_dirs: Optional[List[str]] = None
+) -> List[str]:
+    """A confined session: the transcript it reads may carry injected text.
+
+    Default permission mode in print mode denies anything not allowed below;
+    edits are allowed only under `cwd`; `read_dirs` are readable, not
+    writable; user/project settings (and so plugins, their MCP servers and
+    hooks) are not loaded; no MCP server is configured."""
+    allowed: List[str] = []
+    for d in _abs_variants(str(cwd)):
+        for tool in ("Read", "Glob", "Grep", "LS", "Edit", "Write", "MultiEdit"):
+            allowed.append(f"{tool}(/{d}/**)")
+    for rd in read_dirs or []:
+        for d in _abs_variants(rd):
+            allowed += [
+                f"Read(/{d}/**)",
+                f"Glob(/{d}/**)",
+                f"Grep(/{d}/**)",
+                f"LS(/{d}/**)",
+            ]
+    return [
+        exe,
+        "--model",
+        model,
+        "-p",
+        "--output-format",
+        "text",
+        "--permission-mode",
+        "default",
+        "--setting-sources",
+        "",
+        "--strict-mcp-config",
+        "--mcp-config",
+        '{"mcpServers": {}}',
+        "--allowedTools",
+        *allowed,
+        "--disallowedTools",
+        *SESSION_DENIED,
+    ]
+
+
 def run_claude(
     prompt: str,
     cwd: Path,
     model: str,
     timeout: int,
-    add_dirs: Optional[List[str]] = None,
+    read_dirs: Optional[List[str]] = None,
 ) -> str:
-    """One agentic Claude Code session in `cwd`; returns its final reply."""
+    """One confined Claude Code session in `cwd`; returns its final reply."""
     exe = os.environ.get("HARNESS2_CLAUDE", "claude")
-    cmd = [
-        exe,
-        "--model",
-        model,
-        "-p",
-        "--dangerously-skip-permissions",
-        "--output-format",
-        "text",
-    ]
-    for d in add_dirs or []:
-        cmd += ["--add-dir", d]
+    cmd = claude_command(exe, model, cwd, read_dirs)
     (cwd / "prompt.md").write_text(prompt, encoding="utf-8")
     try:
         r = subprocess.run(
@@ -152,6 +226,7 @@ def run_claude(
             capture_output=True,
             text=True,
             timeout=timeout,
+            env=session_env(),
         )
     except FileNotFoundError:
         raise SystemExit(
@@ -357,12 +432,25 @@ def distill(args) -> int:
     return 0
 
 
+def _inside(path: Path, root: Path) -> bool:
+    p, r = os.path.realpath(path), os.path.realpath(root)
+    return p == r or p.startswith(r + os.sep)
+
+
 def apply_run(run: Path) -> int:
+    """Adopts a proposal all-or-nothing.
+
+    The complete new plugin is built and validated beside the live one, then
+    swapped in with two renames; the old tree is kept whole in the run folder.
+    Any failure puts the old tree back exactly (files the proposal added go
+    too)."""
     run = Path(run)
     res = read_json(run / "result.json", None)
     if not res:
         raise SystemExit(f"harness2: {run} has no result.json")
     final = Path(res["final"])
+    if not _inside(final, run):
+        raise SystemExit(f"harness2 apply: {final} is not inside {run}; refusing")
     problems = validator.validate_tree(final)
     if problems:
         print(
@@ -371,38 +459,56 @@ def apply_run(run: Path) -> int:
         )
         return 1
     dest = plugin_dir()
-    backup = run / "backup_before_apply"
-    if backup.exists():
-        shutil.rmtree(backup)
-    copy_surface(dest, backup)
+    swap = harness2_home() / "swap"
+    if swap.exists():
+        shutil.rmtree(swap)
+    swap.mkdir(parents=True)
+    staged, previous = swap / "staged", swap / "previous"
+    shutil.copytree(dest, staged, symlinks=True)
     for rel in SURFACE:
-        d = dest / rel
-        if d.is_dir():
-            keep = d / "harness2" if rel == "skills" else None
+        d = staged / rel
+        if d.is_dir() and not d.is_symlink():
             for child in list(d.iterdir()):
-                if keep is not None and child == keep:
+                if rel == "skills" and child.name == "harness2":
                     continue
-                shutil.rmtree(child) if child.is_dir() else child.unlink()
-        elif d.is_file():
+                shutil.rmtree(
+                    child
+                ) if child.is_dir() and not child.is_symlink() else child.unlink()
+        elif d.exists() or d.is_symlink():
             d.unlink()
     for rel, src in tree_files(final).items():
         if rel.startswith(OWNED_SKILL + "/"):
             continue
-        (dest / rel).parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(src, dest / rel)
+        (staged / rel).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(src, staged / rel)
         if src.suffix in (".py", ".sh") and "scripts" in Path(rel).parts:
-            os.chmod(dest / rel, 0o755)
-    after = validator.validate_tree(dest)
+            os.chmod(staged / rel, 0o755)
+    after = validator.validate_tree(staged)
     if after:
+        shutil.rmtree(swap)
         print(
-            "harness2 apply: installed tree failed validation; restoring the backup:\n  "
+            "harness2 apply: the assembled plugin fails validation; nothing changed:\n  "
             + "\n  ".join(after)
         )
-        copy_surface(backup, dest)
         return 1
+
     import installer
 
-    installer.merge_hookify_rules(dest)
+    os.rename(dest, previous)
+    try:
+        os.rename(staged, dest)
+        installer.merge_hookify_rules(dest)
+    except BaseException:
+        if dest.exists():
+            shutil.rmtree(dest)
+        os.rename(previous, dest)
+        installer.merge_hookify_rules(dest)
+        raise
+    backup = run / "backup_before_apply"
+    if backup.exists():
+        shutil.rmtree(backup)
+    shutil.move(str(previous), str(backup))
+    shutil.rmtree(swap, ignore_errors=True)
     if res.get("kind") == "distill" and (run / "EXPERIENCE.md").is_file():
         title = (res.get("experience") or {}).get("cue") or res.get(
             "conversation", "distill"
@@ -412,7 +518,7 @@ def apply_run(run: Path) -> int:
         )
         print(f"harness2 apply: library entry {row['id']}")
     print(
-        f"harness2 apply: adopted {len(res.get('changed', []))} change(s) into {dest} (backup in {backup})"
+        f"harness2 apply: adopted {len(res.get('changed', []))} change(s) into {dest} (previous plugin kept in {backup})"
     )
     return 0
 
@@ -447,7 +553,7 @@ def probe(args) -> int:
         f"harness2 probe: claude --model {args.model} is solving the task on paper and auditing the harness …"
     )
     reply = run_claude(
-        prompts.probe_prompt(budget), s, args.model, args.timeout, add_dirs=[ws]
+        prompts.probe_prompt(budget), s, args.model, args.timeout, read_dirs=[ws]
     )
     final = ctx / "harness"
     problems = validator.validate_tree(final)
@@ -458,7 +564,7 @@ def probe(args) -> int:
             + "\n".join(problems)
             + "\n"
         )
-        reply = run_claude(fb, s, args.model, args.timeout, add_dirs=[ws])
+        reply = run_claude(fb, s, args.model, args.timeout, read_dirs=[ws])
         problems = validator.validate_tree(final)
     fallback = bool(problems)
     if fallback:
@@ -496,19 +602,20 @@ def probe(args) -> int:
 
 
 def lock(args) -> int:
-    st = runtime_hooks.load_state(args.conversation)
-    for f in args.files:
-        if f not in st["locks"]:
-            st["locks"].append(f)
-    if args.no_generative_image:
-        st["no_generative_image_edit"] = True
-    if args.size:
-        w, h = (int(x) for x in args.size.lower().split("x"))
+    with runtime_hooks.state_lock(args.conversation):
+        st = runtime_hooks.load_state(args.conversation)
         for f in args.files:
-            inv = {"pattern": f, "width": w, "height": h}
-            if inv not in st["image_invariants"]:
-                st["image_invariants"].append(inv)
-    runtime_hooks.save_state(st)
+            if f not in st["locks"]:
+                st["locks"].append(f)
+        if args.no_generative_image:
+            st["no_generative_image_edit"] = True
+        if args.size:
+            w, h = (int(x) for x in args.size.lower().split("x"))
+            for f in args.files:
+                inv = {"pattern": f, "width": w, "height": h}
+                if inv not in st["image_invariants"]:
+                    st["image_invariants"].append(inv)
+        runtime_hooks.save_state(st)
     print(
         json.dumps(
             {
@@ -527,20 +634,21 @@ def lock(args) -> int:
 
 
 def unlock(args) -> int:
-    st = runtime_hooks.load_state(args.conversation)
-    if args.files:
-        st["locks"] = [x for x in st["locks"] if x not in args.files]
-        st["image_invariants"] = [
-            i for i in st["image_invariants"] if i["pattern"] not in args.files
-        ]
-    else:
-        st.update(
-            locks=[],
-            no_generative_image_edit=False,
-            deterministic_image_edit=False,
-            image_invariants=[],
-        )
-    runtime_hooks.save_state(st)
+    with runtime_hooks.state_lock(args.conversation):
+        st = runtime_hooks.load_state(args.conversation)
+        if args.files:
+            st["locks"] = [x for x in st["locks"] if x not in args.files]
+            st["image_invariants"] = [
+                i for i in st["image_invariants"] if i["pattern"] not in args.files
+            ]
+        else:
+            st.update(
+                locks=[],
+                no_generative_image_edit=False,
+                deterministic_image_edit=False,
+                image_invariants=[],
+            )
+        runtime_hooks.save_state(st)
     print(
         json.dumps(
             {

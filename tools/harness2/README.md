@@ -45,8 +45,27 @@ harness2 validate                          # the four rules, on the installed ha
 ```
 
 The conversation id is the folder name under `~/.gemini/antigravity/brain/`. A distill runs
-four Claude Opus sessions (`claude --model opus -p --dangerously-skip-permissions`), each in its
-own folder under `~/.gemini/antigravity/harness2/runs/`, and takes several minutes.
+four Claude Opus sessions, each in its own folder under `~/.gemini/antigravity/harness2/runs/`,
+and takes several minutes.
+
+## Safety: the transcript is untrusted
+
+A conversation's transcript includes tool output, web pages and file contents, so it can carry
+instructions someone planted. Distill is built on that assumption:
+
+- **Each Claude session is confined.** It can read and edit files only inside its own run
+  folder (plus read-only access to `--workspace` for `probe`). No shell, no web, no subagents,
+  no MCP servers, no user settings or plugins, and an environment stripped of tokens. This was
+  checked live: writes outside the folder, reads of other files, and Bash were all refused.
+- **Hook rules can only ask or refuse.** The validator rejects any hookify rule not named
+  `harness2-*`, any action other than warn/block, and any extra key (no argument rewriting).
+- **A person adopts changes.** `distill` only proposes. Read `harness.diff`, then run
+  `harness2 apply`. The hooks refuse the agent's own attempts to run `harness2 apply`,
+  `--apply`, `--reseed` or `unlock`. (`distill --apply` exists for you to use by hand.)
+- **Adoption is all-or-nothing.** The new plugin is assembled and validated beside the live one
+  and swapped in with two renames; the previous plugin is kept whole in the run folder, and any
+  failure puts it back exactly.
+- **No symlinks** in a proposal, and the event log never records tool output.
 
 ## What gets installed
 
@@ -77,6 +96,12 @@ A proposal that breaks any rule is rejected whole:
 - Constraint extraction is pattern matching on your words, not understanding. It catches "do not
   touch X", "leave X alone", "without modifying", crop/scale/border requests and corrections;
   phrasing outside those patterns is missed. `harness2 lock` sets the same state by hand.
+- The shell side of the file lock recognises common writes (redirection into the file, `cp`/`mv`
+  onto it, `rm`, `sips`, `sed -i`, `find -delete`, Python `open(..., 'w')`/`shutil`/`os.remove`,
+  `git checkout`/`restore`). A determined command in another language can still get through;
+  the Stop check then flags the changed file.
+- The distill sessions cannot run code, so an editor cannot test a script it writes; the
+  validator only checks that it compiles.
 - An explicit ask to generate ("use nano banana to…") is respected: the image-generator block
   only applies when the request is an edit of existing pixels.
 - The paper rolls out each candidate harness before composing. There is no benchmark runner here,

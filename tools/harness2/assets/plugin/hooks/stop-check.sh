@@ -9,6 +9,7 @@
 # it answers the fallback below and the error goes to
 # ~/.gemini/antigravity/harness2/hooks.log.
 
+umask 077
 fallback='{"decision":"allow"}'
 dir=$(cd "$(dirname "$0")/.." 2>/dev/null && pwd) || { printf '%s\n' "$fallback"; exit 0; }
 log="${HARNESS2_HOME:-$HOME/.gemini/antigravity/harness2}/hooks.log"

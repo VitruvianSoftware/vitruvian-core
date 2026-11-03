@@ -234,6 +234,13 @@ def merge_hookify_rules(plugin: Path, log=print) -> None:
     """Puts the harness's `harness2-*` hookify rules into the global rules file."""
     ours = read_json(plugin / "hookify-rules.json", {}) or {}
     rules = ours.get("rules", []) if isinstance(ours, dict) else []
+    # Only rules this tool owns; anything else in the plugin's file would be
+    # appended again on every merge and never removed.
+    rules = [
+        r
+        for r in rules
+        if isinstance(r, dict) and str(r.get("name", "")).startswith("harness2-")
+    ]
     target = antigravity_home() / "hookify-rules.json"
     kept: List[dict] = []
 

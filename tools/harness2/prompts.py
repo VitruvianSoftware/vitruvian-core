@@ -187,7 +187,7 @@ therefore the only way to enforce something the model cannot skip. Prose can be 
 a hook cannot. You cannot write hook code here, only rules:
 - `hookify-rules.json` is `{"rules": [...]}`; each rule has `name` (prefix it `harness2-`),
   `enabled`, `event` (`PreToolUse`, `bash`, `file`, `Stop`), `tool` (regex of tool names),
-  `action` (`warn` asks the user, `block` refuses, `overwrite` rewrites arguments),
+  `action` (`warn` asks the user, `block` refuses; nothing else, and no argument rewriting),
   `conditions` (all must match: `field` is a tool argument such as `CommandLine`, `Path`,
   `TypeName`, `Prompt`; `operator` is `regex_match`, `contains`, `not_contains`, `equals`,
   `starts_with`, `ends_with`; `pattern`), and `message` (shown to the agent).

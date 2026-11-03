@@ -1092,5 +1092,251 @@ class CliTest(Env):
         self.assertEqual(cli.main(["validate"]), 1)
 
 
+class ReviewFindingsTest(Env):
+    """Regression tests for the aegis review of PR #4296."""
+
+    def test_sessions_are_confined(self):
+        cmd = cli.claude_command(
+            "claude", "opus", self.tmp / "sess", read_dirs=[str(self.tmp / "ws")]
+        )
+        joined = " ".join(cmd)
+        self.assertNotIn("dangerously", joined)
+        self.assertEqual(cmd[cmd.index("--permission-mode") + 1], "default")
+        self.assertEqual(cmd[cmd.index("--setting-sources") + 1], "")
+        self.assertIn("--strict-mcp-config", cmd)
+        denied = cmd[cmd.index("--disallowedTools") + 1 :]
+        for t in ("Bash", "WebFetch", "WebSearch", "Task", "mcp__*"):
+            self.assertIn(t, denied)
+        allowed = cmd[cmd.index("--allowedTools") + 1 : cmd.index("--disallowedTools")]
+        sess = os.path.realpath(self.tmp / "sess")
+        ws = os.path.realpath(self.tmp / "ws")
+        self.assertIn(f"Write(/{sess}/**)", allowed)
+        self.assertFalse(
+            [
+                a
+                for a in allowed
+                if a.startswith(("Write", "Edit", "MultiEdit")) and ws in a
+            ]
+        )
+        self.assertIn(f"Read(/{ws}/**)", allowed)
+        self.assertFalse(
+            [a for a in allowed if "(" not in a],
+            "every allowed tool must be path-scoped",
+        )
+
+    def test_session_env_drops_secrets(self):
+        os.environ["GH_TOKEN"] = "x"
+        os.environ["GOOGLE_OAUTH_ACCESS_TOKEN"] = "y"
+        try:
+            env = cli.session_env()
+            self.assertNotIn("GH_TOKEN", env)
+            self.assertNotIn("GOOGLE_OAUTH_ACCESS_TOKEN", env)
+            self.assertIn("PATH", env)
+        finally:
+            os.environ.pop("GH_TOKEN")
+            os.environ.pop("GOOGLE_OAUTH_ACCESS_TOKEN")
+
+    def _rules(self, root, rules):
+        (root / "hookify-rules.json").write_text(json.dumps({"rules": rules}))
+        return validator.validate_tree(root)
+
+    def test_hook_rules_can_only_ask_or_refuse(self):
+        root = self.seed_tree()
+        base = {
+            "name": "harness2-x",
+            "enabled": True,
+            "event": "bash",
+            "action": "block",
+            "message": "m",
+        }
+        self.assertEqual(self._rules(root, [base]), [])
+        self.assertTrue(
+            any(
+                "action 'overwrite'" in p
+                for p in self._rules(root, [dict(base, action="overwrite")])
+            )
+        )
+        self.assertTrue(
+            any(
+                "unsupported keys" in p
+                for p in self._rules(
+                    root, [dict(base, overwrite={"field": "CommandLine"})]
+                )
+            )
+        )
+        self.assertTrue(
+            any(
+                "must start with harness2-" in p
+                for p in self._rules(root, [dict(base, name="evil")])
+            )
+        )
+
+    def test_guardrails_keys(self):
+        root = self.seed_tree()
+        (root / "guardrails.json").write_text(
+            json.dumps({"stop_nag_limit": 99, "run": "x"})
+        )
+        probs = validator.validate_tree(root)
+        self.assertTrue(any("unknown keys" in p for p in probs))
+        self.assertTrue(any("stop_nag_limit" in p for p in probs))
+
+    def test_symlinks_are_rejected(self):
+        root = self.seed_tree()
+        secret = self.tmp / "secret.txt"
+        secret.write_text("TOKEN=abc")
+        (root / "rules/leak.md").symlink_to(secret)
+        self.assertTrue(any("symlink" in p for p in validator.validate_tree(root)))
+        copy = self.tmp / "copy"
+        cli.copy_surface(root, copy)
+        self.assertTrue((copy / "rules/leak.md").is_symlink())
+        self.assertNotIn("rules/leak.md", cli.tree_files(copy))
+
+    def test_merge_takes_only_harness2_rules_and_never_duplicates(self):
+        self.install()
+        plugin = self.tmp / "config/plugins/harness2"
+        doc = json.loads((plugin / "hookify-rules.json").read_text())
+        doc["rules"].append({"name": "evil-overwrite", "action": "overwrite"})
+        (plugin / "hookify-rules.json").write_text(json.dumps(doc))
+        for _ in range(3):
+            installer.merge_hookify_rules(plugin, log=lambda *_: None)
+        names = [
+            r["name"]
+            for r in json.loads(
+                (self.tmp / "antigravity/hookify-rules.json").read_text()
+            )["rules"]
+        ]
+        self.assertEqual(names, ["harness2-inv-0001-image-generator-on-existing-image"])
+
+    def test_lock_check_reads_and_writes(self):
+        st = runtime_hooks.empty_state("r")
+        st["locks"] = ["keep-me.txt"]
+        runtime_hooks.save_state(st)
+
+        def d(c):
+            return runtime_hooks.run(
+                "pre-tool-use",
+                json.dumps(
+                    {
+                        "conversationId": "r",
+                        "toolCall": {"name": "run_command", "args": {"CommandLine": c}},
+                    }
+                ),
+            )["decision"]
+
+        for c in (
+            "cat keep-me.txt 2>/dev/null",
+            "grep x keep-me.txt > out.txt",
+            "wc -l keep-me.txt >> log.txt",
+        ):
+            self.assertEqual(d(c), "allow", c)
+        for c in (
+            "echo x > keep-me.txt",
+            "echo x >> ./keep-me.txt",
+            "find . -name keep-me.txt -delete",
+            "python3 -c \"import shutil; shutil.copy('a', 'keep-me.txt')\"",
+            "python3 -c \"import os; os.remove('keep-me.txt')\"",
+        ):
+            self.assertEqual(d(c), "deny", c)
+
+    def test_agent_cannot_apply_or_unlock(self):
+        def d(c):
+            return runtime_hooks.run(
+                "pre-tool-use",
+                json.dumps(
+                    {
+                        "conversationId": "u",
+                        "toolCall": {"name": "run_command", "args": {"CommandLine": c}},
+                    }
+                ),
+            )["decision"]
+
+        for c in (
+            "harness2 apply ~/.gemini/antigravity/harness2/runs/x",
+            "harness2 distill abc --apply",
+            "harness2 unlock abc",
+            "bazel run //tools/harness2 -- install --reseed",
+        ):
+            self.assertEqual(d(c), "deny", c)
+        for c in ("harness2 distill abc", "harness2 status", "harness2 lock abc f.png"):
+            self.assertEqual(d(c), "allow", c)
+
+    def test_loop_guard_keeps_tool_output_out_of_the_log(self):
+        p = {
+            "conversationId": "lg",
+            "transcriptPath": str(self.transcript),
+            "toolCall": {
+                "name": "run_command",
+                "args": {"CommandLine": "python3 -c 'from PIL import Image'"},
+            },
+        }
+        self.assertEqual(
+            runtime_hooks.run("pre-tool-use", json.dumps(p))["decision"], "deny"
+        )
+        log = (self.tmp / "antigravity/harness2/events.jsonl").read_text()
+        self.assertNotIn("ModuleNotFoundError", log)
+
+    def _run_with(self, final_files, outside=False):
+        self.install()
+        run = self.tmp / "antigravity/harness2/runs/r1"
+        final = (
+            (self.tmp / "elsewhere") if outside else (run / "composer/context/harness")
+        )
+        cli.copy_surface(self.tmp / "config/plugins/harness2", final)
+        for rel, text in final_files.items():
+            (final / rel).parent.mkdir(parents=True, exist_ok=True)
+            (final / rel).write_text(text)
+        run.mkdir(parents=True, exist_ok=True)
+        (run / "result.json").write_text(
+            json.dumps({"kind": "probe", "final": str(final), "changed": []})
+        )
+        return run
+
+    def test_apply_refuses_a_proposal_outside_its_run(self):
+        run = self._run_with({}, outside=True)
+        with self.assertRaises(SystemExit):
+            cli.apply_run(run)
+
+    def test_apply_swaps_whole_trees_and_keeps_the_previous_one(self):
+        plugin = self.tmp / "config/plugins/harness2"
+        run = self._run_with({"scripts/new_helper.py": "print(1)\n"})
+        before = (plugin / "rules/AGENTS.md").read_text() if plugin.exists() else None
+        self.assertEqual(cli.apply_run(run), 0)
+        self.assertTrue((plugin / "scripts/new_helper.py").is_file())
+        self.assertTrue((plugin / "lib/runtime_hooks.py").is_file())
+        self.assertTrue((run / "backup_before_apply/rules/AGENTS.md").is_file())
+        self.assertFalse((run / "backup_before_apply/scripts/new_helper.py").exists())
+        self.assertFalse((self.tmp / "antigravity/harness2/swap").exists())
+
+    def test_rejected_apply_changes_nothing(self):
+        plugin = self.tmp / "config/plugins/harness2"
+        run = self._run_with(
+            {
+                "scripts/added.py": "print(1)\n",
+                "skills/ghost/SKILL.md": "---\nname: ghost\ndescription: x\n---\n",
+            }
+        )
+        snapshot = sorted(str(p.relative_to(plugin)) for p in plugin.rglob("*"))
+        self.assertEqual(cli.apply_run(run), 1)  # ghost has no trigger line
+        self.assertEqual(
+            sorted(str(p.relative_to(plugin)) for p in plugin.rglob("*")), snapshot
+        )
+        self.assertFalse((plugin / "scripts/added.py").exists())
+
+    def test_hook_log_is_private(self):
+        self.install()
+        plugin = self.tmp / "config/plugins/harness2"
+        env = dict(os.environ, PATH="/nonexistent")
+        subprocess.run(
+            ["/bin/sh", str(plugin / "hooks/pre-tool-use.sh")],
+            input="{}",
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        log = Path(os.environ["HARNESS2_HOME"]) / "hooks.log"
+        if log.exists():
+            self.assertEqual(stat.S_IMODE(os.stat(log).st_mode) & 0o077, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

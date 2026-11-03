@@ -217,6 +217,7 @@ def validate_tree(
         )
 
     problems += json_problems(root)
+    problems += symlink_problems(root)
     return problems
 
 
@@ -229,22 +230,94 @@ def json_problems(root: Path) -> List[str]:
                 json.loads(p.read_text(encoding="utf-8"))
             except ValueError as e:
                 out.append(f"plugin: {name} is not valid JSON: {e}")
-    hr = root / "hookify-rules.json"
-    if hr.exists():
-        try:
-            doc = json.loads(hr.read_text(encoding="utf-8"))
-            rules = doc.get("rules") if isinstance(doc, dict) else doc
-            for i, r in enumerate(rules or []):
-                if not isinstance(r, dict) or not r.get("name"):
-                    out.append(f"plugin: hookify-rules.json rule {i} needs a name")
-        except (ValueError, AttributeError):
-            pass
+    out += hook_rule_problems(root)
     hj = root / "hooks.json"
     if hj.exists():
         try:
             out += hooks_json_problems(json.loads(hj.read_text(encoding="utf-8")), root)
         except ValueError as e:
             out.append(f"plugin: hooks.json is not valid JSON: {e}")
+    return out
+
+
+# What a harness may put in the tool loop. Rules can only ask or refuse; an
+# `overwrite` rule would rewrite every matching tool call's arguments in every
+# later session, which is too much power for text an editor wrote from a
+# transcript that may carry injected instructions.
+HOOK_ACTIONS = {"warn", "ask", "block", "deny"}
+HOOK_RULE_KEYS = {
+    "name",
+    "enabled",
+    "event",
+    "tool",
+    "matcher",
+    "action",
+    "conditions",
+    "pattern",
+    "message",
+}
+GUARDRAIL_KEYS = {"generative_image_tools", "stop_nag_limit"}
+
+
+def hook_rule_problems(root: Path) -> List[str]:
+    out: List[str] = []
+    hr = root / "hookify-rules.json"
+    if hr.exists():
+        try:
+            doc = json.loads(hr.read_text(encoding="utf-8"))
+        except ValueError:
+            return out
+        rules = doc.get("rules") if isinstance(doc, dict) else None
+        if not isinstance(rules, list):
+            out.append('hook rules: hookify-rules.json must be {"rules": [...]}')
+            rules = []
+        for i, r in enumerate(rules):
+            if not isinstance(r, dict):
+                out.append(f"hook rules: rule {i} must be an object")
+                continue
+            name = str(r.get("name", ""))
+            if not name.startswith("harness2-"):
+                out.append(
+                    f"hook rules: rule {i} name {name!r} must start with harness2-"
+                )
+            action = str(r.get("action", "warn")).lower()
+            if action not in HOOK_ACTIONS:
+                out.append(
+                    f"hook rules: {name or i} action {action!r} is not allowed (only {', '.join(sorted(HOOK_ACTIONS))})"
+                )
+            extra = set(r) - HOOK_RULE_KEYS
+            if extra:
+                out.append(
+                    f"hook rules: {name or i} has unsupported keys {sorted(extra)} (no overwrite/rewrite)"
+                )
+    gr = root / "guardrails.json"
+    if gr.exists():
+        try:
+            g = json.loads(gr.read_text(encoding="utf-8"))
+        except ValueError:
+            return out
+        if not isinstance(g, dict):
+            out.append("guardrails: guardrails.json must be an object")
+        else:
+            extra = set(g) - GUARDRAIL_KEYS
+            if extra:
+                out.append(f"guardrails: unknown keys {sorted(extra)}")
+            n = g.get("stop_nag_limit", 2)
+            if not isinstance(n, int) or isinstance(n, bool) or not 0 <= n <= 5:
+                out.append(
+                    "guardrails: stop_nag_limit must be a whole number from 0 to 5"
+                )
+    return out
+
+
+def symlink_problems(root: Path) -> List[str]:
+    """A symlink in a proposal could pull any file (a secret) into always-on text."""
+    out = []
+    for p in sorted(root.rglob("*")):
+        if p.is_symlink():
+            out.append(
+                f"plugin: {p.relative_to(root)} is a symlink; a harness tree holds only regular files"
+            )
     return out
 
 

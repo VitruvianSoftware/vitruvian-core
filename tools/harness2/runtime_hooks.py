@@ -20,7 +20,9 @@ so the failure answer is an explicit allow (fail open, logged).
 
 from __future__ import annotations
 
+import contextlib
 import datetime as _dt
+import fcntl
 import fnmatch
 import hashlib
 import json
@@ -76,8 +78,17 @@ COMMAND_KEYS = ("CommandLine", "command", "cmd")
 # A shell command that names a locked file AND does one of these writes it.
 _WRITE_CMD = re.compile(
     r"(?:^|[\s;&|(])(?:rm|mv|sips|tee|truncate|dd|touch|install|ln|convert|magick|mogrify|pngcrush|optipng|chmod|chown)\b"
-    r"|>|\bsed\s+-i|\bperl\s+-[a-z]*i|\bgit\s+(?:checkout|restore|rm|mv|reset|clean|stash)\b"
-    r"|open\([^)]*['\"][wa]b?['\"]|\.save\(|write_bytes|write_text"
+    r"|\bsed\s+-i|\bperl\s+-[a-z]*i|\bgit\s+(?:checkout|restore|rm|mv|reset|clean|stash)\b|\bunlink\b"
+    r"|\bfind\b.*\s-(?:delete|exec)\b"
+    r"|open\([^)]*['\"][wa+]b?['\"]|\.save\(|write_bytes|write_text"
+    r"|\bos\.(?:remove|unlink|rename|replace|truncate)\b|\bshutil\.(?:copy\w*|move|rmtree)\b"
+)
+# A redirection and its target: `> f`, `>> f`, `2> f`, `&> f`. Only a redirection
+# INTO the locked file writes it (`2>/dev/null` next to a read does not).
+_REDIRECT = re.compile(r"(?:\d|&)?>>?\|?\s*(['\"]?)([^\s;&|'\"]+)\1")
+# Adopting a harness change or lifting a user's lock is the user's decision.
+_USER_ONLY = re.compile(
+    r"\bharness2\b[^;&|\n]*?(?:\s(?:apply|unlock)\b|\s--apply\b|\s--reseed\b)"
 )
 _COPY_CMD = re.compile(r"^\s*(?:cp|ditto|rsync|scp)\b")
 
@@ -152,6 +163,20 @@ def load_state(conv: str) -> dict:
     return base
 
 
+@contextlib.contextmanager
+def state_lock(conv: str):
+    """Serialises read-modify-write of one conversation's state (the hooks and
+    `harness2 lock` can run at the same moment)."""
+    path = state_path(conv).with_suffix(".lock")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(f, fcntl.LOCK_UN)
+
+
 def save_state(st: dict) -> None:
     st["updated_at"] = _now()
     write_json(state_path(st["conversationId"]), st)
@@ -213,14 +238,15 @@ def pre_invocation(p: dict) -> dict:
         )
         return {}
     digest = hashlib.sha256(text.encode("utf-8", "replace")).hexdigest()[:16]
-    st = load_state(conv)
-    if st.get("last_input_hash") == digest:
-        return {}  # already handled this message; PreInvocation fires every model call
-    st["last_input_hash"] = digest
-    st["stop_nags"] = 0
-    sig = constraints.extract(text)
-    apply_signals(st, sig)
-    save_state(st)
+    with state_lock(conv):
+        st = load_state(conv)
+        if st.get("last_input_hash") == digest:
+            return {}  # already handled this message; PreInvocation fires every model call
+        st["last_input_hash"] = digest
+        st["stop_nags"] = 0
+        sig = constraints.extract(text)
+        apply_signals(st, sig)
+        save_state(st)
 
     lines: List[str] = []
     if st["locks"]:
@@ -307,6 +333,8 @@ def _command_writes_lock(cmd: str, lock: str) -> bool:
             _matches_lock(w.strip("'\";,()"), lock) or lock in w for w in seg_words
         ):
             continue
+        if any(_matches_lock(m.group(2), lock) for m in _REDIRECT.finditer(segment)):
+            return True
         if re.match(r"^\s*sips\b", segment):
             sw = segment.split()
             if "--out" in sw or "-o" in sw:
@@ -326,13 +354,15 @@ def _command_writes_lock(cmd: str, lock: str) -> bool:
             if parts and _matches_lock(parts[-1], lock):
                 return True  # copying ONTO the locked file
             continue
-        if _WRITE_CMD.search(segment):
+        if _WRITE_CMD.search(_REDIRECT.sub(" ", segment)):
             return True
     return False
 
 
-def _deny(reason: str, conv: str, tool: str) -> dict:
-    log_event("deny", conv, {"tool": tool, "reason": reason})
+def _deny(reason: str, conv: str, tool: str, logged: Optional[str] = None) -> dict:
+    """Refuses a call. `logged` replaces the reason in events.jsonl when the
+    reason quotes tool output, which may hold secrets."""
+    log_event("deny", conv, {"tool": tool, "reason": logged or reason})
     return {"decision": "deny", "reason": reason}
 
 
@@ -358,6 +388,17 @@ def pre_tool_use(p: dict) -> dict:
     args = normalize_args(tc.get("args") if tc else p.get("tool_input"))
     conv = str(p.get("conversationId") or "default")
     st = load_state(conv)
+
+    if name in SHELL_TOOLS:
+        cmd = next((str(args[k]) for k in COMMAND_KEYS if k in args), "")
+        if _USER_ONLY.search(cmd):
+            return _deny(
+                "Harness² Guardrail: adopting a harness change (`harness2 apply`, `--apply`, `--reseed`) or "
+                "lifting a lock (`harness2 unlock`) is the user's decision. Show them the command and the diff, "
+                "and let them run it.",
+                conv,
+                name,
+            )
 
     for lock in st["locks"]:
         if name in WRITE_TOOLS:
@@ -402,6 +443,7 @@ def pre_tool_use(p: dict) -> dict:
                 "change the input or take one fallback, and stop if that fails too.",
                 conv,
                 name,
+                logged="Harness² loop guard: identical retry of a call that just failed",
             )
     return {"decision": "allow"}
 
@@ -470,8 +512,10 @@ def stop(p: dict) -> dict:
                         )
     if not problems:
         return {"decision": "allow"}
-    st["stop_nags"] = st.get("stop_nags", 0) + 1
-    save_state(st)
+    with state_lock(conv):
+        st = load_state(conv)
+        st["stop_nags"] = st.get("stop_nags", 0) + 1
+        save_state(st)
     reason = (
         "Harness² stop check: "
         + "; ".join(problems)
