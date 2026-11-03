@@ -23,7 +23,7 @@ the step-by-step runbook is [docs/guides/creating-an-agent-github-app.md](../../
 | `pr-unhold <pr>` | Removes `do-not-automerge` and checks it is gone. Does **not** re-arm auto-merge: run `pr-enqueue` when the PR should land. |
 | `run-rerun <run-id> [--failed] [--job <id>]` | Re-runs a workflow run. Needs Actions write. |
 | `run-cancel <run-id>` | Cancels a workflow run. Needs Actions write. |
-| `workflow-run <file.yaml> [-f k=v ...] [--ref main]` | Starts a workflow, **only** one listed in [`workflow-allowlist.txt`](workflow-allowlist.txt), named by its file name, from `main` (another ref runs that branch's copy of the workflow), in this repository (`--repo` is refused). Needs Actions write. |
+| `workflow-run <file.yaml> [-f k=v ...] [--ref main]` | Starts a workflow, **only** one listed in [`workflow-allowlist.txt`](workflow-allowlist.txt), named by its file name, from `main` (another ref runs that branch's copy of the workflow), in this repository (`--repo` is refused). Each list line names the input keys that workflow takes (`<file.yaml> [key ...]`); any other `-f` key is refused, and a line with no keys takes no inputs. Inputs are `-f`/`--raw-field` only: `-F`/`--field` is refused, because gh reads a value starting with `@` from a file. Needs Actions write. See [Starting a foundation deploy leaf](#starting-a-foundation-deploy-leaf). |
 | `issue-create --title <s> --body-file <f> \| --body <s> [gh issue create args]` | **How agents open issues.** Opens an issue in this repository as the agent. Title and body are required (without them gh prompts); `--repo` and `--web` are refused. |
 | `issue-comment <issue> --body-file <f> \| --body <s>` | Comments on an issue as the agent. The body is required. |
 | `issue-close <issue> [--comment <s>] [--reason completed\|"not planned"]` | Closes an issue as the agent. |
@@ -92,6 +92,45 @@ bazel run //tools/agent-app -- installations 4520098 ~/keys/beacon.pem
 bazel test //tools/agent-app/...
 bazel run //tools/agent-app:permission-drift          # GitHub vs permissions.tsv
 ```
+
+## Starting a foundation deploy leaf
+
+`workflow-run` can re-run one foundation leaf from `main`, once its plan has
+been reviewed:
+
+```sh
+bazel run //tools/agent-app -- workflow-run foundation-proj-deploy.yaml \
+  -f environment=development -f business-unit=business_unit_1 -f allow-destructive=true
+bazel run //tools/agent-app -- workflow-run foundation-app-deploy.yaml \
+  -f environment=development -f business-unit=business_unit_1 -f app-image-digests=<app>=<digest-ref>
+```
+
+Three rules are written in the tool itself, not in `workflow-allowlist.txt`.
+They are **guardrails against mistakes, not a security boundary**: the tool is
+built from the same checkout, so a branch can edit these rules as easily as the
+list, and any agent can mint wren's token and call GitHub's dispatch API
+directly. The real controls are on GitHub: each Environment's protected-branch
+policy and required reviewers, and which App has Actions write.
+
+- `allow-destructive` (also spelled `allow_destructive`, any case) is accepted
+  only for `foundation-proj-deploy.yaml`, and only as `true` or `false`. It lets
+  the apply delete or replace resources, so every other workflow refuses the key.
+- `working-directory` is refused for every `foundation-*` workflow: it picks
+  which Pulumi project the run applies.
+- For a `foundation-*` workflow, `environment` must be `development`,
+  `nonproduction` or `production` (or `shared`, for `foundation-proj-deploy.yaml`
+  only: app-infra has no shared leaf, and a run there would create a
+  `foundation-app-*shared` Environment with no rules), and `business-unit` must
+  be `business_unit_<n>`. The business unit is joined into the leaf's path, so a
+  value like `../../gcp-org` must not get through.
+
+A key given twice is refused too.
+
+**Who approves the apply.** Each leaf's GitHub Environment still applies. Only
+the projects `shared` and `production` leaves wait for a person's approval
+there. The projects `development` and `nonproduction` leaves, and every
+app-infra leaf, have no required reviewer, so on those the run applies as soon
+as it starts and the plan review before it is the only check.
 
 ## `login` alone is not enough
 

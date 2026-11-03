@@ -1,18 +1,45 @@
 # Workflows an agent may start by hand with
 #   bazel run //tools/agent-app -- workflow-run <file> [-f k=v ...]
-# One file name per line, exactly as it is under .github/workflows/. Anything
-# not listed is refused. Starting a workflow can deploy, publish or push to
-# another repository, so adding a line is a decision for review, not a fix to
-# make in passing.
+# One workflow per line: the file name, exactly as it is under
+# .github/workflows/, then the input keys it may be started with:
+#   <file.yaml> [key ...]
+# Anything not listed is refused, and so is any -f key its line does not
+# name; a line with the file name alone takes no inputs. Starting a workflow
+# can deploy, publish or push to another repository, so adding a line or a key
+# is a decision for review, not a fix to make in passing.
 #
-# Each one is here because agents already start it, and it only reads or
-# opens a pull request that the merge queue still tests.
+# The tool also holds three rules of its own: allow-destructive only for
+# foundation-proj-deploy.yaml; no working-directory for a foundation-*
+# workflow; and a foundation-* environment and business-unit must name a real
+# leaf (see workflow_inputs_ok in src/agent_app/mod.rs). Like this file, they
+# are guardrails against mistakes, not a security boundary: the real controls
+# are each GitHub Environment's rules and which App has Actions write.
+#
+# Most entries only read, or open a pull request that the merge queue still
+# tests. The two foundation-* entries deploy. Each only re-runs a leaf that
+# already deploys from main (every foundation Environment is limited to
+# protected branches), and each leaf's GitHub Environment rules still apply.
+# Those rules hold a run for a person's approval ONLY on the projects shared
+# and production leaves. The projects development and nonproduction leaves,
+# and every app-infra leaf, have no required reviewer, so a run there applies
+# as soon as it starts: the plan review before it is the only check.
 
 # Opens a catalog pull request for a tool release that is ahead of its entry.
-catalog-bump.yaml
+# id and tag are its own dispatch inputs (one entry, one release tag).
+catalog-bump.yaml id tag
 # Read-only: reports drift between the delivery config and what is deployed.
 # Started by wren on 2026-10-14 (run 38636869265).
 delivery-drift.yaml
 # Read-only: compares each agent App's permissions with permissions.tsv.
 # Started by wren after each by-hand permission change.
 agent-app-permissions.yaml
+# Re-runs a destructive-guarded foundation projects leaf after its plan has
+# been reviewed. allow-destructive=true lets the apply delete or replace what
+# that reviewed plan showed. The GitHub Environment rules still apply; shared
+# and production also wait for a person's approval there.
+foundation-proj-deploy.yaml environment business-unit allow-destructive
+# Re-runs a foundation app-infra leaf after its plan has been reviewed. It has
+# no allow-destructive input. app-image-digests is the leaf's image pins, which
+# its digest guard requires for any enabled workload. The GitHub Environment
+# rules still apply; no app-infra leaf has a required reviewer.
+foundation-app-deploy.yaml environment business-unit app-image-digests

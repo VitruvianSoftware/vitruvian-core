@@ -121,7 +121,8 @@ is two clicks per agent; everything either side of them is here.
   bazel run //tools/agent-app -- run-rerun [--agent <agent>] <run-id> [--failed] [--job <id>]
   bazel run //tools/agent-app -- run-cancel [--agent <agent>] <run-id>
   bazel run //tools/agent-app -- workflow-run [--agent <agent>] <workflow.yaml> [-f k=v ...] [--ref main]
-                                  # only workflows in workflow-allowlist.txt, only from main
+                                  # only workflows in workflow-allowlist.txt, only from main,
+                                  # only the input keys its line declares (-F is refused)
   bazel run //tools/agent-app -- issue-create [--agent <agent>] --title <s> --body-file <f> [gh issue create args]
   bazel run //tools/agent-app -- issue-comment [--agent <agent>] <issue> --body-file <f> | --body <s>
   bazel run //tools/agent-app -- issue-close [--agent <agent>] <issue> [--comment <s>] [--reason <r>]
@@ -1483,8 +1484,10 @@ impl Tool {
                 b"; nothing was run",
             ])));
         }
-        let allowed = allowlist(&std::fs::read(sh::path(&self.allowlist)).unwrap_or_default());
-        if !allowed_has(&allowed, &wf) {
+        let list = std::fs::read(sh::path(&self.allowlist)).unwrap_or_default();
+        let allowed = allowlist(&list);
+        let declared = allowlist_entry(&list, &wf);
+        if !allowed_has(&allowed, &wf) || declared.is_none() {
             let shown: Vec<u8> = allowed
                 .split(|&c| c == b'\n')
                 .collect::<Vec<_>>()
@@ -1499,6 +1502,7 @@ impl Tool {
                 b")",
             ])));
         }
+        workflow_inputs_ok(&wf, &declared.unwrap_or_default(), inputs)?;
         self.need_actions_write(&agent)?;
         let tok = self.mint_token(&agent, b"the workflow was NOT started")?;
         to_caller_dir()?;
@@ -2220,22 +2224,28 @@ pub fn issue_args_ok(usage: &str, args: &[Vec<u8>]) -> Result<(), Refusal> {
 }
 
 /// workflow-run's checks on what follows the workflow: inputs and --ref
-/// main, nothing else.
+/// main, nothing else. Which inputs, and their values, workflow_inputs_ok
+/// checks once the workflow is known.
 pub fn workflow_args(usage: &str, args: &[Vec<u8>]) -> Result<(), Refusal> {
     let u = usage.as_bytes();
     let mut i = 0;
     while i < args.len() {
         let a = args[i].as_slice();
-        if matches!(a, b"-f" | b"-F" | b"--raw-field" | b"--field") {
+        if matches!(a, b"-f" | b"--raw-field") {
             if i + 1 >= args.len() {
                 return Err(refuse(&[b"usage: ", u]));
             }
             i += 1;
-        } else if (a.starts_with(b"-f") && a.len() > 2)
-            || (a.starts_with(b"-F") && a.len() > 2)
-            || a.starts_with(b"--raw-field=")
-            || a.starts_with(b"--field=")
-        {
+        } else if (a.starts_with(b"-f") && a.len() > 2) || a.starts_with(b"--raw-field=") {
+        } else if a.starts_with(b"-F") || a == b"--field" || a.starts_with(b"--field=") {
+            // gh's typed form: a value starting with @ is read from a file,
+            // and true/false/numbers are converted, so what runs is not what
+            // the command line shows. Nothing listed needs it.
+            return Err(refuse(&[
+                b"refusing ",
+                a,
+                b": pass inputs as -f k=v (a literal string; -F reads @file values). Nothing was run",
+            ]));
         } else if a == b"--ref"
             || a == b"-r"
             || a.starts_with(b"--ref=")
@@ -2274,22 +2284,178 @@ pub fn workflow_args(usage: &str, args: &[Vec<u8>]) -> Result<(), Refusal> {
     Ok(())
 }
 
-/// `awk '!/^#/ && NF {print $1}'` over the allowlist, as `$(...)` keeps it.
+/// The words of an allow-list line, up to a `#` comment.
+fn allowlist_words(l: &[u8]) -> Vec<&[u8]> {
+    l.split(|&c| c == b' ' || c == b'\t')
+        .filter(|w| !w.is_empty())
+        .take_while(|w| !w.starts_with(b"#"))
+        .collect()
+}
+
+/// The workflow names in the allowlist, one per line: the first word of each
+/// line that is not a comment.
 pub fn allowlist(data: &[u8]) -> Vec<u8> {
     let mut o = Vec::new();
     for l in sh::lines(data) {
-        if l.starts_with(b"#") {
-            continue;
-        }
-        if let Some(w) = l
-            .split(|&c| c == b' ' || c == b'\t')
-            .find(|w| !w.is_empty())
-        {
+        if let Some(w) = allowlist_words(&l).first() {
             o.extend_from_slice(w);
             o.push(b'\n');
         }
     }
     sh::subst(o)
+}
+
+/// The input keys `wf`'s allowlist line declares (`<file> [key ...]`), or
+/// None when it is not listed. A line with the name alone accepts no inputs.
+pub fn allowlist_entry(data: &[u8], wf: &[u8]) -> Option<Vec<Vec<u8>>> {
+    sh::lines(data).into_iter().find_map(|l| {
+        let w = allowlist_words(&l);
+        match w.split_first() {
+            Some((name, keys)) if *name == wf => Some(keys.iter().map(|k| k.to_vec()).collect()),
+            _ => None,
+        }
+    })
+}
+
+/// The one workflow that may be started with `allow-destructive`: it lets a
+/// foundation projects leaf apply a plan that deletes or replaces resources.
+pub const DESTRUCTIVE_WORKFLOW: &[u8] = b"foundation-proj-deploy.yaml";
+
+/// The `k=v` of each -f / --raw-field, in order (workflow_args has already
+/// refused every other form).
+fn workflow_fields(args: &[Vec<u8>]) -> Vec<Vec<u8>> {
+    let mut o = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        let a = args[i].as_slice();
+        if matches!(a, b"-f" | b"--raw-field") {
+            if let Some(n) = args.get(i + 1) {
+                o.push(n.clone());
+            }
+            i += 1;
+        } else if let Some(kv) = a.strip_prefix(b"--raw-field=") {
+            o.push(kv.to_vec());
+        } else if a.starts_with(b"-f") && a.len() > 2 {
+            o.push(a[2..].to_vec());
+        } else if matches!(a, b"--ref" | b"-r") {
+            i += 1;
+        }
+        i += 1;
+    }
+    o
+}
+
+/// Lower case, `_` as `-`: how a key is compared with the names these rules
+/// hold fixed, so `Allow_Destructive` is caught too.
+fn input_key_norm(k: &[u8]) -> Vec<u8> {
+    k.iter()
+        .map(|&c| {
+            if c == b'_' {
+                b'-'
+            } else {
+                c.to_ascii_lowercase()
+            }
+        })
+        .collect()
+}
+
+/// workflow-run's checks on the inputs once the workflow is known. Every
+/// key must be one the workflow's allowlist line declares, once. Three rules
+/// hold whatever the list says (guardrails, not a security boundary):
+/// allow-destructive only for DESTRUCTIVE_WORKFLOW, and only true or false;
+/// no working-directory for a foundation-* workflow (it picks the Pulumi
+/// project the run applies); and a foundation-* workflow's environment and
+/// business-unit only name a real leaf (business-unit is joined into that
+/// path too, so `..` must not get through; foundation-app-* has no shared
+/// leaf).
+pub fn workflow_inputs_ok(
+    wf: &[u8],
+    declared: &[Vec<u8>],
+    args: &[Vec<u8>],
+) -> Result<(), Refusal> {
+    let foundation = wf.starts_with(b"foundation-");
+    let mut seen: Vec<Vec<u8>> = Vec::new();
+    for kv in workflow_fields(args) {
+        let Some(eq) = kv.iter().position(|&c| c == b'=') else {
+            return Err(refuse(&[
+                b"refusing input '",
+                &kv,
+                b"': write it as key=value; nothing was run",
+            ]));
+        };
+        let (k, v) = (&kv[..eq], &kv[eq + 1..]);
+        let norm = input_key_norm(k);
+        if norm == b"allow-destructive" && wf != DESTRUCTIVE_WORKFLOW {
+            return Err(refuse(&[
+                b"refusing ",
+                k,
+                b" for ",
+                wf,
+                b": only ",
+                DESTRUCTIVE_WORKFLOW,
+                b" may be started with allow-destructive; nothing was run",
+            ]));
+        }
+        if foundation && norm == b"working-directory" {
+            return Err(refuse(&[
+                b"refusing ", k, b" for ", wf,
+                b": it chooses which Pulumi project the run applies; a re-run uses the default. Nothing was run",
+            ]));
+        }
+        if !declared.iter().any(|d| d.as_slice() == k) {
+            let shown = if declared.is_empty() {
+                b"none".to_vec()
+            } else {
+                declared.join(&b", "[..])
+            };
+            return Err(refuse(&[
+                b"refusing input '",
+                k,
+                b"' for ",
+                wf,
+                b": not declared for it in workflow-allowlist.txt (accepted: ",
+                &shown,
+                b"); nothing was run",
+            ]));
+        }
+        if seen.iter().any(|s| s.as_slice() == k) {
+            return Err(refuse(&[
+                b"refusing input '",
+                k,
+                b"': given twice; nothing was run",
+            ]));
+        }
+        seen.push(k.to_vec());
+        let bad_value = if norm == b"allow-destructive" {
+            !matches!(v, b"true" | b"false")
+        } else if foundation && norm == b"environment" {
+            // app-infra has no shared leaf, and no foundation-app-*shared
+            // Environment: a run would create one with no rules.
+            let shared_ok = !wf.starts_with(b"foundation-app-");
+            !(matches!(v, b"development" | b"nonproduction" | b"production")
+                || (shared_ok && v == b"shared"))
+        } else if foundation && norm == b"business-unit" {
+            !business_unit_name(v)
+        } else {
+            false
+        };
+        if bad_value {
+            return Err(refuse(&[
+                b"refusing ", k, b"=", v, b" for ", wf,
+                b": not an accepted value (allow-destructive: true or false; environment: development, nonproduction or production, or shared for foundation-proj-deploy; business-unit: business_unit_<n>). Nothing was run",
+            ]));
+        }
+    }
+    Ok(())
+}
+
+/// `business_unit_<n>`, n a positive number with no leading zero: the leaf
+/// directories under each foundation stage root.
+pub fn business_unit_name(v: &[u8]) -> bool {
+    match v.strip_prefix(b"business_unit_") {
+        Some(n) => !n.is_empty() && n[0] != b'0' && n.iter().all(|c| c.is_ascii_digit()),
+        None => false,
+    }
 }
 
 /// `grep -qxF -- "$wf" <<<"$allowed"`: a line of the workflow name (each
