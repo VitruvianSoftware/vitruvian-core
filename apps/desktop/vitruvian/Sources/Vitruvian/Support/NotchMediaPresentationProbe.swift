@@ -83,8 +83,11 @@ enum NotchMediaPresentationProbe {
         let app = NSApplication.shared
         app.setActivationPolicy(.prohibited)
         guard let screen = NSScreen.main else { print("MEDIA MOTION FAILED: no display"); exit(1) }
-        let domain = "com.vitruviansoftware.vitruvian.tests.media-motion.\(UUID().uuidString)"
+        // One fixed suite, emptied first, rather than a new one per run: each
+        // of those stayed in ~/Library/Preferences for good.
+        let domain = "com.vitruviansoftware.vitruvian.tests.media-motion"
         let defaults = UserDefaults(suiteName: domain)!
+        defaults.removePersistentDomain(forName: domain)
         defaults.register(defaults: Defaults.registeredDefaults)
         defaults[Preferences.notchLiquidGlassEnabled] = CommandLine.arguments.contains("--glass")
         let geometry = NotchGeometry(screen: screen.frame, safeAreaTop: 32, cameraWidth: 180, layout: .spacious)

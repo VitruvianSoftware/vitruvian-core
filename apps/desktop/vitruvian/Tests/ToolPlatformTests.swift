@@ -809,7 +809,7 @@ enum ToolPlatformTests {
                      "tool command shortcuts travel with a settings backup")
 
         let domain = "com.vitruviansoftware.vitruvian.tests.toolCommandShortcuts"
-        let defaults = UserDefaults(suiteName: domain)!
+        let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
         defaults[Preferences.toolCommandShortcuts] = raw ?? ""
@@ -1367,7 +1367,7 @@ enum ToolPlatformTests {
         let optionM = GlobalShortcut(keyCode: 46, modifiers: [.option])
         let optionK = GlobalShortcut(keyCode: 40, modifiers: [.option])
         let domain = "com.vitruviansoftware.vitruvian.tests.toolShortcutRegistrar"
-        let defaults = UserDefaults(suiteName: domain)!
+        let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
         func stored() -> [String: String] {

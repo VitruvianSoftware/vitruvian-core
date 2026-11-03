@@ -568,7 +568,7 @@ enum SettingsFeatureTests {
                "applying the same backup twice does not double a carried path")
         // The fix is an ORDER: capture before the clear, put back after the
         // write. Either one moved leaves the restored lists without their paths.
-        let restoreDefaults = UserDefaults(suiteName: "vitru.tests.settings-restore")!
+        let restoreDefaults = ScratchDefaults.suite(named: "vitru.tests.settings-restore")!
         let restoredExceptionKey = MouseExceptionScope.smoothScroll.defaultsKey
         restoreDefaults.set(["com.apple.Terminal", localJavaPath], forKey: restoredExceptionKey)
         restoreDefaults.set(["com.apple.Terminal", localJavaPath], forKey: DefaultsKey.windowLayoutIgnoredApps)

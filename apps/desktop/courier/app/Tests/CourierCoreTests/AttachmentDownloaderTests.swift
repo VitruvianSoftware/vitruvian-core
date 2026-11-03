@@ -25,7 +25,7 @@ final class AttachmentDownloaderTests: XCTestCase {
         try FileManager.default.createDirectory(at: mediaStoreDir, withIntermediateDirectories: true)
 
         suiteName = "courier.downloader.tests.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suiteName)!
+        defaults = ScratchDefaults.suite(named: suiteName)!
     }
 
     override func tearDownWithError() throws {

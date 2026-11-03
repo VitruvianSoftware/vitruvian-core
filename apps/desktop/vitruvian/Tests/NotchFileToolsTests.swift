@@ -13,7 +13,7 @@ enum NotchFileToolsTests {
         MediaDialogHostTests.run { suite.expect($0, $1) }
         ShelfDragCompletionTests.run(suite)
         let domain = "com.vitruviansoftware.vitruvian.tests.notch-files"
-        let defaults = UserDefaults(suiteName: domain)!
+        let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
         suite.expect(Defaults.registeredDefaults[DefaultsKey.notchDownloadsEnabled] as? Bool == true,

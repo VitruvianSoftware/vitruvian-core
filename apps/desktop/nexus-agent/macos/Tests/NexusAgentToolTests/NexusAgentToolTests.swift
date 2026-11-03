@@ -121,7 +121,7 @@ final class NexusAgentToolTests: XCTestCase {
 
         var environment: NexusAgentEngine.Environment {
             NexusAgentEngine.Environment(
-                defaults: UserDefaults(suiteName: "com.vitruviansoftware.nexus-agent.tool-tests")!,
+                defaults: ScratchDefaults.suite(named: "com.vitruviansoftware.nexus-agent.tool-tests")!,
                 home: home,
                 processEnvironment: ["PATH": "/usr/bin"],
                 stateDirectory: state,

@@ -12,7 +12,7 @@ final class HotkeyRegistryTests: XCTestCase {
 
     override func setUp() async throws {
         suiteName = "HotkeyRegistryTests.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suiteName)!
+        defaults = ScratchDefaults.suite(named: suiteName)!
     }
 
     override func tearDown() async throws {
@@ -671,7 +671,7 @@ final class HotkeyRegistryTests: XCTestCase {
 
     func testLockingAppDismissesAllOpenSheetsPopoversAndAlertsAndBlocksActions() async throws {
         let suiteName = "courier.test.hotkeys.lockdismiss.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         final class RecordingSender: MessageSending, @unchecked Sendable {
@@ -1057,7 +1057,7 @@ final class HotkeyRegistryTests: XCTestCase {
 
     func testLabelEditorCannotSaveWhileLocked() async throws {
         let suiteName = "courier.test.hotkeys.labels.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let supervisor = EngineSupervisor(
@@ -1100,7 +1100,7 @@ final class HotkeyRegistryTests: XCTestCase {
 
     func testMessageMenuShortcutsRouteThroughHotkeyDispatcherAndAreNoOpWhileLocked() async throws {
         let suiteName = "courier.test.hotkeys.messagemenu.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         final class SpyPasteboard: TextPasteboard {
@@ -1235,7 +1235,7 @@ final class HotkeyRegistryTests: XCTestCase {
 
     func testLaunchingWithLockOnEveryModelAndDetachedSessionReportsLockedAndRefusesActions() async throws {
         let suiteName = "courier.test.hotkeys.launchlocked.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         final class SpyPasteboard: TextPasteboard {
@@ -1422,7 +1422,7 @@ final class HotkeyRegistryTests: XCTestCase {
 
     func testLocalSettingsWritesAndRemainingActionEntrypointsAreRefusedWhileLocked() async throws {
         let suiteName = "courier.test.hotkeys.localsettings.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let loginItem = FakeLoginItemService(currentStatus: .notRegistered)

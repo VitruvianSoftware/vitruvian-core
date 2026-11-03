@@ -94,7 +94,7 @@ final class DockAndTrayModelTests: XCTestCase {
 
     func testMenuBarIconPreferenceAndDockBadgeModes() throws {
         let suiteName = "courier.test.dock.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let prefs = DockAndTrayPreferences(defaults: defaults)
@@ -111,7 +111,7 @@ final class DockAndTrayModelTests: XCTestCase {
 
     func testExternalMenuUnlockAndTwinMenuActionsShareOneModelAction() async throws {
         let suiteName = "courier.test.dock.actions.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let supervisor = EngineSupervisor(

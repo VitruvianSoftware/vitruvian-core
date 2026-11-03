@@ -238,7 +238,7 @@ enum NotchCompactTests {
         let manager = FileManager.default
         let root = manager.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let domain = "com.vitruviansoftware.vitruvian.tests.notch-compact"
-        let defaults = UserDefaults(suiteName: domain)!
+        let defaults = ScratchDefaults.suite(named: domain)!
         // A real pad over a directory of its own, on a real island's page.
         let harness = ScratchpadHarness(root: root)
         let fixture = NotchIslandFixture(defaults: defaults)
@@ -498,7 +498,7 @@ enum NotchCompactTests {
     /// row of controls under it.
     private static func musicControls(_ suite: TestSuite) {
         let domain = "com.vitruviansoftware.vitruvian.tests.notch-music-controls"
-        let defaults = UserDefaults(suiteName: domain)!
+        let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
         // Written out, not left absent: a suite run earlier in the process

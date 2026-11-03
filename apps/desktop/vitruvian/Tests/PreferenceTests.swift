@@ -34,7 +34,7 @@ enum PreferenceTests {
         expectRegistered(Preferences.toolCommandShortcuts, suite)
 
         let domain = "com.vitruviansoftware.vitruvian.tests.preference"
-        let defaults = UserDefaults(suiteName: domain)!
+        let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
         let count = Preference("count", default: 3)
@@ -75,7 +75,7 @@ enum PreferenceTests {
         // An enum stored as its raw text (step 6zzr).
         expectRegistered(Preferences.notchTimerMode, suite)
         expectRegistered(Preferences.scrollHorizontalModifier, suite)
-        let modes = UserDefaults(suiteName: "com.vitruviansoftware.vitruvian.tests.preference.enum")!
+        let modes = ScratchDefaults.suite(named: "com.vitruviansoftware.vitruvian.tests.preference.enum")!
         modes.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.preference.enum")
         defer { modes.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.preference.enum") }
         suite.expect(AppStorage<NotchTimerMode>(Preferences.notchTimerMode, store: modes).wrappedValue == .timer
@@ -99,7 +99,7 @@ enum PreferenceTests {
         suite.expect(registered == preference.defaultValue, "\(preference.key) is registered with its declared default")
 
         let domain = "com.vitruviansoftware.vitruvian.tests.preference.\(preference.key)"
-        let defaults = UserDefaults(suiteName: domain)!
+        let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
         suite.expect(defaults[preference] == preference.defaultValue,

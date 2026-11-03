@@ -155,7 +155,7 @@ enum UninstallerFlowTests {
         let fm = FileManager.default
         let root = fm.temporaryDirectory.resolvingSymlinksInPath().appendingPathComponent("uninstaller-flow-\(UUID())")
         let suiteName = "vitru.tests.uninstaller-flow-\(UUID())"
-        guard let defaults = UserDefaults(suiteName: suiteName) else {
+        guard let defaults = ScratchDefaults.suite(named: suiteName) else {
             suite.expect(false, "a scratch defaults suite opens")
             return
         }

@@ -738,7 +738,7 @@ enum ExternalToolStoreTests {
                      "a tool that is held back is removed like any other")
 
         let domain = "com.vitruviansoftware.vitruvian.tests.tool-store"
-        let defaults = UserDefaults(suiteName: domain)!
+        let defaults = ScratchDefaults.suite(named: domain)!
         defaults.removePersistentDomain(forName: domain)
         defer { defaults.removePersistentDomain(forName: domain) }
         defaults.set("api", forKey: "com.acme.deploys/project")

@@ -1206,7 +1206,7 @@ enum UpdateFeatureTests {
         suite.expect(Defaults.registeredDefaults[DefaultsKey.includeBetaUpdates] as? Bool == false,
                "includeBetaUpdates defaults to false in registeredDefaults")
 
-        let testDefaults = UserDefaults(suiteName: "com.vitruviansoftware.vitruvian.tests.betaActivation")!
+        let testDefaults = ScratchDefaults.suite(named: "com.vitruviansoftware.vitruvian.tests.betaActivation")!
         testDefaults.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.betaActivation")
         Defaults.activateBetaChannelIfRunningBeta(in: testDefaults, version: "3.3.3-beta.1")
         suite.expect(testDefaults.bool(forKey: DefaultsKey.includeBetaUpdates) == true,
@@ -1217,7 +1217,7 @@ enum UpdateFeatureTests {
                "manual opt-out on a beta build is preserved across launches")
 
         // Stable version does not activate beta channel
-        let stableDefaults = UserDefaults(suiteName: "com.vitruviansoftware.vitruvian.tests.stableActivation")!
+        let stableDefaults = ScratchDefaults.suite(named: "com.vitruviansoftware.vitruvian.tests.stableActivation")!
         stableDefaults.removePersistentDomain(forName: "com.vitruviansoftware.vitruvian.tests.stableActivation")
         Defaults.activateBetaChannelIfRunningBeta(in: stableDefaults, version: "3.3.3")
         suite.expect(stableDefaults.object(forKey: DefaultsKey.includeBetaUpdates) == nil,
@@ -1272,7 +1272,7 @@ enum UpdateFeatureTests {
                "an approval-pending login item is read as its own state")
         // The switch against a stand-in login item: registering succeeds, but
         // System Settings still has the item switched off.
-        let loginDefaults = UserDefaults(suiteName: "vitru.tests.launch-at-login")!
+        let loginDefaults = ScratchDefaults.suite(named: "vitru.tests.launch-at-login")!
         var loginRegistration = LaunchAtLoginSupport.Registration.off
         var loginRegistrations = 0
         let loginSystem = LaunchAtLogin.System(

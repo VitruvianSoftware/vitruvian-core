@@ -31,10 +31,10 @@
 
 load("@build_bazel_rules_apple//apple:macos.bzl", "macos_command_line_application")
 load("@build_bazel_rules_swift//swift:swift_library.bzl", "swift_library")
-load("@build_bazel_rules_swift//swift:swift_test.bzl", "swift_test")
 load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_library", "rust_test")
 load("//tools/delivery:defs.bzl", "delivery")
 load("//tools/pipeline:defs.bzl", "pipeline_unit")
+load("//tools/swift-test-preferences:defs.bzl", "swift_test")
 
 # The pure codec: frames, checksums, the lighting record. No IOKit.
 swift_library(

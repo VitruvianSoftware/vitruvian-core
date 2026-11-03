@@ -65,7 +65,7 @@ enum UpdateIntroFlowTests {
         SupportUpdateIntroInfo.isOffered = true
         defer { SupportUpdateIntroInfo.isOffered = offered }
         let name = "vitru.tests.update-intros.\(UUID().uuidString)"
-        let defaults = Foundation.UserDefaults(suiteName: name)!
+        let defaults = ScratchDefaults.suite(named: name)!
         defer { defaults.removePersistentDomain(forName: name) }
         /// A fresh launch of `version`, with nothing seen yet.
         func reset(_ version: String) -> IntroShell {

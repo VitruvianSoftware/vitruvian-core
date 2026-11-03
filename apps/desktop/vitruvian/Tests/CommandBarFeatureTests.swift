@@ -730,7 +730,7 @@ enum CommandBarFeatureTests {
             let root = fileManager.temporaryDirectory.resolvingSymlinksInPath()
                 .appendingPathComponent("command-bar-uninstall-\(UUID().uuidString)", isDirectory: true)
             let suiteName = "vitru.tests.command-bar-uninstall"
-            let defaults = UserDefaults(suiteName: suiteName)!
+            let defaults = ScratchDefaults.suite(named: suiteName)!
             defaults.removePersistentDomain(forName: suiteName)
             defer {
                 defaults.removePersistentDomain(forName: suiteName)
@@ -2411,7 +2411,7 @@ enum CommandBarFeatureTests {
                "Tab remembers the fuzzy search unless the completed field is edited")
 
         let learningDefaultsName = "com.vitruviansoftware.vitruvian.tests.command-bar-learning"
-        let learningDefaults = UserDefaults(suiteName: learningDefaultsName)!
+        let learningDefaults = ScratchDefaults.suite(named: learningDefaultsName)!
         learningDefaults.removePersistentDomain(forName: learningDefaultsName)
         let firstInstallationKey = CommandBarLearning.installationKey(in: learningDefaults)
         let savedChoice = CommandBarQueryHabits.recording(

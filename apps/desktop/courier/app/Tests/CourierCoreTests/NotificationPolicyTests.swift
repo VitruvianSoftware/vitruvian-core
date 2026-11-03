@@ -351,7 +351,7 @@ final class NotificationPolicyTests: XCTestCase {
 
     func testPerAccountOverridesFocusReactionAndSoundSelectionInPolicy() throws {
         let suiteName = "courier.test.notifprefs.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let prefs = NotificationPreferences(defaults: defaults)
@@ -464,7 +464,7 @@ final class NotificationPolicyTests: XCTestCase {
 
     func testPerAccountOverrideLookupIsDeterministicAcrossMultipleAccountsOnSameNetwork() throws {
         let suiteName = "courier.test.notifprefs.multiaccount.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let prefs = NotificationPreferences(defaults: defaults)

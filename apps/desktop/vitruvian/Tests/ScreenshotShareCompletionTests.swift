@@ -139,12 +139,12 @@ enum ScreenshotShareCompletionTests {
 
         init(_ links: Links) {
             self.links = links
-            defaults = UserDefaults(suiteName: defaultsName)!
+            defaults = ScratchDefaults.suite(named: defaultsName)!
             defaults.set(true, forKey: DefaultsKey.screenshotUploadShortcutEnabled)
             defaults.set(true, forKey: DefaultsKey.screenshotSharingEnabled)
         }
         deinit {
-            UserDefaults(suiteName: defaultsName)?.removePersistentDomain(forName: defaultsName)
+            ScratchDefaults.suite(named: defaultsName)?.removePersistentDomain(forName: defaultsName)
         }
 
         func shareDirect(_ capture: Int, completion: @escaping @MainActor (ScreenshotShareRecord?) -> Void) {

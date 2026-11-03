@@ -14,7 +14,7 @@ enum ClipboardSensitiveTextPreferenceTests {
                      "the old enabled-by-default filter is no longer registered")
 
         let domain = "com.vitruviansoftware.vitruvian.tests.clipboard-sensitive-opt-in.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: domain)!
+        let defaults = ScratchDefaults.suite(named: domain)!
         // Registration is process-wide, so later migration checks need it back.
         let registrationDomain = UserDefaults.standard.volatileDomain(
             forName: UserDefaults.registrationDomain)

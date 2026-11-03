@@ -122,6 +122,25 @@ flowchart TD
 
 ---
 
+## Swift tests and preferences
+
+Tests must never save into the real `~/Library/Preferences`. A suite a test
+saves stays there as a file even after the test removes the domain, and on
+2026-11-02 some 56,000 of them had stopped macOS saving any app's settings.
+
+- Load `swift_test` from `//tools/swift-test-preferences:defs.bzl`, never from
+  rules_swift. It keeps every suite, and `UserDefaults.standard`, in a folder
+  under the test's TEST_TMPDIR.
+- Open a suite with `ScratchDefaults.suite(named:)`. Every Swift test folder has
+  its own copy of `ScratchDefaults.swift`, identical below the licence lines; a
+  new test folder copies one. It also keeps suites out of the real folder
+  under `swift test` and Xcode.
+- `bazel run //tools/conformance:check` fails a raw `UserDefaults(suiteName:)`
+  or `CFPreferencesSet…` in test code, a direct rules_swift load, and copies
+  of `ScratchDefaults.swift` that differ.
+
+---
+
 ## 6. Onboarding a New Desktop App
 
 When adding a new desktop app `apps/desktop/<app-name>`:
