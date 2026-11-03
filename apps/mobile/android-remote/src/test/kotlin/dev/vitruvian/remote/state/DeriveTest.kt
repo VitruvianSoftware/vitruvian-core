@@ -21,6 +21,9 @@
 package dev.vitruvian.remote.state
 
 import dev.vitruvian.remote.state.Derive.PeekRegion
+import dev.vitruvian.remote.state.Derive.PollPage
+import dev.vitruvian.remote.state.Derive.PollSource
+import dev.vitruvian.remote.state.Derive.PollView
 import dev.vitruvian.remote.state.Derive.PrCheck
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -959,5 +962,282 @@ public class DeriveTest {
         "Not installed",
         Derive.agentHookStatusLabel(
             hookState = "", speaksTwice = false, configuredByInstruction = false))
+  }
+
+  // --- demand-driven polling ----------------------------------------------
+
+  private val tick = 1500L
+
+  private fun view(
+      page: PollPage,
+      module: String = "claude",
+      dashboards: Boolean = true,
+      foreground: Boolean = true,
+  ) = PollView(page, module, dashboards, foreground)
+
+  /** Everything fetched at [at], so only cadence decides what is due next. */
+  private fun allFetchedAt(at: Long): Map<PollSource, Long> =
+      PollSource.values().associateWith { at }
+
+  private val chrome = setOf(PollSource.Metrics, PollSource.Host)
+
+  @Test
+  public fun `an idle Home asks only for what Home draws`() {
+    val due = Derive.pollDue(view(PollPage.Home), tick, nowMs = 0, lastFetchedMs = emptyMap())
+    assertEquals(
+        chrome +
+            setOf(
+                PollSource.ClaudeSessions,
+                PollSource.Sessions,
+                PollSource.Prs,
+                PollSource.Antigravity,
+                PollSource.Ollama,
+                PollSource.Vms,
+                PollSource.K8s,
+                PollSource.Argo,
+                PollSource.Containers,
+                PollSource.HomeSpeaker,
+            ),
+        due,
+    )
+    // The ones nothing on Home draws: the TV, the speaker's volume, the Mac
+    // screen's process list and power plates, the Remote's audio.
+    for (hidden in
+        listOf(
+            PollSource.Tv,
+            PollSource.SpeakerVolume,
+            PollSource.Processes,
+            PollSource.Audio,
+            PollSource.Power,
+            PollSource.Tools,
+            PollSource.Notify,
+            PollSource.AntigravitySessions,
+        )) {
+      assertFalse("$hidden is not on Home", hidden in due)
+    }
+  }
+
+  @Test
+  public fun `Home summary rows refresh slower than an open dashboard`() {
+    val home = view(PollPage.Home)
+    val fetched = allFetchedAt(0)
+    // A slow tick later: an open dashboard would ask again; Home's one-line
+    // summary does not, but metrics and the Claude rows still do.
+    val atSlowTick = Derive.pollDue(home, tick, tick * Derive.SLOW_POLL_EVERY, fetched)
+    assertFalse(PollSource.HomeSpeaker in atSlowTick)
+    assertFalse(PollSource.Ollama in atSlowTick)
+    assertTrue(PollSource.Metrics in atSlowTick)
+    assertTrue(PollSource.ClaudeSessions in atSlowTick)
+    assertTrue(PollSource.Sessions in atSlowTick)
+    val atSummary = Derive.pollDue(home, tick, Derive.SUMMARY_POLL_MS, fetched)
+    assertTrue(PollSource.HomeSpeaker in atSummary)
+    assertTrue(PollSource.Argo in atSummary)
+    // GitHub keeps its own minute even on Home.
+    assertFalse(PollSource.Prs in atSummary)
+    assertTrue(PollSource.Prs in Derive.pollDue(home, tick, Derive.PR_POLL_MS, fetched))
+  }
+
+  @Test
+  public fun `the HomeSpeaker module asks for the speaker and nothing else`() {
+    val due =
+        Derive.pollDue(view(PollPage.Apps, "homespeaker"), tick, 0, lastFetchedMs = emptyMap())
+    assertEquals(chrome + setOf(PollSource.HomeSpeaker, PollSource.SpeakerVolume), due)
+  }
+
+  @Test
+  public fun `the TV is asked for only on the TV module`() {
+    for (page in PollPage.values()) {
+      for (module in listOf("claude", "homespeaker", "prs", "homelab", "lima", "docker")) {
+        assertFalse(
+            "tv asked on $page/$module",
+            PollSource.Tv in Derive.pollDue(view(page, module), tick, 0, emptyMap()))
+      }
+    }
+    assertEquals(
+        chrome + PollSource.Tv, Derive.pollDue(view(PollPage.Apps, "tv"), tick, 0, emptyMap()))
+    // The gallery is a different view of Apps: it reads the tool inventory.
+    assertEquals(
+        chrome + PollSource.Tools,
+        Derive.pollDue(view(PollPage.Apps, "tv", dashboards = false), tick, 0, emptyMap()))
+  }
+
+  @Test
+  public fun `each module asks for its own sources`() {
+    fun extras(module: String) =
+        Derive.pollDue(view(PollPage.Apps, module), tick, 0, emptyMap()) - chrome
+    assertEquals(setOf(PollSource.Argo, PollSource.K8s), extras("homelab"))
+    assertEquals(setOf(PollSource.Vms), extras("lima"))
+    assertEquals(setOf(PollSource.Ollama), extras("ollama"))
+    assertEquals(setOf(PollSource.Prs), extras("prs"))
+    assertEquals(setOf(PollSource.Containers), extras("docker"))
+    assertEquals(setOf(PollSource.ClaudeSessions, PollSource.Sessions), extras("claude"))
+    assertEquals(
+        setOf(PollSource.Antigravity, PollSource.AntigravitySessions), extras("antigravity"))
+    // Grafana's query is run when the module opens, not on the tick.
+    assertEquals(emptySet<PollSource>(), extras("grafana"))
+  }
+
+  @Test
+  public fun `other screens ask for what they draw`() {
+    fun extras(page: PollPage) = Derive.pollDue(view(page), tick, 0, emptyMap()) - chrome
+    assertEquals(setOf(PollSource.Audio), extras(PollPage.Remote))
+    assertEquals(
+        setOf(
+            PollSource.Processes,
+            PollSource.Vms,
+            PollSource.Containers,
+            PollSource.K8s,
+            PollSource.Power,
+        ),
+        extras(PollPage.Mac),
+    )
+    assertEquals(setOf(PollSource.Notify), extras(PollPage.Hosts))
+    assertEquals(emptySet<PollSource>(), extras(PollPage.Console))
+  }
+
+  @Test
+  public fun `opening a module fetches at once rather than at the next slow tick`() {
+    // HomeSpeaker was read for Home's row two seconds ago: not due on Home,
+    // and under the old fixed cadence not due for another slow tick either.
+    val last = allFetchedAt(0)
+    val now = 2_000L
+    assertFalse(PollSource.HomeSpeaker in Derive.pollDue(view(PollPage.Home), tick, now, last))
+    // The volume has never been asked for at all, so opening the module asks
+    // for it immediately.
+    val lastNoVolume = last - PollSource.SpeakerVolume
+    val opened = Derive.pollDue(view(PollPage.Apps, "homespeaker"), tick, now, lastNoVolume)
+    assertTrue(PollSource.SpeakerVolume in opened)
+    // And a source that went stale while it was off screen is due the moment
+    // it comes back, whatever the tick count says.
+    val tvLast = mapOf(PollSource.Tv to 0L)
+    assertTrue(PollSource.Tv in Derive.pollDue(view(PollPage.Apps, "tv"), tick, 60_000, tvLast))
+    assertEquals(
+        Derive.MIN_POLL_WAIT_MS,
+        Derive.pollWaitMs(view(PollPage.Apps, "tv"), tick, 60_000, allFetchedAt(60_000) + tvLast))
+  }
+
+  @Test
+  public fun `a module that has just come on screen is refreshed whatever its cadence says`() {
+    // The 30 s refresh setting: the TV's slow cadence is 90 s, and it was read
+    // a minute ago. Without the transition it would sit on that reading for
+    // another half minute after being opened.
+    val slowTick = 30_000L
+    val homeVisible = Derive.pollCadences(view(PollPage.Home), slowTick)
+    val tv = view(PollPage.Apps, "tv")
+    val last = allFetchedAt(0)
+    assertFalse(PollSource.Tv in Derive.pollDue(tv, slowTick, 60_000, last))
+    assertTrue(PollSource.Tv in Derive.pollDue(tv, slowTick, 60_000, last, homeVisible))
+    // Home read HomeSpeaker for its row a moment ago; opening the module
+    // still asks again, and for the volume Home never shows.
+    val speaker = view(PollPage.Apps, "homespeaker")
+    assertEquals(
+        setOf(PollSource.HomeSpeaker, PollSource.SpeakerVolume),
+        Derive.pollDue(speaker, tick, 100, last, Derive.pollCadences(view(PollPage.Home), tick)))
+    // Once it has been on screen for a pass, the cadence takes over again.
+    val speakerVisible = Derive.pollCadences(speaker, tick)
+    assertEquals(emptySet<PollSource>(), Derive.pollDue(speaker, tick, 100, last, speakerVisible))
+    // And coming back to the foreground is a transition too.
+    val awayVisible = Derive.pollCadences(speaker.copy(foreground = false), tick)
+    // Everything on screen is asked for at once, host identity included.
+    assertEquals(
+        chrome + setOf(PollSource.HomeSpeaker, PollSource.SpeakerVolume),
+        Derive.pollDue(speaker, tick, 100, last, awayVisible))
+  }
+
+  @Test
+  public fun `a visible module keeps its cadence`() {
+    val tv = view(PollPage.Apps, "tv")
+    val last = allFetchedAt(0)
+    val slow = tick * Derive.SLOW_POLL_EVERY
+    assertFalse(PollSource.Tv in Derive.pollDue(tv, tick, slow - 1, last))
+    assertTrue(PollSource.Tv in Derive.pollDue(tv, tick, slow, last))
+    // Metrics keep the tick.
+    assertTrue(PollSource.Metrics in Derive.pollDue(tv, tick, tick, last))
+  }
+
+  @Test
+  public fun `backgrounded, the app asks only whether the Mac still answers`() {
+    val away = view(PollPage.Apps, "homespeaker", foreground = false)
+    val last = allFetchedAt(0)
+    // Nothing for a long while after the last read...
+    assertEquals(
+        emptySet<PollSource>(), Derive.pollDue(away, tick, Derive.BACKGROUND_POLL_MS - 1, last))
+    // ...and then the reachability check alone: no speaker, no sessions, no
+    // PRs, however stale they are.
+    assertEquals(
+        setOf(PollSource.Metrics), Derive.pollDue(away, tick, 10 * Derive.PR_POLL_MS, last))
+    // Host identity only if it was never read (Wake-on-LAN needs the MAC).
+    assertEquals(chrome, Derive.pollDue(away, tick, 0, emptyMap()))
+    // Coming back is an immediate refresh of what is on screen.
+    val back = away.copy(foreground = true)
+    assertEquals(
+        setOf(PollSource.Metrics, PollSource.HomeSpeaker, PollSource.SpeakerVolume),
+        Derive.pollDue(back, tick, Derive.BACKGROUND_POLL_MS, last))
+  }
+
+  @Test
+  public fun `an old agent is asked for Antigravity sessions only on the slow tick`() {
+    val legacy = view(PollPage.Apps, "antigravity").copy(antigravitySessionsSupported = false)
+    val last = allFetchedAt(0)
+    assertFalse(PollSource.AntigravitySessions in Derive.pollDue(legacy, tick, tick, last))
+    assertTrue(
+        PollSource.AntigravitySessions in
+            Derive.pollDue(legacy, tick, tick * Derive.SLOW_POLL_EVERY, last))
+    val current = view(PollPage.Apps, "antigravity")
+    assertTrue(PollSource.AntigravitySessions in Derive.pollDue(current, tick, tick, last))
+  }
+
+  @Test
+  public fun `the loop sleeps until the next due source, within bounds`() {
+    val home = view(PollPage.Home)
+    // Everything just fetched: the next thing due is metrics, one tick out.
+    assertEquals(tick, Derive.pollWaitMs(home, tick, 0, allFetchedAt(0)))
+    assertEquals(500L, Derive.pollWaitMs(home, tick, 1_000, allFetchedAt(0)))
+    // Something due now still sleeps the floor, so an unreachable Mac cannot spin the loop.
+    assertEquals(Derive.MIN_POLL_WAIT_MS, Derive.pollWaitMs(home, tick, 0, emptyMap()))
+    // Backgrounded, still ticks (pairing and the trust timer ride the loop).
+    val away = home.copy(foreground = false)
+    assertEquals(tick, Derive.pollWaitMs(away, tick, 0, allFetchedAt(0)))
+  }
+
+  /**
+   * The point of all this, counted: a minute on an idle Home screen against the old loop, which
+   * asked for every endpoint on a fixed cadence whatever was on screen.
+   */
+  @Test
+  public fun `an idle minute on Home costs a fraction of the old fixed cadence`() {
+    val minute = 60_000L
+    val ticks = (minute / tick).toInt()
+    // The old loop, per tick: metrics, processes, audio, Claude sessions,
+    // Antigravity sessions; every third tick twelve more plus two PromQL
+    // queries; PRs once a minute; host every 40.
+    val old = ticks * 5 + (ticks + 2) / 3 * 14 + 1 + 1 + ticks / 40
+    fun simulate(v: PollView): Map<PollSource, Int> {
+      val last = HashMap<PollSource, Long>()
+      val counts = HashMap<PollSource, Int>()
+      var now = 0L
+      while (now < minute) {
+        for (s in Derive.pollDue(v, tick, now, last)) {
+          last[s] = now
+          counts[s] = (counts[s] ?: 0) + 1
+        }
+        now += Derive.pollWaitMs(v, tick, now, last)
+      }
+      return counts
+    }
+    val home = simulate(view(PollPage.Home))
+    val homeTotal = home.values.sum()
+    assertTrue("idle Home made $homeTotal requests vs $old", homeTotal * 2 < old)
+    assertEquals(null, home[PollSource.Tv])
+    assertEquals(null, home[PollSource.SpeakerVolume])
+    // HomeSpeaker's row: once on arrival, then every SUMMARY_POLL_MS.
+    assertEquals((minute / Derive.SUMMARY_POLL_MS).toInt(), home[PollSource.HomeSpeaker])
+    val speaker = simulate(view(PollPage.Apps, "homespeaker"))
+    assertEquals(
+        setOf(
+            PollSource.Metrics, PollSource.Host, PollSource.HomeSpeaker, PollSource.SpeakerVolume),
+        speaker.keys)
+    val away = simulate(view(PollPage.Home, foreground = false))
+    assertEquals(mapOf(PollSource.Metrics to 2, PollSource.Host to 1), away)
   }
 }

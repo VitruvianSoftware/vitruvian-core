@@ -1073,6 +1073,260 @@ public object Derive {
         else -> "standby"
       }
 
+  // --- demand-driven polling ----------------------------------------------
+
+  /**
+   * One thing the phone can ask the Mac agent for. Mostly one endpoint each; [Power] is the two
+   * PromQL power queries, which only ever go together.
+   */
+  public enum class PollSource {
+    Metrics,
+    Host,
+    Processes,
+    Audio,
+    ClaudeSessions,
+    Sessions,
+    AntigravitySessions,
+    Antigravity,
+    Prs,
+    Argo,
+    K8s,
+    Vms,
+    Containers,
+    Ollama,
+    HomeSpeaker,
+    SpeakerVolume,
+    Tv,
+    Tools,
+    Notify,
+    Power,
+  }
+
+  /**
+   * The app's screens, as the poll sees them. A mirror of `Screen`, which lives in the Android
+   * library this one cannot depend on; `RemoteState` maps one to the other with an exhaustive
+   * `when`, so a new screen fails to compile until it is placed here too.
+   */
+  public enum class PollPage {
+    Home,
+    Remote,
+    Mac,
+    Apps,
+    Console,
+    Hosts,
+  }
+
+  /**
+   * What the person can see right now, which is all the poll needs to know about the UI.
+   *
+   * [module] is the dashboard Apps is showing (already resolved through its fallback), and only
+   * counts while [appsDashboards] is true: the gallery shows a different thing entirely.
+   */
+  public data class PollView(
+      val page: PollPage,
+      val module: String,
+      val appsDashboards: Boolean,
+      val foreground: Boolean,
+      /** An agent older than v1.7 answers 404 for sessions; ask it on the slow cadence only. */
+      val antigravitySessionsSupported: Boolean = true,
+  )
+
+  /** How often the cheap reads go round, and the ones that shell out on the Mac, in ticks. */
+  public const val SLOW_POLL_EVERY: Int = 3
+
+  /** The contract samples PRs every 60 s on the Mac; asking faster only spends rate limit. */
+  public const val PR_POLL_MS: Long = 60_000L
+
+  /**
+   * Home's "Running now" rows are one line each about modules nobody has opened. They refresh, but
+   * not at the rate of the dashboard that is actually open.
+   */
+  public const val SUMMARY_POLL_MS: Long = 15_000L
+
+  /**
+   * Off screen the only reads left are the ones that keep the connection honest: whether the Mac
+   * still answers (the "unreachable" notification and Wake-on-LAN hang off that), nothing else.
+   */
+  public const val BACKGROUND_POLL_MS: Long = 30_000L
+
+  /** Host identity barely changes; ask again every this many ticks. */
+  public const val HOST_REFRESH_TICKS: Int = 40
+
+  /** Never again once fetched: due only while there is nothing at all. */
+  public const val ONCE: Long = Long.MAX_VALUE
+
+  /** The sources an Apps dashboard reads, by module id. Grafana's query runs on demand. */
+  public fun moduleSources(module: String): Set<PollSource> =
+      when (module) {
+        "claude" -> setOf(PollSource.ClaudeSessions, PollSource.Sessions)
+        "prs" -> setOf(PollSource.Prs)
+        "lima" -> setOf(PollSource.Vms)
+        "homelab" -> setOf(PollSource.Argo, PollSource.K8s)
+        "docker" -> setOf(PollSource.Containers)
+        "ollama" -> setOf(PollSource.Ollama)
+        "homespeaker" -> setOf(PollSource.HomeSpeaker, PollSource.SpeakerVolume)
+        "tv" -> setOf(PollSource.Tv)
+        "antigravity" -> setOf(PollSource.Antigravity, PollSource.AntigravitySessions)
+        else -> emptySet()
+      }
+
+  /** Everything Home's "Running now" list summarises, one row per module. */
+  private val homeSummary: Set<PollSource> =
+      setOf(
+          PollSource.ClaudeSessions,
+          PollSource.Sessions,
+          PollSource.Prs,
+          PollSource.Antigravity,
+          PollSource.Ollama,
+          PollSource.Vms,
+          PollSource.K8s,
+          PollSource.Argo,
+          PollSource.Containers,
+          PollSource.HomeSpeaker,
+      )
+
+  /**
+   * How often a source is worth asking for when it is on screen in full.
+   *
+   * The reads that move second to second (metrics, processes, audio, Claude and Antigravity
+   * sessions) go every tick; the ones that make the Mac shell out (`limactl`, `docker`, `kubectl`,
+   * `adb`, `say -v ?`) every [SLOW_POLL_EVERY] ticks; GitHub at its own sampling rate.
+   */
+  public fun nativeCadenceMs(
+      source: PollSource,
+      tickMs: Long,
+      antigravitySessionsSupported: Boolean = true,
+  ): Long {
+    val slow = tickMs * SLOW_POLL_EVERY
+    return when (source) {
+      PollSource.Metrics,
+      PollSource.Processes,
+      PollSource.Audio,
+      PollSource.ClaudeSessions -> tickMs
+      PollSource.AntigravitySessions -> if (antigravitySessionsSupported) tickMs else slow
+      PollSource.Host -> tickMs * HOST_REFRESH_TICKS
+      PollSource.Prs -> PR_POLL_MS
+      else -> slow
+    }
+  }
+
+  /**
+   * What is on screen, and how often each of it should be asked for.
+   *
+   * The answer to "why is the phone asking for that?" is always a row of this map. Metrics and host
+   * identity are the global chrome -- the connection state, the host chip, the Home widgets -- and
+   * are always in it; everything else is here only while a screen draws it. Backgrounded, nothing
+   * but the reachability check remains, at [BACKGROUND_POLL_MS].
+   */
+  public fun pollCadences(view: PollView, tickMs: Long): Map<PollSource, Long> {
+    if (!view.foreground) {
+      return mapOf(
+          PollSource.Metrics to maxOf(tickMs, BACKGROUND_POLL_MS),
+          PollSource.Host to ONCE,
+      )
+    }
+
+    fun native(source: PollSource) =
+        nativeCadenceMs(source, tickMs, view.antigravitySessionsSupported)
+    val out = LinkedHashMap<PollSource, Long>()
+
+    fun show(sources: Set<PollSource>, cadence: (PollSource) -> Long) {
+      for (source in sources) {
+        val ms = cadence(source)
+        out[source] = minOf(out[source] ?: Long.MAX_VALUE, ms)
+      }
+    }
+
+    show(setOf(PollSource.Metrics, PollSource.Host), ::native)
+    when (view.page) {
+      PollPage.Home ->
+          show(homeSummary) { source ->
+            // A Claude session waiting on a prompt is the one thing on Home
+            // that asks the person to act, so it keeps its own pace.
+            if (source == PollSource.ClaudeSessions || source == PollSource.Sessions) {
+              native(source)
+            } else {
+              maxOf(native(source), SUMMARY_POLL_MS)
+            }
+          }
+      PollPage.Remote -> show(setOf(PollSource.Audio), ::native)
+      PollPage.Mac ->
+          show(
+              setOf(
+                  PollSource.Processes,
+                  PollSource.Vms,
+                  PollSource.Containers,
+                  PollSource.K8s,
+                  PollSource.Power,
+              ),
+              ::native,
+          )
+      PollPage.Apps -> {
+        // The gallery is a different view of Apps: it reads the tool inventory.
+        val shown = if (view.appsDashboards) moduleSources(view.module) else setOf(PollSource.Tools)
+        show(shown, ::native)
+      }
+      PollPage.Console -> Unit
+      PollPage.Hosts -> show(setOf(PollSource.Notify), ::native)
+    }
+    return out
+  }
+
+  /**
+   * The sources to ask for now.
+   *
+   * Due when it is on screen and any of: it has never been fetched; it was last fetched at least
+   * its cadence ago; or it has just come on screen, or come on screen in more detail (its cadence
+   * got shorter, as when Home's one-line row opens into the module). That last one is what makes
+   * opening a module refresh it at once, however recently Home's row read the same endpoint: the
+   * last value stays up and a fresh one is asked for immediately, rather than at the next tick or
+   * the next slow tick.
+   *
+   * [lastFetchedMs] is a monotonic clock reading per source, of the last time it was asked for.
+   * [wasVisible] is [pollCadences] as it stood at the previous pass; null when there is no previous
+   * pass to compare with.
+   */
+  public fun pollDue(
+      view: PollView,
+      tickMs: Long,
+      nowMs: Long,
+      lastFetchedMs: Map<PollSource, Long>,
+      wasVisible: Map<PollSource, Long>? = null,
+  ): Set<PollSource> =
+      pollCadences(view, tickMs)
+          .filter { (source, cadence) ->
+            val last = lastFetchedMs[source] ?: return@filter true
+            val before = wasVisible?.let { it[source] ?: Long.MAX_VALUE }
+            if (before != null && cadence < before) return@filter true
+            cadence != ONCE && nowMs - last >= cadence
+          }
+          .keys
+
+  /** The shortest the poll loop sleeps, so a source that cannot be fetched never spins it. */
+  public const val MIN_POLL_WAIT_MS: Long = 250L
+
+  /**
+   * How long the poll loop may sleep before something on screen falls due.
+   *
+   * Never longer than a tick, because the pairing countdown and the trust timer advance with the
+   * loop, and never shorter than [MIN_POLL_WAIT_MS]: a source that is due but cannot be asked for
+   * (the Mac is not answering, so the extras wait for it) must not turn the loop into a spin.
+   */
+  public fun pollWaitMs(
+      view: PollView,
+      tickMs: Long,
+      nowMs: Long,
+      lastFetchedMs: Map<PollSource, Long>,
+  ): Long {
+    val untilDue =
+        pollCadences(view, tickMs).mapNotNull { (source, cadence) ->
+          val last = lastFetchedMs[source] ?: return@mapNotNull 0L
+          if (cadence == ONCE) null else last + cadence - nowMs
+        }
+    val next = untilDue.minOrNull() ?: tickMs
+    return next.coerceIn(MIN_POLL_WAIT_MS, maxOf(tickMs, MIN_POLL_WAIT_MS))
+  }
+
   /** `0`, `6.4`, `31.6` -- `Format.decimal`'s shape; this library cannot depend on :format. */
   private fun decimal(value: Double): String {
     val rounded = Math.round(value * 10) / 10.0
