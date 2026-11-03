@@ -26,17 +26,21 @@ struct InboxCommands: Commands {
     @ObservedObject var hotkeyDispatcher: HotkeyDispatcher
     /// Courier ▸ Check for Updates…, which names the newer version once a check has found one.
     @ObservedObject var updates: UpdateModel
+    /// Opens Settings for the items that show a pane of it (`AppMenuCoordinator.openSettings`): each item hands it
+    /// this menu's `openSettings` first, so Settings opens even if the main window never showed.
+    let windowOpener: MainWindowOpener
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
 
     var body: some Commands {
         CommandGroup(replacing: .appInfo) {
             Button(String(localized: "About Courier")) {
-                menuCoordinator.openSettings(.about)
+                openSettingsPane(.about)
             }
             .disabled(lifecycle.isLocked)
             // Opens Settings ▸ About, where the check's answer and the Install button are, and checks.
             Button(checkForUpdatesMenuTitle) {
-                menuCoordinator.openSettings(.updates)
+                openSettingsPane(.updates)
                 if updates.availableVersion == nil {
                     Task { await updates.check() }
                 }
@@ -53,7 +57,7 @@ struct InboxCommands: Commands {
         // 02 §3.1's Accounts…, Search…, and Lock App, after Settings.
         CommandGroup(after: .appSettings) {
             Button(String(localized: "Accounts…")) {
-                menuCoordinator.openSettings(.accounts)
+                openSettingsPane(.accounts)
             }
             .disabled(lifecycle.isLocked)
 
@@ -258,18 +262,25 @@ struct InboxCommands: Commands {
             .disabled(!hotkeyDispatcher.canPerform("Keyboard Shortcuts"))
 
             Button(String(localized: "Privacy & Security")) {
-                menuCoordinator.openSettings(.privacy)
+                openSettingsPane(.privacy)
             }
             .disabled(lifecycle.isLocked)
 
             Button(String(localized: "Changelog")) {
-                menuCoordinator.openSettings(.changelog)
+                openSettingsPane(.changelog)
             }
             .disabled(lifecycle.isLocked)
         }
     }
 
+    /// Settings at `section`, through SwiftUI's `openSettings` (MainWindowOpener.showSettings).
+    private func openSettingsPane(_ section: SettingsSection) {
+        windowOpener.registerSettings { [openSettings] in openSettings() }
+        menuCoordinator.openSettings(section)
+    }
+
     private func dispatch(_ id: String) {
+        windowOpener.registerSettings { [openSettings] in openSettings() }
         hotkeyDispatcher.bringMainWindowForward = { [ui, openWindow] in
             guard !ui.isMainWindowKey else { return true }
             NSApp.activate()

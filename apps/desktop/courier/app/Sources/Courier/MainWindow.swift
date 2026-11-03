@@ -69,6 +69,8 @@ struct MainWindow: View {
     @ObservedObject var commandBar: CommandBarModel
     @ObservedObject var appearance: AppearancePreferences
     var onOpenShortcutsSettings: () -> Void = {}
+    /// View ▸ Hide Sidebar and Show Sidebar: the chat list's column follows its `isSidebarVisible`.
+    var menuCoordinator: AppMenuCoordinator? = nil
     @Environment(\.openWindow) private var openWindow
     @Environment(\.controlActiveState) private var controlActiveState
 
@@ -310,7 +312,7 @@ struct MainWindow: View {
                     model.open(.message(roomID: roomID, eventID: eventID))
                 }
             }
-            NavigationSplitView {
+            SidebarSplitView(sidebarState: menuCoordinator) {
                 HStack(spacing: 0) {
                     if preferences.showSpaceBar {
                         SpaceBar(spaces: spaces, inbox: inbox, labels: labels)
@@ -426,6 +428,43 @@ struct MainWindow: View {
                 .multilineTextAlignment(.center)
         }
         .padding(40)
+    }
+}
+
+/// The window's two columns, the chat list (with the space bar) and the open chat. View ▸ Hide Sidebar hides the
+/// list's column: the column follows `AppMenuCoordinator.isSidebarVisible`, and hiding it from the toolbar or by
+/// dragging sets it back, so the menu's title stays true. With no coordinator the list always shows.
+struct SidebarSplitView<Sidebar: View, Detail: View>: View {
+    var sidebarState: AppMenuCoordinator?
+    @ViewBuilder var sidebar: Sidebar
+    @ViewBuilder var detail: Detail
+
+    var body: some View {
+        if let sidebarState {
+            Observed(state: sidebarState, sidebar: sidebar, detail: detail)
+        } else {
+            NavigationSplitView { sidebar } detail: { detail }
+        }
+    }
+
+    private struct Observed: View {
+        @ObservedObject var state: AppMenuCoordinator
+        let sidebar: Sidebar
+        let detail: Detail
+
+        var body: some View {
+            NavigationSplitView(columnVisibility: Binding(
+                get: { state.isSidebarVisible ? .all : .detailOnly },
+                set: { visibility in
+                    let visible = visibility != .detailOnly
+                    if state.isSidebarVisible != visible { state.isSidebarVisible = visible }
+                }
+            )) {
+                sidebar
+            } detail: {
+                detail
+            }
+        }
     }
 }
 

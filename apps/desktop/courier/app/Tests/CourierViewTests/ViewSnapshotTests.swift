@@ -3300,7 +3300,8 @@ final class ViewSnapshotTests: XCTestCase {
             hotkeys: hotkeys,
             hotkeyDispatcher: dispatcher,
             updates: UpdateModel(currentVersion: "0.7.0", appURL: URL(fileURLWithPath: "/Applications/Courier.app"),
-                                 environment: SystemUpdateEnvironment(), quit: {})
+                                 environment: SystemUpdateEnvironment(), quit: {}),
+            windowOpener: MainWindowOpener()
         )
         let conversationCommands = ConversationCommands(
             conversation: conversation,
