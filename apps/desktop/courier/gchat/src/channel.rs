@@ -777,7 +777,11 @@ crate::edition2021! {
                     "webchannel SID ack GET failed".to_string(),
                 ));
             }
-            let _ = resp.bytes().await;
+            // Done once the status is in. Google keeps this request open as the session's back channel (a long
+            // poll) rather than ending it, so reading its body to the end waited until HANDSHAKE_STEP_TIMEOUT
+            // and every handshake failed. Dropping it closes it; the next long poll asks from the last AID, so
+            // anything Google had sent on it comes again.
+            drop(resp);
             Ok(())
         }
 
@@ -2482,6 +2486,92 @@ mod tests {
         assert!(lines[3].contains("/u/0/webchannel/register"), "a 400 must start over with a fresh register, got {}", lines[3]);
         assert!(lines[4].contains("SID=null"), "the fresh session binds a new SID, got {}", lines[4]);
         assert!(poll_line.contains("SID=sid_fresh") && poll_line.contains("AID=0"), "poll must use the new SID, got {poll_line}");
+    }
+
+    /// Google answers the ack GET (RID=rpc, TYPE=xmlhttp) at once but keeps its body open: it becomes the
+    /// session's back channel, a long poll, and the bind's body ends instead (seen live 2026-11-03: headers in
+    /// 0.4s, still open after 90s). The handshake must go on once the ack's status is in. When it waited for
+    /// the body, every handshake ran into HANDSHAKE_STEP_TIMEOUT ("ack_ping: network") and never connected.
+    #[test]
+    fn test_webchannel_connects_while_google_holds_the_ack_open() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback");
+        let addr = listener.local_addr().expect("local addr");
+        let clock = Arc::new(ManualChannelClock::new(0.0));
+
+        let (line_tx, mut line_rx) = tokio::sync::mpsc::unbounded_channel::<(usize, String)>();
+        let seq = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+        let release_rx = Arc::new(Mutex::new(release_rx));
+        std::thread::spawn(move || loop {
+            let Ok((s, _)) = listener.accept() else { return };
+            let (seq, line_tx, release_rx) = (seq.clone(), line_tx.clone(), release_rx.clone());
+            std::thread::spawn(move || {
+                let mut s = s;
+                let Some(line) = read_request_line(&mut s) else { return };
+                let n = seq.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let _ = line_tx.send((n, line.clone()));
+                if line.contains("SID=null") {
+                    let _ = s.write_all(bind_ok("sid_live").as_bytes());
+                } else if line.starts_with("GET") && line.contains("RID=rpc") && line.contains("SID=sid_live") {
+                    // The ack, and any long poll after it: headers and a heartbeat, then held open.
+                    let chunk = "[[1,[\"noop\"]]]";
+                    let body = format!("{}\n{}", chunk.encode_utf16().count(), chunk);
+                    let _ = s.write_all(
+                        format!("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n{:x}\r\n{}\r\n", body.len(), body)
+                            .as_bytes(),
+                    );
+                    let _ = s.flush();
+                    let _ = release_rx.lock().unwrap().recv();
+                } else {
+                    // register and the ping POST
+                    let _ = s.write_all(OK_EMPTY);
+                }
+            });
+        });
+
+        let wc = loopback_webchannel(addr, clock.clone());
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().expect("tokio runtime");
+        let (kinds, errors, lines) = rt.block_on(async {
+            let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
+            let (ev_tx, mut ev_rx) = tokio::sync::mpsc::unbounded_channel::<(i32, Vec<u8>)>();
+            let wc_task = tokio::spawn(wc.clone().run_forever(cancel_rx, move |kind, payload| {
+                let _ = ev_tx.send((kind, payload.to_vec()));
+            }));
+            // The test clock never moves, so no step timeout can fire: only an ack that returns connects.
+            let drive = async {
+                let mut kinds = Vec::new();
+                let mut errors = Vec::new();
+                while let Some((kind, payload)) = ev_rx.recv().await {
+                    kinds.push(kind);
+                    if kind == GCHAT_EVENT_KIND_STREAM_ERROR {
+                        errors.push(String::from_utf8_lossy(&payload).to_string());
+                    }
+                    if kind == GCHAT_EVENT_KIND_CONNECTED {
+                        break;
+                    }
+                }
+                (kinds, errors)
+            };
+            let out = tokio::time::timeout(Duration::from_secs(10), drive)
+                .await
+                .expect("never connected: the handshake waited for the end of an ack Google keeps open");
+            let _ = cancel_tx.send(true);
+            let _ = wc_task.await;
+            let mut lines = Vec::new();
+            while let Ok(l) = line_rx.try_recv() {
+                lines.push(l);
+            }
+            (out.0, out.1, lines)
+        });
+        drop(release_tx);
+        let mut lines = lines;
+        lines.sort();
+        let lines: Vec<String> = lines.into_iter().map(|(_, l)| l).collect();
+
+        assert_eq!(errors, Vec::<String>::new());
+        assert_eq!(kinds, vec![GCHAT_EVENT_KIND_CONNECTED]);
+        assert!(lines.iter().any(|l| l.starts_with("POST") && l.contains("SID=sid_live")),
+                "the initial ping is sent after the ack, got {lines:?}");
     }
 
     /// A session older than SID_MAX_AGE is replaced with a fresh one before Google expires it, and the
