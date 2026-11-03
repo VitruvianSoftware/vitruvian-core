@@ -229,7 +229,7 @@ final class StandaloneSettingsTests: XCTestCase {
 
         var environment: NexusAgentEngine.Environment {
             NexusAgentEngine.Environment(
-                defaults: UserDefaults(suiteName: "com.vitruviansoftware.nexus-agent.tests.unused")!,
+                defaults: ScratchDefaults.suite(named: "com.vitruviansoftware.nexus-agent.tests.unused")!,
                 home: "/Users/rig",
                 processEnvironment: ["PATH": "/usr/bin"],
                 stateDirectory: "/Users/rig/state",

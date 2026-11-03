@@ -56,7 +56,7 @@ final class ComposerRig {
 
     init() {
         let suite = "com.vitruviansoftware.nexus-agent.tests.composer.\(UUID().uuidString)"
-        defaults = UserDefaults(suiteName: suite)!
+        defaults = ScratchDefaults.suite(named: suite)!
         defaults.removePersistentDomain(forName: suite)
     }
 
