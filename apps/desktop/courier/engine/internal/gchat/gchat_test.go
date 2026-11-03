@@ -1375,7 +1375,7 @@ func TestSendNewTopicInThreadedSpaceAndCreateMessageInThreadOrDM(t *testing.T) {
 	require.NotNil(t, topResp)
 	require.NotNil(t, topResp.DB)
 	require.Equal(t, MakeMessageID("topic_new_1", "msg_new_1"), topResp.DB.ID)
-	require.Equal(t, MakeThreadRootID("topic_new_1"), topResp.DB.ThreadRoot)
+	require.Empty(t, topResp.DB.ThreadRoot, "a created topic's head is not a reply in its own thread")
 
 	// 1b. Top-level message and thread reply in synced flat_threads_enabled space (TopicThreaded == false, ThreadsEnabled == true)
 	flatTopResp, err := client.HandleMatrixMessage(ctx, &bridgev2.MatrixMessage{
@@ -1388,7 +1388,7 @@ func TestSendNewTopicInThreadedSpaceAndCreateMessageInThreadOrDM(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	require.Equal(t, MakeThreadRootID("topic_new_2"), flatTopResp.DB.ThreadRoot, "flat_threads_enabled space must set ThreadRoot on created topic")
+	require.Empty(t, flatTopResp.DB.ThreadRoot, "flat_threads_enabled space: a created topic's head is not a thread reply")
 
 	mu.Lock()
 	require.Len(t, createTopicReqs, 2)
