@@ -341,6 +341,7 @@ impl Context {
             ("DELIVERY", "Delivery orchestrator (unique units · resolvable run targets · side-effect firewall · §6.1 kill switch)"),
             ("PREVIEW", "Ephemeral preview governance (auto-teardown on PR close · hourly ghost reaper · non-cancellable)"),
             ("LABHOST", "Lab hostnames (every published *.lab.ipv1337.dev name has a Gateway HTTPS listener)"),
+            ("BREWTAP", "Homebrew tap instructions (Homebrew 7: trust vitruviansoftware/tap, install by full name)"),
             ("CHECKOUT", "Checkout credentials firewall (#1040: persist-credentials: false on read-only checkouts)"),
             ("DEPENDABOT_ACTIONS", "Dependabot actions coverage (#814: exported mirror workflows in dependabot.yml)"),
             ("ACTION_PINS", "GitHub Actions SHA pins (#814: third-party actions pinned to commit SHA)"),
