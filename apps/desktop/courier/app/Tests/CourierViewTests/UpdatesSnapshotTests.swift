@@ -49,7 +49,7 @@ final class UpdatesSnapshotTests: XCTestCase {
         let suite = "courier.snapshots.updates.\(UUID().uuidString)"
         suites.append(suite)
         let model = UpdateModel(currentVersion: "0.7.0", appURL: URL(fileURLWithPath: "/Applications/Courier.app"),
-                                environment: releases, defaults: UserDefaults(suiteName: suite)!,
+                                environment: releases, defaults: ScratchDefaults.suite(named: suite)!,
                                 now: { Date(timeIntervalSince1970: 1_800_000_000) }, quit: {})
         await model.check()
         return model
@@ -59,7 +59,7 @@ final class UpdatesSnapshotTests: XCTestCase {
         let lifecycle = SystemLifecycleModel(
             loginItemService: SnapshotLoginItemService(),
             biometricService: SnapshotBiometricService(),
-            defaults: UserDefaults(suiteName: "courier.snapshots.updates.lifecycle.\(UUID().uuidString)")!
+            defaults: ScratchDefaults.suite(named: "courier.snapshots.updates.lifecycle.\(UUID().uuidString)")!
         )
         let cases: [(String, Releases)] = [
             ("available", Releases(tags: ["courier-v0.7.0", "courier-v0.8.0"], status: 200)),

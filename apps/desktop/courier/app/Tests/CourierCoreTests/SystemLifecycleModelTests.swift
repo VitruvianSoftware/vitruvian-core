@@ -11,9 +11,27 @@ final class SystemLifecycleModelTests: XCTestCase {
         AppLockGate.shared.resetForTesting()
     }
 
+    /// The lock gate's stand-in, used until a real lifecycle binds, is
+    /// unlocked and saves nothing: it used to open a new suite on every launch,
+    /// and each one stayed in ~/Library/Preferences.
+    func testUnboundLockGateIsUnlockedAndSavesNoSuite() throws {
+        guard let container = ProcessInfo.processInfo.environment["SWIFT_TEST_PREFERENCES_CONTAINER"] else {
+            throw XCTSkip("only `bazel test` gives the test a preferences folder of its own to look in")
+        }
+        AppLockGate.shared.resetForTesting()
+
+        XCTAssertFalse(AppLockGate.shared.lifecycle.isLocked)
+        XCTAssertTrue(AppLockGate.shared.canPerform(.settingsChange))
+
+        let preferences = URL(fileURLWithPath: container).appendingPathComponent("Library/Preferences")
+        let saved = try FileManager.default.contentsOfDirectory(atPath: preferences.path)
+            .filter { $0.hasPrefix(AppLockGate.fallbackSuiteName) }
+        XCTAssertEqual(saved, [], "the lock gate's stand-in saved a suite")
+    }
+
     func testLaunchAtLoginRegistersAndUnregistersViaInjectedServiceAndHandlesRequiresApproval() throws {
         let suiteName = "courier.test.lifecycle.login.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let loginService = FakeLoginItemService(currentStatus: .notRegistered)
@@ -60,7 +78,7 @@ final class SystemLifecycleModelTests: XCTestCase {
 
     func testAutoLockLocksAfterConfiguredTimeoutAndUnlocksOnlyOnBiometricSuccess() async throws {
         let suiteName = "courier.test.lifecycle.lock.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let loginService = FakeLoginItemService(currentStatus: .notRegistered)
@@ -123,7 +141,7 @@ final class SystemLifecycleModelTests: XCTestCase {
 
     func testStartMinimizedAndCloseToTrayDecisions() throws {
         let suiteName = "courier.test.lifecycle.window.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let model = SystemLifecycleModel(
@@ -156,7 +174,7 @@ final class SystemLifecycleModelTests: XCTestCase {
 
     func testRequireTouchIDOnLaunchFailsClosedWhenBiometricsUnavailableAndPromptsAtLaunch() async throws {
         let suiteName = "courier.test.lifecycle.launchlock.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         defaults.set(true, forKey: SystemLifecycleModel.key("requireTouchIDOnLaunch"))
@@ -204,7 +222,7 @@ final class SystemLifecycleModelTests: XCTestCase {
 
     func testTurningOffAutoLockWhileLockedRequiresAuthenticationAndCannotBypassLock() async throws {
         let suiteName = "courier.test.lifecycle.lockbypass.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let bioService = FakeBiometricAuthService(available: true, result: .success(false))
@@ -247,7 +265,7 @@ final class SystemLifecycleModelTests: XCTestCase {
 
     func testEnablingAutoLockAllowsDeviceOwnerAuthWhenOnlyBiometricsUnavailableAndRefusesWhenNeitherAvailable() async throws {
         let suiteName = "courier.test.lifecycle.passwordfallback.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         // 1. When neither Touch ID nor Mac password (deviceOwnerAuthentication) can be evaluated, refuse with a plain message

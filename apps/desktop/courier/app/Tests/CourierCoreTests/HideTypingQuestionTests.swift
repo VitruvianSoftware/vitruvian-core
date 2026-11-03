@@ -19,7 +19,7 @@ final class HideTypingQuestionTests: XCTestCase {
     private func conversation() -> (ConversationModel, ComposerPreferences) {
         let name = "courier.hide-typing.\(UUID().uuidString)"
         suites.append(name)
-        let preferences = ComposerPreferences(defaults: UserDefaults(suiteName: name)!)
+        let preferences = ComposerPreferences(defaults: ScratchDefaults.suite(named: name)!)
         let supervisor = EngineSupervisor(
             enginePath: "/Applications/Courier.app/Contents/Helpers/courier-engine",
             dataDir: URL(fileURLWithPath: "/tmp/courier-test-data"), environment: [:],

@@ -117,7 +117,7 @@ final class ProviderStubsTests: XCTestCase {
 
     func testAIPreferencesDefaultsPersistenceAndAppLockGateReversion() {
         let suiteName = "test.courier.ai.prefs.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = ScratchDefaults.suite(named: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let prefs = AIPreferences(defaults: defaults)
@@ -162,7 +162,7 @@ final class ProviderStubsTests: XCTestCase {
 
         // Lock Courier and verify mutations are reverted by AppLockGate
         let lockSuite = "test.courier.ai.lock.\(UUID().uuidString)"
-        let lockDefaults = UserDefaults(suiteName: lockSuite)!
+        let lockDefaults = ScratchDefaults.suite(named: lockSuite)!
         defer { lockDefaults.removePersistentDomain(forName: lockSuite) }
         let lifecycle = SystemLifecycleModel(defaults: lockDefaults)
         AppLockGate.shared.bind(lifecycle)

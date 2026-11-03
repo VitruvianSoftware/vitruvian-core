@@ -26,7 +26,7 @@ final class ViewSnapshotTests: XCTestCase {
     private func defaults() -> UserDefaults {
         let name = "courier.snapshots.\(UUID().uuidString)"
         suites.append(name)
-        return UserDefaults(suiteName: name)!
+        return ScratchDefaults.suite(named: name)!
     }
 
     /// An app model whose engine never starts: the models it feeds read nothing.

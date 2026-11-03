@@ -201,7 +201,7 @@ final class StorageModelTests: XCTestCase {
         defer { server.stop() }
 
         let suiteName = "courier.storage.locked.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = ScratchDefaults.suite(named: suiteName)!
         defer { UserDefaults.standard.removePersistentDomain(forName: suiteName) }
 
         let lifecycle = SystemLifecycleModel(

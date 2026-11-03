@@ -266,7 +266,7 @@ final class ProblemReportModelTests: XCTestCase {
         XCTAssertTrue(stderrLog.contains("github.com/VitruvianSoftware/courier/engine/internal/host/host.go:200 +0x88"))
 
         // Refused while locked
-        let lifecycle = SystemLifecycleModel(defaults: UserDefaults(suiteName: "test.problemreport.lock.\(UUID().uuidString)")!)
+        let lifecycle = SystemLifecycleModel(defaults: ScratchDefaults.suite(named: "test.problemreport.lock.\(UUID().uuidString)")!)
         lifecycle.requireTouchIDOnLaunch = true
         lifecycle.lockNow()
         XCTAssertThrowsError(try model.writeBundle(to: tempDir.appendingPathComponent("locked"))) { error in

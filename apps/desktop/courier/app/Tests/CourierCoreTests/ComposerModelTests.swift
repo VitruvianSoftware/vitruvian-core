@@ -2105,7 +2105,7 @@ extension ComposerModelTests {
 
     func testOutgoingSendPassesDisableLinkPreviewFromPreferences() async {
         let suiteName = "courier.test.linkPreviews.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = ScratchDefaults.suite(named: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let preferences = ComposerPreferences(defaults: defaults)
@@ -2810,7 +2810,7 @@ extension ComposerModelTests {
             ],
             recentGIFs: []
         )
-        let preferences = ComposerPreferences(defaults: UserDefaults(suiteName: "test-\(UUID().uuidString)")!)
+        let preferences = ComposerPreferences(defaults: ScratchDefaults.suite(named: "test-\(UUID().uuidString)")!)
         let composer = ComposerModel(
             sender: sender,
             draftDelay: 0,

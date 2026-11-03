@@ -134,7 +134,7 @@ final class DetachedWindowModelTests: XCTestCase {
 
     func testDetachedWindowsShowAppLockOverlayWhenLocked() async throws {
         let suiteName = "courier.test.detached.lock.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let bio = FakeBiometricAuthService(available: true, result: .success(true))
@@ -174,7 +174,7 @@ final class DetachedWindowModelTests: XCTestCase {
 
     func testDoubleClickChatPreferenceSupportsOpenInNewWindow() throws {
         let suite = "courier.test.inbox.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
 
         let prefs = InboxPreferences(defaults: defaults)
@@ -185,7 +185,7 @@ final class DetachedWindowModelTests: XCTestCase {
 
     func testDetachedChatSpaceAndThreadWindowsCopyToInjectedPasteboardAndWireServices() async throws {
         let suite = "courier.test.detached.services.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
 
         let appModel = makeAppModel()

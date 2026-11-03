@@ -108,7 +108,7 @@ final class SettingsSearchModelTests: XCTestCase {
         defer { supervisor.stop() }
 
         let suiteName = "courier.settings.nav.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = ScratchDefaults.suite(named: suiteName)!
         defer { UserDefaults.standard.removePersistentDomain(forName: suiteName) }
 
         let inbox = InboxModel(appModel: app, preferences: InboxPreferences(defaults: defaults))
@@ -153,7 +153,7 @@ final class SettingsSearchModelTests: XCTestCase {
 
     func testSharedNotificationPreferencesInstanceReachesNotificationCoordinator() {
         let suiteName = "courier.settings.notif.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = ScratchDefaults.suite(named: suiteName)!
         defer { UserDefaults.standard.removePersistentDomain(forName: suiteName) }
 
         let launcher = FakeLauncher { _, _ in }
@@ -191,7 +191,7 @@ final class SettingsSearchModelTests: XCTestCase {
 
     func testTimeFormatPreferenceFormatsTimestampsAcrossSystem12HourAnd24Hour() {
         let suiteName = "courier.settings.timeformat.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = ScratchDefaults.suite(named: suiteName)!
         defer { UserDefaults.standard.removePersistentDomain(forName: suiteName) }
 
         let prefs = ComposerPreferences(defaults: defaults)

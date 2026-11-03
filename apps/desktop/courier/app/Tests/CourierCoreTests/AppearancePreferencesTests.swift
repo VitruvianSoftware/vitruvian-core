@@ -49,7 +49,7 @@ final class AppearancePreferencesTests: XCTestCase {
 
     func testDefaultsMatchTheInventoryAndPersistToUserDefaults() {
         let suiteName = "test.courier.appearance.defaults.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = ScratchDefaults.suite(named: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let applier = FakeAppIconApplier()
@@ -150,7 +150,7 @@ final class AppearancePreferencesTests: XCTestCase {
 
     func testPerChatThemeOverrideMergesAndResetsCleanly() {
         let suiteName = "test.courier.appearance.chattheme.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = ScratchDefaults.suite(named: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let prefs = AppearancePreferences(defaults: defaults, appIconApplier: FakeAppIconApplier())
@@ -215,7 +215,7 @@ final class AppearancePreferencesTests: XCTestCase {
     /// while Reduce transparency is on, and remembered.
     func testLiquidGlassIsOnByDefaultWhereSupportedAndRemembered() {
         let name = "courier.appearance.glass.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: name)!
+        let defaults = ScratchDefaults.suite(named: name)!
         defer { defaults.removePersistentDomain(forName: name) }
 
         let supported = AppearancePreferences(defaults: defaults, appIconApplier: FakeAppIconApplier(),
@@ -245,7 +245,7 @@ final class AppearancePreferencesTests: XCTestCase {
 
     func testZoomAndFontSizeSteppingClampsToBounds() {
         let suiteName = "test.courier.appearance.stepping.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = ScratchDefaults.suite(named: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let prefs = AppearancePreferences(defaults: defaults, appIconApplier: FakeAppIconApplier())
@@ -305,7 +305,7 @@ final class AppearancePreferencesTests: XCTestCase {
     /// when the image can no longer be read). With nothing saved, the bundle's icon is left alone.
     func testSavedAppIconIsAppliedAtLaunch() throws {
         let suiteName = "test.courier.appearance.launchicon.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = ScratchDefaults.suite(named: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let fresh = FakeAppIconApplier()
@@ -340,7 +340,7 @@ final class AppearancePreferencesTests: XCTestCase {
     /// The zoom level scales message text with the font size setting: 125% is a quarter larger.
     func testZoomScalesMessageText() {
         let suiteName = "test.courier.appearance.zoom.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = ScratchDefaults.suite(named: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let prefs = AppearancePreferences(defaults: defaults, appIconApplier: FakeAppIconApplier())
         XCTAssertEqual(prefs.messageBodyPointSize, 13)
@@ -355,7 +355,7 @@ final class AppearancePreferencesTests: XCTestCase {
 
     func testAppIconRendererProducesNonEmptyBitmapForEveryVariantAndAppliesToDock() throws {
         let suiteName = "test.courier.appearance.appicon.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = ScratchDefaults.suite(named: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         XCTAssertEqual(CourierAppIconVariant.allCases.count, 8)
@@ -418,7 +418,7 @@ final class AppearancePreferencesTests: XCTestCase {
 
     func testRedactNamesAndPicturesProducesDeterministicPseudonymsAndAppLockBlocksMutations() {
         let suiteName = "test.courier.appearance.redact.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = ScratchDefaults.suite(named: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let name1 = AppearancePreferences.redactedText("Alice Nguyen", kind: .name)

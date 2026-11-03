@@ -85,7 +85,7 @@ final class UpdatesTests: XCTestCase {
         return UpdateModel(currentVersion: version,
                            appURL: URL(fileURLWithPath: "/Applications/Courier.app"),
                            environment: fake,
-                           defaults: UserDefaults(suiteName: suite)!,
+                           defaults: ScratchDefaults.suite(named: suite)!,
                            now: { Date(timeIntervalSince1970: 1_800_000_000) },
                            processID: 4242,
                            quit: quit)

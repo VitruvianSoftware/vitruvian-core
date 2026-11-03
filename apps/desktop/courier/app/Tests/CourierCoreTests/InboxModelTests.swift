@@ -1736,7 +1736,7 @@ final class TestDefaults {
     let name = "courier-tests-\(UUID().uuidString)"
     let defaults: UserDefaults
 
-    init() { defaults = UserDefaults(suiteName: name)! }
+    init() { defaults = ScratchDefaults.suite(named: name)! }
 
     func remove() { defaults.removePersistentDomain(forName: name) }
 }

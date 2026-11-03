@@ -142,7 +142,7 @@ final class FocusRoutingTests: XCTestCase {
             func unregister() throws {}
         }
         let suiteName = "courier.test.focuslock.\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        let defaults = try XCTUnwrap(ScratchDefaults.suite(named: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
         AppLockGate.shared.resetForTesting()
         let lifecycle = SystemLifecycleModel(defaults: defaults, loginItem: NoopLoginItem(),
