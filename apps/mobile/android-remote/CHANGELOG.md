@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.24](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.23...android-remote-v0.1.24) (2026-11-03)
+
+
+### Bug Fixes
+
+* **android-remote:** only ask the Mac for data the user can see ([#4275](https://github.com/VitruvianSoftware/vitruvian-core/issues/4275)) ([309ea15](https://github.com/VitruvianSoftware/vitruvian-core/commit/309ea15ac7f62818f160ecf6bd35f6422f9c62ec))
+* **android-remote:** parse JSON strings in linear time so the agent stops pegging the CPU ([#4277](https://github.com/VitruvianSoftware/vitruvian-core/issues/4277)) ([13fb66f](https://github.com/VitruvianSoftware/vitruvian-core/commit/13fb66f6f0c716c42518daea8a1fcfe3deefa37f))
+* **android-remote:** read CPU counters in-process instead of starting top every few seconds ([#4280](https://github.com/VitruvianSoftware/vitruvian-core/issues/4280)) ([7e1d9b9](https://github.com/VitruvianSoftware/vitruvian-core/commit/7e1d9b9acf8c52b7d284c657eaf0d631e98d40a3))
+
 ## [0.1.23](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.22...android-remote-v0.1.23) (2026-11-02)
 
 
