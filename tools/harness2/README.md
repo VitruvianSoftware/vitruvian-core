@@ -105,6 +105,9 @@ A proposal that breaks any rule is rejected whole:
   onto it, `rm`, `sips`, `sed -i`, `find -delete`, Python `open(..., 'w')`/`shutil`/`os.remove`,
   `git checkout`/`restore`). A determined command in another language can still get through;
   the Stop check then flags the changed file.
+- The check on the harness's own files reads paths as written in the command, so a relative
+  path after `cd` into the plugin folder gets past it. It is a guard that fails open, not a
+  security boundary; `harness2 validate` and the run folder's backups are the backstop.
 - The distill sessions cannot run code, so an editor cannot test a script it writes; the
   validator only checks that it compiles.
 - An explicit ask to generate ("use nano banana to…") is respected: the image-generator block
