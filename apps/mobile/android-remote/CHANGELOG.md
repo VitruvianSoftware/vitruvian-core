@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.24](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.23...android-remote-v0.1.24) (2026-11-03)
+
+
+### Bug Fixes
+
+* **android-remote:** only ask the Mac for data the user can see ([#4275](https://github.com/VitruvianSoftware/vitruvian-core/issues/4275)) ([309ea15](https://github.com/VitruvianSoftware/vitruvian-core/commit/309ea15ac7f62818f160ecf6bd35f6422f9c62ec))
+
 ## [0.1.23](https://github.com/VitruvianSoftware/vitruvian-core/compare/android-remote-v0.1.22...android-remote-v0.1.23) (2026-11-02)
 
 
