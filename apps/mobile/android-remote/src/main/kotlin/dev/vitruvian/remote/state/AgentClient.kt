@@ -488,6 +488,17 @@ public data class AgentHomeSpeaker(
     val customOAuthClientId: String = "",
     val hasCustomOAuthSecret: Boolean = false,
     val homeSpeakerVersion: String = "",
+    /** Courier's switch, as Beeper's; null from an older agent, which does not know Courier. */
+    val courierEnabled: Boolean? = null,
+    /** Which Courier messages are spoken (`direct_and_mentions` or `all`). */
+    val courierAnnounce: String = "direct_and_mentions",
+    /** Courier's networks merged with `courier_muted_networks` and `courier_read_anyway`. */
+    val courierNetworks: List<AgentBeeperNetwork> = emptyList(),
+    /** Whether a Courier token is saved on the Mac; the token never comes to the phone. */
+    val hasCourierToken: Boolean = false,
+    /** The running monitor has listed Beeper's (Courier's) networks; null from an older agent. */
+    val beeperNetworksListed: Boolean? = null,
+    val courierNetworksListed: Boolean? = null,
 )
 
 /**
@@ -810,6 +821,12 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
       speakPhone: Boolean? = null,
       phonePauseMedia: Boolean? = null,
       phoneHeadphonesOnly: Boolean? = null,
+      courierEnabled: Boolean? = null,
+      courierAnnounce: String? = null,
+      courierNetworkKey: String? = null,
+      courierNetworkReading: Boolean? = null,
+      courierReadAnywayKey: String? = null,
+      courierReadAnywayOn: Boolean? = null,
   ): AgentHomeSpeaker =
       withContext(Dispatchers.IO) {
         val body =
@@ -836,6 +853,20 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
                 put(
                     "beeper_network",
                     JSONObject().put("key", beeperNetworkKey).put("reading", beeperNetworkReading))
+              }
+              if (courierEnabled != null) put("courier_enabled", courierEnabled)
+              if (courierAnnounce != null) put("courier_announce", courierAnnounce)
+              if (courierNetworkKey != null && courierNetworkReading != null) {
+                put(
+                    "courier_network",
+                    JSONObject()
+                        .put("key", courierNetworkKey)
+                        .put("reading", courierNetworkReading))
+              }
+              if (courierReadAnywayKey != null && courierReadAnywayOn != null) {
+                put(
+                    "courier_read_anyway",
+                    JSONObject().put("key", courierReadAnywayKey).put("on", courierReadAnywayOn))
               }
               if (enabled != null) put("enabled", enabled)
               if (defaultTarget != null) put("default_target", defaultTarget)
@@ -1499,6 +1530,12 @@ public class AgentClient(baseUrl: String, private val token: String = "") {
           customOAuthClientId = sources.customOAuthClientId,
           hasCustomOAuthSecret = sources.hasCustomOAuthSecret,
           homeSpeakerVersion = sources.homeSpeakerVersion,
+          courierEnabled = sources.courierEnabled,
+          courierAnnounce = sources.courierAnnounce,
+          courierNetworks = sources.courierNetworks,
+          hasCourierToken = sources.hasCourierToken,
+          beeperNetworksListed = sources.beeperNetworksListed,
+          courierNetworksListed = sources.courierNetworksListed,
       )
     }
 

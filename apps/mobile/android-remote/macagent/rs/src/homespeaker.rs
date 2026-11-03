@@ -70,6 +70,9 @@ pub const GEMINI_VOICES: &[&str] = &[
 pub const ANNOUNCEMENT_STYLES: &[&str] = &["verbatim", "plain", "briefing", "casual", "custom"];
 pub const STYLE_MODELS: &[&str] = &["apple", "gemini"];
 pub const BEEPER_ANNOUNCE_MODES: &[&str] = &["direct_and_mentions", "all"];
+
+/// Why Courier cannot be switched on yet, and what to do.
+pub const COURIER_TOKEN_FIRST: &str = "Courier has no token yet: in Courier, open Settings › Integrations › New connection…, then paste the token into HomeSpeaker on the Mac";
 pub const AGENT_MARKERS: &[&str] = &["CLAUDECODE", "ANTIGRAVITY_AGENT", "OPENCODE", "AI_AGENT"];
 
 const BROADCAST_INSTRUCTION: &str = "- Follow the `home-speaker-broadcast` skill: Accompany top-level conversational responses to the user with a concise spoken broadcast (1-2 sentences) by executing the CLI tool `speaker-broadcast \"<summary>\"` (never run `speaker-broadcast` from a background subagent or a delegated `claude -p` helper call). Always use the CLI rather than manual `home_mcp` calls with device IDs, because `speaker-broadcast` dynamically resolves the live `default_target` from `~/.gemini/speaker_broadcast.json`, checks quiet hours, and verifies enabled status on every execution without caching state. When the user asks to turn speaker broadcasts on/off or change the target room, update `~/.gemini/speaker_broadcast.json` (or run `speaker-broadcast --set-target <room>`) and confirm.";
@@ -201,6 +204,10 @@ pub struct HomeSpeakerBeeperNetwork {
     pub key: String,
     pub name: String,
     pub state: String,
+    /// Courier only: read through Courier although HomeSpeaker's own Slack
+    /// or Google Chat reader covers it (`chat_monitor.courier_read_anyway`).
+    /// Sent only when true, so Beeper's rows keep their shape.
+    pub read_anyway: bool,
 }
 
 impl HomeSpeakerBeeperNetwork {
@@ -209,8 +216,42 @@ impl HomeSpeakerBeeperNetwork {
         m.insert("key".to_string(), JsonValue::String(self.key.clone()));
         m.insert("name".to_string(), JsonValue::String(self.name.clone()));
         m.insert("state".to_string(), JsonValue::String(self.state.clone()));
+        if self.read_anyway {
+            m.insert("read_anyway".to_string(), JsonValue::Bool(true));
+        }
         JsonValue::Object(m)
     }
+}
+
+/// The chat apps HomeSpeaker reads over the same local API, and where each
+/// keeps its settings, its token and what its monitor reports.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ChatApp {
+    Beeper,
+    Courier,
+}
+
+impl ChatApp {
+    fn name(self) -> &'static str {
+        match self {
+            ChatApp::Beeper => "beeper",
+            ChatApp::Courier => "courier",
+        }
+    }
+    fn muted_key(self) -> String {
+        format!("{}_muted_networks", self.name())
+    }
+    fn states_key(self) -> String {
+        format!("{}_network_states", self.name())
+    }
+}
+
+/// `courier_read_anyway`: read one of Courier's networks although
+/// HomeSpeaker's own reader covers it (`on`), or leave it to that reader.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HomeSpeakerReadAnywayUpdate {
+    pub key: String,
+    pub on: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -387,6 +428,7 @@ pub struct HomeSpeakerState {
     pub chat_runtime_error: String,
     pub has_slack_token: bool,
     pub has_beeper_token: bool,
+    pub has_courier_token: bool,
     pub has_chat_access: bool,
     pub gws_installed: bool,
     pub gws_account: String,
@@ -405,6 +447,13 @@ pub struct HomeSpeakerState {
     pub beeper_enabled: Option<bool>,
     pub beeper_announce: String,
     pub beeper_networks: Vec<HomeSpeakerBeeperNetwork>,
+    /// The running monitor has listed Beeper's networks; until it has,
+    /// only the saved mutes are known.
+    pub beeper_networks_listed: bool,
+    pub courier_enabled: Option<bool>,
+    pub courier_announce: String,
+    pub courier_networks: Vec<HomeSpeakerBeeperNetwork>,
+    pub courier_networks_listed: bool,
     pub mute_own_messages: Option<bool>,
     pub recent: Vec<HomeSpeakerLast>,
 }
@@ -464,6 +513,7 @@ impl Default for HomeSpeakerState {
             chat_runtime_error: String::new(),
             has_slack_token: false,
             has_beeper_token: false,
+            has_courier_token: false,
             has_chat_access: false,
             gws_installed: false,
             gws_account: String::new(),
@@ -482,6 +532,11 @@ impl Default for HomeSpeakerState {
             beeper_enabled: None,
             beeper_announce: String::new(),
             beeper_networks: Vec::new(),
+            beeper_networks_listed: false,
+            courier_enabled: None,
+            courier_announce: String::new(),
+            courier_networks: Vec::new(),
+            courier_networks_listed: false,
             mute_own_messages: None,
             recent: Vec::new(),
         }
@@ -670,6 +725,10 @@ impl HomeSpeakerState {
             JsonValue::Bool(self.has_beeper_token),
         );
         m.insert(
+            "has_courier_token".to_string(),
+            JsonValue::Bool(self.has_courier_token),
+        );
+        m.insert(
             "has_chat_access".to_string(),
             JsonValue::Bool(self.has_chat_access),
         );
@@ -772,6 +831,29 @@ impl HomeSpeakerState {
             JsonValue::Array(self.beeper_networks.iter().map(|n| n.to_json()).collect()),
         );
         m.insert(
+            "beeper_networks_listed".to_string(),
+            JsonValue::Bool(self.beeper_networks_listed),
+        );
+        m.insert(
+            "courier_enabled".to_string(),
+            match self.courier_enabled {
+                Some(b) => JsonValue::Bool(b),
+                None => JsonValue::Null,
+            },
+        );
+        m.insert(
+            "courier_announce".to_string(),
+            JsonValue::String(self.courier_announce.clone()),
+        );
+        m.insert(
+            "courier_networks".to_string(),
+            JsonValue::Array(self.courier_networks.iter().map(|n| n.to_json()).collect()),
+        );
+        m.insert(
+            "courier_networks_listed".to_string(),
+            JsonValue::Bool(self.courier_networks_listed),
+        );
+        m.insert(
             "mute_own_messages".to_string(),
             match self.mute_own_messages {
                 Some(b) => JsonValue::Bool(b),
@@ -838,6 +920,10 @@ pub struct HomeSpeakerUpdate {
     pub beeper_enabled: Option<bool>,
     pub beeper_announce: Option<String>,
     pub beeper_network: Option<HomeSpeakerBeeperNetworkUpdate>,
+    pub courier_enabled: Option<bool>,
+    pub courier_announce: Option<String>,
+    pub courier_network: Option<HomeSpeakerBeeperNetworkUpdate>,
+    pub courier_read_anyway: Option<HomeSpeakerReadAnywayUpdate>,
     pub mute_own_messages: Option<bool>,
 }
 
@@ -893,6 +979,10 @@ impl HomeSpeakerUpdate {
             && self.beeper_enabled.is_none()
             && self.beeper_announce.is_none()
             && self.beeper_network.is_none()
+            && self.courier_enabled.is_none()
+            && self.courier_announce.is_none()
+            && self.courier_network.is_none()
+            && self.courier_read_anyway.is_none()
             && self.mute_own_messages.is_none()
     }
 
@@ -984,23 +1074,35 @@ impl HomeSpeakerUpdate {
         u.google_chat_enabled = opt_bool(obj, "google_chat_enabled")?;
         u.beeper_enabled = opt_bool(obj, "beeper_enabled")?;
         u.beeper_announce = opt_str(obj, "beeper_announce")?;
-        if let Some(bn) = obj.get("beeper_network") {
-            if !bn.is_null() {
-                let bno = bn
-                    .as_object()
-                    .ok_or_else(|| "cannot unmarshal beeper_network".to_string())?;
-                let key = bno
-                    .get("key")
-                    .and_then(|x| x.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let reading = bno
-                    .get("reading")
-                    .and_then(|x| x.as_bool())
-                    .unwrap_or(false);
-                u.beeper_network = Some(HomeSpeakerBeeperNetworkUpdate { key, reading });
+        fn opt_network(
+            obj: &JsonObject,
+            field: &str,
+            flag: &str,
+        ) -> Result<Option<(String, bool)>, String> {
+            match obj.get(field) {
+                None | Some(JsonValue::Null) => Ok(None),
+                Some(v) => {
+                    let o = v
+                        .as_object()
+                        .ok_or_else(|| format!("cannot unmarshal {field}"))?;
+                    let key = o
+                        .get("key")
+                        .and_then(|x| x.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let on = o.get(flag).and_then(|x| x.as_bool()).unwrap_or(false);
+                    Ok(Some((key, on)))
+                }
             }
         }
+        u.beeper_network = opt_network(obj, "beeper_network", "reading")?
+            .map(|(key, reading)| HomeSpeakerBeeperNetworkUpdate { key, reading });
+        u.courier_enabled = opt_bool(obj, "courier_enabled")?;
+        u.courier_announce = opt_str(obj, "courier_announce")?;
+        u.courier_network = opt_network(obj, "courier_network", "reading")?
+            .map(|(key, reading)| HomeSpeakerBeeperNetworkUpdate { key, reading });
+        u.courier_read_anyway = opt_network(obj, "courier_read_anyway", "on")?
+            .map(|(key, on)| HomeSpeakerReadAnywayUpdate { key, on });
         u.mute_own_messages = opt_bool(obj, "mute_own_messages")?;
         Ok(u)
     }
@@ -1373,11 +1475,13 @@ fn bool_or(m: Option<&JsonObject>, key: &str, def: bool) -> Option<bool> {
     Some(v)
 }
 
-fn muted_networks_from_monitor(monitor: Option<&JsonObject>) -> Vec<String> {
+/// A list of keys under `chat_monitor`: an app's mutes, or Courier's
+/// read-anyway networks. Blank entries are dropped.
+fn string_list_from_monitor(monitor: Option<&JsonObject>, key: &str) -> Vec<String> {
     let Some(mon) = monitor else {
         return Vec::new();
     };
-    let Some(arr) = mon.get("beeper_muted_networks").and_then(|v| v.as_array()) else {
+    let Some(arr) = mon.get(key).and_then(|v| v.as_array()) else {
         return Vec::new();
     };
     let mut out = Vec::with_capacity(arr.len());
@@ -1460,6 +1564,7 @@ struct SecretsData {
     gemini_api_key: String,
     slack_token: String,
     beeper_token: String,
+    courier_token: String,
     oauth_client_id_override: String,
     oauth_client_secret_override: String,
 }
@@ -1755,7 +1860,22 @@ impl HomeSpeaker {
         app_running: bool,
         monitor: Option<&JsonObject>,
     ) -> Vec<HomeSpeakerBeeperNetwork> {
+        self.networks(p, app_running, monitor, ChatApp::Beeper).0
+    }
+
+    /// `app`'s networks as HomeSpeaker's Settings shows them, and whether
+    /// the running monitor has listed them: what it last listed, then the
+    /// saved mutes it did not, sorted by name. A network HomeSpeaker reads
+    /// itself stays skipped; Courier's read-anyway ones say so.
+    pub fn networks(
+        &self,
+        p: &HomeSpeakerProfile,
+        app_running: bool,
+        monitor: Option<&JsonObject>,
+        app: ChatApp,
+    ) -> (Vec<HomeSpeakerBeeperNetwork>, bool) {
         let mut listed = Vec::new();
+        let mut is_listed = false;
         if app_running && !p.config_path.as_os_str().is_empty() {
             if let Some(dir) = p.config_path.parent() {
                 let status_path = dir.join("speaker_monitor_status.json");
@@ -1768,8 +1888,9 @@ impl HomeSpeaker {
                                 .unwrap_or(false)
                             {
                                 if let Some(arr) =
-                                    obj.get("beeper_network_states").and_then(|v| v.as_array())
+                                    obj.get(&app.states_key()).and_then(|v| v.as_array())
                                 {
+                                    is_listed = true;
                                     for item in arr {
                                         if let Some(ro) = item.as_object() {
                                             listed.push(HomeSpeakerBeeperNetwork {
@@ -1788,6 +1909,7 @@ impl HomeSpeaker {
                                                     .and_then(|x| x.as_str())
                                                     .unwrap_or("")
                                                     .to_string(),
+                                                read_anyway: false,
                                             });
                                         }
                                     }
@@ -1798,7 +1920,14 @@ impl HomeSpeaker {
                 }
             }
         }
-        let muted = muted_networks_from_monitor(monitor);
+        let muted = string_list_from_monitor(monitor, &app.muted_key());
+        let read_anyway: HashSet<String> = if app == ChatApp::Courier {
+            string_list_from_monitor(monitor, "courier_read_anyway")
+                .into_iter()
+                .collect()
+        } else {
+            HashSet::new()
+        };
         let muted_set: HashSet<String> = muted.iter().cloned().collect();
         let mut rows = Vec::with_capacity(listed.len() + muted.len());
         let mut seen = HashSet::new();
@@ -1816,6 +1945,7 @@ impl HomeSpeaker {
                     row.state = "reading".to_string();
                 }
             }
+            row.read_anyway = read_anyway.contains(&row.key);
             seen.insert(row.key.clone());
             rows.push(row);
         }
@@ -1826,6 +1956,7 @@ impl HomeSpeaker {
                     key: key.clone(),
                     name: key,
                     state: "muted".to_string(),
+                    read_anyway: false,
                 });
             }
         }
@@ -1838,7 +1969,7 @@ impl HomeSpeaker {
                 a.key.cmp(&b.key)
             }
         });
-        rows
+        (rows, is_listed)
     }
 
     fn read_secrets_data(&self, path: &Path) -> SecretsData {
@@ -1880,6 +2011,11 @@ impl HomeSpeaker {
             .to_string();
         sec.beeper_token = obj
             .get("beeperToken")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        sec.courier_token = obj
+            .get("courierToken")
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
@@ -2380,6 +2516,7 @@ impl HomeSpeaker {
             !sec.oauth_client_secret_override.is_empty() || !cred.oauth_client_secret.is_empty();
         st.has_slack_token = !sec.slack_token.is_empty() || !cred.slack_token.is_empty();
         st.has_beeper_token = !sec.beeper_token.is_empty() || !cred.beeper_token.is_empty();
+        st.has_courier_token = !sec.courier_token.is_empty();
         st.has_chat_access = st.has_slack_token || st.has_beeper_token;
 
         if let Some(targets) = cfg.get("targets").and_then(|v| v.as_object()) {
@@ -2436,7 +2573,17 @@ impl HomeSpeaker {
             "direct_and_mentions",
         );
         st.mute_own_messages = bool_or(monitor, "mute_own_messages", true);
-        st.beeper_networks = self.beeper_networks(&p, st.app_running, monitor);
+        (st.beeper_networks, st.beeper_networks_listed) =
+            self.networks(&p, st.app_running, monitor, ChatApp::Beeper);
+        st.courier_enabled = bool_or(monitor, "courier_enabled", false);
+        st.courier_announce = string_in(
+            monitor,
+            "courier_announce",
+            BEEPER_ANNOUNCE_MODES,
+            "direct_and_mentions",
+        );
+        (st.courier_networks, st.courier_networks_listed) =
+            self.networks(&p, st.app_running, monitor, ChatApp::Courier);
 
         let mon_status = self.read_monitor_status();
         st.monitor_running = mon_status.is_running;
@@ -2914,6 +3061,26 @@ impl HomeSpeaker {
         let mut changed = Vec::new();
         let bin_str = p.binary.to_string_lossy().into_owned();
 
+        // Courier stays off until a token is saved, as in HomeSpeaker's own
+        // Settings. The token is never sent from the phone: it is pasted
+        // into HomeSpeaker on the Mac.
+        if u.courier_enabled == Some(true) {
+            let on = cfg
+                .get("chat_monitor")
+                .and_then(|m| m.as_object())
+                .and_then(|m| m.get("courier_enabled"))
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            if !on
+                && self
+                    .read_secrets_data(&p.secrets_path)
+                    .courier_token
+                    .is_empty()
+            {
+                return Err(ApplyError::BadRequest(COURIER_TOKEN_FIRST.to_string()));
+            }
+        }
+
         if let Some(en) = u.enabled {
             cfg.insert("enabled".to_string(), JsonValue::Bool(en));
             changed.push(format!("enabled={en}"));
@@ -3282,6 +3449,7 @@ impl HomeSpeaker {
             ("slack_enabled", u.slack_enabled),
             ("google_chat_enabled", u.google_chat_enabled),
             ("beeper_enabled", u.beeper_enabled),
+            ("courier_enabled", u.courier_enabled),
             ("mute_own_messages", u.mute_own_messages),
         ] {
             if let Some(b) = val {
@@ -3296,16 +3464,30 @@ impl HomeSpeaker {
             monitor.insert("beeper_announce".to_string(), JsonValue::String(ba.clone()));
             changed.push(format!("chat_monitor.beeper_announce={ba}"));
         }
-        if let Some(ref bn) = u.beeper_network {
+        if let Some(ref ca) = u.courier_announce {
+            validate_enum("courier_announce", ca, BEEPER_ANNOUNCE_MODES)?;
+            let monitor = ensure_chat_monitor(&mut cfg);
+            monitor.insert(
+                "courier_announce".to_string(),
+                JsonValue::String(ca.clone()),
+            );
+            changed.push(format!("chat_monitor.courier_announce={ca}"));
+        }
+        for (app, update) in [
+            (ChatApp::Beeper, &u.beeper_network),
+            (ChatApp::Courier, &u.courier_network),
+        ] {
+            let Some(bn) = update else { continue };
             let key = bn.key.trim();
             if !is_valid_beeper_network_key(key) {
                 return Err(ApplyError::BadRequest(format!(
-                    "invalid beeper_network.key {:?}",
+                    "invalid {}_network.key {:?}",
+                    app.name(),
                     bn.key
                 )));
             }
             let monitor = ensure_chat_monitor(&mut cfg);
-            let muted = muted_networks_from_monitor(Some(monitor));
+            let muted = string_list_from_monitor(Some(monitor), &app.muted_key());
             let mut next: Vec<JsonValue> = muted
                 .into_iter()
                 .filter(|existing| existing != key)
@@ -3314,8 +3496,33 @@ impl HomeSpeaker {
             if !bn.reading {
                 next.push(JsonValue::String(key.to_string()));
             }
-            monitor.insert("beeper_muted_networks".to_string(), JsonValue::Array(next));
-            changed.push(format!("chat_monitor.beeper_network.{key}={}", bn.reading));
+            monitor.insert(app.muted_key(), JsonValue::Array(next));
+            changed.push(format!(
+                "chat_monitor.{}_network.{key}={}",
+                app.name(),
+                bn.reading
+            ));
+        }
+        if let Some(ref ra) = u.courier_read_anyway {
+            let key = ra.key.trim();
+            if !is_valid_beeper_network_key(key) {
+                return Err(ApplyError::BadRequest(format!(
+                    "invalid courier_read_anyway.key {:?}",
+                    ra.key
+                )));
+            }
+            let monitor = ensure_chat_monitor(&mut cfg);
+            let mut next: Vec<JsonValue> =
+                string_list_from_monitor(Some(monitor), "courier_read_anyway")
+                    .into_iter()
+                    .filter(|existing| existing != key)
+                    .map(JsonValue::String)
+                    .collect();
+            if ra.on {
+                next.push(JsonValue::String(key.to_string()));
+            }
+            monitor.insert("courier_read_anyway".to_string(), JsonValue::Array(next));
+            changed.push(format!("chat_monitor.courier_read_anyway.{key}={}", ra.on));
         }
 
         self.write_config(&cfg)?;
@@ -3380,7 +3587,7 @@ impl HomeSpeaker {
         if body.empty() {
             return HttpResponse::error(
                 400,
-                "nothing to change: give enabled, default_target, speech_length, quiet_hours_enabled, pause_media, pause_media_extra_seconds, announce_volume_enabled, announce_volume, speak_home, speak_local, speak_phone, phone_pause_media, phone_headphones_only, local_engine, gemini_voice, announcement_style, style_model, announce_claude_code, announce_antigravity, announce_opencode, slack_enabled, google_chat_enabled, beeper_enabled, beeper_announce, beeper_network or mute_own_messages",
+                "nothing to change: give enabled, default_target, speech_length, quiet_hours_enabled, pause_media, pause_media_extra_seconds, announce_volume_enabled, announce_volume, speak_home, speak_local, speak_phone, phone_pause_media, phone_headphones_only, local_engine, gemini_voice, announcement_style, style_model, announce_claude_code, announce_antigravity, announce_opencode, slack_enabled, google_chat_enabled, beeper_enabled, beeper_announce, beeper_network, courier_enabled, courier_announce, courier_network, courier_read_anyway or mute_own_messages",
             );
         }
         match self.apply(body) {
@@ -4355,27 +4562,32 @@ mod tests {
                 HomeSpeakerBeeperNetwork {
                     key: "matrix".to_string(),
                     name: "Beeper".to_string(),
-                    state: "reading".to_string()
+                    state: "reading".to_string(),
+                    read_anyway: false
                 },
                 HomeSpeakerBeeperNetwork {
                     key: "googlechat".to_string(),
                     name: "Google Chat".to_string(),
-                    state: "skipped".to_string()
+                    state: "skipped".to_string(),
+                    read_anyway: false
                 },
                 HomeSpeakerBeeperNetwork {
                     key: "signal".to_string(),
                     name: "Signal".to_string(),
-                    state: "reading".to_string()
+                    state: "reading".to_string(),
+                    read_anyway: false
                 },
                 HomeSpeakerBeeperNetwork {
                     key: "telegram".to_string(),
                     name: "telegram".to_string(),
-                    state: "muted".to_string()
+                    state: "muted".to_string(),
+                    read_anyway: false
                 },
                 HomeSpeakerBeeperNetwork {
                     key: "whatsapp".to_string(),
                     name: "WhatsApp".to_string(),
-                    state: "muted".to_string()
+                    state: "muted".to_string(),
+                    read_anyway: false
                 },
             ]
         );
@@ -4391,6 +4603,152 @@ mod tests {
         h.running = Some(Arc::new(|| false));
         let st_stopped = h.state();
         assert_eq!(st_stopped.beeper_networks.len(), 3);
+    }
+
+    #[test]
+    fn test_home_speaker_courier_mirrors_beepers_switches() {
+        let (mut h, _, phone, _) = new_test_home_speaker(true);
+        let raw = JsonValue::parse_bytes(&h.handle_get(&phone).body_bytes()).unwrap();
+        assert_eq!(raw.get_opt_bool("courier_enabled"), Some(false));
+        assert_eq!(raw.get_str("courier_announce"), "direct_and_mentions");
+        assert_eq!(raw.get_opt_bool("has_courier_token"), Some(false));
+        assert_eq!(raw.get_opt_bool("courier_networks_listed"), Some(false));
+
+        // Off until a token is saved on the Mac; the phone cannot send one.
+        let r = h.handle_set(
+            &post_req("/v1/homespeaker", r#"{"courier_enabled":true}"#),
+            &phone,
+        );
+        assert_eq!(r.status, 400);
+        assert!(r.body_string().contains("New connection"));
+        assert_eq!(h.state().courier_enabled, Some(false));
+        let r = h.handle_set(
+            &post_req("/v1/homespeaker", r#"{"courier_token":"from-the-phone"}"#),
+            &phone,
+        );
+        assert_eq!(r.status, 400, "no courier_token over the wire");
+
+        fs::write(&h.secrets_path, r#"{"courierToken":"fake-courier-token"}"#).unwrap();
+        let st = h.state();
+        assert!(st.has_courier_token);
+        let body = String::from_utf8(h.handle_get(&phone).body_bytes()).unwrap();
+        assert!(
+            !body.contains("fake-courier-token"),
+            "never a token to the phone"
+        );
+        let r = h.handle_set(
+            &post_req(
+                "/v1/homespeaker",
+                r#"{"courier_enabled":true,"courier_announce":"all"}"#,
+            ),
+            &phone,
+        );
+        assert_eq!(r.status, 200);
+        let st = h.state();
+        assert_eq!(st.courier_enabled, Some(true));
+        assert_eq!(st.courier_announce, "all");
+        assert_eq!(st.beeper_enabled, Some(false), "Beeper is left alone");
+        let r = h.handle_set(
+            &post_req("/v1/homespeaker", r#"{"courier_announce":"vips"}"#),
+            &phone,
+        );
+        assert_eq!(r.status, 400);
+
+        let status_path = h
+            .config_path
+            .parent()
+            .unwrap()
+            .join("speaker_monitor_status.json");
+        fs::write(
+            &status_path,
+            r#"{
+              "is_running": true,
+              "beeper_network_states": [{"key": "signal", "name": "Signal", "state": "reading"}],
+              "courier_network_states": [
+                {"key": "whatsapp", "name": "WhatsApp", "state": "reading"},
+                {"key": "slack", "name": "Slack", "state": "skipped"}
+              ]
+            }"#,
+        )
+        .unwrap();
+        let st = h.state();
+        assert!(st.courier_networks_listed && st.beeper_networks_listed);
+        assert_eq!(st.beeper_networks.len(), 1, "Beeper's list is Beeper's");
+        assert_eq!(
+            st.courier_networks,
+            vec![
+                HomeSpeakerBeeperNetwork {
+                    key: "slack".to_string(),
+                    name: "Slack".to_string(),
+                    state: "skipped".to_string(),
+                    read_anyway: false,
+                },
+                HomeSpeakerBeeperNetwork {
+                    key: "whatsapp".to_string(),
+                    name: "WhatsApp".to_string(),
+                    state: "reading".to_string(),
+                    read_anyway: false,
+                },
+            ]
+        );
+
+        let r = h.handle_set(
+            &post_req(
+                "/v1/homespeaker",
+                r#"{"courier_network":{"key":"whatsapp","reading":false},"courier_read_anyway":{"key":"slack","on":true}}"#,
+            ),
+            &phone,
+        );
+        assert_eq!(r.status, 200);
+        let cfg = h.read_config().unwrap();
+        let monitor = cfg.get("chat_monitor").and_then(|m| m.as_object()).unwrap();
+        assert_eq!(
+            string_list_from_monitor(Some(monitor), "courier_muted_networks"),
+            vec!["whatsapp"]
+        );
+        assert_eq!(
+            string_list_from_monitor(Some(monitor), "courier_read_anyway"),
+            vec!["slack"]
+        );
+        assert!(string_list_from_monitor(Some(monitor), "beeper_muted_networks").is_empty());
+        let raw = JsonValue::parse_bytes(&h.handle_get(&phone).body_bytes()).unwrap();
+        let rows = raw
+            .get("courier_networks")
+            .and_then(|v| v.as_array())
+            .unwrap();
+        let slack = rows.iter().find(|r| r.get_str("key") == "slack").unwrap();
+        assert_eq!(slack.get_opt_bool("read_anyway"), Some(true));
+        assert!(
+            raw.get("beeper_networks")
+                .and_then(|v| v.as_array())
+                .unwrap()[0]
+                .get("read_anyway")
+                .is_none(),
+            "Beeper's rows keep their shape"
+        );
+
+        let r = h.handle_set(
+            &post_req(
+                "/v1/homespeaker",
+                r#"{"courier_read_anyway":{"key":"slack","on":false},"courier_network":{"key":"whatsapp","reading":true}}"#,
+            ),
+            &phone,
+        );
+        assert_eq!(r.status, 200);
+        let cfg = h.read_config().unwrap();
+        let monitor = cfg.get("chat_monitor").and_then(|m| m.as_object()).unwrap();
+        assert!(string_list_from_monitor(Some(monitor), "courier_read_anyway").is_empty());
+        assert!(string_list_from_monitor(Some(monitor), "courier_muted_networks").is_empty());
+        let r = h.handle_set(
+            &post_req(
+                "/v1/homespeaker",
+                r#"{"courier_network":{"key":"Bad Key","reading":false}}"#,
+            ),
+            &phone,
+        );
+        assert_eq!(r.status, 400);
+        h.running = Some(Arc::new(|| false));
+        assert!(!h.state().courier_networks_listed);
     }
 
     #[test]

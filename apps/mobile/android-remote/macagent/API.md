@@ -727,6 +727,35 @@ The update endpoint supports these additional configuration actions and secret u
 | `chat_monitor_action` | `"start"` \| `"stop"` | Starts or stops the chat monitor daemon |
 | `reset_settings` | bool | Backs up current settings and resets HomeSpeaker configuration |
 
+### Courier beside Beeper
+
+HomeSpeaker 1.37 reads chats from Courier as well as Beeper: the same local API on its own port,
+with its own token and its own switch, Announce choice and network list. The agent mirrors them the
+way it mirrors Beeper's.
+
+`GET /v1/homespeaker` adds:
+
+| Field | Read from | Default when absent |
+|---|---|---|
+| `courier_enabled` (bool) | `chat_monitor.courier_enabled` | `false` |
+| `courier_announce` (`"direct_and_mentions"` \| `"all"`) | `chat_monitor.courier_announce` | `"direct_and_mentions"` |
+| `courier_networks` (`[{key, name, state, read_anyway?}]`) | `speaker_monitor_status.json` (`courier_network_states` when `app_running && is_running`) merged with `chat_monitor.courier_muted_networks`, sorted as Beeper's; `read_anyway: true` (sent only when true) marks a network in `chat_monitor.courier_read_anyway` | `[]` |
+| `courier_networks_listed`, `beeper_networks_listed` (bool) | whether the running monitor reported that app's network states; until it has, only the saved mutes are known | `false` |
+| `has_courier_token` (bool) | `secrets.json` `courierToken` non-empty (the value never leaves the Mac) | `false` |
+
+`POST /v1/homespeaker` accepts:
+
+| Field | Type | Effect |
+|---|---|---|
+| `courier_enabled` | bool | `chat_monitor.courier_enabled`. Turning it on while it is off and no Courier token is saved is 400, as HomeSpeaker's own Settings keeps the switch off until a token is saved |
+| `courier_announce` | `"direct_and_mentions"` \| `"all"` | `chat_monitor.courier_announce`; anything else is 400 |
+| `courier_network` | `{"key": string, "reading": bool}` | mutes or unmutes `key` in `chat_monitor.courier_muted_networks`, as `beeper_network` does Beeper's |
+| `courier_read_anyway` | `{"key": string, "on": bool}` | adds or removes `key` in `chat_monitor.courier_read_anyway`: a network HomeSpeaker's own Slack or Google Chat reader covers is read through Courier as well. Courier cannot say which Slack workspace an account is, so this is how a second workspace is heard |
+
+There is no `courier_token`: the token is pasted into HomeSpeaker on the Mac (Courier › Settings ›
+Integrations › New connection…) and never travels to or from the phone. Keys outside
+`^[a-z0-9_-]{1,64}$` are 400.
+
 ### `POST /v1/homespeaker/say` replay support
 
 Accepts `replay: true` or `replay_id: "<id>"`. When replaying an announcement, the Mac agent snapshots history before invoking `HomeSpeaker --say`, then restores the history file so that replaying does not duplicate entries or displace earlier history.

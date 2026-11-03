@@ -3010,6 +3010,54 @@ public class RemoteState(
    * off nothing is spoken, so the sender lists are not drawn at all; the master switch is the
    * plate.
    */
+  /**
+   * Beeper's or Courier's networks as rows, as HomeSpeaker's Settings has them
+   * ([Derive.chatNetworkRow]), then where the others will show while the monitor has not listed
+   * them.
+   */
+  private fun chatNetworkRows(
+      app: String,
+      networks: List<AgentBeeperNetwork>,
+      listed: Boolean?,
+  ): List<ModuleRow> = buildList {
+    networks.forEach { net ->
+      val row = Derive.chatNetworkRow(app, net)
+      add(
+          ModuleRow(
+              title = row.title,
+              subtitle = row.subtitle,
+              trailing = row.trailing,
+              tone = if (row.on) StatusTone.Ok else StatusTone.Neutral,
+              toggle =
+                  when (row.switch) {
+                    Derive.NetworkSwitch.None -> null
+                    Derive.NetworkSwitch.Mute ->
+                        RowToggle(checked = row.on, enabled = paired) { next ->
+                          val what = "$app ${net.name} ${if (next) "on" else "muted"}"
+                          if (app == "Courier")
+                              setHomeSpeaker(
+                                  what, courierNetworkKey = net.key, courierNetworkReading = next)
+                          else
+                              setHomeSpeaker(
+                                  what, beeperNetworkKey = net.key, beeperNetworkReading = next)
+                        }
+                    Derive.NetworkSwitch.ReadAnyway ->
+                        RowToggle(checked = row.on, enabled = paired) { next ->
+                          setHomeSpeaker(
+                              "Courier ${net.name} ${if (next) "also read here" else "read directly"}",
+                              courierReadAnywayKey = net.key,
+                              courierReadAnywayOn = next)
+                        }
+                  },
+          ))
+    }
+    Derive.networksLaterLine(app, listed)?.let {
+      add(
+          ModuleRow(
+              title = "$app · Networks", subtitle = it, trailing = "", tone = StatusTone.Neutral))
+    }
+  }
+
   private fun homeSpeakerExtraLists(hs: AgentHomeSpeaker): List<ModuleList> = buildList {
     fun sourceRow(
         title: String,
@@ -3303,38 +3351,68 @@ public class RemoteState(
                                     }
                               },
                       ))
-                  hs.beeperNetworks.forEach { net ->
-                    val reading = net.state == "reading"
-                    val skipped = net.state == "skipped"
+                  addAll(chatNetworkRows("Beeper", hs.beeperNetworks, hs.beeperNetworksListed))
+                }
+                val courier = hs.courierEnabled
+                if (courier != null) {
+                  val hasToken = hs.hasCourierToken
+                  add(
+                      ModuleRow(
+                          title = "Courier",
+                          subtitle =
+                              when {
+                                courier -> "new messages are read aloud"
+                                hasToken -> "not watched"
+                                else -> "needs a token on the Mac first"
+                              },
+                          trailing = if (courier) "on" else "off",
+                          tone = if (courier) StatusTone.Ok else StatusTone.Neutral,
+                          toggle =
+                              RowToggle(
+                                  checked = courier,
+                                  enabled =
+                                      paired && Derive.courierSwitchEnabled(hasToken, courier)) {
+                                    setHomeSpeaker(
+                                        "Courier ${if (it) "on" else "off"}", courierEnabled = it)
+                                  },
+                      ))
+                  // No token field: the token is pasted into HomeSpeaker on the Mac and never
+                  // travels to or from the phone.
+                  if (courier || !hasToken) {
                     add(
                         ModuleRow(
-                            title = "Beeper · ${net.name}",
+                            title = "Courier access token",
                             subtitle =
-                                when {
-                                  skipped -> "covered by its own chat toggle"
-                                  reading -> "messages on this network are read aloud"
-                                  else -> "muted in Beeper"
-                                },
-                            trailing =
-                                when {
-                                  skipped -> "skipped"
-                                  reading -> "on"
-                                  else -> "muted"
-                                },
-                            tone = if (reading) StatusTone.Ok else StatusTone.Neutral,
-                            toggle =
-                                if (skipped) null
-                                else
-                                    RowToggle(checked = reading, enabled = paired) { next ->
-                                      setHomeSpeaker(
-                                          "Beeper ${net.name} ${if (next) "on" else "muted"}",
-                                          beeperNetworkKey = net.key,
-                                          beeperNetworkReading = next)
-                                    },
+                                if (hasToken) "Token saved on Mac" else Derive.courierTokenSteps,
+                            trailing = if (hasToken) "saved" else "missing",
+                            tone = if (hasToken) StatusTone.Ok else StatusTone.Warn,
                         ))
                   }
+                  if (courier) {
+                    add(
+                        ModuleRow(
+                            title = "Courier · Announce",
+                            subtitle = "which Courier messages are read aloud",
+                            trailing = Derive.beeperAnnounceLabel(hs.courierAnnounce),
+                            tone = StatusTone.Neutral,
+                            choices =
+                                Derive.beeperAnnounceModes.map { wire ->
+                                  val current = wire == hs.courierAnnounce
+                                  RowAction(
+                                      Derive.beeperAnnounceLabel(wire),
+                                      enabled = paired && !current,
+                                      selected = current) {
+                                        setHomeSpeaker(
+                                            "Courier announce ${Derive.beeperAnnounceLabel(wire)}",
+                                            courierAnnounce = wire)
+                                      }
+                                },
+                        ))
+                    addAll(chatNetworkRows("Courier", hs.courierNetworks, hs.courierNetworksListed))
+                  }
                 }
-                if (slack || googleChat || beeper) {
+                val anyChat = slack || googleChat || beeper || courier == true
+                if (anyChat) {
                   val interval = hs.pollInterval ?: 15
                   add(
                       ModuleRow(
@@ -3355,7 +3433,7 @@ public class RemoteState(
                       ))
                 }
                 val muteOwn = hs.muteOwnMessages
-                if ((slack || googleChat || beeper) && muteOwn != null) {
+                if (anyChat && muteOwn != null) {
                   add(
                       sourceRow(
                           "Skip messages I sent",
@@ -3586,6 +3664,12 @@ public class RemoteState(
       speakPhone: Boolean? = null,
       phonePauseMedia: Boolean? = null,
       phoneHeadphonesOnly: Boolean? = null,
+      courierEnabled: Boolean? = null,
+      courierAnnounce: String? = null,
+      courierNetworkKey: String? = null,
+      courierNetworkReading: Boolean? = null,
+      courierReadAnywayKey: String? = null,
+      courierReadAnywayOn: Boolean? = null,
   ) {
     val client = actClient("homespeaker · $what") ?: return
     homeSpeakerBusy = what
@@ -3646,6 +3730,12 @@ public class RemoteState(
                   speakPhone = speakPhone,
                   phonePauseMedia = phonePauseMedia,
                   phoneHeadphonesOnly = phoneHeadphonesOnly,
+                  courierEnabled = courierEnabled,
+                  courierAnnounce = courierAnnounce,
+                  courierNetworkKey = courierNetworkKey,
+                  courierNetworkReading = courierNetworkReading,
+                  courierReadAnywayKey = courierReadAnywayKey,
+                  courierReadAnywayOn = courierReadAnywayOn,
               )
             }
             .onSuccess {
