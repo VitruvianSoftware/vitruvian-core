@@ -365,7 +365,9 @@ the file means the app's defaults, `false` and `60`. `POST /v1/homespeaker` acce
   `PowerTelemetryData.SystemPowerIn`. `draw_watts` stays the battery's own discharge and is 0 on AC.
 - `disk` reads the data volume (`/System/Volumes/Data`) and `used_bytes`/`used_percent` are
   total minus available. Reading `/` (the sealed system volume) showed a 90%-full disk as 1%.
-- `/v1/processes` leaves out the agent's own `top` and `ps`.
+- `/v1/processes` leaves out the agent's own `ps`. (It also left out `top` while the agent ran
+  `top` for CPU usage; it now reads the kernel's counters instead, so a `top` you run yourself
+  shows up like any other process.)
 
 # v1.6 additions: answer Claude Code permission prompts from the phone
 

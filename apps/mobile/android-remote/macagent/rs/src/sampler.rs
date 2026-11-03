@@ -31,18 +31,19 @@ use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use vitruvian_remote_macagent_metrics::{
-    count_processes_named, cwd_from_transcript, parse_agy_agents, parse_agy_models,
-    parse_argo_apps, parse_battery, parse_boottime, parse_default_interface, parse_df,
-    parse_docker_ps, parse_ether, parse_gh_pr_view, parse_gh_search_prs, parse_kubectl_nodes,
-    parse_lima_list, parse_load_avg, parse_nested_battery_temperature, parse_netstat,
-    parse_ollama_list, parse_ollama_ps, parse_podman_ps, parse_processes, parse_therm, parse_top,
-    parse_transcript_tail, parse_vm_stat, parse_volume_settings, parse_womp, pr_checks_verdict,
-    project_from_dir_name, trim_runes, Antigravity, ArgoApps, Audio, ClaudeSessions, Containers,
-    Host, K8s, Network, Ollama, PRRef, PRs, Processes, Session, Sessions, Snapshot, Timestamp,
-    Tool, Tools, VMs, PR, STATE_IDLE, STATE_WAITING_FOR_PERMISSION, STATE_WORKING,
+    count_processes_named, cpu_percent_from_ticks, cwd_from_transcript, parse_agy_agents,
+    parse_agy_models, parse_argo_apps, parse_battery, parse_boottime, parse_default_interface,
+    parse_df, parse_docker_ps, parse_ether, parse_gh_pr_view, parse_gh_search_prs,
+    parse_kubectl_nodes, parse_lima_list, parse_load_avg, parse_nested_battery_temperature,
+    parse_netstat, parse_ollama_list, parse_ollama_ps, parse_podman_ps, parse_processes,
+    parse_therm, parse_transcript_tail, parse_vm_stat, parse_volume_settings, parse_womp,
+    pr_checks_verdict, project_from_dir_name, trim_runes, Antigravity, ArgoApps, Audio,
+    ClaudeSessions, Containers, CpuTicks, Host, K8s, Network, Ollama, PRRef, PRs, Processes,
+    Session, Sessions, Snapshot, Timestamp, Tool, Tools, VMs, PR, STATE_IDLE,
+    STATE_WAITING_FOR_PERMISSION, STATE_WORKING,
 };
 
-use crate::http_util::CancelToken;
+use crate::http_util::{agent_log, CancelToken};
 use crate::notify::{Notification, Notifier};
 
 pub fn get_hostname() -> String {
@@ -60,7 +61,6 @@ pub const DATA_VOLUME: &str = "/System/Volumes/Data";
 pub const HOME_SPEAKER_BINARY: &str = "/Applications/HomeSpeaker.app/Contents/MacOS/HomeSpeaker";
 
 pub const CMD_TIMEOUT: Duration = Duration::from_secs(10);
-pub const TOP_TIMEOUT: Duration = Duration::from_secs(30);
 pub const TOOL_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub const MIN_SCREEN_WIDTH: i32 = 200;
@@ -87,7 +87,7 @@ pub const KNOWN_TOOLS: &[&str] = &[
     "xcodebuild",
 ];
 
-pub const OWN_SAMPLERS: &[&str] = &["top", "ps"];
+pub const OWN_SAMPLERS: &[&str] = &["ps"];
 
 pub fn default_unavailable() -> BTreeMap<String, String> {
     let mut m = BTreeMap::new();
@@ -280,6 +280,65 @@ pub fn run_tool_within(
     let stdout = out_handle.join().unwrap_or_default();
     let stderr = err_handle.join().unwrap_or_default();
     (stdout, stderr, err_opt)
+}
+
+/// How long the first CPU window lasts, before `cpu.ready` turns true.
+pub const CPU_BASELINE: Duration = Duration::from_secs(1);
+
+/// Reads the kernel's cumulative CPU tick counters for the whole machine
+/// (`host_statistics(HOST_CPU_LOAD_INFO)`): the numbers `top` itself differences.
+/// A Mach call into libSystem, so no process is spawned and nothing is walked.
+#[cfg(target_os = "macos")]
+pub fn read_cpu_ticks() -> Option<CpuTicks> {
+    use std::sync::OnceLock;
+
+    // <mach/host_info.h> and <mach/machine.h>.
+    const HOST_CPU_LOAD_INFO: i32 = 3;
+    const CPU_STATE_MAX: u32 = 4;
+    const CPU_STATE_USER: usize = 0;
+    const CPU_STATE_SYSTEM: usize = 1;
+    const CPU_STATE_IDLE: usize = 2;
+    const CPU_STATE_NICE: usize = 3;
+    const KERN_SUCCESS: i32 = 0;
+
+    extern "C" {
+        fn mach_host_self() -> u32;
+        fn host_statistics(host: u32, flavor: i32, info: *mut i32, count: *mut u32) -> i32;
+    }
+
+    // Each mach_host_self() call adds a reference to the host port, so take
+    // one for the life of the process instead of one per sample.
+    static HOST: OnceLock<u32> = OnceLock::new();
+    // SAFETY: mach_host_self takes no arguments and returns a port name.
+    let host = *HOST.get_or_init(|| unsafe { mach_host_self() });
+
+    let mut ticks = [0u32; CPU_STATE_MAX as usize];
+    let mut count = CPU_STATE_MAX;
+    // SAFETY: `ticks` holds CPU_STATE_MAX natural_t (u32) values, which is
+    // host_cpu_load_info_data_t, and `count` tells the kernel that size.
+    let kr = unsafe {
+        host_statistics(
+            host,
+            HOST_CPU_LOAD_INFO,
+            ticks.as_mut_ptr().cast::<i32>(),
+            &mut count,
+        )
+    };
+    if kr != KERN_SUCCESS || count != CPU_STATE_MAX {
+        return None;
+    }
+    Some(CpuTicks {
+        user: ticks[CPU_STATE_USER],
+        system: ticks[CPU_STATE_SYSTEM],
+        idle: ticks[CPU_STATE_IDLE],
+        nice: ticks[CPU_STATE_NICE],
+    })
+}
+
+/// Off macOS (the Linux CI runner) there are no Mach counters; CPU stays not ready.
+#[cfg(not(target_os = "macos"))]
+pub fn read_cpu_ticks() -> Option<CpuTicks> {
+    None
 }
 
 pub fn run_cmd(name: &str, args: &[&str]) -> Result<String, String> {
@@ -1085,22 +1144,31 @@ impl Sampler {
         self.fast_loop(cancel);
     }
 
+    /// Samples CPU usage from the kernel's tick counters, in-process. It used
+    /// to run `top -l 2 -n 0 -s 1` every tick, which walks every process on the
+    /// Mac and cost about two CPU-seconds a run, charged to `top`.
     fn cpu_loop(&self, cancel: CancelToken) {
-        while !cancel.is_cancelled() {
-            if let Ok(out) = run_cmd_within(TOP_TIMEOUT, "top", &["-l", "2", "-n", "0", "-s", "1"])
-            {
-                if let Some((u, s, i)) = parse_top(&out) {
-                    let mut st = self.state.write().unwrap();
-                    st.snap.cpu.ready = true;
-                    st.snap.cpu.user_percent = u;
-                    st.snap.cpu.sys_percent = s;
-                    st.snap.cpu.idle_percent = i;
-                    st.snap.cpu.busy_percent = u + s;
-                }
+        let Some(mut prev) = read_cpu_ticks() else {
+            agent_log("cpu: host_statistics unavailable; cpu stays not ready");
+            return;
+        };
+        // The first window is short so `cpu.ready` turns true about a second
+        // after start, as it did with `top -s 1`; later windows are one interval.
+        let mut wait = CPU_BASELINE;
+        while !cancel.wait_timeout(wait) {
+            wait = self.interval;
+            let Some(cur) = read_cpu_ticks() else {
+                continue;
+            };
+            if let Some((u, s, i)) = cpu_percent_from_ticks(prev, cur) {
+                let mut st = self.state.write().unwrap();
+                st.snap.cpu.ready = true;
+                st.snap.cpu.user_percent = u;
+                st.snap.cpu.sys_percent = s;
+                st.snap.cpu.idle_percent = i;
+                st.snap.cpu.busy_percent = u + s;
             }
-            if cancel.wait_timeout(self.interval) {
-                break;
-            }
+            prev = cur;
         }
     }
 
@@ -1736,5 +1804,31 @@ impl Sampler {
             Ok(refs) => (refs, String::new()),
             Err(e) => (Vec::new(), e),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The Mach call returns counters that move forward. Runs only on a Mac;
+    /// the Linux runner has no Mach host port.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn read_cpu_ticks_reads_advancing_counters() {
+        let a = read_cpu_ticks().expect("host_statistics(HOST_CPU_LOAD_INFO) failed");
+        thread::sleep(Duration::from_millis(50));
+        let b = read_cpu_ticks().expect("host_statistics(HOST_CPU_LOAD_INFO) failed");
+        let (u, s, i) = cpu_percent_from_ticks(a, b).expect("no ticks elapsed in 50 ms");
+        assert!(
+            (99.9..=100.1).contains(&(u + s + i)),
+            "{u} + {s} + {i} != 100"
+        );
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn read_cpu_ticks_is_none_off_macos() {
+        assert_eq!(read_cpu_ticks(), None);
     }
 }
