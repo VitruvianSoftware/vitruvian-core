@@ -68,6 +68,14 @@ const guardApproverLogin = "ipv1337"
 // write access to the repository.
 const guardReviewTeamSlug = "agent-guard-approvers"
 
+// guardReviewMaxPatterns is GitHub's limit on file patterns in one
+// required_reviewers entry. More is rejected only when the ruleset is applied
+// (422 "Exceeded limit of 15 file patterns per required reviewer"), after
+// merge: #4259 went to 16 and its apply failed, leaving the live ruleset on
+// the old list. TestGuardReviewPatternLimit holds the list to it; when it
+// fills up, fold patterns into a broader glob that matches the same files.
+const guardReviewMaxPatterns = 15
+
 // guardReviewPaths are the files whose changes need the team's approval. The
 // format is GitHub's: .gitignore style, matched from the repository root.
 //
@@ -81,8 +89,9 @@ var guardReviewPaths = []string{
 	// agent_guard.py are what every checkout runs (from origin/main).
 	"tools/agent-guard/**",
 	// The hook wiring and the hook scripts the project settings run.
-	".claude/settings.json",
-	".claude/settings.local.json",
+	// settings*.json is .claude/settings.json and .claude/settings.local.json
+	// in one pattern (see guardReviewMaxPatterns).
+	".claude/settings*.json",
 	".claude/*.sh",
 	".agents/hooks.json",
 	// What .claude/session-start.sh runs from the working copy, with the
@@ -105,8 +114,9 @@ var guardReviewPaths = []string{
 	"infrastructure/pulumi/platform/repo-config/guard_review.go",
 	"infrastructure/pulumi/platform/repo-config/main.go",
 	"infrastructure/pulumi/platform/repo-config/release_tags.go",
-	"infrastructure/pulumi/platform/repo-config/Pulumi.yaml",
-	"infrastructure/pulumi/platform/repo-config/Pulumi.dev.yaml",
+	// Pulumi*.yaml is Pulumi.yaml and Pulumi.dev.yaml (and any later stack
+	// file) in one pattern.
+	"infrastructure/pulumi/platform/repo-config/Pulumi*.yaml",
 	// guard-review-paths:end
 }
 
