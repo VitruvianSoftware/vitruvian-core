@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/courier-v0.3.2...courier-v0.3.3) (2026-11-03)
+
+
+### Bug Fixes
+
+* **courier:** make Google Chat reconnect failures readable and stop hot retry loops ([#4312](https://github.com/VitruvianSoftware/vitruvian-core/issues/4312)) ([d668d9d](https://github.com/VitruvianSoftware/vitruvian-core/commit/d668d9db9e8e087cb36831dbd393acb1b4d0351b))
+
 ## [0.3.2](https://github.com/VitruvianSoftware/vitruvian-core/compare/courier-v0.3.1...courier-v0.3.2) (2026-11-03)
 
 
