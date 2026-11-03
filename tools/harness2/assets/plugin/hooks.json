@@ -1,0 +1,30 @@
+{
+  "harness2": {
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "./hooks/pre-invocation.sh",
+        "timeout": 5
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./hooks/pre-tool-use.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "./hooks/stop-check.sh",
+        "timeout": 5
+      }
+    ]
+  }
+}

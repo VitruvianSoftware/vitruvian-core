@@ -1,0 +1,24 @@
+{
+  "rules": [
+    {
+      "name": "harness2-inv-0001-image-generator-on-existing-image",
+      "enabled": true,
+      "event": "PreToolUse",
+      "tool": "invoke_subagent",
+      "action": "warn",
+      "conditions": [
+        {
+          "field": "TypeName",
+          "operator": "contains",
+          "pattern": "image-generator"
+        },
+        {
+          "field": "Prompt",
+          "operator": "regex_match",
+          "pattern": "border|crop|resiz|upscal|enlarg|\\bscal(e|ing)\\b|margin|\\bpad(ding)?\\b"
+        }
+      ],
+      "message": "Harness² INV-0001: this asks an image generator to change the geometry of an existing image (border, crop, scale, margin). Did the user ask for NEW artwork? If not, load the `macos-icon-edit` skill and edit the pixels deterministically instead."
+    }
+  ]
+}

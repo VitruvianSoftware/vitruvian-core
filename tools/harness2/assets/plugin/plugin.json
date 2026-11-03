@@ -1,0 +1,11 @@
+{
+  "name": "harness2",
+  "version": "0.1.0",
+  "description": "Harness² (arXiv:2610.14224): a self-improving harness. Live hooks enforce the user's hard constraints and pin lessons from the Continual Improvement Library; `harness2 distill` has Claude Opus edit this plugin from past trajectories.",
+  "author": {
+    "name": "VitruvianSoftware",
+    "url": "https://github.com/VitruvianSoftware"
+  },
+  "license": "MIT",
+  "keywords": ["harness", "self-improvement", "guardrails", "antigravity"]
+}
