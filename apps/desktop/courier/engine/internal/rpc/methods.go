@@ -926,8 +926,10 @@ func (d *Deps) toEvents(ctx context.Context, roomID string, evs []store.Event, s
 			if senders == nil {
 				senders = []string{}
 			}
-			ev.Thread = &threadJSON{Replies: t.Replies, LastTS: ms(t.LastTS), LastSenders: senders, Unread: t.Unread,
-				UnreadMentionsMe: t.UnreadMentionsMe}
+			ev.Thread = &threadJSON{
+				Replies: t.Replies, LastTS: ms(t.LastTS), LastSenders: senders, Unread: t.Unread,
+				UnreadMentionsMe: t.UnreadMentionsMe,
+			}
 		}
 		out = append(out, ev)
 	}
@@ -1470,8 +1472,10 @@ func threadUnread(ctx context.Context, d *Deps, raw json.RawMessage) (any, error
 	}
 	out := make([]unreadThreadJSON, 0, len(threads))
 	for _, t := range threads {
-		out = append(out, unreadThreadJSON{RootID: t.RootID, Unread: t.Unread, UnreadMentionsMe: t.MentionsMe,
-			FirstUnreadID: t.FirstUnreadID})
+		out = append(out, unreadThreadJSON{
+			RootID: t.RootID, Unread: t.Unread, UnreadMentionsMe: t.MentionsMe,
+			FirstUnreadID: t.FirstUnreadID,
+		})
 	}
 	return map[string]any{"threads": out}, nil
 }

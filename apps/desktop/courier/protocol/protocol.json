@@ -703,7 +703,10 @@
     "ThreadParams": {
       "fields": {
         "room_id": { "type": "string" },
-        "root_id": { "type": "string", "doc": "The thread's root: a message of the chat." }
+        "root_id": {
+          "type": "string",
+          "doc": "The thread's root: a message of the chat."
+        }
       }
     },
     "RoomEventsParams": {

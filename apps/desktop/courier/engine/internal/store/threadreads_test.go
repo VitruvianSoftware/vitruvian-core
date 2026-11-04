@@ -43,8 +43,10 @@ func TestReadingTheChatLeavesItsThreadsUnread(t *testing.T) {
 	s, ctx := open(t), context.Background()
 	threadChat(t, s)
 
-	require.Equal(t, ThreadSummary{Replies: 2, LastTS: time.Unix(21, 0), LastSenders: []string{"ghost"}, Unread: 2,
-		UnreadMentionsMe: true}, summaryOf(t, s, "!r", "$a"))
+	require.Equal(t, ThreadSummary{
+		Replies: 2, LastTS: time.Unix(21, 0), LastSenders: []string{"ghost"}, Unread: 2,
+		UnreadMentionsMe: true,
+	}, summaryOf(t, s, "!r", "$a"))
 	row := inboxByID(t, s)["!r"]
 	require.Equal(t, 2, row.Unread, "the chat counts its unread thread replies")
 	require.Equal(t, 1, row.UnreadMentions)
