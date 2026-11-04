@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.6](https://github.com/VitruvianSoftware/vitruvian-core/compare/courier-v0.3.5...courier-v0.3.6) (2026-11-04)
+
+
+### Bug Fixes
+
+* **courier:** avoid main-actor modal run-loop deadlock when quitting for update ([#4325](https://github.com/VitruvianSoftware/vitruvian-core/issues/4325)) ([9d81119](https://github.com/VitruvianSoftware/vitruvian-core/commit/9d8111956bc832de7aabaf0b7d179b018a7d8c60))
+
 ## [0.3.5](https://github.com/VitruvianSoftware/vitruvian-core/compare/courier-v0.3.4...courier-v0.3.5) (2026-11-04)
 
 
