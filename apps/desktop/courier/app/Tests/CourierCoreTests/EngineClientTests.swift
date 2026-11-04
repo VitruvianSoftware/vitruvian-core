@@ -260,6 +260,7 @@ final class EngineClientTests: XCTestCase {
             "room.events",
             "room.features",
             "room.members",
+            "thread.unread",
             "scheduled.list",
             "merge.list",
             // The app's own lock state, not the person's data: it must reach the engine while locked, or focus_app
@@ -297,6 +298,7 @@ final class EngineClientTests: XCTestCase {
             "autoArchive.set",
             "autoArchive.delete",
             "room.markRead",
+            "thread.markRead",
             "room.setTyping",
             "room.setUnreadFrom",
             "room.directChat",
