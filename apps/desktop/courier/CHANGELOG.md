@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.4](https://github.com/VitruvianSoftware/vitruvian-core/compare/courier-v0.3.3...courier-v0.3.4) (2026-11-04)
+
+
+### Bug Fixes
+
+* **courier:** Google Chat connects: the handshake stops waiting on an ack Google keeps open ([#4319](https://github.com/VitruvianSoftware/vitruvian-core/issues/4319)) ([654a310](https://github.com/VitruvianSoftware/vitruvian-core/commit/654a3100ad31d7fe15b9e25b2da7f820f8d27d58))
+
 ## [0.3.3](https://github.com/VitruvianSoftware/vitruvian-core/compare/courier-v0.3.2...courier-v0.3.3) (2026-11-03)
 
 
