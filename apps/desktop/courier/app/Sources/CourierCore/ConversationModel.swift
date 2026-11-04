@@ -228,6 +228,12 @@ public enum RoomConfirmationRequest: Equatable, Identifiable, Sendable {
 /// A search result that is a reply in a thread (Ruling 23) opens the chat around its root, which the engine centres
 /// the page on, and the thread pane at the reply.
 ///
+/// **Threads' unread replies.** Opening the chat reads its timeline only: a reply that stays in its thread is read
+/// in the thread pane (`ThreadModel.markReadIfNeeded`), so the chat's unread count keeps counting it and its root's
+/// summary says how many are new. While any are, the chat says so above its timeline (`unreadThreadsBanner`, read
+/// with `thread.unread` when the chat opens and whenever it changes), and `showNextUnreadThread` opens the pane at
+/// the oldest unread reply, then the next thread's.
+///
 /// Protocol 5. Who is typing (`typingLine`) is the chat's row's, read again on each typing change; a read that fails
 /// shows no one, so a line never sticks. A receipt change reads the newest page again, as a status change does: my
 /// newest message says Delivered or Seen. Mark as Unread from a message (`markUnread`) and Reply Privately
@@ -377,6 +383,9 @@ public final class ConversationModel: ObservableObject {
     public let composer: ComposerModel
     /// The thread pane, in the open chat.
     public let thread: ThreadModel
+    /// The open chat's threads with unread replies, the oldest unread first (`thread.unread`). Empty for a merged
+    /// chat, whose threads are its rooms'.
+    @Published public private(set) var unreadThreads: [UnreadThread] = []
     /// App-wide voice-note & audio player (`Audio` and `GlobalAudioPlayerBar`).
     public let audioPlayer: AudioPlayerModel
     /// Whether the person is looking at the open chat (see `Attention`): it is marked read only then.
@@ -560,6 +569,11 @@ public final class ConversationModel: ObservableObject {
             target.onSent = { [weak self] room, eventID in self?.sent(eventID, in: room) }
         }
         composer.quote = { [weak self] id in self?.message(id)?.quoted }
+        thread.mayMarkRead = { [weak self] in
+            guard let self else { return false }
+            return !self.isLocked && self.attention.isLooking && !self.incognitoIsOn
+        }
+        thread.onMarkedRead = { [weak self] room, root in self?.threadRead(root, in: room) }
         composer.selectedMessage = { [weak self] in self?.selectedMessageID.flatMap { self?.message($0) } }
         if followsAppSelection {
             subscriptions.append(appModel.$selectedRoomID.removeDuplicates().sink { [weak self] room in
@@ -648,6 +662,8 @@ public final class ConversationModel: ObservableObject {
         if pendingPrivateReply?.roomID != room { pendingPrivateReply = nil }
         composer.open(room)
         thread.close()
+        unreadThreads = []
+        readUnreadThreads()
         features = .noFeatures
         let row = room.flatMap(chat)
         learnChat(row, of: room)
@@ -838,6 +854,63 @@ public final class ConversationModel: ObservableObject {
         handOnChat()
     }
 
+    /// Above the timeline while the chat has threads with unread replies: "New replies in 2 threads". Nil while it
+    /// has none.
+    public var unreadThreadsBanner: String? {
+        switch unreadThreads.count {
+        case 0: nil
+        case 1: String(localized: "New replies in 1 thread")
+        case let count: String(localized: "New replies in \(count) threads")
+        }
+    }
+
+    /// One of the unread replies the banner stands for mentions me.
+    public var unreadThreadsMentionMe: Bool { unreadThreads.contains(where: \.unreadMentionsMe) }
+
+    /// The banner's click: the thread pane opens at the oldest unread reply of the thread after the one it shows
+    /// (the first thread when it shows none of them, round again after the last). A root on the page opens the pane
+    /// at once, and the chat scrolls to it; one further up opens the chat around the reply, as a search result does,
+    /// which centres the chat on its root.
+    public func showNextUnreadThread() {
+        guard !isLocked, let room = roomID, !unreadThreads.isEmpty else { return }
+        var next = unreadThreads[0]
+        if let open = thread.rootID, let at = unreadThreads.firstIndex(where: { $0.rootID == open }) {
+            next = unreadThreads[(at + 1) % unreadThreads.count]
+        }
+        if message(next.rootID) != nil {
+            openThread(next.rootID, at: next.firstUnreadID)
+            scrollSerial += 1
+            scrollToMessageRequest = MessageScrollRequest(messageID: next.rootID, serial: scrollSerial)
+        } else {
+            appModel.open(.message(roomID: room, eventID: next.firstUnreadID))
+        }
+    }
+
+    /// Reads the open chat's threads with unread replies (`thread.unread`). A merged chat has none of its own.
+    private func readUnreadThreads() {
+        guard let room = roomID, !room.hasPrefix("merge:"), let client = appModel.client else { return }
+        let owner = generation
+        Task { [weak self] in
+            let result: UnreadThreadsResult? = try? await client.call("thread.unread", RoomParams(roomID: room))
+            guard let self, let result, owner == self.generation, client === self.appModel.client,
+                  self.roomID == room else { return }
+            self.unreadThreads = result.threads
+        }
+    }
+
+    /// The thread pane read `rootID`'s thread: its summary says nothing new, and the banner drops it, at once. The
+    /// engine's read change confirms both.
+    private func threadRead(_ rootID: String, in room: String) {
+        guard matchesOpenRoom(room) else { return }
+        unreadThreads.removeAll { $0.rootID == rootID }
+        guard var root = events[rootID], var summary = root.thread, summary.unread > 0 else { return }
+        summary.unread = 0
+        summary.unreadMentionsMe = false
+        root.thread = summary
+        events[rootID] = root
+        rebuild()
+    }
+
     /// The open chat's unread count, learned after it opened: the inbox didn't list the chat (a search opened it from
     /// the archive, say) and looked its row up. At its newest message, the "New" divider goes above that many, at
     /// once if the newest page is in, else when it lands; in a window around a message, reaching the newest one
@@ -966,7 +1039,12 @@ public final class ConversationModel: ObservableObject {
             guard matchesOpenRoom(room) else { return }
             if anchorID != nil { hasNewerWhileAway = true }
             requestRefetch()
-        case let .status(room, _), let .read(room, _), let .receipt(room):
+            readUnreadThreads()
+        case let .read(room, _):
+            guard matchesOpenRoom(room) else { return }
+            requestRefetch()
+            readUnreadThreads()
+        case let .status(room, _), let .receipt(room):
             // A receipt: my newest message's Delivered or Seen, read with the page as a status is.
             if matchesOpenRoom(room) { requestRefetch() }
         case let .typing(room):
@@ -1638,6 +1716,7 @@ public final class ConversationModel: ObservableObject {
     private func personReturned() {
         guard !isLocked else { return }
         if needsRead, isLoaded { markRead() }
+        if thread.roomID != nil, thread.roomID == roomID { thread.markReadIfNeeded() }
     }
 
     /// Tells the engine the open chat is read. The engine does nothing for a chat that already is. Not after Mark as
@@ -1653,7 +1732,7 @@ public final class ConversationModel: ObservableObject {
         Task {
             // A failure is ignored: the unread count shows the truth the next time the inbox reads.
             for targetRoom in rooms {
-                let _: Empty? = try? await client.call("room.markRead", RoomParams(roomID: targetRoom))
+                let _: Empty? = try? await client.call("room.markRead", MarkReadParams(roomID: targetRoom))
             }
         }
     }

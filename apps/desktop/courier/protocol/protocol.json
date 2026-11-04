@@ -223,6 +223,10 @@
           "type": "bool",
           "doc": "The newest message is mine."
         },
+        "preview_in_thread": {
+          "type": "bool",
+          "doc": "The newest message is a reply that stays in its thread: the chat's timeline doesn't show it, the thread pane does. False for a reply also sent to the channel."
+        },
         "preview_status": {
           "type": "string",
           "values": ["", "sent", "delivered", "seen"],
@@ -667,6 +671,44 @@
         "room_id": { "type": "string" }
       }
     },
+    "MarkReadParams": {
+      "fields": {
+        "room_id": { "type": "string" },
+        "threads": {
+          "type": "bool?",
+          "doc": "Also read every thread of the chat, as Mark as Read in the inbox does. Without it (opening the chat) a reply that stays in its thread stays unread, for the thread pane."
+        }
+      }
+    },
+    "UnreadThread": {
+      "doc": "A thread of the chat with replies not read in it.",
+      "fields": {
+        "root_id": { "type": "string" },
+        "unread": { "type": "int", "doc": "As ThreadSummary.unread." },
+        "unread_mentions_me": { "type": "bool" },
+        "first_unread_id": {
+          "type": "string",
+          "doc": "The oldest unread reply: where the thread pane opens (room.events around it centres the chat on the root)."
+        }
+      }
+    },
+    "UnreadThreadsResult": {
+      "fields": {
+        "threads": {
+          "type": "UnreadThread[]",
+          "doc": "The thread whose oldest unread reply is oldest first."
+        }
+      }
+    },
+    "ThreadParams": {
+      "fields": {
+        "room_id": { "type": "string" },
+        "root_id": {
+          "type": "string",
+          "doc": "The thread's root: a message of the chat."
+        }
+      }
+    },
     "RoomEventsParams": {
       "doc": "Give at most one of before, after and around (more is -32602). None of them is the newest page.",
       "fields": {
@@ -864,6 +906,14 @@
         "last_senders": {
           "type": "string[]",
           "doc": "Who wrote the newest replies, by name, newest first: at most 3 people."
+        },
+        "unread": {
+          "type": "int",
+          "doc": "Replies from others not read in the thread: after the newest one thread.markRead read, and after what room.markRead with threads (or a read from another device) read of the chat. Opening the chat (room.markRead without threads) reads none of them. A reply also sent to the channel is read with the chat and never counts here."
+        },
+        "unread_mentions_me": {
+          "type": "bool",
+          "doc": "One of the unread replies mentions me, by name or the whole room."
         }
       }
     },
@@ -2711,8 +2761,20 @@
       "errors": [-32020]
     },
     "room.markRead": {
-      "doc": "Mark a chat read up to its newest message. The unread count clears at once, and so do an unread mark and a reminder that has fired; the network is told when it can be (best effort).",
+      "doc": "Mark a chat read up to its newest message. The unread count clears at once, and so do an unread mark and a reminder that has fired; the network is told when it can be (best effort). A reply that stays in its thread is only read with threads (or by thread.markRead): the chat's unread counts it until then.",
+      "params": "MarkReadParams",
+      "result": "Empty",
+      "errors": [-32020]
+    },
+    "thread.unread": {
+      "doc": "The chat's threads with unread replies, for the open chat's \"New replies in N threads\". An unknown chat is -32020.",
       "params": "RoomParams",
+      "result": "UnreadThreadsResult",
+      "errors": [-32020]
+    },
+    "thread.markRead": {
+      "doc": "Mark a thread read up to its newest reply: the thread pane showed it. Its summary's unread and the chat's unread count drop at once, and a read change says so. It stays on this Mac: no network is told. A root that isn't a message of the chat, or an unknown chat, is -32020.",
+      "params": "ThreadParams",
       "result": "Empty",
       "errors": [-32020]
     },

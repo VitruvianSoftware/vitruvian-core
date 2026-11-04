@@ -29,6 +29,7 @@
           "preview": "",
           "preview_kind": "",
           "preview_mine": false,
+          "preview_in_thread": false,
           "preview_status": "",
           "login_name": "",
           "unread": 0,

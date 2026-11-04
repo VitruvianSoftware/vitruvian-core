@@ -1048,6 +1048,16 @@ public enum Timeline {
         return relation
     }
 
+    /// The root of a reply that stays in its thread: in a thread (m.thread) and not also sent to the channel
+    /// (com.beeper.broadcast_outside_thread). Nil for anything else, a reply that is in the chat's timeline too
+    /// included. (The engine's isThreadReplySQL.)
+    public static func threadRoot(of event: Event) -> String? {
+        let relation = relation(of: event)
+        guard relation.relType == "m.thread", let root = relation.eventID, !root.isEmpty,
+              event.content["com.beeper.broadcast_outside_thread"] != .bool(true) else { return nil }
+        return root
+    }
+
     /// An edit of another message (m.replace): it is not a message of its own.
     public static func isEdit(_ event: Event) -> Bool {
         relation(of: event).relType == "m.replace"

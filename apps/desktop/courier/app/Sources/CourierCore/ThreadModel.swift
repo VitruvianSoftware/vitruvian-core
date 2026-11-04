@@ -18,6 +18,11 @@ import Foundation
 /// Its composer is a composer of its own, in `.thread(rootID)`, that never touches the chat's draft: the engine
 /// keeps one draft per chat, and it is the chat composer's. What is typed in a thread stays with that thread while
 /// the pane goes to another one or closes, for as long as Courier runs.
+///
+/// The pane is what reads a thread: opening the chat leaves a reply that stays in its thread unread. Once the newest
+/// page is in, showing the thread's newest reply, the pane tells the engine (`thread.markRead`), when `mayMarkRead`
+/// allows it (the person is looking, Incognito is off), and again for each newer reply that comes while it is open.
+/// What it held back it reads when asked (`markReadIfNeeded`), when the person is back.
 @MainActor
 public final class ThreadModel: ObservableObject {
     public static let pageSize = 50
@@ -42,6 +47,10 @@ public final class ThreadModel: ObservableObject {
     @Published public private(set) var scrollToMessageRequest: ConversationModel.MessageScrollRequest?
 
     public let composer: ComposerModel
+    /// Whether the pane may read the thread now. The chat's model says: the person is looking and Incognito is off.
+    public var mayMarkRead: @MainActor () -> Bool = { true }
+    /// The pane read a thread (`thread.markRead`): the chat shows its root's summary with nothing new at once.
+    public var onMarkedRead: (@MainActor (_ roomID: String, _ rootID: String) -> Void)?
     /// Deleted messages leave no placeholder (the person's setting, or a network that leaves none).
     public var hideDeleted = false {
         didSet { if hideDeleted != oldValue { rebuild() } }
@@ -64,8 +73,12 @@ public final class ThreadModel: ObservableObject {
     private var highlightTask: Task<Void, Never>?
     /// Tests: how many of the newest pages have been applied, to know every change so far has been read.
     private(set) var pagesApplied = 0
+    /// The newest reply the pane has told the engine it read, by chat and root: each is told once.
+    private var readUpTo: [String: String] = [:]
     /// What was typed in each thread the pane left, by chat and root.
     private var drafts: [String: RichText] = [:]
+    /// Tests: how many times a thread has been told read (thread.markRead asked for).
+    private(set) var readsSent = 0
 
     // Which answers still count.
     private var generation = 0
@@ -229,8 +242,29 @@ public final class ThreadModel: ObservableObject {
         loadFailed = false
         apply(page)
         pagesApplied += 1
+        markReadIfNeeded()
         if rootEvent == nil, events[root] == nil { await fetchRoot(room, root, client, owner) }
         findTarget()
+    }
+
+    /// Tells the engine the open thread is read up to its newest reply, now on screen, if it hasn't been told so and
+    /// `mayMarkRead` allows it. A thread with no reply from someone else has nothing to read.
+    public func markReadIfNeeded() {
+        guard isLoaded, let room = roomID, let root = rootID, mayMarkRead(), let client = appModel.client,
+              let newest = events.values.filter({ $0.eventID != root }).max(by: { Self.position($0) < Self.position($1) })
+        else { return }
+        let key = Self.key(room, root)
+        guard readUpTo[key] != newest.eventID else { return }
+        readUpTo[key] = newest.eventID
+        guard events.values.contains(where: { $0.eventID != root && !$0.mine && $0.sender != Timeline.meUserID }) else {
+            return
+        }
+        readsSent += 1
+        onMarkedRead?(room, root)
+        Task {
+            // A failure is ignored: the summary shows the truth the next time the chat reads its page.
+            let _: Empty? = try? await client.call("thread.markRead", ThreadParams(roomID: room, rootID: root))
+        }
     }
 
     /// Joins the newest page to what is loaded: what it covers, down to its before cursor, is what the engine has

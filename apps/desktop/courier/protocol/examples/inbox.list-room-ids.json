@@ -26,6 +26,7 @@
           "preview": "Lunch at noon",
           "preview_kind": "text",
           "preview_mine": true,
+          "preview_in_thread": false,
           "preview_status": "sent",
           "login_name": "",
           "unread": 0,

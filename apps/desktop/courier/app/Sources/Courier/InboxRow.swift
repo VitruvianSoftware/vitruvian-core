@@ -319,9 +319,11 @@ struct PreviewTickMark: View {
 
 /// A chat's newest message as its row shows it; search's chat rows show it the same way.
 enum ChatPreview {
-    /// "You: " when the newest message is mine, then the kind's label if it is not text, then the text.
+    /// "↳ in thread: " when the newest message stays in its thread, "You: " when it is mine, then the kind's label
+    /// if it is not text, then the text.
     static func text(_ row: InboxRow) -> Text {
         var text = Text(verbatim: "")
+        if let prefix = row.previewThreadPrefix { text = text + Text(prefix) }
         if row.previewMine { text = text + Text(String(localized: "You: ")) }
         if let label = row.previewLabel { text = text + Text(label.title).italic() }
         if !row.preview.isEmpty {

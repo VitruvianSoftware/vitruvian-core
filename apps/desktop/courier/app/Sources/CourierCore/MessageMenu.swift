@@ -271,6 +271,20 @@ public enum MessageLines {
             : String(localized: "\(summary.replies) Replies")
     }
 
+    /// Beside the replies, while some aren't read in the thread: "2 new". Nil when every reply is read.
+    public static func newReplies(_ summary: ThreadSummary) -> String? {
+        summary.unread > 0 ? String(localized: "\(summary.unread) new") : nil
+    }
+
+    /// What VoiceOver says for a thread's summary line: "3 Replies, 2 new, mentions you, show replies".
+    public static func summaryAccessibilityLabel(_ summary: ThreadSummary) -> String {
+        var parts = [replies(summary)]
+        if let new = newReplies(summary) { parts.append(new) }
+        if summary.unread > 0, summary.unreadMentionsMe { parts.append(String(localized: "mentions you")) }
+        parts.append(String(localized: "show replies"))
+        return parts.joined(separator: ", ")
+    }
+
     /// Who wrote the newest replies: "Ann", or "Ann & 2 others" (the engine names at most three, newest first).
     public static func repliers(_ summary: ThreadSummary) -> String? {
         let names = summary.lastSenders.filter { !$0.isEmpty }

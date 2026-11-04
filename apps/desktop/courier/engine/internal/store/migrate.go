@@ -326,10 +326,36 @@ CREATE TABLE settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );`,
+	// 12: thread unread state (threadreads.go). A reply that stays in its thread is read in the thread pane, not by
+	// reading the chat: each thread keeps its own read marker (thread_reads, by the reply's own (ts, seq)), and each
+	// chat a floor (room_prefs.threads_read_*) below which every thread is read. The floor starts at the later of the
+	// chat's two read markers, so nothing read before this version comes back unread.
+	migration12SQL,
 }
 
+// migration12SQL is migration 12, frozen as it ships: the floor is the later of the reads and local_reads markers
+// (laterMarker), in every chat that has one.
+var migration12SQL = func() string {
+	ts, seq := laterMarker("rd", "rde", "lr", "lre")
+	return `CREATE TABLE thread_reads (
+  room_id TEXT NOT NULL REFERENCES rooms(room_id) ON DELETE CASCADE,
+  root_id TEXT NOT NULL,
+  event_id TEXT NOT NULL,
+  ts INTEGER NOT NULL,
+  seq INTEGER NOT NULL,
+  PRIMARY KEY (room_id, root_id)
+);                                                                                 -- the newest reply read in the thread pane
+ALTER TABLE room_prefs ADD COLUMN threads_read_ts INTEGER NOT NULL DEFAULT 0;     -- every thread is read up to (ts, seq)
+ALTER TABLE room_prefs ADD COLUMN threads_read_seq INTEGER NOT NULL DEFAULT 0;
+INSERT INTO room_prefs (room_id, threads_read_ts, threads_read_seq)
+  SELECT r.room_id, ` + ts + `, ` + seq + ` FROM rooms r
+  ` + readMarkerJoinsFor("r", "rd", "rde", "lr", "lre") + `
+  WHERE rd.room_id IS NOT NULL OR lr.room_id IS NOT NULL
+  ON CONFLICT(room_id) DO UPDATE SET threads_read_ts = excluded.threads_read_ts, threads_read_seq = excluded.threads_read_seq;`
+}()
+
 // SchemaVersion is the latest courier.db schema version (PRAGMA user_version).
-const SchemaVersion = 11
+const SchemaVersion = 12
 
 // migrate brings db up to the latest version.
 func migrate(ctx context.Context, db *dbutil.Database) error { return migrateWith(ctx, db, migrations) }

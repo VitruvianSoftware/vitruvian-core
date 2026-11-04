@@ -369,6 +369,9 @@ public struct InboxRow: ProtocolType, Equatable, Identifiable {
     public var preview: String
     public var previewKind: PreviewKind
     public var previewMine: Bool
+    /// The newest message is a reply that stays in its thread: the chat's timeline doesn't show it, its thread pane
+    /// does. False for a reply also sent to the channel.
+    public var previewInThread: Bool
     public var unread: Int
     /// I muted this chat itself. `mutedBy` says what else mutes it.
     public var muted: Bool
@@ -416,7 +419,7 @@ public struct InboxRow: ProtocolType, Equatable, Identifiable {
                 typing: [String] = [], unreadMentions: Int = 0, previewMediaPath: String = "",
                 previewCall: CallNote? = nil, previewStatus: PreviewStatus = .none, loginName: String = "",
                 remoteName: String = "", localName: String = "", localAvatarPath: String = "",
-                mergeID: String = "") {
+                mergeID: String = "", previewInThread: Bool = false) {
         self.roomID = roomID
         self.network = network
         self.name = name
@@ -426,6 +429,7 @@ public struct InboxRow: ProtocolType, Equatable, Identifiable {
         self.preview = preview
         self.previewKind = previewKind
         self.previewMine = previewMine
+        self.previewInThread = previewInThread
         self.unread = unread
         self.muted = muted
         self.pinned = pinned
@@ -464,6 +468,7 @@ public struct InboxRow: ProtocolType, Equatable, Identifiable {
         case preview
         case previewKind = "preview_kind"
         case previewMine = "preview_mine"
+        case previewInThread = "preview_in_thread"
         case unread
         case muted
         case pinned
@@ -500,6 +505,7 @@ public struct InboxRow: ProtocolType, Equatable, Identifiable {
         preview = try container.decode(String.self, forKey: .preview)
         previewKind = try container.decode(PreviewKind.self, forKey: .previewKind)
         previewMine = try container.decode(Bool.self, forKey: .previewMine)
+        previewInThread = try container.decode(Bool.self, forKey: .previewInThread)
         unread = try container.decode(Int.self, forKey: .unread)
         muted = try container.decode(Bool.self, forKey: .muted)
         pinned = try container.decode(Bool.self, forKey: .pinned)
@@ -536,6 +542,7 @@ public struct InboxRow: ProtocolType, Equatable, Identifiable {
         try container.encode(preview, forKey: .preview)
         try container.encode(previewKind, forKey: .previewKind)
         try container.encode(previewMine, forKey: .previewMine)
+        try container.encode(previewInThread, forKey: .previewInThread)
         try container.encode(unread, forKey: .unread)
         try container.encode(muted, forKey: .muted)
         try container.encode(pinned, forKey: .pinned)
@@ -1227,6 +1234,82 @@ public struct RoomParams: ProtocolType, Equatable {
     }
 }
 
+/// `room.markRead`: a chat, and whether its threads are read too (Mark as Read in the inbox) or not (opening it).
+public struct MarkReadParams: ProtocolType, Equatable {
+    public static let protocolName = "MarkReadParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomID: String
+    /// Optional: also read every thread of the chat. Left out, a reply that stays in its thread stays unread.
+    public var threads: Bool?
+
+    public init(roomID: String, threads: Bool? = nil) {
+        self.roomID = roomID
+        self.threads = threads
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomID = "room_id"
+        case threads
+    }
+}
+
+/// A thread of the chat with replies not read in it (`thread.unread`).
+public struct UnreadThread: ProtocolType, Equatable, Hashable {
+    public static let protocolName = "UnreadThread"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var rootID: String
+    /// As `ThreadSummary.unread`.
+    public var unread: Int
+    public var unreadMentionsMe: Bool
+    /// The oldest unread reply: where the thread pane opens.
+    public var firstUnreadID: String
+
+    public init(rootID: String, unread: Int, unreadMentionsMe: Bool = false, firstUnreadID: String) {
+        self.rootID = rootID
+        self.unread = unread
+        self.unreadMentionsMe = unreadMentionsMe
+        self.firstUnreadID = firstUnreadID
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case rootID = "root_id"
+        case unread
+        case unreadMentionsMe = "unread_mentions_me"
+        case firstUnreadID = "first_unread_id"
+    }
+}
+
+public struct UnreadThreadsResult: ProtocolType, Equatable {
+    public static let protocolName = "UnreadThreadsResult"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    /// The thread whose oldest unread reply is oldest first.
+    public var threads: [UnreadThread]
+
+    public init(threads: [UnreadThread]) { self.threads = threads }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case threads
+    }
+}
+
+/// `thread.markRead`: one thread of a chat, by its root.
+public struct ThreadParams: ProtocolType, Equatable {
+    public static let protocolName = "ThreadParams"
+    public static var fieldNames: [String] { CodingKeys.allCases.map(\.rawValue) }
+    public var roomID: String
+    public var rootID: String
+
+    public init(roomID: String, rootID: String) {
+        self.roomID = roomID
+        self.rootID = rootID
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case roomID = "room_id"
+        case rootID = "root_id"
+    }
+}
+
 /// One page of a chat's history. Give at most one of `before`, `after` and `around`; none is the newest page.
 /// With `thread`, one page of that thread instead, paged with `before` only.
 ///
@@ -1600,17 +1683,26 @@ public struct ThreadSummary: ProtocolType, Equatable, Hashable {
     public var lastTS: Int64
     /// Who wrote the newest replies, by name, newest first: at most 3 people.
     public var lastSenders: [String]
+    /// Replies from others not read in the thread. Opening the chat reads none of them: the thread pane does
+    /// (`thread.markRead`), and so does Mark as Read in the inbox. A reply also sent to the channel never counts.
+    public var unread: Int
+    /// One of the unread replies mentions me.
+    public var unreadMentionsMe: Bool
 
-    public init(replies: Int, lastTS: Int64, lastSenders: [String]) {
+    public init(replies: Int, lastTS: Int64, lastSenders: [String], unread: Int = 0, unreadMentionsMe: Bool = false) {
         self.replies = replies
         self.lastTS = lastTS
         self.lastSenders = lastSenders
+        self.unread = unread
+        self.unreadMentionsMe = unreadMentionsMe
     }
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case replies
         case lastTS = "last_ts"
         case lastSenders = "last_senders"
+        case unread
+        case unreadMentionsMe = "unread_mentions_me"
     }
 }
 
@@ -5336,6 +5428,8 @@ public enum ProtocolMethods {
         "room.events": .readOnlyOrBackground,
         "room.features": .readOnlyOrBackground,
         "room.markRead": .userInitiatedMutation,
+        "thread.markRead": .userInitiatedMutation,
+        "thread.unread": .readOnlyOrBackground,
         "room.setTyping": .userInitiatedMutation,
         "room.setUnreadFrom": .userInitiatedMutation,
         "room.members": .readOnlyOrBackground,
@@ -5445,7 +5539,9 @@ public enum ProtocolMethods {
         "autoArchive.delete": (RuleIDParams.self, Empty.self),
         "room.events": (RoomEventsParams.self, EventsPage.self),
         "search.query": (SearchParams.self, SearchResult.self),
-        "room.markRead": (RoomParams.self, Empty.self),
+        "room.markRead": (MarkReadParams.self, Empty.self),
+        "thread.markRead": (ThreadParams.self, Empty.self),
+        "thread.unread": (RoomParams.self, UnreadThreadsResult.self),
         "room.setMuted": (SetMutedParams.self, Empty.self),
         "room.setTyping": (TypingParams.self, Empty.self),
         "room.setUnreadFrom": (EventParams.self, Empty.self),
@@ -5531,7 +5627,8 @@ public enum ProtocolMethods {
         SpaceUpdateParams.self, LabelParams.self, LabelResult.self, LabelUpdateParams.self, LabelIDParams.self,
         SetPinnedParams.self, ArchiveParams.self, RoomsChanged.self, RoomsFlagParams.self, SetLabelParams.self,
         DraftParams.self, ReminderParams.self, RoomsParams.self, ArchiveMatchingParams.self, SpaceParams.self,
-        AutoArchiveRule.self, RulesResult.self, RuleIDParams.self, Cursor.self, RoomParams.self, RoomEventsParams.self,
+        AutoArchiveRule.self, RulesResult.self, RuleIDParams.self, Cursor.self, RoomParams.self, MarkReadParams.self,
+        ThreadParams.self, UnreadThread.self, UnreadThreadsResult.self, RoomEventsParams.self,
         Event.self, Reader.self, PollTally.self, PollOption.self, ThreadSummary.self, EventsPage.self,
         SearchParams.self, SearchFilters.self, SearchResult.self, PersonHit.self, MessageHits.self, MessageHit.self,
         TextRange.self, SetMutedParams.self, SendParams.self, SendFileParams.self, TextEntity.self, ChatFeatures.self,

@@ -1,0 +1,24 @@
+{
+  "request": {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "thread.unread",
+    "params": {
+      "room_id": "!4f1c2b7a9d0e3f56a8b1c2d3e4f5a6b7:courier.local"
+    }
+  },
+  "response": {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "result": {
+      "threads": [
+        {
+          "root_id": "$threadroot",
+          "unread": 1,
+          "unread_mentions_me": false,
+          "first_unread_id": "$threadreply"
+        }
+      ]
+    }
+  }
+}

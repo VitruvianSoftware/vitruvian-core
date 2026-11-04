@@ -163,6 +163,16 @@ final class MessagePresentationTests: XCTestCase {
         XCTAssertEqual(MessageLines.repliers(ThreadSummary(replies: 5, lastTS: 0, lastSenders: ["Ann", "Bo", "Cy"])),
                        "Ann & 2 others")
         XCTAssertNil(MessageLines.repliers(ThreadSummary(replies: 0, lastTS: 0, lastSenders: [])))
+
+        // Replies not read in the thread: "2 new", and what VoiceOver reads.
+        let read = ThreadSummary(replies: 3, lastTS: 0, lastSenders: ["Ann"])
+        XCTAssertNil(MessageLines.newReplies(read))
+        XCTAssertEqual(MessageLines.summaryAccessibilityLabel(read), "3 Replies, show replies")
+        let new = ThreadSummary(replies: 3, lastTS: 0, lastSenders: ["Ann"], unread: 2)
+        XCTAssertEqual(MessageLines.newReplies(new), "2 new")
+        XCTAssertEqual(MessageLines.summaryAccessibilityLabel(new), "3 Replies, 2 new, show replies")
+        let mention = ThreadSummary(replies: 3, lastTS: 0, lastSenders: ["Ann"], unread: 1, unreadMentionsMe: true)
+        XCTAssertEqual(MessageLines.summaryAccessibilityLabel(mention), "3 Replies, 1 new, mentions you, show replies")
         XCTAssertEqual(MessageLines.votes(1), "1 vote")
         XCTAssertEqual(MessageLines.votes(3), "3 votes")
 

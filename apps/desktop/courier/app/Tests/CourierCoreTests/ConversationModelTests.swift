@@ -2404,6 +2404,13 @@ final class ConversationScript: @unchecked Sendable {
     private var _roomInfos: [String: [String: Any]] = [:]
     private var _bookmarksByRoom: [String: [[String: Any]]] = [:]
     private var _inGroupsByQuery: [String: [[String: Any]]] = [:]
+    private var _unreadThreads: [String: [[String: Any]]] = [:]
+
+    /// What thread.unread answers for each chat (UnreadThread objects); a chat not here has none.
+    var unreadThreads: [String: [[String: Any]]] {
+        get { lock.withLock { _unreadThreads } }
+        set { lock.withLock { _unreadThreads = newValue } }
+    }
 
     var roomInfos: [String: [String: Any]] {
         get { lock.withLock { _roomInfos } }
@@ -2588,6 +2595,15 @@ final class ConversationScript: @unchecked Sendable {
                 }
             }
             return .result([String: Any]())
+        case "thread.unread":
+            let room = params?["room_id"] as? String ?? ""
+            return .result(["threads": unreadThreads[room] ?? [[String: Any]]()])
+        case "thread.markRead":
+            // Read in its thread: the chat's list loses it, as the engine's does.
+            let room = params?["room_id"] as? String ?? ""
+            let root = params?["root_id"] as? String ?? ""
+            lock.withLock { _unreadThreads[room]?.removeAll { $0["root_id"] as? String == root } }
+            return .result([String: Any]())
         case "message.edit": return .result(["event_id": "$edit"])
         case "poll.vote": return .result(["event_id": "$vote"])
         case "poll.create": return .result(["event_id": "$poll"])
@@ -2754,5 +2770,99 @@ extension TestEngineServer {
             let params = request["params"] as? [String: Any]
             if params?["room_id"] as? String == room, let id = request["id"] as? Int { reply(to: id, with: result) }
         }
+    }
+}
+
+// MARK: - Threads' unread replies
+
+/// The open chat says when its threads have unread replies, and its banner opens each in turn. All data here is made
+/// up.
+@MainActor
+final class ConversationThreadUnreadTests: XCTestCase {
+    private var harnesses: [ConversationHarness] = []
+
+    override func tearDown() async throws {
+        for harness in harnesses { await harness.stop() }
+        harnesses = []
+    }
+
+    /// !a: two roots on the page ($r, $q), each with an unread reply from someone else, and a message.
+    private func start(roots: [String] = ["$r", "$q"]) async throws -> ConversationHarness {
+        let h = try await startConversation(
+            ["!a": [threadRoot(id: "$r", room: "!a", at: 1, replies: 1, unread: 1, mentionsMe: true),
+                    threadReply(id: "$r1", root: "$r", room: "!a", at: 2),
+                    threadRoot(id: "$q", room: "!a", at: 3, replies: 1, unread: 1),
+                    threadReply(id: "$q1", root: "$q", room: "!a", at: 4),
+                    textEvent(id: "$5", room: "!a", at: 5)]],
+            features: ["!a": featuresJSON(replyIsThread: true)],
+            rows: ["!a": chatRow("!a", name: "Team", network: "slack", direct: false)])
+        harnesses.append(h)
+        h.script.unreadThreads["!a"] = roots.map { root in
+            ["root_id": root, "unread": 1, "unread_mentions_me": root == "$r", "first_unread_id": root + "1"]
+        }
+        try await h.open("!a")
+        return h
+    }
+
+    /// Opening the chat reads its timeline only (no threads), and the banner says how many threads have news.
+    func testTheBannerCountsThreadsWithUnreadReplies() async throws {
+        let h = try await start()
+        try await waitUntil { h.conversation.unreadThreadsBanner != nil }
+        XCTAssertEqual(h.conversation.unreadThreadsBanner, "New replies in 2 threads")
+        XCTAssertTrue(h.conversation.unreadThreadsMentionMe)
+        try await waitUntil { h.count("room.markRead") >= 1 }
+        XCTAssertNil(h.server.receivedParams("room.markRead").first?["threads"], "opening reads no thread")
+        XCTAssertEqual(h.count("thread.markRead"), 0)
+    }
+
+    /// The banner opens the pane at the oldest unread reply of each thread in turn; the pane reads each, so its
+    /// root's summary and the banner drop it.
+    func testTheBannerOpensEachThreadAtItsFirstUnreadReply() async throws {
+        let h = try await start()
+        let thread = h.conversation.thread
+        try await waitUntil { h.conversation.unreadThreads.count == 2 }
+
+        h.conversation.showNextUnreadThread()
+        XCTAssertEqual(thread.rootID, "$r")
+        try await waitUntil { thread.highlightedMessageID == "$r1" }
+        try await waitUntil { h.count("thread.markRead") == 1 }
+        XCTAssertEqual(h.server.receivedParams("thread.markRead").first as? [String: String],
+                       ["room_id": "!a", "root_id": "$r"])
+        XCTAssertEqual(h.conversation.message("$r")?.thread?.unread, 0, "its summary says nothing new at once")
+        XCTAssertEqual(h.conversation.unreadThreadsBanner, "New replies in 1 thread")
+
+        h.conversation.showNextUnreadThread()
+        XCTAssertEqual(thread.rootID, "$q")
+        try await waitUntil { h.count("thread.markRead") == 2 }
+        try await waitUntil { h.conversation.unreadThreadsBanner == nil }
+    }
+
+    /// With several threads unread and the pane on one of them, the banner goes on to the next, round again after
+    /// the last.
+    func testTheBannerCyclesWhileThePaneCannotReadThem() async throws {
+        let h = try await start()
+        let thread = h.conversation.thread
+        h.conversation.setWindowKey(false) // nobody looking: the pane reads nothing, so both stay unread
+        try await waitUntil { h.conversation.unreadThreads.count == 2 }
+        h.conversation.showNextUnreadThread()
+        XCTAssertEqual(thread.rootID, "$r")
+        h.conversation.showNextUnreadThread()
+        XCTAssertEqual(thread.rootID, "$q")
+        h.conversation.showNextUnreadThread()
+        XCTAssertEqual(thread.rootID, "$r")
+        try await waitUntil { thread.isLoaded }
+        XCTAssertEqual(h.count("thread.markRead"), 0)
+
+        h.conversation.setWindowKey(true) // the person is back: the open thread is read
+        try await waitUntil { h.count("thread.markRead") == 1 }
+    }
+
+    /// A thread whose root isn't on the page opens the chat around its first unread reply, as a search result does.
+    func testAThreadFurtherUpOpensTheChatAroundItsReply() async throws {
+        let h = try await start(roots: ["$far"])
+        try await waitUntil { h.conversation.unreadThreads.count == 1 }
+        h.conversation.showNextUnreadThread()
+        XCTAssertEqual(h.app.pendingMessage?.roomID, "!a")
+        XCTAssertEqual(h.app.pendingMessage?.eventID, "$far1")
     }
 }

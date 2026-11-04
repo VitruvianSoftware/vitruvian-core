@@ -236,6 +236,11 @@ struct ConversationView: View {
                                conversation: conversation,
                                redactNamesAndPictures: resolvedAppearance?.redactNamesAndPictures ?? false)
             Divider()
+            if let banner = conversation.unreadThreadsBanner {
+                ThreadRepliesBanner(text: banner, mentionsMe: conversation.unreadThreadsMentionMe,
+                                    show: conversation.showNextUnreadThread)
+                Divider()
+            }
             ZStack {
                 if let effectiveTheme, (effectiveTheme.wallpaper != .none || effectiveTheme.customWallpaperPath != nil) {
                     ChatWallpaperCanvasView(

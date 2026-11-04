@@ -340,10 +340,13 @@ public struct NotificationContent: Equatable, Sendable {
     public let attachmentPath: String?
     /// Which notification sound to play.
     public let sound: NotificationSoundChoice
+    /// For a reply that stays in its thread, the thread's root: a click opens the thread pane at the reply, and an
+    /// inline reply goes in the thread. Nil for anything else.
+    public let threadRootID: String?
 
     public init(eventID: String, roomID: String, title: String, subtitle: String?, body: String,
                 category: NotificationCategory = .message, attachmentPath: String? = nil,
-                sound: NotificationSoundChoice = .default) {
+                sound: NotificationSoundChoice = .default, threadRootID: String? = nil) {
         self.eventID = eventID
         self.roomID = roomID
         self.title = title
@@ -352,13 +355,49 @@ public struct NotificationContent: Equatable, Sendable {
         self.category = category
         self.attachmentPath = attachmentPath
         self.sound = sound
+        self.threadRootID = threadRootID
     }
 
     /// Notifications of one chat are stacked together.
     public var threadIdentifier: String { roomID }
 
-    /// All a notification carries to say where a click goes: the chat. No text, no names.
-    public var userInfo: [String: String] { ["room_id": roomID] }
+    /// All a notification carries to say where a click goes: the chat, and for a thread reply its root and the
+    /// reply itself (`NotificationTarget`). IDs only: no text, no names.
+    public var userInfo: [String: String] {
+        guard let threadRootID else { return [NotificationTarget.roomKey: roomID] }
+        return [NotificationTarget.roomKey: roomID, NotificationTarget.threadRootKey: threadRootID,
+                NotificationTarget.eventKey: eventID]
+    }
+}
+
+/// Where a click on a notification goes, read back from its `userInfo`: a chat, or a reply in one of its threads.
+public struct NotificationTarget: Equatable, Sendable {
+    static let roomKey = "room_id"
+    static let threadRootKey = "thread_root"
+    static let eventKey = "event_id"
+
+    public let roomID: String
+    /// The thread's root and the reply, for a thread reply; both nil otherwise.
+    public let threadRootID: String?
+    public let eventID: String?
+
+    public init(roomID: String, threadRootID: String? = nil, eventID: String? = nil) {
+        self.roomID = roomID
+        self.threadRootID = threadRootID
+        self.eventID = eventID
+    }
+
+    /// The target a notification's `userInfo` names; nil without a chat. A root without its reply is no thread.
+    public init?(userInfo: [AnyHashable: Any]) {
+        guard let room = userInfo[Self.roomKey] as? String else { return nil }
+        let root = userInfo[Self.threadRootKey] as? String
+        let event = userInfo[Self.eventKey] as? String
+        if let root, let event {
+            self.init(roomID: room, threadRootID: root, eventID: event)
+        } else {
+            self.init(roomID: room)
+        }
+    }
 }
 
 public enum NotificationPolicy {
@@ -530,7 +569,8 @@ public enum NotificationPolicy {
             body: textBody,
             category: category,
             attachmentPath: attachment,
-            sound: sound
+            sound: sound,
+            threadRootID: Timeline.threadRoot(of: event)
         )
         let content = redactIfLocked(rawContent, isLocked: context.isAppLocked)
         let effectiveDelay = otpCode != nil ? 0 : (preferences?.delaySeconds ?? 0)
@@ -617,7 +657,8 @@ public enum NotificationPolicy {
             body: redactedBody,
             category: .scheduled,
             attachmentPath: nil,
-            sound: content.sound
+            sound: content.sound,
+            threadRootID: content.threadRootID
         )
     }
 
@@ -683,7 +724,7 @@ public enum NotificationPolicy {
         return NotificationContent(
             eventID: event.eventID, roomID: event.roomID, title: name,
             subtitle: room.isDirect || sender.isEmpty ? nil : sender, body: body(of: event),
-            attachmentPath: attachmentPath(of: event))
+            attachmentPath: attachmentPath(of: event), threadRootID: Timeline.threadRoot(of: event))
     }
 
     /// What a chat says when a reply typed in a notification could not be sent: the text is waiting in the chat.

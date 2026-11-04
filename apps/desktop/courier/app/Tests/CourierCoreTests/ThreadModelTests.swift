@@ -64,6 +64,37 @@ final class ThreadModelTests: XCTestCase {
         XCTAssertNil(thread.rootID)
     }
 
+    /// The pane reads its thread once it shows the newest reply, and again for each newer reply that comes while it
+    /// is open; a change that brings no new reply reads nothing more.
+    func testThePaneReadsItsThread() async throws {
+        let h = try await start()
+        let thread = h.conversation.thread
+        h.conversation.openThread("$r")
+        try await waitUntil { h.count("thread.markRead") == 1 }
+        XCTAssertEqual(h.server.receivedParams("thread.markRead").first as? [String: String],
+                       ["room_id": "!a", "root_id": "$r"])
+
+        h.server.notify(["kind": "status", "room_id": "!a", "event_id": "$t2"])
+        h.script.add("!a", threadReply(id: "$t3", root: "$r", room: "!a", at: 6))
+        h.server.notify(["kind": "event", "room_id": "!a", "event_id": "$t3"])
+        try await waitUntil { h.messageIDs(thread.items).contains("$t3") }
+        try await waitUntil { h.count("thread.markRead") == 2 }
+        XCTAssertEqual(thread.readsSent, 2, "once per newest reply")
+    }
+
+    /// Nobody looking (or Incognito): the pane reads nothing until the person is back.
+    func testThePaneWaitsForThePersonBeforeReading() async throws {
+        let h = try await start()
+        let thread = h.conversation.thread
+        h.conversation.setWindowKey(false)
+        h.conversation.openThread("$r")
+        try await waitUntil { thread.isLoaded }
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(h.count("thread.markRead"), 0)
+        h.conversation.setWindowKey(true)
+        try await waitUntil { h.count("thread.markRead") == 1 }
+    }
+
     func testReplySendsThreadRoot() async throws {
         let h = try await start()
         let thread = h.conversation.thread

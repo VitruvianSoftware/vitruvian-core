@@ -1021,6 +1021,8 @@ func (s *Store) DeleteEvent(ctx context.Context, eventID string) error {
 // mark, in the same transaction, and publishes a "room" change for it (Ruling 6): I have read that message since. A
 // read naming an event the store doesn't have compares on the receipt's own time alone (as the marker does), so one
 // in the same millisecond as the marked message, or later, clears the mark: it leans toward clearing.
+//
+// A read from another device reads the chat's threads up to it too (readThreadsFromAnotherDevice).
 func (s *Store) SetRead(ctx context.Context, roomID, eventID string, receiptTS time.Time) error {
 	cleared := false
 	_, err := s.advanceMarkerThen(ctx, "reads", roomID, eventID, receiptTS, func(ctx context.Context, ts, seq int64) error {
@@ -1031,7 +1033,7 @@ func (s *Store) SetRead(ctx context.Context, roomID, eventID string, receiptTS t
 		}
 		n, _ := res.RowsAffected()
 		cleared = n > 0
-		return nil
+		return s.readThreadsFromAnotherDevice(ctx, roomID, eventID, position{ts, seq})
 	})
 	if err == nil && cleared {
 		s.publish(Change{Kind: "room", RoomID: roomID})

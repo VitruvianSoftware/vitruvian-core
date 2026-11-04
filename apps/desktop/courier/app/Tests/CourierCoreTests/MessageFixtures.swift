@@ -137,11 +137,12 @@ func threadReply(id: String, root: String, room: String, at n: Int64, body: Stri
     return event
 }
 
-/// A thread's root: a text message with a summary of its replies.
-func threadRoot(id: String, room: String, at n: Int64, replies: Int) -> [String: Any] {
+/// A thread's root: a text message with a summary of its replies, `unread` of them not read in the thread.
+func threadRoot(id: String, room: String, at n: Int64, replies: Int, unread: Int = 0,
+                mentionsMe: Bool = false) -> [String: Any] {
     var event = textEvent(id: id, room: room, at: n, body: "Root \(n)")
     event["thread"] = ["replies": replies, "last_ts": ConversationScript.timestamp(n + Int64(replies)),
-                       "last_senders": ["Ann"]]
+                       "last_senders": ["Ann"], "unread": unread, "unread_mentions_me": mentionsMe]
     return event
 }
 

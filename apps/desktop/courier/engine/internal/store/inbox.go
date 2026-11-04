@@ -29,6 +29,9 @@ type InboxRow struct {
 	Preview     string    // body of the newest message-like event, at most 140 runes
 	PreviewKind string    // "text", "image", "video", "audio", "file", "sticker", "poll", "timer_change", "call", or "" (nothing readable yet)
 	PreviewMine bool      // the newest message is mine
+	// PreviewInThread is that the newest message is a reply that stays in its thread (isThreadReply): the main
+	// timeline doesn't show it, so the row says where it is.
+	PreviewInThread bool
 	// PreviewStatus is how far the newest message has got when it is mine and has gone (previewStatusSQL): "seen"
 	// (someone's read marker is at it or past it), "delivered" (someone's device has it), or "sent". "" otherwise.
 	// The row's login is Room.LoginID.
@@ -68,16 +71,26 @@ var readMarkerJoins = readMarkerJoinsFor("r", "rd", "rde", "lr", "lre")
 // unreadSQLFor is the condition on an event u of room r for "unread": a message we can show, from someone else ($1
 // is my user ID), not deleted, not an edit, not a note that the disappearing timer changed (a system line, not news:
 // Ruling 40), not the record of a call that ended, was declined or dropped (isCallRecordSQL: a call that rang or was
-// missed is news), and after both read markers (readMarkerJoinsFor), or at or after the message the chat was marked
-// unread from (room_prefs p's unread_from_*). After both is the same as after the later one, and "after the later
-// marker, or from the mark on" is the same as after the earlier of the two (unreadBoundFor), so the range scan of
-// events_room_ts keeps one lower bound (Ruling C29). "After" compares (ts, seq), so a message in the same
-// millisecond as the marker but received later still counts.
+// missed is news), and newer than what was read of it.
+//
+// What was read of it depends on where it shows. A message of the main timeline is unread after both read markers
+// (readMarkerJoinsFor), or at or after the message the chat was marked unread from (room_prefs p's unread_from_*).
+// After both is the same as after the later one, and "after the later marker, or from the mark on" is the same as
+// after the earlier of the two (unreadBoundFor). A reply that stays in its thread is read in the thread pane, so it is
+// unread after its thread's own bound instead (threadUnreadSQLFor): reading the chat leaves it unread, and the chat's
+// unread count is its main timeline's plus its threads'. Both are newer than the earlier of the two bounds, which the
+// range scan of events_room_ts keeps as its one lower bound (Ruling C29). "After" compares (ts, seq), so a message in
+// the same millisecond as the marker but received later still counts.
 func unreadSQLFor(r, p, rd, rde, lr, lre string) string {
+	chatTS, chatSeq := unreadBoundParts(p, rd, rde, lr, lre)
+	floorTS, floorSeq := threadFloorFor(p)
+	lowTS, lowSeq := earlierOf(chatTS, chatSeq, floorTS, floorSeq)
 	return `u.room_id = ` + r + `.room_id
-       AND (u.ts, u.seq) > (` + unreadBoundFor(p, rd, rde, lr, lre) + `)
+       AND (u.ts, u.seq) > (` + lowTS + `, ` + lowSeq + `)
        AND u.type IN (` + unreadTypes + `) AND u.sender <> $1 AND u.redacted = 0 AND ` + notEditSQL("u.content") + `
-       AND (` + isTimerNoteSQL("u.content") + `) IS NOT 1 AND (` + isCallRecordSQL("u.content") + `) IS NOT 1`
+       AND (` + isTimerNoteSQL("u.content") + `) IS NOT 1 AND (` + isCallRecordSQL("u.content") + `) IS NOT 1
+       AND CASE WHEN (` + isThreadReplySQL("u.content") + `) IS 1 THEN ` + threadUnreadSQLFor(p) + `
+                ELSE (u.ts, u.seq) > (` + chatTS + `, ` + chatSeq + `) END`
 }
 
 var unreadSQL = unreadSQLFor("r", "p", "rd", "rde", "lr", "lre")
@@ -87,9 +100,15 @@ var unreadSQL = unreadSQLFor("r", "p", "rd", "rde", "lr", "lre")
 // unread_from_ts > 0) that is not after that marker, just before that message: (from_ts, from_seq - 1), so that
 // "(ts, seq) > bound" takes the message itself in. A seq is an integer, so nothing falls between the two.
 func unreadBoundFor(p, rd, rde, lr, lre string) string {
+	ts, seq := unreadBoundParts(p, rd, rde, lr, lre)
+	return ts + `, ` + seq
+}
+
+// unreadBoundParts is unreadBoundFor as its two SQL expressions, ts and seq.
+func unreadBoundParts(p, rd, rde, lr, lre string) (ts, seq string) {
 	mTS, mSeq := laterMarker(rd, rde, lr, lre)
 	from := `(COALESCE(` + p + `.unread_from_ts, 0) > 0 AND (` + p + `.unread_from_ts, ` + p + `.unread_from_seq - 1) < (` + mTS + `, ` + mSeq + `))`
-	return `CASE WHEN ` + from + ` THEN ` + p + `.unread_from_ts ELSE ` + mTS + ` END, CASE WHEN ` + from + ` THEN ` + p + `.unread_from_seq - 1 ELSE ` + mSeq + ` END`
+	return `CASE WHEN ` + from + ` THEN ` + p + `.unread_from_ts ELSE ` + mTS + ` END`, `CASE WHEN ` + from + ` THEN ` + p + `.unread_from_seq - 1 ELSE ` + mSeq + ` END`
 }
 
 func unreadBound() string {
@@ -98,9 +117,14 @@ func unreadBound() string {
 
 // mentionsMeSQL is the condition on an event u for "it mentions me": m.mentions.user_ids holds my user ID ($1),
 // or m.mentions.room is true.
-const mentionsMeSQL = `((CASE WHEN json_valid(u.content) THEN json_extract(u.content, '$."m.mentions".room') END) IS 1
-       OR EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(u.content) THEN u.content ELSE '{}' END, '$."m.mentions".user_ids')
-                  WHERE value = $1))`
+var mentionsMeSQL = mentionsSQL("u.content", "$1")
+
+// mentionsSQL is mentionsMeSQL for the content column content, with my user ID the parameter me.
+func mentionsSQL(content, me string) string {
+	return `((CASE WHEN json_valid(` + content + `) THEN json_extract(` + content + `, '$."m.mentions".room') END) IS 1
+       OR EXISTS (SELECT 1 FROM json_each(CASE WHEN json_valid(` + content + `) THEN ` + content + ` ELSE '{}' END, '$."m.mentions".user_ids')
+                  WHERE value = ` + me + `))`
+}
 
 // mutedLabelSQL is the title of room r's first muted label, by label ID, or "".
 const mutedLabelSQL = `COALESCE((SELECT ml.title FROM room_labels mrl JOIN labels ml ON ml.label_id = mrl.label_id
@@ -305,6 +329,7 @@ func (s *Store) scanInboxRow(row dbutil.Scannable) (InboxRow, error) {
 	r.IsDirect, r.CreatedAt, r.Muted = direct == 1, time.UnixMilli(created), muted == 1
 	r.LastTS = msTime(lastTS)
 	r.PreviewMine = sender == myID
+	r.PreviewInThread = isThreadReply(json.RawMessage(content))
 	r.Preview, r.PreviewKind, r.PreviewMediaURI = previewOf(typ, content)
 	if r.PreviewMediaURI != "" && strings.Contains(content, "after_read") && s.isContentViewOnce(context.Background(), r.ID, r.Network, r.PreviewKind, json.RawMessage(content)) {
 		r.PreviewMediaURI = ""
@@ -509,6 +534,10 @@ func (s *Store) advanceMarkerThen(ctx context.Context, table, roomID, eventID st
 			if err = then(ctx, newTS, newSeq); err != nil {
 				return err
 			}
+		}
+		// The thread floor follows the chat up, as far as its threads are read (settleThreadFloor): it reads nothing.
+		if err = s.settleThreadFloor(ctx, roomID); err != nil {
+			return err
 		}
 		// I read the chat: with an enabled after_read rule it is archived that long from now. Only a read of a
 		// message Courier received live counts, one after it first saw the chat (rooms.created_at is set when the

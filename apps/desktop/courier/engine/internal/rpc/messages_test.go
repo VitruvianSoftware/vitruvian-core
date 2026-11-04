@@ -167,9 +167,11 @@ type wireEvent struct {
 		Ended         bool     `json:"ended"`
 	} `json:"poll"`
 	Thread *struct {
-		Replies     int      `json:"replies"`
-		LastTS      int64    `json:"last_ts"`
-		LastSenders []string `json:"last_senders"`
+		Replies          int      `json:"replies"`
+		LastTS           int64    `json:"last_ts"`
+		LastSenders      []string `json:"last_senders"`
+		Unread           int      `json:"unread"`
+		UnreadMentionsMe bool     `json:"unread_mentions_me"`
 	} `json:"thread"`
 }
 
@@ -1270,4 +1272,58 @@ func TestMessageSendStickerAndGIFOverRPC(t *testing.T) {
 		"room_id": w.room,
 		"path":    pngPath,
 	})
+}
+
+// Opening a chat (room.markRead) reads its timeline, not its threads: a reply that stays in its thread stays unread,
+// in the root's summary and in the chat's row, until thread.markRead reads it. Mark as Read in the inbox
+// (room.markRead with threads) reads them all.
+func TestThreadRepliesAreReadInTheirThread(t *testing.T) {
+	w := newWorld(t)
+	c := dial(t, w.path)
+	c.hello()
+	base := time.Now().Add(time.Minute) // after the world's messages, which its account has read elsewhere
+	root := w.put(t, "$root", contact, "m.room.message", `{"msgtype":"m.text","body":"Lunch?"}`, base)
+	w.put(t, "$reply", "@whatsapp_ana:courier.local", "m.room.message", inThread(root, "Count me in"), base.Add(time.Minute))
+	summary := func() (int, int) {
+		t.Helper()
+		var page wirePage4
+		c.ok("room.events", map[string]any{"room_id": w.room, "around": root, "limit": 3}, &page)
+		th := page.event(t, root).Thread
+		require.NotNil(t, th)
+		return th.Unread, c.row(w.room).Unread
+	}
+
+	c.ok("room.markRead", map[string]any{"room_id": w.room}, nil)
+	thread, chat := summary()
+	require.Equal(t, 1, thread)
+	require.Equal(t, 1, chat, "the chat still counts the reply")
+
+	var unread struct {
+		Threads []struct {
+			RootID        string `json:"root_id"`
+			Unread        int    `json:"unread"`
+			FirstUnreadID string `json:"first_unread_id"`
+		} `json:"threads"`
+	}
+	c.ok("thread.unread", map[string]any{"room_id": w.room}, &unread)
+	require.Len(t, unread.Threads, 1)
+	require.Equal(t, root, unread.Threads[0].RootID)
+	require.Equal(t, "$reply", unread.Threads[0].FirstUnreadID)
+
+	c.ok("thread.markRead", map[string]any{"room_id": w.room, "root_id": root}, nil)
+	c.ok("thread.unread", map[string]any{"room_id": w.room}, &unread)
+	require.Empty(t, unread.Threads)
+	thread, chat = summary()
+	require.Zero(t, thread)
+	require.Zero(t, chat)
+	c.fails(CodeNotFound, "thread.markRead", map[string]any{"room_id": w.room, "root_id": "$nope"})
+	c.fails(CodeNotFound, "thread.markRead", map[string]any{"room_id": "!nope:courier.local", "root_id": root})
+
+	w.put(t, "$reply2", "@whatsapp_ana:courier.local", "m.room.message", inThread(root, "Me too"), base.Add(2*time.Minute))
+	thread, _ = summary()
+	require.Equal(t, 1, thread)
+	c.ok("room.markRead", map[string]any{"room_id": w.room, "threads": true}, nil)
+	thread, chat = summary()
+	require.Zero(t, thread)
+	require.Zero(t, chat)
 }
