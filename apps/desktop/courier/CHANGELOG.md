@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.5](https://github.com/VitruvianSoftware/vitruvian-core/compare/courier-v0.3.4...courier-v0.3.5) (2026-11-04)
+
+
+### Features
+
+* **courier:** per-thread unread state, banner, thread notifications, and inbox preview ([#4323](https://github.com/VitruvianSoftware/vitruvian-core/issues/4323)) ([d66aae1](https://github.com/VitruvianSoftware/vitruvian-core/commit/d66aae1034b9fb041703bee67cc0ac8c60e16e19))
+
+
+### Bug Fixes
+
+* **courier:** backfill Google Chat thread replies with list_messages per topic ([#4321](https://github.com/VitruvianSoftware/vitruvian-core/issues/4321)) ([fcd9a54](https://github.com/VitruvianSoftware/vitruvian-core/commit/fcd9a5486d0075bfd12ff94bcfbd1b89689af717))
+
 ## [0.3.4](https://github.com/VitruvianSoftware/vitruvian-core/compare/courier-v0.3.3...courier-v0.3.4) (2026-11-04)
 
 
