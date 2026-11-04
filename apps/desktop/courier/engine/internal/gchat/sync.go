@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rs/zerolog"
 	"maunium.net/go/mautrix/bridgev2"
 	"maunium.net/go/mautrix/bridgev2/database"
 	"maunium.net/go/mautrix/bridgev2/networkid"
@@ -631,9 +632,9 @@ func (c *Client) convertParsedMessage(ctx context.Context, pm parsedMessage) (*b
 // spaces and DMs alike, as the reference does (ref pkg/connector/backfill.go fetchTopicHeadMessages).
 // The request carries only group_id and page_size_for_topics: adding the page_size_for_*replies fields
 // made Google answer HTTP 500, and list_messages cannot list a whole DM because it needs a topic id.
-// Without those fields Google returns essentially each topic's head only, so thread replies sent while Courier was
-// away do not come back through backfill (a live Courier stores 567 heads and 4 replies across 15 spaces); fetching a
-// topic's replies with list_messages on its topic id is the follow-up.
+// Without those fields Google returns essentially each topic's head only (a live Courier stored 567 heads and 4
+// replies across 15 spaces), so the replies of the topics that have some come from list_messages on each topic id
+// (fetchTopicReplies), at most maxReplyTopicsPerFetch topics a call.
 // A forward backfill keeps only messages newer than the anchor, so a chat resync fills a gap without
 // re-sending what is already stored. History sync is strictly read-only (MarkRead: false, HasMore: false).
 func (c *Client) FetchMessages(ctx context.Context, fetchParams bridgev2.FetchMessagesParams) (*bridgev2.FetchMessagesResponse, error) {
@@ -670,15 +671,41 @@ func (c *Client) FetchMessages(ctx context.Context, fetchParams bridgev2.FetchMe
 		return nil, fmt.Errorf("decode list_topics response: %w", err)
 	}
 
+	anchor := fetchParams.AnchorMessage
+	var anchorMicros int64
+	if anchor != nil {
+		anchorMicros = anchor.Timestamp.UnixMicro()
+	}
+
 	var parsed []parsedMessage
+	seen := make(map[networkid.MessageID]struct{})
+	add := func(pm parsedMessage, topicFallbackID string) {
+		if pm.topicID == "" {
+			pm.topicID = topicFallbackID
+		}
+		id := MakeMessageID(pm.topicID, pm.messageID)
+		if _, dup := seen[id]; dup {
+			return
+		}
+		seen[id] = struct{}{}
+		parsed = append(parsed, pm)
+	}
 	for _, topic := range resp.GetTopics() {
 		topicFallbackID := topic.GetId().GetTopicId()
 		for _, reply := range topic.GetReplies() {
-			pm := parseMessageFromProto(reply)
-			if pm.topicID == "" {
-				pm.topicID = topicFallbackID
-			}
-			parsed = append(parsed, pm)
+			add(parseMessageFromProto(reply), topicFallbackID)
+		}
+	}
+	groupID := pb.PartsToGroupID(rawID, isDM)
+	for _, topicID := range topicsWithReplies(resp.GetTopics(), fetchParams.Forward, anchorMicros) {
+		replies, err := c.fetchTopicReplies(ctx, groupID, topicID)
+		if err != nil {
+			// One topic's replies failing must not lose the heads, or the other topics' replies.
+			zerolog.Ctx(ctx).Warn().Err(err).Str("topic_id", topicID).Msg("Google Chat: list_messages for thread replies failed")
+			continue
+		}
+		for _, m := range replies {
+			add(parseMessageFromProto(m), topicID)
 		}
 	}
 	slices.SortStableFunc(parsed, func(a, b parsedMessage) int {
@@ -687,12 +714,6 @@ func (c *Client) FetchMessages(ctx context.Context, fetchParams bridgev2.FetchMe
 		}
 		return cmp.Compare(a.messageID, b.messageID)
 	})
-
-	anchor := fetchParams.AnchorMessage
-	var anchorMicros int64
-	if anchor != nil {
-		anchorMicros = anchor.Timestamp.UnixMicro()
-	}
 
 	backfillMsgs := make([]*bridgev2.BackfillMessage, 0, len(parsed))
 	for _, pm := range parsed {
@@ -733,7 +754,115 @@ func (c *Client) FetchMessages(ctx context.Context, fetchParams bridgev2.FetchMe
 		Messages: backfillMsgs,
 		HasMore:  false,
 		MarkRead: false,
+		// A resync fetches the same topics again: drop whatever is already stored, by message id, so replies
+		// and heads that arrived live or in an earlier backfill are not sent twice.
+		AggressiveDeduplication: true,
 	}, nil
+}
+
+const (
+	// maxReplyTopicsPerFetch bounds the list_messages calls one backfill makes: the topics with the newest
+	// replies first.
+	maxReplyTopicsPerFetch = 10
+	// repliesPageSize is how many messages one list_messages call asks for (list_messages has no cursor).
+	repliesPageSize = 100
+)
+
+// topicReplyActivity is when a topic last had a reply, in microseconds (0 when Google sent no time), and whether
+// it has any. list_topics without the replies page-size fields returns a topic's head, which carries
+// last_reply_time, num_unread_replies and last_reply; the topic carries sort_time (its last activity) and
+// contains_more_unread_replies. A reply that came along in the topic counts too.
+func topicReplyActivity(topic *pb.Topic) (int64, bool) {
+	topicID := topic.GetId().GetTopicId()
+	msgs := topic.GetReplies()
+	// The head is the message whose id is the topic's, else the first (a lone message is always the head).
+	headIdx := 0
+	for i, m := range msgs {
+		if m.GetId().GetMessageId() == topicID {
+			headIdx = i
+			break
+		}
+	}
+	var head *pb.Message
+	var activity int64
+	has := topic.GetContainsMoreUnreadReplies()
+	for i, m := range msgs {
+		if i == headIdx {
+			head = m
+			continue
+		}
+		has = true
+		activity = max(activity, m.GetCreateTime())
+	}
+	created := head.GetCreateTime()
+	if t := head.GetLastReplyTime(); t > created {
+		has, activity = true, max(activity, t)
+	}
+	if t := head.GetLastReply().GetCreateTime(); t > created {
+		has, activity = true, max(activity, t)
+	}
+	if head.GetNumUnreadReplies() > 0 {
+		has = true
+	}
+	if t := topic.GetSortTime(); created > 0 && t > created {
+		has, activity = true, max(activity, t)
+	}
+	return activity, has
+}
+
+// topicsWithReplies picks the topics whose replies a backfill should fetch, newest reply first, at most
+// maxReplyTopicsPerFetch. A forward backfill skips topics whose last reply is known to be no newer than the anchor:
+// those replies are already stored.
+func topicsWithReplies(topics []*pb.Topic, forward bool, anchorMicros int64) []string {
+	type cand struct {
+		id       string
+		activity int64
+	}
+	var cands []cand
+	for _, topic := range topics {
+		id := topic.GetId().GetTopicId()
+		if id == "" {
+			continue
+		}
+		activity, has := topicReplyActivity(topic)
+		if !has {
+			continue
+		}
+		if forward && anchorMicros > 0 && activity > 0 && activity <= anchorMicros {
+			continue
+		}
+		cands = append(cands, cand{id, activity})
+	}
+	slices.SortStableFunc(cands, func(a, b cand) int { return cmp.Compare(b.activity, a.activity) })
+	if len(cands) > maxReplyTopicsPerFetch {
+		cands = cands[:maxReplyTopicsPerFetch]
+	}
+	out := make([]string, len(cands))
+	for i, c := range cands {
+		out[i] = c.id
+	}
+	return out
+}
+
+// fetchTopicReplies lists one topic's messages (its head and replies) with POST /u/0/api/list_messages, which takes
+// the topic as its parent. It carries only parent_id and page_size.
+func (c *Client) fetchTopicReplies(ctx context.Context, groupID *pb.GroupId, topicID string) ([]*pb.Message, error) {
+	reqBytes, err := pb.Marshal(&pb.ListMessagesRequest{
+		ParentId: buildMessageParentID(groupID, topicID),
+		PageSize: pb.Int32(repliesPageSize),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("marshal list_messages request: %w", err)
+	}
+	respBytes, err := c.rpcCall(ctx, "list_messages", reqBytes)
+	if err != nil {
+		return nil, fmt.Errorf("list_messages failed: %w", err)
+	}
+	var resp pb.ListMessagesResponse
+	if err := pb.Unmarshal(respBytes, &resp); err != nil {
+		return nil, fmt.Errorf("decode list_messages response: %w", err)
+	}
+	return resp.GetMessages(), nil
 }
 
 func isCatchUpAborted(status pb.CatchUpResponse_ResponseStatus) bool {
