@@ -400,6 +400,22 @@ crate.from_cargo(
 )
 use_repo(crate, "mcp_roborock_crates")
 
+# The Ostation 2 Pro CLI's crates. A separate hub with its own Cargo.lock, like
+# the Roborock one above, so apps/cli/ostation stays self-contained.
+# Re-lock: bazel run //tools/crates:lock -- --dir apps/cli/ostation
+crate.from_cargo(
+    name = "ostation_crates",
+    cargo_lock = "//apps/cli/ostation:Cargo.lock",
+    cargo_toml = "//apps/cli/ostation:Cargo.toml",
+    platform_triples = [
+        "aarch64-apple-darwin",
+        "aarch64-unknown-linux-gnu",
+        "x86_64-apple-darwin",
+        "x86_64-unknown-linux-gnu",
+    ],
+)
+use_repo(crate, "ostation_crates")
+
 # ring compiles C with cc-rs: same execroot problem, same wrapper as Courier's
 # libsignal annotation below. Linux too, since CI builds this on Linux.
 crate.annotation(

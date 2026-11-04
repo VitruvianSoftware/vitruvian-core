@@ -7,10 +7,8 @@
 manifest:
   modules_mapping:
     annotated_types: annotated_types
-    cffi: cffi
     colorama: colorama
     copier: copier
-    cryptography: cryptography
     dunamai: dunamai
     funcy: funcy
     iniconfig: iniconfig
@@ -24,7 +22,6 @@ manifest:
     plumbum: plumbum
     prompt_toolkit: prompt_toolkit
     py: pytest
-    pycparser: pycparser
     pydantic: pydantic
     pydantic_core: pydantic_core
     pygments: pygments

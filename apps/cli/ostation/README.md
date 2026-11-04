@@ -1,9 +1,8 @@
 # Ostation 2 Pro — local LAN protocol notes & prototype
 
-Working notes and a proven Python prototype for talking to the Olight Ostation 2 Pro
-battery charger over its local LAN (no cloud). This is a prototype: the goal is to
-iterate here, then implement a proper client in Rust (likely as a `homelab` CLI
-subcommand or its own small tool).
+A Rust CLI (`ostation`) and protocol notes for talking to the Olight Ostation 2 Pro
+battery charger over its local LAN (no cloud). It replaces the earlier Python
+prototype, which is in git history (`1e17fc95`).
 
 ## Device
 
@@ -92,27 +91,41 @@ DP 110/112 did not appear in the standard status response; they likely need cmd 
 
 ## Files
 
-- `ostation_client.py` — working one-shot client: connect → negotiate → status. Runs
-  under pycryptodome *or* `cryptography` (AESGCM).
-- `ost_relay.py` — TCP relay `127.0.0.1:1999 → adb → phone nc → charger`. Needed
-  because this Mac's Python gets `EHOSTUNREACH` to LAN IPs while `nc`/`ping` work
-  (never root-caused); the relay sidesteps it.
-- `ost_app.pcap` — captured Olight-app session (handshake + status + heartbeats), a
-  ready-made regression fixture for a Rust implementation.
+- `rust_src/frame.rs` — 6699 framing: pack, decrypt, and a stream reader that skips the
+  device's zero padding (2 and 6 bytes both occur).
+- `rust_src/session.rs` — session-key negotiation (cmds 3/4/5).
+- `rust_src/client.rs` — one-shot status: connect, negotiate, cmd 16.
+- `rust_src/relay.rs` — TCP relay `127.0.0.1:1999 → adb → phone nc → charger`. Needed
+  because this Mac's sockets get `EHOSTUNREACH` to LAN IPs while `nc`/`ping` work
+  (never root-caused); the phone is on the LAN, so it forwards the bytes.
+- `rust_src/tests.rs` — offline tests, including a fake charger on loopback.
+- `ost_app.pcap` — captured Olight-app session (handshake + status + heartbeats). The
+  tests reassemble both TCP streams, verify the device's key proof, derive the session
+  key and decrypt every later frame, so a framing or AAD mistake fails there.
 
 ## Running it
 
 The charger accepts a single LAN session at a time — force-stop the Olight app first
-(`adb shell am force-stop com.olight.omall`) or it will silently ignore new clients.
+(`adb shell am force-stop com.olight.omall`) or it silently ignores new clients. A
+read timeout therefore also means a wrong localKey; the CLI says so.
 
 ```sh
-# from a host on the LAN (e.g. the subnet-router node):
-python3 ostation_client.py 192.168.86.70 6668
+export OSTATION_LOCAL_KEY='<16-byte localKey>'   # see "Key extraction"
 
-# from this Mac (Python can't reach LAN IPs directly; relay via the phone):
-python3 ost_relay.py &          # adb wireless-debugging must be connected
-python3 ostation_client.py 127.0.0.1 1999
+# from a host on the LAN (e.g. the subnet-router node):
+bazel run //apps/cli/ostation -- status --host 192.168.86.70
+
+# from this Mac (its sockets cannot reach LAN IPs; relay via the phone):
+bazel run //apps/cli/ostation -- relay --adb-serial <serial> &   # adb must be connected
+bazel run //apps/cli/ostation -- status --host 127.0.0.1 --port 1999
 ```
+
+Flags have environment fallbacks: `OSTATION_HOST` (default `192.168.86.70`),
+`OSTATION_PORT`, `OSTATION_LOCAL_KEY`, `OSTATION_ADB_SERIAL`. The localKey is not in
+source; it is a LAN-only credential.
+
+Tests: `bazel test //apps/cli/ostation:ostation_test`. Dependencies are their own Cargo
+workspace; re-lock with `bazel run //tools/crates:lock -- --dir apps/cli/ostation`.
 
 ## Key extraction (adb logcat, no root)
 
@@ -125,13 +138,3 @@ adb logcat -v raw -s Thing-Network:D Thing-Bluetooth:D Thing-Activator:D
 The handshake log lines are a goldmine: `[LogHexData:60]data:` logs the first bytes of
 each outgoing encrypted payload, and after `GetSessionKey` the `SendByte2:448` line logs
 the derived binary session key — both were used to verify the analysis offline.
-
-## Rust implementation notes (next step)
-
-- The framing is simple enough that no Tuya library is needed: a Rust client needs
-  `tokio`/`std` TCP + `aes-gcm` crate + `hmac`/`sha2`. The whole protocol is ~150 lines.
-- Parse strictly per the 18-byte header above; skip zero padding between frames.
-- Keep the localKey out of source long-term: load from config/env (it is committed here
-  only as scratchpad reference; it is a LAN-only credential).
-- Test fixture: replay `ost_app.pcap` frames through the Rust decoder and compare
-  plaintexts with the values recorded in this README.
