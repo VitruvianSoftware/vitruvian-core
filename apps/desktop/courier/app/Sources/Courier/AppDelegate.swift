@@ -72,7 +72,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.windows.forEach { $0.performClose(nil) }
         },
         openDetachedChat: { [weak self] roomID in self?.detachedWindows.open(.chat(roomID: roomID)) },
-        quitApplication: { NSApp.terminate(nil) }
+        quitApplication: { AppDelegate.requestTermination() }
     )
     /// Single live dispatcher for all menu commands, window-scoped shortcuts, composer Return handling, and global hotkeys.
     private(set) lazy var hotkeyDispatcher = HotkeyDispatcher(
@@ -115,8 +115,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         currentVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
         appURL: Bundle.main.bundleURL,
         environment: SystemUpdateEnvironment(),
-        quit: { NSApp.terminate(nil) }
+        quit: { AppDelegate.requestTermination() }
     )
+
+    /// Schedules `NSApp.terminate` on the main run loop outside any `@MainActor` async `Task`: `terminate(_:)` spins
+    /// a nested modal run loop when `applicationShouldTerminate` returns `.terminateLater`, which deadlocks if
+    /// entered while the main-actor Swift Concurrency executor is on the stack.
+    private static func requestTermination() {
+        RunLoop.main.perform(inModes: [.default, .modalPanel, .eventTracking]) {
+            NSApp.terminate(nil)
+        }
+    }
     private var signInWindows: SignInWindowPresenter?
     private var notifications: NotificationCoordinator?
     let notifier = Notifier()
@@ -656,8 +665,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// send) message to the engine and waits for its answer, for at most `AppModel.sendHeldAtQuitTimeout` (5 s), so
     /// nothing held is left to the next start unless the engine is stuck. Then it waits for the engine to stop
     /// (SIGTERM, then SIGKILL after ten seconds), so it never outlives the app holding its data directory's lock.
-    /// `AppModel.quit` does all three.
+    /// `AppModel.quit` does all three. Adding `.modalPanel` to the main run loop's common modes ensures the
+    /// `@MainActor` dispatch queue continues draining while AppKit spins its modal `.terminateLater` loop.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        CFRunLoopAddCommonMode(CFRunLoopGetMain(), CFRunLoopMode(RunLoop.Mode.modalPanel.rawValue as CFString))
         PictureInPictureController.shared.stopForApplicationTermination()
         conversation.audioPlayer.stopForApplicationTermination()
         Task {
