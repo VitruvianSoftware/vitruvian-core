@@ -73,6 +73,17 @@ func MakeThreadRootID(topicID string) networkid.MessageID {
 	return networkid.MessageID(topicID + "/" + topicID)
 }
 
+// threadRootOf is the thread a message is a reply in, and whether it is one. Google Chat files every message under a
+// topic: the message that starts it (in a DM, a flat space or a threaded one) is the topic's head, with a message_id
+// equal to the topic_id, and only the others are replies in its thread. A head is never a reply in its own thread, so
+// DMs and flat spaces, where every top-level message heads its own topic, stay flat.
+func threadRootOf(topicID, msgID string) (networkid.MessageID, bool) {
+	if topicID == "" || msgID == "" || topicID == msgID {
+		return "", false
+	}
+	return MakeThreadRootID(topicID), true
+}
+
 // ParseMessageID splits a networkid.MessageID ("topicID/msgID" or "msgID") into topicID and msgID.
 func ParseMessageID(id networkid.MessageID) (topicID, msgID string) {
 	s := string(id)
@@ -601,8 +612,7 @@ func (c *Client) convertParsedMessage(ctx context.Context, pm parsedMessage) (*b
 	cm := &bridgev2.ConvertedMessage{
 		Parts: parts,
 	}
-	if pm.topicID != "" {
-		threadRoot := MakeThreadRootID(pm.topicID)
+	if threadRoot, ok := threadRootOf(pm.topicID, pm.messageID); ok {
 		cm.ThreadRoot = &threadRoot
 	}
 	if pm.replyMsgID != "" {
@@ -621,6 +631,9 @@ func (c *Client) convertParsedMessage(ctx context.Context, pm parsedMessage) (*b
 // spaces and DMs alike, as the reference does (ref pkg/connector/backfill.go fetchTopicHeadMessages).
 // The request carries only group_id and page_size_for_topics: adding the page_size_for_*replies fields
 // made Google answer HTTP 500, and list_messages cannot list a whole DM because it needs a topic id.
+// Without those fields Google returns essentially each topic's head only, so thread replies sent while Courier was
+// away do not come back through backfill (a live Courier stores 567 heads and 4 replies across 15 spaces); fetching a
+// topic's replies with list_messages on its topic id is the follow-up.
 // A forward backfill keeps only messages newer than the anchor, so a chat resync fills a gap without
 // re-sending what is already stored. History sync is strictly read-only (MarkRead: false, HasMore: false).
 func (c *Client) FetchMessages(ctx context.Context, fetchParams bridgev2.FetchMessagesParams) (*bridgev2.FetchMessagesResponse, error) {

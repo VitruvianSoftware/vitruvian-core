@@ -195,10 +195,10 @@ func (c *Client) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMe
 		return nil, err
 	}
 
-	var isThreaded bool
+	var topicThreaded bool
 	c.metaMu.Lock()
 	if meta, ok := msg.Portal.Metadata.(*PortalMetadata); ok && meta != nil {
-		isThreaded = meta.TopicThreaded || meta.ThreadsEnabled
+		topicThreaded = meta.TopicThreaded
 	}
 	c.metaMu.Unlock()
 
@@ -215,7 +215,10 @@ func (c *Client) HandleMatrixMessage(ctx context.Context, msg *bridgev2.MatrixMe
 		} else {
 			topicID = tMsg
 		}
-	} else if msg.ReplyTo != nil && (isDM || isThreaded) {
+	} else if msg.ReplyTo != nil && topicThreaded {
+		// Only a classic threaded space files a quote-reply under the quoted message's topic: every message there
+		// lives in a topic. In a DM or a flat space (with or without in-line threads) a quote-reply is a new top-level
+		// message; posting it into the quoted topic would make it an in-line thread reply on Google's side.
 		rTopic, rMsg, _ := resolveMessageTopicAndID(msg.ReplyTo)
 		if rTopic != "" {
 			topicID = rTopic
@@ -316,15 +319,7 @@ func (c *Client) sendCreateTopic(
 			CreateTimeMicros: createUsec,
 		},
 	}
-	c.metaMu.Lock()
-	isThreaded := false
-	if meta, ok := msg.Portal.Metadata.(*PortalMetadata); ok && meta != nil {
-		isThreaded = meta.TopicThreaded || meta.ThreadsEnabled
-	}
-	c.metaMu.Unlock()
-	if isThreaded && topicID != "" {
-		dbMsg.ThreadRoot = MakeThreadRootID(topicID)
-	}
+	// A created topic's first message is its head, which is never a reply in its own thread (threadRootOf).
 	if msg.ReplyTo != nil {
 		dbMsg.ReplyTo = networkid.MessageOptionalPartID{
 			MessageID: msg.ReplyTo.ID,
@@ -416,14 +411,8 @@ func (c *Client) sendCreateMessage(
 			CreateTimeMicros: createUsec,
 		},
 	}
-	c.metaMu.Lock()
-	isThreaded := false
-	if meta, ok := msg.Portal.Metadata.(*PortalMetadata); ok && meta != nil {
-		isThreaded = meta.TopicThreaded || meta.ThreadsEnabled
-	}
-	c.metaMu.Unlock()
-	if isThreaded && topicID != "" {
-		dbMsg.ThreadRoot = MakeThreadRootID(topicID)
+	if threadRoot, ok := threadRootOf(topicID, msgID); ok {
+		dbMsg.ThreadRoot = threadRoot
 	}
 	if msg.ReplyTo != nil {
 		dbMsg.ReplyTo = networkid.MessageOptionalPartID{

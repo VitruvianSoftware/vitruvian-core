@@ -45,6 +45,7 @@ go_test(
         "rooms.go",
         "send.go",
         "sync.go",
+        "threads_test.go",
     ],
     cdeps = ["//apps/desktop/courier/gchat:gchat_ffi_test_loopback"],
     cgo = True,

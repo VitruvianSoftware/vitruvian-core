@@ -70,7 +70,22 @@ func (c *Connector) Init(bridge *bridgev2.Bridge) {
 	c.Bridge = bridge
 }
 
-func (c *Connector) Start(_ context.Context) error {
+func (c *Connector) Start(ctx context.Context) error {
+	return c.clearSelfThreadRoots(ctx)
+}
+
+// clearSelfThreadRootsSQL drops the thread root of every message stored as a reply in its own thread. Versions before
+// threadRootOf tagged each topic head that way; bridgev2 ignored it when sending, but a quote-reply to such a head in a
+// chat that offers threads would be turned into a thread reply. Idempotent and cheap: it touches heads only once.
+const clearSelfThreadRootsSQL = `UPDATE message SET thread_root_id = NULL WHERE bridge_id = $1 AND thread_root_id = id`
+
+func (c *Connector) clearSelfThreadRoots(ctx context.Context) error {
+	if c.Bridge == nil || c.Bridge.DB == nil || c.Bridge.DB.Database == nil {
+		return nil
+	}
+	if _, err := c.Bridge.DB.Exec(ctx, clearSelfThreadRootsSQL, c.Bridge.ID); err != nil {
+		return fmt.Errorf("clear self thread roots: %w", err)
+	}
 	return nil
 }
 
@@ -115,7 +130,8 @@ func defaultRoomCapabilities(portal *bridgev2.Portal) *event.RoomFeatures {
 		atRoomLevel = event.CapLevelUnsupported
 	}
 	threadLevel := event.CapLevelUnsupported
-	if !isDM && isThreaded {
+	if isThreaded {
+		// DMs report flat_threads_enabled too: Google Chat has in-line threads in them.
 		threadLevel = event.CapLevelFullySupported
 	}
 
