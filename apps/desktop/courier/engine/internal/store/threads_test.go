@@ -117,16 +117,16 @@ func TestThreadSummaryCountsAndNames(t *testing.T) {
 	got, err := s.ThreadSummaries(ctx, "!r", []string{"$root", "$quiet", "$root"})
 	require.NoError(t, err)
 	require.Equal(t, map[string]ThreadSummary{
-		"$root": {Replies: 7, LastTS: time.Unix(32, 0), LastSenders: []string{"Ben", "Ana", "dee"}},
-	}, got, "the broadcast reply counts once; a deleted or failed one doesn't; names come from the chat, then the "+
-		"profile, then the ID")
+		"$root": {Replies: 7, LastTS: time.Unix(32, 0), LastSenders: []string{"Ben", "Ana", "dee"}, Unread: 6},
+	}, got, "the broadcast reply counts once, and never as unread; a deleted or failed one doesn't; names come from "+
+		"the chat, then the profile, then the ID")
 }
 
 func TestThreadLookupUsesItsIndex(t *testing.T) {
 	s := open(t)
 	for name, plan := range map[string][]string{
 		"page":    planOf(t, s, threadEventsBeforeSQL, "!r", "$root", int64(math.MaxInt64), int64(math.MaxInt64), 51),
-		"summary": planOf(t, s, threadSummariesSQL, "!r", `["$root"]`),
+		"summary": planOf(t, s, threadSummariesSQL, "!r", `["$root"]`, me),
 	} {
 		joined := strings.Join(plan, "\n")
 		t.Logf("%s:\n%s", name, joined)

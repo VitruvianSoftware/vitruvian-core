@@ -891,7 +891,8 @@ public final class InboxModel: ObservableObject {
     }
 
     /// Mark as Read (`read`) or Mark as Unread, whatever the chats are now. Marking read reaches the networks, as
-    /// opening the chat does; an unread mark stays on this Mac. Then `afterToggleRead` says which chat opens.
+    /// opening the chat does, and reads its threads too (`room.markRead` with threads); an unread mark stays on
+    /// this Mac. Then `afterToggleRead` says which chat opens.
     public func setRead(_ read: Bool, ids: [String]? = nil) async {
         let rawIDs = beginAction(ids)
         let expandedIDs = expandRoomIDs(rawIDs)
@@ -903,7 +904,7 @@ public final class InboxModel: ObservableObject {
             // room.markRead also clears an unread mark and a reminder that fired. A failure is shown by the read
             // below, which has the chat as the engine has it. A chat that isn't loaded is marked too.
             for id in expandedIDs where mergedMemberSet.contains(id) || (shown[id]?.isUnread ?? true) {
-                let _: Empty? = try? await client.call("room.markRead", RoomParams(roomID: id))
+                let _: Empty? = try? await client.call("room.markRead", MarkReadParams(roomID: id, threads: true))
             }
         } else {
             _ = try? await changeEach("room.setMarkedUnread", expandedIDs) { RoomsFlagParams(roomIDs: $0, on: true) }

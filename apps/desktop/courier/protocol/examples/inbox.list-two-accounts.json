@@ -26,6 +26,7 @@
           "preview": "Running ten minutes late",
           "preview_kind": "text",
           "preview_mine": true,
+          "preview_in_thread": false,
           "preview_status": "seen",
           "login_name": "Test Account",
           "unread": 0,

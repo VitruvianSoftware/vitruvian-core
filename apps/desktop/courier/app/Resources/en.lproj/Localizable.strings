@@ -1895,10 +1895,22 @@
 /* Under a thread's root: who wrote the newest replies. The arguments are a name and how many others. */
 "%@ & %lld other" = "%@ & %lld other";
 "%@ & %lld others" = "%@ & %lld others";
-/* For assistive technology: a thread's root's reply line, as a button. The argument is "3 Replies". */
-"%@, show replies" = "%@, show replies";
+/* Under a thread's root, beside its replies: how many of them aren't read in the thread. The argument is the count. */
+"%lld new" = "%lld new";
+/* For assistive technology: a thread's root's reply line, as a button, read as its parts joined by commas
+   ("3 Replies, 2 new, mentions you, show replies"). */
+"mentions you" = "mentions you";
+"show replies" = "show replies";
 /* The tooltip of a thread's reply line. */
 "Show Replies (⌘↓)" = "Show Replies (⌘↓)";
+/* Above the open chat's timeline while some of its threads have replies not read. The argument is how many threads. */
+"New replies in 1 thread" = "New replies in 1 thread";
+"New replies in %lld threads" = "New replies in %lld threads";
+"Show the thread with new replies" = "Show the thread with new replies";
+/* For assistive technology: what clicking the new-replies bar does. */
+"Opens the thread at its first new reply" = "Opens the thread at its first new reply";
+/* An inbox row's preview, before the text, when the chat's newest message is a reply in a thread. */
+"↳ in thread: " = "↳ in thread: ";
 
 /* Under a poll: how many people voted. The argument is the count. */
 "%lld vote" = "%lld vote";

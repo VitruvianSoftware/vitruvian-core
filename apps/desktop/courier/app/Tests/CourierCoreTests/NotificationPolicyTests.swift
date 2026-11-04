@@ -265,6 +265,37 @@ final class NotificationPolicyTests: XCTestCase {
         XCTAssertEqual(content.eventID, "$1")
     }
 
+    /// A reply that stays in its thread says so, by IDs only: a click opens the thread pane at it, and an inline
+    /// reply goes in the thread. One also sent to the channel is a message of the chat like any other.
+    func testAThreadReplyCarriesItsRootAndItself() throws {
+        let inThread = event("$t1", content: .object([
+            "msgtype": .string("m.text"), "body": .string("count me in"),
+            "m.relates_to": .object(["rel_type": .string("m.thread"), "event_id": .string("$root"),
+                                     "is_falling_back": .bool(true)]),
+        ]))
+        let content = NotificationPolicy.content(for: inThread, room: row(name: "Group", direct: false))
+        XCTAssertEqual(content.threadRootID, "$root")
+        XCTAssertEqual(content.userInfo, ["room_id": "!a", "thread_root": "$root", "event_id": "$t1"])
+        let decided = try XCTUnwrap(NotificationPolicy.evaluate(event: inThread, room: row(), context: context()).content)
+        XCTAssertEqual(decided.threadRootID, "$root")
+        XCTAssertEqual(NotificationPolicy.redactIfLocked(decided, isLocked: true).userInfo, decided.userInfo,
+                       "locked, the text goes but where it leads stays")
+
+        XCTAssertEqual(NotificationTarget(userInfo: content.userInfo),
+                       NotificationTarget(roomID: "!a", threadRootID: "$root", eventID: "$t1"))
+        XCTAssertEqual(NotificationTarget(userInfo: ["room_id": "!a", "thread_root": "$root"]),
+                       NotificationTarget(roomID: "!a"), "a root without its reply is no thread")
+        XCTAssertNil(NotificationTarget(userInfo: ["thread_root": "$root"]))
+
+        let broadcast = event("$t2", content: .object([
+            "msgtype": .string("m.text"), "body": .string("also in the chat"),
+            "com.beeper.broadcast_outside_thread": .bool(true),
+            "m.relates_to": .object(["rel_type": .string("m.thread"), "event_id": .string("$root")]),
+        ]))
+        XCTAssertNil(NotificationPolicy.content(for: broadcast, room: row()).threadRootID)
+        XCTAssertEqual(NotificationPolicy.content(for: broadcast, room: row()).userInfo, ["room_id": "!a"])
+    }
+
     func testGroupShowsTheSenderAsSubtitle() {
         let content = NotificationPolicy.content(for: event(senderName: "Sam"), room: row(name: "Group", direct: false))
         XCTAssertEqual(content.title, "Group")

@@ -68,7 +68,9 @@
           "thread": {
             "replies": 1,
             "last_ts": 1760600060000,
-            "last_senders": ["Ana Example"]
+            "last_senders": ["Ana Example"],
+            "unread": 1,
+            "unread_mentions_me": false
           },
           "expires_at": 0,
           "delivered": false,

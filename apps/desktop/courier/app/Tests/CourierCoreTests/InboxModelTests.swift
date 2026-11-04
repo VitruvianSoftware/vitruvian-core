@@ -2098,10 +2098,11 @@ func manyRooms(_ count: Int) -> [[String: Any]] {
 func room(_ id: String, ts: Int64, unread: Int = 0, muted: Bool = false, network: String = "whatsapp",
           name: String? = nil, preview: String = "Hello", kind: String = "text", pinned: Bool = false,
           archived: Bool = false, markedUnread: Bool = false, draft: String = "",
-          previewCall: [String: String]? = nil) -> [String: Any] {
+          previewCall: [String: String]? = nil, inThread: Bool = false) -> [String: Any] {
     [
         "room_id": id, "network": network, "name": name ?? "Chat \(id)", "avatar_path": "", "is_direct": true,
-        "last_ts": ts, "preview": preview, "preview_kind": kind, "preview_mine": false, "unread": unread,
+        "last_ts": ts, "preview": preview, "preview_kind": kind, "preview_mine": false,
+        "preview_in_thread": inThread, "unread": unread,
         "muted": muted, "pinned": pinned, "archived": archived, "low_priority": false, "hidden": false,
         "marked_unread": markedUnread, "request": false, "draft": draft, "labels": [Int](), "muted_by": "",
         "muted_by_name": "", "reminder": NSNull(), "typing": [String](), "unread_mentions": 0,

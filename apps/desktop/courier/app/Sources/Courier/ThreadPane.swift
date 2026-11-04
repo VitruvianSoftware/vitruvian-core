@@ -145,7 +145,9 @@ struct ThreadPane: View {
     }
 }
 
-/// Under a thread's root: how many replies and who wrote the newest. A click opens the thread pane.
+/// Under a thread's root: how many replies and who wrote the newest, and, while some aren't read in the thread, an
+/// accent dot and "2 new" (an at sign in place of the dot when one of them mentions me). A click opens the thread
+/// pane, which reads them.
 struct ThreadSummaryLine: View {
     let summary: ThreadSummary
     let open: () -> Void
@@ -157,6 +159,9 @@ struct ThreadSummaryLine: View {
                 Text(MessageLines.replies(summary))
                     .fontWeight(.semibold)
                     .foregroundStyle(Color.accentColor)
+                if let new = MessageLines.newReplies(summary) {
+                    NewRepliesMark(text: new, mentionsMe: summary.unreadMentionsMe)
+                }
                 if let names = MessageLines.repliers(summary) {
                     Text(names)
                         .foregroundStyle(.secondary)
@@ -174,6 +179,58 @@ struct ThreadSummaryLine: View {
         }
         .buttonStyle(.plain)
         .help(String(localized: "Show Replies (⌘↓)"))
-        .accessibilityLabel(String(localized: "\(MessageLines.replies(summary)), show replies"))
+        .accessibilityLabel(MessageLines.summaryAccessibilityLabel(summary))
+    }
+}
+
+/// The unread mark of a thread, in the accent colour: a dot and "2 new", or, when one of the replies mentions me, an
+/// at sign in place of the dot, as the inbox row marks a mention.
+private struct NewRepliesMark: View {
+    let text: String
+    let mentionsMe: Bool
+
+    var body: some View {
+        HStack(spacing: 3) {
+            if mentionsMe {
+                Image(systemName: "at")
+                    .font(.caption2.weight(.bold))
+            } else {
+                Circle().frame(width: 6, height: 6)
+            }
+            Text(text).fontWeight(.semibold)
+        }
+        .foregroundStyle(Color.accentColor)
+    }
+}
+
+/// Above the open chat's timeline while it has threads with unread replies: "New replies in 2 threads". A click
+/// opens the thread pane at the oldest unread reply, then, click by click, the next thread's
+/// (`ConversationModel.showNextUnreadThread`).
+struct ThreadRepliesBanner: View {
+    let text: String
+    let mentionsMe: Bool
+    let show: () -> Void
+
+    var body: some View {
+        Button(action: show) {
+            HStack(spacing: 8) {
+                Image(systemName: mentionsMe ? "at" : "bubble.left.and.bubble.right.fill")
+                    .foregroundStyle(Color.accentColor)
+                Text(text)
+                    .font(.callout.weight(.semibold))
+                Spacer(minLength: 0)
+                Image(systemName: "arrow.up.right")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 6)
+            .background(Color.accentColor.opacity(0.10))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(String(localized: "Show the thread with new replies"))
+        .accessibilityLabel(text)
+        .accessibilityHint(String(localized: "Opens the thread at its first new reply"))
     }
 }

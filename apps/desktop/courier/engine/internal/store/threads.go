@@ -23,11 +23,14 @@ import (
 const maxThreadSenders = 3
 
 // ThreadSummary is what a thread's root shows: how many replies it has, when the newest came, and who wrote the
-// newest ones, by name, newest first, at most 3 people.
+// newest ones, by name, newest first, at most 3 people. Unread is how many of its replies aren't read in the thread
+// (threadreads.go), and UnreadMentionsMe whether one of those mentions me.
 type ThreadSummary struct {
-	Replies     int
-	LastTS      time.Time
-	LastSenders []string
+	Replies          int
+	LastTS           time.Time
+	LastSenders      []string
+	Unread           int
+	UnreadMentionsMe bool
 }
 
 // threadRepliesWhereSQL is the condition, with events_threads' own WHERE repeated so the planner uses it, for the
@@ -35,14 +38,19 @@ type ThreadSummary struct {
 var threadRepliesWhereSQL = `room_id = $1 AND type IN ('m.room.message', 'm.sticker') AND ` + inThreadSQL("content")
 
 // threadSummariesSQL lists, newest first in each thread, the replies of the threads whose roots are in the JSON array
-// $2, in chat $1, that aren't deleted and didn't fail to send: a range scan of events_threads per root.
-var threadSummariesSQL = `SELECT ` + threadRootSQL("content") + `, sender, ts FROM events
-WHERE ` + threadRepliesWhereSQL + ` AND ` + threadRootSQL("content") + ` IN (SELECT value FROM json_each($2))
-  AND redacted = 0 AND status <> 'failed'
-ORDER BY ` + threadRootSQL("content") + `, ts DESC, seq DESC`
+// $2, in chat $1, that aren't deleted and didn't fail to send, each with whether it is unread (unreadThreadReplyFor,
+// $3 my user ID) and whether it mentions me: a range scan of events_threads per root.
+var threadSummariesSQL = `SELECT ` + threadRootSQL("u.content") + `, u.sender, u.ts,
+  (` + unreadThreadReplyFor("$3") + `) IS 1, (` + mentionsSQL("u.content", "$3") + `) IS 1
+FROM events u LEFT JOIN room_prefs p ON p.room_id = u.room_id
+WHERE u.room_id = $1 AND u.type IN ('m.room.message', 'm.sticker') AND ` + inThreadSQL("u.content") + `
+  AND ` + threadRootSQL("u.content") + ` IN (SELECT value FROM json_each($2))
+  AND u.redacted = 0 AND u.status <> 'failed'
+ORDER BY ` + threadRootSQL("u.content") + `, u.ts DESC, u.seq DESC`
 
 // ThreadSummaries summarises the threads of roomID whose roots are rootIDs, keyed by root; a root with no reply
-// (deleted and failed ones don't count) is left out.
+// (deleted and failed ones don't count) is left out. A reply also sent to the channel counts in its thread's
+// replies, but never as unread there: it is read with the chat.
 func (s *Store) ThreadSummaries(ctx context.Context, roomID string, rootIDs []string) (map[string]ThreadSummary, error) {
 	out := map[string]ThreadSummary{}
 	roots := distinct(rootIDs)
@@ -50,7 +58,7 @@ func (s *Store) ThreadSummaries(ctx context.Context, roomID string, rootIDs []st
 		return out, nil
 	}
 	b, _ := json.Marshal(roots)
-	rows, err := s.db.Query(ctx, threadSummariesSQL, roomID, string(b))
+	rows, err := s.db.Query(ctx, threadSummariesSQL, roomID, string(b), myID)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +66,8 @@ func (s *Store) ThreadSummaries(ctx context.Context, roomID string, rootIDs []st
 	for rows.Next() {
 		var root, sender string
 		var ts int64
-		if err := rows.Scan(&root, &sender, &ts); err != nil {
+		var unread, mentions bool
+		if err := rows.Scan(&root, &sender, &ts, &unread, &mentions); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -67,6 +76,10 @@ func (s *Store) ThreadSummaries(ctx context.Context, roomID string, rootIDs []st
 			sum.LastTS = time.UnixMilli(ts)
 		}
 		sum.Replies++
+		if unread {
+			sum.Unread++
+			sum.UnreadMentionsMe = sum.UnreadMentionsMe || mentions
+		}
 		out[root] = sum
 		if list := senders[root]; len(list) < maxThreadSenders && !slices.Contains(list, sender) {
 			senders[root] = append(list, sender)

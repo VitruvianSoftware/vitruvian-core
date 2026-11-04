@@ -247,10 +247,11 @@ final class Notifier: NSObject, NotificationDelivering, UNUserNotificationCenter
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
                                             didReceive response: UNNotificationResponse) async {
-        let roomID = response.notification.request.content.userInfo["room_id"] as? String
+        let target = NotificationTarget(userInfo: response.notification.request.content.userInfo)
         let action = response.actionIdentifier
         let typed = (response as? UNTextInputNotificationResponse)?.userText
-        guard let roomID else { return }
+        guard let target else { return }
+        let roomID = target.roomID
         await MainActor.run {
             switch action {
             case Self.copyCodeActionID:
@@ -258,13 +259,15 @@ final class Notifier: NSObject, NotificationDelivering, UNUserNotificationCenter
             case Self.markReadActionID:
                 Task { await coordinator?.markRead(roomID: roomID) }
             case Self.replyActionID:
-                if let typed { Task { await coordinator?.reply(roomID: roomID, text: typed) } }
+                if let typed {
+                    Task { await coordinator?.reply(roomID: roomID, text: typed, threadRootID: target.threadRootID) }
+                }
             case Self.remindOneHourActionID:
                 Task { await coordinator?.remind(roomID: roomID, after: NotificationCoordinator.remindOneHour) }
             case Self.remindEightHoursActionID:
                 Task { await coordinator?.remind(roomID: roomID, after: NotificationCoordinator.remindEightHours) }
             case UNNotificationDefaultActionIdentifier:
-                coordinator?.open(roomID: roomID)
+                coordinator?.open(target)
             default:
                 break
             }

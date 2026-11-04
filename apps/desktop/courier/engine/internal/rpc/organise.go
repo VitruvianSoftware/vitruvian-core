@@ -183,6 +183,7 @@ type inboxRow struct {
 	Preview          string        `json:"preview"`
 	PreviewKind      string        `json:"preview_kind"`
 	PreviewMine      bool          `json:"preview_mine"`
+	PreviewInThread  bool          `json:"preview_in_thread"`
 	PreviewStatus    string        `json:"preview_status"`
 	LoginName        string        `json:"login_name"`
 	Unread           int           `json:"unread"`
@@ -346,7 +347,7 @@ func (d *Deps) toRows(ctx context.Context, rows []store.InboxRow) ([]inboxRow, e
 			RoomID: r.ID, Network: r.Network, Name: r.Name, RemoteName: r.RemoteName, LocalName: r.LocalName,
 			AvatarPath: d.path(r.AvatarURI), LocalAvatarPath: d.path(r.LocalAvatarURI), MergeID: r.MergeID,
 			IsDirect: r.IsDirect, LastTS: ms(r.LastTS), Preview: r.Preview, PreviewKind: r.PreviewKind,
-			PreviewMine: r.PreviewMine, PreviewStatus: r.PreviewStatus, LoginName: tags[r.LoginID], Unread: r.Unread,
+			PreviewMine: r.PreviewMine, PreviewInThread: r.PreviewInThread, PreviewStatus: r.PreviewStatus, LoginName: tags[r.LoginID], Unread: r.Unread,
 			Muted: r.Muted, Pinned: !r.PinnedAt.IsZero(), Archived: r.Archived, LowPriority: r.LowPriority,
 			Hidden: r.Hidden, MarkedUnread: r.MarkedUnread, Request: r.Request, Draft: r.Draft, Labels: labels,
 			MutedBy: r.MutedBy, MutedByName: r.MutedByName, Typing: typing, UnreadMentions: r.UnreadMentions,

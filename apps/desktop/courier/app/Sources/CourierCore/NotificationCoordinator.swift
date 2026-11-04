@@ -717,11 +717,22 @@ public final class NotificationCoordinator {
     /// A click: the chat opens in the main window, which comes forward.
     /// While locked, drops the room selection and brings Courier forward to the lock screen.
     public func open(roomID: String) {
+        open(NotificationTarget(roomID: roomID))
+    }
+
+    /// A click on a notification for `target`: its chat opens in the main window, which comes forward. For a reply
+    /// that stays in its thread, the chat opens at it as a search result does (`AppModel.open`): the chat at the
+    /// thread's root and the thread pane at the reply.
+    public func open(_ target: NotificationTarget) {
         guard !isCurrentlyLocked else {
             showWindow()
             return
         }
-        appModel.selectedRoomID = roomID
+        if target.threadRootID != nil, let reply = target.eventID {
+            appModel.open(.message(roomID: target.roomID, eventID: reply))
+        } else {
+            appModel.selectedRoomID = target.roomID
+        }
         showWindow()
     }
 
@@ -734,12 +745,28 @@ public final class NotificationCoordinator {
         await performMarkRead(roomID: roomID)
     }
 
-    private func performMarkRead(roomID: String) async {
+    /// What reads a chat from a notification: Mark as Read, which reads it with its threads as the inbox's does, or
+    /// a reply that went, which reads what it answered as one typed in the chat or the thread pane does: the chat's
+    /// timeline, and the reply's thread when it went in one.
+    private enum ReadCause {
+        case markAsRead
+        case replied(threadRootID: String?)
+    }
+
+    private func performMarkRead(roomID: String, cause: ReadCause = .markAsRead) async {
         cancelTimers(forRoomID: roomID)
         latestOTPByRoom.removeValue(forKey: roomID)
         if let client = appModel.client {
             // A failure is ignored: the inbox shows the truth the next time it reads.
-            let _: Empty? = try? await client.call("room.markRead", RoomParams(roomID: roomID))
+            switch cause {
+            case .markAsRead:
+                let _: Empty? = try? await client.call("room.markRead", MarkReadParams(roomID: roomID, threads: true))
+            case let .replied(root):
+                if let root {
+                    let _: Empty? = try? await client.call("thread.markRead", ThreadParams(roomID: roomID, rootID: root))
+                }
+                let _: Empty? = try? await client.call("room.markRead", MarkReadParams(roomID: roomID))
+            }
         }
         delivery.clear(roomID: roomID)
     }
@@ -770,7 +797,9 @@ public final class NotificationCoordinator {
     /// the text goes into that chat's draft and a notification says so, so the words are never lost. A send the
     /// engine took but stored failed, or waiting for its network, is in the chat already: a notification says that
     /// it wasn't sent, or that it goes when the network is back. While locked, drops the action and brings Courier forward.
-    public func reply(roomID: String, text: String) async {
+    ///
+    /// A notification for a reply that stays in its thread replies in that thread (`threadRootID`).
+    public func reply(roomID: String, text: String, threadRootID: String? = nil) async {
         guard !isCurrentlyLocked else {
             showWindow()
             return
@@ -780,7 +809,8 @@ public final class NotificationCoordinator {
         var mayHaveGone = false
         if let client = appModel.client {
             do {
-                let sent: Sent = try await client.call("message.send", SendParams(roomID: roomID, text: text),
+                let sent: Sent = try await client.call("message.send",
+                                                       SendParams(roomID: roomID, text: text, threadRoot: threadRootID),
                                                        timeout: replyTimeout)
                 // A reply that went reads the chat, as one typed in it does (in Incognito too: "until I reply"), and
                 // its notifications come down. message.send also answers for a send the network refused (failed),
@@ -789,7 +819,7 @@ public final class NotificationCoordinator {
                 let line = await status(of: sent.eventID, in: roomID, with: client)
                 switch line {
                 case let line? where line.hasGone:
-                    await performMarkRead(roomID: roomID)
+                    await performMarkRead(roomID: roomID, cause: .replied(threadRootID: threadRootID))
                 case .waiting?:
                     deliverRespectingLock(NotificationPolicy.replyWaiting(roomID: roomID, title: row(roomID)?.name ?? ""))
                 case .failed?, .notSent?, .noAccount?, .mayHaveBeenSent?:

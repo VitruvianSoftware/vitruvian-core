@@ -47,6 +47,12 @@ extension InboxRow {
         }
     }
 
+    /// Before the preview when the newest message is a reply that stays in its thread, which the chat's timeline
+    /// doesn't show: "↳ in thread: ". Nil otherwise.
+    public var previewThreadPrefix: String? {
+        previewInThread ? String(localized: "↳ in thread: ") : nil
+    }
+
     /// The unread count as the row shows it: nothing at 0, and 99+ past 99.
     public var unreadBadge: String? {
         switch unread {

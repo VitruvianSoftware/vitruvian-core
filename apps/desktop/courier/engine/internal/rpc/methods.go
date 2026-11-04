@@ -190,6 +190,8 @@ var methods = map[string]handler{
 	"inbox.list":           inboxList,
 	"room.events":          roomEvents,
 	"room.markRead":        roomMarkRead,
+	"thread.markRead":      threadMarkRead,
+	"thread.unread":        threadUnread,
 	"room.setMuted":        roomSetMuted,
 	"message.send":         messageSend,
 	"message.sendFile":     messageSendFile,
@@ -744,9 +746,11 @@ type pollTallyJSON struct {
 }
 
 type threadJSON struct {
-	Replies     int      `json:"replies"`
-	LastTS      int64    `json:"last_ts"`
-	LastSenders []string `json:"last_senders"`
+	Replies          int      `json:"replies"`
+	LastTS           int64    `json:"last_ts"`
+	LastSenders      []string `json:"last_senders"`
+	Unread           int      `json:"unread"`
+	UnreadMentionsMe bool     `json:"unread_mentions_me"`
 }
 
 type sender struct{ name, avatarPath string }
@@ -922,7 +926,8 @@ func (d *Deps) toEvents(ctx context.Context, roomID string, evs []store.Event, s
 			if senders == nil {
 				senders = []string{}
 			}
-			ev.Thread = &threadJSON{Replies: t.Replies, LastTS: ms(t.LastTS), LastSenders: senders}
+			ev.Thread = &threadJSON{Replies: t.Replies, LastTS: ms(t.LastTS), LastSenders: senders, Unread: t.Unread,
+				UnreadMentionsMe: t.UnreadMentionsMe}
 		}
 		out = append(out, ev)
 	}
@@ -1356,7 +1361,8 @@ func relationTarget(e store.Event) string {
 
 func roomMarkRead(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
 	var p struct {
-		RoomID *string `json:"room_id"`
+		RoomID  *string `json:"room_id"`
+		Threads bool    `json:"threads"`
 	}
 	if err := decode(raw, &p); err != nil {
 		return nil, err
@@ -1368,12 +1374,28 @@ func roomMarkRead(ctx context.Context, d *Deps, raw json.RawMessage) (any, error
 	if err != nil {
 		return nil, err
 	}
-	return nil, d.markRead(ctx, r)
+	if p.Threads {
+		return nil, d.markRead(ctx, r)
+	}
+	return nil, d.markTimelineRead(ctx, r)
 }
 
-// markRead marks a chat read (Actions.MarkRead): its unread count, an unread mark and a reminder that fired all
-// clear, then the network is told.
+// markRead marks a chat read with its threads, as Mark as Read in the inbox does: markTimelineRead, and every thread
+// read up to the chat's newest event (store.MarkThreadsRead).
 func (d *Deps) markRead(ctx context.Context, r store.Room) error {
+	if d.Actions == nil {
+		return errMissing
+	}
+	if _, err := d.Store.MarkThreadsRead(ctx, r.ID); err != nil {
+		return err
+	}
+	return d.markTimelineRead(ctx, r)
+}
+
+// markTimelineRead marks a chat's main timeline read (Actions.MarkRead), as opening it does: its unread count, an
+// unread mark and a reminder that fired all clear, then the network is told. A reply that stays in its thread is
+// left unread, for the thread pane (thread.markRead).
+func (d *Deps) markTimelineRead(ctx context.Context, r store.Room) error {
 	if d.Actions == nil {
 		return errMissing
 	}
@@ -1387,6 +1409,71 @@ func (d *Deps) markRead(ctx context.Context, r store.Room) error {
 		return err
 	}
 	return nil
+}
+
+// threadMarkRead reads a thread: the thread pane showed its newest reply (store.MarkThreadRead). It is this Mac's
+// alone; no network is told, since none takes a read per thread. A root that isn't a message of the chat is
+// not_found.
+func threadMarkRead(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
+	var p struct {
+		RoomID *string `json:"room_id"`
+		RootID *string `json:"root_id"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	if err := required("room_id", p.RoomID); err != nil {
+		return nil, err
+	}
+	if err := required("root_id", p.RootID); err != nil {
+		return nil, err
+	}
+	if _, err := d.room(ctx, *p.RoomID); err != nil {
+		return nil, err
+	}
+	root, ok, err := d.Store.GetEvent(ctx, *p.RootID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok || root.RoomID != *p.RoomID {
+		return nil, store.ErrNotFound
+	}
+	_, err = d.Store.MarkThreadRead(ctx, *p.RoomID, *p.RootID)
+	return nil, err
+}
+
+type unreadThreadJSON struct {
+	RootID           string `json:"root_id"`
+	Unread           int    `json:"unread"`
+	UnreadMentionsMe bool   `json:"unread_mentions_me"`
+	FirstUnreadID    string `json:"first_unread_id"`
+}
+
+// threadUnread lists a chat's threads with unread replies (store.UnreadThreads), for the open chat's "New replies in
+// N threads".
+func threadUnread(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {
+	var p struct {
+		RoomID *string `json:"room_id"`
+	}
+	if err := decode(raw, &p); err != nil {
+		return nil, err
+	}
+	if err := required("room_id", p.RoomID); err != nil {
+		return nil, err
+	}
+	if _, err := d.room(ctx, *p.RoomID); err != nil {
+		return nil, err
+	}
+	threads, err := d.Store.UnreadThreads(ctx, *p.RoomID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]unreadThreadJSON, 0, len(threads))
+	for _, t := range threads {
+		out = append(out, unreadThreadJSON{RootID: t.RootID, Unread: t.Unread, UnreadMentionsMe: t.MentionsMe,
+			FirstUnreadID: t.FirstUnreadID})
+	}
+	return map[string]any{"threads": out}, nil
 }
 
 func roomSetMuted(ctx context.Context, d *Deps, raw json.RawMessage) (any, error) {

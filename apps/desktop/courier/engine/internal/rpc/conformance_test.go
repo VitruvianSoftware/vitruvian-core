@@ -976,7 +976,7 @@ func prepare(t *testing.T, w *world, name string, params map[string]any) {
 		step, err := w.d.Start(ctx, "whatsapp", fakenet.ScriptFlow, login.StartOptions{AccountID: waAccount()})
 		require.NoError(t, err)
 		params["login_id"] = step.LoginID
-	case "method-not-found", "invalid-params", "room.events", "room.markRead", "room.setMuted":
+	case "method-not-found", "invalid-params", "room.events", "room.markRead", "room.markRead-threads", "room.setMuted":
 		params["room_id"] = w.room
 	case "room.events-older":
 		_, before, err := w.s.EventsBefore(ctx, w.room, nil, 2)
@@ -1091,10 +1091,16 @@ func prepare(t *testing.T, w *world, name string, params map[string]any) {
 		w.can(t, everything())
 		params["event_id"] = w.put(t, string(ids.RandomEventID()), contact, "org.matrix.msc3381.poll.start",
 			pollOf("Where for lunch?", 1, "Noodles", "Tacos"), time.Now())
-	case "room.events-thread":
+	case "room.events-thread", "thread.markRead", "thread.unread":
 		root := w.put(t, "$threadroot", contact, "m.room.message", `{"msgtype":"m.text","body":"Who's in for lunch?"}`, time.Now())
 		w.put(t, "$threadreply", "@whatsapp_ana:courier.local", "m.room.message", inThread(root, "Count me in"), time.Now().Add(time.Second))
-		params["room_id"], params["thread"] = w.room, root
+		params["room_id"] = w.room
+		switch name {
+		case "thread.markRead":
+			params["root_id"] = root
+		case "room.events-thread":
+			params["thread"] = root
+		}
 	case "search.query-bookmarks":
 		picnic(t, w)
 		hits, _, err := w.s.SearchMessages(ctx, store.MessageQuery{Terms: searchtext.Parse("Saturday"), Limit: 1})

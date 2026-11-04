@@ -510,10 +510,24 @@ final class NotificationCoordinatorTests: XCTestCase {
         await finish(h)
     }
 
+    /// A click on a thread reply's notification opens the chat at the reply, as a search result does: the chat at
+    /// its root, the thread pane at it.
+    func testClickingAThreadReplyOpensItsThread() async throws {
+        let h = try await start()
+        h.coordinator.open(NotificationTarget(roomID: "!a", threadRootID: "$root", eventID: "$t1"))
+        XCTAssertEqual(h.app.selectedRoomID, "!a")
+        XCTAssertEqual(h.app.pendingMessage?.roomID, "!a")
+        XCTAssertEqual(h.app.pendingMessage?.eventID, "$t1")
+        XCTAssertEqual(h.window.shown, 1)
+        await finish(h)
+    }
+
     func testMarkAsReadTellsTheEngineAndClears() async throws {
         let h = try await start()
         await h.coordinator.markRead(roomID: "!a")
         XCTAssertEqual(h.server.receivedParams("room.markRead").first?["room_id"] as? String, "!a")
+        XCTAssertEqual(h.server.receivedParams("room.markRead").first?["threads"] as? Bool, true,
+                       "Mark as Read reads the threads too, as the inbox's does")
         XCTAssertEqual(h.delivery.cleared, ["!a"])
         await finish(h)
     }
@@ -528,6 +542,22 @@ final class NotificationCoordinatorTests: XCTestCase {
 
         await h.coordinator.reply(roomID: "!a", text: "   ")
         XCTAssertEqual(h.server.receivedParams("message.send").count, 1, "an empty reply sends nothing")
+        await finish(h)
+    }
+
+    /// A reply from a thread reply's notification goes in that thread, and, once it went, reads the thread and the
+    /// chat's timeline, as a reply typed in the pane would.
+    func testAReplyToAThreadReplyGoesInTheThread() async throws {
+        let h = try await start()
+        var event = message("$sent", ts: connectedMillis + 1000, text: "on my way", mine: true)
+        event["status"] = "sent"
+        h.script.events["!a"] = [event]
+        await h.coordinator.reply(roomID: "!a", text: "on my way", threadRootID: "$root")
+        XCTAssertEqual(h.server.receivedParams("message.send").first?["thread_root"] as? String, "$root")
+        try await waitUntil { !h.server.receivedParams("room.markRead").isEmpty }
+        XCTAssertEqual(h.server.receivedParams("thread.markRead").first as? [String: String],
+                       ["room_id": "!a", "root_id": "$root"])
+        XCTAssertNil(h.server.receivedParams("room.markRead").first?["threads"], "the other threads stay unread")
         await finish(h)
     }
 
