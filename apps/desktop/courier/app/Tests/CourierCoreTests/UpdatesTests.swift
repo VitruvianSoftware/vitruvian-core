@@ -239,4 +239,21 @@ final class UpdatesTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: app.appendingPathComponent("version"), encoding: .utf8), "new",
                        "with nothing to put in its place, the installed app stays")
     }
+
+    func testLaunchInstallerStartsDetachedSession() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("courier-setsid-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let marker = folder.appendingPathComponent("sid")
+        try SystemUpdateEnvironment().launchInstaller(
+            script: "/usr/bin/python3 -c 'import os, sys; open(sys.argv[1], \"w\").write(f\"{os.getpid() == os.getsid(0)}\")' \"$1\"",
+            arguments: [marker.path]
+        )
+        let deadline = Date().addingTimeInterval(5)
+        while !FileManager.default.fileExists(atPath: marker.path), Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        XCTAssertEqual(try String(contentsOf: marker, encoding: .utf8), "True",
+                       "the installer is its own session leader so launchd does not kill it when Courier quits")
+    }
 }

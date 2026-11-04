@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import CryptoKit
+import Darwin
 import Foundation
 
 // Courier checks for a newer release of itself and installs it (Settings ▸ About ▸ Updates, and Courier ▸ Check for
@@ -512,13 +513,31 @@ public struct SystemUpdateEnvironment: UpdateEnvironment {
     }
 
     public func launchInstaller(script: String, arguments: [String]) throws {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/sh")
-        process.arguments = ["-c", script, "courier-update"] + arguments
-        process.standardInput = FileHandle.nullDevice
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-        try process.run()
+        // POSIX_SPAWN_SETSID puts the installer in its own session so launchd does not sweep it away when Courier
+        // quits; POSIX_SPAWN_CLOEXEC_DEFAULT keeps Courier's open descriptors out of the child.
+        var attributes: posix_spawnattr_t?
+        posix_spawnattr_init(&attributes)
+        defer { posix_spawnattr_destroy(&attributes) }
+        posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_SETSID | POSIX_SPAWN_CLOEXEC_DEFAULT))
+
+        var fileActions: posix_spawn_file_actions_t?
+        posix_spawn_file_actions_init(&fileActions)
+        defer { posix_spawn_file_actions_destroy(&fileActions) }
+        posix_spawn_file_actions_addopen(&fileActions, 0, "/dev/null", O_RDONLY, 0)
+        posix_spawn_file_actions_addopen(&fileActions, 1, "/dev/null", O_WRONLY, 0)
+        posix_spawn_file_actions_addopen(&fileActions, 2, "/dev/null", O_WRONLY, 0)
+
+        let executable = "/bin/sh"
+        let argv: [UnsafeMutablePointer<CChar>?] =
+            ([executable, "-c", script, "courier-update"] + arguments).map { strdup($0) } + [nil]
+        defer { for argument in argv { free(argument) } }
+
+        var pid: pid_t = 0
+        let status = posix_spawn(&pid, executable, &fileActions, &attributes, argv, environ)
+        guard status == 0 else {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(status),
+                          userInfo: [NSLocalizedDescriptionKey: String(cString: strerror(status))])
+        }
     }
 
     private func run(_ tool: String, _ arguments: [String]) -> Int32 {
