@@ -51,6 +51,7 @@ Approved by James on 2026-09-29. It applies to every delegation you make.
 | | `quill` | Claude Sonnet 5.5 in Claude Code; Gemini 3.8 Flash (Medium) in Antigravity |
 
 - The fallback policy does not relax the hard rule: when a model is unavailable, fall back to another model at standard effort or higher.
+- **Pass the model on each dispatch; agent files keep `model: inherit`.** Antigravity silently drops an agent whose `model` is anything but `inherit`, `flash` or `pro`, or whose `description` is longer than about 320 characters. Choose the tier's model per call instead: `model` on Claude Code's `Agent` tool, `Model` on Antigravity's `invoke_subagent`.
 
 ## Repository discovery
 Resolve scope from the repo before delegating; never from a remembered list of apps.
